@@ -22,16 +22,19 @@
     "qualify:cedar": "node --test spikes/cedar/test/*.test.mjs",
     "qualify:sqlite": "node --test spikes/sqlite/test/*.test.mjs",
     "qualify:isolation": "node --test spikes/isolation/test/*.test.mjs",
-    "gate:full": "node --test spikes/node-runtime/test/*.test.mjs spikes/pi-runtime/test/*.test.mjs spikes/claude-code-driver/test/*.test.mjs spikes/codex-driver/test/*.test.mjs spikes/opencode-driver/test/*.test.mjs spikes/cedar/test/*.test.mjs spikes/sqlite/test/*.test.mjs spikes/isolation/test/*.test.mjs",
-    "gate:build": "node --test spikes/node-runtime/test/*.test.mjs spikes/pi-runtime/test/*.test.mjs spikes/claude-code-driver/test/*.test.mjs spikes/codex-driver/test/*.test.mjs spikes/opencode-driver/test/*.test.mjs spikes/cedar/test/*.test.mjs spikes/sqlite/test/*.test.mjs spikes/isolation/test/*.test.mjs",
-    "gate:security": "node --test spikes/cedar/test/*.test.mjs spikes/sqlite/test/*.test.mjs spikes/isolation/test/*.test.mjs && node --test spikes/node-runtime/test/*.test.mjs spikes/pi-runtime/test/*.test.mjs spikes/claude-code-driver/test/*.test.mjs spikes/codex-driver/test/*.test.mjs spikes/opencode-driver/test/*.test.mjs"
+    "qualify:supply-chain": "node --test spikes/supply-chain/test/*.test.mjs",
+    "gate:full": "node --test spikes/node-runtime/test/*.test.mjs spikes/pi-runtime/test/*.test.mjs spikes/claude-code-driver/test/*.test.mjs spikes/codex-driver/test/*.test.mjs spikes/opencode-driver/test/*.test.mjs spikes/cedar/test/*.test.mjs spikes/sqlite/test/*.test.mjs spikes/isolation/test/*.test.mjs spikes/supply-chain/test/*.test.mjs",
+    "gate:build": "node --test spikes/node-runtime/test/*.test.mjs spikes/pi-runtime/test/*.test.mjs spikes/claude-code-driver/test/*.test.mjs spikes/codex-driver/test/*.test.mjs spikes/opencode-driver/test/*.test.mjs spikes/cedar/test/*.test.mjs spikes/sqlite/test/*.test.mjs spikes/isolation/test/*.test.mjs spikes/supply-chain/test/*.test.mjs",
+    "gate:security": "node --test spikes/cedar/test/*.test.mjs spikes/sqlite/test/*.test.mjs spikes/isolation/test/*.test.mjs spikes/supply-chain/test/*.test.mjs && node --test spikes/node-runtime/test/*.test.mjs spikes/pi-runtime/test/*.test.mjs spikes/claude-code-driver/test/*.test.mjs spikes/codex-driver/test/*.test.mjs spikes/opencode-driver/test/*.test.mjs"
   },
   "devDependencies": {
     "@cedar-policy/cedar-wasm": "4.11.2",
     "@earendil-works/pi-agent-core": "0.80.6",
     "@earendil-works/pi-ai": "0.80.6",
     "@opencode-ai/sdk": "1.17.18",
+    "@tufjs/canonical-json": "2.0.0",
     "opencode-ai": "1.17.18",
-    "sqlite-vec": "0.1.9"
+    "sqlite-vec": "0.1.9",
+    "tuf-js": "5.0.1"
   }
 }
