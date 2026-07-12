@@ -14,6 +14,24 @@
     ]
   },
   "scripts": {
+    "format:check": "prettier --check package.json pnpm-workspace.yaml tsconfig.json eslint.config.mjs .prettierrc.json scripts tests/architecture apps packages",
+    "lint": "eslint eslint.config.mjs scripts tests/architecture apps packages",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc --noEmit",
+    "test:unit": "node scripts/test-scope.mjs unit tests/unit",
+    "test:contract": "node scripts/test-scope.mjs contract tests/contract",
+    "test:integration": "node scripts/test-scope.mjs integration tests/integration",
+    "test:e2e": "node scripts/test-scope.mjs e2e tests/e2e",
+    "test:architecture": "node --test tests/architecture/*.test.mjs",
+    "test:qualification": "node --test spikes/node-runtime/test/*.test.mjs spikes/pi-runtime/test/*.test.mjs spikes/claude-code-driver/test/*.test.mjs spikes/codex-driver/test/*.test.mjs spikes/opencode-driver/test/*.test.mjs spikes/cedar/test/*.test.mjs spikes/sqlite/test/*.test.mjs spikes/isolation/test/*.test.mjs spikes/supply-chain/test/*.test.mjs",
+    "test:security": "node scripts/test-scope.mjs security tests/security",
+    "test:fault": "node scripts/test-scope.mjs fault tests/fault-injection",
+    "test:release": "node scripts/test-scope.mjs release tests/public-regression tests/system",
+    "gate:quick": "node scripts/gate.mjs quick",
+    "gate:full": "node scripts/gate.mjs full",
+    "gate:build": "node scripts/gate.mjs build",
+    "gate:security": "node scripts/gate.mjs security",
+    "gate:release": "node scripts/gate.mjs release",
     "qualify:node": "node --test spikes/node-runtime/test/*.test.mjs",
     "qualify:pi": "node --test spikes/pi-runtime/test/*.test.mjs",
     "qualify:claude": "node --test spikes/claude-code-driver/test/*.test.mjs",
@@ -22,10 +40,7 @@
     "qualify:cedar": "node --test spikes/cedar/test/*.test.mjs",
     "qualify:sqlite": "node --test spikes/sqlite/test/*.test.mjs",
     "qualify:isolation": "node --test spikes/isolation/test/*.test.mjs",
-    "qualify:supply-chain": "node --test spikes/supply-chain/test/*.test.mjs",
-    "gate:full": "node --test spikes/node-runtime/test/*.test.mjs spikes/pi-runtime/test/*.test.mjs spikes/claude-code-driver/test/*.test.mjs spikes/codex-driver/test/*.test.mjs spikes/opencode-driver/test/*.test.mjs spikes/cedar/test/*.test.mjs spikes/sqlite/test/*.test.mjs spikes/isolation/test/*.test.mjs spikes/supply-chain/test/*.test.mjs",
-    "gate:build": "node --test spikes/node-runtime/test/*.test.mjs spikes/pi-runtime/test/*.test.mjs spikes/claude-code-driver/test/*.test.mjs spikes/codex-driver/test/*.test.mjs spikes/opencode-driver/test/*.test.mjs spikes/cedar/test/*.test.mjs spikes/sqlite/test/*.test.mjs spikes/isolation/test/*.test.mjs spikes/supply-chain/test/*.test.mjs",
-    "gate:security": "node --test spikes/cedar/test/*.test.mjs spikes/sqlite/test/*.test.mjs spikes/isolation/test/*.test.mjs spikes/supply-chain/test/*.test.mjs && node --test spikes/node-runtime/test/*.test.mjs spikes/pi-runtime/test/*.test.mjs spikes/claude-code-driver/test/*.test.mjs spikes/codex-driver/test/*.test.mjs spikes/opencode-driver/test/*.test.mjs"
+    "qualify:supply-chain": "node --test spikes/supply-chain/test/*.test.mjs"
   },
   "devDependencies": {
     "@cedar-policy/cedar-wasm": "4.11.2",
@@ -33,8 +48,13 @@
     "@earendil-works/pi-ai": "0.80.6",
     "@opencode-ai/sdk": "1.17.18",
     "@tufjs/canonical-json": "2.0.0",
+    "eslint": "10.7.0",
     "opencode-ai": "1.17.18",
+    "prettier": "3.9.5",
     "sqlite-vec": "0.1.9",
-    "tuf-js": "5.0.1"
+    "tuf-js": "5.0.1",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.63.0",
+    "vitest": "4.1.10"
   }
 }
