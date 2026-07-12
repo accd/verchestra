@@ -1,0 +1,16 @@
+{
+  "name": "verchestra",
+  "version": "0.0.0-qualification",
+  "private": true,
+  "description": "Verchestra verified AI software-delivery harness",
+  "license": "UNLICENSED",
+  "engines": {
+    "node": "24.14.0"
+  },
+  "packageManager": "pnpm@10.34.5",
+  "scripts": {
+    "qualify:node": "node --test spikes/node-runtime/test/*.test.mjs",
+    "gate:build": "node --test spikes/node-runtime/test/*.test.mjs"
+  }
+}
+
