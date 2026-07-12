@@ -14,6 +14,12 @@ importers:
       '@earendil-works/pi-ai':
         specifier: 0.80.6
         version: 0.80.6(ws@8.21.0)(zod@4.4.3)
+      '@opencode-ai/sdk':
+        specifier: 1.17.18
+        version: 1.17.18
+      opencode-ai:
+        specifier: 1.17.18
+        version: 1.17.18
 
 packages:
 
@@ -153,6 +159,9 @@ packages:
       '@opentelemetry/api':
         optional: true
 
+  '@opencode-ai/sdk@1.17.18':
+    resolution: {integrity: sha512-c/C9PhY8PrbcxDY+JIYtOZsrmMD0KzoVvxq+RGUrZ6LQp57SuVBbT4lfwA2G8Se5RNC1N5JtYjiuaXeECnF2SQ==}
+
   '@opentelemetry/api@1.9.0':
     resolution: {integrity: sha512-3giAOQvZiH5F9bMlMiv8+GSPMeqg0dbaeo58/0SlA9sxSqZhnUtxzX9/2FzyhS9sWQf5S0GJE0AKBrFqjpeYcg==}
     engines: {node: '>=8.0.0'}
@@ -250,6 +259,10 @@ packages:
   buffer-equal-constant-time@1.0.1:
     resolution: {integrity: sha512-zRpUiDwd/xk6ADqPMATG8vc9VPrkck7T07OIx0gnjmJAnHnTVXNQG3vfvWNuiZIkwu9KrKdA1iJKfsfTVxE6NA==}
 
+  cross-spawn@7.0.6:
+    resolution: {integrity: sha512-uV2QOWP2nWzsy2aMp8aRibhi9dlzF5Hgh5SHaB9OiTGEyDTiJJyx0uy51QXdyWbtAHNua4XJzUKca3OzKUd3vA==}
+    engines: {node: '>= 8'}
+
   data-uri-to-buffer@4.0.1:
     resolution: {integrity: sha512-0R9ikRb668HB7QDxT1vkpuUBtqc53YyAwMwGeUFKRojY/NWKvdZ+9UYtRfGmhqNbRkTSVpMbmyhXipFFv2cb/A==}
     engines: {node: '>= 12'}
@@ -305,6 +318,9 @@ packages:
     resolution: {integrity: sha512-Hs59xBNfUIunMFgWAbGX5cq6893IbWg4KnrjbYwX3tx0ztorVgTDA6B2sxf8ejHJ4wz8BqGUMYlnzNBer5NvGg==}
     engines: {node: '>= 4'}
 
+  isexe@2.0.0:
+    resolution: {integrity: sha512-RHxMLp9lnKHGHRng9QFhRCMbYAcVpn69smSGcq3f36xjgVVWThj4qqLbTLlq7Ssj8B+fIQ1EuCEGI2lKsyQeIw==}
+
   json-bigint@1.0.0:
     resolution: {integrity: sha512-SiPv/8VpZuWbvLSMtTDU8hEfrZWg/mH/nV/b4o0CYbSxu1UIQPLdwKOCIyLQX+VIPO5vrLX3i8qtqFyhdPSUSQ==}
 
@@ -345,12 +361,85 @@ packages:
       zod:
         optional: true
 
+  opencode-ai@1.17.18:
+    resolution: {integrity: sha512-gpCE5X3dwvYam2ba9r3mw+FTPBTDlmKkguiOoYF1nv9MVA3sDIXje3tPQ+EMNxYkWD43FN3+eVC1GW6tRO9Aiw==}
+    cpu: [arm64, x64]
+    os: [darwin, linux, win32]
+    hasBin: true
+
+  opencode-darwin-arm64@1.17.18:
+    resolution: {integrity: sha512-wcnsPXxNnIggdva8rQ2KAWi17GdyDL4joAT+M/+UqkRFXhTBgfScWiWyCAGpZitDlpxd0K5W79NPjal54A8aiw==}
+    cpu: [arm64]
+    os: [darwin]
+
+  opencode-darwin-x64-baseline@1.17.18:
+    resolution: {integrity: sha512-kkUWjHQBtYtbtoAxV7N8srXpAdWu7ajynnrUQ/raHhJc2HnsR3Ud6/Ms60YSpNWOuCZ/WgtISpXkg12E7opvcA==}
+    cpu: [x64]
+    os: [darwin]
+
+  opencode-darwin-x64@1.17.18:
+    resolution: {integrity: sha512-WwTwf6pCMkJ4ed3l6mLn2+eVz+Yli+5ijine0Hx7r+LVUYv9Odo46lHO4ZLd2m/dbnnDcX5xHNklasBNfCkBEQ==}
+    cpu: [x64]
+    os: [darwin]
+
+  opencode-linux-arm64-musl@1.17.18:
+    resolution: {integrity: sha512-KW+77OknysG0gkD8tRzIcFKuv2mJR3jDtEQcCOhXmkAEWv7rEIqaDehWDa35F7AKjNJnJ4f6P7dDLMDJeQztHg==}
+    cpu: [arm64]
+    os: [linux]
+    libc: [musl]
+
+  opencode-linux-arm64@1.17.18:
+    resolution: {integrity: sha512-VrTs+uQndp+B442Bfxf1a7BX9599gARjQCJ+MVCkcxl4Dr4gbBw7EfjKgGvhCqKUN5Hv2I7hUG/EZ1Ix3T6xrw==}
+    cpu: [arm64]
+    os: [linux]
+
+  opencode-linux-x64-baseline-musl@1.17.18:
+    resolution: {integrity: sha512-e4/FLdohz2euPXsziktv7mKrYLO01R4n7bwMvhAcPDaYc9zCagHUoALZVYm0BXtVB6YikaIfnHsbAIAgNlC37w==}
+    cpu: [x64]
+    os: [linux]
+    libc: [musl]
+
+  opencode-linux-x64-baseline@1.17.18:
+    resolution: {integrity: sha512-ZHgobRKdHocQJSAzrz/ekKBjN1cScB+u07Zgr5Hzks2zm+ZyuN5zvx/NOKM7ImPEy3TQ0+swXvtoYKCOE4Tpbw==}
+    cpu: [x64]
+    os: [linux]
+
+  opencode-linux-x64-musl@1.17.18:
+    resolution: {integrity: sha512-3pWmNMZ08vsOVnQcOydqnE66NTZjqMZllcX6M9w+nCbQ2Edi6xWL1NMiW9MFvjyJMuOxTqzif6RvpIcK3CZHxw==}
+    cpu: [x64]
+    os: [linux]
+    libc: [musl]
+
+  opencode-linux-x64@1.17.18:
+    resolution: {integrity: sha512-8BmT22yp7pCXXu/HvAMaJsNNd6xhmlUrGs5YZSfU0neZfkSZg+Dkf9IGsuOugOtL0x2erDg2/6rRBpcJAGmTrA==}
+    cpu: [x64]
+    os: [linux]
+
+  opencode-windows-arm64@1.17.18:
+    resolution: {integrity: sha512-5vtCGvt3k1RbhiB31Sg4Q0H1Qy+npFMD1y4N3fhx8X+Dyrzfly7SPQNQPtSt8nDluRhcCB0oFl9suDew2q2YOg==}
+    cpu: [arm64]
+    os: [win32]
+
+  opencode-windows-x64-baseline@1.17.18:
+    resolution: {integrity: sha512-pt9ga2UcoTUo6+/rFvZZ+KOxHXkVMHPqBi3tVjI/B96icAGtpXNPDznK+HuahBFKKMr9y8pwu17yd94Vn+gMMg==}
+    cpu: [x64]
+    os: [win32]
+
+  opencode-windows-x64@1.17.18:
+    resolution: {integrity: sha512-6i17BI5tmQvopBm6lwerPu2I7p2BYneX7XDlHYeVCy9+INL0T8sD8Ww+Lobqs76E8kepwP1NVqEFzs5DkLYVJw==}
+    cpu: [x64]
+    os: [win32]
+
   p-retry@4.6.2:
     resolution: {integrity: sha512-312Id396EbJdvRONlngUx0NydfrIQ5lsYu0znKVUzVvArzEIt08V1qhtyESbGVd1FGX7UKtiFp5uwKZdM8wIuQ==}
     engines: {node: '>=8'}
 
   partial-json@0.1.7:
     resolution: {integrity: sha512-Njv/59hHaokb/hRUjce3Hdv12wd60MtM9Z5Olmn+nehe0QDAsRtRbJPvJ0Z91TusF0SuZRIvnM+S4l6EIP8leA==}
+
+  path-key@3.1.1:
+    resolution: {integrity: sha512-ojmeN0qd+y0jszEtoY48r0Peq5dwMEkIlCOu6Q5f41lfkswXuKtYrhgoTpLnyIcHm24Uhqx+5Tqm2InSwLhE6Q==}
+    engines: {node: '>=8'}
 
   protobufjs@7.6.5:
     resolution: {integrity: sha512-/FPD0nUc9jH6rfFjji9IBqOz4pcSE3CsT1m7Ep6Mdb0LxSUMj8hgl6GomOvZzpNpAqqGaXA0P3VSrZLFzIhQrw==}
@@ -362,6 +451,14 @@ packages:
 
   safe-buffer@5.2.1:
     resolution: {integrity: sha512-rp3So07KcdmmKbGvgaNxQSJr7bGVSVk5S9Eq1F+ppbRo70+YeaDxkw5Dd8NPN+GD6bjnYm2VuPuCXmpuYvmCXQ==}
+
+  shebang-command@2.0.0:
+    resolution: {integrity: sha512-kHxr2zZpYtdmrN1qDjrrX/Z1rR1kG8Dx+gkpK1G4eXmvXswmcE1hTWBWYUzlraYw1/yZp6YuDY77YtvbN0dmDA==}
+    engines: {node: '>=8'}
+
+  shebang-regex@3.0.0:
+    resolution: {integrity: sha512-7++dFhtcx3353uBaq8DDR4NuxBetBzC7ZQOhmTQInHEd6bSrXdiEyzCvG07Z44UYdLShWUyXt5M/yhz8ekcb1A==}
+    engines: {node: '>=8'}
 
   ts-algebra@2.0.0:
     resolution: {integrity: sha512-FPAhNPFMrkwz76P7cdjdmiShwMynZYN6SgOujD1urY4oNm80Ou9oMdmbR45LotcKOXoy7wSmHkRFE6Mxbrhefw==}
@@ -378,6 +475,11 @@ packages:
   web-streams-polyfill@3.3.3:
     resolution: {integrity: sha512-d2JWLCivmZYTSIoge9MsgFCZrt571BikcWGYkjC1khllbTeDlGqZ2D8vD8E/lJa8WGWbb7Plm8/XJYV7IJHZZw==}
     engines: {node: '>= 8'}
+
+  which@2.0.2:
+    resolution: {integrity: sha512-BLI3Tl1TW3Pvl70l3yq3Y64i+awpwXqsGBYWkkqMtnbXgrMD+yj7rhW0kuEDxzJaYXGjEW5ogapKNMEKNMjibA==}
+    engines: {node: '>= 8'}
+    hasBin: true
 
   ws@8.21.0:
     resolution: {integrity: sha512-Vsp28b7DRcimFQvrqu2Wek3z1iYxDCWqHYB8Qsnk/S4RfaCQzPGPyBNuVjJV3cd6UiKtUtp6sNM77gWvzcCH+g==}
@@ -686,6 +788,10 @@ snapshots:
       - bufferutil
       - utf-8-validate
 
+  '@opencode-ai/sdk@1.17.18':
+    dependencies:
+      cross-spawn: 7.0.6
+
   '@opentelemetry/api@1.9.0': {}
 
   '@opentelemetry/semantic-conventions@1.43.0': {}
@@ -779,6 +885,12 @@ snapshots:
 
   buffer-equal-constant-time@1.0.1: {}
 
+  cross-spawn@7.0.6:
+    dependencies:
+      path-key: 3.1.1
+      shebang-command: 2.0.0
+      which: 2.0.2
+
   data-uri-to-buffer@4.0.1: {}
 
   debug@4.4.3:
@@ -845,6 +957,8 @@ snapshots:
 
   ignore@7.0.5: {}
 
+  isexe@2.0.0: {}
+
   json-bigint@1.0.0:
     dependencies:
       bignumber.js: 9.3.1
@@ -882,12 +996,65 @@ snapshots:
       ws: 8.21.0
       zod: 4.4.3
 
+  opencode-ai@1.17.18:
+    optionalDependencies:
+      opencode-darwin-arm64: 1.17.18
+      opencode-darwin-x64: 1.17.18
+      opencode-darwin-x64-baseline: 1.17.18
+      opencode-linux-arm64: 1.17.18
+      opencode-linux-arm64-musl: 1.17.18
+      opencode-linux-x64: 1.17.18
+      opencode-linux-x64-baseline: 1.17.18
+      opencode-linux-x64-baseline-musl: 1.17.18
+      opencode-linux-x64-musl: 1.17.18
+      opencode-windows-arm64: 1.17.18
+      opencode-windows-x64: 1.17.18
+      opencode-windows-x64-baseline: 1.17.18
+
+  opencode-darwin-arm64@1.17.18:
+    optional: true
+
+  opencode-darwin-x64-baseline@1.17.18:
+    optional: true
+
+  opencode-darwin-x64@1.17.18:
+    optional: true
+
+  opencode-linux-arm64-musl@1.17.18:
+    optional: true
+
+  opencode-linux-arm64@1.17.18:
+    optional: true
+
+  opencode-linux-x64-baseline-musl@1.17.18:
+    optional: true
+
+  opencode-linux-x64-baseline@1.17.18:
+    optional: true
+
+  opencode-linux-x64-musl@1.17.18:
+    optional: true
+
+  opencode-linux-x64@1.17.18:
+    optional: true
+
+  opencode-windows-arm64@1.17.18:
+    optional: true
+
+  opencode-windows-x64-baseline@1.17.18:
+    optional: true
+
+  opencode-windows-x64@1.17.18:
+    optional: true
+
   p-retry@4.6.2:
     dependencies:
       '@types/retry': 0.12.0
       retry: 0.13.1
 
   partial-json@0.1.7: {}
+
+  path-key@3.1.1: {}
 
   protobufjs@7.6.5:
     dependencies:
@@ -907,6 +1074,12 @@ snapshots:
 
   safe-buffer@5.2.1: {}
 
+  shebang-command@2.0.0:
+    dependencies:
+      shebang-regex: 3.0.0
+
+  shebang-regex@3.0.0: {}
+
   ts-algebra@2.0.0: {}
 
   tslib@2.8.1: {}
@@ -916,6 +1089,10 @@ snapshots:
   undici-types@8.3.0: {}
 
   web-streams-polyfill@3.3.3: {}
+
+  which@2.0.2:
+    dependencies:
+      isexe: 2.0.0
 
   ws@8.21.0: {}
 

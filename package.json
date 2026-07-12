@@ -8,16 +8,24 @@
     "node": "24.14.0"
   },
   "packageManager": "pnpm@10.34.5",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "opencode-ai"
+    ]
+  },
   "scripts": {
     "qualify:node": "node --test spikes/node-runtime/test/*.test.mjs",
     "qualify:pi": "node --test spikes/pi-runtime/test/*.test.mjs",
     "qualify:claude": "node --test spikes/claude-code-driver/test/*.test.mjs",
     "qualify:codex": "node --test spikes/codex-driver/test/*.test.mjs",
-    "gate:full": "node --test spikes/node-runtime/test/*.test.mjs spikes/pi-runtime/test/*.test.mjs spikes/claude-code-driver/test/*.test.mjs spikes/codex-driver/test/*.test.mjs",
-    "gate:build": "node --test spikes/node-runtime/test/*.test.mjs spikes/pi-runtime/test/*.test.mjs spikes/claude-code-driver/test/*.test.mjs spikes/codex-driver/test/*.test.mjs"
+    "qualify:opencode": "node --test spikes/opencode-driver/test/*.test.mjs",
+    "gate:full": "node --test spikes/node-runtime/test/*.test.mjs spikes/pi-runtime/test/*.test.mjs spikes/claude-code-driver/test/*.test.mjs spikes/codex-driver/test/*.test.mjs spikes/opencode-driver/test/*.test.mjs",
+    "gate:build": "node --test spikes/node-runtime/test/*.test.mjs spikes/pi-runtime/test/*.test.mjs spikes/claude-code-driver/test/*.test.mjs spikes/codex-driver/test/*.test.mjs spikes/opencode-driver/test/*.test.mjs"
   },
   "devDependencies": {
     "@earendil-works/pi-agent-core": "0.80.6",
-    "@earendil-works/pi-ai": "0.80.6"
+    "@earendil-works/pi-ai": "0.80.6",
+    "@opencode-ai/sdk": "1.17.18",
+    "opencode-ai": "1.17.18"
   }
 }
