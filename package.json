@@ -10,7 +10,12 @@
   "packageManager": "pnpm@10.34.5",
   "scripts": {
     "qualify:node": "node --test spikes/node-runtime/test/*.test.mjs",
-    "gate:build": "node --test spikes/node-runtime/test/*.test.mjs"
+    "qualify:pi": "node --test spikes/pi-runtime/test/*.test.mjs",
+    "gate:full": "node --test spikes/node-runtime/test/*.test.mjs spikes/pi-runtime/test/*.test.mjs",
+    "gate:build": "node --test spikes/node-runtime/test/*.test.mjs spikes/pi-runtime/test/*.test.mjs"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-agent-core": "0.80.6",
+    "@earendil-works/pi-ai": "0.80.6"
   }
 }
-
