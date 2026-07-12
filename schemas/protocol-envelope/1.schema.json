@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ves://protocol-envelope/1",
+  "title": "ProtocolEnvelope",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "protocol",
+    "messageId",
+    "correlationId",
+    "workspaceId",
+    "sequence",
+    "sentAt",
+    "payloadSchema",
+    "payloadDigest",
+    "payload"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "1" },
+    "protocol": { "const": "verchestra/1" },
+    "messageId": { "type": "string", "minLength": 1 },
+    "correlationId": { "type": "string", "minLength": 1 },
+    "workspaceId": { "type": "string", "minLength": 1 },
+    "runId": { "type": "string", "minLength": 1 },
+    "sequence": { "type": "integer", "minimum": 0 },
+    "sentAt": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T.*Z$" },
+    "payloadSchema": { "type": "string", "minLength": 1 },
+    "payloadDigest": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "payload": {}
+  }
+}

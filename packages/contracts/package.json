@@ -2,5 +2,8 @@
   "name": "@verchestra/contracts",
   "version": "0.0.0",
   "private": true,
-  "type": "module"
+  "type": "module",
+  "dependencies": {
+    "ajv": "8.20.0"
+  }
 }

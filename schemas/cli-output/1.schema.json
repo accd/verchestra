@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ves://cli-output/1",
+  "title": "CliOutput",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "command", "ok", "data"],
+  "properties": {
+    "schemaVersion": { "const": "1" },
+    "command": { "type": "string", "minLength": 1 },
+    "ok": { "type": "boolean" },
+    "data": {},
+    "error": { "$ref": "ves://public-error/1" }
+  }
+}

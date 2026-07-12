@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ves://public-error/1",
+  "title": "PublicError",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "code",
+    "category",
+    "component",
+    "retryability",
+    "recovery",
+    "safeDetails",
+    "documentationVersion"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "1" },
+    "code": { "type": "string", "pattern": "^VES_[A-Z0-9_]+$" },
+    "category": {
+      "enum": ["validation", "policy", "state", "conflict", "external", "integrity", "security", "internal"]
+    },
+    "component": { "type": "string", "minLength": 1 },
+    "retryability": { "enum": ["never", "after-change", "safe", "reconcile-first"] },
+    "recovery": { "type": "string", "minLength": 1 },
+    "safeDetails": { "type": "object" },
+    "documentationVersion": { "type": "string", "minLength": 1 },
+    "evidenceRef": { "type": "string" },
+    "causeChainDigest": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+  }
+}

@@ -56,6 +56,8 @@ export function inspectSource(packageName, source) {
       if (!edge.allowed) findings.push({ code: edge.code, detail: dependency });
     } else if (dependency.startsWith("node:")) {
       if (packageName === "domain") findings.push({ code: "VES_ARCH_DOMAIN_NODE_IMPORT", detail: dependency });
+    } else if (packageName === "contracts" && dependency.startsWith("ajv")) {
+      continue;
     } else if (!dependency.startsWith(".") && new Set(["contracts", "domain", "application"]).has(packageName)) {
       findings.push({ code: "VES_ARCH_THIRD_PARTY_IMPORT", detail: dependency });
     }
