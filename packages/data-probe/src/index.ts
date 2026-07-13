@@ -8,6 +8,13 @@ export {
   PostgreSqlProbeError,
   parsePostgreSqlReadOperation
 } from "./postgresql-adapter.ts";
+export {
+  MariaDbProbeAdapter,
+  MySqlFamilyFixtureConnection,
+  MySqlFamilyProbeError,
+  MySqlProbeAdapter,
+  parseMySqlFamilyReadOperation
+} from "./mysql-family-adapter.ts";
 
 const ENGINES = ["postgresql", "mysql", "mariadb", "sqlserver", "oracle", "sqlite", "mongodb"] as const;
 const CLASSIFICATIONS = ["public", "internal", "confidential", "restricted", "secret"] as const;
