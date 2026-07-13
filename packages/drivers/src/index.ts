@@ -405,7 +405,7 @@ function validateScriptEvent(event: Readonly<Record<string, unknown>>): void {
     throw new DriverProtocolError("VES_DRIVER_EVENT_INVALID", "Mock error event is invalid");
 }
 
-function validateStartRequest(request: DriverStartRequest): void {
+export function validateDriverStartRequest(request: DriverStartRequest): void {
   if (request === null || typeof request !== "object")
     throw new DriverProtocolError("VES_DRIVER_START_INVALID", "Driver start request is invalid");
   const tools = Array.isArray(request.tools) ? request.tools : [];
@@ -469,7 +469,7 @@ export class DeterministicMockDriver implements Driver {
     signal: AbortSignal
   ): Promise<DriverSessionRef> {
     if (signal.aborted) throw new DriverProtocolError("VES_DRIVER_CANCELLED", "Mock Driver start was cancelled");
-    validateStartRequest(request);
+    validateDriverStartRequest(request);
     const sessionId = `mock-session:${sha256(request).slice(7, 31)}`;
     const state = { sink, sequence: 0, closed: false };
     this.#sessions.set(sessionId, state);
@@ -573,3 +573,6 @@ export class DriverSupervisor {
     return escalateDriverCancellation(this.#cancellation);
   }
 }
+
+export { PiDriver } from "./pi-driver.ts";
+export type { PiDriverDependencies, PiExecution } from "./pi-driver.ts";
