@@ -33,6 +33,13 @@ export {
   OracleProbeError,
   parseOracleReadOperation
 } from "./oracle-adapter.ts";
+export {
+  SqliteFixtureConnection,
+  SqliteProbeAdapter,
+  SqliteProbeError,
+  SqliteReadConnection,
+  parseSqliteReadOperation
+} from "./sqlite-adapter.ts";
 
 const ENGINES = ["postgresql", "mysql", "mariadb", "sqlserver", "sybase", "oracle", "sqlite", "mongodb"] as const;
 const CLASSIFICATIONS = ["public", "internal", "confidential", "restricted", "secret"] as const;
