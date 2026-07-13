@@ -15,6 +15,12 @@ export {
   MySqlProbeAdapter,
   parseMySqlFamilyReadOperation
 } from "./mysql-family-adapter.ts";
+export {
+  SqlServerFixtureConnection,
+  SqlServerProbeAdapter,
+  SqlServerProbeError,
+  parseSqlServerReadOperation
+} from "./sqlserver-adapter.ts";
 
 const ENGINES = ["postgresql", "mysql", "mariadb", "sqlserver", "oracle", "sqlite", "mongodb"] as const;
 const CLASSIFICATIONS = ["public", "internal", "confidential", "restricted", "secret"] as const;
