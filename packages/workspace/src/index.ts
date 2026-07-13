@@ -32,3 +32,14 @@ export {
   type WritePlan
 } from "./placement/artifact-placement.ts";
 export { PLACEMENT_PUBLIC_ERROR_DEFINITIONS, placementPublicErrorRegistry } from "./placement/placement-errors.ts";
+export { MANAGED_GITIGNORE_LINES, editManagedGitignore, type ManagedGitignoreEdit } from "./init/managed-gitignore.ts";
+export { INIT_PUBLIC_ERROR_DEFINITIONS, initPublicErrorRegistry } from "./init/init-errors.ts";
+export {
+  SafeInitService,
+  buildCanonicalInitFiles,
+  type InitChange,
+  type InitHookContext,
+  type InitPreview,
+  type InitRecoveryReceipt,
+  type InitTransactionHooks
+} from "./init/safe-init.ts";
