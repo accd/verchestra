@@ -1,5 +1,13 @@
 export const packageName = "@verchestra/agent-runtime" as const;
 export {
+  CapabilityModelRouter,
+  ModelRouterError,
+  type ModelExclusion,
+  type ModelPassportResolverPort,
+  type ModelRoleRequirement,
+  type ModelRouteSelection
+} from "./models/model-router.ts";
+export {
   InMemoryPassportStore,
   ModelPassportError,
   ModelPassportRegistry,
