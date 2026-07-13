@@ -104,6 +104,15 @@ CREATE TABLE local_rebuild_state (
   FOREIGN KEY (workspace_id) REFERENCES workspace_sync_states(workspace_id) ON DELETE CASCADE
 ) STRICT;`;
 
+const POLICY_VIEW_SCHEMA = `
+CREATE TABLE active_policy_views (
+  workspace_id TEXT PRIMARY KEY,
+  generation INTEGER NOT NULL CHECK (generation > 0),
+  view_json TEXT NOT NULL,
+  view_digest TEXT NOT NULL CHECK (length(view_digest) = 64),
+  updated_at TEXT NOT NULL
+) STRICT;`;
+
 const RUNTIME_SCHEMA = `
 CREATE TABLE runs (
   run_id TEXT PRIMARY KEY,
@@ -189,7 +198,8 @@ export const DEFAULT_RUNTIME_MIGRATIONS: readonly RuntimeMigration[] = Object.fr
   Object.freeze({ id: "001_runtime", up: RUNTIME_SCHEMA }),
   Object.freeze({ id: "002_effects", up: EFFECT_SCHEMA }),
   Object.freeze({ id: "003_machine_profiles", up: MACHINE_PROFILE_SCHEMA }),
-  Object.freeze({ id: "004_sync_state", up: SYNC_STATE_SCHEMA })
+  Object.freeze({ id: "004_sync_state", up: SYNC_STATE_SCHEMA }),
+  Object.freeze({ id: "005_policy_views", up: POLICY_VIEW_SCHEMA })
 ]);
 
 type UnknownRecord = Record<string, unknown> & {
@@ -276,6 +286,18 @@ function sha256(value: string | Uint8Array): string {
   return createHash("sha256").update(value).digest("hex");
 }
 
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  if (value !== null && typeof value === "object") {
+    return `{${Object.entries(value as Readonly<Record<string, unknown>>)
+      .filter(([, entry]) => entry !== undefined)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, entry]) => `${JSON.stringify(key)}:${canonicalJson(entry)}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
 function runtimeError(code: string, message: string, cause?: unknown, recoverable = false): Error {
   return Object.assign(new Error(message, cause === undefined ? undefined : { cause }), { code, recoverable });
 }
@@ -328,7 +350,8 @@ const STATE_TABLE_ORDER = Object.freeze({
   workspace_sync_states: "workspace_id",
   workspace_projects: "workspace_id, project_id",
   projection_mappings: "workspace_id, projection_id",
-  local_rebuild_state: "workspace_id"
+  local_rebuild_state: "workspace_id",
+  active_policy_views: "workspace_id"
 });
 
 function runtimeStateDigest(db: DatabaseSync): string {
@@ -656,6 +679,73 @@ export class RuntimeStore {
       .get(workspaceId) as UnknownRecord | undefined;
     if (row === undefined) return undefined;
     return Object.freeze(JSON.parse(String(row["state_json"])) as Record<string, unknown>);
+  }
+
+  saveActivePolicyView(
+    workspaceId: string,
+    viewJson: string,
+    viewDigest: string,
+    expectedGeneration: number
+  ): { readonly activated: boolean; readonly conflict: boolean } {
+    let view: UnknownRecord;
+    try {
+      view = JSON.parse(viewJson) as UnknownRecord;
+    } catch (error) {
+      throw runtimeError("VES_RUNTIME_CONSTRAINT", "Active Policy View JSON is invalid", error);
+    }
+    const generation = Number(view["generation"]);
+    if (
+      !Number.isSafeInteger(generation) ||
+      generation <= expectedGeneration ||
+      view["policyViewDigest"] !== viewDigest ||
+      !/^sha256:[a-f0-9]{64}$/u.test(viewDigest)
+    ) {
+      throw runtimeError("VES_RUNTIME_CONSTRAINT", "Active Policy View generation or digest is invalid");
+    }
+    const db = this.#database();
+    try {
+      db.exec("BEGIN IMMEDIATE");
+      const current = db.prepare("SELECT generation FROM active_policy_views WHERE workspace_id=?").get(workspaceId) as
+        UnknownRecord | undefined;
+      const currentGeneration = current === undefined ? 0 : Number(current["generation"]);
+      if (currentGeneration !== expectedGeneration) {
+        db.exec("ROLLBACK");
+        return Object.freeze({ activated: false, conflict: true });
+      }
+      db.prepare(
+        `INSERT INTO active_policy_views(workspace_id, generation, view_json, view_digest, updated_at)
+         VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(workspace_id) DO UPDATE SET
+           generation=excluded.generation,
+           view_json=excluded.view_json,
+           view_digest=excluded.view_digest,
+           updated_at=excluded.updated_at`
+      ).run(workspaceId, generation, viewJson, viewDigest.slice(7), this.#now());
+      db.exec("COMMIT");
+      return Object.freeze({ activated: true, conflict: false });
+    } catch (error) {
+      if (db.isTransaction) db.exec("ROLLBACK");
+      throw mapSqliteError(error);
+    }
+  }
+
+  getActivePolicyView(workspaceId: string): Readonly<Record<string, unknown>> | undefined {
+    const row = this.#database()
+      .prepare("SELECT view_json, view_digest FROM active_policy_views WHERE workspace_id=?")
+      .get(workspaceId) as UnknownRecord | undefined;
+    if (row === undefined) return undefined;
+    const view = JSON.parse(String(row["view_json"])) as Record<string, unknown>;
+    const { policyViewDigest, ...viewMaterial } = view;
+    const storedDigest = `sha256:${String(row["view_digest"])}`;
+    if (policyViewDigest !== storedDigest || `sha256:${sha256(canonicalJson(viewMaterial))}` !== storedDigest) {
+      throw runtimeError(
+        "VES_RUNTIME_CORRUPT",
+        "Active Policy View digest does not match its content",
+        undefined,
+        true
+      );
+    }
+    return Object.freeze(view);
   }
 
   createRun(snapshot: RunSnapshot): void {

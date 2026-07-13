@@ -2,5 +2,11 @@
   "name": "@verchestra/policy",
   "version": "0.0.0",
   "private": true,
-  "type": "module"
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@cedar-policy/cedar-wasm": "4.11.2"
+  }
 }
