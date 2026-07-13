@@ -1,5 +1,14 @@
 export const packageName = "@verchestra/agent-runtime" as const;
 export {
+  BackendContextSerializer,
+  ContextSerializationError,
+  SemanticEquivalenceOracle,
+  type ContextBackendTarget,
+  type ContextCapacityEstimatorPort,
+  type NeutralSemanticTree,
+  type SerializedContext
+} from "./context/backend-serializers.ts";
+export {
   ContextCompilerError,
   DeterministicContextCompiler,
   type CompiledContextFragment,
