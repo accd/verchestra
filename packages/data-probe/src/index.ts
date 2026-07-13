@@ -40,6 +40,12 @@ export {
   SqliteReadConnection,
   parseSqliteReadOperation
 } from "./sqlite-adapter.ts";
+export {
+  MongoDbFixtureConnection,
+  MongoDbProbeAdapter,
+  MongoDbProbeError,
+  parseMongoDbReadOperation
+} from "./mongodb-adapter.ts";
 
 const ENGINES = ["postgresql", "mysql", "mariadb", "sqlserver", "sybase", "oracle", "sqlite", "mongodb"] as const;
 const CLASSIFICATIONS = ["public", "internal", "confidential", "restricted", "secret"] as const;
