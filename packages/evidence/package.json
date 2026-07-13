@@ -2,5 +2,8 @@
   "name": "@verchestra/evidence",
   "version": "0.0.0",
   "private": true,
-  "type": "module"
+  "type": "module",
+  "dependencies": {
+    "canonicalize": "3.0.0"
+  }
 }

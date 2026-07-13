@@ -14,8 +14,8 @@
     ]
   },
   "scripts": {
-    "format:check": "prettier --check package.json pnpm-workspace.yaml tsconfig.json eslint.config.mjs .prettierrc.json scripts tests/architecture apps packages",
-    "lint": "eslint eslint.config.mjs scripts tests/architecture apps packages",
+    "format:check": "prettier --check package.json pnpm-workspace.yaml tsconfig.json eslint.config.mjs .prettierrc.json scripts tests apps packages",
+    "lint": "eslint eslint.config.mjs scripts tests apps packages",
     "typecheck": "tsc --noEmit",
     "build": "tsc --noEmit",
     "test:unit": "node scripts/test-scope.mjs unit tests/unit",
