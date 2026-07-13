@@ -6,6 +6,7 @@ export {
   type SkillLock,
   type SkillUpdatePlan
 } from "./skills/governed-skill-registry.ts";
+export { DiscoveryRouter, DiscoveryRouterError } from "./discovery/discovery-router.ts";
 export {
   CapabilityModelRouter,
   ModelRouterError,
