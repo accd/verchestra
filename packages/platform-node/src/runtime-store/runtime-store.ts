@@ -11,6 +11,54 @@ export interface RuntimeMigration {
   readonly up: string;
 }
 
+const EFFECT_SCHEMA = `
+CREATE TABLE effect_intents (
+  effect_id TEXT PRIMARY KEY,
+  idempotency_key TEXT NOT NULL UNIQUE,
+  operation_kind TEXT NOT NULL,
+  workspace_id TEXT NOT NULL,
+  run_id TEXT,
+  logical_target TEXT NOT NULL,
+  canonical_input_digest TEXT NOT NULL,
+  semantic_identity TEXT NOT NULL,
+  risk_tier TEXT NOT NULL CHECK (risk_tier IN ('low', 'medium', 'high')),
+  grant_ref TEXT NOT NULL,
+  expected_remote_version TEXT,
+  status TEXT NOT NULL CHECK (status IN ('planned', 'ready', 'applying', 'uncertain', 'completed', 'failed')),
+  attempt INTEGER NOT NULL CHECK (attempt >= 0),
+  created_at TEXT NOT NULL,
+  UNIQUE (workspace_id, idempotency_key),
+  FOREIGN KEY (run_id) REFERENCES runs(run_id)
+) STRICT;
+CREATE TABLE effect_outbox (
+  idempotency_key TEXT PRIMARY KEY,
+  status TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY (idempotency_key) REFERENCES effect_intents(idempotency_key)
+) STRICT;
+CREATE TABLE operation_receipts (
+  receipt_id TEXT PRIMARY KEY,
+  effect_id TEXT NOT NULL UNIQUE,
+  idempotency_key TEXT NOT NULL UNIQUE,
+  adapter_id TEXT NOT NULL,
+  attempt INTEGER NOT NULL CHECK (attempt > 0),
+  outcome TEXT NOT NULL,
+  remote_identity TEXT,
+  remote_version TEXT,
+  output_digest TEXT,
+  safe_evidence_refs_json TEXT NOT NULL,
+  started_at TEXT NOT NULL,
+  completed_at TEXT NOT NULL,
+  FOREIGN KEY (effect_id) REFERENCES effect_intents(effect_id),
+  FOREIGN KEY (idempotency_key) REFERENCES effect_intents(idempotency_key)
+) STRICT;
+CREATE TABLE effect_inbox (
+  receipt_id TEXT PRIMARY KEY,
+  idempotency_key TEXT NOT NULL UNIQUE,
+  received_at TEXT NOT NULL,
+  FOREIGN KEY (receipt_id) REFERENCES operation_receipts(receipt_id)
+) STRICT;`;
+
 const RUNTIME_SCHEMA = `
 CREATE TABLE runs (
   run_id TEXT PRIMARY KEY,
@@ -93,7 +141,8 @@ CREATE TABLE artifact_refs (
 ) STRICT;`;
 
 export const DEFAULT_RUNTIME_MIGRATIONS: readonly RuntimeMigration[] = Object.freeze([
-  Object.freeze({ id: "001_runtime", up: RUNTIME_SCHEMA })
+  Object.freeze({ id: "001_runtime", up: RUNTIME_SCHEMA }),
+  Object.freeze({ id: "002_effects", up: EFFECT_SCHEMA })
 ]);
 
 type UnknownRecord = Record<string, unknown> & {
@@ -124,6 +173,9 @@ interface RuntimeStoreHooks {
   readonly afterEventInsert?: () => void;
   readonly validateBackup?: (path: string) => unknown;
   readonly publishBackup?: (source: string, destination: string) => Promise<void>;
+  readonly afterEffectStart?: () => void;
+  readonly beforeEffectComplete?: () => void;
+  readonly afterEffectComplete?: () => void;
 }
 
 interface RuntimeStoreOptions {
@@ -139,6 +191,38 @@ interface EventMetadata {
   readonly payloadDigest: string;
   readonly actor: { readonly kind: string; readonly id: string };
   readonly occurredAt: string;
+}
+
+interface StoredEffectIntent {
+  readonly effectId: string;
+  readonly idempotencyKey: string;
+  readonly operationKind: string;
+  readonly workspaceId: string;
+  readonly runId?: string;
+  readonly logicalTarget: string;
+  readonly canonicalInputDigest: string;
+  readonly semanticIdentity: string;
+  readonly riskTier: "low" | "medium" | "high";
+  readonly grantRef: string;
+  readonly expectedRemoteVersion?: string;
+  readonly status: "planned" | "ready" | "applying" | "uncertain" | "completed" | "failed";
+  readonly attempt: number;
+  readonly createdAt: string;
+}
+
+interface StoredReceipt {
+  readonly receiptId: string;
+  readonly effectId: string;
+  readonly idempotencyKey: string;
+  readonly adapterId: string;
+  readonly attempt: number;
+  readonly outcome: "applied" | "already-applied" | "not-applied" | "unknown" | "compensated";
+  readonly remoteIdentity?: string;
+  readonly remoteVersion?: string;
+  readonly outputDigest?: string;
+  readonly safeEvidenceRefs: readonly string[];
+  readonly startedAt: string;
+  readonly completedAt: string;
 }
 
 function sha256(value: string | Uint8Array): string {
@@ -188,7 +272,11 @@ const STATE_TABLE_ORDER = Object.freeze({
   grants: "grant_id",
   leases: "workspace_id",
   claims: "workspace_id, scope_digest",
-  artifact_refs: "ref_id"
+  artifact_refs: "ref_id",
+  effect_intents: "idempotency_key",
+  effect_outbox: "idempotency_key",
+  operation_receipts: "idempotency_key",
+  effect_inbox: "idempotency_key"
 });
 
 function runtimeStateDigest(db: DatabaseSync): string {
@@ -294,6 +382,13 @@ export class RuntimeStore {
     ) STRICT;`);
     const declaredIds = new Set(this.#migrations.map((migration) => migration.id));
     const existing = db.prepare("SELECT id, checksum FROM ves_migrations ORDER BY id").all() as UnknownRecord[];
+    const existingById = new Map(existing.map((row) => [String(row.id), String(row.checksum)]));
+    for (const migration of this.#migrations) {
+      const appliedChecksum = existingById.get(migration.id);
+      if (appliedChecksum !== undefined && appliedChecksum !== sha256(migration.up)) {
+        throw runtimeError("VES_RUNTIME_MIGRATION_DRIFT", `Migration checksum drift: ${migration.id}`);
+      }
+    }
     for (const row of existing) {
       if (!declaredIds.has(String(row.id))) {
         throw runtimeError("VES_RUNTIME_MIGRATION_INCOMPATIBLE", "Database contains a newer or unknown migration");
@@ -305,9 +400,6 @@ export class RuntimeStore {
       const checksum = sha256(migration.up);
       const row = db.prepare("SELECT checksum FROM ves_migrations WHERE id=?").get(migration.id) as
         UnknownRecord | undefined;
-      if (row !== undefined && row.checksum !== checksum) {
-        throw runtimeError("VES_RUNTIME_MIGRATION_DRIFT", `Migration checksum drift: ${migration.id}`);
-      }
       if (row !== undefined) continue;
       try {
         db.exec("BEGIN IMMEDIATE");
@@ -677,6 +769,220 @@ export class RuntimeStore {
         created_at AS createdAt FROM artifact_refs WHERE run_id=? ORDER BY created_at, ref_id`
       )
       .all(runId) as UnknownRecord[];
+  }
+
+  createEffectRepository() {
+    const readIntent = (key: string): StoredEffectIntent | undefined => {
+      const row = this.#database().prepare("SELECT * FROM effect_intents WHERE idempotency_key=?").get(key) as
+        UnknownRecord | undefined;
+      if (row === undefined) return undefined;
+      return Object.freeze({
+        effectId: String(row["effect_id"]),
+        idempotencyKey: String(row["idempotency_key"]),
+        operationKind: String(row["operation_kind"]),
+        workspaceId: String(row["workspace_id"]),
+        ...(row["run_id"] === null ? {} : { runId: String(row["run_id"]) }),
+        logicalTarget: String(row["logical_target"]),
+        canonicalInputDigest: String(row["canonical_input_digest"]),
+        semanticIdentity: String(row["semantic_identity"]),
+        riskTier: String(row["risk_tier"]) as StoredEffectIntent["riskTier"],
+        grantRef: String(row["grant_ref"]),
+        ...(row["expected_remote_version"] === null
+          ? {}
+          : { expectedRemoteVersion: String(row["expected_remote_version"]) }),
+        status: String(row["status"]) as StoredEffectIntent["status"],
+        attempt: Number(row["attempt"]),
+        createdAt: String(row["created_at"])
+      });
+    };
+    const readReceipt = (key: string): StoredReceipt | undefined => {
+      const row = this.#database().prepare("SELECT * FROM operation_receipts WHERE idempotency_key=?").get(key) as
+        UnknownRecord | undefined;
+      if (row === undefined) return undefined;
+      return Object.freeze({
+        receiptId: String(row["receipt_id"]),
+        effectId: String(row["effect_id"]),
+        idempotencyKey: String(row["idempotency_key"]),
+        adapterId: String(row["adapter_id"]),
+        attempt: Number(row["attempt"]),
+        outcome: String(row["outcome"]) as StoredReceipt["outcome"],
+        ...(row["remote_identity"] === null ? {} : { remoteIdentity: String(row["remote_identity"]) }),
+        ...(row["remote_version"] === null ? {} : { remoteVersion: String(row["remote_version"]) }),
+        ...(row["output_digest"] === null ? {} : { outputDigest: String(row["output_digest"]) }),
+        safeEvidenceRefs: Object.freeze(JSON.parse(String(row["safe_evidence_refs_json"])) as string[]),
+        startedAt: String(row["started_at"]),
+        completedAt: String(row["completed_at"])
+      });
+    };
+    const updateStatus = (key: string, status: StoredEffectIntent["status"]): StoredEffectIntent => {
+      const db = this.#database();
+      try {
+        db.exec("BEGIN IMMEDIATE");
+        if (runStatement(db.prepare("UPDATE effect_intents SET status=? WHERE idempotency_key=?"), status, key) !== 1) {
+          throw runtimeError("VES_EFFECT_NOT_FOUND", "Effect intent was not found");
+        }
+        db.prepare("UPDATE effect_outbox SET status=?, updated_at=? WHERE idempotency_key=?").run(
+          status,
+          this.#now(),
+          key
+        );
+        db.exec("COMMIT");
+        return readIntent(key) as StoredEffectIntent;
+      } catch (error) {
+        if (db.isTransaction) db.exec("ROLLBACK");
+        if (errorCode(error)?.startsWith("VES_") === true) throw error;
+        throw mapSqliteError(error);
+      }
+    };
+
+    return Object.freeze({
+      insertOrGet: async (intent: StoredEffectIntent): Promise<StoredEffectIntent> => {
+        const existing = readIntent(intent.idempotencyKey);
+        if (existing !== undefined) {
+          const fields = [
+            "operationKind",
+            "workspaceId",
+            "logicalTarget",
+            "canonicalInputDigest",
+            "semanticIdentity"
+          ] as const;
+          if (fields.some((field) => existing[field] !== intent[field])) {
+            throw runtimeError("VES_EFFECT_KEY_CONFLICT", "Idempotency key is bound to different content");
+          }
+          return existing;
+        }
+        const db = this.#database();
+        try {
+          db.exec("BEGIN IMMEDIATE");
+          db.prepare(
+            `INSERT INTO effect_intents(
+            effect_id, idempotency_key, operation_kind, workspace_id, run_id, logical_target,
+            canonical_input_digest, semantic_identity, risk_tier, grant_ref, expected_remote_version,
+            status, attempt, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          ).run(
+            intent.effectId,
+            intent.idempotencyKey,
+            intent.operationKind,
+            intent.workspaceId,
+            intent.runId ?? null,
+            intent.logicalTarget,
+            intent.canonicalInputDigest,
+            intent.semanticIdentity,
+            intent.riskTier,
+            intent.grantRef,
+            intent.expectedRemoteVersion ?? null,
+            intent.status,
+            intent.attempt,
+            intent.createdAt
+          );
+          db.prepare("INSERT INTO effect_outbox(idempotency_key, status, updated_at) VALUES (?, ?, ?)").run(
+            intent.idempotencyKey,
+            intent.status,
+            this.#now()
+          );
+          db.exec("COMMIT");
+          return readIntent(intent.idempotencyKey) as StoredEffectIntent;
+        } catch (error) {
+          if (db.isTransaction) db.exec("ROLLBACK");
+          throw mapSqliteError(error);
+        }
+      },
+      get: async (key: string) => readIntent(key),
+      getReceipt: async (key: string) => readReceipt(key),
+      listDispatchable: async (limit: number): Promise<readonly StoredEffectIntent[]> => {
+        const rows = this.#database()
+          .prepare(
+            `SELECT i.idempotency_key FROM effect_intents i
+            INNER JOIN effect_outbox o ON o.idempotency_key=i.idempotency_key
+            WHERE i.status IN ('planned', 'ready') AND o.status IN ('planned', 'ready')
+            ORDER BY i.created_at, i.idempotency_key LIMIT ?`
+          )
+          .all(limit) as UnknownRecord[];
+        return Object.freeze(rows.map((row) => readIntent(String(row["idempotency_key"])) as StoredEffectIntent));
+      },
+      updateStatus: async (key: string, status: StoredEffectIntent["status"]) => updateStatus(key, status),
+      startAttempt: async (key: string): Promise<StoredEffectIntent> => {
+        const db = this.#database();
+        try {
+          db.exec("BEGIN IMMEDIATE");
+          if (
+            runStatement(
+              db.prepare(
+                "UPDATE effect_intents SET status='applying', attempt=attempt+1 WHERE idempotency_key=? AND status IN ('planned', 'ready')"
+              ),
+              key
+            ) !== 1
+          ) {
+            if (readIntent(key) === undefined)
+              throw runtimeError("VES_EFFECT_NOT_FOUND", "Effect intent was not found");
+            throw runtimeError(
+              "VES_EFFECT_RECONCILIATION_REQUIRED",
+              "Effect cannot be claimed from its current status"
+            );
+          }
+          db.prepare("UPDATE effect_outbox SET status='applying', updated_at=? WHERE idempotency_key=?").run(
+            this.#now(),
+            key
+          );
+          db.exec("COMMIT");
+          this.#hooks.afterEffectStart?.();
+          return readIntent(key) as StoredEffectIntent;
+        } catch (error) {
+          if (db.isTransaction) db.exec("ROLLBACK");
+          if (errorCode(error)?.startsWith("VES_") === true) throw error;
+          throw mapSqliteError(error);
+        }
+      },
+      complete: async (key: string, receipt: StoredReceipt): Promise<void> => {
+        const existing = readReceipt(key);
+        if (existing !== undefined) {
+          if (JSON.stringify(existing) !== JSON.stringify(receipt)) {
+            throw runtimeError("VES_EFFECT_RECEIPT_CONFLICT", "Receipt conflicts with durable inbox");
+          }
+          return;
+        }
+        const db = this.#database();
+        try {
+          db.exec("BEGIN IMMEDIATE");
+          this.#hooks.beforeEffectComplete?.();
+          db.prepare(
+            `INSERT INTO operation_receipts(
+            receipt_id, effect_id, idempotency_key, adapter_id, attempt, outcome, remote_identity,
+            remote_version, output_digest, safe_evidence_refs_json, started_at, completed_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          ).run(
+            receipt.receiptId,
+            receipt.effectId,
+            receipt.idempotencyKey,
+            receipt.adapterId,
+            receipt.attempt,
+            receipt.outcome,
+            receipt.remoteIdentity ?? null,
+            receipt.remoteVersion ?? null,
+            receipt.outputDigest ?? null,
+            JSON.stringify(receipt.safeEvidenceRefs),
+            receipt.startedAt,
+            receipt.completedAt
+          );
+          db.prepare("INSERT INTO effect_inbox(receipt_id, idempotency_key, received_at) VALUES (?, ?, ?)").run(
+            receipt.receiptId,
+            key,
+            this.#now()
+          );
+          db.prepare("UPDATE effect_intents SET status='completed' WHERE idempotency_key=?").run(key);
+          db.prepare("UPDATE effect_outbox SET status='completed', updated_at=? WHERE idempotency_key=?").run(
+            this.#now(),
+            key
+          );
+          db.exec("COMMIT");
+          this.#hooks.afterEffectComplete?.();
+        } catch (error) {
+          if (db.isTransaction) db.exec("ROLLBACK");
+          if (errorCode(error)?.startsWith("VES_") === true) throw error;
+          throw mapSqliteError(error);
+        }
+      }
+    });
   }
 
   integrityCheck(): string {

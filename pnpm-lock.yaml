@@ -76,7 +76,11 @@ importers:
 
   packages/drivers: {}
 
-  packages/effects: {}
+  packages/effects:
+    dependencies:
+      '@verchestra/domain':
+        specifier: workspace:0.0.0
+        version: link:../domain
 
   packages/evidence:
     dependencies:

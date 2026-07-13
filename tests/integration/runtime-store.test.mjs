@@ -38,7 +38,7 @@ test("runtime store opens runtime.sqlite with qualified safety settings", async 
 
 test("default raw migration applies once and records its checksum", async () => {
   const { store, result } = await opened();
-  assert.equal(result.appliedMigrations, 1);
+  assert.equal(result.appliedMigrations, DEFAULT_RUNTIME_MIGRATIONS.length);
   assert.equal(store.migrationLedger().length, DEFAULT_RUNTIME_MIGRATIONS.length);
   assert.match(store.migrationLedger()[0].checksum, /^[a-f0-9]{64}$/u);
   store.close();
@@ -343,7 +343,7 @@ test("read-only inspector keeps extension loading unavailable", async () => {
   assert.deepEqual(inspectRuntimeDatabase(dbPath, { assertExtensionsDisabled: true }), {
     integrity: "ok",
     runs: 0,
-    migrations: 1
+    migrations: DEFAULT_RUNTIME_MIGRATIONS.length
   });
   store.close();
 });

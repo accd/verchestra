@@ -2,5 +2,8 @@
   "name": "@verchestra/effects",
   "version": "0.0.0",
   "private": true,
-  "type": "module"
+  "type": "module",
+  "dependencies": {
+    "@verchestra/domain": "workspace:0.0.0"
+  }
 }
