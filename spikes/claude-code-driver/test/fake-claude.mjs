@@ -10,13 +10,17 @@ const prompt = request?.message?.content?.[0]?.text ?? "";
 const mode = process.env.FAKE_CLAUDE_MODE ?? "success";
 
 const emit = (value) => process.stdout.write(`${JSON.stringify(value)}\n`);
-emit({ type: "system", subtype: "init", session_id: "private-session-id", model: "claude-opus-4-8", tools: [] });
+emit({ type: "system", subtype: "init", session_id: "private-session-id", model: process.env.FAKE_CLAUDE_MODEL ?? "claude-opus-4-8", tools: [] });
 
 if (mode === "malformed") {
   process.stdout.write("{not-json}\n");
 } else if (mode === "tool") {
   emit({ type: "assistant", message: { content: [{ type: "tool_use", id: "tool-1", name: "vestra_echo", input: { value: "x" } }] } });
   emit({ type: "result", subtype: "success", is_error: false, result: "tool requested", total_cost_usd: 0.01, usage: { input_tokens: 4, output_tokens: 2 }, session_id: "private-session-id" });
+} else if (mode === "invalid-tool") {
+  emit({ type: "assistant", message: { content: [{ type: "tool_use", id: 7, name: null, input: {} }] } });
+} else if (mode === "invalid-usage") {
+  emit({ type: "result", subtype: "success", is_error: false, result: "bad usage", usage: { input_tokens: -1, output_tokens: "many" }, session_id: "private-session-id" });
 } else if (mode === "error") {
   emit({ type: "result", subtype: "error_during_execution", is_error: true, result: "provider failed", total_cost_usd: 0, usage: { input_tokens: 1, output_tokens: 0 }, session_id: "private-session-id" });
 } else if (mode === "secret") {
