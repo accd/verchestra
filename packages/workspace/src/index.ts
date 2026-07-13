@@ -15,3 +15,20 @@ export {
   type WorkspaceInventory
 } from "./scanner/workspace-scanner.ts";
 export { WORKSPACE_PUBLIC_ERROR_DEFINITIONS, workspacePublicErrorRegistry } from "./scanner/workspace-errors.ts";
+export {
+  createWritePlan,
+  effectivePlacement,
+  resolveArtifact,
+  type DesiredArtifact,
+  type EffectivePlacement,
+  type LogicalArtifactAddress,
+  type PlacementProject,
+  type PlacementSnapshot,
+  type PlannedWrite,
+  type ProjectArtifactClass,
+  type ProjectPlacement,
+  type ResolvedArtifact,
+  type WorkspacePlacementMode,
+  type WritePlan
+} from "./placement/artifact-placement.ts";
+export { PLACEMENT_PUBLIC_ERROR_DEFINITIONS, placementPublicErrorRegistry } from "./placement/placement-errors.ts";
