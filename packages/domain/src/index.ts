@@ -8,3 +8,5 @@ export * from "./primitives/errors.ts";
 export * from "./primitives/instant.ts";
 export * from "./primitives/logical-path.ts";
 export * from "./primitives/stable-id.ts";
+export * from "./workflow/workflow-machine.ts";
+export * from "./workflow/workflow-errors.ts";
