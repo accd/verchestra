@@ -100,7 +100,11 @@ importers:
 
   packages/policy: {}
 
-  packages/workspace: {}
+  packages/workspace:
+    dependencies:
+      '@verchestra/domain':
+        specifier: workspace:0.0.0
+        version: link:../domain
 
 packages:
 
