@@ -1,5 +1,12 @@
 export const packageName = "@verchestra/agent-runtime" as const;
 export {
+  GovernedSkillRegistry,
+  SkillRegistryError,
+  skillLockDigest,
+  type SkillLock,
+  type SkillUpdatePlan
+} from "./skills/governed-skill-registry.ts";
+export {
   CapabilityModelRouter,
   ModelRouterError,
   type ModelExclusion,
