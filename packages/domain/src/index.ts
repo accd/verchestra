@@ -1,1 +1,10 @@
 export const packageName = "@verchestra/domain" as const;
+export * from "./errors/core-errors.ts";
+export * from "./errors/public-error.ts";
+export * from "./primitives/actor.ts";
+export * from "./primitives/classification.ts";
+export * from "./primitives/digest.ts";
+export * from "./primitives/errors.ts";
+export * from "./primitives/instant.ts";
+export * from "./primitives/logical-path.ts";
+export * from "./primitives/stable-id.ts";
