@@ -52,7 +52,7 @@ for (const [field, value] of [
 }
 
 test("every supported engine has one neutral planner route", async () => {
-  for (const engine of ["postgresql", "mysql", "mariadb", "sqlserver", "oracle", "sqlite", "mongodb"]) {
+  for (const engine of ["postgresql", "mysql", "mariadb", "sqlserver", "sybase", "oracle", "sqlite", "mongodb"]) {
     const subject = await planner(registration({ engine }));
     assert.equal((await subject.plan(request(), policy())).engine, engine);
   }

@@ -21,8 +21,14 @@ export {
   SqlServerProbeError,
   parseSqlServerReadOperation
 } from "./sqlserver-adapter.ts";
+export {
+  SapAseFixtureConnection,
+  SapAseProbeAdapter,
+  SapAseProbeError,
+  parseSapAseReadOperation
+} from "./sap-ase-adapter.ts";
 
-const ENGINES = ["postgresql", "mysql", "mariadb", "sqlserver", "oracle", "sqlite", "mongodb"] as const;
+const ENGINES = ["postgresql", "mysql", "mariadb", "sqlserver", "sybase", "oracle", "sqlite", "mongodb"] as const;
 const CLASSIFICATIONS = ["public", "internal", "confidential", "restricted", "secret"] as const;
 const IDENTIFIER = /^[a-z][a-z0-9._-]{0,126}[a-z0-9]$/u;
 const WORKSPACE_ID = /^workspace_[a-z0-9-]{20,128}$/u;
