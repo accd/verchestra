@@ -22,3 +22,22 @@ export {
   type SecretBindingInspectorPort,
   type SecretBindingRequest
 } from "./bootstrap/machine-bootstrap.ts";
+export { SyncError } from "./sync/sync-errors.ts";
+export {
+  WorkspaceReconcileService,
+  type CanonicalSyncConfiguration,
+  type ContentDigestPort,
+  type GenerationSnapshot,
+  type IngestionManifestRef,
+  type LocalRebuildRequirement,
+  type PersistedSyncState,
+  type PlannedEffect,
+  type ProjectRegistration,
+  type ProjectionMapping,
+  type ReconcileOperation,
+  type ReconciliationDirection,
+  type SyncStateStorePort,
+  type UncertainEffect,
+  type WorkspaceReconcileInput,
+  type WorkspaceReconcileResult
+} from "./sync/workspace-reconcile.ts";

@@ -67,6 +67,43 @@ CREATE TABLE machine_profiles (
   updated_at TEXT NOT NULL
 ) STRICT;`;
 
+const SYNC_STATE_SCHEMA = `
+CREATE TABLE workspace_sync_states (
+  workspace_id TEXT PRIMARY KEY,
+  state_json TEXT NOT NULL,
+  state_digest TEXT NOT NULL CHECK (length(state_digest) = 64),
+  generations_json TEXT NOT NULL,
+  ingestion_manifests_json TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+) STRICT;
+CREATE TABLE workspace_projects (
+  workspace_id TEXT NOT NULL,
+  project_id TEXT NOT NULL,
+  logical_path TEXT NOT NULL,
+  lifecycle_state TEXT NOT NULL CHECK (lifecycle_state IN ('active', 'retired')),
+  lineage_json TEXT NOT NULL,
+  PRIMARY KEY (workspace_id, project_id),
+  UNIQUE (workspace_id, logical_path),
+  FOREIGN KEY (workspace_id) REFERENCES workspace_sync_states(workspace_id) ON DELETE CASCADE
+) STRICT;
+CREATE TABLE projection_mappings (
+  workspace_id TEXT NOT NULL,
+  projection_id TEXT NOT NULL,
+  project_id TEXT NOT NULL,
+  connector_id TEXT NOT NULL,
+  canonical_digest TEXT NOT NULL,
+  observed_remote_digest TEXT NOT NULL,
+  observed_remote_version TEXT,
+  PRIMARY KEY (workspace_id, projection_id),
+  FOREIGN KEY (workspace_id, project_id) REFERENCES workspace_projects(workspace_id, project_id) ON DELETE CASCADE
+) STRICT;
+CREATE TABLE local_rebuild_state (
+  workspace_id TEXT PRIMARY KEY,
+  canonical_state_digest TEXT NOT NULL CHECK (length(canonical_state_digest) = 64),
+  source_policy TEXT NOT NULL CHECK (source_policy = 'canonical-sources-and-ingestion-manifests'),
+  FOREIGN KEY (workspace_id) REFERENCES workspace_sync_states(workspace_id) ON DELETE CASCADE
+) STRICT;`;
+
 const RUNTIME_SCHEMA = `
 CREATE TABLE runs (
   run_id TEXT PRIMARY KEY,
@@ -151,7 +188,8 @@ CREATE TABLE artifact_refs (
 export const DEFAULT_RUNTIME_MIGRATIONS: readonly RuntimeMigration[] = Object.freeze([
   Object.freeze({ id: "001_runtime", up: RUNTIME_SCHEMA }),
   Object.freeze({ id: "002_effects", up: EFFECT_SCHEMA }),
-  Object.freeze({ id: "003_machine_profiles", up: MACHINE_PROFILE_SCHEMA })
+  Object.freeze({ id: "003_machine_profiles", up: MACHINE_PROFILE_SCHEMA }),
+  Object.freeze({ id: "004_sync_state", up: SYNC_STATE_SCHEMA })
 ]);
 
 type UnknownRecord = Record<string, unknown> & {
@@ -286,7 +324,11 @@ const STATE_TABLE_ORDER = Object.freeze({
   effect_outbox: "idempotency_key",
   operation_receipts: "idempotency_key",
   effect_inbox: "idempotency_key",
-  machine_profiles: "workspace_id"
+  machine_profiles: "workspace_id",
+  workspace_sync_states: "workspace_id",
+  workspace_projects: "workspace_id, project_id",
+  projection_mappings: "workspace_id, projection_id",
+  local_rebuild_state: "workspace_id"
 });
 
 function runtimeStateDigest(db: DatabaseSync): string {
@@ -514,6 +556,106 @@ export class RuntimeStore {
           .all() as UnknownRecord[]
       ).map((row) => Object.freeze(JSON.parse(String(row["profile_json"])) as Record<string, unknown>))
     );
+  }
+
+  saveSyncState(
+    workspaceId: string,
+    stateJson: string,
+    stateDigest: string
+  ): { readonly changed: boolean; readonly stateDigest: string } {
+    let state: UnknownRecord;
+    try {
+      state = JSON.parse(stateJson) as UnknownRecord;
+    } catch (error) {
+      throw runtimeError("VES_RUNTIME_CONSTRAINT", "Workspace sync state JSON is invalid", error);
+    }
+    if (
+      state["workspaceId"] !== workspaceId ||
+      state["stateDigest"] !== stateDigest ||
+      !/^sha256:[a-f0-9]{64}$/u.test(stateDigest)
+    ) {
+      throw runtimeError("VES_RUNTIME_CONSTRAINT", "Workspace sync state binding or digest is invalid");
+    }
+    const rawDigest = stateDigest.slice(7);
+    const projects = state["projects"] as readonly UnknownRecord[];
+    const projections = state["projections"] as readonly UnknownRecord[];
+    const db = this.#database();
+    const existing = db
+      .prepare("SELECT state_digest FROM workspace_sync_states WHERE workspace_id=?")
+      .get(workspaceId) as UnknownRecord | undefined;
+    if (existing?.["state_digest"] === rawDigest) return Object.freeze({ changed: false, stateDigest });
+    try {
+      db.exec("BEGIN IMMEDIATE");
+      db.prepare(
+        `INSERT INTO workspace_sync_states(
+           workspace_id, state_json, state_digest, generations_json, ingestion_manifests_json, updated_at
+         ) VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT(workspace_id) DO UPDATE SET
+           state_json=excluded.state_json,
+           state_digest=excluded.state_digest,
+           generations_json=excluded.generations_json,
+           ingestion_manifests_json=excluded.ingestion_manifests_json,
+           updated_at=excluded.updated_at`
+      ).run(
+        workspaceId,
+        stateJson,
+        rawDigest,
+        JSON.stringify(state["generations"]),
+        JSON.stringify(state["ingestionManifests"]),
+        this.#now()
+      );
+      db.prepare("DELETE FROM projection_mappings WHERE workspace_id=?").run(workspaceId);
+      db.prepare("DELETE FROM workspace_projects WHERE workspace_id=?").run(workspaceId);
+      const insertProject = db.prepare(
+        `INSERT INTO workspace_projects(
+           workspace_id, project_id, logical_path, lifecycle_state, lineage_json
+         ) VALUES (?, ?, ?, ?, ?)`
+      );
+      for (const entry of projects) {
+        insertProject.run(
+          workspaceId,
+          String(entry["projectId"]),
+          String(entry["logicalPath"]),
+          String(entry["state"]),
+          JSON.stringify(entry["predecessorProjectIds"])
+        );
+      }
+      const insertProjection = db.prepare(
+        `INSERT INTO projection_mappings(
+           workspace_id, projection_id, project_id, connector_id, canonical_digest,
+           observed_remote_digest, observed_remote_version
+         ) VALUES (?, ?, ?, ?, ?, ?, ?)`
+      );
+      for (const entry of projections) {
+        insertProjection.run(
+          workspaceId,
+          String(entry["projectionId"]),
+          String(entry["projectId"]),
+          String(entry["connectorId"]),
+          String(entry["canonicalDigest"]),
+          String(entry["observedRemoteDigest"]),
+          entry["observedRemoteVersion"] === undefined ? null : String(entry["observedRemoteVersion"])
+        );
+      }
+      db.prepare(
+        `INSERT INTO local_rebuild_state(workspace_id, canonical_state_digest, source_policy)
+         VALUES (?, ?, 'canonical-sources-and-ingestion-manifests')
+         ON CONFLICT(workspace_id) DO UPDATE SET canonical_state_digest=excluded.canonical_state_digest`
+      ).run(workspaceId, rawDigest);
+      db.exec("COMMIT");
+      return Object.freeze({ changed: true, stateDigest });
+    } catch (error) {
+      if (db.isTransaction) db.exec("ROLLBACK");
+      throw mapSqliteError(error);
+    }
+  }
+
+  getSyncState(workspaceId: string): Readonly<Record<string, unknown>> | undefined {
+    const row = this.#database()
+      .prepare("SELECT state_json FROM workspace_sync_states WHERE workspace_id=?")
+      .get(workspaceId) as UnknownRecord | undefined;
+    if (row === undefined) return undefined;
+    return Object.freeze(JSON.parse(String(row["state_json"])) as Record<string, unknown>);
   }
 
   createRun(snapshot: RunSnapshot): void {
