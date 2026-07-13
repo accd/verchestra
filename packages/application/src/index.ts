@@ -50,6 +50,20 @@ export {
   type SignedApprovalArtifact
 } from "./authority/authority.ts";
 export {
+  CoordinationError,
+  WorkClaimService,
+  changeScopesOverlap,
+  normalizeChangeScope,
+  type ChangeTarget,
+  type ClaimSignaturePort,
+  type LocalLeasePort,
+  type LocalLeaseRef,
+  type NormalizedChangeScope,
+  type RemoteClaimPort,
+  type RunOwner,
+  type WorkClaim
+} from "./coordination/work-claims.ts";
+export {
   WorkspaceReconcileService,
   type CanonicalSyncConfiguration,
   type ContentDigestPort,

@@ -1112,6 +1112,7 @@ export class RuntimeStore {
     readonly ownerId: string;
     readonly now: string;
     readonly expiresAt: string;
+    readonly expectedFencingToken?: number;
   }): { readonly fencingToken: number } {
     const db = this.#database();
     try {
@@ -1119,6 +1120,15 @@ export class RuntimeStore {
       const current = db
         .prepare("SELECT owner_id, fencing_token, expires_at FROM leases WHERE workspace_id=?")
         .get(value.workspaceId) as UnknownRecord | undefined;
+      if (
+        value.expectedFencingToken !== undefined &&
+        (current === undefined ||
+          Number(current.fencing_token) !== value.expectedFencingToken ||
+          String(current.owner_id) !== value.ownerId ||
+          String(current.expires_at) <= value.now)
+      ) {
+        throw runtimeError("VES_RUNTIME_LEASE_CONFLICT", "Lease fencing compare-and-set failed");
+      }
       let fencingToken = 1;
       if (current === undefined) {
         db.prepare(
@@ -1128,7 +1138,9 @@ export class RuntimeStore {
         if (String(current.owner_id) !== value.ownerId && String(current.expires_at) > value.now) {
           throw runtimeError("VES_RUNTIME_LEASE_CONFLICT", "Workspace has an active lease");
         }
-        fencingToken = Number(current.fencing_token) + (String(current.owner_id) === value.ownerId ? 0 : 1);
+        fencingToken =
+          Number(current.fencing_token) +
+          (String(current.owner_id) === value.ownerId && String(current.expires_at) > value.now ? 0 : 1);
         db.prepare("UPDATE leases SET lease_id=?, owner_id=?, fencing_token=?, expires_at=? WHERE workspace_id=?").run(
           value.leaseId,
           value.ownerId,
