@@ -2,5 +2,14 @@
   "name": "@verchestra/vestra-cli",
   "version": "0.0.0",
   "private": true,
-  "type": "module"
+  "type": "module",
+  "bin": {
+    "vestra": "./bin/vestra.mjs",
+    "verchestra": "./bin/verchestra.mjs"
+  },
+  "dependencies": {
+    "@verchestra/application": "workspace:0.0.0",
+    "@verchestra/contracts": "workspace:0.0.0",
+    "@verchestra/domain": "workspace:0.0.0"
+  }
 }

@@ -1,5 +1,11 @@
 export const packageName = "@verchestra/application" as const;
 export {
+  type CliCommand,
+  type CommandBus,
+  type CommandResult,
+  type InvocationContext
+} from "./commands/command-bus.ts";
+export {
   BOOTSTRAP_PUBLIC_ERROR_DEFINITIONS,
   BootstrapError,
   bootstrapPublicErrorRegistry
