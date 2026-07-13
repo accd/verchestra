@@ -3,7 +3,16 @@ import { dirname, join } from "node:path";
 
 const stages = {
   quick: ["format:check", "lint", "typecheck", "test:unit"],
-  full: ["format:check", "lint", "typecheck", "test:unit", "test:contract", "test:integration", "test:e2e"],
+  full: [
+    "format:check",
+    "lint",
+    "typecheck",
+    "test:unit",
+    "test:contract",
+    "test:integration",
+    "test:e2e",
+    "test:fault"
+  ],
   build: [
     "format:check",
     "lint",
