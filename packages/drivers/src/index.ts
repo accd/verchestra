@@ -580,3 +580,5 @@ export { ClaudeCodeDriver } from "./claude-code-driver.ts";
 export type { ClaudeCodeDriverDependencies, ClaudeCodeExecution } from "./claude-code-driver.ts";
 export { CodexDriver } from "./codex-driver.ts";
 export type { CodexDriverDependencies, CodexExecution } from "./codex-driver.ts";
+export { OpenCodeDriver } from "./opencode-driver.ts";
+export type { OpenCodeDriverDependencies, OpenCodeExecution } from "./opencode-driver.ts";
