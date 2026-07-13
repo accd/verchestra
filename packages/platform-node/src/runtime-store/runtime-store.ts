@@ -59,6 +59,14 @@ CREATE TABLE effect_inbox (
   FOREIGN KEY (receipt_id) REFERENCES operation_receipts(receipt_id)
 ) STRICT;`;
 
+const MACHINE_PROFILE_SCHEMA = `
+CREATE TABLE machine_profiles (
+  workspace_id TEXT PRIMARY KEY,
+  profile_json TEXT NOT NULL,
+  profile_digest TEXT NOT NULL CHECK (length(profile_digest) = 64),
+  updated_at TEXT NOT NULL
+) STRICT;`;
+
 const RUNTIME_SCHEMA = `
 CREATE TABLE runs (
   run_id TEXT PRIMARY KEY,
@@ -142,7 +150,8 @@ CREATE TABLE artifact_refs (
 
 export const DEFAULT_RUNTIME_MIGRATIONS: readonly RuntimeMigration[] = Object.freeze([
   Object.freeze({ id: "001_runtime", up: RUNTIME_SCHEMA }),
-  Object.freeze({ id: "002_effects", up: EFFECT_SCHEMA })
+  Object.freeze({ id: "002_effects", up: EFFECT_SCHEMA }),
+  Object.freeze({ id: "003_machine_profiles", up: MACHINE_PROFILE_SCHEMA })
 ]);
 
 type UnknownRecord = Record<string, unknown> & {
@@ -276,7 +285,8 @@ const STATE_TABLE_ORDER = Object.freeze({
   effect_intents: "idempotency_key",
   effect_outbox: "idempotency_key",
   operation_receipts: "idempotency_key",
-  effect_inbox: "idempotency_key"
+  effect_inbox: "idempotency_key",
+  machine_profiles: "workspace_id"
 });
 
 function runtimeStateDigest(db: DatabaseSync): string {
@@ -445,6 +455,65 @@ export class RuntimeStore {
       busyTimeoutMs: Number((db.prepare("PRAGMA busy_timeout").get() as UnknownRecord).timeout),
       writableSchema: Number((db.prepare("PRAGMA writable_schema").get() as UnknownRecord).writable_schema)
     };
+  }
+
+  saveMachineProfile(
+    workspaceId: string,
+    profileJson: string
+  ): { readonly changed: boolean; readonly profileDigest: string } {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(profileJson);
+    } catch (error) {
+      throw runtimeError("VES_RUNTIME_CONSTRAINT", "Machine Profile JSON is invalid", error);
+    }
+    if (
+      typeof parsed !== "object" ||
+      parsed === null ||
+      (parsed as { readonly workspaceId?: unknown }).workspaceId !== workspaceId
+    ) {
+      throw runtimeError("VES_RUNTIME_CONSTRAINT", "Machine Profile Workspace binding is invalid");
+    }
+    const profileDigest = sha256(profileJson);
+    try {
+      const changed =
+        runStatement(
+          this.#database().prepare(
+            `INSERT INTO machine_profiles(workspace_id, profile_json, profile_digest, updated_at)
+             VALUES (?, ?, ?, ?)
+             ON CONFLICT(workspace_id) DO UPDATE SET
+               profile_json=excluded.profile_json,
+               profile_digest=excluded.profile_digest,
+               updated_at=excluded.updated_at
+             WHERE machine_profiles.profile_digest <> excluded.profile_digest`
+          ),
+          workspaceId,
+          profileJson,
+          profileDigest,
+          this.#now()
+        ) === 1;
+      return Object.freeze({ changed, profileDigest: `sha256:${profileDigest}` });
+    } catch (error) {
+      throw mapSqliteError(error);
+    }
+  }
+
+  getMachineProfile(workspaceId: string): Readonly<Record<string, unknown>> | undefined {
+    const row = this.#database()
+      .prepare("SELECT profile_json FROM machine_profiles WHERE workspace_id=?")
+      .get(workspaceId) as UnknownRecord | undefined;
+    if (row === undefined) return undefined;
+    return Object.freeze(JSON.parse(String(row["profile_json"])) as Record<string, unknown>);
+  }
+
+  listMachineProfiles(): readonly Readonly<Record<string, unknown>>[] {
+    return Object.freeze(
+      (
+        this.#database()
+          .prepare("SELECT profile_json FROM machine_profiles ORDER BY workspace_id")
+          .all() as UnknownRecord[]
+      ).map((row) => Object.freeze(JSON.parse(String(row["profile_json"])) as Record<string, unknown>))
+    );
   }
 
   createRun(snapshot: RunSnapshot): void {

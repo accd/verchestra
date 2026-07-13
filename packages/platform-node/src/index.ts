@@ -27,3 +27,4 @@ export {
   type WorkspaceStateLayout
 } from "./state-root.ts";
 export { SystemClock } from "./system-clock.ts";
+export { RuntimeMachineProfileStore, SecretBrokerBindingInspector } from "./machine-bootstrap-adapters.ts";
