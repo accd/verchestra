@@ -27,6 +27,12 @@ export {
   SapAseProbeError,
   parseSapAseReadOperation
 } from "./sap-ase-adapter.ts";
+export {
+  OracleFixtureConnection,
+  OracleProbeAdapter,
+  OracleProbeError,
+  parseOracleReadOperation
+} from "./oracle-adapter.ts";
 
 const ENGINES = ["postgresql", "mysql", "mariadb", "sqlserver", "sybase", "oracle", "sqlite", "mongodb"] as const;
 const CLASSIFICATIONS = ["public", "internal", "confidential", "restricted", "secret"] as const;
