@@ -392,6 +392,15 @@ interface ProbeResultEnvelope {
 
 function probeFailure(error: unknown): ProbeProtocolError {
   if (error instanceof ProbeProtocolError) return error;
+  if (
+    error instanceof Error &&
+    "code" in error &&
+    typeof error.code === "string" &&
+    /^VES_POSTGRES_[A-Z0-9_]+$/u.test(error.code) &&
+    /^[A-Za-z0-9 ,.\-]+$/u.test(error.message)
+  ) {
+    return new ProbeProtocolError(error.code, error.message);
+  }
   return new ProbeProtocolError("VES_PROBE_WORKER_FAILURE", "Probe worker failed");
 }
 

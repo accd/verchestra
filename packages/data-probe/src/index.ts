@@ -2,6 +2,13 @@ import { createHash } from "node:crypto";
 
 export const packageName = "@verchestra/data-probe" as const;
 
+export {
+  PostgreSqlFixtureConnection,
+  PostgreSqlProbeAdapter,
+  PostgreSqlProbeError,
+  parsePostgreSqlReadOperation
+} from "./postgresql-adapter.ts";
+
 const ENGINES = ["postgresql", "mysql", "mariadb", "sqlserver", "oracle", "sqlite", "mongodb"] as const;
 const CLASSIFICATIONS = ["public", "internal", "confidential", "restricted", "secret"] as const;
 const IDENTIFIER = /^[a-z][a-z0-9._-]{0,126}[a-z0-9]$/u;
