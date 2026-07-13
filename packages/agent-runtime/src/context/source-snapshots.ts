@@ -32,6 +32,7 @@ export interface ContextSourceSelector {
   readonly maximumAgeSeconds?: number;
   readonly expectedRevision?: string;
   readonly classification: DataClassificationValue;
+  readonly priority?: "mandatory" | "high" | "medium" | "low";
 }
 
 export interface ContextRecipe {
@@ -206,6 +207,7 @@ function normalizeSelector(selector: ContextSourceSelector): ContextSourceSelect
     if (!SOURCE_KINDS.includes(selector.sourceKind)) invalid("sourceKind is invalid");
     validateJson(selector.query, "query");
     DataClassification.parse(selector.classification);
+    if (selector.priority !== undefined && !PRIORITIES.includes(selector.priority)) invalid("priority is invalid");
     if (selector.maximumAgeSeconds !== undefined) positiveInteger(selector.maximumAgeSeconds, "maximumAgeSeconds");
     if (selector.expectedRevision !== undefined) safe(selector.expectedRevision, "expectedRevision");
   } catch (error) {
@@ -216,6 +218,10 @@ function normalizeSelector(selector: ContextSourceSelector): ContextSourceSelect
     ...selector,
     query: JSON.parse(canonicalJson(selector.query)) as Readonly<Record<string, unknown>>
   });
+}
+
+export function contextRecipeDigest(recipe: ContextRecipe, digest: ContextDigestPort): string {
+  return digest.sha256(canonicalJson(normalizeRecipe(recipe)));
 }
 
 function normalizeRecipe(recipe: ContextRecipe): ContextRecipe {
@@ -296,7 +302,7 @@ export class ContextSnapshotResolver {
       invalid("Workspace or evaluation instant is invalid");
     }
     const recipe = normalizeRecipe(input.recipe);
-    const recipeDigest = this.#digest.sha256(canonicalJson(recipe));
+    const recipeDigest = contextRecipeDigest(recipe, this.#digest);
     const requiredIds = new Set(recipe.requiredSources.map((entry) => entry.selectorId));
     const selectors = [...recipe.requiredSources, ...recipe.optionalSources];
     const sources: ResolvedContextSource[] = [];

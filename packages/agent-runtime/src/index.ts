@@ -1,8 +1,17 @@
 export const packageName = "@verchestra/agent-runtime" as const;
 export {
+  ContextCompilerError,
+  DeterministicContextCompiler,
+  type CompiledContextFragment,
+  type ContextManifest,
+  type ContextManifestSignerPort,
+  type ContextOmission
+} from "./context/context-compiler.ts";
+export {
   ContextSnapshotResolver,
   ContextSourceError,
   FixtureContextSource,
+  contextRecipeDigest,
   type ContextClaimInput,
   type ContextFragmentInput,
   type ContextRecipe,
