@@ -1,5 +1,15 @@
 export const packageName = "@verchestra/agent-runtime" as const;
 export {
+  InMemoryPassportStore,
+  ModelPassportError,
+  ModelPassportRegistry,
+  type MachinePassportIndex,
+  type PassportCandidate,
+  type PassportRecord,
+  type PassportSignerPort,
+  type PassportStorePort
+} from "./models/passport-registry.ts";
+export {
   BackendContextSerializer,
   ContextSerializationError,
   SemanticEquivalenceOracle,
