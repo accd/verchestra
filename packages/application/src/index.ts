@@ -64,6 +64,19 @@ export {
   type WorkClaim
 } from "./coordination/work-claims.ts";
 export {
+  DataEgressFirewall,
+  EgressError,
+  TrustEnvelopeService,
+  type DeclassificationEvidence,
+  type DeclassificationVerifierPort,
+  type DestinationProfile,
+  type EgressAuthorityPort,
+  type EgressPolicyPort,
+  type SourceIdentity,
+  type TrustClass,
+  type TrustEnvelope
+} from "./egress/trust-egress.ts";
+export {
   WorkspaceReconcileService,
   type CanonicalSyncConfiguration,
   type ContentDigestPort,
