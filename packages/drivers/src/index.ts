@@ -578,3 +578,5 @@ export { PiDriver } from "./pi-driver.ts";
 export type { PiDriverDependencies, PiExecution } from "./pi-driver.ts";
 export { ClaudeCodeDriver } from "./claude-code-driver.ts";
 export type { ClaudeCodeDriverDependencies, ClaudeCodeExecution } from "./claude-code-driver.ts";
+export { CodexDriver } from "./codex-driver.ts";
+export type { CodexDriverDependencies, CodexExecution } from "./codex-driver.ts";
