@@ -30,6 +30,26 @@ export {
 } from "./bootstrap/machine-bootstrap.ts";
 export { SyncError } from "./sync/sync-errors.ts";
 export {
+  ApprovalService,
+  AuthorityError,
+  CapabilityBroker,
+  type ApprovalAction,
+  type ApprovalArtifactPort,
+  type ApprovalBinding,
+  type ApprovalGrantPayload,
+  type ApprovalIntent,
+  type ApprovalRecord,
+  type ApprovalRequest,
+  type ApprovalReviewSurface,
+  type AuthorityStorePort,
+  type AuthorizedIdentity,
+  type CapabilityGrant,
+  type CapabilityRequest,
+  type EntityRef,
+  type PolicyAuthorizationPort,
+  type SignedApprovalArtifact
+} from "./authority/authority.ts";
+export {
   WorkspaceReconcileService,
   type CanonicalSyncConfiguration,
   type ContentDigestPort,

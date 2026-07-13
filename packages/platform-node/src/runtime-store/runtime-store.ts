@@ -113,6 +113,34 @@ CREATE TABLE active_policy_views (
   updated_at TEXT NOT NULL
 ) STRICT;`;
 
+const AUTHORITY_SCHEMA = `
+CREATE TABLE authority_approvals (
+  approval_id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  run_id TEXT NOT NULL,
+  action TEXT NOT NULL,
+  record_json TEXT NOT NULL,
+  record_digest TEXT NOT NULL CHECK (length(record_digest) = 64),
+  revoked_at TEXT,
+  revocation_reason TEXT,
+  issued_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  FOREIGN KEY (run_id) REFERENCES runs(run_id)
+) STRICT;
+CREATE TABLE authority_grants (
+  grant_id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  run_id TEXT NOT NULL,
+  action TEXT NOT NULL,
+  record_json TEXT NOT NULL,
+  record_digest TEXT NOT NULL CHECK (length(record_digest) = 64),
+  revoked_at TEXT,
+  revocation_reason TEXT,
+  issued_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  FOREIGN KEY (run_id) REFERENCES runs(run_id)
+) STRICT;`;
+
 const RUNTIME_SCHEMA = `
 CREATE TABLE runs (
   run_id TEXT PRIMARY KEY,
@@ -199,7 +227,8 @@ export const DEFAULT_RUNTIME_MIGRATIONS: readonly RuntimeMigration[] = Object.fr
   Object.freeze({ id: "002_effects", up: EFFECT_SCHEMA }),
   Object.freeze({ id: "003_machine_profiles", up: MACHINE_PROFILE_SCHEMA }),
   Object.freeze({ id: "004_sync_state", up: SYNC_STATE_SCHEMA }),
-  Object.freeze({ id: "005_policy_views", up: POLICY_VIEW_SCHEMA })
+  Object.freeze({ id: "005_policy_views", up: POLICY_VIEW_SCHEMA }),
+  Object.freeze({ id: "006_authority", up: AUTHORITY_SCHEMA })
 ]);
 
 type UnknownRecord = Record<string, unknown> & {
@@ -351,7 +380,9 @@ const STATE_TABLE_ORDER = Object.freeze({
   workspace_projects: "workspace_id, project_id",
   projection_mappings: "workspace_id, projection_id",
   local_rebuild_state: "workspace_id",
-  active_policy_views: "workspace_id"
+  active_policy_views: "workspace_id",
+  authority_approvals: "approval_id",
+  authority_grants: "grant_id"
 });
 
 function runtimeStateDigest(db: DatabaseSync): string {
@@ -869,6 +900,136 @@ export class RuntimeStore {
         )
         .all(runId) as UnknownRecord[]
     ).map((row) => ({ ...row }));
+  }
+
+  saveAuthorityApproval(value: {
+    readonly approvalId: string;
+    readonly workspaceId: string;
+    readonly runId: string;
+    readonly action: string;
+    readonly recordJson: string;
+    readonly issuedAt: string;
+    readonly expiresAt: string;
+  }): { readonly created: boolean } {
+    return this.#saveAuthorityRecord("authority_approvals", "approval_id", value.approvalId, value);
+  }
+
+  loadAuthorityApproval(approvalId: string): UnknownRecord | undefined {
+    return this.#loadAuthorityRecord("authority_approvals", "approval_id", approvalId);
+  }
+
+  revokeAuthorityApproval(approvalId: string, revokedAt: string, reason: string): boolean {
+    return this.#revokeAuthorityRecord("authority_approvals", "approval_id", approvalId, revokedAt, reason);
+  }
+
+  saveAuthorityGrant(value: {
+    readonly grantId: string;
+    readonly workspaceId: string;
+    readonly runId: string;
+    readonly action: string;
+    readonly recordJson: string;
+    readonly issuedAt: string;
+    readonly expiresAt: string;
+  }): { readonly created: boolean } {
+    return this.#saveAuthorityRecord("authority_grants", "grant_id", value.grantId, value);
+  }
+
+  loadAuthorityGrant(grantId: string): UnknownRecord | undefined {
+    return this.#loadAuthorityRecord("authority_grants", "grant_id", grantId);
+  }
+
+  revokeAuthorityGrant(grantId: string, revokedAt: string, reason: string): boolean {
+    return this.#revokeAuthorityRecord("authority_grants", "grant_id", grantId, revokedAt, reason);
+  }
+
+  #saveAuthorityRecord(
+    table: "authority_approvals" | "authority_grants",
+    idColumn: "approval_id" | "grant_id",
+    id: string,
+    value: {
+      readonly workspaceId: string;
+      readonly runId: string;
+      readonly action: string;
+      readonly recordJson: string;
+      readonly issuedAt: string;
+      readonly expiresAt: string;
+    }
+  ): { readonly created: boolean } {
+    const recordDigest = sha256(value.recordJson);
+    const existing = this.#database().prepare(`SELECT record_digest FROM ${table} WHERE ${idColumn}=?`).get(id) as
+      UnknownRecord | undefined;
+    if (existing !== undefined) {
+      if (String(existing["record_digest"]) !== recordDigest) {
+        throw runtimeError("VES_RUNTIME_CONSTRAINT", "Authority identity has conflicting content");
+      }
+      return Object.freeze({ created: false });
+    }
+    try {
+      this.#database()
+        .prepare(
+          `INSERT INTO ${table}(${idColumn}, workspace_id, run_id, action, record_json, record_digest, issued_at, expires_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+        )
+        .run(
+          id,
+          value.workspaceId,
+          value.runId,
+          value.action,
+          value.recordJson,
+          recordDigest,
+          value.issuedAt,
+          value.expiresAt
+        );
+      return Object.freeze({ created: true });
+    } catch (error) {
+      throw mapSqliteError(error);
+    }
+  }
+
+  #loadAuthorityRecord(
+    table: "authority_approvals" | "authority_grants",
+    idColumn: "approval_id" | "grant_id",
+    id: string
+  ): UnknownRecord | undefined {
+    const row = this.#database()
+      .prepare(
+        `SELECT record_json AS recordJson, record_digest AS recordDigest, revoked_at AS revokedAt,
+        revocation_reason AS revocationReason FROM ${table} WHERE ${idColumn}=?`
+      )
+      .get(id) as UnknownRecord | undefined;
+    if (row === undefined) return undefined;
+    const recordJson = String(row["recordJson"]);
+    if (sha256(recordJson) !== String(row["recordDigest"])) {
+      throw runtimeError("VES_RUNTIME_CORRUPT", "Authority record integrity failed");
+    }
+    try {
+      return Object.freeze({
+        record: JSON.parse(recordJson) as unknown,
+        revokedAt: row["revokedAt"] === null ? undefined : String(row["revokedAt"]),
+        revocationReason: row["revocationReason"] === null ? undefined : String(row["revocationReason"])
+      });
+    } catch {
+      throw runtimeError("VES_RUNTIME_CORRUPT", "Authority record JSON is invalid");
+    }
+  }
+
+  #revokeAuthorityRecord(
+    table: "authority_approvals" | "authority_grants",
+    idColumn: "approval_id" | "grant_id",
+    id: string,
+    revokedAt: string,
+    reason: string
+  ): boolean {
+    return (
+      runStatement(
+        this.#database().prepare(
+          `UPDATE ${table} SET revoked_at=?, revocation_reason=? WHERE ${idColumn}=? AND revoked_at IS NULL`
+        ),
+        revokedAt,
+        reason,
+        id
+      ) === 1
+    );
   }
 
   putApproval(value: {
