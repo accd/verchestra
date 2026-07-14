@@ -12,3 +12,15 @@ export {
   type MemoryStoreHooks,
   type MemoryStoreOptions
 } from "./memory-store.ts";
+export {
+  MemoryVectorIndex,
+  QUALIFIED_SQLITE_VEC,
+  type MemoryVectorBuildInput,
+  type MemoryVectorBuildResult,
+  type MemoryVectorGeneration,
+  type MemoryVectorHooks,
+  type MemoryVectorIndexOptions,
+  type MemoryVectorInput,
+  type MemoryVectorModel,
+  type MemoryVectorOpenStatus
+} from "./memory-vector-index.ts";

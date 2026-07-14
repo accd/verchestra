@@ -192,8 +192,55 @@ CREATE VIRTUAL TABLE memory_fts USING fts5(
   tokenize='porter unicode61'
 );`;
 
+const VECTOR_METADATA_SCHEMA = `
+CREATE TABLE memory_vector_generations (
+  generation_id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  project_id TEXT NOT NULL,
+  authority_digest TEXT NOT NULL CHECK (length(authority_digest) = 71),
+  model_json TEXT NOT NULL,
+  model_digest TEXT NOT NULL CHECK (length(model_digest) = 71),
+  dimensions INTEGER NOT NULL CHECK (dimensions > 0 AND dimensions <= 4096),
+  distance TEXT NOT NULL CHECK (distance = 'l2'),
+  vector_count INTEGER NOT NULL CHECK (vector_count >= 0),
+  vector_digest TEXT NOT NULL CHECK (length(vector_digest) = 71),
+  slot TEXT NOT NULL CHECK (slot IN ('a', 'b')),
+  table_name TEXT NOT NULL,
+  extension_version TEXT NOT NULL,
+  asset_sha256 TEXT NOT NULL CHECK (length(asset_sha256) = 64),
+  status TEXT NOT NULL CHECK (status IN ('active', 'superseded')),
+  created_at TEXT NOT NULL,
+  verified_at TEXT NOT NULL,
+  UNIQUE (workspace_id, project_id, generation_id)
+) STRICT;
+CREATE INDEX memory_vector_generations_scope
+  ON memory_vector_generations(workspace_id, project_id, status, generation_id);
+
+CREATE TABLE memory_vector_members (
+  generation_id TEXT NOT NULL,
+  row_id INTEGER NOT NULL CHECK (row_id > 0),
+  source_id TEXT NOT NULL,
+  chunk_id TEXT NOT NULL,
+  content_digest TEXT NOT NULL CHECK (length(content_digest) = 71),
+  embedding_digest TEXT NOT NULL CHECK (length(embedding_digest) = 71),
+  PRIMARY KEY (generation_id, row_id),
+  UNIQUE (generation_id, source_id, chunk_id),
+  FOREIGN KEY (generation_id) REFERENCES memory_vector_generations(generation_id) ON DELETE CASCADE
+) STRICT;
+
+CREATE TABLE memory_vector_control (
+  workspace_id TEXT NOT NULL,
+  project_id TEXT NOT NULL,
+  active_generation_id TEXT NOT NULL,
+  active_slot TEXT NOT NULL CHECK (active_slot IN ('a', 'b')),
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (workspace_id, project_id),
+  FOREIGN KEY (active_generation_id) REFERENCES memory_vector_generations(generation_id)
+) STRICT;`;
+
 export const DEFAULT_MEMORY_MIGRATIONS: readonly MemoryMigration[] = Object.freeze([
-  Object.freeze({ id: "001_authoritative_lexical_memory", up: MEMORY_SCHEMA })
+  Object.freeze({ id: "001_authoritative_lexical_memory", up: MEMORY_SCHEMA }),
+  Object.freeze({ id: "002_optional_vector_metadata", up: VECTOR_METADATA_SCHEMA })
 ]);
 
 export class MemoryStoreError extends Error {
