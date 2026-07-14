@@ -46,6 +46,20 @@ export {
   MongoDbProbeError,
   parseMongoDbReadOperation
 } from "./mongodb-adapter.ts";
+export {
+  DatabaseKnowledgeError,
+  buildDatabaseKnowledgePackage,
+  importDdlSchemaSource,
+  importErSchemaSource,
+  importIntrospectionSchemaSource,
+  importMigrationSchemaSource,
+  importOrmSchemaSource,
+  planSyntheticSeedScenarios,
+  promoteProbeEvidence,
+  resolveDatabaseContradiction,
+  type DatabaseKnowledgePackage,
+  type DatabaseSchemaSource
+} from "./database-knowledge.ts";
 
 const ENGINES = ["postgresql", "mysql", "mariadb", "sqlserver", "sybase", "oracle", "sqlite", "mongodb"] as const;
 const CLASSIFICATIONS = ["public", "internal", "confidential", "restricted", "secret"] as const;
