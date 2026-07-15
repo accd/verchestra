@@ -102,6 +102,7 @@ export interface WorkflowCommand {
   readonly currentBindingDigest?: string;
   readonly approvalBindingDigest?: string;
   readonly publicationRequired?: boolean;
+  readonly successorRunId?: string;
 }
 
 export interface TransitionDefinition {
@@ -303,6 +304,7 @@ function transition(
   let approval = current.approval;
   let repairCycles = current.repairCycles;
   let implementationActorId = current.implementationActorId;
+  let successorRunId = current.successorRunId;
   if (command.type === "GRANT_EXECUTION_APPROVAL") {
     approval = Object.freeze({ bindingDigest: command.approvalBindingDigest as string });
   }
@@ -317,6 +319,15 @@ function transition(
   if (command.type === "REQUEST_REPAIR" && nextState === "REPAIRING") repairCycles += 1;
   if (command.type === "RESOLVE_REPAIR") repairCycles = 0;
   if (command.type === "START_IMPLEMENTATION") implementationActorId = command.actorId;
+  if (command.type === "PREPARE_HANDOFF" && command.successorRunId !== undefined) {
+    try {
+      StableId.parse(command.successorRunId, "run");
+    } catch {
+      return reject("VES_WORKFLOW_COMMAND_REJECTED");
+    }
+    if (command.successorRunId === current.runId) return reject("VES_WORKFLOW_COMMAND_REJECTED");
+    successorRunId = command.successorRunId;
+  }
 
   const version = current.version + 1;
   const snapshot: RunSnapshot = Object.freeze({
@@ -326,6 +337,7 @@ function transition(
     repairCycles,
     approval,
     ...(implementationActorId === undefined ? {} : { implementationActorId }),
+    ...(successorRunId === undefined ? {} : { successorRunId }),
     terminalCapsuleRequired: terminal || current.terminalCapsuleRequired === true
   });
   const events: WorkflowEvent[] = [

@@ -377,6 +377,17 @@ test("handoff preparation discards execution approval", () => {
   assert.equal(decision.snapshot.approval, undefined);
 });
 
+test("handoff preparation binds a valid distinct successor and rejects malformed identity", () => {
+  const successorRunId = "run_018f0b6d-7b1a-7abc-8def-1123456789ab";
+  const decision = WorkflowMachine.decide(snapshot("EXECUTION_READY"), command("PREPARE_HANDOFF", { successorRunId }));
+  assert.equal(decision.accepted, true);
+  assert.equal(decision.snapshot.successorRunId, successorRunId);
+  assert.deepEqual(
+    WorkflowMachine.decide(snapshot("EXECUTION_READY"), command("PREPARE_HANDOFF", { successorRunId: "run:bad" })),
+    { accepted: false, code: "VES_WORKFLOW_COMMAND_REJECTED" }
+  );
+});
+
 test("handoff successor is a new linked run without inherited approval", () => {
   const successor = createHandoffSuccessor({
     source: snapshot("HANDED_OFF", {

@@ -139,3 +139,9 @@ export {
   type VerificationErrorCode,
   type VerificationPorts
 } from "./verification/verification.ts";
+export {
+  HandoffError,
+  PortableHandoffCoordinator,
+  type HandoffErrorCode,
+  type HandoffPorts
+} from "./handoff/handoff.ts";
