@@ -133,3 +133,9 @@ export {
   type TaskGateErrorCode,
   type TaskGateRunnerResult
 } from "./execution/gate-commit.ts";
+export {
+  IndependentVerificationCoordinator,
+  VerificationError,
+  type VerificationErrorCode,
+  type VerificationPorts
+} from "./verification/verification.ts";
