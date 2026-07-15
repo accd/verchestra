@@ -57,3 +57,23 @@ export {
   type SignedRecoveryBundle,
   type SnapshotSource
 } from "./recovery-bundle/recovery-bundle.ts";
+export {
+  HmacPathPseudonymizer,
+  ProhibitedContentScanner,
+  StableErrorDiagnosticAdapter,
+  SupportCodeRegistry,
+  SupportBundleBuilder,
+  SupportBundleError,
+  SupportExportCoordinator,
+  type SignedSupportBundle,
+  type SupportApprovalPort,
+  type SupportBundleErrorCode,
+  type SupportBundleInspection,
+  type SupportBundleManifest,
+  type SupportBundlePlan,
+  type SupportDiagnostic,
+  type SupportEgressPort,
+  type SupportExportSinkPort,
+  type SupportRecipientInput,
+  type SupportRecipientRef
+} from "./support-bundle/support-bundle.ts";
