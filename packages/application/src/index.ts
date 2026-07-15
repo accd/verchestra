@@ -124,3 +124,12 @@ export {
   type TaskExecutionInput,
   type TaskExecutorErrorCode
 } from "./execution/task-executor.ts";
+export {
+  TaskGateCommitCoordinator,
+  TaskGateError,
+  canonicalTaskGatePlan,
+  type TaskGateCommand,
+  type TaskGateCommitInput,
+  type TaskGateErrorCode,
+  type TaskGateRunnerResult
+} from "./execution/gate-commit.ts";

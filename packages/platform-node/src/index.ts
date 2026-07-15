@@ -38,3 +38,11 @@ export {
   type GitWorktreeErrorCode,
   type NodeGitWorktreeAdapterOptions
 } from "./git-worktree-adapter.ts";
+export {
+  GateAdapterError,
+  NodeAtomicGitCommitAdapter,
+  NodeGateProcessRunner,
+  type GateCommandProfile,
+  type NodeAtomicGitCommitAdapterOptions,
+  type NodeGateProcessRunnerOptions
+} from "./gate-commit-adapters.ts";
