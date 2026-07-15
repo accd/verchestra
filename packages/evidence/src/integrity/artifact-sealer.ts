@@ -19,6 +19,10 @@ interface SealerOptions {
   readonly now?: () => Date;
 }
 
+interface SealOptions {
+  readonly issuedAt?: string;
+}
+
 interface TrustRootInput {
   readonly trustRootId: string;
   readonly version: number;
@@ -104,8 +108,16 @@ export class ArtifactSealer {
     this.#now = options.now ?? (() => new Date());
   }
 
-  async seal<T extends JsonValue>(payloadInput: T, binding: ArtifactBinding): Promise<SealedArtifact<T>> {
+  async seal<T extends JsonValue>(
+    payloadInput: T,
+    binding: ArtifactBinding,
+    options: SealOptions = {}
+  ): Promise<SealedArtifact<T>> {
     assertBinding(binding);
+    const issuedAt = options.issuedAt ?? this.#now().toISOString();
+    if (parseInstant(issuedAt) === undefined || new Date(issuedAt).toISOString() !== issuedAt) {
+      invalidBinding("Artifact issue time is not a canonical instant");
+    }
     const payload = cloneJson(payloadInput);
     const base = {
       envelopeVersion: 1,
@@ -115,7 +127,7 @@ export class ArtifactSealer {
       sourceStateDigest: binding.sourceStateDigest,
       algorithm: "Ed25519",
       keyId: this.#signer.publicKeyRef.keyId,
-      issuedAt: this.#now().toISOString(),
+      issuedAt,
       payloadDigest: sha256Digest(payload),
       payload
     } as const;

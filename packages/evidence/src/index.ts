@@ -4,6 +4,26 @@ export { IntegrityError, canonicalizeJson, sha256Digest, type IntegrityErrorCode
 export { NodeEd25519Signer, type SignerOptions } from "./integrity/signer.ts";
 export type * from "./integrity/types.ts";
 export {
+  FileRunCapsuleStore,
+  RUN_TERMINAL_STATUSES,
+  RunCapsuleBuilder,
+  RunCapsuleError,
+  RunCapsuleRecoveryCoordinator,
+  type RunCapsuleBuildInput,
+  type RunCapsuleEvidence,
+  type RunCapsuleHandoff,
+  type RunCapsuleInputResolver,
+  type RunCapsuleJournalPort,
+  type RunCapsulePayload,
+  type RunCapsuleRef,
+  type RunCapsuleTerminalTransition,
+  type RunCapsuleErrorCode,
+  type RunRiskTier,
+  type RunTerminalStatus,
+  type SignedRunCapsule,
+  type UnsealedRunCapsuleIntent
+} from "./run-capsule/run-capsule.ts";
+export {
   ExecutionPackageBuilder,
   ExecutionPackageError,
   FileExecutionPackageStore,

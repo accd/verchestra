@@ -141,6 +141,19 @@ CREATE TABLE authority_grants (
   FOREIGN KEY (run_id) REFERENCES runs(run_id)
 ) STRICT;`;
 
+const RUN_CAPSULE_SCHEMA = `
+CREATE TABLE run_capsule_seals (
+  run_id TEXT PRIMARY KEY,
+  state_version INTEGER NOT NULL CHECK (state_version > 0),
+  terminal_status TEXT NOT NULL CHECK (terminal_status IN (
+    'COMPLETED', 'HANDED_OFF', 'FAILED', 'ABORTED', 'INTERRUPTED', 'RECOVERED'
+  )),
+  capsule_id TEXT NOT NULL UNIQUE CHECK (length(capsule_id) = 64),
+  payload_digest TEXT NOT NULL CHECK (length(payload_digest) = 64),
+  sealed_at TEXT NOT NULL,
+  FOREIGN KEY (run_id) REFERENCES runs(run_id)
+) STRICT;`;
+
 const RUNTIME_SCHEMA = `
 CREATE TABLE runs (
   run_id TEXT PRIMARY KEY,
@@ -228,7 +241,8 @@ export const DEFAULT_RUNTIME_MIGRATIONS: readonly RuntimeMigration[] = Object.fr
   Object.freeze({ id: "003_machine_profiles", up: MACHINE_PROFILE_SCHEMA }),
   Object.freeze({ id: "004_sync_state", up: SYNC_STATE_SCHEMA }),
   Object.freeze({ id: "005_policy_views", up: POLICY_VIEW_SCHEMA }),
-  Object.freeze({ id: "006_authority", up: AUTHORITY_SCHEMA })
+  Object.freeze({ id: "006_authority", up: AUTHORITY_SCHEMA }),
+  Object.freeze({ id: "007_run_capsules", up: RUN_CAPSULE_SCHEMA })
 ]);
 
 type UnknownRecord = Record<string, unknown> & {
@@ -262,6 +276,7 @@ interface RuntimeStoreHooks {
   readonly afterEffectStart?: () => void;
   readonly beforeEffectComplete?: () => void;
   readonly afterEffectComplete?: () => void;
+  readonly afterRunCapsuleSealCommit?: () => void;
 }
 
 interface RuntimeStoreOptions {
@@ -382,7 +397,8 @@ const STATE_TABLE_ORDER = Object.freeze({
   local_rebuild_state: "workspace_id",
   active_policy_views: "workspace_id",
   authority_approvals: "approval_id",
-  authority_grants: "grant_id"
+  authority_grants: "grant_id",
+  run_capsule_seals: "run_id"
 });
 
 function runtimeStateDigest(db: DatabaseSync): string {
@@ -900,6 +916,113 @@ export class RuntimeStore {
         )
         .all(runId) as UnknownRecord[]
     ).map((row) => ({ ...row }));
+  }
+
+  listUnsealedTerminalRuns(): readonly {
+    readonly runId: string;
+    readonly runKind: "feature" | "recovery";
+    readonly status: "COMPLETED" | "HANDED_OFF" | "FAILED" | "ABORTED" | "INTERRUPTED" | "RECOVERED";
+    readonly stateVersion: number;
+    readonly predecessorRunId?: string;
+    readonly successorRunId?: string;
+  }[] {
+    return (
+      this.#database()
+        .prepare(
+          `SELECT r.run_id AS runId, r.run_kind AS runKind, r.state AS status,
+            r.state_version AS stateVersion, r.predecessor_run_id AS predecessorRunId,
+            r.successor_run_id AS successorRunId
+           FROM runs r LEFT JOIN run_capsule_seals c ON c.run_id=r.run_id
+           WHERE r.terminal_capsule_required=1 AND c.run_id IS NULL
+             AND r.state IN ('COMPLETED','HANDED_OFF','FAILED','ABORTED','INTERRUPTED','RECOVERED')
+           ORDER BY r.run_id`
+        )
+        .all() as UnknownRecord[]
+    ).map((row) =>
+      Object.freeze({
+        runId: String(row["runId"]),
+        runKind: String(row["runKind"]) as "feature" | "recovery",
+        status: String(row["status"]) as
+          "COMPLETED" | "HANDED_OFF" | "FAILED" | "ABORTED" | "INTERRUPTED" | "RECOVERED",
+        stateVersion: Number(row["stateVersion"]),
+        ...(row["predecessorRunId"] === null ? {} : { predecessorRunId: String(row["predecessorRunId"]) }),
+        ...(row["successorRunId"] === null ? {} : { successorRunId: String(row["successorRunId"]) })
+      })
+    );
+  }
+
+  recordRunCapsuleSeal(value: {
+    readonly runId: string;
+    readonly stateVersion: number;
+    readonly status: string;
+    readonly capsuleId: string;
+    readonly payloadDigest: string;
+    readonly sealedAt: string;
+  }): "recorded" | "already-recorded" {
+    if (
+      !/^[a-f0-9]{64}$/u.test(value.capsuleId) ||
+      !/^[a-f0-9]{64}$/u.test(value.payloadDigest) ||
+      !Number.isSafeInteger(value.stateVersion) ||
+      value.stateVersion < 1 ||
+      !["COMPLETED", "HANDED_OFF", "FAILED", "ABORTED", "INTERRUPTED", "RECOVERED"].includes(value.status) ||
+      !Number.isFinite(Date.parse(value.sealedAt)) ||
+      new Date(value.sealedAt).toISOString() !== value.sealedAt
+    ) {
+      throw runtimeError("VES_RUNTIME_CONSTRAINT", "Run Capsule seal record is malformed");
+    }
+    const db = this.#database();
+    try {
+      db.exec("BEGIN IMMEDIATE");
+      const existing = db.prepare("SELECT * FROM run_capsule_seals WHERE run_id=?").get(value.runId) as
+        UnknownRecord | undefined;
+      if (existing !== undefined) {
+        const identical =
+          Number(existing["state_version"]) === value.stateVersion &&
+          String(existing["terminal_status"]) === value.status &&
+          String(existing["capsule_id"]) === value.capsuleId &&
+          String(existing["payload_digest"]) === value.payloadDigest &&
+          String(existing["sealed_at"]) === value.sealedAt;
+        if (!identical) throw runtimeError("VES_RUNTIME_CONSTRAINT", "Run already has a different Capsule seal");
+        db.exec("COMMIT");
+        return "already-recorded";
+      }
+      const runRow = requireRow(
+        db.prepare("SELECT state, state_version, terminal_capsule_required FROM runs WHERE run_id=?").get(value.runId)
+      );
+      if (
+        String(runRow["state"]) !== value.status ||
+        Number(runRow["state_version"]) !== value.stateVersion ||
+        Number(runRow["terminal_capsule_required"]) !== 1
+      ) {
+        throw runtimeError("VES_RUNTIME_VERSION_CONFLICT", "Terminal run changed before Capsule seal recording");
+      }
+      db.prepare(
+        `INSERT INTO run_capsule_seals(
+          run_id, state_version, terminal_status, capsule_id, payload_digest, sealed_at
+        ) VALUES (?, ?, ?, ?, ?, ?)`
+      ).run(value.runId, value.stateVersion, value.status, value.capsuleId, value.payloadDigest, value.sealedAt);
+      db.exec("COMMIT");
+      this.#hooks.afterRunCapsuleSealCommit?.();
+      return "recorded";
+    } catch (error) {
+      if (db.isTransaction) db.exec("ROLLBACK");
+      if (errorCode(error)?.startsWith("VES_RUNTIME_") === true) throw error;
+      throw mapSqliteError(error);
+    }
+  }
+
+  getRunCapsuleSeal(runId: string): Readonly<Record<string, unknown>> | undefined {
+    const row = this.#database().prepare("SELECT * FROM run_capsule_seals WHERE run_id=?").get(runId) as
+      UnknownRecord | undefined;
+    if (row === undefined) return undefined;
+    return Object.freeze({
+      runId: String(row["run_id"]),
+      stateVersion: Number(row["state_version"]),
+      status: String(row["terminal_status"]),
+      capsuleId: String(row["capsule_id"]),
+      payloadDigest: String(row["payload_digest"]),
+      sealedAt: String(row["sealed_at"])
+    });
   }
 
   saveAuthorityApproval(value: {
