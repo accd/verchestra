@@ -84,7 +84,11 @@ importers:
         specifier: workspace:0.0.0
         version: link:../domain
 
-  packages/connectors: {}
+  packages/connectors:
+    dependencies:
+      '@verchestra/effects':
+        specifier: workspace:0.0.0
+        version: link:../effects
 
   packages/contracts:
     dependencies:
