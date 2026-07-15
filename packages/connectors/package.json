@@ -7,6 +7,7 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@verchestra/effects": "workspace:0.0.0"
+    "@verchestra/application": "workspace:0.0.0",
+    "@verchestra/domain": "workspace:0.0.0"
   }
 }

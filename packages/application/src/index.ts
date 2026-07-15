@@ -145,3 +145,26 @@ export {
   type HandoffErrorCode,
   type HandoffPorts
 } from "./handoff/handoff.ts";
+export {
+  buildIdempotencyKey,
+  createEffectIntent,
+  EffectError,
+  type EffectAdapter,
+  type EffectApplyResult,
+  type EffectIntent,
+  type EffectRepository,
+  type EffectRiskTier,
+  type EffectStatus,
+  type IdempotencyInput,
+  type OperationReceipt,
+  type PriorEffectState,
+  type ReceiptOutcome
+} from "./effects/effect-contract.ts";
+export type {
+  ContextClaimInput,
+  ContextFragmentInput,
+  ContextSourceKind,
+  ContextSourceObservation,
+  ContextSourcePort,
+  ContextSourceQuery
+} from "./context/context-source-port.ts";

@@ -86,9 +86,12 @@ importers:
 
   packages/connectors:
     dependencies:
-      '@verchestra/effects':
+      '@verchestra/application':
         specifier: workspace:0.0.0
-        version: link:../effects
+        version: link:../application
+      '@verchestra/domain':
+        specifier: workspace:0.0.0
+        version: link:../domain
 
   packages/contracts:
     dependencies:
@@ -106,6 +109,9 @@ importers:
 
   packages/effects:
     dependencies:
+      '@verchestra/application':
+        specifier: workspace:0.0.0
+        version: link:../application
       '@verchestra/domain':
         specifier: workspace:0.0.0
         version: link:../domain

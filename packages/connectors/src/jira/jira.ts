@@ -7,7 +7,7 @@ import {
   type EffectApplyResult,
   type EffectIntent,
   type PriorEffectState
-} from "@verchestra/effects";
+} from "@verchestra/application";
 
 const DIGEST = /^sha256:[a-f0-9]{64}$/u;
 const PROJECT_KEY = /^[A-Z][A-Z0-9_]{1,19}$/u;
