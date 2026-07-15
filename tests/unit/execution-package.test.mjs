@@ -1,0 +1,234 @@
+import assert from "node:assert/strict";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { test } from "node:test";
+
+import { FileExecutionPackageStore, derivePendingTasks, sha256Digest } from "../../packages/evidence/src/index.ts";
+import {
+  currentState,
+  digest,
+  executionHarness,
+  packageInput,
+  workspaceId
+} from "../helpers/execution-package-fixture.mjs";
+
+test("builder emits a signed backend-neutral content-addressed package", async () => {
+  const { builder } = executionHarness();
+  const sealed = await builder.build(packageInput());
+  assert.equal(sealed.schema.name, "execution-package");
+  assert.equal(sealed.purpose, "execution-package");
+  assert.equal(sealed.payload.schemaVersion, 1);
+  assert.equal(sealed.payload.workspaceId, workspaceId);
+  assert.match(sealed.artifactId, /^[a-f0-9]{64}$/u);
+  assert.equal(JSON.stringify(sealed).includes("Claude"), false);
+  assert.equal(JSON.stringify(sealed).includes("OpenCode"), false);
+});
+
+test("pending work is derived from completed evidence and dependency closure", async () => {
+  const { builder } = executionHarness();
+  const sealed = await builder.build(packageInput());
+  assert.deepEqual(sealed.payload.pendingTasks, [
+    { taskId: "T-2", sequence: 2, blockedBy: [], ready: true },
+    { taskId: "T-3", sequence: 3, blockedBy: ["T-2"], ready: false }
+  ]);
+});
+
+test("clean-process verification reconstructs identical first pending work", async () => {
+  const input = packageInput();
+  const { builder, trust } = executionHarness();
+  const sealed = await builder.build(input);
+  const result = await builder.verify(sealed, trust, currentState(input));
+  assert.equal(result.ok, true);
+  assert.equal(result.firstPendingTaskId, "T-2");
+  assert.deepEqual(result.pendingTasks, sealed.payload.pendingTasks);
+});
+
+test("completing the next task advances the first pending task", async () => {
+  const input = packageInput();
+  input.completedTaskEvidence.push({
+    taskId: "T-2",
+    result: "passed",
+    evidenceDigest: digest("T-2-evidence"),
+    sourceStateDigest: digest(input.bindings.sourceState)
+  });
+  const { builder, trust } = executionHarness();
+  const sealed = await builder.build(input);
+  const result = await builder.verify(sealed, trust, currentState(input));
+  assert.equal(result.firstPendingTaskId, "T-3");
+  assert.equal(result.pendingTasks[0].ready, true);
+});
+
+test("fully completed package has no pending work", async () => {
+  const input = packageInput();
+  for (const taskId of ["T-2", "T-3"])
+    input.completedTaskEvidence.push({
+      taskId,
+      result: "passed",
+      evidenceDigest: digest(`${taskId}-evidence`),
+      sourceStateDigest: digest(input.bindings.sourceState)
+    });
+  const { builder, trust } = executionHarness();
+  const sealed = await builder.build(input);
+  const result = await builder.verify(sealed, trust, currentState(input));
+  assert.equal(result.firstPendingTaskId, null);
+  assert.deepEqual(result.pendingTasks, []);
+});
+
+test("equivalent unordered sets produce an identical sealed package", async () => {
+  const first = packageInput();
+  const second = packageInput({
+    projectIds: [...first.projectIds].reverse(),
+    requirements: [...first.requirements].reverse(),
+    decisions: [...first.decisions].reverse(),
+    tasks: [...first.tasks].reverse(),
+    requiredCapabilities: [...first.requiredCapabilities].reverse(),
+    roleRequirements: [...first.roleRequirements].reverse()
+  });
+  const { builder } = executionHarness();
+  assert.deepEqual(await builder.build(second), await builder.build(first));
+});
+
+test("repeated build with exact input is byte-identical", async () => {
+  const { builder } = executionHarness();
+  const input = packageInput();
+  assert.deepEqual(await builder.build(input), await builder.build(structuredClone(input)));
+});
+
+test("sealed package is deeply immutable in process memory", async () => {
+  const { builder } = executionHarness();
+  const sealed = await builder.build(packageInput());
+  assert.equal(Object.isFrozen(sealed), true);
+  assert.equal(Object.isFrozen(sealed.payload), true);
+  assert.equal(Object.isFrozen(sealed.payload.tasks), true);
+  assert.equal(Object.isFrozen(sealed.payload.tasks[0]), true);
+  assert.throws(() => sealed.payload.tasks.push({}));
+});
+
+for (const [name, mutate] of [
+  ["version", (input) => (input.packageVersion += 1)],
+  ["execution contract", (input) => (input.executionContractDigest = digest("other-contract"))],
+  [
+    "source",
+    (input) => {
+      input.bindings.sourceState["repo:api"] = digest("other-source");
+      input.completedTaskEvidence[0].sourceStateDigest = digest(input.bindings.sourceState);
+    }
+  ],
+  ["requirement", (input) => (input.requirements[0].artifactDigest = digest("other-requirement"))],
+  ["task", (input) => (input.tasks[1].doneCriteria = ["Other criterion"])],
+  ["gate", (input) => (input.gates[0].command = "node scripts/gate.mjs full")]
+]) {
+  test(`${name} mutation changes the package identity`, async () => {
+    const first = packageInput();
+    const changed = packageInput();
+    mutate(changed);
+    const { builder } = executionHarness();
+    assert.notEqual((await builder.build(first)).artifactId, (await builder.build(changed)).artifactId);
+  });
+}
+
+for (const field of [
+  "policyDigest",
+  "skillLockDigest",
+  "contextDigest",
+  "dataAccessDigest",
+  "effectPlanDigest",
+  "verificationPlanDigest",
+  "destinationDigest",
+  "capabilityDigest",
+  "budgetDigest",
+  "evidenceDigest"
+]) {
+  test(`${field} mismatch reports one exact approval-invalidating field`, async () => {
+    const input = packageInput();
+    const { builder, trust } = executionHarness();
+    const sealed = await builder.build(input);
+    const result = await builder.verify(sealed, trust, currentState(input, { [field]: digest(`changed-${field}`) }));
+    assert.equal(result.ok, false);
+    assert.equal(result.code, "VES_EXECUTION_PACKAGE_STALE");
+    assert.deepEqual(
+      result.invalidations.map((entry) => entry.field),
+      [`bindings.${field}`]
+    );
+    assert.equal(result.invalidations[0].approvalInvalidated, true);
+  });
+}
+
+test("source-state mismatch reports its exact logical source", async () => {
+  const input = packageInput();
+  const { builder, trust } = executionHarness();
+  const sealed = await builder.build(input);
+  const sourceState = { ...input.bindings.sourceState, "repo:api": digest("moved") };
+  const result = await builder.verify(sealed, trust, currentState(input, { sourceState }));
+  assert.deepEqual(
+    result.invalidations.map((entry) => entry.field),
+    ["bindings.sourceState.repo:api"]
+  );
+});
+
+test("multiple binding mismatches are complete and canonically ordered", async () => {
+  const input = packageInput();
+  const { builder, trust } = executionHarness();
+  const sealed = await builder.build(input);
+  const result = await builder.verify(
+    sealed,
+    trust,
+    currentState(input, {
+      policyDigest: digest("changed-policy"),
+      evidenceDigest: digest("changed-evidence")
+    })
+  );
+  assert.deepEqual(
+    result.invalidations.map((entry) => entry.field),
+    ["bindings.evidenceDigest", "bindings.policyDigest"]
+  );
+});
+
+test("derivePendingTasks is pure and does not mutate caller arrays", () => {
+  const input = packageInput();
+  const before = JSON.stringify(input);
+  derivePendingTasks(input.tasks, input.completedTaskEvidence);
+  assert.equal(JSON.stringify(input), before);
+});
+
+test("file store publishes canonical package bytes and reads them back", async () => {
+  const root = await mkdtemp(join(tmpdir(), "verchestra-execution-package-"));
+  const { builder } = executionHarness();
+  const sealed = await builder.build(packageInput());
+  const store = new FileExecutionPackageStore({ root });
+  assert.equal((await store.put(sealed)).outcome, "published");
+  assert.deepEqual(await store.get(sealed.artifactId), sealed);
+  assert.equal(
+    sha256Digest(JSON.parse(await readFile(join(root, `${sealed.artifactId}.json`), "utf8"))),
+    sha256Digest(sealed)
+  );
+});
+
+test("file store repeat is idempotent", async () => {
+  const root = await mkdtemp(join(tmpdir(), "verchestra-execution-package-"));
+  const { builder } = executionHarness();
+  const sealed = await builder.build(packageInput());
+  const store = new FileExecutionPackageStore({ root });
+  await store.put(sealed);
+  assert.equal((await store.put(sealed)).outcome, "already-published");
+});
+
+test("concurrent publication is atomic and idempotent", async () => {
+  const root = await mkdtemp(join(tmpdir(), "verchestra-execution-package-"));
+  const { builder } = executionHarness();
+  const sealed = await builder.build(packageInput());
+  const stores = [new FileExecutionPackageStore({ root }), new FileExecutionPackageStore({ root })];
+  const outcomes = (await Promise.all(stores.map((store) => store.put(sealed)))).map((result) => result.outcome).sort();
+  assert.deepEqual(outcomes, ["already-published", "published"]);
+  assert.deepEqual(await stores[0].get(sealed.artifactId), sealed);
+});
+
+test("file store never overwrites different bytes at a package identity", async () => {
+  const root = await mkdtemp(join(tmpdir(), "verchestra-execution-package-"));
+  const { builder } = executionHarness();
+  const sealed = await builder.build(packageInput());
+  await writeFile(join(root, `${sealed.artifactId}.json`), "human bytes", "utf8");
+  const store = new FileExecutionPackageStore({ root });
+  await assert.rejects(store.put(sealed), { code: "VES_EXECUTION_PACKAGE_STORAGE_CONFLICT" });
+});
