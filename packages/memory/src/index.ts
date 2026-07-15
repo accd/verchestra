@@ -24,3 +24,23 @@ export {
   type MemoryVectorModel,
   type MemoryVectorOpenStatus
 } from "./memory-vector-index.ts";
+export {
+  ExplainableMemoryRetriever,
+  MemoryRetrievalError,
+  PolicyFilteredMemoryRetrievalService,
+  type MemoryCandidateRequest,
+  type MemoryLexicalCandidate,
+  type MemoryLexicalSourcePort,
+  type MemoryRetrievalInput,
+  type MemoryRetrievalPolicy,
+  type MemoryRetrievalPolicyPort,
+  type MemoryRetrievalRecord,
+  type MemoryRetrievalRequest,
+  type MemorySearchDegradation,
+  type MemorySearchExplanation,
+  type MemorySearchHit,
+  type MemorySearchOmission,
+  type MemorySearchResult,
+  type MemoryVectorCandidate,
+  type MemoryVectorSourcePort
+} from "./memory-retriever.ts";
