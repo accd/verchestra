@@ -1,5 +1,19 @@
 export const packageName = "@verchestra/application" as const;
 export {
+  type ArtifactPlanningPort,
+  type DesiredArtifact,
+  type EffectivePlacement,
+  type LogicalArtifactAddress,
+  type PlacementProject,
+  type PlacementSnapshot,
+  type PlannedWrite,
+  type ProjectArtifactClass,
+  type ProjectPlacement,
+  type ResolvedArtifact,
+  type WorkspacePlacementMode,
+  type WritePlan
+} from "./artifacts/artifact-planning.ts";
+export {
   type CliCommand,
   type CommandBus,
   type CommandResult,

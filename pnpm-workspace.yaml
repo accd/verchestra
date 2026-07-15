@@ -1,3 +1,7 @@
 packages:
   - apps/*
   - packages/*
+allowBuilds:
+  "@google/genai": false
+  opencode-ai: true
+  protobufjs: false

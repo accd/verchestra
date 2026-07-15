@@ -44,3 +44,12 @@ export {
   type MemoryVectorCandidate,
   type MemoryVectorSourcePort
 } from "./memory-retriever.ts";
+export {
+  MemoryLifecycleError,
+  MemoryPromotionLifecycle,
+  type MemoryGarbageCollectionPlan,
+  type MemoryLifecycleHooks,
+  type MemoryManagedObject,
+  type MemoryPromotionLifecycleOptions,
+  type MemoryPromotionPlan
+} from "./memory-lifecycle.ts";

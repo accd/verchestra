@@ -113,6 +113,9 @@ importers:
 
   packages/memory:
     dependencies:
+      '@verchestra/application':
+        specifier: workspace:0.0.0
+        version: link:../application
       sqlite-vec:
         specifier: 0.1.9
         version: 0.1.9
@@ -134,6 +137,9 @@ importers:
 
   packages/workspace:
     dependencies:
+      '@verchestra/application':
+        specifier: workspace:0.0.0
+        version: link:../application
       '@verchestra/domain':
         specifier: workspace:0.0.0
         version: link:../domain
