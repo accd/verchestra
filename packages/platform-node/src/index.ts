@@ -32,3 +32,9 @@ export { NodeContentDigest, RuntimeSyncStateStore } from "./sync-adapters.ts";
 export { RuntimePolicyViewStore } from "./policy-store-adapter.ts";
 export { RuntimeAuthorityStore } from "./authority-store-adapter.ts";
 export { RuntimeLocalLease } from "./coordination-adapters.ts";
+export {
+  GitWorktreeError,
+  NodeGitWorktreeAdapter,
+  type GitWorktreeErrorCode,
+  type NodeGitWorktreeAdapterOptions
+} from "./git-worktree-adapter.ts";

@@ -108,3 +108,19 @@ export {
   type WorkspaceReconcileInput,
   type WorkspaceReconcileResult
 } from "./sync/workspace-reconcile.ts";
+export {
+  TaskExecutionCoordinator,
+  TaskExecutorError,
+  type AtomicExecutionTask,
+  type ExecutionAuthorityPort,
+  type ExecutionCheckpoint,
+  type ExecutionCheckpointPort,
+  type ExecutionContextPort,
+  type ExecutionCoordinationPort,
+  type ExecutionDriverPort,
+  type ExecutionToolPort,
+  type ExecutionToolRequest,
+  type ExecutionWorktreePort,
+  type TaskExecutionInput,
+  type TaskExecutorErrorCode
+} from "./execution/task-executor.ts";
