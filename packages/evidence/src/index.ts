@@ -41,3 +41,19 @@ export {
   type SignedExecutionPackage,
   type TaskCompletionEvidence
 } from "./execution-package/execution-package.ts";
+export {
+  ConsistentSnapshotCoordinator,
+  FileRecoveryBundleStore,
+  RecoveryBundleBuilder,
+  RecoveryBundleError,
+  RecoveryRestoreCoordinator,
+  type RecoveryBundleErrorCode,
+  type RecoveryBundleManifest,
+  type RecoveryBundlePlan,
+  type RecoveryObjectInput,
+  type RecoveryObjectRef,
+  type RecoveryRecipientInput,
+  type RecoveryRecipientRef,
+  type SignedRecoveryBundle,
+  type SnapshotSource
+} from "./recovery-bundle/recovery-bundle.ts";

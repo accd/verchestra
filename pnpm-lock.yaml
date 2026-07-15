@@ -29,6 +29,9 @@ importers:
       eslint:
         specifier: 10.7.0
         version: 10.7.0
+      jose:
+        specifier: 6.2.3
+        version: 6.2.3
       json-schema-to-typescript:
         specifier: 15.0.4
         version: 15.0.4
@@ -108,6 +111,9 @@ importers:
       canonicalize:
         specifier: 3.0.0
         version: 3.0.0
+      jose:
+        specifier: 6.2.3
+        version: 6.2.3
 
   packages/extension-host: {}
 
@@ -913,6 +919,9 @@ packages:
 
   isexe@2.0.0:
     resolution: {integrity: sha512-RHxMLp9lnKHGHRng9QFhRCMbYAcVpn69smSGcq3f36xjgVVWThj4qqLbTLlq7Ssj8B+fIQ1EuCEGI2lKsyQeIw==}
+
+  jose@6.2.3:
+    resolution: {integrity: sha512-YYVDInQKFJfR/xa3ojUTl8c2KoTwiL1R5Wg9YCydwH0x0B9grbzlg5HC7mMjCtUJjbQ/YnGEZIhI5tCgfTb4Hw==}
 
   js-yaml@4.3.0:
     resolution: {integrity: sha512-1td788aAnnZ5qs7V2QIRl1owjtYpbKt749Y3xauqQgwIIGF/xXWz1wMTEBx5O3LK3lXLVuqXPdPxj2BoFHaW9Q==}
@@ -2377,6 +2386,8 @@ snapshots:
       is-extglob: 2.1.1
 
   isexe@2.0.0: {}
+
+  jose@6.2.3: {}
 
   js-yaml@4.3.0:
     dependencies:
