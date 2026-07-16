@@ -64,6 +64,8 @@ export function buildTufUpdateFixture(options = {}) {
   const consistentSnapshot = options.consistentSnapshot ?? true;
   const platform = options.platform ?? "win32";
   const arch = options.arch ?? "x64";
+  const releaseId = options.releaseId ?? "release:verchestra:1.0.0:win32-x64";
+  const semanticVersion = options.semanticVersion ?? "1.0.0";
   const expires = options.expires ?? {};
   const activeKeys = rootVersion > 1 && options.rotatedKeys ? options.rotatedKeys : keys;
   const roleFor = (roleKeys) => ({ keyids: roleKeys.map((entry) => entry.id), threshold });
@@ -104,6 +106,7 @@ export function buildTufUpdateFixture(options = {}) {
     componentBytes.set(component.logicalPath, bytes);
     return {
       ...component,
+      releaseId,
       platform: ["node-runtime", "sqlite-native", "launcher"].includes(component.kind) ? platform : "any",
       arch: ["node-runtime", "sqlite-native", "launcher"].includes(component.kind) ? arch : "any",
       contentDigest: digest(bytes),
@@ -111,7 +114,7 @@ export function buildTufUpdateFixture(options = {}) {
     };
   });
   let bundle = buildHermeticDistributionBundle(
-    bundleInput({ target: { platform, arch, nodeVersion: "24.14.0" }, components })
+    bundleInput({ releaseId, semanticVersion, target: { platform, arch, nodeVersion: "24.14.0" }, components })
   );
   if (options.bundleTransform) bundle = options.bundleTransform(structuredClone(bundle));
   const manifestPath = `releases/${platform}-${arch}/release.json`;
