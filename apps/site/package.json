@@ -12,7 +12,7 @@
     "preview": "astro preview",
     "test:unit": "node --test tests/unit/*.test.mjs",
     "test:e2e": "playwright test",
-    "test:lighthouse": "lhci autorun --config=./lighthouserc.cjs",
+    "test:lighthouse": "node scripts/run-lighthouse.mjs",
     "test": "pnpm check && pnpm test:e2e && pnpm test:lighthouse"
   },
   "dependencies": {
