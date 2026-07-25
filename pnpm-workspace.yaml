@@ -4,8 +4,8 @@ packages:
 overrides:
   fast-uri: 3.1.4
   minimatch>brace-expansion: 5.0.8
-  "@lhci/cli>tmp": 0.2.6
-  external-editor>tmp: 0.2.6
+  "@lhci/cli>tmp": 0.2.7
+  external-editor>tmp: 0.2.7
   "@lhci/cli>uuid": 11.1.1
 allowBuilds:
   "@google/genai": false
