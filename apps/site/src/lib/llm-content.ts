@@ -271,6 +271,15 @@ export async function writeLlmBuildArtifacts(repositoryRoot: URL | string, outpu
     await mkdir(dirname(destination), { recursive: true });
     await writeFile(destination, alternateMarkdown(document));
   }
+  const sitemapPath = join(output, "sitemap-0.xml");
+  if (existsSync(sitemapPath)) {
+    const sitemap = await readFile(sitemapPath, "utf8");
+    const resources = [`${ORIGIN}/llms.txt`, `${ORIGIN}/llms-full.txt`]
+      .map((url) => `<url><loc>${url}</loc></url>`)
+      .join("");
+    if (!sitemap.includes(`${ORIGIN}/llms.txt`))
+      await writeFile(sitemapPath, sitemap.replace("</urlset>", `${resources}</urlset>`));
+  }
   return { status, documents, concise, full };
 }
 

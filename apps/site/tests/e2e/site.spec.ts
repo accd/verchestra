@@ -90,6 +90,17 @@ test("deep routes, roadmap links, community calls to action, and recovery resolv
     "href",
     "/verchestra/docs/community/contributing/"
   );
+  await expect(page.getByRole("link", { name: /Open the agent guide/u })).toHaveAttribute(
+    "href",
+    "/verchestra/docs/community/contributing-with-agents/"
+  );
+
+  await page.goto("docs/community/contributing-with-agents/");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Contributing with coding agents");
+  await expect(page.getByRole("link", { name: /Concise llms\.txt/u })).toHaveAttribute(
+    "href",
+    "https://accd.github.io/verchestra/llms.txt"
+  );
 
   await page.goto("404.html");
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("This delivery path does not exist.");

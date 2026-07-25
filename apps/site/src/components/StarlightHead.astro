@@ -25,10 +25,14 @@ const structuredData = {
   itemListElement: breadcrumbs
 };
 const markdownAlternate = new URL("index.html.md", Astro.url);
+const llmsUrl = new URL("llms.txt", siteUrl);
+const llmsFullUrl = new URL("llms-full.txt", siteUrl);
 ---
 
 <DefaultHead />
 <link rel="alternate" type="text/markdown" href={markdownAlternate.href} />
+<link rel="alternate" type="text/plain" title="Verchestra LLM summary" href={llmsUrl.href} />
+<link rel="alternate" type="text/plain" title="Verchestra full LLM context" href={llmsFullUrl.href} />
 <script is:inline type="application/ld+json" set:html={JSON.stringify(structuredData)} />
 <script>
   const renderMermaid = async () => {

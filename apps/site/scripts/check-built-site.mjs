@@ -118,6 +118,7 @@ for (const required of [
 
 const llms = await readFile(join(distRoot, "llms.txt"), "utf8");
 const llmsFull = await readFile(join(distRoot, "llms-full.txt"), "utf8");
+const sitemap = await readFile(join(distRoot, "sitemap-0.xml"), "utf8");
 assert.match(llms, /0\.0\.0-qualification/u);
 assert.match(llms, /T68 complete; T69 next/u);
 assert.match(llms, /inference-time documentation aid/u);
@@ -125,6 +126,8 @@ assert.ok(Buffer.byteLength(llmsFull) < 1024 * 1024);
 assert.match(llmsFull, /docs\/qualification\/t68-validation\.md/u);
 assert.match(llmsFull, /Content digest: `sha256:[0-9a-f]{64}`/u);
 assert.doesNotMatch(llmsFull, /C:\\Users\\|\/home\/[^/\s]+\//u);
+assert.match(sitemap, /https:\/\/accd\.github\.io\/verchestra\/llms\.txt/u);
+assert.match(sitemap, /https:\/\/accd\.github\.io\/verchestra\/llms-full\.txt/u);
 
 for (const file of htmlFiles) {
   const route = routeForFile(file);

@@ -26,6 +26,8 @@ const socialImageUrl = new URL(withBase("social-card.png"), Astro.site);
     <meta name="robots" content={robots} />
     <meta name="generator" content={Astro.generator} />
     <link rel="canonical" href={canonicalUrl} />
+    <link rel="alternate" type="text/plain" title="Verchestra LLM summary" href={withBase("llms.txt")} />
+    <link rel="alternate" type="text/plain" title="Verchestra full LLM context" href={withBase("llms-full.txt")} />
     <link rel="icon" type="image/png" href={withBase("favicon.png")} />
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Verchestra" />
@@ -94,6 +96,8 @@ const socialImageUrl = new URL(withBase("social-card.png"), Astro.site);
       </div>
       <nav aria-label="Footer navigation">
         <a href={withBase("docs/")}>Documentation</a>
+        <a href={withBase("docs/community/contributing-with-agents/")}>Agent guide</a>
+        <a href={withBase("llms.txt")}>LLM summary</a>
         <a href="https://github.com/accd/verchestra/discussions">Discussions</a>
         <a href="https://github.com/accd/verchestra/issues">Issues</a>
       </nav>

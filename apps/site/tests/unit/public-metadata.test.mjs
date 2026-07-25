@@ -33,13 +33,18 @@ test("publishes canonical, Open Graph, X, favicon, and structured metadata", asy
   }
   assert.match(homepage, /"@type": "SoftwareSourceCode"/u);
   assert.match(homepage, /GPL-3\.0-only/u);
+  assert.match(homepage, /llms\.txt/u);
+  assert.match(homepage, /llms-full\.txt/u);
   assert.match(starlightHead, /"@type": "BreadcrumbList"/u);
+  assert.match(starlightHead, /Verchestra LLM summary/u);
 });
 
 test("publishes production robots and a branded noindex recovery page", async () => {
   const robots = await readFile(resolve(siteRoot, "public/robots.txt"), "utf8");
   const notFound = await readFile(resolve(siteRoot, "src/pages/404.astro"), "utf8");
   assert.match(robots, /https:\/\/accd\.github\.io\/verchestra\/sitemap-index\.xml/u);
+  assert.match(robots, /https:\/\/accd\.github\.io\/verchestra\/llms\.txt/u);
+  assert.match(robots, /https:\/\/accd\.github\.io\/verchestra\/llms-full\.txt/u);
   assert.match(notFound, /robots="noindex, nofollow"/u);
   assert.match(notFound, /This delivery path does not exist\./u);
 });

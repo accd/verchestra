@@ -5,10 +5,10 @@ issue: null
 status: in_progress
 branch: agent/agent-ready-repository
 baseRevision: fd585f128d310a6f355a544deee0ae4e5e54aa4f
-lastCompletedTask: T6
-nextTask: T7
-lastGate: pnpm gate:quick
-updatedAt: 2026-07-26T00:23:00Z
+lastCompletedTask: T7
+nextTask: T8
+lastGate: pnpm site:test && pnpm gate:quick
+updatedAt: 2026-07-25T23:31:00Z
 ---
 
 # Scope
@@ -65,11 +65,19 @@ delivery plan without changing the T69–T77 product dependency chain.
   headings, status drift, and output at or above 1 MiB.
 - Site check passes 24 unit tests, Astro type checks, 119-page build, link/base
   path checks, output safety, and alternate parity; quick gate remains green.
+- Public contributing-with-agents documentation, README and governance
+  entrypoints, prompt-injection guidance, navigation, structured metadata,
+  robots disclosure, sitemap entries, and text/plain discovery links are
+  present.
+- Site verification passes 24 unit tests, a 120-page build, 45 Playwright/Axe
+  checks across Chromium, Firefox, and WebKit, and Lighthouse assertions.
+- `gate:quick` passes 1,615 unit tests and 19 agent-readiness tests.
 
 # Next Exact Action
 
-Add the public agent guide and discovery links to navigation, metadata,
-robots/sitemap, README, governance docs, and repository topics.
+Run clean-clone acceptance, all required gates, independent requirement
+verification, and the discrimination sensor, then prepare the human-review
+handoff.
 
 # Blockers
 
@@ -77,6 +85,10 @@ GitHub issue creation returned `403 Resource not accessible by integration`.
 Unblock by granting the connected GitHub integration issue-write access or
 creating the issue from an authenticated maintainer session, then record its
 number here.
+
+The available GitHub connector exposes no repository-topic write and the
+browser session is signed out. Add `agents-md`, `llms-txt`, and
+`ai-coding-agents` from an authenticated maintainer session.
 
 # Decisions
 

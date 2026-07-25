@@ -22,8 +22,8 @@ export default defineConfig({
     }
   },
   integrations: [
-    llmArtifactsIntegration(),
     sitemap(),
+    llmArtifactsIntegration(),
     starlight({
       title: "Verchestra",
       description: "Verified AI software delivery that survives the model, the machine, and the handoff.",
@@ -171,7 +171,10 @@ export default defineConfig({
         {
           label: "Community",
           collapsed: true,
-          items: [{ autogenerate: { directory: "docs/community", collapsed: true } }]
+          items: [
+            { label: "Contributing with agents", slug: "docs/community/contributing-with-agents" },
+            { autogenerate: { directory: "docs/community", collapsed: true } }
+          ]
         }
       ]
     })
