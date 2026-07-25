@@ -8,7 +8,8 @@
     "check": "astro check",
     "build": "astro build",
     "preview": "astro preview",
-    "test": "pnpm check && pnpm build"
+    "test:unit": "node --test tests/unit/*.test.mjs",
+    "test": "pnpm test:unit && pnpm check && pnpm build"
   },
   "dependencies": {
     "@astrojs/sitemap": "3.7.3",

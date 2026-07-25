@@ -24,6 +24,20 @@ export default defineConfig({
         {
           label: "Start here",
           items: [{ label: "Overview", slug: "docs" }]
+        },
+        {
+          label: "Architecture",
+          items: [{ label: "System overview", slug: "docs/architecture/system-overview" }]
+        },
+        {
+          label: "Qualification evidence",
+          collapsed: true,
+          items: [{ autogenerate: { directory: "docs/qualification", collapsed: true } }]
+        },
+        {
+          label: "Community",
+          collapsed: true,
+          items: [{ autogenerate: { directory: "docs/community", collapsed: true } }]
         }
       ]
     })
