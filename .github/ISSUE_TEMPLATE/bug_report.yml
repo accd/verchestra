@@ -27,6 +27,34 @@ body:
       label: Expected behavior
     validations:
       required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria and edge cases
+      description: What exact behavior proves the defect is fixed without weakening existing assertions?
+    validations:
+      required: true
+  - type: textarea
+    id: canonical
+    attributes:
+      label: Canonical repository references
+      description: Identify the relevant repository-relative source, schema, architecture, roadmap, or handoff.
+    validations:
+      required: true
+  - type: textarea
+    id: verification
+    attributes:
+      label: Verification commands
+      description: Name safe reproduction tests and the required repository gates.
+    validations:
+      required: true
+  - type: textarea
+    id: handoff
+    attributes:
+      label: Handoff and human review
+      description: State whether tracked handoff artifacts are needed and what evidence a human reviewer must approve.
+    validations:
+      required: true
   - type: input
     id: version
     attributes:
@@ -39,5 +67,7 @@ body:
     attributes:
       label: Safety checks
       options:
-        - label: I removed secrets, production data, and private schema details.
+        - label: I removed secrets, production data, private schema details, and machine-local paths.
+          required: true
+        - label: I assessed the safety impact and did not request gate weakening or destructive commands.
           required: true

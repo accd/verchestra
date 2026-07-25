@@ -18,6 +18,12 @@ pnpm gate:quick
 
 Use Node `24.14.0` and pnpm `10.34.5`.
 
+Coding agents follow the same evidence and review standard as human
+contributors. See [Contributing with Coding Agents](docs/contributing-with-agents.md)
+for clean-clone bootstrap, tracked specifications, portable handoffs,
+prompt-injection handling, and PR preparation. AI-authorship disclosure is
+optional.
+
 ## Website changes
 
 The public website lives in `apps/site` and deploys as static GitHub Pages output. Root repository documents remain canonical; do not copy their content into a second site-specific document.

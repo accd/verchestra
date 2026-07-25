@@ -5,10 +5,10 @@ issue: null
 status: in_progress
 branch: agent/agent-ready-repository
 baseRevision: fd585f128d310a6f355a544deee0ae4e5e54aa4f
-lastCompletedTask: T3
-nextTask: T4
+lastCompletedTask: T4
+nextTask: T5
 lastGate: pnpm gate:quick
-updatedAt: 2026-07-25T23:59:00Z
+updatedAt: 2026-07-26T00:07:00Z
 ---
 
 # Scope
@@ -37,11 +37,19 @@ delivery plan without changing the T69–T77 product dependency chain.
   handoffs, budgets, prohibited files, and unsafe tracked context.
 - `test:agent-readiness` is part of `gate:quick`: 11 readiness tests and 1,615
   unit tests passed with 0 failures.
+- Six provider-neutral feature templates cover context, requirements, design,
+  atomic tasks, portable handoff, and independent validation.
+- Agent contribution bootstrap, prompt-injection handling, canonical-source
+  edits, handoff, verification, and PR preparation are documented.
+- Both issue forms and the PR template require acceptance, canonical sources,
+  verification, safety, handoff, and human-review readiness; authorship
+  disclosure remains optional.
+- Readiness suite passes 15 tests; quick gate passes 1,615 unit tests.
 
 # Next Exact Action
 
-Add provider-neutral feature templates, the agent contribution process, and
-issue/PR acceptance, verification, safety, handoff, and human-review fields.
+Add the provider-neutral evaluation corpus, deterministic fake adapter, generic
+runner, ignored local profiles, and protected optional live matrix.
 
 # Blockers
 

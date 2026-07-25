@@ -65,7 +65,7 @@ sequential for an auditable history.
 | T1 | Complete locally; issue write blocked externally | Pending |
 | T2 | Complete | Pending |
 | T3 | Complete | Pending |
-| T4 | Planned | Pending |
+| T4 | Complete | Pending |
 | T5 | Planned | Pending |
 | T6 | Planned | Pending |
 | T7 | Planned | Pending |
