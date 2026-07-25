@@ -20,11 +20,29 @@
 - **Decision:** The site describes `0.0.0-qualification`, T68 complete, and T69 next. It must not claim a public installer, production readiness, or a 1.0 release.
 - **Rationale:** Evidence and release state take precedence over marketing language.
 
+### AD-004 — Canonical agent instructions
+
+- **Status:** active
+- **Decision:** `AGENTS.md` is the only canonical agent instruction format; scoped files refine root rules and provider compatibility files are generated import-only pointers.
+- **Rationale:** A provider-neutral hierarchy keeps a clean clone understandable without duplicated or drifting rules.
+
+### AD-005 — Durable cross-agent memory
+
+- **Status:** active
+- **Decision:** Git, tracked specifications, decisions, tasks, validation evidence, and feature handoffs are the authoritative cross-agent memory.
+- **Rationale:** Contribution and resumption must not depend on chat history, provider memory, an IDE, MCP, or an installed skill.
+
+### AD-006 — LLM-readable content projection
+
+- **Status:** active
+- **Decision:** LLM-readable repository and website output is generated only from allowlisted canonical repository content and never becomes a second source of truth.
+- **Rationale:** AI retrieval should preserve provenance, current qualification state, and the existing documentation authority boundary.
+
 ## Handoff
 
-- **Feature:** `github-pages-site`
-- **State:** Independently verified; protected-main publication pending
-- **Branch:** `agent/verchestra-github-pages`
-- **Completed:** T1–T8, including local content, browser, accessibility, performance, and deployment-workflow gates.
-- **Verification:** PASS at `7d0b635`; 12/12 WEB requirements matched and 1/1 discrimination mutation killed.
-- **Next:** Publish through protected `main` and verify the production deployment.
+- **Feature:** `agent-ready-repository`
+- **State:** T1 in progress; GitHub issue write blocked by integration permissions
+- **Branch:** `agent/agent-ready-repository`
+- **Completed:** The GitHub Pages feature is complete on protected `main`; its stale publication-pending handoff is retired. The agent-ready specification, design, tasks, and portable handoff are being established.
+- **Verification:** T68 remains complete, T69 remains next, and this feature is independent of T69–T77.
+- **Next:** Complete T1 status checks and proceed to root/scoped instructions.
