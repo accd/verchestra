@@ -23,6 +23,7 @@
 ## Handoff
 
 - **Feature:** `github-pages-site`
-- **State:** Execute task T1
+- **State:** Implementation complete; independent verification required
 - **Branch:** `agent/verchestra-github-pages`
-- **Next:** Establish the Astro and Starlight foundation.
+- **Completed:** T1–T8, including local content, browser, accessibility, performance, and deployment-workflow gates.
+- **Next:** Run a fresh independent verifier, publish through protected `main`, and verify the production deployment.

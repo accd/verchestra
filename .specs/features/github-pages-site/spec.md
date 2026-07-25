@@ -34,18 +34,18 @@ Verchestra has a strong public repository but no product website or browsable do
 
 | ID     | Requirement                                                                            | Status       |
 | ------ | -------------------------------------------------------------------------------------- | ------------ |
-| WEB-01 | The static site works from the `/verchestra/` base path.                               | Implementing |
-| WEB-02 | The first viewport explains the product, status, and purpose.                          | Pending      |
-| WEB-03 | Product documentation is searchable and keyboard accessible.                           | Pending      |
-| WEB-04 | Root repository documentation remains canonical and is not manually duplicated.        | Pending      |
-| WEB-05 | Drivers and databases are accurate, with SAP ASE/Sybase first-class.                   | Pending      |
-| WEB-06 | Discovery through human review is explained.                                           | Pending      |
-| WEB-07 | Implemented, qualification, and roadmap states are visually distinct.                  | Pending      |
-| WEB-08 | Page templates satisfy WCAG 2.2 AA expectations and responsive behavior.               | Pending      |
-| WEB-09 | Controlled Lighthouse scores are Performance ≥95 and all other categories 100.         | Pending      |
-| WEB-10 | The website has no tracking, forms, authentication, secrets, or runtime API calls.     | Pending      |
-| WEB-11 | Only a verified `main` artifact deploys to GitHub Pages.                               | Pending      |
-| WEB-12 | Clean-clone site development, checks, tests, and builds are documented and executable. | Pending      |
+| WEB-01 | The static site works from the `/verchestra/` base path.                               | Implemented |
+| WEB-02 | The first viewport explains the product, status, and purpose.                          | Implemented |
+| WEB-03 | Product documentation is searchable and keyboard accessible.                          | Implemented |
+| WEB-04 | Root repository documentation remains canonical and is not manually duplicated.       | Implemented |
+| WEB-05 | Drivers and databases are accurate, with SAP ASE/Sybase first-class.                   | Implemented |
+| WEB-06 | Discovery through human review is explained.                                          | Implemented |
+| WEB-07 | Implemented, qualification, and roadmap states are visually distinct.                  | Implemented |
+| WEB-08 | Page templates satisfy WCAG 2.2 AA expectations and responsive behavior.               | Implemented |
+| WEB-09 | Controlled Lighthouse scores are Performance ≥95 and all other categories 100.         | Implemented |
+| WEB-10 | The website has no tracking, forms, authentication, secrets, or runtime API calls.     | Implemented |
+| WEB-11 | Only a verified `main` artifact deploys to GitHub Pages.                               | Implemented |
+| WEB-12 | Clean-clone site development, checks, tests, and builds are documented and executable. | Implemented |
 
 ## Acceptance Criteria
 

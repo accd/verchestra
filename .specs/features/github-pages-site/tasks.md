@@ -42,3 +42,16 @@
 - Tests assert specification outcomes rather than implementation shape.
 - No skipped tests or weakened assertions.
 - An independent verifier runs after T8.
+
+## Execution Evidence
+
+| Task | Status   | Commit    |
+| ---- | -------- | --------- |
+| T1   | Complete | `db39d2a` |
+| T2   | Complete | `0d7e2cf` |
+| T3   | Complete | `4f57e55` |
+| T4   | Complete | `aa861f7` |
+| T5   | Complete | `e6d5a5b` |
+| T6   | Complete | `115abca` |
+| T7   | Complete | `2f4109c` |
+| T8   | Complete | Recorded by the public handoff commit |
