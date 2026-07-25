@@ -2,8 +2,8 @@
 
 **Date**: 2026-07-25  
 **Spec**: `.specs/features/github-pages-site/spec.md`  
-**Diff range**: `4121c14..7d0b635`  
-**Verified SHA**: `7d0b635b8f98aad46d7c9c4c31607b90f7f842de`  
+**Diff range**: `4121c14..54d259a`
+**Verified SHA**: `54d259a71c9f10d07efd819b779fd11c52f41b4b`
 **Verifier**: `/root/site_verdict`, independent sub-agent (author != verifier)
 
 ---
@@ -26,7 +26,7 @@ The live GitHub Pages URL and required-check results remain operational post-mer
 | T6 | PASS | `115abca` — browser, Axe, Lighthouse, and content qualification |
 | T7 | PASS | `2f4109c` — verified Pages artifact workflow |
 | T8 | PASS | `7e36096` — public handoff and clean-clone documentation |
-| Portability fixes | PASS | `44c3218`, `7d0b635` — line endings and bounded Windows Lighthouse cleanup retry |
+| Portability fixes | PASS | `44c3218`, `7d0b635`, `54d259a` — line endings, bounded Windows Lighthouse cleanup retry, and platform-neutral content-watcher tests |
 
 ## Spec-Anchored Requirement Evidence
 
@@ -43,7 +43,7 @@ The live GitHub Pages URL and required-check results remain operational post-mer
 | WEB-09 | Controlled Lighthouse reaches Performance >=95 and 100 for Accessibility, Best Practices, and SEO while meeting budgets. | Recorded qualification: Lighthouse `100/100/100/100`; `apps/site/lighthouserc.cjs` defines the controlled assertions; `apps/site/scripts/check-built-site.mjs:136-137` enforces compressed JavaScript below 75 KB and landing transfer below 500 KB. | PASS |
 | WEB-10 | No analytics, tracking, forms, authentication, secrets, or runtime API calls enter the static site. | `apps/site/tests/e2e/site.spec.ts:135-143` asserts zero external font/analytics/runtime requests; `apps/site/scripts/check-built-site.mjs:68,94,117-118` rejects machine paths, private keys/tokens, install claims, and production-ready claims in output. | PASS |
 | WEB-11 | Deployment uses only the exact verified artifact from protected `main`, after both checks. | `apps/site/tests/unit/pages-workflow.test.mjs:7-14` asserts both gates, exact `apps/site/dist`, main-only upload, and deploy dependencies; `17-31` asserts immutable action SHAs, least privilege, concurrency, and the protected Pages environment. | PASS |
-| WEB-12 | A clean clone supports documented development, checks, tests, and production builds through pnpm. | Independent clean-clone evidence at this SHA: frozen install, `pnpm gate:quick`, `pnpm site:test`, and `pnpm site:build` all passed; root `package.json:39-44`, `README.md:73-96`, and `CONTRIBUTING.md:15-32` expose and document the commands. | PASS |
+| WEB-12 | A clean clone supports documented development, checks, tests, and production builds through pnpm. | Independent clean-clone evidence at implementation SHA `7d0b635`: frozen install, `pnpm gate:quick`, `pnpm site:test`, and `pnpm site:build` all passed. Commit `54d259a` changes only test fixture paths; its targeted 7-test suite passes with native `node:path` resolution. Root `package.json:39-44`, `README.md:73-96`, and `CONTRIBUTING.md:15-32` expose and document the commands. | PASS |
 
 **Spec-anchored status**: 12/12 requirements matched specified outcomes; no spec-precision gap found.
 
@@ -56,11 +56,35 @@ The live GitHub Pages URL and required-check results remain operational post-mer
 | Clean-clone `pnpm site:test` | PASS |
 | Clean-clone `pnpm site:build` | PASS |
 | Site unit suite, independently rerun | 19 passed, 0 failed, 0 skipped |
+| Platform-neutral repository-content suite at `54d259a` | 7 passed, 0 failed, 0 skipped |
 | Playwright qualification | 45 passed across Chromium, Firefox, and WebKit |
 | Lighthouse | 100 Performance, 100 Accessibility, 100 Best Practices, 100 SEO |
 | Static output | 119 pages; built-output integrity check passed |
 
 No test reduction or weakened assertion was identified in the feature diff.
+
+## Linux CI Portability Repair
+
+Commit `54d259a` changes only
+`apps/site/tests/unit/repository-content.test.mjs`. It replaces hard-coded Windows
+fixture roots and backslash-separated paths with `node:path` `resolve()` calls and
+portable path fragments.
+
+The repair preserves the original assertions:
+
+- an input escaping the fixture root still throws `outside repository`;
+- `ROADMAP.md` and `docs/qualification/t68-validation.md` remain allowlisted; and
+- generated Astro content and unrelated package source remain excluded.
+
+Independent targeted command:
+
+```text
+node --test apps/site/tests/unit/repository-content.test.mjs
+```
+
+Result at `54d259a`: **7 passed, 0 failed, 0 skipped**. The diff introduces no
+implementation behavior change and removes the Linux CI false failure caused by
+Windows-only test path literals.
 
 ## Discrimination Sensor
 
@@ -139,7 +163,7 @@ These checks validate external GitHub state; they do not require a repository co
 **Overall**: PASS — implementation ready for protected-main publication.
 
 **Spec-anchored check**: 12/12 WEB requirements matched.  
-**Gate**: clean-clone gate and build passed; 19 unit, 45 browser, and Lighthouse qualification passed.  
+**Gate**: clean-clone gate and build passed at the implementation baseline; the `54d259a` portability suite passed 7/7; 19 unit, 45 browser, and Lighthouse qualification evidence remains valid.
 **Sensor**: 1/1 targeted mutation killed.  
 **Blocking findings**: none.  
 **Advisory**: decide whether to adopt a repository-owned dependency release-age policy before the eventual 1.0 release.
