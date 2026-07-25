@@ -1,6 +1,8 @@
 packages:
   - apps/*
   - packages/*
+overrides:
+  fast-uri: 3.1.4
 allowBuilds:
   "@google/genai": false
   esbuild: true
