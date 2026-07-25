@@ -2,8 +2,8 @@
 
 **Date**: 2026-07-25  
 **Spec**: `.specs/features/github-pages-site/spec.md`  
-**Diff range**: `4121c14..54d259a`
-**Verified SHA**: `54d259a71c9f10d07efd819b779fd11c52f41b4b`
+**Diff range**: `4121c14..b7464c3`
+**Verified SHA**: `b7464c3d7e62df0566d56db23c808bc57ccc2581`
 **Verifier**: `/root/site_verdict`, independent sub-agent (author != verifier)
 
 ---
@@ -26,7 +26,7 @@ The live GitHub Pages URL and required-check results remain operational post-mer
 | T6 | PASS | `115abca` — browser, Axe, Lighthouse, and content qualification |
 | T7 | PASS | `2f4109c` — verified Pages artifact workflow |
 | T8 | PASS | `7e36096` — public handoff and clean-clone documentation |
-| Portability fixes | PASS | `44c3218`, `7d0b635`, `54d259a` — line endings, bounded Windows Lighthouse cleanup retry, and platform-neutral content-watcher tests |
+| Portability fixes | PASS | `44c3218`, `7d0b635`, `54d259a`, `b7464c3` — line endings, bounded Windows Lighthouse cleanup retry, platform-neutral tests, and safe synthetic Astro paths for canonical repository content |
 
 ## Spec-Anchored Requirement Evidence
 
@@ -35,7 +35,7 @@ The live GitHub Pages URL and required-check results remain operational post-mer
 | WEB-01 | Every route, asset, canonical URL, and internal link works below `/verchestra/`. | `apps/site/scripts/check-built-site.mjs:8,34-42,64,85,95` asserts the base, canonical URLs, and link containment; `apps/site/tests/e2e/site.spec.ts:33,75-96` asserts base-safe links, deep routes, and 404 recovery. | PASS |
 | WEB-02 | First viewport shows the approved headline, definition, qualification version, T68/T69 state, and no installation claim. | `apps/site/tests/unit/product-contract.test.mjs:13-24` asserts the exact headline, definition, version, completed/next task, and `installable: false`; `apps/site/tests/e2e/site.spec.ts:23-32` asserts the rendered contract. | PASS |
 | WEB-03 | Documentation is searchable and keyboard-accessible with visible focus. | `apps/site/tests/e2e/site.spec.ts:57-72` asserts skip-link focus, keyboard activation of search, and a searchable SAP ASE result; `apps/site/tests/unit/documentation-contract.test.mjs:54-61` asserts searchable metadata for every declared guide. | PASS |
-| WEB-04 | Canonical root documents are projected, not manually copied. | `apps/site/tests/unit/documentation-contract.test.mjs:63-67` rejects canonical-document copies in site content; `apps/site/tests/unit/repository-content.test.mjs:46-55,58-72` asserts path containment, allowlisting, and canonical-link projection. | PASS |
+| WEB-04 | Canonical root documents are projected, not manually copied. | `apps/site/tests/unit/documentation-contract.test.mjs:63-67` rejects canonical-document copies in site content; `apps/site/tests/unit/repository-content.test.mjs:46-66,69-83` asserts path containment, allowlisting, safe synthetic Astro paths, and canonical-link projection. `apps/site/src/lib/repository-docs-loader.ts:42-43,65` still reads the allowlisted repository source and uses the synthetic path only as Astro metadata. | PASS |
 | WEB-05 | Claude Code, Codex, OpenCode/Qwen and all databases are accurate, with SAP ASE/Sybase first. | `apps/site/tests/unit/product-contract.test.mjs:34-45` asserts the exact driver/database sets and ordering; `apps/site/tests/unit/documentation-contract.test.mjs:68-73` asserts SAP ASE precedes PostgreSQL in the matrix; `apps/site/tests/e2e/site.spec.ts:31-32` asserts the public rendering. | PASS |
 | WEB-06 | The public surface explains request/discovery through evidence and human review, including portable handoff. | `apps/site/tests/unit/product-contract.test.mjs:27-32` asserts the complete exact delivery sequence; `apps/site/src/content/docs/docs/workflows/cross-environment-handoff.md:6-18` and `feature-delivery.md:6-15` describe the portable execution contract and review flow. | PASS |
 | WEB-07 | Implemented evidence, current qualification, and future roadmap work are distinct and truthful. | `apps/site/tests/unit/repository-content.test.mjs:18-28` asserts version `0.0.0-qualification`, T68 complete, T69 next, and 68 reports; `apps/site/scripts/check-built-site.mjs:114-118` asserts those rendered claims and rejects install/production-ready claims. | PASS |
@@ -55,8 +55,9 @@ The live GitHub Pages URL and required-check results remain operational post-mer
 | Clean-clone `pnpm gate:quick` | PASS |
 | Clean-clone `pnpm site:test` | PASS |
 | Clean-clone `pnpm site:build` | PASS |
-| Site unit suite, independently rerun | 19 passed, 0 failed, 0 skipped |
+| Site unit suite, independently rerun at `b7464c3` | 20 passed, 0 failed, 0 skipped |
 | Platform-neutral repository-content suite at `54d259a` | 7 passed, 0 failed, 0 skipped |
+| `pnpm site:check` at `b7464c3` | PASS: 20 unit tests; Astro 0 errors/0 warnings/0 hints; 119-page static build; links and metadata valid |
 | Playwright qualification | 45 passed across Chromium, Firefox, and WebKit |
 | Lighthouse | 100 Performance, 100 Accessibility, 100 Best Practices, 100 SEO |
 | Static output | 119 pages; built-output integrity check passed |
@@ -85,6 +86,41 @@ node --test apps/site/tests/unit/repository-content.test.mjs
 Result at `54d259a`: **7 passed, 0 failed, 0 skipped**. The diff introduces no
 implementation behavior change and removes the Linux CI false failure caused by
 Windows-only test path literals.
+
+## Ubuntu Astro Canonical-Path Repair
+
+Commit `b7464c3` repairs the Ubuntu CI rejection of absolute canonical
+repository paths passed to Astro/Starlight as entry `filePath` metadata.
+
+The loader now deliberately separates two identities:
+
+- `sourceFilePath`, resolved and contained under the repository root, remains the
+  only path used by `readFile()` for canonical Markdown; and
+- `canonicalContentFilePath(source.route)` supplies a deterministic, site-root-relative
+  synthetic metadata path such as
+  `src/content/docs/docs/qualification/t68-validation.md`.
+
+The synthetic-path constructor accepts only lowercase alphanumeric route segments
+separated by `/` or `-`. It rejects traversal and absolute-path material such as
+`../credentials`, so machine paths and credentials cannot be projected through this
+metadata field. The canonical watcher is unchanged and continues to reload only the
+allowlisted repository documents and `docs/qualification/tNN-validation.md` reports.
+
+Independent evidence at `b7464c3`:
+
+```text
+pnpm --filter @verchestra/site test:unit
+20 passed, 0 failed, 0 skipped
+
+pnpm site:check
+Astro: 0 errors, 0 warnings, 0 hints
+Build: 119 pages
+Built integrity: internal links valid, metadata valid
+```
+
+The fix therefore changes Astro's portable metadata identity without changing the
+canonical content source of truth, route identity, rendered body, digest input, or
+watcher authority.
 
 ## Discrimination Sensor
 
@@ -163,7 +199,7 @@ These checks validate external GitHub state; they do not require a repository co
 **Overall**: PASS — implementation ready for protected-main publication.
 
 **Spec-anchored check**: 12/12 WEB requirements matched.  
-**Gate**: clean-clone gate and build passed at the implementation baseline; the `54d259a` portability suite passed 7/7; 19 unit, 45 browser, and Lighthouse qualification evidence remains valid.
+**Gate**: clean-clone gate and build passed at the implementation baseline; at `b7464c3`, 20/20 unit tests and `pnpm site:check` passed with 119 pages and zero Astro diagnostics; 45 browser and Lighthouse qualification evidence remains valid.
 **Sensor**: 1/1 targeted mutation killed.  
 **Blocking findings**: none.  
 **Advisory**: decide whether to adopt a repository-owned dependency release-age policy before the eventual 1.0 release.
