@@ -5,10 +5,10 @@ issue: null
 status: in_progress
 branch: agent/agent-ready-repository
 baseRevision: fd585f128d310a6f355a544deee0ae4e5e54aa4f
-lastCompletedTask: T5
-nextTask: T6
+lastCompletedTask: T6
+nextTask: T7
 lastGate: pnpm gate:quick
-updatedAt: 2026-07-26T00:15:00Z
+updatedAt: 2026-07-26T00:23:00Z
 ---
 
 # Scope
@@ -55,11 +55,21 @@ delivery plan without changing the T69–T77 product dependency chain.
 - Protected-main optional workflow has read-only permissions, no persisted
   checkout credential, sanitized summaries, and 14-day retention.
 - Readiness suite passes 19 tests; quick gate passes 1,615 unit tests.
+- Root `llms.txt` exactly matches the concise compiler projection.
+- Site build emits `/verchestra/llms.txt`, a 520,347-byte attributed
+  `llms-full.txt`, and 116 `index.html.md` alternates.
+- Full context includes allowlisted project docs, instructions, active feature
+  state, site guides/integrations, and contiguous T01–T68 evidence with stable
+  ordering and SHA-256 content digests.
+- Compiler mutation checks reject duplicate routes, unsafe paths, malformed
+  headings, status drift, and output at or above 1 MiB.
+- Site check passes 24 unit tests, Astro type checks, 119-page build, link/base
+  path checks, output safety, and alternate parity; quick gate remains green.
 
 # Next Exact Action
 
-Add the root and site LLM text resources, deterministic full-context compiler,
-and Markdown alternates for every public documentation page.
+Add the public agent guide and discovery links to navigation, metadata,
+robots/sitemap, README, governance docs, and repository topics.
 
 # Blockers
 

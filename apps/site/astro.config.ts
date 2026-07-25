@@ -1,6 +1,7 @@
 import sitemap from "@astrojs/sitemap";
 import starlight from "@astrojs/starlight";
 import { defineConfig } from "astro/config";
+import { llmArtifactsIntegration } from "./src/lib/llm-content.ts";
 
 const qualificationEvidenceItems = Array.from({ length: 68 }, (_, index) => {
   const task = String(index + 1).padStart(2, "0");
@@ -21,6 +22,7 @@ export default defineConfig({
     }
   },
   integrations: [
+    llmArtifactsIntegration(),
     sitemap(),
     starlight({
       title: "Verchestra",

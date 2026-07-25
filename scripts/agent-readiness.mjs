@@ -232,7 +232,14 @@ function unsafeValue(source) {
 
 export async function checkRepository(root = ROOT) {
   const errors = [];
-  for (const path of [...REQUIRED_READS, ...SCOPED_INSTRUCTIONS, "CLAUDE.md", "GEMINI.md", "package.json"]) {
+  for (const path of [
+    ...REQUIRED_READS,
+    ...SCOPED_INSTRUCTIONS,
+    "CLAUDE.md",
+    "GEMINI.md",
+    "llms.txt",
+    "package.json"
+  ]) {
     if (!existsSync(join(root, path))) errors.push(`missing required path: ${path}`);
   }
   if (existsSync(join(root, "CLAUDE.md")) && (await readFile(join(root, "CLAUDE.md"), "utf8")) !== "@AGENTS.md\n")
@@ -306,6 +313,11 @@ export async function checkRepository(root = ROOT) {
     if (!existsSync(join(root, path))) continue;
     const source = await readFile(join(root, path), "utf8");
     if (!/T68/u.test(source) || !/T69/u.test(source)) errors.push(`${path}: missing T68/T69 status`);
+  }
+  if (existsSync(join(root, "llms.txt"))) {
+    const llms = await readFile(join(root, "llms.txt"), "utf8");
+    if (!llms.includes(context.version) || !/T68 complete; T69 next/u.test(llms))
+      errors.push("llms.txt disagrees with repository status");
   }
 
   const handoffDirectory = join(root, ".specs", "features");

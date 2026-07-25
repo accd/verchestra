@@ -24,9 +24,11 @@ const structuredData = {
   "@type": "BreadcrumbList",
   itemListElement: breadcrumbs
 };
+const markdownAlternate = new URL("index.html.md", Astro.url);
 ---
 
 <DefaultHead />
+<link rel="alternate" type="text/markdown" href={markdownAlternate.href} />
 <script is:inline type="application/ld+json" set:html={JSON.stringify(structuredData)} />
 <script>
   const renderMermaid = async () => {

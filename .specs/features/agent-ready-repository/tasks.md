@@ -67,6 +67,6 @@ sequential for an auditable history.
 | T3 | Complete | Pending |
 | T4 | Complete | Pending |
 | T5 | Complete | Pending |
-| T6 | Planned | Pending |
+| T6 | Complete | Pending |
 | T7 | Planned | Pending |
 | T8 | Planned | Pending |

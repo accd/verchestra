@@ -64,6 +64,10 @@ for (const file of htmlFiles) {
   assert.ok(canonical?.startsWith(`${productionOrigin}${basePath}`), `${route} has an invalid canonical URL`);
   assert.match(html, /<meta property="og:image" content="https:\/\/accd\.github\.io\/verchestra\/social-card\.png"/u);
   assert.match(html, /<meta name="twitter:(?:card|image)"/u);
+  if (route === `${basePath}roadmap/` || route.startsWith(`${basePath}docs/`)) {
+    const alternate = html.match(/<link rel="alternate" type="text\/markdown" href="([^"]+)"/u)?.[1];
+    assert.equal(alternate, `${productionOrigin}${route}index.html.md`, `${route} has an invalid Markdown alternate`);
+  }
 
   if (/C:\\Users\\|BEGIN (?:RSA |OPENSSH )?PRIVATE KEY|ghp_[A-Za-z0-9]{20,}|sk-[A-Za-z0-9]{20,}/u.test(html)) {
     unsafeOutput.push(route);
@@ -105,9 +109,31 @@ for (const required of [
   "docs/qualification/t68-validation/index.html",
   "robots.txt",
   "sitemap-index.xml",
-  "pagefind/pagefind.js"
+  "pagefind/pagefind.js",
+  "llms.txt",
+  "llms-full.txt"
 ]) {
   assert.ok(outputPaths.has(required), `Missing required output: ${required}`);
+}
+
+const llms = await readFile(join(distRoot, "llms.txt"), "utf8");
+const llmsFull = await readFile(join(distRoot, "llms-full.txt"), "utf8");
+assert.match(llms, /0\.0\.0-qualification/u);
+assert.match(llms, /T68 complete; T69 next/u);
+assert.match(llms, /inference-time documentation aid/u);
+assert.ok(Buffer.byteLength(llmsFull) < 1024 * 1024);
+assert.match(llmsFull, /docs\/qualification\/t68-validation\.md/u);
+assert.match(llmsFull, /Content digest: `sha256:[0-9a-f]{64}`/u);
+assert.doesNotMatch(llmsFull, /C:\\Users\\|\/home\/[^/\s]+\//u);
+
+for (const file of htmlFiles) {
+  const route = routeForFile(file);
+  if (route === `${basePath}roadmap/` || route.startsWith(`${basePath}docs/`)) {
+    const alternatePath = `${relative(distRoot, file)
+      .replaceAll("\\", "/")
+      .replace(/index\.html$/u, "")}index.html.md`;
+    assert.ok(outputPaths.has(alternatePath), `Missing Markdown alternate: ${alternatePath}`);
+  }
 }
 
 const homepage = await readFile(join(distRoot, "index.html"), "utf8");
