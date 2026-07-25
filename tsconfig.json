@@ -16,5 +16,6 @@
     "noPropertyAccessFromIndexSignature": true,
     "skipLibCheck": false
   },
-  "include": ["apps/*/src/**/*.ts", "packages/*/src/**/*.ts"]
+  "include": ["apps/*/src/**/*.ts", "packages/*/src/**/*.ts"],
+  "exclude": ["apps/site/**"]
 }
