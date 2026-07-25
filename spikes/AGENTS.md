@@ -12,6 +12,6 @@ Apply the root `AGENTS.md` first.
 - Fail closed on missing capability, authority, integrity, or cleanup.
 - Tests must cover expected behavior and discriminating failure modes without
   network or provider requirements in mandatory gates.
-- Run the matching `pnpm qualify:*` command and `pnpm test:qualification`; add
-  security or fault gates when the spike crosses those boundaries.
-
+- Run the matching declared qualification command and
+  `pnpm test:qualification`; add security or fault gates when the spike crosses
+  those boundaries.

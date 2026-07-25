@@ -18,4 +18,3 @@ Apply the root `AGENTS.md` first.
   built output with `check-built-site.mjs`, and performance with Lighthouse.
 - Run `pnpm site:check`, `pnpm site:test`, and `pnpm site:build`; run browser and
   Lighthouse gates when page behavior or presentation changes.
-

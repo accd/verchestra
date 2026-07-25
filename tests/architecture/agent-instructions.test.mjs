@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 
-const root = new URL("../..", import.meta.url);
 const scoped = [
   "packages/AGENTS.md",
   "apps/site/AGENTS.md",
@@ -50,4 +49,3 @@ test("repository map covers the approved workspace packages", async () => {
   const { EXPECTED_PACKAGES } = await import("../../scripts/architecture.mjs");
   for (const path of [...EXPECTED_PACKAGES, "apps/site"]) assert.match(map, new RegExp(`\\x60${path}\\x60`, "u"), path);
 });
-

@@ -5,10 +5,10 @@ issue: null
 status: in_progress
 branch: agent/agent-ready-repository
 baseRevision: fd585f128d310a6f355a544deee0ae4e5e54aa4f
-lastCompletedTask: T2
-nextTask: T3
-lastGate: node --test tests/architecture/agent-instructions.test.mjs
-updatedAt: 2026-07-25T23:02:00Z
+lastCompletedTask: T3
+nextTask: T4
+lastGate: pnpm gate:quick
+updatedAt: 2026-07-25T23:59:00Z
 ---
 
 # Scope
@@ -29,11 +29,19 @@ delivery plan without changing the T69–T77 product dependency chain.
 - Claude and Gemini compatibility pointers match their exact import-only bytes.
 - Repository map covers all 17 workspace packages.
 - Instruction contract passed: 4 tests, 0 failures.
+- Dependency-free context compiler emits schema version 1 and safe
+  repository-relative JSON before installation.
+- Handoff parser validates frontmatter, blocked requirements, path
+  normalization, and allowed transitions.
+- `agent:check` validates instructions, pointers, commands, status, links,
+  handoffs, budgets, prohibited files, and unsafe tracked context.
+- `test:agent-readiness` is part of `gate:quick`: 11 readiness tests and 1,615
+  unit tests passed with 0 failures.
 
 # Next Exact Action
 
-Implement dependency-free `agent:context`, handoff parsing, `agent:check`, and
-the readiness suite, then add it to `gate:quick`.
+Add provider-neutral feature templates, the agent contribution process, and
+issue/PR acceptance, verification, safety, handoff, and human-review fields.
 
 # Blockers
 

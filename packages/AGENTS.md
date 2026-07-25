@@ -14,4 +14,3 @@ Apply the root `AGENTS.md` first.
   security tests for authority/data handling, and fault tests for recovery.
 - Run the smallest matching test scope, `pnpm test:architecture` for dependency
   changes, and then `pnpm gate:quick`.
-

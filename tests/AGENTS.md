@@ -14,6 +14,5 @@ Apply the root `AGENTS.md` first.
   and restore all state.
 - Never delete, skip, loosen, or replace a failing assertion to make a gate
   pass.
-- Use `scripts/test-scope.mjs` through the declared `pnpm test:*` commands, then
+- Use `scripts/test-scope.mjs` through the matching declared test command, then
   run `pnpm gate:quick`.
-

@@ -2,7 +2,7 @@ import { spawnSync } from "node:child_process";
 import { dirname, join } from "node:path";
 
 const stages = {
-  quick: ["format:check", "lint", "typecheck", "test:unit"],
+  quick: ["format:check", "lint", "typecheck", "test:unit", "test:agent-readiness"],
   full: [
     "format:check",
     "lint",
