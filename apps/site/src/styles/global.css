@@ -1,5 +1,19 @@
-@import "@fontsource-variable/manrope";
-@import "@fontsource-variable/jetbrains-mono";
+@font-face {
+  font-family: "Manrope Variable";
+  font-style: normal;
+  font-display: optional;
+  font-weight: 200 800;
+  src: url("@fontsource-variable/manrope/files/manrope-latin-wght-normal.woff2") format("woff2-variations");
+}
+
+@font-face {
+  font-family: "JetBrains Mono Variable";
+  font-style: normal;
+  font-display: optional;
+  font-weight: 100 800;
+  src: url("@fontsource-variable/jetbrains-mono/files/jetbrains-mono-latin-wght-normal.woff2")
+    format("woff2-variations");
+}
 
 :root {
   --sl-font: "Manrope Variable", system-ui, sans-serif;
@@ -106,6 +120,7 @@ body.product-shell {
 
 .wordmark {
   display: inline-flex;
+  min-height: 2.75rem;
   align-items: center;
   gap: 0.75rem;
   color: var(--text);
@@ -180,6 +195,11 @@ body.product-shell {
 
 .site-nav a,
 .site-footer nav a {
+  display: inline-flex;
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+  align-items: center;
+  justify-content: center;
   color: var(--muted);
   font-size: 0.88rem;
   font-weight: 600;
@@ -309,6 +329,9 @@ body.product-shell {
 }
 
 .text-link {
+  display: inline-flex;
+  min-height: 2.75rem;
+  align-items: center;
   color: var(--text);
   font-size: 0.9rem;
   font-weight: 700;
@@ -859,6 +882,20 @@ body.product-shell {
   min-height: 6.5rem;
   color: var(--muted);
   line-height: 1.65;
+}
+
+.mermaid-diagram {
+  display: grid;
+  min-height: 18rem;
+  margin-block: 1.5rem;
+  place-items: center;
+  overflow-x: auto;
+}
+
+.mermaid-diagram svg {
+  width: 100%;
+  max-width: 64rem;
+  height: auto;
 }
 
 .not-found-page {

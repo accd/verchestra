@@ -4,14 +4,16 @@ import "../styles/global.css";
 interface Props {
   title: string;
   description: string;
+  canonicalPath?: string;
   robots?: string;
+  search?: boolean;
   structuredData?: Record<string, unknown> | Record<string, unknown>[];
 }
 
-const { title, description, robots = "index, follow", structuredData } = Astro.props;
+const { title, description, canonicalPath, robots = "index, follow", search = true, structuredData } = Astro.props;
 const base = import.meta.env.BASE_URL;
 const withBase = (path: string) => `${base}${path.replace(/^\/+/, "")}`;
-const canonicalUrl = new URL(Astro.url.pathname, Astro.site);
+const canonicalUrl = new URL(canonicalPath ?? Astro.url.pathname, Astro.site);
 const socialImageUrl = new URL(withBase("social-card.png"), Astro.site);
 ---
 
@@ -52,8 +54,8 @@ const socialImageUrl = new URL(withBase("social-card.png"), Astro.site);
       })();
     </script>
   </head>
-  <body class="product-shell">
-    <a class="skip-link" href="#main-content">Skip to content</a>
+  <body class="product-shell" data-pagefind-ignore={search ? undefined : ""}>
+    <a class="skip-link" href="#main-content" tabindex="0">Skip to content</a>
     <header class="site-header">
       <div class="site-header__inner">
         <a class="wordmark" href={withBase("")} aria-label="Verchestra home">

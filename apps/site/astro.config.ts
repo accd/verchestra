@@ -11,7 +11,15 @@ export default defineConfig({
   site: "https://accd.github.io",
   base: "/verchestra",
   output: "static",
+  build: {
+    inlineStylesheets: "always"
+  },
   trailingSlash: "always",
+  vite: {
+    build: {
+      chunkSizeWarningLimit: 700
+    }
+  },
   integrations: [
     sitemap(),
     starlight({

@@ -40,6 +40,7 @@
     "site:check": "pnpm --filter @verchestra/site check",
     "site:build": "pnpm --filter @verchestra/site build",
     "site:test": "pnpm --filter @verchestra/site test",
+    "site:test:e2e": "pnpm --filter @verchestra/site test:e2e",
     "site:preview": "pnpm --filter @verchestra/site preview"
   },
   "devDependencies": {

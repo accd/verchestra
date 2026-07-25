@@ -10,6 +10,7 @@ import {
   extractDescription,
   extractTitle,
   isCanonicalSourcePath,
+  rewriteCanonicalLinks,
   resolveRepositoryPath,
   validateUniqueRoutes
 } from "../../src/lib/repository-content.ts";
@@ -49,12 +50,26 @@ test("rejects repository sources that escape the repository root", () => {
 test("reloads content only for allowlisted canonical sources", () => {
   const root = "C:\\repo\\verchestra";
   assert.equal(isCanonicalSourcePath(root, "C:\\repo\\verchestra\\ROADMAP.md"), true);
-  assert.equal(
-    isCanonicalSourcePath(root, "C:\\repo\\verchestra\\docs\\qualification\\t68-validation.md"),
-    true
-  );
+  assert.equal(isCanonicalSourcePath(root, "C:\\repo\\verchestra\\docs\\qualification\\t68-validation.md"), true);
   assert.equal(isCanonicalSourcePath(root, "C:\\repo\\verchestra\\apps\\site\\.astro\\content.json"), false);
   assert.equal(isCanonicalSourcePath(root, "C:\\repo\\verchestra\\packages\\domain\\src\\index.ts"), false);
+});
+
+test("rewrites canonical repository links to public routes or auditable source files", () => {
+  const sources = [
+    { sourcePath: "CONTRIBUTING.md", route: "docs/community/contributing" },
+    { sourcePath: "CODE_OF_CONDUCT.md", route: "docs/community/code-of-conduct" }
+  ];
+  const rewritten = rewriteCanonicalLinks(
+    "Read [conduct](CODE_OF_CONDUCT.md) and [license](LICENSE).",
+    sources[0],
+    sources,
+    "/verchestra"
+  );
+  assert.equal(
+    rewritten,
+    "Read [conduct](/verchestra/docs/community/code-of-conduct/) and [license](https://github.com/accd/verchestra/blob/main/LICENSE)."
+  );
 });
 
 test("rejects duplicate public routes", () => {

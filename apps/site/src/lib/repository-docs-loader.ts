@@ -11,6 +11,7 @@ import {
   isCanonicalSourcePath,
   repositoryContentSources,
   resolveRepositoryPath,
+  rewriteCanonicalLinks,
   validateUniqueRoutes,
   type RepositoryContentSource
 } from "./repository-content.ts";
@@ -39,9 +40,10 @@ async function loadCanonicalEntries(context: LoaderContext, repositoryRoot: URL)
 
   for (const source of sources) {
     const filePath = resolveRepositoryPath(repositoryRoot, source.sourcePath);
-    const markdown = await readFile(filePath, "utf8");
-    const title = source.title ?? extractTitle(markdown);
-    const description = source.description ?? extractDescription(markdown);
+    const originalMarkdown = await readFile(filePath, "utf8");
+    const markdown = rewriteCanonicalLinks(originalMarkdown, source, sources, context.config.base);
+    const title = source.title ?? extractTitle(originalMarkdown);
+    const description = source.description ?? extractDescription(originalMarkdown);
     const data = await context.parseData({
       id: source.route,
       data: {

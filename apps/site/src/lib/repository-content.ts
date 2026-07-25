@@ -1,5 +1,5 @@
 import { readFile, readdir } from "node:fs/promises";
-import { isAbsolute, relative, resolve } from "node:path";
+import { isAbsolute, posix, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 export interface RepositoryContentSource {
@@ -19,6 +19,19 @@ export interface QualificationStatus {
   nextTask: number;
   reportCount: number;
 }
+
+export const rewriteCanonicalLinks = (
+  markdown: string,
+  source: RepositoryContentSource,
+  sources: readonly RepositoryContentSource[],
+  base: string
+) =>
+  markdown.replace(/(?<!!)\]\((?![#a-z]+:|\/\/)([^)\s]+)(#[^)\s]+)?\)/giu, (_match, target, fragment = "") => {
+    const sourcePath = posix.normalize(posix.join(posix.dirname(source.sourcePath), target));
+    const siteTarget = sources.find((candidate) => candidate.sourcePath === sourcePath);
+    if (siteTarget) return `](${base}/${siteTarget.route}/${fragment})`.replaceAll("//", "/");
+    return `](https://github.com/accd/verchestra/blob/main/${sourcePath}${fragment})`;
+  });
 
 export const repositoryContentSources: readonly RepositoryContentSource[] = [
   {
