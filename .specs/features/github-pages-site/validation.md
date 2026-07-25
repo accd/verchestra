@@ -2,8 +2,8 @@
 
 **Date**: 2026-07-25  
 **Spec**: `.specs/features/github-pages-site/spec.md`  
-**Diff range**: `4121c14..b7464c3`
-**Verified SHA**: `b7464c3d7e62df0566d56db23c808bc57ccc2581`
+**Diff range**: `4121c14..f62246a`
+**Verified SHA**: `f62246a588ff9b9946dda3b82c1d6b23937b2754`
 **Verifier**: `/root/site_verdict`, independent sub-agent (author != verifier)
 
 ---
@@ -26,7 +26,7 @@ The live GitHub Pages URL and required-check results remain operational post-mer
 | T6 | PASS | `115abca` — browser, Axe, Lighthouse, and content qualification |
 | T7 | PASS | `2f4109c` — verified Pages artifact workflow |
 | T8 | PASS | `7e36096` — public handoff and clean-clone documentation |
-| Portability fixes | PASS | `44c3218`, `7d0b635`, `54d259a`, `b7464c3` — line endings, bounded Windows Lighthouse cleanup retry, platform-neutral tests, and safe synthetic Astro paths for canonical repository content |
+| Portability fixes | PASS | `44c3218`, `7d0b635`, `54d259a`, `b7464c3`, `f62246a` — line endings, bounded cleanup, platform-neutral tests and canonical paths, plus a cross-engine 44px skip-link target |
 
 ## Spec-Anchored Requirement Evidence
 
@@ -39,7 +39,7 @@ The live GitHub Pages URL and required-check results remain operational post-mer
 | WEB-05 | Claude Code, Codex, OpenCode/Qwen and all databases are accurate, with SAP ASE/Sybase first. | `apps/site/tests/unit/product-contract.test.mjs:34-45` asserts the exact driver/database sets and ordering; `apps/site/tests/unit/documentation-contract.test.mjs:68-73` asserts SAP ASE precedes PostgreSQL in the matrix; `apps/site/tests/e2e/site.spec.ts:31-32` asserts the public rendering. | PASS |
 | WEB-06 | The public surface explains request/discovery through evidence and human review, including portable handoff. | `apps/site/tests/unit/product-contract.test.mjs:27-32` asserts the complete exact delivery sequence; `apps/site/src/content/docs/docs/workflows/cross-environment-handoff.md:6-18` and `feature-delivery.md:6-15` describe the portable execution contract and review flow. | PASS |
 | WEB-07 | Implemented evidence, current qualification, and future roadmap work are distinct and truthful. | `apps/site/tests/unit/repository-content.test.mjs:18-28` asserts version `0.0.0-qualification`, T68 complete, T69 next, and 68 reports; `apps/site/scripts/check-built-site.mjs:114-118` asserts those rendered claims and rejects install/production-ready claims. | PASS |
-| WEB-08 | Templates meet responsive, keyboard, reduced-motion, touch-target, and WCAG expectations. | `apps/site/tests/e2e/site.spec.ts:15-19` asserts no serious/critical Axe violations for each template; `36-55`, `57-72`, `98-132` assert mobile navigation, theme persistence, keyboard use, reduced motion, Mermaid text equivalence, and 44×44 targets. | PASS |
+| WEB-08 | Templates meet responsive, keyboard, reduced-motion, touch-target, and WCAG expectations. | `apps/site/tests/e2e/site.spec.ts:15-19` asserts no serious/critical Axe violations for each template; `36-55`, `57-72`, `98-132` assert mobile navigation, theme persistence, keyboard use, reduced motion, Mermaid text equivalence, and strict 44×44 targets. `apps/site/src/styles/global.css:88-90` gives the skip link an explicit 44px minimum height without weakening the test. | PASS |
 | WEB-09 | Controlled Lighthouse reaches Performance >=95 and 100 for Accessibility, Best Practices, and SEO while meeting budgets. | Recorded qualification: Lighthouse `100/100/100/100`; `apps/site/lighthouserc.cjs` defines the controlled assertions; `apps/site/scripts/check-built-site.mjs:136-137` enforces compressed JavaScript below 75 KB and landing transfer below 500 KB. | PASS |
 | WEB-10 | No analytics, tracking, forms, authentication, secrets, or runtime API calls enter the static site. | `apps/site/tests/e2e/site.spec.ts:135-143` asserts zero external font/analytics/runtime requests; `apps/site/scripts/check-built-site.mjs:68,94,117-118` rejects machine paths, private keys/tokens, install claims, and production-ready claims in output. | PASS |
 | WEB-11 | Deployment uses only the exact verified artifact from protected `main`, after both checks. | `apps/site/tests/unit/pages-workflow.test.mjs:7-14` asserts both gates, exact `apps/site/dist`, main-only upload, and deploy dependencies; `17-31` asserts immutable action SHAs, least privilege, concurrency, and the protected Pages environment. | PASS |
@@ -58,6 +58,7 @@ The live GitHub Pages URL and required-check results remain operational post-mer
 | Site unit suite, independently rerun at `b7464c3` | 20 passed, 0 failed, 0 skipped |
 | Platform-neutral repository-content suite at `54d259a` | 7 passed, 0 failed, 0 skipped |
 | `pnpm site:check` at `b7464c3` | PASS: 20 unit tests; Astro 0 errors/0 warnings/0 hints; 119-page static build; links and metadata valid |
+| Focused Chromium touch-target test at `f62246a` | 1 passed, 0 failed, 0 skipped |
 | Playwright qualification | 45 passed across Chromium, Firefox, and WebKit |
 | Lighthouse | 100 Performance, 100 Accessibility, 100 Best Practices, 100 SEO |
 | Static output | 119 pages; built-output integrity check passed |
@@ -121,6 +122,32 @@ Built integrity: internal links valid, metadata valid
 The fix therefore changes Astro's portable metadata identity without changing the
 canonical content source of truth, route identity, rendered body, digest input, or
 watcher authority.
+
+## Ubuntu Chromium Skip-Link Repair
+
+Ubuntu Chromium measured the product skip link at 43 CSS pixels before commit
+`f62246a`, one pixel below the unchanged WCAG-oriented target contract. The commit is
+CSS-only: it makes the link an inline flex container, sets
+`min-height: 2.75rem` (44 CSS pixels at the root 16px size), and vertically centers
+its text.
+
+The Playwright assertion remains strict:
+
+```text
+return box.width < 44 || box.height < 44
+expect(undersized).toEqual([])
+```
+
+Independent focused command:
+
+```text
+pnpm --filter @verchestra/site exec playwright test tests/e2e/site.spec.ts \
+  --project=chromium \
+  --grep "product touch targets meet the 44 by 44 CSS pixel contract"
+```
+
+Result at `f62246a`: **1 passed, 0 failed, 0 skipped**. No tolerance, rounding,
+browser exception, or assertion weakening was introduced.
 
 ## Discrimination Sensor
 
@@ -199,7 +226,7 @@ These checks validate external GitHub state; they do not require a repository co
 **Overall**: PASS — implementation ready for protected-main publication.
 
 **Spec-anchored check**: 12/12 WEB requirements matched.  
-**Gate**: clean-clone gate and build passed at the implementation baseline; at `b7464c3`, 20/20 unit tests and `pnpm site:check` passed with 119 pages and zero Astro diagnostics; 45 browser and Lighthouse qualification evidence remains valid.
+**Gate**: clean-clone gate and build passed at the implementation baseline; at `b7464c3`, 20/20 unit tests and `pnpm site:check` passed with 119 pages and zero Astro diagnostics; at `f62246a`, the strict Chromium 44×44 touch-target test passed; the remaining browser and Lighthouse qualification evidence remains valid.
 **Sensor**: 1/1 targeted mutation killed.  
 **Blocking findings**: none.  
 **Advisory**: decide whether to adopt a repository-owned dependency release-age policy before the eventual 1.0 release.
