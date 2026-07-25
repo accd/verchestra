@@ -9,6 +9,7 @@ import {
   compileQualificationStatus,
   extractDescription,
   extractTitle,
+  isCanonicalSourcePath,
   resolveRepositoryPath,
   validateUniqueRoutes
 } from "../../src/lib/repository-content.ts";
@@ -43,6 +44,17 @@ test("rejects a missing report inside the completed qualification sequence", asy
 
 test("rejects repository sources that escape the repository root", () => {
   assert.throws(() => resolveRepositoryPath("C:\\repo\\verchestra", "..\\credentials.env"), /outside repository/);
+});
+
+test("reloads content only for allowlisted canonical sources", () => {
+  const root = "C:\\repo\\verchestra";
+  assert.equal(isCanonicalSourcePath(root, "C:\\repo\\verchestra\\ROADMAP.md"), true);
+  assert.equal(
+    isCanonicalSourcePath(root, "C:\\repo\\verchestra\\docs\\qualification\\t68-validation.md"),
+    true
+  );
+  assert.equal(isCanonicalSourcePath(root, "C:\\repo\\verchestra\\apps\\site\\.astro\\content.json"), false);
+  assert.equal(isCanonicalSourcePath(root, "C:\\repo\\verchestra\\packages\\domain\\src\\index.ts"), false);
 });
 
 test("rejects duplicate public routes", () => {

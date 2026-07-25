@@ -91,6 +91,16 @@ export function resolveRepositoryPath(repositoryRoot: URL | string, sourcePath: 
   return candidate;
 }
 
+export function isCanonicalSourcePath(repositoryRoot: URL | string, changedPath: string): boolean {
+  const root = resolve(typeof repositoryRoot === "string" ? repositoryRoot : fileURLToPath(repositoryRoot));
+  const normalized = relative(root, resolve(changedPath)).replaceAll("\\", "/");
+  if (normalized.startsWith("../") || isAbsolute(normalized)) return false;
+  return (
+    repositoryContentSources.some(({ sourcePath }) => sourcePath === normalized) ||
+    /^docs\/qualification\/t\d{2}-validation\.md$/i.test(normalized)
+  );
+}
+
 export function validateUniqueRoutes(sources: ReadonlyArray<Pick<RepositoryContentSource, "id" | "route">>): void {
   const routes = new Set<string>();
   for (const source of sources) {

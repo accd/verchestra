@@ -1,6 +1,4 @@
 import { readFile, readdir } from "node:fs/promises";
-import { resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 
 import { docsLoader } from "@astrojs/starlight/loaders";
 import type { Loader, LoaderContext } from "astro/loaders";
@@ -10,6 +8,7 @@ import {
   compileQualificationStatus,
   extractDescription,
   extractTitle,
+  isCanonicalSourcePath,
   repositoryContentSources,
   resolveRepositoryPath,
   validateUniqueRoutes,
@@ -79,8 +78,7 @@ export function repositoryDocsLoader(): Loader {
       let canonicalIds = await loadCanonicalEntries(context, repositoryRoot);
 
       const reloadCanonicalEntries = async (changedPath: string) => {
-        const canonicalRoot = fileURLToPath(repositoryRoot);
-        if (!resolve(changedPath).startsWith(resolve(canonicalRoot))) return;
+        if (!isCanonicalSourcePath(repositoryRoot, changedPath)) return;
         for (const id of canonicalIds) context.store.delete(id);
         canonicalIds = await loadCanonicalEntries(context, repositoryRoot);
       };
