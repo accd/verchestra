@@ -2,13 +2,13 @@
 schema: verchestra-feature-handoff/v1
 feature: agent-ready-repository
 issue: null
-status: in_progress
+status: verification
 branch: agent/agent-ready-repository
 baseRevision: fd585f128d310a6f355a544deee0ae4e5e54aa4f
-lastCompletedTask: T7
-nextTask: T8
-lastGate: pnpm site:test && pnpm gate:quick
-updatedAt: 2026-07-25T23:31:00Z
+lastCompletedTask: T8
+nextTask: Run independent verification and prepare the human-review handoff.
+lastGate: pnpm agent:check && pnpm gate:quick && pnpm site:test && pnpm site:build
+updatedAt: 2026-07-25T23:47:13Z
 ---
 
 # Scope
@@ -72,12 +72,20 @@ delivery plan without changing the T69–T77 product dependency chain.
 - Site verification passes 24 unit tests, a 120-page build, 45 Playwright/Axe
   checks across Chromium, Firefox, and WebKit, and Lighthouse assertions.
 - `gate:quick` passes 1,615 unit tests and 19 agent-readiness tests.
+- Detached clean-clone acceptance at `9649966` proved the JSON context command
+  before installation, frozen installation, readiness, quick gate, site test,
+  and site build with exit code 0.
+- Clean-clone verification passed 1,615 unit tests, 19 readiness tests, 24 site
+  unit tests, 45 Playwright/Axe checks across three engines, Lighthouse, and a
+  120-page static build.
+- Production was probed without mutation: the existing landing page returned
+  200 while the new guide and LLM endpoints returned 404 before merge and
+  deployment, as expected.
 
 # Next Exact Action
 
-Run clean-clone acceptance, all required gates, independent requirement
-verification, and the discrimination sensor, then prepare the human-review
-handoff.
+Run the independent requirement trace and discrimination sensor, persist
+`validation.md`, then submit the branch for mandatory human review.
 
 # Blockers
 
@@ -89,6 +97,11 @@ number here.
 The available GitHub connector exposes no repository-topic write and the
 browser session is signed out. Add `agents-md`, `llms-txt`, and
 `ai-coding-agents` from an authenticated maintainer session.
+
+Production deployment is intentionally pending mandatory human review, merge
+to protected `main`, and the existing GitHub Pages workflow. After deployment,
+verify the guide, search, `llms.txt`, `llms-full.txt`, representative Markdown
+alternates, sitemap, and robots endpoints return 200.
 
 # Decisions
 
