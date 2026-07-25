@@ -23,7 +23,8 @@
 ## Handoff
 
 - **Feature:** `github-pages-site`
-- **State:** Implementation complete; independent verification required
+- **State:** Independently verified; protected-main publication pending
 - **Branch:** `agent/verchestra-github-pages`
 - **Completed:** T1–T8, including local content, browser, accessibility, performance, and deployment-workflow gates.
-- **Next:** Run a fresh independent verifier, publish through protected `main`, and verify the production deployment.
+- **Verification:** PASS at `7d0b635`; 12/12 WEB requirements matched and 1/1 discrimination mutation killed.
+- **Next:** Publish through protected `main` and verify the production deployment.
