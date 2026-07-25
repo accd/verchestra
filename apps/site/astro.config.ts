@@ -17,7 +17,49 @@ export default defineConfig({
     starlight({
       title: "Verchestra",
       description: "Verified AI software delivery that survives the model, the machine, and the handoff.",
+      favicon: "/favicon.png",
+      disable404Route: true,
       customCss: ["./src/styles/global.css"],
+      components: {
+        Head: "./src/components/StarlightHead.astro"
+      },
+      head: [
+        {
+          tag: "meta",
+          attrs: {
+            property: "og:image",
+            content: "https://accd.github.io/verchestra/social-card.png"
+          }
+        },
+        {
+          tag: "meta",
+          attrs: {
+            property: "og:image:width",
+            content: "1200"
+          }
+        },
+        {
+          tag: "meta",
+          attrs: {
+            property: "og:image:height",
+            content: "630"
+          }
+        },
+        {
+          tag: "meta",
+          attrs: {
+            property: "og:image:alt",
+            content: "Verchestra verified AI software delivery workflow"
+          }
+        },
+        {
+          tag: "meta",
+          attrs: {
+            name: "twitter:image",
+            content: "https://accd.github.io/verchestra/social-card.png"
+          }
+        }
+      ],
       social: [
         {
           icon: "github",
