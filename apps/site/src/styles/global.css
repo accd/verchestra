@@ -808,6 +808,59 @@ body.product-shell {
   gap: 1.25rem;
 }
 
+.community-page {
+  width: min(76rem, calc(100% - 2rem));
+  min-height: calc(100vh - 13rem);
+  margin-inline: auto;
+  padding-block: clamp(4rem, 8vw, 7rem);
+}
+
+.community-hero {
+  max-width: 52rem;
+}
+
+.community-hero h1 {
+  max-width: 12ch;
+  margin: 1rem 0 1.5rem;
+  font-size: clamp(3rem, 7vw, 6rem);
+  letter-spacing: -0.065em;
+  line-height: 0.96;
+}
+
+.community-hero > p:last-child {
+  max-width: 44rem;
+  color: var(--muted);
+  font-size: clamp(1rem, 2vw, 1.25rem);
+  line-height: 1.7;
+}
+
+.community-grid {
+  display: grid;
+  margin-top: clamp(3rem, 7vw, 6rem);
+  border-top: 1px solid var(--line);
+  border-left: 1px solid var(--line);
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.community-grid article {
+  min-height: 15rem;
+  padding: clamp(1.5rem, 3vw, 2.25rem);
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--surface) 58%, transparent);
+}
+
+.community-grid h2 {
+  margin: 0 0 1rem;
+  font-size: 1.25rem;
+}
+
+.community-grid p {
+  min-height: 6.5rem;
+  color: var(--muted);
+  line-height: 1.65;
+}
+
 @media (max-width: 900px) {
   .hero,
   .statement-grid,
@@ -841,6 +894,10 @@ body.product-shell {
 
   .architecture-map {
     grid-row: auto;
+  }
+
+  .community-grid {
+    grid-template-columns: repeat(2, 1fr);
   }
 }
 
@@ -879,8 +936,13 @@ body.product-shell {
   }
 
   .guarantee-grid,
-  .architecture-map__satellites {
+  .architecture-map__satellites,
+  .community-grid {
     grid-template-columns: 1fr;
+  }
+
+  .community-grid p {
+    min-height: auto;
   }
 
   .qualification-pill {

@@ -9,7 +9,6 @@ import {
   productStatus
 } from "../data/product.ts";
 import ProductLayout from "../layouts/ProductLayout.astro";
-import "../styles/global.css";
 
 const base = import.meta.env.BASE_URL;
 const withBase = (path: string) => `${base}${path.replace(/^\/+/, "")}`;
