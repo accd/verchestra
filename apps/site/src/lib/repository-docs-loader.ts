@@ -5,6 +5,7 @@ import type { Loader, LoaderContext } from "astro/loaders";
 
 import {
   assertProjectStatus,
+  canonicalContentFilePath,
   compileQualificationStatus,
   extractDescription,
   extractTitle,
@@ -39,8 +40,8 @@ async function loadCanonicalEntries(context: LoaderContext, repositoryRoot: URL)
   const canonicalIds = new Set(sources.map((source) => source.route));
 
   for (const source of sources) {
-    const filePath = resolveRepositoryPath(repositoryRoot, source.sourcePath);
-    const originalMarkdown = await readFile(filePath, "utf8");
+    const sourceFilePath = resolveRepositoryPath(repositoryRoot, source.sourcePath);
+    const originalMarkdown = await readFile(sourceFilePath, "utf8");
     const markdown = rewriteCanonicalLinks(originalMarkdown, source, sources, context.config.base);
     const title = source.title ?? extractTitle(originalMarkdown);
     const description = source.description ?? extractDescription(originalMarkdown);
@@ -61,7 +62,7 @@ async function loadCanonicalEntries(context: LoaderContext, repositoryRoot: URL)
       id: source.route,
       data,
       body: markdown,
-      filePath,
+      filePath: canonicalContentFilePath(source.route),
       digest: context.generateDigest(`${JSON.stringify(data)}\n${markdown}`),
       rendered: await context.renderMarkdown(markdown)
     });

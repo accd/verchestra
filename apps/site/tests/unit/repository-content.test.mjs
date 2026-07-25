@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test from "node:test";
 
 import {
   assertProjectStatus,
+  canonicalContentFilePath,
   compileQualificationStatus,
   extractDescription,
   extractTitle,
@@ -53,6 +54,17 @@ test("reloads content only for allowlisted canonical sources", () => {
   assert.equal(isCanonicalSourcePath(root, resolve(root, "docs/qualification/t68-validation.md")), true);
   assert.equal(isCanonicalSourcePath(root, resolve(root, "apps/site/.astro/content.json")), false);
   assert.equal(isCanonicalSourcePath(root, resolve(root, "packages/domain/src/index.ts")), false);
+});
+
+test("gives Astro safe synthetic paths for canonical content outside the site root", async () => {
+  const loaderSource = await readFile(new URL("../../src/lib/repository-docs-loader.ts", import.meta.url), "utf8");
+
+  assert.equal(
+    canonicalContentFilePath("docs/qualification/t68-validation"),
+    "src/content/docs/docs/qualification/t68-validation.md"
+  );
+  assert.throws(() => canonicalContentFilePath("../credentials"), /unsafe canonical content route/);
+  assert.match(loaderSource, /filePath: canonicalContentFilePath\(source\.route\)/);
 });
 
 test("rewrites canonical repository links to public routes or auditable source files", () => {

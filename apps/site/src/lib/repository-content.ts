@@ -114,6 +114,13 @@ export function isCanonicalSourcePath(repositoryRoot: URL | string, changedPath:
   );
 }
 
+export function canonicalContentFilePath(route: string): string {
+  if (!/^[a-z0-9]+(?:[/-][a-z0-9]+)*$/u.test(route)) {
+    throw new Error(`unsafe canonical content route: ${route}`);
+  }
+  return `src/content/docs/${route}.md`;
+}
+
 export function validateUniqueRoutes(sources: ReadonlyArray<Pick<RepositoryContentSource, "id" | "route">>): void {
   const routes = new Set<string>();
   for (const source of sources) {
