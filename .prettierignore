@@ -2,3 +2,5 @@ node_modules
 docs
 spikes
 pnpm-lock.yaml
+apps/site/.astro
+apps/site/dist

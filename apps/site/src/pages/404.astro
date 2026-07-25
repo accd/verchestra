@@ -1,0 +1,25 @@
+---
+import ProductLayout from "../layouts/ProductLayout.astro";
+
+const base = import.meta.env.BASE_URL;
+---
+
+<ProductLayout
+  title="Page not found · Verchestra"
+  description="The requested Verchestra page could not be found."
+  canonicalPath={`${base}404.html`}
+  robots="noindex, nofollow"
+  search={false}
+>
+  <main id="main-content" class="not-found-page">
+    <section aria-labelledby="not-found-title">
+      <p class="section-label">404 · Lost measure</p>
+      <h1 id="not-found-title">This delivery path does not exist.</h1>
+      <p>The evidence is intact. The page may have moved, or the address may be incomplete.</p>
+      <div>
+        <a class="button button--primary" href={base}>Return home</a>
+        <a class="button button--secondary" href={`${base}docs/`}>Open documentation</a>
+      </div>
+    </section>
+  </main>
+</ProductLayout>

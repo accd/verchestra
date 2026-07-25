@@ -1,0 +1,76 @@
+---
+import DefaultHead from "@astrojs/starlight/components/Head.astro";
+
+const { entry } = Astro.locals.starlightRoute;
+const siteUrl = new URL(import.meta.env.BASE_URL, Astro.site);
+const routeSegments = Astro.url.pathname
+  .replace(import.meta.env.BASE_URL, "")
+  .split("/")
+  .filter(Boolean);
+const breadcrumbs = [
+  { "@type": "ListItem", position: 1, name: "Verchestra", item: siteUrl.href },
+  ...routeSegments.map((segment, index) => ({
+    "@type": "ListItem",
+    position: index + 2,
+    name:
+      index === routeSegments.length - 1
+        ? entry.data.title
+        : segment.replaceAll("-", " ").replace(/\b\w/g, (letter) => letter.toUpperCase()),
+    item: new URL(`${routeSegments.slice(0, index + 1).join("/")}/`, siteUrl).href
+  }))
+];
+const structuredData = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: breadcrumbs
+};
+---
+
+<DefaultHead />
+<script is:inline type="application/ld+json" set:html={JSON.stringify(structuredData)} />
+<script>
+  const renderMermaid = async () => {
+    const diagrams = [...document.querySelectorAll<HTMLElement>('pre[data-language="mermaid"]')].flatMap((pre) => {
+      const source = [...pre.querySelectorAll<HTMLElement>(".ec-line .code")]
+        .map((line) => line.textContent ?? "")
+        .join("\n");
+      const renderedFrame = pre.closest("figure") ?? pre;
+      if (!source) return [];
+      const diagram = document.createElement("div");
+      diagram.className = "mermaid mermaid-diagram";
+      diagram.setAttribute("role", "img");
+      diagram.setAttribute(
+        "aria-label",
+        "Architecture diagram. The surrounding document provides the equivalent system description."
+      );
+      diagram.textContent = source;
+      renderedFrame.replaceWith(diagram);
+      return [diagram];
+    });
+
+    if (diagrams.length === 0) return;
+    const { default: mermaid } = await import("mermaid");
+    mermaid.initialize({
+      startOnLoad: false,
+      securityLevel: "strict",
+      theme: "base",
+      themeVariables: {
+        background: "transparent",
+        primaryColor: "#0E1424",
+        primaryTextColor: "#F3EFE6",
+        primaryBorderColor: "#8A7CFF",
+        lineColor: "#45D6D0",
+        secondaryColor: "#18203A",
+        tertiaryColor: "#070A12"
+      }
+    });
+    await mermaid.run({ nodes: diagrams });
+  };
+
+  document.addEventListener("DOMContentLoaded", () => {
+    document.querySelectorAll<HTMLTableElement>(".sl-markdown-content table").forEach((table) => {
+      table.tabIndex = 0;
+    });
+    void renderMermaid();
+  });
+</script>

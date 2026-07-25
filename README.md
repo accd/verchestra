@@ -1,6 +1,7 @@
 # Verchestra
 
 [![CI](https://github.com/accd/verchestra/actions/workflows/ci.yml/badge.svg)](https://github.com/accd/verchestra/actions/workflows/ci.yml)
+[![Website](https://img.shields.io/badge/website-product%20%2B%20docs-45D6D0)](https://accd.github.io/verchestra/)
 [![License: GPL-3.0-only](https://img.shields.io/badge/License-GPL--3.0--only-blue.svg)](LICENSE)
 [![Node 24.14.0](https://img.shields.io/badge/Node-24.14.0-339933?logo=node.js&logoColor=white)](package.json)
 [![Status: qualification](https://img.shields.io/badge/status-qualification-6f42c1)](ROADMAP.md)
@@ -8,6 +9,8 @@
 **Verchestra is a verified AI software-delivery harness.** It turns discovery, planning, implementation, validation, and human approval into portable, signed, and reviewable delivery work.
 
 > **Current status:** `0.0.0-qualification` — pre-1.0 development. The source is public and the qualification suite is active. A public installer and package release are not available yet.
+
+Explore the [product website and searchable documentation](https://accd.github.io/verchestra/), or continue below for the repository overview.
 
 ## Why Verchestra
 
@@ -73,8 +76,27 @@ pnpm gate:quick
 
 Requirements are Node `24.14.0` and pnpm `10.34.5`.
 
+### Website development
+
+The website is the private `@verchestra/site` workspace package. It remains static, uses the `/verchestra/` base path, and loads canonical repository documents at build time.
+
+```bash
+pnpm site:dev
+pnpm site:check
+pnpm site:test
+pnpm site:build
+pnpm site:preview
+```
+
+`pnpm site:test` runs content integrity, Astro diagnostics, the production build, link and metadata checks, Playwright across Chromium, Firefox, and WebKit, Axe, and Lighthouse. Install the Playwright browsers once with:
+
+```bash
+pnpm --filter @verchestra/site exec playwright install chromium firefox webkit
+```
+
 ## Repository guide
 
+- [Product website and documentation](https://accd.github.io/verchestra/) provides the public, searchable portal.
 - [Architecture](docs/architecture.md) explains the system boundaries and trust model.
 - [Roadmap](ROADMAP.md) shows what is complete and what must happen before 1.0.
 - [Contributing](CONTRIBUTING.md) explains how to propose changes and run checks.

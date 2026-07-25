@@ -2,6 +2,11 @@ node_modules/
 .pnpm-store/
 coverage/
 dist/
+apps/site/.astro/
+apps/site/.cache/
+apps/site/playwright-report/
+apps/site/test-results/
+apps/site/.lighthouseci/
 .tmp/
 spikes/node-runtime/.bundle/
 .env

@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://accd.github.io/verchestra/sitemap-index.xml

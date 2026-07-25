@@ -35,7 +35,13 @@
     "qualify:cedar": "node --test spikes/cedar/test/*.test.mjs",
     "qualify:sqlite": "node --test spikes/sqlite/test/*.test.mjs",
     "qualify:isolation": "node --test spikes/isolation/test/*.test.mjs",
-    "qualify:supply-chain": "node --test spikes/supply-chain/test/*.test.mjs"
+    "qualify:supply-chain": "node --test spikes/supply-chain/test/*.test.mjs",
+    "site:dev": "pnpm --filter @verchestra/site dev",
+    "site:check": "pnpm --filter @verchestra/site check",
+    "site:build": "pnpm --filter @verchestra/site build",
+    "site:test": "pnpm --filter @verchestra/site test",
+    "site:test:e2e": "pnpm --filter @verchestra/site test:e2e",
+    "site:preview": "pnpm --filter @verchestra/site preview"
   },
   "devDependencies": {
     "@cedar-policy/cedar-wasm": "4.11.2",
@@ -49,6 +55,7 @@
     "json-schema-to-typescript": "15.0.4",
     "opencode-ai": "1.17.18",
     "prettier": "3.9.5",
+    "prettier-plugin-astro": "0.14.1",
     "sqlite-vec": "0.1.9",
     "tuf-js": "5.0.1",
     "typescript": "6.0.3",

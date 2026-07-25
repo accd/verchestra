@@ -1,0 +1,238 @@
+---
+import {
+  databases,
+  deliveryStages,
+  drivers,
+  guarantees,
+  productDefinition,
+  productHeadline,
+  productStatus
+} from "../data/product.ts";
+import ProductLayout from "../layouts/ProductLayout.astro";
+
+const base = import.meta.env.BASE_URL;
+const withBase = (path: string) => `${base}${path.replace(/^\/+/, "")}`;
+const sourceCodeMetadata = {
+  "@context": "https://schema.org",
+  "@type": "SoftwareSourceCode",
+  name: "Verchestra",
+  description: productDefinition,
+  codeRepository: "https://github.com/accd/verchestra",
+  license: "https://spdx.org/licenses/GPL-3.0-only.html",
+  programmingLanguage: "TypeScript",
+  runtimePlatform: "Node.js 24.14.0",
+  version: productStatus.version,
+  url: "https://accd.github.io/verchestra/"
+};
+---
+
+<ProductLayout
+  title="Verchestra — Verified AI software delivery"
+  description="AI delivery that survives the model, the machine, and the handoff."
+  structuredData={sourceCodeMetadata}
+>
+  <main id="main-content" class="product-page">
+    <section class="hero" aria-labelledby="hero-title">
+      <div class="hero__copy">
+        <p class="eyebrow"><span></span> Verified delivery control plane</p>
+        <h1 id="hero-title">{productHeadline}</h1>
+        <p class="hero__definition">{productDefinition}</p>
+        <div class="hero__actions">
+          <a class="button button--primary" href={withBase("docs/")}>Explore how it works</a>
+          <a class="button button--secondary" href="https://github.com/accd/verchestra">View on GitHub</a>
+          <a class="text-link" href={withBase("roadmap/")}>Follow the road to 1.0 <span aria-hidden="true">→</span></a>
+        </div>
+        <div class="qualification-pill" aria-label="Current public status">
+          <span class="qualification-pill__signal"></span>
+          <code>{productStatus.version}</code>
+          <span>T{productStatus.completedTask} verified</span>
+          <span>T{productStatus.nextTask} next</span>
+        </div>
+        <p class="status-note">
+          Public source development is available. A public installer and production release are not.
+        </p>
+      </div>
+
+      <div class="execution-score" aria-label="Portable delivery workflow diagram">
+        <div class="execution-score__head">
+          <span>Execution score</span>
+          <code>portable / signed / reviewable</code>
+        </div>
+        <ol>
+          {
+            deliveryStages.map((stage, index) => (
+              <li>
+                <span class="execution-score__number">{String(index + 1).padStart(2, "0")}</span>
+                <div>
+                  <strong>{stage.name}</strong>
+                  <span>{stage.description}</span>
+                </div>
+              </li>
+            ))
+          }
+        </ol>
+        <div class="execution-score__seal">
+          <span aria-hidden="true">✓</span>
+          <div><strong>Human accountable</strong><small>Evidence before acceptance</small></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="problem statement-grid" aria-labelledby="problem-title">
+      <div>
+        <p class="section-label">The problem</p>
+        <h2 id="problem-title">A chat is not a delivery system.</h2>
+      </div>
+      <div class="statement">
+        <p>
+          AI-assisted work disappears into provider sessions, local machines, and undocumented decisions. The next
+          developer inherits a conversation, not an executable contract.
+        </p>
+        <p>
+          Verchestra makes the durable facts portable while credentials, sessions, and machine authority remain local.
+        </p>
+      </div>
+    </section>
+
+    <section class="guarantees section-frame" aria-labelledby="guarantees-title">
+      <div class="section-heading">
+        <p class="section-label">Core guarantees</p>
+        <h2 id="guarantees-title">Control where it matters. Freedom where it helps.</h2>
+        <p>Models can change. The delivery contract, evidence, and accountability do not.</p>
+      </div>
+      <div class="guarantee-grid">
+        {
+          guarantees.map((guarantee, index) => (
+            <article class={`guarantee-card guarantee-card--${guarantee.tone}`}>
+              <span class="guarantee-card__index">{String(index + 1).padStart(2, "0")}</span>
+              <h3>{guarantee.title}</h3>
+              <p>{guarantee.description}</p>
+            </article>
+          ))
+        }
+      </div>
+    </section>
+
+    <section class="handoff section-frame" aria-labelledby="handoff-title">
+      <div class="section-heading">
+        <p class="section-label">Portable handoff</p>
+        <h2 id="handoff-title">Start with one environment. Continue with another.</h2>
+        <p>The receiving developer rebuilds local authority while preserving the signed execution contract.</p>
+      </div>
+      <div
+        class="handoff-path"
+        role="img"
+        aria-label="Claude Code hands a signed execution package to OpenCode and Qwen"
+      >
+        <div class="handoff-node">
+          <small>Source environment</small>
+          <strong>Claude Code</strong>
+          <span>Discovery · specification</span>
+        </div>
+        <div class="handoff-bridge">
+          <span class="handoff-bridge__line"></span>
+          <div>
+            <span aria-hidden="true">◆</span>
+            <strong>Signed Execution Package</strong>
+            <small>requirements · evidence · gates</small>
+          </div>
+        </div>
+        <div class="handoff-node handoff-node--target">
+          <small>Receiving environment</small>
+          <strong>OpenCode / Qwen</strong>
+          <span>Local authority · same contract</span>
+        </div>
+      </div>
+      <ul class="driver-list" aria-label="Qualified AI drivers">
+        {drivers.map((driver) => <li>{driver}</li>)}
+      </ul>
+    </section>
+
+    <section class="probes section-frame" aria-labelledby="probes-title">
+      <div class="probes__copy">
+        <p class="section-label">Read-only data probes</p>
+        <h2 id="probes-title">Context from real systems. No hidden writer.</h2>
+        <p>
+          Database discovery runs through bounded plans, explicit capabilities, audit evidence, and read-only
+          credentials. SAP ASE / Sybase is a first-class adapter, not an afterthought.
+        </p>
+        <a class="text-link" href={withBase("docs/workflows/read-only-database-discovery/")}>
+          Explore database discovery <span aria-hidden="true">→</span>
+        </a>
+      </div>
+      <div class="database-panel">
+        <div class="database-panel__header">
+          <span>Approved probe surface</span>
+          <code>mode: read_only</code>
+        </div>
+        <ul>
+          {
+            databases.map((database, index) => (
+              <li class={index === 0 ? "database-panel__primary" : undefined}>
+                <span class="database-panel__status" aria-hidden="true" />
+                <strong>{database}</strong>
+                <small>{index === 0 ? "first-class adapter" : "qualified surface"}</small>
+              </li>
+            ))
+          }
+        </ul>
+      </div>
+    </section>
+
+    <section class="architecture section-frame" aria-labelledby="architecture-title">
+      <div class="section-heading">
+        <p class="section-label">Architecture</p>
+        <h2 id="architecture-title">A delivery control plane, not a model wrapper.</h2>
+      </div>
+      <div class="architecture-map">
+        <div class="architecture-map__core">
+          <span>vestra CLI</span>
+          <strong>Application workflows</strong>
+          <small>Policy-bound orchestration</small>
+        </div>
+        <div class="architecture-map__satellites">
+          <span>Workspace</span><span>Drivers</span><span>Probes</span><span>Memory</span><span>Evidence</span><span
+            >Distribution</span
+          >
+        </div>
+      </div>
+      <a class="button button--secondary" href={withBase("docs/architecture/system-overview/")}>Read the architecture</a
+      >
+    </section>
+
+    <section class="qualification section-frame" aria-labelledby="qualification-title">
+      <div>
+        <p class="section-label">Qualification, not theatre</p>
+        <h2 id="qualification-title">T{productStatus.completedTask} is evidence. T{productStatus.nextTask} is work.</h2>
+        <p>
+          Foundations through T{productStatus.completedTask} are backed by public validation reports. Self-Test, regression,
+          sealed holdout, platform qualification, and the release decision remain ahead.
+        </p>
+      </div>
+      <div
+        class="qualification-progress"
+        aria-label={`T${productStatus.completedTask} complete, T${productStatus.nextTask} next`}
+      >
+        <div class="qualification-progress__complete">
+          <span>T01</span><span>T{productStatus.completedTask}</span>
+        </div>
+        <div class="qualification-progress__next">T{productStatus.nextTask}</div>
+        <div class="qualification-progress__future">T77</div>
+      </div>
+      <div class="qualification__actions">
+        <a class="button button--primary" href={withBase("roadmap/")}>View the verified roadmap</a>
+        <a class="text-link" href={withBase("docs/qualification/t68-validation/")}>Inspect T68 evidence →</a>
+      </div>
+    </section>
+
+    <section class="community-cta" aria-labelledby="community-title">
+      <p class="section-label">Build the standard with us</p>
+      <h2 id="community-title">AI delivery deserves better evidence.</h2>
+      <p>Explore the architecture, challenge the design, and help qualify the path to 1.0.</p>
+      <div>
+        <a class="button button--primary" href="https://github.com/accd/verchestra/discussions">Join the discussion</a>
+        <a class="button button--secondary" href={withBase("docs/community/contributing/")}>Contribute</a>
+      </div>
+    </section>
+  </main>
+</ProductLayout>

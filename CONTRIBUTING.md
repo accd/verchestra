@@ -18,12 +18,25 @@ pnpm gate:quick
 
 Use Node `24.14.0` and pnpm `10.34.5`.
 
+## Website changes
+
+The public website lives in `apps/site` and deploys as static GitHub Pages output. Root repository documents remain canonical; do not copy their content into a second site-specific document.
+
+```bash
+pnpm site:dev
+pnpm site:check
+pnpm site:test
+pnpm site:build
+```
+
+Before the first browser run, install the pinned Playwright browsers with `pnpm --filter @verchestra/site exec playwright install chromium firefox webkit`. Do not commit `dist`, `.astro`, Pagefind output, browser reports, Lighthouse reports, or other generated site state.
+
 ## Pull requests
 
 - Start from current `main` and keep one logical concern per pull request.
 - Link the relevant issue and explain the user-visible change.
 - Add or update tests for behavior, not implementation details.
-- Run the smallest relevant test layer while developing, then run `pnpm gate:quick` before requesting review.
+- Run the smallest relevant test layer while developing, then run `pnpm gate:quick` before requesting review. Website changes must also pass `pnpm site:test`.
 - Update documentation when behavior, setup, safety boundaries, or supported surfaces change.
 - Keep generated state, local profiles, secrets, credentials, and private artifacts out of Git.
 

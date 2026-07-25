@@ -1,0 +1,116 @@
+---
+import "../styles/global.css";
+
+interface Props {
+  title: string;
+  description: string;
+  canonicalPath?: string;
+  robots?: string;
+  search?: boolean;
+  structuredData?: Record<string, unknown> | Record<string, unknown>[];
+}
+
+const { title, description, canonicalPath, robots = "index, follow", search = true, structuredData } = Astro.props;
+const base = import.meta.env.BASE_URL;
+const withBase = (path: string) => `${base}${path.replace(/^\/+/, "")}`;
+const canonicalUrl = new URL(canonicalPath ?? Astro.url.pathname, Astro.site);
+const socialImageUrl = new URL(withBase("social-card.png"), Astro.site);
+---
+
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width" />
+    <meta name="description" content={description} />
+    <meta name="robots" content={robots} />
+    <meta name="generator" content={Astro.generator} />
+    <link rel="canonical" href={canonicalUrl} />
+    <link rel="icon" type="image/png" href={withBase("favicon.png")} />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Verchestra" />
+    <meta property="og:locale" content="en" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonicalUrl} />
+    <meta property="og:image" content={socialImageUrl} />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Verchestra verified AI software delivery workflow" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={socialImageUrl} />
+    <title>{title}</title>
+    {structuredData && <script is:inline type="application/ld+json" set:html={JSON.stringify(structuredData)} />}
+    <script is:inline>
+      (() => {
+        try {
+          const savedTheme = localStorage.getItem("starlight-theme");
+          document.documentElement.dataset.theme = savedTheme === "light" ? "light" : "dark";
+        } catch {
+          document.documentElement.dataset.theme = "dark";
+        }
+      })();
+    </script>
+  </head>
+  <body class="product-shell" data-pagefind-ignore={search ? undefined : ""}>
+    <a class="skip-link" href="#main-content" tabindex="0">Skip to content</a>
+    <header class="site-header">
+      <div class="site-header__inner">
+        <a class="wordmark" href={withBase("")} aria-label="Verchestra home">
+          <span class="wordmark__mark" aria-hidden="true">V</span>
+          <span>Verchestra</span>
+        </a>
+        <nav class="site-nav" aria-label="Primary navigation">
+          <a href={withBase("docs/")}>Docs</a>
+          <a href={withBase("roadmap/")}>Roadmap</a>
+          <a href={withBase("community/")}>Community</a>
+          <a href="https://github.com/accd/verchestra">GitHub</a>
+        </nav>
+        <details class="mobile-nav">
+          <summary>Menu</summary>
+          <nav aria-label="Mobile navigation">
+            <a href={withBase("docs/")}>Docs</a>
+            <a href={withBase("roadmap/")}>Roadmap</a>
+            <a href={withBase("community/")}>Community</a>
+            <a href="https://github.com/accd/verchestra">GitHub</a>
+          </nav>
+        </details>
+        <button class="theme-toggle" type="button" aria-label="Switch to light theme" aria-pressed="false">
+          <span class="theme-toggle__dark" aria-hidden="true">◐</span>
+          <span class="theme-toggle__light" aria-hidden="true">◑</span>
+        </button>
+      </div>
+    </header>
+    <slot />
+    <footer class="site-footer">
+      <div>
+        <a class="wordmark wordmark--footer" href={withBase("")}>
+          <span class="wordmark__mark" aria-hidden="true">V</span>
+          <span>Verchestra</span>
+        </a>
+        <p>Verified AI software delivery. GPL-3.0-only.</p>
+      </div>
+      <nav aria-label="Footer navigation">
+        <a href={withBase("docs/")}>Documentation</a>
+        <a href="https://github.com/accd/verchestra/discussions">Discussions</a>
+        <a href="https://github.com/accd/verchestra/issues">Issues</a>
+      </nav>
+    </footer>
+    <script>
+      const toggle = document.querySelector<HTMLButtonElement>(".theme-toggle");
+      const applyTheme = (theme: "dark" | "light") => {
+        document.documentElement.dataset.theme = theme;
+        toggle?.setAttribute("aria-pressed", String(theme === "light"));
+        toggle?.setAttribute("aria-label", `Switch to ${theme === "light" ? "dark" : "light"} theme`);
+      };
+      applyTheme(document.documentElement.dataset.theme === "light" ? "light" : "dark");
+      toggle?.addEventListener("click", () => {
+        const theme = document.documentElement.dataset.theme === "light" ? "dark" : "light";
+        localStorage.setItem("starlight-theme", theme);
+        applyTheme(theme);
+      });
+    </script>
+  </body>
+</html>

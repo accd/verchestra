@@ -9,6 +9,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 ### Added
 
 - Public repository foundation, community documentation, issue forms, CI, and dependency update policy.
+- Static product website and searchable documentation portal with canonical content projection, cross-browser accessibility qualification, and verified GitHub Pages delivery.
 
 ## [0.0.0-qualification]
 
