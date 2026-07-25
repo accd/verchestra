@@ -3,5 +3,6 @@ packages:
   - packages/*
 allowBuilds:
   "@google/genai": false
+  esbuild: true
   opencode-ai: true
   protobufjs: false

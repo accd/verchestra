@@ -1,0 +1,18 @@
+@import "@fontsource-variable/manrope";
+@import "@fontsource-variable/jetbrains-mono";
+
+:root {
+  --sl-font: "Manrope Variable", system-ui, sans-serif;
+  --sl-font-mono: "JetBrains Mono Variable", monospace;
+  --sl-color-accent-low: #201b55;
+  --sl-color-accent: #8a7cff;
+  --sl-color-accent-high: #ddd8ff;
+  --sl-color-white: #f3efe6;
+  --sl-color-gray-1: #e7e8ed;
+  --sl-color-gray-2: #c7cad4;
+  --sl-color-gray-3: #aab3c5;
+  --sl-color-gray-4: #667085;
+  --sl-color-gray-5: #343b50;
+  --sl-color-gray-6: #161d30;
+  --sl-color-black: #070a12;
+}
