@@ -4,4 +4,13 @@ coverage/
 dist/
 .tmp/
 spikes/node-runtime/.bundle/
-
+.env
+.env.*
+!.env.example
+*.log
+.verchestra/.local/
+.verchestra/.runtime/
+.verchestra/.cache/
+.verchestra/.sessions/
+.verchestra/.worktrees/
+.verchestra/.secrets/

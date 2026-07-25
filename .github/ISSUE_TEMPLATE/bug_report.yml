@@ -1,0 +1,43 @@
+name: Bug report
+description: Report a reproducible defect without sensitive information.
+title: "bug: "
+labels: ["type: maintenance", "status: ready"]
+body:
+  - type: markdown
+    attributes:
+      value: "Thank you. Do not include credentials, production data, private schemas, or private URLs."
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+      description: Describe the observed behavior and impact.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: Provide safe, deterministic steps.
+      placeholder: "1. ...\n2. ...\n3. ..."
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Verchestra revision or version
+      placeholder: "commit SHA or 0.0.0-qualification"
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Safety checks
+      options:
+        - label: I removed secrets, production data, and private schema details.
+          required: true

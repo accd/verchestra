@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions and design discussion
+    url: https://github.com/accd/verchestra/discussions
+    about: Use Discussions for support, questions, and early ideas.
+  - name: Report a security vulnerability privately
+    url: https://github.com/accd/verchestra/security/advisories/new
+    about: Do not disclose vulnerabilities or sensitive data in public issues.

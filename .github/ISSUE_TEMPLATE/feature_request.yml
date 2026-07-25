@@ -1,0 +1,32 @@
+name: Feature request
+description: Propose a scoped capability with a clear delivery outcome.
+title: "feat: "
+labels: ["type: feature", "status: ready"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What user or delivery problem should this solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed outcome
+      description: Describe observable behavior, not an implementation prescription.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+    validations:
+      required: true
+  - type: textarea
+    id: safety
+    attributes:
+      label: Policy, privacy, and operational impact
+      description: Explain affected credentials, data, effects, approvals, or compatibility boundaries.
+    validations:
+      required: true
