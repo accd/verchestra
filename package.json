@@ -15,6 +15,7 @@
     "build": "tsc --noEmit",
     "agent:context": "node scripts/agent-context.mjs",
     "agent:check": "node scripts/agent-check.mjs",
+    "agent:eval": "node scripts/agent-eval.mjs",
     "test:agent-readiness": "node --test tests/agent-readiness/*.test.mjs tests/architecture/agent-instructions.test.mjs",
     "test:unit": "node scripts/test-scope.mjs unit tests/unit",
     "test:contract": "node scripts/test-scope.mjs contract tests/contract",

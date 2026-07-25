@@ -5,10 +5,10 @@ issue: null
 status: in_progress
 branch: agent/agent-ready-repository
 baseRevision: fd585f128d310a6f355a544deee0ae4e5e54aa4f
-lastCompletedTask: T4
-nextTask: T5
+lastCompletedTask: T5
+nextTask: T6
 lastGate: pnpm gate:quick
-updatedAt: 2026-07-26T00:07:00Z
+updatedAt: 2026-07-26T00:15:00Z
 ---
 
 # Scope
@@ -45,11 +45,21 @@ delivery plan without changing the T69–T77 product dependency chain.
   verification, safety, handoff, and human-review readiness; authorship
   disclosure remains optional.
 - Readiness suite passes 15 tests; quick gate passes 1,615 unit tests.
+- Six-case provider-neutral corpus covers onboarding, domain routing, canonical
+  website docs, generated contracts, handoff resume, and malicious text.
+- Generic runner uses disposable detached worktrees, validates exact structured
+  outcomes/proposed patches, records tool/model versions and a digest, and
+  fails closed on malformed results.
+- Fake adapter passes all six cases; Claude Code, Codex, and OpenCode/Qwen
+  report `not configured` without local profiles.
+- Protected-main optional workflow has read-only permissions, no persisted
+  checkout credential, sanitized summaries, and 14-day retention.
+- Readiness suite passes 19 tests; quick gate passes 1,615 unit tests.
 
 # Next Exact Action
 
-Add the provider-neutral evaluation corpus, deterministic fake adapter, generic
-runner, ignored local profiles, and protected optional live matrix.
+Add the root and site LLM text resources, deterministic full-context compiler,
+and Markdown alternates for every public documentation page.
 
 # Blockers
 
