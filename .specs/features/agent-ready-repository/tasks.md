@@ -63,7 +63,7 @@ sequential for an auditable history.
 | Task | Status | Commit |
 | --- | --- | --- |
 | T1 | Complete locally; issue write blocked externally | Pending |
-| T2 | Planned | Pending |
+| T2 | Complete | Pending |
 | T3 | Planned | Pending |
 | T4 | Planned | Pending |
 | T5 | Planned | Pending |
