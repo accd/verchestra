@@ -2,13 +2,13 @@
 schema: verchestra-feature-handoff/v1
 feature: agent-ready-repository
 issue: null
-status: verification
+status: blocked
 branch: agent/agent-ready-repository
 baseRevision: fd585f128d310a6f355a544deee0ae4e5e54aa4f
 lastCompletedTask: T8
-nextTask: Run independent verification and prepare the human-review handoff.
-lastGate: pnpm agent:check && pnpm gate:quick && pnpm site:test && pnpm site:build
-updatedAt: 2026-07-25T23:47:13Z
+nextTask: Complete human review, merge to protected main, and verify the deployed Pages endpoints.
+lastGate: corepack pnpm agent:check && corepack pnpm gate:quick && corepack pnpm site:test && corepack pnpm site:build
+updatedAt: 2026-07-26T00:06:29Z
 ---
 
 # Scope
@@ -81,11 +81,18 @@ delivery plan without changing the T69–T77 product dependency chain.
 - Production was probed without mutation: the existing landing page returned
   200 while the new guide and LLM endpoints returned 404 before merge and
   deployment, as expected.
+- Independent validation traced all 17 requirements: 14 are fully verified and
+  LLM-02, LLM-03, and LLM-06 remain blocked only on public deployment/topics.
+- The verifier passed 1,703 counted tests with zero failures or skips,
+  Lighthouse, and both 120-page builds in a disposable worktree.
+- All eight required discrimination mutations were killed; no implementation
+  defect or spec-precision gap was found.
 
 # Next Exact Action
 
-Run the independent requirement trace and discrimination sensor, persist
-`validation.md`, then submit the branch for mandatory human review.
+Complete mandatory human review, merge to protected `main`, deploy the gated
+Pages artifact, verify public HTTP responses, add the three repository topics,
+and create/link the tracking issue.
 
 # Blockers
 
@@ -102,6 +109,10 @@ Production deployment is intentionally pending mandatory human review, merge
 to protected `main`, and the existing GitHub Pages workflow. After deployment,
 verify the guide, search, `llms.txt`, `llms-full.txt`, representative Markdown
 alternates, sitemap, and robots endpoints return 200.
+
+The available GitHub integration does not expose Dependabot alert reads.
+Before closing the tracking issue, an authenticated maintainer must verify the
+repository has zero open Dependabot alerts.
 
 # Decisions
 

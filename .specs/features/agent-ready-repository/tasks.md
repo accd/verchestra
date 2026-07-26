@@ -60,13 +60,13 @@ sequential for an auditable history.
 
 ## Execution Evidence
 
-| Task | Status                                                    | Commit    |
-| ---- | --------------------------------------------------------- | --------- |
-| T1   | Complete locally; issue write blocked externally          | `039e918` |
-| T2   | Complete                                                  | `bad6815` |
-| T3   | Complete                                                  | `377baf5` |
-| T4   | Complete                                                  | `30c036a` |
-| T5   | Complete                                                  | `d54850d` |
-| T6   | Complete                                                  | `dc966b3` |
-| T7   | Complete locally; topic write blocked externally          | `9649966` |
-| T8   | Implementation complete; independent verification pending | Pending   |
+| Task | Status                                           | Commit    |
+| ---- | ------------------------------------------------ | --------- |
+| T1   | Complete locally; issue write blocked externally | `039e918` |
+| T2   | Complete                                         | `bad6815` |
+| T3   | Complete                                         | `377baf5` |
+| T4   | Complete                                         | `30c036a` |
+| T5   | Complete                                         | `d54850d` |
+| T6   | Complete                                         | `dc966b3` |
+| T7   | Complete locally; topic write blocked externally | `9649966` |
+| T8   | Locally verified; external activation blocked    | `2a3cc28` |
