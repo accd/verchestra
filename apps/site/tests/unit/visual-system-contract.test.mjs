@@ -47,9 +47,32 @@ test("preserves the incumbent Verchestra identity and accessibility floor", asyn
     "--cyan: #45d6d0",
     "--amber: #f5b75b",
     ".product-shell a:focus-visible",
-    "outline: 3px solid var(--cyan)",
+    "--focus-ring: 3px solid var(--cyan)",
+    "outline: var(--focus-ring)",
     "@media (prefers-reduced-motion: reduce)"
   ]) {
     assert.match(stylesheet, new RegExp(contract.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"), "u"));
   }
+});
+
+test("publishes a semantic visual token system for product and reading surfaces", async () => {
+  const stylesheet = await readFile(resolve(siteRoot, "src/styles/global.css"), "utf8");
+
+  for (const token of [
+    "--font-sans:",
+    "--font-mono:",
+    "--content-wide:",
+    "--content-reading:",
+    "--space-1:",
+    "--space-24:",
+    "--radius-control:",
+    "--radius-panel:",
+    "--shadow-raised:",
+    "--duration-fast:",
+    "--ease-standard:",
+    "--focus-ring:"
+  ]) {
+    assert.match(stylesheet, new RegExp(token, "u"));
+  }
+  assert.match(stylesheet, /font-display:\s*swap/u);
 });

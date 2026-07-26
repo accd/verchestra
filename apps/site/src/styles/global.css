@@ -1,7 +1,7 @@
 @font-face {
   font-family: "Manrope Variable";
   font-style: normal;
-  font-display: optional;
+  font-display: swap;
   font-weight: 200 800;
   src: url("@fontsource-variable/manrope/files/manrope-latin-wght-normal.woff2") format("woff2-variations");
 }
@@ -9,13 +9,34 @@
 @font-face {
   font-family: "JetBrains Mono Variable";
   font-style: normal;
-  font-display: optional;
+  font-display: swap;
   font-weight: 100 800;
   src: url("@fontsource-variable/jetbrains-mono/files/jetbrains-mono-latin-wght-normal.woff2")
     format("woff2-variations");
 }
 
 :root {
+  --font-sans: "Manrope Variable", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono Variable", ui-monospace, monospace;
+  --content-wide: 76rem;
+  --content-reading: 72ch;
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-12: 3rem;
+  --space-16: 4rem;
+  --space-24: 6rem;
+  --radius-control: 0.7rem;
+  --radius-panel: 1rem;
+  --radius-feature: 1.4rem;
+  --radius-round: 999px;
+  --duration-fast: 140ms;
+  --duration-standard: 220ms;
+  --ease-standard: cubic-bezier(0.22, 1, 0.36, 1);
+  --focus-ring: 3px solid var(--cyan);
   --sl-font: "Manrope Variable", system-ui, sans-serif;
   --sl-font-mono: "JetBrains Mono Variable", monospace;
   --sl-color-accent-low: #201b55;
@@ -39,7 +60,9 @@
   --cyan: #45d6d0;
   --amber: #f5b75b;
   --danger: #ff6b7a;
-  --shadow: 0 32px 80px rgba(0, 0, 0, 0.28);
+  --shadow-raised: 0 1.5rem 4rem rgba(0, 0, 0, 0.24);
+  --shadow-interactive: 0 0.75rem 2rem rgba(0, 0, 0, 0.18);
+  --shadow: var(--shadow-raised);
 }
 
 :root[data-theme="light"] {
@@ -53,7 +76,9 @@
   --cyan: #087f7a;
   --amber: #9b5c00;
   --danger: #b4233b;
-  --shadow: 0 24px 60px rgba(38, 30, 65, 0.12);
+  --shadow-raised: 0 1.5rem 3.75rem rgba(38, 30, 65, 0.12);
+  --shadow-interactive: 0 0.75rem 2rem rgba(38, 30, 65, 0.1);
+  --shadow: var(--shadow-raised);
 }
 
 html {
@@ -62,12 +87,20 @@ html {
 
 body.product-shell {
   margin: 0;
-  background:
-    radial-gradient(circle at 82% 6%, color-mix(in srgb, var(--violet) 16%, transparent), transparent 28rem),
-    radial-gradient(circle at 12% 42%, color-mix(in srgb, var(--cyan) 8%, transparent), transparent 32rem), var(--ink);
+  background: radial-gradient(
+      circle at 84% 4%,
+      color-mix(in srgb, var(--violet) 11%, transparent),
+      transparent 30rem
+    ),
+    var(--ink);
   color: var(--text);
-  font-family: "Manrope Variable", system-ui, sans-serif;
+  font-family: var(--font-sans);
   min-width: 20rem;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--violet) 55%, transparent);
+  color: var(--text);
 }
 
 .product-shell *,
@@ -110,7 +143,7 @@ body.product-shell {
 
 .site-header__inner,
 .site-footer {
-  width: min(76rem, calc(100% - 2rem));
+  width: min(var(--content-wide), calc(100% - 2rem));
   margin-inline: auto;
 }
 
@@ -142,7 +175,7 @@ body.product-shell {
   border-radius: 50%;
   background: color-mix(in srgb, var(--violet) 16%, transparent);
   color: var(--text);
-  font-family: "JetBrains Mono Variable", monospace;
+  font-family: var(--font-mono);
   font-size: 0.85rem;
 }
 
@@ -207,11 +240,23 @@ body.product-shell {
   font-size: 0.88rem;
   font-weight: 600;
   text-decoration: none;
+  transition:
+    color var(--duration-fast) var(--ease-standard),
+    background-color var(--duration-fast) var(--ease-standard);
 }
 
 .site-nav a:hover,
 .site-footer nav a:hover {
   color: var(--text);
+}
+
+.site-nav a[aria-current="page"],
+.mobile-nav a[aria-current="page"] {
+  color: var(--text);
+  text-decoration: underline;
+  text-decoration-color: var(--cyan);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 0.45rem;
 }
 
 .theme-toggle {
@@ -238,7 +283,7 @@ body.product-shell {
 .product-shell a:focus-visible,
 .product-shell button:focus-visible,
 .product-shell summary:focus-visible {
-  outline: 3px solid var(--cyan);
+  outline: var(--focus-ring);
   outline-offset: 4px;
 }
 
@@ -247,7 +292,7 @@ body.product-shell {
 }
 
 .product-page > section {
-  width: min(76rem, calc(100% - 2rem));
+  width: min(var(--content-wide), calc(100% - 2rem));
   margin-inline: auto;
 }
 
@@ -315,10 +360,28 @@ body.product-shell {
   justify-content: center;
   padding: 0.8rem 1.15rem;
   border: 1px solid transparent;
-  border-radius: 0.75rem;
+  border-radius: var(--radius-control);
   font-size: 0.9rem;
   font-weight: 700;
   text-decoration: none;
+  transition:
+    transform var(--duration-fast) var(--ease-standard),
+    border-color var(--duration-fast) var(--ease-standard),
+    background-color var(--duration-fast) var(--ease-standard),
+    color var(--duration-fast) var(--ease-standard),
+    box-shadow var(--duration-fast) var(--ease-standard);
+}
+
+.button:hover {
+  transform: translateY(-1px);
+}
+
+.button:active {
+  transform: translateY(0);
+}
+
+.button--primary:hover {
+  box-shadow: var(--shadow-interactive);
 }
 
 .button--primary {
@@ -340,6 +403,14 @@ body.product-shell {
   font-weight: 700;
   text-decoration-color: color-mix(in srgb, var(--violet) 70%, transparent);
   text-underline-offset: 0.35rem;
+  transition:
+    color var(--duration-fast) var(--ease-standard),
+    text-decoration-color var(--duration-fast) var(--ease-standard);
+}
+
+.text-link:hover {
+  color: var(--cyan);
+  text-decoration-color: currentColor;
 }
 
 .qualification-pill {
@@ -835,7 +906,7 @@ body.product-shell {
 }
 
 .community-page {
-  width: min(76rem, calc(100% - 2rem));
+  width: min(var(--content-wide), calc(100% - 2rem));
   min-height: calc(100vh - 13rem);
   margin-inline: auto;
   padding-block: clamp(4rem, 8vw, 7rem);
@@ -903,7 +974,7 @@ body.product-shell {
 
 .not-found-page {
   display: grid;
-  width: min(76rem, calc(100% - 2rem));
+  width: min(var(--content-wide), calc(100% - 2rem));
   min-height: calc(100vh - 9.5rem);
   margin-inline: auto;
   place-items: center start;
@@ -923,10 +994,41 @@ body.product-shell {
 }
 
 .not-found-page section > p:not(.section-label) {
-  max-width: 42rem;
+  max-width: var(--content-reading);
   color: var(--muted);
   font-size: clamp(1rem, 2vw, 1.2rem);
   line-height: 1.7;
+}
+
+/* Starlight inherits the same evidence-first reading system without replacing
+   its navigation model. */
+.header {
+  border-bottom-color: var(--line);
+  background: color-mix(in srgb, var(--ink) 92%, transparent);
+  backdrop-filter: blur(14px);
+}
+
+.site-title {
+  letter-spacing: -0.02em;
+  font-weight: 750;
+}
+
+.sl-markdown-content {
+  font-size: 1rem;
+  line-height: 1.75;
+}
+
+.sl-markdown-content :is(p, li) {
+  max-width: var(--content-reading);
+}
+
+.sl-markdown-content :is(h1, h2, h3) {
+  letter-spacing: -0.025em;
+  text-wrap: balance;
+}
+
+.sidebar-pane {
+  border-inline-end-color: var(--line);
 }
 
 .not-found-page section > div {

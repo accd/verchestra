@@ -5,10 +5,10 @@ issue: null
 status: in_progress
 branch: design/impeccable-site-polish
 baseRevision: 8e4f64f95c6701d32ee491ee038ea41a52fd29a2
-lastCompletedTask: T2
-nextTask: T3
-lastGate: focused unit and Chromium visual contract tests
-updatedAt: 2026-07-26T01:19:48Z
+lastCompletedTask: T3
+nextTask: T4
+lastGate: site unit, Astro check, and focused Chromium tests
+updatedAt: 2026-07-26T01:24:57Z
 ---
 
 # Scope
@@ -35,10 +35,17 @@ base-relative URL while the existing contract expects the absolute production
 URL. No test was changed or weakened; the implementation must restore the
 existing contract before T6.
 
+T3 complete. The product and Starlight surfaces now share semantic typography,
+content-width, spacing, radius, elevation, motion, and focus tokens. Product
+navigation exposes the current section on desktop and mobile, the background
+decoration is quieter, interactive feedback is consistent, and local fonts use
+`font-display: swap`. All 27 unit tests, Astro diagnostics, and the four focused
+Chromium tests pass.
+
 # Next Exact Action
 
-Consolidate semantic CSS tokens and shared product/Starlight foundations while
-keeping the T2 visual contract green.
+Refine the landing-page hierarchy, concrete product explanation, typography,
+and execution-path composition without changing canonical qualification claims.
 
 # Blockers
 

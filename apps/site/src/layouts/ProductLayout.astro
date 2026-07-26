@@ -15,6 +15,13 @@ const base = import.meta.env.BASE_URL;
 const withBase = (path: string) => `${base}${path.replace(/^\/+/, "")}`;
 const canonicalUrl = new URL(canonicalPath ?? Astro.url.pathname, Astro.site);
 const socialImageUrl = new URL(withBase("social-card.png"), Astro.site);
+const currentPath = Astro.url.pathname;
+const navigation = [
+  { label: "Docs", href: withBase("docs/"), current: currentPath.startsWith(withBase("docs/")) },
+  { label: "Roadmap", href: withBase("roadmap/"), current: currentPath.startsWith(withBase("roadmap/")) },
+  { label: "Community", href: withBase("community/"), current: currentPath.startsWith(withBase("community/")) },
+  { label: "GitHub", href: "https://github.com/accd/verchestra", current: false }
+] as const;
 ---
 
 <!doctype html>
@@ -65,18 +72,24 @@ const socialImageUrl = new URL(withBase("social-card.png"), Astro.site);
           <span>Verchestra</span>
         </a>
         <nav class="site-nav" aria-label="Primary navigation">
-          <a href={withBase("docs/")}>Docs</a>
-          <a href={withBase("roadmap/")}>Roadmap</a>
-          <a href={withBase("community/")}>Community</a>
-          <a href="https://github.com/accd/verchestra">GitHub</a>
+          {
+            navigation.map((item) => (
+              <a href={item.href} aria-current={item.current ? "page" : undefined}>
+                {item.label}
+              </a>
+            ))
+          }
         </nav>
         <details class="mobile-nav">
           <summary>Menu</summary>
           <nav aria-label="Mobile navigation">
-            <a href={withBase("docs/")}>Docs</a>
-            <a href={withBase("roadmap/")}>Roadmap</a>
-            <a href={withBase("community/")}>Community</a>
-            <a href="https://github.com/accd/verchestra">GitHub</a>
+            {
+              navigation.map((item) => (
+                <a href={item.href} aria-current={item.current ? "page" : undefined}>
+                  {item.label}
+                </a>
+              ))
+            }
           </nav>
         </details>
         <button class="theme-toggle" type="button" aria-label="Switch to light theme" aria-pressed="false">

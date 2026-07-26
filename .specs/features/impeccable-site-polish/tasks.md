@@ -54,8 +54,8 @@
 | Task | Status | Commit |
 | --- | --- | --- |
 | T1 | Complete | d6e7c99 |
-| T2 | Complete | pending commit |
-| T3 | Planned | Pending |
+| T2 | Complete | f1fb33e |
+| T3 | Complete | pending commit |
 | T4 | Planned | Pending |
 | T5 | Planned | Pending |
 | T6 | Planned | Pending |
