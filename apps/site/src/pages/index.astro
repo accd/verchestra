@@ -6,6 +6,7 @@ import {
   guarantees,
   productDefinition,
   productHeadline,
+  productScenario,
   productStatus
 } from "../data/product.ts";
 import ProductLayout from "../layouts/ProductLayout.astro";
@@ -51,6 +52,7 @@ const sourceCodeMetadata = {
         <p class="eyebrow"><span></span> Verified delivery control plane</p>
         <h1 id="hero-title">{productHeadline}</h1>
         <p class="hero__definition">{productDefinition}</p>
+        <p class="hero__scenario"><strong>In practice:</strong> {productScenario}</p>
         <div class="hero__actions">
           <a class="button button--primary" href={withBase("docs/")}>Explore how it works</a>
           <a class="button button--secondary" href="https://github.com/accd/verchestra">View on GitHub</a>
@@ -69,7 +71,7 @@ const sourceCodeMetadata = {
 
       <div class="execution-score" aria-label="Portable delivery workflow diagram">
         <div class="execution-score__head">
-          <span>Execution score</span>
+          <span>Delivery path</span>
           <code>portable / signed / reviewable</code>
         </div>
         <ol>
@@ -129,7 +131,7 @@ const sourceCodeMetadata = {
 
     <section class="handoff section-frame" aria-labelledby="handoff-title">
       <div class="section-heading">
-        <p class="section-label">Portable handoff</p>
+        <p class="section-label">Example handoff</p>
         <h2 id="handoff-title">Start with one environment. Continue with another.</h2>
         <p>The receiving developer rebuilds local authority while preserving the signed execution contract.</p>
       </div>

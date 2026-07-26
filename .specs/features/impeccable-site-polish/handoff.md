@@ -5,10 +5,10 @@ issue: null
 status: in_progress
 branch: design/impeccable-site-polish
 baseRevision: 8e4f64f95c6701d32ee491ee038ea41a52fd29a2
-lastCompletedTask: T3
-nextTask: T4
-lastGate: site unit, Astro check, and focused Chromium tests
-updatedAt: 2026-07-26T01:24:57Z
+lastCompletedTask: T4
+nextTask: T5
+lastGate: site unit, build, visual inspection, and focused Chromium tests
+updatedAt: 2026-07-26T01:31:54Z
 ---
 
 # Scope
@@ -42,10 +42,19 @@ decoration is quieter, interactive feedback is consistent, and local fonts use
 `font-display: swap`. All 27 unit tests, Astro diagnostics, and the four focused
 Chromium tests pass.
 
+T4 complete. The landing page now leads from product definition into a
+typed, concrete cross-environment handoff scenario. The delivery path is an
+editorial traversal instead of a floating card, guarantee cards are a single
+evidence grid, heading tracking is restrained, supporting workflow copy is
+larger, and mobile status precedes the headline. Dark and light desktop views,
+the 390 × 844 mobile view, and the guarantee section were inspected from the
+local build. All 27 unit tests, the build, and four focused Chromium acceptance
+tests pass.
+
 # Next Exact Action
 
-Refine the landing-page hierarchy, concrete product explanation, typography,
-and execution-path composition without changing canonical qualification claims.
+Harden responsive behavior, motion reduction, Mermaid theming, supporting text,
+and built-link behavior across every public surface.
 
 # Blockers
 
