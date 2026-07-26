@@ -10,6 +10,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 - Public repository foundation, community documentation, issue forms, CI, and dependency update policy.
 - Static product website and searchable documentation portal with canonical content projection, cross-browser accessibility qualification, and verified GitHub Pages delivery.
+- Provider-neutral root and scoped agent instructions, deterministic repository
+  context/readiness gates, portable feature handoffs, and cross-agent
+  evaluation corpus.
+- Root and published `llms.txt`, attributed `llms-full.txt`, and deterministic
+  Markdown alternates for public documentation.
 
 ## [0.0.0-qualification]
 

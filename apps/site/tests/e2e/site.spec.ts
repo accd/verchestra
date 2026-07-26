@@ -90,6 +90,17 @@ test("deep routes, roadmap links, community calls to action, and recovery resolv
     "href",
     "/verchestra/docs/community/contributing/"
   );
+  await expect(page.getByRole("link", { name: /Open the agent guide/u })).toHaveAttribute(
+    "href",
+    "/verchestra/docs/community/contributing-with-agents/"
+  );
+
+  await page.goto("docs/community/contributing-with-agents/");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Contributing with coding agents");
+  await expect(page.getByRole("link", { name: /Concise llms\.txt/u })).toHaveAttribute(
+    "href",
+    "https://accd.github.io/verchestra/llms.txt"
+  );
 
   await page.goto("404.html");
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("This delivery path does not exist.");
@@ -100,16 +111,41 @@ test("reduced motion disables decorative transitions and Mermaid renders without
 }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto("");
-  const duration = await page
-    .locator(".theme-toggle")
-    .evaluate((element) => getComputedStyle(element).transitionDuration);
-  expect(Number.parseFloat(duration)).toBeLessThanOrEqual(0.00001);
+  for (const selector of [".button--primary", ".text-link", ".site-nav a"]) {
+    const durations = await page
+      .locator(selector)
+      .first()
+      .evaluate((element) =>
+        getComputedStyle(element)
+          .transitionDuration.split(",")
+          .map((duration) => Number.parseFloat(duration))
+      );
+    expect(durations.every((duration) => duration === 0)).toBe(true);
+  }
+  const primaryButton = page.locator(".button--primary").first();
+  await primaryButton.hover();
+  await expect(primaryButton).toHaveCSS("transform", "none");
+
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await page.reload();
+  const authoredDuration = await page
+    .locator(".button--primary")
+    .first()
+    .evaluate((element) => Number.parseFloat(getComputedStyle(element).transitionDuration));
+  expect(authoredDuration).toBeGreaterThan(0);
 
   await page.goto("docs/architecture/system-overview/");
   const diagram = page.locator(".mermaid-diagram");
   await expect(diagram).toHaveAttribute("role", "img");
   await expect(diagram.locator("svg")).toBeVisible();
   await expect(page.getByRole("table")).toBeVisible();
+
+  const darkDiagram = await diagram.innerHTML();
+  await page.evaluate(() => {
+    document.documentElement.dataset.theme = "light";
+  });
+  await expect.poll(() => diagram.innerHTML()).not.toBe(darkDiagram);
+  expect((await diagram.innerHTML()).toLowerCase()).toContain("#ffffff");
 });
 
 test("product touch targets meet the 44 by 44 CSS pixel contract", async ({ page }) => {
@@ -141,4 +177,38 @@ test("the landing page makes no external font, analytics, or runtime API request
   await page.goto("");
   await page.waitForLoadState("networkidle");
   expect([...external]).toEqual([]);
+});
+
+test("public surfaces fit the required viewport matrix in both themes", async ({ page }) => {
+  const surfaces = ["", "community/", "roadmap/", "docs/", "404.html"];
+  const viewports = [
+    { width: 360, height: 800 },
+    { width: 768, height: 1024 },
+    { width: 1440, height: 900 }
+  ];
+
+  for (const viewport of viewports) {
+    await page.setViewportSize(viewport);
+    for (const theme of ["dark", "light"] as const) {
+      for (const path of surfaces) {
+        await page.goto(path);
+        await page.evaluate((selectedTheme) => {
+          localStorage.setItem("starlight-theme", selectedTheme);
+        }, theme);
+        await page.reload();
+
+        await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+        const overflow = await page.locator("html").evaluate((element) => element.scrollWidth - element.clientWidth);
+        expect(overflow, `${path || "landing"} at ${viewport.width}px in ${theme} theme`).toBeLessThanOrEqual(1);
+      }
+    }
+  }
+});
+
+test("representative public surfaces have no Axe violations", async ({ page }) => {
+  for (const path of ["", "community/", "roadmap/", "docs/", "404.html"]) {
+    await page.goto(path);
+    const results = await new AxeBuilder({ page }).analyze();
+    expect(results.violations, `${path || "landing"}: ${JSON.stringify(results.violations, null, 2)}`).toEqual([]);
+  }
 });

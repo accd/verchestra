@@ -7,6 +7,7 @@ import {
   drivers,
   productDefinition,
   productHeadline,
+  productScenario,
   productStatus
 } from "../../src/data/product.ts";
 
@@ -15,6 +16,10 @@ test("publishes the approved first-viewport product contract", () => {
   assert.equal(
     productDefinition,
     "Verchestra is a verified AI software-delivery harness. It turns discovery, planning, implementation, validation, and human approval into portable, signed, and reviewable delivery work."
+  );
+  assert.equal(
+    productScenario,
+    "A developer can begin with one AI environment and hand the next developer an executable contract, verified evidence, and the exact next action — without transferring credentials or relying on chat history."
   );
   assert.deepEqual(productStatus, {
     version: "0.0.0-qualification",

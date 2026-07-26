@@ -1,6 +1,7 @@
 import sitemap from "@astrojs/sitemap";
 import starlight from "@astrojs/starlight";
 import { defineConfig } from "astro/config";
+import { llmArtifactsIntegration } from "./src/lib/llm-content.ts";
 
 const qualificationEvidenceItems = Array.from({ length: 68 }, (_, index) => {
   const task = String(index + 1).padStart(2, "0");
@@ -22,6 +23,7 @@ export default defineConfig({
   },
   integrations: [
     sitemap(),
+    llmArtifactsIntegration(),
     starlight({
       title: "Verchestra",
       description: "Verified AI software delivery that survives the model, the machine, and the handoff.",
@@ -169,7 +171,10 @@ export default defineConfig({
         {
           label: "Community",
           collapsed: true,
-          items: [{ autogenerate: { directory: "docs/community", collapsed: true } }]
+          items: [
+            { label: "Contributing with agents", slug: "docs/community/contributing-with-agents" },
+            { autogenerate: { directory: "docs/community", collapsed: true } }
+          ]
         }
       ]
     })

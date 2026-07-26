@@ -2,3 +2,7 @@ User-agent: *
 Allow: /
 
 Sitemap: https://accd.github.io/verchestra/sitemap-index.xml
+
+# AI-readable documentation (ordinary public resources, not crawler directives):
+# https://accd.github.io/verchestra/llms.txt
+# https://accd.github.io/verchestra/llms-full.txt

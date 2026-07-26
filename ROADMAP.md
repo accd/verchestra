@@ -33,3 +33,10 @@ flowchart LR
 Version `1.0.0` is promoted only when all acceptance requirements are mapped to evidence, all required gates pass, no required fault survives independent verification, and human operational and security reviewers sign the decision.
 
 The authoritative implementation backlog is maintained in [GitHub Issues](https://github.com/accd/verchestra/issues).
+
+## Independent repository-readiness stream
+
+Agent-ready repository instructions, portable contribution handoffs,
+provider-neutral evaluation, and LLM-readable documentation are maintenance
+work independent of T69–T77. They do not advance product qualification: T68
+remains complete and T69 remains the next product task.
