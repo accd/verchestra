@@ -51,20 +51,20 @@
 
 ## Execution evidence
 
-| Task | Status   | Commit  |
-| ---- | -------- | ------- |
-| T1   | Complete | d6e7c99 |
-| T2   | Complete | f1fb33e |
-| T3   | Complete | 857816f |
-| T4   | Complete | 59cb327 |
-| T5   | Complete | a8d2557 |
-| T6   | Planned  | Pending |
+| Task | Status   | Commit               |
+| ---- | -------- | -------------------- |
+| T1   | Complete | d6e7c99              |
+| T2   | Complete | f1fb33e              |
+| T3   | Complete | 857816f              |
+| T4   | Complete | 59cb327              |
+| T5   | Complete | a8d2557              |
+| T6   | Complete | final handoff commit |
 
 ### Verifier fix tasks
 
-| Task | Gap                                                                            | Verification                                                    | Commit         |
-| ---- | ------------------------------------------------------------------------------ | --------------------------------------------------------------- | -------------- |
-| T5F1 | Make reduced-motion assertions discriminating and record detector dispositions | Focused browser test, unit contract, and re-verification sensor | pending commit |
+| Task | Gap                                                                            | Verification                                                    | Commit  |
+| ---- | ------------------------------------------------------------------------------ | --------------------------------------------------------------- | ------- |
+| T5F1 | Make reduced-motion assertions discriminating and record detector dispositions | Focused browser test, unit contract, and re-verification sensor | ea97107 |
 
 ## Task validation
 

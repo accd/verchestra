@@ -2,13 +2,13 @@
 schema: verchestra-feature-handoff/v1
 feature: impeccable-site-polish
 issue: null
-status: in_progress
+status: complete
 branch: design/impeccable-site-polish
 baseRevision: 8e4f64f95c6701d32ee491ee038ea41a52fd29a2
-lastCompletedTask: T5
-nextTask: T6
-lastGate: agent:check, site:check, site:test, site:build, and gate:quick
-updatedAt: 2026-07-26T01:46:21Z
+lastCompletedTask: T6
+nextTask: Human review and merge decision
+lastGate: independent verification with 28 unit, 51 browser, Lighthouse, and 120-page build
+updatedAt: 2026-07-26T02:19:02Z
 ---
 
 # Scope
@@ -83,10 +83,16 @@ the primary button, navigation link, and text link directly, proves hover
 transform is absent under reduced motion, and proves the authored transition
 returns under the default preference.
 
+Re-verification matched all eight ISP requirements and all six acceptance
+outcomes. The mandatory site gate passed with 28 unit tests, 51 browser tests
+across Chromium, Firefox, and WebKit, zero skipped or todo tests, Lighthouse,
+and a 120-page build. All three scratch-only discrimination mutations were
+killed, including the previously surviving one-second button transition.
+
 # Next Exact Action
 
-Run a fresh independent verification against ISP-01–ISP-08, record the evidence,
-and leave the branch ready for human review without publishing it.
+Perform human visual review and decide whether to merge. Nothing has been
+published, pushed, or deployed by this feature.
 
 # Blockers
 
