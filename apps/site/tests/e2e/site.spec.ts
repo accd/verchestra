@@ -153,3 +153,37 @@ test("the landing page makes no external font, analytics, or runtime API request
   await page.waitForLoadState("networkidle");
   expect([...external]).toEqual([]);
 });
+
+test("public surfaces fit the required viewport matrix in both themes", async ({ page }) => {
+  const surfaces = ["", "community/", "roadmap/", "docs/", "404.html"];
+  const viewports = [
+    { width: 360, height: 800 },
+    { width: 768, height: 1024 },
+    { width: 1440, height: 900 }
+  ];
+
+  for (const viewport of viewports) {
+    await page.setViewportSize(viewport);
+    for (const theme of ["dark", "light"] as const) {
+      for (const path of surfaces) {
+        await page.goto(path);
+        await page.evaluate((selectedTheme) => {
+          localStorage.setItem("starlight-theme", selectedTheme);
+        }, theme);
+        await page.reload();
+
+        await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+        const overflow = await page.locator("html").evaluate((element) => element.scrollWidth - element.clientWidth);
+        expect(overflow, `${path || "landing"} at ${viewport.width}px in ${theme} theme`).toBeLessThanOrEqual(1);
+      }
+    }
+  }
+});
+
+test("representative public surfaces have no Axe violations", async ({ page }) => {
+  for (const path of ["", "community/", "roadmap/", "docs/", "404.html"]) {
+    await page.goto(path);
+    const results = await new AxeBuilder({ page }).analyze();
+    expect(results.violations, `${path || "landing"}: ${JSON.stringify(results.violations, null, 2)}`).toEqual([]);
+  }
+});
