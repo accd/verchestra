@@ -12,6 +12,26 @@
 
 Explore the [product website and searchable documentation](https://accd.github.io/verchestra/), or continue below for the repository overview.
 
+## Agent-ready contribution and AI-readable docs
+
+A clean clone is self-describing through the root and scoped `AGENTS.md` files.
+Run the dependency-free context command before installation:
+
+```bash
+corepack pnpm agent:context -- --json
+```
+
+See [Contributing with Coding Agents](docs/contributing-with-agents.md) for the
+provider-neutral specification, handoff, safety, verification, and human-review
+workflow.
+
+AI-readable documentation is available as the repository
+[`llms.txt`](llms.txt), the published
+[LLM summary](https://accd.github.io/verchestra/llms.txt), the
+[full attributed context](https://accd.github.io/verchestra/llms-full.txt), and
+page-level Markdown alternates. These are inference-time aids, not guarantees
+of indexing, SEO ranking, training inclusion, or crawler behavior.
+
 ## Why Verchestra
 
 AI-assisted delivery should not depend on one machine, one model, or an unreviewable conversation. Verchestra keeps the work portable and makes critical decisions explicit.
@@ -54,13 +74,13 @@ sequenceDiagram
 
 ## Supported qualification surface
 
-| Area | Current surface |
-| --- | --- |
-| AI drivers | Claude Code, Codex, OpenCode / Qwen |
-| Read-only data probes | PostgreSQL, MySQL / MariaDB, SQL Server, SAP ASE / Sybase, Oracle, SQLite, MongoDB |
-| Workspaces | Single repositories, colocated projects, centralized monorepo control, and nested projects |
-| Evidence | Signed packages, run capsules, recovery bundles, support bundles, provenance, and TUF-backed distribution inputs |
-| Governance | Cedar policy, approvals, claims, leases, egress control, independent verification, human review |
+| Area                  | Current surface                                                                                                  |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| AI drivers            | Claude Code, Codex, OpenCode / Qwen                                                                              |
+| Read-only data probes | PostgreSQL, MySQL / MariaDB, SQL Server, SAP ASE / Sybase, Oracle, SQLite, MongoDB                               |
+| Workspaces            | Single repositories, colocated projects, centralized monorepo control, and nested projects                       |
+| Evidence              | Signed packages, run capsules, recovery bundles, support bundles, provenance, and TUF-backed distribution inputs |
+| Governance            | Cedar policy, approvals, claims, leases, egress control, independent verification, human review                  |
 
 ## Developer quick start
 
@@ -97,6 +117,8 @@ pnpm --filter @verchestra/site exec playwright install chromium firefox webkit
 ## Repository guide
 
 - [Product website and documentation](https://accd.github.io/verchestra/) provides the public, searchable portal.
+- [Agent contribution guide](docs/contributing-with-agents.md) explains clean-clone context, portable handoff, safety, and review.
+- [LLM-readable summary](llms.txt) links the deterministic public AI-readable resources.
 - [Architecture](docs/architecture.md) explains the system boundaries and trust model.
 - [Roadmap](ROADMAP.md) shows what is complete and what must happen before 1.0.
 - [Contributing](CONTRIBUTING.md) explains how to propose changes and run checks.

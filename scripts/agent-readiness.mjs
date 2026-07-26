@@ -1,0 +1,343 @@
+import { execFileSync } from "node:child_process";
+import { existsSync } from "node:fs";
+import { readFile, readdir, stat } from "node:fs/promises";
+import { dirname, join, posix, relative, resolve, sep } from "node:path";
+import { fileURLToPath } from "node:url";
+
+export const REPOSITORY = "accd/verchestra";
+export const ROOT = fileURLToPath(new URL("..", import.meta.url));
+export const REQUIRED_READS = Object.freeze([
+  "AGENTS.md",
+  "docs/architecture.md",
+  "docs/repository-map.md",
+  "ROADMAP.md",
+  ".specs/STATE.md"
+]);
+export const GATES = Object.freeze({
+  quick: "pnpm gate:quick",
+  full: "pnpm gate:full",
+  build: "pnpm gate:build",
+  security: "pnpm gate:security",
+  release: "pnpm gate:release",
+  agent: "pnpm agent:check",
+  site: "pnpm site:test && pnpm site:build"
+});
+export const SCOPED_INSTRUCTIONS = Object.freeze([
+  "packages/AGENTS.md",
+  "apps/site/AGENTS.md",
+  "tests/AGENTS.md",
+  "schemas/AGENTS.md",
+  ".specs/AGENTS.md",
+  "docs/AGENTS.md",
+  "spikes/AGENTS.md"
+]);
+export const HANDOFF_STATUSES = Object.freeze(["planned", "in_progress", "blocked", "verification", "complete"]);
+
+function git(root, args) {
+  try {
+    return execFileSync("git", ["-C", root, ...args], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"]
+    }).trim();
+  } catch {
+    return null;
+  }
+}
+
+export function normalizeRepositoryPath(path) {
+  return path.replaceAll("\\", "/").replace(/^\.\/+/u, "");
+}
+
+function parseScalar(value) {
+  const trimmed = value.trim();
+  if (trimmed === "null") return null;
+  if (/^(?:0|[1-9]\d{0,14})$/u.test(trimmed)) return Number(trimmed);
+  return trimmed.replace(/^(['"])(.*)\1$/u, "$2");
+}
+
+export function parseHandoff(source, path = "handoff.md") {
+  const match = /^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/u.exec(source);
+  if (!match) throw new Error(`${path}: missing YAML frontmatter`);
+  const frontmatter = {};
+  for (const line of match[1].split(/\r?\n/u)) {
+    const field = /^([A-Za-z][A-Za-z0-9]*):\s*(.*)$/u.exec(line);
+    if (!field) throw new Error(`${path}: malformed frontmatter line`);
+    frontmatter[field[1]] = parseScalar(field[2]);
+  }
+  const required = [
+    "schema",
+    "feature",
+    "issue",
+    "status",
+    "branch",
+    "baseRevision",
+    "lastCompletedTask",
+    "nextTask",
+    "lastGate",
+    "updatedAt"
+  ];
+  for (const field of required) {
+    if (!Object.hasOwn(frontmatter, field)) throw new Error(`${path}: missing ${field}`);
+  }
+  if (frontmatter.schema !== "verchestra-feature-handoff/v1") throw new Error(`${path}: unsupported schema`);
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(frontmatter.feature)) throw new Error(`${path}: invalid feature`);
+  if (frontmatter.issue !== null && (!Number.isInteger(frontmatter.issue) || frontmatter.issue < 1))
+    throw new Error(`${path}: invalid issue`);
+  if (!HANDOFF_STATUSES.includes(frontmatter.status)) throw new Error(`${path}: invalid status`);
+  if (typeof frontmatter.branch !== "string" || frontmatter.branch.length === 0)
+    throw new Error(`${path}: invalid branch`);
+  if (!/^[0-9a-f]{40}$/u.test(frontmatter.baseRevision)) throw new Error(`${path}: invalid baseRevision`);
+  if (frontmatter.lastCompletedTask !== null && !/^T\d+$/u.test(frontmatter.lastCompletedTask))
+    throw new Error(`${path}: invalid lastCompletedTask`);
+  if (typeof frontmatter.nextTask !== "string" || frontmatter.nextTask.length === 0)
+    throw new Error(`${path}: invalid nextTask`);
+  if (frontmatter.lastGate !== null && typeof frontmatter.lastGate !== "string")
+    throw new Error(`${path}: invalid lastGate`);
+  if (!/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/u.test(frontmatter.updatedAt))
+    throw new Error(`${path}: updatedAt must be ISO-8601 UTC`);
+  if (frontmatter.status === "blocked" && !/^# Blockers\r?$/mu.test(match[2]))
+    throw new Error(`${path}: blocked handoff needs a Blockers section`);
+  return { ...frontmatter, body: match[2] };
+}
+
+export function validateHandoffTransition(from, to) {
+  if (from === to) return true;
+  if (to === "blocked") return from !== "complete";
+  if (from === "blocked") return new Set(["planned", "in_progress", "verification"]).has(to);
+  return (
+    new Map([
+      ["planned", "in_progress"],
+      ["in_progress", "verification"],
+      ["verification", "complete"]
+    ]).get(from) === to
+  );
+}
+
+async function featureHandoffs(root) {
+  const directory = join(root, ".specs", "features");
+  if (!existsSync(directory)) return [];
+  const features = [];
+  for (const entry of (await readdir(directory, { withFileTypes: true })).sort((a, b) =>
+    a.name.localeCompare(b.name, "en")
+  )) {
+    if (!entry.isDirectory()) continue;
+    const path = join(directory, entry.name, "handoff.md");
+    if (!existsSync(path)) continue;
+    const handoff = parseHandoff(await readFile(path, "utf8"), normalizeRepositoryPath(relative(root, path)));
+    if (handoff.status === "complete") continue;
+    features.push({
+      slug: handoff.feature,
+      issue: handoff.issue,
+      status: handoff.status,
+      lastCompletedTask: handoff.lastCompletedTask,
+      nextTask: handoff.nextTask,
+      handoffPath: normalizeRepositoryPath(relative(root, path))
+    });
+  }
+  return features;
+}
+
+export async function compileAgentContext(root = ROOT) {
+  const manifest = JSON.parse(await readFile(join(root, "package.json"), "utf8"));
+  const revision = git(root, ["rev-parse", "HEAD"]) ?? "unknown";
+  const symbolicBranch = git(root, ["symbolic-ref", "--quiet", "--short", "HEAD"]);
+  const dirtyOutput = git(root, ["status", "--porcelain"]);
+  const qualificationDirectory = join(root, "docs", "qualification");
+  let highestVerifiedTask = 0;
+  if (existsSync(qualificationDirectory)) {
+    for (const entry of await readdir(qualificationDirectory)) {
+      const task = /^t(\d+)-validation\.md$/u.exec(entry);
+      if (task) highestVerifiedTask = Math.max(highestVerifiedTask, Number(task[1]));
+    }
+  }
+  return {
+    schemaVersion: 1,
+    repository: REPOSITORY,
+    version: manifest.version,
+    revision,
+    branch: symbolicBranch || null,
+    dirty: dirtyOutput === null ? false : dirtyOutput.length > 0,
+    qualification: {
+      highestVerifiedTask,
+      nextTask: highestVerifiedTask + 1
+    },
+    requiredReads: [...REQUIRED_READS],
+    activeFeatures: await featureHandoffs(root),
+    gates: { ...GATES }
+  };
+}
+
+async function trackedFiles(root) {
+  const output = git(root, ["ls-files"]);
+  return output ? output.split(/\r?\n/u).filter(Boolean).map(normalizeRepositoryPath) : [];
+}
+
+async function checkMarkdownLinks(root, files, errors) {
+  for (const path of files) {
+    if (!path.endsWith(".md") || !existsSync(join(root, path))) continue;
+    const source = await readFile(join(root, path), "utf8");
+    for (const match of source.matchAll(/\[[^\]]+\]\(([^)]+)\)/gu)) {
+      const target = match[1].trim().replace(/^<|>$/gu, "");
+      if (/^(?:https?:|mailto:|#)/u.test(target)) continue;
+      const clean = decodeURIComponent(target.split(/[?#]/u)[0]);
+      if (!clean) continue;
+      if (path.startsWith("apps/site/src/content/docs/docs/")) {
+        const contentPrefix = "apps/site/src/content/docs/docs/";
+        const sourceRelative = path.slice(contentPrefix.length);
+        const sourceWithoutExtension = sourceRelative.replace(/\.(?:md|mdx)$/u, "");
+        const routeBase =
+          posix.basename(sourceWithoutExtension) === "index"
+            ? posix.dirname(sourceWithoutExtension)
+            : sourceWithoutExtension;
+        let route;
+        if (clean.startsWith("/verchestra/docs/")) route = clean.slice("/verchestra/docs/".length);
+        else if (clean.startsWith("/verchestra/")) {
+          const page = clean.slice("/verchestra/".length).replace(/\/$/u, "");
+          if (
+            page.length === 0 ||
+            existsSync(join(root, "apps", "site", "src", "pages", `${page}.astro`)) ||
+            existsSync(join(root, "apps", "site", "src", "pages", page, "index.astro")) ||
+            (page === "roadmap" && existsSync(join(root, "ROADMAP.md")))
+          )
+            continue;
+          errors.push(`${path}: broken or unsafe Markdown link ${target}`);
+          continue;
+        } else route = posix.normalize(posix.join(routeBase, clean));
+        route = route.replace(/^\/|\/$/gu, "");
+        if (
+          existsSync(join(root, "apps", "site", "src", "content", "docs", "docs", `${route}.md`)) ||
+          existsSync(join(root, "apps", "site", "src", "content", "docs", "docs", `${route}.mdx`)) ||
+          existsSync(join(root, "apps", "site", "src", "content", "docs", "docs", route, "index.md")) ||
+          existsSync(join(root, "apps", "site", "src", "content", "docs", "docs", route, "index.mdx")) ||
+          (/^qualification\/t\d+-validation$/u.test(route) && existsSync(join(root, "docs", `${route}.md`)))
+        )
+          continue;
+        errors.push(`${path}: broken or unsafe Markdown link ${target}`);
+        continue;
+      }
+      const absolute = resolve(dirname(join(root, path)), clean);
+      if (!absolute.startsWith(`${resolve(root)}${sep}`) || !existsSync(absolute))
+        errors.push(`${path}: broken or unsafe Markdown link ${target}`);
+    }
+  }
+}
+
+function unsafeValue(source) {
+  return (
+    /(?:[A-Za-z]:\\(?:Users|Documents and Settings)\\|\/(?:Users|home)\/[^/\s]+\/)/u.test(source) ||
+    /\b(?:ghp_[A-Za-z0-9]{20,}|sk-[A-Za-z0-9]{20,}|Bearer\s+[A-Za-z0-9._-]{20,})\b/u.test(source) ||
+    /\b[A-Z][A-Z0-9_]*(?:TOKEN|SECRET|PASSWORD|API_KEY)\s*=\s*\S+/u.test(source)
+  );
+}
+
+export async function checkRepository(root = ROOT) {
+  const errors = [];
+  for (const path of [
+    ...REQUIRED_READS,
+    ...SCOPED_INSTRUCTIONS,
+    "CLAUDE.md",
+    "GEMINI.md",
+    "llms.txt",
+    "package.json"
+  ]) {
+    if (!existsSync(join(root, path))) errors.push(`missing required path: ${path}`);
+  }
+  if (existsSync(join(root, "CLAUDE.md")) && (await readFile(join(root, "CLAUDE.md"), "utf8")) !== "@AGENTS.md\n")
+    errors.push("CLAUDE.md does not match generated pointer");
+  if (existsSync(join(root, "GEMINI.md")) && (await readFile(join(root, "GEMINI.md"), "utf8")) !== "@./AGENTS.md\n")
+    errors.push("GEMINI.md does not match generated pointer");
+
+  if (existsSync(join(root, "AGENTS.md"))) {
+    const rootInstructions = await readFile(join(root, "AGENTS.md"), "utf8");
+    if (rootInstructions.split(/\r?\n/u).length >= 200) errors.push("AGENTS.md exceeds 199 lines");
+  }
+  for (const path of SCOPED_INSTRUCTIONS) {
+    if (!existsSync(join(root, path))) continue;
+    const source = await readFile(join(root, path), "utf8");
+    if (source.split(/\r?\n/u).length > 120) errors.push(`${path} exceeds 120 lines`);
+    if (/\b(?:ignore|override|relax)\s+(?:the\s+)?root\b/iu.test(source))
+      errors.push(`${path} contradicts root instructions`);
+  }
+
+  const files = await trackedFiles(root);
+  for (const prohibited of [
+    ".cursorrules",
+    ".windsurfrules",
+    ".github/copilot-instructions.md",
+    "CODEX.md",
+    "OPENCODE.md"
+  ]) {
+    if (files.includes(prohibited)) errors.push(`prohibited provider instruction file: ${prohibited}`);
+  }
+  const manifest = JSON.parse(await readFile(join(root, "package.json"), "utf8"));
+  const instructionFiles = ["AGENTS.md", ...SCOPED_INSTRUCTIONS].filter((path) => existsSync(join(root, path)));
+  const contextFiles = [
+    ...new Set([
+      ...files.filter(
+        (path) =>
+          path.endsWith("AGENTS.md") ||
+          path === "CLAUDE.md" ||
+          path === "GEMINI.md" ||
+          path === "llms.txt" ||
+          path.startsWith(".specs/features/agent-ready-repository/") ||
+          path === "docs/repository-map.md" ||
+          path === "docs/contributing-with-agents.md"
+      ),
+      ...instructionFiles,
+      "CLAUDE.md",
+      "GEMINI.md",
+      "docs/repository-map.md",
+      "docs/contributing-with-agents.md",
+      "llms.txt"
+    ])
+  ].filter((path) => existsSync(join(root, path)));
+  for (const path of contextFiles) {
+    const source = await readFile(join(root, path), "utf8");
+    if (unsafeValue(source)) errors.push(`${path}: contains a secret-like value or machine-local path`);
+  }
+
+  for (const path of instructionFiles) {
+    const source = await readFile(join(root, path), "utf8");
+    for (const match of source.matchAll(/\bpnpm\s+([a-z][\w:-]*)/gu)) {
+      const command = match[1];
+      if (command !== "install" && !Object.hasOwn(manifest.scripts, command))
+        errors.push(`${path}: referenced pnpm command does not exist: ${command}`);
+    }
+  }
+
+  const context = await compileAgentContext(root);
+  if (context.version !== "0.0.0-qualification") errors.push(`stale version: ${context.version}`);
+  if (context.qualification.highestVerifiedTask !== 68 || context.qualification.nextTask !== 69)
+    errors.push("qualification status must be T68 complete and T69 next");
+  for (const path of [".specs/STATE.md", "ROADMAP.md"]) {
+    if (!existsSync(join(root, path))) continue;
+    const source = await readFile(join(root, path), "utf8");
+    if (!/T68/u.test(source) || !/T69/u.test(source)) errors.push(`${path}: missing T68/T69 status`);
+  }
+  if (existsSync(join(root, "llms.txt"))) {
+    const llms = await readFile(join(root, "llms.txt"), "utf8");
+    if (!llms.includes(context.version) || !/T68 complete; T69 next/u.test(llms))
+      errors.push("llms.txt disagrees with repository status");
+  }
+
+  const handoffDirectory = join(root, ".specs", "features");
+  if (existsSync(handoffDirectory)) {
+    for (const feature of await readdir(handoffDirectory, { withFileTypes: true })) {
+      const handoff = join(handoffDirectory, feature.name, "handoff.md");
+      if (feature.isDirectory() && existsSync(handoff)) {
+        try {
+          parseHandoff(await readFile(handoff, "utf8"), normalizeRepositoryPath(relative(root, handoff)));
+        } catch (error) {
+          errors.push(error.message);
+        }
+      }
+    }
+  }
+  await checkMarkdownLinks(root, files, errors);
+  return [...new Set(errors)].sort();
+}
+
+export async function assertFileSize(path, maximumBytes) {
+  const result = await stat(path);
+  if (result.size > maximumBytes) throw new Error(`${path} exceeds ${maximumBytes} bytes`);
+}

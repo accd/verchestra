@@ -19,3 +19,4 @@ spikes/node-runtime/.bundle/
 .verchestra/.sessions/
 .verchestra/.worktrees/
 .verchestra/.secrets/
+.verchestra/.runtime/agent-eval/

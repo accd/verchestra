@@ -3,6 +3,9 @@ export const productHeadline = "AI delivery that survives the model, the machine
 export const productDefinition =
   "Verchestra is a verified AI software-delivery harness. It turns discovery, planning, implementation, validation, and human approval into portable, signed, and reviewable delivery work.";
 
+export const productScenario =
+  "A developer can begin with one AI environment and hand the next developer an executable contract, verified evidence, and the exact next action — without transferring credentials or relying on chat history.";
+
 export const productStatus = {
   version: "0.0.0-qualification",
   completedTask: 68,

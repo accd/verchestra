@@ -18,6 +18,20 @@ body:
     validations:
       required: true
   - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: List observable outcomes and edge cases that deterministic tests can verify.
+    validations:
+      required: true
+  - type: textarea
+    id: canonical
+    attributes:
+      label: Canonical repository references
+      description: Identify repository-relative sources, schemas, architecture, roadmap, or existing handoff artifacts.
+    validations:
+      required: true
+  - type: textarea
     id: alternatives
     attributes:
       label: Alternatives considered
@@ -28,5 +42,19 @@ body:
     attributes:
       label: Policy, privacy, and operational impact
       description: Explain affected credentials, data, effects, approvals, or compatibility boundaries.
+    validations:
+      required: true
+  - type: textarea
+    id: verification
+    attributes:
+      label: Verification commands
+      description: Name the smallest relevant tests and required repository gates.
+    validations:
+      required: true
+  - type: textarea
+    id: handoff
+    attributes:
+      label: Handoff and human review
+      description: State whether tracked feature artifacts are required and what evidence a human reviewer must approve.
     validations:
       required: true

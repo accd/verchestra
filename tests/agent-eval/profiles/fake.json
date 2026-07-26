@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "name": "deterministic-fake",
+  "provider": "fixture",
+  "toolVersion": "1.0.0",
+  "modelVersion": "fixture-1",
+  "command": "node",
+  "args": ["tests/agent-eval/fake-adapter.mjs", "--corpus", "{corpusFile}", "--output", "{resultFile}"]
+}

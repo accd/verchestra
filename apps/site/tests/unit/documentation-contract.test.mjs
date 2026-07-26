@@ -47,7 +47,8 @@ const requiredGuides = [
   "qualification/index.md",
   "qualification/runtime-and-driver-qualification.md",
   "qualification/security-and-isolation-evidence.md",
-  "qualification/supply-chain-qualification.md"
+  "qualification/supply-chain-qualification.md",
+  "community/contributing-with-agents.md"
 ];
 
 test("publishes every approved site-specific guide with searchable metadata", async () => {

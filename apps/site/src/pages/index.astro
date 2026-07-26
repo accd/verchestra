@@ -6,6 +6,7 @@ import {
   guarantees,
   productDefinition,
   productHeadline,
+  productScenario,
   productStatus
 } from "../data/product.ts";
 import ProductLayout from "../layouts/ProductLayout.astro";
@@ -22,7 +23,21 @@ const sourceCodeMetadata = {
   programmingLanguage: "TypeScript",
   runtimePlatform: "Node.js 24.14.0",
   version: productStatus.version,
-  url: "https://accd.github.io/verchestra/"
+  url: "https://accd.github.io/verchestra/",
+  subjectOf: [
+    {
+      "@type": "DigitalDocument",
+      name: "Verchestra LLM documentation summary",
+      encodingFormat: "text/plain",
+      url: "https://accd.github.io/verchestra/llms.txt"
+    },
+    {
+      "@type": "DigitalDocument",
+      name: "Verchestra full LLM context",
+      encodingFormat: "text/plain",
+      url: "https://accd.github.io/verchestra/llms-full.txt"
+    }
+  ]
 };
 ---
 
@@ -34,9 +49,10 @@ const sourceCodeMetadata = {
   <main id="main-content" class="product-page">
     <section class="hero" aria-labelledby="hero-title">
       <div class="hero__copy">
-        <p class="eyebrow"><span></span> Verified delivery control plane</p>
+        <p class="eyebrow"><span></span> Verified delivery</p>
         <h1 id="hero-title">{productHeadline}</h1>
         <p class="hero__definition">{productDefinition}</p>
+        <p class="hero__scenario"><strong>In practice:</strong> {productScenario}</p>
         <div class="hero__actions">
           <a class="button button--primary" href={withBase("docs/")}>Explore how it works</a>
           <a class="button button--secondary" href="https://github.com/accd/verchestra">View on GitHub</a>
@@ -55,7 +71,7 @@ const sourceCodeMetadata = {
 
       <div class="execution-score" aria-label="Portable delivery workflow diagram">
         <div class="execution-score__head">
-          <span>Execution score</span>
+          <span>Delivery path</span>
           <code>portable / signed / reviewable</code>
         </div>
         <ol>
@@ -96,7 +112,6 @@ const sourceCodeMetadata = {
 
     <section class="guarantees section-frame" aria-labelledby="guarantees-title">
       <div class="section-heading">
-        <p class="section-label">Core guarantees</p>
         <h2 id="guarantees-title">Control where it matters. Freedom where it helps.</h2>
         <p>Models can change. The delivery contract, evidence, and accountability do not.</p>
       </div>
@@ -115,9 +130,11 @@ const sourceCodeMetadata = {
 
     <section class="handoff section-frame" aria-labelledby="handoff-title">
       <div class="section-heading">
-        <p class="section-label">Portable handoff</p>
         <h2 id="handoff-title">Start with one environment. Continue with another.</h2>
-        <p>The receiving developer rebuilds local authority while preserving the signed execution contract.</p>
+        <p>
+          <strong>Example handoff.</strong> The receiving developer rebuilds local authority while preserving the signed execution
+          contract.
+        </p>
       </div>
       <div
         class="handoff-path"
@@ -181,7 +198,6 @@ const sourceCodeMetadata = {
 
     <section class="architecture section-frame" aria-labelledby="architecture-title">
       <div class="section-heading">
-        <p class="section-label">Architecture</p>
         <h2 id="architecture-title">A delivery control plane, not a model wrapper.</h2>
       </div>
       <div class="architecture-map">
@@ -202,7 +218,6 @@ const sourceCodeMetadata = {
 
     <section class="qualification section-frame" aria-labelledby="qualification-title">
       <div>
-        <p class="section-label">Qualification, not theatre</p>
         <h2 id="qualification-title">T{productStatus.completedTask} is evidence. T{productStatus.nextTask} is work.</h2>
         <p>
           Foundations through T{productStatus.completedTask} are backed by public validation reports. Self-Test, regression,
