@@ -121,6 +121,13 @@ test("reduced motion disables decorative transitions and Mermaid renders without
   await expect(diagram).toHaveAttribute("role", "img");
   await expect(diagram.locator("svg")).toBeVisible();
   await expect(page.getByRole("table")).toBeVisible();
+
+  const darkDiagram = await diagram.innerHTML();
+  await page.evaluate(() => {
+    document.documentElement.dataset.theme = "light";
+  });
+  await expect.poll(() => diagram.innerHTML()).not.toBe(darkDiagram);
+  expect((await diagram.innerHTML()).toLowerCase()).toContain("#ffffff");
 });
 
 test("product touch targets meet the 44 by 44 CSS pixel contract", async ({ page }) => {

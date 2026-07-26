@@ -35,42 +35,66 @@ const llmsFullUrl = new URL("llms-full.txt", siteUrl);
 <link rel="alternate" type="text/plain" title="Verchestra full LLM context" href={llmsFullUrl.href} />
 <script is:inline type="application/ld+json" set:html={JSON.stringify(structuredData)} />
 <script>
+  let mermaidRenderId = 0;
+
   const renderMermaid = async () => {
-    const diagrams = [...document.querySelectorAll<HTMLElement>('pre[data-language="mermaid"]')].flatMap((pre) => {
+    [...document.querySelectorAll<HTMLElement>('pre[data-language="mermaid"]')].forEach((pre) => {
       const source = [...pre.querySelectorAll<HTMLElement>(".ec-line .code")]
         .map((line) => line.textContent ?? "")
         .join("\n");
       const renderedFrame = pre.closest("figure") ?? pre;
-      if (!source) return [];
+      if (!source) return;
       const diagram = document.createElement("div");
-      diagram.className = "mermaid mermaid-diagram";
+      diagram.className = "mermaid-diagram";
       diagram.setAttribute("role", "img");
       diagram.setAttribute(
         "aria-label",
         "Architecture diagram. The surrounding document provides the equivalent system description."
       );
-      diagram.textContent = source;
+      diagram.dataset.mermaidSource = source;
       renderedFrame.replaceWith(diagram);
-      return [diagram];
     });
 
+    const diagrams = [...document.querySelectorAll<HTMLElement>(".mermaid-diagram")];
     if (diagrams.length === 0) return;
     const { default: mermaid } = await import("mermaid");
+    const isLight = document.documentElement.dataset.theme === "light";
+    const palette = isLight
+      ? {
+          background: "transparent",
+          primaryColor: "#FFFFFF",
+          primaryTextColor: "#121525",
+          primaryBorderColor: "#5B4FD8",
+          lineColor: "#087F7A",
+          secondaryColor: "#EEEBF6",
+          tertiaryColor: "#F7F4ED"
+        }
+      : {
+          background: "transparent",
+          primaryColor: "#0E1424",
+          primaryTextColor: "#F3EFE6",
+          primaryBorderColor: "#8A7CFF",
+          lineColor: "#45D6D0",
+          secondaryColor: "#18203A",
+          tertiaryColor: "#070A12"
+        };
     mermaid.initialize({
       startOnLoad: false,
       securityLevel: "strict",
       theme: "base",
-      themeVariables: {
-        background: "transparent",
-        primaryColor: "#0E1424",
-        primaryTextColor: "#F3EFE6",
-        primaryBorderColor: "#8A7CFF",
-        lineColor: "#45D6D0",
-        secondaryColor: "#18203A",
-        tertiaryColor: "#070A12"
-      }
+      themeVariables: palette
     });
-    await mermaid.run({ nodes: diagrams });
+
+    await Promise.all(
+      diagrams.map(async (diagram) => {
+        const source = diagram.dataset.mermaidSource;
+        if (!source) return;
+        const id = `verchestra-mermaid-${mermaidRenderId++}`;
+        const { svg, bindFunctions } = await mermaid.render(id, source);
+        diagram.innerHTML = svg;
+        bindFunctions?.(diagram);
+      })
+    );
   };
 
   document.addEventListener("DOMContentLoaded", () => {
@@ -78,5 +102,11 @@ const llmsFullUrl = new URL("llms-full.txt", siteUrl);
       table.tabIndex = 0;
     });
     void renderMermaid();
+
+    new MutationObserver((mutations) => {
+      if (mutations.some(({ attributeName }) => attributeName === "data-theme")) {
+        void renderMermaid();
+      }
+    }).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
   });
 </script>

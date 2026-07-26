@@ -56,8 +56,8 @@
 | T1 | Complete | d6e7c99 |
 | T2 | Complete | f1fb33e |
 | T3 | Complete | 857816f |
-| T4 | Complete | pending commit |
-| T5 | Planned | Pending |
+| T4 | Complete | 59cb327 |
+| T5 | Complete | pending commit |
 | T6 | Planned | Pending |
 
 ## Task validation

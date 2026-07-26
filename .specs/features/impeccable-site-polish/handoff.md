@@ -5,10 +5,10 @@ issue: null
 status: in_progress
 branch: design/impeccable-site-polish
 baseRevision: 8e4f64f95c6701d32ee491ee038ea41a52fd29a2
-lastCompletedTask: T4
-nextTask: T5
-lastGate: site unit, build, visual inspection, and focused Chromium tests
-updatedAt: 2026-07-26T01:31:54Z
+lastCompletedTask: T5
+nextTask: T6
+lastGate: agent:check, site:check, site:test, site:build, and gate:quick
+updatedAt: 2026-07-26T01:46:21Z
 ---
 
 # Scope
@@ -51,10 +51,24 @@ the 390 × 844 mobile view, and the guarantee section were inspected from the
 local build. All 27 unit tests, the build, and four focused Chromium acceptance
 tests pass.
 
+T5 complete. Mermaid now derives its palette from the active theme and
+rerenders when that theme changes. Reduced motion disables only authored
+transitions, touch devices no longer inherit hover lift, Windows forced-colors
+receives explicit control edges, critical metadata is larger, and long reading
+lines are bounded. The final source detector was clean. The rendered detector
+identified repeated cyan/violet brand warnings plus real hierarchy, line
+length, uppercase-label, and border/shadow findings; the real findings were
+corrected while the explicitly approved brand palette was retained.
+
+`agent:check`, `site:check`, `site:test`, `site:build`, and `gate:quick` pass.
+The site suite covered Chromium, Firefox, WebKit, Axe, and Lighthouse. The
+Windows Lighthouse cleanup hit a temporary-directory lock, used the runner's
+single built-in retry, and completed successfully.
+
 # Next Exact Action
 
-Harden responsive behavior, motion reduction, Mermaid theming, supporting text,
-and built-link behavior across every public surface.
+Run a fresh independent verification against ISP-01–ISP-08, record the evidence,
+and leave the branch ready for human review without publishing it.
 
 # Blockers
 
