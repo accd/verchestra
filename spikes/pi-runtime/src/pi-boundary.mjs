@@ -15,7 +15,7 @@ function estimatedTokens(systemPrompt, prompt) {
 
 function baseResult(model) {
   return {
-    runtime: { id: "pi", package: "@earendil-works/pi-agent-core", version: "0.80.6" },
+    runtime: { id: "pi", package: "@earendil-works/pi-agent-core", version: "0.82.1" },
     resolvedModel: { api: model.api, provider: model.provider, model: model.id },
     events: [],
     usage: EMPTY_USAGE,

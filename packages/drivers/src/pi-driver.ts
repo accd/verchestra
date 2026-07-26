@@ -9,7 +9,7 @@ import {
 } from "./index.ts";
 
 const PI_PACKAGE = "@earendil-works/pi-agent-core";
-const PI_VERSION = "0.80.6";
+const PI_VERSION = "0.82.1";
 
 interface PiModel {
   readonly id: string;

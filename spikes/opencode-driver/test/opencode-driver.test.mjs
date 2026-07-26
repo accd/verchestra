@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 import { OpenCodeDriver } from "../src/opencode-driver.mjs";
 
 function modelCatalog() {
@@ -47,7 +48,7 @@ function fakeFactory(mode = "success", calls = []) {
 }
 
 function driver(mode = "success", calls = [], options = {}) {
-  return new OpenCodeDriver({ command: [process.execPath, new URL("./fake-opencode.mjs", import.meta.url).pathname.slice(process.platform === "win32" ? 1 : 0)], serverFactory: fakeFactory(mode, calls), minimumVersion: "1.17.18", ...options });
+  return new OpenCodeDriver({ command: [process.execPath, fileURLToPath(new URL("./fake-opencode.mjs", import.meta.url))], serverFactory: fakeFactory(mode, calls), minimumVersion: "1.17.18", ...options });
 }
 
 test("probes the exact repo-local OpenCode without model inference", async () => {

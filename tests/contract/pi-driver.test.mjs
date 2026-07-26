@@ -9,7 +9,7 @@ test("Pi Driver probes its exact runtime and common capabilities", async () => {
   assert.deepEqual(probe, {
     driverId: "pi",
     package: "@earendil-works/pi-agent-core",
-    version: "0.80.6",
+    version: "0.82.1",
     capabilities: ["stream", "tools", "usage", "abort"]
   });
 });
