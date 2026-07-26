@@ -77,10 +77,10 @@ contradict the exact Node 24.14.0 qualification.
 
 | Requirement | Task | Status |
 | --- | --- | --- |
-| DPR-01 | T2 | Pending |
-| DPR-02 | T3 | Pending |
-| DPR-03 | T4 | Pending |
-| DPR-04, DPR-05, DPR-08 | T5 | Pending |
+| DPR-01 | T2 | Complete |
+| DPR-02 | T3 | Complete |
+| DPR-03 | T4 | Complete |
+| DPR-04, DPR-05, DPR-08 | T5 | Verification |
 | DPR-06 | T6 | Pending |
 | DPR-07 | T7 | Pending |
 

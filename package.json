@@ -49,7 +49,7 @@
   },
   "devDependencies": {
     "@cedar-policy/cedar-wasm": "4.11.2",
-    "@earendil-works/pi-agent-core": "0.80.6",
+    "@earendil-works/pi-agent-core": "0.82.1",
     "@earendil-works/pi-ai": "0.82.1",
     "@opencode-ai/sdk": "1.17.18",
     "@tufjs/canonical-json": "2.0.0",

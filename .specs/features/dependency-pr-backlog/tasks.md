@@ -44,10 +44,10 @@
 
 | Task | Status | Commit or evidence |
 | --- | --- | --- |
-| T1 | Complete | specification commit |
-| T2 | Pending | — |
-| T3 | Pending | — |
-| T4 | Pending | — |
-| T5 | Pending | — |
+| T1 | Complete | `69a34eb` |
+| T2 | Complete | PR #3, merge `595ea2d5d0d02fc6a76aad31e2e193094f974b39` |
+| T3 | Complete | PR #2, merge `5a887d1bef09381c3251c62c614aea464e6a3553` |
+| T4 | Complete | PR #4, merge `b35dd6e8e1cd49b9f493e7306e35efb96a997cdf` |
+| T5 | Verification | Local Pi, full, site, and Lighthouse gates pass; PR CI pending |
 | T6 | Pending | — |
 | T7 | Pending | — |
