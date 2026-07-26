@@ -54,7 +54,7 @@
     "@opencode-ai/sdk": "1.17.18",
     "@tufjs/canonical-json": "2.0.0",
     "@types/node": "24.13.3",
-    "eslint": "10.7.0",
+    "eslint": "10.8.0",
     "jose": "6.2.3",
     "json-schema-to-typescript": "15.0.4",
     "opencode-ai": "1.17.18",
