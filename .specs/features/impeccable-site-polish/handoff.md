@@ -65,6 +65,24 @@ The site suite covered Chromium, Firefox, WebKit, Axe, and Lighthouse. The
 Windows Lighthouse cleanup hit a temporary-directory lock, used the runner's
 single built-in retry, and completed successfully.
 
+The rendered detector's 27 items were dispositioned without tracking its
+provider-local output:
+
+| Finding group                       | Count | Disposition and repository evidence                                                 |
+| ----------------------------------- | ----: | ----------------------------------------------------------------------------------- |
+| Violet/cyan palette or gradient     |    16 | Retained as the ISP-02 identity; full-theme Axe and Lighthouse gates pass.          |
+| Long all-caps label                 |     1 | Fixed by shortening the hero eyebrow to “Verified delivery.”                        |
+| Long reading line                   |     3 | Fixed with 38ch, 64ch, and 65ch reading bounds.                                     |
+| Wide body tracking                  |     1 | Fixed by reducing workflow-header tracking to 0.05em.                               |
+| Hairline border plus diffuse shadow |     1 | Fixed by removing elevation from the bordered database panel.                       |
+| Repeated section kickers            |     5 | Fixed by removing four repeated kickers and retaining one contextual problem label. |
+
+Independent validation then found that the reduced-motion browser assertion
+sampled a control with no authored transition. The follow-up test now checks
+the primary button, navigation link, and text link directly, proves hover
+transform is absent under reduced motion, and proves the authored transition
+returns under the default preference.
+
 # Next Exact Action
 
 Run a fresh independent verification against ISP-01–ISP-08, record the evidence,

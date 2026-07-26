@@ -111,10 +111,28 @@ test("reduced motion disables decorative transitions and Mermaid renders without
 }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto("");
-  const duration = await page
-    .locator(".theme-toggle")
-    .evaluate((element) => getComputedStyle(element).transitionDuration);
-  expect(Number.parseFloat(duration)).toBeLessThanOrEqual(0.00001);
+  for (const selector of [".button--primary", ".text-link", ".site-nav a"]) {
+    const durations = await page
+      .locator(selector)
+      .first()
+      .evaluate((element) =>
+        getComputedStyle(element)
+          .transitionDuration.split(",")
+          .map((duration) => Number.parseFloat(duration))
+      );
+    expect(durations.every((duration) => duration === 0)).toBe(true);
+  }
+  const primaryButton = page.locator(".button--primary").first();
+  await primaryButton.hover();
+  await expect(primaryButton).toHaveCSS("transform", "none");
+
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await page.reload();
+  const authoredDuration = await page
+    .locator(".button--primary")
+    .first()
+    .evaluate((element) => Number.parseFloat(getComputedStyle(element).transitionDuration));
+  expect(authoredDuration).toBeGreaterThan(0);
 
   await page.goto("docs/architecture/system-overview/");
   const diagram = page.locator(".mermaid-diagram");

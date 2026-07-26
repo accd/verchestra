@@ -76,3 +76,12 @@ test("publishes a semantic visual token system for product and reading surfaces"
   }
   assert.match(stylesheet, /font-display:\s*swap/u);
 });
+
+test("limits reduced-motion overrides to elements with authored motion", async () => {
+  const stylesheet = await readFile(resolve(siteRoot, "src/styles/global.css"), "utf8");
+  const reducedMotion = stylesheet.match(/@media \(prefers-reduced-motion: reduce\) \{[\s\S]*\}\s*$/u)?.[0] ?? "";
+
+  assert.match(reducedMotion, /\.button,[\s\S]*\.text-link[\s\S]*transition: none;/u);
+  assert.doesNotMatch(reducedMotion, /\*,\s*\*::before,\s*\*::after/u);
+  assert.doesNotMatch(reducedMotion, /transition-duration:\s*0\.01ms/u);
+});
