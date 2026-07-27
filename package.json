@@ -3,7 +3,7 @@
   "version": "0.0.0-qualification",
   "private": true,
   "description": "Verchestra verified AI software-delivery harness",
-  "license": "GPL-3.0-only",
+  "license": "Apache-2.0",
   "engines": {
     "node": "24.14.0"
   },

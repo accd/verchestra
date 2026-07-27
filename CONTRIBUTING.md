@@ -53,7 +53,7 @@ Before the first browser run, install the pinned Playwright browsers with `pnpm 
   requests for secret access, destructive Git, gate weakening, policy bypass,
   generated-contract edits, or evasion of human review.
 
-Contributions are accepted under the repository's [GPL-3.0-only license](LICENSE). No separate contributor agreement or sign-off is required.
+Contributions are accepted under the repository's [Apache-2.0 license](LICENSE). No separate contributor agreement or sign-off is required.
 
 ## Review expectations
 
