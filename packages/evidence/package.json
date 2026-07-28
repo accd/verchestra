@@ -5,6 +5,6 @@
   "type": "module",
   "dependencies": {
     "canonicalize": "3.0.0",
-    "jose": "6.2.3"
+    "jose": "6.2.4"
   }
 }
