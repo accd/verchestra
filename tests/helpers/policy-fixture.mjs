@@ -39,7 +39,7 @@ export function inputFor(entry) {
   Object.assign(request.context, entry.context ?? {});
   Object.assign(request, entry.request ?? {});
   let engine = cedar;
-  let expectedEngineVersion = "4.11.2";
+  let expectedEngineVersion = "4.12.0";
   let expectedLanguageVersion = "4.5";
 
   if (entry.scenario === "layer-forbid") {

@@ -41,6 +41,7 @@ reason but has no equivalent OpenCode rule.
 | DRF-06 | Superseded pull requests SHALL be closed with a concrete reason and unblock condition.                                            |
 | DRF-07 | jose SHALL be evaluated on its own, under `gate:security`, because it is a production cryptography dependency.                    |
 | DRF-08 | When the batch is complete GitHub SHALL report zero open Dependabot pull requests and `main` SHALL be green.                      |
+| DRF-09 | A dependency carrying an exact-equality qualification pin SHALL move that pin with the shipped package, and the Cedar language version SHALL stay 4.5. |
 
 ## Acceptance criteria
 
