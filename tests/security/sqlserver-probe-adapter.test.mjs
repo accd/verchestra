@@ -57,6 +57,33 @@ for (const [label, sql, code] of [
   test(`denies ${label}`, () => assert.throws(() => parseSqlServerReadOperation(sql, options), { code }));
 }
 
+for (const [label, sql] of [
+  ["padded with tabs and spaces", "SELECT id FROM public.orders\n \tGO \t\nSELECT id FROM public.orders"],
+  ["with CRLF line endings", "SELECT id FROM public.orders\r\nGO\r\nSELECT id FROM public.orders"],
+  ["after blank lines", "SELECT id FROM public.orders\n\n\nGO\n\n"],
+  ["as the closing line without a trailing newline", "SELECT id FROM public.orders\nGO"],
+  ["as the opening line", "GO\nSELECT id FROM public.orders"],
+  ["in lower case", "SELECT id FROM public.orders\ngo\nSELECT id FROM public.orders"],
+  ["ending in a lone carriage return", "SELECT id FROM public.orders\nGO\r"]
+]) {
+  test(`denies a GO batch separator ${label}`, () =>
+    assert.throws(() => parseSqlServerReadOperation(sql, options), { code: "VES_SQLSERVER_BATCH_DENIED" }));
+}
+
+test("allows GO inside an identifier that shares its line", () => {
+  assert.deepEqual(parseSqlServerReadOperation("SELECT id FROM public.go_orders", options).objects, [
+    { schema: "public", name: "go_orders", type: "table" }
+  ]);
+});
+
+test("batch separator detection stays linear on adversarial newline input", () => {
+  const adversarial = `${"\n".repeat(60_000)}X`;
+  const started = process.hrtime.bigint();
+  assert.throws(() => parseSqlServerReadOperation(adversarial, options), { code: "VES_SQLSERVER_READ_FORM_DENIED" });
+  const elapsedMs = Number(process.hrtime.bigint() - started) / 1e6;
+  assert.ok(elapsedMs < 1000, `parse took ${elapsedMs.toFixed(0)}ms; batch separator detection is no longer linear`);
+});
+
 for (const [label, observation] of [
   ["sysadmin", { sysadmin: true }],
   ["securityadmin", { securityAdmin: true }],
