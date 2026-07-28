@@ -9,7 +9,7 @@ function deny(code, explanation, determiningPolicies = []) {
 }
 
 export class CedarPolicyOracle {
-  constructor({ engine, expectedEngineVersion = "4.11.2", expectedLanguageVersion = "4.5" }) {
+  constructor({ engine, expectedEngineVersion = "4.12.0", expectedLanguageVersion = "4.5" }) {
     this.engine = engine;
     this.expectedEngineVersion = expectedEngineVersion;
     this.expectedLanguageVersion = expectedLanguageVersion;

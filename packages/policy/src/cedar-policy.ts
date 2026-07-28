@@ -120,7 +120,7 @@ export class CedarPolicyAdapter {
     readonly expectedLanguageVersion?: string;
   }) {
     this.#engine = options.engine;
-    this.#expectedEngineVersion = options.expectedEngineVersion ?? "4.11.2";
+    this.#expectedEngineVersion = options.expectedEngineVersion ?? "4.12.0";
     this.#expectedLanguageVersion = options.expectedLanguageVersion ?? "4.5";
   }
 

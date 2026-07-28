@@ -23,15 +23,15 @@ test("keeps the qualified Pi runtime on one exact package version", () => {
 
 test("keeps the qualified OpenCode driver on one exact package version", () => {
   const manifest = JSON.parse(read("package.json"));
-  assert.equal(manifest.devDependencies["opencode-ai"], "1.18.7");
-  assert.equal(manifest.devDependencies["@opencode-ai/sdk"], "1.18.7");
+  assert.equal(manifest.devDependencies["opencode-ai"], "1.18.9");
+  assert.equal(manifest.devDependencies["@opencode-ai/sdk"], "1.18.9");
 
   const packageVersions = new Set(
     [...read("pnpm-lock.yaml").matchAll(/^\s{2}'?(opencode-ai|@opencode-ai\/sdk)@(\d+\.\d+\.\d+)/gmu)].map(
       (match) => `${match[1]}@${match[2]}`
     )
   );
-  assert.deepEqual([...packageVersions].sort(), ["@opencode-ai/sdk@1.18.7", "opencode-ai@1.18.7"]);
+  assert.deepEqual([...packageVersions].sort(), ["@opencode-ai/sdk@1.18.9", "opencode-ai@1.18.9"]);
 });
 
 test("groups Pi and OpenCode updates and suppresses runtime-incompatible major proposals", () => {
