@@ -36,6 +36,29 @@ for (const [label, sql, code] of [
 ])
   test(`Oracle denies ${label}`, () => assert.throws(() => parseOracleReadOperation(sql, options), { code }));
 
+for (const [label, sql] of [
+  ["padded with tabs and spaces", "SELECT id FROM hr.orders\n \t/ \t\n"],
+  ["with CRLF line endings", "SELECT id FROM hr.orders\r\n/\r\n"],
+  ["after blank lines", "SELECT id FROM hr.orders\n\n\n/"],
+  ["as the opening line", "/\nSELECT id FROM hr.orders"],
+  ["as a trailing line ending in a lone carriage return", "SELECT id FROM hr.orders\n/\r"]
+])
+  test(`Oracle denies a slash batch separator ${label}`, () =>
+    assert.throws(() => parseOracleReadOperation(sql, options), { code: "VES_ORACLE_BATCH_DENIED" }));
+
+test("Oracle allows a division operator that shares its line", () =>
+  assert.deepEqual(parseOracleReadOperation("SELECT total / weight FROM hr.orders", options).objects, [
+    { schema: "hr", name: "orders", type: "table" }
+  ]));
+
+test("Oracle batch separator detection stays linear on adversarial newline input", () => {
+  const adversarial = `${"\n".repeat(60_000)}X`;
+  const started = process.hrtime.bigint();
+  assert.throws(() => parseOracleReadOperation(adversarial, options), { code: "VES_ORACLE_READ_FORM_DENIED" });
+  const elapsedMs = Number(process.hrtime.bigint() - started) / 1e6;
+  assert.ok(elapsedMs < 1000, `parse took ${elapsedMs.toFixed(0)}ms; batch separator detection is no longer linear`);
+});
+
 for (const [label, connection] of [
   ["SYSDBA", { sysdba: true }],
   ["SYSOPER", { sysoper: true }],
