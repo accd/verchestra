@@ -33,6 +33,14 @@ export const SCOPED_INSTRUCTIONS = Object.freeze([
 ]);
 export const HANDOFF_STATUSES = Object.freeze(["planned", "in_progress", "blocked", "verification", "complete"]);
 
+// Task identifiers stopped being integers when T68a-T68d were inserted ahead of
+// T69 (AD-008), so the successor is read from the roadmap chain instead of being
+// computed as highest + 1. ROADMAP.md is the single ordering authority.
+export function nextTaskFromRoadmap(roadmap, highestVerifiedTask) {
+  const edge = new RegExp(String.raw`^\s*T${highestVerifiedTask}\[[^\]]*\]\s*-->\s*(T\d+[a-z]?)\[`, "mu");
+  return edge.exec(roadmap)?.[1] ?? null;
+}
+
 function git(root, args) {
   try {
     return execFileSync("git", ["-C", root, ...args], {
@@ -150,8 +158,10 @@ export async function compileAgentContext(root = ROOT) {
       if (task) highestVerifiedTask = Math.max(highestVerifiedTask, Number(task[1]));
     }
   }
+  const roadmapPath = join(root, "ROADMAP.md");
+  const roadmap = existsSync(roadmapPath) ? await readFile(roadmapPath, "utf8") : "";
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     repository: REPOSITORY,
     version: manifest.version,
     revision,
@@ -159,7 +169,7 @@ export async function compileAgentContext(root = ROOT) {
     dirty: dirtyOutput === null ? false : dirtyOutput.length > 0,
     qualification: {
       highestVerifiedTask,
-      nextTask: highestVerifiedTask + 1
+      nextTask: nextTaskFromRoadmap(roadmap, highestVerifiedTask) ?? `T${highestVerifiedTask + 1}`
     },
     requiredReads: [...REQUIRED_READS],
     activeFeatures: await featureHandoffs(root),
@@ -307,16 +317,25 @@ export async function checkRepository(root = ROOT) {
 
   const context = await compileAgentContext(root);
   if (context.version !== "0.0.0-qualification") errors.push(`stale version: ${context.version}`);
-  if (context.qualification.highestVerifiedTask !== 68 || context.qualification.nextTask !== 69)
-    errors.push("qualification status must be T68 complete and T69 next");
+  const { highestVerifiedTask, nextTask } = context.qualification;
+  const statusLine = `T${highestVerifiedTask} complete; ${nextTask} next`;
   for (const path of [".specs/STATE.md", "ROADMAP.md"]) {
     if (!existsSync(join(root, path))) continue;
     const source = await readFile(join(root, path), "utf8");
-    if (!/T68/u.test(source) || !/T69/u.test(source)) errors.push(`${path}: missing T68/T69 status`);
+    if (!new RegExp(String.raw`\bT${highestVerifiedTask}\b`, "u").test(source))
+      errors.push(`${path}: missing T${highestVerifiedTask} status`);
+    if (!new RegExp(String.raw`\b${nextTask}\b`, "u").test(source)) errors.push(`${path}: missing ${nextTask} status`);
+  }
+  // The successor must be declared by the roadmap chain, never inferred, so an
+  // undeclared edge fails instead of silently falling back to highest + 1.
+  if (existsSync(join(root, "ROADMAP.md"))) {
+    const roadmap = await readFile(join(root, "ROADMAP.md"), "utf8");
+    if (nextTaskFromRoadmap(roadmap, highestVerifiedTask) !== nextTask)
+      errors.push(`ROADMAP.md does not declare ${nextTask} as the successor of T${highestVerifiedTask}`);
   }
   if (existsSync(join(root, "llms.txt"))) {
     const llms = await readFile(join(root, "llms.txt"), "utf8");
-    if (!llms.includes(context.version) || !/T68 complete; T69 next/u.test(llms))
+    if (!llms.includes(context.version) || !llms.includes(statusLine))
       errors.push("llms.txt disagrees with repository status");
   }
 

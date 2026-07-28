@@ -197,7 +197,7 @@ export function compileLlmTxt(status: QualificationStatus) {
 > Verified AI software delivery that survives the model, the machine, and the handoff.
 
 - Version: ${status.currentVersion}
-- Qualification: T${status.highestVerifiedTask} complete; T${status.nextTask} next
+- Qualification: T${status.highestVerifiedTask} complete; ${status.nextTask} next
 - Repository: https://github.com/accd/verchestra
 
 Verchestra is in source qualification. It has no public installer and is not production-ready.
@@ -208,7 +208,7 @@ Verchestra is in source qualification. It has no public installer and is not pro
 - [Documentation portal](${ORIGIN}/docs/): Architecture, workflows, integrations, and qualification evidence.
 - [Full LLM context](${ORIGIN}/llms-full.txt): Allowlisted Markdown with source attribution and digests.
 - [Architecture](${ORIGIN}/docs/architecture/system-overview/): System boundaries and trust model.
-- [Roadmap](${ORIGIN}/roadmap/): T68 complete, T69 next, and the evidence-driven path to 1.0.
+- [Roadmap](${ORIGIN}/roadmap/): T68 complete, T68a next, and the evidence-driven path to 1.0.
 - [Contributing with agents](https://github.com/accd/verchestra/blob/main/docs/contributing-with-agents.md): Provider-neutral clean-clone workflow and safety model.
 `;
 }
@@ -229,7 +229,7 @@ ${document.markdown.trim()}
   const output = `# Verchestra Full LLM Context
 
 - Version: ${status.currentVersion}
-- Qualification: T${status.highestVerifiedTask} complete; T${status.nextTask} next
+- Qualification: T${status.highestVerifiedTask} complete; ${status.nextTask} next
 - Reports: ${status.reportCount}
 
 This deterministic context is an inference-time documentation aid. It does not guarantee indexing, SEO ranking, training inclusion, crawler behavior, public installation, or production readiness.
