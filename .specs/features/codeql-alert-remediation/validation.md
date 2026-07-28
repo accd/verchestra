@@ -2,7 +2,7 @@
 
 ## Verdict
 
-**Result:** T1 PASS. T2 PASS. T3 NOT RUN.
+**Result:** PASS. T1, T2, and T3 all complete.
 
 **Specification:** `.specs/features/codeql-alert-remediation/spec.md`
 
@@ -19,7 +19,7 @@
 | CAR-03      | Linearity asserted, and the assertion fails on the old expression         | `oracle-probe-adapter.test.mjs:54`, `sqlserver-probe-adapter.test.mjs:79`, `sap-ase-probe-adapter.test.mjs:65` — 60,000-newline statement, `elapsedMs < 1000`; discrimination sensor below | PASS    |
 | CAR-04      | Link checker selects targets by scheme allowlist                          | `apps/site/scripts/link-targets.mjs:7` — `CHECKED_PROTOCOLS.has(target.protocol)`; asserted by `apps/site/tests/unit/link-target-selection.test.mjs:14` over `vbscript:`, `javascript:`, `file:`, `ftp:`, `ws:`, `data:`, `mailto:`, `tel:`, and `#` | PASS    |
 | CAR-05      | `http(s)` findings unchanged                                              | `link-target-selection.test.mjs:8` (absolute, relative, cross-origin `http:`) and `:32` (scheme-relative keeps the page scheme); `check:built` reports `internalLinks: valid` over the real 120-page build | PASS    |
-| CAR-06      | All four alerts reported fixed on `main`                                  | Requires both pull requests merged and a `main` rescan (T3)                                                                                              | NOT RUN |
+| CAR-06      | All four alerts reported fixed on `main`                                  | `gh api repos/accd/verchestra/code-scanning/alerts` — #1, #2, #3, #4 all `state: fixed`; `?state=open` returns 0. No alert dismissed or suppressed.       | PASS    |
 
 ## Gate results
 
@@ -60,8 +60,7 @@ margin above it for the defect, so the assertion is not schedule-sensitive.
 
 ## Gaps and follow-up
 
-- T3 (post-merge alert confirmation) needs both pull requests on `main` and a
-  CodeQL rescan; CAR-06 has no evidence yet.
+- None for this feature; every requirement has evidence.
 - CI runs only `pnpm gate:quick` on pull requests
   (`.github/workflows/ci.yml:37`). That is why a red `test:architecture` sat
   unnoticed on `main`. Raising CI coverage is out of scope here and left for a
