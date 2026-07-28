@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import {
   compileAgentContext,
+  nextTaskFromRoadmap,
   normalizeRepositoryPath,
   parseHandoff,
   validateHandoffTransition
@@ -14,10 +15,10 @@ import {
 test("JSON context exposes the exact safe clean-clone contract", () => {
   const output = execFileSync(process.execPath, ["scripts/agent-context.mjs", "--json"], { encoding: "utf8" });
   const snapshot = JSON.parse(output);
-  assert.equal(snapshot.schemaVersion, 1);
+  assert.equal(snapshot.schemaVersion, 2);
   assert.equal(snapshot.repository, "accd/verchestra");
   assert.equal(snapshot.version, "0.0.0-qualification");
-  assert.deepEqual(snapshot.qualification, { highestVerifiedTask: 68, nextTask: 69 });
+  assert.deepEqual(snapshot.qualification, { highestVerifiedTask: 68, nextTask: "T68a" });
   assert.equal(snapshot.requiredReads[0], "AGENTS.md");
   assert.equal(snapshot.activeFeatures[0].handoffPath, ".specs/features/agent-ready-repository/handoff.md");
   assert.doesNotMatch(output, /[A-Za-z]:\\|\/(?:Users|home)\//u);
@@ -33,7 +34,19 @@ test("context degrades deterministically when Git is unavailable", async () => {
   assert.equal(snapshot.revision, "unknown");
   assert.equal(snapshot.branch, null);
   assert.equal(snapshot.dirty, false);
-  assert.deepEqual(snapshot.qualification, { highestVerifiedTask: 68, nextTask: 69 });
+  assert.deepEqual(snapshot.qualification, { highestVerifiedTask: 68, nextTask: "T69" });
+});
+
+test("the next task comes from the roadmap chain, not from adding one", () => {
+  const roadmap = [
+    "flowchart LR",
+    '  T68["T68 Activation and rollback"] --> T68a["T68a Key lifecycle"]',
+    '  T68a --> T68b["T68b Budget enforcement"]',
+    '  T68d --> T69["T69 Self-Test trust domain"]'
+  ].join("\n");
+  assert.equal(nextTaskFromRoadmap(roadmap, 68), "T68a");
+  assert.equal(nextTaskFromRoadmap(roadmap, 67), null);
+  assert.equal(nextTaskFromRoadmap("", 68), null);
 });
 
 test("handoff parser validates the portable contract and blocked requirements", () => {

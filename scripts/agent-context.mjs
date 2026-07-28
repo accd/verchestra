@@ -12,7 +12,7 @@ if (process.argv.slice(2).includes("--json")) {
       `revision: ${snapshot.revision}`,
       `branch: ${snapshot.branch ?? "(detached or unavailable)"}`,
       `worktree: ${snapshot.dirty ? "dirty" : "clean"}`,
-      `qualification: T${snapshot.qualification.highestVerifiedTask} complete; T${snapshot.qualification.nextTask} next`,
+      `qualification: T${snapshot.qualification.highestVerifiedTask} complete; ${snapshot.qualification.nextTask} next`,
       "required reads:",
       ...snapshot.requiredReads.map((path) => `  - ${path}`),
       "active features:",

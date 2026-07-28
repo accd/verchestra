@@ -38,8 +38,11 @@ async function fixture() {
   await writeFile(join(root, "docs", "architecture.md"), "# Architecture\n");
   await writeFile(join(root, "docs", "repository-map.md"), "# Map\n");
   await writeFile(join(root, "docs", "qualification", "t68-validation.md"), "# T68\n");
-  await writeFile(join(root, "ROADMAP.md"), "# T68 complete; T69 next\n");
-  await writeFile(join(root, ".specs", "STATE.md"), "# T68 complete; T69 next\n");
+  await writeFile(
+    join(root, "ROADMAP.md"),
+    '# T68 complete; T68a next\n\n```mermaid\nflowchart LR\n  T68["T68 done"] --> T68a["T68a next"]\n```\n'
+  );
+  await writeFile(join(root, ".specs", "STATE.md"), "# T68 complete; T68a next\n");
   return root;
 }
 

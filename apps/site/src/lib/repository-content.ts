@@ -16,7 +16,7 @@ export interface RepositoryContentSource {
 export interface QualificationStatus {
   currentVersion: string;
   highestVerifiedTask: number;
-  nextTask: number;
+  nextTask: string;
   reportCount: number;
 }
 
@@ -176,10 +176,21 @@ export async function compileQualificationStatus(repositoryRoot: URL | string): 
     }
   }
 
+  // Task identifiers stopped being integers when T68a-T68d were inserted ahead of
+  // T69 (AD-008), so the successor is read from the roadmap chain rather than
+  // computed. ROADMAP.md is the single ordering authority.
+  const roadmap = await readFile(new URL("ROADMAP.md", root), "utf8");
+  const successor = new RegExp(String.raw`^\s*T${highestVerifiedTask}\[[^\]]*\]\s*-->\s*(T\d+[a-z]?)\[`, "mu").exec(
+    roadmap
+  )?.[1];
+  if (successor === undefined) {
+    throw new Error(`roadmap does not declare a successor for T${highestVerifiedTask}`);
+  }
+
   return {
     currentVersion: packageMetadata.version,
     highestVerifiedTask,
-    nextTask: highestVerifiedTask + 1,
+    nextTask: successor,
     reportCount: taskNumbers.length
   };
 }
@@ -197,7 +208,7 @@ export async function assertProjectStatus(repositoryRoot: URL | string, status: 
   if (!new RegExp(`\\bT${status.highestVerifiedTask}\\b`).test(roadmap)) {
     throw new Error(`roadmap does not identify T${status.highestVerifiedTask} as the completed foundation`);
   }
-  if (!new RegExp(`\\bT${status.nextTask}\\b`).test(roadmap)) {
-    throw new Error(`roadmap does not identify T${status.nextTask} as the next qualification task`);
+  if (!new RegExp(`\\b${status.nextTask}\\b`).test(roadmap)) {
+    throw new Error(`roadmap does not identify ${status.nextTask} as the next qualification task`);
   }
 }
