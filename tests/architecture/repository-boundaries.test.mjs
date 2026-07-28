@@ -6,6 +6,7 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import {
   EXPECTED_PACKAGES,
+  NON_PRODUCT_WORKSPACES,
   inspectSource,
   scanWorkspace,
   validateDependencyEdge
@@ -20,11 +21,20 @@ test("repository contains the complete approved package graph", async () => {
       if (entry.isDirectory()) manifests.push(`${directory}/${entry.name}`);
     }
   }
-  assert.deepEqual(manifests.sort(), EXPECTED_PACKAGES.slice().sort());
+  assert.deepEqual(manifests.sort(), [...EXPECTED_PACKAGES, ...NON_PRODUCT_WORKSPACES].sort());
+});
+
+test("non-product workspaces are declared and stay outside the scanned graph", () => {
+  assert.deepEqual(NON_PRODUCT_WORKSPACES, ["apps/site"]);
+  for (const path of NON_PRODUCT_WORKSPACES) assert.equal(EXPECTED_PACKAGES.includes(path), false);
+  assert.deepEqual(validateDependencyEdge("application", "site"), {
+    allowed: false,
+    code: "VES_ARCH_CONCRETE_ADAPTER_IMPORT"
+  });
 });
 
 test("every workspace package is private, exact-versioned, and ESM", async () => {
-  for (const path of EXPECTED_PACKAGES) {
+  for (const path of [...EXPECTED_PACKAGES, ...NON_PRODUCT_WORKSPACES]) {
     const manifest = JSON.parse(await readFile(new URL(`../../${path}/package.json`, import.meta.url), "utf8"));
     assert.equal(manifest.private, true);
     assert.equal(manifest.version, "0.0.0");
