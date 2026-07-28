@@ -16,8 +16,8 @@ importers:
   .:
     devDependencies:
       '@cedar-policy/cedar-wasm':
-        specifier: 4.11.2
-        version: 4.11.2
+        specifier: 4.12.0
+        version: 4.12.0
       '@earendil-works/pi-agent-core':
         specifier: 0.82.1
         version: 0.82.1(ws@8.21.1)(zod@4.4.3)
@@ -195,8 +195,8 @@ importers:
   packages/policy:
     dependencies:
       '@cedar-policy/cedar-wasm':
-        specifier: 4.11.2
-        version: 4.11.2
+        specifier: 4.12.0
+        version: 4.12.0
 
   packages/workspace:
     dependencies:
@@ -541,8 +541,8 @@ packages:
     resolution: {integrity: sha512-CuNiSqg7+e1cO/GjffyMOm5Tt2jUF9CWHHnvQ/UkqvtkGfHdgwEC0wpmq7fkN3gxwpRnrAN0WzO3vREKmNolMQ==}
     engines: {node: '>=18'}
 
-  '@cedar-policy/cedar-wasm@4.11.2':
-    resolution: {integrity: sha512-WirTj7pAQnP2fRAuJ5OLIl4VmQiUiyGgHku+eNTSXm9LJHMU/v14vHz6nEcxAQjR6oXtm21zRsHEBIbWP9TJ5A==}
+  '@cedar-policy/cedar-wasm@4.12.0':
+    resolution: {integrity: sha512-tCSj92hh4fnmas4ojO4tjx8wAAW3mKVgQ7M388NsSpXp64FVeYY6xwhKtJRaaYGK0qLiN2jnq8/SNIU2r5fdPw==}
 
   '@chevrotain/types@11.1.2':
     resolution: {integrity: sha512-U+HFai5+zmJCkK86QsaJtoITlboZHBqrVketcO2ROv865xfCMSFpELQoz1GkX5GzME8pTa+3kbKrZHQtI0gdbw==}
@@ -5415,7 +5415,7 @@ snapshots:
     dependencies:
       fontkitten: 1.0.3
 
-  '@cedar-policy/cedar-wasm@4.11.2': {}
+  '@cedar-policy/cedar-wasm@4.12.0': {}
 
   '@chevrotain/types@11.1.2': {}
 
