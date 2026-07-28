@@ -58,7 +58,7 @@
     "jose": "6.2.3",
     "json-schema-to-typescript": "15.0.4",
     "opencode-ai": "1.17.18",
-    "prettier": "3.9.5",
+    "prettier": "3.9.6",
     "prettier-plugin-astro": "0.14.1",
     "sqlite-vec": "0.1.9",
     "tuf-js": "5.0.1",
