@@ -61,7 +61,7 @@ const sourceCodeMetadata = {
         <div class="qualification-pill" aria-label="Current public status">
           <span class="qualification-pill__signal"></span>
           <code>{productStatus.version}</code>
-          <span>T{productStatus.completedTask} verified</span>
+          <span>{productStatus.completedTask} verified</span>
           <span>{productStatus.nextTask} next</span>
         </div>
         <p class="status-note">
@@ -218,18 +218,18 @@ const sourceCodeMetadata = {
 
     <section class="qualification section-frame" aria-labelledby="qualification-title">
       <div>
-        <h2 id="qualification-title">T{productStatus.completedTask} is evidence. {productStatus.nextTask} is work.</h2>
+        <h2 id="qualification-title">{productStatus.completedTask} is evidence. {productStatus.nextTask} is work.</h2>
         <p>
-          Foundations through T{productStatus.completedTask} are backed by public validation reports. Self-Test, regression,
+          Foundations through {productStatus.completedTask} are backed by public validation reports. Self-Test, regression,
           sealed holdout, platform qualification, and the release decision remain ahead.
         </p>
       </div>
       <div
         class="qualification-progress"
-        aria-label={`T${productStatus.completedTask} complete, ${productStatus.nextTask} next`}
+        aria-label={`${productStatus.completedTask} complete, ${productStatus.nextTask} next`}
       >
         <div class="qualification-progress__complete">
-          <span>T01</span><span>T{productStatus.completedTask}</span>
+          <span>T01</span><span>{productStatus.completedTask}</span>
         </div>
         <div class="qualification-progress__next">{productStatus.nextTask}</div>
         <div class="qualification-progress__future">T77</div>

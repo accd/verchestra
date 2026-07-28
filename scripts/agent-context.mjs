@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { compileAgentContext } from "./agent-readiness.mjs";
+import { compileAgentContext, qualificationStatusLine } from "./agent-readiness.mjs";
 
 const snapshot = await compileAgentContext();
 if (process.argv.slice(2).includes("--json")) {
@@ -12,7 +12,7 @@ if (process.argv.slice(2).includes("--json")) {
       `revision: ${snapshot.revision}`,
       `branch: ${snapshot.branch ?? "(detached or unavailable)"}`,
       `worktree: ${snapshot.dirty ? "dirty" : "clean"}`,
-      `qualification: T${snapshot.qualification.highestVerifiedTask} complete; ${snapshot.qualification.nextTask} next`,
+      `qualification: ${qualificationStatusLine(snapshot.qualification)}`,
       "required reads:",
       ...snapshot.requiredReads.map((path) => `  - ${path}`),
       "active features:",

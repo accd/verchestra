@@ -11,10 +11,37 @@ import {
   extractDescription,
   extractTitle,
   isCanonicalSourcePath,
+  resolveQualification,
   rewriteCanonicalLinks,
   resolveRepositoryPath,
   validateUniqueRoutes
 } from "../../src/lib/repository-content.ts";
+
+const CHAIN = [
+  "flowchart LR",
+  '  T68["T68 Activation and rollback"] --> T68a["T68a Key lifecycle"]',
+  '  T68a --> T68b["T68b Budget enforcement"]',
+  '  T68b --> T69["T69 Self-Test trust domain"]'
+].join("\n");
+
+test("the public status walks the roadmap chain past letter-suffixed tasks", () => {
+  assert.deepEqual(resolveQualification(CHAIN, new Set(["T68"])), {
+    highestVerifiedTask: "T68",
+    nextTask: "T68a"
+  });
+  assert.deepEqual(resolveQualification(CHAIN, new Set(["T68", "T68a"])), {
+    highestVerifiedTask: "T68a",
+    nextTask: "T68b"
+  });
+  assert.deepEqual(resolveQualification(CHAIN, new Set(["T68", "T68b"])), {
+    highestVerifiedTask: "T68",
+    nextTask: "T68a"
+  });
+  assert.deepEqual(resolveQualification("", new Set(["T68"])), {
+    highestVerifiedTask: null,
+    nextTask: null
+  });
+});
 
 test("derives the exact public status from the canonical repository", async () => {
   const repositoryRoot = new URL("../../../../", import.meta.url);
@@ -22,7 +49,7 @@ test("derives the exact public status from the canonical repository", async () =
 
   assert.deepEqual(status, {
     currentVersion: "0.0.0-qualification",
-    highestVerifiedTask: 68,
+    highestVerifiedTask: "T68",
     nextTask: "T68a",
     reportCount: 68
   });
