@@ -4,11 +4,11 @@ feature: codeql-alert-remediation
 issue: null
 status: in_progress
 branch: fix/redos-batch-separator-regexes
-baseRevision: 1688320edaff29df11ed1e6ef6eea6f751cc21be
+baseRevision: 67e05ff12edc5206a786836838dfc7fb64c5758a
 lastCompletedTask: T1
 nextTask: T2
-lastGate: pnpm gate:quick
-updatedAt: 2026-07-28T21:10:15Z
+lastGate: pnpm gate:security
+updatedAt: 2026-07-28T21:27:56Z
 ---
 
 # Scope
@@ -34,6 +34,9 @@ expression cost 4,299 ms for a single `.test()` call; the replacement costs
 Focused suite: 130 tests, 0 failures, 0 skipped
 (`tests/security/{oracle,sqlserver,sap-ase}-probe-adapter.test.mjs`).
 `pnpm gate:quick` PASS (1,615 unit tests, 21 agent-readiness tests).
+`pnpm gate:security` PASS across format:check, lint, typecheck, build,
+test:unit (1,615), test:architecture, test:qualification, test:security (912),
+and test:fault.
 
 Discrimination sensor: the three new linearity assertions were run against the
 previous expressions in a disposable copy. Exactly those three failed
@@ -50,16 +53,15 @@ run `pnpm site:check` and open its own pull request.
 
 # Blockers
 
-`pnpm gate:security` cannot report green until the pre-existing
-`test:architecture` failure on `main` is repaired. `tests/architecture/
-repository-boundaries.test.mjs:16` lists every directory under `apps/` and
-`packages/` and compares it to `EXPECTED_PACKAGES`, which omits the tracked
-`apps/site` directory. The assertion is factually wrong about the repository,
-fails on a clean checkout of `main` at `1688320`, and takes `gate:build`,
-`gate:security`, and `gate:release` down with it. CI only runs `gate:quick`,
-which is why it went unnoticed. Repaired separately so this feature keeps one
-concern per change; see the `fix/architecture-gate-declares-site-workspace`
-pull request.
+None. One prerequisite was found and cleared: `gate:security` could not report
+green because `test:architecture` was already failing on a clean `main`.
+`tests/architecture/repository-boundaries.test.mjs:16` listed every directory
+under `apps/` and `packages/` and compared it to `EXPECTED_PACKAGES`, which
+omitted the tracked `apps/site` directory, taking `gate:build`,
+`gate:security`, and `gate:release` down with it. CI runs only `gate:quick`,
+which is why it went unnoticed. Repaired under its own concern in pull request
+\#40, merged as `67e05ff12edc5206a786836838dfc7fb64c5758a`, which is now this
+feature's base revision.
 
 # Decisions
 
