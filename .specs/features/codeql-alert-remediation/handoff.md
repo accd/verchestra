@@ -2,13 +2,13 @@
 schema: verchestra-feature-handoff/v1
 feature: codeql-alert-remediation
 issue: null
-status: verification
-branch: fix/site-link-checker-scheme-allowlist
+status: complete
+branch: main
 baseRevision: 0a976355b6813a6cb5bc5161a03dc56f9b6486be
-lastCompletedTask: T2
-nextTask: T3
+lastCompletedTask: T3
+nextTask: None; all four alerts confirmed fixed on main
 lastGate: pnpm gate:quick plus the four site:check stages
-updatedAt: 2026-07-28T21:35:26Z
+updatedAt: 2026-07-28T22:11:49Z
 ---
 
 # Scope
@@ -63,12 +63,14 @@ excludes the scheme CodeQL named. Unit discrimination: the previous deny-list
 implementation, reconstructed in a scratch copy, fails the new suite on
 `vbscript:msgbox(1)`.
 
+T3 complete. Both pull requests merged (#41 as `0a97635`, #42 as `2156731`)
+and the CodeQL rescan on `main` reports alerts #1, #2, #3, and #4 all in state
+`fixed`, with `state=open` returning zero. No alert was dismissed or
+suppressed.
+
 # Next Exact Action
 
-T3: after this pull request merges, confirm CodeQL reports all four alerts
-`fixed` on `main` with `gh api repos/accd/verchestra/code-scanning/alerts`,
-record the result in `validation.md`, and transition this handoff to
-`complete`.
+None. This feature is complete.
 
 # Blockers
 
