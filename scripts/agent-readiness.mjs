@@ -34,11 +34,48 @@ export const SCOPED_INSTRUCTIONS = Object.freeze([
 export const HANDOFF_STATUSES = Object.freeze(["planned", "in_progress", "blocked", "verification", "complete"]);
 
 // Task identifiers stopped being integers when T68a-T68d were inserted ahead of
-// T69 (AD-008), so the successor is read from the roadmap chain instead of being
-// computed as highest + 1. ROADMAP.md is the single ordering authority.
-export function nextTaskFromRoadmap(roadmap, highestVerifiedTask) {
-  const edge = new RegExp(String.raw`^\s*T${highestVerifiedTask}\[[^\]]*\]\s*-->\s*(T\d+[a-z]?)\[`, "mu");
-  return edge.exec(roadmap)?.[1] ?? null;
+// T69 (AD-008), so neither succession nor completion can be computed from a
+// numeric maximum: `Math.max` cannot order T68a against T69, and T68a would
+// never count at all. Both are resolved by walking the ROADMAP.md chain, which
+// makes ROADMAP.md the single ordering authority for how far the chain is
+// verified as well as for what follows what.
+export function parseRoadmapChain(roadmap) {
+  const edges = new Map();
+  const edge = /^[^\S\n]*(T\d+[a-z]?)(?:\[[^\]]*\])?[^\S\n]*-->[^\S\n]*(T\d+[a-z]?)(?:\[[^\]]*\])?[^\S\n]*$/gmu;
+  for (const match of roadmap.matchAll(edge)) if (!edges.has(match[1])) edges.set(match[1], match[2]);
+  return edges;
+}
+
+export function resolveQualification(roadmap, validatedTasks) {
+  const edges = parseRoadmapChain(roadmap);
+  const targets = new Set(edges.values());
+  const roots = [...edges.keys()].filter((task) => !targets.has(task));
+  if (roots.length !== 1) return { highestVerifiedTask: null, nextTask: null };
+  let highest = null;
+  for (let task = roots[0]; task !== undefined; task = edges.get(task)) {
+    if (!validatedTasks.has(task)) break;
+    highest = task;
+  }
+  return {
+    highestVerifiedTask: highest,
+    nextTask: highest === null ? roots[0] : (edges.get(highest) ?? null)
+  };
+}
+
+export function qualificationStatusLine({ highestVerifiedTask, nextTask }) {
+  if (nextTask === null) return `${highestVerifiedTask} complete; the declared chain is fully verified`;
+  return `${highestVerifiedTask} complete; ${nextTask} next`;
+}
+
+export async function validatedTasks(root) {
+  const directory = join(root, "docs", "qualification");
+  const tasks = new Set();
+  if (!existsSync(directory)) return tasks;
+  for (const entry of await readdir(directory)) {
+    const task = /^t(\d+[a-z]?)-validation\.md$/u.exec(entry);
+    if (task) tasks.add(`T${task[1]}`);
+  }
+  return tasks;
 }
 
 function git(root, args) {
@@ -150,26 +187,31 @@ export async function compileAgentContext(root = ROOT) {
   const revision = git(root, ["rev-parse", "HEAD"]) ?? "unknown";
   const symbolicBranch = git(root, ["symbolic-ref", "--quiet", "--short", "HEAD"]);
   const dirtyOutput = git(root, ["status", "--porcelain"]);
-  const qualificationDirectory = join(root, "docs", "qualification");
-  let highestVerifiedTask = 0;
-  if (existsSync(qualificationDirectory)) {
-    for (const entry of await readdir(qualificationDirectory)) {
-      const task = /^t(\d+)-validation\.md$/u.exec(entry);
-      if (task) highestVerifiedTask = Math.max(highestVerifiedTask, Number(task[1]));
-    }
+  const tasks = await validatedTasks(root);
+  let highestNumeric = 0;
+  for (const task of tasks) {
+    const numeric = /^T(\d+)$/u.exec(task);
+    if (numeric) highestNumeric = Math.max(highestNumeric, Number(numeric[1]));
   }
   const roadmapPath = join(root, "ROADMAP.md");
   const roadmap = existsSync(roadmapPath) ? await readFile(roadmapPath, "utf8") : "";
+  // Without a declared chain the snapshot still has to be deterministic before
+  // installation, so it degrades to the numeric successor. `checkRepository`
+  // rejects that fallback whenever a roadmap exists, so it cannot persist.
+  const resolved = resolveQualification(roadmap, tasks);
+  const declared = resolved.highestVerifiedTask !== null || resolved.nextTask !== null;
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     repository: REPOSITORY,
     version: manifest.version,
     revision,
     branch: symbolicBranch || null,
     dirty: dirtyOutput === null ? false : dirtyOutput.length > 0,
     qualification: {
-      highestVerifiedTask,
-      nextTask: nextTaskFromRoadmap(roadmap, highestVerifiedTask) ?? `T${highestVerifiedTask + 1}`
+      highestVerifiedTask: declared ? resolved.highestVerifiedTask : `T${highestNumeric}`,
+      // null once every declared task is verified, which is a real terminal
+      // state rather than a missing chain.
+      nextTask: declared ? resolved.nextTask : `T${highestNumeric + 1}`
     },
     requiredReads: [...REQUIRED_READS],
     activeFeatures: await featureHandoffs(root),
@@ -318,20 +360,21 @@ export async function checkRepository(root = ROOT) {
   const context = await compileAgentContext(root);
   if (context.version !== "0.0.0-qualification") errors.push(`stale version: ${context.version}`);
   const { highestVerifiedTask, nextTask } = context.qualification;
-  const statusLine = `T${highestVerifiedTask} complete; ${nextTask} next`;
+  const statusLine = qualificationStatusLine(context.qualification);
   for (const path of [".specs/STATE.md", "ROADMAP.md"]) {
     if (!existsSync(join(root, path))) continue;
     const source = await readFile(join(root, path), "utf8");
-    if (!new RegExp(String.raw`\bT${highestVerifiedTask}\b`, "u").test(source))
-      errors.push(`${path}: missing T${highestVerifiedTask} status`);
-    if (!new RegExp(String.raw`\b${nextTask}\b`, "u").test(source)) errors.push(`${path}: missing ${nextTask} status`);
+    for (const task of [highestVerifiedTask, nextTask]) {
+      if (task === null) continue;
+      if (!new RegExp(String.raw`\b${task}\b`, "u").test(source)) errors.push(`${path}: missing ${task} status`);
+    }
   }
-  // The successor must be declared by the roadmap chain, never inferred, so an
-  // undeclared edge fails instead of silently falling back to highest + 1.
+  // The chain must be declared by the roadmap, never inferred, so a missing or
+  // broken chain fails instead of silently keeping the numeric fallback.
   if (existsSync(join(root, "ROADMAP.md"))) {
     const roadmap = await readFile(join(root, "ROADMAP.md"), "utf8");
-    if (nextTaskFromRoadmap(roadmap, highestVerifiedTask) !== nextTask)
-      errors.push(`ROADMAP.md does not declare ${nextTask} as the successor of T${highestVerifiedTask}`);
+    if (resolveQualification(roadmap, await validatedTasks(root)).highestVerifiedTask === null)
+      errors.push("ROADMAP.md does not declare a verified qualification chain");
   }
   if (existsSync(join(root, "llms.txt"))) {
     const llms = await readFile(join(root, "llms.txt"), "utf8");

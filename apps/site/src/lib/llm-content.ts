@@ -197,7 +197,7 @@ export function compileLlmTxt(status: QualificationStatus) {
 > Verified AI software delivery that survives the model, the machine, and the handoff.
 
 - Version: ${status.currentVersion}
-- Qualification: T${status.highestVerifiedTask} complete; ${status.nextTask} next
+- Qualification: ${status.highestVerifiedTask} complete; ${status.nextTask} next
 - Repository: https://github.com/accd/verchestra
 
 Verchestra is in source qualification. It has no public installer and is not production-ready.
@@ -229,7 +229,7 @@ ${document.markdown.trim()}
   const output = `# Verchestra Full LLM Context
 
 - Version: ${status.currentVersion}
-- Qualification: T${status.highestVerifiedTask} complete; ${status.nextTask} next
+- Qualification: ${status.highestVerifiedTask} complete; ${status.nextTask} next
 - Reports: ${status.reportCount}
 
 This deterministic context is an inference-time documentation aid. It does not guarantee indexing, SEO ranking, training inclusion, crawler behavior, public installation, or production readiness.
