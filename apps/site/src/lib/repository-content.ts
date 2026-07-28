@@ -15,8 +15,8 @@ export interface RepositoryContentSource {
 
 export interface QualificationStatus {
   currentVersion: string;
-  highestVerifiedTask: number;
-  nextTask: string;
+  highestVerifiedTask: string;
+  nextTask: string | null;
   reportCount: number;
 }
 
@@ -163,36 +163,57 @@ export async function compileQualificationStatus(repositoryRoot: URL | string): 
 
   const qualificationDirectory = new URL("docs/qualification/", root);
   const entries = await readdir(qualificationDirectory);
-  const taskNumbers = entries
-    .map((entry) => /^t(\d{2})-validation\.md$/i.exec(entry)?.[1])
-    .filter((value): value is string => value !== undefined)
+  const taskIds = entries
+    .map((entry) => /^t(\d{2}[a-z]?)-validation\.md$/i.exec(entry)?.[1])
+    .filter((value): value is string => value !== undefined);
+  const taskNumbers = taskIds
+    .filter((id) => /^\d+$/.test(id))
     .map(Number)
     .sort((left, right) => left - right);
 
-  const highestVerifiedTask = taskNumbers.at(-1) ?? 0;
-  for (let task = 1; task <= highestVerifiedTask; task += 1) {
+  const highestNumericTask = taskNumbers.at(-1) ?? 0;
+  for (let task = 1; task <= highestNumericTask; task += 1) {
     if (!taskNumbers.includes(task)) {
       throw new Error(`missing qualification report T${String(task).padStart(2, "0")}`);
     }
   }
 
   // Task identifiers stopped being integers when T68a-T68d were inserted ahead of
-  // T69 (AD-008), so the successor is read from the roadmap chain rather than
-  // computed. ROADMAP.md is the single ordering authority.
+  // T69 (AD-008), so both how far the chain is verified and what comes next are
+  // resolved by walking the roadmap chain. ROADMAP.md is the ordering authority.
   const roadmap = await readFile(new URL("ROADMAP.md", root), "utf8");
-  const successor = new RegExp(String.raw`^\s*T${highestVerifiedTask}\[[^\]]*\]\s*-->\s*(T\d+[a-z]?)\[`, "mu").exec(
-    roadmap
-  )?.[1];
-  if (successor === undefined) {
-    throw new Error(`roadmap does not declare a successor for T${highestVerifiedTask}`);
+  const verified = new Set(taskIds.map((id) => `T${id}`));
+  const { highestVerifiedTask, nextTask } = resolveQualification(roadmap, verified);
+  if (highestVerifiedTask === null) {
+    throw new Error("roadmap does not declare a verified qualification chain");
   }
 
   return {
     currentVersion: packageMetadata.version,
     highestVerifiedTask,
-    nextTask: successor,
-    reportCount: taskNumbers.length
+    nextTask,
+    reportCount: taskIds.length
   };
+}
+
+export function resolveQualification(
+  roadmap: string,
+  verifiedTasks: ReadonlySet<string>
+): { highestVerifiedTask: string | null; nextTask: string | null } {
+  const edges = new Map<string, string>();
+  const edge = /^[^\S\n]*(T\d+[a-z]?)(?:\[[^\]]*\])?[^\S\n]*-->[^\S\n]*(T\d+[a-z]?)(?:\[[^\]]*\])?[^\S\n]*$/gmu;
+  for (const match of roadmap.matchAll(edge)) {
+    if (!edges.has(match[1]!)) edges.set(match[1]!, match[2]!);
+  }
+  const targets = new Set(edges.values());
+  const roots = [...edges.keys()].filter((task) => !targets.has(task));
+  if (roots.length !== 1) return { highestVerifiedTask: null, nextTask: null };
+  let highest: string | null = null;
+  for (let task: string | undefined = roots[0]; task !== undefined; task = edges.get(task)) {
+    if (!verifiedTasks.has(task)) break;
+    highest = task;
+  }
+  return { highestVerifiedTask: highest, nextTask: highest === null ? roots[0]! : (edges.get(highest) ?? null) };
 }
 
 export async function assertProjectStatus(repositoryRoot: URL | string, status: QualificationStatus): Promise<void> {
@@ -205,10 +226,10 @@ export async function assertProjectStatus(repositoryRoot: URL | string, status: 
   if (!readme.includes(status.currentVersion) || !roadmap.includes(status.currentVersion)) {
     throw new Error(`public documents do not agree on version ${status.currentVersion}`);
   }
-  if (!new RegExp(`\\bT${status.highestVerifiedTask}\\b`).test(roadmap)) {
-    throw new Error(`roadmap does not identify T${status.highestVerifiedTask} as the completed foundation`);
+  if (!new RegExp(`\\b${status.highestVerifiedTask}\\b`).test(roadmap)) {
+    throw new Error(`roadmap does not identify ${status.highestVerifiedTask} as the completed foundation`);
   }
-  if (!new RegExp(`\\b${status.nextTask}\\b`).test(roadmap)) {
+  if (status.nextTask !== null && !new RegExp(`\\b${status.nextTask}\\b`).test(roadmap)) {
     throw new Error(`roadmap does not identify ${status.nextTask} as the next qualification task`);
   }
 }
