@@ -25,8 +25,8 @@ importers:
         specifier: 0.82.1
         version: 0.82.1(ws@8.21.1)(zod@4.4.3)
       '@opencode-ai/sdk':
-        specifier: 1.17.18
-        version: 1.17.18
+        specifier: 1.18.9
+        version: 1.18.9
       '@tufjs/canonical-json':
         specifier: 2.0.0
         version: 2.0.0
@@ -1042,8 +1042,8 @@ packages:
       '@emnapi/core': ^1.7.1
       '@emnapi/runtime': ^1.7.1
 
-  '@opencode-ai/sdk@1.17.18':
-    resolution: {integrity: sha512-c/C9PhY8PrbcxDY+JIYtOZsrmMD0KzoVvxq+RGUrZ6LQp57SuVBbT4lfwA2G8Se5RNC1N5JtYjiuaXeECnF2SQ==}
+  '@opencode-ai/sdk@1.18.9':
+    resolution: {integrity: sha512-oDJSmsmiGW+3lNLmZYj3EpUkpiT3ITZBKffH3mrmu2KMJXlkxQ/Nvv7jqPffSM7o8lCdBZS/aCE+2GkA3/92gQ==}
 
   '@opentelemetry/api@1.9.0':
     resolution: {integrity: sha512-3giAOQvZiH5F9bMlMiv8+GSPMeqg0dbaeo58/0SlA9sxSqZhnUtxzX9/2FzyhS9sWQf5S0GJE0AKBrFqjpeYcg==}
@@ -5807,7 +5807,7 @@ snapshots:
       '@tybys/wasm-util': 0.10.3
     optional: true
 
-  '@opencode-ai/sdk@1.17.18':
+  '@opencode-ai/sdk@1.18.9':
     dependencies:
       cross-spawn: 7.0.6
 
