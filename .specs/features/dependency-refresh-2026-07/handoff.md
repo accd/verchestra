@@ -2,13 +2,13 @@
 schema: verchestra-feature-handoff/v1
 feature: dependency-refresh-2026-07
 issue: null
-status: verification
-branch: deps/requalify-opencode-1.18.9-cedar-4.12.0
-baseRevision: e9e9def5314a69822aaff75df8a67bfa256fb41d
-lastCompletedTask: T6
-nextTask: T7
+status: complete
+branch: main
+baseRevision: 9029f3ee566d18fbf2c7ce5508cabe9459ade42f
+lastCompletedTask: T7
+nextTask: None; every Dependabot pull request in this batch is resolved
 lastGate: pnpm gate:security
-updatedAt: 2026-07-28T22:35:40Z
+updatedAt: 2026-07-28T23:43:34Z
 ---
 
 # Scope
@@ -90,11 +90,16 @@ requalification:
 Gates on this branch: `qualify:cedar` 50/50, `qualify:opencode` 17/17,
 `pnpm gate:security` PASS across all nine stages.
 
+T7 complete. The coordinated requalification merged as pull request #50
+(`51c9277`). #45 and #47 were closed as superseded, each carrying the reason a
+bare version bump cannot merge and the unblock condition for the next proposal.
+GitHub then reported zero open pull requests, zero open code-scanning alerts,
+and zero open Dependabot alerts, with `main` CI green and the deployed Pages
+endpoints serving the current status.
+
 # Next Exact Action
 
-T7: merge this pull request, then close #45 and #47 as superseded with their
-reasons and unblock conditions, and confirm zero open Dependabot pull requests
-with `main` green.
+None. This feature is complete.
 
 # Blockers
 
