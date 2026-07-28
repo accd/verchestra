@@ -54,7 +54,7 @@ function driver(mode = "success", calls = [], options = {}) {
 test("probes the exact repo-local OpenCode without model inference", async () => {
   const result = await new OpenCodeDriver({ minimumVersion: "1.17.18" }).probe();
   assert.equal(result.available, true);
-  assert.equal(result.version, "1.17.18");
+  assert.equal(result.version, "1.18.7");
   assert.equal(result.capabilities.sdkEvents, true);
 });
 

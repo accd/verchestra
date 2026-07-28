@@ -2,13 +2,13 @@
 schema: verchestra-feature-handoff/v1
 feature: dependency-pr-backlog
 issue: null
-status: in_progress
+status: complete
 branch: dependabot/npm_and_yarn/earendil-works/pi-ai-0.82.1
 baseRevision: b35dd6e8e1cd49b9f493e7306e35efb96a997cdf
-lastCompletedTask: T4
-nextTask: T5
+lastCompletedTask: T5
+nextTask: None; the #2-#8 batch is resolved
 lastGate: pnpm gate:full
-updatedAt: 2026-07-26T12:14:00Z
+updatedAt: 2026-07-28T21:58:00Z
 ---
 
 # Scope
@@ -35,10 +35,18 @@ offline install, 12 Pi outcomes, 17 OpenCode outcomes, 21 readiness outcomes,
 `pnpm site:build` pass. Lighthouse met the unchanged 0.95 minimum on the first
 clean run.
 
+PR #5 merged as `build(deps): qualify Pi runtime 0.82.1`. The superseded and
+incompatible proposals closed with their unblock conditions: #6 (`tuf-js` 6.0.0
+major), #7 (split Pi proposal, superseded by #5), and #8 (`@types/node` 26
+major). GitHub reports #2–#5 merged and #6–#8 closed, so DPR-01 through DPR-08
+are resolved.
+
 # Next Exact Action
 
-Commit and push the coordinated PR #5 change, wait for required PR checks, and
-submit the exact diff and gate evidence to an independent verifier.
+None. This batch is complete. The July 2026 batch (#29–#32) is tracked
+separately in `.specs/features/dependency-refresh-2026-07/`, which reuses this
+feature's decisions: sequential merges, coordinated qualification units, and
+closing superseded proposals with a stated unblock condition.
 
 # Blockers
 

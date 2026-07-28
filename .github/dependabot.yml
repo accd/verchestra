@@ -9,6 +9,10 @@ updates:
       pi-runtime:
         patterns:
           - "@earendil-works/pi-*"
+      opencode-driver:
+        patterns:
+          - opencode-ai
+          - "@opencode-ai/*"
     ignore:
       - dependency-name: tuf-js
         update-types:
