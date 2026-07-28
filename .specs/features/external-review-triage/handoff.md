@@ -2,13 +2,13 @@
 schema: verchestra-feature-handoff/v1
 feature: external-review-triage
 issue: null
-status: verification
-branch: docs/external-review-triage
+status: complete
+branch: main
 baseRevision: 6e0af0527d35080f178eafcfae7f00eb289378bd
 lastCompletedTask: T7
-nextTask: merge
+nextTask: None; triage delivered and verified in production
 lastGate: pnpm gate:quick
-updatedAt: 2026-07-27T18:13:33Z
+updatedAt: 2026-07-28T20:53:13Z
 ---
 
 # Scope
@@ -35,11 +35,19 @@ evidence wiring), #35 (cross-driver verification), #36 (install friction),
 unit/types/build/built-checks PASS, Playwright chromium e2e 17/17 PASS
 (details in `validation.md`).
 
+Delivery completed as PR #38, squash-merged to protected `main` as
+`71c91aada4e5ec91f9c1a467f99edd84c46855ec`. Post-merge verification passed:
+CI run `30293252407` and the Push-on-main run `30293252277` both succeeded,
+CodeQL analysis (javascript-typescript and actions) succeeded, and the
+deployed Pages endpoints `/`, `/roadmap/`, `/llms.txt`, `/llms-full.txt`,
+`/sitemap-index.xml`, `/robots.txt`, and
+`/docs/community/contributing-with-agents/` each returned HTTP 200.
+
 # Next Exact Action
 
-Open the PR for branch `docs/external-review-triage`, wait for required
-checks (Quality gate, Site quality), squash-merge, and verify post-merge CI
-plus the deployed Pages endpoints.
+None. This feature is complete. The follow-on work it created is tracked
+elsewhere: T68a–T68d specifications under `.specs/features/`, and GitHub
+issues #33–#37 for the deferred multipliers.
 
 # Blockers
 
