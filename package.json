@@ -57,7 +57,7 @@
     "eslint": "10.8.0",
     "jose": "6.2.3",
     "json-schema-to-typescript": "15.0.4",
-    "opencode-ai": "1.17.18",
+    "opencode-ai": "1.18.9",
     "prettier": "3.9.6",
     "prettier-plugin-astro": "0.14.1",
     "sqlite-vec": "0.1.9",
