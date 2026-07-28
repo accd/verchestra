@@ -72,7 +72,7 @@ export function parseSqlServerReadOperation(sql: unknown, options: ParseOptions)
   if (!/^[\x09\x0a\x0d\x20-\x7e]+$/u.test(sql) || /\\/u.test(sql))
     fail("VES_SQLSERVER_ENCODING_DENIED", "SQL Server statement encoding is not permitted");
   if (/--|\/\*|\*\//u.test(sql)) fail("VES_SQLSERVER_COMMENT_DENIED", "SQL Server comments are not permitted");
-  if (sql.includes(";") || /(?:^|\r?\n)\s*GO\s*(?:\r?\n|$)/iu.test(sql))
+  if (sql.includes(";") || sql.split("\n").some((line) => line.trim().toUpperCase() === "GO"))
     fail("VES_SQLSERVER_BATCH_DENIED", "SQL Server batches are not permitted");
   if (sql.includes("'") || sql.includes('"') || sql.includes("[") || sql.includes("]"))
     fail("VES_SQLSERVER_LITERAL_DENIED", "Inline literals and quoted identifiers are not permitted");

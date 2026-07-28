@@ -43,6 +43,33 @@ for (const [label, sql, code] of [
   test(`SAP ASE denies ${label}`, () => assert.throws(() => parseSapAseReadOperation(sql, options), { code }));
 }
 
+for (const [label, sql] of [
+  ["padded with tabs and spaces", "select id from dbo.orders\n \tgo \t\nselect id from dbo.orders"],
+  ["with CRLF line endings", "select id from dbo.orders\r\ngo\r\nselect id from dbo.orders"],
+  ["after blank lines", "select id from dbo.orders\n\n\ngo\n\n"],
+  ["as the closing line without a trailing newline", "select id from dbo.orders\ngo"],
+  ["as the opening line", "go\nselect id from dbo.orders"],
+  ["in upper case", "select id from dbo.orders\nGO\nselect id from dbo.orders"],
+  ["ending in a lone carriage return", "select id from dbo.orders\ngo\r"]
+]) {
+  test(`SAP ASE denies a GO batch separator ${label}`, () =>
+    assert.throws(() => parseSapAseReadOperation(sql, options), { code: "VES_SAP_ASE_BATCH_DENIED" }));
+}
+
+test("SAP ASE allows go inside an identifier that shares its line", () => {
+  assert.deepEqual(parseSapAseReadOperation("select id from dbo.go_orders", options).objects, [
+    { schema: "dbo", name: "go_orders", type: "table" }
+  ]);
+});
+
+test("SAP ASE batch separator detection stays linear on adversarial newline input", () => {
+  const adversarial = `${"\n".repeat(60_000)}X`;
+  const started = process.hrtime.bigint();
+  assert.throws(() => parseSapAseReadOperation(adversarial, options), { code: "VES_SAP_ASE_READ_FORM_DENIED" });
+  const elapsedMs = Number(process.hrtime.bigint() - started) / 1e6;
+  assert.ok(elapsedMs < 1000, `parse took ${elapsedMs.toFixed(0)}ms; batch separator detection is no longer linear`);
+});
+
 for (const [label, observation] of [
   ["sa_role", { saRole: true }],
   ["sso_role", { ssoRole: true }],

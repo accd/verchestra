@@ -75,7 +75,7 @@ export function parseOracleReadOperation(sql: unknown, options: ParseOptions): O
   if (!/^[\x09\x0a\x0d\x20-\x7e]+$/u.test(sql) || /\\|\x00/u.test(sql))
     fail("VES_ORACLE_ENCODING_DENIED", "Oracle statement encoding is not permitted");
   if (/--|\/\*|\*\//u.test(sql)) fail("VES_ORACLE_COMMENT_DENIED", "Oracle comments and hints are not permitted");
-  if (sql.includes(";") || /(?:^|\r?\n)\s*\/\s*(?:\r?\n|$)/u.test(sql))
+  if (sql.includes(";") || sql.split("\n").some((line) => line.trim() === "/"))
     fail("VES_ORACLE_BATCH_DENIED", "Oracle batches are not permitted");
   if (EXECUTION.test(sql) || /\bINTO\b/iu.test(sql))
     fail("VES_ORACLE_EXECUTION_DENIED", "Oracle PL SQL and execution syntax is not permitted");
