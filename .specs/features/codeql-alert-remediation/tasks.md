@@ -4,7 +4,7 @@
 
 | Task | Deliverable                                                                                              | Depends on | Verification                                        | Commit    |
 | ---- | ---------------------------------------------------------------------------------------------------------- | ---------- | ----------------------------------------------------- | --------- |
-| T1   | Linear batch-separator detection in the Oracle, SQL Server, and SAP ASE adapters, with parity, discrimination, and linearity assertions | None       | `pnpm gate:quick`, `pnpm gate:security`               |           |
+| T1   | Linear batch-separator detection in the Oracle, SQL Server, and SAP ASE adapters, with parity, discrimination, and linearity assertions | None       | `pnpm gate:quick`, `pnpm gate:security`               | `0a97635` |
 | T2   | Scheme allowlist in the built-site link checker                                                             | None       | `pnpm site:check`, `pnpm gate:quick`                  |           |
 | T3   | Post-merge confirmation that CodeQL reports all four alerts fixed on `main`                                 | T1, T2     | `gh api repos/accd/verchestra/code-scanning/alerts`   |           |
 

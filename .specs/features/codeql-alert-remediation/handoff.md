@@ -2,13 +2,13 @@
 schema: verchestra-feature-handoff/v1
 feature: codeql-alert-remediation
 issue: null
-status: in_progress
-branch: fix/redos-batch-separator-regexes
-baseRevision: 67e05ff12edc5206a786836838dfc7fb64c5758a
-lastCompletedTask: T1
-nextTask: T2
-lastGate: pnpm gate:security
-updatedAt: 2026-07-28T21:27:56Z
+status: verification
+branch: fix/site-link-checker-scheme-allowlist
+baseRevision: 0a976355b6813a6cb5bc5161a03dc56f9b6486be
+lastCompletedTask: T2
+nextTask: T3
+lastGate: pnpm gate:quick plus the four site:check stages
+updatedAt: 2026-07-28T21:35:26Z
 ---
 
 # Scope
@@ -44,12 +44,31 @@ previous expressions in a disposable copy. Exactly those three failed
 tests passed on both implementations, proving both that the new assertions
 detect the defect and that the rewrite preserves the existing semantics.
 
+T2 complete. The built-site link checker no longer names schemes to exclude.
+The decision moved to a pure `checkableLinkTarget(value, pageUrl)` in
+`apps/site/scripts/link-targets.mjs`, which keeps the fragment skip, resolves
+the value, and returns it only for `http:` and `https:`. The extraction exists
+because `check-built-site.mjs` walks `dist/` at import time and cannot be
+imported from a test.
+
+Site evidence: 31 site unit tests (3 new), `astro check` 0 errors/0 warnings/
+0 hints across 27 files, a 120-page build, and `check:built` reporting
+`internalLinks: valid` over the real built site. `pnpm gate:quick` PASS.
+
+Integration discrimination: injecting `<a href="/verchestra/does-not-exist/">`
+and `<a href="vbscript:msgbox(1)">` into `dist/index.html` made the checker
+fail on exactly the broken `http(s)` link and ignore the `vbscript:` target,
+confirming both that broken-link detection still works and that the allowlist
+excludes the scheme CodeQL named. Unit discrimination: the previous deny-list
+implementation, reconstructed in a scratch copy, fails the new suite on
+`vbscript:msgbox(1)`.
+
 # Next Exact Action
 
-T2: invert the built-site link checker at
-`apps/site/scripts/check-built-site.mjs:76-88` from a scheme deny-prefix list
-to an `http:`/`https:` allowlist applied after `new URL()` resolution, then
-run `pnpm site:check` and open its own pull request.
+T3: after this pull request merges, confirm CodeQL reports all four alerts
+`fixed` on `main` with `gh api repos/accd/verchestra/code-scanning/alerts`,
+record the result in `validation.md`, and transition this handoff to
+`complete`.
 
 # Blockers
 
