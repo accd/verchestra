@@ -2,13 +2,13 @@
 schema: verchestra-feature-handoff/v1
 feature: agent-ready-repository
 issue: null
-status: blocked
-branch: agent/agent-ready-repository
-baseRevision: fd585f128d310a6f355a544deee0ae4e5e54aa4f
+status: verification
+branch: main
+baseRevision: 9029f3ee566d18fbf2c7ce5508cabe9459ade42f
 lastCompletedTask: T8
-nextTask: Complete human review, merge to protected main, and verify the deployed Pages endpoints.
+nextTask: Add the three repository topics from a maintainer session
 lastGate: corepack pnpm agent:check && corepack pnpm gate:quick && corepack pnpm site:test && corepack pnpm site:build
-updatedAt: 2026-07-26T00:06:29Z
+updatedAt: 2026-07-28T23:43:34Z
 ---
 
 # Scope
@@ -88,31 +88,31 @@ delivery plan without changing the T69–T77 product dependency chain.
 - All eight required discrimination mutations were killed; no implementation
   defect or spec-precision gap was found.
 
+Three of the four recorded blockers cleared, verified read-only on
+2026-07-29:
+
+- Production deployment happened and the public endpoints respond. `/`,
+  `/docs/community/contributing-with-agents/`, `/llms.txt`, `/llms-full.txt`,
+  `/sitemap-index.xml`, `/robots.txt`, and a representative Markdown alternate
+  (`/roadmap/index.html.md`) all return 200. Search is Pagefind, rendered
+  client-side rather than served as a route, so it has no endpoint of its own.
+- Dependabot alerts are readable and the repository has zero open.
+- Issue creation works; #51-#54 were opened for the inserted T68a-T68d chain.
+  A separate tracking issue for this feature is no longer useful, because the
+  work merged and the qualification chain now tracks what follows.
+
 # Next Exact Action
 
-Complete mandatory human review, merge to protected `main`, deploy the gated
-Pages artifact, verify public HTTP responses, add the three repository topics,
-and create/link the tracking issue.
+One maintainer action remains: add the repository topics `agents-md`,
+`llms-txt`, and `ai-coding-agents`. The repository currently carries twelve
+other topics, so this is discovery metadata rather than a functional gap, and
+it is deliberately left to a human because repository settings are not an
+agent's to change.
 
 # Blockers
 
-GitHub issue creation returned `403 Resource not accessible by integration`.
-Unblock by granting the connected GitHub integration issue-write access or
-creating the issue from an authenticated maintainer session, then record its
-number here.
-
-The available GitHub connector exposes no repository-topic write and the
-browser session is signed out. Add `agents-md`, `llms-txt`, and
-`ai-coding-agents` from an authenticated maintainer session.
-
-Production deployment is intentionally pending mandatory human review, merge
-to protected `main`, and the existing GitHub Pages workflow. After deployment,
-verify the guide, search, `llms.txt`, `llms-full.txt`, representative Markdown
-alternates, sitemap, and robots endpoints return 200.
-
-The available GitHub integration does not expose Dependabot alert reads.
-Before closing the tracking issue, an authenticated maintainer must verify the
-repository has zero open Dependabot alerts.
+None. The remaining step is the maintainer action recorded above, not a
+blocker on further work.
 
 # Decisions
 

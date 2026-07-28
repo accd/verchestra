@@ -1,14 +1,14 @@
 ---
 schema: verchestra-feature-handoff/v1
 feature: budget-enforcement
-issue: null
+issue: 52
 status: planned
 branch: main
-baseRevision: 6e0af0527d35080f178eafcfae7f00eb289378bd
+baseRevision: 9029f3ee566d18fbf2c7ce5508cabe9459ade42f
 lastCompletedTask: null
 nextTask: T1
 lastGate: null
-updatedAt: 2026-07-26T17:54:19Z
+updatedAt: 2026-07-28T23:41:40Z
 ---
 
 # Scope
