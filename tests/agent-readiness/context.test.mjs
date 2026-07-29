@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -9,6 +9,7 @@ import {
   parseRoadmapChain,
   validateRoadmapChain,
   qualificationStatusLine,
+  readQualificationReports,
   resolveQualification,
   validateQualificationReport,
   normalizeRepositoryPath,
@@ -42,6 +43,25 @@ const report = (overrides = {}) => {
     .join("\n");
   return `---\n${body}\n---\n\n# T68a Validation\n`;
 };
+
+const git = (root, ...args) => execFileSync("git", ["-C", root, ...args], { encoding: "utf8" }).trim();
+
+async function initializeRepository(root) {
+  git(root, "init", "--initial-branch=main");
+  git(root, "config", "core.autocrlf", "false");
+  await writeFile(join(root, "README.md"), "qualification fixture\n");
+  git(root, "add", "README.md");
+  git(
+    root,
+    "-c",
+    "user.name=Qualification fixture",
+    "-c",
+    "user.email=fixture@example.test",
+    "commit",
+    "-m",
+    "fixture base"
+  );
+}
 
 test("JSON context exposes the exact safe clean-clone contract", () => {
   const output = execFileSync(process.execPath, ["scripts/agent-context.mjs", "--json"], { encoding: "utf8" });
@@ -194,6 +214,65 @@ test("a complete report is accepted and historical reports need no frontmatter",
   assert.deepEqual(validateQualificationReport(report(), "T68a", REPOSITORY), []);
   assert.deepEqual(validateQualificationReport("# T68 Validation\n", "T68", REPOSITORY), []);
   assert.deepEqual(validateQualificationReport("# T01 Validation\n", "T01", REPOSITORY), []);
+});
+
+test("a qualification report must name an ancestor of the trusted head", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "verchestra-qualification-reachability-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await mkdir(join(root, "docs", "qualification"), { recursive: true });
+  await initializeRepository(root);
+  const baseRevision = git(root, "rev-parse", "HEAD");
+
+  await writeFile(join(root, "implementation.txt"), "trusted implementation\n");
+  git(root, "add", "implementation.txt");
+  git(
+    root,
+    "-c",
+    "user.name=Qualification fixture",
+    "-c",
+    "user.email=fixture@example.test",
+    "commit",
+    "-m",
+    "trusted implementation"
+  );
+  const implementationRevision = git(root, "rev-parse", "HEAD");
+
+  git(root, "switch", "-c", "side-evidence");
+  await writeFile(join(root, "side.txt"), "side-ref-only evidence\n");
+  git(root, "add", "side.txt");
+  git(
+    root,
+    "-c",
+    "user.name=Qualification fixture",
+    "-c",
+    "user.email=fixture@example.test",
+    "commit",
+    "-m",
+    "side evidence"
+  );
+  const sideRevision = git(root, "rev-parse", "HEAD");
+  git(root, "switch", "main");
+
+  const reportPath = join(root, "docs", "qualification", "t68a-validation.md");
+  await writeFile(reportPath, report({ revision: sideRevision, gateRevision: sideRevision }));
+  let reports = await readQualificationReports(root);
+  assert.deepEqual([...reports.tasks], []);
+  assert.ok(
+    reports.errors.some((error) => error.includes("is not reachable from the trusted qualification head")),
+    `expected side-ref-only evidence to fail reachability, got ${JSON.stringify(reports.errors)}`
+  );
+
+  await writeFile(reportPath, report({ revision: implementationRevision, gateRevision: implementationRevision }));
+  reports = await readQualificationReports(root);
+  assert.deepEqual([...reports.tasks], ["T68a"]);
+  assert.deepEqual(reports.errors, []);
+
+  reports = await readQualificationReports(root, { trustedRevision: baseRevision });
+  assert.deepEqual([...reports.tasks], []);
+  assert.ok(
+    reports.errors.some((error) => error.includes("is not reachable from the trusted qualification head")),
+    `expected an explicitly supplied earlier target to reject the implementation, got ${JSON.stringify(reports.errors)}`
+  );
 });
 
 test("the fabricated report from the independent validation is refused", () => {

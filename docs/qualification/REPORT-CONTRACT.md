@@ -16,7 +16,7 @@ Every report for a task after T68 begins with:
 ---
 schema: verchestra-qualification-report/v1
 task: T68a
-revision: <40-character commit id that this repository contains>
+revision: <40-character implementation commit id reachable from the trusted qualification target>
 gates: pnpm gate:quick, pnpm gate:security
 gateResults: pass, pass
 gateRevision: <must equal revision>
@@ -38,6 +38,7 @@ matrix, the discrimination sensor table, non-shallow checks, and the verdict.
 | --- | --- |
 | Missing or malformed frontmatter | An empty or placeholder file must never advance qualification. |
 | A revision this repository does not contain | A well-formed but invented SHA is the obvious forgery; existence is checked with `git cat-file`, which the report cannot fake. |
+| A revision reachable only through a side ref | A readable object is not necessarily portable evidence. Git must prove `git merge-base --is-ancestor <revision> <trusted-target>`, so reports bind to trusted implementation history rather than arbitrary local objects. |
 | `gateRevision` ≠ `revision` | Gate evidence copied from an earlier revision is not evidence for this one. |
 | A gate outside the declared set | Any package script would let `format:check` stand in for a security surface. Only `gate:quick`, `gate:full`, `gate:build`, `gate:security`, and `gate:release` count. |
 | No `gate:quick`, or no substantive gate | `gate:quick` alone proves formatting and unit behavior. A qualification claim also needs a gate that runs contract, architecture, security, or release stages. |
@@ -69,6 +70,21 @@ Those properties can only be established outside the file:
 So a report can satisfy every mechanical condition above and still not have been
 independently reviewed. The contract narrows what can be claimed without
 evidence; it does not, on its own, establish accountability.
+
+## Trusted target and report sequencing
+
+For T68a and later, `agent:check` derives the trusted qualification target
+from the Git checkout being validated (`HEAD`), never from report frontmatter.
+Readiness callers validating another checkout may supply its already-trusted
+implementation revision directly; a report field cannot select or relax that
+target.
+
+A report may bind to an earlier implementation commit that is an ancestor of
+the target. It must not bind to its own future report commit or an object that
+exists only through an unmerged side ref. Run required gates on the merged
+implementation revision first, then add the report in a later documentation
+commit while preserving that implementation SHA in both `revision` and
+`gateRevision`.
 
 ## Verifying locally
 
