@@ -115,6 +115,9 @@ importers:
       '@verchestra/domain':
         specifier: workspace:0.0.0
         version: link:../../packages/domain
+      '@verchestra/workspace':
+        specifier: workspace:0.0.0
+        version: link:../../packages/workspace
 
   packages/agent-runtime:
     dependencies:

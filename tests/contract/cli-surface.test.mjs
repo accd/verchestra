@@ -5,6 +5,7 @@ import { PublicErrorException } from "../../packages/domain/src/index.ts";
 import {
   CLI_PUBLIC_ERROR_DEFINITIONS,
   cliPublicErrorRegistry,
+  installedReleaseManifest,
   parseCliArguments,
   runCli
 } from "../../apps/vestra-cli/src/index.ts";
@@ -65,6 +66,17 @@ test("help excludes a command absent from the installed manifest", async () => {
   const installedManifest = manifest({ commands: manifest().commands.filter((entry) => entry.name !== "doctor") });
   const result = await execute(["--help"], { installedManifest });
   assert.equal(result.streams.stdout[0].includes("doctor"), false);
+});
+
+test("the source manifest advertises only the composed init slice", () => {
+  assert.deepEqual(
+    installedReleaseManifest.commands.map((command) => command.name),
+    ["init"]
+  );
+  assert.deepEqual(
+    installedReleaseManifest.commands[0].options.map((option) => option.name),
+    ["dry-run", "workspace-id", "name", "placement"]
+  );
 });
 
 test("empty arguments select canonical help without dispatch", async () => {
