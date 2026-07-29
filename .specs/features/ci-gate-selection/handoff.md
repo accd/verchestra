@@ -8,18 +8,17 @@ not modified.
 
 ## Evidence so far
 
-`node --test tests/agent-readiness/gate-selection.test.mjs` passes 26 tests,
+`node --test tests/agent-readiness/gate-selection.test.mjs` passes 27 tests,
 including a temporary Git repository that proves a two-commit push uses the
 event base SHA. `node --test apps/site/tests/unit/pages-workflow.test.mjs`
 passes 3 workflow contracts.
 
-`pnpm gate:quick` is currently blocked before its stages by the repository
-supply-chain policy: 19 packages already pinned by `a393481` are younger than
-the configured minimum-release-age. No dependency or policy file was changed;
-rerun the gate after the age window expires or in CI when it has expired.
+The first CI attempt installed dependencies successfully, proving the
+minimum-release-age window had expired. Its selector evidence was valid, but a
+shell-quoted JSON-to-GitHub-output command failed; `gate-output.mjs` replaces
+that fragile interpolation and is covered by a focused test.
 
 ## Next
 
-Inspect the final diff; commit, push, and open the replacement PR for #59/#69.
-CI must validate the exact head before review. Rerun `pnpm gate:quick` when the
-pre-existing dependency age policy permits installation.
+Push the output-writer correction and require CI to validate the exact new head
+before review.

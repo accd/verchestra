@@ -43,7 +43,7 @@ jobs:
         run: |
           node scripts/select-gates.mjs --base "${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}" --json > gate-selection.json
           cat gate-selection.json
-          echo "stages=$(node -e \"process.stdout.write(require('./gate-selection.json').stages.join(' '))\")" >> "$GITHUB_OUTPUT"
+          node scripts/gate-output.mjs gate-selection.json "$GITHUB_OUTPUT"
       - name: Run each selected stage once
         run: |
           set -euo pipefail
