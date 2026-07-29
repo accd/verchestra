@@ -96,6 +96,26 @@ pnpm gate:quick
 
 Requirements are Node `24.14.0` and pnpm `10.34.5`.
 
+## Qualified local alpha: initialize a workspace
+
+The current local alpha exposes only `init`. It is run from a source checkout;
+there is no public installer or production release. From the root of a
+disposable Git repository, invoke the checked-out CLI with an explicit,
+portable workspace identity:
+
+```bash
+node /path/to/verchestra/apps/vestra-cli/bin/vestra.mjs init --dry-run \
+  --workspace-id workspace_018f0b6d-7b1a-7abc-8def-0123456789ab \
+  --name "My workspace" \
+  --placement centralized \
+  --output json
+```
+
+`--dry-run` is read-only and returns the canonical ordered plan. Review it,
+then repeat the command without `--dry-run` to apply the qualified workspace
+files. Repeating the identical apply is a no-op. `bootstrap`, `sync`,
+`workspace reconcile`, and `doctor` are intentionally not advertised yet.
+
 ### Website development
 
 The website is the private `@verchestra/site` workspace package. It remains static, uses the `/verchestra/` base path, and loads canonical repository documents at build time.
