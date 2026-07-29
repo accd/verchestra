@@ -44,6 +44,12 @@ jobs:
           node scripts/select-gates.mjs --base "${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}" --json > gate-selection.json
           cat gate-selection.json
           node scripts/gate-output.mjs gate-selection.json "$GITHUB_OUTPUT"
+      - name: Install the qualified local driver probes
+        if: contains(steps.selection.outputs.stages, 'test:qualification')
+        run: |
+          npm install --global --ignore-scripts --no-audit --no-fund @anthropic-ai/claude-code@2.1.168 @openai/codex@0.115.0
+          test "$(claude --version)" = "2.1.168"
+          test "$(codex --version)" = "codex-cli 0.115.0"
       - name: Run each selected stage once
         run: |
           set -euo pipefail
