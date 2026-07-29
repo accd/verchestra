@@ -10,7 +10,8 @@ export const ALWAYS_GATE = "gate:quick";
 // integration, and e2e; `release` carries architecture, qualification,
 // security, fault, and release. Together they cover every declared stage.
 export const CONSERVATIVE_GATES = Object.freeze(["gate:full", "gate:release"]);
-const CONSERVATIVE_PATH = /^(?:docs\/qualification\/t\d+[a-z]?-validation\.md|\.github\/(?:workflows\/|dependabot\.yml$))/u;
+const CONSERVATIVE_PATH =
+  /^(?:docs\/qualification\/t\d+[a-z]?-validation\.md|\.github\/(?:workflows\/|dependabot\.yml$))/u;
 
 const RULES = Object.freeze([
   {
