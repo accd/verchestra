@@ -16,7 +16,9 @@ passes 3 workflow contracts.
 The first CI attempt installed dependencies successfully, proving the
 minimum-release-age window had expired. Its selector evidence was valid, but a
 shell-quoted JSON-to-GitHub-output command failed; `gate-output.mjs` replaces
-that fragile interpolation and is covered by a focused test.
+that fragile interpolation and is covered by a focused test. The next CI run
+exposed an overly narrow stage-name validator for `test:e2e`; it now permits
+digits and the focused test includes that exact stage.
 
 ## Next
 

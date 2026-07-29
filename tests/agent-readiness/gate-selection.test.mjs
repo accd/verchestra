@@ -174,7 +174,10 @@ test("an all-zero initial push SHA records a conservative fallback without paths
 });
 
 test("GitHub output contains only the selected stage list", () => {
-  assert.equal(githubOutputFor({ stages: ["format:check", "test:release"] }), "stages=format:check test:release\n");
+  assert.equal(
+    githubOutputFor({ stages: ["format:check", "test:e2e", "test:release"] }),
+    "stages=format:check test:e2e test:release\n"
+  );
   assert.throws(() => githubOutputFor({ stages: ["format:check", "bad stage"] }), /no valid stages/u);
 });
 
