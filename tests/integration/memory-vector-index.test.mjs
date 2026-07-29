@@ -2,7 +2,13 @@ import assert from "node:assert/strict";
 import { join } from "node:path";
 import { afterEach, test } from "node:test";
 
-import { MemoryVectorIndex, QUALIFIED_SQLITE_VEC, inspectMemoryDatabase } from "../../packages/memory/src/index.ts";
+import {
+  MemoryVectorIndex,
+  QUALIFIED_SQLITE_VEC,
+  QUALIFIED_SQLITE_VEC_ASSETS,
+  getQualifiedSqliteVecAsset,
+  inspectMemoryDatabase
+} from "../../packages/memory/src/index.ts";
 import { batch, cleanup, now, opened, projectId, source, workspaceId } from "../helpers/memory-store-fixture.mjs";
 
 afterEach(cleanup);
@@ -56,6 +62,17 @@ test("loads only the exact qualified sqlite-vec asset and version", async () => 
   });
   index.close();
   store.close();
+});
+
+test("qualification is closed to the verified x64 Windows and Linux assets", () => {
+  assert.deepEqual(Object.keys(QUALIFIED_SQLITE_VEC_ASSETS).sort(), ["linux-x64", "win32-x64"]);
+  assert.equal(getQualifiedSqliteVecAsset("darwin", "x64"), undefined);
+  assert.equal(getQualifiedSqliteVecAsset("linux", "arm64"), undefined);
+  assert.equal(QUALIFIED_SQLITE_VEC_ASSETS["linux-x64"].bytes, 159816);
+  assert.equal(
+    QUALIFIED_SQLITE_VEC_ASSETS["linux-x64"].sha256,
+    "5923730861b86c707cca5602b5f91092f9e52a46706dbc6e269fd4bb9c4498e8"
+  );
 });
 
 test("controlled bootstrap permanently disables further extension loading on its connection", async () => {
