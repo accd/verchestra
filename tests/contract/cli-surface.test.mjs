@@ -69,7 +69,10 @@ test("help excludes a command absent from the installed manifest", async () => {
 });
 
 test("the source manifest advertises only the composed init slice", () => {
-  assert.deepEqual(installedReleaseManifest.commands.map((command) => command.name), ["init"]);
+  assert.deepEqual(
+    installedReleaseManifest.commands.map((command) => command.name),
+    ["init"]
+  );
   assert.deepEqual(
     installedReleaseManifest.commands[0].options.map((option) => option.name),
     ["dry-run", "workspace-id", "name", "placement"]

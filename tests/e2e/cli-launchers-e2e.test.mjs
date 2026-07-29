@@ -1,18 +1,32 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { test } from "node:test";
+
+import {
+  byteSnapshot,
+  cleanupScannerRoots,
+  initRepository,
+  scannerRoot
+} from "../helpers/workspace-scanner-fixture.mjs";
 
 const root = new URL("../../", import.meta.url);
 const canonicalVersion = JSON.parse(readFileSync(new URL("package.json", root), "utf8")).version;
 
-function launch(name, args) {
-  return spawnSync(process.execPath, [`apps/vestra-cli/bin/${name}.mjs`, ...args], {
-    cwd: root,
-    encoding: "utf8",
-    env: { ...process.env, NO_COLOR: "1" }
-  });
+function launch(name, args, cwd = root) {
+  return spawnSync(
+    process.execPath,
+    [fileURLToPath(new URL(`../../apps/vestra-cli/bin/${name}.mjs`, import.meta.url)), ...args],
+    {
+      cwd,
+      encoding: "utf8",
+      env: { ...process.env, NO_COLOR: "1" }
+    }
+  );
 }
+
+test.afterEach(cleanupScannerRoots);
 
 for (const args of [["--version"], ["--help"], ["--version", "--output", "json"], ["sync"], ["unknown"]]) {
   test(`vestra and verchestra launchers are equivalent for ${args.join(" ")}`, () => {
@@ -57,6 +71,33 @@ test("launcher JSON stdout contains exactly one valid document", () => {
   assert.equal(result.status, 0);
   assert.equal(result.stderr, "");
   assert.equal(JSON.parse(result.stdout).command, "version");
+});
+
+test("init dry-run uses the production composition and leaves a real Git workspace byte-identical", async () => {
+  const workspace = await scannerRoot();
+  await initRepository(workspace);
+  const before = await byteSnapshot(workspace);
+  const args = [
+    "init",
+    "--dry-run",
+    "--workspace-id",
+    "workspace_018f0b6d-7b1a-7abc-8def-0123456789ab",
+    "--name",
+    "My workspace",
+    "--placement",
+    "centralized",
+    "--output",
+    "json"
+  ];
+  const result = launch("vestra", args, workspace);
+  assert.equal(result.status, 0);
+  assert.equal(result.stderr, "");
+  const output = JSON.parse(result.stdout);
+  assert.equal(output.command, "init");
+  assert.equal(output.ok, true);
+  assert.equal(output.data.schemaVersion, 1);
+  assert.ok(output.data.changes.length > 0);
+  assert.deepEqual(await byteSnapshot(workspace), before);
 });
 
 for (const name of ["vestra", "verchestra"]) {

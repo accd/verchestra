@@ -182,7 +182,7 @@ function renderHelp(manifest: InstalledCliManifest): string {
 }
 
 function humanData(data: unknown): string {
-  if (data === null || typeof data !== "object" || Array.isArray(data)) return `${String(data)}\n`;
+  if (data !== null && typeof data === "object") return `${JSON.stringify(data, null, 2)}\n`;
   return `${Object.entries(data as Readonly<Record<string, unknown>>)
     .sort(([left], [right]) => left.localeCompare(right))
     .map(([key, value]) => `${key}: ${String(value)}`)
