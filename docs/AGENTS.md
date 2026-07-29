@@ -13,7 +13,8 @@ Apply the root `AGENTS.md` first.
   directories, machine-local paths, or claims of guaranteed AI indexing,
   ranking, or training inclusion.
 - Qualification reports are immutable evidence for their recorded revision;
-  add a new report rather than rewriting history.
+  add a new report rather than rewriting history. A report after T68 must carry
+  the frontmatter in `docs/qualification/REPORT-CONTRACT.md` before it counts.
 - Run link/readiness checks and the smallest relevant site test, then
   `pnpm gate:quick`.
 

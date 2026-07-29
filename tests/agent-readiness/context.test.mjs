@@ -10,10 +10,38 @@ import {
   validateRoadmapChain,
   qualificationStatusLine,
   resolveQualification,
+  validateQualificationReport,
   normalizeRepositoryPath,
   parseHandoff,
   validateHandoffTransition
 } from "../../scripts/agent-readiness.mjs";
+
+const GATES = new Set(["gate:quick", "gate:security"]);
+const SHA = "a".repeat(40);
+
+const report = (overrides = {}) => {
+  const fields = {
+    schema: "verchestra-qualification-report/v1",
+    task: "T68a",
+    revision: SHA,
+    gates: "pnpm gate:quick, pnpm gate:security",
+    gateResults: "pass, pass",
+    gateRevision: SHA,
+    criteriaEvidence: "7 of 7",
+    skipped: "0",
+    todo: "0",
+    discriminationSensor: "5 killed, 0 survived",
+    verifier: "independent-verifier",
+    verifierRole: "independent",
+    humanReview: "approved",
+    ...overrides
+  };
+  const body = Object.entries(fields)
+    .filter(([, value]) => value !== null)
+    .map(([key, value]) => `${key}: ${value}`)
+    .join("\n");
+  return `---\n${body}\n---\n\n# T68a Validation\n`;
+};
 
 test("JSON context exposes the exact safe clean-clone contract", () => {
   const output = execFileSync(process.execPath, ["scripts/agent-context.mjs", "--json"], { encoding: "utf8" });
@@ -152,6 +180,45 @@ test("the chain walk stops at the first gap and reports a fully verified chain",
     errors: ["no roadmap chain is declared"]
   });
 });
+
+test("a complete report is accepted and historical reports need no frontmatter", () => {
+  assert.deepEqual(validateQualificationReport(report(), "T68a", GATES), []);
+  assert.deepEqual(validateQualificationReport("# T68 Validation\n", "T68", GATES), []);
+  assert.deepEqual(validateQualificationReport("# T01 Validation\n", "T01", GATES), []);
+});
+
+for (const [label, source, expected] of [
+  ["an empty file", "", "missing the qualification frontmatter"],
+  ["a heading-only placeholder", "# T68a Validation\n", "missing the qualification frontmatter"],
+  ["a malformed frontmatter line", "---\nnot a field\n---\n", "malformed frontmatter line"],
+  ["a wrong schema", report({ schema: "something/v9" }), "unsupported report schema"],
+  ["a mismatched task id", report({ task: "T69" }), "report claims task T69"],
+  ["a short revision", report({ revision: "abc", gateRevision: "abc" }), "revision is not a full commit id"],
+  ["gate evidence from another revision", report({ gateRevision: "b".repeat(40) }), "not bound to the report revision"],
+  [
+    "an unknown gate name",
+    report({ gates: "pnpm gate:imaginary", gateResults: "pass" }),
+    "unknown gate gate:imaginary"
+  ],
+  ["a failing gate", report({ gateResults: "pass, fail" }), "gate gate:security did not pass"],
+  ["a gate with no result", report({ gateResults: "pass" }), "every gate needs a recorded result"],
+  ["unproven acceptance criteria", report({ criteriaEvidence: "5 of 7" }), "criteriaEvidence is incomplete: 5 of 7"],
+  ["a surviving mutant", report({ discriminationSensor: "4 killed, 1 survived" }), "1 that did not fail closed"],
+  ["no mutation at all", report({ discriminationSensor: "0 killed, 0 survived" }), "at least one case"],
+  ["a skipped case", report({ skipped: "2" }), "skipped must be 0, found 2"],
+  ["a todo case", report({ todo: "1" }), "todo must be 0, found 1"],
+  ["an author verifying their own work", report({ verifierRole: "author" }), "not recorded as independent"],
+  ["absent human review", report({ humanReview: "pending" }), "human review is not recorded as approved"],
+  ["a missing verifier", report({ verifier: "" }), "missing verifier"]
+]) {
+  test(`a report is refused for ${label}`, () => {
+    const errors = validateQualificationReport(source, "T68a", GATES);
+    assert.ok(
+      errors.some((problem) => problem.includes(expected)),
+      `expected an error naming "${expected}", got ${JSON.stringify(errors)}`
+    );
+  });
+}
 
 test("the status line names the next task or declares the chain fully verified", () => {
   assert.equal(qualificationStatusLine({ highestVerifiedTask: "T68", nextTask: "T68a" }), "T68 complete; T68a next");
