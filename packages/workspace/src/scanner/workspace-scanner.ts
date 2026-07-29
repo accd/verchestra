@@ -24,6 +24,7 @@ export interface RepositoryInventory {
   readonly ignoredByControl: boolean;
   readonly sparseCheckout: boolean;
   readonly remoteFingerprint?: string;
+  readonly brokenReason?: "gitdir-missing" | "gitdir-not-directory";
 }
 
 export interface ProjectInventory {
@@ -128,17 +129,51 @@ async function activeRepository(
   });
 }
 
-async function brokenRepository(controlRoot: string, repositoryRoot: string): Promise<RepositoryInventory> {
+async function brokenRepository(
+  controlRoot: string,
+  repositoryRoot: string,
+  brokenReason: "gitdir-missing" | "gitdir-not-directory"
+): Promise<RepositoryInventory> {
   const logicalPath = logical(controlRoot, repositoryRoot);
   return Object.freeze({
-    repositoryId: buildInventoryFingerprint({ schemaVersion: 1, logicalPath, status: "broken" }),
+    repositoryId: buildInventoryFingerprint({ schemaVersion: 1, logicalPath, status: "broken", brokenReason }),
     logicalPath,
     relation: "placeholder",
     status: "broken",
     gitDirKind: "file",
     ignoredByControl: await ignoredByControl(controlRoot, logicalPath),
-    sparseCheckout: false
+    sparseCheckout: false,
+    brokenReason
   });
+}
+
+function filesystemErrorCode(error: unknown): string | undefined {
+  return typeof error === "object" && error !== null && "code" in error && typeof error.code === "string"
+    ? error.code
+    : undefined;
+}
+
+async function resolveGitDir(
+  directory: string,
+  declaredGitDir: string
+): Promise<
+  | Readonly<{ readonly status: "active"; readonly gitDir: string }>
+  | Readonly<{ readonly status: "broken"; readonly reason: "gitdir-missing" | "gitdir-not-directory" }>
+> {
+  let gitDir: string;
+  try {
+    gitDir = await realpath(resolve(directory, declaredGitDir));
+  } catch (error) {
+    if (filesystemErrorCode(error) === "ENOENT") return Object.freeze({ status: "broken", reason: "gitdir-missing" });
+    throw new WorkspaceScanError("VES_WORKSPACE_GIT_FAILED", "Git directory cannot be inspected", { cause: error });
+  }
+  try {
+    if (!(await stat(gitDir)).isDirectory()) return Object.freeze({ status: "broken", reason: "gitdir-not-directory" });
+  } catch (error) {
+    if (filesystemErrorCode(error) === "ENOENT") return Object.freeze({ status: "broken", reason: "gitdir-missing" });
+    throw new WorkspaceScanError("VES_WORKSPACE_GIT_FAILED", "Git directory cannot be inspected", { cause: error });
+  }
+  return Object.freeze({ status: "active", gitDir });
 }
 
 interface ScanLimits {
@@ -191,13 +226,11 @@ export async function scanWorkspace(options: {
         effectiveOwner = await activeRepository(requestedRoot, directory, "nested", "directory");
       } else if (gitEntry.isFile()) {
         const parsed = parseGitFile(await readFile(join(directory, ".git"), "utf8"));
-        const gitDir = resolve(directory, parsed.gitDir);
-        try {
-          if (!(await stat(gitDir)).isDirectory()) throw new Error("gitdir is not a directory");
-          effectiveOwner = await activeRepository(requestedRoot, directory, relationFromGitFile(gitDir), "file");
-        } catch {
-          effectiveOwner = await brokenRepository(requestedRoot, directory);
-        }
+        const resolvedGitDir = await resolveGitDir(directory, parsed.gitDir);
+        effectiveOwner =
+          resolvedGitDir.status === "active"
+            ? await activeRepository(requestedRoot, directory, relationFromGitFile(resolvedGitDir.gitDir), "file")
+            : await brokenRepository(requestedRoot, directory, resolvedGitDir.reason);
       }
       if (effectiveOwner === null) {
         throw new WorkspaceScanError("VES_WORKSPACE_OWNER_AMBIGUOUS", "Git boundary has no resolved owner");
