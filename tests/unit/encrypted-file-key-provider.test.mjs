@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { afterEach, test } from "node:test";
 
 import { EncryptedFileKeyProvider } from "../../packages/platform-node/src/index.ts";
+import { NodeEd25519Signer } from "../../packages/evidence/src/index.ts";
 
 const roots = [];
 const request = Object.freeze({ keyId: "team-execution-2026", purposes: ["execution-package"] });
@@ -16,7 +17,8 @@ async function fixture(passphrase = "correct horse battery staple") {
     root,
     provider: new EncryptedFileKeyProvider({
       stateRoot: root,
-      passphrase: async () => Buffer.from(passphrase, "utf8")
+      passphrase: async () => Buffer.from(passphrase, "utf8"),
+      signers: NodeEd25519Signer
     })
   };
 }
@@ -36,7 +38,8 @@ test("encrypted file provider persists one key and reloads the same public refer
   const created = await provider.loadOrCreate(request);
   const reloaded = await new EncryptedFileKeyProvider({
     stateRoot: root,
-    passphrase: async () => Buffer.from("correct horse battery staple", "utf8")
+    passphrase: async () => Buffer.from("correct horse battery staple", "utf8"),
+    signers: NodeEd25519Signer
   }).loadOrCreate(request);
 
   assert.deepEqual(reloaded.publicKeyRef, created.publicKeyRef);
@@ -52,7 +55,11 @@ test("encrypted file provider persists one key and reloads the same public refer
 test("encrypted file provider rejects an incorrect passphrase without replacing the key", async () => {
   const { root, provider } = await fixture();
   const created = await provider.loadOrCreate(request);
-  const wrong = new EncryptedFileKeyProvider({ stateRoot: root, passphrase: async () => Buffer.from("wrong", "utf8") });
+  const wrong = new EncryptedFileKeyProvider({
+    stateRoot: root,
+    passphrase: async () => Buffer.from("wrong", "utf8"),
+    signers: NodeEd25519Signer
+  });
 
   await assert.rejects(wrong.loadOrCreate(request), { code: "VES_KEYSTORE_INTEGRITY" });
   assert.deepEqual((await provider.loadOrCreate(request)).publicKeyRef, created.publicKeyRef);

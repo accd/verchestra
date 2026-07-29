@@ -36,11 +36,11 @@ test("CLI evidence composition obtains a persistent signer exclusively through t
   assert.equal(firstArtifact.keyId, request.keyId);
 });
 
-test("CLI composition never constructs the concrete signer directly", async () => {
+test("CLI composition supplies the concrete signer only at the composition boundary", async () => {
   const composition = await readFile(
     new URL("../../apps/vestra-cli/src/evidence-composition.ts", import.meta.url),
     "utf8"
   );
-  assert.equal(composition.includes("NodeEd25519Signer"), false);
+  assert.equal(composition.includes("signers: NodeEd25519Signer"), true);
   assert.equal(composition.includes("loadOrCreate"), true);
 });
