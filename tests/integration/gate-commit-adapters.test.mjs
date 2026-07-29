@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, test } from "node:test";
@@ -33,6 +33,10 @@ async function fixture() {
     'import test from "node:test"; import assert from "node:assert/strict"; test("pass",()=>assert.equal(1,1));\n'
   );
   await writeFile(join(repositoryRoot, "tests", "hang.mjs"), "setInterval(() => {}, 1000);\n");
+  await writeFile(
+    join(repositoryRoot, "tests", "tree-hang.mjs"),
+    'import { spawn } from "node:child_process"; import { writeFileSync } from "node:fs"; const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" }); writeFileSync("tests/tree-child.pid", String(child.pid)); setInterval(() => {}, 1000);\n'
+  );
   await writeFile(join(repositoryRoot, "tests", "overflow.mjs"), 'console.log("x".repeat(1000000));\n');
   git(repositoryRoot, "init", "--quiet");
   git(repositoryRoot, "config", "user.email", "qualification@verchestra.invalid");
@@ -111,6 +115,37 @@ test("real process runner terminates a timed-out process tree", async () => {
   assert.notEqual(result.exitCode, 0);
 });
 
+test("real process runner terminates a timed-out descendant process", async (t) => {
+  const { handle, repositoryRoot, target, worktreesRoot } = await fixture();
+  const runner = new NodeGateProcessRunner({
+    repositoryRoot,
+    worktreesRoot,
+    commands: { "command:node": { executable: process.execPath, protocols: ["exit-code"] } }
+  });
+  let descendantPid;
+  t.after(() => {
+    if (descendantPid === undefined) return;
+    try {
+      process.kill(descendantPid, "SIGKILL");
+    } catch (error) {
+      if (error.code !== "ESRCH") throw error;
+    }
+  });
+  const result = await runner.run(
+    gateCommand(handle, {
+      commandRef: "command:node",
+      args: ["tests/tree-hang.mjs"],
+      resultProtocol: "exit-code",
+      minimumTests: 0,
+      timeoutMs: 1_000
+    })
+  );
+  descendantPid = await readPid(join(target, "tests", "tree-child.pid"));
+  assert.equal(result.timedOut, true);
+  assert.notEqual(result.exitCode, 0);
+  assert.equal(isAlive(descendantPid), false);
+});
+
 test("real process runner kills output overflow without retaining raw logs", async () => {
   const { handle, repositoryRoot, worktreesRoot } = await fixture();
   const runner = new NodeGateProcessRunner({
@@ -130,6 +165,29 @@ test("real process runner kills output overflow without retaining raw logs", asy
   assert.equal(result.outputLimitExceeded, true);
   assert.equal("stdout" in result, false);
 });
+
+async function readPid(path) {
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    try {
+      const pid = Number.parseInt((await readFile(path, "utf8")).trim(), 10);
+      if (Number.isSafeInteger(pid) && pid > 0) return pid;
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  throw new Error("Timed-out fixture did not report its descendant PID");
+}
+
+function isAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    if (error.code === "ESRCH") return false;
+    throw error;
+  }
+}
 
 test("real Git adapter creates one trailer-bound commit and reconciles retry", async () => {
   const { baseCommit, handle, repositoryRoot, target, worktrees, worktreesRoot } = await fixture();
