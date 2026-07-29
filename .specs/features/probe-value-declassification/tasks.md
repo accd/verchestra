@@ -13,7 +13,9 @@
 ## Execution Plan
 
 1. **T1:** Replace portable raw claim values with `valueDigest` and add focused
-   integration/security coverage. Requirements: PVD-01–03.
+   integration/security coverage. Requirements: PVD-01–03. **Ready for human
+   review:** focused tests pass 44/44 and `pnpm gate:security` passes on the
+   corrected CodeQL-safe head.
 2. **T2:** Update #34's parser/reference design after this representation is
    merged. Requirement: PVD-04.
 3. **T3:** Record qualified evidence and handoff. Requirements: PVD-01–04.
