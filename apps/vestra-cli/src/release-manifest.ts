@@ -32,35 +32,16 @@ export const installedReleaseManifest: InstalledCliManifest = Object.freeze({
       summary: "Initialize a Workspace",
       supportsJson: true,
       mutating: true,
-      options: Object.freeze([Object.freeze({ name: "dry-run", kind: "boolean" as const })])
-    }),
-    Object.freeze({
-      name: "bootstrap",
-      summary: "Bootstrap this machine",
-      supportsJson: true,
-      mutating: true,
-      options: Object.freeze([])
-    }),
-    Object.freeze({
-      name: "sync",
-      summary: "Synchronize local state",
-      supportsJson: true,
-      mutating: true,
-      options: Object.freeze([])
-    }),
-    Object.freeze({
-      name: "workspace reconcile",
-      summary: "Reconcile Workspace topology",
-      supportsJson: true,
-      mutating: true,
-      options: Object.freeze([])
-    }),
-    Object.freeze({
-      name: "doctor",
-      summary: "Inspect local health",
-      supportsJson: true,
-      mutating: false,
-      options: Object.freeze([])
+      options: Object.freeze([
+        Object.freeze({ name: "dry-run", kind: "boolean" as const }),
+        Object.freeze({ name: "workspace-id", kind: "string" as const }),
+        Object.freeze({ name: "name", kind: "string" as const }),
+        Object.freeze({
+          name: "placement",
+          kind: "string" as const,
+          values: Object.freeze(["centralized", "colocated"])
+        })
+      ])
     })
   ])
 });

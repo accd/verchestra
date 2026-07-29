@@ -28,7 +28,7 @@ const exactReleaseOutputs = Object.freeze([
   [["--version"], `Verchestra ${canonicalVersion} (source build, no verified release artifact)\n`],
   [
     ["--help"],
-    `Verchestra ${canonicalVersion}\nCanonical CLI: vestra\n\nUsage: vestra <command> [options]\n\nCommands:\n  init                 Initialize a Workspace\n  bootstrap            Bootstrap this machine\n  sync                 Synchronize local state\n  workspace reconcile  Reconcile Workspace topology\n  doctor               Inspect local health\n`
+    `Verchestra ${canonicalVersion}\nCanonical CLI: vestra\n\nUsage: vestra <command> [options]\n\nCommands:\n  init  Initialize a Workspace\n`
   ],
   [
     ["--version", "--output", "json"],
