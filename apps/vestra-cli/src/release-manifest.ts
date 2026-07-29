@@ -1,10 +1,31 @@
+import { readFileSync } from "node:fs";
+
 import type { InstalledCliManifest } from "./cli.ts";
+
+// Ownership of the release identity is explicit and has exactly two sources.
+// In source mode the repository root package.json owns the version, and there
+// is no verified release artifact to bind a digest to, so releaseDigest is null
+// rather than invented. Once T76 produces a verified release candidate, a
+// generated manifest shipped beside the binary owns both, and the digest is
+// bound to that artifact.
+export function resolveReleaseIdentity(root = new URL("../../../", import.meta.url)): {
+  semanticVersion: string;
+  releaseDigest: string | null;
+} {
+  const manifest = JSON.parse(readFileSync(new URL("package.json", root), "utf8")) as { version?: unknown };
+  if (typeof manifest.version !== "string" || manifest.version.length === 0) {
+    throw new Error("repository package.json does not declare a version");
+  }
+  return { semanticVersion: manifest.version, releaseDigest: null };
+}
+
+const identity = resolveReleaseIdentity();
 
 export const installedReleaseManifest: InstalledCliManifest = Object.freeze({
   schemaVersion: 1,
-  semanticVersion: "1.0.0",
-  releaseDigest: "sha256:7694480949c03beef23af30826c127dcabd514307694480949c03beef23af308",
-  minimumCliVersion: "1.0.0",
+  semanticVersion: identity.semanticVersion,
+  releaseDigest: identity.releaseDigest,
+  minimumCliVersion: identity.semanticVersion,
   commands: Object.freeze([
     Object.freeze({
       name: "init",

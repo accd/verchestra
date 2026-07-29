@@ -9,7 +9,9 @@ export async function main(invokedAs: string, argv: readonly string[]): Promise<
     argv,
     invokedAs,
     installedManifest: installedReleaseManifest,
-    installedCliVersion: "1.0.0",
+    // The running executable and the manifest it ships with are the same build,
+    // so they cannot disagree about which version this is.
+    installedCliVersion: installedReleaseManifest.semanticVersion,
     commandBus: {
       async execute(command) {
         throw new PublicErrorException(

@@ -21,7 +21,8 @@ export interface CliCommandManifest {
 export interface InstalledCliManifest {
   readonly schemaVersion: 1;
   readonly semanticVersion: string;
-  readonly releaseDigest: string;
+  // null in source mode: no verified release artifact exists to bind a digest to.
+  readonly releaseDigest: string | null;
   readonly minimumCliVersion: string;
   readonly commands: readonly CliCommandManifest[];
 }
@@ -44,6 +45,8 @@ interface CliRunOptions {
 
 const SEMVER = /^(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:-[0-9A-Za-z.-]+)?$/u;
 const DIGEST = /^sha256:[a-f0-9]{64}$/u;
+// Shown instead of a digest when no verified release artifact backs this build.
+const SOURCE_BUILD = "source build, no verified release artifact";
 const NAME = /^[a-z][a-z0-9-]*(?: [a-z][a-z0-9-]*)*$/u;
 const OPTION = /^[a-z][a-z0-9-]*$/u;
 
@@ -67,7 +70,7 @@ function assertManifest(manifest: InstalledCliManifest): void {
     manifest.schemaVersion !== 1 ||
     !SEMVER.test(manifest.semanticVersion) ||
     !SEMVER.test(manifest.minimumCliVersion) ||
-    !DIGEST.test(manifest.releaseDigest) ||
+    (manifest.releaseDigest !== null && !DIGEST.test(manifest.releaseDigest)) ||
     manifest.commands.length === 0
   ) {
     throw cliError(
@@ -233,7 +236,7 @@ export async function runCli(options: CliRunOptions): Promise<number> {
       options.stdout(
         output === "json"
           ? jsonOutput("version", true, data)
-          : `Verchestra ${data.semanticVersion} (${data.releaseDigest})\n`
+          : `Verchestra ${data.semanticVersion} (${data.releaseDigest ?? SOURCE_BUILD})\n`
       );
       return 0;
     }
