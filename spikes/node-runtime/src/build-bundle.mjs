@@ -14,7 +14,7 @@ export function renderWindowsLauncher() {
 }
 
 export function renderUnixLauncher() {
-  return '#!/bin/sh\nset -eu\nSELF_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)\nexec "$SELF_DIR/runtime/node" "$SELF_DIR/app/bootstrap.cjs" "$@"\n';
+  return '#!/bin/sh\nset -eu\ncase "$0" in\n  */*) SELF_DIR=${0%/*} ;;\n  *) SELF_DIR=. ;;\nesac\ncd "$SELF_DIR"\nSELF_DIR=$PWD\nexec "$SELF_DIR/runtime/node" "$SELF_DIR/app/bootstrap.cjs" "$@"\n';
 }
 
 export async function buildBundle(outputRoot) {
@@ -61,4 +61,3 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   await buildBundle(outputRoot);
   process.stdout.write(`${outputRoot}\n`);
 }
-
