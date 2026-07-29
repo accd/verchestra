@@ -117,6 +117,7 @@ test("real Git submodule is classified as a separate submodule owner", async () 
   const repository = inventory.repositories.find((entry) => entry.logicalPath === "vendor/submodule");
   assert.equal(repository.relation, "submodule");
   assert.equal(repository.gitDirKind, "file");
+  assert.equal(repository.remoteFingerprint, undefined, "local fixture remotes must not enter portable inventory");
   assert.equal(
     inventory.projects.find((project) => project.logicalPath === "vendor/submodule").gitOwnerId,
     repository.repositoryId

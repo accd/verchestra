@@ -105,7 +105,12 @@ async function ignoredByControl(controlRoot: string, logicalPath: string): Promi
 async function remoteFingerprint(repositoryRoot: string): Promise<string | undefined> {
   const result = await git(repositoryRoot, ["config", "--get", "remote.origin.url"]);
   if (result.status !== 0 || result.stdout.length === 0) return undefined;
-  return buildInventoryFingerprint({ remote: sanitizeRemoteUrl(result.stdout) });
+  try {
+    return buildInventoryFingerprint({ remote: sanitizeRemoteUrl(result.stdout) });
+  } catch (error) {
+    if (error instanceof WorkspaceScanError && error.code === "VES_WORKSPACE_REMOTE_INVALID") return undefined;
+    throw error;
+  }
 }
 
 async function activeRepository(
