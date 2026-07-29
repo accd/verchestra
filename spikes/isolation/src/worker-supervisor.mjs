@@ -1,5 +1,8 @@
-import { spawn } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { once } from "node:events";
+import { promisify } from "node:util";
+
+const execFileAsync = promisify(execFile);
 
 export async function escalateCancellation({ sendProtocolCancel, waitForExit, sendSignal, killTree }) {
   const evidence = ["protocol-cancel"];
@@ -25,11 +28,59 @@ export async function killProcessTree(pid, { platform = process.platform } = {})
     await run("taskkill.exe", ["/pid", String(pid), "/t", "/f"]);
     return;
   }
-  try {
-    process.kill(-pid, "SIGKILL");
-  } catch (error) {
-    if (error.code !== "ESRCH") throw error;
+
+  const processes = await readPosixProcessTree();
+  if (!processes.has(pid)) {
+    if (await isProcessAlive(pid)) throw processTreeFailure("Target process is absent from the POSIX process table");
+    return;
   }
+
+  const descendants = descendantsFirst(pid, processes);
+  for (const target of descendants) {
+    try {
+      process.kill(target, "SIGKILL");
+    } catch (error) {
+      if (error?.code !== "ESRCH" || (await isProcessAlive(target))) throw error;
+    }
+  }
+}
+
+function processTreeFailure(message, options) {
+  return Object.assign(new Error(message, options), { code: "VES_PROCESS_TREE_KILL_FAILED" });
+}
+
+async function readPosixProcessTree() {
+  let stdout;
+  try {
+    ({ stdout } = await execFileAsync("ps", ["-eo", "pid=,ppid="], { encoding: "utf8", windowsHide: true }));
+  } catch (error) {
+    throw processTreeFailure("Unable to enumerate the POSIX process tree", { cause: error });
+  }
+  const processes = new Map();
+  for (const line of stdout.split(/\r?\n/u)) {
+    const match = /^\s*(\d+)\s+(\d+)\s*$/u.exec(line);
+    if (match === null) continue;
+    const processId = Number.parseInt(match[1], 10);
+    const parentId = Number.parseInt(match[2], 10);
+    if (Number.isSafeInteger(processId) && Number.isSafeInteger(parentId)) processes.set(processId, parentId);
+  }
+  return processes;
+}
+
+function descendantsFirst(root, processes) {
+  const children = new Map();
+  for (const [processId, parentId] of processes) {
+    const siblings = children.get(parentId) ?? [];
+    siblings.push(processId);
+    children.set(parentId, siblings);
+  }
+  const result = [];
+  const visit = (processId) => {
+    for (const child of children.get(processId) ?? []) visit(child);
+    result.push(processId);
+  };
+  visit(root);
+  return result;
 }
 
 export async function isProcessAlive(pid) {

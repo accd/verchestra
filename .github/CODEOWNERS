@@ -1,1 +1,13 @@
+# Default repository ownership.
 * @accd
+
+# Trust and accountability boundaries require an explicit owner review.
+/packages/policy/ @accd
+/packages/evidence/src/integrity/ @accd
+/packages/effects/ @accd
+/packages/platform-node/src/secret* @accd
+/packages/distribution/ @accd
+/schemas/ @accd
+/docs/qualification/ @accd
+/.github/workflows/ @accd
+/.github/CODEOWNERS @accd

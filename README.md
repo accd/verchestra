@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/accd/verchestra/actions/workflows/ci.yml/badge.svg)](https://github.com/accd/verchestra/actions/workflows/ci.yml)
 [![Website](https://img.shields.io/badge/website-product%20%2B%20docs-45D6D0)](https://accd.github.io/verchestra/)
-[![License: GPL-3.0-only](https://img.shields.io/badge/License-GPL--3.0--only-blue.svg)](LICENSE)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](LICENSE)
 [![Node 24.14.0](https://img.shields.io/badge/Node-24.14.0-339933?logo=node.js&logoColor=white)](package.json)
 [![Status: qualification](https://img.shields.io/badge/status-qualification-6f42c1)](ROADMAP.md)
 
@@ -96,6 +96,26 @@ pnpm gate:quick
 
 Requirements are Node `24.14.0` and pnpm `10.34.5`.
 
+## Qualified local alpha: initialize a workspace
+
+The current local alpha exposes only `init`. It is run from a source checkout;
+there is no public installer or production release. From the root of a
+disposable Git repository, invoke the checked-out CLI with an explicit,
+portable workspace identity:
+
+```bash
+node /path/to/verchestra/apps/vestra-cli/bin/vestra.mjs init --dry-run \
+  --workspace-id workspace_018f0b6d-7b1a-7abc-8def-0123456789ab \
+  --name "My workspace" \
+  --placement centralized \
+  --output json
+```
+
+`--dry-run` is read-only and returns the canonical ordered plan. Review it,
+then repeat the command without `--dry-run` to apply the qualified workspace
+files. Repeating the identical apply is a no-op. `bootstrap`, `sync`,
+`workspace reconcile`, and `doctor` are intentionally not advertised yet.
+
 ### Website development
 
 The website is the private `@verchestra/site` workspace package. It remains static, uses the `/verchestra/` base path, and loads canonical repository documents at build time.
@@ -134,4 +154,4 @@ Please read the [Code of Conduct](CODE_OF_CONDUCT.md) before participating.
 
 ## License
 
-Verchestra is licensed under the [GNU General Public License v3.0 only](LICENSE).
+Verchestra is licensed under the [Apache License 2.0](LICENSE).

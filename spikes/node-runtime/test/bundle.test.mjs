@@ -64,8 +64,10 @@ test("renders behavior-identical Windows launcher bodies", () => {
 });
 
 test("renders behavior-identical Unix launcher bodies", () => {
-  assert.equal(fs.readFileSync(path.join(bundleRoot, "vestra"), "utf8"), renderUnixLauncher());
-  assert.equal(fs.readFileSync(path.join(bundleRoot, "verchestra"), "utf8"), renderUnixLauncher());
+  const launcher = '#!/bin/sh\nset -eu\ncase "$0" in\n  */*) SELF_DIR=${0%/*} ;;\n  *) SELF_DIR=. ;;\nesac\ncd "$SELF_DIR"\nSELF_DIR=$PWD\nexec "$SELF_DIR/runtime/node" "$SELF_DIR/app/bootstrap.cjs" "$@"\n';
+  assert.equal(renderUnixLauncher(), launcher);
+  assert.equal(fs.readFileSync(path.join(bundleRoot, "vestra"), "utf8"), launcher);
+  assert.equal(fs.readFileSync(path.join(bundleRoot, "verchestra"), "utf8"), launcher);
 });
 
 test("returns identical human version output from both names", () => {

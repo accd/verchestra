@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 
 import canonicalize from "canonicalize";
 
+import type { KeyLifecycleErrorCode } from "./key-provider.ts";
 import type { JsonValue } from "./types.ts";
 
 export type IntegrityErrorCode =
@@ -11,13 +12,14 @@ export type IntegrityErrorCode =
   | "VES_INTEGRITY_RESOURCE_LIMIT"
   | "VES_INTEGRITY_INVALID_BINDING"
   | "VES_SIGNING_PURPOSE_DENIED"
-  | "VES_TRUST_ROOT_INVALID";
+  | "VES_TRUST_ROOT_INVALID"
+  | KeyLifecycleErrorCode;
 
 export class IntegrityError extends Error {
   readonly code: IntegrityErrorCode;
 
-  constructor(code: IntegrityErrorCode, message: string) {
-    super(message);
+  constructor(code: IntegrityErrorCode, message: string, options?: ErrorOptions) {
+    super(message, options);
     this.name = "IntegrityError";
     this.code = code;
   }

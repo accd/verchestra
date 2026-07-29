@@ -15,6 +15,8 @@ export {
 export {
   MemoryVectorIndex,
   QUALIFIED_SQLITE_VEC,
+  QUALIFIED_SQLITE_VEC_ASSETS,
+  getQualifiedSqliteVecAsset,
   type MemoryVectorBuildInput,
   type MemoryVectorBuildResult,
   type MemoryVectorGeneration,
@@ -22,7 +24,8 @@ export {
   type MemoryVectorIndexOptions,
   type MemoryVectorInput,
   type MemoryVectorModel,
-  type MemoryVectorOpenStatus
+  type MemoryVectorOpenStatus,
+  type QualifiedSqliteVecAsset
 } from "./memory-vector-index.ts";
 export {
   ExplainableMemoryRetriever,

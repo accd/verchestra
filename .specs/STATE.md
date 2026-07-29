@@ -38,11 +38,25 @@
 - **Decision:** LLM-readable repository and website output is generated only from allowlisted canonical repository content and never becomes a second source of truth.
 - **Rationale:** AI retrieval should preserve provenance, current qualification state, and the existing documentation authority boundary.
 
+### AD-007 — Project license is Apache-2.0
+
+- **Status:** active
+- **Decision:** The project license changes from GPL-3.0-only to Apache-2.0, decided by the repository owner on 2026-07-26 after the external review triage (`.specs/features/external-review-triage/`).
+- **Rationale:** The product targets enterprise adoption (auditable handoffs, Cedar, first-class enterprise database adapters); permissive licensing removes legal-department friction, and Apache-2.0 keeps an explicit patent grant. Authorship was verified with `git log`: the project is effectively single-author (owner plus the owner's local `Test` identity and trivial Dependabot bumps), so no external consent is required.
+- **Consequences:** `package.json`, `LICENSE`, `README.md`, `CONTRIBUTING.md`, and site pages (`index.astro`, `community.astro`, `ProductLayout.astro`) were updated in the same change. The GPL strings in `tests/unit/governed-skill-registry.test.mjs` and `tests/contract/skill-update-lifecycle.test.mjs` are skill-registry fixture data, not project license statements, and remain unchanged. Commits made before this decision stay historically GPL-licensed; the new terms apply from this change forward.
+
+### AD-008 — External review re-prioritization (T68a–T68d)
+
+- **Status:** active
+- **Decision:** Four tasks from the verified external review triage are inserted into the product chain between T68 and T69: T68a key lifecycle, T68b budget enforcement, T68c declarative gate repair, T68d policy hardening. DSSE/in-toto and context-tokenizer decisions are mandatory before T76.
+- **Rationale:** The review's blocker (ephemeral keys breaking cross-machine verification) and the cheap, high-value controls (budget, repair, policy) gate the product's central portability promise; existing T01–T68 evidence and T69–T77 numbering are preserved.
+- **Consequences:** Derived status surfaces (`agent:context`, root `AGENTS.md`, `llms.txt`, site contracts) still assert "T68 complete; T69 next" and are migrated deliberately as part of starting T68a, with the corresponding gate-script and contract-test updates reviewed in that change.
+
 ## Handoff
 
-- **Feature:** `agent-ready-repository`
-- **State:** T1 in progress; GitHub issue write blocked by integration permissions
-- **Branch:** `agent/agent-ready-repository`
-- **Completed:** The GitHub Pages feature is complete on protected `main`; its stale publication-pending handoff is retired. The agent-ready specification, design, tasks, and portable handoff are being established.
-- **Verification:** T68 remains complete, T69 remains next, and this feature is independent of T69–T77.
-- **Next:** Complete T1 status checks and proceed to root/scoped instructions.
+- **Feature:** `external-review-triage`
+- **State:** T1–T5 complete; T6 (GitHub backlog issues) and T7 (final gates) in progress
+- **Branch:** `main`
+- **Completed:** Verified triage of the external review (11 claims, 2 corrected), full specifications for T68a–T68d, decision specifications for DSSE and context tokenizers, roadmap insertion of T68a–T68d, and the Apache-2.0 license change with AD-007/AD-008.
+- **Verification:** `pnpm agent:check` and `pnpm gate:quick` run in T7; site gates run for the license change.
+- **Next:** Create GitHub issues for deferred items R7–R11 (or record the permission blocker), run final gates, and mark the triage handoff ready for independent review.

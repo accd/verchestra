@@ -22,6 +22,17 @@ function makeSigner(purposes = ["execution-package", "run-capsule"]) {
   return NodeEd25519Signer.generate({ keyId: "team-key-2026", purposes });
 }
 
+test("Ed25519 signer round-trips encrypted-keystore PKCS#8 material without changing its public reference", async () => {
+  const original = makeSigner(["execution-package"]);
+  const restored = NodeEd25519Signer.fromPkcs8(
+    { keyId: original.publicKeyRef.keyId, purposes: original.publicKeyRef.purposes },
+    original.exportPkcs8()
+  );
+
+  assert.deepEqual(restored.publicKeyRef, original.publicKeyRef);
+  assert.notEqual(await restored.sign("execution-package", Buffer.from("round-trip")), "");
+});
+
 test("RFC 8785 sorts object properties recursively", () => {
   assert.equal(canonicalizeJson({ z: 0, a: { y: 2, x: 1 } }), '{"a":{"x":1,"y":2},"z":0}');
 });

@@ -6,7 +6,9 @@ export interface CliCommand {
 export interface InvocationContext {
   readonly canonicalExecutable: "vestra";
   readonly output: "human" | "json";
-  readonly releaseDigest: string;
+  // null in source mode: no verified release artifact exists to bind a digest
+  // to, and a command must be able to tell that apart from a real release.
+  readonly releaseDigest: string | null;
 }
 
 export interface CommandResult {

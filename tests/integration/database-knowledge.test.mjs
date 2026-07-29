@@ -37,8 +37,15 @@ test("Probe promotion retains bounds, classifications, redaction, result digest,
 });
 test("accepted sanitized claims remain explicitly untrusted schema evidence", () => {
   const evidence = promoteProbeEvidence(probePromotion());
-  assert.equal(evidence.sanitizedClaims[0].untrusted, true);
+  assert.equal(evidence.schemaVersion, 2);
+  assert.deepEqual(evidence.sanitizedClaims[0], {
+    factKey: "public.orders.column.status.data_type",
+    classification: "internal",
+    valueDigest: "sha256:0a3c10f586d34a2e4d05631102429adcf892474b8bde22788961d0998e0e75af",
+    untrusted: true
+  });
   assert.equal(evidence.promotionStatus, "accepted-sanitized");
+  assert.equal(JSON.stringify(evidence).includes("varchar"), false);
 });
 test("seed planner produces nominal, required, and unique synthetic scenarios", () => {
   const plan = planSyntheticSeedScenarios(seedInput(knowledge()));

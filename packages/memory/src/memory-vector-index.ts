@@ -20,14 +20,49 @@ type VectorStatusCode =
 
 type Row = Record<string, unknown>;
 
-export const QUALIFIED_SQLITE_VEC = Object.freeze({
-  package: "sqlite-vec",
-  packageVersion: "0.1.9",
-  version: "v0.1.9",
-  platform: "win32-x64",
-  sha256: "fcf98662a7ad9dce394b96a88f91032047823831b951c76636787c312a6476e6",
-  bytes: 289_280
+export interface QualifiedSqliteVecAsset {
+  readonly package: "sqlite-vec";
+  readonly packageVersion: "0.1.9";
+  readonly version: "v0.1.9";
+  readonly platform: string;
+  readonly sha256: string;
+  readonly bytes: number;
+}
+
+/**
+ * Only assets whose exact package, version, byte length and digest have been
+ * qualified are eligible for the default semantic index.  Keeping this table
+ * closed makes an unknown host fail closed instead of accidentally trusting a
+ * native binary that happens to be present in node_modules.
+ */
+export const QUALIFIED_SQLITE_VEC_ASSETS: Readonly<Record<string, QualifiedSqliteVecAsset>> = Object.freeze({
+  "win32-x64": Object.freeze({
+    package: "sqlite-vec",
+    packageVersion: "0.1.9",
+    version: "v0.1.9",
+    platform: "win32-x64",
+    sha256: "fcf98662a7ad9dce394b96a88f91032047823831b951c76636787c312a6476e6",
+    bytes: 289_280
+  }),
+  "linux-x64": Object.freeze({
+    package: "sqlite-vec",
+    packageVersion: "0.1.9",
+    version: "v0.1.9",
+    platform: "linux-x64",
+    sha256: "5923730861b86c707cca5602b5f91092f9e52a46706dbc6e269fd4bb9c4498e8",
+    bytes: 159_816
+  })
 });
+
+export function getQualifiedSqliteVecAsset(
+  platform = process.platform,
+  arch = process.arch
+): QualifiedSqliteVecAsset | undefined {
+  return QUALIFIED_SQLITE_VEC_ASSETS[`${platform}-${arch}`];
+}
+
+/** The asset qualified for the current host, or undefined when unsupported. */
+export const QUALIFIED_SQLITE_VEC = getQualifiedSqliteVecAsset();
 
 export interface MemoryVectorModel {
   readonly provider: string;
@@ -377,8 +412,8 @@ export class MemoryVectorIndex {
   readonly #mode: VectorMode;
   readonly #timeoutMs: number;
   readonly #assetPath: string | undefined;
-  readonly #expectedAssetSha256: string;
-  readonly #expectedAssetBytes: number;
+  readonly #expectedAssetSha256: string | undefined;
+  readonly #expectedAssetBytes: number | undefined;
   readonly #expectedVersion: string;
   readonly #now: () => string;
   readonly #hooks: MemoryVectorHooks;
@@ -390,14 +425,20 @@ export class MemoryVectorIndex {
     this.#mode = options.mode;
     this.#timeoutMs = options.timeoutMs ?? 100;
     this.#assetPath = options.assetPath;
-    this.#expectedAssetSha256 = options.expectedAssetSha256 ?? QUALIFIED_SQLITE_VEC.sha256;
-    this.#expectedAssetBytes = options.expectedAssetBytes ?? QUALIFIED_SQLITE_VEC.bytes;
-    this.#expectedVersion = options.expectedVersion ?? QUALIFIED_SQLITE_VEC.version;
+    this.#expectedAssetSha256 = options.expectedAssetSha256 ?? QUALIFIED_SQLITE_VEC?.sha256;
+    this.#expectedAssetBytes = options.expectedAssetBytes ?? QUALIFIED_SQLITE_VEC?.bytes;
+    this.#expectedVersion = options.expectedVersion ?? QUALIFIED_SQLITE_VEC?.version ?? "v0.1.9";
     this.#now = options.now ?? (() => new Date().toISOString());
     this.#hooks = options.hooks ?? {};
-    if (!RAW_DIGEST_PATTERN.test(this.#expectedAssetSha256)) invalid("expectedAssetSha256 is invalid");
-    if (!Number.isSafeInteger(this.#expectedAssetBytes) || this.#expectedAssetBytes < 1)
+    if (this.#expectedAssetSha256 !== undefined && !RAW_DIGEST_PATTERN.test(this.#expectedAssetSha256))
+      invalid("expectedAssetSha256 is invalid");
+    if (
+      this.#expectedAssetBytes !== undefined &&
+      (!Number.isSafeInteger(this.#expectedAssetBytes) || this.#expectedAssetBytes < 1)
+    )
       invalid("expectedAssetBytes is invalid");
+    if ((this.#expectedAssetSha256 === undefined) !== (this.#expectedAssetBytes === undefined))
+      invalid("expected asset identity must include both sha256 and bytes");
   }
 
   open(): MemoryVectorOpenStatus {
@@ -407,6 +448,8 @@ export class MemoryVectorIndex {
     }
     let failureCode: VectorStatusCode = "VES_VECTOR_UNAVAILABLE";
     try {
+      if (this.#expectedAssetSha256 === undefined || this.#expectedAssetBytes === undefined)
+        throw new Error("sqlite-vec platform is not qualified");
       this.#db = new DatabaseSync(this.dbPath, { timeout: this.#timeoutMs, allowExtension: true, defensive: true });
       this.#db.exec("PRAGMA foreign_keys=ON; PRAGMA writable_schema=OFF;");
       const path = this.#assetPath ?? getLoadablePath();

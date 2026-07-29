@@ -3,6 +3,9 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
   "dependencies": {
     "@verchestra/application": "workspace:0.0.0",
     "@verchestra/domain": "workspace:0.0.0"

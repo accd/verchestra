@@ -17,24 +17,58 @@ jobs:
   quality:
     name: Quality gate
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # The selection can reach gate:release, whose ten stages include a build
+    # and every test suite, so the budget reflects the heaviest selection rather
+    # than the lightest.
+    timeout-minutes: 45
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.0
+        with:
+          fetch-depth: 0
       - name: Set up pnpm
-        uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4.1.0
+        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
         with:
           version: 10.34.5
           run_install: false
       - name: Set up Node
-        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24.14.0
           cache: pnpm
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-      - name: Run quality gate
-        run: pnpm gate:quick
+      - name: Select the applicable gates
+        id: selection
+        run: |
+          node scripts/select-gates.mjs --base "${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}" --json > gate-selection.json
+          cat gate-selection.json
+          node scripts/gate-output.mjs gate-selection.json "$GITHUB_OUTPUT"
+      - name: Install the qualified local driver probes
+        if: contains(steps.selection.outputs.stages, 'test:qualification')
+        run: |
+          npm install --global --no-audit --no-fund @anthropic-ai/claude-code@2.1.168 @openai/codex@0.115.0
+          claude_version="$(claude --version)"
+          codex_version="$(codex --version)"
+          printf 'Claude Code version: %s\n' "$claude_version"
+          printf 'Codex version: %s\n' "$codex_version"
+          case "$claude_version" in "2.1.168"|"2.1.168 "*) ;; *) exit 1 ;; esac
+          case "$codex_version" in "codex-cli 0.115.0"|"codex-cli 0.115.0 "*) ;; *) exit 1 ;; esac
+      - name: Run each selected stage once
+        run: |
+          set -euo pipefail
+          for stage in ${{ steps.selection.outputs.stages }}; do
+            echo "::group::pnpm run $stage"
+            pnpm run "$stage"
+            echo "::endgroup::"
+          done
+      - name: Upload gate selection evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: gate-selection-${{ github.sha }}
+          path: gate-selection.json
+          retention-days: 14
 
   site:
     name: Site quality
@@ -44,12 +78,12 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.0
       - name: Set up pnpm
-        uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4.1.0
+        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
         with:
           version: 10.34.5
           run_install: false
       - name: Set up Node
-        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24.14.0
           cache: pnpm
@@ -61,7 +95,7 @@ jobs:
         run: pnpm site:test
       - name: Upload verified Pages artifact
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v4.0.0
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
           path: apps/site/dist
 
@@ -79,7 +113,7 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - name: Configure GitHub Pages
-        uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5.0.0
+        uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
       - name: Deploy verified artifact
         id: deployment
         uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5.0.0

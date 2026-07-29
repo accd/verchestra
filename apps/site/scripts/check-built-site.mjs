@@ -3,6 +3,8 @@ import { gzipSync } from "node:zlib";
 import { readFile, readdir, stat } from "node:fs/promises";
 import { extname, join, posix, relative, resolve } from "node:path";
 
+import { checkableLinkTarget } from "./link-targets.mjs";
+
 const siteRoot = resolve(import.meta.dirname, "..");
 const distRoot = resolve(siteRoot, "dist");
 const basePath = "/verchestra/";
@@ -74,17 +76,8 @@ for (const file of htmlFiles) {
   }
 
   for (const match of html.matchAll(/\b(?:href|src)="([^"]+)"/gu)) {
-    const value = match[1];
-    if (
-      value.startsWith("#") ||
-      value.startsWith("data:") ||
-      value.startsWith("mailto:") ||
-      value.startsWith("tel:") ||
-      value.startsWith("javascript:")
-    ) {
-      continue;
-    }
-    const target = new URL(value, new URL(route, productionOrigin));
+    const target = checkableLinkTarget(match[1], new URL(route, productionOrigin));
+    if (target === null) continue;
     if (target.origin !== productionOrigin) continue;
     if (!target.pathname.startsWith(basePath)) {
       brokenLinks.push(`${route} → ${target.pathname} (outside base path)`);
@@ -120,7 +113,7 @@ const llms = await readFile(join(distRoot, "llms.txt"), "utf8");
 const llmsFull = await readFile(join(distRoot, "llms-full.txt"), "utf8");
 const sitemap = await readFile(join(distRoot, "sitemap-0.xml"), "utf8");
 assert.match(llms, /0\.0\.0-qualification/u);
-assert.match(llms, /T68 complete; T69 next/u);
+assert.match(llms, /T68 complete; T68a next/u);
 assert.match(llms, /inference-time documentation aid/u);
 assert.ok(Buffer.byteLength(llmsFull) < 1024 * 1024);
 assert.match(llmsFull, /docs\/qualification\/t68-validation\.md/u);
@@ -142,7 +135,7 @@ for (const file of htmlFiles) {
 const homepage = await readFile(join(distRoot, "index.html"), "utf8");
 assert.match(homepage, /0\.0\.0-qualification/u);
 assert.match(homepage, /T68 verified/u);
-assert.match(homepage, /T69 next/u);
+assert.match(homepage, /T68a next/u);
 assert.doesNotMatch(homepage, /npm (?:install|add).{0,40}verchestra/iu);
 assert.doesNotMatch(homepage, /production[- ]ready/iu);
 

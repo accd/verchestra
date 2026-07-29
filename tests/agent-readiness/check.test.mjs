@@ -35,11 +35,19 @@ async function fixture() {
     await writeFile(join(root, path), "Apply the root `AGENTS.md` first.\n");
   await writeFile(join(root, "CLAUDE.md"), "@AGENTS.md\n");
   await writeFile(join(root, "GEMINI.md"), "@./AGENTS.md\n");
+  await writeFile(join(root, "README.md"), "Verchestra is licensed under the [Apache License 2.0](LICENSE).\n");
+  await writeFile(join(root, "LICENSE"), "Apache License\n");
   await writeFile(join(root, "docs", "architecture.md"), "# Architecture\n");
   await writeFile(join(root, "docs", "repository-map.md"), "# Map\n");
   await writeFile(join(root, "docs", "qualification", "t68-validation.md"), "# T68\n");
-  await writeFile(join(root, "ROADMAP.md"), "# T68 complete; T69 next\n");
-  await writeFile(join(root, ".specs", "STATE.md"), "# T68 complete; T69 next\n");
+  await writeFile(
+    join(root, "ROADMAP.md"),
+    '# T68 complete; T68a next\n\n```mermaid\nflowchart LR\n  T68["T68 done"] --> T68a["T68a next"]\n```\n'
+  );
+  await writeFile(
+    join(root, ".specs", "STATE.md"),
+    "# T68 complete; T68a next\n\n### AD-007 — Project license is Apache-2.0\n"
+  );
   return root;
 }
 
@@ -56,4 +64,12 @@ test("readiness rejects stale qualification and machine-local context", async ()
   const errors = await checkRepository(root);
   assert.ok(errors.includes("stale version: 1.0.0"));
   assert.ok(errors.includes("docs/repository-map.md: contains a secret-like value or machine-local path"));
+});
+
+test("readiness rejects project-license drift while preserving fixture data", async () => {
+  const root = await fixture();
+  await writeFile(join(root, "README.md"), "Verchestra is licensed under GPL-3.0-only.\n");
+  const errors = await checkRepository(root);
+  assert.ok(errors.includes("README.md: license statement disagrees with Apache-2.0"));
+  assert.ok(!errors.some((error) => error.includes("tests/unit/governed-skill-registry.test.mjs")));
 });

@@ -5,6 +5,7 @@ import { PublicErrorException } from "../../packages/domain/src/index.ts";
 import {
   CLI_PUBLIC_ERROR_DEFINITIONS,
   cliPublicErrorRegistry,
+  installedReleaseManifest,
   parseCliArguments,
   runCli
 } from "../../apps/vestra-cli/src/index.ts";
@@ -65,6 +66,17 @@ test("help excludes a command absent from the installed manifest", async () => {
   const installedManifest = manifest({ commands: manifest().commands.filter((entry) => entry.name !== "doctor") });
   const result = await execute(["--help"], { installedManifest });
   assert.equal(result.streams.stdout[0].includes("doctor"), false);
+});
+
+test("the source manifest advertises only the composed init slice", () => {
+  assert.deepEqual(
+    installedReleaseManifest.commands.map((command) => command.name),
+    ["init"]
+  );
+  assert.deepEqual(
+    installedReleaseManifest.commands[0].options.map((option) => option.name),
+    ["dry-run", "workspace-id", "name", "placement"]
+  );
 });
 
 test("empty arguments select canonical help without dispatch", async () => {
@@ -139,6 +151,21 @@ test("default human result renders data without JSON envelope", async () => {
   assert.equal(result.streams.stdout[0], "status: ok\n");
 });
 
+test("human output keeps nested values readable without becoming the JSON envelope", async () => {
+  const bus = {
+    calls: [],
+    async execute(command, context) {
+      bus.calls.push([command, context]);
+      return { data: { changes: [{ path: "a" }], status: "ok" }, diagnostics: [] };
+    }
+  };
+  const result = await execute(["sync"], { bus });
+  // Sorted key: value lines, with the nested value compact rather than
+  // "[object Object]" and without the schemaVersion/command/ok envelope.
+  assert.equal(result.streams.stdout[0], 'changes: [{"path":"a"}]\nstatus: ok\n');
+  assert.doesNotMatch(result.streams.stdout[0], /schemaVersion|"ok":/u);
+});
+
 for (const [name, argv] of [
   ["unknown command", ["destroy"]],
   ["unknown option", ["sync", "--force"]],
@@ -171,6 +198,13 @@ test("incompatible installed release fails before mutable dispatch", async () =>
   const result = await execute(["init", "--dry-run"], {
     installedManifest: manifest({ minimumCliVersion: "2.0.0" })
   });
+  assert.equal(result.exitCode, 3);
+  assert.equal(result.bus.calls.length, 0);
+  assert.match(result.streams.stderr[0], /VES_CLI_RELEASE_INCOMPATIBLE/u);
+});
+
+test("installed CLI identity must exactly match the manifest it executes", async () => {
+  const result = await execute(["init", "--dry-run"], { installedCliVersion: "1.0.1" });
   assert.equal(result.exitCode, 3);
   assert.equal(result.bus.calls.length, 0);
   assert.match(result.streams.stderr[0], /VES_CLI_RELEASE_INCOMPATIBLE/u);

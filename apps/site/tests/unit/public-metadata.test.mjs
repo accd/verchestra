@@ -32,7 +32,7 @@ test("publishes canonical, Open Graph, X, favicon, and structured metadata", asy
     assert.match(layout, new RegExp(contract.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"), "u"));
   }
   assert.match(homepage, /"@type": "SoftwareSourceCode"/u);
-  assert.match(homepage, /GPL-3\.0-only/u);
+  assert.match(homepage, /Apache-2\.0/u);
   assert.match(homepage, /llms\.txt/u);
   assert.match(homepage, /llms-full\.txt/u);
   assert.match(starlightHead, /"@type": "BreadcrumbList"/u);

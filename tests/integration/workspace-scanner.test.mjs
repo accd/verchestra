@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, test } from "node:test";
 
@@ -66,7 +66,7 @@ test("control-ignored nested repository remains visible and separately owned", a
   assert.equal(inventory.projects.find((project) => project.logicalPath === "projects/service").ignoredByControl, true);
 });
 
-test("broken gitfile placeholder is reported without being treated as the control owner", async () => {
+test("missing gitdir placeholder is reported without being treated as the control owner", async () => {
   const root = await scannerRoot();
   await initRepository(root);
   const placeholder = join(root, "projects", "missing");
@@ -77,7 +77,23 @@ test("broken gitfile placeholder is reported without being treated as the contro
   const boundary = inventory.repositories.find((entry) => entry.logicalPath === "projects/missing");
   assert.equal(boundary.status, "broken");
   assert.equal(boundary.relation, "placeholder");
+  assert.equal(boundary.brokenReason, "gitdir-missing");
   assert.equal(inventory.projects.find((project) => project.logicalPath === "projects/missing").gitOwnerId, null);
+});
+
+test("non-directory gitdir placeholder is distinguished from a missing target", async () => {
+  const root = await scannerRoot();
+  await initRepository(root);
+  const placeholder = join(root, "projects", "not-a-directory");
+  await mkdir(placeholder, { recursive: true });
+  await writeFile(join(placeholder, ".git"), "gitdir: gitdir-target\n");
+  await writeFile(join(placeholder, "gitdir-target"), "not a directory\n");
+  await writeFile(join(placeholder, "package.json"), '{"name":"not-a-directory","private":true}\n');
+  const inventory = await scanWorkspace({ controlRoot: root });
+  const boundary = inventory.repositories.find((entry) => entry.logicalPath === "projects/not-a-directory");
+  assert.equal(boundary.status, "broken");
+  assert.equal(boundary.relation, "placeholder");
+  assert.equal(boundary.brokenReason, "gitdir-not-directory");
 });
 
 test("repeated scan produces the exact same portable fingerprint", async () => {
@@ -101,10 +117,39 @@ test("real Git submodule is classified as a separate submodule owner", async () 
   const repository = inventory.repositories.find((entry) => entry.logicalPath === "vendor/submodule");
   assert.equal(repository.relation, "submodule");
   assert.equal(repository.gitDirKind, "file");
+  assert.equal(repository.remoteFingerprint, undefined, "local fixture remotes must not enter portable inventory");
   assert.equal(
     inventory.projects.find((project) => project.logicalPath === "vendor/submodule").gitOwnerId,
     repository.repositoryId
   );
+});
+
+test("submodule classification resolves symbolic gitdir components before relation detection", async () => {
+  const source = await scannerRoot("verchestra-submodule-source-");
+  await initRepository(source, { "package.json": '{"name":"submodule","private":true}\n' });
+  const root = await scannerRoot();
+  await initRepository(root);
+  git(root, "-c", "protocol.file.allow=always", "submodule", "add", "--quiet", source, "vendor/original");
+  git(root, "commit", "--quiet", "-am", "add submodule");
+  const gitLink = join(root, "gitdir-link");
+  await symlink(join(root, ".git"), gitLink, process.platform === "win32" ? "junction" : "dir");
+  const alias = join(root, "vendor", "submodule");
+  await mkdir(alias, { recursive: true });
+  await writeFile(join(alias, "package.json"), '{"name":"submodule","private":true}\n');
+  await writeFile(join(alias, ".git"), "gitdir: ../../gitdir-link/modules/vendor/original\n");
+  const inventory = await scanWorkspace({ controlRoot: root });
+  const repository = inventory.repositories.find((entry) => entry.logicalPath === "vendor/submodule");
+  assert.equal(repository.relation, "submodule");
+  assert.equal(repository.status, "active");
+});
+
+test("unexpected Git metadata failures propagate as safe public scan errors", async () => {
+  const root = await scannerRoot();
+  await initRepository(root);
+  const nested = join(root, "projects", "broken-config");
+  await initRepository(nested, { "package.json": '{"name":"broken-config","private":true}\n' });
+  await writeFile(join(nested, ".git", "config"), "[core\n");
+  await assert.rejects(scanWorkspace({ controlRoot: root }), { code: "VES_WORKSPACE_GIT_FAILED" });
 });
 
 test("real linked worktree is classified as a separate worktree owner", async () => {

@@ -15,8 +15,8 @@ export interface RepositoryContentSource {
 
 export interface QualificationStatus {
   currentVersion: string;
-  highestVerifiedTask: number;
-  nextTask: number;
+  highestVerifiedTask: string;
+  nextTask: string | null;
   reportCount: number;
 }
 
@@ -163,24 +163,105 @@ export async function compileQualificationStatus(repositoryRoot: URL | string): 
 
   const qualificationDirectory = new URL("docs/qualification/", root);
   const entries = await readdir(qualificationDirectory);
-  const taskNumbers = entries
-    .map((entry) => /^t(\d{2})-validation\.md$/i.exec(entry)?.[1])
-    .filter((value): value is string => value !== undefined)
+  const taskIds = entries
+    .map((entry) => /^t(\d{2}[a-z]?)-validation\.md$/i.exec(entry)?.[1])
+    .filter((value): value is string => value !== undefined);
+  const taskNumbers = taskIds
+    .filter((id) => /^\d+$/.test(id))
     .map(Number)
     .sort((left, right) => left - right);
 
-  const highestVerifiedTask = taskNumbers.at(-1) ?? 0;
-  for (let task = 1; task <= highestVerifiedTask; task += 1) {
+  const highestNumericTask = taskNumbers.at(-1) ?? 0;
+  for (let task = 1; task <= highestNumericTask; task += 1) {
     if (!taskNumbers.includes(task)) {
       throw new Error(`missing qualification report T${String(task).padStart(2, "0")}`);
     }
   }
 
+  // Task identifiers stopped being integers when T68a-T68d were inserted ahead of
+  // T69 (AD-008), so both how far the chain is verified and what comes next are
+  // resolved by walking the roadmap chain. ROADMAP.md is the ordering authority.
+  const roadmap = await readFile(new URL("ROADMAP.md", root), "utf8");
+  const verified = new Set(taskIds.map((id) => `T${id}`));
+  const { highestVerifiedTask, nextTask, errors } = resolveQualification(roadmap, verified);
+  if (errors.length > 0) throw new Error(`roadmap chain is not usable: ${errors.join("; ")}`);
+  if (highestVerifiedTask === null) {
+    throw new Error("roadmap does not declare a verified qualification chain");
+  }
+
   return {
     currentVersion: packageMetadata.version,
     highestVerifiedTask,
-    nextTask: highestVerifiedTask + 1,
-    reportCount: taskNumbers.length
+    nextTask,
+    reportCount: taskIds.length
+  };
+}
+
+// An ordering authority that quietly normalizes an ambiguous graph is not an
+// authority. A branch, a merge, a cycle, or a second disconnected component all
+// fail closed with the conflicting task ids named, rather than being resolved by
+// which edge happened to be written first.
+export function validateRoadmapChain(roadmap: string): { chain: readonly string[]; errors: readonly string[] } {
+  const edge = /^[^\S\n]*(T\d+[a-z]?)(?:\[[^\]]*\])?[^\S\n]*-->[^\S\n]*(T\d+[a-z]?)(?:\[[^\]]*\])?[^\S\n]*$/gmu;
+  const errors: string[] = [];
+  const successor = new Map<string, string>();
+  const incoming = new Map<string, number>();
+  for (const match of roadmap.matchAll(edge)) {
+    const [from, to] = [match[1]!, match[2]!];
+    if (from === to) errors.push(`${from} declares an edge to itself`);
+    if (successor.has(from)) errors.push(`${from} declares more than one successor: ${successor.get(from)} and ${to}`);
+    else successor.set(from, to);
+    incoming.set(to, (incoming.get(to) ?? 0) + 1);
+  }
+  for (const [task, count] of incoming) if (count > 1) errors.push(`${task} has ${count} predecessors`);
+
+  const nodes = new Set([...successor.keys(), ...incoming.keys()]);
+  const roots = [...nodes].filter((task) => !incoming.has(task));
+  const terminals = [...nodes].filter((task) => !successor.has(task));
+  if (nodes.size === 0) errors.push("no roadmap chain is declared");
+  else {
+    if (roots.length !== 1) errors.push(`the chain needs exactly one start, found ${roots.length || "none"}`);
+    if (terminals.length !== 1) errors.push(`the chain needs exactly one end, found ${terminals.length || "none"}`);
+  }
+
+  const chain: string[] = [];
+  if (roots.length === 1) {
+    const seen = new Set<string>();
+    for (let task: string | undefined = roots[0]; task !== undefined; task = successor.get(task)) {
+      if (seen.has(task)) {
+        errors.push(`the chain revisits ${task}`);
+        break;
+      }
+      seen.add(task);
+      chain.push(task);
+    }
+    const unreachable = [...nodes].filter((task) => !seen.has(task)).sort();
+    if (unreachable.length > 0) errors.push(`unreachable from the start: ${unreachable.join(", ")}`);
+  }
+  return { chain: errors.length === 0 ? chain : [], errors };
+}
+
+export function resolveQualification(
+  roadmap: string,
+  verifiedTasks: ReadonlySet<string>
+): { highestVerifiedTask: string | null; nextTask: string | null; errors: readonly string[] } {
+  const { chain, errors } = validateRoadmapChain(roadmap);
+  // A validation report whose task id carries a letter suffix only exists
+  // because of an inserted task, so one that no roadmap node claims is evidence
+  // for nothing and must not be silently ignored.
+  const declared = new Set(chain);
+  const stray = [...verifiedTasks].filter((task) => /[a-z]$/u.test(task) && !declared.has(task)).sort();
+  const allErrors = [...errors, ...stray.map((task) => `${task} has a validation report but no roadmap node`)];
+  if (allErrors.length > 0) return { highestVerifiedTask: null, nextTask: null, errors: allErrors };
+
+  let highest: string | null = null;
+  let index = 0;
+  while (index < chain.length && verifiedTasks.has(chain[index]!)) highest = chain[index++]!;
+  const outOfOrder = chain.slice(index + 1).filter((task) => verifiedTasks.has(task));
+  return {
+    highestVerifiedTask: highest,
+    nextTask: highest === null ? (chain[0] ?? null) : (chain[index] ?? null),
+    errors: outOfOrder.length === 0 ? [] : [`validation reports exist after the first gap: ${outOfOrder.join(", ")}`]
   };
 }
 
@@ -194,10 +275,10 @@ export async function assertProjectStatus(repositoryRoot: URL | string, status: 
   if (!readme.includes(status.currentVersion) || !roadmap.includes(status.currentVersion)) {
     throw new Error(`public documents do not agree on version ${status.currentVersion}`);
   }
-  if (!new RegExp(`\\bT${status.highestVerifiedTask}\\b`).test(roadmap)) {
-    throw new Error(`roadmap does not identify T${status.highestVerifiedTask} as the completed foundation`);
+  if (!new RegExp(`\\b${status.highestVerifiedTask}\\b`).test(roadmap)) {
+    throw new Error(`roadmap does not identify ${status.highestVerifiedTask} as the completed foundation`);
   }
-  if (!new RegExp(`\\bT${status.nextTask}\\b`).test(roadmap)) {
-    throw new Error(`roadmap does not identify T${status.nextTask} as the next qualification task`);
+  if (status.nextTask !== null && !new RegExp(`\\b${status.nextTask}\\b`).test(roadmap)) {
+    throw new Error(`roadmap does not identify ${status.nextTask} as the next qualification task`);
   }
 }

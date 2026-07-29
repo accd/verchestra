@@ -91,7 +91,7 @@ export function parseSapAseReadOperation(sql: unknown, options: ParseOptions): S
     fail("VES_SAP_ASE_ENCODING_DENIED", "SAP ASE statement encoding is not permitted");
   }
   if (/--|\/\*|\*\//u.test(sql)) fail("VES_SAP_ASE_COMMENT_DENIED", "SAP ASE comments are not permitted");
-  if (sql.includes(";") || /(?:^|\r?\n)\s*GO\s*(?:\r?\n|$)/iu.test(sql)) {
+  if (sql.includes(";") || sql.split("\n").some((line) => line.trim().toUpperCase() === "GO")) {
     fail("VES_SAP_ASE_BATCH_DENIED", "SAP ASE batches are not permitted");
   }
   if (

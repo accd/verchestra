@@ -21,6 +21,12 @@ export const EXPECTED_PACKAGES = Object.freeze([
   "packages/distribution"
 ]);
 
+// Workspaces that exist under apps/ or packages/ but are outside the product
+// package graph: no inward dependency direction applies and scanWorkspace never
+// reads their sources. Declaring them keeps the completeness check exhaustive,
+// so a genuinely undeclared directory still fails.
+export const NON_PRODUCT_WORKSPACES = Object.freeze(["apps/site"]);
+
 const CORE = new Set(["contracts", "domain", "application"]);
 const ADAPTERS = new Set(
   EXPECTED_PACKAGES.filter((path) => path.startsWith("packages/"))

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { test } from "node:test";
 import {
   buildDatabaseKnowledgePackage,
@@ -23,6 +24,20 @@ const knowledge = () =>
     generation: 1,
     sources: [importDdlSchemaSource(schemaSource())]
   });
+
+function canonical(value) {
+  if (value === null || typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
+  return `{${Object.entries(value)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([key, item]) => `${JSON.stringify(key)}:${canonical(item)}`)
+    .join(",")}}`;
+}
+
+function promotedDigest(evidence) {
+  const material = Object.fromEntries(Object.entries(evidence).filter(([key]) => key !== "evidenceDigest"));
+  return `sha256:${createHash("sha256").update(canonical(material)).digest("hex")}`;
+}
 for (const [label, mutation, code] of [
   [
     "credential",
@@ -174,6 +189,62 @@ for (const [label, mutation, code] of [
       input.sanitizedClaims[0].factKey = "database.password";
     },
     "VES_PROBE_PROMOTION_INVALID"
+  ],
+  [
+    "email claim value",
+    (input) => {
+      input.sanitizedClaims[0].value = "alice@example.test";
+    },
+    "VES_PROBE_PROMOTION_INVALID"
+  ],
+  [
+    "adversarial email-shaped claim value",
+    (input) => {
+      input.sanitizedClaims[0].value = `${"a".repeat(200)}@example.test`;
+    },
+    "VES_PROBE_PROMOTION_INVALID"
+  ],
+  [
+    "credential claim value",
+    (input) => {
+      input.sanitizedClaims[0].value = "password=not-portable";
+    },
+    "VES_PROBE_PROMOTION_INVALID"
+  ],
+  [
+    "token claim value",
+    (input) => {
+      input.sanitizedClaims[0].value = "Bearer eyJhbGciOiJIUzI1NiJ9.payload.signature";
+    },
+    "VES_PROBE_PROMOTION_INVALID"
+  ],
+  [
+    "bare API token claim value",
+    (input) => {
+      input.sanitizedClaims[0].value = "ghp_abcdefghijklmnopqrstuvwxyz0123456789ABCDE";
+    },
+    "VES_PROBE_PROMOTION_INVALID"
+  ],
+  [
+    "connection string claim value",
+    (input) => {
+      input.sanitizedClaims[0].value = "postgresql://user:password@example.test/orders";
+    },
+    "VES_PROBE_PROMOTION_INVALID"
+  ],
+  [
+    "private key claim value",
+    (input) => {
+      input.sanitizedClaims[0].value = "-----BEGIN PRIVATE KEY-----";
+    },
+    "VES_PROBE_PROMOTION_INVALID"
+  ],
+  [
+    "oversized claim value",
+    (input) => {
+      input.sanitizedClaims[0].value = "a".repeat(513);
+    },
+    "VES_PROBE_PROMOTION_INVALID"
   ]
 ])
   test(`Probe promotion rejects ${label}`, () => {
@@ -229,7 +300,21 @@ test("seed plan cannot serialize protected result references or raw production v
 });
 test("seed planner rejects sanitized evidence whose accepted content was altered", () => {
   const forged = structuredClone(promoteProbeEvidence(probePromotion()));
-  forged.sanitizedClaims[0].value = "text";
+  forged.sanitizedClaims[0].valueDigest = `sha256:${"f".repeat(64)}`;
   const input = seedInput(knowledge(), [forged]);
   assert.throws(() => planSyntheticSeedScenarios(input), { code: "VES_SEED_PLAN_INVALID" });
+});
+test("seed planner rejects evidence that restores a raw claim field", () => {
+  const forged = structuredClone(promoteProbeEvidence(probePromotion()));
+  delete forged.sanitizedClaims[0].valueDigest;
+  forged.sanitizedClaims[0].value = "alice@example.test";
+  forged.evidenceDigest = promotedDigest(forged);
+  const input = seedInput(knowledge(), [forged]);
+  assert.throws(() => planSyntheticSeedScenarios(input), { code: "VES_SEED_PLAN_INVALID" });
+});
+test("seed planner rejects a recomputed legacy promoted-evidence version", () => {
+  const forged = structuredClone(promoteProbeEvidence(probePromotion()));
+  forged.schemaVersion = 1;
+  forged.evidenceDigest = promotedDigest(forged);
+  assert.throws(() => planSyntheticSeedScenarios(seedInput(knowledge(), [forged])), { code: "VES_SEED_PLAN_INVALID" });
 });

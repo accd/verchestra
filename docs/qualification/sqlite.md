@@ -15,10 +15,10 @@ Verchestra 1.0 qualifies the `node:sqlite` API bundled with exact-pinned Node 24
 | Required compile option | `ENABLE_FTS5` |
 | sqlite-vec package | 0.1.9 (latest stable; pre-v1) |
 | sqlite-vec runtime version | `v0.1.9` |
-| Windows x64 release asset | `vec0.dll`, 289,280 bytes |
-| Asset SHA-256 | `fcf98662a7ad9dce394b96a88f91032047823831b951c76636787c312a6476e6` |
+| Windows x64 release asset | `vec0.dll`, 289,280 bytes, SHA-256 `fcf98662a7ad9dce394b96a88f91032047823831b951c76636787c312a6476e6` |
+| Linux x64 release asset | `vec0.so`, 159,816 bytes, SHA-256 `5923730861b86c707cca5602b5f91092f9e52a46706dbc6e269fd4bb9c4498e8` |
 
-The package and platform asset are exact-pinned by `pnpm-lock.yaml`. Alpha 0.1.10 builds are not eligible for Verchestra 1.0.
+The closed qualification table permits only the Windows x64 and Linux x64 assets above. macOS, ARM, and unknown platforms remain explicitly unqualified and degrade to lexical-only operation (or fail with the stable required-profile error). The package and platform asset are exact-pinned by `pnpm-lock.yaml`. Alpha 0.1.10 builds are not eligible for Verchestra 1.0.
 
 ## Proven safety contract
 

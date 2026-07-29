@@ -2,6 +2,15 @@ export const packageName = "@verchestra/evidence" as const;
 export { ArtifactSealer, createTrustRoot } from "./integrity/artifact-sealer.ts";
 export { IntegrityError, canonicalizeJson, sha256Digest, type IntegrityErrorCode } from "./integrity/canonical.ts";
 export { NodeEd25519Signer, type SignerOptions } from "./integrity/signer.ts";
+export {
+  KEY_LIFECYCLE_ERROR_CODES,
+  type EvidenceSigner,
+  type KeyLifecycleErrorCode,
+  type KeyProviderPort,
+  type KeyProviderRequest,
+  type KeyRotation,
+  type KeyRotationRequest
+} from "./integrity/key-provider.ts";
 export type * from "./integrity/types.ts";
 export {
   FileRunCapsuleStore,

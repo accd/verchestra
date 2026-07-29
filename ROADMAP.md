@@ -17,7 +17,11 @@ The repository has qualified the foundations through **T68**:
 
 ```mermaid
 flowchart LR
-  T68["T68 Activation and rollback ✓"] --> T69["T69 Self-Test trust domain"]
+  T68["T68 Activation and rollback ✓"] --> T68a["T68a Key lifecycle and portability proof"]
+  T68a --> T68b["T68b Budget enforcement"]
+  T68b --> T68c["T68c Declarative gate repair"]
+  T68c --> T68d["T68d Policy hardening"]
+  T68d --> T69["T69 Self-Test trust domain"]
   T69 --> T70["T70 Smoke and workspace profiles"]
   T70 --> T71["T71 Full, fault, and driver profiles"]
   T71 --> T72["T72 Deep doctor and signed reports"]
@@ -34,9 +38,33 @@ Version `1.0.0` is promoted only when all acceptance requirements are mapped to 
 
 The authoritative implementation backlog is maintained in [GitHub Issues](https://github.com/accd/verchestra/issues).
 
+## Inserted hardening tasks (T68a–T68d)
+
+Inserted by human decision on 2026-07-26 after the verified external review
+triage in `.specs/features/external-review-triage/`. Existing T01–T68
+evidence and the T69–T77 numbering are unchanged, preserving qualification
+traceability. Each inserted task has a tracked specification:
+
+- **T68a Key lifecycle and portability proof** — `.specs/features/key-lifecycle/`
+- **T68b Budget enforcement** — `.specs/features/budget-enforcement/`
+- **T68c Declarative gate repair** — `.specs/features/gate-repair-loop/`
+- **T68d Policy hardening** — `.specs/features/policy-hardening/`
+
+Two further review outcomes carry mandatory decisions before T76: the DSSE +
+in-toto signature envelope (`.specs/features/dsse-attestation/`) and real
+context tokenizers (`.specs/features/context-tokenizers/`).
+
+Derived status surfaces (`agent:context`, root instructions, `llms.txt`,
+and the public site) continue to report "T68 complete; T69 next" until the
+first inserted task starts. Migrating those surfaces to the inserted chain
+is a deliberate, separately reviewed change executed as part of starting
+T68a, because the current wording is asserted by gate scripts and contract
+tests.
+
 ## Independent repository-readiness stream
 
 Agent-ready repository instructions, portable contribution handoffs,
 provider-neutral evaluation, and LLM-readable documentation are maintenance
-work independent of T69–T77. They do not advance product qualification: T68
-remains complete and T69 remains the next product task.
+work independent of the product task chain. They do not advance product
+qualification: T68 remains complete and the inserted T68a–T68d chain
+precedes T69.

@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 import { OpenCodeDriver } from "../src/opencode-driver.mjs";
 
 function modelCatalog() {
   return { all: [{ id: "company", name: "Company AI", models: { "qwen3-coder-480b": { id: "qwen3-coder-480b" }, "other-coder": { id: "other-coder" } } }], connected: ["company"], default: { company: "qwen3-coder-480b" } };
 }
 
-function fakeFactory(mode = "success", calls = []) {
+function fakeFactory(mode = "success", calls = [], hooks = {}) {
   return async (options) => {
     calls.push(["server", options]);
     const events = async function* () {
@@ -34,7 +35,11 @@ function fakeFactory(mode = "success", calls = []) {
         provider: { list: async () => ({ data: modelCatalog() }) },
         event: { subscribe: async () => ({ stream: events() }) },
         session: {
-          create: async (parameters) => { calls.push(["create", parameters]); return { data: { id: "private-session" } }; },
+          create: async (parameters) => {
+            calls.push(["create", parameters]);
+            await hooks.afterSessionCreate?.();
+            return { data: { id: "private-session" } };
+          },
           prompt: async (parameters) => { calls.push(["prompt", parameters]); return mode === "prompt-error" ? { error: { message: "prompt rejected" } } : { data: {} }; },
           abort: async (parameters) => { calls.push(["abort", parameters]); return { data: true }; },
           delete: async (parameters) => { calls.push(["delete", parameters]); return { data: true }; }
@@ -47,13 +52,13 @@ function fakeFactory(mode = "success", calls = []) {
 }
 
 function driver(mode = "success", calls = [], options = {}) {
-  return new OpenCodeDriver({ command: [process.execPath, new URL("./fake-opencode.mjs", import.meta.url).pathname.slice(process.platform === "win32" ? 1 : 0)], serverFactory: fakeFactory(mode, calls), minimumVersion: "1.17.18", ...options });
+  return new OpenCodeDriver({ command: [process.execPath, fileURLToPath(new URL("./fake-opencode.mjs", import.meta.url))], serverFactory: fakeFactory(mode, calls), minimumVersion: "1.17.18", ...options });
 }
 
 test("probes the exact repo-local OpenCode without model inference", async () => {
   const result = await new OpenCodeDriver({ minimumVersion: "1.17.18" }).probe();
   assert.equal(result.available, true);
-  assert.equal(result.version, "1.17.18");
+  assert.equal(result.version, "1.18.9");
   assert.equal(result.capabilities.sdkEvents, true);
 });
 
@@ -143,14 +148,33 @@ test("normalizes provider failures", async () => {
 });
 
 test("cancels the SDK session before closing the server", async () => {
-  const calls = [];
-  const controller = new AbortController();
-  const run = driver("hang", calls).run({ prompt: "x", model: "company/qwen3-coder-480b", signal: controller.signal });
-  setTimeout(() => controller.abort(), 30);
-  const result = await run;
-  assert.equal(result.stopReason, "aborted");
-  assert.equal(calls.findIndex(([name]) => name === "abort") < calls.findIndex(([name]) => name === "close"), true);
-  assert.equal(calls.some(([name]) => name === "prompt"), false);
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const calls = [];
+    const controller = new AbortController();
+    const sessionCreateStarted = Promise.withResolvers();
+    const releaseSessionCreate = Promise.withResolvers();
+    const serverFactory = fakeFactory("hang", calls, {
+      afterSessionCreate: async () => {
+        sessionCreateStarted.resolve();
+        await releaseSessionCreate.promise;
+      }
+    });
+    const run = new OpenCodeDriver({
+      command: [process.execPath, fileURLToPath(new URL("./fake-opencode.mjs", import.meta.url))],
+      serverFactory
+    }).run({ prompt: "x", model: "company/qwen3-coder-480b", signal: controller.signal });
+    await sessionCreateStarted.promise;
+    controller.abort();
+    releaseSessionCreate.resolve();
+    const result = await run;
+    const abortIndex = calls.findIndex(([name]) => name === "abort");
+    const closeIndex = calls.findIndex(([name]) => name === "close");
+    assert.equal(result.stopReason, "aborted");
+    assert.ok(abortIndex >= 0, `attempt ${attempt} must abort the SDK session`);
+    assert.ok(closeIndex >= 0, `attempt ${attempt} must close the loopback server`);
+    assert.ok(abortIndex < closeIndex, `attempt ${attempt} must abort before closing the server`);
+    assert.equal(calls.some(([name]) => name === "prompt"), false);
+  }
 });
 
 test("does not inherit undeclared corporate credentials", () => {
