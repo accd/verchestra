@@ -33,4 +33,4 @@
 | T2   | Complete | `pnpm gate:quick` (1,624 unit tests + 64 readiness tests) and `pnpm test:security` (914 passed) passed.                 |
 | T3   | Complete | `pnpm gate:quick` (1,628 unit tests + 64 readiness tests) and `pnpm test:security` (915 passed) passed.                 |
 | T4   | Complete | `pnpm gate:quick`, `pnpm test:integration` (437 passed), and `pnpm test:security` (915 passed) passed.                 |
-| T5   | Pending  | —                                                                                                                          |
+| T5   | Complete | `tests/e2e/key-lifecycle-portability.test.mjs` passed; `pnpm gate:full` and `pnpm gate:security` passed on `b694563dbdd8ceb66e7420be02b9e31adbe454f8`. |
