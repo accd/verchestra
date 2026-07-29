@@ -5,12 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 
-import {
-  ALWAYS_GATE,
-  CONSERVATIVE_GATES,
-  QUALIFICATION_REPORT,
-  selectGates
-} from "../../scripts/gate-selection.mjs";
+import { ALWAYS_GATE, CONSERVATIVE_GATES, QUALIFICATION_REPORT, selectGates } from "../../scripts/gate-selection.mjs";
 import { GATE_STAGES, stagesForGates } from "../../scripts/gate-stages.mjs";
 import { githubOutputFor } from "../../scripts/gate-output.mjs";
 import { buildEvidence } from "../../scripts/select-gates.mjs";

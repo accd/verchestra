@@ -20,6 +20,10 @@ that fragile interpolation and is covered by a focused test. The next CI run
 exposed an overly narrow stage-name validator for `test:e2e`; it now permits
 digits and the focused test includes that exact stage.
 
+The following Linux CI run reached `format:check` and reported formatting only
+in `gate-selection.mjs`, `select-gates.mjs`, and the selector test. Those files
+were formatted with the repository's pinned Prettier 3.9.6 settings.
+
 ## Next
 
 Push the output-writer correction and require CI to validate the exact new head

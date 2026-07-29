@@ -41,9 +41,7 @@ function candidateSha(repository) {
 export function buildEvidence({ base, candidate = "HEAD", repository = root }) {
   const changed = selectChangedPaths({ base, candidate, repository });
   const selection =
-    changed.mode === "git-range"
-      ? selectGates(changed.paths)
-      : selectGates(["<conservative-fallback>"]);
+    changed.mode === "git-range" ? selectGates(changed.paths) : selectGates(["<conservative-fallback>"]);
   const gates = [...new Set([...selection.gates, ...(changed.mode === "git-range" ? [] : CONSERVATIVE_GATES)])].sort();
   return {
     schemaVersion: 2,
