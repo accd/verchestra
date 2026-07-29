@@ -1,6 +1,6 @@
 # Probe Value Declassification Design
 
-**Spec:** `.specs/features/probe-value-declassification/spec.md`  
+**Spec:** `.specs/features/probe-value-declassification/spec.md`
 **Status:** Approved
 
 ## Architecture
