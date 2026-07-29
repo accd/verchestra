@@ -3,12 +3,12 @@ schema: verchestra-feature-handoff/v1
 feature: key-lifecycle
 issue: 51
 status: in_progress
-branch: codex/issue-51-key-rotation-main
-baseRevision: f027fb797c9a421eea90642166e999505e723c54
-lastCompletedTask: T3
-nextTask: T4
+branch: codex/issue-51-cli-key-provider
+baseRevision: dea4c3cb8b139cbc4b14c2e70e229db047f48301
+lastCompletedTask: T4
+nextTask: T5
 lastGate: pnpm gate:quick
-updatedAt: 2026-07-29T16:08:06Z
+updatedAt: 2026-07-29T16:18:42Z
 ---
 
 # Scope
@@ -59,6 +59,16 @@ revocation, invalid-overlap rejection, in-window verification, and expiry;
 metadata. The existing verifier supplies the corresponding trust-root
 `VES_TRUST_KEY_EXPIRED` outcome after overlap.
 
+T4 makes the CLI the actual composition boundary without inventing an
+incomplete public command. `ArtifactSealer` now depends on `EvidenceSigner`;
+the CLI owns `createEvidenceSealer(KeyProviderPort, request)` and its local
+adapter factory. The integration test composes the encrypted-file provider
+twice from the CLI package and proves a persistent key is reused; a source
+assertion prevents direct `NodeEd25519Signer` construction in that
+composition module. T4 evidence: `pnpm gate:quick` passed, `pnpm
+test:integration` passed 437 tests, `pnpm test:security` passed 915 tests,
+and `pnpm agent:check` passed.
+
 The status-surface migration is complete. Rather than moving the literal
 "T69" to "T68a" in each surface, the derivation itself was fixed: `nextTask`
 was `highestVerifiedTask + 1`, an assumption that broke the moment task
@@ -89,15 +99,15 @@ reporting `internalLinks: valid`.
 
 # Next Exact Action
 
-T4: wire the composition root to obtain signers only through `KeyProviderPort`,
-with integration tests proving no production path constructs `NodeEd25519Signer`.
+T5: build the two-environment portability proof and recorded demo transcript.
 
 # Blockers
 
-T1 through T3 are complete. T4 is the first CLI-composition slice; it must not
-introduce a direct `NodeEd25519Signer` construction. Windows file modes remain
-a best-effort ACL limitation documented in the feature design; the provider
-uses owner-only modes where the platform enforces POSIX permissions.
+T1 through T4 are complete. T5 needs a complete Execution Package flow and a
+second machine-local state root; it must produce a real end-to-end proof rather
+than a synthetic signature-only test. Windows file modes remain a best-effort
+ACL limitation documented in the feature design; the provider uses owner-only
+modes where the platform enforces POSIX permissions.
 
 # Decisions
 
