@@ -134,4 +134,4 @@ Please read the [Code of Conduct](CODE_OF_CONDUCT.md) before participating.
 
 ## License
 
-Verchestra is licensed under the [GNU General Public License v3.0 only](LICENSE).
+Verchestra is licensed under the [Apache License 2.0](LICENSE).
