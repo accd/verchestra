@@ -144,7 +144,7 @@ const SENSOR = /^(\d+) killed, (\d+) survived$/u;
 // actually contains, the gates it claims are declared gates that cover a
 // substantive surface, and its counts parse in a closed format that cannot be
 // reversed by relabelling.
-export function validateQualificationReport(source, taskId, { isRepositoryCommit } = {}) {
+export function validateQualificationReport(source, taskId, { isRepositoryCommit, isTrustedRevision } = {}) {
   if (isHistoricalReport(taskId)) return [];
   const errors = [];
   const match = /^---\r?\n([\s\S]*?)\r?\n---\r?\n/u.exec(source);
@@ -166,6 +166,12 @@ export function validateQualificationReport(source, taskId, { isRepositoryCommit
   // fabricate.
   else if (isRepositoryCommit !== undefined && !isRepositoryCommit(revision))
     errors.push(`${taskId}: revision ${revision.slice(0, 12)} is not a commit in this repository`);
+  // A commit in an unmerged side branch may be readable locally, but a clean
+  // clone of the trusted qualification target is not entitled to rely on it.
+  // The report must bind to an implementation revision already reachable from
+  // that target; the later report commit itself need not exist yet.
+  else if (isTrustedRevision !== undefined && !isTrustedRevision(revision))
+    errors.push(`${taskId}: revision ${revision.slice(0, 12)} is not reachable from the trusted qualification head`);
   if (report.gateRevision !== revision) errors.push(`${taskId}: gate evidence is not bound to the report revision`);
 
   const gates = (report.gates ?? "")
@@ -212,7 +218,7 @@ export function validateQualificationReport(source, taskId, { isRepositoryCommit
   return errors;
 }
 
-export async function readQualificationReports(root) {
+export async function readQualificationReports(root, { trustedRevision } = {}) {
   const directory = join(root, "docs", "qualification");
   const tasks = new Set();
   const errors = [];
@@ -224,12 +230,27 @@ export async function readQualificationReports(root) {
     if (!known.has(revision)) known.set(revision, git(root, ["cat-file", "-e", `${revision}^{commit}`]) !== null);
     return known.get(revision);
   };
+  // `HEAD` is the checkout being qualified. A report may bind to an earlier
+  // implementation commit, but not to an object available only through an
+  // unrelated local or remote ref. The target comes from Git, never from the
+  // report frontmatter.
+  const trustedHead = trustedRevision ?? git(root, ["rev-parse", "HEAD^{commit}"]);
+  const trusted = new Map();
+  const isTrustedRevision = (revision) => {
+    if (!trusted.has(revision))
+      trusted.set(
+        revision,
+        trustedHead !== null && git(root, ["merge-base", "--is-ancestor", revision, trustedHead]) !== null
+      );
+    return trusted.get(revision);
+  };
   for (const entry of (await readdir(directory)).sort()) {
     const task = /^t(\d+[a-z]?)-validation\.md$/u.exec(entry);
     if (!task) continue;
     const taskId = `T${task[1]}`;
     const problems = validateQualificationReport(await readFile(join(directory, entry), "utf8"), taskId, {
-      isRepositoryCommit
+      isRepositoryCommit,
+      isTrustedRevision
     });
     if (problems.length === 0) tasks.add(taskId);
     else errors.push(...problems);
@@ -237,8 +258,8 @@ export async function readQualificationReports(root) {
   return { tasks, errors };
 }
 
-export async function validatedTasks(root) {
-  return (await readQualificationReports(root)).tasks;
+export async function validatedTasks(root, options) {
+  return (await readQualificationReports(root, options)).tasks;
 }
 
 function git(root, args) {
