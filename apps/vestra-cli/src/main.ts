@@ -29,20 +29,16 @@ export async function main(invokedAs: string, argv: readonly string[]): Promise<
             throw cliError("VES_CLI_ARGUMENT_INVALID", { argument: "--name" }, "Workspace name is required");
           if (placement !== "centralized" && placement !== "colocated")
             throw cliError("VES_CLI_ARGUMENT_INVALID", { argument: "--placement" }, "Workspace placement is required");
-          if (command.options["dry-run"] !== true)
-            throw cliError(
-              "VES_CLI_ARGUMENT_INVALID",
-              { argument: "--dry-run" },
-              "Persistent init is not composed in this slice"
-            );
           const files = buildCanonicalInitFiles({
             workspaceId,
             displayName,
             placementMode: placement,
             generatorVersion: installedReleaseManifest.semanticVersion
           });
-          const preview = await new SafeInitService().preview({ controlRoot: process.cwd(), files });
-          return { data: preview, diagnostics: [] };
+          const service = new SafeInitService();
+          const preview = await service.preview({ controlRoot: process.cwd(), files });
+          if (command.options["dry-run"] === true) return { data: preview, diagnostics: [] };
+          return { data: { preview, receipt: await service.apply(preview) }, diagnostics: [] };
         }
         throw new PublicErrorException(
           cliPublicErrorRegistry.create("VES_CLI_COMMAND_FAILED", { command: command.name }),
