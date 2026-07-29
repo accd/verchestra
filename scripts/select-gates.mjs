@@ -1,41 +1,67 @@
 #!/usr/bin/env node
 
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { gatesDeclaredByReport, QUALIFICATION_REPORT, selectGates } from "./gate-selection.mjs";
+import { CONSERVATIVE_GATES, selectGates } from "./gate-selection.mjs";
+import { stagesForGates } from "./gate-stages.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const base = process.argv[2];
+const ALL_ZERO_SHA = /^0{40}$/u;
 
-function changedPaths() {
-  const range = base ? [`${base}...HEAD`] : ["HEAD~1", "HEAD"];
+export function selectChangedPaths({ base, candidate = "HEAD", repository = root }) {
+  if (!base || ALL_ZERO_SHA.test(base)) {
+    return { paths: [], mode: "conservative-fallback", fallbackReason: "base SHA is unavailable" };
+  }
   try {
-    return execFileSync("git", ["-C", root, "diff", "--name-only", ...range], { encoding: "utf8" })
+    const paths = execFileSync("git", ["-C", repository, "diff", "--name-only", `${base}...${candidate}`], {
+      encoding: "utf8"
+    })
       .split(/\r?\n/u)
       .filter(Boolean);
+    return { paths, mode: "git-range", fallbackReason: null };
   } catch {
-    // A missing base is not a reason to run less. Fail closed by treating the
-    // change as unmapped.
-    return ["<unknown>"];
+    return { paths: [], mode: "conservative-fallback", fallbackReason: "base range cannot be resolved" };
   }
 }
 
-const paths = changedPaths();
-const declared = paths
-  .filter((path) => QUALIFICATION_REPORT.test(path) && existsSync(join(root, path)))
-  .flatMap((path) => gatesDeclaredByReport(readFileSync(join(root, path), "utf8")));
+function option(name) {
+  const index = process.argv.indexOf(name);
+  return index === -1 ? undefined : process.argv[index + 1];
+}
 
-const selection = selectGates(paths, declared);
-const evidence = {
-  schemaVersion: 1,
-  changedPathCount: paths.length,
-  gates: selection.gates,
-  reasons: selection.reasons,
-  unmappedPathCount: selection.unmapped.length
-};
+function candidateSha(repository) {
+  try {
+    return execFileSync("git", ["-C", repository, "rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+  } catch {
+    return "unavailable";
+  }
+}
 
-if (process.argv.includes("--json")) process.stdout.write(`${JSON.stringify(evidence, null, 2)}\n`);
-else process.stdout.write(`${selection.gates.join(" ")}\n`);
+export function buildEvidence({ base, candidate = "HEAD", repository = root }) {
+  const changed = selectChangedPaths({ base, candidate, repository });
+  const selection =
+    changed.mode === "git-range"
+      ? selectGates(changed.paths)
+      : selectGates(["<conservative-fallback>"]);
+  const gates = [...new Set([...selection.gates, ...(changed.mode === "git-range" ? [] : CONSERVATIVE_GATES)])].sort();
+  return {
+    schemaVersion: 2,
+    candidate: candidateSha(repository),
+    base: base ?? null,
+    selectionMode: changed.mode,
+    fallbackReason: changed.fallbackReason,
+    changedPathCount: changed.paths.length,
+    gates,
+    stages: stagesForGates(gates),
+    reasons: selection.reasons,
+    unmappedPathCount: selection.unmapped.length
+  };
+}
+
+const invokedAsCli = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
+if (invokedAsCli) {
+  const evidence = buildEvidence({ base: option("--base"), candidate: option("--candidate") ?? "HEAD" });
+  if (process.argv.includes("--json")) process.stdout.write(`${JSON.stringify(evidence, null, 2)}\n`);
+  else process.stdout.write(`${evidence.stages.join(" ")}\n`);
+}

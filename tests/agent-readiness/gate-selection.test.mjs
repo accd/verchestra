@@ -1,13 +1,18 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
 
 import {
   ALWAYS_GATE,
   CONSERVATIVE_GATES,
-  gatesDeclaredByReport,
   QUALIFICATION_REPORT,
   selectGates
 } from "../../scripts/gate-selection.mjs";
+import { GATE_STAGES, stagesForGates } from "../../scripts/gate-stages.mjs";
+import { buildEvidence } from "../../scripts/select-gates.mjs";
 
 const gatesFor = (...paths) => selectGates(paths).gates;
 
@@ -79,7 +84,7 @@ test("a multi-surface change unions every applicable gate", () => {
   assert.deepEqual(selection.unmapped, []);
 });
 
-test("a qualification report contributes the gates it declares", () => {
+test("a qualification report selects the conservative profiles regardless of its declaration", () => {
   const report = [
     "---",
     "schema: verchestra-qualification-report/v1",
@@ -92,11 +97,89 @@ test("a qualification report contributes the gates it declares", () => {
   assert.ok(QUALIFICATION_REPORT.test("docs/qualification/t68a-validation.md"));
   assert.ok(QUALIFICATION_REPORT.test("docs/qualification/t68-validation.md"));
   assert.equal(QUALIFICATION_REPORT.test("docs/qualification/REPORT-CONTRACT.md"), false);
-  assert.deepEqual(gatesDeclaredByReport(report), ["gate:quick", "gate:security"]);
-  assert.deepEqual(gatesDeclaredByReport("# no frontmatter"), []);
+  assert.ok(report.includes("gates: pnpm gate:quick, pnpm gate:security"));
+  const selection = selectGates(["docs/qualification/t68a-validation.md"]);
+  assert.ok(selection.gates.includes("gate:full"));
+  assert.ok(selection.gates.includes("gate:release"));
+});
 
-  const selection = selectGates(["docs/qualification/t68a-validation.md"], gatesDeclaredByReport(report));
-  assert.ok(selection.gates.includes("gate:security"));
+for (const path of [".github/workflows/ci.yml", ".github/dependabot.yml"]) {
+  test(`${path} selects conservative full and release verification`, () => {
+    const gates = gatesFor(path);
+    assert.ok(gates.includes("gate:full"));
+    assert.ok(gates.includes("gate:release"));
+  });
+}
+
+test("the stage union is deterministic and executes each selected stage once", () => {
+  const stages = stagesForGates(["gate:quick", "gate:full", "gate:release"]);
+  assert.equal(new Set(stages).size, stages.length);
+  assert.deepEqual(stages, [
+    "format:check",
+    "lint",
+    "typecheck",
+    "test:unit",
+    "test:agent-readiness",
+    "test:contract",
+    "test:integration",
+    "test:e2e",
+    "test:fault",
+    "build",
+    "test:architecture",
+    "test:qualification",
+    "test:security",
+    "test:release"
+  ]);
+  assert.deepEqual(GATE_STAGES["gate:quick"], stages.slice(0, 5));
+});
+
+test("a multi-commit push range includes every commit since github.event.before", () => {
+  const repository = mkdtempSync(join(tmpdir(), "verchestra-gate-selection-"));
+  const git = (...args) => execFileSync("git", ["-C", repository, ...args], { encoding: "utf8" }).trim();
+  try {
+    git("init", "--initial-branch=main");
+    git("config", "user.email", "gate-test@example.invalid");
+    git("config", "user.name", "Gate test");
+    writeFileSync(join(repository, "README.md"), "initial\n");
+    git("add", ".");
+    git("commit", "-m", "initial");
+    const before = git("rev-parse", "HEAD");
+    mkdirSync(join(repository, "packages", "application", "src"), { recursive: true });
+    writeFileSync(join(repository, "packages", "application", "src", "first.ts"), "export {};\n");
+    git("add", ".");
+    git("commit", "-m", "application change");
+    mkdirSync(join(repository, "packages", "distribution", "src"), { recursive: true });
+    writeFileSync(join(repository, "packages", "distribution", "src", "second.ts"), "export {};\n");
+    git("add", ".");
+    git("commit", "-m", "distribution change");
+
+    const evidence = buildEvidence({ base: before, repository });
+    assert.equal(evidence.selectionMode, "git-range");
+    assert.equal(evidence.changedPathCount, 2);
+    assert.ok(evidence.gates.includes("gate:full"));
+    assert.ok(evidence.gates.includes("gate:release"));
+  } finally {
+    rmSync(repository, { recursive: true, force: true });
+  }
+});
+
+test("an all-zero initial push SHA records a conservative fallback without paths", () => {
+  const evidence = buildEvidence({ base: "0".repeat(40) });
+  assert.equal(evidence.selectionMode, "conservative-fallback");
+  assert.equal(evidence.fallbackReason, "base SHA is unavailable");
+  assert.ok(evidence.gates.includes("gate:full"));
+  assert.ok(evidence.gates.includes("gate:release"));
+  assert.equal(JSON.stringify(evidence).includes("<conservative-fallback>"), false);
+});
+
+test("the CI contract compares event-specific bases and runs emitted stages once", () => {
+  const workflow = readFileSync(new URL("../../.github/workflows/ci.yml", import.meta.url), "utf8");
+  assert.match(workflow, /fetch-depth: 0/u);
+  assert.match(workflow, /github\.event\.pull_request\.base\.sha/u);
+  assert.match(workflow, /github\.event\.before/u);
+  assert.doesNotMatch(workflow, /HEAD~1/u);
+  assert.match(workflow, /steps\.selection\.outputs\.stages/u);
+  assert.match(workflow, /pnpm run "\$stage"/u);
 });
 
 test("the regression that CI missed now selects a detecting gate", () => {

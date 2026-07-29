@@ -7,11 +7,12 @@ const workflow = await readFile(new URL("../../../../.github/workflows/ci.yml", 
 test("publishes only the exact site artifact that passed both required gates", () => {
   assert.match(workflow, /name: Quality gate/u);
   assert.match(workflow, /name: Site quality/u);
-  // The quality job selects gates from the changed surface rather than always
-  // running one fixed gate, so the contract is that selection happens and its
-  // result is executed and retained - not that a particular gate is named.
+  // The quality job selects profiles from the changed surface, then executes
+  // their stage union. The latter prevents overlapping profiles from rerunning
+  // format, lint, typecheck, and test stages serially.
   assert.match(workflow, /node scripts\/select-gates\.mjs/u);
-  assert.match(workflow, /for gate in \$\{\{ steps\.selection\.outputs\.gates \}\}/u);
+  assert.match(workflow, /for stage in \$\{\{ steps\.selection\.outputs\.stages \}\}/u);
+  assert.match(workflow, /pnpm run "\$stage"/u);
   assert.match(workflow, /path: gate-selection\.json/u);
   assert.match(workflow, /run: pnpm site:test/u);
   assert.match(workflow, /path: apps\/site\/dist/u);
