@@ -455,7 +455,7 @@ export class EncryptedFileKeyProvider {
     }
   }
 
-  async #encrypt(signer: NodeEd25519Signer): Promise<KeystoreEnvelope> {
+  async #encrypt(signer: KeyProviderSigner): Promise<KeystoreEnvelope> {
     const salt = randomBytes(SALT_BYTES);
     const iv = randomBytes(IV_BYTES);
     const key = await this.#derive(salt);
