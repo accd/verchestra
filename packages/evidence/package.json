@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "dependencies": {
+    "@verchestra/contracts": "workspace:*",
     "canonicalize": "3.0.0",
     "jose": "6.2.4"
   }

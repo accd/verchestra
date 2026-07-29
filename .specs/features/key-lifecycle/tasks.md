@@ -27,10 +27,10 @@
 
 ## Execution Evidence
 
-| Task | Status | Evidence |
-| --- | --- | --- |
-| T1 | Pending | — |
-| T2 | Pending | — |
-| T3 | Pending | — |
-| T4 | Pending | — |
-| T5 | Pending | — |
+| Task | Status   | Evidence                                                                                                                   |
+| ---- | -------- | -------------------------------------------------------------------------------------------------------------------------- |
+| T1   | Complete | `pnpm test:contract` (440 passed), `pnpm typecheck`, and `pnpm gate:quick` (1,620 unit tests + 64 readiness tests) passed. |
+| T2   | Pending  | —                                                                                                                          |
+| T3   | Pending  | —                                                                                                                          |
+| T4   | Pending  | —                                                                                                                          |
+| T5   | Pending  | —                                                                                                                          |

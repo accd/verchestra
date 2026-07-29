@@ -30,6 +30,7 @@ const valid = {
     payload: {}
   },
   "cli-output": { schemaVersion: "1", command: "doctor", ok: true, data: {} },
+  "key-lifecycle-error": { schemaVersion: "1", code: "VES_KEY_REVOKED" },
   "release-manifest": {
     schemaVersion: "1",
     releaseId: "1.0.0",
@@ -39,7 +40,13 @@ const valid = {
 };
 
 test("registry exposes only declared canonical schema versions", () => {
-  assert.deepEqual(registry.list(), ["cli-output@1", "protocol-envelope@1", "public-error@1", "release-manifest@1"]);
+  assert.deepEqual(registry.list(), [
+    "cli-output@1",
+    "key-lifecycle-error@1",
+    "protocol-envelope@1",
+    "public-error@1",
+    "release-manifest@1"
+  ]);
 });
 
 for (const [name, value] of Object.entries(valid)) {

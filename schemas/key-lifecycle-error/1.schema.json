@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ves://key-lifecycle-error/1",
+  "title": "KeyLifecycleError",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "code"],
+  "properties": {
+    "schemaVersion": { "const": "1" },
+    "code": {
+      "enum": ["VES_KEYSTORE_INTEGRITY", "VES_KEY_REVOKED", "VES_KEY_EXPIRED"]
+    }
+  }
+}
