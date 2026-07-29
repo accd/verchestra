@@ -16,8 +16,10 @@ import {
   validateHandoffTransition
 } from "../../scripts/agent-readiness.mjs";
 
-const GATES = new Set(["gate:quick", "gate:security"]);
 const SHA = "a".repeat(40);
+// Whether a revision exists is a repository fact the report author cannot write
+// into the file, so validation receives it rather than reading it.
+const REPOSITORY = { isRepositoryCommit: (revision) => revision === SHA };
 
 const report = (overrides = {}) => {
   const fields = {
@@ -27,13 +29,11 @@ const report = (overrides = {}) => {
     gates: "pnpm gate:quick, pnpm gate:security",
     gateResults: "pass, pass",
     gateRevision: SHA,
-    criteriaEvidence: "7 of 7",
+    criteriaEvidence: "7 of 7 acceptance criteria proven",
     skipped: "0",
     todo: "0",
     discriminationSensor: "5 killed, 0 survived",
-    verifier: "independent-verifier",
-    verifierRole: "independent",
-    humanReview: "approved",
+    reviewedIn: "https://github.com/accd/verchestra/pull/67",
     ...overrides
   };
   const body = Object.entries(fields)
@@ -191,9 +191,49 @@ test("the chain walk stops at the first gap and reports a fully verified chain",
 });
 
 test("a complete report is accepted and historical reports need no frontmatter", () => {
-  assert.deepEqual(validateQualificationReport(report(), "T68a", GATES), []);
-  assert.deepEqual(validateQualificationReport("# T68 Validation\n", "T68", GATES), []);
-  assert.deepEqual(validateQualificationReport("# T01 Validation\n", "T01", GATES), []);
+  assert.deepEqual(validateQualificationReport(report(), "T68a", REPOSITORY), []);
+  assert.deepEqual(validateQualificationReport("# T68 Validation\n", "T68", REPOSITORY), []);
+  assert.deepEqual(validateQualificationReport("# T01 Validation\n", "T01", REPOSITORY), []);
+});
+
+test("the fabricated report from the independent validation is refused", () => {
+  // Reproduced from the adversarial validation of #67. Every field is well
+  // formed and every one of them is a lie, which is exactly what shape checking
+  // cannot tell apart from evidence.
+  const fabricated = [
+    "---",
+    "schema: verchestra-qualification-report/v1",
+    "task: T68a",
+    `revision: ${"b".repeat(40)}`,
+    "gates: pnpm format:check",
+    "gateResults: pass",
+    `gateRevision: ${"b".repeat(40)}`,
+    "criteriaEvidence: 7 missing, 7 total",
+    "skipped: 0",
+    "todo: 0",
+    "discriminationSensor: 5 survived, 0 killed",
+    "verifier: author",
+    "verifierRole: independent",
+    "humanReview: approved",
+    "---",
+    "",
+    "# T68a Validation"
+  ].join("\n");
+  const errors = validateQualificationReport(fabricated, "T68a", REPOSITORY);
+  for (const expected of [
+    "is not a commit in this repository",
+    "format:check is not a declared gate",
+    "gate:quick was not recorded",
+    "no gate covering a substantive surface",
+    "criteriaEvidence must read",
+    "discriminationSensor must read",
+    "reviewedIn must name the pull request"
+  ]) {
+    assert.ok(
+      errors.some((problem) => problem.includes(expected)),
+      `expected an error naming "${expected}", got ${JSON.stringify(errors)}`
+    );
+  }
 });
 
 for (const [label, source, expected] of [
@@ -203,25 +243,62 @@ for (const [label, source, expected] of [
   ["a wrong schema", report({ schema: "something/v9" }), "unsupported report schema"],
   ["a mismatched task id", report({ task: "T69" }), "report claims task T69"],
   ["a short revision", report({ revision: "abc", gateRevision: "abc" }), "revision is not a full commit id"],
+  [
+    "a well-formed revision this repository does not contain",
+    report({ revision: "c".repeat(40), gateRevision: "c".repeat(40) }),
+    "is not a commit in this repository"
+  ],
   ["gate evidence from another revision", report({ gateRevision: "b".repeat(40) }), "not bound to the report revision"],
   [
-    "an unknown gate name",
+    "a gate that is not declared",
     report({ gates: "pnpm gate:imaginary", gateResults: "pass" }),
-    "unknown gate gate:imaginary"
+    "gate:imaginary is not a declared gate"
+  ],
+  [
+    "a package script standing in for a gate",
+    report({ gates: "pnpm format:check", gateResults: "pass" }),
+    "format:check is not a declared gate"
+  ],
+  [
+    "only the quick gate",
+    report({ gates: "pnpm gate:quick", gateResults: "pass" }),
+    "no gate covering a substantive surface"
+  ],
+  [
+    "a substantive gate without the quick gate",
+    report({ gates: "pnpm gate:security", gateResults: "pass" }),
+    "gate:quick was not recorded"
   ],
   ["a failing gate", report({ gateResults: "pass, fail" }), "gate gate:security did not pass"],
   ["a gate with no result", report({ gateResults: "pass" }), "every gate needs a recorded result"],
-  ["unproven acceptance criteria", report({ criteriaEvidence: "5 of 7" }), "criteriaEvidence is incomplete: 5 of 7"],
-  ["a surviving mutant", report({ discriminationSensor: "4 killed, 1 survived" }), "1 that did not fail closed"],
-  ["no mutation at all", report({ discriminationSensor: "0 killed, 0 survived" }), "at least one case"],
+  [
+    "unproven acceptance criteria",
+    report({ criteriaEvidence: "5 of 7 acceptance criteria proven" }),
+    "only 5 of 7 acceptance criteria are proven"
+  ],
+  [
+    "acceptance counts relabelled to read as complete",
+    report({ criteriaEvidence: "7 missing, 7 total" }),
+    "criteriaEvidence must read"
+  ],
+  [
+    "a surviving mutant",
+    report({ discriminationSensor: "4 killed, 1 survived" }),
+    "1 mutants survived the discrimination sensor"
+  ],
+  [
+    "a sensor whose labels are reversed",
+    report({ discriminationSensor: "5 survived, 0 killed" }),
+    "discriminationSensor must read"
+  ],
+  ["no mutation at all", report({ discriminationSensor: "0 killed, 0 survived" }), "killed nothing"],
   ["a skipped case", report({ skipped: "2" }), "skipped must be 0, found 2"],
   ["a todo case", report({ todo: "1" }), "todo must be 0, found 1"],
-  ["an author verifying their own work", report({ verifierRole: "author" }), "not recorded as independent"],
-  ["absent human review", report({ humanReview: "pending" }), "human review is not recorded as approved"],
-  ["a missing verifier", report({ verifier: "" }), "missing verifier"]
+  ["no reviewed pull request", report({ reviewedIn: null }), "reviewedIn must name the pull request"],
+  ["a reviewedIn that is not a pull request URL", report({ reviewedIn: "trust me" }), "reviewedIn must name"]
 ]) {
   test(`a report is refused for ${label}`, () => {
-    const errors = validateQualificationReport(source, "T68a", GATES);
+    const errors = validateQualificationReport(source, "T68a", REPOSITORY);
     assert.ok(
       errors.some((problem) => problem.includes(expected)),
       `expected an error naming "${expected}", got ${JSON.stringify(errors)}`

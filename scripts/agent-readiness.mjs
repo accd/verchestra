@@ -125,21 +125,26 @@ function isHistoricalReport(taskId) {
   return numeric !== null && Number(numeric[1]) <= HISTORICAL_REPORTS_THROUGH;
 }
 
-function countPair(value, label, errors, { requireEqual = false, requireZeroSecond = false } = {}) {
-  const match = /^(\d+)\D+(\d+)/u.exec(String(value ?? ""));
-  if (!match) return errors.push(`${label} must state two counts`);
-  const [first, second] = [Number(match[1]), Number(match[2])];
-  if (first < 1) errors.push(`${label} must record at least one case`);
-  if (requireEqual && first !== second) errors.push(`${label} is incomplete: ${first} of ${second}`);
-  if (requireZeroSecond && second !== 0) errors.push(`${label} reports ${second} that did not fail closed`);
-  return undefined;
-}
+// A gate name is only meaningful if it is one of the declared gates. Any package
+// script would let `format:check` alone stand in for a security surface.
+export const DECLARED_GATES = Object.freeze(["gate:quick", "gate:full", "gate:build", "gate:security", "gate:release"]);
+// `gate:quick` alone proves formatting and unit behavior. A qualification claim
+// additionally needs one gate that runs the contract, architecture, security, or
+// release stages, so the minimum profile is closed rather than open-ended.
+const SUBSTANTIVE_GATES = Object.freeze(["gate:full", "gate:build", "gate:security", "gate:release"]);
 
-// A filename is not evidence. A report only advances qualification when it binds
-// itself to the exact revision it was produced on, names gates that exist and
-// passed, records zero skipped work, kills every mutant, and carries an
-// independent verifier plus a human review decision.
-export function validateQualificationReport(source, taskId, gateNames) {
+// Closed formats, not "two numbers somewhere". `5 survived, 0 killed` must not
+// be readable as five kills, and `7 missing, 7 total` must not be readable as
+// seven of seven proven.
+const CRITERIA = /^(\d+) of (\d+) acceptance criteria proven$/u;
+const SENSOR = /^(\d+) killed, (\d+) survived$/u;
+
+// A filename is not evidence, and neither is a well-formed string. A report only
+// advances qualification when the revision it names is a commit this repository
+// actually contains, the gates it claims are declared gates that cover a
+// substantive surface, and its counts parse in a closed format that cannot be
+// reversed by relabelling.
+export function validateQualificationReport(source, taskId, { isRepositoryCommit } = {}) {
   if (isHistoricalReport(taskId)) return [];
   const errors = [];
   const match = /^---\r?\n([\s\S]*?)\r?\n---\r?\n/u.exec(source);
@@ -150,16 +155,17 @@ export function validateQualificationReport(source, taskId, gateNames) {
     if (!field) return [`${taskId}: malformed frontmatter line`];
     report[field[1]] = field[2].trim();
   }
-  const require = (field) => {
-    if (!report[field]) errors.push(`${taskId}: missing ${field}`);
-    return report[field];
-  };
 
   if (report.schema !== QUALIFICATION_REPORT_SCHEMA) errors.push(`${taskId}: unsupported report schema`);
   if (report.task !== taskId) errors.push(`${taskId}: report claims task ${report.task ?? "nothing"}`);
-  const revision = require("revision");
-  if (revision && !/^[0-9a-f]{40}$/u.test(revision)) errors.push(`${taskId}: revision is not a full commit id`);
-  // Gate evidence copied from an earlier revision is not evidence for this one.
+
+  const revision = report.revision ?? "";
+  if (!/^[0-9a-f]{40}$/u.test(revision)) errors.push(`${taskId}: revision is not a full commit id`);
+  // A well-formed but invented SHA is the whole point of the check. The revision
+  // has to be a commit this repository contains, which the report author cannot
+  // fabricate.
+  else if (isRepositoryCommit !== undefined && !isRepositoryCommit(revision))
+    errors.push(`${taskId}: revision ${revision.slice(0, 12)} is not a commit in this repository`);
   if (report.gateRevision !== revision) errors.push(`${taskId}: gate evidence is not bound to the report revision`);
 
   const gates = (report.gates ?? "")
@@ -170,24 +176,39 @@ export function validateQualificationReport(source, taskId, gateNames) {
     .split(",")
     .map((result) => result.trim().toLowerCase())
     .filter(Boolean);
-  if (gates.length === 0) errors.push(`${taskId}: no gate was recorded`);
-  for (const gate of gates) if (!gateNames.has(gate)) errors.push(`${taskId}: unknown gate ${gate}`);
+  for (const gate of gates)
+    if (!DECLARED_GATES.includes(gate)) errors.push(`${taskId}: ${gate} is not a declared gate`);
+  if (!gates.includes("gate:quick")) errors.push(`${taskId}: gate:quick was not recorded`);
+  if (!gates.some((gate) => SUBSTANTIVE_GATES.includes(gate)))
+    errors.push(`${taskId}: no gate covering a substantive surface was recorded`);
   if (gates.length !== results.length) errors.push(`${taskId}: every gate needs a recorded result`);
   else
     for (const [index, result] of results.entries()) {
       if (result !== "pass") errors.push(`${taskId}: gate ${gates[index]} did not pass`);
     }
 
-  countPair(require("criteriaEvidence"), `${taskId}: criteriaEvidence`, errors, { requireEqual: true });
-  countPair(require("discriminationSensor"), `${taskId}: discriminationSensor`, errors, { requireZeroSecond: true });
+  const criteria = CRITERIA.exec(report.criteriaEvidence ?? "");
+  if (criteria === null) errors.push(`${taskId}: criteriaEvidence must read "<n> of <n> acceptance criteria proven"`);
+  else if (Number(criteria[1]) < 1 || criteria[1] !== criteria[2])
+    errors.push(`${taskId}: only ${criteria[1]} of ${criteria[2]} acceptance criteria are proven`);
+
+  const sensor = SENSOR.exec(report.discriminationSensor ?? "");
+  if (sensor === null) errors.push(`${taskId}: discriminationSensor must read "<n> killed, <n> survived"`);
+  else if (Number(sensor[1]) < 1) errors.push(`${taskId}: the discrimination sensor killed nothing`);
+  else if (Number(sensor[2]) !== 0) errors.push(`${taskId}: ${sensor[2]} mutants survived the discrimination sensor`);
+
   for (const field of ["skipped", "todo"]) {
     if (report[field] !== "0") errors.push(`${taskId}: ${field} must be 0, found ${report[field] ?? "nothing"}`);
   }
-  require("verifier");
-  // The author's own claim is not independent verification, and CI success is
-  // not human review.
-  if (report.verifierRole !== "independent") errors.push(`${taskId}: verification is not recorded as independent`);
-  if (report.humanReview !== "approved") errors.push(`${taskId}: human review is not recorded as approved`);
+
+  // Independence and human review are deliberately NOT fields here. A string the
+  // report author writes cannot establish that someone else reviewed the work,
+  // and pretending otherwise is worse than not checking: it reads as enforcement
+  // while enforcing nothing. That boundary belongs to branch protection on the
+  // commit this report names, tracked by #60. `reviewedIn` records where to look
+  // for it rather than asserting the verdict.
+  if (!/^https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/pull\/\d+$/u.test(report.reviewedIn ?? ""))
+    errors.push(`${taskId}: reviewedIn must name the pull request URL the evidence was reviewed in`);
   return errors;
 }
 
@@ -196,16 +217,20 @@ export async function readQualificationReports(root) {
   const tasks = new Set();
   const errors = [];
   if (!existsSync(directory)) return { tasks, errors };
-  const manifestPath = join(root, "package.json");
-  const scripts = existsSync(manifestPath)
-    ? Object.keys(JSON.parse(await readFile(manifestPath, "utf8")).scripts ?? {})
-    : [];
-  const gateNames = new Set(scripts);
+  // Whether a revision exists is a fact about the repository, not a claim in the
+  // file, so the report author cannot supply it.
+  const known = new Map();
+  const isRepositoryCommit = (revision) => {
+    if (!known.has(revision)) known.set(revision, git(root, ["cat-file", "-e", `${revision}^{commit}`]) !== null);
+    return known.get(revision);
+  };
   for (const entry of (await readdir(directory)).sort()) {
     const task = /^t(\d+[a-z]?)-validation\.md$/u.exec(entry);
     if (!task) continue;
     const taskId = `T${task[1]}`;
-    const problems = validateQualificationReport(await readFile(join(directory, entry), "utf8"), taskId, gateNames);
+    const problems = validateQualificationReport(await readFile(join(directory, entry), "utf8"), taskId, {
+      isRepositoryCommit
+    });
     if (problems.length === 0) tasks.add(taskId);
     else errors.push(...problems);
   }
