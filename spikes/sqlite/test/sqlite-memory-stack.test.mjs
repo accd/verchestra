@@ -7,8 +7,10 @@ import { afterEach, test } from "node:test";
 import { getLoadablePath } from "sqlite-vec";
 import {
   QUALIFIED_SQLITE,
+  QUALIFIED_SQLITE_ASSETS,
   SqliteMemoryStack,
-  inspectSqliteRuntime
+  inspectSqliteRuntime,
+  qualifiedSqliteAsset
 } from "../src/sqlite-memory-stack.mjs";
 
 const roots = [];
@@ -51,9 +53,26 @@ test("records the exact qualified Node, SQLite, FTS5, and sqlite-vec versions", 
 });
 
 test("records the exact sqlite-vec release asset checksum and byte size", async () => {
+  const qualified = qualifiedSqliteAsset();
+  assert.notEqual(qualified, null);
   const asset = await readFile(getLoadablePath());
-  assert.equal(createHash("sha256").update(asset).digest("hex"), "fcf98662a7ad9dce394b96a88f91032047823831b951c76636787c312a6476e6");
-  assert.equal((await stat(getLoadablePath())).size, 289280);
+  assert.equal(createHash("sha256").update(asset).digest("hex"), qualified.sha256);
+  assert.equal((await stat(getLoadablePath())).size, qualified.bytes);
+});
+
+test("qualifies only the explicit Linux and Windows sqlite-vec assets", () => {
+  assert.deepEqual(QUALIFIED_SQLITE_ASSETS, {
+    "linux-x64": {
+      sha256: "5923730861b86c707cca5602b5f91092f9e52a46706dbc6e269fd4bb9c4498e8",
+      bytes: 159816
+    },
+    "win32-x64": {
+      sha256: "fcf98662a7ad9dce394b96a88f91032047823831b951c76636787c312a6476e6",
+      bytes: 289280
+    }
+  });
+  assert.equal(qualifiedSqliteAsset({ platform: "darwin", arch: "arm64" }), null);
+  assert.equal(qualifiedSqliteAsset({ platform: "linux", arch: "arm64" }), null);
 });
 
 test("opens a file database with WAL, foreign keys, busy timeout, and defensive mode", async () => {
