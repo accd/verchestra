@@ -1,3 +1,16 @@
+---
+schema: verchestra-feature-handoff/v1
+feature: ci-gate-selection
+issue: 59
+status: verification
+branch: codex/issue-59-ci-gates
+baseRevision: 82ef44b40f2e90cbb293428f01ce3adb64526c21
+lastCompletedTask: null
+nextTask: Validate the exact PR head with the selected full and release stages.
+lastGate: pnpm gate:release
+updatedAt: 2026-07-29T18:34:00Z
+---
+
 # Handoff
 
 ## State
