@@ -176,6 +176,13 @@ test("incompatible installed release fails before mutable dispatch", async () =>
   assert.match(result.streams.stderr[0], /VES_CLI_RELEASE_INCOMPATIBLE/u);
 });
 
+test("installed CLI identity must exactly match the manifest it executes", async () => {
+  const result = await execute(["init", "--dry-run"], { installedCliVersion: "1.0.1" });
+  assert.equal(result.exitCode, 3);
+  assert.equal(result.bus.calls.length, 0);
+  assert.match(result.streams.stderr[0], /VES_CLI_RELEASE_INCOMPATIBLE/u);
+});
+
 for (const [name, installedManifest] of [
   ["duplicate commands", manifest({ commands: [...manifest().commands, manifest().commands[0]] })],
   [

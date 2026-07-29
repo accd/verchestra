@@ -217,7 +217,10 @@ export async function runCli(options: CliRunOptions): Promise<number> {
   let output: "human" | "json" = requestedJson(options.argv) ? "json" : "human";
   try {
     assertManifest(options.installedManifest);
-    if (compareVersions(options.installedCliVersion, options.installedManifest.minimumCliVersion) < 0) {
+    if (
+      options.installedCliVersion !== options.installedManifest.semanticVersion ||
+      compareVersions(options.installedCliVersion, options.installedManifest.minimumCliVersion) < 0
+    ) {
       throw cliError(
         "VES_CLI_RELEASE_INCOMPATIBLE",
         { minimumRelease: options.installedManifest.minimumCliVersion },
