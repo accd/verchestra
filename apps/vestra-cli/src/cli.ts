@@ -182,10 +182,15 @@ function renderHelp(manifest: InstalledCliManifest): string {
 }
 
 function humanData(data: unknown): string {
-  if (data !== null && typeof data === "object") return `${JSON.stringify(data, null, 2)}\n`;
+  if (data === null || typeof data !== "object" || Array.isArray(data)) return `${String(data)}\n`;
   return `${Object.entries(data as Readonly<Record<string, unknown>>)
     .sort(([left], [right]) => left.localeCompare(right))
-    .map(([key, value]) => `${key}: ${String(value)}`)
+    // A nested value has to stay readable without turning human output into the
+    // JSON envelope that `--output json` exists to provide, so it is rendered
+    // compactly rather than as "[object Object]".
+    .map(
+      ([key, value]) => `${key}: ${typeof value === "object" && value !== null ? JSON.stringify(value) : String(value)}`
+    )
     .join("\n")}\n`;
 }
 
