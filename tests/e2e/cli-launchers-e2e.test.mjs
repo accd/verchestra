@@ -100,6 +100,32 @@ test("init dry-run uses the production composition and leaves a real Git workspa
   assert.deepEqual(await byteSnapshot(workspace), before);
 });
 
+test("init applies one reviewed preview and repeats as a no-op", async () => {
+  const workspace = await scannerRoot();
+  await initRepository(workspace);
+  const args = [
+    "init",
+    "--workspace-id",
+    "workspace_018f0b6d-7b1a-7abc-8def-0123456789ab",
+    "--name",
+    "My workspace",
+    "--placement",
+    "centralized",
+    "--output",
+    "json"
+  ];
+  const first = launch("vestra", args, workspace);
+  assert.equal(first.status, 0);
+  assert.equal(first.stderr, "");
+  assert.equal(JSON.parse(first.stdout).data.receipt.changed, 7);
+  const snapshot = await byteSnapshot(workspace);
+  const second = launch("vestra", args, workspace);
+  assert.equal(second.status, 0);
+  assert.equal(second.stderr, "");
+  assert.equal(JSON.parse(second.stdout).data.receipt.changed, 0);
+  assert.deepEqual(await byteSnapshot(workspace), snapshot);
+});
+
 for (const name of ["vestra", "verchestra"]) {
   test(`${name} reports the canonical repository version and no invented release`, () => {
     const human = launch(name, ["--version"]).stdout;
