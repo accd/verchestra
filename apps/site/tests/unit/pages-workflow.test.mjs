@@ -7,7 +7,12 @@ const workflow = await readFile(new URL("../../../../.github/workflows/ci.yml", 
 test("publishes only the exact site artifact that passed both required gates", () => {
   assert.match(workflow, /name: Quality gate/u);
   assert.match(workflow, /name: Site quality/u);
-  assert.match(workflow, /run: pnpm gate:quick/u);
+  // The quality job selects gates from the changed surface rather than always
+  // running one fixed gate, so the contract is that selection happens and its
+  // result is executed and retained - not that a particular gate is named.
+  assert.match(workflow, /node scripts\/select-gates\.mjs/u);
+  assert.match(workflow, /for gate in \$\{\{ steps\.selection\.outputs\.gates \}\}/u);
+  assert.match(workflow, /path: gate-selection\.json/u);
   assert.match(workflow, /run: pnpm site:test/u);
   assert.match(workflow, /path: apps\/site\/dist/u);
   assert.match(workflow, /needs: \[quality, site\]/u);
@@ -16,7 +21,11 @@ test("publishes only the exact site artifact that passed both required gates", (
 
 test("pins every delivery action and isolates elevated Pages permissions", () => {
   const actionUses = [...workflow.matchAll(/uses: ([^\s#]+)/gu)].map((match) => match[1]);
-  assert.equal(actionUses.length, 9);
+  // The exact count is a tripwire: adding an action must be a reviewed decision,
+  // never an unnoticed one. It rose to 10 when the quality job began retaining
+  // gate-selection evidence.
+  assert.equal(actionUses.length, 10);
+  assert.match(workflow, /uses: actions\/upload-artifact@[a-f0-9]{40} # v\d+\.\d+\.\d+\n {8}with:\n.*\n.*gate-selection/su);
   for (const action of actionUses) {
     assert.match(action, /^[^@]+@[a-f0-9]{40}$/u);
   }
