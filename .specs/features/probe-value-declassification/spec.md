@@ -18,6 +18,8 @@ value is safe to make portable, so a raw e-mail can survive promotion.
 - [ ] Reject secret-, credential-, token-, connection-string-, and e-mail-
   shaped source values before promotion.
 - [ ] Bind the new retention representation into `evidenceDigest`.
+- [ ] Version the changed portable representation explicitly and fail closed on
+  legacy raw-value evidence.
 
 ## Out of Scope
 
@@ -52,6 +54,8 @@ value is safe to make portable, so a raw e-mail can survive promotion.
    claim references and `evidenceDigest` SHALL be deterministic.
 5. WHEN #34 binds promoted evidence into a package THEN it SHALL consume this
    representation only; no package reference may reintroduce raw claim values.
+6. WHEN a receiver presents a V1 promoted-evidence body THEN it SHALL reject
+   it and require re-promotion as V2 rather than interpreting raw claims.
 
 ## Requirement Traceability
 
@@ -61,3 +65,4 @@ value is safe to make portable, so a raw e-mail can survive promotion.
 | PVD-02 — prohibited content rejection | In Design |
 | PVD-03 — integrity and determinism | In Design |
 | PVD-04 — #34 compatibility | In Design |
+| PVD-05 — explicit portable-version migration | In Design |

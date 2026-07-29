@@ -40,7 +40,8 @@ interface PortableSanitizedClaim {
 
 `valueDigest` is a provenance reference, not a declassification proof and not
 a way to recover a source value. No source scalar is retained in the promoted
-artifact.
+artifact. `PromotedProbeEvidence.schemaVersion` is V2; V1 is rejected because
+it can carry raw values and cannot be silently upgraded safely.
 
 ## Risks & Concerns
 
