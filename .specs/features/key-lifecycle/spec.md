@@ -80,7 +80,7 @@ portability promise of the product.
 | --- | --- | --- |
 | KEY-01, KEY-02, KEY-07 | T2 | Complete |
 | KEY-03, KEY-04 | T3 | Complete |
-| KEY-05 | T4 | Pending |
+| KEY-05 | T4 | Complete |
 | KEY-06 | T5 | Pending |
 
 ## Success Criteria

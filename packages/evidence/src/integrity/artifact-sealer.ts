@@ -1,7 +1,7 @@
 import { createPublicKey, verify as verifyBytes } from "node:crypto";
 
 import { canonicalizeJson, IntegrityError, sha256Digest } from "./canonical.ts";
-import type { NodeEd25519Signer } from "./signer.ts";
+import type { EvidenceSigner } from "./key-provider.ts";
 import type {
   ArtifactBinding,
   JsonValue,
@@ -15,7 +15,7 @@ import type {
 const DIGEST_PATTERN = /^[a-f0-9]{64}$/u;
 
 interface SealerOptions {
-  readonly signer: NodeEd25519Signer;
+  readonly signer: EvidenceSigner;
   readonly now?: () => Date;
 }
 
@@ -100,7 +100,7 @@ export function createTrustRoot(input: TrustRootInput): TrustRoot {
 }
 
 export class ArtifactSealer {
-  readonly #signer: NodeEd25519Signer;
+  readonly #signer: EvidenceSigner;
   readonly #now: () => Date;
 
   constructor(options: SealerOptions) {

@@ -115,6 +115,12 @@ importers:
       '@verchestra/domain':
         specifier: workspace:0.0.0
         version: link:../../packages/domain
+      '@verchestra/evidence':
+        specifier: workspace:0.0.0
+        version: link:../../packages/evidence
+      '@verchestra/platform-node':
+        specifier: workspace:0.0.0
+        version: link:../../packages/platform-node
       '@verchestra/workspace':
         specifier: workspace:0.0.0
         version: link:../../packages/workspace

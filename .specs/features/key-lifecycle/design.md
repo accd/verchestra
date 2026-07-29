@@ -61,6 +61,13 @@ composition root in `apps/vestra-cli` will resolve a `KeyProviderPort`
 implementation from workspace configuration (default: encrypted file) and
 inject it into sealing and verification workflows.
 
+The CLI composition exports `createEvidenceSealer`, which accepts only a
+`KeyProviderPort`, and `createLocalEvidenceSealer`, which resolves the
+encrypted-file adapter from explicit state-root and passphrase callbacks. The
+sealer itself depends only on `EvidenceSigner`, so product composition never
+constructs `NodeEd25519Signer` directly. No public evidence command is added
+until a complete sealing workflow is composed.
+
 ## Portability Proof (KEY-06 / R13)
 
 End-to-end test plus a documented manual demo script:
