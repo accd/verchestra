@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { test } from "node:test";
 
 const root = new URL("../../", import.meta.url);
+const canonicalVersion = JSON.parse(readFileSync(new URL("package.json", root), "utf8")).version;
 
 function launch(name, args) {
   return spawnSync(process.execPath, [`apps/vestra-cli/bin/${name}.mjs`, ...args], {
@@ -28,3 +30,24 @@ test("launcher JSON stdout contains exactly one valid document", () => {
   assert.equal(result.stderr, "");
   assert.equal(JSON.parse(result.stdout).command, "version");
 });
+
+for (const name of ["vestra", "verchestra"]) {
+  test(`${name} reports the canonical repository version and no invented release`, () => {
+    const human = launch(name, ["--version"]).stdout;
+    const help = launch(name, ["--help"]).stdout;
+    const json = JSON.parse(launch(name, ["--version", "--output", "json"]).stdout).data;
+
+    assert.equal(json.semanticVersion, canonicalVersion);
+    assert.ok(human.includes(canonicalVersion), `--version must name ${canonicalVersion}, got ${human}`);
+    assert.ok(help.includes(canonicalVersion), `--help must name ${canonicalVersion}, got ${help.split("\n")[0]}`);
+
+    // No verified release artifact exists before the T77 release decision, so
+    // the executable must say so rather than print a digest it cannot back.
+    assert.equal(json.releaseDigest, null);
+    assert.match(human, /source build, no verified release artifact/u);
+    for (const output of [human, help]) {
+      assert.doesNotMatch(output, /\bVerchestra 1\.0\.0\b/u, "the CLI must not claim a 1.0 release");
+      assert.doesNotMatch(output, /sha256:[a-f0-9]{64}/u, "the CLI must not print an unbacked release digest");
+    }
+  });
+}
