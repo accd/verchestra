@@ -30,10 +30,21 @@ test("uncooperative cancellation records every stage and kills the tree", async 
   assert.deepEqual(calls, ["cancel", "signal", "tree"]);
 });
 
-test("current-platform process-tree killer terminates parent and descendant", { timeout: 10_000 }, async () => {
-  const child = spawn(process.execPath, [fileURLToPath(new URL("./fixtures/process-tree-worker.mjs", import.meta.url))], { stdio: ["ignore", "pipe", "pipe"] });
+test("current-platform process-tree killer terminates a non-group-leader parent and descendant", { timeout: 10_000 }, async (t) => {
+  const child = spawn(process.execPath, [fileURLToPath(new URL("./fixtures/process-tree-worker.mjs", import.meta.url))], {
+    stdio: ["ignore", "pipe", "pipe"]
+  });
   const [line] = await once(child.stdout, "data");
   const pids = JSON.parse(line.toString("utf8").trim());
+  t.after(() => {
+    for (const pid of [pids.child, pids.parent]) {
+      try {
+        process.kill(pid, "SIGKILL");
+      } catch (error) {
+        if (error.code !== "ESRCH") throw error;
+      }
+    }
+  });
   assert.equal(await isProcessAlive(pids.parent), true);
   assert.equal(await isProcessAlive(pids.child), true);
   const exited = once(child, "exit");
