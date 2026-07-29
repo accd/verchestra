@@ -187,6 +187,16 @@ test("the CI contract compares event-specific bases and runs emitted stages once
   assert.match(workflow, /node scripts\/gate-output\.mjs gate-selection\.json "\$GITHUB_OUTPUT"/u);
 });
 
+test("manual qualification validation accepts only its closed gate profiles", () => {
+  const workflow = readFileSync(new URL("../../.github/workflows/full-validation.yml", import.meta.url), "utf8");
+  assert.match(workflow, /gate:\s*\n\s*description: "Closed qualification profile to run"/u);
+  assert.match(workflow, /options:\s*\n\s*- quick\s*\n\s*- full/u);
+  assert.match(workflow, /case "\$REQUESTED_GATE" in quick\|full\)/u);
+  assert.match(workflow, /echo "gate=gate:\$REQUESTED_GATE"/u);
+  assert.match(workflow, /run: pnpm \$\{\{ steps\.candidate\.outputs\.gate \}\}/u);
+  assert.doesNotMatch(workflow, /gate: "gate:full"/u);
+});
+
 test("the regression that CI missed now selects a detecting gate", () => {
   // test:architecture was red on clean main because apps/site was absent from
   // EXPECTED_PACKAGES, and CI stayed green because it only ran gate:quick.
