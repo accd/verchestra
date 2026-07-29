@@ -39,26 +39,73 @@ export const HANDOFF_STATUSES = Object.freeze(["planned", "in_progress", "blocke
 // never count at all. Both are resolved by walking the ROADMAP.md chain, which
 // makes ROADMAP.md the single ordering authority for how far the chain is
 // verified as well as for what follows what.
+const ROADMAP_EDGE = /^[^\S\n]*(T\d+[a-z]?)(?:\[[^\]]*\])?[^\S\n]*-->[^\S\n]*(T\d+[a-z]?)(?:\[[^\]]*\])?[^\S\n]*$/gmu;
+
 export function parseRoadmapChain(roadmap) {
-  const edges = new Map();
-  const edge = /^[^\S\n]*(T\d+[a-z]?)(?:\[[^\]]*\])?[^\S\n]*-->[^\S\n]*(T\d+[a-z]?)(?:\[[^\]]*\])?[^\S\n]*$/gmu;
-  for (const match of roadmap.matchAll(edge)) if (!edges.has(match[1])) edges.set(match[1], match[2]);
-  return edges;
+  return [...roadmap.matchAll(ROADMAP_EDGE)].map((match) => [match[1], match[2]]);
+}
+
+// An ordering authority that quietly normalizes an ambiguous graph is not an
+// authority. A branch, a merge, a cycle, or a second disconnected component all
+// fail closed with the conflicting task ids named, rather than being resolved by
+// which edge happened to be written first.
+export function validateRoadmapChain(roadmap) {
+  const edges = parseRoadmapChain(roadmap);
+  const errors = [];
+  const successor = new Map();
+  const incoming = new Map();
+  for (const [from, to] of edges) {
+    if (from === to) errors.push(`${from} declares an edge to itself`);
+    if (successor.has(from)) errors.push(`${from} declares more than one successor: ${successor.get(from)} and ${to}`);
+    else successor.set(from, to);
+    incoming.set(to, (incoming.get(to) ?? 0) + 1);
+  }
+  for (const [task, count] of incoming) if (count > 1) errors.push(`${task} has ${count} predecessors`);
+
+  const nodes = new Set([...successor.keys(), ...incoming.keys()]);
+  const roots = [...nodes].filter((task) => !incoming.has(task));
+  const terminals = [...nodes].filter((task) => !successor.has(task));
+  if (nodes.size === 0) errors.push("no roadmap chain is declared");
+  else {
+    if (roots.length !== 1) errors.push(`the chain needs exactly one start, found ${roots.length || "none"}`);
+    if (terminals.length !== 1) errors.push(`the chain needs exactly one end, found ${terminals.length || "none"}`);
+  }
+
+  const chain = [];
+  if (roots.length === 1) {
+    const seen = new Set();
+    for (let task = roots[0]; task !== undefined; task = successor.get(task)) {
+      if (seen.has(task)) {
+        errors.push(`the chain revisits ${task}`);
+        break;
+      }
+      seen.add(task);
+      chain.push(task);
+    }
+    const unreachable = [...nodes].filter((task) => !seen.has(task)).sort();
+    if (unreachable.length > 0) errors.push(`unreachable from the start: ${unreachable.join(", ")}`);
+  }
+  return { chain: errors.length === 0 ? chain : [], errors };
 }
 
 export function resolveQualification(roadmap, validatedTasks) {
-  const edges = parseRoadmapChain(roadmap);
-  const targets = new Set(edges.values());
-  const roots = [...edges.keys()].filter((task) => !targets.has(task));
-  if (roots.length !== 1) return { highestVerifiedTask: null, nextTask: null };
+  const { chain, errors } = validateRoadmapChain(roadmap);
+  // A validation report whose task id carries a letter suffix only exists
+  // because of an inserted task, so one that no roadmap node claims is evidence
+  // for nothing and must not be silently ignored.
+  const declared = new Set(chain);
+  const stray = [...validatedTasks].filter((task) => /[a-z]$/u.test(task) && !declared.has(task)).sort();
+  const allErrors = [...errors, ...stray.map((task) => `${task} has a validation report but no roadmap node`)];
+  if (allErrors.length > 0) return { highestVerifiedTask: null, nextTask: null, errors: allErrors };
+
   let highest = null;
-  for (let task = roots[0]; task !== undefined; task = edges.get(task)) {
-    if (!validatedTasks.has(task)) break;
-    highest = task;
-  }
+  let index = 0;
+  while (index < chain.length && validatedTasks.has(chain[index])) highest = chain[index++];
+  const outOfOrder = chain.slice(index + 1).filter((task) => validatedTasks.has(task));
   return {
     highestVerifiedTask: highest,
-    nextTask: highest === null ? roots[0] : (edges.get(highest) ?? null)
+    nextTask: highest === null ? (chain[0] ?? null) : (chain[index] ?? null),
+    errors: outOfOrder.length === 0 ? [] : [`validation reports exist after the first gap: ${outOfOrder.join(", ")}`]
   };
 }
 
@@ -369,11 +416,14 @@ export async function checkRepository(root = ROOT) {
       if (!new RegExp(String.raw`\b${task}\b`, "u").test(source)) errors.push(`${path}: missing ${task} status`);
     }
   }
-  // The chain must be declared by the roadmap, never inferred, so a missing or
-  // broken chain fails instead of silently keeping the numeric fallback.
+  // The chain must be declared unambiguously by the roadmap, never inferred, so
+  // a missing, branched, cyclic, or partially verified chain fails with the
+  // conflicting task ids named instead of keeping the numeric fallback.
   if (existsSync(join(root, "ROADMAP.md"))) {
     const roadmap = await readFile(join(root, "ROADMAP.md"), "utf8");
-    if (resolveQualification(roadmap, await validatedTasks(root)).highestVerifiedTask === null)
+    const resolved = resolveQualification(roadmap, await validatedTasks(root));
+    for (const problem of resolved.errors) errors.push(`ROADMAP.md: ${problem}`);
+    if (resolved.errors.length === 0 && resolved.highestVerifiedTask === null)
       errors.push("ROADMAP.md does not declare a verified qualification chain");
   }
   if (existsSync(join(root, "llms.txt"))) {

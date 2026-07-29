@@ -7,6 +7,7 @@ import { test } from "node:test";
 import {
   compileAgentContext,
   parseRoadmapChain,
+  validateRoadmapChain,
   qualificationStatusLine,
   resolveQualification,
   normalizeRepositoryPath,
@@ -49,48 +50,107 @@ const CHAIN = [
 
 const verified = (...tasks) => new Set(tasks);
 
+const graph = (...edges) => edges.map((line) => `  ${line}`).join("\n");
+
 test("roadmap edges parse with or without a labelled source", () => {
-  assert.deepEqual(
-    [...parseRoadmapChain(CHAIN)],
-    [
-      ["T68", "T68a"],
-      ["T68a", "T68b"],
-      ["T68b", "T68c"],
-      ["T68c", "T69"]
-    ]
-  );
-  assert.equal(parseRoadmapChain("").size, 0);
+  assert.deepEqual(parseRoadmapChain(CHAIN), [
+    ["T68", "T68a"],
+    ["T68a", "T68b"],
+    ["T68b", "T68c"],
+    ["T68c", "T69"]
+  ]);
+  assert.deepEqual(parseRoadmapChain(""), []);
+});
+
+test("a valid chain yields its declared order", () => {
+  assert.deepEqual(validateRoadmapChain(CHAIN), {
+    chain: ["T68", "T68a", "T68b", "T68c", "T69"],
+    errors: []
+  });
+});
+
+for (const [label, roadmap, expected] of [
+  ["a branch", graph('T1 --> T2["b"]', 'T1 --> T3["c"]', 'T2 --> T3["c"]'), "T1 declares more than one successor"],
+  ["a merge", graph('T1 --> T3["c"]', 'T2 --> T3["c"]'), "T3 has 2 predecessors"],
+  ["a self cycle", graph('T1 --> T1["a"]', 'T1 --> T2["b"]'), "T1 declares an edge to itself"],
+  [
+    "a disconnected cycle",
+    graph('T1 --> T2["b"]', 'T3 --> T4["d"]', 'T4 --> T3["c"]'),
+    "unreachable from the start: T3, T4"
+  ],
+  ["a disconnected chain", graph('T1 --> T2["b"]', 'T3 --> T4["d"]'), "the chain needs exactly one start, found 2"],
+  ["a missing root", graph('T1 --> T2["b"]', 'T2 --> T1["a"]'), "the chain needs exactly one start, found none"],
+  ["multiple terminals", graph('T1 --> T2["b"]', 'T3 --> T4["d"]'), "the chain needs exactly one end, found 2"],
+  ["no chain at all", "", "no roadmap chain is declared"]
+]) {
+  test(`the chain fails closed on ${label}`, () => {
+    const result = validateRoadmapChain(roadmap);
+    assert.deepEqual(result.chain, []);
+    assert.ok(
+      result.errors.some((problem) => problem.includes(expected)),
+      `expected an error naming "${expected}", got ${JSON.stringify(result.errors)}`
+    );
+  });
+}
+
+test("a validation report with no roadmap node fails closed", () => {
+  const result = resolveQualification(CHAIN, verified("T68", "T68z"));
+  assert.deepEqual(result, {
+    highestVerifiedTask: null,
+    nextTask: null,
+    errors: ["T68z has a validation report but no roadmap node"]
+  });
+  // Numeric reports predate the declared chain, so they are historical evidence
+  // rather than strays.
+  assert.deepEqual(resolveQualification(CHAIN, verified("T01", "T68")).errors, []);
+});
+
+test("reports after the first gap are reported as out-of-order evidence", () => {
+  const result = resolveQualification(CHAIN, verified("T68", "T68b", "T68c"));
+  assert.equal(result.highestVerifiedTask, "T68");
+  assert.equal(result.nextTask, "T68a");
+  assert.deepEqual(result.errors, ["validation reports exist after the first gap: T68b, T68c"]);
 });
 
 test("the chain walk advances past letter-suffixed tasks", () => {
   assert.deepEqual(resolveQualification(CHAIN, verified("T68")), {
     highestVerifiedTask: "T68",
-    nextTask: "T68a"
+    nextTask: "T68a",
+    errors: []
   });
   assert.deepEqual(resolveQualification(CHAIN, verified("T68", "T68a")), {
     highestVerifiedTask: "T68a",
-    nextTask: "T68b"
+    nextTask: "T68b",
+    errors: []
   });
   assert.deepEqual(resolveQualification(CHAIN, verified("T68", "T68a", "T68b", "T68c")), {
     highestVerifiedTask: "T68c",
-    nextTask: "T69"
+    nextTask: "T69",
+    errors: []
   });
 });
 
 test("the chain walk stops at the first gap and reports a fully verified chain", () => {
   assert.deepEqual(resolveQualification(CHAIN, verified("T68", "T68a", "T68c")), {
     highestVerifiedTask: "T68a",
-    nextTask: "T68b"
+    nextTask: "T68b",
+    errors: ["validation reports exist after the first gap: T68c"]
   });
   assert.deepEqual(resolveQualification(CHAIN, verified("T68", "T68a", "T68b", "T68c", "T69")), {
     highestVerifiedTask: "T69",
-    nextTask: null
+    nextTask: null,
+    errors: []
   });
   assert.deepEqual(resolveQualification(CHAIN, verified()), {
     highestVerifiedTask: null,
-    nextTask: "T68"
+    nextTask: "T68",
+    errors: []
   });
-  assert.deepEqual(resolveQualification("", verified("T68")), { highestVerifiedTask: null, nextTask: null });
+  assert.deepEqual(resolveQualification("", verified("T68")), {
+    highestVerifiedTask: null,
+    nextTask: null,
+    errors: ["no roadmap chain is declared"]
+  });
 });
 
 test("the status line names the next task or declares the chain fully verified", () => {

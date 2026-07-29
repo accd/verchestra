@@ -12,6 +12,7 @@ import {
   extractTitle,
   isCanonicalSourcePath,
   resolveQualification,
+  validateRoadmapChain,
   rewriteCanonicalLinks,
   resolveRepositoryPath,
   validateUniqueRoutes
@@ -27,19 +28,35 @@ const CHAIN = [
 test("the public status walks the roadmap chain past letter-suffixed tasks", () => {
   assert.deepEqual(resolveQualification(CHAIN, new Set(["T68"])), {
     highestVerifiedTask: "T68",
-    nextTask: "T68a"
+    nextTask: "T68a",
+    errors: []
   });
   assert.deepEqual(resolveQualification(CHAIN, new Set(["T68", "T68a"])), {
     highestVerifiedTask: "T68a",
-    nextTask: "T68b"
+    nextTask: "T68b",
+    errors: []
   });
   assert.deepEqual(resolveQualification(CHAIN, new Set(["T68", "T68b"])), {
     highestVerifiedTask: "T68",
-    nextTask: "T68a"
+    nextTask: "T68a",
+    errors: ["validation reports exist after the first gap: T68b"]
   });
+});
+
+test("the public status refuses an ambiguous or unclaimed roadmap", () => {
+  const branched = '  T68 --> T68a["a"]\n  T68 --> T69["b"]';
+  assert.ok(
+    validateRoadmapChain(branched).errors.some((problem) => problem.includes("more than one successor")),
+    "a branch must fail closed"
+  );
+  assert.deepEqual(validateRoadmapChain(branched).chain, []);
+  assert.deepEqual(resolveQualification(CHAIN, new Set(["T68", "T68z"])).errors, [
+    "T68z has a validation report but no roadmap node"
+  ]);
   assert.deepEqual(resolveQualification("", new Set(["T68"])), {
     highestVerifiedTask: null,
-    nextTask: null
+    nextTask: null,
+    errors: ["no roadmap chain is declared"]
   });
 });
 
