@@ -7,7 +7,7 @@ function modelCatalog() {
   return { all: [{ id: "company", name: "Company AI", models: { "qwen3-coder-480b": { id: "qwen3-coder-480b" }, "other-coder": { id: "other-coder" } } }], connected: ["company"], default: { company: "qwen3-coder-480b" } };
 }
 
-function fakeFactory(mode = "success", calls = []) {
+function fakeFactory(mode = "success", calls = [], hooks = {}) {
   return async (options) => {
     calls.push(["server", options]);
     const events = async function* () {
@@ -35,7 +35,11 @@ function fakeFactory(mode = "success", calls = []) {
         provider: { list: async () => ({ data: modelCatalog() }) },
         event: { subscribe: async () => ({ stream: events() }) },
         session: {
-          create: async (parameters) => { calls.push(["create", parameters]); return { data: { id: "private-session" } }; },
+          create: async (parameters) => {
+            calls.push(["create", parameters]);
+            await hooks.afterSessionCreate?.();
+            return { data: { id: "private-session" } };
+          },
           prompt: async (parameters) => { calls.push(["prompt", parameters]); return mode === "prompt-error" ? { error: { message: "prompt rejected" } } : { data: {} }; },
           abort: async (parameters) => { calls.push(["abort", parameters]); return { data: true }; },
           delete: async (parameters) => { calls.push(["delete", parameters]); return { data: true }; }
@@ -146,8 +150,21 @@ test("normalizes provider failures", async () => {
 test("cancels the SDK session before closing the server", async () => {
   const calls = [];
   const controller = new AbortController();
-  const run = driver("hang", calls).run({ prompt: "x", model: "company/qwen3-coder-480b", signal: controller.signal });
-  setTimeout(() => controller.abort(), 30);
+  const sessionCreateStarted = Promise.withResolvers();
+  const releaseSessionCreate = Promise.withResolvers();
+  const serverFactory = fakeFactory("hang", calls, {
+    afterSessionCreate: async () => {
+      sessionCreateStarted.resolve();
+      await releaseSessionCreate.promise;
+    }
+  });
+  const run = new OpenCodeDriver({
+    command: [process.execPath, fileURLToPath(new URL("./fake-opencode.mjs", import.meta.url))],
+    serverFactory
+  }).run({ prompt: "x", model: "company/qwen3-coder-480b", signal: controller.signal });
+  await sessionCreateStarted.promise;
+  controller.abort();
+  releaseSessionCreate.resolve();
   const result = await run;
   assert.equal(result.stopReason, "aborted");
   assert.equal(calls.findIndex(([name]) => name === "abort") < calls.findIndex(([name]) => name === "close"), true);
