@@ -13,6 +13,7 @@ test("publishes only the exact site artifact that passed both required gates", (
   assert.match(workflow, /node scripts\/select-gates\.mjs/u);
   assert.match(workflow, /if: contains\(steps\.selection\.outputs\.stages, 'test:qualification'\)/u);
   assert.match(workflow, /@anthropic-ai\/claude-code@2\.1\.168 @openai\/codex@0\.115\.0/u);
+  assert.doesNotMatch(workflow, /npm install --global --ignore-scripts/u);
   assert.match(workflow, /test "\$\(claude --version\)" = "2\.1\.168"/u);
   assert.match(workflow, /test "\$\(codex --version\)" = "codex-cli 0\.115\.0"/u);
   assert.match(workflow, /for stage in \$\{\{ steps\.selection\.outputs\.stages \}\}/u);
