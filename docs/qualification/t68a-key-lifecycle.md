@@ -1,10 +1,10 @@
 ---
 schema: verchestra-qualification-report/v1
 task: T68a
-revision: b694563dbdd8ceb66e7420be02b9e31adbe454f8
+revision: 73b2060edb8a7e66a93a88bc795a64d5aa8fa725
 gates: pnpm gate:full, pnpm gate:security
 gateResults: pass, pass
-gateRevision: b694563dbdd8ceb66e7420be02b9e31adbe454f8
+gateRevision: 73b2060edb8a7e66a93a88bc795a64d5aa8fa725
 criteriaEvidence: 7 of 7 acceptance criteria proven
 skipped: 0
 todo: 0
@@ -36,9 +36,15 @@ serialized into the portable package or the Run Capsule.
 | `pnpm gate:full` | PASS — format, lint, typecheck, unit, contract, integration, E2E, architecture, qualification, security, and fault stages |
 | `pnpm gate:security` | PASS — full security profile on the same implementation revision |
 
+The gates above were reproduced on the reachable implementation revision after
+the initial report was found to name a PR-side revision that was not an
+ancestor of `main`. This correction changes the evidence binding only; it does
+not assert that the required independent human acceptance has occurred.
+
 ## Replayable two-minute demonstration
 
-From a clean clone at revision `b694563dbdd8ceb66e7420be02b9e31adbe454f8`:
+From a clean clone at reachable `main` ancestor
+`73b2060edb8a7e66a93a88bc795a64d5aa8fa725`:
 
 ```text
 $ corepack pnpm install --frozen-lockfile
