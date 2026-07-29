@@ -203,9 +203,6 @@ importers:
       '@verchestra/domain':
         specifier: workspace:0.0.0
         version: link:../domain
-      '@verchestra/evidence':
-        specifier: workspace:0.0.0
-        version: link:../evidence
 
   packages/policy:
     dependencies:
