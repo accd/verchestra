@@ -3,12 +3,12 @@ schema: verchestra-feature-handoff/v1
 feature: key-lifecycle
 issue: 51
 status: verification
-branch: codex/issue-51-portability-proof
-baseRevision: e2d3a251b0fe87de0b566563a258651bd8a467d9
+branch: main
+baseRevision: 73b2060edb8a7e66a93a88bc795a64d5aa8fa725
 lastCompletedTask: T5
-nextTask: Independently verify T68a evidence in PR #104, then obtain human review before merge.
+nextTask: Independently verify the reachable T68a evidence correction, then obtain and record human acceptance.
 lastGate: pnpm gate:security
-updatedAt: 2026-07-29T20:14:00Z
+updatedAt: 2026-07-29T21:55:00Z
 ---
 
 # Scope
@@ -80,10 +80,11 @@ that links back to that package. The portable transfer is asserted not to
 contain either passphrase or either machine-local state-root text.
 
 T5 evidence: `node --test tests/e2e/key-lifecycle-portability.test.mjs`,
-`pnpm gate:full`, and `pnpm gate:security` passed on
-`b694563dbdd8ceb66e7420be02b9e31adbe454f8` in a clean worktree installed
-with `pnpm install --frozen-lockfile --offline`. The qualification report is
-`docs/qualification/t68a-key-lifecycle.md` and the review target is PR #104.
+`pnpm gate:full`, and `pnpm gate:security` passed on the reachable main
+ancestor `73b2060edb8a7e66a93a88bc795a64d5aa8fa725` in a clean worktree
+installed with `pnpm install --frozen-lockfile --offline`. The qualification
+report is `docs/qualification/t68a-key-lifecycle.md`; the implementation was
+merged in PR #104.
 
 The status-surface migration is complete. Rather than moving the literal
 "T69" to "T68a" in each surface, the derivation itself was fixed: `nextTask`
@@ -115,15 +116,17 @@ reporting `internalLinks: valid`.
 
 # Next Exact Action
 
-Independently verify the T68a report and its linked implementation revision in
-PR #104, then obtain the required human review before merge.
+Independently verify the reachable T68a report correction and its linked
+implementation revision, then obtain and record the required human acceptance.
 
 # Blockers
 
-Implementation is complete; independent verification and human review remain
-required before merge. Windows file modes remain a best-effort ACL limitation
-documented in the feature design; the provider uses owner-only modes where the
-platform enforces POSIX permissions.
+Implementation is merged, but qualification remains blocked until the
+reachable-evidence correction receives independent verification and a recorded
+human acceptance. The original PR #104 was merged through an administrative
+bypass and has no independent approving review recorded. Windows file modes
+remain a best-effort ACL limitation documented in the feature design; the
+provider uses owner-only modes where the platform enforces POSIX permissions.
 
 # Decisions
 
