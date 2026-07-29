@@ -12,7 +12,6 @@ const CRITERION_ID = /^AC-[A-Z0-9-]{3,64}$/u;
 const ENTITY_REF = /^[a-z][a-z0-9_]{0,126}\.[a-z][a-z0-9_]{0,126}$/u;
 const FACT_KEY = /^[a-z][a-z0-9_.]{2,255}$/u;
 const GENERATORS = new Set(["boolean", "decimal", "email", "enum", "integer", "timestamp", "uuid", "words"]);
-const EMAIL_VALUE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/u;
 const SENSITIVE_CLAIM_VALUE =
   /(?:-----BEGIN [A-Z ]*PRIVATE KEY-----|\b(?:password|credential|secret|token|api[_-]?key)\b\s*[=:]|\bbearer\s+[a-z0-9._-]+|\b(?:gh[pousr]_[a-z0-9]{20,}|github_pat_[a-z0-9_]{20,}|sk-[a-z0-9_-]{20,}|xox[baprs]-[a-z0-9-]{10,}|akia[a-z0-9]{16}|eyj[a-z0-9_-]{8,}\.[a-z0-9_-]{8,}\.[a-z0-9_-]{8,})\b|\b(?:postgres(?:ql)?|mysql|mongodb|mariadb|sqlserver|oracle):\/\/|:\/\/[^\s/]+@)/iu;
 type UnknownRecord = Readonly<Record<string, unknown>>;
@@ -77,6 +76,21 @@ function instant(value: unknown, code: string, message: string): string {
 function positive(value: unknown, code: string, message: string): number {
   if (!Number.isSafeInteger(value) || (value as number) < 1) fail(code, message);
   return value as number;
+}
+function isEmailValue(value: string): boolean {
+  let at = -1;
+  let dotAfterAt = -1;
+  for (let index = 0; index < value.length; index += 1) {
+    const character = value[index] as string;
+    if (/\s/u.test(character)) return false;
+    if (character === "@") {
+      if (at !== -1 || index === 0) return false;
+      at = index;
+      continue;
+    }
+    if (character === "." && at !== -1 && dotAfterAt === -1) dotAfterAt = index;
+  }
+  return at > 0 && dotAfterAt > at + 1 && dotAfterAt < value.length - 1;
 }
 
 interface SchemaColumn {
@@ -514,7 +528,7 @@ export function promoteProbeEvidence(value: unknown): PromotedProbeEvidence {
       fail(code, "Probe sanitized claim value is invalid");
     if (
       typeof claim["value"] === "string" &&
-      (EMAIL_VALUE.test(claim["value"]) || SENSITIVE_CLAIM_VALUE.test(claim["value"]))
+      (isEmailValue(claim["value"]) || SENSITIVE_CLAIM_VALUE.test(claim["value"]))
     )
       fail(code, "Probe sanitized claim value is invalid");
     return {

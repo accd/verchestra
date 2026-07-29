@@ -198,6 +198,13 @@ for (const [label, mutation, code] of [
     "VES_PROBE_PROMOTION_INVALID"
   ],
   [
+    "adversarial email-shaped claim value",
+    (input) => {
+      input.sanitizedClaims[0].value = `${"a".repeat(200)}@example.test`;
+    },
+    "VES_PROBE_PROMOTION_INVALID"
+  ],
+  [
     "credential claim value",
     (input) => {
       input.sanitizedClaims[0].value = "password=not-portable";
