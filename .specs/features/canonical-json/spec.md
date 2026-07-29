@@ -28,3 +28,10 @@ platform adapters. The qualified existing primitive is
    declares it a set.
 5. Ambient `localeCompare` is prohibited for trust ordering; presentation-only
    sorting is outside this migration.
+
+## Compatibility matrix
+
+`docs/canonical-json-compatibility.md` is the canonical T2 matrix. It records
+the contract placement, every trust/persistent serializer group, existing byte
+consumer, V1 preservation rule, and required V2 migration boundary. No
+production serializer changes in T2.
