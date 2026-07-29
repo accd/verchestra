@@ -48,8 +48,12 @@ jobs:
         if: contains(steps.selection.outputs.stages, 'test:qualification')
         run: |
           npm install --global --no-audit --no-fund @anthropic-ai/claude-code@2.1.168 @openai/codex@0.115.0
-          test "$(claude --version)" = "2.1.168"
-          test "$(codex --version)" = "codex-cli 0.115.0"
+          claude_version="$(claude --version)"
+          codex_version="$(codex --version)"
+          printf 'Claude Code version: %s\n' "$claude_version"
+          printf 'Codex version: %s\n' "$codex_version"
+          case "$claude_version" in "2.1.168"|"2.1.168 "*) ;; *) exit 1 ;; esac
+          case "$codex_version" in "codex-cli 0.115.0"|"codex-cli 0.115.0 "*) ;; *) exit 1 ;; esac
       - name: Run each selected stage once
         run: |
           set -euo pipefail
