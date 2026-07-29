@@ -27,6 +27,7 @@ export {
   type WorkspaceStateLayout
 } from "./state-root.ts";
 export { SystemClock } from "./system-clock.ts";
+export { EncryptedFileKeyProvider } from "./encrypted-file-key-provider.ts";
 export { RuntimeMachineProfileStore, SecretBrokerBindingInspector } from "./machine-bootstrap-adapters.ts";
 export { NodeContentDigest, RuntimeSyncStateStore } from "./sync-adapters.ts";
 export { RuntimePolicyViewStore } from "./policy-store-adapter.ts";
