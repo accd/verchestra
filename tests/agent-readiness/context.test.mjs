@@ -97,6 +97,15 @@ test("a valid chain yields its declared order", () => {
   });
 });
 
+test("the chain rejects the exact duplicate T1 to T2 edge", () => {
+  const result = validateRoadmapChain(graph('T1 --> T2["second"]', 'T1 --> T2["second"]'));
+  assert.deepEqual(result.chain, []);
+  assert.ok(
+    result.errors.some((problem) => problem === "T1 declares more than one successor: T2 and T2"),
+    `expected the repeated T1 to T2 edge to be named, got ${JSON.stringify(result.errors)}`
+  );
+});
+
 for (const [label, roadmap, expected] of [
   ["a branch", graph('T1 --> T2["b"]', 'T1 --> T3["c"]', 'T2 --> T3["c"]'), "T1 declares more than one successor"],
   ["a merge", graph('T1 --> T3["c"]', 'T2 --> T3["c"]'), "T3 has 2 predecessors"],
