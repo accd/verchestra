@@ -235,7 +235,7 @@ export class EncryptedFileKeyProvider {
       options.stateRoot.includes("\0") ||
       typeof options.passphrase !== "function" ||
       options.signers === null ||
-      typeof options.signers !== "object" ||
+      (typeof options.signers !== "object" && typeof options.signers !== "function") ||
       typeof options.signers.generate !== "function" ||
       typeof options.signers.fromPkcs8 !== "function"
     ) {
