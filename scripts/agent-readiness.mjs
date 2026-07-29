@@ -114,15 +114,106 @@ export function qualificationStatusLine({ highestVerifiedTask, nextTask }) {
   return `${highestVerifiedTask} complete; ${nextTask} next`;
 }
 
-export async function validatedTasks(root) {
+export const QUALIFICATION_REPORT_SCHEMA = "verchestra-qualification-report/v1";
+// T01-T68 were qualified before this contract existed. Their reports are
+// immutable evidence, so they are admitted by declaration rather than rewritten
+// to satisfy a rule written after the fact.
+export const HISTORICAL_REPORTS_THROUGH = 68;
+
+function isHistoricalReport(taskId) {
+  const numeric = /^T(\d+)$/u.exec(taskId);
+  return numeric !== null && Number(numeric[1]) <= HISTORICAL_REPORTS_THROUGH;
+}
+
+function countPair(value, label, errors, { requireEqual = false, requireZeroSecond = false } = {}) {
+  const match = /^(\d+)\D+(\d+)/u.exec(String(value ?? ""));
+  if (!match) return errors.push(`${label} must state two counts`);
+  const [first, second] = [Number(match[1]), Number(match[2])];
+  if (first < 1) errors.push(`${label} must record at least one case`);
+  if (requireEqual && first !== second) errors.push(`${label} is incomplete: ${first} of ${second}`);
+  if (requireZeroSecond && second !== 0) errors.push(`${label} reports ${second} that did not fail closed`);
+  return undefined;
+}
+
+// A filename is not evidence. A report only advances qualification when it binds
+// itself to the exact revision it was produced on, names gates that exist and
+// passed, records zero skipped work, kills every mutant, and carries an
+// independent verifier plus a human review decision.
+export function validateQualificationReport(source, taskId, gateNames) {
+  if (isHistoricalReport(taskId)) return [];
+  const errors = [];
+  const match = /^---\r?\n([\s\S]*?)\r?\n---\r?\n/u.exec(source);
+  if (!match) return [`${taskId}: report is missing the qualification frontmatter`];
+  const report = {};
+  for (const line of match[1].split(/\r?\n/u)) {
+    const field = /^([A-Za-z][A-Za-z0-9]*):\s*(.*)$/u.exec(line);
+    if (!field) return [`${taskId}: malformed frontmatter line`];
+    report[field[1]] = field[2].trim();
+  }
+  const require = (field) => {
+    if (!report[field]) errors.push(`${taskId}: missing ${field}`);
+    return report[field];
+  };
+
+  if (report.schema !== QUALIFICATION_REPORT_SCHEMA) errors.push(`${taskId}: unsupported report schema`);
+  if (report.task !== taskId) errors.push(`${taskId}: report claims task ${report.task ?? "nothing"}`);
+  const revision = require("revision");
+  if (revision && !/^[0-9a-f]{40}$/u.test(revision)) errors.push(`${taskId}: revision is not a full commit id`);
+  // Gate evidence copied from an earlier revision is not evidence for this one.
+  if (report.gateRevision !== revision) errors.push(`${taskId}: gate evidence is not bound to the report revision`);
+
+  const gates = (report.gates ?? "")
+    .split(",")
+    .map((gate) => gate.trim().replace(/^pnpm\s+/u, ""))
+    .filter(Boolean);
+  const results = (report.gateResults ?? "")
+    .split(",")
+    .map((result) => result.trim().toLowerCase())
+    .filter(Boolean);
+  if (gates.length === 0) errors.push(`${taskId}: no gate was recorded`);
+  for (const gate of gates) if (!gateNames.has(gate)) errors.push(`${taskId}: unknown gate ${gate}`);
+  if (gates.length !== results.length) errors.push(`${taskId}: every gate needs a recorded result`);
+  else
+    for (const [index, result] of results.entries()) {
+      if (result !== "pass") errors.push(`${taskId}: gate ${gates[index]} did not pass`);
+    }
+
+  countPair(require("criteriaEvidence"), `${taskId}: criteriaEvidence`, errors, { requireEqual: true });
+  countPair(require("discriminationSensor"), `${taskId}: discriminationSensor`, errors, { requireZeroSecond: true });
+  for (const field of ["skipped", "todo"]) {
+    if (report[field] !== "0") errors.push(`${taskId}: ${field} must be 0, found ${report[field] ?? "nothing"}`);
+  }
+  require("verifier");
+  // The author's own claim is not independent verification, and CI success is
+  // not human review.
+  if (report.verifierRole !== "independent") errors.push(`${taskId}: verification is not recorded as independent`);
+  if (report.humanReview !== "approved") errors.push(`${taskId}: human review is not recorded as approved`);
+  return errors;
+}
+
+export async function readQualificationReports(root) {
   const directory = join(root, "docs", "qualification");
   const tasks = new Set();
-  if (!existsSync(directory)) return tasks;
-  for (const entry of await readdir(directory)) {
+  const errors = [];
+  if (!existsSync(directory)) return { tasks, errors };
+  const manifestPath = join(root, "package.json");
+  const scripts = existsSync(manifestPath)
+    ? Object.keys(JSON.parse(await readFile(manifestPath, "utf8")).scripts ?? {})
+    : [];
+  const gateNames = new Set(scripts);
+  for (const entry of (await readdir(directory)).sort()) {
     const task = /^t(\d+[a-z]?)-validation\.md$/u.exec(entry);
-    if (task) tasks.add(`T${task[1]}`);
+    if (!task) continue;
+    const taskId = `T${task[1]}`;
+    const problems = validateQualificationReport(await readFile(join(directory, entry), "utf8"), taskId, gateNames);
+    if (problems.length === 0) tasks.add(taskId);
+    else errors.push(...problems);
   }
-  return tasks;
+  return { tasks, errors };
+}
+
+export async function validatedTasks(root) {
+  return (await readQualificationReports(root)).tasks;
 }
 
 function git(root, args) {
@@ -419,9 +510,11 @@ export async function checkRepository(root = ROOT) {
   // The chain must be declared unambiguously by the roadmap, never inferred, so
   // a missing, branched, cyclic, or partially verified chain fails with the
   // conflicting task ids named instead of keeping the numeric fallback.
+  const reports = await readQualificationReports(root);
+  for (const problem of reports.errors) errors.push(`docs/qualification: ${problem}`);
   if (existsSync(join(root, "ROADMAP.md"))) {
     const roadmap = await readFile(join(root, "ROADMAP.md"), "utf8");
-    const resolved = resolveQualification(roadmap, await validatedTasks(root));
+    const resolved = resolveQualification(roadmap, reports.tasks);
     for (const problem of resolved.errors) errors.push(`ROADMAP.md: ${problem}`);
     if (resolved.errors.length === 0 && resolved.highestVerifiedTask === null)
       errors.push("ROADMAP.md does not declare a verified qualification chain");
