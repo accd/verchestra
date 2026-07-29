@@ -5,13 +5,30 @@ import { dirname } from "node:path";
 import { DatabaseSync, backup } from "node:sqlite";
 import { getLoadablePath } from "sqlite-vec";
 
+export const QUALIFIED_SQLITE_ASSETS = Object.freeze({
+  "linux-x64": Object.freeze({
+    sha256: "5923730861b86c707cca5602b5f91092f9e52a46706dbc6e269fd4bb9c4498e8",
+    bytes: 159816
+  }),
+  "win32-x64": Object.freeze({
+    sha256: "fcf98662a7ad9dce394b96a88f91032047823831b951c76636787c312a6476e6",
+    bytes: 289280
+  })
+});
+
+export function qualifiedSqliteAsset({ platform = process.platform, arch = process.arch } = {}) {
+  return QUALIFIED_SQLITE_ASSETS[`${platform}-${arch}`] ?? null;
+}
+
+const hostQualifiedSqliteAsset = qualifiedSqliteAsset();
+
 export const QUALIFIED_SQLITE = Object.freeze({
   node: "24.14.0",
   sqlite: "3.51.2",
   sqliteVec: "0.1.9",
   sqliteVecVersion: "v0.1.9",
-  sqliteVecSha256: "fcf98662a7ad9dce394b96a88f91032047823831b951c76636787c312a6476e6",
-  sqliteVecBytes: 289280
+  sqliteVecSha256: hostQualifiedSqliteAsset?.sha256 ?? null,
+  sqliteVecBytes: hostQualifiedSqliteAsset?.bytes ?? null
 });
 
 const SCHEMA_SQL = `
@@ -214,9 +231,10 @@ export class SqliteMemoryStack {
     if (!this.vector.enabled) return { enabled: false, version: null, code: "VES_VECTOR_DISABLED" };
     let code = "VES_VECTOR_UNAVAILABLE";
     try {
+      if (!hostQualifiedSqliteAsset) throw new Error("platform is not qualified");
       const path = this.vector.path ?? getLoadablePath();
       const asset = readFileSync(path);
-      const expected = this.vector.expectedSha256 ?? QUALIFIED_SQLITE.sqliteVecSha256;
+      const expected = this.vector.expectedSha256 ?? hostQualifiedSqliteAsset.sha256;
       if (sha256(asset) !== expected) {
         code = "VES_VECTOR_ASSET_MISMATCH";
         throw new Error("asset mismatch");
