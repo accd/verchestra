@@ -3,12 +3,12 @@ schema: verchestra-feature-handoff/v1
 feature: key-lifecycle
 issue: 51
 status: in_progress
-branch: codex/issue-51-key-provider
-baseRevision: e08a5cb7cae60d7f29a09121c1784383216ba549
-lastCompletedTask: T1
-nextTask: T2
+branch: codex/issue-51-encrypted-keystore
+baseRevision: 4c1f562eabe71dc58f804940e63c066c3c1bfdbb
+lastCompletedTask: T2
+nextTask: T3
 lastGate: pnpm gate:quick
-updatedAt: 2026-07-29T13:58:00Z
+updatedAt: 2026-07-29T15:54:58Z
 ---
 
 # Scope
@@ -27,6 +27,22 @@ Specification, design, and tasks written from verified code reading:
 
 T68a is now open as GitHub issue #51, with #52–#54 tracking T68b–T68d and
 issue #10 (T69) re-blocked behind them.
+
+T2 adds `EncryptedFileKeyProvider` in the Node platform adapter. It persists
+one Ed25519 key per requested key identity as an AES-256-GCM authenticated,
+scrypt-derived envelope under a machine-local `keys/` directory, with a
+temporary owner-only file linked atomically into place. The adapter rejects
+symlinked state roots, malformed envelopes, wrong passphrases, ciphertext
+tampering, mismatched public-reference identities, and truncation with the
+public `VES_KEYSTORE_INTEGRITY` code; it never regenerates after a corrupt
+existing keystore. `NodeEd25519Signer` now imports and exports PKCS#8 only
+inside this adapter boundary, while its public reference stays stable across
+reloads.
+
+T2 evidence: focused provider tests passed; `pnpm gate:quick` passed with
+1,624 unit tests and 64 readiness tests; `pnpm test:security` passed with
+914 tests. The adversarial coverage includes a wrong passphrase, malformed
+JSON, modified GCM ciphertext, and a modified plaintext public-key identity.
 
 The status-surface migration is complete. Rather than moving the literal
 "T69" to "T68a" in each surface, the derivation itself was fixed: `nextTask`
@@ -58,17 +74,15 @@ reporting `internalLinks: valid`.
 
 # Next Exact Action
 
-T2: implement the encrypted-file provider using only `node:crypto`, including
-authenticated encryption, owner-only persistence, and fail-closed malformed or
-tampered-keystore handling.
+T3: add rotation with an overlap window and revocation, then exercise the
+new signing and verification failure modes with unit and fault-injection tests.
 
 # Blockers
 
-T1 is complete: `KeyProviderPort` now has stable load, rotate, and revoke
-shapes; `key-lifecycle-error@1` is the closed canonical schema for
-`VES_KEYSTORE_INTEGRITY`, `VES_KEY_REVOKED`, and `VES_KEY_EXPIRED`; generated
-contracts are current. `pnpm test:contract` passed 440 tests, `pnpm typecheck`
-passed, and `pnpm gate:quick` passed (1,620 unit tests and 64 readiness tests).
+T1 and T2 are complete. T3 may use the persisted adapter but must not wire it
+into the CLI before T4. Windows file modes remain a best-effort ACL limitation
+documented in the feature design; the provider uses owner-only modes where the
+platform enforces POSIX permissions.
 
 # Decisions
 
@@ -86,7 +100,6 @@ passed, and `pnpm gate:quick` passed (1,620 unit tests and 64 readiness tests).
 
 # Files Intentionally Left Unchanged
 
-- All product code (`packages/`), which the key lifecycle itself will touch
-  from T1 onward; this change moves only status surfaces and their tests.
+- `apps/vestra-cli`, which is intentionally reserved for T4 composition.
 - The canonical JSON and signature format (owned by the DSSE decision).
 - The T69–T77 numbering and every existing qualification report.

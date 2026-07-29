@@ -18,8 +18,8 @@ export type IntegrityErrorCode =
 export class IntegrityError extends Error {
   readonly code: IntegrityErrorCode;
 
-  constructor(code: IntegrityErrorCode, message: string) {
-    super(message);
+  constructor(code: IntegrityErrorCode, message: string, options?: ErrorOptions) {
+    super(message, options);
     this.name = "IntegrityError";
     this.code = code;
   }

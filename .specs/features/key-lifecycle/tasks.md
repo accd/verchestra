@@ -30,7 +30,7 @@
 | Task | Status   | Evidence                                                                                                                   |
 | ---- | -------- | -------------------------------------------------------------------------------------------------------------------------- |
 | T1   | Complete | `pnpm test:contract` (440 passed), `pnpm typecheck`, and `pnpm gate:quick` (1,620 unit tests + 64 readiness tests) passed. |
-| T2   | Pending  | —                                                                                                                          |
+| T2   | Complete | `pnpm gate:quick` (1,624 unit tests + 64 readiness tests) and `pnpm test:security` (914 passed) passed.                 |
 | T3   | Pending  | —                                                                                                                          |
 | T4   | Pending  | —                                                                                                                          |
 | T5   | Pending  | —                                                                                                                          |
