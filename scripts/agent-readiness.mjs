@@ -460,6 +460,17 @@ export async function checkRepository(root = ROOT) {
     if (files.includes(prohibited)) errors.push(`prohibited provider instruction file: ${prohibited}`);
   }
   const manifest = JSON.parse(await readFile(join(root, "package.json"), "utf8"));
+  const licenseStatement = "Verchestra is licensed under the [Apache License 2.0](LICENSE).";
+  const licenseDecision = "### AD-007 — Project license is Apache-2.0";
+  if (manifest.license !== "Apache-2.0") errors.push("package.json: license must be Apache-2.0");
+  for (const [path, requiredStatement] of [
+    ["README.md", licenseStatement],
+    [".specs/STATE.md", licenseDecision],
+    ["LICENSE", "Apache License"]
+  ]) {
+    if (!existsSync(join(root, path)) || !(await readFile(join(root, path), "utf8")).includes(requiredStatement))
+      errors.push(`${path}: license statement disagrees with Apache-2.0`);
+  }
   const instructionFiles = ["AGENTS.md", ...SCOPED_INSTRUCTIONS].filter((path) => existsSync(join(root, path)));
   const contextFiles = [
     ...new Set([
