@@ -25,7 +25,10 @@ test("pins every delivery action and isolates elevated Pages permissions", () =>
   // never an unnoticed one. It rose to 10 when the quality job began retaining
   // gate-selection evidence.
   assert.equal(actionUses.length, 10);
-  assert.match(workflow, /uses: actions\/upload-artifact@[a-f0-9]{40} # v\d+\.\d+\.\d+\n {8}with:\n.*\n.*gate-selection/su);
+  assert.match(
+    workflow,
+    /uses: actions\/upload-artifact@[a-f0-9]{40} # v\d+\.\d+\.\d+\n {8}with:\n.*\n.*gate-selection/su
+  );
   for (const action of actionUses) {
     assert.match(action, /^[^@]+@[a-f0-9]{40}$/u);
   }
