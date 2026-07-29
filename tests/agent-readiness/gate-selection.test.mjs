@@ -12,6 +12,7 @@ import {
   selectGates
 } from "../../scripts/gate-selection.mjs";
 import { GATE_STAGES, stagesForGates } from "../../scripts/gate-stages.mjs";
+import { githubOutputFor } from "../../scripts/gate-output.mjs";
 import { buildEvidence } from "../../scripts/select-gates.mjs";
 
 const gatesFor = (...paths) => selectGates(paths).gates;
@@ -172,6 +173,11 @@ test("an all-zero initial push SHA records a conservative fallback without paths
   assert.equal(JSON.stringify(evidence).includes("<conservative-fallback>"), false);
 });
 
+test("GitHub output contains only the selected stage list", () => {
+  assert.equal(githubOutputFor({ stages: ["format:check", "test:release"] }), "stages=format:check test:release\n");
+  assert.throws(() => githubOutputFor({ stages: ["format:check", "bad stage"] }), /no valid stages/u);
+});
+
 test("the CI contract compares event-specific bases and runs emitted stages once", () => {
   const workflow = readFileSync(new URL("../../.github/workflows/ci.yml", import.meta.url), "utf8");
   assert.match(workflow, /fetch-depth: 0/u);
@@ -180,6 +186,7 @@ test("the CI contract compares event-specific bases and runs emitted stages once
   assert.doesNotMatch(workflow, /HEAD~1/u);
   assert.match(workflow, /steps\.selection\.outputs\.stages/u);
   assert.match(workflow, /pnpm run "\$stage"/u);
+  assert.match(workflow, /node scripts\/gate-output\.mjs gate-selection\.json "\$GITHUB_OUTPUT"/u);
 });
 
 test("the regression that CI missed now selects a detecting gate", () => {
