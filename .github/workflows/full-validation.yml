@@ -8,13 +8,21 @@ on:
         required: false
         default: ""
         type: string
+      gate:
+        description: "Closed qualification profile to run"
+        required: true
+        default: "full"
+        type: choice
+        options:
+          - quick
+          - full
 
 permissions:
   contents: read
 
 jobs:
-  full:
-    name: Manual full gate
+  validation:
+    name: Manual qualification gate
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -27,6 +35,7 @@ jobs:
         id: candidate
         env:
           REQUESTED_REVISION: ${{ inputs.revision }}
+          REQUESTED_GATE: ${{ inputs.gate }}
         run: |
           set -euo pipefail
           revision="${REQUESTED_REVISION:-$GITHUB_SHA}"
@@ -34,6 +43,7 @@ jobs:
             echo "revision must be an empty value or a full lowercase 40-character Git SHA" >&2
             exit 1
           fi
+          case "$REQUESTED_GATE" in quick|full) ;; *) echo "gate must be quick or full" >&2; exit 1 ;; esac
           git fetch --no-tags --depth=1 origin "$revision"
           git checkout --detach "$revision"
           if [[ "$(git rev-parse HEAD)" != "$revision" ]]; then
@@ -41,6 +51,7 @@ jobs:
             exit 1
           fi
           echo "revision=$revision" >> "$GITHUB_OUTPUT"
+          echo "gate=gate:$REQUESTED_GATE" >> "$GITHUB_OUTPUT"
       - name: Set up pnpm
         uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
         with:
@@ -56,6 +67,7 @@ jobs:
       - name: Record candidate identity
         env:
           CANDIDATE_REVISION: ${{ steps.candidate.outputs.revision }}
+          CANDIDATE_GATE: ${{ steps.candidate.outputs.gate }}
         run: |
           node --input-type=module <<'NODE'
           import { writeFile } from "node:fs/promises";
@@ -66,15 +78,15 @@ jobs:
           const ref = process.env.GITHUB_REF ?? "";
           await writeFile(
             "full-validation.json",
-            `${JSON.stringify({ schemaVersion: 1, revision, ref, gate: "gate:full" }, null, 2)}\n`
+            `${JSON.stringify({ schemaVersion: 1, revision, ref, gate: process.env.CANDIDATE_GATE }, null, 2)}\n`
           );
           NODE
-      - name: Run full gate
-        run: pnpm gate:full
+      - name: Run selected qualification gate
+        run: pnpm ${{ steps.candidate.outputs.gate }}
       - name: Upload validation evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: full-validation-${{ github.run_id }}
+          name: qualification-validation-${{ github.run_id }}
           path: full-validation.json
           retention-days: 14
