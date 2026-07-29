@@ -103,9 +103,20 @@ async function terminate(pid: number): Promise<void> {
   } else {
     try {
       process.kill(-pid, "SIGKILL");
-    } catch {
-      // The process may already have exited.
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
+      return;
     }
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      try {
+        process.kill(-pid, 0);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ESRCH") return;
+        throw error;
+      }
+    }
+    fail("VES_GATE_ADAPTER_TERMINATION_INCOMPLETE", "Gate process group remained alive after termination");
   }
 }
 
@@ -170,6 +181,7 @@ export class NodeGateProcessRunner {
     let stderrBytes = 0;
     let timedOut = false;
     let outputLimitExceeded = false;
+    let termination: Promise<void> | undefined;
     const child = spawn(profile.executable, [...(profile.fixedArgs ?? []), ...command.args], {
       cwd,
       env: this.#environment,
@@ -194,19 +206,20 @@ export class NodeGateProcessRunner {
       }
       if (stdoutBytes + stderrBytes > command.outputLimitBytes && !outputLimitExceeded) {
         outputLimitExceeded = true;
-        void terminate(child.pid!);
+        termination ??= terminate(child.pid!);
       }
     };
     child.stdout.on("data", (chunk: Buffer) => collect(chunk, "stdout"));
     child.stderr.on("data", (chunk: Buffer) => collect(chunk, "stderr"));
     const timer = setTimeout(() => {
       timedOut = true;
-      void terminate(child.pid!);
+      termination ??= terminate(child.pid!);
     }, command.timeoutMs);
     const exitCode = await new Promise<number>((resolveExit, reject) => {
       child.once("error", reject);
       child.once("close", (code) => resolveExit(code ?? -1));
     }).finally(() => clearTimeout(timer));
+    await termination;
     const combined = Buffer.concat(captured).toString("utf8");
     const stdoutDigest = `sha256:${stdoutHash.digest("hex")}`;
     const stderrDigest = `sha256:${stderrHash.digest("hex")}`;
