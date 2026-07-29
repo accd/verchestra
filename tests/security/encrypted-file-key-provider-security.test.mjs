@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { afterEach, test } from "node:test";
 
 import { EncryptedFileKeyProvider } from "../../packages/platform-node/src/index.ts";
+import { NodeEd25519Signer } from "../../packages/evidence/src/index.ts";
 
 const roots = [];
 const request = Object.freeze({ keyId: "team-execution-2026", purposes: ["execution-package"] });
@@ -16,7 +17,8 @@ async function fixture() {
     root,
     provider: new EncryptedFileKeyProvider({
       stateRoot: root,
-      passphrase: async () => Buffer.from("correct horse battery staple", "utf8")
+      passphrase: async () => Buffer.from("correct horse battery staple", "utf8"),
+      signers: NodeEd25519Signer
     })
   };
 }
@@ -59,7 +61,11 @@ test("keystore failures expose a stable public code without disclosing the suppl
   const { root, provider } = await fixture();
   await provider.loadOrCreate(request);
   const secret = "incorrect-passphrase-must-not-appear";
-  const wrong = new EncryptedFileKeyProvider({ stateRoot: root, passphrase: async () => Buffer.from(secret, "utf8") });
+  const wrong = new EncryptedFileKeyProvider({
+    stateRoot: root,
+    passphrase: async () => Buffer.from(secret, "utf8"),
+    signers: NodeEd25519Signer
+  });
 
   await assert.rejects(wrong.loadOrCreate(request), (error) => {
     assert.equal(error.code, "VES_KEYSTORE_INTEGRITY");

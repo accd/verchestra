@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, test } from "node:test";
 
-import { ArtifactSealer, createTrustRoot } from "../../packages/evidence/src/index.ts";
+import { ArtifactSealer, createTrustRoot, NodeEd25519Signer } from "../../packages/evidence/src/index.ts";
 import { EncryptedFileKeyProvider } from "../../packages/platform-node/src/index.ts";
 
 const roots = [];
@@ -23,7 +23,8 @@ async function fixture() {
   return new EncryptedFileKeyProvider({
     stateRoot: root,
     now,
-    passphrase: async () => Buffer.from("correct horse battery staple", "utf8")
+    passphrase: async () => Buffer.from("correct horse battery staple", "utf8"),
+    signers: NodeEd25519Signer
   });
 }
 

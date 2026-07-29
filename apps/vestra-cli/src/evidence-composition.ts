@@ -1,4 +1,4 @@
-import { ArtifactSealer, type KeyProviderPort, type KeyProviderRequest } from "@verchestra/evidence";
+import { ArtifactSealer, NodeEd25519Signer, type KeyProviderPort, type KeyProviderRequest } from "@verchestra/evidence";
 import { EncryptedFileKeyProvider } from "@verchestra/platform-node";
 
 export async function createEvidenceSealer(options: {
@@ -14,7 +14,11 @@ export async function createLocalEvidenceSealer(options: {
   readonly request: KeyProviderRequest;
 }): Promise<ArtifactSealer> {
   return createEvidenceSealer({
-    keyProvider: new EncryptedFileKeyProvider({ stateRoot: options.stateRoot, passphrase: options.passphrase }),
+    keyProvider: new EncryptedFileKeyProvider({
+      stateRoot: options.stateRoot,
+      passphrase: options.passphrase,
+      signers: NodeEd25519Signer
+    }),
     request: options.request
   });
 }

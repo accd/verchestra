@@ -1,15 +1,62 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID, scrypt } from "node:crypto";
 import { link, lstat, mkdir, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
-import {
-  IntegrityError,
-  NodeEd25519Signer,
-  type EvidenceSigner,
-  type KeyProviderRequest,
-  type KeyRotation,
-  type KeyRotationRequest,
-  type PublicKeyRef
-} from "@verchestra/evidence";
+export interface PublicKeyRef {
+  readonly keyId: string;
+  readonly algorithm: "Ed25519";
+  readonly encoding: "spki-der-base64url";
+  readonly publicKey: string;
+  readonly purposes: readonly string[];
+  readonly validFrom?: string;
+  readonly validUntil?: string;
+}
+
+export interface KeyProviderRequest {
+  readonly keyId: string;
+  readonly purposes: readonly string[];
+}
+
+export interface KeyRotationRequest extends KeyProviderRequest {
+  readonly overlapUntil: string;
+}
+
+export interface KeyProviderSigner {
+  readonly publicKeyRef: PublicKeyRef;
+  exportPkcs8(): Uint8Array;
+  sign(purpose: string, data: Uint8Array): Promise<string>;
+}
+
+export interface KeyProviderSignerFactory {
+  generate(options: {
+    readonly keyId: string;
+    readonly purposes: readonly string[];
+    readonly validFrom?: string;
+  }): KeyProviderSigner;
+  fromPkcs8(
+    options: {
+      readonly keyId: string;
+      readonly purposes: readonly string[];
+      readonly validFrom?: string;
+      readonly validUntil?: string;
+    },
+    encoded: Uint8Array
+  ): KeyProviderSigner;
+}
+
+export interface KeyRotation {
+  readonly current: KeyProviderSigner;
+  readonly previous: PublicKeyRef;
+}
+
+export class KeyProviderError extends Error {
+  readonly code: "VES_KEYSTORE_INTEGRITY" | "VES_KEY_REVOKED" | "VES_KEY_EXPIRED";
+
+  constructor(code: KeyProviderError["code"], message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = "KeyProviderError";
+    this.code = code;
+  }
+}
 const SCRYPT_N = 32_768;
 const SCRYPT_R = 8;
 const SCRYPT_P = 1;
@@ -52,13 +99,13 @@ interface EncryptedKeyState {
 }
 
 interface LoadedKey {
-  readonly signer: NodeEd25519Signer;
+  readonly signer: KeyProviderSigner;
   readonly logicalKeyId: string;
   readonly revoked: boolean;
 }
 
 function fail(message: string, options?: ErrorOptions): never {
-  throw new IntegrityError("VES_KEYSTORE_INTEGRITY", message, options);
+  throw new KeyProviderError("VES_KEYSTORE_INTEGRITY", message, options);
 }
 
 function sameArray(left: readonly string[], right: readonly string[]): boolean {
@@ -174,26 +221,33 @@ function parseEncryptedState(value: Buffer): EncryptedKeyState {
 export class EncryptedFileKeyProvider {
   readonly #stateRoot: string;
   readonly #passphrase: () => Promise<Uint8Array>;
+  readonly #signers: KeyProviderSignerFactory;
   readonly #now: () => Date;
 
   constructor(options: {
     readonly stateRoot: string;
     readonly passphrase: () => Promise<Uint8Array>;
+    readonly signers: KeyProviderSignerFactory;
     readonly now?: () => Date;
   }) {
     if (
       !isAbsolute(options.stateRoot) ||
       options.stateRoot.includes("\0") ||
-      typeof options.passphrase !== "function"
+      typeof options.passphrase !== "function" ||
+      options.signers === null ||
+      (typeof options.signers !== "object" && typeof options.signers !== "function") ||
+      typeof options.signers.generate !== "function" ||
+      typeof options.signers.fromPkcs8 !== "function"
     ) {
       fail("Keystore configuration is invalid");
     }
     this.#stateRoot = resolve(options.stateRoot);
     this.#passphrase = options.passphrase;
+    this.#signers = options.signers;
     this.#now = options.now ?? (() => new Date());
   }
 
-  async loadOrCreate(request: KeyProviderRequest): Promise<EvidenceSigner> {
+  async loadOrCreate(request: KeyProviderRequest): Promise<KeyProviderSigner> {
     const root = await this.#root();
     const target = join(root, `${createHash("sha256").update(request.keyId, "utf8").digest("hex")}.key.json`);
     try {
@@ -201,7 +255,7 @@ export class EncryptedFileKeyProvider {
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     }
-    const signer = NodeEd25519Signer.generate(request);
+    const signer = this.#signers.generate(request);
     const envelope = await this.#encrypt(signer);
     const temporary = join(
       root,
@@ -232,13 +286,13 @@ export class EncryptedFileKeyProvider {
       new Date(overlapUntil).toISOString() !== request.overlapUntil ||
       overlapUntil <= now.getTime()
     ) {
-      throw new IntegrityError("VES_KEY_EXPIRED", "Key rotation overlap must end in the future");
+      throw new KeyProviderError("VES_KEY_EXPIRED", "Key rotation overlap must end in the future");
     }
     const root = await this.#root();
     const target = join(root, `${createHash("sha256").update(request.keyId, "utf8").digest("hex")}.key.json`);
     const loaded = await this.#load(target, request);
     const previous = this.#withValidity(loaded.signer, request.overlapUntil);
-    const current = NodeEd25519Signer.generate({
+    const current = this.#signers.generate({
       keyId: `${request.keyId}:rotation:${randomUUID()}`,
       purposes: request.purposes,
       validFrom: now.toISOString()
@@ -282,7 +336,7 @@ export class EncryptedFileKeyProvider {
       envelope = parseEnvelope(JSON.parse(await readFile(path, "utf8")));
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") throw error;
-      if (error instanceof IntegrityError) throw error;
+      if (error instanceof KeyProviderError) throw error;
       fail("Keystore could not be read", { cause: error });
     }
     if (
@@ -305,7 +359,7 @@ export class EncryptedFileKeyProvider {
         const storedPrivateKey = decode(state.privateKey);
         try {
           const signer = this.#signerFromReference(state.publicKeyRef, storedPrivateKey);
-          if (state.revoked && !allowRevoked) throw new IntegrityError("VES_KEY_REVOKED", "Signing key is revoked");
+          if (state.revoked && !allowRevoked) throw new KeyProviderError("VES_KEY_REVOKED", "Signing key is revoked");
           return Object.freeze({ signer, logicalKeyId: state.logicalKeyId, revoked: state.revoked });
         } finally {
           storedPrivateKey.fill(0);
@@ -319,8 +373,8 @@ export class EncryptedFileKeyProvider {
     }
   }
 
-  #signerFromReference(reference: PublicKeyRef, privateKey: Uint8Array): NodeEd25519Signer {
-    const signer = NodeEd25519Signer.fromPkcs8(
+  #signerFromReference(reference: PublicKeyRef, privateKey: Uint8Array): KeyProviderSigner {
+    const signer = this.#signers.fromPkcs8(
       {
         keyId: reference.keyId,
         purposes: reference.purposes,
@@ -333,10 +387,10 @@ export class EncryptedFileKeyProvider {
     return signer;
   }
 
-  #withValidity(signer: NodeEd25519Signer, validUntil: string): NodeEd25519Signer {
+  #withValidity(signer: KeyProviderSigner, validUntil: string): KeyProviderSigner {
     const privateKey = signer.exportPkcs8();
     try {
-      return NodeEd25519Signer.fromPkcs8(
+      return this.#signers.fromPkcs8(
         {
           keyId: signer.publicKeyRef.keyId,
           purposes: signer.publicKeyRef.purposes,
@@ -350,7 +404,7 @@ export class EncryptedFileKeyProvider {
     }
   }
 
-  async #encryptState(logicalKeyId: string, signer: NodeEd25519Signer, revoked: boolean): Promise<KeystoreEnvelopeV2> {
+  async #encryptState(logicalKeyId: string, signer: KeyProviderSigner, revoked: boolean): Promise<KeystoreEnvelopeV2> {
     const privateKey = signer.exportPkcs8();
     const state = Buffer.from(
       JSON.stringify({
@@ -401,7 +455,7 @@ export class EncryptedFileKeyProvider {
     }
   }
 
-  async #encrypt(signer: NodeEd25519Signer): Promise<KeystoreEnvelope> {
+  async #encrypt(signer: KeyProviderSigner): Promise<KeystoreEnvelope> {
     const salt = randomBytes(SALT_BYTES);
     const iv = randomBytes(IV_BYTES);
     const key = await this.#derive(salt);
@@ -459,7 +513,7 @@ export class EncryptedFileKeyProvider {
         );
       });
     } catch (error) {
-      if (error instanceof IntegrityError) throw error;
+      if (error instanceof KeyProviderError) throw error;
       return fail("Keystore key derivation failed", { cause: error });
     } finally {
       passphrase?.fill(0);
