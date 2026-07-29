@@ -24,6 +24,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.0
+        with:
+          fetch-depth: 0
       - name: Set up pnpm
         uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
         with:
@@ -39,15 +41,15 @@ jobs:
       - name: Select the applicable gates
         id: selection
         run: |
-          node scripts/select-gates.mjs "${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || 'HEAD~1' }}" --json > gate-selection.json
+          node scripts/select-gates.mjs --base "${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}" --json > gate-selection.json
           cat gate-selection.json
-          echo "gates=$(node scripts/select-gates.mjs "${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || 'HEAD~1' }}")" >> "$GITHUB_OUTPUT"
-      - name: Run the selected gates
+          echo "stages=$(node -e \"process.stdout.write(require('./gate-selection.json').stages.join(' '))\")" >> "$GITHUB_OUTPUT"
+      - name: Run each selected stage once
         run: |
           set -euo pipefail
-          for gate in ${{ steps.selection.outputs.gates }}; do
-            echo "::group::pnpm $gate"
-            pnpm "$gate"
+          for stage in ${{ steps.selection.outputs.stages }}; do
+            echo "::group::pnpm run $stage"
+            pnpm run "$stage"
             echo "::endgroup::"
           done
       - name: Upload gate selection evidence
