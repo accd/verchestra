@@ -1,6 +1,6 @@
 # Probe Value Declassification Specification
 
-**Issue:** #107  
+**Issue:** #107
 **Status:** Approved for implementation by the repository owner on 2026-07-29
 
 ## Problem Statement
