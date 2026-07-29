@@ -32,6 +32,13 @@ export function sanitizeRemoteUrl(value: string): string {
   if (value.length === 0 || /[\u0000-\u001f]/u.test(value)) {
     throw new WorkspaceScanError("VES_WORKSPACE_REMOTE_INVALID", "Remote URL is invalid");
   }
+  // A Windows drive path matches the SCP-style pattern with the drive letter in
+  // the host position, so `C:/Users/...` would otherwise become
+  // `ssh://c/users/...` and carry a machine-local path into a portable
+  // inventory. A local path is not a remote on any platform.
+  if (/^(?:[A-Za-z]:[\\/]|[\\/]|file:)/u.test(value)) {
+    throw new WorkspaceScanError("VES_WORKSPACE_REMOTE_INVALID", "Remote is a local filesystem path");
+  }
   const scp = /^(?:[^@/:]+@)?([^/:]+):(.+)$/u.exec(value);
   if (scp !== null && !value.includes("://")) {
     const host = scp[1];

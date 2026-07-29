@@ -24,7 +24,24 @@ for (const [input, expected] of remoteCases) {
   });
 }
 
-for (const input of ["", "relative/path", "https://", "git@host", "file:///private/repo", "https://example.com/%ZZ"]) {
+for (const input of [
+  "",
+  "relative/path",
+  "https://",
+  "git@host",
+  "file:///private/repo",
+  "https://example.com/%ZZ",
+  // A Windows drive path matches the SCP-style pattern with the drive letter in
+  // the host position. Without an explicit local-path guard it normalizes to
+  // ssh://c/users/... and carries a machine-local path into a portable
+  // inventory, which passes unnoticed on POSIX because those paths are rejected
+  // for a different reason.
+  "C:/Users/example/Temp/fixture",
+  String.raw`C:\Users\example\Temp\fixture`,
+  "d:/repos/fixture",
+  "/tmp/fixture",
+  "//server/share/repo"
+]) {
   test(`unsafe or local remote is rejected: ${input || "empty"}`, () => {
     assert.throws(() => sanitizeRemoteUrl(input), { code: "VES_WORKSPACE_REMOTE_INVALID" });
   });
