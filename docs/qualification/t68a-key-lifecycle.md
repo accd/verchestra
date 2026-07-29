@@ -2,14 +2,14 @@
 schema: verchestra-qualification-report/v1
 task: T68a
 revision: 73b2060edb8a7e66a93a88bc795a64d5aa8fa725
-gates: pnpm gate:full, pnpm gate:security
+gates: pnpm gate:quick, pnpm gate:full
 gateResults: pass, pass
 gateRevision: 73b2060edb8a7e66a93a88bc795a64d5aa8fa725
 criteriaEvidence: 7 of 7 acceptance criteria proven
 skipped: 0
 todo: 0
 discriminationSensor: 1 killed, 0 survived
-reviewedIn: https://github.com/accd/verchestra/pull/104
+reviewedIn: https://github.com/accd/verchestra/pull/118
 ---
 
 # T68a Key Lifecycle and Portability Validation
@@ -33,13 +33,15 @@ serialized into the portable package or the Run Capsule.
 | Command | Result |
 | --- | --- |
 | `node --test tests/e2e/key-lifecycle-portability.test.mjs` | PASS — one two-environment journey, zero failures/skips |
-| `pnpm gate:full` | PASS — format, lint, typecheck, unit, contract, integration, E2E, architecture, qualification, security, and fault stages |
-| `pnpm gate:security` | PASS — full security profile on the same implementation revision |
+| `pnpm gate:quick` | PASS — included in the full profile on the same implementation revision |
+| `pnpm gate:full` | PASS — [manual validation run 30494937450](https://github.com/accd/verchestra/actions/runs/30494937450) resolved and checked out `73b2060edb8a7e66a93a88bc795a64d5aa8fa725`, then uploaded the candidate-identity artifact |
 
-The gates above were reproduced on the reachable implementation revision after
-the initial report was found to name a PR-side revision that was not an
-ancestor of `main`. This correction changes the evidence binding only; it does
-not assert that the required independent human acceptance has occurred.
+The full profile covers format, lint, typecheck, unit, contract, integration,
+E2E, architecture, qualification, security, and fault stages. It was rerun on
+the reachable implementation revision after the initial report was found to
+name a PR-side revision that was not an ancestor of `main`. This correction
+changes the evidence binding only; it does not assert that the required
+independent human acceptance has occurred.
 
 ## Replayable two-minute demonstration
 
