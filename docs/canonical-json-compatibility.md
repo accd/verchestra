@@ -17,6 +17,12 @@ implementation until it is replaced by a domain-backed facade in a separately
 reviewed migration. No application package may import evidence to canonicalize
 input.
 
+Reusing the already-qualified `canonicalize@3.0.0` implementation from
+`packages/domain` would add or move a package dependency. That change requires
+explicit human approval and a lockfile update under the repository change
+rules. T3 must record that approval before taking that path; an independently
+implemented encoder instead requires separate RFC 8785/vector review.
+
 V2 rejects undefined object values, sparse arrays, accessors, cycles,
 non-finite numbers, invalid Unicode, excessive nesting, and excessive node
 counts before encoding. Arrays remain ordered unless the owning domain
@@ -48,6 +54,7 @@ comparison fails closed where identities are not interchangeable.
 | Application egress: `trust-egress.ts` | Egress manifest and revision digests | signed-adjacent authority | Recursive serializer plus locale member order | Version manifest digest and reject mixed-version approval binding. |
 | Application handoff: `handoff/validation.ts` | Portable handoff validation digests | portable persistent | Recursive serializer plus locale member order | Version handoff artifact before changing bytes; receiver chooses recorded version. |
 | Application sync: `workspace-reconcile.ts` | Persisted sync state, plan and rebuild identities | persistent | Recursive serializer and locale sorting of semantic collections | Add state/plan canonicalization version; retain V1 reload and conflict detection. |
+| Application effects: `effect-contract.ts` | Durable effect idempotency keys | persistent effect identity | Fixed-shape `JSON.stringify` material without a canonicalization version | Add a versioned effect identity material and retain V1 key lookup for existing intents and receipts. |
 | Agent runtime context: `context-compiler.ts` | Snapshot ID, recipe, semantic-obligation, serialized-meaning and manifest digests | portable persistent | Recursive serializer and locale ordering of fragment/source IDs | Version context snapshot/manifest material; normalize declared sets with code-unit order before V2. |
 | Agent runtime discovery: `source-snapshots.ts` | Context source snapshots, fact alternatives and selector material | portable persistent | Recursive serializer and locale ordering | Migrate together with context compiler; prove old snapshot verification and cross-locale reproduction. |
 | Policy: `cedar-policy.ts` | Policy view/evidence material and normalized layer order | authority | Recursive serializer and locale ordering | Version policy-view evidence; policy decisions never compare V1 and V2 digests as equal. |
@@ -55,6 +62,24 @@ comparison fails closed where identities are not interchangeable.
 | Distribution: `hermetic-bundle.ts` | Release manifest/release digest | signed + persistent release identity | Recursive serializer and locale component ordering | Highest-risk slice: publish a new bundle schema/release format and retain V1 verification. |
 | Distribution: `transactional-activation.ts` | Transaction identity material and durable activation records | persistent local state | Recursive serializer for transaction identity; ordinary JSON writes for local journals | Migrate only after hermetic bundle V2; version durable receipt/pointer records. |
 | Distribution: `tuf-update-client.ts` | Staged receipt bytes | persistent local state | Ordinary `JSON.stringify`, no structured digest at write | Keep bytes as a versioned local receipt; classify separately from canonical digest migration. |
+| Workspace: `scanner/scanner-primitives.ts`, consumed by `workspace-scanner.ts`, `init/safe-init.ts`, and `placement/artifact-placement.ts` | Repository IDs, discovery keys, inventory fingerprints, init/recovery plan IDs, and write-plan IDs | portable + persistent plan identity | Recursive serializer with ambient locale ordering of object members and normalized arrays | **T3 first vertical slice:** add an explicit V2/canonicalization version for new workspace inventory, init preview/recovery journal, and write-plan records; keep V1 verification for records without that version. |
+| Platform Node: `git-worktree-adapter.ts` | Worktree `changeDigest`, committed and verified as `Verchestra-Change` by the gate-commit flow | persistent gate authority | SHA-256 of `JSON.stringify(manifest)` | Version change-digest material with the gate plan/checkpoint/receipt migration; retain V1 resume verification. |
+| Platform Node: `runtime-store/runtime-store.ts` | Persisted active policy-view digest verification | persistent local authority | Recursive serializer with ambient locale ordering | Migrate with policy-view schema/versioning; retain V1 stored-view verification and fail closed across versions. |
+
+## Selected next vertical slice (T3)
+
+T3 is the Workspace identity vertical: the scanner inventory, placement write
+plan, and safe-init preview/recovery journal share `buildInventoryFingerprint`
+and can be versioned together without changing signed evidence or release
+formats. It must retain V1 verification for existing journals and plans, emit
+an explicit V2/canonicalization version only for new records, and prove
+cross-locale equivalence plus the ambient-locale discrimination sensor.
+
+Before implementation, the owner must explicitly approve either moving or
+adding the qualified `canonicalize@3.0.0` dependency to `packages/domain` (with
+the required lockfile update), or separately approve an equivalent internal
+RFC 8785 implementation and its vector review. This is a dependency and
+qualification decision, not an implicit T3 implementation detail.
 
 ## Explicit exclusions
 
