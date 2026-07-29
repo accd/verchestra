@@ -12,6 +12,8 @@ const CRITERION_ID = /^AC-[A-Z0-9-]{3,64}$/u;
 const ENTITY_REF = /^[a-z][a-z0-9_]{0,126}\.[a-z][a-z0-9_]{0,126}$/u;
 const FACT_KEY = /^[a-z][a-z0-9_.]{2,255}$/u;
 const GENERATORS = new Set(["boolean", "decimal", "email", "enum", "integer", "timestamp", "uuid", "words"]);
+const SENSITIVE_CLAIM_VALUE =
+  /(?:-----BEGIN [A-Z ]*PRIVATE KEY-----|\b(?:password|credential|secret|token|api[_-]?key)\b\s*[=:]|\bbearer\s+[a-z0-9._-]+|\b(?:gh[pousr]_[a-z0-9]{20,}|github_pat_[a-z0-9_]{20,}|sk-[a-z0-9_-]{20,}|xox[baprs]-[a-z0-9-]{10,}|akia[a-z0-9]{16}|eyj[a-z0-9_-]{8,}\.[a-z0-9_-]{8,}\.[a-z0-9_-]{8,})\b|\b(?:postgres(?:ql)?|mysql|mongodb|mariadb|sqlserver|oracle):\/\/|:\/\/[^\s/]+@)/iu;
 type UnknownRecord = Readonly<Record<string, unknown>>;
 type SourceKind = (typeof SOURCE_KINDS)[number];
 
@@ -74,6 +76,21 @@ function instant(value: unknown, code: string, message: string): string {
 function positive(value: unknown, code: string, message: string): number {
   if (!Number.isSafeInteger(value) || (value as number) < 1) fail(code, message);
   return value as number;
+}
+function isEmailValue(value: string): boolean {
+  let at = -1;
+  let dotAfterAt = -1;
+  for (let index = 0; index < value.length; index += 1) {
+    const character = value[index] as string;
+    if (/\s/u.test(character)) return false;
+    if (character === "@") {
+      if (at !== -1 || index === 0) return false;
+      at = index;
+      continue;
+    }
+    if (character === "." && at !== -1 && dotAfterAt === -1) dotAfterAt = index;
+  }
+  return at > 0 && dotAfterAt > at + 1 && dotAfterAt < value.length - 1;
 }
 
 interface SchemaColumn {
@@ -401,7 +418,7 @@ export function resolveDatabaseContradiction(
 }
 
 interface PromotedProbeEvidence {
-  readonly schemaVersion: 1;
+  readonly schemaVersion: 2;
   readonly workspaceId: string;
   readonly databaseId: string;
   readonly registrationDigest: string;
@@ -505,13 +522,19 @@ export function promoteProbeEvidence(value: unknown): PromotedProbeEvidence {
       fail(code, "Probe sanitized claim classification is invalid");
     if (
       !["string", "number", "boolean"].includes(typeof claim["value"]) ||
-      (typeof claim["value"] === "number" && !Number.isFinite(claim["value"]))
+      (typeof claim["value"] === "number" && !Number.isFinite(claim["value"])) ||
+      (typeof claim["value"] === "string" && claim["value"].length > 512)
+    )
+      fail(code, "Probe sanitized claim value is invalid");
+    if (
+      typeof claim["value"] === "string" &&
+      (isEmailValue(claim["value"]) || SENSITIVE_CLAIM_VALUE.test(claim["value"]))
     )
       fail(code, "Probe sanitized claim value is invalid");
     return {
       factKey,
-      value: claim["value"] as string | number | boolean,
       classification: claim["classification"],
+      valueDigest: digest(claim["value"]),
       untrusted: true as const
     };
   });
@@ -523,7 +546,7 @@ export function promoteProbeEvidence(value: unknown): PromotedProbeEvidence {
     "Probe result bounds are invalid"
   );
   const material = {
-    schemaVersion: 1 as const,
+    schemaVersion: 2 as const,
     workspaceId: text(result["workspaceId"], /^workspace_[a-f0-9-]{36}$/u, code, "Probe Workspace is invalid"),
     databaseId: text(result["databaseId"], STABLE_ID, code, "Probe database is invalid"),
     registrationDigest: text(result["registrationDigest"], DIGEST, code, "Probe registration digest is invalid"),
@@ -572,6 +595,108 @@ export function promoteProbeEvidence(value: unknown): PromotedProbeEvidence {
     promotionStatus: "accepted-sanitized" as const
   };
   return deepFreeze({ ...material, evidenceDigest: digest(material) });
+}
+
+function normalizePromotedProbeEvidence(value: unknown, code: string): PromotedProbeEvidence {
+  const evidence = record(value, code, "Promoted Probe evidence is invalid");
+  exactKeys(
+    evidence,
+    [
+      "schemaVersion",
+      "workspaceId",
+      "databaseId",
+      "registrationDigest",
+      "schemaIdentity",
+      "queryFingerprint",
+      "parameterClassifications",
+      "producedAt",
+      "bounds",
+      "rowCount",
+      "byteCount",
+      "resultDigest",
+      "producingRunId",
+      "redaction",
+      "sanitizedClaims",
+      "promotionStatus",
+      "evidenceDigest"
+    ],
+    code,
+    "Promoted Probe evidence is invalid"
+  );
+  if (evidence["schemaVersion"] !== 2 || evidence["promotionStatus"] !== "accepted-sanitized")
+    fail(code, "Promoted Probe evidence is invalid");
+  text(evidence["workspaceId"], /^workspace_[a-f0-9-]{36}$/u, code, "Promoted Probe evidence is invalid");
+  text(evidence["databaseId"], STABLE_ID, code, "Promoted Probe evidence is invalid");
+  text(evidence["registrationDigest"], DIGEST, code, "Promoted Probe evidence is invalid");
+  text(evidence["queryFingerprint"], DIGEST, code, "Promoted Probe evidence is invalid");
+  text(evidence["resultDigest"], DIGEST, code, "Promoted Probe evidence is invalid");
+  text(evidence["producingRunId"], RUN_ID, code, "Promoted Probe evidence is invalid");
+  text(evidence["evidenceDigest"], DIGEST, code, "Promoted Probe evidence is invalid");
+  instant(evidence["producedAt"], code, "Promoted Probe evidence is invalid");
+  const schemaIdentity = record(evidence["schemaIdentity"], code, "Promoted Probe evidence is invalid");
+  exactKeys(schemaIdentity, ["version", "fingerprint"], code, "Promoted Probe evidence is invalid");
+  text(schemaIdentity["version"], STABLE_ID, code, "Promoted Probe evidence is invalid");
+  text(schemaIdentity["fingerprint"], DIGEST, code, "Promoted Probe evidence is invalid");
+  const bounds = record(evidence["bounds"], code, "Promoted Probe evidence is invalid");
+  exactKeys(
+    bounds,
+    ["timeoutMs", "rowLimit", "byteLimit", "concurrencyLimit"],
+    code,
+    "Promoted Probe evidence is invalid"
+  );
+  for (const field of ["timeoutMs", "rowLimit", "byteLimit", "concurrencyLimit"])
+    positive(bounds[field], code, "Promoted Probe evidence is invalid");
+  for (const field of ["rowCount", "byteCount"])
+    if (!Number.isSafeInteger(evidence[field]) || (evidence[field] as number) < 0)
+      fail(code, "Promoted Probe evidence is invalid");
+  if (
+    !Array.isArray(evidence["parameterClassifications"]) ||
+    evidence["parameterClassifications"].some(
+      (item) =>
+        typeof item !== "string" || !["public", "internal", "confidential", "restricted", "secret"].includes(item)
+    )
+  )
+    fail(code, "Promoted Probe evidence is invalid");
+  const redaction = record(evidence["redaction"], code, "Promoted Probe evidence is invalid");
+  exactKeys(
+    redaction,
+    ["policyRef", "method", "removedFields", "humanReviewRef"],
+    code,
+    "Promoted Probe evidence is invalid"
+  );
+  text(redaction["policyRef"], /^[a-z][a-z0-9._-]{2,127}$/u, code, "Promoted Probe evidence is invalid");
+  if (redaction["method"] !== "allowlist" && redaction["method"] !== "aggregation")
+    fail(code, "Promoted Probe evidence is invalid");
+  text(redaction["humanReviewRef"], REVIEW_REF, code, "Promoted Probe evidence is invalid");
+  if (
+    !Array.isArray(redaction["removedFields"]) ||
+    redaction["removedFields"].some((item) => typeof item !== "string" || !/^[a-z][a-z0-9_.]{0,126}$/u.test(item))
+  )
+    fail(code, "Promoted Probe evidence is invalid");
+  if (!Array.isArray(evidence["sanitizedClaims"]) || evidence["sanitizedClaims"].length === 0)
+    fail(code, "Promoted Probe evidence is invalid");
+  const factKeys = new Set<string>();
+  for (const value of evidence["sanitizedClaims"]) {
+    const claim = record(value, code, "Promoted Probe evidence is invalid");
+    exactKeys(
+      claim,
+      ["factKey", "classification", "valueDigest", "untrusted"],
+      code,
+      "Promoted Probe evidence is invalid"
+    );
+    const factKey = text(claim["factKey"], FACT_KEY, code, "Promoted Probe evidence is invalid");
+    if (/(?:password|credential|secret|token)/iu.test(factKey) || factKeys.has(factKey))
+      fail(code, "Promoted Probe evidence is invalid");
+    factKeys.add(factKey);
+    if (claim["classification"] !== "public" && claim["classification"] !== "internal")
+      fail(code, "Promoted Probe evidence is invalid");
+    if (claim["untrusted"] !== true) fail(code, "Promoted Probe evidence is invalid");
+    text(claim["valueDigest"], DIGEST, code, "Promoted Probe evidence is invalid");
+  }
+  const normalized = evidence as unknown as PromotedProbeEvidence;
+  if (promotedEvidenceDigestOf(normalized) !== evidence["evidenceDigest"])
+    fail(code, "Promoted Probe evidence is invalid");
+  return deepFreeze(normalized);
 }
 
 function selectedFact(packageValue: DatabaseKnowledgePackage, factKey: string): string | boolean | undefined {
@@ -688,7 +813,8 @@ export function planSyntheticSeedScenarios(value: unknown) {
   )
     fail(code, "Synthetic seed evidence policy is invalid");
   const evidenceDigests: string[] = [];
-  for (const evidence of input["sanitizedEvidence"] as PromotedProbeEvidence[]) {
+  for (const rawEvidence of input["sanitizedEvidence"] as unknown[]) {
+    const evidence = normalizePromotedProbeEvidence(rawEvidence, code);
     if (
       evidence.promotionStatus !== "accepted-sanitized" ||
       !DIGEST.test(evidence.evidenceDigest) ||

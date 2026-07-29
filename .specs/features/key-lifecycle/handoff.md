@@ -2,13 +2,13 @@
 schema: verchestra-feature-handoff/v1
 feature: key-lifecycle
 issue: 51
-status: in_progress
-branch: codex/issue-51-cli-key-provider
-baseRevision: dea4c3cb8b139cbc4b14c2e70e229db047f48301
-lastCompletedTask: T4
-nextTask: T5
-lastGate: pnpm gate:quick
-updatedAt: 2026-07-29T16:18:42Z
+status: verification
+branch: codex/issue-51-portability-proof
+baseRevision: e2d3a251b0fe87de0b566563a258651bd8a467d9
+lastCompletedTask: T5
+nextTask: Independently verify T68a evidence in PR #104, then obtain human review before merge.
+lastGate: pnpm gate:security
+updatedAt: 2026-07-29T20:14:00Z
 ---
 
 # Scope
@@ -69,6 +69,22 @@ composition module. T4 evidence: `pnpm gate:quick` passed, `pnpm
 test:integration` passed 437 tests, `pnpm test:security` passed 915 tests,
 and `pnpm agent:check` passed.
 
+T5 proves actual portability across two separate machine-local state roots.
+The source obtains its persistent encrypted key through the CLI composition,
+seals a complete `ExecutionPackage`, and exports only the package plus the
+public trust root. The receiver has a distinct encrypted key and a qualified
+OpenCode/Qwen profile. It first rejects the package against its local trust
+root with `VES_TRUST_KEY_UNKNOWN`, then verifies the same package against the
+transferred source trust root, and seals and verifies a completed `RunCapsule`
+that links back to that package. The portable transfer is asserted not to
+contain either passphrase or either machine-local state-root text.
+
+T5 evidence: `node --test tests/e2e/key-lifecycle-portability.test.mjs`,
+`pnpm gate:full`, and `pnpm gate:security` passed on
+`b694563dbdd8ceb66e7420be02b9e31adbe454f8` in a clean worktree installed
+with `pnpm install --frozen-lockfile --offline`. The qualification report is
+`docs/qualification/t68a-key-lifecycle.md` and the review target is PR #104.
+
 The status-surface migration is complete. Rather than moving the literal
 "T69" to "T68a" in each surface, the derivation itself was fixed: `nextTask`
 was `highestVerifiedTask + 1`, an assumption that broke the moment task
@@ -99,15 +115,15 @@ reporting `internalLinks: valid`.
 
 # Next Exact Action
 
-T5: build the two-environment portability proof and recorded demo transcript.
+Independently verify the T68a report and its linked implementation revision in
+PR #104, then obtain the required human review before merge.
 
 # Blockers
 
-T1 through T4 are complete. T5 needs a complete Execution Package flow and a
-second machine-local state root; it must produce a real end-to-end proof rather
-than a synthetic signature-only test. Windows file modes remain a best-effort
-ACL limitation documented in the feature design; the provider uses owner-only
-modes where the platform enforces POSIX permissions.
+Implementation is complete; independent verification and human review remain
+required before merge. Windows file modes remain a best-effort ACL limitation
+documented in the feature design; the provider uses owner-only modes where the
+platform enforces POSIX permissions.
 
 # Decisions
 
@@ -125,6 +141,5 @@ modes where the platform enforces POSIX permissions.
 
 # Files Intentionally Left Unchanged
 
-- `apps/vestra-cli`, which is intentionally reserved for T4 composition.
 - The canonical JSON and signature format (owned by the DSSE decision).
 - The T69–T77 numbering and every existing qualification report.
