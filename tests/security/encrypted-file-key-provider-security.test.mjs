@@ -67,3 +67,15 @@ test("keystore failures expose a stable public code without disclosing the suppl
     return true;
   });
 });
+
+test("rotation-state metadata is authenticated and cannot reactivate a tampered key", async () => {
+  const { root, provider } = await fixture();
+  await provider.loadOrCreate(request);
+  await provider.rotate({ ...request, overlapUntil: "2026-08-01T00:00:00.000Z" });
+  const path = await keystorePath(root);
+  const envelope = JSON.parse(await readFile(path, "utf8"));
+  envelope.publicKeyRef.keyId = request.keyId;
+  await writeFile(path, `${JSON.stringify(envelope)}\n`, "utf8");
+
+  await assert.rejects(provider.loadOrCreate(request), { code: "VES_KEYSTORE_INTEGRITY" });
+});

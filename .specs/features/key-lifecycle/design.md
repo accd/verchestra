@@ -26,7 +26,10 @@ window for trust-root publication.
   `.verchestra/` subtrees.
 - Format: versioned JSON envelope `{ version, keyId, kdf: { name: "scrypt",
   salt, N, r, p }, cipher: { name: "AES-256-GCM", iv, tag }, ciphertext,
-  publicKeyRef }` — all from `node:crypto`, no new dependency.
+  publicKeyRef }` — all from `node:crypto`, no new dependency. Version 2
+  encrypts and authenticates the logical identity, revocation state, current
+  public reference, and PKCS#8 material together; version 1 remains readable
+  so an existing first-use key can rotate safely.
 - Passphrase: interactive prompt or environment injection at the composition
   root; never stored, logged, or written to evidence.
 - Permissions: owner-only file mode (`0o600`); Windows ACL best-effort with
@@ -36,13 +39,15 @@ window for trust-root publication.
 
 ## Rotation and Revocation
 
-- The trust root gains a key registry: `keyId → PublicKeyRef[]` ordered by
-  `validFrom`. Rotation appends the new ref and sets `validUntil = now +
-  overlap` on the old ref. Verification accepts any non-expired,
-  non-revoked ref whose `purposes` cover the artifact purpose.
-- Revocation marks the ref revoked; verification of *new* artifacts fails,
-  while previously verified historical evidence keeps its recorded verdict
-  (fail closed for new work, no retroactive rewriting of history).
+- A caller owns a stable logical key identity. Rotation gives the new physical
+  Ed25519 key a distinct versioned `keyId`, returns the prior public reference
+  with `validUntil`, and persists the new key as active. The caller publishes
+  both physical references into the trust root; duplicate IDs are never used.
+  Verification accepts any non-expired, non-revoked ref whose `purposes` cover
+  the artifact purpose.
+- Revocation is persisted inside the authenticated encrypted state and blocks
+  later signing-key loads with `VES_KEY_REVOKED`; trust-root revocation remains
+  the explicit ceremony for receivers. Historical verdicts are not rewritten.
 - New error codes follow the existing discipline: `VES_KEY_REVOKED`,
   `VES_KEY_EXPIRED`, `VES_KEYSTORE_INTEGRITY`, `VES_KEY_PURPOSE_DENIED`
   (extends the existing `VES_SIGNING_PURPOSE_DENIED` behavior in

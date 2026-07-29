@@ -1,11 +1,13 @@
-import { createCipheriv, createDecipheriv, createHash, randomBytes, scrypt } from "node:crypto";
-import { link, lstat, mkdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID, scrypt } from "node:crypto";
+import { link, lstat, mkdir, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import {
   IntegrityError,
   NodeEd25519Signer,
   type EvidenceSigner,
   type KeyProviderRequest,
+  type KeyRotation,
+  type KeyRotationRequest,
   type PublicKeyRef
 } from "@verchestra/evidence";
 const SCRYPT_N = 32_768;
@@ -16,7 +18,7 @@ const SALT_BYTES = 16;
 const IV_BYTES = 12;
 const TAG_BYTES = 16;
 
-interface KeystoreEnvelope {
+interface KeystoreEnvelopeV1 {
   readonly version: 1;
   readonly keyId: string;
   readonly kdf: {
@@ -29,6 +31,30 @@ interface KeystoreEnvelope {
   readonly cipher: { readonly name: "AES-256-GCM"; readonly iv: string; readonly tag: string };
   readonly ciphertext: string;
   readonly publicKeyRef: PublicKeyRef;
+}
+
+interface KeystoreEnvelopeV2 {
+  readonly version: 2;
+  readonly keyId: string;
+  readonly kdf: KeystoreEnvelopeV1["kdf"];
+  readonly cipher: KeystoreEnvelopeV1["cipher"];
+  readonly ciphertext: string;
+  readonly publicKeyRef: PublicKeyRef;
+}
+
+type KeystoreEnvelope = KeystoreEnvelopeV1 | KeystoreEnvelopeV2;
+
+interface EncryptedKeyState {
+  readonly logicalKeyId: string;
+  readonly revoked: boolean;
+  readonly publicKeyRef: PublicKeyRef;
+  readonly privateKey: string;
+}
+
+interface LoadedKey {
+  readonly signer: NodeEd25519Signer;
+  readonly logicalKeyId: string;
+  readonly revoked: boolean;
 }
 
 function fail(message: string, options?: ErrorOptions): never {
@@ -65,7 +91,7 @@ function parseEnvelope(value: unknown): KeystoreEnvelope {
   if (value === null || typeof value !== "object" || Array.isArray(value)) fail("Keystore envelope is invalid");
   const input = value as Record<string, unknown>;
   if (
-    input["version"] !== 1 ||
+    (input["version"] !== 1 && input["version"] !== 2) ||
     typeof input["keyId"] !== "string" ||
     input["kdf"] === null ||
     typeof input["kdf"] !== "object" ||
@@ -109,11 +135,52 @@ function parseEnvelope(value: unknown): KeystoreEnvelope {
   return input as unknown as KeystoreEnvelope;
 }
 
+function parseEncryptedState(value: Buffer): EncryptedKeyState {
+  let input: unknown;
+  try {
+    input = JSON.parse(value.toString("utf8"));
+  } catch (error) {
+    return fail("Keystore state is invalid", { cause: error });
+  }
+  if (input === null || typeof input !== "object" || Array.isArray(input)) fail("Keystore state is invalid");
+  const state = input as Record<string, unknown>;
+  if (
+    typeof state["logicalKeyId"] !== "string" ||
+    typeof state["revoked"] !== "boolean" ||
+    typeof state["privateKey"] !== "string" ||
+    state["publicKeyRef"] === null ||
+    typeof state["publicKeyRef"] !== "object"
+  ) {
+    fail("Keystore state is invalid");
+  }
+  const reference = state["publicKeyRef"] as Record<string, unknown>;
+  if (
+    typeof reference["keyId"] !== "string" ||
+    reference["algorithm"] !== "Ed25519" ||
+    reference["encoding"] !== "spki-der-base64url" ||
+    typeof reference["publicKey"] !== "string" ||
+    !Array.isArray(reference["purposes"]) ||
+    reference["purposes"].length === 0 ||
+    reference["purposes"].some((purpose) => typeof purpose !== "string" || purpose.length === 0) ||
+    (reference["validFrom"] !== undefined && typeof reference["validFrom"] !== "string") ||
+    (reference["validUntil"] !== undefined && typeof reference["validUntil"] !== "string")
+  ) {
+    fail("Keystore public key reference is invalid");
+  }
+  decode(state["privateKey"]);
+  return state as unknown as EncryptedKeyState;
+}
+
 export class EncryptedFileKeyProvider {
   readonly #stateRoot: string;
   readonly #passphrase: () => Promise<Uint8Array>;
+  readonly #now: () => Date;
 
-  constructor(options: { readonly stateRoot: string; readonly passphrase: () => Promise<Uint8Array> }) {
+  constructor(options: {
+    readonly stateRoot: string;
+    readonly passphrase: () => Promise<Uint8Array>;
+    readonly now?: () => Date;
+  }) {
     if (
       !isAbsolute(options.stateRoot) ||
       options.stateRoot.includes("\0") ||
@@ -123,13 +190,14 @@ export class EncryptedFileKeyProvider {
     }
     this.#stateRoot = resolve(options.stateRoot);
     this.#passphrase = options.passphrase;
+    this.#now = options.now ?? (() => new Date());
   }
 
   async loadOrCreate(request: KeyProviderRequest): Promise<EvidenceSigner> {
     const root = await this.#root();
     const target = join(root, `${createHash("sha256").update(request.keyId, "utf8").digest("hex")}.key.json`);
     try {
-      return await this.#load(target, request);
+      return (await this.#load(target, request)).signer;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     }
@@ -149,11 +217,48 @@ export class EncryptedFileKeyProvider {
       await link(temporary, target);
       return signer;
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "EEXIST") return await this.#load(target, request);
+      if ((error as NodeJS.ErrnoException).code === "EEXIST") return (await this.#load(target, request)).signer;
       throw error;
     } finally {
       await rm(temporary, { force: true });
     }
+  }
+
+  async rotate(request: KeyRotationRequest): Promise<KeyRotation> {
+    const overlapUntil = Date.parse(request.overlapUntil);
+    const now = this.#now();
+    if (
+      !Number.isFinite(overlapUntil) ||
+      new Date(overlapUntil).toISOString() !== request.overlapUntil ||
+      overlapUntil <= now.getTime()
+    ) {
+      throw new IntegrityError("VES_KEY_EXPIRED", "Key rotation overlap must end in the future");
+    }
+    const root = await this.#root();
+    const target = join(root, `${createHash("sha256").update(request.keyId, "utf8").digest("hex")}.key.json`);
+    const loaded = await this.#load(target, request);
+    const previous = this.#withValidity(loaded.signer, request.overlapUntil);
+    const current = NodeEd25519Signer.generate({
+      keyId: `${request.keyId}:rotation:${randomUUID()}`,
+      purposes: request.purposes,
+      validFrom: now.toISOString()
+    });
+    await this.#replace(target, await this.#encryptState(request.keyId, current, false));
+    return Object.freeze({ current, previous: previous.publicKeyRef });
+  }
+
+  async revoke(keyId: string): Promise<void> {
+    const root = await this.#root();
+    const target = join(root, `${createHash("sha256").update(keyId, "utf8").digest("hex")}.key.json`);
+    let loaded: LoadedKey;
+    try {
+      loaded = await this.#load(target, { keyId, purposes: [] }, true);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") throw error;
+      throw error;
+    }
+    if (loaded.revoked) return;
+    await this.#replace(target, await this.#encryptState(loaded.logicalKeyId, loaded.signer, true));
   }
 
   async #root(): Promise<string> {
@@ -171,7 +276,7 @@ export class EncryptedFileKeyProvider {
     return resolved;
   }
 
-  async #load(path: string, request: KeyProviderRequest): Promise<EvidenceSigner> {
+  async #load(path: string, request: KeyProviderRequest, allowRevoked = false): Promise<LoadedKey> {
     let envelope: KeystoreEnvelope;
     try {
       envelope = parseEnvelope(JSON.parse(await readFile(path, "utf8")));
@@ -182,27 +287,117 @@ export class EncryptedFileKeyProvider {
     }
     if (
       envelope.keyId !== request.keyId ||
-      envelope.publicKeyRef.keyId !== request.keyId ||
-      !sameArray(envelope.publicKeyRef.purposes, request.purposes)
+      (request.purposes.length > 0 && !sameArray(envelope.publicKeyRef.purposes, request.purposes))
     ) {
       fail("Keystore identity does not match the requested key");
     }
     const privateKey = await this.#decrypt(envelope);
     try {
-      const signer = NodeEd25519Signer.fromPkcs8(
+      if (envelope.version === 2) {
+        const state = parseEncryptedState(privateKey);
+        if (
+          state.logicalKeyId !== request.keyId ||
+          !sameReference(state.publicKeyRef, envelope.publicKeyRef) ||
+          (request.purposes.length > 0 && !sameArray(state.publicKeyRef.purposes, request.purposes))
+        ) {
+          fail("Keystore identity does not match the requested key");
+        }
+        const storedPrivateKey = decode(state.privateKey);
+        try {
+          const signer = this.#signerFromReference(state.publicKeyRef, storedPrivateKey);
+          if (state.revoked && !allowRevoked) throw new IntegrityError("VES_KEY_REVOKED", "Signing key is revoked");
+          return Object.freeze({ signer, logicalKeyId: state.logicalKeyId, revoked: state.revoked });
+        } finally {
+          storedPrivateKey.fill(0);
+        }
+      }
+      if (envelope.publicKeyRef.keyId !== request.keyId) fail("Keystore identity does not match the requested key");
+      const signer = this.#signerFromReference(envelope.publicKeyRef, privateKey);
+      return Object.freeze({ signer, logicalKeyId: request.keyId, revoked: false });
+    } finally {
+      privateKey.fill(0);
+    }
+  }
+
+  #signerFromReference(reference: PublicKeyRef, privateKey: Uint8Array): NodeEd25519Signer {
+    const signer = NodeEd25519Signer.fromPkcs8(
+      {
+        keyId: reference.keyId,
+        purposes: reference.purposes,
+        ...(reference.validFrom === undefined ? {} : { validFrom: reference.validFrom }),
+        ...(reference.validUntil === undefined ? {} : { validUntil: reference.validUntil })
+      },
+      privateKey
+    );
+    if (!sameReference(signer.publicKeyRef, reference)) fail("Keystore public key does not match private key material");
+    return signer;
+  }
+
+  #withValidity(signer: NodeEd25519Signer, validUntil: string): NodeEd25519Signer {
+    const privateKey = signer.exportPkcs8();
+    try {
+      return NodeEd25519Signer.fromPkcs8(
         {
-          keyId: envelope.publicKeyRef.keyId,
-          purposes: envelope.publicKeyRef.purposes,
-          ...(envelope.publicKeyRef.validFrom === undefined ? {} : { validFrom: envelope.publicKeyRef.validFrom }),
-          ...(envelope.publicKeyRef.validUntil === undefined ? {} : { validUntil: envelope.publicKeyRef.validUntil })
+          keyId: signer.publicKeyRef.keyId,
+          purposes: signer.publicKeyRef.purposes,
+          ...(signer.publicKeyRef.validFrom === undefined ? {} : { validFrom: signer.publicKeyRef.validFrom }),
+          validUntil
         },
         privateKey
       );
-      if (!sameReference(signer.publicKeyRef, envelope.publicKeyRef))
-        fail("Keystore public key does not match private key material");
-      return signer;
     } finally {
       privateKey.fill(0);
+    }
+  }
+
+  async #encryptState(logicalKeyId: string, signer: NodeEd25519Signer, revoked: boolean): Promise<KeystoreEnvelopeV2> {
+    const privateKey = signer.exportPkcs8();
+    const state = Buffer.from(
+      JSON.stringify({
+        logicalKeyId,
+        revoked,
+        publicKeyRef: signer.publicKeyRef,
+        privateKey: Buffer.from(privateKey).toString("base64url")
+      }),
+      "utf8"
+    );
+    privateKey.fill(0);
+    const salt = randomBytes(SALT_BYTES);
+    const iv = randomBytes(IV_BYTES);
+    const key = await this.#derive(salt);
+    try {
+      const cipher = createCipheriv("aes-256-gcm", key, iv);
+      const ciphertext = Buffer.concat([cipher.update(state), cipher.final()]);
+      return Object.freeze({
+        version: 2,
+        keyId: logicalKeyId,
+        kdf: Object.freeze({ name: "scrypt", salt: salt.toString("base64url"), N: SCRYPT_N, r: SCRYPT_R, p: SCRYPT_P }),
+        cipher: Object.freeze({
+          name: "AES-256-GCM",
+          iv: iv.toString("base64url"),
+          tag: cipher.getAuthTag().toString("base64url")
+        }),
+        ciphertext: ciphertext.toString("base64url"),
+        publicKeyRef: signer.publicKeyRef
+      });
+    } finally {
+      key.fill(0);
+      state.fill(0);
+    }
+  }
+
+  async #replace(path: string, envelope: KeystoreEnvelopeV2): Promise<void> {
+    const temporary = `${path}.${randomBytes(12).toString("hex")}.tmp`;
+    try {
+      await writeFile(temporary, `${JSON.stringify(envelope)}\n`, {
+        encoding: "utf8",
+        mode: 0o600,
+        flag: "wx",
+        flush: true
+      });
+      await rename(temporary, path);
+    } finally {
+      await rm(temporary, { force: true });
     }
   }
 

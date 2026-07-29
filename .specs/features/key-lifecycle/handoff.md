@@ -3,12 +3,12 @@ schema: verchestra-feature-handoff/v1
 feature: key-lifecycle
 issue: 51
 status: in_progress
-branch: codex/issue-51-encrypted-keystore
-baseRevision: 4c1f562eabe71dc58f804940e63c066c3c1bfdbb
-lastCompletedTask: T2
-nextTask: T3
+branch: codex/issue-51-key-rotation-main
+baseRevision: f027fb797c9a421eea90642166e999505e723c54
+lastCompletedTask: T3
+nextTask: T4
 lastGate: pnpm gate:quick
-updatedAt: 2026-07-29T15:54:58Z
+updatedAt: 2026-07-29T16:08:06Z
 ---
 
 # Scope
@@ -44,6 +44,21 @@ T2 evidence: focused provider tests passed; `pnpm gate:quick` passed with
 914 tests. The adversarial coverage includes a wrong passphrase, malformed
 JSON, modified GCM ciphertext, and a modified plaintext public-key identity.
 
+T3 adds rotation and revocation to the file adapter. Rotation retains a stable
+logical key identity for callers but gives each new signing key a distinct
+physical `keyId`, returns the previous public reference with its overlap end,
+and persists the new active key. The version-2 encrypted state authenticates
+the active reference and revocation bit with the private material, so neither
+metadata mutation nor an attempted reactivation is accepted. `revoke()` is
+idempotent and later `loadOrCreate()` calls fail with `VES_KEY_REVOKED`.
+
+T3 evidence: the focused tests prove distinct identities, persistence,
+revocation, invalid-overlap rejection, in-window verification, and expiry;
+`pnpm gate:quick` passed with 1,628 unit tests and 64 readiness tests;
+`pnpm test:security` passed with 915 tests, including altered version-2
+metadata. The existing verifier supplies the corresponding trust-root
+`VES_TRUST_KEY_EXPIRED` outcome after overlap.
+
 The status-surface migration is complete. Rather than moving the literal
 "T69" to "T68a" in each surface, the derivation itself was fixed: `nextTask`
 was `highestVerifiedTask + 1`, an assumption that broke the moment task
@@ -74,15 +89,15 @@ reporting `internalLinks: valid`.
 
 # Next Exact Action
 
-T3: add rotation with an overlap window and revocation, then exercise the
-new signing and verification failure modes with unit and fault-injection tests.
+T4: wire the composition root to obtain signers only through `KeyProviderPort`,
+with integration tests proving no production path constructs `NodeEd25519Signer`.
 
 # Blockers
 
-T1 and T2 are complete. T3 may use the persisted adapter but must not wire it
-into the CLI before T4. Windows file modes remain a best-effort ACL limitation
-documented in the feature design; the provider uses owner-only modes where the
-platform enforces POSIX permissions.
+T1 through T3 are complete. T4 is the first CLI-composition slice; it must not
+introduce a direct `NodeEd25519Signer` construction. Windows file modes remain
+a best-effort ACL limitation documented in the feature design; the provider
+uses owner-only modes where the platform enforces POSIX permissions.
 
 # Decisions
 
