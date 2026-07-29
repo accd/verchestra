@@ -3,12 +3,12 @@ schema: verchestra-feature-handoff/v1
 feature: key-lifecycle
 issue: 51
 status: in_progress
-branch: feat/t68a-status-surfaces
-baseRevision: 51c9277ad071187e923ff03b699d56e3f999a222
-lastCompletedTask: null
-nextTask: T1
-lastGate: pnpm gate:full
-updatedAt: 2026-07-28T22:56:13Z
+branch: codex/issue-51-key-provider
+baseRevision: e08a5cb7cae60d7f29a09121c1784383216ba549
+lastCompletedTask: T1
+nextTask: T2
+lastGate: pnpm gate:quick
+updatedAt: 2026-07-29T13:58:00Z
 ---
 
 # Scope
@@ -58,13 +58,17 @@ reporting `internalLinks: valid`.
 
 # Next Exact Action
 
-T1: define `KeyProviderPort` in `packages/evidence/src/integrity/` and the
-new public error codes (`VES_KEYSTORE_INTEGRITY`, `VES_KEY_REVOKED`,
-`VES_KEY_EXPIRED`) through the schema generator in `schemas/`.
+T2: implement the encrypted-file provider using only `node:crypto`, including
+authenticated encryption, owner-only persistence, and fail-closed malformed or
+tampered-keystore handling.
 
 # Blockers
 
-None.
+T1 is complete: `KeyProviderPort` now has stable load, rotate, and revoke
+shapes; `key-lifecycle-error@1` is the closed canonical schema for
+`VES_KEYSTORE_INTEGRITY`, `VES_KEY_REVOKED`, and `VES_KEY_EXPIRED`; generated
+contracts are current. `pnpm test:contract` passed 440 tests, `pnpm typecheck`
+passed, and `pnpm gate:quick` passed (1,620 unit tests and 64 readiness tests).
 
 # Decisions
 

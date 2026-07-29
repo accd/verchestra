@@ -21,6 +21,11 @@ export interface CliOutput {
   };
 }
 
+export interface KeyLifecycleError {
+  schemaVersion: "1";
+  code: "VES_KEYSTORE_INTEGRITY" | "VES_KEY_REVOKED" | "VES_KEY_EXPIRED";
+}
+
 export interface ProtocolEnvelope {
   schemaVersion: "1";
   protocol: "verchestra/1";
