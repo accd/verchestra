@@ -11,6 +11,10 @@ test("publishes only the exact site artifact that passed both required gates", (
   // their stage union. The latter prevents overlapping profiles from rerunning
   // format, lint, typecheck, and test stages serially.
   assert.match(workflow, /node scripts\/select-gates\.mjs/u);
+  assert.match(workflow, /if: contains\(steps\.selection\.outputs\.stages, 'test:qualification'\)/u);
+  assert.match(workflow, /@anthropic-ai\/claude-code@2\.1\.168 @openai\/codex@0\.115\.0/u);
+  assert.match(workflow, /test "\$\(claude --version\)" = "2\.1\.168"/u);
+  assert.match(workflow, /test "\$\(codex --version\)" = "codex-cli 0\.115\.0"/u);
   assert.match(workflow, /for stage in \$\{\{ steps\.selection\.outputs\.stages \}\}/u);
   assert.match(workflow, /pnpm run "\$stage"/u);
   assert.match(workflow, /path: gate-selection\.json/u);
