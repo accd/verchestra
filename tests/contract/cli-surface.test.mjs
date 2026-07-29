@@ -151,6 +151,21 @@ test("default human result renders data without JSON envelope", async () => {
   assert.equal(result.streams.stdout[0], "status: ok\n");
 });
 
+test("human output keeps nested values readable without becoming the JSON envelope", async () => {
+  const bus = {
+    calls: [],
+    async execute(command, context) {
+      bus.calls.push([command, context]);
+      return { data: { changes: [{ path: "a" }], status: "ok" }, diagnostics: [] };
+    }
+  };
+  const result = await execute(["sync"], { bus });
+  // Sorted key: value lines, with the nested value compact rather than
+  // "[object Object]" and without the schemaVersion/command/ok envelope.
+  assert.equal(result.streams.stdout[0], 'changes: [{"path":"a"}]\nstatus: ok\n');
+  assert.doesNotMatch(result.streams.stdout[0], /schemaVersion|"ok":/u);
+});
+
 for (const [name, argv] of [
   ["unknown command", ["destroy"]],
   ["unknown option", ["sync", "--force"]],
