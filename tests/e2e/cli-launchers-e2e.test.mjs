@@ -24,6 +24,34 @@ for (const args of [["--version"], ["--help"], ["--version", "--output", "json"]
   });
 }
 
+const exactReleaseOutputs = Object.freeze([
+  [["--version"], `Verchestra ${canonicalVersion} (source build, no verified release artifact)\n`],
+  [
+    ["--help"],
+    `Verchestra ${canonicalVersion}\nCanonical CLI: vestra\n\nUsage: vestra <command> [options]\n\nCommands:\n  init                 Initialize a Workspace\n  bootstrap            Bootstrap this machine\n  sync                 Synchronize local state\n  workspace reconcile  Reconcile Workspace topology\n  doctor               Inspect local health\n`
+  ],
+  [
+    ["--version", "--output", "json"],
+    `${JSON.stringify({
+      schemaVersion: "1",
+      command: "version",
+      ok: true,
+      data: { product: "Verchestra", semanticVersion: canonicalVersion, releaseDigest: null }
+    })}\n`
+  ]
+]);
+
+for (const name of ["vestra", "verchestra"]) {
+  for (const [args, expectedStdout] of exactReleaseOutputs) {
+    test(`${name} emits the exact canonical release output for ${args.join(" ")}`, () => {
+      const result = launch(name, args);
+      assert.equal(result.status, 0);
+      assert.equal(result.stderr, "");
+      assert.equal(result.stdout, expectedStdout);
+    });
+  }
+}
+
 test("launcher JSON stdout contains exactly one valid document", () => {
   const result = launch("vestra", ["--version", "--output", "json"]);
   assert.equal(result.status, 0);
