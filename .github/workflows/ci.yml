@@ -17,7 +17,10 @@ jobs:
   quality:
     name: Quality gate
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # The selection can reach gate:release, whose ten stages include a build
+    # and every test suite, so the budget reflects the heaviest selection rather
+    # than the lightest.
+    timeout-minutes: 45
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.0
