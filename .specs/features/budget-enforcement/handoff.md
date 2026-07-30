@@ -4,11 +4,11 @@ feature: budget-enforcement
 issue: 52
 status: verification
 branch: feat/t68b-budget-enforcement
-baseRevision: f228e4ac331e843e340ff770141e768091b7bc7c
+baseRevision: 162bbe84a0345266a13b0a3c94a6b9121fe98a75
 lastCompletedTask: T5
 nextTask: Independent verification and human review of the T68b pull request
 lastGate: pnpm gate:security
-updatedAt: 2026-07-30T00:39:24Z
+updatedAt: 2026-07-30T09:13:59Z
 ---
 
 # Scope
@@ -71,7 +71,22 @@ implementation revision reachable from main.
 
 # Blockers
 
-None.
+None for this branch.
+
+Rebased onto `162bbe8` after T68c merged. The only conflict was the export
+barrel in `packages/application/src/index.ts`; both blocks are additive and both
+were kept. Nothing in `task-executor.ts` conflicted, because the repair loop
+composes above the executor through ports rather than editing it.
+
+That rebase surfaced an interaction neither pull request could have caught,
+filed as issue #124: the meter is constructed inside one `execute()` call, and
+the repair loop calls its `attempt()` port up to five times, so each attempt
+gets a fresh 90% threshold and a declared run ceiling can be spent once per
+attempt. T68b is correct alone and T68c is correct alone; the defect exists only
+once both are on `main`. It is not fixed here - making the budget span attempts
+is composition-root work (#64), where the two coordinators are actually wired
+together. A reviewer of this branch should read it as a known follow-up, not as
+an unenforced budget.
 
 # Decisions
 
