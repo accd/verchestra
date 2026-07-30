@@ -121,3 +121,12 @@ test("tool requests are bound to exact task and capability", async () => {
   assert.equal(state.toolRequests[0].taskId, "T58.1");
   assert.equal(state.toolRequests[0].capabilityGrantRef, "grant:writer:001");
 });
+
+test("a root task with no dependencies executes to its gate", async () => {
+  const { ports } = executorPorts();
+  const input = executorInput();
+  input.task = { ...input.task, dependencyTaskIds: [] };
+  const result = await executor(ports).execute(input);
+  assert.equal(result.status, "AWAITING_GATE");
+  assert.deepEqual(result.taskId, "T58.1");
+});
