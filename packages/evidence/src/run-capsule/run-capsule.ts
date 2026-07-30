@@ -56,6 +56,24 @@ export interface RunCapsuleEvidence {
   readonly terminal: readonly RunCapsuleRef[];
 }
 
+// Declared-versus-consumed budget evidence (BUD-05). The price table version is
+// sealed with the run so historical cost stays auditable after rate updates.
+export interface RunCapsuleBudgetEvidence {
+  readonly declared: {
+    readonly maximumCostUsd: number;
+    readonly maximumTokens: number;
+    readonly maximumDurationMs: number;
+  };
+  readonly consumed: {
+    readonly costUsd: number;
+    readonly tokens: number;
+    readonly durationMs: number;
+    readonly usageEvents: number;
+  };
+  readonly priceTableVersion: string;
+  readonly stopReason: string | null;
+}
+
 export interface RunCapsuleBuildInput {
   readonly schemaVersion: 1;
   readonly workspaceId: string;
@@ -79,6 +97,7 @@ export interface RunCapsuleBuildInput {
   readonly terminalErrorRef?: RunCapsuleRef;
   readonly recoveryRef?: RunCapsuleRef;
   readonly handoff?: RunCapsuleHandoff;
+  readonly budgetEvidence?: RunCapsuleBudgetEvidence;
   readonly terminalTransition: RunCapsuleTerminalTransition;
   readonly sealedAt: string;
 }
@@ -310,9 +329,55 @@ const PAYLOAD_FIELDS = Object.freeze([
   "terminalErrorRef",
   "recoveryRef",
   "handoff",
+  "budgetEvidence",
   "terminalTransition",
   "sealedAt"
 ]);
+
+function nonNegativeNumber(value: unknown, label: string): number {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0)
+    fail("VES_RUN_CAPSULE_INVALID", `${label} must be a non-negative finite number`);
+  return value;
+}
+
+function positiveNumber(value: unknown, label: string): number {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0)
+    fail("VES_RUN_CAPSULE_INVALID", `${label} must be a positive finite number`);
+  return value;
+}
+
+function normalizeBudgetEvidence(value: unknown): RunCapsuleBudgetEvidence {
+  const valueRow = row(value, "budgetEvidence", ["declared", "consumed", "priceTableVersion", "stopReason"]);
+  const declared = row(valueRow["declared"], "budgetEvidence.declared", [
+    "maximumCostUsd",
+    "maximumTokens",
+    "maximumDurationMs"
+  ]);
+  const consumed = row(valueRow["consumed"], "budgetEvidence.consumed", [
+    "costUsd",
+    "tokens",
+    "durationMs",
+    "usageEvents"
+  ]);
+  const stopReason = valueRow["stopReason"];
+  if (stopReason !== null && (typeof stopReason !== "string" || !SAFE.test(stopReason)))
+    fail("VES_RUN_CAPSULE_INVALID", "budgetEvidence.stopReason is invalid");
+  return Object.freeze({
+    declared: Object.freeze({
+      maximumCostUsd: positiveNumber(declared["maximumCostUsd"], "budgetEvidence.declared.maximumCostUsd"),
+      maximumTokens: positiveNumber(declared["maximumTokens"], "budgetEvidence.declared.maximumTokens"),
+      maximumDurationMs: positiveNumber(declared["maximumDurationMs"], "budgetEvidence.declared.maximumDurationMs")
+    }),
+    consumed: Object.freeze({
+      costUsd: nonNegativeNumber(consumed["costUsd"], "budgetEvidence.consumed.costUsd"),
+      tokens: nonNegativeNumber(consumed["tokens"], "budgetEvidence.consumed.tokens"),
+      durationMs: nonNegativeNumber(consumed["durationMs"], "budgetEvidence.consumed.durationMs"),
+      usageEvents: nonNegativeNumber(consumed["usageEvents"], "budgetEvidence.consumed.usageEvents")
+    }),
+    priceTableVersion: safe(valueRow["priceTableVersion"], "budgetEvidence.priceTableVersion"),
+    stopReason
+  });
+}
 
 function normalizePayload(value: unknown): RunCapsulePayload {
   inspectPrivateMaterial(value);
@@ -343,6 +408,8 @@ function normalizePayload(value: unknown): RunCapsulePayload {
   const terminalErrorRef = optionalRef(valueRow["terminalErrorRef"], "terminalErrorRef");
   const recoveryRef = optionalRef(valueRow["recoveryRef"], "recoveryRef");
   const handoff = valueRow["handoff"] === undefined ? undefined : normalizeHandoff(valueRow["handoff"]);
+  const budgetEvidence =
+    valueRow["budgetEvidence"] === undefined ? undefined : normalizeBudgetEvidence(valueRow["budgetEvidence"]);
 
   if (status === "COMPLETED" && (verificationRef === undefined || humanReviewRef === undefined))
     fail("VES_RUN_CAPSULE_EVIDENCE_INCOMPLETE", "Completed runs require verification and Human Review");
@@ -397,6 +464,7 @@ function normalizePayload(value: unknown): RunCapsulePayload {
     ...(terminalErrorRef === undefined ? {} : { terminalErrorRef }),
     ...(recoveryRef === undefined ? {} : { recoveryRef }),
     ...(handoff === undefined ? {} : { handoff }),
+    ...(budgetEvidence === undefined ? {} : { budgetEvidence }),
     terminalTransition,
     sealedAt
   });
