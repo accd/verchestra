@@ -7,7 +7,7 @@ branch: main
 baseRevision: 73b2060edb8a7e66a93a88bc795a64d5aa8fa725
 lastCompletedTask: T5
 nextTask: Independently verify the reachable T68a evidence correction, then obtain and record human acceptance.
-lastGate: pnpm gate:full
+lastGate: pnpm gate:security
 updatedAt: 2026-07-29T21:55:00Z
 ---
 
@@ -80,11 +80,22 @@ that links back to that package. The portable transfer is asserted not to
 contain either passphrase or either machine-local state-root text.
 
 T5 evidence: `node --test tests/e2e/key-lifecycle-portability.test.mjs`,
-`pnpm gate:full` passed on the reachable main ancestor
-`73b2060edb8a7e66a93a88bc795a64d5aa8fa725`. The manual GitHub validation run
+`pnpm gate:quick`, `pnpm gate:full`, and `pnpm gate:security` passed on the
+reachable main ancestor `73b2060edb8a7e66a93a88bc795a64d5aa8fa725`. The manual
+GitHub validation run
 [`30494937450`](https://github.com/accd/verchestra/actions/runs/30494937450)
-resolved that exact candidate, ran the full profile, and uploaded the candidate
-identity artifact. The qualification report is
+resolved that exact candidate, ran the full profile, and uploaded a candidate
+identity artifact recording that revision and `gate:full`. The quick and
+security profiles were run on a clean checkout detached at the same revision.
+
+A review of this correction found that its first draft dropped
+`pnpm gate:security` - the only profile that runs `build`,
+`test:architecture`, `test:qualification`, and `test:security` - from a task
+about signing keys, and replaced it with a `pnpm gate:quick` row justified by
+the claim that quick is included in full. That claim is untrue: only quick runs
+`test:agent-readiness`. The report also still described the full profile as
+covering architecture, qualification, and security stages, which it does not.
+Both statements are corrected, and security is restored with a real run. The qualification report is
 `docs/qualification/t68a-key-lifecycle.md`; the implementation was merged in
 PR #104.
 

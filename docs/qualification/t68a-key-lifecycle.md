@@ -2,8 +2,8 @@
 schema: verchestra-qualification-report/v1
 task: T68a
 revision: 73b2060edb8a7e66a93a88bc795a64d5aa8fa725
-gates: pnpm gate:quick, pnpm gate:full
-gateResults: pass, pass
+gates: pnpm gate:quick, pnpm gate:full, pnpm gate:security
+gateResults: pass, pass, pass
 gateRevision: 73b2060edb8a7e66a93a88bc795a64d5aa8fa725
 criteriaEvidence: 7 of 7 acceptance criteria proven
 skipped: 0
@@ -33,15 +33,30 @@ serialized into the portable package or the Run Capsule.
 | Command | Result |
 | --- | --- |
 | `node --test tests/e2e/key-lifecycle-portability.test.mjs` | PASS — one two-environment journey, zero failures/skips |
-| `pnpm gate:quick` | PASS — included in the full profile on the same implementation revision |
-| `pnpm gate:full` | PASS — [manual validation run 30494937450](https://github.com/accd/verchestra/actions/runs/30494937450) resolved and checked out `73b2060edb8a7e66a93a88bc795a64d5aa8fa725`, then uploaded the candidate-identity artifact |
+| `pnpm gate:quick` | PASS — run on a clean checkout detached at `73b2060edb8a7e66a93a88bc795a64d5aa8fa725` |
+| `pnpm gate:full` | PASS — [manual validation run 30494937450](https://github.com/accd/verchestra/actions/runs/30494937450) resolved and checked out `73b2060edb8a7e66a93a88bc795a64d5aa8fa725`, then uploaded the candidate-identity artifact recording that revision and `gate:full` |
+| `pnpm gate:security` | PASS — run on a clean checkout detached at `73b2060edb8a7e66a93a88bc795a64d5aa8fa725` |
 
-The full profile covers format, lint, typecheck, unit, contract, integration,
-E2E, architecture, qualification, security, and fault stages. It was rerun on
-the reachable implementation revision after the initial report was found to
-name a PR-side revision that was not an ancestor of `main`. This correction
-changes the evidence binding only; it does not assert that the required
-independent human acceptance has occurred.
+No profile is a superset of another, so each is listed with what it actually
+ran rather than with a coverage claim inherited from a different profile:
+
+| Profile | Stages |
+| --- | --- |
+| `gate:quick` | `format:check`, `lint`, `typecheck`, `test:unit`, `test:agent-readiness` |
+| `gate:full` | `format:check`, `lint`, `typecheck`, `test:unit`, `test:contract`, `test:integration`, `test:e2e`, `test:fault` |
+| `gate:security` | `format:check`, `lint`, `typecheck`, `build`, `test:unit`, `test:architecture`, `test:qualification`, `test:security`, `test:fault` |
+
+Together the three cover every declared stage except `test:release`, which
+belongs to the release profile and to T76 rather than to this task.
+
+These gates were rerun on the reachable implementation revision after the
+initial report was found to name a PR-side revision that was not an ancestor of
+`main`. The correction changes the evidence binding and restores
+`pnpm gate:security`, which an earlier draft of this correction had dropped in
+favour of a `pnpm gate:quick` row justified by the untrue claim that quick is
+contained in full - it is not, since only quick runs `test:agent-readiness`.
+Neither this nor any other line here asserts that the required independent
+human acceptance has occurred.
 
 ## Replayable two-minute demonstration
 
