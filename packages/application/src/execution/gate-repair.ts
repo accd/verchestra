@@ -5,6 +5,8 @@
 // destination. Absent policy keeps today's behavior: one attempt, stop at
 // gate-failed, no escalation.
 
+import type { BudgetLedger, BudgetMeter } from "./budget-meter.ts";
+
 type Digest = `sha256:${string}`;
 
 const SAFE = /^[A-Za-z0-9][A-Za-z0-9._:@/+-]{0,511}$/u;
@@ -51,6 +53,16 @@ export interface GateAttemptFeedback {
 export type GateRepairOutcome =
   | { readonly status: "CONVERGED"; readonly attempts: number; readonly attemptCapsuleDigests: readonly Digest[] }
   | {
+      // A run that ran out of budget mid-repair did not fail its gate; it never
+      // got to finish. Collapsing the two would report a code defect where the
+      // truth is an exhausted ceiling.
+      readonly status: "BUDGET_EXCEEDED";
+      readonly attempts: number;
+      readonly stopReason: string;
+      readonly failure: GateFailure | undefined;
+      readonly attemptCapsuleDigests: readonly Digest[];
+    }
+  | {
       readonly status: "ESCALATED";
       readonly attempts: number;
       readonly failure: GateFailure;
@@ -65,11 +77,18 @@ export type GateRepairOutcome =
 
 export interface GateRepairPorts {
   // Runs one full execute-then-gate attempt. Feedback is present only when the
-  // declared policy allows it and a previous attempt failed.
+  // declared policy allows it and a previous attempt failed. The meter, when
+  // present, must be handed to the executor so this attempt spends from the
+  // run's remaining budget instead of a fresh one.
   attempt(input: {
     readonly attempt: number;
     readonly feedback: GateAttemptFeedback | undefined;
+    readonly budgetMeter: BudgetMeter | undefined;
   }): Promise<{ readonly passed: boolean; readonly failure?: GateFailure }>;
+  // Builds the run's single meter, resuming from persisted consumption. The
+  // caller closes over the declared budgets and price table, so this
+  // coordinator owns the meter's lifetime without knowing what anything costs.
+  budget?: { create(resume: BudgetLedger | undefined): BudgetMeter };
   // Builds bounded, redacted driver feedback from a gate failure. The
   // coordinator enforces the byte budget; redaction happens behind this port
   // through the existing egress boundary.
@@ -87,9 +106,12 @@ export interface GateRepairPorts {
   // counts instead of double-running or blindly retrying.
   loadState(): Promise<unknown>;
   saveState(state: {
-    readonly stage: "repair" | "escalated" | "converged" | "gate-failed";
+    readonly stage: "repair" | "escalated" | "converged" | "gate-failed" | "budget-exceeded";
     readonly attempts: number;
     readonly attemptCapsuleDigests: readonly Digest[];
+    // Persisted so a crash between attempts resumes with the spend it already
+    // made. Without this, a resumed run silently starts over at zero.
+    readonly budgetLedger: BudgetLedger | null;
   }): Promise<void>;
 }
 
@@ -119,8 +141,12 @@ function normalizePolicy(value: unknown): GateRepairPolicy {
   });
 }
 
-function normalizeState(value: unknown): { attempts: number; attemptCapsuleDigests: Digest[] } {
-  if (value === undefined || value === null) return { attempts: 0, attemptCapsuleDigests: [] };
+function normalizeState(value: unknown): {
+  attempts: number;
+  attemptCapsuleDigests: Digest[];
+  budgetLedger: BudgetLedger | undefined;
+} {
+  if (value === undefined || value === null) return { attempts: 0, attemptCapsuleDigests: [], budgetLedger: undefined };
   if (typeof value !== "object") fail("VES_REPAIR_STATE_INVALID", "recovered repair state is invalid");
   const state = value as Record<string, unknown>;
   const attempts = state["attempts"];
@@ -132,7 +158,16 @@ function normalizeState(value: unknown): { attempts: number; attemptCapsuleDiges
   for (const entry of digests)
     if (typeof entry !== "string" || !DIGEST.test(entry))
       fail("VES_REPAIR_STATE_INVALID", "recovered capsule digest is invalid");
-  return { attempts: attempts as number, attemptCapsuleDigests: [...(digests as Digest[])] };
+  // The ledger is validated by the meter on resume, which is the component that
+  // owns what a valid ledger is; here it only has to be absent or an object.
+  const ledger = state["budgetLedger"] ?? undefined;
+  if (ledger !== undefined && (ledger === null || typeof ledger !== "object"))
+    fail("VES_REPAIR_STATE_INVALID", "recovered budget ledger is invalid");
+  return {
+    attempts: attempts as number,
+    attemptCapsuleDigests: [...(digests as Digest[])],
+    budgetLedger: ledger as BudgetLedger | undefined
+  };
 }
 
 export async function runGateRepairLoop(
@@ -146,10 +181,33 @@ export async function runGateRepairLoop(
   const declared = input.onGateFailure !== undefined;
   const policy = normalizePolicy(input.onGateFailure);
   const state = normalizeState(await ports.loadState());
+  // One meter for the whole run, resumed from whatever earlier attempts spent.
+  const meter = ports.budget?.create(state.budgetLedger);
+  const ledger = (): BudgetLedger | null => meter?.ledger() ?? null;
   let lastFailure: GateFailure | undefined;
   let feedback: GateAttemptFeedback | undefined;
 
+  const budgetExceeded = async (reason: string): Promise<GateRepairOutcome> => {
+    await ports.saveState({
+      stage: "budget-exceeded",
+      attempts: state.attempts,
+      attemptCapsuleDigests: state.attemptCapsuleDigests,
+      budgetLedger: ledger()
+    });
+    return Object.freeze({
+      status: "BUDGET_EXCEEDED",
+      attempts: state.attempts,
+      stopReason: reason,
+      failure: lastFailure,
+      attemptCapsuleDigests: Object.freeze([...state.attemptCapsuleDigests])
+    });
+  };
+
   while (state.attempts < policy.maxAttempts) {
+    // The declared ceiling covers the run, so an exhausted budget ends the loop
+    // rather than buying each remaining attempt its own allowance.
+    const beforeAttempt = meter?.shouldStop();
+    if (beforeAttempt?.stop === true) return budgetExceeded(beforeAttempt.reason ?? "budget");
     const attempt = state.attempts + 1;
     let feedbackWithheld = false;
     if (lastFailure !== undefined || state.attempts > 0) {
@@ -171,7 +229,7 @@ export async function runGateRepairLoop(
       }
     }
 
-    const result = await ports.attempt({ attempt, feedback });
+    const result = await ports.attempt({ attempt, feedback, budgetMeter: meter });
     const previousAttemptDigest = state.attemptCapsuleDigests.at(-1) ?? null;
     const sealed = await ports.sealAttempt({
       attempt,
@@ -188,7 +246,8 @@ export async function runGateRepairLoop(
       await ports.saveState({
         stage: "converged",
         attempts: state.attempts,
-        attemptCapsuleDigests: state.attemptCapsuleDigests
+        attemptCapsuleDigests: state.attemptCapsuleDigests,
+        budgetLedger: ledger()
       });
       return Object.freeze({
         status: "CONVERGED",
@@ -201,6 +260,14 @@ export async function runGateRepairLoop(
       fail("VES_REPAIR_INPUT_INVALID", "gate failure evidence is missing");
     lastFailure = result.failure;
 
+    // The budget outcome wins over escalation, for the same reason it wins over
+    // the driver's own cancellation report: ESCALATED invites a human to
+    // approve more attempts, and there is nothing left to spend on them. A
+    // converged attempt is still converged, which is why this sits after the
+    // passed branch rather than before it.
+    const afterAttempt = meter?.shouldStop();
+    if (afterAttempt?.stop === true) return budgetExceeded(afterAttempt.reason ?? "budget");
+
     // Escalation wins over further retries: no autonomous attempt past the
     // declared escalation point under any circumstances (REP-04). Exhaustion of
     // a declared policy is handled after the loop and also escalates.
@@ -208,7 +275,8 @@ export async function runGateRepairLoop(
       await ports.saveState({
         stage: "escalated",
         attempts: state.attempts,
-        attemptCapsuleDigests: state.attemptCapsuleDigests
+        attemptCapsuleDigests: state.attemptCapsuleDigests,
+        budgetLedger: ledger()
       });
       return Object.freeze({
         status: "ESCALATED",
@@ -224,7 +292,8 @@ export async function runGateRepairLoop(
       await ports.saveState({
         stage: "repair",
         attempts: state.attempts,
-        attemptCapsuleDigests: state.attemptCapsuleDigests
+        attemptCapsuleDigests: state.attemptCapsuleDigests,
+        budgetLedger: ledger()
       });
     }
   }
@@ -233,7 +302,8 @@ export async function runGateRepairLoop(
   await ports.saveState({
     stage: declared ? "escalated" : "gate-failed",
     attempts: state.attempts,
-    attemptCapsuleDigests: state.attemptCapsuleDigests
+    attemptCapsuleDigests: state.attemptCapsuleDigests,
+    budgetLedger: ledger()
   });
   return Object.freeze({
     status: declared ? "ESCALATED" : "GATE_FAILED",

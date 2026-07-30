@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
+import { createBudgetMeter } from "../../packages/application/src/execution/budget-meter.ts";
+import { modelPriceTable } from "../../packages/application/src/execution/model-price-table.ts";
 import { executor, executorInput, executorPorts } from "../helpers/task-executor-fixture.mjs";
 
 const budgets = { maximumCostUsd: 1, maximumTokens: 1_000_000, maximumDurationMs: 60_000 };
@@ -130,3 +132,83 @@ for (const [label, corrupt] of [
     assert.equal(state.calls.includes("driver"), false);
   });
 }
+
+// Issue #124: a caller that runs several attempts against one declared budget
+// supplies its own meter. The executor must spend from it rather than building
+// a fresh one, or each attempt silently buys another full ceiling.
+
+test("a supplied meter is used instead of a fresh one, so consumption carries in", async () => {
+  const { state, ports } = executorPorts();
+  ports.driver = floodingDriver(state);
+  // Already at 0.5 of a 1 USD ceiling. A fresh meter would stop at 0.9 more;
+  // the supplied meter must stop after only 0.4 more.
+  const meter = createBudgetMeter({
+    budgets,
+    priceTable: modelPriceTable,
+    resume: { consumedCostUsd: 0.5, consumedTokens: 10_000, consumedDurationMs: 0, usageEvents: 1, stopReason: null }
+  });
+  await assert.rejects(executor(ports).execute(withBudgets(), { budgetMeter: meter }), {
+    code: "VES_EXECUTOR_BUDGET_EXCEEDED"
+  });
+  const snapshot = meter.snapshot();
+  assert.equal(snapshot.stopReason, "cost-threshold");
+  assert.ok(snapshot.consumedCostUsd < 1, `spent ${snapshot.consumedCostUsd} against a ceiling of 1`);
+  // The prior 0.5 is still counted, which is the whole point of supplying it.
+  assert.ok(snapshot.consumedCostUsd >= 0.9);
+  assert.ok(snapshot.usageEvents > 1);
+});
+
+test("a supplied meter that is already exhausted starts no driver at all", async () => {
+  const { state, ports } = executorPorts();
+  ports.driver = floodingDriver(state);
+  const meter = createBudgetMeter({
+    budgets,
+    priceTable: modelPriceTable,
+    resume: {
+      consumedCostUsd: 0.95,
+      consumedTokens: 10_000,
+      consumedDurationMs: 0,
+      usageEvents: 1,
+      stopReason: "cost-threshold"
+    }
+  });
+  await assert.rejects(executor(ports).execute(withBudgets(), { budgetMeter: meter }), {
+    code: "VES_EXECUTOR_BUDGET_EXCEEDED"
+  });
+  assert.ok(!state.calls.includes("driver"), "the driver must not run on an exhausted budget");
+  const checkpoint = state.checkpoints.find((entry) => entry.stage === "budget-exceeded");
+  assert.ok(checkpoint, "the refusal to start is evidenced");
+  assert.equal(checkpoint.data.reason, "cost-threshold");
+});
+
+test("the duration timer runs for the run's remaining time, not a fresh share", async () => {
+  const { state, ports } = executorPorts();
+  // A driver that goes silent. The declared ceiling is 60s (54s at 90%), and
+  // 53.95s is already spent, so the stop must land in the remaining ~50ms
+  // rather than 54s later.
+  ports.driver = {
+    execute: async () => {
+      state.calls.push("driver");
+      // A cooperative driver: it winds down when cancelled, so the elapsed time
+      // reflects when the timer fired rather than how long the driver slept.
+      for (let tick = 0; tick < 100; tick += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        if (state.calls.includes("driver:cancel")) return { status: "cancelled", outputRefs: [] };
+      }
+      return { status: "completed", outputRefs: [] };
+    },
+    cancel: async () => state.calls.push("driver:cancel")
+  };
+  const meter = createBudgetMeter({
+    budgets,
+    priceTable: modelPriceTable,
+    resume: { consumedCostUsd: 0, consumedTokens: 0, consumedDurationMs: 53_950, usageEvents: 0, stopReason: null }
+  });
+  const startedAt = Date.now();
+  await assert.rejects(executor(ports).execute(withBudgets(), { budgetMeter: meter }), {
+    code: "VES_EXECUTOR_BUDGET_EXCEEDED"
+  });
+  const elapsed = Date.now() - startedAt;
+  assert.ok(elapsed < 3_000, `expected the remaining duration to fire quickly, took ${elapsed}ms`);
+  assert.ok(state.calls.includes("driver:cancel"));
+});
