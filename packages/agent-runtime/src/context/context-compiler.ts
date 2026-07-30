@@ -15,6 +15,7 @@ const PRIORITY_RANK = { mandatory: 0, high: 1, medium: 2, low: 3 } as const;
 const TRUST_RANK = { authority: 0, "verified-evidence": 1, "untrusted-data": 2, "generated-content": 3 } as const;
 const SOURCE_STATUSES = ["available", "missing", "unavailable", "stale", "outside-scope", "revision-mismatch"] as const;
 const DIGEST = /^sha256:[a-f0-9]{64}$/u;
+const ESTIMATOR_ID = /^\S(?:.*\S)?$/u;
 type Priority = keyof typeof PRIORITY_RANK;
 
 export class ContextCompilerError extends Error {
@@ -64,6 +65,7 @@ export interface ContextManifest {
   readonly policyDecisionRefs: readonly string[];
   readonly estimatedTokens: number;
   readonly mandatoryTokens: number;
+  readonly tokenEstimatorId: string;
   readonly semanticObligations: readonly string[];
   readonly semanticObligationsDigest: string;
   readonly serializedMeaningDigest: string;
@@ -138,17 +140,22 @@ export class DeterministicContextCompiler {
   readonly #egress: Pick<DataEgressFirewall, "authorize">;
   readonly #signer: ContextManifestSignerPort;
   readonly #estimate: (content: string) => number;
+  readonly #estimatorId: string;
 
   constructor(options: {
     readonly digest: ContextDigestPort;
     readonly egress: Pick<DataEgressFirewall, "authorize">;
     readonly signer: ContextManifestSignerPort;
     readonly estimateTokens: (content: string) => number;
+    readonly tokenEstimatorId: string;
   }) {
+    if (typeof options.tokenEstimatorId !== "string" || !ESTIMATOR_ID.test(options.tokenEstimatorId))
+      fail("VES_CONTEXT_INPUT_INVALID", "Token estimator identity is invalid");
     this.#digest = options.digest;
     this.#egress = options.egress;
     this.#signer = options.signer;
     this.#estimate = options.estimateTokens;
+    this.#estimatorId = options.tokenEstimatorId;
   }
 
   async compile(input: {
@@ -306,6 +313,7 @@ export class DeterministicContextCompiler {
       policyDecisionRefs: [egress["policyEvidenceDigest"]],
       estimatedTokens: total,
       mandatoryTokens,
+      tokenEstimatorId: this.#estimatorId,
       semanticObligations,
       semanticObligationsDigest,
       serializedMeaningDigest,

@@ -132,3 +132,34 @@ test("source findings and contradictions survive into the signed manifest", asyn
   );
   assert.equal(result.contradictions.length, 1);
 });
+
+test("manifest records the token estimator identity inside the signed material", async () => {
+  const base = await snapshotFixture();
+  const fixture = compilerFixture();
+  const result = await new DeterministicContextCompiler(fixture).compile(compileInput(base.inputRecipe, base.snapshot));
+  assert.equal(result.tokenEstimatorId, "chars-div-4@1");
+  assert.equal(fixture.calls.at(-1).input.tokenEstimatorId, "chars-div-4@1");
+  const other = await new DeterministicContextCompiler(
+    compilerFixture({ tokenEstimatorId: "other-estimator@2" })
+  ).compile(compileInput(base.inputRecipe, base.snapshot));
+  assert.equal(other.tokenEstimatorId, "other-estimator@2");
+  assert.notEqual(other.manifestId, result.manifestId);
+});
+
+test("a blank, padded, or absent token estimator identity is refused at construction", async () => {
+  for (const tokenEstimatorId of ["", "   ", "\t", " chars-div-4@1", "chars-div-4@1 ", undefined, null, 1]) {
+    assert.throws(
+      () => new DeterministicContextCompiler(compilerFixture({ tokenEstimatorId })),
+      (error) => error.name === "ContextCompilerError" && error.code === "VES_CONTEXT_INPUT_INVALID",
+      `expected ${JSON.stringify(tokenEstimatorId)} to be refused`
+    );
+  }
+});
+
+test("an accepted token estimator identity is sealed exactly as supplied", async () => {
+  const base = await snapshotFixture();
+  const result = await new DeterministicContextCompiler(compilerFixture({ tokenEstimatorId: "chars div 4@1" })).compile(
+    compileInput(base.inputRecipe, base.snapshot)
+  );
+  assert.equal(result.tokenEstimatorId, "chars div 4@1");
+});

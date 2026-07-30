@@ -130,6 +130,7 @@ test("invalid token estimator output fails closed before egress", async () => {
     new DeterministicContextCompiler(
       compilerFixture({
         estimateTokens: () => Number.NaN,
+        tokenEstimatorId: "nan-estimator@test",
         egress: {
           authorize: async () => {
             egress = true;

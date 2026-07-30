@@ -65,6 +65,7 @@ export function compilerFixture(overrides = {}) {
     egress,
     signer,
     estimateTokens: (content) => Math.max(1, Math.ceil(content.length / 4)),
+    tokenEstimatorId: "chars-div-4@1",
     calls,
     ...overrides
   };
