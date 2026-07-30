@@ -136,6 +136,18 @@ export {
   type GateRepairPorts
 } from "./execution/gate-repair.ts";
 export {
+  BudgetMeterError,
+  createBudgetMeter,
+  type BudgetMeter,
+  type BudgetMeterErrorCode,
+  type BudgetSnapshot,
+  type BudgetStopReason,
+  type DeclaredBudgets,
+  type ModelPriceTable,
+  type UsageEvent
+} from "./execution/budget-meter.ts";
+export { modelPriceTable } from "./execution/model-price-table.ts";
+export {
   TaskGateCommitCoordinator,
   TaskGateError,
   canonicalTaskGatePlan,
