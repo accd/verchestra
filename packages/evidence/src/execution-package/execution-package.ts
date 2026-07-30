@@ -99,6 +99,14 @@ export interface ExecutionPackagePayload {
     readonly maximumTokens: number;
     readonly maximumDurationMs: number;
   };
+  // Declared gate-repair policy (REP-01). Absent means today's semantics: one
+  // attempt, stop at gate-failed. The policy lives in the package so the
+  // evidence shows the declared path to convergence, not just the destination.
+  readonly onGateFailure?: {
+    readonly maxAttempts: number;
+    readonly feedbackToDriver: boolean;
+    readonly escalateAfter: number;
+  };
   readonly completionCriteria: readonly {
     readonly criterionId: string;
     readonly requirementIds: readonly string[];
@@ -499,6 +507,7 @@ const BASE_KEYS = [
   "approvalRequirements",
   "workClaimRequirement",
   "budgets",
+  "onGateFailure",
   "completionCriteria",
   "canonicalLocation",
   "createdByRunId",
@@ -548,6 +557,29 @@ function normalizeBuildInput(value: unknown): ExecutionPackageBuildInput {
     fail("VES_EXECUTION_PACKAGE_INVALID", "gates are invalid");
   const workClaim = record(row["workClaimRequirement"], "workClaimRequirement", ["scopeDigest", "mode"]);
   const budgets = record(row["budgets"], "budgets", ["maximumCostUsd", "maximumTokens", "maximumDurationMs"]);
+  let onGateFailure;
+  if (row["onGateFailure"] !== undefined) {
+    const policy = record(row["onGateFailure"], "onGateFailure", ["maxAttempts", "feedbackToDriver", "escalateAfter"]);
+    const maxAttempts = policy["maxAttempts"];
+    const escalateAfter = policy["escalateAfter"];
+    // Bounded and totally ordered: unbounded retries are an autonomy leak, and
+    // an escalation point past the last attempt could never fire.
+    if (!Number.isSafeInteger(maxAttempts) || (maxAttempts as number) < 1 || (maxAttempts as number) > 5)
+      fail("VES_EXECUTION_PACKAGE_INVALID", "onGateFailure.maxAttempts must be an integer within [1, 5]");
+    if (typeof policy["feedbackToDriver"] !== "boolean")
+      fail("VES_EXECUTION_PACKAGE_INVALID", "onGateFailure.feedbackToDriver must be a boolean");
+    if (
+      !Number.isSafeInteger(escalateAfter) ||
+      (escalateAfter as number) < 1 ||
+      (escalateAfter as number) > (maxAttempts as number)
+    )
+      fail("VES_EXECUTION_PACKAGE_INVALID", "onGateFailure.escalateAfter must be an integer within [1, maxAttempts]");
+    onGateFailure = Object.freeze({
+      maxAttempts: maxAttempts as number,
+      feedbackToDriver: policy["feedbackToDriver"] as boolean,
+      escalateAfter: escalateAfter as number
+    });
+  }
   const completionCriteria = array(row["completionCriteria"], "completionCriteria").map((entry, index) => {
     const criterion = record(entry, `completionCriteria[${index}]`, [
       "criterionId",
@@ -593,6 +625,7 @@ function normalizeBuildInput(value: unknown): ExecutionPackageBuildInput {
       maximumTokens: positive(budgets["maximumTokens"], "maximumTokens"),
       maximumDurationMs: positive(budgets["maximumDurationMs"], "maximumDurationMs")
     }),
+    ...(onGateFailure === undefined ? {} : { onGateFailure }),
     completionCriteria: Object.freeze(
       completionCriteria.sort((left, right) => left.criterionId.localeCompare(right.criterionId))
     ),

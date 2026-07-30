@@ -125,6 +125,17 @@ export {
   type TaskExecutorErrorCode
 } from "./execution/task-executor.ts";
 export {
+  FEEDBACK_BYTE_BUDGET,
+  GateRepairError,
+  runGateRepairLoop,
+  type GateAttemptFeedback,
+  type GateFailure,
+  type GateRepairErrorCode,
+  type GateRepairOutcome,
+  type GateRepairPolicy,
+  type GateRepairPorts
+} from "./execution/gate-repair.ts";
+export {
   TaskGateCommitCoordinator,
   TaskGateError,
   canonicalTaskGatePlan,
