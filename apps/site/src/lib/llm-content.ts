@@ -208,7 +208,7 @@ Verchestra is in source qualification. It has no public installer and is not pro
 - [Documentation portal](${ORIGIN}/docs/): Architecture, workflows, integrations, and qualification evidence.
 - [Full LLM context](${ORIGIN}/llms-full.txt): Allowlisted Markdown with source attribution and digests.
 - [Architecture](${ORIGIN}/docs/architecture/system-overview/): System boundaries and trust model.
-- [Roadmap](${ORIGIN}/roadmap/): T68 complete, T68a next, and the evidence-driven path to 1.0.
+- [Roadmap](${ORIGIN}/roadmap/): ${status.highestVerifiedTask} complete, ${status.nextTask} next, and the evidence-driven path to 1.0.
 - [Contributing with agents](https://github.com/accd/verchestra/blob/main/docs/contributing-with-agents.md): Provider-neutral clean-clone workflow and safety model.
 `;
 }

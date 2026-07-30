@@ -96,7 +96,7 @@ the claim that quick is included in full. That claim is untrue: only quick runs
 `test:agent-readiness`. The report also still described the full profile as
 covering architecture, qualification, and security stages, which it does not.
 Both statements are corrected, and security is restored with a real run. The qualification report is
-`docs/qualification/t68a-key-lifecycle.md`; the implementation was merged in
+`docs/qualification/t68a-validation.md`; the implementation was merged in
 PR #104.
 
 The status-surface migration is complete. Rather than moving the literal
