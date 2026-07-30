@@ -50,10 +50,24 @@ export interface BudgetSnapshot {
   readonly stopReason: BudgetStopReason | null;
 }
 
+// The persistable part of a meter. A declared budget is a budget for the whole
+// run, so consumption has to outlive both a single executor call and a crash
+// between attempts; a meter that cannot be resumed is a meter that resets its
+// own ceiling.
+export interface BudgetLedger {
+  readonly consumedCostUsd: number;
+  readonly consumedTokens: number;
+  readonly consumedDurationMs: number;
+  readonly usageEvents: number;
+  readonly stopReason: BudgetStopReason | null;
+}
+
 export interface BudgetMeter {
   recordUsage(event: UsageEvent): void;
   consumedDurationMs(): number;
+  remainingDurationMs(): number;
   shouldStop(): { readonly stop: boolean; readonly reason?: BudgetStopReason };
+  ledger(): BudgetLedger;
   snapshot(): BudgetSnapshot;
 }
 
@@ -70,11 +84,47 @@ function tokenCount(value: unknown, label: string): number {
   return value as number;
 }
 
+function ledgerAmount(value: unknown, label: string): number {
+  // A resumed ledger is untrusted input like any other persisted state. Winding
+  // consumption backwards on resume would buy a fresh ceiling, which is the
+  // same bypass as a negative usage count.
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0)
+    fail("VES_BUDGET_INVALID", `resumed ${label} is invalid`);
+  return value;
+}
+
+function normalizeLedger(value: unknown): BudgetLedger {
+  if (value === null || typeof value !== "object") fail("VES_BUDGET_INVALID", "resumed ledger is invalid");
+  const ledger = value as Record<string, unknown>;
+  const stopReason = ledger["stopReason"] ?? null;
+  if (
+    stopReason !== null &&
+    !["cost-threshold", "token-threshold", "duration-threshold"].includes(stopReason as string)
+  )
+    fail("VES_BUDGET_INVALID", "resumed stop reason is invalid");
+  const consumedTokens = ledger["consumedTokens"];
+  const usageEvents = ledger["usageEvents"];
+  if (!Number.isSafeInteger(consumedTokens) || (consumedTokens as number) < 0)
+    fail("VES_BUDGET_INVALID", "resumed consumedTokens is invalid");
+  if (!Number.isSafeInteger(usageEvents) || (usageEvents as number) < 0)
+    fail("VES_BUDGET_INVALID", "resumed usageEvents is invalid");
+  return Object.freeze({
+    consumedCostUsd: ledgerAmount(ledger["consumedCostUsd"], "consumedCostUsd"),
+    consumedTokens: consumedTokens as number,
+    consumedDurationMs: ledgerAmount(ledger["consumedDurationMs"], "consumedDurationMs"),
+    usageEvents: usageEvents as number,
+    stopReason: stopReason as BudgetStopReason | null
+  });
+}
+
 export function createBudgetMeter(options: {
   readonly budgets: DeclaredBudgets;
   readonly priceTable: ModelPriceTable;
   readonly thresholdPercent?: number;
   readonly now?: () => number;
+  // Prior consumption to continue from, so one declared budget spans every
+  // executor call and survives a crash between them.
+  readonly resume?: unknown;
 }): BudgetMeter {
   const declared = Object.freeze({
     maximumCostUsd: positive(options.budgets?.maximumCostUsd, "maximumCostUsd"),
@@ -87,15 +137,19 @@ export function createBudgetMeter(options: {
   if (typeof options.priceTable?.version !== "string" || options.priceTable.version.length === 0)
     fail("VES_BUDGET_INVALID", "price table version is required");
   const now = options.now ?? (() => Date.now());
-  const startedAt = now();
+  const resumed = options.resume === undefined ? undefined : normalizeLedger(options.resume);
   const threshold = thresholdPercent / 100;
+  // Resuming backdates the start so elapsed time continues across attempts and
+  // across a crash, rather than restarting the clock at zero.
+  const startedAt = now() - (resumed?.consumedDurationMs ?? 0);
 
-  let consumedCostUsd = 0;
-  let consumedTokens = 0;
-  let usageEvents = 0;
-  let stopReason: BudgetStopReason | null = null;
+  let consumedCostUsd = resumed?.consumedCostUsd ?? 0;
+  let consumedTokens = resumed?.consumedTokens ?? 0;
+  let usageEvents = resumed?.usageEvents ?? 0;
+  let stopReason: BudgetStopReason | null = resumed?.stopReason ?? null;
 
   const consumedDurationMs = () => Math.max(0, now() - startedAt);
+  const durationCeiling = declared.maximumDurationMs * threshold;
 
   const evaluate = (): { readonly stop: boolean; readonly reason?: BudgetStopReason } => {
     if (stopReason === null) {
@@ -104,7 +158,7 @@ export function createBudgetMeter(options: {
       // instead of discovering the run died exactly at its limit.
       if (consumedCostUsd >= declared.maximumCostUsd * threshold) stopReason = "cost-threshold";
       else if (consumedTokens >= declared.maximumTokens * threshold) stopReason = "token-threshold";
-      else if (consumedDurationMs() >= declared.maximumDurationMs * threshold) stopReason = "duration-threshold";
+      else if (consumedDurationMs() >= durationCeiling) stopReason = "duration-threshold";
     }
     return stopReason === null ? { stop: false } : { stop: true, reason: stopReason };
   };
@@ -126,7 +180,21 @@ export function createBudgetMeter(options: {
       evaluate();
     },
     consumedDurationMs,
+    // What is left of the run's duration ceiling, not of a fresh one. An
+    // executor call started mid-run must inherit the remaining time.
+    remainingDurationMs(): number {
+      return Math.max(0, durationCeiling - consumedDurationMs());
+    },
     shouldStop: evaluate,
+    ledger(): BudgetLedger {
+      return Object.freeze({
+        consumedCostUsd,
+        consumedTokens,
+        consumedDurationMs: consumedDurationMs(),
+        usageEvents,
+        stopReason
+      });
+    },
     snapshot(): BudgetSnapshot {
       return Object.freeze({
         schemaVersion: 1,

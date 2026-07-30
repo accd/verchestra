@@ -27,7 +27,11 @@ function harness(verdicts, { feedbackBytes = 512, persisted = {} } = {}) {
     loadState: async () => persisted.state,
     saveState: async (state) => {
       calls.savedStages.push(state.stage);
-      persisted.state = { attempts: state.attempts, attemptCapsuleDigests: state.attemptCapsuleDigests };
+      persisted.state = {
+        attempts: state.attempts,
+        attemptCapsuleDigests: state.attemptCapsuleDigests,
+        budgetLedger: state.budgetLedger
+      };
     }
   };
   return { calls, ports, persisted };
@@ -108,7 +112,9 @@ test("a crash between attempts resumes with correct counts and no duplicate caps
     throw new Error("process crashed mid-attempt");
   };
   await assert.rejects(runGateRepairLoop({ onGateFailure: POLICY }, first.ports), /crashed/u);
-  assert.deepEqual(persisted.state, { attempts: 1, attemptCapsuleDigests: [digestOf(1)] });
+  // A loop with no budget port persists a null ledger, so the recovered shape
+  // stays complete rather than silently omitting the field.
+  assert.deepEqual(persisted.state, { attempts: 1, attemptCapsuleDigests: [digestOf(1)], budgetLedger: null });
 
   // The resumed loop continues at attempt 2; attempt 1 is not re-run.
   const resumed = harness(["irrelevant", "pass"], { persisted });

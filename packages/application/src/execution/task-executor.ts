@@ -392,7 +392,14 @@ export class TaskExecutionCoordinator {
     this.#ports = ports;
   }
 
-  async execute(inputValue: unknown, options: { readonly signal?: AbortSignal } = {}) {
+  // A caller that runs more than one attempt against one declared budget - the
+  // gate repair loop - supplies its own meter so consumption spans the whole
+  // run. It travels in options rather than input because a meter is a live
+  // object, and input is normalized and deep-frozen.
+  async execute(
+    inputValue: unknown,
+    options: { readonly signal?: AbortSignal; readonly budgetMeter?: BudgetMeter } = {}
+  ) {
     if (options.signal?.aborted === true) fail("VES_EXECUTOR_CANCELLED", "Task execution was cancelled before start");
     const input = normalizeInput(inputValue);
     let coordinationRef: string | undefined;
@@ -461,10 +468,13 @@ export class TaskExecutionCoordinator {
       if (!SAFE.test(context.contextRef) || context.contextDigest !== input.contextManifestDigest)
         fail("VES_EXECUTOR_CONTEXT_INVALID", "compiled execution Context is invalid");
       driverStarted = true;
+      // A supplied meter already carries this run's consumption; constructing
+      // one here would hand every attempt a fresh ceiling.
       const meter: BudgetMeter | undefined =
-        input.budgets === undefined
+        options.budgetMeter ??
+        (input.budgets === undefined
           ? undefined
-          : createBudgetMeter({ budgets: input.budgets, priceTable: modelPriceTable });
+          : createBudgetMeter({ budgets: input.budgets, priceTable: modelPriceTable }));
       // The budget stop must survive the driver's own cancellation report: a
       // run that dies because its ceiling was reached is a budget outcome, not
       // a generic cancellation.
@@ -479,8 +489,16 @@ export class TaskExecutionCoordinator {
           // Cancellation failure surfaces through the driver result instead.
         });
       };
+      // A supplied meter may arrive already exhausted by earlier attempts.
+      // Starting another driver run would spend past a ceiling that is gone.
+      const onEntry = meter?.shouldStop();
+      if (onEntry?.stop === true) {
+        await saveCheckpoint("budget-exceeded", { reason: onEntry.reason ?? "budget", meter: meter!.snapshot() });
+        fail("VES_EXECUTOR_BUDGET_EXCEEDED", `declared ${onEntry.reason} was already reached before this attempt`);
+      }
       // Duration is enforced by a timer rather than by usage events, so a
-      // driver that goes silent cannot outrun its own deadline.
+      // driver that goes silent cannot outrun its own deadline. The timer runs
+      // for the run's remaining time, not for a fresh share of it.
       const durationTimer =
         meter === undefined
           ? undefined
@@ -490,7 +508,7 @@ export class TaskExecutionCoordinator {
                   "duration-threshold",
                   new TaskExecutorError("VES_EXECUTOR_BUDGET_EXCEEDED", "declared duration budget was reached")
                 ),
-              Math.ceil(input.budgets!.maximumDurationMs * 0.9)
+              Math.max(1, Math.ceil(meter.remainingDurationMs()))
             );
       let driverResult: unknown;
       try {

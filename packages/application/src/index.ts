@@ -138,6 +138,7 @@ export {
 export {
   BudgetMeterError,
   createBudgetMeter,
+  type BudgetLedger,
   type BudgetMeter,
   type BudgetMeterErrorCode,
   type BudgetSnapshot,
