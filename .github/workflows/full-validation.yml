@@ -1,4 +1,4 @@
-name: Manual full validation
+name: Manual qualification validation
 
 on:
   workflow_dispatch:
@@ -16,6 +16,9 @@ on:
         options:
           - quick
           - full
+          - build
+          - security
+          - release
 
 permissions:
   contents: read
@@ -24,7 +27,9 @@ jobs:
   validation:
     name: Manual qualification gate
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # gate:release and gate:security are the heaviest selectable profiles, so the
+    # budget reflects those rather than gate:quick.
+    timeout-minutes: 45
     steps:
       - name: Check out workflow revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.0
@@ -43,7 +48,10 @@ jobs:
             echo "revision must be an empty value or a full lowercase 40-character Git SHA" >&2
             exit 1
           fi
-          case "$REQUESTED_GATE" in quick|full) ;; *) echo "gate must be quick or full" >&2; exit 1 ;; esac
+          case "$REQUESTED_GATE" in
+            quick|full|build|security|release) ;;
+            *) echo "gate must be one of quick, full, build, security, release" >&2; exit 1 ;;
+          esac
           git fetch --no-tags --depth=1 origin "$revision"
           git checkout --detach "$revision"
           if [[ "$(git rev-parse HEAD)" != "$revision" ]]; then
@@ -77,16 +85,18 @@ jobs:
           if (revision !== process.env.CANDIDATE_REVISION) throw new Error("candidate revision verification failed");
           const ref = process.env.GITHUB_REF ?? "";
           await writeFile(
-            "full-validation.json",
+            "qualification-validation.json",
             `${JSON.stringify({ schemaVersion: 1, revision, ref, gate: process.env.CANDIDATE_GATE }, null, 2)}\n`
           );
           NODE
       - name: Run selected qualification gate
-        run: pnpm ${{ steps.candidate.outputs.gate }}
+        env:
+          CANDIDATE_GATE: ${{ steps.candidate.outputs.gate }}
+        run: pnpm "$CANDIDATE_GATE"
       - name: Upload validation evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: qualification-validation-${{ github.run_id }}
-          path: full-validation.json
+          path: qualification-validation.json
           retention-days: 14
