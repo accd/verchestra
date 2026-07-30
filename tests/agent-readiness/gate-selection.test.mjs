@@ -194,6 +194,36 @@ test("manual qualification validation accepts only its closed gate profiles", ()
   assert.doesNotMatch(workflow, /gate: "gate:full"/u);
 });
 
+// Making a profile selectable is not the same as making it runnable. Three of
+// the five run test:qualification, which probes installed driver binaries; a
+// manual run that omits them fails on a clean runner while passing on a machine
+// that happens to have the CLIs, which is the opposite of portable evidence.
+test("a manually selectable gate that probes drivers installs them", () => {
+  const workflow = readFileSync(new URL("../../.github/workflows/full-validation.yml", import.meta.url), "utf8");
+  const needsProbes = Object.entries(GATE_STAGES)
+    .filter(([, stages]) => stages.includes("test:qualification"))
+    .map(([gate]) => gate);
+  assert.ok(needsProbes.length > 0, "at least one profile must run test:qualification");
+  const options = /options:[ \t]*\r?\n((?:[ \t]*- \w+[ \t]*\r?\n)+)/u.exec(workflow);
+  const offered = [...options[1].matchAll(/- (\w+)/gu)].map((entry) => `gate:${entry[1]}`);
+  assert.ok(
+    needsProbes.some((gate) => offered.includes(gate)),
+    "this test is only meaningful while a probing profile is selectable"
+  );
+  // The need is derived from the candidate revision's own gate definition, so a
+  // new probing profile cannot be added without the install following it.
+  assert.match(workflow, /import \{ GATE_STAGES \} from '\.\/scripts\/gate-stages\.mjs';/u);
+  assert.match(workflow, /stages\.includes\('test:qualification'\)/u);
+  assert.match(workflow, /if: steps\.probes\.outputs\.needed == 'yes'/u);
+  assert.match(
+    workflow,
+    /npm install --global --no-audit --no-fund @anthropic-ai\/claude-code@[\d.]+ @openai\/codex@[\d.]+/u
+  );
+  // The same pinned versions CI verifies, verified the same way.
+  assert.match(workflow, /case "\$claude_version" in/u);
+  assert.match(workflow, /case "\$codex_version" in/u);
+});
+
 // A manual run is where a maintainer produces attestable evidence, so it has to
 // be able to attest every profile a qualification report may cite. Offering only
 // quick and full is what pushed the T68a report to drop gate:security.

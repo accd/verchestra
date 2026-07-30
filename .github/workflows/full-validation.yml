@@ -89,6 +89,35 @@ jobs:
             `${JSON.stringify({ schemaVersion: 1, revision, ref, gate: process.env.CANDIDATE_GATE }, null, 2)}\n`
           );
           NODE
+      # gate:build, gate:security, and gate:release all run test:qualification,
+      # which probes the installed Claude Code and Codex binaries. Without them
+      # those profiles fail on a clean runner while passing on a machine that
+      # happens to have the CLIs, which is the opposite of portable evidence.
+      # The need is derived from the candidate revision's own gate definition so
+      # this cannot drift from the profile list.
+      - name: Decide whether the selected gate needs the driver probes
+        id: probes
+        env:
+          CANDIDATE_GATE: ${{ steps.candidate.outputs.gate }}
+        run: |
+          set -euo pipefail
+          needed="$(node --input-type=module --eval "
+            import { GATE_STAGES } from './scripts/gate-stages.mjs';
+            const stages = GATE_STAGES[process.env.CANDIDATE_GATE];
+            if (stages === undefined) throw new Error('unknown gate profile');
+            process.stdout.write(stages.includes('test:qualification') ? 'yes' : 'no');
+          ")"
+          printf 'needed=%s\n' "$needed" >> "$GITHUB_OUTPUT"
+      - name: Install the qualified local driver probes
+        if: steps.probes.outputs.needed == 'yes'
+        run: |
+          npm install --global --no-audit --no-fund @anthropic-ai/claude-code@2.1.168 @openai/codex@0.115.0
+          claude_version="$(claude --version)"
+          codex_version="$(codex --version)"
+          printf 'Claude Code version: %s\n' "$claude_version"
+          printf 'Codex version: %s\n' "$codex_version"
+          case "$claude_version" in "2.1.168"|"2.1.168 "*) ;; *) exit 1 ;; esac
+          case "$codex_version" in "codex-cli 0.115.0"|"codex-cli 0.115.0 "*) ;; *) exit 1 ;; esac
       - name: Run selected qualification gate
         env:
           CANDIDATE_GATE: ${{ steps.candidate.outputs.gate }}
