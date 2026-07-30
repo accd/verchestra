@@ -3,12 +3,12 @@ schema: verchestra-feature-handoff/v1
 feature: budget-enforcement
 issue: 52
 status: verification
-branch: feat/t68b-budget-enforcement
-baseRevision: 162bbe84a0345266a13b0a3c94a6b9121fe98a75
-lastCompletedTask: T5
-nextTask: Independent verification and human review of the T68b pull request
+branch: fix/run-scoped-budget-enforcement
+baseRevision: e534c497d91e29cf95ed1dc5ad335bc2ecc2a0e3
+lastCompletedTask: T6
+nextTask: Independent verification and human review of the run-scoped budget pull request
 lastGate: pnpm gate:security
-updatedAt: 2026-07-30T09:13:59Z
+updatedAt: 2026-07-30T10:42:00Z
 ---
 
 # Scope
@@ -62,6 +62,28 @@ fixture self-limits so the timer mutation fails fast instead of hanging the
 runner - the #88 lesson applied. `pnpm gate:full` PASS, `pnpm gate:security`
 PASS.
 
+T6 (issue #124): the declared budget is now a run budget rather than a
+per-executor-call budget. `createBudgetMeter` accepts a `resume` ledger and
+backdates its start clock, so cost, tokens, and elapsed time all continue across
+attempts and across a crash; a resumed ledger is validated like any other
+persisted input, because winding consumption backwards buys a fresh ceiling.
+The executor accepts a supplied meter through `options.budgetMeter` - options,
+not input, since input is normalized and deep-frozen and a meter is a live
+object - arms its duration timer from `remainingDurationMs()` instead of a fresh
+90% share, and refuses to start a driver at all when the meter arrives already
+exhausted. `runGateRepairLoop` builds one meter for the run through an optional
+`budget.create(resume)` port, hands it to every attempt, persists the ledger in
+repair state, and terminates with a distinct `BUDGET_EXCEEDED` outcome. That
+outcome deliberately wins over `ESCALATED`: escalation invites a human to
+approve further attempts, and there is nothing left to spend on them.
+
+Evidence for T6: 21 run-scoped integration tests plus 3 executor
+fault-injection tests. Discrimination sensor 9/9 KILLED - meter created per
+attempt, both budget checks removed, ledger not persisted, resume ignoring
+elapsed time, resume accepting negative values, executor ignoring the supplied
+meter, timer using a fresh threshold, and budget losing to escalation.
+`pnpm gate:full` PASS, `pnpm gate:security` PASS, `pnpm agent:check` PASS.
+
 # Next Exact Action
 
 Independent verification and human review of the T68b pull request; then the
@@ -71,22 +93,18 @@ implementation revision reachable from main.
 
 # Blockers
 
-None for this branch.
+Merging. Every open pull request is authored by the sole code owner, and the
+ruleset requires an approving code-owner review, so no branch can satisfy it -
+issue #126. This branch is complete and gated; it cannot land until that is
+decided.
 
-Rebased onto `162bbe8` after T68c merged. The only conflict was the export
-barrel in `packages/application/src/index.ts`; both blocks are additive and both
-were kept. Nothing in `task-executor.ts` conflicted, because the repair loop
-composes above the executor through ports rather than editing it.
-
-That rebase surfaced an interaction neither pull request could have caught,
-filed as issue #124: the meter is constructed inside one `execute()` call, and
-the repair loop calls its `attempt()` port up to five times, so each attempt
-gets a fresh 90% threshold and a declared run ceiling can be spent once per
-attempt. T68b is correct alone and T68c is correct alone; the defect exists only
-once both are on `main`. It is not fixed here - making the budget span attempts
-is composition-root work (#64), where the two coordinators are actually wired
-together. A reviewer of this branch should read it as a known follow-up, not as
-an unenforced budget.
+#124 is fixed here, so the earlier note that it belonged to #64 no longer
+applies. The port seam turned out to be enough: the loop owns the meter's
+lifetime through `budget.create`, and the caller keeps the pricing knowledge, so
+no composition root was required to make the ceiling hold. What #64 still owns is
+wiring a real `budget.create` from a parsed Execution Package, and sealing the
+run-aggregate ledger into `budgetEvidence` alongside per-attempt consumption -
+the loop persists the ledger in repair state today, but nothing seals it yet.
 
 # Decisions
 
@@ -94,9 +112,18 @@ an unenforced budget.
 - Threshold default 90%, package-configurable; stop is recoverable, never
   a process kill.
 - Provider usage figures are recorded as claims, not verified billing facts.
+- The declared ceiling is a run ceiling. A repair loop spends from one budget,
+  never one per attempt (#124).
+- `BUDGET_EXCEEDED` is a distinct outcome from `GATE_FAILED` and `ESCALATED`. A
+  run that ran out of money did not fail its gate; it never finished.
+- A resumed ledger is untrusted input. Negative, fractional, or infinite
+  consumption fails closed rather than granting a fresh ceiling.
 
 # Files Intentionally Left Unchanged
 
-- All product code and tests (specification-only so far).
+- `run-capsule.ts`: `budgetEvidence` still seals one snapshot. Distinguishing
+  run-aggregate from per-attempt consumption in sealed evidence belongs with the
+  wiring in #64, and inventing the shape before there is a producer would be
+  guessing.
 - Context priority budgets (`maximumTokens`), owned by the
   context-tokenizers decision.
