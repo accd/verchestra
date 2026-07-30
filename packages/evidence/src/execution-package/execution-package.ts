@@ -110,6 +110,27 @@ export interface ExecutionPackagePayload {
   // Digest of the signed policy bundle in force when the package was sealed
   // (POL-04), so verification can prove which policies governed the work.
   readonly policyBundleDigest?: Digest;
+  // Promoted read-only probe evidence that informed the plan (R8), referenced by
+  // digest so whoever resumes the package can verify the same classified,
+  // redacted database state the agent decided from.
+  //
+  // Every field is a digest, an opaque ref, a closed enum, or a count. That is
+  // deliberate: a reference that could carry free text would be a way to smuggle
+  // a probed value past the redaction that data-probe already applied, and this
+  // payload is sealed and travels. `packages/evidence` and
+  // `packages/data-probe` are siblings and cannot import each other, so this
+  // stays pure data and verification goes through an application port.
+  readonly probeEvidence?: readonly {
+    readonly resultDigest: Digest;
+    readonly schemaIdentityDigest: Digest;
+    readonly registrationDigest: Digest;
+    readonly queryFingerprint: Digest;
+    readonly producingRunId: string;
+    readonly protectedResultRef: string;
+    readonly classification: "public" | "internal" | "confidential" | "restricted";
+    readonly redactionApplied: boolean;
+    readonly sanitizedClaimCount: number;
+  }[];
   readonly completionCriteria: readonly {
     readonly criterionId: string;
     readonly requirementIds: readonly string[];
@@ -512,6 +533,7 @@ const BASE_KEYS = [
   "budgets",
   "onGateFailure",
   "policyBundleDigest",
+  "probeEvidence",
   "completionCriteria",
   "canonicalLocation",
   "createdByRunId",
@@ -586,6 +608,53 @@ function normalizeBuildInput(value: unknown): ExecutionPackageBuildInput {
   }
   const policyBundleDigest =
     row["policyBundleDigest"] === undefined ? undefined : digest(row["policyBundleDigest"], "policyBundleDigest");
+  let probeEvidence;
+  if (row["probeEvidence"] !== undefined) {
+    const entries = array(row["probeEvidence"], "probeEvidence");
+    if (entries.length === 0) fail("VES_EXECUTION_PACKAGE_INVALID", "probeEvidence is present but empty");
+    probeEvidence = Object.freeze(
+      entries.map((entry, index) => {
+        const probe = record(entry, `probeEvidence[${index}]`, [
+          "resultDigest",
+          "schemaIdentityDigest",
+          "registrationDigest",
+          "queryFingerprint",
+          "producingRunId",
+          "protectedResultRef",
+          "classification",
+          "redactionApplied",
+          "sanitizedClaimCount"
+        ]);
+        const classification = probe["classification"];
+        if (!["public", "internal", "confidential", "restricted"].includes(classification as string))
+          fail("VES_EXECUTION_PACKAGE_INVALID", "probeEvidence classification is not a declared class");
+        if (typeof probe["redactionApplied"] !== "boolean")
+          fail("VES_EXECUTION_PACKAGE_INVALID", "probeEvidence redactionApplied must be a boolean");
+        const claimCount = probe["sanitizedClaimCount"];
+        if (!Number.isSafeInteger(claimCount) || (claimCount as number) < 0)
+          fail("VES_EXECUTION_PACKAGE_INVALID", "probeEvidence sanitizedClaimCount is invalid");
+        // Anything above public must already have been redacted before it was
+        // promoted. Sealing an unredacted confidential probe would put the
+        // decision's inputs beyond the boundary that classified them.
+        if (classification !== "public" && probe["redactionApplied"] !== true)
+          fail("VES_EXECUTION_PACKAGE_INVALID", "probeEvidence above public class must be redacted");
+        return Object.freeze({
+          resultDigest: digest(probe["resultDigest"], "probeEvidence.resultDigest"),
+          schemaIdentityDigest: digest(probe["schemaIdentityDigest"], "probeEvidence.schemaIdentityDigest"),
+          registrationDigest: digest(probe["registrationDigest"], "probeEvidence.registrationDigest"),
+          queryFingerprint: digest(probe["queryFingerprint"], "probeEvidence.queryFingerprint"),
+          producingRunId: safe(probe["producingRunId"], "probeEvidence.producingRunId"),
+          protectedResultRef: safe(probe["protectedResultRef"], "probeEvidence.protectedResultRef"),
+          classification: classification as "public" | "internal" | "confidential" | "restricted",
+          redactionApplied: probe["redactionApplied"] as boolean,
+          sanitizedClaimCount: claimCount as number
+        });
+      })
+    );
+    const digests = probeEvidence.map((entry) => entry.resultDigest);
+    if (new Set(digests).size !== digests.length)
+      fail("VES_EXECUTION_PACKAGE_INVALID", "probeEvidence repeats a result digest");
+  }
   const completionCriteria = array(row["completionCriteria"], "completionCriteria").map((entry, index) => {
     const criterion = record(entry, `completionCriteria[${index}]`, [
       "criterionId",
@@ -633,6 +702,7 @@ function normalizeBuildInput(value: unknown): ExecutionPackageBuildInput {
     }),
     ...(onGateFailure === undefined ? {} : { onGateFailure }),
     ...(policyBundleDigest === undefined ? {} : { policyBundleDigest }),
+    ...(probeEvidence === undefined ? {} : { probeEvidence }),
     completionCriteria: Object.freeze(
       completionCriteria.sort((left, right) => left.criterionId.localeCompare(right.criterionId))
     ),
