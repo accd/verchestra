@@ -107,6 +107,9 @@ export interface ExecutionPackagePayload {
     readonly feedbackToDriver: boolean;
     readonly escalateAfter: number;
   };
+  // Digest of the signed policy bundle in force when the package was sealed
+  // (POL-04), so verification can prove which policies governed the work.
+  readonly policyBundleDigest?: Digest;
   readonly completionCriteria: readonly {
     readonly criterionId: string;
     readonly requirementIds: readonly string[];
@@ -508,6 +511,7 @@ const BASE_KEYS = [
   "workClaimRequirement",
   "budgets",
   "onGateFailure",
+  "policyBundleDigest",
   "completionCriteria",
   "canonicalLocation",
   "createdByRunId",
@@ -580,6 +584,8 @@ function normalizeBuildInput(value: unknown): ExecutionPackageBuildInput {
       escalateAfter: escalateAfter as number
     });
   }
+  const policyBundleDigest =
+    row["policyBundleDigest"] === undefined ? undefined : digest(row["policyBundleDigest"], "policyBundleDigest");
   const completionCriteria = array(row["completionCriteria"], "completionCriteria").map((entry, index) => {
     const criterion = record(entry, `completionCriteria[${index}]`, [
       "criterionId",
@@ -626,6 +632,7 @@ function normalizeBuildInput(value: unknown): ExecutionPackageBuildInput {
       maximumDurationMs: positive(budgets["maximumDurationMs"], "maximumDurationMs")
     }),
     ...(onGateFailure === undefined ? {} : { onGateFailure }),
+    ...(policyBundleDigest === undefined ? {} : { policyBundleDigest }),
     completionCriteria: Object.freeze(
       completionCriteria.sort((left, right) => left.criterionId.localeCompare(right.criterionId))
     ),
