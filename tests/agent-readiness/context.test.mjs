@@ -9,6 +9,8 @@ import {
   parseRoadmapChain,
   validateRoadmapChain,
   qualificationStatusLine,
+  QUALIFICATION_REPORT_FILE,
+  QUALIFICATION_REPORT_ROUTE,
   readQualificationReports,
   resolveQualification,
   validateQualificationReport,
@@ -69,7 +71,7 @@ test("JSON context exposes the exact safe clean-clone contract", () => {
   assert.equal(snapshot.schemaVersion, 3);
   assert.equal(snapshot.repository, "accd/verchestra");
   assert.equal(snapshot.version, "0.0.0-qualification");
-  assert.deepEqual(snapshot.qualification, { highestVerifiedTask: "T68", nextTask: "T68a" });
+  assert.deepEqual(snapshot.qualification, { highestVerifiedTask: "T68a", nextTask: "T68b" });
   assert.equal(snapshot.requiredReads[0], "AGENTS.md");
   assert.equal(snapshot.activeFeatures[0].handoffPath, ".specs/features/agent-ready-repository/handoff.md");
   assert.doesNotMatch(output, /[A-Za-z]:\\|\/(?:Users|home)\//u);
@@ -431,4 +433,40 @@ test("repository paths normalize Windows and POSIX separators", () => {
     ".specs/features/example/handoff.md"
   );
   assert.equal(normalizeRepositoryPath("./docs/architecture.md"), "docs/architecture.md");
+});
+
+test("report discovery and link routes accept exactly the same task ids", () => {
+  for (const id of ["1", "01", "68", "68a", "123z"]) {
+    assert.equal(QUALIFICATION_REPORT_FILE.test(`t${id}-validation.md`), true, `discovery must accept ${id}`);
+    assert.equal(QUALIFICATION_REPORT_ROUTE.test(`qualification/t${id}-validation`), true, `route must accept ${id}`);
+  }
+  for (const id of ["", "a", "68ab", "68A", "6-8"]) {
+    assert.equal(QUALIFICATION_REPORT_FILE.test(`t${id}-validation.md`), false, `discovery must reject ${id}`);
+    assert.equal(QUALIFICATION_REPORT_ROUTE.test(`qualification/t${id}-validation`), false, `route must reject ${id}`);
+  }
+});
+
+test("a task report named outside the convention is reported instead of skipped", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "verchestra-report-naming-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await mkdir(join(root, "docs", "qualification"), { recursive: true });
+  await writeFile(join(root, "docs", "qualification", "t68-validation.md"), "# T68\n");
+  await writeFile(join(root, "docs", "qualification", "t68a-key-lifecycle.md"), "# T68a\n");
+  await writeFile(join(root, "docs", "qualification", "REPORT-CONTRACT.md"), "# contract\n");
+  await writeFile(join(root, "docs", "qualification", "node-runtime.md"), "# runtime\n");
+
+  const reports = await readQualificationReports(root);
+
+  assert.equal(reports.tasks.has("T68"), true);
+  assert.equal(reports.tasks.has("T68a"), false);
+  assert.equal(
+    reports.errors.some((error) => error.includes("t68a-key-lifecycle.md") && error.includes("outside the")),
+    true,
+    "a misnamed task report must be reported"
+  );
+  assert.equal(
+    reports.errors.some((error) => error.includes("REPORT-CONTRACT.md") || error.includes("node-runtime.md")),
+    false,
+    "supporting documents that are not task reports must stay silent"
+  );
 });
