@@ -1,5 +1,10 @@
 import type { DeclaredBudgets } from "./budget-meter.ts";
-import { normalizeTask, TaskExecutorError, type AtomicExecutionTask } from "./task-executor.ts";
+import {
+  normalizeTask,
+  TaskExecutionCoordinator,
+  TaskExecutorError,
+  type AtomicExecutionTask
+} from "./task-executor.ts";
 
 type Digest = `sha256:${string}`;
 type Row = Record<string, unknown>;
@@ -213,4 +218,244 @@ export function normalizeTaskSchedule(value: unknown): TaskScheduleInput {
     maxConcurrentTasks: maxConcurrentTasks as number,
     tasks
   });
+}
+
+export type ScheduledTaskStatus = "completed" | "failed" | "blocked";
+
+export interface ScheduleRound {
+  readonly round: number;
+  readonly started: readonly { readonly taskId: string }[];
+  readonly deferred: readonly { readonly taskId: string; readonly reason: string }[];
+}
+
+export interface ScheduledTaskOutcome {
+  readonly taskId: string;
+  readonly status: ScheduledTaskStatus;
+  readonly coordinationRef?: string;
+  readonly changeDigest?: string;
+  readonly errorCode?: string;
+}
+
+export interface TaskScheduleReport {
+  readonly status: "completed" | "failed" | "cancelled";
+  readonly workspaceId: string;
+  readonly runId: string;
+  readonly executionPackageDigest: Digest;
+  readonly maxConcurrentTasks: number;
+  readonly rounds: readonly ScheduleRound[];
+  readonly outcomes: readonly ScheduledTaskOutcome[];
+}
+
+type TaskState = "pending" | "running" | "completed" | "failed" | "blocked";
+
+type TaskExecutorPorts = ConstructorParameters<typeof TaskExecutionCoordinator>[0];
+
+type SettledTask =
+  | {
+      readonly taskId: string;
+      readonly ok: true;
+      readonly result: Awaited<ReturnType<TaskExecutionCoordinator["execute"]>>;
+    }
+  | { readonly taskId: string; readonly ok: false; readonly error: unknown };
+
+// Scope conflict is path equality or containment in either direction, the same
+// rule the executor's within() applies to tool targets. Static analysis orders
+// conflicting tasks deterministically; the per-task claim stays the backstop.
+function pathsOverlap(left: string, right: string): boolean {
+  return left === right || left.startsWith(`${right}/`) || right.startsWith(`${left}/`);
+}
+
+function scopesOverlap(left: readonly string[], right: readonly string[]): boolean {
+  return left.some((a) => right.some((b) => pathsOverlap(a, b)));
+}
+
+function byTaskId(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
+interface PlannedRound {
+  readonly start: readonly AtomicExecutionTask[];
+  readonly deferred: readonly { readonly taskId: string; readonly reason: string }[];
+}
+
+// Pure: identical state in, identical plan out. Determinism is what lets the
+// scheduling report serve as evidence.
+function planRound(input: {
+  readonly tasks: readonly AtomicExecutionTask[];
+  readonly states: ReadonlyMap<string, TaskState>;
+  readonly runningScopes: ReadonlyMap<string, readonly string[]>;
+  readonly freeSlots: number;
+}): PlannedRound {
+  const ready = input.tasks
+    .filter((task) => input.states.get(task.taskId) === "pending")
+    .filter((task) => task.dependencyTaskIds.every((dependency) => input.states.get(dependency) === "completed"))
+    .sort((a, b) => byTaskId(a.taskId, b.taskId));
+  const readyIds = new Set(ready.map((task) => task.taskId));
+  const deferred: { readonly taskId: string; readonly reason: string }[] = [];
+  for (const task of input.tasks) {
+    if (input.states.get(task.taskId) === "pending" && !readyIds.has(task.taskId))
+      deferred.push({ taskId: task.taskId, reason: "dependency-wait" });
+  }
+  const start: AtomicExecutionTask[] = [];
+  for (const task of ready) {
+    if (start.length >= input.freeSlots) {
+      deferred.push({ taskId: task.taskId, reason: "concurrency-limit" });
+      continue;
+    }
+    const conflictWithRunning = [...input.runningScopes.entries()].find(([, scope]) =>
+      scopesOverlap(task.changeScope, scope)
+    );
+    if (conflictWithRunning !== undefined) {
+      deferred.push({ taskId: task.taskId, reason: `scope-conflict:${conflictWithRunning[0]}` });
+      continue;
+    }
+    const conflictWithSelected = start.find((selected) => scopesOverlap(task.changeScope, selected.changeScope));
+    if (conflictWithSelected !== undefined) {
+      deferred.push({ taskId: task.taskId, reason: `scope-conflict:${conflictWithSelected.taskId}` });
+      continue;
+    }
+    start.push(task);
+  }
+  return {
+    start,
+    deferred: deferred.sort((a, b) => byTaskId(a.taskId, b.taskId))
+  };
+}
+
+export class TaskScheduleCoordinator {
+  readonly #executor: TaskExecutionCoordinator;
+
+  constructor(ports: TaskExecutorPorts) {
+    this.#executor = new TaskExecutionCoordinator(ports);
+  }
+
+  async execute(inputValue: unknown, options: { readonly signal?: AbortSignal } = {}): Promise<TaskScheduleReport> {
+    if (options.signal?.aborted === true) fail("VES_SCHEDULER_CANCELLED", "Task schedule was cancelled before start");
+    const input = normalizeTaskSchedule(inputValue);
+    const states = new Map<string, TaskState>(input.tasks.map((task) => [task.taskId, "pending"]));
+    const rounds: ScheduleRound[] = [];
+    const outcomes = new Map<string, ScheduledTaskOutcome>();
+    const running = new Map<string, { readonly scope: readonly string[]; readonly promise: Promise<SettledTask> }>();
+    const settled: SettledTask[] = [];
+    let wake: () => void = () => undefined;
+    let waitForSettled = new Promise<void>((resolve) => {
+      wake = resolve;
+    });
+    let halt = false;
+    let cancelled = false;
+
+    const launch = (task: AtomicExecutionTask): void => {
+      const perTaskInput = {
+        schemaVersion: 1,
+        workspaceId: input.workspaceId,
+        runId: input.runId,
+        executionPackageDigest: input.executionPackageDigest,
+        sourceStateDigest: input.sourceStateDigest,
+        sourceRevision: input.sourceRevision,
+        contextManifestDigest: input.contextManifestDigest,
+        mode: input.mode,
+        task,
+        authority: input.authority,
+        ...(input.budgets === undefined ? {} : { budgets: input.budgets })
+      };
+      const promise = this.#executor
+        .execute(perTaskInput, options.signal === undefined ? {} : { signal: options.signal })
+        .then((result): SettledTask => ({ taskId: task.taskId, ok: true, result }))
+        .catch((error: unknown): SettledTask => ({ taskId: task.taskId, ok: false, error }))
+        .then((entry) => {
+          settled.push(entry);
+          wake();
+          return entry;
+        });
+      running.set(task.taskId, { scope: task.changeScope, promise });
+      states.set(task.taskId, "running");
+    };
+
+    // The loop only ever waits on the settled queue, so rounds record real
+    // decisions instead of polling intervals.
+    for (;;) {
+      if (!halt) {
+        const plan = planRound({
+          tasks: input.tasks,
+          states,
+          runningScopes: new Map([...running].map(([taskId, entry]) => [taskId, entry.scope])),
+          freeSlots: input.maxConcurrentTasks - running.size
+        });
+        if (plan.start.length > 0) {
+          for (const task of plan.start) launch(task);
+          rounds.push(
+            deepFreeze({
+              round: rounds.length + 1,
+              started: plan.start.map((task) => Object.freeze({ taskId: task.taskId })),
+              deferred: plan.deferred.map((entry) => Object.freeze(entry))
+            })
+          );
+        }
+      }
+      if (running.size === 0) {
+        // Nothing in flight: everything settled, or the remainder can never
+        // start because a dependency failed or the schedule halted.
+        for (const task of input.tasks) {
+          if (states.get(task.taskId) !== "pending") continue;
+          states.set(task.taskId, "blocked");
+          outcomes.set(task.taskId, Object.freeze({ taskId: task.taskId, status: "blocked" }));
+        }
+        break;
+      }
+      if (settled.length === 0) await waitForSettled;
+      const drained = settled.splice(0, settled.length);
+      waitForSettled = new Promise<void>((resolve) => {
+        wake = resolve;
+      });
+      for (const entry of drained) {
+        running.delete(entry.taskId);
+        if (entry.ok) {
+          states.set(entry.taskId, "completed");
+          outcomes.set(
+            entry.taskId,
+            Object.freeze({
+              taskId: entry.taskId,
+              status: "completed",
+              coordinationRef: entry.result.coordinationRef,
+              changeDigest: entry.result.changeDigest
+            })
+          );
+        } else {
+          states.set(entry.taskId, "failed");
+          outcomes.set(
+            entry.taskId,
+            Object.freeze({
+              taskId: entry.taskId,
+              status: "failed",
+              errorCode: entry.error instanceof TaskExecutorError ? entry.error.code : "VES_EXECUTOR_DRIVER_FAILED"
+            })
+          );
+          // A1: one failure halts new launches; in-flight tasks settle.
+          halt = true;
+          if (entry.error instanceof TaskExecutorError && entry.error.code === "VES_EXECUTOR_CANCELLED")
+            cancelled = true;
+        }
+      }
+      if (Boolean(options.signal?.aborted)) {
+        halt = true;
+        cancelled = true;
+      }
+    }
+
+    const ordered = [...outcomes.values()].sort((a, b) => byTaskId(a.taskId, b.taskId));
+    const status = cancelled
+      ? ("cancelled" as const)
+      : ordered.some((outcome) => outcome.status !== "completed")
+        ? ("failed" as const)
+        : ("completed" as const);
+    return deepFreeze({
+      status,
+      workspaceId: input.workspaceId,
+      runId: input.runId,
+      executionPackageDigest: input.executionPackageDigest,
+      maxConcurrentTasks: input.maxConcurrentTasks,
+      rounds,
+      outcomes: ordered
+    });
+  }
 }
