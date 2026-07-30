@@ -15,6 +15,24 @@ test("a package without a repair policy still seals, so existing packages stay v
   const { builder } = executionHarness();
   const sealed = await builder.build(packageInput());
   assert.equal(sealed.payload.onGateFailure, undefined);
+  assert.equal(sealed.payload.policyBundleDigest, undefined);
+});
+
+// T68c and T68d each added an optional package field independently. Neither
+// branch could test them together, so the combination is asserted here.
+test("the repair policy and the policy bundle digest coexist in one package", async () => {
+  const bundleDigest = `sha256:${"a".repeat(64)}`;
+  const { builder } = executionHarness();
+  const sealed = await builder.build(packageInput({ onGateFailure: policy(), policyBundleDigest: bundleDigest }));
+  assert.deepEqual(sealed.payload.onGateFailure, policy());
+  assert.equal(sealed.payload.policyBundleDigest, bundleDigest);
+});
+
+test("a malformed policy bundle digest is rejected alongside a valid repair policy", async () => {
+  const { builder } = executionHarness();
+  await assert.rejects(builder.build(packageInput({ onGateFailure: policy(), policyBundleDigest: "not-a-digest" })), {
+    code: "VES_EXECUTION_PACKAGE_INVALID"
+  });
 });
 
 for (const [label, corrupt] of [
