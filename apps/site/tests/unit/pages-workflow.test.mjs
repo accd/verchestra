@@ -64,3 +64,29 @@ test("caches the qualified browsers keyed on the resolved Playwright version", (
   assert.match(workflow, /path: ~\/\.cache\/ms-playwright/u);
   assert.match(workflow, /key: \$\{\{ runner\.os \}\}-ms-playwright-\$\{\{ steps\.playwright\.outputs\.version \}\}/u);
 });
+
+test("an unresolvable Playwright version refuses to cache instead of sharing one key", () => {
+  // node --print exits 0 while printing "undefined" if the dependency moves out
+  // of devDependencies, and 0 while printing "^1.62.0" if the pin loosens. Either
+  // would key every future run identically and restore browsers built for a
+  // different version, which is the one thing this cache must never do.
+  assert.match(workflow, /if ! \[\[ "\$version" =~ \^\[0-9\]\+\\\.\[0-9\]\+\\\.\[0-9\]\+\$ \]\]; then/u);
+  assert.match(workflow, /refusing to cache browsers under an ambiguous key/u);
+});
+
+test("the site job budget exceeds the bounds of the steps it contains", () => {
+  // Three 5-minute apt attempts plus an 8-minute browser install is about 23
+  // minutes before the qualification run starts. A budget that does not clear
+  // that composes back into a cancelled job reporting a test failure.
+  const site = /\n {2}site:\n([\s\S]*?)\n {2}deploy:/u.exec(workflow);
+  assert.ok(site, "the site job must be present");
+  const jobBudget = Number(/timeout-minutes: (\d+)/u.exec(site[1])[1]);
+  const aptAttempts = Number(/for attempt in ((?:\d+ ?)+)/u.exec(site[1])[1].trim().split(/\s+/u).length);
+  const aptSeconds = Number(/timeout (\d+) pnpm/u.exec(site[1])[1]);
+  const stepBudgets = [...site[1].matchAll(/^ {8}timeout-minutes: (\d+)$/gmu)].map((entry) => Number(entry[1]));
+  const bounded = (aptAttempts * aptSeconds) / 60 + stepBudgets.reduce((total, value) => total + value, 0);
+  assert.ok(
+    jobBudget > bounded + 10,
+    `the job budget of ${jobBudget}m must leave over 10m beyond the ${bounded}m its bounded steps may consume`
+  );
+});

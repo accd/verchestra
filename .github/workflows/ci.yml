@@ -73,7 +73,12 @@ jobs:
   site:
     name: Site quality
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # The bounded steps below compose to roughly 23 minutes worst case: three
+    # 5-minute apt attempts plus an 8-minute browser install. That left too
+    # little of a 30-minute budget for the qualification run itself, so a cold
+    # cache and a slow mirror together could still cancel the job mid-test -
+    # exactly the failure those bounded steps were added to make legible.
+    timeout-minutes: 45
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.0
@@ -108,7 +113,16 @@ jobs:
       - name: Resolve the qualified Playwright version
         id: playwright
         run: |
+          set -euo pipefail
           version="$(node --print "require('./apps/site/package.json').devDependencies['@playwright/test']")"
+          # The whole key design rests on that dependency being pinned exactly. If
+          # it moves or loosens to a range, node prints "undefined" or "^1.62.0"
+          # and still exits 0, so every later run would share one cache entry
+          # across versions - the stale-cache case this key exists to prevent.
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Could not resolve an exact @playwright/test version; refusing to cache browsers under an ambiguous key."
+            exit 1
+          fi
           printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"
       # Each Playwright version requires exact browser revisions, so the key
       # carries the resolved version and a stale cache is never restored. A warm
