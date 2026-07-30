@@ -105,6 +105,20 @@ jobs:
           done
           echo "::error::Could not install browser system dependencies. This is a runner environment failure, not a site qualification failure: no test has run yet."
           exit 1
+      - name: Resolve the qualified Playwright version
+        id: playwright
+        run: |
+          version="$(node --print "require('./apps/site/package.json').devDependencies['@playwright/test']")"
+          printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"
+      # Each Playwright version requires exact browser revisions, so the key
+      # carries the resolved version and a stale cache is never restored. A warm
+      # cache turns the install below into a verification pass instead of a
+      # ~400 MB download on every run.
+      - name: Cache qualified browsers
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-ms-playwright-${{ steps.playwright.outputs.version }}
       - name: Install qualified browsers
         timeout-minutes: 8
         run: pnpm --filter @verchestra/site exec playwright install chromium firefox webkit

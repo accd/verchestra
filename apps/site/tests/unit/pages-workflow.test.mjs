@@ -29,8 +29,9 @@ test("pins every delivery action and isolates elevated Pages permissions", () =>
   const actionUses = [...workflow.matchAll(/uses: ([^\s#]+)/gu)].map((match) => match[1]);
   // The exact count is a tripwire: adding an action must be a reviewed decision,
   // never an unnoticed one. It rose to 10 when the quality job began retaining
-  // gate-selection evidence.
-  assert.equal(actionUses.length, 10);
+  // gate-selection evidence, and to 11 when the site job began caching the
+  // qualified browsers.
+  assert.equal(actionUses.length, 11);
   assert.match(
     workflow,
     /uses: actions\/upload-artifact@[a-f0-9]{40} # v\d+\.\d+\.\d+\n {8}with:\n.*\n.*gate-selection/su
@@ -47,4 +48,19 @@ test("cancels stale deployments and binds the production environment", () => {
   assert.match(workflow, /cancel-in-progress: true/u);
   assert.match(workflow, /name: github-pages/u);
   assert.match(workflow, /url: \$\{\{ steps\.deployment\.outputs\.page_url \}\}/u);
+});
+
+test("caches the qualified browsers keyed on the resolved Playwright version", () => {
+  // Caching must never shrink coverage: the install keeps all three qualified
+  // browser projects, and a warm cache only skips the download. The key carries
+  // the exact Playwright version because each version requires specific browser
+  // revisions, so a stale cache entry is never restored.
+  assert.match(workflow, /run: pnpm --filter @verchestra\/site exec playwright install chromium firefox webkit/u);
+  assert.match(
+    workflow,
+    /node --print "require\('\.\/apps\/site\/package\.json'\)\.devDependencies\['@playwright\/test'\]"/u
+  );
+  assert.match(workflow, /uses: actions\/cache@[a-f0-9]{40} # v\d+\.\d+\.\d+/u);
+  assert.match(workflow, /path: ~\/\.cache\/ms-playwright/u);
+  assert.match(workflow, /key: \$\{\{ runner\.os \}\}-ms-playwright-\$\{\{ steps\.playwright\.outputs\.version \}\}/u);
 });
