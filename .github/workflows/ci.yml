@@ -89,8 +89,25 @@ jobs:
           cache: pnpm
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+      # Split from the browser download because it is the part that fetches
+      # webkit's multimedia dependencies over apt, and a slow Ubuntu mirror used
+      # to consume the whole job budget and cancel the run mid-test. A cancelled
+      # job reports "Site quality fail", which is indistinguishable from a real
+      # regression. Each attempt is bounded so the failure lands here, named, and
+      # says which of the two things went wrong.
+      - name: Install browser system dependencies
+        run: |
+          for attempt in 1 2 3; do
+            if timeout 300 pnpm --filter @verchestra/site exec playwright install-deps; then
+              exit 0
+            fi
+            echo "::warning::Browser system dependencies failed on attempt ${attempt} of 3."
+          done
+          echo "::error::Could not install browser system dependencies. This is a runner environment failure, not a site qualification failure: no test has run yet."
+          exit 1
       - name: Install qualified browsers
-        run: pnpm --filter @verchestra/site exec playwright install --with-deps chromium firefox webkit
+        timeout-minutes: 8
+        run: pnpm --filter @verchestra/site exec playwright install chromium firefox webkit
       - name: Run site qualification
         run: pnpm site:test
       - name: Upload verified Pages artifact
