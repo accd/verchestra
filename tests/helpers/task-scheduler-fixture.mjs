@@ -44,7 +44,7 @@ export function schedulerPorts(overrides = {}) {
   };
   const ports = {
     authority: {
-      verify: async (_input, _phase) => ({ authorized: true, bindingDigest: "sha256:" + "4".repeat(64) }),
+      verify: async () => ({ authorized: true, bindingDigest: "sha256:" + "4".repeat(64) }),
       ...overrides.authority
     },
     coordination: {
@@ -84,10 +84,11 @@ export function schedulerPorts(overrides = {}) {
       ...overrides.tools
     },
     driver: {
-      execute: async (request) => {
+      execute: async (request, driverOptions) => {
         state.started.push(request.task.taskId);
-        await gate(request.task.taskId).promise;
-        return { status: "completed", outputRefs: [] };
+        const outcome = await gate(request.task.taskId).promise;
+        for (const event of outcome?.usage ?? []) driverOptions.reportUsage(event);
+        return { status: outcome?.status ?? "completed", outputRefs: [] };
       },
       cancel: async () => {},
       ...overrides.driver
@@ -96,7 +97,10 @@ export function schedulerPorts(overrides = {}) {
   return {
     state,
     ports,
-    release: (taskId) => gate(taskId).resolve()
+    // Releasing with no argument settles the task as completed. Pass
+    // { status: "failed" } to make the gated task fail, and { usage: [...] } to
+    // have it report usage events against the run budget before it settles.
+    release: (taskId, outcome) => gate(taskId).resolve(outcome)
   };
 }
 

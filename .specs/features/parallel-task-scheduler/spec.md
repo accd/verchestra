@@ -22,14 +22,15 @@ waited, or was skipped. Deferred external-review item R7 (issue #33).
 - Deterministic serialization of tasks whose change scopes overlap; fail
   closed: invalid graphs never start a task.
 - A scheduling report that records every scheduling decision and per-task
-  outcome as digestable run evidence.
+  outcome, with the per-task outcomes and budget snapshot forming its
+  digestable run evidence.
 
 ## Out of Scope
 
 | Exclusion | Reason |
 | --- | --- |
 | Mid-graph resume after a scheduler crash | Per-task checkpoints already recover a task; scheduler-level resume is a separate feature (assumption A6). |
-| Sealing scheduling evidence into signed packages | The report is digest-ready; sealing belongs to the evidence wiring tracked in issue #64. |
+| Sealing scheduling evidence into signed packages | The report's `outcomes` and `budgetSnapshot` are digest-ready; sealing belongs to the evidence wiring tracked in issue #64, which must digest those fields rather than the whole report. |
 | Cross-run claim leasing or remote claim acquisition | Per-task claims stay inside the existing executor coordination path. |
 | Parallelism inside one task (driver fan-out) | The bounded unit is the atomic task. |
 
@@ -77,9 +78,19 @@ waited, or was skipped. Deferred external-review item R7 (issue #33).
   the scheduler lives in a new module.
 - Task outcomes are data, not exceptions: invalid input throws typed
   errors; failed tasks appear in the report with status `failed`.
-- Deterministic scheduling: identical graph and identical task outcomes
-  produce an identical report. Round contents and orderings never depend
-  on wall-clock races.
+- Deterministic evidence: identical graph and identical task outcomes
+  produce identical `outcomes` and `budgetSnapshot`, emitted in
+  `sorted(taskId)` order. These are the digest-bearing parts of the
+  report. Within any single round, the started set, the deferred set, and
+  their orderings are decided by `taskId` sort and never by a wall-clock
+  race.
+- `rounds` is an observational log, not a digest surface. Round
+  segmentation follows real settle batching: two tasks completing in one
+  drain produce one round where two separate drains produce two. A
+  faithful record of a concurrent engine cannot be otherwise without
+  either serializing execution or reporting rounds that never happened,
+  so assumption A5's digest-ready claim is scoped to `outcomes` and
+  `budgetSnapshot`.
 - No new runtime dependency; scheduling is pure application-layer
   orchestration over existing ports.
 
@@ -87,11 +98,11 @@ waited, or was skipped. Deferred external-review item R7 (issue #33).
 
 | Requirement | Task | Status |
 | --- | --- | --- |
-| SCH-03 | T2 | Pending |
-| SCH-01, SCH-02, SCH-04 | T3 | Pending |
-| SCH-05, SCH-08 | T4 | Pending |
-| SCH-06, SCH-07 | T5 | Pending |
-| All | T6 | Pending |
+| SCH-03 | T2 | Done |
+| SCH-01, SCH-02, SCH-04 | T3 | Done |
+| SCH-05, SCH-08 | T4 | Done |
+| SCH-06, SCH-07 | T5 | Done |
+| All | T6 | Done |
 
 ## Success Criteria
 

@@ -11,7 +11,7 @@ and its rationale.
 | A2 | Concurrency width | Caller-supplied `maxConcurrentTasks`, safe integer 1..100 | The orchestrator owns the policy; no magic constant. |
 | A3 | Authority shape | One shared run envelope (digests, approval, grants) plus a task array | An Execution Package closes approvals per run, not per task. |
 | A4 | Overlap semantics | Path equality or containment over `changeScope`, the same rule as the executor's `within()` | One mental model; static analysis decides order, and the per-task claim stays the enforcement backstop. |
-| A5 | Evidence surface | Returned deep-frozen report plus the final meter snapshot; no signed capsule, no scheduler checkpoint | The report is digest-ready; sealing belongs to the issue #64 wiring. |
+| A5 | Evidence surface | Returned deep-frozen report plus the final meter snapshot; no signed capsule, no scheduler checkpoint | The report's `outcomes` and `budgetSnapshot` are digest-ready (`rounds` is an observational log, see the determinism constraint in `spec.md`); sealing belongs to the issue #64 wiring. |
 | A6 | Mid-graph resume | Out of scope for v1 | Per-task checkpoints already recover tasks; scheduler resume is a separate feature. |
 
 ## Recon discoveries that shaped the spec

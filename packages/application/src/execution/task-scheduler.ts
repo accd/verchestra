@@ -1,4 +1,5 @@
-import type { DeclaredBudgets } from "./budget-meter.ts";
+import { createBudgetMeter, type BudgetMeter, type BudgetSnapshot, type DeclaredBudgets } from "./budget-meter.ts";
+import { modelPriceTable } from "./model-price-table.ts";
 import {
   normalizeTask,
   TaskExecutionCoordinator,
@@ -244,6 +245,7 @@ export interface TaskScheduleReport {
   readonly maxConcurrentTasks: number;
   readonly rounds: readonly ScheduleRound[];
   readonly outcomes: readonly ScheduledTaskOutcome[];
+  readonly budgetSnapshot?: BudgetSnapshot;
 }
 
 type TaskState = "pending" | "running" | "completed" | "failed" | "blocked";
@@ -343,6 +345,17 @@ export class TaskScheduleCoordinator {
     });
     let halt = false;
     let cancelled = false;
+    // One meter for the whole schedule: a declared ceiling belongs to the run,
+    // so letting each concurrent execute() build its own would hand every task
+    // a fresh budget and multiply the ceiling by the task count.
+    const meter: BudgetMeter | undefined =
+      input.budgets === undefined
+        ? undefined
+        : createBudgetMeter({ budgets: input.budgets, priceTable: modelPriceTable });
+    const executeOptions = {
+      ...(options.signal === undefined ? {} : { signal: options.signal }),
+      ...(meter === undefined ? {} : { budgetMeter: meter })
+    };
 
     const launch = (task: AtomicExecutionTask): void => {
       const perTaskInput = {
@@ -359,7 +372,7 @@ export class TaskScheduleCoordinator {
         ...(input.budgets === undefined ? {} : { budgets: input.budgets })
       };
       const promise = this.#executor
-        .execute(perTaskInput, options.signal === undefined ? {} : { signal: options.signal })
+        .execute(perTaskInput, executeOptions)
         .then((result): SettledTask => ({ taskId: task.taskId, ok: true, result }))
         .catch((error: unknown): SettledTask => ({ taskId: task.taskId, ok: false, error }))
         .then((entry) => {
@@ -381,7 +394,7 @@ export class TaskScheduleCoordinator {
           runningScopes: new Map([...running].map(([taskId, entry]) => [taskId, entry.scope])),
           freeSlots: input.maxConcurrentTasks - running.size
         });
-        if (plan.start.length > 0) {
+        if (plan.start.length > 0 || plan.deferred.length > 0) {
           for (const task of plan.start) launch(task);
           rounds.push(
             deepFreeze({
@@ -455,7 +468,8 @@ export class TaskScheduleCoordinator {
       executionPackageDigest: input.executionPackageDigest,
       maxConcurrentTasks: input.maxConcurrentTasks,
       rounds,
-      outcomes: ordered
+      outcomes: ordered,
+      ...(meter === undefined ? {} : { budgetSnapshot: meter.snapshot() })
     });
   }
 }

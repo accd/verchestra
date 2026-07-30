@@ -29,7 +29,8 @@ concern.
    one `TaskExecutionCoordinator`, threads the caller `AbortSignal` and
    one shared `BudgetMeter` (when budgets are declared) into every
    `execute()` call, and drains completions through a settled queue so
-   rounds stay deterministic. On task failure: halt launches, settle
+   the loop waits on real completions instead of polling. On task
+   failure: halt launches, settle
    in-flight, mark transitive dependents `blocked`.
 5. **Report** — deep-frozen: `status` (`completed | failed |
    cancelled`), run identity, `maxConcurrentTasks`, `rounds` (started,
@@ -64,8 +65,21 @@ TaskScheduleInput ──normalize/validate──▶ graph (taskId → task)
 
 ## Determinism
 
-Identical graph and task outcomes produce an identical report: ready
-sets are sorted by `taskId`, conflict order is the same sort, rounds are
-recorded only when a batch launches, and outcome entries are emitted in
-`sorted(taskId)` order. Concurrent interleaving never leaks into the
-evidence.
+Identical graph and task outcomes produce identical `outcomes` and
+`budgetSnapshot`: ready sets are sorted by `taskId`, conflict order is
+the same sort, and outcome entries are emitted in `sorted(taskId)`
+order. Those are the digest-bearing parts of the report.
+
+`rounds` is an observational log and its segmentation does follow settle
+batching: four independent tasks at width 2 record two rounds when the
+first pair settles in one drain and three when they settle separately,
+with identical `outcomes` either way. Within a round, contents and
+order are still decided by `taskId`, never by a race. See the
+`rounds` constraint in `spec.md`.
+
+A round is recorded whenever the planner produced a decision — a launch
+or a deferral — not only when a batch launches. A task that becomes
+ready while a scope-overlapping task is still in flight is deferred in a
+round that starts nothing, and SCH-06 requires that decision to appear in
+the evidence; recording launches only would drop it silently. The round
+count is still bounded, because the loop plans once per settled batch.
