@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { TaskScheduleCoordinator } from "../../packages/application/src/index.ts";
+import { TaskScheduleCoordinator, TaskSchedulerError } from "../../packages/application/src/index.ts";
 
 import { flush, scheduleInput, scheduleTask, schedulerPorts } from "../helpers/task-scheduler-fixture.mjs";
+
+const schedulerError = (code) => (error) => error instanceof TaskSchedulerError && error.code === code;
 
 test("independent tasks run concurrently with one claim per task", async () => {
   const { state, ports, release } = schedulerPorts();
