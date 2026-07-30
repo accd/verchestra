@@ -256,7 +256,7 @@ interface TaskExecutorPorts {
   readonly driver: ExecutionDriverPort;
 }
 
-function normalizeTask(value: unknown): AtomicExecutionTask {
+export function normalizeTask(value: unknown): AtomicExecutionTask {
   const task = exactRow(
     value,
     "task",
@@ -280,7 +280,10 @@ function normalizeTask(value: unknown): AtomicExecutionTask {
   return deepFreeze({
     taskId: safe(task["taskId"], "taskId", "VES_EXECUTOR_TASK_INVALID"),
     requirementIds: stringList(task["requirementIds"], "requirementIds", REQUIREMENT),
-    dependencyTaskIds: stringList(task["dependencyTaskIds"], "dependencyTaskIds"),
+    // Root tasks exist: a dependency graph has entry points, so the list is
+    // allowed to be empty. The scheduler relies on this; single-task callers
+    // are unaffected.
+    dependencyTaskIds: optionalSafeList(task["dependencyTaskIds"], "dependencyTaskIds", "VES_EXECUTOR_TASK_INVALID"),
     component: safe(task["component"], "component", "VES_EXECUTOR_TASK_INVALID"),
     changeScope: stringList(task["changeScope"], "changeScope", LOGICAL_PATH),
     protectedPaths: stringList(task["protectedPaths"], "protectedPaths", LOGICAL_PATH),
