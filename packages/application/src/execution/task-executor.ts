@@ -1,3 +1,12 @@
+import {
+  BudgetMeterError,
+  createBudgetMeter,
+  type BudgetMeter,
+  type DeclaredBudgets,
+  type UsageEvent
+} from "./budget-meter.ts";
+import { modelPriceTable } from "./model-price-table.ts";
+
 type Digest = `sha256:${string}`;
 type Row = Record<string, unknown>;
 
@@ -22,7 +31,8 @@ export type TaskExecutorErrorCode =
   | "VES_EXECUTOR_PROTECTED_PATH"
   | "VES_EXECUTOR_COMMIT_FORBIDDEN"
   | "VES_EXECUTOR_DRIVER_FAILED"
-  | "VES_EXECUTOR_CANCELLED";
+  | "VES_EXECUTOR_CANCELLED"
+  | "VES_EXECUTOR_BUDGET_EXCEEDED";
 
 export class TaskExecutorError extends Error {
   readonly code: TaskExecutorErrorCode;
@@ -125,6 +135,11 @@ export interface TaskExecutionInput {
     readonly approvalBindingDigest: Digest;
     readonly capabilityGrantRefs: readonly string[];
   };
+  // The Execution Package's declared ceilings, supplied by the composition
+  // root that parsed the package. Absent budgets mean an older caller; the
+  // package validator has always required them, so enforcement is skipped
+  // only when nothing was declared to enforce.
+  readonly budgets?: DeclaredBudgets;
 }
 
 export interface ExecutionToolRequest {
@@ -222,6 +237,10 @@ export interface ExecutionDriverPort {
       readonly signal: AbortSignal | undefined;
       invokeTool(request: ExecutionToolRequest): Promise<{ readonly receiptRef: string; readonly outputRef?: string }>;
       checkpoint(stage: string, data: unknown): Promise<string>;
+      // Drivers forward every usage.updated event here. The executor owns the
+      // budget meter; a driver that stops reporting cannot raise its own
+      // ceiling, because the duration ceiling still fires without events.
+      reportUsage(event: UsageEvent): void;
     }
   ): Promise<{ readonly status: "completed" | "failed" | "cancelled"; readonly outputRefs: readonly string[] }>;
   cancel(worktreeRef: string): Promise<void>;
@@ -276,6 +295,25 @@ function normalizeTask(value: unknown): AtomicExecutionTask {
   });
 }
 
+function normalizeBudgets(value: unknown): DeclaredBudgets {
+  const budgets = exactRow(
+    value,
+    "declared budgets",
+    ["maximumCostUsd", "maximumTokens", "maximumDurationMs"],
+    "VES_EXECUTOR_INPUT_INVALID"
+  );
+  for (const field of ["maximumCostUsd", "maximumTokens", "maximumDurationMs"] as const) {
+    const ceiling = budgets[field];
+    if (typeof ceiling !== "number" || !Number.isFinite(ceiling) || ceiling <= 0)
+      fail("VES_EXECUTOR_INPUT_INVALID", `${field} must be a positive finite number`);
+  }
+  return deepFreeze({
+    maximumCostUsd: budgets["maximumCostUsd"] as number,
+    maximumTokens: budgets["maximumTokens"] as number,
+    maximumDurationMs: budgets["maximumDurationMs"] as number
+  });
+}
+
 function normalizeInput(value: unknown): TaskExecutionInput {
   const input = exactRow(
     value,
@@ -290,12 +328,14 @@ function normalizeInput(value: unknown): TaskExecutionInput {
       "contextManifestDigest",
       "mode",
       "task",
-      "authority"
+      "authority",
+      "budgets"
     ],
     "VES_EXECUTOR_INPUT_INVALID"
   );
   if (input["schemaVersion"] !== 1 || !(input["mode"] === "personal" || input["mode"] === "team"))
     fail("VES_EXECUTOR_INPUT_INVALID", "task execution schema or mode is invalid");
+  const budgets = input["budgets"] === undefined ? undefined : normalizeBudgets(input["budgets"]);
   const authority = exactRow(
     input["authority"],
     "execution authority",
@@ -324,7 +364,8 @@ function normalizeInput(value: unknown): TaskExecutionInput {
         SAFE,
         "VES_EXECUTOR_INPUT_INVALID"
       )
-    })
+    }),
+    ...(budgets === undefined ? {} : { budgets })
   });
 }
 
@@ -420,31 +461,84 @@ export class TaskExecutionCoordinator {
       if (!SAFE.test(context.contextRef) || context.contextDigest !== input.contextManifestDigest)
         fail("VES_EXECUTOR_CONTEXT_INVALID", "compiled execution Context is invalid");
       driverStarted = true;
-      const driverResult = await this.#ports.driver.execute(
-        {
-          workspaceId: input.workspaceId,
-          runId: input.runId,
-          task: input.task,
-          worktreeRef: worktree.worktreeRef,
-          contextRef: context.contextRef,
-          checkpoint: lastCheckpoint,
-          capabilityGrantRefs: input.authority.capabilityGrantRefs
-        },
-        {
-          signal: options.signal,
-          checkpoint: saveCheckpoint,
-          invokeTool: async (requestValue) => {
-            const request = this.#normalizeToolRequest(requestValue, input);
-            await this.#assertAuthority(input, "tool-effect");
-            const result = await this.#ports.tools.invoke({ ...request, worktreeRef: worktree!.worktreeRef });
-            if (!SAFE.test(result.receiptRef) || (result.outputRef !== undefined && !SAFE.test(result.outputRef)))
-              fail("VES_EXECUTOR_TOOL_INVALID", "Tool result is invalid");
-            toolReceiptRefs.push(result.receiptRef);
-            if (result.outputRef !== undefined) toolOutputRefs.push(result.outputRef);
-            return result;
+      const meter: BudgetMeter | undefined =
+        input.budgets === undefined
+          ? undefined
+          : createBudgetMeter({ budgets: input.budgets, priceTable: modelPriceTable });
+      // The budget stop must survive the driver's own cancellation report: a
+      // run that dies because its ceiling was reached is a budget outcome, not
+      // a generic cancellation.
+      let budgetStop: { readonly reason: string; readonly failure: TaskExecutorError | BudgetMeterError } | undefined;
+      const stopForBudget = (reason: string, failure: TaskExecutorError | BudgetMeterError): void => {
+        if (budgetStop !== undefined) return;
+        budgetStop = { reason, failure };
+        void saveCheckpoint("budget-exceeded", { reason, meter: meter?.snapshot() ?? null }).catch(() => {
+          // The stop itself is authoritative; checkpointing it is best effort.
+        });
+        void this.#ports.driver.cancel(worktree!.worktreeRef).catch(() => {
+          // Cancellation failure surfaces through the driver result instead.
+        });
+      };
+      // Duration is enforced by a timer rather than by usage events, so a
+      // driver that goes silent cannot outrun its own deadline.
+      const durationTimer =
+        meter === undefined
+          ? undefined
+          : setTimeout(
+              () =>
+                stopForBudget(
+                  "duration-threshold",
+                  new TaskExecutorError("VES_EXECUTOR_BUDGET_EXCEEDED", "declared duration budget was reached")
+                ),
+              Math.ceil(input.budgets!.maximumDurationMs * 0.9)
+            );
+      let driverResult: unknown;
+      try {
+        driverResult = await this.#ports.driver.execute(
+          {
+            workspaceId: input.workspaceId,
+            runId: input.runId,
+            task: input.task,
+            worktreeRef: worktree.worktreeRef,
+            contextRef: context.contextRef,
+            checkpoint: lastCheckpoint,
+            capabilityGrantRefs: input.authority.capabilityGrantRefs
+          },
+          {
+            signal: options.signal,
+            checkpoint: saveCheckpoint,
+            reportUsage: (event) => {
+              if (meter === undefined) return;
+              try {
+                meter.recordUsage(event);
+              } catch (error) {
+                if (!(error instanceof BudgetMeterError)) throw error;
+                stopForBudget(error.code, error);
+                return;
+              }
+              const verdict = meter.shouldStop();
+              if (verdict.stop)
+                stopForBudget(
+                  verdict.reason ?? "budget",
+                  new TaskExecutorError("VES_EXECUTOR_BUDGET_EXCEEDED", `declared ${verdict.reason} was reached`)
+                );
+            },
+            invokeTool: async (requestValue) => {
+              const request = this.#normalizeToolRequest(requestValue, input);
+              await this.#assertAuthority(input, "tool-effect");
+              const result = await this.#ports.tools.invoke({ ...request, worktreeRef: worktree!.worktreeRef });
+              if (!SAFE.test(result.receiptRef) || (result.outputRef !== undefined && !SAFE.test(result.outputRef)))
+                fail("VES_EXECUTOR_TOOL_INVALID", "Tool result is invalid");
+              toolReceiptRefs.push(result.receiptRef);
+              if (result.outputRef !== undefined) toolOutputRefs.push(result.outputRef);
+              return result;
+            }
           }
-        }
-      );
+        );
+      } finally {
+        if (durationTimer !== undefined) clearTimeout(durationTimer);
+      }
+      if (budgetStop !== undefined) throw budgetStop.failure;
       const driverRow = exactRow(driverResult, "Driver result", ["status", "outputRefs"], "VES_EXECUTOR_DRIVER_FAILED");
       const driverStatus = driverRow["status"];
       if (!(driverStatus === "completed" || driverStatus === "failed" || driverStatus === "cancelled"))
