@@ -190,11 +190,45 @@ test("the CI contract compares event-specific bases and runs emitted stages once
 test("manual qualification validation accepts only its closed gate profiles", () => {
   const workflow = readFileSync(new URL("../../.github/workflows/full-validation.yml", import.meta.url), "utf8");
   assert.match(workflow, /gate:\s*\n\s*description: "Closed qualification profile to run"/u);
-  assert.match(workflow, /options:\s*\n\s*- quick\s*\n\s*- full/u);
-  assert.match(workflow, /case "\$REQUESTED_GATE" in quick\|full\)/u);
   assert.match(workflow, /echo "gate=gate:\$REQUESTED_GATE"/u);
-  assert.match(workflow, /run: pnpm \$\{\{ steps\.candidate\.outputs\.gate \}\}/u);
   assert.doesNotMatch(workflow, /gate: "gate:full"/u);
+});
+
+// A manual run is where a maintainer produces attestable evidence, so it has to
+// be able to attest every profile a qualification report may cite. Offering only
+// quick and full is what pushed the T68a report to drop gate:security.
+test("every gate the report contract recognises is selectable", () => {
+  const workflow = readFileSync(new URL("../../.github/workflows/full-validation.yml", import.meta.url), "utf8");
+  const options = /options:[ \t]*\r?\n((?:[ \t]*- \w+[ \t]*\r?\n)+)/u.exec(workflow);
+  assert.ok(options, "the dispatch input must declare a closed option list");
+  const offered = [...options[1].matchAll(/- (\w+)/gu)].map((entry) => `gate:${entry[1]}`);
+  assert.deepEqual([...offered].sort(), [...Object.keys(GATE_STAGES)].sort());
+  // The shell guard must agree with the option list, so neither can drift alone.
+  const guard = /case "\$REQUESTED_GATE" in\s*\n\s*([\w|]+)\)/u.exec(workflow);
+  assert.ok(guard, "the shell must guard the requested gate independently");
+  assert.deepEqual(
+    guard[1]
+      .split("|")
+      .map((name) => `gate:${name}`)
+      .sort(),
+    [...offered].sort()
+  );
+});
+
+test("the selected gate reaches the shell through the environment, not interpolation", () => {
+  const workflow = readFileSync(new URL("../../.github/workflows/full-validation.yml", import.meta.url), "utf8");
+  // An expression pasted into run: is the script-injection shape. The case guard
+  // already closes it; refusing the shape closes it twice.
+  assert.match(workflow, /run: pnpm "\$CANDIDATE_GATE"/u);
+  assert.doesNotMatch(workflow, /run: pnpm \$\{\{/u);
+});
+
+test("the recorded evidence file is named after the profile it can record", () => {
+  const workflow = readFileSync(new URL("../../.github/workflows/full-validation.yml", import.meta.url), "utf8");
+  // A gate:quick run written to full-validation.json would read stronger than it
+  // is, which is the failure this repository keeps having to correct.
+  assert.doesNotMatch(workflow, /full-validation\.json/u);
+  assert.match(workflow, /qualification-validation\.json/u);
 });
 
 test("the regression that CI missed now selects a detecting gate", () => {
