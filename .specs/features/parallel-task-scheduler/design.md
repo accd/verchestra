@@ -1,0 +1,71 @@
+# Parallel Task Scheduler Design
+
+## Placement
+
+New module `packages/application/src/execution/task-scheduler.ts`,
+exported through `packages/application/src/index.ts`. Application layer:
+it orchestrates the existing executor and ports and owns no platform
+concern.
+
+## Components
+
+1. **Normalization and graph validation** — the envelope mirrors
+   `TaskExecutionInput` minus `task`, plus `tasks` and
+   `maxConcurrentTasks`. Tasks normalize through the executor's own
+   `normalizeTask` (exported; unchanged semantics apart from allowing
+   `dependencyTaskIds: []`). Graph validation: unique `taskId`, every
+   dependency reference exists, no self-dependency, no cycle (Kahn),
+   non-empty task list.
+2. **Overlap predicate** — `pathsOverlap` is equality or containment in
+   either direction; `scopesOverlap` is any overlapping pair across two
+   change scopes.
+3. **Planner (pure)** — input: tasks, per-task state
+   (`pending | running | completed | failed | blocked`), in-flight
+   scopes, free slots. Output: tasks to start (sorted by `taskId`,
+   non-overlapping against in-flight scopes and against each other) and
+   deferrals with reason (`dependency-wait`, `scope-conflict:<taskId>`,
+   `concurrency-limit`).
+4. **Engine** — bounded fan-out: launches planner-selected tasks through
+   one `TaskExecutionCoordinator`, threads the caller `AbortSignal` and
+   one shared `BudgetMeter` (when budgets are declared) into every
+   `execute()` call, and drains completions through a settled queue so
+   rounds stay deterministic. On task failure: halt launches, settle
+   in-flight, mark transitive dependents `blocked`.
+5. **Report** — deep-frozen: `status` (`completed | failed |
+   cancelled`), run identity, `maxConcurrentTasks`, `rounds` (started,
+   deferred with reasons), `outcomes` (per task: status,
+   `coordinationRef`, `changeDigest`, `errorCode`), and the final
+   `budgetSnapshot` when a meter exists.
+
+## Failure model
+
+- Invalid input or graph: `TaskSchedulerError`
+  (`VES_SCHEDULER_INPUT_INVALID`, `VES_SCHEDULER_GRAPH_INVALID`) before
+  any task starts; a pre-aborted signal: `VES_SCHEDULER_CANCELLED`.
+- Task failure: recorded in the report; the schedule ends `failed`.
+- Caller cancellation: propagated to in-flight executions; the schedule
+  ends `cancelled`; unstarted tasks end `blocked`.
+
+## Data flow
+
+```
+TaskScheduleInput ──normalize/validate──▶ graph (taskId → task)
+      │                                        │
+      │                            planner ◀── state map
+      │                                │ start batch
+      │                                ▼
+      │                    TaskExecutionCoordinator.execute()
+      │                     (authority → claim → worktree →
+      │                      context → driver → inspection)
+      │                                │ settled outcomes
+      ▼                                ▼
+        ScheduleReport (rounds + outcomes [+ budgetSnapshot])
+```
+
+## Determinism
+
+Identical graph and task outcomes produce an identical report: ready
+sets are sorted by `taskId`, conflict order is the same sort, rounds are
+recorded only when a batch launches, and outcome entries are emitted in
+`sorted(taskId)` order. Concurrent interleaving never leaks into the
+evidence.
