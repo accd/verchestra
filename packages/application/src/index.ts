@@ -149,6 +149,18 @@ export {
 } from "./execution/budget-meter.ts";
 export { modelPriceTable } from "./execution/model-price-table.ts";
 export {
+  ProbeEvidenceError,
+  verifyProbeEvidence,
+  type ProbeClassification,
+  type ProbeEvidenceErrorCode,
+  type ProbeEvidenceFailure,
+  type ProbeEvidenceFailureReason,
+  type ProbeEvidencePort,
+  type ProbeEvidenceReference,
+  type ProbeEvidenceVerdict,
+  type ResolvedProbeResult
+} from "./execution/probe-evidence.ts";
+export {
   TaskGateCommitCoordinator,
   TaskGateError,
   canonicalTaskGatePlan,
