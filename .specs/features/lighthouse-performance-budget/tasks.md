@@ -104,17 +104,21 @@ reproduces the `N=1` strictness those five assertions are entitled to.
 Per-assertion override is supported: `assertions.js:426` spreads the
 per-assertion options after the global default, so the inner value wins.
 
-### Open Decision — how to collect D2's remaining samples
+### Resolved Decision — how to collect D2's remaining samples
 
 `ci.yml` triggers only on `push: [main]` and `pull_request: [main]`, so the
-pre-remedy config cannot be exercised by pushing a branch. The remaining
-samples need one of: a scratch branch at `c49f745` (the last pre-remedy
-commit) opened as a throwaway draft PR on the author's own fork; temporarily
-reverting the remedy on this PR head across several pushes; or a
-`workflow_dispatch` trigger added to the workflow. Each has a different cost
-and blast radius, and the first two need the human's consent because they
-create or churn public PR state. **This decision is required before D2 starts
-and is not the agent's to make unilaterally.**
+pre-remedy config cannot be exercised by pushing a branch. Options weighed:
+a throwaway draft PR on the author's own fork; reverting the remedy across
+several pushes on this PR head; or adding `workflow_dispatch`.
+
+**Decided (human, 2026-07-31): throwaway draft PR on the author's own fork.**
+A scratch branch at `c49f745` (the last pre-remedy commit) is opened as a
+draft PR *within* `brunomjanuario/verchestra`, sampled, then closed and the
+branch deleted. Rationale: keeps PR #139's history clean, never touches
+`accd/verchestra`, and avoids making `workflow_dispatch` a permanent CI
+contract change on a PR already under review for touching `ci.yml`. The
+scratch PR is disposable evidence-gathering, not a contribution, and is
+closed as soon as the samples are recorded.
 
 ## Gate Commands
 
