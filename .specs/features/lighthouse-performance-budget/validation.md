@@ -1,46 +1,220 @@
 # Validation — Lighthouse Performance Budget (issue #110)
 
-Verifier: independent, did not author this change. Commit range covered:
-`4c0ce07..4e3d722` (8 commits, branch `fix/lighthouse-performance-budget` vs
-`main`). Re-derived from files, not from tasks.md's adjectives.
+Verifier: independent, did not author this change or the prior fix. This is
+iteration 2 of a fix→re-verify loop. Commit range covered: `4c0ce07..1298fcc`
+(10 commits total; this pass focuses on the delta `4e3d722..1298fcc`, the
+author's response to the first Verifier's FAIL). Re-derived from files and
+live `gh` queries, not from tasks.md's adjectives or the author's claims.
 
-## Verdict: FAIL (conditional pass on mechanics; fails on evidence completeness)
+## Verdict: FAIL (two of three gaps closed; the highest-severity gap is only
+## partially closed — the substitution is honestly logged as a deviation but
+## the normative AC text it deviates from was never amended, and tasks.md
+## understates the deviation relative to how gap 2 was handled)
 
-The CI-reporting mechanism, the sampling/aggregation remedy, the job-budget
-arithmetic, and repo hygiene are all sound and independently verified below.
-But the diagnosis obligation the spec calls the "first obligation" (LPB-03) is
-not actually satisfied for the data point that matters — the 0.92 failure
-itself was never broken down by metric, at any point, by anyone. The
-classification (instability) may still be the correct call, but it was not
-earned the way LPB-03 requires. This is a real gap, not a nitpick: spec.md
-states the classification is only trustworthy "with numbers a reviewer can
-re-derive from the artifact," and no artifact contains PR #108's per-metric
-numbers.
+## What changed in `1298fcc`
 
-## Per-AC evidence table
+`git diff 4e3d722..1298fcc --stat`: `.specs/STATE.md` (+/-), `spec.md` (+2
+assumption rows), `tasks.md` (T2 and T3 rows edited), `validation.md` (prior
+Verifier's file, untouched by the author — correctly left for me to
+overwrite). No file under `apps/site/` or `.github/workflows/` touched by this
+commit — consistent with a docs-only evidence fix, no re-litigation of the
+mechanism already verified sound in iteration 1.
 
-| AC | Covered? | Citation | Spec-defined outcome | Actual outcome |
-| --- | --- | --- | --- | --- |
-| LPB-01 | Yes | `tasks.md` T1 row; `apps/site/lighthouserc.cjs:1-40` unchanged collect config | `.lighthouseci` artifact with per-category + per-metric values, recorded | Confirmed mechanism: `scripts/run-lighthouse.mjs` invokes `lhci autorun` with cwd = `apps/site` (pnpm per-package script), `outputDir: ".lighthouseci"` resolves under `apps/site/.lighthouseci`, matching the new CI step's `working-directory: apps/site` glob `.lighthouseci/lhr-*.json`. Verified the `node --print` extraction script by hand-running it against a synthetic LHR JSON (`/tmp/lhci-test`) — it correctly prints `performance=X accessibility=X ... | largest-contentful-paint=X total-blocking-time=X speed-index=X cumulative-layout-shift=X`. Local T1 numbers recorded (perf=1, LCP 322.8ms, TBT 0, CLS 0.0253). Satisfied for the current-main case. |
-| LPB-02 | Partially | `tasks.md` T2, T4a/b/c row; `.github/workflows/ci.yml` new step `bbe341b` | N=10 same-build measurements, classified by fixed rule | Local N=10: median=1, min=1 (all ceiling) → correctly classified "not reproduced locally" per the rule as literally written. The CI escalation that followed used only **5** data points (4 fresh CI runs + 1 historical PR #108 value), not N=10 as LPB-02's text specifies. Re-derived the arithmetic myself: sorted {0.92, 1, 1, 1, 1} → median = 1 (≥0.95), min = 0.92 (<0.95) → rule correctly outputs "instability." The classification math is right, but the sample size deviates from the AC's literal "N = 10," and only 4 of the 5 points are contemporaneous CI runs of unchanged code — the 5th (0.92) is an opaque historical data point recorded before any of this feature's instrumentation existed. |
-| LPB-03 | **No** | `tasks.md` T3 row: "Not applicable at this classification... Attribution moves to CI data once available." No later row revisits this. | Loss SHALL be attributed to specific metric(s) with numeric values, not to a metric whose assertion passed | **Never done for the actual 0.92.** PR #108 (run `30489992711`) predates the "Report Lighthouse scores" CI step (commit `bbe341b`), so no per-metric breakdown for that run exists anywhere — not in a `.lighthouseci` artifact (CI artifacts aren't retained/uploaded by this workflow), not in tasks.md, not in STATE.md. The 4 fresh CI runs cited for T4a/b/c all scored a perfect 1, so there is no failing run in hand to attribute a metric loss to either. The classification therefore rests entirely on an opaque pass/fail number from #108 plus 4 unrelated passing runs — a defensible inference, but LPB-03 as written ("name the specific metric... with their numeric values") is not satisfied by any artifact a reviewer can re-derive. This is the most significant gap found. |
-| LPB-04 | N/A (correctly not applicable) | Classification is instability, not deterministic | — | Correctly not implemented; B1 branch not taken. Consistent with spec's "exactly one is required." |
-| LPB-05 | Yes | `apps/site/lighthouserc.cjs` diff: `numberOfRuns: 1→3`, `assert.aggregationMethod: "median"` added | Budget evaluated against a multi-run aggregate; `minScore: 0.95` unchanged | Confirmed via diff. Verified `categories:performance` line is untouched (`["error", { minScore: 0.95 }]`, byte-identical) — grep/diff shows no change to that line. **Verified the aggregation semantics against the actual installed `@lhci/utils@0.15.1` source** (`node_modules/.pnpm/@lhci+utils@0.15.1/.../src/assertions.js`): `aggregationMethod: "median"` (not the distinct `"median-run"` option) computes the median independently per audit/assertion across all raw per-run values (`getValueForAggregationMethod`), and applies uniformly regardless of assertion type (`minScore`, `maxNumericValue`) — so LCP/CLS maxNumericValue assertions get their own independently-computed median value, not a value borrowed from whichever run happens to win on performance score. With `numberOfRuns: 3` (odd), `medianIndex = Math.floor((3-1)/2) = 1` and `values.length % 2 === 1` is true, so it returns the true middle-sorted value with no even/odd averaging ambiguity. The choice of exactly 3 runs deliberately avoids the even-count averaging branch. No bug found; the reasoning in the code comment is correct and the implementation matches it. |
-| LPB-06 | Yes | `tasks.md` T5 row; `.github/workflows/ci.yml:23` (unchanged) | Full `site:test` passes; timing recorded and fits `timeout-minutes: 45` | `git diff` confirms `timeout-minutes: 45` untouched (no diff hunk touches any `timeout-minutes` line). Arithmetic: claimed 2m55s–3m29s → 3m43s, margin >41 minutes against the 45-minute budget — checks out by simple subtraction. Not independently re-run (per instructions), but the recorded numbers are internally consistent and the timeout line is verifiably unchanged. |
-| LPB-07 | Yes (plausible, not literally replayed) | `tasks.md` T6 row | Injected regression fails; removal passes; both recorded; tree clean | `git status --short` run directly by me right now: **clean, no output** — confirms no stray sensor artifact was left behind (dist/ is gitignored and was rebuilt clean per the claim). Methodology plausibility: injecting a synchronous 1.5s main-thread-blocking script is a large, realistic TBT/blocking-time regression; under Lighthouse's desktop scoring curve TBT carries meaningful weight (~30%) and a value that far outside the "good" band (<200ms) drives category score down substantially — a composite drop to ~0.86 with LCP/CLS untouched is plausible and internally consistent with weighting, not hand-wavy. Not independently replayed (would require rebuilding and mutating dist myself, outside this review's scope), but the described technique and result are credible. |
+## Gap 1 (LPB-03) — independently re-investigated
 
-## Additional checks
+**Claim under test**: the historical PR #108 run (job `90705185185`, run
+`30489992711`) has no recoverable per-metric data, so the author substituted
+the discrimination sensor's (LPB-07) failing run as attribution evidence.
 
-- **Scope creep**: `git diff --stat main...fix/lighthouse-performance-budget` touches exactly 5 files: `.github/workflows/ci.yml`, `apps/site/lighthouserc.cjs`, `.specs/STATE.md`, and the two feature spec files. All justified by the spec/plan. No unrelated drift found.
-- **Empty commits**: of the 8 commits, 3 (`71111f7`, `a6e0ead`, `c49f745`) have zero file changes — confirmed via `git show --stat` on each (0 files listed). These correspond to sample-run triggers 2–4; sample run 1 was triggered incidentally by `bbe341b` (which carries the real CI-instrumentation change), so 4 total CI runs were produced across 4 commits, only 3 of which are pure empty triggers. This is consistent with the intent described, modulo an imprecise "4 of 7" framing in the review brief (actual: 3 pure-empty commits, 8 total commits).
-- **`spikes/sqlite` / gate:release excuse**: `git diff --stat main...fix/lighthouse-performance-budget -- spikes/sqlite` returns nothing — confirmed `spikes/sqlite` is untouched by this diff. The claimed local `fts5` gap (Node v23.11.0 lacking the FTS5 SQLite extension) is therefore orthogonal to this change by construction: this diff cannot have caused a failure in a directory it never touches. The excuse is legitimate as stated; I did not re-run `gate:release` per instructions, but the diff-stat check is sufficient to rule out this diff as the cause.
-- **Out-of-scope guard**: `categories:accessibility`, `categories:best-practices`, `categories:seo` all remain `minScore: 1` in the diff — confirmed by reading the full `assert.assertions` block; none of those three lines appear in the diff hunk at all. `categories:performance` remains `minScore: 0.95`. No out-of-scope item from spec.md's exclusion table was touched.
-- **STATE.md staleness**: `.specs/STATE.md`'s handoff section (last touched in commit `4ace4b9`, mid-plan) still describes the *intermediate* state — "Phase B blocked on CI data," "Next: once the user reports the PR's... Lighthouse run URL" — even though `tasks.md`'s Execution Evidence table (added later, in `4e3d722`) shows T4–T7 all completed. STATE.md was never updated in the final commit to reflect that the blocker was resolved and the feature finished. This violates AGENTS.md's "Update canonical docs, status, and the handoff in the same change when behavior or qualification state changes" and would mislead a clean-clone successor reading STATE.md alone (as `AGENTS.md` step 3 instructs them to).
+**Independent check of the historical run** — I ran
+`gh run view --job=90705185185 --repo accd/verchestra --log-failed` myself.
+Confirmed: the only Lighthouse-related output is:
+
+```
+Checking assertions against 1 URL(s), 1 total run(s)
+  ✘  categories.performance failure for minScore assertion
+        expected: >=0.95
+           found: 0.92
+Assertion failed. Exiting with status code 1.
+```
+
+No per-metric breakdown anywhere in the log. I also queried
+`gh api repos/accd/verchestra/actions/runs/30489992711/artifacts` directly:
+the run has exactly one artifact, `gate-selection-49c6ba5a...`
+(556 bytes, unrelated to Lighthouse) — no `.lighthouseci` artifact was ever
+uploaded for this run. **The author's factual claim is independently
+confirmed true, not just asserted.** This part of the fix is solid.
+
+**Is the substitution legitimate evidence, or evidence-laundering?**
+Reading LPB-03's exact text (`spec.md:82-84`):
+
+> WHEN the classification is recorded THEN it SHALL name the specific metric
+> or metrics carrying the score loss, with their numeric values, and SHALL NOT
+> attribute the loss to a metric whose assertion passed.
+
+Read in isolation this is generic ("the classification," "the loss") and
+could be argued to just mean "whichever failure is being classified." But
+LPB-03 does not stand alone — it is P1's AC 3, and P1's own User Story
+(`spec.md:60-62`) is unambiguous: *"I want the 0.92 result attributed to
+either site cost or measurement noise with evidence."* The Independent Test
+for the whole P1 group (`spec.md:87`) says the evidence must answer
+"deterministic or unstable, and in which metric, **with numbers a reviewer
+can re-derive from the artifact**." Both anchor LPB-03 to the actual 0.92
+event, not to "some failing case with the same shape."
+
+Given that anchor, substituting the discrimination sensor's numbers is **not
+literal satisfaction of LPB-03** — it attributes a different, synthetic
+event's loss, not the original 0.92 run's loss (which no longer has
+recoverable data, full stop). The author's spec.md assumption row is honest
+about this ("a controlled case with the same shape is honest evidence; a
+guess about the historical case would not be") — that framing is correct
+science and I agree it's better than fabricating historical numbers or
+leaving the requirement silently unmet. But the *label* applied downstream is
+where the gap remains:
+
+- tasks.md's T3 row is marked plain **"Done"** — the same status word used for
+  literal completion elsewhere in the table — with no `SPEC_DEVIATION` tag,
+  even though this is a strictly larger deviation from AC wording than T2's
+  N=5/N=10 gap, which *does* carry an explicit `SPEC_DEVIATION` tag in its own
+  row. Treating the two gaps inconsistently (one flagged, one not) is a
+  documentation defect on its own.
+- More importantly, **the normative LPB-03 text itself (`spec.md:82-84`) and
+  the P1 Independent Test (`spec.md:87`) were never touched by this commit.**
+  The only trace of the narrowing is an assumptions-table row, which is the
+  right place to log *why* a deviation happened but is not a substitute for
+  updating the requirement text a future reader would check the evidence
+  against. A clean-clone successor reading AC LPB-03 in isolation, without
+  finding or fully absorbing the assumptions table, would still expect
+  attribution of the *actual* 0.92 event and reasonably conclude the AC is
+  unmet.
+
+**Recommended exact fix** (not yet made): amend `spec.md:82-84` to read
+(new clause underlined in spirit, not literally inserted here — the author
+should choose exact phrasing):
+
+> 3. **LPB-03** — WHEN the classification is recorded THEN it SHALL name the
+>    specific metric or metrics carrying the score loss, with their numeric
+>    values, and SHALL NOT attribute the loss to a metric whose assertion
+>    passed. **When the failing case being classified has no recoverable
+>    per-metric data (e.g., a historical CI run that predates this feature's
+>    instrumentation), this MAY be satisfied by a controlled reproduction
+>    exhibiting the same score-loss shape, explicitly logged as substituted
+>    evidence rather than the original run's data.**
+
+And correspondingly soften `spec.md:87`'s Independent Test to acknowledge the
+substitution path. Until that text changes, LPB-03 is **not fully closed** —
+it is closed for the *phenomenon* (instability, FCP/Speed-Index-driven) but
+not for the *AC as literally written*, and the tasks.md status line
+overclaims by saying "Done" with no qualifier.
+
+**Physical plausibility of the T3 numbers** — independently sanity-checked
+against Lighthouse's own metric definitions, not just re-stated:
+- A synchronous 1.5s main-thread-blocking script placed before `</head>`
+  delays parsing/first-paint itself, so First Contentful Paint and Speed
+  Index (which both measure time-to-visual-progress) are directly and
+  heavily damaged — FCP score 0.46 at ~1662ms and Speed Index 0.74-0.75 are
+  consistent with a ~1.5s paint delay stacked on a ~150-300ms baseline.
+- Total Blocking Time is defined as the sum of (task duration − 50ms) for
+  long tasks strictly *between* FCP and Time-to-Interactive. A block that
+  finishes *before* FCP occurs is by definition excluded from that window —
+  it delays FCP rather than accumulating post-FCP blocking time. The claimed
+  `total-blocking-time: 0` is the mechanically correct outcome of the
+  injection point chosen (before `</head>`, i.e., before first paint), not a
+  hand-wave. The T3 row's own reasoning states this correctly.
+- LCP and CLS assertions are threshold-on-raw-value (`maxNumericValue`), not
+  threshold-on-score, so a lowered LCP *score* (0.74-0.75, since the scoring
+  curve penalizes ~1666ms) coexisting with a *passing* assertion (threshold
+  2500ms) is internally consistent — this resolves what could otherwise look
+  like a contradiction in the T3 row.
+
+The reasoning holds together; my only issue with T3 is the status/labeling
+overclaim above, not the physics or the underlying numbers.
+
+## Gap 2 (LPB-02 N=5 vs N=10) — re-examined
+
+The `SPEC_DEVIATION` tag and assumption row are now present and specific
+(`spec.md`'s new second assumption row; `tasks.md` T2 row). The stated
+rationale — median=1 and minimum=0.92 are already fixed by the 5-point sample
+and cannot move with more *passing* draws, while post-remedy runs would
+sample a structurally different (3-run-median) config — is arithmetically
+sound for the two summary statistics already observed, and correctly
+distinguishes "more confidence" from "verdict could change."
+
+Countervailing consideration (noted, not dispositive): the author did not
+attempt the technically available alternative of collecting more single-run
+CI samples via a scratch branch or an `lhci` CLI override
+(e.g., `--collect.numberOfRuns=1` on a one-off dispatch) without touching the
+committed config — this was feasible and would have gotten closer to N=10
+without "measuring the new config." Skipping it is a defensible efficiency
+call given the classification is not close to either boundary (4 of 5 points
+are a clean ceiling, one is a single historical outlier), but it is also
+fair to call it "stopping once the answer is known" rather than "impossible
+to do more." I record this as **closed with a legitimate, if convenience-
+favoring, documented deviation** — consistent with how the first Verifier
+scored the underlying math, now with the deviation properly flagged this
+time. This gap is resolved.
+
+## Gap 3 (STATE.md staleness) — re-examined
+
+New Handoff section (`STATE.md` diff) states: T1-T7 complete, first Verifier
+FAIL and its three gaps, PR **#139** open against `accd:main` (not merged),
+current classification and remedy summary, gates status, and an explicit
+next step ("re-dispatch the Verifier against `4c0ce07..HEAD`"). Cross-checked
+against `tasks.md`'s Execution Evidence table (T1-T7 all "Done") and
+`git log` (`1298fcc` is HEAD, matches). No discrepancy found. **This gap is
+resolved.**
+
+## Spot-check of iteration-1's already-sound findings (not re-derived, just
+## confirmed undisturbed by `1298fcc`)
+
+- `apps/site/lighthouserc.cjs`: `numberOfRuns: 3`, `aggregationMethod:
+  "median"`, `categories:performance": ["error", { minScore: 0.95 }]` —
+  confirmed present and unchanged by re-reading the file directly; `1298fcc`
+  touches no file under `apps/site/`.
+- `git status --short`: clean, no output — tree matches HEAD, no stray files.
+- No new scope creep: `1298fcc`'s stat touches only the 3 spec-tooling files
+  plus this validation file; no `.github/` or `apps/site/` drift.
+
+## Per-AC evidence table (delta from iteration 1)
+
+| AC | Iteration-1 verdict | Iteration-2 verdict | Why |
+| --- | --- | --- | --- |
+| LPB-01 | Yes | Yes (unchanged) | Not touched by this fix; already sound. |
+| LPB-02 | Partially | **Yes, with documented deviation** | `SPEC_DEVIATION` tag + assumption row now present and the reasoning is sound; countervailing point noted above but non-blocking. |
+| LPB-03 | No | **Partially — phenomenon attributed, AC text not reconciled** | Factual claim (historical data unrecoverable) independently verified true via live `gh` query. Substitution is honest, logged, and physically coherent, but it satisfies a *narrowed* version of LPB-03 that the spec's normative text and Independent Test were never updated to state. tasks.md's "Done" label also does not carry the same deviation flag T2 got, understating how large a departure this is. |
+| LPB-04 | N/A | N/A (unchanged) | Correctly not applicable. |
+| LPB-05 | Yes | Yes (unchanged) | Not touched by this fix. |
+| LPB-06 | Yes | Yes (unchanged) | Not touched by this fix. |
+| LPB-07 | Yes | Yes (unchanged) | Not touched by this fix; its output is now also reused as T3's substitute evidence, which is consistent. |
+| STATE.md staleness | Stale (Low gap) | **Fixed** | Handoff rewritten, cross-checked accurate. |
 
 ## Gaps found (ranked)
 
-1. **(High) LPB-03 not actually satisfied.** No per-metric numeric breakdown exists anywhere for PR #108's 0.92 score — it predates the instrumentation this feature added, and none of the 4 fresh CI samples used to corroborate the classification ever failed, so there was nothing to attribute at CI time either. The classification may well be correct, but the spec's explicit requirement — name the metric(s) with numeric values, re-derivable by a reviewer — has no artifact backing it for the one data point that actually failed. tasks.md's T3 row acknowledges this ("not applicable... attribution moves to CI data once available") but that promise is never redeemed in the T4–T7 rows.
-2. **(Medium) LPB-02's CI-side sample size is 5, not the specified N=10.** The rule's arithmetic still resolves cleanly (median=1, min=0.92), so the classification is likely robust to this, but it is a literal deviation from the acceptance criterion's stated protocol that tasks.md does not flag or justify.
-3. **(Low) STATE.md is stale relative to tasks.md's final Execution Evidence**, describing a resolved blocker as still open. Should be updated in this same change per AGENTS.md.
-4. **(None — verified sound) The aggregationMethod choice.** Contrary to what might be suspected, `"median"` in the actually-installed `@lhci/utils` computes independently per-assertion (not via representative-run selection, which is the separate `"median-run"` option), and `numberOfRuns: 3` avoids the even-count averaging branch. No bug here; flagging this only because the review brief asked to scrutinize it specifically, and it holds up.
-5. **(None — verified) gate:release/spikes-sqlite excuse is legitimate**, `timeout-minutes: 45` is unchanged, working tree is clean, no out-of-scope assertion was touched, no scope creep in the file list.
+1. **(Medium, downgraded from High) LPB-03's normative text was not amended
+   to match the narrower thing it now actually proves.** The factual
+   groundwork is solid (independently re-verified the historical run is
+   truly unrecoverable) and the substitute evidence is honest and physically
+   coherent, so this is no longer a "nothing was ever attributed" gap. But
+   claiming the AC is simply "Done" — without either (a) editing
+   `spec.md:82-84`/`:87` to state explicitly that a controlled reproduction
+   may stand in when the classified case's own data is gone, or (b) tagging
+   `tasks.md`'s T3 row with the same `SPEC_DEVIATION` marker T2 got — leaves
+   a reader of the requirement text alone with an expectation the evidence
+   does not literally meet. Fix: amend the AC/Independent Test wording per
+   the suggested language above, and add a `SPEC_DEVIATION` tag to T3
+   mirroring T2's.
+2. **(Low, informational) LPB-02's N=5 could have been closer to N=10** via
+   a scratch-branch or CLI-flag diagnostic run without touching the
+   committed config; not done. Non-blocking given the classification isn't
+   near a boundary, but worth a one-line acknowledgment that this path was
+   considered and skipped for cost, not impossibility.
+
+## What must happen before PASS
+
+Either amend `spec.md`'s LPB-03 AC and Independent Test text to explicitly
+allow controlled-reproduction substitution when the original event's data is
+gone, and add the missing `SPEC_DEVIATION` tag to tasks.md's T3 row — or, if
+the author disagrees with my reading that the AC is event-specific, argue
+that explicitly in spec.md rather than leaving the mismatch implicit. This is
+a small textual fix, not new engineering work; the underlying evidence and
+mechanism are otherwise sound and gaps 2 and 3 are fully resolved.
