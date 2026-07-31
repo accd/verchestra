@@ -29,9 +29,10 @@ test("pins every delivery action and isolates elevated Pages permissions", () =>
   const actionUses = [...workflow.matchAll(/uses: ([^\s#]+)/gu)].map((match) => match[1]);
   // The exact count is a tripwire: adding an action must be a reviewed decision,
   // never an unnoticed one. It rose to 10 when the quality job began retaining
-  // gate-selection evidence, and to 11 when the site job began caching the
-  // qualified browsers.
-  assert.equal(actionUses.length, 11);
+  // gate-selection evidence, to 11 when the site job began caching the
+  // qualified browsers, and to 12 when the site job began retaining the
+  // Lighthouse report set (issue #110 / PR #139 review point 3).
+  assert.equal(actionUses.length, 12);
   assert.match(
     workflow,
     /uses: actions\/upload-artifact@[a-f0-9]{40} # v\d+\.\d+\.\d+\n {8}with:\n.*\n.*gate-selection/su
