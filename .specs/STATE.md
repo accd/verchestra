@@ -54,9 +54,10 @@
 
 ## Handoff
 
-- **Feature:** `external-review-triage`
-- **State:** T1–T5 complete; T6 (GitHub backlog issues) and T7 (final gates) in progress
-- **Branch:** `main`
-- **Completed:** Verified triage of the external review (11 claims, 2 corrected), full specifications for T68a–T68d, decision specifications for DSSE and context tokenizers, roadmap insertion of T68a–T68d, and the Apache-2.0 license change with AD-007/AD-008.
-- **Verification:** `pnpm agent:check` and `pnpm gate:quick` run in T7; site gates run for the license change.
-- **Next:** Create GitHub issues for deferred items R7–R11 (or record the permission blocker), run final gates, and mark the triage handoff ready for independent review.
+- **Feature:** `lighthouse-performance-budget` (issue #110)
+- **State:** Phase A (diagnose) done; Phase B blocked on CI data before a remedy can be chosen. See `.specs/features/lighthouse-performance-budget/tasks.md` Execution Evidence.
+- **Branch:** `fix/lighthouse-performance-budget` (pushed to `origin`, the user's fork `brunomjanuario/verchestra`; not pushed to `upstream`)
+- **Completed:** T1/T2/T3 — 10 local Lighthouse runs against a production build all scored a perfect `performance: 1` with near-zero variance (LCP ~322ms, TBT 0ms). Per the spec's pre-registered decision rule (LPB-02), this classifies as **"not reproduced locally"**, not deterministic and not instability — local hardware is faster than the shared `ubuntu-latest` CI runner and cannot surface the same CPU-bound cost.
+- **Blocker:** `ci.yml` only triggers on `push: [main]` or `pull_request: [main]` (`ci.yml:3-7`); a branch push alone does not run `Site quality`. The user chose to open the PR (draft, on their own fork only) themselves rather than have this agent do it, to get a real CI-runner score distribution.
+- **Next:** Once the user reports the PR's `Site quality` / Lighthouse run URL or scores, re-enter T2's decision rule with CI data as authoritative (branch B3 in `tasks.md`), then implement the corresponding remedy (T4a optimize / T4b fix sampling), record timing against the 45-minute job budget (T5), add the discrimination sensor (T6), and run final gates + Verifier (T7). No file under `apps/site/` has been modified yet — Phase A's exit gate (diagnose only, no edits) has been honored.
+- **Note:** other features (`budget-enforcement`, `gate-repair-loop`, `policy-hardening`, `canonical-json`, `isolation-process-tree`, `opencode-cancellation-race`, `probe-value-declassification`) have their own in-progress/verification state tracked in their individual `handoff.md` files under `.specs/features/`; this section only reflects the session's active feature.

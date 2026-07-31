@@ -97,10 +97,10 @@ sub-agents. The Verifier still runs automatically after the final task.
 
 | Task | Status | Evidence |
 | --- | --- | --- |
-| T1 | Pending | — |
-| T2 | Pending | — |
-| T3 | Pending | — |
-| T4a/b/c | Pending (branch undecided) | — |
-| T5 | Pending | — |
-| T6 | Pending | — |
-| T7 | Pending | — |
+| T1 | Done | Local production build (`pnpm site:build`) + `pnpm --filter @verchestra/site test:lighthouse` against `http://127.0.0.1:4323/verchestra/`. Single-run result: `performance: 1`, `accessibility: 1`, `best-practices: 1`, `seo: 1`. Per-metric: LCP 322.8ms, TBT 0ms, Speed Index 322.8ms, CLS 0.0253. |
+| T2 | Done | 10 local runs of `lhci autorun`, ~15-16s each. All 10 scored `performance: 1`. Median = 1, min = 1, max = 1 — zero variance. LCP ranged 322.1-322.5ms, CLS 0.0253-0.0272ms across runs. **Classification: not reproduced locally** (median ≥ 0.95 AND minimum ≥ 0.95) — local hardware is far faster than the shared 2-vCPU `ubuntu-latest` runner and cannot surface CPU-bound throttling. Per LPB-02, this requires CI-side measurement before choosing a remedy (branch B3). |
+| T3 | Done | Not applicable at this classification — no score loss to attribute locally; every metric hit its ceiling. Attribution moves to CI data once available. |
+| T4a/b/c | **Blocked — awaiting CI data (B3)** | `ci.yml` only triggers on `push: [main]` or `pull_request: [main]` (`ci.yml:3-7`); pushing the feature branch to `origin` (user's fork, `brunomjanuario/verchestra`) alone does not run CI. User opening the PR themselves is the chosen path (2026-07-31). Waiting on the PR's `Site quality` run URL / scores to resume T2's decision rule with CI data as authoritative. |
+| T5 | Pending | Blocked on T4. |
+| T6 | Pending | Blocked on T4. |
+| T7 | Pending | Blocked on T4. |
