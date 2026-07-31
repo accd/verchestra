@@ -49,7 +49,7 @@ which of two mutually exclusive things is true, and only then to fix it.
 | Increasing sample count consumes CI budget | Any sampling change must fit the existing `timeout-minutes: 45` (`ci.yml:82`) with the measured margin recorded | The job already documents a ~23-minute worst case; an unbounded sample count would reintroduce the cancellation failure mode that block comments describe. | n |
 | The composite score dropped while `largest-contentful-paint` and `cumulative-layout-shift` assertions passed | Diagnosis must begin from the per-metric breakdown, since the failing weight is necessarily in a metric with no standalone assertion (most likely Total Blocking Time or Speed Index) | Both explicitly asserted metrics held at their thresholds, so the composite loss is located elsewhere; this narrows LPB-02 before any data is gathered. | n |
 | PR #108's 0.92 CI run predates the score-printing instrumentation this feature adds (`ci.yml` "Report Lighthouse scores"); its job log shows only `found: 0.92` for the composite category, no per-metric breakdown, and no `.lighthouseci` artifact was ever uploaded for that run — confirmed unrecoverable by inspecting the historical run's own log (`gh run view --job=90705185185 --log-failed`) | LPB-03's per-metric attribution is satisfied against a controlled reproduction instead: the discrimination sensor (LPB-07) injects a comparable regression and the resulting failing run is fully instrumented, giving a real named-metric breakdown for a failing case with the same "composite drops while LCP/CLS pass" shape the historical failure exhibited | The historical run's raw data is gone; refusing to satisfy LPB-03 at all would leave the requirement permanently unmet, while attributing loss on a fabricated number would violate the evidence-or-zero standard. A controlled case with the same shape is honest evidence; a guess about the historical case would not be. | y |
-| LPB-02 calls for `N = 10` unchanged-build measurements to classify | The CI-side classification instead uses `N = 5`: 4 fresh CI runs of the code as it stood before the remedy (all scoring 1) plus the 1 historical failing run (0.92) | Once the remedy commit lands, further CI runs measure the post-remedy 3-run-median config, not the single-run config the classification is about — continuing to sample after the remedy would mix two different measurement methods into one distribution. The two boundary values that decide the classification (median = 1, minimum = 0.92) are already fixed by this sample; additional passing draws could only add more 1s, which cannot move the median away from 1 or the minimum away from 0.92. More samples would increase confidence but cannot change the verdict. | y |
+| ~~LPB-02 calls for `N = 10`; the initial CI-side classification used `N = 5`~~ **Superseded — resolved, not merely re-justified** | A throwaway draft PR on a scratch branch at the last pre-remedy commit (`c49f745`) collected 6 further single-run CI samples (one discarded as an unrelated runner-environment failure, per the Edge Cases section), completing an `N = 11` pre-remedy sample: `{0.92, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1}` | The PR #139 review correctly rejected "more samples can't change the answer" as a substitute for collecting them — a pre-registered rule exists precisely to prevent that reasoning. Median (index 5 of 11) = 1, minimum = 0.92: the instability classification is reaffirmed on the complete sample, not merely re-argued from an incomplete one. See `tasks.md`'s D2 evidence table for the full run-ID ledger. | y |
 
 | The PR #139 review (point 1) asks for `aggregationMethod: "median"` to be applied *only* to `categories:performance`, leaving the other five assertions on lhci's default | **Deviate from the requested fix**: scope `median` to `categories:performance` as asked, but set the other five assertions explicitly to `pessimistic` rather than letting them fall back to the default `optimistic` | The reviewer's diagnosis is right — the global setting did change semantics for out-of-scope assertions — but the prescribed fix does not achieve the reviewer's own stated goal. Empirically confirmed against the installed `@lhci/utils@0.15.1` using real LHR fixtures: for a `minScore` assertion, `optimistic` resolves to `Math.max` across runs, which is *more* lenient than `median`. With accessibility scores `[0.9, 1, 1]`, the pre-change `N=1` baseline FAILS, while both `median` and the requested `optimistic` fallback PASS — so scoping alone does not restore the baseline and does not fix the reviewer's own example. Worse, with `[0.9, 0.9, 1]` the requested fallback PASSES where the current global `median` correctly FAILS, making the requested fix weaker than the state it is meant to repair. Only `pessimistic` (`Math.min` for `minScore`, `Math.max` for `maxNumericValue`) fails on any single bad run and so reproduces the `N=1` strictness the other assertions are entitled to. Evidence table in `tasks.md` Phase D. | y |
 
@@ -212,14 +212,14 @@ LPB-12's range arithmetic — each without taking any prose claim on trust.
 | Requirement ID | Story | Phase | Status |
 | --- | --- | --- | --- |
 | LPB-01 | P1: Classify the failure | Execute | Verified (T1) |
-| LPB-02 | P1: Classify the failure | Execute | **Reopened by review** — sample incomplete, see LPB-09 |
+| LPB-02 | P1: Classify the failure | Execute | Verified — reaffirmed on the complete `N = 11` sample (LPB-09) |
 | LPB-03 | P1: Classify the failure | Execute | Verified (T3, substituted evidence per the LPB-03 clause) |
 | LPB-04 | P2: Restore the gate | Execute | Not applicable — classification was instability, not deterministic |
 | LPB-05 | P2: Restore the gate | Execute | Verified (T4), pending LPB-08 rescope |
 | LPB-06 | P2: Restore the gate | Execute | Verified (T5) |
 | LPB-07 | P3: Prove the gate discriminates | Execute | Verified (T6) |
 | LPB-08 | P1: Remediate the PR #139 review | Tasks (D1) | Pending |
-| LPB-09 | P1: Remediate the PR #139 review | Tasks (D2) | Pending |
+| LPB-09 | P1: Remediate the PR #139 review | Tasks (D2) | Verified (D2) |
 | LPB-10 | P1: Remediate the PR #139 review | Tasks (D3) | Pending |
 | LPB-11 | P1: Remediate the PR #139 review | Tasks (D4) | Pending |
 | LPB-12 | P1: Remediate the PR #139 review | Tasks (D5) | Pending |
@@ -244,8 +244,8 @@ and LPB-05's remedy is provisional until then.
 - [ ] No assertion in `lighthouserc.cjs` is weaker than its pre-change
       `numberOfRuns: 1` behavior, except `categories:performance` where the
       tolerance is the deliberate point of the feature (LPB-08).
-- [ ] The classification rests on the complete pre-registered `N = 10` sample
-      (LPB-09).
+- [x] The classification rests on the complete pre-registered `N = 10` sample
+      (LPB-09) — `N = 11` collected, median = 1, minimum = 0.92.
 - [ ] A failing `Site quality` run leaves behind the full Lighthouse reports
       (LPB-10).
 - [ ] Feature handoff exists and no unrelated tracked state was destroyed

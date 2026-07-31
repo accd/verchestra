@@ -120,6 +120,43 @@ contract change on a PR already under review for touching `ci.yml`. The
 scratch PR is disposable evidence-gathering, not a contribution, and is
 closed as soon as the samples are recorded.
 
+### D2 evidence — completed N=11 pre-remedy sample (LPB-09)
+
+Scratch branch pushed at `c49f745` (pre-remedy: `numberOfRuns: 1`, no
+`aggregationMethod`), opened as `brunomjanuario/verchestra#1` (draft, own
+fork, never touched `accd/verchestra`), sampled, then closed and the branch
+deleted per the resolved decision above.
+
+| # | Source | Run | `categories:performance` |
+| --- | --- | --- | --- |
+| 1 | Historical (PR #108) | `30489992711` | **0.92** |
+| 2 | Fresh CI (pre-Phase-D) | `30634763678` | 1 |
+| 3 | Fresh CI (pre-Phase-D) | `30635603377` | 1 |
+| 4 | Fresh CI (pre-Phase-D) | `30636678542` | 1 |
+| 5 | Fresh CI (pre-Phase-D) | `30636988475` | 1 |
+| 6 | Scratch PR #1 | `30656100322` | 1 |
+| 7 | Scratch PR #1 | `30656368701` | 1 |
+| 8 | Scratch PR #1 | `30656631741` | 1 |
+| 9 | Scratch PR #1 (retry) | `30657294306` | 1 |
+| 10 | Scratch PR #1 | `30657564742` | 1 |
+| 11 | Scratch PR #1 | `30657875090` | 1 |
+
+One additional attempt (between rows 8 and 9) failed at "Install browser
+system dependencies" with an apt-mirror timeout before any Lighthouse run
+started — a documented runner-environment failure mode (`ci.yml`'s own
+comments on the bounded-retry step), not a qualification result. Discarded
+and retried per the spec's Edge Cases section, which requires distinguishing
+environment failure from a budget result; it produced no score to include or
+exclude.
+
+**Complete sample** (11 values, exceeding the pre-registered `N = 10`):
+`{0.92, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1}`. Sorted median (index 5 of 11) = `1`;
+minimum = `0.92`. Per LPB-02's rule: median ≥ 0.95 AND minimum < 0.95 →
+**instability — classification reaffirmed**, now on a complete sample rather
+than the N=5 the review correctly flagged. The T2/T4 rows' `SPEC_DEVIATION`
+tags are superseded by this table; the deviation is resolved, not merely
+re-justified.
+
 ## Gate Commands
 
 | Level | Command |
@@ -154,7 +191,7 @@ amendment to the existing report.
 | Task | Status | Evidence |
 | --- | --- | --- |
 | T1 | Done | Local production build (`pnpm site:build`) + `pnpm --filter @verchestra/site test:lighthouse` against `http://127.0.0.1:4323/verchestra/`. Single-run result: `performance: 1`, `accessibility: 1`, `best-practices: 1`, `seo: 1`. Per-metric: LCP 322.8ms, TBT 0ms, Speed Index 322.8ms, CLS 0.0253. |
-| T2 | Done | 10 local runs of `lhci autorun`, ~15-16s each. All 10 scored `performance: 1`. Median = 1, min = 1, max = 1 — zero variance. LCP ranged 322.1-322.5ms, CLS 0.0253-0.0272ms across runs. **Classification: not reproduced locally** (median ≥ 0.95 AND minimum ≥ 0.95) — local hardware is far faster than the shared 2-vCPU `ubuntu-latest` runner and cannot surface CPU-bound throttling. Per LPB-02, this requires CI-side measurement before choosing a remedy (branch B3). **SPEC_DEVIATION:** the CI-side re-classification (see T4 row) uses `N = 5` (4 fresh runs + 1 historical), not the `N = 10` LPB-02 names. Reason: logged in `spec.md`'s Assumptions table — sampling further after the remedy commit would measure the new 3-run-median config, not the single-run config being classified, and the two data points that decide the verdict (median = 1, minimum = 0.92) cannot change with more passing draws. |
+| T2 | Done | 10 local runs of `lhci autorun`, ~15-16s each. All 10 scored `performance: 1`. Median = 1, min = 1, max = 1 — zero variance. LCP ranged 322.1-322.5ms, CLS 0.0253-0.0272ms across runs. **Classification: not reproduced locally** (median ≥ 0.95 AND minimum ≥ 0.95) — local hardware is far faster than the shared 2-vCPU `ubuntu-latest` runner and cannot surface CPU-bound throttling. Per LPB-02, this requires CI-side measurement before choosing a remedy (branch B3). ~~**SPEC_DEVIATION:** the CI-side re-classification initially used `N = 5`.~~ **Resolved by D2**: the complete `N = 11` pre-remedy CI sample (Phase D evidence) reaffirms this classification; see the D2 evidence table above. |
 | T3 | Done | No score loss to attribute locally (T1/T2 all hit the ceiling), and the historical failing run (PR #108, 0.92) has no recoverable per-metric data — confirmed by inspecting its own job log (`gh run view --job=90705185185 --log-failed`), which prints only `found: 0.92` for the composite category; no `.lighthouseci` artifact was ever uploaded for that run. **SPEC_DEVIATION:** attribution is satisfied against the T6 discrimination-sensor's failing run instead of PR #108's own run, per the LPB-03 clause added for this case (`spec.md`) and the matching assumption row. The sensor reproduces the same shape (composite drops, LCP/CLS assertions still pass) with full metrics: `first-contentful-paint` score 0.46 (1662-1663ms), `speed-index` score 0.74-0.75 (1709-1718ms) — these carry the loss. `largest-contentful-paint` (1666-1669ms, well under the 2500ms assertion threshold, score 0.74-0.75) and `cumulative-layout-shift` (0.0, score 1) both continued to pass their explicit assertions, confirming the loss is not attributed to a metric whose assertion held. `total-blocking-time` also stayed at 0 (score 1) — the injected block runs before first paint, so it delays FCP/SI rather than registering as post-FCP blocking time. This proves the classified *phenomenon* (instability, FCP/Speed-Index-driven) with real numbers; it does not and cannot reconstruct PR #108's own lost data. |
 | T4a/b/c | **Done — B2 (instability)** | PR #139 opened by the user (`accd/verchestra#139`). `lhci` prints only pass/fail and no artifact survives the job, so commit `bbe341b` added an `if: always()` CI step that reads the actual score back out of `.lighthouseci/lhr-*.json`. 4 fresh CI runs of unchanged code (`30634763678`, `30635603377`, `30636678542`, `30636988475`) all scored `performance: 1` (LCP 325-340ms, TBT 0, CLS ~0.03). Combined with the historical data point — PR #108 scored `0.92` under the identical "no site code changed" condition — the CI-side sample is `{0.92, 1, 1, 1, 1}`: median = 1 (≥ 0.95), minimum = 0.92 (< 0.95). Per LPB-02 and the CI-is-authoritative edge case, this is **classification B2: instability**, not deterministic and not "unreproducible." Remedy (commit `3829387`): `apps/site/lighthouserc.cjs` — `numberOfRuns: 1 → 3`, added `assert.aggregationMethod: "median"` (the default, `"optimistic"`, would have let any single good run mask two bad ones — the wrong direction for a budget). `categories:performance` threshold left at `minScore: 0.95`, byte-identical. |
 | T5 | Done | CI run `30637457300` (remedy commit `3829387`) — `Site quality` job: 3m43s, up from the pre-remedy baseline of 2m55s-3m29s (Δ ≈ +15-45s for 2 extra Lighthouse passes). `timeout-minutes: 45` (`ci.yml:8`) leaves a >41-minute margin; the documented ~23-minute worst case (browser install + apt) is unaffected since the added cost is inside the already-running preview server, not a new browser install. All 3 samples in that run scored `performance: 1`. |
