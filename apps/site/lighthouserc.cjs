@@ -19,17 +19,24 @@ module.exports = {
       }
     },
     assert: {
-      // Default is "optimistic" (best of N runs), which would let a single
-      // good draw mask two bad ones. "median" requires the middle run to
-      // clear the bar, so a real regression across most runs still fails.
-      aggregationMethod: "median",
+      // No top-level default: lhci's own default ("optimistic") resolves to
+      // Math.max across runs for a minScore assertion, which is MORE lenient
+      // than "median" (PR #139 review point 1). Every assertion below sets
+      // its aggregationMethod explicitly so nothing silently inherits a
+      // default neither this file nor the review chose.
       assertions: {
-        "categories:performance": ["error", { minScore: 0.95 }],
-        "categories:accessibility": ["error", { minScore: 1 }],
-        "categories:best-practices": ["error", { minScore: 1 }],
-        "categories:seo": ["error", { minScore: 1 }],
-        "largest-contentful-paint": ["error", { maxNumericValue: 2500 }],
-        "cumulative-layout-shift": ["error", { maxNumericValue: 0.1 }]
+        // "median" deliberately tolerates one bad draw in three — the whole
+        // point of issue #110's fix. Every other assertion below stays as
+        // strict as the pre-change numberOfRuns: 1 baseline: "pessimistic"
+        // fails on any single bad run (Math.min for minScore, Math.max for
+        // maxNumericValue), so a real regression in accessibility, SEO, LCP,
+        // or CLS can't hide behind two clean runs.
+        "categories:performance": ["error", { minScore: 0.95, aggregationMethod: "median" }],
+        "categories:accessibility": ["error", { minScore: 1, aggregationMethod: "pessimistic" }],
+        "categories:best-practices": ["error", { minScore: 1, aggregationMethod: "pessimistic" }],
+        "categories:seo": ["error", { minScore: 1, aggregationMethod: "pessimistic" }],
+        "largest-contentful-paint": ["error", { maxNumericValue: 2500, aggregationMethod: "pessimistic" }],
+        "cumulative-layout-shift": ["error", { maxNumericValue: 0.1, aggregationMethod: "pessimistic" }]
       }
     },
     upload: {
