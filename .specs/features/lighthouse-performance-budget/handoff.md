@@ -2,13 +2,13 @@
 schema: verchestra-feature-handoff/v1
 feature: lighthouse-performance-budget
 issue: 110
-status: in_progress
+status: verification
 branch: fix/lighthouse-performance-budget
 baseRevision: 07ead185bf7bbf95fcba2fdeb95635b4c470e13a
 lastCompletedTask: null
-nextTask: D5 (re-verify against the true head; see Next Exact Action below)
-lastGate: pnpm site:test
-updatedAt: 2026-07-31T19:30:00Z
+nextTask: Independent human review and merge of PR accd/verchestra#139
+lastGate: pnpm gate:quick
+updatedAt: 2026-07-31T20:20:00Z
 ---
 
 # Scope
@@ -64,23 +64,27 @@ Full task breakdown: `tasks.md`.
   comment); (b) `actions/upload-artifact`'s default `include-hidden-files:
   false` silently excluded `.lighthouseci` itself (a dot-prefixed directory)
   from the artifact — fixed by setting `include-hidden-files: true`.
+- **D5 complete** (LPB-12): a fresh, independent Verifier ran a full
+  standalone pass over `4c0ce07..bde0e6b` (19 commits, confirmed to include
+  the actual PR head via `gh pr view 139 --json headRefOid`) and returned
+  **PASS** on all 12 acceptance criteria, with re-derived evidence for each
+  — not carried forward from any prior claim. Two prior attempts at this
+  same verification crashed on infrastructure errors (API connection drop,
+  agent stall) before finding anything; the third completed cleanly. Full
+  report: `validation.md`. This supersedes and voids the original `PASS` at
+  `b91eea4`, which the PR #139 review had since shown incomplete.
 
 # Next Exact Action
 
-**D5** (LPB-12): dispatch a fresh Verifier over the complete range
-`4c0ce07..HEAD` — the first Verifier's PASS is void, since it verified a
-state the PR #139 review has since shown incomplete. Record an accurate,
-inclusive commit range in the resulting `validation.md` (the prior range
-`4c0ce07..b91eea4` undercounted commits and excluded the actual head — do
-not repeat that mistake; use `git rev-list --count` to confirm before
-writing the range). Confirm the pushed CI run for the current head is green
-(the `include-hidden-files` fix has not yet been pushed/verified on CI as
-of this handoff's last update) before considering Phase D complete.
+Nothing further for this agent. Phase D (all 5 review points) is complete
+and independently verified. The feature awaits only independent human
+review and merge of PR `accd/verchestra#139` — this agent will not merge
+it, approve its own review, or touch branch protection (human-review
+boundary, `AGENTS.md`).
 
 # Blockers
 
-None. All Phase D decisions needed are resolved (D2's sampling method was
-decided by the human on 2026-07-31; see `tasks.md`'s Resolved Decision).
+None. All Phase D work is complete and verified.
 
 # Decisions
 

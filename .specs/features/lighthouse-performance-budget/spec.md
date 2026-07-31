@@ -222,7 +222,7 @@ LPB-12's range arithmetic — each without taking any prose claim on trust.
 | LPB-09 | P1: Remediate the PR #139 review | Tasks (D2) | Verified (D2) |
 | LPB-10 | P1: Remediate the PR #139 review | Tasks (D3) | Verified (D3) |
 | LPB-11 | P1: Remediate the PR #139 review | Tasks (D4) | In progress (D4) |
-| LPB-12 | P1: Remediate the PR #139 review | Tasks (D5) | Pending |
+| LPB-12 | P1: Remediate the PR #139 review | Tasks (D5) | Verified (D5) — PASS on `4c0ce07..bde0e6b`, 19 commits |
 
 **Coverage:** 12 total, 12 mapped to tasks, 0 unmapped.
 
