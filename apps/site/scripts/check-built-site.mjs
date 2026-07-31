@@ -113,7 +113,7 @@ const llms = await readFile(join(distRoot, "llms.txt"), "utf8");
 const llmsFull = await readFile(join(distRoot, "llms-full.txt"), "utf8");
 const sitemap = await readFile(join(distRoot, "sitemap-0.xml"), "utf8");
 assert.match(llms, /0\.0\.0-qualification/u);
-assert.match(llms, /T68c complete; T68d next/u);
+assert.match(llms, /T68d complete; T69 next/u);
 assert.match(llms, /inference-time documentation aid/u);
 assert.ok(Buffer.byteLength(llmsFull) < 1024 * 1024);
 assert.match(llmsFull, /docs\/qualification\/t68-validation\.md/u);
@@ -134,7 +134,7 @@ for (const file of htmlFiles) {
 
 const homepage = await readFile(join(distRoot, "index.html"), "utf8");
 assert.match(homepage, /0\.0\.0-qualification/u);
-assert.match(homepage, /T68c verified/u);
+assert.match(homepage, /T68d verified/u);
 // The evidence link derives from the typed status, so a report that advances
 // the counter cannot leave the public CTA pointing at an older milestone. The
 // script cannot import TypeScript, so the typed status is read as source; the
@@ -144,7 +144,7 @@ const completedTask = /completedTask: "(T\d+[a-z]?)"/u.exec(productSource)?.[1];
 assert.ok(completedTask, "product.ts must declare completedTask");
 assert.match(homepage, new RegExp(`docs/qualification/${completedTask.toLowerCase()}-validation/`, "u"));
 assert.match(homepage, new RegExp(`Inspect ${completedTask} evidence`, "u"));
-assert.match(homepage, /T68d next/u);
+assert.match(homepage, /T69 next/u);
 assert.doesNotMatch(homepage, /npm (?:install|add).{0,40}verchestra/iu);
 assert.doesNotMatch(homepage, /production[- ]ready/iu);
 

@@ -9,7 +9,7 @@ Apply the root `AGENTS.md` first.
   `src/lib/repository-content.ts`; do not introduce a second content system.
 - Preserve the GitHub Pages `/verchestra/` base path for assets, canonicals,
   alternates, sitemap entries, robots, and direct routes.
-- Keep status at `0.0.0-qualification`, T68c complete, T68d next unless canonical
+- Keep status at `0.0.0-qualification`, T68d complete, T69 next unless canonical
   evidence changes.
 - Do not claim guaranteed indexing, ranking, training inclusion, public
   installation, or production readiness.
