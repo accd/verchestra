@@ -23,8 +23,8 @@ test("publishes the approved first-viewport product contract", () => {
   );
   assert.deepEqual(productStatus, {
     version: "0.0.0-qualification",
-    completedTask: "T68b",
-    nextTask: "T68c",
+    completedTask: "T68c",
+    nextTask: "T68d",
     installable: false
   });
 });

@@ -236,7 +236,11 @@ const sourceCodeMetadata = {
       </div>
       <div class="qualification__actions">
         <a class="button button--primary" href={withBase("roadmap/")}>View the verified roadmap</a>
-        <a class="text-link" href={withBase("docs/qualification/t68-validation/")}>Inspect T68 evidence →</a>
+        <a
+          class="text-link"
+          href={withBase(`docs/qualification/${productStatus.completedTask.toLowerCase()}-validation/`)}
+          >Inspect {productStatus.completedTask} evidence →</a
+        >
       </div>
     </section>
 
