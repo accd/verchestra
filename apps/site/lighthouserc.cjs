@@ -5,7 +5,13 @@ module.exports = {
       startServerReadyPattern: "Local",
       startServerReadyTimeout: 120000,
       url: ["http://127.0.0.1:4323/verchestra/"],
-      numberOfRuns: 1,
+      // A single Lighthouse run treats one CPU-contention blip on the shared
+      // CI runner as the site's performance budget (issue #110: PR #108
+      // scored 0.92 against no site-code change, then three separate CI
+      // samples of the same code all scored a perfect 1). Three runs plus
+      // median aggregation below absorbs one bad draw without hiding a
+      // regression that would depress two or more of the three.
+      numberOfRuns: 3,
       settings: {
         chromeFlags: "--headless=new --no-sandbox --disable-dev-shm-usage",
         preset: "desktop",
@@ -13,6 +19,10 @@ module.exports = {
       }
     },
     assert: {
+      // Default is "optimistic" (best of N runs), which would let a single
+      // good draw mask two bad ones. "median" requires the middle run to
+      // clear the bar, so a real regression across most runs still fails.
+      aggregationMethod: "median",
       assertions: {
         "categories:performance": ["error", { minScore: 0.95 }],
         "categories:accessibility": ["error", { minScore: 1 }],
