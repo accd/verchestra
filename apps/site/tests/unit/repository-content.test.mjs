@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test from "node:test";
@@ -10,6 +10,8 @@ import {
   compileQualificationStatus,
   extractDescription,
   extractTitle,
+  QUALIFICATION_REPORT_FILE,
+  qualificationSidebarItems,
   isCanonicalSourcePath,
   resolveQualification,
   validateRoadmapChain,
@@ -66,9 +68,9 @@ test("derives the exact public status from the canonical repository", async () =
 
   assert.deepEqual(status, {
     currentVersion: "0.0.0-qualification",
-    highestVerifiedTask: "T68",
-    nextTask: "T68a",
-    reportCount: 68
+    highestVerifiedTask: "T68a",
+    nextTask: "T68b",
+    reportCount: 69
   });
   await assertProjectStatus(repositoryRoot, status);
 });
@@ -152,4 +154,42 @@ test("derives stable title and description metadata from canonical Markdown", ()
 
   assert.equal(extractTitle(markdown), "Portable Handoff");
   assert.equal(extractDescription(markdown), "Transfer delivery work without transferring machine authority.");
+});
+
+// The convention was written out three times on this side, each fixed at two
+// digits, so T68a was invisible to the docs loader, to the llms projection, and
+// to the canonical-path check at the same time. One pattern now serves all
+// three, and this is what proves it accepts an inserted task.
+test("the qualification report pattern accepts inserted letter-suffixed tasks", () => {
+  for (const accepted of ["t01-validation.md", "t68-validation.md", "t68a-validation.md", "t100-validation.md"])
+    assert.equal(QUALIFICATION_REPORT_FILE.test(accepted), true, accepted);
+  for (const rejected of ["t68a-key-lifecycle.md", "REPORT-CONTRACT.md", "supply-chain.md", "t-validation.md"])
+    assert.equal(QUALIFICATION_REPORT_FILE.test(rejected), false, rejected);
+});
+
+test("an inserted letter-suffixed report is a canonical source like any other", () => {
+  const root = resolve("repository-fixture");
+  assert.equal(isCanonicalSourcePath(root, resolve(root, "docs/qualification/t68a-validation.md")), true);
+  assert.equal(isCanonicalSourcePath(root, resolve(root, "docs/qualification/t100-validation.md")), true);
+  assert.equal(isCanonicalSourcePath(root, resolve(root, "docs/qualification/t68a-key-lifecycle.md")), false);
+  assert.equal(isCanonicalSourcePath(root, resolve(root, "docs/qualification/REPORT-CONTRACT.md")), false);
+});
+
+// A published report that no navigation entry points at is still invisible, so
+// the sidebar is derived from the same directory the loader reads, and this
+// asserts the two agree for the real repository.
+test("every published qualification report has a navigation entry", async () => {
+  const repositoryRoot = new URL("../../../../", import.meta.url);
+  const reports = (await readdir(new URL("docs/qualification/", repositoryRoot)))
+    .filter((entry) => QUALIFICATION_REPORT_FILE.test(entry))
+    .map((entry) => `docs/qualification/${entry.replace(/\.md$/iu, "")}`)
+    .sort();
+  const items = qualificationSidebarItems(repositoryRoot);
+
+  assert.ok(reports.includes("docs/qualification/t68a-validation"), "the inserted T68a report must be present");
+  assert.deepEqual(
+    items.map((item) => item.slug),
+    reports
+  );
+  assert.equal(items.find((item) => item.slug.endsWith("t68a-validation")).label, "T68A validation");
 });

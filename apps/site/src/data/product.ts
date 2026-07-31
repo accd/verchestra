@@ -8,8 +8,8 @@ export const productScenario =
 
 export const productStatus = {
   version: "0.0.0-qualification",
-  completedTask: "T68",
-  nextTask: "T68a",
+  completedTask: "T68a",
+  nextTask: "T68b",
   installable: false
 } as const;
 
