@@ -2,11 +2,11 @@
 schema: verchestra-feature-handoff/v1
 feature: budget-enforcement
 issue: 52
-status: verification
-branch: fix/run-scoped-budget-enforcement
+status: complete
+branch: docs/t68b-qualification-report
 baseRevision: e534c497d91e29cf95ed1dc5ad335bc2ecc2a0e3
 lastCompletedTask: T6
-nextTask: Independent verification and human review of the run-scoped budget pull request
+nextTask: T68c qualification report; T68b is complete
 lastGate: pnpm gate:security
 updatedAt: 2026-07-30T10:42:00Z
 ---
