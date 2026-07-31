@@ -51,6 +51,8 @@ which of two mutually exclusive things is true, and only then to fix it.
 | PR #108's 0.92 CI run predates the score-printing instrumentation this feature adds (`ci.yml` "Report Lighthouse scores"); its job log shows only `found: 0.92` for the composite category, no per-metric breakdown, and no `.lighthouseci` artifact was ever uploaded for that run — confirmed unrecoverable by inspecting the historical run's own log (`gh run view --job=90705185185 --log-failed`) | LPB-03's per-metric attribution is satisfied against a controlled reproduction instead: the discrimination sensor (LPB-07) injects a comparable regression and the resulting failing run is fully instrumented, giving a real named-metric breakdown for a failing case with the same "composite drops while LCP/CLS pass" shape the historical failure exhibited | The historical run's raw data is gone; refusing to satisfy LPB-03 at all would leave the requirement permanently unmet, while attributing loss on a fabricated number would violate the evidence-or-zero standard. A controlled case with the same shape is honest evidence; a guess about the historical case would not be. | y |
 | LPB-02 calls for `N = 10` unchanged-build measurements to classify | The CI-side classification instead uses `N = 5`: 4 fresh CI runs of the code as it stood before the remedy (all scoring 1) plus the 1 historical failing run (0.92) | Once the remedy commit lands, further CI runs measure the post-remedy 3-run-median config, not the single-run config the classification is about — continuing to sample after the remedy would mix two different measurement methods into one distribution. The two boundary values that decide the classification (median = 1, minimum = 0.92) are already fixed by this sample; additional passing draws could only add more 1s, which cannot move the median away from 1 or the minimum away from 0.92. More samples would increase confidence but cannot change the verdict. | y |
 
+| The PR #139 review (point 1) asks for `aggregationMethod: "median"` to be applied *only* to `categories:performance`, leaving the other five assertions on lhci's default | **Deviate from the requested fix**: scope `median` to `categories:performance` as asked, but set the other five assertions explicitly to `pessimistic` rather than letting them fall back to the default `optimistic` | The reviewer's diagnosis is right — the global setting did change semantics for out-of-scope assertions — but the prescribed fix does not achieve the reviewer's own stated goal. Empirically confirmed against the installed `@lhci/utils@0.15.1` using real LHR fixtures: for a `minScore` assertion, `optimistic` resolves to `Math.max` across runs, which is *more* lenient than `median`. With accessibility scores `[0.9, 1, 1]`, the pre-change `N=1` baseline FAILS, while both `median` and the requested `optimistic` fallback PASS — so scoping alone does not restore the baseline and does not fix the reviewer's own example. Worse, with `[0.9, 0.9, 1]` the requested fallback PASSES where the current global `median` correctly FAILS, making the requested fix weaker than the state it is meant to repair. Only `pessimistic` (`Math.min` for `minScore`, `Math.max` for `maxNumericValue`) fails on any single bad run and so reproduces the `N=1` strictness the other assertions are entitled to. Evidence table in `tasks.md` Phase D. | y |
+
 **Open questions:** none — all resolved or logged above.
 
 ## User Stories
@@ -140,6 +142,56 @@ sensor"), but the gate is restored without it.
 
 ---
 
+### P1: Remediate the PR #139 review ⭐ MVP
+
+**User Story**: As the reviewer of PR #139, I want the implemented assertion
+semantics and the recorded evidence to actually match the stated scope, so
+that the claimed PASS is trustworthy rather than a claim about a narrower
+thing than it appears to cover.
+
+**Why P1**: Review point 1 is a live weakening of gates that the spec declared
+out of scope, and points 2 and 4 are integrity failures (a pre-registered rule
+abandoned mid-way, and another feature's tracked state destroyed). None of
+these can ship.
+
+**Acceptance Criteria**:
+
+1. **LPB-08** — WHEN any assertion other than `categories:performance` is
+   evaluated over the 3-run sample THEN it SHALL fail if *any single run*
+   fails it, matching the strictness of the pre-change `numberOfRuns: 1`
+   baseline. `categories:performance` alone SHALL remain deliberately
+   tolerant of one bad draw in three. A regression test SHALL assert this
+   per-assertion split directly, so a future edit that widens the tolerant
+   aggregation back across all assertions fails.
+2. **LPB-09** — WHEN the classification recorded in `tasks.md` is stated as
+   authoritative THEN it SHALL rest on the full pre-registered sample of
+   `N = 10` pre-remedy single-run CI measurements, collected before the
+   remedy is affirmed, and the median and minimum SHALL be recomputed over
+   the complete sample. IF the completed sample changes the classification
+   THEN the remedy SHALL be re-selected per LPB-02's rule rather than
+   retro-fitted to the existing one.
+3. **LPB-10** — WHEN the `Site quality` job finishes, pass or fail, THEN the
+   complete `.lighthouseci` report set (per-run JSON and HTML) SHALL be
+   uploaded as a retained CI artifact using a commit-pinned action
+   consistent with this workflow, so a future failure is diagnosable from
+   the reports rather than from a hand-picked subset of printed numbers.
+4. **LPB-11** — WHEN this feature's tracked state is recorded THEN
+   `.specs/features/lighthouse-performance-budget/handoff.md` SHALL exist and
+   conform to `.specs/templates/feature/handoff.md`, the `external-review-triage`
+   handoff in `.specs/STATE.md` SHALL be restored byte-for-byte to its
+   pre-branch content, and `spec.md`'s Requirement Traceability statuses and
+   Success Criteria checkboxes SHALL agree with the recorded verdict.
+5. **LPB-12** — WHEN `validation.md` states the range it covers THEN that
+   range SHALL include the actual reviewed head commit and its commit count
+   SHALL match `git rev-list --count` for the stated range.
+
+**Independent Test**: A reviewer can run the LPB-08 regression test, recount
+the LPB-09 sample, download the LPB-10 artifact from a CI run, diff
+`.specs/STATE.md` against `main` to see only additive change, and verify
+LPB-12's range arithmetic — each without taking any prose claim on trust.
+
+---
+
 ## Edge Cases
 
 - WHEN the Lighthouse stage cannot start its preview server THEN the failure
@@ -159,26 +211,42 @@ sensor"), but the gate is restored without it.
 
 | Requirement ID | Story | Phase | Status |
 | --- | --- | --- | --- |
-| LPB-01 | P1: Classify the failure | Tasks | Pending |
-| LPB-02 | P1: Classify the failure | Tasks | Pending |
-| LPB-03 | P1: Classify the failure | Tasks | Pending |
-| LPB-04 | P2: Restore the gate | Tasks (conditional) | Pending |
-| LPB-05 | P2: Restore the gate | Tasks (conditional) | Pending |
-| LPB-06 | P2: Restore the gate | Tasks | Pending |
-| LPB-07 | P3: Prove the gate discriminates | Tasks | Pending |
+| LPB-01 | P1: Classify the failure | Execute | Verified (T1) |
+| LPB-02 | P1: Classify the failure | Execute | **Reopened by review** — sample incomplete, see LPB-09 |
+| LPB-03 | P1: Classify the failure | Execute | Verified (T3, substituted evidence per the LPB-03 clause) |
+| LPB-04 | P2: Restore the gate | Execute | Not applicable — classification was instability, not deterministic |
+| LPB-05 | P2: Restore the gate | Execute | Verified (T4), pending LPB-08 rescope |
+| LPB-06 | P2: Restore the gate | Execute | Verified (T5) |
+| LPB-07 | P3: Prove the gate discriminates | Execute | Verified (T6) |
+| LPB-08 | P1: Remediate the PR #139 review | Tasks (D1) | Pending |
+| LPB-09 | P1: Remediate the PR #139 review | Tasks (D2) | Pending |
+| LPB-10 | P1: Remediate the PR #139 review | Tasks (D3) | Pending |
+| LPB-11 | P1: Remediate the PR #139 review | Tasks (D4) | Pending |
+| LPB-12 | P1: Remediate the PR #139 review | Tasks (D5) | Pending |
 
-**Coverage:** 7 total, 7 mapped to tasks, 0 unmapped.
+**Coverage:** 12 total, 12 mapped to tasks, 0 unmapped.
 
 LPB-04 and LPB-05 are conditional on the LPB-02 classification. Exactly one is
 required; both apply if both conditions hold. Neither may be implemented before
-LPB-02 returns.
+LPB-02 returns. LPB-02 is reopened by review point 2: its classification does
+not stand as authoritative until LPB-09 completes the pre-registered sample,
+and LPB-05's remedy is provisional until then.
 
 ---
 
 ## Success Criteria
 
-- [ ] The 0.92 result is attributed to a named cause with re-derivable numbers.
-- [ ] `categories:performance` is still `minScore: 0.95` in `lighthouserc.cjs`.
-- [ ] `pnpm site:test` passes, and the Lighthouse stage's cost fits the job budget.
-- [ ] An injected regression is shown to fail the restored gate.
-- [ ] No assertion in `lighthouserc.cjs` was weakened or removed.
+- [x] The 0.92 result is attributed to a named cause with re-derivable numbers
+      (via the substituted controlled reproduction permitted by LPB-03).
+- [x] `categories:performance` is still `minScore: 0.95` in `lighthouserc.cjs`.
+- [x] `pnpm site:test` passes, and the Lighthouse stage's cost fits the job budget.
+- [x] An injected regression is shown to fail the restored gate.
+- [ ] No assertion in `lighthouserc.cjs` is weaker than its pre-change
+      `numberOfRuns: 1` behavior, except `categories:performance` where the
+      tolerance is the deliberate point of the feature (LPB-08).
+- [ ] The classification rests on the complete pre-registered `N = 10` sample
+      (LPB-09).
+- [ ] A failing `Site quality` run leaves behind the full Lighthouse reports
+      (LPB-10).
+- [ ] Feature handoff exists and no unrelated tracked state was destroyed
+      (LPB-11).

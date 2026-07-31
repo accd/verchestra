@@ -67,6 +67,55 @@ diagnosis must observe the system it is diagnosing, unchanged.
 | T6 | Discrimination sensor: inject a deliberate performance regression into the built site in scratch state, confirm the assertion fails, remove it, confirm it passes, discard the mutation (LPB-07) | T5 | Both outcomes recorded; working tree clean afterward |
 | T7 | Full `pnpm site:test` and `pnpm gate:quick`; write `validation.md` and the feature `handoff.md` (LPB-06) | T6 | Both gates pass; artifacts tracked |
 
+## Phase D — Remediate the PR #139 review
+
+Review: <https://github.com/accd/verchestra/pull/139#pullrequestreview-4829686374>
+(`CHANGES_REQUESTED`, reviewer MiguelCorre). All five points were independently
+verified against the code before planning; all five are valid. Point 1's
+*diagnosis* is valid but its *prescription* is not — see D1.
+
+| Task | Deliverable | Depends on | Verification |
+| --- | --- | --- | --- |
+| D1 | Scope aggregation per assertion in `apps/site/lighthouserc.cjs`: `median` on `categories:performance` only; `pessimistic` explicitly on the other five. Add a regression test asserting the split (LPB-08) | None | New test fails against the current global-`median` config and passes after; `pnpm site:test` |
+| D2 | Collect the remaining pre-remedy single-run CI samples to reach `N = 10`, recompute median and minimum over the complete sample, and re-run LPB-02's rule (LPB-09) | Decision on how to trigger pre-remedy CI (see Open Decision below) | 10 recorded CI scores; classification restated with the full sample; remedy re-affirmed or re-selected |
+| D3 | Upload the full `.lighthouseci` report set as a CI artifact on `always()`, pinned action, `retention-days: 14` to match `ci.yml:71` (LPB-10) | None | Artifact downloadable from a real CI run and contains per-run JSON + HTML |
+| D4 | Create `.specs/features/lighthouse-performance-budget/handoff.md` from `.specs/templates/feature/handoff.md`; restore the `external-review-triage` handoff in `.specs/STATE.md` to its `main` content; reconcile traceability and success criteria (LPB-11) | None | `git diff main -- .specs/STATE.md` shows the triage handoff intact; `pnpm gate:quick` (covers the handoff-template contract test) |
+| D5 | Re-run verification against the true PR head and record an accurate, inclusive range in `validation.md` (LPB-12) | D1-D4 | `git rev-list --count` matches the stated range; range contains the head SHA |
+
+### D1 evidence — why the requested fix is not the fix
+
+Measured against the installed `@lhci/utils@0.15.1` with real LHR fixtures,
+varying only `categories:accessibility` (`minScore: 1`) across three runs:
+
+| accessibility runs | `N=1` baseline (pre-change) | `optimistic` (lhci default, = the requested fallback) | `median` (current PR) | `pessimistic` (proposed) |
+| --- | --- | --- | --- | --- |
+| `[0.9, 1, 1]` | **FAIL** | PASS | PASS | **FAIL** |
+| `[0.9, 0.9, 1]` | **FAIL** | PASS | **FAIL** | **FAIL** |
+| `[0.9, 0.9, 0.9]` | **FAIL** | **FAIL** | **FAIL** | **FAIL** |
+
+For a `minScore` assertion `optimistic` resolves to `Math.max` across runs
+(`assertions.js:64-67`), so it is *more* lenient than `median`. Scoping
+`median` to performance and letting the rest fall back to the default would
+leave row 1 still weaker than baseline — the reviewer's own example — and
+would make row 2 *weaker than the current PR*. `pessimistic` (`Math.min` for
+`minScore`, `Math.max` for `maxNumericValue`) is the only setting that
+reproduces the `N=1` strictness those five assertions are entitled to.
+
+Per-assertion override is supported: `assertions.js:426` spreads the
+per-assertion options after the global default, so the inner value wins.
+
+### Open Decision — how to collect D2's remaining samples
+
+`ci.yml` triggers only on `push: [main]` and `pull_request: [main]`, so the
+pre-remedy config cannot be exercised by pushing a branch. The remaining
+samples need one of: a scratch branch at `c49f745` (the last pre-remedy
+commit) opened as a throwaway draft PR on the author's own fork; temporarily
+reverting the remedy on this PR head across several pushes; or a
+`workflow_dispatch` trigger added to the workflow. Each has a different cost
+and blast radius, and the first two need the human's consent because they
+create or churn public PR state. **This decision is required before D2 starts
+and is not the agent's to make unilaterally.**
+
 ## Gate Commands
 
 | Level | Command |
@@ -89,9 +138,12 @@ diagnosis must observe the system it is diagnosing, unchanged.
 
 ## Task count and delegation
 
-11 tasks across three phases, but the Phase B branches are exclusive: a real
-run executes 7–8. That fits a single batch, so this executes inline without
-sub-agents. The Verifier still runs automatically after the final task.
+Phases A-C: 11 tasks, exclusive B branches, 7-8 actually executed — complete.
+Phase D adds 5 tasks (D1-D5). Phase D fits a single batch, so it executes
+inline without sub-agents. The Verifier runs automatically after D5, and its
+prior PASS is superseded: it verified a state the review has since shown to be
+incomplete, so a fresh pass over the full range is required rather than an
+amendment to the existing report.
 
 ## Execution Evidence
 
