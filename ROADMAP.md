@@ -55,11 +55,11 @@ in-toto signature envelope (`.specs/features/dsse-attestation/`) and real
 context tokenizers (`.specs/features/context-tokenizers/`).
 
 Derived status surfaces (`agent:context`, root instructions, `llms.txt`,
-and the public site) continue to report "T68 complete; T69 next" until the
-first inserted task starts. Migrating those surfaces to the inserted chain
-is a deliberate, separately reviewed change executed as part of starting
-T68a, because the current wording is asserted by gate scripts and contract
-tests.
+and the public site) report whatever the qualification resolver derives from
+the chain above and the reports on disk; they carry no hand-maintained task
+pair. (Historical note, 2026-07-26: until the first inserted task completed,
+those surfaces read "T68 complete; T69 next", and migrating them was executed
+as part of starting T68a.)
 
 ## Independent repository-readiness stream
 
