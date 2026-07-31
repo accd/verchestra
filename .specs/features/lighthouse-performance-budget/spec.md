@@ -215,13 +215,13 @@ LPB-12's range arithmetic — each without taking any prose claim on trust.
 | LPB-02 | P1: Classify the failure | Execute | Verified — reaffirmed on the complete `N = 11` sample (LPB-09) |
 | LPB-03 | P1: Classify the failure | Execute | Verified (T3, substituted evidence per the LPB-03 clause) |
 | LPB-04 | P2: Restore the gate | Execute | Not applicable — classification was instability, not deterministic |
-| LPB-05 | P2: Restore the gate | Execute | Verified (T4), pending LPB-08 rescope |
+| LPB-05 | P2: Restore the gate | Execute | Verified (T4), rescoped per LPB-08 (D1) |
 | LPB-06 | P2: Restore the gate | Execute | Verified (T5) |
 | LPB-07 | P3: Prove the gate discriminates | Execute | Verified (T6) |
-| LPB-08 | P1: Remediate the PR #139 review | Tasks (D1) | Pending |
+| LPB-08 | P1: Remediate the PR #139 review | Tasks (D1) | Verified (D1) |
 | LPB-09 | P1: Remediate the PR #139 review | Tasks (D2) | Verified (D2) |
-| LPB-10 | P1: Remediate the PR #139 review | Tasks (D3) | Pending |
-| LPB-11 | P1: Remediate the PR #139 review | Tasks (D4) | Pending |
+| LPB-10 | P1: Remediate the PR #139 review | Tasks (D3) | Verified (D3) |
+| LPB-11 | P1: Remediate the PR #139 review | Tasks (D4) | In progress (D4) |
 | LPB-12 | P1: Remediate the PR #139 review | Tasks (D5) | Pending |
 
 **Coverage:** 12 total, 12 mapped to tasks, 0 unmapped.
@@ -241,12 +241,15 @@ and LPB-05's remedy is provisional until then.
 - [x] `categories:performance` is still `minScore: 0.95` in `lighthouserc.cjs`.
 - [x] `pnpm site:test` passes, and the Lighthouse stage's cost fits the job budget.
 - [x] An injected regression is shown to fail the restored gate.
-- [ ] No assertion in `lighthouserc.cjs` is weaker than its pre-change
+- [x] No assertion in `lighthouserc.cjs` is weaker than its pre-change
       `numberOfRuns: 1` behavior, except `categories:performance` where the
-      tolerance is the deliberate point of the feature (LPB-08).
+      tolerance is the deliberate point of the feature (LPB-08) —
+      `aggregationMethod` set per-assertion, `"pessimistic"` on the other
+      five, regression test confirmed discriminating.
 - [x] The classification rests on the complete pre-registered `N = 10` sample
       (LPB-09) — `N = 11` collected, median = 1, minimum = 0.92.
-- [ ] A failing `Site quality` run leaves behind the full Lighthouse reports
-      (LPB-10).
+- [x] A failing `Site quality` run leaves behind the full Lighthouse reports
+      (LPB-10) — uploaded `always()` as a retained CI artifact.
 - [ ] Feature handoff exists and no unrelated tracked state was destroyed
-      (LPB-11).
+      (LPB-11) — `handoff.md` created, `STATE.md` restored byte-identical to
+      `main`; this checkbox closes once D4's commit lands.

@@ -54,12 +54,9 @@
 
 ## Handoff
 
-- **Feature:** `lighthouse-performance-budget` (issue #110)
-- **State:** T1-T7 complete, **Verifier PASS** on iteration 3 of a bounded 3-iteration fix→re-verify loop (iterations 1-2 found and the author closed: LPB-03 attribution, LPB-02 sample-size deviation tagging, this file's staleness). See `.specs/features/lighthouse-performance-budget/validation.md` for the full final report and `tasks.md` Execution Evidence for per-task detail.
-- **Branch:** `fix/lighthouse-performance-budget`, pushed to `origin` (user's fork `brunomjanuario/verchestra`); PR **#139** open against `accd:main`, not merged.
-- **Classification:** instability (B2) — CI-side sample `{0.92 (PR #108, historical), 1, 1, 1, 1}` (4 fresh CI runs of pre-remedy code): median = 1, minimum = 0.92. Logged as `N=5` not the spec's `N=10` (deviation rationale in `spec.md` Assumptions table): sampling further after the remedy lands would measure the new 3-run-median config, not the single-run config being classified, and the two values that decide the verdict can't move with more passing draws.
-- **Remedy:** `apps/site/lighthouserc.cjs` — `numberOfRuns: 1 → 3`, added `assert.aggregationMethod: "median"` (default `"optimistic"` would let one good run mask two bad ones). `categories:performance` threshold unchanged at `0.95`. Verified on real CI (job time 2m55s → 3m43s, well under the 45-min budget).
-- **Discrimination sensor:** injected a 1.5s main-thread-blocking script into gitignored `apps/site/dist/` (never committed) — confirmed fails (`performance: 0.86`, FCP/Speed Index carry the loss, LCP/CLS assertions still pass), confirmed passes clean. Reproduced twice; second pass captured full per-metric numbers to close the LPB-03 gap.
-- **Gates:** `pnpm gate:quick` 97/97 pass. `pnpm gate:release` (selected because this diff touches `.github/workflows/ci.yml`) fails locally only in `spikes/sqlite` (missing `fts5` in this machine's Node v23.11.0, confirmed unrelated — that path isn't in the diff); CI's `Quality gate` job runs the identical gate-selection output on the qualified Node v24.14.0 and passed on every run of this branch.
-- **Next:** Nothing further for this agent. The feature is done pending independent human review and merge of PR #139 — this agent will not merge it, approve its own review, or touch branch protection (human-review boundary, `AGENTS.md`).
-- **Note:** other features (`budget-enforcement`, `gate-repair-loop`, `policy-hardening`, `canonical-json`, `isolation-process-tree`, `opencode-cancellation-race`, `probe-value-declassification`) have their own in-progress/verification state tracked in their individual `handoff.md` files under `.specs/features/`; this section only reflects the session's active feature.
+- **Feature:** `external-review-triage`
+- **State:** T1–T5 complete; T6 (GitHub backlog issues) and T7 (final gates) in progress
+- **Branch:** `main`
+- **Completed:** Verified triage of the external review (11 claims, 2 corrected), full specifications for T68a–T68d, decision specifications for DSSE and context tokenizers, roadmap insertion of T68a–T68d, and the Apache-2.0 license change with AD-007/AD-008.
+- **Verification:** `pnpm agent:check` and `pnpm gate:quick` run in T7; site gates run for the license change.
+- **Next:** Create GitHub issues for deferred items R7–R11 (or record the permission blocker), run final gates, and mark the triage handoff ready for independent review.
