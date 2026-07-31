@@ -250,6 +250,6 @@ and LPB-05's remedy is provisional until then.
       (LPB-09) — `N = 11` collected, median = 1, minimum = 0.92.
 - [x] A failing `Site quality` run leaves behind the full Lighthouse reports
       (LPB-10) — uploaded `always()` as a retained CI artifact.
-- [ ] Feature handoff exists and no unrelated tracked state was destroyed
+- [x] Feature handoff exists and no unrelated tracked state was destroyed
       (LPB-11) — `handoff.md` created, `STATE.md` restored byte-identical to
-      `main`; this checkbox closes once D4's commit lands.
+      `main` (confirmed with `diff`).
