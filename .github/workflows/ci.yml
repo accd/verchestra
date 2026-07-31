@@ -172,6 +172,10 @@ jobs:
         with:
           name: lighthouse-reports-${{ github.sha }}
           path: apps/site/.lighthouseci
+          # .lighthouseci is itself a dot-prefixed directory; the action's
+          # default excludes hidden files AND hidden directories from its
+          # glob walk, which silently uploads nothing without this.
+          include-hidden-files: true
           retention-days: 14
           if-no-files-found: warn
       - name: Upload verified Pages artifact

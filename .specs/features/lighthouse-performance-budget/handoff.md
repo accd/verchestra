@@ -5,10 +5,10 @@ issue: 110
 status: in_progress
 branch: fix/lighthouse-performance-budget
 baseRevision: 07ead185bf7bbf95fcba2fdeb95635b4c470e13a
-lastCompletedTask: D3
-nextTask: D4
+lastCompletedTask: null
+nextTask: D5 (re-verify against the true head; see Next Exact Action below)
 lastGate: pnpm site:test
-updatedAt: 2026-07-31T19:20:00Z
+updatedAt: 2026-07-31T19:30:00Z
 ---
 
 # Scope
@@ -54,22 +54,28 @@ Full task breakdown: `tasks.md`.
   `upload-artifact` version already used for gate-selection evidence).
 - **STATE.md restored**: the `external-review-triage` Handoff section this
   branch had overwritten is now byte-identical to `main`'s (`diff` confirms
-  no difference) — see this task's own commit.
+  no difference).
+- **D4 complete** (LPB-11): this handoff file created; `spec.md`'s
+  Requirement Traceability (all 12 rows) and Success Criteria (all 8
+  checkboxes) reconciled with actual state. CI caught two real defects this
+  handoff's own changes introduced, both fixed same-session: (a) D3's new
+  pinned action tripped `apps/site/tests/unit/pages-workflow.test.mjs`'s
+  deliberate action-count tripwire (11 → 12, now documented in that test's
+  comment); (b) `actions/upload-artifact`'s default `include-hidden-files:
+  false` silently excluded `.lighthouseci` itself (a dot-prefixed directory)
+  from the artifact — fixed by setting `include-hidden-files: true`.
 
 # Next Exact Action
 
-Finish **D4** (LPB-11): this handoff file is D4's primary deliverable and is
-now in place. Remaining for D4: reconcile `spec.md`'s Requirement
-Traceability statuses and Success Criteria checkboxes with the actual
-current state (some were already updated during D1/D2; confirm all 12
-requirement rows and all 8 success-criteria checkboxes are accurate before
-committing). Then **D5** (LPB-12): dispatch a fresh Verifier over the
-complete range `4c0ce07..<D4 commit>` — the first Verifier's PASS is void,
-since it verified a state the PR #139 review has since shown incomplete.
-Record an accurate, inclusive commit range in the resulting `validation.md`
-(the prior range `4c0ce07..b91eea4` undercounted commits and excluded the
-actual head — do not repeat that mistake; use `git rev-list --count` to
-confirm before writing the range).
+**D5** (LPB-12): dispatch a fresh Verifier over the complete range
+`4c0ce07..HEAD` — the first Verifier's PASS is void, since it verified a
+state the PR #139 review has since shown incomplete. Record an accurate,
+inclusive commit range in the resulting `validation.md` (the prior range
+`4c0ce07..b91eea4` undercounted commits and excluded the actual head — do
+not repeat that mistake; use `git rev-list --count` to confirm before
+writing the range). Confirm the pushed CI run for the current head is green
+(the `include-hidden-files` fix has not yet been pushed/verified on CI as
+of this handoff's last update) before considering Phase D complete.
 
 # Blockers
 
