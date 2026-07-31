@@ -81,10 +81,17 @@ disjoint fixes. Shipping a fix without it is the waiver the issue prohibits.
      CI-only measurement before any remedy is chosen.
 3. **LPB-03** — WHEN the classification is recorded THEN it SHALL name the
    specific metric or metrics carrying the score loss, with their numeric
-   values, and SHALL NOT attribute the loss to a metric whose assertion passed.
+   values, and SHALL NOT attribute the loss to a metric whose assertion
+   passed. WHEN the failing case being classified has no recoverable
+   per-metric data (e.g., a historical CI run that predates this feature's
+   own instrumentation), this MAY instead be satisfied by a controlled
+   reproduction exhibiting the same score-loss shape, explicitly logged as
+   substituted evidence rather than presented as the original run's data.
 
 **Independent Test**: The recorded evidence answers "deterministic or unstable,
-and in which metric" with numbers a reviewer can re-derive from the artifact.
+and in which metric" with numbers a reviewer can re-derive from the artifact
+— from the classified case itself where its data survives, or from a logged
+substitute reproduction where it does not.
 
 ---
 
