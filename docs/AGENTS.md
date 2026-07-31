@@ -6,7 +6,7 @@ Apply the root `AGENTS.md` first.
   are generated projections.
 - Keep all content English-only and distinguish implemented, qualified,
   planned, and production-ready states precisely.
-- Preserve `0.0.0-qualification`, T68a complete, and T68b next unless contiguous
+- Preserve `0.0.0-qualification`, T68b complete, and T68c next unless contiguous
   evidence and the roadmap change together.
 - Use repository-relative links and commands that exist in `package.json`.
 - Never include credentials, production data, private schemas, usernames, home
