@@ -10,6 +10,7 @@ import {
   extractDescription,
   extractTitle,
   isCanonicalSourcePath,
+  QUALIFICATION_REPORT_FILE,
   repositoryContentSources,
   resolveRepositoryPath,
   rewriteCanonicalLinks,
@@ -24,7 +25,7 @@ async function loadCanonicalEntries(context: LoaderContext, repositoryRoot: URL)
 
   const qualificationDirectory = resolveRepositoryPath(repositoryRoot, "docs/qualification");
   const qualificationSources: RepositoryContentSource[] = (await readdir(qualificationDirectory))
-    .filter((entry) => /^t\d{2}-validation\.md$/i.test(entry))
+    .filter((entry) => QUALIFICATION_REPORT_FILE.test(entry))
     .sort()
     .map((entry, index) => ({
       id: `qualification-${entry.replace(/\.md$/i, "")}`,

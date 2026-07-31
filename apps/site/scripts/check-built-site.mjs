@@ -113,7 +113,7 @@ const llms = await readFile(join(distRoot, "llms.txt"), "utf8");
 const llmsFull = await readFile(join(distRoot, "llms-full.txt"), "utf8");
 const sitemap = await readFile(join(distRoot, "sitemap-0.xml"), "utf8");
 assert.match(llms, /0\.0\.0-qualification/u);
-assert.match(llms, /T68 complete; T68a next/u);
+assert.match(llms, /T68a complete; T68b next/u);
 assert.match(llms, /inference-time documentation aid/u);
 assert.ok(Buffer.byteLength(llmsFull) < 1024 * 1024);
 assert.match(llmsFull, /docs\/qualification\/t68-validation\.md/u);
@@ -134,8 +134,8 @@ for (const file of htmlFiles) {
 
 const homepage = await readFile(join(distRoot, "index.html"), "utf8");
 assert.match(homepage, /0\.0\.0-qualification/u);
-assert.match(homepage, /T68 verified/u);
-assert.match(homepage, /T68a next/u);
+assert.match(homepage, /T68a verified/u);
+assert.match(homepage, /T68b next/u);
 assert.doesNotMatch(homepage, /npm (?:install|add).{0,40}verchestra/iu);
 assert.doesNotMatch(homepage, /production[- ]ready/iu);
 

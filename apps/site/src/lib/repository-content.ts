@@ -1,3 +1,4 @@
+import { readdirSync } from "node:fs";
 import { readFile, readdir } from "node:fs/promises";
 import { isAbsolute, posix, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -94,6 +95,27 @@ export const repositoryContentSources: readonly RepositoryContentSource[] = [
   }
 ];
 
+// One convention for what a qualification report file is called. It was written
+// out three times on this side alone, each fixed at two digits, so an inserted
+// task like T68a was invisible to the loader, to the llms projection, and to the
+// canonical-path check at once.
+export const QUALIFICATION_REPORT_FILE = /^t(\d+[a-z]?)-validation\.md$/iu;
+
+// The navigation entry for every report that exists, derived rather than
+// counted. A fixed range silently omits inserted tasks, so a report could be
+// published and still be unreachable from the list that is supposed to show it.
+export function qualificationSidebarItems(repositoryRoot: URL | string): { label: string; slug: string }[] {
+  const directory = resolveRepositoryPath(repositoryRoot, "docs/qualification");
+  return readdirSync(directory)
+    .filter((entry) => QUALIFICATION_REPORT_FILE.test(entry))
+    .map((entry) => entry.replace(/\.md$/iu, ""))
+    .sort()
+    .map((slug) => ({
+      label: `${slug.replace(/-validation$/u, "").toUpperCase()} validation`,
+      slug: `docs/qualification/${slug}`
+    }));
+}
+
 export function resolveRepositoryPath(repositoryRoot: URL | string, sourcePath: string): string {
   const root = resolve(typeof repositoryRoot === "string" ? repositoryRoot : fileURLToPath(repositoryRoot));
   const candidate = resolve(root, sourcePath);
@@ -110,7 +132,7 @@ export function isCanonicalSourcePath(repositoryRoot: URL | string, changedPath:
   if (normalized.startsWith("../") || isAbsolute(normalized)) return false;
   return (
     repositoryContentSources.some(({ sourcePath }) => sourcePath === normalized) ||
-    /^docs\/qualification\/t\d{2}-validation\.md$/i.test(normalized)
+    QUALIFICATION_REPORT_FILE.test(normalized.replace(/^docs\/qualification\//u, ""))
   );
 }
 
@@ -164,7 +186,7 @@ export async function compileQualificationStatus(repositoryRoot: URL | string): 
   const qualificationDirectory = new URL("docs/qualification/", root);
   const entries = await readdir(qualificationDirectory);
   const taskIds = entries
-    .map((entry) => /^t(\d{2}[a-z]?)-validation\.md$/i.exec(entry)?.[1])
+    .map((entry) => QUALIFICATION_REPORT_FILE.exec(entry)?.[1])
     .filter((value): value is string => value !== undefined);
   const taskNumbers = taskIds
     .filter((id) => /^\d+$/.test(id))

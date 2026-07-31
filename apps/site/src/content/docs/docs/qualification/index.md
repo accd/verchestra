@@ -7,7 +7,7 @@ Qualification reports are generated and reviewed in the repository. This portal 
 
 ## Current boundary
 
-- T01–T68: continuous public validation evidence available.
+- T01–T68a: continuous public validation evidence available.
 - T68a–T68d: next, inserted hardening for key lifecycle, budgets, gate repair, and the policy boundary.
 - T69: isolated Self-Test trust domain, after the inserted chain.
 - T70–T77: planned verification and release-decision stages.

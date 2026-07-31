@@ -125,6 +125,18 @@ function isHistoricalReport(taskId) {
   return numeric !== null && Number(numeric[1]) <= HISTORICAL_REPORTS_THROUGH;
 }
 
+// One convention encoded twice: discovery reads report filenames, the link
+// checker validates report routes. They drifted apart once already — discovery
+// gained the letter suffix and the route pattern did not — so both are built
+// from the same task-id fragment and can no longer diverge.
+const TASK_ID = String.raw`\d+[a-z]?`;
+export const QUALIFICATION_REPORT_FILE = new RegExp(String.raw`^t(${TASK_ID})-validation\.md$`, "u");
+export const QUALIFICATION_REPORT_ROUTE = new RegExp(String.raw`^qualification/t(${TASK_ID})-validation$`, "u");
+// A file that announces itself as a task report but is named outside the
+// convention is reported rather than skipped. Silent non-discovery is what let
+// one report sit on disk while the counter never moved.
+const QUALIFICATION_TASK_FILE = new RegExp(String.raw`^t${TASK_ID}-`, "u");
+
 // A gate name is only meaningful if it is one of the declared gates. Any package
 // script would let `format:check` alone stand in for a security surface.
 export const DECLARED_GATES = Object.freeze(["gate:quick", "gate:full", "gate:build", "gate:security", "gate:release"]);
@@ -245,8 +257,12 @@ export async function readQualificationReports(root, { trustedRevision } = {}) {
     return trusted.get(revision);
   };
   for (const entry of (await readdir(directory)).sort()) {
-    const task = /^t(\d+[a-z]?)-validation\.md$/u.exec(entry);
-    if (!task) continue;
+    const task = QUALIFICATION_REPORT_FILE.exec(entry);
+    if (!task) {
+      if (QUALIFICATION_TASK_FILE.test(entry))
+        errors.push(`docs/qualification/${entry}: task report is named outside the t<NN>-validation.md convention`);
+      continue;
+    }
     const taskId = `T${task[1]}`;
     const problems = validateQualificationReport(await readFile(join(directory, entry), "utf8"), taskId, {
       isRepositoryCommit,
@@ -445,7 +461,7 @@ async function checkMarkdownLinks(root, files, errors) {
           existsSync(join(root, "apps", "site", "src", "content", "docs", "docs", `${route}.mdx`)) ||
           existsSync(join(root, "apps", "site", "src", "content", "docs", "docs", route, "index.md")) ||
           existsSync(join(root, "apps", "site", "src", "content", "docs", "docs", route, "index.mdx")) ||
-          (/^qualification\/t\d+-validation$/u.test(route) && existsSync(join(root, "docs", `${route}.md`)))
+          (QUALIFICATION_REPORT_ROUTE.test(route) && existsSync(join(root, "docs", `${route}.md`)))
         )
           continue;
         errors.push(`${path}: broken or unsafe Markdown link ${target}`);
