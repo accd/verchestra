@@ -9,7 +9,7 @@ criteriaEvidence: 6 of 6 acceptance criteria proven
 skipped: 0
 todo: 0
 discriminationSensor: 6 killed, 0 survived
-reviewedIn: https://github.com/accd/verchestra/pull/144
+reviewedIn: https://github.com/accd/verchestra/pull/146
 ---
 
 # T68c Gate Repair Loop Validation
