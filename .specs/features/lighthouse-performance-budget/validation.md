@@ -1,220 +1,208 @@
 # Validation — Lighthouse Performance Budget (issue #110)
 
-Verifier: independent, did not author this change or the prior fix. This is
-iteration 2 of a fix→re-verify loop. Commit range covered: `4c0ce07..1298fcc`
-(10 commits total; this pass focuses on the delta `4e3d722..1298fcc`, the
-author's response to the first Verifier's FAIL). Re-derived from files and
-live `gh` queries, not from tasks.md's adjectives or the author's claims.
+Verifier: independent, did not author this change or either prior fix. This is
+**iteration 3 of 3 — the final allowed iteration** in the bounded fix→re-verify
+loop. Commit range covered, standalone: `4c0ce07..b91eea4` (11 commits).
+Re-derived from files, `git diff`, and (where iteration 2 already did the live
+`gh` legwork) that prior evidence is re-checked for consistency rather than
+re-fetched wholesale, since the underlying facts (a historical CI run's log
+content) cannot change between iterations.
 
-## Verdict: FAIL (two of three gaps closed; the highest-severity gap is only
-## partially closed — the substitution is honestly logged as a deviation but
-## the normative AC text it deviates from was never amended, and tasks.md
-## understates the deviation relative to how gap 2 was handled)
+## Verdict: PASS
 
-## What changed in `1298fcc`
+Both gaps iteration 2 left open are closed. All 7 ACs (LPB-01–LPB-07) have
+current file/run evidence matching spec.md's present wording. No scope creep.
+Working tree clean. `lighthouserc.cjs` matches the verified remedy exactly.
 
-`git diff 4e3d722..1298fcc --stat`: `.specs/STATE.md` (+/-), `spec.md` (+2
-assumption rows), `tasks.md` (T2 and T3 rows edited), `validation.md` (prior
-Verifier's file, untouched by the author — correctly left for me to
-overwrite). No file under `apps/site/` or `.github/workflows/` touched by this
-commit — consistent with a docs-only evidence fix, no re-litigation of the
-mechanism already verified sound in iteration 1.
+---
 
-## Gap 1 (LPB-03) — independently re-investigated
+## What changed in `b91eea4` (the delta since iteration 2's FAIL)
 
-**Claim under test**: the historical PR #108 run (job `90705185185`, run
-`30489992711`) has no recoverable per-metric data, so the author substituted
-the discrimination sensor's (LPB-07) failing run as attribution evidence.
+`git diff 1298fcc..b91eea4` touches exactly two files: `spec.md` and
+`tasks.md`. No file under `apps/site/` or `.github/workflows/` touched —
+consistent with a wording-reconciliation commit, not a re-litigation of the
+mechanism already verified sound in iterations 1 and 2.
 
-**Independent check of the historical run** — I ran
-`gh run view --job=90705185185 --repo accd/verchestra --log-failed` myself.
-Confirmed: the only Lighthouse-related output is:
+### Gap A (LPB-03 normative text never amended) — closed
 
-```
-Checking assertions against 1 URL(s), 1 total run(s)
-  ✘  categories.performance failure for minScore assertion
-        expected: >=0.95
-           found: 0.92
-Assertion failed. Exiting with status code 1.
-```
+Iteration 2 found the author had substituted the T6 discrimination-sensor's
+data for PR #108's unrecoverable per-metric data, logged only as an assumption
+row, while LPB-03's actual AC text still read as an absolute ("SHALL NOT
+attribute the loss to a metric whose assertion passed" with no substitution
+clause) and the Independent Test only described re-deriving numbers from "the
+artifact" (singular, implicitly the classified case's own artifact).
 
-No per-metric breakdown anywhere in the log. I also queried
-`gh api repos/accd/verchestra/actions/runs/30489992711/artifacts` directly:
-the run has exactly one artifact, `gate-selection-49c6ba5a...`
-(556 bytes, unrelated to Lighthouse) — no `.lighthouseci` artifact was ever
-uploaded for this run. **The author's factual claim is independently
-confirmed true, not just asserted.** This part of the fix is solid.
+`spec.md` LPB-03 now reads, in full (lines 82–89):
 
-**Is the substitution legitimate evidence, or evidence-laundering?**
-Reading LPB-03's exact text (`spec.md:82-84`):
+> **LPB-03** — WHEN the classification is recorded THEN it SHALL name the
+> specific metric or metrics carrying the score loss, with their numeric
+> values, and SHALL NOT attribute the loss to a metric whose assertion
+> passed. WHEN the failing case being classified has no recoverable
+> per-metric data (e.g., a historical CI run that predates this feature's
+> own instrumentation), this MAY instead be satisfied by a controlled
+> reproduction exhibiting the same score-loss shape, explicitly logged as
+> substituted evidence rather than presented as the original run's data.
 
-> WHEN the classification is recorded THEN it SHALL name the specific metric
-> or metrics carrying the score loss, with their numeric values, and SHALL NOT
-> attribute the loss to a metric whose assertion passed.
+And the Independent Test (lines 91–94):
 
-Read in isolation this is generic ("the classification," "the loss") and
-could be argued to just mean "whichever failure is being classified." But
-LPB-03 does not stand alone — it is P1's AC 3, and P1's own User Story
-(`spec.md:60-62`) is unambiguous: *"I want the 0.92 result attributed to
-either site cost or measurement noise with evidence."* The Independent Test
-for the whole P1 group (`spec.md:87`) says the evidence must answer
-"deterministic or unstable, and in which metric, **with numbers a reviewer
-can re-derive from the artifact**." Both anchor LPB-03 to the actual 0.92
-event, not to "some failing case with the same shape."
+> The recorded evidence answers "deterministic or unstable, and in which
+> metric" with numbers a reviewer can re-derive from the artifact — from the
+> classified case itself where its data survives, or from a logged substitute
+> reproduction where it does not.
 
-Given that anchor, substituting the discrimination sensor's numbers is **not
-literal satisfaction of LPB-03** — it attributes a different, synthetic
-event's loss, not the original 0.92 run's loss (which no longer has
-recoverable data, full stop). The author's spec.md assumption row is honest
-about this ("a controlled case with the same shape is honest evidence; a
-guess about the historical case would not be") — that framing is correct
-science and I agree it's better than fabricating historical numbers or
-leaving the requirement silently unmet. But the *label* applied downstream is
-where the gap remains:
+**Judgment: this closes the gap without opening a loophole.** Three textual
+constraints keep the escape hatch narrow rather than general-purpose:
 
-- tasks.md's T3 row is marked plain **"Done"** — the same status word used for
-  literal completion elsewhere in the table — with no `SPEC_DEVIATION` tag,
-  even though this is a strictly larger deviation from AC wording than T2's
-  N=5/N=10 gap, which *does* carry an explicit `SPEC_DEVIATION` tag in its own
-  row. Treating the two gaps inconsistently (one flagged, one not) is a
-  documentation defect on its own.
-- More importantly, **the normative LPB-03 text itself (`spec.md:82-84`) and
-  the P1 Independent Test (`spec.md:87`) were never touched by this commit.**
-  The only trace of the narrowing is an assumptions-table row, which is the
-  right place to log *why* a deviation happened but is not a substitute for
-  updating the requirement text a future reader would check the evidence
-  against. A clean-clone successor reading AC LPB-03 in isolation, without
-  finding or fully absorbing the assumptions table, would still expect
-  attribution of the *actual* 0.92 event and reasonably conclude the AC is
-  unmet.
+1. **Trigger condition is specific, not "any missing evidence"** — it fires
+   only when "the failing case being classified has no recoverable per-metric
+   data," with the example narrowing it further to a historical run that
+   *predates this feature's own instrumentation*. It does not say "when data
+   is inconvenient" or "when data is hard to obtain." A future author citing
+   this clause for a live, current-CI run that simply forgot to upload an
+   artifact would be misapplying it — the "predates instrumentation"
+   qualifier ties the exception to a structural, verifiable fact (the
+   instrumentation didn't exist yet), not a judgment call.
+2. **Same-shape constraint** — the reproduction must exhibit "the same
+   score-loss shape" as the case being classified, not just any regression.
+   This forces the substitute to actually corroborate the specific failure
+   mode (composite drop with LCP/CLS assertions still passing), not merely
+   supply plausible-looking numbers for an unrelated symptom.
+3. **Disclosure requirement, not silent substitution** — "explicitly logged
+   as substituted evidence rather than presented as the original run's data"
+   means a reviewer reading the record can never mistake reproduction data
+   for the classified case's own data. This preserves the evidence-or-zero
+   standard's spirit: it does not let fabricated-looking numbers pass as
+   real ones, it requires the fabrication (reproduction) to be labeled as
+   such.
 
-**Recommended exact fix** (not yet made): amend `spec.md:82-84` to read
-(new clause underlined in spirit, not literally inserted here — the author
-should choose exact phrasing):
+This is not "let a future author substitute ANY convenient data for ANY
+missing evidence" — the clause is scoped to the unrecoverable-historical-data
+case specifically, requires shape-fidelity, and requires disclosure. I could
+not construct a plausible future misuse that this wording would license but
+the pre-amendment wording would have blocked; the amendment targets exactly
+the situation iteration 2 identified and no broader.
 
-> 3. **LPB-03** — WHEN the classification is recorded THEN it SHALL name the
->    specific metric or metrics carrying the score loss, with their numeric
->    values, and SHALL NOT attribute the loss to a metric whose assertion
->    passed. **When the failing case being classified has no recoverable
->    per-metric data (e.g., a historical CI run that predates this feature's
->    instrumentation), this MAY be satisfied by a controlled reproduction
->    exhibiting the same score-loss shape, explicitly logged as substituted
->    evidence rather than the original run's data.**
+One residual, non-blocking wording note: "e.g." introduces the historical-run
+case as an example rather than the sole trigger, leaving room for an
+as-yet-unspecified second scenario to also qualify as "no recoverable
+per-metric data." This is ordinary spec language (illustrative example, not
+exhaustive enumeration) and is not a defect — but a future author invoking
+this clause for a *different* scenario than the one illustrated should expect
+extra Verifier scrutiny on whether that scenario truly has no recoverable
+data. Flagging for awareness, not blocking.
 
-And correspondingly soften `spec.md:87`'s Independent Test to acknowledge the
-substitution path. Until that text changes, LPB-03 is **not fully closed** —
-it is closed for the *phenomenon* (instability, FCP/Speed-Index-driven) but
-not for the *AC as literally written*, and the tasks.md status line
-overclaims by saying "Done" with no qualifier.
+### Gap B (tasks.md T3 undertagged vs. T2) — closed
 
-**Physical plausibility of the T3 numbers** — independently sanity-checked
-against Lighthouse's own metric definitions, not just re-stated:
-- A synchronous 1.5s main-thread-blocking script placed before `</head>`
-  delays parsing/first-paint itself, so First Contentful Paint and Speed
-  Index (which both measure time-to-visual-progress) are directly and
-  heavily damaged — FCP score 0.46 at ~1662ms and Speed Index 0.74-0.75 are
-  consistent with a ~1.5s paint delay stacked on a ~150-300ms baseline.
-- Total Blocking Time is defined as the sum of (task duration − 50ms) for
-  long tasks strictly *between* FCP and Time-to-Interactive. A block that
-  finishes *before* FCP occurs is by definition excluded from that window —
-  it delays FCP rather than accumulating post-FCP blocking time. The claimed
-  `total-blocking-time: 0` is the mechanically correct outcome of the
-  injection point chosen (before `</head>`, i.e., before first paint), not a
-  hand-wave. The T3 row's own reasoning states this correctly.
-- LCP and CLS assertions are threshold-on-raw-value (`maxNumericValue`), not
-  threshold-on-score, so a lowered LCP *score* (0.74-0.75, since the scoring
-  curve penalizes ~1666ms) coexisting with a *passing* assertion (threshold
-  2500ms) is internally consistent — this resolves what could otherwise look
-  like a contradiction in the T3 row.
+Side-by-side, `tasks.md`'s Execution Evidence table:
 
-The reasoning holds together; my only issue with T3 is the status/labeling
-overclaim above, not the physics or the underlying numbers.
+- **T2** (the LPB-02 N=5-vs-N=10 deviation, tagged in iteration 1's fix):
+  `"**SPEC_DEVIATION:** the CI-side re-classification (see T4 row) uses `N = 5`
+  ... not the `N = 10` LPB-02 names. Reason: logged in `spec.md`'s Assumptions
+  table..."`
+- **T3** (this iteration's fix, previously plain "Done" with no tag):
+  `"**SPEC_DEVIATION:** attribution is satisfied against the T6
+  discrimination-sensor's failing run instead of PR #108's own run, per the
+  LPB-03 clause added for this case (`spec.md`) and the matching assumption
+  row..."`
 
-## Gap 2 (LPB-02 N=5 vs N=10) — re-examined
+Both rows now: (a) carry the bold `SPEC_DEVIATION` tag in the same position
+(prefixing the explanatory sentence), (b) name the specific deviation, (c)
+point to the `spec.md` location that authorizes it, (d) explain why the
+deviation was necessary rather than avoidable. Structurally comparable —
+gap closed.
 
-The `SPEC_DEVIATION` tag and assumption row are now present and specific
-(`spec.md`'s new second assumption row; `tasks.md` T2 row). The stated
-rationale — median=1 and minimum=0.92 are already fixed by the 5-point sample
-and cannot move with more *passing* draws, while post-remedy runs would
-sample a structurally different (3-run-median) config — is arithmetically
-sound for the two summary statistics already observed, and correctly
-distinguishes "more confidence" from "verdict could change."
+---
 
-Countervailing consideration (noted, not dispositive): the author did not
-attempt the technically available alternative of collecting more single-run
-CI samples via a scratch branch or an `lhci` CLI override
-(e.g., `--collect.numberOfRuns=1` on a one-off dispatch) without touching the
-committed config — this was feasible and would have gotten closer to N=10
-without "measuring the new config." Skipping it is a defensible efficiency
-call given the classification is not close to either boundary (4 of 5 points
-are a clean ceiling, one is a single historical outlier), but it is also
-fair to call it "stopping once the answer is known" rather than "impossible
-to do more." I record this as **closed with a legitimate, if convenience-
-favoring, documented deviation** — consistent with how the first Verifier
-scored the underlying math, now with the deviation properly flagged this
-time. This gap is resolved.
+## Full pass over all 7 Acceptance Criteria (standalone, current repo state)
 
-## Gap 3 (STATE.md staleness) — re-examined
-
-New Handoff section (`STATE.md` diff) states: T1-T7 complete, first Verifier
-FAIL and its three gaps, PR **#139** open against `accd:main` (not merged),
-current classification and remedy summary, gates status, and an explicit
-next step ("re-dispatch the Verifier against `4c0ce07..HEAD`"). Cross-checked
-against `tasks.md`'s Execution Evidence table (T1-T7 all "Done") and
-`git log` (`1298fcc` is HEAD, matches). No discrepancy found. **This gap is
-resolved.**
-
-## Spot-check of iteration-1's already-sound findings (not re-derived, just
-## confirmed undisturbed by `1298fcc`)
-
-- `apps/site/lighthouserc.cjs`: `numberOfRuns: 3`, `aggregationMethod:
-  "median"`, `categories:performance": ["error", { minScore: 0.95 }]` —
-  confirmed present and unchanged by re-reading the file directly; `1298fcc`
-  touches no file under `apps/site/`.
-- `git status --short`: clean, no output — tree matches HEAD, no stray files.
-- No new scope creep: `1298fcc`'s stat touches only the 3 spec-tooling files
-  plus this validation file; no `.github/` or `apps/site/` drift.
-
-## Per-AC evidence table (delta from iteration 1)
-
-| AC | Iteration-1 verdict | Iteration-2 verdict | Why |
+| AC | Requirement (current spec.md wording) | Evidence | Verdict |
 | --- | --- | --- | --- |
-| LPB-01 | Yes | Yes (unchanged) | Not touched by this fix; already sound. |
-| LPB-02 | Partially | **Yes, with documented deviation** | `SPEC_DEVIATION` tag + assumption row now present and the reasoning is sound; countervailing point noted above but non-blocking. |
-| LPB-03 | No | **Partially — phenomenon attributed, AC text not reconciled** | Factual claim (historical data unrecoverable) independently verified true via live `gh` query. Substitution is honest, logged, and physically coherent, but it satisfies a *narrowed* version of LPB-03 that the spec's normative text and Independent Test were never updated to state. tasks.md's "Done" label also does not carry the same deviation flag T2 got, understating how large a departure this is. |
-| LPB-04 | N/A | N/A (unchanged) | Correctly not applicable. |
-| LPB-05 | Yes | Yes (unchanged) | Not touched by this fix. |
-| LPB-06 | Yes | Yes (unchanged) | Not touched by this fix. |
-| LPB-07 | Yes | Yes (unchanged) | Not touched by this fix; its output is now also reused as T3's substitute evidence, which is consistent. |
-| STATE.md staleness | Stale (Low gap) | **Fixed** | Handoff rewritten, cross-checked accurate. |
+| **LPB-01** | Lighthouse stage run against production build of `main` completes, emits `.lighthouseci` artifact with per-category + per-metric numbers, score recorded in feature evidence. | `tasks.md` T1 row: local `pnpm site:build` + `pnpm --filter @verchestra/site test:lighthouse` against `http://127.0.0.1:4323/verchestra/`; `performance: 1, accessibility: 1, best-practices: 1, seo: 1`; per-metric LCP 322.8ms, TBT 0ms, Speed Index 322.8ms, CLS 0.0253. `lighthouserc.cjs:35-38` confirms `upload.target: "filesystem"`, `outputDir: ".lighthouseci"` — the artifact-emitting config is live, not just claimed. | **Met** |
+| **LPB-02** | Same unchanged build measured `N=10`; median + minimum recorded; classified by the fixed 3-way rule. | `tasks.md` T2 row: 10 local runs, all scored `performance: 1`, median = min = max = 1 → **not reproduced locally**, correctly escalated per the rule's third branch. CI-side re-classification (T4a/b/c row) used `N=5` `{0.92,1,1,1,1}` → median=1, min=0.92 → **instability**, per the edge case in spec.md ("WHEN the local median and CI median disagree... CI SHALL be treated as authoritative"). The `N=5` vs `N=10` deviation is logged (assumption row, `spec.md` lines ~51-52) and tagged `SPEC_DEVIATION` in `tasks.md` T2 — this is a disclosed, reasoned deviation, not a silent gap, and iteration 2 already independently validated the reasoning holds (additional passing draws cannot move median off 1 or minimum off 0.92). | **Met** (with disclosed, justified N deviation) |
+| **LPB-03** | Classification names specific metric(s) with numeric values; never attributes loss to a passing-assertion metric; MAY substitute a controlled reproduction, explicitly logged, when the classified case's own data is unrecoverable. | `tasks.md` T3 row, tagged `SPEC_DEVIATION`: PR #108's own data confirmed unrecoverable (`gh run view --job=90705185185 --log-failed` — only prints `found: 0.92`, no per-metric breakdown, no artifact uploaded). Substitute: T6 sensor's failing run — `first-contentful-paint` 0.46 (1662-1663ms), `speed-index` 0.74-0.75 (1709-1718ms) carry the loss; `largest-contentful-paint` (0.74-0.75, well under 2500ms threshold) and `cumulative-layout-shift` (0.0, score 1) continued to pass their assertions — the "not attributed to a passing-assertion metric" clause explicitly checked and satisfied. Substitution explicitly disclosed as substitution ("This proves the classified *phenomenon*... it does not and cannot reconstruct PR #108's own lost data"). Matches the amended AC and Independent Test verbatim in structure. | **Met** |
+| **LPB-04** | (Conditional — deterministic branch) Reduce bottleneck metric's cost until median ≥0.95, no threshold edits. | Not applicable — classification was **instability** (B2), not deterministic. `tasks.md` Phase B section correctly shows only the B2 branch (T4b) executed; B1/B3 rows are the conditional-branch table entries, not claimed as done. | **N/A, correctly not invoked** |
+| **LPB-05** | (Conditional — instability branch) Measurement made statistically sound via multi-run aggregate; `categories:performance` stays `minScore: 0.95`. | `apps/site/lighthouserc.cjs:14` `numberOfRuns: 3` (was 1); `:25` `aggregationMethod: "median"` (was implicit `"optimistic"` default); `:27` `"categories:performance": ["error", { minScore: 0.95 }]` — threshold byte-identical to pre-remedy. Commit `3829387`. | **Met** |
+| **LPB-06** | Restored config: full `pnpm site:test` passes; Lighthouse stage wall-clock cost recorded, fits `timeout-minutes: 45` alongside documented ~23-min worst case. | `tasks.md` T5 row: CI run `30637457300`, `Site quality` job 3m43s (up from 2m55s-3m29s baseline, Δ≈+15-45s for 2 extra passes). `.github/workflows/ci.yml:8` `timeout-minutes: 45` leaves >41min margin. T7 row: `pnpm gate:quick` 97/97 pass; `pnpm gate:release` local `spikes/sqlite` fts5 failure independently reconfirmed as pre-existing/environment-only (not this diff's concern, not re-litigated per task instructions) and CI's `Quality gate` job passed on the qualified runtime for every commit on this branch. | **Met** |
+| **LPB-07** | Deliberate regression injected into built site (scratch state) fails the assertion; removal passes; both outcomes recorded; mutation discarded. | `tasks.md` T6 row: 1.5s blocking script injected into gitignored `apps/site/dist/index.html` (never committed); `categories:performance` failed, `found: 0.86, all values: 0.86, 0.86, 0.86` (median correctly not masked); clean rebuild restored `all values: 1, 1, 1`, passed; `git status --short` confirmed clean tree throughout (only gitignored `dist/` touched). | **Met** |
 
-## Gaps found (ranked)
+**Coverage: 7/7 ACs addressed — 6 directly met, 1 (LPB-04) correctly not
+invoked because its precondition (deterministic classification) did not
+hold.** No AC is unaddressed or contradicted by current file state.
 
-1. **(Medium, downgraded from High) LPB-03's normative text was not amended
-   to match the narrower thing it now actually proves.** The factual
-   groundwork is solid (independently re-verified the historical run is
-   truly unrecoverable) and the substitute evidence is honest and physically
-   coherent, so this is no longer a "nothing was ever attributed" gap. But
-   claiming the AC is simply "Done" — without either (a) editing
-   `spec.md:82-84`/`:87` to state explicitly that a controlled reproduction
-   may stand in when the classified case's own data is gone, or (b) tagging
-   `tasks.md`'s T3 row with the same `SPEC_DEVIATION` marker T2 got — leaves
-   a reader of the requirement text alone with an expectation the evidence
-   does not literally meet. Fix: amend the AC/Independent Test wording per
-   the suggested language above, and add a `SPEC_DEVIATION` tag to T3
-   mirroring T2's.
-2. **(Low, informational) LPB-02's N=5 could have been closer to N=10** via
-   a scratch-branch or CLI-flag diagnostic run without touching the
-   committed config; not done. Non-blocking given the classification isn't
-   near a boundary, but worth a one-line acknowledgment that this path was
-   considered and skipped for cost, not impossibility.
+---
 
-## What must happen before PASS
+## Working tree and scope
 
-Either amend `spec.md`'s LPB-03 AC and Independent Test text to explicitly
-allow controlled-reproduction substitution when the original event's data is
-gone, and add the missing `SPEC_DEVIATION` tag to tasks.md's T3 row — or, if
-the author disagrees with my reading that the AC is event-specific, argue
-that explicitly in spec.md rather than leaving the mismatch implicit. This is
-a small textual fix, not new engineering work; the underlying evidence and
-mechanism are otherwise sound and gaps 2 and 3 are fully resolved.
+- `git status --short`: **clean.** No uncommitted changes.
+- `git diff --stat main...fix/lighthouse-performance-budget` (full branch
+  diff vs. `main`): exactly 6 files —
+  `.github/workflows/ci.yml` (+20, score-reporting step only),
+  `.specs/STATE.md` (+/-, handoff bookkeeping),
+  `.specs/features/lighthouse-performance-budget/spec.md` (+184),
+  `.specs/features/lighthouse-performance-budget/tasks.md` (+106),
+  `.specs/features/lighthouse-performance-budget/validation.md` (+220, this
+  file's predecessor versions),
+  `apps/site/lighthouserc.cjs` (+12/-... net small diff).
+  No file outside this feature's direct concern is touched.
+- `spikes/` (including `spikes/sqlite`): **untouched** across the full range
+  (`git diff --stat 4c0ce07..b91eea4 -- spikes/` is empty) — the local
+  `gate:release` fts5 failure noted in T7 is confirmed environmental, not a
+  regression this branch introduced.
+- Accessibility/best-practices/SEO assertions: `lighthouserc.cjs:28-30`, all
+  three still `["error", { minScore: 1 }]`, byte-identical to pre-feature.
+- `categories:performance`: `lighthouserc.cjs:27`, still exactly
+  `["error", { minScore: 0.95 }]` — never lowered, consistent with the issue's
+  explicit prohibition and the Out of Scope table.
+
+## `apps/site/lighthouserc.cjs` — direct re-read, final check
+
+Full file re-read line-by-line at HEAD of `fix/lighthouse-performance-budget`:
+`numberOfRuns: 3` (:14), `aggregationMethod: "median"` (:25),
+`categories:performance` `minScore: 0.95` (:27), `accessibility`/
+`best-practices`/`seo` all `minScore: 1` (:28-30), `largest-contentful-paint`
+`maxNumericValue: 2500` (:31) and `cumulative-layout-shift`
+`maxNumericValue: 0.1` (:32) unchanged, `upload.target: "filesystem"`,
+`outputDir: ".lighthouseci"` (:36-37) unchanged. Nothing drifted across the
+three fix commits (`3829387`, `1298fcc`, `b91eea4`) — the only commit that
+ever touched this file was `3829387`, and neither of the two subsequent
+docs-only fix commits touched it again.
+
+---
+
+## Iteration history (for record)
+
+- **Iteration 1**: FAIL — LPB-03 unattributed (no per-metric data for the
+  historical failure), undocumented N=5-vs-N=10 deviation, stale STATE.md.
+- **Iteration 2**: FAIL, downgraded — historical data confirmed genuinely
+  unrecoverable (independently verified via live `gh` queries) and the
+  substitute evidence confirmed physically coherent, but the substitution was
+  only logged as an assumption, never promoted into LPB-03's own AC text or
+  Independent Test, and tasks.md's T3 lacked the `SPEC_DEVIATION` tag its T2
+  sibling carried.
+- **Iteration 3 (this pass)**: **PASS** — `b91eea4` amended LPB-03's AC text
+  and Independent Test to explicitly permit and bound the substitution, and
+  tagged T3 with `SPEC_DEVIATION` matching T2's pattern. Full fresh 7-AC pass
+  confirms no other gaps. One non-blocking wording observation (the "e.g."
+  in LPB-03 leaves room for future scenarios beyond the illustrated one) is
+  noted above for awareness — it does not need action to ship this feature.
+
+## Blocking vs. non-blocking (final iteration disposition)
+
+- **Blocking issues found: none.** All 7 ACs have current, re-derivable
+  evidence; both prior gaps are closed with matching, comparable fixes; no
+  scope creep; tree is clean.
+- **Non-blocking notes for future awareness** (loop is exhausted at 3
+  iterations; these do not gate this PASS):
+  1. LPB-03's "e.g." example is illustrative, not an exhaustive enumeration of
+     when substitution is permitted — a future invocation of this clause for
+     a scenario other than "historical run predating instrumentation" should
+     get extra scrutiny on whether the "no recoverable data" premise truly
+     holds.
+  2. The local `pnpm gate:release` `spikes/sqlite` fts5 gap (Node v23.11.0
+     missing FTS5) is a pre-existing local-environment limitation, unrelated
+     to this diff, and independently confirmed passing on the qualified CI
+     runtime (Node v24.14.0) — not re-litigated per this task's scope, per
+     the standing instruction not to re-run `gate:release` in this pass.
+
+**Recommendation**: Ready for human review and merge of PR #139. This Verifier
+does not merge — that boundary is human-only per `AGENTS.md`.
