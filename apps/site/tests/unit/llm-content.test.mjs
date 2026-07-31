@@ -21,7 +21,7 @@ test("root llms.txt is the exact deterministic concise projection", async () => 
   const expected = compileLlmTxt(status);
   const actual = await readFile(new URL("../../../../llms.txt", import.meta.url), "utf8");
   assert.equal(actual, expected);
-  assert.match(actual, /T68a complete; T68b next/u);
+  assert.match(actual, /T68b complete; T68c next/u);
   assert.match(actual, /does not guarantee indexing, SEO ranking, training inclusion, or crawler behavior/u);
 });
 
