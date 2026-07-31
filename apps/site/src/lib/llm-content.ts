@@ -9,6 +9,7 @@ import {
   compileQualificationStatus,
   extractDescription,
   extractTitle,
+  QUALIFICATION_REPORT_FILE,
   resolveRepositoryPath,
   type QualificationStatus
 } from "./repository-content.ts";
@@ -126,7 +127,7 @@ export async function collectLlmDocuments(repositoryRoot: URL | string): Promise
 
   const qualificationDirectory = resolveRepositoryPath(root, "docs/qualification");
   for (const entry of (await readdir(qualificationDirectory))
-    .filter((name) => /^t\d{2}-validation\.md$/u.test(name))
+    .filter((name) => QUALIFICATION_REPORT_FILE.test(name))
     .sort()) {
     const sourcePath = `docs/qualification/${entry}`;
     const markdown = normalize(await readFile(resolveRepositoryPath(root, sourcePath), "utf8"));

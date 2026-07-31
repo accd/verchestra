@@ -2,11 +2,15 @@ import sitemap from "@astrojs/sitemap";
 import starlight from "@astrojs/starlight";
 import { defineConfig } from "astro/config";
 import { llmArtifactsIntegration } from "./src/lib/llm-content.ts";
+import { qualificationSidebarItems } from "./src/lib/repository-content.ts";
 
-const qualificationEvidenceItems = Array.from({ length: 68 }, (_, index) => {
-  const task = String(index + 1).padStart(2, "0");
-  return { label: `T${task} validation`, slug: `docs/qualification/t${task}-validation` };
-});
+// Derived from the reports that actually exist, not from a count. A fixed 68
+// silently omitted every inserted task, so a report could be published and
+// loaded while being unreachable from the navigation that is supposed to list it.
+const qualificationEvidenceItems = qualificationSidebarItems(new URL("../../", import.meta.url));
+
+if (qualificationEvidenceItems.length === 0) throw new Error("no qualification reports found for the sidebar");
+const qualificationEvidenceLabel = `${qualificationEvidenceItems[0]!.label.split(" ")[0]}–${qualificationEvidenceItems[qualificationEvidenceItems.length - 1]!.label.split(" ")[0]} evidence`;
 
 export default defineConfig({
   site: "https://accd.github.io",
@@ -150,7 +154,7 @@ export default defineConfig({
           items: [
             { label: "Qualification overview", slug: "docs/qualification" },
             {
-              label: "T01–T68 evidence",
+              label: qualificationEvidenceLabel,
               collapsed: true,
               items: qualificationEvidenceItems
             },
