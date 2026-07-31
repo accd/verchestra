@@ -2,7 +2,7 @@
 schema: verchestra-feature-handoff/v1
 feature: policy-hardening
 issue: 54
-status: verification
+status: complete
 branch: feat/t68d-policy-hardening
 baseRevision: f228e4ac331e843e340ff770141e768091b7bc7c
 lastCompletedTask: T4

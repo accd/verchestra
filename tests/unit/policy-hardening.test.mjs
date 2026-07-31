@@ -91,6 +91,10 @@ test("explanations name the determining policy, its layer, and its statement", (
   for (const entry of explanation.determining) {
     assert.notEqual(entry.layer, "unknown");
     assert.ok(entry.statement.length > 0);
+    // POL-02: the entry must carry the real compiled policy id, not a
+    // placeholder - an explanation that cannot name its policy explains nothing.
+    assert.match(entry.policyId, /^[A-Za-z]+\.[A-Za-z0-9_-]+$/u);
+    assert.ok(denied.determiningPolicies.includes(entry.policyId), `${entry.policyId} must be a determining policy`);
   }
   assert.match(explanation.summary, /^denied: /u);
 });
@@ -203,4 +207,19 @@ test("bundle construction rejects malformed input", () => {
       buildPolicyBundle({ ...bundleInput(), policies: [...bundleInput().policies, bundleInput().policies[0]] }, crypto),
     { code: "VES_POLICY_BUNDLE_INVALID" }
   );
+});
+
+// POL-04: the per-policy source digests are recomputed from the sources on
+// verify, not trusted from the file. Without this, tampered Cedar text whose
+// forger also updated the bundle-level digest - and re-signed it with a key the
+// verifier accepts - would pass, and the signature check alone cannot see it.
+test("a policy source that does not match its recorded digest fails verification", () => {
+  const crypto = bundleCrypto();
+  const bundle = buildPolicyBundle(bundleInput(), crypto);
+  const tampered = structuredClone(bundle);
+  // Tamper one policy source while keeping its recorded sourceDigest, then
+  // recompute and re-sign the bundle-level digest so only the per-policy
+  // recomputation can catch the mismatch.
+  tampered.policies[0] = { ...tampered.policies[0], cedar: "permit(principal, action, resource);" };
+  assert.throws(() => verifyPolicyBundle(tampered, crypto), /source does not match its recorded digest/u);
 });
