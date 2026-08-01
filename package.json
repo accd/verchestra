@@ -11,6 +11,9 @@
   "scripts": {
     "format:check": "prettier --check package.json pnpm-workspace.yaml tsconfig.json eslint.config.mjs .prettierrc.json scripts tests apps packages",
     "lint": "eslint eslint.config.mjs scripts tests apps packages",
+    "complexity:report": "node scripts/complexity.mjs report",
+    "complexity:check": "node scripts/complexity.mjs check",
+    "complexity:update": "node scripts/complexity.mjs update",
     "typecheck": "tsc --noEmit",
     "build": "tsc --noEmit",
     "agent:context": "node scripts/agent-context.mjs",
