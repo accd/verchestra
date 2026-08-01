@@ -9,7 +9,22 @@ Implement these tasks with the `tlc-spec-driven` skill: **activate it by name an
 ---
 
 **Design**: `.specs/features/canonical-json/design.md`
-**Status**: Draft
+**Status**: In Progress — Batch 1 (T1–T8) complete, Batch 2 (T9–T13) pending
+
+**Batch 1 results:**
+
+| Task | Commit | Note |
+| --- | --- | --- |
+| T1 | `3031d66` | |
+| T2 | `58bd778` | Verified against published RFC 8785 test vectors |
+| T3 | `326e8f9` | |
+| T4 | `e923c68` | |
+| T5 | `289d15c` | |
+| T6 | `a872957` | |
+| T7 | `acedfcc` | 2 pre-existing tests updated (regex `sha256:` → `v2:sha256:`) with owner approval — see `handoff.md` |
+| T8 | `2ff7eca` | |
+
+`gate:full` confirmed zero net regressions from T7/T8 (integration 450/525, e2e 116/134, fault 170/217 — identical pass/fail counts with and without the change; remainder is pre-existing native-`sqlite` baseline noise, confirmed via `git stash` on both). `gate:quick` PASS after T8.
 
 ---
 
