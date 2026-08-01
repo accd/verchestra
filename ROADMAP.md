@@ -4,7 +4,10 @@ Verchestra is in `0.0.0-qualification`. The roadmap is intentionally evidence-dr
 
 ## Completed foundation
 
-The repository has qualified the foundations through **T68**:
+The original foundation chain **T01–T68** is complete, and the inserted
+hardening chain **T68a–T68d** is complete. The current position in the chain
+is derived, not written here: `corepack pnpm agent:context` reports it from
+the validation reports on disk. The foundation covers:
 
 - Runtime, Pi, Claude Code, Codex, OpenCode/Qwen, Cedar, SQLite, isolation, and update-key primitives
 - Core schemas, integrity, workflow state, durable effects, local state, workspace placement, and safe initialization
@@ -43,7 +46,8 @@ The authoritative implementation backlog is maintained in [GitHub Issues](https:
 Inserted by human decision on 2026-07-26 after the verified external review
 triage in `.specs/features/external-review-triage/`. Existing T01–T68
 evidence and the T69–T77 numbering are unchanged, preserving qualification
-traceability. Each inserted task has a tracked specification:
+traceability. All four inserted tasks are complete, each with a validation
+report in `docs/qualification/`. Each has a tracked specification:
 
 - **T68a Key lifecycle and portability proof** — `.specs/features/key-lifecycle/`
 - **T68b Budget enforcement** — `.specs/features/budget-enforcement/`
@@ -66,5 +70,5 @@ as part of starting T68a.)
 Agent-ready repository instructions, portable contribution handoffs,
 provider-neutral evaluation, and LLM-readable documentation are maintenance
 work independent of the product task chain. They do not advance product
-qualification: T68 remains complete and the inserted T68a–T68d chain
-precedes T69.
+qualification: the derived counter moves only when a task in the chain above
+gains its validation report, regardless of activity in this stream.
