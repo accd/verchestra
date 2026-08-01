@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { access, readFile, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, test } from "node:test";
 import { fileURLToPath } from "node:url";
@@ -166,6 +166,38 @@ test("hard crash during backup restoration resumes idempotently", async () => {
   assert.equal(spawnSync(process.execPath, [runner, root], { windowsHide: true }).status, 77);
   assert.equal(spawnSync(process.execPath, [runner, root, "recover"], { windowsHide: true }).status, 78);
   await assert.rejects(access(join(root, ".gitignore")), { code: "ENOENT" });
+
+  const receipt = await new SafeInitService().recover({ controlRoot: root });
+  assert.deepEqual(receipt, { recoveredTransactions: 1, restoredChanges: 1 });
+  assert.deepEqual(await byteSnapshot(root), before);
+});
+
+// The write path only ever produces schemaVersion: 2 journals now (T9), so a genuine hard
+// process crash can no longer leave a schemaVersion: 1 record behind. This reconstructs an
+// interrupted-recovery scenario for a pinned, genuinely-V1-shaped journal (schemaVersion: 1,
+// sha256: planId and digests) the way one would have been left on disk before this slice,
+// exercising the same "restore" reconciliation branch the hard-crash tests exercise for V2.
+test("interrupted recovery of a pinned schemaVersion 1 journal restores the prior backup", async () => {
+  const root = await scannerRoot();
+  await initRepository(root, { ".verchestra/workspace.yaml": "old content\n" });
+  const before = await byteSnapshot(root);
+  await writeFile(join(root, ".verchestra", "workspace.yaml"), "new content\n", "utf8");
+  const staging = join(root, ".verchestra", ".staging-018f0b6d-7b1a-4abc-89ef-0123456789ab");
+  await mkdir(staging, { recursive: true });
+  const journal = {
+    schemaVersion: 1,
+    planId: "sha256:de6c66f21be1a573a41e0830a1bfedecf3319465716429dd7e32d7df0a6e607e",
+    changes: [
+      {
+        logicalPath: ".verchestra/workspace.yaml",
+        action: "update",
+        expectedDigest: "sha256:80f792b40143faad03d0b28e51a7302b41613095209a0e1dec701a9310de4a9b",
+        contentDigest: "sha256:e0c857da2c2660301c4503ba6fd0022a05498252bce2ccffaaa00109f7dbe7b3"
+      }
+    ]
+  };
+  await writeFile(join(staging, "transaction.json"), `${JSON.stringify(journal)}\n`, "utf8");
+  await writeFile(join(staging, "backup-0"), "old content\n", "utf8");
 
   const receipt = await new SafeInitService().recover({ controlRoot: root });
   assert.deepEqual(receipt, { recoveredTransactions: 1, restoredChanges: 1 });

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFile, readdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, test } from "node:test";
 
@@ -256,6 +256,122 @@ test("InitPreview.schemaVersion stays 1 — it names the preview envelope, not t
   const preview = await new SafeInitService().preview({ controlRoot: root, files: files() });
   assert.equal(preview.schemaVersion, 1);
   assert.match(preview.planId, /^v2:sha256:[a-f0-9]{64}$/u);
+});
+
+async function writeStagedJournal(root, journal) {
+  const staging = join(root, ".verchestra", ".staging-018f0b6d-7b1a-4abc-89ef-0123456789ab");
+  await mkdir(staging, { recursive: true });
+  await writeFile(join(staging, "transaction.json"), `${JSON.stringify(journal)}\n`, "utf8");
+  return staging;
+}
+
+// Computed with V1's buildInventoryFingerprint against the change below, pinned before this
+// slice existed — this is what a genuinely persisted schemaVersion: 1 journal record looks like.
+const PINNED_V1_CONTENT_DIGEST = "sha256:afa67905dcf0707404144ce81f1b36a147fbac53d1ddcd786f1b3d7ddafe2c3b";
+const PINNED_V1_PLAN_ID = "sha256:bd6af54bebc47aadd7346cabdeef1e58a7435d7bb082c336bfb5fd1d187745c8";
+const PINNED_V1_JOURNAL = Object.freeze({
+  schemaVersion: 1,
+  planId: PINNED_V1_PLAN_ID,
+  changes: [
+    {
+      logicalPath: ".verchestra/workspace.yaml",
+      action: "create",
+      expectedDigest: null,
+      contentDigest: PINNED_V1_CONTENT_DIGEST
+    }
+  ]
+});
+
+test("a pinned schemaVersion 1 journal written before this slice still verifies and recovers", async () => {
+  const root = await scannerRoot();
+  await initRepository(root);
+  await writeStagedJournal(root, PINNED_V1_JOURNAL);
+  const receipt = await new SafeInitService().recover({ controlRoot: root });
+  assert.deepEqual(receipt, { recoveredTransactions: 1, restoredChanges: 0 });
+  const remaining = await readdir(join(root, ".verchestra")).catch((error) => {
+    if (error.code === "ENOENT") return [];
+    throw error;
+  });
+  assert.equal(
+    remaining.some((name) => name.startsWith(".staging-")),
+    false
+  );
+});
+
+test("a schemaVersion 2 journal verifies and recovers with V2", async () => {
+  const root = await scannerRoot();
+  await initRepository(root, { "README.md": "fixture\n" });
+  let journal;
+  const service = new SafeInitService({
+    hooks: {
+      afterStage: async () => {
+        journal = await stagedJournal(root);
+      }
+    }
+  });
+  await service.apply(await service.preview({ controlRoot: root, files: files() }));
+  assert.equal(journal.schemaVersion, 2);
+  // The transaction already published successfully, so a second recover() call sees no
+  // pending staging directory — proving the journal never blocked normal completion.
+  const receipt = await service.recover({ controlRoot: root });
+  assert.deepEqual(receipt, { recoveredTransactions: 0, restoredChanges: 0 });
+});
+
+test("schemaVersion 1 with a v2: planId is rejected as invalid, never cross-verified", async () => {
+  const root = await scannerRoot();
+  await initRepository(root);
+  await writeStagedJournal(root, {
+    schemaVersion: 1,
+    planId: "v2:sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    changes: PINNED_V1_JOURNAL.changes
+  });
+  await assert.rejects(new SafeInitService().recover({ controlRoot: root }), {
+    code: "VES_INIT_RECOVERY_CONFLICT"
+  });
+});
+
+test("schemaVersion 2 with a bare sha256: planId is rejected as invalid, never cross-verified", async () => {
+  const root = await scannerRoot();
+  await initRepository(root);
+  await writeStagedJournal(root, {
+    schemaVersion: 2,
+    planId: PINNED_V1_PLAN_ID,
+    changes: PINNED_V1_JOURNAL.changes
+  });
+  await assert.rejects(new SafeInitService().recover({ controlRoot: root }), {
+    code: "VES_INIT_RECOVERY_CONFLICT"
+  });
+});
+
+test("a V2 journal whose changes were tampered with still fails the plan digest check", async () => {
+  const root = await scannerRoot();
+  await initRepository(root, { "README.md": "fixture\n" });
+  let journal;
+  const service = new SafeInitService({
+    hooks: {
+      afterStage: async () => {
+        journal = await stagedJournal(root);
+        throw new Error("crash before publication so the tampered journal survives for inspection");
+      }
+    }
+  });
+  await assert.rejects(service.apply(await service.preview({ controlRoot: root, files: files() })), {
+    code: "VES_INIT_APPLY_FAILED"
+  });
+  const root2 = await scannerRoot();
+  await initRepository(root2, { "README.md": "fixture\n" });
+  await writeStagedJournal(root2, {
+    ...journal,
+    changes: [
+      {
+        ...journal.changes[0],
+        contentDigest: "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+      }
+    ]
+  });
+  await assert.rejects(new SafeInitService().recover({ controlRoot: root2 }), {
+    code: "VES_INIT_RECOVERY_CONFLICT"
+  });
 });
 
 test("two previews with different content produce different v2 planIds", async () => {
