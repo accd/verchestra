@@ -82,6 +82,29 @@ test("third-party imports are restricted to adapter packages and the composition
   assert.deepEqual(inspectSource("distribution", `import { Updater } from "tuf-js";`), []);
 });
 
+test("every packages/domain/src/canonical source file carries no third-party or node: import", async () => {
+  const directory = new URL("../../packages/domain/src/canonical/", import.meta.url);
+  const entries = await readdir(directory, { withFileTypes: true });
+  const files = entries.filter((entry) => entry.isFile() && entry.name.endsWith(".ts"));
+  assert.equal(files.length > 0, true);
+  for (const file of files) {
+    const source = await readFile(new URL(file.name, directory), "utf8");
+    assert.deepEqual(inspectSource("domain", source), []);
+  }
+});
+
+test("the third-party import rule still fires for a canonicalize import in domain", () => {
+  assert.deepEqual(inspectSource("domain", 'import canonicalize from "canonicalize";'), [
+    { code: "VES_ARCH_THIRD_PARTY_IMPORT", detail: "canonicalize" }
+  ]);
+});
+
+test("the domain node: import rule still fires for a node:crypto import in domain", () => {
+  assert.deepEqual(inspectSource("domain", 'import { createHash } from "node:crypto";'), [
+    { code: "VES_ARCH_DOMAIN_NODE_IMPORT", detail: "node:crypto" }
+  ]);
+});
+
 test("current product sources contain no dependency-boundary violations", async () => {
   assert.deepEqual(await scanWorkspace(new URL("../..", import.meta.url)), []);
 });
