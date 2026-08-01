@@ -2,13 +2,13 @@
 schema: verchestra-feature-handoff/v1
 feature: self-test
 issue: 10
-status: planned
-branch: feat/t69-self-test-specs
-baseRevision: 3d5846b8b2a6e40d37b14807a7142125531040af
-lastCompletedTask: null
-nextTask: T1
-lastGate: pnpm gate:quick
-updatedAt: 2026-08-01T12:00:00Z
+status: in_progress
+branch: feat/t69-self-test-t1
+baseRevision: ac251e4fe4403600c3351c6f7a39cbd2ee00a59b
+lastCompletedTask: T1
+nextTask: T2
+lastGate: pnpm gate:security
+updatedAt: 2026-08-01T13:30:00Z
 ---
 
 # Scope
@@ -19,10 +19,12 @@ code exists yet.
 
 # Next Exact Action
 
-T1: add `packages/self-test` to `EXPECTED_PACKAGES` in
-`scripts/architecture.mjs`, the repository-map row, and the gate-selection
-security rule, then create the package skeleton — in that order, because the
-boundary test fails the moment the directory exists undeclared.
+T2: build the rules in `packages/application/src/self-test/` — errors, the
+closed profile registry (`smoke | full | workspace | drivers`, sealed by T57
+evidence), the non-overlap rule over `RootFacts`, Sentinel Set comparison,
+the quarantine state machine, report allowlist rules, port interfaces, and
+the orchestrator — with unit tests in `tests/unit/`. Ports return facts,
+never verdicts.
 
 # Blockers
 

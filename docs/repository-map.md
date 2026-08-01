@@ -30,6 +30,7 @@ independent build-time documentation projection.
 | `packages/connectors` | Jira and Confluence boundary adapters | `contracts`, `domain`, `application` | Connector integration/fault/security | Integration qualification reports |
 | `packages/extension-host` | Governed extension loading boundary | `contracts`, `domain`, `application` | Skill/extension unit and security tests | Architecture and qualification reports |
 | `packages/distribution` | Hermetic bundles, TUF resolution, activation, rollback, and uninstall | `contracts`, `domain`, `application` | Distribution E2E/fault/security/release | Distribution architecture and T66–T68 evidence |
+| `packages/self-test` | Self-Test trust domain facts: disposable-root provisioning, path-fact probing, sentinel capture, cleanup, quarantine mechanics, test-only keys | `contracts`, `domain`, `application` | Self-Test unit/security/fault tests | T69 specification in `.specs/features/self-test/` |
 
 The executable source of truth for package edges is
 `scripts/architecture.mjs`; `tests/architecture/repository-boundaries.test.mjs`
