@@ -11,6 +11,8 @@
 //   `JSON.stringify`, which is already RFC 8785-conformant for finite values
 //   (assumption A2).
 
+import { assertCanonicalJsonValue } from "./canonical-guard.ts";
+
 function encodeString(value: string): string {
   return JSON.stringify(value);
 }
@@ -40,5 +42,6 @@ function encodeValue(value: unknown): string {
 }
 
 export function canonicalizeJsonV2(value: unknown): string {
+  assertCanonicalJsonValue(value);
   return encodeValue(value);
 }
