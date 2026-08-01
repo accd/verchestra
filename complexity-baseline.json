@@ -522,9 +522,6 @@
     "scripts/agent-readiness.mjs :: Async function 'checkMarkdownLinks'": [
       24
     ],
-    "scripts/agent-readiness.mjs :: Async function 'checkRepository'": [
-      45
-    ],
     "scripts/agent-readiness.mjs :: Async function 'compileAgentContext'": [
       11
     ],
