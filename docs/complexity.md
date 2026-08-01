@@ -99,10 +99,12 @@ branch.
 
 Measured on the reference machine: the full report sweep (production plus
 tests, 395 files) runs in about 12 seconds cold; the enforcement sweep skips
-the test roots and is smaller. `complexity:check` is not yet part of any gate
-profile: enforcement placement is #160 and waits for an explicit owner
-decision on the strategy. Until then the check is available locally and in
-review, and this document plus the committed baseline are the policy source.
+the test roots and ran in 7.5 seconds warm. The owner approved the
+baseline-and-ratchet strategy in #160, so `complexity:check` runs in **all
+five gate profiles**, immediately after `lint`; the gate-selection contract
+test asserts that placement. The check runs its own traversal rather than
+piggybacking on `lint` because ESLint's rule model cannot express a
+per-function baseline; the measured cost was accepted with the decision.
 
 ## Interpreting a failure
 
