@@ -1,4 +1,4 @@
-import { Digest, LogicalPath, StableId } from "@verchestra/domain";
+import { Digest, LogicalPath, normalizeDeclaredSet, StableId } from "@verchestra/domain";
 import type {
   DesiredArtifact,
   EffectivePlacement,
@@ -25,7 +25,7 @@ export type {
   WritePlan
 } from "@verchestra/application";
 
-import { buildInventoryFingerprint, WorkspaceScanError } from "../scanner/scanner-primitives.ts";
+import { buildInventoryFingerprintV2, WorkspaceScanError } from "../scanner/scanner-primitives.ts";
 
 function placementError(code: string, message: string, options?: ErrorOptions): WorkspaceScanError {
   return new WorkspaceScanError(code, message, options);
@@ -265,12 +265,9 @@ export function createWritePlan(desired: readonly DesiredArtifact[], snapshot: P
     byTarget.set(key, write);
   }
   const writes = Object.freeze(
-    [...byTarget.values()].sort(
-      (left, right) =>
-        left.gitOwnerId.localeCompare(right.gitOwnerId) || left.logicalPath.localeCompare(right.logicalPath)
-    )
+    normalizeDeclaredSet([...byTarget.values()], (write) => `${write.gitOwnerId}\0${write.logicalPath}`)
   );
   const ownerIds = Object.freeze([...new Set(writes.map((write) => write.gitOwnerId))].sort());
   const portable = Object.freeze({ schemaVersion: 1 as const, ownerIds, writes });
-  return Object.freeze({ ...portable, planId: buildInventoryFingerprint(portable) });
+  return Object.freeze({ ...portable, planId: buildInventoryFingerprintV2(portable) });
 }

@@ -194,7 +194,7 @@ test("WritePlan is deterministic and content-addressed", () => {
   const first = createWritePlan([desired("spec", "b"), desired("gate", "a")], snapshot());
   const second = createWritePlan([desired("gate", "a"), desired("spec", "b")], snapshot());
   assert.deepEqual(second, first);
-  assert.match(first.planId, /^sha256:[a-f0-9]{64}$/u);
+  assert.match(first.planId, /^v2:sha256:[a-f0-9]{64}$/u);
   assert.equal(Object.isFrozen(first), true);
 });
 
@@ -291,6 +291,22 @@ test("property: changing content changes the WritePlan identity", () => {
   const first = createWritePlan([desired("spec", "a", `sha256:${"1".repeat(64)}`)], snapshot());
   const second = createWritePlan([desired("spec", "a", `sha256:${"2".repeat(64)}`)], snapshot());
   assert.notEqual(first.planId, second.planId);
+});
+
+test("WritePlan orders writes by code unit, not locale", () => {
+  // ".specs/Zulu" < ".specs/alpha" by UTF-16 code unit ('Z' = 0x5A < 'a' = 0x61),
+  // but locale-aware comparison (e.g. en collation) would order "alpha" first.
+  const plan = createWritePlan([desired("spec", "Zulu"), desired("spec", "alpha")], snapshot());
+  assert.deepEqual(
+    plan.writes.map((write) => write.logicalPath),
+    ["apps/api/.specs/Zulu", "apps/api/.specs/alpha"]
+  );
+});
+
+test("WritePlan planId is self-describing V2 and differs from a V1-format value", () => {
+  const plan = createWritePlan([desired("spec", "a")], snapshot());
+  assert.match(plan.planId, /^v2:sha256:[a-f0-9]{64}$/u);
+  assert.equal(plan.planId.startsWith("sha256:"), false);
 });
 
 test("placement public errors are exact and schema-valid", async () => {
