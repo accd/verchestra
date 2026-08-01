@@ -47,7 +47,10 @@ test("the sealed package verifies against its own trust root with derived pendin
 test("the published files carry no machine-local paths or secret-shaped content", async () => {
   for (const url of [jsonUrl, markdownUrl]) {
     const source = await readFile(url, "utf8");
-    assert.doesNotMatch(source, /[A-Za-z]:\\\\|[A-Za-z]:\\[Uu]sers|\/home\/|\/Users\/|BEGIN [A-Z ]*PRIVATE KEY/u);
+    assert.doesNotMatch(
+      source,
+      /[A-Za-z]:\\\\|[A-Za-z]:\\[Uu]sers|\/home\/|\/Users\/|BEGIN [A-Z ]*PRIVATE KEY|ghp_[A-Za-z0-9]|sk-[A-Za-z0-9]/u
+    );
   }
 });
 
