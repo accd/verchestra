@@ -2,13 +2,13 @@
 schema: verchestra-feature-handoff/v1
 feature: public-proof-artifact
 issue: 155
-status: planned
-branch: docs/155-public-proof-artifact-spec
-baseRevision: 4fb899498db4f170dd8e1b6fc7c8f5aa8e988243
-lastCompletedTask: null
-nextTask: Owner review of spec.md
+status: verification
+branch: feat/155-execution-package-artifact
+baseRevision: d243d9cb750dfa4523ed58c457788cb514516f46
+lastCompletedTask: T4
+nextTask: Independent verification and human review of the implementation PR
 lastGate: pnpm gate:quick
-updatedAt: 2026-08-01T14:30:00Z
+updatedAt: 2026-08-01T15:00:00Z
 ---
 
 # Scope
@@ -20,18 +20,21 @@ by owner instruction.
 
 # Next Exact Action
 
-Owner reviews `spec.md` (requirements PRF-01..06) and answers the two open
-decisions: seed fixture (recommended: the qualified cross-backend
-delivery-proof fixture) and site route name. Then the Design phase bounds
-the generator location and the build-time projection boundary.
+Independent verification of the implementation PR, then human review and
+merge. After merge, #155 closes: the artifact, page, README link, drift
+tests, and sensor evidence are all in.
 
 # Blockers
 
-Owner review of this specification.
+None.
 
 # Decisions
 
-- First artifact is an Execution Package (owner-approved direction from the
-  2026-08 Plan Mode audit).
+- First artifact is an Execution Package (owner-approved); seed is the
+  canonical execution-package fixture input (the same input the qualified
+  cross-backend delivery journey builds from); route is
+  `docs/proof/execution-package` (owner approved defaults with "FAÇA TUDO").
+- Determinism closed with a committed TEST-ONLY Ed25519 key; all other
+  inputs were already pinned. See design.md.
 - The site consumes committed, reviewed bytes only; generation never runs in
   deploy. NestJS: not applicable.

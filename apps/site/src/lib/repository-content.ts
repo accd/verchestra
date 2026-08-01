@@ -45,6 +45,15 @@ export const repositoryContentSources: readonly RepositoryContentSource[] = [
     search: true
   },
   {
+    id: "execution-package-proof",
+    sourcePath: "docs/proof/execution-package.md",
+    route: "docs/proof/execution-package",
+    description: "A real, signed, fixture-generated Execution Package you can inspect and regenerate.",
+    section: "Proof",
+    order: 1,
+    search: true
+  },
+  {
     id: "roadmap",
     sourcePath: "ROADMAP.md",
     route: "roadmap",

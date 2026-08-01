@@ -132,6 +132,11 @@ for (const file of htmlFiles) {
   }
 }
 
+const proofPage = await readFile(join(distRoot, "docs", "proof", "execution-package", "index.html"), "utf8");
+assert.match(proofPage, /Fixture-generated, not a live run/u);
+assert.match(proofPage, /proof:generate/u);
+assert.match(proofPage, /artifactId/u);
+
 const homepage = await readFile(join(distRoot, "index.html"), "utf8");
 assert.match(homepage, /0\.0\.0-qualification/u);
 assert.match(homepage, /T68d verified/u);
