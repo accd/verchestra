@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import { test } from "node:test";
 
 const scoped = [
@@ -48,4 +48,14 @@ test("repository map covers the approved workspace packages", async () => {
   const map = await readFile(new URL("../../docs/repository-map.md", import.meta.url), "utf8");
   const { EXPECTED_PACKAGES } = await import("../../scripts/architecture.mjs");
   for (const path of [...EXPECTED_PACKAGES, "apps/site"]) assert.match(map, new RegExp(`\\x60${path}\\x60`, "u"), path);
+});
+
+// AGENTS.md declares repository and website content English-only. A translated
+// README was merged once against that rule and reverted by owner decision, so
+// the rule is now enforced rather than only stated: canonical root documents
+// have exactly one language.
+test("no translated root README exists", async () => {
+  const entries = await readdir(new URL("../../", import.meta.url));
+  const translated = entries.filter((entry) => /^README\..+\.md$/iu.test(entry));
+  assert.deepEqual(translated, [], "translated READMEs are excluded by the English-only policy");
 });
