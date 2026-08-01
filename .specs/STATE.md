@@ -52,6 +52,13 @@
 - **Rationale:** The review's blocker (ephemeral keys breaking cross-machine verification) and the cheap, high-value controls (budget, repair, policy) gate the product's central portability promise; existing T01–T68 evidence and T69–T77 numbering are preserved.
 - **Consequences:** Derived status surfaces (`agent:context`, root `AGENTS.md`, `llms.txt`, site contracts) still assert "T68 complete; T69 next" and are migrated deliberately as part of starting T68a, with the corresponding gate-script and contract-test updates reviewed in that change.
 
+### AD-009 — Domain packages take no third-party dependency; canonicalization is implemented internally
+
+- **Status:** active
+- **Decision:** `packages/domain` takes no third-party dependency. Where a domain package needs a capability an already-qualified third-party library provides, the rule stays: implement the primitive internally in domain rather than widen `scripts/architecture.mjs:67-69`'s third-party import boundary (`VES_ARCH_THIRD_PARTY_IMPORT`). The first instance is `canonicalizeJsonV2` (RFC 8785 / JCS), an internal, zero-import encoder in `packages/domain/src/canonical/canonical-json.ts`, decided 2026-08-01 during the `canonical-json` T3 slice (`.specs/features/canonical-json/`).
+- **Rationale:** `scripts/architecture.mjs:67-69` already rejects any non-relative, non-`ajv` import in `contracts`, `domain`, or `application` as `VES_ARCH_THIRD_PARTY_IMPORT`. Reusing the already-qualified `canonicalize@3.0.0` implementation (used by `packages/evidence/src/integrity/canonical.ts` for V1) in domain would require widening that boundary and a lockfile update — a dependency and architecture decision, not an implementation detail. Writing the encoder internally avoids widening the control; the JS parts of JCS that are genuinely risky to reimplement (number serialization) are delegated to `JSON.stringify`, which is already RFC 8785-conformant for finite values.
+- **Consequences:** `packages/evidence`'s V1 primitive stays on `canonicalize@3.0.0`; `packages/domain`'s V2 primitive is an independent implementation, anchored to the same published RFC 8785 vectors rather than to each other (`tests/unit/canonical-json-v2.test.mjs`). A future consolidation of the two implementations is a separate, explicitly reviewed migration. Any later domain package that would otherwise reach for a third-party library follows the same pattern: implement internally, or bring an explicit boundary-widening decision to the owner first.
+
 ## Handoff
 
 - **Feature:** `external-review-triage`
