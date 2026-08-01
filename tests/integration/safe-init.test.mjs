@@ -325,8 +325,13 @@ test("schemaVersion 1 with a v2: planId is rejected as invalid, never cross-veri
     planId: "v2:sha256:0000000000000000000000000000000000000000000000000000000000000000",
     changes: PINNED_V1_JOURNAL.changes
   });
-  await assert.rejects(new SafeInitService().recover({ controlRoot: root }), {
-    code: "VES_INIT_RECOVERY_CONFLICT"
+  await assert.rejects(new SafeInitService().recover({ controlRoot: root }), (error) => {
+    assert.equal(error.code, "VES_INIT_RECOVERY_CONFLICT");
+    // Distinguishes the explicit schemaVersion/planId prefix pre-check from the
+    // downstream digest-mismatch check further down parseRecoveryJournal, which
+    // would coincidentally reject this same input for a different reason.
+    assert.equal(error.cause.message, "invalid journal envelope");
+    return true;
   });
 });
 
@@ -338,8 +343,10 @@ test("schemaVersion 2 with a bare sha256: planId is rejected as invalid, never c
     planId: PINNED_V1_PLAN_ID,
     changes: PINNED_V1_JOURNAL.changes
   });
-  await assert.rejects(new SafeInitService().recover({ controlRoot: root }), {
-    code: "VES_INIT_RECOVERY_CONFLICT"
+  await assert.rejects(new SafeInitService().recover({ controlRoot: root }), (error) => {
+    assert.equal(error.code, "VES_INIT_RECOVERY_CONFLICT");
+    assert.equal(error.cause.message, "invalid journal envelope");
+    return true;
   });
 });
 
