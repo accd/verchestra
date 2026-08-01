@@ -3,12 +3,12 @@ schema: verchestra-feature-handoff/v1
 feature: self-test
 issue: 10
 status: in_progress
-branch: feat/t69-self-test-t2
-baseRevision: c8d224be7dfff5f597435dae1a08ba4bd4ee6bf6
-lastCompletedTask: T2
-nextTask: T3
+branch: feat/t69-self-test-t3
+baseRevision: c6cb743f4c7b1683655dc0f783b6d6f1143b200c
+lastCompletedTask: T3
+nextTask: T4
 lastGate: pnpm gate:security
-updatedAt: 2026-08-01T16:00:00Z
+updatedAt: 2026-08-01T16:45:00Z
 ---
 
 # Scope
@@ -19,13 +19,25 @@ code exists yet.
 
 # Next Exact Action
 
-T3: the adapter facts in `packages/self-test/` — disposable-root
-provisioning and path-fact probing (realpath, junction, device and inode),
-sentinel capture, the bounded fixture factory, cleanup with residue
-reporting, quarantine mechanics, and test-only key material — implementing
-the `SelfTestPorts` fact contracts from
-`packages/application/src/self-test/self-test.ts`. Security tests: symlink
-and junction escape captured in `linkChain`, production-material rejection.
+T4: `apps/vestra-cli/src/self-test-composition.ts` — the only place that
+constructs TEST-ONLY instances of the sibling adapters and hands them to the
+orchestrator as the subject port; the `SupportCodeRegistry` for
+`VES_SELFTEST_*` codes; and the sealed report through the evidence boundary
+signed by the test-domain identity. Fault tests: sentinel mutation,
+incomplete cleanup, quarantine failure, unknown profiles, prohibited report
+content.
+
+# T3 evidence
+
+12 cases (8 unit adapter + 4 security) in
+`tests/unit/self-test-adapter.test.mjs` and
+`tests/security/self-test-escape.test.mjs`: complete root facts, proven
+removal, quarantine marker mechanics, quarantine of a missing root reports
+false, fixture budget and escape fail closed, sentinel digests including
+absence, TEST-ONLY key roundtrip, and the symlink/junction escape exposed in
+`linkChain` and refused by the rule (junction on win32, dir symlink on
+POSIX). Sensor: link hops hidden in `collectLinkChain`, the escape security
+test killed it, restore ran 4/4. `gate:quick` and `gate:security` PASS.
 
 # T2 evidence
 
