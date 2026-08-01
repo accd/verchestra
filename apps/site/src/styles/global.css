@@ -1202,3 +1202,75 @@ body.product-shell {
     transform: none;
   }
 }
+
+/* What works today - one table, derived from the typed capability matrix. */
+.works-today__table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  background: var(--surface);
+}
+.works-today__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.92rem;
+}
+.works-today__table th,
+.works-today__table td {
+  text-align: left;
+  padding: 0.85rem 1rem;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+.works-today__table thead th {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.works-today__table tbody tr:last-child th,
+.works-today__table tbody tr:last-child td {
+  border-bottom: none;
+}
+.works-today__table tbody th[scope="row"] {
+  font-weight: 600;
+}
+.works-today__state {
+  display: inline-block;
+  border-radius: var(--radius-round);
+  padding: 0.2rem 0.7rem;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  border: 1px solid var(--line);
+}
+.works-today__state--available {
+  color: var(--cyan);
+  border-color: color-mix(in srgb, var(--cyan) 55%, transparent);
+}
+.works-today__state--qualified {
+  color: var(--violet);
+  border-color: color-mix(in srgb, var(--violet) 55%, transparent);
+}
+.works-today__state--planned,
+.works-today__state--implemented,
+.works-today__state--experimental {
+  color: var(--muted);
+}
+
+/* What Verchestra is not - trust by exclusion, plain list. */
+.not-today__list {
+  display: grid;
+  gap: 0.9rem;
+  margin: 0;
+  padding-left: 1.2rem;
+  max-width: var(--content-reading);
+}
+.not-today__list li {
+  color: var(--muted);
+  line-height: 1.6;
+}
+.not-today__list li::marker {
+  color: var(--amber);
+}

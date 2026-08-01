@@ -144,6 +144,12 @@ const completedTask = /completedTask: "(T\d+[a-z]?)"/u.exec(productSource)?.[1];
 assert.ok(completedTask, "product.ts must declare completedTask");
 assert.match(homepage, new RegExp(`docs/qualification/${completedTask.toLowerCase()}-validation/`, "u"));
 assert.match(homepage, new RegExp(`Inspect ${completedTask} evidence`, "u"));
+// The built homepage must render the capability matrix and the exclusion list;
+// a section that silently fails to render is a truth surface that vanished.
+assert.match(homepage, /What works today/u);
+assert.match(homepage, /Workspace initialization \(init preview and apply\)/u);
+assert.match(homepage, /What Verchestra is not/u);
+assert.match(homepage, /Run the local alpha/u);
 assert.match(homepage, /T69 next/u);
 assert.doesNotMatch(homepage, /npm (?:install|add).{0,40}verchestra/iu);
 assert.doesNotMatch(homepage, /production[- ]ready/iu);
