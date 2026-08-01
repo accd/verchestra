@@ -482,8 +482,10 @@ function unsafeValue(source) {
   );
 }
 
-export async function checkRepository(root = ROOT) {
-  const errors = [];
+// Each audit dimension below is a named check that pushes into a shared error
+// list; the returned order is the final sorted set, so composition order never
+// changes observable output.
+function checkRequiredPaths(root, errors) {
   for (const path of [
     ...REQUIRED_READS,
     ...SCOPED_INSTRUCTIONS,
@@ -494,11 +496,16 @@ export async function checkRepository(root = ROOT) {
   ]) {
     if (!existsSync(join(root, path))) errors.push(`missing required path: ${path}`);
   }
+}
+
+async function checkGeneratedPointers(root, errors) {
   if (existsSync(join(root, "CLAUDE.md")) && (await readFile(join(root, "CLAUDE.md"), "utf8")) !== "@AGENTS.md\n")
     errors.push("CLAUDE.md does not match generated pointer");
   if (existsSync(join(root, "GEMINI.md")) && (await readFile(join(root, "GEMINI.md"), "utf8")) !== "@./AGENTS.md\n")
     errors.push("GEMINI.md does not match generated pointer");
+}
 
+async function checkInstructionBudgets(root, errors) {
   if (existsSync(join(root, "AGENTS.md"))) {
     const rootInstructions = await readFile(join(root, "AGENTS.md"), "utf8");
     if (rootInstructions.split(/\r?\n/u).length >= 200) errors.push("AGENTS.md exceeds 199 lines");
@@ -510,8 +517,9 @@ export async function checkRepository(root = ROOT) {
     if (/\b(?:ignore|override|relax)\s+(?:the\s+)?root\b/iu.test(source))
       errors.push(`${path} contradicts root instructions`);
   }
+}
 
-  const files = await trackedFiles(root);
+function checkProhibitedProviderFiles(files, errors) {
   for (const prohibited of [
     ".cursorrules",
     ".windsurfrules",
@@ -521,7 +529,9 @@ export async function checkRepository(root = ROOT) {
   ]) {
     if (files.includes(prohibited)) errors.push(`prohibited provider instruction file: ${prohibited}`);
   }
-  const manifest = JSON.parse(await readFile(join(root, "package.json"), "utf8"));
+}
+
+async function checkLicenseAgreement(root, manifest, errors) {
   const licenseStatement = "Verchestra is licensed under the [Apache License 2.0](LICENSE).";
   const licenseDecision = "### AD-007 — Project license is Apache-2.0";
   if (manifest.license !== "Apache-2.0") errors.push("package.json: license must be Apache-2.0");
@@ -533,7 +543,9 @@ export async function checkRepository(root = ROOT) {
     if (!existsSync(join(root, path)) || !(await readFile(join(root, path), "utf8")).includes(requiredStatement))
       errors.push(`${path}: license statement disagrees with Apache-2.0`);
   }
-  const instructionFiles = ["AGENTS.md", ...SCOPED_INSTRUCTIONS].filter((path) => existsSync(join(root, path)));
+}
+
+async function checkContextSafety(root, files, instructionFiles, errors) {
   const contextFiles = [
     ...new Set([
       ...files.filter(
@@ -558,7 +570,9 @@ export async function checkRepository(root = ROOT) {
     const source = await readFile(join(root, path), "utf8");
     if (unsafeValue(source)) errors.push(`${path}: contains a secret-like value or machine-local path`);
   }
+}
 
+async function checkReferencedCommands(root, manifest, instructionFiles, errors) {
   for (const path of instructionFiles) {
     const source = await readFile(join(root, path), "utf8");
     for (const match of source.matchAll(/\bpnpm\s+([a-z][\w:-]*)/gu)) {
@@ -567,11 +581,11 @@ export async function checkRepository(root = ROOT) {
         errors.push(`${path}: referenced pnpm command does not exist: ${command}`);
     }
   }
+}
 
-  const context = await compileAgentContext(root);
+async function checkStatusLineAgreement(root, context, errors) {
   if (context.version !== "0.0.0-qualification") errors.push(`stale version: ${context.version}`);
   const { highestVerifiedTask, nextTask } = context.qualification;
-  const statusLine = qualificationStatusLine(context.qualification);
   for (const path of [".specs/STATE.md", "ROADMAP.md"]) {
     if (!existsSync(join(root, path))) continue;
     const source = await readFile(join(root, path), "utf8");
@@ -580,9 +594,17 @@ export async function checkRepository(root = ROOT) {
       if (!new RegExp(String.raw`\b${task}\b`, "u").test(source)) errors.push(`${path}: missing ${task} status`);
     }
   }
-  // The chain must be declared unambiguously by the roadmap, never inferred, so
-  // a missing, branched, cyclic, or partially verified chain fails with the
-  // conflicting task ids named instead of keeping the numeric fallback.
+  if (existsSync(join(root, "llms.txt"))) {
+    const llms = await readFile(join(root, "llms.txt"), "utf8");
+    if (!llms.includes(context.version) || !llms.includes(qualificationStatusLine(context.qualification)))
+      errors.push("llms.txt disagrees with repository status");
+  }
+}
+
+// The chain must be declared unambiguously by the roadmap, never inferred, so
+// a missing, branched, cyclic, or partially verified chain fails with the
+// conflicting task ids named instead of keeping the numeric fallback.
+async function checkQualificationChain(root, errors) {
   const reports = await readQualificationReports(root);
   for (const problem of reports.errors) errors.push(`docs/qualification: ${problem}`);
   if (existsSync(join(root, "ROADMAP.md"))) {
@@ -592,25 +614,39 @@ export async function checkRepository(root = ROOT) {
     if (resolved.errors.length === 0 && resolved.highestVerifiedTask === null)
       errors.push("ROADMAP.md does not declare a verified qualification chain");
   }
-  if (existsSync(join(root, "llms.txt"))) {
-    const llms = await readFile(join(root, "llms.txt"), "utf8");
-    if (!llms.includes(context.version) || !llms.includes(statusLine))
-      errors.push("llms.txt disagrees with repository status");
-  }
+}
 
+async function checkFeatureHandoffs(root, errors) {
   const handoffDirectory = join(root, ".specs", "features");
-  if (existsSync(handoffDirectory)) {
-    for (const feature of await readdir(handoffDirectory, { withFileTypes: true })) {
-      const handoff = join(handoffDirectory, feature.name, "handoff.md");
-      if (feature.isDirectory() && existsSync(handoff)) {
-        try {
-          parseHandoff(await readFile(handoff, "utf8"), normalizeRepositoryPath(relative(root, handoff)));
-        } catch (error) {
-          errors.push(error.message);
-        }
+  if (!existsSync(handoffDirectory)) return;
+  for (const feature of await readdir(handoffDirectory, { withFileTypes: true })) {
+    const handoff = join(handoffDirectory, feature.name, "handoff.md");
+    if (feature.isDirectory() && existsSync(handoff)) {
+      try {
+        parseHandoff(await readFile(handoff, "utf8"), normalizeRepositoryPath(relative(root, handoff)));
+      } catch (error) {
+        errors.push(error.message);
       }
     }
   }
+}
+
+export async function checkRepository(root = ROOT) {
+  const errors = [];
+  checkRequiredPaths(root, errors);
+  await checkGeneratedPointers(root, errors);
+  await checkInstructionBudgets(root, errors);
+  const files = await trackedFiles(root);
+  checkProhibitedProviderFiles(files, errors);
+  const manifest = JSON.parse(await readFile(join(root, "package.json"), "utf8"));
+  await checkLicenseAgreement(root, manifest, errors);
+  const instructionFiles = ["AGENTS.md", ...SCOPED_INSTRUCTIONS].filter((path) => existsSync(join(root, path)));
+  await checkContextSafety(root, files, instructionFiles, errors);
+  await checkReferencedCommands(root, manifest, instructionFiles, errors);
+  const context = await compileAgentContext(root);
+  await checkStatusLineAgreement(root, context, errors);
+  await checkQualificationChain(root, errors);
+  await checkFeatureHandoffs(root, errors);
   await checkMarkdownLinks(root, files, errors);
   return [...new Set(errors)].sort();
 }
