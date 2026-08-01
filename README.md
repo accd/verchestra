@@ -43,6 +43,42 @@ AI-assisted delivery should not depend on one machine, one model, or an unreview
 - **Human control:** independent verification and human review are explicit workflow states.
 - **Safe repeats:** durable effects, Git operations, initialization, recovery, and distribution are designed to converge idempotently.
 
+## What works today
+
+One honest matrix, mirrored from the typed status the website renders
+(`apps/site/src/data/product.ts`) and checked by a drift test - the two
+surfaces cannot disagree silently. **available** means runnable today from a
+source checkout; **qualified** means backed by a public validation report but
+not yet composed into the CLI; **planned** means roadmap work with a declared
+task and no code claimed.
+
+| Capability                                               | Status    | Reference            |
+| -------------------------------------------------------- | --------- | -------------------- |
+| Workspace initialization (init preview and apply)        | available | issue #64 slice A/B  |
+| Evidence signing-key lifecycle (persist, rotate, revoke) | qualified | T68a                 |
+| Cost and duration budget enforcement                     | qualified | T68b                 |
+| Declared gate repair loop with human escalation          | qualified | T68c                 |
+| Policy boundary: declarative tests and signed bundles    | qualified | T68d                 |
+| AI driver adapters (Claude Code, Codex, OpenCode/Qwen)   | qualified | driver qualification |
+| Read-only database probes (7 engines, fixture-qualified) | qualified | database matrix      |
+| Signed distribution, activation, and rollback (TUF)      | qualified | T66-T68              |
+| Self-Test trust domain and doctor --deep                 | planned   | T69-T72              |
+| Public regression campaigns and sealed-holdout promotion | planned   | T73-T74              |
+| Platform matrix, release candidate, and the 1.0 decision | planned   | T75-T77              |
+
+Full reports live under [docs/qualification/](docs/qualification/) and on the
+[public evidence pages](https://accd.github.io/verchestra/docs/qualification/).
+
+## What Verchestra is not
+
+- It is not a public production release - the version is `0.0.0-qualification` and there is no installer.
+- It is not a hosted service - everything runs from a source checkout on your machine.
+- It does not transfer provider credentials - a handoff carries evidence and next actions, never sessions or secrets.
+- It does not make unapproved paid model calls - a missing provider reports `not configured`, never a silent pass.
+- It does not treat CI as human review - acceptance is an explicit human decision recorded as evidence.
+- It does not call same-author checks independent verification - that distinction is stated, not blurred.
+- It does not expose unqualified commands - the installed CLI advertises `init` and nothing else.
+
 ## How it fits together
 
 ```mermaid
@@ -57,6 +93,10 @@ flowchart LR
   H --> I["Portable Handoff"]
   I --> J["Human review and acceptance"]
 ```
+
+The sequence below is the target workflow the chain above qualifies toward;
+the pieces marked `qualified` in the matrix exist and are evidence-backed, and
+`init` is the part composed into the CLI today.
 
 ```mermaid
 sequenceDiagram

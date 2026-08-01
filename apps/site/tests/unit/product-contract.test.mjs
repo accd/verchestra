@@ -1,8 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { readFile } from "node:fs/promises";
+
 import {
+  capabilityMatrix,
   databases,
+  maturityDefinitions,
+  notToday,
   deliveryStages,
   drivers,
   productDefinition,
@@ -47,4 +52,47 @@ test("publishes every qualified driver and database with SAP ASE first-class", (
     "SQLite",
     "MongoDB"
   ]);
+});
+
+// The capability matrix is the one typed source for "what works today". The
+// README mirrors it as a Markdown table, and this is the drift test: a
+// capability whose name or maturity lags in either surface fails here, so
+// status can never be hand-duplicated apart.
+test("the README capability table mirrors the typed matrix exactly", async () => {
+  const readme = await readFile(new URL("../../../../README.md", import.meta.url), "utf8");
+  // Parse the Markdown rows structurally instead of matching formatted text:
+  // Prettier pads table cells, and a whitespace-sensitive regex either never
+  // matches or - worse - passes vacuously and detects nothing.
+  const rows = new Map(
+    [...readme.matchAll(/^\|([^|\n]+)\|([^|\n]+)\|([^|\n]+)\|$/gmu)].map((cells) => [
+      cells[1].trim(),
+      { maturity: cells[2].trim(), reference: cells[3].trim() }
+    ])
+  );
+  for (const entry of capabilityMatrix) {
+    const row = rows.get(entry.capability);
+    assert.ok(row, `${entry.capability} must appear in the README table`);
+    assert.equal(row.maturity, entry.maturity, `${entry.capability} maturity drifted`);
+    assert.equal(row.reference, entry.reference, `${entry.capability} reference drifted`);
+  }
+});
+
+test("every capability declares a real maturity and an evidence destination", () => {
+  const states = Object.keys(maturityDefinitions);
+  assert.ok(capabilityMatrix.length >= 8, "the matrix must stay substantive");
+  for (const entry of capabilityMatrix) {
+    assert.ok(states.includes(entry.maturity), `${entry.capability}: unknown maturity ${entry.maturity}`);
+    assert.ok(entry.evidenceRoute.length > 0, `${entry.capability} needs an evidence destination`);
+    assert.doesNotMatch(entry.evidenceRoute, /^https?:/u, "evidence stays on-site so the link checker covers it");
+  }
+  // The alpha exposes exactly one command, so exactly one capability may claim
+  // to be runnable today.
+  assert.equal(capabilityMatrix.filter((entry) => entry.maturity === "available").length, 1);
+});
+
+test("the exclusion list keeps its strongest present-tense facts", () => {
+  assert.ok(notToday.length >= 6);
+  assert.ok(notToday.some((line) => line.includes("0.0.0-qualification")));
+  assert.ok(notToday.some((line) => line.includes("not configured")));
+  for (const line of notToday) assert.match(line, /^It (is not|does not) /u);
 });

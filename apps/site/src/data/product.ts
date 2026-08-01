@@ -84,3 +84,106 @@ export const databases = [
   "SQLite",
   "MongoDB"
 ] as const;
+
+// One typed source for what actually works, so the homepage, the README, and
+// any future surface describe the same reality. A capability appears here with
+// exactly one maturity, and a drift test compares the README table against
+// this array - status must never be hand-duplicated.
+export type CapabilityMaturity = "available" | "qualified" | "implemented" | "experimental" | "planned";
+
+export const maturityDefinitions: Readonly<Record<CapabilityMaturity, string>> = {
+  available: "Runnable today from a source checkout of the local alpha.",
+  qualified: "Backed by a public validation report; not yet composed into the CLI surface.",
+  implemented: "Merged on main with tests, but its qualification report is not published yet.",
+  experimental: "Present in the tree for evaluation; interfaces and evidence may change.",
+  planned: "Roadmap work with a declared task; no code is claimed."
+} as const;
+
+export interface CapabilityEntry {
+  readonly capability: string;
+  readonly maturity: CapabilityMaturity;
+  // Internal task ids stay secondary: human-readable first, traceability second.
+  readonly reference: string;
+  readonly evidenceRoute: string;
+}
+
+export const capabilityMatrix: readonly CapabilityEntry[] = [
+  {
+    capability: "Workspace initialization (init preview and apply)",
+    maturity: "available",
+    reference: "issue #64 slice A/B",
+    evidenceRoute: "docs/develop-from-source"
+  },
+  {
+    capability: "Evidence signing-key lifecycle (persist, rotate, revoke)",
+    maturity: "qualified",
+    reference: "T68a",
+    evidenceRoute: "docs/qualification/t68a-validation"
+  },
+  {
+    capability: "Cost and duration budget enforcement",
+    maturity: "qualified",
+    reference: "T68b",
+    evidenceRoute: "docs/qualification/t68b-validation"
+  },
+  {
+    capability: "Declared gate repair loop with human escalation",
+    maturity: "qualified",
+    reference: "T68c",
+    evidenceRoute: "docs/qualification/t68c-validation"
+  },
+  {
+    capability: "Policy boundary: declarative tests and signed bundles",
+    maturity: "qualified",
+    reference: "T68d",
+    evidenceRoute: "docs/qualification/t68d-validation"
+  },
+  {
+    capability: "AI driver adapters (Claude Code, Codex, OpenCode/Qwen)",
+    maturity: "qualified",
+    reference: "driver qualification",
+    evidenceRoute: "docs/qualification/runtime-and-driver-qualification"
+  },
+  {
+    capability: "Read-only database probes (7 engines, fixture-qualified)",
+    maturity: "qualified",
+    reference: "database matrix",
+    evidenceRoute: "docs/integrations/database-capability-matrix"
+  },
+  {
+    capability: "Signed distribution, activation, and rollback (TUF)",
+    maturity: "qualified",
+    reference: "T66-T68",
+    evidenceRoute: "docs/qualification/supply-chain-qualification"
+  },
+  {
+    capability: "Self-Test trust domain and doctor --deep",
+    maturity: "planned",
+    reference: "T69-T72",
+    evidenceRoute: "roadmap"
+  },
+  {
+    capability: "Public regression campaigns and sealed-holdout promotion",
+    maturity: "planned",
+    reference: "T73-T74",
+    evidenceRoute: "roadmap"
+  },
+  {
+    capability: "Platform matrix, release candidate, and the 1.0 decision",
+    maturity: "planned",
+    reference: "T75-T77",
+    evidenceRoute: "roadmap"
+  }
+] as const;
+
+// Trust is built as much by what is ruled out as by what is promised. Every
+// line here is a present-tense fact about the current repository.
+export const notToday: readonly string[] = [
+  "It is not a public production release - the version is 0.0.0-qualification and there is no installer.",
+  "It is not a hosted service - everything runs from a source checkout on your machine.",
+  "It does not transfer provider credentials - a handoff carries evidence and next actions, never sessions or secrets.",
+  "It does not make unapproved paid model calls - a missing provider reports not configured, never a silent pass.",
+  "It does not treat CI as human review - acceptance is an explicit human decision recorded as evidence.",
+  "It does not call same-author checks independent verification - that distinction is stated, not blurred.",
+  "It does not expose unqualified commands - the installed CLI advertises init and nothing else."
+] as const;

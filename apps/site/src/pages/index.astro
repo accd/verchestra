@@ -1,5 +1,8 @@
 ---
 import {
+  capabilityMatrix,
+  maturityDefinitions,
+  notToday,
   databases,
   deliveryStages,
   drivers,
@@ -54,7 +57,7 @@ const sourceCodeMetadata = {
         <p class="hero__definition">{productDefinition}</p>
         <p class="hero__scenario"><strong>In practice:</strong> {productScenario}</p>
         <div class="hero__actions">
-          <a class="button button--primary" href={withBase("docs/")}>Explore how it works</a>
+          <a class="button button--primary" href={withBase("docs/develop-from-source/")}>Run the local alpha</a>
           <a class="button button--secondary" href="https://github.com/accd/verchestra">View on GitHub</a>
           <a class="text-link" href={withBase("roadmap/")}>Follow the road to 1.0 <span aria-hidden="true">→</span></a>
         </div>
@@ -107,6 +110,45 @@ const sourceCodeMetadata = {
         <p>
           Verchestra makes the durable facts portable while credentials, sessions, and machine authority remain local.
         </p>
+      </div>
+    </section>
+
+    <section class="works-today section-frame" aria-labelledby="works-today-title">
+      <div class="section-heading">
+        <p class="section-label">What works today</p>
+        <h2 id="works-today-title">One honest matrix, straight from the evidence.</h2>
+        <p>
+          Human-readable status first, internal task ids second. Each state has one meaning:
+          <strong>available</strong> — {maturityDefinitions.available.toLowerCase()}
+          <strong> qualified</strong> — {maturityDefinitions.qualified.toLowerCase()}
+          <strong> planned</strong> — {maturityDefinitions.planned.toLowerCase()}
+        </p>
+      </div>
+      <div class="works-today__table-wrap">
+        <table class="works-today__table">
+          <thead>
+            <tr>
+              <th scope="col">Capability</th>
+              <th scope="col">Status</th>
+              <th scope="col">Evidence</th>
+            </tr>
+          </thead>
+          <tbody>
+            {
+              capabilityMatrix.map((entry) => (
+                <tr>
+                  <th scope="row">{entry.capability}</th>
+                  <td>
+                    <span class={`works-today__state works-today__state--${entry.maturity}`}>{entry.maturity}</span>
+                  </td>
+                  <td>
+                    <a href={withBase(`${entry.evidenceRoute}/`)}>{entry.reference}</a>
+                  </td>
+                </tr>
+              ))
+            }
+          </tbody>
+        </table>
       </div>
     </section>
 
@@ -242,6 +284,16 @@ const sourceCodeMetadata = {
           >Inspect {productStatus.completedTask} evidence →</a
         >
       </div>
+    </section>
+
+    <section class="not-today section-frame" aria-labelledby="not-today-title">
+      <div class="section-heading">
+        <p class="section-label">What Verchestra is not</p>
+        <h2 id="not-today-title">Ruled out, in the present tense.</h2>
+      </div>
+      <ul class="not-today__list">
+        {notToday.map((statement) => <li>{statement}</li>)}
+      </ul>
     </section>
 
     <section class="community-cta" aria-labelledby="community-title">
