@@ -3,15 +3,20 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, readdir, realpath, rename, rm, rmdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { promisify } from "node:util";
-import { LogicalPath, StableId } from "@verchestra/domain";
+import { LogicalPath, StableId, normalizeDeclaredSet } from "@verchestra/domain";
 import { editManagedGitignore } from "./managed-gitignore.ts";
-import { WorkspaceScanError, buildInventoryFingerprint } from "../scanner/scanner-primitives.ts";
+import {
+  WorkspaceScanError,
+  buildInventoryFingerprint,
+  buildInventoryFingerprintV2
+} from "../scanner/scanner-primitives.ts";
 import { scanWorkspace } from "../scanner/workspace-scanner.ts";
 
 const execute = promisify(execFile);
 const MANIFEST_PATH = ".verchestra/generated-manifest.json";
 const STAGING_NAME = /^\.staging-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 const DIGEST = /^sha256:[a-f0-9]{64}$/u;
+const DIGEST_V2 = /^v2:sha256:[a-f0-9]{64}$/u;
 
 export function buildCanonicalInitFiles(input: {
   workspaceId: string;
@@ -81,10 +86,12 @@ async function pendingStaging(root: string): Promise<readonly string[]> {
   const metadataRoot = join(root, ".verchestra");
   try {
     return Object.freeze(
-      (await readdir(metadataRoot, { withFileTypes: true }))
-        .filter((entry) => entry.isDirectory() && STAGING_NAME.test(entry.name))
-        .map((entry) => join(metadataRoot, entry.name))
-        .sort((left, right) => left.localeCompare(right))
+      normalizeDeclaredSet(
+        (await readdir(metadataRoot, { withFileTypes: true }))
+          .filter((entry) => entry.isDirectory() && STAGING_NAME.test(entry.name))
+          .map((entry) => join(metadataRoot, entry.name)),
+        (path) => path
+      )
     );
   } catch (error) {
     if ((error as { readonly code?: unknown }).code === "ENOENT") return Object.freeze([]);
@@ -93,7 +100,7 @@ async function pendingStaging(root: string): Promise<readonly string[]> {
 }
 
 interface RecoveryJournal {
-  readonly schemaVersion: 1;
+  readonly schemaVersion: 1 | 2;
   readonly planId: string;
   readonly changes: readonly InitChange[];
 }
@@ -109,7 +116,17 @@ function parseRecoveryJournal(content: string): RecoveryJournal {
       readonly planId?: unknown;
       readonly changes?: unknown;
     };
-    if (value.schemaVersion !== 1 || typeof value.planId !== "string" || !DIGEST.test(value.planId)) {
+    if (value.schemaVersion !== 1 && value.schemaVersion !== 2) {
+      throw new Error("invalid journal envelope");
+    }
+    if (typeof value.planId !== "string") throw new Error("invalid journal envelope");
+    const planIdIsV1 = DIGEST.test(value.planId);
+    const planIdIsV2 = DIGEST_V2.test(value.planId);
+    if (
+      (value.schemaVersion === 1 && !planIdIsV1) ||
+      (value.schemaVersion === 2 && !planIdIsV2) ||
+      (!planIdIsV1 && !planIdIsV2)
+    ) {
       throw new Error("invalid journal envelope");
     }
     if (!Array.isArray(value.changes) || value.changes.length === 0 || value.changes.length > 100_000) {
@@ -142,8 +159,10 @@ function parseRecoveryJournal(content: string): RecoveryJournal {
         contentDigest: change.contentDigest
       });
     });
-    if (buildInventoryFingerprint({ changes }) !== value.planId) throw new Error("journal plan digest mismatch");
-    return Object.freeze({ schemaVersion: 1, planId: value.planId, changes: Object.freeze(changes) });
+    const verifiedPlanId =
+      value.schemaVersion === 2 ? buildInventoryFingerprintV2({ changes }) : buildInventoryFingerprint({ changes });
+    if (verifiedPlanId !== value.planId) throw new Error("journal plan digest mismatch");
+    return Object.freeze({ schemaVersion: value.schemaVersion, planId: value.planId, changes: Object.freeze(changes) });
   } catch (error) {
     throw recoveryConflict("Interrupted init journal is invalid", error);
   }
@@ -185,7 +204,7 @@ async function gitIgnores(root: string, logicalPath: string): Promise<boolean> {
 }
 
 function ownershipManifest(desired: ReadonlyMap<string, string>, generatorVersion: string, gitOwnerId: string): string {
-  const paths = [...desired.keys(), MANIFEST_PATH].sort((left, right) => left.localeCompare(right));
+  const paths = normalizeDeclaredSet([...desired.keys(), MANIFEST_PATH], (path) => path);
   const files = paths.map((logicalPath) =>
     Object.freeze({
       logicalPath,
@@ -253,7 +272,7 @@ export class SafeInitService {
     }
     desired.set(MANIFEST_PATH, ownershipManifest(desired, generatorVersion, controlOwner.repositoryId));
     const changes: InitChange[] = [];
-    for (const [path, content] of [...desired].sort(([a], [b]) => a.localeCompare(b))) {
+    for (const [path, content] of normalizeDeclaredSet([...desired], ([entryPath]) => entryPath)) {
       const existing = await optionalText(join(root, ...path.split("/")));
       if (existing === content) continue;
       if (existing !== undefined && path !== ".gitignore" && path !== MANIFEST_PATH)
@@ -270,7 +289,7 @@ export class SafeInitService {
     const frozen = Object.freeze(changes);
     const preview = Object.freeze({
       schemaVersion: 1 as const,
-      planId: buildInventoryFingerprint({ changes }),
+      planId: buildInventoryFingerprintV2({ changes }),
       changes: frozen
     });
     contexts.set(preview, { service: this.#identity, root, contents: desired });
@@ -309,7 +328,7 @@ export class SafeInitService {
         }
       }
       const journal: RecoveryJournal = Object.freeze({
-        schemaVersion: 1,
+        schemaVersion: 2,
         planId: preview.planId,
         changes: preview.changes
       });
