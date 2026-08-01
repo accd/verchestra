@@ -52,6 +52,10 @@ source checkout; **qualified** means backed by a public validation report but
 not yet composed into the CLI; **planned** means roadmap work with a declared
 task and no code claimed.
 
+Rather than take the matrix's word for it, inspect
+[a real, signed, fixture-generated Execution Package](docs/proof/execution-package.md) -
+regenerable byte-for-byte from any clean clone with `corepack pnpm proof:generate`.
+
 | Capability                                               | Status    | Reference            |
 | -------------------------------------------------------- | --------- | -------------------- |
 | Workspace initialization (init preview and apply)        | available | issue #64 slice A/B  |

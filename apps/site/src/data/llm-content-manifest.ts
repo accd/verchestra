@@ -9,6 +9,12 @@ export const llmRepositorySources: readonly LlmRepositorySource[] = [
   { sourcePath: "README.md", route: null, section: "Project", order: 1 },
   { sourcePath: "ROADMAP.md", route: "roadmap", section: "Project", order: 2 },
   { sourcePath: "docs/architecture.md", route: "docs/architecture/system-overview", section: "Architecture", order: 1 },
+  {
+    sourcePath: "docs/proof/execution-package.md",
+    route: "docs/proof/execution-package",
+    section: "Proof",
+    order: 1
+  },
   { sourcePath: "docs/repository-map.md", route: null, section: "Architecture", order: 2 },
   { sourcePath: "CONTRIBUTING.md", route: "docs/community/contributing", section: "Community", order: 1 },
   { sourcePath: "docs/contributing-with-agents.md", route: null, section: "Community", order: 2 },

@@ -107,6 +107,7 @@ export default defineConfig({
           collapsed: true,
           items: [
             { label: "Execution Package", slug: "docs/concepts/execution-package" },
+            { label: "A real Execution Package", slug: "docs/proof/execution-package" },
             { label: "Policy and authority", slug: "docs/concepts/policy-and-authority" },
             { label: "Idempotency", slug: "docs/concepts/idempotency" },
             { label: "Evidence and signatures", slug: "docs/concepts/evidence-and-signatures" },
