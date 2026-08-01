@@ -109,6 +109,27 @@ function recoveryConflict(message: string, cause?: unknown): WorkspaceScanError 
   return new WorkspaceScanError("VES_INIT_RECOVERY_CONFLICT", message, cause === undefined ? {} : { cause });
 }
 
+// A journal's schemaVersion and planId prefix must name the same
+// canonicalization version — never one and cross-verify under the other
+// (design.md's fail-closed rule for CJ-10).
+function assertJournalEnvelopeVersion(value: {
+  readonly schemaVersion?: unknown;
+  readonly planId?: unknown;
+  readonly changes?: unknown;
+}): asserts value is { readonly schemaVersion: 1 | 2; readonly planId: string; readonly changes: unknown } {
+  if (value.schemaVersion !== 1 && value.schemaVersion !== 2) throw new Error("invalid journal envelope");
+  if (typeof value.planId !== "string") throw new Error("invalid journal envelope");
+  const planIdIsV1 = DIGEST.test(value.planId);
+  const planIdIsV2 = DIGEST_V2.test(value.planId);
+  if (
+    (value.schemaVersion === 1 && !planIdIsV1) ||
+    (value.schemaVersion === 2 && !planIdIsV2) ||
+    (!planIdIsV1 && !planIdIsV2)
+  ) {
+    throw new Error("invalid journal envelope");
+  }
+}
+
 function parseRecoveryJournal(content: string): RecoveryJournal {
   try {
     const value = JSON.parse(content) as {
@@ -116,19 +137,7 @@ function parseRecoveryJournal(content: string): RecoveryJournal {
       readonly planId?: unknown;
       readonly changes?: unknown;
     };
-    if (value.schemaVersion !== 1 && value.schemaVersion !== 2) {
-      throw new Error("invalid journal envelope");
-    }
-    if (typeof value.planId !== "string") throw new Error("invalid journal envelope");
-    const planIdIsV1 = DIGEST.test(value.planId);
-    const planIdIsV2 = DIGEST_V2.test(value.planId);
-    if (
-      (value.schemaVersion === 1 && !planIdIsV1) ||
-      (value.schemaVersion === 2 && !planIdIsV2) ||
-      (!planIdIsV1 && !planIdIsV2)
-    ) {
-      throw new Error("invalid journal envelope");
-    }
+    assertJournalEnvelopeVersion(value);
     if (!Array.isArray(value.changes) || value.changes.length === 0 || value.changes.length > 100_000) {
       throw new Error("invalid journal changes");
     }
