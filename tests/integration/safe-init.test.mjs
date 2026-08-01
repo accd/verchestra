@@ -28,7 +28,7 @@ test("init preview declares every create and managed gitignore update", async ()
   const root = await scannerRoot();
   await initRepository(root, { "README.md": "fixture\n" });
   const preview = await new SafeInitService().preview({ controlRoot: root, files: files() });
-  assert.match(preview.planId, /^sha256:[a-f0-9]{64}$/u);
+  assert.match(preview.planId, /^v2:sha256:[a-f0-9]{64}$/u);
   assert.equal(
     preview.changes.some((change) => change.logicalPath === ".gitignore" && change.action === "create"),
     true
@@ -165,4 +165,114 @@ test("preview capability cannot be replayed through another service instance", a
   const before = await byteSnapshot(root);
   await assert.rejects(new SafeInitService().apply(preview), { code: "VES_INIT_PREVIEW_INVALID" });
   assert.deepEqual(await byteSnapshot(root), before);
+});
+
+async function stagedJournal(root) {
+  const metadataRoot = join(root, ".verchestra");
+  const staging = (await readdir(metadataRoot)).find((name) => name.startsWith(".staging-"));
+  return JSON.parse(await readFile(join(metadataRoot, staging, "transaction.json"), "utf8"));
+}
+
+test("apply writes a recovery journal at schemaVersion 2 with a v2 planId", async () => {
+  const root = await scannerRoot();
+  await initRepository(root, { "README.md": "fixture\n" });
+  let journal;
+  const service = new SafeInitService({
+    hooks: {
+      afterStage: async () => {
+        journal = await stagedJournal(root);
+      }
+    }
+  });
+  await service.apply(await service.preview({ controlRoot: root, files: files() }));
+  assert.equal(journal.schemaVersion, 2);
+  assert.match(journal.planId, /^v2:sha256:[a-f0-9]{64}$/u);
+});
+
+test("journal planId agrees with the preview planId for the same change set", async () => {
+  const root = await scannerRoot();
+  await initRepository(root, { "README.md": "fixture\n" });
+  let journal;
+  const service = new SafeInitService({
+    hooks: {
+      afterStage: async () => {
+        journal = await stagedJournal(root);
+      }
+    }
+  });
+  const preview = await service.preview({ controlRoot: root, files: files() });
+  await service.apply(preview);
+  assert.equal(journal.planId, preview.planId);
+});
+
+test("journal changes still carry V1-format per-change digests while the plan identity is v2", async () => {
+  const root = await scannerRoot();
+  await initRepository(root, { "README.md": "fixture\n" });
+  let journal;
+  const service = new SafeInitService({
+    hooks: {
+      afterStage: async () => {
+        journal = await stagedJournal(root);
+      }
+    }
+  });
+  await service.apply(await service.preview({ controlRoot: root, files: files() }));
+  assert.equal(journal.changes.length > 0, true);
+  for (const change of journal.changes) {
+    assert.match(change.contentDigest, /^sha256:[a-f0-9]{64}$/u);
+    if (change.expectedDigest !== null) assert.match(change.expectedDigest, /^sha256:[a-f0-9]{64}$/u);
+  }
+});
+
+test("ownership manifest and journal target order are code unit, not locale", async () => {
+  // "Zulu" < "alpha" by UTF-16 code unit ('Z' = 0x5A < 'a' = 0x61), but a locale-aware
+  // comparison (e.g. en collation) would order "alpha" first.
+  const root = await scannerRoot();
+  await initRepository(root);
+  const service = new SafeInitService();
+  const preview = await service.preview({
+    controlRoot: root,
+    files: {
+      ".verchestra/Zulu.json": "{}\n",
+      ".verchestra/alpha.json": "{}\n",
+      ".verchestra/generated-manifest.json": `${JSON.stringify(
+        { schemaVersion: 1, generator: "verchestra", generatorVersion: "1.0.0", files: [] },
+        null,
+        2
+      )}\n`
+    }
+  });
+  await service.apply(preview);
+  const manifest = JSON.parse(await readFile(join(root, ".verchestra", "generated-manifest.json"), "utf8"));
+  const orderedTargets = manifest.files
+    .map((entry) => entry.logicalPath)
+    .filter((path) => path.includes("Zulu") || path.includes("alpha"));
+  assert.deepEqual(orderedTargets, [".verchestra/Zulu.json", ".verchestra/alpha.json"]);
+});
+
+test("InitPreview.schemaVersion stays 1 — it names the preview envelope, not the journal format", async () => {
+  const root = await scannerRoot();
+  await initRepository(root, { "README.md": "fixture\n" });
+  const preview = await new SafeInitService().preview({ controlRoot: root, files: files() });
+  assert.equal(preview.schemaVersion, 1);
+  assert.match(preview.planId, /^v2:sha256:[a-f0-9]{64}$/u);
+});
+
+test("two previews with different content produce different v2 planIds", async () => {
+  const root = await scannerRoot();
+  await initRepository(root);
+  const service = new SafeInitService();
+  const first = await service.preview({ controlRoot: root, files: files() });
+  const second = await service.preview({
+    controlRoot: root,
+    files: buildCanonicalInitFiles({
+      workspaceId,
+      displayName: "Different Workspace",
+      placementMode: "centralized",
+      generatorVersion: "1.0.0"
+    })
+  });
+  assert.notEqual(first.planId, second.planId);
+  assert.match(first.planId, /^v2:sha256:[a-f0-9]{64}$/u);
+  assert.match(second.planId, /^v2:sha256:[a-f0-9]{64}$/u);
 });
