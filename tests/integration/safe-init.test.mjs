@@ -122,7 +122,7 @@ test("ownership manifest closes every generated target over the control Git owne
     ]
   );
   assert.equal(
-    manifest.files.every((entry) => /^sha256:[a-f0-9]{64}$/u.test(entry.gitOwnerId)),
+    manifest.files.every((entry) => /^v2:sha256:[a-f0-9]{64}$/u.test(entry.gitOwnerId)),
     true
   );
   assert.deepEqual(
