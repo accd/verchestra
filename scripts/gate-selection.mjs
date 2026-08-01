@@ -23,7 +23,7 @@ const RULES = Object.freeze([
     gate: "gate:security",
     reason: "trust, authority, or data-handling surface",
     match:
-      /^(?:packages\/(?:policy|evidence|agent-runtime|drivers|data-probe|memory|connectors|effects|workspace|platform-node|extension-host)\/|schemas\/|tests\/(?:security|fault-injection)\/)/u
+      /^(?:packages\/(?:policy|evidence|agent-runtime|drivers|data-probe|memory|connectors|effects|workspace|platform-node|extension-host|self-test)\/|schemas\/|tests\/(?:security|fault-injection)\/)/u
   },
   {
     gate: "gate:build",

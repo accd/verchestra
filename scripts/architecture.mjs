@@ -18,7 +18,8 @@ export const EXPECTED_PACKAGES = Object.freeze([
   "packages/drivers",
   "packages/connectors",
   "packages/extension-host",
-  "packages/distribution"
+  "packages/distribution",
+  "packages/self-test"
 ]);
 
 // Workspaces that exist under apps/ or packages/ but are outside the product
