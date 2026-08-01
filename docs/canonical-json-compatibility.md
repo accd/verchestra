@@ -17,11 +17,17 @@ implementation until it is replaced by a domain-backed facade in a separately
 reviewed migration. No application package may import evidence to canonicalize
 input.
 
-Reusing the already-qualified `canonicalize@3.0.0` implementation from
-`packages/domain` would add or move a package dependency. That change requires
-explicit human approval and a lockfile update under the repository change
-rules. T3 must record that approval before taking that path; an independently
-implemented encoder instead requires separate RFC 8785/vector review.
+Reusing the already-qualified `canonicalize@3.0.0` implementation in
+`packages/domain` is blocked by the architecture boundary itself, not only by
+dependency approval: `scripts/architecture.mjs:67-69` rejects any non-relative,
+non-`ajv` import in `contracts`, `domain`, or `application` as
+`VES_ARCH_THIRD_PARTY_IMPORT`, and domain packages take no third-party
+dependencies by design. Widening that control would
+itself need explicit human approval and a lockfile update under the repository
+change rules. The owner instead approved an independently implemented,
+zero-import RFC 8785 encoder in `packages/domain`, with its own published
+vector review (2026-08-01) — `canonicalize@3.0.0` stays qualified and in place
+in `packages/evidence` for V1.
 
 V2 rejects undefined object values, sparse arrays, accessors, cycles,
 non-finite numbers, invalid Unicode, excessive nesting, and excessive node
@@ -62,24 +68,29 @@ comparison fails closed where identities are not interchangeable.
 | Distribution: `hermetic-bundle.ts` | Release manifest/release digest | signed + persistent release identity | Recursive serializer and locale component ordering | Highest-risk slice: publish a new bundle schema/release format and retain V1 verification. |
 | Distribution: `transactional-activation.ts` | Transaction identity material and durable activation records | persistent local state | Recursive serializer for transaction identity; ordinary JSON writes for local journals | Migrate only after hermetic bundle V2; version durable receipt/pointer records. |
 | Distribution: `tuf-update-client.ts` | Staged receipt bytes | persistent local state | Ordinary `JSON.stringify`, no structured digest at write | Keep bytes as a versioned local receipt; classify separately from canonical digest migration. |
-| Workspace: `scanner/scanner-primitives.ts`, consumed by `workspace-scanner.ts`, `init/safe-init.ts`, and `placement/artifact-placement.ts` | Repository IDs, discovery keys, inventory fingerprints, init/recovery plan IDs, and write-plan IDs | portable + persistent plan identity | Recursive serializer with ambient locale ordering of object members and normalized arrays | **T3 first vertical slice:** add an explicit V2/canonicalization version for new workspace inventory, init preview/recovery journal, and write-plan records; keep V1 verification for records without that version. |
+| Workspace: `scanner/scanner-primitives.ts`, consumed by `workspace-scanner.ts`, `init/safe-init.ts`, and `placement/artifact-placement.ts` | Repository IDs, discovery keys, inventory fingerprints, init/recovery plan IDs, and write-plan IDs | portable + persistent plan identity | **Migrated (T3).** `buildInventoryFingerprintV2` (RFC 8785, `v2:sha256:` prefix) for repository IDs, discovery keys, inventory fingerprints, write-plan IDs, and new init preview/recovery journal plan IDs; `buildInventoryFingerprint` (V1, byte-identical, `sha256:` prefix) stays exported and is still the only verifier for a `schemaVersion: 1` init recovery journal. | Done. `init/safe-init.ts`'s recovery journal envelope carries an explicit `schemaVersion` (1 or 2) and dispatches its verifier on that recorded version, failing closed on any version/prefix disagreement — see `packages/workspace/src/init/safe-init.ts:parseRecoveryJournal`. |
 | Platform Node: `git-worktree-adapter.ts` | Worktree `changeDigest`, committed and verified as `Verchestra-Change` by the gate-commit flow | persistent gate authority | SHA-256 of `JSON.stringify(manifest)` | Version change-digest material with the gate plan/checkpoint/receipt migration; retain V1 resume verification. |
 | Platform Node: `runtime-store/runtime-store.ts` | Persisted active policy-view digest verification | persistent local authority | Recursive serializer with ambient locale ordering | Migrate with policy-view schema/versioning; retain V1 stored-view verification and fail closed across versions. |
 
-## Selected next vertical slice (T3)
+## Completed vertical slice (T3)
 
-T3 is the Workspace identity vertical: the scanner inventory, placement write
-plan, and safe-init preview/recovery journal share `buildInventoryFingerprint`
-and can be versioned together without changing signed evidence or release
-formats. It must retain V1 verification for existing journals and plans, emit
-an explicit V2/canonicalization version only for new records, and prove
-cross-locale equivalence plus the ambient-locale discrimination sensor.
+T3 was the Workspace identity vertical: the scanner inventory, placement write
+plan, and safe-init preview/recovery journal shared `buildInventoryFingerprint`
+and were versioned together without changing signed evidence or release
+formats. It retains V1 verification for existing journals and plans, emits an
+explicit V2/canonicalization version only for new records, and proves
+cross-locale equivalence plus the code-unit/locale-ordering discrimination
+sensor (`tests/security/canonical-json-sensor.test.mjs`).
 
-Before implementation, the owner must explicitly approve either moving or
-adding the qualified `canonicalize@3.0.0` dependency to `packages/domain` (with
-the required lockfile update), or separately approve an equivalent internal
-RFC 8785 implementation and its vector review. This is a dependency and
-qualification decision, not an implicit T3 implementation detail.
+Before implementation, the owner had to explicitly approve either widening
+`scripts/architecture.mjs:67-69`'s third-party import boundary to move or add
+the qualified `canonicalize@3.0.0` dependency into `packages/domain` (with the
+required lockfile update), or separately approve an equivalent internal RFC
+8785 implementation and its vector review. This was a dependency, architecture
+boundary, and qualification decision, not an implicit T3 implementation
+detail. The owner approved the internal encoder, 2026-08-01 (see "Contract
+decision" above and `.specs/features/canonical-json/design.md`, "Tech
+Decisions").
 
 ## Explicit exclusions
 
@@ -92,10 +103,25 @@ identities above. They are not evidence that V2 has been adopted.
 
 1. Cross-locale output and digest equality for Unicode member names and
    semantic identifier ordering.
+   Satisfied for T3 (Workspace): `tests/unit/canonical-json-v2.test.mjs:86`
+   ("the same input produces byte-identical output under two different
+   ambient locales").
 2. Equivalent rejection at the call boundary for undefined values, sparse
    arrays, accessors, cycles, non-finite numbers, depth and node limits.
+   Satisfied for T3 (Workspace): `packages/domain/src/canonical/canonical-guard.ts`,
+   exercised by `tests/unit/workspace-fingerprint-v2.test.mjs:41,45` and the
+   guard's own unit suite.
 3. A V1 persisted/signed fixture verifies unchanged; a V2 fixture has an
    explicit schema or canonicalization version.
+   Satisfied for T3 (Workspace): `tests/integration/safe-init.test.mjs`
+   ("a pinned schemaVersion 1 journal written before this slice still
+   verifies and recovers", "a schemaVersion 2 journal verifies and recovers
+   with V2"); `tests/unit/workspace-fingerprint-v2.test.mjs:22` (pinned V1
+   byte-identity).
 4. A discrimination mutation replacing code-unit/JCS ordering with ambient
    `localeCompare` is killed by the focused test.
+   Satisfied for T3 (Workspace): `tests/security/canonical-json-sensor.test.mjs`
+   (mutation A: locale ordering; mutation B: array-order sorting).
 5. `pnpm gate:security` and the architecture boundary test pass.
+   Satisfied for T3 (Workspace): `pnpm gate:security`,
+   `tests/architecture/repository-boundaries.test.mjs`.
