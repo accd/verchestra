@@ -20,6 +20,12 @@ accelerators, not repository requirements.
 
 ## Size and specify work
 
+Before non-trivial work starts, follow the ownership policy in
+`CONTRIBUTING.md` ("Claim the work before you start"): confirm nobody else is
+assigned, assign the operator running the agent, reconcile labels and
+milestone, and branch from the issue. Agents must not begin implementation on
+an issue whose assignee is someone else.
+
 Trivial changes may use issue acceptance criteria directly. Non-trivial work
 copies `.specs/templates/feature/` to `.specs/features/<feature-slug>/` and
 records:

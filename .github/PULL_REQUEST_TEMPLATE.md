@@ -21,6 +21,23 @@
 - [ ] I did not weaken gates or assertions, bypass policy, or edit generated contracts directly.
 - [ ] I updated documentation, changelog, and roadmap when required.
 
+## Issue and milestone state
+
+<!-- Confirm before requesting review; see CONTRIBUTING.md "Claim the work before you start". -->
+
+- Assignee on the linked issue:
+- Labels reconciled:
+- Milestone:
+- Issue status after merge:
+
+## Merge path
+
+<!-- Declare intent only. Do not describe a future merge as completed. -->
+
+- [ ] Normal reviewed merge
+- [ ] Intended maintainer bypass per `docs/merge-governance.md`
+- [ ] Break-glass (link the break-glass issue)
+
 ## Handoff and human review
 
 - [ ] The tracked handoff records completed evidence and the next exact action, or this change is trivial and needs no feature handoff.
