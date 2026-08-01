@@ -181,9 +181,11 @@ requiring no historical byte compatibility.
       (870/882) and `test:fault` (171/218) carry the same pre-existing
       native-`sqlite` (`fts5`) failure set as the pre-slice baseline
       (confirmed via `git stash`), with every new test in this slice
-      passing and no existing assertion changed except the two
-      owner-approved `sha256:` → `v2:sha256:` regex updates recorded in
-      `handoff.md`.
+      passing and no existing assertion changed except four owner-approved
+      `sha256:` → `v2:sha256:` regex updates across three files, all
+      recorded in `handoff.md`: `tests/security/workspace-scanner-security.test.mjs`
+      (1, T7), `tests/integration/safe-init.test.mjs` (2, T7 and T9), and
+      `tests/unit/artifact-placement.test.mjs` (1, T8).
 
 ## Assumptions
 

@@ -2,11 +2,11 @@
 schema: verchestra-feature-handoff/v1
 feature: canonical-json
 issue: 58
-status: verification
+status: complete
 branch: feat/canonical-json-t3-workspace
 baseRevision: b94eef4bdf9841e7abba4e03d85fd401c2825258
 lastCompletedTask: T13
-nextTask: Independently verify T1-T13 against spec.md's 12 success criteria and design.md, then obtain human review before merge.
+nextTask: Human review and merge into main. Two minor non-blocking follow-ups recorded in validation.md (documentation-accuracy and test-precision gaps) may be picked up alongside T4 scoping, not required before merge.
 lastGate: pnpm gate:security
 updatedAt: 2026-08-01T00:00:00Z
 ---
@@ -17,9 +17,10 @@ Issue #58: every portable digest must name one locale-independent canonical
 JSON contract. T1 (inventory) and T2 (compatibility matrix,
 `docs/canonical-json-compatibility.md`) are merged to `main`. This handoff
 covers **T3 only**: the V2 primitive plus the Workspace identity vertical.
-T3 (T1–T13) is now implemented and gated on this branch, pending independent
-Verifier review. T4 (the remaining ~15 owners in the matrix) stays out of
-scope and gated on its own per-slice persisted-byte review.
+T3 (T1–T13) is implemented, gated, and independently verified — **PASS**,
+`.specs/features/canonical-json/validation.md` — on this branch. T4 (the
+remaining ~15 owners in the matrix) stays out of scope and gated on its own
+per-slice persisted-byte review.
 
 Full plan: `spec.md` (CJ-01 through CJ-12, all 12 ticked with evidence),
 `design.md`, `tasks.md` (T1–T13, all complete).
@@ -58,26 +59,26 @@ Full plan: `spec.md` (CJ-01 through CJ-12, all 12 ticked with evidence),
 
 # Next Exact Action
 
-Independently verify T1–T13 against `spec.md`'s 12 success criteria (CJ-01
-through CJ-12) and `design.md`, on a clean checkout of this branch:
+Independent verification is complete: a fresh Verifier sub-agent (author ≠
+verifier) re-derived coverage for all 12 CJ-IDs from scratch, ran its own
+discrimination sensor (2 additional mutations beyond T11's own 2, on the
+journal version-dispatch logic), and re-ran every gate stage independently.
+Result: **PASS**. Full report: `.specs/features/canonical-json/validation.md`.
 
-1. Confirm every success-criterion evidence path in `spec.md` exists and
-   actually demonstrates the claim (not just that the file exists).
-2. Re-run `pnpm gate:security`; where it halts on pre-existing, unrelated
-   native-`sqlite` (`fts5`) failures in `test:qualification`, confirm via
-   `git stash` that the failing test set is identical with and without this
-   branch's changes, then run `pnpm test:security` and `pnpm test:fault`
-   directly to completion.
-3. Confirm no existing assertion was weakened, skipped, or deleted — the only
-   two test changes to pre-existing files are the owner-approved
-   `sha256:` → `v2:sha256:` regex updates in `tests/integration/safe-init.test.mjs`
-   (line 31, `preview.planId`; already-updated line 125 predates this batch
-   from T7) recorded under Decisions below.
-4. Write `validation.md` with the verification result, then hand off for
-   human review before merge.
+Nothing further is required of an implementing agent. The only remaining step
+is **human review and merge into `main`**. The Verifier flagged two minor,
+non-blocking gaps (both already folded into this handoff and `spec.md`, so
+they do not need separate follow-up before merge):
 
-Human review and merge into `main` is the last remaining step after
-independent verification passes.
+1. This handoff and `spec.md`'s CJ-12 evidence previously undercounted the
+   owner-approved `sha256:` → `v2:sha256:` test-regex updates as two instead
+   of four (across three files, T7/T8/T9) — corrected in this revision.
+2. `tests/integration/safe-init.test.mjs`'s two journal-mismatch-direction
+   tests assert only the wrapper error code, not which of two defense-in-depth
+   checks caught the malformed journal — a test-precision refinement, not a
+   missing behavioral guarantee (CJ-10's fail-closed requirement is proven
+   correct by the Verifier's own mutation testing). Left as-is; a human
+   reviewer may choose to strengthen it in a follow-up alongside T4 scoping.
 
 # Blockers
 
@@ -112,16 +113,21 @@ owner on 2026-08-01 (see Decisions).
   both `tests/unit/workspace-fingerprint-v2.test.mjs` and
   `tests/integration/safe-init.test.mjs`.
 - **Transient identities need no historical byte compatibility (owner,
-  applied twice — T7 and T9):** `InitPreview.planId` and every scanner/
-  placement identity migrated in this slice are recomputed in memory on each
-  `preview()`/`scan()`/`createWritePlan()` call and are never themselves
-  persisted independently of the journal or manifest they are copied into —
-  they fall under compatibility-matrix row 3 ("a transient, recomputable
-  in-memory value"). Under that classification, two pre-existing tests were
-  updated from a bare `sha256:` regex to `v2:sha256:`:
-  `tests/security/workspace-scanner-security.test.mjs:35` and
-  `tests/integration/safe-init.test.mjs:124` (both T7), and
-  `tests/integration/safe-init.test.mjs:31` (T9, `preview.planId`). No other
+  applied three times — T7, T8, T9):** `InitPreview.planId`, the placement
+  `WritePlan.planId`, and every scanner identity migrated in this slice are
+  recomputed in memory on each `preview()`/`scan()`/`createWritePlan()` call
+  and are never themselves persisted independently of the journal or
+  manifest they are copied into — they fall under compatibility-matrix row 3
+  ("a transient, recomputable in-memory value"). Under that classification,
+  four pre-existing test assertions across three files were updated from a
+  bare `sha256:` regex to `v2:sha256:`:
+  `tests/security/workspace-scanner-security.test.mjs:35` (T7),
+  `tests/integration/safe-init.test.mjs:124` (T7, `gitOwnerId`) and
+  `tests/integration/safe-init.test.mjs:31` (T9, `preview.planId`), and
+  `tests/unit/artifact-placement.test.mjs` (T8, `WritePlan.planId`; this
+  means T8's own "Done when" wording — "existing suite passes
+  unmodified" — was not literally met, the same way T7's wasn't; the
+  functional requirement, no *unjustified* change, was). No other
   pre-existing assertion was changed anywhere in T1–T13.
 - Carried forward from the T1/T2 handoff: no mass replacement before
   persisted-byte compatibility is explicit; V1 persisted and signed bytes stay
