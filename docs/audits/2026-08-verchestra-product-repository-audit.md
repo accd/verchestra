@@ -1,7 +1,13 @@
 # Verchestra product and repository audit — August 2026
 
-Audited against `main` as of 2026-08-01. Every claim below names its evidence;
-where something is unverified, the audit says so instead of implying it.
+> **Historical snapshot.** Audited against `main` at commit
+> `cef064876138bc716848ea90bf8645b06641d295` on 2026-08-01. Findings describe
+> the repository at that revision and are not updated afterward; several were
+> resolved the same day. For live qualification and capability state, use
+> `corepack pnpm agent:context` and the public status page.
+
+Every claim below names its evidence; where something is unverified, the
+audit says so instead of implying it.
 
 ## Executive summary
 
