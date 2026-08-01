@@ -8,6 +8,28 @@ Thank you for contributing. Verchestra values small, reviewable changes with evi
 2. Open a Discussion for broad design questions. Open an Issue for a reproducible bug or a scoped proposal.
 3. Do not include credentials, production data, private database schemas, or machine-local files in an issue, commit, test, or pull request.
 
+## Claim the work before you start
+
+This is the canonical ownership policy; other documents reference it rather
+than restating it. For anything beyond a trivial fix:
+
+1. Find the existing issue, or open a scoped one if none exists.
+2. Confirm the acceptance criteria say what you intend to build.
+3. Check the assignee. If someone else is assigned, coordinate on the issue
+   instead of starting competing work. If a contributor volunteered in a
+   comment and nobody is assigned, assignment goes to the volunteer.
+4. Assign the person (or the operator of the agent) doing the work.
+5. Reconcile the issue's labels against the existing taxonomy (one `type:`,
+   `area:`, `priority:`, and `status:` label where they apply) and its
+   milestone. Correct stale state — for example, `status: blocked` after
+   every blocker has closed.
+6. For work touching architecture, security, governance, release scope, or
+   public behavior, post a short implementation plan on the issue first.
+7. Create a branch linked to the issue. Only then implement.
+
+Comments like "I will do this" without assignment do not reserve work; the
+assignee field is the coordination record.
+
 ## Local setup
 
 ```bash

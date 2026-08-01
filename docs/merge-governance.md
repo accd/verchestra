@@ -38,17 +38,29 @@ the ruleset carries one permanent bypass actor: the `Repository admin` role,
 always allowed. It exists so that routine maintainer work has an executable
 merge path instead of an improvised one, and its scope is deliberately narrow.
 
-A maintainer merge through the bypass is legitimate only when all of the
-following hold:
+The bypass contract has two stages, because a precondition cannot truthfully
+describe a merge that has not happened yet.
+
+**Before merge**, a bypass merge is legitimate only when all of the following
+hold:
 
 - the maintainer authored the pull request;
 - every required check is green on the current head, not on an earlier push;
 - every review thread is resolved;
 - the merge is a squash, as the ruleset requires of everyone;
-- the pull request body states that it was merged by maintainer bypass.
+- the pull request body declares `Intended merge path: maintainer bypass`,
+  states why the bypass applies, and states whether the change preserves,
+  strengthens, or reduces enforcement.
 
-The bypass is not silent. GitHub records it in the repository audit log and on
-the pull request timeline, so every use is attributable after the fact.
+A body that asserts the merge in the past tense before it occurs fails the
+declaration requirement: the declaration is a statement of intent a reader can
+check, not a prediction dressed as a record.
+
+**After merge**, the evidence is GitHub's own record: the pull request
+timeline, the repository audit log, the merge commit, and the final check
+state on the merged head. A post-merge body update or comment may note the
+completed path, but it is secondary to the timeline. The bypass is not
+silent; every use is attributable after the fact.
 
 Two kinds of change stay outside it, because they decide who may approve and
 what is enforced, and a control that can relax itself is not a control:

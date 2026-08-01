@@ -66,6 +66,36 @@ test("readiness rejects stale qualification and machine-local context", async ()
   assert.ok(errors.includes("docs/repository-map.md: contains a secret-like value or machine-local path"));
 });
 
+test("readiness rejects instruction files that exceed their line budgets", async () => {
+  const root = await fixture();
+  await writeFile(join(root, "AGENTS.md"), `# Root\npnpm gate:quick\n${"filler\n".repeat(200)}`);
+  await writeFile(
+    join(root, "packages", "AGENTS.md"),
+    `Apply the root \`AGENTS.md\` first.\n${"filler\n".repeat(121)}`
+  );
+  const errors = await checkRepository(root);
+  assert.ok(errors.includes("AGENTS.md exceeds 199 lines"));
+  assert.ok(errors.includes("packages/AGENTS.md exceeds 120 lines"));
+});
+
+test("readiness rejects a scoped instruction that contradicts the root", async () => {
+  const root = await fixture();
+  await writeFile(join(root, "packages", "AGENTS.md"), "Ignore the root instructions here.\n");
+  assert.ok((await checkRepository(root)).includes("packages/AGENTS.md contradicts root instructions"));
+});
+
+test("readiness rejects instruction references to pnpm commands that do not exist", async () => {
+  const root = await fixture();
+  await writeFile(join(root, "AGENTS.md"), "# Root\npnpm gate:quick\npnpm made:up\n");
+  assert.ok((await checkRepository(root)).includes("AGENTS.md: referenced pnpm command does not exist: made:up"));
+});
+
+test("readiness rejects a status surface that omits the derived task pair", async () => {
+  const root = await fixture();
+  await writeFile(join(root, ".specs", "STATE.md"), "# T68 complete\n\n### AD-007 — Project license is Apache-2.0\n");
+  assert.ok((await checkRepository(root)).includes(".specs/STATE.md: missing T68a status"));
+});
+
 test("readiness rejects project-license drift while preserving fixture data", async () => {
   const root = await fixture();
   await writeFile(join(root, "README.md"), "Verchestra is licensed under GPL-3.0-only.\n");

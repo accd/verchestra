@@ -1,0 +1,541 @@
+{
+  "target": 10,
+  "variant": "classic",
+  "hotspots": {
+    "apps/site/src/lib/llm-content.ts :: Async function 'collectLlmDocuments'": [
+      17
+    ],
+    "apps/site/src/lib/repository-content.ts :: Function 'extractDescription'": [
+      12
+    ],
+    "apps/site/src/lib/repository-content.ts :: Function 'validateRoadmapChain'": [
+      17
+    ],
+    "apps/vestra-cli/src/cli.ts :: Async function 'runCli'": [
+      14
+    ],
+    "apps/vestra-cli/src/cli.ts :: Function 'assertManifest'": [
+      19
+    ],
+    "apps/vestra-cli/src/cli.ts :: Function 'parseCliArguments'": [
+      22
+    ],
+    "packages/agent-runtime/src/context/backend-serializers.ts :: Function 'exactText'": [
+      35
+    ],
+    "packages/agent-runtime/src/context/backend-serializers.ts :: Function 'validateTree'": [
+      25
+    ],
+    "packages/agent-runtime/src/context/context-compiler.ts :: Async method 'compile'": [
+      33
+    ],
+    "packages/agent-runtime/src/context/context-compiler.ts :: Private method #validateSnapshot": [
+      25
+    ],
+    "packages/agent-runtime/src/context/source-snapshots.ts :: Arrow function": [
+      12
+    ],
+    "packages/agent-runtime/src/context/source-snapshots.ts :: Function 'normalizeRecipe'": [
+      17
+    ],
+    "packages/agent-runtime/src/context/source-snapshots.ts :: Private method #resolveObservation": [
+      12
+    ],
+    "packages/agent-runtime/src/discovery/discovery-router.ts :: Arrow function": [
+      13
+    ],
+    "packages/agent-runtime/src/discovery/discovery-router.ts :: Method 'choose'": [
+      17
+    ],
+    "packages/agent-runtime/src/discovery/discovery-router.ts :: Method 'normalize'": [
+      16
+    ],
+    "packages/agent-runtime/src/models/model-router.ts :: Async method 'route'": [
+      17
+    ],
+    "packages/agent-runtime/src/models/model-router.ts :: Function 'validate'": [
+      37
+    ],
+    "packages/agent-runtime/src/models/model-router.ts :: Private method #hardExclusions": [
+      17
+    ],
+    "packages/agent-runtime/src/models/passport-registry.ts :: Function 'normalize'": [
+      27
+    ],
+    "packages/agent-runtime/src/skills/governed-skill-registry.ts :: Async method 'resolve'": [
+      17
+    ],
+    "packages/agent-runtime/src/skills/governed-skill-registry.ts :: Private async method #validateLock": [
+      40
+    ],
+    "packages/application/src/authority/authority.ts :: Async method 'grant'": [
+      13
+    ],
+    "packages/application/src/authority/authority.ts :: Async method 'invoke'": [
+      16
+    ],
+    "packages/application/src/bootstrap/machine-bootstrap.ts :: Async method 'execute'": [
+      14
+    ],
+    "packages/application/src/bootstrap/machine-bootstrap.ts :: Function 'validateConfig'": [
+      24
+    ],
+    "packages/application/src/coordination/work-claims.ts :: Async method 'acquire'": [
+      11
+    ],
+    "packages/application/src/coordination/work-claims.ts :: Private async method #claimMatches": [
+      11
+    ],
+    "packages/application/src/egress/trust-egress.ts :: Async method 'authorize'": [
+      31
+    ],
+    "packages/application/src/egress/trust-egress.ts :: Async method 'declassify'": [
+      12
+    ],
+    "packages/application/src/egress/trust-egress.ts :: Private async method #validDeclassification": [
+      13
+    ],
+    "packages/application/src/execution/budget-meter.ts :: Function 'createBudgetMeter'": [
+      23
+    ],
+    "packages/application/src/execution/gate-repair.ts :: Async function 'runGateRepairLoop'": [
+      33
+    ],
+    "packages/application/src/execution/gate-repair.ts :: Function 'normalizePolicy'": [
+      12
+    ],
+    "packages/application/src/execution/gate-repair.ts :: Function 'normalizeState'": [
+      16
+    ],
+    "packages/application/src/execution/probe-evidence.ts :: Function 'normalizeReference'": [
+      13
+    ],
+    "packages/application/src/execution/task-executor.ts :: Async method 'execute'": [
+      53
+    ],
+    "packages/application/src/execution/task-scheduler.ts :: Async method 'execute'": [
+      26
+    ],
+    "packages/application/src/execution/task-scheduler.ts :: Function 'assertValidGraph'": [
+      13
+    ],
+    "packages/application/src/execution/task-scheduler.ts :: Function 'normalizeTaskSchedule'": [
+      11
+    ],
+    "packages/application/src/handoff/coordinator.ts :: Async method 'continue'": [
+      13
+    ],
+    "packages/application/src/handoff/coordinator.ts :: Async method 'publish'": [
+      31
+    ],
+    "packages/application/src/handoff/coordinator.ts :: Async method 'verify'": [
+      11
+    ],
+    "packages/application/src/sync/workspace-reconcile.ts :: Async method 'execute'": [
+      15
+    ],
+    "packages/application/src/sync/workspace-reconcile.ts :: Function 'assertValid'": [
+      15
+    ],
+    "packages/application/src/sync/workspace-reconcile.ts :: Function 'topologyOperations'": [
+      22
+    ],
+    "packages/application/src/verification/verification.ts :: Async method 'review'": [
+      15
+    ],
+    "packages/application/src/verification/verification.ts :: Async method 'verify'": [
+      21
+    ],
+    "packages/connectors/src/confluence/architecture-source.ts :: Private async method #attachments": [
+      20
+    ],
+    "packages/connectors/src/confluence/architecture-source.ts :: Private method #normalizeRequest": [
+      13
+    ],
+    "packages/connectors/src/confluence/delivery-projection.ts :: Async method 'apply'": [
+      17
+    ],
+    "packages/connectors/src/confluence/delivery-projection.ts :: Function 'inspectConfluenceOwnedSection'": [
+      13
+    ],
+    "packages/connectors/src/jira/jira.ts :: Async method 'acquire'": [
+      16
+    ],
+    "packages/connectors/src/jira/jira.ts :: Async method 'list'": [
+      15
+    ],
+    "packages/data-probe/src/database-knowledge.ts :: Arrow function": [
+      12
+    ],
+    "packages/data-probe/src/database-knowledge.ts :: Function 'buildDatabaseKnowledgePackage'": [
+      23
+    ],
+    "packages/data-probe/src/database-knowledge.ts :: Function 'importSchemaSource'": [
+      22
+    ],
+    "packages/data-probe/src/database-knowledge.ts :: Function 'isEmailValue'": [
+      11
+    ],
+    "packages/data-probe/src/database-knowledge.ts :: Function 'normalizePromotedProbeEvidence'": [
+      22
+    ],
+    "packages/data-probe/src/database-knowledge.ts :: Function 'planSyntheticSeedScenarios'": [
+      53
+    ],
+    "packages/data-probe/src/database-knowledge.ts :: Function 'promoteProbeEvidence'": [
+      13
+    ],
+    "packages/data-probe/src/index.ts :: Async method 'plan'": [
+      15
+    ],
+    "packages/data-probe/src/index.ts :: Function 'normalizeOperation'": [
+      11
+    ],
+    "packages/data-probe/src/mongodb-adapter.ts :: Async method 'inspectPrincipal'": [
+      11
+    ],
+    "packages/data-probe/src/mongodb-adapter.ts :: Function 'filter'": [
+      21
+    ],
+    "packages/data-probe/src/mongodb-adapter.ts :: Function 'parseMongoDbReadOperation'": [
+      25
+    ],
+    "packages/data-probe/src/mongodb-adapter.ts :: Function 'pipeline'": [
+      13
+    ],
+    "packages/data-probe/src/mongodb-adapter.ts :: Function 'preflight'": [
+      16
+    ],
+    "packages/data-probe/src/mysql-family-adapter.ts :: Function 'decodeRequest'": [
+      12
+    ],
+    "packages/data-probe/src/mysql-family-adapter.ts :: Function 'parseMySqlFamilyReadOperation'": [
+      40
+    ],
+    "packages/data-probe/src/oracle-adapter.ts :: Async method 'inspectPrincipal'": [
+      16
+    ],
+    "packages/data-probe/src/oracle-adapter.ts :: Async method 'verifyIdentity'": [
+      12
+    ],
+    "packages/data-probe/src/oracle-adapter.ts :: Function 'parseOracleReadOperation'": [
+      45
+    ],
+    "packages/data-probe/src/postgresql-adapter.ts :: Function 'decodeRequest'": [
+      12
+    ],
+    "packages/data-probe/src/postgresql-adapter.ts :: Function 'parsePostgreSqlReadOperation'": [
+      39
+    ],
+    "packages/data-probe/src/sap-ase-adapter.ts :: Async method 'inspectPrincipal'": [
+      17
+    ],
+    "packages/data-probe/src/sap-ase-adapter.ts :: Async method 'verifyIdentity'": [
+      12
+    ],
+    "packages/data-probe/src/sap-ase-adapter.ts :: Function 'decodeRequest'": [
+      12
+    ],
+    "packages/data-probe/src/sap-ase-adapter.ts :: Function 'parseSapAseReadOperation'": [
+      39
+    ],
+    "packages/data-probe/src/sqlite-adapter.ts :: Function 'parseSqliteReadOperation'": [
+      38
+    ],
+    "packages/data-probe/src/sqlserver-adapter.ts :: Function 'decodeRequest'": [
+      12
+    ],
+    "packages/data-probe/src/sqlserver-adapter.ts :: Function 'parseSqlServerReadOperation'": [
+      43
+    ],
+    "packages/distribution/src/hermetic-bundle.ts :: Arrow function": [
+      16,
+      19
+    ],
+    "packages/distribution/src/transactional-activation.ts :: Arrow function": [
+      23
+    ],
+    "packages/distribution/src/transactional-activation.ts :: Private async method #acquireLock": [
+      18
+    ],
+    "packages/distribution/src/transactional-activation.ts :: Private async method #openStage": [
+      17
+    ],
+    "packages/distribution/src/tuf-update-client.ts :: Arrow function": [
+      16
+    ],
+    "packages/distribution/src/tuf-update-client.ts :: Async method 'readTarget'": [
+      20
+    ],
+    "packages/distribution/src/tuf-update-client.ts :: Async method 'resolveAndStage'": [
+      14
+    ],
+    "packages/distribution/src/tuf-update-client.ts :: Private async method #stageComponent": [
+      19
+    ],
+    "packages/domain/src/workflow/workflow-machine.ts :: Function 'createHandoffSuccessor'": [
+      13
+    ],
+    "packages/domain/src/workflow/workflow-machine.ts :: Function 'transition'": [
+      19
+    ],
+    "packages/domain/src/workflow/workflow-machine.ts :: Function 'validateWorkflowDefinition'": [
+      12
+    ],
+    "packages/domain/src/workflow/workflow-machine.ts :: Static method 'decide'": [
+      28
+    ],
+    "packages/drivers/src/claude-code-driver.ts :: Arrow function": [
+      29
+    ],
+    "packages/drivers/src/claude-code-driver.ts :: Async method 'start'": [
+      24
+    ],
+    "packages/drivers/src/codex-driver.ts :: Arrow function": [
+      33
+    ],
+    "packages/drivers/src/codex-driver.ts :: Async method 'start'": [
+      27
+    ],
+    "packages/drivers/src/codex-driver.ts :: Private method #validateExecution": [
+      14
+    ],
+    "packages/drivers/src/index.ts :: Function 'validateDriverStartRequest'": [
+      27
+    ],
+    "packages/drivers/src/index.ts :: Function 'validateEnvelope'": [
+      33
+    ],
+    "packages/drivers/src/index.ts :: Function 'validateScriptEvent'": [
+      21
+    ],
+    "packages/drivers/src/index.ts :: Method 'push'": [
+      14
+    ],
+    "packages/drivers/src/opencode-driver.ts :: Async arrow function": [
+      34
+    ],
+    "packages/drivers/src/opencode-driver.ts :: Async function 'productionServerFactory'": [
+      11
+    ],
+    "packages/drivers/src/opencode-driver.ts :: Async method 'start'": [
+      22
+    ],
+    "packages/drivers/src/opencode-driver.ts :: Function 'flattenCatalog'": [
+      16
+    ],
+    "packages/drivers/src/pi-driver.ts :: Async method 'start'": [
+      12
+    ],
+    "packages/drivers/src/pi-driver.ts :: Private method #validateExecution": [
+      15
+    ],
+    "packages/evidence/src/execution-package/execution-package.ts :: Async method 'verify'": [
+      21
+    ],
+    "packages/evidence/src/execution-package/execution-package.ts :: Function 'normalizeBuildInput'": [
+      22
+    ],
+    "packages/evidence/src/integrity/artifact-sealer.ts :: Async method 'verify'": [
+      22
+    ],
+    "packages/evidence/src/integrity/canonical.ts :: Function 'assertJsonValue'": [
+      22
+    ],
+    "packages/evidence/src/recovery-bundle/recovery-bundle.ts :: Async method 'open'": [
+      20
+    ],
+    "packages/evidence/src/recovery-bundle/recovery-bundle.ts :: Function 'assertClosure'": [
+      12
+    ],
+    "packages/evidence/src/recovery-bundle/recovery-bundle.ts :: Function 'validateManifestShape'": [
+      13
+    ],
+    "packages/evidence/src/recovery-bundle/recovery-bundle.ts :: Private async method #verifyEnvelope": [
+      17
+    ],
+    "packages/evidence/src/run-capsule/run-capsule.ts :: Async method 'verify'": [
+      18
+    ],
+    "packages/evidence/src/run-capsule/run-capsule.ts :: Function 'inspectPrivateMaterial'": [
+      11
+    ],
+    "packages/evidence/src/run-capsule/run-capsule.ts :: Function 'normalizePayload'": [
+      45
+    ],
+    "packages/evidence/src/support-bundle/support-bundle.ts :: Async method 'open'": [
+      40
+    ],
+    "packages/evidence/src/support-bundle/support-bundle.ts :: Function 'assertNormalizedValue'": [
+      22
+    ],
+    "packages/evidence/src/support-bundle/support-bundle.ts :: Function 'normalizeDiagnosticValue'": [
+      21
+    ],
+    "packages/evidence/src/support-bundle/support-bundle.ts :: Method 'assertSafe'": [
+      20
+    ],
+    "packages/evidence/src/support-bundle/support-bundle.ts :: Private method #assertPlan": [
+      37
+    ],
+    "packages/extension-host/src/index.ts :: Async generator method 'execute'": [
+      11
+    ],
+    "packages/extension-host/src/index.ts :: Async method 'execute'": [
+      23
+    ],
+    "packages/extension-host/src/index.ts :: Function 'validateEnvelope'": [
+      26
+    ],
+    "packages/extension-host/src/index.ts :: Method 'push'": [
+      14
+    ],
+    "packages/memory/src/memory-lifecycle.ts :: Async function 'assertSafeTarget'": [
+      14
+    ],
+    "packages/memory/src/memory-lifecycle.ts :: Async method 'applyGarbageCollection'": [
+      19
+    ],
+    "packages/memory/src/memory-lifecycle.ts :: Async method 'applyPromotion'": [
+      22
+    ],
+    "packages/memory/src/memory-lifecycle.ts :: Async method 'forget'": [
+      25
+    ],
+    "packages/memory/src/memory-lifecycle.ts :: Async method 'invalidateObject'": [
+      14
+    ],
+    "packages/memory/src/memory-lifecycle.ts :: Async method 'registerObject'": [
+      32
+    ],
+    "packages/memory/src/memory-lifecycle.ts :: Method 'planGarbageCollection'": [
+      13
+    ],
+    "packages/memory/src/memory-retriever.ts :: Arrow function": [
+      11
+    ],
+    "packages/memory/src/memory-retriever.ts :: Async method 'search'": [
+      16
+    ],
+    "packages/memory/src/memory-retriever.ts :: Function 'normalizeRank'": [
+      11
+    ],
+    "packages/memory/src/memory-retriever.ts :: Function 'normalizeRecord'": [
+      11
+    ],
+    "packages/memory/src/memory-retriever.ts :: Function 'normalizeRequest'": [
+      13
+    ],
+    "packages/memory/src/memory-retriever.ts :: Method 'search'": [
+      36
+    ],
+    "packages/memory/src/memory-store.ts :: Arrow function": [
+      11
+    ],
+    "packages/memory/src/memory-store.ts :: Private method #applyIngestion": [
+      13
+    ],
+    "packages/memory/src/memory-vector-index.ts :: Constructor": [
+      17
+    ],
+    "packages/memory/src/memory-vector-index.ts :: Method 'buildGeneration'": [
+      26
+    ],
+    "packages/memory/src/memory-vector-index.ts :: Method 'open'": [
+      15
+    ],
+    "packages/memory/src/memory-vector-index.ts :: Private method #verifyGeneration": [
+      18
+    ],
+    "packages/platform-node/src/encrypted-file-key-provider.ts :: Function 'parseEncryptedState'": [
+      21
+    ],
+    "packages/platform-node/src/encrypted-file-key-provider.ts :: Function 'parseEnvelope'": [
+      30
+    ],
+    "packages/platform-node/src/encrypted-file-key-provider.ts :: Private async method #load": [
+      16
+    ],
+    "packages/platform-node/src/gate-commit-adapters.ts :: Async function 'targetFromRef'": [
+      13
+    ],
+    "packages/platform-node/src/gate-commit-adapters.ts :: Async method 'run'": [
+      16
+    ],
+    "packages/platform-node/src/gate-commit-adapters.ts :: Private method #validateRequest": [
+      13
+    ],
+    "packages/platform-node/src/protected-path.ts :: Async method 'openExisting'": [
+      14
+    ],
+    "packages/platform-node/src/runtime-store/runtime-store.ts :: Async method 'complete'": [
+      12
+    ],
+    "packages/platform-node/src/runtime-store/runtime-store.ts :: Method 'acquireLease'": [
+      15
+    ],
+    "packages/platform-node/src/runtime-store/runtime-store.ts :: Method 'applyTransition'": [
+      20
+    ],
+    "packages/platform-node/src/runtime-store/runtime-store.ts :: Method 'recordRunCapsuleSeal'": [
+      22
+    ],
+    "packages/platform-node/src/runtime-store/runtime-store.ts :: Method 'saveSyncState'": [
+      12
+    ],
+    "packages/policy/src/cedar-policy.ts :: Private method #compile": [
+      21
+    ],
+    "packages/policy/src/policy-activation.ts :: Async method 'activate'": [
+      15
+    ],
+    "packages/policy/src/policy-bundle.ts :: Function 'verifyPolicyBundle'": [
+      21
+    ],
+    "packages/policy/src/policy-test.ts :: Function 'normalizePolicyTestCase'": [
+      18
+    ],
+    "packages/workspace/src/init/safe-init.ts :: Arrow function": [
+      13
+    ],
+    "packages/workspace/src/init/safe-init.ts :: Async method 'apply'": [
+      25
+    ],
+    "packages/workspace/src/init/safe-init.ts :: Async method 'preview'": [
+      16
+    ],
+    "packages/workspace/src/init/safe-init.ts :: Async method 'recover'": [
+      25
+    ],
+    "packages/workspace/src/placement/artifact-placement.ts :: Function 'effectivePlacement'": [
+      15
+    ],
+    "packages/workspace/src/scanner/scanner-primitives.ts :: Function 'sanitizeRemoteUrl'": [
+      12
+    ],
+    "packages/workspace/src/scanner/workspace-scanner.ts :: Async function 'walk'": [
+      22
+    ],
+    "scripts/agent-eval.mjs :: Function 'assertResults'": [
+      11
+    ],
+    "scripts/agent-readiness.mjs :: Async function 'checkMarkdownLinks'": [
+      24
+    ],
+    "scripts/agent-readiness.mjs :: Async function 'compileAgentContext'": [
+      11
+    ],
+    "scripts/agent-readiness.mjs :: Function 'parseHandoff'": [
+      25
+    ],
+    "scripts/agent-readiness.mjs :: Function 'validateQualificationReport'": [
+      38
+    ],
+    "scripts/agent-readiness.mjs :: Function 'validateRoadmapChain'": [
+      17
+    ],
+    "scripts/architecture.mjs :: Function 'inspectSource'": [
+      12
+    ]
+  }
+}

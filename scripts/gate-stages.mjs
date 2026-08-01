@@ -1,8 +1,9 @@
 export const GATE_STAGES = Object.freeze({
-  "gate:quick": ["format:check", "lint", "typecheck", "test:unit", "test:agent-readiness"],
+  "gate:quick": ["format:check", "lint", "complexity:check", "typecheck", "test:unit", "test:agent-readiness"],
   "gate:full": [
     "format:check",
     "lint",
+    "complexity:check",
     "typecheck",
     "test:unit",
     "test:contract",
@@ -13,6 +14,7 @@ export const GATE_STAGES = Object.freeze({
   "gate:build": [
     "format:check",
     "lint",
+    "complexity:check",
     "typecheck",
     "build",
     "test:unit",
@@ -25,6 +27,7 @@ export const GATE_STAGES = Object.freeze({
   "gate:security": [
     "format:check",
     "lint",
+    "complexity:check",
     "typecheck",
     "build",
     "test:unit",
@@ -36,6 +39,7 @@ export const GATE_STAGES = Object.freeze({
   "gate:release": [
     "format:check",
     "lint",
+    "complexity:check",
     "typecheck",
     "build",
     "test:unit",

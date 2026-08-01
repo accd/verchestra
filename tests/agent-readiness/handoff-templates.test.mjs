@@ -63,3 +63,12 @@ test("issue and pull request templates require portable review evidence", async 
       assert.match(source, new RegExp(required, "iu"), `${index}: ${required}`);
   }
 });
+
+test("the pull request template declares merge intent, never a completed merge", async () => {
+  const source = await readFile(new URL("../../.github/PULL_REQUEST_TEMPLATE.md", import.meta.url), "utf8");
+  assert.match(source, /^## Merge path/mu);
+  assert.match(source, /Intended maintainer bypass/u);
+  assert.match(source, /^## Issue and milestone state/mu);
+  assert.match(source, /Do not describe a future merge as completed/u);
+  assert.doesNotMatch(source, /was merged by/iu, "the template must not pre-assert a past-tense merge");
+});

@@ -1,0 +1,68 @@
+name: CodeQL
+
+# The default setup does not produce any check run for a pull request from a
+# fork, so the `CodeQL` context the ruleset requires can never be satisfied by an
+# outside contribution (#131). An in-repository workflow runs for forks like any
+# other job, which is the only configuration that closes that gap without
+# removing the control.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # The default setup scans on a cadence as well as per change. Keeping a
+    # weekly scan means moving off it is not a quiet reduction in coverage.
+    - cron: "0 3 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    name: Analyze
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      # A fork pull request receives a read-only token regardless of what is
+      # declared here. The analysis still runs and reports through its check;
+      # only the upload to the security tab is unavailable to it.
+      security-events: write
+      actions: read
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        # Exactly the languages the default setup resolves today, so replacing it
+        # changes who is scanned and not what is scanned.
+        language: [actions, javascript-typescript]
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.0
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@18420e3271f74589575af831a523c833acda327f # codeql-bundle-v2.26.2
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: none
+      - name: Analyze
+        uses: github/codeql-action/analyze@18420e3271f74589575af831a523c833acda327f # codeql-bundle-v2.26.2
+        with:
+          category: "/language:${{ matrix.language }}"
+
+  codeql:
+    # The ruleset requires a check context named exactly `CodeQL`. The matrix
+    # above produces `Analyze (<language>)`, so this job carries that name.
+    name: CodeQL
+    needs: [analyze]
+    # Runs even when the matrix failed, because a required check that is skipped
+    # is a required check that never reports - the defect this workflow exists to
+    # fix.
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require every analysis to have succeeded
+        if: needs.analyze.result != 'success'
+        run: |
+          echo "::error::CodeQL analysis did not succeed (result: ${{ needs.analyze.result }})."
+          exit 1

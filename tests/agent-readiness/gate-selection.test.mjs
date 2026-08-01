@@ -113,6 +113,7 @@ test("the stage union is deterministic and executes each selected stage once", (
   assert.deepEqual(stages, [
     "format:check",
     "lint",
+    "complexity:check",
     "typecheck",
     "test:unit",
     "test:agent-readiness",
@@ -126,7 +127,15 @@ test("the stage union is deterministic and executes each selected stage once", (
     "test:security",
     "test:release"
   ]);
-  assert.deepEqual(GATE_STAGES["gate:quick"], stages.slice(0, 5));
+  assert.deepEqual(GATE_STAGES["gate:quick"], stages.slice(0, 6));
+});
+
+test("every gate profile enforces the complexity ratchet immediately after lint", () => {
+  for (const [gate, stages] of Object.entries(GATE_STAGES)) {
+    const lintIndex = stages.indexOf("lint");
+    assert.notEqual(lintIndex, -1, `${gate} must lint`);
+    assert.equal(stages[lintIndex + 1], "complexity:check", `${gate} must run the complexity ratchet after lint`);
+  }
 });
 
 test("a multi-commit push range includes every commit since github.event.before", () => {
