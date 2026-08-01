@@ -74,13 +74,13 @@ Two consequences bind every design option:
 
 ## Scope
 
-| In scope | Out of scope |
-| --- | --- |
-| V2 contract type/version in `packages/contracts` | Any other owner in the T2 matrix (T4) |
-| Pure RFC 8785 JCS encoder + input guard in `packages/domain` | Replacing `packages/evidence`'s qualified V1 primitive |
-| Workspace scanner identities, placement `planId`, safe-init journal `planId` | Signed evidence, release bundles, policy views |
-| Journal `schemaVersion` 1→2 migration with V1 backward verification | Changing what the journal records or how recovery behaves |
-| Discrimination sensors for locale ordering and array ordering | Presentation-only sorts outside digest input |
+| In scope                                                                     | Out of scope                                              |
+| ---------------------------------------------------------------------------- | --------------------------------------------------------- |
+| V2 contract type/version in `packages/contracts`                             | Any other owner in the T2 matrix (T4)                     |
+| Pure RFC 8785 JCS encoder + input guard in `packages/domain`                 | Replacing `packages/evidence`'s qualified V1 primitive    |
+| Workspace scanner identities, placement `planId`, safe-init journal `planId` | Signed evidence, release bundles, policy views            |
+| Journal `schemaVersion` 1→2 migration with V1 backward verification          | Changing what the journal records or how recovery behaves |
+| Discrimination sensors for locale ordering and array ordering                | Presentation-only sorts outside digest input              |
 
 ## Backward-compatibility surface
 
@@ -99,58 +99,97 @@ requiring no historical byte compatibility.
 
 ## Requirements
 
-| ID | Requirement |
-| --- | --- |
-| CJ-01 | One V2 canonical JSON contract is named and versioned in `packages/contracts`, and is the only canonicalization contract this slice's new digests cite. |
-| CJ-02 | The V2 encoder implements RFC 8785 JCS in `packages/domain` with zero third-party imports and zero `node:` imports. |
-| CJ-03 | V2 output matches the published RFC 8785 test vectors for object ordering, number serialization, string escaping, and Unicode keys. |
-| CJ-04 | V2 orders object members by UTF-16 code unit. Ambient `localeCompare` never determines a V2 digest's member order. |
-| CJ-05 | V2 preserves array order. A collection that is semantically a set is normalized explicitly by its owning domain, in code-unit order, before encoding. |
-| CJ-06 | V2 rejects `undefined` object values, sparse arrays, accessor properties, cycles, non-finite numbers, invalid Unicode, and exceeded depth/node limits, each with a typed error code. |
-| CJ-07 | The same input produces byte-identical V2 output and digests under at least two different ambient locales. |
-| CJ-08 | `buildInventoryFingerprint` (V1) remains byte-identical for any caller not migrated in this slice. |
-| CJ-09 | Workspace transient identities emit V2 with a self-describing version prefix distinguishing them from V1 values. |
-| CJ-10 | The recovery journal writes `schemaVersion: 2` with a V2 `planId`; a `schemaVersion: 1` journal still verifies with V1; a version/digest mismatch fails closed rather than being reinterpreted. |
+| ID    | Requirement                                                                                                                                                                                         |
+| ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| CJ-01 | One V2 canonical JSON contract is named and versioned in `packages/contracts`, and is the only canonicalization contract this slice's new digests cite.                                             |
+| CJ-02 | The V2 encoder implements RFC 8785 JCS in `packages/domain` with zero third-party imports and zero `node:` imports.                                                                                 |
+| CJ-03 | V2 output matches the published RFC 8785 test vectors for object ordering, number serialization, string escaping, and Unicode keys.                                                                 |
+| CJ-04 | V2 orders object members by UTF-16 code unit. Ambient `localeCompare` never determines a V2 digest's member order.                                                                                  |
+| CJ-05 | V2 preserves array order. A collection that is semantically a set is normalized explicitly by its owning domain, in code-unit order, before encoding.                                               |
+| CJ-06 | V2 rejects `undefined` object values, sparse arrays, accessor properties, cycles, non-finite numbers, invalid Unicode, and exceeded depth/node limits, each with a typed error code.                |
+| CJ-07 | The same input produces byte-identical V2 output and digests under at least two different ambient locales.                                                                                          |
+| CJ-08 | `buildInventoryFingerprint` (V1) remains byte-identical for any caller not migrated in this slice.                                                                                                  |
+| CJ-09 | Workspace transient identities emit V2 with a self-describing version prefix distinguishing them from V1 values.                                                                                    |
+| CJ-10 | The recovery journal writes `schemaVersion: 2` with a V2 `planId`; a `schemaVersion: 1` journal still verifies with V1; a version/digest mismatch fails closed rather than being reinterpreted.     |
 | CJ-11 | A discrimination sensor replacing code-unit ordering with `localeCompare`, and one replacing array-order preservation with sorting, are each killed by a focused test that runs in a declared gate. |
-| CJ-12 | `pnpm gate:security` and the architecture boundary test pass; no existing assertion is weakened, skipped, or deleted. |
+| CJ-12 | `pnpm gate:security` and the architecture boundary test pass; no existing assertion is weakened, skipped, or deleted.                                                                               |
 
 ## Requirement traceability
 
-| ID | Tasks | Verified by |
-| --- | --- | --- |
-| CJ-01 | T1 | `tests/contract/canonical-json-contract.test.mjs` |
-| CJ-02 | T2, T4 | `tests/architecture/repository-boundaries.test.mjs` |
-| CJ-03 | T2 | `tests/unit/canonical-json-v2.test.mjs` (RFC 8785 vectors) |
-| CJ-04 | T2, T7, T8 | `tests/unit/canonical-json-v2.test.mjs` |
-| CJ-05 | T2, T6 | `tests/unit/canonical-json-sets.test.mjs` |
-| CJ-06 | T3 | `tests/unit/canonical-json-guard.test.mjs` |
-| CJ-07 | T2 | `tests/unit/canonical-json-v2.test.mjs` (locale sweep) |
-| CJ-08 | T5 | `tests/unit/workspace-fingerprint-v2.test.mjs` |
+| ID    | Tasks      | Verified by                                                                                    |
+| ----- | ---------- | ---------------------------------------------------------------------------------------------- |
+| CJ-01 | T1         | `tests/contract/canonical-json-contract.test.mjs`                                              |
+| CJ-02 | T2, T4     | `tests/architecture/repository-boundaries.test.mjs`                                            |
+| CJ-03 | T2         | `tests/unit/canonical-json-v2.test.mjs` (RFC 8785 vectors)                                     |
+| CJ-04 | T2, T7, T8 | `tests/unit/canonical-json-v2.test.mjs`                                                        |
+| CJ-05 | T2, T6     | `tests/unit/canonical-json-sets.test.mjs`                                                      |
+| CJ-06 | T3         | `tests/unit/canonical-json-guard.test.mjs`                                                     |
+| CJ-07 | T2         | `tests/unit/canonical-json-v2.test.mjs` (locale sweep)                                         |
+| CJ-08 | T5         | `tests/unit/workspace-fingerprint-v2.test.mjs`                                                 |
 | CJ-09 | T5, T7, T8 | `tests/unit/workspace-fingerprint-v2.test.mjs`, `tests/integration/workspace-scanner.test.mjs` |
-| CJ-10 | T9, T10 | `tests/integration/safe-init.test.mjs`, `tests/fault-injection/safe-init-faults.test.mjs` |
-| CJ-11 | T11 | `tests/security/canonical-json-sensor.test.mjs` |
-| CJ-12 | T13 | `pnpm gate:security` |
+| CJ-10 | T9, T10    | `tests/integration/safe-init.test.mjs`, `tests/fault-injection/safe-init-faults.test.mjs`      |
+| CJ-11 | T11        | `tests/security/canonical-json-sensor.test.mjs`                                                |
+| CJ-12 | T13        | `pnpm gate:security`                                                                           |
 
 ## Success criteria
 
-- [ ] CJ-01 — V2 contract declared and versioned in `packages/contracts`.
-- [ ] CJ-02 — domain encoder has no third-party and no `node:` imports.
-- [ ] CJ-03 — published RFC 8785 vectors pass.
-- [ ] CJ-04 — code-unit member ordering proven; no `localeCompare` on a V2 path.
-- [ ] CJ-05 — array order preserved; declared sets normalized explicitly.
-- [ ] CJ-06 — every listed rejection has a typed error and a test.
-- [ ] CJ-07 — cross-locale byte equality proven.
-- [ ] CJ-08 — V1 bytes unchanged for unmigrated callers.
-- [ ] CJ-09 — workspace identities emit a self-describing V2 prefix.
-- [ ] CJ-10 — V1 journals verify, V2 journals verify, mixed fails closed.
-- [ ] CJ-11 — both discrimination sensors killed inside a declared gate.
-- [ ] CJ-12 — `pnpm gate:security` passes with no weakened assertion.
+- [x] CJ-01 — V2 contract declared and versioned in `packages/contracts`.
+      Evidence: `packages/contracts/src/canonical-json.ts`,
+      `tests/contract/canonical-json-contract.test.mjs`.
+- [x] CJ-02 — domain encoder has no third-party and no `node:` imports.
+      Evidence: `packages/domain/src/canonical/canonical-json.ts`,
+      `tests/architecture/repository-boundaries.test.mjs` ("every
+      packages/domain/src/canonical source file carries no third-party or
+      node: import").
+- [x] CJ-03 — published RFC 8785 vectors pass.
+      Evidence: `tests/unit/canonical-json-v2.test.mjs` (`RFC 8785 vector: …`).
+- [x] CJ-04 — code-unit member ordering proven; no `localeCompare` on a V2 path.
+      Evidence: `tests/unit/canonical-json-v2.test.mjs:14,20`;
+      `tests/integration/safe-init.test.mjs` ("ownership manifest and journal
+      target order are code unit, not locale"); `tests/integration/workspace-scanner.test.mjs`;
+      `tests/unit/artifact-placement.test.mjs` ("WritePlan orders writes by
+      code unit, not locale").
+- [x] CJ-05 — array order preserved; declared sets normalized explicitly.
+      Evidence: `tests/unit/canonical-json-v2.test.mjs:28,32`,
+      `tests/unit/canonical-json-sets.test.mjs`.
+- [x] CJ-06 — every listed rejection has a typed error and a test.
+      Evidence: `tests/unit/canonical-json-guard.test.mjs`.
+- [x] CJ-07 — cross-locale byte equality proven.
+      Evidence: `tests/unit/canonical-json-v2.test.mjs:86` (two ambient locales).
+- [x] CJ-08 — V1 bytes unchanged for unmigrated callers.
+      Evidence: `tests/unit/workspace-fingerprint-v2.test.mjs:22` (pinned
+      pre-slice V1 byte value); `tests/integration/safe-init.test.mjs` ("a
+      pinned schemaVersion 1 journal written before this slice still
+      verifies and recovers").
+- [x] CJ-09 — workspace identities emit a self-describing V2 prefix.
+      Evidence: `tests/unit/workspace-fingerprint-v2.test.mjs`,
+      `tests/integration/workspace-scanner.test.mjs`,
+      `tests/unit/artifact-placement.test.mjs` ("WritePlan planId is
+      self-describing V2 and differs from a V1-format value").
+- [x] CJ-10 — V1 journals verify, V2 journals verify, mixed fails closed.
+      Evidence: `tests/integration/safe-init.test.mjs` (pinned V1 fixture,
+      V2 verification, both mismatched-prefix rejections, tampered-V2
+      digest-mismatch); `tests/fault-injection/safe-init-faults.test.mjs`
+      ("hard process crash …" for V2, "interrupted recovery of a pinned
+      schemaVersion 1 journal restores the prior backup" for V1).
+- [x] CJ-11 — both discrimination sensors killed inside a declared gate.
+      Evidence: `tests/security/canonical-json-sensor.test.mjs`, executed by
+      `pnpm test:security` inside `pnpm gate:security`.
+- [x] CJ-12 — `pnpm gate:security` passes with no weakened assertion.
+      Evidence: `format:check`/`lint`/`typecheck`/`build`/`test:unit`
+      (1743/1743) and `test:architecture` (18/18) clean; `test:security`
+      (870/882) and `test:fault` (171/218) carry the same pre-existing
+      native-`sqlite` (`fts5`) failure set as the pre-slice baseline
+      (confirmed via `git stash`), with every new test in this slice
+      passing and no existing assertion changed except the two
+      owner-approved `sha256:` → `v2:sha256:` regex updates recorded in
+      `handoff.md`.
 
 ## Assumptions
 
-| # | Assumption | Basis |
-| --- | --- | --- |
-| A1 | JavaScript's `Array.prototype.sort()` with no comparator is UTF-16 code-unit ordering, which is exactly what RFC 8785 requires for member names. | ECMAScript default sort compares via `<` on strings, i.e. code-unit order. `localeCompare` is the deviation, not the default. |
-| A2 | `JSON.stringify` already emits RFC 8785-conformant numbers and string escapes for finite values, because JCS's number rule *is* ECMAScript `Number::toString`. | RFC 8785 §3.2.2.3 defers to ECMAScript. This is why an internal encoder is small: the risky part is delegated to the runtime, not reimplemented. |
-| A3 | The scanner, placement, and journal identities are the complete set of `buildInventoryFingerprint` consumers. | `grep -rn buildInventoryFingerprint packages/workspace/src` returns `workspace-scanner.ts`, `artifact-placement.ts`, `safe-init.ts`, and the `index.ts` re-export only. |
-| A4 | Moving the discrimination sensor to `tests/security/` makes it actually execute. | `tests/mutation/` is named only in `scripts/gate-selection.mjs:36` and is run by no declared test script; `tests/security/` is run by `test:security`, which `gate:security` includes. |
+| #   | Assumption                                                                                                                                                     | Basis                                                                                                                                                                                  |
+| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A1  | JavaScript's `Array.prototype.sort()` with no comparator is UTF-16 code-unit ordering, which is exactly what RFC 8785 requires for member names.               | ECMAScript default sort compares via `<` on strings, i.e. code-unit order. `localeCompare` is the deviation, not the default.                                                          |
+| A2  | `JSON.stringify` already emits RFC 8785-conformant numbers and string escapes for finite values, because JCS's number rule _is_ ECMAScript `Number::toString`. | RFC 8785 §3.2.2.3 defers to ECMAScript. This is why an internal encoder is small: the risky part is delegated to the runtime, not reimplemented.                                       |
+| A3  | The scanner, placement, and journal identities are the complete set of `buildInventoryFingerprint` consumers.                                                  | `grep -rn buildInventoryFingerprint packages/workspace/src` returns `workspace-scanner.ts`, `artifact-placement.ts`, `safe-init.ts`, and the `index.ts` re-export only.                |
+| A4  | Moving the discrimination sensor to `tests/security/` makes it actually execute.                                                                               | `tests/mutation/` is named only in `scripts/gate-selection.mjs:36` and is run by no declared test script; `tests/security/` is run by `test:security`, which `gate:security` includes. |
