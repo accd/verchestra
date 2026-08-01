@@ -273,6 +273,9 @@
     "packages/distribution/src/tuf-update-client.ts :: Private async method #stageComponent": [
       19
     ],
+    "packages/domain/src/canonical/canonical-guard.ts :: Function 'assertValue'": [
+      23
+    ],
     "packages/domain/src/workflow/workflow-machine.ts :: Function 'createHandoffSuccessor'": [
       13
     ],
