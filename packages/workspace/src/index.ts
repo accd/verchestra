@@ -2,6 +2,7 @@ export const packageName = "@verchestra/workspace" as const;
 export {
   WorkspaceScanError,
   buildInventoryFingerprint,
+  buildInventoryFingerprintV2,
   detectProjectMarker,
   parseGitFile,
   sanitizeRemoteUrl,

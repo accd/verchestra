@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
 
+import { canonicalizeJsonV2 } from "@verchestra/domain";
+
 export class WorkspaceScanError extends Error {
   readonly code: string;
 
@@ -123,4 +125,16 @@ export function buildInventoryFingerprint(value: unknown): string {
   if (bytes === undefined)
     throw new WorkspaceScanError("VES_WORKSPACE_INVENTORY_INVALID", "Inventory is not serializable");
   return `sha256:${createHash("sha256").update(bytes, "utf8").digest("hex")}`;
+}
+
+export function buildInventoryFingerprintV2(value: unknown): string {
+  let bytes: string;
+  try {
+    bytes = canonicalizeJsonV2(value);
+  } catch (error) {
+    throw new WorkspaceScanError("VES_WORKSPACE_INVENTORY_INVALID", "Inventory is not canonicalizable", {
+      cause: error
+    });
+  }
+  return `v2:sha256:${createHash("sha256").update(bytes, "utf8").digest("hex")}`;
 }
