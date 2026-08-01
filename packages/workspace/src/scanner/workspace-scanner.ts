@@ -3,9 +3,11 @@ import { readFile, readdir, realpath, stat } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { promisify } from "node:util";
 
+import { normalizeDeclaredSet } from "@verchestra/domain";
+
 import {
   WorkspaceScanError,
-  buildInventoryFingerprint,
+  buildInventoryFingerprintV2,
   detectProjectMarker,
   parseGitFile,
   sanitizeRemoteUrl,
@@ -106,7 +108,7 @@ async function remoteFingerprint(repositoryRoot: string): Promise<string | undef
   const result = await git(repositoryRoot, ["config", "--get", "remote.origin.url"]);
   if (result.status !== 0 || result.stdout.length === 0) return undefined;
   try {
-    return buildInventoryFingerprint({ remote: sanitizeRemoteUrl(result.stdout) });
+    return buildInventoryFingerprintV2({ remote: sanitizeRemoteUrl(result.stdout) });
   } catch (error) {
     if (error instanceof WorkspaceScanError && error.code === "VES_WORKSPACE_REMOTE_INVALID") return undefined;
     throw error;
@@ -123,7 +125,7 @@ async function activeRepository(
   const remote = await remoteFingerprint(repositoryRoot);
   const sparse = await git(repositoryRoot, ["config", "--bool", "core.sparseCheckout"]);
   return Object.freeze({
-    repositoryId: buildInventoryFingerprint({ schemaVersion: 1, logicalPath, remoteFingerprint: remote ?? null }),
+    repositoryId: buildInventoryFingerprintV2({ schemaVersion: 1, logicalPath, remoteFingerprint: remote ?? null }),
     logicalPath,
     relation,
     status: "active",
@@ -141,7 +143,7 @@ async function brokenRepository(
 ): Promise<RepositoryInventory> {
   const logicalPath = logical(controlRoot, repositoryRoot);
   return Object.freeze({
-    repositoryId: buildInventoryFingerprint({ schemaVersion: 1, logicalPath, status: "broken", brokenReason }),
+    repositoryId: buildInventoryFingerprintV2({ schemaVersion: 1, logicalPath, status: "broken", brokenReason }),
     logicalPath,
     relation: "placeholder",
     status: "broken",
@@ -248,7 +250,7 @@ export async function scanWorkspace(options: {
       const logicalPath = logical(requestedRoot, directory);
       projects.push(
         Object.freeze({
-          discoveryKey: buildInventoryFingerprint({
+          discoveryKey: buildInventoryFingerprintV2({
             schemaVersion: 1,
             logicalPath,
             marker,
@@ -262,7 +264,9 @@ export async function scanWorkspace(options: {
       );
     }
 
-    for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
+    // Directory entries are a declared set for traversal purposes: walk order
+    // must be deterministic and locale-independent, not semantically ordered.
+    for (const entry of normalizeDeclaredSet(entries, (candidate) => candidate.name)) {
       if (PRUNED_DIRECTORIES.has(entry.name)) continue;
       const path = join(directory, entry.name);
       if (entry.isSymbolicLink()) {
@@ -286,16 +290,18 @@ export async function scanWorkspace(options: {
   }
 
   await walk(requestedRoot, repositories[0] as RepositoryInventory, 0);
-  const sortedRepositories = Object.freeze(
-    [...repositories].sort((a, b) => a.logicalPath.localeCompare(b.logicalPath))
-  );
-  const sortedProjects = Object.freeze([...projects].sort((a, b) => a.logicalPath.localeCompare(b.logicalPath)));
-  const sortedLinks = Object.freeze([...links].sort((a, b) => a.logicalPath.localeCompare(b.logicalPath)));
+  // Repositories, projects, and links are each a declared set keyed by
+  // logicalPath: the inventory's identity must not depend on discovery
+  // (walk) order, so each collection is normalized explicitly before it
+  // becomes V2 digest input (design.md: V2 preserves array order, unlike V1).
+  const sortedRepositories = Object.freeze(normalizeDeclaredSet(repositories, (entry) => entry.logicalPath));
+  const sortedProjects = Object.freeze(normalizeDeclaredSet(projects, (entry) => entry.logicalPath));
+  const sortedLinks = Object.freeze(normalizeDeclaredSet(links, (entry) => entry.logicalPath));
   const portable = Object.freeze({
     schemaVersion: 1 as const,
     repositories: sortedRepositories,
     projects: sortedProjects,
     links: sortedLinks
   });
-  return Object.freeze({ ...portable, fingerprint: buildInventoryFingerprint(portable) });
+  return Object.freeze({ ...portable, fingerprint: buildInventoryFingerprintV2(portable) });
 }

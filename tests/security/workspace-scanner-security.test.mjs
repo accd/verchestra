@@ -32,7 +32,7 @@ test("credential-bearing remote contributes only a sanitized fingerprint", async
   assert.equal(serialized.includes("super-secret"), false);
   assert.equal(serialized.includes("token=hidden"), false);
   assert.equal(serialized.includes("https://"), false);
-  assert.match(JSON.parse(serialized).repositories[0].remoteFingerprint, /^sha256:[a-f0-9]{64}$/u);
+  assert.match(JSON.parse(serialized).repositories[0].remoteFingerprint, /^v2:sha256:[a-f0-9]{64}$/u);
 });
 
 test("external symlink or junction is recorded but never traversed", async () => {
