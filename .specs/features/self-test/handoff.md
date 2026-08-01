@@ -3,12 +3,12 @@ schema: verchestra-feature-handoff/v1
 feature: self-test
 issue: 10
 status: in_progress
-branch: feat/t69-self-test-t1
-baseRevision: ac251e4fe4403600c3351c6f7a39cbd2ee00a59b
-lastCompletedTask: T1
-nextTask: T2
+branch: feat/t69-self-test-t2
+baseRevision: c8d224be7dfff5f597435dae1a08ba4bd4ee6bf6
+lastCompletedTask: T2
+nextTask: T3
 lastGate: pnpm gate:security
-updatedAt: 2026-08-01T13:30:00Z
+updatedAt: 2026-08-01T16:00:00Z
 ---
 
 # Scope
@@ -19,12 +19,22 @@ code exists yet.
 
 # Next Exact Action
 
-T2: build the rules in `packages/application/src/self-test/` — errors, the
-closed profile registry (`smoke | full | workspace | drivers`, sealed by T57
-evidence), the non-overlap rule over `RootFacts`, Sentinel Set comparison,
-the quarantine state machine, report allowlist rules, port interfaces, and
-the orchestrator — with unit tests in `tests/unit/`. Ports return facts,
-never verdicts.
+T3: the adapter facts in `packages/self-test/` — disposable-root
+provisioning and path-fact probing (realpath, junction, device and inode),
+sentinel capture, the bounded fixture factory, cleanup with residue
+reporting, quarantine mechanics, and test-only key material — implementing
+the `SelfTestPorts` fact contracts from
+`packages/application/src/self-test/self-test.ts`. Security tests: symlink
+and junction escape captured in `linkChain`, production-material rejection.
+
+# T2 evidence
+
+30 unit cases in `tests/unit/self-test-rules.test.mjs` covering TST-01
+(device/inode, containment both directions, link-chain escape, sibling
+prefix negative, missing-fact fail-closed), TST-02, TST-03, TST-04, TST-05,
+TST-06, and the orchestrator's no-mutation-on-overlap guarantee. Sensor:
+path-containment forced fail-open, 4 tests killed it, restore ran 30/30.
+`gate:quick` and `gate:security` PASS.
 
 # Blockers
 

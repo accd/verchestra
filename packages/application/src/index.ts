@@ -207,6 +207,30 @@ export {
   type PriorEffectState,
   type ReceiptOutcome
 } from "./effects/effect-contract.ts";
+export {
+  QuarantineMachine,
+  SELF_TEST_REPORT_FIELDS,
+  SelfTestError,
+  SelfTestOrchestrator,
+  assertDisjointRoot,
+  assertReportPayload,
+  assertTestOnlyMaterials,
+  diffSentinels,
+  resolveSelfTestProfile,
+  type MaterialFact,
+  type QuarantineState,
+  type RootFacts,
+  type SelfTestErrorCode,
+  type SelfTestPorts,
+  type SelfTestProfile,
+  type SelfTestProfileId,
+  type SelfTestReportPayload,
+  type SelfTestRunResult,
+  type SelfTestVerdict,
+  type SentinelDiff,
+  type SentinelFact,
+  type SubjectRunFacts
+} from "./self-test/self-test.ts";
 export type {
   ContextClaimInput,
   ContextFragmentInput,
