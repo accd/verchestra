@@ -121,6 +121,9 @@ importers:
       '@verchestra/platform-node':
         specifier: workspace:0.0.0
         version: link:../../packages/platform-node
+      '@verchestra/self-test':
+        specifier: workspace:0.0.0
+        version: link:../../packages/self-test
       '@verchestra/workspace':
         specifier: workspace:0.0.0
         version: link:../../packages/workspace

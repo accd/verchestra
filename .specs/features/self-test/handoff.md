@@ -3,12 +3,12 @@ schema: verchestra-feature-handoff/v1
 feature: self-test
 issue: 10
 status: in_progress
-branch: feat/t69-self-test-t3
-baseRevision: c6cb743f4c7b1683655dc0f783b6d6f1143b200c
-lastCompletedTask: T3
-nextTask: T4
+branch: feat/t69-self-test-t4
+baseRevision: c2202dde3a949852c5cb23d8a9e7062b9eced8da
+lastCompletedTask: T4
+nextTask: T5
 lastGate: pnpm gate:security
-updatedAt: 2026-08-01T16:45:00Z
+updatedAt: 2026-08-02T09:00:00Z
 ---
 
 # Scope
@@ -19,13 +19,24 @@ code exists yet.
 
 # Next Exact Action
 
-T4: `apps/vestra-cli/src/self-test-composition.ts` — the only place that
-constructs TEST-ONLY instances of the sibling adapters and hands them to the
-orchestrator as the subject port; the `SupportCodeRegistry` for
-`VES_SELFTEST_*` codes; and the sealed report through the evidence boundary
-signed by the test-domain identity. Fault tests: sentinel mutation,
-incomplete cleanup, quarantine failure, unknown profiles, prohibited report
-content.
+T5: qualification. A minimum of 35 cases across unit, security, and fault
+scopes (52 exist), a discrimination sensor with every mutation killed,
+external gate dispatch of `gate:quick` and `gate:security` at the merged
+implementation revision through `full-validation.yml`, and
+`docs/qualification/t69-validation.md` under REPORT-CONTRACT.md — written in
+a second commit so the report binds the revision the gates actually ran on.
+
+# T4 evidence
+
+10 fault-injection cases in
+`tests/fault-injection/self-test-composition-faults.test.mjs`: sealed report
+verifies against its trust root and refuses a swapped registry binding,
+unknown profile provisions nothing, sentinel mutation and sentinel deletion
+both quarantine, reported failure codes seal a FAIL verdict, unregistered
+codes and prohibited content fail before sealing, the registry is complete,
+and the subject only ever receives test-only material. Sensor: registry
+check bypassed, the unregistered-code test killed it, restore ran 10/10.
+`gate:quick` and `gate:security` PASS.
 
 # T3 evidence
 

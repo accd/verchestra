@@ -256,8 +256,12 @@ const VERDICTS = Object.freeze(["PASS", "FAIL", "BLOCKED"] as const);
 
 export type SelfTestVerdict = (typeof VERDICTS)[number];
 
+// The report is JSON by contract: the evidence boundary seals it, so its
+// values are scalars and scalar lists, never arbitrary objects.
+export type SelfTestReportValue = string | number | boolean | null | readonly (string | number | boolean | null)[];
+
 export interface SelfTestReportPayload {
-  readonly [field: string]: unknown;
+  readonly [field: string]: SelfTestReportValue;
 }
 
 function assertReportValues(payload: SelfTestReportPayload): void {
