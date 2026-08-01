@@ -1274,3 +1274,14 @@ body.product-shell {
 .not-today__list li::marker {
   color: var(--amber);
 }
+
+/* Evidence links in the matrix keep the 44px touch-target contract: padding
+   grows the hit area, the negative margin keeps the visual row compact. */
+.works-today__table a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  min-width: 44px;
+  padding-inline: 0.4rem;
+  margin-block: -0.7rem;
+}
