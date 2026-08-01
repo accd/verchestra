@@ -77,7 +77,10 @@ test("keystore failures expose a stable public code without disclosing the suppl
 test("rotation-state metadata is authenticated and cannot reactivate a tampered key", async () => {
   const { root, provider } = await fixture();
   await provider.loadOrCreate(request);
-  await provider.rotate({ ...request, overlapUntil: "2026-08-01T00:00:00.000Z" });
+  // The overlap must end in the future relative to the real clock the provider
+  // reads; a hardcoded date expired on 2026-08-01 and turned this test into a
+  // time bomb (#167).
+  await provider.rotate({ ...request, overlapUntil: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() });
   const path = await keystorePath(root);
   const envelope = JSON.parse(await readFile(path, "utf8"));
   envelope.publicKeyRef.keyId = request.keyId;
