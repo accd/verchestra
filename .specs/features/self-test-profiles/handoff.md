@@ -5,10 +5,10 @@ issue: 11
 status: planned
 branch: feat/t70-self-test-profiles
 baseRevision: b5473f6ee37116f6c58c0489d1a54af369982595
-lastCompletedTask: null
-nextTask: T1
-lastGate: null
-updatedAt: 2026-08-02T00:00:00Z
+lastCompletedTask: T1
+nextTask: T2
+lastGate: pnpm test:unit
+updatedAt: 2026-08-02T00:30:00Z
 ---
 
 # Scope
@@ -20,18 +20,36 @@ places only; adds a `self-test` CLI command.
 
 # Completed Evidence
 
-None.
+T1: `ScenarioCheck`, `semanticFingerprint`, `assertProfileCoverage`,
+`assertConvergence`, `requiredCheckIds` on `SelfTestProfile`,
+`SMOKE_CHECK_IDS` (6 ids), `WORKSPACE_CHECK_IDS` (25 ids: five shapes ×
+placement/init/bootstrap/sync/reconcile), and three new error codes
+(`VES_SELFTEST_SCENARIO_MISSING`, `VES_SELFTEST_NONCONVERGENT`,
+`VES_SELFTEST_NETWORK_ATTEMPT`) added to
+`packages/application/src/self-test/self-test.ts`. Coverage is asserted
+inside `SelfTestOrchestrator.run` after cleanup, before payload sealing.
+12 new unit cases in `tests/unit/self-test-scenario-rules.test.mjs`. Updated
+T69 test doubles in `tests/unit/self-test-rules.test.mjs`,
+`tests/security/self-test-escape.test.mjs`, and
+`tests/fault-injection/self-test-composition-faults.test.mjs` to supply the
+now-required `SubjectRunFacts.checks` field (additive fixture maintenance,
+no assertion weakened). `pnpm test:unit` (1830 cases), `pnpm typecheck`,
+`pnpm lint`, `pnpm complexity:check`, `pnpm format:check` all PASS.
+
+One pre-existing, unrelated failure observed and left alone:
+`tests/security/self-test-escape.test.mjs:35` ("a link-like ancestor into
+guarded state...") fails on this macOS environment before and after this
+change (`/tmp` vs `/private/tmp` symlink-chain ordering) — confirmed via
+`git stash`.
 
 # Next Exact Action
 
-Implement T1: add `ScenarioCheck`, `semanticFingerprint`,
-`assertProfileCoverage`, `assertConvergence`, `requiredCheckIds` on
-`SelfTestProfile`, and the three new error codes
-(`VES_SELFTEST_SCENARIO_MISSING`, `VES_SELFTEST_NONCONVERGENT`,
-`VES_SELFTEST_NETWORK_ATTEMPT`) to
-`packages/application/src/self-test/self-test.ts`, with unit tests in
-`tests/unit/self-test-scenario-rules.test.mjs`. Run `test:unit` focused,
-then `pnpm gate:quick`, then commit.
+Implement T2: `GitFixtureFactory` in `packages/self-test/src/git-fixtures.ts`
+producing the five real disposable Git shapes (standalone, colocated,
+centralized, nested, ignored), hermetic Git env, under the profile byte
+budget. Integration tests in
+`tests/integration/self-test-git-fixtures.test.mjs`. Run focused, then
+`pnpm gate:quick`, then commit.
 
 # Blockers
 

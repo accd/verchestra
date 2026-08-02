@@ -15,7 +15,10 @@ export type SelfTestErrorCode =
   | "VES_SELFTEST_REPORT_FIELD_UNKNOWN"
   | "VES_SELFTEST_REPORT_CONTENT_PROHIBITED"
   | "VES_SELFTEST_FIXTURE_BUDGET"
-  | "VES_SELFTEST_FIXTURE_ESCAPE";
+  | "VES_SELFTEST_FIXTURE_ESCAPE"
+  | "VES_SELFTEST_SCENARIO_MISSING"
+  | "VES_SELFTEST_NONCONVERGENT"
+  | "VES_SELFTEST_NETWORK_ATTEMPT";
 
 export class SelfTestError extends Error {
   readonly code: SelfTestErrorCode;
@@ -44,7 +47,37 @@ export interface SelfTestProfile {
   // The only cleanup policy T69 admits: a temporary root is proven removed or
   // it enters quarantine. There is no "best effort" member on purpose.
   readonly cleanupPolicy: "remove-or-quarantine";
+  // T70: the closed set of scenario check ids this profile must produce. A
+  // profile whose registry entry declares no ids (T71's full/drivers, not
+  // yet scoped) admits any result; assertProfileCoverage is a no-op for it.
+  readonly requiredCheckIds: readonly string[];
 }
+
+// T70: the closed set of scenario check ids the smoke profile must produce
+// (controller/CLI path). Shared between the profile registry (coverage
+// assertion) and the CLI composition root (scenario implementation), so the
+// two cannot silently drift apart.
+export const SMOKE_CHECK_IDS = Object.freeze([
+  "smoke.help",
+  "smoke.version",
+  "smoke.init.dry-run.preview",
+  "smoke.init.dry-run.zero-writes",
+  "smoke.init.invalid-argument",
+  "smoke.unknown-command"
+] as const);
+
+export const WORKSPACE_SHAPES = Object.freeze(["standalone", "colocated", "centralized", "nested", "ignored"] as const);
+
+export type WorkspaceShape = (typeof WORKSPACE_SHAPES)[number];
+
+// T70: one check per named assertion category (VES-WSP scope: placement,
+// initialization, bootstrap, sync, and reconciliation) for each of the five
+// workspace shapes.
+export const WORKSPACE_CHECK_IDS = Object.freeze(
+  WORKSPACE_SHAPES.flatMap((shape) =>
+    ["placement", "init", "bootstrap", "sync", "reconcile"].map((category) => `workspace.${shape}.${category}`)
+  )
+);
 
 const PROFILES: Readonly<Record<SelfTestProfileId, SelfTestProfile>> = Object.freeze({
   smoke: Object.freeze({
@@ -52,28 +85,32 @@ const PROFILES: Readonly<Record<SelfTestProfileId, SelfTestProfile>> = Object.fr
     summary: "Fast provisioning, boundary, and report checks",
     maxFixtureBytes: 1_048_576,
     maxDurationMs: 60_000,
-    cleanupPolicy: "remove-or-quarantine"
+    cleanupPolicy: "remove-or-quarantine",
+    requiredCheckIds: SMOKE_CHECK_IDS
   }),
   full: Object.freeze({
     profileId: "full",
     summary: "Complete scenario surface, including crash-recovery mode",
     maxFixtureBytes: 67_108_864,
     maxDurationMs: 1_800_000,
-    cleanupPolicy: "remove-or-quarantine"
+    cleanupPolicy: "remove-or-quarantine",
+    requiredCheckIds: Object.freeze([])
   }),
   workspace: Object.freeze({
     profileId: "workspace",
     summary: "Workspace lifecycle scenarios against a disposable root",
     maxFixtureBytes: 16_777_216,
     maxDurationMs: 600_000,
-    cleanupPolicy: "remove-or-quarantine"
+    cleanupPolicy: "remove-or-quarantine",
+    requiredCheckIds: WORKSPACE_CHECK_IDS
   }),
   drivers: Object.freeze({
     profileId: "drivers",
     summary: "Approved-driver availability and contract checks",
     maxFixtureBytes: 4_194_304,
     maxDurationMs: 600_000,
-    cleanupPolicy: "remove-or-quarantine"
+    cleanupPolicy: "remove-or-quarantine",
+    requiredCheckIds: Object.freeze([])
   })
 });
 
@@ -163,6 +200,45 @@ export function assertTestOnlyMaterials(materials: readonly MaterialFact[]): voi
       "VES_SELFTEST_PRODUCTION_MATERIAL",
       `subject composition includes non-test material: ${production.map((material) => material.materialId).join(", ")}`
     );
+}
+
+// T70 (PRF-03/04): one black-box scenario result. Pure data — never a path,
+// duration, or timestamp, so a sequence of these is safe to compare for
+// convergence across two genuinely different filesystem runs.
+export interface ScenarioCheck {
+  readonly checkId: string;
+  readonly requirement: string;
+  readonly status: "pass" | "fail";
+  readonly failureCode?: SelfTestErrorCode;
+}
+
+// PRF-04: the semantic fingerprint of a run is its ordered checkId:status
+// pairs. Ordering by checkId makes the fingerprint independent of whatever
+// order the scenario happened to execute checks in.
+export function semanticFingerprint(checks: readonly ScenarioCheck[]): readonly string[] {
+  return Object.freeze(
+    [...checks].map((check) => `${check.checkId}:${check.status}`).sort((left, right) => left.localeCompare(right))
+  );
+}
+
+// PRF-03: a profile that completes without producing every check its
+// registry entry declares fails closed rather than silently reporting
+// partial coverage as success.
+export function assertProfileCoverage(profile: SelfTestProfile, checks: readonly ScenarioCheck[]): void {
+  const produced = new Set(checks.map((check) => check.checkId));
+  const missing = profile.requiredCheckIds.filter((checkId) => !produced.has(checkId));
+  if (missing.length > 0)
+    fail(
+      "VES_SELFTEST_SCENARIO_MISSING",
+      `profile ${profile.profileId} is missing required checks: ${missing.join(", ")}`
+    );
+}
+
+// PRF-04: two fingerprints from independently provisioned runs must match
+// exactly, or the run that produced the divergent set is not deterministic.
+export function assertConvergence(first: readonly string[], second: readonly string[]): void {
+  if (first.length !== second.length || first.some((entry, index) => entry !== second[index]))
+    fail("VES_SELFTEST_NONCONVERGENT", `self-test runs diverged: [${first.join(", ")}] vs [${second.join(", ")}]`);
 }
 
 // TST-04: the Sentinel Set hashed before execution must be byte-identical
@@ -307,6 +383,9 @@ export interface SubjectRunFacts {
   readonly evidenceRefs: readonly string[];
   readonly failureCodes: readonly string[];
   readonly redactionCount: number;
+  // T70: per-check detail for coverage and convergence proof. Never sealed
+  // into SelfTestReportPayload (PRF-06) — it travels only in SelfTestRunResult.
+  readonly checks: readonly ScenarioCheck[];
 }
 
 export interface SelfTestPorts {
@@ -331,6 +410,7 @@ export interface SelfTestRunResult {
   readonly payload: SelfTestReportPayload;
   readonly rootState: QuarantineState;
   readonly sentinelDiff: SentinelDiff;
+  readonly checks: readonly ScenarioCheck[];
 }
 
 export class SelfTestOrchestrator {
@@ -369,9 +449,12 @@ export class SelfTestOrchestrator {
     const cleanup = await this.#ports.roots.cleanup(root);
     if (cleanup.removed) machine.transition("removed");
     else await this.#quarantine(machine, root, `cleanup left residue: ${cleanup.residue.join(", ") || "unknown"}`);
+    // Coverage is checked after cleanup: root disposal must not depend on
+    // whether the scenario produced every required check.
+    assertProfileCoverage(profile, runFacts.checks);
     const payload = buildReportPayload(profile.profileId, runFacts);
     assertReportPayload(payload);
-    return Object.freeze({ payload, rootState: machine.state, sentinelDiff: diff });
+    return Object.freeze({ payload, rootState: machine.state, sentinelDiff: diff, checks: runFacts.checks });
   }
 
   // Quarantine failing is itself a closed failure: a root that is neither

@@ -4,7 +4,7 @@
 
 | Task | Deliverable                                                                 | Depends on | Verification         | Commit |
 | ---- | ---------------------------------------------------------------------------- | ---------- | --------------------- | ------ |
-| T1   | `ScenarioCheck`, `semanticFingerprint`, `assertProfileCoverage`, `assertConvergence`, `requiredCheckIds`, three new error codes in `packages/application/src/self-test/self-test.ts` | None       | `test:unit`           | Pending |
+| T1   | `ScenarioCheck`, `semanticFingerprint`, `assertProfileCoverage`, `assertConvergence`, `requiredCheckIds`, three new error codes in `packages/application/src/self-test/self-test.ts` | None       | `test:unit`           | Done |
 | T2   | `GitFixtureFactory` in `packages/self-test` producing the five real disposable Git shapes | T1         | `test:integration`    | Pending |
 | T3   | `offlineGuard()` in `packages/self-test`; application wiring so an attempt fails a run with `VES_SELFTEST_NETWORK_ATTEMPT` | T1         | `test:fault`           | Pending |
 | T4   | `smokeScenario` in `apps/vestra-cli/src/self-test-scenarios.ts` driving the controller/CLI path | T1, T3     | `test:contract`, `test:integration` | Pending |
@@ -58,7 +58,7 @@
 
 | Task | Status  | Commit  |
 | ---- | ------- | ------- |
-| T1   | Planned | Pending |
+| T1   | Done    | (pending commit) |
 | T2   | Planned | Pending |
 | T3   | Planned | Pending |
 | T4   | Planned | Pending |
