@@ -6,7 +6,7 @@
 | ---- | ---------------------------------------------------------------------------- | ---------- | --------------------- | ------ |
 | T1   | `ScenarioCheck`, `semanticFingerprint`, `assertProfileCoverage`, `assertConvergence`, `requiredCheckIds`, three new error codes in `packages/application/src/self-test/self-test.ts` | None       | `test:unit`           | Done |
 | T2   | `GitFixtureFactory` in `packages/self-test` producing the five real disposable Git shapes | T1         | `test:integration`    | Done |
-| T3   | `offlineGuard()` in `packages/self-test`; application wiring so an attempt fails a run with `VES_SELFTEST_NETWORK_ATTEMPT` | T1         | `test:fault`           | Pending |
+| T3   | `offlineGuard()` in `packages/self-test`; application wiring so an attempt fails a run with `VES_SELFTEST_NETWORK_ATTEMPT` | T1         | `test:fault`           | Done |
 | T4   | `smokeScenario` in `apps/vestra-cli/src/self-test-scenarios.ts` driving the controller/CLI path | T1, T3     | `test:contract`, `test:integration` | Pending |
 | T5   | `workspaceScenario` covering placement/init/bootstrap/sync/reconcile across all five shapes, ≥25 checks combined with smoke | T1, T2, T3 | `test:integration`    | Pending |
 | T6   | `self-test` CLI command, exit-code contract, human/JSON rendering; update sealed manifest assertion | T4, T5     | `test:contract`, `test:e2e` | Pending |
@@ -59,8 +59,8 @@
 | Task | Status  | Commit  |
 | ---- | ------- | ------- |
 | T1   | Done    | ae607e5 |
-| T2   | Done    | (pending commit) |
-| T3   | Planned | Pending |
+| T2   | Done    | bd67e3d |
+| T3   | Done    | (pending commit) |
 | T4   | Planned | Pending |
 | T5   | Planned | Pending |
 | T6   | Planned | Pending |

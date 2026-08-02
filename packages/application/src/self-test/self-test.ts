@@ -184,6 +184,22 @@ export function assertDisjointRoot(candidate: RootFacts, guardedRoots: readonly 
   }
 }
 
+// PRF-01: a scenario call must make no outbound connection. The adapter's
+// offline guard reports every attempt it intercepted as a fact; refusing any
+// non-empty list is the rule.
+export interface NetworkAttempt {
+  readonly api: "net.connect" | "http.request" | "https.request" | "fetch";
+  readonly target: string;
+}
+
+export function assertNoNetworkAttempts(attempts: readonly NetworkAttempt[]): void {
+  if (attempts.length > 0)
+    fail(
+      "VES_SELFTEST_NETWORK_ATTEMPT",
+      `self-test scenario attempted a network connection: ${attempts.map((attempt) => `${attempt.api} ${attempt.target}`).join(", ")}`
+    );
+}
+
 // TST-02: production material is rejected with a distinct error, never merely
 // avoided. The adapter reports what the subject was composed with; the rule
 // refuses anything not explicitly test-only.

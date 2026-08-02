@@ -5,10 +5,10 @@ issue: 11
 status: planned
 branch: feat/t70-self-test-profiles
 baseRevision: b5473f6ee37116f6c58c0489d1a54af369982595
-lastCompletedTask: T2
-nextTask: T3
-lastGate: pnpm test:integration (workspace-scoped subset)
-updatedAt: 2026-08-02T01:00:00Z
+lastCompletedTask: T3
+nextTask: T4
+lastGate: pnpm test:unit, pnpm test:fault (non-sqlite subset)
+updatedAt: 2026-08-02T01:30:00Z
 ---
 
 # Scope
@@ -64,15 +64,35 @@ pass) — this environment's Node v23.11 vs. the pinned v24.14 `node:sqlite`
 binding is unrelated and pre-existing (confirmed via `git stash` before
 touching T2).
 
+T3: `offlineGuard()` in `packages/self-test/src/network-guard.ts` monkeypatches
+`net.Socket.prototype.connect`, `http.request`, `https.request`, and
+`globalThis.fetch` for its scope; every attempt is **blocked** (throws
+immediately, never actually dials out — important so a stray call can't hang
+in a sandboxed CI runner) and recorded as a `NetworkAttempt` fact.
+`assertNoNetworkAttempts` (application) fails closed with
+`VES_SELFTEST_NETWORK_ATTEMPT`, naming every attempted api/target, if the
+list is non-empty. 6 fault-injection cases in
+`tests/fault-injection/self-test-network-guard-faults.test.mjs` cover
+net/http/fetch interception, restoration (including after a thrown
+scenario), and the assertion's zero/non-zero paths.
+`typecheck`/`lint`/`complexity:check`/`format:check` all PASS with no `any`
+needed (native overload args typed as `readonly unknown[]`).
+`pnpm test:unit` (1830/1830) and `pnpm test:fault` scoped to non-sqlite
+suites both green; two more pre-existing sqlite-native-binding failures
+found and confirmed unrelated via `git stash`
+(`runtime-store-faults.test.mjs`, `effect-kernel-faults.test.mjs` — same
+Node v23.11 vs. pinned v24.14 `node:sqlite` issue as T2's finding).
+
 # Next Exact Action
 
-Implement T3: `offlineGuard()` in
-`packages/self-test/src/network-guard.ts` wrapping `node:net`/`node:http`/
-`fetch` for the duration of a scenario call, restoring originals even on
-throw. Wire `VES_SELFTEST_NETWORK_ATTEMPT` so an observed attempt fails the
-run (verdict stays in `application`; the guard only reports facts). Fault
-tests in `tests/fault-injection/self-test-network-guard-faults.test.mjs`.
-Run focused, then `pnpm gate:quick`, then commit.
+T4: `smokeScenario` in `apps/vestra-cli/src/self-test-scenarios.ts`,
+implementing `SelfTestScenario` from `self-test-composition.ts`. Drives the
+real `CommandBus`/`runCli` path (`init --dry-run` today; add `--output json`
+and an invalid-argument case) inside `offlineGuard()`, producing the 6
+`SMOKE_CHECK_IDS` checks. Contract test in
+`tests/contract/self-test-smoke-scenario.test.mjs` plus an integration test
+asserting zero writes outside the disposable root. Run focused, then
+`pnpm gate:quick`, then commit.
 
 # Blockers
 

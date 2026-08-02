@@ -21,3 +21,4 @@ export {
   type TestOnlyKey
 } from "./sentinels-and-fixtures.ts";
 export { GitFixtureFactory, type GitFixtureFacts } from "./git-fixtures.ts";
+export { offlineGuard, type OfflineGuard } from "./network-guard.ts";
