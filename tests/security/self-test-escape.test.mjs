@@ -7,8 +7,12 @@ import { mkdir, mkdtemp, rm, symlink } from "node:fs/promises";
 import { platform, tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, test } from "node:test";
-import { assertDisjointRoot, SelfTestOrchestrator } from "../../packages/application/src/index.ts";
+import { SMOKE_CHECK_IDS, assertDisjointRoot, SelfTestOrchestrator } from "../../packages/application/src/index.ts";
 import { DisposableRootProvider, normalizeFactPath, probeRootFacts } from "../../packages/self-test/src/index.ts";
+
+function passingChecks(checkIds) {
+  return checkIds.map((checkId) => ({ checkId, requirement: "T70 coverage fixture", status: "pass" }));
+}
 
 const bases = [];
 
@@ -91,7 +95,14 @@ test("a real adapter-backed smoke run ends removed with a PASS payload", async (
     sentinels: { capture: async () => [{ sentinelId: "static", digest: "sha256:fixed" }] },
     subject: {
       materials: async () => [{ materialId: "key:test-only", kind: "key", testOnly: true }],
-      run: async () => ({ checkCount: 1, durationMs: 5, evidenceRefs: [], failureCodes: [], redactionCount: 0 })
+      run: async () => ({
+        checkCount: 1,
+        durationMs: 5,
+        evidenceRefs: [],
+        failureCodes: [],
+        redactionCount: 0,
+        checks: passingChecks(SMOKE_CHECK_IDS)
+      })
     }
   });
   const result = await orchestrator.run("smoke");

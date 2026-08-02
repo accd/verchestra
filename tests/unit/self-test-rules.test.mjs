@@ -6,6 +6,7 @@ import test from "node:test";
 import {
   QuarantineMachine,
   SELF_TEST_REPORT_FIELDS,
+  SMOKE_CHECK_IDS,
   SelfTestOrchestrator,
   assertDisjointRoot,
   assertReportPayload,
@@ -13,6 +14,10 @@ import {
   diffSentinels,
   resolveSelfTestProfile
 } from "../../packages/application/src/index.ts";
+
+function passingChecks(checkIds) {
+  return checkIds.map((checkId) => ({ checkId, requirement: "T70 coverage fixture", status: "pass" }));
+}
 
 function rootFacts(overrides = {}) {
   return {
@@ -280,7 +285,14 @@ function fakePorts(overrides = {}) {
       materials: async () => [{ materialId: "key:test", kind: "key", testOnly: true }],
       run: async () => {
         calls.run += 1;
-        return { checkCount: 3, durationMs: 40, evidenceRefs: [], failureCodes: [], redactionCount: 0 };
+        return {
+          checkCount: 3,
+          durationMs: 40,
+          evidenceRefs: [],
+          failureCodes: [],
+          redactionCount: 0,
+          checks: passingChecks(SMOKE_CHECK_IDS)
+        };
       }
     },
     ...overrides

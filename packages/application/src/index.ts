@@ -210,16 +210,23 @@ export {
 export {
   QuarantineMachine,
   SELF_TEST_REPORT_FIELDS,
+  SMOKE_CHECK_IDS,
+  WORKSPACE_CHECK_IDS,
+  WORKSPACE_SHAPES,
   SelfTestError,
   SelfTestOrchestrator,
+  assertConvergence,
   assertDisjointRoot,
+  assertProfileCoverage,
   assertReportPayload,
   assertTestOnlyMaterials,
   diffSentinels,
   resolveSelfTestProfile,
+  semanticFingerprint,
   type MaterialFact,
   type QuarantineState,
   type RootFacts,
+  type ScenarioCheck,
   type SelfTestErrorCode,
   type SelfTestPorts,
   type SelfTestProfile,
@@ -229,7 +236,8 @@ export {
   type SelfTestVerdict,
   type SentinelDiff,
   type SentinelFact,
-  type SubjectRunFacts
+  type SubjectRunFacts,
+  type WorkspaceShape
 } from "./self-test/self-test.ts";
 export type {
   ContextClaimInput,

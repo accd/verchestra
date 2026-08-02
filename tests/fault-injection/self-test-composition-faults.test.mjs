@@ -7,6 +7,7 @@ import { mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, test } from "node:test";
+import { SMOKE_CHECK_IDS, WORKSPACE_CHECK_IDS } from "../../packages/application/src/index.ts";
 import { ArtifactSealer, NodeEd25519Signer, createTrustRoot } from "../../packages/evidence/src/index.ts";
 import { probeRootFacts } from "../../packages/self-test/src/index.ts";
 import {
@@ -17,6 +18,10 @@ import {
 
 const bases = [];
 const now = "2026-07-15T15:00:00.000Z";
+
+function passingChecks(checkIds) {
+  return checkIds.map((checkId) => ({ checkId, requirement: "T70 coverage fixture", status: "pass" }));
+}
 
 async function base() {
   const directory = await mkdtemp(join(tmpdir(), "verchestra-selftest-composition-"));
@@ -37,6 +42,7 @@ function passingScenario(overrides = {}) {
       evidenceRefs: [],
       failureCodes: [],
       redactionCount: 0,
+      checks: passingChecks(SMOKE_CHECK_IDS),
       ...overrides
     })
   };
@@ -118,7 +124,14 @@ test("a sentinel mutated during the run quarantines the root and seals nothing",
     scenario: {
       run: async () => {
         await writeFile(sentinelPath, "mutated by the run");
-        return { checkCount: 1, durationMs: 1, evidenceRefs: [], failureCodes: [], redactionCount: 0 };
+        return {
+          checkCount: 1,
+          durationMs: 1,
+          evidenceRefs: [],
+          failureCodes: [],
+          redactionCount: 0,
+          checks: passingChecks(SMOKE_CHECK_IDS)
+        };
       }
     }
   });
@@ -140,7 +153,14 @@ test("a sentinel deleted during the run is caught as a removed sentinel", async 
     scenario: {
       run: async () => {
         await rm(sentinelPath);
-        return { checkCount: 1, durationMs: 1, evidenceRefs: [], failureCodes: [], redactionCount: 0 };
+        return {
+          checkCount: 1,
+          durationMs: 1,
+          evidenceRefs: [],
+          failureCodes: [],
+          redactionCount: 0,
+          checks: passingChecks(SMOKE_CHECK_IDS)
+        };
       }
     }
   });
@@ -150,7 +170,10 @@ test("a sentinel deleted during the run is caught as a removed sentinel", async 
 test("a scenario that reports a failure code seals a FAIL verdict instead of throwing", async () => {
   const directory = await base();
   const { composition: composed } = await composition(directory, {
-    scenario: passingScenario({ failureCodes: ["VES_SELFTEST_FIXTURE_BUDGET"] })
+    scenario: passingScenario({
+      failureCodes: ["VES_SELFTEST_FIXTURE_BUDGET"],
+      checks: passingChecks(WORKSPACE_CHECK_IDS)
+    })
   });
   const { artifact, result } = await composed.run("workspace");
   assert.equal(artifact.payload["self_test.verdict"], "FAIL");
@@ -193,7 +216,8 @@ test("a scenario writing outside its fixture budget surfaces the bounded failure
           durationMs: 3,
           evidenceRefs: [],
           failureCodes: ["VES_SELFTEST_FIXTURE_ESCAPE"],
-          redactionCount: 0
+          redactionCount: 0,
+          checks: passingChecks(SMOKE_CHECK_IDS)
         };
       }
     }
@@ -209,7 +233,7 @@ test("the subject only ever receives test-only material", async () => {
     scenario: {
       run: async ({ materials }) => {
         observed = materials;
-        return { checkCount: 1, durationMs: 1, evidenceRefs: [], failureCodes: [], redactionCount: 0 };
+        return { checkCount: 1, durationMs: 1, evidenceRefs: [], failureCodes: [], redactionCount: 0, checks: [] };
       }
     }
   });
