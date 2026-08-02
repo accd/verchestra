@@ -9,7 +9,7 @@ domain; it does not add a fourth.
 | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
 | `packages/application/src/self-test/`          | `ScenarioCheck`, `semanticFingerprint`, `assertProfileCoverage`, `requiredCheckIds` on `SelfTestProfile`, three new error codes |
 | `packages/self-test/` (adapter)                | `GitFixtureFactory` (five real disposable Git repos), `offlineGuard()` fact-collector                              |
-| `apps/vestra-cli/`                              | `self-test-scenarios.ts` (smoke + workspace `SelfTestScenario` implementations, the only place importing `@verchestra/workspace` as the TEST-ONLY subject), a `self-test` CLI command wired through `cli.ts`/`main.ts` |
+| `apps/vestra-cli/`                              | Smoke + workspace `SelfTestScenario` implementations appended to the existing `self-test-composition.ts` (not a new file — see handoff.md Decisions; AD-010 names that file as the only place importing sibling adapters), `main.ts`'s `createCommandBus(controlRoot)` extracted so scenarios reuse the real controller path, a `self-test` CLI command wired through `cli.ts`/`main.ts` |
 
 Ports still return facts, never verdicts: `offlineGuard()` reports connection
 *attempts*; the application layer decides whether that fails the run.

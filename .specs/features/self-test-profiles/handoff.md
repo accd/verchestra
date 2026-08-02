@@ -5,10 +5,10 @@ issue: 11
 status: planned
 branch: feat/t70-self-test-profiles
 baseRevision: b5473f6ee37116f6c58c0489d1a54af369982595
-lastCompletedTask: T3
-nextTask: T4
-lastGate: pnpm test:unit, pnpm test:fault (non-sqlite subset)
-updatedAt: 2026-08-02T01:30:00Z
+lastCompletedTask: T4
+nextTask: T5
+lastGate: pnpm test:unit (1830/1830)
+updatedAt: 2026-08-02T02:00:00Z
 ---
 
 # Scope
@@ -83,15 +83,49 @@ found and confirmed unrelated via `git stash`
 (`runtime-store-faults.test.mjs`, `effect-kernel-faults.test.mjs` — same
 Node v23.11 vs. pinned v24.14 `node:sqlite` issue as T2's finding).
 
+T4: `createSmokeScenario()` implemented directly inside
+`apps/vestra-cli/src/self-test-composition.ts` (see Decisions — not a new
+`self-test-scenarios.ts` file, to honor AD-010's "only place" literally).
+Refactored `main.ts` to extract `createCommandBus(controlRoot)`, exported,
+so the scenario drives the *exact* production controller path (`runCli` +
+the real command bus) against a disposable root instead of duplicating that
+logic. Produces all 6 `SMOKE_CHECK_IDS`: `--help`, `--version`,
+`init --dry-run` preview, a zero-writes proof (`workingTreeSnapshot`
+excluding `.git`), an invalid-argument case, and an unknown-command case.
+Wrapped in `offlineGuard()` as a PRF-01 backstop. Added a fourth error code,
+`VES_SELFTEST_SCENARIO_CHECK_FAILED` (a check that ran and asserted false,
+distinct from `VES_SELFTEST_SCENARIO_MISSING`'s "never produced" case), and
+registered all four T70 codes (`NETWORK_ATTEMPT`, `NONCONVERGENT`,
+`SCENARIO_CHECK_FAILED`, `SCENARIO_MISSING`) in `SELF_TEST_FAILURE_CODES`.
+
+Debugging note: the first `init --dry-run` invocation failed with
+`VES_INIT_INPUT_INVALID` — the scenario's workspace id
+(`workspace_self-test-smoke`) wasn't a canonical UUID v4/v7, which
+`StableId.parse` requires. Fixed using the same literal UUID the T69/T20 e2e
+fixtures already use (`workspace_018f0b6d-7b1a-7abc-8def-0123456789ab`).
+
+3 integration cases in `tests/integration/self-test-smoke-scenario.test.mjs`:
+full coverage with all-pass checks, zero network attempts, and convergence
+across two independent runs. `typecheck`/`lint`/`complexity:check`/
+`format:check` all PASS. `pnpm test:unit` 1830/1830. Ran the full T69+T70
+self-test suite plus `cli-surface.test.mjs` and `safe-init-e2e.test.mjs`
+(119/119, excluding two already-known pre-existing environment flakes: the
+macOS symlink-ordering one from T2's handoff note, and a Node v23 vs.
+pinned v24 stderr `ExperimentalWarning: Type Stripping` line that fails two
+unrelated `cli-launchers-e2e.test.mjs` stderr-emptiness assertions —
+confirmed via `git stash` before touching T4).
+
 # Next Exact Action
 
-T4: `smokeScenario` in `apps/vestra-cli/src/self-test-scenarios.ts`,
-implementing `SelfTestScenario` from `self-test-composition.ts`. Drives the
-real `CommandBus`/`runCli` path (`init --dry-run` today; add `--output json`
-and an invalid-argument case) inside `offlineGuard()`, producing the 6
-`SMOKE_CHECK_IDS` checks. Contract test in
-`tests/contract/self-test-smoke-scenario.test.mjs` plus an integration test
-asserting zero writes outside the disposable root. Run focused, then
+T5: `createWorkspaceScenario()`, same pattern as T4, appended to
+`self-test-composition.ts`. For each of the five `WORKSPACE_SHAPES`, drive
+`scanWorkspace` (placement/init check), `SafeInitService` (init check),
+`MachineBootstrapService` (bootstrap check — new import, check what subject
+port shape it needs), and `WorkspaceReconcileService` (sync + reconcile
+checks) via `GitFixtureFactory`, producing all 25 `WORKSPACE_CHECK_IDS`.
+Measure wall-clock against the workspace profile's 600s budget early — this
+is the biggest remaining task. Integration tests in
+`tests/integration/self-test-workspace-scenario.test.mjs`. Run focused, then
 `pnpm gate:quick`, then commit.
 
 # Blockers
@@ -122,6 +156,19 @@ None.
 - T70 adds a `vestra self-test` command (design.md D1): AC5's "black-box"
   language and the issue's "production CLI" scope point to spawning the real
   binary, matching the precedent in `tests/e2e/cli-launchers-e2e.test.mjs`.
+- Scenario content lives inside the existing, sealed
+  `apps/vestra-cli/src/self-test-composition.ts`, not in a new
+  `self-test-scenarios.ts` as design.md originally sketched. AD-010 in
+  `.specs/STATE.md` says construction of TEST-ONLY sibling adapters happens
+  "here, in the composition root, and nowhere else" — the design.md draft
+  written before implementation started would have put scenario content
+  (which imports `@verchestra/workspace` directly) in a second file,
+  contradicting that sealed decision's literal wording. Appending to the
+  existing file honors it without needing to reopen or amend AD-010.
+  `main.ts` was refactored to extract `createCommandBus(controlRoot)` so the
+  smoke scenario reuses the exact production controller path instead of
+  duplicating it — `main()`'s own behavior is unchanged (still calls
+  `createCommandBus(process.cwd())`).
 - New spec directory `self-test-profiles`, sibling to the completed
   `self-test` (T69) directory, following the T68a–T68d one-dir-per-task
   precedent.

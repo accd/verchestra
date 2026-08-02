@@ -1,14 +1,20 @@
-// The only place that wires the Self-Test trust domain together (T69, #10).
-// The application package owns the rules, packages/self-test owns the facts,
-// and neither may import a sibling adapter — so the TEST-ONLY subject and the
-// evidence boundary are constructed here, in the composition root, and
-// nowhere else.
+// The only place that wires the Self-Test trust domain together (T69, #10;
+// T70 scenarios, #11). The application package owns the rules,
+// packages/self-test owns the facts, and neither may import a sibling
+// adapter — so the TEST-ONLY subject, the scenario content that drives the
+// real @verchestra/workspace-backed CLI, and the evidence boundary are all
+// constructed here, in the composition root, and nowhere else.
+import { createHash } from "node:crypto";
+import { readFile, readdir } from "node:fs/promises";
+import { join, relative } from "node:path";
 import {
   SelfTestOrchestrator,
+  assertNoNetworkAttempts,
   assertReportPayload,
   resolveSelfTestProfile,
   type MaterialFact,
   type RootFacts,
+  type ScenarioCheck,
   type SelfTestProfileId,
   type SelfTestReportPayload,
   type SelfTestRunResult,
@@ -19,10 +25,15 @@ import { ArtifactSealer, SupportCodeRegistry, type SealedArtifact } from "@verch
 import {
   BoundedFixtureFactory,
   DisposableRootProvider,
+  GitFixtureFactory,
   SentinelCatalog,
+  offlineGuard,
   testOnlyKeyMaterial,
   type SentinelTarget
 } from "@verchestra/self-test";
+import { runCli } from "./cli.ts";
+import { createCommandBus } from "./main.ts";
+import { installedReleaseManifest } from "./release-manifest.ts";
 
 // Every VES_SELFTEST_* code the domain can emit into
 // `self_test.failure_codes`. The support-bundle contract rejects any code the
@@ -32,6 +43,8 @@ import {
 export const SELF_TEST_FAILURE_CODES = Object.freeze([
   "VES_SELFTEST_FIXTURE_BUDGET",
   "VES_SELFTEST_FIXTURE_ESCAPE",
+  "VES_SELFTEST_NETWORK_ATTEMPT",
+  "VES_SELFTEST_NONCONVERGENT",
   "VES_SELFTEST_PRODUCTION_MATERIAL",
   "VES_SELFTEST_QUARANTINE_FAILED",
   "VES_SELFTEST_QUARANTINE_TRANSITION",
@@ -39,6 +52,8 @@ export const SELF_TEST_FAILURE_CODES = Object.freeze([
   "VES_SELFTEST_REPORT_FIELD_UNKNOWN",
   "VES_SELFTEST_ROOT_FACTS_INVALID",
   "VES_SELFTEST_ROOT_OVERLAP",
+  "VES_SELFTEST_SCENARIO_CHECK_FAILED",
+  "VES_SELFTEST_SCENARIO_MISSING",
   "VES_SELFTEST_SENTINEL_FACTS_INVALID",
   "VES_SELFTEST_SENTINEL_MUTATION",
   "VES_SELFTEST_UNKNOWN_PROFILE"
@@ -139,4 +154,133 @@ export class SelfTestComposition {
     });
     return Object.freeze({ result, artifact });
   }
+}
+
+// T70: byte-level snapshot of a directory's working tree, excluding `.git`
+// (which mutates on every Git command regardless of working-tree content).
+// Used only to prove a dry-run made zero writes; never sealed into evidence.
+async function workingTreeSnapshot(root: string): Promise<readonly string[]> {
+  const entries: string[] = [];
+  async function walk(directory: string): Promise<void> {
+    for (const entry of await readdir(directory, { withFileTypes: true })) {
+      if (entry.name === ".git") continue;
+      const path = join(directory, entry.name);
+      if (entry.isDirectory()) await walk(path);
+      else if (entry.isFile()) {
+        const digest = createHash("sha256")
+          .update(await readFile(path))
+          .digest("hex");
+        entries.push(`${relative(root, path).replaceAll("\\", "/")}:${digest}`);
+      }
+    }
+  }
+  await walk(root);
+  return Object.freeze(entries.sort());
+}
+
+interface CliInvocation {
+  readonly exitCode: number;
+  readonly stdout: string;
+  readonly stderr: string;
+}
+
+async function invokeCli(argv: readonly string[], controlRoot: string): Promise<CliInvocation> {
+  let stdout = "";
+  let stderr = "";
+  const exitCode = await runCli({
+    argv,
+    invokedAs: "vestra",
+    installedManifest: installedReleaseManifest,
+    installedCliVersion: installedReleaseManifest.semanticVersion,
+    commandBus: createCommandBus(controlRoot),
+    stdout: (value) => {
+      stdout += value;
+    },
+    stderr: (value) => {
+      stderr += value;
+    }
+  });
+  return { exitCode, stdout, stderr };
+}
+
+// T70 (PRF-05, PRF-07): the smoke profile drives the exact controller path
+// production traffic uses (runCli + the real command bus), against a
+// disposable, real Git repository, and proves the dry-run path writes
+// nothing. Network is blocked for the whole scenario as a PRF-01 backstop.
+export function createSmokeScenario(): SelfTestScenario {
+  return {
+    async run({ root, fixtures }) {
+      const startedAt = Date.now();
+      const checks: ScenarioCheck[] = [];
+      const guard = offlineGuard();
+      try {
+        const fixtureFacts = await new GitFixtureFactory(root, fixtures).provision("standalone");
+        const controlRoot = fixtureFacts.controlRootPath;
+
+        const record = (checkId: string, requirement: string, ok: boolean): void => {
+          checks.push(Object.freeze({ checkId, requirement, status: ok ? "pass" : "fail" }));
+        };
+
+        const help = await invokeCli(["--help"], controlRoot);
+        record(
+          "smoke.help",
+          "vestra --help exits 0 with non-empty output",
+          help.exitCode === 0 && help.stdout.length > 0
+        );
+
+        const version = await invokeCli(["--version"], controlRoot);
+        record(
+          "smoke.version",
+          "vestra --version reports the installed semantic version",
+          version.exitCode === 0 && version.stdout.includes(installedReleaseManifest.semanticVersion)
+        );
+
+        const before = await workingTreeSnapshot(controlRoot);
+        const preview = await invokeCli(
+          [
+            "init",
+            "--dry-run",
+            "--workspace-id",
+            "workspace_018f0b6d-7b1a-7abc-8def-0123456789ab",
+            "--name",
+            "Self-Test Smoke",
+            "--placement",
+            "centralized"
+          ],
+          controlRoot
+        );
+        record("smoke.init.dry-run.preview", "init --dry-run exits 0 with a preview", preview.exitCode === 0);
+        const after = await workingTreeSnapshot(controlRoot);
+        record(
+          "smoke.init.dry-run.zero-writes",
+          "init --dry-run makes zero writes to the working tree",
+          before.length === after.length && before.every((entry, index) => entry === after[index])
+        );
+
+        const invalidArgument = await invokeCli(["init"], controlRoot);
+        record(
+          "smoke.init.invalid-argument",
+          "init without required arguments fails distinctly",
+          invalidArgument.exitCode !== 0
+        );
+
+        const unknownCommand = await invokeCli(["frobnicate"], controlRoot);
+        record("smoke.unknown-command", "an unrecognized command fails distinctly", unknownCommand.exitCode !== 0);
+      } finally {
+        guard.restore();
+      }
+      assertNoNetworkAttempts(guard.attempts());
+      const failureCodes = checks.some((check) => check.status === "fail")
+        ? Object.freeze(["VES_SELFTEST_SCENARIO_CHECK_FAILED"])
+        : Object.freeze([]);
+      return Object.freeze({
+        checkCount: checks.length,
+        durationMs: Date.now() - startedAt,
+        evidenceRefs: [],
+        failureCodes: Object.freeze(failureCodes),
+        redactionCount: 0,
+        checks: Object.freeze(checks)
+      });
+    }
+  };
 }
