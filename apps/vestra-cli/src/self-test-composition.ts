@@ -8,18 +8,24 @@ import { createHash } from "node:crypto";
 import { readFile, readdir } from "node:fs/promises";
 import { join, relative } from "node:path";
 import {
+  MachineBootstrapService,
   SelfTestOrchestrator,
+  WORKSPACE_SHAPES,
+  WorkspaceReconcileService,
   assertNoNetworkAttempts,
   assertReportPayload,
   resolveSelfTestProfile,
+  type CanonicalSyncConfiguration,
   type MaterialFact,
+  type PersistedSyncState,
   type RootFacts,
   type ScenarioCheck,
   type SelfTestProfileId,
   type SelfTestReportPayload,
   type SelfTestRunResult,
   type SentinelFact,
-  type SubjectRunFacts
+  type SubjectRunFacts,
+  type WorkspaceShape
 } from "@verchestra/application";
 import { ArtifactSealer, SupportCodeRegistry, type SealedArtifact } from "@verchestra/evidence";
 import {
@@ -31,6 +37,7 @@ import {
   testOnlyKeyMaterial,
   type SentinelTarget
 } from "@verchestra/self-test";
+import { scanWorkspace } from "@verchestra/workspace";
 import { runCli } from "./cli.ts";
 import { createCommandBus } from "./main.ts";
 import { installedReleaseManifest } from "./release-manifest.ts";
@@ -203,6 +210,32 @@ async function invokeCli(argv: readonly string[], controlRoot: string): Promise<
   return { exitCode, stdout, stderr };
 }
 
+function pushCheck(checks: ScenarioCheck[], checkId: string, requirement: string, ok: boolean): void {
+  checks.push(Object.freeze({ checkId, requirement, status: ok ? "pass" : "fail" }));
+}
+
+// Shared by every T70 scenario: network is blocked for the whole run as a
+// PRF-01 backstop, and a single failed check is enough to fail the profile
+// closed rather than reporting a partial PASS.
+async function finalizeScenario(
+  checks: readonly ScenarioCheck[],
+  guard: ReturnType<typeof offlineGuard>,
+  startedAt: number
+): Promise<SubjectRunFacts> {
+  assertNoNetworkAttempts(guard.attempts());
+  const failureCodes = checks.some((check) => check.status === "fail")
+    ? Object.freeze(["VES_SELFTEST_SCENARIO_CHECK_FAILED"])
+    : Object.freeze([]);
+  return Object.freeze({
+    checkCount: checks.length,
+    durationMs: Date.now() - startedAt,
+    evidenceRefs: [],
+    failureCodes: Object.freeze(failureCodes),
+    redactionCount: 0,
+    checks: Object.freeze(checks)
+  });
+}
+
 // T70 (PRF-05, PRF-07): the smoke profile drives the exact controller path
 // production traffic uses (runCli + the real command bus), against a
 // disposable, real Git repository, and proves the dry-run path writes
@@ -217,9 +250,8 @@ export function createSmokeScenario(): SelfTestScenario {
         const fixtureFacts = await new GitFixtureFactory(root, fixtures).provision("standalone");
         const controlRoot = fixtureFacts.controlRootPath;
 
-        const record = (checkId: string, requirement: string, ok: boolean): void => {
-          checks.push(Object.freeze({ checkId, requirement, status: ok ? "pass" : "fail" }));
-        };
+        const record = (checkId: string, requirement: string, ok: boolean): void =>
+          pushCheck(checks, checkId, requirement, ok);
 
         const help = await invokeCli(["--help"], controlRoot);
         record(
@@ -269,18 +301,187 @@ export function createSmokeScenario(): SelfTestScenario {
       } finally {
         guard.restore();
       }
-      assertNoNetworkAttempts(guard.attempts());
-      const failureCodes = checks.some((check) => check.status === "fail")
-        ? Object.freeze(["VES_SELFTEST_SCENARIO_CHECK_FAILED"])
-        : Object.freeze([]);
-      return Object.freeze({
-        checkCount: checks.length,
-        durationMs: Date.now() - startedAt,
-        evidenceRefs: [],
-        failureCodes: Object.freeze(failureCodes),
-        redactionCount: 0,
-        checks: Object.freeze(checks)
-      });
+      return finalizeScenario(checks, guard, startedAt);
+    }
+  };
+}
+
+// T70 (PRF-02, PRF-03): one placement, init, bootstrap, sync, and
+// reconcile check per workspace shape, each against a real fixture. No
+// driver or secret is real — MachineBootstrapService is exercised with an
+// empty discovery/secrets stub (no live paid model calls, per the issue's
+// non-goals) so only the deterministic bootstrap contract is under test.
+const EXPECTED_INVENTORY: Readonly<
+  Record<WorkspaceShape, { readonly projectCount: number; readonly ignoredProjectPath: string | null }>
+> = Object.freeze({
+  standalone: Object.freeze({ projectCount: 1, ignoredProjectPath: null }),
+  colocated: Object.freeze({ projectCount: 2, ignoredProjectPath: null }),
+  centralized: Object.freeze({ projectCount: 2, ignoredProjectPath: null }),
+  nested: Object.freeze({ projectCount: 2, ignoredProjectPath: null }),
+  ignored: Object.freeze({ projectCount: 2, ignoredProjectPath: "projects/service" })
+});
+
+async function checkPlacement(shape: WorkspaceShape, controlRoot: string, checks: ScenarioCheck[]): Promise<void> {
+  const expected = EXPECTED_INVENTORY[shape];
+  const inventory = await scanWorkspace({ controlRoot });
+  const ignoredProject = inventory.projects.find((project) => project.ignoredByControl);
+  pushCheck(
+    checks,
+    `workspace.${shape}.placement`,
+    `scanWorkspace reports ${expected.projectCount} Projects for ${shape}, ignored: ${expected.ignoredProjectPath ?? "none"}`,
+    inventory.projects.length === expected.projectCount &&
+      (expected.ignoredProjectPath === null
+        ? ignoredProject === undefined
+        : ignoredProject?.logicalPath === expected.ignoredProjectPath)
+  );
+}
+
+async function checkInit(shape: WorkspaceShape, controlRoot: string, checks: ScenarioCheck[]): Promise<void> {
+  const result = await invokeCli(
+    [
+      "init",
+      "--dry-run",
+      "--workspace-id",
+      "workspace_018f0b6d-7b1a-7abc-8def-2123456789ab",
+      "--name",
+      `Self-Test ${shape}`,
+      "--placement",
+      "centralized"
+    ],
+    controlRoot
+  );
+  pushCheck(checks, `workspace.${shape}.init`, `init --dry-run exits 0 for ${shape}`, result.exitCode === 0);
+}
+
+async function checkBootstrap(shape: WorkspaceShape, checks: ScenarioCheck[]): Promise<void> {
+  const service = new MachineBootstrapService({
+    discovery: { discover: async () => [] },
+    secrets: { expectedStore: "self-test", isBound: async () => false },
+    profiles: { save: async () => ({ changed: true, profileDigest: "sha256:self-test" }) },
+    now: () => "2026-01-01T00:00:00.000Z"
+  });
+  const result = await service.execute({
+    config: {
+      schemaVersion: 1,
+      configVersion: 1,
+      minimumCliVersion: "1.0.0",
+      workspaceId: "workspace_018f0b6d-7b1a-7abc-8def-2123456789ab",
+      roles: [{ roleId: "self-test-orchestrator", requiredCapabilities: ["plan"], independence: "none" }],
+      requiredSecrets: [],
+      databases: []
+    },
+    installedCliVersion: "1.0.0",
+    machineId: "machine_018f0b6d-7b1a-7abc-8def-2123456789ab"
+  });
+  pushCheck(
+    checks,
+    `workspace.${shape}.bootstrap`,
+    `MachineBootstrapService completes deterministically for ${shape}`,
+    result.schemaVersion === 1
+  );
+}
+
+function reconcileDigest(value: string): string {
+  return `sha256:${createHash("sha256").update(value).digest("hex")}`;
+}
+
+class SelfTestSyncStore {
+  #state: PersistedSyncState | undefined;
+  writes = 0;
+
+  async load(): Promise<PersistedSyncState | undefined> {
+    return this.#state;
+  }
+
+  async save(state: PersistedSyncState): Promise<{ readonly changed: boolean }> {
+    const changed = JSON.stringify(this.#state) !== JSON.stringify(state);
+    if (changed) {
+      this.#state = state;
+      this.writes += 1;
+    }
+    return { changed };
+  }
+}
+
+function reconcileConfiguration(shape: WorkspaceShape, releaseGeneration: string): CanonicalSyncConfiguration {
+  return {
+    schemaVersion: 1,
+    minimumCliVersion: "1.0.0",
+    workspaceId: "workspace_018f0b6d-7b1a-7abc-8def-3123456789ab",
+    generations: {
+      release: releaseGeneration,
+      config: "config-1",
+      skills: "skills-1",
+      data: "data-1",
+      integrations: "integrations-1"
+    },
+    projects: [
+      {
+        projectId: `project_018f0b6d-7b1a-7abc-8def-${shapeSuffix(shape)}`,
+        logicalPath: ".",
+        state: "active" as const,
+        predecessorProjectIds: []
+      }
+    ],
+    projections: [],
+    ingestionManifests: []
+  };
+}
+
+function shapeSuffix(shape: WorkspaceShape): string {
+  return { standalone: "0", colocated: "1", centralized: "2", nested: "3", ignored: "4" }[shape].padStart(12, "0");
+}
+
+async function checkSyncAndReconcile(shape: WorkspaceShape, checks: ScenarioCheck[]): Promise<void> {
+  const store = new SelfTestSyncStore();
+  const service = new WorkspaceReconcileService({ store, digest: { sha256: reconcileDigest } });
+
+  const first = await service.execute({
+    installedCliVersion: "1.0.0",
+    configuration: reconcileConfiguration(shape, "release-1"),
+    directions: {},
+    uncertainEffects: []
+  });
+  pushCheck(
+    checks,
+    `workspace.${shape}.sync`,
+    `initial sync persists state for ${shape}`,
+    first.status === "reconciled" && first.stateChanged === true && store.writes === 1
+  );
+
+  const second = await service.execute({
+    installedCliVersion: "1.0.0",
+    configuration: reconcileConfiguration(shape, "release-2"),
+    directions: {},
+    uncertainEffects: []
+  });
+  pushCheck(
+    checks,
+    `workspace.${shape}.reconcile`,
+    `a changed generation is recognized as a local rebuild requirement for ${shape}`,
+    second.status === "reconciled" && second.localRebuildRequirements.length > 0
+  );
+}
+
+export function createWorkspaceScenario(): SelfTestScenario {
+  return {
+    async run({ root, fixtures }) {
+      const startedAt = Date.now();
+      const checks: ScenarioCheck[] = [];
+      const guard = offlineGuard();
+      try {
+        const gitFactory = new GitFixtureFactory(root, fixtures);
+        for (const shape of WORKSPACE_SHAPES) {
+          const fixtureFacts = await gitFactory.provision(shape);
+          await checkPlacement(shape, fixtureFacts.controlRootPath, checks);
+          await checkInit(shape, fixtureFacts.controlRootPath, checks);
+          await checkBootstrap(shape, checks);
+          await checkSyncAndReconcile(shape, checks);
+        }
+      } finally {
+        guard.restore();
+      }
+      return finalizeScenario(checks, guard, startedAt);
     }
   };
 }

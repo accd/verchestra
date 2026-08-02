@@ -15,6 +15,7 @@ export {
   SelfTestComposition,
   createSelfTestCodeRegistry,
   createSmokeScenario,
+  createWorkspaceScenario,
   type SealedSelfTestReport,
   type SelfTestCompositionOptions,
   type SelfTestScenario
