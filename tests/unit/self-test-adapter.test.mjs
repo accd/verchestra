@@ -3,9 +3,9 @@
 // tests/unit/self-test-rules.test.mjs.
 import assert from "node:assert/strict";
 import { verify as cryptoVerify, createPublicKey } from "node:crypto";
-import { lstat, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { chmod, lstat, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { platform, tmpdir } from "node:os";
+import { dirname, join } from "node:path";
 import { afterEach, test } from "node:test";
 import {
   BoundedFixtureFactory,
@@ -49,6 +49,39 @@ test("cleanup proves removal: the root no longer exists afterwards", async () =>
   assert.equal(outcome.removed, true);
   assert.deepEqual(outcome.residue, []);
   assert.equal(await lstat(root.canonicalPath).catch(() => null), null);
+});
+
+// Removal must be a proven fact, not an assumption that `rm` worked. Proving
+// that requires removal to genuinely fail: Windows cannot delete a directory
+// that is a process's working directory, and POSIX cannot unlink from a
+// read-only parent. Both restore immediately.
+async function makeUndeletable(root) {
+  if (platform() === "win32") {
+    const previous = process.cwd();
+    process.chdir(root);
+    return () => {
+      process.chdir(previous);
+    };
+  }
+  await chmod(dirname(root), 0o555);
+  return () => chmod(dirname(root), 0o755);
+}
+
+test("cleanup reports removed false with residue when the root survives", async () => {
+  const provider = new DisposableRootProvider({ baseDirectory: await base() });
+  const root = await provider.provision("smoke");
+  await writeFile(fixtureJoin(root, "stuck.txt"), "still here");
+  const release = await makeUndeletable(root.canonicalPath);
+  const outcome = await provider.cleanup(root);
+  await release();
+
+  assert.notEqual(
+    await lstat(root.canonicalPath).catch(() => null),
+    null,
+    "the arrangement failed: the root was deleted, so this case proves nothing"
+  );
+  assert.equal(outcome.removed, false, "cleanup must not claim a removal it cannot prove");
+  assert.ok(outcome.residue.length > 0, "surviving content must be reported as residue");
 });
 
 test("quarantine renames the root aside with a marker naming the reason", async () => {
