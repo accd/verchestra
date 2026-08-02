@@ -9,3 +9,13 @@ export {
   type ParsedCliArguments
 } from "./cli.ts";
 export { installedReleaseManifest } from "./release-manifest.ts";
+export { createCommandBus, main } from "./main.ts";
+export {
+  SELF_TEST_FAILURE_CODES,
+  SelfTestComposition,
+  createSelfTestCodeRegistry,
+  createSmokeScenario,
+  type SealedSelfTestReport,
+  type SelfTestCompositionOptions,
+  type SelfTestScenario
+} from "./self-test-composition.ts";
