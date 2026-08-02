@@ -20,3 +20,4 @@ export {
   type SentinelTarget,
   type TestOnlyKey
 } from "./sentinels-and-fixtures.ts";
+export { GitFixtureFactory, type GitFixtureFacts } from "./git-fixtures.ts";
