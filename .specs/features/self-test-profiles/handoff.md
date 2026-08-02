@@ -5,10 +5,10 @@ issue: 11
 status: planned
 branch: feat/t70-self-test-profiles
 baseRevision: b5473f6ee37116f6c58c0489d1a54af369982595
-lastCompletedTask: T6
-nextTask: T7
-lastGate: pnpm test:unit (1830/1830), pnpm test:contract (446/446)
-updatedAt: 2026-08-02T03:30:00Z
+lastCompletedTask: T7
+nextTask: none — pending external gate dispatch, independent verification, human review
+lastGate: pnpm test:unit (1839/1839), pnpm test:contract (446/446), pnpm test:architecture (19/19)
+updatedAt: 2026-08-02T04:15:00Z
 ---
 
 # Scope
@@ -205,22 +205,83 @@ byte-identical invoking repository. `typecheck`/`lint`/`complexity:check`/
 the real binary (`node apps/vestra-cli/bin/vestra.mjs self-test --profile
 smoke|workspace`, human and `--output json`) before writing any assertion.
 
+T7 evidence gathered. Convergence: both profiles now have an explicit
+`semanticFingerprint`-based two-run comparison test (PRF-04), reusing the
+real production rule rather than a hand-rolled reimplementation in the test
+file itself (smoke and workspace test files both updated).
+
+Discrimination sensor: 9 mutations across T1 (application rules), T3
+(offline guard), T2 (Git fixtures), and T5 (workspace scenario checks).
+7 killed immediately; 2 survived their first run and were **not** dropped —
+the underlying coverage gap was fixed, matching T69's M11 precedent:
+
+| # | Target | Mutation | Result |
+| - | ------ | -------- | ------ |
+| M1 | `assertProfileCoverage` | never fails on missing checks | KILLED |
+| M2 | `semanticFingerprint` | drops the stable sort | KILLED |
+| M3 | `assertConvergence` | never throws | KILLED |
+| M4 | `assertNoNetworkAttempts` | never throws | KILLED |
+| M5 | `offlineGuard` | records attempts but never blocks | KILLED |
+| M6 | `GitFixtureFactory` (ignored shape) | stops writing `.gitignore` | KILLED |
+| M7 | smoke `zero-writes` check | hardcoded `true` | **SURVIVED** first run — no test independently verified the check's own sensitivity to a real diff. Fixed by extracting `snapshotsIdentical(before, after)` as an exported pure function and adding 5 direct unit cases in `tests/unit/self-test-cli-composition.test.mjs`. Re-run: KILLED. |
+| M8 | workspace `placement` check | hardcoded `true` | **SURVIVED** first run — same shallow-check gap. Fixed by extracting `placementMatchesExpectation(inventory, expected)` as an exported pure function with 4 direct unit cases (count mismatch, unexpectedly-ignored, expected-ignored-but-isn't, matching case). Re-run: KILLED. |
+| M9 | `WORKSPACE_CHECK_IDS` | drops the `bootstrap` category | KILLED (both the direct id-list unit test and the integration test's exact-match assertion) |
+
+Final: 9/9 killed, 0 surviving. `tests/unit/self-test-cli-composition.test.mjs`
+is new evidence from this hardening, not scaffolding — 9 cases.
+
+Local gates run clean: `pnpm typecheck`, `pnpm lint`, `pnpm complexity:check`,
+`pnpm format:check`, `pnpm test:unit` (1839/1839), `pnpm test:contract`
+(446/446), `pnpm test:architecture` (19/19 — confirms no package-boundary
+regression from the `main.ts`/`self-test-composition.ts` changes), and the
+full T69+T70 self-test/CLI suite (134/134).
+
+**`pnpm gate:full` (the gate issue #11 declares) and every other gate
+`scripts/gate-selection.mjs` selects for this diff (`quick`, `full`, `build`,
+`security`, `release`) cannot be verified clean in this local environment.**
+Root cause confirmed via a disposable `git worktree` of clean `main`
+(`b5473f6`, pre-T70): the same `node:sqlite` failures
+(`ERR_SQLITE_ERROR: no such module: fts5`, `setAuthorizer is not a
+function`, a `busyTimeoutMs` mismatch) and the same `ExperimentalWarning:
+Type Stripping` stderr-emptiness failures occur on main with zero T70
+changes present. This environment runs Node v23.11.0; the repository pins
+v24.14.0 (`package.json` `engines`). `test:architecture`, `test:unit`, and
+`test:contract` — the scopes T70 actually touches meaningfully — all pass;
+the failures are entirely in `packages/memory`, `packages/data-probe`
+SQLite adapters, and `packages/platform-node`'s runtime store, none of
+which T70 changed.
+
+T69's own qualification evidence was gathered through **externally
+dispatched** CI runs for exactly this reason (`t69-validation.md`'s gate
+table links GitHub Actions run ids, not local output). T70 needs the same:
+either dispatch on the pinned Node version, or the branch needs to be
+pushed for CI. Neither is something this session did autonomously — pushing
+a branch is a side-effectful action outside the scope of local, reversible
+work.
+
+**`docs/qualification/t70-validation.md` has not been written.** Writing it
+now, before genuine external gate evidence exists, would mean claiming a
+PASS this session cannot actually verify — exactly what AGENTS.md's
+evidence-or-zero rule and this skill's Verifier step exist to prevent. The
+implementation (T1–T6) and its local evidence (T7) are complete; the
+qualification report is the one remaining action, and it is blocked on
+either environment access (Node v24.14 locally) or CI dispatch (requires a
+push), both of which are the user's call, not mine to make silently.
+
 # Next Exact Action
 
-T7 (qualification): (1) write a convergence proof — run each profile twice
-against fresh disposable roots and assert `semanticFingerprint` identical
-(PRF-04), probably as a new integration test rather than reusing the
-existing per-run tests; (2) run the discrimination sensor per the skill's
-Verifier step — inject faults into T1–T6's new logic in scratch state,
-confirm the test suites kill them; (3) dispatch `pnpm gate:full` plus every
-gate `scripts/gate-selection.mjs` selects for the changed paths (expect
-`quick`, `full`, `build`, `security`, `release` — confirm exactly, this repo
-declares `gate:full` in the issue but the path-based selector may require
-more); (4) write `docs/qualification/t70-validation.md` binding the
-implementation revision, gate results, and requirement-to-evidence mapping,
-following the `t69-validation.md` precedent; (5) update `.specs/STATE.md`
-Handoff section and `ROADMAP.md`'s derived-counter language once T70 has its
-report. Run `pnpm gate:full` at minimum before writing the report.
+Get `docs/qualification/t70-validation.md` written with genuine gate
+evidence: either (a) push `feat/t70-self-test-profiles` and dispatch
+`full-validation.yml` the way T69's PR #180 did, then bind the run ids into
+the report, or (b) run `pnpm gate:full` (and the other four selected gates)
+locally on Node v24.14.0 if available. Once gates are genuinely green,
+write the report following `t69-validation.md`'s structure (scope, case
+count table, gate table with run links, adequacy matrix mapping PRF-01–07
+to assertion evidence, the discrimination sensor table above, verdict), then
+update `.specs/STATE.md`'s Handoff section and `ROADMAP.md`'s
+`T69 complete; T70 next` derived-counter language to `T70 complete; T71
+next`. Independent verification and human review follow, same as every
+other `docs/qualification/*.md` in this repository.
 
 # Blockers
 
