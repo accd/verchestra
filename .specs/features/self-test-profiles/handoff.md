@@ -5,10 +5,10 @@ issue: 11
 status: planned
 branch: feat/t70-self-test-profiles
 baseRevision: b5473f6ee37116f6c58c0489d1a54af369982595
-lastCompletedTask: T5
-nextTask: T6
+lastCompletedTask: T6
+nextTask: T7
 lastGate: pnpm test:unit (1830/1830), pnpm test:contract (446/446)
-updatedAt: 2026-08-02T02:45:00Z
+updatedAt: 2026-08-02T03:30:00Z
 ---
 
 # Scope
@@ -149,29 +149,91 @@ T69+T70 self-test/CLI suite (126/126), `pnpm test:unit` (1830/1830), and
 `pnpm test:contract` (446/446) — no regressions from the `main.ts` extraction
 or the new `@verchestra/workspace` import in the composition root.
 
+T6: `vestra self-test --profile smoke|workspace` is live. `release-manifest.ts`
+declares the command (`profile` string option, `values: ["smoke","workspace"]`,
+`supportsJson: true`, `mutating: false`). `main.ts` special-cases `"self-test"`
+in the command bus it builds (not inside `createCommandBus`, which stays
+`init`-only and is shared with the trust domain's own `invokeCli` calls) and
+delegates all TEST-ONLY construction to a new
+`runSelfTestProfile(profileId, { controlRoot })` in `self-test-composition.ts`
+— main.ts itself no longer imports `@verchestra/evidence` or
+`@verchestra/self-test` directly, keeping AD-010's "nowhere else" literal.
+Note: this makes `main.ts` and `self-test-composition.ts` mutually
+importing (`main.ts` → `runSelfTestProfile`, `self-test-composition.ts` →
+`createCommandBus`); both references are used only inside function bodies
+called later, never at module-eval time, so the ESM cycle resolves fine —
+verified by the real binary running correctly, not just by typecheck.
+
+Exit contract: PASS → exit 0 with the sealed payload as `data`. FAIL or a
+thrown `SelfTestError`/`SelfTestComposition` failure → `PublicErrorException`
+wrapping `VES_CLI_COMMAND_FAILED` (exit 5, existing `cli-errors.ts`
+convention) — no new public error code added; AC6 only requires the
+non-PASS exit to be non-zero, not a third value distinguishing FAIL from a
+run that never completed. Missing/invalid `--profile` fails via the
+manifest's own enum validation → `VES_CLI_ARGUMENT_INVALID` (exit 2).
+
+`tests/contract/cli-surface.test.mjs:71` updated to assert
+`["init", "self-test"]` and the `self-test` command's `["profile"]` option
+list — exact and closed, not weakened. `tests/e2e/cli-launchers-e2e.test.mjs`'s
+literal `--help` output string updated to include the new command line
+(verified byte-for-byte against the real binary's output before writing the
+assertion, not guessed).
+
+**Real bug found and worked around (not fixed — flagged for follow-up,
+Decisions below): T69's `assertDisjointRoot`/`collectLinkChain` false-positives
+an overlap** whenever the guarded root and the candidate disposable root
+share `os.tmpdir()` as an ancestor on macOS. `os.tmpdir()` resolves through
+the system symlink `/var` → `/private/var`; `collectLinkChain` walks every
+path ancestor and records that hop as a candidate-side fact; `overlapReason`
+then does a naive string-prefix `pathContains` check against the *bare*
+`"/var"` entry, which trivially prefixes every guarded root also under
+`/var/folders/...`. This only manifests when both roots share that tmp
+ancestor — real users invoking `vestra self-test` from a normal project
+directory (`/Users/...`) are unaffected, since only the self-test disposable
+root sits under `/var/folders`, not the guarded root too. First discovered
+when the e2e test used `os.tmpdir()`-based fixtures (same pattern as
+`tests/helpers/workspace-scanner-fixture.mjs`) and every real-binary
+invocation returned `VES_CLI_COMMAND_FAILED`. Worked around by placing e2e
+fixtures under the repository's own scratch directory instead
+(`tests/e2e/self-test-cli-e2e.test.mjs`'s `repositoryRoot()`), which the 5
+new e2e cases confirm passes.
+
+5 e2e cases confirm the exit contract, ≥25-check workspace verdict, and
+byte-identical invoking repository. `typecheck`/`lint`/`complexity:check`/
+`format:check` all PASS. Full self-test/CLI suite 128/128,
+`pnpm test:unit` 1830/1830, `pnpm test:contract` 446/446. Manually verified
+the real binary (`node apps/vestra-cli/bin/vestra.mjs self-test --profile
+smoke|workspace`, human and `--output json`) before writing any assertion.
+
 # Next Exact Action
 
-T6: a `self-test` CLI command. Add a `CliCommand` name `"self-test"` with a
-`--profile` option (`smoke`|`workspace`) to `apps/vestra-cli/src/cli.ts`'s
-manifest handling and `main.ts`'s command bus, wiring
-`SelfTestComposition.run(profile)` with `createSmokeScenario()` or
-`createWorkspaceScenario()` selected by the option, a real `guardedRoots`
-(the repository root itself plus `process.cwd()`), and a real
-`ArtifactSealer`/signer. Exit 0 on PASS, distinct non-zero on FAIL/BLOCKED
-(follow `cli-errors.ts`'s existing per-class exit-code convention). Update
-`installedReleaseManifest` in `release-manifest.ts` to advertise the new
-command, which will change
-`tests/contract/cli-surface.test.mjs:71-77`'s sealed
-`["init"]` assertion to `["init", "self-test"]` — update that assertion
-explicitly (a projection update, not a weakening; still exact and closed).
-Add `tests/e2e/self-test-cli-e2e.test.mjs` spawning the real binary
-(`apps/vestra-cli/bin/vestra.mjs self-test --profile smoke`), matching the
-`cli-launchers-e2e.test.mjs` pattern. Run focused, then `pnpm gate:quick`,
-then commit.
+T7 (qualification): (1) write a convergence proof — run each profile twice
+against fresh disposable roots and assert `semanticFingerprint` identical
+(PRF-04), probably as a new integration test rather than reusing the
+existing per-run tests; (2) run the discrimination sensor per the skill's
+Verifier step — inject faults into T1–T6's new logic in scratch state,
+confirm the test suites kill them; (3) dispatch `pnpm gate:full` plus every
+gate `scripts/gate-selection.mjs` selects for the changed paths (expect
+`quick`, `full`, `build`, `security`, `release` — confirm exactly, this repo
+declares `gate:full` in the issue but the path-based selector may require
+more); (4) write `docs/qualification/t70-validation.md` binding the
+implementation revision, gate results, and requirement-to-evidence mapping,
+following the `t69-validation.md` precedent; (5) update `.specs/STATE.md`
+Handoff section and `ROADMAP.md`'s derived-counter language once T70 has its
+report. Run `pnpm gate:full` at minimum before writing the report.
 
 # Blockers
 
-None.
+None for T70. One follow-up candidate for a separate task (not blocking):
+T69's `assertDisjointRoot`/`collectLinkChain` false-positives an overlap on
+macOS when the guarded root and the disposable root share `os.tmpdir()` as
+an ancestor (see T6 evidence above for the exact mechanism). Does not affect
+real usage from a normal project directory; does affect any future test or
+tooling that provisions both a guarded root and a self-test disposable root
+under `os.tmpdir()`. A fix would touch T69-sealed
+`packages/application/src/self-test/self-test.ts` and
+`packages/self-test/src/disposable-roots.ts` and should go through
+independent review rather than be folded into T70.
 
 # Decisions
 
