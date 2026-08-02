@@ -5,10 +5,10 @@ issue: 11
 status: planned
 branch: feat/t70-self-test-profiles
 baseRevision: b5473f6ee37116f6c58c0489d1a54af369982595
-lastCompletedTask: T1
-nextTask: T2
-lastGate: pnpm test:unit
-updatedAt: 2026-08-02T00:30:00Z
+lastCompletedTask: T2
+nextTask: T3
+lastGate: pnpm test:integration (workspace-scoped subset)
+updatedAt: 2026-08-02T01:00:00Z
 ---
 
 # Scope
@@ -42,14 +42,37 @@ guarded state...") fails on this macOS environment before and after this
 change (`/tmp` vs `/private/tmp` symlink-chain ordering) — confirmed via
 `git stash`.
 
+T2: `GitFixtureFactory` in `packages/self-test/src/git-fixtures.ts`.
+Provisions all five shapes as real `git init` repositories under the T69
+disposable root, each shape scoped to its own subdirectory so repeated
+`provision()` calls from one factory never contaminate one another (a real
+bug caught by sanity-checking against `scanWorkspace` directly and fixed
+before commit — see Decisions). Hermetic Git env (`GIT_CONFIG_NOSYSTEM`,
+isolated `HOME`, no terminal prompt/askpass). File writes route through the
+existing T69 `BoundedFixtureFactory`, so the escape guard and byte budget
+apply unchanged. 10 integration cases in
+`tests/integration/self-test-git-fixtures.test.mjs`, including one asserting
+cross-shape isolation. Verified against the real
+`@verchestra/workspace` `scanWorkspace` (ad hoc script, not committed):
+standalone → one root Project; colocated/centralized → root + `projects/widget`
+Project, both owned by the control repo; nested → root + independently
+Git-owned `projects/service`, not ignored; ignored → same but
+`ignoredByControl: true` on both the repository and the Project.
+`pnpm typecheck`, `lint`, `complexity:check`, `format:check` all PASS.
+`test:integration` run scoped to non-SQLite suites plus the new file (80/80
+pass) — this environment's Node v23.11 vs. the pinned v24.14 `node:sqlite`
+binding is unrelated and pre-existing (confirmed via `git stash` before
+touching T2).
+
 # Next Exact Action
 
-Implement T2: `GitFixtureFactory` in `packages/self-test/src/git-fixtures.ts`
-producing the five real disposable Git shapes (standalone, colocated,
-centralized, nested, ignored), hermetic Git env, under the profile byte
-budget. Integration tests in
-`tests/integration/self-test-git-fixtures.test.mjs`. Run focused, then
-`pnpm gate:quick`, then commit.
+Implement T3: `offlineGuard()` in
+`packages/self-test/src/network-guard.ts` wrapping `node:net`/`node:http`/
+`fetch` for the duration of a scenario call, restoring originals even on
+throw. Wire `VES_SELFTEST_NETWORK_ATTEMPT` so an observed attempt fails the
+run (verdict stays in `application`; the guard only reports facts). Fault
+tests in `tests/fault-injection/self-test-network-guard-faults.test.mjs`.
+Run focused, then `pnpm gate:quick`, then commit.
 
 # Blockers
 
@@ -57,6 +80,21 @@ None.
 
 # Decisions
 
+- Workspace shapes map to `@verchestra/workspace` concepts, not new
+  vocabulary: standalone = control root is the only Project; colocated /
+  centralized = control root + one marker-only `projects/widget` Project
+  (both physically identical Git topology — the colocated/centralized
+  distinction is a `PlacementSnapshot` config choice made by the T5
+  scenario, not a fixture-level difference); nested = an independently
+  Git-initialized, non-ignored `projects/service`; ignored = the same but
+  listed in the control root's `.gitignore`.
+- `GitFixtureFactory.provision()` scopes every shape to its own
+  subdirectory (`<root>/<shape>/...`) rather than reusing the disposable
+  root directly for each shape — the first implementation reused the root
+  and silently layered shapes on top of each other, only caught by an ad
+  hoc `scanWorkspace` sanity check, not by the first draft of the
+  integration tests. A regression test now asserts cross-shape isolation
+  directly.
 - Per-check detail (`ScenarioCheck[]`) rides outside the sealed
   `SelfTestReportPayload` — a new field on `SubjectRunFacts`, not a report
   field — so PRF-06 (sealed allowlist unchanged) holds without a new report
