@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, test } from "node:test";
-import { WORKSPACE_CHECK_IDS } from "../../packages/application/src/index.ts";
+import { WORKSPACE_CHECK_IDS, semanticFingerprint } from "../../packages/application/src/index.ts";
 import { BoundedFixtureFactory, DisposableRootProvider } from "../../packages/self-test/src/index.ts";
 import { createWorkspaceScenario } from "../../apps/vestra-cli/src/index.ts";
 
@@ -55,6 +55,12 @@ test("placement checks distinguish ignored projects from visible ones", async ()
   const colocatedCheck = facts.checks.find((check) => check.checkId === "workspace.colocated.placement");
   assert.equal(ignoredCheck.status, "pass");
   assert.equal(colocatedCheck.status, "pass");
+});
+
+test("two independent workspace runs against fresh roots converge to the same fingerprint (PRF-04)", async () => {
+  const first = await run();
+  const second = await run();
+  assert.deepEqual(semanticFingerprint(first.checks), semanticFingerprint(second.checks));
 });
 
 test("sync and reconcile checks run for every shape", async () => {

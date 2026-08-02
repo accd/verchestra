@@ -185,6 +185,13 @@ export async function runSelfTestProfile(
   return composition.run(profileId);
 }
 
+// T70: pure comparison so the zero-writes check is independently testable
+// without a filesystem — a mutation that always reports "identical" is
+// caught here directly, not only through the scenario integration test.
+export function snapshotsIdentical(before: readonly string[], after: readonly string[]): boolean {
+  return before.length === after.length && before.every((entry, index) => entry === after[index]);
+}
+
 // T70: byte-level snapshot of a directory's working tree, excluding `.git`
 // (which mutates on every Git command regardless of working-tree content).
 // Used only to prove a dry-run made zero writes; never sealed into evidence.
@@ -308,7 +315,7 @@ export function createSmokeScenario(): SelfTestScenario {
         record(
           "smoke.init.dry-run.zero-writes",
           "init --dry-run makes zero writes to the working tree",
-          before.length === after.length && before.every((entry, index) => entry === after[index])
+          snapshotsIdentical(before, after)
         );
 
         const invalidArgument = await invokeCli(["init"], controlRoot);
@@ -343,18 +350,30 @@ const EXPECTED_INVENTORY: Readonly<
   ignored: Object.freeze({ projectCount: 2, ignoredProjectPath: "projects/service" })
 });
 
+// T70: pure predicate so a shape's expected inventory shape is independently
+// testable without a filesystem — a mutation that always reports "matches"
+// is caught here directly, not only through the scenario integration test.
+export function placementMatchesExpectation(
+  inventory: { readonly projects: readonly { readonly logicalPath: string; readonly ignoredByControl: boolean }[] },
+  expected: { readonly projectCount: number; readonly ignoredProjectPath: string | null }
+): boolean {
+  const ignoredProject = inventory.projects.find((project) => project.ignoredByControl);
+  return (
+    inventory.projects.length === expected.projectCount &&
+    (expected.ignoredProjectPath === null
+      ? ignoredProject === undefined
+      : ignoredProject?.logicalPath === expected.ignoredProjectPath)
+  );
+}
+
 async function checkPlacement(shape: WorkspaceShape, controlRoot: string, checks: ScenarioCheck[]): Promise<void> {
   const expected = EXPECTED_INVENTORY[shape];
   const inventory = await scanWorkspace({ controlRoot });
-  const ignoredProject = inventory.projects.find((project) => project.ignoredByControl);
   pushCheck(
     checks,
     `workspace.${shape}.placement`,
     `scanWorkspace reports ${expected.projectCount} Projects for ${shape}, ignored: ${expected.ignoredProjectPath ?? "none"}`,
-    inventory.projects.length === expected.projectCount &&
-      (expected.ignoredProjectPath === null
-        ? ignoredProject === undefined
-        : ignoredProject?.logicalPath === expected.ignoredProjectPath)
+    placementMatchesExpectation(inventory, expected)
   );
 }
 

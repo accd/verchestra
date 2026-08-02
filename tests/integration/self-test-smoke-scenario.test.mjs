@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, test } from "node:test";
-import { SMOKE_CHECK_IDS } from "../../packages/application/src/index.ts";
+import { SMOKE_CHECK_IDS, semanticFingerprint } from "../../packages/application/src/index.ts";
 import { BoundedFixtureFactory, DisposableRootProvider } from "../../packages/self-test/src/index.ts";
 import { createSmokeScenario } from "../../apps/vestra-cli/src/index.ts";
 
@@ -48,9 +48,8 @@ test("the smoke scenario makes no network attempt", async () => {
   assert.deepEqual(facts.failureCodes, []);
 });
 
-test("two independent smoke runs against fresh roots produce the same check ids and statuses", async () => {
+test("two independent smoke runs against fresh roots converge to the same fingerprint (PRF-04)", async () => {
   const first = await run();
   const second = await run();
-  const fingerprint = (facts) => facts.checks.map((check) => `${check.checkId}:${check.status}`).sort();
-  assert.deepEqual(fingerprint(first), fingerprint(second));
+  assert.deepEqual(semanticFingerprint(first.checks), semanticFingerprint(second.checks));
 });

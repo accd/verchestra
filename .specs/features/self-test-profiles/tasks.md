@@ -10,7 +10,7 @@
 | T4   | `createSmokeScenario` in `apps/vestra-cli/src/self-test-composition.ts` driving the controller/CLI path | T1, T3     | `test:integration` | Done |
 | T5   | `createWorkspaceScenario` covering placement/init/bootstrap/sync/reconcile across all five shapes, ≥25 checks combined with smoke | T1, T2, T3 | `test:integration`    | Done |
 | T6   | `self-test` CLI command, exit-code contract, human/JSON rendering; update sealed manifest assertion | T4, T5     | `test:contract`, `test:e2e` | Done |
-| T7   | Qualification: convergence proof across two runs, discrimination sensor, external gate dispatch, `docs/qualification/t70-validation.md` | T1–T6      | all selected gates    | Pending |
+| T7   | Convergence proof (both profiles), discrimination sensor (9/9 killed), local gate evidence | T1–T6      | all selected gates    | Partial — local evidence gathered; report blocked on external gate dispatch (see handoff) |
 
 ## Gate commands
 
@@ -63,5 +63,5 @@
 | T3   | Done    | ac239e4 |
 | T4   | Done    | 8b10e3f |
 | T5   | Done    | ec9132c |
-| T6   | Done    | (pending commit) |
-| T7   | Planned | Pending |
+| T6   | Done    | 8fc459b |
+| T7   | Partial | (pending commit) — report blocked on external gate dispatch |
