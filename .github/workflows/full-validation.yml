@@ -52,7 +52,14 @@ jobs:
             quick|full|build|security|release) ;;
             *) echo "gate must be one of quick, full, build, security, release" >&2; exit 1 ;;
           esac
-          git fetch --no-tags --depth=1 origin "$revision"
+          # Full history, never --depth=1: a shallow fetch marks the candidate
+          # as a graft boundary, and every qualification report after T68 has
+          # to prove `git merge-base --is-ancestor <reported revision> HEAD`.
+          # Under a shallow checkout that proof fails for reports that are
+          # perfectly valid, so the resolver silently reports an older task and
+          # gate:quick can never attest a revision whose tree carries inserted
+          # task reports.
+          git fetch --no-tags origin "$revision"
           git checkout --detach "$revision"
           if [[ "$(git rev-parse HEAD)" != "$revision" ]]; then
             echo "checked out revision does not match the requested candidate" >&2
