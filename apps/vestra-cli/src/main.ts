@@ -1,10 +1,11 @@
-import type { CommandBus } from "@verchestra/application";
+import type { CliCommand, CommandBus, CommandResult } from "@verchestra/application";
 import { PublicErrorException } from "@verchestra/domain";
 import { SafeInitService, buildCanonicalInitFiles } from "@verchestra/workspace";
 
 import { cliError, cliPublicErrorRegistry } from "./cli-errors.ts";
 import { runCli } from "./cli.ts";
 import { installedReleaseManifest } from "./release-manifest.ts";
+import { runSelfTestProfile } from "./self-test-composition.ts";
 
 // The command bus is parameterized by controlRoot so the exact same
 // controller path this function drives in production can be reused by the
@@ -42,7 +43,36 @@ export function createCommandBus(controlRoot: string): CommandBus {
   };
 }
 
+// The self-test command is composed here, not inside createCommandBus:
+// createCommandBus is also reused by the T69/T70 trust domain itself (its
+// scenarios drive `init` through it), and the self-test command's own
+// TEST-ONLY signing identity must never be reachable from inside a run it
+// composes.
+async function executeSelfTest(command: CliCommand): Promise<CommandResult> {
+  const profileId = command.options["profile"];
+  if (profileId !== "smoke" && profileId !== "workspace")
+    throw cliError("VES_CLI_ARGUMENT_INVALID", { argument: "--profile" }, "Self-test profile is required");
+  let sealed: Awaited<ReturnType<typeof runSelfTestProfile>>;
+  try {
+    sealed = await runSelfTestProfile(profileId, { controlRoot: process.cwd() });
+  } catch (error) {
+    throw new PublicErrorException(
+      cliPublicErrorRegistry.create("VES_CLI_COMMAND_FAILED", { command: command.name }),
+      "Self-test could not complete",
+      { cause: error }
+    );
+  }
+  if (sealed.result.payload["self_test.verdict"] !== "PASS") {
+    throw new PublicErrorException(
+      cliPublicErrorRegistry.create("VES_CLI_COMMAND_FAILED", { command: command.name }),
+      "Self-test reported a non-PASS verdict"
+    );
+  }
+  return { data: sealed.result.payload, diagnostics: [] };
+}
+
 export async function main(invokedAs: string, argv: readonly string[]): Promise<number> {
+  const commandBus = createCommandBus(process.cwd());
   return runCli({
     argv,
     invokedAs,
@@ -50,7 +80,10 @@ export async function main(invokedAs: string, argv: readonly string[]): Promise<
     // The running executable and the manifest it ships with are the same build,
     // so they cannot disagree about which version this is.
     installedCliVersion: installedReleaseManifest.semanticVersion,
-    commandBus: createCommandBus(process.cwd()),
+    commandBus: {
+      execute: (command, context) =>
+        command.name === "self-test" ? executeSelfTest(command) : commandBus.execute(command, context)
+    },
     stdout: (value) => process.stdout.write(value),
     stderr: (value) => process.stderr.write(value)
   });

@@ -6,6 +6,7 @@
 // constructed here, in the composition root, and nowhere else.
 import { createHash } from "node:crypto";
 import { readFile, readdir } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import {
   MachineBootstrapService,
@@ -27,13 +28,14 @@ import {
   type SubjectRunFacts,
   type WorkspaceShape
 } from "@verchestra/application";
-import { ArtifactSealer, SupportCodeRegistry, type SealedArtifact } from "@verchestra/evidence";
+import { ArtifactSealer, NodeEd25519Signer, SupportCodeRegistry, type SealedArtifact } from "@verchestra/evidence";
 import {
   BoundedFixtureFactory,
   DisposableRootProvider,
   GitFixtureFactory,
   SentinelCatalog,
   offlineGuard,
+  probeRootFacts,
   testOnlyKeyMaterial,
   type SentinelTarget
 } from "@verchestra/self-test";
@@ -161,6 +163,26 @@ export class SelfTestComposition {
     });
     return Object.freeze({ result, artifact });
   }
+}
+
+// T70: the only entry point the CLI needs to run a packaged profile. This
+// stays here, not in main.ts, because it is the only place that may
+// construct the TEST-ONLY signing identity and read the real guarded root —
+// AD-010's "nowhere else" applies to the self-test signer exactly as it does
+// to the sibling subject adapters.
+export async function runSelfTestProfile(
+  profileId: "smoke" | "workspace",
+  options: { readonly controlRoot: string }
+): Promise<SealedSelfTestReport> {
+  const signer = NodeEd25519Signer.generate({ keyId: "self-test-cli", purposes: ["self-test-report"] });
+  const composition = new SelfTestComposition({
+    baseDirectory: join(tmpdir(), "verchestra-self-test"),
+    guardedRoots: [await probeRootFacts(options.controlRoot)],
+    sentinels: [],
+    scenario: profileId === "smoke" ? createSmokeScenario() : createWorkspaceScenario(),
+    sealer: new ArtifactSealer({ signer, now: () => new Date() })
+  });
+  return composition.run(profileId);
 }
 
 // T70: byte-level snapshot of a directory's working tree, excluding `.git`

@@ -42,6 +42,15 @@ export const installedReleaseManifest: InstalledCliManifest = Object.freeze({
           values: Object.freeze(["centralized", "colocated"])
         })
       ])
+    }),
+    Object.freeze({
+      name: "self-test",
+      summary: "Run a packaged Self-Test profile against a disposable, isolated trust domain",
+      supportsJson: true,
+      mutating: false,
+      options: Object.freeze([
+        Object.freeze({ name: "profile", kind: "string" as const, values: Object.freeze(["smoke", "workspace"]) })
+      ])
     })
   ])
 });

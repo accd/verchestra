@@ -42,7 +42,7 @@ const exactReleaseOutputs = Object.freeze([
   [["--version"], `Verchestra ${canonicalVersion} (source build, no verified release artifact)\n`],
   [
     ["--help"],
-    `Verchestra ${canonicalVersion}\nCanonical CLI: vestra\n\nUsage: vestra <command> [options]\n\nCommands:\n  init  Initialize a Workspace\n`
+    `Verchestra ${canonicalVersion}\nCanonical CLI: vestra\n\nUsage: vestra <command> [options]\n\nCommands:\n  init       Initialize a Workspace\n  self-test  Run a packaged Self-Test profile against a disposable, isolated trust domain\n`
   ],
   [
     ["--version", "--output", "json"],

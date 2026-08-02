@@ -9,7 +9,7 @@
 | T3   | `offlineGuard()` in `packages/self-test`; application wiring so an attempt fails a run with `VES_SELFTEST_NETWORK_ATTEMPT` | T1         | `test:fault`           | Done |
 | T4   | `createSmokeScenario` in `apps/vestra-cli/src/self-test-composition.ts` driving the controller/CLI path | T1, T3     | `test:integration` | Done |
 | T5   | `createWorkspaceScenario` covering placement/init/bootstrap/sync/reconcile across all five shapes, ≥25 checks combined with smoke | T1, T2, T3 | `test:integration`    | Done |
-| T6   | `self-test` CLI command, exit-code contract, human/JSON rendering; update sealed manifest assertion | T4, T5     | `test:contract`, `test:e2e` | Pending |
+| T6   | `self-test` CLI command, exit-code contract, human/JSON rendering; update sealed manifest assertion | T4, T5     | `test:contract`, `test:e2e` | Done |
 | T7   | Qualification: convergence proof across two runs, discrimination sensor, external gate dispatch, `docs/qualification/t70-validation.md` | T1–T6      | all selected gates    | Pending |
 
 ## Gate commands
@@ -30,8 +30,8 @@
 | fault-injection        | A scenario that calls `net.connect`/`fetch` during `offlineGuard()` scope fails the run with `VES_SELFTEST_NETWORK_ATTEMPT`; guard restores originals even when the scenario throws | `tests/fault-injection/self-test-network-guard-faults.test.mjs` |
 | integration (smoke)    | `createSmokeScenario` drives `init --dry-run`, `--help`, `--version`, and error paths through the real `CommandBus`/`runCli` path (via the extracted `createCommandBus` in `main.ts`) and asserts zero filesystem writes outside the disposable root | `tests/integration/self-test-smoke-scenario.test.mjs` |
 | integration (workspace) | `createWorkspaceScenario` exercises placement (`scanWorkspace`), init (`CommandBus`), bootstrap (`MachineBootstrapService`), sync/reconcile (`WorkspaceReconcileService`) against each of the five shapes; combined check count ≥25 asserted directly, measured ~800ms per run against the 600s budget | `tests/integration/self-test-workspace-scenario.test.mjs` |
-| contract (CLI surface) | `vestra self-test --profile smoke\|workspace` and `--output json` variants; exit 0/PASS, non-zero/FAIL and BLOCKED cases; manifest assertion updated to `["init", "self-test"]` | `tests/contract/cli-surface.test.mjs` (updated), `tests/contract/self-test-cli.test.mjs` |
-| e2e                    | Full CLI process spawn (`apps/vestra-cli/bin/vestra.mjs self-test --profile smoke`) returns the documented exit code and stable output shape | `tests/e2e/self-test-cli-e2e.test.mjs` |
+| contract (CLI surface) | Manifest assertion updated to `["init", "self-test"]` with the `profile` option | `tests/contract/cli-surface.test.mjs` (updated) |
+| e2e                    | Full CLI process spawn (`apps/vestra-cli/bin/vestra.mjs self-test --profile smoke\|workspace`) returns exit 0/PASS, non-zero on missing/invalid `--profile`, and leaves the invoking repository byte-identical | `tests/e2e/self-test-cli-e2e.test.mjs`, `tests/e2e/cli-launchers-e2e.test.mjs` (updated `--help` text) |
 | qualification           | Two full runs of each profile against fresh roots produce identical `semanticFingerprint`; ≥25 total checks; discrimination sensor kills every injected mutation | `docs/qualification/t70-validation.md` |
 
 ## Requirement traceability
@@ -62,6 +62,6 @@
 | T2   | Done    | bd67e3d |
 | T3   | Done    | ac239e4 |
 | T4   | Done    | 8b10e3f |
-| T5   | Done    | (pending commit) |
-| T6   | Planned | Pending |
+| T5   | Done    | ec9132c |
+| T6   | Done    | (pending commit) |
 | T7   | Planned | Pending |
