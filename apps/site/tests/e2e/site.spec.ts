@@ -26,8 +26,8 @@ test("landing presents the honest delivery and qualification contract", async ({
     "AI delivery that survives the model, the machine, and the handoff."
   );
   await expect(page.getByLabel("Current public status")).toContainText("0.0.0-qualification");
-  await expect(page.getByLabel("Current public status")).toContainText("T68d verified");
-  await expect(page.getByLabel("Current public status")).toContainText("T69 next");
+  await expect(page.getByLabel("Current public status")).toContainText("T69 verified");
+  await expect(page.getByLabel("Current public status")).toContainText("T70 next");
   await expect(page.getByText("SAP ASE / Sybase", { exact: true })).toBeVisible();
   await expect(page.getByText("OpenCode / Qwen", { exact: true }).first()).toBeVisible();
   await expect(page.locator('a[href^="/"]:not([href^="/verchestra/"])')).toHaveCount(0);
@@ -79,7 +79,7 @@ test("deep routes, roadmap links, community calls to action, and recovery resolv
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Cross-environment handoff");
 
   await page.goto("roadmap/");
-  await expect(page.getByText(/T69/u).first()).toBeVisible();
+  await expect(page.getByText(/T70/u).first()).toBeVisible();
 
   await page.goto("community/");
   await expect(page.getByRole("link", { name: /Join GitHub Discussions/u })).toHaveAttribute(

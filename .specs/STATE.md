@@ -59,8 +59,16 @@
 - **Rationale:** `scripts/architecture.mjs:67-69` already rejects any non-relative, non-`ajv` import in `contracts`, `domain`, or `application` as `VES_ARCH_THIRD_PARTY_IMPORT`. Reusing the already-qualified `canonicalize@3.0.0` implementation (used by `packages/evidence/src/integrity/canonical.ts` for V1) in domain would require widening that boundary and a lockfile update — a dependency and architecture decision, not an implementation detail. Writing the encoder internally avoids widening the control; the JS parts of JCS that are genuinely risky to reimplement (number serialization) are delegated to `JSON.stringify`, which is already RFC 8785-conformant for finite values.
 - **Consequences:** `packages/evidence`'s V1 primitive stays on `canonicalize@3.0.0`; `packages/domain`'s V2 primitive is an independent implementation, anchored to the same published RFC 8785 vectors rather than to each other (`tests/unit/canonical-json-v2.test.mjs`). A future consolidation of the two implementations is a separate, explicitly reviewed migration. Any later domain package that would otherwise reach for a third-party library follows the same pattern: implement internally, or bring an explicit boundary-widening decision to the owner first.
 
+### AD-010 — The Self-Test trust domain splits by nature, not by task
+
+- **Status:** active
+- **Decision:** T69's trust domain is split across three places because the architecture, not convenience, requires it: rules and port interfaces in `packages/application/src/self-test/`, Node-bound facts in the `packages/self-test/` adapter, and the only construction of TEST-ONLY sibling adapters in `apps/vestra-cli/src/self-test-composition.ts`. Ports return facts (resolved paths, device and inode ids, link chains, digests, residue), never verdicts. Profile ids stay exactly the four the qualified support-bundle contract admits; T71's crash-recovery is a mode inside `full`, never a fifth id.
+- **Rationale:** `scripts/architecture.mjs` forbids an adapter from importing a sibling adapter (`VES_ARCH_ADAPTER_COUPLING`), and the orchestrator must exercise precisely those siblings. A rule an adapter can answer is a rule nobody can unit-test, so every verdict was pushed inward where it is provable without a filesystem; the boundary shaped the design instead of being worked around, including taking key material from `node:crypto` rather than from the evidence package.
+- **Consequences:** T70–T72 extend the same three places rather than introducing a fourth. Widening the profile enum would reopen T57's sealed evidence and requires an explicit decision. Verdicts added to the adapter, or sibling imports added to it, are architecture regressions rather than refactors.
+
 ## Handoff
 
+- **Feature:** `self-test` (T69) — complete; the chain advances to T70 (#11), which declares `gate:full` rather than `gate:security`.
 - **Feature:** `external-review-triage`
 - **State:** T1–T5 complete; T6 (GitHub backlog issues) and T7 (final gates) in progress
 - **Branch:** `main`
