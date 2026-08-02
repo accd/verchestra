@@ -5,10 +5,10 @@ issue: 11
 status: planned
 branch: feat/t70-self-test-profiles
 baseRevision: b5473f6ee37116f6c58c0489d1a54af369982595
-lastCompletedTask: T4
-nextTask: T5
-lastGate: pnpm test:unit (1830/1830)
-updatedAt: 2026-08-02T02:00:00Z
+lastCompletedTask: T5
+nextTask: T6
+lastGate: pnpm test:unit (1830/1830), pnpm test:contract (446/446)
+updatedAt: 2026-08-02T02:45:00Z
 ---
 
 # Scope
@@ -115,18 +115,59 @@ pinned v24 stderr `ExperimentalWarning: Type Stripping` line that fails two
 unrelated `cli-launchers-e2e.test.mjs` stderr-emptiness assertions —
 confirmed via `git stash` before touching T4).
 
+T5: `createWorkspaceScenario()` appended to `self-test-composition.ts`,
+same pattern as T4. Per shape (5), five checks: `placement` via real
+`scanWorkspace` against `EXPECTED_INVENTORY` (project count + which project,
+if any, is `ignoredByControl`); `init` via the same `invokeCli`/
+`createCommandBus` helper T4 built; `bootstrap` via `MachineBootstrapService`
+with an empty discovery/secrets stub (no live driver or paid model call —
+`roles` needs at least one entry, `validateConfig` fails closed on `[]`, so a
+single `independence:"none"` role with zero discovered candidates is used —
+a deterministic, always-completing outcome, not a live check); `sync` and
+`reconcile` via `WorkspaceReconcileService` with an in-memory
+`SelfTestSyncStore`, calling `execute()` twice (fresh state, then a bumped
+`release` generation) and asserting the second call surfaces a
+`localRebuildRequirements` entry. Extracted `pushCheck`/`finalizeScenario`
+helpers shared with T4's smoke scenario (was duplicated inline before this
+refactor).
+
+Two real integration bugs found and fixed during this task, not left as
+"future work":
+1. `MachineBootstrapService.execute` throws `VES_BOOTSTRAP_INPUT_INVALID`
+   ("Role requirements are invalid") on `roles: []` — `validateConfig`
+   requires at least one role. Fixed by adding one minimal role.
+2. (Carried from T4, reused here) workspace ids must be canonical UUID
+   v4/v7 strings, not arbitrary text.
+
+25 `WORKSPACE_CHECK_IDS` all produced and passing; combined with smoke's 6,
+31 total checks (issue requires ≥25). Measured wall-clock ~800ms per full
+five-shape run — three orders of magnitude under the workspace profile's
+600,000ms budget. 4 integration cases in
+`tests/integration/self-test-workspace-scenario.test.mjs`.
+`typecheck`/`lint`/`complexity:check`/`format:check` all PASS. Ran the full
+T69+T70 self-test/CLI suite (126/126), `pnpm test:unit` (1830/1830), and
+`pnpm test:contract` (446/446) — no regressions from the `main.ts` extraction
+or the new `@verchestra/workspace` import in the composition root.
+
 # Next Exact Action
 
-T5: `createWorkspaceScenario()`, same pattern as T4, appended to
-`self-test-composition.ts`. For each of the five `WORKSPACE_SHAPES`, drive
-`scanWorkspace` (placement/init check), `SafeInitService` (init check),
-`MachineBootstrapService` (bootstrap check — new import, check what subject
-port shape it needs), and `WorkspaceReconcileService` (sync + reconcile
-checks) via `GitFixtureFactory`, producing all 25 `WORKSPACE_CHECK_IDS`.
-Measure wall-clock against the workspace profile's 600s budget early — this
-is the biggest remaining task. Integration tests in
-`tests/integration/self-test-workspace-scenario.test.mjs`. Run focused, then
-`pnpm gate:quick`, then commit.
+T6: a `self-test` CLI command. Add a `CliCommand` name `"self-test"` with a
+`--profile` option (`smoke`|`workspace`) to `apps/vestra-cli/src/cli.ts`'s
+manifest handling and `main.ts`'s command bus, wiring
+`SelfTestComposition.run(profile)` with `createSmokeScenario()` or
+`createWorkspaceScenario()` selected by the option, a real `guardedRoots`
+(the repository root itself plus `process.cwd()`), and a real
+`ArtifactSealer`/signer. Exit 0 on PASS, distinct non-zero on FAIL/BLOCKED
+(follow `cli-errors.ts`'s existing per-class exit-code convention). Update
+`installedReleaseManifest` in `release-manifest.ts` to advertise the new
+command, which will change
+`tests/contract/cli-surface.test.mjs:71-77`'s sealed
+`["init"]` assertion to `["init", "self-test"]` — update that assertion
+explicitly (a projection update, not a weakening; still exact and closed).
+Add `tests/e2e/self-test-cli-e2e.test.mjs` spawning the real binary
+(`apps/vestra-cli/bin/vestra.mjs self-test --profile smoke`), matching the
+`cli-launchers-e2e.test.mjs` pattern. Run focused, then `pnpm gate:quick`,
+then commit.
 
 # Blockers
 
