@@ -2,13 +2,13 @@
 schema: verchestra-feature-handoff/v1
 feature: self-test
 issue: 10
-status: in_progress
-branch: feat/t69-self-test-t4
+status: complete
+branch: docs/t69-qualification-report
 baseRevision: c2202dde3a949852c5cb23d8a9e7062b9eced8da
-lastCompletedTask: T4
-nextTask: T5
+lastCompletedTask: T5
+nextTask: T70 begins under issue #11
 lastGate: pnpm gate:security
-updatedAt: 2026-08-02T09:00:00Z
+updatedAt: 2026-08-02T10:00:00Z
 ---
 
 # Scope
@@ -19,12 +19,22 @@ code exists yet.
 
 # Next Exact Action
 
-T5: qualification. A minimum of 35 cases across unit, security, and fault
-scopes (52 exist), a discrimination sensor with every mutation killed,
-external gate dispatch of `gate:quick` and `gate:security` at the merged
-implementation revision through `full-validation.yml`, and
-`docs/qualification/t69-validation.md` under REPORT-CONTRACT.md — written in
-a second commit so the report binds the revision the gates actually ran on.
+T69 is complete: `docs/qualification/t69-validation.md` binds the merged
+implementation revision with externally dispatched gate runs. The chain
+advances to T70 (#11): the smoke and workspace Self-Test profiles, which
+declare `gate:full` rather than `gate:security`, so their cases belong in
+`tests/contract/`, `tests/integration/`, `tests/e2e/`, and
+`tests/fault-injection/`.
+
+# T5 evidence
+
+53 cases across four suites against a declared minimum of 35; 13 of 13
+mutations killed with none surviving (M11 survived its first run and the
+suite was strengthened rather than the mutation dropped); `gate:quick` and
+`gate:security` externally dispatched at `d0513ae` and both PASS. A defect
+in `full-validation.yml` surfaced and was repaired first (#177/#178): the
+shallow candidate fetch destroyed the ancestry proof every post-T68 report
+needs.
 
 # T4 evidence
 
