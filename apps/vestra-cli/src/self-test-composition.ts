@@ -48,8 +48,6 @@ import { scanWorkspace } from "@verchestra/workspace";
 import { runCli } from "./cli.ts";
 import { createCommandBus } from "./main.ts";
 import { installedReleaseManifest } from "./release-manifest.ts";
-import { runDriverScenario } from "./self-test-driver-scenario.ts";
-import { runFullWorkflowScenario } from "./self-test-full-scenario.ts";
 
 // Every VES_SELFTEST_* code the domain can emit into
 // `self_test.failure_codes`. The support-bundle contract rejects any code the
@@ -202,6 +200,7 @@ export async function runSelfTestProfile(
 export function createFullScenario(): SelfTestScenario {
   return {
     async run({ root }) {
+      const { runFullWorkflowScenario } = await import("./self-test-full-scenario.ts");
       const successful = await runFullWorkflowScenario(root);
       const runner = new DurableCrashRunner({
         entrypoint: fileURLToPath(new URL("./self-test-full-crash-child.ts", import.meta.url)),
@@ -221,7 +220,12 @@ export function createFullScenario(): SelfTestScenario {
 }
 
 export function createDriverScenario(): SelfTestScenario {
-  return { run: async () => (await runDriverScenario()).facts };
+  return {
+    async run() {
+      const { runDriverScenario } = await import("./self-test-driver-scenario.ts");
+      return (await runDriverScenario()).facts;
+    }
+  };
 }
 
 // T70: pure comparison so the zero-writes check is independently testable
