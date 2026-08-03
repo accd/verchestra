@@ -1,6 +1,6 @@
 # T71 Full, Fault, and Approved-Driver Self-Test Design
 
-**Spec**: `.specs/features/self-test-full-driver-profiles/spec.md`  
+**Spec**: `.specs/features/self-test-full-driver-profiles/spec.md`
 **Status**: Approved by issue assignment and maintainer confirmation
 
 ## Architecture
