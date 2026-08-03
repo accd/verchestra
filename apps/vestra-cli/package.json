@@ -12,6 +12,7 @@
     "@verchestra/application": "workspace:0.0.0",
     "@verchestra/contracts": "workspace:0.0.0",
     "@verchestra/domain": "workspace:0.0.0",
+    "@verchestra/drivers": "workspace:0.0.0",
     "@verchestra/evidence": "workspace:0.0.0",
     "@verchestra/effects": "workspace:0.0.0",
     "@verchestra/platform-node": "workspace:0.0.0",

@@ -118,6 +118,9 @@ importers:
       '@verchestra/domain':
         specifier: workspace:0.0.0
         version: link:../../packages/domain
+      '@verchestra/drivers':
+        specifier: workspace:0.0.0
+        version: link:../../packages/drivers
       '@verchestra/effects':
         specifier: workspace:0.0.0
         version: link:../../packages/effects
