@@ -6,9 +6,9 @@ status: verification
 branch: codex/issue-12-t71-self-test
 baseRevision: 4b984c7e541863fe056a31a9e72749f9bcf46f7f
 lastCompletedTask: T8
-nextTask: Independent verification and contributor review before any push
-lastGate: gate:security PASS; gate:release PASS; gate:full 558/563 with 5 pre-existing Windows T69/T70 failures on Node 24.14.0
-updatedAt: 2026-08-03T18:57:36Z
+nextTask: Observe PR #182 rerun CI, then independent evidence and human review
+lastGate: post-CI fix gate:quick/security/release PASS; 24/24 focused CLI E2E PASS on Node 24.14.0
+updatedAt: 2026-08-03T21:05:29Z
 ---
 
 # Scope
@@ -142,6 +142,17 @@ metadata changes are not authorized yet.
   Windows-only failures are in existing T69/T70 Git fixture path normalization,
   quoted `git check-ignore` output, and cleanup `EBUSY` behavior. The T71 full,
   Driver, crash-matrix, security, and fault paths pass in the same environment.
+- Draft PR #182's first Linux Quality gate exposed an eager-import regression:
+  loading the CLI composition imported the full-only SQLite runtime, whose
+  qualified Node warning contaminated the exact stderr contract for unrelated
+  `--version`, `--help`, and `init` launcher commands.
+- The full and Driver scenario modules now load only when their selected profile
+  runs. A child-process sensor requires importing the Self-Test composition to
+  exit silently, while the full profile continues to use the real SQLite
+  runtime without suppressing warnings.
+- Post-fix evidence is 24/24 focused launcher/Self-Test E2E cases plus
+  `pnpm gate:quick`, `pnpm gate:security`, and `pnpm gate:release`, all passing
+  on the exact qualified toolchain with no skipped or todo cases.
 
 # Decisions
 
@@ -159,13 +170,13 @@ metadata changes are not authorized yet.
 
 # Next action
 
-Run independent verification from a clean clone with the pinned Node, SQLite,
-Claude CLI, and Codex versions. Then perform contributor review of the local
-atomic commits. Do not push until the contributor explicitly authorizes it.
+Observe the rerun CI checks on draft PR #182, then submit the change for
+independent evidence review and mandatory human review. Keep the pull request
+in draft until its required checks pass.
 
 # Blockers
 
-Local implementation and substantive tests are complete. `gate:full` remains
-blocked only by the five existing Windows T69/T70 fixture failures described
-above. External push and PR creation intentionally wait for contributor review
-and explicit authorization.
+No T71 implementation blocker remains locally. The local Windows `gate:full`
+result still contains only the five existing T69/T70 fixture failures described
+above. PR readiness now depends on the rerun CI result and required independent
+and human review.

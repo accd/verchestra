@@ -50,6 +50,17 @@ function launch(args, cwd) {
   );
 }
 
+test("loading the Self-Test composition does not initialize full-only SQLite adapters", () => {
+  const compositionUrl = new URL("../../apps/vestra-cli/src/self-test-composition.ts", import.meta.url).href;
+  const result = spawnSync(
+    process.execPath,
+    ["--input-type=module", "--eval", `await import(${JSON.stringify(compositionUrl)})`],
+    { cwd: process.cwd(), encoding: "utf8", env: { ...process.env, NO_COLOR: "1" } }
+  );
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stderr, "");
+});
+
 test("self-test --profile smoke exits 0 with a PASS verdict", async () => {
   const cwd = await repositoryRoot();
   const result = launch(["self-test", "--profile", "smoke", "--output", "json"], cwd);
