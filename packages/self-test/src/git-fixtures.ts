@@ -8,6 +8,7 @@ import { execFileSync } from "node:child_process";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import type { RootFacts, WorkspaceShape } from "@verchestra/application";
+import { normalizeFactPath } from "./disposable-roots.ts";
 import type { BoundedFixtureFactory } from "./sentinels-and-fixtures.ts";
 
 export interface GitFixtureFacts {
@@ -62,7 +63,11 @@ export class GitFixtureFactory {
     }
     git(absolute, this.#env, "add", ".");
     git(absolute, this.#env, "commit", "--quiet", "-m", "self-test fixture");
-    return absolute;
+    // Every path this adapter reports is a fact, and T69's fact convention is
+    // a normalized forward-slash path (`normalizeFactPath`). Returning a
+    // platform-separator path makes `startsWith(root.canonicalPath)` false on
+    // Windows even though the directory really is inside the root.
+    return normalizeFactPath(absolute);
   }
 
   // Every shape gets its own subdirectory of the disposable root, so two
@@ -82,7 +87,11 @@ export class GitFixtureFactory {
         await this.#fixtures.write(join(projectRelative, "package.json"), projectPackage(shape));
         git(controlRootPath, this.#env, "add", ".");
         git(controlRootPath, this.#env, "commit", "--quiet", "-m", `self-test ${shape} project`);
-        return Object.freeze({ shape, controlRootPath, projectPath: join(this.#root, projectRelative) });
+        return Object.freeze({
+          shape,
+          controlRootPath,
+          projectPath: normalizeFactPath(join(this.#root, projectRelative))
+        });
       }
       case "nested": {
         const controlRootPath = await this.#initRepository(base, { "package.json": rootPackage("nested") });

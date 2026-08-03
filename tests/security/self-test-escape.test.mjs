@@ -8,7 +8,7 @@ import { platform, tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, test } from "node:test";
 import { SMOKE_CHECK_IDS, assertDisjointRoot, SelfTestOrchestrator } from "../../packages/application/src/index.ts";
-import { DisposableRootProvider, normalizeFactPath, probeRootFacts } from "../../packages/self-test/src/index.ts";
+import { DisposableRootProvider, probeRootFacts } from "../../packages/self-test/src/index.ts";
 
 function passingChecks(checkIds) {
   return checkIds.map((checkId) => ({ checkId, requirement: "T70 coverage fixture", status: "pass" }));
@@ -42,9 +42,14 @@ test("a link-like ancestor into guarded state is exposed in linkChain and refuse
   const guardedFacts = await probeRootFacts(guardedDir);
   const candidateFacts = await probeRootFacts(join(link, "inner"));
 
+  // The chain records resolved targets, so it must be compared against the
+  // guarded root's resolved path. Comparing against the unresolved path passes
+  // only where the temporary directory happens to contain no symlinked
+  // ancestor: on macOS `/var` resolves to `/private/var` and the identity is
+  // real but the strings differ.
   assert.ok(
-    candidateFacts.linkChain.some((entry) => entry === normalizeFactPath(guardedDir)),
-    `linkChain must expose the resolved guarded target; got ${JSON.stringify(candidateFacts.linkChain)}`
+    candidateFacts.linkChain.includes(guardedFacts.realPath),
+    `linkChain must expose the resolved guarded target ${guardedFacts.realPath}; got ${JSON.stringify(candidateFacts.linkChain)}`
   );
   assert.throws(() => assertDisjointRoot(candidateFacts, [guardedFacts]), { code: "VES_SELFTEST_ROOT_OVERLAP" });
 });
