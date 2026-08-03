@@ -1,3 +1,4 @@
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import {
@@ -6,9 +7,8 @@ import {
   IndependentVerificationCoordinator,
   PortableHandoffCoordinator,
   type ApprovalArtifactPort,
-  type ApprovalRecord,
-  type AuthorityStorePort,
   type HandoffPorts,
+  type FullDurableBoundaryId,
   type RootFacts,
   type ScenarioCheck,
   type SignedApprovalArtifact,
@@ -23,7 +23,7 @@ import {
   type PassportRecord
 } from "@verchestra/agent-runtime";
 import { FixedClock, IsoInstant, WorkflowMachine } from "@verchestra/domain";
-import { EffectBroker, InMemoryEffectRepository, MockEffectAdapter, buildIdempotencyKey } from "@verchestra/effects";
+import { EffectBroker, MockEffectAdapter, buildIdempotencyKey } from "@verchestra/effects";
 import {
   ArtifactSealer,
   ExecutionPackageBuilder,
@@ -37,7 +37,9 @@ import {
   type SignedExecutionPackage,
   type SignedRunCapsule
 } from "@verchestra/evidence";
-import { NodeContentDigest } from "@verchestra/platform-node";
+import { NodeContentDigest, RuntimeAuthorityStore, RuntimeStore } from "@verchestra/platform-node";
+
+import { runSelfTestExecutionAndGate } from "./self-test-full-execution.ts";
 
 const NOW = "2026-07-15T15:00:00.000Z";
 const LATER = "2026-07-15T16:00:00.000Z";
@@ -77,7 +79,9 @@ interface ScenarioDiagnostics {
   readonly approvalVerified: boolean;
   readonly contextFragments: number;
   readonly routedPassportId: string;
+  readonly executionStatus: string;
   readonly effectApplyCalls: number;
+  readonly gateStatus: string;
   readonly verificationVerdict: string;
   readonly handoffStatus: string;
   readonly capsuleStored: "published" | "already-published";
@@ -88,6 +92,52 @@ export interface FullWorkflowScenarioResult {
   readonly facts: SubjectRunFacts;
   readonly diagnostics: ScenarioDiagnostics;
   readonly portableArtifacts: readonly [SignedExecutionPackage, SignedRunCapsule];
+}
+
+export interface FullScenarioBoundaryHooks {
+  readonly before: (boundaryId: FullDurableBoundaryId) => Promise<void>;
+  readonly after: (boundaryId: FullDurableBoundaryId) => Promise<void>;
+}
+
+const NO_BOUNDARY_HOOKS: FullScenarioBoundaryHooks = {
+  before: async () => undefined,
+  after: async () => undefined
+};
+
+async function atBoundary<T>(
+  hooks: FullScenarioBoundaryHooks,
+  boundaryId: FullDurableBoundaryId,
+  operation: () => Promise<T>
+): Promise<T> {
+  await hooks.before(boundaryId);
+  const result = await operation();
+  await hooks.after(boundaryId);
+  return result;
+}
+
+async function durableSigner(
+  root: RootFacts,
+  keyId: string,
+  purpose: "execution-package" | "approval" | "run-capsule"
+): Promise<NodeEd25519Signer> {
+  const directory = join(root.canonicalPath, ".self-test-keys");
+  const path = join(directory, `${purpose}.pk8`);
+  await mkdir(directory, { recursive: true });
+  let encoded: Uint8Array;
+  try {
+    encoded = await readFile(path);
+  } catch (error) {
+    if ((error as { readonly code?: unknown }).code !== "ENOENT") throw error;
+    const generated = NodeEd25519Signer.generate({ keyId, purposes: [purpose] });
+    encoded = generated.exportPkcs8();
+    try {
+      await writeFile(path, encoded, { flag: "wx", mode: 0o600 });
+    } catch (writeError) {
+      if ((writeError as { readonly code?: unknown }).code !== "EEXIST") throw writeError;
+      encoded = await readFile(path);
+    }
+  }
+  return NodeEd25519Signer.fromPkcs8({ keyId, purposes: [purpose] }, encoded);
 }
 
 function executionInput() {
@@ -165,42 +215,25 @@ function currentExecutionState(input: ReturnType<typeof executionInput>) {
   return { ...input.bindings, workspaceId: input.workspaceId, evaluatedAt: NOW };
 }
 
-class MemoryAuthorityStore implements AuthorityStorePort {
-  readonly approvals = new Map<string, ApprovalRecord>();
-
-  async saveApproval(record: ApprovalRecord) {
-    if (this.approvals.has(record.approvalId)) return { created: false };
-    this.approvals.set(record.approvalId, record);
-    return { created: true };
-  }
-
-  async loadApproval(approvalId: string) {
-    return this.approvals.get(approvalId);
-  }
-
-  async revokeApproval(approvalId: string, revokedAt: string, reason: string) {
-    const record = this.approvals.get(approvalId);
-    if (record === undefined || record.revokedAt !== undefined) return false;
-    this.approvals.set(approvalId, { ...record, revokedAt, revocationReason: reason });
-    return true;
-  }
-
-  async saveGrant() {
-    return { created: false };
-  }
-
-  async loadGrant() {
-    return undefined;
-  }
-
-  async revokeGrant() {
-    return false;
+function ensureRuntimeRun(runtime: RuntimeStore): void {
+  try {
+    runtime.getRun(SOURCE_RUN_ID);
+  } catch (error) {
+    if ((error as { readonly code?: unknown }).code !== "VES_RUNTIME_NOT_FOUND") throw error;
+    runtime.createRun({
+      runId: SOURCE_RUN_ID,
+      runKind: "feature",
+      state: "AWAITING_EXECUTION_APPROVAL",
+      version: 1,
+      repairCycles: 0,
+      approval: undefined,
+      terminalCapsuleRequired: false
+    });
   }
 }
 
-async function approve(packageArtifact: SignedExecutionPackage) {
+async function approve(root: RootFacts, packageArtifact: SignedExecutionPackage, signer: NodeEd25519Signer) {
   const clock = new FixedClock(IsoInstant.parse(NOW));
-  const signer = NodeEd25519Signer.generate({ keyId: "self-test-approval", purposes: ["approval"] });
   const sealer = new ArtifactSealer({ signer, now: () => new Date(NOW) });
   const trust = createTrustRoot({ trustRootId: "self-test-approval-root", version: 1, keys: [signer.publicKeyRef] });
   const artifacts: ApprovalArtifactPort = {
@@ -220,43 +253,52 @@ async function approve(packageArtifact: SignedExecutionPackage) {
         now: new Date(NOW)
       })
   };
-  const service = new ApprovalService({
-    store: new MemoryAuthorityStore(),
-    digest: new NodeContentDigest(),
-    clock,
-    uuid: () => "018f0b6d-7b1a-7abc-8def-512345678901",
-    artifacts
-  });
-  const request = service.request({
-    action: "execution",
-    workspaceId: WORKSPACE_ID,
-    runId: SOURCE_RUN_ID,
-    policyDigest: digest("policy"),
-    contextRecipeDigest: digest("recipe"),
-    semanticObligationsDigest: digest("obligations"),
-    contextManifestDigest: digest("manifest"),
-    expiresAt: LATER,
-    review: {
-      packageDigest: envelopeDigest(packageArtifact.payloadDigest),
-      sourceStateDigest: digest("source-state"),
-      scope: ["apps/vestra-cli"],
-      protectedPaths: ["none:disposable-root"],
-      tasks: ["T71"],
-      dataAccess: ["repository:read"],
-      capabilities: ["planning"],
-      selectedPassports: ["passport:self-test"],
-      destinations: ["disposable-root"],
-      budgets: ["cost-usd:1"],
-      claims: ["claim:self-test"],
-      gates: ["quick"],
-      risks: ["test-only"],
-      assumptions: ["deterministic-inputs"],
-      completionCriteria: ["all-checks-pass"],
-      evidenceRefs: ["evidence:self-test-spec"]
-    }
-  });
-  const record = await service.record(request, { id: "human:self-test-reviewer", kind: "human" });
-  return { record, verified: await service.verify(record.approvalId, record.binding) };
+  const runtime = new RuntimeStore({ dbPath: join(root.canonicalPath, "runtime.sqlite"), now: () => NOW });
+  runtime.open();
+  try {
+    ensureRuntimeRun(runtime);
+    const store = new RuntimeAuthorityStore(runtime);
+    const service = new ApprovalService({
+      store,
+      digest: new NodeContentDigest(),
+      clock,
+      uuid: () => "018f0b6d-7b1a-7abc-8def-512345678901",
+      artifacts
+    });
+    const request = service.request({
+      action: "execution",
+      workspaceId: WORKSPACE_ID,
+      runId: SOURCE_RUN_ID,
+      policyDigest: digest("policy"),
+      contextRecipeDigest: digest("recipe"),
+      semanticObligationsDigest: digest("obligations"),
+      contextManifestDigest: digest("manifest"),
+      expiresAt: LATER,
+      review: {
+        packageDigest: envelopeDigest(packageArtifact.payloadDigest),
+        sourceStateDigest: digest("source-state"),
+        scope: ["apps/vestra-cli"],
+        protectedPaths: ["none:disposable-root"],
+        tasks: ["T71"],
+        dataAccess: ["repository:read"],
+        capabilities: ["planning"],
+        selectedPassports: ["passport:self-test"],
+        destinations: ["disposable-root"],
+        budgets: ["cost-usd:1"],
+        claims: ["claim:self-test"],
+        gates: ["quick"],
+        risks: ["test-only"],
+        assumptions: ["deterministic-inputs"],
+        completionCriteria: ["all-checks-pass"],
+        evidenceRefs: ["evidence:self-test-spec"]
+      }
+    });
+    const existing = await store.loadApproval(request.approvalId);
+    const record = existing ?? (await service.record(request, { id: "human:self-test-reviewer", kind: "human" }));
+    return { record, verified: await service.verify(record.approvalId, record.binding) };
+  } finally {
+    runtime.close();
+  }
 }
 
 function contextRecipe(): ContextRecipe {
@@ -408,9 +450,11 @@ async function routeModel() {
   });
 }
 
-async function executeEffect() {
+async function executeEffect(root: RootFacts, hooks: FullScenarioBoundaryHooks) {
   const adapter = new MockEffectAdapter();
-  const broker = new EffectBroker({ repository: new InMemoryEffectRepository(), adapter, now: () => NOW });
+  const runtime = new RuntimeStore({ dbPath: join(root.canonicalPath, "runtime.sqlite"), now: () => NOW });
+  runtime.open();
+  const broker = new EffectBroker({ repository: runtime.createEffectRepository(), adapter, now: () => NOW });
   const identity = {
     operationKind: "publish-self-test-evidence",
     workspaceId: WORKSPACE_ID,
@@ -429,13 +473,17 @@ async function executeEffect() {
     attempt: 0,
     createdAt: NOW
   };
-  await broker.plan(intent);
-  await broker.execute(intent.idempotencyKey);
-  await broker.execute(intent.idempotencyKey);
-  return adapter.applyCalls;
+  try {
+    await atBoundary(hooks, "full.effect.intent-stored", async () => broker.plan(intent));
+    await atBoundary(hooks, "full.effect.receipt-stored", async () => broker.execute(intent.idempotencyKey));
+    await broker.execute(intent.idempotencyKey);
+    return adapter.applyCalls;
+  } finally {
+    runtime.close();
+  }
 }
 
-function verificationPorts(): VerificationPorts {
+function verificationPorts(hooks: FullScenarioBoundaryHooks): VerificationPorts {
   let report: unknown;
   return {
     digest: { sha256: digest },
@@ -468,7 +516,10 @@ function verificationPorts(): VerificationPorts {
     reports: {
       save: async (value) => {
         report = value;
-        return { reportRef: "verification:report:self-test", reportDigest: digest(JSON.stringify(value)) };
+        return atBoundary(hooks, "full.verification.report-stored", async () => ({
+          reportRef: "verification:report:self-test",
+          reportDigest: digest(JSON.stringify(value))
+        }));
       },
       verify: async (value) => ({
         valid: report !== undefined,
@@ -486,8 +537,8 @@ function verificationPorts(): VerificationPorts {
   };
 }
 
-async function verifyIndependently() {
-  return new IndependentVerificationCoordinator(verificationPorts()).verify({
+async function verifyIndependently(hooks: FullScenarioBoundaryHooks) {
+  return new IndependentVerificationCoordinator(verificationPorts(hooks)).verify({
     schemaVersion: 1,
     workspaceId: WORKSPACE_ID,
     run: {
@@ -589,7 +640,8 @@ function handoffPorts(
   packageArtifact: SignedExecutionPackage,
   capsuleBuilder: RunCapsuleBuilder,
   capsuleStore: FileRunCapsuleStore,
-  capsuleTrust: ReturnType<typeof createTrustRoot>
+  capsuleTrust: ReturnType<typeof createTrustRoot>,
+  hooks: FullScenarioBoundaryHooks
 ) {
   const artifacts = new Map<
     string,
@@ -621,10 +673,12 @@ function handoffPorts(
     },
     artifacts: {
       save: async (artifact) => {
-        const handoffDigest = digest(canonical(artifact));
-        const handoffRef = `handoff:${handoffDigest.slice(-16)}`;
-        artifacts.set(handoffRef, { artifact, handoffRef, handoffDigest });
-        return { handoffRef, handoffDigest };
+        return atBoundary(hooks, "full.handoff.prepared-stored", async () => {
+          const handoffDigest = digest(canonical(artifact));
+          const handoffRef = `handoff:${handoffDigest.slice(-16)}`;
+          artifacts.set(handoffRef, { artifact, handoffRef, handoffDigest });
+          return { handoffRef, handoffDigest };
+        });
       },
       open: async (request) => {
         const handoffRef = textField(request, "handoffRef");
@@ -642,12 +696,13 @@ function handoffPorts(
       })
     },
     effects: {
-      publish: async (request) => ({
-        status: "completed",
-        idempotencyKey: textField(request, "idempotencyKey"),
-        receiptRef: "receipt:handoff-publication:self-test",
-        receiptDigest: digest("publication-receipt")
-      }),
+      publish: async (request) =>
+        atBoundary(hooks, "full.handoff.publication-receipt-stored", async () => ({
+          status: "completed",
+          idempotencyKey: textField(request, "idempotencyKey"),
+          receiptRef: "receipt:handoff-publication:self-test",
+          receiptDigest: digest("publication-receipt")
+        })),
       reconcile: async (request) => ({
         status: "applied",
         idempotencyKey: textField(request, "idempotencyKey"),
@@ -669,7 +724,7 @@ function handoffPorts(
         const artifact = recordField(request, "artifact");
         const packageReference = recordField(artifact, "package");
         capsuleArtifact = await capsuleBuilder.build(capsuleInput(packageArtifact));
-        capsuleStored = await capsuleStore.put(capsuleArtifact);
+        capsuleStored = await atBoundary(hooks, "full.capsule.stored", async () => capsuleStore.put(capsuleArtifact!));
         return {
           capsuleRef: capsuleArtifact.artifactId,
           capsuleDigest: envelopeDigest(capsuleArtifact.payloadDigest),
@@ -729,13 +784,15 @@ function handoffPorts(
           (entry) => (entry as { readonly acceptanceRef?: string }).acceptanceRef === key
         ) as never,
       saveAcceptance: async (record) => {
-        const saved = {
-          ...record,
-          acceptanceRef: "handoff-acceptance:self-test",
-          acceptanceDigest: digest(JSON.stringify(record))
-        };
-        acceptances.set(textField(record, "handoffRef"), saved);
-        return saved;
+        return atBoundary(hooks, "full.handoff.acceptance-stored", async () => {
+          const saved = {
+            ...record,
+            acceptanceRef: "handoff-acceptance:self-test",
+            acceptanceDigest: digest(JSON.stringify(record))
+          };
+          acceptances.set(textField(record, "handoffRef"), saved);
+          return saved;
+        });
       },
       loadContinuation: async (key) => continuations.get(key) as never,
       saveContinuation: async (record) => {
@@ -778,13 +835,15 @@ async function runHandoff(
   packageArtifact: SignedExecutionPackage,
   root: RootFacts,
   capsuleBuilder: RunCapsuleBuilder,
-  capsuleTrust: ReturnType<typeof createTrustRoot>
+  capsuleTrust: ReturnType<typeof createTrustRoot>,
+  hooks: FullScenarioBoundaryHooks
 ) {
   const fixture = handoffPorts(
     packageArtifact,
     capsuleBuilder,
     new FileRunCapsuleStore({ root: join(root.canonicalPath, "capsules") }),
-    capsuleTrust
+    capsuleTrust,
+    hooks
   );
   const coordinator = new PortableHandoffCoordinator(fixture.ports);
   const source = {
@@ -860,11 +919,11 @@ function facts(checks: readonly ScenarioCheck[]): SubjectRunFacts {
   };
 }
 
-export async function runFullWorkflowScenario(root: RootFacts): Promise<FullWorkflowScenarioResult> {
-  const executionSigner = NodeEd25519Signer.generate({
-    keyId: "self-test-execution",
-    purposes: ["execution-package"]
-  });
+export async function runFullWorkflowScenario(
+  root: RootFacts,
+  hooks: FullScenarioBoundaryHooks = NO_BOUNDARY_HOOKS
+): Promise<FullWorkflowScenarioResult> {
+  const executionSigner = await durableSigner(root, "self-test-execution", "execution-package");
   const executionSealer = new ArtifactSealer({ signer: executionSigner, now: () => new Date(NOW) });
   const executionBuilder = new ExecutionPackageBuilder({ sealer: executionSealer });
   const executionTrust = createTrustRoot({
@@ -875,18 +934,22 @@ export async function runFullWorkflowScenario(root: RootFacts): Promise<FullWork
   const input = executionInput();
   const packageArtifact = await executionBuilder.build(input);
   const packageStore = new FileExecutionPackageStore({ root: join(root.canonicalPath, "packages") });
-  const packageReceipt = await packageStore.put(packageArtifact);
+  const packageReceipt = await atBoundary(hooks, "full.package.stored", async () => packageStore.put(packageArtifact));
   const packageVerification = await executionBuilder.verify(
     packageArtifact,
     executionTrust,
     currentExecutionState(input)
   );
-  const approval = await approve(packageArtifact);
+  const approvalSigner = await durableSigner(root, "self-test-approval", "approval");
+  const approval = await atBoundary(hooks, "full.approval.stored", async () =>
+    approve(root, packageArtifact, approvalSigner)
+  );
   const context = await compileContext();
   const route = await routeModel();
-  const effectApplyCalls = await executeEffect();
-  const verification = await verifyIndependently();
-  const capsuleSigner = NodeEd25519Signer.generate({ keyId: "self-test-capsule", purposes: ["run-capsule"] });
+  const execution = await runSelfTestExecutionAndGate(hooks, async () => executeEffect(root, hooks));
+  const effectApplyCalls = execution.duringExecution;
+  const verification = await verifyIndependently(hooks);
+  const capsuleSigner = await durableSigner(root, "self-test-capsule", "run-capsule");
   const capsuleBuilder = new RunCapsuleBuilder({
     sealer: new ArtifactSealer({ signer: capsuleSigner, now: () => new Date(NOW) })
   });
@@ -895,7 +958,7 @@ export async function runFullWorkflowScenario(root: RootFacts): Promise<FullWork
     version: 1,
     keys: [capsuleSigner.publicKeyRef]
   });
-  const handoff = await runHandoff(packageArtifact, root, capsuleBuilder, capsuleTrust);
+  const handoff = await runHandoff(packageArtifact, root, capsuleBuilder, capsuleTrust, hooks);
   const capsuleVerification = await capsuleBuilder.verify(handoff.capsule.artifact, capsuleTrust, {
     workspaceId: WORKSPACE_ID,
     runId: SOURCE_RUN_ID,
@@ -916,7 +979,9 @@ export async function runFullWorkflowScenario(root: RootFacts): Promise<FullWork
       approvalVerified: approval.verified.valid,
       contextFragments: context.fragments.length,
       routedPassportId: route.selections[0]?.passportId ?? "",
+      executionStatus: execution.execution.status,
       effectApplyCalls,
+      gateStatus: execution.gate.status,
       verificationVerdict: textField(verification, "verdict"),
       handoffStatus: textField(handoff.continuation, "status"),
       capsuleStored: handoff.capsule.stored,

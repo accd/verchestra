@@ -33,14 +33,16 @@ test("the full scenario exercises every successful production boundary", async (
   assert.deepEqual(result.facts.failureCodes, []);
 });
 
-test("the package, approval, effect, verification, Handoff, and Capsule use their production APIs", async () => {
+test("the complete delivery path uses its production APIs", async () => {
   const { diagnostics } = await runFullWorkflowScenario(await root());
   assert.equal(diagnostics.packageStored, "published");
   assert.equal(diagnostics.packageVerified, true);
   assert.equal(diagnostics.approvalVerified, true);
   assert.equal(diagnostics.contextFragments, 1);
   assert.match(diagnostics.routedPassportId, /^passport_/u);
+  assert.equal(diagnostics.executionStatus, "AWAITING_GATE");
   assert.equal(diagnostics.effectApplyCalls, 1);
+  assert.equal(diagnostics.gateStatus, "COMMITTED");
   assert.equal(diagnostics.verificationVerdict, "PASS");
   assert.equal(diagnostics.handoffStatus, "EXECUTION_AUTHORIZED");
   assert.equal(diagnostics.capsuleStored, "published");

@@ -52,14 +52,14 @@ todo-marked, or made less specific to satisfy the threshold.
 
 ## Execution evidence
 
-| Task | Status  | Commit / evidence                                            |
-| ---- | ------- | ------------------------------------------------------------ |
-| T0   | Done    | `f568642`                                                    |
-| T1   | Done    | `ba7969b`; 33 focused unit cases                             |
-| T2   | Done    | `ad8141b`; 26 crash-runner fault cases                       |
-| T3   | Done    | 4 successful full-scenario integration cases; commit pending |
-| T4   | Pending | —                                                            |
-| T5   | Pending | —                                                            |
-| T6   | Pending | —                                                            |
-| T7   | Pending | —                                                            |
-| T8   | Pending | —                                                            |
+| Task | Status  | Commit / evidence                                       |
+| ---- | ------- | ------------------------------------------------------- |
+| T0   | Done    | `f568642`                                               |
+| T1   | Done    | `ba7969b`; 33 focused unit cases                        |
+| T2   | Done    | `ad8141b`; 26 crash-runner fault cases                  |
+| T3   | Done    | `1b047ad`; 4 successful full-scenario integration cases |
+| T4   | Done    | 23 production crash-matrix cases; commit pending        |
+| T5   | Pending | —                                                       |
+| T6   | Pending | —                                                       |
+| T7   | Pending | —                                                       |
+| T8   | Pending | —                                                       |
