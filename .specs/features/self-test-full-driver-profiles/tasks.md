@@ -54,8 +54,8 @@ todo-marked, or made less specific to satisfy the threshold.
 
 | Task | Status | Commit / evidence |
 | --- | --- | --- |
-| T0 | Done | Local planning change; commit pending |
-| T1 | Pending | — |
+| T0 | Done | `f568642` |
+| T1 | Done | 33 focused unit cases; commit pending |
 | T2 | Pending | — |
 | T3 | Pending | — |
 | T4 | Pending | — |
