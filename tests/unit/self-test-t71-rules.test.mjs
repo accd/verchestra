@@ -3,6 +3,7 @@ import { test } from "node:test";
 
 import {
   DURABLE_CRASH_PHASES,
+  DURABLE_CRASH_EXIT_CODE,
   DRIVER_CHECK_IDS,
   FULL_CHECK_IDS,
   FULL_DURABLE_BOUNDARY_IDS,
@@ -20,6 +21,8 @@ function boundaryFacts(overrides = {}) {
       logicalResultCount: 1,
       resumed: true,
       semanticFingerprint: fingerprint,
+      crashExitCode: DURABLE_CRASH_EXIT_CODE,
+      resumeExitCode: 0,
       ...overrides
     }))
   );
@@ -118,6 +121,18 @@ test("a durable boundary with duplicated logical results fails closed", () => {
 
 test("a boundary that did not resume fails closed", () => {
   assert.throws(() => assertDurableBoundaryFacts(boundaryFacts({ resumed: false })), {
+    code: "VES_SELFTEST_DURABLE_BOUNDARY_INVALID"
+  });
+});
+
+test("a boundary without the expected hard-crash exit fails closed", () => {
+  assert.throws(() => assertDurableBoundaryFacts(boundaryFacts({ crashExitCode: 0 })), {
+    code: "VES_SELFTEST_DURABLE_BOUNDARY_INVALID"
+  });
+});
+
+test("a boundary whose resume process fails is rejected", () => {
+  assert.throws(() => assertDurableBoundaryFacts(boundaryFacts({ resumeExitCode: 1 })), {
     code: "VES_SELFTEST_DURABLE_BOUNDARY_INVALID"
   });
 });

@@ -55,8 +55,8 @@ todo-marked, or made less specific to satisfy the threshold.
 | Task | Status | Commit / evidence |
 | --- | --- | --- |
 | T0 | Done | `f568642` |
-| T1 | Done | 33 focused unit cases; commit pending |
-| T2 | Pending | — |
+| T1 | Done | `ba7969b`; 33 focused unit cases |
+| T2 | Done | 26 crash-runner fault cases; commit pending |
 | T3 | Pending | — |
 | T4 | Pending | — |
 | T5 | Pending | — |

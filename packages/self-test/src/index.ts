@@ -22,3 +22,8 @@ export {
 } from "./sentinels-and-fixtures.ts";
 export { GitFixtureFactory, type GitFixtureFacts } from "./git-fixtures.ts";
 export { offlineGuard, type OfflineGuard } from "./network-guard.ts";
+export {
+  DurableCrashRunner,
+  DurableCrashRunnerError,
+  type DurableCrashRunnerErrorCode
+} from "./durable-crash-runner.ts";
