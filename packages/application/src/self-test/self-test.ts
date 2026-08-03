@@ -131,6 +131,8 @@ export const DURABLE_CRASH_PHASES = Object.freeze(["before", "after"] as const);
 
 export type DurableCrashPhase = (typeof DURABLE_CRASH_PHASES)[number];
 
+export const DURABLE_CRASH_EXIT_CODE = 86 as const;
+
 const PROFILES: Readonly<Record<SelfTestProfileId, SelfTestProfile>> = Object.freeze({
   smoke: Object.freeze({
     profileId: "smoke",
@@ -315,6 +317,8 @@ export interface DurableBoundaryFact {
   readonly logicalResultCount: number;
   readonly resumed: boolean;
   readonly semanticFingerprint: readonly string[];
+  readonly crashExitCode: number;
+  readonly resumeExitCode: number;
 }
 
 function validFingerprint(value: unknown): value is readonly string[] {
@@ -333,6 +337,10 @@ function durableBoundaryKey(fact: DurableBoundaryFact | null): string {
   if (fact.logicalResultCount !== 1)
     fail("VES_SELFTEST_DURABLE_BOUNDARY_INVALID", "durable boundary did not converge exactly once");
   if (fact.resumed !== true) fail("VES_SELFTEST_DURABLE_BOUNDARY_INVALID", "durable boundary did not resume");
+  if (fact.crashExitCode !== DURABLE_CRASH_EXIT_CODE)
+    fail("VES_SELFTEST_DURABLE_BOUNDARY_INVALID", "durable boundary did not observe the expected hard crash");
+  if (fact.resumeExitCode !== 0)
+    fail("VES_SELFTEST_DURABLE_BOUNDARY_INVALID", "durable boundary resume did not exit successfully");
   if (!validFingerprint(fact.semanticFingerprint))
     fail("VES_SELFTEST_DURABLE_BOUNDARY_INVALID", "durable boundary fingerprint is invalid");
   return `${fact.boundaryId}:${fact.phase}`;

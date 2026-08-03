@@ -5,10 +5,10 @@ issue: 12
 status: in_progress
 branch: codex/issue-12-t71-self-test
 baseRevision: 4b984c7e541863fe056a31a9e72749f9bcf46f7f
-lastCompletedTask: T1
-nextTask: T2
-lastGate: 33 focused Self-Test unit cases, lint, complexity, and typecheck PASS on Node 24.18.0
-updatedAt: 2026-08-03T17:35:00Z
+lastCompletedTask: T2
+nextTask: T3
+lastGate: 49 focused T71 unit/fault cases, lint, complexity, typecheck, and format PASS on Node 24.18.0
+updatedAt: 2026-08-03T17:41:42Z
 ---
 
 # Scope
@@ -48,6 +48,19 @@ metadata changes are not authorized yet.
   one provider boundary for an approved invocation.
 - T1 focused evidence: 33/33 unit cases pass; lint, typecheck, formatting, and
   the complexity ratchet pass with no new baseline exemption.
+- T1 contracts committed as `ba7969b`.
+- T2 adds `DurableCrashRunner` under the Node-bound Self-Test adapter. It runs
+  a repository-owned absolute child entrypoint first in hard-crash mode and
+  then in resume mode against the same disposable root, uses no shell, passes
+  only the explicit `VERCHESTRA_SELF_TEST` environment marker, bounds runtime
+  and output, and returns persisted facts plus exit codes without deciding a
+  verdict.
+- The application rule now requires the expected hard-crash exit code 86 and a
+  successful resume exit in addition to exact-once and fingerprint convergence.
+- T2 focused evidence: all 22 before/after boundary cases plus complete-matrix,
+  missing-facts, unavailable-executable, and relative-entrypoint cases pass.
+  Combined T71 unit/fault run is 49/49; lint, typecheck, format, and complexity
+  pass.
 
 # Decisions
 
@@ -65,8 +78,8 @@ metadata changes are not authorized yet.
 
 # Next action
 
-Commit T1 atomically, then implement the T2 child-process crash fact adapter
-test-first.
+Commit T2 atomically, then map the exact production constructors and implement
+the T3 successful full workflow scenario test-first.
 
 # Blockers
 
