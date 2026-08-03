@@ -106,6 +106,9 @@ importers:
 
   apps/vestra-cli:
     dependencies:
+      '@verchestra/agent-runtime':
+        specifier: workspace:0.0.0
+        version: link:../../packages/agent-runtime
       '@verchestra/application':
         specifier: workspace:0.0.0
         version: link:../../packages/application
@@ -115,6 +118,9 @@ importers:
       '@verchestra/domain':
         specifier: workspace:0.0.0
         version: link:../../packages/domain
+      '@verchestra/effects':
+        specifier: workspace:0.0.0
+        version: link:../../packages/effects
       '@verchestra/evidence':
         specifier: workspace:0.0.0
         version: link:../../packages/evidence

@@ -1,0 +1,71 @@
+import assert from "node:assert/strict";
+import { rm } from "node:fs/promises";
+import { join } from "node:path";
+import { afterEach, test } from "node:test";
+
+import { FULL_CHECK_IDS, semanticFingerprint } from "../../packages/application/src/index.ts";
+import { DisposableRootProvider } from "../../packages/self-test/src/index.ts";
+import { runFullWorkflowScenario } from "../../apps/vestra-cli/src/self-test-full-scenario.ts";
+
+const roots = [];
+
+async function root() {
+  const provider = new DisposableRootProvider({ baseDirectory: join(process.cwd(), ".tmp-self-test-full") });
+  const value = await provider.provision("full");
+  roots.push(value.canonicalPath);
+  return value;
+}
+
+afterEach(async () => {
+  await Promise.all(roots.splice(0).map((path) => rm(path, { recursive: true, force: true })));
+});
+
+test("the full scenario exercises every successful production boundary", async () => {
+  const result = await runFullWorkflowScenario(await root());
+  assert.deepEqual(
+    result.facts.checks.map((entry) => entry.checkId),
+    FULL_CHECK_IDS.filter((checkId) => checkId !== "full.crash-recovery")
+  );
+  assert.equal(
+    result.facts.checks.every((entry) => entry.status === "pass"),
+    true
+  );
+  assert.deepEqual(result.facts.failureCodes, []);
+});
+
+test("the package, approval, effect, verification, Handoff, and Capsule use their production APIs", async () => {
+  const { diagnostics } = await runFullWorkflowScenario(await root());
+  assert.equal(diagnostics.packageStored, "published");
+  assert.equal(diagnostics.packageVerified, true);
+  assert.equal(diagnostics.approvalVerified, true);
+  assert.equal(diagnostics.contextFragments, 1);
+  assert.match(diagnostics.routedPassportId, /^passport_/u);
+  assert.equal(diagnostics.effectApplyCalls, 1);
+  assert.equal(diagnostics.verificationVerdict, "PASS");
+  assert.equal(diagnostics.handoffStatus, "EXECUTION_AUTHORIZED");
+  assert.equal(diagnostics.capsuleStored, "published");
+  assert.equal(diagnostics.capsuleVerified, true);
+});
+
+test("portable full-scenario evidence excludes provider-local state", async () => {
+  const result = await runFullWorkflowScenario(await root());
+  const portable = JSON.stringify(result.portableArtifacts).toLowerCase();
+  for (const forbidden of [
+    "provider",
+    "session",
+    "transcript",
+    "prompt",
+    "credential",
+    "secret",
+    "environment",
+    "userprofile"
+  ]) {
+    assert.equal(portable.includes(forbidden), false, forbidden);
+  }
+});
+
+test("independent full-scenario runs have one semantic fingerprint", async () => {
+  const first = await runFullWorkflowScenario(await root());
+  const second = await runFullWorkflowScenario(await root());
+  assert.deepEqual(semanticFingerprint(first.facts.checks), semanticFingerprint(second.facts.checks));
+});

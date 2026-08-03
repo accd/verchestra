@@ -8,10 +8,12 @@
     "verchestra": "./bin/verchestra.mjs"
   },
   "dependencies": {
+    "@verchestra/agent-runtime": "workspace:0.0.0",
     "@verchestra/application": "workspace:0.0.0",
     "@verchestra/contracts": "workspace:0.0.0",
     "@verchestra/domain": "workspace:0.0.0",
     "@verchestra/evidence": "workspace:0.0.0",
+    "@verchestra/effects": "workspace:0.0.0",
     "@verchestra/platform-node": "workspace:0.0.0",
     "@verchestra/self-test": "workspace:0.0.0",
     "@verchestra/workspace": "workspace:0.0.0"

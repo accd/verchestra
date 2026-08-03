@@ -5,10 +5,10 @@ issue: 12
 status: in_progress
 branch: codex/issue-12-t71-self-test
 baseRevision: 4b984c7e541863fe056a31a9e72749f9bcf46f7f
-lastCompletedTask: T2
-nextTask: T3
-lastGate: 49 focused T71 unit/fault cases, lint, complexity, typecheck, and format PASS on Node 24.18.0
-updatedAt: 2026-08-03T17:41:42Z
+lastCompletedTask: T3
+nextTask: T4
+lastGate: 4 T3 integration cases, lint, complexity, typecheck, and format PASS on Node 24.18.0
+updatedAt: 2026-08-03T18:30:00Z
 ---
 
 # Scope
@@ -61,6 +61,20 @@ metadata changes are not authorized yet.
   missing-facts, unavailable-executable, and relative-entrypoint cases pass.
   Combined T71 unit/fault run is 49/49; lint, typecheck, format, and complexity
   pass.
+- T2 crash-runner work committed as `ad8141b`.
+- The contributor explicitly approved the CLI's use of existing internal
+  workspace packages after confirming that no new external dependency or
+  version is introduced. T3 uses `@verchestra/agent-runtime` and
+  `@verchestra/effects`; the Driver dependency remains deferred until T5/T6.
+- T3 composes the production Execution Package builder/store/verifier,
+  Approval Service with signed approval artifacts, Context resolver/compiler,
+  capability router, idempotent Effect Broker, Independent Verification
+  Coordinator, Portable Handoff Coordinator, and Run Capsule
+  builder/store/verifier against a disposable root.
+- T3 focused evidence: 4/4 integration cases pass, including one-call effect
+  idempotency, full Handoff continuation, portable Package/Capsule evidence,
+  and semantic convergence across independent roots. Typecheck, lint, format,
+  and complexity also pass.
 
 # Decisions
 
@@ -78,8 +92,8 @@ metadata changes are not authorized yet.
 
 # Next action
 
-Commit T2 atomically, then map the exact production constructors and implement
-the T3 successful full workflow scenario test-first.
+Commit T3 atomically, then implement the T4 before/after crash matrix around
+the successful production workflow and prove exact-once convergence.
 
 # Blockers
 
