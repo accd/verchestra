@@ -7,8 +7,8 @@ branch: codex/issue-12-t71-self-test
 baseRevision: 4b984c7e541863fe056a31a9e72749f9bcf46f7f
 lastCompletedTask: T8
 nextTask: Independent verification and contributor review before any push
-lastGate: gate:quick PASS; test:security 937/937 PASS; test:fault 283/283 PASS on Node 24.18.0
-updatedAt: 2026-08-03T18:25:57Z
+lastGate: gate:security PASS; gate:release PASS; gate:full 558/563 with 5 pre-existing Windows T69/T70 failures on Node 24.14.0
+updatedAt: 2026-08-03T18:57:36Z
 ---
 
 # Scope
@@ -127,18 +127,21 @@ metadata changes are not authorized yet.
   cases, with no skipped or todo cases.
 - Direct substantive suites pass: `pnpm test:security` is 937/937 and
   `pnpm test:fault` is 283/283, both with zero skipped or todo cases.
-- `pnpm test:release` declares zero cases until T73 (#14) and explicitly states
-  that it is not release evidence.
-- `pnpm gate:security` reaches the existing qualification sensors but cannot
-  pass on this workstation: the installed Claude CLI is unavailable, Codex is
-  not the pinned 0.115.0, Node is 24.18.0 instead of 24.14.0, and SQLite is
-  3.53.1 instead of 3.51.2. No sensor was changed or weakened.
-- `pnpm gate:full` reaches existing Windows-only integration failures in T69/T70
-  fixture cleanup and quoted `git check-ignore` path expectations. These are
-  outside the T71 patch; the substantive T71 security and fault suites pass.
-- `pnpm gate:release` was not rerun because it shares the same qualification
-  prerequisites already reported by `gate:security`; this work does not claim
-  release evidence or release readiness.
+- A disposable toolchain outside the repository was verified against the
+  official Node SHA-256 manifest and provides the exact qualified Node 24.14.0,
+  bundled SQLite 3.51.2, pnpm 10.34.5, Claude Code 2.1.168, and Codex CLI
+  0.115.0 versions. No repository dependency or global tool installation was
+  changed.
+- `pnpm gate:security` passes with the exact qualified runtime and native CLI
+  entrypoints. The installed-CLI probe subset is 27/27 with no skipped or todo
+  cases.
+- `pnpm gate:release` passes with the same toolchain. Its `test:release` stage
+  declares zero cases until T73 (#14), so this pass is gate evidence but not a
+  claim of release evidence or release readiness.
+- `pnpm gate:full` now has 558/563 integration cases passing. The five remaining
+  Windows-only failures are in existing T69/T70 Git fixture path normalization,
+  quoted `git check-ignore` output, and cleanup `EBUSY` behavior. The T71 full,
+  Driver, crash-matrix, security, and fault paths pass in the same environment.
 
 # Decisions
 
@@ -162,7 +165,7 @@ atomic commits. Do not push until the contributor explicitly authorizes it.
 
 # Blockers
 
-Local implementation and substantive tests are complete. The complete
-qualification/release gates require the pinned external toolchain described
+Local implementation and substantive tests are complete. `gate:full` remains
+blocked only by the five existing Windows T69/T70 fixture failures described
 above. External push and PR creation intentionally wait for contributor review
 and explicit authorization.
