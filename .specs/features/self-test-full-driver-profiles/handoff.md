@@ -5,10 +5,10 @@ issue: 12
 status: in_progress
 branch: codex/issue-12-t71-self-test
 baseRevision: 4b984c7e541863fe056a31a9e72749f9bcf46f7f
-lastCompletedTask: T4
-nextTask: T5
-lastGate: 27 T3/T4 integration and production crash cases PASS; typecheck, lint, and complexity PASS on Node 24.18.0
-updatedAt: 2026-08-03T19:15:00Z
+lastCompletedTask: T5
+nextTask: T6
+lastGate: 6 T5 Driver authority security cases PASS; typecheck, lint, format, and complexity PASS on Node 24.18.0
+updatedAt: 2026-08-03T19:35:00Z
 ---
 
 # Scope
@@ -89,6 +89,14 @@ metadata changes are not authorized yet.
   after hard exit 86 with one logical boundary identity, and the complete
   matrix passes `assertDurableBoundaryFacts`. The combined T3/T4 run is 27/27;
   typecheck, lint, format, and complexity pass.
+- T4 production crash convergence committed as `9345cb1`.
+- T5 adds a composition-root Driver authority gate that compares the exact
+  approved and displayed review surface before invoking a supplied provider
+  boundary. Approval, capability, destination, cost, and egress mismatches all
+  leave the callback untouched and report zero provider calls.
+- A writer-shaped Tool is rejected by the application rule before the callback
+  can run. T5 focused evidence is 6/6 security cases; typecheck, lint, format,
+  and complexity pass.
 
 # Decisions
 
@@ -106,8 +114,8 @@ metadata changes are not authorized yet.
 
 # Next action
 
-Commit T4 atomically, then implement T5's exact Driver review authorization
-gate and denied-zero-provider-call paths.
+Commit T5 atomically, then qualify the three approved deterministic Driver
+boundaries and offline/no-writer evidence in T6.
 
 # Blockers
 
