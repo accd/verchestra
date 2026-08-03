@@ -14,6 +14,8 @@ export {
   SELF_TEST_FAILURE_CODES,
   SelfTestComposition,
   createSelfTestCodeRegistry,
+  createDriverScenario,
+  createFullScenario,
   createSmokeScenario,
   createWorkspaceScenario,
   placementMatchesExpectation,

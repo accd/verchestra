@@ -5,10 +5,10 @@ issue: 12
 status: in_progress
 branch: codex/issue-12-t71-self-test
 baseRevision: 4b984c7e541863fe056a31a9e72749f9bcf46f7f
-lastCompletedTask: T6
-nextTask: T7
-lastGate: 11 T5/T6 Driver integration and security cases PASS; typecheck, lint, format, and complexity PASS on Node 24.18.0
-updatedAt: 2026-08-03T19:50:00Z
+lastCompletedTask: T7
+nextTask: T8
+lastGate: 51 CLI contract/e2e cases PASS; typecheck, lint, format, and complexity PASS on Node 24.18.0
+updatedAt: 2026-08-03T20:10:00Z
 ---
 
 # Scope
@@ -109,6 +109,14 @@ metadata changes are not authorized yet.
   displayed review byte-for-byte to the approved facts.
 - T6 focused evidence: 5/5 integration cases and the 6 T5 security cases pass;
   typecheck, lint, format, and complexity pass.
+- T6 qualified Driver scenario committed as `3518665`.
+- T7 extends the installed manifest and command dispatch to the already sealed
+  four-profile registry. `full` composes the successful workflow plus the
+  complete child-process crash matrix before adding `full.crash-recovery`;
+  `drivers` composes the approved Driver scenario.
+- The real binary returns PASS with exactly 10 full checks and 7 Driver checks,
+  while an unknown profile still fails before dispatch. T7 focused evidence is
+  51/51 CLI contract/e2e cases; typecheck, lint, format, and complexity pass.
 
 # Decisions
 
@@ -126,8 +134,8 @@ metadata changes are not authorized yet.
 
 # Next action
 
-Commit T6 atomically, then wire the full and drivers scenarios into the stable
-CLI Self-Test dispatch and report path in T7.
+Commit T7 atomically, then run the T8 case-count audit, mutation/discrimination
+sensors, quick/security gates, and final portable handoff update.
 
 # Blockers
 

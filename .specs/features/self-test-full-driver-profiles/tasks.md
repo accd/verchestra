@@ -60,6 +60,6 @@ todo-marked, or made less specific to satisfy the threshold.
 | T3   | Done    | `1b047ad`; 4 successful full-scenario integration cases |
 | T4   | Done    | `9345cb1`; 23 production crash-matrix cases             |
 | T5   | Done    | `9d72bca`; 6 Driver authority security cases            |
-| T6   | Done    | 5 qualified Driver integration cases; commit pending    |
-| T7   | Pending | —                                                       |
+| T6   | Done    | `3518665`; 5 qualified Driver integration cases         |
+| T7   | Done    | 51 CLI contract/e2e cases; commit pending               |
 | T8   | Pending | —                                                       |
