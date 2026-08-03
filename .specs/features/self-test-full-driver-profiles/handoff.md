@@ -5,10 +5,10 @@ issue: 12
 status: in_progress
 branch: codex/issue-12-t71-self-test
 baseRevision: 4b984c7e541863fe056a31a9e72749f9bcf46f7f
-lastCompletedTask: T3
-nextTask: T4
-lastGate: 4 T3 integration cases, lint, complexity, typecheck, and format PASS on Node 24.18.0
-updatedAt: 2026-08-03T18:30:00Z
+lastCompletedTask: T4
+nextTask: T5
+lastGate: 27 T3/T4 integration and production crash cases PASS; typecheck, lint, and complexity PASS on Node 24.18.0
+updatedAt: 2026-08-03T19:15:00Z
 ---
 
 # Scope
@@ -75,6 +75,20 @@ metadata changes are not authorized yet.
   idempotency, full Handoff continuation, portable Package/Capsule evidence,
   and semantic convergence across independent roots. Typecheck, lint, format,
   and complexity also pass.
+- T3 successful full-path work committed as `1b047ad`.
+- T4 adds the repository-owned full-scenario crash child and injects before and
+  after hooks at all eleven application-owned durable boundaries. Package,
+  approval, and Capsule signing keys live only inside the disposable root so a
+  clean process can verify and reconcile the same artifact identities.
+- Approval and Effect facts use the production SQLite runtime adapters. Task
+  execution and gate commit use their production coordinators with
+  deterministic local ports; package and Capsule use their production file
+  stores. The boundary journal records observations and never decides the
+  application verdict.
+- T4 focused evidence: all 22 before/after production workflow cases converge
+  after hard exit 86 with one logical boundary identity, and the complete
+  matrix passes `assertDurableBoundaryFacts`. The combined T3/T4 run is 27/27;
+  typecheck, lint, format, and complexity pass.
 
 # Decisions
 
@@ -92,8 +106,8 @@ metadata changes are not authorized yet.
 
 # Next action
 
-Commit T3 atomically, then implement the T4 before/after crash matrix around
-the successful production workflow and prove exact-once convergence.
+Commit T4 atomically, then implement T5's exact Driver review authorization
+gate and denied-zero-provider-call paths.
 
 # Blockers
 
