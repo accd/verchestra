@@ -2,13 +2,13 @@
 schema: verchestra-feature-handoff/v1
 feature: self-test-full-driver-profiles
 issue: 12
-status: in_progress
+status: verification
 branch: codex/issue-12-t71-self-test
 baseRevision: 4b984c7e541863fe056a31a9e72749f9bcf46f7f
-lastCompletedTask: T7
-nextTask: T8
-lastGate: 51 CLI contract/e2e cases PASS; typecheck, lint, format, and complexity PASS on Node 24.18.0
-updatedAt: 2026-08-03T20:10:00Z
+lastCompletedTask: T8
+nextTask: Independent verification and contributor review before any push
+lastGate: gate:quick PASS; test:security 937/937 PASS; test:fault 283/283 PASS on Node 24.18.0
+updatedAt: 2026-08-03T18:25:57Z
 ---
 
 # Scope
@@ -117,6 +117,28 @@ metadata changes are not authorized yet.
 - The real binary returns PASS with exactly 10 full checks and 7 Driver checks,
   while an unknown profile still fails before dispatch. T7 focused evidence is
   51/51 CLI contract/e2e cases; typecheck, lint, format, and complexity pass.
+- T7 CLI behavior committed as `0d04112`.
+- T8's complete fault suite initially killed the stale Driver isolation fixture:
+  it still returned the pre-T71 empty check list. The fixture now returns the
+  closed `DRIVER_CHECK_IDS` catalog while retaining its original test-only
+  material assertion. The focused 10/10 file passes and the fix is committed as
+  `f7a8354`.
+- `pnpm gate:quick` passes: 1,862 unit cases and 112 readiness/architecture
+  cases, with no skipped or todo cases.
+- Direct substantive suites pass: `pnpm test:security` is 937/937 and
+  `pnpm test:fault` is 283/283, both with zero skipped or todo cases.
+- `pnpm test:release` declares zero cases until T73 (#14) and explicitly states
+  that it is not release evidence.
+- `pnpm gate:security` reaches the existing qualification sensors but cannot
+  pass on this workstation: the installed Claude CLI is unavailable, Codex is
+  not the pinned 0.115.0, Node is 24.18.0 instead of 24.14.0, and SQLite is
+  3.53.1 instead of 3.51.2. No sensor was changed or weakened.
+- `pnpm gate:full` reaches existing Windows-only integration failures in T69/T70
+  fixture cleanup and quoted `git check-ignore` path expectations. These are
+  outside the T71 patch; the substantive T71 security and fault suites pass.
+- `pnpm gate:release` was not rerun because it shares the same qualification
+  prerequisites already reported by `gate:security`; this work does not claim
+  release evidence or release readiness.
 
 # Decisions
 
@@ -134,10 +156,13 @@ metadata changes are not authorized yet.
 
 # Next action
 
-Commit T7 atomically, then run the T8 case-count audit, mutation/discrimination
-sensors, quick/security gates, and final portable handoff update.
+Run independent verification from a clean clone with the pinned Node, SQLite,
+Claude CLI, and Codex versions. Then perform contributor review of the local
+atomic commits. Do not push until the contributor explicitly authorizes it.
 
 # Blockers
 
-None for local implementation. External push and PR creation intentionally wait
-for contributor review and explicit authorization.
+Local implementation and substantive tests are complete. The complete
+qualification/release gates require the pinned external toolchain described
+above. External push and PR creation intentionally wait for contributor review
+and explicit authorization.
