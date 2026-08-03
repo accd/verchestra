@@ -5,10 +5,10 @@ issue: 12
 status: in_progress
 branch: codex/issue-12-t71-self-test
 baseRevision: 4b984c7e541863fe056a31a9e72749f9bcf46f7f
-lastCompletedTask: T0
-nextTask: T1
-lastGate: pnpm gate:quick PASS on Node 24.18.0
-updatedAt: 2026-08-03T18:00:00Z
+lastCompletedTask: T1
+nextTask: T2
+lastGate: 33 focused Self-Test unit cases, lint, complexity, and typecheck PASS on Node 24.18.0
+updatedAt: 2026-08-03T17:35:00Z
 ---
 
 # Scope
@@ -36,6 +36,18 @@ metadata changes are not authorized yet.
 - Baseline `pnpm gate:quick` passes. The repository pins Node 24.14.0; the
   local run used Node 24.18.0 and pnpm 10.34.5.
 - Created local branch `codex/issue-12-t71-self-test`; nothing was pushed.
+- T0 planning committed as `f568642`.
+- T1 adds closed `FULL_CHECK_IDS`, `DRIVER_CHECK_IDS`, the eleven
+  `FULL_DURABLE_BOUNDARY_IDS`, and the before/after crash phases. Full and
+  Driver profiles now require their T71 checks rather than accepting an empty
+  scenario.
+- T1 application verdicts reject incomplete, duplicated, malformed,
+  non-exactly-once, non-resumed, or divergent durable facts. Driver verdicts
+  bind every displayed review field, require an explicit read-only Tool list,
+  prove denied authority reached zero provider boundaries, and require exactly
+  one provider boundary for an approved invocation.
+- T1 focused evidence: 33/33 unit cases pass; lint, typecheck, formatting, and
+  the complexity ratchet pass with no new baseline exemption.
 
 # Decisions
 
@@ -53,8 +65,8 @@ metadata changes are not authorized yet.
 
 # Next action
 
-Review and commit T0 atomically, then implement T1 tests before application
-code.
+Commit T1 atomically, then implement the T2 child-process crash fact adapter
+test-first.
 
 # Blockers
 

@@ -4,6 +4,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   SMOKE_CHECK_IDS,
+  DRIVER_CHECK_IDS,
+  FULL_CHECK_IDS,
   WORKSPACE_CHECK_IDS,
   WORKSPACE_SHAPES,
   assertConvergence,
@@ -23,9 +25,9 @@ test("smoke and workspace profiles declare their required check ids", () => {
   assert.deepEqual(resolveSelfTestProfile("workspace").requiredCheckIds, WORKSPACE_CHECK_IDS);
 });
 
-test("full and drivers declare no required checks yet (T71 scope)", () => {
-  assert.deepEqual(resolveSelfTestProfile("full").requiredCheckIds, []);
-  assert.deepEqual(resolveSelfTestProfile("drivers").requiredCheckIds, []);
+test("full and drivers declare their closed T71 check catalogs", () => {
+  assert.deepEqual(resolveSelfTestProfile("full").requiredCheckIds, FULL_CHECK_IDS);
+  assert.deepEqual(resolveSelfTestProfile("drivers").requiredCheckIds, DRIVER_CHECK_IDS);
 });
 
 test("smoke and workspace combined register at least 25 checks", () => {
@@ -66,8 +68,10 @@ test("a profile missing a required check fails closed naming it", () => {
   );
 });
 
-test("a profile with no required checks accepts an empty result", () => {
-  assert.doesNotThrow(() => assertProfileCoverage(resolveSelfTestProfile("drivers"), []));
+test("a T71 profile rejects an empty result", () => {
+  assert.throws(() => assertProfileCoverage(resolveSelfTestProfile("drivers"), []), {
+    code: "VES_SELFTEST_SCENARIO_MISSING"
+  });
 });
 
 // --- PRF-04: semantic fingerprint and convergence ---

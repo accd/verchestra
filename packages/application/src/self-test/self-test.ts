@@ -19,7 +19,12 @@ export type SelfTestErrorCode =
   | "VES_SELFTEST_SCENARIO_MISSING"
   | "VES_SELFTEST_SCENARIO_CHECK_FAILED"
   | "VES_SELFTEST_NONCONVERGENT"
-  | "VES_SELFTEST_NETWORK_ATTEMPT";
+  | "VES_SELFTEST_NETWORK_ATTEMPT"
+  | "VES_SELFTEST_DURABLE_BOUNDARY_INVALID"
+  | "VES_SELFTEST_DRIVER_REVIEW_INVALID"
+  | "VES_SELFTEST_PROVIDER_CALL_INVALID"
+  | "VES_SELFTEST_PROVIDER_CALL_REACHED"
+  | "VES_SELFTEST_WRITER_TOOL_REACHABLE";
 
 export class SelfTestError extends Error {
   readonly code: SelfTestErrorCode;
@@ -80,6 +85,52 @@ export const WORKSPACE_CHECK_IDS = Object.freeze(
   )
 );
 
+// T71: the complete workflow checks are deliberately coarser than the durable
+// crash boundaries below. A scenario check says which user-observable behavior
+// ran; a boundary fact proves restart convergence at each persisted transition.
+export const FULL_CHECK_IDS = Object.freeze([
+  "full.package",
+  "full.approval",
+  "full.context",
+  "full.routing",
+  "full.effect",
+  "full.verification",
+  "full.handoff",
+  "full.capsule",
+  "full.crash-recovery",
+  "full.portable-evidence"
+] as const);
+
+export const DRIVER_CHECK_IDS = Object.freeze([
+  "drivers.review",
+  "drivers.denied.zero-calls",
+  "drivers.claude",
+  "drivers.codex",
+  "drivers.opencode-qwen",
+  "drivers.no-writer-tools",
+  "drivers.offline"
+] as const);
+
+export const FULL_DURABLE_BOUNDARY_IDS = Object.freeze([
+  "full.package.stored",
+  "full.approval.stored",
+  "full.execution.checkpoint-stored",
+  "full.effect.intent-stored",
+  "full.effect.receipt-stored",
+  "full.gate.commit-stored",
+  "full.verification.report-stored",
+  "full.handoff.prepared-stored",
+  "full.handoff.publication-receipt-stored",
+  "full.handoff.acceptance-stored",
+  "full.capsule.stored"
+] as const);
+
+export type FullDurableBoundaryId = (typeof FULL_DURABLE_BOUNDARY_IDS)[number];
+
+export const DURABLE_CRASH_PHASES = Object.freeze(["before", "after"] as const);
+
+export type DurableCrashPhase = (typeof DURABLE_CRASH_PHASES)[number];
+
 const PROFILES: Readonly<Record<SelfTestProfileId, SelfTestProfile>> = Object.freeze({
   smoke: Object.freeze({
     profileId: "smoke",
@@ -95,7 +146,7 @@ const PROFILES: Readonly<Record<SelfTestProfileId, SelfTestProfile>> = Object.fr
     maxFixtureBytes: 67_108_864,
     maxDurationMs: 1_800_000,
     cleanupPolicy: "remove-or-quarantine",
-    requiredCheckIds: Object.freeze([])
+    requiredCheckIds: FULL_CHECK_IDS
   }),
   workspace: Object.freeze({
     profileId: "workspace",
@@ -111,7 +162,7 @@ const PROFILES: Readonly<Record<SelfTestProfileId, SelfTestProfile>> = Object.fr
     maxFixtureBytes: 4_194_304,
     maxDurationMs: 600_000,
     cleanupPolicy: "remove-or-quarantine",
-    requiredCheckIds: Object.freeze([])
+    requiredCheckIds: DRIVER_CHECK_IDS
   })
 });
 
@@ -256,6 +307,199 @@ export function assertProfileCoverage(profile: SelfTestProfile, checks: readonly
 export function assertConvergence(first: readonly string[], second: readonly string[]): void {
   if (first.length !== second.length || first.some((entry, index) => entry !== second[index]))
     fail("VES_SELFTEST_NONCONVERGENT", `self-test runs diverged: [${first.join(", ")}] vs [${second.join(", ")}]`);
+}
+
+export interface DurableBoundaryFact {
+  readonly boundaryId: FullDurableBoundaryId;
+  readonly phase: DurableCrashPhase;
+  readonly logicalResultCount: number;
+  readonly resumed: boolean;
+  readonly semanticFingerprint: readonly string[];
+}
+
+function validFingerprint(value: unknown): value is readonly string[] {
+  if (!Array.isArray(value)) return false;
+  if (value.length === 0) return false;
+  return value.every((entry) => typeof entry === "string" && entry.length > 0);
+}
+
+function durableBoundaryKey(fact: DurableBoundaryFact | null): string {
+  if (fact === null || typeof fact !== "object")
+    fail("VES_SELFTEST_DURABLE_BOUNDARY_INVALID", "durable boundary fact is malformed");
+  if (!FULL_DURABLE_BOUNDARY_IDS.includes(fact.boundaryId))
+    fail("VES_SELFTEST_DURABLE_BOUNDARY_INVALID", `durable boundary id is invalid: ${String(fact.boundaryId)}`);
+  if (!DURABLE_CRASH_PHASES.includes(fact.phase))
+    fail("VES_SELFTEST_DURABLE_BOUNDARY_INVALID", `durable crash phase is invalid: ${String(fact.phase)}`);
+  if (fact.logicalResultCount !== 1)
+    fail("VES_SELFTEST_DURABLE_BOUNDARY_INVALID", "durable boundary did not converge exactly once");
+  if (fact.resumed !== true) fail("VES_SELFTEST_DURABLE_BOUNDARY_INVALID", "durable boundary did not resume");
+  if (!validFingerprint(fact.semanticFingerprint))
+    fail("VES_SELFTEST_DURABLE_BOUNDARY_INVALID", "durable boundary fingerprint is invalid");
+  return `${fact.boundaryId}:${fact.phase}`;
+}
+
+// T71 (FULL-02/03): the child-process adapter reports only persisted facts.
+// This pure rule owns the verdict and requires the full before/after matrix,
+// exact-once multiplicity, a real resume, and one convergent semantic result.
+export function assertDurableBoundaryFacts(facts: readonly DurableBoundaryFact[]): void {
+  const expected = FULL_DURABLE_BOUNDARY_IDS.flatMap((boundaryId) =>
+    DURABLE_CRASH_PHASES.map((phase) => `${boundaryId}:${phase}`)
+  );
+  const observed = new Map<string, DurableBoundaryFact>();
+  for (const fact of facts) {
+    const key = durableBoundaryKey(fact);
+    if (observed.has(key))
+      fail("VES_SELFTEST_DURABLE_BOUNDARY_INVALID", `durable boundary fact is duplicated at ${key}`);
+    observed.set(key, fact);
+  }
+  const missing = expected.filter((key) => !observed.has(key));
+  if (observed.size !== expected.length || missing.length > 0)
+    fail("VES_SELFTEST_DURABLE_BOUNDARY_INVALID", `durable boundary matrix is incomplete: ${missing.join(", ")}`);
+  const baseline = observed.get(expected[0] as string)?.semanticFingerprint as readonly string[];
+  for (const key of expected.slice(1))
+    assertConvergence(baseline, (observed.get(key) as DurableBoundaryFact).semanticFingerprint);
+}
+
+export interface DriverReviewToolFact {
+  readonly name: string;
+  readonly access: "read";
+}
+
+export interface DriverReviewFacts {
+  readonly providerId: "anthropic" | "openai" | "opencode";
+  readonly modelId: string;
+  readonly destinationId: string;
+  readonly maximumCostUsd: number;
+  readonly modelCapabilities: readonly string[];
+  readonly tools: readonly DriverReviewToolFact[];
+  readonly classification: string;
+  readonly purpose: string;
+  readonly retention: string;
+  readonly egressMode: "online";
+}
+
+export interface DriverInvocationFacts {
+  readonly review: DriverReviewFacts;
+  readonly displayedReview: DriverReviewFacts;
+  readonly authorized: boolean;
+  readonly providerCalls: number;
+  readonly writerToolReachable: boolean;
+}
+
+const DRIVER_REVIEW_FIELDS = Object.freeze([
+  "classification",
+  "destinationId",
+  "egressMode",
+  "maximumCostUsd",
+  "modelCapabilities",
+  "modelId",
+  "providerId",
+  "purpose",
+  "retention",
+  "tools"
+]);
+
+function validReviewString(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0 && value.length <= 512;
+}
+
+function assertReviewString(value: unknown, label: string): void {
+  if (!validReviewString(value)) fail("VES_SELFTEST_DRIVER_REVIEW_INVALID", `Driver review ${label} is invalid`);
+}
+
+function assertReviewCapabilities(value: unknown): void {
+  if (!Array.isArray(value) || value.length === 0)
+    fail("VES_SELFTEST_DRIVER_REVIEW_INVALID", "Driver review capabilities are invalid");
+  if (!value.every(validReviewString) || new Set(value).size !== value.length)
+    fail("VES_SELFTEST_DRIVER_REVIEW_INVALID", "Driver review capabilities are invalid");
+}
+
+function assertReadOnlyTool(value: unknown): void {
+  if (value === null || typeof value !== "object" || Array.isArray(value))
+    fail("VES_SELFTEST_DRIVER_REVIEW_INVALID", "Driver Tool review facts are invalid");
+  const tool = value as DriverReviewToolFact;
+  if (Object.keys(tool).sort().join(",") !== "access,name" || !validReviewString(tool.name))
+    fail("VES_SELFTEST_DRIVER_REVIEW_INVALID", "Driver Tool review facts are invalid");
+  if (tool.access !== "read")
+    fail("VES_SELFTEST_WRITER_TOOL_REACHABLE", `Driver review exposes writer Tool ${tool.name}`);
+}
+
+function assertReviewTools(value: unknown): void {
+  if (!Array.isArray(value) || value.length === 0)
+    fail("VES_SELFTEST_DRIVER_REVIEW_INVALID", "Driver review Tools are invalid");
+  for (const tool of value) assertReadOnlyTool(tool);
+}
+
+function assertReviewCost(value: unknown): void {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0)
+    fail("VES_SELFTEST_DRIVER_REVIEW_INVALID", "Driver review maximum cost is invalid");
+}
+
+function assertDriverReviewFacts(value: unknown): DriverReviewFacts {
+  if (value === null || typeof value !== "object" || Array.isArray(value))
+    fail("VES_SELFTEST_DRIVER_REVIEW_INVALID", "Driver review facts are invalid");
+  const review = value as DriverReviewFacts;
+  if (Object.keys(review).sort().join(",") !== DRIVER_REVIEW_FIELDS.join(","))
+    fail("VES_SELFTEST_DRIVER_REVIEW_INVALID", "Driver review fields are invalid");
+  if (!["anthropic", "openai", "opencode"].includes(review.providerId))
+    fail("VES_SELFTEST_DRIVER_REVIEW_INVALID", "Driver review provider is invalid");
+  assertReviewString(review.modelId, "model");
+  assertReviewString(review.destinationId, "destination");
+  assertReviewCost(review.maximumCostUsd);
+  assertReviewCapabilities(review.modelCapabilities);
+  assertReviewTools(review.tools);
+  assertReviewString(review.classification, "classification");
+  assertReviewString(review.purpose, "purpose");
+  assertReviewString(review.retention, "retention");
+  if (review.egressMode !== "online")
+    fail("VES_SELFTEST_DRIVER_REVIEW_INVALID", "Driver review egress mode is invalid");
+  return review;
+}
+
+function canonicalDriverReview(review: DriverReviewFacts): string {
+  return JSON.stringify({
+    providerId: review.providerId,
+    modelId: review.modelId,
+    destinationId: review.destinationId,
+    maximumCostUsd: review.maximumCostUsd,
+    modelCapabilities: review.modelCapabilities,
+    tools: review.tools,
+    classification: review.classification,
+    purpose: review.purpose,
+    retention: review.retention,
+    egressMode: review.egressMode
+  });
+}
+
+function assertProviderCallFacts(facts: DriverInvocationFacts): void {
+  if (!Number.isSafeInteger(facts.providerCalls) || facts.providerCalls < 0)
+    fail("VES_SELFTEST_PROVIDER_CALL_INVALID", "provider call count is invalid");
+  if (facts.authorized === false && facts.providerCalls !== 0)
+    fail("VES_SELFTEST_PROVIDER_CALL_REACHED", "denied Driver authority reached a provider boundary");
+  if (facts.authorized === true && facts.providerCalls !== 1)
+    fail("VES_SELFTEST_PROVIDER_CALL_INVALID", "approved Driver invocation must reach exactly one provider boundary");
+  if (typeof facts.authorized !== "boolean")
+    fail("VES_SELFTEST_DRIVER_REVIEW_INVALID", "Driver authorization fact is invalid");
+}
+
+function assertNoWriterTool(facts: DriverInvocationFacts): void {
+  if (facts.writerToolReachable !== false)
+    fail("VES_SELFTEST_WRITER_TOOL_REACHABLE", "a writer Tool is reachable in the Driver profile");
+}
+
+// T71 (DRV-01â€“04): the composition root reports the approved and displayed
+// review surfaces plus the provider-boundary count. Exact equality is the
+// observable proof that destination, cost, capabilities, Tools, and egress
+// scope were shown without substitution.
+export function assertDriverInvocationFacts(facts: DriverInvocationFacts): void {
+  if (facts === null || typeof facts !== "object")
+    fail("VES_SELFTEST_DRIVER_REVIEW_INVALID", "Driver invocation facts are invalid");
+  const review = assertDriverReviewFacts(facts.review);
+  const displayedReview = assertDriverReviewFacts(facts.displayedReview);
+  if (canonicalDriverReview(review) !== canonicalDriverReview(displayedReview))
+    fail("VES_SELFTEST_DRIVER_REVIEW_INVALID", "displayed Driver review does not match approved facts");
+  assertNoWriterTool(facts);
+  assertProviderCallFacts(facts);
 }
 
 // TST-04: the Sentinel Set hashed before execution must be byte-identical
