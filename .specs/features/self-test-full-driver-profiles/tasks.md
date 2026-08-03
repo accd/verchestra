@@ -59,7 +59,7 @@ todo-marked, or made less specific to satisfy the threshold.
 | T2   | Done    | `ad8141b`; 26 crash-runner fault cases                  |
 | T3   | Done    | `1b047ad`; 4 successful full-scenario integration cases |
 | T4   | Done    | `9345cb1`; 23 production crash-matrix cases             |
-| T5   | Done    | 6 Driver authority security cases; commit pending       |
-| T6   | Pending | —                                                       |
+| T5   | Done    | `9d72bca`; 6 Driver authority security cases            |
+| T6   | Done    | 5 qualified Driver integration cases; commit pending    |
 | T7   | Pending | —                                                       |
 | T8   | Pending | —                                                       |

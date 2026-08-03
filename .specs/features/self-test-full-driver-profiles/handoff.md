@@ -5,10 +5,10 @@ issue: 12
 status: in_progress
 branch: codex/issue-12-t71-self-test
 baseRevision: 4b984c7e541863fe056a31a9e72749f9bcf46f7f
-lastCompletedTask: T5
-nextTask: T6
-lastGate: 6 T5 Driver authority security cases PASS; typecheck, lint, format, and complexity PASS on Node 24.18.0
-updatedAt: 2026-08-03T19:35:00Z
+lastCompletedTask: T6
+nextTask: T7
+lastGate: 11 T5/T6 Driver integration and security cases PASS; typecheck, lint, format, and complexity PASS on Node 24.18.0
+updatedAt: 2026-08-03T19:50:00Z
 ---
 
 # Scope
@@ -97,6 +97,18 @@ metadata changes are not authorized yet.
 - A writer-shaped Tool is rejected by the application rule before the callback
   can run. T5 focused evidence is 6/6 security cases; typecheck, lint, format,
   and complexity pass.
+- T5 Driver authority work committed as `9d72bca`.
+- T6 adds the previously approved internal `@verchestra/drivers` workspace
+  link and its missing package export; no external dependency or version was
+  added. The composition root runs the qualified Claude Code, Codex, and
+  OpenCode/Qwen adapters against repository-owned deterministic local
+  substitutes.
+- All three approved boundaries enter exactly once, emit normalized lifecycle
+  events, expose only `vestra_read`, and run beneath the existing offline
+  guard. The scenario also contains a denied path with zero calls and binds the
+  displayed review byte-for-byte to the approved facts.
+- T6 focused evidence: 5/5 integration cases and the 6 T5 security cases pass;
+  typecheck, lint, format, and complexity pass.
 
 # Decisions
 
@@ -114,8 +126,8 @@ metadata changes are not authorized yet.
 
 # Next action
 
-Commit T5 atomically, then qualify the three approved deterministic Driver
-boundaries and offline/no-writer evidence in T6.
+Commit T6 atomically, then wire the full and drivers scenarios into the stable
+CLI Self-Test dispatch and report path in T7.
 
 # Blockers
 
