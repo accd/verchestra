@@ -50,7 +50,7 @@ export function createCommandBus(controlRoot: string): CommandBus {
 // composes.
 async function executeSelfTest(command: CliCommand): Promise<CommandResult> {
   const profileId = command.options["profile"];
-  if (profileId !== "smoke" && profileId !== "workspace")
+  if (profileId !== "smoke" && profileId !== "workspace" && profileId !== "full" && profileId !== "drivers")
     throw cliError("VES_CLI_ARGUMENT_INVALID", { argument: "--profile" }, "Self-test profile is required");
   let sealed: Awaited<ReturnType<typeof runSelfTestProfile>>;
   try {

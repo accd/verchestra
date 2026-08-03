@@ -49,7 +49,11 @@ export const installedReleaseManifest: InstalledCliManifest = Object.freeze({
       supportsJson: true,
       mutating: false,
       options: Object.freeze([
-        Object.freeze({ name: "profile", kind: "string" as const, values: Object.freeze(["smoke", "workspace"]) })
+        Object.freeze({
+          name: "profile",
+          kind: "string" as const,
+          values: Object.freeze(["smoke", "full", "workspace", "drivers"])
+        })
       ])
     })
   ])

@@ -8,12 +8,16 @@ import { createHash } from "node:crypto";
 import { readFile, readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
+  DURABLE_CRASH_PHASES,
+  FULL_DURABLE_BOUNDARY_IDS,
   MachineBootstrapService,
   SelfTestOrchestrator,
   WORKSPACE_SHAPES,
   WorkspaceReconcileService,
   assertNoNetworkAttempts,
+  assertDurableBoundaryFacts,
   assertReportPayload,
   resolveSelfTestProfile,
   type CanonicalSyncConfiguration,
@@ -32,6 +36,7 @@ import { ArtifactSealer, NodeEd25519Signer, SupportCodeRegistry, type SealedArti
 import {
   BoundedFixtureFactory,
   DisposableRootProvider,
+  DurableCrashRunner,
   GitFixtureFactory,
   SentinelCatalog,
   offlineGuard,
@@ -43,6 +48,8 @@ import { scanWorkspace } from "@verchestra/workspace";
 import { runCli } from "./cli.ts";
 import { createCommandBus } from "./main.ts";
 import { installedReleaseManifest } from "./release-manifest.ts";
+import { runDriverScenario } from "./self-test-driver-scenario.ts";
+import { runFullWorkflowScenario } from "./self-test-full-scenario.ts";
 
 // Every VES_SELFTEST_* code the domain can emit into
 // `self_test.failure_codes`. The support-bundle contract rejects any code the
@@ -171,7 +178,7 @@ export class SelfTestComposition {
 // AD-010's "nowhere else" applies to the self-test signer exactly as it does
 // to the sibling subject adapters.
 export async function runSelfTestProfile(
-  profileId: "smoke" | "workspace",
+  profileId: SelfTestProfileId,
   options: { readonly controlRoot: string }
 ): Promise<SealedSelfTestReport> {
   const signer = NodeEd25519Signer.generate({ keyId: "self-test-cli", purposes: ["self-test-report"] });
@@ -179,10 +186,42 @@ export async function runSelfTestProfile(
     baseDirectory: join(tmpdir(), "verchestra-self-test"),
     guardedRoots: [await probeRootFacts(options.controlRoot)],
     sentinels: [],
-    scenario: profileId === "smoke" ? createSmokeScenario() : createWorkspaceScenario(),
+    scenario:
+      profileId === "smoke"
+        ? createSmokeScenario()
+        : profileId === "workspace"
+          ? createWorkspaceScenario()
+          : profileId === "full"
+            ? createFullScenario()
+            : createDriverScenario(),
     sealer: new ArtifactSealer({ signer, now: () => new Date() })
   });
   return composition.run(profileId);
+}
+
+export function createFullScenario(): SelfTestScenario {
+  return {
+    async run({ root }) {
+      const successful = await runFullWorkflowScenario(root);
+      const runner = new DurableCrashRunner({
+        entrypoint: fileURLToPath(new URL("./self-test-full-crash-child.ts", import.meta.url)),
+        timeoutMs: 60_000
+      });
+      const boundaryFacts = [];
+      for (const boundaryId of FULL_DURABLE_BOUNDARY_IDS)
+        for (const phase of DURABLE_CRASH_PHASES) boundaryFacts.push(await runner.run({ root, boundaryId, phase }));
+      assertDurableBoundaryFacts(boundaryFacts);
+      const checks = [
+        ...successful.facts.checks,
+        { checkId: "full.crash-recovery", requirement: "VES-STF-001", status: "pass" as const }
+      ];
+      return { ...successful.facts, checks, checkCount: checks.length };
+    }
+  };
+}
+
+export function createDriverScenario(): SelfTestScenario {
+  return { run: async () => (await runDriverScenario()).facts };
 }
 
 // T70: pure comparison so the zero-writes check is independently testable

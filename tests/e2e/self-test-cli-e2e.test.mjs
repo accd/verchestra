@@ -75,10 +75,28 @@ test("self-test without --profile fails with a stable non-zero exit before dispa
   assert.notEqual(result.status, 0);
 });
 
+test("self-test --profile drivers reaches every approved boundary", async () => {
+  const cwd = await repositoryRoot();
+  const result = launch(["self-test", "--profile", "drivers", "--output", "json"], cwd);
+  assert.equal(result.status, 0, result.stderr);
+  const output = JSON.parse(result.stdout);
+  assert.equal(output.data["self_test.profile"], "drivers");
+  assert.equal(output.data["self_test.check_count"], 7);
+});
+
 test("self-test with an invalid profile value fails with a stable non-zero exit", async () => {
   const cwd = await repositoryRoot();
-  const result = launch(["self-test", "--profile", "full"], cwd);
+  const result = launch(["self-test", "--profile", "unknown"], cwd);
   assert.notEqual(result.status, 0);
+});
+
+test("self-test --profile full includes hard-crash recovery", async () => {
+  const cwd = await repositoryRoot();
+  const result = launch(["self-test", "--profile", "full", "--output", "json"], cwd);
+  assert.equal(result.status, 0, result.stderr);
+  const output = JSON.parse(result.stdout);
+  assert.equal(output.data["self_test.profile"], "full");
+  assert.equal(output.data["self_test.check_count"], 10);
 });
 
 test("self-test leaves the invoking Git repository byte-identical", async () => {
