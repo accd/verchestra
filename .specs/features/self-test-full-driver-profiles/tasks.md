@@ -52,14 +52,14 @@ todo-marked, or made less specific to satisfy the threshold.
 
 ## Execution evidence
 
-| Task | Status | Commit / evidence                                          |
-| ---- | ------ | ---------------------------------------------------------- |
-| T0   | Done   | `f568642`                                                  |
-| T1   | Done   | `ba7969b`; 33 focused unit cases                           |
-| T2   | Done   | `ad8141b`; 26 crash-runner fault cases                     |
-| T3   | Done   | `1b047ad`; 4 successful full-scenario integration cases    |
-| T4   | Done   | `9345cb1`; 23 production crash-matrix cases                |
-| T5   | Done   | `9d72bca`; 6 Driver authority security cases               |
-| T6   | Done   | `3518665`; 5 qualified Driver integration cases            |
-| T7   | Done   | `0d04112`; 51 CLI contract/e2e cases                       |
-| T8   | Done   | `f7a8354`; quick/security/fault audit and handoff evidence |
+| Task | Status | Commit / evidence                                                      |
+| ---- | ------ | ---------------------------------------------------------------------- |
+| T0   | Done   | `f568642`                                                              |
+| T1   | Done   | `ba7969b`; 33 focused unit cases                                       |
+| T2   | Done   | `ad8141b`; 26 crash-runner fault cases                                 |
+| T3   | Done   | `1b047ad`; 4 successful full-scenario integration cases                |
+| T4   | Done   | `9345cb1`; 23 production crash-matrix cases                            |
+| T5   | Done   | `9d72bca`; 6 Driver authority security cases                           |
+| T6   | Done   | `3518665`; 5 qualified Driver integration cases                        |
+| T7   | Done   | `0d04112`; 51 CLI contract/e2e cases                                   |
+| T8   | Done   | `f7a8354`; quick/security/release PASS, full Windows baseline recorded |
