@@ -7,7 +7,7 @@ import { mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, test } from "node:test";
-import { SMOKE_CHECK_IDS, WORKSPACE_CHECK_IDS } from "../../packages/application/src/index.ts";
+import { DRIVER_CHECK_IDS, SMOKE_CHECK_IDS, WORKSPACE_CHECK_IDS } from "../../packages/application/src/index.ts";
 import { ArtifactSealer, NodeEd25519Signer, createTrustRoot } from "../../packages/evidence/src/index.ts";
 import { probeRootFacts } from "../../packages/self-test/src/index.ts";
 import {
@@ -233,7 +233,14 @@ test("the subject only ever receives test-only material", async () => {
     scenario: {
       run: async ({ materials }) => {
         observed = materials;
-        return { checkCount: 1, durationMs: 1, evidenceRefs: [], failureCodes: [], redactionCount: 0, checks: [] };
+        return {
+          checkCount: DRIVER_CHECK_IDS.length,
+          durationMs: 1,
+          evidenceRefs: [],
+          failureCodes: [],
+          redactionCount: 0,
+          checks: passingChecks(DRIVER_CHECK_IDS)
+        };
       }
     }
   });
