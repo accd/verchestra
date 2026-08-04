@@ -7,7 +7,7 @@ Issue: #35 (deferred external-review item R9)
 `IndependentVerificationCoordinator` (`packages/application/src/verification/verification.ts`)
 enforces actor-identity separation (`VES_VERIFIER_IDENTITY_CONFLICT`: the
 implementation author cannot verify their own work) and a sensor-isolation
-*claim* (`scratchIsolationVerified`) — but that claim is a boolean the calling
+_claim_ (`scratchIsolationVerified`) — but that claim is a boolean the calling
 port self-reports. Nothing today requires the verification to run under a
 different driver, in a different process, or with a capability grant that
 excludes write access. "Independent" is declared, not structural. T75 (#16)
@@ -59,24 +59,24 @@ live paid calls anywhere.
 
 ## Non-goals
 
-| Exclusion                                              | Reason                                              |
-| ------------------------------------------------------- | ---------------------------------------------------- |
-| A new process-spawning adapter or IPC protocol           | Drivers already spawn real, separate OS processes    |
-| Live paid model calls in any test                        | Forbidden everywhere in this repository               |
-| Wiring this into T71/T74/T75 composition roots           | Those tasks consume this capability; out of scope here |
-| Changing `VES_VERIFIER_IDENTITY_CONFLICT` (actor-level)  | Orthogonal; this adds a driver-level check alongside it |
+| Exclusion                                               | Reason                                                  |
+| ------------------------------------------------------- | ------------------------------------------------------- |
+| A new process-spawning adapter or IPC protocol          | Drivers already spawn real, separate OS processes       |
+| Live paid model calls in any test                       | Forbidden everywhere in this repository                 |
+| Wiring this into T71/T74/T75 composition roots          | Those tasks consume this capability; out of scope here  |
+| Changing `VES_VERIFIER_IDENTITY_CONFLICT` (actor-level) | Orthogonal; this adds a driver-level check alongside it |
 
 ## Requirements
 
-| ID       | Requirement                                                                                                                                  |
-| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| SVI-01   | WHEN the verifier driver id equals the implementer driver id THEN verification SHALL fail closed with a distinct error naming both ids.        |
-| SVI-02   | WHEN resolving which driver verifies THEN the function SHALL be pure, exclude the implementer's id from candidates, and return an explicit `not-configured` result when no other driver is available — never a silent fallback to the implementer's own id. |
-| SVI-03   | WHEN a verifier session is granted any tool at all THEN verification SHALL fail closed before running — the only non-guessable definition of read-only here is a granted tool set of size zero, since inspecting evidence and running sensors needs no tool capability. |
-| SVI-04   | WHEN a verifier driver session (granted zero tools) reports any `tool.requested` event THEN the attempt SHALL be rejected and recorded, not silently ignored or granted after the fact. |
-| SVI-05   | WHEN a verification report is sealed THEN it SHALL record both `implementerDriverId` and `verifierDriverId` explicitly, under an incremented schema version; existing `schemaVersion: 1` fixtures SHALL still be rejected as versioned (not silently accepted as v2). |
-| SVI-06   | WHEN the verifying driver session terminates unexpectedly (crash) or its active-state digest is tampered THEN verification SHALL fail closed, extending the existing sensor-isolation mechanism to also require the recorded verifier driver id. |
-| SVI-07   | Cross-driver coverage: at least two distinct driver identities are exercised in tests, proving resolution actually picks a different one and that a same-id attempt is refused. |
+| ID     | Requirement                                                                                                                                                                                                                                                             |
+| ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| SVI-01 | WHEN the verifier driver id equals the implementer driver id THEN verification SHALL fail closed with a distinct error naming both ids.                                                                                                                                 |
+| SVI-02 | WHEN resolving which driver verifies THEN the function SHALL be pure, exclude the implementer's id from candidates, and return an explicit `not-configured` result when no other driver is available — never a silent fallback to the implementer's own id.             |
+| SVI-03 | WHEN a verifier session is granted any tool at all THEN verification SHALL fail closed before running — the only non-guessable definition of read-only here is a granted tool set of size zero, since inspecting evidence and running sensors needs no tool capability. |
+| SVI-04 | WHEN a verifier driver session (granted zero tools) reports any `tool.requested` event THEN the attempt SHALL be rejected and recorded, not silently ignored or granted after the fact.                                                                                 |
+| SVI-05 | WHEN a verification report is sealed THEN it SHALL record both `implementerDriverId` and `verifierDriverId` explicitly, under an incremented schema version; existing `schemaVersion: 1` fixtures SHALL still be rejected as versioned (not silently accepted as v2).   |
+| SVI-06 | WHEN the verifying driver session terminates unexpectedly (crash) or its active-state digest is tampered THEN verification SHALL fail closed, extending the existing sensor-isolation mechanism to also require the recorded verifier driver id.                        |
+| SVI-07 | Cross-driver coverage: at least two distinct driver identities are exercised in tests, proving resolution actually picks a different one and that a same-id attempt is refused.                                                                                         |
 
 ## Acceptance Criteria
 

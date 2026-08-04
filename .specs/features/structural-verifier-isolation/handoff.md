@@ -6,9 +6,9 @@ status: verification
 branch: feat/35-structural-verifier-isolation
 baseRevision: a1e317f3bf1575e0243d597bbfa67785e94d7094
 lastCompletedTask: T7
-nextTask: Independent verification and human review
+nextTask: Human review and merge (Refs #35, not Closes — see below)
 lastGate: pnpm gate:security
-updatedAt: 2026-08-02T19:30:00Z
+updatedAt: 2026-08-02T19:45:00Z
 ---
 
 # Scope
@@ -19,9 +19,12 @@ new adapter. See design.md for why no new package is introduced.
 
 # Next Exact Action
 
-Independent verification (fresh agent, author ≠ verifier) of the full diff,
-then human review and merge. #35 closes with the T71+/T74+/T75+ composition
-consumption of `resolveVerifierDriver`, not with this PR.
+Independent Verifier pass complete: PASS, 60/60 tests, 4/4 independently
+chosen mutations killed (see validation.md). Awaiting human review and merge.
+**#35 stays open after this merges** — its full acceptance bar (a real
+composed verifier session in a live workflow) is T71/T74/T75 composition-root
+work per this feature's stated non-goals; this PR delivers only the reusable
+rules and resolution mechanism those tasks consume.
 
 # Blockers
 
