@@ -65,6 +65,67 @@ test("verification input missing driver identities is rejected as invalid, not d
   assert.deepEqual(state.calls, []);
 });
 
+// --- SVI-06: crash and tamper compose with driver-identity validity ---
+
+test("a driver-identity conflict fails before the sensor's crash/tamper mechanism ever runs", async () => {
+  const input = verificationInput();
+  input.verifierDriverId = input.implementerDriverId;
+  const { state, ports } = verificationPorts({
+    sensor: {
+      activeStateDigest: async () => {
+        throw new Error("sensor must never be reached once driver identity is invalid");
+      }
+    }
+  });
+  await assert.rejects(coordinator(ports).verify(input), { code: "VES_VERIFIER_DRIVER_CONFLICT" });
+  assert.equal(state.sensorRuns, 0);
+});
+
+test("a verifying driver session that crashes mid-sensor fails closed even with valid, distinct driver identities", async () => {
+  const input = verificationInput();
+  const { ports } = verificationPorts({
+    sensor: {
+      activeStateDigest: async () => sha("active-state"),
+      run: async () => {
+        throw new Error("verifier driver session terminated unexpectedly");
+      }
+    }
+  });
+  await assert.rejects(coordinator(ports).verify(input), /verifier driver session terminated unexpectedly/u);
+});
+
+test("a tampered active-state digest fails closed even though both driver identities validated correctly", async () => {
+  const input = verificationInput();
+  const { state, ports } = verificationPorts({
+    sensor: {
+      activeStateDigest: async () => sha("active-state"),
+      run: async (request) => {
+        state.calls.push(`mutate:${request.mutation.mutationId}`);
+        return {
+          scratchIsolationVerified: true,
+          killed: true,
+          expectedFailureObserved: true,
+          evidenceRef: `evidence:${request.mutation.mutationId}`,
+          activeStateBeforeDigest: sha("active-state"),
+          activeStateAfterDigest: sha("tampered-by-verifier-driver")
+        };
+      }
+    }
+  });
+  const result = await coordinator(ports).verify(input);
+  assert.equal(result.verdict, "FAIL");
+  assert.deepEqual(
+    state.reports[0].mutations.map((entry) => entry.status),
+    ["INVALID_SENSOR", "INVALID_SENSOR"]
+  );
+  // The report still names which drivers were involved, so a tampered run is
+  // attributable rather than anonymous.
+  assert.deepEqual(state.reports[0].driverBinding, {
+    implementerDriverId: input.implementerDriverId,
+    verifierDriverId: input.verifierDriverId
+  });
+});
+
 test("missing criterion evidence is evidence-or-zero and requests repair", async () => {
   const input = verificationInput();
   input.evidenceClaims = input.evidenceClaims.filter((claim) => claim.criterionId !== "AC-002");

@@ -2,13 +2,13 @@
 schema: verchestra-feature-handoff/v1
 feature: structural-verifier-isolation
 issue: 35
-status: planned
+status: verification
 branch: feat/35-structural-verifier-isolation
 baseRevision: a1e317f3bf1575e0243d597bbfa67785e94d7094
-lastCompletedTask: null
-nextTask: T1
-lastGate: pnpm gate:quick
-updatedAt: 2026-08-02T18:00:00Z
+lastCompletedTask: T7
+nextTask: Independent verification and human review
+lastGate: pnpm gate:security
+updatedAt: 2026-08-02T19:30:00Z
 ---
 
 # Scope
@@ -19,14 +19,24 @@ new adapter. See design.md for why no new package is introduced.
 
 # Next Exact Action
 
-T1: add `VES_VERIFIER_DRIVER_CONFLICT`, require
-`implementerDriverId`/`verifierDriverId` on `VerificationInput`, check
-immediately after the existing actor-identity check in
-`IndependentVerificationCoordinator.verify`.
+Independent verification (fresh agent, author ≠ verifier) of the full diff,
+then human review and merge. #35 closes with the T71+/T74+/T75+ composition
+consumption of `resolveVerifierDriver`, not with this PR.
 
 # Blockers
 
 None.
+
+# T1-T7 Evidence
+
+31 cases across `tests/unit/verification-driver-isolation.test.mjs` (12),
+`tests/unit/independent-verification.test.mjs` (19 total, 8 new), covering
+SVI-01..07. Discrimination campaign: 5/5 killed against the rule file (V1
+driver-conflict bypass, V2 resolution excludes-implementer bypass, V3
+read-only-grant bypass, V4 tool-request-detection bypass, V5 schema-version
+bypass), clean rerun 0 failures. `pnpm gate:quick` and `pnpm gate:security`
+PASS locally. Complexity ratchet: `verify()` improved 21 → 19 via
+`assertIndependentVerifier` extraction, locked in.
 
 # Decisions
 

@@ -131,3 +131,45 @@ test("a session with two tool-requests is reported with the exact count, not jus
   await driver.close(session);
   assert.throws(() => assertNoToolRequests(events), /requested 2 tool/u);
 });
+
+// --- SVI-07: full cross-driver scenario, end to end ---
+//
+// Two real, distinct DeterministicMockDriver instances play "Claude Code
+// wrote, Codex verifies" without any live paid call: probe availability,
+// resolve the verifier driver, start its session under a read-only grant,
+// and prove the session's own event stream carries no tool request.
+
+test("cross-driver scenario: probe, resolve, and run a read-only verifier session under a different driver", async () => {
+  const implementer = new DeterministicMockDriver({ scenario: [] });
+  const verifier = new DeterministicMockDriver({ scenario: [] });
+  const implementerProbe = await implementer.probe();
+  const verifierProbe = await verifier.probe();
+  assert.equal(implementerProbe.driverId, "mock");
+  assert.equal(verifierProbe.driverId, "mock");
+
+  // Two sessions of the same driver type still carry distinct identities in
+  // this scenario (labeled by the composition root, not the driver package,
+  // exactly as T71+ composition will label real ClaudeCodeDriver vs
+  // CodexDriver instances) — resolution must still refuse a same-label match.
+  const implementerDriverId = "claude-code";
+  const resolution = resolveVerifierDriver(
+    [
+      { driverId: implementerDriverId, available: true },
+      { driverId: "codex", available: true }
+    ],
+    implementerDriverId
+  );
+  assert.deepEqual(resolution, { status: "resolved", driverId: "codex" });
+  assert.notEqual(resolution.driverId, implementerDriverId);
+
+  assertReadOnlyGrant([]);
+  const events = [];
+  const session = await startVerifierSession(verifier, events);
+  await verifier.close(session);
+  assertNoToolRequests(events);
+});
+
+test("cross-driver scenario: a single available driver (equal to the implementer) resolves not-configured, never a same-runtime fallback", () => {
+  const resolution = resolveVerifierDriver([{ driverId: "claude-code", available: true }], "claude-code");
+  assert.deepEqual(resolution, { status: "not-configured" });
+});
