@@ -13,6 +13,11 @@
 | T6   | Claude, Codex, and OpenCode/Qwen deterministic approved paths; writer Tool denial                                     | T5         | Driver integration/security tests       | Qualified adapter boundaries and tests |
 | T7   | CLI dispatch for `full` and `drivers`, stable rendering/exit behavior                                                 | T3, T6     | CLI contract/e2e tests                  | Public CLI behavior and tests          |
 | T8   | Case-count audit, mutation/discrimination sensors, quick/security gates, handoff evidence                             | T1–T7      | `pnpm gate:quick`, `pnpm gate:security` | Evidence update only                   |
+| T9   | Bind the approved, displayed, and actually used Driver request before provider entry; reject every sensitive-field mutation and unknown field | T8 | Driver security and integration tests | Driver execution binding and tests |
+| T10  | Strengthen pure-verdict discrimination for every full-workflow field and the exact four-entry Driver provider set      | T9         | Self-Test unit tests                    | Verdict sensors only                   |
+| T11  | Derive crash identity, multiplicity, digest, and status from each authoritative durable store after resume            | T10        | Self-Test unit and fault tests          | Durable outcome evidence and tests     |
+| T12  | Prove every boundary/phase cell and the happy path receive distinct normalized disposable roots                       | T11        | Self-Test fault and integration tests   | Matrix isolation sensor                |
+| T13  | Record review remediation evidence and run every required final gate on the exact revision                            | T9–T12     | All required repository gates           | Handoff evidence only                  |
 
 ## Test matrix
 
@@ -49,6 +54,11 @@ todo-marked, or made less specific to satisfy the threshold.
 | T6   | DRV-03–04, FULL-04          |
 | T7   | CLI-01                      |
 | T8   | TST-01 and all requirements |
+| T9   | DRV-01–04                   |
+| T10  | FULL-01, DRV-01–04          |
+| T11  | FULL-02–03                  |
+| T12  | FULL-03                     |
+| T13  | TST-01 and all requirements |
 
 ## Execution evidence
 
@@ -63,3 +73,8 @@ todo-marked, or made less specific to satisfy the threshold.
 | T6   | Done   | `3518665`; 5 qualified Driver integration cases                        |
 | T7   | Done   | `0d04112`; 51 CLI contract/e2e cases                                   |
 | T8   | Done   | `f7a8354`; quick/security/release PASS, full Windows baseline recorded |
+| T9   | Planned | Requested changes on PR #182; Driver authority ordering and execution binding |
+| T10  | Planned | Requested changes on PR #182; pure-verdict discrimination sensors     |
+| T11  | Planned | Requested changes on PR #182; authoritative durable outcome evidence  |
+| T12  | Planned | Requested changes on PR #182; crash-matrix root-isolation sensor       |
+| T13  | Planned | Requested changes on PR #182; final evidence and handoff               |

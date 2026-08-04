@@ -2,13 +2,13 @@
 schema: verchestra-feature-handoff/v1
 feature: self-test-full-driver-profiles
 issue: 12
-status: verification
+status: in_progress
 branch: codex/issue-12-t71-self-test
-baseRevision: 4b984c7e541863fe056a31a9e72749f9bcf46f7f
+baseRevision: a1e317f3bf1575e0243d597bbfa67785e94d7094
 lastCompletedTask: T8
-nextTask: Observe PR #182 rerun CI, then independent evidence and human review
-lastGate: gate:quick/security/release PASS; gate:full 560/563 with three reproduced base Windows Git-fixture failures
-updatedAt: 2026-08-04T12:00:00Z
+nextTask: T9 — bind the actually used Driver request and complete zero-entry authority sensors
+lastGate: PR head 85bcb89 CI Quality, Site, and CodeQL PASS; review CHANGES_REQUESTED
+updatedAt: 2026-08-04T08:20:38Z
 ---
 
 # Scope
@@ -170,9 +170,10 @@ metadata changes are not authorized yet.
 
 # Next action
 
-Observe the rerun CI checks on draft PR #182, then submit the change for
-independent evidence review and mandatory human review. Keep the pull request
-in draft until its required checks pass.
+Execute review-remediation tasks T9–T13 atomically. Start by binding the
+approved, displayed, and actually used Driver request before provider entry and
+proving that every sensitive-field or unknown-field mutation leaves the
+provider-boundary count at zero. Do not push without contributor authorization.
 
 # Blockers
 
@@ -195,6 +196,9 @@ and are existing Windows Git-fixture normalization/quoting failures in
 `tests/integration/self-test-git-fixtures.test.mjs`; all T71 full, Driver, and
 crash cases pass.
 
-PR readiness still requires the external CI result, independent evidence
-review, and mandatory human review. No qualification report or merge is
-claimed by this handoff.
+The remote branch is synchronized with qualified T70 base `a1e317f`, and CI
+passes on PR head `85bcb89`. The maintainer review remains
+`CHANGES_REQUESTED`: Driver actually-used binding, complete pure-verdict
+sensors, authoritative per-boundary crash evidence, and a matrix-isolation
+sensor must be independently demonstrated before review can resume. No
+qualification report or merge is claimed by this handoff.
