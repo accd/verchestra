@@ -36,8 +36,8 @@ existing exports is cheaper and more honest than a parallel abstraction.
   pure, exported standalone (not a coordinator method): filters to
   `available && driverId !== implementerDriverId`, sorts by `driverId` for
   determinism, returns the first or `not-configured`. Composition roots call
-  this to decide *which* driver to spawn for verification; the coordinator
-  only validates the *result* was applied correctly (SVI-01).
+  this to decide _which_ driver to spawn for verification; the coordinator
+  only validates the _result_ was applied correctly (SVI-01).
 - The sealed report (`schemaVersion: 2`) adds `implementerDriverId` and
   `verifierDriverId` fields alongside the existing `actorBinding`. The input
   normalizer rejects `schemaVersion !== 2` with the existing
