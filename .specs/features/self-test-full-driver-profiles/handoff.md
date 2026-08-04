@@ -5,10 +5,10 @@ issue: 12
 status: in_progress
 branch: codex/issue-12-t71-self-test
 baseRevision: a1e317f3bf1575e0243d597bbfa67785e94d7094
-lastCompletedTask: T9
-nextTask: T10 — strengthen pure-verdict discrimination sensors
-lastGate: T9 focused 72/72 PASS; typecheck, lint, format, and complexity PASS on Node 24.14.0
-updatedAt: 2026-08-04T08:27:38Z
+lastCompletedTask: T10
+nextTask: T11 — derive per-boundary outcomes from authoritative durable stores
+lastGate: T10 focused 28/28 PASS; lint and format PASS on Node 24.14.0
+updatedAt: 2026-08-04T08:30:02Z
 ---
 
 # Scope
@@ -162,6 +162,12 @@ metadata changes are not authorized yet.
   each authority surface. Unknown review or authority fields also fail before
   entry. Focused evidence is 72/72 unit, security, and integration cases, with
   typecheck, lint, format, and complexity checks passing on Node 24.14.0.
+- T10 strengthens the pure application verdict sensors. Invalid package and
+  Capsule storage outcomes are now exercised explicitly; neither full nor
+  Driver PASS checks can be constructed from rejected facts; and the duplicate
+  provider sensor retains exactly three approved plus one denied invocation so
+  it cannot pass merely because cardinality changed. Focused evidence is 28/28
+  application-rule cases, with lint and format passing on Node 24.14.0.
 
 # Decisions
 
@@ -179,9 +185,10 @@ metadata changes are not authorized yet.
 
 # Next action
 
-Execute review-remediation tasks T10–T13 atomically. Next strengthen the
-full-workflow and exact-provider-set discrimination sensors. Do not push
-without contributor authorization.
+Execute review-remediation tasks T11–T13 atomically. Next derive each crash
+boundary's logical identity, multiplicity, digest, and status from its
+authoritative durable store after resume. Do not push without contributor
+authorization.
 
 # Blockers
 
