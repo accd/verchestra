@@ -28,6 +28,54 @@ export type VerificationErrorCode =
   | "VES_HUMAN_REVIEW_RECORD_INVALID"
   | "VES_HUMAN_REVIEW_WORKFLOW_REJECTED";
 
+export interface DriverAvailabilityFact {
+  readonly driverId: string;
+  readonly available: boolean;
+}
+
+export type VerifierDriverResolution =
+  { readonly status: "resolved"; readonly driverId: string } | { readonly status: "not-configured" };
+
+// SVI-02: pure and deterministic so composition roots (T71/T74/T75) can call
+// it directly and tests never depend on which real CLIs happen to be
+// installed. Excludes the implementer's own id even if it reports available
+// twice under different facts, and never falls back to it — a missing
+// second driver is reported, never silently absorbed.
+export function resolveVerifierDriver(
+  candidates: readonly DriverAvailabilityFact[],
+  implementerDriverId: string
+): VerifierDriverResolution {
+  const eligible = candidates
+    .filter((candidate) => candidate.available && candidate.driverId !== implementerDriverId)
+    .map((candidate) => candidate.driverId)
+    .sort();
+  return eligible.length > 0 ? { status: "resolved", driverId: eligible[0] as string } : { status: "not-configured" };
+}
+
+// SVI-03: the only non-guessable definition of read-only here is a granted
+// tool set of size zero. Verification inspects evidence and runs sensors;
+// neither needs any execution-tool capability, so there is no legitimate
+// nonempty grant to classify — unlike a name-based allowlist, this cannot be
+// bypassed by renaming a tool.
+export function assertReadOnlyGrant(tools: readonly unknown[]): void {
+  if (tools.length > 0)
+    fail("VES_VERIFIER_GRANT_INVALID", `a verifier session must be granted zero tools; received ${tools.length}`);
+}
+
+// SVI-04: a verifier session is always started with assertReadOnlyGrant's
+// zero-tool grant, so any tool.requested event the session's stream produces
+// is itself the violation — there is no authorized set a request could ever
+// match. Composition roots call this over the collected event stream after a
+// verifier session closes.
+export function assertNoToolRequests(events: readonly { readonly type: string }[]): void {
+  const requested = events.filter((event) => event.type === "tool.requested");
+  if (requested.length > 0)
+    fail(
+      "VES_VERIFIER_GRANT_INVALID",
+      `verifier session requested ${requested.length} tool(s) despite a zero-tool grant`
+    );
+}
+
 export class VerificationError extends Error {
   readonly code: VerificationErrorCode;
 
