@@ -8,7 +8,7 @@ import {
   FULL_DURABLE_BOUNDARY_IDS,
   assertDurableBoundaryFacts
 } from "../../packages/application/src/index.ts";
-import { DisposableRootProvider, DurableCrashRunner } from "../../packages/self-test/src/index.ts";
+import { DisposableRootProvider, DurableCrashRunner, rootIdentityDigest } from "../../packages/self-test/src/index.ts";
 
 const roots = [];
 const entrypoint = resolve("apps/vestra-cli/src/self-test-full-crash-child.ts");
@@ -45,6 +45,7 @@ for (const boundaryId of FULL_DURABLE_BOUNDARY_IDS) {
       assert.match(fact.logicalId, /^[-:._A-Za-z0-9]+$/u);
       assert.match(fact.resultDigest, /^sha256:[a-f0-9]{64}$/u);
       assert.match(fact.resultStatus, /^[A-Z_-]+$/u);
+      assert.match(fact.rootIdentity, /^sha256:[a-f0-9]{64}$/u);
       assert.equal(fact.resumed, true);
       assert.equal(fact.crashExitCode, 86);
       assert.equal(fact.resumeExitCode, 0);
@@ -60,7 +61,8 @@ test("the production crash matrix satisfies the closed application verdict", asy
   for (const boundaryId of FULL_DURABLE_BOUNDARY_IDS) {
     for (const phase of DURABLE_CRASH_PHASES) facts.push(await runner.run({ root: disposable, boundaryId, phase }));
   }
-  assert.doesNotThrow(() => assertDurableBoundaryFacts(facts));
+  assert.doesNotThrow(() => assertDurableBoundaryFacts(facts, rootIdentityDigest(disposable)));
+  assert.equal(new Set(facts.map(({ rootIdentity }) => rootIdentity)).size, facts.length);
   for (const boundaryId of FULL_DURABLE_BOUNDARY_IDS) {
     const outcomes = facts.filter((fact) => fact.boundaryId === boundaryId);
     assert.equal(new Set(outcomes.map((fact) => fact.logicalId)).size, 1, `${boundaryId} logical identity diverged`);

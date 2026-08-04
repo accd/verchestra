@@ -5,10 +5,10 @@ issue: 12
 status: in_progress
 branch: codex/issue-12-t71-self-test
 baseRevision: a1e317f3bf1575e0243d597bbfa67785e94d7094
-lastCompletedTask: T11
-nextTask: T12 — prove distinct roots for every matrix cell and the happy path
-lastGate: T11 focused 36/36 PASS; 49/49 crash cases PASS; typecheck PASS on Node 24.14.0
-updatedAt: 2026-08-04T08:43:47Z
+lastCompletedTask: T12
+nextTask: T13 — run final gates and record exact-review evidence
+lastGate: T12 application and crash isolation sensors PASS on Node 24.14.0
+updatedAt: 2026-08-04T08:49:33Z
 ---
 
 # Scope
@@ -179,6 +179,13 @@ metadata changes are not authorized yet.
   convergence for all eleven boundaries. Focused evidence is 36/36 unit and
   integration cases plus 49/49 crash-runner and production-matrix cases;
   typecheck passes on Node 24.14.0.
+- T12 adds an opaque identity digest for the normalized root actually passed
+  to each crash child. The application verdict requires every boundary/phase
+  cell to use a distinct root and rejects any matrix root shared with the happy
+  path; no machine-local path enters the report.
+- Mutation sensors reject malformed, duplicated, and happy-path-colliding root
+  identities. The production matrix also asserts all 22 observed identities
+  are distinct.
 
 # Decisions
 
@@ -196,10 +203,9 @@ metadata changes are not authorized yet.
 
 # Next action
 
-Execute review-remediation tasks T12–T13 atomically. Next add a behavioral
-sensor proving that the happy path and every boundary/phase matrix cell use
-distinct normalized disposable roots. Do not push without contributor
-authorization.
+Execute review-remediation task T13. Run the required final gates on the exact
+revision, record the evidence, and prepare the English review response. Do not
+push without contributor authorization.
 
 # Blockers
 
