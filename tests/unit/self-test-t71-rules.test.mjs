@@ -10,7 +10,9 @@ import {
   assertDriverInvocationFacts,
   assertDriverScenarioFacts,
   assertDurableBoundaryFacts,
-  assertFullWorkflowFacts
+  assertFullWorkflowFacts,
+  driverScenarioChecks,
+  fullWorkflowChecks
 } from "../../packages/application/src/index.ts";
 
 const fingerprint = Object.freeze(["full.complete:pass"]);
@@ -268,6 +270,7 @@ function fullFacts(overrides = {}) {
 
 test("full workflow verdict rejects every invalid observed fact", () => {
   const mutations = [
+    { packageStored: "conflict" },
     { packageVerified: false },
     { approvalVerified: false },
     { contextFragments: 0 },
@@ -278,11 +281,18 @@ test("full workflow verdict rejects every invalid observed fact", () => {
     { gateStatus: "PENDING" },
     { verificationVerdict: "FAIL" },
     { handoffStatus: "PREPARED" },
+    { capsuleStored: "conflict" },
     { capsuleVerified: false },
     { portableEvidenceValid: false }
   ];
   for (const mutation of mutations)
     assert.throws(() => assertFullWorkflowFacts(fullFacts(mutation)), { code: "VES_SELFTEST_FULL_FACTS_INVALID" });
+});
+
+test("full workflow PASS checks cannot be created from invalid facts", () => {
+  assert.throws(() => fullWorkflowChecks(fullFacts({ effectApplyCalls: 2 })), {
+    code: "VES_SELFTEST_FULL_FACTS_INVALID"
+  });
 });
 
 function driverScenarioFacts(overrides = {}) {
@@ -301,9 +311,11 @@ function driverScenarioFacts(overrides = {}) {
 }
 
 test("Driver scenario verdict rejects missing, duplicate, writer, lifecycle, and network facts", () => {
+  const duplicateProvider = structuredClone(driverScenarioFacts());
+  duplicateProvider.invocations[2] = structuredClone(duplicateProvider.invocations[0]);
   const mutations = [
     { invocations: driverScenarioFacts().invocations.slice(1) },
-    { invocations: [...driverScenarioFacts().invocations, driverScenarioFacts().invocations[0]] },
+    { invocations: duplicateProvider.invocations },
     { lifecycle: { sessionStarted: 2, sessionClosed: 3, writerToolRequests: 0, networkAttempts: 0 } },
     { lifecycle: { sessionStarted: 3, sessionClosed: 2, writerToolRequests: 0, networkAttempts: 0 } },
     { lifecycle: { sessionStarted: 3, sessionClosed: 3, writerToolRequests: 1, networkAttempts: 0 } },
@@ -313,4 +325,12 @@ test("Driver scenario verdict rejects missing, duplicate, writer, lifecycle, and
     assert.throws(() => assertDriverScenarioFacts(driverScenarioFacts(mutation)), {
       code: "VES_SELFTEST_DRIVER_SCENARIO_INVALID"
     });
+});
+
+test("Driver PASS checks cannot be created from a duplicate-provider set", () => {
+  const duplicateProvider = structuredClone(driverScenarioFacts());
+  duplicateProvider.invocations[2] = structuredClone(duplicateProvider.invocations[0]);
+  assert.throws(() => driverScenarioChecks(duplicateProvider), {
+    code: "VES_SELFTEST_DRIVER_SCENARIO_INVALID"
+  });
 });
