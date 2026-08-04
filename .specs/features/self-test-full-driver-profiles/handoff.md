@@ -5,10 +5,10 @@ issue: 12
 status: in_progress
 branch: codex/issue-12-t71-self-test
 baseRevision: a1e317f3bf1575e0243d597bbfa67785e94d7094
-lastCompletedTask: T12
-nextTask: T13 — run final gates and record exact-review evidence
-lastGate: T12 application and crash isolation sensors PASS on Node 24.14.0
-updatedAt: 2026-08-04T08:49:33Z
+lastCompletedTask: T13
+nextTask: contributor review, authorized push, then maintainer re-review
+lastGate: quick/security/release PASS; full PASS on clean worktree at b0dc393
+updatedAt: 2026-08-04T09:11:46Z
 ---
 
 # Scope
@@ -186,6 +186,17 @@ metadata changes are not authorized yet.
 - Mutation sensors reject malformed, duplicated, and happy-path-colliding root
   identities. The production matrix also asserts all 22 observed identities
   are distinct.
+- T13 ran the final gates on behavior revision `7b25d37` with Node 24.14.0,
+  pnpm 10.34.5, Claude Code 2.1.168, Codex CLI 0.115.0, and an isolated empty
+  `APPDATA`. `gate:quick`, `gate:security`, and `gate:release` pass with zero
+  skipped or todo cases. The release suite remains explicitly empty until T73
+  and is not claimed as release evidence.
+- The primary worktree's first `gate:full` run reached 559/564 integration
+  cases, with five Windows `EBUSY` cleanup errors. A targeted detached-base run
+  at `a1e317f` passed 15/15, and a clean detached worktree at exact remediation
+  SHA `b0dc393` passed `gate:full` completely: 1,875 unit, 564 integration, and
+  283 fault cases, with zero failures, skips, or todos. This local discrepancy
+  is recorded as worktree state, not classified as a pre-existing code defect.
 
 # Decisions
 
@@ -203,9 +214,9 @@ metadata changes are not authorized yet.
 
 # Next action
 
-Execute review-remediation task T13. Run the required final gates on the exact
-revision, record the evidence, and prepare the English review response. Do not
-push without contributor authorization.
+Contributor review of the five local remediation commits. After explicit push
+authorization, push only `codex/issue-12-t71-self-test`, update PR #182's
+English summary/evidence, and request maintainer re-review.
 
 # Blockers
 
@@ -219,18 +230,19 @@ record adapter; and each crash matrix cell receives a clean nested root rather
 than the happy-path root. The durable effect count is read from the persisted
 RuntimeStore receipt on resume.
 
-Focused evidence after remediation: typecheck, lint, format, and complexity
-pass; 44 focused unit/security/integration cases pass; the 23-case full crash
-matrix passes; `pnpm gate:quick`, `pnpm gate:security`, and
-`pnpm gate:release` pass with zero skips or todos. `pnpm gate:full` passes
-560/563 cases. The three failures reproduce unchanged on clean `origin/main`
-and are existing Windows Git-fixture normalization/quoting failures in
-`tests/integration/self-test-git-fixtures.test.mjs`; all T71 full, Driver, and
-crash cases pass.
+Focused evidence after remediation: the T9 72-case binding suite, T10 28-case
+verdict suite, T11/T12 39-case application/integration suite, and 49-case crash
+suite pass. Typecheck, lint, format, complexity, and `agent:check` pass.
+`pnpm gate:quick`, `pnpm gate:security`, and `pnpm gate:release` pass with zero
+skips or todos. The exact two-suite rerun passes 15/15 on detached base
+`a1e317f`; `pnpm gate:full` passes completely on a clean detached worktree at
+exact remediation SHA `b0dc393`. All T71 full, Driver, authoritative-outcome,
+root-isolation, and crash cases pass.
 
 The remote branch is synchronized with qualified T70 base `a1e317f`, and CI
 passes on PR head `85bcb89`. The maintainer review remains
-`CHANGES_REQUESTED`: Driver actually-used binding, complete pure-verdict
-sensors, authoritative per-boundary crash evidence, and a matrix-isolation
-sensor must be independently demonstrated before review can resume. No
+`CHANGES_REQUESTED` until these local commits are contributor-reviewed and
+pushed. Driver actually-used binding, complete pure-verdict sensors,
+authoritative per-boundary crash evidence, and matrix isolation are now
+implemented locally with discrimination evidence. No
 qualification report or merge is claimed by this handoff.
