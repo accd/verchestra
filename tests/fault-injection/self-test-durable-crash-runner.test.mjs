@@ -8,7 +8,7 @@ import {
   FULL_DURABLE_BOUNDARY_IDS,
   assertDurableBoundaryFacts
 } from "../../packages/application/src/index.ts";
-import { DurableCrashRunner, probeRootFacts } from "../../packages/self-test/src/index.ts";
+import { DurableCrashRunner, probeRootFacts, rootIdentityDigest } from "../../packages/self-test/src/index.ts";
 
 const roots = [];
 const entrypoint = resolve("tests/helpers/self-test-durable-crash-child.mjs");
@@ -38,6 +38,7 @@ for (const boundaryId of FULL_DURABLE_BOUNDARY_IDS) {
       assert.equal(facts.logicalResultCount, 1);
       assert.match(facts.resultDigest, /^sha256:[a-f0-9]{64}$/u);
       assert.equal(facts.resultStatus, "STORED");
+      assert.match(facts.rootIdentity, /^sha256:[a-f0-9]{64}$/u);
       assert.equal(facts.resumed, true);
       assert.equal(facts.crashExitCode, 86);
       assert.equal(facts.resumeExitCode, 0);
@@ -53,7 +54,7 @@ test("the complete child-process matrix satisfies the application verdict", asyn
   for (const boundaryId of FULL_DURABLE_BOUNDARY_IDS) {
     for (const phase of DURABLE_CRASH_PHASES) facts.push(await runner.run({ root: disposable, boundaryId, phase }));
   }
-  assert.doesNotThrow(() => assertDurableBoundaryFacts(facts));
+  assert.doesNotThrow(() => assertDurableBoundaryFacts(facts, rootIdentityDigest(disposable)));
 });
 
 test("a relative child entrypoint is refused", () => {

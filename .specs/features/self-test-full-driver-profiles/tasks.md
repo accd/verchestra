@@ -75,6 +75,6 @@ todo-marked, or made less specific to satisfy the threshold.
 | T8   | Done    | `f7a8354`; quick/security/release PASS, full Windows baseline recorded                  |
 | T9   | Done    | Approved/displayed/actual review binding; 72 focused unit/security/integration cases    |
 | T10  | Done    | 28/28 application-rule cases; invalid PASS builders and exact duplicate-provider sensor |
-| T11  | Done    | 49/49 crash cases; authoritative stores                                                 |
-| T12  | Planned | Requested changes on PR #182; crash-matrix root-isolation sensor                        |
+| T11  | Done    | `a4ce1aa`; 49/49 crash cases; authoritative stores                                      |
+| T12  | Done    | 34 application-rule cases; 49 isolated crash cases                                      |
 | T13  | Planned | Requested changes on PR #182; final evidence and handoff                                |

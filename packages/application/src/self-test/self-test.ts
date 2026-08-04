@@ -323,6 +323,7 @@ export interface DurableOutcomeFact {
 
 export interface DurableBoundaryFact extends DurableOutcomeFact {
   readonly phase: DurableCrashPhase;
+  readonly rootIdentity: string;
   readonly resumed: boolean;
   readonly semanticFingerprint: readonly string[];
   readonly crashExitCode: number;
@@ -347,6 +348,8 @@ function assertDurableOutcome(fact: DurableOutcomeFact): void {
 }
 
 function assertCrashResult(fact: DurableBoundaryFact): void {
+  if (!/^sha256:[a-f0-9]{64}$/u.test(fact.rootIdentity))
+    fail("VES_SELFTEST_DURABLE_BOUNDARY_INVALID", "durable boundary root identity is invalid");
   if (fact.resumed !== true) fail("VES_SELFTEST_DURABLE_BOUNDARY_INVALID", "durable boundary did not resume");
   if (fact.crashExitCode !== DURABLE_CRASH_EXIT_CODE)
     fail("VES_SELFTEST_DURABLE_BOUNDARY_INVALID", "durable boundary did not observe the expected hard crash");
@@ -354,6 +357,14 @@ function assertCrashResult(fact: DurableBoundaryFact): void {
     fail("VES_SELFTEST_DURABLE_BOUNDARY_INVALID", "durable boundary resume did not exit successfully");
   if (!validFingerprint(fact.semanticFingerprint))
     fail("VES_SELFTEST_DURABLE_BOUNDARY_INVALID", "durable boundary fingerprint is invalid");
+}
+
+function assertRootIsolation(facts: readonly DurableBoundaryFact[], happyRootIdentity: string): void {
+  if (!/^sha256:[a-f0-9]{64}$/u.test(happyRootIdentity))
+    fail("VES_SELFTEST_DURABLE_BOUNDARY_INVALID", "happy-path root identity is invalid");
+  const matrixRoots = new Set(facts.map(({ rootIdentity }) => rootIdentity));
+  if (matrixRoots.size !== facts.length || matrixRoots.has(happyRootIdentity))
+    fail("VES_SELFTEST_DURABLE_BOUNDARY_INVALID", "durable boundary roots are not isolated");
 }
 
 function durableBoundaryKey(fact: DurableBoundaryFact | null): string {
@@ -371,7 +382,7 @@ function durableBoundaryKey(fact: DurableBoundaryFact | null): string {
 // T71 (FULL-02/03): the child-process adapter reports only persisted facts.
 // This pure rule owns the verdict and requires the full before/after matrix,
 // exact-once multiplicity, a real resume, and one convergent semantic result.
-export function assertDurableBoundaryFacts(facts: readonly DurableBoundaryFact[]): void {
+export function assertDurableBoundaryFacts(facts: readonly DurableBoundaryFact[], happyRootIdentity: string): void {
   const expected = FULL_DURABLE_BOUNDARY_IDS.flatMap((boundaryId) =>
     DURABLE_CRASH_PHASES.map((phase) => `${boundaryId}:${phase}`)
   );
@@ -385,6 +396,7 @@ export function assertDurableBoundaryFacts(facts: readonly DurableBoundaryFact[]
   const missing = expected.filter((key) => !observed.has(key));
   if (observed.size !== expected.length || missing.length > 0)
     fail("VES_SELFTEST_DURABLE_BOUNDARY_INVALID", `durable boundary matrix is incomplete: ${missing.join(", ")}`);
+  assertRootIsolation(facts, happyRootIdentity);
   const baseline = observed.get(expected[0] as string)?.semanticFingerprint as readonly string[];
   for (const key of expected.slice(1))
     assertConvergence(baseline, (observed.get(key) as DurableBoundaryFact).semanticFingerprint);

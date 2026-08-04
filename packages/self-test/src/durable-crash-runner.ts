@@ -11,7 +11,7 @@ import {
   type FullDurableBoundaryId,
   type RootFacts
 } from "@verchestra/application";
-import { probeRootFacts } from "./disposable-roots.ts";
+import { probeRootFacts, rootIdentityDigest } from "./disposable-roots.ts";
 
 export type DurableCrashRunnerErrorCode =
   "VES_SELFTEST_CRASH_ENTRYPOINT_INVALID" | "VES_SELFTEST_CRASH_PROCESS_FAILED" | "VES_SELFTEST_CRASH_FACTS_INVALID";
@@ -128,6 +128,7 @@ export class DurableCrashRunner {
       }
       return Object.freeze({
         ...parsedBoundaryFact(parsed),
+        rootIdentity: rootIdentityDigest(caseRoot),
         crashExitCode: crash.exitCode,
         resumeExitCode: resume.exitCode
       });

@@ -10,6 +10,7 @@ export {
   collectLinkChain,
   normalizeFactPath,
   probeRootFacts,
+  rootIdentityDigest,
   sha256
 } from "./disposable-roots.ts";
 export {

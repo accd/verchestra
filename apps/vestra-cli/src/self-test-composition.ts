@@ -41,6 +41,7 @@ import {
   SentinelCatalog,
   offlineGuard,
   probeRootFacts,
+  rootIdentityDigest,
   testOnlyKeyMaterial,
   type SentinelTarget
 } from "@verchestra/self-test";
@@ -216,7 +217,7 @@ export function createFullScenario(): SelfTestScenario {
       const boundaryFacts = [];
       for (const boundaryId of FULL_DURABLE_BOUNDARY_IDS)
         for (const phase of DURABLE_CRASH_PHASES) boundaryFacts.push(await runner.run({ root, boundaryId, phase }));
-      assertDurableBoundaryFacts(boundaryFacts);
+      assertDurableBoundaryFacts(boundaryFacts, rootIdentityDigest(root));
       const checks = [
         ...successful.facts.checks,
         { checkId: "full.crash-recovery", requirement: "VES-STF-001", status: "pass" as const }

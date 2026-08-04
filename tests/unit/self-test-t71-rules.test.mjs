@@ -9,15 +9,17 @@ import {
   FULL_DURABLE_BOUNDARY_IDS,
   assertDriverInvocationFacts,
   assertDriverScenarioFacts,
-  assertDurableBoundaryFacts,
+  assertDurableBoundaryFacts as assertDurableBoundaryFactsRule,
   assertFullWorkflowFacts,
   driverScenarioChecks,
   fullWorkflowChecks
 } from "../../packages/application/src/index.ts";
 
 const fingerprint = Object.freeze(["full.complete:pass"]);
+const HAPPY_ROOT_IDENTITY = `sha256:${"f".repeat(64)}`;
 
 function boundaryFacts(overrides = {}) {
+  let rootIndex = 0;
   return FULL_DURABLE_BOUNDARY_IDS.flatMap((boundaryId) =>
     DURABLE_CRASH_PHASES.map((phase) => ({
       boundaryId,
@@ -26,6 +28,7 @@ function boundaryFacts(overrides = {}) {
       logicalResultCount: 1,
       resultDigest: `sha256:${"a".repeat(64)}`,
       resultStatus: "STORED",
+      rootIdentity: `sha256:${(++rootIndex).toString(16).padStart(64, "0")}`,
       resumed: true,
       semanticFingerprint: fingerprint,
       crashExitCode: DURABLE_CRASH_EXIT_CODE,
@@ -33,6 +36,10 @@ function boundaryFacts(overrides = {}) {
       ...overrides
     }))
   );
+}
+
+function assertDurableBoundaryFacts(facts, happyRootIdentity = HAPPY_ROOT_IDENTITY) {
+  return assertDurableBoundaryFactsRule(facts, happyRootIdentity);
 }
 
 function review(overrides = {}) {
@@ -130,7 +137,8 @@ test("a durable boundary with duplicated logical results fails closed", () => {
 for (const [name, overrides] of [
   ["logical identity", { logicalId: "" }],
   ["result digest", { resultDigest: "sha256:invalid" }],
-  ["result status", { resultStatus: "" }]
+  ["result status", { resultStatus: "" }],
+  ["root identity", { rootIdentity: "sha256:invalid" }]
 ]) {
   test(`a durable boundary with an invalid ${name} fails closed`, () => {
     assert.throws(() => assertDurableBoundaryFacts(boundaryFacts(overrides)), {
@@ -161,6 +169,19 @@ test("a divergent resumed fingerprint fails closed", () => {
   const facts = boundaryFacts();
   facts.at(-1).semanticFingerprint = ["full.complete:fail"];
   assert.throws(() => assertDurableBoundaryFacts(facts), { code: "VES_SELFTEST_NONCONVERGENT" });
+});
+
+test("a reused matrix root fails closed", () => {
+  const facts = boundaryFacts();
+  facts[1].rootIdentity = facts[0].rootIdentity;
+  assert.throws(() => assertDurableBoundaryFacts(facts), { code: "VES_SELFTEST_DURABLE_BOUNDARY_INVALID" });
+});
+
+test("a matrix root shared with the happy path fails closed", () => {
+  const facts = boundaryFacts();
+  assert.throws(() => assertDurableBoundaryFacts(facts, facts[0].rootIdentity), {
+    code: "VES_SELFTEST_DURABLE_BOUNDARY_INVALID"
+  });
 });
 
 test("an approved read-only invocation with an exact displayed review passes", () => {

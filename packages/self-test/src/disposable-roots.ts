@@ -45,6 +45,10 @@ export async function probeRootFacts(path: string): Promise<RootFacts> {
   });
 }
 
+export function rootIdentityDigest(root: RootFacts): string {
+  return sha256(JSON.stringify([root.canonicalPath, root.realPath, root.deviceId, root.inodeId]));
+}
+
 async function listResidue(root: string): Promise<readonly string[]> {
   const entries = await readdir(root, { recursive: true }).catch(() => []);
   return Object.freeze(entries.slice(0, 20).map((entry) => String(entry).replaceAll(sep, "/")));
