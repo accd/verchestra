@@ -2,9 +2,11 @@ import {
   TaskExecutionCoordinator,
   TaskGateCommitCoordinator,
   canonicalTaskGatePlan,
+  type DurableOutcomeFact,
   type FullDurableBoundaryId
 } from "@verchestra/application";
 import { sha256Digest } from "@verchestra/evidence";
+import { FileRecordStore } from "@verchestra/self-test";
 
 const WORKSPACE_ID = "workspace_018f0b6d-7b1a-7abc-8def-012345678901";
 const RUN_ID = "run_018f0b6d-7b1a-7abc-8def-112345678901";
@@ -16,6 +18,25 @@ const digest = (value: string): ShaDigest => `sha256:${sha256Digest(value)}`;
 const CHANGE_DIGEST = digest("self-test-change");
 const APPROVAL_DIGEST = digest("approval");
 const CONTEXT_DIGEST = digest("context");
+const EXECUTION_CHECKPOINT_KEY = "execution:checkpoint:T71";
+const GATE_RECOVERY_KEY = "gate:recovery:T71";
+const GATE_FINAL_KEY = "gate:final:T71";
+
+function outcome(
+  boundaryId: FullDurableBoundaryId,
+  logicalId: string,
+  value: unknown,
+  resultStatus: string
+): DurableOutcomeFact {
+  const encoded = JSON.stringify(value) ?? "null";
+  return Object.freeze({
+    boundaryId,
+    logicalId,
+    logicalResultCount: value === undefined ? 0 : 1,
+    resultDigest: digest(encoded),
+    resultStatus
+  });
+}
 
 export interface ExecutionBoundaryHooks {
   readonly before: (boundaryId: FullDurableBoundaryId) => Promise<void>;
@@ -63,7 +84,7 @@ function executionInput() {
   };
 }
 
-async function executeTask(hooks: ExecutionBoundaryHooks) {
+async function executeTask(hooks: ExecutionBoundaryHooks, records: FileRecordStore) {
   const coordinator = new TaskExecutionCoordinator({
     authority: { verify: async () => ({ authorized: true, bindingDigest: APPROVAL_DIGEST }) },
     coordination: {
@@ -76,9 +97,13 @@ async function executeTask(hooks: ExecutionBoundaryHooks) {
       cleanup: async () => undefined
     },
     checkpoints: {
-      load: async () => undefined,
+      load: async () => records.load(EXECUTION_CHECKPOINT_KEY),
       save: async (checkpoint) => {
-        const save = async () => ({ checkpointRef: `checkpoint:${checkpoint.stage}` });
+        const save = async () => {
+          const stored = { ...checkpoint, checkpointRef: `checkpoint:${checkpoint.stage}` };
+          await records.replace(EXECUTION_CHECKPOINT_KEY, stored);
+          return { checkpointRef: stored.checkpointRef };
+        };
         return checkpoint.stage === "awaiting-gate"
           ? boundary(hooks, "full.execution.checkpoint-stored", save)
           : save();
@@ -119,7 +144,11 @@ function gatePlan() {
   return { ...plan, planDigest: digest(canonicalTaskGatePlan(plan)) };
 }
 
-async function commitGate(hooks: ExecutionBoundaryHooks, execution: Awaited<ReturnType<typeof executeTask>>) {
+async function commitGate(
+  hooks: ExecutionBoundaryHooks,
+  records: FileRecordStore,
+  execution: Awaited<ReturnType<typeof executeTask>>
+) {
   const plan = gatePlan();
   const coordinator = new TaskGateCommitCoordinator({
     digest: { sha256: digest },
@@ -149,20 +178,34 @@ async function commitGate(hooks: ExecutionBoundaryHooks, execution: Awaited<Retu
       })
     },
     checkpoints: {
-      load: async () => undefined,
-      save: async (entry) => ({ checkpointRef: `checkpoint:${String(entry["stage"])}` })
+      load: async () => records.load(GATE_RECOVERY_KEY),
+      save: async (entry) => {
+        const stored = { ...entry, checkpointRef: `checkpoint:${String(entry["stage"])}` };
+        if (entry["stage"] === "gates-passed" || entry["stage"] === "commit-uncertain")
+          await records.replace(GATE_RECOVERY_KEY, entry);
+        if (entry["stage"] === "committed") await records.replace(GATE_FINAL_KEY, entry);
+        return { checkpointRef: stored.checkpointRef };
+      }
     },
     git: {
-      reconcile: async () => undefined,
+      reconcile: async (request) => {
+        const stored = await records.load<Record<string, unknown>>(`gate:commit:${request.idempotencyKey}`);
+        return stored === undefined ? undefined : { ...stored, status: "already-committed" };
+      },
       commitAtomic: async (request) =>
-        boundary(hooks, "full.gate.commit-stored", async () => ({
-          status: "committed",
-          commitId: "b".repeat(40),
-          parentCommit: request.baseCommit,
-          changeDigest: request.expectedChangeDigest,
-          gateEvidenceDigest: request.gateEvidenceDigest,
-          idempotencyKey: request.idempotencyKey
-        }))
+        boundary(hooks, "full.gate.commit-stored", async () => {
+          const key = `gate:commit:${request.idempotencyKey}`;
+          const stored = await records.load<Record<string, unknown>>(key);
+          if (stored !== undefined) return { ...stored, status: "already-committed" };
+          return records.save(key, {
+            status: "committed",
+            commitId: "b".repeat(40),
+            parentCommit: request.baseCommit,
+            changeDigest: request.expectedChangeDigest,
+            gateEvidenceDigest: request.gateEvidenceDigest,
+            idempotencyKey: request.idempotencyKey
+          });
+        })
     },
     coordination: {
       verify: async () => ({ active: true }),
@@ -194,9 +237,28 @@ async function commitGate(hooks: ExecutionBoundaryHooks, execution: Awaited<Retu
   });
 }
 
-export async function runSelfTestExecutionAndGate<T>(hooks: ExecutionBoundaryHooks, afterExecution: () => Promise<T>) {
-  const execution = await executeTask(hooks);
+export async function runSelfTestExecutionAndGate<T>(
+  hooks: ExecutionBoundaryHooks,
+  records: FileRecordStore,
+  afterExecution: () => Promise<T>
+) {
+  const execution = await executeTask(hooks, records);
   const duringExecution = await afterExecution();
-  const gate = await commitGate(hooks, execution);
-  return { execution, duringExecution, gate };
+  const gate = await commitGate(hooks, records, execution);
+  if (gate.status !== "COMMITTED") throw new Error("Self-Test gate did not commit");
+  const executionCheckpoint = await records.load<Record<string, unknown>>(EXECUTION_CHECKPOINT_KEY);
+  const executionOutcome =
+    executionCheckpoint === undefined
+      ? undefined
+      : Object.fromEntries(Object.entries(executionCheckpoint).filter(([key]) => key !== "sequence"));
+  const gateCommit = await records.load(`gate:commit:${gate.idempotencyKey}`);
+  return {
+    execution,
+    duringExecution,
+    gate,
+    durableOutcomes: Object.freeze([
+      outcome("full.execution.checkpoint-stored", `${WORKSPACE_ID}:${RUN_ID}:T71`, executionOutcome, "AWAITING_GATE"),
+      outcome("full.gate.commit-stored", gate.idempotencyKey, gateCommit, "COMMITTED")
+    ] as const)
+  };
 }

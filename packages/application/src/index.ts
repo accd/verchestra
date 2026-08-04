@@ -249,6 +249,7 @@ export {
   type DriverScenarioFacts,
   type DurableBoundaryFact,
   type DurableCrashPhase,
+  type DurableOutcomeFact,
   type FullDurableBoundaryId,
   type FullWorkflowFacts,
   type NetworkAttempt,

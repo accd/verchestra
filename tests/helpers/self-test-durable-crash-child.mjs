@@ -1,5 +1,6 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { createHash } from "node:crypto";
 
 function args() {
   const result = {};
@@ -39,7 +40,10 @@ await writeFile(
   JSON.stringify({
     boundaryId: input["--boundary"],
     phase: input["--phase"],
+    logicalId: `self-test:${input["--boundary"]}`,
     logicalResultCount: state.logicalResultCount,
+    resultDigest: `sha256:${createHash("sha256").update(JSON.stringify(state)).digest("hex")}`,
+    resultStatus: "STORED",
     resumed: input["--mode"] === "resume",
     semanticFingerprint: [
       "environment.clean:pass",
