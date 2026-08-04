@@ -3,7 +3,7 @@
 // hard crash and once in resume mode. It reports exit and persisted JSON facts;
 // application owns every convergence and exactly-once verdict.
 import { execFile } from "node:child_process";
-import { mkdir, readFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 import {
   type DurableBoundaryFact,
@@ -11,6 +11,7 @@ import {
   type FullDurableBoundaryId,
   type RootFacts
 } from "@verchestra/application";
+import { probeRootFacts } from "./disposable-roots.ts";
 
 export type DurableCrashRunnerErrorCode =
   "VES_SELFTEST_CRASH_ENTRYPOINT_INVALID" | "VES_SELFTEST_CRASH_PROCESS_FAILED" | "VES_SELFTEST_CRASH_FACTS_INVALID";
@@ -88,36 +89,50 @@ export class DurableCrashRunner {
     readonly boundaryId: FullDurableBoundaryId;
     readonly phase: DurableCrashPhase;
   }): Promise<DurableBoundaryFact> {
-    const factsDirectory = join(input.root.realPath, ".verchestra-self-test-crash");
-    const factsPath = join(factsDirectory, `${input.boundaryId}-${input.phase}.json`);
-    await mkdir(factsDirectory, { recursive: true });
-    const common = [
-      "--root",
-      input.root.realPath,
-      "--boundary",
-      input.boundaryId,
-      "--phase",
-      input.phase,
-      "--facts",
-      factsPath
-    ];
-    const crash = await childExit(this.#executable, this.#entrypoint, [...common, "--mode", "crash"], this.#timeoutMs);
-    const resume = await childExit(
-      this.#executable,
-      this.#entrypoint,
-      [...common, "--mode", "resume"],
-      this.#timeoutMs
-    );
-    let parsed: unknown;
+    // A caller may have already run the happy path (or another boundary) in
+    // `input.root`.  Provisioning one nested root per matrix cell prevents a
+    // crash case from inheriting completed production state.
+    const casePath = await mkdtemp(join(input.root.realPath, ".verchestra-self-test-case-"));
     try {
-      parsed = JSON.parse(await readFile(factsPath, "utf8"));
-    } catch {
-      fail("VES_SELFTEST_CRASH_FACTS_INVALID", "crash child did not produce readable JSON facts");
+      const caseRoot = await probeRootFacts(casePath);
+      const factsDirectory = join(caseRoot.realPath, ".verchestra-self-test-crash");
+      const factsPath = join(factsDirectory, `${input.boundaryId}-${input.phase}.json`);
+      await mkdir(factsDirectory, { recursive: true });
+      const common = [
+        "--root",
+        caseRoot.realPath,
+        "--boundary",
+        input.boundaryId,
+        "--phase",
+        input.phase,
+        "--facts",
+        factsPath
+      ];
+      const crash = await childExit(
+        this.#executable,
+        this.#entrypoint,
+        [...common, "--mode", "crash"],
+        this.#timeoutMs
+      );
+      const resume = await childExit(
+        this.#executable,
+        this.#entrypoint,
+        [...common, "--mode", "resume"],
+        this.#timeoutMs
+      );
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(await readFile(factsPath, "utf8"));
+      } catch {
+        fail("VES_SELFTEST_CRASH_FACTS_INVALID", "crash child did not produce readable JSON facts");
+      }
+      return Object.freeze({
+        ...parsedBoundaryFact(parsed),
+        crashExitCode: crash.exitCode,
+        resumeExitCode: resume.exitCode
+      });
+    } finally {
+      await rm(casePath, { recursive: true, force: true });
     }
-    return Object.freeze({
-      ...parsedBoundaryFact(parsed),
-      crashExitCode: crash.exitCode,
-      resumeExitCode: resume.exitCode
-    });
   }
 }

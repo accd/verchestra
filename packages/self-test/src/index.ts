@@ -27,3 +27,4 @@ export {
   DurableCrashRunnerError,
   type DurableCrashRunnerErrorCode
 } from "./durable-crash-runner.ts";
+export { FileRecordStore } from "./file-record-store.ts";
