@@ -51,6 +51,7 @@ function invocation(overrides = {}) {
   return {
     review: approvedReview,
     displayedReview: structuredClone(approvedReview),
+    actualReview: structuredClone(approvedReview),
     authorized: true,
     providerBoundaryEntries: 1,
     writerToolReachable: false,
@@ -195,6 +196,28 @@ test("every displayed review field is bound exactly", () => {
   }
 });
 
+test("every actually used review field is bound exactly", () => {
+  const mutations = [
+    { providerId: "openai" },
+    { modelId: "other-model" },
+    { destinationId: "destination:other" },
+    { maximumCostUsd: 0.02 },
+    { modelCapabilities: ["stream"] },
+    { tools: [] },
+    { classification: "public" },
+    { purpose: "other" },
+    { retention: "session" },
+    { egressMode: "offline" }
+  ];
+  for (const mutation of mutations) {
+    assert.throws(
+      () => assertDriverInvocationFacts(invocation({ actualReview: review(mutation) })),
+      { code: "VES_SELFTEST_DRIVER_REVIEW_INVALID" },
+      JSON.stringify(mutation)
+    );
+  }
+});
+
 test("an invalid cost fails closed", () => {
   assert.throws(() => assertDriverInvocationFacts(invocation({ review: review({ maximumCostUsd: 0 }) })), {
     code: "VES_SELFTEST_DRIVER_REVIEW_INVALID"
@@ -204,7 +227,10 @@ test("an invalid cost fails closed", () => {
 test("a writer Tool in the review fails closed", () => {
   const tools = [{ name: "vestra_write", access: "write" }];
   assert.throws(
-    () => assertDriverInvocationFacts(invocation({ review: review({ tools }), displayedReview: review({ tools }) })),
+    () =>
+      assertDriverInvocationFacts(
+        invocation({ review: review({ tools }), displayedReview: review({ tools }), actualReview: review({ tools }) })
+      ),
     { code: "VES_SELFTEST_WRITER_TOOL_REACHABLE" }
   );
 });
@@ -261,7 +287,11 @@ test("full workflow verdict rejects every invalid observed fact", () => {
 
 function driverScenarioFacts(overrides = {}) {
   const approved = ["anthropic", "openai", "opencode"].map((providerId) =>
-    invocation({ review: review({ providerId }), displayedReview: review({ providerId }) })
+    invocation({
+      review: review({ providerId }),
+      displayedReview: review({ providerId }),
+      actualReview: review({ providerId })
+    })
   );
   return {
     invocations: [...approved, invocation({ authorized: false, providerBoundaryEntries: 0 })],

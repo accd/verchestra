@@ -34,6 +34,7 @@ test("each displayed review exactly binds destination, cost, capabilities, Tools
   const result = await runDriverScenario();
   for (const invocation of result.invocations) {
     assert.deepEqual(invocation.displayedReview, invocation.review);
+    assert.deepEqual(invocation.actualReview, invocation.review);
     assert.equal(invocation.review.maximumCostUsd, 0.25);
     assert.deepEqual(invocation.review.modelCapabilities, ["read", "reason"]);
     assert.equal(invocation.review.classification, "internal");

@@ -42,6 +42,16 @@ function authorized(review: DriverReviewFacts, authority: DriverAuthorityFacts):
 }
 
 function assertAuthorityShape(authority: DriverAuthorityFacts): void {
+  const fields = [
+    "approvalGranted",
+    "approvedReview",
+    "capabilityGranted",
+    "destinationId",
+    "egressAllowed",
+    "maximumCostUsd"
+  ];
+  if (Object.keys(authority).sort().join(",") !== fields.join(","))
+    throw new SelfTestError("VES_SELFTEST_DRIVER_REVIEW_INVALID", "Driver authority fields are invalid");
   for (const field of ["approvalGranted", "capabilityGranted", "egressAllowed"] as const) {
     if (typeof authority[field] !== "boolean")
       throw new SelfTestError("VES_SELFTEST_DRIVER_REVIEW_INVALID", `Driver authority ${field} is invalid`);
@@ -55,24 +65,25 @@ function assertAuthorityShape(authority: DriverAuthorityFacts): void {
 export async function runAuthorizedDriverBoundary(input: {
   readonly review: DriverReviewFacts;
   readonly displayedReview: DriverReviewFacts;
+  readonly actualReview: DriverReviewFacts;
   readonly authority: DriverAuthorityFacts;
-  readonly invoke: () => Promise<void>;
+  readonly invoke: (actualReview: DriverReviewFacts) => Promise<void>;
 }): Promise<DriverInvocationFacts> {
-  // Complete review binding is a precondition of provider entry.  A displayed
-  // mismatch is therefore rejected before `invoke`, rather than discovered
-  // while assembling post-call facts.
+  // Every review surface is a precondition of provider entry. The callback
+  // receives only the value that passed this complete preflight.
   assertAuthorityShape(input.authority);
-  assertDriverReviewBinding(input.review, input.displayedReview, input.authority.approvedReview);
+  assertDriverReviewBinding(input.review, input.displayedReview, input.authority.approvedReview, input.actualReview);
   const permitted =
     authorized(input.review, input.authority) && canonical(input.displayedReview) === canonical(input.review);
   let providerBoundaryEntries = 0;
   if (permitted) {
     providerBoundaryEntries += 1;
-    await input.invoke();
+    await input.invoke(input.actualReview);
   }
   const facts = {
     review: input.review,
     displayedReview: input.displayedReview,
+    actualReview: input.actualReview,
     authorized: permitted,
     providerBoundaryEntries,
     writerToolReachable: hasWriterTool(input.review)
