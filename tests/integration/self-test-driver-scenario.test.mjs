@@ -7,7 +7,7 @@ import { runDriverScenario } from "../../apps/vestra-cli/src/self-test-driver-sc
 test("the approved Driver scenario exercises all three qualified boundaries", async () => {
   const result = await runDriverScenario();
   assert.deepEqual(
-    result.invocations.slice(0, 3).map((entry) => [entry.review.providerId, entry.providerCalls]),
+    result.invocations.slice(0, 3).map((entry) => [entry.review.providerId, entry.providerBoundaryEntries]),
     [
       ["anthropic", 1],
       ["openai", 1],
@@ -47,7 +47,7 @@ test("the scenario includes a denied path with zero provider calls", async () =>
   const result = await runDriverScenario();
   const denied = result.invocations.at(-1);
   assert.equal(denied.authorized, false);
-  assert.equal(denied.providerCalls, 0);
+  assert.equal(denied.providerBoundaryEntries, 0);
 });
 
 test("every approved Tool is read-only and no writer request is emitted", async () => {

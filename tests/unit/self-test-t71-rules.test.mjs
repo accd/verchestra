@@ -8,7 +8,9 @@ import {
   FULL_CHECK_IDS,
   FULL_DURABLE_BOUNDARY_IDS,
   assertDriverInvocationFacts,
-  assertDurableBoundaryFacts
+  assertDriverScenarioFacts,
+  assertDurableBoundaryFacts,
+  assertFullWorkflowFacts
 } from "../../packages/application/src/index.ts";
 
 const fingerprint = Object.freeze(["full.complete:pass"]);
@@ -50,7 +52,7 @@ function invocation(overrides = {}) {
     review: approvedReview,
     displayedReview: structuredClone(approvedReview),
     authorized: true,
-    providerCalls: 1,
+    providerBoundaryEntries: 1,
     writerToolReachable: false,
     ...overrides
   };
@@ -154,7 +156,7 @@ test("review equality does not depend on JavaScript object key order", () => {
 });
 
 test("a denied invocation with zero provider calls passes", () => {
-  assert.doesNotThrow(() => assertDriverInvocationFacts(invocation({ authorized: false, providerCalls: 0 })));
+  assert.doesNotThrow(() => assertDriverInvocationFacts(invocation({ authorized: false, providerBoundaryEntries: 0 })));
 });
 
 test("a denied invocation that reaches a provider fails closed", () => {
@@ -164,8 +166,8 @@ test("a denied invocation that reaches a provider fails closed", () => {
 });
 
 test("an approved invocation must reach exactly one provider boundary", () => {
-  for (const providerCalls of [0, 2]) {
-    assert.throws(() => assertDriverInvocationFacts(invocation({ providerCalls })), {
+  for (const providerBoundaryEntries of [0, 2]) {
+    assert.throws(() => assertDriverInvocationFacts(invocation({ providerBoundaryEntries })), {
       code: "VES_SELFTEST_PROVIDER_CALL_INVALID"
     });
   }
@@ -217,4 +219,68 @@ test("writer reachability must be an explicit false fact", () => {
   assert.throws(() => assertDriverInvocationFacts(invocation({ writerToolReachable: undefined })), {
     code: "VES_SELFTEST_WRITER_TOOL_REACHABLE"
   });
+});
+
+function fullFacts(overrides = {}) {
+  return {
+    packageStored: "published",
+    packageVerified: true,
+    approvalVerified: true,
+    contextFragments: 1,
+    routedPassportId: "passport_018f0b6d-7b1a-7abc-8def-012345678901",
+    executionStatus: "AWAITING_GATE",
+    effectApplyCalls: 1,
+    gateStatus: "COMMITTED",
+    verificationVerdict: "PASS",
+    handoffStatus: "EXECUTION_AUTHORIZED",
+    capsuleStored: "published",
+    capsuleVerified: true,
+    portableEvidenceValid: true,
+    ...overrides
+  };
+}
+
+test("full workflow verdict rejects every invalid observed fact", () => {
+  const mutations = [
+    { packageVerified: false },
+    { approvalVerified: false },
+    { contextFragments: 0 },
+    { routedPassportId: "" },
+    { executionStatus: "FAILED" },
+    { effectApplyCalls: 0 },
+    { effectApplyCalls: 2 },
+    { gateStatus: "PENDING" },
+    { verificationVerdict: "FAIL" },
+    { handoffStatus: "PREPARED" },
+    { capsuleVerified: false },
+    { portableEvidenceValid: false }
+  ];
+  for (const mutation of mutations)
+    assert.throws(() => assertFullWorkflowFacts(fullFacts(mutation)), { code: "VES_SELFTEST_FULL_FACTS_INVALID" });
+});
+
+function driverScenarioFacts(overrides = {}) {
+  const approved = ["anthropic", "openai", "opencode"].map((providerId) =>
+    invocation({ review: review({ providerId }), displayedReview: review({ providerId }) })
+  );
+  return {
+    invocations: [...approved, invocation({ authorized: false, providerBoundaryEntries: 0 })],
+    lifecycle: { sessionStarted: 3, sessionClosed: 3, writerToolRequests: 0, networkAttempts: 0 },
+    ...overrides
+  };
+}
+
+test("Driver scenario verdict rejects missing, duplicate, writer, lifecycle, and network facts", () => {
+  const mutations = [
+    { invocations: driverScenarioFacts().invocations.slice(1) },
+    { invocations: [...driverScenarioFacts().invocations, driverScenarioFacts().invocations[0]] },
+    { lifecycle: { sessionStarted: 2, sessionClosed: 3, writerToolRequests: 0, networkAttempts: 0 } },
+    { lifecycle: { sessionStarted: 3, sessionClosed: 2, writerToolRequests: 0, networkAttempts: 0 } },
+    { lifecycle: { sessionStarted: 3, sessionClosed: 3, writerToolRequests: 1, networkAttempts: 0 } },
+    { lifecycle: { sessionStarted: 3, sessionClosed: 3, writerToolRequests: 0, networkAttempts: 1 } }
+  ];
+  for (const mutation of mutations)
+    assert.throws(() => assertDriverScenarioFacts(driverScenarioFacts(mutation)), {
+      code: "VES_SELFTEST_DRIVER_SCENARIO_INVALID"
+    });
 });
