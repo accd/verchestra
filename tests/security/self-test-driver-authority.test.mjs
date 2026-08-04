@@ -43,7 +43,7 @@ for (const [name, change] of [
       }
     });
     assert.equal(facts.authorized, false);
-    assert.equal(facts.providerCalls, 0);
+    assert.equal(facts.providerBoundaryEntries, 0);
     assert.equal(invoked, 0);
   });
 }
@@ -64,3 +64,34 @@ test("a writer-shaped Tool is denied before the provider boundary", async () => 
   );
   assert.equal(invoked, 0);
 });
+
+for (const [name, change] of [
+  ["destination", { destinationId: "local:other" }],
+  ["cost", { maximumCostUsd: 0.5 }],
+  [
+    "tools",
+    {
+      tools: [
+        { name: "vestra_read", access: "read" },
+        { name: "extra", access: "read" }
+      ]
+    }
+  ],
+  ["egress", { egressMode: "offline" }]
+]) {
+  test(`displayed ${name} mismatch is rejected before provider entry`, async () => {
+    let invoked = 0;
+    await assert.rejects(
+      runAuthorizedDriverBoundary({
+        review,
+        displayedReview: { ...review, ...change },
+        authority: authority(),
+        invoke: async () => {
+          invoked += 1;
+        }
+      }),
+      { code: "VES_SELFTEST_DRIVER_REVIEW_INVALID" }
+    );
+    assert.equal(invoked, 0);
+  });
+}

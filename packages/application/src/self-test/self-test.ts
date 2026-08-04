@@ -24,7 +24,9 @@ export type SelfTestErrorCode =
   | "VES_SELFTEST_DRIVER_REVIEW_INVALID"
   | "VES_SELFTEST_PROVIDER_CALL_INVALID"
   | "VES_SELFTEST_PROVIDER_CALL_REACHED"
-  | "VES_SELFTEST_WRITER_TOOL_REACHABLE";
+  | "VES_SELFTEST_WRITER_TOOL_REACHABLE"
+  | "VES_SELFTEST_FULL_FACTS_INVALID"
+  | "VES_SELFTEST_DRIVER_SCENARIO_INVALID";
 
 export class SelfTestError extends Error {
   readonly code: SelfTestErrorCode;
@@ -368,6 +370,78 @@ export function assertDurableBoundaryFacts(facts: readonly DurableBoundaryFact[]
     assertConvergence(baseline, (observed.get(key) as DurableBoundaryFact).semanticFingerprint);
 }
 
+/**
+ * Facts emitted by the complete workflow scenario.  The scenario adapter may
+ * collect diagnostics, but it is not allowed to turn a diagnostic into PASS
+ * without this application-owned contract accepting the exact value.
+ */
+export interface FullWorkflowFacts {
+  readonly packageStored: "published" | "already-published";
+  readonly packageVerified: boolean;
+  readonly approvalVerified: boolean;
+  readonly contextFragments: number;
+  readonly routedPassportId: string;
+  readonly executionStatus: string;
+  readonly effectApplyCalls: number;
+  readonly gateStatus: string;
+  readonly verificationVerdict: string;
+  readonly handoffStatus: string;
+  readonly capsuleStored: "published" | "already-published";
+  readonly capsuleVerified: boolean;
+  readonly portableEvidenceValid: boolean;
+}
+
+function fullFactsFail(message: string): never {
+  fail("VES_SELFTEST_FULL_FACTS_INVALID", message);
+}
+
+function assertFullStorageFacts(facts: FullWorkflowFacts): void {
+  if (facts.packageStored !== "published" && facts.packageStored !== "already-published")
+    fullFactsFail("package storage outcome is invalid");
+  if (facts.packageVerified !== true) fullFactsFail("execution package verification failed");
+  if (facts.approvalVerified !== true) fullFactsFail("approval verification failed");
+  if (!Number.isSafeInteger(facts.contextFragments) || facts.contextFragments < 1)
+    fullFactsFail("context produced no fragments");
+  if (!/^passport_[0-9a-f-]+$/u.test(facts.routedPassportId)) fullFactsFail("no routed passport was observed");
+}
+
+function assertFullExecutionFacts(facts: FullWorkflowFacts): void {
+  if (facts.executionStatus !== "AWAITING_GATE") fullFactsFail("execution did not reach AWAITING_GATE");
+  if (facts.effectApplyCalls !== 1) fullFactsFail("effect did not apply exactly once");
+  if (facts.gateStatus !== "COMMITTED") fullFactsFail("gate was not committed");
+  if (facts.verificationVerdict !== "PASS") fullFactsFail("independent verification did not PASS");
+}
+
+function assertFullHandoffFacts(facts: FullWorkflowFacts): void {
+  if (facts.handoffStatus !== "EXECUTION_AUTHORIZED") fullFactsFail("Handoff is not execution-authorized");
+  if (facts.capsuleStored !== "published" && facts.capsuleStored !== "already-published")
+    fullFactsFail("Capsule storage outcome is invalid");
+  if (facts.capsuleVerified !== true) fullFactsFail("Capsule verification failed");
+  if (facts.portableEvidenceValid !== true) fullFactsFail("portable evidence is invalid");
+}
+
+/** Validate every user-visible full-workflow outcome before checks are sealed. */
+export function assertFullWorkflowFacts(value: unknown): asserts value is FullWorkflowFacts {
+  if (value === null || typeof value !== "object" || Array.isArray(value))
+    fullFactsFail("full workflow facts are invalid");
+  const facts = value as FullWorkflowFacts;
+  assertFullStorageFacts(facts);
+  assertFullExecutionFacts(facts);
+  assertFullHandoffFacts(facts);
+}
+
+/** Construct PASS checks only after the complete facts contract succeeds. */
+export function fullWorkflowChecks(facts: FullWorkflowFacts): readonly ScenarioCheck[] {
+  assertFullWorkflowFacts(facts);
+  return Object.freeze(
+    FULL_CHECK_IDS.filter((checkId) => checkId !== "full.crash-recovery").map((checkId) => ({
+      checkId,
+      requirement: "VES-STF-001",
+      status: "pass" as const
+    }))
+  );
+}
+
 export interface DriverReviewToolFact {
   readonly name: string;
   readonly access: "read";
@@ -390,7 +464,8 @@ export interface DriverInvocationFacts {
   readonly review: DriverReviewFacts;
   readonly displayedReview: DriverReviewFacts;
   readonly authorized: boolean;
-  readonly providerCalls: number;
+  /** Number of entries into the composed provider boundary, not wire calls. */
+  readonly providerBoundaryEntries: number;
   readonly writerToolReachable: boolean;
 }
 
@@ -479,12 +554,28 @@ function canonicalDriverReview(review: DriverReviewFacts): string {
   });
 }
 
+/** Validate the approved and displayed review surfaces before any effect. */
+export function assertDriverReviewBinding(
+  review: unknown,
+  displayedReview: unknown,
+  approvedReview: unknown = review
+): asserts review is DriverReviewFacts {
+  const invocation = assertDriverReviewFacts(review);
+  const displayed = assertDriverReviewFacts(displayedReview);
+  const approved = assertDriverReviewFacts(approvedReview);
+  if (
+    canonicalDriverReview(invocation) !== canonicalDriverReview(approved) ||
+    canonicalDriverReview(invocation) !== canonicalDriverReview(displayed)
+  )
+    fail("VES_SELFTEST_DRIVER_REVIEW_INVALID", "approved, invocation, and displayed Driver reviews differ");
+}
+
 function assertProviderCallFacts(facts: DriverInvocationFacts): void {
-  if (!Number.isSafeInteger(facts.providerCalls) || facts.providerCalls < 0)
+  if (!Number.isSafeInteger(facts.providerBoundaryEntries) || facts.providerBoundaryEntries < 0)
     fail("VES_SELFTEST_PROVIDER_CALL_INVALID", "provider call count is invalid");
-  if (facts.authorized === false && facts.providerCalls !== 0)
+  if (facts.authorized === false && facts.providerBoundaryEntries !== 0)
     fail("VES_SELFTEST_PROVIDER_CALL_REACHED", "denied Driver authority reached a provider boundary");
-  if (facts.authorized === true && facts.providerCalls !== 1)
+  if (facts.authorized === true && facts.providerBoundaryEntries !== 1)
     fail("VES_SELFTEST_PROVIDER_CALL_INVALID", "approved Driver invocation must reach exactly one provider boundary");
   if (typeof facts.authorized !== "boolean")
     fail("VES_SELFTEST_DRIVER_REVIEW_INVALID", "Driver authorization fact is invalid");
@@ -508,6 +599,71 @@ export function assertDriverInvocationFacts(facts: DriverInvocationFacts): void 
     fail("VES_SELFTEST_DRIVER_REVIEW_INVALID", "displayed Driver review does not match approved facts");
   assertNoWriterTool(facts);
   assertProviderCallFacts(facts);
+}
+
+export interface DriverLifecycleFacts {
+  readonly sessionStarted: number;
+  readonly sessionClosed: number;
+  readonly writerToolRequests: number;
+  readonly networkAttempts: number;
+}
+
+export interface DriverScenarioFacts {
+  readonly invocations: readonly DriverInvocationFacts[];
+  readonly lifecycle: DriverLifecycleFacts;
+}
+
+function driverScenarioFail(message: string): never {
+  fail("VES_SELFTEST_DRIVER_SCENARIO_INVALID", message);
+}
+
+function assertDriverCardinality(facts: DriverScenarioFacts): void {
+  if (!Array.isArray(facts.invocations) || facts.invocations.length !== 4)
+    driverScenarioFail("Driver scenario must contain three approvals and one denial");
+  for (const invocation of facts.invocations) assertDriverInvocationFacts(invocation);
+  const approved = facts.invocations.filter((entry) => entry.authorized === true);
+  const denied = facts.invocations.filter((entry) => entry.authorized === false);
+  if (approved.length !== 3 || denied.length !== 1) driverScenarioFail("Driver approval cardinality is invalid");
+  const providers = approved.map((entry) => entry.review.providerId);
+  if (
+    new Set(providers).size !== 3 ||
+    !["anthropic", "openai", "opencode"].every((id) => providers.includes(id as never))
+  )
+    driverScenarioFail("approved Driver provider set is invalid");
+}
+
+function assertDriverLifecycle(facts: DriverScenarioFacts): void {
+  const lifecycle = facts.lifecycle;
+  if (lifecycle === null || typeof lifecycle !== "object" || Array.isArray(lifecycle))
+    driverScenarioFail("Driver lifecycle facts are invalid");
+  assertDriverCount(lifecycle.sessionStarted, 3, "approved Driver session start lifecycle is incomplete");
+  assertDriverCount(lifecycle.sessionClosed, 3, "approved Driver session close lifecycle is incomplete");
+  assertDriverCount(lifecycle.writerToolRequests, 0, "a writer Tool request was observed");
+  assertDriverCount(lifecycle.networkAttempts, 0, "a network attempt was observed");
+}
+
+function assertDriverCount(value: unknown, expected: number, message: string): void {
+  if (!Number.isSafeInteger(value) || value !== expected) driverScenarioFail(message);
+}
+
+/**
+ * Runtime verdict for the approved-driver profile.  Adapter event streams are
+ * reduced to these facts at the composition root; only this rule can authorize
+ * the seven Driver PASS checks.
+ */
+export function assertDriverScenarioFacts(value: unknown): asserts value is DriverScenarioFacts {
+  if (value === null || typeof value !== "object" || Array.isArray(value))
+    driverScenarioFail("Driver scenario facts are invalid");
+  const facts = value as DriverScenarioFacts;
+  assertDriverCardinality(facts);
+  assertDriverLifecycle(facts);
+}
+
+export function driverScenarioChecks(facts: DriverScenarioFacts): readonly ScenarioCheck[] {
+  assertDriverScenarioFacts(facts);
+  return Object.freeze(
+    DRIVER_CHECK_IDS.map((checkId) => ({ checkId, requirement: "VES-STF-002", status: "pass" as const }))
+  );
 }
 
 // TST-04: the Sentinel Set hashed before execution must be byte-identical

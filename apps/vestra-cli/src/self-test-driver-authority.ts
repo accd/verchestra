@@ -1,5 +1,7 @@
 import {
+  assertDriverReviewBinding,
   assertDriverInvocationFacts,
+  SelfTestError,
   type DriverInvocationFacts,
   type DriverReviewFacts
 } from "@verchestra/application";
@@ -39,23 +41,40 @@ function authorized(review: DriverReviewFacts, authority: DriverAuthorityFacts):
   );
 }
 
+function assertAuthorityShape(authority: DriverAuthorityFacts): void {
+  for (const field of ["approvalGranted", "capabilityGranted", "egressAllowed"] as const) {
+    if (typeof authority[field] !== "boolean")
+      throw new SelfTestError("VES_SELFTEST_DRIVER_REVIEW_INVALID", `Driver authority ${field} is invalid`);
+  }
+  if (typeof authority.destinationId !== "string" || authority.destinationId.length === 0)
+    throw new SelfTestError("VES_SELFTEST_DRIVER_REVIEW_INVALID", "Driver authority destination is invalid");
+  if (!Number.isFinite(authority.maximumCostUsd) || authority.maximumCostUsd <= 0)
+    throw new SelfTestError("VES_SELFTEST_DRIVER_REVIEW_INVALID", "Driver authority cost is invalid");
+}
+
 export async function runAuthorizedDriverBoundary(input: {
   readonly review: DriverReviewFacts;
   readonly displayedReview: DriverReviewFacts;
   readonly authority: DriverAuthorityFacts;
   readonly invoke: () => Promise<void>;
 }): Promise<DriverInvocationFacts> {
-  const permitted = authorized(input.review, input.authority);
-  let providerCalls = 0;
+  // Complete review binding is a precondition of provider entry.  A displayed
+  // mismatch is therefore rejected before `invoke`, rather than discovered
+  // while assembling post-call facts.
+  assertAuthorityShape(input.authority);
+  assertDriverReviewBinding(input.review, input.displayedReview, input.authority.approvedReview);
+  const permitted =
+    authorized(input.review, input.authority) && canonical(input.displayedReview) === canonical(input.review);
+  let providerBoundaryEntries = 0;
   if (permitted) {
-    providerCalls += 1;
+    providerBoundaryEntries += 1;
     await input.invoke();
   }
   const facts = {
     review: input.review,
     displayedReview: input.displayedReview,
     authorized: permitted,
-    providerCalls,
+    providerBoundaryEntries,
     writerToolReachable: hasWriterTool(input.review)
   };
   assertDriverInvocationFacts(facts);

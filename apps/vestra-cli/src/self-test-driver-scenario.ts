@@ -1,11 +1,11 @@
 import { fileURLToPath } from "node:url";
 
 import {
-  DRIVER_CHECK_IDS,
   assertNoNetworkAttempts,
+  driverScenarioChecks,
   type DriverInvocationFacts,
   type DriverReviewFacts,
-  type ScenarioCheck,
+  type DriverScenarioFacts,
   type SubjectRunFacts
 } from "@verchestra/application";
 import {
@@ -31,6 +31,7 @@ export interface DriverScenarioResult {
   readonly facts: SubjectRunFacts;
   readonly invocations: readonly DriverInvocationFacts[];
   readonly events: readonly DriverEvent[];
+  readonly scenarioFacts: DriverScenarioFacts;
 }
 
 function review(
@@ -206,10 +207,6 @@ function openCode(events: DriverEvent[]): () => Promise<void> {
   };
 }
 
-function checks(): readonly ScenarioCheck[] {
-  return DRIVER_CHECK_IDS.map((checkId) => ({ checkId, requirement: "VES-STF-002", status: "pass" }));
-}
-
 export async function runDriverScenario(): Promise<DriverScenarioResult> {
   const guard = offlineGuard();
   const events: DriverEvent[] = [];
@@ -241,7 +238,16 @@ export async function runDriverScenario(): Promise<DriverScenarioResult> {
       })
     );
     assertNoNetworkAttempts(guard.attempts());
-    const scenarioChecks = checks();
+    const scenarioFacts: DriverScenarioFacts = {
+      invocations,
+      lifecycle: {
+        sessionStarted: events.filter((event) => event.type === "session.started").length,
+        sessionClosed: events.filter((event) => event.type === "session.closed").length,
+        writerToolRequests: events.filter((event) => event.type === "tool.requested").length,
+        networkAttempts: guard.attempts().length
+      }
+    };
+    const scenarioChecks = driverScenarioChecks(scenarioFacts);
     return {
       facts: {
         checks: scenarioChecks,
@@ -252,7 +258,8 @@ export async function runDriverScenario(): Promise<DriverScenarioResult> {
         redactionCount: 0
       },
       invocations,
-      events
+      events,
+      scenarioFacts
     };
   } finally {
     guard.restore();
