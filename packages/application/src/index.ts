@@ -183,8 +183,13 @@ export {
 export {
   IndependentVerificationCoordinator,
   VerificationError,
+  assertNoToolRequests,
+  assertReadOnlyGrant,
+  resolveVerifierDriver,
+  type DriverAvailabilityFact,
   type VerificationErrorCode,
-  type VerificationPorts
+  type VerificationPorts,
+  type VerifierDriverResolution
 } from "./verification/verification.ts";
 export {
   HandoffError,
