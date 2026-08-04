@@ -1,4 +1,4 @@
-import { readFile, rename, writeFile } from "node:fs/promises";
+import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import {
@@ -7,7 +7,7 @@ import {
   type DurableCrashPhase,
   type FullDurableBoundaryId
 } from "@verchestra/application";
-import { probeRootFacts } from "@verchestra/self-test";
+import { FileRecordStore, probeRootFacts } from "@verchestra/self-test";
 
 import { runFullWorkflowScenario } from "./self-test-full-scenario.ts";
 
@@ -17,10 +17,6 @@ interface ChildInput {
   readonly phase: DurableCrashPhase;
   readonly factsPath: string;
   readonly mode: "crash" | "resume";
-}
-
-interface BoundaryState {
-  readonly completed: readonly FullDurableBoundaryId[];
 }
 
 function argument(name: string): string {
@@ -48,31 +44,14 @@ function input(): ChildInput {
   };
 }
 
-async function readState(path: string): Promise<BoundaryState> {
-  try {
-    const value = JSON.parse(await readFile(path, "utf8")) as { readonly completed?: unknown };
-    if (!Array.isArray(value.completed) || value.completed.some((entry) => typeof entry !== "string"))
-      throw new Error("Invalid boundary state");
-    return { completed: value.completed as FullDurableBoundaryId[] };
-  } catch (error) {
-    if ((error as { readonly code?: unknown }).code !== "ENOENT") throw error;
-    return { completed: [] };
-  }
-}
-
-async function writeState(path: string, state: BoundaryState): Promise<void> {
-  const staging = `${path}.${process.pid}.tmp`;
-  await writeFile(staging, JSON.stringify(state), { flag: "wx", mode: 0o600 });
-  await rename(staging, path);
-}
-
 const childInput = input();
-const statePath = join(
-  childInput.root,
-  ".verchestra-self-test-crash",
-  `${childInput.boundaryId}-${childInput.phase}.state.json`
+const recordStore = new FileRecordStore({
+  root: join(childInput.root, ".verchestra-self-test-crash", "durable-boundaries")
+});
+const recordKey = `boundary:${childInput.boundaryId}`;
+const existing = await recordStore.load<{ readonly boundaryId: FullDurableBoundaryId; readonly logicalId: string }>(
+  recordKey
 );
-let state = await readState(statePath);
 
 const result = await runFullWorkflowScenario(await probeRootFacts(childInput.root), {
   before: async (boundaryId) => {
@@ -80,15 +59,12 @@ const result = await runFullWorkflowScenario(await probeRootFacts(childInput.roo
       childInput.mode === "crash" &&
       childInput.phase === "before" &&
       boundaryId === childInput.boundaryId &&
-      !state.completed.includes(boundaryId)
+      existing === undefined
     )
       process.exit(86);
   },
   after: async (boundaryId) => {
-    if (!state.completed.includes(boundaryId)) {
-      state = { completed: [...state.completed, boundaryId] };
-      await writeState(statePath, state);
-    }
+    await recordStore.save(`boundary:${boundaryId}`, { boundaryId, logicalId: `self-test:${boundaryId}` });
     if (childInput.mode === "crash" && childInput.phase === "after" && boundaryId === childInput.boundaryId)
       process.exit(86);
   }
@@ -99,7 +75,11 @@ await writeFile(
   JSON.stringify({
     boundaryId: childInput.boundaryId,
     phase: childInput.phase,
-    logicalResultCount: state.completed.filter((entry) => entry === childInput.boundaryId).length,
+    logicalResultCount:
+      (await recordStore.load<{ readonly boundaryId: FullDurableBoundaryId }>(recordKey))?.boundaryId ===
+      childInput.boundaryId
+        ? 1
+        : 0,
     resumed: childInput.mode === "resume",
     semanticFingerprint: semanticFingerprint(result.facts.checks)
   }),
