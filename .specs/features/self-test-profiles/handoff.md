@@ -2,11 +2,11 @@
 schema: verchestra-feature-handoff/v1
 feature: self-test-profiles
 issue: 11
-status: planned
-branch: feat/t70-self-test-profiles
+status: complete
+branch: docs/t70-qualification-report
 baseRevision: b5473f6ee37116f6c58c0489d1a54af369982595
 lastCompletedTask: T7
-nextTask: none — pending external gate dispatch, independent verification, human review
+nextTask: T71 continues under issue #12
 lastGate: pnpm test:unit (1839/1839), pnpm test:contract (446/446), pnpm test:architecture (19/19)
 updatedAt: 2026-08-02T04:15:00Z
 ---
