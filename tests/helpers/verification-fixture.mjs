@@ -6,7 +6,7 @@ import { WorkflowMachine } from "../../packages/domain/src/index.ts";
 export const sha = (value) => `sha256:${createHash("sha256").update(value).digest("hex")}`;
 
 export const verificationInput = () => ({
-  schemaVersion: 1,
+  schemaVersion: 2,
   workspaceId: "workspace_018f0b6d-7b1a-7abc-8def-512345678901",
   run: {
     runId: "run_018f0b6d-7b1a-7abc-8def-612345678901",
@@ -18,6 +18,8 @@ export const verificationInput = () => ({
     implementationActorId: "actor:implementer"
   },
   verifier: { actorId: "actor:verifier", actorKind: "model", passportRef: "passport:verifier:001" },
+  implementerDriverId: "driver:implementer",
+  verifierDriverId: "driver:verifier",
   packageDigest: sha("package"),
   commit: { commitId: "b".repeat(40), authorActorId: "actor:implementer", gateEvidenceDigest: sha("gates") },
   criteria: [

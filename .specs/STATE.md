@@ -66,8 +66,16 @@
 - **Rationale:** `scripts/architecture.mjs` forbids an adapter from importing a sibling adapter (`VES_ARCH_ADAPTER_COUPLING`), and the orchestrator must exercise precisely those siblings. A rule an adapter can answer is a rule nobody can unit-test, so every verdict was pushed inward where it is provable without a filesystem; the boundary shaped the design instead of being worked around, including taking key material from `node:crypto` rather than from the evidence package.
 - **Consequences:** T70–T72 extend the same three places rather than introducing a fourth. Widening the profile enum would reopen T57's sealed evidence and requires an explicit decision. Verdicts added to the adapter, or sibling imports added to it, are architecture regressions rather than refactors.
 
+### AD-011 — Verifier isolation reuses driver process isolation; no new adapter package
+
+- **Status:** active
+- **Decision:** Structural verifier independence (#35) is built entirely inside `packages/application/src/verification/verification.ts`: distinct-driver-identity enforcement, a pure `resolveVerifierDriver` resolution function with an explicit `not-configured` result, and a read-only grant defined as exactly zero granted tools (`assertReadOnlyGrant`, `assertNoToolRequests`) rather than a name-based writer-tool classifier. No new adapter package is introduced.
+- **Rationale:** Every real driver (`ClaudeCodeDriver`, `CodexDriver`, `OpenCodeDriver`) already spawns its session in a real, separate OS process and reports a `driverId` — this is the existing substrate for "Claude Code wrote → Codex verifies", so a parallel process-isolation mechanism would duplicate what already exists. A writer-tool name allowlist was considered and rejected during Specify: no such classification exists anywhere in the repository, and guessing one would be exactly the non-deterministic, bypassable pattern the English-only policy work had already rejected for content classification. Verification inspects evidence and runs sensors, neither of which needs any execution-tool capability, so zero granted tools is the only non-guessable definition of read-only — the same structural instinct as `packages/data-probe`'s `sessionReadOnly` fact, asked of the session itself rather than inferred from an operation-name list.
+- **Consequences:** The sealed verification report bumps to `schemaVersion: 2` and records `driverBinding: {implementerDriverId, verifierDriverId}` alongside the existing `actorBinding`; `schemaVersion: 1` input is rejected, never silently upgraded. `resolveVerifierDriver` is exported for T71/T74/T75 composition roots to call when they wire a real verifying driver session; this feature does not perform that wiring itself.
+
 ## Handoff
 
+- **Feature:** `structural-verifier-isolation` (#35) — complete (T1–T7); T71/T74/T75 composition roots consume `resolveVerifierDriver` and the grant/tool-request rules when they wire a real verifying driver session.
 - **Feature:** `self-test` (T69) — complete; the chain advances to T70 (#11), which declares `gate:full` rather than `gate:security`.
 - **Feature:** `external-review-triage`
 - **State:** T1–T5 complete; T6 (GitHub backlog issues) and T7 (final gates) in progress
