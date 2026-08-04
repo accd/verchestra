@@ -8,7 +8,7 @@ import {
   FULL_DURABLE_BOUNDARY_IDS,
   semanticFingerprint
 } from "../../packages/application/src/index.ts";
-import { DisposableRootProvider } from "../../packages/self-test/src/index.ts";
+import { DisposableRootProvider, FileRecordStore } from "../../packages/self-test/src/index.ts";
 import { runFullWorkflowScenario } from "../../apps/vestra-cli/src/self-test-full-scenario.ts";
 
 const roots = [];
@@ -51,6 +51,19 @@ test("the complete delivery path uses its production APIs", async () => {
   assert.equal(diagnostics.handoffStatus, "EXECUTION_AUTHORIZED");
   assert.equal(diagnostics.capsuleStored, "published");
   assert.equal(diagnostics.capsuleVerified, true);
+});
+
+test("the sealed verification report binds distinct implementation and verifier drivers", async () => {
+  const disposableRoot = await root();
+  await runFullWorkflowScenario(disposableRoot);
+  const records = new FileRecordStore({ root: join(disposableRoot.canonicalPath, "self-test-records") });
+  const report = await records.load("verification:report");
+
+  assert.equal(report.schemaVersion, 2);
+  assert.deepEqual(report.driverBinding, {
+    implementerDriverId: "deterministic-implementer-driver",
+    verifierDriverId: "deterministic-verifier-driver"
+  });
 });
 
 test("the complete delivery path queries one authoritative outcome per durable boundary", async () => {

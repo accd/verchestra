@@ -51,6 +51,8 @@ const WORKSPACE_ID = "workspace_018f0b6d-7b1a-7abc-8def-012345678901";
 const SOURCE_RUN_ID = "run_018f0b6d-7b1a-7abc-8def-112345678901";
 const SUCCESSOR_RUN_ID = "run_018f0b6d-7b1a-7abc-8def-212345678901";
 const MACHINE_ID = "machine_018f0b6d-7b1a-7abc-8def-312345678901";
+const IMPLEMENTER_DRIVER_ID = "deterministic-implementer-driver";
+const VERIFIER_DRIVER_ID = "deterministic-verifier-driver";
 type ShaDigest = `sha256:${string}`;
 const digest = (value: string): ShaDigest => `sha256:${sha256Digest(value)}`;
 const envelopeDigest = (value: string): ShaDigest => `sha256:${value}`;
@@ -589,7 +591,7 @@ function verificationPorts(hooks: FullScenarioBoundaryHooks, records: FileRecord
 
 async function verifyIndependently(hooks: FullScenarioBoundaryHooks, records: FileRecordStore) {
   return new IndependentVerificationCoordinator(verificationPorts(hooks, records)).verify({
-    schemaVersion: 1,
+    schemaVersion: 2,
     workspaceId: WORKSPACE_ID,
     run: {
       runId: SOURCE_RUN_ID,
@@ -601,6 +603,8 @@ async function verifyIndependently(hooks: FullScenarioBoundaryHooks, records: Fi
       implementationActorId: "actor:implementer"
     },
     verifier: { actorId: "actor:verifier", actorKind: "model", passportRef: "passport:self-test" },
+    implementerDriverId: IMPLEMENTER_DRIVER_ID,
+    verifierDriverId: VERIFIER_DRIVER_ID,
     packageDigest: digest("package"),
     commit: { commitId: "b".repeat(40), authorActorId: "actor:implementer", gateEvidenceDigest: digest("gates") },
     criteria: [
