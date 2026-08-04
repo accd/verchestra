@@ -463,6 +463,7 @@ export interface DriverReviewFacts {
 export interface DriverInvocationFacts {
   readonly review: DriverReviewFacts;
   readonly displayedReview: DriverReviewFacts;
+  readonly actualReview: DriverReviewFacts;
   readonly authorized: boolean;
   /** Number of entries into the composed provider boundary, not wire calls. */
   readonly providerBoundaryEntries: number;
@@ -558,16 +559,19 @@ function canonicalDriverReview(review: DriverReviewFacts): string {
 export function assertDriverReviewBinding(
   review: unknown,
   displayedReview: unknown,
-  approvedReview: unknown = review
+  approvedReview: unknown = review,
+  actualReview: unknown = review
 ): asserts review is DriverReviewFacts {
   const invocation = assertDriverReviewFacts(review);
   const displayed = assertDriverReviewFacts(displayedReview);
   const approved = assertDriverReviewFacts(approvedReview);
+  const actual = assertDriverReviewFacts(actualReview);
   if (
     canonicalDriverReview(invocation) !== canonicalDriverReview(approved) ||
-    canonicalDriverReview(invocation) !== canonicalDriverReview(displayed)
+    canonicalDriverReview(invocation) !== canonicalDriverReview(displayed) ||
+    canonicalDriverReview(invocation) !== canonicalDriverReview(actual)
   )
-    fail("VES_SELFTEST_DRIVER_REVIEW_INVALID", "approved, invocation, and displayed Driver reviews differ");
+    fail("VES_SELFTEST_DRIVER_REVIEW_INVALID", "approved, displayed, and actually used Driver reviews differ");
 }
 
 function assertProviderCallFacts(facts: DriverInvocationFacts): void {
@@ -595,8 +599,12 @@ export function assertDriverInvocationFacts(facts: DriverInvocationFacts): void 
     fail("VES_SELFTEST_DRIVER_REVIEW_INVALID", "Driver invocation facts are invalid");
   const review = assertDriverReviewFacts(facts.review);
   const displayedReview = assertDriverReviewFacts(facts.displayedReview);
-  if (canonicalDriverReview(review) !== canonicalDriverReview(displayedReview))
-    fail("VES_SELFTEST_DRIVER_REVIEW_INVALID", "displayed Driver review does not match approved facts");
+  const actualReview = assertDriverReviewFacts(facts.actualReview);
+  if (
+    canonicalDriverReview(review) !== canonicalDriverReview(displayedReview) ||
+    canonicalDriverReview(review) !== canonicalDriverReview(actualReview)
+  )
+    fail("VES_SELFTEST_DRIVER_REVIEW_INVALID", "displayed or actually used Driver review does not match facts");
   assertNoWriterTool(facts);
   assertProviderCallFacts(facts);
 }

@@ -73,7 +73,7 @@ todo-marked, or made less specific to satisfy the threshold.
 | T6   | Done   | `3518665`; 5 qualified Driver integration cases                        |
 | T7   | Done   | `0d04112`; 51 CLI contract/e2e cases                                   |
 | T8   | Done   | `f7a8354`; quick/security/release PASS, full Windows baseline recorded |
-| T9   | Planned | Requested changes on PR #182; Driver authority ordering and execution binding |
+| T9   | Done    | Approved/displayed/actual review binding; 72 focused unit/security/integration cases |
 | T10  | Planned | Requested changes on PR #182; pure-verdict discrimination sensors     |
 | T11  | Planned | Requested changes on PR #182; authoritative durable outcome evidence  |
 | T12  | Planned | Requested changes on PR #182; crash-matrix root-isolation sensor       |

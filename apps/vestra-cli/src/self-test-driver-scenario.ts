@@ -64,23 +64,23 @@ function authorityFor(value: DriverReviewFacts): DriverAuthorityFacts {
   };
 }
 
-function request(target: string): DriverStartRequest {
+function request(review: DriverReviewFacts): DriverStartRequest {
   return {
     workspaceId: WORKSPACE_ID,
     runId: RUN_ID,
     passportRef: { passportId: PASSPORT_ID, revision: 1 },
-    serializedContextRef: { manifestId: digest("driver-context"), target },
-    tools: [{ name: "vestra_read", inputSchemaDigest: digest("read-schema") }]
+    serializedContextRef: { manifestId: digest("driver-context"), target: review.destinationId },
+    tools: review.tools.map((tool) => ({ name: tool.name, inputSchemaDigest: digest("read-schema") }))
   };
 }
 
-async function exercise(driver: Driver, target: string, events: DriverEvent[]): Promise<void> {
-  const session = await driver.start(request(target), (event) => events.push(event), new AbortController().signal);
+async function exercise(driver: Driver, review: DriverReviewFacts, events: DriverEvent[]): Promise<void> {
+  const session = await driver.start(request(review), (event) => events.push(event), new AbortController().signal);
   await driver.close(session);
 }
 
-function claude(events: DriverEvent[]): () => Promise<void> {
-  return async () => {
+function claude(events: DriverEvent[]): (review: DriverReviewFacts) => Promise<void> {
+  return async (review) => {
     const driver = new ClaudeCodeDriver({
       command: [process.execPath, FAKE_DRIVER_PATH, "claude"],
       minimumVersion: "2.1.168",
@@ -89,20 +89,20 @@ function claude(events: DriverEvent[]): () => Promise<void> {
           passportId: PASSPORT_ID,
           revision: 1,
           provider: "anthropic",
-          resolvedModel: "claude-opus-4-8"
+          resolvedModel: review.modelId
         },
         prompt: "Read the deterministic Self-Test context.",
-        model: "claude-opus-4-8",
+        model: review.modelId,
         environment: { VERCHESTRA_SELF_TEST_FAKE: "claude" },
         sensitiveValues: []
       })
     });
-    await exercise(driver, "claude", events);
+    await exercise(driver, review, events);
   };
 }
 
-function codex(events: DriverEvent[]): () => Promise<void> {
-  return async () => {
+function codex(events: DriverEvent[]): (review: DriverReviewFacts) => Promise<void> {
+  return async (review) => {
     const driver = new CodexDriver({
       command: [process.execPath, FAKE_DRIVER_PATH, "codex"],
       minimumVersion: "0.115.0",
@@ -111,24 +111,22 @@ function codex(events: DriverEvent[]): () => Promise<void> {
           passportId: PASSPORT_ID,
           revision: 1,
           provider: "openai",
-          resolvedModel: "gpt-5.5-codex"
+          resolvedModel: review.modelId
         },
         prompt: "Read the deterministic Self-Test context.",
-        model: "gpt-5.5-codex",
-        tools: [
-          {
-            name: "vestra_read",
-            description: "Read approved deterministic input",
-            inputSchema: { type: "object" },
-            inputSchemaDigest: digest("read-schema")
-          }
-        ],
+        model: review.modelId,
+        tools: review.tools.map((tool) => ({
+          name: tool.name,
+          description: "Read approved deterministic input",
+          inputSchema: { type: "object" },
+          inputSchemaDigest: digest("read-schema")
+        })),
         environment: { VERCHESTRA_SELF_TEST_FAKE: "codex" },
         sensitiveValues: [],
         cancelGraceMs: 50
       })
     });
-    await exercise(driver, "codex", events);
+    await exercise(driver, review, events);
   };
 }
 
@@ -182,8 +180,10 @@ function openCodeFactory() {
   };
 }
 
-function openCode(events: DriverEvent[]): () => Promise<void> {
-  return async () => {
+function openCode(events: DriverEvent[]): (review: DriverReviewFacts) => Promise<void> {
+  return async (review) => {
+    const [provider, resolvedModel] = review.modelId.split("/");
+    if (provider === undefined || resolvedModel === undefined) throw new Error("OpenCode review model is invalid");
     const driver = new OpenCodeDriver({
       command: [process.execPath, FAKE_DRIVER_PATH, "opencode"],
       minimumVersion: "1.17.18",
@@ -192,18 +192,18 @@ function openCode(events: DriverEvent[]): () => Promise<void> {
         passport: {
           passportId: PASSPORT_ID,
           revision: 1,
-          provider: "company",
-          resolvedModel: "qwen3-coder-480b"
+          provider,
+          resolvedModel
         },
         prompt: "Read the deterministic Self-Test context.",
-        model: "company/qwen3-coder-480b",
-        tools: [{ name: "vestra_read", inputSchemaDigest: digest("read-schema") }],
+        model: review.modelId,
+        tools: review.tools.map((tool) => ({ name: tool.name, inputSchemaDigest: digest("read-schema") })),
         environment: {},
         sensitiveValues: [],
         authorizeTool: async () => false
       })
     });
-    await exercise(driver, "opencode-qwen", events);
+    await exercise(driver, review, events);
   };
 }
 
@@ -222,6 +222,7 @@ export async function runDriverScenario(): Promise<DriverScenarioResult> {
         await runAuthorizedDriverBoundary({
           review: item.review,
           displayedReview: item.review,
+          actualReview: item.review,
           authority: authorityFor(item.review),
           invoke: item.invoke
         })
@@ -231,6 +232,7 @@ export async function runDriverScenario(): Promise<DriverScenarioResult> {
       await runAuthorizedDriverBoundary({
         review: deniedReview,
         displayedReview: deniedReview,
+        actualReview: deniedReview,
         authority: { ...authorityFor(deniedReview), approvalGranted: false },
         invoke: async () => {
           throw new Error("denied Driver boundary was invoked");

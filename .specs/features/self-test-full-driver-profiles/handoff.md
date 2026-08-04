@@ -5,10 +5,10 @@ issue: 12
 status: in_progress
 branch: codex/issue-12-t71-self-test
 baseRevision: a1e317f3bf1575e0243d597bbfa67785e94d7094
-lastCompletedTask: T8
-nextTask: T9 — bind the actually used Driver request and complete zero-entry authority sensors
-lastGate: PR head 85bcb89 CI Quality, Site, and CodeQL PASS; review CHANGES_REQUESTED
-updatedAt: 2026-08-04T08:20:38Z
+lastCompletedTask: T9
+nextTask: T10 — strengthen pure-verdict discrimination sensors
+lastGate: T9 focused 72/72 PASS; typecheck, lint, format, and complexity PASS on Node 24.14.0
+updatedAt: 2026-08-04T08:27:38Z
 ---
 
 # Scope
@@ -153,6 +153,15 @@ metadata changes are not authorized yet.
 - Post-fix evidence is 24/24 focused launcher/Self-Test E2E cases plus
   `pnpm gate:quick`, `pnpm gate:security`, and `pnpm gate:release`, all passing
   on the exact qualified toolchain with no skipped or todo cases.
+- T9 binds approved, displayed, and actually used Driver review facts before
+  provider entry. The provider callback receives only the validated actual
+  review, and the deterministic adapters derive model, destination, and Tool
+  inputs from that value.
+- T9 security sensors mutate every provider, model, destination, cost,
+  capability, Tool, classification, purpose, retention, and egress field on
+  each authority surface. Unknown review or authority fields also fail before
+  entry. Focused evidence is 72/72 unit, security, and integration cases, with
+  typecheck, lint, format, and complexity checks passing on Node 24.14.0.
 
 # Decisions
 
@@ -170,10 +179,9 @@ metadata changes are not authorized yet.
 
 # Next action
 
-Execute review-remediation tasks T9–T13 atomically. Start by binding the
-approved, displayed, and actually used Driver request before provider entry and
-proving that every sensitive-field or unknown-field mutation leaves the
-provider-boundary count at zero. Do not push without contributor authorization.
+Execute review-remediation tasks T10–T13 atomically. Next strengthen the
+full-workflow and exact-provider-set discrimination sensors. Do not push
+without contributor authorization.
 
 # Blockers
 
