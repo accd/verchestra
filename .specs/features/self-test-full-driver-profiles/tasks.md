@@ -19,6 +19,8 @@
 | T12  | Prove every boundary/phase cell and the happy path receive distinct normalized disposable roots                                               | T11        | Self-Test fault and integration tests   | Matrix isolation sensor                |
 | T13  | Record review remediation evidence and run every required final gate on the exact revision                                                    | T9–T12     | All required repository gates           | Handoff evidence only                  |
 
+| T14 | Reconcile the full scenario with verification report schema v2 and prove its distinct Driver binding | T13 | Full scenario integration and full gate | Verification contract compatibility |
+
 ## Test matrix
 
 | Layer           | Minimum outcomes                                                                                                                    |
@@ -60,6 +62,8 @@ todo-marked, or made less specific to satisfy the threshold.
 | T12  | FULL-03                     |
 | T13  | TST-01 and all requirements |
 
+| T14 | FULL-01, FULL-04 |
+
 ## Execution evidence
 
 | Task | Status | Commit / evidence                                                                       |
@@ -78,3 +82,4 @@ todo-marked, or made less specific to satisfy the threshold.
 | T11  | Done   | `a4ce1aa`; 49/49 crash cases; authoritative stores                                      |
 | T12  | Done   | `7b25d37`; 34 application-rule cases; 49 isolated crash cases                           |
 | T13  | Done   | All required gates PASS on clean qualified worktree                                     |
+| T14  | Done   | `f4af642`; schema v2 report binds distinct Driver identities; clean `gate:full` PASS    |

@@ -4,11 +4,11 @@ feature: self-test-full-driver-profiles
 issue: 12
 status: in_progress
 branch: codex/issue-12-t71-self-test
-baseRevision: a1e317f3bf1575e0243d597bbfa67785e94d7094
-lastCompletedTask: T13
-nextTask: contributor review, authorized push, then maintainer re-review
-lastGate: quick/security/release PASS; full PASS on clean worktree at b0dc393
-updatedAt: 2026-08-04T09:11:46Z
+baseRevision: 0793779ee52d168a3d155ffeb5c076ef64008e84
+lastCompletedTask: T14
+nextTask: contributor review, authorized push, CI, then maintainer re-review
+lastGate: quick/security/release PASS; full PASS on clean worktree at f4af642
+updatedAt: 2026-08-04T10:30:28Z
 ---
 
 # Scope
@@ -198,6 +198,25 @@ metadata changes are not authorized yet.
   283 fault cases, with zero failures, skips, or todos. This local discrepancy
   is recorded as worktree state, not classified as a pre-existing code defect.
 
+- After PR #182 was pushed, `origin/main` advanced through #35's structural
+  Verifier isolation work. GitHub's virtual merge correctly rejected the T71
+  full-scenario fixture because it still supplied verification input schema v1
+  while the new canonical contract requires schema v2 and distinct
+  implementation/Verifier Driver identities.
+- The branch merged `origin/main` at `0793779`, and T14 updates the full
+  scenario to supply two distinct deterministic Driver identities. A focused
+  integration sensor reads the persisted verification report and requires
+  schema v2 plus the exact `driverBinding`; 6/6 full-scenario cases pass.
+- On exact behavior revision `f4af642`, `agent:check`, `gate:quick`,
+  `gate:security`, and `gate:release` pass with qualified Node 24.14.0, pnpm
+  10.34.5, SQLite 3.51.2, Claude Code 2.1.168, and Codex CLI 0.115.0. The
+  release suite remains explicitly empty until T73 and is not release evidence.
+- The primary worktree's `gate:full` reached 558/565 integration cases; all
+  seven failures were Windows `EBUSY` cleanup locks in the existing T69/T70
+  Git-fixture and workspace-scenario suites. A clean detached worktree at exact
+  revision `f4af642` passed `gate:full` completely with zero failures, skips,
+  or todos.
+
 # Decisions
 
 - Use one new feature directory because T71 is a distinct roadmap task.
@@ -214,9 +233,10 @@ metadata changes are not authorized yet.
 
 # Next action
 
-Contributor review of the five local remediation commits. After explicit push
-authorization, push only `codex/issue-12-t71-self-test`, update PR #182's
-English summary/evidence, and request maintainer re-review.
+Contributor review of merge revision `09950f9`, behavior revision `f4af642`,
+and this evidence update. After explicit authorization, push only
+`codex/issue-12-t71-self-test`, wait for PR #182 CI, update the English
+remediation evidence, and request maintainer re-review only after CI passes.
 
 # Blockers
 
@@ -239,10 +259,11 @@ skips or todos. The exact two-suite rerun passes 15/15 on detached base
 exact remediation SHA `b0dc393`. All T71 full, Driver, authoritative-outcome,
 root-isolation, and crash cases pass.
 
-The remote branch is synchronized with qualified T70 base `a1e317f`, and CI
-passes on PR head `85bcb89`. The maintainer review remains
-`CHANGES_REQUESTED` until these local commits are contributor-reviewed and
-pushed. Driver actually-used binding, complete pure-verdict sensors,
-authoritative per-boundary crash evidence, and matrix isolation are now
-implemented locally with discrimination evidence. No
-qualification report or merge is claimed by this handoff.
+The remote branch still ends at `23971ce`; merge revision `09950f9`, behavior
+revision `f4af642`, and this evidence update remain local for contributor
+review. The maintainer review remains `CHANGES_REQUESTED`. Driver
+actually-used binding, complete pure-verdict sensors, authoritative
+per-boundary crash evidence, matrix isolation, and verification schema v2
+compatibility are implemented locally with discrimination evidence. No
+qualification report, push, re-review request, or merge is claimed by this
+handoff.
