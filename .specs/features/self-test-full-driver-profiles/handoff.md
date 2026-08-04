@@ -7,8 +7,8 @@ branch: codex/issue-12-t71-self-test
 baseRevision: 4b984c7e541863fe056a31a9e72749f9bcf46f7f
 lastCompletedTask: T8
 nextTask: Observe PR #182 rerun CI, then independent evidence and human review
-lastGate: post-CI fix gate:quick/security/release PASS; 24/24 focused CLI E2E PASS on Node 24.14.0
-updatedAt: 2026-08-03T21:05:29Z
+lastGate: gate:quick/security/release PASS; gate:full 560/563 with three reproduced base Windows Git-fixture failures
+updatedAt: 2026-08-04T12:00:00Z
 ---
 
 # Scope
@@ -176,7 +176,25 @@ in draft until its required checks pass.
 
 # Blockers
 
-No T71 implementation blocker remains locally. The local Windows `gate:full`
-result still contains only the five existing T69/T70 fixture failures described
-above. PR readiness now depends on the rerun CI result and required independent
-and human review.
+No T71 implementation blocker remains locally. Independent remediation of PR
+#182 confirmed and corrected six review findings: Driver review binding now
+fails before provider entry; full and Driver checks are authorized only from
+application-owned observed facts; crash multiplicity is read from persisted
+boundary records rather than a self-authored completed journal; verification
+and Handoff records survive process restart through the file-backed disposable
+record adapter; and each crash matrix cell receives a clean nested root rather
+than the happy-path root. The durable effect count is read from the persisted
+RuntimeStore receipt on resume.
+
+Focused evidence after remediation: typecheck, lint, format, and complexity
+pass; 44 focused unit/security/integration cases pass; the 23-case full crash
+matrix passes; `pnpm gate:quick`, `pnpm gate:security`, and
+`pnpm gate:release` pass with zero skips or todos. `pnpm gate:full` passes
+560/563 cases. The three failures reproduce unchanged on clean `origin/main`
+and are existing Windows Git-fixture normalization/quoting failures in
+`tests/integration/self-test-git-fixtures.test.mjs`; all T71 full, Driver, and
+crash cases pass.
+
+PR readiness still requires the external CI result, independent evidence
+review, and mandatory human review. No qualification report or merge is
+claimed by this handoff.
