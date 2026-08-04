@@ -42,6 +42,9 @@ for (const boundaryId of FULL_DURABLE_BOUNDARY_IDS) {
     test(`the production workflow converges after a ${phase} crash at ${boundaryId}`, async () => {
       const fact = await new DurableCrashRunner({ entrypoint }).run({ root: await root(), boundaryId, phase });
       assert.equal(fact.logicalResultCount, 1);
+      assert.match(fact.logicalId, /^[-:._A-Za-z0-9]+$/u);
+      assert.match(fact.resultDigest, /^sha256:[a-f0-9]{64}$/u);
+      assert.match(fact.resultStatus, /^[A-Z_-]+$/u);
       assert.equal(fact.resumed, true);
       assert.equal(fact.crashExitCode, 86);
       assert.equal(fact.resumeExitCode, 0);
@@ -58,4 +61,10 @@ test("the production crash matrix satisfies the closed application verdict", asy
     for (const phase of DURABLE_CRASH_PHASES) facts.push(await runner.run({ root: disposable, boundaryId, phase }));
   }
   assert.doesNotThrow(() => assertDurableBoundaryFacts(facts));
+  for (const boundaryId of FULL_DURABLE_BOUNDARY_IDS) {
+    const outcomes = facts.filter((fact) => fact.boundaryId === boundaryId);
+    assert.equal(new Set(outcomes.map((fact) => fact.logicalId)).size, 1, `${boundaryId} logical identity diverged`);
+    assert.equal(new Set(outcomes.map((fact) => fact.resultDigest)).size, 1, `${boundaryId} result digest diverged`);
+    assert.equal(new Set(outcomes.map((fact) => fact.resultStatus)).size, 1, `${boundaryId} result status diverged`);
+  }
 });

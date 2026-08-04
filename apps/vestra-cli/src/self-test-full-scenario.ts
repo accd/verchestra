@@ -8,6 +8,7 @@ import {
   IndependentVerificationCoordinator,
   PortableHandoffCoordinator,
   type ApprovalArtifactPort,
+  type DurableOutcomeFact,
   type HandoffPorts,
   type FullDurableBoundaryId,
   type FullWorkflowFacts,
@@ -64,6 +65,22 @@ const canonical = (value: unknown): string => {
   return JSON.stringify(value) ?? "null";
 };
 
+function durableOutcome(
+  boundaryId: FullDurableBoundaryId,
+  logicalId: string,
+  value: unknown,
+  resultStatus: string,
+  resultDigest: ShaDigest = digest(canonical(value))
+): DurableOutcomeFact {
+  return Object.freeze({
+    boundaryId,
+    logicalId,
+    logicalResultCount: value === undefined ? 0 : 1,
+    resultDigest,
+    resultStatus
+  });
+}
+
 function textField(row: Readonly<Record<string, unknown>>, key: string): string {
   const value = row[key];
   if (typeof value !== "string") throw new Error(`${key} is not a string`);
@@ -82,6 +99,7 @@ export interface FullWorkflowScenarioResult {
   readonly facts: SubjectRunFacts;
   readonly diagnostics: ScenarioDiagnostics;
   readonly portableArtifacts: readonly [SignedExecutionPackage, SignedRunCapsule];
+  readonly durableOutcomes: readonly DurableOutcomeFact[];
 }
 
 export interface FullScenarioBoundaryHooks {
@@ -285,7 +303,9 @@ async function approve(root: RootFacts, packageArtifact: SignedExecutionPackage,
     });
     const existing = await store.loadApproval(request.approvalId);
     const record = existing ?? (await service.record(request, { id: "human:self-test-reviewer", kind: "human" }));
-    return { record, verified: await service.verify(record.approvalId, record.binding) };
+    const persisted = await store.loadApproval(record.approvalId);
+    if (persisted === undefined) throw new Error("Approval was not persisted");
+    return { record, persisted, verified: await service.verify(record.approvalId, record.binding) };
   } finally {
     runtime.close();
   }
@@ -469,10 +489,21 @@ async function executeEffect(root: RootFacts, hooks: FullScenarioBoundaryHooks) 
       broker.execute(intent.idempotencyKey)
     );
     await broker.execute(intent.idempotencyKey);
-    // The adapter instance is process-local.  On resume it is recreated, so
-    // exactly-once is derived from the durable receipt returned by RuntimeStore,
-    // not from a callback counter.
-    return receipt === undefined ? 0 : 1;
+    const repository = runtime.createEffectRepository();
+    const persistedIntent = await repository.get(intent.idempotencyKey);
+    const persistedReceipt = await repository.getReceipt(intent.idempotencyKey);
+    return {
+      applyCalls: receipt === undefined ? 0 : 1,
+      durableOutcomes: Object.freeze([
+        durableOutcome("full.effect.intent-stored", intent.idempotencyKey, persistedIntent, "COMPLETED"),
+        durableOutcome(
+          "full.effect.receipt-stored",
+          persistedReceipt?.receiptId ?? intent.idempotencyKey,
+          persistedReceipt,
+          "APPLIED"
+        )
+      ])
+    };
   } finally {
     runtime.close();
   }
@@ -847,6 +878,37 @@ function handoffPorts(
         capsuleArtifact = await capsuleStore.get(saved.capsuleRef);
       }
       return { artifact: capsuleArtifact, stored: capsuleStored ?? "already-published" };
+    },
+    durableOutcomes: async (handoffRef: string, capsuleRef: string) => {
+      const prepared = await records.load(`artifact:${handoffRef}`);
+      const publication = await records.find<Record<string, unknown>>(
+        "receiptRef",
+        "receipt:handoff-publication:self-test"
+      );
+      const acceptance = await records.load<Record<string, unknown>>(`acceptance:${handoffRef}`);
+      const capsule = await capsuleStore.get(capsuleRef);
+      return Object.freeze([
+        durableOutcome("full.handoff.prepared-stored", handoffRef, prepared, "STORED"),
+        durableOutcome(
+          "full.handoff.publication-receipt-stored",
+          textField(publication ?? {}, "receiptRef"),
+          publication,
+          "COMPLETED"
+        ),
+        durableOutcome(
+          "full.handoff.acceptance-stored",
+          textField(acceptance ?? {}, "acceptanceRef"),
+          acceptance,
+          "ACCEPTED"
+        ),
+        durableOutcome(
+          "full.capsule.stored",
+          capsule.artifactId,
+          capsule,
+          "HANDED_OFF",
+          envelopeDigest(capsule.payloadDigest)
+        )
+      ]);
     }
   };
 }
@@ -926,7 +988,12 @@ async function runHandoff(
       bindingDigest: textField(accepted, "localBindingDigest")
     }
   });
-  return { continuation, capsule: await fixture.capsule() };
+  const capsule = await fixture.capsule();
+  return {
+    continuation,
+    capsule,
+    durableOutcomes: await fixture.durableOutcomes(textField(prepared, "handoffRef"), capsule.artifact.artifactId)
+  };
 }
 
 function facts(checks: readonly ScenarioCheck[]): SubjectRunFacts {
@@ -968,8 +1035,8 @@ export async function runFullWorkflowScenario(
   );
   const context = await compileContext();
   const route = await routeModel();
-  const execution = await runSelfTestExecutionAndGate(hooks, async () => executeEffect(root, hooks));
-  const effectApplyCalls = execution.duringExecution;
+  const execution = await runSelfTestExecutionAndGate(hooks, records, async () => executeEffect(root, hooks));
+  const effectApplyCalls = execution.duringExecution.applyCalls;
   const verification = await verifyIndependently(hooks, records);
   const capsuleSigner = await durableSigner(root, "self-test-capsule", "run-capsule");
   const capsuleBuilder = new RunCapsuleBuilder({
@@ -992,6 +1059,29 @@ export async function runFullWorkflowScenario(
     packageArtifact,
     handoff.capsule.artifact
   ];
+  const storedPackage = await packageStore.get(packageArtifact.artifactId);
+  const verificationReport = await records.load("verification:report");
+  const durableOutcomes = Object.freeze([
+    durableOutcome(
+      "full.package.stored",
+      storedPackage.artifactId,
+      storedPackage,
+      "STORED",
+      envelopeDigest(storedPackage.payloadDigest)
+    ),
+    durableOutcome(
+      "full.approval.stored",
+      approval.persisted.approvalId,
+      approval.persisted,
+      "APPROVED",
+      approval.persisted.bindingDigest as ShaDigest
+    ),
+    execution.durableOutcomes[0],
+    ...execution.duringExecution.durableOutcomes,
+    execution.durableOutcomes[1],
+    durableOutcome("full.verification.report-stored", "verification:report:self-test", verificationReport, "PASS"),
+    ...handoff.durableOutcomes
+  ]);
   const diagnostics: ScenarioDiagnostics = {
     packageStored: packageReceipt.outcome,
     packageVerified: packageVerification.ok,
@@ -1012,6 +1102,7 @@ export async function runFullWorkflowScenario(
   return {
     facts: facts(checks),
     diagnostics,
-    portableArtifacts
+    portableArtifacts,
+    durableOutcomes
   };
 }

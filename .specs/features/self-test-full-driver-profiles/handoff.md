@@ -5,10 +5,10 @@ issue: 12
 status: in_progress
 branch: codex/issue-12-t71-self-test
 baseRevision: a1e317f3bf1575e0243d597bbfa67785e94d7094
-lastCompletedTask: T10
-nextTask: T11 — derive per-boundary outcomes from authoritative durable stores
-lastGate: T10 focused 28/28 PASS; lint and format PASS on Node 24.14.0
-updatedAt: 2026-08-04T08:30:02Z
+lastCompletedTask: T11
+nextTask: T12 — prove distinct roots for every matrix cell and the happy path
+lastGate: T11 focused 36/36 PASS; 49/49 crash cases PASS; typecheck PASS on Node 24.14.0
+updatedAt: 2026-08-04T08:43:47Z
 ---
 
 # Scope
@@ -168,6 +168,17 @@ metadata changes are not authorized yet.
   provider sensor retains exactly three approved plus one denied invocation so
   it cannot pass merely because cardinality changed. Focused evidence is 28/28
   application-rule cases, with lint and format passing on Node 24.14.0.
+- T11 removes the generic crash-boundary journal as the source of identity and
+  multiplicity. After resume, the production child now selects the requested
+  outcome from the Package, authority, execution checkpoint, RuntimeStore
+  effect, gate commit, verification, Handoff, or Capsule store used by the
+  scenario itself.
+- Each durable fact now carries the authoritative logical identity, exactly-one
+  count, semantic digest, and uppercase result status. The application verdict
+  rejects malformed values, and the complete matrix proves before/after
+  convergence for all eleven boundaries. Focused evidence is 36/36 unit and
+  integration cases plus 49/49 crash-runner and production-matrix cases;
+  typecheck passes on Node 24.14.0.
 
 # Decisions
 
@@ -185,9 +196,9 @@ metadata changes are not authorized yet.
 
 # Next action
 
-Execute review-remediation tasks T11–T13 atomically. Next derive each crash
-boundary's logical identity, multiplicity, digest, and status from its
-authoritative durable store after resume. Do not push without contributor
+Execute review-remediation tasks T12–T13 atomically. Next add a behavioral
+sensor proving that the happy path and every boundary/phase matrix cell use
+distinct normalized disposable roots. Do not push without contributor
 authorization.
 
 # Blockers

@@ -22,7 +22,10 @@ function boundaryFacts(overrides = {}) {
     DURABLE_CRASH_PHASES.map((phase) => ({
       boundaryId,
       phase,
+      logicalId: `self-test:${boundaryId}`,
       logicalResultCount: 1,
+      resultDigest: `sha256:${"a".repeat(64)}`,
+      resultStatus: "STORED",
       resumed: true,
       semanticFingerprint: fingerprint,
       crashExitCode: DURABLE_CRASH_EXIT_CODE,
@@ -123,6 +126,18 @@ test("a durable boundary with duplicated logical results fails closed", () => {
     code: "VES_SELFTEST_DURABLE_BOUNDARY_INVALID"
   });
 });
+
+for (const [name, overrides] of [
+  ["logical identity", { logicalId: "" }],
+  ["result digest", { resultDigest: "sha256:invalid" }],
+  ["result status", { resultStatus: "" }]
+]) {
+  test(`a durable boundary with an invalid ${name} fails closed`, () => {
+    assert.throws(() => assertDurableBoundaryFacts(boundaryFacts(overrides)), {
+      code: "VES_SELFTEST_DURABLE_BOUNDARY_INVALID"
+    });
+  });
+}
 
 test("a boundary that did not resume fails closed", () => {
   assert.throws(() => assertDurableBoundaryFacts(boundaryFacts({ resumed: false })), {

@@ -313,10 +313,16 @@ export function assertConvergence(first: readonly string[], second: readonly str
     fail("VES_SELFTEST_NONCONVERGENT", `self-test runs diverged: [${first.join(", ")}] vs [${second.join(", ")}]`);
 }
 
-export interface DurableBoundaryFact {
+export interface DurableOutcomeFact {
   readonly boundaryId: FullDurableBoundaryId;
-  readonly phase: DurableCrashPhase;
+  readonly logicalId: string;
   readonly logicalResultCount: number;
+  readonly resultDigest: string;
+  readonly resultStatus: string;
+}
+
+export interface DurableBoundaryFact extends DurableOutcomeFact {
+  readonly phase: DurableCrashPhase;
   readonly resumed: boolean;
   readonly semanticFingerprint: readonly string[];
   readonly crashExitCode: number;
@@ -329,15 +335,18 @@ function validFingerprint(value: unknown): value is readonly string[] {
   return value.every((entry) => typeof entry === "string" && entry.length > 0);
 }
 
-function durableBoundaryKey(fact: DurableBoundaryFact | null): string {
-  if (fact === null || typeof fact !== "object")
-    fail("VES_SELFTEST_DURABLE_BOUNDARY_INVALID", "durable boundary fact is malformed");
-  if (!FULL_DURABLE_BOUNDARY_IDS.includes(fact.boundaryId))
-    fail("VES_SELFTEST_DURABLE_BOUNDARY_INVALID", `durable boundary id is invalid: ${String(fact.boundaryId)}`);
-  if (!DURABLE_CRASH_PHASES.includes(fact.phase))
-    fail("VES_SELFTEST_DURABLE_BOUNDARY_INVALID", `durable crash phase is invalid: ${String(fact.phase)}`);
+function assertDurableOutcome(fact: DurableOutcomeFact): void {
+  if (typeof fact.logicalId !== "string" || !/^[\w.:/-]+$/u.test(fact.logicalId))
+    fail("VES_SELFTEST_DURABLE_BOUNDARY_INVALID", "durable boundary logical identity is invalid");
   if (fact.logicalResultCount !== 1)
     fail("VES_SELFTEST_DURABLE_BOUNDARY_INVALID", "durable boundary did not converge exactly once");
+  if (typeof fact.resultDigest !== "string" || !/^sha256:[a-f0-9]{64}$/u.test(fact.resultDigest))
+    fail("VES_SELFTEST_DURABLE_BOUNDARY_INVALID", "durable boundary result digest is invalid");
+  if (typeof fact.resultStatus !== "string" || !/^[A-Z][A-Z_-]*$/u.test(fact.resultStatus))
+    fail("VES_SELFTEST_DURABLE_BOUNDARY_INVALID", "durable boundary result status is invalid");
+}
+
+function assertCrashResult(fact: DurableBoundaryFact): void {
   if (fact.resumed !== true) fail("VES_SELFTEST_DURABLE_BOUNDARY_INVALID", "durable boundary did not resume");
   if (fact.crashExitCode !== DURABLE_CRASH_EXIT_CODE)
     fail("VES_SELFTEST_DURABLE_BOUNDARY_INVALID", "durable boundary did not observe the expected hard crash");
@@ -345,6 +354,17 @@ function durableBoundaryKey(fact: DurableBoundaryFact | null): string {
     fail("VES_SELFTEST_DURABLE_BOUNDARY_INVALID", "durable boundary resume did not exit successfully");
   if (!validFingerprint(fact.semanticFingerprint))
     fail("VES_SELFTEST_DURABLE_BOUNDARY_INVALID", "durable boundary fingerprint is invalid");
+}
+
+function durableBoundaryKey(fact: DurableBoundaryFact | null): string {
+  if (fact === null || typeof fact !== "object")
+    fail("VES_SELFTEST_DURABLE_BOUNDARY_INVALID", "durable boundary fact is malformed");
+  if (!FULL_DURABLE_BOUNDARY_IDS.includes(fact.boundaryId))
+    fail("VES_SELFTEST_DURABLE_BOUNDARY_INVALID", `durable boundary id is invalid: ${String(fact.boundaryId)}`);
+  if (!DURABLE_CRASH_PHASES.includes(fact.phase))
+    fail("VES_SELFTEST_DURABLE_BOUNDARY_INVALID", `durable crash phase is invalid: ${String(fact.phase)}`);
+  assertDurableOutcome(fact);
+  assertCrashResult(fact);
   return `${fact.boundaryId}:${fact.phase}`;
 }
 

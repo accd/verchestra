@@ -3,7 +3,11 @@ import { rm } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, test } from "node:test";
 
-import { FULL_CHECK_IDS, semanticFingerprint } from "../../packages/application/src/index.ts";
+import {
+  FULL_CHECK_IDS,
+  FULL_DURABLE_BOUNDARY_IDS,
+  semanticFingerprint
+} from "../../packages/application/src/index.ts";
 import { DisposableRootProvider } from "../../packages/self-test/src/index.ts";
 import { runFullWorkflowScenario } from "../../apps/vestra-cli/src/self-test-full-scenario.ts";
 
@@ -47,6 +51,20 @@ test("the complete delivery path uses its production APIs", async () => {
   assert.equal(diagnostics.handoffStatus, "EXECUTION_AUTHORIZED");
   assert.equal(diagnostics.capsuleStored, "published");
   assert.equal(diagnostics.capsuleVerified, true);
+});
+
+test("the complete delivery path queries one authoritative outcome per durable boundary", async () => {
+  const result = await runFullWorkflowScenario(await root());
+  assert.deepEqual(
+    result.durableOutcomes.map((outcome) => outcome.boundaryId),
+    FULL_DURABLE_BOUNDARY_IDS
+  );
+  for (const outcome of result.durableOutcomes) {
+    assert.match(outcome.logicalId, /^[-:._A-Za-z0-9]+$/u);
+    assert.equal(outcome.logicalResultCount, 1);
+    assert.match(outcome.resultDigest, /^sha256:[a-f0-9]{64}$/u);
+    assert.match(outcome.resultStatus, /^[A-Z_-]+$/u);
+  }
 });
 
 test("portable full-scenario evidence excludes provider-local state", async () => {

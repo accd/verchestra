@@ -34,7 +34,10 @@ for (const boundaryId of FULL_DURABLE_BOUNDARY_IDS) {
       const facts = await new DurableCrashRunner({ entrypoint }).run({ root: await root(), boundaryId, phase });
       assert.equal(facts.boundaryId, boundaryId);
       assert.equal(facts.phase, phase);
+      assert.equal(facts.logicalId, `self-test:${boundaryId}`);
       assert.equal(facts.logicalResultCount, 1);
+      assert.match(facts.resultDigest, /^sha256:[a-f0-9]{64}$/u);
+      assert.equal(facts.resultStatus, "STORED");
       assert.equal(facts.resumed, true);
       assert.equal(facts.crashExitCode, 86);
       assert.equal(facts.resumeExitCode, 0);

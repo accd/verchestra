@@ -1,5 +1,4 @@
 import { writeFile } from "node:fs/promises";
-import { join } from "node:path";
 
 import {
   FULL_DURABLE_BOUNDARY_IDS,
@@ -7,7 +6,7 @@ import {
   type DurableCrashPhase,
   type FullDurableBoundaryId
 } from "@verchestra/application";
-import { FileRecordStore, probeRootFacts } from "@verchestra/self-test";
+import { probeRootFacts } from "@verchestra/self-test";
 
 import { runFullWorkflowScenario } from "./self-test-full-scenario.ts";
 
@@ -45,41 +44,24 @@ function input(): ChildInput {
 }
 
 const childInput = input();
-const recordStore = new FileRecordStore({
-  root: join(childInput.root, ".verchestra-self-test-crash", "durable-boundaries")
-});
-const recordKey = `boundary:${childInput.boundaryId}`;
-const existing = await recordStore.load<{ readonly boundaryId: FullDurableBoundaryId; readonly logicalId: string }>(
-  recordKey
-);
-
 const result = await runFullWorkflowScenario(await probeRootFacts(childInput.root), {
   before: async (boundaryId) => {
-    if (
-      childInput.mode === "crash" &&
-      childInput.phase === "before" &&
-      boundaryId === childInput.boundaryId &&
-      existing === undefined
-    )
+    if (childInput.mode === "crash" && childInput.phase === "before" && boundaryId === childInput.boundaryId)
       process.exit(86);
   },
   after: async (boundaryId) => {
-    await recordStore.save(`boundary:${boundaryId}`, { boundaryId, logicalId: `self-test:${boundaryId}` });
     if (childInput.mode === "crash" && childInput.phase === "after" && boundaryId === childInput.boundaryId)
       process.exit(86);
   }
 });
+const outcome = result.durableOutcomes.find(({ boundaryId }) => boundaryId === childInput.boundaryId);
+if (outcome === undefined) throw new Error("Durable boundary outcome was not recovered");
 
 await writeFile(
   childInput.factsPath,
   JSON.stringify({
-    boundaryId: childInput.boundaryId,
+    ...outcome,
     phase: childInput.phase,
-    logicalResultCount:
-      (await recordStore.load<{ readonly boundaryId: FullDurableBoundaryId }>(recordKey))?.boundaryId ===
-      childInput.boundaryId
-        ? 1
-        : 0,
     resumed: childInput.mode === "resume",
     semanticFingerprint: semanticFingerprint(result.facts.checks)
   }),
