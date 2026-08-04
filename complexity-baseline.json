@@ -144,7 +144,7 @@
       15
     ],
     "packages/application/src/verification/verification.ts :: Async method 'verify'": [
-      21
+      19
     ],
     "packages/connectors/src/confluence/architecture-source.ts :: Private async method #attachments": [
       20

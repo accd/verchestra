@@ -12,6 +12,8 @@ const PATH = /^(?![A-Za-z]:)(?!\/)(?!.*\\)(?!.*(?:^|\/)\.\.(?:\/|$))[A-Za-z0-9._
 export type VerificationErrorCode =
   | "VES_VERIFIER_INPUT_INVALID"
   | "VES_VERIFIER_IDENTITY_CONFLICT"
+  | "VES_VERIFIER_DRIVER_CONFLICT"
+  | "VES_VERIFIER_GRANT_INVALID"
   | "VES_VERIFIER_EXPECTATION_INVALID"
   | "VES_VERIFIER_INSPECTION_INVALID"
   | "VES_VERIFIER_SENSOR_INVALID"
@@ -116,6 +118,11 @@ interface VerificationInput {
   readonly workspaceId: string;
   readonly run: RunSnapshot;
   readonly verifier: { readonly actorId: string; readonly actorKind: "human" | "model"; readonly passportRef: string };
+  // The driver that produced the implementation and the driver that will run
+  // this verification. Structural independence (#35) requires these to
+  // differ; declaring only actor identity left "independent" a self-report.
+  readonly implementerDriverId: string;
+  readonly verifierDriverId: string;
   readonly packageDigest: Digest;
   readonly commit: { readonly commitId: string; readonly authorActorId: string; readonly gateEvidenceDigest: Digest };
   readonly criteria: readonly Criterion[];
@@ -199,6 +206,8 @@ function normalizeVerification(value: unknown): VerificationInput {
       "workspaceId",
       "run",
       "verifier",
+      "implementerDriverId",
+      "verifierDriverId",
       "packageDigest",
       "commit",
       "criteria",
@@ -207,7 +216,7 @@ function normalizeVerification(value: unknown): VerificationInput {
     ],
     code
   );
-  if (row.schemaVersion !== 1) fail(code, "schemaVersion is invalid");
+  if (row.schemaVersion !== 2) fail(code, "schemaVersion is invalid");
   const verifier = exact(row.verifier, "verifier", ["actorId", "actorKind", "passportRef"], code);
   const commit = exact(row.commit, "commit", ["commitId", "authorActorId", "gateEvidenceDigest"], code);
   const commitId = token(commit.commitId, "commit.commitId", code);
@@ -283,6 +292,8 @@ function normalizeVerification(value: unknown): VerificationInput {
       actorKind: literal(verifier.actorKind, "verifier.actorKind", ["human", "model"] as const, code),
       passportRef: token(verifier.passportRef, "verifier.passportRef", code)
     },
+    implementerDriverId: token(row.implementerDriverId, "implementerDriverId", code),
+    verifierDriverId: token(row.verifierDriverId, "verifierDriverId", code),
     packageDigest: digest(row.packageDigest, "packageDigest", code),
     commit: {
       commitId,
@@ -389,6 +400,24 @@ function receipt(value: unknown, kind: "report" | "lesson" | "review"): Readonly
   return freeze({ ...row });
 }
 
+// Independence is checked before anything else runs: an author or driver
+// conflict makes the rest of verification meaningless, so both fail closed
+// up front rather than each being buried in verify()'s own branching.
+function assertIndependentVerifier(input: VerificationInput): void {
+  if (
+    input.verifier.actorId === input.commit.authorActorId ||
+    input.verifier.actorId === input.run.implementationActorId
+  ) {
+    fail("VES_VERIFIER_IDENTITY_CONFLICT", "the implementation author cannot verify the same work");
+  }
+  if (input.implementerDriverId === input.verifierDriverId) {
+    fail(
+      "VES_VERIFIER_DRIVER_CONFLICT",
+      `the implementer driver (${input.implementerDriverId}) cannot also verify (${input.verifierDriverId})`
+    );
+  }
+}
+
 function gapCode(status: string): string {
   if (status === "UNCOVERED") return "UNCOVERED_CRITERION";
   if (status === "OUTCOME_MISMATCH") return "OUTCOME_MISMATCH";
@@ -406,12 +435,7 @@ export class IndependentVerificationCoordinator {
 
   async verify(value: unknown): Promise<Readonly<Row>> {
     const input = normalizeVerification(value);
-    if (
-      input.verifier.actorId === input.commit.authorActorId ||
-      input.verifier.actorId === input.run.implementationActorId
-    ) {
-      fail("VES_VERIFIER_IDENTITY_CONFLICT", "the implementation author cannot verify the same work");
-    }
+    assertIndependentVerifier(input);
     const outcomes = new Map<string, ExpectedOutcome>();
     for (const criterion of input.criteria)
       outcomes.set(criterion.criterionId, expectedOutcome(await this.ports.expectations.derive(criterion)));
@@ -518,13 +542,14 @@ export class IndependentVerificationCoordinator {
     ];
     const verdict = gaps.length === 0 ? "PASS" : "FAIL";
     const report = freeze({
-      schemaVersion: 1,
+      schemaVersion: 2,
       workspaceId: input.workspaceId,
       runId: input.run.runId,
       packageDigest: input.packageDigest,
       commitId: input.commit.commitId,
       gateEvidenceDigest: input.commit.gateEvidenceDigest,
       actorBinding: { authorActorId: input.commit.authorActorId, verifierActorId: input.verifier.actorId },
+      driverBinding: { implementerDriverId: input.implementerDriverId, verifierDriverId: input.verifierDriverId },
       verifierPassportRef: input.verifier.passportRef,
       requirementIds: [...new Set(input.criteria.map((entry) => entry.requirementId))].sort(),
       criteria: criterionReports,
