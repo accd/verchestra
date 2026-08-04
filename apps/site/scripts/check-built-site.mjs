@@ -113,7 +113,7 @@ const llms = await readFile(join(distRoot, "llms.txt"), "utf8");
 const llmsFull = await readFile(join(distRoot, "llms-full.txt"), "utf8");
 const sitemap = await readFile(join(distRoot, "sitemap-0.xml"), "utf8");
 assert.match(llms, /0\.0\.0-qualification/u);
-assert.match(llms, /T69 complete; T70 next/u);
+assert.match(llms, /T70 complete; T71 next/u);
 assert.match(llms, /inference-time documentation aid/u);
 assert.ok(Buffer.byteLength(llmsFull) < 1024 * 1024);
 assert.match(llmsFull, /docs\/qualification\/t68-validation\.md/u);
@@ -139,7 +139,7 @@ assert.match(proofPage, /artifactId/u);
 
 const homepage = await readFile(join(distRoot, "index.html"), "utf8");
 assert.match(homepage, /0\.0\.0-qualification/u);
-assert.match(homepage, /T69 verified/u);
+assert.match(homepage, /T70 verified/u);
 // The evidence link derives from the typed status, so a report that advances
 // the counter cannot leave the public CTA pointing at an older milestone. The
 // script cannot import TypeScript, so the typed status is read as source; the
@@ -155,7 +155,7 @@ assert.match(homepage, /What works today/u);
 assert.match(homepage, /Workspace initialization \(init preview and apply\)/u);
 assert.match(homepage, /What Verchestra is not/u);
 assert.match(homepage, /Run the local alpha/u);
-assert.match(homepage, /T70 next/u);
+assert.match(homepage, /T71 next/u);
 assert.doesNotMatch(homepage, /npm (?:install|add).{0,40}verchestra/iu);
 assert.doesNotMatch(homepage, /production[- ]ready/iu);
 
