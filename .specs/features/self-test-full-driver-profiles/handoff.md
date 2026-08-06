@@ -2,13 +2,13 @@
 schema: verchestra-feature-handoff/v1
 feature: self-test-full-driver-profiles
 issue: 12
-status: in_progress
+status: complete
 branch: codex/issue-12-t71-self-test
 baseRevision: 0793779ee52d168a3d155ffeb5c076ef64008e84
 lastCompletedTask: T14
-nextTask: contributor review, authorized push, CI, then maintainer re-review
-lastGate: quick/security/release PASS; full PASS on clean worktree at f4af642
-updatedAt: 2026-08-04T10:30:28Z
+nextTask: none; T71 is complete and independently qualified in docs/qualification/t71-validation.md
+lastGate: gate:quick, gate:full, gate:security PASS at 9e663bd; CI and CodeQL PASS at ec258a2
+updatedAt: 2026-08-06T19:27:53Z
 ---
 
 # Scope
@@ -233,10 +233,11 @@ metadata changes are not authorized yet.
 
 # Next action
 
-Contributor review of merge revision `09950f9`, behavior revision `f4af642`,
-and this evidence update. After explicit authorization, push only
-`codex/issue-12-t71-self-test`, wait for PR #182 CI, update the English
-remediation evidence, and request maintainer re-review only after CI passes.
+None. PR #182 merged the implementation to `main` (T71 tip `ec258a2`), and T71
+is independently qualified in `docs/qualification/t71-validation.md` (bound to
+`9e663bd`: 10 of 10 acceptance criteria, 5 of 5 mutations killed,
+`gate:quick`/`gate:full`/`gate:security` PASS, CI and CodeQL PASS at `ec258a2`).
+The qualification chain advances to T72 (#13).
 
 # Blockers
 
