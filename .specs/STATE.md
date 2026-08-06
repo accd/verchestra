@@ -92,11 +92,8 @@
 
 ## Handoff
 
-- **Feature:** `structural-verifier-isolation` (#35) — complete (T1–T7); T71/T74/T75 composition roots consume `resolveVerifierDriver` and the grant/tool-request rules when they wire a real verifying driver session.
-- **Feature:** `self-test` (T69) — complete; the chain advances to T70 (#11), which declares `gate:full` rather than `gate:security`.
-- **Feature:** `external-review-triage`
-- **State:** T1–T5 complete; T6 (GitHub backlog issues) and T7 (final gates) in progress
+- **Feature:** `self-test-full-driver-profiles` (T71, #12) — complete; the implementation merged via PR #182 (tip `ec258a2`) and is independently qualified in `docs/qualification/t71-validation.md` (author ≠ verifier).
+- **Qualification chain:** T71 verified; **T72 (#13, deep doctor and signed diagnostic reports) is next**. The derived status surfaces (`agent:context`, root `AGENTS.md`, `llms.txt`, site `product.ts` and current-qualification-status content) advanced from "T70 complete; T71 next" to "T71 complete; T72 next" in the same change, with the corresponding contract-test and site-gate string updates.
 - **Branch:** `main`
-- **Completed:** Verified triage of the external review (11 claims, 2 corrected), full specifications for T68a–T68d, decision specifications for DSSE and context tokenizers, roadmap insertion of T68a–T68d, and the Apache-2.0 license change with AD-007/AD-008.
-- **Verification:** `pnpm agent:check` and `pnpm gate:quick` run in T7; site gates run for the license change.
-- **Next:** Create GitHub issues for deferred items R7–R11 (or record the permission blocker), run final gates, and mark the triage handoff ready for independent review.
+- **Verification:** `gate:quick`, `gate:full` (3,330 cases), and `gate:security` PASS at `9e663bd`; CI Quality gate and CodeQL PASS at the T71 tip `ec258a2`; discrimination sensor 5 of 5 killed, 0 survived.
+- **Next:** Begin T72 (#13): `doctor --deep` and the signed diagnostic report schema, extending AD-010's three-region Self-Test boundary. Structural verifier isolation (#35, AD-011) remains available for T74/T75 composition roots via `resolveVerifierDriver`.
