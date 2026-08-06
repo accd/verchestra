@@ -268,6 +268,25 @@ export {
   type SubjectRunFacts,
   type WorkspaceShape
 } from "./self-test/self-test.ts";
+export {
+  DOCTOR_CAPABILITY_IDS,
+  DOCTOR_CHECK_IDS,
+  DOCTOR_REMEDIATION_CODES,
+  DOCTOR_REPORT_FIELDS,
+  DoctorError,
+  assertDoctorCheckFacts,
+  assertDoctorReportPayload,
+  buildDoctorReport,
+  doctorExitCode,
+  type DoctorCheckFact,
+  type DoctorCheckId,
+  type DoctorCheckStatus,
+  type DoctorErrorCode,
+  type DoctorRemediationCode,
+  type DoctorReportPayload,
+  type DoctorReportValue,
+  type DoctorVerdict
+} from "./doctor/doctor.ts";
 export type {
   ContextClaimInput,
   ContextFragmentInput,
