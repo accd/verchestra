@@ -107,6 +107,43 @@ for (const path of [".github/workflows/ci.yml", ".github/dependabot.yml"]) {
   });
 }
 
+for (const path of ["package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", ".npmrc"]) {
+  test(`${path} (root dependency surface) selects conservative supply-chain verification`, () => {
+    // A dependency or lockfile bump can move behavior on any surface, so it may
+    // not slip through on gate:quick the way the metadata catch-all once allowed.
+    const gates = gatesFor(path);
+    assert.ok(gates.includes("gate:full"));
+    assert.ok(gates.includes("gate:release"));
+  });
+}
+
+for (const path of [
+  "scripts/gate.mjs",
+  "scripts/gate-stages.mjs",
+  "scripts/gate-selection.mjs",
+  "scripts/test-scope.mjs"
+]) {
+  test(`${path} (gate machinery) selects conservative verification`, () => {
+    // A change to how gates are composed or selected must run the most
+    // verification, not the least; otherwise the policy can relax itself unseen.
+    const gates = gatesFor(path);
+    assert.ok(gates.includes("gate:full"));
+    assert.ok(gates.includes("gate:release"));
+  });
+}
+
+test("the security gate exercises contract and e2e evidence, not only the unit and security suites", () => {
+  assert.ok(GATE_STAGES["gate:security"].includes("test:contract"));
+  assert.ok(GATE_STAGES["gate:security"].includes("test:e2e"));
+});
+
+test("the mutation sensor suite is executed by the gate its path selects", () => {
+  // tests/mutation/ selects gate:full; that gate must actually run test:mutation,
+  // or the sensor suite is orphaned - routed but executed by nothing.
+  assert.ok(gatesFor("tests/mutation/verification-sensor.test.mjs").includes("gate:full"));
+  assert.ok(GATE_STAGES["gate:full"].includes("test:mutation"));
+});
+
 test("the stage union is deterministic and executes each selected stage once", () => {
   const stages = stagesForGates(["gate:quick", "gate:full", "gate:release"]);
   assert.equal(new Set(stages).size, stages.length);
@@ -121,6 +158,7 @@ test("the stage union is deterministic and executes each selected stage once", (
     "test:integration",
     "test:e2e",
     "test:fault",
+    "test:mutation",
     "build",
     "test:architecture",
     "test:qualification",
