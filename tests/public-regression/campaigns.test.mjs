@@ -5,10 +5,15 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { test } from "node:test";
 
-import { assertCampaignCorpus, buildCampaignSummary, canonicalizeCorpus } from "../../packages/application/src/index.ts";
+import {
+  assertCampaignCorpus,
+  buildCampaignSummary,
+  canonicalizeCorpus
+} from "../../packages/application/src/index.ts";
 import { CAMPAIGNS, CAMPAIGN_DEFINITIONS, runCampaign } from "./corpus.mjs";
 
-const corpusDigest = () => `sha256:${createHash("sha256").update(canonicalizeCorpus(CAMPAIGN_DEFINITIONS)).digest("hex")}`;
+const corpusDigest = () =>
+  `sha256:${createHash("sha256").update(canonicalizeCorpus(CAMPAIGN_DEFINITIONS)).digest("hex")}`;
 
 test("the public corpus is a valid set of at least twenty campaigns", () => {
   assert.doesNotThrow(() => assertCampaignCorpus(CAMPAIGN_DEFINITIONS));

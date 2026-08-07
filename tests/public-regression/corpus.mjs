@@ -53,7 +53,9 @@ const doctorPassFacts = DOCTOR_CHECK_IDS.map((checkId) => ({
   capabilityId: DOCTOR_CAPABILITY_IDS[checkId]
 }));
 
-const healthyDoctorProbes = Object.fromEntries(DOCTOR_CHECK_IDS.map((id) => [id, () => ({ present: true, healthy: true })]));
+const healthyDoctorProbes = Object.fromEntries(
+  DOCTOR_CHECK_IDS.map((id) => [id, () => ({ present: true, healthy: true })])
+);
 
 const fingerprint = Object.freeze(["full.complete:pass"]);
 function durableMatrix() {
@@ -124,43 +126,185 @@ function frozenSequence(total, failingIndices) {
 const EVIDENCE = "docs/qualification/t73-validation.md";
 
 function deterministic(id, requirement, fixtureRef, threshold, check) {
-  return { def: { id, requirement, owner: "verchestra", threshold, fixtureRef, evidenceRef: EVIDENCE, sampleSize: 1 }, check };
+  return {
+    def: { id, requirement, owner: "verchestra", threshold, fixtureRef, evidenceRef: EVIDENCE, sampleSize: 1 },
+    check
+  };
 }
 function probabilistic(id, requirement, fixtureRef, threshold, sampleSize, check) {
-  return { def: { id, requirement, owner: "verchestra", threshold, fixtureRef, evidenceRef: EVIDENCE, sampleSize }, check };
+  return {
+    def: { id, requirement, owner: "verchestra", threshold, fixtureRef, evidenceRef: EVIDENCE, sampleSize },
+    check
+  };
 }
 
 export const CAMPAIGNS = Object.freeze([
   // Doctor (T72)
-  deterministic("doctor-report-pass", "CAM-04", "fixtures/doctor/all-pass", 1, () => buildDoctorReport(doctorPassFacts, 1)["doctor.verdict"] === "PASS"),
-  deterministic("doctor-exit-codes-stable", "CAM-04", "fixtures/doctor/exit-codes", 1, () => doctorExitCode("PASS") === 0 && doctorExitCode("FAIL") === 1 && doctorExitCode("BLOCKED") === 4),
-  deterministic("doctor-catalog-closed", "CAM-02", "fixtures/doctor/missing-check", 1, () => threw(() => assertDoctorCheckFacts(doctorPassFacts.slice(1)), "VES_DOCTOR_CHECK_CATALOG_INVALID")),
-  deterministic("doctor-facts-complete", "CAM-04", "fixtures/doctor/probes", 1, () => collectDoctorFacts(healthyDoctorProbes).length === 12),
+  deterministic(
+    "doctor-report-pass",
+    "CAM-04",
+    "fixtures/doctor/all-pass",
+    1,
+    () => buildDoctorReport(doctorPassFacts, 1)["doctor.verdict"] === "PASS"
+  ),
+  deterministic(
+    "doctor-exit-codes-stable",
+    "CAM-04",
+    "fixtures/doctor/exit-codes",
+    1,
+    () => doctorExitCode("PASS") === 0 && doctorExitCode("FAIL") === 1 && doctorExitCode("BLOCKED") === 4
+  ),
+  deterministic("doctor-catalog-closed", "CAM-02", "fixtures/doctor/missing-check", 1, () =>
+    threw(() => assertDoctorCheckFacts(doctorPassFacts.slice(1)), "VES_DOCTOR_CHECK_CATALOG_INVALID")
+  ),
+  deterministic(
+    "doctor-facts-complete",
+    "CAM-04",
+    "fixtures/doctor/probes",
+    1,
+    () => collectDoctorFacts(healthyDoctorProbes).length === 12
+  ),
   // Self-Test durable boundaries (T71)
-  deterministic("selftest-durable-matrix-valid", "CAM-04", "fixtures/selftest/durable-matrix", 1, () => ok(() => assertDurableBoundaryFacts(durableMatrix(), HAPPY_ROOT))),
-  deterministic("selftest-durable-missing-fails", "CAM-02", "fixtures/selftest/durable-missing", 1, () => threw(() => assertDurableBoundaryFacts(durableMatrix().slice(1), HAPPY_ROOT), "VES_SELFTEST_DURABLE_BOUNDARY_INVALID")),
-  deterministic("selftest-convergence-holds", "CAM-04", "fixtures/selftest/convergence", 1, () => ok(() => assertConvergence(["a:pass"], ["a:pass"])) && threw(() => assertConvergence(["a:pass"], ["a:fail"]), "VES_SELFTEST_NONCONVERGENT")),
+  deterministic("selftest-durable-matrix-valid", "CAM-04", "fixtures/selftest/durable-matrix", 1, () =>
+    ok(() => assertDurableBoundaryFacts(durableMatrix(), HAPPY_ROOT))
+  ),
+  deterministic("selftest-durable-missing-fails", "CAM-02", "fixtures/selftest/durable-missing", 1, () =>
+    threw(
+      () => assertDurableBoundaryFacts(durableMatrix().slice(1), HAPPY_ROOT),
+      "VES_SELFTEST_DURABLE_BOUNDARY_INVALID"
+    )
+  ),
+  deterministic(
+    "selftest-convergence-holds",
+    "CAM-04",
+    "fixtures/selftest/convergence",
+    1,
+    () =>
+      ok(() => assertConvergence(["a:pass"], ["a:pass"])) &&
+      threw(() => assertConvergence(["a:pass"], ["a:fail"]), "VES_SELFTEST_NONCONVERGENT")
+  ),
   // Self-Test profiles and coverage (T69/T70)
-  deterministic("selftest-profile-sealed", "CAM-02", "fixtures/selftest/profile", 1, () => resolveSelfTestProfile("smoke").profileId === "smoke"),
-  deterministic("selftest-coverage-missing-fails", "CAM-02", "fixtures/selftest/coverage", 1, () => threw(() => assertProfileCoverage(resolveSelfTestProfile("smoke"), []), "VES_SELFTEST_SCENARIO_MISSING")),
-  deterministic("selftest-sentinels-identical", "CAM-04", "fixtures/selftest/sentinels", 1, () => diffSentinels([{ sentinelId: "s", digest: "d" }], [{ sentinelId: "s", digest: "d" }]).identical === true),
-  deterministic("selftest-report-allowlist", "CAM-05", "fixtures/selftest/report", 1, () => ok(() => assertReportPayload(selfTestPayload)) && threw(() => assertReportPayload({ ...selfTestPayload, "self_test.leak": "x" }))),
+  deterministic(
+    "selftest-profile-sealed",
+    "CAM-02",
+    "fixtures/selftest/profile",
+    1,
+    () => resolveSelfTestProfile("smoke").profileId === "smoke"
+  ),
+  deterministic("selftest-coverage-missing-fails", "CAM-02", "fixtures/selftest/coverage", 1, () =>
+    threw(() => assertProfileCoverage(resolveSelfTestProfile("smoke"), []), "VES_SELFTEST_SCENARIO_MISSING")
+  ),
+  deterministic(
+    "selftest-sentinels-identical",
+    "CAM-04",
+    "fixtures/selftest/sentinels",
+    1,
+    () => diffSentinels([{ sentinelId: "s", digest: "d" }], [{ sentinelId: "s", digest: "d" }]).identical === true
+  ),
+  deterministic(
+    "selftest-report-allowlist",
+    "CAM-05",
+    "fixtures/selftest/report",
+    1,
+    () =>
+      ok(() => assertReportPayload(selfTestPayload)) &&
+      threw(() => assertReportPayload({ ...selfTestPayload, "self_test.leak": "x" }))
+  ),
   // Approved-driver authority (T71)
-  deterministic("driver-review-binding-valid", "CAM-02", "fixtures/driver/review", 1, () => ok(() => assertDriverInvocationFacts(invocation()))),
-  deterministic("driver-denied-reaches-zero", "CAM-04", "fixtures/driver/denied", 1, () => threw(() => assertDriverInvocationFacts(invocation({ authorized: false })), "VES_SELFTEST_PROVIDER_CALL_REACHED")),
-  deterministic("driver-writer-tool-denied", "CAM-04", "fixtures/driver/writer-tool", 1, () => threw(() => assertDriverInvocationFacts(invocation({ writerToolReachable: true })), "VES_SELFTEST_WRITER_TOOL_REACHABLE")),
+  deterministic("driver-review-binding-valid", "CAM-02", "fixtures/driver/review", 1, () =>
+    ok(() => assertDriverInvocationFacts(invocation()))
+  ),
+  deterministic("driver-denied-reaches-zero", "CAM-04", "fixtures/driver/denied", 1, () =>
+    threw(() => assertDriverInvocationFacts(invocation({ authorized: false })), "VES_SELFTEST_PROVIDER_CALL_REACHED")
+  ),
+  deterministic("driver-writer-tool-denied", "CAM-04", "fixtures/driver/writer-tool", 1, () =>
+    threw(
+      () => assertDriverInvocationFacts(invocation({ writerToolReachable: true })),
+      "VES_SELFTEST_WRITER_TOOL_REACHABLE"
+    )
+  ),
   // Gate repair bounded feedback (T68c)
-  deterministic("gate-repair-feedback-bounded", "CAM-05", "fixtures/gate-repair/budget", 1, () => FEEDBACK_BYTE_BUDGET === 16384),
+  deterministic(
+    "gate-repair-feedback-bounded",
+    "CAM-05",
+    "fixtures/gate-repair/budget",
+    1,
+    () => FEEDBACK_BYTE_BUDGET === 16384
+  ),
   // Canonical JSON (T3, RFC 8785)
-  deterministic("canonical-json-key-order", "CAM-04", "fixtures/canonical/order", 1, () => canonicalizeJsonV2({ b: 1, a: 2 }) === canonicalizeJsonV2({ a: 2, b: 1 })),
-  deterministic("canonical-json-deterministic", "CAM-04", "fixtures/canonical/stable", 1, () => canonicalizeJsonV2({ a: [1, 2], c: true }) === canonicalizeJsonV2({ a: [1, 2], c: true })),
+  deterministic(
+    "canonical-json-key-order",
+    "CAM-04",
+    "fixtures/canonical/order",
+    1,
+    () => canonicalizeJsonV2({ b: 1, a: 2 }) === canonicalizeJsonV2({ a: 2, b: 1 })
+  ),
+  deterministic(
+    "canonical-json-deterministic",
+    "CAM-04",
+    "fixtures/canonical/stable",
+    1,
+    () => canonicalizeJsonV2({ a: [1, 2], c: true }) === canonicalizeJsonV2({ a: [1, 2], c: true })
+  ),
   // Campaign framework self-checks (T73)
-  deterministic("campaign-corpus-minimum-enforced", "CAM-01", "fixtures/campaign/minimum", 1, () => threw(() => assertCampaignCorpus([]), "VES_CAMPAIGN_CORPUS_INVALID")),
-  deterministic("campaign-wilson-below-threshold-fails", "CAM-03", "fixtures/campaign/wilson", 1, () => evaluateCampaign({ id: "probe", requirement: "CAM-03", owner: "v", threshold: 0.9, fixtureRef: "fixtures/x", evidenceRef: EVIDENCE, sampleSize: 100 }, Array.from({ length: 100 }, (_, i) => i >= 5)).verdict === "FAIL"),
-  deterministic("campaign-deterministic-pass", "CAM-03", "fixtures/campaign/deterministic", 1, () => evaluateCampaign({ id: "probe", requirement: "CAM-03", owner: "v", threshold: 1, fixtureRef: "fixtures/x", evidenceRef: EVIDENCE, sampleSize: 1 }, [true]).verdict === "PASS"),
+  deterministic("campaign-corpus-minimum-enforced", "CAM-01", "fixtures/campaign/minimum", 1, () =>
+    threw(() => assertCampaignCorpus([]), "VES_CAMPAIGN_CORPUS_INVALID")
+  ),
+  deterministic(
+    "campaign-wilson-below-threshold-fails",
+    "CAM-03",
+    "fixtures/campaign/wilson",
+    1,
+    () =>
+      evaluateCampaign(
+        {
+          id: "probe",
+          requirement: "CAM-03",
+          owner: "v",
+          threshold: 0.9,
+          fixtureRef: "fixtures/x",
+          evidenceRef: EVIDENCE,
+          sampleSize: 100
+        },
+        Array.from({ length: 100 }, (_, i) => i >= 5)
+      ).verdict === "FAIL"
+  ),
+  deterministic(
+    "campaign-deterministic-pass",
+    "CAM-03",
+    "fixtures/campaign/deterministic",
+    1,
+    () =>
+      evaluateCampaign(
+        {
+          id: "probe",
+          requirement: "CAM-03",
+          owner: "v",
+          threshold: 1,
+          fixtureRef: "fixtures/x",
+          evidenceRef: EVIDENCE,
+          sampleSize: 1
+        },
+        [true]
+      ).verdict === "PASS"
+  ),
   // Probabilistic campaigns: repeated runs with a frozen distribution (T73)
-  probabilistic("selftest-verdict-distribution", "CAM-03", "fixtures/distribution/selftest", 0.9, 100, frozenSequence(100, [13, 47, 88])),
-  probabilistic("driver-review-distribution", "CAM-03", "fixtures/distribution/driver", 0.85, 50, frozenSequence(50, [7, 41]))
+  probabilistic(
+    "selftest-verdict-distribution",
+    "CAM-03",
+    "fixtures/distribution/selftest",
+    0.9,
+    100,
+    frozenSequence(100, [13, 47, 88])
+  ),
+  probabilistic(
+    "driver-review-distribution",
+    "CAM-03",
+    "fixtures/distribution/driver",
+    0.85,
+    50,
+    frozenSequence(50, [7, 41])
+  )
 ]);
 
 export const CAMPAIGN_DEFINITIONS = Object.freeze(CAMPAIGNS.map((campaign) => campaign.def));

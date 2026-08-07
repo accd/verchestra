@@ -42,4 +42,8 @@ At least 20 campaigns; no case skipped, todo-marked, or weakened.
 
 | Task | Status | Commit / evidence |
 | ---- | ------ | ----------------- |
-| T0 | In progress | this planning set |
+| T0 | Done | `4ebd211`; spec, design, tasks, handoff |
+| T1 | Done | `004f4ed`; pure campaign + distribution rules, 19 unit cases |
+| T2 | Done | `a6141ff`; regression-campaign-summary schema, 12 contract cases |
+| T3/T4 | Done | `58dce25`; 22-campaign corpus + runner + system summary, 28 release cases |
+| T5 | Done | test-scope declared-empty exception removed; gate:build + gate:release PASS |
