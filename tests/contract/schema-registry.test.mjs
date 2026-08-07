@@ -42,6 +42,7 @@ const valid = {
 test("registry exposes only declared canonical schema versions", () => {
   assert.deepEqual(registry.list(), [
     "cli-output@1",
+    "doctor-report@1",
     "key-lifecycle-error@1",
     "protocol-envelope@1",
     "public-error@1",

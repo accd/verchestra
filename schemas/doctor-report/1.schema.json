@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ves://doctor-report/1",
+  "title": "DoctorReport",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "doctor.verdict",
+    "doctor.check_codes",
+    "doctor.failure_codes",
+    "doctor.blocked_capabilities",
+    "doctor.remediation_codes",
+    "doctor.duration_ms"
+  ],
+  "properties": {
+    "doctor.verdict": { "enum": ["PASS", "FAIL", "BLOCKED"] },
+    "doctor.check_codes": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^doctor\\.[a-z][a-z-]*:(pass|fail|blocked)$" },
+      "uniqueItems": true
+    },
+    "doctor.failure_codes": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^[a-z][a-z-]*$" },
+      "uniqueItems": true
+    },
+    "doctor.blocked_capabilities": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^[a-z][a-z0-9]*(\\.[a-z][a-z0-9]*)+$" },
+      "uniqueItems": true
+    },
+    "doctor.remediation_codes": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^[a-z][a-z-]*$" },
+      "uniqueItems": true
+    },
+    "doctor.duration_ms": { "type": "integer", "minimum": 0 }
+  }
+}
