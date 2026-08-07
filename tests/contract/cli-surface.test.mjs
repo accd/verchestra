@@ -68,10 +68,10 @@ test("help excludes a command absent from the installed manifest", async () => {
   assert.equal(result.streams.stdout[0].includes("doctor"), false);
 });
 
-test("the source manifest advertises only the composed init and self-test slice", () => {
+test("the source manifest advertises the composed init, self-test, and doctor slice", () => {
   assert.deepEqual(
     installedReleaseManifest.commands.map((command) => command.name),
-    ["init", "self-test"]
+    ["init", "self-test", "doctor"]
   );
   assert.deepEqual(
     installedReleaseManifest.commands[0].options.map((option) => option.name),
@@ -80,6 +80,10 @@ test("the source manifest advertises only the composed init and self-test slice"
   assert.deepEqual(
     installedReleaseManifest.commands[1].options.map((option) => option.name),
     ["profile"]
+  );
+  assert.deepEqual(
+    installedReleaseManifest.commands[2].options.map((option) => option.name),
+    ["deep"]
   );
 });
 

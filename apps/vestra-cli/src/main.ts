@@ -1,9 +1,11 @@
 import type { CliCommand, CommandBus, CommandResult } from "@verchestra/application";
+import { doctorExitCode } from "@verchestra/application";
 import { PublicErrorException } from "@verchestra/domain";
 import { SafeInitService, buildCanonicalInitFiles } from "@verchestra/workspace";
 
 import { cliError, cliPublicErrorRegistry } from "./cli-errors.ts";
 import { runCli } from "./cli.ts";
+import { runDoctorDeep } from "./doctor-composition.ts";
 import { installedReleaseManifest } from "./release-manifest.ts";
 import { runSelfTestProfile } from "./self-test-composition.ts";
 
@@ -71,6 +73,24 @@ async function executeSelfTest(command: CliCommand): Promise<CommandResult> {
   return { data: sealed.result.payload, diagnostics: [] };
 }
 
+// Composed here, not in createCommandBus, for the same reason as self-test: the
+// diagnostic's TEST-ONLY signing identity must not be reachable from the
+// mutating command path. A non-PASS verdict is a health signal, not a command
+// error, so the report is still rendered and the exit code carries the state.
+async function executeDoctor(command: CliCommand): Promise<CommandResult> {
+  let run: Awaited<ReturnType<typeof runDoctorDeep>>;
+  try {
+    run = await runDoctorDeep({ controlRoot: process.cwd() });
+  } catch (error) {
+    throw new PublicErrorException(
+      cliPublicErrorRegistry.create("VES_CLI_COMMAND_FAILED", { command: command.name }),
+      "Doctor could not complete",
+      { cause: error }
+    );
+  }
+  return { data: run.payload, diagnostics: [], exitCode: doctorExitCode(run.verdict) };
+}
+
 export async function main(invokedAs: string, argv: readonly string[]): Promise<number> {
   const commandBus = createCommandBus(process.cwd());
   return runCli({
@@ -82,7 +102,11 @@ export async function main(invokedAs: string, argv: readonly string[]): Promise<
     installedCliVersion: installedReleaseManifest.semanticVersion,
     commandBus: {
       execute: (command, context) =>
-        command.name === "self-test" ? executeSelfTest(command) : commandBus.execute(command, context)
+        command.name === "self-test"
+          ? executeSelfTest(command)
+          : command.name === "doctor"
+            ? executeDoctor(command)
+            : commandBus.execute(command, context)
     },
     stdout: (value) => process.stdout.write(value),
     stderr: (value) => process.stderr.write(value)
