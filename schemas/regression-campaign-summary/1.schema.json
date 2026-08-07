@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ves://regression-campaign-summary/1",
+  "title": "RegressionCampaignSummary",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["corpusDigest", "campaignCount", "verdict", "campaigns"],
+  "properties": {
+    "corpusDigest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "campaignCount": { "type": "integer", "minimum": 1 },
+    "verdict": { "enum": ["PASS", "FAIL"] },
+    "campaigns": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "requirement", "verdict", "samples", "passRate", "lowerConfidenceBound"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+          "requirement": { "type": "string", "pattern": "^[A-Z][A-Z0-9-]*$" },
+          "verdict": { "enum": ["PASS", "FAIL"] },
+          "samples": { "type": "integer", "minimum": 1 },
+          "passRate": { "type": "number", "minimum": 0, "maximum": 1 },
+          "lowerConfidenceBound": { "type": "number", "minimum": 0, "maximum": 1 }
+        }
+      }
+    }
+  }
+}

@@ -64,6 +64,33 @@ export interface PublicError {
   causeChainDigest?: string;
 }
 
+export interface RegressionCampaignSummary {
+  corpusDigest: string;
+  campaignCount: number;
+  verdict: "PASS" | "FAIL";
+  /**
+   * @minItems 1
+   */
+  campaigns: [
+    {
+      id: string;
+      requirement: string;
+      verdict: "PASS" | "FAIL";
+      samples: number;
+      passRate: number;
+      lowerConfidenceBound: number;
+    },
+    ...{
+      id: string;
+      requirement: string;
+      verdict: "PASS" | "FAIL";
+      samples: number;
+      passRate: number;
+      lowerConfidenceBound: number;
+    }[]
+  ];
+}
+
 export interface ReleaseManifest {
   schemaVersion: "1";
   releaseId: string;
