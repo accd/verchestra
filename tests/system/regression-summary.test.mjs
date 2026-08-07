@@ -34,7 +34,8 @@ test("the machine summary validates against regression-campaign-summary@1", () =
 test("the human summary projects the same verdicts as the machine summary", () => {
   const summary = summarize();
   const human = humanSummary(summary);
-  for (const entry of summary.campaigns) assert.ok(human.includes(`${entry.id} [${entry.requirement}] ${entry.verdict}`));
+  for (const entry of summary.campaigns)
+    assert.ok(human.includes(`${entry.id} [${entry.requirement}] ${entry.verdict}`));
 });
 
 test("neither summary carries an absolute path or secret", () => {
