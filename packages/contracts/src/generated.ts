@@ -21,6 +21,15 @@ export interface CliOutput {
   };
 }
 
+export interface DoctorReport {
+  "doctor.verdict": "PASS" | "FAIL" | "BLOCKED";
+  "doctor.check_codes": string[];
+  "doctor.failure_codes": string[];
+  "doctor.blocked_capabilities": string[];
+  "doctor.remediation_codes": string[];
+  "doctor.duration_ms": number;
+}
+
 export interface KeyLifecycleError {
   schemaVersion: "1";
   code: "VES_KEYSTORE_INTEGRITY" | "VES_KEY_REVOKED" | "VES_KEY_EXPIRED";
