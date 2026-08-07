@@ -51,4 +51,10 @@ todo-marked, or made less specific to satisfy the threshold.
 
 | Task | Status | Commit / evidence |
 | ---- | ------ | ----------------- |
-| T0 | In progress | this planning set |
+| T0 | Done | `7219cce`; spec, design, tasks, handoff |
+| T1 | Done | `eb8b5e9`; pure doctor verdict rules, 23 unit cases |
+| T2 | Done | `9af701d`; doctor-report schema + generated type, 14 contract cases |
+| T3 | Done | `4f685ab`; read-only probe port + collectDoctorFacts, 8 unit cases |
+| T4 | Done | doctor-composition sentinel/redaction/signing; 9 security cases |
+| T5 | Done | `doctor` verb + `--deep`, dispatch, exit codes; 8 e2e cases |
+| T6 | Done | 62 new doctor cases (23+8 unit, 14 contract, 8 e2e, 9 security); gate:full + gate:security PASS |
