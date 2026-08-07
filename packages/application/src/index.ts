@@ -287,6 +287,13 @@ export {
   type DoctorReportValue,
   type DoctorVerdict
 } from "./doctor/doctor.ts";
+export {
+  DOCTOR_REMEDIATION_BY_CHECK,
+  collectDoctorFacts,
+  type DoctorObservation,
+  type DoctorProbeSet,
+  type DoctorSubsystemProbe
+} from "./doctor/doctor-facts.ts";
 export type {
   ContextClaimInput,
   ContextFragmentInput,
