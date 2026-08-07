@@ -14,6 +14,10 @@ export interface InvocationContext {
 export interface CommandResult {
   readonly data: unknown;
   readonly diagnostics: readonly string[];
+  // A command that ran successfully but wants to signal a health state (a
+  // diagnostic reporting FAIL or BLOCKED) sets a non-zero exit while still
+  // rendering its data. Omitted means success exits 0, as before.
+  readonly exitCode?: number;
 }
 
 export interface CommandBus {

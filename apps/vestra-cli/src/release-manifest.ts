@@ -55,6 +55,13 @@ export const installedReleaseManifest: InstalledCliManifest = Object.freeze({
           values: Object.freeze(["smoke", "full", "workspace", "drivers"])
         })
       ])
+    }),
+    Object.freeze({
+      name: "doctor",
+      summary: "Run read-only deep diagnostics and emit a signed report",
+      supportsJson: true,
+      mutating: false,
+      options: Object.freeze([Object.freeze({ name: "deep", kind: "boolean" as const })])
     })
   ])
 });

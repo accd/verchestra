@@ -212,6 +212,12 @@ function exitCode(error: PublicErrorEnvelope): number {
   return 5;
 }
 
+// A command may signal a non-zero exit while still rendering its data (a
+// diagnostic reporting FAIL or BLOCKED); an omitted code keeps success at 0.
+function successExit(result: { readonly exitCode?: number }): number {
+  return result.exitCode ?? 0;
+}
+
 function requestedJson(argv: readonly string[]): boolean {
   return argv.some((entry, index) => entry === "--output" && argv[index + 1] === "json");
 }
@@ -270,7 +276,7 @@ export async function runCli(options: CliRunOptions): Promise<number> {
     const result = await options.commandBus.execute(command, context);
     for (const diagnostic of result.diagnostics) options.stderr(`${diagnostic}\n`);
     options.stdout(output === "json" ? jsonOutput(command.name, true, result.data) : humanData(result.data));
-    return 0;
+    return successExit(result);
   } catch (error) {
     const envelope =
       error instanceof PublicErrorException
