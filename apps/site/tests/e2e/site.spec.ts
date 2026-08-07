@@ -79,7 +79,10 @@ test("deep routes, roadmap links, community calls to action, and recovery resolv
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Cross-environment handoff");
 
   await page.goto("roadmap/");
-  await expect(page.getByText(/T71/u).first()).toBeVisible();
+  // The qualification-range badge renders in a responsive large/small pair; the
+  // hidden variant is first in the DOM, so target the visible T71 text directly
+  // rather than whichever variant happens to come first.
+  await expect(page.getByText(/T71/u).and(page.locator(":visible")).first()).toBeVisible();
 
   await page.goto("community/");
   await expect(page.getByRole("link", { name: /Join GitHub Discussions/u })).toHaveAttribute(
