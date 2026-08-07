@@ -294,6 +294,22 @@ export {
   type DoctorProbeSet,
   type DoctorSubsystemProbe
 } from "./doctor/doctor-facts.ts";
+export {
+  CampaignError,
+  MINIMUM_CAMPAIGNS,
+  assertCampaignCorpus,
+  assertCampaignSummary,
+  buildCampaignSummary,
+  canonicalizeCorpus,
+  evaluateCampaign,
+  type CampaignDefinition,
+  type CampaignErrorCode,
+  type CampaignRunResult,
+  type CampaignSummaryEntry,
+  type CampaignSummaryPayload,
+  type CampaignSummaryValue,
+  type CampaignVerdict
+} from "./regression/campaigns.ts";
 export type {
   ContextClaimInput,
   ContextFragmentInput,
