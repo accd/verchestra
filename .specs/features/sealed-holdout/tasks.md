@@ -43,4 +43,9 @@ At least 25 security and E2E cases; no case skipped, todo-marked, or weakened.
 
 | Task | Status | Commit / evidence |
 | ---- | ------ | ----------------- |
-| T0 | In progress | this planning set |
+| T0 | Done | `5ea3050`; spec, design, tasks, handoff |
+| T1 | Done | `4907d6c`; pure promotion-gate rules, 21 unit cases |
+| T2 | Done | `97a53df`; promotion-report schema, 10 contract cases |
+| T3 | Done | promotion-composition (distinct evaluator identity, sealed oracle + report) |
+| T4 | Done | 12 security + 13 e2e cases (>=25 security+e2e) |
+| T5 | Done | 56 new cases (21 unit, 10 contract, 12 security, 13 e2e); gate:security + gate:build PASS |
