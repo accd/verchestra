@@ -310,6 +310,24 @@ export {
   type CampaignSummaryValue,
   type CampaignVerdict
 } from "./regression/campaigns.ts";
+export {
+  PROMOTION_REPORT_FIELDS,
+  PromotionError,
+  assertPromotionReport,
+  assertReportUntampered,
+  buildPromotionReport,
+  canonicalizeOracle,
+  evaluatePromotion,
+  type HoldoutEntry,
+  type HoldoutOracle,
+  type PromotionBlockCode,
+  type PromotionDecision,
+  type PromotionErrorCode,
+  type PromotionInput,
+  type PromotionReportPayload,
+  type PromotionVerdict,
+  type Sha256Hex
+} from "./promotion/promotion-gate.ts";
 export type {
   ContextClaimInput,
   ContextFragmentInput,
