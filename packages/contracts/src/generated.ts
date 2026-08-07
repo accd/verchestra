@@ -35,6 +35,23 @@ export interface KeyLifecycleError {
   code: "VES_KEYSTORE_INTEGRITY" | "VES_KEY_REVOKED" | "VES_KEY_EXPIRED";
 }
 
+export interface PromotionReport {
+  verdict: "PROMOTED" | "BLOCKED";
+  candidateDigest: string;
+  holdoutDigest: string;
+  policyId: string;
+  evaluatorKeyId: string;
+  blocks: (
+    | "VES_PROMOTION_ORACLE_TAMPERED"
+    | "VES_PROMOTION_CANDIDATE_MUTATED"
+    | "VES_PROMOTION_SHARED_IDENTITY"
+    | "VES_PROMOTION_CONTAMINATED"
+    | "VES_PROMOTION_INSUFFICIENT_REPETITION"
+    | "VES_PROMOTION_CAMPAIGN_FAILED"
+  )[];
+  bodyDigest: string;
+}
+
 export interface ProtocolEnvelope {
   schemaVersion: "1";
   protocol: "verchestra/1";

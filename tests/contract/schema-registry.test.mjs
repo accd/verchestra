@@ -44,6 +44,7 @@ test("registry exposes only declared canonical schema versions", () => {
     "cli-output@1",
     "doctor-report@1",
     "key-lifecycle-error@1",
+    "promotion-report@1",
     "protocol-envelope@1",
     "public-error@1",
     "regression-campaign-summary@1",
