@@ -1,0 +1,207 @@
+name: Platform qualification matrix
+
+# T75 acceptance criterion 4 — "Every supported platform passes the
+# release-candidate security gate" — has to run somewhere real, and the single
+# ubuntu-latest job in ci.yml and full-validation.yml can never prove it. This
+# workflow runs the selected closed gate profile across the exact supported
+# fleet from issue #16 (Windows x64, macOS x64 and arm64, Linux glibc x64 and
+# arm64) and uploads one evidence file per leg binding platform, architecture,
+# runtime, candidate revision, and its own digest (acceptance criterion 3).
+#
+# It is workflow_dispatch only, never push or pull_request: the fleet is the
+# owner's on-demand release-candidate check, not a per-commit tax. Standard
+# GitHub-hosted runners — including macOS and ubuntu-*-arm — are free minutes on
+# this public repository, so the fleet costs no billed time.
+#
+# This does NOT close T75. It delivers the platform x security-gate leg with
+# per-platform evidence; the topology, Driver, database (SAP ASE / Sybase),
+# sandbox, installer, and recovery matrices, and the signed evidence index,
+# remain open work under issue #16.
+
+on:
+  workflow_dispatch:
+    inputs:
+      revision:
+        description: "Exact 40-character commit SHA to validate (empty selects this workflow revision)"
+        required: false
+        default: ""
+        type: string
+      gate:
+        description: "Closed qualification profile to run on every platform"
+        required: true
+        default: "security"
+        type: choice
+        options:
+          - quick
+          - full
+          - build
+          - security
+          - release
+
+permissions:
+  contents: read
+
+# Every leg runs the same bash entry points (set -euo pipefail, heredocs, case
+# guards) that full-validation.yml proved on Linux. Forcing bash on Windows uses
+# the runner's bundled Git bash so one script serves all five platforms.
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  platform:
+    name: ${{ matrix.label }}
+    runs-on: ${{ matrix.os }}
+    # gate:release and gate:security are the heaviest selectable profiles, and
+    # macOS and arm64 legs are slower than the ubuntu baseline, so the budget
+    # reflects those rather than gate:quick.
+    timeout-minutes: 60
+    strategy:
+      # One platform gap is exactly the signal this workflow exists to surface,
+      # so a failing leg must never cancel the others.
+      fail-fast: false
+      matrix:
+        include:
+          - label: Windows x64
+            os: windows-latest
+            platform: win32
+            arch: x64
+          - label: macOS x64
+            os: macos-13
+            platform: darwin
+            arch: x64
+          - label: macOS arm64
+            os: macos-14
+            platform: darwin
+            arch: arm64
+          - label: Linux glibc x64
+            os: ubuntu-latest
+            platform: linux
+            arch: x64
+          - label: Linux glibc arm64
+            os: ubuntu-24.04-arm
+            platform: linux
+            arch: arm64
+    steps:
+      - name: Check out workflow revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.0
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - name: Resolve exact candidate revision
+        id: candidate
+        env:
+          REQUESTED_REVISION: ${{ inputs.revision }}
+          REQUESTED_GATE: ${{ inputs.gate }}
+        run: |
+          set -euo pipefail
+          revision="${REQUESTED_REVISION:-$GITHUB_SHA}"
+          if ! [[ "$revision" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "revision must be an empty value or a full lowercase 40-character Git SHA" >&2
+            exit 1
+          fi
+          case "$REQUESTED_GATE" in
+            quick|full|build|security|release) ;;
+            *) echo "gate must be one of quick, full, build, security, release" >&2; exit 1 ;;
+          esac
+          # Full history, never --depth=1: a shallow fetch marks the candidate as
+          # a graft boundary, and every qualification report after T68 has to
+          # prove `git merge-base --is-ancestor <reported revision> HEAD`. Under a
+          # shallow checkout that proof fails for reports that are perfectly
+          # valid, so the resolver silently reports an older task.
+          git fetch --no-tags origin "$revision"
+          git checkout --detach "$revision"
+          if [[ "$(git rev-parse HEAD)" != "$revision" ]]; then
+            echo "checked out revision does not match the requested candidate" >&2
+            exit 1
+          fi
+          echo "revision=$revision" >> "$GITHUB_OUTPUT"
+          echo "gate=gate:$REQUESTED_GATE" >> "$GITHUB_OUTPUT"
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+        with:
+          version: 10.34.5
+          run_install: false
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.14.0
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Record platform candidate identity
+        env:
+          CANDIDATE_REVISION: ${{ steps.candidate.outputs.revision }}
+          CANDIDATE_GATE: ${{ steps.candidate.outputs.gate }}
+          MATRIX_PLATFORM: ${{ matrix.platform }}
+          MATRIX_ARCH: ${{ matrix.arch }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { writeFile } from "node:fs/promises";
+          import { execFileSync } from "node:child_process";
+          import { createHash } from "node:crypto";
+
+          const revision = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+          if (revision !== process.env.CANDIDATE_REVISION) throw new Error("candidate revision verification failed");
+          // The matrix labels claim an architecture; the runner has to actually
+          // be it or the evidence lies. Refuse a mismatch rather than record it.
+          if (process.platform !== process.env.MATRIX_PLATFORM)
+            throw new Error(`runner platform ${process.platform} does not match matrix ${process.env.MATRIX_PLATFORM}`);
+          if (process.arch !== process.env.MATRIX_ARCH)
+            throw new Error(`runner arch ${process.arch} does not match matrix ${process.env.MATRIX_ARCH}`);
+
+          const identity = {
+            schemaVersion: 1,
+            revision,
+            ref: process.env.GITHUB_REF ?? "",
+            gate: process.env.CANDIDATE_GATE,
+            platform: process.platform,
+            arch: process.arch,
+            runtime: process.version,
+            runner: process.env.RUNNER_OS ?? ""
+          };
+          const body = `${JSON.stringify(identity, null, 2)}\n`;
+          const digest = createHash("sha256").update(body).digest("hex");
+          await writeFile("platform-validation.json", body);
+          console.log(`platform identity digest sha256:${digest}`);
+          NODE
+      # gate:build, gate:security, and gate:release all run test:qualification,
+      # which probes the installed Claude Code and Codex binaries. Without them
+      # those profiles fail on a clean runner while passing on a machine that
+      # happens to have the CLIs, which is the opposite of portable evidence. The
+      # need is derived from the candidate revision's own gate definition so this
+      # cannot drift from the profile list.
+      - name: Decide whether the selected gate needs the driver probes
+        id: probes
+        env:
+          CANDIDATE_GATE: ${{ steps.candidate.outputs.gate }}
+        run: |
+          set -euo pipefail
+          needed="$(node --input-type=module --eval "
+            import { GATE_STAGES } from './scripts/gate-stages.mjs';
+            const stages = GATE_STAGES[process.env.CANDIDATE_GATE];
+            if (stages === undefined) throw new Error('unknown gate profile');
+            process.stdout.write(stages.includes('test:qualification') ? 'yes' : 'no');
+          ")"
+          printf 'needed=%s\n' "$needed" >> "$GITHUB_OUTPUT"
+      - name: Install the qualified local driver probes
+        if: steps.probes.outputs.needed == 'yes'
+        run: |
+          npm install --global --no-audit --no-fund @anthropic-ai/claude-code@2.1.168 @openai/codex@0.115.0
+          claude_version="$(claude --version)"
+          codex_version="$(codex --version)"
+          printf 'Claude Code version: %s\n' "$claude_version"
+          printf 'Codex version: %s\n' "$codex_version"
+          case "$claude_version" in "2.1.168"|"2.1.168 "*) ;; *) exit 1 ;; esac
+          case "$codex_version" in "codex-cli 0.115.0"|"codex-cli 0.115.0 "*) ;; *) exit 1 ;; esac
+      - name: Run selected qualification gate
+        env:
+          CANDIDATE_GATE: ${{ steps.candidate.outputs.gate }}
+        run: pnpm "$CANDIDATE_GATE"
+      - name: Upload platform evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: platform-evidence-${{ matrix.platform }}-${{ matrix.arch }}-${{ github.run_id }}
+          path: platform-validation.json
+          retention-days: 14
