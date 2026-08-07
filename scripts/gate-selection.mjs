@@ -10,8 +10,14 @@ export const ALWAYS_GATE = "gate:quick";
 // integration, and e2e; `release` carries architecture, qualification,
 // security, fault, and release. Together they cover every declared stage.
 export const CONSERVATIVE_GATES = Object.freeze(["gate:full", "gate:release"]);
+// Control surfaces that must run the conservative set regardless of any narrower
+// rule they might also match: qualification reports, CI workflow and dependabot
+// config, the root dependency manifests and lockfile (a supply-chain surface a
+// dependency bump can move behavior on any other surface through), and the gate
+// machinery itself (a change to how gates are composed or selected must run the
+// most verification, not the least).
 const CONSERVATIVE_PATH =
-  /^(?:docs\/qualification\/t\d+[a-z]?-validation\.md|\.github\/(?:workflows\/|dependabot\.yml$))/u;
+  /^(?:docs\/qualification\/t\d+[a-z]?-validation\.md|\.github\/(?:workflows\/|dependabot\.yml$)|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|\.npmrc$|scripts\/(?:gate|gate-stages|gate-selection|gate-output|select-gates|test-scope)\.mjs$)/u;
 
 const RULES = Object.freeze([
   {

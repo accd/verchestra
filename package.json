@@ -30,6 +30,7 @@
     "test:security": "node scripts/test-scope.mjs security tests/security",
     "test:fault": "node scripts/test-scope.mjs fault tests/fault-injection",
     "test:release": "node scripts/test-scope.mjs release tests/public-regression tests/system",
+    "test:mutation": "node scripts/test-scope.mjs mutation tests/mutation",
     "gate:quick": "node scripts/gate.mjs quick",
     "gate:full": "node scripts/gate.mjs full",
     "gate:build": "node scripts/gate.mjs build",

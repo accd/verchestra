@@ -9,7 +9,8 @@ export const GATE_STAGES = Object.freeze({
     "test:contract",
     "test:integration",
     "test:e2e",
-    "test:fault"
+    "test:fault",
+    "test:mutation"
   ],
   "gate:build": [
     "format:check",
@@ -31,6 +32,8 @@ export const GATE_STAGES = Object.freeze({
     "typecheck",
     "build",
     "test:unit",
+    "test:contract",
+    "test:e2e",
     "test:architecture",
     "test:qualification",
     "test:security",
