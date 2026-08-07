@@ -46,6 +46,7 @@ test("registry exposes only declared canonical schema versions", () => {
     "key-lifecycle-error@1",
     "protocol-envelope@1",
     "public-error@1",
+    "regression-campaign-summary@1",
     "release-manifest@1"
   ]);
 });
