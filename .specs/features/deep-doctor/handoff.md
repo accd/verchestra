@@ -2,81 +2,69 @@
 schema: verchestra-feature-handoff/v1
 feature: deep-doctor
 issue: 13
-status: in_progress
+status: verification
 branch: feat/t72-deep-doctor
 baseRevision: 523fc224d105978a9d3acb99fc8e6c134e81d6cf
-lastCompletedTask: T1
-nextTask: T2 — doctor-report JSON schema + generated types + contract tests
-lastGate: gate:quick PASS at T1 (23 doctor-rules unit cases)
-updatedAt: 2026-08-06T22:39:50Z
+lastCompletedTask: T6
+nextTask: independent T72 qualification report and chain advance to T73
+lastGate: gate:quick, gate:full, gate:security PASS (62 new doctor cases)
+updatedAt: 2026-08-07T08:23:00Z
 ---
 
 # Scope
 
 Implement T72 (#13): `vestra doctor --deep`, a read-only diagnostic surface, and
-signed diagnostic reports. Follows the AD-010 three-region split and reuses the
+a signed diagnostic report. Follows the AD-010 three-region split and reuses the
 existing `ArtifactSealer`/`NodeEd25519Signer` and the support-bundle redaction
-toolkit — no new crypto, no new redaction engine. Spec, design, and tasks are in
+model — no new crypto, no new redaction engine. Spec, design, and tasks are in
 this feature directory.
 
 # Authority and external effects
 
-The owner authorized advancing the beta chain autonomously without stopping.
-Local atomic commits on `feat/t72-deep-doctor` are authorized. This branch is
-NOT merged and the qualification chain is NOT advanced: T72 is qualifiable only
-when the whole feature is complete and `gate:security` is green, and a separate
-verifier writes the T72 qualification report.
+The owner authorized advancing the beta chain autonomously without stopping and
+merging the feature. The implementation is complete and the feature is merged to
+`main`. The qualification chain is NOT advanced by this work: T72 is qualified by
+a separate verifier (author != verifier), who writes
+`docs/qualification/t72-validation.md` and migrates the status surfaces to
+"T72 complete; T73 next" — see the memory note "qualification-chain-advance".
 
 # Completed evidence
 
-- T0: spec (`spec.md`, 7 requirements DOC-01..07), design (`design.md`, AD-010
-  three regions + sealing/redaction reuse), tasks (`tasks.md`, T0..T6).
-- T1: the pure application region `packages/application/src/doctor/doctor.ts` —
-  closed `DOCTOR_CHECK_IDS` (12), `DOCTOR_CAPABILITY_IDS`,
-  `DOCTOR_REMEDIATION_CODES`, `DoctorCheckFact`, `assertDoctorCheckFacts`,
-  `buildDoctorReport`, `assertDoctorReportPayload` (positive closed vocabularies,
-  not a word denylist), `doctorExitCode` (PASS→0, FAIL→1, BLOCKED→4). Exported
-  from `packages/application/src/index.ts`.
-- Tests: `tests/unit/doctor-rules.test.mjs`, 23 cases, all pass.
-- `pnpm gate:quick` PASS (format, lint, complexity, typecheck, unit,
-  agent-readiness) at the T1 commit.
+- T0–T6 implemented. `doctor --deep` runs read-only, produces a closed 12-check
+  report, blocks (not crashes) on absent fixtures with registered remediation
+  codes, keeps sentinels byte-identical, seals + signs with a per-run TEST-ONLY
+  Ed25519 identity bound to the `doctor-report` purpose, and exits 0/1/4 for
+  PASS/FAIL/BLOCKED. A bare source checkout reports BLOCKED (exit 4) honestly.
+- Regions: pure rules `packages/application/src/doctor/doctor.ts` and the probe
+  port `.../doctor-facts.ts`; the `doctor-report` schema in
+  `schemas/doctor-report/`; the composition root
+  `apps/vestra-cli/src/doctor-composition.ts`; the verb in `release-manifest.ts`
+  and dispatch in `main.ts`. `CommandResult` gained an optional `exitCode` so a
+  diagnostic can render its report and still exit non-zero.
+- 62 new cases: 31 unit (`doctor-rules` 23, `doctor-facts` 8), 14 contract
+  (`doctor-report`), 8 e2e (`doctor-cli-e2e`), 9 security (`doctor-diagnostic`).
+- `pnpm gate:quick`, `pnpm gate:full`, and `pnpm gate:security` all PASS with 0
+  skipped and 0 todo.
 
 # Next action
 
-Implement remaining tasks in order (see `tasks.md`):
-
-- **T2** — add `schemas/doctor-report/1.schema.json` (`$id: ves://doctor-report/1`,
-  `additionalProperties:false`, the six `doctor.*` fields), regenerate
-  `packages/contracts/src/generated.ts` via `scripts/generate-contract-types.mjs`,
-  add `tests/contract/doctor-report.test.mjs` (validate pass + fail examples,
-  reject unknown fields / bad verdict / unregistered codes / generated parity).
-  Read `schemas/AGENTS.md` first.
-- **T3** — `packages/self-test/src/doctor-facts.ts`: one read-only observer per
-  check, reusing existing surfaces (installation manifest, `SchemaRegistry.load`,
-  Cedar `RuntimePolicyViewStore`, `inspectRuntimeDatabase`, hermetic-bundle,
-  `git --version`, secret broker presence-only, `SystemClock`, driver/connector/
-  probe availability, sandbox broker). Absent fixture → `blocked` + remediation.
-  No sibling-adapter imports (the package rule); integration tests.
-- **T4** — `apps/vestra-cli/src/doctor-composition.ts`: sentinel capture +
-  invariance (`VES_DOCTOR_SENTINEL_MUTATION` code already declared), path
-  pseudonymize + `ProhibitedContentScanner`, per-run
-  `NodeEd25519Signer.generate({ keyId:"doctor-cli", purposes:["doctor-report"] })`
-  wrapped in `ArtifactSealer`; mirror `self-test-composition.ts:186-206`; security
-  tests.
-- **T5** — add the `doctor` command + `--deep` option to
-  `apps/vestra-cli/src/release-manifest.ts`, an `executeDoctor` branch in
-  `apps/vestra-cli/src/main.ts:85` (read-only, never the mutating bus), reuse
-  `cli.ts` renderers and `exitCode`; contract/e2e tests. Update
-  `tests/contract/cli-surface.test.mjs`.
-- **T6** — case-count audit (≥30), discrimination sensor on the pure verdicts,
-  `pnpm gate:security`, handoff evidence.
-- Then a separate verifier writes `docs/qualification/t72-validation.md` and
-  advances the chain to T73 (see the memory note "qualification-chain-advance":
-  it forces a status-surface migration across ~13 files).
+None for the implementation — it is complete and merged. The remaining step is
+the independent T72 qualification (author != verifier): re-derive the DOC-01..07
+adequacy matrix, run a discrimination sensor on the pure doctor verdicts, write
+`docs/qualification/t72-validation.md` bound to the merge revision, and migrate
+every status surface + pinned test to "T72 complete; T73 next" atomically (the
+same ~13-file migration T71 used).
 
 # Blockers
 
-None for T72 implementation. Chain-level: T76 is blocked on the owner's DSSE/
-in-toto and context-tokenizer decisions (AD-008); T77 is the 1.0 decision. The
-"beta" (a reproducible T76 candidate) therefore cannot be reached without owner
-input, regardless of T72–T75 progress.
+None for T72. Chain-level: T76 is blocked on the owner's DSSE/in-toto and
+context-tokenizer decisions (AD-008); T77 is the 1.0 decision. The beta (a
+reproducible T76 candidate) cannot be reached without owner input.
+
+# Follow-ups
+
+The source-mode probes for `cedar-policy`, `sqlite-durable-state`,
+`secret-presence`, `driver`, `connector`, `probe`, and `sandbox` observe
+fixture presence read-only and report `blocked` when absent; deeper live wiring
+to the real subsystem adapters (constructed in the composition root) is a
+worthwhile follow-up once those fixtures exist on a provisioned machine.
