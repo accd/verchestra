@@ -118,12 +118,38 @@ win32 spawn. Each depends on real provider tooling that is not part of the repo:
 | --- | --- | --- | --- | --- |
 | claude-code-driver | `claude-driver.test.mjs:13` | `2.1.168` | `claude` 2.1.220 installed | version drift |
 | codex-driver | `codex-driver.test.mjs:12` | `0.115.0` | `codex` not installed | `available:false` |
-| opencode-driver | `opencode-driver.test.mjs:58` | `1.18.9` | probe reports `1.18.5` | version mismatch |
+| opencode-driver | `opencode-driver.test.mjs:58` | `1.18.9` | probe reports `1.18.5` | silent PATH fallback (below) |
 
-The opencode row is its own puzzle worth a look: `./node_modules/.bin/opencode
---version` prints `1.18.9`, but the driver's probe returns `1.18.5` — so the
-driver is resolving something other than the repo-local binary the test name
-claims ("the exact repo-local OpenCode"). Diagnose before changing it.
+### The opencode row is the most serious of the three — diagnosed
+
+`defaultCommand()` (`spikes/opencode-driver/src/opencode-driver.mjs:9-12`) builds
+a cwd-relative path and falls back to a bare PATH lookup when it misses:
+
+```js
+const executable = path.resolve("node_modules", "opencode-ai", "bin",
+  process.platform === "win32" ? "opencode.exe" : "opencode");
+return existsSync(executable) ? [executable] : ["opencode"];
+```
+
+The installed `opencode-ai@1.18.9` ships **only `opencode.exe`** in `bin/` — there
+is no POSIX `opencode` binary — so on darwin/linux `existsSync` is always false
+and the driver silently falls back to whatever `opencode` is on PATH. On this
+machine that is Homebrew's `/opt/homebrew/bin/opencode` at 1.18.5, which is why
+a test called "probes the exact repo-local OpenCode" was in fact probing a
+global install two patches off the pinned version.
+
+It looks green in CI only because pnpm prepends `node_modules/.bin` to PATH, so
+the bare `opencode` resolves to the repo-local 1.18.9 shim. Proof — same commit,
+same machine, only PATH differs:
+
+- `PATH="$PWD/node_modules/.bin:$PATH" node --test spikes/opencode-driver/test/*.test.mjs` → 17 pass, 0 fail
+- `node --test spikes/opencode-driver/test/*.test.mjs` → 16 pass, 1 fail
+
+So the mandatory gate's verdict depends on how the runner was invoked, and the
+"exact repo-local" guarantee in the test name is not enforced by anything. Treat
+this as a qualification-integrity defect in its own right, not a flaky test:
+a driver on a security-qualification surface silently accepting an arbitrary
+PATH binary is the same class of problem as F2's win32 gap.
 
 The win32 `.cmd` spawn is therefore one instance of a wider defect: these are
 provider-dependent tests inside a mandatory gate. `spikes/AGENTS.md` forbids
