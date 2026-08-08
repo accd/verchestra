@@ -13,6 +13,14 @@ import {
   qualifiedSqliteAsset
 } from "../src/sqlite-memory-stack.mjs";
 
+// The sqlite-vec vector index is qualified for {linux,win32}-x64 only
+// (QUALIFIED_SQLITE_ASSETS). Everywhere else the stack fails closed to
+// lexical-only operation by design. Both paths are a real contract and both
+// are asserted below: `vectorQualified` selects which one applies to this
+// host, it never skips a case. Relational, FTS5, migration, and scoping
+// behaviour is platform-independent and stays unconditional.
+const vectorQualified = qualifiedSqliteAsset() !== null;
+
 const roots = [];
 async function tempRoot() {
   const root = join(tmpdir(), `verchestra-sqlite-${process.pid}-${crypto.randomUUID()}`);
@@ -43,17 +51,34 @@ async function opened(options = {}) {
 
 test("records the exact qualified Node, SQLite, FTS5, and sqlite-vec versions", async () => {
   const runtime = inspectSqliteRuntime();
-  assert.deepEqual(runtime, {
-    node: "24.14.0",
-    sqlite: "3.51.2",
-    fts5: true,
-    sqliteVec: "0.1.9",
-    sqliteVecSha256: QUALIFIED_SQLITE.sqliteVecSha256
-  });
+  // Node, SQLite, FTS5, and the sqlite-vec release are qualified identically on
+  // every supported platform: only the per-platform binary asset is scoped, so
+  // these four stay pinned everywhere.
+  assert.equal(runtime.node, "24.14.0");
+  assert.equal(runtime.sqlite, "3.51.2");
+  assert.equal(runtime.fts5, true);
+  assert.equal(runtime.sqliteVec, "0.1.9");
+  if (vectorQualified) {
+    assert.equal(runtime.sqliteVecSha256, QUALIFIED_SQLITE.sqliteVecSha256);
+  } else {
+    // inspectSqliteRuntime hashes the asset it actually loaded, so this is a
+    // real digest even here; what makes the host unqualified is that no
+    // frozen checksum is recorded for it to be pinned against.
+    assert.match(runtime.sqliteVecSha256, /^[0-9a-f]{64}$/);
+    assert.equal(QUALIFIED_SQLITE.sqliteVecSha256, null);
+  }
 });
 
 test("records the exact sqlite-vec release asset checksum and byte size", async () => {
   const qualified = qualifiedSqliteAsset();
+  if (!vectorQualified) {
+    // Unqualified host: nothing is pinned, and the frozen record says so in
+    // both fields rather than carrying a stale checksum from another platform.
+    assert.equal(qualified, null);
+    assert.equal(QUALIFIED_SQLITE.sqliteVecSha256, null);
+    assert.equal(QUALIFIED_SQLITE.sqliteVecBytes, null);
+    return;
+  }
   assert.notEqual(qualified, null);
   const asset = await readFile(getLoadablePath());
   assert.equal(createHash("sha256").update(asset).digest("hex"), qualified.sha256);
@@ -91,14 +116,28 @@ test("extension loading is denied by default", async () => {
 
 test("controlled vector bootstrap loads the exact extension and locks loading afterward", async () => {
   const { stack, status } = await opened();
-  assert.deepEqual(status.vector, { enabled: true, version: "v0.1.9", code: "VES_VECTOR_READY" });
+  assert.deepEqual(
+    status.vector,
+    vectorQualified
+      ? { enabled: true, version: "v0.1.9", code: "VES_VECTOR_READY" }
+      : { enabled: false, version: null, code: "VES_VECTOR_UNAVAILABLE" }
+  );
+  // Extension loading is re-locked on both paths: an unqualified host must not
+  // be left with a loadable-extension window open after a refused bootstrap.
   assert.throws(() => stack.loadExtensionForTest(getLoadablePath()), { code: "ERR_INVALID_STATE" });
   stack.close();
 });
 
 test("wrong vector asset checksum fails closed to lexical-only operation", async () => {
   const { stack, status } = await opened({ vector: { enabled: true, expectedSha256: "0".repeat(64) } });
-  assert.deepEqual(status.vector, { enabled: false, version: null, code: "VES_VECTOR_ASSET_MISMATCH" });
+  // On an unqualified host the platform check refuses before any checksum is
+  // compared, so the honest code is UNAVAILABLE rather than ASSET_MISMATCH.
+  // Either way the bootstrap fails closed and lexical authority survives.
+  assert.deepEqual(status.vector, {
+    enabled: false,
+    version: null,
+    code: vectorQualified ? "VES_VECTOR_ASSET_MISMATCH" : "VES_VECTOR_UNAVAILABLE"
+  });
   stack.upsertDocuments([document()]);
   assert.equal(stack.searchLexical("orchestration", { workspace: "acme", project: "payments" }).length, 1);
   stack.close();
@@ -197,6 +236,16 @@ test("invalid canonical document rolls back the whole ingestion transaction", as
 test("vector search is derived and returns scoped nearest neighbors", async () => {
   const { stack } = await opened();
   stack.upsertDocuments([document(), document({ id: "doc-2", body: "Unrelated", embedding: [0, 1, 0] })]);
+  if (!vectorQualified) {
+    // Degraded contract: vector retrieval refuses with a recoverable code and
+    // the same query is still answerable lexically, so ingestion is unharmed.
+    assert.throws(() => stack.searchVector([0.9, 0.1, 0], { workspace: "acme", project: "payments", limit: 1 }), {
+      code: "VES_VECTOR_UNAVAILABLE"
+    });
+    assert.equal(stack.searchLexical("orchestration", { workspace: "acme", project: "payments" })[0].id, "doc-1");
+    stack.close();
+    return;
+  }
   const [nearest] = stack.searchVector([0.9, 0.1, 0], { workspace: "acme", project: "payments", limit: 1 });
   assert.equal(nearest.id, "doc-1");
   assert.equal(nearest.retrieval, "sqlite-vec");
@@ -217,6 +266,14 @@ test("derived vectors rebuild from relational canonical records", async () => {
   const { stack } = await opened();
   stack.upsertDocuments([document()]);
   stack.dropVectorIndexForTest();
+  if (!vectorQualified) {
+    // Rebuild refuses rather than silently reporting a no-op success, and the
+    // relational record it would have rebuilt from is still intact.
+    assert.throws(() => stack.rebuildVectorIndex(), { code: "VES_VECTOR_UNAVAILABLE" });
+    assert.equal(stack.documentCount(), 1);
+    stack.close();
+    return;
+  }
   assert.equal(stack.rebuildVectorIndex().rebuilt, 1);
   assert.equal(stack.searchVector([1, 0, 0], { workspace: "acme", project: "payments" })[0].id, "doc-1");
   stack.close();
