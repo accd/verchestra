@@ -2,13 +2,13 @@
 schema: verchestra-feature-handoff/v1
 feature: platform-qualification-matrix
 issue: 16
-status: planned
+status: blocked
 branch: fix/t75-platform-security-gate-gaps
-baseRevision: 5a8921f3bf4dd2bea5580a52af58caadb80943f0
+baseRevision: f1c72a067037d681c16c8d623be1fbe2493daf95
 lastCompletedTask: null
-nextTask: F1 sqlite-vec vector scope + F2 win32 driver probe
-lastGate: gate:quick PASS (infra); gate:security PASS only on linux-x64 across the fleet
-updatedAt: 2026-08-07T17:38:40Z
+nextTask: F2 — needs an owner policy decision before code (see "F2 blocked on decision")
+lastGate: sqlite spike 19/20 on darwin-arm64 (sole failure is the local Node 24.18.1 vs qualified 24.14.0 pin); gate:quick blocked locally at typecheck on unbuilt workspace packages, identical on unmodified main
+updatedAt: 2026-08-08T00:00:00Z
 ---
 
 # Scope
@@ -49,6 +49,27 @@ it. This handoff is only the two red findings it exposed.
   --frozen-lockfile` succeeds on darwin/arm, and the runner-arch self-check
   passes.
 - Root causes fully diagnosed (below). Neither is a workflow bug.
+- **F1 DONE** (commit `07f51be`, verified on darwin-arm64 — an unqualified host,
+  so the degraded path is exercised for real rather than simulated). The six
+  affected assertions in `spikes/sqlite/test/sqlite-memory-stack.test.mjs` are
+  now platform-aware; qualified-host assertions are unchanged. Discrimination
+  proven by three source mutations, each caught, source restored byte-identical
+  after each: fail-closed guard removed → 2 failures; `searchVector` returning
+  `[]` instead of refusing → 3; `rebuildVectorIndex` reporting a no-op success
+  → 2. Spike result 19/20; the one remaining failure is the `node: "24.14.0"`
+  pin against this machine's Node 24.18.1 and is environmental, not F1.
+
+## Corrections to this handoff's own earlier F1 text
+
+- The prescription said to assert `inspectSqliteRuntime().sqliteVecSha256 ===
+  null` on an unqualified host. That is wrong: `inspectSqliteRuntime` hashes the
+  asset it actually loaded and returns a real digest (`193e480c…` on
+  darwin-arm64). It is `QUALIFIED_SQLITE.sqliteVecSha256` that is `null`. The
+  commit asserts the real contract.
+- The failing-test list omitted line 99 (`wrong vector asset checksum fails
+  closed…`). It fails on an unqualified host too, because the platform check
+  refuses before any checksum is compared, yielding `VES_VECTOR_UNAVAILABLE`
+  rather than `VES_VECTOR_ASSET_MISMATCH`. Now covered.
 
 ## Finding 1 (F1) — sqlite-vec vector index qualified only for {Linux, Windows} x64
 
@@ -88,10 +109,67 @@ it. This handoff is only the two red findings it exposed.
   The spawn/probe code is in `spikes/claude-code-driver/src/claude-code-driver.mjs`
   (and the sibling `spikes/codex-driver/src` — very likely the same defect).
 
+### F2 is broader than "a win32 spawn bug" (new evidence, darwin-arm64)
+
+All three driver probe tests fail here, and none of the three failures is the
+win32 spawn. Each depends on real provider tooling that is not part of the repo:
+
+| spike | probe test | pinned | this machine | failure |
+| --- | --- | --- | --- | --- |
+| claude-code-driver | `claude-driver.test.mjs:13` | `2.1.168` | `claude` 2.1.220 installed | version drift |
+| codex-driver | `codex-driver.test.mjs:12` | `0.115.0` | `codex` not installed | `available:false` |
+| opencode-driver | `opencode-driver.test.mjs:58` | `1.18.9` | probe reports `1.18.5` | version mismatch |
+
+The opencode row is its own puzzle worth a look: `./node_modules/.bin/opencode
+--version` prints `1.18.9`, but the driver's probe returns `1.18.5` — so the
+driver is resolving something other than the repo-local binary the test name
+claims ("the exact repo-local OpenCode"). Diagnose before changing it.
+
+The win32 `.cmd` spawn is therefore one instance of a wider defect: these are
+provider-dependent tests inside a mandatory gate. `spikes/AGENTS.md` forbids
+exactly that — "Tests must cover expected behavior and discriminating failure
+modes without network or provider requirements in mandatory gates" and
+"Unavailable tooling is `not configured`, never a pass" — while the same file
+also requires recording exact tool versions. Reconciling those two is a policy
+call on a qualification surface, not a refactor.
+
+# F2 blocked on decision
+
+**Do not write the F2 code before the owner picks a shape.** Three options:
+
+1. **Hermetic gate + separate attestation.** Mandatory-gate probe tests run
+   against the existing `fake-*.mjs` fixtures; a separate, non-gating command
+   attests the real installed provider versions and reports `not configured`
+   when a provider is absent. Best fit for `spikes/AGENTS.md`, and it fixes
+   Windows, this machine, and every future version bump at once.
+2. **Keep the real-provider assertions, fix only the win32 spawn.** The literal
+   original F2. Leaves all three tests brittle to provider upgrades — the claude
+   and opencode rows above would still be red here after the Windows fix lands.
+3. **Pin providers as repo-local dev dependencies** so the qualified version is
+   installed by `pnpm install` rather than assumed on the host. Largest change;
+   needs the dependency-approval rule in root `AGENTS.md`.
+
+Whoever picks (2) or (3) should know the win32 half cannot be verified from this
+macOS checkout at all: resolving `claude.cmd` through `PATH`/`PATHEXT` is only
+half the fix, because Node refuses to spawn `.bat`/`.cmd` without `shell: true`
+(the CVE-2024-27980 hardening), and `shell: true` reintroduces argument-injection
+surface on a driver that forwards a caller-supplied `--model`. That trade-off
+needs a Windows host or a matrix dispatch to settle honestly — it must not be
+guessed at from here.
+
 # Next Exact Action
 
-Do F1 and F2 as two separate atomic tasks on branch
-`fix/t75-platform-security-gate-gaps` off `5a8921f`.
+F1 is done (`07f51be`). Two things remain, in order:
+
+1. **Get an owner decision on F2's shape** — see "F2 blocked on decision" above.
+   Nothing else about F2 should be written first.
+2. **Prove F1 across the fleet.** F1 is verified locally on darwin-arm64 only.
+   Dispatch `gh workflow run platform-matrix.yml --ref fix/t75-platform-security-gate-gaps -f gate=security`
+   and confirm the sqlite spike is green on all five legs. Expect the run to
+   still be red overall until F2 lands — read the sqlite legs specifically.
+   This dispatch has not been run; the branch is local and unpushed.
+
+The original F1 prescription is kept below for provenance; it is implemented.
 
 **F1 (owner chose: scope to {Linux, Windows}, degrade the rest — NOT weaken):**
 Make the qualification assertions platform-aware so they assert the REAL
@@ -132,7 +210,22 @@ authorization (see the `merge-authorization` memory note).
 
 # Blockers
 
-None blocking a start. Practical: a full cross-platform proof requires
+**F2 is blocked on an owner decision** (see "F2 blocked on decision"). F1 is
+done and unblocked.
+
+Two environment limits on this darwin-arm64 checkout, neither caused by the
+change and both reproducible on unmodified `main`:
+
+- Local Node is 24.18.1 against a qualified 24.14.0, so the sqlite spike's
+  `node`/`sqlite` version pins fail locally. CI on the qualified runtime is the
+  authority for those two assertions.
+- `pnpm gate:quick` stops at `typecheck` because the workspace packages
+  (`@verchestra/drivers`, `@verchestra/agent-runtime`, `@verchestra/effects`)
+  have no built declarations locally. Byte-identical failure on unmodified
+  `main`, so it is a build-state issue, not a regression. Build the packages or
+  rely on CI's `Quality gate`.
+
+Practical: a full cross-platform proof requires
 dispatching the matrix (macOS/arm64 cannot run locally), and macOS x64 (Intel,
 `macos-13`) can sit queued a long time on GitHub's winding-down Intel fleet —
 budget for that latency, do not read a long queue as a failure.
