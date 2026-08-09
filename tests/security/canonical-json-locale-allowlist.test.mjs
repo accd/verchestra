@@ -52,12 +52,11 @@ const MATRIX_CEILINGS = Object.freeze({
   "packages/platform-node/src/runtime-store/runtime-store.ts": 1,
   "packages/workspace/src/scanner/scanner-primitives.ts": 2,
   "packages/evidence/src/execution-package/execution-package.ts": 11,
-  // T4a targets: still at their pre-migration count until T4/T5/T6/T7 land;
-  // T9 tightens each to 0 in the same commit that records T4a's evidence.
-  "packages/application/src/promotion/promotion-gate.ts": 2,
-  "packages/application/src/regression/campaigns.ts": 1,
-  "packages/application/src/doctor/doctor.ts": 1,
-  "packages/application/src/self-test/self-test.ts": 1
+  // T4a owners: migrated (T4/T5/T6/T7), ceiling tightened to 0 in T9.
+  "packages/application/src/promotion/promotion-gate.ts": 0,
+  "packages/application/src/regression/campaigns.ts": 0,
+  "packages/application/src/doctor/doctor.ts": 0,
+  "packages/application/src/self-test/self-test.ts": 0
 });
 
 const UNCLASSIFIED_CEILINGS = Object.freeze({
