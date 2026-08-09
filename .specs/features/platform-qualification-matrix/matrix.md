@@ -352,14 +352,17 @@ gate run and fails if the committed bytes disagree.
 | M-1 | The fleet has never exercised `test:integration`, so real-git topology cases are unqualified on every platform | Section 2 | **Dispatched** (runs 31320307931 `full`, 31320314440 `release`) — found F5 |
 | F5 | `gate-commit-adapters.ts` rejected canonicalizing path aliases, breaking every real process-runner and Git-adapter case on Windows and macOS — the same defect as F3, one adapter over | Section 2; run 31320307931 | **Fixed**, PR #231 |
 | M-2 | Per-leg evidence digest is computed and discarded; nothing collects the artifacts | `platform-matrix.yml:164-166`; no `download-artifact` anywhere | **Fixed**, PR #230 — legs persist `identityDigest` + outcome, an `index` job classifies every expected leg |
-| M-3 | No installer test ever activates a release built for the **host** it runs on: every fixture declares the `win32-x64` target (one `linux` case at `tests/integration/transactional-activation.test.mjs:183`, one `freebsd` negative at `tests/security/transactional-activation-security.test.mjs:108`). See the correction below — this is narrower than it first appeared. | `tests/fault-injection/transactional-activation-faults.test.mjs:22,159`; `tests/security/transactional-activation-security.test.mjs:27` | A3 — add a host-target case |
-| M-4 | `PiDriver.probe()` reports a hardcoded version and can never fail | `packages/drivers/src/pi-driver.ts:12,131-133` | D2 |
+| M-3 | No installer test ever activates a release built for the **host** it runs on: every fixture declares the `win32-x64` target. See the correction below — this is narrower than it first appeared. | `tests/fault-injection/transactional-activation-faults.test.mjs:22,159`; `tests/security/transactional-activation-security.test.mjs:27` | **Fixed**, PR #240 — "activates the release built for this host", platform-aware per the F1a precedent |
+| M-4 | `PiDriver.probe()` reports a hardcoded version and can never fail | `packages/drivers/src/pi-driver.ts:12,131-133` | **Fixed**, PR #239 — resolves the installed package manifest and reports `available` + `VES_PI_NOT_AVAILABLE`/`VES_PI_VERSION_UNSUPPORTED` like the three CLI drivers |
 | M-5 | No live database engine except SQLite is qualified, while SAP ASE is documented as a principal target | Section 6 | D1 |
 | M-6 | `artifact-placement.ts:55-56,69-71` duplicates the placement/relation unions as runtime `Set`s with no compile-time link | Section 3 | Low priority; record only |
 | M-7 | `isolation-process-tree` (#88) handoff says `nextTask: T2` but the code is already on main | `.specs/features/isolation-process-tree/handoff.md` | Stale-handoff cleanup |
 
-M-1 and M-2 are done; F5 is the defect M-1 surfaced and is fixed. M-3 needs no
-decision. M-4 and M-5 wait on D2 and D1.
+M-1 and M-2 are done; F5 is the defect M-1 surfaced and is fixed. M-3 and M-4
+are done (PRs #240 and #239). M-5 is resolved as scope by AD-017 — the 1.0
+claim narrows to the published contract, the conformance kit, and real
+SQLite, with the enabler tracked as issue #233. M-6 and M-7 remain as
+low-priority records.
 
 ### Correction to M-3 (recorded rather than silently amended)
 
@@ -389,6 +392,41 @@ The imprecision came from reading the constant without reading the field's
 use. Recorded here rather than quietly edited, because a defect list that
 revises itself invisibly is not evidence.
 
+## 9b. Four-profile fleet evidence at one candidate (2026-08-09)
+
+The first time the fleet has been green on anything but `gate:security`. All
+four profiles dispatched at candidate **`9aab070`**, and **all 16 non-Intel
+legs passed**:
+
+| Profile | Run | win32-x64 | darwin-arm64 | linux-x64 | linux-arm64 | darwin-x64 |
+| ------- | --- | :-------: | :----------: | :-------: | :---------: | :--------: |
+| `security` | 31327128912 | ✅ | ✅ | ✅ | ✅ | missing |
+| `full` | 31327134227 | ✅ | ✅ | ✅ | ✅ | missing |
+| `build` | 31327140097 | ✅ | ✅ | ✅ | ✅ | missing |
+| `release` | 31327146281 | ✅ | ✅ | ✅ | ✅ | missing |
+
+Together these cover every stage in `scripts/gate-stages.mjs` (section 2), so
+the topology, installer, recovery, sandbox, Driver, and database dimensions
+have now each run on four platforms — including `test:integration`, which no
+fleet dispatch had ever executed, and `test:mutation` and `test:release`,
+which only `full` and `release` carry.
+
+Each run published a collected **evidence index** (the M-2 artifact, exercised
+in production for the first time): candidate revision bound, per-leg platform
+/ arch / runtime / recomputed `identityDigest` and `legDigest`, `darwin-x64`
+recorded as **`missing`** rather than omitted, and `complete: false`. This is
+the first artifact that actually satisfies acceptance criterion 3.
+
+**Operational contract discovered while exercising it.** The index job's
+`needs: platform` waits for every leg to *finish*, and GitHub has no per-job
+queue timeout — so while the retiring Intel `macos-13` runner sits queued, the
+index cannot start. Cancelling the run resolves it: `if: always()` still fires
+the index job, which then records the leg as `missing`. All four indexes above
+were produced this way. The run badge reads `cancelled`; **the index, not the
+badge, is the evidence** — a distinction the t75 report must state explicitly,
+because a reader glancing at four cancelled runs would otherwise conclude the
+opposite of what happened. Documented in the workflow header.
+
 ## 10. What T75 still needs, in order
 
 1. ~~**D1 and D2** decided and recorded (owner)~~ — **done 2026-08-09
@@ -401,9 +439,10 @@ revises itself invisibly is not evidence.
 3. ~~**M-2** — persist the per-leg digest; add a collection job~~ — **done**,
    PR #230. The index now classifies every expected leg as qualified, failed,
    missing, or digest-mismatch.
-4. **M-3** — add an activation case whose declared release target matches the
-   host it runs on, so the fleet covers the real product scenario; see the
-   correction in section 9 for why this is narrower than first stated.
+4. ~~**M-3** — add an activation case whose declared release target matches
+   the host~~ — **done**, PR #240. ~~**M-4** — Pi probe~~ — **done**, PR #239.
+   All four gate profiles were then dispatched at one candidate (`9aab070`),
+   which is also the first exercise of the M-2 evidence index.
 5. **A4 (#35)** — live cross-driver verifier session; supplies the Driver
    matrix's missing cross-driver case.
 6. **C5 (#207)** — live doctor probes, including `doctor.sandbox` moving off

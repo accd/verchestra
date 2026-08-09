@@ -6,7 +6,7 @@ status: verification
 branch: main
 baseRevision: 3f97047cd26ea1ab4d91b099aafeb8fdc11c2f3b
 lastCompletedTask: null
-nextTask: "D1/D2 DECIDED 2026-08-09 (AD-017): edge-qualification model — 1.0 claims contract+kit+SQLite, enabler work is issue #233 (WS-C) before the t75 report; Pi probe reads the installed SDK version (M-4, WS-A). M-1 done (runs 31320307931 full / 31320314440 release; surfaced F5, fixed PR #231, proven run 31321090545). M-2 done (PR #230). Next: M-3 (host-target activation case), M-4 (Pi probe), green re-dispatch of all four profiles at one revision, then A4 (#35) + C5 (#207) + signed evidence index (ordered against AD-014) + B3 t75-validation.md"
+nextTask: "M-1..M-4 all DONE and the fleet is green on ALL FOUR profiles at candidate 9aab070 (runs 31327128912 security / 31327134227 full / 31327140097 build / 31327146281 release; 16/16 non-Intel legs; each published an evidence index with darwin-x64=missing, complete=false). D1/D2 decided (AD-017); enabler issue #233 is WS-C. Remaining for T75: A4 (#35 live cross-driver verifier session), C5 (#207 live doctor probes, incl. the .vestra vs .verchestra root fix), SIGNING the evidence index (order against AD-014's DSSE migration — see matrix.md section 8), then B3's independent t75-validation.md. The report must state that the four runs read 'cancelled' because the Intel leg never dequeues, and that the index is the evidence, not the run badge."
 lastGate: FLEET GREEN — gate:security passed SIMULTANEOUSLY on Windows x64, Linux x64, Linux arm64, macOS arm64 at 5c86436 (run 31315589420); macOS x64 environmentally queued on the retiring Intel fleet; on-main confirmation run 31315939879 dispatched at bb11932
 updatedAt: 2026-08-09T17:00:00Z
 ---
