@@ -129,3 +129,58 @@ test("each leg records evidence binding platform, architecture, runtime, and a s
     /name: platform-evidence-\$\{\{ matrix\.platform \}\}-\$\{\{ matrix\.arch \}\}-\$\{\{ github\.run_id \}\}/u
   );
 });
+
+test("each leg persists its evidence digest instead of only logging it", () => {
+  // A digest that exists only in a job log expires with the log and can bind
+  // nothing. Acceptance criterion 3 requires the report to bind evidence
+  // digests, so the evidence file has to carry its own.
+  assert.match(workflow, /const identityDigest = `sha256:\$\{createHash\("sha256"\)/u);
+  assert.match(workflow, /schemaVersion: 2, identity, identityDigest/u);
+  assert.match(workflow, /writeFile\("platform-validation\.json", `\$\{JSON\.stringify\(record, null, 2\)\}/u);
+});
+
+test("a failing leg records its outcome rather than leaving a silent gap", () => {
+  // A leg that passed and a leg that failed are both evidence; recording only
+  // the successes would let the index report a green fleet by omission.
+  assert.match(workflow, /- name: Record the leg outcome\r?\n\s*if: always\(\)/u);
+  assert.match(workflow, /GATE_OUTCOME: \$\{\{ steps\.gate\.outcome \}\}/u);
+  assert.match(workflow, /process\.env\.GATE_OUTCOME === "success" \? "pass" : "fail"/u);
+  assert.match(workflow, /const legDigest = `sha256:/u);
+});
+
+test("the fleet's evidence is collected into an index rather than expiring unread", () => {
+  // Every leg used to upload into a 14-day artifact that nothing downloaded, so
+  // the fleet produced no collected record for a report to cite.
+  assert.match(workflow, /^ {2}index:\r?$/mu);
+  assert.match(workflow, /needs: platform/u);
+  // always(): a fleet where a leg failed is exactly when the index matters most.
+  assert.match(workflow, /needs: platform\r?\n\s*if: always\(\)/u);
+  assert.match(workflow, /uses: actions\/download-artifact@[0-9a-f]{40} # v[\d.]+/u);
+  assert.match(workflow, /pattern: platform-evidence-\*-\$\{\{ github\.run_id \}\}/u);
+  assert.match(workflow, /name: platform-evidence-index-\$\{\{ github\.run_id \}\}/u);
+});
+
+test("the index expects exactly the supported fleet and cannot drift from it", () => {
+  // The index job runs outside the matrix and so cannot read it. Holding its
+  // expected list equal to the matrix here means a leg can never be added to
+  // the fleet without the index expecting it — the drift this test exists for.
+  const declared = /EXPECTED_LEGS: ([\w,-]+)/u.exec(workflow);
+  assert.ok(declared, "the index must declare the legs it expects");
+  assert.deepEqual(declared[1].split(",").sort(), FLEET.map((leg) => `${leg.platform}-${leg.arch}`).sort());
+});
+
+test("the index reports absent and self-inconsistent legs instead of dropping them", () => {
+  // A leg that never reported is not a pass and not a failure: it did not run.
+  // An index that lists only what it collected would report a green fleet for a
+  // run where a platform never dequeued — the macOS x64 Intel case exactly.
+  assert.match(workflow, /return \{ leg, status: "missing" \}/u);
+  assert.match(workflow, /status: "digest-mismatch"/u);
+  // Recompute rather than trust: an artifact that disagrees with itself is
+  // reported, never silently accepted.
+  assert.match(workflow, /const recomputed = `sha256:/u);
+  assert.match(workflow, /identityDigest !== record\.identityDigest \|\| recomputed !== legDigest/u);
+  // One run qualifies one candidate; several revisions mean the legs are not
+  // evidence about the same thing.
+  assert.match(workflow, /legs report more than one candidate revision/u);
+  assert.match(workflow, /complete: legs\.every\(\(leg\) => leg\.status === "qualified"\)/u);
+});
