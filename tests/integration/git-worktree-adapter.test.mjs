@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { access, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, readdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, test } from "node:test";
@@ -105,4 +105,70 @@ test("unknown full source revision fails without creating a worktree", async () 
     (error) => error instanceof GitWorktreeError && error.code === "VES_GIT_WORKTREE_COMMAND_FAILED"
   );
   assert.deepEqual(await readdir(worktreesRoot), []);
+});
+
+// Regression for the platform matrix's first non-Linux failure: macOS temp dirs
+// resolve /var -> /private/var and Windows returns 8.3 short names such as
+// RUNNER~1 -> runneradmin, so the adapter is routinely handed roots whose
+// realpath differs from the path it was given. A directory link reproduces that
+// canonicalization on every platform (a junction on Windows, a symlink on POSIX),
+// and the adapter must operate through it rather than refusing it as an escape.
+test("operates through roots reached by a canonicalizing directory link", async () => {
+  const real = await mkdtemp(join(tmpdir(), "verchestra-git-real-"));
+  roots.push(real);
+  const repositoryRoot = join(real, "repository");
+  await mkdir(join(repositoryRoot, "packages", "app"), { recursive: true });
+  await writeFile(join(repositoryRoot, "packages", "app", "value.txt"), "base\n");
+  git(repositoryRoot, "init", "--quiet");
+  git(repositoryRoot, "config", "user.email", "qualification@verchestra.invalid");
+  git(repositoryRoot, "config", "user.name", "Verchestra Qualification");
+  git(repositoryRoot, "add", ".");
+  git(repositoryRoot, "commit", "--quiet", "-m", "fixture base");
+  const sourceRevision = git(repositoryRoot, "rev-parse", "HEAD");
+
+  const linkParent = await mkdtemp(join(tmpdir(), "verchestra-git-alias-"));
+  roots.push(linkParent);
+  const alias = join(linkParent, "alias");
+  await symlink(real, alias, "junction");
+  assert.notEqual(alias, await realpath(alias), "the alias must actually canonicalize to a different path");
+
+  const adapter = new NodeGitWorktreeAdapter({
+    repositoryRoot: join(alias, "repository"),
+    worktreesRoot: join(alias, "worktrees")
+  });
+  const input = {
+    workspaceId: "workspace:qualification",
+    runId: "run:qualification",
+    taskId: "T75.F3",
+    sourceStateDigest: "sha256:" + "2".repeat(64),
+    sourceRevision,
+    changeScope: ["packages/app"],
+    protectedPaths: [".git"]
+  };
+  const handle = await adapter.create(input);
+  assert.match(handle.worktreeRef, /^worktree:[a-f0-9]{32}:[a-f0-9]{40}$/u);
+  assert.equal(handle.baseCommit, sourceRevision);
+  // The worktree materializes under the real location and inspection/cleanup
+  // operate on it without a spurious escape.
+  assert.equal((await adapter.inspect(handle)).commitCountSinceBase, 0);
+  await adapter.cleanup(handle);
+  assert.deepEqual(await readdir(join(real, "worktrees")), []);
+});
+
+// The escape guard is unchanged in substance: a worktrees root whose own final
+// entry is a link (not a benign parent alias) is still refused, so tolerating
+// canonicalization above did not open a symlinked-root escape.
+test("still refuses a worktrees root whose own entry is a link", async () => {
+  const { input, repositoryRoot } = await fixture();
+  const realWorktrees = await mkdtemp(join(tmpdir(), "verchestra-git-realwt-"));
+  roots.push(realWorktrees);
+  const linkParent = await mkdtemp(join(tmpdir(), "verchestra-git-wtlink-"));
+  roots.push(linkParent);
+  const worktreesRoot = join(linkParent, "worktrees");
+  await symlink(realWorktrees, worktreesRoot, "junction");
+  const adapter = new NodeGitWorktreeAdapter({ repositoryRoot, worktreesRoot });
+  await assert.rejects(
+    adapter.create(input),
+    (error) => error instanceof GitWorktreeError && error.code === "VES_GIT_WORKTREE_ESCAPE"
+  );
 });

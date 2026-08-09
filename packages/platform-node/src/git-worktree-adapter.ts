@@ -236,8 +236,13 @@ export class NodeGitWorktreeAdapter implements ExecutionWorktreePort {
     } catch (error) {
       fail("VES_GIT_WORKTREE_INPUT_INVALID", "Repository root does not exist", { cause: error });
     }
-    if (relative(this.#repositoryRoot, root) !== "")
-      fail("VES_GIT_WORKTREE_ESCAPE", "Repository root resolves through a symbolic path");
+    // Canonicalize rather than reject. A configured root legitimately reaches its
+    // real location through platform path aliases: macOS temp dirs resolve
+    // /var -> /private/var, and Windows hands back 8.3 short names such as
+    // RUNNER~1 -> runneradmin. realpath resolves those to the real directory, and
+    // every downstream guard (the non-bare check below, and worktree containment
+    // in #assertExistingTarget) runs against this canonical root, so a benign
+    // alias is safe while a symlink pointing at a non-repository is still caught.
     const bare = (await this.#git(root, ["rev-parse", "--is-bare-repository"])).stdout.trim();
     if (bare !== "false") fail("VES_GIT_WORKTREE_INPUT_INVALID", "Repository root is not a non-bare Git repository");
     return root;
@@ -248,9 +253,11 @@ export class NodeGitWorktreeAdapter implements ExecutionWorktreePort {
     const metadata = await lstat(this.#worktreesRoot);
     if (metadata.isSymbolicLink() || !metadata.isDirectory())
       fail("VES_GIT_WORKTREE_ESCAPE", "Worktree root is not a real directory");
+    // Same canonicalization as the repository root: the lstat above already
+    // refused a worktree root whose own final component is a link, so realpath
+    // here only collapses benign parent aliases (/private, RUNNER~1). All
+    // containment checks downstream use this canonical root.
     const root = await realpath(this.#worktreesRoot);
-    if (relative(this.#worktreesRoot, root) !== "")
-      fail("VES_GIT_WORKTREE_ESCAPE", "Worktree root resolves through a symbolic path");
     if (root === repositoryRoot) fail("VES_GIT_WORKTREE_ESCAPE", "Worktree root cannot equal repository root");
     return root;
   }
