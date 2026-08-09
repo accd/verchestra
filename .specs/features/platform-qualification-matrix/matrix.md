@@ -79,6 +79,36 @@ qualification revision with `gate=full` and `gate=release` in addition to the
 existing `security` evidence, and record all four run ids in the evidence
 index. This is the cheapest gap on the list — it needs no code change.
 
+### M-1 was executed, and it immediately found a platform defect (F5)
+
+The first `gate=full` fleet dispatch (run 31320307931, bound `3264700`) went
+**red on Windows x64 and macOS arm64 while both Linux legs passed**. Seven
+tests fell over — every real process runner and real Git adapter case in
+`tests/integration/gate-commit-adapters.test.mjs` — with
+`VES_GATE_ADAPTER_PATH_ESCAPE`, "Worktree root resolves through a symbolic
+path".
+
+The cause is **the same defect F3 fixed one adapter over**:
+`packages/platform-node/src/gate-commit-adapters.ts` `targetFromRef`
+realpath'd the worktrees root and then rejected the result whenever it
+differed from the input, which is every macOS `/var` → `/private/var` and
+Windows `RUNNER~1` → `runneradmin` alias. Fixed by canonicalizing instead of
+rejecting, with no escape guard changed (PR #231).
+
+Two things follow, and both matter more than the fix itself:
+
+1. **The prediction in this section was correct and the cost was real.** A
+   stage that no fleet profile ran had been broken on two of five platforms
+   for as long as it has existed, and single-platform CI could never see it.
+2. **F3 was fixed as one adapter's bug when it was a repository-wide
+   pattern.** Grepping the pattern now finds exactly three
+   `relative(...) !== ""` comparisons left, and the two that remain
+   (`gate-commit-adapters.ts:53`, `git-worktree-adapter.ts:270`) are the
+   target-level checks F3 deliberately kept, which cannot fire on a benign
+   alias once the parent chain is canonical. A `gate=release` dispatch of the
+   same revision (run 31320314440) passed on all four reporting legs, which
+   is consistent: `gate:release` also omits `test:integration`.
+
 ## 3. Topology matrix
 
 **Canonical definition — fragmented, no single `topology` type.** Grep for
@@ -298,24 +328,58 @@ gate run and fails if the committed bytes disagree.
 
 | # | Defect | Evidence | Owner |
 | - | ------ | -------- | ----- |
-| M-1 | The fleet has never exercised `test:integration`, so real-git topology cases are unqualified on every platform | Section 2 | A3 — dispatch `gate=full` |
-| M-2 | Per-leg evidence digest is computed and discarded; nothing collects the artifacts | `platform-matrix.yml:164-166`; no `download-artifact` anywhere | A3 — persist + collect |
-| M-3 | Installer/activation tests hardcode `platform: "win32"`, so the platform axis is inert — a macOS leg tests win32 activation logic on darwin | `tests/fault-injection/transactional-activation-faults.test.mjs:22,159`; `tests/security/transactional-activation-security.test.mjs:27`; only `tests/integration/transactional-activation.test.mjs:183` varies it | A3 — parameterize by host |
+| M-1 | The fleet has never exercised `test:integration`, so real-git topology cases are unqualified on every platform | Section 2 | **Dispatched** (runs 31320307931 `full`, 31320314440 `release`) — found F5 |
+| F5 | `gate-commit-adapters.ts` rejected canonicalizing path aliases, breaking every real process-runner and Git-adapter case on Windows and macOS — the same defect as F3, one adapter over | Section 2; run 31320307931 | **Fixed**, PR #231 |
+| M-2 | Per-leg evidence digest is computed and discarded; nothing collects the artifacts | `platform-matrix.yml:164-166`; no `download-artifact` anywhere | **Fixed**, PR #230 — legs persist `identityDigest` + outcome, an `index` job classifies every expected leg |
+| M-3 | No installer test ever activates a release built for the **host** it runs on: every fixture declares the `win32-x64` target (one `linux` case at `tests/integration/transactional-activation.test.mjs:183`, one `freebsd` negative at `tests/security/transactional-activation-security.test.mjs:108`). See the correction below — this is narrower than it first appeared. | `tests/fault-injection/transactional-activation-faults.test.mjs:22,159`; `tests/security/transactional-activation-security.test.mjs:27` | A3 — add a host-target case |
 | M-4 | `PiDriver.probe()` reports a hardcoded version and can never fail | `packages/drivers/src/pi-driver.ts:12,131-133` | D2 |
 | M-5 | No live database engine except SQLite is qualified, while SAP ASE is documented as a principal target | Section 6 | D1 |
 | M-6 | `artifact-placement.ts:55-56,69-71` duplicates the placement/relation unions as runtime `Set`s with no compile-time link | Section 3 | Low priority; record only |
 | M-7 | `isolation-process-tree` (#88) handoff says `nextTask: T2` but the code is already on main | `.specs/features/isolation-process-tree/handoff.md` | Stale-handoff cleanup |
 
-M-1, M-2, and M-3 are unambiguous defects with no decision content and are the
-next A3 work. M-4 and M-5 wait on D2 and D1.
+M-1 and M-2 are done; F5 is the defect M-1 surfaced and is fixed. M-3 needs no
+decision. M-4 and M-5 wait on D2 and D1.
+
+### Correction to M-3 (recorded rather than silently amended)
+
+The first draft of this document claimed the installer tests' hardcoded
+`platform: "win32"` made "the platform axis inert — a macOS leg tests win32
+activation logic on darwin". **That was imprecise, and the correction matters
+for anyone writing the T75 report from this document.**
+
+`TransactionalActivationManager`'s `platform`/`arch`
+(`packages/distribution/src/transactional-activation.ts:51,243`) are a
+**declared release-target selector**, not a host switch. They are used only to
+cross-check that the manager's declared target, the staged receipt, and the
+bundle's own target all agree, failing `VES_ACTIVATION_RELEASE_MIXED`
+otherwise (`:423-427`). The manager reads `process.platform` nowhere.
+Activating a `win32-x64` bundle on a darwin runner therefore tests the
+mixed-release guard, which is a real requirement — not nonsense.
+
+The genuine gap is narrower and still worth closing: the manager performs real
+host-dependent filesystem work — six `mkdir(..., { mode: 0o700 })` sites
+(`:269,273,460,470,475,631`), where the POSIX permission mode is largely
+ignored on Windows — and no test ever activates a release whose declared
+target **matches the host it runs on**, which is the actual product scenario.
+So the host axis is exercised (those directory operations run on every leg
+that runs the test), but the host-matching-target case is not covered at all.
+
+The imprecision came from reading the constant without reading the field's
+use. Recorded here rather than quietly edited, because a defect list that
+revises itself invisibly is not evidence.
 
 ## 10. What T75 still needs, in order
 
 1. **D1 and D2** decided and recorded (owner).
-2. **M-1** — fleet dispatch at `gate=full` and `gate=release`, run ids recorded.
-3. **M-2** — persist the per-leg digest; add a collection job producing the
-   unsigned index.
-4. **M-3** — parameterize the installer tests by host platform, then re-dispatch.
+2. ~~**M-1** — fleet dispatch at `gate=full` and `gate=release`~~ — **done**;
+   it surfaced F5, fixed in PR #231. Re-dispatch after F5 merges so the run
+   ids recorded in the report are green ones.
+3. ~~**M-2** — persist the per-leg digest; add a collection job~~ — **done**,
+   PR #230. The index now classifies every expected leg as qualified, failed,
+   missing, or digest-mismatch.
+4. **M-3** — add an activation case whose declared release target matches the
+   host it runs on, so the fleet covers the real product scenario; see the
+   correction in section 9 for why this is narrower than first stated.
 5. **A4 (#35)** — live cross-driver verifier session; supplies the Driver
    matrix's missing cross-driver case.
 6. **C5 (#207)** — live doctor probes, including `doctor.sandbox` moving off
