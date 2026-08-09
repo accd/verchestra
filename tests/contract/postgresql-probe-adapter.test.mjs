@@ -98,6 +98,49 @@ test("adapter streams rows through the T41 supervisor", async () => {
   assert.equal(result.status, "complete");
 });
 
+// #233: PostgreSqlProbeAdapter#execute rewrites any error not raised by this
+// adapter itself (i.e. anything but a PostgreSqlProbeError) to the single
+// generic VES_POSTGRES_CONNECTION_FAILURE code. A raw connection error's
+// message is untrusted — a real driver may embed the failing statement or a
+// bound parameter value in it — so it must never reach the caller unchanged.
+// realConnection here is any minimal PostgreSqlConnectionPort-shaped object,
+// proving the rewrite is a property of the adapter, not of the fixture.
+test("a connection-level error is rewritten to the generic failure code and its message is not leaked", async () => {
+  const leakedDetail = 'column "ssn" does not exist in relation public.orders';
+  const throwingConnection = {
+    async inspectPrincipal(plan) {
+      return {
+        databaseId: plan.databaseId,
+        principal: "p",
+        superuser: false,
+        createRole: false,
+        createDatabase: false,
+        replication: false,
+        bypassRls: false,
+        writePrivilegeCount: 0
+      };
+    },
+    async executeControl() {
+      return [{ transaction_read_only: "on" }];
+    },
+    async *stream() {
+      throw new Error(leakedDetail);
+    },
+    async cancel() {},
+    async terminate() {}
+  };
+  const { supervisor } = await postgresFixture({ realConnection: throwingConnection });
+  await assert.rejects(supervisor.execute(), (error) => {
+    assert.equal(error.code, "VES_POSTGRES_CONNECTION_FAILURE");
+    assert.equal(error.message.includes(leakedDetail), false);
+    return true;
+  });
+});
+
+// Same contract, other side: an error the adapter raises itself
+// (VES_POSTGRES_PLAN_MISMATCH) must propagate with its own code, never
+// generalized to VES_POSTGRES_CONNECTION_FAILURE — the counterpart to the
+// rewrite test above.
 test("adapter binds normalized protected request to the exact plan", async () => {
   const fixture = await postgresFixture();
   fixture.parameters.set(
