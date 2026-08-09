@@ -2,13 +2,13 @@
 schema: verchestra-feature-handoff/v1
 feature: lighthouse-performance-budget
 issue: 110
-status: verification
-branch: fix/lighthouse-performance-budget
-baseRevision: 07ead185bf7bbf95fcba2fdeb95635b4c470e13a
+status: complete
+branch: fix/lighthouse-performance-budget-closure
+baseRevision: c0b53a498087c466f9a6c89ff345b389b5946de9
 lastCompletedTask: null
-nextTask: Independent human review and merge of PR accd/verchestra#139
-lastGate: pnpm gate:quick
-updatedAt: 2026-07-31T20:20:00Z
+nextTask: None. Issue #110 closed with current-main evidence.
+lastGate: pnpm site:check
+updatedAt: 2026-08-09T21:35:00Z
 ---
 
 # Scope
@@ -17,11 +17,14 @@ Issue #110: `Site quality`'s Lighthouse stage scored 0.92 against a required
 0.95 on PR #108, which changed no site code. Diagnose deterministic
 regression vs. measurement instability by a pre-registered rule before
 choosing a remedy, then fix it. Full requirements: `spec.md` (LPB-01
-through LPB-12). PR **accd/verchestra#139** is open against `accd:main`,
-under review (`#pullrequestreview-4829686374`, `CHANGES_REQUESTED`).
+through LPB-12).
 
-Phase D (this handoff's active phase) remediates that review's 5 points.
-Full task breakdown: `tasks.md`.
+Phase D (5 review points from `#pullrequestreview-4829686374`) is complete.
+PR **accd/verchestra#139** (the remedy) **merged into `main` at `751c458`
+on 2026-07-31T22:40:29Z**. Full task breakdown: `tasks.md`.
+
+This handoff's closing update (2026-08-09) replaces the "awaiting merge"
+state below, which had gone stale after the merge actually happened.
 
 # Completed Evidence
 
@@ -74,17 +77,34 @@ Full task breakdown: `tasks.md`.
   report: `validation.md`. This supersedes and voids the original `PASS` at
   `b91eea4`, which the PR #139 review had since shown incomplete.
 
+- **Closure (2026-08-09):** PR #139 confirmed **MERGED** into `accd/verchestra`
+  `main` at `751c458` (2026-07-31T22:40:29Z; `gh pr view 139 --json state,
+  mergedAt,mergeCommit` on 2026-08-09). Closure evidence gathered at the
+  current main tip `c0b53a4` (2026-08-09T20:45:32Z, includes the 2026-08-09
+  brand-mark work `d2b34ab`, which is an ancestor):
+  - CI run `31332489417` (https://github.com/accd/verchestra/actions/runs/31332489417),
+    `Site quality` job **success**, bound to `c0b53a4`. Three Lighthouse runs,
+    all `performance=1` (median 1.0, well above the 0.95 floor); accessibility,
+    best-practices, and seo all `1`.
+  - Local `pnpm site:check` (build + `check-built-site.mjs`) at the same
+    revision: 128 pages built, internal links and metadata both `valid`.
+  - The 0.95 `categories:performance` threshold in
+    `apps/site/lighthouserc.cjs` is unchanged from D1 — never lowered.
+  - `.specs/features/lighthouse-performance-budget/handoff.md` had stayed at
+    `status: verification` / `nextTask: … merge of PR #139` since
+    2026-07-31T20:20, nine days after the merge actually landed — this update
+    corrects that drift.
+
 # Next Exact Action
 
-Nothing further for this agent. Phase D (all 5 review points) is complete
-and independently verified. The feature awaits only independent human
-review and merge of PR `accd/verchestra#139` — this agent will not merge
-it, approve its own review, or touch branch protection (human-review
-boundary, `AGENTS.md`).
+None. Issue #110 is closed. See `docs(lighthouse-performance-budget): record
+closure evidence (#110)` for the closing commit and the GitHub issue comment
+citing the run above.
 
 # Blockers
 
-None. All Phase D work is complete and verified.
+None. All Phase D work is complete, independently verified (`validation.md`),
+merged, and now closed with current-main evidence.
 
 # Decisions
 
