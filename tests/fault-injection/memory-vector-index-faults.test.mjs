@@ -4,7 +4,15 @@ import { DatabaseSync } from "node:sqlite";
 import { getLoadablePath } from "sqlite-vec";
 
 import { MemoryVectorIndex } from "../../packages/memory/src/index.ts";
-import { batch, cleanup, now, opened, projectId, workspaceId } from "../helpers/memory-store-fixture.mjs";
+import {
+  batch,
+  cleanup,
+  localVectorAsset,
+  now,
+  opened,
+  projectId,
+  workspaceId
+} from "../helpers/memory-store-fixture.mjs";
 
 afterEach(cleanup);
 
@@ -33,7 +41,13 @@ function input(index, overrides = {}) {
 async function ready(options = {}) {
   const context = await opened();
   context.store.ingest(batch());
-  const index = new MemoryVectorIndex({ dbPath: context.dbPath, mode: "preferred", now: () => now, ...options });
+  const index = new MemoryVectorIndex({
+    dbPath: context.dbPath,
+    mode: "preferred",
+    now: () => now,
+    ...localVectorAsset(),
+    ...options
+  });
   index.open();
   return { ...context, index };
 }
@@ -175,7 +189,7 @@ test("ack loss after committed swap converges idempotently after reopen", async 
   assert.throws(() => index.buildGeneration(build), { code: "VES_VECTOR_SWAP_OUTCOME_UNKNOWN" });
   fail = false;
   index.close();
-  const reopened = new MemoryVectorIndex({ dbPath, mode: "preferred" });
+  const reopened = new MemoryVectorIndex({ dbPath, mode: "preferred", ...localVectorAsset() });
   reopened.open();
   const result = reopened.buildGeneration(build);
   assert.equal(result.changed, false);
@@ -192,7 +206,7 @@ test("missing active vec slot degrades preferred mode without touching lexical a
   db.loadExtension(getLoadablePath());
   db.exec(`DROP TABLE ${built.tableName}`);
   db.close();
-  const degraded = new MemoryVectorIndex({ dbPath, mode: "preferred" });
+  const degraded = new MemoryVectorIndex({ dbPath, mode: "preferred", ...localVectorAsset() });
   assert.equal(degraded.open().code, "VES_VECTOR_CORRUPT");
   assert.equal(store.lexicalSearch({ workspaceId, projectId, query: "audit", limit: 5 }).length, 1);
   degraded.close();
@@ -207,7 +221,7 @@ test("corrupt active vector state blocks a required semantic profile", async () 
   const db = new DatabaseSync(dbPath, { allowExtension: true });
   db.prepare("UPDATE memory_vector_generations SET vector_count=999 WHERE generation_id=?").run(built.generationId);
   db.close();
-  const required = new MemoryVectorIndex({ dbPath, mode: "required" });
+  const required = new MemoryVectorIndex({ dbPath, mode: "required", ...localVectorAsset() });
   assert.throws(() => required.open(), { code: "VES_VECTOR_REQUIRED_UNAVAILABLE", recoverable: true });
   assert.equal(store.stateDigest(), lexicalBefore);
   assert.equal(store.lexicalSearch({ workspaceId, projectId, query: "refund", limit: 5 }).length, 1);
@@ -224,7 +238,7 @@ test("member digest tampering is detected before semantic search", async () => {
     built.generationId
   );
   db.close();
-  const degraded = new MemoryVectorIndex({ dbPath, mode: "preferred" });
+  const degraded = new MemoryVectorIndex({ dbPath, mode: "preferred", ...localVectorAsset() });
   assert.equal(degraded.open().code, "VES_VECTOR_CORRUPT");
   degraded.close();
   store.close();
@@ -240,7 +254,7 @@ test("active slot metadata tampering is detected on reopen", async () => {
     projectId
   );
   db.close();
-  const degraded = new MemoryVectorIndex({ dbPath, mode: "preferred" });
+  const degraded = new MemoryVectorIndex({ dbPath, mode: "preferred", ...localVectorAsset() });
   assert.equal(degraded.open().code, "VES_VECTOR_CORRUPT");
   assert.equal(store.lexicalSearch({ workspaceId, projectId, query: "orders", limit: 5 }).length, 1);
   degraded.close();

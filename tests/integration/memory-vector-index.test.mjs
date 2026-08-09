@@ -9,7 +9,16 @@ import {
   getQualifiedSqliteVecAsset,
   inspectMemoryDatabase
 } from "../../packages/memory/src/index.ts";
-import { batch, cleanup, now, opened, projectId, source, workspaceId } from "../helpers/memory-store-fixture.mjs";
+import {
+  batch,
+  cleanup,
+  localVectorAsset,
+  now,
+  opened,
+  projectId,
+  source,
+  workspaceId
+} from "../helpers/memory-store-fixture.mjs";
 
 afterEach(cleanup);
 
@@ -46,20 +55,59 @@ function buildInput(index, scope = { workspaceId, projectId }, overrides = {}) {
 async function ready(options = {}) {
   const context = await opened();
   context.store.ingest(batch());
-  const index = new MemoryVectorIndex({ dbPath: context.dbPath, mode: "preferred", now: () => now, ...options });
+  const index = new MemoryVectorIndex({
+    dbPath: context.dbPath,
+    mode: "preferred",
+    now: () => now,
+    ...localVectorAsset(),
+    ...options
+  });
   const status = index.open();
   return { ...context, index, status };
 }
 
-test("loads only the exact qualified sqlite-vec asset and version", async () => {
+test("loads only the exact pinned sqlite-vec asset and version", async () => {
   const { index, status, store } = await ready();
+  const local = localVectorAsset();
   assert.deepEqual(status, {
     enabled: true,
     code: "VES_VECTOR_READY",
     version: "v0.1.9",
-    assetSha256: QUALIFIED_SQLITE_VEC.sha256,
-    assetBytes: QUALIFIED_SQLITE_VEC.bytes
+    assetSha256: local.expectedAssetSha256,
+    assetBytes: local.expectedAssetBytes
   });
+  // On a qualified host the installed asset must be byte-identical to the
+  // frozen qualification record; elsewhere no record exists to compare.
+  if (QUALIFIED_SQLITE_VEC !== undefined) {
+    assert.equal(local.expectedAssetSha256, QUALIFIED_SQLITE_VEC.sha256);
+    assert.equal(local.expectedAssetBytes, QUALIFIED_SQLITE_VEC.bytes);
+  }
+  index.close();
+  store.close();
+});
+
+// The closed default contract, asserted per platform: a qualified host opens
+// READY with no injected identity; an unqualified host fails closed to
+// lexical-only, refuses vector operations recoverably, and blocks a required
+// profile — the same honest degradation contract the sqlite spike pins.
+test("the default identity is the closed qualification table, failing closed elsewhere", async () => {
+  const { dbPath, store } = await opened();
+  store.ingest(batch());
+  const index = new MemoryVectorIndex({ dbPath, mode: "preferred" });
+  const status = index.open();
+  if (QUALIFIED_SQLITE_VEC !== undefined) {
+    assert.equal(status.code, "VES_VECTOR_READY");
+    assert.equal(status.assetSha256, QUALIFIED_SQLITE_VEC.sha256);
+  } else {
+    assert.deepEqual(status, { enabled: false, code: "VES_VECTOR_UNAVAILABLE", version: null });
+    assert.throws(() => index.authoritySnapshot({ workspaceId, projectId }), {
+      code: "VES_VECTOR_UNAVAILABLE",
+      recoverable: true
+    });
+    const required = new MemoryVectorIndex({ dbPath, mode: "required" });
+    assert.throws(() => required.open(), { code: "VES_VECTOR_REQUIRED_UNAVAILABLE", recoverable: true });
+  }
+  assert.equal(store.lexicalSearch({ workspaceId, projectId, query: "refund", limit: 5 }).length, 1);
   index.close();
   store.close();
 });
@@ -95,7 +143,12 @@ test("disabled semantic mode never loads sqlite-vec and lexical authority remain
 test("missing optional extension degrades to lexical-only operation", async () => {
   const { dbPath, store } = await opened();
   store.ingest(batch());
-  const index = new MemoryVectorIndex({ dbPath, mode: "preferred", assetPath: "Z:\\missing\\vec0.dll" });
+  const index = new MemoryVectorIndex({
+    dbPath,
+    mode: "preferred",
+    ...localVectorAsset(),
+    assetPath: "Z:\\missing\\vec0.dll"
+  });
   assert.deepEqual(index.open(), { enabled: false, code: "VES_VECTOR_UNAVAILABLE", version: null });
   assert.equal(store.lexicalSearch({ workspaceId, projectId, query: "orders", limit: 5 }).length, 1);
   index.close();
@@ -105,7 +158,12 @@ test("missing optional extension degrades to lexical-only operation", async () =
 test("asset checksum mismatch degrades to lexical-only operation", async () => {
   const { dbPath, store } = await opened();
   store.ingest(batch());
-  const index = new MemoryVectorIndex({ dbPath, mode: "preferred", expectedAssetSha256: "0".repeat(64) });
+  const index = new MemoryVectorIndex({
+    dbPath,
+    mode: "preferred",
+    ...localVectorAsset(),
+    expectedAssetSha256: "0".repeat(64)
+  });
   assert.deepEqual(index.open(), { enabled: false, code: "VES_VECTOR_ASSET_MISMATCH", version: null });
   assert.equal(store.lexicalSearch({ workspaceId, projectId, query: "audit", limit: 5 }).length, 1);
   index.close();
@@ -115,7 +173,7 @@ test("asset checksum mismatch degrades to lexical-only operation", async () => {
 test("runtime version mismatch degrades to lexical-only operation", async () => {
   const { dbPath, store } = await opened();
   store.ingest(batch());
-  const index = new MemoryVectorIndex({ dbPath, mode: "preferred", expectedVersion: "v9.9.9" });
+  const index = new MemoryVectorIndex({ dbPath, mode: "preferred", ...localVectorAsset(), expectedVersion: "v9.9.9" });
   assert.deepEqual(index.open(), { enabled: false, code: "VES_VECTOR_VERSION_MISMATCH", version: null });
   assert.equal(store.lexicalSearch({ workspaceId, projectId, query: "capture", limit: 5 }).length, 1);
   index.close();
@@ -125,7 +183,12 @@ test("runtime version mismatch degrades to lexical-only operation", async () => 
 test("required semantic mode blocks explicitly when sqlite-vec is unavailable", async () => {
   const { dbPath, store } = await opened();
   store.ingest(batch());
-  const index = new MemoryVectorIndex({ dbPath, mode: "required", assetPath: "Z:\\missing\\vec0.dll" });
+  const index = new MemoryVectorIndex({
+    dbPath,
+    mode: "required",
+    ...localVectorAsset(),
+    assetPath: "Z:\\missing\\vec0.dll"
+  });
   assert.throws(() => index.open(), { code: "VES_VECTOR_REQUIRED_UNAVAILABLE", recoverable: true });
   assert.equal(store.lexicalSearch({ workspaceId, projectId, query: "refund", limit: 5 }).length, 1);
   store.close();
@@ -174,7 +237,7 @@ test("semantic candidates are exact Workspace and Project scoped", async () => {
   const otherWorkspace = "workspace_018f0b6d-7b1a-7abc-8def-8123456789ab";
   store.ingest(batch([source("source:a", { contents: ["workspace alpha"] })]));
   store.ingest(batch([source("source:b", { contents: ["workspace beta"] })], { workspaceId: otherWorkspace }));
-  const index = new MemoryVectorIndex({ dbPath, mode: "preferred" });
+  const index = new MemoryVectorIndex({ dbPath, mode: "preferred", ...localVectorAsset() });
   index.open();
   index.buildGeneration(buildInput(index));
   index.buildGeneration(buildInput(index, { workspaceId: otherWorkspace, projectId }));
@@ -275,7 +338,7 @@ test("reopen verifies and reuses the active vector generation", async () => {
   const { dbPath, index, store } = await ready();
   const built = index.buildGeneration(buildInput(index));
   index.close();
-  const reopened = new MemoryVectorIndex({ dbPath, mode: "preferred" });
+  const reopened = new MemoryVectorIndex({ dbPath, mode: "preferred", ...localVectorAsset() });
   assert.equal(reopened.open().code, "VES_VECTOR_READY");
   assert.equal(reopened.activeGeneration({ workspaceId, projectId }).generationId, built.generationId);
   assert.equal(reopened.search({ workspaceId, projectId, embedding: [1, 0, 0], limit: 1 }).length, 1);
