@@ -133,7 +133,10 @@ test("resolves the Windows npm cmd-shim to the package entry beside it", async (
   const { resolveClaudeCommand } = await import("../src/claude-code-driver.mjs");
   const bin = await mkdtemp(path.join(tmpdir(), "verchestra-claude-npm-"));
   t.after(() => rm(bin, { recursive: true, force: true }));
-  await writeFile(path.join(bin, "claude.cmd"), "@ECHO off\r\n");
+  await writeFile(
+    path.join(bin, "claude.cmd"),
+    "@ECHO off\r\nGOTO start\r\n:find_dp0\r\nSET dp0=%~dp0\r\nEXIT /b\r\n:start\r\nSETLOCAL\r\nCALL :find_dp0\r\n\r\nIF EXIST \"%dp0%\\node.exe\" (\r\n  SET \"_prog=%dp0%\\node.exe\"\r\n) ELSE (\r\n  SET \"_prog=node\"\r\n  SET PATHEXT=%PATHEXT:;.JS;=;%\r\n)\r\n\r\nendLocal & goto #_undefined_# 2>NUL || title %COMSPEC% & \"%_prog%\"  \"%dp0%\\node_modules\\@anthropic-ai\\claude-code\\cli.js\" %*\r\n"
+  );
   const entry = path.join(bin, "node_modules", "@anthropic-ai", "claude-code", "cli.js");
   await mkdir(path.dirname(entry), { recursive: true });
   await writeFile(entry, 'console.log("2.1.168 (fixture)");\n');

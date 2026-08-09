@@ -1,5 +1,5 @@
 import { execFile, spawn } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import readline from "node:readline";
 import { promisify } from "node:util";
@@ -24,11 +24,29 @@ export function resolveClaudeCommand({
   if (platform !== "win32") return ["claude"];
   for (const directory of (env.PATH ?? "").split(path.delimiter)) {
     if (directory === "") continue;
-    if (!existsSync(path.join(directory, "claude.cmd"))) continue;
-    const entry = path.join(directory, "node_modules", "@anthropic-ai", "claude-code", "cli.js");
-    if (existsSync(entry)) return [execPath, entry];
+    const resolved = npmShimTarget(path.join(directory, "claude.cmd"), execPath);
+    if (resolved !== undefined) return resolved;
   }
   return ["claude"];
+}
+
+// npm's cmd-shim has carried the same generated shape for a decade: its final
+// line runs `"%_prog%"  "%dp0%\<relative target>" %*`. Reading the target out
+// of the shim beats guessing at package layouts, and a shim that does not match
+// the generated shape simply resolves to nothing rather than to a wrong file.
+function npmShimTarget(shimPath, execPath) {
+  if (!existsSync(shimPath)) return undefined;
+  let content;
+  try {
+    content = readFileSync(shimPath, "utf8");
+  } catch {
+    return undefined;
+  }
+  const match = /"%dp0%\\([^"]+)"\s+%\*/u.exec(content);
+  if (!match) return undefined;
+  const target = path.join(path.dirname(shimPath), match[1]);
+  if (!existsSync(target)) return undefined;
+  return target.toLowerCase().endsWith(".js") ? [execPath, target] : [target];
 }
 
 function parseVersion(value) {
