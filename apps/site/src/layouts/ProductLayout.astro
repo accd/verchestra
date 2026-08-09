@@ -1,4 +1,6 @@
 ---
+import { Image } from "astro:assets";
+import brandMark from "../assets/brand/verchestra-mark.png";
 import "../styles/global.css";
 
 interface Props {
@@ -36,6 +38,7 @@ const navigation = [
     <link rel="alternate" type="text/plain" title="Verchestra LLM summary" href={withBase("llms.txt")} />
     <link rel="alternate" type="text/plain" title="Verchestra full LLM context" href={withBase("llms-full.txt")} />
     <link rel="icon" type="image/png" href={withBase("favicon.png")} />
+    <link rel="apple-touch-icon" href={withBase("apple-touch-icon.png")} />
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Verchestra" />
     <meta property="og:locale" content="en" />
@@ -45,7 +48,7 @@ const navigation = [
     <meta property="og:image" content={socialImageUrl} />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
-    <meta property="og:image:alt" content="Verchestra verified AI software delivery workflow" />
+    <meta property="og:image:alt" content="Verchestra — verified AI software delivery: portable, signed, reviewable" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content={title} />
     <meta name="twitter:description" content={description} />
@@ -68,7 +71,7 @@ const navigation = [
     <header class="site-header">
       <div class="site-header__inner">
         <a class="wordmark" href={withBase("")} aria-label="Verchestra home">
-          <span class="wordmark__mark" aria-hidden="true">V</span>
+          <Image class="wordmark__logo" src={brandMark} alt="" width={68} height={68} loading="eager" />
           <span>Verchestra</span>
         </a>
         <nav class="site-nav" aria-label="Primary navigation">
@@ -102,7 +105,7 @@ const navigation = [
     <footer class="site-footer">
       <div>
         <a class="wordmark wordmark--footer" href={withBase("")}>
-          <span class="wordmark__mark" aria-hidden="true">V</span>
+          <Image class="wordmark__logo" src={brandMark} alt="" width={68} height={68} loading="lazy" />
           <span>Verchestra</span>
         </a>
         <p>Verified AI software delivery. Apache-2.0.</p>

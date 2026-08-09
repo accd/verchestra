@@ -1,6 +1,6 @@
 import sitemap from "@astrojs/sitemap";
 import starlight from "@astrojs/starlight";
-import { defineConfig } from "astro/config";
+import { defineConfig, passthroughImageService } from "astro/config";
 import { llmArtifactsIntegration } from "./src/lib/llm-content.ts";
 import { qualificationSidebarItems } from "./src/lib/repository-content.ts";
 
@@ -19,6 +19,12 @@ export default defineConfig({
   build: {
     inlineStylesheets: "always"
   },
+  image: {
+    // Brand rasters are pre-optimized at their served sizes (see public/ and
+    // src/assets/brand/), so the no-op service keeps the build hermetic instead
+    // of adding sharp as a direct dependency.
+    service: passthroughImageService()
+  },
   trailingSlash: "always",
   vite: {
     build: {
@@ -32,12 +38,23 @@ export default defineConfig({
       title: "Verchestra",
       description: "Verified AI software delivery that survives the model, the machine, and the handoff.",
       favicon: "/favicon.png",
+      logo: {
+        src: "./src/assets/brand/verchestra-mark.png",
+        alt: ""
+      },
       disable404Route: true,
       customCss: ["./src/styles/global.css"],
       components: {
         Head: "./src/components/StarlightHead.astro"
       },
       head: [
+        {
+          tag: "link",
+          attrs: {
+            rel: "apple-touch-icon",
+            href: "/verchestra/apple-touch-icon.png"
+          }
+        },
         {
           tag: "meta",
           attrs: {
@@ -63,7 +80,7 @@ export default defineConfig({
           tag: "meta",
           attrs: {
             property: "og:image:alt",
-            content: "Verchestra verified AI software delivery workflow"
+            content: "Verchestra — verified AI software delivery: portable, signed, reviewable"
           }
         },
         {
