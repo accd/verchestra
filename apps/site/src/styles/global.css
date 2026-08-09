@@ -162,17 +162,10 @@ body.product-shell {
   text-decoration: none;
 }
 
-.wordmark__mark {
-  display: grid;
-  width: 2rem;
-  height: 2rem;
-  place-items: center;
-  border: 1px solid color-mix(in srgb, var(--violet) 75%, white);
-  border-radius: 50%;
-  background: color-mix(in srgb, var(--violet) 16%, transparent);
-  color: var(--text);
-  font-family: var(--font-mono);
-  font-size: 0.85rem;
+.wordmark__logo {
+  width: 2.125rem;
+  height: 2.125rem;
+  flex: none;
 }
 
 .site-nav {

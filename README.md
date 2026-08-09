@@ -1,5 +1,11 @@
 # Verchestra
 
+<p align="center">
+  <a href="https://accd.github.io/verchestra/">
+    <img src="https://accd.github.io/verchestra/social-card.png" alt="Verchestra — verified AI software delivery: portable, signed, reviewable" width="720" />
+  </a>
+</p>
+
 [![CI](https://github.com/accd/verchestra/actions/workflows/ci.yml/badge.svg)](https://github.com/accd/verchestra/actions/workflows/ci.yml)
 [![Website](https://img.shields.io/badge/website-product%20%2B%20docs-45D6D0)](https://accd.github.io/verchestra/)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](LICENSE)
