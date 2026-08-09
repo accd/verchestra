@@ -6,9 +6,9 @@ status: blocked
 branch: fix/t75-platform-security-gate-gaps
 baseRevision: f1c72a067037d681c16c8d623be1fbe2493daf95
 lastCompletedTask: null
-nextTask: F2 — needs an owner policy decision before code (see "F2 blocked on decision")
-lastGate: sqlite spike 19/20 on darwin-arm64 (sole failure is the local Node 24.18.1 vs qualified 24.14.0 pin); gate:quick blocked locally at typecheck on unbuilt workspace packages, identical on unmodified main
-updatedAt: 2026-08-08T00:00:00Z
+nextTask: F3 (git-worktree-adapter, darwin+win32) is the first non-Linux blocker; then F1b (packages/memory index, arm64/macOS); then F2 (owner decision)
+lastGate: authoritative gate=security on main 22c41f2 (run 31311344239) — green ONLY on Linux x64; F1a's sqlite legs are green; see "Authoritative fleet re-run"
+updatedAt: 2026-08-09T12:00:00Z
 ---
 
 # Scope
@@ -183,17 +183,55 @@ surface on a driver that forwards a caller-supplied `--model`. That trade-off
 needs a Windows host or a matrix dispatch to settle honestly — it must not be
 guessed at from here.
 
+# Authoritative fleet re-run — F1a green in CI, F3 and F1b are the blockers
+
+The matrix dispatch that "Next Exact Action" #2 asked for HAS now been run on
+`main` (`gate=security`, run 31311344239, bound `22c41f2`): green ONLY on Linux
+x64. It confirms F1a and surfaces two things the earlier single run could not,
+because `gate:security` has since expanded to also run `test:contract` and
+`test:e2e`.
+
+- **F1a is verified in CI.** On Linux arm64 the sqlite spike passes
+  (`✔ records the exact qualified …`, `✔ controlled vector bootstrap`,
+  `✔ vector search is derived`). bruno's `07f51be` holds on a real unqualified host.
+- **F3 (NEW) — `git-worktree-adapter` fails on darwin + win32.** macOS arm64 and
+  Windows x64 both die at `test:e2e`, before `test:fault`/`test:qualification`, in
+  `packages/platform-node/src/git-worktree-adapter.ts` `#qualifiedRepositoryRoot`
+  (~line 240; `fail` at ~43) — the "real isolated worktree" / "removes the real
+  worktree" / "Driver bypass outside task scope" tests. This is the FIRST
+  non-Linux blocker and it MASKS the later gaps: F1b is hidden behind it on
+  macOS, and F2 is hidden behind it on Windows (so F2's current status is
+  unverifiable until F3 lands). Linux (x64 and arm64) is unaffected.
+- **F1b (confirmed) — the product memory index has the same asset-scope gap.**
+  Linux arm64 clears F3, then fails at `test:fault`:
+  `tests/fault-injection/memory-vector-index-faults.test.mjs` (16 tests) →
+  `packages/memory/src/memory-vector-index.ts:188`. Same sqlite-vec-only-on-
+  {linux,win}-x64 gap as F1a, one layer up in the PRODUCT index. The "Files
+  Intentionally Left Unchanged" note about `packages/memory` below is SUPERSEDED:
+  the gap IS there.
+
+**Fix ordering to green the fleet:** F3 first (unblocks every non-Linux leg),
+then F1b (arm64/macOS memory index — same platform-aware degradation pattern as
+F1a; do NOT weaken), then re-check F2 (win32 probes, still on the owner decision
+above). macOS x64 stayed queued on the Intel fleet and was cancelled.
+
 # Next Exact Action
 
-F1 is done (`07f51be`). Two things remain, in order:
+F1a is done (`07f51be`) and verified in CI. Remaining, in fix order:
 
 1. **Get an owner decision on F2's shape** — see "F2 blocked on decision" above.
    Nothing else about F2 should be written first.
-2. **Prove F1 across the fleet.** F1 is verified locally on darwin-arm64 only.
-   Dispatch `gh workflow run platform-matrix.yml --ref fix/t75-platform-security-gate-gaps -f gate=security`
-   and confirm the sqlite spike is green on all five legs. Expect the run to
-   still be red overall until F2 lands — read the sqlite legs specifically.
-   This dispatch has not been run; the branch is local and unpushed.
+2. **Fix F3 first — `git-worktree-adapter` on darwin+win32.** It is the first
+   non-Linux blocker (see "Authoritative fleet re-run") and masks F1b and F2.
+   Fix `packages/platform-node/src/git-worktree-adapter.ts`
+   `#qualifiedRepositoryRoot` so it resolves the repository root on macOS and
+   Windows, add a discriminating test, then re-dispatch the matrix.
+3. **Then F1b — the product memory index.** Apply the same platform-aware
+   degradation as F1a to `packages/memory/src/memory-vector-index.ts` and its
+   `tests/fault-injection/memory-vector-index-faults.test.mjs` (assert the real
+   degraded contract on unqualified hosts; do NOT weaken). Now proven, not
+   speculative. The fleet dispatch this step used to ask for HAS been run
+   (run 31311344239) — it is the source of F3/F1b above.
 
 The original F1 prescription is kept below for provenance; it is implemented.
 
@@ -274,8 +312,8 @@ budget for that latency, do not read a long queue as a failure.
   `tests/agent-readiness/platform-matrix-workflow.test.mjs` — the delivered,
   verified infrastructure. No change needed; they correctly report red until
   F1/F2 land.
-- `packages/memory/src/memory-vector-index.ts` — the product vector index is a
-  separate surface from the `spikes/sqlite` qualification stack that is red here;
-  only touch it if F1 diagnosis proves the same asset-scope gap exists there too.
+- `packages/memory/src/memory-vector-index.ts` — SUPERSEDED by the fleet re-run:
+  the same asset-scope gap IS present here (F1b). It is now in scope, not left
+  unchanged — see "Authoritative fleet re-run" and Next Exact Action #3.
 - Root status surfaces (`AGENTS.md`, `llms.txt`, `apps/site/src/data/product.ts`,
   current-qualification-status) — untouched; the chain is not advancing.
