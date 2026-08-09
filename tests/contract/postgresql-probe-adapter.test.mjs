@@ -64,10 +64,25 @@ test("adapter verifies a restricted principal", async () => {
   assert.match(evidence.principalFingerprint, /^sha256:/u);
 });
 
-test("adapter configures a read-only transaction with exact timeout", async () => {
-  const { worker, plan, connection } = await postgresFixture();
+// Connection-agnostic: exercises only PostgreSqlConnectionPort's declared
+// contract (executeControl's return shape), so this subset runs unmodified
+// against any implementation of the port, real or fixture (#233).
+test("adapter configures a read-only transaction and reports it read-only", async () => {
+  const { worker, plan } = await postgresFixture();
   const evidence = await worker.configureReadOnlySession(plan);
+  assert.equal(evidence.planDigest, plan.planDigest);
   assert.equal(evidence.sessionReadOnly, true);
+  assert.equal(evidence.transactionReadOnly, true);
+});
+
+// Fixture instrumentation: PostgreSqlFixtureConnection.controlCalls records
+// the exact statement sequence the adapter sent. No PostgreSqlConnectionPort
+// method exposes this — a real driver connection has no equivalent property
+// to assert against, so this test is necessarily fixture-only, unlike the
+// connection-agnostic assertion above it.
+test("[fixture instrumentation] adapter sends the exact read-only session statements in order", async () => {
+  const { worker, plan, connection } = await postgresFixture();
+  await worker.configureReadOnlySession(plan);
   assert.deepEqual(connection.controlCalls, [
     ["BEGIN READ ONLY", []],
     ["SET LOCAL statement_timeout = $1", [2000]],
@@ -98,14 +113,24 @@ test("adapter binds normalized protected request to the exact plan", async () =>
   await assert.rejects(fixture.supervisor.execute(), { code: "VES_POSTGRES_PLAN_MISMATCH" });
 });
 
-test("adapter cancellation delegates to PostgreSQL connection cancellation", async () => {
+// Connection-agnostic: PostgreSqlConnectionPort declares cancel()/terminate()
+// as Promise<void>; a compliant implementation must resolve, not throw or
+// hang. This is the whole assertable surface of the port's own contract for
+// these two methods (#233).
+test("adapter cancel and terminate delegate to the connection without throwing", async () => {
+  const { worker } = await postgresFixture();
+  await assert.doesNotReject(worker.cancel());
+  await assert.doesNotReject(worker.terminate());
+});
+
+// Fixture instrumentation: PostgreSqlFixtureConnection.cancelled/.terminated
+// are bookkeeping the fixture adds for itself. No PostgreSqlConnectionPort
+// method exposes call-was-made state, so a real driver connection has
+// nothing to assert here — fixture-only, unlike the test above it.
+test("[fixture instrumentation] adapter cancellation and termination reach the connection", async () => {
   const { worker, connection } = await postgresFixture();
   await worker.cancel();
   assert.equal(connection.cancelled, true);
-});
-
-test("adapter termination closes the PostgreSQL connection", async () => {
-  const { worker, connection } = await postgresFixture();
   await worker.terminate();
   assert.equal(connection.terminated, true);
 });

@@ -28,12 +28,6 @@ const SAFE_CATALOGS = new Set([
 ]);
 const WRITE_KEYWORDS =
   /\b(?:ALTER|ANALYZE|CALL|CLUSTER|COMMENT|COPY|CREATE|DELETE|DO|DROP|GRANT|INSERT|LISTEN|LOAD|LOCK|MERGE|NOTIFY|REFRESH|REINDEX|REVOKE|SECURITY|SET|TRUNCATE|UNLISTEN|UPDATE|VACUUM)\b/iu;
-const SAFE_ERROR_CODES = new Set([
-  "VES_POSTGRES_REQUEST_INVALID",
-  "VES_POSTGRES_PARAMETERS_INVALID",
-  "VES_POSTGRES_PLAN_MISMATCH",
-  "VES_POSTGRES_CONNECTION_FAILURE"
-]);
 
 type Classification = (typeof CLASSIFICATIONS)[number];
 type UnknownRecord = Readonly<Record<string, unknown>>;
@@ -294,7 +288,16 @@ export class PostgreSqlProbeAdapter {
       for await (const row of this.#connection.stream(request.sql, request.parameters, signal))
         yield Object.freeze([row]);
     } catch (error) {
-      if (error instanceof PostgreSqlProbeError && SAFE_ERROR_CODES.has(error.code)) throw error;
+      // Every PostgreSqlProbeError this adapter raises carries a static,
+      // pre-written message (see the fail() calls above and in
+      // parsePostgreSqlReadOperation) — none of them interpolate the
+      // protected SQL text, bound parameters, or row data, so propagating
+      // any of them unchanged, regardless of code, is always safe (#233).
+      // Only this branch is untrusted: an error thrown by
+      // PostgreSqlConnectionPort#stream() (a real driver's own error) may
+      // embed the failing statement or its parameter values in its message,
+      // so it is deliberately not propagated — it is rewritten to the one
+      // generic, connection-agnostic code below.
       if (error instanceof PostgreSqlProbeError) throw error;
       throw new PostgreSqlProbeError("VES_POSTGRES_CONNECTION_FAILURE", "PostgreSQL connection failed");
     }
