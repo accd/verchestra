@@ -6,7 +6,7 @@ import { test } from "node:test";
 
 import { DOCTOR_CHECK_IDS } from "../../packages/application/src/index.ts";
 import { ArtifactSealer, NodeEd25519Signer } from "../../packages/evidence/src/index.ts";
-import { captureControlRootSentinels, runDoctor } from "../../apps/vestra-cli/src/doctor-composition.ts";
+import { captureControlRootSentinels, runDoctor, runDoctorDeep } from "../../apps/vestra-cli/src/doctor-composition.ts";
 
 const healthy = { present: true, healthy: true };
 const absent = { present: false, healthy: false };
@@ -143,4 +143,41 @@ test("the report duration is a non-negative integer", async () => {
   const run = await runDoctor(ports());
   assert.equal(Number.isSafeInteger(run.payload["doctor.duration_ms"]), true);
   assert.ok(run.payload["doctor.duration_ms"] >= 0);
+});
+
+const repoRoot = () => new URL("../../", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/u, "$1");
+
+test("DOC-04: the real control-root sentinels are byte-identical across a real run", async () => {
+  // The runDoctor cases above bracket synthetic sentinels; this brackets the
+  // shipped captureControlRootSentinels around a real run so DOC-04 is evidenced
+  // by the real capture, not a fake. runDoctor captures before and after and
+  // fails closed on any mismatch, so a passing seal already proves invariance;
+  // the external before/after comparison proves the capture itself is stable.
+  const root = repoRoot();
+  const before = captureControlRootSentinels(root);
+  assert.ok(before.length > 0, "the control root must contribute at least one sentinel");
+  const run = await runDoctor(ports({ captureSentinels: () => captureControlRootSentinels(root) }));
+  assert.ok(run.artifact, "the run seals with the real sentinel capture bracketing it");
+  assert.deepEqual(captureControlRootSentinels(root), before, "real sentinels are byte-identical after a real run");
+});
+
+test("DOC-06: runDoctorDeep seals a fresh per-run identity and leaks no private key", async () => {
+  // The real composition generates a TEST-ONLY signing identity per call
+  // (NodeEd25519Signer.generate) and never persists or prints it. Two real runs
+  // seal distinct artifacts, and no private-key material appears in either -
+  // the sealer exports only the public key and the signature. Combined with the
+  // e2e "writes nothing to the working directory" assertion, this evidences that
+  // the diagnostic signing key is per-run and never reaches disk or the report.
+  const root = repoRoot();
+  const first = await runDoctorDeep({ controlRoot: root });
+  const second = await runDoctorDeep({ controlRoot: root });
+  assert.ok(first.artifact && second.artifact, "each real run seals an artifact");
+  assert.notDeepEqual(first.artifact, second.artifact, "each run seals under a freshly generated identity");
+  const serialized = `${JSON.stringify(first.artifact)}\n${JSON.stringify(second.artifact)}`;
+  assert.doesNotMatch(
+    serialized,
+    /PRIVATE KEY|BEGIN [A-Z ]*PRIVATE|"privateKey"/u,
+    "no private-key material is sealed"
+  );
+  assert.doesNotMatch(serialized, NO_PATH, "the real sealed artifact carries no absolute machine path");
 });
