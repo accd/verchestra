@@ -45,7 +45,7 @@ export async function mysqlFamilyFixture(engine, options = {}) {
     )
   );
   const results = new MemoryProbeResultSink();
-  const connection = new MySqlFamilyFixtureConnection({ engine, ...options.connection });
+  const connection = options.realConnection ?? new MySqlFamilyFixtureConnection({ engine, ...options.connection });
   const Adapter = engine === "mysql" ? MySqlProbeAdapter : MariaDbProbeAdapter;
   const worker = new Adapter({ connection });
   const supervisor = new ProbeWorkerSupervisor({

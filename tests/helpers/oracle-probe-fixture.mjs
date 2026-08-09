@@ -46,7 +46,7 @@ export async function oracleFixture(options = {}) {
     )
   );
   const results = new MemoryProbeResultSink();
-  const connection = new OracleFixtureConnection(options.connection);
+  const connection = options.realConnection ?? new OracleFixtureConnection(options.connection);
   const worker = new OracleProbeAdapter({ connection });
   const supervisor = new ProbeWorkerSupervisor({
     worker,

@@ -50,7 +50,7 @@ export async function sapAseFixture(options = {}) {
     )
   );
   const results = new MemoryProbeResultSink();
-  const connection = new SapAseFixtureConnection(options.connection);
+  const connection = options.realConnection ?? new SapAseFixtureConnection(options.connection);
   const worker = new SapAseProbeAdapter({ connection });
   const supervisor = new ProbeWorkerSupervisor({
     worker,
