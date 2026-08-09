@@ -33,10 +33,12 @@ five additive resolution tests failed because the method did not exist.
 | `corepack pnpm gate:quick` | PASS |
 | `corepack pnpm test:security` | PASS: 1001 passed, 0 failed, 0 skipped, 0 todo |
 | `corepack pnpm gate:build` | INCONCLUSIVE locally: two runs reached integration and then reported 5 and 4 Windows `EBUSY` cleanup failures in disposable self-test fixture roots; all T1 cases passed |
+| `gate:build` repository workflow | PASS on `bfab60355942e5a19259a0ee3dc40c9a377778be`: [run 31332661966](https://github.com/accd/verchestra/actions/runs/31332661966) |
+| `gate:security` repository workflow | PASS on `bfab60355942e5a19259a0ee3dc40c9a377778be`: [run 31332772835](https://github.com/accd/verchestra/actions/runs/31332772835) |
 
 The local build gate is not recorded as a pass. Its deterministic code checks
-completed, and the remaining environment-sensitive result must be rerun on the
-review commit in the repository validation workflow.
+completed, and the repository workflow passed the same gate on the exact
+review commit, confirming the remaining local result was environment-specific.
 
 ## Remaining completion evidence
 
