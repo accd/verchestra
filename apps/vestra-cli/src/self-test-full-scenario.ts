@@ -376,8 +376,11 @@ async function compileContext() {
         policyEvidenceDigest: digest("policy-evidence")
       })
     },
-    signer: { sign: async () => ({ keyId: "context-key", signature: digest("context-signature") }) },
-    estimateTokens: (content) => content.split(/\s+/u).length
+    signer: { sign: async () => ({ keyId: "context-key", signature: digest("context-signature") }) }
+    // No estimateTokens: the composition root takes the qualified estimator, so
+    // a product run never depends on caller injection (AD-015, TOK-04). It used
+    // to inject a whitespace word count here, which disagreed with the test
+    // fixture's chars/4 by roughly a quarter on the same text.
   });
   return compiler.compile({
     workspaceId: WORKSPACE_ID,

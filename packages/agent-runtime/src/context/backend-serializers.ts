@@ -1,5 +1,6 @@
 import type { ContextDigestPort } from "./source-snapshots.ts";
 import type { ContextManifest } from "./context-compiler.ts";
+import { estimateQualifiedTokens } from "./token-estimator.ts";
 
 const TARGETS = ["pi", "claude-code", "codex", "opencode"] as const;
 const PREFIX = "VERCHESTRA_CONTEXT_V1\n";
@@ -21,6 +22,18 @@ export class ContextSerializationError extends Error {
 export interface ContextCapacityEstimatorPort {
   estimate(target: ContextBackendTarget, serialized: Readonly<Record<string, unknown>>): number;
 }
+
+// The second estimation surface, on the same qualified primitive. Two surfaces
+// with independent heuristics is how the repository ended up with three
+// different token counts for the same text (AD-015); this leaves exactly one.
+// The target does not change the estimate: a serialized context costs what its
+// bytes cost, and a per-target divergence would reintroduce the very
+// machine-dependence the qualified estimator exists to remove.
+export const qualifiedCapacityEstimator: ContextCapacityEstimatorPort = Object.freeze({
+  estimate(_target: ContextBackendTarget, serialized: Readonly<Record<string, unknown>>): number {
+    return estimateQualifiedTokens(JSON.stringify(serialized));
+  }
+});
 
 export interface NeutralSemanticTree {
   readonly semanticObligations: readonly string[];
@@ -195,9 +208,10 @@ export class BackendContextSerializer {
   readonly #digest: ContextDigestPort;
   readonly #capacity: ContextCapacityEstimatorPort;
 
-  constructor(options: { readonly digest: ContextDigestPort; readonly capacity: ContextCapacityEstimatorPort }) {
+  constructor(options: { readonly digest: ContextDigestPort; readonly capacity?: ContextCapacityEstimatorPort }) {
     this.#digest = options.digest;
-    this.#capacity = options.capacity;
+    // Same rule as the compiler's estimator: an override, never a requirement.
+    this.#capacity = options.capacity ?? qualifiedCapacityEstimator;
   }
 
   serialize(input: {

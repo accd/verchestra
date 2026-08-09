@@ -28,12 +28,18 @@ export {
 export {
   BackendContextSerializer,
   ContextSerializationError,
+  qualifiedCapacityEstimator,
   SemanticEquivalenceOracle,
   type ContextBackendTarget,
   type ContextCapacityEstimatorPort,
   type NeutralSemanticTree,
   type SerializedContext
 } from "./context/backend-serializers.ts";
+export {
+  estimateQualifiedTokens,
+  QUALIFIED_TOKEN_ESTIMATOR,
+  type TokenEstimatorIdentity
+} from "./context/token-estimator.ts";
 export {
   ContextCompilerError,
   DeterministicContextCompiler,

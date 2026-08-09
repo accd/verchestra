@@ -10,12 +10,18 @@ import {
   type ResolvedContextFragment,
   type ResolvedContextSource
 } from "./source-snapshots.ts";
+import { estimateQualifiedTokens, QUALIFIED_TOKEN_ESTIMATOR, type TokenEstimatorIdentity } from "./token-estimator.ts";
 
 const PRIORITY_RANK = { mandatory: 0, high: 1, medium: 2, low: 3 } as const;
 const TRUST_RANK = { authority: 0, "verified-evidence": 1, "untrusted-data": 2, "generated-content": 3 } as const;
 const SOURCE_STATUSES = ["available", "missing", "unavailable", "stale", "outside-scope", "revision-mismatch"] as const;
 const DIGEST = /^sha256:[a-f0-9]{64}$/u;
 type Priority = keyof typeof PRIORITY_RANK;
+
+// An injected estimator the caller did not name. Recording it as unknown is the
+// honest reading: the manifest states that these counts did not come from the
+// qualified estimator, without claiming to know what did produce them.
+const UNQUALIFIED_TOKENIZER: TokenEstimatorIdentity = Object.freeze({ name: "caller-injected", version: "unknown" });
 
 export class ContextCompilerError extends Error {
   readonly code: string;
@@ -51,6 +57,11 @@ export interface ContextOmission {
 export interface ContextManifest {
   readonly schemaVersion: 1;
   readonly manifestId: string;
+  // Which estimator produced every token count below. Without it two manifests
+  // that disagree can only be observed to differ, never explained — and the
+  // omission decisions the counts drove are exactly what a reader needs to
+  // reproduce (AD-015, TOK-02).
+  readonly tokenizer: TokenEstimatorIdentity;
   readonly workspaceId: string;
   readonly runId: string;
   readonly recipeId: string;
@@ -138,17 +149,27 @@ export class DeterministicContextCompiler {
   readonly #egress: Pick<DataEgressFirewall, "authorize">;
   readonly #signer: ContextManifestSignerPort;
   readonly #estimate: (content: string) => number;
+  readonly #tokenizer: TokenEstimatorIdentity;
 
   constructor(options: {
     readonly digest: ContextDigestPort;
     readonly egress: Pick<DataEgressFirewall, "authorize">;
     readonly signer: ContextManifestSignerPort;
-    readonly estimateTokens: (content: string) => number;
+    // An override, not a requirement (TOK-04). A product run must never depend
+    // on the caller supplying an estimator: an omitted one used to leave
+    // `#estimate` undefined and fail only at first use, which is
+    // environment-dependent behaviour dressed as a contract.
+    readonly estimateTokens?: (content: string) => number;
+    // Callers that override the estimator must say which one they used, so the
+    // manifest never attributes their counts to the qualified estimator.
+    readonly tokenizer?: TokenEstimatorIdentity;
   }) {
     this.#digest = options.digest;
     this.#egress = options.egress;
     this.#signer = options.signer;
-    this.#estimate = options.estimateTokens;
+    this.#estimate = options.estimateTokens ?? estimateQualifiedTokens;
+    this.#tokenizer =
+      options.tokenizer ?? (options.estimateTokens === undefined ? QUALIFIED_TOKEN_ESTIMATOR : UNQUALIFIED_TOKENIZER);
   }
 
   async compile(input: {
@@ -306,6 +327,7 @@ export class DeterministicContextCompiler {
       policyDecisionRefs: [egress["policyEvidenceDigest"]],
       estimatedTokens: total,
       mandatoryTokens,
+      tokenizer: this.#tokenizer,
       semanticObligations,
       semanticObligationsDigest,
       serializedMeaningDigest,
