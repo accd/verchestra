@@ -4,12 +4,38 @@ feature: platform-qualification-matrix
 issue: 16
 status: verification
 branch: main
-baseRevision: bb11932dc81fcaabad1aac1ccbfd75175e5ec309
+baseRevision: 3f97047cd26ea1ab4d91b099aafeb8fdc11c2f3b
 lastCompletedTask: null
-nextTask: T75 remaining matrices (topology, Driver, database incl. SAP ASE, sandbox, installer, recovery) + signed evidence index + independent t75-validation.md — qualification-surface work, serialize per session-coordination
+nextTask: "matrix.md is written (all remaining dimensions enumerated from canonical sources; defects M-1..M-7; decisions D1/D2). Next: owner decides D1 (database scope) and D2 (Pi driver), then M-1 fleet dispatch at gate=full and gate=release, M-2 persist and collect per-leg evidence digests, M-3 parameterize installer tests by host platform — matrix.md section 10"
 lastGate: FLEET GREEN — gate:security passed SIMULTANEOUSLY on Windows x64, Linux x64, Linux arm64, macOS arm64 at 5c86436 (run 31315589420); macOS x64 environmentally queued on the retiring Intel fleet; on-main confirmation run 31315939879 dispatched at bb11932
-updatedAt: 2026-08-09T14:15:00Z
+updatedAt: 2026-08-09T17:00:00Z
 ---
+
+# READ FIRST — `matrix.md`
+
+The remaining T75 scope is now specified in
+`.specs/features/platform-qualification-matrix/matrix.md`: every dimension's
+canonical case set, what is actually exercised, seven identified defects
+(M-1..M-7), two owner decisions (D1 database scope, D2 Pi driver), and the
+design of the signed evidence index. **Start there**, not in the historical
+sections below, which record the platform × security-gate leg that is already
+complete and green.
+
+Headline findings from that specification:
+
+- **No gate profile runs every stage.** `test:integration` is absent from
+  `gate:security` — the only profile ever dispatched fleet-wide — so the
+  real-git topology cases have never run on any platform but the single CI
+  runner. Four dispatches (`quick ∪ full ∪ security ∪ release`) are needed for
+  full stage coverage.
+- **The per-leg evidence digest is computed and thrown away**
+  (`platform-matrix.yml:164-166`), and no workflow ever downloads the
+  artifacts. Acceptance criterion 3 has nothing to bind to.
+- **No live database engine except SQLite is qualified anywhere**, while
+  issue #16 calls SAP ASE a principal target — its "16.1 SP00 PL02" is a
+  default string in a fake connection (`sap-ase-adapter.ts:342`).
+- **The signed evidence index is a new artifact type**, and AD-014's DSSE
+  migration constrains when it can be signed.
 
 # Scope
 
@@ -252,6 +278,28 @@ reproduced on a Windows host (Windows has a qualified sqlite-vec asset, so the
 gap only bites on arm64/macOS); it must be verified by a matrix dispatch.
 
 # Next Exact Action
+
+**Superseded by `matrix.md` section 10.** In order:
+
+1. **Owner decides D1** (database qualification scope — no live engine but
+   SQLite is qualified, while SAP ASE is documented as a principal target)
+   and **D2** (Pi driver reports a hardcoded version and can never fail).
+   Both are scope calls in the F1 mould: an honest narrowing is acceptable,
+   a silent overclaim is not.
+2. **M-1** — dispatch the fleet at the qualification revision with
+   `gate=full` and `gate=release`; record all four run ids. No code change;
+   this is the cheapest gap and it closes the topology hole.
+3. **M-2** — persist the per-leg evidence digest into
+   `platform-validation.json` (today it is only `console.log`ged) and add a
+   collection job that downloads every leg's artifact into one index.
+4. **M-3** — parameterize the installer/activation tests by host platform
+   instead of the hardcoded `win32`, then re-dispatch so the platform axis
+   stops being inert.
+5. Then A4 (#35 cross-driver session), C5 (#207 live doctor probes), the
+   signed evidence index (ordered against AD-014), and finally B3's
+   independent `t75-validation.md`.
+
+## Historical fix order (F1/F2/F3 — all complete)
 
 F1a is done (`07f51be`) and verified in CI. Remaining, in fix order:
 
