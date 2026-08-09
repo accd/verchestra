@@ -1,9 +1,35 @@
 import { execFile, spawn } from "node:child_process";
+import { existsSync } from "node:fs";
+import path from "node:path";
 import readline from "node:readline";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
 const SAFE_ENV_KEYS = ["PATH", "SystemRoot", "ComSpec", "TEMP", "TMP", "HOME", "USERPROFILE"];
+
+// On Windows an npm global install exposes `claude` only as a cmd-shim
+// (claude.cmd), which Node refuses to spawn without a shell (CVE-2024-27980
+// hardening) — so a bare-name spawn reports an installed CLI as unavailable. A
+// shell would also mangle this driver's empty-string arguments and reopen an
+// injection surface, so instead resolve the shim to the package entry npm keeps
+// beside it (<bin>/node_modules/@anthropic-ai/claude-code/cli.js) and run it
+// with this Node executable directly. Native installs (claude.exe) and every
+// POSIX platform keep the bare name. The probe result stays honest: when no
+// resolvable installation exists the spawn still fails closed to unavailable.
+export function resolveClaudeCommand({
+  platform = process.platform,
+  env = process.env,
+  execPath = process.execPath
+} = {}) {
+  if (platform !== "win32") return ["claude"];
+  for (const directory of (env.PATH ?? "").split(path.delimiter)) {
+    if (directory === "") continue;
+    if (!existsSync(path.join(directory, "claude.cmd"))) continue;
+    const entry = path.join(directory, "node_modules", "@anthropic-ai", "claude-code", "cli.js");
+    if (existsSync(entry)) return [execPath, entry];
+  }
+  return ["claude"];
+}
 
 function parseVersion(value) {
   const match = /^(\d+)\.(\d+)\.(\d+)/.exec(value.trim());
@@ -30,7 +56,7 @@ function userMessage(prompt) {
 }
 
 export class ClaudeCodeDriver {
-  constructor({ command = ["claude"], minimumVersion = "2.1.168", terminateTree, onSpawn } = {}) {
+  constructor({ command = resolveClaudeCommand(), minimumVersion = "2.1.168", terminateTree, onSpawn } = {}) {
     this.command = command;
     this.minimumVersion = minimumVersion;
     this.terminateTree = terminateTree ?? (async (pid) => process.kill(pid));

@@ -31,12 +31,33 @@ function errorMessage(error, fallback) {
   return error instanceof Error ? error.message : fallback;
 }
 
-function defaultCommand() {
-  if (process.platform === "win32" && process.env.APPDATA) {
-    const npmEntrypoint = path.join(process.env.APPDATA, "npm", "node_modules", "@openai", "codex", "bin", "codex.js");
-    if (existsSync(npmEntrypoint)) return [process.execPath, npmEntrypoint];
+// An npm global install exposes `codex` on Windows only as a cmd-shim, which
+// Node refuses to spawn without a shell (CVE-2024-27980 hardening). The %APPDATA%
+// probe below covers the default npm prefix, but CI runners relocate the global
+// prefix, so additionally scan PATH for the shim and use the package entry npm
+// keeps beside it. Native installs and POSIX platforms keep the bare name, and
+// a host without any resolvable installation still fails closed to unavailable.
+export function resolveCodexCommand({
+  platform = process.platform,
+  env = process.env,
+  execPath = process.execPath
+} = {}) {
+  if (platform !== "win32") return ["codex"];
+  if (env.APPDATA) {
+    const npmEntrypoint = path.join(env.APPDATA, "npm", "node_modules", "@openai", "codex", "bin", "codex.js");
+    if (existsSync(npmEntrypoint)) return [execPath, npmEntrypoint];
+  }
+  for (const directory of (env.PATH ?? "").split(path.delimiter)) {
+    if (directory === "") continue;
+    if (!existsSync(path.join(directory, "codex.cmd"))) continue;
+    const entry = path.join(directory, "node_modules", "@openai", "codex", "bin", "codex.js");
+    if (existsSync(entry)) return [execPath, entry];
   }
   return ["codex"];
+}
+
+function defaultCommand() {
+  return resolveCodexCommand();
 }
 
 export class CodexDriver {

@@ -11,7 +11,9 @@ function fakeDriver(options = {}) {
 }
 
 test("probes the installed Claude Code without invoking a model", async () => {
-  const result = await new ClaudeCodeDriver({ command: ["claude"], minimumVersion: "2.1.168" }).probe();
+  // No explicit command: the driver's resolved default is exactly what a real
+  // composition uses, including the Windows npm cmd-shim resolution.
+  const result = await new ClaudeCodeDriver({ minimumVersion: "2.1.168" }).probe();
   assert.equal(result.available, true);
   assert.equal(result.version, "2.1.168");
   assert.equal(result.capabilities.streamJson, true);
@@ -118,4 +120,35 @@ test("does not expose Claude session identity in the portable result", async () 
   const result = await fakeDriver().run({ prompt: "hello", environment: { FAKE_CLAUDE_MODE: "success" } });
   assert.equal(JSON.stringify(result).includes("private-session-id"), false);
   assert.equal(Object.hasOwn(result, "sessionId"), false);
+});
+
+// The Windows npm cmd-shim cannot be spawned without a shell, so the driver
+// resolves the package entry npm keeps beside the shim and runs it with this
+// Node executable. The layout below is the npm-global shape reproduced
+// synthetically, so the resolution contract is asserted on every platform and
+// without any provider installation.
+test("resolves the Windows npm cmd-shim to the package entry beside it", async (t) => {
+  const { mkdtemp, mkdir, writeFile, rm } = await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const { resolveClaudeCommand } = await import("../src/claude-code-driver.mjs");
+  const bin = await mkdtemp(path.join(tmpdir(), "verchestra-claude-npm-"));
+  t.after(() => rm(bin, { recursive: true, force: true }));
+  await writeFile(path.join(bin, "claude.cmd"), "@ECHO off\r\n");
+  const entry = path.join(bin, "node_modules", "@anthropic-ai", "claude-code", "cli.js");
+  await mkdir(path.dirname(entry), { recursive: true });
+  await writeFile(entry, 'console.log("2.1.168 (fixture)");\n');
+
+  const resolved = resolveClaudeCommand({ platform: "win32", env: { PATH: bin }, execPath: process.execPath });
+  assert.deepEqual(resolved, [process.execPath, entry]);
+  // The resolved command is runnable end to end: the probe succeeds against the
+  // synthetic entry without any shell and without a real installation.
+  const probe = await new ClaudeCodeDriver({ command: resolved, minimumVersion: "2.1.168" }).probe();
+  assert.equal(probe.available, true);
+  assert.equal(probe.version, "2.1.168");
+
+  // A shim with no package entry beside it, and every non-Windows platform,
+  // keep the bare command.
+  await rm(entry);
+  assert.deepEqual(resolveClaudeCommand({ platform: "win32", env: { PATH: bin } }), ["claude"]);
+  assert.deepEqual(resolveClaudeCommand({ platform: "linux", env: { PATH: bin } }), ["claude"]);
 });
