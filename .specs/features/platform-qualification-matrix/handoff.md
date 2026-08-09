@@ -6,9 +6,9 @@ status: blocked
 branch: fix/t75-platform-security-gate-gaps
 baseRevision: f1c72a067037d681c16c8d623be1fbe2493daf95
 lastCompletedTask: null
-nextTask: F3 (git-worktree-adapter, darwin+win32) is the first non-Linux blocker; then F1b (packages/memory index, arm64/macOS); then F2 (owner decision)
-lastGate: authoritative gate=security on main 22c41f2 (run 31311344239) — green ONLY on Linux x64; F1a's sqlite legs are green; see "Authoritative fleet re-run"
-updatedAt: 2026-08-09T12:00:00Z
+nextTask: F1b (packages/memory memory-vector-index degradation on arm64/macOS); then F2 (owner decision)
+lastGate: F3 FIXED and merged (965a1e4, PR #216); matrix run 31313342425 showed macOS + Windows past test:e2e with 0 worktree errors — macOS now stops at test:security (F1b), Windows at test:qualification (F2, unmasked)
+updatedAt: 2026-08-09T13:00:00Z
 ---
 
 # Scope
@@ -194,14 +194,20 @@ because `gate:security` has since expanded to also run `test:contract` and
 - **F1a is verified in CI.** On Linux arm64 the sqlite spike passes
   (`✔ records the exact qualified …`, `✔ controlled vector bootstrap`,
   `✔ vector search is derived`). bruno's `07f51be` holds on a real unqualified host.
-- **F3 (NEW) — `git-worktree-adapter` fails on darwin + win32.** macOS arm64 and
-  Windows x64 both die at `test:e2e`, before `test:fault`/`test:qualification`, in
+- **F3 (FIXED — commit `965a1e4`, PR #216) — `git-worktree-adapter` rejected
+  macOS/Windows path aliases.** macOS arm64 and Windows x64 both died at
+  `test:e2e`, before `test:fault`/`test:qualification`, in
   `packages/platform-node/src/git-worktree-adapter.ts` `#qualifiedRepositoryRoot`
   (~line 240; `fail` at ~43) — the "real isolated worktree" / "removes the real
-  worktree" / "Driver bypass outside task scope" tests. This is the FIRST
-  non-Linux blocker and it MASKS the later gaps: F1b is hidden behind it on
-  macOS, and F2 is hidden behind it on Windows (so F2's current status is
-  unverifiable until F3 lands). Linux (x64 and arm64) is unaffected.
+  worktree" / "Driver bypass outside task scope" tests. It was the FIRST
+  non-Linux blocker and MASKED the later gaps. **Fix:** `#qualifiedRepositoryRoot`
+  and `#qualifiedWorktreesRoot` now canonicalize via `realpath` instead of
+  rejecting `input !== realpath` (which rejected macOS `/var`→`/private/var` and
+  Windows 8.3 `RUNNER~1`→`runneradmin`); every real escape guard is kept, proven
+  by a "still refuses a worktrees root whose own entry is a link" test plus a
+  discrimination sensor. Verified by matrix run 31313342425: macOS + Windows
+  cleared `test:e2e` with zero worktree errors, unmasking F1b on macOS
+  (`test:security`) and F2 on Windows (`test:qualification`). Linux was unaffected.
 - **F1b (confirmed) — the product memory index has the same asset-scope gap.**
   Linux arm64 clears F3, then fails at `test:fault`:
   `tests/fault-injection/memory-vector-index-faults.test.mjs` (16 tests) →
@@ -210,10 +216,12 @@ because `gate:security` has since expanded to also run `test:contract` and
   Intentionally Left Unchanged" note about `packages/memory` below is SUPERSEDED:
   the gap IS there.
 
-**Fix ordering to green the fleet:** F3 first (unblocks every non-Linux leg),
-then F1b (arm64/macOS memory index — same platform-aware degradation pattern as
-F1a; do NOT weaken), then re-check F2 (win32 probes, still on the owner decision
-above). macOS x64 stayed queued on the Intel fleet and was cancelled.
+**Fix ordering to green the fleet:** F3 is DONE (`965a1e4`). Now **F1b**
+(arm64/macOS memory index — same platform-aware degradation pattern as F1a; do
+NOT weaken), then **F2** (win32 probes, now confirmed unmasked at
+`test:qualification`; still on the owner decision above). Note F1b cannot be
+reproduced on a Windows host (Windows has a qualified sqlite-vec asset, so the
+gap only bites on arm64/macOS); it must be verified by a matrix dispatch.
 
 # Next Exact Action
 
@@ -221,11 +229,9 @@ F1a is done (`07f51be`) and verified in CI. Remaining, in fix order:
 
 1. **Get an owner decision on F2's shape** — see "F2 blocked on decision" above.
    Nothing else about F2 should be written first.
-2. **Fix F3 first — `git-worktree-adapter` on darwin+win32.** It is the first
-   non-Linux blocker (see "Authoritative fleet re-run") and masks F1b and F2.
-   Fix `packages/platform-node/src/git-worktree-adapter.ts`
-   `#qualifiedRepositoryRoot` so it resolves the repository root on macOS and
-   Windows, add a discriminating test, then re-dispatch the matrix.
+2. **F3 — DONE** (`965a1e4`, PR #216). `git-worktree-adapter` now canonicalizes
+   the roots; macOS + Windows clear `test:e2e` (matrix run 31313342425). No
+   further action.
 3. **Then F1b — the product memory index.** Apply the same platform-aware
    degradation as F1a to `packages/memory/src/memory-vector-index.ts` and its
    `tests/fault-injection/memory-vector-index-faults.test.mjs` (assert the real
