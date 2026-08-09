@@ -5,8 +5,8 @@ issue: 217
 status: in_progress
 branch: main
 baseRevision: 1f21582850ec48973794e3cb7f6c11f0531c97e5
-lastCompletedTask: T1
-nextTask: T2
+lastCompletedTask: T2
+nextTask: T3
 lastGate: null
 updatedAt: 2026-08-09T16:00:00Z
 ---
@@ -32,6 +32,35 @@ implementation, specified in `migration.md`, which must land before T76
   in-toto Statement mapping, the eight exact predicate type URIs, the
   pre-decision artifact inventory and its fail-closed rule, and a seven-step
   fixture/contract-test migration plan.
+
+# T2 — DSSE migration IMPLEMENTED (2026-08-09)
+
+All seven steps of `migration.md` are done in one coherent change:
+envelope + PAE + Statement (`integrity/dsse.ts`), sealer rewritten, the four
+structural re-validation blocks migrated, fixtures and assertion suites
+updated, `docs/proof/` re-sealed, discrimination sensor run.
+
+Two findings worth carrying forward:
+
+- **The four modules no longer duplicate the envelope shape.** They each held
+  their own `unsigned*` copy of the sealer's digest input — four places that
+  could drift from the sealer and from each other. They now share
+  `sealedProjectionMatches`.
+- **The key id moved outside the signed Statement**, because under DSSE it is
+  `signatures[].keyid` — envelope metadata. The pre-DSSE content address
+  covered it; the new one cannot. Verification would still catch a swap via the
+  trust lookup, but the storage-integrity checks run *without* a trust root and
+  would not have, so the binding is asserted explicitly rather than quietly
+  lost in the move.
+
+# Remaining
+
+The persisted artifact is `{...flat projection, dsse}` rather than a bare
+envelope, so an external verifier extracts `.dsse` (or calls
+`dsseEnvelopeOf`) before handing it to cosign. The signature *format* is now
+standard, which is what AD-014 bought; a bare-envelope on-disk projection is a
+separate, smaller change and should be tracked before T76 claims full
+interoperability.
 
 # Next Exact Action
 

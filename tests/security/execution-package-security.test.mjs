@@ -7,6 +7,15 @@ import { test } from "node:test";
 import { FileExecutionPackageStore, canonicalizeJson, sha256Digest } from "../../packages/evidence/src/index.ts";
 import { currentState, digest, executionHarness, packageInput } from "../helpers/execution-package-fixture.mjs";
 
+const tamperSignature = (sealed) => {
+  const sig = sealed.dsse.signatures[0].sig;
+  const replacement = sig.startsWith("A") ? "B" : "A";
+  return {
+    ...sealed,
+    dsse: { ...sealed.dsse, signatures: [{ ...sealed.dsse.signatures[0], sig: `${replacement}${sig.slice(1)}` }] }
+  };
+};
+
 for (const field of [
   "provider",
   "providerId",
@@ -113,8 +122,7 @@ test("signature tampering never reaches current-state comparison", async () => {
   const input = packageInput();
   const { builder, trust } = executionHarness();
   const sealed = await builder.build(input);
-  const replacement = sealed.signature.startsWith("A") ? "B" : "A";
-  const tampered = { ...sealed, signature: `${replacement}${sealed.signature.slice(1)}` };
+  const tampered = tamperSignature(sealed);
   const result = await builder.verify(tampered, trust, currentState(input, { policyDigest: digest("changed") }));
   assert.equal(result.ok, false);
   assert.equal(result.code, "VES_SIGNATURE_INVALID");

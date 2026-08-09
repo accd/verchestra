@@ -3,7 +3,7 @@ import { mkdirSync } from "node:fs";
 import { link, lstat, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { join, relative, resolve } from "node:path";
 
-import { ArtifactSealer } from "../integrity/artifact-sealer.ts";
+import { ArtifactSealer, sealedProjectionMatches } from "../integrity/artifact-sealer.ts";
 import { canonicalizeJson, sha256Digest } from "../integrity/canonical.ts";
 import type { JsonValue, SealedArtifact, TrustRoot } from "../integrity/types.ts";
 
@@ -561,29 +561,11 @@ export class RunCapsuleBuilder {
   }
 }
 
-function unsignedArtifact(artifact: SignedRunCapsule) {
-  return {
-    envelopeVersion: artifact.envelopeVersion,
-    schema: artifact.schema,
-    purpose: artifact.purpose,
-    bindingId: artifact.bindingId,
-    sourceStateDigest: artifact.sourceStateDigest,
-    algorithm: artifact.algorithm,
-    keyId: artifact.keyId,
-    issuedAt: artifact.issuedAt,
-    payloadDigest: artifact.payloadDigest,
-    payload: artifact.payload
-  };
-}
-
 function assertEnvelope(artifact: SignedRunCapsule, expectedId?: string): void {
   try {
     if (!ARTIFACT_ID.test(artifact.artifactId) || (expectedId !== undefined && artifact.artifactId !== expectedId))
       fail("VES_RUN_CAPSULE_STORAGE_INTEGRITY", "Capsule identity is invalid");
-    if (
-      sha256Digest(artifact.payload) !== artifact.payloadDigest ||
-      sha256Digest(unsignedArtifact(artifact)) !== artifact.artifactId
-    )
+    if (sha256Digest(artifact.payload) !== artifact.payloadDigest || !sealedProjectionMatches(artifact))
       fail("VES_RUN_CAPSULE_STORAGE_INTEGRITY", "Capsule content address is invalid");
   } catch (error) {
     if (error instanceof RunCapsuleError) throw error;

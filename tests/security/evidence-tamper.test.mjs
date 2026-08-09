@@ -73,13 +73,96 @@ test("tampered artifact id is rejected", async () => {
 
 test("tampered signature is rejected", async () => {
   const { artifact, sealer, trust } = await fixture();
-  const replacement = artifact.signature[0] === "A" ? "B" : "A";
+  const sig = artifact.dsse.signatures[0].sig;
+  const replacement = sig[0] === "A" ? "B" : "A";
   const result = await sealer.verify(
-    { ...artifact, signature: `${replacement}${artifact.signature.slice(1)}` },
+    {
+      ...artifact,
+      dsse: { ...artifact.dsse, signatures: [{ ...artifact.dsse.signatures[0], sig: `${replacement}${sig.slice(1)}` }] }
+    },
     trust,
     expected
   );
   assert.deepEqual(result, { ok: false, code: "VES_SIGNATURE_INVALID" });
+});
+
+// AD-014 rejects rather than dual-verifies. These four cases are the envelope's
+// own fail-closed contract; without them a naive implementation that signs raw
+// payload bytes, or accepts any predicate it is handed, passes every
+// happy-path test in this file.
+test("a legacy pre-DSSE artifact is refused outright", async () => {
+  const { artifact, sealer, trust } = await fixture();
+  const { dsse, ...legacy } = artifact;
+  const result = await sealer.verify(
+    { ...legacy, envelopeVersion: 1, signature: dsse.signatures[0].sig },
+    trust,
+    expected
+  );
+  assert.deepEqual(result, { ok: false, code: "VES_ENVELOPE_UNSUPPORTED" });
+});
+
+test("a payload type other than in-toto is refused", async () => {
+  const { artifact, sealer, trust } = await fixture();
+  const result = await sealer.verify(
+    { ...artifact, dsse: { ...artifact.dsse, payloadType: "application/json" } },
+    trust,
+    expected
+  );
+  assert.deepEqual(result, { ok: false, code: "VES_ENVELOPE_UNSUPPORTED" });
+});
+
+test("a payload that is not an in-toto Statement is refused", async () => {
+  const { artifact, sealer, trust } = await fixture();
+  const notAStatement = Buffer.from(JSON.stringify({ _type: "https://example.invalid/Other/v1" }), "utf8");
+  const result = await sealer.verify(
+    { ...artifact, dsse: { ...artifact.dsse, payload: notAStatement.toString("base64") } },
+    trust,
+    expected
+  );
+  assert.deepEqual(result, { ok: false, code: "VES_ENVELOPE_UNSUPPORTED" });
+});
+
+test("an artifact claiming an undeclared kind is refused", async () => {
+  // The predicate type set is closed: an attestation this product cannot name
+  // is one it will not verify. Such an artifact cannot be sealed either, so it
+  // is constructed by hand here — which is exactly how a forged one would
+  // arrive.
+  const { artifact, sealer, trust } = await fixture();
+  const result = await sealer.verify({ ...artifact, schema: { name: "not-a-declared-kind", version: 1 } }, trust, {
+    ...expected,
+    schema: { name: "not-a-declared-kind", version: 1 }
+  });
+  assert.deepEqual(result, { ok: false, code: "VES_ENVELOPE_UNSUPPORTED" });
+});
+
+test("sealing an undeclared kind is refused rather than minting a predicate type", async () => {
+  const { sealer } = await fixture();
+  await assert.rejects(
+    sealer.seal(
+      { any: "payload" },
+      { schema: { name: "invented-kind", version: 1 }, purpose: "x", bindingId: "b", sourceStateDigest: "a".repeat(64) }
+    ),
+    { code: "VES_INTEGRITY_INVALID_BINDING" }
+  );
+});
+
+test("a key id that disagrees with the envelope signature is refused", async () => {
+  // Under DSSE the key id lives in signatures[].keyid, which is envelope
+  // metadata rather than Statement content — so the content address cannot
+  // cover it the way the pre-DSSE digest did. Without this binding a swapped
+  // flat keyId would only be caught by the trust lookup, and not at all by the
+  // storage-integrity checks that run without a trust root.
+  const { artifact, sealer, trust } = await fixture();
+  const result = await sealer.verify({ ...artifact, keyId: "some-other-key" }, trust, expected);
+  assert.deepEqual(result, { ok: false, code: "VES_ENVELOPE_UNSUPPORTED" });
+});
+
+test("a projection that disagrees with the signed Statement is refused", async () => {
+  // The flat fields are a decoded convenience, not a second source of truth.
+  // Editing one without re-signing must fail rather than be believed.
+  const { artifact, sealer, trust } = await fixture();
+  const result = await sealer.verify({ ...artifact, issuedAt: "2001-01-01T00:00:00.000Z" }, trust, expected);
+  assert.deepEqual(result, { ok: false, code: "VES_ENVELOPE_UNSUPPORTED" });
 });
 
 test("unknown signing key is rejected", async () => {
