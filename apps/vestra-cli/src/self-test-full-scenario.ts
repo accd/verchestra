@@ -1,4 +1,5 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 
 import {
@@ -7,6 +8,7 @@ import {
   fullWorkflowChecks,
   IndependentVerificationCoordinator,
   PortableHandoffCoordinator,
+  resolveVerifierDriver,
   type ApprovalArtifactPort,
   type DurableOutcomeFact,
   type HandoffPorts,
@@ -25,6 +27,7 @@ import {
   type ContextRecipe,
   type PassportRecord
 } from "@verchestra/agent-runtime";
+import { ClaudeCodeDriver, CodexDriver } from "@verchestra/drivers";
 import { FixedClock, IsoInstant, WorkflowMachine } from "@verchestra/domain";
 import { EffectBroker, MockEffectAdapter, buildIdempotencyKey } from "@verchestra/effects";
 import {
@@ -51,8 +54,82 @@ const WORKSPACE_ID = "workspace_018f0b6d-7b1a-7abc-8def-012345678901";
 const SOURCE_RUN_ID = "run_018f0b6d-7b1a-7abc-8def-112345678901";
 const SUCCESSOR_RUN_ID = "run_018f0b6d-7b1a-7abc-8def-212345678901";
 const MACHINE_ID = "machine_018f0b6d-7b1a-7abc-8def-312345678901";
-const IMPLEMENTER_DRIVER_ID = "deterministic-implementer-driver";
-const VERIFIER_DRIVER_ID = "deterministic-verifier-driver";
+// #35 / AD-011. These used to be two invented string constants fed straight
+// into the verification input, so `assertIndependentVerifier` passed because
+// the strings differed — not because two drivers existed, and the sealed
+// report recorded a driver binding nobody had probed.
+//
+// They are now resolved from real driver instances: each is probed, the facts
+// go through `resolveVerifierDriver`, and the ids it returns are what the
+// report binds. The drivers are the same fake-backed ones the `drivers` profile
+// composes, so this needs no provider install and stays hermetic — what is real
+// here is the *resolution*, which is what the acceptance bar is about.
+const FAKE_DRIVER_PATH = fileURLToPath(new URL("./self-test-driver-fake.mjs", import.meta.url));
+
+export interface SelfTestDriverBinding {
+  readonly implementerDriverId: string;
+  readonly verifierDriverId: string;
+}
+
+/**
+ * Turn probe facts into the binding the sealed report records.
+ *
+ * Pure and exported so the refusal paths are testable without spawning
+ * anything — the same reason `resolveVerifierDriver` is pure. An unavailable
+ * driver must never be attributed to: a missing provider is `not configured`,
+ * never a silently invented identity.
+ */
+export function deriveDriverBinding(
+  facts: readonly { readonly driverId: string; readonly available: boolean }[]
+): SelfTestDriverBinding {
+  const implementer = facts.find((fact) => fact.available);
+  if (implementer === undefined) {
+    throw new Error("Self-Test full profile found no available driver to attribute the implementation to");
+  }
+  const verifier = resolveVerifierDriver(facts, implementer.driverId);
+  if (verifier.status !== "resolved") {
+    throw new Error("Self-Test full profile found no second driver able to verify independently");
+  }
+  return { implementerDriverId: implementer.driverId, verifierDriverId: verifier.driverId };
+}
+
+export interface SelfTestDriverCommands {
+  readonly claude: readonly string[];
+  readonly codex: readonly string[];
+}
+
+const DEFAULT_DRIVER_COMMANDS: SelfTestDriverCommands = Object.freeze({
+  claude: Object.freeze([process.execPath, FAKE_DRIVER_PATH, "claude"]),
+  codex: Object.freeze([process.execPath, FAKE_DRIVER_PATH, "codex"])
+});
+
+/**
+ * Probe the composed drivers and derive the binding the report will record.
+ *
+ * `commands` is injectable so a test can point a driver at something that is
+ * not there and prove the composition root refuses. Without that seam the wiring
+ * between `probe.available` and the binding is untestable — the logic could be
+ * right while the cable feeding it was not, and a mutation making every driver
+ * look available would survive every test.
+ */
+export async function resolveDriverBinding(
+  commands: SelfTestDriverCommands = DEFAULT_DRIVER_COMMANDS
+): Promise<SelfTestDriverBinding> {
+  const probeOnly = async () => {
+    throw new Error("probe only");
+  };
+  const probes = await Promise.all([
+    new ClaudeCodeDriver({
+      command: [...commands.claude],
+      minimumVersion: "2.1.168",
+      resolveExecution: probeOnly
+    }).probe(),
+    new CodexDriver({ command: [...commands.codex], minimumVersion: "0.115.0", resolveExecution: probeOnly }).probe()
+  ]);
+  return deriveDriverBinding(
+    probes.map((probe) => ({ driverId: probe.driverId, available: probe.available === true }))
+  );
+}
 type ShaDigest = `sha256:${string}`;
 const digest = (value: string): ShaDigest => `sha256:${sha256Digest(value)}`;
 const envelopeDigest = (value: string): ShaDigest => `sha256:${value}`;
@@ -593,6 +670,7 @@ function verificationPorts(hooks: FullScenarioBoundaryHooks, records: FileRecord
 }
 
 async function verifyIndependently(hooks: FullScenarioBoundaryHooks, records: FileRecordStore) {
+  const driverBinding = await resolveDriverBinding();
   return new IndependentVerificationCoordinator(verificationPorts(hooks, records)).verify({
     schemaVersion: 2,
     workspaceId: WORKSPACE_ID,
@@ -606,8 +684,8 @@ async function verifyIndependently(hooks: FullScenarioBoundaryHooks, records: Fi
       implementationActorId: "actor:implementer"
     },
     verifier: { actorId: "actor:verifier", actorKind: "model", passportRef: "passport:self-test" },
-    implementerDriverId: IMPLEMENTER_DRIVER_ID,
-    verifierDriverId: VERIFIER_DRIVER_ID,
+    implementerDriverId: driverBinding.implementerDriverId,
+    verifierDriverId: driverBinding.verifierDriverId,
     packageDigest: digest("package"),
     commit: { commitId: "b".repeat(40), authorActorId: "actor:implementer", gateEvidenceDigest: digest("gates") },
     criteria: [

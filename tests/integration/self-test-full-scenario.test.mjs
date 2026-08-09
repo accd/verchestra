@@ -60,10 +60,18 @@ test("the sealed verification report binds distinct implementation and verifier 
   const report = await records.load("verification:report");
 
   assert.equal(report.schemaVersion, 2);
+  // #35 / AD-011: the binding must name drivers that were actually probed and
+  // resolved, not two labels chosen to differ. It used to read
+  // "deterministic-implementer-driver"/"deterministic-verifier-driver" — strings
+  // bound to no driver instance, so the independence assertion passed on
+  // spelling alone. The resolution now produces exactly AD-011's worked example:
+  // Claude Code implements, Codex verifies.
   assert.deepEqual(report.driverBinding, {
-    implementerDriverId: "deterministic-implementer-driver",
-    verifierDriverId: "deterministic-verifier-driver"
+    implementerDriverId: "claude-code",
+    verifierDriverId: "codex"
   });
+  // The regression this replaces: no invented identity may reappear.
+  assert.equal(JSON.stringify(report.driverBinding).includes("deterministic-"), false);
 });
 
 test("the complete delivery path queries one authoritative outcome per durable boundary", async () => {
