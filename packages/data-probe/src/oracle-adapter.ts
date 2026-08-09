@@ -60,7 +60,7 @@ interface ParseOptions {
   readonly protectedRequestRef: string;
   readonly parameterClassifications: readonly string[];
 }
-interface OracleOperation {
+export interface OracleOperation {
   readonly kind: "select" | "introspect";
   readonly statementCount: 1;
   readonly protectedRequestRef: string;
@@ -145,13 +145,13 @@ export function parseOracleReadOperation(sql: unknown, options: ParseOptions): O
   });
 }
 
-interface Plan {
+export interface OracleConnectionPlan {
   readonly databaseId: string;
   readonly planDigest: string;
   readonly operation: OracleOperation;
   readonly bounds: { readonly timeoutMs: number; readonly rowLimit: number };
 }
-interface Observation {
+export interface OracleObservation {
   readonly product: string;
   readonly version: string;
   readonly databaseId: string;
@@ -168,8 +168,8 @@ interface Observation {
   readonly executeAnyProcedure: boolean;
   readonly createDatabaseLink: boolean;
 }
-interface Connection {
-  inspectPrincipal(plan: Plan): Promise<Observation>;
+export interface OracleConnectionPort {
+  inspectPrincipal(plan: OracleConnectionPlan): Promise<OracleObservation>;
   executeControl(sql: string, params: readonly unknown[]): Promise<readonly UnknownRecord[]>;
   stream(
     sql: string,
@@ -203,8 +203,8 @@ function decode(bytes: Uint8Array) {
 
 export class OracleProbeAdapter {
   static readonly component = Object.freeze({ id: "probe-worker:oracle", digest: `sha256:${"8".repeat(64)}` });
-  readonly #connection: Connection;
-  constructor(options: { readonly connection: Connection }) {
+  readonly #connection: OracleConnectionPort;
+  constructor(options: { readonly connection: OracleConnectionPort }) {
     this.#connection = options.connection;
   }
   async handshake() {
@@ -216,7 +216,7 @@ export class OracleProbeAdapter {
       maximumMessageBytes: 65_536
     });
   }
-  async verifyIdentity(plan: Plan) {
+  async verifyIdentity(plan: OracleConnectionPlan) {
     const o = await this.#connection.inspectPrincipal(plan);
     if (o.product !== "oracle") fail("VES_ORACLE_PRODUCT_INVALID", "Database product is not Oracle");
     return Object.freeze({
@@ -238,7 +238,7 @@ export class OracleProbeAdapter {
       principalFingerprint: digest(o)
     });
   }
-  async configureReadOnlySession(plan: Plan) {
+  async configureReadOnlySession(plan: OracleConnectionPlan) {
     await this.#connection.executeControl("SET TRANSACTION READ ONLY", []);
     const rows = await this.#connection.executeControl(
       "SELECT session_write_count, session_dangerous_role_count, transaction_read_only FROM dual",
@@ -250,7 +250,11 @@ export class OracleProbeAdapter {
       rows[0]?.["transaction_read_only"] === 1;
     return Object.freeze({ planDigest: plan.planDigest, sessionReadOnly: readOnly, transactionReadOnly: readOnly });
   }
-  async *execute(plan: Plan, bytes: Uint8Array, signal: AbortSignal): AsyncIterable<readonly UnknownRecord[]> {
+  async *execute(
+    plan: OracleConnectionPlan,
+    bytes: Uint8Array,
+    signal: AbortSignal
+  ): AsyncIterable<readonly UnknownRecord[]> {
     const request = decode(bytes);
     const operation = parseOracleReadOperation(request.sql, {
       kind: plan.operation.kind,
@@ -274,14 +278,14 @@ export class OracleProbeAdapter {
   }
 }
 
-interface FixtureOptions extends Partial<Observation> {
+interface FixtureOptions extends Partial<OracleObservation> {
   readonly transactionReadOnly?: boolean;
   readonly sessionWriteCount?: number;
   readonly sessionDangerousRoleCount?: number;
   readonly rows?: readonly UnknownRecord[];
   readonly delayMs?: number;
 }
-export class OracleFixtureConnection implements Connection {
+export class OracleFixtureConnection implements OracleConnectionPort {
   readonly #options: FixtureOptions;
   readonly controlCalls: [string, readonly unknown[]][] = [];
   lastParameters: readonly unknown[] = [];
@@ -292,7 +296,7 @@ export class OracleFixtureConnection implements Connection {
   constructor(options: FixtureOptions = {}) {
     this.#options = options;
   }
-  async inspectPrincipal(plan: Plan): Promise<Observation> {
+  async inspectPrincipal(plan: OracleConnectionPlan): Promise<OracleObservation> {
     return {
       product: this.#options.product ?? "oracle",
       version: this.#options.version ?? "19.25",

@@ -70,7 +70,7 @@ interface ParseOptions {
   readonly parameterClassifications: readonly string[];
 }
 
-interface SapAseOperation {
+export interface SapAseOperation {
   readonly kind: "select" | "introspect";
   readonly statementCount: 1;
   readonly protectedRequestRef: string;
@@ -169,14 +169,14 @@ export function parseSapAseReadOperation(sql: unknown, options: ParseOptions): S
   });
 }
 
-interface SapAsePlan {
+export interface SapAsePlan {
   readonly databaseId: string;
   readonly planDigest: string;
   readonly operation: SapAseOperation;
   readonly bounds: { readonly timeoutMs: number; readonly rowLimit: number };
 }
 
-interface PrincipalObservation {
+export interface SapAsePrincipalObservation {
   readonly product: string;
   readonly version: string;
   readonly databaseId: string;
@@ -195,8 +195,8 @@ interface PrincipalObservation {
   readonly proxyPermission: boolean;
 }
 
-interface SapAseConnectionPort {
-  inspectPrincipal(plan: SapAsePlan): Promise<PrincipalObservation>;
+export interface SapAseConnectionPort {
+  inspectPrincipal(plan: SapAsePlan): Promise<SapAsePrincipalObservation>;
   executeControl(statement: string, parameters: readonly unknown[]): Promise<readonly UnknownRecord[]>;
   stream(statement: string, parameters: readonly unknown[], signal: AbortSignal): AsyncIterable<UnknownRecord>;
   cancel(): Promise<void>;
@@ -316,7 +316,7 @@ export class SapAseProbeAdapter {
   }
 }
 
-interface FixtureOptions extends Partial<PrincipalObservation> {
+interface FixtureOptions extends Partial<SapAsePrincipalObservation> {
   readonly sessionWriteCount?: number;
   readonly sessionDangerousRoleCount?: number;
   readonly sessionExecuteCount?: number;
@@ -336,7 +336,7 @@ export class SapAseFixtureConnection implements SapAseConnectionPort {
     this.#options = options;
   }
 
-  async inspectPrincipal(plan: SapAsePlan): Promise<PrincipalObservation> {
+  async inspectPrincipal(plan: SapAsePlan): Promise<SapAsePrincipalObservation> {
     return {
       product: this.#options.product ?? "sap-ase",
       version: this.#options.version ?? "16.1 SP00 PL02",
