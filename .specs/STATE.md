@@ -128,11 +128,11 @@
 
 ## Handoff
 
-- **Programme:** `milestone-2-completion` — the tracked distribution of all open issues across three workstreams (AD-013); see `.specs/features/milestone-2-completion/{analysis,spec,tasks,handoff}.md`. Next programme action: **B1 — MiguelCorre authors `docs/qualification/t72-validation.md`** and advances the chain atomically.
+- **Programme:** `milestone-2-completion` — the tracked distribution of all open issues across three workstreams (AD-013); see `.specs/features/milestone-2-completion/{analysis,spec,tasks,handoff}.md`. B1 is independently verified; the next serial chain action is **C4 — brunomjanuario authors `docs/qualification/t73-validation.md`**.
 - **Pre-T76 decisions:** both resolved on 2026-08-09 — AD-014 (DSSE + in-toto envelope, #217) and AD-015 (pinned repository-owned context estimator, #218). Implementation of both is a T76 prerequisite; the DSSE migration plan is `.specs/features/dsse-attestation/migration.md`.
 - **Product-shape decisions (2026-08-09, structured design review):** AD-016 (npx entry point; #36 scoped) and AD-017 (edge qualification of database probes; D1 and D2 of matrix.md resolved; new 1.0 issue #233 for the published contract + kit; scaffold, out-of-process host, and single binary filed post-1.0).
-- **Feature:** `self-test-full-driver-profiles` (T71, #12) — complete; the implementation merged via PR #182 (tip `ec258a2`) and is independently qualified in `docs/qualification/t71-validation.md` (author ≠ verifier).
-- **Qualification chain:** T71 verified; **T72 (#13, deep doctor and signed diagnostic reports) is next**. The derived status surfaces (`agent:context`, root `AGENTS.md`, `llms.txt`, site `product.ts` and current-qualification-status content) advanced from "T70 complete; T71 next" to "T71 complete; T72 next" in the same change, with the corresponding contract-test and site-gate string updates.
-- **Branch:** `main`
-- **Verification:** `gate:quick`, `gate:full` (3,330 cases), and `gate:security` PASS at `9e663bd`; CI Quality gate and CodeQL PASS at the T71 tip `ec258a2`; discrimination sensor 5 of 5 killed, 0 survived.
-- **Next:** Begin T72 (#13): `doctor --deep` and the signed diagnostic report schema, extending AD-010's three-region Self-Test boundary. Structural verifier isolation (#35, AD-011) remains available for T74/T75 composition roots via `resolveVerifierDriver`.
+- **Feature:** `deep-doctor` (T72, #13) — complete; implementation PR #188 plus audit remediations #208/#211/#212 are independently qualified in `docs/qualification/t72-validation.md` (author ≠ verifier).
+- **Qualification chain:** T72 verified; **T73 (#14, public regression campaigns) is next**. The report and every derived status surface plus pinned test advance atomically from "T71 complete; T72 next" to "T72 complete; T73 next".
+- **Branch:** `codex/t72-qualification`
+- **Verification:** `gate:quick` PASS and externally dispatched `gate:security` PASS at `2b628af` (run 31330393346; 4,161 cases, 0 skipped, 0 todo); 69 focused T72 cases pass and the independent discrimination sensor killed 5 of 5 mutations with 0 survivors.
+- **Next:** C4 — independently qualify T73 (#14) and advance the chain to T74. Structural verifier isolation (#35, AD-011) remains available for T74/T75 composition roots via `resolveVerifierDriver`.

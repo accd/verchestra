@@ -6,9 +6,9 @@ status: in_progress
 branch: main
 baseRevision: aa3aab12e09de6d1d5af24d992c6e4014f8855c8
 lastCompletedTask: null
-nextTask: B1
-lastGate: null
-updatedAt: 2026-08-09T15:00:00Z
+nextTask: C4
+lastGate: gate:quick and externally dispatched gate:security PASS at 2b628af; run 31330393346
+updatedAt: 2026-08-09T19:05:00Z
 ---
 
 # Scope
@@ -39,6 +39,12 @@ issues distributed across workstreams WS-A (accd), WS-B (MiguelCorre), WS-C
   1.0 task **C6 (#233, WS-C)** publishes the probe contract + conformance
   kit before the t75 report; scaffold, out-of-process host, and single
   binary filed as post-1.0 issues.
+- 2026-08-09 — **B1 done:** T72 independently qualified in
+  `docs/qualification/t72-validation.md`, bound to main-reachable `2b628af`.
+  Sixty-nine focused cases pass; five verdict mutations are killed with no
+  survivor; `gate:quick` and externally dispatched `gate:security` run
+  31330393346 pass with zero skipped/todo. The report and every derived status
+  surface advance atomically to "T72 complete; T73 next".
 
 # Tracking gap closed (2026-08-09)
 
@@ -51,13 +57,12 @@ Not new scope — restored visibility of scope the ADs already committed to.
 
 # Next Exact Action
 
-**B1 (MiguelCorre): author `docs/qualification/t72-validation.md`.** The T72
-implementation and remediation are merged (PRs #188, #208, #211, #212;
-evidence comment on #13). Bind the report to a main-reachable revision, run a
-discrimination sensor over the doctor verdict surface, satisfy
-`docs/qualification/REPORT-CONTRACT.md`, and migrate every derived status
-surface plus pinned contract tests to "T72 complete; T73 next" in the same
-change. `pnpm gate:security` must pass.
+**C4 (brunomjanuario): author `docs/qualification/t73-validation.md`.** B1 has
+landed the independent T72 report and unblocked the serial chain. Re-derive the
+T73 adequacy matrix, verify that campaign distributions cannot collapse into a
+single aggregate score, run the required `pnpm gate:build`, satisfy
+`docs/qualification/REPORT-CONTRACT.md`, and advance every derived status
+surface atomically to "T73 complete; T74 next".
 
 Parallel starts that block nobody: C1 (review PR #209), C3 (#110 closure
 evidence), A1/A2 (owner ADs for #217/#218), A3 (T75 remaining matrices), B4
@@ -65,8 +70,8 @@ evidence), A1/A2 (owner ADs for #217/#218), A3 (T75 remaining matrices), B4
 
 # Blockers
 
-None for Phase 1. The serial chain blocks C4 on B1, B2 on C4, B3 on
-B2+A3+A4+C5, A5 on B3+A1+A2+C2, A6 on A5.
+None for C4; B1 is complete. The serial chain blocks B2 on C4, B3 on
+B2+A3+A4+C5+C6, A5 on B3+A8+A9+C2, and A6 on A5.
 
 # Decisions
 
@@ -84,11 +89,10 @@ B2+A3+A4+C5, A5 on B3+A1+A2+C2, A6 on A5.
 
 # Files Intentionally Left Unchanged
 
-- `docs/qualification/*` — reports are authored only by their assigned
-  independent verifiers (B1, C4, B2, B3).
-- Derived status surfaces (root `AGENTS.md` counter, `llms.txt`, site
-  `product.ts`, current-qualification content) — migrate only inside chain
-  advances.
+- Future `docs/qualification/*` reports remain reserved for their assigned
+  independent verifiers (C4, B2, B3).
+- Derived status surfaces after the completed B1 advance migrate only inside
+  the next serial qualification-report PR.
 - Stale feature handoffs listed in `analysis.md`'s appendix — separate
   cleanup, owner-scheduled.
 - `_images_/` (untracked brand masters) — owner's working files, preserved.
