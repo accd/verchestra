@@ -1,16 +1,51 @@
 import assert from "node:assert/strict";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { PiDriver } from "../../packages/drivers/src/pi-driver.ts";
 import { piFixture } from "../helpers/pi-driver-fixture.mjs";
 
-test("Pi Driver probes its exact runtime and common capabilities", async () => {
+// The probe observes the version the host actually installed. It used to report
+// a hardcoded constant, which made it the one product probe incapable of
+// failing — the exact pattern the "a missing provider is not configured, never
+// a pass" rule exists to forbid (AD-017 D2).
+test("Pi Driver probes the installed runtime version and common capabilities", async () => {
   const probe = await new PiDriver(piFixture().dependencies()).probe();
   assert.deepEqual(probe, {
     driverId: "pi",
     package: "@earendil-works/pi-agent-core",
+    available: true,
     version: "0.82.1",
     capabilities: ["stream", "tools", "usage", "abort"]
+  });
+});
+
+test("Pi Driver reports unavailable when the runtime is not installed", async () => {
+  const probe = await new PiDriver(piFixture().dependencies(), {
+    versionResolver: () => join(tmpdir(), "verchestra-absent-pi", "package.json")
+  }).probe();
+  assert.deepEqual(probe, {
+    driverId: "pi",
+    package: "@earendil-works/pi-agent-core",
+    available: false,
+    error: { code: "VES_PI_NOT_AVAILABLE", message: "Pi runtime is unavailable" }
+  });
+});
+
+test("Pi Driver refuses a runtime that drifted from the qualified version", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "verchestra-pi-drift-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const manifest = join(root, "package.json");
+  await writeFile(manifest, JSON.stringify({ name: "@earendil-works/pi-agent-core", version: "0.83.0" }));
+  const probe = await new PiDriver(piFixture().dependencies(), { versionResolver: () => manifest }).probe();
+  assert.deepEqual(probe, {
+    driverId: "pi",
+    package: "@earendil-works/pi-agent-core",
+    available: false,
+    version: "0.83.0",
+    error: { code: "VES_PI_VERSION_UNSUPPORTED", message: "Pi runtime version is unsupported" }
   });
 });
 
