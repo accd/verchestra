@@ -71,7 +71,7 @@ interface ParseOptions {
   readonly parameterClassifications: readonly string[];
 }
 
-interface PostgreSqlReadOperation {
+export interface PostgreSqlReadOperation {
   readonly kind: "select" | "introspect";
   readonly statementCount: 1;
   readonly protectedRequestRef: string;
@@ -172,7 +172,7 @@ export function parsePostgreSqlReadOperation(sql: unknown, options: ParseOptions
   });
 }
 
-interface PostgreSqlPlan {
+export interface PostgreSqlPlan {
   readonly workspaceId: string;
   readonly databaseId: string;
   readonly planDigest: string;
@@ -180,7 +180,7 @@ interface PostgreSqlPlan {
   readonly bounds: { readonly timeoutMs: number };
 }
 
-interface PrincipalObservation {
+export interface PostgreSqlPrincipalObservation {
   readonly databaseId: string;
   readonly principal: string;
   readonly superuser: boolean;
@@ -191,8 +191,8 @@ interface PrincipalObservation {
   readonly writePrivilegeCount: number;
 }
 
-interface PostgreSqlConnectionPort {
-  inspectPrincipal(plan: PostgreSqlPlan): Promise<PrincipalObservation>;
+export interface PostgreSqlConnectionPort {
+  inspectPrincipal(plan: PostgreSqlPlan): Promise<PostgreSqlPrincipalObservation>;
   executeControl(statement: string, parameters: readonly unknown[]): Promise<readonly UnknownRecord[]>;
   stream(statement: string, parameters: readonly unknown[], signal: AbortSignal): AsyncIterable<UnknownRecord>;
   cancel(): Promise<void>;
@@ -309,7 +309,7 @@ export class PostgreSqlProbeAdapter {
   }
 }
 
-interface FixtureOptions extends Partial<PrincipalObservation> {
+interface FixtureOptions extends Partial<PostgreSqlPrincipalObservation> {
   readonly transactionReadOnly?: "on" | "off";
   readonly rows?: readonly UnknownRecord[];
   readonly delayMs?: number;
@@ -327,7 +327,7 @@ export class PostgreSqlFixtureConnection implements PostgreSqlConnectionPort {
     this.#options = options;
   }
 
-  async inspectPrincipal(plan: PostgreSqlPlan): Promise<PrincipalObservation> {
+  async inspectPrincipal(plan: PostgreSqlPlan): Promise<PostgreSqlPrincipalObservation> {
     return {
       databaseId: this.#options.databaseId ?? plan.databaseId,
       principal: this.#options.principal ?? "verchestra_readonly",

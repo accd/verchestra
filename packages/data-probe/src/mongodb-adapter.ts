@@ -62,7 +62,7 @@ interface ParseOptions {
   readonly protectedRequestRef: string;
   readonly parameterClassifications: readonly string[];
 }
-interface MongoDbOperation {
+export interface MongoDbOperation {
   readonly kind: "select" | "introspect";
   readonly statementCount: 1;
   readonly protectedRequestRef: string;
@@ -213,27 +213,27 @@ export function parseMongoDbReadOperation(command: unknown, options: ParseOption
   });
 }
 
-interface Plan {
+export interface MongoDbConnectionPlan {
   readonly databaseId: string;
   readonly planDigest: string;
   readonly operation: MongoDbOperation;
   readonly bounds: { readonly timeoutMs: number; readonly rowLimit: number };
 }
-interface Role {
+export interface MongoDbRole {
   readonly role: string;
   readonly db: string;
 }
-interface Observation {
+export interface MongoDbObservation {
   readonly product: string;
   readonly version: string;
   readonly databaseId: string;
   readonly authorizationEnabled: boolean;
-  readonly roles: readonly Role[];
+  readonly roles: readonly MongoDbRole[];
   readonly writeActionCount: number;
   readonly adminActionCount: number;
   readonly serverExecutionActionCount: number;
 }
-interface SessionObservation {
+export interface MongoDbSessionObservation {
   readonly typedReadSurface: boolean;
   readonly genericCommandDisabled: boolean;
   readonly readConcern: string;
@@ -241,9 +241,9 @@ interface SessionObservation {
   readonly batchSize: number;
   readonly noCursorTimeout: boolean;
 }
-interface Connection {
-  inspectPrincipal(plan: Plan): Promise<Observation>;
-  configureReadOnly(plan: Plan): Promise<SessionObservation>;
+export interface MongoDbConnectionPort {
+  inspectPrincipal(plan: MongoDbConnectionPlan): Promise<MongoDbObservation>;
+  configureReadOnly(plan: MongoDbConnectionPlan): Promise<MongoDbSessionObservation>;
   stream(command: UnknownRecord, signal: AbortSignal): AsyncIterable<UnknownRecord>;
   cancel(): Promise<void>;
   terminate(): Promise<void>;
@@ -278,8 +278,8 @@ function bind(value: unknown, parameters: readonly unknown[]): unknown {
 
 export class MongoDbProbeAdapter {
   static readonly component = Object.freeze({ id: "probe-worker:mongodb", digest: `sha256:${"a".repeat(64)}` });
-  readonly #connection: Connection;
-  constructor(options: { readonly connection: Connection }) {
+  readonly #connection: MongoDbConnectionPort;
+  constructor(options: { readonly connection: MongoDbConnectionPort }) {
     this.#connection = options.connection;
   }
   async handshake() {
@@ -291,7 +291,7 @@ export class MongoDbProbeAdapter {
       maximumMessageBytes: 65_536
     });
   }
-  async verifyIdentity(plan: Plan) {
+  async verifyIdentity(plan: MongoDbConnectionPlan) {
     const observation = await this.#connection.inspectPrincipal(plan);
     if (observation.product !== "mongodb") fail("VES_MONGODB_PRODUCT_INVALID", "Database product is not MongoDB");
     const database = plan.operation.objects[0]?.schema;
@@ -310,7 +310,7 @@ export class MongoDbProbeAdapter {
       principalFingerprint: digest(observation)
     });
   }
-  async configureReadOnlySession(plan: Plan) {
+  async configureReadOnlySession(plan: MongoDbConnectionPlan) {
     const observation = await this.#connection.configureReadOnly(plan);
     const readOnly =
       observation.typedReadSurface &&
@@ -322,7 +322,11 @@ export class MongoDbProbeAdapter {
       !observation.noCursorTimeout;
     return Object.freeze({ planDigest: plan.planDigest, sessionReadOnly: readOnly, transactionReadOnly: readOnly });
   }
-  async *execute(plan: Plan, bytes: Uint8Array, signal: AbortSignal): AsyncIterable<readonly UnknownRecord[]> {
+  async *execute(
+    plan: MongoDbConnectionPlan,
+    bytes: Uint8Array,
+    signal: AbortSignal
+  ): AsyncIterable<readonly UnknownRecord[]> {
     const request = decode(bytes);
     const operation = parseMongoDbReadOperation(request.command, {
       protectedRequestRef: plan.operation.protectedRequestRef,
@@ -355,13 +359,13 @@ export class MongoDbProbeAdapter {
   }
 }
 
-interface FixtureOptions extends Partial<Observation>, Partial<SessionObservation> {
+interface FixtureOptions extends Partial<MongoDbObservation>, Partial<MongoDbSessionObservation> {
   readonly rows?: readonly UnknownRecord[];
   readonly delayMs?: number;
 }
-export class MongoDbFixtureConnection implements Connection {
+export class MongoDbFixtureConnection implements MongoDbConnectionPort {
   readonly #options: FixtureOptions;
-  controls: SessionObservation | undefined;
+  controls: MongoDbSessionObservation | undefined;
   lastCommand: UnknownRecord = {};
   streamCalls = 0;
   cancelled = false;
@@ -369,7 +373,7 @@ export class MongoDbFixtureConnection implements Connection {
   constructor(options: FixtureOptions = {}) {
     this.#options = options;
   }
-  async inspectPrincipal(plan: Plan): Promise<Observation> {
+  async inspectPrincipal(plan: MongoDbConnectionPlan): Promise<MongoDbObservation> {
     return {
       product: this.#options.product ?? "mongodb",
       version: this.#options.version ?? "8.0",
@@ -381,7 +385,7 @@ export class MongoDbFixtureConnection implements Connection {
       serverExecutionActionCount: this.#options.serverExecutionActionCount ?? 0
     };
   }
-  async configureReadOnly(plan: Plan): Promise<SessionObservation> {
+  async configureReadOnly(plan: MongoDbConnectionPlan): Promise<MongoDbSessionObservation> {
     this.controls = {
       typedReadSurface: this.#options.typedReadSurface ?? true,
       genericCommandDisabled: this.#options.genericCommandDisabled ?? true,

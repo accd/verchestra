@@ -57,7 +57,7 @@ interface ParseOptions {
   readonly protectedRequestRef: string;
   readonly parameterClassifications: readonly string[];
 }
-interface SqlServerOperation {
+export interface SqlServerOperation {
   readonly kind: "select" | "introspect";
   readonly statementCount: 1;
   readonly protectedRequestRef: string;
@@ -140,13 +140,13 @@ export function parseSqlServerReadOperation(sql: unknown, options: ParseOptions)
   });
 }
 
-interface Plan {
+export interface SqlServerConnectionPlan {
   readonly databaseId: string;
   readonly planDigest: string;
   readonly bounds: { readonly timeoutMs: number };
   readonly operation: SqlServerOperation;
 }
-interface Observation {
+export interface SqlServerObservation {
   readonly databaseId: string;
   readonly principal: string;
   readonly sysadmin: boolean;
@@ -157,8 +157,8 @@ interface Observation {
   readonly writePermissionCount: number;
   readonly impersonatePermission: boolean;
 }
-interface Connection {
-  inspectPrincipal(plan: Plan): Promise<Observation>;
+export interface SqlServerConnectionPort {
+  inspectPrincipal(plan: SqlServerConnectionPlan): Promise<SqlServerObservation>;
   executeControl(sql: string, params: readonly unknown[]): Promise<readonly UnknownRecord[]>;
   stream(sql: string, params: readonly unknown[], signal: AbortSignal): AsyncIterable<UnknownRecord>;
   cancel(): Promise<void>;
@@ -188,8 +188,8 @@ function decodeRequest(bytes: Uint8Array): { readonly sql: string; readonly para
 
 export class SqlServerProbeAdapter {
   static readonly component = Object.freeze({ id: "probe-worker:sqlserver", digest: `sha256:${"6".repeat(64)}` });
-  readonly #connection: Connection;
-  constructor(options: { readonly connection: Connection }) {
+  readonly #connection: SqlServerConnectionPort;
+  constructor(options: { readonly connection: SqlServerConnectionPort }) {
     this.#connection = options.connection;
   }
   async handshake() {
@@ -201,7 +201,7 @@ export class SqlServerProbeAdapter {
       maximumMessageBytes: 65_536
     });
   }
-  async verifyIdentity(plan: Plan) {
+  async verifyIdentity(plan: SqlServerConnectionPlan) {
     const o = await this.#connection.inspectPrincipal(plan);
     return Object.freeze({
       databaseId: o.databaseId,
@@ -216,7 +216,7 @@ export class SqlServerProbeAdapter {
       principalFingerprint: digest(o)
     });
   }
-  async configureReadOnlySession(plan: Plan) {
+  async configureReadOnlySession(plan: SqlServerConnectionPlan) {
     await this.#connection.executeControl("SET XACT_ABORT ON", []);
     await this.#connection.executeControl("SET LOCK_TIMEOUT @p1", [plan.bounds.timeoutMs]);
     await this.#connection.executeControl("SET TRANSACTION ISOLATION LEVEL SNAPSHOT", []);
@@ -228,7 +228,11 @@ export class SqlServerProbeAdapter {
     const readOnly = rows[0]?.["can_write"] === 0;
     return Object.freeze({ planDigest: plan.planDigest, sessionReadOnly: readOnly, transactionReadOnly: readOnly });
   }
-  async *execute(plan: Plan, bytes: Uint8Array, signal: AbortSignal): AsyncIterable<readonly UnknownRecord[]> {
+  async *execute(
+    plan: SqlServerConnectionPlan,
+    bytes: Uint8Array,
+    signal: AbortSignal
+  ): AsyncIterable<readonly UnknownRecord[]> {
     const request = decodeRequest(bytes);
     const operation = parseSqlServerReadOperation(request.sql, {
       kind: plan.operation.kind,
@@ -252,12 +256,12 @@ export class SqlServerProbeAdapter {
   }
 }
 
-interface FixtureOptions extends Partial<Observation> {
+interface FixtureOptions extends Partial<SqlServerObservation> {
   readonly sessionCanWrite?: boolean;
   readonly rows?: readonly UnknownRecord[];
   readonly delayMs?: number;
 }
-export class SqlServerFixtureConnection implements Connection {
+export class SqlServerFixtureConnection implements SqlServerConnectionPort {
   readonly #options: FixtureOptions;
   readonly controlCalls: [string, readonly unknown[]][] = [];
   lastParameters: readonly unknown[] = [];
@@ -267,7 +271,7 @@ export class SqlServerFixtureConnection implements Connection {
   constructor(options: FixtureOptions = {}) {
     this.#options = options;
   }
-  async inspectPrincipal(plan: Plan): Promise<Observation> {
+  async inspectPrincipal(plan: SqlServerConnectionPlan): Promise<SqlServerObservation> {
     return {
       databaseId: this.#options.databaseId ?? plan.databaseId,
       principal: this.#options.principal ?? "verchestra_readonly",

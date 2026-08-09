@@ -53,12 +53,12 @@ interface ParseOptions {
   readonly protectedRequestRef: string;
   readonly parameterClassifications: readonly string[];
 }
-interface SqliteObject {
+export interface SqliteObject {
   readonly schema: string;
   readonly name: string;
   readonly type: "table" | "catalog";
 }
-interface SqliteOperation {
+export interface SqliteOperation {
   readonly kind: "select" | "introspect";
   readonly statementCount: 1;
   readonly protectedRequestRef: string;
@@ -136,13 +136,13 @@ export function parseSqliteReadOperation(sql: unknown, options: ParseOptions): S
   });
 }
 
-interface Plan {
+export interface SqliteConnectionPlan {
   readonly databaseId: string;
   readonly planDigest: string;
   readonly operation: SqliteOperation;
   readonly bounds: { readonly timeoutMs: number; readonly rowLimit: number };
 }
-interface Observation {
+export interface SqliteObservation {
   readonly product: string;
   readonly version: string;
   readonly databaseId: string;
@@ -152,16 +152,16 @@ interface Observation {
   readonly queryOnly: boolean;
   readonly attachedDatabaseCount: number;
 }
-interface SessionObservation {
+export interface SqliteSessionObservation {
   readonly queryOnly: boolean;
   readonly defensive: boolean;
   readonly extensionLoading: boolean;
   readonly authorizer: boolean;
   readonly attachedDatabaseCount: number;
 }
-interface Connection {
-  inspectPrincipal(plan: Plan): Promise<Observation>;
-  configureAuthorization(operation: SqliteOperation): Promise<SessionObservation>;
+export interface SqliteConnectionPort {
+  inspectPrincipal(plan: SqliteConnectionPlan): Promise<SqliteObservation>;
+  configureAuthorization(operation: SqliteOperation): Promise<SqliteSessionObservation>;
   stream(
     sql: string,
     params: readonly unknown[],
@@ -194,8 +194,8 @@ function decode(bytes: Uint8Array) {
 
 export class SqliteProbeAdapter {
   static readonly component = Object.freeze({ id: "probe-worker:sqlite", digest: `sha256:${"9".repeat(64)}` });
-  readonly #connection: Connection;
-  constructor(options: { readonly connection: Connection }) {
+  readonly #connection: SqliteConnectionPort;
+  constructor(options: { readonly connection: SqliteConnectionPort }) {
     this.#connection = options.connection;
   }
   async handshake() {
@@ -207,7 +207,7 @@ export class SqliteProbeAdapter {
       maximumMessageBytes: 65_536
     });
   }
-  async verifyIdentity(plan: Plan) {
+  async verifyIdentity(plan: SqliteConnectionPlan) {
     const observation = await this.#connection.inspectPrincipal(plan);
     if (observation.product !== "sqlite") fail("VES_SQLITE_PRODUCT_INVALID", "Database product is not SQLite");
     const principalReadOnly =
@@ -225,7 +225,7 @@ export class SqliteProbeAdapter {
       principalFingerprint: digest(observation)
     });
   }
-  async configureReadOnlySession(plan: Plan) {
+  async configureReadOnlySession(plan: SqliteConnectionPlan) {
     const observation = await this.#connection.configureAuthorization(plan.operation);
     const readOnly =
       observation.queryOnly &&
@@ -235,7 +235,11 @@ export class SqliteProbeAdapter {
       observation.attachedDatabaseCount === 1;
     return Object.freeze({ planDigest: plan.planDigest, sessionReadOnly: readOnly, transactionReadOnly: readOnly });
   }
-  async *execute(plan: Plan, bytes: Uint8Array, signal: AbortSignal): AsyncIterable<readonly UnknownRecord[]> {
+  async *execute(
+    plan: SqliteConnectionPlan,
+    bytes: Uint8Array,
+    signal: AbortSignal
+  ): AsyncIterable<readonly UnknownRecord[]> {
     const request = decode(bytes);
     const operation = parseSqliteReadOperation(request.sql, {
       kind: plan.operation.kind,
@@ -258,7 +262,7 @@ export class SqliteProbeAdapter {
   }
 }
 
-export class SqliteReadConnection implements Connection {
+export class SqliteReadConnection implements SqliteConnectionPort {
   readonly #databaseId: string;
   readonly #db: DatabaseSync;
   #closed = false;
@@ -271,7 +275,7 @@ export class SqliteReadConnection implements Connection {
     this.#db.exec("PRAGMA query_only=ON");
     this.#queryOnly = this.#db.prepare("PRAGMA query_only").get()?.["query_only"] === 1;
   }
-  async inspectPrincipal(plan: Plan): Promise<Observation> {
+  async inspectPrincipal(plan: SqliteConnectionPlan): Promise<SqliteObservation> {
     void plan;
     const version = this.#db.prepare("SELECT sqlite_version() AS version").get()?.["version"];
     const attachedDatabaseCount = this.#db.prepare("PRAGMA database_list").all().length;
@@ -286,7 +290,7 @@ export class SqliteReadConnection implements Connection {
       attachedDatabaseCount
     };
   }
-  async configureAuthorization(operation: SqliteOperation): Promise<SessionObservation> {
+  async configureAuthorization(operation: SqliteOperation): Promise<SqliteSessionObservation> {
     const allowedObjects = new Set(operation.objects.map((object) => object.name));
     if (allowedObjects.has("sqlite_schema")) allowedObjects.add("sqlite_master");
     const allowedFunctions = new Set(operation.functions);
@@ -346,7 +350,7 @@ export class SqliteReadConnection implements Connection {
   }
 }
 
-interface FixtureOptions extends Partial<Observation> {
+interface FixtureOptions extends Partial<SqliteObservation> {
   readonly sessionQueryOnly?: boolean;
   readonly sessionDefensive?: boolean;
   readonly sessionExtensionLoading?: boolean;
@@ -354,7 +358,7 @@ interface FixtureOptions extends Partial<Observation> {
   readonly rows?: readonly UnknownRecord[];
   readonly delayMs?: number;
 }
-export class SqliteFixtureConnection implements Connection {
+export class SqliteFixtureConnection implements SqliteConnectionPort {
   readonly #options: FixtureOptions;
   authorizationConfigured = false;
   lastParameters: readonly unknown[] = [];
@@ -364,7 +368,7 @@ export class SqliteFixtureConnection implements Connection {
   constructor(options: FixtureOptions = {}) {
     this.#options = options;
   }
-  async inspectPrincipal(plan: Plan): Promise<Observation> {
+  async inspectPrincipal(plan: SqliteConnectionPlan): Promise<SqliteObservation> {
     return {
       product: this.#options.product ?? "sqlite",
       version: this.#options.version ?? "3.51.2",
@@ -376,7 +380,7 @@ export class SqliteFixtureConnection implements Connection {
       attachedDatabaseCount: this.#options.attachedDatabaseCount ?? 1
     };
   }
-  async configureAuthorization(_operation: SqliteOperation): Promise<SessionObservation> {
+  async configureAuthorization(_operation: SqliteOperation): Promise<SqliteSessionObservation> {
     void _operation;
     this.authorizationConfigured = true;
     return {

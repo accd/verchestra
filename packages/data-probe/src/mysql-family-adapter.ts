@@ -65,7 +65,7 @@ interface ParseOptions {
   readonly parameterClassifications: readonly string[];
 }
 
-interface MySqlFamilyOperation {
+export interface MySqlFamilyOperation {
   readonly kind: "select" | "introspect";
   readonly statementCount: 1;
   readonly protectedRequestRef: string;
@@ -160,14 +160,14 @@ export function parseMySqlFamilyReadOperation(sql: unknown, options: ParseOption
   });
 }
 
-interface FamilyPlan {
+export interface FamilyPlan {
   readonly databaseId: string;
   readonly planDigest: string;
   readonly operation: MySqlFamilyOperation;
   readonly bounds: { readonly timeoutMs: number };
 }
 
-interface PrincipalObservation {
+export interface MySqlFamilyPrincipalObservation {
   readonly engine: Engine;
   readonly version: string;
   readonly capabilities: readonly string[];
@@ -179,8 +179,8 @@ interface PrincipalObservation {
   readonly createUserPrivilege: boolean;
 }
 
-interface FamilyConnectionPort {
-  inspectPrincipal(plan: FamilyPlan): Promise<PrincipalObservation>;
+export interface FamilyConnectionPort {
+  inspectPrincipal(plan: FamilyPlan): Promise<MySqlFamilyPrincipalObservation>;
   executeControl(statement: string, parameters: readonly unknown[]): Promise<readonly UnknownRecord[]>;
   stream(statement: string, parameters: readonly unknown[], signal: AbortSignal): AsyncIterable<UnknownRecord>;
   cancel(): Promise<void>;
@@ -325,7 +325,7 @@ export class MariaDbProbeAdapter extends BaseMySqlFamilyAdapter {
   }
 }
 
-interface FixtureOptions extends Partial<PrincipalObservation> {
+interface FixtureOptions extends Partial<MySqlFamilyPrincipalObservation> {
   readonly engine: Engine;
   readonly transactionReadOnly?: boolean;
   readonly rows?: readonly UnknownRecord[];
@@ -344,7 +344,7 @@ export class MySqlFamilyFixtureConnection implements FamilyConnectionPort {
     this.#options = options;
   }
 
-  async inspectPrincipal(plan: FamilyPlan): Promise<PrincipalObservation> {
+  async inspectPrincipal(plan: FamilyPlan): Promise<MySqlFamilyPrincipalObservation> {
     const engine = this.#options.engine;
     return {
       engine,

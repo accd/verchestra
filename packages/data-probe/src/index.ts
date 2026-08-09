@@ -6,45 +6,77 @@ export {
   PostgreSqlFixtureConnection,
   PostgreSqlProbeAdapter,
   PostgreSqlProbeError,
-  parsePostgreSqlReadOperation
+  parsePostgreSqlReadOperation,
+  type PostgreSqlConnectionPort,
+  type PostgreSqlPlan,
+  type PostgreSqlPrincipalObservation,
+  type PostgreSqlReadOperation
 } from "./postgresql-adapter.ts";
 export {
   MariaDbProbeAdapter,
   MySqlFamilyFixtureConnection,
   MySqlFamilyProbeError,
   MySqlProbeAdapter,
-  parseMySqlFamilyReadOperation
+  parseMySqlFamilyReadOperation,
+  type FamilyConnectionPort,
+  type FamilyPlan,
+  type MySqlFamilyOperation,
+  type MySqlFamilyPrincipalObservation
 } from "./mysql-family-adapter.ts";
 export {
   SqlServerFixtureConnection,
   SqlServerProbeAdapter,
   SqlServerProbeError,
-  parseSqlServerReadOperation
+  parseSqlServerReadOperation,
+  type SqlServerConnectionPlan,
+  type SqlServerConnectionPort,
+  type SqlServerObservation,
+  type SqlServerOperation
 } from "./sqlserver-adapter.ts";
 export {
   SapAseFixtureConnection,
   SapAseProbeAdapter,
   SapAseProbeError,
-  parseSapAseReadOperation
+  parseSapAseReadOperation,
+  type SapAseConnectionPort,
+  type SapAseOperation,
+  type SapAsePlan,
+  type SapAsePrincipalObservation
 } from "./sap-ase-adapter.ts";
 export {
   OracleFixtureConnection,
   OracleProbeAdapter,
   OracleProbeError,
-  parseOracleReadOperation
+  parseOracleReadOperation,
+  type OracleConnectionPlan,
+  type OracleConnectionPort,
+  type OracleObservation,
+  type OracleOperation
 } from "./oracle-adapter.ts";
 export {
   SqliteFixtureConnection,
   SqliteProbeAdapter,
   SqliteProbeError,
   SqliteReadConnection,
-  parseSqliteReadOperation
+  parseSqliteReadOperation,
+  type SqliteConnectionPlan,
+  type SqliteConnectionPort,
+  type SqliteObject,
+  type SqliteObservation,
+  type SqliteOperation,
+  type SqliteSessionObservation
 } from "./sqlite-adapter.ts";
 export {
   MongoDbFixtureConnection,
   MongoDbProbeAdapter,
   MongoDbProbeError,
-  parseMongoDbReadOperation
+  parseMongoDbReadOperation,
+  type MongoDbConnectionPlan,
+  type MongoDbConnectionPort,
+  type MongoDbObservation,
+  type MongoDbOperation,
+  type MongoDbRole,
+  type MongoDbSessionObservation
 } from "./mongodb-adapter.ts";
 export {
   DatabaseKnowledgeError,
