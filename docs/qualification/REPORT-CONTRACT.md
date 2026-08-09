@@ -64,12 +64,17 @@ Those properties can only be established outside the file:
 - **Independence** comes from a reviewer who is not the implementation author.
   `reviewedIn` records where to verify that; it does not assert the verdict.
 - **Human review** comes from branch protection on the commit the report names.
-  That is tracked by #60 and **is not enforced today** — the `Protect main`
-  ruleset currently requires zero approving reviews.
+  The `Protect main` ruleset requires one approving review, independent of the
+  author, on every pull request — with the logged maintainer-bypass exception
+  for the maintainer's own pull requests. See `docs/merge-governance.md`. This
+  contract file does not itself enforce that review; it records where the review
+  happened (`reviewedIn`) so it can be verified.
 
-So a report can satisfy every mechanical condition above and still not have been
-independently reviewed. The contract narrows what can be claimed without
-evidence; it does not, on its own, establish accountability.
+So a report can satisfy every mechanical condition above without this file, on
+its own, establishing accountability: independence and human review are carried
+by the ruleset and `reviewedIn`, not by the frontmatter. The contract narrows
+what can be claimed without evidence; the ruleset and the review it names supply
+the accountability.
 
 ## Trusted target and report sequencing
 
