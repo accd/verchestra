@@ -106,3 +106,26 @@ test("an extra check in one run fails closed as non-convergent", () => {
   const second = semanticFingerprint([check("a", "pass"), check("b", "pass")]);
   assert.throws(() => assertConvergence(first, second), { code: "VES_SELFTEST_NONCONVERGENT" });
 });
+
+// CJ4-06/CJ4-07: locale-dependent order could make two genuinely convergent
+// runs compare as non-convergent under different ambient locales even though
+// the fingerprint is never itself hashed or signed in this module.
+test("the fingerprint order is byte-identical under two different ambient locales", () => {
+  const checks = [check("b.two"), check("a.one")];
+  const priorLang = process.env.LANG;
+  const priorLcAll = process.env.LC_ALL;
+  try {
+    process.env.LANG = "en_US.UTF-8";
+    process.env.LC_ALL = "en_US.UTF-8";
+    const first = semanticFingerprint(checks);
+    process.env.LANG = "fr_FR.UTF-8";
+    process.env.LC_ALL = "fr_FR.UTF-8";
+    const second = semanticFingerprint(checks);
+    assert.deepEqual(first, second);
+  } finally {
+    if (priorLang === undefined) delete process.env.LANG;
+    else process.env.LANG = priorLang;
+    if (priorLcAll === undefined) delete process.env.LC_ALL;
+    else process.env.LC_ALL = priorLcAll;
+  }
+});

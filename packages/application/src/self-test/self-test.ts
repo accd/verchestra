@@ -3,6 +3,8 @@
 // (packages/self-test) supplies the facts; the CLI composition root wires
 // TEST-ONLY sibling adapters in as the subject.
 
+import { normalizeDeclaredSet } from "@verchestra/domain";
+
 export type SelfTestErrorCode =
   | "VES_SELFTEST_UNKNOWN_PROFILE"
   | "VES_SELFTEST_ROOT_FACTS_INVALID"
@@ -286,10 +288,17 @@ export interface ScenarioCheck {
 
 // PRF-04: the semantic fingerprint of a run is its ordered checkId:status
 // pairs. Ordering by checkId makes the fingerprint independent of whatever
-// order the scenario happened to execute checks in.
+// order the scenario happened to execute checks in. Not itself a digest input
+// in this module (assertConvergence compares the arrays directly), but
+// CJ4-06: locale-dependent order could make two genuinely convergent runs
+// compare as non-convergent under different ambient locales, so this
+// normalizes to code-unit order like every other declared set in this slice.
 export function semanticFingerprint(checks: readonly ScenarioCheck[]): readonly string[] {
   return Object.freeze(
-    [...checks].map((check) => `${check.checkId}:${check.status}`).sort((left, right) => left.localeCompare(right))
+    normalizeDeclaredSet(
+      checks.map((check) => `${check.checkId}:${check.status}`),
+      (entry) => entry
+    )
   );
 }
 
