@@ -80,16 +80,30 @@ change), `pnpm test:release` 28/28, `pnpm test:unit` 1975/1975,
 identical via `git stash` (real git/process-runner/native-sqlite
 environment dependencies, unrelated to this slice).
 
-`gate:security`'s typecheck stage cannot complete locally: 6 pre-existing
-errors (missing `@verchestra/drivers`/`agent-runtime`/`effects` type
-declarations) under local Node 23.11.0 vs the qualified 24.14.0 pin,
-confirmed byte-identical via `git stash` — the same environment gap
-`.specs/features/platform-qualification-matrix/handoff.md` already
-documents for this machine. No T4a source file appears in the typecheck
-error list. No assertion was weakened, skipped, or deleted.
+`npx tsc --noEmit` is clean (0 errors) after `pnpm install --frozen-lockfile`
+— an earlier evidence draft misattributed 6 transient errors to the local
+Node 23.11.0 vs qualified 24.14.0 gap; a fresh independent Verifier caught
+this: the real cause was a stale local `node_modules` in this session's
+working directory, not a Node-version issue. Corrected here so the wrong
+attribution isn't re-cited in a future T4 slice. `pnpm gate:security` still
+cannot complete locally: `tests/e2e/task-executor-e2e.test.mjs` fails on a
+macOS `/tmp` → `/private/tmp` symlink that `git-worktree-adapter.ts` rejects
+as `VES_GIT_WORKTREE_ESCAPE`, confirmed identical on an `upstream/main`
+worktree baseline (same file:line, same code) — an unrelated, pre-existing
+local-machine gap. No T4a source file appears in any failure. No assertion
+was weakened, skipped, or deleted.
 
 # Blockers
 
-None for T4a. The full `pnpm gate:security` needs a qualified Node 24.14.0
-environment (or CI) to actually complete past typecheck; this is a
-pre-existing local-environment limitation, not introduced by this slice.
+None for T4a. The full `pnpm gate:security` needs either a non-symlinked
+scratch directory or CI to complete past `test:e2e`; this is a pre-existing
+local-machine limitation (macOS `/tmp` symlink resolution), not introduced
+by this slice and not a Node-version issue.
+
+# Verifier
+
+An independent Verifier (author ≠ verifier, fresh Agent, no prior context)
+re-derived all 11 CJ4 criteria and reproduced every test count in this
+handoff exactly. Verdict: PASS. One correction flagged and applied above
+(the typecheck root-cause misattribution). Full report:
+`.specs/features/canonical-json-t4a/validation.md`.

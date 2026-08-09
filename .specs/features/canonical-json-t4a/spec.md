@@ -108,12 +108,16 @@ its own per-slice persisted-byte review, per the T2 matrix's migration rule.
       Evidence: `pnpm test:architecture` 19/19,
       `pnpm test:security` 947/958 (11 pre-existing failures — native
       sqlite/memory-lifecycle/cedar-wasm gaps, confirmed identical via
-      `git stash` on the unmodified branch), `pnpm test:release` 28/28,
-      `pnpm test:unit` 1975/1975, `pnpm test:contract` 483/483. `gate:security`
-      cannot complete locally: its typecheck stage fails on 6 pre-existing
-      errors (missing `@verchestra/drivers`/`agent-runtime`/`effects` type
-      declarations under the unqualified local Node 23.11.0 vs the qualified
-      24.14.0), confirmed byte-identical via `git stash` — the same
-      environment gap `.specs/features/platform-qualification-matrix/handoff.md`
-      already documents. No assertion was weakened, skipped, or deleted in
-      this slice.
+      an `upstream/main` worktree baseline), `pnpm test:release` 28/28,
+      `pnpm test:unit` 1975/1975, `pnpm test:contract` 483/483,
+      `npx tsc --noEmit` clean (0 errors — an earlier evidence draft
+      misattributed 6 transient errors to a Node-version gap; they were a
+      stale local `node_modules` in this session's working directory,
+      resolved by `pnpm install --frozen-lockfile`; not a real gap on
+      either branch). `pnpm gate:security` still cannot complete locally
+      past `test:e2e`: `tests/e2e/task-executor-e2e.test.mjs` fails on a
+      macOS `/tmp` → `/private/tmp` symlink that `git-worktree-adapter.ts`'s
+      `VES_GIT_WORKTREE_ESCAPE` check rejects, confirmed identical on an
+      `upstream/main` worktree baseline (same file:line, same code) — an
+      unrelated, pre-existing local-machine environment gap. No assertion
+      was weakened, skipped, or deleted in this slice.
