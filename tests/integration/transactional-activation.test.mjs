@@ -54,6 +54,21 @@ test("active pointer is a small exact release reference", async () => {
   });
 });
 
+test("active launcher resolution revalidates the bundle-owned logical path", async () => {
+  const state = await setup({
+    release: { logicalPathOverrides: { "launcher:vestra": "tools/vestra-direct" } }
+  });
+  const receipt = await state.manager.activate(state.staged.receipt);
+  const result = await state.manager.resolveActiveLauncher();
+  assert.deepEqual(result.active, receipt.active);
+  assert.equal(
+    result.executablePath,
+    join(state.installRoot, "releases", receipt.active.releaseDigest.slice("sha256:".length), "tools", "vestra-direct")
+  );
+  assert.equal(Object.isFrozen(result), true);
+  assert.equal(Object.isFrozen(result.active), true);
+});
+
 test("published release contains every exact component and its verified manifest", async () => {
   const state = await setup();
   await state.manager.activate(state.staged.receipt);
