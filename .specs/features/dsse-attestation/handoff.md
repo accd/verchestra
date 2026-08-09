@@ -5,8 +5,8 @@ issue: 217
 status: in_progress
 branch: main
 baseRevision: 1f21582850ec48973794e3cb7f6c11f0531c97e5
-lastCompletedTask: T2
-nextTask: T3
+lastCompletedTask: T3
+nextTask: none
 lastGate: null
 updatedAt: 2026-08-09T16:00:00Z
 ---
@@ -53,14 +53,16 @@ Two findings worth carrying forward:
   would not have, so the binding is asserted explicitly rather than quietly
   lost in the move.
 
-# Remaining
+# T3 — bare-envelope persistence DONE (2026-08-09, #248)
 
-The persisted artifact is `{...flat projection, dsse}` rather than a bare
-envelope, so an external verifier extracts `.dsse` (or calls
-`dsseEnvelopeOf`) before handing it to cosign. The signature *format* is now
-standard, which is what AD-014 bought; a bare-envelope on-disk projection is a
-separate, smaller change and should be tracked before T76 claims full
-interoperability.
+The persisted object is now the DSSE envelope and nothing else. Every flat
+field is **derived** from the signed Statement on read via
+`sealedArtifactFromEnvelope`, so a stored projection cannot disagree with what
+was signed — the disagreement became impossible rather than merely detected.
+
+`tests/security/dsse-interoperability.test.mjs` proves the claim from the
+outside: it rebuilds the PAE and checks Ed25519 with no sealer, no projection
+and no repository types in the loop, exactly as an external verifier would.
 
 # Next Exact Action
 

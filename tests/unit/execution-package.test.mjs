@@ -4,7 +4,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 
-import { FileExecutionPackageStore, derivePendingTasks, sha256Digest } from "../../packages/evidence/src/index.ts";
+import {
+  FileExecutionPackageStore,
+  derivePendingTasks,
+  dsseEnvelopeOf,
+  sha256Digest
+} from "../../packages/evidence/src/index.ts";
 import {
   currentState,
   digest,
@@ -192,16 +197,21 @@ test("derivePendingTasks is pure and does not mutate caller arrays", () => {
   assert.equal(JSON.stringify(input), before);
 });
 
-test("file store publishes canonical package bytes and reads them back", async () => {
+test("file store publishes the canonical envelope and reads the package back", async () => {
   const root = await mkdtemp(join(tmpdir(), "verchestra-execution-package-"));
   const { builder } = executionHarness();
   const sealed = await builder.build(packageInput());
   const store = new FileExecutionPackageStore({ root });
   assert.equal((await store.put(sealed)).outcome, "published");
+  // The round trip is the strong claim and it is unchanged: what comes back is
+  // the package that went in, reconstructed entirely from the signed Statement.
   assert.deepEqual(await store.get(sealed.artifactId), sealed);
+  // What is on disk is the bare DSSE envelope (#248) rather than the whole
+  // sealed object, so the byte-level assertion names that instead of the old
+  // whole-object digest.
   assert.equal(
     sha256Digest(JSON.parse(await readFile(join(root, `${sealed.artifactId}.json`), "utf8"))),
-    sha256Digest(sealed)
+    sha256Digest(dsseEnvelopeOf(sealed))
   );
 });
 

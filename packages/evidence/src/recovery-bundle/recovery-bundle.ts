@@ -5,7 +5,12 @@ import { createHash, randomUUID } from "node:crypto";
 
 import { GeneralEncrypt, calculateJwkThumbprint, exportJWK, generalDecrypt, type GeneralJWE } from "jose";
 
-import { ArtifactSealer, sealedProjectionMatches } from "../integrity/artifact-sealer.ts";
+import {
+  ArtifactSealer,
+  dsseEnvelopeOf,
+  sealedArtifactFromEnvelope,
+  sealedProjectionMatches
+} from "../integrity/artifact-sealer.ts";
 import { canonicalizeJson, sha256Digest } from "../integrity/canonical.ts";
 import type { JsonValue, SealedArtifact, TrustRoot } from "../integrity/types.ts";
 
@@ -814,7 +819,8 @@ export class FileRecoveryBundleStore {
     const root = await safeRoot(this.#root);
     const target = join(root, `${manifest.planId}.json`);
     await safeTarget(root, target);
-    const bytes = `${canonicalizeJson(bundle as unknown as JsonValue)}\n`;
+    // The persisted object IS the DSSE envelope (#248); flat fields derive on read.
+    const bytes = `${canonicalizeJson(dsseEnvelopeOf(bundle) as unknown as JsonValue)}\n`;
     try {
       const existing = await readFile(target, "utf8");
       if (existing !== bytes) fail("VES_RECOVERY_STORAGE_CONFLICT", "recovery plan already has different bytes");
@@ -846,9 +852,10 @@ export class FileRecoveryBundleStore {
     await safeTarget(root, target);
     try {
       const stored = await readFile(target, "utf8");
-      const bundle = JSON.parse(stored) as SignedRecoveryBundle;
-      if (`${canonicalizeJson(bundle as unknown as JsonValue)}\n` !== stored)
+      const envelope = JSON.parse(stored) as JsonValue;
+      if (`${canonicalizeJson(envelope)}\n` !== stored)
         fail("VES_RECOVERY_STORAGE_INTEGRITY", "stored recovery bytes are not canonical");
+      const bundle = sealedArtifactFromEnvelope(envelope) as SignedRecoveryBundle;
       assertStoredEnvelope(bundle);
       if (validateManifestShape(bundle.payload.manifest).planId !== planId)
         fail("VES_RECOVERY_STORAGE_INTEGRITY", "stored recovery plan identity is invalid");
