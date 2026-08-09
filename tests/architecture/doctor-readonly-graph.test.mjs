@@ -11,10 +11,7 @@ import { test } from "node:test";
 // driver, connector, or writer surface. Widening the graph is then a conscious,
 // reviewed change to the allowlist, never an accident.
 
-const source = readFileSync(
-  new URL("../../apps/vestra-cli/src/doctor-composition.ts", import.meta.url),
-  "utf8"
-);
+const source = readFileSync(new URL("../../apps/vestra-cli/src/doctor-composition.ts", import.meta.url), "utf8");
 
 // Every module the deep-doctor composition root is allowed to reach. Each entry
 // is read-only by contract: application owns pure rules, contracts is schema
