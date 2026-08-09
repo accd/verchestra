@@ -41,9 +41,16 @@ async function targetFromRef(worktreesRootValue: string, worktreeRef: string, ba
   const metadata = await lstat(worktreesRootValue);
   if (metadata.isSymbolicLink() || !metadata.isDirectory())
     fail("VES_GATE_ADAPTER_PATH_ESCAPE", "Worktree root is not a real directory");
+  // Canonicalize rather than reject, the same correction F3 made in
+  // git-worktree-adapter.ts. A configured root legitimately reaches its real
+  // location through platform path aliases: macOS temp dirs resolve
+  // /var -> /private/var and Windows hands back 8.3 short names such as
+  // RUNNER~1 -> runneradmin, while Linux /tmp stays identical — which is why
+  // only Linux was ever green here. The lstat above already refused a root whose
+  // own final component is a link, and every containment check below runs
+  // against this canonical root, so a benign alias is safe while a real escape
+  // is still caught.
   const root = await realpath(worktreesRootValue);
-  if (relative(resolve(worktreesRootValue), root) !== "")
-    fail("VES_GATE_ADAPTER_PATH_ESCAPE", "Worktree root resolves through a symbolic path");
   const candidate = join(root, match[1]);
   if (!within(root, candidate)) fail("VES_GATE_ADAPTER_PATH_ESCAPE", "Worktree handle escaped its root");
   const targetMetadata = await lstat(candidate);

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, test } from "node:test";
@@ -307,4 +307,57 @@ test("full coordinator runs real test gate and creates exactly one real commit",
   assert.equal(released, true);
   assert.equal(checkpoints.at(-1).stage, "committed");
   assert.equal(git(repositoryRoot, "cat-file", "-t", result.commitId), "commit");
+});
+
+// Regression for T75 F5, the same defect F3 fixed one adapter over: the gate
+// runner realpath'd its worktrees root and then refused the result whenever it
+// differed from the path it was handed. macOS temp dirs resolve
+// /var -> /private/var and Windows returns 8.3 short names such as
+// RUNNER~1 -> runneradmin, so every non-Linux runner tripped it; Linux /tmp is
+// identical, which is why only Linux was ever green. A directory link
+// reproduces that canonicalization on any platform.
+test("the gate runner operates through a worktrees root reached by a canonicalizing link", async () => {
+  const { handle, root, worktreesRoot } = await fixture();
+  const linkParent = await mkdtemp(join(tmpdir(), "verchestra-gate-alias-"));
+  roots.push(linkParent);
+  const alias = join(linkParent, "alias");
+  await symlink(root, alias, "junction");
+  assert.notEqual(alias, await realpath(alias), "the alias must actually canonicalize to a different path");
+  assert.equal(await realpath(join(alias, "worktrees")), await realpath(worktreesRoot));
+
+  const runner = new NodeGateProcessRunner({
+    repositoryRoot: join(alias, "repository"),
+    worktreesRoot: join(alias, "worktrees"),
+    commands: {
+      "command:node-test": { executable: process.execPath, fixedArgs: ["--test"], protocols: ["test-summary"] }
+    }
+  });
+  const result = await runner.run(gateCommand(handle));
+  assert.equal(result.exitCode, 0);
+  assert.deepEqual(result.tests, { total: 1, passed: 1, failed: 0, skipped: 0, cancelled: 0, todo: 0 });
+});
+
+test("the gate runner still refuses a worktrees root whose own entry is a link", async () => {
+  const { handle, repositoryRoot, worktreesRoot } = await fixture();
+  const linkParent = await mkdtemp(join(tmpdir(), "verchestra-gate-linkroot-"));
+  roots.push(linkParent);
+  // The link IS the worktrees root here, not a parent of it. Canonicalizing a
+  // benign parent alias must not have relaxed the guard that refuses a root
+  // whose own final component is a link.
+  const linkedRoot = join(linkParent, "worktrees");
+  await symlink(worktreesRoot, linkedRoot, "junction");
+  assert.equal((await lstat(linkedRoot)).isSymbolicLink(), true);
+
+  const runner = new NodeGateProcessRunner({
+    repositoryRoot,
+    worktreesRoot: linkedRoot,
+    commands: {
+      "command:node-test": { executable: process.execPath, fixedArgs: ["--test"], protocols: ["test-summary"] }
+    }
+  });
+  await assert.rejects(runner.run(gateCommand(handle)), (error) => {
+    assert.equal(error.code, "VES_GATE_ADAPTER_PATH_ESCAPE");
+    assert.match(error.message, /not a real directory/u);
+    return true;
+  });
 });
