@@ -241,9 +241,30 @@ other engine, which is consistent with the finding above.
 
 ## 7. Decisions required from the owner
 
-These are scope calls, not implementation details. They follow the F1
-precedent: an honest narrowing of claimed scope is acceptable; a silent
-overclaim is not.
+> **Both decided on 2026-08-09 (AD-017 in `.specs/STATE.md`), after a
+> structured design review with the owner.**
+>
+> **D1 → the edge-qualification model.** The 1.0 claim is: published probe
+> contract + conformance kit + real SQLite. Real-engine qualification happens
+> at the edge — each team implements the published connection port in its own
+> repository and runs the kit against its own engine. SAP ASE loses
+> "principal target" status (issue #16 reworded 2026-08-09; site capability
+> matrix reworded in the same change set). The 1.0 enabler work — publish the
+> seven connection ports, package `exports`, parameterize the six remaining
+> kit helpers, unweld the two fixture-bound postgres assertions — is
+> **issue #233 (WS-C, brunomjanuario)** and must land before the t75 report.
+> The `vestra init` scaffold and the out-of-process multi-language host are
+> filed post-1.0. This supersedes the (c) recommendation below, which assumed
+> the choice was only about what Verchestra's own CI could run.
+>
+> **D2 → the Pi probe reads reality.** `PiDriver.probe()` replaces the
+> hardcoded `PI_VERSION` constant with a real read of the installed
+> `@earendil-works/pi-agent-core` version, reporting `not configured` when
+> absent. Better than pure contract-only: Pi is an embedded SDK, so the
+> version is genuinely there to read, and the probe becomes able to fail.
+> Implementation = **M-4, WS-A (accd)**.
+
+The original decision briefs are kept below for provenance.
 
 **D1 — Database qualification scope (blocks the T75 report).**
 - *(a) Qualify what can genuinely run.* Add CI service containers for the
@@ -370,7 +391,10 @@ revises itself invisibly is not evidence.
 
 ## 10. What T75 still needs, in order
 
-1. **D1 and D2** decided and recorded (owner).
+1. ~~**D1 and D2** decided and recorded (owner)~~ — **done 2026-08-09
+   (AD-017)**: D1 = edge-qualification model (enabler work in #233, WS-C,
+   before the t75 report); D2 = Pi probe reads the installed SDK version
+   (M-4, WS-A).
 2. ~~**M-1** — fleet dispatch at `gate=full` and `gate=release`~~ — **done**;
    it surfaced F5, fixed in PR #231. Re-dispatch after F5 merges so the run
    ids recorded in the report are green ones.

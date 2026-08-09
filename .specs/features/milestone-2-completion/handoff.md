@@ -27,6 +27,18 @@ issues distributed across workstreams WS-A (accd), WS-B (MiguelCorre), WS-C
 - 2026-08-09 — AD-013 recorded in `.specs/STATE.md` (M2C-08).
 - Work packages for MiguelCorre and brunomjanuario generated and delivered
   off-repository by the owner (M2C-06, M2C-07).
+- 2026-08-09 — **A1 and A2 done**: AD-014 (DSSE + in-toto, #217) and AD-015
+  (pinned estimator, #218) recorded and both issues closed (PR #228,
+  `3f97047`); the DSSE migration spec satisfies DSSE-02.
+- 2026-08-09 — **A3 in progress**: T75 matrix specification (PR #229), M-2
+  evidence index (PR #230), F5 path-alias fix fleet-proven on the previously
+  red legs (PR #231, run 31321090545).
+- 2026-08-09 — **Product-shape decisions AD-016/AD-017** (structured design
+  review with the owner): npx entry point (#36 scoped for B4); database
+  probes qualify at the edge — D1/D2 of the platform matrix resolved; new
+  1.0 task **C6 (#233, WS-C)** publishes the probe contract + conformance
+  kit before the t75 report; scaffold, out-of-process host, and single
+  binary filed as post-1.0 issues.
 
 # Next Exact Action
 

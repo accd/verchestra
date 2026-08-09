@@ -6,7 +6,7 @@ status: verification
 branch: main
 baseRevision: 3f97047cd26ea1ab4d91b099aafeb8fdc11c2f3b
 lastCompletedTask: null
-nextTask: "matrix.md is written (all remaining dimensions enumerated from canonical sources; defects M-1..M-7; decisions D1/D2). Next: owner decides D1 (database scope) and D2 (Pi driver), then M-1 fleet dispatch at gate=full and gate=release, M-2 persist and collect per-leg evidence digests, M-3 parameterize installer tests by host platform — matrix.md section 10"
+nextTask: "D1/D2 DECIDED 2026-08-09 (AD-017): edge-qualification model — 1.0 claims contract+kit+SQLite, enabler work is issue #233 (WS-C) before the t75 report; Pi probe reads the installed SDK version (M-4, WS-A). M-1 done (runs 31320307931 full / 31320314440 release; surfaced F5, fixed PR #231, proven run 31321090545). M-2 done (PR #230). Next: M-3 (host-target activation case), M-4 (Pi probe), green re-dispatch of all four profiles at one revision, then A4 (#35) + C5 (#207) + signed evidence index (ordered against AD-014) + B3 t75-validation.md"
 lastGate: FLEET GREEN — gate:security passed SIMULTANEOUSLY on Windows x64, Linux x64, Linux arm64, macOS arm64 at 5c86436 (run 31315589420); macOS x64 environmentally queued on the retiring Intel fleet; on-main confirmation run 31315939879 dispatched at bb11932
 updatedAt: 2026-08-09T17:00:00Z
 ---
