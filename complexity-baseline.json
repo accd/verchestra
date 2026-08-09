@@ -340,7 +340,7 @@
       22
     ],
     "packages/evidence/src/integrity/artifact-sealer.ts :: Async method 'verify'": [
-      22
+      21
     ],
     "packages/evidence/src/integrity/canonical.ts :: Function 'assertJsonValue'": [
       22

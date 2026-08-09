@@ -3,6 +3,7 @@ import { test } from "node:test";
 
 import {
   ArtifactSealer,
+  dsseEnvelopeOf,
   IntegrityError,
   NodeEd25519Signer,
   canonicalizeJson,
@@ -145,13 +146,39 @@ test("sealer creates a content-addressed signed envelope", async () => {
   const sealer = new ArtifactSealer({ signer: makeSigner(), now: fixedNow });
   const artifact = await sealer.seal({ plan: ["build", "verify"] }, binding);
 
-  assert.equal(artifact.envelopeVersion, 1);
   assert.equal(artifact.algorithm, "Ed25519");
   assert.equal(artifact.keyId, "team-key-2026");
   assert.equal(artifact.issuedAt, "2026-07-13T10:00:00.000Z");
   assert.match(artifact.artifactId, /^[a-f0-9]{64}$/u);
   assert.match(artifact.payloadDigest, /^[a-f0-9]{64}$/u);
-  assert.match(artifact.signature, /^[A-Za-z0-9_-]+$/u);
+
+  // AD-014: the signed object is a DSSE envelope carrying an in-toto
+  // Statement. This replaces the old `envelopeVersion === 1` and flat
+  // `signature` assertions — the envelope identity is still pinned, just to
+  // the interoperable shape rather than to a project-private version number.
+  assert.equal(artifact.dsse.payloadType, "application/vnd.in-toto+json");
+  assert.equal(artifact.dsse.signatures.length, 1);
+  assert.equal(artifact.dsse.signatures[0].keyid, "team-key-2026");
+  assert.match(artifact.dsse.signatures[0].sig, /^[A-Za-z0-9_-]+$/u);
+
+  const statement = JSON.parse(Buffer.from(artifact.dsse.payload, "base64").toString("utf8"));
+  assert.equal(statement._type, "https://in-toto.io/Statement/v1");
+  assert.equal(statement.predicateType, "https://accd.github.io/verchestra/attestation/execution-package/v1");
+  assert.deepEqual(statement.subject, [{ name: "execution-package", digest: { sha256: artifact.payloadDigest } }]);
+  // The binding lives inside the signed payload: five verification error codes
+  // are derived from it, so moving any of it outside would drop that cover.
+  assert.equal(statement.predicate.binding.purpose, artifact.purpose);
+  assert.equal(statement.predicate.binding.bindingId, artifact.bindingId);
+  assert.equal(statement.predicate.binding.sourceStateDigest, artifact.sourceStateDigest);
+  assert.deepEqual(statement.predicate.content, artifact.payload);
+});
+
+test("the interoperable envelope is exactly the three DSSE fields", async () => {
+  // What an external verifier is handed. The flat fields on the sealed artifact
+  // are a decoded convenience and must never leak into it.
+  const sealer = new ArtifactSealer({ signer: makeSigner(), now: fixedNow });
+  const artifact = await sealer.seal({ plan: ["build"] }, binding);
+  assert.deepEqual(Object.keys(dsseEnvelopeOf(artifact)).sort(), ["payload", "payloadType", "signatures"]);
 });
 
 test("sealing is deterministic for the same key, time, payload, and bindings", async () => {

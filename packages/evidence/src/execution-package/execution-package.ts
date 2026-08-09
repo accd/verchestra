@@ -3,7 +3,7 @@ import { mkdirSync } from "node:fs";
 import { link, lstat, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve } from "node:path";
 
-import { ArtifactSealer } from "../integrity/artifact-sealer.ts";
+import { ArtifactSealer, sealedProjectionMatches } from "../integrity/artifact-sealer.ts";
 import { canonicalizeJson, sha256Digest } from "../integrity/canonical.ts";
 import type { JsonValue, SealedArtifact, TrustRoot } from "../integrity/types.ts";
 
@@ -918,28 +918,13 @@ export class ExecutionPackageBuilder {
   }
 }
 
-function unsignedArtifact(artifact: SignedExecutionPackage) {
-  return {
-    envelopeVersion: artifact.envelopeVersion,
-    schema: artifact.schema,
-    purpose: artifact.purpose,
-    bindingId: artifact.bindingId,
-    sourceStateDigest: artifact.sourceStateDigest,
-    algorithm: artifact.algorithm,
-    keyId: artifact.keyId,
-    issuedAt: artifact.issuedAt,
-    payloadDigest: artifact.payloadDigest,
-    payload: artifact.payload
-  };
-}
-
 function assertEnvelopeIntegrity(artifact: SignedExecutionPackage, expectedId?: string): void {
   try {
     if (
       !ARTIFACT_ID.test(artifact.artifactId) ||
       (expectedId !== undefined && artifact.artifactId !== expectedId) ||
       sha256Digest(artifact.payload as unknown as JsonValue) !== artifact.payloadDigest ||
-      sha256Digest(unsignedArtifact(artifact) as unknown as JsonValue) !== artifact.artifactId
+      !sealedProjectionMatches(artifact)
     )
       fail("VES_EXECUTION_PACKAGE_STORAGE_INTEGRITY", "Stored package content address is invalid");
   } catch (error) {

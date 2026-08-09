@@ -1,5 +1,18 @@
 export const packageName = "@verchestra/evidence" as const;
-export { ArtifactSealer, createTrustRoot } from "./integrity/artifact-sealer.ts";
+export {
+  ArtifactSealer,
+  createTrustRoot,
+  dsseEnvelopeOf,
+  sealedArtifactId,
+  sealedProjectionMatches
+} from "./integrity/artifact-sealer.ts";
+export {
+  DSSE_PAYLOAD_TYPE,
+  IN_TOTO_STATEMENT_TYPE,
+  isKnownPredicateType,
+  preAuthenticationEncoding,
+  predicateTypeFor
+} from "./integrity/dsse.ts";
 export { IntegrityError, canonicalizeJson, sha256Digest, type IntegrityErrorCode } from "./integrity/canonical.ts";
 export { NodeEd25519Signer, type SignerOptions } from "./integrity/signer.ts";
 export {

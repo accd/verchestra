@@ -3,6 +3,15 @@ import { test } from "node:test";
 
 import { capsuleExpectation, capsuleHarness, capsuleInput, capsuleRef } from "../helpers/run-capsule-fixture.mjs";
 
+const tamperSignature = (sealed) => {
+  const sig = sealed.dsse.signatures[0].sig;
+  const replacement = sig.startsWith("A") ? "B" : "A";
+  return {
+    ...sealed,
+    dsse: { ...sealed.dsse, signatures: [{ ...sealed.dsse.signatures[0], sig: `${replacement}${sig.slice(1)}` }] }
+  };
+};
+
 const criticalSections = [
   "decisions",
   "modelSelections",
@@ -76,8 +85,7 @@ test("signature tamper fails before Capsule semantics", async () => {
   const input = capsuleInput();
   const { builder, trust } = capsuleHarness();
   const sealed = await builder.build(input);
-  const replacement = sealed.signature.startsWith("A") ? "B" : "A";
-  const result = await builder.verify({ ...sealed, signature: `${replacement}${sealed.signature.slice(1)}` }, trust, {
+  const result = await builder.verify(tamperSignature(sealed), trust, {
     ...capsuleExpectation(input),
     status: "FAILED"
   });

@@ -5,7 +5,7 @@ import { createHash, randomUUID } from "node:crypto";
 
 import { GeneralEncrypt, calculateJwkThumbprint, exportJWK, generalDecrypt, type GeneralJWE } from "jose";
 
-import { ArtifactSealer } from "../integrity/artifact-sealer.ts";
+import { ArtifactSealer, sealedProjectionMatches } from "../integrity/artifact-sealer.ts";
 import { canonicalizeJson, sha256Digest } from "../integrity/canonical.ts";
 import type { JsonValue, SealedArtifact, TrustRoot } from "../integrity/types.ts";
 
@@ -787,27 +787,12 @@ async function safeTarget(root: string, target: string): Promise<void> {
   }
 }
 
-function unsignedBundle(bundle: SignedRecoveryBundle): JsonValue {
-  return {
-    envelopeVersion: bundle.envelopeVersion,
-    schema: bundle.schema,
-    purpose: bundle.purpose,
-    bindingId: bundle.bindingId,
-    sourceStateDigest: bundle.sourceStateDigest,
-    algorithm: bundle.algorithm,
-    keyId: bundle.keyId,
-    issuedAt: bundle.issuedAt,
-    payloadDigest: bundle.payloadDigest,
-    payload: bundle.payload as unknown as JsonValue
-  } as unknown as JsonValue;
-}
-
 function assertStoredEnvelope(bundle: SignedRecoveryBundle): void {
   try {
     if (
       !/^[a-f0-9]{64}$/u.test(bundle.artifactId) ||
       sha256Digest(bundle.payload) !== bundle.payloadDigest ||
-      sha256Digest(unsignedBundle(bundle)) !== bundle.artifactId
+      !sealedProjectionMatches(bundle)
     )
       fail("VES_RECOVERY_STORAGE_INTEGRITY", "recovery bundle content address is invalid");
   } catch (error) {

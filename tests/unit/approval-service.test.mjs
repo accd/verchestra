@@ -27,7 +27,7 @@ test("human record creates a signed inspectable approval", async () => {
   const context = await approved();
   assert.equal(context.approval.approver.id, approver.id);
   assert.equal(context.approval.artifact.payload.bindingDigest, context.approval.bindingDigest);
-  assert.match(context.approval.artifact.signature, /^[A-Za-z0-9_-]+$/u);
+  assert.match(context.approval.artifact.dsse.signatures[0].sig, /^[A-Za-z0-9_-]+$/u);
   assert.equal(context.store.approvals.size, 1);
 });
 
@@ -72,7 +72,15 @@ test("signature tampering fails closed", async () => {
   const stored = context.store.approvals.get(context.approval.approvalId);
   context.store.approvals.set(context.approval.approvalId, {
     ...stored,
-    artifact: { ...stored.artifact, signature: `${stored.artifact.signature}tampered` }
+    artifact: {
+      ...stored.artifact,
+      dsse: {
+        ...stored.artifact.dsse,
+        signatures: [
+          { ...stored.artifact.dsse.signatures[0], sig: `${stored.artifact.dsse.signatures[0].sig}tampered` }
+        ]
+      }
+    }
   });
   assert.equal(
     (await context.service.verify(context.approval.approvalId, context.approval.binding)).code,

@@ -1,9 +1,17 @@
 import { createPublicKey, verify as verifyBytes } from "node:crypto";
 
 import { canonicalizeJson, IntegrityError, sha256Digest } from "./canonical.ts";
+import {
+  buildStatement,
+  DSSE_PAYLOAD_TYPE,
+  preAuthenticationEncoding,
+  predicateTypeFor,
+  statementBytes
+} from "./dsse.ts";
 import type { EvidenceSigner } from "./key-provider.ts";
 import type {
   ArtifactBinding,
+  DsseEnvelope,
   JsonValue,
   PublicKeyRef,
   SealedArtifact,
@@ -53,23 +61,143 @@ function parseInstant(value: string | undefined): number | undefined {
   return Number.isFinite(instant) ? instant : undefined;
 }
 
-function unsignedArtifact<T extends JsonValue>(artifact: SealedArtifact<T>) {
-  return {
-    envelopeVersion: artifact.envelopeVersion,
+/**
+ * Rebuild the Statement the sealed artifact's flat projection claims was
+ * signed. `verify` compares these bytes against the envelope's own payload, so
+ * a projection that drifted from what was signed fails rather than being
+ * silently believed.
+ */
+function projectedStatement<T extends JsonValue>(artifact: SealedArtifact<T>, predicateType: string) {
+  return buildStatement({
     schema: artifact.schema,
     purpose: artifact.purpose,
     bindingId: artifact.bindingId,
     sourceStateDigest: artifact.sourceStateDigest,
-    algorithm: artifact.algorithm,
-    keyId: artifact.keyId,
     issuedAt: artifact.issuedAt,
     payloadDigest: artifact.payloadDigest,
-    payload: artifact.payload
-  } as const;
+    predicateType,
+    content: artifact.payload
+  });
 }
 
-function signedArtifact<T extends JsonValue>(artifact: SealedArtifact<T>) {
-  return { artifactId: artifact.artifactId, ...unsignedArtifact(artifact) } as const;
+/**
+ * The identity of what a sealed artifact claims was signed: the sha256 of the
+ * Statement rebuilt from its projection.
+ *
+ * Exported because the evidence modules each re-check storage integrity
+ * independently of the sealer. They used to do that by duplicating the envelope
+ * shape, four copies that could drift from the sealer and from each other; now
+ * there is one definition and the duplication is gone.
+ */
+export function sealedArtifactId(artifact: SealedArtifact): string {
+  const predicateType = predicateTypeFor(artifact.schema);
+  if (predicateType === undefined) {
+    throw new IntegrityError("VES_INTEGRITY_INVALID_BINDING", "Artifact schema has no declared predicate type");
+  }
+  return sha256Digest(projectedStatement(artifact, predicateType));
+}
+
+/**
+ * Whether a sealed artifact's flat projection agrees with the signed envelope.
+ *
+ * The key id needs its own clause: under DSSE it lives in `signatures[].keyid`,
+ * which is envelope metadata rather than Statement content, so the content
+ * address cannot cover it the way the pre-DSSE digest did. Verification would
+ * still catch a swap (the trust lookup finds a different key and the signature
+ * fails), but storage-integrity checks run without a trust root and would not —
+ * so the binding is asserted here instead of being quietly lost in the move.
+ */
+export function sealedProjectionMatches(artifact: SealedArtifact): boolean {
+  return artifact.keyId === artifact.dsse.signatures[0]?.keyid && sealedArtifactId(artifact) === artifact.artifactId;
+}
+
+/**
+ * Open a sealed artifact's envelope, refusing anything that is not a DSSE
+ * envelope carrying an in-toto Statement of a declared predicate type.
+ *
+ * There is deliberately no fallback path: AD-014 chose rejection over
+ * dual-format verification, so a legacy pre-DSSE artifact stops here.
+ *
+ * The projection-equality check is the last clause rather than a separate
+ * `_type` guard. It rebuilds the Statement from the artifact's flat fields —
+ * `_type` included — and requires byte equality with what the envelope
+ * carries, so the flat fields stop being taken on trust here, and an explicit
+ * type check could never be reached by input this does not already reject. A
+ * discrimination sensor proved that: deleting such a guard killed no test, and
+ * defensive code no test can kill is not defence.
+ */
+function hasDsseShape(artifact: SealedArtifact): boolean {
+  const envelope = artifact.dsse;
+  return (
+    envelope !== null &&
+    typeof envelope === "object" &&
+    envelope.payloadType === DSSE_PAYLOAD_TYPE &&
+    typeof envelope.payload === "string" &&
+    Array.isArray(envelope.signatures) &&
+    envelope.signatures.length === 1 &&
+    // Under DSSE the key id is envelope metadata, outside the Statement, so the
+    // content address cannot cover it; bind it explicitly instead.
+    artifact.keyId === envelope.signatures[0]?.keyid
+  );
+}
+
+function bindingMismatch(
+  artifact: SealedArtifact,
+  expected: VerificationExpectation
+):
+  | "VES_INTEGRITY_SCHEMA_MISMATCH"
+  | "VES_INTEGRITY_PURPOSE_MISMATCH"
+  | "VES_INTEGRITY_SOURCE_STATE_MISMATCH"
+  | "VES_INTEGRITY_BINDING_MISMATCH"
+  | undefined {
+  if (artifact.schema.name !== expected.schema.name || artifact.schema.version !== expected.schema.version)
+    return "VES_INTEGRITY_SCHEMA_MISMATCH";
+  if (artifact.purpose !== expected.purpose) return "VES_INTEGRITY_PURPOSE_MISMATCH";
+  if (artifact.sourceStateDigest !== expected.sourceStateDigest) return "VES_INTEGRITY_SOURCE_STATE_MISMATCH";
+  if (artifact.bindingId !== expected.bindingId) return "VES_INTEGRITY_BINDING_MISMATCH";
+  return undefined;
+}
+
+function openEnvelope<T extends JsonValue>(
+  artifact: SealedArtifact<T>
+):
+  | { readonly code: "VES_ENVELOPE_UNSUPPORTED" }
+  | {
+      readonly envelope: DsseEnvelope;
+      readonly signedBytes: Buffer;
+      readonly signedStatement: JsonValue;
+    } {
+  const refused = { code: "VES_ENVELOPE_UNSUPPORTED" } as const;
+  if (!hasDsseShape(artifact)) return refused;
+  const envelope = artifact.dsse;
+  // Derived from the artifact's own schema: a kind AD-014 never declared has no
+  // attestation type, so it is refused rather than given a minted one.
+  //
+  // A runtime sensor cannot kill this clause — an undeclared kind also breaks
+  // projection equality below, which refuses with the same code. Unlike the
+  // `_type` guard that was removed for exactly that reason, this one stays
+  // because the compiler kills it: without it `predicateType` is
+  // `string | undefined` and the call below fails to typecheck. Compile-time
+  // enforcement is a stronger guarantee than a test, not a missing one.
+  const predicateType = predicateTypeFor(artifact.schema);
+  if (predicateType === undefined) return refused;
+  try {
+    const signedBytes = Buffer.from(envelope.payload, "base64");
+    const signedStatement = JSON.parse(signedBytes.toString("utf8")) as JsonValue;
+    if (!statementBytes(projectedStatement(artifact, predicateType)).equals(signedBytes)) return refused;
+    return { envelope, signedBytes, signedStatement };
+  } catch {
+    return refused;
+  }
+}
+
+/** The interoperable object: exactly the three DSSE fields, nothing else. */
+export function dsseEnvelopeOf(artifact: SealedArtifact): DsseEnvelope {
+  return Object.freeze({
+    payloadType: artifact.dsse.payloadType,
+    payload: artifact.dsse.payload,
+    signatures: artifact.dsse.signatures
+  });
 }
 
 function cloneJson<T extends JsonValue>(value: T): T {
@@ -119,24 +247,46 @@ export class ArtifactSealer {
       invalidBinding("Artifact issue time is not a canonical instant");
     }
     const payload = cloneJson(payloadInput);
-    const base = {
-      envelopeVersion: 1,
+    const predicateType = predicateTypeFor(binding.schema);
+    // A schema with no predicate type is an artifact kind AD-014 never named.
+    // Minting a URI here would create an attestation type nobody can verify.
+    if (predicateType === undefined) {
+      invalidBinding(`Artifact schema has no declared predicate type: ${binding.schema.name}`);
+    }
+    const statement = buildStatement({
       schema: Object.freeze({ ...binding.schema }),
       purpose: binding.purpose,
       bindingId: binding.bindingId,
       sourceStateDigest: binding.sourceStateDigest,
-      algorithm: "Ed25519",
-      keyId: this.#signer.publicKeyRef.keyId,
       issuedAt,
       payloadDigest: sha256Digest(payload),
-      payload
-    } as const;
-    const artifactId = sha256Digest(base);
-    const signature = await this.#signer.sign(
-      binding.purpose,
-      Buffer.from(canonicalizeJson({ artifactId, ...base }), "utf8")
-    );
-    return Object.freeze({ artifactId, ...base, signature });
+      predicateType,
+      content: payload
+    });
+    const bytes = statementBytes(statement);
+    // The artifact id is the identity of what was signed. Deriving it from the
+    // Statement rather than storing an independent value means it cannot name
+    // one thing while the signature covers another.
+    const artifactId = sha256Digest(statement);
+    const signature = await this.#signer.sign(binding.purpose, preAuthenticationEncoding(DSSE_PAYLOAD_TYPE, bytes));
+    const dsse: DsseEnvelope = Object.freeze({
+      payloadType: DSSE_PAYLOAD_TYPE,
+      payload: bytes.toString("base64"),
+      signatures: Object.freeze([Object.freeze({ keyid: this.#signer.publicKeyRef.keyId, sig: signature })])
+    });
+    return Object.freeze({
+      artifactId,
+      schema: statement.predicate.binding.schema,
+      purpose: binding.purpose,
+      bindingId: binding.bindingId,
+      sourceStateDigest: binding.sourceStateDigest,
+      algorithm: "Ed25519" as const,
+      keyId: this.#signer.publicKeyRef.keyId,
+      issuedAt,
+      payloadDigest: statement.subject[0]?.digest.sha256 as string,
+      payload,
+      dsse
+    });
   }
 
   async verify<T extends JsonValue>(
@@ -144,29 +294,27 @@ export class ArtifactSealer {
     trust: TrustRoot,
     expected: VerificationExpectation
   ): Promise<VerificationResult> {
+    // Payload digest first, before the envelope is opened. A tampered payload
+    // also breaks projection equality, so opening first would report every such
+    // case as an envelope problem and lose the specific code this contract has
+    // always returned.
     try {
       if (sha256Digest(artifact.payload) !== artifact.payloadDigest) {
         return { ok: false, code: "VES_INTEGRITY_PAYLOAD_DIGEST_MISMATCH" };
-      }
-      if (sha256Digest(unsignedArtifact(artifact)) !== artifact.artifactId) {
-        return { ok: false, code: "VES_INTEGRITY_ARTIFACT_ID_MISMATCH" };
       }
     } catch {
       return { ok: false, code: "VES_INTEGRITY_PAYLOAD_DIGEST_MISMATCH" };
     }
 
-    if (artifact.schema.name !== expected.schema.name || artifact.schema.version !== expected.schema.version) {
-      return { ok: false, code: "VES_INTEGRITY_SCHEMA_MISMATCH" };
+    const opened = openEnvelope(artifact);
+    if ("code" in opened) return { ok: false, code: opened.code };
+    const { envelope, signedBytes, signedStatement } = opened;
+    if (sha256Digest(signedStatement) !== artifact.artifactId) {
+      return { ok: false, code: "VES_INTEGRITY_ARTIFACT_ID_MISMATCH" };
     }
-    if (artifact.purpose !== expected.purpose) {
-      return { ok: false, code: "VES_INTEGRITY_PURPOSE_MISMATCH" };
-    }
-    if (artifact.sourceStateDigest !== expected.sourceStateDigest) {
-      return { ok: false, code: "VES_INTEGRITY_SOURCE_STATE_MISMATCH" };
-    }
-    if (artifact.bindingId !== expected.bindingId) {
-      return { ok: false, code: "VES_INTEGRITY_BINDING_MISMATCH" };
-    }
+
+    const mismatch = bindingMismatch(artifact, expected);
+    if (mismatch !== undefined) return { ok: false, code: mismatch };
 
     const key = trust.keys.find((candidate) => candidate.keyId === artifact.keyId);
     if (key === undefined) return { ok: false, code: "VES_TRUST_KEY_UNKNOWN" };
@@ -199,11 +347,14 @@ export class ArtifactSealer {
         type: "spki",
         format: "der"
       });
+      // Verify over the PAE, never the raw payload: binding the payload type
+      // into the signed bytes is what stops a signature over an in-toto
+      // Statement being replayed as a signature over some other document type.
       const valid = verifyBytes(
         null,
-        Buffer.from(canonicalizeJson(signedArtifact(artifact)), "utf8"),
+        preAuthenticationEncoding(envelope.payloadType, signedBytes),
         publicKey,
-        Buffer.from(artifact.signature, "base64url")
+        Buffer.from(envelope.signatures[0]?.sig ?? "", "base64url")
       );
       return valid
         ? { ok: true, artifactId: artifact.artifactId, keyId: artifact.keyId }
