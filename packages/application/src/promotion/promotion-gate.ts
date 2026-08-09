@@ -5,6 +5,8 @@
 // candidate's authority — the candidate reaches the gate only as a digest and a
 // contamination fact.
 
+import { canonicalizeJsonV2, normalizeDeclaredSet } from "@verchestra/domain";
+
 import type { CampaignRunResult } from "../regression/campaigns.ts";
 
 export type PromotionErrorCode =
@@ -75,17 +77,17 @@ function assertOracle(oracle: HoldoutOracle): void {
 
 // PROM-01/PROM-04: the deterministic serialization sealed into the holdout
 // digest. Thresholds and repetition counts are part of it, so drift changes the
-// digest and is detected at decision time.
+// digest and is detected at decision time. Entries are a declared set keyed by
+// campaignId, so they are normalized to code-unit order (CJ4-03) before V2
+// encoding — ambient locale never determines this digest.
 export function canonicalizeOracle(oracle: HoldoutOracle): string {
   assertOracle(oracle);
-  return JSON.stringify({
-    entries: [...oracle.entries]
-      .sort((left, right) => left.campaignId.localeCompare(right.campaignId))
-      .map((entry) => ({
-        campaignId: entry.campaignId,
-        repetitionCount: entry.repetitionCount,
-        threshold: entry.threshold
-      })),
+  return canonicalizeJsonV2({
+    entries: normalizeDeclaredSet(oracle.entries, (entry) => entry.campaignId).map((entry) => ({
+      campaignId: entry.campaignId,
+      repetitionCount: entry.repetitionCount,
+      threshold: entry.threshold
+    })),
     policyId: oracle.policyId
   });
 }
@@ -141,11 +143,14 @@ function campaignBlocks(input: PromotionInput): PromotionBlockCode[] {
 }
 
 // PROM-07: PROMOTED only when no integrity block holds and every campaign clears
-// its sealed threshold via its lower confidence bound.
+// its sealed threshold via its lower confidence bound. The block set is a
+// declared set (order carries no meaning beyond stable presentation), so it is
+// normalized to code-unit order (CJ4-03) rather than sorted by ambient locale.
 export function evaluatePromotion(input: PromotionInput, hash: Sha256Hex): PromotionDecision {
   assertInput(input);
-  const blocks = [...new Set([...integrityBlocks(input, hash), ...campaignBlocks(input)])].sort((a, b) =>
-    a.localeCompare(b)
+  const blocks = normalizeDeclaredSet(
+    [...new Set([...integrityBlocks(input, hash), ...campaignBlocks(input)])],
+    (code) => code
   );
   return Object.freeze({ verdict: blocks.length === 0 ? "PROMOTED" : "BLOCKED", blocks: Object.freeze(blocks) });
 }
