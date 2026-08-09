@@ -1,7 +1,10 @@
 import { createHash, randomUUID } from "node:crypto";
+import { readFileSync, statSync } from "node:fs";
 import { mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+import { getLoadablePath } from "sqlite-vec";
 
 import { MemoryStore } from "../../packages/memory/src/index.ts";
 
@@ -60,4 +63,20 @@ export async function opened(options = {}) {
 
 export async function cleanup() {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
+}
+
+// The installed sqlite-vec extension's own identity (path, sha256, byte size).
+// Vector-machinery tests inject this so generation, authority, and fault
+// semantics are exercised on every platform sqlite-vec ships a binary for —
+// including hosts absent from QUALIFIED_SQLITE_VEC_ASSETS, where the default
+// (closed-table) identity is undefined and the index correctly refuses to open.
+// The closed default contract itself is asserted separately; injecting the
+// local identity here is fixture configuration, not a widening of that table.
+export function localVectorAsset() {
+  const assetPath = getLoadablePath();
+  return {
+    assetPath,
+    expectedAssetSha256: createHash("sha256").update(readFileSync(assetPath)).digest("hex"),
+    expectedAssetBytes: statSync(assetPath).size
+  };
 }
