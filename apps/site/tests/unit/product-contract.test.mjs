@@ -41,16 +41,18 @@ test("publishes the complete delivery sequence", () => {
   );
 });
 
-test("publishes every qualified driver and database with SAP ASE first-class", () => {
+// Order changed by AD-017 (owner, 2026-08-09): SQLite leads as the only
+// live-qualified engine; the rest follow alphabetically with contract parity.
+test("publishes every driver and database, SQLite leading as the live-qualified engine", () => {
   assert.deepEqual(drivers, ["Claude Code", "Codex", "OpenCode / Qwen"]);
   assert.deepEqual(databases, [
-    "SAP ASE / Sybase",
-    "PostgreSQL",
-    "MySQL / MariaDB",
-    "SQL Server",
-    "Oracle",
     "SQLite",
-    "MongoDB"
+    "MongoDB",
+    "MySQL / MariaDB",
+    "Oracle",
+    "PostgreSQL",
+    "SAP ASE / Sybase",
+    "SQL Server"
   ]);
 });
 

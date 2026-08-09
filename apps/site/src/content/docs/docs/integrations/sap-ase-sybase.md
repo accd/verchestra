@@ -1,9 +1,9 @@
 ---
 title: SAP ASE and Sybase
-description: First-class read-only discovery for the primary Verchestra database adapter.
+description: First-class read-only discovery with full contract parity for SAP ASE and Sybase.
 ---
 
-SAP ASE / Sybase is a primary adapter, not a compatibility footnote.
+SAP ASE / Sybase has full contract parity with every other engine — a dedicated adapter and parser, not a compatibility footnote. Like every engine except SQLite, it is contract-verified in this repository and live-qualified at the edge: your team runs the conformance kit against its own server.
 
 The adapter identifies the observed product, validates supported server behavior, constrains database and owner scope, and compiles approved catalog or `SELECT` operations. Parser and capability checks reject writes, unsafe procedures, unapproved objects, excessive results, and ambiguous statements before execution.
 
