@@ -66,3 +66,93 @@ test("mutation B: replacing array-order preservation with sorting is killed", as
   assert.notEqual(mutantEncode([2, 1]), "[2,1]");
   assert.equal(await readFile(sourcePath, "utf8"), before);
 });
+
+const setsSourcePath = fileURLToPath(new URL("../../packages/domain/src/canonical/canonical-sets.ts", import.meta.url));
+const setsSourceDir = dirname(setsSourcePath);
+
+async function loadSetsMutant(patch) {
+  const original = await readFile(setsSourcePath, "utf8");
+  const mutated = patch(original);
+  assert.notEqual(mutated, original, "mutation must actually change the source");
+  const disposablePath = join(setsSourceDir, `canonical-sets.mutant-${randomUUID()}.ts`);
+  disposablePaths.push(disposablePath);
+  await writeFile(disposablePath, mutated, "utf8");
+  const module = await import(pathToFileURL(disposablePath).href);
+  return module.normalizeDeclaredSet;
+}
+
+// Mutation C: normalizeDeclaredSet is the single primitive every T4a owner
+// (and every future T4 slice) delegates to for declared-set ordering
+// (CJ4-09). A dedicated sensor here compositionally covers all of them,
+// which matters because promotion-gate.ts's and campaigns.ts's own public
+// APIs enforce a lowercase-only id format, so a locale-vs-code-unit output
+// divergence is not reachable through their realistic call data.
+test("mutation C: replacing normalizeDeclaredSet's code-unit compare with localeCompare is killed", async () => {
+  const before = await readFile(setsSourcePath, "utf8");
+  const mutantNormalize = await loadSetsMutant((source) => {
+    const target = "if (a < b) return -1;\n    if (a > b) return 1;\n    return 0;";
+    const patched = source.replace(target, "return a.localeCompare(b);");
+    assert.notEqual(patched, source, "the code-unit compare body must exist in the current source");
+    return patched;
+  });
+  // Same case-order divergence as mutation A: code unit puts "Z" (0x5A)
+  // before "a" (0x61); a locale-aware compare orders "a" before "Z".
+  assert.deepEqual(
+    mutantNormalize(["a", "Z"], (value) => value),
+    ["a", "Z"]
+  );
+  assert.notDeepEqual(
+    mutantNormalize(["a", "Z"], (value) => value),
+    ["Z", "a"]
+  );
+  assert.equal(await readFile(setsSourcePath, "utf8"), before);
+});
+
+// CJ4-09: one discrimination mutation per T4a owner, in addition to mutation
+// C above. These are static rather than dynamic-import mutants: each owner's
+// public API enforces a lowercase-only id format (promotion-gate.ts's and
+// campaigns.ts's ID regex) or a closed check/capability/remediation catalog
+// (doctor.ts), so a locale-vs-code-unit output divergence is not reachable
+// through realistic call data. Each mutation instead reverts the exact
+// migrated call site back to its pre-T4a form and proves the resulting text
+// is distinguishable from the real, migrated source — the same signal
+// tests/security/canonical-json-locale-allowlist.test.mjs polices
+// continuously once its ceiling for that owner is tightened to 0.
+const OWNER_MUTATIONS = [
+  {
+    file: "packages/application/src/promotion/promotion-gate.ts",
+    from: "normalizeDeclaredSet(oracle.entries, (entry) => entry.campaignId)",
+    to: "[...oracle.entries].sort((left, right) => left.campaignId.localeCompare(right.campaignId))"
+  },
+  {
+    file: "packages/application/src/regression/campaigns.ts",
+    from: "normalizeDeclaredSet(results, (result) => result.id)",
+    to: "[...results].sort((left, right) => left.id.localeCompare(right.id))"
+  },
+  {
+    file: "packages/application/src/doctor/doctor.ts",
+    from: "normalizeDeclaredSet([...new Set(values)], (value) => value)",
+    to: "[...new Set(values)].sort((left, right) => left.localeCompare(right))"
+  },
+  {
+    file: "packages/application/src/self-test/self-test.ts",
+    from: "normalizeDeclaredSet(\n      checks.map((check) => `${check.checkId}:${check.status}`),\n      (entry) => entry\n    )",
+    to: "[...checks].map((check) => `${check.checkId}:${check.status}`).sort((left, right) => left.localeCompare(right))"
+  }
+];
+
+for (const { file, from, to } of OWNER_MUTATIONS) {
+  test(`mutation: reverting ${file} to ambient-locale ordering is a detectable regression`, async () => {
+    const path = fileURLToPath(new URL(`../../${file}`, import.meta.url));
+    const current = await readFile(path, "utf8");
+    assert.equal(
+      current.includes(".localeCompare("),
+      false,
+      `${file} must not carry .localeCompare( after the T4a migration`
+    );
+    assert.ok(current.includes(from), `${file} must still carry its migrated call site verbatim`);
+    const reverted = current.replace(from, to);
+    assert.notEqual(reverted, current, "the mutation must actually change the source");
+    assert.ok(reverted.includes(".localeCompare("), "the reverted source must reintroduce ambient-locale ordering");
+  });
+}
