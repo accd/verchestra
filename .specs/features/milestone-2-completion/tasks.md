@@ -136,7 +136,7 @@ applied on 2026-08-09 as part of landing this programme. Work packages
 | A3 | In progress — matrix spec (PR #229), M-2 evidence index (PR #230), F5 fix fleet-proven (PR #231), D1/D2 decided (AD-017); remaining: M-3, M-4, green 4-profile re-dispatch, evidence index signing | `3264700`, `bb04531`, `9060f7f` |
 | C6 | Planned | Pending |
 | C2 | Planned | Pending |
-| B4 | Planned | Pending |
+| B4 | In review - T1 verified active-launcher bridge complete; T2-T4 blocked by T76-owned executable/trust inputs and npm/build decisions | `bfab603`, `fde66de` (PR #249) |
 | C5 | Planned | Pending |
 | A4 | Planned | Pending |
 | C4 | Planned | Pending |
