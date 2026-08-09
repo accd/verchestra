@@ -4,11 +4,11 @@ feature: npx-launcher
 issue: 36
 status: in_progress
 branch: codex/npx-vestra-bootstrap
-baseRevision: 206501a186ba808bf22029f88d8ac02dc9fa3de4
+baseRevision: c0b53a498087c466f9a6c89ff345b389b5946de9
 lastCompletedTask: T1
 nextTask: T2 after T76 defines the executable launcher and observed health protocol
-lastGate: gate:quick PASS; test:security PASS (1001 cases); gate:build pending external rerun after local Windows EBUSY cleanup failures
-updatedAt: 2026-08-09T19:42:00Z
+lastGate: repository gate:build and gate:security PASS on bfab60355942e5a19259a0ee3dc40c9a377778be
+updatedAt: 2026-08-09T19:55:00Z
 ---
 
 # Scope
@@ -39,14 +39,19 @@ passes to the activated bundle's `launcher:vestra` and embedded Node 24.14.0.
 - Two local `gate:build` attempts reached integration but were inconclusive due
   to Windows `EBUSY` cleanup failures in disposable self-test fixture roots (5
   cases, then 4). All T1 cases passed; no assertion was weakened or bypassed.
+- Repository validation passed both `gate:build` ([run
+  31332661966](https://github.com/accd/verchestra/actions/runs/31332661966))
+  and `gate:security` ([run
+  31332772835](https://github.com/accd/verchestra/actions/runs/31332772835))
+  on the exact implementation commit
+  `bfab60355942e5a19259a0ee3dc40c9a377778be`.
 
 # Next Exact Action
 
 T2 is the next code task after T76 defines a directly spawnable launcher and
 the real pre-publication health protocol. The repository owner must also
 confirm control of the unpublished npm name and the approved emitted/bundled
-JavaScript build path before T3. Rerun `gate:build` on the review commit in the
-repository validation workflow and attach that result to the PR.
+JavaScript build path before T3.
 
 # Blockers
 
