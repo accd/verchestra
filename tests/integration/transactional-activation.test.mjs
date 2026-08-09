@@ -185,6 +185,58 @@ test("wrong platform stage is rejected before health", async () => {
   assert.equal(state.gate.calls.length, 0);
 });
 
+// T75 M-3. Every other activation case declares a win32-x64 target whatever the
+// host is, which is legitimate — the target is a release selector and those
+// cases exercise the mixed-release guard. What no case covered is the actual
+// product scenario: activating the release built FOR this machine. That is the
+// only shape in which the host's own filesystem behaviour is exercised end to
+// end (the six `mkdir` mode-0o700 sites, the atomic rename, path handling), and
+// on the platform fleet each leg now proves its own target. Assertions are
+// platform-aware rather than skipped, following the F1a precedent: an
+// unsupported host asserts the refusal contract instead of silently passing.
+const SUPPORTED_TARGETS = new Set([
+  "win32-x64",
+  "win32-arm64",
+  "linux-x64",
+  "linux-arm64",
+  "darwin-x64",
+  "darwin-arm64"
+]);
+
+test("activates the release built for this host", async () => {
+  const platform = process.platform;
+  const arch = process.arch;
+  const release = { platform, arch, releaseId: `release:verchestra:1.0.0:${platform}-${arch}` };
+
+  if (!SUPPORTED_TARGETS.has(`${platform}-${arch}`)) {
+    const root = await temporary();
+    assert.throws(
+      () =>
+        new TransactionalActivationManager({
+          installRoot: join(root, "install"),
+          stagingRoot: join(root, "staging"),
+          platform,
+          arch,
+          healthGate: healthGate()
+        }),
+      { code: "VES_ACTIVATION_ROOT_INVALID" },
+      "an unsupported host must be refused, never activated"
+    );
+    return;
+  }
+
+  const state = await setup({ platform, arch, release });
+  assert.equal(state.staged.bundle.target.platform, platform);
+  assert.equal(state.staged.bundle.target.arch, arch);
+  const receipt = await state.manager.activate(state.staged.receipt);
+  assert.equal(receipt.active.releaseDigest, state.staged.bundle.releaseDigest);
+  assert.equal(state.gate.calls.length, 1);
+  // The release really landed on this host's filesystem, not just in a receipt.
+  const releaseRoot = join(state.installRoot, "releases", state.staged.bundle.releaseDigest.slice("sha256:".length));
+  await access(releaseRoot);
+  assert.equal(JSON.parse(await readFile(join(state.installRoot, "active.json"), "utf8")).releaseId, release.releaseId);
+});
+
 test("authoritative-looking staged receipt is rejected", async () => {
   const state = await setup();
   await assert.rejects(state.manager.activate({ ...state.staged.receipt, activationAllowed: true }), {
