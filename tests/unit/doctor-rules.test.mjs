@@ -59,6 +59,27 @@ test("a missing check fails the catalog closed", () => {
   assert.throws(() => buildDoctorReport(allPass().slice(1), 1), { code: "VES_DOCTOR_CHECK_CATALOG_INVALID" });
 });
 
+// CJ4-05/CJ4-07: the sealed report's code lists are byte-identical regardless
+// of the machine's ambient locale.
+test("the sealed report's code lists are byte-identical under two different ambient locales", () => {
+  const priorLang = process.env.LANG;
+  const priorLcAll = process.env.LC_ALL;
+  try {
+    process.env.LANG = "en_US.UTF-8";
+    process.env.LC_ALL = "en_US.UTF-8";
+    const first = buildDoctorReport(allPass(), 1);
+    process.env.LANG = "fr_FR.UTF-8";
+    process.env.LC_ALL = "fr_FR.UTF-8";
+    const second = buildDoctorReport(allPass(), 1);
+    assert.deepEqual(first["doctor.check_codes"], second["doctor.check_codes"]);
+  } finally {
+    if (priorLang === undefined) delete process.env.LANG;
+    else process.env.LANG = priorLang;
+    if (priorLcAll === undefined) delete process.env.LC_ALL;
+    else process.env.LC_ALL = priorLcAll;
+  }
+});
+
 test("an unknown check id fails the catalog closed", () => {
   assert.throws(() => assertDoctorCheckFacts(withFirst({ checkId: "doctor.unknown" })), {
     code: "VES_DOCTOR_CHECK_CATALOG_INVALID"

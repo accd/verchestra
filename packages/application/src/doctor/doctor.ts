@@ -4,6 +4,8 @@
 // this module decides the report, and only registered codes may appear in it so
 // a raw error, secret, or path can never reach the sealed diagnostic.
 
+import { normalizeDeclaredSet } from "@verchestra/domain";
+
 export type DoctorErrorCode =
   | "VES_DOCTOR_CHECK_CATALOG_INVALID"
   | "VES_DOCTOR_CHECK_FACT_INVALID"
@@ -175,8 +177,10 @@ const VALID_CHECK_CODES: ReadonlySet<string> = new Set(
 );
 const VALID_CAPABILITIES: ReadonlySet<string> = new Set(Object.values(DOCTOR_CAPABILITY_IDS));
 
+// CJ4-05: the sealed doctor report's code lists are declared sets, ordered by
+// code unit rather than ambient locale.
 function sortedUnique(values: readonly string[]): readonly string[] {
-  return Object.freeze([...new Set(values)].sort((left, right) => left.localeCompare(right)));
+  return Object.freeze(normalizeDeclaredSet([...new Set(values)], (value) => value));
 }
 
 // DOC-05: the single closed payload both renderers project. Fail dominates
