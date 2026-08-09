@@ -71,6 +71,45 @@ test("a probe that throws a path-laden error never leaks it into the report", as
   assert.doesNotMatch(JSON.stringify(run.artifact), NO_PATH);
 });
 
+test("no prohibited content class reaches the sealed report: secret, DB URL, or SQLite header", async () => {
+  // spec.md DOC-06 edge case: a probe whose observation would carry a secret, a
+  // DB URL, a "SQLite format 3" header, or an absolute path is dropped before
+  // sealing. Each class is injected through a probe-thrown error; the fact
+  // catch-and-degrade plus the closed positive allowlist keep every one out of
+  // the payload and the artifact. This evidences the redaction outcome that the
+  // booleans-only observation design guarantees by construction — no separate
+  // pseudonymizer is needed because no path or value can enter the closed report.
+  const run = await runDoctor(
+    ports({
+      probes: probes({
+        "doctor.cedar-policy": () => {
+          throw new Error("postgres://svc:s3cr3tpw@db.internal:5432/prod");
+        },
+        "doctor.sqlite-durable-state": () => {
+          throw new Error("SQLite format 3 header read at /var/lib/vestra/runtime.db");
+        },
+        "doctor.secret-presence": () => {
+          throw new Error("token AKIA0EXAMPLEDEADBEEF ghp_exampletoken00000000000000000000");
+        }
+      })
+    })
+  );
+  const serialized = `${JSON.stringify(run.payload)}\n${JSON.stringify(run.artifact)}`;
+  for (const forbidden of [
+    /postgres:\/\//u,
+    /s3cr3tpw/u,
+    /SQLite format 3/u,
+    /AKIA[0-9A-Z]{16}/u,
+    /ghp_[0-9A-Za-z]{20,}/u,
+    NO_PATH
+  ])
+    assert.doesNotMatch(serialized, forbidden, `a ${String(forbidden)} class value must never reach the sealed report`);
+  for (const checkId of ["doctor.cedar-policy", "doctor.sqlite-durable-state", "doctor.secret-presence"]) {
+    const code = run.payload["doctor.check_codes"].find((entry) => entry.startsWith(`${checkId}:`));
+    assert.equal(code, `${checkId}:fail`, `${checkId} degrades to a registered fail code, carrying no leaked text`);
+  }
+});
+
 test("an under-provisioned machine reports BLOCKED with only registered codes", async () => {
   const run = await runDoctor(ports({ probes: probes({ "doctor.git": () => absent, "doctor.clock": () => absent }) }));
   assert.equal(run.verdict, "BLOCKED");
