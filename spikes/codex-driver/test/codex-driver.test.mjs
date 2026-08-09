@@ -141,3 +141,30 @@ test("keeps Codex thread and turn identities out of portable results", async () 
   assert.equal(serialized.includes("private-turn-id"), false);
   assert.equal(Object.hasOwn(result, "threadId"), false);
 });
+
+// Same npm cmd-shim rule as the Claude spike: on Windows the shim cannot be
+// spawned without a shell, so the driver resolves the package entry beside it
+// and runs it with this Node executable. Synthetic npm-global layout keeps the
+// assertion provider-free and cross-platform.
+test("resolves the Windows npm cmd-shim to the package entry beside it", async (t) => {
+  const { mkdtemp, mkdir, writeFile, rm } = await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const path = await import("node:path");
+  const { resolveCodexCommand } = await import("../src/codex-driver.mjs");
+  const bin = await mkdtemp(path.join(tmpdir(), "verchestra-codex-npm-"));
+  t.after(() => rm(bin, { recursive: true, force: true }));
+  await writeFile(path.join(bin, "codex.cmd"), "@ECHO off\r\n");
+  const entry = path.join(bin, "node_modules", "@openai", "codex", "bin", "codex.js");
+  await mkdir(path.dirname(entry), { recursive: true });
+  await writeFile(entry, 'console.log("codex-cli 0.115.0 (fixture)");\n');
+
+  const resolved = resolveCodexCommand({ platform: "win32", env: { PATH: bin }, execPath: process.execPath });
+  assert.deepEqual(resolved, [process.execPath, entry]);
+  const probe = await new CodexDriver({ command: resolved, minimumVersion: "0.115.0" }).probe();
+  assert.equal(probe.available, true);
+  assert.equal(probe.version, "0.115.0");
+
+  await rm(entry);
+  assert.deepEqual(resolveCodexCommand({ platform: "win32", env: { PATH: bin } }), ["codex"]);
+  assert.deepEqual(resolveCodexCommand({ platform: "linux", env: { PATH: bin } }), ["codex"]);
+});
