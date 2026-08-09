@@ -17,7 +17,7 @@
   },
   "dependencies": {
     "@astrojs/sitemap": "3.7.3",
-    "@astrojs/starlight": "0.41.5",
+    "@astrojs/starlight": "0.41.7",
     "@fontsource-variable/jetbrains-mono": "5.3.0",
     "@fontsource-variable/manrope": "5.3.0",
     "astro": "7.1.5",
@@ -27,7 +27,7 @@
     "@astrojs/check": "0.9.10",
     "@axe-core/playwright": "4.12.1",
     "@lhci/cli": "0.15.1",
-    "@playwright/test": "1.62.0",
+    "@playwright/test": "1.62.1",
     "typescript": "6.0.3"
   }
 }
