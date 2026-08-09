@@ -11,7 +11,7 @@ per change, independent verification and human review before completion.
 | ---------- | ----- | ---- | ------ |
 | WS-A | accd | Owner decisions, T75 remaining matrices, release engineering, human review | #217, #218, #16, #35, #17, #18 |
 | WS-B | MiguelCorre | Independent verification (T72, T74, T75 reports), install friction | #13, #15, #36 |
-| WS-C | brunomjanuario | Hardening implementation, T73 report | #58, #110, #14, #207 |
+| WS-C | brunomjanuario | Hardening implementation, T73 report | #58, #110, #14, #207, #233 |
 
 Author ≠ verifier (spec M2C-03): accd authored the T72–T74 implementations →
 MiguelCorre authors t72/t74-validation.md and brunomjanuario authors
@@ -29,7 +29,8 @@ MiguelCorre authors t75-validation.md.
 | A2 | accd | AD in `.specs/STATE.md`: context tokenizer strategy (#218) | None | AD recorded before T76 starts; issue closed referencing the AD | `docs(specs): record the tokenizer decision (#218)` |
 | A3 | accd | T75 remaining matrices (topology, Driver, database incl. SAP ASE, sandbox, installer, recovery) + signed evidence index (#16) | None (fleet already green) | Matrix runs bound to exact revisions; `pnpm gate:security` per leg; evidence index verifies | Per-slice commits on `platform-qualification-matrix` |
 | C2 | brunomjanuario | #58 completion: remaining compatibility-table rows on the canonical contract, cross-locale tests, discrimination sensor | C1 (builds on merged T4a) | Cross-locale byte-identity tests; sensor killed; `pnpm gate:security` | Per-slice commits on `canonical-json` |
-| B4 | MiguelCorre | #36: `npx vestra` or single binary running the portability demo from a clean machine | None (lands near T76) | Clean-machine demo evidence; `pnpm gate:build` | `feat(distribution): ship the single-command install path (#36)` |
+| B4 | MiguelCorre | #36: `npx vestra` launcher (shape fixed by AD-016: new publishable npm bootstrap over TUF activation; single binary deferred post-1.0) running the portability demo from a clean machine | None (lands near T76) | Clean-machine demo evidence; `pnpm gate:build` | `feat(distribution): ship the npx launcher (#36)` |
+| C6 | brunomjanuario | #233: publish the probe contract (7 connection ports + package `exports`) and parameterize the conformance kit (AD-017) | None; must land before B3 | All 7 kits accept a real implementation; no contract assertion reads fixture-private fields; `pnpm gate:security` | `feat(data-probe): publish the probe contract and conformance kit (#233)` |
 | C5 | brunomjanuario | #207: seven presence-only doctor checks upgraded to live read-only observations | A3 (fixtures exist on provisioned machines) | Architecture guard still passes; probes report from real observations; exercised in the T75 matrix | Per-slice commits on `deep-doctor` follow-up |
 | A4 | accd | #35 closure: live composed verifier session via `resolveVerifierDriver` in the T74/T75 composition roots | A3 | Evidence records the verifying driver identity; cross-driver case in the matrix | `feat(verification): compose the live independent verifier session (#35)` |
 | C4 | brunomjanuario | `docs/qualification/t73-validation.md` + atomic advance (#14) | B1 | Report contract; distribution-not-single-score check; `pnpm gate:build` | `docs(qualification): qualify T73 and advance the chain` |
@@ -42,9 +43,9 @@ MiguelCorre authors t75-validation.md.
 ## Phase map
 
 ```
-Phase 1 (parallel, start now):   B1 · C1 · C3 · A1 · A2 · A3(start) · B4(start)
+Phase 1 (parallel, start now):   B1 · C1 · C3 · A1✓ · A2✓ · A3(in progress) · B4(start) · C6(start)
 Phase 2 (after Phase 1 unblocks): C4(→B1) · C2(→C1) · C5(→A3) · A4(→A3) · B2(→C4)
-Phase 3 (T75 closure):            B3(→B2,A3,A4,C5)
+Phase 3 (T75 closure):            B3(→B2,A3,A4,C5,C6)
 Phase 4 (release):                A5(→B3,A1,A2,C2) → A6(→A5, backlog-zero)
 Continuous:                       A7
 Critical path: B1 → C4 → B2 → B3 → A5 → A6
@@ -90,6 +91,7 @@ Critical path: B1 → C4 → B2 → B3 → A5 → A6
 | A1 | M2C-05, M2C-08 | #217 |
 | A2 | M2C-05, M2C-08 | #218 |
 | B4 | M2C-05 | #36 |
+| C6 | M2C-05 | #233 |
 | A5 | M2C-05 | #17 |
 | A6 | M2C-04, M2C-05 | #18 |
 | A7 | M2C-06 | all |
@@ -118,9 +120,10 @@ applied on 2026-08-09 as part of landing this programme. Work packages
 | B1 | Planned | Pending |
 | C1 | Planned | Pending |
 | C3 | Planned | Pending |
-| A1 | Planned | Pending |
-| A2 | Planned | Pending |
-| A3 | Planned | Pending |
+| A1 | **Done** (AD-014, #217 closed) | `3f97047` (PR #228) |
+| A2 | **Done** (AD-015, #218 closed) | `3f97047` (PR #228) |
+| A3 | In progress — matrix spec (PR #229), M-2 evidence index (PR #230), F5 fix fleet-proven (PR #231), D1/D2 decided (AD-017); remaining: M-3, M-4, green 4-profile re-dispatch, evidence index signing | `3264700`, `bb04531`, `9060f7f` |
+| C6 | Planned | Pending |
 | C2 | Planned | Pending |
 | B4 | Planned | Pending |
 | C5 | Planned | Pending |
