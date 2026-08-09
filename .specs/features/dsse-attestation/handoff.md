@@ -1,14 +1,14 @@
 ---
 schema: verchestra-feature-handoff/v1
 feature: dsse-attestation
-issue: null
+issue: 217
 status: planned
 branch: main
 baseRevision: 6e0af0527d35080f178eafcfae7f00eb289378bd
 lastCompletedTask: null
 nextTask: T1
 lastGate: null
-updatedAt: 2026-07-26T17:54:19Z
+updatedAt: 2026-08-09T00:00:00Z
 ---
 
 # Scope
