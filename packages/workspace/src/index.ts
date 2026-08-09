@@ -37,6 +37,7 @@ export { MANAGED_GITIGNORE_LINES, editManagedGitignore, type ManagedGitignoreEdi
 export { INIT_PUBLIC_ERROR_DEFINITIONS, initPublicErrorRegistry } from "./init/init-errors.ts";
 export {
   SafeInitService,
+  WORKSPACE_ROOT_DIRNAME,
   buildCanonicalInitFiles,
   type InitChange,
   type InitHookContext,
