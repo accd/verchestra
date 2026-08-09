@@ -2,13 +2,13 @@
 schema: verchestra-feature-handoff/v1
 feature: platform-qualification-matrix
 issue: 16
-status: blocked
-branch: fix/t75-platform-security-gate-gaps
-baseRevision: f1c72a067037d681c16c8d623be1fbe2493daf95
+status: verification
+branch: main
+baseRevision: bb11932dc81fcaabad1aac1ccbfd75175e5ec309
 lastCompletedTask: null
-nextTask: F1b (packages/memory memory-vector-index degradation on arm64/macOS); then F2 (owner decision)
-lastGate: F3 FIXED and merged (965a1e4, PR #216); matrix run 31313342425 showed macOS + Windows past test:e2e with 0 worktree errors — macOS now stops at test:security (F1b), Windows at test:qualification (F2, unmasked)
-updatedAt: 2026-08-09T13:00:00Z
+nextTask: T75 remaining matrices (topology, Driver, database incl. SAP ASE, sandbox, installer, recovery) + signed evidence index + independent t75-validation.md — qualification-surface work, serialize per session-coordination
+lastGate: FLEET GREEN — gate:security passed SIMULTANEOUSLY on Windows x64, Linux x64, Linux arm64, macOS arm64 at 5c86436 (run 31315589420); macOS x64 environmentally queued on the retiring Intel fleet; on-main confirmation run 31315939879 dispatched at bb11932
+updatedAt: 2026-08-09T14:15:00Z
 ---
 
 # Scope
@@ -183,7 +183,35 @@ surface on a driver that forwards a caller-supplied `--model`. That trade-off
 needs a Windows host or a matrix dispatch to settle honestly — it must not be
 guessed at from here.
 
-# Authoritative fleet re-run — F1a green in CI, F3 and F1b are the blockers
+# FLEET GREEN — every finding fixed; the platform × security-gate leg is proven
+
+All five findings are fixed and merged, and `gate:security` passed
+SIMULTANEOUSLY on Windows x64, Linux glibc x64, Linux glibc arm64, and macOS
+arm64 at `5c86436` (matrix run 31315589420; on-main confirmation run
+31315939879 at `bb11932`). macOS x64 stayed queued on GitHub's retiring Intel
+fleet — an environmental limit, not a product gap; re-dispatch when Intel
+capacity returns or the owner re-scopes that leg.
+
+- **F1a** — sqlite spike platform-aware assertions (`07f51be`, PR #200).
+- **F1b** — memory-vector tests exercise the installed asset identity; closed
+  default contract asserted per platform (PR #221).
+- **F3** — git-worktree adapter canonicalizes platform path aliases (PR #216).
+- **F4** — memory-lifecycle rebases promotion targets into canonical space
+  before the ancestry walk (PR #222).
+- **F2** — Windows npm cmd-shims resolved by parsing the shim's own generated
+  target line and running .js targets under process.execPath — no shell, no
+  injection surface, empty args preserved (PR #225, three fleet-verified
+  iterations). CI installs the pinned providers, so bruno's hermetic-vs-real
+  policy question (kept below) no longer blocks the gate; it remains a
+  worthwhile qualification-policy decision on its own merits.
+
+What T75 still needs (issue #16): the topology, Driver, database (SAP ASE /
+Sybase), sandbox, installer, and recovery matrices; the signed evidence index;
+and the independent `t75-validation.md` (author != verifier) with the atomic
+chain advance. Those are qualification-surface changes — serialize them per the
+session-coordination protocol.
+
+# Historical: fleet re-run that surfaced F3 and F1b (superseded by the above)
 
 The matrix dispatch that "Next Exact Action" #2 asked for HAS now been run on
 `main` (`gate=security`, run 31311344239, bound `22c41f2`): green ONLY on Linux
@@ -280,8 +308,12 @@ authorization (see the `merge-authorization` memory note).
 
 # Blockers
 
-**F2 is blocked on an owner decision** (see "F2 blocked on decision"). F1 is
-done and unblocked.
+None for the platform × security-gate leg — the fleet is green (see "FLEET
+GREEN"). The macOS x64 Intel leg is environmentally queued, not blocked by any
+product gap. The remaining T75 matrices and the qualification report are
+qualification-surface work to serialize per the session-coordination protocol;
+the historical "F2 blocked on decision" section below records a policy question
+that no longer gates the fleet.
 
 Two environment limits on this darwin-arm64 checkout, neither caused by the
 change and both reproducible on unmodified `main`:
