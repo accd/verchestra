@@ -27,6 +27,16 @@ import { ArtifactSealer, NodeEd25519Signer, type SealedArtifact } from "@verches
 
 import { resolveReleaseIdentity } from "./release-manifest.ts";
 
+// Must name the same directory init actually writes to
+// (WORKSPACE_ROOT_DIRNAME in packages/workspace/src/init/safe-init.ts) — a
+// doctor probe that watches a directory nothing provisions reports blocked
+// forever. Kept as a plain literal rather than importing @verchestra/workspace
+// (which re-exports SafeInitService, a genuine filesystem writer) so this
+// read-only composition root's reachable graph stays read-only by contract;
+// tests/architecture/doctor-workspace-root.test.mjs statically proves the two
+// literals agree without either file importing the other.
+const WORKSPACE_ROOT_DIRNAME = ".verchestra";
+
 export interface DoctorPorts {
   readonly probes: DoctorProbeSet;
   readonly captureSentinels: () => readonly SentinelFact[];
@@ -110,20 +120,20 @@ function fileProbe(path: string): DoctorObservation {
 }
 
 function buildRealProbes(controlRoot: string, registry: SchemaRegistry | null, now: () => number): DoctorProbeSet {
-  const vestra = join(controlRoot, ".vestra");
+  const metadataRoot = join(controlRoot, WORKSPACE_ROOT_DIRNAME);
   return Object.freeze({
     "doctor.installation": installationProbe,
     "doctor.contract-schema": () => schemaProbe(registry),
-    "doctor.cedar-policy": () => fileProbe(join(vestra, "policy", "active.bundle")),
-    "doctor.sqlite-durable-state": () => fileProbe(join(vestra, "runtime.db")),
+    "doctor.cedar-policy": () => fileProbe(join(metadataRoot, "policy", "active.bundle")),
+    "doctor.sqlite-durable-state": () => fileProbe(join(metadataRoot, "runtime.db")),
     "doctor.native-asset": nativeAssetProbe,
     "doctor.git": gitProbe,
-    "doctor.secret-presence": () => fileProbe(join(vestra, "secrets")),
+    "doctor.secret-presence": () => fileProbe(join(metadataRoot, "secrets")),
     "doctor.clock": () => clockProbe(now),
-    "doctor.driver": () => fileProbe(join(vestra, "drivers")),
-    "doctor.connector": () => fileProbe(join(vestra, "connectors")),
-    "doctor.probe": () => fileProbe(join(vestra, "probe", "fixtures")),
-    "doctor.sandbox": () => fileProbe(join(vestra, "sandbox"))
+    "doctor.driver": () => fileProbe(join(metadataRoot, "drivers")),
+    "doctor.connector": () => fileProbe(join(metadataRoot, "connectors")),
+    "doctor.probe": () => fileProbe(join(metadataRoot, "probe", "fixtures")),
+    "doctor.sandbox": () => fileProbe(join(metadataRoot, "sandbox"))
   });
 }
 

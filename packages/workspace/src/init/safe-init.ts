@@ -13,7 +13,8 @@ import {
 import { scanWorkspace } from "../scanner/workspace-scanner.ts";
 
 const execute = promisify(execFile);
-const MANIFEST_PATH = ".verchestra/generated-manifest.json";
+export const WORKSPACE_ROOT_DIRNAME = ".verchestra" as const;
+const MANIFEST_PATH = `${WORKSPACE_ROOT_DIRNAME}/generated-manifest.json`;
 const STAGING_NAME = /^\.staging-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 const DIGEST = /^sha256:[a-f0-9]{64}$/u;
 const DIGEST_V2 = /^v2:sha256:[a-f0-9]{64}$/u;
@@ -83,7 +84,7 @@ async function optionalText(path: string): Promise<string | undefined> {
 }
 
 async function pendingStaging(root: string): Promise<readonly string[]> {
-  const metadataRoot = join(root, ".verchestra");
+  const metadataRoot = join(root, WORKSPACE_ROOT_DIRNAME);
   try {
     return Object.freeze(
       normalizeDeclaredSet(
@@ -227,7 +228,7 @@ function ownershipManifest(desired: ReadonlyMap<string, string>, generatorVersio
 }
 
 async function removeEmptyParents(root: string, targets: readonly string[]): Promise<void> {
-  const metadataRoot = join(root, ".verchestra");
+  const metadataRoot = join(root, WORKSPACE_ROOT_DIRNAME);
   const directories = new Set<string>();
   for (const target of targets) {
     let current = dirname(target);
@@ -316,7 +317,7 @@ export class SafeInitService {
         throw new WorkspaceScanError("VES_INIT_PREVIEW_STALE", "Init target changed after preview");
     }
     if (preview.changes.length === 0) return Object.freeze({ planId: preview.planId, changed: 0 });
-    const staging = join(context.root, ".verchestra", `.staging-${randomUUID()}`);
+    const staging = join(context.root, WORKSPACE_ROOT_DIRNAME, `.staging-${randomUUID()}`);
     const applied: { target: string; backup?: string }[] = [];
     const targets = preview.changes.map((change) => join(context.root, ...change.logicalPath.split("/")));
     try {
