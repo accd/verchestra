@@ -143,3 +143,37 @@ for (const [name, overrides] of [
     assert.throws(() => decide(overrides), { code: "VES_PROMOTION_INPUT_INVALID" });
   });
 }
+
+// CJ4-03/CJ4-07: canonicalizeOracle orders entries by code unit, not by
+// whatever order the caller happened to declare them or by ambient locale.
+test("canonicalizeOracle orders entries by campaignId regardless of declaration order", () => {
+  const forward = oracle();
+  const reversed = { policyId: forward.policyId, entries: [...forward.entries].reverse() };
+  assert.equal(canonicalizeOracle(forward), canonicalizeOracle(reversed));
+});
+
+test("canonicalizeOracle produces byte-identical output under two different ambient locales", () => {
+  const value = {
+    policyId: "release-policy",
+    entries: [
+      { campaignId: "camp-z", threshold: 0.9, repetitionCount: 1 },
+      { campaignId: "camp-a", threshold: 0.85, repetitionCount: 50 }
+    ]
+  };
+  const priorLang = process.env.LANG;
+  const priorLcAll = process.env.LC_ALL;
+  try {
+    process.env.LANG = "en_US.UTF-8";
+    process.env.LC_ALL = "en_US.UTF-8";
+    const first = canonicalizeOracle(value);
+    process.env.LANG = "fr_FR.UTF-8";
+    process.env.LC_ALL = "fr_FR.UTF-8";
+    const second = canonicalizeOracle(value);
+    assert.equal(first, second);
+  } finally {
+    if (priorLang === undefined) delete process.env.LANG;
+    else process.env.LANG = priorLang;
+    if (priorLcAll === undefined) delete process.env.LC_ALL;
+    else process.env.LC_ALL = priorLcAll;
+  }
+});
