@@ -128,7 +128,7 @@ applied on 2026-08-09 as part of landing this programme. Work packages
 
 | Task | Status | Commit |
 | ---- | ------ | ------ |
-| B1 | Planned | Pending |
+| B1 | **Done** — independent report, 5/5 sensor, quick/security gates, atomic advance | PR #246 (report binds `2b628af`; run 31330393346) |
 | C1 | Planned | Pending |
 | C3 | Planned | Pending |
 | A1 | **Done** (AD-014, #217 closed) | `3f97047` (PR #228) |
