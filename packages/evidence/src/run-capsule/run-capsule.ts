@@ -3,7 +3,12 @@ import { mkdirSync } from "node:fs";
 import { link, lstat, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { join, relative, resolve } from "node:path";
 
-import { ArtifactSealer, sealedProjectionMatches } from "../integrity/artifact-sealer.ts";
+import {
+  ArtifactSealer,
+  dsseEnvelopeOf,
+  sealedArtifactFromEnvelope,
+  sealedProjectionMatches
+} from "../integrity/artifact-sealer.ts";
 import { canonicalizeJson, sha256Digest } from "../integrity/canonical.ts";
 import type { JsonValue, SealedArtifact, TrustRoot } from "../integrity/types.ts";
 
@@ -607,7 +612,8 @@ export class FileRunCapsuleStore {
     const root = await safeRoot(this.#root);
     const target = join(root, `${artifact.artifactId}.json`);
     await safeTarget(root, target);
-    const bytes = `${canonicalizeJson(artifact as unknown as JsonValue)}\n`;
+    // The persisted object IS the DSSE envelope (#248); flat fields derive on read.
+    const bytes = `${canonicalizeJson(dsseEnvelopeOf(artifact) as unknown as JsonValue)}\n`;
     try {
       const existing = await readFile(target, "utf8");
       if (existing !== bytes) fail("VES_RUN_CAPSULE_STORAGE_CONFLICT", "Capsule target contains different bytes");
@@ -641,7 +647,7 @@ export class FileRunCapsuleStore {
     await safeTarget(root, target);
     let artifact: SignedRunCapsule;
     try {
-      artifact = JSON.parse(await readFile(target, "utf8")) as SignedRunCapsule;
+      artifact = sealedArtifactFromEnvelope(JSON.parse(await readFile(target, "utf8"))) as SignedRunCapsule;
     } catch (error) {
       throw new RunCapsuleError("VES_RUN_CAPSULE_STORAGE_INTEGRITY", "Stored Capsule is unreadable", {
         cause: error

@@ -4,6 +4,7 @@ import { canonicalizeJson, IntegrityError, sha256Digest } from "./canonical.ts";
 import {
   buildStatement,
   DSSE_PAYLOAD_TYPE,
+  IN_TOTO_STATEMENT_TYPE,
   preAuthenticationEncoding,
   predicateTypeFor,
   statementBytes
@@ -12,6 +13,7 @@ import type { EvidenceSigner } from "./key-provider.ts";
 import type {
   ArtifactBinding,
   DsseEnvelope,
+  InTotoStatement,
   JsonValue,
   PublicKeyRef,
   SealedArtifact,
@@ -189,6 +191,81 @@ function openEnvelope<T extends JsonValue>(
   } catch {
     return refused;
   }
+}
+
+/**
+ * Rebuild a sealed artifact from nothing but its DSSE envelope.
+ *
+ * This is the inverse of sealing, and it is what lets the envelope be the only
+ * thing persisted. Every flat field is *derived* from the signed Statement
+ * rather than stored beside it, so a stored projection cannot disagree with
+ * what was signed — the disagreement is not detected, it is impossible.
+ *
+ * Throws `VES_ENVELOPE_UNSUPPORTED` for anything that is not a DSSE envelope
+ * carrying an in-toto Statement of a declared predicate type. Callers convert
+ * that to their own storage-integrity code.
+ */
+function assertEnvelopeShape(value: unknown): asserts value is DsseEnvelope {
+  const envelope = value as DsseEnvelope;
+  if (
+    envelope === null ||
+    typeof envelope !== "object" ||
+    envelope.payloadType !== DSSE_PAYLOAD_TYPE ||
+    typeof envelope.payload !== "string" ||
+    !Array.isArray(envelope.signatures) ||
+    envelope.signatures.length !== 1 ||
+    typeof envelope.signatures[0]?.keyid !== "string"
+  ) {
+    throw new IntegrityError("VES_ENVELOPE_UNSUPPORTED", "Stored artifact is not a DSSE envelope");
+  }
+}
+
+function decodeStatement<T extends JsonValue>(envelope: DsseEnvelope): InTotoStatement<T> {
+  let statement: InTotoStatement<T>;
+  try {
+    statement = JSON.parse(Buffer.from(envelope.payload, "base64").toString("utf8")) as InTotoStatement<T>;
+  } catch (error) {
+    throw new IntegrityError("VES_ENVELOPE_UNSUPPORTED", "Stored envelope payload is not JSON", { cause: error });
+  }
+  if (!isDeclaredAttestation(statement)) {
+    throw new IntegrityError("VES_ENVELOPE_UNSUPPORTED", "Stored envelope is not a declared Verchestra attestation");
+  }
+  return statement;
+}
+
+function isDeclaredAttestation(statement: InTotoStatement | undefined): boolean {
+  const binding = statement?.predicate?.binding;
+  return (
+    statement?._type === IN_TOTO_STATEMENT_TYPE &&
+    binding !== undefined &&
+    typeof statement.subject?.[0]?.digest?.sha256 === "string" &&
+    predicateTypeFor(binding.schema) === statement.predicateType
+  );
+}
+
+export function sealedArtifactFromEnvelope<T extends JsonValue = JsonValue>(value: unknown): SealedArtifact<T> {
+  assertEnvelopeShape(value);
+  const envelope = value;
+  const statement = decodeStatement<T>(envelope);
+  const binding = statement.predicate.binding;
+  const payloadDigest = statement.subject[0]?.digest.sha256 as string;
+  return Object.freeze({
+    artifactId: sha256Digest(statement),
+    schema: Object.freeze({ ...binding.schema }),
+    purpose: binding.purpose,
+    bindingId: binding.bindingId,
+    sourceStateDigest: binding.sourceStateDigest,
+    algorithm: "Ed25519" as const,
+    keyId: envelope.signatures[0]?.keyid as string,
+    issuedAt: binding.issuedAt,
+    payloadDigest,
+    payload: statement.predicate.content,
+    dsse: Object.freeze({
+      payloadType: envelope.payloadType,
+      payload: envelope.payload,
+      signatures: Object.freeze([Object.freeze({ ...(envelope.signatures[0] as { keyid: string; sig: string }) })])
+    })
+  });
 }
 
 /** The interoperable object: exactly the three DSSE fields, nothing else. */

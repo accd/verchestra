@@ -3,7 +3,12 @@ import { mkdirSync } from "node:fs";
 import { link, lstat, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve } from "node:path";
 
-import { ArtifactSealer, sealedProjectionMatches } from "../integrity/artifact-sealer.ts";
+import {
+  ArtifactSealer,
+  dsseEnvelopeOf,
+  sealedArtifactFromEnvelope,
+  sealedProjectionMatches
+} from "../integrity/artifact-sealer.ts";
 import { canonicalizeJson, sha256Digest } from "../integrity/canonical.ts";
 import type { JsonValue, SealedArtifact, TrustRoot } from "../integrity/types.ts";
 
@@ -970,7 +975,10 @@ export class FileExecutionPackageStore {
     const root = await safeRoot(this.#configuredRoot);
     const target = join(root, `${artifact.artifactId}.json`);
     await safeTarget(root, target);
-    const bytes = `${canonicalizeJson(artifact as unknown as JsonValue)}\n`;
+    // The persisted object IS the DSSE envelope (#248). The flat fields are
+    // derived on read, so a stored projection cannot disagree with what was
+    // signed — the disagreement becomes impossible rather than merely detected.
+    const bytes = `${canonicalizeJson(dsseEnvelopeOf(artifact) as unknown as JsonValue)}\n`;
     try {
       const existing = await readFile(target, "utf8");
       if (existing !== bytes)
@@ -1012,7 +1020,7 @@ export class FileExecutionPackageStore {
     await safeTarget(root, target);
     let artifact: SignedExecutionPackage;
     try {
-      artifact = JSON.parse(await readFile(target, "utf8")) as SignedExecutionPackage;
+      artifact = sealedArtifactFromEnvelope(JSON.parse(await readFile(target, "utf8"))) as SignedExecutionPackage;
     } catch (error) {
       throw new ExecutionPackageError(
         "VES_EXECUTION_PACKAGE_STORAGE_INTEGRITY",

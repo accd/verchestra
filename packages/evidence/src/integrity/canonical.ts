@@ -13,6 +13,10 @@ export type IntegrityErrorCode =
   | "VES_INTEGRITY_INVALID_BINDING"
   | "VES_SIGNING_PURPOSE_DENIED"
   | "VES_TRUST_ROOT_INVALID"
+  // Thrown when a stored artifact is not a DSSE envelope carrying a declared
+  // in-toto attestation. Shares the name of the verification result code so the
+  // same condition reads the same whether it is thrown or returned.
+  | "VES_ENVELOPE_UNSUPPORTED"
   | KeyLifecycleErrorCode;
 
 export class IntegrityError extends Error {

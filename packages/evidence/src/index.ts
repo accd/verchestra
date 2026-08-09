@@ -3,6 +3,7 @@ export {
   ArtifactSealer,
   createTrustRoot,
   dsseEnvelopeOf,
+  sealedArtifactFromEnvelope,
   sealedArtifactId,
   sealedProjectionMatches
 } from "./integrity/artifact-sealer.ts";
