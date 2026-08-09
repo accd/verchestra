@@ -4,6 +4,8 @@
 // a verdict can never be read from a single cherry-picked run. The frozen corpus
 // and its reproducible fixtures live under tests/public-regression.
 
+import { normalizeDeclaredSet } from "@verchestra/domain";
+
 export type CampaignErrorCode = "VES_CAMPAIGN_CORPUS_INVALID" | "VES_CAMPAIGN_SUMMARY_INVALID";
 
 export class CampaignError extends Error {
@@ -204,7 +206,10 @@ export function assertCampaignSummary(payload: CampaignSummaryPayload): void {
 }
 
 // The corpus verdict is PASS only when every campaign passed: a public corpus
-// does not average away a regression.
+// does not average away a regression. Results are a declared set keyed by
+// campaign id, so they are normalized to code-unit order (CJ4-04) rather than
+// sorted by ambient locale — public evidence must reproduce byte-identically
+// regardless of the machine that generated it.
 export function buildCampaignSummary(
   results: readonly CampaignRunResult[],
   corpusDigest: string,
@@ -216,18 +221,16 @@ export function buildCampaignSummary(
     campaignCount: results.length,
     verdict: results.every((result) => result.verdict === "PASS") ? "PASS" : "FAIL",
     campaigns: Object.freeze(
-      [...results]
-        .sort((left, right) => left.id.localeCompare(right.id))
-        .map((result) =>
-          Object.freeze({
-            id: result.id,
-            requirement: requirementOf.get(result.id) ?? "UNKNOWN",
-            verdict: result.verdict,
-            samples: result.samples,
-            passRate: result.passRate,
-            lowerConfidenceBound: result.lowerConfidenceBound
-          })
-        )
+      normalizeDeclaredSet(results, (result) => result.id).map((result) =>
+        Object.freeze({
+          id: result.id,
+          requirement: requirementOf.get(result.id) ?? "UNKNOWN",
+          verdict: result.verdict,
+          samples: result.samples,
+          passRate: result.passRate,
+          lowerConfidenceBound: result.lowerConfidenceBound
+        })
+      )
     )
   });
   assertCampaignSummary(payload);

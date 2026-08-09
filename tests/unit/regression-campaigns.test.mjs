@@ -112,6 +112,40 @@ test("one failing campaign fails the whole corpus summary", () => {
   assert.equal(buildCampaignSummary(results, DIGEST, defs).verdict, "FAIL");
 });
 
+// CJ4-04/CJ4-07: the summary's campaign ordering is a property of the ids
+// themselves, not of the order results were produced in or the machine's
+// ambient locale — required for byte-reproducible public evidence.
+test("the summary orders campaigns by id regardless of result declaration order", () => {
+  const defs = corpus();
+  const forward = defs.map((def) => evaluateCampaign(def, [true]));
+  const reversed = [...forward].reverse();
+  assert.deepEqual(
+    buildCampaignSummary(forward, DIGEST, defs).campaigns,
+    buildCampaignSummary(reversed, DIGEST, defs).campaigns
+  );
+});
+
+test("the summary's campaign order is byte-identical under two different ambient locales", () => {
+  const defs = corpus();
+  const results = defs.map((def) => evaluateCampaign(def, [true]));
+  const priorLang = process.env.LANG;
+  const priorLcAll = process.env.LC_ALL;
+  try {
+    process.env.LANG = "en_US.UTF-8";
+    process.env.LC_ALL = "en_US.UTF-8";
+    const first = buildCampaignSummary(results, DIGEST, defs);
+    process.env.LANG = "fr_FR.UTF-8";
+    process.env.LC_ALL = "fr_FR.UTF-8";
+    const second = buildCampaignSummary(results, DIGEST, defs);
+    assert.deepEqual(first.campaigns, second.campaigns);
+  } finally {
+    if (priorLang === undefined) delete process.env.LANG;
+    else process.env.LANG = priorLang;
+    if (priorLcAll === undefined) delete process.env.LC_ALL;
+    else process.env.LC_ALL = priorLcAll;
+  }
+});
+
 for (const [name, mutate] of [
   [
     "an invalid corpus digest",
