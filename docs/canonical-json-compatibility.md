@@ -71,6 +71,34 @@ comparison fails closed where identities are not interchangeable.
 | Workspace: `scanner/scanner-primitives.ts`, consumed by `workspace-scanner.ts`, `init/safe-init.ts`, and `placement/artifact-placement.ts` | Repository IDs, discovery keys, inventory fingerprints, init/recovery plan IDs, and write-plan IDs | portable + persistent plan identity | **Migrated (T3).** `buildInventoryFingerprintV2` (RFC 8785, `v2:sha256:` prefix) for repository IDs, discovery keys, inventory fingerprints, write-plan IDs, and new init preview/recovery journal plan IDs; `buildInventoryFingerprint` (V1, byte-identical, `sha256:` prefix) stays exported and is still the only verifier for a `schemaVersion: 1` init recovery journal. | Done. `init/safe-init.ts`'s recovery journal envelope carries an explicit `schemaVersion` (1 or 2) and dispatches its verifier on that recorded version, failing closed on any version/prefix disagreement — see `packages/workspace/src/init/safe-init.ts:parseRecoveryJournal`. |
 | Platform Node: `git-worktree-adapter.ts` | Worktree `changeDigest`, committed and verified as `Verchestra-Change` by the gate-commit flow | persistent gate authority | SHA-256 of `JSON.stringify(manifest)` | Version change-digest material with the gate plan/checkpoint/receipt migration; retain V1 resume verification. |
 | Platform Node: `runtime-store/runtime-store.ts` | Persisted active policy-view digest verification | persistent local authority | Recursive serializer with ambient locale ordering | Migrate with policy-view schema/versioning; retain V1 stored-view verification and fail closed across versions. |
+| Application promotion: `promotion-gate.ts` | `canonicalizeOracle`'s sealed `holdoutDigest`; the `evaluatePromotion` `blocks` ordering feeding the report `bodyDigest` | signed persistent identity | Hand-rolled `JSON.stringify` with `Array.prototype.sort(...localeCompare)` for both the oracle entries and the blocks list | **Scheduled for T4a.** To migrate to V2 with `normalizeDeclaredSet`; both digests to become locale-independent. |
+| Application regression: `campaigns.ts` | Campaign ordering inside `canonicalizeCorpus`/`buildCampaignSummary`, validated against `regression-campaign-summary@1` | persistent (schema-validated release evidence) | Array `.sort(...localeCompare)` before payload assembly | **Scheduled for T4a.** To migrate to V2 with explicit set normalization; corpus digest to become locale-independent. |
+| Application doctor: `doctor.ts` | `sortedUnique` orders capability/check lists inside the sealed, signed `doctor-report` payload | signed persistent identity | `.sort(...localeCompare)` | **Scheduled for T4a.** To migrate to V2 code-unit ordering. |
+| Application self-test: `self-test.ts` (`semanticFingerprint`, line ~292) | Ordered `checkId:status` pairs, compared directly by `assertConvergence` across two independently provisioned runs; not itself hashed or sealed in this file | presentation (direct list comparison, not a digest input) — **see T4a resolution below** | `.sort(...localeCompare)` | **Scheduled for T4a resolution.** To migrate to code-unit ordering regardless of the presentation classification: locale-dependent order could make two genuinely convergent runs compare as non-convergent (`VES_SELFTEST_NONCONVERGENT`) under different ambient locales — a portability defect even though no signed digest is at stake. |
+| Evidence: `execution-package/execution-package.ts` | 11 `.sort(...localeCompare)` call sites ordering artifact refs, requirements, tasks, and role/gate/criterion lists before they are canonicalized by the qualified `canonicalizeJson`/`sha256Digest` (`../integrity/canonical.ts`) into signed `Execution Package` digests | signed + persistent authority | Array ordering by `localeCompare` upstream of the qualified V1 canonicalizer; the canonicalizer itself is not the risk, the pre-sort is | **Understated by the original T2 inventory**, which covered only `canonical.ts` itself. Belongs to the evidence vertical (T4i, highest risk — signed); out of scope for T4a. |
+
+## T4 slice ordering
+
+T4 (issue #58's remaining ~15 owners) is executed as ten independently
+reviewed slices, sequenced by risk and by whether the owner's bytes are
+already qualified/persisted. Constraints below are the matrix's own
+migrate-together and migrate-after rules.
+
+| Slice | Owners | Risk | Rationale |
+| --- | --- | --- | --- |
+| T4a | `promotion-gate.ts`, `campaigns.ts`, `doctor.ts`, `self-test.ts` | Low | Merged by T72–T74 (2026-08-07); no `docs/qualification/t72\|t73\|t74-validation.md` exists yet, so these bytes have never been frozen. Migrating before qualification costs zero backward-compatibility work. |
+| T4b | `authority.ts`, `work-claims.ts` | Medium | Persistent authority bindings. |
+| T4c | `gate-commit.ts` + `git-worktree-adapter.ts` `changeDigest` | Medium-high | Durable resume path; migrate together per the matrix. |
+| T4d | `cedar-policy.ts` + `runtime-store.ts` | Medium | Matrix requires migrating together (policy-view schema/versioning). |
+| T4e | `context-compiler.ts` + `source-snapshots.ts` | Medium | Matrix requires migrating together. |
+| T4f | `trust-egress.ts`, `handoff/validation.ts` | Medium | Portable persistent identities. |
+| T4g | `workspace-reconcile.ts`, `effect-contract.ts` | High | Durable idempotency keys. |
+| T4h | `database-knowledge.ts` + 7 adapters | Medium | Wide fan-out, uniform pattern. |
+| T4i | `canonical.ts` V1 facade + `execution-package.ts` | Highest | Signed evidence; the 11 pre-sort sites above must migrate with the facade. |
+| T4j | `hermetic-bundle.ts` then `transactional-activation.ts` | Highest | Release identity; matrix requires this order. |
+
+`tuf-update-client.ts` stays classified separately (no structured digest at
+write) and is not a T4 slice.
 
 ## Completed vertical slice (T3)
 
