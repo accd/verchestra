@@ -75,14 +75,17 @@ export const guarantees = [
 
 export const drivers = ["Claude Code", "Codex", "OpenCode / Qwen"] as const;
 
+// SQLite leads because it is the only engine this repository live-qualifies
+// itself (real driver through the supervisor bounds); the rest are
+// contract-verified here and live-qualified at the edge per AD-017.
 export const databases = [
-  "SAP ASE / Sybase",
-  "PostgreSQL",
-  "MySQL / MariaDB",
-  "SQL Server",
-  "Oracle",
   "SQLite",
-  "MongoDB"
+  "MongoDB",
+  "MySQL / MariaDB",
+  "Oracle",
+  "PostgreSQL",
+  "SAP ASE / Sybase",
+  "SQL Server"
 ] as const;
 
 // One typed source for what actually works, so the homepage, the README, and

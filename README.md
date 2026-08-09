@@ -127,7 +127,7 @@ sequenceDiagram
 | Area                  | Current surface                                                                                                  |
 | --------------------- | ---------------------------------------------------------------------------------------------------------------- |
 | AI drivers            | Claude Code, Codex, OpenCode / Qwen                                                                              |
-| Read-only data probes | PostgreSQL, MySQL / MariaDB, SQL Server, SAP ASE / Sybase, Oracle, SQLite, MongoDB                               |
+| Read-only data probes | SQLite (live-qualified), MongoDB, MySQL / MariaDB, Oracle, PostgreSQL, SAP ASE / Sybase, SQL Server              |
 | Workspaces            | Single repositories, colocated projects, centralized monorepo control, and nested projects                       |
 | Evidence              | Signed packages, run capsules, recovery bundles, support bundles, provenance, and TUF-backed distribution inputs |
 | Governance            | Cedar policy, approvals, claims, leases, egress control, independent verification, human review                  |

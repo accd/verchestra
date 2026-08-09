@@ -66,9 +66,16 @@ test("keeps canonical repository documents out of the site-specific content tree
   }
 });
 
-test("keeps SAP ASE first-class in the public database matrix", async () => {
+// Policy changed by AD-017 (owner, 2026-08-09): SQLite leads as the only
+// engine this repository live-qualifies itself; every other engine is
+// contract-verified here and live-qualified at the edge. The old assertion
+// pinned SAP ASE first — that primacy claim is exactly what AD-017 retired.
+test("the public database matrix leads with the live-qualified engine and states the edge model", async () => {
   const matrix = await readFile(resolve(docsRoot, "integrations/database-capability-matrix.md"), "utf8");
+  const sqlite = matrix.indexOf("| SQLite");
   const sap = matrix.indexOf("SAP ASE / Sybase");
-  const postgres = matrix.indexOf("PostgreSQL");
-  assert.ok(sap > -1 && postgres > -1 && sap < postgres);
+  assert.ok(sqlite > -1 && sap > -1 && sqlite < sap, "SQLite must lead the matrix");
+  assert.match(matrix, /Live-qualified.*SQLite only/u, "the matrix must scope the live claim to SQLite");
+  assert.match(matrix, /qualifies \*\*at the edge\*\*/u, "the matrix must state the edge-qualification model");
+  assert.doesNotMatch(matrix, /\*\*SAP ASE \/ Sybase\*\*/u, "no engine keeps bold primacy in the table");
 });
