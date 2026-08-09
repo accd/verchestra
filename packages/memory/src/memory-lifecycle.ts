@@ -275,16 +275,24 @@ async function optionalBytes(path: string): Promise<Buffer | undefined> {
 
 async function assertSafeTarget(root: string, target: string): Promise<void> {
   const canonicalRoot = await realpath(root);
+  // Rebase the target into canonical space before any ancestry comparison. The
+  // caller builds targets under the root as it was configured, and that form is
+  // routinely an alias of the canonical directory — macOS resolves /var into
+  // /private/var and Windows expands 8.3 names such as RUNNER~1 — so comparing
+  // an aliased ancestry against the canonical root reports a false escape on
+  // exactly those platforms. A target that lexically leaves the root still
+  // rebases outside canonicalRoot and fails the walk below unchanged.
+  const canonicalTargetPath = resolve(canonicalRoot, relative(root, target));
   try {
-    if ((await lstat(target)).isSymbolicLink())
+    if ((await lstat(canonicalTargetPath)).isSymbolicLink())
       throw new MemoryLifecycleError("VES_MEMORY_PROMOTION_TARGET_INVALID", "Target is a link");
-    const canonicalTarget = await realpath(target);
+    const canonicalTarget = await realpath(canonicalTargetPath);
     if (relative(canonicalRoot, canonicalTarget).startsWith(".."))
       throw new MemoryLifecycleError("VES_MEMORY_PROMOTION_TARGET_INVALID", "Target leaves its owner");
   } catch (error) {
     if ((error as { readonly code?: unknown }).code !== "ENOENT") throw error;
   }
-  let current = dirname(target);
+  let current = dirname(canonicalTargetPath);
   const ancestors: string[] = [];
   while (current !== canonicalRoot) {
     const fromRoot = relative(canonicalRoot, current);

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
-import { access, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { tmpdir } from "node:os";
 import { DatabaseSync } from "node:sqlite";
 import { test } from "node:test";
 
@@ -328,4 +329,43 @@ test("external-control placement never writes into an ignored project root", asy
   assert.equal(plan.writePlan.writes[0].gitOwnerId, controlOwnerId);
   assert.match(plan.writePlan.writes[0].logicalPath, /^\.verchestra\/projects\/api/u);
   lifecycle.close();
+});
+
+// Regression for the platform matrix's darwin failure: macOS resolves the temp
+// root /var into /private/var and Windows expands 8.3 names such as RUNNER~1,
+// so every configured root is routinely an alias of its canonical directory.
+// assertSafeTarget compared an aliased ancestry against the canonical root and
+// reported "Target ancestry escapes its owner" for perfectly contained targets.
+// A directory link (junction on Windows, symlink on POSIX) reproduces the alias
+// on any platform; the full lifecycle must operate through it.
+test("lifecycle operates through roots reached by a canonicalizing directory link", async () => {
+  const paths = await lifecycleRoot();
+  const aliasParent = await mkdtemp(join(tmpdir(), "verchestra-lifecycle-alias-"));
+  const alias = join(aliasParent, "alias");
+  await symlink(paths.root, alias, "junction");
+  assert.notEqual(alias, await realpath(alias), "the alias must canonicalize to a different path");
+
+  const lifecycle = new MemoryPromotionLifecycle({
+    dbPath: paths.dbPath,
+    objectRoot: join(alias, "objects"),
+    ownerRoots: { [controlOwnerId]: join(alias, "control") },
+    artifactPlanner: paths.artifactPlanner,
+    now: () => now
+  });
+  lifecycle.open();
+
+  // Object storage + garbage collection walk assertSafeTarget on the aliased
+  // object root.
+  await lifecycle.registerObject(objectInput(1));
+  const plan = lifecycle.planGarbageCollection({ schemaVersion: 1, workspaceId, evaluatedAt: now, quotaBytes: 0 });
+  await lifecycle.applyGarbageCollection(plan);
+
+  // Promotion publishes through the aliased owner root.
+  const promotion = lifecycle.proposePromotion(promotionInput());
+  const outcome = await lifecycle.applyPromotion(promotion, approval(promotion));
+  assert.equal(outcome.outcome, "published");
+  const published = join(paths.controlRoot, ...promotion.writePlan.writes[0].logicalPath.split("/"));
+  assert.equal((await readFile(published, "utf8")).length > 0, true);
+  lifecycle.close();
+  await rm(aliasParent, { recursive: true, force: true });
 });
