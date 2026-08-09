@@ -6,13 +6,12 @@ import { MySqlFamilyFixtureConnection } from "../../packages/data-probe/src/mysq
 import { OracleFixtureConnection } from "../../packages/data-probe/src/oracle-adapter.ts";
 import { PostgreSqlFixtureConnection } from "../../packages/data-probe/src/postgresql-adapter.ts";
 import { SapAseFixtureConnection } from "../../packages/data-probe/src/sap-ase-adapter.ts";
-import { SqliteFixtureConnection } from "../../packages/data-probe/src/sqlite-adapter.ts";
+import { SqliteReadConnection } from "../../packages/data-probe/src/sqlite-adapter.ts";
 import { SqlServerFixtureConnection } from "../../packages/data-probe/src/sqlserver-adapter.ts";
 import { mongoDbFixture } from "../helpers/mongodb-probe-fixture.mjs";
 import { mysqlFamilyFixture } from "../helpers/mysql-family-probe-fixture.mjs";
 import { oracleFixture } from "../helpers/oracle-probe-fixture.mjs";
 import { postgresFixture } from "../helpers/postgresql-probe-fixture.mjs";
-import { SqliteReadConnection } from "../../packages/data-probe/src/sqlite-adapter.ts";
 import { realSqliteFixture } from "../helpers/sqlite-probe-fixture.mjs";
 import { sapAseFixture } from "../helpers/sap-ase-probe-fixture.mjs";
 import { sqlServerFixture } from "../helpers/sqlserver-probe-fixture.mjs";
