@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import { canonicalizeJsonV2 } from "@verchestra/domain";
+import { canonicalizeJsonV2, formatCanonicalDigestV2 } from "@verchestra/domain";
 
 export class WorkspaceScanError extends Error {
   readonly code: string;
@@ -136,5 +136,5 @@ export function buildInventoryFingerprintV2(value: unknown): string {
       cause: error
     });
   }
-  return `v2:sha256:${createHash("sha256").update(bytes, "utf8").digest("hex")}`;
+  return formatCanonicalDigestV2(createHash("sha256").update(bytes, "utf8").digest("hex"));
 }

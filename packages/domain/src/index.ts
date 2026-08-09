@@ -2,6 +2,7 @@ export const packageName = "@verchestra/domain" as const;
 export * from "./canonical/canonical-json.ts";
 export * from "./canonical/canonical-guard.ts";
 export * from "./canonical/canonical-sets.ts";
+export * from "./canonical/canonical-digest.ts";
 export * from "./errors/core-errors.ts";
 export * from "./errors/public-error.ts";
 export * from "./primitives/actor.ts";
