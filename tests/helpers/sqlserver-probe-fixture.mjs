@@ -46,7 +46,7 @@ export async function sqlServerFixture(options = {}) {
     )
   );
   const results = new MemoryProbeResultSink();
-  const connection = new SqlServerFixtureConnection(options.connection);
+  const connection = options.realConnection ?? new SqlServerFixtureConnection(options.connection);
   const worker = new SqlServerProbeAdapter({ connection });
   const supervisor = new ProbeWorkerSupervisor({
     worker,

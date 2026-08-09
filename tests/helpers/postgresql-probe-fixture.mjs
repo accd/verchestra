@@ -42,7 +42,7 @@ export async function postgresFixture(options = {}) {
     new TextEncoder().encode(JSON.stringify(sqlRequest(options.sql, options.parameters)))
   );
   const results = new MemoryProbeResultSink();
-  const connection = new PostgreSqlFixtureConnection(options.connection);
+  const connection = options.realConnection ?? new PostgreSqlFixtureConnection(options.connection);
   const worker = new PostgreSqlProbeAdapter({ connection });
   const supervisor = new ProbeWorkerSupervisor({
     worker,

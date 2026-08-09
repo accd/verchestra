@@ -76,7 +76,7 @@ export async function mongoDbFixture(options = {}) {
     )
   );
   const results = new MemoryProbeResultSink();
-  const connection = new MongoDbFixtureConnection(options.connection);
+  const connection = options.realConnection ?? new MongoDbFixtureConnection(options.connection);
   const worker = new MongoDbProbeAdapter({ connection });
   const supervisor = new ProbeWorkerSupervisor({
     worker,
