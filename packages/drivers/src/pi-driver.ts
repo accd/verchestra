@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { readFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import {
   DriverProtocolError,
   validateDriverStartRequest,
@@ -9,7 +11,7 @@ import {
 } from "./index.ts";
 
 const PI_PACKAGE = "@earendil-works/pi-agent-core";
-const PI_VERSION = "0.82.1";
+const QUALIFIED_PI_VERSION = "0.82.1";
 
 interface PiModel {
   readonly id: string;
@@ -66,6 +68,26 @@ async function loadPiAgentConstructor(): Promise<PiAgentConstructor> {
   throw piError("VES_PI_RUNTIME_UNAVAILABLE", "Pi runtime is unavailable");
 }
 
+// The probe has to be able to fail, so it reads the version the host actually
+// installed rather than reporting a constant. Pi is an embedded SDK, not a CLI,
+// so the observation is its resolved manifest instead of a `--version` spawn;
+// the package exports "./package.json", which is what makes this resolvable
+// without reaching into node_modules by path.
+async function installedPiVersion(resolver: PiVersionResolver): Promise<string | undefined> {
+  try {
+    const manifest = JSON.parse(await readFile(await resolver(), "utf8")) as { readonly version?: unknown };
+    return typeof manifest.version === "string" ? manifest.version : undefined;
+  } catch {
+    // Absent, unresolvable, or unreadable are one observation: not installed.
+    return undefined;
+  }
+}
+
+export type PiVersionResolver = () => Promise<string> | string;
+
+const defaultVersionResolver: PiVersionResolver = () =>
+  createRequire(import.meta.url).resolve(`${PI_PACKAGE}/package.json`);
+
 export interface PiExecution {
   readonly passport: {
     readonly passportId: string;
@@ -121,16 +143,38 @@ export class PiDriver implements Driver {
   readonly #dependencies: PiDriverDependencies;
   readonly #sessions = new Map<string, PiSession>();
   readonly #closedSessions = new Set<string>();
+  readonly #resolveVersion: PiVersionResolver;
 
-  constructor(dependencies: PiDriverDependencies) {
+  constructor(dependencies: PiDriverDependencies, options: { readonly versionResolver?: PiVersionResolver } = {}) {
     this.#dependencies = dependencies;
+    this.#resolveVersion = options.versionResolver ?? defaultVersionResolver;
   }
 
   async probe() {
+    const version = await installedPiVersion(this.#resolveVersion);
+    if (version === undefined)
+      return Object.freeze({
+        driverId: "pi",
+        package: PI_PACKAGE,
+        available: false,
+        error: Object.freeze({ code: "VES_PI_NOT_AVAILABLE", message: "Pi runtime is unavailable" })
+      });
+    // Pi is pinned to an exact qualified version rather than a floor: the driver
+    // is written against that SDK's API, and the repository's dependency policy
+    // asserts the exact pin, so any drift must surface instead of being accepted.
+    if (version !== QUALIFIED_PI_VERSION)
+      return Object.freeze({
+        driverId: "pi",
+        package: PI_PACKAGE,
+        available: false,
+        version,
+        error: Object.freeze({ code: "VES_PI_VERSION_UNSUPPORTED", message: "Pi runtime version is unsupported" })
+      });
     return Object.freeze({
       driverId: "pi",
       package: PI_PACKAGE,
-      version: PI_VERSION,
+      available: true,
+      version,
       capabilities: Object.freeze(["stream", "tools", "usage", "abort"])
     });
   }
