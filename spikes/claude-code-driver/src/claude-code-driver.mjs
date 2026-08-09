@@ -44,7 +44,9 @@ function npmShimTarget(shimPath, execPath) {
   }
   const match = /"%dp0%\\([^"]+)"\s+%\*/u.exec(content);
   if (!match) return undefined;
-  const target = path.join(path.dirname(shimPath), match[1]);
+  // The captured relative path is Windows-form; split it so the join is
+  // correct on every platform (the resolver tests run on POSIX CI too).
+  const target = path.join(path.dirname(shimPath), ...match[1].split("\\"));
   if (!existsSync(target)) return undefined;
   return target.toLowerCase().endsWith(".js") ? [execPath, target] : [target];
 }
