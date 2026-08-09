@@ -9,7 +9,7 @@ per change, independent verification and human review before completion.
 
 | Workstream | Owner | Role | Issues |
 | ---------- | ----- | ---- | ------ |
-| WS-A | accd | Owner decisions, T75 remaining matrices, release engineering, human review | #217, #218, #16, #35, #17, #18 |
+| WS-A | accd | Owner decisions, T75 remaining matrices, T76 prerequisites, release engineering, human review | #217, #218, #16, #35, #17, #18, #242, #243 |
 | WS-B | MiguelCorre | Independent verification (T72, T74, T75 reports), install friction | #13, #15, #36 |
 | WS-C | brunomjanuario | Hardening implementation, T73 report | #58, #110, #14, #207, #233 |
 
@@ -36,7 +36,9 @@ MiguelCorre authors t75-validation.md.
 | C4 | brunomjanuario | `docs/qualification/t73-validation.md` + atomic advance (#14) | B1 | Report contract; distribution-not-single-score check; `pnpm gate:build` | `docs(qualification): qualify T73 and advance the chain` |
 | B2 | MiguelCorre | `docs/qualification/t74-validation.md` + atomic advance (#15) | C4 | Report contract; isolation/contamination fault evidence; `pnpm gate:security` | `docs(qualification): qualify T74 and advance the chain` |
 | B3 | MiguelCorre | `docs/qualification/t75-validation.md` + atomic advance + close #16 | B2, A3, A4, C5 | Report contract; full matrix + signed evidence index verified; macOS x64 recorded as environmental | `docs(qualification): qualify T75 and advance the chain` |
-| A5 | accd | T76 (#17): reproducible candidate release (SBOM, provenance, signatures, TUF, offline views, rollback) | B3, A1, A2, C2 | `pnpm gate:release`; independent closure verification on every platform | Per-slice commits on a T76 feature |
+| A8 | accd | #242: migrate the signature envelope to DSSE + in-toto (AD-014 implementation, per `dsse-attestation/migration.md`) | A1 (decision, done) | `pnpm gate:security`; tamper suite covers every error code incl. `VES_ENVELOPE_UNSUPPORTED`; sensor incl. PAE domain separation | Per-step commits on `dsse-attestation` |
+| A9 | accd | #243: ship the pinned context token estimator with manifest-recorded identity (AD-015 implementation) | A2 (decision, done) | `pnpm gate:security`; compile without an injected estimator uses the qualified default; one estimator across both surfaces | Per-slice commits on `context-tokenizers` |
+| A5 | accd | T76 (#17): reproducible candidate release (SBOM, provenance, signatures, TUF, offline views, rollback) | B3, A8, A9, C2 | `pnpm gate:release`; independent closure verification on every platform | Per-slice commits on a T76 feature |
 | A6 | accd | T77 (#18): final acceptance, signed promote-or-reject decision, milestone close | A5 + all other tasks complete | `pnpm gate:release`; independent final verifier (MiguelCorre); signed human decision | `docs(qualification): record the 1.0 acceptance decision` |
 | A7 | accd | Continuous: human review + merge of every WS-B/WS-C PR; rebase merges; verify by content | Continuous | Every merge verified by content on `origin/main` | — |
 
@@ -44,12 +46,19 @@ MiguelCorre authors t75-validation.md.
 
 ```
 Phase 1 (parallel, start now):   B1 · C1 · C3 · A1✓ · A2✓ · A3(in progress) · B4(start) · C6(start)
+                                 A8(#242 DSSE) · A9(#243 estimator) — both unblocked by A1/A2
 Phase 2 (after Phase 1 unblocks): C4(→B1) · C2(→C1) · C5(→A3) · A4(→A3) · B2(→C4)
 Phase 3 (T75 closure):            B3(→B2,A3,A4,C5,C6)
-Phase 4 (release):                A5(→B3,A1,A2,C2) → A6(→A5, backlog-zero)
+Phase 4 (release):                A5(→B3,A8,A9,C2) → A6(→A5, backlog-zero)
 Continuous:                       A7
 Critical path: B1 → C4 → B2 → B3 → A5 → A6
 ```
+
+A8 and A9 were filed on 2026-08-09 to close a tracking gap: AD-014 and AD-015
+both require their implementation before T76 starts, but the decision issues
+(#217, #218) closed with the decisions and nothing carried the work. Untracked
+mandatory work breaks the milestone's own "100% equals backlog-zero" claim, so
+the issues exist to restore it — this is not new scope.
 
 ## Gate commands
 
@@ -92,6 +101,8 @@ Critical path: B1 → C4 → B2 → B3 → A5 → A6
 | A2 | M2C-05, M2C-08 | #218 |
 | B4 | M2C-05 | #36 |
 | C6 | M2C-05 | #233 |
+| A8 | M2C-05 | #242 |
+| A9 | M2C-05 | #243 |
 | A5 | M2C-05 | #17 |
 | A6 | M2C-04, M2C-05 | #18 |
 | A7 | M2C-06 | all |

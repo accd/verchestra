@@ -40,6 +40,15 @@ issues distributed across workstreams WS-A (accd), WS-B (MiguelCorre), WS-C
   kit before the t75 report; scaffold, out-of-process host, and single
   binary filed as post-1.0 issues.
 
+# Tracking gap closed (2026-08-09)
+
+AD-014 and AD-015 both require their **implementation** before T76 starts, but
+the decision issues (#217, #218) closed with the decisions and nothing carried
+the work forward. Untracked mandatory work breaks this milestone's own "100%
+equals backlog-zero" claim, so **#242** (DSSE envelope migration, task A8) and
+**#243** (pinned context estimator, task A9) were filed against the milestone.
+Not new scope — restored visibility of scope the ADs already committed to.
+
 # Next Exact Action
 
 **B1 (MiguelCorre): author `docs/qualification/t72-validation.md`.** The T72
