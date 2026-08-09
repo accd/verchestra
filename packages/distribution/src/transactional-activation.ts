@@ -61,6 +61,12 @@ export interface ActiveReleasePointer {
   readonly semanticVersion: string;
 }
 
+export interface ActiveLauncherResolution {
+  readonly schemaVersion: 1;
+  readonly active: ActiveReleasePointer;
+  readonly executablePath: string;
+}
+
 export interface ActivationReceipt {
   readonly schemaVersion: 1;
   readonly operation: "activate" | "rollback";
@@ -298,6 +304,25 @@ export class TransactionalActivationManager {
     });
   }
 
+  async resolveActiveLauncher(): Promise<ActiveLauncherResolution> {
+    const active = await this.active();
+    if (active === null)
+      throw new ActivationError("VES_ACTIVATION_POINTER_MISSING", "no active release is installed", null);
+    const installed = await this.#installedBundle(active.releaseDigest, active, "VES_ACTIVATION_INTEGRITY");
+    if (!equal(active, pointer(installed.bundle)))
+      fail("VES_ACTIVATION_RELEASE_MIXED", "active pointer conflicts with the installed release", active);
+    const launchers = installed.bundle.components.filter(
+      (component) => component.componentId === "launcher:vestra" && component.kind === "launcher"
+    );
+    if (launchers.length !== 1)
+      fail("VES_ACTIVATION_LAUNCHER_MISMATCH", "active release has no unique vestra launcher", active);
+    const executablePath = join(installed.root, launchers[0]!.logicalPath);
+    await ensureRealChain(installed.root, executablePath).catch((error) =>
+      fail("VES_ACTIVATION_INTEGRITY", "active launcher path is invalid", active, error)
+    );
+    return Object.freeze({ schemaVersion: 1, active, executablePath });
+  }
+
   async #acquireLock(): Promise<() => Promise<void>> {
     const path = join(this.#installRoot, "activation.lock");
     const owner = { pid: process.pid, nonce: randomUUID() };
@@ -478,19 +503,22 @@ export class TransactionalActivationManager {
     await this.#validateFiles(targetRoot, bundle, previous);
   }
 
-  async #installedBundle(releaseDigest: string, previous: ActiveReleasePointer | null) {
-    if (!DIGEST.test(releaseDigest)) fail("VES_ROLLBACK_TARGET_INVALID", "rollback digest is invalid", previous);
+  async #installedBundle(
+    releaseDigest: string,
+    previous: ActiveReleasePointer | null,
+    invalidCode = "VES_ROLLBACK_TARGET_INVALID"
+  ) {
+    if (!DIGEST.test(releaseDigest)) fail(invalidCode, "installed release digest is invalid", previous);
     const root = join(this.#installRoot, "releases", releaseDigest.slice("sha256:".length));
     const record = await optionalJson(join(root, "release.json"));
-    if (record === undefined) fail("VES_ROLLBACK_TARGET_INVALID", "installed release is missing", previous);
+    if (record === undefined) fail(invalidCode, "installed release is missing", previous);
     let bundle: HermeticDistributionBundle;
     try {
       bundle = verifyHermeticDistributionBundle((record as { bundle?: unknown }).bundle);
     } catch (error) {
-      return fail("VES_ROLLBACK_TARGET_INVALID", "installed release manifest is invalid", previous, error);
+      return fail(invalidCode, "installed release manifest is invalid", previous, error);
     }
-    if (bundle.releaseDigest !== releaseDigest)
-      fail("VES_ROLLBACK_TARGET_INVALID", "installed release identity is invalid", previous);
+    if (bundle.releaseDigest !== releaseDigest) fail(invalidCode, "installed release identity is invalid", previous);
     await this.#validateFiles(root, bundle, previous);
     return { root, bundle, record };
   }

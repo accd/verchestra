@@ -103,9 +103,11 @@ export function buildTufUpdateFixture(options = {}) {
   const componentBytes = new Map();
   const components = rawComponents.map((component) => {
     const bytes = Buffer.from(`verchestra:${component.componentId}:${"x".repeat(24)}`);
-    componentBytes.set(component.logicalPath, bytes);
+    const logicalPath = options.logicalPathOverrides?.[component.componentId] ?? component.logicalPath;
+    componentBytes.set(logicalPath, bytes);
     return {
       ...component,
+      logicalPath,
       releaseId,
       platform: ["node-runtime", "sqlite-native", "launcher"].includes(component.kind) ? platform : "any",
       arch: ["node-runtime", "sqlite-native", "launcher"].includes(component.kind) ? arch : "any",

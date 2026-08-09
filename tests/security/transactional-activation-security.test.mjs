@@ -89,6 +89,45 @@ test("unknown active pointer field fails closed", async () => {
   await assert.rejects(state.manager.active(), { code: "VES_ACTIVATION_POINTER_INVALID" });
 });
 
+test("active launcher resolution requires an authoritative active pointer", async () => {
+  const state = await setup();
+  await assert.rejects(state.manager.resolveActiveLauncher(), { code: "VES_ACTIVATION_POINTER_MISSING" });
+});
+
+test("active launcher resolution rejects pointer and installed release identity drift", async () => {
+  const state = await setup();
+  await state.manager.activate(state.staged.receipt);
+  const path = join(state.installRoot, "active.json");
+  const value = JSON.parse(await readFile(path, "utf8"));
+  await writeFile(path, `${JSON.stringify({ ...value, releaseId: "release:substituted" })}\n`);
+  await assert.rejects(state.manager.resolveActiveLauncher(), { code: "VES_ACTIVATION_RELEASE_MIXED" });
+});
+
+test("active launcher resolution rehashes installed launcher bytes", async () => {
+  const state = await setup();
+  const receipt = await state.manager.activate(state.staged.receipt);
+  const launcher = state.staged.bundle.components.find((entry) => entry.componentId === "launcher:vestra");
+  const path = join(
+    state.installRoot,
+    "releases",
+    receipt.active.releaseDigest.slice("sha256:".length),
+    launcher.logicalPath
+  );
+  await writeFile(path, Buffer.alloc(launcher.sizeBytes, 0x41));
+  await assert.rejects(state.manager.resolveActiveLauncher(), { code: "VES_ACTIVATION_INTEGRITY" });
+});
+
+test("active launcher resolution rejects a launcher path junction", async () => {
+  const state = await setup();
+  const receipt = await state.manager.activate(state.staged.receipt);
+  const releaseRoot = join(state.installRoot, "releases", receipt.active.releaseDigest.slice("sha256:".length));
+  const outside = join(state.root, "outside-launcher");
+  await mkdir(outside);
+  await rm(join(releaseRoot, "bin"), { recursive: true });
+  await symlink(outside, join(releaseRoot, "bin"), "junction");
+  await assert.rejects(state.manager.resolveActiveLauncher(), { code: "VES_ACTIVATION_INTEGRITY" });
+});
+
 for (const value of ["yes", 1, null]) {
   test(`uninstall rejects non-boolean purge policy: ${String(value)}`, async () => {
     const state = await setup();
