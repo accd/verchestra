@@ -2,13 +2,13 @@
 schema: verchestra-feature-handoff/v1
 feature: sealed-holdout
 issue: 15
-status: verification
-branch: feat/t74-sealed-holdout
-baseRevision: d0ea1e57e00aa4de22b4aa0331d5ecbdb9df3c04
+status: in_progress
+branch: codex/t74-qualification
+baseRevision: cdd73b764b85732f797da68df84f3f01eabb9f5a
 lastCompletedTask: T5
-nextTask: independent T74 qualification report and chain advance to T75
-lastGate: gate:quick PASS; gate:security and gate:build confirm the surface
-updatedAt: 2026-08-07T10:13:43Z
+nextTask: implementation remediation for independent findings F1 and F2, then repeat T74 verification
+lastGate: independent verification FAIL; gate:quick and gate:security PASS at cdd73b7; 7/7 sensor mutations killed
+updatedAt: 2026-08-11T19:40:00Z
 ---
 
 # Scope
@@ -44,19 +44,33 @@ status surfaces to "T74 complete; T75 next".
 - `pnpm gate:quick` PASS; `pnpm gate:security` and `pnpm gate:build` confirm the
   security and contract/e2e surfaces.
 
+# Independent verification result
+
+Independent verification at `cdd73b7` is **FAIL**. The implemented rule
+surface passes 58 focused cases, `gate:quick`, externally dispatched
+`gate:security`, and a seven-mutation sensor with zero survivors. Those checks
+also exposed two acceptance boundaries that are absent rather than incorrectly
+implemented:
+
+- F1: no candidate/evaluator process, storage, or policy isolation boundary
+  exists to prove the first issue acceptance criterion.
+- F2: the report and sealed artifact do not bind campaign result evidence;
+  materially different passing results produce identical signed payloads.
+
+The complete evidence and exact remediation are in `validation.md`.
+
 # Next action
 
-None for the implementation. The remaining step is the independent T74
-qualification (author != verifier): re-derive the PROM-01..08 adequacy matrix,
-run a discrimination sensor on the pure promotion rules, write
-`docs/qualification/t74-validation.md`, and migrate the status surfaces to
-"T74 complete; T75 next".
+The implementation authors remediate F1 and F2 with behavior-focused security,
+fault, contract, and E2E evidence. An independent verifier then repeats the
+audit. Do not add `docs/qualification/t74-validation.md` or advance the status
+surfaces until that verification passes.
 
 # Blockers
 
-None for T74. Chain-level: T76 is blocked on the owner's DSSE/in-toto and
-context-tokenizer decisions (AD-008); T77 is the 1.0 decision. The beta cannot be
-reached without owner input.
+F1 and F2 in `validation.md` block T74 qualification and the serial chain. T75
+must not be treated as the next qualified task until both are remediated and an
+independent PASS report lands.
 
 # Follow-ups
 
