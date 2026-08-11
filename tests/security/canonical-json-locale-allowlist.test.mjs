@@ -28,8 +28,9 @@ const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
 // (docs/canonical-json-compatibility.md, "Compatibility rules" row 1).
 const MATRIX_CEILINGS = Object.freeze({
   "packages/evidence/src/integrity/canonical.ts": 0,
-  "packages/application/src/authority/authority.ts": 1,
-  "packages/application/src/coordination/work-claims.ts": 3,
+  // T4b owners: migrated (issue #58), ceiling tightened to 0.
+  "packages/application/src/authority/authority.ts": 0,
+  "packages/application/src/coordination/work-claims.ts": 0,
   "packages/application/src/execution/gate-commit.ts": 1,
   "packages/application/src/egress/trust-egress.ts": 1,
   "packages/application/src/handoff/validation.ts": 1,

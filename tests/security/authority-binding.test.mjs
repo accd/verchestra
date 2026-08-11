@@ -54,6 +54,30 @@ for (const field of bindingFields) {
   });
 }
 
+// Issue #58: ApprovalService.request()'s bindingDigest must not depend on
+// the machine's ambient locale.
+test("bindingDigest is byte-identical under two different ambient locales", async () => {
+  const fixture = authorityFixture();
+  const approvals = new ApprovalService(fixture);
+  const priorLang = process.env.LANG;
+  const priorLcAll = process.env.LC_ALL;
+  try {
+    process.env.LANG = "en_US.UTF-8";
+    process.env.LC_ALL = "en_US.UTF-8";
+    const first = approvals.request(intent());
+    process.env.LANG = "fr_FR.UTF-8";
+    process.env.LC_ALL = "fr_FR.UTF-8";
+    const second = approvals.request(intent());
+    assert.equal(first.bindingDigest, second.bindingDigest);
+    assert.deepEqual(first.binding, second.binding);
+  } finally {
+    if (priorLang === undefined) delete process.env.LANG;
+    else process.env.LANG = priorLang;
+    if (priorLcAll === undefined) delete process.env.LC_ALL;
+    else process.env.LC_ALL = priorLcAll;
+  }
+});
+
 test("exact grant invokes one effect after current approval and policy checks", async () => {
   const value = await context();
   const grant = await value.broker.grant(grantRequest(value.approval));
