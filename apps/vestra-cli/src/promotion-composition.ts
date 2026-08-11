@@ -9,6 +9,8 @@ import {
   buildPromotionReport,
   canonicalizeCampaignEvidence,
   canonicalizeOracle,
+  createEvaluatorCandidateGrant,
+  type CandidateGrant,
   evaluatePromotion,
   type HoldoutOracle,
   type PromotionDecision,
@@ -29,6 +31,12 @@ export interface CandidateFacts {
   readonly candidateKeyId: string;
   readonly contaminated: boolean;
   readonly results: PromotionInput["results"];
+  /**
+   * The candidate's own hook. It receives the surface the evaluator issues and
+   * may attempt anything on it; every attempt is denied by authority. Optional
+   * because a candidate that declines to try is not thereby granted anything.
+   */
+  readonly attempt?: (grant: CandidateGrant) => void;
 }
 
 // The sealer works over its own JsonValue type; the strongly-typed report is a
@@ -49,6 +57,23 @@ export function sealHoldout(oracle: HoldoutOracle): string {
 }
 
 export async function runPromotion(oracle: HoldoutOracle, candidate: CandidateFacts): Promise<PromotionOutcome> {
+  // PROM-09 / AD-018. The grant is issued over the evaluator's REAL assets and
+  // handed to the candidate, because a boundary nothing crosses proves nothing:
+  // an independent verifier found the surface built but unwired, so PROM-09's
+  // antecedent was never satisfied and the requirement was vacuously true.
+  //
+  // Whatever the candidate does with it, it holds no authority. Its attempts
+  // throw inside its own hook; a candidate that lets one escape fails its own
+  // promotion rather than the evaluator's, so the evaluator neither swallows
+  // nor is destabilized by it.
+  const grant = createEvaluatorCandidateGrant({
+    oracle,
+    criteria: oracle.entries,
+    "evaluator-state": { evaluatorKeyId: EVALUATOR_KEY_ID, sealedHoldoutDigest: sealHoldout(oracle) },
+    "pre-seal-report": null
+  });
+  candidate.attempt?.(grant);
+
   const input: PromotionInput = {
     oracle,
     sealedHoldoutDigest: sealHoldout(oracle),

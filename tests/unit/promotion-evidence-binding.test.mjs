@@ -3,6 +3,8 @@ import { createHash } from "node:crypto";
 import { test } from "node:test";
 
 import {
+  assertPromotionReport,
+  assertReportUntampered,
   buildPromotionReport,
   canonicalizeCampaignEvidence,
   canonicalizeOracle,
@@ -103,4 +105,38 @@ test("reordering the same evidence is identity-preserving", () => {
 test("the evidence digest covers every campaign, not just the first", () => {
   const changedSecond = [STRONG[0], { ...STRONG[1], passes: STRONG[1].passes - 5 }];
   assert.notEqual(report(STRONG).evidenceDigest, report(changedSecond).evidenceDigest);
+});
+
+// Gaps an independent verifier's sensor found: three fields could leave the
+// signed body or the source state undetected. Each is asserted per field rather
+// than through a single composite comparison, because a composite passes as
+// long as *something* differs.
+test("every field of the signed body reaches its integrity digest", () => {
+  const base = report(STRONG);
+  for (const [field, value] of [
+    ["candidateDigest", `sha256:${"9".repeat(64)}`],
+    ["holdoutDigest", `sha256:${"8".repeat(64)}`],
+    ["policyId", "other-policy"],
+    ["evaluatorKeyId", "other-evaluator"],
+    ["evidenceDigest", `sha256:${"7".repeat(64)}`]
+  ]) {
+    const altered = { ...base, [field]: value };
+    assert.throws(() => assertReportUntampered(altered, hash), { code: "VES_PROMOTION_REPORT_TAMPERED" }, field);
+  }
+
+  // `verdict` is refused earlier and harder: a PROMOTED report carrying no
+  // blocks cannot be flipped to BLOCKED at all, so the disagreement is caught
+  // before the digest is ever recomputed. Asserting the tamper code here would
+  // have been asserting the weaker of two guarantees.
+  assert.throws(() => assertReportUntampered({ ...base, verdict: "BLOCKED" }, hash), {
+    code: "VES_PROMOTION_REPORT_INVALID"
+  });
+});
+
+test("the report rejects a malformed evidence digest at the application layer", () => {
+  // Ajv catches this at the schema boundary, but the composition root builds and
+  // asserts reports without going through the registry.
+  assert.throws(() => assertPromotionReport({ ...report(STRONG), evidenceDigest: "not-a-digest" }), {
+    code: "VES_PROMOTION_REPORT_INVALID"
+  });
 });

@@ -38,7 +38,7 @@ flowchart LR
   `VES_PROMOTION_CAMPAIGN_FAILED` (a campaign's lower bound below its sealed
   threshold). `PROMOTED` only when no block holds.
 - `buildPromotionReport(input, decision, hash)`: a closed report payload binding
-  candidate, holdout, policy, evaluator identity, verdict, and block codes, with
+  candidate, holdout, policy, evaluator identity, verdict, block codes, and the admitted campaign evidence (evidenceDigest, added remediating T74 F2), with
   a `bodyDigest` over the canonical body.
 - `assertPromotionReport(payload)`: closed allowlist + registered codes only.
 - `assertReportUntampered(payload, hash)`: recomputes the body digest;
@@ -99,3 +99,19 @@ interface PromotionInput {
 
 Only existing workspace packages; signing reuses `@verchestra/evidence`, and the
 holdout reuses the T73 campaign types. No third-party addition.
+
+## Candidate authority surface (PROM-09, AD-018)
+
+`createCandidateGrant` / `createEvaluatorCandidateGrant` in
+`packages/application/src/promotion/promotion-gate.ts`. Every protected asset —
+oracle, criteria, evaluator state, pre-seal report — is reachable by name so a
+candidate can genuinely attempt it; the evaluator's grant admits none. The
+composition root issues the grant over its **real** assets and hands it to the
+candidate's own `attempt` hook: a boundary nothing crosses proves nothing, which
+is precisely what an independent verifier found when the surface was built but
+left unwired.
+
+Read and write are separate capabilities, and the snapshot is structurally
+cloned, so a granted read cannot confer deep write into the evaluator's values.
+
+Not claimed: process or storage isolation (#235, post-1.0).
