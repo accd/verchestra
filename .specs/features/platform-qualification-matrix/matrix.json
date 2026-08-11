@@ -1,0 +1,155 @@
+{
+  "schemaVersion": 1,
+  "task": "T75",
+  "note": "The declared T75 qualification matrix. Human-authored and reviewed; the signed evidence index is generated from it plus live fleet evidence at qualification time. Every dimension issue #16 names appears here, and every case carries an explicit status - an index that lists only what passed would report a green fleet by omission, which is the failure mode the whole matrix exists to prevent.",
+  "statuses": {
+    "qualified": "Exercised and passing, with evidence cited.",
+    "contract-qualified": "The contract is exercised against fixtures; no live instance was qualified. Honest and bounded, not a pass for the live thing.",
+    "not-qualified": "In scope and not qualified. Says so.",
+    "environmental": "Not qualified for a reason outside the product. Never counted as a pass."
+  },
+  "dimensions": [
+    {
+      "dimension": "platform",
+      "source": ".github/workflows/platform-matrix.yml",
+      "cases": [
+        { "case": "win32-x64", "status": "qualified", "evidence": "fleet leg" },
+        { "case": "linux-x64", "status": "qualified", "evidence": "fleet leg" },
+        { "case": "linux-arm64", "status": "qualified", "evidence": "fleet leg" },
+        { "case": "darwin-arm64", "status": "qualified", "evidence": "fleet leg" },
+        {
+          "case": "darwin-x64",
+          "status": "environmental",
+          "evidence": "Never dequeues on GitHub's retiring Intel macos-13 fleet. Not a product gap and not a pass; re-dispatch if Intel capacity returns."
+        }
+      ]
+    },
+    {
+      "dimension": "gate-profile",
+      "source": "scripts/gate-stages.mjs",
+      "note": "No single profile runs every stage, so the fleet must be dispatched four times to cover all sixteen. matrix.md section 2.",
+      "cases": [
+        { "case": "quick", "status": "qualified", "evidence": "fleet dispatch" },
+        { "case": "full", "status": "qualified", "evidence": "fleet dispatch; the only profile carrying test:integration and test:mutation" },
+        { "case": "build", "status": "qualified", "evidence": "fleet dispatch" },
+        { "case": "security", "status": "qualified", "evidence": "fleet dispatch" },
+        { "case": "release", "status": "qualified", "evidence": "fleet dispatch; the only profile carrying test:release" }
+      ]
+    },
+    {
+      "dimension": "topology",
+      "source": "packages/application/src/artifacts/artifact-planning.ts",
+      "cases": [
+        { "case": "git-relation:control", "status": "qualified", "evidence": "tests/integration/workspace-scanner.test.mjs" },
+        { "case": "git-relation:nested", "status": "qualified", "evidence": "tests/integration/workspace-scanner.test.mjs" },
+        { "case": "git-relation:submodule", "status": "qualified", "evidence": "tests/integration/workspace-scanner.test.mjs" },
+        { "case": "git-relation:worktree", "status": "qualified", "evidence": "tests/integration/workspace-scanner.test.mjs" },
+        { "case": "git-relation:placeholder", "status": "qualified", "evidence": "tests/integration/workspace-scanner.test.mjs" },
+        { "case": "placement:colocated", "status": "qualified", "evidence": "tests/unit/artifact-placement.test.mjs" },
+        { "case": "placement:centralized", "status": "qualified", "evidence": "tests/unit/artifact-placement.test.mjs" },
+        { "case": "placement:mixed", "status": "qualified", "evidence": "tests/unit/artifact-placement.test.mjs" },
+        { "case": "placement:external-control", "status": "qualified", "evidence": "tests/unit/artifact-placement.test.mjs" }
+      ]
+    },
+    {
+      "dimension": "driver",
+      "source": "packages/drivers/src",
+      "cases": [
+        { "case": "claude-code", "status": "qualified", "evidence": "spikes/claude-code-driver probe against the pinned 2.1.168 install" },
+        { "case": "codex", "status": "qualified", "evidence": "spikes/codex-driver probe against the pinned 0.115.0 install" },
+        { "case": "opencode", "status": "qualified", "evidence": "spikes/opencode-driver probe against the repo-local install" },
+        {
+          "case": "pi",
+          "status": "contract-qualified",
+          "evidence": "Embedded SDK, not a CLI. The probe reads the installed @earendil-works/pi-agent-core manifest and reports not-available when absent (#242 era fix); no live session is qualified."
+        },
+        {
+          "case": "cross-driver-verification",
+          "status": "qualified",
+          "evidence": "The full profile resolves the verifier from real probes via resolveVerifierDriver (#35); claude-code implements, codex verifies."
+        }
+      ]
+    },
+    {
+      "dimension": "database",
+      "source": "packages/data-probe/src/index.ts",
+      "note": "AD-017: the 1.0 claim is the published probe contract plus the conformance kit plus real SQLite. Live-engine qualification happens at the edge, with each team running the kit against its own engine.",
+      "cases": [
+        { "case": "sqlite", "status": "qualified", "evidence": "Real node:sqlite driver through SqliteReadConnection; tests/integration/sqlite-probe-adapter.test.mjs" },
+        { "case": "postgresql", "status": "contract-qualified", "evidence": "Conformance kit against fixtures; no live server" },
+        { "case": "mysql", "status": "contract-qualified", "evidence": "Conformance kit against fixtures; no live server" },
+        { "case": "mariadb", "status": "contract-qualified", "evidence": "Conformance kit against fixtures; no live server" },
+        { "case": "sqlserver", "status": "contract-qualified", "evidence": "Conformance kit against fixtures; no live server" },
+        { "case": "oracle", "status": "contract-qualified", "evidence": "Conformance kit against fixtures; no live server" },
+        { "case": "mongodb", "status": "contract-qualified", "evidence": "Conformance kit against fixtures; no live server" },
+        {
+          "case": "sybase",
+          "status": "contract-qualified",
+          "evidence": "Conformance kit against fixtures; no live server. SAP ASE holds kit parity with every other engine and is NOT a principal qualification target - the earlier wording in #16 was corrected under AD-017."
+        }
+      ]
+    },
+    {
+      "dimension": "sandbox",
+      "source": "packages/platform-node/src/protected-path.ts, spikes/isolation",
+      "cases": [
+        { "case": "path-protection", "status": "qualified", "evidence": "tests/security/protected-path.test.mjs - symlink and junction escape, handle forgery, TOCTOU replacement" },
+        { "case": "process-tree-termination", "status": "qualified", "evidence": "tests/integration/gate-commit-adapters.test.mjs - real timed-out tree and descendant" },
+        { "case": "egress-boundary", "status": "qualified", "evidence": "tests/security/data-egress-firewall.test.mjs" },
+        { "case": "capability-grants", "status": "qualified", "evidence": "tests/security/authority-binding.test.mjs" },
+        { "case": "probe-worker-bounds", "status": "qualified", "evidence": "tests/security/probe-worker-security.test.mjs - read-only session, row/byte/time limits, secret-leak refusal" },
+        {
+          "case": "isolation-grade:process-contained",
+          "status": "qualified",
+          "evidence": "spikes/isolation/test/isolation-policy.test.mjs"
+        },
+        {
+          "case": "isolation-grade:native-restricted",
+          "status": "not-qualified",
+          "evidence": "No platform can advertise it: isolation-policy.mjs requires a helper digest plus every native control, and docs/qualification/isolation.md qualifies the fixture on Windows AMD64 only. The report must not imply full sandbox qualification."
+        },
+        {
+          "case": "isolation-grade:container-isolated",
+          "status": "not-qualified",
+          "evidence": "Spike-level concept with no product counterpart."
+        }
+      ]
+    },
+    {
+      "dimension": "self-test",
+      "source": "packages/application/src/self-test/self-test.ts",
+      "cases": [
+        { "case": "smoke", "status": "qualified", "evidence": "6 required checks; tests/integration/self-test-smoke-scenario.test.mjs" },
+        { "case": "workspace", "status": "qualified", "evidence": "25 required checks across 5 shapes; tests/integration/self-test-workspace-scenario.test.mjs" },
+        { "case": "full", "status": "qualified", "evidence": "10 required checks including crash-recovery; tests/integration/self-test-full-scenario.test.mjs" },
+        { "case": "drivers", "status": "qualified", "evidence": "7 required checks; tests/integration/self-test-driver-scenario.test.mjs" }
+      ]
+    },
+    {
+      "dimension": "installer",
+      "source": "packages/distribution/src/transactional-activation.ts",
+      "cases": [
+        { "case": "host-target-activation", "status": "qualified", "evidence": "tests/integration/transactional-activation.test.mjs activates the release built for the running host (T75 M-3)" },
+        { "case": "mixed-release-refusal", "status": "qualified", "evidence": "VES_ACTIVATION_RELEASE_MIXED on a target that disagrees with the staged receipt" },
+        { "case": "launcher-equivalence", "status": "qualified", "evidence": "Five mutations rejected: version, digest, behavior, exit, missing" },
+        { "case": "rollback", "status": "qualified", "evidence": "Rollback reinspects health and refuses a tampered installed component" }
+      ]
+    },
+    {
+      "dimension": "recovery",
+      "source": "packages/evidence/src/recovery-bundle",
+      "cases": [
+        { "case": "crash-recovery", "status": "qualified", "evidence": "tests/fault-injection/self-test-full-crash-matrix.test.mjs across 11 durable boundaries x 2 phases" },
+        { "case": "recovery-bundle-integrity", "status": "qualified", "evidence": "tests/security/recovery-bundle-security.test.mjs" }
+      ]
+    },
+    {
+      "dimension": "evidence-envelope",
+      "source": "packages/evidence/src/integrity",
+      "cases": [
+        { "case": "dsse-in-toto", "status": "qualified", "evidence": "AD-014; PAE signing, declared predicate types, bare-envelope persistence (#242, #248)" },
+        { "case": "external-verifiability", "status": "qualified", "evidence": "tests/security/dsse-interoperability.test.mjs verifies a persisted artifact with a generic DSSE implementation and no repository types" }
+      ]
+    }
+  ]
+}
