@@ -321,6 +321,8 @@ export {
   createEvaluatorCandidateGrant,
   EVALUATOR_PROTECTED_ASSETS,
   EvaluatorAuthorityError,
+  type CandidateAuthority,
+  type CandidateGrant,
   canonicalizeOracle,
   evaluatePromotion,
   type HoldoutEntry,

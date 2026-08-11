@@ -128,3 +128,28 @@ test("materially different passing evidence produces a distinguishable sealed ar
   assert.notEqual(strong.artifact.sourceStateDigest, weak.artifact.sourceStateDigest);
   assert.notEqual(strong.artifact.payloadDigest, weak.artifact.payloadDigest);
 });
+
+test("the sealed source state binds the oracle as well as the evidence", async () => {
+  // A verifier's sensor found sourceStateDigest could drop the oracle entirely
+  // and survive: the only assertion varied evidence, never the oracle.
+  const candidate = {
+    candidateDigestAtSeal: `sha256:${"a".repeat(64)}`,
+    candidateDigestNow: `sha256:${"a".repeat(64)}`,
+    candidateKeyId: "candidate-key",
+    contaminated: false,
+    results: [{ id: "alpha", samples: 100, passes: 99, passRate: 0.99, lowerConfidenceBound: 0.99, verdict: "PASSED" }]
+  };
+  const first = await runPromotion(
+    { policyId: "release-policy", entries: [{ campaignId: "alpha", threshold: 0.8, repetitionCount: 50 }] },
+    candidate
+  );
+  const relaxedOracle = await runPromotion(
+    { policyId: "release-policy", entries: [{ campaignId: "alpha", threshold: 0.5, repetitionCount: 50 }] },
+    candidate
+  );
+  assert.notEqual(
+    first.artifact.sourceStateDigest,
+    relaxedOracle.artifact.sourceStateDigest,
+    "the same evidence under a different oracle must not share a source state"
+  );
+});

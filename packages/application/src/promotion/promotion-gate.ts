@@ -109,7 +109,6 @@ export function canonicalizeOracle(oracle: HoldoutOracle): string {
 // changes the digest. Normalizing is the deliberate opposite, for the reason
 // above; the content-sensitivity F2 actually protects is fully asserted.
 export function canonicalizeCampaignEvidence(results: readonly CampaignRunResult[]): string {
-  if (!Array.isArray(results)) fail("VES_PROMOTION_INPUT_INVALID", "campaign results are invalid");
   return canonicalizeJsonV2({
     results: normalizeDeclaredSet(results, (result) => result.id).map((result) => ({
       id: result.id,
@@ -185,7 +184,10 @@ export function createCandidateGrant(
 ): CandidateGrant {
   const readable = Object.freeze([...authority.read]);
   const writable = Object.freeze([...authority.mutate]);
-  const store: Record<string, unknown> = { ...assets };
+  // A shallow copy would hand a granted reader a live reference into the
+  // caller's graph, so "read and write are separate capabilities" would hold
+  // only at the top level. The snapshot is structurally cloned instead.
+  const store: Record<string, unknown> = structuredClone({ ...assets }) as Record<string, unknown>;
   const authorize = (permitted: readonly string[], asset: string): void => {
     if (!permitted.includes(asset)) throw new EvaluatorAuthorityError(asset);
   };

@@ -9,6 +9,7 @@
 | T2 | `schemas/promotion-report/1.schema.json` + generated type + contract tests | T1 | `pnpm test:contract` | Report schema and tests |
 | T3 | `apps/vestra-cli/src/promotion-composition.ts`: distinct evaluator identity, sealed oracle + report | T1, T2 | Promotion security tests | Composition and tests |
 | T4 | Security + E2E cases: isolation, contamination, threshold drift, candidate mutation, report tamper, shared identity | T3 | `tests/security`, `tests/e2e` | Safety-property tests |
+| T6   | Issue the candidate grant over the evaluator's real assets and prove every attempt is denied (PROM-09, AD-018) | T5 | `pnpm gate:security`; the candidate exercises all four protected assets through `runPromotion` | `feat(promotion): give the candidate a surface and deny it by authority` |
 | T5 | Case-count audit (>=25 security+e2e), `pnpm gate:security`, handoff evidence | T1-T4 | `pnpm gate:security` | Evidence update only |
 
 ## Test matrix
@@ -31,6 +32,7 @@ At least 25 security and E2E cases; no case skipped, todo-marked, or weakened.
 | T3 | PROM-01, PROM-06 |
 | T4 | PROM-02..07 |
 | T5 | PROM-08 |
+| T6 | PROM-09 |
 
 ## Commit rules
 
@@ -49,3 +51,4 @@ At least 25 security and E2E cases; no case skipped, todo-marked, or weakened.
 | T3 | Done | promotion-composition (distinct evaluator identity, sealed oracle + report) |
 | T4 | Done | 12 security + 13 e2e cases (>=25 security+e2e) |
 | T5 | Done | 56 new cases (21 unit, 10 contract, 12 security, 13 e2e); gate:security + gate:build PASS |
+| T6 | Done | PROM-09 / AD-018 remediation of T74 F1: the evaluator issues the candidate grant over its real assets and every attempt is denied; wired into `runPromotion` after an independent verifier found the surface built but unwired |
