@@ -6,8 +6,8 @@ status: in_progress
 branch: codex/t74-qualification
 baseRevision: cdd73b764b85732f797da68df84f3f01eabb9f5a
 lastCompletedTask: T5
-nextTask: "F2 REMEDIATED (PR #260). F1 remains: it needs either a real evaluator process/storage/policy boundary or an owner-approved scope change to #15 and the canonical spec. Then re-run the independent T74 verification."
-lastGate: gate:security, gate:build and gate:full PASS after the F2 remediation; sensor 6/6 killed
+nextTask: "F1 and F2 both remediated (PRs #264, #260) under AD-018. Next: MiguelCorre re-runs the independent T74 verification against current main — author != verifier, and accd authored both remediations."
+lastGate: gate:security and gate:full PASS after both remediations; sensors 6/6 (F2) and 6/6 (F1)
 updatedAt: 2026-08-11T19:40:00Z
 ---
 
@@ -31,14 +31,22 @@ Two things worth carrying forward:
   was hand-written was wrong and the contract-drift test caught it. The type
   comes from the schema via `scripts/generate-contract-types.mjs`.
 
-# F1 still open — and it is a design question, not a coding task
+# F1 remediated (2026-08-11, PR #264) under AD-018
 
-A candidate modelled as inert facts inside the evaluator's own process
-*cannot attempt* the forbidden access, so no fixture can discriminate a
-missing process or storage boundary. Identity separation is necessary and not
-sufficient. Closing F1 requires either a real boundary or an owner-approved
-scope change to issue #15 and the canonical specification — recorded before
-implementation, per the verifier's own remediation text.
+The owner narrowed the scope first (AD-018, PR #263), then the boundary was
+built: the candidate holds a real surface where every protected asset is
+reachable by name, and the evaluator's grant admits none of them. The gate
+consults the grant rather than refusing unconditionally, so the zero-authority
+claim is something a test can see rather than trust.
+
+Read and write are separate capabilities — the sensor forced that. Fused, a
+mutation that wrote before authorizing survived every test, because the
+verifying read went through a second grant with its own copy and could not see
+the write.
+
+**Still not claimed:** the evaluator and candidate share a process and a store
+(#235, post-1.0), and PROM-05's contamination fact remains a supplied input —
+the honest PARTIAL the T74 verification recorded, deliberately not promoted.
 
 # Scope
 
