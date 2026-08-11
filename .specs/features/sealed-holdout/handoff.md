@@ -6,10 +6,39 @@ status: in_progress
 branch: codex/t74-qualification
 baseRevision: cdd73b764b85732f797da68df84f3f01eabb9f5a
 lastCompletedTask: T5
-nextTask: implementation remediation for independent findings F1 and F2, then repeat T74 verification
-lastGate: independent verification FAIL; gate:quick and gate:security PASS at cdd73b7; 7/7 sensor mutations killed
+nextTask: "F2 REMEDIATED (PR #260). F1 remains: it needs either a real evaluator process/storage/policy boundary or an owner-approved scope change to #15 and the canonical spec. Then re-run the independent T74 verification."
+lastGate: gate:security, gate:build and gate:full PASS after the F2 remediation; sensor 6/6 killed
 updatedAt: 2026-08-11T19:40:00Z
 ---
+
+# F2 remediated (2026-08-11, PR #260)
+
+The signed promotion decision now binds the admitted campaign evidence.
+`canonicalizeCampaignEvidence` feeds an `evidenceDigest` into the report body,
+so it reaches `bodyDigest` and the sealed payload, and the composition root's
+`sourceStateDigest` binds the oracle **and** the evidence. The verifier's own
+experiment now separates: two materially different passing evidence sets
+produce different digests.
+
+Two things worth carrying forward:
+
+- **Deliberate deviation, owner-confirmed.** Results are normalized as a
+  declared set keyed by campaign id (CJ4-03), so reordering the same evidence
+  is identity-preserving. F2's text asked for the opposite; a digest that moved
+  with iteration order would make the same evidence sign differently on
+  different machines. Marked `SPEC_DEVIATION` in the source.
+- **The contract IS generated.** An assumption that `PromotionReportPayload`
+  was hand-written was wrong and the contract-drift test caught it. The type
+  comes from the schema via `scripts/generate-contract-types.mjs`.
+
+# F1 still open — and it is a design question, not a coding task
+
+A candidate modelled as inert facts inside the evaluator's own process
+*cannot attempt* the forbidden access, so no fixture can discriminate a
+missing process or storage boundary. Identity separation is necessary and not
+sufficient. Closing F1 requires either a real boundary or an owner-approved
+scope change to issue #15 and the canonical specification — recorded before
+implementation, per the verifier's own remediation text.
 
 # Scope
 
