@@ -1,4 +1,4 @@
-import { IsoInstant, LogicalPath, StableId, type Clock, type UuidSource } from "@verchestra/domain";
+import { IsoInstant, LogicalPath, StableId, canonicalizeJsonV2, type Clock, type UuidSource } from "@verchestra/domain";
 
 import type { ContentDigestPort } from "../sync/workspace-reconcile.ts";
 
@@ -87,20 +87,17 @@ export interface ClaimSignaturePort {
   verify(claim: WorkClaim): Promise<boolean>;
 }
 
-function canonicalJson(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
-  if (value !== null && typeof value === "object") {
-    return `{${Object.entries(value as Readonly<Record<string, unknown>>)
-      .filter(([, entry]) => entry !== undefined)
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([key, entry]) => `${JSON.stringify(key)}:${canonicalJson(entry)}`)
-      .join(",")}}`;
-  }
-  return JSON.stringify(value);
+// Code-unit comparison, not localeCompare: this ordering feeds a durable
+// dedup/subsumption pass (below) whose adjacency the sort must reproduce
+// identically on every machine (issue #58).
+function codeUnitCompare(left: string, right: string): number {
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
 }
 
 function compareTargets(left: ChangeTarget, right: ChangeTarget): number {
-  return left.projectId.localeCompare(right.projectId) || (left.path ?? "").localeCompare(right.path ?? "");
+  return codeUnitCompare(left.projectId, right.projectId) || codeUnitCompare(left.path ?? "", right.path ?? "");
 }
 
 export function normalizeChangeScope(
@@ -137,7 +134,7 @@ export function normalizeChangeScope(
     workspaceId: input.workspaceId,
     targets: Object.freeze(targets)
   });
-  return Object.freeze({ ...material, scopeDigest: digest.sha256(canonicalJson(material)) });
+  return Object.freeze({ ...material, scopeDigest: digest.sha256(canonicalizeJsonV2(material)) });
 }
 
 function targetOverlap(left: ChangeTarget, right: ChangeTarget): boolean {
@@ -270,7 +267,7 @@ export class WorkClaimService {
     return (
       (await this.#validClaim(claim)) &&
       claim.workspaceId === input.scope.workspaceId &&
-      canonicalJson(claim.scope) === canonicalJson(input.scope) &&
+      canonicalizeJsonV2(claim.scope) === canonicalizeJsonV2(input.scope) &&
       claim.scopeDigest === input.scope.scopeDigest &&
       claim.owner.runId === input.owner.runId &&
       claim.owner.actorId === input.owner.actorId &&
@@ -346,8 +343,8 @@ export class WorkClaimService {
       result.claim.claimId !== claim.claimId ||
       result.claim.fencingToken !== claim.fencingToken ||
       result.claim.expiresAt !== expiresAt ||
-      canonicalJson({ ...result.claim, expiresAt: claim.expiresAt, signature: claim.signature }) !==
-        canonicalJson(claim) ||
+      canonicalizeJsonV2({ ...result.claim, expiresAt: claim.expiresAt, signature: claim.signature }) !==
+        canonicalizeJsonV2(claim) ||
       !(await this.#validClaim(result.claim))
     )
       throw new CoordinationError("VES_CLAIM_SIGNATURE_INVALID", "Renewed Work Claim is invalid");
@@ -376,8 +373,8 @@ export class WorkClaimService {
         current !== undefined &&
         current.claimId === claim.claimId &&
         current.fencingToken === claim.fencingToken &&
-        canonicalJson({ ...current, expiresAt: claim.expiresAt, signature: claim.signature }) ===
-          canonicalJson(claim) &&
+        canonicalizeJsonV2({ ...current, expiresAt: claim.expiresAt, signature: claim.signature }) ===
+          canonicalizeJsonV2(claim) &&
         IsoInstant.parse(current.expiresAt).compare(this.#clock.now()) > 0 &&
         (await this.#signatures.verify(current))
       );

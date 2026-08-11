@@ -39,6 +39,31 @@ test("normalization is independent from input order", () => {
   assert.deepEqual(left, right);
 });
 
+// Issue #58: normalizeChangeScope's target ordering and scopeDigest must not
+// depend on the machine's ambient locale.
+test("target order and scopeDigest are byte-identical under two different ambient locales", () => {
+  const targets = [
+    { projectId: projectB, path: "b" },
+    { projectId: projectA, path: "a" }
+  ];
+  const priorLang = process.env.LANG;
+  const priorLcAll = process.env.LC_ALL;
+  try {
+    process.env.LANG = "en_US.UTF-8";
+    process.env.LC_ALL = "en_US.UTF-8";
+    const first = scope(targets);
+    process.env.LANG = "fr_FR.UTF-8";
+    process.env.LC_ALL = "fr_FR.UTF-8";
+    const second = scope(targets);
+    assert.deepEqual(first, second);
+  } finally {
+    if (priorLang === undefined) delete process.env.LANG;
+    else process.env.LANG = priorLang;
+    if (priorLcAll === undefined) delete process.env.LC_ALL;
+    else process.env.LC_ALL = priorLcAll;
+  }
+});
+
 const cases = [
   ["same path", [{ projectId: projectA, path: "src" }], [{ projectId: projectA, path: "src" }], true],
   ["ancestor left", [{ projectId: projectA, path: "src" }], [{ projectId: projectA, path: "src/api" }], true],

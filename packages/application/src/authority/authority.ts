@@ -1,4 +1,4 @@
-import { IsoInstant, StableId, type Clock, type UuidSource } from "@verchestra/domain";
+import { IsoInstant, StableId, canonicalizeJsonV2, type Clock, type UuidSource } from "@verchestra/domain";
 
 import type { ContentDigestPort } from "../sync/workspace-reconcile.ts";
 
@@ -141,18 +141,6 @@ interface AuthorityDependencies {
   readonly artifacts: ApprovalArtifactPort;
 }
 
-function canonicalJson(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
-  if (value !== null && typeof value === "object") {
-    return `{${Object.entries(value as Readonly<Record<string, unknown>>)
-      .filter(([, entry]) => entry !== undefined)
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([key, entry]) => `${JSON.stringify(key)}:${canonicalJson(entry)}`)
-      .join(",")}}`;
-  }
-  return JSON.stringify(value);
-}
-
 function fail(code: string, message: string): never {
   throw new AuthorityError(code, message);
 }
@@ -211,7 +199,7 @@ function bindingFrom(
     ["contextManifestDigest", intent.contextManifestDigest]
   ] as const)
     assertDigest(value, field);
-  const listDigest = (value: readonly string[]) => digest.sha256(canonicalJson(value));
+  const listDigest = (value: readonly string[]) => digest.sha256(canonicalizeJsonV2(value));
   return Object.freeze({
     workspaceId: intent.workspaceId,
     runId: intent.runId,
@@ -271,7 +259,7 @@ export class ApprovalService {
       runId: intent.runId,
       review,
       binding,
-      bindingDigest: this.#digest.sha256(canonicalJson(binding)),
+      bindingDigest: this.#digest.sha256(canonicalizeJsonV2(binding)),
       requestedAt,
       expiresAt: intent.expiresAt
     });
@@ -280,7 +268,7 @@ export class ApprovalService {
   async record(request: ApprovalRequest, approver: AuthorizedIdentity): Promise<ApprovalRecord> {
     if (approver.kind !== "human") fail("VES_APPROVAL_HUMAN_REQUIRED", "Only a human may approve");
     assertValue(approver.id, "approver");
-    if (request.bindingDigest !== this.#digest.sha256(canonicalJson(request.binding))) {
+    if (request.bindingDigest !== this.#digest.sha256(canonicalizeJsonV2(request.binding))) {
       fail("VES_APPROVAL_STALE", "Approval request binding was modified");
     }
     const now = this.#clock.now();
@@ -333,8 +321,8 @@ export class ApprovalService {
       this.#digest
     );
     if (
-      canonicalJson(record.artifact.payload) !==
-        canonicalJson({
+      canonicalizeJsonV2(record.artifact.payload) !==
+        canonicalizeJsonV2({
           schemaVersion: record.schemaVersion,
           approvalId: record.approvalId,
           action: record.action,
@@ -345,9 +333,9 @@ export class ApprovalService {
           issuedAt: record.issuedAt,
           expiresAt: record.expiresAt
         }) ||
-      canonicalJson(record.binding) !== canonicalJson(reconstructedBinding) ||
-      record.bindingDigest !== this.#digest.sha256(canonicalJson(record.binding)) ||
-      record.bindingDigest !== this.#digest.sha256(canonicalJson(current))
+      canonicalizeJsonV2(record.binding) !== canonicalizeJsonV2(reconstructedBinding) ||
+      record.bindingDigest !== this.#digest.sha256(canonicalizeJsonV2(record.binding)) ||
+      record.bindingDigest !== this.#digest.sha256(canonicalizeJsonV2(current))
     )
       return { valid: false, code: "VES_APPROVAL_STALE" };
     return { valid: true, approvalId, bindingDigest: record.bindingDigest };
@@ -509,7 +497,7 @@ export class CapabilityBroker {
     });
     const grant: CapabilityGrant = Object.freeze({
       ...base,
-      bindingDigest: this.#digest.sha256(canonicalJson(grantMaterial(base)))
+      bindingDigest: this.#digest.sha256(canonicalizeJsonV2(grantMaterial(base)))
     });
     if (!(await this.#store.saveGrant(grant)).created) fail("VES_CAPABILITY_CONFLICT", "Grant identity exists");
     return grant;
@@ -535,16 +523,16 @@ export class CapabilityBroker {
     if (grant.revokedAt !== undefined) fail("VES_CAPABILITY_REVOKED", "Capability Grant is revoked");
     if (expired(grant.expiresAt, this.#clock.now())) fail("VES_CAPABILITY_EXPIRED", "Capability Grant is expired");
     const exact =
-      canonicalJson(grant.principal) === canonicalJson(invocation.principal) &&
-      canonicalJson(grant.action) === canonicalJson(invocation.action) &&
-      canonicalJson(grant.resource) === canonicalJson(invocation.resource) &&
+      canonicalizeJsonV2(grant.principal) === canonicalizeJsonV2(invocation.principal) &&
+      canonicalizeJsonV2(grant.action) === canonicalizeJsonV2(invocation.action) &&
+      canonicalizeJsonV2(grant.resource) === canonicalizeJsonV2(invocation.resource) &&
       grant.workspaceId === invocation.workspaceId &&
       grant.runId === invocation.runId &&
-      canonicalJson(grant.constraints) === canonicalJson(invocation.constraints);
+      canonicalizeJsonV2(grant.constraints) === canonicalizeJsonV2(invocation.constraints);
     const exactCapability = grant.capability === invocation.capability;
     if (!exact || !exactCapability)
       fail("VES_CAPABILITY_BINDING_MISMATCH", "Invocation does not match the exact grant");
-    if (grant.bindingDigest !== this.#digest.sha256(canonicalJson(grantMaterial(grant)))) {
+    if (grant.bindingDigest !== this.#digest.sha256(canonicalizeJsonV2(grantMaterial(grant)))) {
       fail("VES_CAPABILITY_BINDING_MISMATCH", "Capability Grant integrity failed");
     }
     const approval = await this.#approvals.verify(grant.approvalRef.approvalId, invocation.currentApprovalBinding);

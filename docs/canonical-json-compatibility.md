@@ -54,8 +54,8 @@ comparison fails closed where identities are not interchangeable.
 | Owner and current path | Current material / consumer | Classification | Current byte contract | Required migration slice |
 | --- | --- | --- | --- | --- |
 | Evidence: `packages/evidence/src/integrity/canonical.ts` | Artifact IDs, payload digests, signatures, execution packages, capsules, recovery and support bundles | signed + persistent | Qualified JCS-like V1 with strict validation | Preserve V1 verification; introduce V2 facade only with envelope/schema versioning. |
-| Application authority: `authority.ts` | Approval bindings and capability-grant binding digests | persistent authority | Recursive serializer with ambient locale member order | Version approval/grant bindings; verify old stored binding digests with V1. |
-| Application coordination: `work-claims.ts` | Claim scope digest and claim equality | persistent authority | Recursive serializer plus locale target sort | Version claim scope; preserve claim reload and expiry behavior for V1. |
+| Application authority: `authority.ts` | Approval bindings and capability-grant binding digests | persistent authority; classified transient (T4b) — see rationale below | **Migrated (T4b).** `canonicalizeJsonV2` replaces the recursive serializer with ambient locale member order. | Done. `tests/security/authority-binding.test.mjs` (cross-locale test), 86 existing authority/capability cases unchanged. |
+| Application coordination: `work-claims.ts` | Claim scope digest and claim equality | persistent authority; classified transient (T4b) — see rationale below | **Migrated (T4b).** `canonicalizeJsonV2` replaces the recursive serializer; `compareTargets`'s two-field target sort (feeding a dedup/subsumption pass whose adjacency the sort must reproduce) now uses code-unit `<`/`>` instead of `localeCompare`. | Done. `tests/unit/change-scope.test.mjs` (cross-locale test), 41 existing coordination/scope cases unchanged. |
 | Application execution: `gate-commit.ts` | Gate plan, evidence, request, and idempotency digests | persistent authority | Recursive serializer plus locale member order | Add canonicalization version to plan/checkpoint/receipt records; retain V1 resume verification. |
 | Application egress: `trust-egress.ts` | Egress manifest and revision digests | signed-adjacent authority | Recursive serializer plus locale member order | Version manifest digest and reject mixed-version approval binding. |
 | Application handoff: `handoff/validation.ts` | Portable handoff validation digests | portable persistent | Recursive serializer plus locale member order | Version handoff artifact before changing bytes; receiver chooses recorded version. |
@@ -88,7 +88,7 @@ migrate-together and migrate-after rules.
 | Slice | Owners | Risk | Rationale |
 | --- | --- | --- | --- |
 | T4a | `promotion-gate.ts`, `campaigns.ts`, `doctor.ts`, `self-test.ts` | Low | **Done.** Merged by T72–T74 (2026-08-07); no `docs/qualification/t72\|t73\|t74-validation.md` existed at migration time, so these bytes had never been frozen — zero backward-compatibility work required. Added `formatCanonicalDigestV2` (the shared `v2:sha256:` prefix authority) to domain and a repo-wide ambient-locale ceiling sensor (`tests/security/canonical-json-locale-allowlist.test.mjs`) as reusable infrastructure for every remaining T4 slice. |
-| T4b | `authority.ts`, `work-claims.ts` | Medium | Persistent authority bindings. |
+| T4b | `authority.ts`, `work-claims.ts` | Medium (reclassified transient, see below) | Persistent authority bindings, migrated as a direct swap. |
 | T4c | `gate-commit.ts` + `git-worktree-adapter.ts` `changeDigest` | Medium-high | Durable resume path; migrate together per the matrix. |
 | T4d | `cedar-policy.ts` + `runtime-store.ts` | Medium | Matrix requires migrating together (policy-view schema/versioning). |
 | T4e | `context-compiler.ts` + `source-snapshots.ts` + `backend-serializers.ts` | Medium | Matrix requires migrating together; `backend-serializers.ts` added to the slice by the T2 re-inventory above (AD-015). |
@@ -100,6 +100,39 @@ migrate-together and migrate-after rules.
 
 `tuf-update-client.ts` stays classified separately (no structured digest at
 write) and is not a T4 slice.
+
+### T4b classification: transient, not archival
+
+`authority.ts`'s `bindingDigest`/`CapabilityGrant` digests and
+`work-claims.ts`'s `scopeDigest` are genuinely persisted (a real SQLite
+`claims` table keyed by `scope_digest`; `RuntimeAuthorityStore` for approval
+records) — measured, not assumed. That alone would put them under
+compatibility rule 1 (versioned dual-verification, matching T3's init
+journal). They were migrated instead as a direct swap (rule 3, transient)
+because, unlike T3's init journal or T4i's Execution Packages:
+
+- every record type declares `expiresAt` — approvals, capability grants, and
+  work claims are short-lived working authorization state, not archival
+  evidence meant to outlive a session;
+- no test or fixture anywhere pins a specific digest byte value for either
+  file (confirmed by search: every digest in every test is computed live,
+  never compared against a literal string);
+- this is pre-1.0 local developer state with no installed base — the same
+  "no installed base, regenerable content" reasoning AD-014 used for the
+  DSSE migration.
+
+The practical consequence of getting this wrong in either direction is
+bounded: a record created just before the algorithm changed would fail its
+next verification until it naturally expires (minutes to hours, per
+`validTtl`'s bound), not a permanent loss of archival evidence.
+
+This classification was not made unilaterally by the implementing agent: the
+row-1-vs-row-3 ambiguity was raised explicitly and the transient
+classification was chosen by brunomjanuario (WS-C) before implementation
+(2026-08-11), following the AD-009/AD-014 pattern that a boundary-widening
+call on trust-critical code should not be assumed silently. It is **not**
+an owner (accd) decision recorded as an AD — flagged here for human review
+alongside the code change, not asserted as settled.
 
 ## Completed vertical slice (T3)
 
