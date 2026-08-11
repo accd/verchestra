@@ -88,6 +88,25 @@ WHEN T74 is submitted THEN at least 25 security and E2E cases SHALL pass,
 `pnpm gate:security` SHALL pass, no assertion SHALL be skipped or weakened, and
 independent verification plus human review SHALL remain required.
 
+### PROM-09 — The candidate holds a surface and is denied by authority, not by absence
+
+WHEN the candidate is given the surface it can invoke THEN every attempt to read
+or mutate the sealed oracle, the criteria, the evaluator's state, or the
+pre-seal report SHALL be denied, and the denial SHALL be observable from the
+attempt itself rather than from a fact the caller supplied.
+
+Added by **AD-018** after the independent T74 verification found that
+`CandidateFacts` was an inert record inside the evaluator's own process: a
+candidate with no surface cannot attempt the forbidden access, so no fixture
+could discriminate a missing boundary. Identity separation is necessary and not
+sufficient.
+
+**What this does not claim.** The evaluator and the candidate share a process
+and a store. Cross-process and cross-storage isolation is deliberately deferred
+to the out-of-process extension host (#235, post-1.0). This requirement is an
+*authority* boundary — the product's own definition of read-only is zero
+granted authority (AD-011), not a separate process.
+
 ## Edge cases
 
 - A holdout oracle re-serialized with a changed threshold produces a different
@@ -111,5 +130,6 @@ independent verification plus human review SHALL remain required.
 | PROM-06 | VES-SKL-006 | In tasks |
 | PROM-07 | VES-MDL-003 | In tasks |
 | PROM-08 | Issue #15 completion | In tasks |
+| PROM-09 | VES-SEC-006 | In tasks |
 
-Coverage: 8 requirements, 8 mapped to tasks, 0 unmapped.
+Coverage: 9 requirements, 9 mapped to tasks, 0 unmapped.
