@@ -2,13 +2,13 @@
 schema: verchestra-feature-handoff/v1
 feature: regression-campaigns
 issue: 14
-status: verification
+status: complete
 branch: feat/t73-regression-campaigns
 baseRevision: a24f008cfada9c51d19ba8ac1183dbe66c4eb857
 lastCompletedTask: T5
-nextTask: independent T73 qualification report and chain advance to T74
-lastGate: gate:quick PASS; gate:build and gate:release confirming the corpus
-updatedAt: 2026-08-07T09:00:38Z
+nextTask: none; T73 is independently qualified and the chain advances to T74
+lastGate: gate:quick and externally dispatched gate:build PASS at 23e78dc; 6 of 6 mutations killed
+updatedAt: 2026-08-11T18:59:00Z
 ---
 
 # Scope
@@ -22,10 +22,10 @@ tasks are in this feature directory.
 # Authority and external effects
 
 The owner authorized advancing the beta chain autonomously and merging the
-feature. The implementation is complete and merges to `main`. The qualification
-chain is NOT advanced here: T73 is qualified by a separate verifier (author !=
-verifier), who writes `docs/qualification/t73-validation.md` and migrates the
-status surfaces to "T73 complete; T74 next".
+feature. The implementation is complete and merged to `main`. The qualification
+chain is now advanced: T73 was qualified by a separate verifier (author !=
+verifier, brunomjanuario), who wrote `docs/qualification/t73-validation.md`
+and migrated the status surfaces to "T73 complete; T74 next".
 
 # Completed evidence
 
@@ -49,11 +49,16 @@ status surfaces to "T73 complete; T74 next".
 
 # Next action
 
-None for the implementation. The remaining step is the independent T73
-qualification (author != verifier): re-derive the CAM-01..06 adequacy matrix,
-run a discrimination sensor on the pure campaign rules, write
-`docs/qualification/t73-validation.md`, and migrate the status surfaces to
-"T73 complete; T74 next" (the same migration T71 used).
+None. Independent qualification is complete: `docs/qualification/t73-validation.md`
+re-derived the CAM-01..06 adequacy matrix, ran a six-mutation discrimination
+sensor on the pure campaign rules (0 survivors), and migrated every derived
+status surface to "T73 complete; T74 next" in the same commit. Full report:
+`.specs/features/regression-campaigns/validation.md`. The report bound
+revision `23e78dc` rather than this feature's own last commit (`d0ea1e5`),
+because the T4a canonical-JSON migration (issue #58) touched
+`buildCampaignSummary`'s ordering after `d0ea1e5` landed — see the report's
+"Revision correction" section for the full reasoning and the byte-identity
+proof between the two candidate revisions.
 
 # Blockers
 

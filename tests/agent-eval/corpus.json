@@ -9,7 +9,7 @@
         "decision": "proceed",
         "canonicalPath": "AGENTS.md",
         "command": "corepack pnpm agent:context -- --json",
-        "status": "T72 complete; T73 next",
+        "status": "T73 complete; T74 next",
         "patches": []
       }
     },
