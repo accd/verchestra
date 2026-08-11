@@ -122,6 +122,97 @@ export function canonicalizeCampaignEvidence(results: readonly CampaignRunResult
   });
 }
 
+// PROM-09 / AD-018 (T74 finding F1). The candidate used to be an inert record
+// inside the evaluator's own process, so it could not ATTEMPT the forbidden
+// access and no fixture could discriminate a missing boundary. This is the
+// surface it actually holds: every protected asset is reachable by name, so a
+// candidate can try, and every try is refused.
+//
+// The refusal consults the grant rather than being hardcoded, for the same
+// reason AD-011 defined a read-only boundary as exactly zero granted tools: a
+// hardcoded refusal is unfalsifiable, because no test can distinguish a denial
+// caused by an empty grant from a denial someone simply wrote into the code.
+// Authority as data makes both directions discriminable.
+export const EVALUATOR_PROTECTED_ASSETS = Object.freeze([
+  "oracle",
+  "criteria",
+  "evaluator-state",
+  "pre-seal-report"
+] as const);
+
+export type EvaluatorProtectedAsset = (typeof EVALUATOR_PROTECTED_ASSETS)[number];
+
+export class EvaluatorAuthorityError extends Error {
+  readonly code = "VES_PROMOTION_AUTHORITY_DENIED" as const;
+  readonly asset: string;
+
+  constructor(asset: string) {
+    super(`Candidate holds no authority over ${asset}`);
+    this.name = "EvaluatorAuthorityError";
+    this.asset = asset;
+  }
+}
+
+export interface CandidateGrant {
+  /** The assets this grant admits. The evaluator grants none. */
+  readonly grantedAssets: readonly string[];
+  read(asset: string): unknown;
+  mutate(asset: string, value: unknown): void;
+}
+
+/**
+ * Build the surface a candidate holds during an evaluation.
+ *
+ * `grantedAssets` is a real parameter and the gate really consults it, so the
+ * mechanism is provable in both directions: a grant that admits an asset hands
+ * it over, and a grant that does not refuses. The evaluator calls
+ * `createEvaluatorCandidateGrant`, which grants nothing — that is where the
+ * zero-authority claim lives, and a test can see it is zero rather than having
+ * to trust that a hardcoded `throw` was written everywhere.
+ *
+ * What this does not claim (AD-018): the evaluator and the candidate share a
+ * process and a store. This is an authority boundary, not a process boundary;
+ * cross-process isolation is #235, post-1.0.
+ */
+export interface CandidateAuthority {
+  readonly read: readonly string[];
+  readonly mutate: readonly string[];
+}
+
+export function createCandidateGrant(
+  authority: CandidateAuthority,
+  assets: Readonly<Record<string, unknown>>
+): CandidateGrant {
+  const readable = Object.freeze([...authority.read]);
+  const writable = Object.freeze([...authority.mutate]);
+  const store: Record<string, unknown> = { ...assets };
+  const authorize = (permitted: readonly string[], asset: string): void => {
+    if (!permitted.includes(asset)) throw new EvaluatorAuthorityError(asset);
+  };
+  return Object.freeze({
+    // Reading and writing are separate capabilities. Beyond being the honest
+    // model, it is what makes "a denied mutation changed nothing" provable: the
+    // check reads back through the same store it would have written to.
+    grantedAssets: Object.freeze([...new Set([...readable, ...writable])]),
+    read: (asset: string) => {
+      authorize(readable, asset);
+      return store[asset];
+    },
+    mutate: (asset: string, value: unknown) => {
+      authorize(writable, asset);
+      store[asset] = value;
+    }
+  });
+}
+
+/**
+ * The grant the evaluator actually issues: every protected asset is reachable
+ * by name so a candidate can attempt it, and neither read nor write is granted.
+ */
+export function createEvaluatorCandidateGrant(assets: Readonly<Record<string, unknown>>): CandidateGrant {
+  return createCandidateGrant({ read: [], mutate: [] }, assets);
+}
+
 export type PromotionVerdict = "PROMOTED" | "BLOCKED";
 
 export interface PromotionInput {
