@@ -4,11 +4,11 @@ feature: milestone-2-completion
 issue: null
 status: in_progress
 branch: main
-baseRevision: aa3aab12e09de6d1d5af24d992c6e4014f8855c8
+baseRevision: cdd73b764b85732f797da68df84f3f01eabb9f5a
 lastCompletedTask: null
-nextTask: C4
-lastGate: gate:quick and externally dispatched gate:security PASS at 2b628af; run 31330393346
-updatedAt: 2026-08-09T19:05:00Z
+nextTask: B2
+lastGate: gate:quick (local) and externally dispatched gate:build PASS at 23e78dc; run 31525323571
+updatedAt: 2026-08-11T20:15:00Z
 ---
 
 # Scope
@@ -45,6 +45,31 @@ issues distributed across workstreams WS-A (accd), WS-B (MiguelCorre), WS-C
   survivor; `gate:quick` and externally dispatched `gate:security` run
   31330393346 pass with zero skipped/todo. The report and every derived status
   surface advance atomically to "T72 complete; T73 next".
+- 2026-08-09 — **C1 done:** PR #209 (canonical-json T4a) rebased onto current
+  `upstream/main`, reviewed, and merged.
+- 2026-08-09 — **C3 done:** #110 closure evidence recorded (PR #250, merged)
+  and the issue closed with the CI run and SHA cited.
+- 2026-08-09/11 — **C6 done:** #233 delivered across 7 commits (PR #252,
+  merged) — the 7 engine connection ports published, the package `exports`
+  field declared, the 6 remaining conformance kits parameterized with
+  `realConnection`, the 2 fixture-bound postgres assertions unwelded, a dead
+  error-mapping allowlist fixed with regression tests, a 7-engine parity
+  guard added, and the contract documented (`docs/data-probe-contract.md`).
+  Issue #233 closed with evidence.
+- 2026-08-09 — **C5 partial:** the `.vestra` vs `.verchestra` doctor-probe
+  root-drift defect (flagged in accd's #207 comment) fixed with a static
+  anti-drift architecture test (PR #251, merged). The seven live-probe
+  upgrades — the rest of #207's scope — remain blocked on A3's provisioned
+  fixtures; #207 stays open.
+- 2026-08-11 — **C4 done:** T73 independently qualified in
+  `docs/qualification/t73-validation.md` (PR #255, merged), bound to
+  main-reachable `23e78dc` (with a documented, `sha256sum`-verified revision
+  correction from the implementation's own last commit `d0ea1e5`, since the
+  T4a canonical-JSON migration touched the qualified surface afterward).
+  Sixty-two focused cases pass; six mutations are killed with no survivor;
+  `gate:quick` (local) and externally dispatched `gate:build` run 31525323571
+  pass with zero skipped/todo. The report and every derived status surface
+  advance atomically to "T73 complete; T74 next".
 
 # Tracking gap closed (2026-08-09)
 
@@ -57,21 +82,22 @@ Not new scope — restored visibility of scope the ADs already committed to.
 
 # Next Exact Action
 
-**C4 (brunomjanuario): author `docs/qualification/t73-validation.md`.** B1 has
-landed the independent T72 report and unblocked the serial chain. Re-derive the
-T73 adequacy matrix, verify that campaign distributions cannot collapse into a
-single aggregate score, run the required `pnpm gate:build`, satisfy
+**B2 (MiguelCorre): author `docs/qualification/t74-validation.md`.** C4 has
+landed the independent T73 report and unblocked the serial chain. Re-derive
+the T74 adequacy matrix, verify the sealed-holdout evaluator's isolation
+guarantees, run the required `pnpm gate:security`, satisfy
 `docs/qualification/REPORT-CONTRACT.md`, and advance every derived status
-surface atomically to "T73 complete; T74 next".
+surface atomically to "T74 complete; T75 next".
 
-Parallel starts that block nobody: C1 (review PR #209), C3 (#110 closure
-evidence), A1/A2 (owner ADs for #217/#218), A3 (T75 remaining matrices), B4
-(#36 install path).
+Parallel starts that block nobody: C2 (#58 remaining T4b–T4j slices,
+in progress), A3 (T75 remaining matrices), A4 (#35 live cross-driver
+verifier), C5 (#207 live probes, blocked on A3's fixtures), B4 (#36 install
+path, in review).
 
 # Blockers
 
-None for C4; B1 is complete. The serial chain blocks B2 on C4, B3 on
-B2+A3+A4+C5+C6, A5 on B3+A8+A9+C2, and A6 on A5.
+None for B2; C4 is complete. The serial chain blocks B3 on
+B2+A3+A4+C5+C6(done), A5 on B3+A8+A9+C2, and A6 on A5.
 
 # Decisions
 
@@ -90,8 +116,8 @@ B2+A3+A4+C5+C6, A5 on B3+A8+A9+C2, and A6 on A5.
 # Files Intentionally Left Unchanged
 
 - Future `docs/qualification/*` reports remain reserved for their assigned
-  independent verifiers (C4, B2, B3).
-- Derived status surfaces after the completed B1 advance migrate only inside
+  independent verifiers (B2, B3).
+- Derived status surfaces after the completed C4 advance migrate only inside
   the next serial qualification-report PR.
 - Stale feature handoffs listed in `analysis.md`'s appendix — separate
   cleanup, owner-scheduled.
