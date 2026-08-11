@@ -235,6 +235,20 @@ CREATE TABLE artifact_refs (
   FOREIGN KEY (run_id) REFERENCES runs(run_id)
 ) STRICT;`;
 
+// #58 T4b migrated `scopeDigest` from a locale-sorting private encoder to the
+// qualified canonical contract, which changes the digest a given scope produces.
+// Exclusivity here is a pure digest-equality lookup over UNIQUE (workspace_id,
+// scope_digest) — there is no target-overlap computation — so a claim written
+// under the old encoding would never collide with the same logical scope under
+// the new one, and two runs could hold the same scope exclusively for as long as
+// the TTL allows (up to 24 hours).
+//
+// Clearing the table is what makes T4b's "transient, not archival"
+// classification true rather than merely argued: a claim is a short-lived
+// authorization token, so discarding it costs a re-acquire, while leaving it
+// orphaned costs the mutual exclusion it exists to provide.
+const CLAIM_DIGEST_REENCODING = "DELETE FROM claims;";
+
 export const DEFAULT_RUNTIME_MIGRATIONS: readonly RuntimeMigration[] = Object.freeze([
   Object.freeze({ id: "001_runtime", up: RUNTIME_SCHEMA }),
   Object.freeze({ id: "002_effects", up: EFFECT_SCHEMA }),
@@ -242,7 +256,8 @@ export const DEFAULT_RUNTIME_MIGRATIONS: readonly RuntimeMigration[] = Object.fr
   Object.freeze({ id: "004_sync_state", up: SYNC_STATE_SCHEMA }),
   Object.freeze({ id: "005_policy_views", up: POLICY_VIEW_SCHEMA }),
   Object.freeze({ id: "006_authority", up: AUTHORITY_SCHEMA }),
-  Object.freeze({ id: "007_run_capsules", up: RUN_CAPSULE_SCHEMA })
+  Object.freeze({ id: "007_run_capsules", up: RUN_CAPSULE_SCHEMA }),
+  Object.freeze({ id: "008_claim_digest_reencoding", up: CLAIM_DIGEST_REENCODING })
 ]);
 
 type UnknownRecord = Record<string, unknown> & {
