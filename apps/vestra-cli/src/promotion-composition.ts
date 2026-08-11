@@ -7,6 +7,7 @@ import { createHash } from "node:crypto";
 
 import {
   buildPromotionReport,
+  canonicalizeCampaignEvidence,
   canonicalizeOracle,
   evaluatePromotion,
   type HoldoutOracle,
@@ -66,7 +67,11 @@ export async function runPromotion(oracle: HoldoutOracle, candidate: CandidateFa
     schema: { name: "promotion-report", version: 1 },
     purpose: "promotion-report",
     bindingId: "promotion-gate",
-    sourceStateDigest: sha256(canonicalizeOracle(oracle))
+    // T74 finding F2: the source state a promotion rests on is the oracle AND
+    // the admitted campaign evidence. Binding the oracle alone left two runs on
+    // materially different evidence sharing a sourceStateDigest, so the sealed
+    // artifact could not distinguish them.
+    sourceStateDigest: sha256(`${canonicalizeOracle(oracle)}\n${canonicalizeCampaignEvidence(candidate.results)}`)
   });
   return Object.freeze({ decision, report, artifact });
 }

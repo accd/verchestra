@@ -92,6 +92,36 @@ export function canonicalizeOracle(oracle: HoldoutOracle): string {
   });
 }
 
+// PROM-06 / T74 finding F2. The admitted campaign evidence is what authorized a
+// promotion, so the signed decision has to bind it. Without this the same
+// candidate and oracle promoted on materially different evidence — (samples=100,
+// lowerBound=0.99) versus (samples=90, lowerBound=0.81) — produced byte-identical
+// reports and digests, so the artifact could not say which evidence it rested on.
+//
+// Results are a declared set keyed by campaign id, exactly as the oracle entries
+// and the block codes already are (CJ4-03), so they are normalized to code-unit
+// order before V2 encoding. Reordering the same evidence is therefore identity-
+// preserving while any content change is not — a digest that moved with
+// iteration order would make the same evidence sign differently on different
+// machines, which is the reproducibility the product exists to promise.
+//
+// SPEC_DEVIATION: F2's remediation text asks for assertions that "evidence order"
+// changes the digest. Normalizing is the deliberate opposite, for the reason
+// above; the content-sensitivity F2 actually protects is fully asserted.
+export function canonicalizeCampaignEvidence(results: readonly CampaignRunResult[]): string {
+  if (!Array.isArray(results)) fail("VES_PROMOTION_INPUT_INVALID", "campaign results are invalid");
+  return canonicalizeJsonV2({
+    results: normalizeDeclaredSet(results, (result) => result.id).map((result) => ({
+      id: result.id,
+      lowerConfidenceBound: result.lowerConfidenceBound,
+      passRate: result.passRate,
+      passes: result.passes,
+      samples: result.samples,
+      verdict: result.verdict
+    }))
+  });
+}
+
 export type PromotionVerdict = "PROMOTED" | "BLOCKED";
 
 export interface PromotionInput {
@@ -161,6 +191,7 @@ export const PROMOTION_REPORT_FIELDS = Object.freeze([
   "holdoutDigest",
   "policyId",
   "evaluatorKeyId",
+  "evidenceDigest",
   "blocks",
   "bodyDigest"
 ] as const);
@@ -171,6 +202,8 @@ export interface PromotionReportPayload {
   readonly holdoutDigest: string;
   readonly policyId: string;
   readonly evaluatorKeyId: string;
+  /** Digest of the admitted campaign evidence this decision rested on (F2). */
+  readonly evidenceDigest: string;
   readonly blocks: readonly string[];
   readonly bodyDigest: string;
 }
@@ -182,6 +215,7 @@ function canonicalBody(fields: Omit<PromotionReportPayload, "bodyDigest">): stri
     blocks: [...fields.blocks],
     candidateDigest: fields.candidateDigest,
     evaluatorKeyId: fields.evaluatorKeyId,
+    evidenceDigest: fields.evidenceDigest,
     holdoutDigest: fields.holdoutDigest,
     policyId: fields.policyId,
     verdict: fields.verdict
@@ -199,6 +233,7 @@ export function buildPromotionReport(
     holdoutDigest: input.sealedHoldoutDigest,
     policyId: input.oracle.policyId,
     evaluatorKeyId: input.evaluatorKeyId,
+    evidenceDigest: `sha256:${hash(canonicalizeCampaignEvidence(input.results))}`,
     blocks: [...decision.blocks]
   };
   const payload = Object.freeze({ ...body, bodyDigest: `sha256:${hash(canonicalBody(body))}` });
@@ -217,7 +252,7 @@ export function assertPromotionReport(payload: PromotionReportPayload): void {
 function assertReportScalars(payload: PromotionReportPayload): void {
   if (payload.verdict !== "PROMOTED" && payload.verdict !== "BLOCKED")
     fail("VES_PROMOTION_REPORT_INVALID", "promotion verdict is invalid");
-  for (const digest of [payload.candidateDigest, payload.holdoutDigest, payload.bodyDigest])
+  for (const digest of [payload.candidateDigest, payload.holdoutDigest, payload.evidenceDigest, payload.bodyDigest])
     if (!DIGEST.test(digest)) fail("VES_PROMOTION_REPORT_INVALID", "a bound digest is invalid");
   if (!ID.test(payload.policyId) || !ID.test(payload.evaluatorKeyId))
     fail("VES_PROMOTION_REPORT_INVALID", "policy id or evaluator identity is invalid");

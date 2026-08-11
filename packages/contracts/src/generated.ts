@@ -41,6 +41,7 @@ export interface PromotionReport {
   holdoutDigest: string;
   policyId: string;
   evaluatorKeyId: string;
+  evidenceDigest: string;
   blocks: (
     | "VES_PROMOTION_ORACLE_TAMPERED"
     | "VES_PROMOTION_CANDIDATE_MUTATED"

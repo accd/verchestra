@@ -316,6 +316,7 @@ export {
   assertPromotionReport,
   assertReportUntampered,
   buildPromotionReport,
+  canonicalizeCampaignEvidence,
   canonicalizeOracle,
   evaluatePromotion,
   type HoldoutEntry,
