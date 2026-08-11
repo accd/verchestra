@@ -100,3 +100,31 @@ test("the holdout digest in the report equals the sealed oracle digest", async (
   const outcome = await runPromotion(oracle(), candidate());
   assert.equal(outcome.report.holdoutDigest, sealHoldout(oracle()));
 });
+
+// T74 finding F2, at the composition root: the sealed artifact's source state
+// must rest on the oracle AND the admitted evidence. Binding the oracle alone
+// let two runs on materially different evidence share a sourceStateDigest, so
+// the signed artifact could not distinguish which evidence authorized it.
+test("materially different passing evidence produces a distinguishable sealed artifact", async () => {
+  const oracle = {
+    policyId: "release-policy",
+    entries: [{ campaignId: "alpha", threshold: 0.8, repetitionCount: 50 }]
+  };
+  const candidate = (samples, passes, lowerConfidenceBound) => ({
+    candidateDigestAtSeal: `sha256:${"a".repeat(64)}`,
+    candidateDigestNow: `sha256:${"a".repeat(64)}`,
+    candidateKeyId: "candidate-key",
+    contaminated: false,
+    results: [{ id: "alpha", samples, passes, passRate: passes / samples, lowerConfidenceBound, verdict: "PASSED" }]
+  });
+
+  const strong = await runPromotion(oracle, candidate(100, 99, 0.99));
+  const weak = await runPromotion(oracle, candidate(90, 81, 0.81));
+
+  assert.equal(strong.decision.verdict, "PROMOTED");
+  assert.equal(weak.decision.verdict, "PROMOTED");
+  assert.notEqual(strong.report.evidenceDigest, weak.report.evidenceDigest);
+  assert.notEqual(strong.report.bodyDigest, weak.report.bodyDigest);
+  assert.notEqual(strong.artifact.sourceStateDigest, weak.artifact.sourceStateDigest);
+  assert.notEqual(strong.artifact.payloadDigest, weak.artifact.payloadDigest);
+});

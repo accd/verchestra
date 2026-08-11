@@ -11,6 +11,9 @@ const promoted = {
   holdoutDigest: `sha256:${"b".repeat(64)}`,
   policyId: "release-policy",
   evaluatorKeyId: "holdout-evaluator",
+  // T74 finding F2: the schema now requires the admitted campaign evidence to
+  // be bound, so a report without it is not a valid promotion-report@1.
+  evidenceDigest: `sha256:${"d".repeat(64)}`,
   blocks: [],
   bodyDigest: `sha256:${"c".repeat(64)}`
 };
@@ -82,3 +85,15 @@ for (const [name, mutate] of [
     });
   });
 }
+
+test("a report without the bound campaign evidence is rejected", () => {
+  // The regression T74 F2 recorded: before the binding, a promotion decision
+  // could not say which evidence authorized it. The schema now refuses one.
+  const { evidenceDigest, ...withoutEvidence } = promoted;
+  assert.match(evidenceDigest, /^sha256:[a-f0-9]{64}$/u);
+  assert.throws(() => registry.validate("promotion-report", "1", withoutEvidence));
+});
+
+test("the bound evidence digest must be a sha256 value", () => {
+  assert.throws(() => registry.validate("promotion-report", "1", { ...promoted, evidenceDigest: "not-a-digest" }));
+});

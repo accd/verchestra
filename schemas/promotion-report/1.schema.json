@@ -4,13 +4,23 @@
   "title": "PromotionReport",
   "type": "object",
   "additionalProperties": false,
-  "required": ["verdict", "candidateDigest", "holdoutDigest", "policyId", "evaluatorKeyId", "blocks", "bodyDigest"],
+  "required": [
+    "verdict",
+    "candidateDigest",
+    "holdoutDigest",
+    "policyId",
+    "evaluatorKeyId",
+    "evidenceDigest",
+    "blocks",
+    "bodyDigest"
+  ],
   "properties": {
     "verdict": { "enum": ["PROMOTED", "BLOCKED"] },
     "candidateDigest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
     "holdoutDigest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
     "policyId": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
     "evaluatorKeyId": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+    "evidenceDigest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
     "blocks": {
       "type": "array",
       "uniqueItems": true,
