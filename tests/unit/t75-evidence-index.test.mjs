@@ -31,10 +31,25 @@ const identityOf = (name, revision) => {
 
 // A missing leg never ran, so it carries no identity and no digests — the shape
 // the workflow actually emits for a job that stayed queued.
+// A passing leg's sealed record is determined by the fleet index plus the fact
+// of the pass, so its digest has to be the real one or the generator refuses it.
+// A failed leg's carries an unrecoverable `reported` value and stays opaque.
+const OPAQUE_LEG_DIGEST = `sha256:${"d".repeat(64)}`;
+
+const sealedDigestOf = (identity, identityDigest) =>
+  digestOf({ schemaVersion: 2, identity, identityDigest, outcome: { result: "pass", reported: "success" } });
+
 const leg = (name, status = "qualified", revision = REVISION) => {
   if (status === "missing") return { leg: name, status };
   const identity = identityOf(name, revision);
-  return { leg: name, status, identity, identityDigest: digestOf(identity), legDigest: `sha256:${"d".repeat(64)}` };
+  const identityDigest = digestOf(identity);
+  return {
+    leg: name,
+    status,
+    identity,
+    identityDigest,
+    legDigest: status === "qualified" ? sealedDigestOf(identity, identityDigest) : OPAQUE_LEG_DIGEST
+  };
 };
 
 const fleetIndex = (gate, overrides = {}) => {
@@ -330,7 +345,7 @@ test("each dispatched profile is recorded with its run and its per-leg identity"
     runtime: "v24.14.0",
     revision: REVISION,
     identityDigest: digestOf(identityOf("win32-x64", REVISION)),
-    legDigest: `sha256:${"d".repeat(64)}`
+    legDigest: sealedDigestOf(identityOf("win32-x64", REVISION), digestOf(identityOf("win32-x64", REVISION)))
   });
 });
 
@@ -639,7 +654,15 @@ test("one bad run among good ones is enough to contradict a declaration", () => 
   );
   const index = buildEvidenceIndex(stale, fleet, REVISION);
   const entry = caseOf(index, "platform", "linux-arm64");
-  assert.match(entry.contradiction, /declared environmental, which does not predict failed in gate:release/u);
+  // Every unpredicted observation is named, greens included: an environmental
+  // declaration predicts neither a pass nor a failure.
+  assert.match(entry.contradiction, /failed in gate:release \(run run-release\)/u);
+  assert.match(entry.contradiction, /qualified in gate:quick \(run run-quick\)/u);
+  // The declaration is preserved, not relabelled. A contradiction is something
+  // for review to resolve, not a licence to rewrite a reviewed status and move
+  // two summary tallies with it.
+  assert.equal(entry.status, "environmental");
+  assert.equal(entry.declaredStatus, "environmental");
   assert.equal(caseOf(index, "gate-profile", "release").status, "not-qualified");
   assert.equal(
     caseOf(index, "gate-profile", "quick").status,
@@ -712,7 +735,8 @@ test("the same leg reported twice in one run is refused", () => {
 test("the index says which digests it re-derived and which it copied", () => {
   // Presented identically, a transcribed value reads as a checked one.
   const index = buildEvidenceIndex(matrix, greenFleet(), REVISION);
-  assert.deepEqual(index.digestProvenance, { identityDigest: "recomputed", legDigest: "transcribed" });
+  assert.equal(index.digestProvenance.identityDigest, "recomputed");
+  assert.match(index.digestProvenance.legDigest, /recomputed for passing legs; transcribed otherwise/u);
 });
 
 test("the CLI refuses an option with no value instead of crashing", () => {
@@ -721,4 +745,61 @@ test("the CLI refuses an option with no value instead of crashing", () => {
     assert.equal(result.status, 1);
     assert.match(result.stderr, /usage:|--out needs a path/u);
   }
+});
+
+test("a partial return of an environmental platform is reported", () => {
+  // The declaration says darwin-x64 never dequeues and to re-dispatch if Intel
+  // capacity comes back. This artifact is the thing that would report the
+  // return, so it must not go quiet when the return is partial — which is the
+  // shape a return actually has.
+  const index = buildEvidenceIndex(
+    matrix,
+    GATES.map((gate) =>
+      fleetIndex(gate, {
+        legs: [...FLEET_LEGS.map((name) => leg(name)), leg("darwin-x64", gate === "quick" ? "missing" : "qualified")]
+      })
+    ),
+    REVISION
+  );
+  const entry = caseOf(index, "platform", "darwin-x64");
+  assert.equal(entry.status, "environmental", "a return is not the generator's to certify");
+  assert.match(entry.contradiction, /does not predict qualified in gate:full/u);
+  assert.equal(index.summary.contradictions, 1);
+});
+
+test("two observations are enough to catch a stale declaration", () => {
+  // Pinned at one dispatch and at five, so the rule cannot quietly become a
+  // threshold.
+  const index = buildEvidenceIndex(
+    matrix,
+    [fleetIndex("security", { legs: [...FLEET_LEGS.map((name) => leg(name)), leg("darwin-x64")] })],
+    REVISION
+  );
+  assert.match(caseOf(index, "platform", "darwin-x64").contradiction, /the declaration is stale/u);
+});
+
+test("a profile that fell short still records what it excused", () => {
+  // The excused scope is how a verdict is read; dropping it on the runs that
+  // failed removes it from exactly the rows a reader is scrutinising.
+  const index = buildEvidenceIndex(
+    matrix,
+    GATES.map((gate) =>
+      fleetIndex(gate, { legs: [leg("win32-x64", "failed"), ...FLEET_LEGS.slice(1).map((name) => leg(name))] })
+    ),
+    REVISION
+  );
+  assert.deepEqual(index.profiles[0].excused, ["darwin-x64=absent"]);
+  assert.match(caseOf(index, "gate-profile", "security").contradiction, /win32-x64=failed/u);
+});
+
+test("a passing leg whose digest does not cover its sealed record is refused", () => {
+  // A pass determines the record the workflow sealed, so this digest is
+  // checkable rather than transcribed — and every qualification verdict rests on
+  // passing legs.
+  const forged = leg("win32-x64");
+  forged.legDigest = OPAQUE_LEG_DIGEST;
+  assert.throws(
+    () => buildEvidenceIndex(matrix, [fleetIndex("security", { legs: [forged] })], REVISION),
+    /passed, but its leg digest does not cover the record that pass would have sealed/u
+  );
 });
