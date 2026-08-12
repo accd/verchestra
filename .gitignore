@@ -20,4 +20,3 @@ spikes/node-runtime/.bundle/
 .verchestra/.worktrees/
 .verchestra/.secrets/
 .verchestra/.runtime/agent-eval/
-t75-evidence-index.json

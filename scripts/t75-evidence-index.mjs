@@ -33,6 +33,10 @@ import { canonicalizeJsonV2 } from "../packages/domain/src/index.ts";
 
 const ROOT = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const MATRIX = resolve(ROOT, ".specs/features/platform-qualification-matrix/matrix.json");
+// Written into the feature directory, not the repository root: the index
+// generated at the qualification revision is committed beside t75-validation.md,
+// which is what makes it citable rather than a number retyped out of a terminal.
+const OUTPUT = resolve(ROOT, ".specs/features/platform-qualification-matrix/evidence-index.json");
 
 // The declared vocabulary (matrix.md sections 6-7) and the observed vocabulary
 // (platform-matrix.yml's index job). Neither is open: an unrecognised status
@@ -40,20 +44,37 @@ const MATRIX = resolve(ROOT, ".specs/features/platform-qualification-matrix/matr
 const DECLARED_STATUSES = new Set(["qualified", "contract-qualified", "not-qualified", "environmental"]);
 const LEG_STATUSES = new Set(["qualified", "failed", "digest-mismatch", "missing"]);
 
-// The fleet answers exactly one dimension. Only its cases are reconciled: a
-// database engine's status is not something a platform leg can confirm or
-// refute. Keyed on the dimension rather than on a case's prose evidence note,
-// which is documentation and must not decide control flow.
-const FLEET_DIMENSION = "platform";
+// The fleet answers two dimensions, and each has its own observable unit: a
+// platform case is a leg, a gate-profile case is a whole dispatch. Everything
+// else -- database engines, sandboxes, installers -- keeps the declaration's
+// word, because nothing a fleet run produces can confirm or refute it. Keyed on
+// the dimension rather than on a case's prose evidence note, which is
+// documentation and must not decide control flow.
+const FLEET_DIMENSIONS = new Set(["platform", "gate-profile"]);
+const GATE_PREFIX = "gate:";
+
+// A leg carries its own claim about which candidate it ran and its own digest
+// over that claim. Both are re-checked here rather than transcribed: the
+// workflow already verified them once, but an index is assembled from files, and
+// a file that was edited after the run would otherwise enter the published
+// record unexamined.
+function verifyLeg(leg, identity, revision) {
+  if (identity.revision !== revision)
+    throw new Error(`leg ${leg.leg} ran ${identity.revision}, not the candidate ${revision}`);
+  const recomputed = `sha256:${createHash("sha256").update(JSON.stringify(identity)).digest("hex")}`;
+  if (leg.identityDigest !== recomputed)
+    throw new Error(`leg ${leg.leg} carries an identity digest that does not cover its identity`);
+}
 
 // A leg that never ran carries no identity, and every field it would have
 // carried is recorded as an explicit null rather than omitted: absent evidence
 // has to be visible in the artifact, not inferred from a missing key.
 const orNull = (value) => value ?? null;
 
-function legRecord(leg) {
+function legRecord(leg, revision) {
   if (!LEG_STATUSES.has(leg.status)) throw new Error(`leg ${leg.leg} reports unknown status ${leg.status}`);
   const identity = leg.identity ?? {};
+  if (leg.identity) verifyLeg(leg, identity, revision);
   return {
     leg: leg.leg,
     status: leg.status,
@@ -69,7 +90,7 @@ function legRecord(leg) {
   };
 }
 
-function profileRecords(fleetIndexes, revision) {
+function profileRecords(fleetIndexes, revision, declaredGates) {
   const runIds = new Set();
   return fleetIndexes.map((index) => {
     // A null revision is not a missing field: it is the workflow's own signal
@@ -81,20 +102,50 @@ function profileRecords(fleetIndexes, revision) {
         `fleet index ${index.runId} binds ${index.revision === null ? "no single revision" : index.revision}, not the candidate ${revision}`
       );
     // Two dispatches of the same profile are two pieces of evidence. Keying by
-    // gate would collapse a re-run over a failure it is meant to expose.
+    // gate would collapse a re-run over the failure it is meant to expose.
     if (runIds.has(index.runId)) throw new Error(`fleet index ${index.runId} appears twice`);
     runIds.add(index.runId);
-    return { gate: index.gate, runId: index.runId, complete: index.complete, legs: index.legs.map(legRecord) };
+    // The gate vocabulary is the declaration's own gate-profile case set, so
+    // there is no second list to drift out of step with it.
+    const gate = index.gate.startsWith(GATE_PREFIX) ? index.gate.slice(GATE_PREFIX.length) : index.gate;
+    if (!declaredGates.has(gate))
+      throw new Error(`fleet index ${index.runId} ran ${index.gate}, which the matrix does not declare`);
+    const legs = index.legs.map((leg) => legRecord(leg, revision));
+    // Recomputed, never transcribed: a profile is complete only if it actually
+    // ran every leg green. An index that disagrees with itself is reported.
+    const complete = legs.length > 0 && legs.every((leg) => leg.status === "qualified");
+    if (index.complete !== complete)
+      throw new Error(`fleet index ${index.runId} claims complete=${index.complete} but its legs say ${complete}`);
+    return { gate: index.gate, runId: index.runId, complete, legs };
   });
 }
 
-function observationsByLeg(profiles) {
+// One observation table for both fleet-answerable dimensions. A platform case is
+// observed once per profile that carried its leg; a gate-profile case is
+// observed once per dispatch of that profile, and counts as qualified only if
+// that dispatch ran every leg green -- a profile that half-ran has not exercised
+// its stages anywhere.
+function fleetObservations(profiles, expectedLegs) {
   const observed = new Map();
+  const record = (dimension, name, entry) => {
+    const key = `${dimension}/${name}`;
+    observed.set(key, [...(observed.get(key) ?? []), entry]);
+  };
   for (const profile of profiles) {
-    for (const leg of profile.legs) {
-      const entry = { gate: profile.gate, runId: profile.runId, status: leg.status };
-      observed.set(leg.leg, [...(observed.get(leg.leg) ?? []), entry]);
-    }
+    const cite = { gate: profile.gate, runId: profile.runId };
+    const green = new Set(profile.legs.filter((leg) => leg.status === "qualified").map((leg) => leg.leg));
+    // A profile's coverage is judged against the legs the declaration expects to
+    // be qualified, not against every leg the workflow lists. A platform the
+    // matrix already records as environmental cannot also count as this
+    // profile's failure -- that would let one unavailable runner mark every
+    // stage of every profile unexercised, which is the opposite of what
+    // declaring it environmental means.
+    const missing = [...expectedLegs].filter((name) => !green.has(name));
+    for (const leg of profile.legs) record("platform", leg.leg, { ...cite, status: leg.status });
+    record("gate-profile", profile.gate.slice(GATE_PREFIX.length), {
+      ...cite,
+      status: missing.length === 0 ? "qualified" : `incomplete (${missing.join(", ")})`
+    });
   }
   return observed;
 }
@@ -112,7 +163,7 @@ function fleetVerdict(item, observations) {
     if (observations.length === 0)
       return {
         status: "not-qualified",
-        contradiction: "declared qualified, but no supplied fleet profile covers this leg"
+        contradiction: "declared qualified, but no supplied fleet evidence covers this case"
       };
     if (dissenting.length > 0)
       return { status: "not-qualified", contradiction: `declared qualified, but observed ${cited}` };
@@ -135,10 +186,8 @@ function reconcile(dimension, item, observed) {
   if (typeof item.evidence !== "string" || item.evidence.length === 0)
     throw new Error(`case ${item.case} declares no evidence note`);
   const base = { case: item.case, declaredStatus: item.status, status: item.status, evidence: item.evidence };
-  // The fleet answers one dimension; everything else keeps the declaration's
-  // word because nothing in the fleet can speak to it.
-  if (dimension !== FLEET_DIMENSION) return { ...base, observed: [] };
-  const observations = observed.get(item.case) ?? [];
+  if (!FLEET_DIMENSIONS.has(dimension)) return { ...base, observed: [] };
+  const observations = observed.get(`${dimension}/${item.case}`) ?? [];
   return { ...base, ...fleetVerdict(item, observations), observed: observations };
 }
 
@@ -146,8 +195,19 @@ export function buildEvidenceIndex(matrix, fleetIndexes, revision) {
   if (typeof revision !== "string" || !/^[0-9a-f]{40}$/u.test(revision))
     throw new Error("revision must be a full 40-character commit sha");
 
-  const profiles = profileRecords(fleetIndexes, revision);
-  const observed = observationsByLeg(profiles);
+  // The declaration supplies its own gate vocabulary.
+  const declaredGates = new Set(
+    (matrix.dimensions.find((entry) => entry.dimension === "gate-profile")?.cases ?? []).map((item) => item.case)
+  );
+  // The legs the declaration expects to be green. Anything it already records as
+  // environmental or not-qualified is not held against a profile that ran.
+  const expectedLegs = new Set(
+    (matrix.dimensions.find((entry) => entry.dimension === "platform")?.cases ?? [])
+      .filter((item) => item.status === "qualified")
+      .map((item) => item.case)
+  );
+  const profiles = profileRecords(fleetIndexes, revision, declaredGates);
+  const observed = fleetObservations(profiles, expectedLegs);
   const dimensions = matrix.dimensions.map((entry) => ({
     dimension: entry.dimension,
     cases: entry.cases.map((item) => reconcile(entry.dimension, item, observed))
@@ -208,12 +268,17 @@ if (invokedDirectly) {
   const revisionAt = args.indexOf("--revision");
   if (revisionAt === -1) throw new Error("usage: t75-evidence-index.mjs --revision <sha> <fleet-index.json...>");
   const revision = args[revisionAt + 1];
-  const files = args.filter((_, i) => i !== revisionAt && i !== revisionAt + 1);
+  const outAt = args.indexOf("--out");
+  const output = outAt === -1 ? OUTPUT : args[outAt + 1];
+  // `pnpm run <script> -- --revision ...` forwards the separator verbatim, which
+  // is the invocation style AGENTS.md documents; treat it as the no-op it is.
+  const consumed = new Set([revisionAt, revisionAt + 1, outAt, outAt + 1]);
+  const files = args.filter((value, i) => !consumed.has(i) && value !== "--");
   if (files.length === 0) throw new Error("at least one fleet index file is required");
   const matrix = JSON.parse(await readFile(MATRIX, "utf8"));
   const fleet = await Promise.all(files.map(async (file) => JSON.parse(await readFile(file, "utf8"))));
   const index = buildEvidenceIndex(matrix, fleet, revision);
-  await writeFile(resolve(ROOT, "t75-evidence-index.json"), `${JSON.stringify(index, null, 2)}\n`);
+  await writeFile(output, `${JSON.stringify(index, null, 2)}\n`);
   console.log(
     `t75 evidence index written for ${revision}: ${index.summary.qualified}/${index.summary.cases} qualified, ${index.summary.contradictions} contradiction(s)`
   );
