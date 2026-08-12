@@ -84,6 +84,15 @@ function integer(value: unknown, label: string, min: number, max: number, code: 
   return value as number;
 }
 
+// Code-unit comparison, not localeCompare: these sorts feed a digest
+// comparison directly, so ambient locale ordering is forbidden (AD-015,
+// issue #58).
+function codeUnitCompare(left: string, right: string): number {
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
+}
+
 function freeze<T>(value: T, seen = new Set<object>()): T {
   if (value === null || typeof value !== "object" || seen.has(value)) return value;
   seen.add(value);
@@ -311,8 +320,8 @@ function normalizeInput(value: unknown, sha256: (value: string) => string): Task
     PRINTABLE,
     "VES_GATE_INPUT_INVALID"
   );
-  const declared = plan.commands.map((entry) => entry.declaredCommand).sort();
-  if (canonicalizeJsonV2(declared) !== canonicalizeJsonV2([...verificationCommands].sort()))
+  const declared = plan.commands.map((entry) => entry.declaredCommand).sort(codeUnitCompare);
+  if (canonicalizeJsonV2(declared) !== canonicalizeJsonV2([...verificationCommands].sort(codeUnitCompare)))
     fail("VES_GATE_PLAN_INVALID", "gate plan does not exactly cover declared verification commands");
   const covered = new Set(plan.commands.flatMap((entry) => entry.requirementIds));
   if (requirementIds.some((requirementId) => !covered.has(requirementId)))
