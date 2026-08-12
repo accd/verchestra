@@ -249,6 +249,24 @@ CREATE TABLE artifact_refs (
 // orphaned costs the mutual exclusion it exists to provide.
 const CLAIM_DIGEST_REENCODING = "DELETE FROM claims;";
 
+// #58 T4b (PR #259) also migrated authority.ts's bindingDigest from the same
+// locale-sorting private encoder to the qualified canonical contract.
+// authority_approvals/authority_grants have no exclusivity property keyed by
+// the digest (unlike claims' UNIQUE (workspace_id, scope_digest)) — rows are
+// keyed by approval_id/grant_id, a StableId — so an orphaned row here cannot
+// silently break mutual exclusion the way an orphaned claim could. But
+// ApprovalService.verify() (packages/application/src/authority/authority.ts)
+// recomputes bindingDigest fresh from the stored binding and compares it by
+// equality against the persisted value: a bindingDigest stored under the old
+// encoding would never match a fresh recomputation again, so every
+// verification would report VES_APPROVAL_STALE for a record that was never
+// tampered with -- correct in the sense that it still fails closed, but wrong
+// in the sense that "stale" is meant to mean "content changed", not
+// "algorithm changed". Same principle as the claims fix: transient is only
+// true if the transition invalidates the old records rather than orphaning
+// them into a confusing, misattributed failure.
+const AUTHORITY_BINDING_DIGEST_REENCODING = "DELETE FROM authority_approvals; DELETE FROM authority_grants;";
+
 export const DEFAULT_RUNTIME_MIGRATIONS: readonly RuntimeMigration[] = Object.freeze([
   Object.freeze({ id: "001_runtime", up: RUNTIME_SCHEMA }),
   Object.freeze({ id: "002_effects", up: EFFECT_SCHEMA }),
@@ -257,7 +275,8 @@ export const DEFAULT_RUNTIME_MIGRATIONS: readonly RuntimeMigration[] = Object.fr
   Object.freeze({ id: "005_policy_views", up: POLICY_VIEW_SCHEMA }),
   Object.freeze({ id: "006_authority", up: AUTHORITY_SCHEMA }),
   Object.freeze({ id: "007_run_capsules", up: RUN_CAPSULE_SCHEMA }),
-  Object.freeze({ id: "008_claim_digest_reencoding", up: CLAIM_DIGEST_REENCODING })
+  Object.freeze({ id: "008_claim_digest_reencoding", up: CLAIM_DIGEST_REENCODING }),
+  Object.freeze({ id: "009_authority_binding_digest_reencoding", up: AUTHORITY_BINDING_DIGEST_REENCODING })
 ]);
 
 type UnknownRecord = Record<string, unknown> & {
