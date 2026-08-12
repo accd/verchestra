@@ -4,7 +4,7 @@ import { readFile, rename, rm } from "node:fs/promises";
 import { dirname } from "node:path";
 import { DatabaseSync, backup, type StatementSync } from "node:sqlite";
 
-import type { RunSnapshot, WorkflowDecision } from "@verchestra/domain";
+import { canonicalizeJsonV2, type RunSnapshot, type WorkflowDecision } from "@verchestra/domain";
 
 export interface RuntimeMigration {
   readonly id: string;
@@ -266,6 +266,19 @@ const CLAIM_DIGEST_REENCODING = "DELETE FROM claims;";
 // true if the transition invalidates the old records rather than orphaning
 // them into a confusing, misattributed failure.
 const AUTHORITY_BINDING_DIGEST_REENCODING = "DELETE FROM authority_approvals; DELETE FROM authority_grants;";
+// #58 T4d migrated the active-policy-view digest (cedar-policy.ts's `digest()`
+// plus this file's own reverification in getActivePolicyView) from the same
+// locale-sorting private encoder to the qualified canonical contract.
+// getActivePolicyView recomputes the digest on every load and compares it by
+// equality against the stored value -- a view saved under the old encoding
+// would never match a fresh recomputation again, and every read would throw
+// VES_RUNTIME_CORRUPT for a view that was never tampered with. Nothing in the
+// product wires RuntimePolicyViewStore into a composition root yet (confirmed
+// by search), so this is workspace-local cache state with no installed base,
+// same reasoning as the claims and authority fixes -- and, same principle,
+// transient is only true if the transition invalidates the old rows rather
+// than leaving them to fail closed for the wrong reason.
+const POLICY_VIEW_DIGEST_REENCODING = "DELETE FROM active_policy_views;";
 
 export const DEFAULT_RUNTIME_MIGRATIONS: readonly RuntimeMigration[] = Object.freeze([
   Object.freeze({ id: "001_runtime", up: RUNTIME_SCHEMA }),
@@ -276,7 +289,11 @@ export const DEFAULT_RUNTIME_MIGRATIONS: readonly RuntimeMigration[] = Object.fr
   Object.freeze({ id: "006_authority", up: AUTHORITY_SCHEMA }),
   Object.freeze({ id: "007_run_capsules", up: RUN_CAPSULE_SCHEMA }),
   Object.freeze({ id: "008_claim_digest_reencoding", up: CLAIM_DIGEST_REENCODING }),
-  Object.freeze({ id: "009_authority_binding_digest_reencoding", up: AUTHORITY_BINDING_DIGEST_REENCODING })
+  Object.freeze({ id: "009_authority_binding_digest_reencoding", up: AUTHORITY_BINDING_DIGEST_REENCODING }),
+  // 009 is reserved by #268 (authority binding-digest re-encoding, pending
+  // review at the time this migration was written); this follows at 010 to
+  // avoid a numbering collision regardless of merge order.
+  Object.freeze({ id: "010_policy_view_digest_reencoding", up: POLICY_VIEW_DIGEST_REENCODING })
 ]);
 
 type UnknownRecord = Record<string, unknown> & {
@@ -362,18 +379,6 @@ interface StoredReceipt {
 
 function sha256(value: string | Uint8Array): string {
   return createHash("sha256").update(value).digest("hex");
-}
-
-function canonicalJson(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
-  if (value !== null && typeof value === "object") {
-    return `{${Object.entries(value as Readonly<Record<string, unknown>>)
-      .filter(([, entry]) => entry !== undefined)
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([key, entry]) => `${JSON.stringify(key)}:${canonicalJson(entry)}`)
-      .join(",")}}`;
-  }
-  return JSON.stringify(value);
 }
 
 function runtimeError(code: string, message: string, cause?: unknown, recoverable = false): Error {
@@ -818,7 +823,7 @@ export class RuntimeStore {
     const view = JSON.parse(String(row["view_json"])) as Record<string, unknown>;
     const { policyViewDigest, ...viewMaterial } = view;
     const storedDigest = `sha256:${String(row["view_digest"])}`;
-    if (policyViewDigest !== storedDigest || `sha256:${sha256(canonicalJson(viewMaterial))}` !== storedDigest) {
+    if (policyViewDigest !== storedDigest || `sha256:${sha256(canonicalizeJsonV2(viewMaterial))}` !== storedDigest) {
       throw runtimeError(
         "VES_RUNTIME_CORRUPT",
         "Active Policy View digest does not match its content",
