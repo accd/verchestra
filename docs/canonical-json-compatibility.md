@@ -59,6 +59,9 @@ comparison fails closed where identities are not interchangeable.
 | Application execution: `gate-commit.ts` | Gate plan, evidence, request, and idempotency digests | persistent authority; classified transient (T4c) — see T4b/T4c rationale below | **Migrated (T4c).** `canonicalizeJsonV2` replaces the recursive serializer with locale member order (9 call sites). | Done. `tests/integration/gate-commit.test.mjs` (cross-locale test), 42 existing gate-commit cases plus the 29-case Self-Test crash-recovery suite (including the production crash matrix) unchanged. |
 | Application egress: `trust-egress.ts` | Egress manifest and revision digests | signed-adjacent authority | Recursive serializer plus locale member order | Version manifest digest and reject mixed-version approval binding. |
 | Application handoff: `handoff/validation.ts` | Portable handoff validation digests | portable persistent | Recursive serializer plus locale member order | Version handoff artifact before changing bytes; receiver chooses recorded version. |
+| Application execution: `gate-commit.ts` | Gate plan, evidence, request, and idempotency digests | persistent authority | Recursive serializer plus locale member order | Add canonicalization version to plan/checkpoint/receipt records; retain V1 resume verification. |
+| Application egress: `trust-egress.ts` | Egress manifest and revision digests | signed-adjacent authority; classified transient (T4f) — see rationale below | **Migrated (T4f).** `canonicalizeJsonV2` replaces the recursive serializer; the manifest's optional `declassificationEvidenceId` field is now omitted rather than set to `undefined` (V2 rejects `undefined` object values, AD-009). | Done. `tests/security/data-egress-firewall.test.mjs` (cross-locale test), 63 existing trust-envelope/firewall cases unchanged. |
+| Application handoff: `handoff/validation.ts` | Portable handoff validation digests | portable persistent; classified safe-to-swap (T4f) — see rationale below | **Migrated (T4f).** `canonical()` (exported name kept for its many call sites) now delegates to `canonicalizeJsonV2` instead of the recursive serializer. | Done. `tests/integration/portable-handoff.test.mjs` (cross-locale test), 126 existing handoff/egress cases unchanged. |
 | Application sync: `workspace-reconcile.ts` | Persisted sync state, plan and rebuild identities | persistent | Recursive serializer and locale sorting of semantic collections | Add state/plan canonicalization version; retain V1 reload and conflict detection. |
 | Application effects: `effect-contract.ts` | Durable effect idempotency keys | persistent effect identity | Fixed-shape `JSON.stringify` material without a canonicalization version | Add a versioned effect identity material and retain V1 key lookup for existing intents and receipts. |
 | Agent runtime context: `context-compiler.ts` | Snapshot ID, recipe, semantic-obligation, serialized-meaning and manifest digests | portable persistent | Recursive serializer and locale ordering of fragment/source IDs | Version context snapshot/manifest material; normalize declared sets with code-unit order before V2. |
@@ -102,6 +105,7 @@ migrate-together and migrate-after rules.
 | T4e | `context-compiler.ts` + `source-snapshots.ts` + `backend-serializers.ts` | Medium | Matrix requires migrating together; `backend-serializers.ts` added to the slice by the T2 re-inventory above (AD-015). |
 | T4e | `context-compiler.ts` + `source-snapshots.ts` + `backend-serializers.ts` | Medium (reclassified transient, see below) | **Done.** Matrix requires migrating together; `backend-serializers.ts` added to the slice by the T2 re-inventory above (AD-015). |
 | T4f | `trust-egress.ts`, `handoff/validation.ts` | Medium | Portable persistent identities. |
+| T4f | `trust-egress.ts`, `handoff/validation.ts` | Medium (reclassified, see below) | **Done.** Portable persistent identities. |
 | T4g | `workspace-reconcile.ts`, `effect-contract.ts` | High | Durable idempotency keys. |
 | T4h | `database-knowledge.ts` + 7 adapters | Medium | Wide fan-out, uniform pattern. |
 | T4i | `canonical.ts` V1 facade + `execution-package.ts` | Highest | Signed evidence; the 11 pre-sort sites above must migrate with the facade. |
@@ -242,6 +246,46 @@ The classification was made following the same process as T4b/T4c/T4d: not
 asserted unilaterally, chosen by brunomjanuario (WS-C) consistent with the
 established row-3 (transient) criteria, and flagged here for human review
 rather than settled as an owner (accd) decision.
+### T4f classification: transient egress, provably locale-invariant handoff
+
+`trust-egress.ts` has no persistence adapter wired at all (confirmed by grep
+for `egressDigest`/`trust-egress` under `packages/platform-node/src/` and
+`apps/vestra-cli/src/`; the one hit in `self-test-full-scenario.ts` is an
+unrelated literal stub, not the real firewall computing a digest) — the same
+"no adapter, no table to orphan" argument as T4e.
+
+`handoff/validation.ts`'s `canonical()` is different in kind from every prior
+T4 slice: its output genuinely is persisted to disk (`FileRecordStore`, wired
+in `apps/vestra-cli/src/self-test-full-scenario.ts`), and handoff artifacts
+are explicitly designed to be read back by a different, later process — the
+whole point of a portable handoff (AGENTS.md: "the handoff lets a clean-clone
+successor resume"). That is exactly the scenario compatibility rule 3
+(transient) does not cover, and the matrix's own original row correctly
+flagged this as "portable persistent," recommending versioning.
+
+The migration was still done as a direct swap, not because the persistence
+risk was judged acceptable (T4b's reasoning) but because the risk **cannot
+materialize for this specific data shape**: `canonical()`'s only
+locale-sensitive behavior is its object-member (key) sort order, and every
+object canonicalized through this function — `PreparedArtifact`,
+`PackageProof`, the publication idempotency-key material, the local-bindings
+digest material — has a fixed, compile-time-known set of ASCII camelCase
+schema field names as keys (`workspaceId`, `handoffId`, `packageDigest`, and
+so on), never a dynamic or untrusted string. `localeCompare` and code-unit
+comparison order identical ASCII identifier sets identically; there is no
+input this function can receive, now or later, that would let the two orderings
+diverge. (Values inside those objects are separately constrained to
+`SAFE_VALUE`-pattern ASCII tokens or digests before being included, but that
+constraint is not what makes this safe — arrays are never re-sorted by
+`canonical()`, only object keys are, and those keys are the closed schema set
+above regardless of what the values contain.) This is a stronger guarantee
+than T4b's "no test pins a byte value" argument: T4b argued the consequence of
+a mismatch was bounded and transient, T4f argues the mismatch is structurally
+impossible for the data this function is ever called with.
+
+This classification was not made unilaterally by the implementing agent, per
+the same process as T4b/T4d/T4e: chosen by brunomjanuario (WS-C), flagged here
+for human review, not asserted as an owner (accd) decision.
 
 ## Completed vertical slice (T3)
 

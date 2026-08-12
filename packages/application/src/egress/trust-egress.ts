@@ -1,4 +1,10 @@
-import { DataClassification, IsoInstant, StableId, type DataClassificationValue } from "@verchestra/domain";
+import {
+  DataClassification,
+  IsoInstant,
+  StableId,
+  canonicalizeJsonV2,
+  type DataClassificationValue
+} from "@verchestra/domain";
 
 import type { ContentDigestPort } from "../sync/workspace-reconcile.ts";
 
@@ -64,18 +70,6 @@ export interface DeclassificationVerifierPort {
 
 function safe(value: string, field: string): void {
   if (!SAFE_VALUE.test(value)) throw new EgressError("VES_TRUST_ENVELOPE_INVALID", `${field} is invalid`);
-}
-
-function canonicalJson(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
-  if (value !== null && typeof value === "object") {
-    return `{${Object.entries(value as Readonly<Record<string, unknown>>)
-      .filter(([, entry]) => entry !== undefined)
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([key, entry]) => `${JSON.stringify(key)}:${canonicalJson(entry)}`)
-      .join(",")}}`;
-  }
-  return JSON.stringify(value);
 }
 
 function cloneSource(source: SourceIdentity): SourceIdentity {
@@ -155,7 +149,7 @@ export class TrustEnvelopeService {
       source: Object.freeze({
         kind: "generated",
         identity: "controller",
-        revision: this.#digest.sha256(canonicalJson(input.inputs.map((entry) => entry.contentDigest)))
+        revision: this.#digest.sha256(canonicalizeJsonV2(input.inputs.map((entry) => entry.contentDigest)))
       }),
       retrievedAt: input.generatedAt,
       classification,
@@ -350,7 +344,9 @@ export class DataEgressFirewall {
             classification: entry.classification,
             trust: entry.trust,
             contentDigest: entry.contentDigest,
-            declassificationEvidenceId: entry.declassificationEvidenceId
+            ...(entry.declassificationEvidenceId === undefined
+              ? {}
+              : { declassificationEvidenceId: entry.declassificationEvidenceId })
           })
         )
       )
@@ -365,7 +361,7 @@ export class DataEgressFirewall {
     return Object.freeze({
       allowed: true,
       code: "VES_EGRESS_ALLOWED",
-      egressDigest: this.#digest.sha256(canonicalJson(manifest)),
+      egressDigest: this.#digest.sha256(canonicalizeJsonV2(manifest)),
       policyEvidenceDigest: policy.evidenceDigest,
       fragmentIds: Object.freeze(input.fragments.map((entry) => entry.fragmentId)),
       destinationId: input.destinationId
