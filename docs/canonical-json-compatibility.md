@@ -64,7 +64,7 @@ comparison fails closed where identities are not interchangeable.
 | Agent runtime context: `context-compiler.ts` | Snapshot ID, recipe, semantic-obligation, serialized-meaning and manifest digests | portable persistent | Recursive serializer and locale ordering of fragment/source IDs | Version context snapshot/manifest material; normalize declared sets with code-unit order before V2. |
 | Agent runtime discovery: `source-snapshots.ts` | Context source snapshots, fact alternatives and selector material | portable persistent | Recursive serializer and locale ordering | Migrate together with context compiler; prove old snapshot verification and cross-locale reproduction. |
 | Agent runtime backend: `backend-serializers.ts` | `SerializedContext.meaningDigest`, the `SemanticEquivalenceOracle`'s cross-run tree-equality comparison, and the `ContextCapacityEstimatorPort` surface named alongside it | portable persistent | Private `canonicalJson()` (`backend-serializers.ts:59-65`), a second, independent recursive serializer with ambient `localeCompare` member order — not the same function as `context-compiler.ts`'s | **Understated by the original T2 inventory**, which covered `context-compiler.ts` and `source-snapshots.ts` but not this file; routed here by AD-015 (`.specs/STATE.md`: "each carry a private `canonicalJson()` that orders keys with ambient `localeCompare`"). Migrate together with T4e — same portability property (two independently provisioned runs' semantic-equivalence comparison must not diverge by machine locale), same package. |
-| Policy: `cedar-policy.ts` | Policy view/evidence material and normalized layer order | authority | Recursive serializer and locale ordering | Version policy-view evidence; policy decisions never compare V1 and V2 digests as equal. |
+| Policy: `cedar-policy.ts` | Policy view/evidence material and normalized layer order | authority; classified transient with a discard migration (T4d) — see rationale below | **Migrated (T4d).** `canonicalizeJsonV2` replaces the recursive serializer; the per-layer policy-key sort (which also fixes `#compile`'s validation-iteration order, not just digest input) uses code-unit comparison instead of `localeCompare`. | Done. `tests/unit/policy-hardening.test.mjs`'s "policy digest is independent from insertion order", 35 existing policy cases unchanged. |
 | Data probe: `database-knowledge.ts` | Source, fact-value, knowledge-package and promotion-plan digests | portable persistent | Recursive serializer and locale ordering of entities/facts | Version knowledge package and promotion-plan schemas; adapter outputs normalize domain sets before V2. |
 | Distribution: `hermetic-bundle.ts` | Release manifest/release digest | signed + persistent release identity | Recursive serializer and locale component ordering | Highest-risk slice: publish a new bundle schema/release format and retain V1 verification. |
 | Distribution: `transactional-activation.ts` | Transaction identity material and durable activation records | persistent local state | Recursive serializer for transaction identity; ordinary JSON writes for local journals | Migrate only after hermetic bundle V2; version durable receipt/pointer records. |
@@ -72,6 +72,8 @@ comparison fails closed where identities are not interchangeable.
 | Workspace: `scanner/scanner-primitives.ts`, consumed by `workspace-scanner.ts`, `init/safe-init.ts`, and `placement/artifact-placement.ts` | Repository IDs, discovery keys, inventory fingerprints, init/recovery plan IDs, and write-plan IDs | portable + persistent plan identity | **Migrated (T3).** `buildInventoryFingerprintV2` (RFC 8785, `v2:sha256:` prefix) for repository IDs, discovery keys, inventory fingerprints, write-plan IDs, and new init preview/recovery journal plan IDs; `buildInventoryFingerprint` (V1, byte-identical, `sha256:` prefix) stays exported and is still the only verifier for a `schemaVersion: 1` init recovery journal. | Done. `init/safe-init.ts`'s recovery journal envelope carries an explicit `schemaVersion` (1 or 2) and dispatches its verifier on that recorded version, failing closed on any version/prefix disagreement — see `packages/workspace/src/init/safe-init.ts:parseRecoveryJournal`. |
 | Platform Node: `git-worktree-adapter.ts` | Worktree `changeDigest`, committed and verified as `Verchestra-Change` by the gate-commit flow | persistent gate authority | SHA-256 of `JSON.stringify(manifest)` — an **array** of `[path, hash]` tuples, not an object | **No change required (T4c).** `manifest` is an array, and its element order already derives from `changedPaths`'s plain `.sort()` (default UTF-16 code-unit order, not `localeCompare`) — `JSON.stringify` on an array preserves index order and never reaches the object-key-ordering branch that makes `canonicalJson`/`localeCompare` risky. Confirmed zero `.localeCompare(` sites; this file was never the risk the T2 inventory named — `gate-commit.ts`'s own serializer was. | Verified, no commit needed; `tests/security/canonical-json-locale-allowlist.test.mjs`'s existing ceiling (0) for this file is unchanged. |
 | Platform Node: `runtime-store/runtime-store.ts` | Persisted active policy-view digest verification | persistent local authority | Recursive serializer with ambient locale ordering | Migrate with policy-view schema/versioning; retain V1 stored-view verification and fail closed across versions. |
+| Platform Node: `git-worktree-adapter.ts` | Worktree `changeDigest`, committed and verified as `Verchestra-Change` by the gate-commit flow | persistent gate authority | SHA-256 of `JSON.stringify(manifest)` | Version change-digest material with the gate plan/checkpoint/receipt migration; retain V1 resume verification. |
+| Platform Node: `runtime-store/runtime-store.ts` | Persisted active policy-view digest verification | persistent local authority; classified transient with a discard migration (T4d) — see rationale below | **Migrated (T4d).** `canonicalizeJsonV2` replaces the recursive serializer in `getActivePolicyView`'s reverification. Migration `010_policy_view_digest_reencoding` discards rows saved under the old encoding. | Done. `tests/integration/policy-view-digest-reencoding-migration.test.mjs`, 5 existing `policy-activation-runtime.test.mjs` cases unchanged. |
 | Application promotion: `promotion-gate.ts` | `canonicalizeOracle`'s sealed `holdoutDigest`; the `evaluatePromotion` `blocks` ordering feeding the report `bodyDigest` | signed persistent identity | **Migrated (T4a).** `canonicalizeJsonV2` + `normalizeDeclaredSet` for both the oracle entries and the accumulated blocks; no persisted fixture pinned the prior bytes, so this required no schema/version bump. | Done. Commit `75dab72`; `tests/unit/promotion-gate.test.mjs` (cross-locale + declaration-order tests), `tests/security/canonical-json-sensor.test.mjs` (owner mutation). |
 | Application regression: `campaigns.ts` | Campaign ordering inside `canonicalizeCorpus`/`buildCampaignSummary`, validated against `regression-campaign-summary@1` | persistent (schema-validated release evidence) | **Migrated (T4a).** `buildCampaignSummary` normalizes results with `normalizeDeclaredSet` before assembly; `canonicalizeCorpus` (the actual `corpusDigest` input) already had zero locale dependency. | Done. Commit `7f1adc4`; `tests/unit/regression-campaigns.test.mjs`, `pnpm test:release` (28 cases, frozen 22-campaign corpus unaffected). |
 | Application doctor: `doctor.ts` | `sortedUnique` orders capability/check lists inside the sealed, signed `doctor-report` payload | signed persistent identity | **Migrated (T4a).** `sortedUnique` now normalizes through `normalizeDeclaredSet`. | Done. Commit `6ccb1c7`; `tests/unit/doctor-rules.test.mjs` (cross-locale test), all 62 existing doctor cases unchanged. |
@@ -91,6 +93,8 @@ migrate-together and migrate-after rules.
 | T4b | `authority.ts`, `work-claims.ts` | Medium (reclassified transient, see below) | Persistent authority bindings, migrated as a direct swap. |
 | T4c | `gate-commit.ts` + `git-worktree-adapter.ts` `changeDigest` | Medium-high (reclassified transient, see below) | Durable resume path, migrated as a direct swap; `git-worktree-adapter.ts` needed no change (already locale-safe). |
 | T4d | `cedar-policy.ts` + `runtime-store.ts` | Medium | Matrix requires migrating together (policy-view schema/versioning). |
+| T4c | `gate-commit.ts` + `git-worktree-adapter.ts` `changeDigest` | Medium-high | Durable resume path; migrate together per the matrix. |
+| T4d | `cedar-policy.ts` + `runtime-store.ts` | Medium (reclassified transient with a discard migration, see below) | Migrated together as required; a discard migration replaces schema/versioning. |
 | T4e | `context-compiler.ts` + `source-snapshots.ts` + `backend-serializers.ts` | Medium | Matrix requires migrating together; `backend-serializers.ts` added to the slice by the T2 re-inventory above (AD-015). |
 | T4f | `trust-egress.ts`, `handoff/validation.ts` | Medium | Portable persistent identities. |
 | T4g | `workspace-reconcile.ts`, `effect-contract.ts` | High | Durable idempotency keys. |
@@ -175,6 +179,38 @@ commit effect" test and the full 29-case Self-Test crash-recovery suite
 verdict") both pass unchanged after the swap. Also chosen by brunomjanuario
 (WS-C) before implementation (2026-08-11); flagged for accd's review, not
 asserted as settled.
+**Correction learned during T4d:** after this slice's PR (#259) merged, review
+found that "transient, not archival" alone was insufficient — a claim written
+under the old encoding was not *invalidated* by the transition, it was
+*orphaned*: silently unmatchable forever, breaking the mutual exclusion
+`scopeDigest` exists to provide. The fix (`ed60005`) added migration
+`008_claim_digest_reencoding` (`DELETE FROM claims;`) to discard pre-existing
+rows. The same gap existed in `authority.ts` (fixed separately, PR #268,
+migration `009_authority_binding_digest_reencoding`) and is applied
+pre-emptively in T4d below, rather than discovered after the fact a third
+time: **a transient classification is only complete once paired with a
+discard migration for any table the digest is persisted in** — the
+classification alone does not make old rows safe, only invalidating them does.
+
+### T4d classification: transient, with a discard migration from the start
+
+`cedar-policy.ts`'s `policyViewDigest` and `runtime-store.ts`'s
+`active_policy_views.view_digest` are genuinely persisted, and
+`getActivePolicyView` recomputes the digest **on every load** (not just
+resume-after-crash) and compares it by equality against the stored value —
+higher-frequency exposure than either T4b or T4c. Applying the correction
+above from the start: this slice pairs the canonicalizer swap with migration
+`010_policy_view_digest_reencoding` (`DELETE FROM active_policy_views;`) in
+the same commit, rather than shipping the swap alone and waiting for a
+review to find the gap.
+
+Nothing in the product wires `RuntimePolicyViewStore` into a composition root
+yet (confirmed by search, same as `RemoteClaimPort` in T4b and the
+checkpoints port in T4c) — this is workspace-local cache state with no
+installed base, the same "no installed base, regenerable content" reasoning
+AD-014 used for the DSSE migration and T4b/T4c used here. The classification
+was chosen by brunomjanuario (WS-C) before implementation (2026-08-11);
+flagged for accd's review, not asserted as settled.
 
 ## Completed vertical slice (T3)
 

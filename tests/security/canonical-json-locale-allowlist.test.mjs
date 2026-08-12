@@ -39,7 +39,8 @@ const MATRIX_CEILINGS = Object.freeze({
   "packages/application/src/effects/effect-contract.ts": 0,
   "packages/agent-runtime/src/context/context-compiler.ts": 10,
   "packages/agent-runtime/src/context/source-snapshots.ts": 9,
-  "packages/policy/src/cedar-policy.ts": 2,
+  // T4d owners: migrated (issue #58), ceilings tightened to 0.
+  "packages/policy/src/cedar-policy.ts": 0,
   "packages/data-probe/src/database-knowledge.ts": 10,
   "packages/data-probe/src/sqlserver-adapter.ts": 2,
   "packages/data-probe/src/sqlite-adapter.ts": 2,
@@ -51,7 +52,7 @@ const MATRIX_CEILINGS = Object.freeze({
   "packages/data-probe/src/index.ts": 2,
   "packages/distribution/src/hermetic-bundle.ts": 2,
   "packages/distribution/src/transactional-activation.ts": 1,
-  "packages/platform-node/src/runtime-store/runtime-store.ts": 1,
+  "packages/platform-node/src/runtime-store/runtime-store.ts": 0,
   "packages/workspace/src/scanner/scanner-primitives.ts": 2,
   "packages/evidence/src/execution-package/execution-package.ts": 11,
   // T4a owners: migrated (T4/T5/T6/T7), ceiling tightened to 0 in T9.

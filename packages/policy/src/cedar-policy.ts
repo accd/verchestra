@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
 
+import { canonicalizeJsonV2 } from "@verchestra/domain";
+
 export const POLICY_LAYERS = Object.freeze([
   "builtIn",
   "organization",
@@ -61,20 +63,19 @@ function record(value: unknown): UnknownRecord {
   return typeof value === "object" && value !== null ? (value as UnknownRecord) : {};
 }
 
-function canonicalJson(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
-  if (value !== null && typeof value === "object") {
-    return `{${Object.entries(value as UnknownRecord)
-      .filter(([, entry]) => entry !== undefined)
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([key, entry]) => `${JSON.stringify(key)}:${canonicalJson(entry)}`)
-      .join(",")}}`;
-  }
-  return JSON.stringify(value);
+function digest(value: unknown): string {
+  return `sha256:${createHash("sha256").update(canonicalizeJsonV2(value)).digest("hex")}`;
 }
 
-function digest(value: unknown): string {
-  return `sha256:${createHash("sha256").update(canonicalJson(value)).digest("hex")}`;
+// Code-unit comparison, not localeCompare: this ordering fixes the iteration
+// order #compile's validation loop walks a layer's policies in, which
+// determines which policy's failure is reported first when more than one is
+// invalid -- a real, observable behavior, not just digest input order
+// (issue #58).
+function codeUnitCompare(left: string, right: string): number {
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
 }
 
 function normalizedView(view: PolicyView): PolicyView {
@@ -83,7 +84,7 @@ function normalizedView(view: PolicyView): PolicyView {
     const policies = view.layers[layer];
     if (policies === undefined) continue;
     layers[layer] = Object.freeze(
-      Object.fromEntries(Object.entries(policies).sort(([left], [right]) => left.localeCompare(right)))
+      Object.fromEntries(Object.entries(policies).sort(([left], [right]) => codeUnitCompare(left, right)))
     );
   }
   return Object.freeze({

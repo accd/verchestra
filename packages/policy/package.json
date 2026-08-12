@@ -7,6 +7,7 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@cedar-policy/cedar-wasm": "4.12.0"
+    "@cedar-policy/cedar-wasm": "4.12.0",
+    "@verchestra/domain": "workspace:0.0.0"
   }
 }
