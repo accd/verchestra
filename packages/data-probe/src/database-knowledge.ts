@@ -1,6 +1,4 @@
-import { createHash } from "node:crypto";
-
-import { canonicalizeJsonV2 } from "@verchestra/domain";
+import { codeUnitCompare, digest } from "./canonical-material.ts";
 
 const SOURCE_KINDS = ["er", "ddl", "migration", "orm", "introspection"] as const;
 const IDENTIFIER = /^[a-z][a-z0-9_]{0,126}$/u;
@@ -19,18 +17,6 @@ const SENSITIVE_CLAIM_VALUE =
 type UnknownRecord = Readonly<Record<string, unknown>>;
 type SourceKind = (typeof SOURCE_KINDS)[number];
 
-function digest(value: unknown): string {
-  return `sha256:${createHash("sha256").update(canonicalizeJsonV2(value)).digest("hex")}`;
-}
-// Code-unit comparison, not localeCompare: these sorts (entity/column
-// ordering, source precedence, fact/alternative/scenario ordering) feed the
-// knowledge package's semantic shape, not just its digest input (AD-015,
-// issue #58).
-function codeUnitCompare(left: string, right: string): number {
-  if (left < right) return -1;
-  if (left > right) return 1;
-  return 0;
-}
 function deepFreeze<T>(value: T): T {
   if (value !== null && typeof value === "object" && !Object.isFrozen(value)) {
     for (const child of Object.values(value as UnknownRecord)) deepFreeze(child);

@@ -1,6 +1,6 @@
-import { createHash } from "node:crypto";
-
 import { canonicalizeJsonV2 } from "@verchestra/domain";
+
+import { codeUnitCompare, digest } from "./canonical-material.ts";
 import { DatabaseSync, constants } from "node:sqlite";
 import type { SQLInputValue } from "node:sqlite";
 
@@ -27,17 +27,6 @@ const WRITE =
 type UnknownRecord = Readonly<Record<string, unknown>>;
 type Classification = (typeof CLASSIFICATIONS)[number];
 
-// Code-unit comparison, not localeCompare: entity ordering feeds the
-// parsed plan's semantic shape, not just its digest input (AD-015,
-// issue #58).
-function codeUnitCompare(left: string, right: string): number {
-  if (left < right) return -1;
-  if (left > right) return 1;
-  return 0;
-}
-function digest(value: unknown): string {
-  return `sha256:${createHash("sha256").update(canonicalizeJsonV2(value)).digest("hex")}`;
-}
 export class SqliteProbeError extends Error {
   readonly code: string;
   constructor(code: string, message: string) {

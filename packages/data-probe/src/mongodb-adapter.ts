@@ -1,6 +1,6 @@
-import { createHash } from "node:crypto";
-
 import { canonicalizeJsonV2 } from "@verchestra/domain";
+
+import { digest } from "./canonical-material.ts";
 
 const CLASSIFICATIONS = ["public", "internal", "confidential", "restricted", "secret"] as const;
 const DATABASE = /^[a-z][a-z0-9_-]{0,62}$/u;
@@ -12,9 +12,6 @@ const COMPARISON_OPERATORS = new Set(["$eq", "$ne", "$gt", "$gte", "$lt", "$lte"
 type UnknownRecord = Readonly<Record<string, unknown>>;
 type Classification = (typeof CLASSIFICATIONS)[number];
 
-function digest(value: unknown): string {
-  return `sha256:${createHash("sha256").update(canonicalizeJsonV2(value)).digest("hex")}`;
-}
 export class MongoDbProbeError extends Error {
   readonly code: string;
   constructor(code: string, message: string) {
