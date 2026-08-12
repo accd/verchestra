@@ -579,7 +579,7 @@ export function promoteProbeEvidence(value: unknown): PromotedProbeEvidence {
       removedFields: [...redaction["removedFields"]].sort(),
       humanReviewRef: redaction["humanReviewRef"]
     },
-    sanitizedClaims: claims.sort((a, b) => codeUnitCompare(a.factKey, b.factKey)),
+    sanitizedClaims: claims.toSorted((a, b) => codeUnitCompare(a.factKey, b.factKey)),
     promotionStatus: "accepted-sanitized" as const
   };
   return deepFreeze({ ...material, evidenceDigest: digest(material) });
@@ -896,7 +896,7 @@ export function planSyntheticSeedScenarios(value: unknown) {
     productionDataAllowed: false as const,
     fixtureDigests: [...fixtureDigests].sort(),
     sanitizedEvidenceDigests: [...new Set(evidenceDigests)].sort(),
-    scenarios: scenarios.sort((a, b) => codeUnitCompare(String(a["scenarioId"]), String(b["scenarioId"])))
+    scenarios: scenarios.toSorted((a, b) => codeUnitCompare(String(a["scenarioId"]), String(b["scenarioId"])))
   };
   return deepFreeze({ ...material, planDigest: digest(material) });
 }
