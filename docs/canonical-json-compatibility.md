@@ -64,6 +64,8 @@ comparison fails closed where identities are not interchangeable.
 | Application handoff: `handoff/validation.ts` | Portable handoff validation digests | portable persistent; classified safe-to-swap (T4f) — see rationale below | **Migrated (T4f).** `canonical()` (exported name kept for its many call sites) now delegates to `canonicalizeJsonV2` instead of the recursive serializer. | Done. `tests/integration/portable-handoff.test.mjs` (cross-locale test), 126 existing handoff/egress cases unchanged. |
 | Application sync: `workspace-reconcile.ts` | Persisted sync state, plan and rebuild identities | persistent | Recursive serializer and locale sorting of semantic collections | Add state/plan canonicalization version; retain V1 reload and conflict detection. |
 | Application effects: `effect-contract.ts` | Durable effect idempotency keys | persistent effect identity | Fixed-shape `JSON.stringify` material without a canonicalization version | Add a versioned effect identity material and retain V1 key lookup for existing intents and receipts. |
+| Application sync: `workspace-reconcile.ts` | Persisted sync state, plan and rebuild identities | persistent; classified safe-to-swap (T4g) — see rationale below | **Migrated (T4g).** `canonicalizeJsonV2` replaces the recursive serializer; every ID sort (project, projection, manifest, operation, effect) now uses code-unit `<`/`>` instead of `localeCompare`. | Done. `tests/integration/workspace-reconcile.test.mjs` (cross-locale test), 44 existing sync/reconcile cases unchanged, including the SQLite-backed restart and tamper-detection cases. |
+| Application effects: `effect-contract.ts` | Durable effect idempotency keys | persistent effect identity; **deferred (T4g)** — see rationale below | Unmigrated. Fixed-shape `JSON.stringify` material, insertion-ordered, without a canonicalization version. | Not done. `buildIdempotencyKey`'s serialization has no ambient-locale dependency to fix (`JSON.stringify` on a fixed object literal never reorders keys), so it is out of scope for issue #58's actual contract (eliminating locale nondeterminism). Swapping it for `canonicalizeJsonV2` would reorder its output to alphabetical and change the idempotency key for every existing/in-flight effect intent, which has no `expiresAt` and is looked up by exact key string in a real SQLite `effect_intents` table (`packages/platform-node/src/runtime-store/runtime-store.ts`, `createEffectRepository`'s `insertOrGet`/`readIntent`) — a mismatch would not fail closed, it would silently double-insert and risk double-applying an external effect. Needs the matrix's own prescribed versioned-identity design (a `canonicalizationVersion` discriminator with dual V1/V2 key lookup) as its own reviewed unit of work, not a direct swap. |
 | Agent runtime context: `context-compiler.ts` | Snapshot ID, recipe, semantic-obligation, serialized-meaning and manifest digests | portable persistent | Recursive serializer and locale ordering of fragment/source IDs | Version context snapshot/manifest material; normalize declared sets with code-unit order before V2. |
 | Agent runtime discovery: `source-snapshots.ts` | Context source snapshots, fact alternatives and selector material | portable persistent | Recursive serializer and locale ordering | Migrate together with context compiler; prove old snapshot verification and cross-locale reproduction. |
 | Agent runtime backend: `backend-serializers.ts` | `SerializedContext.meaningDigest`, the `SemanticEquivalenceOracle`'s cross-run tree-equality comparison, and the `ContextCapacityEstimatorPort` surface named alongside it | portable persistent | Private `canonicalJson()` (`backend-serializers.ts:59-65`), a second, independent recursive serializer with ambient `localeCompare` member order — not the same function as `context-compiler.ts`'s | **Understated by the original T2 inventory**, which covered `context-compiler.ts` and `source-snapshots.ts` but not this file; routed here by AD-015 (`.specs/STATE.md`: "each carry a private `canonicalJson()` that orders keys with ambient `localeCompare`"). Migrate together with T4e — same portability property (two independently provisioned runs' semantic-equivalence comparison must not diverge by machine locale), same package. |
@@ -107,6 +109,7 @@ migrate-together and migrate-after rules.
 | T4f | `trust-egress.ts`, `handoff/validation.ts` | Medium | Portable persistent identities. |
 | T4f | `trust-egress.ts`, `handoff/validation.ts` | Medium (reclassified, see below) | **Done.** Portable persistent identities. |
 | T4g | `workspace-reconcile.ts`, `effect-contract.ts` | High | Durable idempotency keys. |
+| T4g | `workspace-reconcile.ts` (done); `effect-contract.ts` deferred | High | Durable idempotency keys — see the T4g classification below for why the two owners split. |
 | T4h | `database-knowledge.ts` + 7 adapters | Medium | Wide fan-out, uniform pattern. |
 | T4i | `canonical.ts` V1 facade + `execution-package.ts` | Highest | Signed evidence; the 11 pre-sort sites above must migrate with the facade. |
 | T4j | `hermetic-bundle.ts` then `transactional-activation.ts` | Highest | Release identity; matrix requires this order. |
@@ -286,6 +289,50 @@ impossible for the data this function is ever called with.
 This classification was not made unilaterally by the implementing agent, per
 the same process as T4b/T4d/T4e: chosen by brunomjanuario (WS-C), flagged here
 for human review, not asserted as an owner (accd) decision.
+### T4g classification: workspace-reconcile migrated, effect-contract deferred
+
+`workspace-reconcile.ts`'s `stateDigest` is genuinely persisted and
+reverified against a freshly recomputed digest on every `execute()` call
+(`this.#digest.sha256(canonicalJson(stateMaterial)) !== recordedDigest`,
+`packages/application/src/sync/workspace-reconcile.ts`) — a real durable
+comparison, not a same-call round trip. It is still migrated as a direct swap
+using the same argument as T4f's handoff case, extended to array sort order:
+every object canonicalized here (`PersistedSyncState`, `ReconcileOperation`,
+`PlannedEffect`, `LocalRebuildRequirement`) has fixed ASCII schema field names
+as keys, and every ID used as a sort key (`projectId`, `projectionId`,
+`manifestId`, `operationId`, `effectId`) is a `StableId` value
+(`packages/domain/src/primitives/stable-id.ts`), constrained by regex to
+lowercase ASCII letters, digits, and hyphens in a fixed `kind_uuid` shape.
+Neither the member-key order nor the array-sort order this function produces
+can diverge between `localeCompare` and code-unit comparison for this data
+shape, so a digest recorded before this migration reverifies unchanged after
+it.
+
+`effect-contract.ts` is **not** migrated in this slice, despite T4 slice
+ordering originally grouping it with `workspace-reconcile.ts`. It is a
+materially different case: `buildIdempotencyKey` uses plain `JSON.stringify`
+on a fixed-order object literal, which has no ambient-locale dependency at
+all — there is nothing for issue #58's actual contract (removing
+`localeCompare`-driven nondeterminism) to fix here, and the ambient-locale
+allowlist sensor already has this file at ceiling 0. Migrating it to
+`canonicalizeJsonV2` anyway would be a *different* change — reordering the
+serialized material to alphabetical — which would silently change the
+`idempotencyKey` for every existing and in-flight effect intent. Unlike every
+other owner migrated so far, `EffectIntent` has no `expiresAt`: it is durable
+until completed, looked up by exact key string in a real SQLite table
+(`createEffectRepository`'s `insertOrGet`/`readIntent`,
+`packages/platform-node/src/runtime-store/runtime-store.ts`), and a key
+mismatch does not fail closed — it silently inserts a second intent for the
+same logical operation, defeating the at-most-once guarantee the mechanism
+exists for. The matrix's own row already specifies the correct fix ("Add a
+versioned effect identity material and retain V1 key lookup for existing
+intents and receipts"), which is a distinct, larger unit of design and review
+work, not a same-shape direct swap. It is left for a dedicated follow-up
+slice rather than folded into T4g's "no pauses" cadence.
+
+Both calls were made following the same process as prior T4 slices: not
+asserted unilaterally, chosen by brunomjanuario (WS-C), flagged here for
+human review, not asserted as an owner (accd) decision.
 
 ## Completed vertical slice (T3)
 

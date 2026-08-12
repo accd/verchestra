@@ -51,6 +51,28 @@ test("input order cannot change resulting state digest", async () => {
   assert.equal(a.stateDigest, b.stateDigest);
 });
 
+// Issue #58: stateDigest and planDigest must not depend on the machine's
+// ambient locale.
+test("stateDigest and planDigest are byte-identical under two different ambient locales", async () => {
+  const priorLang = process.env.LANG;
+  const priorLcAll = process.env.LC_ALL;
+  try {
+    process.env.LANG = "en_US.UTF-8";
+    process.env.LC_ALL = "en_US.UTF-8";
+    const first = await createService(WorkspaceReconcileService).service.execute(input());
+    process.env.LANG = "fr_FR.UTF-8";
+    process.env.LC_ALL = "fr_FR.UTF-8";
+    const second = await createService(WorkspaceReconcileService).service.execute(input());
+    assert.equal(first.stateDigest, second.stateDigest);
+    assert.equal(first.planDigest, second.planDigest);
+  } finally {
+    if (priorLang === undefined) delete process.env.LANG;
+    else process.env.LANG = priorLang;
+    if (priorLcAll === undefined) delete process.env.LC_ALL;
+    else process.env.LC_ALL = priorLcAll;
+  }
+});
+
 for (const [name, configuration] of [
   ["unsupported schema", canonical({ schemaVersion: 2 })],
   ["newer minimum CLI", canonical({ minimumCliVersion: "2.0.0" })]

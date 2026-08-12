@@ -40,6 +40,8 @@ const MATRIX_CEILINGS = Object.freeze({
   "packages/application/src/egress/trust-egress.ts": 0,
   "packages/application/src/handoff/validation.ts": 0,
   "packages/application/src/sync/workspace-reconcile.ts": 7,
+  // T4g owner: migrated (issue #58), ceiling tightened to 0.
+  "packages/application/src/sync/workspace-reconcile.ts": 0,
   "packages/application/src/effects/effect-contract.ts": 0,
   "packages/agent-runtime/src/context/context-compiler.ts": 10,
   "packages/agent-runtime/src/context/source-snapshots.ts": 9,

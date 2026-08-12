@@ -1,4 +1,4 @@
-import { LogicalPath, StableId } from "@verchestra/domain";
+import { LogicalPath, StableId, canonicalizeJsonV2 } from "@verchestra/domain";
 
 import { SyncError } from "./sync-errors.ts";
 
@@ -129,16 +129,16 @@ function compareVersions(left: string, right: string): number {
   return 0;
 }
 
-function canonicalJson(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
-  if (value !== null && typeof value === "object") {
-    return `{${Object.entries(value as Readonly<Record<string, unknown>>)
-      .filter(([, entry]) => entry !== undefined)
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([key, entry]) => `${JSON.stringify(key)}:${canonicalJson(entry)}`)
-      .join(",")}}`;
-  }
-  return JSON.stringify(value);
+// Code-unit comparison, not localeCompare: every sorted ID here (project,
+// projection, manifest, operation, effect) is a StableId `kind_uuid` value
+// (packages/domain/src/primitives/stable-id.ts), constrained to lowercase
+// ASCII letters, digits, and hyphens -- a character set for which code-unit
+// and locale-aware collation cannot diverge. Sort order also feeds the
+// persisted state and plan digests directly (AD-015, issue #58).
+function codeUnitCompare(left: string, right: string): number {
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
 }
 
 function sortedUnique(values: readonly string[]): readonly string[] {
@@ -153,17 +153,17 @@ function normalizeConfiguration(configuration: CanonicalSyncConfiguration): Omit
     projects: Object.freeze(
       configuration.projects
         .map((entry) => Object.freeze({ ...entry, predecessorProjectIds: sortedUnique(entry.predecessorProjectIds) }))
-        .sort((left, right) => left.projectId.localeCompare(right.projectId))
+        .sort((left, right) => codeUnitCompare(left.projectId, right.projectId))
     ),
     projections: Object.freeze(
       configuration.projections
         .map((entry) => Object.freeze({ ...entry }))
-        .sort((left, right) => left.projectionId.localeCompare(right.projectionId))
+        .sort((left, right) => codeUnitCompare(left.projectionId, right.projectionId))
     ),
     ingestionManifests: Object.freeze(
       configuration.ingestionManifests
         .map((entry) => Object.freeze({ ...entry }))
-        .sort((left, right) => left.manifestId.localeCompare(right.manifestId))
+        .sort((left, right) => codeUnitCompare(left.manifestId, right.manifestId))
     )
   });
 }
@@ -359,7 +359,7 @@ function topologyOperations(
       );
     }
   }
-  return operations.sort((left, right) => left.operationId.localeCompare(right.operationId));
+  return operations.sort((left, right) => codeUnitCompare(left.operationId, right.operationId));
 }
 
 function projectionOperations(
@@ -393,9 +393,9 @@ function rebuildRequirements(
 ): readonly LocalRebuildRequirement[] {
   const changed = changedGenerations(previous, current);
   const manifestsChanged =
-    canonicalJson(previous?.ingestionManifests ?? []) !== canonicalJson(current.ingestionManifests);
+    canonicalizeJsonV2(previous?.ingestionManifests ?? []) !== canonicalizeJsonV2(current.ingestionManifests);
   if (changed.length === 0 && !manifestsChanged && topology.length === 0) return [];
-  const material = canonicalJson({ changed, manifests: current.ingestionManifests, projects: current.projects });
+  const material = canonicalizeJsonV2({ changed, manifests: current.ingestionManifests, projects: current.projects });
   return [
     Object.freeze({
       requirementId: `rebuild:${digest.sha256(material).slice(7, 23)}`,
@@ -427,14 +427,14 @@ export class WorkspaceReconcileService {
     }
     if (previous !== undefined) {
       const { stateDigest: recordedDigest, ...stateMaterial } = previous;
-      if (this.#digest.sha256(canonicalJson(stateMaterial)) !== recordedDigest) {
+      if (this.#digest.sha256(canonicalizeJsonV2(stateMaterial)) !== recordedDigest) {
         throw new SyncError("VES_SYNC_STATE_INVALID", "Stored sync state digest does not match its content");
       }
     }
     const topology = topologyOperations(previous, current);
     const projections = projectionOperations(previous, current);
     const operations = Object.freeze(
-      [...topology, ...projections].sort((a, b) => a.operationId.localeCompare(b.operationId))
+      [...topology, ...projections].sort((a, b) => codeUnitCompare(a.operationId, b.operationId))
     );
     const unresolvedDirections = Object.freeze(
       operations
@@ -466,14 +466,14 @@ export class WorkspaceReconcileService {
     effects.push(
       ...input.uncertainEffects
         .map((entry) => Object.freeze({ kind: "reconcile-effect" as const, ...entry, retryProhibited: true as const }))
-        .sort((left, right) => left.effectId.localeCompare(right.effectId))
+        .sort((left, right) => codeUnitCompare(left.effectId, right.effectId))
     );
     const localRebuildRequirements =
       unresolvedDirections.length === 0 ? rebuildRequirements(previous, current, topology, this.#digest) : [];
-    let stateDigest = previous?.stateDigest ?? this.#digest.sha256(canonicalJson(current));
+    let stateDigest = previous?.stateDigest ?? this.#digest.sha256(canonicalizeJsonV2(current));
     let stateChanged = false;
     if (unresolvedDirections.length === 0) {
-      stateDigest = this.#digest.sha256(canonicalJson(current));
+      stateDigest = this.#digest.sha256(canonicalizeJsonV2(current));
       const receipt = await this.#store.save(Object.freeze({ ...current, stateDigest }));
       stateChanged = receipt.changed;
     }
@@ -485,7 +485,7 @@ export class WorkspaceReconcileService {
       effects: Object.freeze(effects),
       localRebuildRequirements: Object.freeze(localRebuildRequirements),
       stateDigest,
-      planDigest: this.#digest.sha256(canonicalJson(planMaterial)),
+      planDigest: this.#digest.sha256(canonicalizeJsonV2(planMaterial)),
       stateChanged
     });
   }
