@@ -114,6 +114,8 @@ migrate-together and migrate-after rules.
 | T4h | `database-knowledge.ts` + 7 adapters | Medium (reclassified transient, see below) | **Done.** Wide fan-out, uniform pattern. |
 | T4i | `canonical.ts` V1 facade + `execution-package.ts` | Highest | Signed evidence; the 11 pre-sort sites above must migrate with the facade. |
 | T4j | `hermetic-bundle.ts` then `transactional-activation.ts` | Highest | Release identity; matrix requires this order. |
+| T4i | `canonical.ts` V1 facade + `execution-package.ts` | Highest | **Deferred, see below.** Signed evidence; the 11 pre-sort sites above must migrate with the facade. |
+| T4j | `hermetic-bundle.ts` then `transactional-activation.ts` | Highest | **Deferred, see below.** Release identity; matrix requires this order. |
 
 `tuf-update-client.ts` stays classified separately (no structured digest at
 write) and is not a T4 slice.
@@ -357,6 +359,52 @@ updated) so all nine files can use the shared `canonicalizeJsonV2` primitive.
 This classification was made following the same process as prior T4 slices:
 not asserted unilaterally, chosen by brunomjanuario (WS-C), flagged here for
 human review, not asserted as an owner (accd) decision.
+### T4i and T4j: deferred, not attempted as direct swaps
+
+T4b through T4h (this issue's other nine owners) were each migrated as a
+direct swap after confirming, case by case, that either no persistence
+existed or the exact character set of every sorted/keyed value made a
+`localeCompare`-vs-code-unit divergence structurally impossible (fixed ASCII
+schema field names, or `StableId`-constrained lowercase-only values). T4i and
+T4j do not clear that bar, and are deliberately left unmigrated rather than
+forced through the same pattern:
+
+- `execution-package.ts`'s 11 pre-sort `.localeCompare(` sites order
+  `artifactId`, `requirementId`, `taskId`, `role`, `gateId`, `criterionId`,
+  and `field` values before they are fed into the qualified V1
+  `canonicalizeJson`/`sha256Digest` (`canonical.ts`, itself untouched and
+  already `localeCompare`-free). These values are validated only against the
+  broad `SAFE` pattern (`/^[A-Za-z0-9][A-Za-z0-9._:@/+-]{0,511}$/u`), which
+  permits mixed case — and real fixtures use it (`taskId: "T-1"`). Mixed-case
+  ASCII is exactly the case where default locale collation and code-unit
+  comparison *can* disagree (locale collation commonly treats case as a
+  tertiary tie-break; code-unit comparison puts every uppercase letter before
+  every lowercase letter). Unlike T4h's `StableId` values, there is no
+  charset-level guarantee here. This is signed evidence
+  (`packages/evidence/src/integrity/canonical.ts`'s own row: "Preserve V1
+  verification; introduce V2 facade only with envelope/schema versioning"),
+  and the DSSE-wrapped payload (AD-014, #217/#242) is durably persisted via
+  `FileRecordStore` in the real execution flow
+  (`apps/vestra-cli/src/self-test-full-execution.ts`). A sort-order change
+  that silently changes the payload digest for an existing signed package is
+  exactly the kind of migration compatibility rule 1 exists to prevent.
+- `hermetic-bundle.ts` has the same shape (a private recursive `canonical()`
+  plus a `componentId` sort using the same broad, case-permitting pattern) for
+  a release manifest digest — signed release identity, the highest-stakes
+  surface in the whole matrix. `transactional-activation.ts` is explicitly
+  ordered *after* `hermetic-bundle.ts` by the matrix and was not reached.
+
+Both need the versioned-facade design the matrix already specifies (preserve
+V1 verification, introduce a V2 facade gated by an explicit schema or
+envelope version, never compare a V1 and V2 digest as equal) as their own
+reviewed unit of work, not a same-shape direct swap executed under this
+slice's cadence. No ceiling changed for either owner in this pass; both
+remain exactly as counted in the original 2026-08-09 census.
+
+This decision was made following the same process as every other slice in
+this chain: not asserted unilaterally, chosen by brunomjanuario (WS-C),
+flagged here for human review, not asserted as an owner (accd) decision or
+as issue #58 being complete.
 
 ## Completed vertical slice (T3)
 
