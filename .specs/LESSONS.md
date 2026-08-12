@@ -54,6 +54,42 @@ Seen once or not yet corroborated. Tracked, not trusted.
 - evidence: .specs/STATE.md AD-018 (.specs)
 - last seen: 2026-08-12T18:39:52Z
 
+### L-008 — When an artifact merges a reviewed declaration with observed evidence, reconciling the two IS the product: copying declared statuses through and appending observations alongside let an all-red fleet publish a green verdict. Call it a join only if an observation can downgrade a declared status.
+- signal: `ac_gap` · recurrence: 1 feature(s) · scope: `evidence-artifacts` · harmful: 0
+- features: platform-qualification-matrix
+- evidence: scripts/t75-evidence-index.mjs:31 (evidence-artifacts)
+- last seen: 2026-08-12T20:29:20Z
+
+### L-009 — A rule applied to one dimension is not applied. After reconciling the platform dimension, the same fleet evidence answered gate-profile and stayed concatenated, so the headline run asserted a profile qualified with nothing observing it. Enumerate every input the rule's own justification covers.
+- signal: `surviving_mutant` · recurrence: 1 feature(s) · scope: `evidence-artifacts` · harmful: 0
+- features: platform-qualification-matrix
+- evidence: V9 gate-profile not reconciled (evidence-artifacts)
+- last seen: 2026-08-12T20:29:20Z
+
+### L-010 — Never let the artifact under verification decide how strictly it is verified. Excusing a case because its declaration said environmental let a leg run and fail in every dispatch with zero contradictions. Each non-qualified status must declare which observations it predicts; anything outside that set is a contradiction.
+- signal: `surviving_mutant` · recurrence: 1 feature(s) · scope: `evidence-artifacts` · harmful: 0
+- features: platform-qualification-matrix
+- evidence: P1 environmental+failed silent (evidence-artifacts)
+- last seen: 2026-08-12T20:29:20Z
+
+### L-011 — When a check becomes per-item in one direction, make the opposite direction per-item too. A per-observation inconsistency rule beside a unanimity-only staleness rule silently ignored a partial change of state, and partial is the shape real state changes have.
+- signal: `surviving_mutant` · recurrence: 1 feature(s) · scope: `evidence-artifacts` · harmful: 0
+- features: platform-qualification-matrix
+- evidence: V1 stale needs unanimity (evidence-artifacts)
+- last seen: 2026-08-12T20:29:21Z
+
+### L-012 — A fixture that cannot express the failing case cannot detect it. Fleet fixtures holding only qualified and missing left six mutants alive against a producer emitting four statuses; and an absent item yields no observation, so a test meant to prove non-unanimous detection was still unanimous.
+- signal: `surviving_mutant` · recurrence: 1 feature(s) · scope: `tests` · harmful: 0
+- features: platform-qualification-matrix
+- evidence: S3/S4 unpinned round-3 and round-4 fixes (tests)
+- last seen: 2026-08-12T20:29:21Z
+
+### L-013 — Test the CLI, not only the exported function. Pinning exit codes immediately exposed an --out flag parsed then ignored, and an indexOf -1 whose +1 consumed argument zero -- the second masked whenever the pnpm -- separator was passed.
+- signal: `gate_fail` · recurrence: 1 feature(s) · scope: `scripts` · harmful: 0
+- features: platform-qualification-matrix
+- evidence: scripts/t75-evidence-index.mjs CLI (scripts)
+- last seen: 2026-08-12T20:29:21Z
+
 ## Quarantined (failed when applied — ignore)
 
 A confirmed lesson that recurred alongside failure. Kept for the maintainer to review.
