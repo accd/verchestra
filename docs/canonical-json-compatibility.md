@@ -65,6 +65,10 @@ comparison fails closed where identities are not interchangeable.
 | Agent runtime discovery: `source-snapshots.ts` | Context source snapshots, fact alternatives and selector material | portable persistent | Recursive serializer and locale ordering | Migrate together with context compiler; prove old snapshot verification and cross-locale reproduction. |
 | Agent runtime backend: `backend-serializers.ts` | `SerializedContext.meaningDigest`, the `SemanticEquivalenceOracle`'s cross-run tree-equality comparison, and the `ContextCapacityEstimatorPort` surface named alongside it | portable persistent | Private `canonicalJson()` (`backend-serializers.ts:59-65`), a second, independent recursive serializer with ambient `localeCompare` member order — not the same function as `context-compiler.ts`'s | **Understated by the original T2 inventory**, which covered `context-compiler.ts` and `source-snapshots.ts` but not this file; routed here by AD-015 (`.specs/STATE.md`: "each carry a private `canonicalJson()` that orders keys with ambient `localeCompare`"). Migrate together with T4e — same portability property (two independently provisioned runs' semantic-equivalence comparison must not diverge by machine locale), same package. |
 | Policy: `cedar-policy.ts` | Policy view/evidence material and normalized layer order | authority; classified transient with a discard migration (T4d) — see rationale below | **Migrated (T4d).** `canonicalizeJsonV2` replaces the recursive serializer; the per-layer policy-key sort (which also fixes `#compile`'s validation-iteration order, not just digest input) uses code-unit comparison instead of `localeCompare`. | Done. `tests/unit/policy-hardening.test.mjs`'s "policy digest is independent from insertion order", 35 existing policy cases unchanged. |
+| Agent runtime context: `context-compiler.ts` | Snapshot ID, recipe, semantic-obligation, serialized-meaning and manifest digests | portable, in-memory only; classified transient (T4e) — see rationale below | **Migrated (T4e).** `canonicalizeJsonV2` replaces the recursive serializer; `rank()`'s tie-break and every collection sort now use code-unit `<`/`>` instead of `localeCompare`. | Done. `tests/unit/context-compiler.test.mjs`, `tests/security/context-compiler-security.test.mjs` (53 cases, including 24 permutation-invariance properties and the `rank()` stability case). |
+| Agent runtime discovery: `source-snapshots.ts` | Context source snapshots, fact alternatives and selector material | portable, in-memory only; classified transient (T4e) — see rationale below | **Migrated (T4e).** `canonicalizeJsonV2` replaces the recursive serializer; selector, fragment, claim, and contradiction sorts now use code-unit `<`/`>` instead of `localeCompare`. | Done. `tests/unit/context-recipe.test.mjs`, `tests/contract/context-source-ports.test.mjs`, `tests/security/confluence-readonly-security.test.mjs` (63 cases, including a cross-locale recipe-digest test). |
+| Agent runtime backend: `backend-serializers.ts` | `SerializedContext.meaningDigest`, the `SemanticEquivalenceOracle`'s cross-run tree-equality comparison, and the `ContextCapacityEstimatorPort` surface named alongside it | portable, in-memory only; classified transient (T4e) — see rationale below | **Migrated (T4e).** Private `canonicalJson()` (was `backend-serializers.ts:59-65`) removed; `canonicalizeJsonV2` used for both the outbound serialization and the Oracle's cross-run comparison. | Done. `tests/contract/context-serializers.test.mjs`, `tests/security/context-serializer-security.test.mjs` (42 cases, including 6 cross-backend Oracle-equivalence tests). |
+| Policy: `cedar-policy.ts` | Policy view/evidence material and normalized layer order | authority | Recursive serializer and locale ordering | Version policy-view evidence; policy decisions never compare V1 and V2 digests as equal. |
 | Data probe: `database-knowledge.ts` | Source, fact-value, knowledge-package and promotion-plan digests | portable persistent | Recursive serializer and locale ordering of entities/facts | Version knowledge package and promotion-plan schemas; adapter outputs normalize domain sets before V2. |
 | Distribution: `hermetic-bundle.ts` | Release manifest/release digest | signed + persistent release identity | Recursive serializer and locale component ordering | Highest-risk slice: publish a new bundle schema/release format and retain V1 verification. |
 | Distribution: `transactional-activation.ts` | Transaction identity material and durable activation records | persistent local state | Recursive serializer for transaction identity; ordinary JSON writes for local journals | Migrate only after hermetic bundle V2; version durable receipt/pointer records. |
@@ -96,6 +100,7 @@ migrate-together and migrate-after rules.
 | T4c | `gate-commit.ts` + `git-worktree-adapter.ts` `changeDigest` | Medium-high | Durable resume path; migrate together per the matrix. |
 | T4d | `cedar-policy.ts` + `runtime-store.ts` | Medium (reclassified transient with a discard migration, see below) | Migrated together as required; a discard migration replaces schema/versioning. |
 | T4e | `context-compiler.ts` + `source-snapshots.ts` + `backend-serializers.ts` | Medium | Matrix requires migrating together; `backend-serializers.ts` added to the slice by the T2 re-inventory above (AD-015). |
+| T4e | `context-compiler.ts` + `source-snapshots.ts` + `backend-serializers.ts` | Medium (reclassified transient, see below) | **Done.** Matrix requires migrating together; `backend-serializers.ts` added to the slice by the T2 re-inventory above (AD-015). |
 | T4f | `trust-egress.ts`, `handoff/validation.ts` | Medium | Portable persistent identities. |
 | T4g | `workspace-reconcile.ts`, `effect-contract.ts` | High | Durable idempotency keys. |
 | T4h | `database-knowledge.ts` + 7 adapters | Medium | Wide fan-out, uniform pattern. |
@@ -211,6 +216,32 @@ installed base, the same "no installed base, regenerable content" reasoning
 AD-014 used for the DSSE migration and T4b/T4c used here. The classification
 was chosen by brunomjanuario (WS-C) before implementation (2026-08-11);
 flagged for accd's review, not asserted as settled.
+### T4e classification: transient, no persistence adapter at all
+
+`context-compiler.ts`, `source-snapshots.ts`, and `backend-serializers.ts` all
+compute and consume their digests (`snapshotId`, `recipeDigest`, `findingId`,
+`contradictionId`, `manifestId`, `semanticObligationsDigest`,
+`serializedMeaningDigest`, `SerializedContext.meaningDigest`) within the same
+call — either freshly recomputed and compared in-memory (the `snapshotId`
+reverification in `context-compiler.ts`, the payload/meaning-digest checks in
+`backend-serializers.ts`'s `SemanticEquivalenceOracle`), or returned directly
+to the caller with no round-trip through storage.
+
+Unlike T4b's `authority.ts`/`work-claims.ts` (measured to have a real SQLite
+table keyed by the digest), this package has **no persistence adapter wired
+at all**: `grep -rln "SourceSnapshot\|source-snapshots" packages/platform-node/src/`
+and a search for `writeFile`/`readFile` under
+`packages/agent-runtime/src/context/` both return nothing. There is no table
+to orphan and no discard migration required — the T4b/`ed60005` gap (a
+transient classification that turned out to have a persisted table, requiring
+a follow-up discard migration; see the T4b section above) does not apply here
+because there is no persisted table in the first place, not because the
+consequence of a stale row was judged acceptable.
+
+The classification was made following the same process as T4b/T4c/T4d: not
+asserted unilaterally, chosen by brunomjanuario (WS-C) consistent with the
+established row-3 (transient) criteria, and flagged here for human review
+rather than settled as an owner (accd) decision.
 
 ## Completed vertical slice (T3)
 

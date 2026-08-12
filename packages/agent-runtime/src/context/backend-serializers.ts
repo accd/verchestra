@@ -1,6 +1,7 @@
 import type { ContextDigestPort } from "./source-snapshots.ts";
 import type { ContextManifest } from "./context-compiler.ts";
 import { estimateQualifiedTokens } from "./token-estimator.ts";
+import { canonicalizeJsonV2 } from "@verchestra/domain";
 
 const TARGETS = ["pi", "claude-code", "codex", "opencode"] as const;
 const PREFIX = "VERCHESTRA_CONTEXT_V1\n";
@@ -54,17 +55,6 @@ export interface SerializedContext {
   readonly meaningDigest: string;
   readonly estimatedTokens: number;
   readonly transport: Readonly<Record<string, unknown>>;
-}
-
-function canonicalJson(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
-  if (value !== null && typeof value === "object") {
-    return `{${Object.entries(value as Readonly<Record<string, unknown>>)
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([key, entry]) => `${JSON.stringify(key)}:${canonicalJson(entry)}`)
-      .join(",")}}`;
-  }
-  return JSON.stringify(value);
 }
 
 function deepFreeze<T>(value: T): T {
@@ -224,10 +214,10 @@ export class BackendContextSerializer {
     if (!Number.isSafeInteger(input.maximumInputTokens) || input.maximumInputTokens <= 0)
       fail("VES_CONTEXT_CAPACITY_ESTIMATE_INVALID", "Qualified context capacity is invalid");
     const tree = treeFor(input.manifest);
-    const meaningDigest = this.#digest.sha256(canonicalJson(tree));
+    const meaningDigest = this.#digest.sha256(canonicalizeJsonV2(tree));
     if (meaningDigest !== input.manifest.serializedMeaningDigest)
       fail("VES_CONTEXT_SERIALIZATION_INVALID", "Manifest meaning digest is invalid");
-    const transport = transportFor(input.target, `${PREFIX}${canonicalJson(tree)}`);
+    const transport = transportFor(input.target, `${PREFIX}${canonicalizeJsonV2(tree)}`);
     let estimatedTokens: number;
     try {
       estimatedTokens = this.#capacity.estimate(input.target, transport);
@@ -269,9 +259,9 @@ export class SemanticEquivalenceOracle {
       fail("VES_CONTEXT_SERIALIZATION_INVALID", "Structured context JSON is invalid");
     }
     const tree = validateTree(parsed, this.#digest);
-    if (payload !== canonicalJson(tree))
+    if (payload !== canonicalizeJsonV2(tree))
       fail("VES_CONTEXT_SERIALIZATION_INVALID", "Structured context is not canonical");
-    if (serialized.meaningDigest !== this.#digest.sha256(canonicalJson(tree)))
+    if (serialized.meaningDigest !== this.#digest.sha256(canonicalizeJsonV2(tree)))
       fail("VES_CONTEXT_SERIALIZATION_INVALID", "Serialized meaning digest is invalid");
     return tree;
   }
@@ -279,7 +269,7 @@ export class SemanticEquivalenceOracle {
   verify(serialized: SerializedContext, expectedMeaningDigest: string) {
     try {
       const tree = this.extract(serialized);
-      const meaningDigest = this.#digest.sha256(canonicalJson(tree));
+      const meaningDigest = this.#digest.sha256(canonicalizeJsonV2(tree));
       return deepFreeze({ equivalent: meaningDigest === expectedMeaningDigest, meaningDigest });
     } catch {
       return deepFreeze({ equivalent: false, meaningDigest: "invalid" });
@@ -287,8 +277,8 @@ export class SemanticEquivalenceOracle {
   }
 
   compare(left: SerializedContext, right: SerializedContext) {
-    const leftDigest = this.#digest.sha256(canonicalJson(this.extract(left)));
-    const rightDigest = this.#digest.sha256(canonicalJson(this.extract(right)));
+    const leftDigest = this.#digest.sha256(canonicalizeJsonV2(this.extract(left)));
+    const rightDigest = this.#digest.sha256(canonicalizeJsonV2(this.extract(right)));
     return deepFreeze({ equivalent: leftDigest === rightDigest, meaningDigest: leftDigest });
   }
 }

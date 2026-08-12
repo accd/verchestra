@@ -1,5 +1,5 @@
 import type { DataEgressFirewall, TrustEnvelope } from "@verchestra/application";
-import { DataClassification, IsoInstant, StableId } from "@verchestra/domain";
+import { DataClassification, IsoInstant, StableId, canonicalizeJsonV2 } from "@verchestra/domain";
 
 import {
   contextRecipeDigest,
@@ -84,16 +84,15 @@ export interface ContextManifest {
   readonly signature: string;
 }
 
-function canonicalJson(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
-  if (value !== null && typeof value === "object") {
-    return `{${Object.entries(value as Readonly<Record<string, unknown>>)
-      .filter(([, entry]) => entry !== undefined)
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([key, entry]) => `${JSON.stringify(key)}:${canonicalJson(entry)}`)
-      .join(",")}}`;
-  }
-  return JSON.stringify(value);
+// Code-unit comparison, not localeCompare: several of these sorts are not
+// just digest input order -- rank() feeds the greedy budget-inclusion loop
+// below, so a locale divergence could change WHICH fragments are included
+// under a tight capacity, not just how they are serialized (AD-015, issue
+// #58).
+function codeUnitCompare(left: string, right: string): number {
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
 }
 
 function deepFreeze<T>(value: T): T {
@@ -116,23 +115,23 @@ function rank(left: CompiledContextFragment, right: CompiledContextFragment): nu
   return (
     PRIORITY_RANK[left.priority] - PRIORITY_RANK[right.priority] ||
     TRUST_RANK[left.trust] - TRUST_RANK[right.trust] ||
-    left.source.identity.localeCompare(right.source.identity) ||
-    left.source.revision.localeCompare(right.source.revision) ||
-    left.fragmentId.localeCompare(right.fragmentId) ||
-    left.contentDigest.localeCompare(right.contentDigest)
+    codeUnitCompare(left.source.identity, right.source.identity) ||
+    codeUnitCompare(left.source.revision, right.source.revision) ||
+    codeUnitCompare(left.fragmentId, right.fragmentId) ||
+    codeUnitCompare(left.contentDigest, right.contentDigest)
   );
 }
 
 function canonicalSnapshotMaterial(snapshot: ContextSnapshot) {
   const sources = [...snapshot.sources]
-    .sort((a, b) => a.selectorId.localeCompare(b.selectorId))
+    .sort((a, b) => codeUnitCompare(a.selectorId, b.selectorId))
     .map((source) => ({
       ...source,
-      fragments: [...source.fragments].sort((a, b) => a.fragmentId.localeCompare(b.fragmentId))
+      fragments: [...source.fragments].sort((a, b) => codeUnitCompare(a.fragmentId, b.fragmentId))
     }));
-  const findings = [...snapshot.findings].sort((a, b) => a.findingId.localeCompare(b.findingId));
+  const findings = [...snapshot.findings].sort((a, b) => codeUnitCompare(a.findingId, b.findingId));
   const contradictions = [...snapshot.contradictions].sort((a, b) =>
-    a.contradictionId.localeCompare(b.contradictionId)
+    codeUnitCompare(a.contradictionId, b.contradictionId)
   );
   return {
     workspaceId: snapshot.workspaceId,
@@ -262,7 +261,7 @@ export class DeterministicContextCompiler {
     }
     included.sort(rank);
     omissions.sort(
-      (a, b) => PRIORITY_RANK[a.priority] - PRIORITY_RANK[b.priority] || a.fragmentId.localeCompare(b.fragmentId)
+      (a, b) => PRIORITY_RANK[a.priority] - PRIORITY_RANK[b.priority] || codeUnitCompare(a.fragmentId, b.fragmentId)
     );
     if (included.length === 0) fail("VES_CONTEXT_REQUIRED_SOURCE_UNAVAILABLE", "No authorized context remains");
 
@@ -292,9 +291,9 @@ export class DeterministicContextCompiler {
       fail("VES_CONTEXT_EGRESS_DENIED", "Context egress evidence is incomplete");
 
     const semanticObligations = [...input.recipe.semanticObligations].sort();
-    const semanticObligationsDigest = this.#digest.sha256(canonicalJson(semanticObligations));
+    const semanticObligationsDigest = this.#digest.sha256(canonicalizeJsonV2(semanticObligations));
     const serializedMeaningDigest = this.#digest.sha256(
-      canonicalJson({
+      canonicalizeJsonV2({
         semanticObligations,
         fragments: included.map((entry) => ({
           fragmentId: entry.fragmentId,
@@ -334,7 +333,7 @@ export class DeterministicContextCompiler {
       egressDigest: egress["egressDigest"],
       compiledAt: input.snapshot.evaluatedAt
     });
-    const manifestId = this.#digest.sha256(canonicalJson(unsigned));
+    const manifestId = this.#digest.sha256(canonicalizeJsonV2(unsigned));
     let signed;
     try {
       signed = await this.#signer.sign(deepFreeze({ manifestId, ...unsigned }));
@@ -355,7 +354,7 @@ export class DeterministicContextCompiler {
       input.snapshot.workspaceId !== input.workspaceId ||
       input.snapshot.recipeId !== input.recipe.recipeId ||
       input.snapshot.recipeDigest !== recipeDigest ||
-      input.snapshot.snapshotId !== this.#digest.sha256(canonicalJson(canonicalSnapshotMaterial(input.snapshot)))
+      input.snapshot.snapshotId !== this.#digest.sha256(canonicalizeJsonV2(canonicalSnapshotMaterial(input.snapshot)))
     )
       fail("VES_CONTEXT_SNAPSHOT_INVALID", "Context Snapshot binding is invalid");
     const ids = new Set<string>();

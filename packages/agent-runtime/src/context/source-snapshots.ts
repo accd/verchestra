@@ -7,7 +7,13 @@ import {
   type TrustClass,
   type TrustEnvelope
 } from "@verchestra/application";
-import { DataClassification, IsoInstant, StableId, type DataClassificationValue } from "@verchestra/domain";
+import {
+  DataClassification,
+  IsoInstant,
+  StableId,
+  canonicalizeJsonV2,
+  type DataClassificationValue
+} from "@verchestra/domain";
 
 const SOURCE_KINDS = ["repository", "tracker", "knowledge", "memory"] as const;
 const PRIORITIES = ["mandatory", "high", "medium", "low"] as const;
@@ -123,16 +129,15 @@ export interface ContextSnapshot {
   }[];
 }
 
-function canonicalJson(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
-  if (value !== null && typeof value === "object") {
-    return `{${Object.entries(value as Readonly<Record<string, unknown>>)
-      .filter(([, entry]) => entry !== undefined)
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([key, entry]) => `${JSON.stringify(key)}:${canonicalJson(entry)}`)
-      .join(",")}}`;
-  }
-  return JSON.stringify(value);
+// Code-unit comparison, not localeCompare: several of these sorts have
+// functional consequences beyond digest serialization order -- selector,
+// fragment, and claim order feed downstream consumers directly, and
+// contradiction/alternative order is part of the returned snapshot shape, not
+// just its digest input (AD-015, issue #58).
+function codeUnitCompare(left: string, right: string): number {
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
 }
 
 function deepFreeze<T>(value: T): T {
@@ -176,7 +181,7 @@ function validateJson(value: unknown, field: string): void {
         }
     };
     visit(value);
-    const serialized = canonicalJson(value);
+    const serialized = canonicalizeJsonV2(value);
     if (serialized.length > 100_000) invalid(`${field} is invalid`);
   } catch {
     invalid(`${field} is invalid`);
@@ -199,12 +204,12 @@ function normalizeSelector(selector: ContextSourceSelector): ContextSourceSelect
   }
   return deepFreeze({
     ...selector,
-    query: JSON.parse(canonicalJson(selector.query)) as Readonly<Record<string, unknown>>
+    query: JSON.parse(canonicalizeJsonV2(selector.query)) as Readonly<Record<string, unknown>>
   });
 }
 
 export function contextRecipeDigest(recipe: ContextRecipe, digest: ContextDigestPort): string {
-  return digest.sha256(canonicalJson(normalizeRecipe(recipe)));
+  return digest.sha256(canonicalizeJsonV2(normalizeRecipe(recipe)));
 }
 
 function normalizeRecipe(recipe: ContextRecipe): ContextRecipe {
@@ -217,10 +222,10 @@ function normalizeRecipe(recipe: ContextRecipe): ContextRecipe {
     if (!Array.isArray(recipe.optionalSources)) invalid("optionalSources is invalid");
     const requiredSources = recipe.requiredSources
       .map(normalizeSelector)
-      .sort((a, b) => a.selectorId.localeCompare(b.selectorId));
+      .sort((a, b) => codeUnitCompare(a.selectorId, b.selectorId));
     const optionalSources = recipe.optionalSources
       .map(normalizeSelector)
-      .sort((a, b) => a.selectorId.localeCompare(b.selectorId));
+      .sort((a, b) => codeUnitCompare(a.selectorId, b.selectorId));
     const all = [...requiredSources, ...optionalSources];
     if (new Set(all.map((entry) => entry.selectorId)).size !== all.length) invalid("selector IDs must be unique");
     if (!Array.isArray(recipe.semanticObligations) || recipe.semanticObligations.length === 0)
@@ -234,7 +239,7 @@ function normalizeRecipe(recipe: ContextRecipe): ContextRecipe {
       if (!PRIORITIES.includes(budget.priority)) invalid("priority is invalid");
       positiveInteger(budget.maximumTokens, "maximumTokens");
     }
-    const budgets = [...recipe.priorityBudgets].sort((a, b) => a.priority.localeCompare(b.priority));
+    const budgets = [...recipe.priorityBudgets].sort((a, b) => codeUnitCompare(a.priority, b.priority));
     if (new Set(budgets.map((entry) => entry.priority)).size !== budgets.length)
       invalid("priorityBudgets must be unique");
     positiveInteger(recipe.freshnessPolicy.defaultMaximumAgeSeconds, "defaultMaximumAgeSeconds");
@@ -339,7 +344,7 @@ export class ContextSnapshotResolver {
       .filter((entry) => entry.status !== "available")
       .map((entry) =>
         deepFreeze({
-          findingId: this.#digest.sha256(canonicalJson({ selectorId: entry.selectorId, status: entry.status })),
+          findingId: this.#digest.sha256(canonicalizeJsonV2({ selectorId: entry.selectorId, status: entry.status })),
           kind: entry.status as Exclude<ContextSourceStatus, "available">,
           selectorId: entry.selectorId,
           required: entry.required,
@@ -357,7 +362,7 @@ export class ContextSnapshotResolver {
     };
     return deepFreeze({
       schemaVersion: 1,
-      snapshotId: this.#digest.sha256(canonicalJson(material)),
+      snapshotId: this.#digest.sha256(canonicalizeJsonV2(material)),
       workspaceId: input.workspaceId,
       recipeId: recipe.recipeId,
       recipeDigest,
@@ -449,11 +454,11 @@ export class ContextSnapshotResolver {
           return deepFreeze({
             ...envelope,
             claims: claims.sort(
-              (a, b) => a.factKey.localeCompare(b.factKey) || a.valueDigest.localeCompare(b.valueDigest)
+              (a, b) => codeUnitCompare(a.factKey, b.factKey) || codeUnitCompare(a.valueDigest, b.valueDigest)
             )
           });
         })
-        .sort((a, b) => a.fragmentId.localeCompare(b.fragmentId));
+        .sort((a, b) => codeUnitCompare(a.fragmentId, b.fragmentId));
       const maximumAge = selector.maximumAgeSeconds ?? recipe.freshnessPolicy.defaultMaximumAgeSeconds;
       const status: ContextSourceStatus = ageSeconds > maximumAge ? "stale" : "available";
       return deepFreeze({
@@ -496,13 +501,13 @@ export class ContextSnapshotResolver {
     }
     return [...facts.entries()]
       .filter(([, values]) => values.size > 1)
-      .sort(([left], [right]) => left.localeCompare(right))
+      .sort(([left], [right]) => codeUnitCompare(left, right))
       .map(([factKey, values]) => {
         const alternatives = [...values.entries()]
-          .sort(([left], [right]) => left.localeCompare(right))
+          .sort(([left], [right]) => codeUnitCompare(left, right))
           .map(([valueDigest, fragmentIds]) => deepFreeze({ valueDigest, fragmentIds: [...fragmentIds].sort() }));
         return deepFreeze({
-          contradictionId: this.#digest.sha256(canonicalJson({ factKey, alternatives })),
+          contradictionId: this.#digest.sha256(canonicalizeJsonV2({ factKey, alternatives })),
           factKey,
           alternatives
         });

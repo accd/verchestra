@@ -41,6 +41,11 @@ const MATRIX_CEILINGS = Object.freeze({
   "packages/agent-runtime/src/context/source-snapshots.ts": 9,
   // T4d owners: migrated (issue #58), ceilings tightened to 0.
   "packages/policy/src/cedar-policy.ts": 0,
+  // T4e owners: migrated (issue #58), ceilings tightened to 0.
+  "packages/agent-runtime/src/context/context-compiler.ts": 0,
+  "packages/agent-runtime/src/context/source-snapshots.ts": 0,
+  "packages/agent-runtime/src/context/backend-serializers.ts": 0,
+  "packages/policy/src/cedar-policy.ts": 2,
   "packages/data-probe/src/database-knowledge.ts": 10,
   "packages/data-probe/src/sqlserver-adapter.ts": 2,
   "packages/data-probe/src/sqlite-adapter.ts": 2,
@@ -63,7 +68,6 @@ const MATRIX_CEILINGS = Object.freeze({
 });
 
 const UNCLASSIFIED_CEILINGS = Object.freeze({
-  "packages/agent-runtime/src/context/backend-serializers.ts": 1,
   "packages/agent-runtime/src/discovery/discovery-router.ts": 1,
   "packages/agent-runtime/src/models/model-router.ts": 4,
   "packages/agent-runtime/src/models/passport-registry.ts": 2,
