@@ -1,6 +1,7 @@
 import type { DataEgressFirewall, TrustEnvelope } from "@verchestra/application";
 import { DataClassification, IsoInstant, StableId, canonicalizeJsonV2 } from "@verchestra/domain";
 
+import { codeUnitCompare } from "./code-unit-compare.ts";
 import {
   contextRecipeDigest,
   type ContextDigestPort,
@@ -82,17 +83,6 @@ export interface ContextManifest {
   readonly compiledAt: string;
   readonly keyId: string;
   readonly signature: string;
-}
-
-// Code-unit comparison, not localeCompare: several of these sorts are not
-// just digest input order -- rank() feeds the greedy budget-inclusion loop
-// below, so a locale divergence could change WHICH fragments are included
-// under a tight capacity, not just how they are serialized (AD-015, issue
-// #58).
-function codeUnitCompare(left: string, right: string): number {
-  if (left < right) return -1;
-  if (left > right) return 1;
-  return 0;
 }
 
 function deepFreeze<T>(value: T): T {

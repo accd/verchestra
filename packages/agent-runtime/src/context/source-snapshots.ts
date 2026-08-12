@@ -15,6 +15,8 @@ import {
   type DataClassificationValue
 } from "@verchestra/domain";
 
+import { codeUnitCompare } from "./code-unit-compare.ts";
+
 const SOURCE_KINDS = ["repository", "tracker", "knowledge", "memory"] as const;
 const PRIORITIES = ["mandatory", "high", "medium", "low"] as const;
 const SAFE_VALUE = /^[A-Za-z0-9][A-Za-z0-9._:@/+\-]{0,511}$/u;
@@ -127,17 +129,6 @@ export interface ContextSnapshot {
       readonly fragmentIds: readonly string[];
     }[];
   }[];
-}
-
-// Code-unit comparison, not localeCompare: several of these sorts have
-// functional consequences beyond digest serialization order -- selector,
-// fragment, and claim order feed downstream consumers directly, and
-// contradiction/alternative order is part of the returned snapshot shape, not
-// just its digest input (AD-015, issue #58).
-function codeUnitCompare(left: string, right: string): number {
-  if (left < right) return -1;
-  if (left > right) return 1;
-  return 0;
 }
 
 function deepFreeze<T>(value: T): T {
