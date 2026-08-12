@@ -1,10 +1,228 @@
 # Independent verification — T75 evidence index generator
 
-Four verification passes by the same independent verifier (author ≠ verifier).
-Part Y is the current round over `c5c723c`. Part Z is the third round over
-`53a241d`. Part A is the second round over `ce9ff65`. Part B is the first round
-over `bc4a910`, whose FAIL verdict was committed as `1fe398a` before any fix. All
-four are kept because the earlier ones are committed evidence.
+Five verification passes by the same independent verifier (author ≠ verifier).
+Part X is the current round over `fe169b2`. Part Y is the fourth round over
+`c5c723c`. Part Z is the third round over `53a241d`. Part A is the second round
+over `ce9ff65`. Part B is the first round over `bc4a910`, whose FAIL verdict was
+committed as `1fe398a` before any fix. All five are kept because the earlier ones
+are committed evidence.
+
+---
+
+# Part X — Fifth round: verification of `fe169b2`
+
+**Verdict: FAIL**, on one behavioural finding and three unpinned properties. Every
+item on the round-4 list is verified closed, the committed fleet inputs are
+byte-faithful under a check stricter than the repository performs, and the drift
+test is a real regression anchor rather than a restatement. The blocker is a
+single comparison: the stale-declaration rule still requires unanimity, so a
+declaration the fleet has outgrown stays silent as soon as one dispatch disagrees
+— the mirror of the S4 hole this commit fixed, in the adjacent branch of the same
+function.
+
+- Baselines: unit **47 pass / 0 fail / 0 skipped / 0 todo**; drift **2 pass / 0
+  fail**
+- Source restored byte-identically after every mutation
+  (`git diff --exit-code -- scripts/t75-evidence-index.mjs` clean after each).
+
+## X1. The ten claims
+
+| # | Claim | Verdict | Evidence |
+| - | ----- | ------- | -------- |
+| 1 | S3 pinned: an expected leg returning `missing`/`digest-mismatch` is a shortfall | **True** | `tests/unit/…` "an expected leg that went missing or mismatched is a shortfall, not only one that failed", parameterised over both statuses. |
+| 2 | S4 pinned: non-unanimous inconsistency | **True, in the direction it covers** | "one bad run among good ones is enough to contradict a declaration" now has the leg green in four dispatches and failed in one, and asserts the citation names the dissenting run. The **stale** direction of the same asymmetry is untouched — gap 1. |
+| 3 | Both dead consistency rows pinned | **True** | "a not-qualified declaration predicts every way a leg can fall short" iterates the statuses; "a contract-qualified declaration predicts nothing the fleet can observe". |
+| 4 | Undeclared leg refused | **True** | `scripts/t75-evidence-index.mjs:95-99, 278`; test present. Closes round-4 gap 3 on the same reasoning as the gate rule. |
+| 5 | Duplicate legs refused | **True** | `:140-146`; test present. Closes round-4 gap 4. |
+| 6 | Dead `?? new Set()` retired; declaration validated up front | **True** | `:60, 250-262, 275`; a mutation restricting validation to the fleet dimensions is killed by two tests. |
+| 7 | `excused` carried on the gate-profile observation | **True, unevenly pinned** | Verified live: `{"gate":"gate:security","runId":"run-security","status":"qualified","excused":["darwin-x64=qualified"]}`. Dropping it for profiles that *also* fell short is undetected — gap 3. |
+| 8 | `digestProvenance` states recomputed vs transcribed | **True** | Asserted by value, and inside `body`, so it is covered by the body digest. One improvement in X4. |
+| 9 | `--out` and `--revision` with no value refused | **True** | `:357-362`; CLI test asserts exit 1 and the usage text. |
+| 10 | Publication: four fleet inputs committed, drift test regenerates 52/40/1 plus the excused scope, labelled interim | **True — and I now consider C6 substantially met** | See X3. |
+
+## X2. Gap 1 — the stale rule still requires unanimity
+
+`scripts/t75-evidence-index.mjs:219` fires the stale-declaration contradiction only
+when `dissenting.length === 0`. The inconsistency branch two lines below (`:224`)
+filters per observation and fires if *any* observation is unpredicted. One
+direction was made non-unanimous this round; the other was not.
+
+`darwin-x64` is declared `environmental` — "never dequeues on the retiring Intel
+fleet". Observed qualified in four dispatches and missing in a fifth:
+
+```
+darwin-x64 observed : missing,qualified,qualified,qualified,qualified
+status              : environmental
+contradiction       : NONE
+total contradictions: 0        (so the CLI exits 0 — a clean generation)
+```
+
+Unanimous green on the same case is reported correctly, which is what makes the
+asymmetry visible rather than a design choice.
+
+This is not an exotic input. It is the single most likely future observation for
+this exact case: matrix.md records `darwin-x64` as environmental precisely because
+Intel capacity is intermittent, and instructs a re-dispatch "if Intel capacity
+returns". The index is the mechanism that would report that it had — and it goes
+quiet the moment the return is partial. The same shape applies to any
+`not-qualified` platform that starts passing in most dispatches.
+
+No false qualification results — `environmental` is never counted as a pass — so
+the harm is silence, not over-claim. But the function's own contract is "Fails
+closed in every direction the evidence can disagree" (`:197-201`), and this is a
+direction where the evidence disagrees and nothing is recorded, counted, or
+surfaced through the exit code.
+
+## X3. The committed inputs and the drift test
+
+**The fleet files are byte-faithful, and I checked them harder than the repository
+does.** For each of the four:
+
+```
+bytes == JSON.stringify(index, null, 2) + newline : true   (what platform-matrix.yml writes)
+leg order == the workflow's EXPECTED_LEGS order   : true
+identityDigest verified                           : 4/4
+legDigest reconstructed from the runner's record  : 4/4
+```
+
+The last line is the load-bearing one. `legDigest` covers
+`{schemaVersion: 2, identity, identityDigest, outcome}` — material the fleet index
+does **not** carry, because the index job strips `schemaVersion` and `outcome` when
+it projects a leg. I reconstructed that record independently (`result: "pass"`
+implies `reported: "success"`) and every one of the sixteen digests matched. Those
+digests could not match if the identities, their digests, or the runner outcomes
+had been normalised, reordered, or retyped. The `runId`s also match the four runs
+matrix.md records at `9aab070` (security 31327128912, full 31327134227, build
+31327140097, release 31327146281), and `complete: false` on all four is consistent
+with the Intel leg never reporting.
+
+**No secrets or machine-local content.** A scan for tokens, credentials, bearer
+strings, Windows drive paths and POSIX home paths returns nothing. The only
+environment-derived fields are `ref: refs/heads/main` and `runner:
+Windows|Linux|macOS`, both public CI metadata.
+
+**The drift test discriminates, and its role is narrow by construction.** It is not
+a restatement: mutation V5 (narrowing the leg vocabulary to green-declared
+platforms) changed the real verdict and the drift test failed on it. But it
+survived five of my six mutations, which is expected of a golden test over one
+input — it anchors this verdict against regression; it does not sense behaviour in
+general. The unit suite has to carry discrimination, and that is where the three
+survivors below sit. Worth stating plainly in the T75 report so no reader mistakes
+the drift test for a proof of the generator.
+
+**On C6: I now consider it substantially met, and I am withdrawing my earlier
+objection.** My round-4 point was that the numbers could not be re-derived by
+anyone. They can now: inputs, generator, and expectation are all committed, and a
+gate runs them. That the artifact itself is not yet committed at the qualification
+revision is correct sequencing, not an omission, and it is labelled interim in the
+test, the handoff, and the commit. What remains for B3 is to replace the inputs and
+the expectation with the real dispatch — which the test already says.
+
+## X4. Independent sensor — six fresh mutations, both suites
+
+Disjoint from the eleven reported dead. Each run against the unit suite **and** the
+drift test.
+
+| # | Mutation | Unit | Drift |
+| - | -------- | ---- | ----- |
+| V1 | The stale check needs at least two observations | **SURVIVED** | survived |
+| V2 | `excused` dropped from the observation when the profile also fell short | **SURVIVED** | survived |
+| V3 | An unpredicted observation downgrades the case status instead of leaving the declaration standing | **SURVIVED** | survived |
+| V4 (control) | A leg absent from a dispatch is neither excused nor a shortfall | killed | survived |
+| V5 (control) | The leg vocabulary narrowed to green-declared platforms | killed (9 tests) | **killed** |
+| V6 (control) | The declaration validated only on the reconciled dimensions | killed (2 tests) | survived |
+
+**3 killed, 3 survived.**
+
+- **V1** is gap 1 expressed as a mutant: the stale rule is pinned only at five
+  observations, so any narrowing of it goes unnoticed.
+- **V3** is more than a test gap. It changes what the artifact *says*: an
+  `environmental` case observed failing would be rewritten to `not-qualified`, and
+  `summary.environmental` / `summary.notQualified` would move with it. Neither
+  suite notices, because no fixture asserts the status of a case in the
+  inconsistent branch and the real input has no inconsistent dissent. The rule
+  "an observation never rewrites a reviewed declaration" is stated in the comment
+  at `:197-201` and pinned only for the stale branch.
+- **V2** removes the scope exactly where a reader needs it most — a profile that
+  fell short *and* excused something. The round-4 gap-7 fix is pinned only for
+  fully covered profiles.
+
+## X5. Vacuity re-check
+
+- **Fixtures cannot express two shapes**: a non-qualified case observed *qualified*
+  in some dispatches and dissenting in others (gap 1 / V1), and a profile carrying
+  both a shortfall and an excused leg (V2).
+- **Unasserted output**: the `status` field of any case reached through the
+  inconsistent branch (V3), and with it two summary tallies.
+- **Not vacuous, and a real advance**: the S3 test is parameterised over both soft
+  statuses; the S4 test now has genuinely mixed observations; the consistency table
+  is exercised row by row; the leg and duplicate rules are pinned; the CLI is
+  driven through three invocation orders and both option faults; the drift test is
+  anchored to committed inputs and demonstrably fails on a behavioural change.
+- **`legDigest` could be verified further than the artifact claims**: for any leg
+  whose status is `qualified`, `result: "pass"` implies `reported: "success"`, so
+  the sealed record is fully reconstructible — I recomputed all sixteen. The
+  ambiguity is only for failing legs, where `reported` may be `failure` or
+  `cancelled`. `digestProvenance` could honestly say `recomputed-for-passing-legs`.
+  An improvement, not a gap.
+
+## X6. Test integrity and gates
+
+- No test weakened, skipped, or deleted: the unit suite grew from 39 to 47 cases
+  and a 2-case drift suite was added; no `skip`, `todo`, or `only`.
+- Working tree carries no change to `scripts/` or `tests/`; every mutation was
+  reverted byte-identically.
+- `corepack pnpm gate:quick`: **PASS** — exit code 0, final line `gate:quick PASS`;
+  the agent-readiness stage reported `tests 147 / pass 147 / fail 0 / skipped 0 /
+  todo 0` (145 before, plus the two new drift cases), and the unit stage containing
+  the 47 evidence-index cases passed in the same run.
+
+## X7. Gaps, most severe first
+
+1. **The stale-declaration rule requires unanimity** (`:219`): a declaration the
+   fleet has outgrown is silenced by a single dissenting dispatch, which for
+   `darwin-x64` is the expected future observation. One comparison, and it is the
+   only item blocking this round.
+2. **The inconsistent branch's status preservation is unpinned** (V3): the case
+   status and two summary tallies can change with both suites green.
+3. **`excused` on the gate-profile observation is pinned only for fully covered
+   profiles** (V2).
+4. **The stale rule is pinned only at five observations** (V1) — the test-side
+   half of gap 1.
+5. **`digestProvenance` understates what is checkable**: `legDigest` is fully
+   reconstructible for passing legs.
+6. **The drift test is a single-input anchor, not a sensor** — correct as designed,
+   but the T75 report should say so rather than let it read as a proof of the
+   generator.
+
+## X8. Shortest path to PASS, and what a reader still must not conclude
+
+Path: make the stale branch per-observation like the inconsistent one — report when
+any observation is `qualified` and the declaration is not (gap 1) — with a fixture
+that has a non-qualified case green in some dispatches and dissenting in another
+(gap 4); assert the case status and summary tallies on an inconsistent-branch row
+(gap 2); assert `excused` on a profile that also fell short (gap 3).
+
+When it lands, a reader of the published index still must not conclude:
+
+- **that a `qualified` gate-profile row means the profile ran everywhere.** It
+  means every declared platform expected green was green in that dispatch; the
+  `excused` list on the row is the rest of the scope.
+- **that a `qualified` platform row means the platform passed every stage.** It
+  means every supplied dispatch that carried the leg saw it green — and only four
+  of the five profiles were dispatched at this candidate.
+- **that the index is signed, or that anything vouches for it.** `signingState.signed`
+  is `false`; the body digest is self-computed and the artifact carries no
+  signature at all.
+- **that `legDigest` was checked here.** `digestProvenance` says it was transcribed
+  from the fleet index, whose producer checked it.
+- **that the committed evidence describes the release candidate.** `9aab070` is
+  not the qualification revision; this is interim evidence and the drift test says
+  so.
+- **that zero contradictions would mean T75 is complete.** The one contradiction
+  standing — `gate-profile/quick` — is a finding about T75, and the dimensions the
+  fleet cannot answer (databases, sandboxes, drivers, installers) pass through from
+  the declaration untouched and are not evidence of anything the index verified.
 
 ---
 

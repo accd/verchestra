@@ -73,6 +73,26 @@ const GATE_PREFIX = "gate:";
 // workflow already verified them once, but an index is assembled from files, and
 // a file that was edited after the run would otherwise enter the published
 // record unexamined.
+// A passing leg's sealed record is fully determined by what the fleet index
+// carries: the workflow seals `{schemaVersion, identity, identityDigest,
+// outcome}` and a pass fixes the outcome. So this digest is re-derived, not
+// taken on trust, for every leg that claims to have passed -- which is every leg
+// a qualification verdict actually rests on. A failed leg's `reported` value is
+// not recoverable, so its digest stays transcribed and the index says so.
+const PASSED_OUTCOME = Object.freeze({ result: "pass", reported: "success" });
+
+function verifyLegDigest(leg) {
+  const sealed = {
+    schemaVersion: 2,
+    identity: leg.identity,
+    identityDigest: leg.identityDigest,
+    outcome: PASSED_OUTCOME
+  };
+  const recomputed = `sha256:${createHash("sha256").update(JSON.stringify(sealed)).digest("hex")}`;
+  if (leg.legDigest !== recomputed)
+    throw new Error(`leg ${leg.leg} passed, but its leg digest does not cover the record that pass would have sealed`);
+}
+
 function verifyLeg(leg, revision) {
   const identity = leg.identity;
   // Checked for every leg that ran, whatever its outcome. A failed leg's
@@ -85,6 +105,7 @@ function verifyLeg(leg, revision) {
   const recomputed = `sha256:${createHash("sha256").update(JSON.stringify(identity)).digest("hex")}`;
   if (leg.identityDigest !== recomputed)
     throw new Error(`leg ${leg.leg} carries an identity digest that does not cover its identity`);
+  if (leg.status === "qualified") verifyLegDigest(leg);
 }
 
 // A leg that never ran carries no identity, and every field it would have
@@ -232,16 +253,24 @@ function fleetVerdict(item, observations) {
       };
     return { status: item.status };
   }
-  if (observations.length > 0 && dissenting.length === 0)
+  // One per-observation test for both ways a non-qualified declaration can be
+  // wrong, because splitting them left the stale branch demanding unanimity: a
+  // leg declared environmental that came back green in four dispatches and
+  // absent in the fifth reported nothing. That is not exotic input -- it is what
+  // Intel capacity returning looks like, and reporting the return is this
+  // artifact's job. `qualified` is in no dissent set, so a green observation is
+  // unpredicted by construction.
+  const unpredicted = observations.filter((entry) => !dissentIsConsistent(item.status, entry.status));
+  if (unpredicted.length > 0)
     return {
+      // The declared status is preserved. A contradiction is a disagreement to
+      // resolve by review, not a licence for the generator to relabel a case the
+      // declaration was reviewed to say.
       status: item.status,
-      contradiction: `declared ${item.status}, but every supplied profile observed it qualified; the declaration is stale`
-    };
-  const inconsistent = dissenting.filter((entry) => !dissentIsConsistent(item.status, entry.status));
-  if (inconsistent.length > 0)
-    return {
-      status: item.status,
-      contradiction: `declared ${item.status}, which does not predict ${inconsistent.map(citation).join(", ")}`
+      contradiction:
+        dissenting.length === 0
+          ? `declared ${item.status}, but every supplied profile observed it qualified; the declaration is stale`
+          : `declared ${item.status}, which does not predict ${unpredicted.map(citation).join(", ")}`
     };
   return { status: item.status };
 }
@@ -312,7 +341,11 @@ export function buildEvidenceIndex(matrix, fleetIndexes, revision) {
     // `legDigest` covers the unsealed leg record, and the fleet index does not
     // carry that material -- its producer recomputes it and reports disagreement
     // as `digest-mismatch`, which this index treats as dissent.
-    digestProvenance: { identityDigest: "recomputed", legDigest: "transcribed" },
+    digestProvenance: {
+      identityDigest: "recomputed",
+      legDigest:
+        "recomputed for passing legs; transcribed otherwise, because a failed leg's reported value is not recoverable from the fleet index"
+    },
     dimensions,
     // `shortfall` drove the gate-profile verdict and is already spelled out in
     // that case's contradiction; `excused` stays, because it is the scope the

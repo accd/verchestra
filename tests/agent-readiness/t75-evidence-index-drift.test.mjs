@@ -15,6 +15,12 @@ const read = (name) => JSON.parse(readFileSync(new URL(name, FEATURE), "utf8"));
 // the recorded verdict from becoming a figure quoted out of a terminal. This is
 // interim evidence: 9aab070 is not the qualification revision, and B3 replaces
 // these files and this expectation with the run that is.
+//
+// What this is NOT: a proof of the generator. It is a golden test over one input
+// -- a regression anchor that catches a behavioural change reaching the recorded
+// verdict, and nothing more. The generator's discrimination lives in
+// tests/unit/t75-evidence-index.test.mjs, and the T75 report should say so
+// rather than cite this file as evidence the reconciliation is correct.
 
 const fleet = readdirSync(new URL("fleet/", FEATURE))
   .sort()
