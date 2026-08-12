@@ -1,6 +1,4 @@
-import { createHash } from "node:crypto";
-
-import { canonicalizeJsonV2 } from "@verchestra/domain";
+import { codeUnitCompare, digest } from "./canonical-material.ts";
 
 export const packageName = "@verchestra/data-probe" as const;
 
@@ -180,17 +178,6 @@ function textValue(value: unknown, pattern: RegExp, code: string, label: string)
 function positiveInteger(value: unknown, code: string, label: string): number {
   if (!Number.isSafeInteger(value) || (value as number) <= 0) fail(code, `${label} is invalid`);
   return value as number;
-}
-
-function digest(value: unknown): string {
-  return `sha256:${createHash("sha256").update(canonicalizeJsonV2(value)).digest("hex")}`;
-}
-// Code-unit comparison, not localeCompare: these sorts feed the returned
-// registration/plan shape, not just a digest input (AD-015, issue #58).
-function codeUnitCompare(left: string, right: string): number {
-  if (left < right) return -1;
-  if (left > right) return 1;
-  return 0;
 }
 
 function deepFreeze<T>(value: T): Readonly<T> {
