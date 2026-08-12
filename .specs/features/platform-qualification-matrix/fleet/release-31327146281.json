@@ -1,0 +1,73 @@
+{
+  "schemaVersion": 1,
+  "runId": "31327146281",
+  "gate": "gate:release",
+  "revision": "9aab070897947620fc2afd70160671eef95dcf2b",
+  "complete": false,
+  "legs": [
+    {
+      "leg": "win32-x64",
+      "status": "qualified",
+      "identity": {
+        "revision": "9aab070897947620fc2afd70160671eef95dcf2b",
+        "ref": "refs/heads/main",
+        "gate": "gate:release",
+        "platform": "win32",
+        "arch": "x64",
+        "runtime": "v24.14.0",
+        "runner": "Windows"
+      },
+      "identityDigest": "sha256:5dcea5aa48d7e8239f4aa1905ba61303a967626c08362ebd478078bc9bae3b0c",
+      "legDigest": "sha256:a21fa45f48dd39e33b88224ae1da543ef0d9f495b2ca102c03bc5fcd7a519cf4"
+    },
+    {
+      "leg": "darwin-x64",
+      "status": "missing"
+    },
+    {
+      "leg": "darwin-arm64",
+      "status": "qualified",
+      "identity": {
+        "revision": "9aab070897947620fc2afd70160671eef95dcf2b",
+        "ref": "refs/heads/main",
+        "gate": "gate:release",
+        "platform": "darwin",
+        "arch": "arm64",
+        "runtime": "v24.14.0",
+        "runner": "macOS"
+      },
+      "identityDigest": "sha256:f763176ec84ecd4a56d8859657cc76523edcf888ae6f6fe900fbdb7ac975bc25",
+      "legDigest": "sha256:a26e56686d968f171b07966edd2baa1cbbd689900760a8d4e8862d70ed61817b"
+    },
+    {
+      "leg": "linux-x64",
+      "status": "qualified",
+      "identity": {
+        "revision": "9aab070897947620fc2afd70160671eef95dcf2b",
+        "ref": "refs/heads/main",
+        "gate": "gate:release",
+        "platform": "linux",
+        "arch": "x64",
+        "runtime": "v24.14.0",
+        "runner": "Linux"
+      },
+      "identityDigest": "sha256:6c498cac32869588b63a3432f1041a16056361cd481cc7b4c9d1ec9fddd530e3",
+      "legDigest": "sha256:0bd35bc4212b390431552344ec7ae0e9c75308acef6a197b9ed3ea7cc35ffdbf"
+    },
+    {
+      "leg": "linux-arm64",
+      "status": "qualified",
+      "identity": {
+        "revision": "9aab070897947620fc2afd70160671eef95dcf2b",
+        "ref": "refs/heads/main",
+        "gate": "gate:release",
+        "platform": "linux",
+        "arch": "arm64",
+        "runtime": "v24.14.0",
+        "runner": "Linux"
+      },
+      "identityDigest": "sha256:5bcaec7386f5d05bc4a08e1a86115bb7705d2e62f39ba260fbbef9b8d3f723ed",
+      "legDigest": "sha256:3e45a597dca9ce5bcb811a56beefa5e4593706a7ac753100b04f5ab0a18a445b"
+    }
+  ]
+}

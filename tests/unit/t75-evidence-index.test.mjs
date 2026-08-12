@@ -283,7 +283,7 @@ test("an observation names the run it came from", () => {
     ...GATES.map((gate) => ({ gate: `gate:${gate}`, runId: `run-${gate}`, status: "qualified" }))
   ]);
   assert.deepEqual(caseOf(index, "gate-profile", "release").observed, [
-    { gate: "gate:release", runId: "run-release", status: "qualified" }
+    { gate: "gate:release", runId: "run-release", status: "qualified", excused: ["darwin-x64=absent"] }
   ]);
 });
 
@@ -541,6 +541,10 @@ test("a profile records which legs its coverage claim excused", () => {
     REVISION
   );
   assert.deepEqual(index.profiles[0].excused, ["darwin-x64=missing"]);
+  // And on the gate-profile row itself, so the verdict carries its own scope.
+  assert.deepEqual(caseOf(index, "gate-profile", "security").observed, [
+    { gate: "gate:security", runId: "run-security", status: "qualified", excused: ["darwin-x64=missing"] }
+  ]);
 });
 
 test("a leg carrying an identity with no digest over it is refused", () => {
@@ -598,4 +602,123 @@ test("a gate name that only ends in a declared profile is refused", () => {
     () => buildEvidenceIndex(matrix, [fleetIndex("security", { gate: "abcdequick" })], REVISION),
     /ran abcdequick, which the matrix does not declare/u
   );
+});
+
+test("an expected leg that went missing or mismatched is a shortfall, not only one that failed", () => {
+  // Coverage must key on "did this come back green", not on one bad status.
+  for (const status of ["missing", "digest-mismatch"]) {
+    const fleet = GATES.map((gate) =>
+      fleetIndex(gate, { legs: [leg("win32-x64", status), ...FLEET_LEGS.slice(1).map((name) => leg(name))] })
+    );
+    const index = buildEvidenceIndex(matrix, fleet, REVISION);
+    for (const gate of GATES)
+      assert.equal(caseOf(index, "gate-profile", gate).status, "not-qualified", `${status} must not count as covered`);
+    assert.match(caseOf(index, "gate-profile", "full").contradiction, new RegExp(`win32-x64=${status}`, "u"));
+  }
+});
+
+test("one bad run among good ones is enough to contradict a declaration", () => {
+  // Every earlier fixture had all observations dissenting, so a rule that only
+  // fired on unanimity would have passed them all.
+  const stale = structuredClone(matrix);
+  stale.dimensions
+    .find((entry) => entry.dimension === "platform")
+    .cases.find((item) => item.case === "linux-arm64").status = "environmental";
+  const fleet = GATES.map((gate) =>
+    fleetIndex(gate, {
+      legs: [
+        leg("win32-x64"),
+        leg("linux-x64"),
+        // Green in four dispatches, failed in one. An absent leg produces no
+        // observation at all, so it would leave the dissent unanimous and prove
+        // nothing about the non-unanimous case.
+        leg("linux-arm64", gate === "release" ? "failed" : "qualified"),
+        leg("darwin-arm64")
+      ]
+    })
+  );
+  const index = buildEvidenceIndex(stale, fleet, REVISION);
+  const entry = caseOf(index, "platform", "linux-arm64");
+  assert.match(entry.contradiction, /declared environmental, which does not predict failed in gate:release/u);
+  assert.equal(caseOf(index, "gate-profile", "release").status, "not-qualified");
+  assert.equal(
+    caseOf(index, "gate-profile", "quick").status,
+    "qualified",
+    "the dispatches that behaved stay qualified"
+  );
+});
+
+test("a not-qualified declaration predicts every way a leg can fall short", () => {
+  // Narrowing this row to one status would make honest red rows raise noise for
+  // the other two.
+  const declared = structuredClone(matrix);
+  declared.dimensions
+    .find((entry) => entry.dimension === "platform")
+    .cases.find((item) => item.case === "linux-arm64").status = "not-qualified";
+  for (const status of ["failed", "digest-mismatch", "missing"]) {
+    const fleet = GATES.map((gate) =>
+      fleetIndex(gate, {
+        legs: [leg("win32-x64"), leg("linux-x64"), leg("linux-arm64", status), leg("darwin-arm64")]
+      })
+    );
+    const index = buildEvidenceIndex(declared, fleet, REVISION);
+    assert.equal(caseOf(index, "platform", "linux-arm64").contradiction, undefined, `${status} is predicted`);
+    assert.equal(index.summary.contradictions, 0);
+  }
+});
+
+test("a contract-qualified declaration predicts nothing the fleet can observe", () => {
+  // The status means an engine met its contract without a live run. Observing
+  // one at all means the declaration is describing something else.
+  const mislabelled = structuredClone(matrix);
+  mislabelled.dimensions
+    .find((entry) => entry.dimension === "platform")
+    .cases.find((item) => item.case === "linux-arm64").status = "contract-qualified";
+  const fleet = GATES.map((gate) =>
+    fleetIndex(gate, {
+      legs: [leg("win32-x64"), leg("linux-x64"), leg("linux-arm64", "failed"), leg("darwin-arm64")]
+    })
+  );
+  const index = buildEvidenceIndex(mislabelled, fleet, REVISION);
+  assert.match(
+    caseOf(index, "platform", "linux-arm64").contradiction,
+    /declared contract-qualified, which does not predict/u
+  );
+});
+
+test("a leg the matrix does not declare is refused", () => {
+  // Recorded in the profile and read by no case, its failure would reach the
+  // published index and count for nothing.
+  assert.throws(
+    () => buildEvidenceIndex(matrix, [fleetIndex("security", { legs: [leg("freebsd-x64", "failed")] })], REVISION),
+    /leg freebsd-x64 is not a platform the matrix declares/u
+  );
+});
+
+test("the same leg reported twice in one run is refused", () => {
+  // Order would otherwise decide the verdict: failed-then-qualified covers the
+  // profile while the case row says not-qualified, inside one file.
+  assert.throws(
+    () =>
+      buildEvidenceIndex(
+        matrix,
+        [fleetIndex("security", { legs: [leg("win32-x64", "failed"), leg("win32-x64")] })],
+        REVISION
+      ),
+    /reports leg win32-x64 twice/u
+  );
+});
+
+test("the index says which digests it re-derived and which it copied", () => {
+  // Presented identically, a transcribed value reads as a checked one.
+  const index = buildEvidenceIndex(matrix, greenFleet(), REVISION);
+  assert.deepEqual(index.digestProvenance, { identityDigest: "recomputed", legDigest: "transcribed" });
+});
+
+test("the CLI refuses an option with no value instead of crashing", () => {
+  for (const args of [["--revision"], ["--revision", REVISION, "--out"]]) {
+    const result = spawnSync(process.execPath, [fileURLToPath(SCRIPT), ...args], { encoding: "utf8" });
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /usage:|--out needs a path/u);
+  }
 });
