@@ -35,6 +35,10 @@ const MATRIX_CEILINGS = Object.freeze({
   "packages/application/src/execution/gate-commit.ts": 0,
   "packages/application/src/egress/trust-egress.ts": 1,
   "packages/application/src/handoff/validation.ts": 1,
+  "packages/application/src/execution/gate-commit.ts": 1,
+  // T4f owners: migrated (issue #58), ceilings tightened to 0.
+  "packages/application/src/egress/trust-egress.ts": 0,
+  "packages/application/src/handoff/validation.ts": 0,
   "packages/application/src/sync/workspace-reconcile.ts": 7,
   "packages/application/src/effects/effect-contract.ts": 0,
   "packages/agent-runtime/src/context/context-compiler.ts": 10,

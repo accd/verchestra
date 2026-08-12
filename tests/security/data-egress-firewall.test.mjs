@@ -55,6 +55,27 @@ for (const [mode, destinationId, allowed] of [
   });
 }
 
+// Issue #58: DataEgressFirewall.authorize()'s egressDigest must not depend on
+// the machine's ambient locale.
+test("egressDigest is byte-identical under two different ambient locales", async () => {
+  const priorLang = process.env.LANG;
+  const priorLcAll = process.env.LC_ALL;
+  try {
+    process.env.LANG = "en_US.UTF-8";
+    process.env.LC_ALL = "en_US.UTF-8";
+    const first = await new DataEgressFirewall(firewallFixture()).authorize(request(envelope()));
+    process.env.LANG = "fr_FR.UTF-8";
+    process.env.LC_ALL = "fr_FR.UTF-8";
+    const second = await new DataEgressFirewall(firewallFixture()).authorize(request(envelope()));
+    assert.equal(first.egressDigest, second.egressDigest);
+  } finally {
+    if (priorLang === undefined) delete process.env.LANG;
+    else process.env.LANG = priorLang;
+    if (priorLcAll === undefined) delete process.env.LC_ALL;
+    else process.env.LC_ALL = priorLcAll;
+  }
+});
+
 for (const [field, value, code] of [
   ["purpose", "analytics", "VES_EGRESS_PURPOSE_DENIED"],
   ["retention", "forever", "VES_EGRESS_RETENTION_DENIED"],

@@ -1,6 +1,8 @@
 // Shared primitive types, deny lists, and generic validators used by every
 // handoff normalizer. Nothing here knows about handoff structure.
 
+import { canonicalizeJsonV2 } from "@verchestra/domain";
+
 import { fail, type HandoffErrorCode } from "./errors.ts";
 
 export type Row = Record<string, unknown>;
@@ -84,14 +86,7 @@ export function freeze<T>(value: T, seen = new Set<object>()): T {
 }
 
 export function canonical(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
-  if (value !== null && typeof value === "object")
-    return `{${Object.entries(value as Row)
-      .filter(([, entry]) => entry !== undefined)
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([key, entry]) => `${JSON.stringify(key)}:${canonical(entry)}`)
-      .join(",")}}`;
-  return JSON.stringify(value);
+  return canonicalizeJsonV2(value);
 }
 
 export function rejectPrivate(value: unknown, seen = new Set<object>()): void {
