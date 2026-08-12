@@ -871,3 +871,24 @@ test("a not-qualified platform that starts passing is reported too", () => {
   // The runs that say so are named, so the reader can go and look.
   assert.match(entry.contradiction, /qualified in gate:release \(run run-release\)/u);
 });
+
+test("a non-passing leg's identity digest is recomputed, not just its revision", () => {
+  // The failed-leg test varies the revision, which pins only half of what
+  // "verified whatever its outcome" claims.
+  const forged = leg("win32-x64", "failed");
+  forged.identity = { ...forged.identity, runtime: "v0.0.0" };
+  assert.throws(
+    () => buildEvidenceIndex(matrix, [fleetIndex("security", { legs: [forged] })], REVISION),
+    /identity digest that does not cover its identity/u
+  );
+});
+
+test("a leg claiming digest-mismatch cannot smuggle digests into the record", () => {
+  // The producer never sends them for that status. Copied through, they would sit
+  // beside a `digestProvenance` of "recomputed" — a transcribed value wearing the
+  // label of a checked one, which is exactly what that field exists to prevent.
+  const smuggled = { ...leg("win32-x64", "failed"), status: "digest-mismatch" };
+  const index = buildEvidenceIndex(matrix, [fleetIndex("security", { legs: [smuggled] })], REVISION);
+  assert.equal(index.profiles[0].legs[0].identityDigest, null);
+  assert.equal(index.profiles[0].legs[0].legDigest, null);
+});

@@ -143,8 +143,12 @@ function legRecord(leg, revision, declaredLegs) {
     arch: orNull(identity.arch),
     runtime: orNull(identity.runtime),
     revision: orNull(identity.revision),
-    identityDigest: orNull(leg.identityDigest),
-    legDigest: orNull(leg.legDigest)
+    // A `digest-mismatch` leg's digests are the ones that failed to verify, so
+    // whatever it carries is nulled rather than copied through. Publishing them
+    // beside a `digestProvenance` of "recomputed" would be the very thing that
+    // field exists to prevent: a copied value reading as a checked one.
+    identityDigest: leg.status === "digest-mismatch" ? null : orNull(leg.identityDigest),
+    legDigest: leg.status === "digest-mismatch" ? null : orNull(leg.legDigest)
   };
 }
 
