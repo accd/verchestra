@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
 
+import { canonicalizeJsonV2 } from "@verchestra/domain";
+
 const CLASSIFICATIONS = ["public", "internal", "confidential", "restricted", "secret"] as const;
 const DATABASE = /^[a-z][a-z0-9_-]{0,62}$/u;
 const COLLECTION = /^[a-z][a-z0-9_-]{0,126}$/u;
@@ -10,16 +12,8 @@ const COMPARISON_OPERATORS = new Set(["$eq", "$ne", "$gt", "$gte", "$lt", "$lte"
 type UnknownRecord = Readonly<Record<string, unknown>>;
 type Classification = (typeof CLASSIFICATIONS)[number];
 
-function canonical(value: unknown): string {
-  if (value === null || typeof value !== "object") return JSON.stringify(value);
-  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
-  return `{${Object.entries(value as UnknownRecord)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([key, item]) => `${JSON.stringify(key)}:${canonical(item)}`)
-    .join(",")}}`;
-}
 function digest(value: unknown): string {
-  return `sha256:${createHash("sha256").update(canonical(value)).digest("hex")}`;
+  return `sha256:${createHash("sha256").update(canonicalizeJsonV2(value)).digest("hex")}`;
 }
 export class MongoDbProbeError extends Error {
   readonly code: string;
@@ -332,7 +326,7 @@ export class MongoDbProbeAdapter {
       protectedRequestRef: plan.operation.protectedRequestRef,
       parameterClassifications: plan.operation.parameterClassifications
     });
-    if (canonical(operation) !== canonical(plan.operation))
+    if (canonicalizeJsonV2(operation) !== canonicalizeJsonV2(plan.operation))
       fail("VES_MONGODB_PLAN_MISMATCH", "Protected MongoDB request differs from the approved plan");
     const references = new Set<number>();
     const collect = (value: unknown): void => {

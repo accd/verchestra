@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
 
+import { canonicalizeJsonV2 } from "@verchestra/domain";
+
 const CLASSIFICATIONS = ["public", "internal", "confidential", "restricted", "secret"] as const;
 const SAFE_FUNCTIONS = new Set([
   "abs",
@@ -37,17 +39,17 @@ const EXECUTION = /\b(?:EXEC(?:UTE)?|EXECUTE\s+IMMEDIATE|SET\s+PROXY|SET\s+SESSI
 type UnknownRecord = Readonly<Record<string, unknown>>;
 type Classification = (typeof CLASSIFICATIONS)[number];
 
-function canonical(value: unknown): string {
-  if (value === null || typeof value !== "object") return JSON.stringify(value);
-  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
-  return `{${Object.entries(value as UnknownRecord)
-    .sort(([left], [right]) => left.localeCompare(right))
-    .map(([key, item]) => `${JSON.stringify(key)}:${canonical(item)}`)
-    .join(",")}}`;
+// Code-unit comparison, not localeCompare: entity ordering feeds the
+// parsed plan's semantic shape, not just its digest input (AD-015,
+// issue #58).
+function codeUnitCompare(left: string, right: string): number {
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
 }
 
 function digest(value: unknown): string {
-  return `sha256:${createHash("sha256").update(canonical(value)).digest("hex")}`;
+  return `sha256:${createHash("sha256").update(canonicalizeJsonV2(value)).digest("hex")}`;
 }
 
 export class SapAseProbeError extends Error {
@@ -161,7 +163,7 @@ export function parseSapAseReadOperation(sql: unknown, options: ParseOptions): S
     protectedRequestRef: options.protectedRequestRef,
     objects: Object.freeze(
       [...objects.values()].sort((left, right) =>
-        `${left.schema}.${left.name}`.localeCompare(`${right.schema}.${right.name}`)
+        codeUnitCompare(`${left.schema}.${left.name}`, `${right.schema}.${right.name}`)
       )
     ),
     functions: Object.freeze([...functions].sort()),
@@ -295,7 +297,7 @@ export class SapAseProbeAdapter {
       protectedRequestRef: plan.operation.protectedRequestRef,
       parameterClassifications: plan.operation.parameterClassifications
     });
-    if (canonical(operation) !== canonical(plan.operation)) {
+    if (canonicalizeJsonV2(operation) !== canonicalizeJsonV2(plan.operation)) {
       fail("VES_SAP_ASE_PLAN_MISMATCH", "Protected SAP ASE request differs from the approved plan");
     }
     const placeholders = [...request.sql].filter((character) => character === "?").length;

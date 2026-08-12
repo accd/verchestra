@@ -1,4 +1,6 @@
 import { createHash } from "node:crypto";
+
+import { canonicalizeJsonV2 } from "@verchestra/domain";
 import { DatabaseSync, constants } from "node:sqlite";
 import type { SQLInputValue } from "node:sqlite";
 
@@ -25,16 +27,16 @@ const WRITE =
 type UnknownRecord = Readonly<Record<string, unknown>>;
 type Classification = (typeof CLASSIFICATIONS)[number];
 
-function canonical(value: unknown): string {
-  if (value === null || typeof value !== "object") return JSON.stringify(value);
-  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
-  return `{${Object.entries(value as UnknownRecord)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([k, v]) => `${JSON.stringify(k)}:${canonical(v)}`)
-    .join(",")}}`;
+// Code-unit comparison, not localeCompare: entity ordering feeds the
+// parsed plan's semantic shape, not just its digest input (AD-015,
+// issue #58).
+function codeUnitCompare(left: string, right: string): number {
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
 }
 function digest(value: unknown): string {
-  return `sha256:${createHash("sha256").update(canonical(value)).digest("hex")}`;
+  return `sha256:${createHash("sha256").update(canonicalizeJsonV2(value)).digest("hex")}`;
 }
 export class SqliteProbeError extends Error {
   readonly code: string;
@@ -129,7 +131,7 @@ export function parseSqliteReadOperation(sql: unknown, options: ParseOptions): S
     statementCount: 1,
     protectedRequestRef: options.protectedRequestRef,
     objects: Object.freeze(
-      [...objects.values()].sort((a, b) => `${a.schema}.${a.name}`.localeCompare(`${b.schema}.${b.name}`))
+      [...objects.values()].sort((a, b) => codeUnitCompare(`${a.schema}.${a.name}`, `${b.schema}.${b.name}`))
     ),
     functions: Object.freeze([...functions].sort()),
     parameterClassifications: Object.freeze([...options.parameterClassifications].sort()) as readonly Classification[]
@@ -246,7 +248,7 @@ export class SqliteProbeAdapter {
       protectedRequestRef: plan.operation.protectedRequestRef,
       parameterClassifications: plan.operation.parameterClassifications
     });
-    if (canonical(operation) !== canonical(plan.operation))
+    if (canonicalizeJsonV2(operation) !== canonicalizeJsonV2(plan.operation))
       fail("VES_SQLITE_PLAN_MISMATCH", "Protected SQLite request differs from the approved plan");
     const bindCount = [...request.sql.matchAll(/\?/gu)].length;
     if (request.parameters.length !== bindCount)

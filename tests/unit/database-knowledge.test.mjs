@@ -40,6 +40,25 @@ test("equivalent schema imports have identical source digests", () => {
   right.entities[0].columns.reverse();
   assert.equal(importDdlSchemaSource(left).sourceDigest, importDdlSchemaSource(right).sourceDigest);
 });
+// Issue #58: sourceDigest must not depend on the machine's ambient locale.
+test("sourceDigest is byte-identical under two different ambient locales", () => {
+  const priorLang = process.env.LANG;
+  const priorLcAll = process.env.LC_ALL;
+  try {
+    process.env.LANG = "en_US.UTF-8";
+    process.env.LC_ALL = "en_US.UTF-8";
+    const first = importDdlSchemaSource(schemaSource("ddl"));
+    process.env.LANG = "fr_FR.UTF-8";
+    process.env.LC_ALL = "fr_FR.UTF-8";
+    const second = importDdlSchemaSource(schemaSource("ddl"));
+    assert.equal(first.sourceDigest, second.sourceDigest);
+  } finally {
+    if (priorLang === undefined) delete process.env.LANG;
+    else process.env.LANG = priorLang;
+    if (priorLcAll === undefined) delete process.env.LC_ALL;
+    else process.env.LC_ALL = priorLcAll;
+  }
+});
 test("knowledge package preserves every source", () => {
   const sources = importers.map(([kind, importer]) => importer(schemaSource(kind)));
   const result = buildDatabaseKnowledgePackage({ schemaVersion: 1, workspaceId, databaseId, generation: 1, sources });

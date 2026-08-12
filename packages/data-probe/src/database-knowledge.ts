@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
 
+import { canonicalizeJsonV2 } from "@verchestra/domain";
+
 const SOURCE_KINDS = ["er", "ddl", "migration", "orm", "introspection"] as const;
 const IDENTIFIER = /^[a-z][a-z0-9_]{0,126}$/u;
 const STABLE_ID = /^[a-z][a-z0-9._-]{2,127}$/u;
@@ -17,17 +19,17 @@ const SENSITIVE_CLAIM_VALUE =
 type UnknownRecord = Readonly<Record<string, unknown>>;
 type SourceKind = (typeof SOURCE_KINDS)[number];
 
-function canonical(value: unknown): string {
-  if (value === null || typeof value !== "object") return JSON.stringify(value);
-  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
-  return `{${Object.entries(value as UnknownRecord)
-    .filter(([, item]) => item !== undefined)
-    .sort(([left], [right]) => left.localeCompare(right))
-    .map(([key, item]) => `${JSON.stringify(key)}:${canonical(item)}`)
-    .join(",")}}`;
-}
 function digest(value: unknown): string {
-  return `sha256:${createHash("sha256").update(canonical(value)).digest("hex")}`;
+  return `sha256:${createHash("sha256").update(canonicalizeJsonV2(value)).digest("hex")}`;
+}
+// Code-unit comparison, not localeCompare: these sorts (entity/column
+// ordering, source precedence, fact/alternative/scenario ordering) feed the
+// knowledge package's semantic shape, not just its digest input (AD-015,
+// issue #58).
+function codeUnitCompare(left: string, right: string): number {
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
 }
 function deepFreeze<T>(value: T): T {
   if (value !== null && typeof value === "object" && !Object.isFrozen(value)) {
@@ -181,7 +183,7 @@ function importSchemaSource(value: unknown, expectedKind: SourceKind): DatabaseS
       schema,
       name,
       type: entity["type"],
-      columns: [...columns.values()].sort((a, b) => a.name.localeCompare(b.name))
+      columns: [...columns.values()].sort((a, b) => codeUnitCompare(a.name, b.name))
     });
   }
   const material = {
@@ -193,7 +195,7 @@ function importSchemaSource(value: unknown, expectedKind: SourceKind): DatabaseS
     capturedAt: instant(input["capturedAt"], code, "Database schema capture time is invalid"),
     logicalRef,
     coverage: input["coverage"] as "complete" | "partial",
-    entities: [...entities.values()].sort((a, b) => `${a.schema}.${a.name}`.localeCompare(`${b.schema}.${b.name}`))
+    entities: [...entities.values()].sort((a, b) => codeUnitCompare(`${a.schema}.${a.name}`, `${b.schema}.${b.name}`))
   };
   return deepFreeze({ ...material, sourceDigest: digest(material) });
 }
@@ -302,7 +304,7 @@ export function buildDatabaseKnowledgePackage(value: unknown): DatabaseKnowledge
     sourcesById.set(normalized.sourceId, normalized);
   }
   const sources = [...sourcesById.values()].sort(
-    (a, b) => a.kind.localeCompare(b.kind) || a.sourceId.localeCompare(b.sourceId)
+    (a, b) => codeUnitCompare(a.kind, b.kind) || codeUnitCompare(a.sourceId, b.sourceId)
   );
   const claims = new Map<string, Map<string, { value: string | boolean; sourceIds: Set<string> }>>();
   const add = (factKey: string, value: string | boolean, sourceId: string) => {
@@ -343,10 +345,10 @@ export function buildDatabaseKnowledgePackage(value: unknown): DatabaseKnowledge
     }
   }
   const facts: KnowledgeFact[] = [...claims.entries()]
-    .sort(([a], [b]) => a.localeCompare(b))
+    .sort(([a], [b]) => codeUnitCompare(a, b))
     .map(([factKey, values]) => {
       const alternatives = [...values.entries()]
-        .sort(([a], [b]) => a.localeCompare(b))
+        .sort(([a], [b]) => codeUnitCompare(a, b))
         .map(([valueDigest, item]) => ({ value: item.value, valueDigest, sourceIds: [...item.sourceIds].sort() }));
       return { factKey, status: alternatives.length === 1 ? "agreed" : "contradictory", alternatives };
     });
@@ -591,7 +593,7 @@ export function promoteProbeEvidence(value: unknown): PromotedProbeEvidence {
       removedFields: [...redaction["removedFields"]].sort(),
       humanReviewRef: redaction["humanReviewRef"]
     },
-    sanitizedClaims: claims.sort((a, b) => a.factKey.localeCompare(b.factKey)),
+    sanitizedClaims: claims.sort((a, b) => codeUnitCompare(a.factKey, b.factKey)),
     promotionStatus: "accepted-sanitized" as const
   };
   return deepFreeze({ ...material, evidenceDigest: digest(material) });
@@ -776,7 +778,7 @@ export function planSyntheticSeedScenarios(value: unknown) {
         "Synthetic seed factory reference is invalid"
       ),
       entity,
-      generators: Object.fromEntries(Object.entries(generators).sort(([left], [right]) => left.localeCompare(right)))
+      generators: Object.fromEntries(Object.entries(generators).sort(([left], [right]) => codeUnitCompare(left, right)))
     });
   }
   const fixtureRefs = new Map<string, string[]>();
@@ -908,7 +910,7 @@ export function planSyntheticSeedScenarios(value: unknown) {
     productionDataAllowed: false as const,
     fixtureDigests: [...fixtureDigests].sort(),
     sanitizedEvidenceDigests: [...new Set(evidenceDigests)].sort(),
-    scenarios: scenarios.sort((a, b) => String(a["scenarioId"]).localeCompare(String(b["scenarioId"])))
+    scenarios: scenarios.sort((a, b) => codeUnitCompare(String(a["scenarioId"]), String(b["scenarioId"])))
   };
   return deepFreeze({ ...material, planDigest: digest(material) });
 }
