@@ -11,6 +11,42 @@ lastGate: FLEET GREEN — gate:security passed SIMULTANEOUSLY on Windows x64, Li
 updatedAt: 2026-08-09T17:00:00Z
 ---
 
+# What a reader must NOT conclude from the evidence index
+
+Verbatim from the independent verifier's PASS report (Part V8,
+`validation-evidence-index.md`). Carry this into `t75-validation.md`; the
+artifact is easy to over-read, and every item below is a thing it does not say.
+
+A reader of the published evidence index must not conclude:
+
+- **that a `qualified` gate-profile row means the profile ran everywhere.** It
+  means every platform the declaration expects green was green in that dispatch.
+  The `excused` list on the row is the rest of the scope.
+- **that a `qualified` platform row means the platform passed every stage.** It
+  means every supplied dispatch that carried the leg observed it green — and only
+  the profiles actually dispatched at this candidate are represented.
+- **that the index is signed, or that anything vouches for it.**
+  `signingState.signed` is `false`; the body digest is self-computed and the
+  artifact carries no signature. AD-014 schedules the signature; it does not
+  supply one.
+- **that every digest in the artifact was checked here.** `digestProvenance`
+  states the split: identity digests are recomputed, leg digests are recomputed
+  for passing legs and transcribed otherwise, because a failed leg's `reported`
+  value cannot be recovered from the fleet index.
+- **that the committed evidence describes the release candidate.** `9aab070` is
+  not the qualification revision. This is interim evidence and the drift test
+  says so.
+- **that the drift test proves the generator.** It is a regression anchor over
+  one frozen input; discrimination lives in the unit suite.
+- **that zero contradictions would mean T75 is complete.** The dimensions the
+  fleet cannot answer — databases, sandboxes, drivers, installers, self-test,
+  recovery — pass through from the declaration untouched, and the index verifies
+  nothing about them. Only the platform and gate-profile dimensions are
+  reconciled against observed evidence.
+- **that a case's status is the fleet's opinion.** The declaration's status is
+  preserved even when contradicted; a contradiction is a disagreement for human
+  review, not a relabelling the generator performed.
+
 # READ FIRST — `matrix.md`
 
 The remaining T75 scope is now specified in

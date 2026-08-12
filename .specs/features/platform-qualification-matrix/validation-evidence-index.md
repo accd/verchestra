@@ -1,11 +1,205 @@
 # Independent verification — T75 evidence index generator
 
-Six verification passes by the same independent verifier (author ≠ verifier).
-Part W is the current round over `87fa226`. Part X is the fifth round over
-`fe169b2`. Part Y is the fourth round over `c5c723c`. Part Z is the third round
-over `53a241d`. Part A is the second round over `ce9ff65`. Part B is the first
-round over `bc4a910`, whose FAIL verdict was committed as `1fe398a` before any
-fix. All six are kept because the earlier ones are committed evidence.
+Seven verification passes by the same independent verifier (author ≠ verifier).
+Part V is the current round over `1de3058` and is the first **PASS**. Part W is
+the sixth round over `87fa226`. Part X is the fifth over `fe169b2`. Part Y is the
+fourth over `c5c723c`. Part Z is the third over `53a241d`. Part A is the second
+over `ce9ff65`. Part B is the first, over `bc4a910`, whose FAIL verdict was
+committed as `1fe398a` before any fix. All seven are kept because the earlier ones
+are committed evidence.
+
+---
+
+# Part V — Seventh round: verification of `1de3058`
+
+**Verdict: PASS.**
+
+Every gap from Part W is closed and independently confirmed. I could not construct
+an input — from the producer or by hand — that yields a wrong verdict, a silently
+dropped observation, a false qualification, or a refusal to publish. The two
+residuals below are an assertion gap on correct code and a provenance wording
+inaccuracy on a self-labelling row. Neither blocks; both belong on the follow-up
+list rather than in another round.
+
+- Baselines: unit **54 pass / 0 fail / 0 skipped / 0 todo**; drift and tie tests
+  **4 pass / 0 fail**
+- Source restored byte-identically after every mutation
+  (`git diff --exit-code -- scripts/t75-evidence-index.mjs` clean after each).
+
+## V1. The five claims
+
+| # | Claim | Verdict | Evidence |
+| - | ----- | ------- | -------- |
+| 1 | `digest-mismatch` is reconciled: `{leg, status, identity}` accepted, recorded `not-qualified` with null digests and citing runs, identity still bound | **True** | `scripts/t75-evidence-index.mjs:101-108`. Fed the producer's exact shape: row `not-qualified`, contradiction `declared qualified, but observed digest-mismatch in gate:security (run run-security)`, leg recorded with `identityDigest: null, legDigest: null` and its platform/arch/runtime intact. The Part W blocker is closed. |
+| 2 | A passing leg with no `legDigest` is refused by name | **True** | `:113-115`; weakening the guard to a null check is killed by "a passing leg with no leg digest at all is refused by name". |
+| 3 | The green-observation rule is pinned on a `not-qualified` declaration as well as `environmental` | **True** | "a not-qualified platform that starts passing is reported too" asserts the preserved status, the stale wording, and the citing run. Part W gap 3 closed. |
+| 4 | The sealed reconstruction is tied to the workflow text | **True, and load-bearing** | See V3. |
+| 5 | The all-green stale contradiction names its runs | **True** | `:281-284` now cites `unpredicted.map(citation)` in both branches. |
+
+## V2. The `digest-mismatch` early return, probed
+
+**Nothing else was riding on that path, and the status cannot be used to gain
+anything.** `verifyLeg` returns early only after the revision check, and the
+status that skips digest verification is strictly the worst status a leg can
+claim: it is dissent under every declaration that expects green, it downgrades its
+platform row to `not-qualified` with a contradiction, and it is a coverage
+shortfall for the profile that carried it. There is no verdict a forger improves
+by claiming it. Confirmed four ways against shipped code:
+
+```
+producer shape (identity, no digests)   -> accepted, not-qualified, digests recorded as null
+identity naming another candidate       -> refused: "ran cccc…, not the candidate aaaa…"
+failed leg with a forged identityDigest -> refused: "carries an identity digest that does not cover its identity"
+undeclared or duplicated tampered leg   -> refused by the vocabulary and duplicate rules, which run first
+```
+
+**One inaccuracy, narrow.** A leg that claims `digest-mismatch` while carrying
+forged digests has those values copied into the published artifact unverified,
+while `digestProvenance.identityDigest` reads `"recomputed"` unconditionally:
+
+```
+recorded: {"leg":"linux-arm64","status":"digest-mismatch",…,"identityDigest":"sha256:0000…","legDigest":"sha256:ffff…"}
+digestProvenance.identityDigest: "recomputed"
+```
+
+This is the failure `digestProvenance` was added to prevent — a copied value
+reading as a checked one — one status over. Three things keep it off the blocker
+list: the producer never emits digests for this status, so no real input reaches
+it; the row's own `status` field is the warning label, so a reader who trusts the
+adjacent digest is disregarding the field that says those digests did not verify;
+and no verdict changes. The fix is one line and faithful to the producer: record
+`null` for both digests whenever the status is `digest-mismatch`.
+
+## V3. The workflow-text assertions: load-bearing *and* brittle, and that is the right trade
+
+The generator's reconstruction depends on exactly five things that live only in the
+workflow: `schemaVersion: 2`, the `record` key order, the `sealed` key order, the
+`outcome` field names and order, and the hash-over-`JSON.stringify` construction.
+I tested each assertion against constructed variants:
+
+```
+record assertion   : fails on key order changed, version bumped, field added   (all behavioural)
+                     fails on a multiline reformat                             (cosmetic)
+outcome assertion  : fails on field order swapped, on `reported` renamed       (both behavioural)
+```
+
+Every behavioural change I could construct is caught, including the two — the
+`outcome` field names/order and the sealed key order — that nothing else in the
+repository could catch. So they are load-bearing, not decorative.
+
+They are also brittle to reformatting those exact lines. That is the right trade
+here, for three reasons. The lines live inside a YAML `run: |` block scalar, which
+no formatter in this repository rewrites, so the practical exposure is near zero.
+The existing workflow test already pins workflow source text in the same style, so
+this is the house pattern rather than a new one. And the failure it prevents is a
+class the drift anchor structurally cannot see: its inputs are frozen bytes in
+today's shape, so it would keep passing while every newly produced fleet index was
+refused with a message blaming the leg. A one-minute false positive on a reformat
+is a good price for that.
+
+One observation worth a sentence in the test comment: the tie is one-way. These
+assertions pin the workflow side; the generator's own copy is pinned only by the
+drift test over committed real bytes (mutating the sealed version to 3 killed it
+last round). The two halves are complete together, but by composition rather than
+by design — a future maintainer could delete one believing it redundant.
+
+## V4. Independent sensor — five fresh mutations, both suites
+
+| # | Mutation | Unit | Drift/tie |
+| - | -------- | ---- | --------- |
+| Y8 | A leg that did not pass skips the identity-digest recomputation | **SURVIVED** | survived |
+| Y20 | A `digest-mismatch` leg's digests are nulled instead of passed through | **SURVIVED** | survived |
+| Y14 (control) | The by-name `legDigest` absence guard weakened to a null check | killed | survived |
+| Y19 (control) | A tampered leg produces no platform observation | killed (2 tests) | survived |
+| Y21 (control) | The `digest-mismatch` return also skips the revision check | killed | survived |
+
+**3 killed, 2 survived**, and both survivors are assertion gaps rather than
+defects.
+
+- **Y8**: the shipped code refuses a failed leg's forged identity digest (V2), but
+  nothing holds it there. The existing test "a failed leg's identity is verified as
+  strictly as a passing one's" varies the *revision*, not the digest, so it pins
+  half of the property the comment at `:98-100` claims.
+- **Y20**: nulling the digests on a tampered leg changes no test, which is the
+  test-side face of the V2 inaccuracy — the behaviour is unpinned in either
+  direction.
+
+## V5. Vacuity re-check
+
+- **The fixture now matches the producer** for `digest-mismatch` (identity, no
+  digests) — the shape mismatch that hid the Part W blocker is gone, and it was the
+  last instance of the pattern that recurred through every earlier round.
+- **Two properties remain unasserted**: a non-passing leg's identity-digest
+  verification (Y8) and the digest fields on a tampered leg (Y20).
+- **Not vacuous, and the strongest state yet**: the tampered leg is exercised in the
+  producer's shape with its citation asserted; the `legDigest` absence guard is
+  pinned by name; the green-observation rule is pinned on two declared statuses;
+  the workflow tie is pinned against five behavioural changes; the stale wording
+  cites its runs.
+
+## V6. Test integrity and gates
+
+- No test weakened, skipped, or deleted across the whole review: the unit suite has
+  grown 8 → 54 cases and the agent-readiness drift/tie suite 0 → 4; no `skip`,
+  `todo`, or `only` anywhere; every assertion from every round survives or has been
+  strengthened.
+- Working tree carries no change to `scripts/` or `tests/`; every mutation was
+  reverted byte-identically.
+- `corepack pnpm gate:quick`: **PASS** — exit code 0, final line `gate:quick PASS`;
+  the agent-readiness stage reported `tests 149 / pass 149 / fail 0 / skipped 0 /
+  todo 0` (145 before this feature, plus the four drift and workflow-tie cases),
+  and the unit stage containing the 54 evidence-index cases passed in the same run.
+
+## V7. Residual gaps, most severe first
+
+None blocking. In order of what I would fix first:
+
+1. **A `digest-mismatch` leg's digests are published unverified** while
+   `digestProvenance.identityDigest` claims `"recomputed"` unconditionally. Record
+   `null` for both when the status is `digest-mismatch` — faithful to the producer,
+   one line, and it makes the provenance statement true without qualification.
+2. **A non-passing leg's identity-digest verification is unpinned** (Y8). Vary the
+   digest, not only the revision, in the existing failed-leg test.
+3. **The workflow tie is one-way and its two halves are covered by different
+   mechanisms** — worth one sentence in the test comment so neither is deleted as
+   redundant.
+4. **Carried forward from earlier rounds, unchanged and correctly scoped**: the
+   index is unsigned (scheduled by AD-014), and the committed evidence is interim
+   at `9aab070` with B3 owning the qualification-revision replacement.
+
+## V8. What a reader must still not conclude — final, quotable form
+
+Unchanged from Part W9 and now stated against a passing artifact. Nothing here
+depends on the residual gaps.
+
+A reader of the published evidence index must not conclude:
+
+- **that a `qualified` gate-profile row means the profile ran everywhere.** It
+  means every platform the declaration expects green was green in that dispatch.
+  The `excused` list on the row is the rest of the scope.
+- **that a `qualified` platform row means the platform passed every stage.** It
+  means every supplied dispatch that carried the leg observed it green — and only
+  the profiles actually dispatched at this candidate are represented.
+- **that the index is signed, or that anything vouches for it.**
+  `signingState.signed` is `false`; the body digest is self-computed and the
+  artifact carries no signature. AD-014 schedules the signature; it does not
+  supply one.
+- **that every digest in the artifact was checked here.** `digestProvenance` states
+  the split: identity digests are recomputed, leg digests are recomputed for
+  passing legs and transcribed otherwise, because a failed leg's `reported` value
+  cannot be recovered from the fleet index.
+- **that the committed evidence describes the release candidate.** `9aab070` is not
+  the qualification revision. This is interim evidence and the drift test says so.
+- **that the drift test proves the generator.** It is a regression anchor over one
+  frozen input; discrimination lives in the unit suite.
+- **that zero contradictions would mean T75 is complete.** The dimensions the fleet
+  cannot answer — databases, sandboxes, drivers, installers, self-test, recovery —
+  pass through from the declaration untouched, and the index verifies nothing about
+  them. Only the platform and gate-profile dimensions are reconciled against
+  observed evidence.
+- **that a case's status is the fleet's opinion.** The declaration's status is
+  preserved even when contradicted; a contradiction is a disagreement for human
+  review, not a relabelling the generator performed.
 
 ---
 

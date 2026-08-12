@@ -67,6 +67,11 @@ test("the recorded T75 verdict regenerates from the committed evidence", () => {
 //
 // Same pattern the repository already uses for `gate-stages.mjs`: pin the
 // canonical text, so changing it forces the copy to be changed with it.
+//
+// The tie is one-way and only complete by composition: these assertions pin the
+// workflow side, and the drift test above pins the generator's copy against
+// frozen bytes. Neither is redundant with the other -- delete either and a
+// coherent change to the sealed record shape passes unnoticed on that side.
 
 const workflow = readFileSync(new URL("../../.github/workflows/platform-matrix.yml", import.meta.url), "utf8");
 
