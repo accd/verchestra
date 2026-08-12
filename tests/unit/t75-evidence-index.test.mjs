@@ -41,6 +41,9 @@ const sealedDigestOf = (identity, identityDigest) =>
 
 const leg = (name, status = "qualified", revision = REVISION) => {
   if (status === "missing") return { leg: name, status };
+  // The exact shape platform-matrix.yml emits when a leg's digests fail to
+  // verify: identity, and no digests, because the digests are what failed.
+  if (status === "digest-mismatch") return { leg: name, status, identity: identityOf(name, revision) };
   const identity = identityOf(name, revision);
   const identityDigest = digestOf(identity);
   return {
@@ -802,4 +805,69 @@ test("a passing leg whose digest does not cover its sealed record is refused", (
     () => buildEvidenceIndex(matrix, [fleetIndex("security", { legs: [forged] })], REVISION),
     /passed, but its leg digest does not cover the record that pass would have sealed/u
   );
+});
+
+test("a tampered leg is reconciled, not turned into a refusal to publish", () => {
+  // The producer reports `digest-mismatch` with identity and no digests. If the
+  // index demanded them, a tampered leg would mean no index at all — so the
+  // record could not state that tampering was found, which is the one thing it
+  // most needs to say.
+  const index = buildEvidenceIndex(
+    matrix,
+    GATES.map((gate) =>
+      fleetIndex(gate, {
+        legs: [leg("win32-x64", "digest-mismatch"), ...FLEET_LEGS.slice(1).map((name) => leg(name))]
+      })
+    ),
+    REVISION
+  );
+  const entry = caseOf(index, "platform", "win32-x64");
+  assert.equal(entry.status, "not-qualified");
+  assert.match(entry.contradiction, /observed digest-mismatch in gate:quick/u);
+  assert.deepEqual(index.profiles[0].legs[0], {
+    leg: "win32-x64",
+    status: "digest-mismatch",
+    platform: "win32",
+    arch: "x64",
+    runtime: "v24.14.0",
+    revision: REVISION,
+    identityDigest: null,
+    legDigest: null
+  });
+  // Its identity is still bound to the candidate, which is all the producer
+  // could still vouch for.
+  assert.throws(
+    () =>
+      buildEvidenceIndex(
+        matrix,
+        [fleetIndex("security", { legs: [leg("win32-x64", "digest-mismatch", "c".repeat(40))] })],
+        REVISION
+      ),
+    /ran c{40}, not the candidate/u
+  );
+});
+
+test("a passing leg with no leg digest at all is refused by name", () => {
+  // Caught only incidentally, the tamper path closes by deleting the field
+  // rather than forging it.
+  const stripped = leg("win32-x64");
+  delete stripped.legDigest;
+  assert.throws(
+    () => buildEvidenceIndex(matrix, [fleetIndex("security", { legs: [stripped] })], REVISION),
+    /passed, but carries no leg digest over the record that pass sealed/u
+  );
+});
+
+test("a not-qualified platform that starts passing is reported too", () => {
+  // The green-observation rule must not be pinned through `environmental` alone.
+  const declared = structuredClone(matrix);
+  declared.dimensions
+    .find((entry) => entry.dimension === "platform")
+    .cases.find((item) => item.case === "linux-arm64").status = "not-qualified";
+  const index = buildEvidenceIndex(declared, greenFleet(), REVISION);
+  const entry = caseOf(index, "platform", "linux-arm64");
+  assert.equal(entry.status, "not-qualified", "the generator does not promote it");
+  assert.match(entry.contradiction, /the declaration is stale/u);
+  // The runs that say so are named, so the reader can go and look.
+  assert.match(entry.contradiction, /qualified in gate:release \(run run-release\)/u);
 });
