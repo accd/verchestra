@@ -84,10 +84,12 @@ None. The decision that blocked this feature is made.
 
 - **AD-014 (owner, 2026-08-09):** Option A — DSSE envelope with in-toto
   Statement payloads, Ed25519 and the trust root unchanged.
-- Scope is the 8 `ArtifactSealer` kinds only. Policy bundles, passport
-  registry, skill registry, work claims, trust egress, and the context
-  manifest keep their current mechanism; TUF metadata already uses an
-  external standard and is untouched.
+- Scope is the 8 `ArtifactSealer` kinds plus the T75 qualification evidence
+  index (added 2026-08-12; migration.md section 2.1). The index has no sealing
+  call site yet — it is generated unsigned and says so — so this migration is
+  what gives it one. Policy bundles, passport registry, skill registry, work
+  claims, trust egress, and the context manifest keep their current mechanism;
+  TUF metadata already uses an external standard and is untouched.
 - V1 envelopes are **rejected**, never dual-verified: no sealed artifact
   exists outside the repository, so pre-decision artifacts are re-sealed
   under recorded evidence instead (`migration.md` section 3). The inventory

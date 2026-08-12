@@ -16,7 +16,7 @@ All line references were measured on `1f21582`.
 ```jsonc
 {
   "payloadType": "application/vnd.in-toto+json",
-  "payload":     "<base64 of the canonical in-toto Statement>",
+  "payload": "<base64 of the canonical in-toto Statement>",
   "signatures": [{ "keyid": "<PublicKeyRef.keyId>", "sig": "<base64 signature>" }]
 }
 ```
@@ -43,14 +43,14 @@ purposes, and validity windows are unchanged (they are envelope-agnostic).
   "predicateType": "<see section 2>",
   "predicate": {
     "binding": {
-      "schema":            { "name": "...", "version": 1 },
-      "purpose":           "...",
-      "bindingId":         "...",
+      "schema": { "name": "...", "version": 1 },
+      "purpose": "...",
+      "bindingId": "...",
       "sourceStateDigest": "...",
-      "algorithm":         "Ed25519",
-      "issuedAt":          "<canonical instant>"
+      "algorithm": "Ed25519",
+      "issuedAt": "<canonical instant>"
     },
-    "content": { /* the current SealedArtifact.payload, unchanged */ }
+    "content": {/* the current SealedArtifact.payload, unchanged */}
   }
 }
 ```
@@ -68,15 +68,15 @@ Statement-native property rather than a bespoke field.
 
 ### 1.3 Fields that change meaning
 
-| Today (`types.ts:33-42`) | Under DSSE |
-| ------------------------ | ---------- |
-| `envelopeVersion: 1` | Removed. Replaced by `payloadType` + `_type`. A v1 envelope is **rejected**, see section 3. |
-| `algorithm`, `keyId` | `keyid` moves to `signatures[0].keyid` (DSSE-native); `algorithm` stays in the predicate binding block so evidence records it explicitly rather than inferring it from the trust root. |
-| `payloadDigest` | Becomes `subject[0].digest.sha256`. |
-| `payload` | Becomes `predicate.content`. |
-| `signature` | Becomes `signatures[0].sig`. |
-| `artifactId` | Retained, recomputed as the sha256 of the canonical Statement. **Its value changes for every artifact**; everything that stores or cross-references an artifact id regenerates in the same change. |
-| `schema`, `purpose`, `bindingId`, `sourceStateDigest` | Move into `predicate.binding`, unchanged in meaning. |
+| Today (`types.ts:33-42`)                              | Under DSSE                                                                                                                                                                                         |
+| ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `envelopeVersion: 1`                                  | Removed. Replaced by `payloadType` + `_type`. A v1 envelope is **rejected**, see section 3.                                                                                                        |
+| `algorithm`, `keyId`                                  | `keyid` moves to `signatures[0].keyid` (DSSE-native); `algorithm` stays in the predicate binding block so evidence records it explicitly rather than inferring it from the trust root.             |
+| `payloadDigest`                                       | Becomes `subject[0].digest.sha256`.                                                                                                                                                                |
+| `payload`                                             | Becomes `predicate.content`.                                                                                                                                                                       |
+| `signature`                                           | Becomes `signatures[0].sig`.                                                                                                                                                                       |
+| `artifactId`                                          | Retained, recomputed as the sha256 of the canonical Statement. **Its value changes for every artifact**; everything that stores or cross-references an artifact id regenerates in the same change. |
+| `schema`, `purpose`, `bindingId`, `sourceStateDigest` | Move into `predicate.binding`, unchanged in meaning.                                                                                                                                               |
 
 `envelopeVersion` today has **no rejection gate anywhere** in the product —
 `verify` never inspects it (the only assertion is a test,
@@ -98,16 +98,17 @@ attempt a legacy verification path, never downgrade.
 One URI per sealed artifact kind, versioned independently of the product
 version:
 
-| Artifact kind | Sealed at | Predicate type URI |
-| ------------- | --------- | ------------------ |
-| Execution Package | `packages/evidence/src/execution-package/execution-package.ts:848` | `https://accd.github.io/verchestra/attestation/execution-package/v1` |
-| Run Capsule | `packages/evidence/src/run-capsule/run-capsule.ts:499` | `https://accd.github.io/verchestra/attestation/run-capsule/v1` |
-| Recovery Bundle | `packages/evidence/src/recovery-bundle/recovery-bundle.ts:514` | `https://accd.github.io/verchestra/attestation/recovery-bundle/v1` |
-| Support Bundle | `packages/evidence/src/support-bundle/support-bundle.ts:609` | `https://accd.github.io/verchestra/attestation/support-bundle/v1` |
-| Doctor report | `apps/vestra-cli/src/doctor-composition.ts:59` | `https://accd.github.io/verchestra/attestation/doctor-report/v1` |
-| Promotion report | `apps/vestra-cli/src/promotion-composition.ts:65` | `https://accd.github.io/verchestra/attestation/promotion-report/v1` |
-| Self-test report | `apps/vestra-cli/src/self-test-composition.ts:171` | `https://accd.github.io/verchestra/attestation/self-test-report/v1` |
-| Approval grant | `apps/vestra-cli/src/self-test-full-scenario.ts:251` | `https://accd.github.io/verchestra/attestation/approval-grant/v1` |
+| Artifact kind                    | Sealed at                                                                     | Predicate type URI                                                              |
+| -------------------------------- | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| Execution Package                | `packages/evidence/src/execution-package/execution-package.ts:848`            | `https://accd.github.io/verchestra/attestation/execution-package/v1`            |
+| Run Capsule                      | `packages/evidence/src/run-capsule/run-capsule.ts:499`                        | `https://accd.github.io/verchestra/attestation/run-capsule/v1`                  |
+| Recovery Bundle                  | `packages/evidence/src/recovery-bundle/recovery-bundle.ts:514`                | `https://accd.github.io/verchestra/attestation/recovery-bundle/v1`              |
+| Support Bundle                   | `packages/evidence/src/support-bundle/support-bundle.ts:609`                  | `https://accd.github.io/verchestra/attestation/support-bundle/v1`               |
+| Doctor report                    | `apps/vestra-cli/src/doctor-composition.ts:59`                                | `https://accd.github.io/verchestra/attestation/doctor-report/v1`                |
+| Promotion report                 | `apps/vestra-cli/src/promotion-composition.ts:65`                             | `https://accd.github.io/verchestra/attestation/promotion-report/v1`             |
+| Self-test report                 | `apps/vestra-cli/src/self-test-composition.ts:171`                            | `https://accd.github.io/verchestra/attestation/self-test-report/v1`             |
+| Approval grant                   | `apps/vestra-cli/src/self-test-full-scenario.ts:251`                          | `https://accd.github.io/verchestra/attestation/approval-grant/v1`               |
+| T75 qualification evidence index | not yet sealed — `scripts/t75-evidence-index.mjs` (added to scope 2026-08-12) | `https://accd.github.io/verchestra/attestation/qualification-evidence-index/v1` |
 
 **Why this host:** `accd.github.io/verchestra` is the domain the project
 provably controls today (AD-001). Predicate type URIs are identifiers and
@@ -122,8 +123,25 @@ attestation it will verify.
 
 ### 2.1 Scope boundary (restated from AD-014)
 
-This migration covers **only** the 8 kinds above, i.e. everything routed
-through `ArtifactSealer`. The parallel signature surfaces —
+This migration covers **only** the 9 kinds above: the 8 routed through
+`ArtifactSealer`, plus the T75 qualification evidence index.
+
+The index is the one entry with no sealing call site yet. It is generated today
+by `scripts/t75-evidence-index.mjs` with an explicit
+`signingState.signed = false` and a stated reason, because signing real
+qualification runs with the repository's committed TEST-ONLY key would look like
+signed evidence while carrying none. `matrix.md` section 8 permits shipping it
+unsigned **only** on condition that the signature is scheduled rather than
+deferred, which is what this row is: the predicate type is reserved now, and the
+generator's output is routed through the sealer in the same change that migrates
+the envelope. Its URI is reserved here and deliberately **not** yet added to
+`PREDICATE_TYPES` in `packages/evidence/src/integrity/dsse.ts`, since a type the
+closed set accepts with no producer behind it is an unreachable branch rather
+than a capability.
+
+Which identity signs release evidence remains an open owner key-custody
+decision, and is a precondition for sealing this kind — not for the other 8,
+which already have a trust root. The parallel signature surfaces —
 `packages/policy/src/policy-bundle.ts` (signs a digest string),
 `passport-registry.ts`, `governed-skill-registry.ts`,
 `application/src/coordination/work-claims.ts`,
@@ -142,11 +160,11 @@ dual-verified** (DSSE-03's second branch).
 This is a definition, not a waiver, and it rests on an inventory rather than
 an assumption. The complete set of pre-decision sealed artifacts is:
 
-| Artifact | Location | Disposition |
-| -------- | -------- | ----------- |
-| Published proof artifact | `docs/proof/execution-package.json` (+ `.md`) | Regenerated and re-sealed by `scripts/generate-proof-artifact.mjs` from its committed fixture key, in the migration change. |
-| Test fixtures | the 5 sealing fixtures in `tests/helpers/` and their dependents | Regenerated (section 4). |
-| Qualification records | `docs/qualification/*` (11 files mention `ed25519`/`base64url`) | Prose describing historical runs; historical text is **not** rewritten. Reports remain accurate statements about the format in force when they were written. |
+| Artifact                 | Location                                                        | Disposition                                                                                                                                                  |
+| ------------------------ | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Published proof artifact | `docs/proof/execution-package.json` (+ `.md`)                   | Regenerated and re-sealed by `scripts/generate-proof-artifact.mjs` from its committed fixture key, in the migration change.                                  |
+| Test fixtures            | the 5 sealing fixtures in `tests/helpers/` and their dependents | Regenerated (section 4).                                                                                                                                     |
+| Qualification records    | `docs/qualification/*` (11 files mention `ed25519`/`base64url`) | Prose describing historical runs; historical text is **not** rewritten. Reports remain accurate statements about the format in force when they were written. |
 
 **No sealed artifact exists outside this repository**, because the product is
 `0.0.0-qualification` with no release and no installer — so there is no
@@ -192,14 +210,14 @@ against the Statement shape: `execution-package.ts:860-889` (plus the
 
 **Step 4 — the assertion-heavy suites**, in descending blast radius:
 
-| File | Why it is the hard part |
-| ---- | ----------------------- |
-| `tests/security/evidence-tamper.test.mjs` (78 matches) | ~20 `sealer.verify` assertions, one per `VerificationErrorCode`. **Every existing code keeps a test, and `VES_ENVELOPE_UNSUPPORTED` gains one** — a tamper suite that shrinks is a weakened suite. |
-| `tests/unit/evidence-integrity.test.mjs` (31) | Asserts `envelopeVersion === 1` (line 148) and canonical-order determinism; the envelope assertion is replaced by a DSSE-shape assertion, never deleted. |
-| `tests/e2e/key-lifecycle-portability.test.mjs` (16) | Cross-machine verification — the portability promise; must pass unchanged in meaning. |
-| `tests/unit/encrypted-file-key-rotation.test.mjs` (13) | Rotation overlap window; envelope-independent but fixture-coupled. |
-| `tests/fault-injection/self-test-composition-faults.test.mjs` (11) | Sealed self-test path. |
-| `tests/unit/self-test-adapter.test.mjs:147` | The one test asserting raw signature bytes. |
+| File                                                               | Why it is the hard part                                                                                                                                                                            |
+| ------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tests/security/evidence-tamper.test.mjs` (78 matches)             | ~20 `sealer.verify` assertions, one per `VerificationErrorCode`. **Every existing code keeps a test, and `VES_ENVELOPE_UNSUPPORTED` gains one** — a tamper suite that shrinks is a weakened suite. |
+| `tests/unit/evidence-integrity.test.mjs` (31)                      | Asserts `envelopeVersion === 1` (line 148) and canonical-order determinism; the envelope assertion is replaced by a DSSE-shape assertion, never deleted.                                           |
+| `tests/e2e/key-lifecycle-portability.test.mjs` (16)                | Cross-machine verification — the portability promise; must pass unchanged in meaning.                                                                                                              |
+| `tests/unit/encrypted-file-key-rotation.test.mjs` (13)             | Rotation overlap window; envelope-independent but fixture-coupled.                                                                                                                                 |
+| `tests/fault-injection/self-test-composition-faults.test.mjs` (11) | Sealed self-test path.                                                                                                                                                                             |
+| `tests/unit/self-test-adapter.test.mjs:147`                        | The one test asserting raw signature bytes.                                                                                                                                                        |
 
 **Step 5 — published artifact.** Regenerate `docs/proof/` via
 `scripts/generate-proof-artifact.mjs` (lines 32, 36 construct the signer) and
@@ -216,7 +234,7 @@ remove.
 
 **Step 7 — discrimination sensor.** At minimum: (a) a DSSE envelope whose
 `payload` is mutated without re-signing must fail; (b) a valid signature over
-a *different* `payloadType` must fail (PAE domain separation — this is the
+a _different_ `payloadType` must fail (PAE domain separation — this is the
 mutation that a naive implementation signing raw payload bytes would
 survive); (c) a legacy v1 `SealedArtifact` must fail with
 `VES_ENVELOPE_UNSUPPORTED` and never verify; (d) an unknown `predicateType`
