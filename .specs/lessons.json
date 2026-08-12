@@ -3,7 +3,7 @@
   "promote_threshold": 2,
   "window_days": 45,
   "quarantine_threshold": 2,
-  "next_id": 8,
+  "next_id": 14,
   "lessons": [
     {
       "id": "L-001",
@@ -132,6 +132,114 @@
       ],
       "created": "2026-08-12T18:39:52Z",
       "last_seen": "2026-08-12T18:39:52Z"
+    },
+    {
+      "id": "L-008",
+      "key": "ac_gap::when an artifact merges a reviewed declaration with observed evidence reconciling the two is the product copying declared statuses through and appending observations alongside let an all red fleet publish a green verdict call it a join only if an observation can downgrade a declared status",
+      "text": "When an artifact merges a reviewed declaration with observed evidence, reconciling the two IS the product: copying declared statuses through and appending observations alongside let an all-red fleet publish a green verdict. Call it a join only if an observation can downgrade a declared status.",
+      "signal": "ac_gap",
+      "scope": "evidence-artifacts",
+      "status": "candidate",
+      "features": [
+        "platform-qualification-matrix"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "scripts/t75-evidence-index.mjs:31 (evidence-artifacts)"
+      ],
+      "created": "2026-08-12T20:29:20Z",
+      "last_seen": "2026-08-12T20:29:20Z"
+    },
+    {
+      "id": "L-009",
+      "key": "surviving_mutant::a rule applied to one dimension is not applied after reconciling the platform dimension the same fleet evidence answered gate profile and stayed concatenated so the headline run asserted a profile qualified with nothing observing it enumerate every input the rule s own justification covers",
+      "text": "A rule applied to one dimension is not applied. After reconciling the platform dimension, the same fleet evidence answered gate-profile and stayed concatenated, so the headline run asserted a profile qualified with nothing observing it. Enumerate every input the rule's own justification covers.",
+      "signal": "surviving_mutant",
+      "scope": "evidence-artifacts",
+      "status": "candidate",
+      "features": [
+        "platform-qualification-matrix"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "V9 gate-profile not reconciled (evidence-artifacts)"
+      ],
+      "created": "2026-08-12T20:29:20Z",
+      "last_seen": "2026-08-12T20:29:20Z"
+    },
+    {
+      "id": "L-010",
+      "key": "surviving_mutant::never let the artifact under verification decide how strictly it is verified excusing a case because its declaration said environmental let a leg run and fail in every dispatch with zero contradictions each non qualified status must declare which observations it predicts anything outside that set is a contradiction",
+      "text": "Never let the artifact under verification decide how strictly it is verified. Excusing a case because its declaration said environmental let a leg run and fail in every dispatch with zero contradictions. Each non-qualified status must declare which observations it predicts; anything outside that set is a contradiction.",
+      "signal": "surviving_mutant",
+      "scope": "evidence-artifacts",
+      "status": "candidate",
+      "features": [
+        "platform-qualification-matrix"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "P1 environmental+failed silent (evidence-artifacts)"
+      ],
+      "created": "2026-08-12T20:29:20Z",
+      "last_seen": "2026-08-12T20:29:20Z"
+    },
+    {
+      "id": "L-011",
+      "key": "surviving_mutant::when a check becomes per item in one direction make the opposite direction per item too a per observation inconsistency rule beside a unanimity only staleness rule silently ignored a partial change of state and partial is the shape real state changes have",
+      "text": "When a check becomes per-item in one direction, make the opposite direction per-item too. A per-observation inconsistency rule beside a unanimity-only staleness rule silently ignored a partial change of state, and partial is the shape real state changes have.",
+      "signal": "surviving_mutant",
+      "scope": "evidence-artifacts",
+      "status": "candidate",
+      "features": [
+        "platform-qualification-matrix"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "V1 stale needs unanimity (evidence-artifacts)"
+      ],
+      "created": "2026-08-12T20:29:21Z",
+      "last_seen": "2026-08-12T20:29:21Z"
+    },
+    {
+      "id": "L-012",
+      "key": "surviving_mutant::a fixture that cannot express the failing case cannot detect it fleet fixtures holding only qualified and missing left six mutants alive against a producer emitting four statuses and an absent item yields no observation so a test meant to prove non unanimous detection was still unanimous",
+      "text": "A fixture that cannot express the failing case cannot detect it. Fleet fixtures holding only qualified and missing left six mutants alive against a producer emitting four statuses; and an absent item yields no observation, so a test meant to prove non-unanimous detection was still unanimous.",
+      "signal": "surviving_mutant",
+      "scope": "tests",
+      "status": "candidate",
+      "features": [
+        "platform-qualification-matrix"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "S3/S4 unpinned round-3 and round-4 fixes (tests)"
+      ],
+      "created": "2026-08-12T20:29:21Z",
+      "last_seen": "2026-08-12T20:29:21Z"
+    },
+    {
+      "id": "L-013",
+      "key": "gate_fail::test the cli not only the exported function pinning exit codes immediately exposed an out flag parsed then ignored and an indexof 1 whose 1 consumed argument zero the second masked whenever the pnpm separator was passed",
+      "text": "Test the CLI, not only the exported function. Pinning exit codes immediately exposed an --out flag parsed then ignored, and an indexOf -1 whose +1 consumed argument zero -- the second masked whenever the pnpm -- separator was passed.",
+      "signal": "gate_fail",
+      "scope": "scripts",
+      "status": "candidate",
+      "features": [
+        "platform-qualification-matrix"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "scripts/t75-evidence-index.mjs CLI (scripts)"
+      ],
+      "created": "2026-08-12T20:29:21Z",
+      "last_seen": "2026-08-12T20:29:21Z"
     }
   ]
 }
