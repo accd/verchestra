@@ -98,14 +98,26 @@ function verifyLeg(leg, revision) {
   // Checked for every leg that ran, whatever its outcome. A failed leg's
   // identity is exactly as load-bearing as a passing one's: it is what proves
   // the failure belongs to this candidate.
-  if (typeof leg.identityDigest !== "string")
-    throw new Error(`leg ${leg.leg} carries an identity with no digest over it`);
   if (identity.revision !== revision)
     throw new Error(`leg ${leg.leg} ran ${identity.revision}, not the candidate ${revision}`);
+  // A `digest-mismatch` leg arrives with its identity and NO digests, because
+  // the digests are precisely what failed to verify at the producer
+  // (platform-matrix.yml emits `{leg, status, identity}` for this case). Demanding
+  // them here would mean a tampered leg produces no index at all -- so the record
+  // could not state that tampering was found, which is the one thing it most
+  // needs to say.
+  if (leg.status === "digest-mismatch") return;
+  if (typeof leg.identityDigest !== "string")
+    throw new Error(`leg ${leg.leg} carries an identity with no digest over it`);
   const recomputed = `sha256:${createHash("sha256").update(JSON.stringify(identity)).digest("hex")}`;
   if (leg.identityDigest !== recomputed)
     throw new Error(`leg ${leg.leg} carries an identity digest that does not cover its identity`);
-  if (leg.status === "qualified") verifyLegDigest(leg);
+  if (leg.status !== "qualified") return;
+  // Absence refused by name. Caught only incidentally, the tamper path this
+  // verification closes reopens by deleting the field instead of forging it.
+  if (typeof leg.legDigest !== "string")
+    throw new Error(`leg ${leg.leg} passed, but carries no leg digest over the record that pass sealed`);
+  verifyLegDigest(leg);
 }
 
 // A leg that never ran carries no identity, and every field it would have
@@ -269,7 +281,7 @@ function fleetVerdict(item, observations) {
       status: item.status,
       contradiction:
         dissenting.length === 0
-          ? `declared ${item.status}, but every supplied profile observed it qualified; the declaration is stale`
+          ? `declared ${item.status}, but observed ${unpredicted.map(citation).join(", ")}; the declaration is stale`
           : `declared ${item.status}, which does not predict ${unpredicted.map(citation).join(", ")}`
     };
   return { status: item.status };

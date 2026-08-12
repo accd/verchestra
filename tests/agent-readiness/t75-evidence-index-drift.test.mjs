@@ -58,3 +58,33 @@ test("the recorded T75 verdict regenerates from the committed evidence", () => {
   // says so.
   for (const profile of index.profiles) assert.deepEqual(profile.excused, ["darwin-x64=missing"]);
 });
+
+// The generator re-derives a passing leg's `legDigest` by rebuilding the record
+// the workflow sealed. That reconstruction is a copy of workflow logic living in
+// another file, and the drift test above cannot notice it going stale: its inputs
+// are frozen in today's shape, so it would keep passing while every newly
+// produced fleet index was refused. These assertions are the tie.
+//
+// Same pattern the repository already uses for `gate-stages.mjs`: pin the
+// canonical text, so changing it forces the copy to be changed with it.
+
+const workflow = readFileSync(new URL("../../.github/workflows/platform-matrix.yml", import.meta.url), "utf8");
+
+test("the sealed leg record the generator rebuilds is the one the workflow seals", () => {
+  assert.match(workflow, /const record = \{ schemaVersion: 2, identity, identityDigest \};/u);
+  assert.match(
+    workflow,
+    /const outcome = \{ result: process\.env\.GATE_OUTCOME === "success" \? "pass" : "fail", reported: process\.env\.GATE_OUTCOME \};/u
+  );
+  assert.match(workflow, /const sealed = \{ \.\.\.record, outcome \};/u);
+  assert.match(workflow, /createHash\("sha256"\)\.update\(JSON\.stringify\(sealed\)\)/u);
+});
+
+test("the statuses the generator reconciles are the ones the workflow emits", () => {
+  // `digest-mismatch` carries identity and no digests, deliberately: the digests
+  // are what failed. The generator has to accept that shape rather than refuse
+  // to publish a record of the tampering.
+  assert.match(workflow, /return \{ leg, status: "digest-mismatch", identity: record\.identity \};/u);
+  assert.match(workflow, /status: record\.outcome\?\.result === "pass" \? "qualified" : "failed"/u);
+  assert.match(workflow, /status: "missing"/u);
+});

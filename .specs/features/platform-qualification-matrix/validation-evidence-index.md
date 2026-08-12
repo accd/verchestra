@@ -1,11 +1,241 @@
 # Independent verification — T75 evidence index generator
 
-Five verification passes by the same independent verifier (author ≠ verifier).
-Part X is the current round over `fe169b2`. Part Y is the fourth round over
-`c5c723c`. Part Z is the third round over `53a241d`. Part A is the second round
-over `ce9ff65`. Part B is the first round over `bc4a910`, whose FAIL verdict was
-committed as `1fe398a` before any fix. All five are kept because the earlier ones
-are committed evidence.
+Six verification passes by the same independent verifier (author ≠ verifier).
+Part W is the current round over `87fa226`. Part X is the fifth round over
+`fe169b2`. Part Y is the fourth round over `c5c723c`. Part Z is the third round
+over `53a241d`. Part A is the second round over `ce9ff65`. Part B is the first
+round over `bc4a910`, whose FAIL verdict was committed as `1fe398a` before any
+fix. All six are kept because the earlier ones are committed evidence.
+
+---
+
+# Part W — Sixth round: verification of `87fa226`
+
+**Verdict: FAIL**, on one defect and two unpinned properties. The round-5 blocker
+is genuinely fixed, unifying the branches lost nothing, and the new leg-digest
+verification is a real strengthening that closes a tamper path the index was open
+to until this commit. The blocker is that the generator cannot ingest the shape
+its own producer emits for a `digest-mismatch` leg — the one condition the fleet
+was built to surface is the one input the index refuses.
+
+- Baselines: unit **51 pass / 0 fail / 0 skipped / 0 todo**; drift **2 pass / 0
+  fail**
+- Source restored byte-identically after every mutation
+  (`git diff --exit-code -- scripts/t75-evidence-index.mjs` clean after each).
+
+## W1. The five claims
+
+| # | Claim | Verdict | Evidence |
+| - | ----- | ------- | -------- |
+| 1 | Both directions are one per-observation test over `unpredicted`; stale wording kept for the all-green case; pinned at one and at five dispatches | **True** | `scripts/t75-evidence-index.mjs:256-273`. Verified live: the round-5 reproduction (`environmental` observed missing + qualified×4) now yields `declared environmental, which does not predict qualified in gate:full (run run-full), … gate:build …, gate:security …, gate:release …` — all four green runs cited. The round-5 blocker is closed. |
+| 2 | The declared status is preserved when contradicted, asserted | **True** | `:265-268` plus `assert.equal(entry.declaredStatus, "environmental")` and `assert.equal(entry.status, "environmental", "a return is not the generator's to certify")`. |
+| 3 | A profile that fell short still records `excused` | **True** | `tests/unit/…` "a profile that fell short still records what it excused" asserts both `excused` and the shortfall in the gate-profile contradiction. |
+| 4 | `legDigest` re-derived for every passing leg; failed legs transcribed; provenance states the split | **True, and materially valuable — with one unguarded edge** | `:76-93, 108`. See W3. |
+| 5 | The drift test declares itself a single-input anchor; the handoff carries it | **True** | Header states it is a regression anchor and points at the unit suite for discrimination. |
+
+## W2. The blocker — the index refuses the producer's own `digest-mismatch` shape
+
+`.github/workflows/platform-matrix.yml:306-307` emits, for a leg whose artifact
+disagreed with itself:
+
+```
+return { leg, status: "digest-mismatch", identity: record.identity };
+```
+
+No `identityDigest`, no `legDigest` — deliberately, because those are the values
+that failed to verify. Fed that exact shape, the generator refuses the whole file:
+
+```
+leg linux-arm64 carries an identity with no digest over it
+```
+
+Nothing is produced. Not a downgraded row, not a contradiction — no index at all.
+
+This contradicts the generator's own model of that status, which is elaborate and
+deliberate: `digest-mismatch` is in `LEG_STATUSES` (`:45`), it is named in the
+`not-qualified` consistency row (`:56`), `profileCoverage` treats it as a
+shortfall, and a unit test exercises it as an expected-leg shortfall. The code is
+written throughout as though it reconciles that status, and it cannot receive it.
+
+The reason the tests do not catch it is the pattern that has recurred in every
+round of this review: the fixture cannot express the real shape. `tests/unit/…`'s
+`leg(name, status)` attaches an identity and both digests to every non-`missing`
+status, so its `digest-mismatch` legs look nothing like the producer's.
+
+There is a defensible reading — an artifact that disagrees with itself is not
+evidence, so refuse it. I do not think it survives contact with the design. The
+workflow chose to *report* that leg rather than drop it, on the same reasoning
+matrix.md section 8 gives for the whole artifact ("records the absence rather than
+omitting it"). Under the current behaviour a tampered or truncated leg means the
+T75 record cannot be produced at all, so it cannot state that tampering was
+detected. It fails closed, so no false qualification is possible — but the failure
+is a total loss of the artifact, attributed to the leg rather than to the
+condition the producer actually reported.
+
+## W3. The new leg-digest verification, attacked
+
+**`PASSED_OUTCOME` is genuinely determined, not assumed — for this workflow.** The
+implication chain is real and I checked each link in the workflow source:
+
+1. The index job sets `status: "qualified"` iff `record.outcome?.result === "pass"`
+   (`platform-matrix.yml:310`).
+2. The runner sets `result` to `"pass"` iff `GATE_OUTCOME === "success"`, and sets
+   `reported` to `GATE_OUTCOME` verbatim (`:227`).
+
+So `status === "qualified"` ⟹ `outcome === { result: "pass", reported: "success" }`.
+That is derivation, not guesswork.
+
+**Three things are still hardcoded from the workflow rather than read from the
+file**: `schemaVersion: 2` (the index job strips it when projecting a leg), the key
+order of the sealed object, and the field names/order of `outcome` — all of which
+`JSON.stringify` makes load-bearing. Two have a workflow-side guard:
+`tests/agent-readiness/platform-matrix-workflow.test.mjs:138` pins
+`schemaVersion: 2, identity, identityDigest` as workflow text and `:148` pins the
+`"pass" : "fail"` ternary on `GATE_OUTCOME`. The `{ result, reported }` shape and
+ordering are pinned nowhere.
+
+**What a future workflow change does.** Nothing silently accepts a bad digest — the
+failure mode is that every passing leg is refused and the build throws. But three
+things follow that are worth knowing:
+
+- The message blames the evidence ("its leg digest does not cover the record that
+  pass would have sealed") when the real cause is a stale assumption in the
+  generator.
+- **The drift test cannot detect this class**, because its inputs are frozen bytes
+  in the old shape: it would keep passing while every new fleet index is refused.
+- Nothing links the generator's copy to the workflow assertions. A coherent change
+  that updates the workflow and its own test leaves the generator stale, and the
+  repository already has the pattern for avoiding exactly this — the workflow
+  derives its driver-probe decision from `scripts/gate-stages.mjs` "so this cannot
+  drift from the profile list", and `EXPECTED_LEGS` is pinned against the matrix.
+  One assertion tying the generator's reconstruction to the workflow's sealing
+  expression would close it.
+
+**The check earns its place.** A leg that actually failed, relabelled `qualified`
+while keeping its real sealed digest, is now refused:
+
+```
+leg win32-x64 passed, but its leg digest does not cover the record that pass would have sealed
+```
+
+Before this commit that edit passed every check, because `identity` does not cover
+the outcome. This is a real tamper path closed at the point a qualification verdict
+actually rests. Mutating the sealed version to 3 kills 33 unit tests and the drift
+test, so the reconstruction is self-pinning against accidental drift.
+
+**Did unifying the branches lose anything?** No. `unpredicted` filters over all
+observations and `qualified` is in no dissent set, so a green observation is
+unpredicted by construction; the all-green case still selects the stale wording. I
+checked the four regions: all-green → stale wording; green mixed with consistent
+dissent → cited list (this is the fix); all-consistent-dissent → silent (verified:
+the four real files still yield exactly one contradiction); inconsistent dissent →
+cited. One cosmetic asymmetry survives: the all-green stale message names no runs
+while every other contradiction cites them. The runs remain in `observed`.
+
+## W4. Independent sensor — five fresh mutations, both suites
+
+| # | Mutation | Unit | Drift |
+| - | -------- | ---- | ----- |
+| X1 | A passing leg that carries no `legDigest` skips the new verification | **SURVIVED** | survived |
+| X10 | The green-observation half of the rule applies only to `environmental` declarations | **SURVIVED** | survived |
+| X3 (control) | Only the first unpredicted observation is cited | killed | survived |
+| X9 (control) | A leg-digest mismatch is recorded rather than refused | killed | survived |
+| X11 (control) | The sealed record's version is reconstructed as 3 | killed (33 tests) | **killed** |
+
+**3 killed, 2 survived.**
+
+- **X1 is a hole in this round's own feature.** `identityDigest` absence is refused
+  by name (`:101-102`); `legDigest` absence is caught only incidentally, because
+  `undefined !== recomputed`. Add the `&& leg.legDigest` guard a defensive
+  contributor would plausibly add and the tamper path W3 just closed reopens —
+  drop the field instead of forging it, and the promoted failure is accepted. The
+  shipped behaviour is right by accident, and nothing holds it.
+- **X10 is the round-5 blocker, one status over.** The green-observation rule is
+  pinned only through `darwin-x64`, which is `environmental`. A `not-qualified`
+  platform that starts passing in most dispatches, with any consistent dissent in
+  another, would go silent again and no test would notice.
+
+## W5. Vacuity re-check
+
+- **Fixtures cannot express the producer's `digest-mismatch` leg** (W2) or a
+  passing leg with no `legDigest` (X1).
+- **The green-observation rule is exercised through one declared status only**
+  (X10).
+- **The drift anchor cannot see workflow-shape drift**, because its inputs are
+  frozen (W3).
+- **Not vacuous, and a real advance**: the partial-return case is pinned with the
+  cited runs; the preserved `declaredStatus` is asserted; `excused` is asserted on
+  a profile that also fell short; the sealed reconstruction is self-pinning; the
+  stale rule is pinned at one dispatch and at five.
+
+## W6. Test integrity and gates
+
+- No test weakened, skipped, or deleted: unit grew from 47 to 51 cases, drift from
+  2 to 2 with a strengthened header; no `skip`, `todo`, or `only`.
+- Working tree carries no change to `scripts/` or `tests/`; every mutation was
+  reverted byte-identically.
+- `corepack pnpm gate:quick`: **PASS** — exit code 0, final line `gate:quick PASS`;
+  the agent-readiness stage reported `tests 147 / pass 147 / fail 0 / skipped 0 /
+  todo 0`, and the unit stage containing the 51 evidence-index cases passed in the
+  same run.
+
+## W7. Gaps, most severe first
+
+1. **A `digest-mismatch` leg in the producer's real shape is refused**, so the
+   fleet's own tamper signal cannot reach the published record and no index is
+   produced at all. Accept `{leg, status, identity}` without digests and reconcile
+   it as the dissent the code already models.
+2. **A passing leg with no `legDigest` is only incidentally caught** (X1): guard it
+   by name, as `identityDigest` already is.
+3. **The green-observation rule is pinned only for `environmental`** (X10): the
+   round-5 fix can regress for `not-qualified` declarations undetected.
+4. **The generator's sealed-record reconstruction is not tied to the workflow**
+   (W3): fail-closed but misattributed, and invisible to the drift anchor.
+5. **The all-green stale contradiction cites no runs**, unlike every other
+   contradiction (cosmetic).
+
+## W8. Shortest path to PASS
+
+1. Accept the producer's `digest-mismatch` shape — identity present, digests
+   absent — and reconcile it; add a fixture in that exact shape (gap 1).
+2. Refuse a passing leg with no `legDigest` by name, with a test (gap 2).
+3. Add a green-observation case on a `not-qualified` declaration (gap 3).
+4. Tie the sealed reconstruction to the workflow text in the workflow test (gap 4).
+
+## W9. What a reader must still not conclude — final form
+
+Ready to lift into the T75 report and the PR once the round passes. Nothing here
+depends on the outstanding gaps; it is the honest reading of the artifact as
+designed.
+
+A reader of the published evidence index must not conclude:
+
+- **that a `qualified` gate-profile row means the profile ran everywhere.** It
+  means every platform the declaration expects green was green in that dispatch.
+  The `excused` list on the row is the rest of the scope.
+- **that a `qualified` platform row means the platform passed every stage.** It
+  means every supplied dispatch that carried the leg observed it green — and only
+  the profiles actually dispatched at this candidate are represented.
+- **that the index is signed, or that anything vouches for it.**
+  `signingState.signed` is `false`; the body digest is self-computed and the
+  artifact carries no signature. AD-014 schedules the signature; it does not
+  supply one.
+- **that every digest in the artifact was checked here.** `digestProvenance` states
+  the split: identity digests are recomputed, leg digests are recomputed for
+  passing legs and transcribed otherwise, because a failed leg's `reported` value
+  cannot be recovered from the fleet index.
+- **that the committed evidence describes the release candidate.** `9aab070` is not
+  the qualification revision. This is interim evidence and the drift test says so.
+- **that the drift test proves the generator.** It is a regression anchor over one
+  frozen input; discrimination lives in the unit suite.
+- **that zero contradictions would mean T75 is complete.** The dimensions the fleet
+  cannot answer — databases, sandboxes, drivers, installers, self-test, recovery —
+  pass through from the declaration untouched, and the index verifies nothing about
+  them. Only the platform and gate-profile dimensions are reconciled against
+  observed evidence.
+- **that a case's status is the fleet's opinion.** The declaration's status is
+  preserved even when contradicted; a contradiction is a disagreement for human
+  review, not a relabelling the generator performed.
 
 ---
 
