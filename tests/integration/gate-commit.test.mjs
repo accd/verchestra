@@ -125,6 +125,31 @@ test("equivalent gate plan digest is deterministic", () => {
   assert.equal(gatePlan().planDigest, gatePlan().planDigest);
 });
 
+// Issue #58: the gate plan digest, idempotency key, and checkpoint digests
+// must not depend on the machine's ambient locale.
+test("gate plan digest and a full committed idempotency key are byte-identical under two different ambient locales", async () => {
+  const priorLang = process.env.LANG;
+  const priorLcAll = process.env.LC_ALL;
+  try {
+    process.env.LANG = "en_US.UTF-8";
+    process.env.LC_ALL = "en_US.UTF-8";
+    const firstPlanDigest = gatePlan().planDigest;
+    const first = await coordinator(gatePorts().ports).execute(gateInput());
+    process.env.LANG = "fr_FR.UTF-8";
+    process.env.LC_ALL = "fr_FR.UTF-8";
+    const secondPlanDigest = gatePlan().planDigest;
+    const second = await coordinator(gatePorts().ports).execute(gateInput());
+    assert.equal(firstPlanDigest, secondPlanDigest);
+    assert.equal(first.idempotencyKey, second.idempotencyKey);
+    assert.equal(first.gateEvidenceDigest, second.gateEvidenceDigest);
+  } finally {
+    if (priorLang === undefined) delete process.env.LANG;
+    else process.env.LANG = priorLang;
+    if (priorLcAll === undefined) delete process.env.LC_ALL;
+    else process.env.LC_ALL = priorLcAll;
+  }
+});
+
 function pass(command) {
   return {
     exitCode: 0,

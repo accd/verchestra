@@ -56,7 +56,7 @@ comparison fails closed where identities are not interchangeable.
 | Evidence: `packages/evidence/src/integrity/canonical.ts` | Artifact IDs, payload digests, signatures, execution packages, capsules, recovery and support bundles | signed + persistent | Qualified JCS-like V1 with strict validation | Preserve V1 verification; introduce V2 facade only with envelope/schema versioning. |
 | Application authority: `authority.ts` | Approval bindings and capability-grant binding digests | persistent authority; classified transient (T4b) — see rationale below | **Migrated (T4b).** `canonicalizeJsonV2` replaces the recursive serializer with ambient locale member order. | Done. `tests/security/authority-binding.test.mjs` (cross-locale test), 86 existing authority/capability cases unchanged. |
 | Application coordination: `work-claims.ts` | Claim scope digest and claim equality | persistent authority; classified transient (T4b) — see rationale below | **Migrated (T4b).** `canonicalizeJsonV2` replaces the recursive serializer; `compareTargets`'s two-field target sort (feeding a dedup/subsumption pass whose adjacency the sort must reproduce) now uses code-unit `<`/`>` instead of `localeCompare`. | Done. `tests/unit/change-scope.test.mjs` (cross-locale test), 41 existing coordination/scope cases unchanged. |
-| Application execution: `gate-commit.ts` | Gate plan, evidence, request, and idempotency digests | persistent authority | Recursive serializer plus locale member order | Add canonicalization version to plan/checkpoint/receipt records; retain V1 resume verification. |
+| Application execution: `gate-commit.ts` | Gate plan, evidence, request, and idempotency digests | persistent authority; classified transient (T4c) — see T4b/T4c rationale below | **Migrated (T4c).** `canonicalizeJsonV2` replaces the recursive serializer with locale member order (9 call sites). | Done. `tests/integration/gate-commit.test.mjs` (cross-locale test), 42 existing gate-commit cases plus the 29-case Self-Test crash-recovery suite (including the production crash matrix) unchanged. |
 | Application egress: `trust-egress.ts` | Egress manifest and revision digests | signed-adjacent authority | Recursive serializer plus locale member order | Version manifest digest and reject mixed-version approval binding. |
 | Application handoff: `handoff/validation.ts` | Portable handoff validation digests | portable persistent | Recursive serializer plus locale member order | Version handoff artifact before changing bytes; receiver chooses recorded version. |
 | Application sync: `workspace-reconcile.ts` | Persisted sync state, plan and rebuild identities | persistent | Recursive serializer and locale sorting of semantic collections | Add state/plan canonicalization version; retain V1 reload and conflict detection. |
@@ -70,7 +70,7 @@ comparison fails closed where identities are not interchangeable.
 | Distribution: `transactional-activation.ts` | Transaction identity material and durable activation records | persistent local state | Recursive serializer for transaction identity; ordinary JSON writes for local journals | Migrate only after hermetic bundle V2; version durable receipt/pointer records. |
 | Distribution: `tuf-update-client.ts` | Staged receipt bytes | persistent local state | Ordinary `JSON.stringify`, no structured digest at write | Keep bytes as a versioned local receipt; classify separately from canonical digest migration. |
 | Workspace: `scanner/scanner-primitives.ts`, consumed by `workspace-scanner.ts`, `init/safe-init.ts`, and `placement/artifact-placement.ts` | Repository IDs, discovery keys, inventory fingerprints, init/recovery plan IDs, and write-plan IDs | portable + persistent plan identity | **Migrated (T3).** `buildInventoryFingerprintV2` (RFC 8785, `v2:sha256:` prefix) for repository IDs, discovery keys, inventory fingerprints, write-plan IDs, and new init preview/recovery journal plan IDs; `buildInventoryFingerprint` (V1, byte-identical, `sha256:` prefix) stays exported and is still the only verifier for a `schemaVersion: 1` init recovery journal. | Done. `init/safe-init.ts`'s recovery journal envelope carries an explicit `schemaVersion` (1 or 2) and dispatches its verifier on that recorded version, failing closed on any version/prefix disagreement — see `packages/workspace/src/init/safe-init.ts:parseRecoveryJournal`. |
-| Platform Node: `git-worktree-adapter.ts` | Worktree `changeDigest`, committed and verified as `Verchestra-Change` by the gate-commit flow | persistent gate authority | SHA-256 of `JSON.stringify(manifest)` | Version change-digest material with the gate plan/checkpoint/receipt migration; retain V1 resume verification. |
+| Platform Node: `git-worktree-adapter.ts` | Worktree `changeDigest`, committed and verified as `Verchestra-Change` by the gate-commit flow | persistent gate authority | SHA-256 of `JSON.stringify(manifest)` — an **array** of `[path, hash]` tuples, not an object | **No change required (T4c).** `manifest` is an array, and its element order already derives from `changedPaths`'s plain `.sort()` (default UTF-16 code-unit order, not `localeCompare`) — `JSON.stringify` on an array preserves index order and never reaches the object-key-ordering branch that makes `canonicalJson`/`localeCompare` risky. Confirmed zero `.localeCompare(` sites; this file was never the risk the T2 inventory named — `gate-commit.ts`'s own serializer was. | Verified, no commit needed; `tests/security/canonical-json-locale-allowlist.test.mjs`'s existing ceiling (0) for this file is unchanged. |
 | Platform Node: `runtime-store/runtime-store.ts` | Persisted active policy-view digest verification | persistent local authority | Recursive serializer with ambient locale ordering | Migrate with policy-view schema/versioning; retain V1 stored-view verification and fail closed across versions. |
 | Application promotion: `promotion-gate.ts` | `canonicalizeOracle`'s sealed `holdoutDigest`; the `evaluatePromotion` `blocks` ordering feeding the report `bodyDigest` | signed persistent identity | **Migrated (T4a).** `canonicalizeJsonV2` + `normalizeDeclaredSet` for both the oracle entries and the accumulated blocks; no persisted fixture pinned the prior bytes, so this required no schema/version bump. | Done. Commit `75dab72`; `tests/unit/promotion-gate.test.mjs` (cross-locale + declaration-order tests), `tests/security/canonical-json-sensor.test.mjs` (owner mutation). |
 | Application regression: `campaigns.ts` | Campaign ordering inside `canonicalizeCorpus`/`buildCampaignSummary`, validated against `regression-campaign-summary@1` | persistent (schema-validated release evidence) | **Migrated (T4a).** `buildCampaignSummary` normalizes results with `normalizeDeclaredSet` before assembly; `canonicalizeCorpus` (the actual `corpusDigest` input) already had zero locale dependency. | Done. Commit `7f1adc4`; `tests/unit/regression-campaigns.test.mjs`, `pnpm test:release` (28 cases, frozen 22-campaign corpus unaffected). |
@@ -89,7 +89,7 @@ migrate-together and migrate-after rules.
 | --- | --- | --- | --- |
 | T4a | `promotion-gate.ts`, `campaigns.ts`, `doctor.ts`, `self-test.ts` | Low | **Done.** Merged by T72–T74 (2026-08-07); no `docs/qualification/t72\|t73\|t74-validation.md` existed at migration time, so these bytes had never been frozen — zero backward-compatibility work required. Added `formatCanonicalDigestV2` (the shared `v2:sha256:` prefix authority) to domain and a repo-wide ambient-locale ceiling sensor (`tests/security/canonical-json-locale-allowlist.test.mjs`) as reusable infrastructure for every remaining T4 slice. |
 | T4b | `authority.ts`, `work-claims.ts` | Medium (reclassified transient, see below) | Persistent authority bindings, migrated as a direct swap. |
-| T4c | `gate-commit.ts` + `git-worktree-adapter.ts` `changeDigest` | Medium-high | Durable resume path; migrate together per the matrix. |
+| T4c | `gate-commit.ts` + `git-worktree-adapter.ts` `changeDigest` | Medium-high (reclassified transient, see below) | Durable resume path, migrated as a direct swap; `git-worktree-adapter.ts` needed no change (already locale-safe). |
 | T4d | `cedar-policy.ts` + `runtime-store.ts` | Medium | Matrix requires migrating together (policy-view schema/versioning). |
 | T4e | `context-compiler.ts` + `source-snapshots.ts` + `backend-serializers.ts` | Medium | Matrix requires migrating together; `backend-serializers.ts` added to the slice by the T2 re-inventory above (AD-015). |
 | T4f | `trust-egress.ts`, `handoff/validation.ts` | Medium | Portable persistent identities. |
@@ -133,6 +133,48 @@ classification was chosen by brunomjanuario (WS-C) before implementation
 call on trust-critical code should not be assumed silently. It is **not**
 an owner (accd) decision recorded as an AD — flagged here for human review
 alongside the code change, not asserted as settled.
+
+### T4c classification: transient, traced not assumed
+
+`gate-commit.ts`'s plan/checkpoint/idempotency digests are also genuinely
+persisted — a checkpoint saved via `#save()` is later reloaded and
+re-verified by `#normalizePrior()` on resume, and the same mechanism is
+exercised by the Self-Test full-profile crash-recovery matrix through a real
+durable `FileRecordStore`. This is a materially different case from T4b:
+approvals and claims are short-lived tokens; a gate checkpoint represents
+in-progress task-execution work, and the matrix's own text already called
+this slice "Medium-high — durable resume path" (higher than T4b's "Medium").
+
+The classification was not reused from T4b by analogy — it was re-derived by
+tracing every comparison in `#normalizePrior` and `normalizeInput` line by
+line: `planDigest`/`gateEvidenceDigest`/`checkpointRef` values are always
+compared **within the same `execute()` call**, between a value freshly
+recomputed by the currently-running code and either (a) a caller-supplied
+value from the same call (never a problem — both sides use the same running
+canonicalizer) or (b) a checkpoint loaded from storage and compared by plain
+string equality against a fresh recomputation (`row["gatePlanDigest"] !==
+input.gatePlan.planDigest`, `#normalizePrior`). Case (b) is the real risk: a
+checkpoint saved under the old canonicalizer, reloaded after the algorithm
+changed, produces a byte-different fresh digest and the equality check
+fails — but `#normalizePrior` fails **closed**
+(`VES_GATE_CHECKPOINT_INVALID`, caught by its caller as `resumed ===
+undefined`), which forces the gate sequence to re-run from the top rather
+than silently accepting stale or incorrectly-verified state. No exported
+function (`canonicalTaskGatePlan`) is called anywhere to pre-compute and
+durably cache a digest that crosses a deploy boundary before being replayed
+against a later release — confirmed by finding every call site.
+
+The consequence of getting this wrong is therefore bounded to "redo the gate
+run" at the exact moment of an algorithm change, not a security or
+correctness failure — worse than T4b's "re-approve a token" (real test gates
+may be expensive to re-run) but still fail-closed, still bounded to a single
+transition point, and confirmed empirically: `tests/integration/
+gate-commit.test.mjs`'s "gates-passed checkpoint is durable before the
+commit effect" test and the full 29-case Self-Test crash-recovery suite
+(including "the production crash matrix satisfies the closed application
+verdict") both pass unchanged after the swap. Also chosen by brunomjanuario
+(WS-C) before implementation (2026-08-11); flagged for accd's review, not
+asserted as settled.
 
 ## Completed vertical slice (T3)
 

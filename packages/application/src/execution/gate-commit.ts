@@ -1,3 +1,5 @@
+import { canonicalizeJsonV2 } from "@verchestra/domain";
+
 type Digest = `sha256:${string}`;
 type Row = Record<string, unknown>;
 
@@ -80,16 +82,6 @@ function integer(value: unknown, label: string, min: number, max: number, code: 
   if (!Number.isSafeInteger(value) || (value as number) < min || (value as number) > max)
     fail(code, `${label} is invalid`);
   return value as number;
-}
-
-function canonicalJson(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
-  if (value !== null && typeof value === "object")
-    return `{${Object.entries(value as Row)
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([key, entry]) => `${JSON.stringify(key)}:${canonicalJson(entry)}`)
-      .join(",")}}`;
-  return JSON.stringify(value);
 }
 
 function freeze<T>(value: T, seen = new Set<object>()): T {
@@ -180,7 +172,7 @@ function normalizePlanMaterial(value: unknown): NormalizedGatePlanMaterial {
 }
 
 export function canonicalTaskGatePlan(value: unknown): string {
-  return canonicalJson(normalizePlanMaterial(value));
+  return canonicalizeJsonV2(normalizePlanMaterial(value));
 }
 
 export interface TaskGateCommitInput {
@@ -308,7 +300,7 @@ function normalizeInput(value: unknown, sha256: (value: string) => string): Task
   );
   const plan = normalizePlanMaterial({ schemaVersion: rawPlan["schemaVersion"], commands: rawPlan["commands"] });
   const planDigest = digest(rawPlan["planDigest"], "gatePlan.planDigest", "VES_GATE_PLAN_INVALID");
-  if (sha256(canonicalJson(plan)) !== planDigest)
+  if (sha256(canonicalizeJsonV2(plan)) !== planDigest)
     fail("VES_GATE_PLAN_INVALID", "gate plan digest does not match content");
   const requirementIds = [
     ...list(task["requirementIds"], "task requirementIds", REQUIREMENT, "VES_GATE_INPUT_INVALID")
@@ -320,7 +312,7 @@ function normalizeInput(value: unknown, sha256: (value: string) => string): Task
     "VES_GATE_INPUT_INVALID"
   );
   const declared = plan.commands.map((entry) => entry.declaredCommand).sort();
-  if (canonicalJson(declared) !== canonicalJson([...verificationCommands].sort()))
+  if (canonicalizeJsonV2(declared) !== canonicalizeJsonV2([...verificationCommands].sort()))
     fail("VES_GATE_PLAN_INVALID", "gate plan does not exactly cover declared verification commands");
   const covered = new Set(plan.commands.flatMap((entry) => entry.requirementIds));
   if (requirementIds.some((requirementId) => !covered.has(requirementId)))
@@ -494,7 +486,7 @@ export class TaskGateCommitCoordinator {
         requirementIds: command.requirementIds,
         declaredCommand: command.declaredCommand,
         commandRef: command.commandRef,
-        argsDigest: this.#digest(canonicalJson(command.args)),
+        argsDigest: this.#digest(canonicalizeJsonV2(command.args)),
         timeoutMs: command.timeoutMs,
         outputLimitBytes: command.outputLimitBytes,
         resultProtocol: command.resultProtocol,
@@ -534,7 +526,7 @@ export class TaskGateCommitCoordinator {
 
     const after = normalizeInspection(await this.#ports.worktrees.inspect(handle));
     this.#assertInspection(input, after, false);
-    const gateEvidenceDigest = this.#digest(canonicalJson({ evidenceDigests, evidenceRefs }));
+    const gateEvidenceDigest = this.#digest(canonicalizeJsonV2({ evidenceDigests, evidenceRefs }));
     await this.#save(input, "gates-passed", { gateEvidenceDigest, gateEvidenceRefs: evidenceRefs });
     const request = this.#commitRequest(input, gateEvidenceDigest, evidenceRefs);
     let receipt: unknown;
@@ -558,7 +550,7 @@ export class TaskGateCommitCoordinator {
     }
     if (
       inspection.changeDigest !== input.execution.changeDigest ||
-      canonicalJson(inspection.changedPaths) !== canonicalJson(input.execution.changedPaths)
+      canonicalizeJsonV2(inspection.changedPaths) !== canonicalizeJsonV2(input.execution.changedPaths)
     )
       fail("VES_GATE_DIFF_DRIFT", initial ? "pre-gate diff drifted" : "gate changed the implementation diff");
   }
@@ -625,7 +617,7 @@ export class TaskGateCommitCoordinator {
     gateEvidenceRefs: readonly string[]
   ): AtomicCommitRequest {
     const idempotencyKey = this.#digest(
-      canonicalJson({
+      canonicalizeJsonV2({
         workspaceId: input.workspaceId,
         runId: input.runId,
         taskId: input.task.taskId,
