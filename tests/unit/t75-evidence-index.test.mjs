@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -11,6 +11,9 @@ import { canonicalizeJsonV2 } from "../../packages/domain/src/index.ts";
 import { buildEvidenceIndex } from "../../scripts/t75-evidence-index.mjs";
 
 const SCRIPT = new URL("../../scripts/t75-evidence-index.mjs", import.meta.url);
+const DEFAULT_OUTPUT = fileURLToPath(
+  new URL("../../.specs/features/platform-qualification-matrix/evidence-index.json", import.meta.url)
+);
 const matrix = JSON.parse(
   readFileSync(new URL("../../.specs/features/platform-qualification-matrix/matrix.json", import.meta.url), "utf8")
 );
@@ -215,7 +218,7 @@ test("a gate profile that half-ran has not exercised its stages", () => {
   );
   const entry = caseOf(index, "gate-profile", "full");
   assert.equal(entry.status, "not-qualified");
-  assert.match(entry.contradiction, /incomplete \(win32-x64\) in gate:full/u);
+  assert.match(entry.contradiction, /incomplete \(win32-x64=absent\) in gate:full/u);
 });
 
 test("a leg declared qualified that no supplied profile covers is not qualified", () => {
@@ -423,22 +426,39 @@ test("a declared case with no evidence note is refused by name", () => {
 // is the enforcement surface: an index that records a contradiction inside a
 // file nobody checks enforces nothing.
 
-const runCli = (fleet) => {
+const runCli = (fleet, { out = true, separator = true, filesFirst = false } = {}) => {
   const dir = mkdtempSync(join(tmpdir(), "t75-index-"));
   const files = fleet.map((index, position) => {
     const file = join(dir, `fleet-${position}.json`);
     writeFileSync(file, JSON.stringify(index));
     return file;
   });
-  const out = join(dir, "evidence-index.json");
+  const target = join(dir, "evidence-index.json");
+  // Captured before the run: without `--out` the CLI writes to its default path
+  // inside the repository, and the test must leave the tree as it found it.
+  const written = out ? target : DEFAULT_OUTPUT;
+  const before = existsSync(written) ? readFileSync(written, "utf8") : null;
   // Invoked through the `--` separator that `pnpm run` forwards, so the test
   // exercises the documented house-style invocation rather than a tidier one.
   const result = spawnSync(
     process.execPath,
-    [fileURLToPath(SCRIPT), "--", "--revision", REVISION, "--out", out, ...files],
+    [
+      fileURLToPath(SCRIPT),
+      ...(separator ? ["--"] : []),
+      ...(filesFirst ? files : []),
+      "--revision",
+      REVISION,
+      ...(out ? ["--out", target] : []),
+      ...(filesFirst ? [] : files)
+    ],
     { encoding: "utf8" }
   );
-  return { ...result, index: existsSync(out) ? JSON.parse(readFileSync(out, "utf8")) : null };
+  const index = existsSync(written) ? JSON.parse(readFileSync(written, "utf8")) : null;
+  if (!out) {
+    if (before === null) rmSync(written, { force: true });
+    else writeFileSync(written, before);
+  }
+  return { ...result, index };
 };
 
 test("the CLI succeeds when the declaration and the fleet agree", () => {
@@ -454,4 +474,128 @@ test("the CLI fails when the fleet contradicts the declaration", () => {
   const result = runCli([fleetIndex("security")]);
   assert.equal(result.status, 1, "a contradicting generation must not report success");
   assert.ok(result.index.summary.contradictions > 0);
+});
+
+// The declaration is what is under verification, so it must not be what decides
+// how strictly it is verified. Every one of these passed silently before.
+
+test("a leg declared environmental that ran and failed is contradicted", () => {
+  // `environmental` means the job never dequeued. A leg that ran and failed is a
+  // product finding wearing an environmental label, and the excuse must not
+  // stretch to cover it.
+  const stale = structuredClone(matrix);
+  stale.dimensions
+    .find((entry) => entry.dimension === "platform")
+    .cases.find((item) => item.case === "linux-arm64").status = "environmental";
+  const fleet = GATES.map((gate) =>
+    fleetIndex(gate, {
+      legs: [leg("win32-x64"), leg("linux-x64"), leg("linux-arm64", "failed"), leg("darwin-arm64")]
+    })
+  );
+  const index = buildEvidenceIndex(stale, fleet, REVISION);
+  const entry = caseOf(index, "platform", "linux-arm64");
+  assert.match(entry.contradiction, /declared environmental, which does not predict failed in gate:/u);
+  // And it counts against every profile that ran it, so the coverage claim moves
+  // with the finding rather than surviving it.
+  for (const gate of GATES) assert.equal(caseOf(index, "gate-profile", gate).status, "not-qualified");
+  assert.ok(index.summary.contradictions > GATES.length);
+});
+
+test("a leg declared not-qualified that failed is consistent, not contradicted", () => {
+  // The rule cuts both ways: a declaration that predicts the failure is not
+  // contradicted by observing it, or every honest red row would raise noise.
+  const declared = structuredClone(matrix);
+  declared.dimensions
+    .find((entry) => entry.dimension === "platform")
+    .cases.find((item) => item.case === "linux-arm64").status = "not-qualified";
+  const fleet = GATES.map((gate) =>
+    fleetIndex(gate, {
+      legs: [leg("win32-x64"), leg("linux-x64"), leg("linux-arm64", "failed"), leg("darwin-arm64")]
+    })
+  );
+  const index = buildEvidenceIndex(declared, fleet, REVISION);
+  assert.equal(caseOf(index, "platform", "linux-arm64").contradiction, undefined);
+  for (const gate of GATES) assert.equal(caseOf(index, "gate-profile", gate).status, "qualified");
+  assert.equal(index.summary.contradictions, 0);
+});
+
+test("a matrix that expects no platform to be green cannot qualify a profile", () => {
+  // With nothing expected, every dispatch covers its profile by vacuum.
+  const empty = structuredClone(matrix);
+  for (const item of empty.dimensions.find((entry) => entry.dimension === "platform").cases)
+    item.status = "environmental";
+  assert.throws(
+    () => buildEvidenceIndex(empty, greenFleet(), REVISION),
+    /declares no platform expected to be qualified/u
+  );
+});
+
+test("a profile records which legs its coverage claim excused", () => {
+  // `gate-profile/security = qualified` must be readable as what it is —
+  // covered on these legs — not as "ran everywhere".
+  const index = buildEvidenceIndex(
+    matrix,
+    GATES.map((gate) =>
+      fleetIndex(gate, { legs: [...FLEET_LEGS.map((name) => leg(name)), leg("darwin-x64", "missing")] })
+    ),
+    REVISION
+  );
+  assert.deepEqual(index.profiles[0].excused, ["darwin-x64=missing"]);
+});
+
+test("a leg carrying an identity with no digest over it is refused", () => {
+  const naked = leg("win32-x64", "failed");
+  delete naked.identityDigest;
+  assert.throws(
+    () => buildEvidenceIndex(matrix, [fleetIndex("security", { legs: [naked] })], REVISION),
+    /identity with no digest over it/u
+  );
+});
+
+test("a failed leg's identity is verified as strictly as a passing one's", () => {
+  // A failed leg's identity is what proves the failure belongs to this candidate.
+  assert.throws(
+    () =>
+      buildEvidenceIndex(
+        matrix,
+        [fleetIndex("security", { legs: [leg("win32-x64", "failed", "c".repeat(40))] })],
+        REVISION
+      ),
+    /leg win32-x64 ran c{40}, not the candidate/u
+  );
+});
+
+test("a gate name without its prefix is refused rather than re-derived", () => {
+  // Accepted here and re-derived differently later, it would key its evidence
+  // under a case that does not exist: the run is discarded and a contradiction
+  // reported that never happened.
+  assert.throws(
+    () => buildEvidenceIndex(matrix, [fleetIndex("security", { gate: "security" })], REVISION),
+    /ran security, which the matrix does not declare/u
+  );
+});
+
+test("the CLI keeps every supplied index when no output path is given", () => {
+  // `--out` absent means indexOf returns -1, and -1 + 1 is 0, so argument zero
+  // was consumed. Invoked without the `pnpm` separator that argument is a fleet
+  // index: one run silently vanished, and the smaller index still exited 1 and
+  // wrote a plausible file, so the loss read as a finding.
+  for (const invocation of [
+    { out: false, separator: false },
+    { out: false, separator: false, filesFirst: true },
+    { out: false, separator: true, filesFirst: true }
+  ]) {
+    const result = runCli(greenFleet(), invocation);
+    assert.equal(result.index.profiles.length, GATES.length, `${JSON.stringify(invocation)}: ${result.stderr}`);
+    assert.equal(result.index.summary.contradictions, 0, "a complete fleet must not look like a partial one");
+  }
+});
+
+test("a gate name that only ends in a declared profile is refused", () => {
+  // Checking the name by slicing five characters off the front accepts anything
+  // whose tail happens to match; the prefix has to be present, not assumed.
+  assert.throws(
+    () => buildEvidenceIndex(matrix, [fleetIndex("security", { gate: "abcdequick" })], REVISION),
+    /ran abcdequick, which the matrix does not declare/u
+  );
 });
