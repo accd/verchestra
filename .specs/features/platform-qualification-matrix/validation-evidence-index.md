@@ -1,4 +1,252 @@
-# Independent verification — T75 evidence index generator (`bc4a910`)
+# Independent verification — T75 evidence index generator
+
+Two verification passes by the same independent verifier (author ≠ verifier).
+Part A is the current re-verification of the remediation `ce9ff65`. Part B is the
+first pass over `bc4a910`, whose FAIL verdict was committed as `1fe398a` before
+any fix; it is kept verbatim below because it is committed evidence.
+
+---
+
+# Part A — Re-verification of `ce9ff65`
+
+**Verdict: FAIL.** Substantially narrower than Part B: seven of the nine Part B
+gaps are genuinely closed, and the reconciliation is real. It fails on two
+findings, both of the class the remediation existed to remove — a second
+fleet-answerable dimension is still concatenated, and the mechanism that enforces
+the new contradiction rule has no test at all.
+
+Evidence-or-zero, no benefit of the doubt, no claim accepted from the commit
+message. Read-only on Git history; the source was temporarily mutated for the
+sensor and restored byte-identically after every run
+(`git diff --exit-code -- scripts/t75-evidence-index.mjs` clean after each, and at
+the end).
+
+- Verified commit: `ce9ff65` on `feat/t75-evidence-index-generator`
+- Baseline: `node --test tests/unit/t75-evidence-index.test.mjs` → **21 pass, 0
+  fail, 0 skipped, 0 todo**
+- Requirement source unchanged: `matrix.md` section 8 and section 1 criterion 3
+
+## A1. The nine claims, checked independently
+
+| # | Claim | Verdict | Evidence |
+| - | ----- | ------- | -------- |
+| 1 | Reconciliation replaces concatenation; a platform case is qualified only if every covering profile observed it qualified; silence is not a pass; an observation never upgrades a declaration; both values plus the citing run are kept; contradictions drive a non-zero exit | **Partly true** | True for the **platform** dimension: `scripts/t75-evidence-index.mjs:106-127, 129-143`, pinned by `tests/unit/t75-evidence-index.test.mjs:88-153`. Verified independently: a red fleet yields four `not-qualified` rows with `declaredStatus: qualified` and 4 contradictions. **Not true for the `gate-profile` dimension**, which the fleet can also answer — see gap R1. The non-zero exit works (`exit=1` observed) but has zero test coverage — see R2. |
+| 2 | `revision: null` refused with a distinct message | **True** | `:79-82` refuses any `index.revision !== revision` and names the null case "binds no single revision"; `tests/unit/t75-evidence-index.test.mjs:66-74`. The Part B escape at the old line 38 is gone. |
+| 3 | Every supplied index is revision-checked | **True** | The check runs inside `fleetIndexes.map` (`:74-82`); pinned by the second-index case at `tests/unit/t75-evidence-index.test.mjs:76-82`. |
+| 4 | Legs carry platform, arch, runtime, revision, identityDigest, legDigest | **True, with an unverified field** | `:54-70`; asserted field-by-field at `tests/unit/t75-evidence-index.test.mjs:212-221` and, for a leg that never ran, as explicit nulls at `:236-245`. But the leg's own `revision` is copied without being checked against the candidate (R3), and the digests are recorded without recomputation (R8). |
+| 5 | Same-gate re-dispatch stays distinct; a duplicate runId is refused | **True** | `:83-86`; `tests/unit/t75-evidence-index.test.mjs:248-269`. |
+| 6 | Declared and leg statuses are closed vocabularies | **Partly true** | Both sets exist and are enforced (`:40-41, 55, 130`). Leg statuses are closed for every leg. The declared-status check is only *tested* through the platform dimension, so restricting it to that dimension is undetectable (R5). The `gate` value is not closed at all (R6). |
+| 7 | `canonicalizeJsonV2` with `canonicalizationVersion: 2`, registered, pinned by a downstream-verifier recomputation | **True** | `:32, 160, 183`; the recompute test rebuilds the body from the published fields and recomputes rather than trusting the written value (`tests/unit/t75-evidence-index.test.mjs:302-315`); new register row in `docs/canonical-json-compatibility.md`. The import style matches the repository precedent (`scripts/generate-proof-artifact.mjs:20`). |
+| 8 | AD-014's scope boundary names the evidence index | **True** | `.specs/STATE.md:105` now reads "and the T75 qualification evidence index", with the matrix.md condition quoted. Part B gap G6 is closed. Minor follow-through: the DSSE migration plan's per-artifact predicate table (`.specs/features/dsse-attestation/migration.md:98-103`) still does not list it (R11). |
+| 9 | `pnpm t75:evidence-index` wires publication | **Partly true — the criterion is not met** | The script exists (`package.json`) and works: a clean generation exits 0, a contradicting generation exits 1 (observed). But an entry point is not a publication — see R7 and the assessment in A2. |
+
+### Re-checked against matrix.md section 8
+
+| # | Criterion | Part B | Now |
+| - | --------- | ------ | --- |
+| C1 | One entry per (dimension, case, platform, gate profile) **actually exercised**, naming the run id and the leg (matrix.md:321-322) | No | **Partly.** Platform cases now carry `observed: [{gate, runId, status}]` and reconcile against it. `gate-profile` cases carry `observed: []` and are never checked against the profiles supplied (R1). |
+| C2 | Per leg: platform, arch, runtime, candidate revision, the digest (:323-325) | No | **Yes** (`:54-70`), subject to R3/R8. |
+| C3 | Explicit not-qualified / not-configured entries for every case (:326-330) | Yes | **Yes**, and now stronger: an evidence note is mandatory (`:135-136`) and a declaration the fleet contradicts is downgraded rather than republished. |
+| C4 | A signature over the canonical index bytes (:331) | No, openly | **No, openly and now scheduled** — `signingState.signed = false` with the reason, plus AD-014 scope (C5). |
+| C5 | Unsigned-first requires the AD-014 scope entry (:333-340) | No | **Yes** (`.specs/STATE.md:105`). |
+| C6 | Publish; the named precedent is wired and drift-guarded (:342-346) | No | **Still no** (R7). |
+| C3′ | Criterion 3 binds platform, arch, runtime, fixture, candidate, evidence digests (:32) | Partial regression | **Mostly yes**: platform, arch, runtime, candidate and both digests per leg. Fixture is still absent, and the digests are transcribed rather than re-verified (R8). |
+
+### R1 demonstrated — a fleet-answerable dimension is still concatenated
+
+Every `gate-profile` case in `matrix.json` declares its evidence as, verbatim,
+`"fleet dispatch"`, and every fleet index names its own `gate`. The fleet can
+therefore answer this dimension exactly as it answers the platform dimension.
+It is not reconciled: `FLEET_DIMENSION` is the single string `"platform"`
+(`scripts/t75-evidence-index.mjs:47`), and `reconcile` returns the declaration
+untouched for every other dimension (`:140`).
+
+Generated through the real CLI with one `gate:security` index supplied:
+
+```
+profiles supplied: gate:security
+  gate-profile/quick    => qualified | observed: [] | contradiction: none
+  gate-profile/full     => qualified | observed: [] | contradiction: none
+  gate-profile/build    => qualified | observed: [] | contradiction: none
+  gate-profile/security => qualified | observed: [] | contradiction: none
+  gate-profile/release  => qualified | observed: [] | contradiction: none
+summary: {"cases":52,"qualified":41,…,"contradictions":0}
+```
+
+Four of the five profiles are published as qualified on the strength of "fleet
+dispatch" with no dispatch observed, and the artifact reports zero contradictions.
+This is the Part B defect in a second dimension, and the generator's own rule —
+"silence is not a pass" (`:110-116`) — is the rule it breaks.
+
+It is not hypothetical. matrix.md:401-406 records the four profiles dispatched at
+the qualification candidate `9aab070` as `security`, `full`, `build`, `release`;
+matrix.md:75 records `quick` as dispatched at a different revision (an earlier
+plumbing run). The remediation's own end-to-end verification over those four
+indexes reports **0 contradictions**, yet `gate-profile/quick` is asserted
+qualified at that candidate with nothing observing it. matrix.md:73-80 asks for
+exactly the opposite: "record all four run ids in the evidence index".
+
+### R3, R8, R9, R6 demonstrated (shipped code, no mutation)
+
+```
+P2 leg identity.revision = ffff… accepted; recorded verbatim; case still qualified; contradictions: 0
+P3 identityDigest that does not match its identity: recorded verbatim, never recomputed
+P4 fleet index claiming complete:true while carrying a failed leg: complete recorded as true
+P5 gate "gate:not-a-profile" accepted
+```
+
+P2 matters most of the four: the justification for refusing `revision: null` is
+that a supplied file may carry its producer's own rejection, and the same
+reasoning applies to a leg whose identity names a different candidate. The
+index-level check covers only the aggregate the workflow derived
+(`.github/workflows/platform-matrix.yml:317-324`), never the per-leg value the
+generator then republishes as bound evidence.
+
+## A2. Is an npm script "publish"? And was withholding the generated bytes right?
+
+**The reasoning is right; the conclusion drawn from it is not.**
+
+Not committing a revision-specific artifact into the tree is correct, and it
+matches the repository's own instinct — an index generated at one candidate would
+be stale at the next commit, and a committed stale index is worse than none. So I
+do not think the output belongs in Git as a tracked file.
+
+But the alternative to committing bytes is not producing none. As merged, running
+the generator leaves a gitignored file in a working directory and nothing else:
+no CI job runs it, nothing uploads it, no gate would notice if it broke against a
+real fleet index, and the author of the T75 report (task B3) must run it by hand
+and retype the numbers with nothing to cite. Two publication paths already exist
+and neither was taken:
+
+- `.github/workflows/platform-matrix.yml` already has an `index` job that uploads
+  its evidence with 90-day retention (`:333-339`); the reconciled index is the
+  natural companion artifact at the same revision.
+- matrix.md:342-346 names a precedent that publishes *into the repository at a
+  fixed location* and is guarded by a regenerating drift test — for a
+  revision-specific artifact the equivalent is an appendix under
+  `docs/qualification/`, generated once at the qualification revision and cited by
+  `t75-validation.md`.
+
+So C6 remains open, though less severely than in Part B: the mechanism exists and
+runs, but nothing publishes and nothing regenerates.
+
+## A3. Independent sensor — eight fresh mutations
+
+Chosen to be disjoint from the sixteen the author reports killing. Each applied to
+`scripts/t75-evidence-index.mjs`, run with
+`node --test tests/unit/t75-evidence-index.test.mjs`, then restored
+byte-identically (`restored-clean=true` after every run).
+
+Baseline before mutation: **21 pass, 0 fail**.
+
+| # | Mutation | Result | Failing test |
+| - | -------- | ------ | ------------ |
+| N1 | The citing `runId` is dropped from the recorded `observed` entries (contradiction text left intact) | **SURVIVED** (21/21) | none |
+| N2 | `contradictions` counted as rows whose status changed, so the stale-declaration contradiction never reaches the summary or the exit code | **SURVIVED** | none |
+| N3 | The CLI stops setting a non-zero exit code on contradictions | **SURVIVED** | none |
+| N4 | First observation wins; later profiles for the same leg ignored | killed (19/21) | "a single failed leg is enough to withhold qualification"; "a re-dispatch of the same profile is kept as separate evidence" |
+| N5 | A leg that reported gets the **candidate** revision stamped on it instead of the revision it reported | **SURVIVED** | none |
+| N6 | `declaredStatus` dropped from rows where it agrees with the reconciled status | **SURVIVED** | none |
+| N7 | The declared-status vocabulary is closed only for the platform dimension | **SURVIVED** | none |
+| N8 | The mandatory evidence note is required only for the platform dimension | killed (20/21) | "a declared case with no evidence note is refused by name" |
+
+**2 killed, 6 survived.** The suite is far stronger than Part B's — every Part B
+survivor now dies — but the new properties it introduced are themselves thinly
+pinned. N2 and N3 are the pair that matters: together they mean the entire
+"contradictions are enforced" mechanism can stop working in one direction with a
+fully green suite, because no test exercises the CLI and no test asserts
+`summary.contradictions` for the upgrade-direction contradiction.
+
+## A4. Vacuity re-check against the new code
+
+- **The CLI is still completely untested.** `scripts/t75-evidence-index.mjs:205-224`
+  — argument parsing, the file write, the summary line, and `process.exitCode = 1`
+  — is exercised by no test (N3 survived). It behaves correctly today, verified by
+  hand (`exit=0` clean, `exit=1` with a contradiction), but that behaviour is the
+  enforcement half of the headline claim and nothing holds it in place.
+- **`observed` entry shape is unasserted.** Only its length is checked
+  (`tests/unit/t75-evidence-index.test.mjs:261`) and, for a non-fleet dimension,
+  its emptiness (`:162`). N1 survived.
+- **`declaredStatus` is asserted only where it disagrees** (`:104`). N6 survived.
+- **The declared-vocabulary fixture cannot discriminate**: it mutates
+  `dimensions[0]`, which *is* the platform dimension (`:193-195`), so it cannot
+  tell "closed everywhere" from "closed for platform". N7 survived.
+- **Not vacuous, and worth keeping:** the red-fleet fixture now expresses all four
+  leg statuses the workflow can emit; the missing-leg row asserts explicit nulls
+  rather than absence; the digest test recomputes from published bytes instead of
+  reading the field beside it; the evidence-note requirement is checked on a
+  non-platform dimension (N8 died).
+
+## A5. Test integrity and gates
+
+- No test was weakened, skipped, or deleted: the suite grew from 8 to 21 cases; no
+  `skip`, `todo`, or `only` appears; every previous assertion survives in
+  strengthened form.
+- Every mutation was reverted byte-identically; the working tree contains no change
+  to `scripts/` or `tests/`.
+- `corepack pnpm gate:quick`: **PASS** — exit code 0, final line `gate:quick PASS`;
+  the agent-readiness stage reported `tests 145 / pass 145 / fail 0 / skipped 0 /
+  todo 0`, and the unit stage containing the 21 evidence-index cases passed in the
+  same run.
+
+## A6. Gaps, most severe first
+
+1. **R1 — the `gate-profile` dimension is still concatenated.** A dimension whose
+   declared evidence is literally "fleet dispatch" is never checked against the
+   dispatches supplied; a single-profile generation publishes all five profiles as
+   qualified with zero contradictions, and the author's own `9aab070` run has this
+   hole for `quick`. Same defect class as the one being remediated.
+2. **R2 — the contradiction mechanism's enforcement is untested.** N2 and N3 both
+   survive: the stale-declaration contradiction can stop being counted, and the CLI
+   can stop failing, without a single test noticing.
+3. **R3 — a leg's own `revision` is never checked against the candidate.** A leg
+   naming a different candidate is republished as bound evidence (P2), and
+   overwriting it with the candidate is undetectable (N5).
+4. **R4 — the provenance the artifact claims to keep is unpinned.** The citing
+   `runId` inside `observed` (N1) and `declaredStatus` on agreeing rows (N6) can
+   both vanish silently.
+5. **R5 — the declared-status vocabulary is only pinned on the platform
+   dimension** (N7), so an unknown status elsewhere would again be counted as
+   nothing.
+6. **R6 — `gate` is an open string.** `gate:not-a-profile` is accepted although the
+   profile set is closed in `scripts/gate-stages.mjs` and bound to the matrix by
+   `tests/agent-readiness/t75-matrix-declaration.test.mjs`. Closing it is most of
+   the fix for R1.
+7. **R7 — publication is still unmet.** An npm script is an entry point; nothing
+   runs it in CI, nothing uploads or attaches the bytes, nothing regenerates it.
+8. **R8 — recorded digests are transcribed, not re-verified**, although `identity`
+   is present to recompute `identityDigest` exactly as the workflow does
+   (`platform-matrix.yml:303-307`).
+9. **R9 — `complete` is trusted verbatim**: an index claiming `complete: true`
+   while carrying a failed leg is recorded as complete (leg reconciliation still
+   fails closed, so the impact is a misleading field, not a false qualification).
+10. **R10 — the documented argument style breaks.** AGENTS.md passes flags as
+    `corepack pnpm <script> -- --flag`; `pnpm t75:evidence-index -- --revision …`
+    fails with `ENOENT … open '--'` because every non-flag token is taken as a
+    fleet index path.
+11. **R11 — the DSSE migration plan's per-artifact predicate table** still omits
+    the evidence index that AD-014 now scopes.
+
+## A7. Shortest path to PASS
+
+1. Close the gate vocabulary and reconcile `gate-profile` against the supplied
+   profiles with the same fail-closed rule already written for platform (R1, R6) —
+   the observation source is `profiles[].gate`, which is already in hand.
+2. Test the CLI: a clean generation exits 0, a contradicting generation exits 1,
+   and the written file round-trips (R2, and it closes the last vacuity).
+3. Assert `summary.contradictions` in the stale-declaration case (R2/N2), the
+   `observed` entry shape (R4/N1), `declaredStatus` on an agreeing row (R4/N6), and
+   an unknown declared status in a non-platform dimension (R5/N7).
+4. Refuse a leg whose `identity.revision` is not the candidate (R3/N5).
+5. Publish: a CI step at the qualification revision that uploads the index beside
+   the fleet evidence, or a generated appendix cited by `t75-validation.md` (R7).
+
+---
+
+# Part B — First verification (verdict FAIL), recorded verbatim from `1fe398a`
+
+*Kept unchanged as committed evidence. It concerns `bc4a910`; findings G1-G7 below
+are superseded by Part A only where Part A says so.*
 
 **Verdict: FAIL.**
 
