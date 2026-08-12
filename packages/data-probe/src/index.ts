@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
 
+import { canonicalizeJsonV2 } from "@verchestra/domain";
+
 export const packageName = "@verchestra/data-probe" as const;
 
 export {
@@ -180,18 +182,15 @@ function positiveInteger(value: unknown, code: string, label: string): number {
   return value as number;
 }
 
-function canonical(value: unknown): string {
-  if (value === null || typeof value !== "object") return JSON.stringify(value);
-  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
-  const input = value as UnknownRecord;
-  return `{${Object.keys(input)
-    .sort()
-    .map((key) => `${JSON.stringify(key)}:${canonical(input[key])}`)
-    .join(",")}}`;
-}
-
 function digest(value: unknown): string {
-  return `sha256:${createHash("sha256").update(canonical(value)).digest("hex")}`;
+  return `sha256:${createHash("sha256").update(canonicalizeJsonV2(value)).digest("hex")}`;
+}
+// Code-unit comparison, not localeCompare: these sorts feed the returned
+// registration/plan shape, not just a digest input (AD-015, issue #58).
+function codeUnitCompare(left: string, right: string): number {
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
 }
 
 function deepFreeze<T>(value: T): Readonly<T> {
@@ -336,7 +335,7 @@ export class MemoryDatabaseRegistrationStore implements DatabaseRegistrationStor
     return Object.freeze(
       [...this.#registrations.values()]
         .filter((item) => item.workspaceId === workspaceId)
-        .sort((left, right) => left.databaseId.localeCompare(right.databaseId))
+        .sort((left, right) => codeUnitCompare(left.databaseId, right.databaseId))
     );
   }
 }
@@ -462,7 +461,7 @@ function normalizeOperation(value: unknown): NormalizedReadOperation {
     statementCount: 1,
     protectedRequestRef,
     objects: [...objectMap.values()].sort((left, right) =>
-      `${left.schema}.${left.name}.${left.type}`.localeCompare(`${right.schema}.${right.name}.${right.type}`)
+      codeUnitCompare(`${left.schema}.${left.name}.${left.type}`, `${right.schema}.${right.name}.${right.type}`)
     ),
     functions: uniqueSorted(
       Array.isArray(input.functions)

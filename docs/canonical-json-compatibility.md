@@ -74,7 +74,7 @@ comparison fails closed where identities are not interchangeable.
 | Agent runtime discovery: `source-snapshots.ts` | Context source snapshots, fact alternatives and selector material | portable, in-memory only; classified transient (T4e) — see rationale below | **Migrated (T4e).** `canonicalizeJsonV2` replaces the recursive serializer; selector, fragment, claim, and contradiction sorts now use code-unit `<`/`>` instead of `localeCompare`. | Done. `tests/unit/context-recipe.test.mjs`, `tests/contract/context-source-ports.test.mjs`, `tests/security/confluence-readonly-security.test.mjs` (63 cases, including a cross-locale recipe-digest test). |
 | Agent runtime backend: `backend-serializers.ts` | `SerializedContext.meaningDigest`, the `SemanticEquivalenceOracle`'s cross-run tree-equality comparison, and the `ContextCapacityEstimatorPort` surface named alongside it | portable, in-memory only; classified transient (T4e) — see rationale below | **Migrated (T4e).** Private `canonicalJson()` (was `backend-serializers.ts:59-65`) removed; `canonicalizeJsonV2` used for both the outbound serialization and the Oracle's cross-run comparison. | Done. `tests/contract/context-serializers.test.mjs`, `tests/security/context-serializer-security.test.mjs` (42 cases, including 6 cross-backend Oracle-equivalence tests). |
 | Policy: `cedar-policy.ts` | Policy view/evidence material and normalized layer order | authority | Recursive serializer and locale ordering | Version policy-view evidence; policy decisions never compare V1 and V2 digests as equal. |
-| Data probe: `database-knowledge.ts` | Source, fact-value, knowledge-package and promotion-plan digests | portable persistent | Recursive serializer and locale ordering of entities/facts | Version knowledge package and promotion-plan schemas; adapter outputs normalize domain sets before V2. |
+| Data probe: `database-knowledge.ts` + `index.ts` + `sqlserver-adapter.ts` + `sqlite-adapter.ts` + `sap-ase-adapter.ts` + `postgresql-adapter.ts` + `oracle-adapter.ts` + `mysql-family-adapter.ts` + `mongodb-adapter.ts` | Source, fact-value, knowledge-package, promotion-plan, and per-engine parsed-operation digests | classified transient (T4h) — see rationale below | **Migrated (T4h).** `canonicalizeJsonV2` replaces each file's independent recursive serializer; every functional sort (columns, entities, sources, facts, scenarios, per-engine parsed objects) now uses code-unit `<`/`>` instead of `localeCompare`. | Done. `tests/unit/database-knowledge.test.mjs` (cross-locale test) plus the full per-engine contract/security/integration suites, 523/528 cases unchanged (5 pre-existing Node-version-gap failures on this machine's `node:sqlite`, unrelated to this change and reproduced on `upstream/main` before it). |
 | Distribution: `hermetic-bundle.ts` | Release manifest/release digest | signed + persistent release identity | Recursive serializer and locale component ordering | Highest-risk slice: publish a new bundle schema/release format and retain V1 verification. |
 | Distribution: `transactional-activation.ts` | Transaction identity material and durable activation records | persistent local state | Recursive serializer for transaction identity; ordinary JSON writes for local journals | Migrate only after hermetic bundle V2; version durable receipt/pointer records. |
 | Distribution: `tuf-update-client.ts` | Staged receipt bytes | persistent local state | Ordinary `JSON.stringify`, no structured digest at write | Keep bytes as a versioned local receipt; classify separately from canonical digest migration. |
@@ -111,6 +111,7 @@ migrate-together and migrate-after rules.
 | T4g | `workspace-reconcile.ts`, `effect-contract.ts` | High | Durable idempotency keys. |
 | T4g | `workspace-reconcile.ts` (done); `effect-contract.ts` deferred | High | Durable idempotency keys — see the T4g classification below for why the two owners split. |
 | T4h | `database-knowledge.ts` + 7 adapters | Medium | Wide fan-out, uniform pattern. |
+| T4h | `database-knowledge.ts` + 7 adapters | Medium (reclassified transient, see below) | **Done.** Wide fan-out, uniform pattern. |
 | T4i | `canonical.ts` V1 facade + `execution-package.ts` | Highest | Signed evidence; the 11 pre-sort sites above must migrate with the facade. |
 | T4j | `hermetic-bundle.ts` then `transactional-activation.ts` | Highest | Release identity; matrix requires this order. |
 
@@ -332,6 +333,29 @@ slice rather than folded into T4g's "no pauses" cadence.
 
 Both calls were made following the same process as prior T4 slices: not
 asserted unilaterally, chosen by brunomjanuario (WS-C), flagged here for
+### T4h classification: transient, no persistence adapter anywhere in the package
+
+`packages/data-probe` declared zero dependencies before this migration
+(confirmed via its `package.json`) and has no real durable adapter for any of
+its digest-bearing types (`DatabaseKnowledgePackage`, `DatabaseSchemaSource`,
+`PromotedProbeEvidence`, `ProbePlan`, `DatabaseRegistration`, and each
+engine's `*ConnectionPlan`) — confirmed by grep across
+`packages/platform-node/src/` and `apps/vestra-cli/src/`: the only store
+implementation for `DatabaseRegistrationStorePort` is
+`MemoryDatabaseRegistrationStore`, an in-memory fixture, not a real adapter.
+Every digest comparison in this package (`packageDigestOf(...) !==
+packageValue.packageDigest`, `promotedEvidenceDigestOf(...) !==
+evidence.evidenceDigest`, each adapter's `canonical(operation) !==
+canonical(plan.operation)`) recomputes fresh from a value passed into the
+same call, never from a value reloaded from storage after a time gap. Same
+argument as T4e/T4f-trust-egress: no adapter, no table to orphan.
+
+`packages/data-probe/package.json` had no dependency on `@verchestra/domain`
+before this slice; it is added here (workspace protocol, `pnpm-lock.yaml`
+updated) so all nine files can use the shared `canonicalizeJsonV2` primitive.
+
+This classification was made following the same process as prior T4 slices:
+not asserted unilaterally, chosen by brunomjanuario (WS-C), flagged here for
 human review, not asserted as an owner (accd) decision.
 
 ## Completed vertical slice (T3)
