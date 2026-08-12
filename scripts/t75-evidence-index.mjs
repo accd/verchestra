@@ -57,7 +57,7 @@ const CONSISTENT_DISSENT = Object.freeze({
   "contract-qualified": new Set([])
 });
 
-const dissentIsConsistent = (declared, status) => (CONSISTENT_DISSENT[declared] ?? new Set()).has(status);
+const dissentIsConsistent = (declared, status) => CONSISTENT_DISSENT[declared].has(status);
 
 // The fleet answers two dimensions, and each has its own observable unit: a
 // platform case is a leg, a gate-profile case is a whole dispatch. Everything
@@ -92,8 +92,12 @@ function verifyLeg(leg, revision) {
 // has to be visible in the artifact, not inferred from a missing key.
 const orNull = (value) => value ?? null;
 
-function legRecord(leg, revision) {
+function legRecord(leg, revision, declaredLegs) {
   if (!LEG_STATUSES.has(leg.status)) throw new Error(`leg ${leg.leg} reports unknown status ${leg.status}`);
+  // Closed on the same reasoning as the gate vocabulary: a leg the matrix does
+  // not declare is recorded in the profile and read by no case, so its result --
+  // including its failure -- reaches the published index and counts for nothing.
+  if (!declaredLegs.has(leg.leg)) throw new Error(`leg ${leg.leg} is not a platform the matrix declares`);
   if (leg.identity) verifyLeg(leg, revision);
   const identity = leg.identity ?? {};
   return {
@@ -111,7 +115,7 @@ function legRecord(leg, revision) {
   };
 }
 
-function profileRecords(fleetIndexes, revision, declaredGates) {
+function profileRecords(fleetIndexes, revision, declaredGates, declaredLegs) {
   const runIds = new Set();
   return fleetIndexes.map((index) => {
     // A null revision is not a missing field: it is the workflow's own signal
@@ -133,7 +137,15 @@ function profileRecords(fleetIndexes, revision, declaredGates) {
     // discarding the run and reporting a contradiction that never happened.
     if (!index.gate.startsWith(GATE_PREFIX) || !declaredGates.has(index.gate.slice(GATE_PREFIX.length)))
       throw new Error(`fleet index ${index.runId} ran ${index.gate}, which the matrix does not declare`);
-    const legs = index.legs.map((leg) => legRecord(leg, revision));
+    const legs = index.legs.map((leg) => legRecord(leg, revision, declaredLegs));
+    // Two rows for one leg make the artifact order-dependent: whichever is read
+    // last decides the coverage verdict while the other decides the case row, and
+    // the two can disagree inside one file.
+    const seen = new Set();
+    for (const leg of legs) {
+      if (seen.has(leg.leg)) throw new Error(`fleet index ${index.runId} reports leg ${leg.leg} twice`);
+      seen.add(leg.leg);
+    }
     // Recomputed, never transcribed: a profile is complete only if it actually
     // ran every leg green. An index that disagrees with itself is reported.
     const complete = legs.length > 0 && legs.every((leg) => leg.status === "qualified");
@@ -182,10 +194,14 @@ function fleetObservations(profiles) {
   for (const profile of profiles) {
     const cite = { gate: profile.gate, runId: profile.runId };
     for (const leg of profile.legs) record("platform", leg.leg, { ...cite, status: leg.status });
+    // The excused legs travel with the observation, so a reader of the
+    // gate-profile row sees the scope the verdict was reached under without
+    // having to join it back to the profile that produced it.
     record("gate-profile", profile.gate.slice(GATE_PREFIX.length), {
       ...cite,
       status: profile.shortfall.length === 0 ? "qualified" : "incomplete",
-      ...(profile.shortfall.length === 0 ? {} : { detail: profile.shortfall.join(", ") })
+      ...(profile.shortfall.length === 0 ? {} : { detail: profile.shortfall.join(", ") }),
+      ...(profile.excused.length === 0 ? {} : { excused: profile.excused })
     });
   }
   return observed;
@@ -231,17 +247,24 @@ function fleetVerdict(item, observations) {
 }
 
 function reconcile(dimension, item, observed) {
-  if (!DECLARED_STATUSES.has(item.status)) throw new Error(`case ${item.case} declares unknown status ${item.status}`);
-  // Every case carries the note that says why it holds the status it holds. A
-  // status without its reason is the row a reader cannot act on, so a
-  // declaration missing one is refused by name here rather than surfacing later
-  // as canonicalization rejecting an undefined.
-  if (typeof item.evidence !== "string" || item.evidence.length === 0)
-    throw new Error(`case ${item.case} declares no evidence note`);
   const base = { case: item.case, declaredStatus: item.status, status: item.status, evidence: item.evidence };
   if (!FLEET_DIMENSIONS.has(dimension)) return { ...base, observed: [] };
   const observations = observed.get(`${dimension}/${item.case}`) ?? [];
   return { ...base, ...fleetVerdict(item, observations), observed: observations };
+}
+
+// Validated before anything reads a status, so no later lookup has to carry a
+// fallback for a value the declaration should never have contained. Every case
+// also carries the note that says why it holds the status it holds: a status
+// without its reason is a row a reader cannot act on.
+function validateDeclaration(matrix) {
+  for (const entry of matrix.dimensions)
+    for (const item of entry.cases) {
+      if (!DECLARED_STATUSES.has(item.status))
+        throw new Error(`case ${item.case} declares unknown status ${item.status}`);
+      if (typeof item.evidence !== "string" || item.evidence.length === 0)
+        throw new Error(`case ${item.case} declares no evidence note`);
+    }
 }
 
 export function buildEvidenceIndex(matrix, fleetIndexes, revision) {
@@ -252,12 +275,14 @@ export function buildEvidenceIndex(matrix, fleetIndexes, revision) {
   const declaredGates = new Set(
     (matrix.dimensions.find((entry) => entry.dimension === "gate-profile")?.cases ?? []).map((item) => item.case)
   );
+  validateDeclaration(matrix);
   const platformCases = matrix.dimensions.find((entry) => entry.dimension === "platform")?.cases ?? [];
   // A matrix expecting no platform to be green would qualify every profile for
   // free, since there would be nothing for a dispatch to fall short of.
   if (!platformCases.some((item) => item.status === "qualified"))
     throw new Error("the matrix declares no platform expected to be qualified, so no profile can be covered");
-  const dispatched = profileRecords(fleetIndexes, revision, declaredGates);
+  const declaredLegs = new Set(platformCases.map((item) => item.case));
+  const dispatched = profileRecords(fleetIndexes, revision, declaredGates, declaredLegs);
   const profiles = dispatched.map((profile) => ({ ...profile, ...profileCoverage(profile, platformCases) }));
   const observed = fleetObservations(profiles);
   const dimensions = matrix.dimensions.map((entry) => ({
@@ -282,6 +307,12 @@ export function buildEvidenceIndex(matrix, fleetIndexes, revision) {
       environmental: counted("environmental"),
       contradictions: recorded.filter((item) => item.contradiction !== undefined).length
     },
+    // Which digests this index re-derived and which it copied. Presenting both
+    // identically would let a reader take a transcribed value for a checked one.
+    // `legDigest` covers the unsealed leg record, and the fleet index does not
+    // carry that material -- its producer recomputes it and reports disagreement
+    // as `digest-mismatch`, which this index treats as dissent.
+    digestProvenance: { identityDigest: "recomputed", legDigest: "transcribed" },
     dimensions,
     // `shortfall` drove the gate-profile verdict and is already spelled out in
     // that case's contradiction; `excused` stays, because it is the scope the
@@ -323,9 +354,11 @@ const invokedDirectly = process.argv[1] && resolve(process.argv[1]) === fileURLT
 if (invokedDirectly) {
   const args = process.argv.slice(2);
   const revisionAt = args.indexOf("--revision");
-  if (revisionAt === -1) throw new Error("usage: t75-evidence-index.mjs --revision <sha> <fleet-index.json...>");
+  if (revisionAt === -1 || args[revisionAt + 1] === undefined)
+    throw new Error("usage: t75-evidence-index.mjs --revision <sha> [--out <path>] <fleet-index.json...>");
   const revision = args[revisionAt + 1];
   const outAt = args.indexOf("--out");
+  if (outAt !== -1 && args[outAt + 1] === undefined) throw new Error("--out needs a path");
   const output = outAt === -1 ? OUTPUT : args[outAt + 1];
   // `pnpm run <script> -- --revision ...` forwards the separator verbatim, which
   // is the invocation style AGENTS.md documents; treat it as the no-op it is.
