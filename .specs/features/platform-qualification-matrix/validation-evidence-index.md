@@ -1,13 +1,243 @@
 # Independent verification — T75 evidence index generator
 
-Two verification passes by the same independent verifier (author ≠ verifier).
-Part A is the current re-verification of the remediation `ce9ff65`. Part B is the
-first pass over `bc4a910`, whose FAIL verdict was committed as `1fe398a` before
-any fix; it is kept verbatim below because it is committed evidence.
+Three verification passes by the same independent verifier (author ≠ verifier).
+Part Z is the current round over `53a241d` (checked at HEAD `336be19`). Part A is
+the second round over `ce9ff65`. Part B is the first round over `bc4a910`, whose
+FAIL verdict was committed as `1fe398a` before any fix. All three are kept because
+the earlier two are committed evidence.
 
 ---
 
-# Part A — Re-verification of `ce9ff65`
+# Part Z — Third round: verification of `53a241d`
+
+**Verdict: FAIL.** Narrower again, and the trajectory is real: round 1 found a
+concatenation where a reconciliation was claimed, round 2 found a second
+fleet-answerable dimension left unreconciled, and this round finds no structural
+absence at all. It fails on a soundness hole inside the new coverage rule, one
+outright bug that silently discards a supplied fleet index, and a sensor in which
+five of seven fresh mutations survive.
+
+Checked at HEAD `336be19` (the tip moved during this pass; `336be19` is docs-only
+over `53a241d` — `git diff --stat 53a241d 336be19` touches two `.md` files, so
+every code finding below applies to both).
+
+- Baseline: `node --test tests/unit/t75-evidence-index.test.mjs` → **30 pass, 0
+  fail, 0 skipped, 0 todo**
+- Source restored byte-identically after every mutation
+  (`git diff --exit-code -- scripts/t75-evidence-index.mjs` clean after each).
+
+## Z1. The nine claims
+
+| # | Claim | Verdict | Evidence |
+| - | ----- | ------- | -------- |
+| 1 | `gate-profile` reconciled; one observation table; gate vocabulary is the declaration's own case set | **True** | `scripts/t75-evidence-index.mjs:53, 108-112, 128-151`; `tests/unit/…:194-219`. Verified independently: one dispatch → the other four profiles `not-qualified` with the "no supplied fleet evidence" contradiction. An undeclared gate is refused (`:111-112`). One defect in the vocabulary path — see Z4/P3. |
+| 2 | A dispatch covers its profile only if every leg the declaration **expects green** came back green | **Rationale sound, implementation unsound** | The reasoning about `environmental` is right; the implementation makes the declaration under verification decide how strictly it is verified, with no floor and no contradiction when a non-expected leg comes back red. See Z2 — this is gap 1. |
+| 3 | Foreign-candidate leg refused; `identityDigest` recomputed; `legDigest` still transcribed | **True; transcription acceptable** | `:61-67, 74-77`; `tests/unit/…:101-122`. On `legDigest`: the fleet index genuinely lacks the material to recompute it — the workflow digests `{schemaVersion, identity, identityDigest, outcome}` and the index job drops `schemaVersion` and `outcome` when projecting a leg (`platform-matrix.yml:308-314`) — and the producer already recomputes it, surfacing disagreement as `digest-mismatch`, which this generator treats as dissent. Not a real gap. One caveat in Z5. |
+| 4 | `complete` recomputed; a self-disagreeing index refused | **True** | `:114-118`; `tests/unit/…:124-134`. |
+| 5 | Citing `runId`; `declaredStatus` on agreeing rows; vocabulary closed on every dimension | **True** | `:135, 181, 188`; `tests/unit/…:267-285, 298-310`. |
+| 6 | CLI tests for both exit codes | **True, and they found a real bug** | `tests/unit/…:426-457`; verified by hand: `exit=0` clean, `exit=1` contradicting. But the fixture always passes `--out`, and that is precisely why gap 2 is invisible to it. |
+| 7 | `--` tolerated | **True** | `:276`; exercised by the CLI tests, which invoke through the separator. |
+| 8 | Output un-gitignored, moved to the feature directory, and the index built at the qualification revision **is committed** | **Half true — the second half is not true of the tree** | Un-gitignored and relocated: yes (`:36-39`, `.gitignore` row removed). Committed: **no**. `git ls-files` shows no `evidence-index.json` anywhere, and `docs/qualification/t75-validation.md` does not exist. The handoff itself scopes this correctly as remaining work under B3; the claim as put to me overstates it. C6 stays open. |
+| 9 | R11 (DSSE predicate table) is **not** done | **False — it is done** | `.specs/features/dsse-attestation/migration.md:111` now carries a ninth row, "T75 qualification evidence index … `…/attestation/qualification-evidence-index/v1`", plus the scope sentence at `:126-127`. Added by `336be19`, which landed after the message describing this round. R11 is closed. |
+
+### On the live `9aab070` finding
+
+Treating `gate-profile/quick` as a true contradiction is **correct** and papers
+over nothing: matrix.md:401-406 lists `security/full/build/release` at that
+candidate and matrix.md:75 puts `quick` elsewhere, so the declaration is
+unsubstantiated at the candidate and the index is right to refuse it.
+
+One thing the headline number does hide, and it belongs in the report rather than
+in a verifier's note: the same run silently converts four `darwin-x64` absences
+into non-events through the expected-green rule, and nothing in the artifact
+records that the exclusion happened. A reader of `gate-profile/security =
+qualified` cannot tell from the row that it means "covered on the four legs the
+declaration expects", not "ran everywhere". The observation entry carries
+`{gate, runId, status}` and never names the expected set it was judged against.
+
+## Z2. Gap 1 — the coverage rule lets the declaration decide how hard it is checked
+
+`expectedLegs` is derived from the platform cases the same declaration marks
+`qualified` (`:204-208`), and a dispatch is covered when every expected leg is
+green (`:143-148`). Two consequences, both demonstrated against shipped code:
+
+**A leg downgraded in the declaration stops being able to contradict anything.**
+Declaring `linux-arm64` `environmental` and then supplying a fleet in which
+`linux-arm64` **failed in every one of the five dispatches**:
+
+```
+P1 gate-profiles: quick=qualified,full=qualified,build=qualified,security=qualified,release=qualified
+P1 linux-arm64 row: environmental | contradiction: NONE | observed: {"gate":"gate:quick","runId":"run-quick","status":"failed"}
+P1 total contradictions: 0
+```
+
+The failure is in the artifact — the `observed` entry says `failed` — but nothing
+counts it, nothing names it, and the CLI exits 0. The stale-declaration
+contradiction (`:172-176`) only fires when **every** observation is qualified, so
+`environmental` + `failed` is the one combination that produces silence. Yet
+`environmental` means "not qualified for a reason **outside the product**"
+(`matrix.json` statuses); a leg that dequeued and failed refutes that specific
+reason. The rule "an observation never upgrades a declaration" has no counterpart
+in the other direction.
+
+**There is no floor.** With every platform case declared `environmental`, the
+expected set is empty and an all-red fleet covers every profile:
+
+```
+P2 gate-profiles with an all-red fleet: quick=qualified,full=qualified,build=qualified,security=qualified,release=qualified
+P2 contradictions: 0
+```
+
+The author applied exactly this defensive instinct one function earlier —
+`complete` carries a `legs.length > 0 &&` floor (`:116`) — and not here.
+
+**No existing test blocks either.** `tests/agent-readiness/t75-matrix-declaration.test.mjs`
+pins the platform *case set* against the workflow, pins `darwin-x64` as
+`environmental`, and requires a >40-character note on any non-qualified case. It
+does not require any platform case to be `qualified`. So both edits above pass the
+full gate.
+
+The fix is small and does not disturb the rationale: excuse a leg only when the
+observation matches the declared reason (`environmental` is discharged by
+`missing`, not by `failed`/`digest-mismatch`), and refuse an empty expected set.
+
+## Z3. Gap 2 — the CLI silently discards a supplied fleet index
+
+`:271-276`. When `--out` is absent, `outAt === -1`, so
+`consumed = new Set([revisionAt, revisionAt + 1, outAt, outAt + 1])` contains
+`-1` **and `0`** — and `args[0]` is dropped from the file list. Two indexes
+supplied with the flag after the files:
+
+```
+files before --revision, no --out : profiles actually used: run-security        (37/52, 4 contradictions)
+documented order                  : profiles actually used: run-full,run-security (38/52, 3 contradictions)
+```
+
+`run-full` vanishes. The run still exits 1 and still writes a plausible index, so
+the loss looks like a finding rather than a bug. This is silently discarded
+evidence in the artifact whose stated purpose is to prevent exactly that. The CLI
+tests never see it because they always pass `--out` (`tests/unit/…:438`) — a
+fixture that cannot express the failing case, the same class as rounds 1 and 2.
+
+## Z4. Independent sensor — seven fresh mutations
+
+Disjoint from the fifteen reported as already dead. Baseline **30 pass, 0 fail**;
+restored byte-identically after each.
+
+| # | Mutation | Result | Failing test |
+| - | -------- | ------ | ------------ |
+| Q1 | A leg's revision and identity digest are verified only when it claims to pass | **SURVIVED** (30/30) | none |
+| Q2 | Verification skipped for a leg that carries an identity but no `identityDigest` — bypassing the revision check too | **SURVIVED** | none |
+| Q3 | The conditional gate-prefix strip becomes unconditional | **SURVIVED** | none |
+| Q4 | A leg that came back `missing` or `digest-mismatch` still counts towards its profile's coverage; only `failed` withholds it | **SURVIVED** | none |
+| Q5 | The `legs.length > 0` floor on recomputed completeness is dropped | **SURVIVED** | none |
+| Q6 (control) | A profile missing one expected leg still counts as covering it | killed (29/30) | "a gate profile that half-ran has not exercised its stages" |
+| Q7 (control) | `--out` parsed and ignored again | killed (28/30) | both CLI tests |
+
+**2 killed, 5 survived.** Q4 is the most serious: the new coverage rule is only
+enforced against `failed`, and no fixture ever places an expected leg in `missing`
+or `digest-mismatch` inside an otherwise-complete dispatch. Q1 and Q2 sit directly
+on this round's other new code: the leg verification can be narrowed to green legs,
+or bypassed entirely for a leg that omits its digest, with nothing noticing — and
+Q2's shape (`if (leg.identity && leg.identityDigest)`) is the exact defensive
+edit a later contributor would plausibly make.
+
+Q3 confirms the `startsWith(GATE_PREFIX)` branch at `:110` is dead code, and it is
+inconsistent with the unconditional `slice` at `:145`. The consequence in shipped
+code (P3):
+
+```
+P3 profile gate recorded: security | gate-profile/security => not-qualified
+   | declared qualified, but no supplied fleet evidence covers this case
+P3 observations landed under gate-profile: [["quick",0],["full",0],["build",0],["security",0],["release",0]]
+```
+
+A fleet index naming a declared profile without the `gate:` prefix passes
+validation, is then keyed as `gate-profile/urity`, and its real evidence is
+discarded while a false contradiction is reported. It fails closed, but by
+discarding evidence and inventing a finding.
+
+## Z5. Vacuity re-check
+
+- **Fixtures still cannot express two live shapes**: an expected leg in `missing`
+  or `digest-mismatch` inside an otherwise complete dispatch (Q4), and a CLI
+  invocation without `--out` (Z3). Both are exactly where the round's two worst
+  findings live.
+- **Untested branches**: the gate-prefix conditional (Q3), the empty-legs profile
+  (Q5), a leg with an identity but no digest (Q2), and a non-green leg's identity
+  verification (Q1).
+- **Not vacuous, and a genuine improvement**: the CLI is now exercised for both
+  exit codes and its written file is parsed back; `observed` entries are compared
+  by full value including the citing run; `declaredStatus` is asserted on every
+  row; the closed vocabulary is checked on three dimensions including a non-fleet
+  one; the digest test recomputes from published bytes.
+- **One artifact-level caveat** (low): `identityDigest` is re-verified and
+  `legDigest` is transcribed, and the index does not say which is which, so a
+  downstream reader cannot tell how far the digests were checked.
+
+## Z6. Test integrity and gates
+
+- No test weakened, skipped, or deleted: the suite grew from 21 to 30 cases; no
+  `skip`, `todo`, or `only`; every earlier assertion survives or is strengthened.
+- Working tree contains no change to `scripts/` or `tests/`; every mutation was
+  reverted byte-identically. Two generated `evidence-index.json` files produced
+  while exercising the CLI were removed; `git status` is clean apart from this
+  report.
+- `corepack pnpm gate:quick`: **PASS** — exit code 0, final line `gate:quick PASS`;
+  the agent-readiness stage reported `tests 145 / pass 145 / fail 0 / skipped 0 /
+  todo 0`, and the unit stage containing the 30 evidence-index cases passed in the
+  same run.
+
+## Z7. Gaps, most severe first
+
+1. **The coverage rule is governed by the declaration it verifies.** A leg
+   downgraded to `environmental` can fail in every dispatch with zero
+   contradictions and no effect on profile coverage; an all-`environmental`
+   platform dimension makes an all-red fleet fully covering. No floor, no
+   red-under-environmental contradiction, and no declaration test forbids either.
+2. **The CLI drops `args[0]` whenever `--out` is omitted**, silently building the
+   index from fewer runs than were supplied.
+3. **Coverage is only enforced against `failed`** (Q4): an expected leg returning
+   `missing` or `digest-mismatch` counting as covered survives the suite.
+4. **The new leg verification is thinly pinned** (Q1, Q2): it can be narrowed to
+   green legs or bypassed for a leg without a digest, undetected.
+5. **The gate-prefix branch is dead and inconsistent** (Q3, P3): a declared but
+   unprefixed gate is accepted, mis-keyed, its evidence discarded and a false
+   contradiction reported.
+6. **C6 (publish) is still open**: no `evidence-index.json` is committed anywhere
+   and `t75-validation.md` does not exist. The path is now tracked and the ignore
+   rule is gone, so the remaining step is small and is correctly scheduled in the
+   handoff — but nothing is published today, and no gate ensures a committed index
+   would stay in step with its generator.
+7. **The gate-profile row does not state its own scope**: `qualified` means
+   "covered on the expected legs", and neither the row nor its observations names
+   which legs were excluded.
+8. **The empty-legs profile is untested** (Q5).
+9. **Verified and transcribed digests are indistinguishable in the artifact**
+   (low; `legDigest` transcription itself is acceptable).
+
+R11 is **closed**, not open: the DSSE predicate table carries the index at
+`migration.md:111`.
+
+## Z8. Shortest path to PASS
+
+1. Discharge an `environmental`/`not-qualified` platform case only when the
+   observation matches the declared reason, and record a contradiction when such a
+   leg is observed `failed` or `digest-mismatch`; refuse an empty expected set
+   (gap 1).
+2. Fix the `--out` argument parsing and add a CLI case that omits `--out` (gap 2).
+3. Add a fixture with an expected leg in `missing`/`digest-mismatch` inside an
+   otherwise complete dispatch (gap 3), a non-green leg with a bad identity, and a
+   leg carrying an identity without a digest (gap 4).
+4. Make the gate-prefix handling one rule, and test the unprefixed input (gap 5).
+5. Record the expected-leg set in the gate-profile observation so `qualified`
+   states its own scope (gap 7).
+6. Commit the index generated at the qualification revision beside the T75 report,
+   with the fleet indexes it was built from, so it can be re-derived (gap 6).
+
+---
+
+# Part A — Second round: re-verification of `ce9ff65`
 
 **Verdict: FAIL.** Substantially narrower than Part B: seven of the nine Part B
 gaps are genuinely closed, and the reconciliation is real. It fails on two
