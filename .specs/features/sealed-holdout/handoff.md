@@ -3,13 +3,27 @@ schema: verchestra-feature-handoff/v1
 feature: sealed-holdout
 issue: 15
 status: in_progress
-branch: codex/t74-qualification
-baseRevision: cdd73b764b85732f797da68df84f3f01eabb9f5a
+branch: codex/t74-reverification
+baseRevision: 36fb77fbc20c9d5cd2810196bf2007968eb7e087
 lastCompletedTask: T5
-nextTask: "F1 and F2 both remediated (PRs #264, #260) under AD-018. Next: MiguelCorre re-runs the independent T74 verification against current main — author != verifier, and accd authored both remediations."
-lastGate: gate:security and gate:full PASS after both remediations; sensors 6/6 (F2) and 6/6 (F1)
-updatedAt: 2026-08-11T19:40:00Z
+nextTask: "Implementation author remediates repeat-verification F3: move results out of CandidateFacts, establish evaluator-owned provenance, validate the exact result set, and recompute aggregates; then MiguelCorre re-verifies."
+lastGate: "Repeat verification FAIL at 36fb77f: 94/94 focused and 8/8 sensors pass; gate:quick PASS; gate:security incomplete on unrelated Windows EBUSY cleanup; F3 promotes five invalid candidate-controlled evidence sets."
+updatedAt: 2026-08-17T16:44:53Z
 ---
+
+# Repeat verification failed on F3 (2026-08-17)
+
+F1 and F2 pass independent re-verification: 94 focused cases pass and eight of
+eight mutations are killed with no source residue. T74 still fails because
+`CandidateFacts.results` lets the candidate supply the evidence used to promote
+itself, while the gate performs no runtime result validation or evaluator-side
+recomputation. Forged metrics, a string lower bound, duplicate ids with a
+passing last entry, an extra failed campaign, and live replacement through the
+candidate callback all produce `PROMOTED`.
+
+The full experiment, gate evidence, sensor, and exact remediation are recorded
+in `validation.md`. Do not create `docs/qualification/t74-validation.md` or
+advance the chain until F3 is remediated and independently re-verified.
 
 # F2 remediated (2026-08-11, PR #260)
 
@@ -81,7 +95,7 @@ status surfaces to "T74 complete; T75 next".
 - `pnpm gate:quick` PASS; `pnpm gate:security` and `pnpm gate:build` confirm the
   security and contract/e2e surfaces.
 
-# Independent verification result
+# First independent verification result
 
 Independent verification at `cdd73b7` is **FAIL**. The implemented rule
 surface passes 58 focused cases, `gate:quick`, externally dispatched
@@ -98,15 +112,15 @@ The complete evidence and exact remediation are in `validation.md`.
 
 # Next action
 
-The implementation authors remediate F1 and F2 with behavior-focused security,
-fault, contract, and E2E evidence. An independent verifier then repeats the
-audit. Do not add `docs/qualification/t74-validation.md` or advance the status
-surfaces until that verification passes.
+The implementation author remediates F3 with behavior-focused unit, security,
+and E2E evidence. An independent verifier then repeats the audit. Do not add
+`docs/qualification/t74-validation.md` or advance the status surfaces until
+that verification passes.
 
 # Blockers
 
-F1 and F2 in `validation.md` block T74 qualification and the serial chain. T75
-must not be treated as the next qualified task until both are remediated and an
+F3 in `validation.md` blocks T74 qualification and the serial chain. T75 must
+not be treated as the next qualified task until it is remediated and an
 independent PASS report lands.
 
 # Follow-ups

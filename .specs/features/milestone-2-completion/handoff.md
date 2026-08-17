@@ -4,11 +4,11 @@ feature: milestone-2-completion
 issue: null
 status: in_progress
 branch: main
-baseRevision: cdd73b764b85732f797da68df84f3f01eabb9f5a
+baseRevision: 36fb77fbc20c9d5cd2810196bf2007968eb7e087
 lastCompletedTask: null
-nextTask: B2
-lastGate: gate:quick (local) and externally dispatched gate:build PASS at 23e78dc; run 31525323571
-updatedAt: 2026-08-11T20:15:00Z
+nextTask: T74 F3 implementation remediation, then resume B2
+lastGate: "B2 repeat verification FAIL at 36fb77f: F1/F2 pass 8/8 sensor; F3 accepts candidate-controlled invalid results; gate:quick PASS; gate:security incomplete on Windows EBUSY cleanup"
+updatedAt: 2026-08-17T16:44:53Z
 ---
 
 # Scope
@@ -70,6 +70,12 @@ issues distributed across workstreams WS-A (accd), WS-B (MiguelCorre), WS-C
   `gate:quick` (local) and externally dispatched `gate:build` run 31525323571
   pass with zero skipped/todo. The report and every derived status surface
   advance atomically to "T73 complete; T74 next".
+- 2026-08-17 — **B2 repeat verification failed:** F1 and F2 pass the
+  independent audit and an eight-mutation sensor, but F3 proves the promotion
+  gate accepts candidate-controlled, internally inconsistent campaign results.
+  Five adversarial evidence sets promote. No qualification report or chain
+  advance was made; implementation-author remediation is required before B2
+  resumes.
 
 # Tracking gap closed (2026-08-09)
 
@@ -82,12 +88,13 @@ Not new scope — restored visibility of scope the ADs already committed to.
 
 # Next Exact Action
 
-**B2 (MiguelCorre): author `docs/qualification/t74-validation.md`.** C4 has
-landed the independent T73 report and unblocked the serial chain. Re-derive
-the T74 adequacy matrix, verify the sealed-holdout evaluator's isolation
-guarantees, run the required `pnpm gate:security`, satisfy
-`docs/qualification/REPORT-CONTRACT.md`, and advance every derived status
-surface atomically to "T74 complete; T75 next".
+**T74 F3 remediation (implementation author), then resume B2 (MiguelCorre).**
+Move campaign results out of `CandidateFacts`, establish evaluator-owned
+provenance, validate one result per sealed campaign with no duplicate or extra
+id, and recompute aggregates from observed outcomes. After that lands,
+MiguelCorre repeats the adversarial experiment and qualified-runtime security
+gate. Only a PASS permits `docs/qualification/t74-validation.md` and the atomic
+advance to "T74 complete; T75 next".
 
 Parallel starts that block nobody: C2 (#58 remaining T4b–T4j slices,
 in progress), A3 (T75 remaining matrices), A4 (#35 live cross-driver
