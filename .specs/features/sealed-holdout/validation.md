@@ -1,6 +1,116 @@
 # T74 Sealed-Holdout Independent Validation
 
-## Verdict
+## Repeat verification — 2026-08-17
+
+### Verdict
+
+**FAIL — T74 remains unqualified and the chain remains at "T73 complete;
+T74 next".** The F1 authority boundary and F2 evidence binding are now
+implemented and independently discriminated, but a new release-blocking gap
+remains: the promotion gate accepts candidate-controlled campaign results
+without runtime validation or evaluator-side recomputation.
+
+This repeat verification is bound to
+`36fb77fbc20c9d5cd2810196bf2007968eb7e087`, the current reachable `main`
+revision. The F1/F2 remediations were authored by `accd`; this verification,
+the adversarial experiment, and the eight-mutation sensor are authored by
+`MiguelCorre`, preserving author != verifier. No
+`docs/qualification/t74-validation.md` is added and no status surface advances.
+
+### Passing and incomplete evidence
+
+| Evidence | Result |
+| --- | --- |
+| Focused unit, contract, security, and E2E | 94 passed, 0 failed, 0 skipped, 0 todo |
+| F1/F2 discrimination sensor | 8 killed, 0 survived; source restored and `git diff --exit-code` passed |
+| `pnpm gate:quick` | PASS locally: 2,062 unit and 149 agent-readiness cases, zero skipped/todo |
+| `pnpm gate:security` | INCOMPLETE locally: formatting, lint, complexity, typecheck, build, 2,062 unit, and 497 contract cases passed; E2E reached 164/165 before Windows returned `EBUSY` while removing a Self-Test temporary repository. Repeating the isolated file moved the same cleanup failure to another otherwise-passing case. The generated temporary directory was removed afterward. |
+| Toolchain | Local Node 24.18.0 with pnpm 10.34.5; the repository pins Node 24.14.0, so these local gate runs are diagnostic and are not presented as final qualification evidence |
+
+### F1/F2 re-verification
+
+- **F1 PASS under AD-018.** `runPromotion()` now issues the candidate a real
+  invocable grant over the oracle, criteria, evaluator state, and pre-seal
+  report. The grant admits no read or mutation authority, and the denial is
+  produced by the attempted operation rather than by a caller-supplied fact.
+  Four mutations were killed: granting every protected asset, not invoking the
+  candidate hook, hard-coding `grantedAssets` to empty, and replacing the deep
+  snapshot with a shallow copy.
+- **F2 PASS.** The admitted campaign evidence now changes `evidenceDigest`,
+  `bodyDigest`, `payloadDigest`, and `sourceStateDigest`; the source-state digest
+  binds both oracle and evidence. Four mutations were killed: a constant
+  evidence digest, source state omitting evidence, source state omitting the
+  oracle, and the signed body omitting `policyId`.
+- **PROM-05 remains PARTIAL by explicit decision.** Contamination is still a
+  supplied boolean fact. AD-018 did not promote it to an observed property.
+
+### F3 — Blocker: candidate-controlled campaign results are trusted without validation
+
+`apps/vestra-cli/src/promotion-composition.ts:CandidateFacts` includes
+`results`, so the untrusted candidate supplies the evidence used to authorize
+its own promotion. `assertInput()` only checks `Array.isArray(input.results)`.
+`campaignBlocks()` then builds a `Map` whose duplicate ids use last-write-wins
+and trusts `samples` and `lowerConfidenceBound` directly. It does not validate
+the runtime shape, require an exact one-to-one result set, or recompute the
+statistics through `evaluateCampaign()`.
+
+The following five adversarial inputs all returned
+`{"verdict":"PROMOTED","blocks":[]}` at the bound revision:
+
+| Case | Candidate-supplied evidence |
+| --- | --- |
+| Forged metrics | `samples=50`, `passes=0`, `passRate=0`, `lowerConfidenceBound=1`, `verdict=FAIL` |
+| Malformed bound | The same failing evidence with string `lowerConfidenceBound="1"`; JavaScript coercion clears the numeric threshold |
+| Duplicate id | A failing `alpha` result followed by a passing `alpha` result; `Map` retains the latter |
+| Extra failure | A passing required `alpha` plus an extra failed campaign; the extra failure is signed but ignored by the verdict |
+| Live candidate mutation | `runPromotion()` starts with an honestly failed result; `candidate.attempt` replaces `candidate.results` with a forged bound before the input is built, and the final report is signed as `PROMOTED` |
+
+This is not only defense in depth in the current composition: the values enter
+through `CandidateFacts`, while the specification says the evaluator runs the
+sealed evaluation and the candidate must not shape its promotion evidence. A
+valid static TypeScript type does not establish runtime provenance or
+consistency at this trust boundary.
+
+Required remediation:
+
+1. Remove campaign evidence from `CandidateFacts`; the composition root must
+   obtain it from an evaluator-owned surface that the candidate cannot set.
+2. Fail closed unless there is exactly one valid result for every sealed oracle
+   entry and no duplicate or extra id.
+3. Validate all runtime fields and recompute `passes`, `passRate`,
+   `lowerConfidenceBound`, and verdict from evaluator-observed outcomes (or
+   verify equivalent evaluator-authenticated evidence) rather than trusting
+   reported aggregates.
+4. Add unit, security, and E2E regressions for the five cases above and a
+   discrimination mutation that removes the admission validation.
+
+### Repeat sensor
+
+Each mutation was applied alone, exercised by the smallest focused test, and
+reversed immediately. Restoration was proven by `git diff --exit-code`.
+
+| # | Property | Mutation | Result |
+| --- | --- | --- | --- |
+| M1 | F1 zero candidate authority | Grant read and mutation authority over every protected asset | KILLED |
+| M2 | F1 production wiring | Do not invoke `candidate.attempt` from `runPromotion()` | KILLED |
+| M3 | F1 observable authority | Hard-code `grantedAssets` to `[]` | KILLED |
+| M4 | F1 read/write separation | Replace the structured snapshot with a shallow copy | KILLED |
+| M5 | F2 evidence sensitivity | Replace `evidenceDigest` with a constant valid digest | KILLED |
+| M6 | F2 source-state evidence binding | Hash only the oracle into `sourceStateDigest` | KILLED |
+| M7 | F2 source-state oracle binding | Hash only the evidence into `sourceStateDigest` | KILLED |
+| M8 | F2 signed-body completeness | Replace the signed `policyId` with a constant | KILLED |
+
+### Next action
+
+The T74 implementation author remediates F3 with behavior-focused unit,
+security, and E2E evidence. A verifier who did not author that remediation then
+repeats the admission attack, focused audit, qualified-runtime security gate,
+and sensor. Only a PASS report named `docs/qualification/t74-validation.md` may
+advance the chain to T75.
+
+## First verification — 2026-08-11
+
+### Verdict
 
 **FAIL - T74 remains unqualified and the chain remains at "T73 complete;
 T74 next".** Two release-blocking acceptance gaps remain even though the
