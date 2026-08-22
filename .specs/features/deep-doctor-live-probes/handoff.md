@@ -5,9 +5,9 @@ issue: 207
 status: in_progress
 branch: feat/deep-doctor-live-probes
 baseRevision: 0d7ad9a2bad3b29c4defb4338d1106e4fe22c6e1
-lastCompletedTask: T7
-nextTask: T8
-lastGate: pnpm gate:full PASS (test:integration 593/593, zero failed/skipped/todo)
+lastCompletedTask: T8
+nextTask: T9
+lastGate: pnpm gate:quick PASS (test:architecture 33/33, zero failed/skipped/todo)
 updatedAt: 2026-08-22T00:00:00Z
 ---
 
@@ -18,7 +18,7 @@ read-only observations. Requirements DDL-01 through DDL-14 in `spec.md`; 22
 tasks in six phases in `tasks.md`. Parent #13 (T72); lands with or before #16
 (T75), which is the current serial task.
 
-T1 through T7 are implemented and gated on branch (Phase 2 complete) `feat/deep-doctor-live-probes`.
+T1 through T8 are implemented and gated on branch (Phase 2 complete; Phase 3 in progress) `feat/deep-doctor-live-probes`.
 
 # Completed Evidence
 
@@ -156,16 +156,36 @@ T1 through T7 are implemented and gated on branch (Phase 2 complete) `feat/deep-
 
   **Phase 2 (async probe port) is complete — T6 and T7.**
 
+- **T8** — `packages/platform-node/src/readonly.ts` (new): a narrow subpath
+  exporting only `inspectRuntimeDatabase` and `ProtectedPathBroker` (named
+  re-exports, never a wildcard). `package.json` gains the `./readonly` exports
+  entry; resolution confirmed from `apps/vestra-cli` (the real consumer, via
+  its workspace symlink) at runtime. `tests/architecture/platform-node-readonly-subpath.test.mjs`
+  (new, 4 cases) statically proves: no wildcard re-export, the export surface
+  is exactly the two approved symbols, no writer-adapter class name is
+  reachable through it, and the package manifest declares the subpath.
+  Discrimination proven directly against the real file (no committed baseline
+  to `git checkout` back to, since it's new — restored by rewriting the
+  correct content): adding `RuntimeStore` to the re-export list, and switching
+  to a wildcard re-export, both fail 2 of 4 tests. Two false-positive guard
+  trips fixed along the way by rewording the file's own header comment, which
+  originally spelled out a forbidden class name and the literal text for a
+  wildcard export in prose — the same convention
+  `doctor-readonly-graph.test.mjs` already documents for exactly this reason.
+  Gates: `pnpm gate:quick` PASS; `test:architecture` 33/33, zero failed,
+  skipped, or todo.
+
   Commit hashes are recorded as each subsequent task lands; T1 is the second
   commit on the branch, after the planning commit.
 
 # Next Exact Action
 
-T8 (Phase 3 begins): add `packages/platform-node/src/readonly.ts` exporting
-only `inspectRuntimeDatabase` and `ProtectedPathBroker`, wired as a new
-package `exports` subpath `@verchestra/platform-node/readonly`. Confirm the
-subpath's own import closure reaches no writer and that `RuntimeStore` is not
-reachable through it. Then `pnpm test:architecture`.
+T9: extract a pure `policyViewDigest(view)` from `CedarPolicyAdapter.#compile`
+in `packages/policy/src/cedar-policy.ts` (computable without a
+`CedarEnginePort`), pin a test proving it is byte-identical to the adapter's
+existing digest, and add `packages/policy/src/readonly.ts` exporting it plus
+`verifyPolicyBundle`, wired as `@verchestra/policy/readonly` in the package
+manifest. Then `pnpm gate:quick`.
 
 # Blockers
 

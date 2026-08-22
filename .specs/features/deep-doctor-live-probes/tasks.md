@@ -199,10 +199,17 @@ Claude Code/Codex CLI version, confirmed identical on a clean tree via
 **Where**: `packages/platform-node/src/readonly.ts` (new), package exports map
 **Depends on**: None · **Requirement**: DDL-12
 **Done when**:
-- [ ] The subpath's own closure reaches no writer
-- [ ] `RuntimeStore` is not reachable from it
-- [ ] `pnpm test:architecture` passes
+- [x] The subpath's own closure reaches no writer
+- [x] `RuntimeStore` is not reachable from it
+- [x] `pnpm test:architecture` passes
 **Tests**: architecture · **Gate**: quick
+
+> **Note (2026-08-22):** two false-positive guard trips fixed by rewording
+> `readonly.ts`'s own header comment, mirroring
+> `doctor-readonly-graph.test.mjs`'s own stated convention ("Symbol names, not
+> English words ... so the file's own prose cannot trip the guard"): the
+> comment originally spelled out the forbidden class names and the literal
+> text `` `export *` `` in prose, tripping its own guard. Reworded around both.
 
 #### T9: Export a pure policy-view digest and a policy read-only subpath
 **What**: Extract `policyViewDigest(view)` from `CedarPolicyAdapter.#compile` as a pure export; add `@verchestra/policy/readonly` exporting it plus `verifyPolicyBundle`.
@@ -447,4 +454,5 @@ No task depends on a later phase.
 | T5 | Done | recorded in `handoff.md` |
 | T6 | Done | recorded in `handoff.md` |
 | T7 | Done | recorded in `handoff.md` |
-| T8–T22 | Planned | Pending |
+| T8 | Done | recorded in `handoff.md` |
+| T9–T22 | Planned | Pending |
