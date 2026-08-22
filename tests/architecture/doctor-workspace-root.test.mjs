@@ -47,3 +47,48 @@ for (const [label, source] of [
 test("the layout contract's watched root is exactly one path segment (a bare dotdir, never a nested or empty path)", () => {
   assert.match(constDeclaration(contractSource, "WORKSPACE_ROOT_DIRNAME"), /^\.[a-z]+$/u);
 });
+
+// DDL-03 / AC1 (#207): "every path the doctor probes is owned by [the layout]
+// contract." Proven statically: every fileProbe(...) call in the composition
+// root must route its path through subsystemPath(metadataRoot, "<key>") with
+// a key the contract actually declares — never a hand-rolled join(...) that
+// bypasses the contract. This is the ownership half of T4; the provisioning
+// half ("nothing provisions this path" also fails the gate) lands with T5,
+// which is what provisions the paths this test would otherwise have nothing
+// to check against.
+
+function contractSubsystemKeys(source) {
+  const block = source.match(/SUBSYSTEM_OBSERVATION_PATHS\s*=\s*Object\.freeze\(\{([\s\S]*?)\}\s*as const\)/u);
+  assert.ok(block, "expected a SUBSYSTEM_OBSERVATION_PATHS object literal in the layout contract");
+  // Object keys are either quoted ("cedar-policy") or bare identifiers (driver).
+  return [...block[1].matchAll(/(?:"([a-z-]+)"|\b([a-z]+)\b)\s*:/gu)].map((match) => match[1] ?? match[2]);
+}
+
+// `=> fileProbe(subsystemPath(metadataRoot, "<key>"))` matches only call
+// sites routed through the contract, not the function's own
+// `function fileProbe(path: string)` declaration and not a call that bypasses
+// subsystemPath with a hand-rolled path expression.
+const ROUTED_CALL_SITE = /=>\s*fileProbe\(\s*subsystemPath\(\s*metadataRoot\s*,\s*"([a-z-]+)"\s*\)\s*\)/gu;
+const ANY_FILE_PROBE_CALL_SITE = /=>\s*fileProbe\(/gu;
+
+test("every fileProbe call site routes through a contract-owned subsystem key", () => {
+  const contractKeys = new Set(contractSubsystemKeys(contractSource));
+  assert.ok(contractKeys.size > 0, "expected at least one subsystem key in the contract");
+
+  const routedKeys = [...doctorSource.matchAll(ROUTED_CALL_SITE)].map((match) => match[1]);
+  const totalCallSites = [...doctorSource.matchAll(ANY_FILE_PROBE_CALL_SITE)].length;
+  assert.ok(totalCallSites > 0, "expected at least one fileProbe call site to check");
+
+  assert.equal(
+    routedKeys.length,
+    totalCallSites,
+    'every fileProbe(...) call must route through subsystemPath(metadataRoot, "<key>"); ' +
+      "a doctor probe must never construct a path outside the layout contract"
+  );
+  for (const key of routedKeys) {
+    assert.ok(
+      contractKeys.has(key),
+      `fileProbe uses subsystem key "${key}", which the layout contract does not declare`
+    );
+  }
+});

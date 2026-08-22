@@ -5,8 +5,8 @@ issue: 207
 status: in_progress
 branch: feat/deep-doctor-live-probes
 baseRevision: 0d7ad9a2bad3b29c4defb4338d1106e4fe22c6e1
-lastCompletedTask: T3
-nextTask: T4
+lastCompletedTask: T4
+nextTask: T5
 lastGate: pnpm gate:quick (PASS; test:unit 2064/2064, 0 skipped, 0 todo)
 updatedAt: 2026-08-22T00:00:00Z
 ---
@@ -18,7 +18,7 @@ read-only observations. Requirements DDL-01 through DDL-14 in `spec.md`; 22
 tasks in six phases in `tasks.md`. Parent #13 (T72); lands with or before #16
 (T75), which is the current serial task.
 
-T1 through T3 are implemented and gated on branch `feat/deep-doctor-live-probes`.
+T1 through T4 are implemented and gated on branch `feat/deep-doctor-live-probes`.
 
 # Completed Evidence
 
@@ -67,17 +67,36 @@ T1 through T3 are implemented and gated on branch `feat/deep-doctor-live-probes`
   and the copy discarded. Gates: `pnpm gate:quick` PASS, `pnpm test:architecture`
   26/26, zero failed, skipped, or todo.
 
+- **T4** — `tests/architecture/doctor-workspace-root.test.mjs` gained a static
+  ownership proof: every `fileProbe(...)` call site in
+  `apps/vestra-cli/src/doctor-composition.ts` must route through
+  `subsystemPath(metadataRoot, "<key>")` with a key the layout contract
+  declares, checked by regex over source text (`ROUTED_CALL_SITE` /
+  `ANY_FILE_PROBE_CALL_SITE`, comparing counts so a bypassing call cannot hide
+  among routed ones). Discrimination proven in a disposable copy: a hand-rolled
+  `join(...)` bypassing `subsystemPath`, and a reference to a subsystem key the
+  contract does not declare, both fail the guard; restored and the copy
+  discarded. Gates: `pnpm gate:quick` PASS, `pnpm test:architecture` 27/27,
+  zero failed, skipped, or todo.
+
+  **T4 was split from its original scope — see Decisions.** Only ownership
+  (AC1) is proven here; provisioning (AC2) moves to T5.
+
   Commit hashes are recorded as each subsequent task lands; T1 is the second
   commit on the branch, after the planning commit.
 
 # Next Exact Action
 
-T4: extend `tests/architecture/doctor-workspace-root.test.mjs` from "the root
-agrees" to "every probed path is owned by the contract AND provisioned by a
-repository surface" — a probed path absent from the contract must fail the
-gate, and a contract path nothing provisions must also fail the gate (the
-defect this issue's original comment described, one level down). Prove both
-failure modes with a mutation in a disposable copy. Then `pnpm test:architecture`.
+T5: write `scripts/provision-doctor-fixtures.mjs`, a qualification-only
+provisioner that materializes exactly the layout contract's seven paths (not
+wired into `vestra init` or any user-facing command), plus the drift-guard
+assertion T4 deferred — a contract path with no provisioner reference fails
+`tests/architecture/doctor-workspace-root.test.mjs`, proven by a mutation in a
+disposable copy. Then `pnpm gate:full`.
+
+**Blocked by the Node/FTS5 environment issue below** — T5's gate level is
+`full`, which currently cannot pass on this machine for reasons unrelated to
+T5 itself.
 
 # Blockers
 
@@ -116,6 +135,14 @@ Two findings shape the plan and are already resolved as decisions:
 - "Available" for driver/connector/probe means a record exists, parses, and
   declares an installed subsystem. Reachability is excluded — it is neither
   read-only nor unpaid.
+- **T4 split into ownership (T4) and provisioning (T5) (2026-08-22).** The
+  original T4 bundled "a probed path absent from the contract fails the gate"
+  (AC1) with "a contract path nothing provisions fails the gate" (AC2). AC2
+  cannot be true until something provisions the paths — that is T5, and the
+  original plan even had T5 depend on T4, which would have made the two
+  circular the moment AC2 was attempted first. T4 now proves ownership only;
+  T5 carries AC2 alongside the fixture provisioner it introduces. T5's
+  dependency is corrected from `T1, T4` to `T1`.
 - **Drift guard rewritten twice, in T2 and T3, not once in T4 (2026-08-22).**
   `tests/architecture/doctor-workspace-root.test.mjs` originally proved two
   source literals agreed. T2 removed safe-init's literal; T3 removed the

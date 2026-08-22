@@ -102,27 +102,41 @@ Batch packing at ~7 tasks per worker, whole phases only:
 > reasonable call on a decision already established this session.
 **Tests**: architecture · **Gate**: quick
 
-#### T4: Prove path ownership and provisioning statically
-**What**: Extend the drift guard from "the root dirname agrees" to "every probed path is owned by the contract AND provisioned by a repository surface".
+#### T4: Prove path ownership statically (split from provisioning — see scope note)
+**What**: Extend the drift guard so every probed path is proven owned by the contract: each `fileProbe(...)` call site must route through `subsystemPath(metadataRoot, "<key>")` with a key the contract declares, never a hand-rolled path.
 **Where**: `tests/architecture/doctor-workspace-root.test.mjs`
-**Depends on**: T3 · **Requirement**: DDL-03 · **AC**: 1, 2
+**Depends on**: T3 · **Requirement**: DDL-03 · **AC**: 1
 **Done when**:
-- [ ] A probed path absent from the contract fails the gate
-- [ ] A contract path nothing provisions fails the gate — the defect this issue's comment described, one level down
-- [ ] Both failure modes proven by a mutation in a disposable copy
-- [ ] `pnpm test:architecture` passes
+- [x] A probed path bypassing `subsystemPath` (hand-rolled `join`) fails the gate
+- [x] A probed path referencing a key the contract does not declare fails the gate
+- [x] Both failure modes proven by a mutation in a disposable copy
+- [x] `pnpm test:architecture` passes
+
+> **Scope note (2026-08-22): T4 split, one half moved to T5.** The task as
+> planned bundled two properties: "a probed path absent from the contract
+> fails the gate" (provable now, since the doctor already imports the
+> contract) and "a contract path nothing provisions fails the gate" (AC2 —
+> not provable yet, because nothing provisions the seven paths until T5's
+> fixture script exists; T5 as planned even listed T4 as a dependency, which
+> would have made the two tasks circular). Implementing AC2's assertion in T4
+> would either fail permanently or require a fake pass, neither acceptable
+> under "the gate must pass before a task is done." T4 now proves ownership
+> only (AC1); the provisioning assertion (AC2) is moved into T5, which is the
+> task that creates the repository surface that assertion checks against. T5's
+> dependency is corrected to `T1` (not `T1, T4`).
 **Tests**: architecture · **Gate**: quick
 
-#### T5: Provision the seven paths as T75 fixtures
-**What**: A qualification-only provisioner that materializes the contract's paths on a matrix leg.
-**Where**: `scripts/provision-doctor-fixtures.mjs` (new), T75 workflow step
-**Depends on**: T1, T4 · **Requirement**: DDL-03 (AD-019)
+#### T5: Provision the seven paths as T75 fixtures, and prove provisioning statically
+**What**: A qualification-only provisioner that materializes the contract's paths on a matrix leg, plus the drift-guard assertion T4 deferred: a contract path nothing provisions fails the architecture gate.
+**Where**: `scripts/provision-doctor-fixtures.mjs` (new), T75 workflow step, `tests/architecture/doctor-workspace-root.test.mjs`
+**Depends on**: T1 (not T4 — see T4's scope note) · **Requirement**: DDL-03 (AD-019) · **AC**: 2
 **Done when**:
 - [ ] Provisions exactly the contract's paths and nothing else
 - [ ] Not wired into `vestra init` or any user-facing command
 - [ ] Integration test asserts the provisioned set equals the contract set
+- [ ] A static architecture assertion fails the gate when a contract path has no provisioner reference (the defect this issue's original comment described, one level down), proven by a mutation in a disposable copy
 - [ ] `pnpm gate:full` passes
-**Tests**: integration · **Gate**: full
+**Tests**: integration + architecture · **Gate**: full
 
 ### Phase 2 — Async probe port
 
@@ -398,4 +412,5 @@ No task depends on a later phase.
 | T1 | Done | recorded in `handoff.md` |
 | T2 | Done | recorded in `handoff.md` |
 | T3 | Done | recorded in `handoff.md` |
-| T4–T22 | Planned | Pending |
+| T4 | Done | recorded in `handoff.md` |
+| T5–T22 | Planned | Pending |
