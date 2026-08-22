@@ -100,14 +100,15 @@ T5 itself.
 
 # Blockers
 
-**Environment, not code:** `pnpm gate:full` cannot pass on this machine. Node
-v23.11.0 is installed where the repository pins 24.14.0, and its bundled SQLite
-has no FTS5 module, so 51 memory-store integration cases fail with
-`no such module: fts5`. Verified pre-existing: the same 26 cases in
-`tests/integration/memory-store.test.mjs` fail identically on a clean tree with
-no feature changes applied. `gate:quick` does not run integration and passes.
-Install Node 24.14.0 before any task whose gate level is `full` — T5, T7, and
-T12 onward.
+None. The Node/FTS5 environment blocker recorded earlier is resolved
+(2026-08-22): `fnm` installed via Homebrew, Node 24.14.0 installed and pinned
+as the fnm default, `/opt/homebrew/bin/{node,npm,npx,corepack}` re-pointed at
+fnm's 24.14.0 binaries (needed in-session because this conversation's shell
+replays a cached environment snapshot from before the fix; `~/.zprofile` was
+also corrected so future sessions resolve it natively — see Decisions).
+`pnpm install --frozen-lockfile` reinstalled clean under the pinned version;
+`pnpm test:integration` 585/585 and `pnpm gate:full` PASS, both previously
+blocked by `no such module: fts5`.
 
 Two findings shape the plan and are already resolved as decisions:
 
@@ -143,6 +144,20 @@ Two findings shape the plan and are already resolved as decisions:
   circular the moment AC2 was attempted first. T4 now proves ownership only;
   T5 carries AC2 alongside the fixture provisioner it introduces. T5's
   dependency is corrected from `T1, T4` to `T1`.
+- **Node environment fix (2026-08-22, outside repo scope but requested by the
+  user).** The machine had Node v23.11.0 installed where the repo pins
+  24.14.0; the version mismatch, not any feature code, caused all 51
+  memory-store integration failures (missing FTS5 in that Node's bundled
+  SQLite). Root cause of why a naive fix didn't stick: `~/.zprofile` runs
+  `eval "$(brew shellenv)"`, which re-prepends `/opt/homebrew/bin` after
+  `~/.zshenv` — so a version-manager PATH set up in `.zshenv` alone gets
+  silently shadowed on every login shell. Fixed durably by moving the `fnm`
+  activation to the end of `.zprofile` (after `brew shellenv`). Fixed for
+  *this* conversation by re-pointing `/opt/homebrew/bin/{node,npm,npx,corepack}`
+  directly at fnm's installed 24.14.0 binaries, since this session's shell
+  replays a cached snapshot from before the dotfile fix and would not pick it
+  up until a new session. Both changes are outside `.specs/` and the repo
+  tree; recorded here only because they unblock every `full`-gated task.
 - **Drift guard rewritten twice, in T2 and T3, not once in T4 (2026-08-22).**
   `tests/architecture/doctor-workspace-root.test.mjs` originally proved two
   source literals agreed. T2 removed safe-init's literal; T3 removed the
