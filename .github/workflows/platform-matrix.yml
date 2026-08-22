@@ -67,7 +67,7 @@ jobs:
             platform: win32
             arch: x64
           - label: macOS x64
-            os: macos-13
+            os: macos-15-intel
             platform: darwin
             arch: x64
           - label: macOS arm64
@@ -246,7 +246,7 @@ jobs:
   #
   # OPERATIONAL NOTE — a leg that never dequeues blocks this job, not the
   # evidence. `needs:` waits for every matrix leg to *finish*, and GitHub has no
-  # per-job queue timeout, so while the retiring Intel `macos-13` runner sits
+  # per-job queue timeout, so while an Intel runner sits
   # queued this job cannot start. Cancel the run: `if: always()` still fires this
   # job, and the index then records that leg as `missing` rather than omitting
   # it. Verified in production on runs 31327128912/34227/40097/46281 — each

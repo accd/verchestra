@@ -15,7 +15,7 @@ const escapeForRegExp = (value) => value.replaceAll(/[.*+?^${}()|[\]\\]/gu, "\\$
 // reviewer's glance at the YAML.
 const FLEET = Object.freeze([
   { label: "Windows x64", os: "windows-latest", platform: "win32", arch: "x64" },
-  { label: "macOS x64", os: "macos-13", platform: "darwin", arch: "x64" },
+  { label: "macOS x64", os: "macos-15-intel", platform: "darwin", arch: "x64" },
   { label: "macOS arm64", os: "macos-14", platform: "darwin", arch: "arm64" },
   { label: "Linux glibc x64", os: "ubuntu-latest", platform: "linux", arch: "x64" },
   { label: "Linux glibc arm64", os: "ubuntu-24.04-arm", platform: "linux", arch: "arm64" }

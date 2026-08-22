@@ -70,14 +70,18 @@ Consequences, both load-bearing:
 
 2. **Four dispatches are required for full stage coverage**, not one. The
    union `quick ∪ full ∪ security ∪ release` covers all sixteen stages;
-   no smaller set does. To date only `quick` (plumbing proof, run
-   31195616672) and `security` (runs 31315589420 / 31315939879) have been
-   dispatched fleet-wide.
+   no smaller set does. At the time this baseline was written, only `quick`
+   (plumbing proof, run 31195616672) and `security` (runs 31315589420 /
+   31315939879) had been dispatched fleet-wide. The exact-head dispatches for
+   the current candidate are recorded in the handoff and generated index.
 
-**Required action (no owner decision needed):** dispatch the fleet at the
-qualification revision with `gate=full` and `gate=release` in addition to the
-existing `security` evidence, and record all four run ids in the evidence
-index. This is the cheapest gap on the list — it needs no code change.
+**Required action (no owner decision needed):** dispatch every declared gate
+profile at the qualification revision and record every run id in the evidence
+index. The union of `quick ∪ full ∪ security ∪ release` covers all sixteen
+stages, so those four profiles are sufficient for stage coverage; `build` is
+still a separately declared matrix case and must also be dispatched before its
+case can honestly remain `qualified`. This is the cheapest gap on the list —
+it needs no code change.
 
 ### M-1 was executed, and it immediately found a platform defect (F5)
 
@@ -419,7 +423,7 @@ the first artifact that actually satisfies acceptance criterion 3.
 
 **Operational contract discovered while exercising it.** The index job's
 `needs: platform` waits for every leg to *finish*, and GitHub has no per-job
-queue timeout — so while the retiring Intel `macos-13` runner sits queued, the
+queue timeout — so while the legacy Intel `macos-13` runner sat queued, the
 index cannot start. Cancelling the run resolves it: `if: always()` still fires
 the index job, which then records the leg as `missing`. All four indexes above
 were produced this way. The run badge reads `cancelled`; **the index, not the

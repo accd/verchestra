@@ -20,7 +20,7 @@
         {
           "case": "darwin-x64",
           "status": "environmental",
-          "evidence": "Never dequeues on GitHub's retiring Intel macos-13 fleet. Not a product gap and not a pass; re-dispatch if Intel capacity returns."
+          "evidence": "Legacy macos-13 dispatches never dequeued on GitHub's retiring Intel fleet. The workflow now targets macos-15-intel; this case remains environmental until that exact runner produces bound evidence."
         }
       ]
     },

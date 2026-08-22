@@ -2,13 +2,13 @@
 schema: verchestra-feature-handoff/v1
 feature: platform-qualification-matrix
 issue: 16
-status: verification
-branch: main
-baseRevision: 3f97047cd26ea1ab4d91b099aafeb8fdc11c2f3b
+status: in_progress
+branch: codex/issue-16-t75
+baseRevision: 8342b05d34e7bf3bb7f42b33df71340120d06d4d
 lastCompletedTask: null
-nextTask: "The evidence index generator (five independent verification rounds; legDigest is re-derived for passing legs, and the drift test is a single-input regression anchor, NOT a proof of the generator -- the discrimination lives in tests/unit/t75-evidence-index.test.mjs and the T75 report must say so) (scripts/t75-evidence-index.mjs, pnpm t75:evidence-index) reconciles the declared matrix.json against the observed fleet across BOTH fleet-answerable dimensions -- platform (unit = leg) and gate-profile (unit = dispatch). It fails closed in three directions: silence is not a pass; an observation never upgrades a declaration; and a non-qualified declaration is contradicted when the fleet observes something it does not predict. Vocabularies are closed on gates, legs and statuses; duplicate runs and duplicate legs are refused; leg identities are re-derived, and digestProvenance states which digests were recomputed and which transcribed. Four independent verification rounds; validation-evidence-index.md keeps every verdict verbatim. The four real fleet indexes at 9aab070 are COMMITTED under fleet/, and tests/agent-readiness/t75-evidence-index-drift.test.mjs regenerates the recorded verdict from them, so the numbers are re-derivable rather than quoted. LIVE FINDING: 52 cases, 40 qualified, 1 contradiction -- gate-profile/quick is declared qualified but no dispatch at that revision covers it, so T75 needs a gate=quick fleet dispatch at the qualification revision. REMAINING: (1) that quick dispatch; (2) the SIGNATURE -- deliberately unsigned and says so; AD-014 and the DSSE migration carry it as a ninth kind with a reserved predicate URI, but WHICH IDENTITY signs release evidence is an open owner key-custody decision; (3) C5/#207 live doctor probes (bruno); (4) B3 independent t75-validation.md, which reruns the generator at the qualification revision, replaces fleet/ and the drift expectation, and commits evidence-index.json beside the report. Chain is at T73; T74 must qualify first."
+nextTask: "Reconcile all five declared gate profiles after the macOS x64 runner migration at the exact candidate SHA. The previous four-profile dispatches (quick 32578851019, full 32578751272, security 32578852153, release 32578752980) pass on Windows x64, Linux x64/arm64, and macOS arm64; their macOS x64 leg is missing because legacy macos-13 never dequeued. Build 32579156550 is pending. Re-dispatch the five profiles with macos-15-intel, regenerate the T75 index, update matrix evidence, and obtain an independently-authored t75-validation.md. The index remains explicitly unsigned under AD-014, and C5/#207 live doctor probes plus the DSSE signing identity remain outside this slice."
 lastGate: FLEET GREEN — gate:security passed SIMULTANEOUSLY on Windows x64, Linux x64, Linux arm64, macOS arm64 at 5c86436 (run 31315589420); macOS x64 environmentally queued on the retiring Intel fleet; on-main confirmation run 31315939879 dispatched at bb11932
-updatedAt: 2026-08-09T17:00:00Z
+updatedAt: 2026-08-22T14:36:00Z
 ---
 
 # What a reader must NOT conclude from the evidence index
@@ -80,8 +80,9 @@ Resolve the two platform gaps that the T75 platform matrix
 ran `gate:security` off Linux x64. After both are fixed, a `gate=security`
 dispatch of the matrix must be green on all five supported platforms (Windows
 x64, macOS x64/arm64, Linux glibc x64/arm64) — T75 acceptance criterion 4 from
-issue #16. This is issue #16 work; it does NOT advance the qualification chain
-(officially still T71; T72–T74 code merged but unqualified).
+issue #16. This is issue #16 work; it does not itself advance the qualification
+chain. T74 is now independently qualified in
+`docs/qualification/t74-validation.md`; T75 advances only with its own report.
 
 The platform-matrix infrastructure itself is DONE and verified — do not rebuild
 it. This handoff is only the two red findings it exposed.
@@ -413,7 +414,8 @@ change and both reproducible on unmodified `main`:
 
 Practical: a full cross-platform proof requires
 dispatching the matrix (macOS/arm64 cannot run locally), and macOS x64 (Intel,
-`macos-13`) can sit queued a long time on GitHub's winding-down Intel fleet —
+`macos-15-intel`) is the current GitHub-hosted Intel label; the legacy
+`macos-13` fleet can sit queued on its winding-down capacity —
 budget for that latency, do not read a long queue as a failure.
 
 # Decisions
@@ -425,8 +427,8 @@ budget for that latency, do not read a long queue as a failure.
 - F1 must NOT be "fixed" by weakening/skipping tests or by editing the qualified
   linux/win checksums. The degraded-path assertion is the honest contract.
 - Human review is mandatory before merge; these are qualification-surface
-  changes. The qualification chain stays at T71 — this work does not write a
-  t<NN>-validation.md.
+  changes. The qualification chain stays at T74 until this work has its own
+  independently-authored `t75-validation.md`.
 
 # Files Intentionally Left Unchanged
 
