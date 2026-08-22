@@ -5,9 +5,9 @@ issue: 207
 status: in_progress
 branch: feat/deep-doctor-live-probes
 baseRevision: 0d7ad9a2bad3b29c4defb4338d1106e4fe22c6e1
-lastCompletedTask: T8
-nextTask: T9
-lastGate: pnpm gate:quick PASS (test:architecture 33/33, zero failed/skipped/todo)
+lastCompletedTask: T9
+nextTask: T10
+lastGate: pnpm gate:quick PASS (56/56 policy-related tests: security/cedar-policy, unit/policy-view-digest, architecture/policy-readonly-subpath)
 updatedAt: 2026-08-22T00:00:00Z
 ---
 
@@ -18,7 +18,7 @@ read-only observations. Requirements DDL-01 through DDL-14 in `spec.md`; 22
 tasks in six phases in `tasks.md`. Parent #13 (T72); lands with or before #16
 (T75), which is the current serial task.
 
-T1 through T8 are implemented and gated on branch (Phase 2 complete; Phase 3 in progress) `feat/deep-doctor-live-probes`.
+T1 through T9 are implemented and gated on branch (Phase 2 complete; Phase 3 in progress) `feat/deep-doctor-live-probes`.
 
 # Completed Evidence
 
@@ -175,17 +175,37 @@ T1 through T8 are implemented and gated on branch (Phase 2 complete; Phase 3 in 
   Gates: `pnpm gate:quick` PASS; `test:architecture` 33/33, zero failed,
   skipped, or todo.
 
+- **T9** — `packages/policy/src/cedar-policy.ts`: extracted a pure
+  `computePolicyViewDigest(view)` (try `digest(normalizedView(view))`, fall
+  back to `digest({ invalidPolicyView: true })` on throw — the exact fallback
+  `#compile` already performed), exported under the required public name via
+  `export { computePolicyViewDigest as policyViewDigest }` to avoid a naming
+  collision with `#compile`'s own local variable of the same name. `#compile`
+  now calls it once up front instead of its previous fallback-then-reassign
+  dance; every other reference in the method body is unchanged.
+  `tests/unit/policy-view-digest.test.mjs` (new, 6 cases) pins byte-identity
+  against the real adapter across three paths — a normal authorize, a
+  validation-only failure, and a fallback path where normalization itself
+  throws — plus determinism and content-sensitivity. `packages/policy/src/readonly.ts`
+  (new) exports `policyViewDigest` and `verifyPolicyBundle`, wired as
+  `@verchestra/policy/readonly`; `tests/architecture/policy-readonly-subpath.test.mjs`
+  (new, 4 cases) proves no wildcard re-export, an exact export surface, no
+  writer/engine-constructing symbol reachable, and the manifest declares the
+  subpath. Discrimination proven against the real files: adding
+  `buildPolicyBundle`, and a wildcard re-export, each fail 2 of 4 tests.
+  `apps/vestra-cli` does not yet depend on `@verchestra/policy` — adding that
+  dependency is deferred to T14. Gates: `pnpm gate:quick` PASS; 56/56 across
+  the three policy test files, zero failed, skipped, or todo.
+
   Commit hashes are recorded as each subsequent task lands; T1 is the second
   commit on the branch, after the planning commit.
 
 # Next Exact Action
 
-T9: extract a pure `policyViewDigest(view)` from `CedarPolicyAdapter.#compile`
-in `packages/policy/src/cedar-policy.ts` (computable without a
-`CedarEnginePort`), pin a test proving it is byte-identical to the adapter's
-existing digest, and add `packages/policy/src/readonly.ts` exporting it plus
-`verifyPolicyBundle`, wired as `@verchestra/policy/readonly` in the package
-manifest. Then `pnpm gate:quick`.
+T10: add a presence-only wrapper over `SecretAdapter.has` to
+`packages/platform-node/src/readonly.ts`, returning a boolean and never a
+secret value; a test must assert `bind` is never called (spy on the broker).
+Then `pnpm gate:security`.
 
 # Blockers
 

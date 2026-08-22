@@ -216,10 +216,21 @@ Claude Code/Codex CLI version, confirmed identical on a clean tree via
 **Where**: `packages/policy/src/cedar-policy.ts`, `packages/policy/src/readonly.ts` (new)
 **Depends on**: None · **Requirement**: DDL-07
 **Done when**:
-- [ ] The digest is computable without a `CedarEnginePort`
-- [ ] The adapter's existing digest is byte-identical to the pure function's output (pinned test)
-- [ ] `pnpm gate:quick` passes
+- [x] The digest is computable without a `CedarEnginePort`
+- [x] The adapter's existing digest is byte-identical to the pure function's output (pinned test)
+- [x] `pnpm gate:quick` passes
 **Tests**: unit · **Gate**: quick
+
+> **Note (2026-08-22):** `#compile`'s local variable was already named
+> `policyViewDigest`, colliding with the required export name. The pure
+> function is defined internally as `computePolicyViewDigest` and exported
+> under the alias `export { computePolicyViewDigest as policyViewDigest }`,
+> so `#compile`'s body needed only two lines changed (its fallback-then-
+> reassign dance collapses to one upfront call) rather than a rename across
+> every reference. `apps/vestra-cli` does not yet depend on
+> `@verchestra/policy` — adding that dependency is deferred to whichever task
+> first imports it from the composition root (T14), not done speculatively
+> here.
 
 #### T10: Add a read-only secret presence surface
 **What**: A presence-only wrapper over `SecretAdapter.has`, exported at the platform-node read-only subpath.
@@ -455,4 +466,5 @@ No task depends on a later phase.
 | T6 | Done | recorded in `handoff.md` |
 | T7 | Done | recorded in `handoff.md` |
 | T8 | Done | recorded in `handoff.md` |
-| T9–T22 | Planned | Pending |
+| T9 | Done | recorded in `handoff.md` |
+| T10–T22 | Planned | Pending |
