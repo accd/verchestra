@@ -2,13 +2,13 @@
 schema: verchestra-feature-handoff/v1
 feature: public-proof-artifact
 issue: 155
-status: verification
+status: complete
 branch: feat/155-execution-package-artifact
 baseRevision: d243d9cb750dfa4523ed58c457788cb514516f46
 lastCompletedTask: T4
-nextTask: Independent verification and human review of the implementation PR
+nextTask: No further action; issue #155 is closed.
 lastGate: pnpm gate:quick
-updatedAt: 2026-08-01T15:00:00Z
+updatedAt: 2026-08-22T18:00:00Z
 ---
 
 # Scope

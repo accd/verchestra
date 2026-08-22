@@ -2,13 +2,13 @@
 schema: verchestra-feature-handoff/v1
 feature: key-lifecycle
 issue: 51
-status: verification
+status: complete
 branch: main
 baseRevision: 73b2060edb8a7e66a93a88bc795a64d5aa8fa725
 lastCompletedTask: T5
-nextTask: Independently verify the reachable T68a evidence correction, then obtain and record human acceptance.
+nextTask: No further action; issue #51 is closed.
 lastGate: pnpm gate:security
-updatedAt: 2026-07-29T21:55:00Z
+updatedAt: 2026-08-22T18:00:00Z
 ---
 
 # Scope

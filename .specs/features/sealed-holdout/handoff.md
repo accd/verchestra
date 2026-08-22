@@ -2,13 +2,13 @@
 schema: verchestra-feature-handoff/v1
 feature: sealed-holdout
 issue: 15
-status: verification
+status: complete
 branch: codex/t74-qualification
 baseRevision: 24e3a02faefdada5838786487f3fe842e909f225
 lastCompletedTask: T7
-nextTask: "Human review PR #290; resolve the deliberate status-surface/readiness-fixture handoff, then merge the qualification report. Do not close #15 or advance the chain before review."
+nextTask: No further action; issue #15 is closed and T74 is qualified.
 lastGate: "Final T74 evidence prepared by MiguelCorre on merged head 24e3a02: 80 focused promotion tests pass; Linux gate:quick run 32576041915 PASS; Linux gate:security run 32575867942 PASS; 14 mutation kills, zero survivors; PR #290 awaits human review."
-updatedAt: 2026-08-22T14:50:00Z
+updatedAt: 2026-08-22T18:00:00Z
 ---
 
 # Final T74 qualification report prepared; review and status handoff remain (2026-08-22)

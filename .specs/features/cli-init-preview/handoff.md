@@ -2,13 +2,13 @@
 schema: verchestra-feature-handoff/v1
 feature: cli-init-preview
 issue: 64
-status: verification
+status: complete
 branch: main
 baseRevision: 0cd61db12b99d27e335d6f4ccc01995af8a53327
 lastCompletedTask: T5
-nextTask: Independently verify the reconciled Slice A/B requirements against a disposable Git repository, then obtain human review.
+nextTask: No further action; issue #64 is closed.
 lastGate: pnpm gate:quick
-updatedAt: 2026-07-29T21:51:22Z
+updatedAt: 2026-08-22T18:00:00Z
 ---
 
 # Handoff: CLI init preview

@@ -2,13 +2,13 @@
 schema: verchestra-feature-handoff/v1
 feature: canonical-json
 issue: 58
-status: complete
-branch: feat/canonical-json-t3-workspace
+status: in_progress
+branch: codex/issue-58-canonical-json
 baseRevision: b94eef4bdf9841e7abba4e03d85fd401c2825258
 lastCompletedTask: T13
-nextTask: Human review and merge into main. Two minor non-blocking follow-ups recorded in validation.md (documentation-accuracy and test-precision gaps) may be picked up alongside T4 scoping, not required before merge.
+nextTask: Rebuild the complete portable-identity census and deliver the remaining versioned V1/V2 migrations required by issue #58.
 lastGate: pnpm gate:security
-updatedAt: 2026-08-01T00:00:00Z
+updatedAt: 2026-08-22T18:00:00Z
 ---
 
 # Scope

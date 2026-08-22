@@ -2,13 +2,13 @@
 schema: verchestra-feature-handoff/v1
 feature: dsse-attestation
 issue: 217
-status: in_progress
+status: complete
 branch: main
 baseRevision: 1f21582850ec48973794e3cb7f6c11f0531c97e5
 lastCompletedTask: T3
-nextTask: none
+nextTask: No further action; issue #217 and implementation issue #242 are closed.
 lastGate: null
-updatedAt: 2026-08-09T16:00:00Z
+updatedAt: 2026-08-22T18:00:00Z
 ---
 
 # Scope
