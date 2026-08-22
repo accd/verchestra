@@ -5,9 +5,9 @@ issue: 207
 status: in_progress
 branch: feat/deep-doctor-live-probes
 baseRevision: 0d7ad9a2bad3b29c4defb4338d1106e4fe22c6e1
-lastCompletedTask: T13
-nextTask: T14
-lastGate: pnpm gate:full PASS (all stages, including test:e2e — no repeat of T12's regression)
+lastCompletedTask: T14
+nextTask: T15
+lastGate: pnpm gate:full PASS; test:security 1049/1049 direct; test:integration 611/611
 updatedAt: 2026-08-22T00:00:00Z
 ---
 
@@ -18,7 +18,7 @@ read-only observations. Requirements DDL-01 through DDL-14 in `spec.md`; 22
 tasks in six phases in `tasks.md`. Parent #13 (T72); lands with or before #16
 (T75), which is the current serial task.
 
-T1 through T13 are implemented and gated on branch (Phase 2 and Phase 3 complete; Phase 4 in progress) `feat/deep-doctor-live-probes`.
+T1 through T14 are implemented and gated on branch (Phase 2 and Phase 3 complete; Phase 4 in progress) `feat/deep-doctor-live-probes`.
 
 # Completed Evidence
 
@@ -336,25 +336,65 @@ T1 through T13 are implemented and gated on branch (Phase 2 and Phase 3 complete
   dependencies** — deferred from T9 for exactly this task, since T9 itself
   had no consumer yet.
 
+- **T14** — `apps/vestra-cli/src/doctor-composition.ts`'s
+  `doctor.cedar-policy` check is now live: `cedarPolicyProbe(metadataRoot)`
+  reads `.verchestra/policy/active.bundle` read-only, `JSON.parse`s it, and
+  calls `verifyPolicyBundle` (from `@verchestra/policy/readonly`) with
+  `cedarPolicyReadOnlyCrypto()` — a real Ed25519 verifier implementing
+  `sha256`/`verify` for real, with `sign` throwing unconditionally.
+
+  **Largest decision point in this feature — full detail in tasks.md's T14
+  note, summarized:**
+  1. `PolicyBundleCrypto` had zero production implementations anywhere;
+     stopped and asked rather than inventing a security scheme. Decided:
+     real Ed25519 via `node:crypto`, matching the encoding
+     `artifact-sealer.ts` already uses (spki-der, base64url) — applying an
+     existing convention, not a new one.
+  2. `apps/vestra-cli/package.json` gained `@verchestra/policy` (deferred
+     from T9); `pnpm install` updated `pnpm-lock.yaml` by exactly 3 lines
+     (confirmed pure workspace-symlink addition).
+  3. `scripts/provision-doctor-fixtures.mjs` mints a fresh Ed25519 keypair
+     each run and builds a real signed bundle via `buildPolicyBundle` — a
+     fixture-only key, not a trust root anything else relies on.
+  4. Scope resolved from spec.md's literal AC7/AC8, not design.md's looser
+     "observe a stable policy-view digest" prose — that phrasing implied a
+     Bundle-to-View mapping that does not exist and would have meant
+     inventing one; already satisfied by `verifyPolicyBundle`'s own digest
+     check.
+  5. **Its own discrimination sensor found a real coverage gap**: the first
+     tamper test changed content without re-signing, caught by
+     `verifyPolicyBundle`'s digest check before the signature step was ever
+     reached — a mutated `verify() => true` survived all 5 original tests.
+     Added a signature-only-corruption test; the mutation is now caught.
+  6. A test I wrote assuming "signed by a different key is rejected" failed
+     — not a bug, `verifyPolicyBundle` has no trust-root pinning at all, it
+     only proves internal self-consistency. Removed the test rather than
+     leave a misleading name.
+
+  `tests/integration/doctor-cedar-policy-probe.test.mjs` (new, 6 cases):
+  pass/tampered/signature-corrupted/truncated/blocked, plus digest-never-leaks.
+  Gates: `pnpm gate:full` PASS; `test:security` 1049/1049 direct (blocked by
+  the same pre-existing environment issue as T10); `test:integration` 611/611.
+
   Commit hashes are recorded as each subsequent task lands; T1 is the second
   commit on the branch, after the planning commit.
 
 # Next Exact Action
 
-T14: add `@verchestra/policy` to `apps/vestra-cli/package.json`'s
-dependencies (deferred from T9), then read the active policy bundle
-read-only in `apps/vestra-cli/src/doctor-composition.ts:127`, verify it via
-`verifyPolicyBundle`, and observe the policy-view digest via
-`policyViewDigest` (both from `@verchestra/policy/readonly`, T9). Verifying
-reports `pass`; tampered reports `fail`; absent reports `blocked`; a
-truncated/zero-length bundle reports `fail` without throwing out of
-`runDoctor`. The digest itself must never reach the sealed report — DDL-11.
-`scripts/provision-doctor-fixtures.mjs`'s `policy/active.bundle` is currently
-an empty placeholder file, not a real signed bundle — check whether the same
-fixture-content problem from T12/T13 applies here too before assuming the
-empty file suffices for the `blocked`/`pass` distinction. Then
-`pnpm gate:security` (or `test:security` directly — `gate:security` is
-blocked by the pre-existing environment issue noted at T10).
+T15: replace the `doctor.secret-presence` file probe with
+`secretPresence` (already built in T10, at
+`@verchestra/platform-node/readonly`) in
+`apps/vestra-cli/src/doctor-composition.ts:131`. Needs a real
+`SecretAdapter` instance for the `.verchestra/secrets` fixture — check
+whether `QualifiedOsSecretAdapter` (or another concrete adapter) has a
+filesystem-backed mode suited to a read-only diagnostic, and whether T5's
+current empty-directory fixture for `secret-presence` needs the same
+real-content treatment T12/T13/T14 each required, before assuming it
+suffices for the `pass`/`blocked` distinction. Presence reports `pass`;
+absence reports `blocked`; no secret name or value reaches the report. Then
+`pnpm gate:full` (`test:security` directly for the security-scoped
+assertions — `gate:security` blocked by the pre-existing environment
+issue).
 
 # Blockers
 

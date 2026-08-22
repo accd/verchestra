@@ -5,7 +5,7 @@
 // opens a writer, or calls a provider — every probe reports presence and health
 // as booleans only.
 import { spawnSync } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, createPublicKey, verify as verifyBytes } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -26,6 +26,7 @@ import { SchemaRegistry } from "@verchestra/contracts";
 import { SUBSYSTEM_OBSERVATION_PATHS, WORKSPACE_ROOT_DIRNAME } from "@verchestra/domain";
 import { ArtifactSealer, NodeEd25519Signer, type SealedArtifact } from "@verchestra/evidence";
 import { ProtectedPathBroker, inspectRuntimeDatabase } from "@verchestra/platform-node/readonly";
+import { type PolicyBundleCrypto, verifyPolicyBundle } from "@verchestra/policy/readonly";
 
 import { resolveReleaseIdentity } from "./release-manifest.ts";
 
@@ -203,12 +204,60 @@ async function sqliteDurableStateProbe(metadataRoot: string): Promise<DoctorObse
   return evaluateRuntimeDatabase(() => inspectRuntimeDatabase(dbPath));
 }
 
+// DDL-07 (#207): a read-only Ed25519 verifier matching the encoding this
+// product already uses elsewhere (packages/evidence/src/integrity/artifact-sealer.ts:
+// spki-der public key, base64url signature) — applying an existing product
+// convention, not inventing a new one. No production signer for a policy
+// bundle exists yet anywhere in the repository; this is deliberately
+// verify-only. `sign` throws unconditionally rather than being omitted,
+// because PolicyBundleCrypto requires it structurally even though
+// verifyPolicyBundle itself never calls it — a throwing stub proves the
+// capability is genuinely absent from what this file can do, not merely
+// unused by one call path today.
+function cedarPolicyReadOnlyCrypto(): PolicyBundleCrypto {
+  return {
+    sha256: (value: string) => createHash("sha256").update(value).digest("hex"),
+    sign: () => {
+      throw new Error("read-only diagnostic: policy bundle signing is not available here");
+    },
+    verify: (digestValue: string, signature: string, publicKeyRef: string) => {
+      try {
+        const publicKey = createPublicKey({ key: Buffer.from(publicKeyRef, "base64url"), type: "spki", format: "der" });
+        return verifyBytes(null, Buffer.from(digestValue), publicKey, Buffer.from(signature, "base64url"));
+      } catch {
+        return false;
+      }
+    }
+  };
+}
+
+// The bundle's own bundleDigest is recomputed and checked as part of
+// verification (policy-bundle.ts's own "recompute everything from the
+// sources" design); this probe never returns or logs that value — DDL-11
+// forbids the sealed report from carrying anything but the two booleans, so
+// a caught error here discards its message the same way every other probe
+// in this file does. Absent -> blocked; present but the bundle fails to
+// parse (edge case: truncated or zero-length) or fails verification (edge
+// case: tampered) both degrade to fail through the same catch, never a
+// crash out of runDoctor.
+async function cedarPolicyProbe(metadataRoot: string): Promise<DoctorObservation> {
+  const bundlePath = subsystemPath(metadataRoot, "cedar-policy");
+  if (!existsSync(bundlePath)) return absent;
+  try {
+    const parsed: unknown = JSON.parse(readFileSync(bundlePath, "utf8"));
+    verifyPolicyBundle(parsed, cedarPolicyReadOnlyCrypto());
+    return present(true);
+  } catch {
+    return present(false);
+  }
+}
+
 function buildRealProbes(controlRoot: string, registry: SchemaRegistry | null, now: () => number): DoctorProbeSet {
   const metadataRoot = join(controlRoot, WORKSPACE_ROOT_DIRNAME);
   return Object.freeze({
     "doctor.installation": installationProbe,
     "doctor.contract-schema": () => schemaProbe(registry),
-    "doctor.cedar-policy": () => fileProbe(subsystemPath(metadataRoot, "cedar-policy")),
+    "doctor.cedar-policy": () => cedarPolicyProbe(metadataRoot),
     "doctor.sqlite-durable-state": () => sqliteDurableStateProbe(metadataRoot),
     "doctor.native-asset": nativeAssetProbe,
     "doctor.git": gitProbe,

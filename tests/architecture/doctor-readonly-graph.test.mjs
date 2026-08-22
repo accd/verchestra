@@ -20,10 +20,11 @@ const source = readFileSync(new URL("../../apps/vestra-cli/src/doctor-compositio
 // metadata, evidence seals the report, release-manifest resolves identity, domain
 // names the workspace layout the doctor watches and takes no third-party or
 // node: import itself (tests/architecture/repository-boundaries.test.mjs), the
-// platform-node readonly subpath exports only observation surfaces
-// (tests/architecture/platform-node-readonly-subpath.test.mjs), and the node
-// builtins are used only through their read-only calls (asserted below).
-// Adding an entry here is the reviewed act of widening the graph.
+// platform-node and policy readonly subpaths export only observation surfaces
+// (tests/architecture/platform-node-readonly-subpath.test.mjs,
+// tests/architecture/policy-readonly-subpath.test.mjs), and the node builtins
+// are used only through their read-only calls (asserted below). Adding an
+// entry here is the reviewed act of widening the graph.
 const READ_ONLY_IMPORTS = Object.freeze(
   new Set([
     "node:child_process",
@@ -35,6 +36,7 @@ const READ_ONLY_IMPORTS = Object.freeze(
     "@verchestra/domain",
     "@verchestra/evidence",
     "@verchestra/platform-node/readonly",
+    "@verchestra/policy/readonly",
     "./release-manifest.ts"
   ])
 );

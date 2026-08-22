@@ -12,7 +12,7 @@
 // tests/architecture/doctor-workspace-root.test.mjs statically proves this
 // file still iterates the contract rather than hardcoding a partial list.
 //
-// Content is placeholder except for two subsystems whose live probes need
+// Content is placeholder except for three subsystems whose live probes need
 // something genuine to observe, not an empty file:
 // - sandbox (T12, DDL-06): a directory symlink/junction escaping the sandbox
 //   root, so ProtectedPathBroker's out-of-root refusal is reachable at all —
@@ -22,13 +22,23 @@
 //   so inspectRuntimeDatabase's integrity check and its "runs"/"ves_migrations"
 //   row counts observe the actual product schema rather than a fixture that
 //   only coincidentally resembles it.
+// - cedar-policy (T14, DDL-07): a real Ed25519-signed policy bundle. No
+//   production signer for a policy bundle exists yet anywhere in the
+//   repository, so this provisioner mints a fresh keypair each run purely
+//   for fixture purposes — it is not a trust root anything else in the
+//   product relies on. The encoding matches the product's existing Ed25519
+//   convention (packages/evidence/src/integrity/artifact-sealer.ts: spki-der
+//   public key, base64url signature), which the doctor's own read-only
+//   verifier (apps/vestra-cli/src/doctor-composition.ts) expects.
 
+import { createHash, generateKeyPairSync, sign as signBytes } from "node:crypto";
 import { mkdir, rm, symlink, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { SUBSYSTEM_OBSERVATION_PATHS, WORKSPACE_ROOT_DIRNAME } from "../packages/domain/src/index.ts";
 import { RuntimeStore } from "../packages/platform-node/src/index.ts";
+import { buildPolicyBundle } from "../packages/policy/src/index.ts";
 
 // A relative path whose final segment carries a dot names a file (e.g.
 // "policy/active.bundle", "runtime.db"); every other declared path names a
@@ -45,9 +55,10 @@ export async function provisionDoctorFixtures(controlRoot) {
   const provisioned = [];
   for (const [subsystem, relativePath] of Object.entries(SUBSYSTEM_OBSERVATION_PATHS)) {
     const target = join(metadataRoot, relativePath);
-    if (subsystem === "sqlite-durable-state") {
-      // Real content, provisioned below via RuntimeStore's own migration
-      // path — not the empty-placeholder branch every other file takes.
+    if (subsystem === "sqlite-durable-state" || subsystem === "cedar-policy") {
+      // Real content, provisioned below (RuntimeStore's own migration path;
+      // a real signed bundle) — not the empty-placeholder branch every other
+      // file takes.
     } else if (isFilePath(relativePath)) {
       await mkdir(dirname(target), { recursive: true });
       await writeFile(target, "");
@@ -81,6 +92,32 @@ export async function provisionDoctorFixtures(controlRoot) {
   const escapeLink = join(sandboxRoot, "escape");
   await rm(escapeLink, { recursive: true, force: true });
   await symlink(metadataRoot, escapeLink, process.platform === "win32" ? "junction" : "dir");
+
+  // The policy bundle fixture (T14, DDL-07): a real Ed25519-signed
+  // PolicyBundle built through buildPolicyBundle, the product's own
+  // construction path — not hand-assembled JSON — so verifyPolicyBundle's
+  // recompute-and-check logic (digest reproduction, per-policy source
+  // digests, signature) all observe genuine, self-consistent content.
+  const bundleKeyPair = generateKeyPairSync("ed25519");
+  const bundleCrypto = {
+    sha256: (value) => createHash("sha256").update(value).digest("hex"),
+    sign: (digestValue) => ({
+      signature: signBytes(null, Buffer.from(digestValue), bundleKeyPair.privateKey).toString("base64url"),
+      publicKeyRef: bundleKeyPair.publicKey.export({ type: "spki", format: "der" }).toString("base64url")
+    }),
+    verify: () => true // never called by buildPolicyBundle; present only to satisfy the port's shape
+  };
+  const bundle = buildPolicyBundle(
+    {
+      version: "1.0.0",
+      policies: [{ id: "doctorFixturePermit", cedar: "permit(principal, action, resource);" }],
+      createdAt: new Date().toISOString()
+    },
+    bundleCrypto
+  );
+  const bundlePath = join(metadataRoot, SUBSYSTEM_OBSERVATION_PATHS["cedar-policy"]);
+  await mkdir(dirname(bundlePath), { recursive: true });
+  await writeFile(bundlePath, JSON.stringify(bundle, null, 2));
 
   return provisioned;
 }

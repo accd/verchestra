@@ -388,11 +388,66 @@ Claude Code/Codex CLI version, confirmed identical on a clean tree via
 **Where**: `apps/vestra-cli/src/doctor-composition.ts:127`
 **Depends on**: T5, T7, T9 · **Requirement**: DDL-07 · **AC**: 7, 8
 **Done when**:
-- [ ] Verifying bundle reports `pass`; a tampered bundle reports `fail`; absent reports `blocked`
-- [ ] A truncated or zero-length bundle reports `fail` and does not throw out of `runDoctor` (edge case 3)
-- [ ] The digest never reaches the sealed report
-- [ ] `pnpm gate:security` passes
+- [x] Verifying bundle reports `pass`; a tampered bundle reports `fail`; absent reports `blocked`
+- [x] A truncated or zero-length bundle reports `fail` and does not throw out of `runDoctor` (edge case 3)
+- [x] The digest never reaches the sealed report
+- [x] `pnpm gate:full` passes (`test:security` 1049/1049 directly — `gate:security` blocked by the pre-existing environment issue noted at T10)
 **Tests**: integration + security · **Gate**: security
+
+> **The largest decision point in this feature, recorded here (2026-08-22).**
+> `PolicyBundleCrypto` (sha256 + Ed25519 verify) has **no production
+> implementation anywhere in the repository** — `buildPolicyBundle`/
+> `verifyPolicyBundle` had only ever been exercised by unit tests using a toy
+> HMAC-style crypto; nothing signs a real policy bundle in production today.
+> Stopped and asked before implementing rather than inventing a security
+> scheme unilaterally. Decided: real Ed25519 via `node:crypto`, applying the
+> product's already-established convention
+> (`packages/evidence/src/integrity/artifact-sealer.ts`: spki-der public key,
+> base64url signature) rather than a new one — `cedarPolicyReadOnlyCrypto()`
+> in `doctor-composition.ts` implements `sha256` and `verify` for real;
+> `sign` throws unconditionally, since `PolicyBundleCrypto` requires the
+> method structurally even though `verifyPolicyBundle` never calls it, and a
+> throwing stub proves the capability is genuinely absent rather than merely
+> unused today. `apps/vestra-cli/package.json` gained
+> `@verchestra/policy: workspace:0.0.0` (deferred from T9); `pnpm install`
+> (not `--frozen-lockfile`) updated `pnpm-lock.yaml` by exactly 3 lines —
+> confirmed a pure workspace-symlink addition, no external resolution.
+>
+> **Fixture, following the T12/T13 precedent**: `scripts/provision-doctor-fixtures.mjs`
+> mints a fresh Ed25519 keypair each run and builds a real signed bundle via
+> `buildPolicyBundle` — not hand-assembled JSON — purely for fixture
+> purposes; it is not a trust root anything else relies on.
+>
+> **Scope resolved from the spec, not guessed.** Design.md's prose ("observe
+> a stable policy-view digest") suggested calling T9's separately-extracted
+> `policyViewDigest(view)` on some Bundle-derived `PolicyView` — but
+> `PolicyBundle` (`{policies: [{id, cedar}]}`) and `PolicyView`
+> (`{schema, layers}`) are structurally different, unrelated shapes with no
+> natural mapping, and inventing one would encode an unreviewed assumption
+> about how bundles and views relate. Spec.md's actual acceptance criteria
+> (AC7/AC8) only require the bundle's own verification outcome; that
+> requirement is already satisfied by `verifyPolicyBundle`'s own internal
+> digest-reproduction check. Implemented against the spec's literal
+> criteria, not the looser design prose.
+>
+> **A real test-coverage gap, found by its own discrimination sensor.** The
+> first "tampered bundle" test changed policy content without re-signing —
+> caught by `verifyPolicyBundle`'s own digest-reproduction check, before the
+> signature step is ever reached. A mutation replacing doctor's Ed25519
+> `verify` with `() => true` survived all 5 original tests. Added a test
+> that corrupts only the `signature` field while leaving the digest
+> internally consistent, isolating the cryptographic check specifically —
+> the mutation is now caught.
+>
+> **A discovery that killed a test I'd written, not a bug in the code.** A
+> test asserting "a bundle signed with a different key is rejected" failed —
+> not because of a defect, but because `verifyPolicyBundle` has no
+> trust-root/expected-key pinning at all: it proves internal
+> self-consistency (signature matches its own embedded `publicKeyRef`), not
+> that the signer is a trusted party. Pinning an expected key is out of
+> DDL-07's scope (no trust root exists anywhere yet). Removed the test
+> rather than leave one whose name claimed a property the mechanism doesn't
+> provide.
 
 #### T15: Live secret-presence probe
 **What**: Replace the file probe with the read-only has-surface.
@@ -579,4 +634,5 @@ No task depends on a later phase.
 | T11 | Done | recorded in `handoff.md` |
 | T12 | Done | recorded in `handoff.md` |
 | T13 | Done | recorded in `handoff.md` |
-| T14–T22 | Planned | Pending |
+| T14 | Done | recorded in `handoff.md` |
+| T15–T22 | Planned | Pending |
