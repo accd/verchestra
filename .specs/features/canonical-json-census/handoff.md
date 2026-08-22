@@ -18,7 +18,7 @@ does not change an identity's bytes or make a qualification claim.
 
 # Delivered
 
-The scanner currently detects 84 source files. Every candidate is classified
+The scanner currently detects 85 source files. Every candidate is classified
 exactly once as migrated V2, retained versioned V1, pending versioned
 migration, raw-byte digest, or the closed presentation/fixture exception. The
 security test fails for an unclassified, duplicate, stale, signal-mismatched,
