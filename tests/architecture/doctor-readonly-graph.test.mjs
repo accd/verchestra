@@ -6,9 +6,11 @@ import { test } from "node:test";
 // execution." Deep doctor is composed in exactly one file. Before this guard the
 // property held only by inspection - nothing proved it, so the audit read it as
 // vacuously true. These assertions make it structural: the doctor graph may
-// import only from a read-only allowlist, spawns only a read-only git probe,
-// touches no writing filesystem call, and names no command bus, provider,
-// driver, connector, or writer surface. Widening the graph is then a conscious,
+// import only from a read-only allowlist, spawns only a read-only git probe, and
+// touches no writing filesystem call. The narrow live adapters below are
+// explicitly reviewed: runtime inspection opens SQLite defensively/read-only,
+// the protected-path broker rejects traversal before an open, and PiDriver is
+// limited to its manifest-only probe. Widening the graph is then a conscious,
 // reviewed change to the allowlist, never an accident.
 
 const source = readFileSync(new URL("../../apps/vestra-cli/src/doctor-composition.ts", import.meta.url), "utf8");
@@ -26,13 +28,19 @@ const READ_ONLY_IMPORTS = Object.freeze(
     "node:path",
     "@verchestra/application",
     "@verchestra/contracts",
+    "@verchestra/drivers",
     "@verchestra/evidence",
+    "@verchestra/platform-node",
     "./release-manifest.ts"
   ])
 );
 
 function importSpecifiers(code) {
   return [...code.matchAll(/from\s+["']([^"']+)["']/gu)].map((match) => match[1]);
+}
+
+function dynamicImportSpecifiers(code) {
+  return [...code.matchAll(/import\(["']([^"']+)["']\)/gu)].map((match) => match[1]);
 }
 
 test("deep doctor composes from a read-only allowlist only", () => {
@@ -44,6 +52,10 @@ test("deep doctor composes from a read-only allowlist only", () => {
       `doctor-composition imports ${specifier}, which is outside the read-only allowlist; ` +
         "widening the doctor graph must be a conscious change to READ_ONLY_IMPORTS with review"
     );
+});
+
+test("deep doctor dynamically loads the SQLite-owning adapter only from a reviewed allowlist", () => {
+  assert.deepEqual(dynamicImportSpecifiers(source), ["@verchestra/platform-node", "@verchestra/platform-node"]);
 });
 
 test("deep doctor reaches no writing filesystem call", () => {
@@ -68,17 +80,34 @@ test("deep doctor spawns only a read-only git version probe", () => {
   assert.match(spawns[0][2], /"--version"/u, "git is invoked read-only, for its version");
 });
 
-test("deep doctor names no command bus, provider, driver, connector, or writer adapter", () => {
+test("deep doctor names no command bus, provider, connector, or writer adapter", () => {
   // Symbol names, not English words, so the file's own prose ("opens a writer",
   // "calls a provider") cannot trip the guard.
   for (const forbidden of [
     "createCommandBus",
     "CommandBus",
-    "@verchestra/drivers",
     "@verchestra/connectors",
     "@verchestra/data-probe",
     "RuntimeStore",
     "isAuthorized"
   ])
     assert.doesNotMatch(source, new RegExp(forbidden, "u"), `doctor execution must not reach ${forbidden}`);
+});
+
+test("deep doctor uses only reviewed read-only live adapter operations", () => {
+  assert.match(source, /new PiDriver\([\s\S]*?\)\.probe\(\)/u, "driver readiness uses its manifest-only probe");
+  assert.match(
+    source,
+    /inspectRuntimeDatabase\([\s\S]*?assertExtensionsDisabled: true/u,
+    "SQLite is inspected defensively"
+  );
+  assert.match(source, /ProtectedPathBroker\.create\(/u, "sandbox enforcement is checked through the path broker");
+  assert.match(source, /logicalPath: "\.\.\/escape"/u, "sandbox check proves traversal rejection");
+  assert.match(source, /secret\.adapter\.has\(/u, "secret readiness checks presence without a read operation");
+  for (const forbidden of [".start(", ".send(", ".cancel(", ".close(", ".read(", "loadExtension("])
+    assert.doesNotMatch(
+      source,
+      new RegExp(forbidden.replace(/[.()]/gu, "\\$&"), "u"),
+      `doctor must not invoke ${forbidden}`
+    );
 });
