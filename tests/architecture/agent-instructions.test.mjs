@@ -17,7 +17,7 @@ test("root instructions are concise and expose required repository rules", async
   assert.ok(source.split(/\r?\n/u).length < 200);
   for (const required of [
     "0.0.0-qualification",
-    "T73 is complete and T74 is the next product task",
+    "T74 is complete and T75 is the next product task",
     "git status --short --branch",
     "corepack pnpm agent:context",
     "pnpm gate:quick",

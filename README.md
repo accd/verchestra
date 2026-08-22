@@ -73,7 +73,7 @@ regenerable byte-for-byte from any clean clone with `corepack pnpm proof:generat
 | Read-only database probes (7 engines, fixture-qualified) | qualified | database matrix      |
 | Signed distribution, activation, and rollback (TUF)      | qualified | T66-T68              |
 | Self-Test trust domain and doctor --deep                 | qualified | T69-T72              |
-| Public regression campaigns and sealed-holdout promotion | planned   | T73-T74              |
+| Public regression campaigns and sealed-holdout promotion | qualified | T73-T74              |
 | Platform matrix, release candidate, and the 1.0 decision | planned   | T75-T77              |
 
 Full reports live under [docs/qualification/](docs/qualification/) and on the

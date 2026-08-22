@@ -19,12 +19,11 @@ revision, records 80 focused promotion cases, 48 security/E2E cases, and 14
 killed mutations with no survivor. Linux runs 32576041915 (`gate:quick`) and
 32575867942 (`gate:security`) are the durable exact-head evidence.
 
-The report is in PR #290 and does not auto-close #15 or advance the chain.
-The repository Quality/Site checks currently expose a follow-up: once the
-report exists, readiness derives T74/T75 while existing status/readiness/site
-fixtures still assert T73/T74. No status surface or source was changed in the
-verification task. A maintainer must decide and review the separate
-projection/fixture migration before merging or advancing accountability.
+The report is in PR #290 and does not auto-close #15 before human review. The
+same reviewed change migrates the derived status/readiness/site projections and
+their pinned assertions from T73/T74 to T74/T75; it preserves
+`0.0.0-qualification`, the no-installer disclaimer, and the explicit AD-018
+scope boundary.
 
 # F3 implementation remediation complete; qualification still pending (2026-08-22)
 

@@ -8,8 +8,8 @@ export const productScenario =
 
 export const productStatus = {
   version: "0.0.0-qualification",
-  completedTask: "T73",
-  nextTask: "T74",
+  completedTask: "T74",
+  nextTask: "T75",
   installable: false
 } as const;
 
@@ -167,9 +167,9 @@ export const capabilityMatrix: readonly CapabilityEntry[] = [
   },
   {
     capability: "Public regression campaigns and sealed-holdout promotion",
-    maturity: "planned",
+    maturity: "qualified",
     reference: "T73-T74",
-    evidenceRoute: "roadmap"
+    evidenceRoute: "docs/qualification/t74-validation"
   },
   {
     capability: "Platform matrix, release candidate, and the 1.0 decision",
