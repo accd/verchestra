@@ -23,7 +23,7 @@ evidence or human release accountability.
 | M2C-01 | The programme, GitHub milestone, active handoffs and `agent:context` state shall agree that T74 is complete and T75 is next. |
 | M2C-02 | The ten open obligations shall have dependency-ordered work and exact evidence/gate expectations. |
 | M2C-03 | #16 and #36 remain open until their original acceptance criteria, not a partial bridge or an unsigned index, are satisfied. |
-| M2C-04 | Every T75/T76/T77 report shall be independently authored; MiguelCorre is the intended T75 verifier and no implementation author verifies their own surface. |
+| M2C-04 | Every T75/T76/T77 report shall be independently authored by an owner-designated verifier; no implementation author verifies their own surface. |
 | M2C-05 | Automation shall observe the repository ruleset: rebase-only, required checks, code-owner and last-push approval, resolved threads, and no administrative bypass. |
 | M2C-06 | Secret provisioning, npm trusted publishing, reviewer rejection, and the T77 signed decision are explicit blocking conditions; none may be fabricated or bypassed. |
 | M2C-07 | The final state shall have zero open issues and PRs, no skipped/todo/surviving-sensor evidence, aligned projections, and recorded human review for every merge. |
