@@ -237,10 +237,25 @@ Claude Code/Codex CLI version, confirmed identical on a clean tree via
 **Where**: `packages/platform-node/src/readonly.ts`
 **Depends on**: T8 · **Requirement**: DDL-09 · **AC**: 12
 **Done when**:
-- [ ] Returns a boolean; never returns or logs a secret value
-- [ ] A test asserts `bind` is not called (spy on the broker)
-- [ ] `pnpm gate:security` passes
+- [x] Returns a boolean; never returns or logs a secret value
+- [x] A test asserts `bind` is not called (spy on the broker)
+- [x] `pnpm gate:security` passes
 **Tests**: unit + security · **Gate**: security
+
+> **Note (2026-08-22): a spy-target bug found by its own discrimination
+> sensor.** The first version of the "never binds" test spied on
+> `broker.bind` for one fixture-owned broker instance. A mutation making
+> `secretPresence` construct and bind through its own internal broker
+> instance was caught by the architecture guard (a new class name became
+> reachable) but NOT by the security test itself — the spy only intercepts
+> calls through the specific instance it wraps, not the class generally.
+> Fixed by spying on `SecretBroker.prototype.bind`, which intercepts any
+> instance. Re-ran the same mutation: both the architecture guard and the
+> security test now fail it. `gate:security` cannot complete on this machine
+> — it stops at a pre-existing, unrelated `test:qualification` failure (two
+> spike tests pinned to a locally-installed Claude Code/Codex CLI version,
+> confirmed identical on a clean tree via `git stash`, same as noted in T6).
+> Ran `pnpm test:security` directly instead: 1049/1049.
 
 #### T11: Make the read-only guard transitive
 **What**: Resolve the doctor composition's import closure and assert no module in it names a writer.
@@ -467,4 +482,5 @@ No task depends on a later phase.
 | T7 | Done | recorded in `handoff.md` |
 | T8 | Done | recorded in `handoff.md` |
 | T9 | Done | recorded in `handoff.md` |
-| T10–T22 | Planned | Pending |
+| T10 | Done | recorded in `handoff.md` |
+| T11–T22 | Planned | Pending |

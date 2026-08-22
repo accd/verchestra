@@ -2,10 +2,11 @@
 // #207). A caller that needs a live subsystem observation — deep doctor's
 // live probes (T12-T19) — imports this subpath instead of the package root,
 // which re-exports genuine mutable and secret-handling adapters. Every entry
-// below is a named re-export; nothing here forwards a whole module, so a
-// symbol reaching this file must be a conscious, reviewed addition — the same
-// discipline tests/architecture/doctor-readonly-graph.test.mjs already
-// applies to the doctor composition root's own import allowlist.
+// below is a named re-export or a function defined directly in this file;
+// nothing here forwards a whole module, so a symbol reaching this file must
+// be a conscious, reviewed addition — the same discipline
+// tests/architecture/doctor-readonly-graph.test.mjs already applies to the
+// doctor composition root's own import allowlist.
 //
 // Symbol names, not English words, in the sibling architecture test's
 // forbidden list (tests/architecture/platform-node-readonly-subpath.test.mjs)
@@ -16,3 +17,18 @@
 
 export { inspectRuntimeDatabase } from "./runtime-store/runtime-store.ts";
 export { ProtectedPathBroker, type ProtectedPathHandle } from "./protected-path.ts";
+
+import type { SecretAdapter } from "./secret-broker.ts";
+export type { SecretAdapter };
+
+// Presence only (DDL-09): calls SecretAdapter.has directly, never the
+// handle-minting method the broker in the sibling module exposes, which is a
+// side effect, not an observation. That broker exposes no read-only presence
+// method of its own, so a doctor probe must go through the adapter interface.
+export async function secretPresence(
+  adapter: SecretAdapter,
+  workspaceId: string,
+  logicalName: string
+): Promise<boolean> {
+  return adapter.has(workspaceId, logicalName);
+}

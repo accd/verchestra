@@ -31,8 +31,8 @@ test("the readonly subpath exports no `export *` — every re-export is named", 
   assert.doesNotMatch(source, /export\s*\*/u, "readonly.ts must name every export explicitly, never `export *`");
 });
 
-test("the readonly subpath's export surface is exactly the two approved read-only symbols", () => {
-  const exported = [...source.matchAll(/export\s*\{\s*([^}]+)\s*\}/gu)]
+test("the readonly subpath's export surface is exactly the approved read-only symbols", () => {
+  const braceExports = [...source.matchAll(/export\s+(?:type\s+)?\{\s*([^}]+)\s*\}/gu)]
     .flatMap((match) => match[1].split(","))
     .map(
       (entry) =>
@@ -42,9 +42,15 @@ test("the readonly subpath's export surface is exactly the two approved read-onl
           .split(/\s+as\s+/u)[0]
     )
     .filter((entry) => entry.length > 0);
+  // A symbol may also be a function declared directly in this file (T10,
+  // secretPresence), not only a re-export from another module.
+  const declaredFunctionExports = [...source.matchAll(/export\s+(?:async\s+)?function\s+([A-Za-z0-9_]+)/gu)].map(
+    (match) => match[1]
+  );
+  const exported = [...braceExports, ...declaredFunctionExports];
   assert.deepEqual(
     [...exported].sort(),
-    ["ProtectedPathBroker", "ProtectedPathHandle", "inspectRuntimeDatabase"].sort()
+    ["ProtectedPathBroker", "ProtectedPathHandle", "SecretAdapter", "inspectRuntimeDatabase", "secretPresence"].sort()
   );
 });
 

@@ -5,9 +5,9 @@ issue: 207
 status: in_progress
 branch: feat/deep-doctor-live-probes
 baseRevision: 0d7ad9a2bad3b29c4defb4338d1106e4fe22c6e1
-lastCompletedTask: T9
-nextTask: T10
-lastGate: pnpm gate:quick PASS (56/56 policy-related tests: security/cedar-policy, unit/policy-view-digest, architecture/policy-readonly-subpath)
+lastCompletedTask: T10
+nextTask: T11
+lastGate: pnpm test:security PASS 1049/1049 (gate:security itself blocked by a pre-existing, unrelated test:qualification failure — see Blockers)
 updatedAt: 2026-08-22T00:00:00Z
 ---
 
@@ -18,7 +18,7 @@ read-only observations. Requirements DDL-01 through DDL-14 in `spec.md`; 22
 tasks in six phases in `tasks.md`. Parent #13 (T72); lands with or before #16
 (T75), which is the current serial task.
 
-T1 through T9 are implemented and gated on branch (Phase 2 complete; Phase 3 in progress) `feat/deep-doctor-live-probes`.
+T1 through T10 are implemented and gated on branch (Phase 2 complete; Phase 3 in progress) `feat/deep-doctor-live-probes`.
 
 # Completed Evidence
 
@@ -197,15 +197,51 @@ T1 through T9 are implemented and gated on branch (Phase 2 complete; Phase 3 in 
   dependency is deferred to T14. Gates: `pnpm gate:quick` PASS; 56/56 across
   the three policy test files, zero failed, skipped, or todo.
 
+- **T10** — `packages/platform-node/src/readonly.ts` gains
+  `secretPresence(adapter, workspaceId, logicalName)`: calls
+  `SecretAdapter.has` directly, since the broker exposes no read-only
+  presence method of its own (only `bind` and `withSecret`). Also
+  re-exports `type SecretAdapter`. `tests/security/secret-presence.test.mjs`
+  (new, 5 cases): presence true/false, the return type is a boolean and never
+  contains the secret's bytes, and two negative-behavior tests — `bind` is
+  never called and `read` is never called. `tests/architecture/platform-node-readonly-subpath.test.mjs`
+  extended: the export-surface extraction now also recognizes
+  `export (async) function` declarations and `export type { ... }` (both
+  needed once `readonly.ts` contained more than plain re-exports), and the
+  approved-symbol list grew from 3 to 5 entries.
+
+  **Found and fixed by its own discrimination sensor**: the first "never
+  binds" test spied on one fixture-owned broker instance's `bind` method. A
+  mutation making `secretPresence` construct and bind through its own
+  internal broker instance was caught by the architecture guard (a new class
+  name became reachable) but the security test's own spy missed it entirely
+  — it only intercepts calls through the specific instance it wraps. Fixed by
+  spying on `SecretBroker.prototype.bind` instead, which intercepts any
+  instance; the same mutation now fails both. Discrimination proven via a
+  content swap and restore (not `git checkout`, which would have reverted to
+  T8's committed state and silently discarded T10's own additions since they
+  were still uncommitted at the time).
+
+  Gates: `pnpm gate:security` cannot complete on this machine — it stops at
+  the same pre-existing, unrelated `test:qualification` failure recorded in
+  T6 (two spike tests pinned to a locally-installed Claude Code/Codex CLI
+  version). Ran `pnpm test:security` directly: 1049/1049, zero failed,
+  skipped, or todo.
+
   Commit hashes are recorded as each subsequent task lands; T1 is the second
   commit on the branch, after the planning commit.
 
 # Next Exact Action
 
-T10: add a presence-only wrapper over `SecretAdapter.has` to
-`packages/platform-node/src/readonly.ts`, returning a boolean and never a
-secret value; a test must assert `bind` is never called (spy on the broker).
-Then `pnpm gate:security`.
+T11 (transitive guard, closes Phase 3): resolve
+`apps/vestra-cli/src/doctor-composition.ts`'s full import closure statically
+(from source specifiers, not by executing imports) in
+`tests/architecture/doctor-readonly-graph.test.mjs`, and assert no module
+anywhere in that closure names a writer — extending, not replacing, the
+existing textual assertions. Prove a writer introduced anywhere in the
+closure fails the gate via a mutation in a disposable copy. Then
+`pnpm test:architecture` and `pnpm test:security` (see the gate:security
+blocker note above).
 
 # Blockers
 
