@@ -639,7 +639,8 @@ async function executeEffect(root: RootFacts, hooks: FullScenarioBoundaryHooks) 
     workspaceId: WORKSPACE_ID,
     logicalTarget: "disposable-root",
     canonicalInputDigest: digest("effect-input"),
-    semanticIdentity: "self-test-full"
+    semanticIdentity: "self-test-full",
+    canonicalizationVersion: 2 as const
   };
   const intent = {
     ...identity,

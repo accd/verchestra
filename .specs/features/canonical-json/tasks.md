@@ -549,3 +549,28 @@ No task depends on a later phase.
 | T13 | Spec artifacts | none | none | ✅ OK |
 
 No task defers its own tests to a later task.
+
+---
+
+## T14 (T4i vertical) — version durable effect identities
+
+**Status:** completed on the implementation branch; independent verification
+and human review remain required before merge.
+
+**Scope:** `packages/application/src/effects/effect-contract.ts`,
+`packages/effects/src/effect-kernel.ts`,
+`packages/platform-node/src/runtime-store/runtime-store.ts`, the effect and
+runtime-store tests, and the canonical JSON matrix/handoff.
+
+1. Add the V1/V2 material builder and default-V2 intent construction, with a
+   pinned V1 fixture and invalid-version/key-pair unit cases.
+2. Add repository logical-identity lookup and make the broker converge onto an
+   existing V1/V2 row before it can schedule a second apply.
+3. Add the additive runtime migration and SQLite implementation, including
+   migration-from-V1 and cross-version exact-once integration/fault tests.
+4. Update the compatibility matrix and add a V2 canonicalization discriminator.
+
+**Verification:** focused `test:unit`, `test:integration`, `test:fault`, and
+`test:security`; then `pnpm gate:quick` and `pnpm gate:security`.
+
+**Commit:** `feat(effects): version durable idempotency identities (#58)`.

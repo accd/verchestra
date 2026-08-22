@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { test } from "node:test";
 
 import {
@@ -30,9 +31,23 @@ function intent(overrides = {}) {
   return createEffectIntent({ ...input, idempotencyKey: buildIdempotencyKey(input) });
 }
 
-test("idempotency key is deterministic and SHA-256 qualified", () => {
+test("idempotency key is deterministic and V2-qualified by default", () => {
   assert.equal(buildIdempotencyKey(base), buildIdempotencyKey({ ...base }));
-  assert.match(buildIdempotencyKey(base), /^sha256:[a-f0-9]{64}$/u);
+  assert.match(buildIdempotencyKey(base), /^v2:sha256:[a-f0-9]{64}$/u);
+});
+
+test("V1 idempotency bytes remain pinned for records created before the migration", () => {
+  const material = JSON.stringify({
+    schemaVersion: 1,
+    operationKind: base.operationKind,
+    workspaceId: base.workspaceId,
+    logicalTarget: base.logicalTarget,
+    canonicalInputDigest: base.canonicalInputDigest,
+    semanticIdentity: base.semanticIdentity
+  });
+  const expected = `sha256:${createHash("sha256").update(material, "utf8").digest("hex")}`;
+  assert.equal(buildIdempotencyKey({ ...base, canonicalizationVersion: 1 }), expected);
+  assert.notEqual(buildIdempotencyKey(base), expected);
 });
 
 for (const [field, value] of [
@@ -70,7 +85,30 @@ test("intent rejects a forged idempotency key", () => {
 test("intent starts planned and is immutable", () => {
   const created = intent();
   assert.equal(created.status, "planned");
+  assert.equal(created.canonicalizationVersion, 2);
   assert.equal(Object.isFrozen(created), true);
+});
+
+test("intent rejects an unknown canonicalization version", () => {
+  const input = { ...base, canonicalizationVersion: 3 };
+  assert.throws(() => createEffectIntent({ ...input, idempotencyKey: buildIdempotencyKey(input) }), {
+    code: "VES_EFFECT_INTENT_INVALID"
+  });
+});
+
+test("a V2 planner reuses a completed V1 intent without applying twice", async () => {
+  const repository = new InMemoryEffectRepository();
+  const adapter = new MockEffectAdapter();
+  const broker = new EffectBroker({ repository, adapter });
+  const legacyInput = { ...base, canonicalizationVersion: 1 };
+  const legacy = createEffectIntent({ ...legacyInput, idempotencyKey: buildIdempotencyKey(legacyInput) });
+  const plannedLegacy = await broker.plan(legacy);
+  await broker.execute(plannedLegacy.idempotencyKey);
+  const v2 = await broker.plan(intent({ effectId: "effect_018f0b6d-7b1a-7abc-8def-4123456789ab" }));
+  assert.equal(v2.idempotencyKey, plannedLegacy.idempotencyKey);
+  await broker.execute(v2.idempotencyKey);
+  assert.equal(repository.intents.length, 1);
+  assert.equal(adapter.applyCalls, 1);
 });
 
 test("planning the same logical effect returns one intent", async () => {
