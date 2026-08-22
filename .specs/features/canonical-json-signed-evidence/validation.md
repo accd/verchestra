@@ -1,6 +1,6 @@
 # Validation — signed-evidence canonical JSON
 
-Status: corrected candidate awaiting fresh independent validation; no independent PASS.
+Status: independently validated; awaiting required human review.
 
 ## Author evidence
 
@@ -22,8 +22,28 @@ because its fixture values did not discriminate those comparators.
 
 The correction restores native `sort()` at the legacy default-sort sites for
 both schema versions, retains V1 `localeCompare` only at its historical sites,
-and adds a mixed-case regression test. A fresh independent verdict is required.
+and adds a mixed-case regression test.
 
-The verifier must independently recreate a V1 package, a V2 package, and the
-mixed-case ordering case; inspect schema/predicate selection; and run a disposable
-mutation that reintroduces locale ordering or accepts a schema/predicate mismatch.
+## Independent validation of corrected candidate `a06c242`
+
+- **CJE-01 — PASS.** The V1 fixture remains pinned to
+  `ebbf7e4c4f28af4efc95a2515cb7d4a19edd48749da9c829f67a8a5074db668a` and
+  verifies under the V1 predicate. An independent runtime comparison loaded the
+  predecessor at `b0e0c831` and the candidate with the same signer: their
+  mixed-case V1 sealed artifacts were byte-identical, including every historical
+  native-sort set and `blockedBy`.
+- **CJE-02 and CJE-03 — PASS.** New packages emit schema V2 and the declared
+  V2 predicate. The V2 paths use code-unit comparison or native `sort()` for
+  all set-like lists; V1 alone retains the historical locale comparator sites.
+- **CJE-04 — PASS.** The schema-to-canonicalization and predicate maps are
+  closed. The focused security evidence rejects V1-to-V2 reinterpretation and
+  an unsupported stored schema version before persistence or verification.
+- **CJE-05 — PASS.** The focused suite completed 116/116 with 0 fail, skip, or
+  todo, and `corepack pnpm agent:check` passed. In an isolated disposable
+  checkout, changing the restored native `sort()` in `uniqueStrings` back to
+  `localeCompare` made the V1 mixed-case regression test fail; no mutation was
+  retained in the candidate worktree.
+
+The independent review also found no private signing material or machine-local
+path added by this candidate. Required human review remains the next action;
+independent validation does not authorize a merge.
