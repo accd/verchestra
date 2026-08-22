@@ -147,7 +147,7 @@ serialization target* set, not a driver registry.
 | Claude Code | `2.1.168` | `packages/drivers/src/claude-code-driver.ts:86`; CI install `platform-matrix.yml:190` | **Yes** — `spikes/claude-code-driver/test/claude-driver.test.mjs:16`, `--version` only |
 | Codex | `0.115.0` | `codex-driver.ts:90`; same CI line | **Yes** — `spikes/codex-driver/test/codex-driver.test.mjs:13` |
 | OpenCode | minimum `1.17.18`, installed `1.18.9` | `opencode-driver.ts:227`; root devDependency | **Yes** — `spikes/opencode-driver/test/opencode-driver.test.mjs:59` |
-| Pi | `0.84.1` | `packages/drivers/src/pi-driver.ts:14` | **Yes** — `PiDriver.probe()` resolves the installed `@earendil-works/pi-agent-core/package.json`, rejects drift, and reports the observed version |
+| Pi | `0.84.2` | `packages/drivers/src/pi-driver.ts:14` | **Yes** — `PiDriver.probe()` resolves the installed `@earendil-works/pi-agent-core/package.json`, rejects drift, and reports the observed version |
 
 Every other driver test in the repository is fake-backed (`fake-claude.mjs`,
 `fake-codex-app-server.mjs`, `fake-opencode.mjs`, `DeterministicMockDriver`,
@@ -166,8 +166,8 @@ driver instance — the file's own comment at lines 152-155 says so. Live
 wiring is task A4 (#35), which this matrix consumes.
 
 **Gap:** (a) The cross-driver case lands with A4. (b) Pi's real probe is
-covered by the 0.84.1 requalification record in
-`docs/qualification/pi-runtime-0.84.1.md`.
+covered by the 0.84.2 requalification record in
+`docs/qualification/pi-runtime-0.84.2.md`.
 
 ## 5. Sandbox / isolation matrix
 
@@ -258,11 +258,11 @@ other engine, which is consistent with the finding above.
 > filed post-1.0. This supersedes the (c) recommendation below, which assumed
 > the choice was only about what Verchestra's own CI could run.
 >
-> **D2 → the Pi probe reads reality.** The 0.84.1 requalification makes
+> **D2 → the Pi probe reads reality.** The 0.84.2 requalification makes
 > `PiDriver.probe()` resolve the installed package manifest, report
 > `not configured` when absent, and reject any version other than the exact
 > qualified pin. Pi is an embedded SDK, so the version is genuinely there to
-> read and the probe can fail closed. Evidence: `docs/qualification/pi-runtime-0.84.1.md`.
+> read and the probe can fail closed. Evidence: `docs/qualification/pi-runtime-0.84.2.md`.
 
 The original decision briefs are kept below for provenance.
 
