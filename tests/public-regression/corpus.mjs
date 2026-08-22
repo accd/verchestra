@@ -162,7 +162,7 @@ export const CAMPAIGNS = Object.freeze([
     "CAM-04",
     "fixtures/doctor/probes",
     1,
-    () => collectDoctorFacts(healthyDoctorProbes).length === 12
+    async () => (await collectDoctorFacts(healthyDoctorProbes)).length === 12
   ),
   // Self-Test durable boundaries (T71)
   deterministic("selftest-durable-matrix-valid", "CAM-04", "fixtures/selftest/durable-matrix", 1, () =>
@@ -310,7 +310,9 @@ export const CAMPAIGNS = Object.freeze([
 export const CAMPAIGN_DEFINITIONS = Object.freeze(CAMPAIGNS.map((campaign) => campaign.def));
 
 // Run one campaign's fixture for its declared sample size and return the result.
-export function runCampaign(campaign) {
-  const outcomes = Array.from({ length: campaign.def.sampleSize }, (_, index) => campaign.check(index));
+export async function runCampaign(campaign) {
+  const outcomes = await Promise.all(
+    Array.from({ length: campaign.def.sampleSize }, (_, index) => campaign.check(index))
+  );
   return evaluateCampaign(campaign.def, outcomes);
 }

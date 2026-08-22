@@ -5,10 +5,10 @@ issue: 207
 status: in_progress
 branch: codex/issue-207-live-doctor
 baseRevision: 7bcc236255742ad3edf2c16094abbabbcd4f50e4
-lastCompletedTask: T0
-nextTask: Implement and test the async DoctorSubsystemProbe port while retaining source-mode blocked results.
-lastGate: pnpm agent:check PASS on the base revision
-updatedAt: 2026-08-22T19:30:00Z
+lastCompletedTask: T1
+nextTask: Design existing-dependency live observers for sandbox, runtime SQLite, secret presence, and driver.
+lastGate: focused unit, security, public-regression, format, lint, and typecheck PASS
+updatedAt: 2026-08-22T19:42:00Z
 ---
 
 # Scope
@@ -19,13 +19,19 @@ evidence and independent verification exist.
 
 # Current decision
 
-The asynchronous probe-port vertical can proceed without a dependency change.
+The asynchronous probe-port vertical is complete without a dependency change.
+`collectDoctorFacts` preserves catalog order while awaiting each observation;
+`runDoctor` awaits the whole collection before capturing after-sentinels and
+sealing. The public regression campaign runner now awaits deterministic
+campaign checks so it continues to exercise the real doctor-facts surface.
+
 Real policy, connector, and probe observations require direct CLI dependencies
 not currently declared; their implementation is blocked pending explicit human
 approval. Source mode remains honestly `blocked` throughout.
 
 # Next exact action
 
-Make `collectDoctorFacts` asynchronous, await it inside `runDoctor` before the
-after-sentinel capture, and add discriminating tests for rejection and delayed
-observation behavior.
+Add the live existing-dependency observers without reading a secret value,
+opening a writable runtime store, invoking a driver, or allowing async work to
+outlive the sentinel window. Do not add policy, connector, or data-probe
+dependencies without explicit human approval.

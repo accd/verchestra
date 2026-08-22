@@ -17,7 +17,7 @@ export interface DoctorObservation {
   readonly healthy: boolean;
 }
 
-export type DoctorSubsystemProbe = () => DoctorObservation;
+export type DoctorSubsystemProbe = () => DoctorObservation | Promise<DoctorObservation>;
 
 export type DoctorProbeSet = Readonly<Record<DoctorCheckId, DoctorSubsystemProbe>>;
 
@@ -54,12 +54,14 @@ function observeToFact(checkId: DoctorCheckId, observation: DoctorObservation): 
 // A probe that throws is recorded as a present-but-unhealthy subsystem (fail)
 // with no error text, so a broken observer degrades to a stable code instead of
 // crashing the diagnostic or leaking a message.
-export function collectDoctorFacts(probes: DoctorProbeSet): DoctorCheckFact[] {
-  return DOCTOR_CHECK_IDS.map((checkId) => {
+export async function collectDoctorFacts(probes: DoctorProbeSet): Promise<DoctorCheckFact[]> {
+  const facts: DoctorCheckFact[] = [];
+  for (const checkId of DOCTOR_CHECK_IDS) {
     try {
-      return observeToFact(checkId, probes[checkId]());
+      facts.push(observeToFact(checkId, await probes[checkId]()));
     } catch {
-      return observeToFact(checkId, { present: true, healthy: false });
+      facts.push(observeToFact(checkId, { present: true, healthy: false }));
     }
-  });
+  }
+  return facts;
 }
