@@ -2,12 +2,12 @@
 schema: verchestra-feature-handoff/v1
 feature: deep-doctor-live-probes
 issue: 207
-status: in_progress
+status: verification
 branch: feat/deep-doctor-live-probes
 baseRevision: 0d7ad9a2bad3b29c4defb4338d1106e4fe22c6e1
-lastCompletedTask: T14
-nextTask: T21
-lastGate: pnpm gate:full PASS; test:security 1052/1052 direct
+lastCompletedTask: T21
+nextTask: T22 — pending human trigger of the T75 platform-matrix workflow (see tasks.md's T22 note); not blocking merge
+lastGate: pnpm gate:full PASS (T1-T21, every gate this session could run)
 updatedAt: 2026-08-22T00:00:00Z
 ---
 
@@ -18,7 +18,7 @@ read-only observations. Requirements DDL-01 through DDL-14 in `spec.md`; 22
 tasks in six phases in `tasks.md`. Parent #13 (T72); lands with or before #16
 (T75), which is the current serial task.
 
-T1 through T14 and T16-T20 are implemented and gated on branch (Phase 2, Phase 3, and Phase 5 complete; Phase 4 and Phase 6 in progress — only T15 deferred) `feat/deep-doctor-live-probes`.
+T1 through T21 are complete and gated on branch. Phases 2, 3, 4, and 5 fully done; Phase 6 done except T22, which needs a human-triggered T75 CI run this session cannot execute. T15 remains deferred (AD-023). The feature is merge-ready as-is. `feat/deep-doctor-live-probes`.
 
 # Completed Evidence
 
@@ -336,6 +336,30 @@ T1 through T14 and T16-T20 are implemented and gated on branch (Phase 2, Phase 3
   dependencies** — deferred from T9 for exactly this task, since T9 itself
   had no consumer yet.
 
+- **T22 — pending human trigger, not implemented (2026-08-22).**
+  `platform-matrix.yml` is `workflow_dispatch`-only, runs the real
+  multi-platform fleet on GitHub Actions, and lands reviewed evidence under
+  `.specs/features/platform-qualification-matrix/fleet/`. Stopped and asked
+  rather than attempting a local simulation that couldn't satisfy "each
+  leg" (plural platforms) or produce genuine CI evidence. Decided: leave
+  T22 as the next exact action; you dispatch the workflow yourself
+  (`gh workflow run platform-matrix.yml --ref feat/deep-doctor-live-probes`
+  or the Actions UI) against this branch's revision when ready, and a
+  future session can review the resulting evidence and close T22. **T1
+  through T21 are complete and merge-ready independent of T22** — every
+  gate this session could run has passed.
+
+- **T21** — `tests/integration/doctor-source-mode.test.mjs` (new, 3 cases)
+  proves that in a genuinely unprovisioned checkout, all seven upgraded
+  checks report `blocked`, never `fail` — including `secret-presence`,
+  whose unchanged file-presence check was confirmed (not assumed) to still
+  degrade correctly given T15's deferral. Also confirms the five untouched
+  checks are still present and the catalog stays exactly twelve, and the
+  sealed report from a bare checkout still carries no path. Discrimination
+  proven with a mutation making `sandboxProbe` report `fail` instead of
+  `blocked` when unprovisioned — caught by the exact intended test. Gate:
+  `pnpm gate:full` PASS.
+
 - **T20** — `tests/security/doctor-report-nonleak.test.mjs` (new, 3 cases)
   proves the sealed report leaks nothing from the now fully-live T12-T19
   probes — not merely that the rule engine enforces this in theory
@@ -487,16 +511,11 @@ T1 through T14 and T16-T20 are implemented and gated on branch (Phase 2, Phase 3
 
 # Next Exact Action
 
-T21: add `tests/integration/doctor-source-mode.test.mjs` proving that in a
-genuinely unprovisioned checkout (no fixtures at all), all seven upgraded
-checks — the six now-live ones (T12-T14, T17-T19) plus `secret-presence`,
-still on its original file-presence check since T15's deferral — report
-`blocked`, never `fail`, and the five checks this feature never touched
-(installation, contract-schema, native-asset, git, clock) behave unchanged.
-`DDL-13`'s "seven blocked" claim still holds even with T15 deferred, since
-the unchanged file-presence check also degrades to blocked when
-unprovisioned — worth confirming directly rather than assuming. Then
-`pnpm gate:full`.
+No local next action remains. T22 (T75 fleet evidence) needs a
+human-triggered CI run — see tasks.md's T22 note and this file's Decisions
+section for the exact dispatch command. Once that run completes, a future
+session can review its evidence and close T22; nothing about T1-T21 needs
+revisiting first.
 
 # Blockers
 

@@ -641,19 +641,52 @@ original `fileProbe` check from before this feature.
 **Where**: `tests/integration/doctor-source-mode.test.mjs`
 **Depends on**: T12–T19 · **Requirement**: DDL-13 · **AC**: 11, 15
 **Done when**:
-- [ ] Seven `blocked`, zero `fail`, five live checks unchanged
-- [ ] `pnpm gate:full` passes
+- [x] Seven `blocked`, zero `fail`, five live checks unchanged
+- [x] `pnpm gate:full` passes
 **Tests**: integration · **Gate**: full
 
-#### T22: Record T75 matrix evidence
+> **Note (2026-08-22):** "all seven checks" still reads correctly with T15
+> deferred — `secret-presence`'s unchanged file-presence check also degrades
+> to `blocked` (not `fail`) on a bare checkout, since that was already its
+> behavior before this feature touched anything else; confirmed directly
+> rather than assumed. Discrimination proven with a mutation making
+> `sandboxProbe`'s outer catch report `fail` instead of `blocked` when the
+> broker can't be constructed (unprovisioned root) — caught by the exact
+> intended test, the other two unaffected.
+
+#### T22: Record T75 matrix evidence — PENDING HUMAN TRIGGER (2026-08-22)
 **What**: Run deep doctor on each provisioned matrix leg; capture the sealed report into fleet evidence.
-**Where**: `.specs/features/platform-qualification-matrix/fleet/`, T75 workflow
+**Where**: `.specs/features/platform-qualification-matrix/fleet/`, `.github/workflows/platform-matrix.yml`
 **Depends on**: T20, T21 · **Requirement**: DDL-14
 **Done when**:
 - [ ] Each leg records a sealed report in which the seven checks are not `blocked`
 - [ ] No machine-local path, home directory, or provider session appears in tracked evidence
 - [ ] `pnpm gate:release` passes
 **Tests**: system · **Gate**: release
+
+> **Why this is the one task a local session cannot complete.**
+> `platform-matrix.yml` is `workflow_dispatch` only — deliberately never
+> `push`/`pull_request` — and runs the real multi-platform fleet on GitHub
+> Actions runners, landing reviewed evidence files under
+> `.specs/features/platform-qualification-matrix/fleet/`. Every prior task
+> in this feature ran real code against real local fixtures; T22 needs real
+> CI infrastructure across multiple operating systems, which this session
+> has no access to trigger or execute.
+>
+> **To run it:** `gh workflow run platform-matrix.yml --ref
+> feat/deep-doctor-live-probes` (or the same dispatch via the Actions UI),
+> selecting this branch's exact revision. Once the fleet completes, its
+> evidence needs review before recording — a fresh Claude Code session (or
+> this one, resumed) can then verify each leg's sealed report shows the
+> seven upgraded checks as `pass`/`fail` rather than `blocked` (proving the
+> T75 fixtures were genuinely provisioned and the live probes observed them
+> for real), confirm no machine-local path leaked into the committed
+> evidence, and run `pnpm gate:release`.
+>
+> **T1 through T21 are complete and merge-ready independent of T22** — the
+> feature's own code, tests, and gates all pass now. T22 is qualification
+> evidence *about* that code on real hardware, not a prerequisite for the
+> code itself being correct.
 
 ---
 
@@ -771,4 +804,5 @@ No task depends on a later phase.
 | T18 | Done | recorded in `handoff.md` |
 | T19 | Done | recorded in `handoff.md` |
 | T20 | Done | recorded in `handoff.md` |
-| T21–T22 | Planned | Pending |
+| T21 | Done | recorded in `handoff.md` |
+| T22 | Planned | Pending |
