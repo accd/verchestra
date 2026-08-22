@@ -71,7 +71,7 @@ test("JSON context exposes the exact safe clean-clone contract", () => {
   assert.equal(snapshot.schemaVersion, 3);
   assert.equal(snapshot.repository, "accd/verchestra");
   assert.equal(snapshot.version, "0.0.0-qualification");
-  assert.deepEqual(snapshot.qualification, { highestVerifiedTask: "T73", nextTask: "T74" });
+  assert.deepEqual(snapshot.qualification, { highestVerifiedTask: "T74", nextTask: "T75" });
   assert.equal(snapshot.requiredReads[0], "AGENTS.md");
   assert.equal(snapshot.activeFeatures[0].handoffPath, ".specs/features/agent-ready-repository/handoff.md");
   assert.doesNotMatch(output, /[A-Za-z]:\\|\/(?:Users|home)\//u);

@@ -3,7 +3,7 @@
 ## Mission and current status
 
 Verchestra is a verified AI software-delivery harness. It is currently
-`0.0.0-qualification`: T73 is complete and T74 is the next product task. Do not
+`0.0.0-qualification`: T74 is complete and T75 is the next product task. Do not
 claim a public installer, production readiness, or a 1.0 release.
 
 These instructions are provider-neutral and sufficient after a clean clone. Git
