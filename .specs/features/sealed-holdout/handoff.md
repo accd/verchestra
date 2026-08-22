@@ -6,9 +6,9 @@ status: in_progress
 branch: codex/issue-15-t74-f3
 baseRevision: 36fb77fbc20c9d5cd2810196bf2007968eb7e087
 lastCompletedTask: T7
-nextTask: "MiguelCorre independently re-verifies F3 on the exact implementation head; only then may the T74 qualification report and chain advance be considered."
-lastGate: "F3 implementation branch: 80/80 focused promotion tests pass; gate:quick PASS; gate:security PASS (2,059 unit, 165 E2E, 1,044 security, 283 fault, plus contract/architecture/qualification stages; zero failed, skipped, or todo)."
-updatedAt: 2026-08-22T01:00:00Z
+nextTask: "Human review PR #289 and rebase-only merge; after merge, run the final T74 qualification chain. T74 remains unqualified until that separate qualification report is accepted."
+lastGate: "F3 independently verified by MiguelCorre on exact head 7c238c6: 92 focused promotion tests pass; gate:quick PASS; gate:security PASS; mutation sensor KILLED; zero failed, skipped, or todo; T74 qualification not advanced."
+updatedAt: 2026-08-22T13:15:14Z
 ---
 
 # F3 implementation remediation complete; qualification still pending (2026-08-22)
@@ -23,14 +23,14 @@ sealed source state bind canonical raw observations, not candidate aggregates.
 
 The five F3 attacks (forged metrics, malformed bound, duplicate id, extra
 failure, and live replacement through `candidate.attempt`) are covered by
-behavior-focused unit, security, and E2E cases. The focused set is 80/80 with
+behavior-focused unit, security, and E2E cases. The focused set is 92/92 with
 no skips or todos; typecheck, format, lint, and complexity checks pass.
 
-This is implementation evidence only. The existing independent validation
-report remains FAIL by design until MiguelCorre repeats the attack, gate, and
-discrimination sensor on the exact implementation head. Do not create
-`docs/qualification/t74-validation.md`, advance the qualification resolver, or
-close #15 from this author branch.
+MiguelCorre independently repeated the attack, gate, and discrimination sensor
+on exact head `7c238c6`; the validation report now records PASS for the F3
+slice. Do not create `docs/qualification/t74-validation.md`, advance the
+qualification resolver, or close #15 until the separate T74 qualification and
+human review are complete.
 
 # Repeat verification failed on F3 (2026-08-17)
 
