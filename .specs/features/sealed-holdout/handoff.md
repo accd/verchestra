@@ -2,14 +2,29 @@
 schema: verchestra-feature-handoff/v1
 feature: sealed-holdout
 issue: 15
-status: in_progress
-branch: codex/issue-15-t74-f3
-baseRevision: 36fb77fbc20c9d5cd2810196bf2007968eb7e087
+status: verification
+branch: codex/t74-qualification
+baseRevision: 24e3a02faefdada5838786487f3fe842e909f225
 lastCompletedTask: T7
-nextTask: "Human review PR #289 and rebase-only merge; after merge, run the final T74 qualification chain. T74 remains unqualified until that separate qualification report is accepted."
-lastGate: "F3 independently verified by MiguelCorre on exact head 7c238c6: 92 focused promotion tests pass; gate:quick PASS; gate:security PASS; mutation sensor KILLED; zero failed, skipped, or todo; T74 qualification not advanced."
-updatedAt: 2026-08-22T13:15:14Z
+nextTask: "Human review PR #290; resolve the deliberate status-surface/readiness-fixture handoff, then merge the qualification report. Do not close #15 or advance the chain before review."
+lastGate: "Final T74 evidence prepared by MiguelCorre on merged head 24e3a02: 80 focused promotion tests pass; Linux gate:quick run 32576041915 PASS; Linux gate:security run 32575867942 PASS; 14 mutation kills, zero survivors; PR #290 awaits human review."
+updatedAt: 2026-08-22T14:50:00Z
 ---
+
+# Final T74 qualification report prepared; review and status handoff remain (2026-08-22)
+
+MiguelCorre independently prepared `docs/qualification/t74-validation.md` on
+exact merged revision `24e3a02`. The report binds both required gates to that
+revision, records 80 focused promotion cases, 48 security/E2E cases, and 14
+killed mutations with no survivor. Linux runs 32576041915 (`gate:quick`) and
+32575867942 (`gate:security`) are the durable exact-head evidence.
+
+The report is in PR #290 and does not auto-close #15 or advance the chain.
+The repository Quality/Site checks currently expose a follow-up: once the
+report exists, readiness derives T74/T75 while existing status/readiness/site
+fixtures still assert T73/T74. No status surface or source was changed in the
+verification task. A maintainer must decide and review the separate
+projection/fixture migration before merging or advancing accountability.
 
 # F3 implementation remediation complete; qualification still pending (2026-08-22)
 
