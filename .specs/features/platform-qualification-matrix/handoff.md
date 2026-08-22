@@ -6,9 +6,9 @@ status: in_progress
 branch: codex/issue-16-t75
 baseRevision: 8342b05d34e7bf3bb7f42b33df71340120d06d4d
 lastCompletedTask: null
-nextTask: "Reconcile all five declared gate profiles after the macOS x64 runner migration at the exact candidate SHA. The previous four-profile dispatches (quick 32578851019, full 32578751272, security 32578852153, release 32578752980) pass on Windows x64, Linux x64/arm64, and macOS arm64; their macOS x64 leg is missing because legacy macos-13 never dequeued. Build 32579156550 is pending. Re-dispatch the five profiles with macos-15-intel, regenerate the T75 index, update matrix evidence, and obtain an independently-authored t75-validation.md. The index remains explicitly unsigned under AD-014, and C5/#207 live doctor probes plus the DSSE signing identity remain outside this slice."
-lastGate: FLEET GREEN — gate:security passed SIMULTANEOUSLY on Windows x64, Linux x64, Linux arm64, macOS arm64 at 5c86436 (run 31315589420); macOS x64 environmentally queued on the retiring Intel fleet; on-main confirmation run 31315939879 dispatched at bb11932
-updatedAt: 2026-08-22T14:36:00Z
+nextTask: "Use the complete exact-head fleet evidence at candidate 97fa851ae8d84cc97d1eb0a2df3e5426bcb08421 (quick 32579393585, full 32579395143, build 32579396554, security 32579397998, release 32579399438) to author and independently verify t75-validation.md. The reconciled index is 42/52 qualified, 8 contract-qualified, 2 not-qualified, 0 environmental, and 0 contradictions; all five profile indexes are complete with empty excused lists. C5/#207 live doctor probes and the AD-014 release signing identity remain outside this slice, and the unsigned state must stay explicit."
+lastGate: FLEET GREEN — all five exact-head profiles passed on Windows x64, macOS x64/arm64, Linux x64/arm64 at candidate 97fa851 (runs 32579393585, 32579395143, 32579396554, 32579397998, 32579399438); every collected index is complete
+updatedAt: 2026-08-22T15:00:00Z
 ---
 
 # What a reader must NOT conclude from the evidence index
@@ -246,7 +246,7 @@ surface on a driver that forwards a caller-supplied `--model`. That trade-off
 needs a Windows host or a matrix dispatch to settle honestly — it must not be
 guessed at from here.
 
-# FLEET GREEN — every finding fixed; the platform × security-gate leg is proven
+# Historical baseline: FLEET GREEN before the Intel runner migration
 
 All five findings are fixed and merged, and `gate:security` passed
 SIMULTANEOUSLY on Windows x64, Linux glibc x64, Linux glibc arm64, and macOS

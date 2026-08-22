@@ -19,8 +19,8 @@
         { "case": "darwin-arm64", "status": "qualified", "evidence": "fleet leg" },
         {
           "case": "darwin-x64",
-          "status": "environmental",
-          "evidence": "Legacy macos-13 dispatches never dequeued on GitHub's retiring Intel fleet. The workflow now targets macos-15-intel; this case remains environmental until that exact runner produces bound evidence."
+          "status": "qualified",
+          "evidence": "The macos-15-intel runner passed all five exact-head gate profiles at the T75 candidate; its platform, architecture, runtime, candidate revision, and leg digest are bound in the committed fleet indexes."
         }
       ]
     },

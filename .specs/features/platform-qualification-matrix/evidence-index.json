@@ -1,0 +1,891 @@
+{
+  "schemaVersion": 1,
+  "canonicalizationVersion": 2,
+  "task": "T75",
+  "revision": "97fa851ae8d84cc97d1eb0a2df3e5426bcb08421",
+  "summary": {
+    "cases": 52,
+    "qualified": 42,
+    "contractQualified": 8,
+    "notQualified": 2,
+    "environmental": 0,
+    "contradictions": 0
+  },
+  "digestProvenance": {
+    "identityDigest": "recomputed",
+    "legDigest": "recomputed for passing legs; transcribed otherwise, because a failed leg's reported value is not recoverable from the fleet index"
+  },
+  "dimensions": [
+    {
+      "dimension": "platform",
+      "cases": [
+        {
+          "case": "win32-x64",
+          "declaredStatus": "qualified",
+          "status": "qualified",
+          "evidence": "fleet leg",
+          "observed": [
+            {
+              "gate": "gate:quick",
+              "runId": "32579393585",
+              "status": "qualified"
+            },
+            {
+              "gate": "gate:full",
+              "runId": "32579395143",
+              "status": "qualified"
+            },
+            {
+              "gate": "gate:build",
+              "runId": "32579396554",
+              "status": "qualified"
+            },
+            {
+              "gate": "gate:security",
+              "runId": "32579397998",
+              "status": "qualified"
+            },
+            {
+              "gate": "gate:release",
+              "runId": "32579399438",
+              "status": "qualified"
+            }
+          ]
+        },
+        {
+          "case": "linux-x64",
+          "declaredStatus": "qualified",
+          "status": "qualified",
+          "evidence": "fleet leg",
+          "observed": [
+            {
+              "gate": "gate:quick",
+              "runId": "32579393585",
+              "status": "qualified"
+            },
+            {
+              "gate": "gate:full",
+              "runId": "32579395143",
+              "status": "qualified"
+            },
+            {
+              "gate": "gate:build",
+              "runId": "32579396554",
+              "status": "qualified"
+            },
+            {
+              "gate": "gate:security",
+              "runId": "32579397998",
+              "status": "qualified"
+            },
+            {
+              "gate": "gate:release",
+              "runId": "32579399438",
+              "status": "qualified"
+            }
+          ]
+        },
+        {
+          "case": "linux-arm64",
+          "declaredStatus": "qualified",
+          "status": "qualified",
+          "evidence": "fleet leg",
+          "observed": [
+            {
+              "gate": "gate:quick",
+              "runId": "32579393585",
+              "status": "qualified"
+            },
+            {
+              "gate": "gate:full",
+              "runId": "32579395143",
+              "status": "qualified"
+            },
+            {
+              "gate": "gate:build",
+              "runId": "32579396554",
+              "status": "qualified"
+            },
+            {
+              "gate": "gate:security",
+              "runId": "32579397998",
+              "status": "qualified"
+            },
+            {
+              "gate": "gate:release",
+              "runId": "32579399438",
+              "status": "qualified"
+            }
+          ]
+        },
+        {
+          "case": "darwin-arm64",
+          "declaredStatus": "qualified",
+          "status": "qualified",
+          "evidence": "fleet leg",
+          "observed": [
+            {
+              "gate": "gate:quick",
+              "runId": "32579393585",
+              "status": "qualified"
+            },
+            {
+              "gate": "gate:full",
+              "runId": "32579395143",
+              "status": "qualified"
+            },
+            {
+              "gate": "gate:build",
+              "runId": "32579396554",
+              "status": "qualified"
+            },
+            {
+              "gate": "gate:security",
+              "runId": "32579397998",
+              "status": "qualified"
+            },
+            {
+              "gate": "gate:release",
+              "runId": "32579399438",
+              "status": "qualified"
+            }
+          ]
+        },
+        {
+          "case": "darwin-x64",
+          "declaredStatus": "qualified",
+          "status": "qualified",
+          "evidence": "The macos-15-intel runner passed all five exact-head gate profiles at the T75 candidate; its platform, architecture, runtime, candidate revision, and leg digest are bound in the committed fleet indexes.",
+          "observed": [
+            {
+              "gate": "gate:quick",
+              "runId": "32579393585",
+              "status": "qualified"
+            },
+            {
+              "gate": "gate:full",
+              "runId": "32579395143",
+              "status": "qualified"
+            },
+            {
+              "gate": "gate:build",
+              "runId": "32579396554",
+              "status": "qualified"
+            },
+            {
+              "gate": "gate:security",
+              "runId": "32579397998",
+              "status": "qualified"
+            },
+            {
+              "gate": "gate:release",
+              "runId": "32579399438",
+              "status": "qualified"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "dimension": "gate-profile",
+      "cases": [
+        {
+          "case": "quick",
+          "declaredStatus": "qualified",
+          "status": "qualified",
+          "evidence": "fleet dispatch",
+          "observed": [
+            {
+              "gate": "gate:quick",
+              "runId": "32579393585",
+              "status": "qualified"
+            }
+          ]
+        },
+        {
+          "case": "full",
+          "declaredStatus": "qualified",
+          "status": "qualified",
+          "evidence": "fleet dispatch; the only profile carrying test:integration and test:mutation",
+          "observed": [
+            {
+              "gate": "gate:full",
+              "runId": "32579395143",
+              "status": "qualified"
+            }
+          ]
+        },
+        {
+          "case": "build",
+          "declaredStatus": "qualified",
+          "status": "qualified",
+          "evidence": "fleet dispatch",
+          "observed": [
+            {
+              "gate": "gate:build",
+              "runId": "32579396554",
+              "status": "qualified"
+            }
+          ]
+        },
+        {
+          "case": "security",
+          "declaredStatus": "qualified",
+          "status": "qualified",
+          "evidence": "fleet dispatch",
+          "observed": [
+            {
+              "gate": "gate:security",
+              "runId": "32579397998",
+              "status": "qualified"
+            }
+          ]
+        },
+        {
+          "case": "release",
+          "declaredStatus": "qualified",
+          "status": "qualified",
+          "evidence": "fleet dispatch; the only profile carrying test:release",
+          "observed": [
+            {
+              "gate": "gate:release",
+              "runId": "32579399438",
+              "status": "qualified"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "dimension": "topology",
+      "cases": [
+        {
+          "case": "git-relation:control",
+          "declaredStatus": "qualified",
+          "status": "qualified",
+          "evidence": "tests/integration/workspace-scanner.test.mjs",
+          "observed": []
+        },
+        {
+          "case": "git-relation:nested",
+          "declaredStatus": "qualified",
+          "status": "qualified",
+          "evidence": "tests/integration/workspace-scanner.test.mjs",
+          "observed": []
+        },
+        {
+          "case": "git-relation:submodule",
+          "declaredStatus": "qualified",
+          "status": "qualified",
+          "evidence": "tests/integration/workspace-scanner.test.mjs",
+          "observed": []
+        },
+        {
+          "case": "git-relation:worktree",
+          "declaredStatus": "qualified",
+          "status": "qualified",
+          "evidence": "tests/integration/workspace-scanner.test.mjs",
+          "observed": []
+        },
+        {
+          "case": "git-relation:placeholder",
+          "declaredStatus": "qualified",
+          "status": "qualified",
+          "evidence": "tests/integration/workspace-scanner.test.mjs",
+          "observed": []
+        },
+        {
+          "case": "placement:colocated",
+          "declaredStatus": "qualified",
+          "status": "qualified",
+          "evidence": "tests/unit/artifact-placement.test.mjs",
+          "observed": []
+        },
+        {
+          "case": "placement:centralized",
+          "declaredStatus": "qualified",
+          "status": "qualified",
+          "evidence": "tests/unit/artifact-placement.test.mjs",
+          "observed": []
+        },
+        {
+          "case": "placement:mixed",
+          "declaredStatus": "qualified",
+          "status": "qualified",
+          "evidence": "tests/unit/artifact-placement.test.mjs",
+          "observed": []
+        },
+        {
+          "case": "placement:external-control",
+          "declaredStatus": "qualified",
+          "status": "qualified",
+          "evidence": "tests/unit/artifact-placement.test.mjs",
+          "observed": []
+        }
+      ]
+    },
+    {
+      "dimension": "driver",
+      "cases": [
+        {
+          "case": "claude-code",
+          "declaredStatus": "qualified",
+          "status": "qualified",
+          "evidence": "spikes/claude-code-driver probe against the pinned 2.1.168 install",
+          "observed": []
+        },
+        {
+          "case": "codex",
+          "declaredStatus": "qualified",
+          "status": "qualified",
+          "evidence": "spikes/codex-driver probe against the pinned 0.115.0 install",
+          "observed": []
+        },
+        {
+          "case": "opencode",
+          "declaredStatus": "qualified",
+          "status": "qualified",
+          "evidence": "spikes/opencode-driver probe against the repo-local install",
+          "observed": []
+        },
+        {
+          "case": "pi",
+          "declaredStatus": "contract-qualified",
+          "status": "contract-qualified",
+          "evidence": "Embedded SDK, not a CLI. The probe reads the installed @earendil-works/pi-agent-core manifest and reports not-available when absent (#242 era fix); no live session is qualified.",
+          "observed": []
+        },
+        {
+          "case": "cross-driver-verification",
+          "declaredStatus": "qualified",
+          "status": "qualified",
+          "evidence": "The full profile resolves the verifier from real probes via resolveVerifierDriver (#35); claude-code implements, codex verifies.",
+          "observed": []
+        }
+      ]
+    },
+    {
+      "dimension": "database",
+      "cases": [
+        {
+          "case": "sqlite",
+          "declaredStatus": "qualified",
+          "status": "qualified",
+          "evidence": "Real node:sqlite driver through SqliteReadConnection; tests/integration/sqlite-probe-adapter.test.mjs",
+          "observed": []
+        },
+        {
+          "case": "postgresql",
+          "declaredStatus": "contract-qualified",
+          "status": "contract-qualified",
+          "evidence": "Conformance kit against fixtures; no live server",
+          "observed": []
+        },
+        {
+          "case": "mysql",
+          "declaredStatus": "contract-qualified",
+          "status": "contract-qualified",
+          "evidence": "Conformance kit against fixtures; no live server",
+          "observed": []
+        },
+        {
+          "case": "mariadb",
+          "declaredStatus": "contract-qualified",
+          "status": "contract-qualified",
+          "evidence": "Conformance kit against fixtures; no live server",
+          "observed": []
+        },
+        {
+          "case": "sqlserver",
+          "declaredStatus": "contract-qualified",
+          "status": "contract-qualified",
+          "evidence": "Conformance kit against fixtures; no live server",
+          "observed": []
+        },
+        {
+          "case": "oracle",
+          "declaredStatus": "contract-qualified",
+          "status": "contract-qualified",
+          "evidence": "Conformance kit against fixtures; no live server",
+          "observed": []
+        },
+        {
+          "case": "mongodb",
+          "declaredStatus": "contract-qualified",
+          "status": "contract-qualified",
+          "evidence": "Conformance kit against fixtures; no live server",
+          "observed": []
+        },
+        {
+          "case": "sybase",
+          "declaredStatus": "contract-qualified",
+          "status": "contract-qualified",
+          "evidence": "Conformance kit against fixtures; no live server. SAP ASE holds kit parity with every other engine and is NOT a principal qualification target - the earlier wording in #16 was corrected under AD-017.",
+          "observed": []
+        }
+      ]
+    },
+    {
+      "dimension": "sandbox",
+      "cases": [
+        {
+          "case": "path-protection",
+          "declaredStatus": "qualified",
+          "status": "qualified",
+          "evidence": "tests/security/protected-path.test.mjs - symlink and junction escape, handle forgery, TOCTOU replacement",
+          "observed": []
+        },
+        {
+          "case": "process-tree-termination",
+          "declaredStatus": "qualified",
+          "status": "qualified",
+          "evidence": "tests/integration/gate-commit-adapters.test.mjs - real timed-out tree and descendant",
+          "observed": []
+        },
+        {
+          "case": "egress-boundary",
+          "declaredStatus": "qualified",
+          "status": "qualified",
+          "evidence": "tests/security/data-egress-firewall.test.mjs",
+          "observed": []
+        },
+        {
+          "case": "capability-grants",
+          "declaredStatus": "qualified",
+          "status": "qualified",
+          "evidence": "tests/security/authority-binding.test.mjs",
+          "observed": []
+        },
+        {
+          "case": "probe-worker-bounds",
+          "declaredStatus": "qualified",
+          "status": "qualified",
+          "evidence": "tests/security/probe-worker-security.test.mjs - read-only session, row/byte/time limits, secret-leak refusal",
+          "observed": []
+        },
+        {
+          "case": "isolation-grade:process-contained",
+          "declaredStatus": "qualified",
+          "status": "qualified",
+          "evidence": "spikes/isolation/test/isolation-policy.test.mjs",
+          "observed": []
+        },
+        {
+          "case": "isolation-grade:native-restricted",
+          "declaredStatus": "not-qualified",
+          "status": "not-qualified",
+          "evidence": "No platform can advertise it: isolation-policy.mjs requires a helper digest plus every native control, and docs/qualification/isolation.md qualifies the fixture on Windows AMD64 only. The report must not imply full sandbox qualification.",
+          "observed": []
+        },
+        {
+          "case": "isolation-grade:container-isolated",
+          "declaredStatus": "not-qualified",
+          "status": "not-qualified",
+          "evidence": "Spike-level concept with no product counterpart.",
+          "observed": []
+        }
+      ]
+    },
+    {
+      "dimension": "self-test",
+      "cases": [
+        {
+          "case": "smoke",
+          "declaredStatus": "qualified",
+          "status": "qualified",
+          "evidence": "6 required checks; tests/integration/self-test-smoke-scenario.test.mjs",
+          "observed": []
+        },
+        {
+          "case": "workspace",
+          "declaredStatus": "qualified",
+          "status": "qualified",
+          "evidence": "25 required checks across 5 shapes; tests/integration/self-test-workspace-scenario.test.mjs",
+          "observed": []
+        },
+        {
+          "case": "full",
+          "declaredStatus": "qualified",
+          "status": "qualified",
+          "evidence": "10 required checks including crash-recovery; tests/integration/self-test-full-scenario.test.mjs",
+          "observed": []
+        },
+        {
+          "case": "drivers",
+          "declaredStatus": "qualified",
+          "status": "qualified",
+          "evidence": "7 required checks; tests/integration/self-test-driver-scenario.test.mjs",
+          "observed": []
+        }
+      ]
+    },
+    {
+      "dimension": "installer",
+      "cases": [
+        {
+          "case": "host-target-activation",
+          "declaredStatus": "qualified",
+          "status": "qualified",
+          "evidence": "tests/integration/transactional-activation.test.mjs activates the release built for the running host (T75 M-3)",
+          "observed": []
+        },
+        {
+          "case": "mixed-release-refusal",
+          "declaredStatus": "qualified",
+          "status": "qualified",
+          "evidence": "VES_ACTIVATION_RELEASE_MIXED on a target that disagrees with the staged receipt",
+          "observed": []
+        },
+        {
+          "case": "launcher-equivalence",
+          "declaredStatus": "qualified",
+          "status": "qualified",
+          "evidence": "Five mutations rejected: version, digest, behavior, exit, missing",
+          "observed": []
+        },
+        {
+          "case": "rollback",
+          "declaredStatus": "qualified",
+          "status": "qualified",
+          "evidence": "Rollback reinspects health and refuses a tampered installed component",
+          "observed": []
+        }
+      ]
+    },
+    {
+      "dimension": "recovery",
+      "cases": [
+        {
+          "case": "crash-recovery",
+          "declaredStatus": "qualified",
+          "status": "qualified",
+          "evidence": "tests/fault-injection/self-test-full-crash-matrix.test.mjs across 11 durable boundaries x 2 phases",
+          "observed": []
+        },
+        {
+          "case": "recovery-bundle-integrity",
+          "declaredStatus": "qualified",
+          "status": "qualified",
+          "evidence": "tests/security/recovery-bundle-security.test.mjs",
+          "observed": []
+        }
+      ]
+    },
+    {
+      "dimension": "evidence-envelope",
+      "cases": [
+        {
+          "case": "dsse-in-toto",
+          "declaredStatus": "qualified",
+          "status": "qualified",
+          "evidence": "AD-014; PAE signing, declared predicate types, bare-envelope persistence (#242, #248)",
+          "observed": []
+        },
+        {
+          "case": "external-verifiability",
+          "declaredStatus": "qualified",
+          "status": "qualified",
+          "evidence": "tests/security/dsse-interoperability.test.mjs verifies a persisted artifact with a generic DSSE implementation and no repository types",
+          "observed": []
+        }
+      ]
+    }
+  ],
+  "profiles": [
+    {
+      "gate": "gate:quick",
+      "runId": "32579393585",
+      "complete": true,
+      "legs": [
+        {
+          "leg": "win32-x64",
+          "status": "qualified",
+          "platform": "win32",
+          "arch": "x64",
+          "runtime": "v24.14.0",
+          "revision": "97fa851ae8d84cc97d1eb0a2df3e5426bcb08421",
+          "identityDigest": "sha256:e639b67f31d6a66897d265ab7a3d851cc37ad14973e5950bd0616208807c4de8",
+          "legDigest": "sha256:b212981f9a9ba67b7f0c13676abdd33221683098af56e789b00ea9b27abfd984"
+        },
+        {
+          "leg": "darwin-x64",
+          "status": "qualified",
+          "platform": "darwin",
+          "arch": "x64",
+          "runtime": "v24.14.0",
+          "revision": "97fa851ae8d84cc97d1eb0a2df3e5426bcb08421",
+          "identityDigest": "sha256:e89393dc78a54d53e06e8b7e591f730d5fd26f7ba7d7d6950a49abd8447784a0",
+          "legDigest": "sha256:efb5f18340fdc0ed156de197aac180e7090c080eb23007e51b025b1bcbb16a32"
+        },
+        {
+          "leg": "darwin-arm64",
+          "status": "qualified",
+          "platform": "darwin",
+          "arch": "arm64",
+          "runtime": "v24.14.0",
+          "revision": "97fa851ae8d84cc97d1eb0a2df3e5426bcb08421",
+          "identityDigest": "sha256:fd9f470ab077f59b0b4874cf7b840bdf13a71a7243deff161b149f421109884f",
+          "legDigest": "sha256:2e8af9228dfb29edfcb469edfa29fe5a55420da647b16a5bfac5acd4b6d655f8"
+        },
+        {
+          "leg": "linux-x64",
+          "status": "qualified",
+          "platform": "linux",
+          "arch": "x64",
+          "runtime": "v24.14.0",
+          "revision": "97fa851ae8d84cc97d1eb0a2df3e5426bcb08421",
+          "identityDigest": "sha256:752ba5ce50292f3f05a048b9c466f3478aa52803187a5fac35161624f28420e1",
+          "legDigest": "sha256:dcd158a0ec12ef13a7c7d219a86e148dde98c3464662bd896f077b8a138103a8"
+        },
+        {
+          "leg": "linux-arm64",
+          "status": "qualified",
+          "platform": "linux",
+          "arch": "arm64",
+          "runtime": "v24.14.0",
+          "revision": "97fa851ae8d84cc97d1eb0a2df3e5426bcb08421",
+          "identityDigest": "sha256:abdbe33501922580f99eb1858e55447161b76570b3829998d89f3d9ed10e4605",
+          "legDigest": "sha256:f0103f225489cbfa44286b065c8f8040bb467115d2e1c11e68d5f43781aec691"
+        }
+      ],
+      "excused": []
+    },
+    {
+      "gate": "gate:full",
+      "runId": "32579395143",
+      "complete": true,
+      "legs": [
+        {
+          "leg": "win32-x64",
+          "status": "qualified",
+          "platform": "win32",
+          "arch": "x64",
+          "runtime": "v24.14.0",
+          "revision": "97fa851ae8d84cc97d1eb0a2df3e5426bcb08421",
+          "identityDigest": "sha256:e2a7a760e0b1075def7b4c14c21d92f7be9502b3aa716e03c1b1f7fc13e70461",
+          "legDigest": "sha256:3d6cea7a6c56301afe124f19bef25b036d9ffd5e1ccc141121015ac2bfdaadcd"
+        },
+        {
+          "leg": "darwin-x64",
+          "status": "qualified",
+          "platform": "darwin",
+          "arch": "x64",
+          "runtime": "v24.14.0",
+          "revision": "97fa851ae8d84cc97d1eb0a2df3e5426bcb08421",
+          "identityDigest": "sha256:df83a2faa454757a09135798438ef0635abd887d80a7d04c96ba2c3ac45336ec",
+          "legDigest": "sha256:7537ca0d1bc16a4cc982ace40a13bf6076fad2845dfac2fd48f190cdeff2e220"
+        },
+        {
+          "leg": "darwin-arm64",
+          "status": "qualified",
+          "platform": "darwin",
+          "arch": "arm64",
+          "runtime": "v24.14.0",
+          "revision": "97fa851ae8d84cc97d1eb0a2df3e5426bcb08421",
+          "identityDigest": "sha256:50027344f79737cbe6f95d4eaef3f31816ca3919a434d26f5edbaf314f1cf3f2",
+          "legDigest": "sha256:2d38e44cf9fb7f5fe8c4a47bbb35aea6771678d21b3b9710c5e639cf83d87bfc"
+        },
+        {
+          "leg": "linux-x64",
+          "status": "qualified",
+          "platform": "linux",
+          "arch": "x64",
+          "runtime": "v24.14.0",
+          "revision": "97fa851ae8d84cc97d1eb0a2df3e5426bcb08421",
+          "identityDigest": "sha256:ca7b8ddb3e64f581d4201cb31709914e1ec6d28898be499df12840d8de22a6f6",
+          "legDigest": "sha256:c8272d56565e0e00a8e09abed3b5657c8af0dda28c088c0b21307d32bfd37b33"
+        },
+        {
+          "leg": "linux-arm64",
+          "status": "qualified",
+          "platform": "linux",
+          "arch": "arm64",
+          "runtime": "v24.14.0",
+          "revision": "97fa851ae8d84cc97d1eb0a2df3e5426bcb08421",
+          "identityDigest": "sha256:4a5144169705356136b0fe17a22a3b1ef065f1533ba1a102802d696fe714b969",
+          "legDigest": "sha256:99d1b0c1bf8c9639207121ad430129d4f1c93b9a6db989933365bce3a8747ba6"
+        }
+      ],
+      "excused": []
+    },
+    {
+      "gate": "gate:build",
+      "runId": "32579396554",
+      "complete": true,
+      "legs": [
+        {
+          "leg": "win32-x64",
+          "status": "qualified",
+          "platform": "win32",
+          "arch": "x64",
+          "runtime": "v24.14.0",
+          "revision": "97fa851ae8d84cc97d1eb0a2df3e5426bcb08421",
+          "identityDigest": "sha256:ab5a2164bdcc00858384e3dcf45182b96da2ee559e1097e146899fa8d30b017c",
+          "legDigest": "sha256:8acb8526dd4cc3cc220559fc84b6bdb5ad06d26f56443d6e8f55b3cf384d980b"
+        },
+        {
+          "leg": "darwin-x64",
+          "status": "qualified",
+          "platform": "darwin",
+          "arch": "x64",
+          "runtime": "v24.14.0",
+          "revision": "97fa851ae8d84cc97d1eb0a2df3e5426bcb08421",
+          "identityDigest": "sha256:c1f1c84eec40bad81b6cb94c529ae07e08072c07fa5df4b91bb29a74e254b7a0",
+          "legDigest": "sha256:61dcdbb97f77d3267488623bcc7f7bf60262b9a0aa89d72c1cd310aafb23944c"
+        },
+        {
+          "leg": "darwin-arm64",
+          "status": "qualified",
+          "platform": "darwin",
+          "arch": "arm64",
+          "runtime": "v24.14.0",
+          "revision": "97fa851ae8d84cc97d1eb0a2df3e5426bcb08421",
+          "identityDigest": "sha256:6110ef14240ba0da2291201f0dc17ee9197736aa840622cd3c8a00d3fae7779d",
+          "legDigest": "sha256:0a2db45294dcbe74569cbe2a3abb84e3d9abacb6a123c761dee79e736c592f7c"
+        },
+        {
+          "leg": "linux-x64",
+          "status": "qualified",
+          "platform": "linux",
+          "arch": "x64",
+          "runtime": "v24.14.0",
+          "revision": "97fa851ae8d84cc97d1eb0a2df3e5426bcb08421",
+          "identityDigest": "sha256:a7b007a5405b48d3a31350e32c26f43734e6e3d9f787a7eb805de64065484f5b",
+          "legDigest": "sha256:0685ae7ca9648a4a8fd695e9b9c4fee32a8f863266d5cd2ceddefb75697e799a"
+        },
+        {
+          "leg": "linux-arm64",
+          "status": "qualified",
+          "platform": "linux",
+          "arch": "arm64",
+          "runtime": "v24.14.0",
+          "revision": "97fa851ae8d84cc97d1eb0a2df3e5426bcb08421",
+          "identityDigest": "sha256:e897f455ef26c6a1c340d982c4b7daf226decbea8a04619d22535a4b3385e5d6",
+          "legDigest": "sha256:954cd032b29e48520b7f64c2547a61f4d28b35ce460e61fae04843ccf1a469f9"
+        }
+      ],
+      "excused": []
+    },
+    {
+      "gate": "gate:security",
+      "runId": "32579397998",
+      "complete": true,
+      "legs": [
+        {
+          "leg": "win32-x64",
+          "status": "qualified",
+          "platform": "win32",
+          "arch": "x64",
+          "runtime": "v24.14.0",
+          "revision": "97fa851ae8d84cc97d1eb0a2df3e5426bcb08421",
+          "identityDigest": "sha256:a267e16a375a9c34d4fb9e2d4370f3c7ce6f1ffe5da85bed70bc881851bd01a5",
+          "legDigest": "sha256:9293f6692ba8aca19818d1150a476fbd3cd089eef7a3606ad5e8cd8984894e59"
+        },
+        {
+          "leg": "darwin-x64",
+          "status": "qualified",
+          "platform": "darwin",
+          "arch": "x64",
+          "runtime": "v24.14.0",
+          "revision": "97fa851ae8d84cc97d1eb0a2df3e5426bcb08421",
+          "identityDigest": "sha256:1d32a4c00c448cba6eea8f45a473f3c2365f6d6630c41da4acfd363cd0852ef8",
+          "legDigest": "sha256:f175605cc9d6df4e9dddd40b7697bcd2e164be7bdc9d3ac75bc06644ca2ec228"
+        },
+        {
+          "leg": "darwin-arm64",
+          "status": "qualified",
+          "platform": "darwin",
+          "arch": "arm64",
+          "runtime": "v24.14.0",
+          "revision": "97fa851ae8d84cc97d1eb0a2df3e5426bcb08421",
+          "identityDigest": "sha256:5e7649bd0efa5ebcb5a1644fd980b141861f37350b9bd73a19e7e48febd58111",
+          "legDigest": "sha256:6c847419b6e9a5b9df8497d1ca21925387e0fcfcee3e4fcf0475d2e7f9680ef5"
+        },
+        {
+          "leg": "linux-x64",
+          "status": "qualified",
+          "platform": "linux",
+          "arch": "x64",
+          "runtime": "v24.14.0",
+          "revision": "97fa851ae8d84cc97d1eb0a2df3e5426bcb08421",
+          "identityDigest": "sha256:7fe569e14f08275d54db6a0145f90575c7f5d1519a9d4077564277dfb363bde3",
+          "legDigest": "sha256:2dd7d3915bbc3a1a973ae004516ef745ddd90c4341ac82f4a9eacee15022ba54"
+        },
+        {
+          "leg": "linux-arm64",
+          "status": "qualified",
+          "platform": "linux",
+          "arch": "arm64",
+          "runtime": "v24.14.0",
+          "revision": "97fa851ae8d84cc97d1eb0a2df3e5426bcb08421",
+          "identityDigest": "sha256:a08084582b5b25240397f90c5a267ae96e0f3c3773b5acdcc6289a7c3ac9f02b",
+          "legDigest": "sha256:ab167b56e059e81e1511f6f293495427599c0918bfb03ffa69bc9ac0cdfca9fa"
+        }
+      ],
+      "excused": []
+    },
+    {
+      "gate": "gate:release",
+      "runId": "32579399438",
+      "complete": true,
+      "legs": [
+        {
+          "leg": "win32-x64",
+          "status": "qualified",
+          "platform": "win32",
+          "arch": "x64",
+          "runtime": "v24.14.0",
+          "revision": "97fa851ae8d84cc97d1eb0a2df3e5426bcb08421",
+          "identityDigest": "sha256:ce13208ffe937922b09e28169395f57d5d6e3b6a4150af9482cb3c7823cb348a",
+          "legDigest": "sha256:d15ab52dc82e3cfe7689747b73188edc6c832758b2b4912cc17dea70bcdb7ae2"
+        },
+        {
+          "leg": "darwin-x64",
+          "status": "qualified",
+          "platform": "darwin",
+          "arch": "x64",
+          "runtime": "v24.14.0",
+          "revision": "97fa851ae8d84cc97d1eb0a2df3e5426bcb08421",
+          "identityDigest": "sha256:488ad8233be1dbd78916b8b9123e84616626604c794623f5309989c385b4cbd0",
+          "legDigest": "sha256:ac9ac98e6a473f12c15ff497f1dcf76d158febbfea7f3d86e45e4f9e985338b3"
+        },
+        {
+          "leg": "darwin-arm64",
+          "status": "qualified",
+          "platform": "darwin",
+          "arch": "arm64",
+          "runtime": "v24.14.0",
+          "revision": "97fa851ae8d84cc97d1eb0a2df3e5426bcb08421",
+          "identityDigest": "sha256:11e0886e27a270852e12eeb4371f9e1e3def9f578b413dc592ef40219c7fcf56",
+          "legDigest": "sha256:2ef58f8ada4e1f290a49b6abd5df4f5a2ca2b6ee9028be74547a535a81228b10"
+        },
+        {
+          "leg": "linux-x64",
+          "status": "qualified",
+          "platform": "linux",
+          "arch": "x64",
+          "runtime": "v24.14.0",
+          "revision": "97fa851ae8d84cc97d1eb0a2df3e5426bcb08421",
+          "identityDigest": "sha256:8329b1ff4e214eedf2e59e09e1c985fecaf8d03f7285459307d2559dbca0eb2d",
+          "legDigest": "sha256:4893eba72b17437a8b1ab79ed0e84cf6445d44e10abc183fda6f0d2428f79dc0"
+        },
+        {
+          "leg": "linux-arm64",
+          "status": "qualified",
+          "platform": "linux",
+          "arch": "arm64",
+          "runtime": "v24.14.0",
+          "revision": "97fa851ae8d84cc97d1eb0a2df3e5426bcb08421",
+          "identityDigest": "sha256:f64324faaec9d182e435f269916b6b24bc9807976b2bad47eaad56190b61e8de",
+          "legDigest": "sha256:4d1bdb73c5fbbdf2b78e2ab6c4dd7cd94f916170fcb3fc425a92ac30e851a0ee"
+        }
+      ],
+      "excused": []
+    }
+  ],
+  "bodyDigest": "sha256:296c6866ce44b6068f6b48c8f6d394bdc6dd855e13c369bb219e339649836bd3",
+  "signingState": {
+    "signed": false,
+    "reason": "No release signing identity is configured for qualification evidence. A TEST-ONLY key would carry no trust; signing is an owner key-custody decision, scheduled by AD-014."
+  }
+}
