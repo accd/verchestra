@@ -54,17 +54,27 @@ comparison fails closed where identities are not interchangeable.
 The source-derived, reviewed inventory is
 [`docs/canonical-json-census.json`](canonical-json-census.json). It scans every
 TypeScript and module-JavaScript product source under `packages/`, `apps/`, and
-`scripts/` for local canonicalizers, ambient `localeCompare`, and SHA-256
-digest producers. The associated security test requires the detected and
-inventoried path sets to be exactly equal, and rejects a duplicate, stale,
-signal-mismatched, unreasoned, exception-invalid, or unclassified entry. The
-current 77-source census has no unclassified group.
+`scripts/` for local canonicalizers, structured `JSON.stringify`
+serializations, ambient `localeCompare`, and SHA-256 digest producers. The
+serialization signal is deliberately conservative: the reviewed classification
+separates raw bytes from portable or persistent identities. The associated
+security test requires the detected and inventoried path sets to be exactly
+equal, and rejects a duplicate, stale, signal-mismatched, unreasoned,
+exception-invalid, or unclassified entry. The current 84-source census has no
+unclassified group.
 
 Only the inventory's closed `presentation-or-fixture` entries may retain an
 ambient-locale ordering exception. A structured trust or persistent identity
 cannot use that classification. A raw-byte digest is not a canonical JSON
 exception: it hashes already-defined bytes or a fixed primitive rather than a
 locally canonicalized structured value.
+
+The scanner keeps only the following closed scope exclusions for serializations
+that are not product identities: build-time diagnostics, test and fake-driver
+fixtures, an ephemeral Self-Test child handoff, driver protocol frames, and
+diagnostic command output. Each path and reason is declared in
+`scripts/canonical-json-census.mjs` and asserted by the census security test;
+no trust, persistence, or portable-identity source can enter that exclusion.
 
 ### Pending migration order
 
