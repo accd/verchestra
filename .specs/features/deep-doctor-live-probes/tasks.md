@@ -67,13 +67,23 @@ Batch packing at ~7 tasks per worker, whole phases only:
 
 #### T2: Derive safe-init's root from the contract
 **What**: Replace `safe-init.ts`'s local `WORKSPACE_ROOT_DIRNAME` literal with the domain export.
-**Where**: `packages/workspace/src/init/safe-init.ts:16`
+**Where**: `packages/workspace/src/init/safe-init.ts:16`, `tests/architecture/doctor-workspace-root.test.mjs`
 **Depends on**: T1 · **Requirement**: DDL-02
 **Done when**:
-- [ ] Literal removed; value re-exported for existing consumers so no call site changes behavior
-- [ ] Existing safe-init suite passes unchanged (no assertion weakened)
-- [ ] `pnpm gate:quick` passes
-**Tests**: unit · **Gate**: quick
+- [x] Literal removed; value re-exported for existing consumers so no call site changes behavior
+- [x] Existing safe-init suite passes unchanged (no assertion weakened)
+- [x] Drift guard rewritten: it proved two source literals agreed, and T2 removes one of them
+- [x] Guard discrimination proven (doctor drift, and a reintroduced competing literal, both killed)
+- [x] `pnpm gate:quick` passes
+**Tests**: unit + architecture · **Gate**: quick
+
+> **Scope note (approved 2026-08-22).** `tests/architecture/doctor-workspace-root.test.mjs`
+> regex-extracts a `const WORKSPACE_ROOT_DIRNAME = "..."` literal from both
+> `safe-init.ts` and `doctor-composition.ts` and asserts they match. Removing
+> safe-init's literal makes that extraction fail, so the guard could not stay
+> untouched. The plan had placed this rewrite in T4 and missed the coupling.
+> The guard now pins the doctor's literal to the domain contract and asserts
+> safe-init holds no competing copy; T3 and T4 extend it further.
 
 #### T3: Derive the doctor composition's paths from the contract
 **What**: Replace the local literal at line 38 and the seven inline `join(...)` path expressions with contract lookups; add `@verchestra/domain` to `READ_ONLY_IMPORTS`.
@@ -379,4 +389,5 @@ No task depends on a later phase.
 | Task | Status | Commit |
 | ---- | ------ | ------ |
 | T1 | Done | recorded in `handoff.md` |
-| T2–T22 | Planned | Pending |
+| T2 | Done | recorded in `handoff.md` |
+| T3–T22 | Planned | Pending |

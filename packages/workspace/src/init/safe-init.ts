@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, readdir, realpath, rename, rm, rmdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { promisify } from "node:util";
-import { LogicalPath, StableId, normalizeDeclaredSet } from "@verchestra/domain";
+import { LogicalPath, StableId, WORKSPACE_ROOT_DIRNAME, normalizeDeclaredSet } from "@verchestra/domain";
 import { editManagedGitignore } from "./managed-gitignore.ts";
 import {
   WorkspaceScanError,
@@ -13,7 +13,11 @@ import {
 import { scanWorkspace } from "../scanner/workspace-scanner.ts";
 
 const execute = promisify(execFile);
-export const WORKSPACE_ROOT_DIRNAME = ".verchestra" as const;
+// Re-exported, not redeclared: the value belongs to the domain layout
+// contract so the doctor observes exactly the root this writes (DDL-02,
+// #207). tests/architecture/doctor-workspace-root.test.mjs proves this
+// file holds no competing literal.
+export { WORKSPACE_ROOT_DIRNAME };
 const MANIFEST_PATH = `${WORKSPACE_ROOT_DIRNAME}/generated-manifest.json`;
 const STAGING_NAME = /^\.staging-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 const DIGEST = /^sha256:[a-f0-9]{64}$/u;

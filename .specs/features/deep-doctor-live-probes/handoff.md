@@ -5,8 +5,8 @@ issue: 207
 status: in_progress
 branch: feat/deep-doctor-live-probes
 baseRevision: 0d7ad9a2bad3b29c4defb4338d1106e4fe22c6e1
-lastCompletedTask: T1
-nextTask: T2
+lastCompletedTask: T2
+nextTask: T3
 lastGate: pnpm gate:quick (PASS; test:unit 2064/2064, 0 skipped, 0 todo)
 updatedAt: 2026-08-22T00:00:00Z
 ---
@@ -18,7 +18,7 @@ read-only observations. Requirements DDL-01 through DDL-14 in `spec.md`; 22
 tasks in six phases in `tasks.md`. Parent #13 (T72); lands with or before #16
 (T75), which is the current serial task.
 
-T1 is implemented and gated on branch `feat/deep-doctor-live-probes`.
+T1 and T2 are implemented and gated on branch `feat/deep-doctor-live-probes`.
 
 # Completed Evidence
 
@@ -35,19 +35,45 @@ T1 is implemented and gated on branch `feat/deep-doctor-live-probes`.
   2064/2064 with zero failed, skipped, or todo (5 added, 2059 baseline
   preserved).
 
-  Commit hashes for this branch are recorded here as each subsequent task
-  lands; T1 is the second commit on the branch, after the planning commit.
+- **T2** (`f3482a2` is T1; T2 is the commit that follows it) —
+  `packages/workspace/src/init/safe-init.ts` now imports
+  `WORKSPACE_ROOT_DIRNAME` from `@verchestra/domain` and re-exports it, so
+  `packages/workspace/src/index.ts:40` and the three internal `join` sites are
+  unchanged and no call site changed behavior. The drift guard
+  `tests/architecture/doctor-workspace-root.test.mjs` was rewritten (see
+  Decisions): `:32` pins the doctor's literal to the contract's literal, `:41`
+  asserts safe-init declares no competing `const WORKSPACE_ROOT_DIRNAME = "`,
+  `:47` asserts it imports the value from `@verchestra/domain`. Discrimination
+  proven in a disposable copy: reverting the doctor to `.vestra` fails the
+  guard, and reintroducing a literal in safe-init fails it; both restored and
+  the copy discarded. Gates: `pnpm gate:quick` PASS, `pnpm test:architecture`
+  26/26, `tests/integration/safe-init.test.mjs` 22/22 — all with zero failed,
+  skipped, or todo.
+
+  Commit hashes are recorded as each subsequent task lands; T1 is the second
+  commit on the branch, after the planning commit.
 
 # Next Exact Action
 
-T2: replace `packages/workspace/src/init/safe-init.ts:16`'s local
-`WORKSPACE_ROOT_DIRNAME` literal with the domain export, re-exporting the value
-so no existing call site changes behavior, and confirm the safe-init suite
-passes unchanged with no assertion weakened. Then `pnpm gate:quick`.
+T3: replace `apps/vestra-cli/src/doctor-composition.ts:38`'s local literal and
+the seven inline `join(...)` path expressions at `:123-137` with lookups into
+`SUBSYSTEM_OBSERVATION_PATHS`, and add `@verchestra/domain` to
+`READ_ONLY_IMPORTS` in `tests/architecture/doctor-readonly-graph.test.mjs` with
+the justification that domain takes no third-party or `node:` import. Then
+`pnpm test:architecture` and `pnpm gate:quick`.
 
 # Blockers
 
-None. Two findings shape the plan and are already resolved as decisions:
+**Environment, not code:** `pnpm gate:full` cannot pass on this machine. Node
+v23.11.0 is installed where the repository pins 24.14.0, and its bundled SQLite
+has no FTS5 module, so 51 memory-store integration cases fail with
+`no such module: fts5`. Verified pre-existing: the same 26 cases in
+`tests/integration/memory-store.test.mjs` fail identically on a clean tree with
+no feature changes applied. `gate:quick` does not run integration and passes.
+Install Node 24.14.0 before any task whose gate level is `full` — T5, T7, and
+T12 onward.
+
+Two findings shape the plan and are already resolved as decisions:
 
 - Every one of the seven probed leaf paths is referenced nowhere in the
   repository except `apps/vestra-cli/src/doctor-composition.ts:127-136`.
@@ -73,6 +99,12 @@ None. Two findings shape the plan and are already resolved as decisions:
 - "Available" for driver/connector/probe means a record exists, parses, and
   declares an installed subsystem. Reachability is excluded — it is neither
   read-only nor unpaid.
+- **Drift guard rewritten in T2, not T4 (2026-08-22).**
+  `tests/architecture/doctor-workspace-root.test.mjs` proved two source
+  literals agreed; T2 removes one of them, so the guard could not stay
+  untouched and its rewrite moved into T2. It now pins the doctor's literal to
+  the domain contract and asserts safe-init holds no competing copy. T4 still
+  extends it to full path ownership and provisioning.
 - Secret presence uses `SecretAdapter.has`, never
   `SecretBrokerBindingInspector.isBound`, which calls `broker.bind()` and mints
   a handle.
