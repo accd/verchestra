@@ -583,6 +583,15 @@ original `fileProbe` check from before this feature.
 **Done when**: same three outcomes as T17; `@verchestra/data-probe` absent from the closure; `pnpm gate:full` passes
 **Tests**: integration · **Gate**: full
 
+> **Note (2026-08-22):** wrote the wiring-isolation test first this time,
+> applying T18's lesson immediately rather than rediscovering the same gap.
+> Confirmed by mutation: wiring `doctor.probe` to read connector's fixture
+> is now caught directly by the isolation test, not by incidental overlap
+> with a differently-purposed test. One-line wiring change; no new probe
+> logic; no provisioner change.
+>
+> **Phase 5 (availability records) is complete — T16 through T19.**
+
 ### Phase 6 — Evidence and qualification
 
 #### T20: Prove the report leaks nothing
@@ -728,4 +737,5 @@ No task depends on a later phase.
 | T16 | Done | recorded in `handoff.md` |
 | T17 | Done | recorded in `handoff.md` |
 | T18 | Done | recorded in `handoff.md` |
-| T19–T22 | Planned | Pending |
+| T19 | Done | recorded in `handoff.md` |
+| T20–T22 | Planned | Pending |

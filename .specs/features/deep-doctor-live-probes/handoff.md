@@ -6,7 +6,7 @@ status: in_progress
 branch: feat/deep-doctor-live-probes
 baseRevision: 0d7ad9a2bad3b29c4defb4338d1106e4fe22c6e1
 lastCompletedTask: T14
-nextTask: T19
+nextTask: T20
 lastGate: pnpm gate:full PASS
 updatedAt: 2026-08-22T00:00:00Z
 ---
@@ -18,7 +18,7 @@ read-only observations. Requirements DDL-01 through DDL-14 in `spec.md`; 22
 tasks in six phases in `tasks.md`. Parent #13 (T72); lands with or before #16
 (T75), which is the current serial task.
 
-T1 through T14 and T16-T18 are implemented and gated on branch (Phase 2 and Phase 3 complete; Phase 4 in progress — T15 deferred, T12/T13/T14/T17/T18 done) `feat/deep-doctor-live-probes`.
+T1 through T14 and T16-T19 are implemented and gated on branch (Phase 2, Phase 3, and Phase 5 complete; Phase 4 in progress — only T15 deferred) `feat/deep-doctor-live-probes`.
 
 # Completed Evidence
 
@@ -336,6 +336,15 @@ T1 through T14 and T16-T18 are implemented and gated on branch (Phase 2 and Phas
   dependencies** — deferred from T9 for exactly this task, since T9 itself
   had no consumer yet.
 
+- **T19** — `doctor.probe` reuses T17's `availabilityProbe` unmodified; wrote
+  the wiring-isolation test *first* this time, applying T18's lesson
+  immediately. Confirmed by mutation: wiring `doctor.probe` to read
+  connector's fixture is caught directly, not by incidental overlap with a
+  differently-purposed test. `tests/integration/doctor-probe-availability.test.mjs`
+  (new, 4 cases). Gate: `pnpm gate:full` PASS.
+
+  **Phase 5 (availability records) is complete — T16 through T19.**
+
 - **T18** — `doctor.connector` reuses T17's `availabilityProbe` unmodified;
   one-line wiring change, no new probe logic, no provisioner change.
 
@@ -449,15 +458,15 @@ T1 through T14 and T16-T18 are implemented and gated on branch (Phase 2 and Phas
 
 # Next Exact Action
 
-T19 (closes Phase 5): wire `doctor.probe` to call the same
-`availabilityProbe(metadataRoot, "probe")` — a one-line change to
-`buildRealProbes`'s `"doctor.probe"` entry. The fixture already exists
-(T17's provisioner loop). This time write the wiring-isolation test
-*first* (T18 found that the naive "valid -> pass" + "wrong subsystem
-declared" pair doesn't discriminate a wired-to-the-wrong-subsystem
-mutation on its own) rather than discovering the gap after the fact.
-Confirm `@verchestra/data-probe` stays absent from the transitive closure.
-Then `pnpm gate:full`.
+T20 (Phase 6 begins): add `tests/security/doctor-report-nonleak.test.mjs`
+asserting the sealed payload across all twelve checks — now that T12-T19
+have live probes with genuine internal state (paths, digests, database
+handles, bundle content) to potentially leak — contains nothing but a closed
+allowlist of check ids, statuses, capability ids, and remediation codes.
+Prove it with a mutation: a probe made to emit a real path or digest into
+its observation must be caught. Then `pnpm gate:security` (or
+`test:security` directly — `gate:security` blocked by the pre-existing
+environment issue noted at T10).
 
 # Blockers
 

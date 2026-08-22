@@ -296,7 +296,7 @@ function buildRealProbes(controlRoot: string, registry: SchemaRegistry | null, n
     "doctor.clock": () => clockProbe(now),
     "doctor.driver": () => availabilityProbe(metadataRoot, "driver"),
     "doctor.connector": () => availabilityProbe(metadataRoot, "connector"),
-    "doctor.probe": () => fileProbe(subsystemPath(metadataRoot, "probe")),
+    "doctor.probe": () => availabilityProbe(metadataRoot, "probe"),
     "doctor.sandbox": () => sandboxProbe(metadataRoot)
   });
 }
