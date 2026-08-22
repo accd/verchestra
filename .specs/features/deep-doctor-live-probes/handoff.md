@@ -6,7 +6,7 @@ status: in_progress
 branch: feat/deep-doctor-live-probes
 baseRevision: 0d7ad9a2bad3b29c4defb4338d1106e4fe22c6e1
 lastCompletedTask: T14
-nextTask: T18
+nextTask: T19
 lastGate: pnpm gate:full PASS
 updatedAt: 2026-08-22T00:00:00Z
 ---
@@ -18,7 +18,7 @@ read-only observations. Requirements DDL-01 through DDL-14 in `spec.md`; 22
 tasks in six phases in `tasks.md`. Parent #13 (T72); lands with or before #16
 (T75), which is the current serial task.
 
-T1 through T14 and T16-T17 are implemented and gated on branch (Phase 2 and Phase 3 complete; Phase 4 in progress — T15 deferred, T12/T13/T14/T17 done) `feat/deep-doctor-live-probes`.
+T1 through T14 and T16-T18 are implemented and gated on branch (Phase 2 and Phase 3 complete; Phase 4 in progress — T15 deferred, T12/T13/T14/T17/T18 done) `feat/deep-doctor-live-probes`.
 
 # Completed Evidence
 
@@ -336,6 +336,23 @@ T1 through T14 and T16-T17 are implemented and gated on branch (Phase 2 and Phas
   dependencies** — deferred from T9 for exactly this task, since T9 itself
   had no consumer yet.
 
+- **T18** — `doctor.connector` reuses T17's `availabilityProbe` unmodified;
+  one-line wiring change, no new probe logic, no provisioner change.
+
+  **A test-isolation gap found before it mattered**: the first mutation
+  sensor (wiring `doctor.connector` to read driver's fixture) was only
+  caught by the "wrong subsystem declared" test, coincidentally, since that
+  test's tampering happened to target connector's own fixture path — the
+  "valid record reports pass" test didn't discriminate the mutation at all,
+  since driver's real fixture is also independently valid for its own
+  subsystem. Added a test that deletes only driver's fixture and confirms
+  connector's outcome is unaffected, isolating the wiring itself. Re-ran:
+  now caught directly.
+
+  `tests/integration/doctor-connector-availability.test.mjs` (new, 4
+  cases): pass, the isolation test, blocked-absent, fail-mismatch. Gate:
+  `pnpm gate:full` PASS.
+
 - **T17** — the `doctor.driver` check is live: `availabilityProbe(metadataRoot, subsystem)`
   reads `.verchestra/drivers/availability.json`, parses it via
   `parseSubsystemAvailability` (T16), and maps: absent -> `blocked`;
@@ -432,12 +449,15 @@ T1 through T14 and T16-T17 are implemented and gated on branch (Phase 2 and Phas
 
 # Next Exact Action
 
-T18: wire `doctor.connector` to call the SAME `availabilityProbe(metadataRoot,
-"connector")` T17 already built — no new logic, just a one-line change to
-`buildRealProbes`'s `"doctor.connector"` entry. The fixture already exists
-(T17's provisioner loop covers all three subsystems). Reuse T17's test file's
-structure for connector-specific coverage; confirm `@verchestra/connectors`
-stays absent from the transitive closure. Then `pnpm gate:full`.
+T19 (closes Phase 5): wire `doctor.probe` to call the same
+`availabilityProbe(metadataRoot, "probe")` — a one-line change to
+`buildRealProbes`'s `"doctor.probe"` entry. The fixture already exists
+(T17's provisioner loop). This time write the wiring-isolation test
+*first* (T18 found that the naive "valid -> pass" + "wrong subsystem
+declared" pair doesn't discriminate a wired-to-the-wrong-subsystem
+mutation on its own) rather than discovering the gap after the fact.
+Confirm `@verchestra/data-probe` stays absent from the transitive closure.
+Then `pnpm gate:full`.
 
 # Blockers
 

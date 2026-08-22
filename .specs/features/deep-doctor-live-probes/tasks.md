@@ -559,6 +559,24 @@ original `fileProbe` check from before this feature.
 **Done when**: same three outcomes as T17; `@verchestra/connectors` absent from the closure; `pnpm gate:full` passes
 **Tests**: integration · **Gate**: full
 
+> **Note (2026-08-22): a test-isolation gap found before it mattered.** The
+> first mutation sensor (wiring `doctor.connector` to read driver's fixture
+> instead of its own) was only caught by the "wrong subsystem declared" test
+> — coincidentally, because THAT test's tampering happened to target
+> connector's own path. The "valid record reports pass" test didn't
+> discriminate the mutation at all: driver's real fixture is also
+> valid+matching+available for its own subsystem, so reading it under
+> connector's identity still reported `pass`. Added a test that deletes only
+> driver's fixture and confirms connector's check is unaffected, isolating
+> the wiring itself rather than relying on incidental coverage from a
+> differently-purposed test. Re-ran the mutation: now caught directly by the
+> isolating test, not just the coincidentally-adjacent one.
+>
+> One-line wiring change (`buildRealProbes`'s `"doctor.connector"` entry now
+> calls the shared `availabilityProbe(metadataRoot, "connector")` T17
+> built); no new probe logic, no provisioner change (T17's generic loop
+> already covers connector's fixture).
+
 #### T19: Probe availability probe
 **Where**: `apps/vestra-cli/src/doctor-composition.ts:135`
 **Depends on**: T16 · **Requirement**: DDL-10 · **AC**: 13
@@ -709,4 +727,5 @@ No task depends on a later phase.
 | T15 | Deferred | AD-023 |
 | T16 | Done | recorded in `handoff.md` |
 | T17 | Done | recorded in `handoff.md` |
-| T18–T22 | Planned | Pending |
+| T18 | Done | recorded in `handoff.md` |
+| T19–T22 | Planned | Pending |
