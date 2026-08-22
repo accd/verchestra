@@ -30,5 +30,7 @@ or provider surface.
 
 ## Acceptance status
 
-All requirements are in progress. Completing an individual vertical does not
-close #207 until every affected check has real-observation evidence.
+LDP-01, LDP-02, and the existing-dependency portion of LDP-03 have automated
+evidence. LDP-04 and the provisioned-machine evidence in LDP-07 remain open.
+Completing an individual vertical does not close #207 until every affected
+check has real-observation evidence.

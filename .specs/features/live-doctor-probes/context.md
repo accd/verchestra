@@ -6,9 +6,11 @@ rewritten: source mode continues to return `blocked` whenever an installed
 subsystem is not provisioned.
 
 The affected checks are `cedar-policy`, `sqlite-durable-state`,
-`secret-presence`, `driver`, `connector`, `probe`, and `sandbox`. The current
-CLI composition uses `existsSync` against `.verchestra` fixture paths, which
-cannot distinguish a valid, live subsystem from an arbitrary directory.
+`secret-presence`, `driver`, `connector`, `probe`, and `sandbox`. The first
+four now use bounded adapters: defensive read-only SQLite inspection,
+presence-only secret lookup, a manifest-only driver probe, and a protected-path
+traversal rejection. The remaining three remain blocked until their direct
+package dependencies are approved and wired.
 
 The diagnostic is bracketed by sentinel capture. Every asynchronous operation
 must complete before the after-sentinel capture; no read-only work may continue

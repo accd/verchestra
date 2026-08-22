@@ -23,7 +23,9 @@ import {
   type SentinelFact
 } from "@verchestra/application";
 import { SchemaRegistry } from "@verchestra/contracts";
+import { PiDriver } from "@verchestra/drivers";
 import { ArtifactSealer, NodeEd25519Signer, type SealedArtifact } from "@verchestra/evidence";
+import type { SecretAdapter } from "@verchestra/platform-node";
 
 import { resolveReleaseIdentity } from "./release-manifest.ts";
 
@@ -48,6 +50,19 @@ export interface DoctorRunResult {
   readonly payload: DoctorReportPayload;
   readonly artifact: SealedArtifact<DoctorReportPayload>;
   readonly verdict: DoctorVerdict;
+}
+
+// The release composition supplies these references only after it has resolved
+// the active Workspace. Each port is presence-only: no secret value, runtime
+// content, or machine path can be placed in a doctor fact or sealed report.
+// Leaving a port unconfigured is an honest blocked observation for source mode.
+export interface DoctorLiveProbeOptions {
+  readonly workspaceId?: string;
+  readonly runtimeDatabase?: string;
+  readonly secret?: {
+    readonly logicalName: string;
+    readonly adapter: Pick<SecretAdapter, "has">;
+  };
 }
 
 // Binds the sealed report to the exact closed catalog it was produced against,
@@ -112,28 +127,73 @@ function schemaProbe(registry: SchemaRegistry | null): DoctorObservation {
   return registry === null ? present(false) : present(registry.list().includes("doctor-report@1"));
 }
 
-// Subsystems a bare source checkout does not provision report absent (blocked)
-// through a read-only file-presence check, rather than constructing a heavy
-// adapter to observe the obvious. Deeper live wiring is a follow-up.
-function fileProbe(path: string): DoctorObservation {
-  return existsSync(path) ? present(true) : absent;
+async function runtimeDatabaseProbe(live: DoctorLiveProbeOptions): Promise<DoctorObservation> {
+  if (live.runtimeDatabase === undefined) return absent;
+  try {
+    // This stays dynamic so a non-doctor CLI invocation never evaluates the
+    // SQLite adapter (which owns the experimental Node SQLite surface).
+    const { inspectRuntimeDatabase } = await import("@verchestra/platform-node");
+    inspectRuntimeDatabase(live.runtimeDatabase, { assertExtensionsDisabled: true });
+    return present(true);
+  } catch {
+    return present(false);
+  }
 }
 
-function buildRealProbes(controlRoot: string, registry: SchemaRegistry | null, now: () => number): DoctorProbeSet {
+async function secretPresenceProbe(live: DoctorLiveProbeOptions): Promise<DoctorObservation> {
+  if (live.workspaceId === undefined || live.secret === undefined) return absent;
+  return (await live.secret.adapter.has(live.workspaceId, live.secret.logicalName)) ? present(true) : absent;
+}
+
+async function driverProbe(): Promise<DoctorObservation> {
+  // probe() resolves only the installed package manifest. The execution resolver
+  // is deliberately unreachable from it, so doctor cannot start a session,
+  // invoke a provider, or spend credentials while checking driver readiness.
+  const result = await new PiDriver({
+    resolveExecution: async () => {
+      throw new Error("Driver execution is unavailable during doctor");
+    }
+  }).probe();
+  if (result["available"] === true) return present(true);
+  const code = (result["error"] as Readonly<Record<string, unknown>> | undefined)?.["code"];
+  return code === "VES_PI_NOT_AVAILABLE" ? absent : present(false);
+}
+
+async function sandboxProbe(metadataRoot: string, live: DoctorLiveProbeOptions): Promise<DoctorObservation> {
+  if (live.workspaceId === undefined || !existsSync(metadataRoot)) return absent;
+  try {
+    const { ProtectedPathBroker } = await import("@verchestra/platform-node");
+    const broker = await ProtectedPathBroker.create({
+      workspaceId: live.workspaceId,
+      roots: [{ rootId: "workspace", path: metadataRoot }]
+    });
+    await broker.openExisting({ workspaceId: live.workspaceId, rootId: "workspace", logicalPath: "../escape" });
+    return present(false);
+  } catch (error) {
+    return present((error as { readonly code?: unknown }).code === "VES_PATH_LOGICAL_INVALID");
+  }
+}
+
+function buildRealProbes(
+  controlRoot: string,
+  registry: SchemaRegistry | null,
+  now: () => number,
+  live: DoctorLiveProbeOptions
+): DoctorProbeSet {
   const metadataRoot = join(controlRoot, WORKSPACE_ROOT_DIRNAME);
   return Object.freeze({
     "doctor.installation": installationProbe,
     "doctor.contract-schema": () => schemaProbe(registry),
-    "doctor.cedar-policy": () => fileProbe(join(metadataRoot, "policy", "active.bundle")),
-    "doctor.sqlite-durable-state": () => fileProbe(join(metadataRoot, "runtime.db")),
+    "doctor.cedar-policy": () => absent,
+    "doctor.sqlite-durable-state": () => runtimeDatabaseProbe(live),
     "doctor.native-asset": nativeAssetProbe,
     "doctor.git": gitProbe,
-    "doctor.secret-presence": () => fileProbe(join(metadataRoot, "secrets")),
+    "doctor.secret-presence": () => secretPresenceProbe(live),
     "doctor.clock": () => clockProbe(now),
-    "doctor.driver": () => fileProbe(join(metadataRoot, "drivers")),
-    "doctor.connector": () => fileProbe(join(metadataRoot, "connectors")),
-    "doctor.probe": () => fileProbe(join(metadataRoot, "probe", "fixtures")),
-    "doctor.sandbox": () => fileProbe(join(metadataRoot, "sandbox"))
+    "doctor.driver": driverProbe,
+    "doctor.connector": () => absent,
+    "doctor.probe": () => absent,
+    "doctor.sandbox": () => sandboxProbe(metadataRoot, live)
   });
 }
 
@@ -154,12 +214,15 @@ export function captureControlRootSentinels(controlRoot: string): readonly Senti
 
 // The one entry point main.ts needs. Constructs the TEST-ONLY signing identity
 // and the real read-only probes here, and nowhere else.
-export async function runDoctorDeep(options: { readonly controlRoot: string }): Promise<DoctorRunResult> {
+export async function runDoctorDeep(options: {
+  readonly controlRoot: string;
+  readonly live?: DoctorLiveProbeOptions;
+}): Promise<DoctorRunResult> {
   const now = (): number => Date.now();
   const registry = await SchemaRegistry.load(new URL("../../../schemas/", import.meta.url)).catch(() => null);
   const signer = NodeEd25519Signer.generate({ keyId: "doctor-cli", purposes: ["doctor-report"] });
   return runDoctor({
-    probes: buildRealProbes(options.controlRoot, registry, now),
+    probes: buildRealProbes(options.controlRoot, registry, now, options.live ?? {}),
     captureSentinels: () => captureControlRootSentinels(options.controlRoot),
     sealer: new ArtifactSealer({ signer, now: () => new Date() }),
     now
