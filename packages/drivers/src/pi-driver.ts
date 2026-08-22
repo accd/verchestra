@@ -11,7 +11,7 @@ import {
 } from "./index.ts";
 
 const PI_PACKAGE = "@earendil-works/pi-agent-core";
-const QUALIFIED_PI_VERSION = "0.84.1";
+const QUALIFIED_PI_VERSION = "0.84.2";
 
 interface PiModel {
   readonly id: string;
