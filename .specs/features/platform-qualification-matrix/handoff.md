@@ -3,12 +3,12 @@ schema: verchestra-feature-handoff/v1
 feature: platform-qualification-matrix
 issue: 16
 status: in_progress
-branch: codex/issue-16-t75
-baseRevision: 8342b05d34e7bf3bb7f42b33df71340120d06d4d
-lastCompletedTask: null
-nextTask: "Use the complete exact-head fleet evidence at candidate 97fa851ae8d84cc97d1eb0a2df3e5426bcb08421 (quick 32579393585, full 32579395143, build 32579396554, security 32579397998, release 32579399438) to author and independently verify t75-validation.md. The reconciled index is 42/52 qualified, 8 contract-qualified, 2 not-qualified, 0 environmental, and 0 contradictions; all five profile indexes are complete with empty excused lists. C5/#207 live doctor probes and the AD-014 release signing identity remain outside this slice, and the unsigned state must stay explicit."
-lastGate: FLEET GREEN — all five exact-head profiles passed on Windows x64, macOS x64/arm64, Linux x64/arm64 at candidate 97fa851 (runs 32579393585, 32579395143, 32579396554, 32579397998, 32579399438); every collected index is complete
-updatedAt: 2026-08-22T15:00:00Z
+branch: main
+baseRevision: 43486df52ca4423427b0c7186d38768b35a12167
+lastCompletedTask: T75
+nextTask: "Do not author t75-validation.md yet. Resolve the remaining T75 prerequisites: the owner-approved release signing identity tracked in #294, live doctor probes in #207, and the composed cross-driver verifier boundary if the A4 acceptance remains required. Then rerun the exact candidate gates, regenerate the signed evidence index, and submit the independent report."
+lastGate: FLEET GREEN — all five exact-head profiles passed on Windows x64, macOS x64/arm64, Linux x64/arm64 at candidate 97fa851 (runs 32579393585, 32579395143, 32579396554, 32579397998, 32579399438); main gate:quick and agent:check also pass at 43486df
+updatedAt: 2026-08-22T15:38:00Z
 ---
 
 # What a reader must NOT conclude from the evidence index
