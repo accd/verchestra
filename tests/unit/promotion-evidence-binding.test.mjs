@@ -6,7 +6,7 @@ import {
   assertPromotionReport,
   assertReportUntampered,
   buildPromotionReport,
-  canonicalizeCampaignEvidence,
+  canonicalizePromotionObservations,
   canonicalizeOracle,
   evaluatePromotion,
   PROMOTION_REPORT_FIELDS
@@ -27,16 +27,7 @@ const oracle = {
   ]
 };
 
-const result = (id, samples, passes, lowerConfidenceBound) => ({
-  id,
-  samples,
-  passes,
-  passRate: passes / samples,
-  lowerConfidenceBound,
-  verdict: "PASSED"
-});
-
-const input = (results) => ({
+const input = (observations) => ({
   oracle,
   sealedHoldoutDigest: `sha256:${hash(canonicalizeOracle(oracle))}`,
   candidateDigestAtSeal: `sha256:${"a".repeat(64)}`,
@@ -44,16 +35,22 @@ const input = (results) => ({
   evaluatorKeyId: "evaluator-key",
   candidateKeyId: "candidate-key",
   contaminated: false,
-  results
+  observations
 });
 
-const report = (results) => {
-  const built = input(results);
+const report = (observations) => {
+  const built = input(observations);
   return buildPromotionReport(built, evaluatePromotion(built, hash), hash);
 };
 
-const STRONG = [result("alpha", 100, 99, 0.99), result("beta", 100, 99, 0.99)];
-const WEAK = [result("alpha", 90, 81, 0.81), result("beta", 90, 81, 0.81)];
+const STRONG = [
+  { campaignId: "alpha", outcomes: [...Array(99).fill(true), false] },
+  { campaignId: "beta", outcomes: [...Array(99).fill(true), false] }
+];
+const WEAK = [
+  { campaignId: "alpha", outcomes: [...Array(95).fill(true), ...Array(5).fill(false)] },
+  { campaignId: "beta", outcomes: [...Array(95).fill(true), ...Array(5).fill(false)] }
+];
 
 test("the report carries an evidence digest", () => {
   assert.ok(PROMOTION_REPORT_FIELDS.includes("evidenceDigest"));
@@ -73,23 +70,10 @@ test("two different passing evidence sets no longer produce the same signed deci
   assert.notEqual(strong.bodyDigest, weak.bodyDigest, "the evidence must reach the integrity digest");
 });
 
-for (const [field, mutate] of [
-  ["samples", (r) => ({ ...r, samples: r.samples + 1 })],
-  ["passes", (r) => ({ ...r, passes: r.passes - 1 })],
-  ["passRate", (r) => ({ ...r, passRate: r.passRate - 0.01 })],
-  ["lowerConfidenceBound", (r) => ({ ...r, lowerConfidenceBound: r.lowerConfidenceBound - 0.01 })],
-  ["verdict", (r) => ({ ...r, verdict: "FAILED" })],
-  ["campaign identity", (r) => ({ ...r, id: "gamma" })]
-]) {
-  test(`changing ${field} changes the bound evidence digest`, () => {
-    const changed = [mutate(STRONG[0]), STRONG[1]];
-    assert.notEqual(
-      report(STRONG).evidenceDigest,
-      report(changed).evidenceDigest,
-      `${field} must reach the evidence digest`
-    );
-  });
-}
+test("changing an evaluator-observed outcome changes the bound evidence digest", () => {
+  const changed = [{ ...STRONG[0], outcomes: [...STRONG[0].outcomes.slice(0, -1), true] }, STRONG[1]];
+  assert.notEqual(report(STRONG).evidenceDigest, report(changed).evidenceDigest);
+});
 
 test("reordering the same evidence is identity-preserving", () => {
   // SPEC_DEVIATION from F2's literal text, asserted deliberately. Results are a
@@ -97,13 +81,13 @@ test("reordering the same evidence is identity-preserving", () => {
   // codes already are. A digest that moved with iteration order would make the
   // same evidence sign differently on different machines — the opposite of the
   // reproducibility the binding exists to protect.
-  assert.equal(canonicalizeCampaignEvidence(STRONG), canonicalizeCampaignEvidence([...STRONG].reverse()));
+  assert.equal(canonicalizePromotionObservations(STRONG), canonicalizePromotionObservations([...STRONG].reverse()));
   assert.equal(report(STRONG).evidenceDigest, report([...STRONG].reverse()).evidenceDigest);
   assert.equal(report(STRONG).bodyDigest, report([...STRONG].reverse()).bodyDigest);
 });
 
 test("the evidence digest covers every campaign, not just the first", () => {
-  const changedSecond = [STRONG[0], { ...STRONG[1], passes: STRONG[1].passes - 5 }];
+  const changedSecond = [STRONG[0], { ...STRONG[1], outcomes: [false, ...STRONG[1].outcomes.slice(1)] }];
   assert.notEqual(report(STRONG).evidenceDigest, report(changedSecond).evidenceDigest);
 });
 

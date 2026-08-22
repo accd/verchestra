@@ -7,14 +7,16 @@ import { createHash } from "node:crypto";
 
 import {
   buildPromotionReport,
-  canonicalizeCampaignEvidence,
+  canonicalizePromotionObservations,
   canonicalizeOracle,
+  collectPromotionObservations,
   createEvaluatorCandidateGrant,
   type CandidateGrant,
   evaluatePromotion,
   type HoldoutOracle,
   type PromotionDecision,
   type PromotionInput,
+  type PromotionObservationPort,
   type PromotionReportPayload
 } from "@verchestra/application";
 import { ArtifactSealer, NodeEd25519Signer } from "@verchestra/evidence";
@@ -30,7 +32,6 @@ export interface CandidateFacts {
   readonly candidateDigestNow: string;
   readonly candidateKeyId: string;
   readonly contaminated: boolean;
-  readonly results: PromotionInput["results"];
   /**
    * The candidate's own hook. It receives the surface the evaluator issues and
    * may attempt anything on it; every attempt is denied by authority. Optional
@@ -56,7 +57,15 @@ export function sealHoldout(oracle: HoldoutOracle): string {
   return `sha256:${sha256(canonicalizeOracle(oracle))}`;
 }
 
-export async function runPromotion(oracle: HoldoutOracle, candidate: CandidateFacts): Promise<PromotionOutcome> {
+export async function runPromotion(
+  oracle: HoldoutOracle,
+  candidate: CandidateFacts,
+  observationPort: PromotionObservationPort
+): Promise<PromotionOutcome> {
+  // Snapshot evaluator-owned outcomes before exposing any surface to the
+  // candidate. A candidate callback can no longer replace or mutate the
+  // evidence used to authorize its own promotion.
+  const observations = collectPromotionObservations(oracle, observationPort);
   // PROM-09 / AD-018. The grant is issued over the evaluator's REAL assets and
   // handed to the candidate, because a boundary nothing crosses proves nothing:
   // an independent verifier found the surface built but unwired, so PROM-09's
@@ -82,7 +91,7 @@ export async function runPromotion(oracle: HoldoutOracle, candidate: CandidateFa
     evaluatorKeyId: EVALUATOR_KEY_ID,
     candidateKeyId: candidate.candidateKeyId,
     contaminated: candidate.contaminated,
-    results: candidate.results
+    observations
   };
   const decision = evaluatePromotion(input, sha256);
   const report = buildPromotionReport(input, decision, sha256);
@@ -96,7 +105,7 @@ export async function runPromotion(oracle: HoldoutOracle, candidate: CandidateFa
     // the admitted campaign evidence. Binding the oracle alone left two runs on
     // materially different evidence sharing a sourceStateDigest, so the sealed
     // artifact could not distinguish them.
-    sourceStateDigest: sha256(`${canonicalizeOracle(oracle)}\n${canonicalizeCampaignEvidence(candidate.results)}`)
+    sourceStateDigest: sha256(`${canonicalizeOracle(oracle)}\n${canonicalizePromotionObservations(observations)}`)
   });
   return Object.freeze({ decision, report, artifact });
 }

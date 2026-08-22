@@ -23,8 +23,11 @@ function oracle() {
   };
 }
 
-function result(id, overrides = {}) {
-  return { id, samples: 100, passes: 100, passRate: 1, lowerConfidenceBound: 1, verdict: "PASS", ...overrides };
+function observations(campA = Array(100).fill(true), campB = Array(100).fill(true)) {
+  return [
+    { campaignId: "camp-a", outcomes: campA },
+    { campaignId: "camp-b", outcomes: campB }
+  ];
 }
 
 function input(overrides = {}) {
@@ -37,7 +40,7 @@ function input(overrides = {}) {
     evaluatorKeyId: "holdout-evaluator",
     candidateKeyId: "candidate-driver",
     contaminated: false,
-    results: [result("camp-a"), result("camp-b")],
+    observations: observations(),
     ...overrides
   };
 }
@@ -77,17 +80,40 @@ test("a contamination fact blocks promotion even with all-pass results", () => {
 });
 
 test("insufficient repetition blocks promotion", () => {
-  const results = [result("camp-a"), result("camp-b", { samples: 10 })];
-  assert.deepEqual([...decide({ results }).blocks], ["VES_PROMOTION_INSUFFICIENT_REPETITION"]);
+  assert.deepEqual(
+    [...decide({ observations: observations(Array(100).fill(true), Array(10).fill(true)) }).blocks],
+    ["VES_PROMOTION_INSUFFICIENT_REPETITION"]
+  );
 });
 
 test("a missing campaign result counts as insufficient repetition", () => {
-  assert.deepEqual([...decide({ results: [result("camp-a")] }).blocks], ["VES_PROMOTION_INSUFFICIENT_REPETITION"]);
+  assert.deepEqual(
+    [...decide({ observations: [{ campaignId: "camp-a", outcomes: Array(100).fill(true) }] }).blocks],
+    ["VES_PROMOTION_INSUFFICIENT_REPETITION"]
+  );
 });
 
 test("a campaign lower bound below its threshold blocks promotion", () => {
-  const results = [result("camp-a"), result("camp-b", { lowerConfidenceBound: 0.5 })];
-  assert.deepEqual([...decide({ results }).blocks], ["VES_PROMOTION_CAMPAIGN_FAILED"]);
+  assert.deepEqual(
+    [...decide({ observations: observations(Array(100).fill(true), Array(100).fill(false)) }).blocks],
+    ["VES_PROMOTION_CAMPAIGN_FAILED"]
+  );
+});
+
+test("duplicate and extra observations fail closed instead of using last-write-wins", () => {
+  assert.throws(
+    () => decide({ observations: [...observations(), { campaignId: "camp-a", outcomes: Array(100).fill(true) }] }),
+    { code: "VES_PROMOTION_INPUT_INVALID" }
+  );
+  assert.throws(() => decide({ observations: [...observations(), { campaignId: "camp-extra", outcomes: [true] }] }), {
+    code: "VES_PROMOTION_INPUT_INVALID"
+  });
+});
+
+test("non-boolean observations fail closed before campaign statistics are derived", () => {
+  assert.throws(() => decide({ observations: observations(["true", ...Array(99).fill(true)]) }), {
+    code: "VES_PROMOTION_INPUT_INVALID"
+  });
 });
 
 test("multiple block conditions accumulate, sorted and deduplicated", () => {

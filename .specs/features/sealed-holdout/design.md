@@ -15,8 +15,8 @@ as facts (a candidate digest and a contamination flag), never as authority.
 ```mermaid
 flowchart LR
   Oracle["holdout oracle (campaign ids, thresholds, repetitions)"] --> Seal["sealHoldout -> holdoutDigest"]
-  Seal --> Gate["evaluatePromotion (block checks + campaign lower bounds)"]
-  Results["T73 CampaignRunResult[]"] --> Gate
+  Seal --> Gate["evaluatePromotion (derive results + block checks)"]
+  Observations["evaluator-owned raw boolean observations"] --> Gate
   Candidate["candidate digest + contamination fact"] --> Gate
   Gate --> Report["buildPromotionReport (bodyDigest)"]
   Report --> Sign["ArtifactSealer.seal (evaluator identity)"]
@@ -37,6 +37,11 @@ flowchart LR
   `VES_PROMOTION_INSUFFICIENT_REPETITION` (result samples < oracle repetition), or
   `VES_PROMOTION_CAMPAIGN_FAILED` (a campaign's lower bound below its sealed
   threshold). `PROMOTED` only when no block holds.
+- `PromotionObservationPort` returns raw boolean outcomes for one sealed
+  campaign at a time. The gate snapshots those outcomes before the candidate
+  receives any surface, validates the exact observation set, and calls
+  `evaluateCampaign` to derive samples, passes, pass rate, Wilson lower bound,
+  and verdict. Candidate facts contain no campaign evidence.
 - `buildPromotionReport(input, decision, hash)`: a closed report payload binding
   candidate, holdout, policy, evaluator identity, verdict, block codes, and the admitted campaign evidence (evidenceDigest, added remediating T74 F2), with
   a `bodyDigest` over the canonical body.
@@ -71,6 +76,10 @@ interface HoldoutOracle {
   readonly policyId: string;
   readonly entries: readonly HoldoutEntry[];
 }
+interface PromotionObservation {
+  readonly campaignId: string;
+  readonly outcomes: readonly boolean[];
+}
 interface PromotionInput {
   readonly oracle: HoldoutOracle;
   readonly sealedHoldoutDigest: string;
@@ -79,7 +88,7 @@ interface PromotionInput {
   readonly evaluatorKeyId: string;
   readonly candidateKeyId: string;
   readonly contaminated: boolean;
-  readonly results: readonly CampaignRunResult[];
+  readonly observations: readonly PromotionObservation[];
 }
 ```
 
@@ -93,6 +102,7 @@ interface PromotionInput {
 | Contamination fact true | BLOCKED — `VES_PROMOTION_CONTAMINATED` |
 | Result samples below sealed repetition | BLOCKED — `VES_PROMOTION_INSUFFICIENT_REPETITION` |
 | Campaign lower bound below threshold | BLOCKED — `VES_PROMOTION_CAMPAIGN_FAILED` |
+| Duplicate, extra, or malformed observation | `VES_PROMOTION_INPUT_INVALID` |
 | Report body altered | `VES_PROMOTION_REPORT_TAMPERED` |
 
 ## Dependency policy

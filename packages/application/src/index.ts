@@ -317,6 +317,8 @@ export {
   assertReportUntampered,
   buildPromotionReport,
   canonicalizeCampaignEvidence,
+  canonicalizePromotionObservations,
+  collectPromotionObservations,
   createCandidateGrant,
   createEvaluatorCandidateGrant,
   EVALUATOR_PROTECTED_ASSETS,
@@ -331,6 +333,8 @@ export {
   type PromotionDecision,
   type PromotionErrorCode,
   type PromotionInput,
+  type PromotionObservation,
+  type PromotionObservationPort,
   type PromotionReportPayload,
   type PromotionVerdict,
   type Sha256Hex
