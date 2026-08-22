@@ -11,8 +11,19 @@ const CLASSIFICATIONS = new Set([
   "raw-byte-digest",
   "retained-v1-versioned"
 ]);
+const PRESENTATION_OR_FIXTURE_PATHS = new Set([
+  "apps/site/src/lib/llm-content.ts",
+  "apps/vestra-cli/src/cli.ts",
+  "scripts/agent-readiness.mjs",
+  "scripts/complexity.mjs",
+  "scripts/gate-selection.mjs",
+  "scripts/generate-contract-types.mjs"
+]);
+const PRESENTATION_OR_FIXTURE_REASON =
+  "Closed presentation, fixture, or repository-diagnostic ordering only; not a trust or persistent identity.";
 const DETECTORS = Object.freeze({
-  canonicalizer: /canonicalizeJson|canonicalJson|canonical\(/gu,
+  canonicalizer:
+    /canonicalizeJson|(?:async\s+)?function\s+canonicalize[A-Za-z0-9]*|(?:const|let)\s+canonicalize[A-Za-z0-9]*\s*=|canonicalJson|canonical\(/gu,
   digest: /createHash|sha256Digest/gu,
   localeCompare: /\.localeCompare\(/gu
 });
@@ -64,12 +75,25 @@ function signalsMatch(left, right) {
   );
 }
 
+function hasReason(entry) {
+  if (typeof entry.reason !== "string") return false;
+  return entry.reason.length > 0;
+}
+
+function hasInvalidPresentationException(entry) {
+  if (entry.classification !== "presentation-or-fixture") return false;
+  if (!PRESENTATION_OR_FIXTURE_PATHS.has(entry.path)) return true;
+  return entry.reason !== PRESENTATION_OR_FIXTURE_REASON;
+}
+
 export function validateCensusInventory(candidates, inventory) {
   const entries = Array.isArray(inventory?.entries) ? inventory.entries : [];
   const candidateByPath = new Map(candidates.map((candidate) => [candidate.path, candidate]));
   const seen = new Set();
   const duplicatePaths = [];
   const invalidClassifications = [];
+  const invalidExceptionPaths = [];
+  const invalidReasons = [];
   const stalePaths = [];
   const signalMismatches = [];
 
@@ -77,6 +101,8 @@ export function validateCensusInventory(candidates, inventory) {
     if (seen.has(entry.path)) duplicatePaths.push(entry.path);
     seen.add(entry.path);
     if (!CLASSIFICATIONS.has(entry.classification)) invalidClassifications.push(entry.path);
+    if (!hasReason(entry)) invalidReasons.push(entry.path);
+    if (hasInvalidPresentationException(entry)) invalidExceptionPaths.push(entry.path);
     const candidate = candidateByPath.get(entry.path);
     if (candidate === undefined) stalePaths.push(entry.path);
     else if (!signalsMatch(candidate.signals, entry.signals)) signalMismatches.push(entry.path);
@@ -85,6 +111,8 @@ export function validateCensusInventory(candidates, inventory) {
   return Object.freeze({
     duplicatePaths: sorted(new Set(duplicatePaths)),
     invalidClassifications: sorted(new Set(invalidClassifications)),
+    invalidExceptionPaths: sorted(new Set(invalidExceptionPaths)),
+    invalidReasons: sorted(new Set(invalidReasons)),
     missingPaths: sorted([...candidateByPath.keys()].filter((path) => !seen.has(path))),
     signalMismatches: sorted(new Set(signalMismatches)),
     stalePaths: sorted(new Set(stalePaths))

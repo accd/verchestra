@@ -22,6 +22,9 @@ tree and validates the inventory; it never edits the inventory.
 - A detected path absent from the inventory fails.
 - An inventory path no longer detected fails.
 - A path appears only once and uses one closed classification.
+- Every entry records a non-empty reviewed reason.
 - `presentation-or-fixture` entries cannot carry a canonicalizer or an ambient
-  locale sort together with a structured digest producer.
+  locale sort together with a structured digest producer, and may name only a
+  path in the closed presentation/fixture allowlist with its fixed non-trust,
+  non-persistent reason.
 - A future source with any detector signal fails until reviewed and classified.
