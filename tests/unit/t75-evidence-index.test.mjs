@@ -88,9 +88,7 @@ const greenFleet = () => GATES.map((gate) => fleetIndex(gate));
 // with that declaration; the direct generator cases above intentionally retain
 // the environmental fixture to exercise the shortfall branches.
 const productionGreenFleet = () =>
-  GATES.map((gate) =>
-    fleetIndex(gate, { legs: [...FLEET_LEGS, "darwin-x64"].map((name) => leg(name)) })
-  );
+  GATES.map((gate) => fleetIndex(gate, { legs: [...FLEET_LEGS, "darwin-x64"].map((name) => leg(name)) }));
 
 const caseOf = (index, dimension, name) =>
   index.dimensions.find((entry) => entry.dimension === dimension).cases.find((item) => item.case === name);
