@@ -5,7 +5,10 @@
 `docs/canonical-json-census.json` is the reviewed classification source. Each
 entry has one path, its observed signals, one closed classification, and a
 reason. `scripts/canonical-json-census.mjs` derives candidates from the source
-tree and validates the inventory; it never edits the inventory.
+tree and validates the inventory; it never edits the inventory. Signals are
+local-canonicalizer vocabulary, structured `JSON.stringify` serialization,
+ambient locale ordering, and digest producers. The scanner's closed scope
+exclusion map is the only way a non-product serializer may be omitted.
 
 ## Closed classifications
 
@@ -27,4 +30,7 @@ tree and validates the inventory; it never edits the inventory.
   locale sort together with a structured digest producer, and may name only a
   path in the closed presentation/fixture allowlist with its fixed non-trust,
   non-persistent reason.
+- A scope exclusion must have a non-empty reason and belongs only to a protocol,
+  fixture, child-process, or diagnostic serializer rather than a product
+  identity.
 - A future source with any detector signal fails until reviewed and classified.

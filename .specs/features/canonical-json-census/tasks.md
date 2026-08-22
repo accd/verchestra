@@ -3,5 +3,5 @@
 | Task | Deliverable | Requirements | Verification | Status |
 | --- | --- | --- | --- | --- |
 | T0 | Census specification, design, task record, and portable handoff | CJC-01–CJC-05 | `pnpm agent:check` | Complete |
-| T1 | Mechanical scanner, canonical inventory, and discriminating security test | CJC-01–CJC-04 | focused security + `pnpm gate:security` | Complete — correction covers the omitted local canonicalizer, required entry reasons, and the closed exception boundary; `pnpm gate:security` passed. |
-| T2 | Compatibility-matrix reconciliation and next-vertical handoff | CJC-05 | `pnpm agent:check` + `pnpm gate:quick` | Complete — 77-source inventory and portable handoff reconciled; `pnpm gate:quick` passed. |
+| T1 | Mechanical scanner, canonical inventory, and discriminating security test | CJC-01–CJC-04 | focused security + `pnpm gate:security` | Complete — conservative serialization detection, closed scope exclusions, and the 84-source inventory passed `pnpm gate:security`. |
+| T2 | Compatibility-matrix reconciliation and next-vertical handoff | CJC-05 | `pnpm agent:check` + `pnpm gate:quick` | Complete — scope and 84-source inventory reconciled; `pnpm gate:quick` passed. |

@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "classifications": {
     "migrated-v2": "Structured material already uses the V2 contract or is a V2 support primitive.",
     "pending-versioned-migration": "A structured trust, persistent, or portable identity awaits its own versioned migration vertical.",
@@ -14,9 +14,21 @@
       "signals": {
         "canonicalizer": 0,
         "digest": 2,
-        "localeCompare": 2
+        "localeCompare": 2,
+        "serialization": 0
       },
       "reason": "Closed presentation, fixture, or repository-diagnostic ordering only; not a trust or persistent identity."
+    },
+    {
+      "path": "apps/site/src/lib/repository-docs-loader.ts",
+      "classification": "raw-byte-digest",
+      "reason": "The build-time site digest covers raw parsed-data JSON plus Markdown; it is not a portable structured identity.",
+      "signals": {
+        "canonicalizer": 0,
+        "digest": 0,
+        "localeCompare": 0,
+        "serialization": 1
+      }
     },
     {
       "path": "apps/vestra-cli/src/cli.ts",
@@ -24,7 +36,8 @@
       "signals": {
         "canonicalizer": 0,
         "digest": 0,
-        "localeCompare": 1
+        "localeCompare": 1,
+        "serialization": 2
       },
       "reason": "Closed presentation, fixture, or repository-diagnostic ordering only; not a trust or persistent identity."
     },
@@ -34,7 +47,8 @@
       "signals": {
         "canonicalizer": 0,
         "digest": 3,
-        "localeCompare": 0
+        "localeCompare": 0,
+        "serialization": 1
       },
       "reason": "The reviewed source hashes raw bytes or a fixed primitive, not structured JSON."
     },
@@ -44,7 +58,8 @@
       "signals": {
         "canonicalizer": 0,
         "digest": 2,
-        "localeCompare": 0
+        "localeCompare": 0,
+        "serialization": 0
       },
       "reason": "The reviewed source uses the declared V2 canonical contract."
     },
@@ -54,7 +69,8 @@
       "signals": {
         "canonicalizer": 0,
         "digest": 3,
-        "localeCompare": 0
+        "localeCompare": 0,
+        "serialization": 2
       },
       "reason": "The reviewed source hashes raw bytes or a fixed primitive, not structured JSON."
     },
@@ -64,7 +80,8 @@
       "signals": {
         "canonicalizer": 6,
         "digest": 0,
-        "localeCompare": 1
+        "localeCompare": 1,
+        "serialization": 2
       },
       "reason": "The reviewed source produces a structured portable, trust, or persistent identity awaiting a dedicated versioned migration."
     },
@@ -74,7 +91,8 @@
       "signals": {
         "canonicalizer": 0,
         "digest": 2,
-        "localeCompare": 0
+        "localeCompare": 0,
+        "serialization": 0
       },
       "reason": "The reviewed source hashes raw bytes or a fixed primitive, not structured JSON."
     },
@@ -84,7 +102,8 @@
       "signals": {
         "canonicalizer": 0,
         "digest": 2,
-        "localeCompare": 0
+        "localeCompare": 0,
+        "serialization": 2
       },
       "reason": "The reviewed source uses the declared V2 canonical contract."
     },
@@ -94,7 +113,8 @@
       "signals": {
         "canonicalizer": 3,
         "digest": 2,
-        "localeCompare": 1
+        "localeCompare": 1,
+        "serialization": 8
       },
       "reason": "The reviewed source produces a structured portable, trust, or persistent identity awaiting a dedicated versioned migration."
     },
@@ -104,7 +124,8 @@
       "signals": {
         "canonicalizer": 8,
         "digest": 0,
-        "localeCompare": 0
+        "localeCompare": 0,
+        "serialization": 1
       },
       "reason": "The reviewed source uses the declared V2 canonical contract."
     },
@@ -114,7 +135,8 @@
       "signals": {
         "canonicalizer": 5,
         "digest": 0,
-        "localeCompare": 0
+        "localeCompare": 0,
+        "serialization": 0
       },
       "reason": "The reviewed source uses the declared V2 canonical contract."
     },
@@ -124,7 +146,8 @@
       "signals": {
         "canonicalizer": 7,
         "digest": 0,
-        "localeCompare": 0
+        "localeCompare": 0,
+        "serialization": 0
       },
       "reason": "The reviewed source uses the declared V2 canonical contract."
     },
@@ -134,7 +157,8 @@
       "signals": {
         "canonicalizer": 3,
         "digest": 2,
-        "localeCompare": 1
+        "localeCompare": 1,
+        "serialization": 2
       },
       "reason": "The reviewed source produces a structured portable, trust, or persistent identity awaiting a dedicated versioned migration."
     },
@@ -144,7 +168,8 @@
       "signals": {
         "canonicalizer": 0,
         "digest": 0,
-        "localeCompare": 4
+        "localeCompare": 4,
+        "serialization": 0
       },
       "reason": "The reviewed source produces a structured portable, trust, or persistent identity awaiting a dedicated versioned migration."
     },
@@ -154,7 +179,8 @@
       "signals": {
         "canonicalizer": 11,
         "digest": 0,
-        "localeCompare": 2
+        "localeCompare": 2,
+        "serialization": 2
       },
       "reason": "The reviewed source produces a structured portable, trust, or persistent identity awaiting a dedicated versioned migration."
     },
@@ -164,7 +190,8 @@
       "signals": {
         "canonicalizer": 3,
         "digest": 2,
-        "localeCompare": 1
+        "localeCompare": 1,
+        "serialization": 2
       },
       "reason": "The reviewed source produces a structured portable, trust, or persistent identity awaiting a dedicated versioned migration."
     },
@@ -174,7 +201,8 @@
       "signals": {
         "canonicalizer": 20,
         "digest": 0,
-        "localeCompare": 0
+        "localeCompare": 0,
+        "serialization": 0
       },
       "reason": "The reviewed source uses the declared V2 canonical contract."
     },
@@ -184,7 +212,8 @@
       "signals": {
         "canonicalizer": 0,
         "digest": 0,
-        "localeCompare": 6
+        "localeCompare": 6,
+        "serialization": 2
       },
       "reason": "The reviewed source produces a structured portable, trust, or persistent identity awaiting a dedicated versioned migration."
     },
@@ -194,7 +223,8 @@
       "signals": {
         "canonicalizer": 8,
         "digest": 0,
-        "localeCompare": 0
+        "localeCompare": 0,
+        "serialization": 0
       },
       "reason": "The reviewed source uses the declared V2 canonical contract."
     },
@@ -204,7 +234,8 @@
       "signals": {
         "canonicalizer": 2,
         "digest": 2,
-        "localeCompare": 0
+        "localeCompare": 0,
+        "serialization": 1
       },
       "reason": "The reviewed source uses the declared V2 canonical contract."
     },
@@ -214,7 +245,8 @@
       "signals": {
         "canonicalizer": 3,
         "digest": 0,
-        "localeCompare": 0
+        "localeCompare": 0,
+        "serialization": 0
       },
       "reason": "The reviewed source uses the declared V2 canonical contract."
     },
@@ -224,7 +256,8 @@
       "signals": {
         "canonicalizer": 10,
         "digest": 0,
-        "localeCompare": 0
+        "localeCompare": 0,
+        "serialization": 0
       },
       "reason": "The reviewed source uses the declared V2 canonical contract."
     },
@@ -234,7 +267,8 @@
       "signals": {
         "canonicalizer": 4,
         "digest": 0,
-        "localeCompare": 0
+        "localeCompare": 0,
+        "serialization": 0
       },
       "reason": "The reviewed source uses the declared V2 canonical contract."
     },
@@ -244,7 +278,8 @@
       "signals": {
         "canonicalizer": 1,
         "digest": 0,
-        "localeCompare": 0
+        "localeCompare": 0,
+        "serialization": 0
       },
       "reason": "The reviewed source uses the declared V2 canonical contract."
     },
@@ -254,7 +289,8 @@
       "signals": {
         "canonicalizer": 3,
         "digest": 0,
-        "localeCompare": 0
+        "localeCompare": 0,
+        "serialization": 0
       },
       "reason": "The reviewed source uses the declared V2 canonical contract."
     },
@@ -264,7 +300,8 @@
       "signals": {
         "canonicalizer": 7,
         "digest": 0,
-        "localeCompare": 0
+        "localeCompare": 0,
+        "serialization": 1
       },
       "reason": "The reviewed source uses the declared V2 canonical contract."
     },
@@ -275,7 +312,19 @@
       "signals": {
         "canonicalizer": 1,
         "digest": 0,
-        "localeCompare": 0
+        "localeCompare": 0,
+        "serialization": 1
+      }
+    },
+    {
+      "path": "packages/application/src/self-test/self-test.ts",
+      "classification": "pending-versioned-migration",
+      "reason": "Authority-relevant Driver review equality awaits a dedicated versioned canonical contract.",
+      "signals": {
+        "canonicalizer": 0,
+        "digest": 0,
+        "localeCompare": 0,
+        "serialization": 1
       }
     },
     {
@@ -284,7 +333,8 @@
       "signals": {
         "canonicalizer": 8,
         "digest": 0,
-        "localeCompare": 0
+        "localeCompare": 0,
+        "serialization": 0
       },
       "reason": "The reviewed source uses the declared V2 canonical contract."
     },
@@ -294,7 +344,8 @@
       "signals": {
         "canonicalizer": 6,
         "digest": 2,
-        "localeCompare": 5
+        "localeCompare": 5,
+        "serialization": 4
       },
       "reason": "The reviewed source produces a structured portable, trust, or persistent identity awaiting a dedicated versioned migration."
     },
@@ -304,7 +355,8 @@
       "signals": {
         "canonicalizer": 4,
         "digest": 2,
-        "localeCompare": 1
+        "localeCompare": 1,
+        "serialization": 4
       },
       "reason": "The reviewed source produces a structured portable, trust, or persistent identity awaiting a dedicated versioned migration."
     },
@@ -314,7 +366,8 @@
       "signals": {
         "canonicalizer": 8,
         "digest": 2,
-        "localeCompare": 1
+        "localeCompare": 1,
+        "serialization": 4
       },
       "reason": "The reviewed source produces a structured portable, trust, or persistent identity awaiting a dedicated versioned migration."
     },
@@ -324,7 +377,8 @@
       "signals": {
         "canonicalizer": 2,
         "digest": 2,
-        "localeCompare": 0
+        "localeCompare": 0,
+        "serialization": 0
       },
       "reason": "The reviewed source uses the declared V2 canonical contract."
     },
@@ -334,7 +388,8 @@
       "signals": {
         "canonicalizer": 3,
         "digest": 0,
-        "localeCompare": 0
+        "localeCompare": 0,
+        "serialization": 0
       },
       "reason": "The reviewed source uses the declared V2 canonical contract."
     },
@@ -344,7 +399,8 @@
       "signals": {
         "canonicalizer": 3,
         "digest": 0,
-        "localeCompare": 0
+        "localeCompare": 0,
+        "serialization": 0
       },
       "reason": "The reviewed source uses the declared V2 canonical contract."
     },
@@ -354,7 +410,8 @@
       "signals": {
         "canonicalizer": 3,
         "digest": 0,
-        "localeCompare": 0
+        "localeCompare": 0,
+        "serialization": 0
       },
       "reason": "The reviewed source uses the declared V2 canonical contract."
     },
@@ -364,7 +421,8 @@
       "signals": {
         "canonicalizer": 3,
         "digest": 0,
-        "localeCompare": 0
+        "localeCompare": 0,
+        "serialization": 0
       },
       "reason": "The reviewed source uses the declared V2 canonical contract."
     },
@@ -374,7 +432,8 @@
       "signals": {
         "canonicalizer": 3,
         "digest": 0,
-        "localeCompare": 0
+        "localeCompare": 0,
+        "serialization": 0
       },
       "reason": "The reviewed source uses the declared V2 canonical contract."
     },
@@ -384,7 +443,8 @@
       "signals": {
         "canonicalizer": 3,
         "digest": 0,
-        "localeCompare": 0
+        "localeCompare": 0,
+        "serialization": 0
       },
       "reason": "The reviewed source uses the declared V2 canonical contract."
     },
@@ -394,7 +454,8 @@
       "signals": {
         "canonicalizer": 3,
         "digest": 0,
-        "localeCompare": 0
+        "localeCompare": 0,
+        "serialization": 0
       },
       "reason": "The reviewed source uses the declared V2 canonical contract."
     },
@@ -404,7 +465,8 @@
       "signals": {
         "canonicalizer": 2,
         "digest": 2,
-        "localeCompare": 2
+        "localeCompare": 2,
+        "serialization": 4
       },
       "reason": "The reviewed source retains an authoritative versioned V1 contract pending a compatible migration."
     },
@@ -414,7 +476,8 @@
       "signals": {
         "canonicalizer": 3,
         "digest": 2,
-        "localeCompare": 1
+        "localeCompare": 1,
+        "serialization": 4
       },
       "reason": "The reviewed source retains an authoritative versioned V1 contract pending a compatible migration."
     },
@@ -424,7 +487,8 @@
       "signals": {
         "canonicalizer": 0,
         "digest": 3,
-        "localeCompare": 0
+        "localeCompare": 0,
+        "serialization": 1
       },
       "reason": "The reviewed source hashes raw bytes or a fixed primitive, not structured JSON."
     },
@@ -434,7 +498,8 @@
       "signals": {
         "canonicalizer": 1,
         "digest": 0,
-        "localeCompare": 0
+        "localeCompare": 0,
+        "serialization": 2
       },
       "reason": "The reviewed source uses the declared V2 canonical contract."
     },
@@ -444,7 +509,8 @@
       "signals": {
         "canonicalizer": 1,
         "digest": 0,
-        "localeCompare": 0
+        "localeCompare": 0,
+        "serialization": 0
       },
       "reason": "The reviewed source uses the declared V2 canonical contract."
     },
@@ -454,7 +520,8 @@
       "signals": {
         "canonicalizer": 4,
         "digest": 2,
-        "localeCompare": 1
+        "localeCompare": 1,
+        "serialization": 3
       },
       "reason": "The reviewed source produces a structured portable, trust, or persistent identity awaiting a dedicated versioned migration."
     },
@@ -464,7 +531,8 @@
       "signals": {
         "canonicalizer": 0,
         "digest": 0,
-        "localeCompare": 1
+        "localeCompare": 1,
+        "serialization": 2
       },
       "reason": "The reviewed source produces a structured portable, trust, or persistent identity awaiting a dedicated versioned migration."
     },
@@ -474,7 +542,8 @@
       "signals": {
         "canonicalizer": 0,
         "digest": 0,
-        "localeCompare": 2
+        "localeCompare": 2,
+        "serialization": 2
       },
       "reason": "The reviewed source produces a structured portable, trust, or persistent identity awaiting a dedicated versioned migration."
     },
@@ -484,7 +553,8 @@
       "signals": {
         "canonicalizer": 4,
         "digest": 5,
-        "localeCompare": 11
+        "localeCompare": 11,
+        "serialization": 0
       },
       "reason": "The reviewed source retains an authoritative versioned V1 contract pending a compatible migration."
     },
@@ -494,7 +564,8 @@
       "signals": {
         "canonicalizer": 1,
         "digest": 1,
-        "localeCompare": 0
+        "localeCompare": 0,
+        "serialization": 0
       },
       "reason": "The reviewed source retains an authoritative versioned V1 contract pending a compatible migration."
     },
@@ -504,7 +575,8 @@
       "signals": {
         "canonicalizer": 2,
         "digest": 7,
-        "localeCompare": 0
+        "localeCompare": 0,
+        "serialization": 0
       },
       "reason": "The reviewed source retains an authoritative versioned V1 contract pending a compatible migration."
     },
@@ -514,7 +586,8 @@
       "signals": {
         "canonicalizer": 2,
         "digest": 3,
-        "localeCompare": 0
+        "localeCompare": 0,
+        "serialization": 0
       },
       "reason": "The reviewed source retains an authoritative versioned V1 contract pending a compatible migration."
     },
@@ -524,7 +597,8 @@
       "signals": {
         "canonicalizer": 2,
         "digest": 0,
-        "localeCompare": 0
+        "localeCompare": 0,
+        "serialization": 0
       },
       "reason": "The reviewed source retains an authoritative versioned V1 contract pending a compatible migration."
     },
@@ -534,7 +608,8 @@
       "signals": {
         "canonicalizer": 4,
         "digest": 6,
-        "localeCompare": 5
+        "localeCompare": 5,
+        "serialization": 0
       },
       "reason": "The reviewed source retains an authoritative versioned V1 contract pending a compatible migration."
     },
@@ -544,7 +619,8 @@
       "signals": {
         "canonicalizer": 2,
         "digest": 3,
-        "localeCompare": 3
+        "localeCompare": 3,
+        "serialization": 0
       },
       "reason": "The reviewed source retains an authoritative versioned V1 contract pending a compatible migration."
     },
@@ -554,7 +630,8 @@
       "signals": {
         "canonicalizer": 11,
         "digest": 9,
-        "localeCompare": 2
+        "localeCompare": 2,
+        "serialization": 0
       },
       "reason": "The reviewed source retains an authoritative versioned V1 contract pending a compatible migration."
     },
@@ -564,7 +641,8 @@
       "signals": {
         "canonicalizer": 3,
         "digest": 2,
-        "localeCompare": 1
+        "localeCompare": 1,
+        "serialization": 4
       },
       "reason": "The reviewed source produces a structured portable, trust, or persistent identity awaiting a dedicated versioned migration."
     },
@@ -574,7 +652,8 @@
       "signals": {
         "canonicalizer": 13,
         "digest": 2,
-        "localeCompare": 2
+        "localeCompare": 2,
+        "serialization": 3
       },
       "reason": "The reviewed source produces a structured portable, trust, or persistent identity awaiting a dedicated versioned migration."
     },
@@ -584,7 +663,8 @@
       "signals": {
         "canonicalizer": 6,
         "digest": 3,
-        "localeCompare": 2
+        "localeCompare": 2,
+        "serialization": 2
       },
       "reason": "The reviewed source produces a structured portable, trust, or persistent identity awaiting a dedicated versioned migration."
     },
@@ -594,7 +674,8 @@
       "signals": {
         "canonicalizer": 6,
         "digest": 2,
-        "localeCompare": 5
+        "localeCompare": 5,
+        "serialization": 2
       },
       "reason": "The reviewed source produces a structured portable, trust, or persistent identity awaiting a dedicated versioned migration."
     },
@@ -604,9 +685,21 @@
       "signals": {
         "canonicalizer": 13,
         "digest": 2,
-        "localeCompare": 3
+        "localeCompare": 3,
+        "serialization": 4
       },
       "reason": "The reviewed source produces a structured portable, trust, or persistent identity awaiting a dedicated versioned migration."
+    },
+    {
+      "path": "packages/platform-node/src/authority-store-adapter.ts",
+      "classification": "pending-versioned-migration",
+      "reason": "Durable authority records are persisted as JSON and await a dedicated versioned persistence migration.",
+      "signals": {
+        "canonicalizer": 0,
+        "digest": 0,
+        "localeCompare": 0,
+        "serialization": 2
+      }
     },
     {
       "path": "packages/platform-node/src/encrypted-file-key-provider.ts",
@@ -614,7 +707,8 @@
       "signals": {
         "canonicalizer": 0,
         "digest": 5,
-        "localeCompare": 0
+        "localeCompare": 0,
+        "serialization": 3
       },
       "reason": "The reviewed source hashes raw bytes or a fixed primitive, not structured JSON."
     },
@@ -624,7 +718,8 @@
       "signals": {
         "canonicalizer": 0,
         "digest": 4,
-        "localeCompare": 0
+        "localeCompare": 0,
+        "serialization": 4
       },
       "reason": "The reviewed source hashes raw bytes or a fixed primitive, not structured JSON."
     },
@@ -634,9 +729,32 @@
       "signals": {
         "canonicalizer": 0,
         "digest": 5,
-        "localeCompare": 0
+        "localeCompare": 0,
+        "serialization": 2
       },
       "reason": "The reviewed source hashes raw bytes or a fixed primitive, not structured JSON."
+    },
+    {
+      "path": "packages/platform-node/src/machine-bootstrap-adapters.ts",
+      "classification": "pending-versioned-migration",
+      "reason": "The durable machine profile record awaits a dedicated versioned persistence migration.",
+      "signals": {
+        "canonicalizer": 0,
+        "digest": 0,
+        "localeCompare": 0,
+        "serialization": 1
+      }
+    },
+    {
+      "path": "packages/platform-node/src/policy-store-adapter.ts",
+      "classification": "retained-v1-versioned",
+      "reason": "The active policy view retains its authoritative schemaVersion 1 record pending a compatible migration.",
+      "signals": {
+        "canonicalizer": 0,
+        "digest": 0,
+        "localeCompare": 0,
+        "serialization": 1
+      }
     },
     {
       "path": "packages/platform-node/src/runtime-store/runtime-store.ts",
@@ -644,7 +762,8 @@
       "signals": {
         "canonicalizer": 2,
         "digest": 2,
-        "localeCompare": 0
+        "localeCompare": 0,
+        "serialization": 7
       },
       "reason": "The reviewed source uses the declared V2 canonical contract."
     },
@@ -654,7 +773,8 @@
       "signals": {
         "canonicalizer": 0,
         "digest": 2,
-        "localeCompare": 0
+        "localeCompare": 0,
+        "serialization": 1
       },
       "reason": "The reviewed source hashes raw bytes or a fixed primitive, not structured JSON."
     },
@@ -664,7 +784,8 @@
       "signals": {
         "canonicalizer": 2,
         "digest": 2,
-        "localeCompare": 0
+        "localeCompare": 0,
+        "serialization": 0
       },
       "reason": "The reviewed source uses the declared V2 canonical contract."
     },
@@ -674,7 +795,8 @@
       "signals": {
         "canonicalizer": 4,
         "digest": 0,
-        "localeCompare": 2
+        "localeCompare": 2,
+        "serialization": 2
       },
       "reason": "The reviewed source produces a structured portable, trust, or persistent identity awaiting a dedicated versioned migration."
     },
@@ -684,7 +806,8 @@
       "signals": {
         "canonicalizer": 0,
         "digest": 2,
-        "localeCompare": 0
+        "localeCompare": 0,
+        "serialization": 1
       },
       "reason": "The reviewed source hashes raw bytes or a fixed primitive, not structured JSON."
     },
@@ -694,9 +817,32 @@
       "signals": {
         "canonicalizer": 0,
         "digest": 2,
-        "localeCompare": 0
+        "localeCompare": 0,
+        "serialization": 5
       },
       "reason": "The reviewed source hashes raw bytes or a fixed primitive, not structured JSON."
+    },
+    {
+      "path": "packages/workspace/src/init/safe-init.ts",
+      "classification": "retained-v1-versioned",
+      "reason": "The recovery journal preserves both retained version 1 and version 2 records for compatible recovery.",
+      "signals": {
+        "canonicalizer": 0,
+        "digest": 0,
+        "localeCompare": 0,
+        "serialization": 4
+      }
+    },
+    {
+      "path": "packages/workspace/src/placement/artifact-placement.ts",
+      "classification": "migrated-v2",
+      "reason": "The write plan emits the declared V2 plan identity while retaining its collision comparison.",
+      "signals": {
+        "canonicalizer": 0,
+        "digest": 0,
+        "localeCompare": 0,
+        "serialization": 2
+      }
     },
     {
       "path": "packages/workspace/src/scanner/scanner-primitives.ts",
@@ -704,7 +850,8 @@
       "signals": {
         "canonicalizer": 5,
         "digest": 3,
-        "localeCompare": 2
+        "localeCompare": 2,
+        "serialization": 3
       },
       "reason": "The reviewed source uses the declared V2 canonical contract."
     },
@@ -714,7 +861,8 @@
       "signals": {
         "canonicalizer": 0,
         "digest": 2,
-        "localeCompare": 1
+        "localeCompare": 1,
+        "serialization": 5
       },
       "reason": "The reviewed source hashes raw bytes or a fixed primitive, not structured JSON."
     },
@@ -724,7 +872,8 @@
       "signals": {
         "canonicalizer": 0,
         "digest": 0,
-        "localeCompare": 1
+        "localeCompare": 1,
+        "serialization": 0
       },
       "reason": "Closed presentation, fixture, or repository-diagnostic ordering only; not a trust or persistent identity."
     },
@@ -734,7 +883,8 @@
       "signals": {
         "canonicalizer": 0,
         "digest": 0,
-        "localeCompare": 1
+        "localeCompare": 1,
+        "serialization": 1
       },
       "reason": "Closed presentation, fixture, or repository-diagnostic ordering only; not a trust or persistent identity."
     },
@@ -744,7 +894,8 @@
       "signals": {
         "canonicalizer": 0,
         "digest": 0,
-        "localeCompare": 1
+        "localeCompare": 1,
+        "serialization": 0
       },
       "reason": "Closed presentation, fixture, or repository-diagnostic ordering only; not a trust or persistent identity."
     },
@@ -754,7 +905,8 @@
       "signals": {
         "canonicalizer": 0,
         "digest": 0,
-        "localeCompare": 1
+        "localeCompare": 1,
+        "serialization": 0
       },
       "reason": "Closed presentation, fixture, or repository-diagnostic ordering only; not a trust or persistent identity."
     },
@@ -764,7 +916,8 @@
       "signals": {
         "canonicalizer": 2,
         "digest": 0,
-        "localeCompare": 0
+        "localeCompare": 0,
+        "serialization": 1
       },
       "reason": "The reviewed source retains an authoritative versioned V1 contract pending a compatible migration."
     },
@@ -774,7 +927,8 @@
       "signals": {
         "canonicalizer": 2,
         "digest": 4,
-        "localeCompare": 0
+        "localeCompare": 0,
+        "serialization": 3
       },
       "reason": "The reviewed source uses the declared V2 canonical contract."
     }
