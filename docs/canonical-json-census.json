@@ -1,0 +1,936 @@
+{
+  "schemaVersion": 3,
+  "classifications": {
+    "migrated-v2": "Structured material already uses the V2 contract or is a V2 support primitive.",
+    "pending-versioned-migration": "A structured trust, persistent, or portable identity awaits its own versioned migration vertical.",
+    "presentation-or-fixture": "A closed presentation, fixture, or repository-diagnostic ordering exception; it cannot use a local canonicalizer.",
+    "raw-byte-digest": "SHA-256 applies to bytes or a fixed primitive, not to a locally canonicalized structured value.",
+    "retained-v1-versioned": "A signed or persisted V1 contract remains authoritative until a versioned migration preserves verification."
+  },
+  "entries": [
+    {
+      "path": "apps/site/src/lib/llm-content.ts",
+      "classification": "presentation-or-fixture",
+      "signals": {
+        "canonicalizer": 0,
+        "digest": 2,
+        "localeCompare": 2,
+        "serialization": 0
+      },
+      "reason": "Closed presentation, fixture, or repository-diagnostic ordering only; not a trust or persistent identity."
+    },
+    {
+      "path": "apps/site/src/lib/repository-docs-loader.ts",
+      "classification": "raw-byte-digest",
+      "reason": "The build-time site digest covers raw parsed-data JSON plus Markdown; it is not a portable structured identity.",
+      "signals": {
+        "canonicalizer": 0,
+        "digest": 0,
+        "localeCompare": 0,
+        "serialization": 1
+      }
+    },
+    {
+      "path": "apps/vestra-cli/src/cli.ts",
+      "classification": "presentation-or-fixture",
+      "signals": {
+        "canonicalizer": 0,
+        "digest": 0,
+        "localeCompare": 1,
+        "serialization": 2
+      },
+      "reason": "Closed presentation, fixture, or repository-diagnostic ordering only; not a trust or persistent identity."
+    },
+    {
+      "path": "apps/vestra-cli/src/doctor-composition.ts",
+      "classification": "raw-byte-digest",
+      "signals": {
+        "canonicalizer": 0,
+        "digest": 3,
+        "localeCompare": 0,
+        "serialization": 1
+      },
+      "reason": "The reviewed source hashes raw bytes or a fixed primitive, not structured JSON."
+    },
+    {
+      "path": "apps/vestra-cli/src/promotion-composition.ts",
+      "classification": "migrated-v2",
+      "signals": {
+        "canonicalizer": 0,
+        "digest": 2,
+        "localeCompare": 0,
+        "serialization": 0
+      },
+      "reason": "The reviewed source uses the declared V2 canonical contract."
+    },
+    {
+      "path": "apps/vestra-cli/src/self-test-composition.ts",
+      "classification": "raw-byte-digest",
+      "signals": {
+        "canonicalizer": 0,
+        "digest": 3,
+        "localeCompare": 0,
+        "serialization": 2
+      },
+      "reason": "The reviewed source hashes raw bytes or a fixed primitive, not structured JSON."
+    },
+    {
+      "path": "apps/vestra-cli/src/self-test-driver-authority.ts",
+      "classification": "pending-versioned-migration",
+      "signals": {
+        "canonicalizer": 6,
+        "digest": 0,
+        "localeCompare": 1,
+        "serialization": 2
+      },
+      "reason": "The reviewed source produces a structured portable, trust, or persistent identity awaiting a dedicated versioned migration."
+    },
+    {
+      "path": "apps/vestra-cli/src/self-test-driver-scenario.ts",
+      "classification": "raw-byte-digest",
+      "signals": {
+        "canonicalizer": 0,
+        "digest": 2,
+        "localeCompare": 0,
+        "serialization": 0
+      },
+      "reason": "The reviewed source hashes raw bytes or a fixed primitive, not structured JSON."
+    },
+    {
+      "path": "apps/vestra-cli/src/self-test-full-execution.ts",
+      "classification": "migrated-v2",
+      "signals": {
+        "canonicalizer": 0,
+        "digest": 2,
+        "localeCompare": 0,
+        "serialization": 2
+      },
+      "reason": "The reviewed source uses the declared V2 canonical contract."
+    },
+    {
+      "path": "apps/vestra-cli/src/self-test-full-scenario.ts",
+      "classification": "pending-versioned-migration",
+      "signals": {
+        "canonicalizer": 3,
+        "digest": 2,
+        "localeCompare": 1,
+        "serialization": 8
+      },
+      "reason": "The reviewed source produces a structured portable, trust, or persistent identity awaiting a dedicated versioned migration."
+    },
+    {
+      "path": "packages/agent-runtime/src/context/backend-serializers.ts",
+      "classification": "migrated-v2",
+      "signals": {
+        "canonicalizer": 8,
+        "digest": 0,
+        "localeCompare": 0,
+        "serialization": 1
+      },
+      "reason": "The reviewed source uses the declared V2 canonical contract."
+    },
+    {
+      "path": "packages/agent-runtime/src/context/context-compiler.ts",
+      "classification": "migrated-v2",
+      "signals": {
+        "canonicalizer": 5,
+        "digest": 0,
+        "localeCompare": 0,
+        "serialization": 0
+      },
+      "reason": "The reviewed source uses the declared V2 canonical contract."
+    },
+    {
+      "path": "packages/agent-runtime/src/context/source-snapshots.ts",
+      "classification": "migrated-v2",
+      "signals": {
+        "canonicalizer": 7,
+        "digest": 0,
+        "localeCompare": 0,
+        "serialization": 0
+      },
+      "reason": "The reviewed source uses the declared V2 canonical contract."
+    },
+    {
+      "path": "packages/agent-runtime/src/discovery/discovery-router.ts",
+      "classification": "pending-versioned-migration",
+      "signals": {
+        "canonicalizer": 3,
+        "digest": 2,
+        "localeCompare": 1,
+        "serialization": 2
+      },
+      "reason": "The reviewed source produces a structured portable, trust, or persistent identity awaiting a dedicated versioned migration."
+    },
+    {
+      "path": "packages/agent-runtime/src/models/model-router.ts",
+      "classification": "pending-versioned-migration",
+      "signals": {
+        "canonicalizer": 0,
+        "digest": 0,
+        "localeCompare": 4,
+        "serialization": 0
+      },
+      "reason": "The reviewed source produces a structured portable, trust, or persistent identity awaiting a dedicated versioned migration."
+    },
+    {
+      "path": "packages/agent-runtime/src/models/passport-registry.ts",
+      "classification": "pending-versioned-migration",
+      "signals": {
+        "canonicalizer": 11,
+        "digest": 0,
+        "localeCompare": 2,
+        "serialization": 2
+      },
+      "reason": "The reviewed source produces a structured portable, trust, or persistent identity awaiting a dedicated versioned migration."
+    },
+    {
+      "path": "packages/agent-runtime/src/skills/governed-skill-registry.ts",
+      "classification": "pending-versioned-migration",
+      "signals": {
+        "canonicalizer": 3,
+        "digest": 2,
+        "localeCompare": 1,
+        "serialization": 2
+      },
+      "reason": "The reviewed source produces a structured portable, trust, or persistent identity awaiting a dedicated versioned migration."
+    },
+    {
+      "path": "packages/application/src/authority/authority.ts",
+      "classification": "migrated-v2",
+      "signals": {
+        "canonicalizer": 20,
+        "digest": 0,
+        "localeCompare": 0,
+        "serialization": 0
+      },
+      "reason": "The reviewed source uses the declared V2 canonical contract."
+    },
+    {
+      "path": "packages/application/src/bootstrap/machine-bootstrap.ts",
+      "classification": "pending-versioned-migration",
+      "signals": {
+        "canonicalizer": 0,
+        "digest": 0,
+        "localeCompare": 6,
+        "serialization": 2
+      },
+      "reason": "The reviewed source produces a structured portable, trust, or persistent identity awaiting a dedicated versioned migration."
+    },
+    {
+      "path": "packages/application/src/coordination/work-claims.ts",
+      "classification": "migrated-v2",
+      "signals": {
+        "canonicalizer": 8,
+        "digest": 0,
+        "localeCompare": 0,
+        "serialization": 0
+      },
+      "reason": "The reviewed source uses the declared V2 canonical contract."
+    },
+    {
+      "path": "packages/application/src/effects/effect-contract.ts",
+      "classification": "migrated-v2",
+      "signals": {
+        "canonicalizer": 2,
+        "digest": 2,
+        "localeCompare": 0,
+        "serialization": 1
+      },
+      "reason": "The reviewed source uses the declared V2 canonical contract."
+    },
+    {
+      "path": "packages/application/src/egress/trust-egress.ts",
+      "classification": "migrated-v2",
+      "signals": {
+        "canonicalizer": 3,
+        "digest": 0,
+        "localeCompare": 0,
+        "serialization": 0
+      },
+      "reason": "The reviewed source uses the declared V2 canonical contract."
+    },
+    {
+      "path": "packages/application/src/execution/gate-commit.ts",
+      "classification": "migrated-v2",
+      "signals": {
+        "canonicalizer": 10,
+        "digest": 0,
+        "localeCompare": 0,
+        "serialization": 0
+      },
+      "reason": "The reviewed source uses the declared V2 canonical contract."
+    },
+    {
+      "path": "packages/application/src/handoff/coordinator.ts",
+      "classification": "migrated-v2",
+      "signals": {
+        "canonicalizer": 4,
+        "digest": 0,
+        "localeCompare": 0,
+        "serialization": 0
+      },
+      "reason": "The reviewed source uses the declared V2 canonical contract."
+    },
+    {
+      "path": "packages/application/src/handoff/normalize.ts",
+      "classification": "migrated-v2",
+      "signals": {
+        "canonicalizer": 1,
+        "digest": 0,
+        "localeCompare": 0,
+        "serialization": 0
+      },
+      "reason": "The reviewed source uses the declared V2 canonical contract."
+    },
+    {
+      "path": "packages/application/src/handoff/validation.ts",
+      "classification": "migrated-v2",
+      "signals": {
+        "canonicalizer": 3,
+        "digest": 0,
+        "localeCompare": 0,
+        "serialization": 0
+      },
+      "reason": "The reviewed source uses the declared V2 canonical contract."
+    },
+    {
+      "path": "packages/application/src/promotion/promotion-gate.ts",
+      "classification": "migrated-v2",
+      "signals": {
+        "canonicalizer": 7,
+        "digest": 0,
+        "localeCompare": 0,
+        "serialization": 1
+      },
+      "reason": "The reviewed source uses the declared V2 canonical contract."
+    },
+    {
+      "path": "packages/application/src/regression/campaigns.ts",
+      "classification": "pending-versioned-migration",
+      "reason": "The public regression corpus is structured evidence sealed by a digest and awaits an explicit versioned canonical contract.",
+      "signals": {
+        "canonicalizer": 1,
+        "digest": 0,
+        "localeCompare": 0,
+        "serialization": 1
+      }
+    },
+    {
+      "path": "packages/application/src/self-test/self-test.ts",
+      "classification": "pending-versioned-migration",
+      "reason": "Authority-relevant Driver review equality awaits a dedicated versioned canonical contract.",
+      "signals": {
+        "canonicalizer": 0,
+        "digest": 0,
+        "localeCompare": 0,
+        "serialization": 1
+      }
+    },
+    {
+      "path": "packages/application/src/sync/workspace-reconcile.ts",
+      "classification": "migrated-v2",
+      "signals": {
+        "canonicalizer": 8,
+        "digest": 0,
+        "localeCompare": 0,
+        "serialization": 0
+      },
+      "reason": "The reviewed source uses the declared V2 canonical contract."
+    },
+    {
+      "path": "packages/connectors/src/confluence/architecture-source.ts",
+      "classification": "pending-versioned-migration",
+      "signals": {
+        "canonicalizer": 6,
+        "digest": 2,
+        "localeCompare": 5,
+        "serialization": 4
+      },
+      "reason": "The reviewed source produces a structured portable, trust, or persistent identity awaiting a dedicated versioned migration."
+    },
+    {
+      "path": "packages/connectors/src/confluence/delivery-projection.ts",
+      "classification": "pending-versioned-migration",
+      "signals": {
+        "canonicalizer": 4,
+        "digest": 2,
+        "localeCompare": 1,
+        "serialization": 4
+      },
+      "reason": "The reviewed source produces a structured portable, trust, or persistent identity awaiting a dedicated versioned migration."
+    },
+    {
+      "path": "packages/connectors/src/jira/jira.ts",
+      "classification": "pending-versioned-migration",
+      "signals": {
+        "canonicalizer": 8,
+        "digest": 2,
+        "localeCompare": 1,
+        "serialization": 4
+      },
+      "reason": "The reviewed source produces a structured portable, trust, or persistent identity awaiting a dedicated versioned migration."
+    },
+    {
+      "path": "packages/data-probe/src/canonical-material.ts",
+      "classification": "migrated-v2",
+      "signals": {
+        "canonicalizer": 2,
+        "digest": 2,
+        "localeCompare": 0,
+        "serialization": 0
+      },
+      "reason": "The reviewed source uses the declared V2 canonical contract."
+    },
+    {
+      "path": "packages/data-probe/src/mongodb-adapter.ts",
+      "classification": "migrated-v2",
+      "signals": {
+        "canonicalizer": 3,
+        "digest": 0,
+        "localeCompare": 0,
+        "serialization": 0
+      },
+      "reason": "The reviewed source uses the declared V2 canonical contract."
+    },
+    {
+      "path": "packages/data-probe/src/mysql-family-adapter.ts",
+      "classification": "migrated-v2",
+      "signals": {
+        "canonicalizer": 3,
+        "digest": 0,
+        "localeCompare": 0,
+        "serialization": 0
+      },
+      "reason": "The reviewed source uses the declared V2 canonical contract."
+    },
+    {
+      "path": "packages/data-probe/src/oracle-adapter.ts",
+      "classification": "migrated-v2",
+      "signals": {
+        "canonicalizer": 3,
+        "digest": 0,
+        "localeCompare": 0,
+        "serialization": 0
+      },
+      "reason": "The reviewed source uses the declared V2 canonical contract."
+    },
+    {
+      "path": "packages/data-probe/src/postgresql-adapter.ts",
+      "classification": "migrated-v2",
+      "signals": {
+        "canonicalizer": 3,
+        "digest": 0,
+        "localeCompare": 0,
+        "serialization": 0
+      },
+      "reason": "The reviewed source uses the declared V2 canonical contract."
+    },
+    {
+      "path": "packages/data-probe/src/sap-ase-adapter.ts",
+      "classification": "migrated-v2",
+      "signals": {
+        "canonicalizer": 3,
+        "digest": 0,
+        "localeCompare": 0,
+        "serialization": 0
+      },
+      "reason": "The reviewed source uses the declared V2 canonical contract."
+    },
+    {
+      "path": "packages/data-probe/src/sqlite-adapter.ts",
+      "classification": "migrated-v2",
+      "signals": {
+        "canonicalizer": 3,
+        "digest": 0,
+        "localeCompare": 0,
+        "serialization": 0
+      },
+      "reason": "The reviewed source uses the declared V2 canonical contract."
+    },
+    {
+      "path": "packages/data-probe/src/sqlserver-adapter.ts",
+      "classification": "migrated-v2",
+      "signals": {
+        "canonicalizer": 3,
+        "digest": 0,
+        "localeCompare": 0,
+        "serialization": 0
+      },
+      "reason": "The reviewed source uses the declared V2 canonical contract."
+    },
+    {
+      "path": "packages/distribution/src/hermetic-bundle.ts",
+      "classification": "retained-v1-versioned",
+      "signals": {
+        "canonicalizer": 2,
+        "digest": 2,
+        "localeCompare": 2,
+        "serialization": 4
+      },
+      "reason": "The reviewed source retains an authoritative versioned V1 contract pending a compatible migration."
+    },
+    {
+      "path": "packages/distribution/src/transactional-activation.ts",
+      "classification": "retained-v1-versioned",
+      "signals": {
+        "canonicalizer": 3,
+        "digest": 2,
+        "localeCompare": 1,
+        "serialization": 4
+      },
+      "reason": "The reviewed source retains an authoritative versioned V1 contract pending a compatible migration."
+    },
+    {
+      "path": "packages/distribution/src/tuf-update-client.ts",
+      "classification": "raw-byte-digest",
+      "signals": {
+        "canonicalizer": 0,
+        "digest": 3,
+        "localeCompare": 0,
+        "serialization": 1
+      },
+      "reason": "The reviewed source hashes raw bytes or a fixed primitive, not structured JSON."
+    },
+    {
+      "path": "packages/domain/src/canonical/canonical-json.ts",
+      "classification": "migrated-v2",
+      "signals": {
+        "canonicalizer": 1,
+        "digest": 0,
+        "localeCompare": 0,
+        "serialization": 2
+      },
+      "reason": "The reviewed source uses the declared V2 canonical contract."
+    },
+    {
+      "path": "packages/domain/src/canonical/canonical-sets.ts",
+      "classification": "migrated-v2",
+      "signals": {
+        "canonicalizer": 1,
+        "digest": 0,
+        "localeCompare": 0,
+        "serialization": 0
+      },
+      "reason": "The reviewed source uses the declared V2 canonical contract."
+    },
+    {
+      "path": "packages/drivers/src/index.ts",
+      "classification": "pending-versioned-migration",
+      "signals": {
+        "canonicalizer": 4,
+        "digest": 2,
+        "localeCompare": 1,
+        "serialization": 3
+      },
+      "reason": "The reviewed source produces a structured portable, trust, or persistent identity awaiting a dedicated versioned migration."
+    },
+    {
+      "path": "packages/drivers/src/opencode-driver.ts",
+      "classification": "pending-versioned-migration",
+      "signals": {
+        "canonicalizer": 0,
+        "digest": 0,
+        "localeCompare": 1,
+        "serialization": 2
+      },
+      "reason": "The reviewed source produces a structured portable, trust, or persistent identity awaiting a dedicated versioned migration."
+    },
+    {
+      "path": "packages/effects/src/effect-kernel.ts",
+      "classification": "pending-versioned-migration",
+      "signals": {
+        "canonicalizer": 0,
+        "digest": 0,
+        "localeCompare": 2,
+        "serialization": 2
+      },
+      "reason": "The reviewed source produces a structured portable, trust, or persistent identity awaiting a dedicated versioned migration."
+    },
+    {
+      "path": "packages/evidence/src/execution-package/execution-package.ts",
+      "classification": "migrated-v2",
+      "signals": {
+        "canonicalizer": 4,
+        "digest": 5,
+        "localeCompare": 1,
+        "serialization": 0
+      },
+      "reason": "New packages use the declared V2 schema and code-unit set ordering; the version-gated V1 verifier retains its authoritative historical ordering."
+    },
+    {
+      "path": "packages/evidence/src/index.ts",
+      "classification": "migrated-v2",
+      "signals": {
+        "canonicalizer": 2,
+        "digest": 2,
+        "localeCompare": 0,
+        "serialization": 0
+      },
+      "reason": "The public evidence facade exports explicit V1/V2 canonicalization while recorded schemas select the compatible verifier."
+    },
+    {
+      "path": "packages/evidence/src/integrity/artifact-sealer.ts",
+      "classification": "migrated-v2",
+      "signals": {
+        "canonicalizer": 2,
+        "digest": 2,
+        "localeCompare": 0,
+        "serialization": 0
+      },
+      "reason": "The DSSE sealer selects the declared V1 or V2 canonicalization from the signed schema before cloning, digesting, or verifying."
+    },
+    {
+      "path": "packages/evidence/src/integrity/canonical.ts",
+      "classification": "migrated-v2",
+      "signals": {
+        "canonicalizer": 7,
+        "digest": 5,
+        "localeCompare": 0,
+        "serialization": 0
+      },
+      "reason": "The evidence facade keeps qualified V1 bytes and delegates explicit V2 serialization to the inward RFC 8785 implementation."
+    },
+    {
+      "path": "packages/evidence/src/integrity/dsse.ts",
+      "classification": "retained-v1-versioned",
+      "signals": {
+        "canonicalizer": 2,
+        "digest": 0,
+        "localeCompare": 0,
+        "serialization": 0
+      },
+      "reason": "The reviewed source retains an authoritative versioned V1 contract pending a compatible migration."
+    },
+    {
+      "path": "packages/evidence/src/recovery-bundle/recovery-bundle.ts",
+      "classification": "retained-v1-versioned",
+      "signals": {
+        "canonicalizer": 4,
+        "digest": 6,
+        "localeCompare": 5,
+        "serialization": 0
+      },
+      "reason": "The reviewed source retains an authoritative versioned V1 contract pending a compatible migration."
+    },
+    {
+      "path": "packages/evidence/src/run-capsule/run-capsule.ts",
+      "classification": "retained-v1-versioned",
+      "signals": {
+        "canonicalizer": 2,
+        "digest": 3,
+        "localeCompare": 3,
+        "serialization": 0
+      },
+      "reason": "The reviewed source retains an authoritative versioned V1 contract pending a compatible migration."
+    },
+    {
+      "path": "packages/evidence/src/support-bundle/support-bundle.ts",
+      "classification": "retained-v1-versioned",
+      "signals": {
+        "canonicalizer": 11,
+        "digest": 9,
+        "localeCompare": 2,
+        "serialization": 0
+      },
+      "reason": "The reviewed source retains an authoritative versioned V1 contract pending a compatible migration."
+    },
+    {
+      "path": "packages/extension-host/src/index.ts",
+      "classification": "pending-versioned-migration",
+      "signals": {
+        "canonicalizer": 3,
+        "digest": 2,
+        "localeCompare": 1,
+        "serialization": 4
+      },
+      "reason": "The reviewed source produces a structured portable, trust, or persistent identity awaiting a dedicated versioned migration."
+    },
+    {
+      "path": "packages/memory/src/memory-lifecycle.ts",
+      "classification": "pending-versioned-migration",
+      "signals": {
+        "canonicalizer": 13,
+        "digest": 2,
+        "localeCompare": 2,
+        "serialization": 3
+      },
+      "reason": "The reviewed source produces a structured portable, trust, or persistent identity awaiting a dedicated versioned migration."
+    },
+    {
+      "path": "packages/memory/src/memory-retriever.ts",
+      "classification": "pending-versioned-migration",
+      "signals": {
+        "canonicalizer": 6,
+        "digest": 3,
+        "localeCompare": 2,
+        "serialization": 2
+      },
+      "reason": "The reviewed source produces a structured portable, trust, or persistent identity awaiting a dedicated versioned migration."
+    },
+    {
+      "path": "packages/memory/src/memory-store.ts",
+      "classification": "pending-versioned-migration",
+      "signals": {
+        "canonicalizer": 6,
+        "digest": 2,
+        "localeCompare": 5,
+        "serialization": 2
+      },
+      "reason": "The reviewed source produces a structured portable, trust, or persistent identity awaiting a dedicated versioned migration."
+    },
+    {
+      "path": "packages/memory/src/memory-vector-index.ts",
+      "classification": "pending-versioned-migration",
+      "signals": {
+        "canonicalizer": 13,
+        "digest": 2,
+        "localeCompare": 3,
+        "serialization": 4
+      },
+      "reason": "The reviewed source produces a structured portable, trust, or persistent identity awaiting a dedicated versioned migration."
+    },
+    {
+      "path": "packages/platform-node/src/authority-store-adapter.ts",
+      "classification": "pending-versioned-migration",
+      "reason": "Durable authority records are persisted as JSON and await a dedicated versioned persistence migration.",
+      "signals": {
+        "canonicalizer": 0,
+        "digest": 0,
+        "localeCompare": 0,
+        "serialization": 2
+      }
+    },
+    {
+      "path": "packages/platform-node/src/encrypted-file-key-provider.ts",
+      "classification": "raw-byte-digest",
+      "signals": {
+        "canonicalizer": 0,
+        "digest": 5,
+        "localeCompare": 0,
+        "serialization": 3
+      },
+      "reason": "The reviewed source hashes raw bytes or a fixed primitive, not structured JSON."
+    },
+    {
+      "path": "packages/platform-node/src/gate-commit-adapters.ts",
+      "classification": "raw-byte-digest",
+      "signals": {
+        "canonicalizer": 0,
+        "digest": 4,
+        "localeCompare": 0,
+        "serialization": 4
+      },
+      "reason": "The reviewed source hashes raw bytes or a fixed primitive, not structured JSON."
+    },
+    {
+      "path": "packages/platform-node/src/git-worktree-adapter.ts",
+      "classification": "raw-byte-digest",
+      "signals": {
+        "canonicalizer": 0,
+        "digest": 5,
+        "localeCompare": 0,
+        "serialization": 2
+      },
+      "reason": "The reviewed source hashes raw bytes or a fixed primitive, not structured JSON."
+    },
+    {
+      "path": "packages/platform-node/src/machine-bootstrap-adapters.ts",
+      "classification": "pending-versioned-migration",
+      "reason": "The durable machine profile record awaits a dedicated versioned persistence migration.",
+      "signals": {
+        "canonicalizer": 0,
+        "digest": 0,
+        "localeCompare": 0,
+        "serialization": 1
+      }
+    },
+    {
+      "path": "packages/platform-node/src/policy-store-adapter.ts",
+      "classification": "retained-v1-versioned",
+      "reason": "The active policy view retains its authoritative schemaVersion 1 record pending a compatible migration.",
+      "signals": {
+        "canonicalizer": 0,
+        "digest": 0,
+        "localeCompare": 0,
+        "serialization": 1
+      }
+    },
+    {
+      "path": "packages/platform-node/src/runtime-store/runtime-store.ts",
+      "classification": "migrated-v2",
+      "signals": {
+        "canonicalizer": 2,
+        "digest": 2,
+        "localeCompare": 0,
+        "serialization": 7
+      },
+      "reason": "The reviewed source uses the declared V2 canonical contract."
+    },
+    {
+      "path": "packages/platform-node/src/sync-adapters.ts",
+      "classification": "raw-byte-digest",
+      "signals": {
+        "canonicalizer": 0,
+        "digest": 2,
+        "localeCompare": 0,
+        "serialization": 1
+      },
+      "reason": "The reviewed source hashes raw bytes or a fixed primitive, not structured JSON."
+    },
+    {
+      "path": "packages/policy/src/cedar-policy.ts",
+      "classification": "migrated-v2",
+      "signals": {
+        "canonicalizer": 2,
+        "digest": 2,
+        "localeCompare": 0,
+        "serialization": 0
+      },
+      "reason": "The reviewed source uses the declared V2 canonical contract."
+    },
+    {
+      "path": "packages/policy/src/policy-bundle.ts",
+      "classification": "pending-versioned-migration",
+      "signals": {
+        "canonicalizer": 4,
+        "digest": 0,
+        "localeCompare": 2,
+        "serialization": 2
+      },
+      "reason": "The reviewed source produces a structured portable, trust, or persistent identity awaiting a dedicated versioned migration."
+    },
+    {
+      "path": "packages/self-test/src/disposable-roots.ts",
+      "classification": "raw-byte-digest",
+      "signals": {
+        "canonicalizer": 0,
+        "digest": 2,
+        "localeCompare": 0,
+        "serialization": 1
+      },
+      "reason": "The reviewed source hashes raw bytes or a fixed primitive, not structured JSON."
+    },
+    {
+      "path": "packages/self-test/src/file-record-store.ts",
+      "classification": "raw-byte-digest",
+      "signals": {
+        "canonicalizer": 0,
+        "digest": 2,
+        "localeCompare": 0,
+        "serialization": 5
+      },
+      "reason": "The reviewed source hashes raw bytes or a fixed primitive, not structured JSON."
+    },
+    {
+      "path": "packages/workspace/src/init/safe-init.ts",
+      "classification": "retained-v1-versioned",
+      "reason": "The recovery journal preserves both retained version 1 and version 2 records for compatible recovery.",
+      "signals": {
+        "canonicalizer": 0,
+        "digest": 0,
+        "localeCompare": 0,
+        "serialization": 4
+      }
+    },
+    {
+      "path": "packages/workspace/src/placement/artifact-placement.ts",
+      "classification": "migrated-v2",
+      "reason": "The write plan emits the declared V2 plan identity while retaining its collision comparison.",
+      "signals": {
+        "canonicalizer": 0,
+        "digest": 0,
+        "localeCompare": 0,
+        "serialization": 2
+      }
+    },
+    {
+      "path": "packages/workspace/src/scanner/scanner-primitives.ts",
+      "classification": "migrated-v2",
+      "signals": {
+        "canonicalizer": 5,
+        "digest": 3,
+        "localeCompare": 2,
+        "serialization": 3
+      },
+      "reason": "The reviewed source uses the declared V2 canonical contract."
+    },
+    {
+      "path": "scripts/agent-eval.mjs",
+      "classification": "raw-byte-digest",
+      "signals": {
+        "canonicalizer": 0,
+        "digest": 2,
+        "localeCompare": 1,
+        "serialization": 5
+      },
+      "reason": "The reviewed source hashes raw bytes or a fixed primitive, not structured JSON."
+    },
+    {
+      "path": "scripts/agent-readiness.mjs",
+      "classification": "presentation-or-fixture",
+      "signals": {
+        "canonicalizer": 0,
+        "digest": 0,
+        "localeCompare": 1,
+        "serialization": 0
+      },
+      "reason": "Closed presentation, fixture, or repository-diagnostic ordering only; not a trust or persistent identity."
+    },
+    {
+      "path": "scripts/complexity.mjs",
+      "classification": "presentation-or-fixture",
+      "signals": {
+        "canonicalizer": 0,
+        "digest": 0,
+        "localeCompare": 1,
+        "serialization": 1
+      },
+      "reason": "Closed presentation, fixture, or repository-diagnostic ordering only; not a trust or persistent identity."
+    },
+    {
+      "path": "scripts/gate-selection.mjs",
+      "classification": "presentation-or-fixture",
+      "signals": {
+        "canonicalizer": 0,
+        "digest": 0,
+        "localeCompare": 1,
+        "serialization": 0
+      },
+      "reason": "Closed presentation, fixture, or repository-diagnostic ordering only; not a trust or persistent identity."
+    },
+    {
+      "path": "scripts/generate-contract-types.mjs",
+      "classification": "presentation-or-fixture",
+      "signals": {
+        "canonicalizer": 0,
+        "digest": 0,
+        "localeCompare": 1,
+        "serialization": 0
+      },
+      "reason": "Closed presentation, fixture, or repository-diagnostic ordering only; not a trust or persistent identity."
+    },
+    {
+      "path": "scripts/generate-proof-artifact.mjs",
+      "classification": "retained-v1-versioned",
+      "signals": {
+        "canonicalizer": 2,
+        "digest": 0,
+        "localeCompare": 0,
+        "serialization": 1
+      },
+      "reason": "The reviewed source retains an authoritative versioned V1 contract pending a compatible migration."
+    },
+    {
+      "path": "scripts/t75-evidence-index.mjs",
+      "classification": "migrated-v2",
+      "signals": {
+        "canonicalizer": 2,
+        "digest": 4,
+        "localeCompare": 0,
+        "serialization": 3
+      },
+      "reason": "The reviewed source uses the declared V2 canonical contract."
+    }
+  ]
+}

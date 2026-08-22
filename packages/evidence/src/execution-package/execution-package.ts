@@ -9,7 +9,7 @@ import {
   sealedArtifactFromEnvelope,
   sealedProjectionMatches
 } from "../integrity/artifact-sealer.ts";
-import { canonicalizeJson, sha256Digest } from "../integrity/canonical.ts";
+import { canonicalizeJsonForVersion, sha256DigestForVersion } from "../integrity/canonical.ts";
 import type { JsonValue, SealedArtifact, TrustRoot } from "../integrity/types.ts";
 
 type Row = Record<string, unknown>;
@@ -70,7 +70,7 @@ export interface ExecutionPackageBindings {
 }
 
 export interface ExecutionPackagePayload {
-  readonly schemaVersion: 1;
+  readonly schemaVersion: 1 | 2;
   readonly packageVersion: number;
   readonly workspaceId: string;
   readonly projectIds: readonly string[];
@@ -219,6 +219,18 @@ const BINDING_FIELDS = [
   "evidenceDigest"
 ] as const;
 
+type ExecutionPackageSchemaVersion = ExecutionPackagePayload["schemaVersion"];
+
+function schemaVersion(value: unknown): ExecutionPackageSchemaVersion {
+  if (value !== 1 && value !== 2) fail("VES_EXECUTION_PACKAGE_INVALID", "schemaVersion must equal 1 or 2");
+  return value;
+}
+
+function compareIdentity(version: ExecutionPackageSchemaVersion, left: string, right: string): number {
+  if (version === 1) return left.localeCompare(right);
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
 function fail(code: string, message: string): never {
   throw new ExecutionPackageError(code, message);
 }
@@ -313,7 +325,11 @@ function uniqueStrings(value: unknown, name: string, allowEmpty = false): readon
   return Object.freeze([...normalized].sort());
 }
 
-function artifactRefs(value: unknown, name: string): readonly ExecutionPackageArtifactRef[] {
+function artifactRefs(
+  value: unknown,
+  name: string,
+  version: ExecutionPackageSchemaVersion
+): readonly ExecutionPackageArtifactRef[] {
   const refs = array(value, name).map((entry, index) => {
     const row = record(entry, `${name}[${index}]`, ["artifactId", "digest"]);
     return Object.freeze({
@@ -323,7 +339,7 @@ function artifactRefs(value: unknown, name: string): readonly ExecutionPackageAr
   });
   if (new Set(refs.map((entry) => entry.artifactId)).size !== refs.length)
     fail("VES_EXECUTION_PACKAGE_INVALID", `${name} contains duplicate artifact IDs`);
-  return Object.freeze(refs.sort((left, right) => left.artifactId.localeCompare(right.artifactId)));
+  return Object.freeze(refs.sort((left, right) => compareIdentity(version, left.artifactId, right.artifactId)));
 }
 
 function logicalPath(value: unknown): string {
@@ -333,7 +349,10 @@ function logicalPath(value: unknown): string {
   return path;
 }
 
-function normalizeRequirements(value: unknown): readonly ExecutionRequirement[] {
+function normalizeRequirements(
+  value: unknown,
+  version: ExecutionPackageSchemaVersion
+): readonly ExecutionRequirement[] {
   const requirements = array(value, "requirements").map((entry, index) => {
     const row = record(
       entry,
@@ -365,10 +384,16 @@ function normalizeRequirements(value: unknown): readonly ExecutionRequirement[] 
     new Set(requirements.map((entry) => entry.requirementId)).size !== requirements.length
   )
     fail("VES_EXECUTION_PACKAGE_REQUIREMENT_INVALID", "Requirements must be nonempty and unique");
-  return Object.freeze(requirements.sort((left, right) => left.requirementId.localeCompare(right.requirementId)));
+  return Object.freeze(
+    requirements.sort((left, right) => compareIdentity(version, left.requirementId, right.requirementId))
+  );
 }
 
-function normalizeTasks(value: unknown, requirements: ReadonlySet<string>): readonly ExecutionTask[] {
+function normalizeTasks(
+  value: unknown,
+  requirements: ReadonlySet<string>,
+  version: ExecutionPackageSchemaVersion
+): readonly ExecutionTask[] {
   const tasks = array(value, "tasks").map((entry, index) => {
     const row = record(
       entry,
@@ -428,18 +453,22 @@ function normalizeTasks(value: unknown, requirements: ReadonlySet<string>): read
   }
   for (const id of ids) visit(id);
   return Object.freeze(
-    tasks.sort((left, right) => left.sequence - right.sequence || left.taskId.localeCompare(right.taskId))
+    tasks.sort((left, right) => left.sequence - right.sequence || compareIdentity(version, left.taskId, right.taskId))
   );
 }
 
-function sourceStateDigest(sourceState: Readonly<Record<string, Digest>>): Digest {
-  return `sha256:${sha256Digest(sourceState)}`;
+function sourceStateDigest(
+  sourceState: Readonly<Record<string, Digest>>,
+  version: ExecutionPackageSchemaVersion
+): Digest {
+  return `sha256:${sha256DigestForVersion(version, sourceState)}`;
 }
 
 function normalizeCompletions(
   value: unknown,
   tasks: readonly ExecutionTask[],
-  expectedSourceStateDigest: Digest
+  expectedSourceStateDigest: Digest,
+  version: ExecutionPackageSchemaVersion
 ): readonly TaskCompletionEvidence[] {
   const byId = new Map(tasks.map((task) => [task.taskId, task]));
   const completions = array(value, "completedTaskEvidence").map((entry, index) => {
@@ -465,12 +494,13 @@ function normalizeCompletions(
   for (const taskId of completed)
     if (byId.get(taskId)?.dependsOn.some((dependency) => !completed.has(dependency)) === true)
       fail("VES_EXECUTION_PACKAGE_COMPLETION_INVALID", "Completed task has an incomplete dependency");
-  return Object.freeze(completions.sort((left, right) => left.taskId.localeCompare(right.taskId)));
+  return Object.freeze(completions.sort((left, right) => compareIdentity(version, left.taskId, right.taskId)));
 }
 
 export function derivePendingTasks(
   tasks: readonly ExecutionTask[],
-  completedTaskEvidence: readonly TaskCompletionEvidence[]
+  completedTaskEvidence: readonly TaskCompletionEvidence[],
+  version: ExecutionPackageSchemaVersion = 1
 ): readonly PendingTask[] {
   const completed = new Set(completedTaskEvidence.map((entry) => entry.taskId));
   return Object.freeze(
@@ -485,11 +515,11 @@ export function derivePendingTasks(
           ready: blockedBy.length === 0
         });
       })
-      .sort((left, right) => left.sequence - right.sequence || left.taskId.localeCompare(right.taskId))
+      .sort((left, right) => left.sequence - right.sequence || compareIdentity(version, left.taskId, right.taskId))
   );
 }
 
-function normalizeBindings(value: unknown): ExecutionPackageBindings {
+function normalizeBindings(value: unknown, version: ExecutionPackageSchemaVersion): ExecutionPackageBindings {
   const row = record(value, "bindings", ["sourceState", ...BINDING_FIELDS]);
   const sourceInput = row["sourceState"];
   if (sourceInput === null || typeof sourceInput !== "object" || Array.isArray(sourceInput))
@@ -499,7 +529,9 @@ function normalizeBindings(value: unknown): ExecutionPackageBindings {
     ([key, entry]) => [safe(key, "sourceState key"), digest(entry, "sourceState digest")] as const
   );
   if (entries.length === 0) fail("VES_EXECUTION_PACKAGE_INVALID", "sourceState is empty");
-  const sourceState = Object.freeze(Object.fromEntries(entries.sort(([left], [right]) => left.localeCompare(right))));
+  const sourceState = Object.freeze(
+    Object.fromEntries(entries.sort(([left], [right]) => compareIdentity(version, left, right)))
+  );
   return Object.freeze({
     sourceState,
     policyDigest: digest(row["policyDigest"], "policyDigest"),
@@ -550,14 +582,15 @@ function normalizeBuildInput(value: unknown): ExecutionPackageBuildInput {
   rejectPrivateShape(value);
   rejectAbsoluteStrings(value);
   const row = record(value, "Execution Package", BASE_KEYS);
-  if (row["schemaVersion"] !== 1) fail("VES_EXECUTION_PACKAGE_INVALID", "schemaVersion must equal 1");
-  const bindings = normalizeBindings(row["bindings"]);
-  const requirements = normalizeRequirements(row["requirements"]);
-  const tasks = normalizeTasks(row["tasks"], new Set(requirements.map((entry) => entry.requirementId)));
+  const version = schemaVersion(row["schemaVersion"]);
+  const bindings = normalizeBindings(row["bindings"], version);
+  const requirements = normalizeRequirements(row["requirements"], version);
+  const tasks = normalizeTasks(row["tasks"], new Set(requirements.map((entry) => entry.requirementId)), version);
   const completedTaskEvidence = normalizeCompletions(
     row["completedTaskEvidence"],
     tasks,
-    sourceStateDigest(bindings.sourceState)
+    sourceStateDigest(bindings.sourceState, version),
+    version
   );
   const roles = array(row["roleRequirements"], "roleRequirements").map((entry, index) => {
     const role = record(entry, `roleRequirements[${index}]`, [
@@ -678,23 +711,23 @@ function normalizeBuildInput(value: unknown): ExecutionPackageBuildInput {
   if (completionCriteria.length === 0) fail("VES_EXECUTION_PACKAGE_INVALID", "completionCriteria are empty");
   const location = record(row["canonicalLocation"], "canonicalLocation", ["gitOwnerId", "logicalPath"]);
   return Object.freeze({
-    schemaVersion: 1 as const,
+    schemaVersion: version,
     packageVersion: positive(row["packageVersion"], "packageVersion"),
     workspaceId: safe(row["workspaceId"], "workspaceId"),
     projectIds: uniqueStrings(row["projectIds"], "projectIds"),
     featureId: safe(row["featureId"], "featureId"),
     executionContractDigest: digest(row["executionContractDigest"], "executionContractDigest"),
     requirements,
-    decisions: artifactRefs(row["decisions"], "decisions"),
+    decisions: artifactRefs(row["decisions"], "decisions", version),
     tasks,
     completedTaskEvidence,
-    contextRecipes: artifactRefs(row["contextRecipes"], "contextRecipes"),
-    discoveryEvidence: artifactRefs(row["discoveryEvidence"], "discoveryEvidence"),
-    dataPolicies: artifactRefs(row["dataPolicies"], "dataPolicies"),
-    seedSpecifications: artifactRefs(row["seedSpecifications"], "seedSpecifications"),
+    contextRecipes: artifactRefs(row["contextRecipes"], "contextRecipes", version),
+    discoveryEvidence: artifactRefs(row["discoveryEvidence"], "discoveryEvidence", version),
+    dataPolicies: artifactRefs(row["dataPolicies"], "dataPolicies", version),
+    seedSpecifications: artifactRefs(row["seedSpecifications"], "seedSpecifications", version),
     requiredCapabilities: uniqueStrings(row["requiredCapabilities"], "requiredCapabilities"),
-    roleRequirements: Object.freeze(roles.sort((left, right) => left.role.localeCompare(right.role))),
-    gates: Object.freeze(gates.sort((left, right) => left.gateId.localeCompare(right.gateId))),
+    roleRequirements: Object.freeze(roles.sort((left, right) => compareIdentity(version, left.role, right.role))),
+    gates: Object.freeze(gates.sort((left, right) => compareIdentity(version, left.gateId, right.gateId))),
     approvalRequirements: uniqueStrings(row["approvalRequirements"], "approvalRequirements"),
     workClaimRequirement: Object.freeze({
       scopeDigest: digest(workClaim["scopeDigest"], "scopeDigest"),
@@ -709,7 +742,7 @@ function normalizeBuildInput(value: unknown): ExecutionPackageBuildInput {
     ...(policyBundleDigest === undefined ? {} : { policyBundleDigest }),
     ...(probeEvidence === undefined ? {} : { probeEvidence }),
     completionCriteria: Object.freeze(
-      completionCriteria.sort((left, right) => left.criterionId.localeCompare(right.criterionId))
+      completionCriteria.sort((left, right) => compareIdentity(version, left.criterionId, right.criterionId))
     ),
     canonicalLocation: Object.freeze({
       gitOwnerId: digest(location["gitOwnerId"], "gitOwnerId"),
@@ -721,7 +754,7 @@ function normalizeBuildInput(value: unknown): ExecutionPackageBuildInput {
   });
 }
 
-function normalizePending(value: unknown): readonly PendingTask[] {
+function normalizePending(value: unknown, version: ExecutionPackageSchemaVersion): readonly PendingTask[] {
   return Object.freeze(
     array(value, "pendingTasks")
       .map((entry, index) => {
@@ -736,7 +769,7 @@ function normalizePending(value: unknown): readonly PendingTask[] {
           ready: row["ready"]
         });
       })
-      .sort((left, right) => left.sequence - right.sequence || left.taskId.localeCompare(right.taskId))
+      .sort((left, right) => left.sequence - right.sequence || compareIdentity(version, left.taskId, right.taskId))
   );
 }
 
@@ -744,20 +777,23 @@ function normalizePayload(value: unknown): ExecutionPackagePayload {
   const row = record(value, "Execution Package payload", [...BASE_KEYS, "pendingTasks"]);
   const base = Object.fromEntries(BASE_KEYS.map((key) => [key, row[key]]));
   const normalized = normalizeBuildInput(base);
-  return Object.freeze({ ...normalized, pendingTasks: normalizePending(row["pendingTasks"]) });
+  return Object.freeze({
+    ...normalized,
+    pendingTasks: normalizePending(row["pendingTasks"], normalized.schemaVersion)
+  });
 }
 
 function bindingFor(payload: ExecutionPackagePayload) {
   return Object.freeze({
-    schema: Object.freeze({ name: "execution-package", version: 1 }),
+    schema: Object.freeze({ name: "execution-package", version: payload.schemaVersion }),
     purpose: "execution-package",
     bindingId: `${payload.workspaceId}:${payload.featureId}:v${payload.packageVersion}`,
-    sourceStateDigest: sha256Digest(payload.bindings.sourceState)
+    sourceStateDigest: sha256DigestForVersion(payload.schemaVersion, payload.bindings.sourceState)
   });
 }
 
-function digestValue(value: unknown): string {
-  return `sha256:${sha256Digest(value as JsonValue)}`;
+function digestValue(version: ExecutionPackageSchemaVersion, value: unknown): string {
+  return `sha256:${sha256DigestForVersion(version, value as JsonValue)}`;
 }
 
 function deepFreeze<T>(value: T, seen = new Set<object>()): T {
@@ -767,7 +803,7 @@ function deepFreeze<T>(value: T, seen = new Set<object>()): T {
   return Object.freeze(value);
 }
 
-function normalizeCurrent(value: unknown): ExecutionPackageCurrentState {
+function normalizeCurrent(value: unknown, version: ExecutionPackageSchemaVersion): ExecutionPackageCurrentState {
   const row = record(
     value,
     "current state",
@@ -776,7 +812,8 @@ function normalizeCurrent(value: unknown): ExecutionPackageCurrentState {
   );
   try {
     const bindings = normalizeBindings(
-      Object.fromEntries(["sourceState", ...BINDING_FIELDS].map((key) => [key, row[key]]))
+      Object.fromEntries(["sourceState", ...BINDING_FIELDS].map((key) => [key, row[key]])),
+      version
     );
     return Object.freeze({
       workspaceId: safe(row["workspaceId"], "workspaceId"),
@@ -805,8 +842,8 @@ function invalidations(
     return Object.freeze([
       Object.freeze({
         field: "workspaceId",
-        expectedDigest: digestValue(payload.workspaceId),
-        actualDigest: digestValue(current.workspaceId),
+        expectedDigest: digestValue(payload.schemaVersion, payload.workspaceId),
+        actualDigest: digestValue(payload.schemaVersion, current.workspaceId),
         approvalInvalidated: true as const
       })
     ]);
@@ -818,8 +855,8 @@ function invalidations(
     if (expected !== actual)
       results.push({
         field: `bindings.sourceState.${sourceId}`,
-        expectedDigest: expected ?? digestValue(null),
-        actualDigest: actual ?? digestValue(null),
+        expectedDigest: expected ?? digestValue(payload.schemaVersion, null),
+        actualDigest: actual ?? digestValue(payload.schemaVersion, null),
         approvalInvalidated: true
       });
   }
@@ -832,7 +869,9 @@ function invalidations(
         approvalInvalidated: true
       });
   return Object.freeze(
-    results.sort((left, right) => left.field.localeCompare(right.field)).map((entry) => Object.freeze(entry))
+    results
+      .sort((left, right) => compareIdentity(payload.schemaVersion, left.field, right.field))
+      .map((entry) => Object.freeze(entry))
   );
 }
 
@@ -847,7 +886,7 @@ export class ExecutionPackageBuilder {
     const base = normalizeBuildInput(value);
     const payload = Object.freeze({
       ...base,
-      pendingTasks: derivePendingTasks(base.tasks, base.completedTaskEvidence)
+      pendingTasks: derivePendingTasks(base.tasks, base.completedTaskEvidence, base.schemaVersion)
     });
     return deepFreeze(
       (await this.#sealer.seal(payload as unknown as JsonValue, bindingFor(payload))) as SignedExecutionPackage
@@ -896,15 +935,15 @@ export class ExecutionPackageBuilder {
       artifact.sourceStateDigest !== binding.sourceStateDigest
     )
       return Object.freeze({ ok: false, code: "VES_EXECUTION_PACKAGE_BINDING_INVALID" });
-    const derived = derivePendingTasks(payload.tasks, payload.completedTaskEvidence);
+    const derived = derivePendingTasks(payload.tasks, payload.completedTaskEvidence, payload.schemaVersion);
     if (
-      canonicalizeJson(derived as unknown as JsonValue) !==
-      canonicalizeJson(payload.pendingTasks as unknown as JsonValue)
+      canonicalizeJsonForVersion(payload.schemaVersion, derived as unknown as JsonValue) !==
+      canonicalizeJsonForVersion(payload.schemaVersion, payload.pendingTasks as unknown as JsonValue)
     )
       return Object.freeze({ ok: false, code: "VES_EXECUTION_PACKAGE_DERIVATION_INVALID" });
     let current: ExecutionPackageCurrentState;
     try {
-      current = normalizeCurrent(currentInput);
+      current = normalizeCurrent(currentInput, payload.schemaVersion);
     } catch (error) {
       return Object.freeze({
         ok: false,
@@ -925,10 +964,11 @@ export class ExecutionPackageBuilder {
 
 function assertEnvelopeIntegrity(artifact: SignedExecutionPackage, expectedId?: string): void {
   try {
+    const version = schemaVersion(artifact.schema.version);
     if (
       !ARTIFACT_ID.test(artifact.artifactId) ||
       (expectedId !== undefined && artifact.artifactId !== expectedId) ||
-      sha256Digest(artifact.payload as unknown as JsonValue) !== artifact.payloadDigest ||
+      sha256DigestForVersion(version, artifact.payload as unknown as JsonValue) !== artifact.payloadDigest ||
       !sealedProjectionMatches(artifact)
     )
       fail("VES_EXECUTION_PACKAGE_STORAGE_INTEGRITY", "Stored package content address is invalid");
@@ -972,13 +1012,14 @@ export class FileExecutionPackageStore {
     artifact: SignedExecutionPackage
   ): Promise<{ readonly packageId: string; readonly outcome: "published" | "already-published" }> {
     assertEnvelopeIntegrity(artifact);
+    const version = schemaVersion(artifact.schema.version);
     const root = await safeRoot(this.#configuredRoot);
     const target = join(root, `${artifact.artifactId}.json`);
     await safeTarget(root, target);
     // The persisted object IS the DSSE envelope (#248). The flat fields are
     // derived on read, so a stored projection cannot disagree with what was
     // signed — the disagreement becomes impossible rather than merely detected.
-    const bytes = `${canonicalizeJson(dsseEnvelopeOf(artifact) as unknown as JsonValue)}\n`;
+    const bytes = `${canonicalizeJsonForVersion(version, dsseEnvelopeOf(artifact) as unknown as JsonValue)}\n`;
     try {
       const existing = await readFile(target, "utf8");
       if (existing !== bytes)

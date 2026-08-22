@@ -14,7 +14,15 @@ export {
   preAuthenticationEncoding,
   predicateTypeFor
 } from "./integrity/dsse.ts";
-export { IntegrityError, canonicalizeJson, sha256Digest, type IntegrityErrorCode } from "./integrity/canonical.ts";
+export {
+  IntegrityError,
+  canonicalizeJson,
+  canonicalizeJsonForVersion,
+  sha256Digest,
+  sha256DigestForVersion,
+  type EvidenceCanonicalizationVersion,
+  type IntegrityErrorCode
+} from "./integrity/canonical.ts";
 export { NodeEd25519Signer, type SignerOptions } from "./integrity/signer.ts";
 export {
   KEY_LIFECYCLE_ERROR_CODES,

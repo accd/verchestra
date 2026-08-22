@@ -49,6 +49,50 @@ V1 value as V2. A feature-specific migration must prove an old persisted value
 still verifies, a new value emits the declared version, and a mixed V1/V2
 comparison fails closed where identities are not interchangeable.
 
+## Current mechanical census
+
+The source-derived, reviewed inventory is
+[`docs/canonical-json-census.json`](canonical-json-census.json). It scans every
+TypeScript and module-JavaScript product source under `packages/`, `apps/`, and
+`scripts/` for local canonicalizers, structured `JSON.stringify`
+serializations, ambient `localeCompare`, and SHA-256 digest producers. The
+serialization signal is deliberately conservative: the reviewed classification
+separates raw bytes from portable or persistent identities. The associated
+security test requires the detected and inventoried path sets to be exactly
+equal, and rejects a duplicate, stale, signal-mismatched, unreasoned,
+exception-invalid, or unclassified entry. The current 84-source census has no
+unclassified group.
+
+Only the inventory's closed `presentation-or-fixture` entries may retain an
+ambient-locale ordering exception. A structured trust or persistent identity
+cannot use that classification. A raw-byte digest is not a canonical JSON
+exception: it hashes already-defined bytes or a fixed primitive rather than a
+locally canonicalized structured value.
+
+The scanner keeps only the following closed scope exclusions for serializations
+that are not product identities: build-time diagnostics, test and fake-driver
+fixtures, an ephemeral Self-Test child handoff, driver protocol frames, and
+diagnostic command output. Each path and reason is declared in
+`scripts/canonical-json-census.mjs` and asserted by the census security test;
+no trust, persistence, or portable-identity source can enter that exclusion.
+
+### Pending migration order
+
+1. The **signed-evidence vertical** versions the V1 facade and the Execution
+   Package, Run Capsule, Recovery Bundle, Support Bundle, and their persisted
+   DSSE payload verification before changing any evidence ordering.
+2. The **release vertical** versions hermetic bundle material first and
+   transactional activation second, retaining V1 verification for release and
+   durable activation records.
+3. The **portable-owner verticals** then proceed independently for registries,
+   connectors, extension host, drivers, memory, and policy bundles. Each is
+   classified in the census but remains pending until its own compatibility
+   design, tests, gate evidence, and review are complete.
+
+The historical rows below record previous slice decisions. The mechanical
+census, not a historical ceiling or duplicate transition row, is the complete
+current classification source.
+
 ## Trust and persistence inventory
 
 | Owner and current path | Current material / consumer | Classification | Current byte contract | Required migration slice |
@@ -88,7 +132,7 @@ comparison fails closed where identities are not interchangeable.
 | Application regression: `campaigns.ts` | Campaign ordering inside `canonicalizeCorpus`/`buildCampaignSummary`, validated against `regression-campaign-summary@1` | persistent (schema-validated release evidence) | **Migrated (T4a).** `buildCampaignSummary` normalizes results with `normalizeDeclaredSet` before assembly; `canonicalizeCorpus` (the actual `corpusDigest` input) already had zero locale dependency. | Done. Commit `7f1adc4`; `tests/unit/regression-campaigns.test.mjs`, `pnpm test:release` (28 cases, frozen 22-campaign corpus unaffected). |
 | Application doctor: `doctor.ts` | `sortedUnique` orders capability/check lists inside the sealed, signed `doctor-report` payload | signed persistent identity | **Migrated (T4a).** `sortedUnique` now normalizes through `normalizeDeclaredSet`. | Done. Commit `6ccb1c7`; `tests/unit/doctor-rules.test.mjs` (cross-locale test), all 62 existing doctor cases unchanged. |
 | Application self-test: `self-test.ts` (`semanticFingerprint`, line ~292) | Ordered `checkId:status` pairs, compared directly by `assertConvergence` across two independently provisioned runs; not itself hashed or sealed in this file | presentation (direct list comparison, not a digest input) — migrated anyway, see resolution | **Migrated (T4a).** Classified presentation by the matrix's own digest/signature test, but migrated regardless: locale-dependent order could make two genuinely convergent runs compare as non-convergent (`VES_SELFTEST_NONCONVERGENT`) under different ambient locales — a portability defect even without a signed digest at stake. | Done. Commit `4cd6afa`; `tests/unit/self-test-scenario-rules.test.mjs` (cross-locale test). |
-| Evidence: `execution-package/execution-package.ts` | 11 `.sort(...localeCompare)` call sites ordering artifact refs, requirements, tasks, and role/gate/criterion lists before they are canonicalized by the qualified `canonicalizeJson`/`sha256Digest` (`../integrity/canonical.ts`) into signed `Execution Package` digests | signed + persistent authority | Array ordering by `localeCompare` upstream of the qualified V1 canonicalizer; the canonicalizer itself is not the risk, the pre-sort is | **Understated by the original T2 inventory**, which covered only `canonical.ts` itself. Belongs to the evidence vertical (T4i, highest risk — signed); out of scope for T4a. Re-verified post-AD-014 (DSSE + in-toto migration, #217/#242): the persisted object is now the DSSE envelope (`execution-package.ts:978-981`), but the envelope wraps the same V1 `canonicalizeJson`/`sha256Digest` payload unchanged — none of the 11 sites or the canonicalizer itself moved. T4i's V2 facade must be built on top of the current DSSE envelope shape, not the pre-#242 flat signature; the migration plan (preserve V1 verification, version-gate the facade) is otherwise unaffected. |
+| Evidence: `execution-package/execution-package.ts` | Declared package sets, payload digest, artifact ID, DSSE statement, and persisted envelope | signed + persistent authority | **Migrated (signed-evidence Execution Package slice).** New packages emit `schemaVersion: 2`, the declared V2 in-toto predicate, RFC 8785 bytes through the domain facade, and code-unit ordering for every set-like package list. Schema V1 keeps its V1 digest, predicate, and one version-gated `localeCompare` path solely for backward verification. A V1 artifact cannot be reinterpreted as V2. Run Capsule, Recovery Bundle, Support Bundle, and release artifacts remain separate pending slices. |
 
 ## T4 slice ordering
 
@@ -113,9 +157,9 @@ migrate-together and migrate-after rules.
 | T4g | `workspace-reconcile.ts`, `effect-contract.ts` | High | **Done.** The effects part was completed as the reviewed T4i versioned-identity vertical rather than an unsafe direct swap. |
 | T4h | `database-knowledge.ts` + 7 adapters | Medium | Wide fan-out, uniform pattern. |
 | T4h | `database-knowledge.ts` + 7 adapters | Medium (reclassified transient, see below) | **Done.** Wide fan-out, uniform pattern. |
-| T4i | `canonical.ts` V1 facade + `execution-package.ts` | Highest | Signed evidence; the 11 pre-sort sites above must migrate with the facade. |
+| T4i | `canonical.ts` V1 facade + `execution-package.ts` | Highest | **In progress.** The Execution Package slice is migrated with version-gated V1 verification; the remaining signed-evidence owners are separate follow-up slices. |
 | T4j | `hermetic-bundle.ts` then `transactional-activation.ts` | Highest | Release identity; matrix requires this order. |
-| T4i | `canonical.ts` V1 facade + `execution-package.ts` | Highest | **Deferred, see below.** Signed evidence; the 11 pre-sort sites above must migrate with the facade. |
+| T4i | `canonical.ts` V1 facade + `execution-package.ts` | Highest | **In progress.** The Execution Package emits schema V2 with code-unit set ordering; its V1 envelope remains verifiable by recorded schema. |
 | T4j | `hermetic-bundle.ts` then `transactional-activation.ts` | Highest | **Deferred, see below.** Release identity; matrix requires this order. |
 
 `tuf-update-client.ts` stays classified separately (no structured digest at
@@ -365,17 +409,17 @@ updated) so all nine files can use the shared `canonicalizeJsonV2` primitive.
 This classification was made following the same process as prior T4 slices:
 not asserted unilaterally, chosen by brunomjanuario (WS-C), flagged here for
 human review, not asserted as an owner (accd) decision.
-### T4i and T4j: deferred, not attempted as direct swaps
+### T4i versioned Execution Package; T4j remains deferred
 
 T4b through T4h (this issue's other nine owners) were each migrated as a
 direct swap after confirming, case by case, that either no persistence
 existed or the exact character set of every sorted/keyed value made a
 `localeCompare`-vs-code-unit divergence structurally impossible (fixed ASCII
 schema field names, or `StableId`-constrained lowercase-only values). T4i and
-T4j do not clear that bar, and are deliberately left unmigrated rather than
-forced through the same pattern:
+T4j do not clear that bar. T4i therefore uses a versioned migration; T4j remains
+deferred rather than being forced through the direct-swap pattern:
 
-- `execution-package.ts`'s 11 pre-sort `.localeCompare(` sites order
+- `execution-package.ts` previously had 11 pre-sort `.localeCompare(` sites ordering
   `artifactId`, `requirementId`, `taskId`, `role`, `gateId`, `criterionId`,
   and `field` values before they are fed into the qualified V1
   `canonicalizeJson`/`sha256Digest` (`canonical.ts`, itself untouched and
@@ -393,19 +437,21 @@ forced through the same pattern:
   `FileRecordStore` in the real execution flow
   (`apps/vestra-cli/src/self-test-full-execution.ts`). A sort-order change
   that silently changes the payload digest for an existing signed package is
-  exactly the kind of migration compatibility rule 1 exists to prevent.
+  exactly the kind of migration compatibility rule 1 exists to prevent. The
+  Execution Package slice now retains that path only for schema V1 verification;
+  new schema V2 packages use the domain RFC 8785 facade, code-unit ordering, and
+  the declared V2 predicate. V1 and V2 cannot be reinterpreted as each other.
 - `hermetic-bundle.ts` has the same shape (a private recursive `canonical()`
   plus a `componentId` sort using the same broad, case-permitting pattern) for
   a release manifest digest — signed release identity, the highest-stakes
   surface in the whole matrix. `transactional-activation.ts` is explicitly
   ordered *after* `hermetic-bundle.ts` by the matrix and was not reached.
 
-Both need the versioned-facade design the matrix already specifies (preserve
-V1 verification, introduce a V2 facade gated by an explicit schema or
-envelope version, never compare a V1 and V2 digest as equal) as their own
-reviewed unit of work, not a same-shape direct swap executed under this
-slice's cadence. No ceiling changed for either owner in this pass; both
-remain exactly as counted in the original 2026-08-09 census.
+The remaining signed-evidence owners and T4j need the versioned-facade design
+the matrix already specifies (preserve V1 verification, introduce a V2 facade
+gated by an explicit schema or envelope version, never compare a V1 and V2
+digest as equal) as their own reviewed units of work. The Execution Package
+ceiling is now one V1-only site; T4j remains at its original ceiling.
 
 This decision was made following the same process as every other slice in
 this chain: not asserted unilaterally, chosen by brunomjanuario (WS-C),
@@ -434,10 +480,11 @@ Decisions").
 
 ## Explicit exclusions
 
-`apps/site`, CLI display formatting, source/document loaders, tests, and
-closed-field checks such as `Object.keys(value).sort()` are presentation or
-validation-only unless a future audit proves their output feeds one of the
-identities above. They are not evidence that V2 has been adopted.
+Only sources recorded as `presentation-or-fixture` in the mechanical census
+are ordering exceptions. Source/document loaders, tests, and closed-field
+checks such as `Object.keys(value).sort()` require classification before they
+are treated as presentation or validation-only. They are not evidence that V2
+has been adopted.
 
 ## Required proof for each migration PR
 

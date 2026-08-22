@@ -23,11 +23,68 @@ test("builder emits a signed backend-neutral content-addressed package", async (
   const sealed = await builder.build(packageInput());
   assert.equal(sealed.schema.name, "execution-package");
   assert.equal(sealed.purpose, "execution-package");
-  assert.equal(sealed.payload.schemaVersion, 1);
+  assert.equal(sealed.payload.schemaVersion, 2);
   assert.equal(sealed.payload.workspaceId, workspaceId);
   assert.match(sealed.artifactId, /^[a-f0-9]{64}$/u);
   assert.equal(JSON.stringify(sealed).includes("Claude"), false);
   assert.equal(JSON.stringify(sealed).includes("OpenCode"), false);
+});
+
+test("new packages declare the V2 Execution Package attestation", async () => {
+  const { builder, trust } = executionHarness();
+  const input = packageInput({ requiredCapabilities: ["alpha", "Zulu"] });
+  const sealed = await builder.build(input);
+  const statement = JSON.parse(Buffer.from(sealed.dsse.payload, "base64").toString("utf8"));
+  assert.equal(sealed.schema.version, 2);
+  assert.equal(statement.predicateType, "https://accd.github.io/verchestra/attestation/execution-package/v2");
+  assert.deepEqual(sealed.payload.requiredCapabilities, ["Zulu", "alpha"]);
+  assert.equal((await builder.verify(sealed, trust, currentState(input))).ok, true);
+});
+
+test("a pinned V1 package remains verifiable under its V1 predicate", async () => {
+  const { builder, trust } = executionHarness();
+  const input = packageInput({ schemaVersion: 1 });
+  const sealed = await builder.build(input);
+  const statement = JSON.parse(Buffer.from(sealed.dsse.payload, "base64").toString("utf8"));
+  assert.equal(sealed.schema.version, 1);
+  assert.equal(sealed.artifactId, "ebbf7e4c4f28af4efc95a2515cb7d4a19edd48749da9c829f67a8a5074db668a");
+  assert.equal(statement.predicateType, "https://accd.github.io/verchestra/attestation/execution-package/v1");
+  assert.equal((await builder.verify(sealed, trust, currentState(input))).ok, true);
+});
+
+test("V1 retains code-unit ordering at every legacy default-sort site", async () => {
+  const base = packageInput({ schemaVersion: 1 });
+  const tasks = structuredClone(base.tasks);
+  tasks[0] = {
+    ...tasks[0],
+    componentRefs: ["alpha", "Zulu"],
+    verificationCommands: ["alpha", "Zulu"],
+    doneCriteria: ["alpha", "Zulu"]
+  };
+  const input = packageInput({
+    schemaVersion: 1,
+    projectIds: ["alpha", "Zulu"],
+    requiredCapabilities: ["alpha", "Zulu"],
+    approvalRequirements: ["alpha", "Zulu"],
+    roleRequirements: [{ ...base.roleRequirements[0], capabilities: ["alpha", "Zulu"] }, base.roleRequirements[1]],
+    completionCriteria: [{ ...base.completionCriteria[0], verificationRefs: ["alpha", "Zulu"] }],
+    tasks
+  });
+  const { builder } = executionHarness();
+  const sealed = await builder.build(input);
+  const codeUnitOrder = ["Zulu", "alpha"];
+  assert.deepEqual(sealed.payload.projectIds, codeUnitOrder);
+  assert.deepEqual(sealed.payload.requiredCapabilities, codeUnitOrder);
+  assert.deepEqual(sealed.payload.approvalRequirements, codeUnitOrder);
+  assert.deepEqual(sealed.payload.roleRequirements[0].capabilities, codeUnitOrder);
+  assert.deepEqual(sealed.payload.completionCriteria[0].verificationRefs, codeUnitOrder);
+  assert.deepEqual(sealed.payload.tasks[0].componentRefs, codeUnitOrder);
+  assert.deepEqual(sealed.payload.tasks[0].verificationCommands, codeUnitOrder);
+  assert.deepEqual(sealed.payload.tasks[0].doneCriteria, codeUnitOrder);
+  assert.deepEqual(
+    derivePendingTasks([{ taskId: "T-1", sequence: 1, dependsOn: ["alpha", "Zulu"] }], [], 1)[0].blockedBy,
+    codeUnitOrder
+  );
 });
 
 test("pending work is derived from completed evidence and dependency closure", async () => {

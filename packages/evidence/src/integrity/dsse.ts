@@ -7,7 +7,7 @@
 // type that happens to share bytes. An implementation that signs the raw
 // payload looks identical in every happy-path test and loses exactly this.
 
-import { canonicalizeJson } from "./canonical.ts";
+import { canonicalizeJsonForVersion } from "./canonical.ts";
 import type { InTotoStatement, JsonValue, SchemaRef } from "./types.ts";
 
 export const DSSE_PAYLOAD_TYPE = "application/vnd.in-toto+json";
@@ -21,7 +21,7 @@ const PREDICATE_BASE = "https://accd.github.io/verchestra/attestation";
 
 // Closed by construction: an attestation this product cannot name is one it
 // will not verify. Keyed by the sealed artifact's schema name.
-const PREDICATE_TYPES = Object.freeze({
+const PREDICATE_TYPES_V1 = Object.freeze({
   "execution-package": `${PREDICATE_BASE}/execution-package/v1`,
   "run-capsule": `${PREDICATE_BASE}/run-capsule/v1`,
   "recovery-bundle": `${PREDICATE_BASE}/recovery-bundle/v1`,
@@ -32,14 +32,29 @@ const PREDICATE_TYPES = Object.freeze({
   "approval-grant": `${PREDICATE_BASE}/approval-grant/v1`
 } as const);
 
-export type PredicateSchemaName = keyof typeof PREDICATE_TYPES;
+const PREDICATE_TYPES_V2 = Object.freeze({
+  "execution-package": `${PREDICATE_BASE}/execution-package/v2`
+} as const);
+
+export type PredicateSchemaName = keyof typeof PREDICATE_TYPES_V1;
+
+export function canonicalizationVersionForSchema(schema: SchemaRef): 1 | 2 | undefined {
+  if (schema.version === 1 && schema.name in PREDICATE_TYPES_V1) return 1;
+  if (schema.version === 2 && schema.name in PREDICATE_TYPES_V2) return 2;
+  return undefined;
+}
 
 export function predicateTypeFor(schema: SchemaRef): string | undefined {
-  return PREDICATE_TYPES[schema.name as PredicateSchemaName];
+  if (schema.version === 1) return PREDICATE_TYPES_V1[schema.name as PredicateSchemaName];
+  if (schema.version === 2) return PREDICATE_TYPES_V2[schema.name as keyof typeof PREDICATE_TYPES_V2];
+  return undefined;
 }
 
 export function isKnownPredicateType(value: unknown): boolean {
-  return typeof value === "string" && Object.values(PREDICATE_TYPES).includes(value as never);
+  return (
+    typeof value === "string" &&
+    [...Object.values(PREDICATE_TYPES_V1), ...Object.values(PREDICATE_TYPES_V2)].includes(value as never)
+  );
 }
 
 export function buildStatement<T extends JsonValue>(input: {
@@ -74,7 +89,9 @@ export function buildStatement<T extends JsonValue>(input: {
 }
 
 export function statementBytes(statement: InTotoStatement): Buffer {
-  return Buffer.from(canonicalizeJson(statement as unknown as JsonValue), "utf8");
+  const version = canonicalizationVersionForSchema(statement.predicate.binding.schema);
+  if (version === undefined) throw new Error("Statement schema has no canonicalization version");
+  return Buffer.from(canonicalizeJsonForVersion(version, statement as unknown as JsonValue), "utf8");
 }
 
 /**

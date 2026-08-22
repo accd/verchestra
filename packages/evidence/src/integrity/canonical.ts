@@ -2,6 +2,8 @@ import { createHash } from "node:crypto";
 
 import canonicalize from "canonicalize";
 
+import { canonicalizeJsonV2 } from "@verchestra/domain";
+
 import type { KeyLifecycleErrorCode } from "./key-provider.ts";
 import type { JsonValue } from "./types.ts";
 
@@ -119,4 +121,14 @@ export function canonicalizeJson(value: unknown): string {
 
 export function sha256Digest(value: unknown): string {
   return createHash("sha256").update(canonicalizeJson(value), "utf8").digest("hex");
+}
+
+export type EvidenceCanonicalizationVersion = 1 | 2;
+
+export function canonicalizeJsonForVersion(version: EvidenceCanonicalizationVersion, value: unknown): string {
+  return version === 1 ? canonicalizeJson(value) : canonicalizeJsonV2(value);
+}
+
+export function sha256DigestForVersion(version: EvidenceCanonicalizationVersion, value: unknown): string {
+  return createHash("sha256").update(canonicalizeJsonForVersion(version, value), "utf8").digest("hex");
 }
