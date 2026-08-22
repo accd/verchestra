@@ -599,10 +599,42 @@ original `fileProbe` check from before this feature.
 **Where**: `tests/security/doctor-report-nonleak.test.mjs`
 **Depends on**: T12–T19 · **Requirement**: DDL-11 · **AC**: 7, 15
 **Done when**:
-- [ ] Payload asserted against an allowlist of check ids, statuses, capability ids, and remediation codes
-- [ ] A probe mutated to emit a path is killed by the test
-- [ ] `pnpm gate:security` passes
+- [x] Payload asserted against an allowlist of check ids, statuses, capability ids, and remediation codes
+- [x] A probe mutated to emit a path is killed by the test
+- [x] `pnpm gate:security` passes (`test:security` 1052/1052 directly — `gate:security` blocked by the pre-existing environment issue from T10)
 **Tests**: security · **Gate**: security
+
+> **Note (2026-08-22): three rounds of discrimination, not one — because the
+> first two "mutations" correctly did NOT fail, and that itself needed
+> proving rather than assuming.**
+>
+> Round 1: a real T12-T19 probe (`sandboxProbe`) mutated, via an
+> `as unknown as DoctorObservation` cast bypassing TypeScript's own
+> excess-property check, to return `{present, healthy, leakedPath: "..."}`.
+> Both the new end-to-end tests and the unit-level test still passed
+> unchanged — correctly: `observeToFact` reads only `.present`/`.healthy`,
+> so nothing else on the object is ever copied anywhere. This is the
+> structural guarantee holding, not a gap.
+>
+> Round 2: the same probe mutated to genuinely `throw` an error containing
+> real path and "SQLite format 3" text. Still no leak — `collectDoctorFacts`
+> (already qualified since T72) discards a thrown error's message
+> entirely. Confirms the guarantee against a real T12-T19 probe, not only
+> the synthetic ones `tests/security/doctor-diagnostic.test.mjs` already
+> covered.
+>
+> Round 3 (the actual discrimination proof — a positive control): since
+> rounds 1 and 2 both passed, I needed to confirm the ASSERTIONS themselves
+> can catch a real leak, not merely that none occurred. Injected a known-bad
+> value directly into a real sealed payload (bypassing the probe layer
+> entirely) and confirmed the SAME assertion style — allowlist membership,
+> the `NO_PATH` pattern — correctly flags it. Without this round, "no
+> mutation failed" would have been indistinguishable from "the test can't
+> fail."
+>
+> Both source mutations were applied and reverted in place (tracked file,
+> `git status` confirmed clean before and after); no committed code changed
+> beyond the new test file.
 
 #### T21: Prove source mode stays honest
 **What**: In an unprovisioned checkout, all seven report `blocked`, never `fail`.
@@ -738,4 +770,5 @@ No task depends on a later phase.
 | T17 | Done | recorded in `handoff.md` |
 | T18 | Done | recorded in `handoff.md` |
 | T19 | Done | recorded in `handoff.md` |
-| T20–T22 | Planned | Pending |
+| T20 | Done | recorded in `handoff.md` |
+| T21–T22 | Planned | Pending |

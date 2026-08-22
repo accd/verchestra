@@ -6,8 +6,8 @@ status: in_progress
 branch: feat/deep-doctor-live-probes
 baseRevision: 0d7ad9a2bad3b29c4defb4338d1106e4fe22c6e1
 lastCompletedTask: T14
-nextTask: T20
-lastGate: pnpm gate:full PASS
+nextTask: T21
+lastGate: pnpm gate:full PASS; test:security 1052/1052 direct
 updatedAt: 2026-08-22T00:00:00Z
 ---
 
@@ -18,7 +18,7 @@ read-only observations. Requirements DDL-01 through DDL-14 in `spec.md`; 22
 tasks in six phases in `tasks.md`. Parent #13 (T72); lands with or before #16
 (T75), which is the current serial task.
 
-T1 through T14 and T16-T19 are implemented and gated on branch (Phase 2, Phase 3, and Phase 5 complete; Phase 4 in progress — only T15 deferred) `feat/deep-doctor-live-probes`.
+T1 through T14 and T16-T20 are implemented and gated on branch (Phase 2, Phase 3, and Phase 5 complete; Phase 4 and Phase 6 in progress — only T15 deferred) `feat/deep-doctor-live-probes`.
 
 # Completed Evidence
 
@@ -336,6 +336,35 @@ T1 through T14 and T16-T19 are implemented and gated on branch (Phase 2, Phase 3
   dependencies** — deferred from T9 for exactly this task, since T9 itself
   had no consumer yet.
 
+- **T20** — `tests/security/doctor-report-nonleak.test.mjs` (new, 3 cases)
+  proves the sealed report leaks nothing from the now fully-live T12-T19
+  probes — not merely that the rule engine enforces this in theory
+  (already true since T72), but that it holds end to end against real
+  fixtures: a real symlink escape, a real SQLite database, a real
+  Ed25519-signed bundle, real availability records. Test 1 asserts the real
+  payload's fields and values are exactly the closed allowlist
+  (`DOCTOR_REPORT_FIELDS`, `DOCTOR_CHECK_IDS`×status, `DOCTOR_REMEDIATION_CODES`,
+  `DOCTOR_CAPABILITY_IDS`). Test 2 asserts the serialized payload+artifact
+  carry no path/SQLite-header/Cedar-policy-text/private-key pattern. Test 3
+  proves at the unit level that a probe returning extra fields cannot leak
+  them, since `observeToFact` reads only `.present`/`.healthy`.
+
+  **Three discrimination rounds, not one**, because the first two mutations
+  correctly did not fail: (1) a real T12-T19 probe mutated via a type-cast
+  to return extra fields — no leak, confirming the structural guarantee
+  against a real probe, not only synthetic ones; (2) the same probe mutated
+  to genuinely throw a path-laden error — no leak, confirming
+  `collectDoctorFacts`'s existing discard behavior holds for a real probe
+  too; (3) a positive control — injecting a known-bad value directly into a
+  real sealed payload and confirming the same assertion style catches it,
+  proving rounds 1 and 2 passed because the leak didn't occur, not because
+  the assertions can't fail. Both source mutations were applied and
+  reverted in place; `git status` confirmed clean before and after.
+
+  Gates: `pnpm gate:full` PASS; `test:security` 1052/1052 direct
+  (`gate:security` blocked by the same pre-existing environment issue as
+  T10).
+
 - **T19** — `doctor.probe` reuses T17's `availabilityProbe` unmodified; wrote
   the wiring-isolation test *first* this time, applying T18's lesson
   immediately. Confirmed by mutation: wiring `doctor.probe` to read
@@ -458,15 +487,16 @@ T1 through T14 and T16-T19 are implemented and gated on branch (Phase 2, Phase 3
 
 # Next Exact Action
 
-T20 (Phase 6 begins): add `tests/security/doctor-report-nonleak.test.mjs`
-asserting the sealed payload across all twelve checks — now that T12-T19
-have live probes with genuine internal state (paths, digests, database
-handles, bundle content) to potentially leak — contains nothing but a closed
-allowlist of check ids, statuses, capability ids, and remediation codes.
-Prove it with a mutation: a probe made to emit a real path or digest into
-its observation must be caught. Then `pnpm gate:security` (or
-`test:security` directly — `gate:security` blocked by the pre-existing
-environment issue noted at T10).
+T21: add `tests/integration/doctor-source-mode.test.mjs` proving that in a
+genuinely unprovisioned checkout (no fixtures at all), all seven upgraded
+checks — the six now-live ones (T12-T14, T17-T19) plus `secret-presence`,
+still on its original file-presence check since T15's deferral — report
+`blocked`, never `fail`, and the five checks this feature never touched
+(installation, contract-schema, native-asset, git, clock) behave unchanged.
+`DDL-13`'s "seven blocked" claim still holds even with T15 deferred, since
+the unchanged file-presence check also degrades to blocked when
+unprovisioned — worth confirming directly rather than assuming. Then
+`pnpm gate:full`.
 
 # Blockers
 
