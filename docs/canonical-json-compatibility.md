@@ -49,6 +49,40 @@ V1 value as V2. A feature-specific migration must prove an old persisted value
 still verifies, a new value emits the declared version, and a mixed V1/V2
 comparison fails closed where identities are not interchangeable.
 
+## Current mechanical census
+
+The source-derived, reviewed inventory is
+[`docs/canonical-json-census.json`](canonical-json-census.json). It scans every
+TypeScript and module-JavaScript product source under `packages/`, `apps/`, and
+`scripts/` for local canonicalizers, ambient `localeCompare`, and SHA-256
+digest producers. The associated security test requires the detected and
+inventoried path sets to be exactly equal, and rejects a duplicate, stale,
+signal-mismatched, or unclassified entry. The current 76-source census has no
+unclassified group.
+
+Only the inventory's closed `presentation-or-fixture` entries may retain an
+ambient-locale ordering exception. A structured trust or persistent identity
+cannot use that classification. A raw-byte digest is not a canonical JSON
+exception: it hashes already-defined bytes or a fixed primitive rather than a
+locally canonicalized structured value.
+
+### Pending migration order
+
+1. The **signed-evidence vertical** versions the V1 facade and the Execution
+   Package, Run Capsule, Recovery Bundle, Support Bundle, and their persisted
+   DSSE payload verification before changing any evidence ordering.
+2. The **release vertical** versions hermetic bundle material first and
+   transactional activation second, retaining V1 verification for release and
+   durable activation records.
+3. The **portable-owner verticals** then proceed independently for registries,
+   connectors, extension host, drivers, memory, and policy bundles. Each is
+   classified in the census but remains pending until its own compatibility
+   design, tests, gate evidence, and review are complete.
+
+The historical rows below record previous slice decisions. The mechanical
+census, not a historical ceiling or duplicate transition row, is the complete
+current classification source.
+
 ## Trust and persistence inventory
 
 | Owner and current path | Current material / consumer | Classification | Current byte contract | Required migration slice |
@@ -434,10 +468,11 @@ Decisions").
 
 ## Explicit exclusions
 
-`apps/site`, CLI display formatting, source/document loaders, tests, and
-closed-field checks such as `Object.keys(value).sort()` are presentation or
-validation-only unless a future audit proves their output feeds one of the
-identities above. They are not evidence that V2 has been adopted.
+Only sources recorded as `presentation-or-fixture` in the mechanical census
+are ordering exceptions. Source/document loaders, tests, and closed-field
+checks such as `Object.keys(value).sort()` require classification before they
+are treated as presentation or validation-only. They are not evidence that V2
+has been adopted.
 
 ## Required proof for each migration PR
 
