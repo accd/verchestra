@@ -318,16 +318,11 @@ function array(value: unknown, name: string): readonly unknown[] {
   return value;
 }
 
-function uniqueStrings(
-  value: unknown,
-  name: string,
-  allowEmpty: boolean,
-  version: ExecutionPackageSchemaVersion
-): readonly string[] {
+function uniqueStrings(value: unknown, name: string, allowEmpty = false): readonly string[] {
   const normalized = array(value, name).map((entry, index) => safe(entry, `${name}[${index}]`));
   if ((!allowEmpty && normalized.length === 0) || new Set(normalized).size !== normalized.length)
     fail("VES_EXECUTION_PACKAGE_INVALID", `${name} must contain unique values`);
-  return Object.freeze([...normalized].sort((left, right) => compareIdentity(version, left, right)));
+  return Object.freeze([...normalized].sort());
 }
 
 function artifactRefs(
@@ -416,7 +411,7 @@ function normalizeTasks(
       ],
       "VES_EXECUTION_PACKAGE_TASK_INVALID"
     );
-    const requirementIds = uniqueStrings(row["requirementIds"], "requirementIds", false, version);
+    const requirementIds = uniqueStrings(row["requirementIds"], "requirementIds");
     if (requirementIds.some((id) => !requirements.has(id)))
       fail("VES_EXECUTION_PACKAGE_TASK_INVALID", "Task references an unknown requirement");
     const componentRefs = array(row["componentRefs"], "componentRefs").map((item) => text(item, "componentRef"));
@@ -430,12 +425,10 @@ function normalizeTasks(
       taskId: safe(row["taskId"], "taskId"),
       sequence: positive(row["sequence"], "sequence"),
       requirementIds,
-      dependsOn: uniqueStrings(row["dependsOn"], "dependsOn", true, version),
-      componentRefs: Object.freeze([...componentRefs].sort((left, right) => compareIdentity(version, left, right))),
-      verificationCommands: Object.freeze(
-        [...verificationCommands].sort((left, right) => compareIdentity(version, left, right))
-      ),
-      doneCriteria: Object.freeze([...doneCriteria].sort((left, right) => compareIdentity(version, left, right))),
+      dependsOn: uniqueStrings(row["dependsOn"], "dependsOn", true),
+      componentRefs: Object.freeze([...componentRefs].sort()),
+      verificationCommands: Object.freeze([...verificationCommands].sort()),
+      doneCriteria: Object.freeze([...doneCriteria].sort()),
       risk: values(row["risk"], ["low", "medium", "high", "critical"] as const, "risk"),
       expectedCommit: text(row["expectedCommit"], "expectedCommit", 256)
     });
@@ -514,11 +507,7 @@ export function derivePendingTasks(
     tasks
       .filter((task) => !completed.has(task.taskId))
       .map((task) => {
-        const blockedBy = Object.freeze(
-          task.dependsOn
-            .filter((dependency) => !completed.has(dependency))
-            .sort((left, right) => compareIdentity(version, left, right))
-        );
+        const blockedBy = Object.freeze(task.dependsOn.filter((dependency) => !completed.has(dependency)).sort());
         return Object.freeze({
           taskId: task.taskId,
           sequence: task.sequence,
@@ -612,7 +601,7 @@ function normalizeBuildInput(value: unknown): ExecutionPackageBuildInput {
     ]);
     return Object.freeze({
       role: safe(role["role"], "role"),
-      capabilities: uniqueStrings(role["capabilities"], "capabilities", false, version),
+      capabilities: uniqueStrings(role["capabilities"], "capabilities"),
       minimumContextTokens: positive(role["minimumContextTokens"], "minimumContextTokens"),
       reasoning: values(role["reasoning"], ["medium", "high", "xhigh"] as const, "reasoning")
     });
@@ -710,13 +699,13 @@ function normalizeBuildInput(value: unknown): ExecutionPackageBuildInput {
       "requirementIds",
       "verificationRefs"
     ]);
-    const requirementIds = uniqueStrings(criterion["requirementIds"], "requirementIds", false, version);
+    const requirementIds = uniqueStrings(criterion["requirementIds"], "requirementIds");
     if (requirementIds.some((id) => !requirements.some((requirement) => requirement.requirementId === id)))
       fail("VES_EXECUTION_PACKAGE_INVALID", "completion criterion references an unknown requirement");
     return Object.freeze({
       criterionId: safe(criterion["criterionId"], "criterionId"),
       requirementIds,
-      verificationRefs: uniqueStrings(criterion["verificationRefs"], "verificationRefs", false, version)
+      verificationRefs: uniqueStrings(criterion["verificationRefs"], "verificationRefs")
     });
   });
   if (completionCriteria.length === 0) fail("VES_EXECUTION_PACKAGE_INVALID", "completionCriteria are empty");
@@ -725,7 +714,7 @@ function normalizeBuildInput(value: unknown): ExecutionPackageBuildInput {
     schemaVersion: version,
     packageVersion: positive(row["packageVersion"], "packageVersion"),
     workspaceId: safe(row["workspaceId"], "workspaceId"),
-    projectIds: uniqueStrings(row["projectIds"], "projectIds", false, version),
+    projectIds: uniqueStrings(row["projectIds"], "projectIds"),
     featureId: safe(row["featureId"], "featureId"),
     executionContractDigest: digest(row["executionContractDigest"], "executionContractDigest"),
     requirements,
@@ -736,10 +725,10 @@ function normalizeBuildInput(value: unknown): ExecutionPackageBuildInput {
     discoveryEvidence: artifactRefs(row["discoveryEvidence"], "discoveryEvidence", version),
     dataPolicies: artifactRefs(row["dataPolicies"], "dataPolicies", version),
     seedSpecifications: artifactRefs(row["seedSpecifications"], "seedSpecifications", version),
-    requiredCapabilities: uniqueStrings(row["requiredCapabilities"], "requiredCapabilities", false, version),
+    requiredCapabilities: uniqueStrings(row["requiredCapabilities"], "requiredCapabilities"),
     roleRequirements: Object.freeze(roles.sort((left, right) => compareIdentity(version, left.role, right.role))),
     gates: Object.freeze(gates.sort((left, right) => compareIdentity(version, left.gateId, right.gateId))),
-    approvalRequirements: uniqueStrings(row["approvalRequirements"], "approvalRequirements", false, version),
+    approvalRequirements: uniqueStrings(row["approvalRequirements"], "approvalRequirements"),
     workClaimRequirement: Object.freeze({
       scopeDigest: digest(workClaim["scopeDigest"], "scopeDigest"),
       mode: values(workClaim["mode"], ["exclusive", "advisory"] as const, "mode")
@@ -770,7 +759,7 @@ function normalizePending(value: unknown, version: ExecutionPackageSchemaVersion
     array(value, "pendingTasks")
       .map((entry, index) => {
         const row = record(entry, `pendingTasks[${index}]`, ["taskId", "sequence", "blockedBy", "ready"]);
-        const blockedBy = uniqueStrings(row["blockedBy"], "blockedBy", true, version);
+        const blockedBy = uniqueStrings(row["blockedBy"], "blockedBy", true);
         if (typeof row["ready"] !== "boolean" || row["ready"] !== (blockedBy.length === 0))
           fail("VES_EXECUTION_PACKAGE_DERIVATION_INVALID", "Pending task readiness is inconsistent");
         return Object.freeze({
