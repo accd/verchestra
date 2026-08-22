@@ -57,8 +57,8 @@ TypeScript and module-JavaScript product source under `packages/`, `apps/`, and
 `scripts/` for local canonicalizers, ambient `localeCompare`, and SHA-256
 digest producers. The associated security test requires the detected and
 inventoried path sets to be exactly equal, and rejects a duplicate, stale,
-signal-mismatched, or unclassified entry. The current 76-source census has no
-unclassified group.
+signal-mismatched, unreasoned, exception-invalid, or unclassified entry. The
+current 77-source census has no unclassified group.
 
 Only the inventory's closed `presentation-or-fixture` entries may retain an
 ambient-locale ordering exception. A structured trust or persistent identity

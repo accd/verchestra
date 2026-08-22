@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 
@@ -20,6 +22,8 @@ test("the canonical JSON census classifies every detected product source exactly
   assert.deepEqual(result, {
     duplicatePaths: [],
     invalidClassifications: [],
+    invalidExceptionPaths: [],
+    invalidReasons: [],
     missingPaths: [],
     signalMismatches: [],
     stalePaths: []
@@ -36,7 +40,68 @@ test("the presentation or fixture exception is closed and cannot hide structured
   for (const entry of presentationEntries) {
     assert.equal(entry.signals.canonicalizer, 0, `${entry.path} cannot use a local canonicalizer`);
     assert.ok(entry.signals.localeCompare > 0, `${entry.path} must be an ordering exception`);
+    assert.equal(
+      entry.reason,
+      "Closed presentation, fixture, or repository-diagnostic ordering only; not a trust or persistent identity."
+    );
   }
+});
+
+test("a locally named canonicalizer is detected even when it does not use the historical vocabulary", async () => {
+  const disposableRoot = await mkdtemp(join(tmpdir(), "verchestra-canonical-json-census-"));
+  try {
+    await Promise.all(
+      ["packages/application/src/regression", "apps", "scripts"].map((directory) =>
+        mkdir(join(disposableRoot, directory), { recursive: true })
+      )
+    );
+    await writeFile(
+      join(disposableRoot, "packages/application/src/regression/campaigns.ts"),
+      "export function canonicalizeReleaseReceipt(value: unknown): string { return JSON.stringify(value); }\n",
+      "utf8"
+    );
+
+    assert.deepEqual(await collectCensusCandidates(disposableRoot), [
+      {
+        path: "packages/application/src/regression/campaigns.ts",
+        signals: { canonicalizer: 1, digest: 0, localeCompare: 0 }
+      }
+    ]);
+  } finally {
+    await rm(disposableRoot, { force: true, recursive: true });
+  }
+});
+
+test("the presentation exception rejects a persistent or trust path", async () => {
+  const { entries } = await inventory();
+  const presentation = entries.find((entry) => entry.classification === "presentation-or-fixture");
+  assert.ok(presentation);
+  const result = validateCensusInventory([], {
+    entries: [
+      {
+        ...presentation,
+        path: "packages/application/src/regression/campaigns.ts"
+      }
+    ]
+  });
+
+  assert.deepEqual(result.invalidExceptionPaths, ["packages/application/src/regression/campaigns.ts"]);
+});
+
+test("an inventory entry without its reviewed reason is rejected", () => {
+  const path = "packages/example/src/identity.ts";
+  const result = validateCensusInventory([{ path, signals: { canonicalizer: 0, digest: 1, localeCompare: 0 } }], {
+    entries: [
+      {
+        path,
+        classification: "raw-byte-digest",
+        reason: "",
+        signals: { canonicalizer: 0, digest: 1, localeCompare: 0 }
+      }
+    ]
+  });
+
+  assert.deepEqual(result.invalidReasons, [path]);
 });
 
 test("a new unclassified canonicalization signal is rejected", async () => {
