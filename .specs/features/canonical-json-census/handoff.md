@@ -5,16 +5,24 @@ issue: 58
 status: in_progress
 branch: codex/issue-58-canonical-json-inventory-refresh
 baseRevision: d250c7c994be1c9aa9194118c757b67079d23ad3
-lastCompletedTask: T0
-nextTask: Implement the mechanical census before changing another portable identity.
-lastGate: not run
-updatedAt: 2026-08-22T22:45:00Z
+lastCompletedTask: T1
+nextTask: Reconcile the compatibility matrix and record the next ordered migration verticals.
+lastGate: focused census security test and pnpm gate:security PASS
+updatedAt: 2026-08-22T23:10:00Z
 ---
 
 # Scope
 
 This feature restores the source-derived inventory required to finish #58. It
 does not change an identity's bytes or make a qualification claim.
+
+# Delivered
+
+The scanner currently detects 76 source files. Every candidate is classified
+exactly once as migrated V2, retained versioned V1, pending versioned
+migration, raw-byte digest, or the closed presentation/fixture exception. The
+security test fails for an unclassified, duplicate, stale, or signal-mismatched
+entry and rejects a local canonicalizer in the exception class.
 
 # Next migration order
 
