@@ -7,6 +7,7 @@ import { collectCensusCandidates, validateCensusInventory } from "../../scripts/
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
 const inventoryPath = fileURLToPath(new URL("../../docs/canonical-json-census.json", import.meta.url));
+const matrixPath = fileURLToPath(new URL("../../docs/canonical-json-compatibility.md", import.meta.url));
 
 async function inventory() {
   return JSON.parse(await readFile(inventoryPath, "utf8"));
@@ -79,4 +80,20 @@ test("a duplicate classification and a stale source entry are rejected", () => {
 
   assert.deepEqual(result.duplicatePaths, ["packages/example/src/identity.ts"]);
   assert.deepEqual(result.stalePaths, ["packages/example/src/stale.ts"]);
+});
+
+test("the compatibility matrix names the canonical census and the ordered pending verticals", async () => {
+  const matrix = await readFile(matrixPath, "utf8");
+  const evidence = matrix.indexOf("signed-evidence vertical");
+  const release = matrix.indexOf("release vertical");
+  const portableOwners = matrix.indexOf("portable-owner verticals");
+
+  assert.match(matrix, /docs\/canonical-json-census\.json/u);
+  assert.ok(evidence >= 0);
+  assert.ok(release > evidence);
+  assert.ok(portableOwners > release);
+  assert.match(
+    portableOwners >= 0 ? matrix.slice(portableOwners) : "",
+    /registries,\s+connectors, extension host, drivers, memory, and policy bundles/u
+  );
 });

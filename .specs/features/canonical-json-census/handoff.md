@@ -2,13 +2,13 @@
 schema: verchestra-feature-handoff/v1
 feature: canonical-json-census
 issue: 58
-status: in_progress
+status: verification
 branch: codex/issue-58-canonical-json-inventory-refresh
 baseRevision: d250c7c994be1c9aa9194118c757b67079d23ad3
-lastCompletedTask: T1
-nextTask: Reconcile the compatibility matrix and record the next ordered migration verticals.
-lastGate: focused census security test and pnpm gate:security PASS
-updatedAt: 2026-08-22T23:10:00Z
+lastCompletedTask: T2
+nextTask: Run independent spec-anchored validation of the census before opening its review PR.
+lastGate: pnpm gate:quick PASS; prior T1 pnpm gate:security PASS
+updatedAt: 2026-08-22T23:25:00Z
 ---
 
 # Scope
@@ -28,8 +28,17 @@ entry and rejects a local canonicalizer in the exception class.
 
 After the census is independently reviewed, begin the signed-evidence vertical
 before release identity work. Release bundle and activation follow it. Portable
-registries, connectors, extension host, memory, and policy bundles then proceed
-in independent reviewable verticals.
+registries, connectors, extension host, drivers, memory, and policy bundles
+then proceed in independent reviewable verticals.
+
+# Evidence
+
+- `tests/security/canonical-json-census.test.mjs` proves the candidate and
+  inventory sets match exactly, rejects stale/duplicate/missing entries, and
+  keeps the presentation/fixture exception closed.
+- `docs/canonical-json-compatibility.md` records the authoritative inventory
+  link and the ordered pending verticals.
+- `pnpm gate:security` passed for T1; `pnpm gate:quick` passed for T2.
 
 # Blockers
 
