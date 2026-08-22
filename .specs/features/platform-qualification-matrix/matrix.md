@@ -469,8 +469,9 @@ not a reason to rewrite or hide this fleet result.
    All four gate profiles were then dispatched at one candidate (`9aab070`),
    which was the first exercise of the M-2 evidence index; section 9c is the
    current candidate evidence.
-5. **A4 (#35)** — live cross-driver verifier session; supplies the Driver
-   matrix's missing cross-driver case.
+5. ~~**A4 (#35)** — live cross-driver verifier session~~ — **done in PR #296**;
+   the composed Codex verifier runs with a zero-tool grant and records portable
+   completion evidence.
 6. **C5 (#207)** — live doctor probes, including `doctor.sandbox` moving off
    presence-only.
 7. **Evidence index signed** — ordered against AD-014 per section 8.

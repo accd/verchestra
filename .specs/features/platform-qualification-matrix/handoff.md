@@ -4,11 +4,11 @@ feature: platform-qualification-matrix
 issue: 16
 status: in_progress
 branch: main
-baseRevision: 43486df52ca4423427b0c7186d38768b35a12167
+baseRevision: ba46132a38df548d26728df121d4eaefe4a592a2
 lastCompletedTask: T75
-nextTask: "Do not author t75-validation.md yet. Resolve the remaining T75 prerequisites: the owner-approved release signing identity tracked in #294, live doctor probes in #207, and the composed cross-driver verifier boundary if the A4 acceptance remains required. Then rerun the exact candidate gates, regenerate the signed evidence index, and submit the independent report."
-lastGate: FLEET GREEN — all five exact-head profiles passed on Windows x64, macOS x64/arm64, Linux x64/arm64 at candidate 97fa851 (runs 32579393585, 32579395143, 32579396554, 32579397998, 32579399438); main gate:quick and agent:check also pass at 43486df
-updatedAt: 2026-08-22T15:38:00Z
+nextTask: "Do not author t75-validation.md yet. Resolve the remaining T75 prerequisites: live doctor probes in #207 and the owner-approved release signing identity tracked in #294. Then rerun the exact candidate gates, regenerate the signed evidence index, and submit the independent report."
+lastGate: FLEET GREEN — all five exact-head profiles passed on Windows x64, macOS x64/arm64, Linux x64/arm64 at candidate 97fa851 (runs 32579393585, 32579395143, 32579396554, 32579397998, 32579399438); A4 cross-driver session passed focused tests, agent:check, and gate:full in PR #296 (commit feb59c5), merged at ba46132
+updatedAt: 2026-08-22T16:00:00Z
 ---
 
 # What a reader must NOT conclude from the evidence index
@@ -268,10 +268,12 @@ capacity returns or the owner re-scopes that leg.
   policy question (kept below) no longer blocks the gate; it remains a
   worthwhile qualification-policy decision on its own merits.
 
-What T75 still needs (issue #16): the topology, Driver, database (SAP ASE /
-Sybase), sandbox, installer, and recovery matrices; the signed evidence index;
-and the independent `t75-validation.md` (author != verifier) with the atomic
-chain advance. Those are qualification-surface changes — serialize them per the
+What T75 still needs (issue #16): the topology, database (SAP ASE / Sybase),
+sandbox, installer, and recovery matrices; the live doctor evidence; the signed
+evidence index; and the independent `t75-validation.md` (author != verifier)
+with the atomic chain advance. The cross-driver verifier session is now composed
+and exercised by PR #296, but it is not by itself a T75 qualification report.
+Those are qualification-surface changes — serialize them per the
 session-coordination protocol.
 
 # Historical: fleet re-run that surfaced F3 and F1b (superseded by the above)
