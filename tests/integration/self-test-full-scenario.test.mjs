@@ -74,6 +74,21 @@ test("the sealed verification report binds distinct implementation and verifier 
   assert.equal(JSON.stringify(report.driverBinding).includes("deterministic-"), false);
 });
 
+test("the composed verifier runs its resolved driver with a zero-tool grant", async () => {
+  const disposableRoot = await root();
+  await runFullWorkflowScenario(disposableRoot);
+  const records = new FileRecordStore({ root: join(disposableRoot.canonicalPath, "self-test-records") });
+  const session = await records.load("verification:driver-session");
+
+  assert.deepEqual(session, {
+    closed: true,
+    driverId: "codex",
+    grantedToolCount: 0,
+    outcome: "completed",
+    requestedToolCount: 0
+  });
+});
+
 test("the complete delivery path queries one authoritative outcome per durable boundary", async () => {
   const result = await runFullWorkflowScenario(await root());
   assert.deepEqual(
