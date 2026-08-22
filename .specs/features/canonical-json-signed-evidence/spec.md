@@ -14,8 +14,8 @@ Issue: #58
 
 ## Success criteria
 
-- [x] A pinned V1 package verifies without byte changes.
-- [x] Default package construction emits schema V2 and its declared V2 predicate.
-- [x] V2 packages are byte-identical for mixed-case set permutations under two locales.
-- [x] A V1 package cannot be presented as V2 or vice versa.
-- [x] The relevant unit, security, architecture, quick, and security gates pass.
+- [ ] A pinned V1 package verifies without byte changes.
+- [ ] Default package construction emits schema V2 and its declared V2 predicate.
+- [ ] V2 packages are byte-identical for mixed-case set permutations under two locales.
+- [ ] A V1 package cannot be presented as V2 or vice versa.
+- [ ] The relevant unit, security, architecture, quick, and security gates pass.
