@@ -14,3 +14,4 @@ export * from "./primitives/logical-path.ts";
 export * from "./primitives/stable-id.ts";
 export * from "./workflow/workflow-machine.ts";
 export * from "./workflow/workflow-errors.ts";
+export * from "./workspace-layout/subsystem-layout.ts";

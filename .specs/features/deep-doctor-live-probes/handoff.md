@@ -2,12 +2,12 @@
 schema: verchestra-feature-handoff/v1
 feature: deep-doctor-live-probes
 issue: 207
-status: planned
+status: in_progress
 branch: feat/deep-doctor-live-probes
 baseRevision: 0d7ad9a2bad3b29c4defb4338d1106e4fe22c6e1
-lastCompletedTask: null
-nextTask: T1
-lastGate: null
+lastCompletedTask: T1
+nextTask: T2
+lastGate: pnpm gate:quick (PASS; test:unit 2064/2064, 0 skipped, 0 todo)
 updatedAt: 2026-08-22T00:00:00Z
 ---
 
@@ -18,18 +18,32 @@ read-only observations. Requirements DDL-01 through DDL-14 in `spec.md`; 22
 tasks in six phases in `tasks.md`. Parent #13 (T72); lands with or before #16
 (T75), which is the current serial task.
 
-Planning only. No implementation has started.
+T1 is implemented and gated on branch `feat/deep-doctor-live-probes`.
 
 # Completed Evidence
 
-None.
+- **T1** — `packages/domain/src/workspace-layout/subsystem-layout.ts` exports
+  `WORKSPACE_ROOT_DIRNAME` (`.verchestra`) and `SUBSYSTEM_OBSERVATION_PATHS`,
+  a frozen record naming the seven subsystem paths, with zero imports; exported
+  from `packages/domain/src/index.ts`. Assertions in
+  `tests/unit/subsystem-layout.test.mjs`: `:15` root dirname equals
+  `.verchestra`; `:19` the record deep-equals exactly the seven expected
+  subsystem/path pairs; `:31` the catalog is closed at seven; `:35,:36,:40`
+  the record is frozen and a write throws without changing the value; `:48-52`
+  every value is relative, POSIX-separated, and free of empty, `.`, `..`, or
+  drive-qualified segments. Gate: `pnpm gate:quick` PASS; `pnpm test:unit`
+  2064/2064 with zero failed, skipped, or todo (5 added, 2059 baseline
+  preserved).
+
+  Commit hashes for this branch are recorded here as each subsequent task
+  lands; T1 is the second commit on the branch, after the planning commit.
 
 # Next Exact Action
 
-T1: add `packages/domain/src/workspace-layout/subsystem-layout.ts` exporting
-`WORKSPACE_ROOT_DIRNAME` and the seven subsystem relative paths as one frozen,
-import-free record, with a unit test asserting each name and the freeze. Then
-`pnpm gate:quick`.
+T2: replace `packages/workspace/src/init/safe-init.ts:16`'s local
+`WORKSPACE_ROOT_DIRNAME` literal with the domain export, re-exporting the value
+so no existing call site changes behavior, and confirm the safe-init suite
+passes unchanged with no assertion weakened. Then `pnpm gate:quick`.
 
 # Blockers
 

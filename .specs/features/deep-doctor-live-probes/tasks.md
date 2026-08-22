@@ -58,10 +58,10 @@ Batch packing at ~7 tasks per worker, whole phases only:
 **Where**: `packages/domain/src/workspace-layout/subsystem-layout.ts` (new)
 **Depends on**: None · **Requirement**: DDL-01
 **Done when**:
-- [ ] Seven paths and the root dirname exported as one frozen record
-- [ ] Zero imports (domain purity rule holds)
-- [ ] Unit test asserts each of the seven names and that the record is frozen
-- [ ] `pnpm gate:quick` passes
+- [x] Seven paths and the root dirname exported as one frozen record
+- [x] Zero imports (domain purity rule holds)
+- [x] Unit test asserts each of the seven names and that the record is frozen
+- [x] `pnpm gate:quick` passes
 **Tests**: unit · **Gate**: quick
 **Commit**: `feat(doctor): name subsystem observation paths in one contract (T207)`
 
@@ -378,4 +378,5 @@ No task depends on a later phase.
 
 | Task | Status | Commit |
 | ---- | ------ | ------ |
-| T1–T22 | Planned | Pending |
+| T1 | Done | recorded in `handoff.md` |
+| T2–T22 | Planned | Pending |
