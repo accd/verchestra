@@ -344,10 +344,44 @@ Claude Code/Codex CLI version, confirmed identical on a clean tree via
 **Where**: `apps/vestra-cli/src/doctor-composition.ts:128`
 **Depends on**: T5, T7, T8 · **Requirement**: DDL-08 · **AC**: 9, 10, 11
 **Done when**:
-- [ ] Integrity `ok` reports `pass`; a corrupt database reports `fail`; an absent file reports `blocked`
-- [ ] A locked database reports `fail` rather than crashing (edge case 2)
-- [ ] `pnpm gate:full` passes
+- [x] Integrity `ok` reports `pass`; a corrupt database reports `fail`; an absent file reports `blocked`
+- [x] A locked database reports `fail` rather than crashing (edge case 2)
+- [x] `pnpm gate:full` passes
 **Tests**: integration · **Gate**: full
+
+> **Note (2026-08-22): the fixture problem flagged after T12 hit exactly as
+> predicted, plus one more finding.**
+>
+> **Fixture**: `scripts/provision-doctor-fixtures.mjs`'s `runtime.db` was an
+> empty placeholder; `inspectRuntimeDatabase` can never report `ok` against
+> one. Fixed by opening and closing a real `RuntimeStore` there — the
+> product's own migration path, not hand-rolled schema SQL — so the fixture
+> carries the actual schema (confirmed: `{integrity:"ok", runs:0,
+> migrations:10}`). The main provisioning loop now special-cases
+> `sqlite-durable-state` to skip the generic empty-file write, matching the
+> precedent T12 already set for `sandbox`'s post-loop treatment; T4's
+> "generic iteration, never hand-listed" guard still passes since the
+> `Object.entries(SUBSYSTEM_OBSERVATION_PATHS)` loop itself is untouched.
+>
+> **Edge case 2 ("locked database") could not be tested as literally
+> written, and that itself needed a decision.** Empirically verified (a real
+> `DatabaseSync(...).exec("BEGIN EXCLUSIVE")` from a second connection) that
+> a WAL-mode read-only open is **not** blocked by another connection's
+> exclusive writer lock — SQLite's own concurrency model, not a gap in this
+> code. A literal "locked database" scenario cannot be reproduced to fail at
+> all, so the check `sqliteDurableStateProbe` performs was split into
+> `evaluateRuntimeDatabase(inspect)`, an independently testable pure mapping
+> accepting the inspect call as a parameter — mirroring T12's
+> `evaluateSandboxEscape` pattern. The edge case is honestly tested as "any
+> injected error, lock-shaped included, degrades to `fail`, never a crash or
+> a silent pass" rather than a literal lock reproduction that would not
+> actually fail. Recorded here rather than silently narrowing the Done-when
+> bullet's literal wording.
+>
+> A second false-positive guard trip, same class as T8/T9/T12: the
+> function's own doc comment originally read `distinguish "corrupt" from
+> "locked"`, accidentally matching the `from "..."` import-statement regex
+> the closure walker uses. Reworded around it.
 
 #### T14: Live cedar-policy probe
 **What**: Read the active bundle read-only, verify it, and observe the policy-view digest.
@@ -544,4 +578,5 @@ No task depends on a later phase.
 | T10 | Done | recorded in `handoff.md` |
 | T11 | Done | recorded in `handoff.md` |
 | T12 | Done | recorded in `handoff.md` |
-| T13–T22 | Planned | Pending |
+| T13 | Done | recorded in `handoff.md` |
+| T14–T22 | Planned | Pending |

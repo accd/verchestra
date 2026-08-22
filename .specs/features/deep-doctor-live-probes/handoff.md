@@ -5,9 +5,9 @@ issue: 207
 status: in_progress
 branch: feat/deep-doctor-live-probes
 baseRevision: 0d7ad9a2bad3b29c4defb4338d1106e4fe22c6e1
-lastCompletedTask: T12
-nextTask: T13
-lastGate: pnpm gate:full PASS (all stages, including test:e2e 165/165 after the SQLite-warning fix)
+lastCompletedTask: T13
+nextTask: T14
+lastGate: pnpm gate:full PASS (all stages, including test:e2e — no repeat of T12's regression)
 updatedAt: 2026-08-22T00:00:00Z
 ---
 
@@ -18,7 +18,7 @@ read-only observations. Requirements DDL-01 through DDL-14 in `spec.md`; 22
 tasks in six phases in `tasks.md`. Parent #13 (T72); lands with or before #16
 (T75), which is the current serial task.
 
-T1 through T12 are implemented and gated on branch (Phase 2 and Phase 3 complete; Phase 4 in progress) `feat/deep-doctor-live-probes`.
+T1 through T13 are implemented and gated on branch (Phase 2 and Phase 3 complete; Phase 4 in progress) `feat/deep-doctor-live-probes`.
 
 # Completed Evidence
 
@@ -295,19 +295,66 @@ T1 through T12 are implemented and gated on branch (Phase 2 and Phase 3 complete
   genuinely pass against it. Flagging now, before T13 starts, rather than
   re-discovering it mid-task.
 
+- **T13** — `apps/vestra-cli/src/doctor-composition.ts`'s
+  `doctor.sqlite-durable-state` check is now live: `sqliteDurableStateProbe`
+  checks file existence first (absent -> `blocked`, unchanged from before),
+  then delegates to `evaluateRuntimeDatabase(inspect)` — a pure mapping
+  function accepting the inspect call as a parameter, mirroring T12's
+  `evaluateSandboxEscape` design — which calls the real
+  `inspectRuntimeDatabase` (from `@verchestra/platform-node/readonly`, T13's
+  wiring). Any thrown error, corrupt integrity included, degrades to `fail`.
+
+  **The fixture problem flagged after T12 hit exactly as predicted.**
+  `runtime.db` was an empty placeholder; fixed by opening and closing a real
+  `RuntimeStore` in `scripts/provision-doctor-fixtures.mjs` so the fixture
+  carries the product's actual migrated schema (confirmed:
+  `{integrity:"ok", runs:0, migrations:10}`), not hand-rolled SQL.
+
+  **One more finding, this time about the spec's own edge case.**
+  Empirically verified a real exclusive writer lock does **not** block a
+  WAL-mode read-only open — correct SQLite behavior, but it means "a locked
+  database reports fail" cannot be reproduced as a literal lock scenario at
+  all. Tested honestly instead: `evaluateRuntimeDatabase` is proven to
+  degrade *any* injected error (a lock-shaped one included) to `fail`, never
+  a crash or silent pass, rather than silently narrowing the edge case's
+  wording to only what happened to be reproducible.
+
+  A third false-positive guard trip, same class as T8/T9/T12: a doc comment
+  read `distinguish "corrupt" from "locked"`, tripping the `from "..."`
+  regex the closure walker uses. Reworded.
+
+  `tests/integration/doctor-sqlite-probe.test.mjs` (new, 6 cases): the pure
+  mapping against injected success/corrupt/lock-shaped outcomes, plus the
+  real wiring end to end through `runDoctorDeep` against real provisioned,
+  corrupted, and unprovisioned control roots. Discrimination proven by
+  flipping the catch branch's mapping — both the unit-level and end-to-end
+  tests catch it. Gates: `pnpm gate:full` PASS, `test:e2e` unaffected (no
+  repeat of T12's SQLite-warning regression, since `readonly.ts`'s deferred
+  wrapper from T12 already contains this exact import).
+
+  **T14 will need `@verchestra/policy` added to `apps/vestra-cli`'s
+  dependencies** — deferred from T9 for exactly this task, since T9 itself
+  had no consumer yet.
+
   Commit hashes are recorded as each subsequent task lands; T1 is the second
   commit on the branch, after the planning commit.
 
 # Next Exact Action
 
-T13: replace the `doctor.sqlite-durable-state` file probe with
-`inspectRuntimeDatabase` (imported from `@verchestra/platform-node/readonly`)
-in `apps/vestra-cli/src/doctor-composition.ts:128`. Integrity `ok` reports
-`pass`; a corrupt database reports `fail`; an absent file reports `blocked`;
-a locked database reports `fail` rather than crashing. Likely needs a real
-minimal SQLite database in `scripts/provision-doctor-fixtures.mjs`'s
-`runtime.db` fixture, not the current empty placeholder — see the note above.
-Then `pnpm gate:full`.
+T14: add `@verchestra/policy` to `apps/vestra-cli/package.json`'s
+dependencies (deferred from T9), then read the active policy bundle
+read-only in `apps/vestra-cli/src/doctor-composition.ts:127`, verify it via
+`verifyPolicyBundle`, and observe the policy-view digest via
+`policyViewDigest` (both from `@verchestra/policy/readonly`, T9). Verifying
+reports `pass`; tampered reports `fail`; absent reports `blocked`; a
+truncated/zero-length bundle reports `fail` without throwing out of
+`runDoctor`. The digest itself must never reach the sealed report — DDL-11.
+`scripts/provision-doctor-fixtures.mjs`'s `policy/active.bundle` is currently
+an empty placeholder file, not a real signed bundle — check whether the same
+fixture-content problem from T12/T13 applies here too before assuming the
+empty file suffices for the `blocked`/`pass` distinction. Then
+`pnpm gate:security` (or `test:security` directly — `gate:security` is
+blocked by the pre-existing environment issue noted at T10).
 
 # Blockers
 

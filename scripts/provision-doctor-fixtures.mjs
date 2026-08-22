@@ -12,19 +12,23 @@
 // tests/architecture/doctor-workspace-root.test.mjs statically proves this
 // file still iterates the contract rather than hardcoding a partial list.
 //
-// Content is placeholder only beyond the sandbox escape fixture below, which
-// is required content: T12's live sandbox probe needs a real directory
-// symlink/junction escaping the sandbox root to genuinely exercise
-// ProtectedPathBroker's out-of-root refusal on a provisioned machine, not
-// only in an isolated unit test — LogicalPath.parse already rejects any
-// naive "../" logical path, so a symlink escape is the only way that
-// refusal is ever reachable at all.
+// Content is placeholder except for two subsystems whose live probes need
+// something genuine to observe, not an empty file:
+// - sandbox (T12, DDL-06): a directory symlink/junction escaping the sandbox
+//   root, so ProtectedPathBroker's out-of-root refusal is reachable at all —
+//   LogicalPath.parse already rejects any naive "../" logical path.
+// - sqlite-durable-state (T13, DDL-08): a real database opened through the
+//   product's own RuntimeStore migration path, not hand-rolled schema SQL,
+//   so inspectRuntimeDatabase's integrity check and its "runs"/"ves_migrations"
+//   row counts observe the actual product schema rather than a fixture that
+//   only coincidentally resembles it.
 
 import { mkdir, rm, symlink, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { SUBSYSTEM_OBSERVATION_PATHS, WORKSPACE_ROOT_DIRNAME } from "../packages/domain/src/index.ts";
+import { RuntimeStore } from "../packages/platform-node/src/index.ts";
 
 // A relative path whose final segment carries a dot names a file (e.g.
 // "policy/active.bundle", "runtime.db"); every other declared path names a
@@ -39,9 +43,12 @@ function isFilePath(relativePath) {
 export async function provisionDoctorFixtures(controlRoot) {
   const metadataRoot = join(controlRoot, WORKSPACE_ROOT_DIRNAME);
   const provisioned = [];
-  for (const [, relativePath] of Object.entries(SUBSYSTEM_OBSERVATION_PATHS)) {
+  for (const [subsystem, relativePath] of Object.entries(SUBSYSTEM_OBSERVATION_PATHS)) {
     const target = join(metadataRoot, relativePath);
-    if (isFilePath(relativePath)) {
+    if (subsystem === "sqlite-durable-state") {
+      // Real content, provisioned below via RuntimeStore's own migration
+      // path — not the empty-placeholder branch every other file takes.
+    } else if (isFilePath(relativePath)) {
       await mkdir(dirname(target), { recursive: true });
       await writeFile(target, "");
     } else {
@@ -49,6 +56,15 @@ export async function provisionDoctorFixtures(controlRoot) {
     }
     provisioned.push(target);
   }
+
+  // The runtime.db fixture (T13, DDL-08): open and close a real RuntimeStore
+  // so its own migrations run, producing a genuinely valid database an
+  // integrity check can observe as "ok" — the exact schema the product
+  // itself creates, not a duplicate maintained separately here.
+  const runtimeDbPath = join(metadataRoot, SUBSYSTEM_OBSERVATION_PATHS["sqlite-durable-state"]);
+  const runtimeStore = new RuntimeStore({ dbPath: runtimeDbPath, now: () => new Date().toISOString() });
+  runtimeStore.open();
+  runtimeStore.close();
 
   // The sandbox escape fixture (T12, DDL-06): a directory symlink/junction
   // inside the sandbox root pointing at its own parent (.verchestra), which

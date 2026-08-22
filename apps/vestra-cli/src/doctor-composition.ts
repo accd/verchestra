@@ -25,7 +25,7 @@ import {
 import { SchemaRegistry } from "@verchestra/contracts";
 import { SUBSYSTEM_OBSERVATION_PATHS, WORKSPACE_ROOT_DIRNAME } from "@verchestra/domain";
 import { ArtifactSealer, NodeEd25519Signer, type SealedArtifact } from "@verchestra/evidence";
-import { ProtectedPathBroker } from "@verchestra/platform-node/readonly";
+import { ProtectedPathBroker, inspectRuntimeDatabase } from "@verchestra/platform-node/readonly";
 
 import { resolveReleaseIdentity } from "./release-manifest.ts";
 
@@ -179,13 +179,37 @@ async function sandboxProbe(metadataRoot: string): Promise<DoctorObservation> {
   }
 }
 
+// DDL-08 (#207): a live read-only integrity check, not a file-presence check.
+// Absence is genuinely absence (blocked, checked before this runs). A present
+// file that fails PRAGMA integrity_check, is corrupt, or errors for any other
+// reason (a held lock included, though a WAL-mode read-only open is not
+// actually blocked by one — verified empirically while building this task)
+// degrades to fail through the same catch, never a crash. Split from the
+// wrapper below so a test can inject an arbitrary failure without needing a
+// real corrupt file or a real concurrent-access scenario for every class of
+// error this must degrade.
+export async function evaluateRuntimeDatabase(inspect: () => Promise<unknown>): Promise<DoctorObservation> {
+  try {
+    await inspect();
+    return present(true);
+  } catch {
+    return present(false);
+  }
+}
+
+async function sqliteDurableStateProbe(metadataRoot: string): Promise<DoctorObservation> {
+  const dbPath = subsystemPath(metadataRoot, "sqlite-durable-state");
+  if (!existsSync(dbPath)) return absent;
+  return evaluateRuntimeDatabase(() => inspectRuntimeDatabase(dbPath));
+}
+
 function buildRealProbes(controlRoot: string, registry: SchemaRegistry | null, now: () => number): DoctorProbeSet {
   const metadataRoot = join(controlRoot, WORKSPACE_ROOT_DIRNAME);
   return Object.freeze({
     "doctor.installation": installationProbe,
     "doctor.contract-schema": () => schemaProbe(registry),
     "doctor.cedar-policy": () => fileProbe(subsystemPath(metadataRoot, "cedar-policy")),
-    "doctor.sqlite-durable-state": () => fileProbe(subsystemPath(metadataRoot, "sqlite-durable-state")),
+    "doctor.sqlite-durable-state": () => sqliteDurableStateProbe(metadataRoot),
     "doctor.native-asset": nativeAssetProbe,
     "doctor.git": gitProbe,
     "doctor.secret-presence": () => fileProbe(subsystemPath(metadataRoot, "secret-presence")),
