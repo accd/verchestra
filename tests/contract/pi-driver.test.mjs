@@ -17,7 +17,7 @@ test("Pi Driver probes the installed runtime version and common capabilities", a
     driverId: "pi",
     package: "@earendil-works/pi-agent-core",
     available: true,
-    version: "0.82.1",
+    version: "0.84.1",
     capabilities: ["stream", "tools", "usage", "abort"]
   });
 });
