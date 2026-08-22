@@ -449,15 +449,45 @@ Claude Code/Codex CLI version, confirmed identical on a clean tree via
 > rather than leave one whose name claimed a property the mechanism doesn't
 > provide.
 
-#### T15: Live secret-presence probe
+#### T15: Live secret-presence probe — DEFERRED (2026-08-22)
 **What**: Replace the file probe with the read-only has-surface.
 **Where**: `apps/vestra-cli/src/doctor-composition.ts:131`
 **Depends on**: T5, T7, T10 · **Requirement**: DDL-09 · **AC**: 12
-**Done when**:
-- [ ] Presence reports `pass`; absence reports `blocked`
-- [ ] No secret name or value reaches the report
-- [ ] `pnpm gate:security` passes
-**Tests**: integration + security · **Gate**: security
+**Status**: Deferred, not implemented. `doctor.secret-presence` remains the
+original `fileProbe` check from before this feature.
+
+> **Why deferred.** `secretPresence` (T10) needs a real `SecretAdapter` to
+> call `.has()` on. `QualifiedOsSecretAdapter` requires a real
+> `OsSecretBackend` — Windows CNG, Apple Keychain, or Linux Secret Service —
+> and **zero implementation of any of the three exists anywhere in this
+> repository**, not even partially; confirmed by searching
+> `packages`/`apps` for any construction of `QualifiedOsSecretAdapter` or
+> any concrete `OsSecretBackend` outside `secret-broker.ts`'s own interface
+> declaration. Nothing in `apps/vestra-cli` constructs a real secret adapter
+> at all today, for any purpose. This is native per-platform credential-store
+> integration — three separate subprocess- or binding-based backends, each
+> with its own qualification burden — not a self-contained primitive like
+> T14's Ed25519 verifier. Building it here would mean inventing a new
+> product capability unilaterally inside a task whose stated scope was one
+> probe wire-up.
+>
+> Stopped and asked before implementing, given the size of the gap. Decided:
+> defer T15, leave `doctor.secret-presence` on its current (correct, if
+> non-live) file-presence check, and continue the feature's remaining tasks.
+> `MockSecretAdapter` was considered and rejected — it starts empty on every
+> real machine, so it would satisfy DDL-09's letter (a real `.has()` call)
+> while defeating its purpose (a genuine live observation): the check could
+> never report `pass` on a real machine, exactly the failure mode the
+> T12/T13/T14 fixture-content work existed to avoid.
+>
+> **Follow-up**: T15 can resume once a real `OsSecretBackend` exists for at
+> least one platform — most naturally as part of whatever future work
+> actually needs live OS-secret access for a non-diagnostic purpose (secret
+> binding at run time), since that is where the backend's real requirements
+> would first be established. Building it inside deep-doctor speculatively,
+> with no other consumer to validate the design against, risks the same
+> problem T14's policy-crypto question raised: encoding an unreviewed
+> assumption with no prior art to anchor it.
 
 ### Phase 5 — Availability records
 
@@ -601,7 +631,7 @@ No task depends on a later phase.
 | DDL-06 | T12 | 5, 6 |
 | DDL-07 | T9, T14 | 7, 8 |
 | DDL-08 | T13 | 9, 10, 11 |
-| DDL-09 | T10, T15 | 12 |
+| DDL-09 | T10, T15 (T15 deferred — see its note) | 12 (partial: presence surface exists, not wired) |
 | DDL-10 | T16, T17, T18, T19 | 13 |
 | DDL-11 | T20 | 15 |
 | DDL-12 | T8, T11 | 14 |

@@ -6,7 +6,7 @@ status: in_progress
 branch: feat/deep-doctor-live-probes
 baseRevision: 0d7ad9a2bad3b29c4defb4338d1106e4fe22c6e1
 lastCompletedTask: T14
-nextTask: T15
+nextTask: T16 (T15 deferred — see Decisions)
 lastGate: pnpm gate:full PASS; test:security 1049/1049 direct; test:integration 611/611
 updatedAt: 2026-08-22T00:00:00Z
 ---
@@ -18,7 +18,7 @@ read-only observations. Requirements DDL-01 through DDL-14 in `spec.md`; 22
 tasks in six phases in `tasks.md`. Parent #13 (T72); lands with or before #16
 (T75), which is the current serial task.
 
-T1 through T14 are implemented and gated on branch (Phase 2 and Phase 3 complete; Phase 4 in progress) `feat/deep-doctor-live-probes`.
+T1 through T14 are implemented and gated on branch (Phase 2 and Phase 3 complete; Phase 4 in progress — T15 deferred, T12/T13/T14 done) `feat/deep-doctor-live-probes`.
 
 # Completed Evidence
 
@@ -336,6 +336,24 @@ T1 through T14 are implemented and gated on branch (Phase 2 and Phase 3 complete
   dependencies** — deferred from T9 for exactly this task, since T9 itself
   had no consumer yet.
 
+- **T15 — deferred, not implemented (2026-08-22).** `secretPresence` (T10)
+  needs a real `SecretAdapter`; `QualifiedOsSecretAdapter` requires a real
+  `OsSecretBackend` (Windows CNG / Apple Keychain / Linux Secret Service),
+  and none of the three has any implementation anywhere in the repository —
+  confirmed by searching for any construction of `QualifiedOsSecretAdapter`
+  or a concrete backend outside `secret-broker.ts`'s own interface
+  declaration. This is native per-platform credential-store integration,
+  categorically bigger than every other gap this feature closed (T12/T13/T14
+  each reused an already-established product convention; this would invent
+  one, with no other consumer to validate the design against). Stopped and
+  asked; decided to defer rather than build speculatively or substitute
+  `MockSecretAdapter` (which would satisfy DDL-09's letter while defeating
+  its purpose — it starts empty on every real machine, so the check could
+  never report `pass` in the field). Full rationale in tasks.md's T15 entry
+  and `.specs/STATE.md`'s AD-023. `doctor.secret-presence` keeps its current
+  file-presence check, unchanged. `spec.md`'s success criteria updated to
+  state six-of-seven, not seven-of-seven, with the reason recorded inline.
+
 - **T14** — `apps/vestra-cli/src/doctor-composition.ts`'s
   `doctor.cedar-policy` check is now live: `cedarPolicyProbe(metadataRoot)`
   reads `.verchestra/policy/active.bundle` read-only, `JSON.parse`s it, and
@@ -381,20 +399,13 @@ T1 through T14 are implemented and gated on branch (Phase 2 and Phase 3 complete
 
 # Next Exact Action
 
-T15: replace the `doctor.secret-presence` file probe with
-`secretPresence` (already built in T10, at
-`@verchestra/platform-node/readonly`) in
-`apps/vestra-cli/src/doctor-composition.ts:131`. Needs a real
-`SecretAdapter` instance for the `.verchestra/secrets` fixture — check
-whether `QualifiedOsSecretAdapter` (or another concrete adapter) has a
-filesystem-backed mode suited to a read-only diagnostic, and whether T5's
-current empty-directory fixture for `secret-presence` needs the same
-real-content treatment T12/T13/T14 each required, before assuming it
-suffices for the `pass`/`blocked` distinction. Presence reports `pass`;
-absence reports `blocked`; no secret name or value reaches the report. Then
-`pnpm gate:full` (`test:security` directly for the security-scoped
-assertions — `gate:security` blocked by the pre-existing environment
-issue).
+T16 (Phase 5 begins, T15 deferred — see above): define the availability
+record contract — a schema generated through `packages/contracts`'s
+generator (never hand-edited) plus a read-only reader in `packages/domain`.
+"Available" means the record exists, parses, and declares an installed
+subsystem; reachability is excluded by construction (no field may express a
+network endpoint or credential). Contract tests cover valid, absent, and
+unparseable records. Then `pnpm gate:quick`.
 
 # Blockers
 

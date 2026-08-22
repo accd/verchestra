@@ -109,7 +109,15 @@ verification.
 
 ## Success criteria
 
-- [ ] Seven checks report from live observation; five unchanged.
+- [ ] Six of seven checks report from live observation; five unchanged.
+      **`secret-presence` is deferred (AD-023, 2026-08-22)** — it needs a real
+      `OsSecretBackend` (Windows CNG / Apple Keychain / Linux Secret Service),
+      none of which has any implementation anywhere in the repository. Building
+      one speculatively, with no other consumer to validate the design
+      against, was rejected as out of this feature's scope; it remains on its
+      original file-presence check. T15's read-only presence surface (T10)
+      is built and tested; only its wiring into a real adapter is deferred.
 - [ ] `pnpm gate:quick` and `pnpm test:architecture` pass with no skipped or weakened assertion.
 - [ ] The transitive guard fails when a writer is introduced into the closure (discrimination sensor).
-- [ ] A T75 matrix leg records a sealed report in which the seven checks are not `blocked`.
+- [ ] A T75 matrix leg records a sealed report in which six of the seven checks are not `blocked`
+      (`secret-presence` remains a presence check and reports per its unchanged behavior).
