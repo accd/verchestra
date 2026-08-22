@@ -23,19 +23,22 @@ import {
   type SentinelFact
 } from "@verchestra/application";
 import { SchemaRegistry } from "@verchestra/contracts";
+import { SUBSYSTEM_OBSERVATION_PATHS, WORKSPACE_ROOT_DIRNAME } from "@verchestra/domain";
 import { ArtifactSealer, NodeEd25519Signer, type SealedArtifact } from "@verchestra/evidence";
 
 import { resolveReleaseIdentity } from "./release-manifest.ts";
 
-// Must name the same directory init actually writes to
-// (WORKSPACE_ROOT_DIRNAME in packages/workspace/src/init/safe-init.ts) — a
-// doctor probe that watches a directory nothing provisions reports blocked
-// forever. Kept as a plain literal rather than importing @verchestra/workspace
-// (which re-exports SafeInitService, a genuine filesystem writer) so this
-// read-only composition root's reachable graph stays read-only by contract;
-// tests/architecture/doctor-workspace-root.test.mjs statically proves the two
-// literals agree without either file importing the other.
-const WORKSPACE_ROOT_DIRNAME = ".verchestra";
+// The workspace root and every subsystem path below it are owned by the
+// domain layout contract (DDL-01/DDL-02, #207), not declared here — a doctor
+// probe that watches a path nothing provisions reports blocked forever, and
+// a second local copy of the root is exactly the drift that produced that
+// bug. Importing @verchestra/domain here is safe for the read-only guard:
+// domain takes no third-party or node: import
+// (tests/architecture/repository-boundaries.test.mjs), so nothing reachable
+// through it can be a writer.
+// tests/architecture/doctor-workspace-root.test.mjs statically proves this
+// file's watched root agrees with the contract without importing it as a
+// runtime value beyond the literal check.
 
 export interface DoctorPorts {
   readonly probes: DoctorProbeSet;
@@ -119,21 +122,25 @@ function fileProbe(path: string): DoctorObservation {
   return existsSync(path) ? present(true) : absent;
 }
 
+function subsystemPath(metadataRoot: string, subsystem: keyof typeof SUBSYSTEM_OBSERVATION_PATHS): string {
+  return join(metadataRoot, SUBSYSTEM_OBSERVATION_PATHS[subsystem]);
+}
+
 function buildRealProbes(controlRoot: string, registry: SchemaRegistry | null, now: () => number): DoctorProbeSet {
   const metadataRoot = join(controlRoot, WORKSPACE_ROOT_DIRNAME);
   return Object.freeze({
     "doctor.installation": installationProbe,
     "doctor.contract-schema": () => schemaProbe(registry),
-    "doctor.cedar-policy": () => fileProbe(join(metadataRoot, "policy", "active.bundle")),
-    "doctor.sqlite-durable-state": () => fileProbe(join(metadataRoot, "runtime.db")),
+    "doctor.cedar-policy": () => fileProbe(subsystemPath(metadataRoot, "cedar-policy")),
+    "doctor.sqlite-durable-state": () => fileProbe(subsystemPath(metadataRoot, "sqlite-durable-state")),
     "doctor.native-asset": nativeAssetProbe,
     "doctor.git": gitProbe,
-    "doctor.secret-presence": () => fileProbe(join(metadataRoot, "secrets")),
+    "doctor.secret-presence": () => fileProbe(subsystemPath(metadataRoot, "secret-presence")),
     "doctor.clock": () => clockProbe(now),
-    "doctor.driver": () => fileProbe(join(metadataRoot, "drivers")),
-    "doctor.connector": () => fileProbe(join(metadataRoot, "connectors")),
-    "doctor.probe": () => fileProbe(join(metadataRoot, "probe", "fixtures")),
-    "doctor.sandbox": () => fileProbe(join(metadataRoot, "sandbox"))
+    "doctor.driver": () => fileProbe(subsystemPath(metadataRoot, "driver")),
+    "doctor.connector": () => fileProbe(subsystemPath(metadataRoot, "connector")),
+    "doctor.probe": () => fileProbe(subsystemPath(metadataRoot, "probe")),
+    "doctor.sandbox": () => fileProbe(subsystemPath(metadataRoot, "sandbox"))
   });
 }
 

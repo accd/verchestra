@@ -15,7 +15,9 @@ const source = readFileSync(new URL("../../apps/vestra-cli/src/doctor-compositio
 
 // Every module the deep-doctor composition root is allowed to reach. Each entry
 // is read-only by contract: application owns pure rules, contracts is schema
-// metadata, evidence seals the report, release-manifest resolves identity, and
+// metadata, evidence seals the report, release-manifest resolves identity, domain
+// names the workspace layout the doctor watches and takes no third-party or
+// node: import itself (tests/architecture/repository-boundaries.test.mjs), and
 // the node builtins are used only through their read-only calls (asserted
 // below). Adding an entry here is the reviewed act of widening the graph.
 const READ_ONLY_IMPORTS = Object.freeze(
@@ -26,6 +28,7 @@ const READ_ONLY_IMPORTS = Object.freeze(
     "node:path",
     "@verchestra/application",
     "@verchestra/contracts",
+    "@verchestra/domain",
     "@verchestra/evidence",
     "./release-manifest.ts"
   ])

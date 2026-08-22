@@ -87,12 +87,19 @@ Batch packing at ~7 tasks per worker, whole phases only:
 
 #### T3: Derive the doctor composition's paths from the contract
 **What**: Replace the local literal at line 38 and the seven inline `join(...)` path expressions with contract lookups; add `@verchestra/domain` to `READ_ONLY_IMPORTS`.
-**Where**: `apps/vestra-cli/src/doctor-composition.ts:38,123-137`, `tests/architecture/doctor-readonly-graph.test.mjs:21-32`
+**Where**: `apps/vestra-cli/src/doctor-composition.ts:38,123-137`, `tests/architecture/doctor-readonly-graph.test.mjs:21-32`, `tests/architecture/doctor-workspace-root.test.mjs`
 **Depends on**: T1 · **Requirement**: DDL-02
 **Done when**:
-- [ ] No path literal remains in the composition root
-- [ ] Allowlist entry justified in the guard's comment (domain is import-free by architecture rule)
-- [ ] `pnpm test:architecture` passes
+- [x] No path literal remains in the composition root
+- [x] Allowlist entry justified in the guard's comment (domain is import-free by architecture rule)
+- [x] Drift guard rewritten again: removing the doctor's literal broke the same `constDeclaration` extraction T2 already had to work around; both files now proven to import the root rather than declare it
+- [x] Guard discrimination proven (a reintroduced literal, and an import from a non-domain module, both killed)
+- [x] `pnpm test:architecture` passes
+
+> **Scope note (2026-08-22).** Same coupling as T2, on the second of the two
+> files the original guard compared. Applied the identical resolution already
+> approved for T2 without re-asking, per auto-mode guidance to make the
+> reasonable call on a decision already established this session.
 **Tests**: architecture · **Gate**: quick
 
 #### T4: Prove path ownership and provisioning statically
@@ -390,4 +397,5 @@ No task depends on a later phase.
 | ---- | ------ | ------ |
 | T1 | Done | recorded in `handoff.md` |
 | T2 | Done | recorded in `handoff.md` |
-| T3–T22 | Planned | Pending |
+| T3 | Done | recorded in `handoff.md` |
+| T4–T22 | Planned | Pending |

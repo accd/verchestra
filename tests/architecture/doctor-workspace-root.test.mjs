@@ -7,14 +7,11 @@ import { test } from "node:test";
 // only ever writes ".verchestra" — the probes observed a directory nothing
 // on the machine could ever create.
 //
-// The root is now owned by one domain contract (DDL-01/DDL-02) rather than
-// copied into each side. doctor-composition.ts still keeps its own literal
-// (see that file's comment for why it does not import @verchestra/workspace:
-// SafeInitService is a genuine filesystem writer, and importing it would
-// widen the doctor's read-only reachable graph past what
-// tests/architecture/doctor-readonly-graph.test.mjs allows), so this test
-// pins that literal to the contract and proves safe-init holds no competing
-// copy — at the source level, without either file importing the other.
+// The root and every subsystem path below it are now owned by one domain
+// contract (DDL-01/DDL-02, #207) instead of copied into each side. Both
+// doctor-composition.ts and safe-init.ts import the value rather than
+// declaring it, so this test proves neither file holds a competing literal —
+// at the source level, without executing either file.
 
 const contractSource = readFileSync(
   new URL("../../packages/domain/src/workspace-layout/subsystem-layout.ts", import.meta.url),
@@ -29,29 +26,24 @@ function constDeclaration(source, name) {
   return match[1];
 }
 
-test("the doctor's watched workspace root equals the root the layout contract owns", () => {
-  assert.equal(
-    constDeclaration(doctorSource, "WORKSPACE_ROOT_DIRNAME"),
-    constDeclaration(contractSource, "WORKSPACE_ROOT_DIRNAME"),
-    "apps/vestra-cli/src/doctor-composition.ts must watch the root declared by " +
-      "packages/domain/src/workspace-layout/subsystem-layout.ts"
-  );
-});
+const COMPETING_LITERAL = /const\s+WORKSPACE_ROOT_DIRNAME\s*=\s*"/u;
+const IMPORTS_ROOT_FROM_DOMAIN = /import\s*\{[^}]*\bWORKSPACE_ROOT_DIRNAME\b[^}]*\}\s*from\s*"@verchestra\/domain"/u;
 
-test("init derives the root from the contract instead of declaring a competing literal", () => {
-  assert.doesNotMatch(
-    safeInitSource,
-    /const\s+WORKSPACE_ROOT_DIRNAME\s*=\s*"/u,
-    "packages/workspace/src/init/safe-init.ts must not redeclare the workspace root; " +
-      "it re-exports the value from @verchestra/domain so the doctor and init cannot drift"
-  );
-  assert.match(
-    safeInitSource,
-    /import\s*\{[^}]*\bWORKSPACE_ROOT_DIRNAME\b[^}]*\}\s*from\s*"@verchestra\/domain"/u,
-    "packages/workspace/src/init/safe-init.ts must import the root from @verchestra/domain"
-  );
-});
+for (const [label, source] of [
+  ["apps/vestra-cli/src/doctor-composition.ts", doctorSource],
+  ["packages/workspace/src/init/safe-init.ts", safeInitSource]
+]) {
+  test(`${label} derives the workspace root from the layout contract instead of declaring a competing literal`, () => {
+    assert.doesNotMatch(
+      source,
+      COMPETING_LITERAL,
+      `${label} must not redeclare the workspace root; it must import the value from @verchestra/domain ` +
+        "so the doctor and init cannot drift"
+    );
+    assert.match(source, IMPORTS_ROOT_FROM_DOMAIN, `${label} must import the root from @verchestra/domain`);
+  });
+}
 
-test("the doctor's watched root is exactly one path segment (a bare dotdir, never a nested or empty path)", () => {
-  assert.match(constDeclaration(doctorSource, "WORKSPACE_ROOT_DIRNAME"), /^\.[a-z]+$/u);
+test("the layout contract's watched root is exactly one path segment (a bare dotdir, never a nested or empty path)", () => {
+  assert.match(constDeclaration(contractSource, "WORKSPACE_ROOT_DIRNAME"), /^\.[a-z]+$/u);
 });

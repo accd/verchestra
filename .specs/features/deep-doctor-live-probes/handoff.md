@@ -5,8 +5,8 @@ issue: 207
 status: in_progress
 branch: feat/deep-doctor-live-probes
 baseRevision: 0d7ad9a2bad3b29c4defb4338d1106e4fe22c6e1
-lastCompletedTask: T2
-nextTask: T3
+lastCompletedTask: T3
+nextTask: T4
 lastGate: pnpm gate:quick (PASS; test:unit 2064/2064, 0 skipped, 0 todo)
 updatedAt: 2026-08-22T00:00:00Z
 ---
@@ -18,7 +18,7 @@ read-only observations. Requirements DDL-01 through DDL-14 in `spec.md`; 22
 tasks in six phases in `tasks.md`. Parent #13 (T72); lands with or before #16
 (T75), which is the current serial task.
 
-T1 and T2 are implemented and gated on branch `feat/deep-doctor-live-probes`.
+T1 through T3 are implemented and gated on branch `feat/deep-doctor-live-probes`.
 
 # Completed Evidence
 
@@ -50,17 +50,34 @@ T1 and T2 are implemented and gated on branch `feat/deep-doctor-live-probes`.
   26/26, `tests/integration/safe-init.test.mjs` 22/22 — all with zero failed,
   skipped, or todo.
 
+- **T3** — `apps/vestra-cli/src/doctor-composition.ts` imports
+  `SUBSYSTEM_OBSERVATION_PATHS` and `WORKSPACE_ROOT_DIRNAME` from
+  `@verchestra/domain` in place of the local literal and the seven inline
+  `join(...)` expressions; a new `subsystemPath(metadataRoot, subsystem)`
+  helper looks up each path. `@verchestra/domain` added to `READ_ONLY_IMPORTS`
+  in `tests/architecture/doctor-readonly-graph.test.mjs:29`, justified in its
+  comment (domain takes no third-party or `node:` import, so nothing reachable
+  through it can be a writer). The drift guard was rewritten a second time —
+  removing the doctor's literal broke the same `constDeclaration` extraction
+  T2 had already worked around on the safe-init side; both files are now
+  proven to import the root rather than declare it
+  (`tests/architecture/doctor-workspace-root.test.mjs:31-39`). Discrimination
+  proven in a disposable copy: a reintroduced literal in the doctor, and an
+  import of the root from a non-domain module, both fail the guard; restored
+  and the copy discarded. Gates: `pnpm gate:quick` PASS, `pnpm test:architecture`
+  26/26, zero failed, skipped, or todo.
+
   Commit hashes are recorded as each subsequent task lands; T1 is the second
   commit on the branch, after the planning commit.
 
 # Next Exact Action
 
-T3: replace `apps/vestra-cli/src/doctor-composition.ts:38`'s local literal and
-the seven inline `join(...)` path expressions at `:123-137` with lookups into
-`SUBSYSTEM_OBSERVATION_PATHS`, and add `@verchestra/domain` to
-`READ_ONLY_IMPORTS` in `tests/architecture/doctor-readonly-graph.test.mjs` with
-the justification that domain takes no third-party or `node:` import. Then
-`pnpm test:architecture` and `pnpm gate:quick`.
+T4: extend `tests/architecture/doctor-workspace-root.test.mjs` from "the root
+agrees" to "every probed path is owned by the contract AND provisioned by a
+repository surface" — a probed path absent from the contract must fail the
+gate, and a contract path nothing provisions must also fail the gate (the
+defect this issue's original comment described, one level down). Prove both
+failure modes with a mutation in a disposable copy. Then `pnpm test:architecture`.
 
 # Blockers
 
@@ -99,12 +116,14 @@ Two findings shape the plan and are already resolved as decisions:
 - "Available" for driver/connector/probe means a record exists, parses, and
   declares an installed subsystem. Reachability is excluded — it is neither
   read-only nor unpaid.
-- **Drift guard rewritten in T2, not T4 (2026-08-22).**
-  `tests/architecture/doctor-workspace-root.test.mjs` proved two source
-  literals agreed; T2 removes one of them, so the guard could not stay
-  untouched and its rewrite moved into T2. It now pins the doctor's literal to
-  the domain contract and asserts safe-init holds no competing copy. T4 still
-  extends it to full path ownership and provisioning.
+- **Drift guard rewritten twice, in T2 and T3, not once in T4 (2026-08-22).**
+  `tests/architecture/doctor-workspace-root.test.mjs` originally proved two
+  source literals agreed. T2 removed safe-init's literal; T3 removed the
+  doctor's. Each removal broke the guard's `constDeclaration` extraction on
+  that file, so both tasks carry a guard rewrite instead of one clean
+  hand-off to T4. The guard now proves both files import the root from the
+  contract and declare no competing literal. T4 still extends it from "the
+  root agrees" to full path ownership and provisioning.
 - Secret presence uses `SecretAdapter.has`, never
   `SecretBrokerBindingInspector.isBound`, which calls `broker.bind()` and mints
   a handle.
