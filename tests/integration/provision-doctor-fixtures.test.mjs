@@ -26,8 +26,14 @@ test("provisions exactly the contract's seven paths, nothing more and nothing fe
 
   const provisioned = await provisionDoctorFixtures(root);
 
+  // provisionDoctorFixtures canonicalizes its controlRoot argument (a
+  // security fix: every write is validated against the real, resolved
+  // directory before use) — on macOS, mkdtemp's own /var/... result and its
+  // real /private/var/... target differ textually though they name the same
+  // directory, so the expected paths must canonicalize the same root.
+  const realRoot = await realpath(root);
   const expectedPaths = Object.values(SUBSYSTEM_OBSERVATION_PATHS)
-    .map((relativePath) => join(root, WORKSPACE_ROOT_DIRNAME, relativePath))
+    .map((relativePath) => join(realRoot, WORKSPACE_ROOT_DIRNAME, relativePath))
     .sort();
   assert.deepEqual([...provisioned].sort(), expectedPaths);
   for (const path of expectedPaths) {

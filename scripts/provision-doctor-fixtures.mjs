@@ -38,7 +38,7 @@
 //   subsystem self-reports this way today.
 
 import { createHash, generateKeyPairSync, sign as signBytes } from "node:crypto";
-import { mkdir, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, realpath, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -60,7 +60,18 @@ function isFilePath(relativePath) {
   return finalSegment.includes(".");
 }
 
-export async function provisionDoctorFixtures(controlRoot) {
+export async function provisionDoctorFixtures(untrustedControlRoot) {
+  // controlRoot ultimately traces back to a CLI argument (this script's own
+  // `invokedDirectly` branch below, or a caller passing one through). Every
+  // write below is joined onto it, so it is canonicalized and validated as a
+  // real, existing directory before any of them run — a symlink, a
+  // non-existent path, or anything else that would let a crafted argument
+  // steer a write somewhere unintended fails closed here, once, rather than
+  // at each individual join.
+  const controlRoot = await realpath(untrustedControlRoot);
+  if (!(await stat(controlRoot)).isDirectory()) {
+    throw new Error(`controlRoot must be an existing directory: ${untrustedControlRoot}`);
+  }
   const metadataRoot = join(controlRoot, WORKSPACE_ROOT_DIRNAME);
   const provisioned = [];
   for (const [subsystem, relativePath] of Object.entries(SUBSYSTEM_OBSERVATION_PATHS)) {
