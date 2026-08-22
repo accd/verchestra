@@ -10,7 +10,8 @@ export type DomainErrorCode =
   | "VES_CLASSIFICATION_INVALID"
   | "VES_ERROR_DEFINITION_INVALID"
   | "VES_ERROR_CODE_UNKNOWN"
-  | "VES_ERROR_DETAILS_INVALID";
+  | "VES_ERROR_DETAILS_INVALID"
+  | "VES_SUBSYSTEM_AVAILABILITY_INVALID";
 
 export class DomainValueError extends Error {
   readonly code: DomainErrorCode;

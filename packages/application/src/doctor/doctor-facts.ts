@@ -17,7 +17,10 @@ export interface DoctorObservation {
   readonly healthy: boolean;
 }
 
-export type DoctorSubsystemProbe = () => DoctorObservation;
+// A probe may observe synchronously or asynchronously (DDL-04, #207 — a live
+// subsystem observation such as opening a database read-only cannot complete
+// synchronously). `collectDoctorFacts` awaits each one in turn.
+export type DoctorSubsystemProbe = () => DoctorObservation | Promise<DoctorObservation>;
 
 export type DoctorProbeSet = Readonly<Record<DoctorCheckId, DoctorSubsystemProbe>>;
 
@@ -37,6 +40,12 @@ export const DOCTOR_REMEDIATION_BY_CHECK: Readonly<Record<DoctorCheckId, DoctorR
   "doctor.sandbox": "enable-sandbox"
 });
 
+// A probe that neither settles nor rejects within this bound is treated as
+// present-but-unhealthy (DDL-04) — the sentinel bracket around fact
+// collection (doctor-composition.ts) must close deterministically, so a
+// diagnostic can never hang on one broken observer.
+export const DOCTOR_PROBE_TIMEOUT_MS = 5_000;
+
 function observeToFact(checkId: DoctorCheckId, observation: DoctorObservation): DoctorCheckFact {
   const capabilityId = DOCTOR_CAPABILITY_IDS[checkId];
   if (observation.present && observation.healthy) return { checkId, status: "pass", capabilityId };
@@ -50,16 +59,44 @@ function observeToFact(checkId: DoctorCheckId, observation: DoctorObservation): 
   };
 }
 
-// Runs each registered read-only probe and returns exactly one fact per check.
-// A probe that throws is recorded as a present-but-unhealthy subsystem (fail)
-// with no error text, so a broken observer degrades to a stable code instead of
-// crashing the diagnostic or leaking a message.
-export function collectDoctorFacts(probes: DoctorProbeSet): DoctorCheckFact[] {
-  return DOCTOR_CHECK_IDS.map((checkId) => {
-    try {
-      return observeToFact(checkId, probes[checkId]());
-    } catch {
-      return observeToFact(checkId, { present: true, healthy: false });
-    }
+function withTimeout(observation: DoctorObservation | Promise<DoctorObservation>): Promise<DoctorObservation> {
+  // A synchronous probe cannot hang, so it needs no timer race — every
+  // synchronous check (currently 5 of 12) skips this entirely.
+  if (!(observation instanceof Promise)) return Promise.resolve(observation);
+  return new Promise((resolveObservation, rejectObservation) => {
+    const timer = setTimeout(() => rejectObservation(new Error("doctor probe timed out")), DOCTOR_PROBE_TIMEOUT_MS);
+    observation.then(
+      (value) => {
+        clearTimeout(timer);
+        resolveObservation(value);
+      },
+      (error: unknown) => {
+        clearTimeout(timer);
+        rejectObservation(error);
+      }
+    );
   });
+}
+
+// Runs each registered read-only probe, in order, and returns exactly one
+// fact per check. Sequential, not concurrent (DDL-05): the doctor composition
+// root brackets this call between two sentinel captures to prove nothing
+// changed during the diagnostic, and a well-defined serial interval is what
+// makes that bracket meaningful — concurrent probes would make a detected
+// mutation unattributable to any one probe's window. A probe that throws,
+// rejects, or exceeds DOCTOR_PROBE_TIMEOUT_MS is recorded as a
+// present-but-unhealthy subsystem (fail) with no error text, so a broken or
+// hanging observer degrades to a stable code instead of crashing or stalling
+// the diagnostic.
+export async function collectDoctorFacts(probes: DoctorProbeSet): Promise<DoctorCheckFact[]> {
+  const facts: DoctorCheckFact[] = [];
+  for (const checkId of DOCTOR_CHECK_IDS) {
+    try {
+      const observation = await withTimeout(probes[checkId]());
+      facts.push(observeToFact(checkId, observation));
+    } catch {
+      facts.push(observeToFact(checkId, { present: true, healthy: false }));
+    }
+  }
+  return facts;
 }

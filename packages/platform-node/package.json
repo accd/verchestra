@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./readonly": "./src/readonly.ts"
   },
   "dependencies": {
     "@verchestra/application": "workspace:0.0.0",

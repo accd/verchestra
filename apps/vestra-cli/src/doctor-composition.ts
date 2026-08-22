@@ -5,7 +5,7 @@
 // opens a writer, or calls a provider — every probe reports presence and health
 // as booleans only.
 import { spawnSync } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, createPublicKey, verify as verifyBytes } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -23,19 +23,29 @@ import {
   type SentinelFact
 } from "@verchestra/application";
 import { SchemaRegistry } from "@verchestra/contracts";
+import {
+  type AvailabilitySubsystem,
+  SUBSYSTEM_OBSERVATION_PATHS,
+  WORKSPACE_ROOT_DIRNAME,
+  parseSubsystemAvailability
+} from "@verchestra/domain";
 import { ArtifactSealer, NodeEd25519Signer, type SealedArtifact } from "@verchestra/evidence";
+import { ProtectedPathBroker, inspectRuntimeDatabase } from "@verchestra/platform-node/readonly";
+import { type PolicyBundleCrypto, verifyPolicyBundle } from "@verchestra/policy/readonly";
 
 import { resolveReleaseIdentity } from "./release-manifest.ts";
 
-// Must name the same directory init actually writes to
-// (WORKSPACE_ROOT_DIRNAME in packages/workspace/src/init/safe-init.ts) — a
-// doctor probe that watches a directory nothing provisions reports blocked
-// forever. Kept as a plain literal rather than importing @verchestra/workspace
-// (which re-exports SafeInitService, a genuine filesystem writer) so this
-// read-only composition root's reachable graph stays read-only by contract;
-// tests/architecture/doctor-workspace-root.test.mjs statically proves the two
-// literals agree without either file importing the other.
-const WORKSPACE_ROOT_DIRNAME = ".verchestra";
+// The workspace root and every subsystem path below it are owned by the
+// domain layout contract (DDL-01/DDL-02, #207), not declared here — a doctor
+// probe that watches a path nothing provisions reports blocked forever, and
+// a second local copy of the root is exactly the drift that produced that
+// bug. Importing @verchestra/domain here is safe for the read-only guard:
+// domain takes no third-party or node: import
+// (tests/architecture/repository-boundaries.test.mjs), so nothing reachable
+// through it can be a writer.
+// tests/architecture/doctor-workspace-root.test.mjs statically proves this
+// file's watched root agrees with the contract without importing it as a
+// runtime value beyond the literal check.
 
 export interface DoctorPorts {
   readonly probes: DoctorProbeSet;
@@ -61,7 +71,7 @@ const DOCTOR_CODE_DIGEST = createHash("sha256")
 export async function runDoctor(ports: DoctorPorts): Promise<DoctorRunResult> {
   const before = ports.captureSentinels();
   const start = ports.now();
-  const facts = collectDoctorFacts(ports.probes);
+  const facts = await collectDoctorFacts(ports.probes);
   const after = ports.captureSentinels();
   if (!diffSentinels(before, after).identical)
     throw new DoctorError("VES_DOCTOR_SENTINEL_MUTATION", "a sentinel changed during the read-only diagnostic");
@@ -119,21 +129,175 @@ function fileProbe(path: string): DoctorObservation {
   return existsSync(path) ? present(true) : absent;
 }
 
+function subsystemPath(metadataRoot: string, subsystem: keyof typeof SUBSYSTEM_OBSERVATION_PATHS): string {
+  return join(metadataRoot, SUBSYSTEM_OBSERVATION_PATHS[subsystem]);
+}
+
+// A read-only diagnostic that is not operating within any real bound
+// workspace still needs an identity shape ProtectedPathBroker.create accepts
+// (StableId, "workspace_<uuid>"). This literal names no real workspace; it
+// exists only to satisfy that shape for the sandbox probe below.
+const SANDBOX_PROBE_WORKSPACE_ID = "workspace_00000000-0000-4000-8000-000000000000";
+
+// The narrow shape sandboxProbe needs from a broker, so the mapping logic
+// below is independently testable against a fixture double — the real
+// ProtectedPathBroker (imported from the platform-node read-only subpath,
+// DDL-12) is structurally compatible without being named in this type.
+interface EscapeCheckBroker {
+  openExisting(request: {
+    readonly workspaceId: string;
+    readonly rootId: string;
+    readonly logicalPath: string;
+  }): Promise<unknown>;
+}
+
+// DDL-06 (#207): the pure pass/fail mapping. scripts/provision-doctor-fixtures.mjs
+// plants a directory symlink/junction ("escape") inside the sandbox root
+// pointing at its own parent, so this path genuinely resolves outside the
+// granted root on a provisioned machine — LogicalPath.parse already rejects
+// any naive "../" logical path, so a symlink escape is the only way the
+// broker's out-of-root refusal is ever reachable at all. Refusal
+// (VES_PATH_OUTSIDE_ROOT) is the pass signal; the broker permitting the open
+// — or erroring for any other reason — means the sandbox failed to contain
+// it, so it fails rather than silently passing.
+export async function evaluateSandboxEscape(broker: EscapeCheckBroker): Promise<DoctorObservation> {
+  try {
+    await broker.openExisting({
+      workspaceId: SANDBOX_PROBE_WORKSPACE_ID,
+      rootId: "sandbox",
+      logicalPath: "escape/runtime.db"
+    });
+    return present(false);
+  } catch (error) {
+    return present((error as { readonly code?: unknown }).code === "VES_PATH_OUTSIDE_ROOT");
+  }
+}
+
+async function sandboxProbe(metadataRoot: string): Promise<DoctorObservation> {
+  try {
+    const broker = await ProtectedPathBroker.create({
+      workspaceId: SANDBOX_PROBE_WORKSPACE_ID,
+      roots: [{ rootId: "sandbox", path: subsystemPath(metadataRoot, "sandbox") }]
+    });
+    return await evaluateSandboxEscape(broker);
+  } catch {
+    return absent;
+  }
+}
+
+// DDL-08 (#207): a live read-only integrity check, not a file-presence check.
+// Absence is genuinely absence (blocked, checked before this runs). A present
+// file that fails PRAGMA integrity_check, is corrupt, or errors for any other
+// reason (a held lock included, though a WAL-mode read-only open is not
+// actually blocked by one — verified empirically while building this task)
+// degrades to fail through the same catch, never a crash. Split from the
+// wrapper below so a test can inject an arbitrary failure without needing a
+// real corrupt file or a real concurrent-access scenario for every class of
+// error this must degrade.
+export async function evaluateRuntimeDatabase(inspect: () => Promise<unknown>): Promise<DoctorObservation> {
+  try {
+    await inspect();
+    return present(true);
+  } catch {
+    return present(false);
+  }
+}
+
+async function sqliteDurableStateProbe(metadataRoot: string): Promise<DoctorObservation> {
+  const dbPath = subsystemPath(metadataRoot, "sqlite-durable-state");
+  if (!existsSync(dbPath)) return absent;
+  return evaluateRuntimeDatabase(() => inspectRuntimeDatabase(dbPath));
+}
+
+// DDL-07 (#207): a read-only Ed25519 verifier matching the encoding this
+// product already uses elsewhere (packages/evidence/src/integrity/artifact-sealer.ts:
+// spki-der public key, base64url signature) — applying an existing product
+// convention, not inventing a new one. No production signer for a policy
+// bundle exists yet anywhere in the repository; this is deliberately
+// verify-only. `sign` throws unconditionally rather than being omitted,
+// because PolicyBundleCrypto requires it structurally even though
+// verifyPolicyBundle itself never calls it — a throwing stub proves the
+// capability is genuinely absent from what this file can do, not merely
+// unused by one call path today.
+function cedarPolicyReadOnlyCrypto(): PolicyBundleCrypto {
+  return {
+    sha256: (value: string) => createHash("sha256").update(value).digest("hex"),
+    sign: () => {
+      throw new Error("read-only diagnostic: policy bundle signing is not available here");
+    },
+    verify: (digestValue: string, signature: string, publicKeyRef: string) => {
+      try {
+        const publicKey = createPublicKey({ key: Buffer.from(publicKeyRef, "base64url"), type: "spki", format: "der" });
+        return verifyBytes(null, Buffer.from(digestValue), publicKey, Buffer.from(signature, "base64url"));
+      } catch {
+        return false;
+      }
+    }
+  };
+}
+
+// The bundle's own bundleDigest is recomputed and checked as part of
+// verification (policy-bundle.ts's own "recompute everything from the
+// sources" design); this probe never returns or logs that value — DDL-11
+// forbids the sealed report from carrying anything but the two booleans, so
+// a caught error here discards its message the same way every other probe
+// in this file does. Absent -> blocked; present but the bundle fails to
+// parse (edge case: truncated or zero-length) or fails verification (edge
+// case: tampered) both degrade to fail through the same catch, never a
+// crash out of runDoctor.
+async function cedarPolicyProbe(metadataRoot: string): Promise<DoctorObservation> {
+  const bundlePath = subsystemPath(metadataRoot, "cedar-policy");
+  if (!existsSync(bundlePath)) return absent;
+  try {
+    const parsed: unknown = JSON.parse(readFileSync(bundlePath, "utf8"));
+    verifyPolicyBundle(parsed, cedarPolicyReadOnlyCrypto());
+    return present(true);
+  } catch {
+    return present(false);
+  }
+}
+
+// DDL-10 (#207): availability from a read-only record, never an adapter
+// construction — tests/architecture/doctor-readonly-graph.test.mjs forbids
+// this file's transitive closure from reaching the driver, connector, or
+// database-probe packages by name, precisely the three a real adapter would
+// need. "Available" means the record exists,
+// parses, and declares the matching subsystem — never that it is reachable.
+//
+// A well-formed record whose `available` field is false is treated the same
+// as an absent record (blocked): the record's own claim is "not installed
+// here," which is the same "cannot run until provisioned" outcome
+// observeToFact already gives an absent subsystem, not a broken one. A
+// record present but malformed, or one declaring a different subsystem than
+// the one being checked (edge case: a build/directory mismatch), degrades
+// to fail — something was published, and it is wrong.
+async function availabilityProbe(metadataRoot: string, subsystem: AvailabilitySubsystem): Promise<DoctorObservation> {
+  const recordPath = join(subsystemPath(metadataRoot, subsystem), "availability.json");
+  if (!existsSync(recordPath)) return absent;
+  try {
+    const record = parseSubsystemAvailability(JSON.parse(readFileSync(recordPath, "utf8")));
+    if (record.subsystem !== subsystem) return present(false);
+    return record.available ? present(true) : absent;
+  } catch {
+    return present(false);
+  }
+}
+
 function buildRealProbes(controlRoot: string, registry: SchemaRegistry | null, now: () => number): DoctorProbeSet {
   const metadataRoot = join(controlRoot, WORKSPACE_ROOT_DIRNAME);
   return Object.freeze({
     "doctor.installation": installationProbe,
     "doctor.contract-schema": () => schemaProbe(registry),
-    "doctor.cedar-policy": () => fileProbe(join(metadataRoot, "policy", "active.bundle")),
-    "doctor.sqlite-durable-state": () => fileProbe(join(metadataRoot, "runtime.db")),
+    "doctor.cedar-policy": () => cedarPolicyProbe(metadataRoot),
+    "doctor.sqlite-durable-state": () => sqliteDurableStateProbe(metadataRoot),
     "doctor.native-asset": nativeAssetProbe,
     "doctor.git": gitProbe,
-    "doctor.secret-presence": () => fileProbe(join(metadataRoot, "secrets")),
+    "doctor.secret-presence": () => fileProbe(subsystemPath(metadataRoot, "secret-presence")),
     "doctor.clock": () => clockProbe(now),
-    "doctor.driver": () => fileProbe(join(metadataRoot, "drivers")),
-    "doctor.connector": () => fileProbe(join(metadataRoot, "connectors")),
-    "doctor.probe": () => fileProbe(join(metadataRoot, "probe", "fixtures")),
-    "doctor.sandbox": () => fileProbe(join(metadataRoot, "sandbox"))
+    "doctor.driver": () => availabilityProbe(metadataRoot, "driver"),
+    "doctor.connector": () => availabilityProbe(metadataRoot, "connector"),
+    "doctor.probe": () => availabilityProbe(metadataRoot, "probe"),
+    "doctor.sandbox": () => sandboxProbe(metadataRoot)
   });
 }
 

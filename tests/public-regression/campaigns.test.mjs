@@ -29,8 +29,8 @@ test("the corpus digest is stable and change-sensitive", () => {
 });
 
 for (const campaign of CAMPAIGNS) {
-  test(`campaign ${campaign.def.id} clears its threshold`, () => {
-    const result = runCampaign(campaign);
+  test(`campaign ${campaign.def.id} clears its threshold`, async () => {
+    const result = await runCampaign(campaign);
     assert.equal(
       result.verdict,
       "PASS",
@@ -39,8 +39,9 @@ for (const campaign of CAMPAIGNS) {
   });
 }
 
-test("the corpus summary is PASS with every campaign accounted for", () => {
-  const summary = buildCampaignSummary(CAMPAIGNS.map(runCampaign), corpusDigest(), CAMPAIGN_DEFINITIONS);
+test("the corpus summary is PASS with every campaign accounted for", async () => {
+  const results = await Promise.all(CAMPAIGNS.map(runCampaign));
+  const summary = buildCampaignSummary(results, corpusDigest(), CAMPAIGN_DEFINITIONS);
   assert.equal(summary.verdict, "PASS");
   assert.equal(summary.campaignCount, CAMPAIGN_DEFINITIONS.length);
 });

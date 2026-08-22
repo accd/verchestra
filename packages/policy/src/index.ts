@@ -2,6 +2,7 @@ export const packageName = "@verchestra/policy" as const;
 export {
   CedarPolicyAdapter,
   POLICY_LAYERS,
+  policyViewDigest,
   type CedarEnginePort,
   type CedarRequest,
   type PolicyDecision,

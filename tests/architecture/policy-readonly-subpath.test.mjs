@@ -1,0 +1,46 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { test } from "node:test";
+
+// DDL-12 (#207): @verchestra/policy/readonly is the narrow entry point a live
+// doctor probe (T14) is allowed to import — the package root re-exports
+// CedarPolicyAdapter (which constructs a compiling engine) and
+// buildPolicyBundle (a signing/writing operation). Proven statically: the
+// subpath's own export list names only the two approved symbols, using named
+// re-exports (never a wildcard, which could silently admit a future writer
+// added to either source file).
+
+const source = readFileSync(new URL("../../packages/policy/src/readonly.ts", import.meta.url), "utf8");
+
+const FORBIDDEN_SYMBOLS = Object.freeze(["CedarPolicyAdapter", "buildPolicyBundle"]);
+
+test("the readonly subpath exports no wildcard re-export", () => {
+  assert.doesNotMatch(source, /export\s*\*/u, "readonly.ts must name every export explicitly, never a wildcard");
+});
+
+test("the readonly subpath's export surface is exactly the approved read-only symbols", () => {
+  const exported = [...source.matchAll(/export\s*\{\s*([^}]+)\s*\}/gu)]
+    .flatMap((match) => match[1].split(","))
+    .map(
+      (entry) =>
+        entry
+          .trim()
+          .replace(/^type\s+/u, "")
+          .split(/\s+as\s+/u)[0]
+    )
+    .filter((entry) => entry.length > 0);
+  assert.deepEqual(
+    [...exported].sort(),
+    ["PolicyBundle", "PolicyBundleCrypto", "PolicyView", "policyViewDigest", "verifyPolicyBundle"].sort()
+  );
+});
+
+test("the readonly subpath names no writer or engine-constructing adapter", () => {
+  for (const forbidden of FORBIDDEN_SYMBOLS)
+    assert.doesNotMatch(source, new RegExp(`\\b${forbidden}\\b`, "u"), `readonly.ts must not reach ${forbidden}`);
+});
+
+test("the package declares the ./readonly export subpath", () => {
+  const manifest = JSON.parse(readFileSync(new URL("../../packages/policy/package.json", import.meta.url), "utf8"));
+  assert.equal(manifest.exports["./readonly"], "./src/readonly.ts");
+});
