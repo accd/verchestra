@@ -10,9 +10,11 @@ export {
 export {
   DSSE_PAYLOAD_TYPE,
   IN_TOTO_STATEMENT_TYPE,
+  buildStatement,
   isKnownPredicateType,
   preAuthenticationEncoding,
-  predicateTypeFor
+  predicateTypeFor,
+  statementBytes
 } from "./integrity/dsse.ts";
 export { IntegrityError, canonicalizeJson, sha256Digest, type IntegrityErrorCode } from "./integrity/canonical.ts";
 export { NodeEd25519Signer, type SignerOptions } from "./integrity/signer.ts";

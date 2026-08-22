@@ -29,7 +29,8 @@ const PREDICATE_TYPES = Object.freeze({
   "doctor-report": `${PREDICATE_BASE}/doctor-report/v1`,
   "promotion-report": `${PREDICATE_BASE}/promotion-report/v1`,
   "self-test-report": `${PREDICATE_BASE}/self-test-report/v1`,
-  "approval-grant": `${PREDICATE_BASE}/approval-grant/v1`
+  "approval-grant": `${PREDICATE_BASE}/approval-grant/v1`,
+  "qualification-evidence-index": `${PREDICATE_BASE}/qualification-evidence-index/v1`
 } as const);
 
 export type PredicateSchemaName = keyof typeof PREDICATE_TYPES;
