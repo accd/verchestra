@@ -151,6 +151,23 @@
   especially #58, #207, #294, #16, #17, #36, #18, #234, #235, and #236.
 - **Date:** 2026-08-22
 
+### AD-020 — T75 qualification evidence uses owner-custodied DSSE signing (#294)
+
+- **Status:** active
+- **Decision:** The T75 qualification evidence index is attested as a DSSE
+  envelope carrying an in-toto `qualification-evidence-index` predicate. The
+  signing key is an Ed25519 PKCS#8 value supplied only through a protected
+  GitHub Actions secret. A committed public `PublicKeyRef` is the trust anchor;
+  the workflow derives the public key from the secret and refuses signing unless
+  every identity field matches the reviewed reference.
+- **Rationale:** Qualification evidence needs a durable, independently
+  verifiable release identity, while the private key must stay outside source,
+  logs, artifacts, and contributor machines.
+- **Consequences:** No generated test key is trusted for T75. Missing secret or
+  public reference is a failed signing configuration, never an unsigned pass.
+  The owner provisions the secret and public reference; automation implements
+  and verifies the fail-closed path but does not create key material.
+
 ## Handoff
 
 - **Feature:** `milestone-2-completion` P0 on
