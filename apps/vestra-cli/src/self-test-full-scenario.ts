@@ -4,6 +4,8 @@ import { join } from "node:path";
 
 import {
   ApprovalService,
+  assertNoToolRequests,
+  assertReadOnlyGrant,
   assertFullWorkflowFacts,
   fullWorkflowChecks,
   IndependentVerificationCoordinator,
@@ -27,7 +29,13 @@ import {
   type ContextRecipe,
   type PassportRecord
 } from "@verchestra/agent-runtime";
-import { ClaudeCodeDriver, CodexDriver } from "@verchestra/drivers";
+import {
+  ClaudeCodeDriver,
+  CodexDriver,
+  type Driver,
+  type DriverEvent,
+  type DriverStartRequest
+} from "@verchestra/drivers";
 import { FixedClock, IsoInstant, WorkflowMachine } from "@verchestra/domain";
 import { EffectBroker, MockEffectAdapter, buildIdempotencyKey } from "@verchestra/effects";
 import {
@@ -129,6 +137,85 @@ export async function resolveDriverBinding(
   return deriveDriverBinding(
     probes.map((probe) => ({ driverId: probe.driverId, available: probe.available === true }))
   );
+}
+
+interface VerifierSessionEvidence {
+  readonly closed: true;
+  readonly driverId: string;
+  readonly grantedToolCount: 0;
+  readonly outcome: "completed";
+  readonly requestedToolCount: 0;
+}
+
+function verifierStartRequest(): DriverStartRequest {
+  return {
+    workspaceId: WORKSPACE_ID,
+    runId: SOURCE_RUN_ID,
+    passportRef: { passportId: "passport_018f0b6d-7b1a-7abc-8def-0123456789ab", revision: 1 },
+    serializedContextRef: { manifestId: digest("verification-context"), target: "verifier" },
+    tools: []
+  };
+}
+
+function verifierDriver(driverId: string, request: DriverStartRequest): Driver {
+  if (driverId === "claude-code") {
+    return new ClaudeCodeDriver({
+      command: [...DEFAULT_DRIVER_COMMANDS.claude],
+      minimumVersion: "2.1.168",
+      resolveExecution: async () => ({
+        passport: {
+          passportId: request.passportRef.passportId,
+          revision: request.passportRef.revision,
+          provider: "anthropic",
+          resolvedModel: "claude-opus-4-8"
+        },
+        prompt: "Read the deterministic verification context.",
+        model: "claude-opus-4-8",
+        environment: { VERCHESTRA_SELF_TEST_FAKE: "claude" },
+        sensitiveValues: []
+      })
+    });
+  }
+  if (driverId === "codex") {
+    return new CodexDriver({
+      command: [...DEFAULT_DRIVER_COMMANDS.codex],
+      minimumVersion: "0.115.0",
+      resolveExecution: async () => ({
+        passport: {
+          passportId: request.passportRef.passportId,
+          revision: request.passportRef.revision,
+          provider: "openai",
+          resolvedModel: "gpt-5.5-codex"
+        },
+        prompt: "Read the deterministic verification context.",
+        model: "gpt-5.5-codex",
+        tools: [],
+        environment: { VERCHESTRA_SELF_TEST_FAKE: "codex" },
+        sensitiveValues: [],
+        cancelGraceMs: 50
+      })
+    });
+  }
+  throw new Error(`Self-Test has no composed verifier driver for ${driverId}`);
+}
+
+async function runVerifierDriverSession(binding: SelfTestDriverBinding): Promise<VerifierSessionEvidence> {
+  const request = verifierStartRequest();
+  assertReadOnlyGrant(request.tools);
+  const events: DriverEvent[] = [];
+  const driver = verifierDriver(binding.verifierDriverId, request);
+  const session = await driver.start(request, (event) => events.push(event), new AbortController().signal);
+  const closed = await driver.close(session);
+  assertNoToolRequests(events);
+  if (closed["closed"] !== true || closed["outcome"] !== "completed")
+    throw new Error("Self-Test verifier driver did not complete its isolated session");
+  return Object.freeze({
+    closed: true,
+    driverId: binding.verifierDriverId,
+    grantedToolCount: 0,
+    outcome: "completed",
+    requestedToolCount: 0
+  });
 }
 type ShaDigest = `sha256:${string}`;
 const digest = (value: string): ShaDigest => `sha256:${sha256Digest(value)}`;
@@ -671,6 +758,8 @@ function verificationPorts(hooks: FullScenarioBoundaryHooks, records: FileRecord
 
 async function verifyIndependently(hooks: FullScenarioBoundaryHooks, records: FileRecordStore) {
   const driverBinding = await resolveDriverBinding();
+  const verifierSession = await runVerifierDriverSession(driverBinding);
+  await records.save("verification:driver-session", verifierSession);
   return new IndependentVerificationCoordinator(verificationPorts(hooks, records)).verify({
     schemaVersion: 2,
     workspaceId: WORKSPACE_ID,
