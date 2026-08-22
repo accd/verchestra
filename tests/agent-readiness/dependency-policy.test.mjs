@@ -10,15 +10,15 @@ function read(path) {
 
 test("keeps the qualified Pi runtime on one exact package version", () => {
   const manifest = JSON.parse(read("package.json"));
-  assert.equal(manifest.devDependencies["@earendil-works/pi-agent-core"], "0.82.1");
-  assert.equal(manifest.devDependencies["@earendil-works/pi-ai"], "0.82.1");
+  assert.equal(manifest.devDependencies["@earendil-works/pi-agent-core"], "0.84.1");
+  assert.equal(manifest.devDependencies["@earendil-works/pi-ai"], "0.84.1");
 
   const packageVersions = new Set(
     [...read("pnpm-lock.yaml").matchAll(/^\s{2}'(@earendil-works\/pi-(?:agent-core|ai))@(\d+\.\d+\.\d+)/gmu)].map(
       (match) => `${match[1]}@${match[2]}`
     )
   );
-  assert.deepEqual([...packageVersions], ["@earendil-works/pi-agent-core@0.82.1", "@earendil-works/pi-ai@0.82.1"]);
+  assert.deepEqual([...packageVersions], ["@earendil-works/pi-agent-core@0.84.1", "@earendil-works/pi-ai@0.84.1"]);
 });
 
 test("keeps the qualified OpenCode driver on one exact package version", () => {

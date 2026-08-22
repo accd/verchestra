@@ -28,8 +28,8 @@ function textTool(execute) {
 
 test("pins the current Earendil Pi packages", () => {
   const pkg = JSON.parse(fs.readFileSync(new URL("../../../package.json", import.meta.url), "utf8"));
-  assert.equal(pkg.devDependencies["@earendil-works/pi-agent-core"], "0.82.1");
-  assert.equal(pkg.devDependencies["@earendil-works/pi-ai"], "0.82.1");
+  assert.equal(pkg.devDependencies["@earendil-works/pi-agent-core"], "0.84.1");
+  assert.equal(pkg.devDependencies["@earendil-works/pi-ai"], "0.84.1");
 });
 
 test("does not retain deprecated Mario Zechner package names", () => {
