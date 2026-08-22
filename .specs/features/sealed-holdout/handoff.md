@@ -3,13 +3,34 @@ schema: verchestra-feature-handoff/v1
 feature: sealed-holdout
 issue: 15
 status: in_progress
-branch: codex/t74-reverification
+branch: codex/issue-15-t74-f3
 baseRevision: 36fb77fbc20c9d5cd2810196bf2007968eb7e087
-lastCompletedTask: T5
-nextTask: "Implementation author remediates repeat-verification F3: move results out of CandidateFacts, establish evaluator-owned provenance, validate the exact result set, and recompute aggregates; then MiguelCorre re-verifies."
-lastGate: "Repeat verification FAIL at 36fb77f: 94/94 focused and 8/8 sensors pass; gate:quick PASS; gate:security incomplete on unrelated Windows EBUSY cleanup; F3 promotes five invalid candidate-controlled evidence sets."
-updatedAt: 2026-08-17T16:44:53Z
+lastCompletedTask: T7
+nextTask: "MiguelCorre independently re-verifies F3 on the exact implementation head; only then may the T74 qualification report and chain advance be considered."
+lastGate: "F3 implementation branch: 80/80 focused promotion tests pass; gate:quick PASS; gate:security PASS (2,059 unit, 165 E2E, 1,044 security, 283 fault, plus contract/architecture/qualification stages; zero failed, skipped, or todo)."
+updatedAt: 2026-08-22T01:00:00Z
 ---
+
+# F3 implementation remediation complete; qualification still pending (2026-08-22)
+
+The implementation branch `codex/issue-15-t74-f3` removes campaign results from
+`CandidateFacts` and captures evaluator-owned raw boolean outcomes before the
+candidate receives any surface. The gate rejects duplicate, extra, malformed,
+or non-boolean observations; a short or missing observation blocks with
+`VES_PROMOTION_INSUFFICIENT_REPETITION`; and `evaluateCampaign` recomputes
+samples, passes, pass rate, Wilson lower bound, and verdict. Evidence and the
+sealed source state bind canonical raw observations, not candidate aggregates.
+
+The five F3 attacks (forged metrics, malformed bound, duplicate id, extra
+failure, and live replacement through `candidate.attempt`) are covered by
+behavior-focused unit, security, and E2E cases. The focused set is 80/80 with
+no skips or todos; typecheck, format, lint, and complexity checks pass.
+
+This is implementation evidence only. The existing independent validation
+report remains FAIL by design until MiguelCorre repeats the attack, gate, and
+discrimination sensor on the exact implementation head. Do not create
+`docs/qualification/t74-validation.md`, advance the qualification resolver, or
+close #15 from this author branch.
 
 # Repeat verification failed on F3 (2026-08-17)
 

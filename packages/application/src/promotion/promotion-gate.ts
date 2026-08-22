@@ -3,11 +3,11 @@
 // unit-testable without a filesystem or a signer. The composition root supplies
 // the distinct evaluator identity and the sha256 hash; nothing here can read a
 // candidate's authority — the candidate reaches the gate only as a digest and a
-// contamination fact.
+// contamination fact; evaluator-owned raw observations are captured separately.
 
 import { canonicalizeJsonV2, normalizeDeclaredSet } from "@verchestra/domain";
 
-import type { CampaignRunResult } from "../regression/campaigns.ts";
+import { evaluateCampaign, type CampaignRunResult } from "../regression/campaigns.ts";
 
 export type PromotionErrorCode =
   "VES_PROMOTION_INPUT_INVALID" | "VES_PROMOTION_REPORT_INVALID" | "VES_PROMOTION_REPORT_TAMPERED";
@@ -52,6 +52,21 @@ export interface HoldoutEntry {
 export interface HoldoutOracle {
   readonly policyId: string;
   readonly entries: readonly HoldoutEntry[];
+}
+
+/**
+ * Raw outcomes captured by the evaluator. Aggregates are deliberately absent:
+ * the promotion gate derives them from these booleans and never admits a
+ * candidate-supplied CampaignRunResult.
+ */
+export interface PromotionObservation {
+  readonly campaignId: string;
+  readonly outcomes: readonly boolean[];
+}
+
+/** The evaluator-owned surface used to capture a sealed campaign run. */
+export interface PromotionObservationPort {
+  observe(campaignId: string): readonly boolean[];
 }
 
 export type Sha256Hex = (input: string) => string;
@@ -119,6 +134,36 @@ export function canonicalizeCampaignEvidence(results: readonly CampaignRunResult
       verdict: result.verdict
     }))
   });
+}
+
+/** Canonical bytes for the raw evidence actually observed by the evaluator. */
+export function canonicalizePromotionObservations(observations: readonly PromotionObservation[]): string {
+  return canonicalizeJsonV2({
+    observations: normalizeDeclaredSet(observations, (observation) => observation.campaignId).map((observation) => ({
+      campaignId: observation.campaignId,
+      outcomes: [...observation.outcomes]
+    }))
+  });
+}
+
+/** Snapshot the evaluator port before the candidate receives any surface. */
+export function collectPromotionObservations(
+  oracle: HoldoutOracle,
+  port: PromotionObservationPort
+): readonly PromotionObservation[] {
+  assertOracle(oracle);
+  if (port === null || typeof port !== "object" || typeof port.observe !== "function")
+    fail("VES_PROMOTION_INPUT_INVALID", "evaluator observation port is invalid");
+  return Object.freeze(
+    oracle.entries.map((entry) => {
+      const outcomes = port.observe(entry.campaignId);
+      if (!Array.isArray(outcomes))
+        fail("VES_PROMOTION_INPUT_INVALID", `evaluator observation for ${entry.campaignId} is not a list`);
+      if (outcomes.some((outcome) => typeof outcome !== "boolean"))
+        fail("VES_PROMOTION_INPUT_INVALID", `evaluator observation for ${entry.campaignId} is not boolean`);
+      return Object.freeze({ campaignId: entry.campaignId, outcomes: Object.freeze([...outcomes]) });
+    })
+  );
 }
 
 // PROM-09 / AD-018 (T74 finding F1). The candidate used to be an inert record
@@ -225,7 +270,7 @@ export interface PromotionInput {
   readonly evaluatorKeyId: string;
   readonly candidateKeyId: string;
   readonly contaminated: boolean;
-  readonly results: readonly CampaignRunResult[];
+  readonly observations: readonly PromotionObservation[];
 }
 
 export interface PromotionDecision {
@@ -234,13 +279,78 @@ export interface PromotionDecision {
 }
 
 function assertInput(input: PromotionInput): void {
+  if (input === null || typeof input !== "object") fail("VES_PROMOTION_INPUT_INVALID", "promotion input is malformed");
   assertOracle(input.oracle);
   for (const digest of [input.sealedHoldoutDigest, input.candidateDigestAtSeal, input.candidateDigestNow])
     if (!DIGEST.test(digest)) fail("VES_PROMOTION_INPUT_INVALID", "a bound digest is not a sha256 value");
   if (!ID.test(input.evaluatorKeyId) || !ID.test(input.candidateKeyId))
     fail("VES_PROMOTION_INPUT_INVALID", "an identity key id is invalid");
-  if (typeof input.contaminated !== "boolean" || !Array.isArray(input.results))
-    fail("VES_PROMOTION_INPUT_INVALID", "contamination fact or results are invalid");
+  if (typeof input.contaminated !== "boolean" || !Array.isArray(input.observations))
+    fail("VES_PROMOTION_INPUT_INVALID", "contamination fact or observations are invalid");
+}
+
+function assertObservationFields(observation: PromotionObservation): void {
+  if (observation === null || typeof observation !== "object")
+    fail("VES_PROMOTION_INPUT_INVALID", "promotion observation is malformed");
+  for (const field of Object.keys(observation))
+    if (field !== "campaignId" && field !== "outcomes")
+      fail("VES_PROMOTION_INPUT_INVALID", `promotion observation field ${field} is not allowed`);
+  if (!ID.test(observation.campaignId))
+    fail("VES_PROMOTION_INPUT_INVALID", "promotion observation campaign id is invalid");
+}
+
+function assertObservationOutcomes(observation: PromotionObservation): void {
+  if (!Array.isArray(observation.outcomes))
+    fail("VES_PROMOTION_INPUT_INVALID", `promotion observation ${observation.campaignId} is not a list`);
+  if (observation.outcomes.some((outcome) => typeof outcome !== "boolean"))
+    fail("VES_PROMOTION_INPUT_INVALID", `promotion observation ${observation.campaignId} is not boolean`);
+}
+
+function assertObservation(
+  observation: PromotionObservation,
+  expected: ReadonlyMap<string, HoldoutEntry>,
+  seen: Set<string>
+): HoldoutEntry {
+  assertObservationFields(observation);
+  assertObservationOutcomes(observation);
+  if (seen.has(observation.campaignId))
+    fail("VES_PROMOTION_INPUT_INVALID", `duplicate promotion observation ${observation.campaignId}`);
+  seen.add(observation.campaignId);
+  const entry = expected.get(observation.campaignId);
+  if (entry === undefined)
+    fail("VES_PROMOTION_INPUT_INVALID", `promotion observation ${observation.campaignId} is not sealed`);
+  return entry;
+}
+
+function deriveObservationResult(
+  observation: PromotionObservation,
+  entry: HoldoutEntry
+): CampaignRunResult | undefined {
+  if (observation.outcomes.length < entry.repetitionCount) return undefined;
+  return evaluateCampaign(
+    {
+      id: entry.campaignId,
+      requirement: "PROM-07",
+      owner: "holdout-evaluator",
+      threshold: entry.threshold,
+      fixtureRef: "holdout",
+      evidenceRef: "holdout",
+      sampleSize: entry.repetitionCount
+    },
+    observation.outcomes
+  );
+}
+
+function observedResults(input: PromotionInput): readonly CampaignRunResult[] {
+  const expected = new Map(input.oracle.entries.map((entry) => [entry.campaignId, entry]));
+  const seen = new Set<string>();
+  const results: CampaignRunResult[] = [];
+  for (const observation of input.observations) {
+    const entry = assertObservation(observation, expected, seen);
+    const result = deriveObservationResult(observation, entry);
+    if (result !== undefined) results.push(result);
+  }
+  return Object.freeze(results);
 }
 
 function integrityBlocks(input: PromotionInput, hash: Sha256Hex): PromotionBlockCode[] {
@@ -253,9 +363,9 @@ function integrityBlocks(input: PromotionInput, hash: Sha256Hex): PromotionBlock
   return blocks;
 }
 
-function campaignBlocks(input: PromotionInput): PromotionBlockCode[] {
+function campaignBlocks(input: PromotionInput, results: readonly CampaignRunResult[]): PromotionBlockCode[] {
   const blocks: PromotionBlockCode[] = [];
-  const byId = new Map(input.results.map((result) => [result.id, result]));
+  const byId = new Map(results.map((result) => [result.id, result]));
   for (const entry of input.oracle.entries) {
     const result = byId.get(entry.campaignId);
     if (result === undefined || result.samples < entry.repetitionCount)
@@ -271,8 +381,9 @@ function campaignBlocks(input: PromotionInput): PromotionBlockCode[] {
 // normalized to code-unit order (CJ4-03) rather than sorted by ambient locale.
 export function evaluatePromotion(input: PromotionInput, hash: Sha256Hex): PromotionDecision {
   assertInput(input);
+  const results = observedResults(input);
   const blocks = normalizeDeclaredSet(
-    [...new Set([...integrityBlocks(input, hash), ...campaignBlocks(input)])],
+    [...new Set([...integrityBlocks(input, hash), ...campaignBlocks(input, results)])],
     (code) => code
   );
   return Object.freeze({ verdict: blocks.length === 0 ? "PROMOTED" : "BLOCKED", blocks: Object.freeze(blocks) });
@@ -320,13 +431,15 @@ export function buildPromotionReport(
   decision: PromotionDecision,
   hash: Sha256Hex
 ): PromotionReportPayload {
+  assertInput(input);
+  observedResults(input);
   const body = {
     verdict: decision.verdict,
     candidateDigest: input.candidateDigestNow,
     holdoutDigest: input.sealedHoldoutDigest,
     policyId: input.oracle.policyId,
     evaluatorKeyId: input.evaluatorKeyId,
-    evidenceDigest: `sha256:${hash(canonicalizeCampaignEvidence(input.results))}`,
+    evidenceDigest: `sha256:${hash(canonicalizePromotionObservations(input.observations))}`,
     blocks: [...decision.blocks]
   };
   const payload = Object.freeze({ ...body, bodyDigest: `sha256:${hash(canonicalBody(body))}` });

@@ -22,63 +22,81 @@ function oracle() {
     ]
   };
 }
-function result(id, overrides = {}) {
-  return { id, samples: 100, passes: 100, passRate: 1, lowerConfidenceBound: 1, verdict: "PASS", ...overrides };
-}
 function candidate(overrides = {}) {
   return {
     candidateDigestAtSeal: digest("c"),
     candidateDigestNow: digest("c"),
     candidateKeyId: "candidate-driver",
     contaminated: false,
-    results: [result("camp-a"), result("camp-b")],
     ...overrides
   };
 }
+function observationPort(overrides = {}) {
+  const outcomes = {
+    "camp-a": Array(100).fill(true),
+    "camp-b": Array(100).fill(true),
+    ...overrides
+  };
+  return { observe: (campaignId) => outcomes[campaignId] ?? [] };
+}
+const promote = (candidateOverrides = {}, observationOverrides = {}) =>
+  runPromotion(oracle(), candidate(candidateOverrides), observationPort(observationOverrides));
 
 test("a clean candidate is PROMOTED and its report verifies untampered", async () => {
-  const outcome = await runPromotion(oracle(), candidate());
+  const outcome = await promote();
   assert.equal(outcome.decision.verdict, "PROMOTED");
   assert.ok(outcome.artifact, "a signed promotion artifact was produced");
   assert.doesNotThrow(() => assertReportUntampered(outcome.report, sha));
 });
 
 test("the promotion is signed by an evaluator identity distinct from the candidate", async () => {
-  const outcome = await runPromotion(oracle(), candidate());
+  const outcome = await promote();
   assert.equal(outcome.report.evaluatorKeyId, EVALUATOR_KEY_ID);
   assert.notEqual(outcome.report.evaluatorKeyId, "candidate-driver");
 });
 
 test("a candidate reusing the evaluator identity is blocked", async () => {
-  const outcome = await runPromotion(oracle(), candidate({ candidateKeyId: EVALUATOR_KEY_ID }));
+  const outcome = await promote({ candidateKeyId: EVALUATOR_KEY_ID });
   assert.equal(outcome.decision.verdict, "BLOCKED");
   assert.ok(outcome.decision.blocks.includes("VES_PROMOTION_SHARED_IDENTITY"));
 });
 
 test("a contamination fact blocks promotion even with all-pass results", async () => {
-  const outcome = await runPromotion(oracle(), candidate({ contaminated: true }));
+  const outcome = await promote({ contaminated: true });
   assert.deepEqual([...outcome.decision.blocks], ["VES_PROMOTION_CONTAMINATED"]);
 });
 
 test("a mutated candidate digest blocks promotion", async () => {
-  const outcome = await runPromotion(oracle(), candidate({ candidateDigestNow: digest("d") }));
+  const outcome = await promote({ candidateDigestNow: digest("d") });
   assert.ok(outcome.decision.blocks.includes("VES_PROMOTION_CANDIDATE_MUTATED"));
 });
 
 test("insufficient repetition blocks promotion", async () => {
-  const outcome = await runPromotion(
-    oracle(),
-    candidate({ results: [result("camp-a"), result("camp-b", { samples: 5 })] })
-  );
+  const outcome = await promote({}, { "camp-b": Array(5).fill(true) });
   assert.ok(outcome.decision.blocks.includes("VES_PROMOTION_INSUFFICIENT_REPETITION"));
 });
 
 test("a campaign below its sealed threshold blocks promotion", async () => {
-  const outcome = await runPromotion(
-    oracle(),
-    candidate({ results: [result("camp-a"), result("camp-b", { lowerConfidenceBound: 0.4 })] })
-  );
+  const outcome = await promote({}, { "camp-b": Array(100).fill(false) });
   assert.ok(outcome.decision.blocks.includes("VES_PROMOTION_CAMPAIGN_FAILED"));
+});
+
+test("candidate-supplied, malformed, duplicate, and live-replaced metrics cannot replace evaluator observations", async () => {
+  const attacked = candidate({
+    results: [
+      { id: "camp-a", samples: 50, passes: 50, passRate: 1, lowerConfidenceBound: "1", verdict: "PASS" },
+      { id: "camp-a", samples: 100, passes: 100, passRate: 1, lowerConfidenceBound: 1, verdict: "PASS" },
+      { id: "camp-extra", samples: 100, passes: 0, passRate: 0, lowerConfidenceBound: 0, verdict: "FAIL" }
+    ]
+  });
+  attacked.attempt = () => {
+    attacked.results = [
+      { id: "camp-b", samples: 100, passes: 100, passRate: 1, lowerConfidenceBound: 1, verdict: "PASS" }
+    ];
+  };
+  const outcome = await runPromotion(oracle(), attacked, observationPort({ "camp-b": Array(100).fill(false) }));
+  assert.equal(outcome.decision.verdict, "BLOCKED");
+  assert.deepEqual([...outcome.decision.blocks], ["VES_PROMOTION_CAMPAIGN_FAILED"]);
 });
 
 test("the holdout seal is deterministic and drift-sensitive", () => {
@@ -89,27 +107,27 @@ test("the holdout seal is deterministic and drift-sensitive", () => {
 });
 
 test("altering the sealed report is detected as tamper", async () => {
-  const outcome = await runPromotion(oracle(), candidate());
+  const outcome = await promote();
   assert.throws(() => assertReportUntampered({ ...outcome.report, candidateDigest: digest("e") }, sha), {
     code: "VES_PROMOTION_REPORT_TAMPERED"
   });
 });
 
 test("neither the report nor the sealed artifact carries an absolute path", async () => {
-  const outcome = await runPromotion(oracle(), candidate({ contaminated: true }));
+  const outcome = await promote({ contaminated: true });
   assert.doesNotMatch(JSON.stringify(outcome.report), NO_PATH);
   assert.doesNotMatch(JSON.stringify(outcome.artifact), NO_PATH);
 });
 
 test("a blocked promotion still seals a report recording the exact block", async () => {
-  const outcome = await runPromotion(oracle(), candidate({ contaminated: true }));
+  const outcome = await promote({ contaminated: true });
   assert.equal(outcome.report.verdict, "BLOCKED");
   assert.deepEqual([...outcome.report.blocks], ["VES_PROMOTION_CONTAMINATED"]);
   assert.ok(outcome.artifact);
 });
 
 test("the report binds the exact candidate and holdout digests", async () => {
-  const outcome = await runPromotion(oracle(), candidate());
+  const outcome = await promote();
   assert.equal(outcome.report.candidateDigest, digest("c"));
   assert.equal(outcome.report.holdoutDigest, sealHoldout(oracle()));
   assert.equal(outcome.report.policyId, "release-policy");

@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { SchemaRegistry } from "../../packages/contracts/src/schema-registry.ts";
-import { runPromotion, sealHoldout, EVALUATOR_KEY_ID } from "../../apps/vestra-cli/src/promotion-composition.ts";
+import { EVALUATOR_KEY_ID, runPromotion, sealHoldout } from "../../apps/vestra-cli/src/promotion-composition.ts";
 
 const registry = await SchemaRegistry.load(new URL("../../schemas/", import.meta.url));
 const digest = (character) => `sha256:${character.repeat(64)}`;
@@ -19,107 +19,101 @@ function oracle() {
     ]
   };
 }
-function result(id, overrides = {}) {
-  return { id, samples: 100, passes: 100, passRate: 1, lowerConfidenceBound: 1, verdict: "PASS", ...overrides };
-}
 function candidate(overrides = {}) {
   return {
     candidateDigestAtSeal: digest("c"),
     candidateDigestNow: digest("c"),
     candidateKeyId: "candidate-driver",
     contaminated: false,
-    results: [result("camp-a"), result("camp-b")],
     ...overrides
   };
 }
+function observationPort(overrides = {}) {
+  const outcomes = {
+    "camp-a": Array(100).fill(true),
+    "camp-b": Array(100).fill(true),
+    ...overrides
+  };
+  return { observe: (campaignId) => outcomes[campaignId] ?? [] };
+}
+const promote = (candidateOverrides = {}, observationOverrides = {}) =>
+  runPromotion(oracle(), candidate(candidateOverrides), observationPort(observationOverrides));
 
 test("a clean candidate is PROMOTED with no blocks", async () => {
-  const outcome = await runPromotion(oracle(), candidate());
+  const outcome = await promote();
   assert.equal(outcome.decision.verdict, "PROMOTED");
   assert.deepEqual([...outcome.decision.blocks], []);
 });
 
-for (const [name, overrides, expected] of [
-  ["contamination", { contaminated: true }, "VES_PROMOTION_CONTAMINATED"],
-  ["candidate mutation", { candidateDigestNow: digest("d") }, "VES_PROMOTION_CANDIDATE_MUTATED"],
-  ["a shared identity", { candidateKeyId: EVALUATOR_KEY_ID }, "VES_PROMOTION_SHARED_IDENTITY"],
-  [
-    "insufficient repetition",
-    { results: [result("camp-a"), result("camp-b", { samples: 2 })] },
-    "VES_PROMOTION_INSUFFICIENT_REPETITION"
-  ],
-  ["a missing campaign", { results: [result("camp-a")] }, "VES_PROMOTION_INSUFFICIENT_REPETITION"],
-  [
-    "a failing campaign",
-    { results: [result("camp-a"), result("camp-b", { lowerConfidenceBound: 0.1 })] },
-    "VES_PROMOTION_CAMPAIGN_FAILED"
-  ]
+for (const [name, candidateOverrides, observationOverrides, expected] of [
+  ["contamination", { contaminated: true }, {}, "VES_PROMOTION_CONTAMINATED"],
+  ["candidate mutation", { candidateDigestNow: digest("d") }, {}, "VES_PROMOTION_CANDIDATE_MUTATED"],
+  ["a shared identity", { candidateKeyId: EVALUATOR_KEY_ID }, {}, "VES_PROMOTION_SHARED_IDENTITY"],
+  ["insufficient repetition", {}, { "camp-b": Array(2).fill(true) }, "VES_PROMOTION_INSUFFICIENT_REPETITION"],
+  ["a missing campaign", {}, { "camp-b": [] }, "VES_PROMOTION_INSUFFICIENT_REPETITION"],
+  ["a failing campaign", {}, { "camp-b": Array(100).fill(false) }, "VES_PROMOTION_CAMPAIGN_FAILED"]
 ]) {
   test(`${name} yields BLOCKED with the exact code`, async () => {
-    const outcome = await runPromotion(oracle(), candidate(overrides));
+    const outcome = await promote(candidateOverrides, observationOverrides);
     assert.equal(outcome.decision.verdict, "BLOCKED");
     assert.deepEqual([...outcome.decision.blocks], [expected]);
   });
 }
 
 test("multiple block conditions accumulate", async () => {
-  const outcome = await runPromotion(oracle(), candidate({ contaminated: true, candidateDigestNow: digest("d") }));
+  const outcome = await promote({ contaminated: true, candidateDigestNow: digest("d") });
   assert.deepEqual([...outcome.decision.blocks], ["VES_PROMOTION_CANDIDATE_MUTATED", "VES_PROMOTION_CONTAMINATED"]);
 });
 
 test("the report verdict agrees with the decision verdict", async () => {
-  for (const overrides of [{}, { contaminated: true }]) {
-    const outcome = await runPromotion(oracle(), candidate(overrides));
+  for (const candidateOverrides of [{}, { contaminated: true }]) {
+    const outcome = await promote(candidateOverrides);
     assert.equal(outcome.report.verdict, outcome.decision.verdict);
   }
 });
 
 test("two clean runs promote deterministically with the same report body digest", async () => {
-  const first = await runPromotion(oracle(), candidate());
-  const second = await runPromotion(oracle(), candidate());
+  const first = await promote();
+  const second = await promote();
   assert.equal(first.decision.verdict, "PROMOTED");
   assert.equal(second.report.bodyDigest, first.report.bodyDigest);
 });
 
 test("the promotion report validates against promotion-report@1", async () => {
-  for (const overrides of [{}, { contaminated: true }]) {
-    const outcome = await runPromotion(oracle(), candidate(overrides));
+  for (const candidateOverrides of [{}, { contaminated: true }]) {
+    const outcome = await promote(candidateOverrides);
     assert.doesNotThrow(() => registry.validate("promotion-report", "1", outcome.report));
   }
 });
 
-test("a campaign exactly at its threshold promotes", async () => {
-  const outcome = await runPromotion(
-    oracle(),
-    candidate({ results: [result("camp-a"), result("camp-b", { lowerConfidenceBound: 0.85 })] })
-  );
+test("a campaign at or above its sealed threshold promotes", async () => {
+  const outcome = await promote();
   assert.equal(outcome.decision.verdict, "PROMOTED");
 });
 
 test("the holdout digest in the report equals the sealed oracle digest", async () => {
-  const outcome = await runPromotion(oracle(), candidate());
+  const outcome = await promote();
   assert.equal(outcome.report.holdoutDigest, sealHoldout(oracle()));
 });
 
-// T74 finding F2, at the composition root: the sealed artifact's source state
-// must rest on the oracle AND the admitted evidence. Binding the oracle alone
-// let two runs on materially different evidence share a sourceStateDigest, so
-// the signed artifact could not distinguish which evidence authorized it.
-test("materially different passing evidence produces a distinguishable sealed artifact", async () => {
-  const oracle = {
+// T74 finding F2/F3: the sealed artifact must bind evaluator-observed raw
+// outcomes, not candidate-provided aggregate metrics.
+test("materially different passing observations produce a distinguishable sealed artifact", async () => {
+  const holdout = {
     policyId: "release-policy",
     entries: [{ campaignId: "alpha", threshold: 0.8, repetitionCount: 50 }]
   };
-  const candidate = (samples, passes, lowerConfidenceBound) => ({
-    candidateDigestAtSeal: `sha256:${"a".repeat(64)}`,
-    candidateDigestNow: `sha256:${"a".repeat(64)}`,
-    candidateKeyId: "candidate-key",
-    contaminated: false,
-    results: [{ id: "alpha", samples, passes, passRate: passes / samples, lowerConfidenceBound, verdict: "PASSED" }]
-  });
-
-  const strong = await runPromotion(oracle, candidate(100, 99, 0.99));
-  const weak = await runPromotion(oracle, candidate(90, 81, 0.81));
+  const candidateFacts = candidate({ candidateKeyId: "candidate-key" });
+  const strong = await runPromotion(
+    holdout,
+    candidateFacts,
+    observationPort({ alpha: [...Array(99).fill(true), false] })
+  );
+  const weak = await runPromotion(
+    holdout,
+    candidateFacts,
+    observationPort({ alpha: [...Array(95).fill(true), ...Array(5).fill(false)] })
+  );
 
   assert.equal(strong.decision.verdict, "PROMOTED");
   assert.equal(weak.decision.verdict, "PROMOTED");
@@ -129,27 +123,22 @@ test("materially different passing evidence produces a distinguishable sealed ar
   assert.notEqual(strong.artifact.payloadDigest, weak.artifact.payloadDigest);
 });
 
-test("the sealed source state binds the oracle as well as the evidence", async () => {
-  // A verifier's sensor found sourceStateDigest could drop the oracle entirely
-  // and survive: the only assertion varied evidence, never the oracle.
-  const candidate = {
-    candidateDigestAtSeal: `sha256:${"a".repeat(64)}`,
-    candidateDigestNow: `sha256:${"a".repeat(64)}`,
-    candidateKeyId: "candidate-key",
-    contaminated: false,
-    results: [{ id: "alpha", samples: 100, passes: 99, passRate: 0.99, lowerConfidenceBound: 0.99, verdict: "PASSED" }]
-  };
+test("the sealed source state binds the oracle as well as the observations", async () => {
+  const candidateFacts = candidate({ candidateKeyId: "candidate-key" });
+  const outcomes = observationPort({ alpha: [...Array(99).fill(true), false] });
   const first = await runPromotion(
     { policyId: "release-policy", entries: [{ campaignId: "alpha", threshold: 0.8, repetitionCount: 50 }] },
-    candidate
+    candidateFacts,
+    outcomes
   );
   const relaxedOracle = await runPromotion(
     { policyId: "release-policy", entries: [{ campaignId: "alpha", threshold: 0.5, repetitionCount: 50 }] },
-    candidate
+    candidateFacts,
+    outcomes
   );
   assert.notEqual(
     first.artifact.sourceStateDigest,
     relaxedOracle.artifact.sourceStateDigest,
-    "the same evidence under a different oracle must not share a source state"
+    "the same observations under a different oracle must not share a source state"
   );
 });

@@ -96,22 +96,25 @@ test("the evaluator issues the grant over its own real assets, not test literals
     entries: [{ campaignId: "alpha", threshold: 0.8, repetitionCount: 50 }]
   };
   const seen = [];
-  await runPromotion(oracle, {
-    candidateDigestAtSeal: `sha256:${"a".repeat(64)}`,
-    candidateDigestNow: `sha256:${"a".repeat(64)}`,
-    candidateKeyId: "candidate-key",
-    contaminated: false,
-    results: [{ id: "alpha", samples: 100, passes: 99, passRate: 0.99, lowerConfidenceBound: 0.99, verdict: "PASSED" }],
-    attempt: (grant) => {
-      // A real candidate, trying everything it can reach.
-      for (const asset of EVALUATOR_PROTECTED_ASSETS) {
-        assert.throws(() => grant.read(asset), { code: "VES_PROMOTION_AUTHORITY_DENIED", asset });
-        assert.throws(() => grant.mutate(asset, "tampered"), { code: "VES_PROMOTION_AUTHORITY_DENIED", asset });
-        seen.push(asset);
+  await runPromotion(
+    oracle,
+    {
+      candidateDigestAtSeal: `sha256:${"a".repeat(64)}`,
+      candidateDigestNow: `sha256:${"a".repeat(64)}`,
+      candidateKeyId: "candidate-key",
+      contaminated: false,
+      attempt: (grant) => {
+        // A real candidate, trying everything it can reach.
+        for (const asset of EVALUATOR_PROTECTED_ASSETS) {
+          assert.throws(() => grant.read(asset), { code: "VES_PROMOTION_AUTHORITY_DENIED", asset });
+          assert.throws(() => grant.mutate(asset, "tampered"), { code: "VES_PROMOTION_AUTHORITY_DENIED", asset });
+          seen.push(asset);
+        }
+        assert.deepEqual(grant.grantedAssets, [], "the evaluator grants the candidate nothing");
       }
-      assert.deepEqual(grant.grantedAssets, [], "the evaluator grants the candidate nothing");
-    }
-  });
+    },
+    { observe: () => Array(100).fill(true) }
+  );
   // The candidate was actually given the surface. Without this the whole
   // requirement is satisfiable by never issuing a grant at all.
   assert.deepEqual(seen, [...EVALUATOR_PROTECTED_ASSETS]);
