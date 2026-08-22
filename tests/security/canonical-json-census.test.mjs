@@ -5,7 +5,11 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 
-import { collectCensusCandidates, validateCensusInventory } from "../../scripts/canonical-json-census.mjs";
+import {
+  CENSUS_SCOPE_EXCLUSIONS,
+  collectCensusCandidates,
+  validateCensusInventory
+} from "../../scripts/canonical-json-census.mjs";
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
 const inventoryPath = fileURLToPath(new URL("../../docs/canonical-json-census.json", import.meta.url));
@@ -64,12 +68,53 @@ test("a locally named canonicalizer is detected even when it does not use the hi
     assert.deepEqual(await collectCensusCandidates(disposableRoot), [
       {
         path: "packages/application/src/regression/campaigns.ts",
-        signals: { canonicalizer: 1, digest: 0, localeCompare: 0 }
+        signals: { canonicalizer: 1, digest: 0, localeCompare: 0, serialization: 1 }
       }
     ]);
   } finally {
     await rm(disposableRoot, { force: true, recursive: true });
   }
+});
+
+test("a canonical-prefix serializer is detected without a name allowlist", async () => {
+  const disposableRoot = await mkdtemp(join(tmpdir(), "verchestra-canonical-json-census-"));
+  try {
+    await Promise.all(
+      ["packages/application/src/self-test", "apps", "scripts"].map((directory) =>
+        mkdir(join(disposableRoot, directory), { recursive: true })
+      )
+    );
+    await writeFile(
+      join(disposableRoot, "packages/application/src/self-test/self-test.ts"),
+      "function canonicalDriverReview(value: unknown): string { return JSON.stringify(value); }\n",
+      "utf8"
+    );
+
+    assert.deepEqual(await collectCensusCandidates(disposableRoot), [
+      {
+        path: "packages/application/src/self-test/self-test.ts",
+        signals: { canonicalizer: 0, digest: 0, localeCompare: 0, serialization: 1 }
+      }
+    ]);
+  } finally {
+    await rm(disposableRoot, { force: true, recursive: true });
+  }
+});
+
+test("the reviewed serialization scope exclusions are closed", () => {
+  assert.deepEqual([...CENSUS_SCOPE_EXCLUSIONS.keys()].sort(), [
+    "apps/site/scripts/check-built-site.mjs",
+    "apps/site/tests/e2e/site.spec.ts",
+    "apps/vestra-cli/src/self-test-driver-fake.mjs",
+    "apps/vestra-cli/src/self-test-full-crash-child.ts",
+    "packages/drivers/src/claude-code-driver.ts",
+    "packages/drivers/src/codex-driver.ts",
+    "packages/self-test/src/git-fixtures.ts",
+    "scripts/agent-context.mjs",
+    "scripts/canonical-json-census.mjs",
+    "scripts/select-gates.mjs"
+  ]);
+  for (const reason of CENSUS_SCOPE_EXCLUSIONS.values()) assert.ok(reason.length > 0);
 });
 
 test("the presentation exception rejects a persistent or trust path", async () => {
@@ -90,16 +135,19 @@ test("the presentation exception rejects a persistent or trust path", async () =
 
 test("an inventory entry without its reviewed reason is rejected", () => {
   const path = "packages/example/src/identity.ts";
-  const result = validateCensusInventory([{ path, signals: { canonicalizer: 0, digest: 1, localeCompare: 0 } }], {
-    entries: [
-      {
-        path,
-        classification: "raw-byte-digest",
-        reason: "",
-        signals: { canonicalizer: 0, digest: 1, localeCompare: 0 }
-      }
-    ]
-  });
+  const result = validateCensusInventory(
+    [{ path, signals: { canonicalizer: 0, digest: 1, localeCompare: 0, serialization: 0 } }],
+    {
+      entries: [
+        {
+          path,
+          classification: "raw-byte-digest",
+          reason: "",
+          signals: { canonicalizer: 0, digest: 1, localeCompare: 0, serialization: 0 }
+        }
+      ]
+    }
+  );
 
   assert.deepEqual(result.invalidReasons, [path]);
 });
@@ -108,7 +156,7 @@ test("a new unclassified canonicalization signal is rejected", async () => {
   const candidates = [
     {
       path: "packages/example/src/identity.ts",
-      signals: { canonicalizer: 1, digest: 1, localeCompare: 0 }
+      signals: { canonicalizer: 1, digest: 1, localeCompare: 0, serialization: 0 }
     }
   ];
   const result = validateCensusInventory(candidates, { entries: [] });
@@ -120,7 +168,7 @@ test("a duplicate classification and a stale source entry are rejected", () => {
   const candidates = [
     {
       path: "packages/example/src/identity.ts",
-      signals: { canonicalizer: 0, digest: 1, localeCompare: 0 }
+      signals: { canonicalizer: 0, digest: 1, localeCompare: 0, serialization: 0 }
     }
   ];
   const result = validateCensusInventory(candidates, {
@@ -128,17 +176,17 @@ test("a duplicate classification and a stale source entry are rejected", () => {
       {
         path: "packages/example/src/identity.ts",
         classification: "raw-byte-digest",
-        signals: { canonicalizer: 0, digest: 1, localeCompare: 0 }
+        signals: { canonicalizer: 0, digest: 1, localeCompare: 0, serialization: 0 }
       },
       {
         path: "packages/example/src/identity.ts",
         classification: "raw-byte-digest",
-        signals: { canonicalizer: 0, digest: 1, localeCompare: 0 }
+        signals: { canonicalizer: 0, digest: 1, localeCompare: 0, serialization: 0 }
       },
       {
         path: "packages/example/src/stale.ts",
         classification: "raw-byte-digest",
-        signals: { canonicalizer: 0, digest: 1, localeCompare: 0 }
+        signals: { canonicalizer: 0, digest: 1, localeCompare: 0, serialization: 0 }
       }
     ]
   });

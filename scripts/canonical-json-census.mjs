@@ -3,7 +3,20 @@ import { join, relative } from "node:path";
 
 const SOURCE_ROOTS = Object.freeze(["packages", "apps", "scripts"]);
 const SOURCE_FILE = /\.(?:ts|mjs)$/u;
-const EXCLUDED_PATHS = new Set(["scripts/canonical-json-census.mjs"]);
+export const CENSUS_SCOPE_EXCLUSIONS = Object.freeze(
+  new Map([
+    ["apps/site/scripts/check-built-site.mjs", "Build-time site diagnostic output, not a product identity."],
+    ["apps/site/tests/e2e/site.spec.ts", "Site test fixture, not product source."],
+    ["apps/vestra-cli/src/self-test-driver-fake.mjs", "Self-Test fake-driver fixture, not product behavior."],
+    ["apps/vestra-cli/src/self-test-full-crash-child.ts", "Ephemeral Self-Test child-process fact handoff."],
+    ["packages/drivers/src/claude-code-driver.ts", "Protocol frame serialization, not a canonical product identity."],
+    ["packages/drivers/src/codex-driver.ts", "Protocol frame serialization, not a canonical product identity."],
+    ["packages/self-test/src/git-fixtures.ts", "Git fixture serialization, not product behavior."],
+    ["scripts/agent-context.mjs", "Diagnostic command output, not product behavior."],
+    ["scripts/canonical-json-census.mjs", "Census implementation, not a scanned product source."],
+    ["scripts/select-gates.mjs", "Diagnostic command output, not product behavior."]
+  ])
+);
 const CLASSIFICATIONS = new Set([
   "migrated-v2",
   "pending-versioned-migration",
@@ -11,6 +24,7 @@ const CLASSIFICATIONS = new Set([
   "raw-byte-digest",
   "retained-v1-versioned"
 ]);
+const SIGNAL_FIELDS = Object.freeze(["canonicalizer", "digest", "localeCompare", "serialization"]);
 const PRESENTATION_OR_FIXTURE_PATHS = new Set([
   "apps/site/src/lib/llm-content.ts",
   "apps/vestra-cli/src/cli.ts",
@@ -25,7 +39,8 @@ const DETECTORS = Object.freeze({
   canonicalizer:
     /canonicalizeJson|(?:async\s+)?function\s+canonicalize[A-Za-z0-9]*|(?:const|let)\s+canonicalize[A-Za-z0-9]*\s*=|canonicalJson|canonical\(/gu,
   digest: /createHash|sha256Digest/gu,
-  localeCompare: /\.localeCompare\(/gu
+  localeCompare: /\.localeCompare\(/gu,
+  serialization: /JSON\.stringify\(/gu
 });
 
 function count(source, expression) {
@@ -47,7 +62,8 @@ function signalsFor(source) {
   return Object.freeze({
     canonicalizer: count(source, DETECTORS.canonicalizer),
     digest: count(source, DETECTORS.digest),
-    localeCompare: count(source, DETECTORS.localeCompare)
+    localeCompare: count(source, DETECTORS.localeCompare),
+    serialization: count(source, DETECTORS.serialization)
   });
 }
 
@@ -56,7 +72,7 @@ export async function collectCensusCandidates(root) {
   const candidates = [];
   for (const file of files) {
     const path = relative(root, file).replaceAll("\\", "/");
-    if (EXCLUDED_PATHS.has(path)) continue;
+    if (CENSUS_SCOPE_EXCLUSIONS.has(path)) continue;
     const signals = signalsFor(await readFile(file, "utf8"));
     if (Object.values(signals).some((value) => value > 0)) candidates.push({ path, signals });
   }
@@ -68,11 +84,7 @@ function sorted(values) {
 }
 
 function signalsMatch(left, right) {
-  return (
-    left?.canonicalizer === right?.canonicalizer &&
-    left?.digest === right?.digest &&
-    left?.localeCompare === right?.localeCompare
-  );
+  return SIGNAL_FIELDS.every((field) => left?.[field] === right?.[field]);
 }
 
 function hasReason(entry) {
