@@ -66,7 +66,8 @@ const MATRIX_CEILINGS = Object.freeze({
   "packages/distribution/src/transactional-activation.ts": 1,
   "packages/platform-node/src/runtime-store/runtime-store.ts": 0,
   "packages/workspace/src/scanner/scanner-primitives.ts": 2,
-  "packages/evidence/src/execution-package/execution-package.ts": 11,
+  // V1 verification remains locale-compatible; V2 emission has no ambient-locale ordering.
+  "packages/evidence/src/execution-package/execution-package.ts": 1,
   // T4a owners: migrated (T4/T5/T6/T7), ceiling tightened to 0 in T9.
   "packages/application/src/promotion/promotion-gate.ts": 0,
   "packages/application/src/regression/campaigns.ts": 0,

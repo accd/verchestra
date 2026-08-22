@@ -168,7 +168,7 @@ test("trusted signer cannot make inconsistent pending-work claims", async () => 
   const valid = await builder.build(input);
   const forgedPayload = { ...valid.payload, pendingTasks: [] };
   const forged = await sealer.seal(forgedPayload, {
-    schema: { name: "execution-package", version: 1 },
+    schema: valid.schema,
     purpose: "execution-package",
     bindingId: valid.bindingId,
     sourceStateDigest: valid.sourceStateDigest
@@ -176,6 +176,25 @@ test("trusted signer cannot make inconsistent pending-work claims", async () => 
   const result = await builder.verify(forged, trust, currentState(input));
   assert.equal(result.ok, false);
   assert.equal(result.code, "VES_EXECUTION_PACKAGE_DERIVATION_INVALID");
+});
+
+test("a V1 package cannot be reinterpreted as V2", async () => {
+  const input = packageInput({ schemaVersion: 1 });
+  const { builder, trust } = executionHarness();
+  const legacy = await builder.build(input);
+  const substituted = { ...legacy, schema: { ...legacy.schema, version: 2 } };
+  const result = await builder.verify(substituted, trust, currentState(input));
+  assert.equal(result.ok, false);
+  assert.equal(result.code, "VES_ENVELOPE_UNSUPPORTED");
+});
+
+test("store refuses an unrecognized canonicalization version", async () => {
+  const root = await mkdtemp(join(tmpdir(), "verchestra-execution-package-security-"));
+  const { builder } = executionHarness();
+  const sealed = await builder.build(packageInput());
+  const substituted = { ...sealed, schema: { ...sealed.schema, version: 3 } };
+  const store = new FileExecutionPackageStore({ root });
+  await assert.rejects(store.put(substituted), { code: "VES_EXECUTION_PACKAGE_INVALID" });
 });
 
 test("foreign Workspace state invalidates without leaking foreign sources", async () => {

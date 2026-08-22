@@ -337,10 +337,10 @@
       21
     ],
     "packages/evidence/src/execution-package/execution-package.ts :: Function 'normalizeBuildInput'": [
-      22
+      21
     ],
     "packages/evidence/src/integrity/artifact-sealer.ts :: Async method 'verify'": [
-      21
+      20
     ],
     "packages/evidence/src/integrity/canonical.ts :: Function 'assertJsonValue'": [
       22

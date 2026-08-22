@@ -196,6 +196,9 @@ importers:
       '@verchestra/contracts':
         specifier: workspace:*
         version: link:../contracts
+      '@verchestra/domain':
+        specifier: workspace:*
+        version: link:../domain
       canonicalize:
         specifier: 3.0.0
         version: 3.0.0

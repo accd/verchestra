@@ -23,11 +23,33 @@ test("builder emits a signed backend-neutral content-addressed package", async (
   const sealed = await builder.build(packageInput());
   assert.equal(sealed.schema.name, "execution-package");
   assert.equal(sealed.purpose, "execution-package");
-  assert.equal(sealed.payload.schemaVersion, 1);
+  assert.equal(sealed.payload.schemaVersion, 2);
   assert.equal(sealed.payload.workspaceId, workspaceId);
   assert.match(sealed.artifactId, /^[a-f0-9]{64}$/u);
   assert.equal(JSON.stringify(sealed).includes("Claude"), false);
   assert.equal(JSON.stringify(sealed).includes("OpenCode"), false);
+});
+
+test("new packages declare the V2 Execution Package attestation", async () => {
+  const { builder, trust } = executionHarness();
+  const input = packageInput({ requiredCapabilities: ["alpha", "Zulu"] });
+  const sealed = await builder.build(input);
+  const statement = JSON.parse(Buffer.from(sealed.dsse.payload, "base64").toString("utf8"));
+  assert.equal(sealed.schema.version, 2);
+  assert.equal(statement.predicateType, "https://accd.github.io/verchestra/attestation/execution-package/v2");
+  assert.deepEqual(sealed.payload.requiredCapabilities, ["Zulu", "alpha"]);
+  assert.equal((await builder.verify(sealed, trust, currentState(input))).ok, true);
+});
+
+test("a pinned V1 package remains verifiable under its V1 predicate", async () => {
+  const { builder, trust } = executionHarness();
+  const input = packageInput({ schemaVersion: 1 });
+  const sealed = await builder.build(input);
+  const statement = JSON.parse(Buffer.from(sealed.dsse.payload, "base64").toString("utf8"));
+  assert.equal(sealed.schema.version, 1);
+  assert.equal(sealed.artifactId, "ebbf7e4c4f28af4efc95a2515cb7d4a19edd48749da9c829f67a8a5074db668a");
+  assert.equal(statement.predicateType, "https://accd.github.io/verchestra/attestation/execution-package/v1");
+  assert.equal((await builder.verify(sealed, trust, currentState(input))).ok, true);
 });
 
 test("pending work is derived from completed evidence and dependency closure", async () => {
