@@ -49,8 +49,14 @@ async function filesUnder(root, current = root) {
 export async function byteSnapshot(root) {
   const entries = [];
   for (const path of await filesUnder(root)) {
+    const relativePath = relative(root, path).replaceAll("\\", "/");
+    // Git may create and remove this lock while a fixture snapshot walks the
+    // repository. It is maintenance state, not user-controlled repository
+    // content, so including it would make an otherwise deterministic snapshot
+    // race with Git's background maintenance.
+    if (relativePath === ".git/objects/maintenance.lock") continue;
     const bytes = await readFile(path);
-    entries.push([relative(root, path).replaceAll("\\", "/"), createHash("sha256").update(bytes).digest("hex")]);
+    entries.push([relativePath, createHash("sha256").update(bytes).digest("hex")]);
   }
   return entries.sort(([left], [right]) => left.localeCompare(right));
 }
