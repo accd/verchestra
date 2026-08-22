@@ -7,8 +7,8 @@ branch: codex/issue-294-t75-evidence-signature
 baseRevision: d5c7c75276bc0a972c18d8b3860531ddb98c2ef7
 lastCompletedTask: T2
 nextTask: Owner-provision the protected secret and a matching committed PublicKeyRef, then run the exact-SHA workflow and obtain independent verification; do not provision or access a release key locally.
-lastGate: focused signing and workflow tests, format:check, lint, and typecheck PASS
-updatedAt: 2026-08-22T22:20:00Z
+lastGate: focused signing/workflow tests and pnpm gate:quick PASS; pnpm gate:security reached E2E but a disposable-repository cleanup hit a Windows EBUSY lock, pending the separately reviewed cleanup fix
+updatedAt: 2026-08-23T00:55:00Z
 ---
 
 # Scope
@@ -40,6 +40,8 @@ verification artifacts.
 
 The owner must provision the protected secret and commit the matching public
 reference through human review. The public reference is intentionally absent
-until that action, so the workflow cannot produce a real attestation yet.
-Automation must not generate, access, print, or commit either private material
-or any secret value.
+until that action, so the workflow cannot produce a real attestation yet. The
+required security gate must also be rerun after the separately reviewed
+disposable-repository cleanup fix lands; the current failure is a Windows EBUSY
+cleanup lock, not a product assertion failure. Automation must not generate,
+access, print, or commit either private material or any secret value.
