@@ -21,6 +21,10 @@ test("keeps the qualified Pi runtime on one exact package version", () => {
   assert.deepEqual([...packageVersions], ["@earendil-works/pi-agent-core@0.84.1", "@earendil-works/pi-ai@0.84.1"]);
 });
 
+test("does not retain the vulnerable extract-zip package in the lockfile", () => {
+  assert.doesNotMatch(read("pnpm-lock.yaml"), /^\s{2}extract-zip@/mu);
+});
+
 test("keeps the qualified OpenCode driver on one exact package version", () => {
   const manifest = JSON.parse(read("package.json"));
   assert.equal(manifest.devDependencies["opencode-ai"], "1.18.9");
