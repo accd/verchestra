@@ -104,10 +104,12 @@ test("deep doctor uses only reviewed read-only live adapter operations", () => {
   assert.match(source, /ProtectedPathBroker\.create\(/u, "sandbox enforcement is checked through the path broker");
   assert.match(source, /logicalPath: "\.\.\/escape"/u, "sandbox check proves traversal rejection");
   assert.match(source, /secret\.adapter\.has\(/u, "secret readiness checks presence without a read operation");
-  for (const forbidden of [".start(", ".send(", ".cancel(", ".close(", ".read(", "loadExtension("])
-    assert.doesNotMatch(
-      source,
-      new RegExp(forbidden.replace(/[.()]/gu, "\\$&"), "u"),
-      `doctor must not invoke ${forbidden}`
-    );
+  for (const forbidden of [".start(", ".send(", ".cancel(", ".close(", ".read(", "loadExtension("]) {
+    const escapedForbidden = forbidden
+      .replaceAll("\\", "\\\\")
+      .replaceAll(".", "\\.")
+      .replaceAll("(", "\\(")
+      .replaceAll(")", "\\)");
+    assert.doesNotMatch(source, new RegExp(escapedForbidden, "u"), "doctor must not invoke " + forbidden);
+  }
 });
