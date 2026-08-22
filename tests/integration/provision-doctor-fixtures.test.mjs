@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
-import { mkdtemp, readdir, rm, stat } from "node:fs/promises";
+import { lstat, mkdtemp, readdir, realpath, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, test } from "node:test";
@@ -73,4 +73,21 @@ test("running twice against the same root is idempotent", async () => {
   const second = await provisionDoctorFixtures(root);
 
   assert.deepEqual([...first].sort(), [...second].sort());
+});
+
+test("the sandbox root contains a genuine out-of-root escape (T12, DDL-06)", async () => {
+  root = await mkdtemp(join(tmpdir(), "verchestra-doctor-fixtures-"));
+
+  await provisionDoctorFixtures(root);
+
+  const sandboxRoot = join(root, WORKSPACE_ROOT_DIRNAME, "sandbox");
+  const escapeLink = join(sandboxRoot, "escape");
+  const linkStat = await lstat(escapeLink);
+  assert.equal(linkStat.isSymbolicLink(), true);
+  // Resolving through the link must land outside the sandbox root — the
+  // exact property T12's live probe observes.
+  const resolvedTarget = await realpath(join(escapeLink, "runtime.db"));
+  const resolvedRoot = await realpath(sandboxRoot);
+  assert.equal(resolvedTarget.startsWith(resolvedRoot), false);
+  assert.equal(existsSync(join(escapeLink, "runtime.db")), true);
 });

@@ -25,6 +25,7 @@ import {
 import { SchemaRegistry } from "@verchestra/contracts";
 import { SUBSYSTEM_OBSERVATION_PATHS, WORKSPACE_ROOT_DIRNAME } from "@verchestra/domain";
 import { ArtifactSealer, NodeEd25519Signer, type SealedArtifact } from "@verchestra/evidence";
+import { ProtectedPathBroker } from "@verchestra/platform-node/readonly";
 
 import { resolveReleaseIdentity } from "./release-manifest.ts";
 
@@ -126,6 +127,58 @@ function subsystemPath(metadataRoot: string, subsystem: keyof typeof SUBSYSTEM_O
   return join(metadataRoot, SUBSYSTEM_OBSERVATION_PATHS[subsystem]);
 }
 
+// A read-only diagnostic that is not operating within any real bound
+// workspace still needs an identity shape ProtectedPathBroker.create accepts
+// (StableId, "workspace_<uuid>"). This literal names no real workspace; it
+// exists only to satisfy that shape for the sandbox probe below.
+const SANDBOX_PROBE_WORKSPACE_ID = "workspace_00000000-0000-4000-8000-000000000000";
+
+// The narrow shape sandboxProbe needs from a broker, so the mapping logic
+// below is independently testable against a fixture double — the real
+// ProtectedPathBroker (imported from the platform-node read-only subpath,
+// DDL-12) is structurally compatible without being named in this type.
+interface EscapeCheckBroker {
+  openExisting(request: {
+    readonly workspaceId: string;
+    readonly rootId: string;
+    readonly logicalPath: string;
+  }): Promise<unknown>;
+}
+
+// DDL-06 (#207): the pure pass/fail mapping. scripts/provision-doctor-fixtures.mjs
+// plants a directory symlink/junction ("escape") inside the sandbox root
+// pointing at its own parent, so this path genuinely resolves outside the
+// granted root on a provisioned machine — LogicalPath.parse already rejects
+// any naive "../" logical path, so a symlink escape is the only way the
+// broker's out-of-root refusal is ever reachable at all. Refusal
+// (VES_PATH_OUTSIDE_ROOT) is the pass signal; the broker permitting the open
+// — or erroring for any other reason — means the sandbox failed to contain
+// it, so it fails rather than silently passing.
+export async function evaluateSandboxEscape(broker: EscapeCheckBroker): Promise<DoctorObservation> {
+  try {
+    await broker.openExisting({
+      workspaceId: SANDBOX_PROBE_WORKSPACE_ID,
+      rootId: "sandbox",
+      logicalPath: "escape/runtime.db"
+    });
+    return present(false);
+  } catch (error) {
+    return present((error as { readonly code?: unknown }).code === "VES_PATH_OUTSIDE_ROOT");
+  }
+}
+
+async function sandboxProbe(metadataRoot: string): Promise<DoctorObservation> {
+  try {
+    const broker = await ProtectedPathBroker.create({
+      workspaceId: SANDBOX_PROBE_WORKSPACE_ID,
+      roots: [{ rootId: "sandbox", path: subsystemPath(metadataRoot, "sandbox") }]
+    });
+    return await evaluateSandboxEscape(broker);
+  } catch {
+    return absent;
+  }
+}
+
 function buildRealProbes(controlRoot: string, registry: SchemaRegistry | null, now: () => number): DoctorProbeSet {
   const metadataRoot = join(controlRoot, WORKSPACE_ROOT_DIRNAME);
   return Object.freeze({
@@ -140,7 +193,7 @@ function buildRealProbes(controlRoot: string, registry: SchemaRegistry | null, n
     "doctor.driver": () => fileProbe(subsystemPath(metadataRoot, "driver")),
     "doctor.connector": () => fileProbe(subsystemPath(metadataRoot, "connector")),
     "doctor.probe": () => fileProbe(subsystemPath(metadataRoot, "probe")),
-    "doctor.sandbox": () => fileProbe(subsystemPath(metadataRoot, "sandbox"))
+    "doctor.sandbox": () => sandboxProbe(metadataRoot)
   });
 }
 

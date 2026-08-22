@@ -15,8 +15,27 @@
 // tests/architecture/platform-node-readonly-subpath.test.mjs statically
 // proves this file's own export surface names no writer.
 
-export { inspectRuntimeDatabase } from "./runtime-store/runtime-store.ts";
 export { ProtectedPathBroker, type ProtectedPathHandle } from "./protected-path.ts";
+
+// Deferred, not a static re-export: node:sqlite prints an experimental-feature
+// warning to stderr the moment anything imports it, and runtime-store.ts
+// imports node:sqlite at its own top level. This file is loaded on every CLI
+// invocation (apps/vestra-cli/src/main.ts imports doctor-composition.ts
+// unconditionally), so a static re-export here would print that warning for
+// every command — including ones that never touch the doctor or SQLite at
+// all (tests/e2e/cli-launchers-e2e.test.mjs's byte-equal stderr comparison
+// caught exactly this while building T12). The dynamic import below defers
+// loading runtime-store.ts — and paying that cost — until a live probe
+// actually calls this function. tests/architecture/doctor-readonly-graph.test.mjs's
+// transitive closure walker recognizes this form of import edge too, so the
+// property it proves does not quietly weaken.
+export async function inspectRuntimeDatabase(
+  path: string,
+  options: { readonly assertExtensionsDisabled?: boolean } = {}
+): Promise<{ readonly integrity: "ok"; readonly runs: number; readonly migrations: number }> {
+  const { inspectRuntimeDatabase: real } = await import("./runtime-store/runtime-store.ts");
+  return real(path, options);
+}
 
 import type { SecretAdapter } from "./secret-broker.ts";
 export type { SecretAdapter };

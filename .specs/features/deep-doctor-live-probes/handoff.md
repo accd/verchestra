@@ -5,9 +5,9 @@ issue: 207
 status: in_progress
 branch: feat/deep-doctor-live-probes
 baseRevision: 0d7ad9a2bad3b29c4defb4338d1106e4fe22c6e1
-lastCompletedTask: T11
-nextTask: T12
-lastGate: pnpm test:architecture 38/38 PASS; pnpm test:security 1049/1049 PASS; pnpm gate:quick PASS
+lastCompletedTask: T12
+nextTask: T13
+lastGate: pnpm gate:full PASS (all stages, including test:e2e 165/165 after the SQLite-warning fix)
 updatedAt: 2026-08-22T00:00:00Z
 ---
 
@@ -18,7 +18,7 @@ read-only observations. Requirements DDL-01 through DDL-14 in `spec.md`; 22
 tasks in six phases in `tasks.md`. Parent #13 (T72); lands with or before #16
 (T75), which is the current serial task.
 
-T1 through T11 are implemented and gated on branch (Phase 2 and Phase 3 complete) `feat/deep-doctor-live-probes`.
+T1 through T12 are implemented and gated on branch (Phase 2 and Phase 3 complete; Phase 4 in progress) `feat/deep-doctor-live-probes`.
 
 # Completed Evidence
 
@@ -256,16 +256,58 @@ T1 through T11 are implemented and gated on branch (Phase 2 and Phase 3 complete
   **Phase 3 (read-only surfaces and the transitive guard) is complete —
   T8 through T11.**
 
+- **T12** — `apps/vestra-cli/src/doctor-composition.ts`'s `doctor.sandbox`
+  check is now live: `sandboxProbe(metadataRoot)` constructs a real
+  `ProtectedPathBroker` (imported from `@verchestra/platform-node/readonly`)
+  and calls `evaluateSandboxEscape` — a small, independently testable pure
+  mapping function accepting a narrow `EscapeCheckBroker` interface, not the
+  concrete class — which attempts `openExisting({ rootId: "sandbox",
+  logicalPath: "escape/runtime.db" })`. Refusal with
+  `VES_PATH_OUTSIDE_ROOT` maps to `pass`; a permitted open (no error) or any
+  other error maps to `fail`, never a silent pass; broker construction
+  failing (root absent) maps to `blocked`.
+
+  **Two findings, both resolved and recorded in tasks.md's T12 note:**
+  (1) `scripts/provision-doctor-fixtures.mjs` extended with a genuine escape
+  fixture (approved by the user before implementing) — `LogicalPath.parse`
+  already rejects `../`, so a symlink/junction escape is the only way the
+  refusal is ever reachable on a real machine, and T5's provisioner
+  previously created only a bare empty `sandbox/` directory. (2) A real
+  regression caught by `gate:full`: wiring the readonly subpath in broke 12
+  e2e tests via a PID-bearing `node:sqlite` experimental warning leaking
+  into unrelated CLI commands' stderr, since `readonly.ts` eagerly re-exported
+  `inspectRuntimeDatabase` from a file with a top-level `node:sqlite` import.
+  Fixed by making that re-export a deferred async wrapper (dynamic import,
+  loaded only on first call); extended T11's closure walker to recognize
+  dynamic import edges so its guarantee doesn't quietly weaken.
+
+  `tests/integration/doctor-sandbox-probe.test.mjs` (new, 5 cases): the pure
+  mapping against fixture-double brokers (refuse/permit/unrelated-error),
+  plus the real wiring end to end through `runDoctorDeep` against a real
+  provisioned and a real unprovisioned control root. Discrimination proven
+  on both the mapping logic (flipping the permit/refuse branches) and the
+  closure walker (a forbidden import two hops deep). Gates: `pnpm gate:full`
+  PASS, including `test:e2e` 165/165 restored after the fix.
+
+  **T13 will very likely hit the same fixture-content problem T12 did**:
+  T5's `runtime.db` is currently an empty placeholder file, not a valid
+  SQLite database, so `inspectRuntimeDatabase`'s integrity check can never
+  genuinely pass against it. Flagging now, before T13 starts, rather than
+  re-discovering it mid-task.
+
   Commit hashes are recorded as each subsequent task lands; T1 is the second
   commit on the branch, after the planning commit.
 
 # Next Exact Action
 
-T12 (Phase 4 begins): construct a `ProtectedPathBroker` over the control root
-in `apps/vestra-cli/src/doctor-composition.ts` and observe it refuses an
-out-of-root open — refusal reports `pass`, a permitted out-of-root open
-reports `fail`, unprovisioned (no sandbox fixture) reports `blocked`. Then
-`pnpm gate:full`.
+T13: replace the `doctor.sqlite-durable-state` file probe with
+`inspectRuntimeDatabase` (imported from `@verchestra/platform-node/readonly`)
+in `apps/vestra-cli/src/doctor-composition.ts:128`. Integrity `ok` reports
+`pass`; a corrupt database reports `fail`; an absent file reports `blocked`;
+a locked database reports `fail` rather than crashing. Likely needs a real
+minimal SQLite database in `scripts/provision-doctor-fixtures.mjs`'s
+`runtime.db` fixture, not the current empty placeholder — see the note above.
+Then `pnpm gate:full`.
 
 # Blockers
 

@@ -292,10 +292,52 @@ Claude Code/Codex CLI version, confirmed identical on a clean tree via
 **Where**: `apps/vestra-cli/src/doctor-composition.ts`
 **Depends on**: T5, T7, T8 · **Requirement**: DDL-06 · **AC**: 5, 6
 **Done when**:
-- [ ] Refusal reports `pass`; a permitted out-of-root open reports `fail`
-- [ ] Unprovisioned reports `blocked`
-- [ ] `pnpm gate:full` passes
+- [x] Refusal reports `pass`; a permitted out-of-root open reports `fail`
+- [x] Unprovisioned reports `blocked`
+- [x] `pnpm gate:full` passes
 **Tests**: integration · **Gate**: full
+
+> **Two findings during T12, recorded here (2026-08-22):**
+>
+> **1. Scope reach-back into T5 (approved by the user before implementing).**
+> `LogicalPath.parse` already rejects any naive `../` logical path, so the
+> broker's out-of-root refusal is reachable only through a symlink/junction
+> escape — and T5's provisioner (already committed) only created a bare
+> empty `sandbox/` directory, nothing to escape through. Without a real
+> escape artifact, the check could only ever report `blocked` on a real T75
+> leg, never a genuine `pass` — defeating DDL-06's purpose for this one
+> check. Extended `scripts/provision-doctor-fixtures.mjs` to also plant a
+> directory symlink/junction (`sandbox/escape`, pointing at its own parent
+> `.verchestra/`, which the same run already populated with `runtime.db`) —
+> self-contained, no dependency on anything outside what the run itself
+> provisions. Cross-platform via the same convention
+> `tests/security/protected-path.test.mjs` already uses (a junction on
+> Windows, a directory symlink elsewhere). Added a dedicated test proving the
+> escape resolves genuinely outside the sandbox root, and confirmed the real
+> `ProtectedPathBroker` refuses it with `VES_PATH_OUTSIDE_ROOT` before wiring
+> the doctor probe. T5's own 5 tests still pass unchanged, including
+> idempotency.
+>
+> **2. A real regression, caught by `gate:full`, not pre-existing.** Wiring
+> `@verchestra/platform-node/readonly` into `doctor-composition.ts` broke
+> 12 e2e tests — `apps/vestra-cli/src/main.ts` imports `doctor-composition.ts`
+> unconditionally on every CLI invocation, and `readonly.ts`'s eager
+> `export {...} from "./runtime-store/runtime-store.ts"` transitively loads
+> `node:sqlite`, which prints a PID-bearing experimental-feature warning to
+> stderr the moment it is imported — not merely when used. This broke
+> `tests/e2e/cli-launchers-e2e.test.mjs`'s byte-equal stderr comparison
+> between two separate process launches, for commands (`--version`, `--help`,
+> `sync`) with nothing to do with SQLite or the doctor at all. Confirmed via
+> `git stash` that 165/165 e2e tests passed before this task's changes.
+> Fixed at the source: `inspectRuntimeDatabase` in `readonly.ts` became an
+> async wrapper that dynamically imports `runtime-store.ts` only when
+> actually called, deferring both the module evaluation and the warning to
+> the moment a live probe (T13) genuinely uses it. This introduced a dynamic
+> `import(...)` edge invisible to T11's static closure walker (which only
+> recognized `from "..."` syntax) — extended that walker's regex to
+> recognize dynamic imports too, so the property T11 proves does not
+> quietly weaken because of this fix. Full e2e suite confirmed restored to
+> 165/165.
 
 #### T13: Live sqlite durable-state probe
 **What**: Replace the file probe with `inspectRuntimeDatabase`.
@@ -501,4 +543,5 @@ No task depends on a later phase.
 | T9 | Done | recorded in `handoff.md` |
 | T10 | Done | recorded in `handoff.md` |
 | T11 | Done | recorded in `handoff.md` |
-| T12–T22 | Planned | Pending |
+| T12 | Done | recorded in `handoff.md` |
+| T13–T22 | Planned | Pending |

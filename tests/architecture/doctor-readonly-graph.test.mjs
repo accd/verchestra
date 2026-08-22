@@ -19,9 +19,11 @@ const source = readFileSync(new URL("../../apps/vestra-cli/src/doctor-compositio
 // is read-only by contract: application owns pure rules, contracts is schema
 // metadata, evidence seals the report, release-manifest resolves identity, domain
 // names the workspace layout the doctor watches and takes no third-party or
-// node: import itself (tests/architecture/repository-boundaries.test.mjs), and
-// the node builtins are used only through their read-only calls (asserted
-// below). Adding an entry here is the reviewed act of widening the graph.
+// node: import itself (tests/architecture/repository-boundaries.test.mjs), the
+// platform-node readonly subpath exports only observation surfaces
+// (tests/architecture/platform-node-readonly-subpath.test.mjs), and the node
+// builtins are used only through their read-only calls (asserted below).
+// Adding an entry here is the reviewed act of widening the graph.
 const READ_ONLY_IMPORTS = Object.freeze(
   new Set([
     "node:child_process",
@@ -32,12 +34,20 @@ const READ_ONLY_IMPORTS = Object.freeze(
     "@verchestra/contracts",
     "@verchestra/domain",
     "@verchestra/evidence",
+    "@verchestra/platform-node/readonly",
     "./release-manifest.ts"
   ])
 );
 
 function importSpecifiers(code) {
-  return [...code.matchAll(/from\s+["']([^"']+)["']/gu)].map((match) => match[1]);
+  // Both static (`from "..."`) and dynamic (`import("...")`) edges count —
+  // packages/platform-node/src/readonly.ts defers loading runtime-store.ts
+  // via a dynamic import specifically to avoid an unrelated side effect on
+  // every CLI invocation (T12), and that deferral must not also make the
+  // edge invisible to this closure walker.
+  const staticSpecifiers = [...code.matchAll(/from\s+["']([^"']+)["']/gu)].map((match) => match[1]);
+  const dynamicSpecifiers = [...code.matchAll(/import\(\s*["']([^"']+)["']\s*\)/gu)].map((match) => match[1]);
+  return [...staticSpecifiers, ...dynamicSpecifiers];
 }
 
 test("deep doctor composes from a read-only allowlist only", () => {

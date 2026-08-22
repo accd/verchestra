@@ -12,11 +12,15 @@
 // tests/architecture/doctor-workspace-root.test.mjs statically proves this
 // file still iterates the contract rather than hardcoding a partial list.
 //
-// Content is placeholder only. It exists to make the seven current
-// existsSync-based presence probes observe "present"; it says nothing about
-// what a live probe (T12-T19) will require of the content's shape.
+// Content is placeholder only beyond the sandbox escape fixture below, which
+// is required content: T12's live sandbox probe needs a real directory
+// symlink/junction escaping the sandbox root to genuinely exercise
+// ProtectedPathBroker's out-of-root refusal on a provisioned machine, not
+// only in an isolated unit test — LogicalPath.parse already rejects any
+// naive "../" logical path, so a symlink escape is the only way that
+// refusal is ever reachable at all.
 
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, rm, symlink, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -45,6 +49,23 @@ export async function provisionDoctorFixtures(controlRoot) {
     }
     provisioned.push(target);
   }
+
+  // The sandbox escape fixture (T12, DDL-06): a directory symlink/junction
+  // inside the sandbox root pointing at its own parent (.verchestra), which
+  // the loop above just populated with real files (runtime.db among them) —
+  // self-contained, no dependency on anything outside what this run already
+  // provisions. `openExisting({ rootId: "sandbox", logicalPath:
+  // "escape/runtime.db" })` resolves through the link to a real file that is
+  // unambiguously outside the sandbox root, exercising the genuine
+  // VES_PATH_OUTSIDE_ROOT refusal path. Same cross-platform convention as
+  // tests/security/protected-path.test.mjs: a junction on Windows (plain
+  // symlinks there need elevated privilege or Developer Mode), a directory
+  // symlink elsewhere.
+  const sandboxRoot = join(metadataRoot, SUBSYSTEM_OBSERVATION_PATHS.sandbox);
+  const escapeLink = join(sandboxRoot, "escape");
+  await rm(escapeLink, { recursive: true, force: true });
+  await symlink(metadataRoot, escapeLink, process.platform === "win32" ? "junction" : "dir");
+
   return provisioned;
 }
 
