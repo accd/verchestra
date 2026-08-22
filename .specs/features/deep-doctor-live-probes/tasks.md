@@ -496,11 +496,28 @@ original `fileProbe` check from before this feature.
 **Where**: `packages/contracts` schema + `packages/domain` reader
 **Depends on**: T1 · **Requirement**: DDL-10 · **AC**: 13
 **Done when**:
-- [ ] Schema generated through its generator, never hand-edited
-- [ ] No field can express a network endpoint or credential
-- [ ] Contract test covers valid, absent, and unparseable records
-- [ ] `pnpm gate:quick` passes
+- [x] Schema generated through its generator, never hand-edited
+- [x] No field can express a network endpoint or credential
+- [x] Contract test covers valid, absent, and unparseable records
+- [x] `pnpm gate:quick` passes
 **Tests**: contract · **Gate**: quick
+
+> **Note (2026-08-22):** the schema (`schemas/subsystem-availability/1.schema.json`)
+> is deliberately minimal — `{schemaVersion, subsystem, available}`, no
+> free-text or URI-shaped field at all — so "no field can express a network
+> endpoint or credential" holds by construction, not by convention.
+> `packages/contracts/src/generated.ts` regenerated via
+> `node scripts/generate-contract-types.mjs`; diff confirmed additive only
+> (6 lines, one new interface, nothing else changed). `packages/domain/src/workspace-layout/subsystem-availability.ts`
+> is the hand-written structural reader (domain takes no third-party import,
+> so it cannot use the ajv-backed `SchemaRegistry`); `tests/contract/schema-registry.test.mjs`
+> exercises the schema itself, `tests/unit/subsystem-availability.test.mjs`
+> exercises the reader — 8 cases: valid per subsystem, `available: false`
+> distinct from absence, non-object/undefined (absent), unknown field,
+> unsupported version, undeclared subsystem, non-boolean `available`,
+> frozen output. Discrimination proven on the reader's field-whitelist
+> check; restored by rewriting the correct content (file is new/untracked,
+> `git checkout --` would have wiped it, same lesson as T8/T10).
 
 #### T17: Driver availability probe
 **Where**: `apps/vestra-cli/src/doctor-composition.ts:133`
@@ -665,4 +682,6 @@ No task depends on a later phase.
 | T12 | Done | recorded in `handoff.md` |
 | T13 | Done | recorded in `handoff.md` |
 | T14 | Done | recorded in `handoff.md` |
-| T15–T22 | Planned | Pending |
+| T15 | Deferred | AD-023 |
+| T16 | Done | recorded in `handoff.md` |
+| T17–T22 | Planned | Pending |

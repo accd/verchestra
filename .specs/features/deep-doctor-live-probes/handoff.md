@@ -6,8 +6,8 @@ status: in_progress
 branch: feat/deep-doctor-live-probes
 baseRevision: 0d7ad9a2bad3b29c4defb4338d1106e4fe22c6e1
 lastCompletedTask: T14
-nextTask: T16 (T15 deferred — see Decisions)
-lastGate: pnpm gate:full PASS; test:security 1049/1049 direct; test:integration 611/611
+nextTask: T17
+lastGate: pnpm gate:quick PASS (58/58 across subsystem-availability unit + contract tests)
 updatedAt: 2026-08-22T00:00:00Z
 ---
 
@@ -18,7 +18,7 @@ read-only observations. Requirements DDL-01 through DDL-14 in `spec.md`; 22
 tasks in six phases in `tasks.md`. Parent #13 (T72); lands with or before #16
 (T75), which is the current serial task.
 
-T1 through T14 are implemented and gated on branch (Phase 2 and Phase 3 complete; Phase 4 in progress — T15 deferred, T12/T13/T14 done) `feat/deep-doctor-live-probes`.
+T1 through T14 and T16 are implemented and gated on branch (Phase 2 and Phase 3 complete; Phase 4 in progress — T15 deferred; Phase 5 begun) `feat/deep-doctor-live-probes`.
 
 # Completed Evidence
 
@@ -336,6 +336,18 @@ T1 through T14 are implemented and gated on branch (Phase 2 and Phase 3 complete
   dependencies** — deferred from T9 for exactly this task, since T9 itself
   had no consumer yet.
 
+- **T16** — the availability-record contract. `schemas/subsystem-availability/1.schema.json`
+  (new, minimal by construction: `{schemaVersion, subsystem, available}`, no
+  field capable of expressing a network endpoint or credential);
+  `packages/contracts/src/generated.ts` regenerated additively (6 lines, one
+  new interface, confirmed nothing else changed). `packages/domain/src/workspace-layout/subsystem-availability.ts`
+  is the hand-written structural reader `parseSubsystemAvailability(value)`
+  domain probes call directly (domain takes no third-party import, so it
+  cannot use the ajv-backed `SchemaRegistry`). `tests/unit/subsystem-availability.test.mjs`
+  (8 cases) and `tests/contract/schema-registry.test.mjs` (extended) cover
+  it. Discrimination proven on the reader's field-whitelist check.
+  Gate: `pnpm gate:quick` PASS.
+
 - **T15 — deferred, not implemented (2026-08-22).** `secretPresence` (T10)
   needs a real `SecretAdapter`; `QualifiedOsSecretAdapter` requires a real
   `OsSecretBackend` (Windows CNG / Apple Keychain / Linux Secret Service),
@@ -399,13 +411,18 @@ T1 through T14 are implemented and gated on branch (Phase 2 and Phase 3 complete
 
 # Next Exact Action
 
-T16 (Phase 5 begins, T15 deferred — see above): define the availability
-record contract — a schema generated through `packages/contracts`'s
-generator (never hand-edited) plus a read-only reader in `packages/domain`.
-"Available" means the record exists, parses, and declares an installed
-subsystem; reachability is excluded by construction (no field may express a
-network endpoint or credential). Contract tests cover valid, absent, and
-unparseable records. Then `pnpm gate:quick`.
+T17: wire the `doctor.driver` check to read an availability record from
+`.verchestra/drivers` (the driver subsystem's fixture directory — check
+whether it needs a specific file name inside it, e.g.
+`availability.json`), parse it via `parseSubsystemAvailability` (T16), and
+map outcomes: absent -> `blocked`; unparseable -> `fail`; valid with
+`subsystem !== "driver"` (a record declaring the wrong subsystem — edge case
+4) -> `fail`; valid and matching -> `pass`. `@verchestra/drivers` must
+remain absent from the transitive closure — the whole point of reading a
+record instead of constructing an adapter. `scripts/provision-doctor-fixtures.mjs`
+will need to write a real availability record for driver, connector, and
+probe as part of this or a shared follow-up (T18/T19 need the same
+treatment). Then `pnpm gate:full`.
 
 # Blockers
 
