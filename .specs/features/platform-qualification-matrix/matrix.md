@@ -163,16 +163,17 @@ means the Driver matrix's real axis is exactly three `--version` probes.
 **Version drift to record:** OpenCode's production default minimum
 (`1.17.18`) is not the installed qualified version (`1.18.18`).
 
-**Cross-driver matrix: does not exist.**
-`tests/unit/verification-driver-isolation.test.mjs:142` is named
-"cross-driver scenario" but uses two `DeterministicMockDriver` instances and
-passes *string labels* (`"claude-code"`, `"codex"`) that are not bound to any
-driver instance — the file's own comment at lines 152-155 says so. Live
-wiring is task A4 (#35), which this matrix consumes.
+**Cross-driver matrix: composed and exercised in PR #296.** The focused
+integration scenario resolves Claude Code as implementer and Codex as verifier,
+starts the actual Codex adapter process backed by the repository's deterministic
+fake executable, grants zero tools, rejects any `tool.requested` event, and
+persists portable completion evidence. The unit scenario at
+`tests/unit/verification-driver-isolation.test.mjs:142` remains a lower-level
+guard using mock drivers; it is not the sole cross-driver evidence anymore.
 
-**Gap:** (a) The cross-driver case lands with A4. (b) Pi's real probe is
-covered by the 0.84.2 requalification record in
-`docs/qualification/pi-runtime-0.84.2.md`.
+**Remaining gap:** Pi's real probe is covered by the 0.84.2 requalification
+record in `docs/qualification/pi-runtime-0.84.2.md`; no live provider call is
+implied by the deterministic verifier fixture.
 
 ## 5. Sandbox / isolation matrix
 
