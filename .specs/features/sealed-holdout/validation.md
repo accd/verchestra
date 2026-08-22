@@ -1,5 +1,44 @@
 # T74 Sealed-Holdout Independent Validation
 
+## Independent F3 re-verification — 2026-08-22
+
+### Verdict
+
+**PASS for the F3 implementation slice; T74 qualification remains pending.**
+This verification was performed by `MiguelCorre`, who did not author the
+implementation commit `3192f6a273465de4f12429649ed356a348669cb5`. No
+`docs/qualification/t74-validation.md` was created and no qualification
+resolver or status surface was advanced.
+
+### Evidence
+
+| Evidence | Result |
+| --- | --- |
+| Focused promotion unit, contract, security, and E2E tests | 92 passed, 0 failed, 0 skipped, 0 todo |
+| `pnpm gate:quick` | PASS; all selected stages green |
+| `pnpm gate:security` | PASS; unit 2,059, contract 497, E2E 165, qualification 251, security 1,044, fault 283; zero failed, skipped, or todo |
+| F3 discrimination sensor | KILLED; admission mutation caused `tests/unit/promotion-gate.test.mjs` to fail at the duplicate/extra observation assertion (`VES_PROMOTION_INPUT_INVALID` was missing) |
+| Worktree and source restoration | PASS; disposable sensor worktree removed, target `git diff --exit-code` clean, no temporary self-test directory remains |
+
+### F3 assertions independently confirmed
+
+- `CandidateFacts` has no campaign result field; `runPromotion()` captures
+  evaluator-owned raw boolean observations before invoking the candidate hook.
+- Duplicate, extra, unknown, malformed, and non-boolean observations fail
+  closed; missing or short observations produce
+  `VES_PROMOTION_INSUFFICIENT_REPETITION`.
+- `evaluateCampaign()` derives samples, passes, pass rate, Wilson lower bound,
+  and verdict from raw outcomes; candidate-supplied aggregate metrics and live
+  replacement attempts cannot authorize promotion.
+- The promotion report and sealed source state bind canonical raw observations,
+  and materially different passing observations produce different evidence,
+  body, payload, and source-state digests.
+
+This PASS covers only the F3 remediation and its independent evidence. The
+prior F1/F2 evidence remains as recorded below, and a separate final T74
+qualification report plus human review are still required before T74 may advance
+to T75.
+
 ## Repeat verification — 2026-08-17
 
 ### Verdict
