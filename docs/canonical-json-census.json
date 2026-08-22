@@ -922,6 +922,17 @@
       "reason": "The reviewed source retains an authoritative versioned V1 contract pending a compatible migration."
     },
     {
+      "path": "scripts/t75-evidence-attestation.mjs",
+      "classification": "migrated-v2",
+      "signals": {
+        "canonicalizer": 7,
+        "digest": 4,
+        "localeCompare": 0,
+        "serialization": 2
+      },
+      "reason": "The reviewed source uses the declared V2 canonical contract."
+    },
+    {
       "path": "scripts/t75-evidence-index.mjs",
       "classification": "migrated-v2",
       "signals": {
