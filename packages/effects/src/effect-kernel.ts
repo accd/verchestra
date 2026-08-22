@@ -6,6 +6,7 @@ import {
   type EffectIntent,
   type EffectRepository,
   type EffectStatus,
+  type IdempotencyInput,
   type OperationReceipt,
   type PriorEffectState
 } from "@verchestra/application";
@@ -16,6 +17,7 @@ export {
   EffectError,
   type EffectAdapter,
   type EffectApplyResult,
+  type EffectCanonicalizationVersion,
   type EffectIntent,
   type EffectRepository,
   type EffectRiskTier,
@@ -28,7 +30,7 @@ export {
 
 const freezeIntent = (value: EffectIntent): EffectIntent => Object.freeze({ ...value });
 
-function sameLogicalIntent(left: EffectIntent, right: EffectIntent): boolean {
+function sameLogicalIntent(left: IdempotencyInput, right: IdempotencyInput): boolean {
   return (
     left.operationKind === right.operationKind &&
     left.workspaceId === right.workspaceId &&
@@ -59,12 +61,18 @@ export class InMemoryEffectRepository implements EffectRepository {
       return current;
     }
     const verified = createEffectIntent(intent);
+    const existing = this.#findByIdentity(verified);
+    if (existing !== undefined) return existing;
     this.#intents.set(verified.idempotencyKey, verified);
     return verified;
   }
 
   async get(idempotencyKey: string): Promise<EffectIntent | undefined> {
     return this.#intents.get(idempotencyKey);
+  }
+
+  async findByIdentity(input: IdempotencyInput): Promise<EffectIntent | undefined> {
+    return this.#findByIdentity(input);
   }
 
   async getReceipt(idempotencyKey: string): Promise<OperationReceipt | undefined> {
@@ -119,6 +127,10 @@ export class InMemoryEffectRepository implements EffectRepository {
     if (current === undefined) throw new EffectError("VES_EFFECT_NOT_FOUND", "Effect intent was not found");
     return current;
   }
+
+  #findByIdentity(input: IdempotencyInput): EffectIntent | undefined {
+    return [...this.#intents.values()].find((intent) => sameLogicalIntent(intent, input));
+  }
 }
 
 interface MockAdapterOptions {
@@ -172,8 +184,12 @@ export class EffectBroker {
   }
 
   async plan(intent: EffectIntent): Promise<EffectIntent> {
-    const existing = await this.#repository.get(intent.idempotencyKey);
-    return this.#repository.insertOrGet(existing === undefined ? createEffectIntent(intent) : intent);
+    const existingByKey = await this.#repository.get(intent.idempotencyKey);
+    if (existingByKey !== undefined) return this.#repository.insertOrGet(intent);
+    const verified = createEffectIntent(intent);
+    const existingByIdentity = await this.#repository.findByIdentity(verified);
+    if (existingByIdentity !== undefined) return existingByIdentity;
+    return this.#repository.insertOrGet(verified);
   }
 
   async execute(idempotencyKey: string, signal: AbortSignal = new AbortController().signal): Promise<OperationReceipt> {

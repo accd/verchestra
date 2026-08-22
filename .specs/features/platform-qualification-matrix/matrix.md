@@ -163,16 +163,17 @@ means the Driver matrix's real axis is exactly three `--version` probes.
 **Version drift to record:** OpenCode's production default minimum
 (`1.17.18`) is not the installed qualified version (`1.18.18`).
 
-**Cross-driver matrix: does not exist.**
-`tests/unit/verification-driver-isolation.test.mjs:142` is named
-"cross-driver scenario" but uses two `DeterministicMockDriver` instances and
-passes *string labels* (`"claude-code"`, `"codex"`) that are not bound to any
-driver instance — the file's own comment at lines 152-155 says so. Live
-wiring is task A4 (#35), which this matrix consumes.
+**Cross-driver matrix: composed and exercised in PR #296.** The focused
+integration scenario resolves Claude Code as implementer and Codex as verifier,
+starts the actual Codex adapter process backed by the repository's deterministic
+fake executable, grants zero tools, rejects any `tool.requested` event, and
+persists portable completion evidence. The unit scenario at
+`tests/unit/verification-driver-isolation.test.mjs:142` remains a lower-level
+guard using mock drivers; it is not the sole cross-driver evidence anymore.
 
-**Gap:** (a) The cross-driver case lands with A4. (b) Pi's real probe is
-covered by the 0.84.2 requalification record in
-`docs/qualification/pi-runtime-0.84.2.md`.
+**Remaining gap:** Pi's real probe is covered by the 0.84.2 requalification
+record in `docs/qualification/pi-runtime-0.84.2.md`; no live provider call is
+implied by the deterministic verifier fixture.
 
 ## 5. Sandbox / isolation matrix
 
@@ -469,8 +470,9 @@ not a reason to rewrite or hide this fleet result.
    All four gate profiles were then dispatched at one candidate (`9aab070`),
    which was the first exercise of the M-2 evidence index; section 9c is the
    current candidate evidence.
-5. **A4 (#35)** — live cross-driver verifier session; supplies the Driver
-   matrix's missing cross-driver case.
+5. ~~**A4 (#35)** — live cross-driver verifier session~~ — **done in PR #296**;
+   the composed Codex verifier runs with a zero-tool grant and records portable
+   completion evidence.
 6. **C5 (#207)** — live doctor probes, including `doctor.sandbox` moving off
    presence-only.
 7. **Evidence index signed** — ordered against AD-014 per section 8.

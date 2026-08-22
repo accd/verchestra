@@ -2,13 +2,13 @@
 schema: verchestra-feature-handoff/v1
 feature: opencode-runtime-1-18-18
 issue: 277
-status: verification
+status: complete
 branch: codex/rebase-pr277
 baseRevision: 7028d7fc4f3483b38569001e9b5cb0754e9f04a4
 lastCompletedTask: T3
-nextTask: Push the exact qualification surface, wait for Quality/Site/CodeQL, then merge with rebase only if all pass
+nextTask: No further action; issue #277 is closed.
 lastGate: corepack pnpm gate:quick
-updatedAt: 2026-08-22T12:05:00Z
+updatedAt: 2026-08-22T18:00:00Z
 ---
 
 # Evidence

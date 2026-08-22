@@ -2,13 +2,13 @@
 schema: verchestra-feature-handoff/v1
 feature: probe-evidence-wiring
 issue: 34
-status: verification
+status: complete
 branch: feat/probe-evidence-in-execution-package
 baseRevision: e534c497d91e29cf95ed1dc5ad335bc2ecc2a0e3
 lastCompletedTask: T2
-nextTask: Independent verification and human review of the probe evidence pull request
+nextTask: No further action; issue #34 is closed.
 lastGate: pnpm gate:security
-updatedAt: 2026-07-30T11:40:00Z
+updatedAt: 2026-08-22T18:00:00Z
 ---
 
 # Scope

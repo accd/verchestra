@@ -2,13 +2,13 @@
 schema: verchestra-feature-handoff/v1
 feature: dependabot-extract-zip
 issue: 22
-status: verification
+status: complete
 branch: codex/security-extract-zip
 baseRevision: b0b7a817e7052dd3852b577e549394c5155c0e5b
 lastCompletedTask: T1
-nextTask: Wait for GitHub Site quality and re-check Dependabot alert #22 after merge
+nextTask: No further action; issue #22 is closed.
 lastGate: corepack pnpm gate:security
-updatedAt: 2026-08-22T12:17:00Z
+updatedAt: 2026-08-22T18:00:00Z
 ---
 
 # Evidence

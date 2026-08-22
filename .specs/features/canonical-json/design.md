@@ -203,3 +203,46 @@ type RecoveryJournal = RecoveryJournalV1 | RecoveryJournalV2
 > **Project-level decision:** the encoder-placement choice sets a precedent for
 > every later slice in #58 (T4). Append it to `.specs/STATE.md` `## Decisions`
 > as `AD-009` in T13.
+
+---
+
+## T4i — durable effect identity migration
+
+`EffectIntent.idempotencyKey` is a durable at-most-once boundary. V2 cannot
+replace its V1 bytes in place: a V1 row is looked up by the old key, and a new
+V2 key for the same operation would otherwise insert a second intent.
+
+```mermaid
+flowchart LR
+    Input["Logical effect identity"] --> V1["V1 material → sha256 key"]
+    Input --> V2["V2 material + canonicalizationVersion 2 → v2:sha256 key"]
+    V1 --> Lookup["Repository logical-identity lookup"]
+    V2 --> Lookup
+    Lookup -->|"V1 row exists"| Reuse["Reuse V1 intent; never apply twice"]
+    Lookup -->|"no row"| Insert["Insert V2 intent with version 2"]
+```
+
+### Data and migration rules
+
+- `canonicalizationVersion` is `1 | 2`. New calls default to `2`; V1 can be
+  requested only for reading/testing prior material.
+- V1 uses its frozen JSON material and bare `sha256:` key exactly as before.
+  V2 uses `canonicalizeJsonV2` over material that explicitly records version 2
+  and emits `v2:sha256:`.
+- Runtime migration `011_effect_identity_canonicalization` adds a
+  `canonicalization_version` column with default `1` and a uniqueness index
+  over the logical identity fields, excluding the canonicalization version.
+  Therefore pre-existing rows become explicit V1 and V1/V2 duplicates cannot
+  coexist.
+- `EffectRepository.findByIdentity` is the dual-version read seam. Both the
+  in-memory and SQLite repositories return an existing logical intent before a
+  new V2 row is created; SQLite checks again inside its writer transaction.
+
+### Failure handling
+
+| Condition | Behaviour |
+| --- | --- |
+| Version other than 1 or 2 | `VES_EFFECT_INTENT_INVALID`; no key or row is produced. |
+| Forged key/version pair | `VES_EFFECT_KEY_FORGED`; creation fails before persistence. |
+| Existing V1/V2 logical identity | Existing intent is returned, preserving its key/status/receipt. |
+| Existing SQLite rows conflict with new logical uniqueness | Migration fails and runtime does not open; no silent duplicate is accepted. |

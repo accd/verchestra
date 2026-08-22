@@ -4,6 +4,7 @@ import { readFile, rename, rm } from "node:fs/promises";
 import { dirname } from "node:path";
 import { DatabaseSync, backup, type StatementSync } from "node:sqlite";
 
+import type { IdempotencyInput } from "@verchestra/application";
 import { canonicalizeJsonV2, type RunSnapshot, type WorkflowDecision } from "@verchestra/domain";
 
 export interface RuntimeMigration {
@@ -279,6 +280,11 @@ const AUTHORITY_BINDING_DIGEST_REENCODING = "DELETE FROM authority_approvals; DE
 // transient is only true if the transition invalidates the old rows rather
 // than leaving them to fail closed for the wrong reason.
 const POLICY_VIEW_DIGEST_REENCODING = "DELETE FROM active_policy_views;";
+const EFFECT_IDENTITY_CANONICALIZATION = `
+ALTER TABLE effect_intents ADD COLUMN canonicalization_version INTEGER NOT NULL DEFAULT 1
+  CHECK (canonicalization_version IN (1, 2));
+CREATE UNIQUE INDEX effect_intents_logical_identity
+  ON effect_intents(workspace_id, operation_kind, logical_target, canonical_input_digest, semantic_identity);`;
 
 export const DEFAULT_RUNTIME_MIGRATIONS: readonly RuntimeMigration[] = Object.freeze([
   Object.freeze({ id: "001_runtime", up: RUNTIME_SCHEMA }),
@@ -293,7 +299,8 @@ export const DEFAULT_RUNTIME_MIGRATIONS: readonly RuntimeMigration[] = Object.fr
   // 009 is reserved by #268 (authority binding-digest re-encoding, pending
   // review at the time this migration was written); this follows at 010 to
   // avoid a numbering collision regardless of merge order.
-  Object.freeze({ id: "010_policy_view_digest_reencoding", up: POLICY_VIEW_DIGEST_REENCODING })
+  Object.freeze({ id: "010_policy_view_digest_reencoding", up: POLICY_VIEW_DIGEST_REENCODING }),
+  Object.freeze({ id: "011_effect_identity_canonicalization", up: EFFECT_IDENTITY_CANONICALIZATION })
 ]);
 
 type UnknownRecord = Record<string, unknown> & {
@@ -354,6 +361,7 @@ interface StoredEffectIntent {
   readonly logicalTarget: string;
   readonly canonicalInputDigest: string;
   readonly semanticIdentity: string;
+  readonly canonicalizationVersion: 1 | 2;
   readonly riskTier: "low" | "medium" | "high";
   readonly grantRef: string;
   readonly expectedRemoteVersion?: string;
@@ -1408,10 +1416,11 @@ export class RuntimeStore {
   }
 
   createEffectRepository() {
-    const readIntent = (key: string): StoredEffectIntent | undefined => {
-      const row = this.#database().prepare("SELECT * FROM effect_intents WHERE idempotency_key=?").get(key) as
-        UnknownRecord | undefined;
-      if (row === undefined) return undefined;
+    const readIntentRow = (row: UnknownRecord): StoredEffectIntent => {
+      const canonicalizationVersion = Number(row["canonicalization_version"]);
+      if (canonicalizationVersion !== 1 && canonicalizationVersion !== 2) {
+        throw runtimeError("VES_RUNTIME_CORRUPT", "Effect intent canonicalization version is invalid");
+      }
       return Object.freeze({
         effectId: String(row["effect_id"]),
         idempotencyKey: String(row["idempotency_key"]),
@@ -1421,6 +1430,7 @@ export class RuntimeStore {
         logicalTarget: String(row["logical_target"]),
         canonicalInputDigest: String(row["canonical_input_digest"]),
         semanticIdentity: String(row["semantic_identity"]),
+        canonicalizationVersion,
         riskTier: String(row["risk_tier"]) as StoredEffectIntent["riskTier"],
         grantRef: String(row["grant_ref"]),
         ...(row["expected_remote_version"] === null
@@ -1430,6 +1440,28 @@ export class RuntimeStore {
         attempt: Number(row["attempt"]),
         createdAt: String(row["created_at"])
       });
+    };
+    const readIntent = (key: string): StoredEffectIntent | undefined => {
+      const row = this.#database().prepare("SELECT * FROM effect_intents WHERE idempotency_key=?").get(key) as
+        UnknownRecord | undefined;
+      if (row === undefined) return undefined;
+      return readIntentRow(row);
+    };
+    const readIntentByIdentity = (input: IdempotencyInput): StoredEffectIntent | undefined => {
+      const row = this.#database()
+        .prepare(
+          `SELECT * FROM effect_intents
+          WHERE operation_kind=? AND workspace_id=? AND logical_target=?
+            AND canonical_input_digest=? AND semantic_identity=?`
+        )
+        .get(
+          input.operationKind,
+          input.workspaceId,
+          input.logicalTarget,
+          input.canonicalInputDigest,
+          input.semanticIdentity
+        ) as UnknownRecord | undefined;
+      return row === undefined ? undefined : readIntentRow(row);
     };
     const readReceipt = (key: string): StoredReceipt | undefined => {
       const row = this.#database().prepare("SELECT * FROM operation_receipts WHERE idempotency_key=?").get(key) as
@@ -1480,21 +1512,29 @@ export class RuntimeStore {
             "workspaceId",
             "logicalTarget",
             "canonicalInputDigest",
-            "semanticIdentity"
+            "semanticIdentity",
+            "canonicalizationVersion"
           ] as const;
           if (fields.some((field) => existing[field] !== intent[field])) {
             throw runtimeError("VES_EFFECT_KEY_CONFLICT", "Idempotency key is bound to different content");
           }
           return existing;
         }
+        const existingByIdentity = readIntentByIdentity(intent);
+        if (existingByIdentity !== undefined) return existingByIdentity;
         const db = this.#database();
         try {
           db.exec("BEGIN IMMEDIATE");
+          const concurrent = readIntentByIdentity(intent);
+          if (concurrent !== undefined) {
+            db.exec("COMMIT");
+            return concurrent;
+          }
           db.prepare(
             `INSERT INTO effect_intents(
             effect_id, idempotency_key, operation_kind, workspace_id, run_id, logical_target,
-            canonical_input_digest, semantic_identity, risk_tier, grant_ref, expected_remote_version,
-            status, attempt, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+            canonical_input_digest, semantic_identity, canonicalization_version, risk_tier, grant_ref, expected_remote_version,
+            status, attempt, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
           ).run(
             intent.effectId,
             intent.idempotencyKey,
@@ -1504,6 +1544,7 @@ export class RuntimeStore {
             intent.logicalTarget,
             intent.canonicalInputDigest,
             intent.semanticIdentity,
+            intent.canonicalizationVersion,
             intent.riskTier,
             intent.grantRef,
             intent.expectedRemoteVersion ?? null,
@@ -1524,6 +1565,7 @@ export class RuntimeStore {
         }
       },
       get: async (key: string) => readIntent(key),
+      findByIdentity: async (input: IdempotencyInput) => readIntentByIdentity(input),
       getReceipt: async (key: string) => readReceipt(key),
       listDispatchable: async (limit: number): Promise<readonly StoredEffectIntent[]> => {
         const rows = this.#database()

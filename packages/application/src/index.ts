@@ -203,6 +203,7 @@ export {
   EffectError,
   type EffectAdapter,
   type EffectApplyResult,
+  type EffectCanonicalizationVersion,
   type EffectIntent,
   type EffectRepository,
   type EffectRiskTier,

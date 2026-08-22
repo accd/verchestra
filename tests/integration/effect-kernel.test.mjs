@@ -3,8 +3,8 @@ import { join } from "node:path";
 import { afterEach, test } from "node:test";
 import { DatabaseSync } from "node:sqlite";
 
-import { EffectBroker, MockEffectAdapter } from "../../packages/effects/src/index.ts";
-import { RuntimeStore } from "../../packages/platform-node/src/index.ts";
+import { EffectBroker, MockEffectAdapter, buildIdempotencyKey } from "../../packages/effects/src/index.ts";
+import { DEFAULT_RUNTIME_MIGRATIONS, RuntimeStore } from "../../packages/platform-node/src/index.ts";
 import { effectBase, effectIntent } from "../helpers/effect-fixture.mjs";
 import { cleanup, now, opened, run } from "../helpers/runtime-store-fixture.mjs";
 
@@ -27,6 +27,73 @@ test("effect migration creates intent, outbox, receipt, and inbox tables", async
     .map((row) => row.name);
   assert.deepEqual(names, ["effect_inbox", "effect_intents", "effect_outbox", "operation_receipts"]);
   db.close();
+  store.close();
+});
+
+test("a migrated V1 row is reused by a V2 planner and cannot apply twice", async () => {
+  const { root, store: fixtureStore } = await opened();
+  fixtureStore.close();
+  const dbPath = join(root, "legacy-effects.sqlite");
+  const legacyStore = new RuntimeStore({
+    dbPath,
+    migrations: DEFAULT_RUNTIME_MIGRATIONS.slice(0, -1),
+    now: () => now
+  });
+  legacyStore.open();
+  legacyStore.close();
+  const legacyInput = { ...effectBase, canonicalizationVersion: 1 };
+  const legacyKey = buildIdempotencyKey(legacyInput);
+  const db = new DatabaseSync(dbPath, { defensive: true });
+  db.prepare(
+    `INSERT INTO effect_intents(
+      effect_id, idempotency_key, operation_kind, workspace_id, run_id, logical_target,
+      canonical_input_digest, semantic_identity, risk_tier, grant_ref, expected_remote_version,
+      status, attempt, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    effectBase.effectId,
+    legacyKey,
+    effectBase.operationKind,
+    effectBase.workspaceId,
+    null,
+    effectBase.logicalTarget,
+    effectBase.canonicalInputDigest,
+    effectBase.semanticIdentity,
+    effectBase.riskTier,
+    effectBase.grantRef,
+    null,
+    "planned",
+    0,
+    effectBase.createdAt
+  );
+  db.prepare("INSERT INTO effect_outbox(idempotency_key, status, updated_at) VALUES (?, ?, ?)").run(
+    legacyKey,
+    "planned",
+    now
+  );
+  db.close();
+
+  const store = new RuntimeStore({ dbPath, now: () => now });
+  assert.equal(store.open().appliedMigrations, 1);
+  const adapter = new MockEffectAdapter();
+  const broker = new EffectBroker({ repository: store.createEffectRepository(), adapter, now: () => now });
+  const migrated = await store.createEffectRepository().get(legacyKey);
+  assert.equal(migrated.canonicalizationVersion, 1);
+  const planned = await broker.plan(effectIntent({ effectId: "effect_018f0b6d-7b1a-7abc-8def-4123456789ab" }));
+  assert.equal(planned.idempotencyKey, legacyKey);
+  await broker.execute(planned.idempotencyKey);
+  await broker.execute((await broker.plan(effectIntent())).idempotencyKey);
+  assert.equal(adapter.applyCalls, 1);
+  const verified = new DatabaseSync(dbPath, { readOnly: true, defensive: true });
+  assert.equal(verified.prepare("SELECT count(*) AS count FROM effect_intents").get().count, 1);
+  assert.equal(
+    verified
+      .prepare(
+        "SELECT count(*) AS count FROM sqlite_master WHERE type='index' AND name='effect_intents_logical_identity'"
+      )
+      .get().count,
+    1
+  );
+  verified.close();
   store.close();
 });
 

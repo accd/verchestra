@@ -195,3 +195,28 @@ requiring no historical byte compatibility.
 | A2  | `JSON.stringify` already emits RFC 8785-conformant numbers and string escapes for finite values, because JCS's number rule _is_ ECMAScript `Number::toString`. | RFC 8785 §3.2.2.3 defers to ECMAScript. This is why an internal encoder is small: the risky part is delegated to the runtime, not reimplemented.                                       |
 | A3  | The scanner, placement, and journal identities are the complete set of `buildInventoryFingerprint` consumers.                                                  | `grep -rn buildInventoryFingerprint packages/workspace/src` returns `workspace-scanner.ts`, `artifact-placement.ts`, `safe-init.ts`, and the `index.ts` re-export only.                |
 | A4  | Moving the discrimination sensor to `tests/security/` makes it actually execute.                                                                               | `tests/mutation/` is named only in `scripts/gate-selection.mjs:36` and is run by no declared test script; `tests/security/` is run by `test:security`, which `gate:security` includes. |
+
+---
+
+## T4i — durable effect identity migration
+
+This vertical owns the deferred `effect-contract.ts` row in
+`docs/canonical-json-compatibility.md`. It is not a direct serializer swap:
+the idempotency key gates external effects and a mixed V1/V2 deployment must
+not create a second intent for the same logical operation.
+
+| ID | Requirement |
+| --- | --- |
+| CJ4I-01 | New effect intents shall persist `canonicalizationVersion: 2`, emit a self-describing `v2:sha256:` key, and derive their material through `canonicalizeJsonV2`. |
+| CJ4I-02 | V1 key material and output shall remain byte-identical when `canonicalizationVersion: 1` is selected; a pre-migration row shall read as V1. |
+| CJ4I-03 | Planning a V2 intent whose logical identity already exists under V1 shall return the V1 intent and shall not create or apply a second effect. |
+| CJ4I-04 | The runtime store shall add the version column and cross-version logical-identity uniqueness through an additive migration; an incompatible existing state fails closed. |
+| CJ4I-05 | Focused unit, integration, fault, and security evidence shall cover V1/V2 lookup, exact-once application, invalid versions, and a discriminator for V2 canonicalization. |
+
+### T4i success criteria
+
+- [x] CJ4I-01 — V2 intents have an explicit version field and V2 key.
+- [x] CJ4I-02 — a pinned V1 material fixture remains byte-identical.
+- [x] CJ4I-03 — a V2 planner converges on a legacy V1 row without a second adapter call.
+- [x] CJ4I-04 — migration/reopen evidence proves the durable SQLite path.
+- [x] CJ4I-05 — relevant declared test scopes and `pnpm gate:security` pass with no weakened assertion.
