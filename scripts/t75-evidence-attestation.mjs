@@ -41,12 +41,10 @@ function sourceStateDigest(revision) {
 }
 
 function exactObjectKeys(value, expected) {
-  return (
-    value !== null &&
-    typeof value === "object" &&
-    !Array.isArray(value) &&
-    Object.keys(value).sort().join(",") === [...expected].sort().join(",")
-  );
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
+  const keys = Object.keys(value);
+  if (keys.length !== expected.length) return false;
+  return keys.every((key) => expected.includes(key));
 }
 
 function validityFields(value) {
