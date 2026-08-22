@@ -549,47 +549,47 @@
     },
     {
       "path": "packages/evidence/src/execution-package/execution-package.ts",
-      "classification": "retained-v1-versioned",
+      "classification": "migrated-v2",
       "signals": {
         "canonicalizer": 4,
         "digest": 5,
-        "localeCompare": 11,
+        "localeCompare": 1,
         "serialization": 0
       },
-      "reason": "The reviewed source retains an authoritative versioned V1 contract pending a compatible migration."
+      "reason": "New packages use the declared V2 schema and code-unit set ordering; the version-gated V1 verifier retains its authoritative historical ordering."
     },
     {
       "path": "packages/evidence/src/index.ts",
-      "classification": "retained-v1-versioned",
+      "classification": "migrated-v2",
       "signals": {
-        "canonicalizer": 1,
-        "digest": 1,
+        "canonicalizer": 2,
+        "digest": 2,
         "localeCompare": 0,
         "serialization": 0
       },
-      "reason": "The reviewed source retains an authoritative versioned V1 contract pending a compatible migration."
+      "reason": "The public evidence facade exports explicit V1/V2 canonicalization while recorded schemas select the compatible verifier."
     },
     {
       "path": "packages/evidence/src/integrity/artifact-sealer.ts",
-      "classification": "retained-v1-versioned",
+      "classification": "migrated-v2",
       "signals": {
         "canonicalizer": 2,
-        "digest": 7,
+        "digest": 2,
         "localeCompare": 0,
         "serialization": 0
       },
-      "reason": "The reviewed source retains an authoritative versioned V1 contract pending a compatible migration."
+      "reason": "The DSSE sealer selects the declared V1 or V2 canonicalization from the signed schema before cloning, digesting, or verifying."
     },
     {
       "path": "packages/evidence/src/integrity/canonical.ts",
-      "classification": "retained-v1-versioned",
+      "classification": "migrated-v2",
       "signals": {
-        "canonicalizer": 2,
-        "digest": 3,
+        "canonicalizer": 7,
+        "digest": 5,
         "localeCompare": 0,
         "serialization": 0
       },
-      "reason": "The reviewed source retains an authoritative versioned V1 contract pending a compatible migration."
+      "reason": "The evidence facade keeps qualified V1 bytes and delegates explicit V2 serialization to the inward RFC 8785 implementation."
     },
     {
       "path": "packages/evidence/src/integrity/dsse.ts",

@@ -1,10 +1,11 @@
 import { createPublicKey, verify as verifyBytes } from "node:crypto";
 
-import { canonicalizeJson, IntegrityError, sha256Digest } from "./canonical.ts";
+import { canonicalizeJsonForVersion, IntegrityError, sha256DigestForVersion } from "./canonical.ts";
 import {
   buildStatement,
   DSSE_PAYLOAD_TYPE,
   IN_TOTO_STATEMENT_TYPE,
+  canonicalizationVersionForSchema,
   preAuthenticationEncoding,
   predicateTypeFor,
   statementBytes
@@ -40,8 +41,42 @@ interface TrustRootInput {
   readonly revokedKeyIds?: readonly string[];
 }
 
+type PayloadIntegrityErrorCode = "VES_ENVELOPE_UNSUPPORTED" | "VES_INTEGRITY_PAYLOAD_DIGEST_MISMATCH";
+
+class PayloadIntegrityError extends Error {
+  readonly code: PayloadIntegrityErrorCode;
+
+  constructor(code: PayloadIntegrityErrorCode) {
+    super(code);
+    this.code = code;
+  }
+}
+
 function invalidBinding(message: string): never {
   throw new IntegrityError("VES_INTEGRITY_INVALID_BINDING", message);
+}
+
+function digestForSchema(schema: { readonly name: string; readonly version: number }, value: unknown): string {
+  const version = canonicalizationVersionForSchema(schema);
+  if (version === undefined) invalidBinding("Artifact schema has no canonicalization version");
+  return sha256DigestForVersion(version, value);
+}
+
+function hasSupportedSchema(schema: { readonly name: string; readonly version: number }): boolean {
+  return canonicalizationVersionForSchema(schema) !== undefined && predicateTypeFor(schema) !== undefined;
+}
+
+function assertPayloadIntegrity(artifact: SealedArtifact): void {
+  try {
+    if (!hasSupportedSchema(artifact.schema)) throw new PayloadIntegrityError("VES_ENVELOPE_UNSUPPORTED");
+    const actualDigest = digestForSchema(artifact.schema, artifact.payload);
+    if (actualDigest !== artifact.payloadDigest) {
+      throw new PayloadIntegrityError("VES_INTEGRITY_PAYLOAD_DIGEST_MISMATCH");
+    }
+  } catch (error) {
+    if (error instanceof PayloadIntegrityError) throw error;
+    throw new PayloadIntegrityError("VES_INTEGRITY_PAYLOAD_DIGEST_MISMATCH");
+  }
 }
 
 function assertBinding(binding: ArtifactBinding): void {
@@ -96,7 +131,7 @@ export function sealedArtifactId(artifact: SealedArtifact): string {
   if (predicateType === undefined) {
     throw new IntegrityError("VES_INTEGRITY_INVALID_BINDING", "Artifact schema has no declared predicate type");
   }
-  return sha256Digest(projectedStatement(artifact, predicateType));
+  return digestForSchema(artifact.schema, projectedStatement(artifact, predicateType));
 }
 
 /**
@@ -250,7 +285,7 @@ export function sealedArtifactFromEnvelope<T extends JsonValue = JsonValue>(valu
   const binding = statement.predicate.binding;
   const payloadDigest = statement.subject[0]?.digest.sha256 as string;
   return Object.freeze({
-    artifactId: sha256Digest(statement),
+    artifactId: digestForSchema(binding.schema, statement),
     schema: Object.freeze({ ...binding.schema }),
     purpose: binding.purpose,
     bindingId: binding.bindingId,
@@ -277,8 +312,10 @@ export function dsseEnvelopeOf(artifact: SealedArtifact): DsseEnvelope {
   });
 }
 
-function cloneJson<T extends JsonValue>(value: T): T {
-  return JSON.parse(canonicalizeJson(value)) as T;
+function cloneJson<T extends JsonValue>(value: T, schema: { readonly name: string; readonly version: number }): T {
+  const version = canonicalizationVersionForSchema(schema);
+  if (version === undefined) invalidBinding("Artifact schema has no canonicalization version");
+  return JSON.parse(canonicalizeJsonForVersion(version, value)) as T;
 }
 
 export function createTrustRoot(input: TrustRootInput): TrustRoot {
@@ -323,7 +360,7 @@ export class ArtifactSealer {
     if (parseInstant(issuedAt) === undefined || new Date(issuedAt).toISOString() !== issuedAt) {
       invalidBinding("Artifact issue time is not a canonical instant");
     }
-    const payload = cloneJson(payloadInput);
+    const payload = cloneJson(payloadInput, binding.schema);
     const predicateType = predicateTypeFor(binding.schema);
     // A schema with no predicate type is an artifact kind AD-014 never named.
     // Minting a URI here would create an attestation type nobody can verify.
@@ -336,7 +373,7 @@ export class ArtifactSealer {
       bindingId: binding.bindingId,
       sourceStateDigest: binding.sourceStateDigest,
       issuedAt,
-      payloadDigest: sha256Digest(payload),
+      payloadDigest: digestForSchema(binding.schema, payload),
       predicateType,
       content: payload
     });
@@ -344,7 +381,7 @@ export class ArtifactSealer {
     // The artifact id is the identity of what was signed. Deriving it from the
     // Statement rather than storing an independent value means it cannot name
     // one thing while the signature covers another.
-    const artifactId = sha256Digest(statement);
+    const artifactId = digestForSchema(binding.schema, statement);
     const signature = await this.#signer.sign(binding.purpose, preAuthenticationEncoding(DSSE_PAYLOAD_TYPE, bytes));
     const dsse: DsseEnvelope = Object.freeze({
       payloadType: DSSE_PAYLOAD_TYPE,
@@ -371,22 +408,19 @@ export class ArtifactSealer {
     trust: TrustRoot,
     expected: VerificationExpectation
   ): Promise<VerificationResult> {
-    // Payload digest first, before the envelope is opened. A tampered payload
-    // also breaks projection equality, so opening first would report every such
-    // case as an envelope problem and lose the specific code this contract has
-    // always returned.
+    // Schema selection is a closed envelope property. After that check, the
+    // payload digest stays ahead of envelope projection checks so actual content
+    // tampering keeps its specific failure code.
     try {
-      if (sha256Digest(artifact.payload) !== artifact.payloadDigest) {
-        return { ok: false, code: "VES_INTEGRITY_PAYLOAD_DIGEST_MISMATCH" };
-      }
-    } catch {
-      return { ok: false, code: "VES_INTEGRITY_PAYLOAD_DIGEST_MISMATCH" };
+      assertPayloadIntegrity(artifact);
+    } catch (error) {
+      return { ok: false, code: (error as PayloadIntegrityError).code };
     }
 
     const opened = openEnvelope(artifact);
     if ("code" in opened) return { ok: false, code: opened.code };
     const { envelope, signedBytes, signedStatement } = opened;
-    if (sha256Digest(signedStatement) !== artifact.artifactId) {
+    if (digestForSchema(artifact.schema, signedStatement) !== artifact.artifactId) {
       return { ok: false, code: "VES_INTEGRITY_ARTIFACT_ID_MISMATCH" };
     }
 

@@ -3,7 +3,8 @@ import {
   ExecutionPackageBuilder,
   NodeEd25519Signer,
   createTrustRoot,
-  sha256Digest
+  sha256Digest,
+  sha256DigestForVersion
 } from "../../packages/evidence/src/index.ts";
 
 export const now = "2026-07-15T15:00:00.000Z";
@@ -12,6 +13,7 @@ export const projectIds = ["project_018f0b6d-7b1a-7abc-8def-0123456789ab"];
 export const digest = (value) => `sha256:${sha256Digest(value)}`;
 
 export function packageInput(overrides = {}) {
+  const schemaVersion = overrides.schemaVersion ?? 2;
   const bindings = {
     sourceState: {
       "repo:api": digest("api-commit"),
@@ -29,7 +31,7 @@ export function packageInput(overrides = {}) {
     evidenceDigest: digest("evidence")
   };
   return {
-    schemaVersion: 1,
+    schemaVersion,
     packageVersion: 1,
     workspaceId,
     projectIds,
@@ -94,7 +96,7 @@ export function packageInput(overrides = {}) {
         taskId: "T-1",
         result: "passed",
         evidenceDigest: digest("T-1-evidence"),
-        sourceStateDigest: digest(bindings.sourceState)
+        sourceStateDigest: `sha256:${sha256DigestForVersion(schemaVersion, bindings.sourceState)}`
       }
     ],
     contextRecipes: [{ artifactId: "context:T-2", digest: digest("context-T-2") }],
