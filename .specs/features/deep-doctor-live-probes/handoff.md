@@ -5,9 +5,9 @@ issue: 207
 status: in_progress
 branch: feat/deep-doctor-live-probes
 baseRevision: 0d7ad9a2bad3b29c4defb4338d1106e4fe22c6e1
-lastCompletedTask: T6
-nextTask: T7
-lastGate: pnpm gate:quick, gate:full, gate:release all PASS (test:unit 2067, test:release 28, zero failed/skipped/todo; 2 pre-existing unrelated qualification-spike failures on gate:release confirmed on clean tree)
+lastCompletedTask: T7
+nextTask: T8
+lastGate: pnpm gate:full PASS (test:integration 593/593, zero failed/skipped/todo)
 updatedAt: 2026-08-22T00:00:00Z
 ---
 
@@ -18,7 +18,7 @@ read-only observations. Requirements DDL-01 through DDL-14 in `spec.md`; 22
 tasks in six phases in `tasks.md`. Parent #13 (T72); lands with or before #16
 (T75), which is the current serial task.
 
-T1 through T6 are implemented and gated on branch `feat/deep-doctor-live-probes`.
+T1 through T7 are implemented and gated on branch (Phase 2 complete) `feat/deep-doctor-live-probes`.
 
 # Completed Evidence
 
@@ -137,17 +137,35 @@ T1 through T6 are implemented and gated on branch `feat/deep-doctor-live-probes`
   locally-installed Claude Code/Codex CLI version, confirmed identical on a
   clean tree via `git stash`, unrelated to this task.
 
+- **T7** — `tests/integration/doctor-sentinel-bracket.test.mjs` (new, 3 cases)
+  proves the property T6's compile-fix `await` only made possible: (1) a
+  sentinel mutated by an async probe mid-collection fails the diagnostic with
+  `VES_DOCTOR_SENTINEL_MUTATION`; (2) an unmutated sentinel across an async
+  probe still produces a `PASS`-verdict sealed report; (3) an execution-order
+  log proves `captureSentinels` runs exactly at the two boundaries with the
+  async probe's work strictly between them, nothing before or after.
+  Discrimination proven directly against the real
+  `apps/vestra-cli/src/doctor-composition.ts` (mutate in place, run, restore
+  via `git checkout`, since the file's transitive import graph — application,
+  contracts, evidence, domain, release-manifest — made a scratch-copy sensor
+  unreliable): moving `collectDoctorFacts` outside the bracket (before the
+  first capture) kills exactly the two tests that depend on bracket ordering
+  and leaves the unrelated PASS-path test passing, confirming the sensor
+  discriminates precisely, not just noisily. Gates: `pnpm gate:full` PASS;
+  `test:integration` 593/593, zero failed, skipped, or todo.
+
+  **Phase 2 (async probe port) is complete — T6 and T7.**
+
   Commit hashes are recorded as each subsequent task lands; T1 is the second
   commit on the branch, after the planning commit.
 
 # Next Exact Action
 
-T7: await `collectDoctorFacts` strictly between the two `captureSentinels()`
-calls in `apps/vestra-cli/src/doctor-composition.ts:61-67` (the minimal
-`await` already landed in T6 as a compile-fix; T7 adds the behavioral proof) —
-write a test that mutates a sentinel while an async probe is in flight and
-confirms the diagnostic fails closed, and confirm no async work happens before
-the first capture or after the second. Then `pnpm gate:full`.
+T8 (Phase 3 begins): add `packages/platform-node/src/readonly.ts` exporting
+only `inspectRuntimeDatabase` and `ProtectedPathBroker`, wired as a new
+package `exports` subpath `@verchestra/platform-node/readonly`. Confirm the
+subpath's own import closure reaches no writer and that `RuntimeStore` is not
+reachable through it. Then `pnpm test:architecture`.
 
 # Blockers
 

@@ -187,9 +187,9 @@ Claude Code/Codex CLI version, confirmed identical on a clean tree via
 **Where**: `apps/vestra-cli/src/doctor-composition.ts:62-67`
 **Depends on**: T6 · **Requirement**: DDL-05 · **AC**: 3
 **Done when**:
-- [ ] A sentinel mutated while an async probe is in flight fails the diagnostic closed
-- [ ] No async work occurs before the first capture or after the second
-- [ ] `pnpm gate:full` passes
+- [x] A sentinel mutated while an async probe is in flight fails the diagnostic closed
+- [x] No async work occurs before the first capture or after the second
+- [x] `pnpm gate:full` passes
 **Tests**: integration · **Gate**: full
 
 ### Phase 3 — Read-only surfaces and the transitive guard
@@ -446,4 +446,5 @@ No task depends on a later phase.
 | T4 | Done | recorded in `handoff.md` |
 | T5 | Done | recorded in `handoff.md` |
 | T6 | Done | recorded in `handoff.md` |
-| T7–T22 | Planned | Pending |
+| T7 | Done | recorded in `handoff.md` |
+| T8–T22 | Planned | Pending |
