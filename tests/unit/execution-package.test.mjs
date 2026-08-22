@@ -52,6 +52,41 @@ test("a pinned V1 package remains verifiable under its V1 predicate", async () =
   assert.equal((await builder.verify(sealed, trust, currentState(input))).ok, true);
 });
 
+test("V1 retains code-unit ordering at every legacy default-sort site", async () => {
+  const base = packageInput({ schemaVersion: 1 });
+  const tasks = structuredClone(base.tasks);
+  tasks[0] = {
+    ...tasks[0],
+    componentRefs: ["alpha", "Zulu"],
+    verificationCommands: ["alpha", "Zulu"],
+    doneCriteria: ["alpha", "Zulu"]
+  };
+  const input = packageInput({
+    schemaVersion: 1,
+    projectIds: ["alpha", "Zulu"],
+    requiredCapabilities: ["alpha", "Zulu"],
+    approvalRequirements: ["alpha", "Zulu"],
+    roleRequirements: [{ ...base.roleRequirements[0], capabilities: ["alpha", "Zulu"] }, base.roleRequirements[1]],
+    completionCriteria: [{ ...base.completionCriteria[0], verificationRefs: ["alpha", "Zulu"] }],
+    tasks
+  });
+  const { builder } = executionHarness();
+  const sealed = await builder.build(input);
+  const codeUnitOrder = ["Zulu", "alpha"];
+  assert.deepEqual(sealed.payload.projectIds, codeUnitOrder);
+  assert.deepEqual(sealed.payload.requiredCapabilities, codeUnitOrder);
+  assert.deepEqual(sealed.payload.approvalRequirements, codeUnitOrder);
+  assert.deepEqual(sealed.payload.roleRequirements[0].capabilities, codeUnitOrder);
+  assert.deepEqual(sealed.payload.completionCriteria[0].verificationRefs, codeUnitOrder);
+  assert.deepEqual(sealed.payload.tasks[0].componentRefs, codeUnitOrder);
+  assert.deepEqual(sealed.payload.tasks[0].verificationCommands, codeUnitOrder);
+  assert.deepEqual(sealed.payload.tasks[0].doneCriteria, codeUnitOrder);
+  assert.deepEqual(
+    derivePendingTasks([{ taskId: "T-1", sequence: 1, dependsOn: ["alpha", "Zulu"] }], [], 1)[0].blockedBy,
+    codeUnitOrder
+  );
+});
+
 test("pending work is derived from completed evidence and dependency closure", async () => {
   const { builder } = executionHarness();
   const sealed = await builder.build(packageInput());
