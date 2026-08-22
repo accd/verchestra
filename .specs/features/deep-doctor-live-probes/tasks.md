@@ -131,11 +131,11 @@ Batch packing at ~7 tasks per worker, whole phases only:
 **Where**: `scripts/provision-doctor-fixtures.mjs` (new), T75 workflow step, `tests/architecture/doctor-workspace-root.test.mjs`
 **Depends on**: T1 (not T4 — see T4's scope note) · **Requirement**: DDL-03 (AD-019) · **AC**: 2
 **Done when**:
-- [ ] Provisions exactly the contract's paths and nothing else
-- [ ] Not wired into `vestra init` or any user-facing command
-- [ ] Integration test asserts the provisioned set equals the contract set
-- [ ] A static architecture assertion fails the gate when a contract path has no provisioner reference (the defect this issue's original comment described, one level down), proven by a mutation in a disposable copy
-- [ ] `pnpm gate:full` passes
+- [x] Provisions exactly the contract's paths and nothing else
+- [x] Not wired into `vestra init` or any user-facing command
+- [x] Integration test asserts the provisioned set equals the contract set
+- [x] A static architecture assertion fails the gate when a contract path has no provisioner reference (the defect this issue's original comment described, one level down), proven by a mutation in a disposable copy
+- [x] `pnpm gate:full` passes
 **Tests**: integration + architecture · **Gate**: full
 
 ### Phase 2 — Async probe port
@@ -413,4 +413,5 @@ No task depends on a later phase.
 | T2 | Done | recorded in `handoff.md` |
 | T3 | Done | recorded in `handoff.md` |
 | T4 | Done | recorded in `handoff.md` |
-| T5–T22 | Planned | Pending |
+| T5 | Done | recorded in `handoff.md` |
+| T6–T22 | Planned | Pending |

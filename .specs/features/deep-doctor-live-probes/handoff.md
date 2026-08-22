@@ -5,9 +5,9 @@ issue: 207
 status: in_progress
 branch: feat/deep-doctor-live-probes
 baseRevision: 0d7ad9a2bad3b29c4defb4338d1106e4fe22c6e1
-lastCompletedTask: T4
-nextTask: T5
-lastGate: pnpm gate:quick (PASS; test:unit 2064/2064, 0 skipped, 0 todo)
+lastCompletedTask: T5
+nextTask: T6
+lastGate: pnpm gate:full (PASS; test:unit 2064, test:integration 590, test:architecture 29, all zero failed/skipped/todo)
 updatedAt: 2026-08-22T00:00:00Z
 ---
 
@@ -18,7 +18,7 @@ read-only observations. Requirements DDL-01 through DDL-14 in `spec.md`; 22
 tasks in six phases in `tasks.md`. Parent #13 (T72); lands with or before #16
 (T75), which is the current serial task.
 
-T1 through T4 are implemented and gated on branch `feat/deep-doctor-live-probes`.
+T1 through T5 are implemented and gated on branch `feat/deep-doctor-live-probes`.
 
 # Completed Evidence
 
@@ -82,21 +82,36 @@ T1 through T4 are implemented and gated on branch `feat/deep-doctor-live-probes`
   **T4 was split from its original scope — see Decisions.** Only ownership
   (AC1) is proven here; provisioning (AC2) moves to T5.
 
+- **T5** — `scripts/provision-doctor-fixtures.mjs` (new): a qualification-only
+  provisioner, not wired into `vestra init` or any user command, that
+  materializes the layout contract's seven paths under `<controlRoot>/.verchestra/`
+  by generic iteration over `SUBSYSTEM_OBSERVATION_PATHS`
+  (`Object.entries(...)`), never a hand-listed per-subsystem case. A path
+  whose final segment carries a `.` is provisioned as an empty file
+  (`policy/active.bundle`, `runtime.db`); every other path as a directory
+  (`secrets`, `drivers`, `connectors`, `probe/fixtures`, `sandbox`). Exports
+  `provisionDoctorFixtures(controlRoot)` for direct import; a CLI guard
+  (`process.argv[1]` matched against `import.meta.url`) drives the standalone
+  invocation. `tests/integration/provision-doctor-fixtures.test.mjs` (5 cases)
+  covers the provisioned set, no-extra-files, file-vs-directory shape, and
+  idempotency. `tests/architecture/doctor-workspace-root.test.mjs` gained
+  T4's deferred provisioning assertion: the provisioner must import the
+  contract and iterate it generically, proven by two mutations in a
+  disposable copy — a hand-listed partial subsystem set (dropping `sandbox`),
+  and the contract import dropped entirely — both killed. Gates: `pnpm gate:full`
+  PASS; `test:architecture` 29/29, `test:integration` 590/590, zero failed,
+  skipped, or todo.
+
   Commit hashes are recorded as each subsequent task lands; T1 is the second
   commit on the branch, after the planning commit.
 
 # Next Exact Action
 
-T5: write `scripts/provision-doctor-fixtures.mjs`, a qualification-only
-provisioner that materializes exactly the layout contract's seven paths (not
-wired into `vestra init` or any user-facing command), plus the drift-guard
-assertion T4 deferred — a contract path with no provisioner reference fails
-`tests/architecture/doctor-workspace-root.test.mjs`, proven by a mutation in a
-disposable copy. Then `pnpm gate:full`.
-
-**Blocked by the Node/FTS5 environment issue below** — T5's gate level is
-`full`, which currently cannot pass on this machine for reasons unrelated to
-T5 itself.
+T6: widen the doctor probe port to accept `DoctorObservation | Promise<DoctorObservation>`,
+make `collectDoctorFacts` async with sequential (never `Promise.all`) awaits
+and a per-probe timeout, and confirm a rejected promise still degrades to
+present-and-unhealthy with no error text, matching the synchronous path
+(`packages/application/src/doctor/doctor-facts.ts:21,57`). Then `pnpm gate:quick`.
 
 # Blockers
 

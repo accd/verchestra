@@ -92,3 +92,32 @@ test("every fileProbe call site routes through a contract-owned subsystem key", 
     );
   }
 });
+
+// DDL-03 / AC2 (#207): "a contract path nothing provisions fails the gate" —
+// the defect the original issue comment described, one level down from the
+// root-dirname fix. `scripts/provision-doctor-fixtures.mjs` is the only
+// repository surface that materializes these paths (T5). Proven statically:
+// the provisioner must import the contract and iterate it generically
+// (`Object.entries(SUBSYSTEM_OBSERVATION_PATHS)`) rather than hand-listing
+// subsystem keys — a hand-listed enumeration is exactly how a path silently
+// stops being provisioned, since nothing forces it to stay in sync with the
+// contract as subsystems are added.
+
+const provisionerSource = readFileSync(new URL("../../scripts/provision-doctor-fixtures.mjs", import.meta.url), "utf8");
+
+test("the fixture provisioner imports the layout contract", () => {
+  assert.match(
+    provisionerSource,
+    /import\s*\{[^}]*\bSUBSYSTEM_OBSERVATION_PATHS\b[^}]*\}\s*from\s*"\.\.\/packages\/domain\/src\/index\.ts"/u,
+    "scripts/provision-doctor-fixtures.mjs must import SUBSYSTEM_OBSERVATION_PATHS from the layout contract"
+  );
+});
+
+test("the fixture provisioner derives every path from the contract by generic iteration, never a hand-listed subsystem", () => {
+  assert.match(
+    provisionerSource,
+    /Object\.entries\(\s*SUBSYSTEM_OBSERVATION_PATHS\s*\)/u,
+    "scripts/provision-doctor-fixtures.mjs must iterate SUBSYSTEM_OBSERVATION_PATHS generically; " +
+      "a hand-listed per-subsystem case is exactly how a contract path silently stops being provisioned"
+  );
+});
