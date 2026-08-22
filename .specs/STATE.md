@@ -133,13 +133,34 @@
 - **Rationale:** The verifier's finding is precise and correct: `CandidateFacts` is an inert record inside the evaluator's own process, so a candidate *cannot attempt* the forbidden access, and no fixture can discriminate a missing boundary. Identity separation is necessary and not sufficient. But the product's own definition of a read-only boundary is already **zero granted authority**, not a separate process — AD-011 rejected a name-based writer-tool classifier in favour of "exactly zero granted tools" precisely because a capability you cannot exercise is the only non-guessable definition, and `packages/data-probe`'s `sessionReadOnly` follows the same instinct: a fact asked of the session rather than inferred. A real out-of-process host is already scoped and deliberately deferred to post-1.0 (#235), so claiming one here would either duplicate that work or fake it. An authority boundary is falsifiable today; a process boundary is infrastructure this repository has already decided to build later.
 - **Consequences:** `PROM-09` is added to `.specs/features/sealed-holdout/spec.md` and issue #15 is corrected: the acceptance bar becomes *the candidate holds a surface, exercises it against every protected asset, and is denied every time without relying on a caller-supplied fact*. The contamination fact (`PROM-05`) stays a supplied input and is explicitly **not** upgraded to an observed property by this decision — it remains the honest `PARTIAL` the T74 verification recorded. What 1.0 does not claim is stated in the T74 report rather than left implied: the evaluator and candidate share a process and a store, and cross-process isolation arrives with #235.
 
+### AD-019 — Authorized automation preserves independent human accountability
+
+- **Status:** active
+- **Decision:** On 2026-08-22 the repository owner authorized automated
+  contributors to manage issue updates, focused branches, commits, pull
+  requests, review requests, CI observation, and rebase merges for the
+  backlog-zero programme. Automation must satisfy the real GitHub ruleset and
+  must never use an administrative bypass to replace human review, code-owner
+  review, last-push approval, or resolved review threads.
+- **Rationale:** The programme needs fast, repeatable operational execution,
+  while qualification and release accountability remain human responsibilities.
+- **Trade-off:** Automation can progress ordinary repository work without a
+  confirmation at each GitHub step, but cannot access release secrets, publish
+  with unconfigured trust, decide a failed review, or promote T77.
+- **Scope:** All branches and pull requests in the backlog-zero programme;
+  especially #58, #207, #294, #16, #17, #36, #18, #234, #235, and #236.
+- **Date:** 2026-08-22
+
 ## Handoff
 
-- **Programme:** `milestone-2-completion` — the tracked distribution of all open issues across three workstreams (AD-013); see `.specs/features/milestone-2-completion/{analysis,spec,tasks,handoff}.md`. B1, C4, and B2 are independently verified; the next serial action is human review and merge of the T74 qualification evidence before MiguelCorre resumes B3/T75.
-- **Pre-T76 decisions:** both resolved on 2026-08-09 — AD-014 (DSSE + in-toto envelope, #217) and AD-015 (pinned repository-owned context estimator, #218). Implementation of both is a T76 prerequisite; the DSSE migration plan is `.specs/features/dsse-attestation/migration.md`.
-- **Product-shape decisions (2026-08-09, structured design review):** AD-016 (npx entry point; #36 scoped) and AD-017 (edge qualification of database probes; D1 and D2 of matrix.md resolved; new 1.0 issue #233 for the published contract + kit; scaffold, out-of-process host, and single binary filed post-1.0).
-- **Feature:** `sealed-holdout` (T74, #15) — independently qualified in `docs/qualification/t74-validation.md` (author ≠ verifier); the implementation and exact-head gate evidence are merged at `24e3a02`.
-- **Qualification chain:** T74 verified; **T75 (platform and security qualification) is next**. The report, derived status surfaces, and pinned readiness tests advance atomically from "T73 complete; T74 next" to "T74 complete; T75 next". Human review of PR #290 remains mandatory before the report changes accountability on `main`.
-- **Branch:** `codex/t74-qualification`
-- **Verification:** 80 focused promotion cases pass (32 unit, 33 security, 15 E2E), including 48 security/E2E cases; Linux `gate:quick` run 32576041915 and `gate:security` run 32575867942 pass at exact head `24e3a02` with zero failed, skipped, or todo; 14 of 14 independent mutations are killed. AD-018's authority-only boundary and supplied contamination fact scope remain explicit.
-- **Next:** Human review and merge of PR #290, then T75 independent qualification. Structural verifier isolation (#35, AD-011) remains available to T75 composition roots.
+- **Feature:** `milestone-2-completion` P0 on
+  `codex/phase0-backlog-reconciliation`.
+- **Completed:** fast-forward to `251f5f7a6406353015e54c34903e6ca1bc79a5fe`;
+  #16 and #36 reopened; current operating plan and AD-019 recorded.
+- **Completed:** stale closed-issue handoffs are marked complete; the resulting
+  context shows only #58, #16, #36, and this programme (plus the distinct
+  repository-topics maintainer follow-up).
+- **Next:** push the P0 documentation PR and request independent human review;
+  then begin #58 from the reconciled `main` state.
+- **Blockers:** none for P0. #294 waits for owner-only protected-secret
+  provisioning; #36 publishing and T77 promotion remain later human actions.

@@ -2,13 +2,13 @@
 schema: verchestra-feature-handoff/v1
 feature: opencode-cancellation-race
 issue: 109
-status: in_progress
+status: complete
 branch: codex/issue-109-opencode-cancellation
 baseRevision: e2d3a251b0fe87de0b566563a258651bd8a467d9
 lastCompletedTask: T1
-nextTask: Re-run CI and independent verification on the strengthened sensor
+nextTask: No further action; issue #109 is closed.
 lastGate: GitHub Quality/Site/CodeQL PASS on 170b3fc; rerun required after sensor strengthening
-updatedAt: 2026-07-29T21:05:00Z
+updatedAt: 2026-08-22T18:00:00Z
 ---
 
 # Scope

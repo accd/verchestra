@@ -2,13 +2,13 @@
 schema: verchestra-feature-handoff/v1
 feature: isolation-process-tree
 issue: 88
-status: in_progress
+status: complete
 branch: codex/issue-88-posix-process-tree
 baseRevision: ff29bd9cfe549e4099cd05b0fd47d2e9c152f454
 lastCompletedTask: T1
-nextTask: T2
+nextTask: No further action; issue #88 is closed.
 lastGate: node --test spikes/isolation/test/*.test.mjs
-updatedAt: 2026-07-29T13:42:00Z
+updatedAt: 2026-08-22T18:00:00Z
 ---
 
 # Handoff: isolation process-tree termination

@@ -1,117 +1,57 @@
-# Milestone 2 Reanalysis — 2026-08-09
+# Milestone 2 operating reconciliation — 2026-08-22
 
-Full-backlog reanalysis of milestone `1.0.0 — Verified release`
-(<https://github.com/accd/verchestra/milestone/2>) and every open issue,
-ordered by the repository owner. Method: derived status
-(`corepack pnpm agent:context`), reports on disk (`docs/qualification/`),
-open pull requests, feature handoffs, and the GitHub issue/milestone state —
-never chat memory alone. Main at `aa3aab12e09de6d1d5af24d992c6e4014f8855c8`.
-
-## Verdict
-
-The milestone issue set is correct but its description was stale
-(2026-08-01, claimed "T68d complete; T69 next"), four release-gating issues
-lived outside the milestone, and one issue (#110) was already effectively
-resolved without closure. The real distance to 100% is: **four independent
-qualification reports (T72–T75), the remaining T75 matrices, two owner
-decisions, one candidate release (T76), one final acceptance (T77), and four
-out-of-chain hardening items (#58, #35, #207, #36, #110 closure).** All of it
-is now distributed across three workstreams (see `tasks.md`).
+This is the current, evidence-led operating record for the verified-release
+programme. It supersedes the 2026-08-09 planning snapshot. The source revision
+was `251f5f7a6406353015e54c34903e6ca1bc79a5fe`; GitHub issue state and the
+tracked qualification reports were checked on the same date.
 
 ## Derived position
 
-- `docs/qualification/` ends at `t71-validation.md`; `agent:context` derives
-  **T71 complete; T72 next**. This is the authoritative counter.
-- GitHub milestone arithmetic (13 closed / 13 open after recomposition) is
-  ticket progress, not qualification progress.
+- The product remains `0.0.0-qualification`.
+- `corepack pnpm agent:context` derives **T74 complete; T75 next** from
+  `docs/qualification/t74-validation.md`.
+- #16 and #36 were reopened because their original acceptance criteria remain
+  incomplete. A closed issue is not qualification evidence.
+- The active operating backlog contains ten obligations: #58, #207, #294,
+  #16, #17, #36, #18, #234, #235, and #236. Only the first seven belong to
+  Milestone 2; the final three are explicitly post-1.0 work.
 
-## Chain state, task by task
+## Critical path
 
-| Task | Issue | Implementation | What actually remains |
-| ---- | ----- | -------------- | --------------------- |
-| T72 | #13 | Merged: PRs #188 + remediation #208 (architecture guard), #211 (redaction evidence), #212 (signing/sentinel evidence); evidence comment posted on #13 | Independent `t72-validation.md` bound to current main + atomic advance of the ~13 derived status surfaces ("T72 complete; T73 next") |
-| T73 | #14 | Merged (feature `regression-campaigns`, T5 complete, status `verification`) | Independent `t73-validation.md` + atomic advance |
-| T74 | #15 | Merged (feature `sealed-holdout`, T5 complete, status `verification`) | Independent `t74-validation.md` + atomic advance |
-| T75 | #16 | Platform fleet GREEN: `gate:security` simultaneously on win-x64 / linux-x64 / linux-arm64 / darwin-arm64 at `5c86436` (run 31315589420; on-main confirmation 31315939879 at `bb11932`). Findings F1a (#200), F1b (#221), F2 (#225), F3 (#216), F4 (#222) all fixed and merged | Remaining matrices (topology, Driver, database incl. SAP ASE, sandbox, installer, recovery), the signed evidence index, live doctor probes (#207), the composed verifier session (#35), then independent `t75-validation.md` |
-| T76 | #17 | Not started (correctly blocked) | Blocked by T75 report + owner decisions #217/#218 + #58 completion |
-| T77 | #18 | Not started (correctly blocked) | Blocked by T76; needs an independent final verifier and a signed human decision |
+`#58 + #207 + #294 → #16/T75 → #17 + #36/T76 → #18/T77 → #234/#235/#236`
 
-macOS x64 note: the leg never dequeues on GitHub's retiring Intel fleet — an
-environmental limitation recorded in the platform-matrix handoff, not a
-product gap.
+| Obligation | Current evidence | Remaining honest outcome |
+| --- | --- | --- |
+| #58 | Canonical JSON V2 and several migration slices are merged; the compatibility matrix deliberately defers durable effect identities, signed execution evidence, and release activation. | Complete a fresh classified census, then version each remaining portable identity with backward verification or a tested presentation-only exception. |
+| #207 | Doctor's seven subsystem checks still use file presence probes. | Read-only live observations, async probe collection, source-mode `blocked`, and architecture/sensor proof. |
+| #294 | The T75 evidence index is intentionally unsigned. | Public `PublicKeyRef`, qualification-index predicate, exact-SHA regeneration, DSSE/in-toto signing workflow, and external verification. The owner must provision the protected private-key secret. |
+| #16 / T75 | Five platform/profile dispatches and the composed verifier are recorded, but no signed index or T75 report exists. | Re-run the candidate matrix after prerequisites, bind and sign the index, obtain independent validation by MiguelCorre, then atomically advance T75 → T76. |
+| #17 / T76 | No reproducible release candidate exists. | Reproducible bundle, SBOM/license/provenance/TUF closure and independently verified T76 report. |
+| #36 | `resolveActiveLauncher()` exists, but no publishable npm bootstrap or clean-machine proof exists. | Minimal public `vestra` bootstrap, trusted publishing, and clean-machine evidence as part of T76. |
+| #18 / T77 | Not started. | Canonical acceptance matrix, immutable-candidate revalidation, independent sensor, and signed human operational/security decision. |
+| #234 | Post-1.0 open issue. | Deterministic `vestra init --probe-engine` scaffold, no automatic AI call. |
+| #235 | Post-1.0 open issue. | Out-of-process `verchestra-probe/1` worker/supervisor with bounded, sanitized protocol evidence. |
+| #236 | Post-1.0 open issue. | Six Node SEA artefacts with signed supply-chain and offline/rollback evidence. |
 
-## Out-of-chain open issues
+## Non-negotiable operating rules
 
-- **#58 (canonical JSON, mandatory before T76).** PR #209 (T4a: the four
-  unqualified T72–T74 digest owners migrate to V2) is the only open PR and
-  awaits human review. Remaining: the other owner rows of
-  `docs/canonical-json-compatibility.md`, cross-locale byte-identity tests,
-  and the discrimination sensor from the issue's acceptance list.
-- **#110 (Lighthouse budget) — effectively resolved, not closed.** The
-  diagnosis-gated fix merged in PR #139 on 2026-07-31 with the 0.95 threshold
-  preserved; the 2026-08-09 site brand work re-confirmed a 3-run-median PASS
-  at 0.95. The feature handoff still instructs "await review and merge of
-  PR #139" — stale. Remaining: closure evidence at current main, handoff
-  correction, issue close.
-- **#35 (structural verifier independence).** Rules and resolution merged in
-  PR #185 (2026-08-04, AD-011): distinct-driver enforcement,
-  `resolveVerifierDriver`, zero-tool read-only grant, report
-  `schemaVersion: 2`. The issue stays open by design: the live composed
-  verifier session in the T74/T75 composition roots is the remaining
-  acceptance bar.
-- **#207 (deep-doctor live probes).** Seven of twelve doctor checks are
-  presence-only (`fileProbe`/`existsSync`); the live upgrades need read-only
-  observation APIs that only become observable on provisioned machines —
-  lands with or before T75. Must preserve the T72 architecture guard
-  (`tests/architecture/doctor-readonly-graph.test.mjs`).
-- **#217 / #218 (owner decisions, pre-T76).** Complete option briefs exist at
-  `.specs/features/dsse-attestation/spec.md` and
-  `.specs/features/context-tokenizers/spec.md`; each needs an AD in
-  `.specs/STATE.md` before T76 starts.
-- **#36 (install friction).** `npx vestra` or a single binary; aligns with the
-  qualified hermetic distribution work; lands near T76. Moved into the
-  milestone by owner decision 2026-08-09.
+- A change receives one focused branch, one logical commit, one PR, relevant
+  gates, independent verification, and human review before merge.
+- Authorized automation may create branches, commits, PRs, issue updates and
+  rebase merges, but never uses a ruleset bypass to replace human review.
+- No private key, passphrase, npm token, environment value, or provider session
+  is read, logged, committed, or added to an artifact. Missing provisioning is
+  `blocked`, never a pass.
+- T77 may promote neither `1.0.0` nor a public installer unless a human
+  operational and security decision records PASS. Until then all status
+  surfaces retain `0.0.0-qualification`.
 
-## Corrections applied on 2026-08-09 (this programme)
+## Handoff reconciliation
 
-1. Milestone description rewritten to the derived truth (T71 complete;
-   per-task real state; #35 correctly listed inside the milestone).
-2. #217, #218, #207, #36 added to the milestone — its 100% now equals
-   backlog-zero (13 open issues).
-3. All 13 open issues reassigned to the three workstreams (owner authorized
-   ignoring previous assignees): accd → #16 #17 #18 #35 #217 #218;
-   MiguelCorre → #13 #15 #36; brunomjanuario → #14 #58 #110 #207.
-
-## Structural constraints the distribution honors
-
-- **Author ≠ verifier.** accd authored the T72–T74 implementations
-  (PRs #188/#189/#190 and the C-1..C-3 remediation) and therefore cannot
-  author `t72/t73/t74-validation.md`. brunomjanuario authored F1a (PR #200)
-  inside T75 scope and therefore does not author `t75-validation.md`.
-  Verifier assignment (owner decision, AD-013): MiguelCorre authors the T72,
-  T74, and T75 reports; brunomjanuario authors the T73 report.
-- **Serial chain, atomic advance.** Reports land strictly in order
-  T72→T73→T74→T75; each advance is one atomic change: the report plus every
-  derived status surface and pinned contract test migrate together. No
-  downstream task is claimed early; a closed issue is not evidence of
-  qualification.
-- **Coordination.** Rebase-forward only, never force-push or rewrite main
-  history; verify every merge by content on `origin/main`, never by the PR
-  MERGED state alone; chain-advance surfaces are touched only by
-  qualification-report PRs, serially. Human review before every merge.
-
-## Appendix — stale feature handoffs (documented, not fixed here)
-
-`agent:context` lists these features as active although their issues are
-closed or their next actions already happened. They do not gate the
-milestone; reconciling them is a separate doc-only cleanup for the owner to
-schedule: `agent-ready-repository`, `ci-gate-selection` (#59),
-`cli-init-preview` (#64), `key-lifecycle` (#51),
-`lighthouse-performance-budget` (#110 — corrected by task C3),
-`opencode-cancellation-race` (#109), `parallel-task-scheduler` (#33),
-`probe-evidence-wiring` (#34), `probe-value-declassification` (#107),
-`public-proof-artifact` (#155), `isolation-process-tree` (#88),
-`structural-verifier-isolation` (#35 — superseded by A4). The
-2026-08-09 anomaly on #16 (closed without a report by an external action,
-then reopened under the report-before-close rule) is recorded in the
-session-coordination protocol and resolved by tasks A3/B3.
+The historical feature handoffs associated with GitHub-closed issues are
+marked `complete` in this programme change so `agent:context` no longer treats
+them as present work. The following are active because their issue or actual
+uncompleted scope remains open: `milestone-2-completion`, `canonical-json`,
+`platform-qualification-matrix`, and `npx-launcher`. New feature directories
+are created with their respective implementation PRs for #207, #294, #234,
+#235, and #236.

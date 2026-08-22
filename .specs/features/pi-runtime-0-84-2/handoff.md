@@ -2,13 +2,13 @@
 schema: verchestra-feature-handoff/v1
 feature: pi-runtime-0-84-2
 issue: 285
-status: verification
+status: complete
 branch: codex/qualify-pi-0-84-2
 baseRevision: 9b1c48febcb9e5aa4645ba14da5b835bb0b922ad
 lastCompletedTask: T3
-nextTask: Push the qualification PR, wait for exact-head Quality/Site/CodeQL checks, then merge with rebase only if all pass
+nextTask: No further action; issue #285 is closed.
 lastGate: corepack pnpm test:agent-readiness
-updatedAt: 2026-08-22T12:45:00Z
+updatedAt: 2026-08-22T18:00:00Z
 ---
 
 # Evidence

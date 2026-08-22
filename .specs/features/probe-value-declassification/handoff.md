@@ -2,13 +2,13 @@
 schema: verchestra-feature-handoff/v1
 feature: probe-value-declassification
 issue: 107
-status: in_progress
+status: complete
 branch: codex/issue-107-value-declassification
 baseRevision: e2d3a251b0fe87de0b566563a258651bd8a467d9
 lastCompletedTask: T1
-nextTask: Submit for independent verification and human review
+nextTask: No further action; issue #107 is closed.
 lastGate: pnpm gate:security PASS (2026-07-29)
-updatedAt: 2026-07-29T20:50:00Z
+updatedAt: 2026-08-22T18:00:00Z
 ---
 
 # Scope

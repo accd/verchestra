@@ -2,13 +2,13 @@
 schema: verchestra-feature-handoff/v1
 feature: structural-verifier-isolation
 issue: 35
-status: verification
+status: complete
 branch: feat/35-structural-verifier-isolation
 baseRevision: a1e317f3bf1575e0243d597bbfa67785e94d7094
 lastCompletedTask: T7
-nextTask: Human review and merge (Refs #35, not Closes — see below)
+nextTask: No further action; issue #35 is closed after the composed verifier landed.
 lastGate: pnpm gate:security
-updatedAt: 2026-08-02T19:45:00Z
+updatedAt: 2026-08-22T18:00:00Z
 ---
 
 # Scope
