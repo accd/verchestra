@@ -30,13 +30,23 @@
 //   convention (packages/evidence/src/integrity/artifact-sealer.ts: spki-der
 //   public key, base64url signature), which the doctor's own read-only
 //   verifier (apps/vestra-cli/src/doctor-composition.ts) expects.
+// - driver, connector, probe (T17-T19, DDL-10): an availability.json record
+//   inside each subsystem's own directory, declaring that subsystem
+//   available. No real driver/connector/probe adapter publishes such a
+//   record anywhere in the product yet, so this is qualification-only, the
+//   same footing as the two fixtures above — never a claim that a real
+//   subsystem self-reports this way today.
 
 import { createHash, generateKeyPairSync, sign as signBytes } from "node:crypto";
 import { mkdir, rm, symlink, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { SUBSYSTEM_OBSERVATION_PATHS, WORKSPACE_ROOT_DIRNAME } from "../packages/domain/src/index.ts";
+import {
+  AVAILABILITY_SUBSYSTEMS,
+  SUBSYSTEM_OBSERVATION_PATHS,
+  WORKSPACE_ROOT_DIRNAME
+} from "../packages/domain/src/index.ts";
 import { RuntimeStore } from "../packages/platform-node/src/index.ts";
 import { buildPolicyBundle } from "../packages/policy/src/index.ts";
 
@@ -118,6 +128,15 @@ export async function provisionDoctorFixtures(controlRoot) {
   const bundlePath = join(metadataRoot, SUBSYSTEM_OBSERVATION_PATHS["cedar-policy"]);
   await mkdir(dirname(bundlePath), { recursive: true });
   await writeFile(bundlePath, JSON.stringify(bundle, null, 2));
+
+  // The availability record fixtures (T17-T19, DDL-10): one per declared
+  // availability subsystem, generic iteration matching the same discipline
+  // as the main loop above — never a hand-listed per-subsystem case.
+  for (const subsystem of AVAILABILITY_SUBSYSTEMS) {
+    const availabilityPath = join(metadataRoot, SUBSYSTEM_OBSERVATION_PATHS[subsystem], "availability.json");
+    await mkdir(dirname(availabilityPath), { recursive: true });
+    await writeFile(availabilityPath, JSON.stringify({ schemaVersion: 1, subsystem, available: true }, null, 2));
+  }
 
   return provisioned;
 }

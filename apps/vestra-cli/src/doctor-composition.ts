@@ -23,7 +23,12 @@ import {
   type SentinelFact
 } from "@verchestra/application";
 import { SchemaRegistry } from "@verchestra/contracts";
-import { SUBSYSTEM_OBSERVATION_PATHS, WORKSPACE_ROOT_DIRNAME } from "@verchestra/domain";
+import {
+  type AvailabilitySubsystem,
+  SUBSYSTEM_OBSERVATION_PATHS,
+  WORKSPACE_ROOT_DIRNAME,
+  parseSubsystemAvailability
+} from "@verchestra/domain";
 import { ArtifactSealer, NodeEd25519Signer, type SealedArtifact } from "@verchestra/evidence";
 import { ProtectedPathBroker, inspectRuntimeDatabase } from "@verchestra/platform-node/readonly";
 import { type PolicyBundleCrypto, verifyPolicyBundle } from "@verchestra/policy/readonly";
@@ -252,6 +257,32 @@ async function cedarPolicyProbe(metadataRoot: string): Promise<DoctorObservation
   }
 }
 
+// DDL-10 (#207): availability from a read-only record, never an adapter
+// construction — tests/architecture/doctor-readonly-graph.test.mjs forbids
+// this file's transitive closure from reaching the driver, connector, or
+// database-probe packages by name, precisely the three a real adapter would
+// need. "Available" means the record exists,
+// parses, and declares the matching subsystem — never that it is reachable.
+//
+// A well-formed record whose `available` field is false is treated the same
+// as an absent record (blocked): the record's own claim is "not installed
+// here," which is the same "cannot run until provisioned" outcome
+// observeToFact already gives an absent subsystem, not a broken one. A
+// record present but malformed, or one declaring a different subsystem than
+// the one being checked (edge case: a build/directory mismatch), degrades
+// to fail — something was published, and it is wrong.
+async function availabilityProbe(metadataRoot: string, subsystem: AvailabilitySubsystem): Promise<DoctorObservation> {
+  const recordPath = join(subsystemPath(metadataRoot, subsystem), "availability.json");
+  if (!existsSync(recordPath)) return absent;
+  try {
+    const record = parseSubsystemAvailability(JSON.parse(readFileSync(recordPath, "utf8")));
+    if (record.subsystem !== subsystem) return present(false);
+    return record.available ? present(true) : absent;
+  } catch {
+    return present(false);
+  }
+}
+
 function buildRealProbes(controlRoot: string, registry: SchemaRegistry | null, now: () => number): DoctorProbeSet {
   const metadataRoot = join(controlRoot, WORKSPACE_ROOT_DIRNAME);
   return Object.freeze({
@@ -263,7 +294,7 @@ function buildRealProbes(controlRoot: string, registry: SchemaRegistry | null, n
     "doctor.git": gitProbe,
     "doctor.secret-presence": () => fileProbe(subsystemPath(metadataRoot, "secret-presence")),
     "doctor.clock": () => clockProbe(now),
-    "doctor.driver": () => fileProbe(subsystemPath(metadataRoot, "driver")),
+    "doctor.driver": () => availabilityProbe(metadataRoot, "driver"),
     "doctor.connector": () => fileProbe(subsystemPath(metadataRoot, "connector")),
     "doctor.probe": () => fileProbe(subsystemPath(metadataRoot, "probe")),
     "doctor.sandbox": () => sandboxProbe(metadataRoot)

@@ -523,11 +523,35 @@ original `fileProbe` check from before this feature.
 **Where**: `apps/vestra-cli/src/doctor-composition.ts:133`
 **Depends on**: T16 · **Requirement**: DDL-10 · **AC**: 13
 **Done when**:
-- [ ] Absent record reports `blocked`; unparseable reports `fail`; valid reports `pass`
-- [ ] A record declaring a subsystem the build does not contain reports `fail` (edge case 4)
-- [ ] `@verchestra/drivers` remains absent from the closure — guard unchanged
-- [ ] `pnpm gate:full` passes
+- [x] Absent record reports `blocked`; unparseable reports `fail`; valid reports `pass`
+- [x] A record declaring a subsystem the build does not contain reports `fail` (edge case 4)
+- [x] `@verchestra/drivers` remains absent from the closure — guard unchanged
+- [x] `pnpm gate:full` passes
 **Tests**: integration · **Gate**: full
+
+> **Note (2026-08-22): a fifth outcome AC13's text didn't literally pin down,
+> resolved by extending an existing convention.** AC13 covers absent
+> (blocked), unparseable (fail), and (implicitly) valid+matching+available
+> (pass) — it does not address a *well-formed* record whose `available`
+> field is `false`. Resolved by extension of `observeToFact`'s own existing
+> distinction (absent = "cannot run until provisioned", present-but-wrong =
+> "there and wrong"): a record correctly declaring "not installed here" is
+> semantically closer to not-yet-provisioned than to broken, so it maps to
+> `blocked`, not `fail`. Documented inline in the probe's own comment rather
+> than silently picked. Proven distinct from "unparseable" and from
+> "wrong subsystem declared" (edge case 4) by two separate discrimination
+> mutations, both caught by the correct, distinct tests.
+>
+> `availabilityProbe(metadataRoot, subsystem)` is the shared implementation
+> T18/T19 reuse unmodified — this task builds it once. `scripts/provision-doctor-fixtures.mjs`
+> gained a generic loop writing `availability.json` for all three
+> availability subsystems (driver, connector, probe) in one pass, matching
+> T4's "generic iteration, never hand-listed" discipline; T18/T19 need no
+> further provisioner work.
+>
+> A fourth false-positive guard trip, same class as T8/T9/T12/T13: the
+> probe's own comment named the three forbidden package specifiers literally
+> in prose. Reworded around it.
 
 #### T18: Connector availability probe
 **Where**: `apps/vestra-cli/src/doctor-composition.ts:134`
@@ -684,4 +708,5 @@ No task depends on a later phase.
 | T14 | Done | recorded in `handoff.md` |
 | T15 | Deferred | AD-023 |
 | T16 | Done | recorded in `handoff.md` |
-| T17–T22 | Planned | Pending |
+| T17 | Done | recorded in `handoff.md` |
+| T18–T22 | Planned | Pending |

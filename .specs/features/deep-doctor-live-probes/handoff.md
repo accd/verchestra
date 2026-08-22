@@ -6,8 +6,8 @@ status: in_progress
 branch: feat/deep-doctor-live-probes
 baseRevision: 0d7ad9a2bad3b29c4defb4338d1106e4fe22c6e1
 lastCompletedTask: T14
-nextTask: T17
-lastGate: pnpm gate:quick PASS (58/58 across subsystem-availability unit + contract tests)
+nextTask: T18
+lastGate: pnpm gate:full PASS
 updatedAt: 2026-08-22T00:00:00Z
 ---
 
@@ -18,7 +18,7 @@ read-only observations. Requirements DDL-01 through DDL-14 in `spec.md`; 22
 tasks in six phases in `tasks.md`. Parent #13 (T72); lands with or before #16
 (T75), which is the current serial task.
 
-T1 through T14 and T16 are implemented and gated on branch (Phase 2 and Phase 3 complete; Phase 4 in progress — T15 deferred; Phase 5 begun) `feat/deep-doctor-live-probes`.
+T1 through T14 and T16-T17 are implemented and gated on branch (Phase 2 and Phase 3 complete; Phase 4 in progress — T15 deferred, T12/T13/T14/T17 done) `feat/deep-doctor-live-probes`.
 
 # Completed Evidence
 
@@ -336,6 +336,27 @@ T1 through T14 and T16 are implemented and gated on branch (Phase 2 and Phase 3 
   dependencies** — deferred from T9 for exactly this task, since T9 itself
   had no consumer yet.
 
+- **T17** — the `doctor.driver` check is live: `availabilityProbe(metadataRoot, subsystem)`
+  reads `.verchestra/drivers/availability.json`, parses it via
+  `parseSubsystemAvailability` (T16), and maps: absent -> `blocked`;
+  unparseable -> `fail`; wrong subsystem declared (edge case 4) -> `fail`;
+  valid + matching + `available: true` -> `pass`; valid + matching +
+  `available: false` -> `blocked`. The last mapping is a genuine
+  interpretive choice AC13's text didn't literally cover — resolved by
+  extending `observeToFact`'s existing absent/present-but-wrong distinction
+  (a correctly-declared "not installed" reads as not-yet-provisioned, not
+  broken), documented inline and proven distinct from the other two failure
+  modes by two separate discrimination mutations. This shared function is
+  what T18/T19 reuse unmodified.
+
+  `scripts/provision-doctor-fixtures.mjs` gained a generic loop writing
+  `availability.json` for all three subsystems in one pass — T18/T19 need no
+  further provisioner work. `tests/integration/doctor-availability-probes.test.mjs`
+  (new, 5 cases) covers pass/blocked-absent/blocked-unavailable/fail-unparseable/fail-mismatch.
+  A fourth false-positive guard trip (same class as T8/T9/T12/T13): the
+  probe's own comment named the three forbidden packages literally.
+  Reworded. Gate: `pnpm gate:full` PASS.
+
 - **T16** — the availability-record contract. `schemas/subsystem-availability/1.schema.json`
   (new, minimal by construction: `{schemaVersion, subsystem, available}`, no
   field capable of expressing a network endpoint or credential);
@@ -411,18 +432,12 @@ T1 through T14 and T16 are implemented and gated on branch (Phase 2 and Phase 3 
 
 # Next Exact Action
 
-T17: wire the `doctor.driver` check to read an availability record from
-`.verchestra/drivers` (the driver subsystem's fixture directory — check
-whether it needs a specific file name inside it, e.g.
-`availability.json`), parse it via `parseSubsystemAvailability` (T16), and
-map outcomes: absent -> `blocked`; unparseable -> `fail`; valid with
-`subsystem !== "driver"` (a record declaring the wrong subsystem — edge case
-4) -> `fail`; valid and matching -> `pass`. `@verchestra/drivers` must
-remain absent from the transitive closure — the whole point of reading a
-record instead of constructing an adapter. `scripts/provision-doctor-fixtures.mjs`
-will need to write a real availability record for driver, connector, and
-probe as part of this or a shared follow-up (T18/T19 need the same
-treatment). Then `pnpm gate:full`.
+T18: wire `doctor.connector` to call the SAME `availabilityProbe(metadataRoot,
+"connector")` T17 already built — no new logic, just a one-line change to
+`buildRealProbes`'s `"doctor.connector"` entry. The fixture already exists
+(T17's provisioner loop covers all three subsystems). Reuse T17's test file's
+structure for connector-specific coverage; confirm `@verchestra/connectors`
+stays absent from the transitive closure. Then `pnpm gate:full`.
 
 # Blockers
 
