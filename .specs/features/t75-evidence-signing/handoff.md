@@ -5,10 +5,10 @@ issue: 294
 status: in_progress
 branch: codex/issue-294-t75-evidence-signature
 baseRevision: d5c7c75276bc0a972c18d8b3860531ddb98c2ef7
-lastCompletedTask: T0
-nextTask: Implement the fail-closed signer and verifier with ephemeral test fixtures; do not provision a release key.
-lastGate: agent:check and format:check PASS
-updatedAt: 2026-08-22T21:05:00Z
+lastCompletedTask: T2
+nextTask: Owner-provision the protected secret and a matching committed PublicKeyRef, then run the exact-SHA workflow and obtain independent verification; do not provision or access a release key locally.
+lastGate: focused signing and workflow tests, format:check, lint, and typecheck PASS
+updatedAt: 2026-08-22T22:20:00Z
 ---
 
 # Scope
@@ -26,8 +26,20 @@ The trusted output is a DSSE envelope with an in-toto
 `qualification-evidence-index` predicate; a separate verifier checks it using
 only the public reference and index.
 
+# Completed implementation
+
+T1 provides a closed predicate registry plus a signer and public verifier. The
+signer accepts private material only through the protected workflow environment,
+derives its public identity, and rejects any mismatch with the committed
+`PublicKeyRef` before producing output. T2 regenerates the unsigned canonical
+index from all five profile artifacts at the requested revision, rejects
+contradictions, verifies the result before publishing, and exposes only public
+verification artifacts.
+
 # Blocker
 
 The owner must provision the protected secret and commit the matching public
-reference through human review. Automation must not generate, access, print, or
-commit either private material or any secret value.
+reference through human review. The public reference is intentionally absent
+until that action, so the workflow cannot produce a real attestation yet.
+Automation must not generate, access, print, or commit either private material
+or any secret value.
