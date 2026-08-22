@@ -145,11 +145,42 @@ Batch packing at ~7 tasks per worker, whole phases only:
 **Where**: `packages/application/src/doctor/doctor-facts.ts:21,57`
 **Depends on**: None · **Requirement**: DDL-04 · **AC**: 3, 4
 **Done when**:
-- [ ] A rejected promise degrades to present-and-unhealthy with no error text, matching the synchronous path
-- [ ] A hanging probe resolves to `fail` via timeout rather than stalling the diagnostic
-- [ ] Awaits are sequential; a test asserts probes do not overlap
-- [ ] `pnpm gate:quick` passes
+- [x] A rejected promise degrades to present-and-unhealthy with no error text, matching the synchronous path
+- [x] A hanging probe resolves to `fail` via timeout rather than stalling the diagnostic
+- [x] Awaits are sequential; a test asserts probes do not overlap
+- [x] `pnpm gate:quick` passes
 **Tests**: unit · **Gate**: quick
+
+> **Scope note (2026-08-22): ripple beyond T6's stated "Where".** Widening
+> `collectDoctorFacts`'s return type to `Promise<...>` broke every existing
+> synchronous caller — not only the eight pre-existing tests in
+> `tests/unit/doctor-facts.test.mjs`, but three more consumers the plan never
+> named: `apps/vestra-cli/src/doctor-composition.ts:67` (a bare `await` was
+> the minimal compile-fix; the full sentinel-bracket proof stays T7's job),
+> and `tests/public-regression/corpus.mjs`'s T73-frozen `doctor-facts-complete`
+> campaign plus its `runCampaign` runner, which two more test files depend on
+> (`tests/public-regression/campaigns.test.mjs`,
+> `tests/system/regression-summary.test.mjs`). Verified the corpus digest is
+> unaffected: `canonicalizeCorpus` serializes only campaign `def` metadata,
+> never `check` function bodies, and "the corpus digest is stable and
+> change-sensitive" still passes unchanged. `runCampaign` becoming `async` is
+> behavior-preserving for every other (synchronous) campaign check, since
+> `await` on an already-resolved value is a same-tick no-op.
+>
+> A second, unplanned obstacle: Node's built-in `mock.timers` in this
+> repository's pinned Node 24.14.0 has no `tickAsync`, and a naive single
+> `tick()` call raced against the async collection loop's own microtask
+> chain (documented in the test file). Fixed two ways: `withTimeout` now
+> skips timer creation entirely for a non-Promise observation — a real
+> simplification, since a synchronous value cannot hang, not only a test
+> accommodation — and the timeout test polls microtasks until the probe
+> under test has actually run before advancing the mock clock.
+**Verified**: `pnpm gate:quick` PASS; `pnpm gate:full` PASS; `pnpm gate:release`
+run separately to exercise `test:release` (not included in `gate:full`) —
+public-regression and regression-summary suites pass; the release gate's two
+failures are pre-existing spike tests pinning a specific locally-installed
+Claude Code/Codex CLI version, confirmed identical on a clean tree via
+`git stash`, unrelated to this task.
 
 #### T7: Keep every observation inside the sentinel bracket
 **What**: Await fact collection between the two sentinel captures.
@@ -414,4 +445,5 @@ No task depends on a later phase.
 | T3 | Done | recorded in `handoff.md` |
 | T4 | Done | recorded in `handoff.md` |
 | T5 | Done | recorded in `handoff.md` |
-| T6–T22 | Planned | Pending |
+| T6 | Done | recorded in `handoff.md` |
+| T7–T22 | Planned | Pending |

@@ -64,7 +64,7 @@ const DOCTOR_CODE_DIGEST = createHash("sha256")
 export async function runDoctor(ports: DoctorPorts): Promise<DoctorRunResult> {
   const before = ports.captureSentinels();
   const start = ports.now();
-  const facts = collectDoctorFacts(ports.probes);
+  const facts = await collectDoctorFacts(ports.probes);
   const after = ports.captureSentinels();
   if (!diffSentinels(before, after).identical)
     throw new DoctorError("VES_DOCTOR_SENTINEL_MUTATION", "a sentinel changed during the read-only diagnostic");

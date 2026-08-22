@@ -162,7 +162,11 @@ export const CAMPAIGNS = Object.freeze([
     "CAM-04",
     "fixtures/doctor/probes",
     1,
-    () => collectDoctorFacts(healthyDoctorProbes).length === 12
+    // T207/DDL-04: collectDoctorFacts widened to accept an async probe and
+    // must itself be awaited. The def metadata this campaign is sealed
+    // against (canonicalizeCorpus) never includes this check body, so the
+    // corpus digest is unaffected by this change.
+    async () => (await collectDoctorFacts(healthyDoctorProbes)).length === 12
   ),
   // Self-Test durable boundaries (T71)
   deterministic("selftest-durable-matrix-valid", "CAM-04", "fixtures/selftest/durable-matrix", 1, () =>
@@ -310,7 +314,12 @@ export const CAMPAIGNS = Object.freeze([
 export const CAMPAIGN_DEFINITIONS = Object.freeze(CAMPAIGNS.map((campaign) => campaign.def));
 
 // Run one campaign's fixture for its declared sample size and return the result.
-export function runCampaign(campaign) {
-  const outcomes = Array.from({ length: campaign.def.sampleSize }, (_, index) => campaign.check(index));
+// `await` on an already-resolved (non-promise) value is a same-tick no-op, so
+// this stays behavior-identical for every synchronous campaign check; only
+// doctor-facts-complete (T207/DDL-04) needs the async path.
+export async function runCampaign(campaign) {
+  const outcomes = await Promise.all(
+    Array.from({ length: campaign.def.sampleSize }, (_, index) => campaign.check(index))
+  );
   return evaluateCampaign(campaign.def, outcomes);
 }

@@ -288,6 +288,7 @@ export {
   type DoctorVerdict
 } from "./doctor/doctor.ts";
 export {
+  DOCTOR_PROBE_TIMEOUT_MS,
   DOCTOR_REMEDIATION_BY_CHECK,
   collectDoctorFacts,
   type DoctorObservation,

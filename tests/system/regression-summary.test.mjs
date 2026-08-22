@@ -10,9 +10,10 @@ import { CAMPAIGNS, CAMPAIGN_DEFINITIONS, runCampaign } from "../public-regressi
 
 const registry = await SchemaRegistry.load(new URL("../../schemas/", import.meta.url));
 
-function summarize() {
+async function summarize() {
   const digest = `sha256:${createHash("sha256").update(canonicalizeCorpus(CAMPAIGN_DEFINITIONS)).digest("hex")}`;
-  return buildCampaignSummary(CAMPAIGNS.map(runCampaign), digest, CAMPAIGN_DEFINITIONS);
+  const results = await Promise.all(CAMPAIGNS.map(runCampaign));
+  return buildCampaignSummary(results, digest, CAMPAIGN_DEFINITIONS);
 }
 
 function humanSummary(summary) {
@@ -25,21 +26,21 @@ function humanSummary(summary) {
   ].join("\n");
 }
 
-test("the machine summary validates against regression-campaign-summary@1", () => {
-  const summary = summarize();
+test("the machine summary validates against regression-campaign-summary@1", async () => {
+  const summary = await summarize();
   assert.doesNotThrow(() => registry.validate("regression-campaign-summary", "1", summary));
   assert.equal(summary.verdict, "PASS");
 });
 
-test("the human summary projects the same verdicts as the machine summary", () => {
-  const summary = summarize();
+test("the human summary projects the same verdicts as the machine summary", async () => {
+  const summary = await summarize();
   const human = humanSummary(summary);
   for (const entry of summary.campaigns)
     assert.ok(human.includes(`${entry.id} [${entry.requirement}] ${entry.verdict}`));
 });
 
-test("neither summary carries an absolute path or secret", () => {
-  const summary = summarize();
+test("neither summary carries an absolute path or secret", async () => {
+  const summary = await summarize();
   const rendered = `${JSON.stringify(summary)}\n${humanSummary(summary)}`;
   assert.doesNotMatch(rendered, /[A-Za-z]:\\Users|\/(?:Users|home)\/[^/\s]+/u);
 });

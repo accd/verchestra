@@ -5,9 +5,9 @@ issue: 207
 status: in_progress
 branch: feat/deep-doctor-live-probes
 baseRevision: 0d7ad9a2bad3b29c4defb4338d1106e4fe22c6e1
-lastCompletedTask: T5
-nextTask: T6
-lastGate: pnpm gate:full (PASS; test:unit 2064, test:integration 590, test:architecture 29, all zero failed/skipped/todo)
+lastCompletedTask: T6
+nextTask: T7
+lastGate: pnpm gate:quick, gate:full, gate:release all PASS (test:unit 2067, test:release 28, zero failed/skipped/todo; 2 pre-existing unrelated qualification-spike failures on gate:release confirmed on clean tree)
 updatedAt: 2026-08-22T00:00:00Z
 ---
 
@@ -18,7 +18,7 @@ read-only observations. Requirements DDL-01 through DDL-14 in `spec.md`; 22
 tasks in six phases in `tasks.md`. Parent #13 (T72); lands with or before #16
 (T75), which is the current serial task.
 
-T1 through T5 are implemented and gated on branch `feat/deep-doctor-live-probes`.
+T1 through T6 are implemented and gated on branch `feat/deep-doctor-live-probes`.
 
 # Completed Evidence
 
@@ -102,16 +102,52 @@ T1 through T5 are implemented and gated on branch `feat/deep-doctor-live-probes`
   PASS; `test:architecture` 29/29, `test:integration` 590/590, zero failed,
   skipped, or todo.
 
+- **T6** — `packages/application/src/doctor/doctor-facts.ts`:
+  `DoctorSubsystemProbe` widened to `() => DoctorObservation | Promise<DoctorObservation>`;
+  `collectDoctorFacts` is now `async`, iterating `DOCTOR_CHECK_IDS` with a
+  sequential `for...of` and `await` (never `Promise.all`) so the sentinel
+  bracket around it stays a well-defined serial interval. A new
+  `withTimeout` helper bounds any async probe to `DOCTOR_PROBE_TIMEOUT_MS`
+  (5000ms, exported), skipping timer creation entirely for a synchronous
+  observation (a real simplification: a plain value cannot hang). A rejected
+  or timed-out probe degrades to present-and-unhealthy with no error text,
+  matching the existing thrown-error path exactly.
+
+  **Ripple beyond T6's stated scope, all necessary and behavior-preserving —
+  see the scope note on T6 in tasks.md for full detail:**
+  - `apps/vestra-cli/src/doctor-composition.ts:67` gained the minimal `await`
+    needed to keep the build compiling (T7 still owns the full
+    sentinel-bracket behavioral proof).
+  - `tests/unit/doctor-facts.test.mjs`'s 8 pre-existing tests now `await`;
+    3 new tests added (rejection, timeout via `mock.timers` with a
+    microtask-polling technique since this Node version has no
+    `tickAsync`, and sequential-not-concurrent ordering) — 11 total.
+  - `tests/public-regression/corpus.mjs`'s T73-frozen `doctor-facts-complete`
+    campaign check and its `runCampaign` runner are now async; verified the
+    corpus digest is unaffected (`canonicalizeCorpus` serializes only `def`
+    metadata, never `check` bodies — "the corpus digest is stable and
+    change-sensitive" passes unchanged).
+  - `tests/public-regression/campaigns.test.mjs` and
+    `tests/system/regression-summary.test.mjs` updated to `await` the now-async
+    `runCampaign`/`summarize`.
+
+  Gates: `pnpm gate:quick` PASS, `pnpm gate:full` PASS, `pnpm gate:release`
+  run separately (not covered by `gate:full`) to exercise `test:release` —
+  passes; its two failures are pre-existing spike tests pinning a specific
+  locally-installed Claude Code/Codex CLI version, confirmed identical on a
+  clean tree via `git stash`, unrelated to this task.
+
   Commit hashes are recorded as each subsequent task lands; T1 is the second
   commit on the branch, after the planning commit.
 
 # Next Exact Action
 
-T6: widen the doctor probe port to accept `DoctorObservation | Promise<DoctorObservation>`,
-make `collectDoctorFacts` async with sequential (never `Promise.all`) awaits
-and a per-probe timeout, and confirm a rejected promise still degrades to
-present-and-unhealthy with no error text, matching the synchronous path
-(`packages/application/src/doctor/doctor-facts.ts:21,57`). Then `pnpm gate:quick`.
+T7: await `collectDoctorFacts` strictly between the two `captureSentinels()`
+calls in `apps/vestra-cli/src/doctor-composition.ts:61-67` (the minimal
+`await` already landed in T6 as a compile-fix; T7 adds the behavioral proof) —
+write a test that mutates a sentinel while an async probe is in flight and
+confirms the diagnostic fails closed, and confirm no async work happens before
+the first capture or after the second. Then `pnpm gate:full`.
 
 # Blockers
 
