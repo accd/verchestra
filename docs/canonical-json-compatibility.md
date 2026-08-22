@@ -66,7 +66,7 @@ comparison fails closed where identities are not interchangeable.
 | Application sync: `workspace-reconcile.ts` | Persisted sync state, plan and rebuild identities | persistent | Recursive serializer and locale sorting of semantic collections | Add state/plan canonicalization version; retain V1 reload and conflict detection. |
 | Application effects: `effect-contract.ts` | Durable effect idempotency keys | persistent effect identity | Fixed-shape `JSON.stringify` material without a canonicalization version | Add a versioned effect identity material and retain V1 key lookup for existing intents and receipts. |
 | Application sync: `workspace-reconcile.ts` | Persisted sync state, plan and rebuild identities | persistent; classified safe-to-swap (T4g) — see rationale below | **Migrated (T4g).** `canonicalizeJsonV2` replaces the recursive serializer; every ID sort (project, projection, manifest, operation, effect) now uses code-unit `<`/`>` instead of `localeCompare`. | Done. `tests/integration/workspace-reconcile.test.mjs` (cross-locale test), 44 existing sync/reconcile cases unchanged, including the SQLite-backed restart and tamper-detection cases. |
-| Application effects: `effect-contract.ts` | Durable effect idempotency keys | persistent effect identity; **deferred (T4g)** — see rationale below | Unmigrated. Fixed-shape `JSON.stringify` material, insertion-ordered, without a canonicalization version. | Not done. `buildIdempotencyKey`'s serialization has no ambient-locale dependency to fix (`JSON.stringify` on a fixed object literal never reorders keys), so it is out of scope for issue #58's actual contract (eliminating locale nondeterminism). Swapping it for `canonicalizeJsonV2` would reorder its output to alphabetical and change the idempotency key for every existing/in-flight effect intent, which has no `expiresAt` and is looked up by exact key string in a real SQLite `effect_intents` table (`packages/platform-node/src/runtime-store/runtime-store.ts`, `createEffectRepository`'s `insertOrGet`/`readIntent`) — a mismatch would not fail closed, it would silently double-insert and risk double-applying an external effect. Needs the matrix's own prescribed versioned-identity design (a `canonicalizationVersion` discriminator with dual V1/V2 key lookup) as its own reviewed unit of work, not a direct swap. |
+| Application effects: `effect-contract.ts` | Durable effect idempotency keys | persistent effect identity | **Migrated (T4i).** V1 keeps its frozen fixed-shape material and bare `sha256:` key; V2 emits explicit `canonicalizationVersion: 2`, canonical JSON material, and `v2:sha256:`. The runtime reads pre-existing rows as V1 and converges both forms by logical identity before application. | Done. `tests/unit/effect-kernel.test.mjs` pins V1 bytes and V2 emission; `tests/integration/effect-kernel.test.mjs` migrates a real V1 SQLite row and proves one application; `tests/fault-injection/effect-kernel-faults.test.mjs` proves cross-runtime V1/V2 convergence; `tests/security/canonical-json-sensor.test.mjs` kills a V2-to-`JSON.stringify` mutant. |
 | Agent runtime context: `context-compiler.ts` | Snapshot ID, recipe, semantic-obligation, serialized-meaning and manifest digests | portable persistent | Recursive serializer and locale ordering of fragment/source IDs | Version context snapshot/manifest material; normalize declared sets with code-unit order before V2. |
 | Agent runtime discovery: `source-snapshots.ts` | Context source snapshots, fact alternatives and selector material | portable persistent | Recursive serializer and locale ordering | Migrate together with context compiler; prove old snapshot verification and cross-locale reproduction. |
 | Agent runtime backend: `backend-serializers.ts` | `SerializedContext.meaningDigest`, the `SemanticEquivalenceOracle`'s cross-run tree-equality comparison, and the `ContextCapacityEstimatorPort` surface named alongside it | portable persistent | Private `canonicalJson()` (`backend-serializers.ts:59-65`), a second, independent recursive serializer with ambient `localeCompare` member order — not the same function as `context-compiler.ts`'s | **Understated by the original T2 inventory**, which covered `context-compiler.ts` and `source-snapshots.ts` but not this file; routed here by AD-015 (`.specs/STATE.md`: "each carry a private `canonicalJson()` that orders keys with ambient `localeCompare`"). Migrate together with T4e — same portability property (two independently provisioned runs' semantic-equivalence comparison must not diverge by machine locale), same package. |
@@ -110,7 +110,7 @@ migrate-together and migrate-after rules.
 | T4f | `trust-egress.ts`, `handoff/validation.ts` | Medium | Portable persistent identities. |
 | T4f | `trust-egress.ts`, `handoff/validation.ts` | Medium (reclassified, see below) | **Done.** Portable persistent identities. |
 | T4g | `workspace-reconcile.ts`, `effect-contract.ts` | High | Durable idempotency keys. |
-| T4g | `workspace-reconcile.ts` (done); `effect-contract.ts` deferred | High | Durable idempotency keys — see the T4g classification below for why the two owners split. |
+| T4g | `workspace-reconcile.ts`, `effect-contract.ts` | High | **Done.** The effects part was completed as the reviewed T4i versioned-identity vertical rather than an unsafe direct swap. |
 | T4h | `database-knowledge.ts` + 7 adapters | Medium | Wide fan-out, uniform pattern. |
 | T4h | `database-knowledge.ts` + 7 adapters | Medium (reclassified transient, see below) | **Done.** Wide fan-out, uniform pattern. |
 | T4i | `canonical.ts` V1 facade + `execution-package.ts` | Highest | Signed evidence; the 11 pre-sort sites above must migrate with the facade. |
@@ -293,7 +293,7 @@ impossible for the data this function is ever called with.
 This classification was not made unilaterally by the implementing agent, per
 the same process as T4b/T4d/T4e: chosen by brunomjanuario (WS-C), flagged here
 for human review, not asserted as an owner (accd) decision.
-### T4g classification: workspace-reconcile migrated, effect-contract deferred
+### Historical T4g classification: workspace-reconcile migrated, effect-contract deferred
 
 `workspace-reconcile.ts`'s `stateDigest` is genuinely persisted and
 reverified against a freshly recomputed digest on every `execute()` call
@@ -312,7 +312,8 @@ can diverge between `localeCompare` and code-unit comparison for this data
 shape, so a digest recorded before this migration reverifies unchanged after
 it.
 
-`effect-contract.ts` is **not** migrated in this slice, despite T4 slice
+At the time of this classification, `effect-contract.ts` was **not** migrated
+in that slice, despite T4 slice
 ordering originally grouping it with `workspace-reconcile.ts`. It is a
 materially different case: `buildIdempotencyKey` uses plain `JSON.stringify`
 on a fixed-order object literal, which has no ambient-locale dependency at
@@ -331,11 +332,15 @@ same logical operation, defeating the at-most-once guarantee the mechanism
 exists for. The matrix's own row already specifies the correct fix ("Add a
 versioned effect identity material and retain V1 key lookup for existing
 intents and receipts"), which is a distinct, larger unit of design and review
-work, not a same-shape direct swap. It is left for a dedicated follow-up
-slice rather than folded into T4g's "no pauses" cadence.
+work, not a same-shape direct swap. It was left for the dedicated T4i
+follow-up rather than folded into T4g's "no pauses" cadence. T4i now closes
+that follow-up with an explicit V1/V2 discriminator, additive runtime
+migration, logical-identity convergence, and discriminating tests; the
+current matrix row above is authoritative for the resulting state.
 
-Both calls were made following the same process as prior T4 slices: not
-asserted unilaterally, chosen by brunomjanuario (WS-C), flagged here for
+Both historical classifications were made following the same process as prior
+T4 slices: not asserted unilaterally, chosen by brunomjanuario (WS-C), and
+flagged here for human review.
 ### T4h classification: transient, no persistence adapter anywhere in the package
 
 `packages/data-probe` declared zero dependencies before this migration

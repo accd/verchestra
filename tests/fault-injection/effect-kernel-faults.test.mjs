@@ -114,6 +114,22 @@ test("two runtime connections planning one key converge to one row", async () =>
   store.close();
 });
 
+test("two runtime connections converge V1 and V2 effect identities before any duplicate apply", async () => {
+  const { dbPath, store } = await setup();
+  const contender = new RuntimeStore({ dbPath, now: () => now });
+  contender.open();
+  const first = new EffectBroker({ repository: store.createEffectRepository(), adapter: new MockEffectAdapter() });
+  const second = new EffectBroker({ repository: contender.createEffectRepository(), adapter: new MockEffectAdapter() });
+  const [v1, v2] = await Promise.all([
+    first.plan(effectIntent({ canonicalizationVersion: 1 })),
+    second.plan(effectIntent({ effectId: "effect_018f0b6d-7b1a-7abc-8def-4123456789ab", canonicalizationVersion: 2 }))
+  ]);
+  assert.equal(v1.idempotencyKey, v2.idempotencyKey);
+  assert.equal((await store.createEffectRepository().listDispatchable(10)).length, 1);
+  contender.close();
+  store.close();
+});
+
 test("conflicting receipt cannot overwrite durable inbox", async () => {
   const { store } = await setup();
   const repository = store.createEffectRepository();

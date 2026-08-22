@@ -5,6 +5,8 @@ import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterEach, test } from "node:test";
 
+import { buildIdempotencyKey } from "../../packages/application/src/index.ts";
+
 // Discrimination sensor for the RFC 8785 encoder (CJ-11): each mutation below
 // reverts one of the two behaviour-level guarantees canonical-json.ts commits
 // to (design.md, "The two byte-contract differences that matter") and proves
@@ -80,6 +82,42 @@ async function loadSetsMutant(patch) {
   const module = await import(pathToFileURL(disposablePath).href);
   return module.normalizeDeclaredSet;
 }
+
+const effectContractSourcePath = fileURLToPath(
+  new URL("../../packages/application/src/effects/effect-contract.ts", import.meta.url)
+);
+const effectContractSourceDir = dirname(effectContractSourcePath);
+
+async function loadEffectKeyMutant(patch) {
+  const original = await readFile(effectContractSourcePath, "utf8");
+  const mutated = patch(original);
+  assert.notEqual(mutated, original, "mutation must actually change the source");
+  const disposablePath = join(effectContractSourceDir, `effect-contract.mutant-${randomUUID()}.ts`);
+  disposablePaths.push(disposablePath);
+  await writeFile(disposablePath, mutated, "utf8");
+  const module = await import(pathToFileURL(disposablePath).href);
+  return module.buildIdempotencyKey;
+}
+
+test("mutation D: replacing V2 effect material with JSON.stringify is killed", async () => {
+  const before = await readFile(effectContractSourcePath, "utf8");
+  const mutantKey = await loadEffectKeyMutant((source) => {
+    const target = "canonicalizeJsonV2({ ...identity, canonicalizationVersion })";
+    const patched = source.replace(target, "JSON.stringify({ ...identity, canonicalizationVersion })");
+    assert.notEqual(patched, source, "the V2 effect canonicalizer call must exist in the current source");
+    return patched;
+  });
+  const input = {
+    operationKind: "jira.issue.upsert",
+    workspaceId: "workspace_018f0b6d-7b1a-7abc-8def-1123456789ab",
+    logicalTarget: "jira:project/KEY/issue/external-42",
+    canonicalInputDigest: `sha256:${"a".repeat(64)}`,
+    semanticIdentity: "project:KEY:external-42",
+    canonicalizationVersion: 2
+  };
+  assert.notEqual(mutantKey(input), buildIdempotencyKey(input));
+  assert.equal(await readFile(effectContractSourcePath, "utf8"), before);
+});
 
 // Mutation C: normalizeDeclaredSet is the single primitive every T4a owner
 // (and every future T4 slice) delegates to for declared-set ordering
