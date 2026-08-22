@@ -6,9 +6,9 @@ status: verification
 branch: codex/issue-58-canonical-json-inventory-refresh
 baseRevision: d250c7c994be1c9aa9194118c757b67079d23ad3
 lastCompletedTask: T2
-nextTask: Rerun independent spec-anchored validation after the conservative serialization-signal correction, then open the review PR only on PASS.
+nextTask: Submit the independently validated census feature for required human review; do not merge without that review.
 lastGate: pnpm gate:security PASS; pnpm gate:quick PASS
-updatedAt: 2026-08-23T00:30:00Z
+updatedAt: 2026-08-23T00:40:00Z
 ---
 
 # Scope
@@ -48,9 +48,7 @@ then proceed in independent reviewable verticals.
 
 # Blockers
 
-None for the census itself. The prior independent validation found additional
-structured serializers outside the name-based detector; the conservative signal
-and reviewed scope exclusions are now implemented and gated. Fresh independent
-validation is required before opening a review PR. A migration may expose a
-versioning decision or an external owner action, which must remain a blocker
-rather than be assumed.
+The conservative serialization signal and reviewed scope exclusions passed
+independent validation. Human review remains required before merge. A migration
+may expose a versioning decision or an external owner action, which must remain
+a blocker rather than be assumed.
