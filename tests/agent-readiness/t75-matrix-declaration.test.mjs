@@ -97,8 +97,8 @@ test("the database claim matches AD-017 rather than the superseded principal-tar
   assert.equal(sqlite.status, "qualified", "SQLite is the one engine with a real driver");
 });
 
-test("the environmental platform case is never counted as a pass", () => {
+test("the Intel platform case is qualified only by the exact fleet declaration", () => {
   const intel = dimension("platform").cases.find((item) => item.case === "darwin-x64");
-  assert.equal(intel.status, "environmental");
-  assert.notEqual(intel.status, "qualified");
+  assert.equal(intel.status, "qualified");
+  assert.match(intel.evidence, /macos-15-intel/u);
 });

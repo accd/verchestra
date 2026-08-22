@@ -12,9 +12,10 @@ Measured on `3f97047`. Nothing in this document is invented: every case set
 cites the file that defines it, and every "not covered" claim cites what was
 looked for.
 
-**Status: specification only.** It changes no product behavior, resolves no
-gap, and advances no qualification state. Sections 7 and 9 raise the decisions
-and defects that must be settled before T75 can honestly close.
+**Status:** this remains a declaration, not a product implementation, but its
+current exact-head evidence is recorded in section 9c. It advances no
+qualification state by itself; only an independently-authored report and human
+review can close T75. Sections 7 and 9 record the bounded gaps that remain.
 
 ## 1. Scope
 
@@ -29,8 +30,8 @@ Acceptance criteria under test:
 | - | --------- | ---------------------------- |
 | 1 | Zero required platform or topology case is skipped | **Not yet true** — section 2 and section 6 |
 | 2 | Zero unauthorized effect escapes policy or egress enforcement | Covered; section 5 |
-| 3 | Reports bind platform, architecture, runtime, fixture, candidate, and evidence digests | **Not yet true** — no evidence index exists; section 8 |
-| 4 | Every supported platform passes the release-candidate security gate | **True** at `5c86436` |
+| 3 | Reports bind platform, architecture, runtime, fixture, candidate, and evidence digests | **True** — exact-head fleet indexes and the reconciled T75 index bind every leg and digest; signing remains explicitly unsigned under AD-014 |
+| 4 | Every supported platform passes the release-candidate security gate | **True** at `97fa851` — `gate:security` run `32579397998` passed on all five supported platforms |
 
 ## 2. The cross-cutting finding: no single gate profile runs every stage
 
@@ -297,21 +298,22 @@ contract-qualified only, with the hardcoded constant replaced by an honest
 never a pass, and a constant that always reports success is exactly the
 pattern that rule exists to forbid.
 
-## 8. The signed evidence index
+## 8. Evidence index and signing boundary
 
-**It does not exist.** Repo-wide search for `evidence index`, `evidenceIndex`,
-`qualification index` returns six hits, all aspirational prose in this
-feature's own handoff, the workflow header, and the milestone-2 programme —
-no file, no generator, no schema, no test.
+The original baseline above is superseded. The platform workflow now persists
+each leg's identity and leg digest, collects all five expected legs, and emits
+a profile index. `scripts/t75-evidence-index.mjs` then reconciles the five
+declared profiles against `matrix.json`, refusing mixed revisions, duplicate
+runs, digest mismatches, silent omissions, and observations that contradict a
+declaration. The committed fleet files under `fleet/` are the exact-head
+artifacts from candidate `97fa851`, and the drift test regenerates the same
+`42/52` verdict with zero contradictions.
 
-**The per-leg evidence is also not collected.** `platform-matrix.yml:132-167`
-writes `platform-validation.json` per leg and computes its SHA-256 at line
-164 — but that digest is only `console.log`ged (line 166), never persisted.
-The file is uploaded as an artifact with `retention-days: 14`, and
-`grep download-artifact .github/workflows` returns **zero hits**: no workflow
-ever collects it. So today the platform evidence expires, unindexed, two
-weeks after each run — and acceptance criterion 3 ("reports bind … evidence
-digests") has nothing to bind.
+The generated index is deliberately **unsigned** today:
+`signingState.signed=false` records that no release signing identity is
+configured. This is not a pass-by-string; AD-014 schedules the DSSE signing
+identity and the T75 report must keep the unsigned state explicit until that
+owner decision and migration land.
 
 **What the index must be.** `docs/qualification/REPORT-CONTRACT.md` has no
 digest field, no evidence-index field, and no run-reference field: its only
@@ -338,10 +340,9 @@ Required content, derived from criterion 3 and this document:
 DSSE envelope across all eight sealer-routed artifact kinds **before T76
 starts**, and rejects the V1 format. An evidence index built against today's
 `SealedArtifact` shape would be rewritten by that migration weeks later.
-Therefore: **either** build the index after the DSSE migration lands, **or**
-build it as an unsigned collected index first and sign it in the same change
-that migrates the envelope. The AD-014 scope list does not currently include
-an evidence index; adding it there is part of whichever order is chosen.
+Therefore the current index is an explicitly bounded unsigned artifact; the
+same DSSE migration must add the qualification-index predicate and sign these
+bytes before T76 can claim a signed release candidate.
 
 The reusable precedent for the generator is
 `scripts/generate-proof-artifact.mjs`: it seals a real artifact with a
@@ -431,27 +432,49 @@ badge, is the evidence** — a distinction the t75 report must state explicitly,
 because a reader glancing at four cancelled runs would otherwise conclude the
 opposite of what happened. Documented in the workflow header.
 
+## 9c. Exact-head five-profile fleet evidence (2026-08-22)
+
+The workflow runner migration in PR #291 moved the Intel leg to
+`macos-15-intel`. At candidate `97fa851ae8d84cc97d1eb0a2df3e5426bcb08421`,
+all five declared profiles completed on all five supported legs:
+
+| Profile | Run | Windows x64 | macOS x64 | macOS arm64 | Linux x64 | Linux arm64 | Index |
+| ------- | --- | :---------: | :-------: | :---------: | :-------: | :---------: | ----- |
+| `quick` | 32579393585 | ✅ | ✅ | ✅ | ✅ | ✅ | complete |
+| `full` | 32579395143 | ✅ | ✅ | ✅ | ✅ | ✅ | complete |
+| `build` | 32579396554 | ✅ | ✅ | ✅ | ✅ | ✅ | complete |
+| `security` | 32579397998 | ✅ | ✅ | ✅ | ✅ | ✅ | complete |
+| `release` | 32579399438 | ✅ | ✅ | ✅ | ✅ | ✅ | complete |
+
+The reconciler regenerates `42/52` qualified cases, `8` contract-qualified
+cases, `2` explicitly not-qualified cases, `0` environmental cases, and
+`0` contradictions. Every profile has an empty `excused` list. The evidence
+is complete but unsigned; the signing boundary remains the AD-014/T76 work,
+not a reason to rewrite or hide this fleet result.
+
 ## 10. What T75 still needs, in order
 
 1. ~~**D1 and D2** decided and recorded (owner)~~ — **done 2026-08-09
    (AD-017)**: D1 = edge-qualification model (enabler work in #233, WS-C,
    before the t75 report); D2 = Pi probe reads the installed SDK version
    (M-4, WS-A).
-2. ~~**M-1** — fleet dispatch at `gate=full` and `gate=release`~~ — **done**;
-   it surfaced F5, fixed in PR #231. Re-dispatch after F5 merges so the run
-   ids recorded in the report are green ones.
+2. ~~**M-1** — fleet dispatch at all declared profiles~~ — **done**; PR #291
+   moved the Intel leg to `macos-15-intel`, and the five exact-head runs in
+   section 9c are green with complete indexes.
 3. ~~**M-2** — persist the per-leg digest; add a collection job~~ — **done**,
    PR #230. The index now classifies every expected leg as qualified, failed,
    missing, or digest-mismatch.
 4. ~~**M-3** — add an activation case whose declared release target matches
    the host~~ — **done**, PR #240. ~~**M-4** — Pi probe~~ — **done**, PR #239.
    All four gate profiles were then dispatched at one candidate (`9aab070`),
-   which is also the first exercise of the M-2 evidence index.
+   which was the first exercise of the M-2 evidence index; section 9c is the
+   current candidate evidence.
 5. **A4 (#35)** — live cross-driver verifier session; supplies the Driver
    matrix's missing cross-driver case.
 6. **C5 (#207)** — live doctor probes, including `doctor.sandbox` moving off
    presence-only.
 7. **Evidence index signed** — ordered against AD-014 per section 8.
 8. **B3** — independent `t75-validation.md` binding all of the above, with
-   every `not qualified` entry stated rather than omitted, and the macOS x64
-   Intel-queue limitation recorded as environmental.
+   every `not qualified` entry stated rather than omitted. The current fleet
+   has no environmental platform leg; the report must still state that the
+   evidence index is unsigned until AD-014 supplies the release identity.

@@ -1,0 +1,84 @@
+{
+  "schemaVersion": 1,
+  "runId": "32579393585",
+  "gate": "gate:quick",
+  "revision": "97fa851ae8d84cc97d1eb0a2df3e5426bcb08421",
+  "complete": true,
+  "legs": [
+    {
+      "leg": "win32-x64",
+      "status": "qualified",
+      "identity": {
+        "revision": "97fa851ae8d84cc97d1eb0a2df3e5426bcb08421",
+        "ref": "refs/heads/codex/issue-16-t75",
+        "gate": "gate:quick",
+        "platform": "win32",
+        "arch": "x64",
+        "runtime": "v24.14.0",
+        "runner": "Windows"
+      },
+      "identityDigest": "sha256:e639b67f31d6a66897d265ab7a3d851cc37ad14973e5950bd0616208807c4de8",
+      "legDigest": "sha256:b212981f9a9ba67b7f0c13676abdd33221683098af56e789b00ea9b27abfd984"
+    },
+    {
+      "leg": "darwin-x64",
+      "status": "qualified",
+      "identity": {
+        "revision": "97fa851ae8d84cc97d1eb0a2df3e5426bcb08421",
+        "ref": "refs/heads/codex/issue-16-t75",
+        "gate": "gate:quick",
+        "platform": "darwin",
+        "arch": "x64",
+        "runtime": "v24.14.0",
+        "runner": "macOS"
+      },
+      "identityDigest": "sha256:e89393dc78a54d53e06e8b7e591f730d5fd26f7ba7d7d6950a49abd8447784a0",
+      "legDigest": "sha256:efb5f18340fdc0ed156de197aac180e7090c080eb23007e51b025b1bcbb16a32"
+    },
+    {
+      "leg": "darwin-arm64",
+      "status": "qualified",
+      "identity": {
+        "revision": "97fa851ae8d84cc97d1eb0a2df3e5426bcb08421",
+        "ref": "refs/heads/codex/issue-16-t75",
+        "gate": "gate:quick",
+        "platform": "darwin",
+        "arch": "arm64",
+        "runtime": "v24.14.0",
+        "runner": "macOS"
+      },
+      "identityDigest": "sha256:fd9f470ab077f59b0b4874cf7b840bdf13a71a7243deff161b149f421109884f",
+      "legDigest": "sha256:2e8af9228dfb29edfcb469edfa29fe5a55420da647b16a5bfac5acd4b6d655f8"
+    },
+    {
+      "leg": "linux-x64",
+      "status": "qualified",
+      "identity": {
+        "revision": "97fa851ae8d84cc97d1eb0a2df3e5426bcb08421",
+        "ref": "refs/heads/codex/issue-16-t75",
+        "gate": "gate:quick",
+        "platform": "linux",
+        "arch": "x64",
+        "runtime": "v24.14.0",
+        "runner": "Linux"
+      },
+      "identityDigest": "sha256:752ba5ce50292f3f05a048b9c466f3478aa52803187a5fac35161624f28420e1",
+      "legDigest": "sha256:dcd158a0ec12ef13a7c7d219a86e148dde98c3464662bd896f077b8a138103a8"
+    },
+    {
+      "leg": "linux-arm64",
+      "status": "qualified",
+      "identity": {
+        "revision": "97fa851ae8d84cc97d1eb0a2df3e5426bcb08421",
+        "ref": "refs/heads/codex/issue-16-t75",
+        "gate": "gate:quick",
+        "platform": "linux",
+        "arch": "arm64",
+        "runtime": "v24.14.0",
+        "runner": "Linux"
+      },
+      "identityDigest": "sha256:abdbe33501922580f99eb1858e55447161b76570b3829998d89f3d9ed10e4605",
+      "legDigest": "sha256:f0103f225489cbfa44286b065c8f8040bb467115d2e1c11e68d5f43781aec691"
+    }
+  ]
+}

@@ -14,9 +14,21 @@ const SCRIPT = new URL("../../scripts/t75-evidence-index.mjs", import.meta.url);
 const DEFAULT_OUTPUT = fileURLToPath(
   new URL("../../.specs/features/platform-qualification-matrix/evidence-index.json", import.meta.url)
 );
-const matrix = JSON.parse(
+const productionMatrix = JSON.parse(
   readFileSync(new URL("../../.specs/features/platform-qualification-matrix/matrix.json", import.meta.url), "utf8")
 );
+
+// These unit cases exercise the generator's environmental/shortfall branches
+// as well as the green path. Keep that fixture explicit and independent from
+// the current fleet declaration, which now qualifies darwin-x64 after the
+// macos-15-intel migration. The readiness drift test covers the production
+// declaration and its five complete indexes.
+const matrix = structuredClone(productionMatrix);
+const intel = matrix.dimensions
+  .find((entry) => entry.dimension === "platform")
+  .cases.find((item) => item.case === "darwin-x64");
+intel.status = "environmental";
+intel.evidence = "unit fixture: environmental leg used to exercise fail-closed reconciliation";
 
 const REVISION = "a".repeat(40);
 const FLEET_LEGS = ["win32-x64", "linux-x64", "linux-arm64", "darwin-arm64"];
@@ -71,6 +83,14 @@ const fleetIndex = (gate, overrides = {}) => {
 // The matrix declares five gate profiles because no single profile runs every
 // stage. A green baseline therefore needs all five dispatched, not one.
 const greenFleet = () => GATES.map((gate) => fleetIndex(gate));
+// The CLI reads the production matrix from disk, where darwin-x64 is now
+// qualified by the macos-15-intel fleet. Keep its success-path fixture aligned
+// with that declaration; the direct generator cases above intentionally retain
+// the environmental fixture to exercise the shortfall branches.
+const productionGreenFleet = () =>
+  GATES.map((gate) =>
+    fleetIndex(gate, { legs: [...FLEET_LEGS, "darwin-x64"].map((name) => leg(name)) })
+  );
 
 const caseOf = (index, dimension, name) =>
   index.dimensions.find((entry) => entry.dimension === dimension).cases.find((item) => item.case === name);
@@ -480,7 +500,7 @@ const runCli = (fleet, { out = true, separator = true, filesFirst = false } = {}
 };
 
 test("the CLI succeeds when the declaration and the fleet agree", () => {
-  const result = runCli(greenFleet());
+  const result = runCli(productionGreenFleet());
   assert.equal(result.status, 0, result.stderr);
   assert.equal(result.index.summary.contradictions, 0);
   assert.equal(result.index.revision, REVISION);
@@ -607,7 +627,7 @@ test("the CLI keeps every supplied index when no output path is given", () => {
     { out: false, separator: false, filesFirst: true },
     { out: false, separator: true, filesFirst: true }
   ]) {
-    const result = runCli(greenFleet(), invocation);
+    const result = runCli(productionGreenFleet(), invocation);
     assert.equal(result.index.profiles.length, GATES.length, `${JSON.stringify(invocation)}: ${result.stderr}`);
     assert.equal(result.index.summary.contradictions, 0, "a complete fleet must not look like a partial one");
   }
