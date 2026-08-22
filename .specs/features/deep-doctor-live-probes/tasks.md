@@ -262,11 +262,28 @@ Claude Code/Codex CLI version, confirmed identical on a clean tree via
 **Where**: `tests/architecture/doctor-readonly-graph.test.mjs`
 **Depends on**: T8, T9, T10 · **Requirement**: DDL-12 · **AC**: 14
 **Done when**:
-- [ ] Closure resolved statically from source specifiers, not by executing imports
-- [ ] A writer introduced anywhere in the closure fails the gate (mutation in a disposable copy)
-- [ ] Existing textual assertions retained, not replaced
-- [ ] `pnpm test:architecture` and `pnpm gate:security` pass
+- [x] Closure resolved statically from source specifiers, not by executing imports
+- [x] A writer introduced anywhere in the closure fails the gate (mutation in a disposable copy)
+- [x] Existing textual assertions retained, not replaced
+- [x] `pnpm test:architecture` and `pnpm test:security` pass (`gate:security` blocked by the same pre-existing environment issue as T10)
 **Tests**: architecture + security · **Gate**: security
+
+> **Note (2026-08-22):** the closure resolves 67 files from
+> `doctor-composition.ts` (relative imports plus `@verchestra/*`
+> package-exports-mapped paths), never executed — pure text read and regex
+> extraction. The check operates on import EDGES (specifier strings), not raw
+> file text, deliberately: a text scan for forbidden class names across ~67
+> files risks the same false-positive-in-prose class that
+> `platform-node-readonly-subpath.test.mjs` and `policy-readonly-subpath.test.mjs`
+> hit on their own single files (T8, T9) — at 67 files the odds of an
+> incidental match go up, not down. Discrimination proven with a mutation two
+> hops from the entry file (`doctor-facts.ts` importing `@verchestra/drivers`)
+> that the four pre-existing tests cannot see, since none of them inspect
+> anything past `doctor-composition.ts`'s own text — only the new test
+> fails. Also confirmed the allowed/forbidden boundary is drawn correctly: an
+> entry-file import of `@verchestra/platform-node/readonly` passes, the bare
+> `@verchestra/platform-node` root fails both the new test and the existing
+> allowlist test.
 
 ### Phase 4 — Live probes for existing surfaces
 
@@ -483,4 +500,5 @@ No task depends on a later phase.
 | T8 | Done | recorded in `handoff.md` |
 | T9 | Done | recorded in `handoff.md` |
 | T10 | Done | recorded in `handoff.md` |
-| T11–T22 | Planned | Pending |
+| T11 | Done | recorded in `handoff.md` |
+| T12–T22 | Planned | Pending |

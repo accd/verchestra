@@ -5,9 +5,9 @@ issue: 207
 status: in_progress
 branch: feat/deep-doctor-live-probes
 baseRevision: 0d7ad9a2bad3b29c4defb4338d1106e4fe22c6e1
-lastCompletedTask: T10
-nextTask: T11
-lastGate: pnpm test:security PASS 1049/1049 (gate:security itself blocked by a pre-existing, unrelated test:qualification failure — see Blockers)
+lastCompletedTask: T11
+nextTask: T12
+lastGate: pnpm test:architecture 38/38 PASS; pnpm test:security 1049/1049 PASS; pnpm gate:quick PASS
 updatedAt: 2026-08-22T00:00:00Z
 ---
 
@@ -18,7 +18,7 @@ read-only observations. Requirements DDL-01 through DDL-14 in `spec.md`; 22
 tasks in six phases in `tasks.md`. Parent #13 (T72); lands with or before #16
 (T75), which is the current serial task.
 
-T1 through T10 are implemented and gated on branch (Phase 2 complete; Phase 3 in progress) `feat/deep-doctor-live-probes`.
+T1 through T11 are implemented and gated on branch (Phase 2 and Phase 3 complete) `feat/deep-doctor-live-probes`.
 
 # Completed Evidence
 
@@ -228,20 +228,44 @@ T1 through T10 are implemented and gated on branch (Phase 2 complete; Phase 3 in
   version). Ran `pnpm test:security` directly: 1049/1049, zero failed,
   skipped, or todo.
 
+- **T11** — `tests/architecture/doctor-readonly-graph.test.mjs` gained a
+  fifth test: a genuine static resolver walks `doctor-composition.ts`'s full
+  transitive import closure (relative paths and `@verchestra/*`
+  package-exports-mapped paths, resolved via each package's own
+  `package.json`, never executed) and asserts no import edge anywhere in the
+  closure names a forbidden package root
+  (`@verchestra/drivers`/`connectors`/`data-probe`, or the bare
+  `@verchestra/platform-node`/`@verchestra/policy` roots — only their
+  `/readonly` subpaths are permitted). The real closure resolves to 67 files.
+  The check operates on import specifier strings, not raw file text —
+  deliberately, since a text scan for class names across 67 files raises,
+  not lowers, the odds of the same prose false-positive T8 and T9 hit on
+  their own single files. The four pre-existing tests are unchanged.
+
+  Discrimination proven three ways in a disposable copy: (1) a forbidden
+  import two hops from the entry file (`doctor-facts.ts` importing
+  `@verchestra/drivers`) is caught by the new test and invisible to all four
+  existing ones — the property this task exists to add, concretely
+  demonstrated, not just claimed; (2) an entry-file import of the *allowed*
+  `@verchestra/platform-node/readonly` subpath passes; (3) an entry-file
+  import of the *forbidden* bare `@verchestra/platform-node` root fails both
+  the new test and the existing allowlist test. Gates: `pnpm test:architecture`
+  38/38, `pnpm test:security` 1049/1049 (gate:security itself blocked by the
+  same pre-existing environment issue as T10), `pnpm gate:quick` PASS.
+
+  **Phase 3 (read-only surfaces and the transitive guard) is complete —
+  T8 through T11.**
+
   Commit hashes are recorded as each subsequent task lands; T1 is the second
   commit on the branch, after the planning commit.
 
 # Next Exact Action
 
-T11 (transitive guard, closes Phase 3): resolve
-`apps/vestra-cli/src/doctor-composition.ts`'s full import closure statically
-(from source specifiers, not by executing imports) in
-`tests/architecture/doctor-readonly-graph.test.mjs`, and assert no module
-anywhere in that closure names a writer — extending, not replacing, the
-existing textual assertions. Prove a writer introduced anywhere in the
-closure fails the gate via a mutation in a disposable copy. Then
-`pnpm test:architecture` and `pnpm test:security` (see the gate:security
-blocker note above).
+T12 (Phase 4 begins): construct a `ProtectedPathBroker` over the control root
+in `apps/vestra-cli/src/doctor-composition.ts` and observe it refuses an
+out-of-root open — refusal reports `pass`, a permitted out-of-root open
+reports `fail`, unprovisioned (no sandbox fixture) reports `blocked`. Then
+`pnpm gate:full`.
 
 # Blockers
 
