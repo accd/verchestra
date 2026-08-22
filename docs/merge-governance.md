@@ -28,7 +28,7 @@ contributions from forks.
 ## Required checks and merge method
 
 The live `Protect main` ruleset requires strict `Quality gate`, `Site quality`,
-and `CodeQL` checks, resolved review threads, linear history, and squash-only
+and `CodeQL` checks, resolved review threads, linear history, and rebase-only
 merges. Force-pushes and branch deletion are blocked.
 
 ## Maintainer bypass (logged)
@@ -47,7 +47,7 @@ hold:
 - the maintainer authored the pull request;
 - every required check is green on the current head, not on an earlier push;
 - every review thread is resolved;
-- the merge is a squash, as the ruleset requires of everyone;
+- the merge is a rebase, as the ruleset requires of everyone;
 - the pull request body declares `Intended merge path: maintainer bypass`,
   states why the bypass applies, and states whether the change preserves,
   strengthens, or reduces enforcement.
@@ -94,7 +94,7 @@ gh api repos/accd/verchestra/rulesets/19738785
 ```
 
 It must report one required approving review, stale-review dismissal,
-last-push approval, code-owner review, squash-only merges, the three strict
+last-push approval, code-owner review, rebase-only merges, the three strict
 required checks named above, and exactly one bypass actor:
 
 ```bash
