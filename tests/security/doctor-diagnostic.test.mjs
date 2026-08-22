@@ -55,6 +55,29 @@ test("a sentinel that changes during the run fails closed", async () => {
   );
 });
 
+test("every awaited probe completes before the after-sentinel capture", async () => {
+  const events = [];
+  let captures = 0;
+  const stable = Object.freeze([{ sentinelId: "s", digest: `sha256:${"a".repeat(64)}` }]);
+  await runDoctor(
+    ports({
+      probes: probes({
+        "doctor.sandbox": async () => {
+          events.push("probe-start");
+          await Promise.resolve();
+          events.push("probe-finished");
+          return healthy;
+        }
+      }),
+      captureSentinels: () => {
+        events.push(captures++ === 0 ? "before" : "after");
+        return stable;
+      }
+    })
+  );
+  assert.deepEqual(events, ["before", "probe-start", "probe-finished", "after"]);
+});
+
 test("a probe that throws a path-laden error never leaks it into the report", async () => {
   const run = await runDoctor(
     ports({
