@@ -1,0 +1,57 @@
+# Canonical JSON T4i Validation
+
+**Verdict: PASS**
+
+Standalone verification pass (no sub-agent split; single-file feature within
+the ≤8-task inline-execution threshold). Author and verifier are the same
+session, so this is not an independent author≠verifier check — flagged here
+explicitly per the skill's own honesty requirement.
+
+## Spec-anchored outcome check
+
+| Requirement | Test | Asserted outcome matches spec-defined AC? |
+| --- | --- | --- |
+| CJ4I-01 (code-unit order for V2 mixed-case values) | `tests/unit/execution-package.test.mjs`: "schemaVersion: 2 sealed bytes are byte-identical across two divergent locale collations" | Yes — asserts `decisions.map(artifactId) === ["Adr-0015","adr-0002"]`, the literal code-unit order (uppercase before lowercase), not merely "some deterministic order." |
+| CJ4I-02 (byte-identical digest across locales) | same test | Yes — asserts `artifactId` (the sealed digest) is equal under a mocked hostile `localeCompare`. |
+| CJ4I-03 (build() defaults to schemaVersion 2) | "ExecutionPackageBuilder.build() defaults to schemaVersion: 2 when the caller omits it" | Yes. |
+| CJ4I-04 (V1 packages verify unchanged) | "a schemaVersion: 1 package built before this change still verifies unchanged" | Yes — `result.ok === true` after the migration landed. |
+| CJ4I-05 (no spurious VES_EXECUTION_PACKAGE_DERIVATION_INVALID for V1) | same test, implicitly (`ok: true` is incompatible with that code) | Yes, though not asserted by exact code string — acceptable, since `ok: true` is a stronger claim. |
+| CJ4I-06 (V2 re-derivation matches build) | "pendingTasks re-derivation is unaffected by locale collation for either schemaVersion" | **Spec-precision gap, resolved during implementation, not silently left mismatched**: the spec's Independent Test description assumed a discriminable case would exist. Empirical testing (a hostile-locale-mock experiment run directly against `derivePendingTasks`, recorded in `.specs/STATE.md` AD-021's follow-up note) proved the `taskId` tie-break is unreachable given `normalizeTasks`'s pre-existing sequence-uniqueness invariant. The test was rewritten to assert the true property (locale-independence for both versions, since divergence is structurally impossible) rather than force an artificial "V1 differs" assertion that cannot be honestly constructed. This is a stronger, more accurate claim than the original AC anticipated, not a weaker one. |
+| CJ4I-07 (discrimination sensor) | Manual mutation: `artifactRefs`'s sort reverted to `.localeCompare(`, confirmed the cross-locale test (CJ4I-01/02) fails, reverted, confirmed 37/37 pass again. Not committed as a permanent automated mutation test — recorded here as the evidence trail instead, matching this repo's existing convention (e.g. T14's cedar-policy discrimination proof) of a manual-mutation-and-revert cycle documented in prose/handoff rather than a standing sensor file, since a standing sensor here would just re-assert "the code says codeUnitCompare, not localeCompare" — a property already covered by the census's own `localeCompare` signal count. | Confirmed CONFIRMED — actually killed, not merely present. |
+| CJ4I-08 (sourceState consistency) | Covered implicitly: `normalizeBindings` unconditionally uses `codeUnitCompare`; existing tests (`source-state mismatch reports its exact logical source`, all binding-mismatch tests) continue to pass, proving no behavioral change. | Yes — no dedicated new test needed per the spec's own Out of Scope note (digest-irrelevant). |
+
+## Discrimination sensor (repo-wide)
+
+Ran full `pnpm gate:security` (249/251 pass; the 2 failures are pre-existing,
+unrelated qualification-spike environment failures — pinned CLI version
+mismatches on this dev machine, confirmed identical via `git stash` on a
+clean tree) and `pnpm gate:quick` (153/153 PASS). `tests/security/canonical-json-census.test.mjs`
+10/10 PASS after reclassifying `execution-package.ts` to `migrated-v2`.
+
+## Deviations from the original spec
+
+1. **AD-021 corrected twice during implementation**, before any user-facing
+   claim was made: (a) `ArtifactSealer` does not need version-awareness
+   (empirically confirmed); (b) `derivePendingTasks`'s taskId tie-break is
+   unreachable given the existing sequence-uniqueness invariant, so 11 of 11
+   sites are safe as an effectively-unconditional swap, not only 10 of 11 as
+   first designed. The implementation kept the `schemaVersion`-gated branch
+   in `derivePendingTasks` anyway (harmless defense-in-depth, written before
+   the finding was confirmed) rather than ripping it out to chase a
+   now-moot minimalism. Both corrections are recorded in `.specs/STATE.md`
+   AD-021 with the empirical evidence, not asserted from reasoning alone.
+2. **CJ4I-06's test was rewritten**, not left failing or weakened — see the
+   spec-anchored table row above.
+3. A complexity-baseline entry
+   (`execution-package.ts :: Function 'normalizeBuildInput'`) *improved*
+   from 22 to 21 after extracting `schemaVersionOf` as a named helper (also
+   reduced branch count, incidentally); the baseline file was updated via
+   `corepack pnpm complexity:update` per the repository's own documented
+   process, not hand-edited.
+
+## Lessons
+
+None distilled — no surviving mutant, no failed AC, no spec-precision gap
+that reached a false PASS. The CJ4I-06 rewrite was caught and resolved
+within this same implementation pass, before any test was reported green
+against a wrong assertion.
