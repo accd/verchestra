@@ -2,13 +2,13 @@
 schema: verchestra-feature-handoff/v1
 feature: canonical-json-t4-completion
 issue: 58
-status: planned
-branch: feat/canonical-json-t4j-release-identity
-baseRevision: 0d7ad9a2bad3b29c4defb4338d1106e4fe22c6e1
+status: in_progress
+branch: codex/milestone-2-p0-sync
+baseRevision: 190e06f50e5a0b014013bda4dd7618104db3182a
 lastCompletedTask: null
-nextTask: T1
-lastGate: null
-updatedAt: 2026-08-22T00:00:00Z
+nextTask: T1 of T4j — prove the no-installed-base release-identity claim, then continue T4k census closure.
+lastGate: PR #307 / T4i merged at 190e06f; T4j/T4k gates not started
+updatedAt: 2026-08-23T00:00:00Z
 ---
 
 # Scope
@@ -22,14 +22,16 @@ Prior slices T1–T2, T3 (`.specs/features/canonical-json`), and T4a
 Each phase is independently mergeable, satisfying the matrix's requirement that
 every slice be a separately reviewable unit.
 
-Planning only. No implementation has started.
+T4i's signed-evidence Execution Package implementation is merged in PR #307
+at `190e06f`. T4j (release identity) and T4k (remaining census closure) are
+the next implementation slices; neither has started on this branch.
 
 # Completed Evidence
 
-None for this slice. Merged predecessors: nine of the eleven surfaces named in
-#58 now use `canonicalizeJsonV2`, all eight data-probe adapters included; the
-ratchet sensor `tests/security/canonical-json-locale-allowlist.test.mjs` passes
-5/5 at head.
+T4i's independent correction and human-reviewed merge are now recorded in
+`.specs/features/canonical-json-t4i-signed-evidence/validation.md` and PR #307.
+The source-derived census remains tracked and security-tested; its pending
+versioned entries are not a qualification pass.
 
 # Next Exact Action
 
@@ -40,7 +42,7 @@ Phase 1 as a versioned facade. Then `pnpm gate:quick`.
 
 # Blockers
 
-None. One scheduling window applies: Phase 1 (T4j) must land **before T76**
+None for implementation. One scheduling window applies: Phase 1 (T4j) must land **before T76**
 ships a release candidate. The direct-swap route depends on there being no
 installed base of signed release bytes — `releaseDigest` is null
 (`apps/vestra-cli/src/release-manifest.ts:19`), T76 has not shipped, and the

@@ -2,18 +2,19 @@
 schema: verchestra-feature-handoff/v1
 feature: canonical-json
 issue: 58
-status: verification
+status: complete
 branch: codex/issue-58-canonical-json-census
 baseRevision: 7bcc236255742ad3edf2c16094abbabbcd4f50e4
 lastCompletedTask: T14
-nextTask: Obtain independent verification and human review, then start the refreshed whole-repository canonicalization census.
+nextTask: Continue the remaining #58 T4j/T4k migration from canonical-json-t4-completion.
 lastGate: pnpm gate:quick PASS; pnpm gate:security PASS
-updatedAt: 2026-08-22T19:18:00Z
+updatedAt: 2026-08-23T00:00:00Z
 ---
 
 # Current scope
 
-T4i closes the deferred durable-effect portion of #58. It does not claim that
+This historical effect-identity vertical is complete and was merged through
+PR #301. It does not claim that
 the whole #58 census is complete: the remaining portable-identity owners,
 Execution Package, hermetic bundle, transactional activation, and the closed
 presentation/fixture allowlist still require separate, reviewable verticals.
@@ -48,10 +49,8 @@ presentation/fixture allowlist still require separate, reviewable verticals.
 
 # Required next action
 
-The declared quick and security gates pass on this branch. Independent
-verification must now review the implementation and evidence before a PR is
-opened. Then resume #58 with a fresh mechanical census of every
-canonicalizer, `localeCompare`, and digest producer; do not mark the issue
+The declared quick and security gates and independent verification passed for
+this vertical. The refreshed census is tracked separately; do not mark #58
 complete until all rows are migrated or appear in a tested closed allowlist.
 
 # Decisions

@@ -2,16 +2,20 @@
 schema: verchestra-feature-handoff/v1
 feature: live-doctor-probes
 issue: 207
-status: in_progress
+status: complete
 branch: codex/issue-207-live-doctor
 baseRevision: 7bcc236255742ad3edf2c16094abbabbcd4f50e4
 lastCompletedTask: T2
 nextTask: Obtain explicit approval before adding direct policy, connectors, and data-probe dependencies for T3.
 lastGate: gate:quick and gate:security PASS
-updatedAt: 2026-08-22T20:36:00Z
+updatedAt: 2026-08-23T00:00:00Z
 ---
 
 # Scope
+
+This early T0–T2 slice is superseded by `deep-doctor-live-probes`, whose
+complete implementation was merged through PR #302/#306. It is retained as
+historical evidence and is not an active workstream.
 
 Issue #207 upgrades the seven T72 presence-only doctor probes to live read-only
 observations. It neither closes #207 nor advances T75 until provisioned-machine

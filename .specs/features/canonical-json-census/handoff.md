@@ -2,13 +2,13 @@
 schema: verchestra-feature-handoff/v1
 feature: canonical-json-census
 issue: 58
-status: verification
+status: complete
 branch: codex/issue-58-canonical-json-inventory-refresh
 baseRevision: d250c7c994be1c9aa9194118c757b67079d23ad3
 lastCompletedTask: T2
-nextTask: Submit the independently validated census feature for required human review; do not merge without that review.
+nextTask: Start T4j release identity and T4k remaining census closure through canonical-json-t4-completion.
 lastGate: pnpm gate:security PASS; pnpm gate:quick PASS
-updatedAt: 2026-08-23T00:40:00Z
+updatedAt: 2026-08-23T00:00:00Z
 ---
 
 # Scope
@@ -18,7 +18,10 @@ does not change an identity's bytes or make a qualification claim.
 
 # Delivered
 
-The scanner currently detects 85 source files. Every candidate is classified
+The merged scanner currently detects 86 source files. The historical validation
+report records 85 at its earlier candidate revision; the merged main census is
+the current source of truth and must be revalidated before the next migration.
+Every candidate is classified
 exactly once as migrated V2, retained versioned V1, pending versioned
 migration, raw-byte digest, or the closed presentation/fixture exception. The
 security test fails for an unclassified, duplicate, stale, signal-mismatched,
@@ -29,8 +32,8 @@ presentation/fixture exception.
 
 # Next migration order
 
-After the census is independently reviewed, begin the signed-evidence vertical
-before release identity work. Release bundle and activation follow it. Portable
+The signed-evidence vertical is merged in PR #305/#307. Begin release identity
+before release; release bundle and activation follow it. Portable
 registries, connectors, extension host, drivers, memory, and policy bundles
 then proceed in independent reviewable verticals.
 
@@ -49,6 +52,6 @@ then proceed in independent reviewable verticals.
 # Blockers
 
 The conservative serialization signal and reviewed scope exclusions passed
-independent validation. Human review remains required before merge. A migration
-may expose a versioning decision or an external owner action, which must remain
-a blocker rather than be assumed.
+independent validation and the feature was merged in PR #304. A migration may
+expose a versioning decision or an external owner action, which must remain a
+blocker rather than be assumed.
