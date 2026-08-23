@@ -6,6 +6,8 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterEach, test } from "node:test";
 
 import { buildIdempotencyKey } from "../../packages/application/src/index.ts";
+import { buildHermeticDistributionBundle } from "../../packages/distribution/src/index.ts";
+import { bundleInput, components } from "../helpers/hermetic-bundle-fixture.mjs";
 
 // Discrimination sensor for the RFC 8785 encoder (CJ-11): each mutation below
 // reverts one of the two behaviour-level guarantees canonical-json.ts commits
@@ -33,6 +35,61 @@ async function loadMutant(patch) {
   const module = await import(pathToFileURL(disposablePath).href);
   return module.canonicalizeJsonV2;
 }
+
+const hermeticSourcePath = fileURLToPath(
+  new URL("../../packages/distribution/src/hermetic-bundle.ts", import.meta.url)
+);
+const hermeticSourceDir = dirname(hermeticSourcePath);
+
+async function loadHermeticMutant(patch) {
+  const original = await readFile(hermeticSourcePath, "utf8");
+  const mutated = patch(original);
+  assert.notEqual(mutated, original, "mutation must actually change the source");
+  const disposablePath = join(hermeticSourceDir, `hermetic-bundle.mutant-${randomUUID()}.ts`);
+  disposablePaths.push(disposablePath);
+  await writeFile(disposablePath, mutated, "utf8");
+  const module = await import(pathToFileURL(disposablePath).href);
+  return module.buildHermeticDistributionBundle;
+}
+
+test("mutation: replacing hermetic bundle ordering with localeCompare is killed", async () => {
+  const before = await readFile(hermeticSourcePath, "utf8");
+  const values = components();
+  values[1].componentId = "core:Z";
+  values[2].componentId = "schema:a";
+  const input = bundleInput({ components: values });
+  const expected = buildHermeticDistributionBundle(input);
+  const mutantBuild = await loadHermeticMutant((source) => {
+    const target =
+      "const codeUnitCompare = (left: string, right: string): number => (left < right ? -1 : left > right ? 1 : 0);";
+    const patched = source.replace(
+      target,
+      "const codeUnitCompare = (left: string, right: string): number => left.localeCompare(right);"
+    );
+    assert.notEqual(patched, source, "the release code-unit comparator must exist in the current source");
+    return patched;
+  });
+  const originalLocaleCompare = String.prototype.localeCompare;
+  String.prototype.localeCompare = function (other) {
+    return this < other ? 1 : this > other ? -1 : 0;
+  };
+  try {
+    const mutant = mutantBuild(input);
+    assert.notEqual(
+      mutant.releaseDigest,
+      expected.releaseDigest,
+      "ambient ordering mutant must change release identity"
+    );
+    assert.notDeepEqual(
+      mutant.components.map((component) => component.componentId),
+      expected.components.map((component) => component.componentId),
+      "ambient ordering mutant must change component order"
+    );
+  } finally {
+    String.prototype.localeCompare = originalLocaleCompare;
+  }
+  assert.equal(await readFile(hermeticSourcePath, "utf8"), before);
+});
 
 test("mutation A: replacing code-unit member ordering with localeCompare is killed", async () => {
   const before = await readFile(sourcePath, "utf8");
