@@ -5,6 +5,7 @@ import {
   buildHermeticDistributionBundle,
   verifyHermeticDistributionBundle
 } from "../../packages/distribution/src/index.ts";
+import { canonicalizeJsonV2 } from "../../packages/domain/src/index.ts";
 import { bundleInput, components, releaseId, sha } from "../helpers/hermetic-bundle-fixture.mjs";
 
 const rejects = (input, code = "VES_DISTRIBUTION_INPUT_INVALID") =>
@@ -95,6 +96,32 @@ test("forged release digest fails semantic verification", () => {
   assert.throws(() => verifyHermeticDistributionBundle({ ...bundle, releaseDigest: sha("forged") }), {
     code: "VES_DISTRIBUTION_BUNDLE_INVALID"
   });
+});
+
+test("release identity is byte-identical across locales with a Unicode canonical member", () => {
+  const priorLang = process.env.LANG;
+  const priorLcAll = process.env.LC_ALL;
+  const materialFor = (locale) => {
+    process.env.LANG = locale;
+    process.env.LC_ALL = locale;
+    const bundle = buildHermeticDistributionBundle(bundleInput());
+    // The release schema intentionally restricts identity names to portable ASCII. The
+    // canonical identity envelope still exercises a Unicode member name at the encoder boundary.
+    const bytes = canonicalizeJsonV2({ é: "unicode-member", manifest: bundle });
+    return { bytes, releaseDigest: bundle.releaseDigest };
+  };
+  try {
+    const first = materialFor("en_US.UTF-8");
+    const second = materialFor("fr_FR.UTF-8");
+    assert.equal(first.bytes, second.bytes);
+    assert.equal(first.releaseDigest, second.releaseDigest);
+    assert.match(first.bytes, /"é"/u);
+  } finally {
+    if (priorLang === undefined) delete process.env.LANG;
+    else process.env.LANG = priorLang;
+    if (priorLcAll === undefined) delete process.env.LC_ALL;
+    else process.env.LC_ALL = priorLcAll;
+  }
 });
 
 test("unknown component field cannot smuggle an install script", () => {
