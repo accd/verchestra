@@ -773,14 +773,21 @@ function normalizePending(value: unknown, version: ExecutionPackageSchemaVersion
   );
 }
 
-function normalizePayload(value: unknown): ExecutionPackagePayload {
+function normalizePayload(value: unknown, signedValue: unknown): ExecutionPackagePayload {
   const row = record(value, "Execution Package payload", [...BASE_KEYS, "pendingTasks"]);
   const base = Object.fromEntries(BASE_KEYS.map((key) => [key, row[key]]));
   const normalized = normalizeBuildInput(base);
-  return Object.freeze({
+  const result = Object.freeze({
     ...normalized,
     pendingTasks: normalizePending(row["pendingTasks"], normalized.schemaVersion)
   });
+  if (
+    result.schemaVersion === 2 &&
+    canonicalizeJsonForVersion(2, result as unknown as JsonValue) !==
+      canonicalizeJsonForVersion(2, signedValue as unknown as JsonValue)
+  )
+    fail("VES_EXECUTION_PACKAGE_INVALID", "Execution Package payload is not canonically ordered");
+  return result;
 }
 
 function bindingFor(payload: ExecutionPackagePayload) {
@@ -919,7 +926,7 @@ export class ExecutionPackageBuilder {
     if (!cryptographic.ok) return Object.freeze({ ok: false, code: cryptographic.code });
     let payload: ExecutionPackagePayload;
     try {
-      payload = normalizePayload(artifact.payload);
+      payload = normalizePayload(artifact.payload, artifact.payload);
     } catch (error) {
       return Object.freeze({
         ok: false,

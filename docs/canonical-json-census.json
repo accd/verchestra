@@ -551,7 +551,7 @@
       "path": "packages/evidence/src/execution-package/execution-package.ts",
       "classification": "migrated-v2",
       "signals": {
-        "canonicalizer": 4,
+        "canonicalizer": 6,
         "digest": 5,
         "localeCompare": 1,
         "serialization": 0
