@@ -890,7 +890,13 @@ export class ExecutionPackageBuilder {
   }
 
   async build(value: unknown): Promise<SignedExecutionPackage> {
-    const base = normalizeBuildInput(value);
+    // New callers that omit the version receive the deterministic V2 contract;
+    // an explicit schemaVersion: 1 remains an unchanged legacy build.
+    const input =
+      value !== null && typeof value === "object" && !Array.isArray(value) && !("schemaVersion" in value)
+        ? { ...(value as Row), schemaVersion: 2 }
+        : value;
+    const base = normalizeBuildInput(input);
     const payload = Object.freeze({
       ...base,
       pendingTasks: derivePendingTasks(base.tasks, base.completedTaskEvidence, base.schemaVersion)
