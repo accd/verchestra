@@ -168,6 +168,52 @@
   The owner provisions the secret and public reference; automation implements
   and verifies the fail-closed path but does not create key material.
 
+### AD-024 — Deep doctor's subsystem paths get one layout contract, provisioned as T75 fixtures (#207)
+
+<!-- Renumbered from AD-019 on merge with upstream/main (2026-08-22): upstream
+independently landed its own AD-019 ("Authorized automation preserves
+independent human accountability", above) while this branch was in flight.
+AD-024 through AD-028 below were originally numbered AD-019 through AD-023;
+content is unchanged except for the renumbering and the AD-027 supersession
+note. -->
+
+
+- **Status:** active
+- **Decision:** Chosen by brunomjanuario on 2026-08-22 while planning #207; flagged here for human review, not asserted as an owner decision. The seven subsystem observation paths are named by **one inward layout contract** in `packages/domain`, consumed by both `packages/workspace/src/init/safe-init.ts` and `apps/vestra-cli/src/doctor-composition.ts`, and **provisioned as T75 qualification fixtures** by a script the T75 workflow calls. `vestra init` is **not** extended to create them, and no user-facing configuration surface for subsystem locations is introduced at 1.0.
+- **Rationale:** The `.vestra` → `.verchestra` root correction routed here by AD-017 fixed the root and left the same defect one level down: every one of the seven probed leaf paths is referenced nowhere in the repository except `apps/vestra-cli/src/doctor-composition.ts:127-136`. `safe-init.ts` writes six files, none of them; `artifact-placement.ts` reserves seven directories for project artifact classes, none of them; the only real runtime store is `runtime.sqlite` under a scenario root (`apps/vestra-cli/src/self-test-full-scenario.ts:343`). A live probe watching a path nothing creates is no better than a presence probe watching one. Extending `init` was rejected as the larger blast radius — it is a real filesystem writer with a guard refusing targets outside `.verchestra/`, and changing what every new workspace contains is a product change, not a diagnostics fix. Observing each subsystem at its real configured location was rejected because no configuration surface exists, which would grow #207 into designing one. Fixtures are the smallest change that makes the issue verifiable on the matrix where the fixtures are required to exist anyway.
+- **Consequences:** `.specs/features/deep-doctor-live-probes/` requirements DDL-01 through DDL-03. A static guard (`tests/architecture/doctor-workspace-root.test.mjs`, extended by T4) fails when the doctor probes a path the contract does not own **or** when the contract names a path nothing provisions — making the drift class that produced this decision a gate rather than a convention. The configuration surface is deferred to T76+.
+
+### AD-025 — The doctor's read-only property is proven transitively, not textually (#207)
+
+- **Status:** active
+- **Decision:** Chosen by brunomjanuario on 2026-08-22 while planning #207; flagged here for human review. Read-only observation surfaces are exposed as **narrow package subpaths** (`@verchestra/platform-node/readonly`, `@verchestra/policy/readonly`) and only those subpaths enter the doctor's import allowlist. `tests/architecture/doctor-readonly-graph.test.mjs` is upgraded from a textual scan of one file to a **transitive closure assertion**: resolve every module reachable from `apps/vestra-cli/src/doctor-composition.ts` and prove none of them names a writer.
+- **Rationale:** The guard exists because T72's audit read AC1 as vacuously true and the remediation made it structural. Live probes must import `@verchestra/platform-node` and `@verchestra/policy`, whose barrels re-export genuine writers — `RuntimeStore` at `packages/platform-node/src/index.ts:9` among them. The existing regexes would not fire, so the guard would keep passing while the reachable graph quietly stopped being read-only: the guard would assert a property it no longer proves, which is the precise failure the guard was written to end. The cheaper option — keep the barrels and extend the symbol denylist — was rejected for that reason. The transitive upgrade is also the enabling mechanism for the driver, connector, and probe checks: it is what makes an availability-record read reviewable as *not* having smuggled an adapter into the closure.
+- **Consequences:** `.specs/features/deep-doctor-live-probes/` requirement DDL-12, tasks T8–T11. `@verchestra/drivers`, `@verchestra/connectors`, and `@verchestra/data-probe` stay on the forbidden list unchanged; the three checks that would need them read availability records instead. "Available" is defined as *the record exists, parses, and declares an installed subsystem* — reachability is excluded by construction, because a reachability probe is neither read-only nor unpaid.
+
+### AD-026 — T4j is a direct swap while release identity has no installed base (#58)
+
+- **Status:** active
+- **Decision:** Chosen by brunomjanuario on 2026-08-22 while planning the remainder of #58; flagged here for human review, following the same process as every prior T4 slice. `docs/canonical-json-compatibility.md`'s T4j row is reclassified from *"highest risk — publish a new bundle schema/release format and retain V1 verification"* to a **direct swap**, gated by a first task that turns the reclassification's premise into an assertion. T4j is also moved **ahead of T4i**, inverting the matrix's risk ordering.
+- **Rationale:** The matrix rated release identity highest-risk on the assumption of an installed base of signed release bytes a migration could invalidate. That base does not exist: `resolveReleaseIdentity()` returns `releaseDigest: null` (`apps/vestra-cli/src/release-manifest.ts:19`), T76 has not shipped a candidate, and the only consumers of the bundle digest are `transactional-activation.ts`, `tuf-update-client.ts`, and two fixtures under `tests/helpers/`. With no V1 bytes in the wild there is nothing to preserve, and T4j collapses to T4a's shape — a swap plus a fixture re-pin. The ordering inverts because the dominant constraint is not risk but a closing window: the moment T76 ships, the versioned facade becomes mandatory and permanent. The premise is a claim rather than an axiom, so it is not taken on faith — task T1 asserts `releaseDigest` is null and that no tracked fixture pins a V1 release-manifest digest, and the slice stops and re-plans as a facade if either fails.
+- **Consequences:** `.specs/features/canonical-json-t4-completion/` requirements CJ5-01 through CJ5-03; Phase 1 must land before T76. T4i remains a genuine versioned facade and is expected to close at a **non-zero ceiling by design** — retaining V1 verification means retaining the V1 sort — so #58's "no digest input is ordered with default `localeCompare`" box closes as *no unintentional ordering remains*, with each residual named and justified (CJ5-12).
+
+### AD-027 — Versioned effect identity is split out of #58 (#58) — SUPERSEDED
+
+- **Status:** active
+- **Decision:** Chosen by brunomjanuario on 2026-08-22 while planning the remainder of #58; flagged here for human review. `packages/application/src/effects/effect-contract.ts`'s versioned-identity migration — deferred out of T4g and never rescheduled — is **removed from #58's scope** and filed as its own issue. #58 closes without it.
+- **Rationale:** `buildIdempotencyKey` uses plain `JSON.stringify` on a fixed-order object literal. It has no ambient-locale dependency at all, its ambient-locale ceiling is already 0, and there is nothing for #58's actual contract — removing `localeCompare`-driven nondeterminism — to fix. Its real risk is a different concern: `EffectIntent` has no `expiresAt`, is durable until completed, is looked up by exact key string in a real SQLite table, and a key mismatch **does not fail closed** — it silently inserts a second intent for the same logical operation, defeating the at-most-once guarantee the mechanism exists for. Fixing that needs versioned identity material with V1 dual-read retained, which is a distinct design and review unit. Folding it into #58 would attach the chain's largest single design task to an issue whose contract it does not belong to.
+- **Consequences:** A new issue tracks it, carrying forward the matrix's own prescribed fix ("add a versioned effect identity material and retain V1 key lookup for existing intents and receipts"). `.specs/features/canonical-json-t4-completion/spec.md` records it under Out of scope. The matrix's T4g classification section already documents the split and needs no rewrite.
+- **Superseded (2026-08-22):** `feat(effects): version durable idempotency identities (#58)` landed on `main` while this branch was in flight — the versioned-identity migration this decision recommended splitting out was instead built inside #58 directly (`packages/application/src/effects/effect-contract.ts`: `EffectCanonicalizationVersion`, dual V1/V2 `buildIdempotencyKey`, `canonicalizationVersion` field). The decision's *reasoning* about the risk (a key mismatch silently inserting a duplicate intent) was correct and is presumably what the landed migration addresses; only the *scoping recommendation* (split to a separate issue) was overruled by whoever did the work. `docs/canonical-json-compatibility.md`'s own T4i label now refers to that landed effect-identity migration, not the signed-evidence-facade slice AD-026 describes as T4i in `.specs/features/canonical-json-t4-completion/` — that slice needs a new label when resumed, to avoid colliding with the merged doc.
+
+
+### AD-028 — Deep doctor's secret-presence check stays on file-presence; live wiring is deferred, not built speculatively (#207)
+
+- **Status:** active
+- **Decision:** Chosen by brunomjanuario on 2026-08-22 while implementing #207's T15; flagged here for human review, not asserted as an owner decision. `doctor.secret-presence` keeps its current `existsSync`-based file-presence check. T15 (wiring the T10 `secretPresence` read-only surface into a real `SecretAdapter`) is deferred, not implemented, and is not part of this feature's completion.
+- **Rationale:** `secretPresence` needs a real `SecretAdapter` to call `.has()` on. `QualifiedOsSecretAdapter` requires a real `OsSecretBackend` — Windows CNG, Apple Keychain, or Linux Secret Service — and none of the three has any implementation anywhere in the repository, confirmed by searching `packages` and `apps` for any construction of `QualifiedOsSecretAdapter` or a concrete `OsSecretBackend` outside `secret-broker.ts`'s own interface declaration; nothing in `apps/vestra-cli` constructs a real secret adapter today, for any purpose. This is native per-platform credential-store integration — three separate backends, each with its own qualification burden — categorically different from every other T12–T14 gap this feature closed, all of which reused an already-established product convention (`ProtectedPathBroker`, `RuntimeStore`'s migrations, the Ed25519 encoding already used for artifact sealing). Building an OS-keychain bridge here would mean inventing a new product capability with no other consumer to validate the design against, unilaterally, inside a task whose stated scope was one probe wire-up — precisely the risk T14's crypto question raised and the reason that one *was* answerable: it applied an existing convention rather than inventing one. `MockSecretAdapter` was considered and rejected as a substitute: it starts empty on every real machine, so it would satisfy DDL-09's letter (a genuine `.has()` call happens) while defeating its purpose (a live observation) — the check could never report `pass` on a real machine, the exact failure mode the T12/T13/T14 fixture-content work existed to prevent.
+- **Consequences:** `.specs/features/deep-doctor-live-probes/` — DDL-09's traceability is partial (T10's presence surface exists and is tested; T15's wiring does not). #207's acceptance is not fully met by this feature alone; the deferral is explicit rather than silently narrowing the issue's scope. T15 is the natural first task of a follow-up once a real `OsSecretBackend` exists for at least one platform — most naturally driven by whatever future work first needs live OS-secret access for a non-diagnostic purpose (secret binding at run time), since that is where the backend's real requirements get established, rather than deep-doctor guessing at them speculatively.
+- **Superseded (2026-08-22):** T15 is no longer deferred. Reconciling this branch with an independently landed competing #207 implementation on `main` (`cf8913c`, `f901b0f`) surfaced a live `DoctorLiveProbeOptions.secret` port and `secretPresenceProbe` wiring built there. That wiring is adopted here, rerouted through this repository's own `@verchestra/platform-node/readonly` subpath's `secretPresence` helper (T10) instead of the competing branch's direct `@verchestra/platform-node` import, so the doctor composition root's read-only transitive-closure guard (AD-025) still holds. `doctor.secret-presence` now calls `secretPresence(live.secret.adapter, ...)` and reports `blocked` whenever no live secret port is configured (source mode, or any caller that leaves `options.live` unset) — the original deferral's concern (no `QualifiedOsSecretAdapter`/`OsSecretBackend` implementation exists) still applies to what a caller *can* pass, not to whether the wiring itself is built.
+
 ## Handoff
 
 - **Feature:** `milestone-2-completion` P0 on
@@ -181,3 +227,32 @@
   then begin #58 from the reconciled `main` state.
 - **Blockers:** none for P0. #294 waits for owner-only protected-secret
   provisioning; #36 publishing and T77 promotion remain later human actions.
+
+- **Feature:** `deep-doctor-live-probes` (#207) on `feat/deep-doctor-live-probes`,
+  merged forward from `main` at `6a05245` (2026-08-22).
+- **Completed:** T1–T14, T16–T21 of `.specs/features/deep-doctor-live-probes/tasks.md`
+  — six of the seven presence-only checks (sandbox, sqlite-durable-state,
+  cedar-policy, driver, connector, probe) are now live, read-only
+  observations; `pnpm gate:full` passes on every task. T15 (secret-presence
+  live wiring) is deferred, not implemented (AD-028) — no `OsSecretBackend`
+  exists anywhere in the repository for any platform.
+- **Next:** [PR #306](https://github.com/accd/verchestra/pull/306) is open
+  against `main`; T22 (T75 fleet evidence) needs a human-triggered
+  `workflow_dispatch` of `platform-matrix.yml` and is not part of this PR.
+- **Blockers:** none for T1–T21. T22 needs the owner (or an authorized
+  automation identity per AD-019) to dispatch the platform-matrix workflow.
+
+- **Feature:** `canonical-json-t4-completion` (#58) on
+  `feat/canonical-json-t4j-release-identity`, branched from `main` at
+  `0d7ad9a` (2026-08-22) before the effect-identity migration below landed.
+- **Completed:** planning only (`.specs/features/canonical-json-t4-completion/`);
+  no task implemented yet.
+- **Next:** T1 (assert `releaseDigest` is null and no tracked fixture pins a
+  V1 release-manifest digest, gating the direct-swap route for T4j — see
+  AD-026). Before resuming, reconcile the plan against
+  `feat(effects): version durable idempotency identities (#58)`, already
+  merged to `main` (see AD-027's supersession note) — it did the exact
+  migration AD-027 recommended splitting out, using the label `T4i` for it
+  in `docs/canonical-json-compatibility.md`, which collides with this
+  slice's own planned `T4i` (signed-evidence facade) and needs renaming.
+- **Blockers:** none.
