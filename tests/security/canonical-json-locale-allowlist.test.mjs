@@ -62,8 +62,9 @@ const MATRIX_CEILINGS = Object.freeze({
   "packages/data-probe/src/mysql-family-adapter.ts": 0,
   "packages/data-probe/src/mongodb-adapter.ts": 0,
   "packages/data-probe/src/index.ts": 0,
-  "packages/distribution/src/hermetic-bundle.ts": 2,
-  "packages/distribution/src/transactional-activation.ts": 1,
+  // T4j owners: migrated after T1 proved there is no installed V1 release base.
+  "packages/distribution/src/hermetic-bundle.ts": 0,
+  "packages/distribution/src/transactional-activation.ts": 0,
   "packages/platform-node/src/runtime-store/runtime-store.ts": 0,
   "packages/workspace/src/scanner/scanner-primitives.ts": 2,
   // V1 verification remains locale-compatible; V2 emission has no ambient-locale ordering.

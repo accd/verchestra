@@ -60,7 +60,7 @@ serialization signal is deliberately conservative: the reviewed classification
 separates raw bytes from portable or persistent identities. The associated
 security test requires the detected and inventoried path sets to be exactly
 equal, and rejects a duplicate, stale, signal-mismatched, unreasoned,
-exception-invalid, or unclassified entry. The current 84-source census has no
+exception-invalid, or unclassified entry. The current 86-source census has no
 unclassified group.
 
 Only the inventory's closed `presentation-or-fixture` entries may retain an
@@ -120,8 +120,8 @@ current classification source.
 | Agent runtime backend: `backend-serializers.ts` | `SerializedContext.meaningDigest`, the `SemanticEquivalenceOracle`'s cross-run tree-equality comparison, and the `ContextCapacityEstimatorPort` surface named alongside it | portable, in-memory only; classified transient (T4e) — see rationale below | **Migrated (T4e).** Private `canonicalJson()` (was `backend-serializers.ts:59-65`) removed; `canonicalizeJsonV2` used for both the outbound serialization and the Oracle's cross-run comparison. | Done. `tests/contract/context-serializers.test.mjs`, `tests/security/context-serializer-security.test.mjs` (42 cases, including 6 cross-backend Oracle-equivalence tests). |
 | Policy: `cedar-policy.ts` | Policy view/evidence material and normalized layer order | authority | Recursive serializer and locale ordering | Version policy-view evidence; policy decisions never compare V1 and V2 digests as equal. |
 | Data probe: `database-knowledge.ts` + `index.ts` + `sqlserver-adapter.ts` + `sqlite-adapter.ts` + `sap-ase-adapter.ts` + `postgresql-adapter.ts` + `oracle-adapter.ts` + `mysql-family-adapter.ts` + `mongodb-adapter.ts` | Source, fact-value, knowledge-package, promotion-plan, and per-engine parsed-operation digests | classified transient (T4h) — see rationale below | **Migrated (T4h).** `canonicalizeJsonV2` replaces each file's independent recursive serializer; every functional sort (columns, entities, sources, facts, scenarios, per-engine parsed objects) now uses code-unit `<`/`>` instead of `localeCompare`. | Done. `tests/unit/database-knowledge.test.mjs` (cross-locale test) plus the full per-engine contract/security/integration suites, 523/528 cases unchanged (5 pre-existing Node-version-gap failures on this machine's `node:sqlite`, unrelated to this change and reproduced on `upstream/main` before it). |
-| Distribution: `hermetic-bundle.ts` | Release manifest/release digest | signed + persistent release identity | Recursive serializer and locale component ordering | Highest-risk slice: publish a new bundle schema/release format and retain V1 verification. |
-| Distribution: `transactional-activation.ts` | Transaction identity material and durable activation records | persistent local state | Recursive serializer for transaction identity; ordinary JSON writes for local journals | Migrate only after hermetic bundle V2; version durable receipt/pointer records. |
+| Distribution: `hermetic-bundle.ts` | Release manifest/release digest | signed + persistent release identity; classified direct-swap (T4j) after T1 | **Migrated (T4j).** `canonicalizeJsonV2` now emits the release digest and component identity uses UTF-16 code-unit ordering; no ambient `localeCompare` remains. | Done. T1 proves `resolveReleaseIdentity().releaseDigest === null` and no tracked V1 release-manifest digest is pinned (`tests/build/release-identity-census.test.mjs`). T3/T4 prove locale invariance and kill the locale-ordering mutant. |
+| Distribution: `transactional-activation.ts` | Transaction identity material and durable activation records | persistent local state; classified direct-swap (T4j) after hermetic bundle | **Migrated (T4j).** Equality and exact-key validation use the shared V2 encoder; ordinary JSON journal writes remain versioned local records. | Done. Durable activation and rollback records still read back in `tests/integration/transactional-activation.test.mjs` and `tests/security/transactional-activation-security.test.mjs`; `gate:security` is required evidence. |
 | Distribution: `tuf-update-client.ts` | Staged receipt bytes | persistent local state | Ordinary `JSON.stringify`, no structured digest at write | Keep bytes as a versioned local receipt; classify separately from canonical digest migration. |
 | Workspace: `scanner/scanner-primitives.ts`, consumed by `workspace-scanner.ts`, `init/safe-init.ts`, and `placement/artifact-placement.ts` | Repository IDs, discovery keys, inventory fingerprints, init/recovery plan IDs, and write-plan IDs | portable + persistent plan identity | **Migrated (T3).** `buildInventoryFingerprintV2` (RFC 8785, `v2:sha256:` prefix) for repository IDs, discovery keys, inventory fingerprints, write-plan IDs, and new init preview/recovery journal plan IDs; `buildInventoryFingerprint` (V1, byte-identical, `sha256:` prefix) stays exported and is still the only verifier for a `schemaVersion: 1` init recovery journal. | Done. `init/safe-init.ts`'s recovery journal envelope carries an explicit `schemaVersion` (1 or 2) and dispatches its verifier on that recorded version, failing closed on any version/prefix disagreement — see `packages/workspace/src/init/safe-init.ts:parseRecoveryJournal`. |
 | Platform Node: `git-worktree-adapter.ts` | Worktree `changeDigest`, committed and verified as `Verchestra-Change` by the gate-commit flow | persistent gate authority | SHA-256 of `JSON.stringify(manifest)` — an **array** of `[path, hash]` tuples, not an object | **No change required (T4c).** `manifest` is an array, and its element order already derives from `changedPaths`'s plain `.sort()` (default UTF-16 code-unit order, not `localeCompare`) — `JSON.stringify` on an array preserves index order and never reaches the object-key-ordering branch that makes `canonicalJson`/`localeCompare` risky. Confirmed zero `.localeCompare(` sites; this file was never the risk the T2 inventory named — `gate-commit.ts`'s own serializer was. | Verified, no commit needed; `tests/security/canonical-json-locale-allowlist.test.mjs`'s existing ceiling (0) for this file is unchanged. |
@@ -158,9 +158,9 @@ migrate-together and migrate-after rules.
 | T4h | `database-knowledge.ts` + 7 adapters | Medium | Wide fan-out, uniform pattern. |
 | T4h | `database-knowledge.ts` + 7 adapters | Medium (reclassified transient, see below) | **Done.** Wide fan-out, uniform pattern. |
 | T4i | `canonical.ts` V1 facade + `execution-package.ts` | Highest | **In progress.** The Execution Package slice is migrated with version-gated V1 verification; the remaining signed-evidence owners are separate follow-up slices. |
-| T4j | `hermetic-bundle.ts` then `transactional-activation.ts` | Highest | Release identity; matrix requires this order. |
+| T4j | `hermetic-bundle.ts` then `transactional-activation.ts` | Highest | **Done.** T1 proved no installed V1 release base; T2–T5 migrated both owners to V2/code-unit identity and retained durable activation readback. |
 | T4i | `canonical.ts` V1 facade + `execution-package.ts` | Highest | **In progress.** The Execution Package emits schema V2 with code-unit set ordering; its V1 envelope remains verifiable by recorded schema. |
-| T4j | `hermetic-bundle.ts` then `transactional-activation.ts` | Highest | **Deferred, see below.** Release identity; matrix requires this order. |
+| T4j | `hermetic-bundle.ts` then `transactional-activation.ts` | Highest | **Done — direct swap justified by T1.** T3/T4 provide locale and mutation evidence; T6 lowers both ceilings to zero. |
 | T4i | `execution-package.ts` | Highest | **Done — narrower than deferred, see "Completed vertical slice (T4i)" below.** `canonical.ts`/`ArtifactSealer` needed no change; the fix is entirely local to `execution-package.ts`'s own pre-sort comparators, gated by widening its `schemaVersion` field to `1 \| 2`. |
 
 `tuf-update-client.ts` stays classified separately (no structured digest at
@@ -410,15 +410,15 @@ updated) so all nine files can use the shared `canonicalizeJsonV2` primitive.
 This classification was made following the same process as prior T4 slices:
 not asserted unilaterally, chosen by brunomjanuario (WS-C), flagged here for
 human review, not asserted as an owner (accd) decision.
-### T4i versioned Execution Package; T4j remains deferred
+### T4i versioned Execution Package; T4j completed
 
 T4b through T4h (this issue's other nine owners) were each migrated as a
 direct swap after confirming, case by case, that either no persistence
 existed or the exact character set of every sorted/keyed value made a
 `localeCompare`-vs-code-unit divergence structurally impossible (fixed ASCII
-schema field names, or `StableId`-constrained lowercase-only values). T4i and
-T4j do not clear that bar. T4i therefore uses a versioned migration; T4j remains
-deferred rather than being forced through the direct-swap pattern:
+schema field names, or `StableId`-constrained lowercase-only values). T4i
+therefore uses a versioned migration. T4j was completed as a direct swap only
+after T1 proved there is no installed V1 release-manifest digest to preserve:
 
 - `execution-package.ts` previously had 11 pre-sort `.localeCompare(` sites ordering
   `artifactId`, `requirementId`, `taskId`, `role`, `gateId`, `criterionId`,
@@ -442,22 +442,42 @@ deferred rather than being forced through the direct-swap pattern:
   Execution Package slice now retains that path only for schema V1 verification;
   new schema V2 packages use the domain RFC 8785 facade, code-unit ordering, and
   the declared V2 predicate. V1 and V2 cannot be reinterpreted as each other.
-- `hermetic-bundle.ts` has the same shape (a private recursive `canonical()`
-  plus a `componentId` sort using the same broad, case-permitting pattern) for
-  a release manifest digest — signed release identity, the highest-stakes
-  surface in the whole matrix. `transactional-activation.ts` is explicitly
-  ordered *after* `hermetic-bundle.ts` by the matrix and was not reached.
+- `hermetic-bundle.ts` and `transactional-activation.ts` were then migrated in
+  the required order. The bundle emits its release digest through
+  `canonicalizeJsonV2` and uses code-unit component ordering; activation
+  equality uses the same V2 encoder while local journal bytes remain ordinary
+  versioned JSON. T3/T4 provide the cross-locale and mutation evidence.
 
-The remaining signed-evidence owners and T4j need the versioned-facade design
-the matrix already specifies (preserve V1 verification, introduce a V2 facade
-gated by an explicit schema or envelope version, never compare a V1 and V2
-digest as equal) as their own reviewed units of work. The Execution Package
-ceiling is now one V1-only site; T4j remains at its original ceiling.
+The remaining signed-evidence owners need the versioned-facade design the matrix
+already specifies (preserve V1 verification, introduce a V2 facade gated by an
+explicit schema or envelope version, never compare a V1 and V2 digest as equal)
+as their own reviewed units of work. The Execution Package ceiling remains one
+intentional V1-only site; both T4j distribution ceilings are now zero.
 
 This decision was made following the same process as every other slice in
 this chain: not asserted unilaterally, chosen by brunomjanuario (WS-C),
 flagged here for human review, not asserted as an owner (accd) decision or
 as issue #58 being complete.
+
+## Completed vertical slice (T4j release identity)
+
+T4j completed the release identity phase in dependency order after T1's
+no-installed-base assertion. T2 replaced the hermetic bundle's private
+canonicalizer and locale-sensitive component sort with the shared V2 encoder
+and code-unit ordering. T3 proves byte-identical release output and digest
+under two ambient locales, including a Unicode canonical member. T4's
+disposable-copy sensor kills a `localeCompare` regression by forcing a
+discriminating `Z`/`a` component order. T5 migrates transactional activation's
+semantic equality and exact-key checks to V2 while preserving durable journal,
+activation, and rollback readback.
+
+Evidence: `tests/build/release-identity-census.test.mjs`,
+`tests/security/hermetic-bundle-security.test.mjs`,
+`tests/security/canonical-json-sensor.test.mjs`,
+`tests/integration/transactional-activation.test.mjs`, and
+`tests/security/transactional-activation-security.test.mjs`; `test:release`
+and `gate:security` pass with zero failures, skips, or todos. T6 lowers both
+distribution locale ceilings to zero.
 
 ## Completed vertical slice (T3)
 
