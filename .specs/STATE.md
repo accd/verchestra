@@ -265,15 +265,16 @@ note. -->
 - **Blockers:** none for T1–T21. T22 needs the owner (or an authorized
   automation identity per AD-019) to dispatch the platform-matrix workflow.
 
-- **Feature:** `canonical-json-t4i-signed-evidence` (#58) on
-  `feat/canonical-json-t4i-signed-evidence`, rebased onto the post-#306
-  `main` at `b6c6201`.
-- **Completed:** T4i implementation, version-gated Execution Package ordering,
-  V1/V2 regression coverage, and the tracked spec/task/validation artifacts;
-  local `gate:quick` and `gate:security` pass with zero failures, skips, or
-  todos. The PR is now linear and ready for fresh CI/review.
-- **Next:** [PR #307](https://github.com/accd/verchestra/pull/307) must finish
-  its fresh checks and human review; then begin T4j (release identity) per
-  `docs/canonical-json-compatibility.md`.
-- **Blockers:** PR #307's required review/checks only; no owner secret is
-  needed for this slice.
+- **Feature:** `canonical-json-t4-completion` (#58) T4j release identity on
+  `codex/issue-58-t4j-release-identity`, based on `main` at `190e06f`.
+- **Completed:** T1–T6 of Phase 1: no-installed-base assertion, hermetic
+  bundle V2 migration, cross-locale/Unicode proof, disposable-copy mutation
+  sensor, transactional activation V2 equality, and zero distribution locale
+  ceilings with matrix evidence. `test:release`, `gate:security`,
+  `agent:check`, and `git diff --check` pass with zero failures, skips, or
+  todos.
+- **Next:** push the T4j PR, request independent human review, and after merge
+  begin T7 (the T4k evidence-group census audit) from the new `main`. #58 is
+  not complete until T4k, the signed-evidence facade, and close-out are done.
+- **Blockers:** required human review/merge for T4j; no owner secret is needed
+  for this phase.
