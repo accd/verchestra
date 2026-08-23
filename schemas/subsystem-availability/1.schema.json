@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ves://subsystem-availability/1",
+  "title": "SubsystemAvailability",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "subsystem", "available"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "subsystem": { "enum": ["driver", "connector", "probe"] },
+    "available": { "type": "boolean" }
+  }
+}

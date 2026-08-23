@@ -12,7 +12,8 @@ const registry = await SchemaRegistry.load(new URL("../../schemas/", import.meta
 
 async function summarize() {
   const digest = `sha256:${createHash("sha256").update(canonicalizeCorpus(CAMPAIGN_DEFINITIONS)).digest("hex")}`;
-  return buildCampaignSummary(await Promise.all(CAMPAIGNS.map(runCampaign)), digest, CAMPAIGN_DEFINITIONS);
+  const results = await Promise.all(CAMPAIGNS.map(runCampaign));
+  return buildCampaignSummary(results, digest, CAMPAIGN_DEFINITIONS);
 }
 
 function humanSummary(summary) {

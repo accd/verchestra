@@ -99,6 +99,23 @@ function validationFailure(code: string, explanation: string, policyViewDigest: 
   return Object.freeze({ valid: false, code, explanation, policyViewDigest });
 }
 
+// Pure and computable without a CedarEnginePort (DDL-07, #207): a live
+// cedar-policy doctor probe needs the same digest CedarPolicyAdapter.#compile
+// reports without constructing an engine to get it. Exported under an alias
+// (see the bottom of this file) rather than declared with this name directly,
+// because #compile's own local variable is also named policyViewDigest and a
+// same-name self-reference at that call site would hit the temporal dead
+// zone.
+function computePolicyViewDigest(view: PolicyView): string {
+  try {
+    return digest(normalizedView(view));
+  } catch {
+    return digest({ invalidPolicyView: true });
+  }
+}
+
+export { computePolicyViewDigest as policyViewDigest };
+
 function arrays(value: unknown, key: string): readonly unknown[] {
   const candidate = record(value)[key];
   return Array.isArray(candidate) ? candidate : [];
@@ -132,11 +149,10 @@ export class CedarPolicyAdapter {
       schema: null,
       layers: Object.freeze({})
     });
-    let policyViewDigest = digest({ invalidPolicyView: true });
+    const policyViewDigest = computePolicyViewDigest(view);
     const policies: Record<string, string> = {};
     try {
       normalized = normalizedView(view);
-      policyViewDigest = digest(normalized);
       if (
         this.#engine.getCedarVersion() !== this.#expectedEngineVersion ||
         this.#engine.getCedarSDKVersion() !== this.#expectedEngineVersion

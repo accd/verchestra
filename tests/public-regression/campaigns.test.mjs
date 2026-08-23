@@ -40,11 +40,8 @@ for (const campaign of CAMPAIGNS) {
 }
 
 test("the corpus summary is PASS with every campaign accounted for", async () => {
-  const summary = buildCampaignSummary(
-    await Promise.all(CAMPAIGNS.map(runCampaign)),
-    corpusDigest(),
-    CAMPAIGN_DEFINITIONS
-  );
+  const results = await Promise.all(CAMPAIGNS.map(runCampaign));
+  const summary = buildCampaignSummary(results, corpusDigest(), CAMPAIGN_DEFINITIONS);
   assert.equal(summary.verdict, "PASS");
   assert.equal(summary.campaignCount, CAMPAIGN_DEFINITIONS.length);
 });

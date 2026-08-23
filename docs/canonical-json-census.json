@@ -46,7 +46,7 @@
       "classification": "raw-byte-digest",
       "signals": {
         "canonicalizer": 0,
-        "digest": 3,
+        "digest": 4,
         "localeCompare": 0,
         "serialization": 1
       },
@@ -920,6 +920,17 @@
         "serialization": 1
       },
       "reason": "The reviewed source retains an authoritative versioned V1 contract pending a compatible migration."
+    },
+    {
+      "path": "scripts/provision-doctor-fixtures.mjs",
+      "classification": "raw-byte-digest",
+      "signals": {
+        "canonicalizer": 0,
+        "digest": 2,
+        "localeCompare": 0,
+        "serialization": 2
+      },
+      "reason": "The reviewed source hashes raw bytes or a fixed primitive and serializes fixture content for on-disk provisioning; it does not compute a canonical JSON identity."
     },
     {
       "path": "scripts/t75-evidence-attestation.mjs",

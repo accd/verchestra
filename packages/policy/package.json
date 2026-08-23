@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./readonly": "./src/readonly.ts"
   },
   "dependencies": {
     "@cedar-policy/cedar-wasm": "4.12.0",

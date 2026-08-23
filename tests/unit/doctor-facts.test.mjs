@@ -4,6 +4,7 @@ import { test } from "node:test";
 import {
   DOCTOR_CAPABILITY_IDS,
   DOCTOR_CHECK_IDS,
+  DOCTOR_PROBE_TIMEOUT_MS,
   DOCTOR_REMEDIATION_BY_CHECK,
   assertDoctorCheckFacts,
   buildDoctorReport,
@@ -83,25 +84,66 @@ test("a failing check outranks blocked checks in the verdict", async () => {
   assert.equal(buildDoctorReport(facts, 1)["doctor.verdict"], "FAIL");
 });
 
-test("an asynchronous probe is awaited before its fact is mapped", async () => {
+// DDL-04 (#207): collectDoctorFacts widens to accept an async probe. A
+// rejected promise degrades the same way a synchronous throw already does —
+// present-but-unhealthy, no error text — and a probe that never settles is
+// bounded by a timeout rather than stalling the diagnostic.
+
+test("a probe that rejects degrades to a failing fact, never a crash or a leak", async () => {
   const facts = await collectDoctorFacts(
     probes({
-      "doctor.driver": async () => {
-        await Promise.resolve();
+      "doctor.sandbox": () => Promise.reject(new Error("/home/user/.secret leaked"))
+    })
+  );
+  const sandbox = facts.find((fact) => fact.checkId === "doctor.sandbox");
+  assert.equal(sandbox.status, "fail");
+  assert.equal(sandbox.remediationCode, DOCTOR_REMEDIATION_BY_CHECK["doctor.sandbox"]);
+  assert.equal(JSON.stringify(facts).includes("secret leaked"), false);
+});
+
+test("a probe that never settles resolves to a failing fact via timeout, not a stalled diagnostic", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  let sandboxProbeCalled = false;
+  const collecting = collectDoctorFacts(
+    probes({
+      "doctor.sandbox": () => {
+        sandboxProbeCalled = true;
+        return new Promise(() => {});
+      }
+    })
+  );
+  // doctor.sandbox is last in DOCTOR_CHECK_IDS, so eleven earlier synchronous
+  // probes resolve first, each taking a microtask turn. Poll until the probe
+  // under test has actually run (and so has registered its timer) before
+  // advancing the mock clock — ticking too early would advance past a timer
+  // that does not exist yet, and this Node version has no `tickAsync` to
+  // interleave ticking with microtask flushes automatically.
+  while (!sandboxProbeCalled) await Promise.resolve();
+  t.mock.timers.tick(DOCTOR_PROBE_TIMEOUT_MS);
+  const facts = await collecting;
+  const sandbox = facts.find((fact) => fact.checkId === "doctor.sandbox");
+  assert.equal(sandbox.status, "fail");
+});
+
+test("probes are awaited sequentially, never concurrently", async () => {
+  const order = [];
+  const facts = await collectDoctorFacts(
+    probes({
+      "doctor.git": async () => {
+        order.push("git-start");
+        await new Promise((resolveDelay) => setTimeout(resolveDelay, 5));
+        order.push("git-end");
+        return healthy;
+      },
+      "doctor.clock": () => {
+        order.push("clock");
         return healthy;
       }
     })
   );
-  assert.equal(facts.find((fact) => fact.checkId === "doctor.driver")?.status, "pass");
-});
-
-test("an asynchronous probe rejection degrades to a non-leaking failing fact", async () => {
-  const facts = await collectDoctorFacts(
-    probes({
-      "doctor.probe": async () => Promise.reject(new Error("credential=not-for-report"))
-    })
-  );
-  const probe = facts.find((fact) => fact.checkId === "doctor.probe");
-  assert.equal(probe?.status, "fail");
-  assert.equal(JSON.stringify(facts).includes("not-for-report"), false);
+  // doctor.git is registered before doctor.clock in DOCTOR_CHECK_IDS. If the
+  // two ran concurrently, "clock" would interleave before "git-end"; a
+  // sequential collector must finish git entirely first.
+  assert.deepEqual(order, ["git-start", "git-end", "clock"]);
+  assert.equal(facts.length, 12);
 });

@@ -131,3 +131,9 @@ export interface ReleaseManifest {
     }[]
   ];
 }
+
+export interface SubsystemAvailability {
+  schemaVersion: 1;
+  subsystem: "driver" | "connector" | "probe";
+  available: boolean;
+}
