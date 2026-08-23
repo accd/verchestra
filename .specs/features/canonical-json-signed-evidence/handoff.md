@@ -6,9 +6,9 @@ status: verification
 branch: codex/issue-58-signed-evidence-execution-package
 baseRevision: b0e0c831c4efa52f85d7c90b7e5fa10a5527a3a8
 lastCompletedTask: T4
-nextTask: Submit the independently validated Execution Package slice for required human review; do not merge without that review.
-lastGate: Corrected candidate focused evidence 116/116 PASS; corepack pnpm gate:quick PASS; corepack pnpm gate:security PASS; independent validation PASS after the recorded b116e84 rejection.
-updatedAt: 2026-08-22T20:44:16Z
+nextTask: Request reviewer re-validation of the V2 receiver-boundary canonical-ordering fix; do not merge without that review.
+lastGate: Reviewer correction focused evidence 117/117 PASS; corepack pnpm gate:quick PASS (2,067 unit and 153 readiness); corepack pnpm gate:security PASS; reviewer re-validation remains required.
+updatedAt: 2026-08-23T12:18:51Z
 ---
 
 # Scope
@@ -33,6 +33,15 @@ The corrected candidate was independently validated on `a06c242`: the verifier
 compared the base and corrected V1 outputs with mixed-case values, reran the
 focused suite and agent check, and killed a disposable locale-order mutation.
 This validation does not replace the mandatory human review before merge.
+
+The reviewer of PR #305 found that a trusted signer could seal a V2 payload
+with a non-canonical set order and the receiver would normalize it silently.
+The correction compares the complete normalized V2 payload with the signed
+payload at the receiver boundary, while leaving V1 verification semantics
+unchanged. A trusted-signer regression covers mixed-case `requiredCapabilities`
+ordering, and the canonical census records the two new canonicalizer signals.
+The correction is locally gate-verified; reviewer re-validation is the next
+action and no merge is authorized by this handoff.
 
 `site:test` reached its Playwright phase but its configured Astro preview command
 daemonized and its parent exited before Playwright could supervise it. This

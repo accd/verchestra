@@ -1,15 +1,30 @@
 # Validation — signed-evidence canonical JSON
 
-Status: independently validated; awaiting required human review.
+Status: author-verified after reviewer correction; awaiting reviewer re-validation and required human review.
 
 ## Author evidence
 
-- `node --test tests/unit/execution-package.test.mjs tests/security/execution-package-security.test.mjs tests/security/evidence-tamper.test.mjs tests/security/canonical-json-census.test.mjs tests/security/canonical-json-locale-allowlist.test.mjs` — 116 pass, 0 fail, 0 skip, 0 todo after the correction.
-- `corepack pnpm gate:quick` — PASS; 2,064 unit tests and 150 readiness tests, with 0 fail, skip, or todo.
+- `node --test tests/unit/execution-package.test.mjs tests/security/execution-package-security.test.mjs tests/security/evidence-tamper.test.mjs tests/security/canonical-json-census.test.mjs tests/security/canonical-json-locale-allowlist.test.mjs` — 117 pass, 0 fail, 0 skip, 0 todo after the reviewer correction.
+- `corepack pnpm gate:quick` — PASS; 2,067 unit tests and 153 readiness tests, with 0 fail, skip, or todo.
 - `corepack pnpm gate:security` — PASS; all selected build, unit, contract, E2E, architecture, qualification, and security stages completed with 0 fail, skip, or todo.
 - `corepack pnpm site:check` and `corepack pnpm site:build` — PASS. `site:test` is not claimed: its Playwright web-server parent exited after the Astro preview daemon started, before browser assertions ran.
 
-The quick and security gates above were rerun after the V1 ordering correction.
+The quick and security gates above were rerun after the V2 receiver-boundary correction.
+
+## Reviewer correction for PR #305
+
+The reviewer reproduced acceptance of a trusted-signer V2 payload whose
+`requiredCapabilities` array was `['alpha', 'Zulu']` instead of canonical
+code-unit order. The receiver now compares the complete normalized V2 payload
+against the signed payload and returns `VES_EXECUTION_PACKAGE_INVALID` on a
+mismatch. Schema V1 skips this comparison so its historical compatibility
+semantics remain unchanged. The security regression
+`trusted signer cannot seal non-canonical V2 set ordering` seals the forged
+payload with the trusted test signer and proves the rejection.
+
+The census entry for `packages/evidence/src/execution-package/execution-package.ts`
+was updated from four to six canonicalizer signals to account for this
+receiver comparison. No signing material or machine-local path was added.
 
 ## Independent rejection of candidate `b116e84`
 

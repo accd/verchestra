@@ -178,6 +178,21 @@ test("trusted signer cannot make inconsistent pending-work claims", async () => 
   assert.equal(result.code, "VES_EXECUTION_PACKAGE_DERIVATION_INVALID");
 });
 
+test("trusted signer cannot seal non-canonical V2 set ordering", async () => {
+  const input = packageInput({ requiredCapabilities: ["alpha", "Zulu"] });
+  const { builder, sealer, trust } = executionHarness();
+  const valid = await builder.build(input);
+  const forgedPayload = { ...valid.payload, requiredCapabilities: ["alpha", "Zulu"] };
+  const forged = await sealer.seal(forgedPayload, {
+    schema: valid.schema,
+    purpose: "execution-package",
+    bindingId: valid.bindingId,
+    sourceStateDigest: valid.sourceStateDigest
+  });
+  const result = await builder.verify(forged, trust, currentState(input));
+  assert.deepEqual(result, { ok: false, code: "VES_EXECUTION_PACKAGE_INVALID" });
+});
+
 test("a V1 package cannot be reinterpreted as V2", async () => {
   const input = packageInput({ schemaVersion: 1 });
   const { builder, trust } = executionHarness();
