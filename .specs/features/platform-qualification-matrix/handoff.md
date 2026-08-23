@@ -6,9 +6,9 @@ status: in_progress
 branch: main
 baseRevision: ba46132a38df548d26728df121d4eaefe4a592a2
 lastCompletedTask: T75
-nextTask: "Do not author t75-validation.md yet. Resolve the remaining T75 prerequisites: live doctor probes in #207 and the owner-approved release signing identity tracked in #294. Then rerun the exact candidate gates, regenerate the signed evidence index, and submit the independent report."
+nextTask: "Do not author t75-validation.md yet. Run the exact immutable-candidate five-profile workflow, obtain the owner-approved signing identity, regenerate the signed evidence index, and submit the independent report."
 lastGate: FLEET GREEN — all five exact-head profiles passed on Windows x64, macOS x64/arm64, Linux x64/arm64 at candidate 97fa851 (runs 32579393585, 32579395143, 32579396554, 32579397998, 32579399438); A4 cross-driver session passed focused tests, agent:check, and gate:full in PR #296 (commit feb59c5), merged at ba46132
-updatedAt: 2026-08-22T16:00:00Z
+updatedAt: 2026-08-23T00:00:00Z
 ---
 
 # What a reader must NOT conclude from the evidence index

@@ -1,9 +1,10 @@
-# Milestone 2 operating reconciliation — 2026-08-22
+# Milestone 2 operating reconciliation — 2026-08-23
 
 This is the current, evidence-led operating record for the verified-release
 programme. It supersedes the 2026-08-09 planning snapshot. The source revision
-was `251f5f7a6406353015e54c34903e6ca1bc79a5fe`; GitHub issue state and the
-tracked qualification reports were checked on the same date.
+is `190e06f50e5a0b014013bda4dd7618104db3182a` (`origin/main`); GitHub issue
+state and the tracked qualification reports were checked against that exact
+revision.
 
 ## Derived position
 
@@ -12,9 +13,12 @@ tracked qualification reports were checked on the same date.
   `docs/qualification/t74-validation.md`.
 - #16 and #36 were reopened because their original acceptance criteria remain
   incomplete. A closed issue is not qualification evidence.
-- The active operating backlog contains ten obligations: #58, #207, #294,
-  #16, #17, #36, #18, #234, #235, and #236. Only the first seven belong to
-  Milestone 2; the final three are explicitly post-1.0 work.
+- The programme contains ten obligations: #58, #207, #294, #16, #17, #36,
+  #18, #234, #235, and #236. The first seven are the Milestone 2 path; the
+  final three are explicitly post-1.0 work. GitHub currently reports #207 and
+  #294 closed because their implementation PRs merged, but their remaining
+  evidence and owner-only prerequisites still gate T75 and are not silently
+  promoted by issue state.
 
 ## Critical path
 
@@ -22,10 +26,10 @@ tracked qualification reports were checked on the same date.
 
 | Obligation | Current evidence | Remaining honest outcome |
 | --- | --- | --- |
-| #58 | Canonical JSON V2 and several migration slices are merged; the compatibility matrix deliberately defers durable effect identities, signed execution evidence, and release activation. | Complete a fresh classified census, then version each remaining portable identity with backward verification or a tested presentation-only exception. |
-| #207 | Doctor's seven subsystem checks still use file presence probes. | Read-only live observations, async probe collection, source-mode `blocked`, and architecture/sensor proof. |
-| #294 | The T75 evidence index is intentionally unsigned. | Public `PublicKeyRef`, qualification-index predicate, exact-SHA regeneration, DSSE/in-toto signing workflow, and external verification. The owner must provision the protected private-key secret. |
-| #16 / T75 | Five platform/profile dispatches and the composed verifier are recorded, but no signed index or T75 report exists. | Re-run the candidate matrix after prerequisites, bind and sign the index, obtain validation from the owner-designated independent verifier, then atomically advance T75 → T76. |
+| #58 | The source-derived census and signed-evidence Execution Package slice are merged; PR #307 merged at `190e06f`. The inventory still contains pending versioned portable identities and the release/activation vertical. | Finish the T4j release-identity and T4k census work, then migrate each remaining portable identity with backward verification or a tested presentation-only exception. |
+| #207 | PR #302/#306 merged live, read-only Doctor probes and the async sentinel bracket. The issue is closed, but the T75 fleet dispatch (T22) is still a human-triggered evidence step. | Run the exact T75 matrix workflow, preserve source-mode `blocked`, and bind the resulting observations into the independent T75 report. |
+| #294 | PR #303 merged the fail-closed DSSE/in-toto signer and exact-SHA workflow. No private key or public `PublicKeyRef` has been provisioned in the repository. | The owner must provision the protected Actions secret and matching public reference; then regenerate and independently verify the signed index. Missing custody remains `blocked`, never an unsigned pass. |
+| #16 / T75 | Five platform/profile dispatches and the composed verifier are recorded, but no signed index or `docs/qualification/t75-validation.md` exists. | Re-run the candidate matrix at one immutable SHA after #58/#207/#294 prerequisites, bind and sign the index, obtain validation from the owner-designated independent verifier, then atomically advance T75 → T76. |
 | #17 / T76 | No reproducible release candidate exists. | Reproducible bundle, SBOM/license/provenance/TUF closure and independently verified T76 report. |
 | #36 | `resolveActiveLauncher()` exists, but no publishable npm bootstrap or clean-machine proof exists. | Minimal public `vestra` bootstrap, trusted publishing, and clean-machine evidence as part of T76. |
 | #18 / T77 | Not started. | Canonical acceptance matrix, immutable-candidate revalidation, independent sensor, and signed human operational/security decision. |

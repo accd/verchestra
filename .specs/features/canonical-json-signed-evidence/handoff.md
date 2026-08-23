@@ -2,13 +2,13 @@
 schema: verchestra-feature-handoff/v1
 feature: canonical-json-signed-evidence
 issue: 58
-status: verification
+status: complete
 branch: codex/issue-58-signed-evidence-execution-package
 baseRevision: b0e0c831c4efa52f85d7c90b7e5fa10a5527a3a8
 lastCompletedTask: T4
-nextTask: Request reviewer re-validation of the V2 receiver-boundary canonical-ordering fix; do not merge without that review.
-lastGate: Reviewer correction focused evidence 117/117 PASS; corepack pnpm gate:quick PASS (2,067 unit and 153 readiness); corepack pnpm gate:security PASS; reviewer re-validation remains required.
-updatedAt: 2026-08-23T12:18:51Z
+nextTask: Continue the remaining #58 T4j/T4k migration from canonical-json-t4-completion.
+lastGate: PR #305/#307 required checks and human review passed; merged at 190e06f
+updatedAt: 2026-08-23T00:00:00Z
 ---
 
 # Scope
@@ -17,10 +17,12 @@ This is the Execution Package portion of the signed-evidence migration for #58.
 It intentionally leaves Run Capsule, Recovery Bundle, Support Bundle, and release
 surfaces at their current recorded V1 contracts.
 
-# Blockers
+# Completion
 
-Human review remains mandatory before merge. No private signing material is
-needed or accessed by this work.
+PR #305 introduced the versioned Execution Package and PR #307 applied the
+review correction; both are merged on `main`. No private signing material was
+needed or accessed by this work. The slice is complete; the remaining #58
+portable identities are tracked by `canonical-json-t4-completion`.
 
 The first independently checked candidate (`b116e84`) was rejected. It changed
 legacy V1 code-unit default-sort sites to locale ordering for `uniqueStrings`,

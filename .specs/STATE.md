@@ -238,42 +238,36 @@ note. -->
 
 ## Handoff
 
-- **Feature:** `milestone-2-completion` P0 on
-  `codex/phase0-backlog-reconciliation`.
-- **Completed:** fast-forward to `251f5f7a6406353015e54c34903e6ca1bc79a5fe`;
-  #16 and #36 reopened; current operating plan and AD-019 recorded.
-- **Completed:** stale closed-issue handoffs are marked complete; the resulting
-  context shows only #58, #16, #36, and this programme (plus the distinct
-  repository-topics maintainer follow-up).
-- **Next:** push the P0 documentation PR and request independent human review;
-  then begin #58 from the reconciled `main` state.
-- **Blockers:** none for P0. #294 waits for owner-only protected-secret
-  provisioning; #36 publishing and T77 promotion remain later human actions.
+- **Feature:** `milestone-2-completion` P0 on `codex/milestone-2-p0-sync`,
+  based on `origin/main` `190e06f50e5a0b014013bda4dd7618104db3182a`.
+- **Completed:** Reconciled the programme to the current remote state. #16
+  and #36 remain open; #207 implementation is merged through PR #302/#306;
+  #294 implementation is merged through PR #303 but owner key custody is still
+  blocked. T74 remains the highest verified task and T75 remains next.
+- **Next:** Run `agent:check` and `gate:quick`, then submit the documentary PR
+  for independent human review. After merge, start #58 T4j/T4k on a fresh
+  issue branch.
+- **Blockers:** T75 still lacks an immutable candidate rerun, signed evidence
+  index, and `docs/qualification/t75-validation.md`. The owner-only protected
+  signing secret/public reference and the T75 fleet dispatch cannot be
+  fabricated or provisioned by automation.
 
-- **Feature:** `deep-doctor-live-probes` (#207) on `feat/deep-doctor-live-probes`,
-  merged forward from `main` at `6a05245` (2026-08-22).
-- **Completed:** T1–T14, T16–T21 of `.specs/features/deep-doctor-live-probes/tasks.md`
-  — six of the seven presence-only checks (sandbox, sqlite-durable-state,
-  cedar-policy, driver, connector, probe) are now live, read-only
-  observations; `pnpm gate:full` passes on every task. T15 (secret-presence
-  live wiring) is deferred, not implemented (AD-028) — no `OsSecretBackend`
-  exists anywhere in the repository for any platform.
-- **Completed:** [PR #306](https://github.com/accd/verchestra/pull/306) merged
-  to `main` at `b6c620183d247ff830a08297746f62703a95f37c`; T22 (T75 fleet
-  evidence) still needs a human-triggered `workflow_dispatch` of
-  `platform-matrix.yml` and is not part of that PR.
-- **Blockers:** none for T1–T21. T22 needs the owner (or an authorized
-  automation identity per AD-019) to dispatch the platform-matrix workflow.
+- **Feature:** `deep-doctor-live-probes` (#207), merged through
+  [PR #306](https://github.com/accd/verchestra/pull/306) at `b6c6201`.
+- **Completed:** Live read-only observations, async sentinel-safe collection,
+  source-mode `blocked`, and path-hardening gates are merged. The remaining
+  T22 platform-matrix dispatch is evidence work for T75, not a reason to
+  claim the qualification report exists.
+- **Next:** Human-trigger the exact T75 fleet workflow and bind its outputs to
+  the independent T75 report.
 
-- **Feature:** `canonical-json-t4i-signed-evidence` (#58) on
-  `feat/canonical-json-t4i-signed-evidence`, rebased onto the post-#306
-  `main` at `b6c6201`.
-- **Completed:** T4i implementation, version-gated Execution Package ordering,
-  V1/V2 regression coverage, and the tracked spec/task/validation artifacts;
-  local `gate:quick` and `gate:security` pass with zero failures, skips, or
-  todos. The PR is now linear and ready for fresh CI/review.
-- **Next:** [PR #307](https://github.com/accd/verchestra/pull/307) must finish
-  its fresh checks and human review; then begin T4j (release identity) per
-  `docs/canonical-json-compatibility.md`.
-- **Blockers:** PR #307's required review/checks only; no owner secret is
-  needed for this slice.
+- **Feature:** `canonical-json-t4i-signed-evidence` (#58), merged through
+  [PR #307](https://github.com/accd/verchestra/pull/307) at `190e06f`.
+- **Completed:** Version-gated Execution Package ordering, V1/V2 regression
+  coverage, census reclassification, and required checks are merged.
+- **Next:** Start T4j (release identity) and T4k (remaining census closure)
+  from a fresh issue branch. The T4i handoff is not a claim that #58 is closed.
+
+- **Historical handoffs:** `live-doctor-probes` is marked `complete` and
+  explicitly superseded by `deep-doctor-live-probes`; `t75-evidence-signing`
+  is `blocked` on owner-only custody rather than treated as a pass.

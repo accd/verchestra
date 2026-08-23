@@ -2,13 +2,13 @@
 schema: verchestra-feature-handoff/v1
 feature: t75-evidence-signing
 issue: 294
-status: in_progress
+status: blocked
 branch: codex/issue-294-t75-evidence-signature
 baseRevision: d5c7c75276bc0a972c18d8b3860531ddb98c2ef7
 lastCompletedTask: T2
 nextTask: Owner-provision the protected secret and a matching committed PublicKeyRef, then run the exact-SHA workflow and obtain independent verification; do not provision or access a release key locally.
 lastGate: focused signing/workflow tests and pnpm gate:quick PASS; pnpm gate:security reached E2E but a disposable-repository cleanup hit a Windows EBUSY lock, pending the separately reviewed cleanup fix
-updatedAt: 2026-08-23T00:55:00Z
+updatedAt: 2026-08-23T00:00:00Z
 ---
 
 # Scope
@@ -36,12 +36,11 @@ index from all five profile artifacts at the requested revision, rejects
 contradictions, verifies the result before publishing, and exposes only public
 verification artifacts.
 
-# Blocker
+# Blockers
 
-The owner must provision the protected secret and commit the matching public
-reference through human review. The public reference is intentionally absent
-until that action, so the workflow cannot produce a real attestation yet. The
-required security gate must also be rerun after the separately reviewed
-disposable-repository cleanup fix lands; the current failure is a Windows EBUSY
-cleanup lock, not a product assertion failure. Automation must not generate,
-access, print, or commit either private material or any secret value.
+The implementation is merged in PR #303 and the issue is closed, but the
+qualification path is blocked until the owner provisions the protected secret
+and commits the matching public reference through human review. The public
+reference is intentionally absent until that action, so the workflow cannot
+produce a real attestation yet. Automation must not generate, access, print,
+or commit either private material or any secret value.

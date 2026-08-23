@@ -60,7 +60,7 @@ serialization signal is deliberately conservative: the reviewed classification
 separates raw bytes from portable or persistent identities. The associated
 security test requires the detected and inventoried path sets to be exactly
 equal, and rejects a duplicate, stale, signal-mismatched, unreasoned,
-exception-invalid, or unclassified entry. The current 84-source census has no
+exception-invalid, or unclassified entry. The current 86-source census has no
 unclassified group.
 
 Only the inventory's closed `presentation-or-fixture` entries may retain an
