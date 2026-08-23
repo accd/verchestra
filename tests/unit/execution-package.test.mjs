@@ -291,6 +291,159 @@ test("concurrent publication is atomic and idempotent", async () => {
   assert.deepEqual(await stores[0].get(sealed.artifactId), sealed);
 });
 
+// #58/T4i: 11 array-sort sites in execution-package.ts used
+// String.prototype.localeCompare, which is locale-dependent and can diverge
+// from code-unit order for mixed-case ASCII values (real fixtures use them,
+// e.g. taskId: "T-1"). Mocking localeCompare with a comparator that reverses
+// ASCII case order simulates a hostile/divergent locale without depending on
+// any specific installed ICU locale actually disagreeing today.
+function withHostileLocaleCompare(fn) {
+  const original = String.prototype.localeCompare;
+  String.prototype.localeCompare = function hostileLocaleCompare(other) {
+    const left = String(this);
+    // Reversed relative to code-unit order for any left !== other: proves a
+    // test comparing against this mock actually discriminates rather than
+    // coincidentally agreeing with code-unit order.
+    return left < other ? 1 : left > other ? -1 : 0;
+  };
+  try {
+    return fn();
+  } finally {
+    String.prototype.localeCompare = original;
+  }
+}
+
+function mixedCaseInput(overrides = {}) {
+  return packageInput({
+    schemaVersion: 2,
+    requirements: [
+      {
+        requirementId: "VES-SPC-001",
+        priority: "must",
+        acceptanceCriteria: "WHEN the package is built THEN every requirement SHALL remain traceable.",
+        assumptionState: "closed",
+        independentTest: "node --test tests/unit/execution-package.test.mjs",
+        artifactDigest: digest("requirement-1")
+      }
+    ],
+    tasks: [
+      {
+        taskId: "T-1",
+        sequence: 1,
+        requirementIds: ["VES-SPC-001"],
+        dependsOn: [],
+        componentRefs: ["packages/evidence"],
+        verificationCommands: ["node --test tests/unit/execution-package.test.mjs"],
+        doneCriteria: ["Package schema is closed"],
+        risk: "medium",
+        expectedCommit: "feat(evidence): add execution packages"
+      }
+    ],
+    completedTaskEvidence: [],
+    decisions: [
+      { artifactId: "Adr-0015", digest: digest("adr-0015") },
+      { artifactId: "adr-0002", digest: digest("adr-0002") }
+    ],
+    roleRequirements: [
+      { role: "Implementer", capabilities: ["code-edit"], minimumContextTokens: 1024, reasoning: "high" },
+      { role: "implementer-support", capabilities: ["code-edit"], minimumContextTokens: 1024, reasoning: "high" }
+    ],
+    gates: [
+      { gateId: "Security", command: "node scripts/gate.mjs security", evidenceRequired: true },
+      { gateId: "security-follow-up", command: "node scripts/gate.mjs quick", evidenceRequired: false }
+    ],
+    completionCriteria: [
+      { criterionId: "Complete-security", requirementIds: ["VES-SPC-001"], verificationRefs: ["security"] },
+      { criterionId: "complete-security-follow-up", requirementIds: ["VES-SPC-001"], verificationRefs: ["quick"] }
+    ],
+    ...overrides
+  });
+}
+
+test("schemaVersion: 2 sealed bytes are byte-identical across two divergent locale collations (CJ4I-01, CJ4I-02)", async () => {
+  const { builder } = executionHarness();
+  const plain = await builder.build(mixedCaseInput());
+  const underHostileLocale = await withHostileLocaleCompare(() => builder.build(mixedCaseInput()));
+  assert.equal(plain.artifactId, underHostileLocale.artifactId);
+  assert.deepEqual(plain.payload.decisions, underHostileLocale.payload.decisions);
+  assert.deepEqual(plain.payload.roleRequirements, underHostileLocale.payload.roleRequirements);
+  assert.deepEqual(plain.payload.gates, underHostileLocale.payload.gates);
+  assert.deepEqual(plain.payload.completionCriteria, underHostileLocale.payload.completionCriteria);
+  // Code-unit order specifically, not merely "some" deterministic order:
+  // uppercase sorts before lowercase in UTF-16.
+  assert.deepEqual(
+    plain.payload.decisions.map((entry) => entry.artifactId),
+    ["Adr-0015", "adr-0002"]
+  );
+});
+
+test("ExecutionPackageBuilder.build() defaults to schemaVersion: 2 when the caller omits it (CJ4I-03)", async () => {
+  const { builder } = executionHarness();
+  const input = packageInput();
+  delete input.schemaVersion;
+  const sealed = await builder.build(input);
+  assert.equal(sealed.payload.schemaVersion, 2);
+});
+
+test("an explicit schemaVersion: 1 build stays on schemaVersion: 1, never silently upgraded", async () => {
+  const { builder } = executionHarness();
+  const sealed = await builder.build(packageInput({ schemaVersion: 1 }));
+  assert.equal(sealed.payload.schemaVersion, 1);
+});
+
+test("an invalid schemaVersion is rejected, not silently defaulted", async () => {
+  const { builder } = executionHarness();
+  await assert.rejects(builder.build(packageInput({ schemaVersion: 3 })), { code: "VES_EXECUTION_PACKAGE_INVALID" });
+});
+
+test("a schemaVersion: 1 package built before this change still verifies unchanged (CJ4I-04, CJ4I-05)", async () => {
+  const input = packageInput({ schemaVersion: 1 });
+  const { builder, trust } = executionHarness();
+  const sealed = await builder.build(input);
+  const result = await builder.verify(sealed, trust, currentState(input));
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.pendingTasks, sealed.payload.pendingTasks);
+});
+
+test("pendingTasks re-derivation is unaffected by locale collation for either schemaVersion, given required unique task sequence numbers (CJ4I-06)", () => {
+  // #58/T4i, AD-021 follow-up finding: derivePendingTasks's (sequence,
+  // taskId) sort key can never actually reach the taskId comparator, because
+  // normalizeTasks already requires unique sequence numbers across every
+  // task — sequence alone is a total order. Verified here directly against
+  // the exported function, under a hostile locale mock, for both schema
+  // versions, so a future change that weakens the sequence-uniqueness
+  // invariant elsewhere would need to revisit this claim.
+  const tasks = [
+    {
+      taskId: "T-1",
+      sequence: 1,
+      requirementIds: [],
+      dependsOn: [],
+      componentRefs: [],
+      verificationCommands: [],
+      doneCriteria: [],
+      risk: "low",
+      expectedCommit: "c"
+    },
+    {
+      taskId: "t-2",
+      sequence: 2,
+      requirementIds: [],
+      dependsOn: [],
+      componentRefs: [],
+      verificationCommands: [],
+      doneCriteria: [],
+      risk: "low",
+      expectedCommit: "c"
+    }
+  ];
+  for (const version of [1, 2]) {
+    const plain = derivePendingTasks(tasks, [], version);
+    const underHostileLocale = withHostileLocaleCompare(() => derivePendingTasks(tasks, [], version));
+    assert.deepEqual(plain, underHostileLocale, `schemaVersion ${version} pendingTasks order is locale-independent`);
+  }
+});
+
 test("file store never overwrites different bytes at a package identity", async () => {
   const root = await mkdtemp(join(tmpdir(), "verchestra-execution-package-"));
   const { builder } = executionHarness();

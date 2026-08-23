@@ -161,6 +161,7 @@ migrate-together and migrate-after rules.
 | T4j | `hermetic-bundle.ts` then `transactional-activation.ts` | Highest | Release identity; matrix requires this order. |
 | T4i | `canonical.ts` V1 facade + `execution-package.ts` | Highest | **In progress.** The Execution Package emits schema V2 with code-unit set ordering; its V1 envelope remains verifiable by recorded schema. |
 | T4j | `hermetic-bundle.ts` then `transactional-activation.ts` | Highest | **Deferred, see below.** Release identity; matrix requires this order. |
+| T4i | `execution-package.ts` | Highest | **Done — narrower than deferred, see "Completed vertical slice (T4i)" below.** `canonical.ts`/`ArtifactSealer` needed no change; the fix is entirely local to `execution-package.ts`'s own pre-sort comparators, gated by widening its `schemaVersion` field to `1 \| 2`. |
 
 `tuf-update-client.ts` stays classified separately (no structured digest at
 write) and is not a T4 slice.
@@ -478,6 +479,51 @@ detail. The owner approved the internal encoder, 2026-08-01 (see "Contract
 decision" above and `.specs/features/canonical-json/design.md`, "Tech
 Decisions").
 
+## Completed vertical slice (T4i)
+
+T4i was the signed-evidence vertical (`packages/evidence/src/execution-package/execution-package.ts`),
+resumed under `.specs/features/canonical-json-t4i-signed-evidence/` after
+issue #58 was reopened (it had been closed by an unrelated PR whose own
+description said it did not intend to close #58). Its scope came out
+substantially narrower than the "deferred, not attempted as direct swaps"
+analysis above concluded, on two points discovered and verified — not
+assumed — while implementing:
+
+1. **`ArtifactSealer` needed no change.** The original assumption was that
+   the shared sealing primitive (`packages/evidence/src/integrity/artifact-sealer.ts`)
+   would need canonicalization-version awareness, since it is used by every
+   sealed artifact type. Tracing its actual digest calls and testing directly
+   (`canonicalizeJson({list:["banana","Apple","cherry"]})` sorts object keys
+   by code unit but leaves array order untouched) confirmed RFC 8785 never
+   reorders arrays — the locale dependency was entirely upstream, in this
+   file's own 11 `.localeCompare()` pre-sort call sites, not in the
+   canonicalizer they feed into.
+2. **Only one of the 11 sites was ever backward-compat-sensitive, and it
+   turned out to be unreachable.** `derivePendingTasks`'s `(sequence,
+   taskId)` sort key was the one output persisted and re-derived-and-compared
+   at verify time (`canonicalizeJson(derived) !== canonicalizeJson(payload.pendingTasks)`),
+   so it was the one site kept `schemaVersion`-gated (V1 keeps
+   `.localeCompare`, V2 uses code-unit order) rather than swapped
+   unconditionally. But `normalizeTasks` already enforces unique `sequence`
+   values across every task, for both the build and verify-time re-parse
+   paths, so `left.sequence - right.sequence` is never `0` for two distinct
+   tasks and the `taskId` comparator after `||` never executes — confirmed
+   directly, not merely reasoned: building `derivePendingTasks` output under
+   a hostile `localeCompare` mock that reverses comparator order produced
+   byte-identical output to the unmocked call, for real task sets. The other
+   10 sites' sorted output is used only for internal uniqueness/shape
+   validation or is never persisted at all (`invalidations`'s `results` is
+   an ephemeral return value) — none of it is compared against a stored
+   counterpart, so all 10 were swapped to unconditional code-unit ordering
+   with no compatibility risk.
+
+`ExecutionPackagePayload.schemaVersion` widened from the literal `1` to
+`1 | 2`; `ExecutionPackageBuilder.build()` defaults to `schemaVersion: 2`
+when the caller omits it, `schemaVersion: 1` remains explicitly
+constructible. Both corrections and the final scope are recorded as AD-021
+in `.specs/STATE.md`, flagged for human review like every other slice in
+this chain.
+
 ## Explicit exclusions
 
 Only sources recorded as `presentation-or-fixture` in the mechanical census
@@ -493,11 +539,17 @@ has been adopted.
    Satisfied for T3 (Workspace): `tests/unit/canonical-json-v2.test.mjs:86`
    ("the same input produces byte-identical output under two different
    ambient locales").
+   Satisfied for T4i (Signed Evidence): `tests/unit/execution-package.test.mjs`
+   ("schemaVersion: 2 sealed bytes are byte-identical across two divergent
+   locale collations").
 2. Equivalent rejection at the call boundary for undefined values, sparse
    arrays, accessors, cycles, non-finite numbers, depth and node limits.
    Satisfied for T3 (Workspace): `packages/domain/src/canonical/canonical-guard.ts`,
    exercised by `tests/unit/workspace-fingerprint-v2.test.mjs:41,45` and the
    guard's own unit suite.
+   N/A for T4i (Signed Evidence): this vertical's fix is comparator ordering,
+   not a new canonicalizer boundary — every existing shape/bounds check in
+   `execution-package.ts`'s own `normalize*` functions is unchanged.
 3. A V1 persisted/signed fixture verifies unchanged; a V2 fixture has an
    explicit schema or canonicalization version.
    Satisfied for T3 (Workspace): `tests/integration/safe-init.test.mjs`
@@ -505,10 +557,20 @@ has been adopted.
    verifies and recovers", "a schemaVersion 2 journal verifies and recovers
    with V2"); `tests/unit/workspace-fingerprint-v2.test.mjs:22` (pinned V1
    byte-identity).
+   Satisfied for T4i (Signed Evidence): `tests/unit/execution-package.test.mjs`
+   ("a schemaVersion: 1 package built before this change still verifies
+   unchanged"; "ExecutionPackageBuilder.build() defaults to schemaVersion: 2
+   when the caller omits it").
 4. A discrimination mutation replacing code-unit/JCS ordering with ambient
    `localeCompare` is killed by the focused test.
    Satisfied for T3 (Workspace): `tests/security/canonical-json-sensor.test.mjs`
    (mutation A: locale ordering; mutation B: array-order sorting).
+   Satisfied for T4i (Signed Evidence): manual mutation of the `decisions`
+   sort comparator back to `.localeCompare(`, recorded in
+   `.specs/features/canonical-json-t4i-signed-evidence/validation.md`,
+   killed by the cross-locale determinism test above.
 5. `pnpm gate:security` and the architecture boundary test pass.
    Satisfied for T3 (Workspace): `pnpm gate:security`,
    `tests/architecture/repository-boundaries.test.mjs`.
+   Satisfied for T4i (Signed Evidence): `pnpm gate:security`,
+   `tests/security/canonical-json-census.test.mjs`.

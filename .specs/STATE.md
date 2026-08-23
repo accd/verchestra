@@ -168,6 +168,28 @@
   The owner provisions the secret and public reference; automation implements
   and verifies the fail-closed path but does not create key material.
 
+### AD-021 — Signed-evidence Execution Package ordering is version-gated locally (#58)
+
+- **Status:** active
+- **Decision:** Chosen by brunomjanuario on 2026-08-23 while resuming #58's
+  T4i vertical; flagged here for human review, not asserted as an owner
+  decision. `ArtifactSealer` remains unchanged. The Execution Package owns its
+  array ordering before sealing: schema V2 uses UTF-16 code-unit comparison,
+  while schema V1 keeps the qualified historical comparators and default-sort
+  sites needed for byte-compatible verification. A caller that omits
+  `schemaVersion` receives the new V2 contract; an explicit V1 remains V1.
+- **Rationale:** RFC 8785 preserves array order, so the portability defect is
+  in the package's own pre-seal array normalizers, not in the shared sealer.
+  Keeping the version switch in `execution-package.ts` lets new packages be
+  locale-independent without silently changing the identity of a stored V1
+  package. The builder's absent-version default is explicit and tested; a
+  malformed or explicit version is never silently rewritten.
+- **Consequences:** `.specs/features/canonical-json-t4i-signed-evidence/`
+  requirements CJ4I-01 through CJ4I-08. The focused suite proves hostile
+  locale independence for V2, V1 byte compatibility, default V2 emission, and
+  failed-closed invalid versions. Any other signed artifact type needs its own
+  versioned migration rather than widening `ArtifactSealer` implicitly.
+
 ### AD-024 — Deep doctor's subsystem paths get one layout contract, provisioned as T75 fixtures (#207)
 
 <!-- Renumbered from AD-019 on merge with upstream/main (2026-08-22): upstream
@@ -236,23 +258,22 @@ note. -->
   observations; `pnpm gate:full` passes on every task. T15 (secret-presence
   live wiring) is deferred, not implemented (AD-028) — no `OsSecretBackend`
   exists anywhere in the repository for any platform.
-- **Next:** [PR #306](https://github.com/accd/verchestra/pull/306) is open
-  against `main`; T22 (T75 fleet evidence) needs a human-triggered
-  `workflow_dispatch` of `platform-matrix.yml` and is not part of this PR.
+- **Completed:** [PR #306](https://github.com/accd/verchestra/pull/306) merged
+  to `main` at `b6c620183d247ff830a08297746f62703a95f37c`; T22 (T75 fleet
+  evidence) still needs a human-triggered `workflow_dispatch` of
+  `platform-matrix.yml` and is not part of that PR.
 - **Blockers:** none for T1–T21. T22 needs the owner (or an authorized
   automation identity per AD-019) to dispatch the platform-matrix workflow.
 
-- **Feature:** `canonical-json-t4-completion` (#58) on
-  `feat/canonical-json-t4j-release-identity`, branched from `main` at
-  `0d7ad9a` (2026-08-22) before the effect-identity migration below landed.
-- **Completed:** planning only (`.specs/features/canonical-json-t4-completion/`);
-  no task implemented yet.
-- **Next:** T1 (assert `releaseDigest` is null and no tracked fixture pins a
-  V1 release-manifest digest, gating the direct-swap route for T4j — see
-  AD-026). Before resuming, reconcile the plan against
-  `feat(effects): version durable idempotency identities (#58)`, already
-  merged to `main` (see AD-027's supersession note) — it did the exact
-  migration AD-027 recommended splitting out, using the label `T4i` for it
-  in `docs/canonical-json-compatibility.md`, which collides with this
-  slice's own planned `T4i` (signed-evidence facade) and needs renaming.
-- **Blockers:** none.
+- **Feature:** `canonical-json-t4i-signed-evidence` (#58) on
+  `feat/canonical-json-t4i-signed-evidence`, rebased onto the post-#306
+  `main` at `b6c6201`.
+- **Completed:** T4i implementation, version-gated Execution Package ordering,
+  V1/V2 regression coverage, and the tracked spec/task/validation artifacts;
+  local `gate:quick` and `gate:security` pass with zero failures, skips, or
+  todos. The PR is now linear and ready for fresh CI/review.
+- **Next:** [PR #307](https://github.com/accd/verchestra/pull/307) must finish
+  its fresh checks and human review; then begin T4j (release identity) per
+  `docs/canonical-json-compatibility.md`.
+- **Blockers:** PR #307's required review/checks only; no owner secret is
+  needed for this slice.
