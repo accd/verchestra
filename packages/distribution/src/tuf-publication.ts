@@ -94,7 +94,7 @@ const validateSigner = (signer: TufSigningKey, index: number): void => {
 const validateSigners = (signers: readonly TufSigningKey[]): void => {
   if (!Array.isArray(signers) || signers.length === 0)
     fail("VES_TUF_PUBLICATION_SIGNER_INVALID", "at least one signer is required");
-  signers.forEach(validateSigner);
+  signers.forEach((signer, index) => validateSigner(signer, index));
   if (new Set(signers.map((signer) => signer.keyId)).size !== signers.length)
     fail("VES_TUF_PUBLICATION_SIGNER_INVALID", "signer key identities are duplicated");
 };
