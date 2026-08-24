@@ -218,6 +218,7 @@ note. -->
 - **Decision:** Chosen by brunomjanuario on 2026-08-22 while planning the remainder of #58; flagged here for human review, following the same process as every prior T4 slice. `docs/canonical-json-compatibility.md`'s T4j row is reclassified from *"highest risk — publish a new bundle schema/release format and retain V1 verification"* to a **direct swap**, gated by a first task that turns the reclassification's premise into an assertion. T4j is also moved **ahead of T4i**, inverting the matrix's risk ordering.
 - **Rationale:** The matrix rated release identity highest-risk on the assumption of an installed base of signed release bytes a migration could invalidate. That base does not exist: `resolveReleaseIdentity()` returns `releaseDigest: null` (`apps/vestra-cli/src/release-manifest.ts:19`), T76 has not shipped a candidate, and the only consumers of the bundle digest are `transactional-activation.ts`, `tuf-update-client.ts`, and two fixtures under `tests/helpers/`. With no V1 bytes in the wild there is nothing to preserve, and T4j collapses to T4a's shape — a swap plus a fixture re-pin. The ordering inverts because the dominant constraint is not risk but a closing window: the moment T76 ships, the versioned facade becomes mandatory and permanent. The premise is a claim rather than an axiom, so it is not taken on faith — task T1 asserts `releaseDigest` is null and that no tracked fixture pins a V1 release-manifest digest, and the slice stops and re-plans as a facade if either fails.
 - **Consequences:** `.specs/features/canonical-json-t4-completion/` requirements CJ5-01 through CJ5-03; Phase 1 must land before T76. T4i remains a genuine versioned facade and is expected to close at a **non-zero ceiling by design** — retaining V1 verification means retaining the V1 sort — so #58's "no digest input is ordered with default `localeCompare`" box closes as *no unintentional ordering remains*, with each residual named and justified (CJ5-12).
+- **Confirmed fresh (2026-08-23), not merely carried forward:** `docs/canonical-json-compatibility.md` had, in the meantime, classified T4j as needing the full versioned facade ("T4i and T4j do not clear that bar"), contradicting this decision. Before implementing T4j, re-verified this decision's premise directly against current `main` rather than trusting either the old decision or the doc's newer classification: `resolveReleaseIdentity().releaseDigest` is still `null`, and a fresh search across every hermetic-bundle/transactional-activation test and fixture file found no pinned digest bytes anywhere. The premise holds; T4j shipped as a direct swap. See `.specs/features/canonical-json-t4j-release-identity/` and the "Completed vertical slice (T4j)" section of the compatibility doc.
 
 ### AD-027 — Versioned effect identity is split out of #58 (#58) — SUPERSEDED
 
@@ -264,10 +265,33 @@ note. -->
 - **Feature:** `canonical-json-t4i-signed-evidence` (#58), merged through
   [PR #307](https://github.com/accd/verchestra/pull/307) at `190e06f`.
 - **Completed:** Version-gated Execution Package ordering, V1/V2 regression
-  coverage, census reclassification, and required checks are merged.
-- **Next:** Start T4j (release identity) and T4k (remaining census closure)
-  from a fresh issue branch. The T4i handoff is not a claim that #58 is closed.
+  coverage, census reclassification, and required checks are merged. The T4i
+  handoff is not a claim that #58 is closed.
+
+- **Also completed:** [PR #310](https://github.com/accd/verchestra/pull/310)
+  fixes a pre-existing macOS path-validation bug in
+  `scripts/provision-doctor-fixtures.mjs` that rejected legitimate
+  `mkdtemp(tmpdir())` roots because `/var` resolves through `/private/var`.
+  The fix keeps the independent real-containment check and restores the nine
+  integration fixtures on macOS.
+
+- **Feature:** `canonical-json-t4j-release-identity` (#58) on
+  `feat/canonical-json-t4j-release-identity`, rebased onto the current
+  `main` after #308.
+- **Completed:** T4j direct migration of `hermetic-bundle.ts` and
+  `transactional-activation.ts` to `canonicalizeJsonV2`, code-unit component
+  ordering, cross-locale regression coverage, a discrimination sensor,
+  census reclassification, and the approved `@verchestra/domain` workspace
+  dependency. Local `pnpm gate:full`, `test:security`, and
+  `test:architecture` pass with zero failures, skips, or todos. The work is
+  submitted for independent review in PR #311; #58 remains open pending
+  review, merge, and T4k census close-out.
+- **Next:** after PR #311 merges, continue the portable-owner verticals
+  (registries, connectors, extension host, drivers, memory, and policy
+  bundles) in the documented order.
+- **Blockers:** independent human review and merge of PR #311; no release
+  secret or owner-only custody is involved in this T4j slice.
 
 - **Historical handoffs:** `live-doctor-probes` is marked `complete` and
   explicitly superseded by `deep-doctor-live-probes`; `t75-evidence-signing`
-  is `blocked` on owner-only custody rather than treated as a pass.
+  remains blocked on owner-only custody rather than treated as a pass.

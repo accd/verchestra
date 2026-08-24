@@ -179,7 +179,11 @@ importers:
         specifier: workspace:0.0.0
         version: link:../domain
 
-  packages/distribution: {}
+  packages/distribution:
+    dependencies:
+      '@verchestra/domain':
+        specifier: workspace:0.0.0
+        version: link:../domain
 
   packages/domain: {}
 

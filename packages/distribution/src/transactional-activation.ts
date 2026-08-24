@@ -3,6 +3,8 @@ import { constants, createReadStream } from "node:fs";
 import { copyFile, lstat, mkdir, open, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join, resolve, sep } from "node:path";
 
+import { canonicalizeJsonV2 } from "@verchestra/domain";
+
 import { verifyHermeticDistributionBundle, type HermeticDistributionBundle } from "./hermetic-bundle.ts";
 import type { TufStagedRelease } from "./tuf-update-client.ts";
 
@@ -107,16 +109,7 @@ const fail = (code: string, message: string, previous: ActiveReleasePointer | nu
   throw new ActivationError(code, message, previous, cause === undefined ? undefined : { cause });
 };
 
-const canonical = (value: unknown): string => {
-  if (value === null || typeof value !== "object") return JSON.stringify(value);
-  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
-  return `{${Object.entries(value as Record<string, unknown>)
-    .sort(([left], [right]) => left.localeCompare(right))
-    .map(([key, entry]) => `${JSON.stringify(key)}:${canonical(entry)}`)
-    .join(",")}}`;
-};
-
-const equal = (left: unknown, right: unknown): boolean => canonical(left) === canonical(right);
+const equal = (left: unknown, right: unknown): boolean => canonicalizeJsonV2(left) === canonicalizeJsonV2(right);
 
 const hasExactKeys = (value: object, keys: readonly string[]): boolean =>
   equal(Object.keys(value).sort(), [...keys].sort());

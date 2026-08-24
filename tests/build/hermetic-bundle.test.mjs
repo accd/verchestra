@@ -54,6 +54,46 @@ test("bundle and nested closure are immutable", () => {
   assert.equal(Object.isFrozen(bundle.components[0].licenseRefs), true);
 });
 
+// #58/T4j: hermetic-bundle.ts used to sort components with
+// String.prototype.localeCompare and hand-roll its own recursive
+// canonicalizer with the same comparator for object keys — both
+// locale-dependent. Mocking localeCompare with a comparator that reverses
+// ASCII case order simulates a hostile/divergent locale without depending
+// on any specific installed ICU locale actually disagreeing today.
+function withHostileLocaleCompare(fn) {
+  const original = String.prototype.localeCompare;
+  String.prototype.localeCompare = function hostileLocaleCompare(other) {
+    const left = String(this);
+    return left < other ? 1 : left > other ? -1 : 0;
+  };
+  try {
+    return fn();
+  } finally {
+    String.prototype.localeCompare = original;
+  }
+}
+
+test("release digest is byte-identical across two divergent locale collations, for a mixed-case componentId set", () => {
+  const mixedCase = components().map((entry) =>
+    entry.componentId === "driver:claude"
+      ? { ...entry, componentId: "driver:Claude", contentDigest: sha("driver:Claude") }
+      : entry
+  );
+  const input = bundleInput({ components: mixedCase });
+  const plain = buildHermeticDistributionBundle(input);
+  const underHostileLocale = withHostileLocaleCompare(() => buildHermeticDistributionBundle(input));
+  assert.equal(plain.releaseDigest, underHostileLocale.releaseDigest);
+  assert.deepEqual(
+    plain.components.map((entry) => entry.componentId),
+    underHostileLocale.components.map((entry) => entry.componentId)
+  );
+  // Code-unit order specifically: uppercase sorts before lowercase in UTF-16,
+  // so "driver:Claude" sorts before "driver:claude"-shaped neighbors that
+  // start the same but continue lowercase.
+  const driverIds = plain.components.map((entry) => entry.componentId).filter((id) => id.startsWith("driver:"));
+  assert.deepEqual(driverIds, ["driver:Claude"]);
+});
+
 for (const kind of [
   "node-runtime",
   "core-code",

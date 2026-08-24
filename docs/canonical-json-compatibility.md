@@ -161,6 +161,7 @@ migrate-together and migrate-after rules.
 | T4j | `hermetic-bundle.ts` then `transactional-activation.ts` | Highest | Release identity; matrix requires this order. |
 | T4i | `canonical.ts` V1 facade + `execution-package.ts` | Highest | **In progress.** The Execution Package emits schema V2 with code-unit set ordering; its V1 envelope remains verifiable by recorded schema. |
 | T4j | `hermetic-bundle.ts` then `transactional-activation.ts` | Highest | **Deferred, see below.** Release identity; matrix requires this order. |
+| T4j | `hermetic-bundle.ts` and `transactional-activation.ts` | Highest | **Done — direct swap, not the versioned facade this row previously prescribed.** See "Completed vertical slice (T4j)" below: re-verified fresh that no installed base exists (`releaseDigest: null`, no pinned digest fixture anywhere), the same bar T4b already used. | 
 | T4i | `execution-package.ts` | Highest | **Done — narrower than deferred, see "Completed vertical slice (T4i)" below.** `canonical.ts`/`ArtifactSealer` needed no change; the fix is entirely local to `execution-package.ts`'s own pre-sort comparators, gated by widening its `schemaVersion` field to `1 \| 2`. |
 
 `tuf-update-client.ts` stays classified separately (no structured digest at
@@ -523,6 +524,51 @@ when the caller omits it, `schemaVersion: 1` remains explicitly
 constructible. Both corrections and the final scope are recorded as AD-021
 in `.specs/STATE.md`, flagged for human review like every other slice in
 this chain.
+
+## Completed vertical slice (T4j)
+
+T4j was the release-identity vertical (`packages/distribution/src/hermetic-bundle.ts`
+and `packages/distribution/src/transactional-activation.ts`), taken up under
+`.specs/features/canonical-json-t4j-release-identity/` immediately after
+T4i. This section above classified T4j as needing the same versioned-facade
+treatment as T4i ("T4i and T4j do not clear that bar"); re-verifying that
+claim fresh, rather than carrying it forward, found T4j actually clears the
+bar T4b already used for a direct swap:
+
+- `resolveReleaseIdentity().releaseDigest` is still `null`
+  (`apps/vestra-cli/src/release-manifest.ts`) — no release has ever shipped,
+  T76 has not landed a candidate, so no installed base of signed release
+  bytes exists to invalidate.
+- No test or fixture anywhere pins a literal `releaseDigest` byte string;
+  every check across `tests/build/hermetic-bundle.test.mjs`,
+  `tests/security/hermetic-bundle-security.test.mjs`,
+  `tests/integration/transactional-activation.test.mjs`,
+  `tests/security/transactional-activation-security.test.mjs`,
+  `tests/fault-injection/transactional-activation-faults.test.mjs`,
+  `tests/e2e/tuf-update-client.test.mjs`, and the helper fixtures is a
+  regex/computed comparison.
+- `transactional-activation.ts`'s own `canonical()`/`equal()` (used for
+  in-flight drift and journal-target checks) is a same-tick in-memory
+  equality check, never compared against a value persisted from a previous
+  run — the same shape T4e/T4f/T4h already treated as transient.
+
+Both files' private recursive `canonical()` serializers (each with their own
+`.localeCompare(` object-key sort) are replaced outright with the qualified
+`canonicalizeJsonV2` from `@verchestra/domain`; `hermetic-bundle.ts`'s
+`components` array sort switches from `.localeCompare(` to unconditional
+code-unit comparison. No `schemaVersion` widening or dual-path comparator —
+this is a same-shape swap, matching T4b/T4h, not T4i's shape.
+`packages/distribution` had zero declared dependencies before this slice;
+`@verchestra/domain` (workspace protocol) is added, explicitly approved
+2026-08-23, `pnpm-lock.yaml` updated.
+
+`tests/build/hermetic-bundle.test.mjs`'s "release digest is byte-identical
+across two divergent locale collations, for a mixed-case componentId set"
+proves cross-locale determinism directly (mocked hostile `localeCompare`,
+mixed-case `componentId` fixture); a manual mutation reverting the
+`components` sort to `.localeCompare(` was confirmed to fail that test, then
+reverted. `tests/security/canonical-json-locale-allowlist.test.mjs`'s
+ceilings for both files are tightened to 0.
 
 ## Explicit exclusions
 
