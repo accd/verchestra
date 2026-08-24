@@ -86,6 +86,20 @@ const digest = (value: unknown, label: string): string => text(value, label, DIG
 
 const hash = (value: string): string => `sha256:${createHash("sha256").update(value).digest("hex")}`;
 
+// Candidate identity uses UTF-16 code-unit order, never localeCompare. The
+// order is part of candidateDigest and must be identical on every host.
+const codeUnitCompare = (left: string, right: string): number => {
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
+};
+
+const compareViews = (left: ReleaseCandidateView, right: ReleaseCandidateView): number =>
+  codeUnitCompare(left.mode, right.mode);
+
+const compareEvidence = (left: ReleaseCandidateEvidence, right: ReleaseCandidateEvidence): number =>
+  codeUnitCompare(left.kind, right.kind);
+
 const normalizeViews = (value: unknown, releaseDigest: string): readonly ReleaseCandidateView[] => {
   if (!Array.isArray(value) || value.length !== MODES.length)
     fail("VES_RELEASE_CANDIDATE_VIEWS_INCOMPLETE", "candidate must carry exactly four release views");
@@ -110,9 +124,7 @@ const normalizeViews = (value: unknown, releaseDigest: string): readonly Release
   });
   if (new Set(views.map((view) => view.mode)).size !== MODES.length)
     fail("VES_RELEASE_CANDIDATE_VIEWS_INCOMPLETE", "candidate release views must cover each source mode once");
-  return Object.freeze(
-    [...views].sort((left, right) => (left.mode < right.mode ? -1 : left.mode > right.mode ? 1 : 0))
-  );
+  return Object.freeze([...views].sort(compareViews));
 };
 
 const normalizeEvidence = (value: unknown, bundle: HermeticDistributionBundle): readonly ReleaseCandidateEvidence[] => {
@@ -137,9 +149,7 @@ const normalizeEvidence = (value: unknown, bundle: HermeticDistributionBundle): 
   });
   if (new Set(evidence.map((entry) => entry.kind)).size !== EVIDENCE_KINDS.length)
     fail("VES_RELEASE_CANDIDATE_EVIDENCE_INCOMPLETE", "candidate evidence kinds must be unique");
-  return Object.freeze(
-    [...evidence].sort((left, right) => (left.kind < right.kind ? -1 : left.kind > right.kind ? 1 : 0))
-  );
+  return Object.freeze([...evidence].sort(compareEvidence));
 };
 
 const normalizeRollback = (value: unknown, releaseDigest: string): ReleaseCandidateRollback => {
