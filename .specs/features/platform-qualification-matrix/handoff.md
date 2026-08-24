@@ -3,13 +3,39 @@ schema: verchestra-feature-handoff/v1
 feature: platform-qualification-matrix
 issue: 16
 status: in_progress
-branch: main
-baseRevision: ba46132a38df548d26728df121d4eaefe4a592a2
+branch: codex/issue-16-t75-evidence
+baseRevision: b738b047ffad6101f50538185c5decf6c55b7915
 lastCompletedTask: T75
-nextTask: "Do not author t75-validation.md yet. Run the exact immutable-candidate five-profile workflow, obtain the owner-approved signing identity, regenerate the signed evidence index, and submit the independent report."
-lastGate: FLEET GREEN — all five exact-head profiles passed on Windows x64, macOS x64/arm64, Linux x64/arm64 at candidate 97fa851 (runs 32579393585, 32579395143, 32579396554, 32579397998, 32579399438); A4 cross-driver session passed focused tests, agent:check, and gate:full in PR #296 (commit feb59c5), merged at ba46132
-updatedAt: 2026-08-23T00:00:00Z
+nextTask: "Obtain the owner-approved signing identity, run the signing workflow, then have MiguelCorre independently author t75-validation.md and advance T75 to T76."
+lastGate: FLEET GREEN — all five exact-head profiles passed on Windows x64, macOS x64/arm64, Linux x64/arm64 at candidate b738b047 (quick 32769400281, full 32769403159, build 32769406518, security 32769409313, release 32769412066); reconciled index records 42/52 qualified and 0 contradictions, but remains unsigned.
+updatedAt: 2026-08-24T00:00:00Z
 ---
+
+# Exact-head fleet evidence (T75 candidate `b738b047ffad6101f50538185c5decf6c55b7915`)
+
+The five dispatches below ran the same immutable candidate across every
+supported target. Each workflow completed successfully on Windows x64, macOS
+x64/arm64, and Linux glibc x64/arm64. Their workflow-produced indexes were
+downloaded and reconciled by `scripts/t75-evidence-index.mjs`; the tracked
+`.specs/features/platform-qualification-matrix/evidence-index.json` now binds
+all five run ids, platform/architecture/runtime identities, and leg digests.
+
+| Profile | Run | Result |
+| --- | --- | --- |
+| `quick` | [32769400281](https://github.com/accd/verchestra/actions/runs/32769400281) | 5/5 legs green |
+| `full` | [32769403159](https://github.com/accd/verchestra/actions/runs/32769403159) | 5/5 legs green |
+| `build` | [32769406518](https://github.com/accd/verchestra/actions/runs/32769406518) | 5/5 legs green |
+| `security` | [32769409313](https://github.com/accd/verchestra/actions/runs/32769409313) | 5/5 legs green |
+| `release` | [32769412066](https://github.com/accd/verchestra/actions/runs/32769412066) | 5/5 legs green |
+
+The reconciled result is **42/52 qualified with zero contradictions**. This
+is platform and gate-profile evidence only; the remaining declared topology,
+database, sandbox, driver, installer, recovery, and report obligations still
+require their own evidence. `signingState.signed` remains `false` by design:
+the owner must provision the protected
+`VESTRA_T75_EVIDENCE_SIGNING_KEY_PKCS8_BASE64` secret and commit the matching
+public `PublicKeyRef` before the signing workflow may run. No private key was
+generated, read, or stored by this branch.
 
 # What a reader must NOT conclude from the evidence index
 
