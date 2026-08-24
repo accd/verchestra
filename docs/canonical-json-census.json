@@ -493,6 +493,17 @@
       "reason": "The reviewed source uses the declared V2 canonical contract for the T76 candidate closure."
     },
     {
+      "path": "packages/distribution/src/supply-chain-evidence.ts",
+      "classification": "migrated-v2",
+      "signals": {
+        "canonicalizer": 3,
+        "digest": 2,
+        "localeCompare": 0,
+        "serialization": 0
+      },
+      "reason": "The reviewed source emits unsigned license, SBOM, provenance, and evaluation documents with the declared V2 canonical contract and hashes their canonical bytes."
+    },
+    {
       "path": "packages/distribution/src/transactional-activation.ts",
       "classification": "migrated-v2",
       "signals": {
