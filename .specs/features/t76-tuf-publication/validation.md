@@ -9,7 +9,7 @@ This validation covers the incremental publisher and verifier boundary only.
 | TP-03       | `tests/security/tuf-publication-security.test.mjs` threshold, expiry, incomplete, duplicate, and byte-mismatch assertions               | PASS   |
 | TP-04       | `tests/security/tuf-publication-security.test.mjs` post-publication target tamper rejection with activation denied                      | PASS   |
 
-Focused result: 6 passed, 0 failed/skipped/todo. Typecheck, `agent:check`,
+Focused result: 16 passed, 0 failed/skipped/todo. Typecheck, `agent:check`,
 complexity, ESLint, Prettier, and `git diff --check` pass.
 
 Full gates on this branch:
