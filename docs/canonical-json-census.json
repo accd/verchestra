@@ -471,6 +471,17 @@
       "reason": "The reviewed source uses the declared V2 canonical contract (T4j, direct swap — no installed base, no pinned digest fixture, #58)."
     },
     {
+      "path": "packages/distribution/src/release-candidate.ts",
+      "classification": "migrated-v2",
+      "signals": {
+        "canonicalizer": 2,
+        "digest": 2,
+        "localeCompare": 0,
+        "serialization": 2
+      },
+      "reason": "The reviewed source uses the declared V2 canonical contract for the T76 candidate closure."
+    },
+    {
       "path": "packages/distribution/src/transactional-activation.ts",
       "classification": "migrated-v2",
       "signals": {
