@@ -162,10 +162,16 @@ async function rebuildTrustedTempChild(canonicalRequestedRoot) {
 
 async function validateControlRoot(untrustedControlRoot) {
   const requestedRoot = resolve(untrustedControlRoot);
+  // realpath, not a textual comparison against the requested root: the OS
+  // temp directory itself is commonly reached through a symlink (macOS's
+  // /var -> /private/var), so a bare resolve()-vs-realpath() equality check
+  // would reject every legitimate mkdtemp(tmpdir())-based root on that
+  // platform. rebuildTrustedTempChild below is what actually proves
+  // containment — it independently re-derives the path from a directory
+  // listing of the trusted, canonicalized temp root and requires the
+  // candidate's own realpath to match exactly, so a redirect anywhere in the
+  // chain still fails closed.
   const canonicalRequestedRoot = await realpath(requestedRoot);
-  if (canonicalRequestedRoot !== requestedRoot) {
-    throw new Error(`controlRoot must not be a redirected path: ${untrustedControlRoot}`);
-  }
   // The qualification fixture root is always a disposable direct child of the
   // OS temp directory. Rebuild the path from a directory entry obtained from
   // that trusted root before any filesystem sink sees it. The CLI string is
