@@ -69,9 +69,17 @@ const record = (value: unknown, label: string): RecordValue => {
   return value as RecordValue;
 };
 
+// Candidate identity uses UTF-16 code-unit order, never localeCompare. The
+// order is part of candidateDigest and must be identical on every host.
+const codeUnitCompare = (left: string, right: string): number => {
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
+};
+
 const exact = (value: RecordValue, keys: readonly string[], label: string): void => {
-  const actual = Object.keys(value).sort();
-  const expected = [...keys].sort();
+  const actual = Object.keys(value).sort(codeUnitCompare);
+  const expected = [...keys].sort(codeUnitCompare);
   if (JSON.stringify(actual) !== JSON.stringify(expected))
     fail("VES_RELEASE_CANDIDATE_INPUT_INVALID", `${label} has missing or unknown fields`);
 };
@@ -85,14 +93,6 @@ const text = (value: unknown, label: string, pattern = SAFE_ID): string => {
 const digest = (value: unknown, label: string): string => text(value, label, DIGEST);
 
 const hash = (value: string): string => `sha256:${createHash("sha256").update(value).digest("hex")}`;
-
-// Candidate identity uses UTF-16 code-unit order, never localeCompare. The
-// order is part of candidateDigest and must be identical on every host.
-const codeUnitCompare = (left: string, right: string): number => {
-  if (left < right) return -1;
-  if (left > right) return 1;
-  return 0;
-};
 
 const compareViews = (left: ReleaseCandidateView, right: ReleaseCandidateView): number =>
   codeUnitCompare(left.mode, right.mode);
