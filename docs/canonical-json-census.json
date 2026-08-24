@@ -504,6 +504,17 @@
       "reason": "The reviewed source emits unsigned license, SBOM, provenance, and evaluation documents with the declared V2 canonical contract and hashes their canonical bytes."
     },
     {
+      "path": "packages/distribution/src/tuf-publication.ts",
+      "classification": "raw-byte-digest",
+      "signals": {
+        "canonicalizer": 0,
+        "digest": 2,
+        "localeCompare": 0,
+        "serialization": 1
+      },
+      "reason": "The reviewed source emits TUF metadata using the external TUF canonicalization standard and hashes the resulting metadata and target bytes; it does not define a local portable identity contract."
+    },
+    {
       "path": "packages/distribution/src/transactional-activation.ts",
       "classification": "migrated-v2",
       "signals": {
