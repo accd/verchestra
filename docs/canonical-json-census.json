@@ -460,6 +460,17 @@
       "reason": "The reviewed source uses the declared V2 canonical contract."
     },
     {
+      "path": "packages/distribution/src/artifact-inputs.ts",
+      "classification": "raw-byte-digest",
+      "signals": {
+        "canonicalizer": 0,
+        "digest": 2,
+        "localeCompare": 0,
+        "serialization": 0
+      },
+      "reason": "The collector hashes source bytes and delegates structured bundle identity to the canonical V2 hermetic-bundle builder; it does not serialize a local structured identity."
+    },
+    {
       "path": "packages/distribution/src/hermetic-bundle.ts",
       "classification": "migrated-v2",
       "signals": {
