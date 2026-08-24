@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
 
+import { canonicalizeJsonV2 } from "@verchestra/domain";
+
 const DIGEST = /^sha256:[a-f0-9]{64}$/u;
 const SEMVER = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?$/u;
 const NODE_VERSION = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/u;
@@ -114,15 +116,6 @@ const logicalPath = (value: unknown): string => {
     fail("VES_DISTRIBUTION_INPUT_INVALID", "logicalPath contains an unsafe segment");
   }
   return path;
-};
-
-const canonical = (value: unknown): string => {
-  if (value === null || typeof value !== "object") return JSON.stringify(value);
-  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
-  return `{${Object.entries(value as Record<string, unknown>)
-    .sort(([left], [right]) => left.localeCompare(right))
-    .map(([key, entry]) => `${JSON.stringify(key)}:${canonical(entry)}`)
-    .join(",")}}`;
 };
 
 const sha = (value: string): string => `sha256:${createHash("sha256").update(value).digest("hex")}`;
@@ -263,7 +256,7 @@ const normalizeInput = (value: unknown) => {
   const components = Object.freeze(
     (input["components"] as unknown[])
       .map((entry) => normalizeComponent(entry, releaseId, target))
-      .sort((left, right) => left.componentId.localeCompare(right.componentId))
+      .sort((left, right) => (left.componentId < right.componentId ? -1 : left.componentId > right.componentId ? 1 : 0))
   );
   validateClosure(components);
   return Object.freeze({
@@ -279,7 +272,7 @@ const normalizeInput = (value: unknown) => {
 
 export function buildHermeticDistributionBundle(value: unknown): HermeticDistributionBundle {
   const manifest = normalizeInput(value);
-  return Object.freeze({ ...manifest, releaseDigest: sha(canonical(manifest)) });
+  return Object.freeze({ ...manifest, releaseDigest: sha(canonicalizeJsonV2(manifest)) });
 }
 
 export function verifyHermeticDistributionBundle(value: unknown): HermeticDistributionBundle {
