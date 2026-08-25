@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { homedir, tmpdir, userInfo } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { after, test } from "node:test";
 
 import { loadPinnedInputs } from "../../apps/vestra-launcher/src/pinned-inputs.ts";
@@ -11,14 +12,24 @@ import {
   LAUNCHER_ERROR_CODES,
   LAUNCHER_EXIT_CODES,
   LauncherBootstrapError,
+  diagnosticCodeOf,
   renderPublicError
 } from "../../apps/vestra-launcher/src/public-errors.ts";
-import { fixtureReleaseSource, fixtureTrustRoot } from "../helpers/vestra-launcher-fixture.mjs";
+import { buildVestraLauncher } from "../../scripts/build-vestra-launcher.mjs";
+import {
+  disposeLauncherFixtures,
+  fixtureReleaseSource,
+  fixtureTrustRoot,
+  outputDirectory,
+  pinnedInputDirectory
+} from "../helpers/vestra-launcher-fixture.mjs";
 
 const roots = [];
+const launcherSourceRoot = new URL("../../apps/vestra-launcher/", import.meta.url);
 
 after(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
+  await disposeLauncherFixtures();
 });
 
 async function packageRoot(options = {}) {
@@ -173,4 +184,96 @@ test("every rendered bootstrap failure is a closed public code with actionable r
   assert.equal(rendered.includes("someone"), false);
   assert.equal(rendered.includes("abcd1234"), false);
   assert.match(rendered, /^VES_VESTRA_ACTIVATION_UNAVAILABLE: /u);
+});
+
+// An activation failure originates in the qualified TUF and activation code. Its
+// canonical code is worth showing; nothing else about it is.
+test("an upstream failure contributes only a bare canonical code to the public line", () => {
+  const upstream = Object.assign(new Error("staging path C:\\Users\\someone\\state escapes the release root"), {
+    code: "VES_TUF_STAGE_PATH_INVALID"
+  });
+  assert.equal(diagnosticCodeOf(upstream), "VES_TUF_STAGE_PATH_INVALID");
+
+  const rendered = renderPublicError(
+    new LauncherBootstrapError(
+      "VES_VESTRA_ACTIVATION_UNAVAILABLE",
+      "vestra could not activate",
+      diagnosticCodeOf(upstream)
+    )
+  );
+  assert.equal(rendered.includes("someone"), false);
+  assert.equal(rendered.includes("escapes"), false);
+  assert.match(rendered, /\(VES_TUF_STAGE_PATH_INVALID\)\./u);
+
+  for (const smuggled of [
+    "VES_X https://user:token@host.invalid/",
+    "C:\\Users\\someone",
+    "ves_lowercase",
+    `VES_${"A".repeat(200)}`,
+    "",
+    "not a code"
+  ]) {
+    assert.equal(diagnosticCodeOf({ code: smuggled }), undefined, smuggled);
+    assert.equal(
+      renderPublicError(new LauncherBootstrapError("VES_VESTRA_ACTIVATION_UNAVAILABLE", "failed", smuggled)).includes(
+        "("
+      ),
+      false,
+      smuggled
+    );
+  }
+  for (const shaped of [undefined, null, "text", 7, { code: 7 }, new Error("plain")]) {
+    assert.equal(diagnosticCodeOf(shaped), undefined);
+  }
+});
+
+// The published sources and the build-time closure are held to the same rule:
+// no environment value may select a state root, repository, trust root, or
+// release. The list is read from disk so a new source cannot escape the check.
+test("no launcher source, published or build-time, reads an environment value", async () => {
+  for (const directory of ["src", "closure"]) {
+    const location = new URL(`${directory}/`, launcherSourceRoot);
+    const files = (await readdir(location)).filter((name) => name.endsWith(".ts"));
+    assert.ok(files.length > 0, `${directory} must contain sources`);
+    for (const file of files) {
+      const source = await readFile(new URL(file, location), "utf8");
+      assert.doesNotMatch(source, /process\.env/u, `${directory}/${file} must read no environment value`);
+    }
+  }
+});
+
+// The composition a published tarball performs must be readable in one line and
+// carry no alternative, no fallback, and no configuration.
+test("the published wiring composes exactly the machine-local environment", async () => {
+  const entry = await readFile(new URL("closure/bootstrap-entry.ts", launcherSourceRoot), "utf8");
+  assert.match(entry, /new NodeActivationClosure\(machineLocalEnvironment\)/u);
+  assert.equal(entry.includes("process.env"), false);
+  assert.deepEqual(
+    [...entry.matchAll(/new NodeActivationClosure\(/gu)].length,
+    1,
+    "the published entry constructs exactly one closure"
+  );
+});
+
+test("the emitted bundle leaks no machine-local path, account name, or dependency path", async () => {
+  const receipt = await buildVestraLauncher({
+    releaseInputs: await pinnedInputDirectory(),
+    outputDirectory: await outputDirectory()
+  });
+  const bundled = await readFile(join(receipt.outputDirectory, "lib", "bootstrap.js"), "utf8");
+
+  const repositoryRoot = fileURLToPath(new URL("../..", import.meta.url));
+  for (const secret of [repositoryRoot, homedir(), tmpdir(), userInfo().username]) {
+    assert.equal(bundled.includes(secret), false, `the bundle must not embed ${secret.slice(0, 12)}…`);
+  }
+  for (const pattern of [
+    /node_modules/u,
+    /\.pnpm/u,
+    /sourceMappingURL/u,
+    /[A-Za-z]:[\\/](?:Users|home)[\\/]/u,
+    /\/(?:home|Users)\/[A-Za-z0-9._-]+\//u,
+    /@verchestra\//u
+  ]) {
+    assert.doesNotMatch(bundled, pattern, `the bundle must not embed ${pattern}`);
+  }
 });

@@ -1,12 +1,27 @@
 // Deterministic build of the publishable `vestra` npm package (NPX-01, NPX-02,
 // NPX-08, NPX-10).
 //
-// The tarball is assembled, never scraped: this script emits compiled
-// JavaScript from `apps/vestra-launcher/src`, copies the tracked bin shim,
-// license, and user documentation, renders the tracked publish manifest, and
-// installs the reviewed pinned release inputs. It then proves the emitted tree
-// is exactly the declared allowlist and that nothing in it reaches a workspace
-// package, a TypeScript source, an install script, or a machine-local path.
+// The tarball is assembled, never scraped: this script typechecks
+// `apps/vestra-launcher`, bundles its bootstrap into one self-contained ESM
+// module, copies the tracked bin shim, license, and user documentation, renders
+// the tracked publish manifest, and installs the reviewed pinned release
+// inputs. It then proves the emitted tree is exactly the declared allowlist and
+// that nothing in it reaches a workspace package, a TypeScript source, an
+// install script, a dependency-resolution path, or a machine-local path.
+//
+// Bundling is what lets the published package carry the qualified TUF and
+// activation closure while declaring no dependency at all: `apps/vestra-launcher`
+// may not import a workspace package, so the closure is inlined here, at build
+// time, from repository sources. Nothing is downloaded when a user runs
+// `npx vestra`.
+//
+// The build is deterministic by construction. esbuild is invoked with a fixed
+// option vector, no source map, and no timestamp; the working directory is the
+// repository root, so no absolute path can reach the output; and minification
+// removes the per-module provenance comments that would otherwise embed
+// dependency-resolution paths. Two builds from identical inputs emit
+// byte-identical files, which `tests/build/vestra-launcher-package.test.mjs`
+// asserts.
 //
 // The pinned release inputs are required. A fixture trust root is not release
 // authority, so a build without reviewed inputs fails closed rather than
@@ -25,6 +40,7 @@ const execute = promisify(execFile);
 const ROOT = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const PACKAGE_ROOT = join(ROOT, "apps", "vestra-launcher");
 const SEMVER = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?$/u;
+const NODE_VERSION = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/u;
 
 /** The exact set of paths a published `vestra` tarball may contain. */
 export const PUBLISHED_FILE_ALLOWLIST = Object.freeze([
@@ -34,11 +50,23 @@ export const PUBLISHED_FILE_ALLOWLIST = Object.freeze([
   "config/release-source.json",
   "config/root.json",
   "lib/bootstrap.js",
-  "lib/pinned-inputs.js",
-  "lib/public-errors.js",
-  "lib/supported-host.js",
   "package.json"
 ]);
+
+/**
+ * The bundle's fail-closed CommonJS shim. Bundled CommonJS dependencies call
+ * `require` for Node built-ins, and an ES module has none, so one is supplied —
+ * but it resolves built-ins only. A published tarball can therefore never
+ * resolve a package from disk, even if a future dependency tried to.
+ */
+export const BUNDLE_REQUIRE_GUARD = [
+  'import { createRequire as __vestraCreateRequire, isBuiltin as __vestraIsBuiltin } from "node:module";',
+  "const __vestraNodeRequire = __vestraCreateRequire(import.meta.url);",
+  "var require = (id) => {",
+  '  if (!__vestraIsBuiltin(id)) throw new Error("vestra refuses a runtime module resolution");',
+  "  return __vestraNodeRequire(id);",
+  "};"
+].join("\n");
 
 /** Content that must never appear in a published file. */
 const FORBIDDEN_CONTENT = Object.freeze([
@@ -121,22 +149,85 @@ async function readPinnedInputs(directory) {
   return { bytes: inputs, semanticVersion: source.semanticVersion };
 }
 
-async function compile(stagingRoot) {
+async function typecheck() {
   try {
     await execute(
       process.execPath,
-      [
-        join(ROOT, "node_modules", "typescript", "bin", "tsc"),
-        "-p",
-        join(PACKAGE_ROOT, "tsconfig.build.json"),
-        "--outDir",
-        join(stagingRoot, "lib")
-      ],
+      [join(ROOT, "node_modules", "typescript", "bin", "tsc"), "-p", join(PACKAGE_ROOT, "tsconfig.build.json")],
       { cwd: ROOT, windowsHide: true }
     );
   } catch (error) {
-    fail("VES_VESTRA_BUILD_COMPILE_FAILED", "the launcher bootstrap did not compile", error);
+    fail("VES_VESTRA_BUILD_COMPILE_FAILED", "the launcher bootstrap did not typecheck", error);
   }
+}
+
+/** The exact Node the repository pins; the bundle may target nothing else. */
+async function pinnedNodeTarget() {
+  const manifest = JSON.parse(await readFile(join(ROOT, "package.json"), "utf8"));
+  const version = manifest?.engines?.node;
+  if (typeof version !== "string" || !NODE_VERSION.test(version))
+    fail("VES_VESTRA_BUILD_INPUT_INVALID", "the repository pins no exact Node version to target");
+  return `node${version}`;
+}
+
+/**
+ * Bundles the bootstrap and its whole activation closure into one ESM module.
+ * Every option here is fixed, and no source map, metafile, or timestamp option
+ * is passed — esbuild emits none by default, and a source map would embed
+ * build-machine paths. `cwd` is the repository root, so no absolute path can be
+ * recorded either. Minification is not a size choice — it is what removes esbuild's
+ * per-module provenance comments, which would otherwise embed
+ * dependency-resolution paths in a published file. `--keep-names` is kept so
+ * class and function identity survives into stack traces and any `name`-based
+ * behavior in the qualified code the bundle carries.
+ */
+async function bundle(stagingRoot) {
+  const target = await pinnedNodeTarget();
+  let result;
+  try {
+    result = await execute(
+      process.execPath,
+      [
+        join(ROOT, "node_modules", "esbuild", "bin", "esbuild"),
+        "--bundle",
+        join(PACKAGE_ROOT, "closure", "bootstrap-entry.ts"),
+        `--outfile=${join(stagingRoot, "lib", "bootstrap.js")}`,
+        "--platform=node",
+        "--format=esm",
+        `--target=${target}`,
+        "--minify",
+        "--keep-names",
+        "--legal-comments=none",
+        `--banner:js=${BUNDLE_REQUIRE_GUARD}`,
+        "--log-level=warning"
+      ],
+      { cwd: ROOT, windowsHide: true, maxBuffer: 16 * 1024 * 1024 }
+    );
+  } catch (error) {
+    return fail("VES_VESTRA_BUILD_BUNDLE_FAILED", "the launcher bootstrap did not bundle", error);
+  }
+  if (result.stdout.length > 0 || result.stderr.length > 0)
+    fail(
+      "VES_VESTRA_BUILD_BUNDLE_FAILED",
+      `the launcher bundle reported diagnostics: ${result.stderr || result.stdout}`
+    );
+}
+
+/**
+ * A published bundle may import Node built-ins and nothing else. This is the
+ * artifact-level statement of NPX-08: whatever the repository graph looked like
+ * at build time, the emitted module resolves no package at run time.
+ */
+async function assertSelfContained(stagingRoot) {
+  const bundled = await readFile(join(stagingRoot, "lib", "bootstrap.js"), "utf8");
+  if (!bundled.startsWith(BUNDLE_REQUIRE_GUARD))
+    fail("VES_VESTRA_BUILD_FORBIDDEN_CONTENT", "the emitted bundle does not carry the fail-closed require guard");
+  const specifiers = [...bundled.matchAll(/(?:^|[\s;}])import\s*(?:[^"';]*?from\s*)?["']([^"']+)["']/gu)].map(
+    (match) => match[1]
+  );
+  const external = specifiers.filter((specifier) => !specifier.startsWith("node:"));
+  if (external.length > 0)
+    fail("VES_VESTRA_BUILD_FORBIDDEN_CONTENT", `the emitted bundle imports ${external.join(", ")} at run time`);
 }
 
 async function renderManifest(semanticVersion) {
@@ -182,7 +273,9 @@ export async function buildVestraLauncher(options) {
     fail("VES_VESTRA_BUILD_OUTPUT_EXISTS", "the launcher build output already exists");
   const pinned = await readPinnedInputs(resolve(options.releaseInputs));
   await mkdir(outputDirectory, { recursive: true, mode: 0o700 });
-  await compile(outputDirectory);
+  await typecheck();
+  await bundle(outputDirectory);
+  await assertSelfContained(outputDirectory);
   await writeStaged(outputDirectory, "bin/vestra.mjs", await readFile(join(PACKAGE_ROOT, "bin", "vestra.mjs")));
   await writeStaged(outputDirectory, "README.md", await readFile(join(PACKAGE_ROOT, "README.md")));
   await writeStaged(outputDirectory, "LICENSE", await readFile(join(ROOT, "LICENSE")));

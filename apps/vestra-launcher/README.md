@@ -6,10 +6,11 @@ software-delivery harness.
 
 > **Status: not published.** Verchestra is `0.0.0-qualification`. This package
 > is built and verified in the repository, but no release has been published to
-> npm, and this build carries no activation closure. Running it reports
-> `VES_VESTRA_ACTIVATION_UNAVAILABLE` and exits non-zero.
+> npm. A build made from anything other than a reviewed, pinned trust root
+> cannot anchor a resolution, reports `VES_VESTRA_ACTIVATION_UNAVAILABLE`, and
+> exits non-zero without creating or fetching anything.
 
-## What it is meant to do
+## What it does
 
 The launcher runs under your ambient Node **only as a bootstrap**. It:
 
@@ -25,10 +26,18 @@ boundary as an argument vector; no shell is involved.
 
 ## What travels in this package
 
-Only compiled JavaScript, the bin shim, the pinned public configuration and
-trust root, this document, the license, and the package manifest. There is no
-install script, no workspace dependency, no TypeScript source, and no runtime
-download of an unpinned component.
+Seven files: one bundled JavaScript module, the bin shim, the pinned public
+configuration and trust root, this document, the license, and the package
+manifest. The manifest declares **no dependencies at all**, so `npx vestra`
+downloads this package and nothing else.
+
+The bundle is built from repository sources before publication, so the
+resolution, verification, and activation code travels inside it rather than
+being resolved at install or run time. It imports Node built-ins only, and its
+CommonJS shim refuses any identifier that is not a Node built-in — a published
+tarball cannot resolve a package from disk even if something tried. There is no
+install script, no workspace dependency, no TypeScript source, no source map,
+and no runtime download of an unpinned component.
 
 ## Cleanup
 

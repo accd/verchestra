@@ -1,13 +1,7 @@
 {
   "extends": "../../tsconfig.json",
   "compilerOptions": {
-    "noEmit": false,
-    "declaration": false,
-    "sourceMap": false,
-    "removeComments": false,
-    "rewriteRelativeImportExtensions": true,
-    "rootDir": "src",
-    "outDir": "dist/lib"
+    "noEmit": true
   },
-  "include": ["src/**/*.ts"]
+  "include": ["src/**/*.ts", "closure/**/*.ts"]
 }

@@ -120,14 +120,14 @@
     },
     {
       "path": "apps/vestra-launcher/src/pinned-inputs.ts",
-      "classification": "pending-versioned-migration",
+      "classification": "raw-byte-digest",
       "signals": {
         "canonicalizer": 0,
         "digest": 2,
         "localeCompare": 0,
         "serialization": 2
       },
-      "reason": "New candidate; classification not yet reviewed."
+      "reason": "SHA-256 applies to bytes or a fixed primitive, not to a locally canonicalized structured value."
     },
     {
       "path": "packages/agent-runtime/src/context/backend-serializers.ts",

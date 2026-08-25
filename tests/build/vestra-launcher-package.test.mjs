@@ -1,11 +1,16 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { readFile, readdir } from "node:fs/promises";
+import { readFile, readdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { after, test } from "node:test";
+import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 
-import { PUBLISHED_FILE_ALLOWLIST, buildVestraLauncher } from "../../scripts/build-vestra-launcher.mjs";
+import {
+  BUNDLE_REQUIRE_GUARD,
+  PUBLISHED_FILE_ALLOWLIST,
+  buildVestraLauncher
+} from "../../scripts/build-vestra-launcher.mjs";
 import {
   FIXTURE_SEMANTIC_VERSION,
   disposableDirectory,
@@ -82,6 +87,52 @@ test("the emitted bootstrap runs, fails closed, and reports a stable public code
   assert.equal(failure.code, 70, "an unavailable activation closure must be a deterministic non-zero status");
   assert.match(failure.stderr, /^VES_VESTRA_ACTIVATION_UNAVAILABLE: /u);
   assert.equal(failure.stdout, "");
+});
+
+// The bundle is what makes the tarball dependency-free, so it is asserted as an
+// artifact property of the emitted bytes rather than as a build option.
+test("the emitted bootstrap is one bundled module that imports only Node built-ins", async () => {
+  const receipt = await sharedPackage();
+  const emitted = receipt.files.map((file) => file.path).filter((path) => path.startsWith("lib/"));
+  assert.deepEqual(emitted, ["lib/bootstrap.js"], "a published launcher carries exactly one compiled module");
+
+  const bundled = await readFile(join(receipt.outputDirectory, "lib", "bootstrap.js"), "utf8");
+  const specifiers = [...bundled.matchAll(/(?:^|[\s;}])import\s*(?:[^"';]*?from\s*)?["']([^"']+)["']/gu)].map(
+    (match) => match[1]
+  );
+  assert.ok(specifiers.length > 0, "the bundle must still import the Node built-ins it uses");
+  for (const specifier of specifiers) {
+    assert.ok(specifier.startsWith("node:"), `the published bundle may not import ${specifier} at run time`);
+  }
+});
+
+// A stub that always refused would also exit 70, so the emitted bootstrap is
+// asserted to fail from inside the real closure: only the bundled trust-root
+// anchoring check can produce this canonical diagnostic code.
+test("the emitted bootstrap fails from inside a real activation closure", async () => {
+  const receipt = await sharedPackage();
+  const failure = await execute(process.execPath, [join(receipt.outputDirectory, "bin", "vestra.mjs"), "--version"], {
+    encoding: "utf8",
+    windowsHide: true
+  }).catch((error) => error);
+
+  assert.match(failure.stderr, /\(VES_TUF_TRUST_ROOT_INVALID\)\./u);
+  assert.equal(failure.stderr.includes("carries no activation closure"), false);
+});
+
+test("the bundle's require shim serves Node built-ins and refuses every package", async () => {
+  const receipt = await sharedPackage();
+  const bundled = await readFile(join(receipt.outputDirectory, "lib", "bootstrap.js"), "utf8");
+  assert.ok(bundled.startsWith(BUNDLE_REQUIRE_GUARD), "the emitted bundle must open with the fail-closed shim");
+
+  const probe = join(await disposableDirectory(), "require-shim.mjs");
+  await writeFile(probe, `${BUNDLE_REQUIRE_GUARD}\nexport const resolve = (id) => require(id);\n`);
+  const { resolve } = await import(pathToFileURL(probe).href);
+  assert.equal(typeof resolve("node:path").join, "function");
+  assert.equal(typeof resolve("util").format, "function");
+  for (const identifier of ["tuf-js", "./neighbour.js", "C:/anything", "/etc/passwd"]) {
+    assert.throws(() => resolve(identifier), /refuses a runtime module resolution/u, identifier);
+  }
 });
 
 test("two builds from identical pinned inputs emit byte-identical files", async () => {
