@@ -39,6 +39,19 @@ tarball cannot resolve a package from disk even if something tried. There is no
 install script, no workspace dependency, no TypeScript source, no source map,
 and no runtime download of an unpinned component.
 
+## The pinned release source
+
+`config/release-source.json` is schema version 2: one pinned release identity
+(`sourceId`, `releaseId`, `semanticVersion`, `rootDigest`) plus a `targets`
+map keyed by `<platform>-<arch>`. Each entry pins that host's fixed,
+credential-free HTTPS `metadataBaseUrl` and `targetBaseUrl`, so the one
+published tarball resolves every qualified platform. At run time the bootstrap
+selects the entry for the host it actually runs on; a qualified host the map
+does not name fails closed with `VES_VESTRA_HOST_UNSUPPORTED` (exit 64) rather
+than borrowing another platform's locations. Version 1 of this file was never
+published, so version 2 is the only accepted schema — the version bump is the
+migration.
+
 ## Cleanup
 
 Three separate things can be removed independently:

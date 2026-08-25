@@ -17,7 +17,7 @@ import type {
   LauncherHandoffOutcome,
   VerifiedLauncherTarget
 } from "../src/activation-closure.ts";
-import type { PinnedReleaseSource } from "../src/pinned-inputs.ts";
+import type { PinnedReleaseSource, PinnedTargetSource } from "../src/pinned-inputs.ts";
 import { LauncherBootstrapError } from "../src/public-errors.ts";
 import type { LauncherHost } from "../src/supported-host.ts";
 
@@ -96,6 +96,25 @@ export function assertAnchoringTrustRoot(trustedRoot: Uint8Array): void {
 }
 
 /**
+ * Selects the pinned source locations for exactly this host. Pure by design:
+ * it reads its arguments and nothing else, so the decision is testable without
+ * a filesystem or a network. One published tarball carries one target map that
+ * must name every fleet platform; a qualified host the map does not name fails
+ * closed as an unsupported host (exit 64) rather than borrowing another
+ * platform's locations.
+ */
+export function selectPinnedTarget(source: PinnedReleaseSource, host: LauncherHost): PinnedTargetSource {
+  const key = `${host.platform}-${host.arch}`;
+  const target = source.targets[key];
+  if (target === undefined)
+    throw new LauncherBootstrapError(
+      "VES_VESTRA_HOST_UNSUPPORTED",
+      `this build's pinned release source names no target for ${key}`
+    );
+  return target;
+}
+
+/**
  * The machine-local layout the published launcher uses. Only `homedir()` and
  * the platform decide it: no environment variable may select a state root, a
  * repository, a trust root, or a release. Each distinct pinned trust root gets
@@ -109,13 +128,18 @@ export const machineLocalEnvironment: ActivationEnvironmentFactory = (host, sour
     installRoot: join(launcherRoot, "install"),
     stagingRoot: join(launcherRoot, "staging"),
     trustRootDirectory: join(launcherRoot, "trust", source.rootDigest.slice("sha256:".length)),
-    createSource: (pinned: PinnedReleaseSource) =>
-      new HttpsDistributionSource({
+    createSource: (pinned: PinnedReleaseSource) => {
+      // Host selection stays lazy on purpose: deriving a layout must decide and
+      // create nothing, so a host key the pinned map does not name is refused
+      // here, at the moment a source would first be used, and never earlier.
+      const target = selectPinnedTarget(pinned, host);
+      return new HttpsDistributionSource({
         mode: "online",
         sourceId: pinned.sourceId,
-        metadataBaseUrl: pinned.metadataBaseUrl,
-        targetBaseUrl: pinned.targetBaseUrl
-      })
+        metadataBaseUrl: target.metadataBaseUrl,
+        targetBaseUrl: target.targetBaseUrl
+      });
+    }
   });
 };
 

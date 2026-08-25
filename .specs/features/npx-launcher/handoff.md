@@ -223,3 +223,17 @@ block closing #36; they do not block the work already landed.
 - Qualification-chain reports and derived status surfaces.
 - `AGENTS.md`; the launcher's stricter rule is recorded in
   `docs/repository-map.md`, which `AGENTS.md` already points to.
+
+# Pinned Source Schema Version 2
+
+`config/release-source.json` moved from one global `metadataBaseUrl` and
+`targetBaseUrl` pair to a `targets` map keyed by `<platform>-<arch>`, because
+the one published tarball must resolve every fleet platform (win32-x64,
+linux-x64, linux-arm64, darwin-x64, darwin-arm64). No version-1 file was ever
+published — nothing has been released at any schema version — so the launcher
+accepts version 2 only and carries no compatibility path: the version bump is
+the migration. `selectPinnedTarget` in the activation closure picks the host's
+entry lazily at first source use (deriving a layout still decides and creates
+nothing), and a qualified host the map does not name fails closed as
+`VES_VESTRA_HOST_UNSUPPORTED` (exit 64) rather than borrowing another
+platform's locations.
