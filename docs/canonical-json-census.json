@@ -1008,6 +1008,17 @@
         "serialization": 0
       },
       "reason": "The build boundary emits portable candidate records with the declared V2 canonical contract."
+    },
+    {
+      "path": "scripts/t76-materialize-candidate.mjs",
+      "classification": "migrated-v2",
+      "signals": {
+        "canonicalizer": 13,
+        "digest": 2,
+        "localeCompare": 0,
+        "serialization": 0
+      },
+      "reason": "The candidate materializer validates real bundle projections and emits the declared V2 canonical candidate closure."
     }
   ]
 }
