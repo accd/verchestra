@@ -125,3 +125,29 @@ test("independent full-scenario runs have one semantic fingerprint", async () =>
   const second = await runFullWorkflowScenario(await root());
   assert.deepEqual(semanticFingerprint(first.facts.checks), semanticFingerprint(second.facts.checks));
 });
+
+// Issue #58: every durable-outcome resultDigest — the value the crash/resume
+// comparison uses to prove a boundary replayed to the same result — used to be
+// produced by a private recursive encoder that ordered object members with
+// String.prototype.localeCompare, so the digests a machine reported were a
+// function of its ambient locale. Replacing that comparator with one that
+// reverses UTF-16 code-unit order simulates a divergent collation without
+// depending on a particular installed ICU locale disagreeing today.
+async function underHostileLocaleCompare(fn) {
+  const original = String.prototype.localeCompare;
+  String.prototype.localeCompare = function hostileLocaleCompare(other) {
+    const left = String(this);
+    return left < other ? 1 : left > other ? -1 : 0;
+  };
+  try {
+    return await fn();
+  } finally {
+    String.prototype.localeCompare = original;
+  }
+}
+
+test("durable-outcome digests are identical under a divergent locale collation", async () => {
+  const plain = await runFullWorkflowScenario(await root());
+  const hostile = await underHostileLocaleCompare(async () => runFullWorkflowScenario(await root()));
+  assert.deepEqual(hostile.durableOutcomes, plain.durableOutcomes);
+});

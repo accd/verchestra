@@ -1,4 +1,4 @@
-import { DataClassification, IsoInstant, StableId } from "@verchestra/domain";
+import { DataClassification, IsoInstant, StableId, canonicalizeJsonV2, normalizeDeclaredSet } from "@verchestra/domain";
 
 import { BootstrapError } from "./bootstrap-errors.ts";
 
@@ -125,6 +125,20 @@ const IDENTIFIER = /^[a-z][a-z0-9.-]{0,126}[a-z0-9]$/u;
 const CAPABILITY = /^[a-z][a-z0-9:._-]{0,126}$/u;
 const SEMVER = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/u;
 
+// Code-unit comparison, not localeCompare: every ordering in this file lands
+// in the Machine Profile that `MachineProfileStorePort.save` persists and
+// digests (`BootstrapResult.profileDigest`), so the order two machines produce
+// for the same discovery result has to be a property of the identifiers, not
+// of the ambient locale. Identifiers here are `IDENTIFIER`/`CAPABILITY`
+// tokens whose ASCII punctuation (`.`, `-`, `_`, `:`) is exactly what
+// locale-aware collation is free to reorder or treat as ignorable (issue #58,
+// AD-018).
+function codeUnitCompare(left: string, right: string): number {
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
+}
+
 function fail(message: string, cause?: unknown): never {
   throw new BootstrapError("VES_BOOTSTRAP_INPUT_INVALID", message, {}, cause === undefined ? undefined : { cause });
 }
@@ -148,7 +162,7 @@ function stringList(value: unknown, label: string, pattern = CAPABILITY): readon
   if (!Array.isArray(value) || value.length === 0) fail(`${label} is invalid`);
   const values = value.map((item) => stringValue(item, label, pattern));
   if (new Set(values).size !== values.length) fail(`${label} contains duplicates`);
-  return Object.freeze([...values].sort((left, right) => left.localeCompare(right)));
+  return Object.freeze(normalizeDeclaredSet(values, (item) => item));
 }
 
 function semver(value: unknown, label: string): readonly [number, number, number] {
@@ -291,16 +305,15 @@ function validateCandidates(
         ...candidate,
         passport: Object.freeze({
           ...candidate.passport,
-          capabilities: Object.freeze([...candidate.passport.capabilities].sort((a, b) => a.localeCompare(b)))
+          capabilities: Object.freeze(normalizeDeclaredSet<string>(candidate.passport.capabilities, (name) => name))
         })
       })
-    )
-    .sort((left, right) =>
-      `${left.driverId}\0${left.passport.passportId}`.localeCompare(`${right.driverId}\0${right.passport.passportId}`)
     );
   return Object.freeze({
-    detectedDriverIds: Object.freeze([...detected].sort((a, b) => a.localeCompare(b))),
-    eligible: Object.freeze(eligible)
+    detectedDriverIds: Object.freeze(normalizeDeclaredSet([...detected], (driverId) => driverId)),
+    eligible: Object.freeze(
+      normalizeDeclaredSet(eligible, (candidate) => `${candidate.driverId}\0${candidate.passport.passportId}`)
+    )
   });
 }
 
@@ -318,32 +331,32 @@ function resolveRoles(
     );
   }
   return Object.freeze(
-    [...roles]
-      .sort((left, right) => left.roleId.localeCompare(right.roleId))
-      .map((role) => {
-        const eligible = eligibleByRole.get(role.roleId) as readonly LocalDriverCandidate[];
-        const failures: string[] = [];
-        let status: RoleBindingResult["status"] = "ready";
-        if (eligible.length === 0) {
-          status = "blocked";
-          failures.push(...role.requiredCapabilities.map((capability) => `capability:${capability}`));
-        } else if (role.independence !== "none") {
-          const other = eligibleByRole.get(role.independentFromRole as string) ?? [];
-          const distinct = eligible.some((candidate) =>
-            other.some((otherCandidate) => candidate.passport.providerId !== otherCandidate.passport.providerId)
-          );
-          if (!distinct) {
-            failures.push(`${role.independence}-independence:${role.independentFromRole as string}`);
-            status = role.independence === "required" ? "blocked" : "degraded-independence";
-          }
+    normalizeDeclaredSet(roles, (role) => role.roleId).map((role) => {
+      const eligible = eligibleByRole.get(role.roleId) as readonly LocalDriverCandidate[];
+      const failures: string[] = [];
+      let status: RoleBindingResult["status"] = "ready";
+      if (eligible.length === 0) {
+        status = "blocked";
+        failures.push(...role.requiredCapabilities.map((capability) => `capability:${capability}`));
+      } else if (role.independence !== "none") {
+        const other = eligibleByRole.get(role.independentFromRole as string) ?? [];
+        const distinct = eligible.some((candidate) =>
+          other.some((otherCandidate) => candidate.passport.providerId !== otherCandidate.passport.providerId)
+        );
+        if (!distinct) {
+          failures.push(`${role.independence}-independence:${role.independentFromRole as string}`);
+          status = role.independence === "required" ? "blocked" : "degraded-independence";
         }
-        return Object.freeze({
-          roleId: role.roleId,
-          status,
-          eligiblePassportIds: Object.freeze(eligible.map((candidate) => candidate.passport.passportId).sort()),
-          failedRequirements: Object.freeze(failures.sort())
-        });
-      })
+      }
+      return Object.freeze({
+        roleId: role.roleId,
+        status,
+        eligiblePassportIds: Object.freeze(
+          eligible.map((candidate) => candidate.passport.passportId).sort(codeUnitCompare)
+        ),
+        failedRequirements: Object.freeze(failures.sort(codeUnitCompare))
+      });
+    })
   );
 }
 
@@ -364,12 +377,17 @@ function secretRequirements(config: CanonicalBootstrapConfig): readonly Canonica
   }
   for (const value of values) {
     const existing = byName.get(value.logicalName);
-    if (existing !== undefined && JSON.stringify(existing) !== JSON.stringify(value)) {
+    // Canonical encoding, not JSON.stringify: one of the two declarations is
+    // built here and the other is parsed from canonical configuration, so
+    // member insertion order is not something either side controls. Comparing
+    // raw JSON.stringify output made the same declaration read as a conflict
+    // whenever the two happened to carry their members in a different order.
+    if (existing !== undefined && canonicalizeJsonV2(existing) !== canonicalizeJsonV2(value)) {
       fail("Logical secret has conflicting declarations");
     }
     byName.set(value.logicalName, Object.freeze({ ...value }));
   }
-  return Object.freeze([...byName.values()].sort((left, right) => left.logicalName.localeCompare(right.logicalName)));
+  return Object.freeze(normalizeDeclaredSet([...byName.values()], (entry) => entry.logicalName));
 }
 
 export class MachineBootstrapService {

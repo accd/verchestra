@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { afterEach, test } from "node:test";
 
 import { MachineBootstrapService } from "../../packages/application/src/index.ts";
+import { canonicalizeJsonV2 } from "../../packages/domain/src/index.ts";
 import {
   MockSecretAdapter,
   RuntimeMachineProfileStore,
@@ -77,6 +79,67 @@ test("runtime profile store rejects a profile for another Workspace", async () =
   await assert.rejects(profiles.save(profile), { code: "VES_BOOTSTRAP_PROFILE_FAILED" });
   assert.equal(runtime.getMachineProfile(workspaceId), undefined);
   runtime.close();
+});
+
+// Issue #58: the durable machine_profiles row used to be whatever
+// JSON.stringify emitted, so its bytes — and the profile_digest derived from
+// them, which surfaces as BootstrapResult.profileDigest — depended on the
+// member order the caller happened to build the profile with. They are now the
+// qualified canonical contract (canonicalizeJsonV2, RFC 8785 JCS).
+const profileFor = (overrides = {}) => ({
+  schemaVersion: 1,
+  workspaceId,
+  machineId,
+  cliVersion: "1.0.0",
+  configVersion: 1,
+  drivers: [],
+  roles: [],
+  secretBindings: [],
+  ...overrides
+});
+
+test("the durable machine profile row is written in canonical member order", async () => {
+  const { store: runtime } = await opened();
+  const profiles = new RuntimeMachineProfileStore({ runtimeStore: runtime, workspaceId });
+  const receipt = await profiles.save(profileFor());
+  const members = Object.keys(runtime.getMachineProfile(workspaceId));
+  assert.deepEqual(members, [...members].sort());
+  assert.equal(
+    receipt.profileDigest,
+    `sha256:${createHash("sha256").update(canonicalizeJsonV2(profileFor())).digest("hex")}`
+  );
+  runtime.close();
+});
+
+test("the same machine profile built in a different member order is not a profile change", async () => {
+  const { store: runtime } = await opened();
+  const profiles = new RuntimeMachineProfileStore({ runtimeStore: runtime, workspaceId });
+  const first = await profiles.save(profileFor());
+  const reordered = Object.fromEntries(Object.entries(profileFor()).reverse());
+  assert.notDeepEqual(Object.keys(reordered), Object.keys(profileFor()));
+  const second = await profiles.save(reordered);
+  assert.equal(second.profileDigest, first.profileDigest);
+  assert.equal(second.changed, false);
+  runtime.close();
+});
+
+test("the machine profile digest does not depend on the ambient locale collation", async () => {
+  const { store: runtime } = await opened();
+  const profiles = new RuntimeMachineProfileStore({ runtimeStore: runtime, workspaceId });
+  const plain = await profiles.save(profileFor());
+  const original = String.prototype.localeCompare;
+  String.prototype.localeCompare = function hostileLocaleCompare(other) {
+    const left = String(this);
+    return left < other ? 1 : left > other ? -1 : 0;
+  };
+  try {
+    const hostile = await profiles.save(profileFor());
+    assert.equal(hostile.profileDigest, plain.profileDigest);
+    assert.equal(hostile.changed, false);
+  } finally {
+    String.prototype.localeCompare = original;
+    runtime.close();
+  }
 });
 
 test("persisted machine profile contains no credential value, session, or local selection", async () => {

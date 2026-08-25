@@ -76,14 +76,14 @@
     },
     {
       "path": "apps/vestra-cli/src/self-test-driver-authority.ts",
-      "classification": "pending-versioned-migration",
+      "classification": "migrated-v2",
       "signals": {
-        "canonicalizer": 6,
+        "canonicalizer": 8,
         "digest": 0,
-        "localeCompare": 1,
-        "serialization": 2
+        "localeCompare": 0,
+        "serialization": 0
       },
-      "reason": "The reviewed source produces a structured portable, trust, or persistent identity awaiting a dedicated versioned migration."
+      "reason": "Structured material already uses the V2 contract or is a V2 support primitive."
     },
     {
       "path": "apps/vestra-cli/src/self-test-driver-scenario.ts",
@@ -109,14 +109,14 @@
     },
     {
       "path": "apps/vestra-cli/src/self-test-full-scenario.ts",
-      "classification": "pending-versioned-migration",
+      "classification": "migrated-v2",
       "signals": {
-        "canonicalizer": 3,
+        "canonicalizer": 11,
         "digest": 2,
-        "localeCompare": 1,
-        "serialization": 8
+        "localeCompare": 0,
+        "serialization": 0
       },
-      "reason": "The reviewed source produces a structured portable, trust, or persistent identity awaiting a dedicated versioned migration."
+      "reason": "Structured material already uses the V2 contract or is a V2 support primitive."
     },
     {
       "path": "packages/agent-runtime/src/context/backend-serializers.ts",
@@ -197,14 +197,14 @@
     },
     {
       "path": "packages/application/src/bootstrap/machine-bootstrap.ts",
-      "classification": "pending-versioned-migration",
+      "classification": "migrated-v2",
       "signals": {
-        "canonicalizer": 0,
+        "canonicalizer": 3,
         "digest": 0,
-        "localeCompare": 6,
-        "serialization": 2
+        "localeCompare": 0,
+        "serialization": 0
       },
-      "reason": "The reviewed source produces a structured portable, trust, or persistent identity awaiting a dedicated versioned migration."
+      "reason": "Structured material already uses the V2 contract or is a V2 support primitive."
     },
     {
       "path": "packages/application/src/coordination/work-claims.ts",
@@ -296,25 +296,25 @@
     },
     {
       "path": "packages/application/src/regression/campaigns.ts",
-      "classification": "pending-versioned-migration",
+      "classification": "migrated-v2",
       "signals": {
-        "canonicalizer": 1,
+        "canonicalizer": 4,
         "digest": 0,
         "localeCompare": 0,
-        "serialization": 1
+        "serialization": 0
       },
-      "reason": "The public regression corpus is structured evidence sealed by a digest and awaits an explicit versioned canonical contract."
+      "reason": "Structured material already uses the V2 contract or is a V2 support primitive."
     },
     {
       "path": "packages/application/src/self-test/self-test.ts",
-      "classification": "pending-versioned-migration",
+      "classification": "migrated-v2",
       "signals": {
-        "canonicalizer": 0,
+        "canonicalizer": 3,
         "digest": 0,
         "localeCompare": 0,
-        "serialization": 1
+        "serialization": 0
       },
-      "reason": "Authority-relevant Driver review equality awaits a dedicated versioned canonical contract."
+      "reason": "Structured material already uses the V2 contract or is a V2 support primitive."
     },
     {
       "path": "packages/application/src/sync/workspace-reconcile.ts",
@@ -736,14 +736,14 @@
     },
     {
       "path": "packages/platform-node/src/authority-store-adapter.ts",
-      "classification": "pending-versioned-migration",
+      "classification": "migrated-v2",
       "signals": {
-        "canonicalizer": 0,
+        "canonicalizer": 3,
         "digest": 0,
         "localeCompare": 0,
-        "serialization": 2
+        "serialization": 0
       },
-      "reason": "Durable authority records are persisted as JSON and await a dedicated versioned persistence migration."
+      "reason": "Structured material already uses the V2 contract or is a V2 support primitive."
     },
     {
       "path": "packages/platform-node/src/encrypted-file-key-provider.ts",
@@ -780,14 +780,14 @@
     },
     {
       "path": "packages/platform-node/src/machine-bootstrap-adapters.ts",
-      "classification": "pending-versioned-migration",
+      "classification": "migrated-v2",
       "signals": {
-        "canonicalizer": 0,
+        "canonicalizer": 3,
         "digest": 0,
         "localeCompare": 0,
-        "serialization": 1
+        "serialization": 0
       },
-      "reason": "The durable machine profile record awaits a dedicated versioned persistence migration."
+      "reason": "Structured material already uses the V2 contract or is a V2 support primitive."
     },
     {
       "path": "packages/platform-node/src/policy-store-adapter.ts",

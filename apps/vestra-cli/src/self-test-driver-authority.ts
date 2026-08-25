@@ -5,6 +5,7 @@ import {
   type DriverInvocationFacts,
   type DriverReviewFacts
 } from "@verchestra/application";
+import { canonicalizeJsonV2 } from "@verchestra/domain";
 
 export interface DriverAuthorityFacts {
   readonly approvalGranted: boolean;
@@ -15,14 +16,22 @@ export interface DriverAuthorityFacts {
   readonly approvedReview: DriverReviewFacts;
 }
 
+// This equality is the gate on provider entry: `authorized` below only returns
+// true when the approved review and the review about to be used encode
+// identically. That makes it a trust identity, and it used to be decided by a
+// private recursive encoder that ordered object members with ambient
+// `String.prototype.localeCompare` -- so which reviews counted as "the same
+// review" could depend on the machine's locale. It is now the qualified
+// contract (canonicalizeJsonV2, RFC 8785 JCS), the same encoder the
+// application-layer review binding uses (issue #58, AD-018).
+//
+// Every value reaching this function has already passed
+// `assertDriverReviewBinding`, which fixes the field set and rejects anything
+// that is not a string, finite number, or array of those -- so V2's stricter
+// input rules (no `undefined`, no non-plain values) cannot turn a previously
+// answerable comparison into a throw.
 function canonical(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
-  if (value !== null && typeof value === "object")
-    return `{${Object.entries(value)
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([key, entry]) => `${JSON.stringify(key)}:${canonical(entry)}`)
-      .join(",")}}`;
-  return JSON.stringify(value) ?? "null";
+  return canonicalizeJsonV2(value);
 }
 
 function hasWriterTool(review: DriverReviewFacts): boolean {

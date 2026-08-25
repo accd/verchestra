@@ -36,7 +36,7 @@ import {
   type DriverEvent,
   type DriverStartRequest
 } from "@verchestra/drivers";
-import { FixedClock, IsoInstant, WorkflowMachine } from "@verchestra/domain";
+import { FixedClock, IsoInstant, WorkflowMachine, canonicalizeJsonV2 } from "@verchestra/domain";
 import { EffectBroker, MockEffectAdapter, buildIdempotencyKey } from "@verchestra/effects";
 import {
   ArtifactSealer,
@@ -220,16 +220,31 @@ async function runVerifierDriverSession(binding: SelfTestDriverBinding): Promise
 type ShaDigest = `sha256:${string}`;
 const digest = (value: string): ShaDigest => `sha256:${sha256Digest(value)}`;
 const envelopeDigest = (value: string): ShaDigest => `sha256:${value}`;
-const canonical = (value: unknown): string => {
-  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
-  if (value !== null && typeof value === "object")
-    return `{${Object.entries(value)
+// `canonical` feeds every durable-outcome `resultDigest` and the handoff
+// artifact digest below -- the values the crash/resume comparison uses to
+// prove a boundary replayed to the same result. It used to be a private
+// recursive encoder that ordered object members with ambient
+// `String.prototype.localeCompare`, so those digests were a function of the
+// machine's locale. Ordering now comes from the qualified contract
+// (canonicalizeJsonV2, RFC 8785 JCS) (issue #58, AD-018).
+//
+// `jsonValueOf` is the one piece the contract cannot absorb: V2 rejects
+// `undefined` outright, while the encoder it replaces silently dropped
+// undefined-valued members and encoded a bare `undefined` as `null` -- and the
+// callers rely on that, because a durable outcome is recorded for a boundary
+// whose stored row may legitimately be absent. It reproduces exactly that
+// projection and nothing else; ordering is left entirely to V2.
+const jsonValueOf = (value: unknown): unknown => {
+  if (value === undefined) return null;
+  if (Array.isArray(value)) return value.map(jsonValueOf);
+  if (value === null || typeof value !== "object") return value;
+  return Object.fromEntries(
+    Object.entries(value)
       .filter(([, entry]) => entry !== undefined)
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([key, entry]) => `${JSON.stringify(key)}:${canonical(entry)}`)
-      .join(",")}}`;
-  return JSON.stringify(value) ?? "null";
+      .map(([key, entry]) => [key, jsonValueOf(entry)])
+  );
 };
+const canonical = (value: unknown): string => canonicalizeJsonV2(jsonValueOf(value));
 
 function durableOutcome(
   boundaryId: FullDurableBoundaryId,
@@ -734,7 +749,7 @@ function verificationPorts(hooks: FullScenarioBoundaryHooks, records: FileRecord
           await records.save("verification:report", value);
           return {
             reportRef: "verification:report:self-test",
-            reportDigest: digest(JSON.stringify(value))
+            reportDigest: digest(canonical(value))
           };
         });
       },
@@ -752,7 +767,7 @@ function verificationPorts(hooks: FullScenarioBoundaryHooks, records: FileRecord
     workflow: { apply: async (snapshot, command) => WorkflowMachine.decide(snapshot, command) },
     humanAuthority: { verify: async () => ({ authorized: true, authorizationRef: "human:self-test" }) },
     reviews: {
-      save: async (value) => ({ reviewRef: "review:self-test", reviewDigest: digest(JSON.stringify(value)) })
+      save: async (value) => ({ reviewRef: "review:self-test", reviewDigest: digest(canonical(value)) })
     }
   };
 }
@@ -994,14 +1009,14 @@ function handoffPorts(
       loadFinal: async (key) => (await records.load(`final:${key}`)) as never,
       loadProgress: async (key) => (await records.load(`progress:${key}`)) as never,
       saveProgress: async (record) => {
-        const saved = { ...record, progressDigest: digest(JSON.stringify(record)) };
+        const saved = { ...record, progressDigest: digest(canonical(record)) };
         return records.replace(`progress:${textField(record, "handoffRef")}`, saved);
       },
       saveFinal: async (record) => {
         const saved = {
           ...record,
           recordRef: "handoff-final:self-test",
-          recordDigest: digest(JSON.stringify(record))
+          recordDigest: digest(canonical(record))
         };
         return records.save(`final:${textField(record, "handoffRef")}`, saved);
       },
@@ -1012,14 +1027,14 @@ function handoffPorts(
           const saved = {
             ...record,
             acceptanceRef: "handoff-acceptance:self-test",
-            acceptanceDigest: digest(JSON.stringify(record))
+            acceptanceDigest: digest(canonical(record))
           };
           return records.save(`acceptance:${textField(record, "handoffRef")}`, saved);
         });
       },
       loadContinuation: async (key) => (await records.load(`continuation:${key}`)) as never,
       saveContinuation: async (record) => {
-        const saved = { ...record, continuationDigest: digest(JSON.stringify(record)) };
+        const saved = { ...record, continuationDigest: digest(canonical(record)) };
         return records.replace(`continuation:${textField(record, "acceptanceRef")}`, saved);
       }
     },
