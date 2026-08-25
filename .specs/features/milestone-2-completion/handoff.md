@@ -6,7 +6,7 @@ status: verification
 branch: codex/milestone-2-handoff-current
 baseRevision: 56ac0ce96d793517964b5828edd228bef4e1086b
 lastCompletedTask: null
-nextTask: "Obtain MiguelCorre's independent review for the green #58/T75-guard PRs and the T76 stack; after merge, provision the owner-only T75 signing secret/PublicKeyRef, regenerate the exact-SHA signed index, and obtain the independent T75 report."
+nextTask: "Obtain the owner-designated independent verifier's review for the green #58/T75-guard PRs and the T76 stack; after merge, provision the owner-only T75 signing secret/PublicKeyRef, regenerate the exact-SHA signed index, and obtain the independent T75 report."
 lastGate: "origin/main 56ac0ce is agent:context-consistent; open implementation PRs report green required checks where applicable, but no merge is authorized before human review"
 updatedAt: 2026-08-25T04:10:00Z
 ---
@@ -27,9 +27,10 @@ secret itself must never be accessed or recorded.
 
 # Next exact action
 
-Review the open PRs with MiguelCorre, merge only after the ruleset approval,
-then run the exact-candidate T75 signing workflow with the owner-provisioned
-identity. MiguelCorre must independently author `docs/qualification/t75-validation.md`.
+Review the open PRs with the owner-designated independent verifier, merge only
+after the ruleset approval, then run the exact-candidate T75 signing workflow
+with the owner-provisioned identity. The independent verifier must
+independently author `docs/qualification/t75-validation.md`.
 Only after T75 is accepted may T76 and then T77 advance.
 
 # Blockers
