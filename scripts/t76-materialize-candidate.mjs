@@ -26,6 +26,8 @@ const BUILD_INFO_KEYS = Object.freeze([
 const COMPONENT_MANIFEST_KEYS = Object.freeze(["schemaVersion", "components"]);
 const COMPONENT_KEYS = Object.freeze(["componentId", "kind", "logicalPath", "contentDigest", "sizeBytes"]);
 
+const compareCodeUnits = (left, right) => (left < right ? -1 : left > right ? 1 : 0);
+
 export class T76CandidateError extends Error {
   code;
 
@@ -47,8 +49,8 @@ const record = (value, label) => {
 };
 
 const exactKeys = (value, keys, label) => {
-  const actual = Object.keys(value).sort();
-  const expected = [...keys].sort();
+  const actual = Object.keys(value).sort(compareCodeUnits);
+  const expected = [...keys].sort(compareCodeUnits);
   if (actual.length !== expected.length || actual.some((key, index) => key !== expected[index]))
     fail("VES_T76_CANDIDATE_INPUT_INVALID", `${label} has unexpected fields`);
 };
