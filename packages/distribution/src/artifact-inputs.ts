@@ -7,6 +7,7 @@ import {
   type BundleArch,
   type BundlePlatform,
   type HermeticComponentKind,
+  type HermeticBundleComponent,
   type HermeticDistributionBundle
 } from "./hermetic-bundle.ts";
 
@@ -35,6 +36,11 @@ export interface FileBackedBundleInput {
   readonly runtimeResolver: false;
   readonly rootDirectory: string;
   readonly sources: readonly ArtifactInputSource[];
+}
+
+export interface CollectedArtifactInput {
+  readonly component: HermeticBundleComponent;
+  readonly bytes: Uint8Array;
 }
 
 export class ArtifactInputError extends Error {
@@ -70,7 +76,6 @@ const relativeSourcePath = (value: unknown): string => {
 const sourceMetadata = (source: ArtifactInputSource): Record<string, unknown> => ({
   componentId: source.componentId,
   kind: source.kind,
-  releaseId: undefined,
   platform: source.platform,
   arch: source.arch,
   logicalPath: source.logicalPath,
@@ -142,7 +147,7 @@ const readArtifact = async (
   root: string,
   source: ArtifactInputSource,
   index: number
-): Promise<Record<string, unknown>> => {
+): Promise<CollectedArtifactInput> => {
   const sourcePath = relativeSourcePath(source.sourcePath);
   const candidate = resolve(root, ...sourcePath.split("/"));
   if (!isInside(root, candidate))
@@ -150,21 +155,25 @@ const readArtifact = async (
   await inspectRegularFile(candidate, index);
   const resolved = await resolveWithinRoot(root, candidate, index);
   const bytes = await readSourceBytes(resolved, index);
-  return {
-    ...sourceMetadata(source),
-    contentDigest: DIGEST(bytes),
-    sizeBytes: bytes.byteLength
-  };
+  return Object.freeze({
+    component: Object.freeze({
+      ...sourceMetadata(source),
+      releaseId: "",
+      contentDigest: DIGEST(bytes),
+      sizeBytes: bytes.byteLength
+    }) as HermeticBundleComponent,
+    bytes: new Uint8Array(bytes)
+  });
 };
 
 /**
- * Read an isolated build directory and turn its bytes into the verified
- * hermetic bundle contract. The returned bundle contains no machine paths or
- * file contents; it carries only logical paths, byte digests, and sizes.
+ * Read the isolated build root once and retain the exact bytes alongside
+ * their portable component identities. Source paths and the root are never
+ * returned, so callers can safely pass the result to evidence or TUF stages.
  */
-export async function buildHermeticDistributionBundleFromFiles(
+export async function collectHermeticArtifactInputsFromFiles(
   input: FileBackedBundleInput
-): Promise<HermeticDistributionBundle> {
+): Promise<readonly CollectedArtifactInput[]> {
   if (input === null || typeof input !== "object")
     fail("VES_DISTRIBUTION_ARTIFACT_INPUT_INVALID", "file-backed bundle input must be an object");
   if (typeof input.rootDirectory !== "string" || input.rootDirectory.length === 0)
@@ -178,7 +187,26 @@ export async function buildHermeticDistributionBundleFromFiles(
     fail("VES_DISTRIBUTION_ARTIFACT_ROOT_INVALID", "rootDirectory does not exist", error);
   }
   validateSources(input.sources);
-  const components = await Promise.all(input.sources.map((source, index) => readArtifact(root, source, index)));
+  const artifacts = await Promise.all(input.sources.map((source, index) => readArtifact(root, source, index)));
+  return Object.freeze(
+    artifacts.map((artifact) =>
+      Object.freeze({
+        component: Object.freeze({ ...artifact.component, releaseId: input.releaseId }) as HermeticBundleComponent,
+        bytes: new Uint8Array(artifact.bytes)
+      })
+    )
+  );
+}
+
+/**
+ * Read an isolated build directory and turn its bytes into the verified
+ * hermetic bundle contract. The returned bundle contains no machine paths or
+ * file contents; it carries only logical paths, byte digests, and sizes.
+ */
+export async function buildHermeticDistributionBundleFromFiles(
+  input: FileBackedBundleInput
+): Promise<HermeticDistributionBundle> {
+  const artifacts = await collectHermeticArtifactInputsFromFiles(input);
   return buildHermeticDistributionBundle({
     schemaVersion: input.schemaVersion,
     releaseId: input.releaseId,
@@ -186,6 +214,6 @@ export async function buildHermeticDistributionBundleFromFiles(
     createdAt: input.createdAt,
     target: input.target,
     runtimeResolver: input.runtimeResolver,
-    components: components.map((component) => ({ ...component, releaseId: input.releaseId }))
+    components: artifacts.map(({ component }) => component)
   });
 }

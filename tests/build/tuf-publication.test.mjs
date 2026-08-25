@@ -1,11 +1,17 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { lstat, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 
-import { TufUpdateClient } from "../../packages/distribution/src/tuf-update-client.ts";
-import { buildTufReleasePublication } from "../../packages/distribution/src/tuf-publication.ts";
+import {
+  NodeFilesystemDistributionSource,
+  TufUpdateClient
+} from "../../packages/distribution/src/tuf-update-client.ts";
+import {
+  buildTufReleasePublication,
+  writeTufReleasePublication
+} from "../../packages/distribution/src/tuf-publication.ts";
 import { fixture, MapDistributionSource } from "../helpers/tuf-publication-fixture.mjs";
 
 const resolvePublication = async (publication, mode) => {
@@ -71,4 +77,55 @@ test("publication can emit non-consistent-snapshot paths without changing the bu
   const staged = await resolvePublication(publication, "offline");
   assert.equal(staged.releaseDigest, bundle.releaseDigest);
   assert.equal(publication.targets.has(publication.manifestPath), true);
+});
+
+test("writes a complete publication atomically into metadata and targets views", async () => {
+  const { publication } = fixture();
+  const root = await mkdtemp(join(tmpdir(), "verchestra-tuf-filesystem-"));
+  const destination = join(root, "repository");
+  try {
+    const layout = await writeTufReleasePublication(publication, destination);
+    assert.equal(layout.directory, destination);
+    for (const [path, bytes] of publication.metadata) {
+      assert.deepEqual(await readFile(join(layout.metadataDirectory, path)), Buffer.from(bytes));
+    }
+    for (const [path, bytes] of publication.targets) {
+      assert.deepEqual(await readFile(join(layout.targetsDirectory, path)), Buffer.from(bytes));
+    }
+    const staged = await new TufUpdateClient({
+      trustRootDirectory: join(root, "trust"),
+      stagingRoot: join(root, "staging"),
+      trustedRoot: publication.trustedRoot,
+      source: new NodeFilesystemDistributionSource({
+        mode: "offline",
+        sourceId: "source:offline:filesystem",
+        root: layout.directory
+      }),
+      chunkSize: 17
+    }).resolveAndStage({ platform: "win32", arch: "x64" });
+    assert.equal(staged.releaseDigest, publication.releaseDigest);
+    await assert.rejects(() => writeTufReleasePublication(publication, destination), {
+      code: "VES_TUF_PUBLICATION_DESTINATION_EXISTS"
+    });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("rejects unsafe target paths before creating a publication directory", async () => {
+  const { publication } = fixture();
+  const root = await mkdtemp(join(tmpdir(), "verchestra-tuf-paths-"));
+  const destination = join(root, "repository");
+  const unsafe = {
+    ...publication,
+    targets: new Map([["../escape.bin", Buffer.from("escape")]])
+  };
+  try {
+    await assert.rejects(() => writeTufReleasePublication(unsafe, destination), {
+      code: "VES_TUF_PUBLICATION_PATH_INVALID"
+    });
+    await assert.rejects(() => lstat(destination), { code: "ENOENT" });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
