@@ -101,18 +101,25 @@ test("the published tree carries neither source directory and declares no depend
   assert.equal("dependencies" in manifest, false, "the launcher workspace declares no dependency edge");
 });
 
-test("the tracked bin shim resolves only compiled sibling JavaScript", async () => {
-  const shim = await readFile(new URL("bin/vestra.mjs", packageRoot), "utf8");
-  const specifiers = [...shim.matchAll(/from\s+["']([^"']+)["']/gu)].map((match) => match[1]);
-  assert.deepEqual(specifiers, ["../lib/bootstrap.js"]);
+test("every tracked bin shim resolves only compiled sibling JavaScript", async () => {
+  // Two shims ship: `verchestra` is the package name, so it is what `npx`
+  // resolves; `vestra` stays as the short everyday command after install.
+  for (const name of ["verchestra", "vestra"]) {
+    const shim = await readFile(new URL(`bin/${name}.mjs`, packageRoot), "utf8");
+    const specifiers = [...shim.matchAll(/from\s+["']([^"']+)["']/gu)].map((match) => match[1]);
+    assert.deepEqual(specifiers, ["../lib/bootstrap.js"], name);
+    assert.ok(PUBLISHED_FILE_ALLOWLIST.includes(`bin/${name}.mjs`), name);
+  }
   assert.ok(PUBLISHED_FILE_ALLOWLIST.includes("lib/bootstrap.js"));
-  assert.ok(PUBLISHED_FILE_ALLOWLIST.includes("bin/vestra.mjs"));
 });
 
-test("the publish manifest declares one bin, no scripts, and no dependency", async () => {
+test("the publish manifest declares its bins, no scripts, and no dependency", async () => {
   const template = JSON.parse(await readFile(new URL("publish/package.template.json", packageRoot), "utf8"));
-  assert.equal(template.name, "vestra");
-  assert.deepEqual(template.bin, { vestra: "./bin/vestra.mjs" });
+  assert.equal(template.name, "verchestra");
+  assert.deepEqual(template.bin, { verchestra: "./bin/verchestra.mjs", vestra: "./bin/vestra.mjs" });
+  // `npx <package>` resolves the bin named like the package, so the package
+  // name must always have a bin of its own or the published entry point breaks.
+  assert.ok(Object.hasOwn(template.bin, template.name));
   assert.equal(template.type, "module");
   assert.equal("scripts" in template, false, "a published launcher must carry no install or lifecycle script");
   assert.equal("dependencies" in template, false);

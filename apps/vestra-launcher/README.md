@@ -1,6 +1,6 @@
 # vestra
 
-`vestra` is the public launcher for
+`verchestra` is the public launcher for
 [Verchestra](https://github.com/accd/verchestra), a verified AI
 software-delivery harness.
 
@@ -28,7 +28,7 @@ boundary as an argument vector; no shell is involved.
 
 Seven files: one bundled JavaScript module, the bin shim, the pinned public
 configuration and trust root, this document, the license, and the package
-manifest. The manifest declares **no dependencies at all**, so `npx vestra`
+manifest. The manifest declares **no dependencies at all**, so `npx verchestra`
 downloads this package and nothing else.
 
 The bundle is built from repository sources before publication, so the
