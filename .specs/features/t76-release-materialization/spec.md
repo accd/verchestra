@@ -11,9 +11,14 @@ Issue: #17
   built and verified.
 - **RM-03** — The result contains no machine root or source path, and source
   descriptor ordering does not alter the release digest or evidence bytes.
-- **RM-04** — Generated evidence cannot be supplied as an input component and
-  findings such as failed profiles, skips, todos, and surviving mutants remain
-  visible in the materialized evaluation document.
+- **RM-04** — Generated SBOM, provenance, and evaluation documents cannot be
+  supplied as input components; a source license may be read as metadata but
+  is replaced by the single generated license-closure component. Findings
+  such as failed profiles, skips, todos, and surviving mutants remain visible
+  in the materialized evaluation document.
+- **RM-05** — The materialized bundle bytes can be bound into a verified
+  candidate and TUF publication that resolves the same release in online,
+  mirror, offline, and air-gapped source modes.
 
 ## Boundary
 

@@ -18,7 +18,7 @@ const descriptors = () =>
     arch: component.arch,
     logicalPath: component.logicalPath,
     sourcePath: `payload/${String(index).padStart(2, "0")}.bin`,
-    licenseRefs: component.licenseRefs,
+    licenseRefs: component.kind === "license" ? [] : ["license:closure"],
     attestationRefs: component.attestationRefs,
     executable: component.executable
   }));

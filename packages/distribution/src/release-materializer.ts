@@ -17,7 +17,7 @@ import {
   type SupplyChainEvaluation
 } from "./supply-chain-evidence.ts";
 
-const GENERATED_KINDS = new Set(["sbom", "provenance", "evaluation"]);
+const RECURSIVE_EVIDENCE_KINDS = new Set(["sbom", "provenance", "evaluation"]);
 const GENERATED_COMPONENT_IDS = Object.freeze({
   license: "license:closure",
   sbom: "sbom:cyclonedx",
@@ -83,7 +83,7 @@ const generatedComponent = (document: SupplyChainEvidenceDocument, releaseId: st
 
 const validateSources = (sources: readonly ArtifactInputSource[]): void => {
   for (const [index, source] of sources.entries()) {
-    if (GENERATED_KINDS.has(source.kind))
+    if (RECURSIVE_EVIDENCE_KINDS.has(source.kind))
       fail(
         "VES_DISTRIBUTION_MATERIALIZATION_GENERATED_INPUT",
         `source ${index} is generated evidence and must be produced by the materializer`
@@ -137,11 +137,11 @@ export async function materializeHermeticReleaseFromFiles(
     createdAt: input.createdAt,
     target: input.target,
     runtimeResolver: input.runtimeResolver,
-    components: [...sourceComponents, ...evidenceComponents]
+    components: [...sourceComponents.filter((component) => component.kind !== "license"), ...evidenceComponents]
   });
   const componentBytes = Object.freeze(
     [
-      ...sourceComponentBytes(sourceArtifacts),
+      ...sourceComponentBytes(sourceArtifacts.filter(({ component }) => component.kind !== "license")),
       ...evidence.map((document) =>
         Object.freeze({ logicalPath: document.logicalPath, bytes: new Uint8Array(document.bytes) })
       )

@@ -5,5 +5,7 @@
 - [x] Bind generated evidence identities into a verified complete bundle.
 - [x] Add happy-path, ordering, path-redaction, generated-input, collision,
       and non-pass evaluation tests.
+- [x] Bind the materialized bytes into a candidate and TUF publication, and
+      resolve all four source modes.
 - [ ] Feed the materialized bytes into candidate construction and TUF release
-      views, then independently verify rollback.
+      views, then independently verify rollback execution.

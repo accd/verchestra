@@ -5,8 +5,8 @@ issue: 17
 status: in_progress
 branch: codex/issue-17-t76-materialize-evidence
 baseRevision: 79024f300b6471ee08fa8dfecf48cde4cee205c8
-lastCompletedTask: T3
-nextTask: "Bind materialized component bytes into candidate construction and all TUF release views; independently verify rollback."
+lastCompletedTask: T4
+nextTask: "Add independent rollback execution evidence for the materialized candidate and TUF views."
 lastGate: "Focused 10-test materializer suite, typecheck, agent:check, complexity, ESLint, Prettier, gate:quick, and gate:release PASS; zero failures/skips/todos"
 updatedAt: 2026-08-25T00:00:00Z
 ---

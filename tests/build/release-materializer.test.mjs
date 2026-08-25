@@ -19,7 +19,7 @@ const descriptors = () =>
     arch: component.arch,
     logicalPath: component.logicalPath,
     sourcePath: `payload/${String(index).padStart(2, "0")}.bin`,
-    licenseRefs: component.licenseRefs,
+    licenseRefs: component.kind === "license" ? [] : ["license:closure"],
     attestationRefs: component.attestationRefs,
     executable: component.executable
   }));
@@ -54,15 +54,17 @@ test("materializes source bytes, generated evidence, and a complete verified bun
   try {
     await writeFixture(root);
     const result = await materializeHermeticReleaseFromFiles(input(root));
-    assert.equal(result.bundle.components.length, 17);
+    assert.equal(result.bundle.components.length, 16);
     assert.equal(result.sourceArtifacts.length, 13);
     assert.deepEqual(
       result.evidence.map((document) => document.kind),
       ["license", "sbom", "provenance", "evaluation"]
     );
-    assert.equal(result.componentBytes.length, 17);
+    assert.equal(result.componentBytes.length, 16);
     assert.deepEqual(verifyHermeticDistributionBundle(result.bundle), result.bundle);
     assert.equal(result.evidence[0].bytes.byteLength > 0, true);
+    const licensePayload = JSON.parse(Buffer.from(result.evidence[0].bytes).toString());
+    assert.equal(licensePayload.licenses.length, 1);
     assert.equal(JSON.stringify(result).includes(root), false);
     for (const component of result.bundle.components) {
       const bytes = result.componentBytes.find((entry) => entry.logicalPath === component.logicalPath)?.bytes;
