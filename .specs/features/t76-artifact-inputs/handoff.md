@@ -5,10 +5,10 @@ issue: 17
 status: in_progress
 branch: codex/issue-17-candidate-manifest
 baseRevision: 1f034e3be8b0252963208d8bab26e3839c68f558
-lastCompletedTask: T4
+lastCompletedTask: T5
 nextTask: "Execute the builder and candidate materializer on every supported target with exact gate evidence, then bind the resulting candidate to the approved TUF signing identity."
-lastGate: "candidate-materializer suite 3/3; prior builder suite 3/3 and gate:quick/security/release PASS; independent review pending"
-updatedAt: 2026-08-25T05:00:00Z
+lastGate: "HEAD d330848; candidate suite 3/3; gate:quick PASS (2093 unit + 153 readiness) and gate:release PASS (2093 unit + 39 architecture + 251 qualification + 1087 security + 165 e2e + 284 fault + 28 release); Sonar PASS; independent review pending"
+updatedAt: 2026-08-25T05:20:00Z
 ---
 
 # Scope completed

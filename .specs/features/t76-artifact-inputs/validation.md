@@ -33,6 +33,7 @@ not claim T76/#17 completion.
 - `corepack pnpm gate:release` — PASS (2093 unit, 39 architecture, 251
   qualification, 1087 security, 165 e2e, 284 fault, and 28 release cases;
   zero failures/skips/todos).
+- SonarCloud Code Analysis for PR #324 at `d330848` — PASS.
 
 Independent sensor review and the original #17 acceptance criteria remain
 required for the PR and for T76 completion.
