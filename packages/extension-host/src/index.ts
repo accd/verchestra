@@ -1,5 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 
+import { canonicalizeJsonV2 } from "@verchestra/domain";
+
 export const packageName = "@verchestra/extension-host" as const;
 
 const DIGEST = /^sha256:[a-f0-9]{64}$/u;
@@ -7,14 +9,25 @@ const SAFE = /^[A-Za-z0-9][A-Za-z0-9._:@/+\-]{0,511}$/u;
 
 type UnknownRecord = Readonly<Record<string, unknown>>;
 
+// The probe envelope payload digest and the probe result digest are
+// canonicalized by the repository's V2 contract (RFC 8785) instead of a
+// private recursive serializer whose object keys were ordered by the ambient
+// locale (issue #58). Direct swap, not a versioned facade: neither digest is
+// stored. `payloadDigest` is written by `encodeProbeFrame` and re-derived by
+// `validateEnvelope` on the receiving side of a live frame, and
+// `MemoryProbeResultSink`'s `resultDigest` covers rows held in memory for the
+// lifetime of one probe transaction -- producer and consumer are always the
+// same build, so there is no installed base of V1 bytes for a migration to
+// invalidate and the `sha256:` prefix the `DIGEST` guard pins stays as it is.
+//
+// The V2 guard is stricter than the serializer it replaces: it rejects
+// `undefined`, non-finite numbers, and non-plain prototypes rather than
+// silently dropping or coercing them. That is the intended direction for a
+// worker protocol boundary -- a frame or a result chunk that cannot be
+// faithfully canonicalized is refused rather than given a digest that does not
+// describe it.
 function canonical(value: unknown): string {
-  if (value === null || typeof value !== "object") return JSON.stringify(value);
-  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
-  return `{${Object.entries(value as UnknownRecord)
-    .filter(([, item]) => item !== undefined)
-    .sort(([left], [right]) => left.localeCompare(right))
-    .map(([key, item]) => `${JSON.stringify(key)}:${canonical(item)}`)
-    .join(",")}}`;
+  return canonicalizeJsonV2(value);
 }
 
 function digest(value: unknown): string {

@@ -1,3 +1,5 @@
+import { canonicalizeJsonV2 } from "@verchestra/domain";
+
 import {
   createEffectIntent,
   EffectError,
@@ -29,6 +31,31 @@ export {
 } from "@verchestra/application";
 
 const freezeIntent = (value: EffectIntent): EffectIntent => Object.freeze({ ...value });
+
+// Code-unit comparison, not localeCompare (issue #58). This is the dispatch
+// order the outbox drains in, so it decides which effect is applied first and
+// which receipts a bounded `dispatchReady` batch returns -- observable
+// behavior, not just serialization order. The durable outbox
+// (`packages/platform-node/src/runtime-store/runtime-store.ts`:
+// `ORDER BY i.created_at, i.idempotency_key`) already orders by SQLite's
+// BINARY collation, so code-unit comparison is what makes the in-memory
+// repository agree with the persisted one instead of diverging under a
+// non-C locale.
+function codeUnitCompare(left: string, right: string): number {
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
+}
+
+// Receipts are durable and write-once: `complete` must decide whether a second
+// call carries the same receipt. `JSON.stringify` answered that by insertion
+// order, so two logically identical receipts built with their optional fields
+// (`remoteIdentity`, `remoteVersion`, `outputDigest`) assembled in a different
+// order compared unequal and raised a spurious VES_EFFECT_RECEIPT_CONFLICT.
+// The V2 canonical encoding compares the receipt's content instead (#58).
+function sameReceiptContent(left: OperationReceipt, right: OperationReceipt): boolean {
+  return canonicalizeJsonV2(left) === canonicalizeJsonV2(right);
+}
 
 function sameLogicalIntent(left: IdempotencyInput, right: IdempotencyInput): boolean {
   return (
@@ -84,7 +111,7 @@ export class InMemoryEffectRepository implements EffectRepository {
       .filter((intent) => intent.status === "planned" || intent.status === "ready")
       .sort(
         (left, right) =>
-          left.createdAt.localeCompare(right.createdAt) || left.idempotencyKey.localeCompare(right.idempotencyKey)
+          codeUnitCompare(left.createdAt, right.createdAt) || codeUnitCompare(left.idempotencyKey, right.idempotencyKey)
       )
       .slice(0, limit);
   }
@@ -110,7 +137,7 @@ export class InMemoryEffectRepository implements EffectRepository {
     const current = this.#require(idempotencyKey);
     const existing = this.#receipts.get(idempotencyKey);
     if (existing !== undefined) {
-      if (JSON.stringify(existing) !== JSON.stringify(receipt)) {
+      if (!sameReceiptContent(existing, receipt)) {
         throw new EffectError("VES_EFFECT_RECEIPT_CONFLICT", "Receipt already exists with different content");
       }
       return;

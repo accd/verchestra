@@ -149,3 +149,55 @@ for (const [name, mutate, code] of [
     );
   });
 }
+
+// #58/T4: the envelope's `payloadDigest` was produced by a private recursive
+// serializer whose object keys were ordered with
+// `String.prototype.localeCompare`. Mocking `localeCompare` with a comparator
+// that reverses code-unit order simulates a hostile or merely divergent locale
+// without depending on any specific installed ICU locale actually disagreeing
+// today.
+function withHostileLocaleCompare(fn) {
+  const original = String.prototype.localeCompare;
+  String.prototype.localeCompare = function hostileLocaleCompare(other) {
+    const left = String(this);
+    return left < other ? 1 : left > other ? -1 : 0;
+  };
+  try {
+    return fn();
+  } finally {
+    String.prototype.localeCompare = original;
+  }
+}
+
+// Mixed-case keys are where locale collation and code-unit order actually part
+// company: ICU collates case-insensitively at its primary level, so "alpha"
+// sorts before "Beta", while UTF-16 code units put every uppercase key first.
+const mixedCasePayload = Object.freeze({
+  type: "tool.requested",
+  alpha: 1,
+  Beta: Object.freeze({ delta: 4, Charlie: 3, nested: Object.freeze([{ z: 1, A: 2 }]) }),
+  Zeta: "z"
+});
+
+test("a driver frame encoded under a hostile locale is byte-identical and still decodes", () => {
+  const plain = encodeDriverFrame(envelope(0, { payload: mixedCasePayload }));
+  const hostile = withHostileLocaleCompare(() => encodeDriverFrame(envelope(0, { payload: mixedCasePayload })));
+  assert.deepEqual(hostile, plain);
+
+  // The receiving side re-derives the digest, so a producer and a consumer
+  // whose locales disagreed would terminate the host on every frame.
+  const decoder = new DriverFrameDecoder({ workspaceId, maximumHeaderBytes: 4096, maximumMessageBytes: 65536 });
+  const decoded = decoder.push(hostile);
+  assert.equal(decoded.length, 1);
+  assert.deepEqual(decoded[0].payload, mixedCasePayload);
+
+  // A tampered payload still fails the digest guard: the canonical swap did
+  // not soften the check it feeds.
+  const tampered = encodeDriverFrame(
+    envelope(0, { payload: mixedCasePayload, payloadDigest: `sha256:${"c".repeat(64)}` })
+  );
+  assert.throws(
+    () => new DriverFrameDecoder({ workspaceId, maximumHeaderBytes: 4096, maximumMessageBytes: 65536 }).push(tampered),
+    (error) => error instanceof DriverProtocolError && error.code === "VES_DRIVER_ENVELOPE_DIGEST"
+  );
+});

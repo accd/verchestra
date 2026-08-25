@@ -107,7 +107,19 @@ const UNCLASSIFIED_CEILINGS = Object.freeze({
   "packages/memory/src/memory-store.ts": 0,
   "packages/memory/src/memory-vector-index.ts": 0,
   "packages/policy/src/policy-bundle.ts": 2,
-  "packages/platform-node/src/git-worktree-adapter.ts": 0
+  "packages/platform-node/src/git-worktree-adapter.ts": 0,
+  // Migrated (issue #58): the effect kernel, the driver and probe-worker
+  // protocol envelopes, the OpenCode model catalog, and the signed policy
+  // bundle now canonicalize with `canonicalizeJsonV2` and order their declared
+  // sets by UTF-16 code unit. Ceilings tightened to 0 so a reintroduced
+  // ambient-locale sort in any of them fails this gate rather than sitting
+  // under a stale ratchet. Later keys win, matching how every prior T4 slice
+  // recorded its tightening above.
+  "packages/drivers/src/index.ts": 0,
+  "packages/drivers/src/opencode-driver.ts": 0,
+  "packages/effects/src/effect-kernel.ts": 0,
+  "packages/extension-host/src/index.ts": 0,
+  "packages/policy/src/policy-bundle.ts": 0
 });
 
 const CEILINGS = Object.freeze({ ...MATRIX_CEILINGS, ...UNCLASSIFIED_CEILINGS });

@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
 
+import { canonicalizeJsonV2 } from "@verchestra/domain";
+
 const DIGEST = /^sha256:[a-f0-9]{64}$/u;
 const SAFE = /^[A-Za-z0-9][A-Za-z0-9._:@/+\-]{0,511}$/u;
 const EVENT_TYPES = [
@@ -52,16 +54,22 @@ export interface DriverProtocolEnvelope {
   readonly payload: unknown;
 }
 
+// The envelope payload digest is canonicalized by the repository's V2 contract
+// (RFC 8785) instead of a private recursive serializer whose object keys were
+// ordered by the ambient locale (issue #58). Direct swap, not a versioned
+// facade: this digest is never stored. It is written by `encodeDriverFrame`
+// and re-derived by `validateEnvelope` on the receiving side of a live frame,
+// so producer and consumer are always the same build -- there is no installed
+// base of V1 bytes for a migration to invalidate, and the `sha256:` prefix the
+// `DIGEST` guard and the wire schema pin stays as it is.
+//
+// The V2 guard is stricter than the serializer it replaces: it rejects
+// `undefined`, non-finite numbers, and non-plain prototypes rather than
+// silently dropping or coercing them. That is the intended direction for a
+// protocol boundary -- a frame whose payload cannot be faithfully canonicalized
+// is refused rather than given a digest that does not describe it.
 function canonicalJson(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
-  if (value !== null && typeof value === "object") {
-    return `{${Object.entries(value as Readonly<Record<string, unknown>>)
-      .filter(([, entry]) => entry !== undefined)
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([key, entry]) => `${JSON.stringify(key)}:${canonicalJson(entry)}`)
-      .join(",")}}`;
-  }
-  return JSON.stringify(value);
+  return canonicalizeJsonV2(value);
 }
 
 function sha256(value: unknown): string {
