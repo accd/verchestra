@@ -65,6 +65,76 @@ test("the canonical serialization is deterministic and change-sensitive", () => 
   assert.notEqual(canonicalizeCorpus(edited), canonicalizeCorpus(corpus()));
 });
 
+// Issue #58: the corpus encoder moved from bare JSON.stringify to the
+// qualified canonical contract (canonicalizeJsonV2, RFC 8785 JCS). Replacing
+// String.prototype.localeCompare with a comparator that reverses UTF-16
+// code-unit order simulates a divergent locale collation without depending on
+// a particular installed ICU locale actually disagreeing today.
+function withHostileLocaleCompare(fn) {
+  const original = String.prototype.localeCompare;
+  String.prototype.localeCompare = function hostileLocaleCompare(other) {
+    const left = String(this);
+    return left < other ? 1 : left > other ? -1 : 0;
+  };
+  try {
+    return fn();
+  } finally {
+    String.prototype.localeCompare = original;
+  }
+}
+
+test("the sealed corpus encoding is byte-identical under a divergent locale collation", () => {
+  const defs = corpus();
+  assert.equal(
+    withHostileLocaleCompare(() => canonicalizeCorpus(defs)),
+    canonicalizeCorpus(defs)
+  );
+});
+
+test("the corpus encoding does not depend on the order a definition wrote its members in", () => {
+  const defs = corpus();
+  const reordered = defs.map((entry) => Object.fromEntries(Object.entries(entry).reverse()));
+  assert.equal(canonicalizeCorpus(reordered), canonicalizeCorpus(defs));
+});
+
+// The corpus digest is published evidence, so byte-compatibility across this
+// migration has to be proven rather than assumed: the projection's members
+// were already in UTF-16 code-unit order, so RFC 8785 emits exactly what the
+// previous JSON.stringify call emitted and the published digest does not move.
+test("moving the corpus encoder onto the qualified contract did not change the sealed bytes", () => {
+  const defs = corpus();
+  const priorEncoding = JSON.stringify(
+    defs.map((entry) => ({
+      evidenceRef: entry.evidenceRef,
+      fixtureRef: entry.fixtureRef,
+      id: entry.id,
+      owner: entry.owner,
+      requirement: entry.requirement,
+      sampleSize: entry.sampleSize,
+      threshold: entry.threshold
+    }))
+  );
+  assert.equal(canonicalizeCorpus(defs), priorEncoding);
+});
+
+// A campaign corpus is a declared *ordered* list, not a set, and the contract
+// never reorders an array — losing that would let two different corpora seal
+// to the same digest.
+test("the corpus stays an ordered list the encoder never sorts", () => {
+  const defs = corpus();
+  assert.notEqual(canonicalizeCorpus([...defs].reverse()), canonicalizeCorpus(defs));
+});
+
+// JSON.stringify silently encoded a non-finite threshold as `null`, so a
+// corpus carrying one still sealed — to a digest that claimed a threshold the
+// corpus did not have. The qualified contract refuses to encode it at all.
+test("a non-finite threshold cannot be sealed into the corpus digest", () => {
+  const defs = corpus();
+  defs[4] = definition(4, { threshold: Number.NaN });
+  assert.doesNotThrow(() => assertCampaignCorpus(defs), "the range check alone does not catch NaN");
+  assert.throws(() => canonicalizeCorpus(defs), { code: "VES_CANONICAL_NON_FINITE_NUMBER" });
+});
+
 test("a deterministic passing campaign has a lower bound of one", () => {
   const result = evaluateCampaign(definition(0), [true]);
   assert.equal(result.verdict, "PASS");

@@ -194,6 +194,78 @@ test("review equality does not depend on JavaScript object key order", () => {
   assert.doesNotThrow(() => assertDriverInvocationFacts(invocation({ displayedReview })));
 });
 
+// Issue #58: Driver review equality is a trust identity — it decides whether a
+// provider boundary may be entered — and it is now encoded with the qualified
+// canonical contract (canonicalizeJsonV2, RFC 8785 JCS) instead of a
+// JSON.stringify of one hand-written projection. The projection fixed the
+// order of the top-level members only, so a nested Tool written as
+// {access, name} rather than {name, access} used to serialize differently and
+// was rejected as a *different review* — a false denial with no content
+// difference behind it.
+test("review equality does not depend on the member order of a nested Tool", () => {
+  const approvedReview = review();
+  const displayedReview = {
+    ...approvedReview,
+    tools: approvedReview.tools.map((tool) => Object.fromEntries(Object.entries(tool).reverse()))
+  };
+  assert.deepEqual(Object.keys(displayedReview.tools[0]), ["access", "name"]);
+  assert.doesNotThrow(() => assertDriverInvocationFacts(invocation({ displayedReview })));
+});
+
+// Replacing String.prototype.localeCompare with a comparator that reverses
+// UTF-16 code-unit order simulates a divergent locale collation without
+// depending on a particular installed ICU locale disagreeing today.
+function withHostileLocaleCompare(fn) {
+  const original = String.prototype.localeCompare;
+  String.prototype.localeCompare = function hostileLocaleCompare(other) {
+    const left = String(this);
+    return left < other ? 1 : left > other ? -1 : 0;
+  };
+  try {
+    return fn();
+  } finally {
+    String.prototype.localeCompare = original;
+  }
+}
+
+test("Driver review equality reaches the same verdict under a divergent locale collation", () => {
+  const approvedReview = review();
+  const displayedReview = Object.fromEntries(
+    Object.entries({
+      ...approvedReview,
+      tools: approvedReview.tools.map((tool) => Object.fromEntries(Object.entries(tool).reverse()))
+    }).reverse()
+  );
+  withHostileLocaleCompare(() => {
+    assert.doesNotThrow(() => assertDriverInvocationFacts(invocation({ displayedReview })));
+    // A real content difference is still a difference under any collation.
+    assert.throws(
+      () =>
+        assertDriverInvocationFacts(
+          invocation({ displayedReview: { ...displayedReview, destinationId: "destination:elsewhere" } })
+        ),
+      { code: "VES_SELFTEST_DRIVER_REVIEW_INVALID" }
+    );
+  });
+});
+
+// Arrays carry order under the contract, so a Tool list presented in a
+// different sequence than the one approved is still a different review.
+test("a Tool list presented in a different order is still a different review", () => {
+  const approvedReview = review({
+    tools: [
+      { name: "vestra_read", access: "read" },
+      { name: "vestra_list", access: "read" }
+    ]
+  });
+  const facts = invocation({
+    review: approvedReview,
+    displayedReview: { ...approvedReview, tools: [...approvedReview.tools].reverse() },
+    actualReview: structuredClone(approvedReview)
+  });
+  assert.throws(() => assertDriverInvocationFacts(facts), { code: "VES_SELFTEST_DRIVER_REVIEW_INVALID" });
+});
+
 test("a denied invocation with zero provider calls passes", () => {
   assert.doesNotThrow(() => assertDriverInvocationFacts(invocation({ authorized: false, providerBoundaryEntries: 0 })));
 });

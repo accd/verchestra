@@ -4,7 +4,7 @@
 // a verdict can never be read from a single cherry-picked run. The frozen corpus
 // and its reproducible fixtures live under tests/public-regression.
 
-import { normalizeDeclaredSet } from "@verchestra/domain";
+import { canonicalizeJsonV2, normalizeDeclaredSet } from "@verchestra/domain";
 
 export type CampaignErrorCode = "VES_CAMPAIGN_CORPUS_INVALID" | "VES_CAMPAIGN_SUMMARY_INVALID";
 
@@ -95,9 +95,18 @@ export function assertCampaignCorpus(definitions: readonly CampaignDefinition[])
 
 // CAM-01: a deterministic canonical serialization of the corpus. Hashing this
 // detects any addition, removal, or edit; the runner seals it into a digest.
+//
+// The encoder is the qualified contract (canonicalizeJsonV2, RFC 8785 JCS)
+// rather than bare JSON.stringify, so the sealed corpus digest is defined by a
+// specification instead of by this literal's member order (CJ4-04, issue #58).
+// The projection below is deliberately unchanged and its members are already
+// in UTF-16 code-unit order, so V2 reproduces the same bytes the V1 encoder
+// produced -- the published corpus digest does not move. The corpus itself is
+// a declared *ordered* list, and V2 never reorders an array, so campaign
+// declaration order still carries meaning.
 export function canonicalizeCorpus(definitions: readonly CampaignDefinition[]): string {
   assertCampaignCorpus(definitions);
-  return JSON.stringify(
+  return canonicalizeJsonV2(
     definitions.map((definition) => ({
       evidenceRef: definition.evidenceRef,
       fixtureRef: definition.fixtureRef,

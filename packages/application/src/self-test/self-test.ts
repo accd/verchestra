@@ -3,7 +3,7 @@
 // (packages/self-test) supplies the facts; the CLI composition root wires
 // TEST-ONLY sibling adapters in as the subject.
 
-import { normalizeDeclaredSet } from "@verchestra/domain";
+import { canonicalizeJsonV2, normalizeDeclaredSet } from "@verchestra/domain";
 
 export type SelfTestErrorCode =
   | "VES_SELFTEST_UNKNOWN_PROFILE"
@@ -581,8 +581,24 @@ function assertDriverReviewFacts(value: unknown): DriverReviewFacts {
   return review;
 }
 
+// The Driver review surface is a trust identity, not a display string: the
+// value this returns is what decides whether the approved, displayed, and
+// actually used reviews are the same review, and therefore whether a provider
+// boundary may be entered at all. It is encoded with the qualified contract
+// (canonicalizeJsonV2, RFC 8785 JCS) so that decision is defined by a
+// specification rather than by member insertion order (CJ4-04, issue #58).
+//
+// This is also a correctness fix, not only a hardening one. The projection
+// below fixes the order of the top-level members, but each `tools` entry is
+// the caller's own object, and `assertReadOnlyTool` only checks that its key
+// *set* is `access,name` -- not the order they were written in. Under
+// JSON.stringify, an approved `{name, access}` and a displayed `{access, name}`
+// serialized differently and were rejected as different reviews. V2 orders
+// members recursively, so only a real difference in content is a difference.
+// Arrays keep their given order under V2, so `modelCapabilities` and `tools`
+// still have to be presented in the same sequence they were approved in.
 function canonicalDriverReview(review: DriverReviewFacts): string {
-  return JSON.stringify({
+  return canonicalizeJsonV2({
     providerId: review.providerId,
     modelId: review.modelId,
     destinationId: review.destinationId,

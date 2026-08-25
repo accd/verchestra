@@ -155,6 +155,91 @@ test("unknown authority fields are rejected before provider entry", async () => 
   assert.equal(invoked, 0);
 });
 
+// Issue #58: this composition root used to decide "is the review about to be
+// used the review that was approved?" with a private recursive encoder that
+// ordered object members by String.prototype.localeCompare — so whether a
+// provider boundary could be entered depended on the machine's locale.
+// Replacing that comparator with one that reverses UTF-16 code-unit order
+// simulates a divergent collation without depending on a particular installed
+// ICU locale disagreeing today.
+async function underHostileLocaleCompare(fn) {
+  const original = String.prototype.localeCompare;
+  String.prototype.localeCompare = function hostileLocaleCompare(other) {
+    const left = String(this);
+    return left < other ? 1 : left > other ? -1 : 0;
+  };
+  try {
+    return await fn();
+  } finally {
+    String.prototype.localeCompare = original;
+  }
+}
+
+// The approved review is carried across a serialization boundary, so it can
+// arrive with its members — including a nested Tool's — written in a different
+// order than the review being checked against it. That is not a content
+// difference and must not deny provider entry.
+const reordered = (value) =>
+  Object.fromEntries(
+    Object.entries({
+      ...value,
+      tools: value.tools.map((tool) => Object.fromEntries(Object.entries(tool).reverse()))
+    }).reverse()
+  );
+
+test("provider entry is decided the same way under a divergent locale collation", async () => {
+  let invoked = 0;
+  const facts = await underHostileLocaleCompare(() =>
+    runAuthorizedDriverBoundary({
+      review,
+      displayedReview: reordered(review),
+      actualReview: structuredClone(review),
+      authority: { ...authority(), approvedReview: reordered(review) },
+      invoke: async () => {
+        invoked += 1;
+      }
+    })
+  );
+  assert.equal(facts.authorized, true);
+  assert.equal(facts.providerBoundaryEntries, 1);
+  assert.equal(invoked, 1);
+});
+
+test("a review that only differs in member order is still the approved review", async () => {
+  let invoked = 0;
+  const facts = await runAuthorizedDriverBoundary({
+    review,
+    displayedReview: reordered(review),
+    actualReview: structuredClone(review),
+    authority: { ...authority(), approvedReview: reordered(review) },
+    invoke: async () => {
+      invoked += 1;
+    }
+  });
+  assert.deepEqual(Object.keys(reordered(review).tools[0]), ["access", "name"]);
+  assert.equal(facts.authorized, true);
+  assert.equal(invoked, 1);
+});
+
+test("a real content difference still denies provider entry under a divergent locale collation", async () => {
+  let invoked = 0;
+  await underHostileLocaleCompare(async () => {
+    await assert.rejects(
+      runAuthorizedDriverBoundary({
+        review,
+        displayedReview: { ...reordered(review), destinationId: "local:other" },
+        actualReview: structuredClone(review),
+        authority: { ...authority(), approvedReview: reordered(review) },
+        invoke: async () => {
+          invoked += 1;
+        }
+      }),
+      { code: "VES_SELFTEST_DRIVER_REVIEW_INVALID" }
+    );
+  });
+  assert.equal(invoked, 0);
+});
+
 test("the provider boundary receives the exact preflighted review", async () => {
   let usedReview;
   const facts = await runAuthorizedDriverBoundary({
