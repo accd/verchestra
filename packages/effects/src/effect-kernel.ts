@@ -32,6 +32,19 @@ export {
 
 const freezeIntent = (value: EffectIntent): EffectIntent => Object.freeze({ ...value });
 
+// An idempotency key carries its canonicalization version in the prefix
+// (`sha256:` for V1, `v2:sha256:` for V2), so a receipt id is derived from the
+// digest itself rather than by stripping a fixed number of characters —
+// stripping `"sha256:".length` from a V2 key leaves `56:` glued to the hex.
+const DIGEST_HEX = /[a-f0-9]{64}$/u;
+
+function digestHexOf(idempotencyKey: string): string {
+  const hex = DIGEST_HEX.exec(idempotencyKey)?.[0];
+  if (hex === undefined)
+    throw new EffectError("VES_EFFECT_INTENT_INVALID", "idempotency key does not carry a sha256 digest");
+  return hex;
+}
+
 // Code-unit comparison, not localeCompare (issue #58). This is the dispatch
 // order the outbox drains in, so it decides which effect is applied first and
 // which receipts a bounded `dispatchReady` batch returns -- observable
@@ -299,7 +312,7 @@ export class EffectBroker {
     result: Omit<EffectApplyResult, "outcome"> | Omit<PriorEffectState, "state">
   ): OperationReceipt {
     return Object.freeze({
-      receiptId: `receipt_${intent.idempotencyKey.slice("sha256:".length)}`,
+      receiptId: `receipt_${digestHexOf(intent.idempotencyKey)}`,
       effectId: intent.effectId,
       idempotencyKey: intent.idempotencyKey,
       adapterId: this.#adapter.adapterId,
