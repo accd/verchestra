@@ -84,3 +84,19 @@ test("collection requires exactly one successful closure for every target", () =
   assert.match(workflow, /value\.revision !== process\.env\.CANDIDATE_REVISION/u);
   assert.match(workflow, /t76-target-index-\$\{\{ inputs\.revision \}\}/u);
 });
+
+test("the candidate build installs the same way every other qualified workflow does", () => {
+  // The first dispatch failed on all five targets with "claude native binary
+  // not installed": this workflow alone carried `--ignore-scripts`, which
+  // suppresses the postinstall that fetches the driver's native binary. The
+  // repository's own gates also now build the launcher bundle through esbuild,
+  // whose platform binary arrives the same way. Divergence from the qualified
+  // install line is what broke it, so the install line is pinned here.
+  const qualified = readFileSync(new URL("../../.github/workflows/ci.yml", import.meta.url), "utf8");
+  const globalInstall =
+    /npm install --global --no-audit --no-fund @anthropic-ai\/claude-code@[\d.]+ @openai\/codex@[\d.]+/u;
+  assert.match(qualified, globalInstall);
+  assert.match(workflow, globalInstall);
+  assert.match(workflow, /run: pnpm install --frozen-lockfile\n/u);
+  assert.doesNotMatch(workflow, /--ignore-scripts/u);
+});

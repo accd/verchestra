@@ -110,12 +110,12 @@ jobs:
           NODE
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile --ignore-scripts
+        run: pnpm install --frozen-lockfile
 
       - name: Install qualified local driver probes
         run: |
           set -euo pipefail
-          npm install --global --ignore-scripts --no-audit --no-fund @anthropic-ai/claude-code@2.1.168 @openai/codex@0.115.0
+          npm install --global --no-audit --no-fund @anthropic-ai/claude-code@2.1.168 @openai/codex@0.115.0
           case "$(claude --version)" in
             "2.1.168"|"2.1.168 "*) ;;
             *) echo "unexpected Claude Code version" >&2; exit 1 ;;
