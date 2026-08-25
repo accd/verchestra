@@ -1,0 +1,266 @@
+name: T76 sign and stage a release publication
+
+# T76's publication boundary is manual and read-only.  This workflow reads an
+# already-sealed five-target candidate closure from an exact candidate-build
+# run, signs one TUF publication per target with the protected release key, and
+# emits the single reviewed pinned-input directory the publishable `verchestra`
+# package is built from.
+#
+# It deliberately does NOT publish.  No object is uploaded to the release
+# endpoint, no storage credential exists here, and no package reaches a
+# registry: copying the emitted publication/ tree to the object-storage prefix
+# the operator-supplied base URL serves, and running the registry publication,
+# stay human steps, exactly as they are for T75 evidence.  Everything the run
+# produces leaves as a workflow artifact plus a manifest naming each object,
+# its digest, and the exact remote key it must land at.
+#
+# The release signing key is a repository secret held in the same custody
+# pattern as the T75 qualification-evidence signing key, but it is a DIFFERENT
+# key with different authority and the two are never interchangeable: this file
+# reads only VESTRA_RELEASE_SIGNING_KEY_PKCS8_BASE64, and it reads it in exactly
+# one step, only through `env:`.  The publication script never prints it.
+#
+# Every dispatch input is untrusted.  No input is interpolated into a `run:`
+# block; each one crosses into the shell only as an `env:` value, is validated
+# against an exact pattern before it is used, and is passed to the script as a
+# quoted argument.  The base URL pattern's character classes structurally
+# exclude credentials, queries, fragments, and substitution markers.
+
+on:
+  workflow_dispatch:
+    inputs:
+      revision:
+        description: "Exact 40-character candidate SHA"
+        required: true
+        type: string
+      candidate_run_id:
+        description: "t76-candidate-build run id holding the sealed five-target closure"
+        required: true
+        type: string
+      base_url:
+        description: "HTTPS base URL the publication tree will be served from (must end with /)"
+        required: true
+        type: string
+      expires:
+        description: "TUF metadata expiry (YYYY-MM-DDTHH:mm:ss.sssZ)"
+        required: true
+        type: string
+      metadata_version:
+        description: "TUF metadata version for this publication"
+        required: true
+        default: "1"
+        type: string
+      rollback_revision:
+        description: "Exact 40-character SHA of the prior published candidate"
+        required: true
+        type: string
+      rollback_run_id:
+        description: "t76-candidate-build run id whose reconciled index seals the prior release"
+        required: true
+        type: string
+
+# Read-only. `actions: read` is what lets download-artifact reach the candidate
+# run's artifacts by run id; it grants no write of any kind. No scope is granted
+# write and no OIDC identity is requested, so nothing here can upload an object,
+# move a tag, or publish a package.
+permissions:
+  actions: read
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  publish:
+    name: Sign and stage the release publication
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Check out the exact candidate revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.0
+        with:
+          ref: ${{ inputs.revision }}
+          fetch-depth: 0
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 10.34.5
+          run_install: false
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.14.0
+          cache: pnpm
+
+      - name: Verify revision, runtime, and every dispatch input
+        env:
+          CANDIDATE_REVISION: ${{ inputs.revision }}
+          CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
+          PUBLICATION_BASE_URL: ${{ inputs.base_url }}
+          METADATA_EXPIRES: ${{ inputs.expires }}
+          METADATA_VERSION: ${{ inputs.metadata_version }}
+          ROLLBACK_REVISION: ${{ inputs.rollback_revision }}
+          ROLLBACK_RUN_ID: ${{ inputs.rollback_run_id }}
+        run: |
+          set -euo pipefail
+          [[ "$CANDIDATE_REVISION" =~ ^[0-9a-f]{40}$ ]] || {
+            echo "revision must be a full lowercase 40-character SHA" >&2
+            exit 1
+          }
+          [[ "$(git rev-parse HEAD)" == "$CANDIDATE_REVISION" ]] || {
+            echo "checkout is not at the requested exact revision" >&2
+            exit 1
+          }
+          [[ "$CANDIDATE_RUN_ID" =~ ^[0-9]{1,20}$ ]] || {
+            echo "candidate_run_id must be a run id" >&2
+            exit 1
+          }
+          [[ "$PUBLICATION_BASE_URL" =~ ^https://[A-Za-z0-9.-]+(/[A-Za-z0-9._-]+)*/$ ]] || {
+            echo "base_url must be a plain https base URL ending with a slash" >&2
+            exit 1
+          }
+          [[ "$METADATA_EXPIRES" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}Z$ ]] || {
+            echo "expires must be a UTC instant with milliseconds" >&2
+            exit 1
+          }
+          [[ "$METADATA_VERSION" =~ ^[1-9][0-9]{0,8}$ ]] || {
+            echo "metadata_version must be a positive integer" >&2
+            exit 1
+          }
+          [[ "$ROLLBACK_REVISION" =~ ^[0-9a-f]{40}$ ]] || {
+            echo "rollback_revision must be a full lowercase 40-character SHA" >&2
+            exit 1
+          }
+          [[ "$ROLLBACK_RUN_ID" =~ ^[0-9]{1,20}$ ]] || {
+            echo "rollback_run_id must be a run id" >&2
+            exit 1
+          }
+          [[ "$(node --version)" == "v24.14.0" ]] || {
+            echo "the qualified Node runtime must be installed before this step" >&2
+            exit 1
+          }
+
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+          # Same restriction as the candidate build: the dependency tree installs
+          # with lifecycle scripts off, and only the package whose postinstall
+          # fetches a binary this workflow actually executes is rebuilt by name.
+          # esbuild builds the launcher bundle in the verification step below.
+          # opencode-ai is not rebuilt here because nothing in this workflow runs
+          # a driver probe; adding it would only add a network failure mode.
+          pnpm install --frozen-lockfile --ignore-scripts
+          pnpm rebuild esbuild
+          # Prove the rebuild list is complete rather than trusting it.
+          node -e "require('esbuild').buildSync({stdin:{contents:''},write:false})"
+
+      - name: Download the reconciled five-target index
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.candidate_run_id }}
+          name: t76-target-index-${{ inputs.revision }}-${{ inputs.candidate_run_id }}
+          path: candidate
+
+      - name: Download every sealed target artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.candidate_run_id }}
+          pattern: t76-target-*-${{ inputs.candidate_run_id }}
+          path: targets
+          merge-multiple: false
+
+      - name: Download the prior reconciled index the rollback proof binds
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.rollback_run_id }}
+          name: t76-target-index-${{ inputs.rollback_revision }}-${{ inputs.rollback_run_id }}
+          path: rollback
+
+      - name: Sign one TUF publication for every supported target
+        env:
+          CANDIDATE_REVISION: ${{ inputs.revision }}
+          PUBLICATION_BASE_URL: ${{ inputs.base_url }}
+          METADATA_EXPIRES: ${{ inputs.expires }}
+          METADATA_VERSION: ${{ inputs.metadata_version }}
+          VESTRA_RELEASE_SIGNING_KEY_PKCS8_BASE64: ${{ secrets.VESTRA_RELEASE_SIGNING_KEY_PKCS8_BASE64 }}
+        run: >-
+          node scripts/t76-publish-release.mjs
+          --index candidate/t76-target-index.json
+          --targets targets
+          --out t76-release-publication
+          --base-url "$PUBLICATION_BASE_URL"
+          --revision "$CANDIDATE_REVISION"
+          --expires "$METADATA_EXPIRES"
+          --metadata-version "$METADATA_VERSION"
+          --rollback-index rollback/t76-target-index.json
+
+      - name: Build the publishable package from the emitted pinned inputs
+        run: >-
+          pnpm build:vestra-launcher --
+          --release-inputs "t76-release-publication/release-inputs"
+          --out vestra-launcher-package
+
+      - name: Summarize what a human must upload
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { appendFile, readFile } from "node:fs/promises";
+
+          const manifest = JSON.parse(await readFile("t76-release-publication/publication-manifest.json", "utf8"));
+          const lines = [
+            "## T76 release publication (nothing was published)",
+            "",
+            `revision: \`${manifest.revision}\``,
+            `releaseId: \`${manifest.releaseId}\``,
+            `baseUrl: \`${manifest.baseUrl}\``,
+            `rootDigest: \`${manifest.rootDigest}\``,
+            `signingKeyId: \`${manifest.signingKeyId}\``,
+            "",
+            "### Manual steps",
+            ...manifest.steps.map((step, index) => `${index + 1}. ${step}`),
+            "",
+            "### Per-target digests and object counts",
+            "",
+            "| target | release digest | objects | candidate digest |",
+            "| --- | --- | --- | --- |",
+            ...manifest.targets.map(
+              (target) =>
+                `| ${target.targetKey} | \`${target.releaseDigest}\` | ${target.assetCount} | \`${target.candidateDigest}\` |`
+            ),
+            ""
+          ];
+          await appendFile(process.env.GITHUB_STEP_SUMMARY, `${lines.join("\n")}\n`);
+          NODE
+
+      - name: Upload signed metadata, pinned inputs, and the upload manifest
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: t76-release-metadata-${{ inputs.revision }}-${{ github.run_id }}
+          path: |
+            t76-release-publication/publication-manifest.json
+            t76-release-publication/publication/*/metadata
+            t76-release-publication/release-inputs
+          if-no-files-found: error
+          retention-days: 365
+
+      - name: Upload the signed release targets
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: t76-release-targets-${{ inputs.revision }}-${{ github.run_id }}
+          path: t76-release-publication/publication/*/targets
+          if-no-files-found: error
+          retention-days: 365
+
+      - name: Upload the launcher package built from the emitted pinned inputs
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: t76-launcher-package-verification-${{ inputs.revision }}-${{ github.run_id }}
+          path: vestra-launcher-package
+          if-no-files-found: error
+          retention-days: 30
