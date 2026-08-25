@@ -111,12 +111,12 @@ Acceptance criteria:
 | --- | --- | --- |
 | NPX-01 | One repository-free `npx vestra` command on every supported target | Blocked by T76 artifacts |
 | NPX-02 | Pinned in-package TUF root and fixed credential-free HTTPS source | Blocked by T76 inputs |
-| NPX-03 | Qualified resolve, stage, and transactional activation reuse | In design |
+| NPX-03 | Qualified resolve, stage, and transactional activation reuse | Done |
 | NPX-04 | Read-only verified active-launcher resolution | Done |
 | NPX-05 | Real pre-publication activation health gate | Blocked by T76 launcher protocol |
 | NPX-06 | Shell-free argument-preserving handoff and exact exit propagation | Pending |
 | NPX-07 | Deterministic supported-host and public-error contract | Pending |
-| NPX-08 | Minimal compiled npm tarball with no workspace/runtime-resolution leak | Pending dependency approval/build decision |
+| NPX-08 | Minimal compiled npm tarball with no workspace/runtime-resolution leak | Done |
 | NPX-09 | Help, version, portability demo, cleanup, and per-platform evidence | Blocked by T76 candidate |
 | NPX-10 | No clone, source build, credential, or hidden authority prerequisite | Pending |
 

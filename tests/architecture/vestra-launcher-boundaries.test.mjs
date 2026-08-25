@@ -60,6 +60,47 @@ test("every public launcher source imports only Node built-ins and its own sibli
   }
 });
 
+// `src/` is the published surface and `closure/` is a build input. The
+// separation is the whole reason the launcher can carry the qualified TUF and
+// activation code without declaring, or resolving, a single dependency.
+test("the build-time closure reaches the workspace only by repository path, never by package name", async () => {
+  const directory = new URL("closure/", packageRoot);
+  const files = (await readdir(directory)).filter((name) => name.endsWith(".ts"));
+  assert.ok(files.length > 0);
+  for (const file of files) {
+    const source = await readFile(new URL(file, directory), "utf8");
+    assert.doesNotMatch(source, /["']@verchestra\//u, `${file} must not name a workspace package`);
+    for (const specifier of [...source.matchAll(/from\s+["']([^"']+)["']/gu)].map((match) => match[1])) {
+      assert.ok(
+        specifier.startsWith("node:") || specifier.startsWith("./") || specifier.startsWith("../"),
+        `${file} imports ${specifier}, which the build cannot inline from the repository`
+      );
+    }
+  }
+});
+
+test("no published launcher source reaches into the build-time closure", async () => {
+  const directory = new URL("src/", packageRoot);
+  for (const file of (await readdir(directory)).filter((name) => name.endsWith(".ts"))) {
+    const source = await readFile(new URL(file, directory), "utf8");
+    assert.equal(source.includes("closure/"), false, `${file} must not import a build input`);
+  }
+});
+
+test("the published tree carries neither source directory and declares no dependency", async () => {
+  assert.deepEqual(
+    PUBLISHED_FILE_ALLOWLIST.filter((path) => path.startsWith("lib/")),
+    ["lib/bootstrap.js"],
+    "one bundled module replaces every compiled source file"
+  );
+  for (const path of PUBLISHED_FILE_ALLOWLIST) {
+    assert.equal(path.startsWith("src/") || path.startsWith("closure/"), false, path);
+    assert.equal(path.endsWith(".ts"), false, path);
+  }
+  const manifest = JSON.parse(await readFile(new URL("package.json", packageRoot), "utf8"));
+  assert.equal("dependencies" in manifest, false, "the launcher workspace declares no dependency edge");
+});
+
 test("the tracked bin shim resolves only compiled sibling JavaScript", async () => {
   const shim = await readFile(new URL("bin/vestra.mjs", packageRoot), "utf8");
   const specifiers = [...shim.matchAll(/from\s+["']([^"']+)["']/gu)].map((match) => match[1]);

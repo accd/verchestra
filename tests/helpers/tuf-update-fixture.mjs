@@ -5,7 +5,7 @@ import { DownloadHTTPError } from "tuf-js/dist/error.js";
 import { buildHermeticDistributionBundle } from "../../packages/distribution/src/hermetic-bundle.ts";
 import { bundleInput } from "./hermetic-bundle-fixture.mjs";
 
-const hex = (value) => createHash("sha256").update(value).digest("hex");
+export const hex = (value) => createHash("sha256").update(value).digest("hex");
 const digest = (value) => `sha256:${hex(value)}`;
 const future = "2035-01-01T00:00:00.000Z";
 
@@ -25,7 +25,7 @@ const signatures = (signed, keys, count) => {
   }));
 };
 
-const serialize = (signed, keys, count, corrupt = false) => {
+export const serialize = (signed, keys, count, corrupt = false) => {
   const value = { signatures: signatures(signed, keys, count), signed };
   if (corrupt) {
     for (const signature of value.signatures) signature.sig = "00".repeat(64);
@@ -33,7 +33,7 @@ const serialize = (signed, keys, count, corrupt = false) => {
   return Buffer.from(JSON.stringify(value));
 };
 
-const metadataFile = (bytes, version, overrides = {}) => ({
+export const metadataFile = (bytes, version, overrides = {}) => ({
   version,
   length: bytes.length,
   hashes: { sha256: hex(bytes) },
