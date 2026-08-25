@@ -950,7 +950,7 @@
         "canonicalizer": 0,
         "digest": 2,
         "localeCompare": 0,
-        "serialization": 4
+        "serialization": 5
       },
       "reason": "SHA-256 applies to bytes or a fixed primitive, not to a locally canonicalized structured value."
     },
