@@ -13,8 +13,14 @@ import { collectCensusCandidates } from "./canonical-json-census.mjs";
 const ROOT = fileURLToPath(new URL("../", import.meta.url));
 const CENSUS = new URL("../docs/canonical-json-census.json", import.meta.url);
 
+function comparePath(left, right) {
+  if (left.path < right.path) return -1;
+  if (left.path > right.path) return 1;
+  return 0;
+}
+
 function sortedEntries(entries) {
-  return [...entries].sort((left, right) => (left.path < right.path ? -1 : left.path > right.path ? 1 : 0));
+  return [...entries].sort(comparePath);
 }
 
 export function refreshInventory(candidates, inventory) {

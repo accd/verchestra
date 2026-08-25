@@ -15,7 +15,15 @@ import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = fileURLToPath(new URL("../", import.meta.url));
-const REQUIREMENT = /VES-[A-Z]{3}-[0-9]{3}/gu;
+const REQUIREMENT = /VES-[A-Z]{3}-\d{3}/gu;
+
+// This repository's whole argument is that ambient collation is not a portable
+// ordering primitive, so its own tooling orders explicitly by code unit too.
+export function compareCodeUnit(left, right) {
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
+}
 const SCAN_ROOTS = Object.freeze([".specs", "docs", "tests", "packages", "apps", "scripts"]);
 const SCAN_FILE = /\.(?:md|ts|mjs|json)$/u;
 const SKIP_DIRECTORIES = new Set(["node_modules", "dist", ".git", ".astro", "coverage"]);
@@ -46,41 +54,55 @@ async function* walk(directory) {
   }
 }
 
+function recordFile(references, relativePath, source) {
+  for (const match of source.matchAll(REQUIREMENT)) {
+    const id = match[0];
+    if (FORMAT_FIXTURES.has(id)) continue;
+    const entry = references.get(id) ?? { specification: [], test: [], source: [], qualificationReport: [] };
+    const kind = classify(relativePath);
+    if (!entry[kind].includes(relativePath)) entry[kind].push(relativePath);
+    references.set(id, entry);
+  }
+}
+
+function freezeReferences(references) {
+  const order = (paths) => Object.freeze([...paths].sort(compareCodeUnit));
+  return new Map(
+    [...references.entries()]
+      .sort(([left], [right]) => compareCodeUnit(left, right))
+      .map(([id, entry]) => [
+        id,
+        Object.freeze({
+          specification: order(entry.specification),
+          test: order(entry.test),
+          source: order(entry.source),
+          qualificationReport: order(entry.qualificationReport)
+        })
+      ])
+  );
+}
+
 export async function collectReferences(root = ROOT) {
   const references = new Map();
   for (const scanRoot of SCAN_ROOTS)
     for await (const path of walk(join(root, scanRoot))) {
       const relativePath = relative(root, path).replaceAll("\\", "/");
       if (relativePath === "scripts/requirements-trace.mjs") continue;
-      const source = await readFile(path, "utf8");
-      for (const match of source.matchAll(REQUIREMENT)) {
-        const id = match[0];
-        if (FORMAT_FIXTURES.has(id)) continue;
-        const entry = references.get(id) ?? { specification: [], test: [], source: [], qualificationReport: [] };
-        const kind = classify(relativePath);
-        if (!entry[kind].includes(relativePath)) entry[kind].push(relativePath);
-        references.set(id, entry);
-      }
+      recordFile(references, relativePath, await readFile(path, "utf8"));
     }
-  return new Map(
-    [...references.entries()]
-      .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
-      .map(([id, entry]) => [
-        id,
-        Object.freeze({
-          specification: Object.freeze([...entry.specification].sort()),
-          test: Object.freeze([...entry.test].sort()),
-          source: Object.freeze([...entry.source].sort()),
-          qualificationReport: Object.freeze([...entry.qualificationReport].sort())
-        })
-      ])
-  );
+  return freezeReferences(references);
 }
 
-const sorted = (values) => [...new Set(values)].sort();
+const sorted = (values) => [...new Set(values)].sort(compareCodeUnit);
 
 function hasEvidence(found) {
   return found !== undefined && (found.test.length > 0 || found.qualificationReport.length > 0);
+}
+
+function evidenceKind(found) {
+  if (found.test.length > 0) return "test";
+  if (found.qualificationReport.length > 0) return "report";
+  return "none";
 }
 
 function auditDeclarations(requirements, references, openGaps) {
@@ -160,7 +182,7 @@ async function main() {
       id,
       declaredIn: found.specification[0] ?? null,
       home: found.specification.length > 0 ? "specification" : "qualification-report-only",
-      evidence: found.test.length > 0 ? "test" : found.qualificationReport.length > 0 ? "report" : "none"
+      evidence: evidenceKind(found)
     }));
     process.stdout.write(`${JSON.stringify({ schemaVersion: 1, requirements }, null, 2)}\n`);
     return;
