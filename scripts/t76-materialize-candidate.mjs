@@ -26,7 +26,11 @@ const BUILD_INFO_KEYS = Object.freeze([
 const COMPONENT_MANIFEST_KEYS = Object.freeze(["schemaVersion", "components"]);
 const COMPONENT_KEYS = Object.freeze(["componentId", "kind", "logicalPath", "contentDigest", "sizeBytes"]);
 
-const compareCodeUnits = (left, right) => (left < right ? -1 : left > right ? 1 : 0);
+const compareCodeUnits = (left, right) => {
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
+};
 
 export class T76CandidateError extends Error {
   code;
