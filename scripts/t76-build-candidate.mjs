@@ -271,7 +271,7 @@ const sourceDescriptors = async (options, inputRoot, paths) => {
   return descriptors;
 };
 
-const hostDescriptors = async (inputRoot, target, repository) => {
+const hostDescriptors = async (inputRoot, target, repository, revision) => {
   const assets = hostAssets();
   const entries = [
     {
@@ -301,7 +301,7 @@ const hostDescriptors = async (inputRoot, target, repository) => {
       kind: "launcher",
       logicalPath: "bin/vestra.mjs",
       sourcePath: "bin/vestra.mjs",
-      path: join(repository, "apps/vestra-cli/bin/vestra.mjs"),
+      trackedPath: "apps/vestra-cli/bin/vestra.mjs",
       executable: true
     },
     {
@@ -309,7 +309,7 @@ const hostDescriptors = async (inputRoot, target, repository) => {
       kind: "launcher",
       logicalPath: "bin/verchestra.mjs",
       sourcePath: "bin/verchestra.mjs",
-      path: join(repository, "apps/vestra-cli/bin/verchestra.mjs"),
+      trackedPath: "apps/vestra-cli/bin/verchestra.mjs",
       executable: true
     }
   ];
@@ -318,9 +318,11 @@ const hostDescriptors = async (inputRoot, target, repository) => {
     await writeOutput(
       inputRoot,
       entry.sourcePath,
-      await readFile(entry.path).catch((error) =>
-        fail("VES_T76_BUILD_SOURCE_READ_FAILED", `${entry.kind} asset cannot be read`, error)
-      ),
+      entry.trackedPath
+        ? await trackedBytes(repository, revision, entry.trackedPath)
+        : await readFile(entry.path).catch((error) =>
+            fail("VES_T76_BUILD_SOURCE_READ_FAILED", `${entry.kind} asset cannot be read`, error)
+          ),
       entry.executable ? 0o700 : 0o600
     );
     descriptors.push(
@@ -386,7 +388,7 @@ export async function buildReproducibleT76Target(rawOptions) {
     const paths = await trackedPaths(options.repository, options.revision);
     const sources = [
       ...(await sourceDescriptors(options, inputRoot, paths)),
-      ...(await hostDescriptors(inputRoot, options.target, options.repository))
+      ...(await hostDescriptors(inputRoot, options.target, options.repository, options.revision))
     ];
     const materialized = await materializeHermeticReleaseFromFiles({
       schemaVersion: 1,

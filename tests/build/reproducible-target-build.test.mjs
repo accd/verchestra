@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { mkdtemp, readFile, readdir, rm, stat } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { join, relative } from "node:path";
@@ -82,6 +83,13 @@ test("the real target builder binds exact revision, host assets, and all supply-
       "sbom"
     ]);
     assert.equal(await stat(join(output, "input-root")).catch(() => undefined), undefined);
+    const trackedLauncher = execFileSync(
+      "git",
+      ["-C", repositoryRoot, "show", `${revision}:apps/vestra-cli/bin/vestra.mjs`],
+      { encoding: "buffer" }
+    );
+    const launcher = result.bundle.components.find((component) => component.componentId === "launcher:vestra");
+    assert.equal(launcher.contentDigest, `sha256:${createHash("sha256").update(trackedLauncher).digest("hex")}`);
     const bundleBytes = await readFile(join(output, "bundle.json"), "utf8");
     assert.equal(bundleBytes, canonicalizeJsonV2(result.bundle));
     const buildInfo = JSON.parse(await readFile(join(output, "build-info.json"), "utf8"));
@@ -121,7 +129,9 @@ test("the builder refuses revision, target, and evaluation drift before emitting
       (error) => error.code === "VES_T76_BUILD_REVISION_MISMATCH"
     );
     await assert.rejects(
-      buildReproducibleT76Target(options(join(parent, "target"), { target: { ...target, arch: "arm64" } })),
+      buildReproducibleT76Target(
+        options(join(parent, "target"), { target: { ...target, arch: target.arch === "x64" ? "arm64" : "x64" } })
+      ),
       (error) => error.code === "VES_T76_BUILD_TARGET_MISMATCH"
     );
     await assert.rejects(
