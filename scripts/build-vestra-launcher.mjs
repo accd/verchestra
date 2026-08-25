@@ -36,6 +36,8 @@ import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
+import { build as esbuild } from "esbuild";
+
 const execute = promisify(execFile);
 const ROOT = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const PACKAGE_ROOT = join(ROOT, "apps", "vestra-launcher");
@@ -183,33 +185,35 @@ async function pinnedNodeTarget() {
  */
 async function bundle(stagingRoot) {
   const target = await pinnedNodeTarget();
+  // esbuild's JS API, not its `bin/esbuild`. That path is a JS shim on Windows
+  // but the native executable itself on Linux and macOS, so spawning it through
+  // `process.execPath` only ever worked on Windows — Node parsed an ELF header
+  // as JavaScript everywhere else. The API resolves the platform binary itself
+  // and returns structured diagnostics rather than scraped stderr. The option
+  // vector is otherwise identical, so byte-identical rebuilds are unchanged.
   let result;
   try {
-    result = await execute(
-      process.execPath,
-      [
-        join(ROOT, "node_modules", "esbuild", "bin", "esbuild"),
-        "--bundle",
-        join(PACKAGE_ROOT, "closure", "bootstrap-entry.ts"),
-        `--outfile=${join(stagingRoot, "lib", "bootstrap.js")}`,
-        "--platform=node",
-        "--format=esm",
-        `--target=${target}`,
-        "--minify",
-        "--keep-names",
-        "--legal-comments=none",
-        `--banner:js=${BUNDLE_REQUIRE_GUARD}`,
-        "--log-level=warning"
-      ],
-      { cwd: ROOT, windowsHide: true, maxBuffer: 16 * 1024 * 1024 }
-    );
+    result = await esbuild({
+      absWorkingDir: ROOT,
+      entryPoints: [join(PACKAGE_ROOT, "closure", "bootstrap-entry.ts")],
+      outfile: join(stagingRoot, "lib", "bootstrap.js"),
+      bundle: true,
+      platform: "node",
+      format: "esm",
+      target,
+      minify: true,
+      keepNames: true,
+      legalComments: "none",
+      banner: { js: BUNDLE_REQUIRE_GUARD },
+      logLevel: "silent"
+    });
   } catch (error) {
     return fail("VES_VESTRA_BUILD_BUNDLE_FAILED", "the launcher bootstrap did not bundle", error);
   }
-  if (result.stdout.length > 0 || result.stderr.length > 0)
+  if (result.errors.length > 0 || result.warnings.length > 0)
     fail(
       "VES_VESTRA_BUILD_BUNDLE_FAILED",
-      `the launcher bundle reported diagnostics: ${result.stderr || result.stdout}`
+      `the launcher bundle reported diagnostics: ${JSON.stringify([...result.errors, ...result.warnings])}`
     );
 }
 
