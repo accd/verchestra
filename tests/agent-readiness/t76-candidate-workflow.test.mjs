@@ -136,3 +136,14 @@ test("every heredoc in the workflow terminates where the shell can find it", () 
     assert.equal(terminated, true, `heredoc ${tag} at line ${index + 1} does not terminate at column 0 of its block`);
   }
 });
+
+test("the gate evaluation reader treats an empty seal file as no evaluations", () => {
+  // The step truncates gate-evaluations.json before the loop, so the first
+  // profile reads an existing but empty file. That is not ENOENT, so the
+  // original ENOENT-only catch rethrew and every target died with
+  // "Unexpected end of JSON input" before recording a single gate.
+  assert.match(workflow, /readFile\("gate-evaluations\.json", "utf8"\)\.catch\(/u);
+  assert.match(workflow, /raw\.trim\(\) === "" \? \[\] : JSON\.parse\(raw\)/u);
+  // Malformed content must still fail closed rather than be swallowed.
+  assert.doesNotMatch(workflow, /JSON\.parse\(raw\)\s*\)?\s*\.catch/u);
+});
