@@ -9,7 +9,13 @@ import {
   type PriorEffectState,
   type TrustEnvelope
 } from "@verchestra/application";
-import { DataClassification, IsoInstant, StableId, type DataClassificationValue } from "@verchestra/domain";
+import {
+  DataClassification,
+  IsoInstant,
+  StableId,
+  canonicalizeJsonV2,
+  type DataClassificationValue
+} from "@verchestra/domain";
 
 const DIGEST = /^sha256:[a-f0-9]{64}$/u;
 const SAFE = /^[A-Za-z0-9][A-Za-z0-9:._/@+\-]{0,511}$/u;
@@ -188,20 +194,16 @@ const text = (value: unknown, code: string, label: string, maximum = 10_000): st
   return value;
 };
 
+// A string argument stays a raw-byte digest of the string itself -- every
+// persisted digest this file produces (section digest, envelope content
+// digest) hashes rendered page text, so those bytes are unchanged. Structured
+// arguments go through the shared RFC 8785 canonicalizer instead of the
+// private recursive serializer that ordered members by ambient locale
+// (issue #58).
 const digest = (value: unknown): string =>
   `sha256:${createHash("sha256")
-    .update(typeof value === "string" ? value : canonical(value))
+    .update(typeof value === "string" ? value : canonicalizeJsonV2(value))
     .digest("hex")}`;
-
-const canonical = (value: unknown): string => {
-  if (value === null || typeof value !== "object") return JSON.stringify(value);
-  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
-  return `{${Object.entries(value as Readonly<Record<string, unknown>>)
-    .filter(([, entry]) => entry !== undefined)
-    .sort(([left], [right]) => left.localeCompare(right))
-    .map(([key, entry]) => `${JSON.stringify(key)}:${canonical(entry)}`)
-    .join(",")}}`;
-};
 
 const list = (value: unknown, code: string, label: string, nonempty: boolean): readonly string[] => {
   if (!Array.isArray(value) || (nonempty && value.length === 0))
@@ -478,7 +480,7 @@ export class ConfluenceDeliveryEffectAdapter implements EffectAdapter {
 
   register(plan: ConfluenceDeliveryPlan): void {
     const current = this.#plans.get(plan.idempotencyKey);
-    if (current !== undefined && canonical(current) !== canonical(plan))
+    if (current !== undefined && canonicalizeJsonV2(current) !== canonicalizeJsonV2(plan))
       throw new ConfluenceDeliveryError("VES_CONFLUENCE_DELIVERY_PLAN_CONFLICT", "plan identity conflict");
     this.#plans.set(plan.idempotencyKey, plan);
   }

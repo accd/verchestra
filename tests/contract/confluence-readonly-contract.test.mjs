@@ -6,7 +6,14 @@ import {
   ArchitectureConfluenceSource,
   ConfluenceConnectorError
 } from "../../packages/connectors/src/index.ts";
-import { MockConfluenceReadTransport, pageQuery, searchQuery, sourceFixture } from "../helpers/confluence-fixture.mjs";
+import {
+  MockConfluenceReadTransport,
+  attachment,
+  page,
+  pageQuery,
+  searchQuery,
+  sourceFixture
+} from "../helpers/confluence-fixture.mjs";
 
 test("architecture Confluence capability set is frozen and read only", () => {
   assert.deepEqual(ARCHITECTURE_CONFLUENCE_CAPABILITIES, ["search", "page-read", "attachment-read"]);
@@ -133,3 +140,77 @@ for (const [name, query] of [
     });
   });
 }
+
+// Issue #58 (T4k): the observation revision digest, the page order it records,
+// the attachment read order, and the published fragment order are Verchestra
+// identities, not Confluence's own API contract, so a machine's ambient
+// collation must not reach them. Before the canonical JSON V2 migration all
+// four went through String.prototype.localeCompare. Mocking localeCompare with
+// a comparator that reverses code-unit order simulates a divergent locale
+// without depending on any particular installed ICU locale disagreeing today.
+async function withHostileLocaleCompare(fn) {
+  const original = String.prototype.localeCompare;
+  String.prototype.localeCompare = function hostileLocaleCompare(other) {
+    const left = String(this);
+    return left < other ? 1 : left > other ? -1 : 0;
+  };
+  try {
+    return await fn();
+  } finally {
+    String.prototype.localeCompare = original;
+  }
+}
+
+function codeUnitSorted(values) {
+  return [...values].sort((left, right) => (left < right ? -1 : left > right ? 1 : 0));
+}
+
+// Identifiers chosen so code-unit order and a case- or punctuation-aware
+// collation genuinely disagree: by code unit "A" < "_" < "a", while a
+// language-sensitive collation groups the letters and demotes punctuation.
+function collationSensitiveTransport() {
+  const transport = new MockConfluenceReadTransport();
+  transport.pages = new Map([
+    ["page:Alpha", page("Alpha")],
+    ["page:_beta", page("_beta")]
+  ]);
+  transport.attachments = new Map([
+    ["page:Alpha", [attachment("Alpha", "Zulu"), attachment("Alpha", "alpha")]],
+    ["page:_beta", []]
+  ]);
+  transport.attachmentContents = new Map([
+    ["attachment:Alpha:Zulu", { ...attachment("Alpha", "Zulu"), content: "# Architecture notes" }],
+    ["attachment:Alpha:alpha", { ...attachment("Alpha", "alpha"), content: "# Alternate notes AB" }]
+  ]);
+  return transport;
+}
+
+const collationSensitiveQuery = () =>
+  pageQuery({ query: { ...pageQuery().query, pageIds: ["page:Alpha", "page:_beta"] } });
+
+test("knowledge observation identity is byte-identical under a hostile ambient collation", async () => {
+  const baseline = await sourceFixture({ transport: collationSensitiveTransport() }).source.resolve(
+    collationSensitiveQuery()
+  );
+  const hostile = await withHostileLocaleCompare(() =>
+    sourceFixture({ transport: collationSensitiveTransport() }).source.resolve(collationSensitiveQuery())
+  );
+  assert.equal(hostile.source.revision, baseline.source.revision);
+  assert.deepEqual(
+    hostile.fragments.map((entry) => entry.fragmentId),
+    baseline.fragments.map((entry) => entry.fragmentId)
+  );
+  assert.deepEqual(
+    baseline.fragments.map((entry) => entry.fragmentId),
+    codeUnitSorted(baseline.fragments.map((entry) => entry.fragmentId))
+  );
+});
+
+test("attachment read order stays UTF-16 code-unit order under a hostile ambient collation", async () => {
+  const transport = collationSensitiveTransport();
+  await withHostileLocaleCompare(() => sourceFixture({ transport }).source.resolve(collationSensitiveQuery()));
+  assert.deepEqual(
+    transport.calls.filter((call) => call.startsWith("attachment:")),
+    ["attachment:attachment:Alpha:Zulu", "attachment:attachment:Alpha:alpha"]
+  );
+});

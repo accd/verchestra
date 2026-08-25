@@ -7,7 +7,14 @@ import type {
   ContextSourcePort,
   ContextSourceQuery
 } from "@verchestra/application";
-import { DataClassification, IsoInstant, StableId, type DataClassificationValue } from "@verchestra/domain";
+import {
+  DataClassification,
+  IsoInstant,
+  StableId,
+  canonicalizeJsonV2,
+  normalizeDeclaredSet,
+  type DataClassificationValue
+} from "@verchestra/domain";
 
 export const ARCHITECTURE_CONFLUENCE_CAPABILITIES = Object.freeze(["search", "page-read", "attachment-read"] as const);
 
@@ -172,19 +179,14 @@ const boundedInteger = (value: unknown, code: string, label: string, maximum: nu
   return value as number;
 };
 
-const canonicalJson = (value: unknown): string => {
-  if (value === null || typeof value !== "object") return JSON.stringify(value);
-  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
-  return `{${Object.entries(value as Readonly<Record<string, unknown>>)
-    .filter(([, entry]) => entry !== undefined)
-    .sort(([left], [right]) => left.localeCompare(right))
-    .map(([key, entry]) => `${JSON.stringify(key)}:${canonicalJson(entry)}`)
-    .join(",")}}`;
-};
-
+// A string argument stays a raw-byte digest of the string itself (page bodies
+// and attachment content), not a digest of its JSON encoding. Every structured
+// argument is encoded by the shared RFC 8785 canonicalizer instead of the
+// private recursive serializer this file used to carry, whose member ordering
+// went through the ambient locale (issue #58).
 const sha256 = (value: unknown): string =>
   `sha256:${createHash("sha256")
-    .update(typeof value === "string" ? value : canonicalJson(value), "utf8")
+    .update(typeof value === "string" ? value : canonicalizeJsonV2(value), "utf8")
     .digest("hex")}`;
 
 const stableFragmentId = (material: unknown): string => {
@@ -390,7 +392,10 @@ export class ArchitectureConfluenceSource implements ContextSourcePort {
         "Confluence result exceeded the fragment bound"
       );
     }
-    fragments.sort((left, right) => left.fragmentId.localeCompare(right.fragmentId));
+    // Both collections are declared sets: the observation's fragment order and
+    // the revision digest's attachment order are ours, not Confluence's, so
+    // they must be reproduced identically on every machine (issue #58).
+    const orderedFragments = normalizeDeclaredSet(fragments, (entry) => entry.fragmentId);
     const revision = sha256({
       schemaVersion: 1,
       sourceId: this.#sourceId,
@@ -400,7 +405,7 @@ export class ArchitectureConfluenceSource implements ContextSourcePort {
         revision: entry.revision,
         contentDigest: sha256(entry.body)
       })),
-      attachments: attachmentRevisions.sort((left, right) => canonicalJson(left).localeCompare(canonicalJson(right)))
+      attachments: normalizeDeclaredSet(attachmentRevisions, (entry) => canonicalizeJsonV2(entry))
     });
     if (!DIGEST.test(revision))
       throw new ConfluenceConnectorError("VES_CONFLUENCE_REMOTE_INVALID", "revision digest is invalid");
@@ -408,7 +413,7 @@ export class ArchitectureConfluenceSource implements ContextSourcePort {
       source: Object.freeze({ kind: "knowledge", identity: this.#sourceId, revision }),
       retrievedAt,
       scope: query.scope,
-      fragments: Object.freeze(fragments)
+      fragments: Object.freeze(orderedFragments)
     });
   }
 
@@ -534,7 +539,9 @@ export class ArchitectureConfluenceSource implements ContextSourcePort {
   }
 
   #canonicalPages(pages: readonly RemotePage[]): readonly RemotePage[] {
-    const sorted = [...pages].sort((left, right) => left.pageId.localeCompare(right.pageId));
+    // Declared set: this order is what the revision digest's `pages` array
+    // records, so it cannot follow the ambient locale (issue #58).
+    const sorted = normalizeDeclaredSet(pages, (entry) => entry.pageId);
     if (new Set(sorted.map((entry) => entry.pageId)).size !== sorted.length) {
       throw new ConfluenceConnectorError(
         "VES_CONFLUENCE_REMOTE_INVALID",
@@ -582,15 +589,18 @@ export class ArchitectureConfluenceSource implements ContextSourcePort {
         );
       }
     }
-    metadata.sort((left, right) => left.attachmentId.localeCompare(right.attachmentId));
-    if (new Set(metadata.map((entry) => entry.attachmentId)).size !== metadata.length) {
+    // Declared set: this order decides the sequence attachment content is read
+    // and validated in, so it is observable behavior (which bounded-attachment
+    // failure surfaces first) as well as digest input (issue #58).
+    const ordered = normalizeDeclaredSet(metadata, (entry) => entry.attachmentId);
+    if (new Set(ordered.map((entry) => entry.attachmentId)).size !== ordered.length) {
       throw new ConfluenceConnectorError(
         "VES_CONFLUENCE_REMOTE_INVALID",
         "Confluence returned duplicate attachment identity"
       );
     }
     const result: RemoteAttachment[] = [];
-    for (const item of metadata) {
+    for (const item of ordered) {
       if (item.pageId !== page.pageId)
         throw new ConfluenceConnectorError("VES_CONFLUENCE_REMOTE_INVALID", "attachment crossed page boundary");
       if (!query.allowedAttachmentMediaTypes.includes(item.mediaType)) {
