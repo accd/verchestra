@@ -3,38 +3,43 @@ schema: verchestra-feature-handoff/v1
 feature: milestone-2-completion
 issue: null
 status: verification
-branch: codex/milestone-2-p0-sync
-baseRevision: 190e06f50e5a0b014013bda4dd7618104db3182a
+branch: codex/milestone-2-handoff-current
+baseRevision: 56ac0ce96d793517964b5828edd228bef4e1086b
 lastCompletedTask: null
-nextTask: Obtain independent human review for this reconciliation, then start T4j/T4k for #58 on a fresh issue branch.
-lastGate: pending — run corepack pnpm agent:check and corepack pnpm gate:quick after the reconciliation
-updatedAt: 2026-08-23T00:00:00Z
+nextTask: "Obtain MiguelCorre's independent review for the green #58/T75-guard PRs and the T76 stack; after merge, provision the owner-only T75 signing secret/PublicKeyRef, regenerate the exact-SHA signed index, and obtain the independent T75 report."
+lastGate: "origin/main 56ac0ce is agent:context-consistent; open implementation PRs report green required checks where applicable, but no merge is authorized before human review"
+updatedAt: 2026-08-25T04:10:00Z
 ---
 
 # Current state
 
-The work starts from `origin/main` at `190e06f50e5a0b014013bda4dd7618104db3182a`.
+The canonical main head is `56ac0ce96d793517964b5828edd228bef4e1086b`.
 `agent:context` derives T74 complete and T75 next. #16 and #36 remain open
-with comments recording their missing original acceptance criteria.
+because their original acceptance criteria are still incomplete.
 
-The operating plan is the eight-task table in `tasks.md`. P1 (#58), P2 (#207),
-and P3 (#294) are concurrent prerequisites for P4/#16. #207's implementation
-is merged in PR #302/#306 and #294's signing workflow is merged in PR #303;
-the T75 fleet dispatch and owner-provisioned signing identity remain evidence
-prerequisites. The private secret itself must never be accessed or recorded.
+The operating plan is the eight-task table in `tasks.md`. #207 is closed and
+its live-probe implementation is on main. P1/#58 has green PR #320, P3/#294
+has green guard PR #321, and the T76 implementation stack is #316–#322. These
+branches are not qualification evidence until the required human review and
+rebase merges occur. P3 still cannot finish until the owner provisions a
+protected GitHub Actions signing secret and matching public reference; the
+secret itself must never be accessed or recorded.
 
 # Next exact action
 
-Submit this reconciliation as a documentation PR and request independent human
-review. After approval and merge, start #58 T4j/T4k from a fresh issue branch.
+Review the open PRs with MiguelCorre, merge only after the ruleset approval,
+then run the exact-candidate T75 signing workflow with the owner-provisioned
+identity. MiguelCorre must independently author `docs/qualification/t75-validation.md`.
+Only after T75 is accepted may T76 and then T77 advance.
 
 # Blockers
 
-T75 signing is blocked by owner-only protected-secret and public-reference
-provisioning. The T75 report and immutable-candidate rerun are also absent.
-npm trusted publishing and the final T77 decision are later human actions.
+Human review is required for the open implementation PRs. T75 signing is also
+blocked by owner-only secret/PublicKeyRef provisioning, and T75 completion is
+blocked by the independent report. npm trusted publishing and the final T77
+decision are later, explicit owner/human prerequisites.
 
 # Files intentionally unchanged
 
 Product code, generated contracts, qualification reports, secrets, npm
-configuration, and release metadata are intentionally unchanged by P0.
+configuration, and release metadata remain unchanged by this handoff update.
