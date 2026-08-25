@@ -170,7 +170,8 @@
 
 ### AD-021 — Signed-evidence Execution Package ordering is version-gated locally (#58)
 
-- **Status:** active
+- **Status:** superseded by AD-029 for the V1 branch; the V2 contract, the
+  unchanged `ArtifactSealer`, and the absent-version default remain active.
 - **Decision:** Chosen by brunomjanuario on 2026-08-23 while resuming #58's
   T4i vertical; flagged here for human review, not asserted as an owner
   decision. `ArtifactSealer` remains unchanged. The Execution Package owns its
@@ -236,6 +237,36 @@ note. -->
 - **Rationale:** `secretPresence` needs a real `SecretAdapter` to call `.has()` on. `QualifiedOsSecretAdapter` requires a real `OsSecretBackend` — Windows CNG, Apple Keychain, or Linux Secret Service — and none of the three has any implementation anywhere in the repository, confirmed by searching `packages` and `apps` for any construction of `QualifiedOsSecretAdapter` or a concrete `OsSecretBackend` outside `secret-broker.ts`'s own interface declaration; nothing in `apps/vestra-cli` constructs a real secret adapter today, for any purpose. This is native per-platform credential-store integration — three separate backends, each with its own qualification burden — categorically different from every other T12–T14 gap this feature closed, all of which reused an already-established product convention (`ProtectedPathBroker`, `RuntimeStore`'s migrations, the Ed25519 encoding already used for artifact sealing). Building an OS-keychain bridge here would mean inventing a new product capability with no other consumer to validate the design against, unilaterally, inside a task whose stated scope was one probe wire-up — precisely the risk T14's crypto question raised and the reason that one *was* answerable: it applied an existing convention rather than inventing one. `MockSecretAdapter` was considered and rejected as a substitute: it starts empty on every real machine, so it would satisfy DDL-09's letter (a genuine `.has()` call happens) while defeating its purpose (a live observation) — the check could never report `pass` on a real machine, the exact failure mode the T12/T13/T14 fixture-content work existed to prevent.
 - **Consequences:** `.specs/features/deep-doctor-live-probes/` — DDL-09's traceability is partial (T10's presence surface exists and is tested; T15's wiring does not). #207's acceptance is not fully met by this feature alone; the deferral is explicit rather than silently narrowing the issue's scope. T15 is the natural first task of a follow-up once a real `OsSecretBackend` exists for at least one platform — most naturally driven by whatever future work first needs live OS-secret access for a non-diagnostic purpose (secret binding at run time), since that is where the backend's real requirements get established, rather than deep-doctor guessing at them speculatively.
 - **Superseded (2026-08-22):** T15 is no longer deferred. Reconciling this branch with an independently landed competing #207 implementation on `main` (`cf8913c`, `f901b0f`) surfaced a live `DoctorLiveProbeOptions.secret` port and `secretPresenceProbe` wiring built there. That wiring is adopted here, rerouted through this repository's own `@verchestra/platform-node/readonly` subpath's `secretPresence` helper (T10) instead of the competing branch's direct `@verchestra/platform-node` import, so the doctor composition root's read-only transitive-closure guard (AD-025) still holds. `doctor.secret-presence` now calls `secretPresence(live.secret.adapter, ...)` and reports `blocked` whenever no live secret port is configured (source mode, or any caller that leaves `options.live` unset) — the original deferral's concern (no `QualifiedOsSecretAdapter`/`OsSecretBackend` implementation exists) still applies to what a caller *can* pass, not to whether the wiring itself is built.
+
+### AD-029 — Execution Package schema V1 ordering is normalized, not preserved (#58, #320)
+
+- **Status:** active; supersedes AD-021's V1 branch.
+- **Decision:** Owner decision (accd, 2026-08-25). `compareIdentity` uses
+  UTF-16 code-unit ordering for schema V1 as well as V2, removing the last
+  ambient-locale ordering from a trust surface. This is a normalization that
+  changes what a *rebuild* of a V1 payload produces for identifier sets
+  differing only by case. It is not a byte-preservation, and no artifact,
+  document, or test may claim otherwise.
+- **Rationale:** The claim that V1 historically used default `Array#sort` is
+  false: every comparator-based sort in `execution-package.ts` has used
+  `localeCompare` since the file's first commit (`867ce74`); the sites that
+  did use a bare `.sort()` were already restored by `72bc9e1`. So the honest
+  choice was between keeping ambient collation on a signed-evidence surface —
+  which #58's acceptance criterion forbids outright — and normalizing V1 with
+  the break stated plainly. Normalization is safe here because verification of
+  a stored V1 artifact compares stored bytes against the stored digest and
+  never re-sorts, because `derivePendingTasks`' tie-break is unreachable for
+  valid packages (task sequences are unique), and because no V1 artifact
+  exists outside the repository fixtures. A third schema version was rejected:
+  it would preserve a rebuild path nothing exercises at the cost of a third
+  ordering contract to carry through every later migration.
+- **Consequences:** `docs/canonical-json-compatibility.md`'s migration rule 1
+  (never silently change a persisted digest) gains one recorded exception,
+  scoped to this owner and taken while the installed base is empty; every
+  other owner still owes a versioned migration. The census and locale
+  allowlist ceiling for `execution-package.ts` is 0. If a V1 artifact ever
+  reaches a real installation before 1.0, this decision must be revisited
+  rather than reinterpreted.
 
 ## Handoff
 

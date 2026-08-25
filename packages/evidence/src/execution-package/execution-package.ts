@@ -227,9 +227,11 @@ function schemaVersion(value: unknown): ExecutionPackageSchemaVersion {
 }
 
 function compareIdentity(_version: ExecutionPackageSchemaVersion, left: string, right: string): number {
-  // V1 used JavaScript's default Array#sort, which compares UTF-16 code units.
-  // Keep that byte identity when normalizing legacy packages; V2 uses the
-  // same ordering explicitly so both versions remain locale-independent.
+  // AD-018 normalizes both schema versions onto UTF-16 code-unit ordering.
+  // V1 originally ordered these sets with ambient localeCompare, so rebuilding
+  // a V1 payload whose identifiers differ only by case can now yield a
+  // different order than the original build produced. Stored V1 artifacts stay
+  // verifiable because verification compares stored bytes to the stored digest.
   if (left < right) return -1;
   if (left > right) return 1;
   return 0;

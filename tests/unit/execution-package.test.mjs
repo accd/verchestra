@@ -52,7 +52,38 @@ test("a pinned V1 package remains verifiable under its V1 predicate", async () =
   assert.equal((await builder.verify(sealed, trust, currentState(input))).ok, true);
 });
 
-test("V1 preserves UTF-16 identity ordering for every versioned collection", async () => {
+test("V1 verification reads stored bytes and never re-sorts a stored collection (AD-029)", async () => {
+  const { builder, trust } = executionHarness();
+  const input = packageInput({ schemaVersion: 1, requiredCapabilities: ["alpha", "Zulu"] });
+  const sealed = await builder.build(input);
+  assert.deepEqual(sealed.payload.requiredCapabilities, ["Zulu", "alpha"]);
+  assert.equal((await builder.verify(sealed, trust, currentState(input))).ok, true);
+  const reordered = structuredClone(sealed);
+  reordered.payload.requiredCapabilities = ["alpha", "Zulu"];
+  const verdict = await builder.verify(reordered, trust, currentState(input));
+  assert.equal(verdict.ok, false);
+});
+
+test("V1 pending-task re-derivation orders by sequence, never by the identity comparator (AD-029)", () => {
+  const tasks = [
+    { taskId: "Zulu", sequence: 1, dependsOn: [] },
+    { taskId: "alpha", sequence: 2, dependsOn: [] }
+  ];
+  assert.deepEqual(
+    derivePendingTasks(tasks, [], 1).map((entry) => entry.taskId),
+    ["Zulu", "alpha"]
+  );
+  const swapped = [
+    { taskId: "Zulu", sequence: 2, dependsOn: [] },
+    { taskId: "alpha", sequence: 1, dependsOn: [] }
+  ];
+  assert.deepEqual(
+    derivePendingTasks(swapped, [], 1).map((entry) => entry.taskId),
+    ["alpha", "Zulu"]
+  );
+});
+
+test("V1 normalizes every versioned collection onto UTF-16 identity ordering (AD-029)", async () => {
   const base = packageInput({ schemaVersion: 1 });
   const unorderedRefs = [
     { artifactId: "alpha", digest: digest("alpha") },
