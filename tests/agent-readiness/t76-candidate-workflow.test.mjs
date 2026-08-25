@@ -104,3 +104,35 @@ test("lifecycle scripts run only for the packages whose native binaries are requ
   assert.match(workflow, /claude --version/u);
   assert.match(workflow, /codex --version/u);
 });
+
+test("every heredoc in the workflow terminates where the shell can find it", () => {
+  // The first successful install exposed this: a heredoc opened with <<'NODE'
+  // needs its terminator at column 0 of the emitted script, but the one nested
+  // inside the gate loop sat one level deeper than its block, so bash read to
+  // end-of-file and every target died with "syntax error: unexpected end of
+  // file" before a single gate ran.
+  const lines = workflow.split(/\r?\n/);
+  const runBlockIndent = (index) => {
+    for (let cursor = index; cursor >= 0; cursor -= 1)
+      if (/^\s*run: [|>]/u.test(lines[cursor])) return lines[cursor].search(/\S/u) + 2;
+    throw new Error(`no run block above line ${index + 1}`);
+  };
+  const openers = lines.map((line, index) => ({ line, index })).filter(({ line }) => /<<'[A-Z]+'/u.test(line));
+  assert.ok(openers.length > 0);
+  for (const { line, index } of openers) {
+    const tag = /<<'([A-Z]+)'/u.exec(line)[1];
+    const indent = runBlockIndent(index);
+    let terminated = false;
+    // Search only within this run block: a terminator belonging to a later
+    // block must never be mistaken for this one's.
+    for (let cursor = index + 1; cursor < lines.length; cursor += 1) {
+      const candidate = lines[cursor];
+      if (candidate.trim() !== "" && candidate.search(/\S/u) < indent) break;
+      if (candidate.trimEnd() === `${" ".repeat(indent)}${tag}`) {
+        terminated = true;
+        break;
+      }
+    }
+    assert.equal(terminated, true, `heredoc ${tag} at line ${index + 1} does not terminate at column 0 of its block`);
+  }
+});
