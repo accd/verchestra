@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { ProhibitedContentScanner, sha256Digest } from "../../packages/evidence/src/index.ts";
+import { withHostileLocaleCompare } from "../helpers/hostile-locale.mjs";
 import { recipient } from "../helpers/recovery-bundle-fixture.mjs";
 import {
   supportCoordinator,
@@ -193,6 +194,142 @@ test("ciphertext tamper fails authentication", async () => {
   tampered.payload.jwe.ciphertext = `${tampered.payload.jwe.ciphertext[0] === "A" ? "B" : "A"}${tampered.payload.jwe.ciphertext.slice(1)}`;
   await assert.rejects(
     fixture.builder.open(tampered, fixture.trust, fixture.recipients[0], {
+      workspaceId: supportWorkspace,
+      runId: supportRun,
+      now: supportNow
+    }),
+    { code: "VES_SUPPORT_SIGNATURE_INVALID" }
+  );
+});
+
+// Issue #58 signed-evidence vertical. Unlike the Run Capsule and the Recovery
+// Bundle, the Support Bundle's ambient-locale sorts were removed outright with
+// no version gate: `#assertPlan` — the only verifier, reached from `inspect`,
+// `authorizedBuild` and `open` — already required `fieldIds` and `recipientIds`
+// to equal `[...].sort()`, i.e. default UTF-16 code-unit order. `plan()` sorting
+// with `localeCompare` therefore contradicted the contract its own validator
+// enforced, and under a divergent collation produced a manifest that was
+// immediately rejected.
+
+test("a plan built under a hostile collation validates, orders by code unit, and can be exported", async () => {
+  // Against the pre-migration source this fails at `inspect()` with
+  // VES_SUPPORT_INVALID "Support Bundle diagnostic order is not canonical":
+  // plan() ordered with localeCompare while #assertPlan required code-unit
+  // order, so the builder rejected its own output.
+  const recipients = [await recipient("Support-Team"), await recipient("auditor")];
+  const { builder, plan, inspection } = await withHostileLocaleCompare(() => supportHarness({ recipients }));
+  assert.equal(inspection.planId, plan.planId);
+  assert.deepEqual(
+    plan.manifest.diagnostics.map((entry) => entry.fieldId),
+    [...plan.manifest.diagnostics.map((entry) => entry.fieldId)].sort()
+  );
+  // Code-unit order specifically: uppercase precedes lowercase in UTF-16.
+  assert.deepEqual(
+    plan.manifest.recipients.map((entry) => entry.recipientId),
+    ["Support-Team", "auditor"]
+  );
+  const { ports } = supportExportPorts();
+  const exported = await supportCoordinator(builder, ports).export(
+    plan,
+    inspection,
+    recipients.map(({ recipientId, publicKey }) => ({ recipientId, publicKey })),
+    { approvalRef: "approval:support:001", destinationId: "destination:vendor" }
+  );
+  assert.equal(exported.status, "published");
+});
+
+test("Support Bundle plan identity is byte-identical across two divergent locale collations", async () => {
+  const recipients = [await recipient("Support-Team"), await recipient("auditor")];
+  const plain = await supportHarness({ recipients });
+  const hostile = await withHostileLocaleCompare(() => supportHarness({ recipients }));
+  assert.equal(plain.plan.planId, hostile.plan.planId);
+  assert.equal(plain.inspection.inspectionDigest, hostile.inspection.inspectionDigest);
+});
+
+test("SupportBundleBuilder.plan() defaults to schemaVersion: 2 when the caller omits it", async () => {
+  const { builder, input } = await supportHarness();
+  const { schemaVersion, ...withoutVersion } = input;
+  assert.equal(schemaVersion, 1);
+  const plan = await builder.plan(withoutVersion);
+  assert.equal(plan.manifest.schemaVersion, 2);
+});
+
+test("an explicit schemaVersion: 1 Support Bundle is never silently upgraded", async () => {
+  const { plan } = await supportHarness();
+  assert.equal(plan.manifest.schemaVersion, 1);
+});
+
+test("an unknown Support Bundle schemaVersion fails closed rather than defaulting", async () => {
+  const { builder, input } = await supportHarness();
+  for (const schemaVersion of [0, 3, "2", null]) {
+    await assert.rejects(builder.plan({ ...input, schemaVersion }), { code: "VES_SUPPORT_INVALID" });
+  }
+});
+
+test("a stored schemaVersion: 1 Support Bundle still exports and opens unchanged", async () => {
+  const recipients = [await recipient("support-team")];
+  const { builder, plan, inspection, trust } = await supportHarness({ recipients });
+  assert.equal(plan.manifest.schemaVersion, 1);
+  const { state, ports } = supportExportPorts();
+  await supportCoordinator(builder, ports).export(
+    plan,
+    inspection,
+    recipients.map(({ recipientId, publicKey }) => ({ recipientId, publicKey })),
+    { approvalRef: "approval:support:001", destinationId: "destination:vendor" }
+  );
+  const bundle = state.published.bundle;
+  assert.equal(bundle.schema.version, 1);
+  const manifest = await builder.open(bundle, trust, recipients[0], {
+    workspaceId: supportWorkspace,
+    runId: supportRun,
+    now: supportNow
+  });
+  assert.equal(manifest.schemaVersion, 1);
+  assert.equal(manifest.planId, plan.planId);
+});
+
+test("a schemaVersion: 2 Support Bundle exports, opens, and is a distinct identity from V1", async () => {
+  const recipients = [await recipient("support-team")];
+  const v1 = await supportHarness({ recipients });
+  const v2 = await supportHarness({ recipients, input: { schemaVersion: 2 } });
+  assert.equal(v2.plan.manifest.schemaVersion, 2);
+  // The version is part of the digested manifest material, so V1 and V2 of an
+  // otherwise identical bundle are different plan identities.
+  assert.notEqual(v1.plan.planId, v2.plan.planId);
+  const { state, ports } = supportExportPorts();
+  await supportCoordinator(v2.builder, ports).export(
+    v2.plan,
+    v2.inspection,
+    recipients.map(({ recipientId, publicKey }) => ({ recipientId, publicKey })),
+    { approvalRef: "approval:support:001", destinationId: "destination:vendor" }
+  );
+  const bundle = state.published.bundle;
+  assert.equal(bundle.schema.version, 2);
+  const manifest = await v2.builder.open(bundle, v2.trust, recipients[0], {
+    workspaceId: supportWorkspace,
+    runId: supportRun,
+    now: supportNow
+  });
+  assert.equal(manifest.schemaVersion, 2);
+});
+
+test("a Support Bundle summary relabelled to another schemaVersion fails closed", async () => {
+  const recipients = [await recipient("support-team")];
+  const { builder, plan, inspection, trust } = await supportHarness({ recipients });
+  const { state, ports } = supportExportPorts();
+  await supportCoordinator(builder, ports).export(
+    plan,
+    inspection,
+    recipients.map(({ recipientId, publicKey }) => ({ recipientId, publicKey })),
+    { approvalRef: "approval:support:001", destinationId: "destination:vendor" }
+  );
+  const bundle = state.published.bundle;
+  const relabelled = {
+    ...bundle,
+    payload: { ...bundle.payload, summary: { ...bundle.payload.summary, schemaVersion: 2 } }
+  };
+  await assert.rejects(
+    builder.open(relabelled, trust, recipients[0], {
       workspaceId: supportWorkspace,
       runId: supportRun,
       now: supportNow

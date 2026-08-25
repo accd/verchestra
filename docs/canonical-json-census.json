@@ -648,36 +648,36 @@
     },
     {
       "path": "packages/evidence/src/recovery-bundle/recovery-bundle.ts",
-      "classification": "retained-v1-versioned",
+      "classification": "migrated-v2",
       "signals": {
         "canonicalizer": 4,
         "digest": 6,
-        "localeCompare": 5,
+        "localeCompare": 1,
         "serialization": 0
       },
-      "reason": "The reviewed source retains an authoritative versioned V1 contract pending a compatible migration."
+      "reason": "Emits the V2 contract; one comparator is retained solely for V1 verification, which re-sorts a signed array (compatibility rule 1)."
     },
     {
       "path": "packages/evidence/src/run-capsule/run-capsule.ts",
-      "classification": "retained-v1-versioned",
+      "classification": "migrated-v2",
       "signals": {
         "canonicalizer": 2,
         "digest": 3,
-        "localeCompare": 3,
+        "localeCompare": 1,
         "serialization": 0
       },
-      "reason": "The reviewed source retains an authoritative versioned V1 contract pending a compatible migration."
+      "reason": "Emits the V2 contract; one comparator is retained solely for V1 verification, which re-sorts a signed array (compatibility rule 1)."
     },
     {
       "path": "packages/evidence/src/support-bundle/support-bundle.ts",
-      "classification": "retained-v1-versioned",
+      "classification": "migrated-v2",
       "signals": {
         "canonicalizer": 11,
         "digest": 9,
-        "localeCompare": 2,
+        "localeCompare": 0,
         "serialization": 0
       },
-      "reason": "The reviewed source retains an authoritative versioned V1 contract pending a compatible migration."
+      "reason": "Structured material already uses the V2 contract or is a V2 support primitive."
     },
     {
       "path": "packages/extension-host/src/index.ts",

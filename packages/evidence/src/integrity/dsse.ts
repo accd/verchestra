@@ -33,8 +33,16 @@ const PREDICATE_TYPES_V1 = Object.freeze({
   "qualification-evidence-index": `${PREDICATE_BASE}/qualification-evidence-index/v1`
 } as const);
 
+// Schema V2 artifacts order every declared set by UTF-16 code unit and
+// canonicalize through the domain RFC 8785 facade. Each gets its own predicate
+// type rather than reusing /v1: the predicate is bound into the signed
+// Statement bytes, so a V1 attestation and a V2 attestation of the same kind
+// are distinct signed documents and neither can be read as the other.
 const PREDICATE_TYPES_V2 = Object.freeze({
-  "execution-package": `${PREDICATE_BASE}/execution-package/v2`
+  "execution-package": `${PREDICATE_BASE}/execution-package/v2`,
+  "run-capsule": `${PREDICATE_BASE}/run-capsule/v2`,
+  "recovery-bundle": `${PREDICATE_BASE}/recovery-bundle/v2`,
+  "support-bundle": `${PREDICATE_BASE}/support-bundle/v2`
 } as const);
 
 export type PredicateSchemaName = keyof typeof PREDICATE_TYPES_V1;

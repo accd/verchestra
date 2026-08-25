@@ -5,13 +5,15 @@ import { createHash, randomUUID } from "node:crypto";
 
 import { GeneralEncrypt, calculateJwkThumbprint, exportJWK, generalDecrypt, type GeneralJWE } from "jose";
 
+import { normalizeDeclaredSet } from "@verchestra/domain";
+
 import {
   ArtifactSealer,
   dsseEnvelopeOf,
   sealedArtifactFromEnvelope,
   sealedProjectionMatches
 } from "../integrity/artifact-sealer.ts";
-import { canonicalizeJson, sha256Digest } from "../integrity/canonical.ts";
+import { canonicalizeJsonForVersion, sha256DigestForVersion } from "../integrity/canonical.ts";
 import type { JsonValue, SealedArtifact, TrustRoot } from "../integrity/types.ts";
 
 interface Row extends Record<string, unknown> {
@@ -100,6 +102,42 @@ export class RecoveryBundleError extends Error {
 
 function fail(code: RecoveryBundleErrorCode, message: string, options?: ErrorOptions): never {
   throw new RecoveryBundleError(code, message, options);
+}
+
+export type RecoveryBundleSchemaVersion = 1 | 2;
+
+function schemaVersionOf(value: unknown, label = "manifest schema version is invalid"): RecoveryBundleSchemaVersion {
+  if (value !== 1 && value !== 2) fail("VES_RECOVERY_INVALID", label);
+  return value;
+}
+
+/**
+ * Ordering for the object and recipient arrays carried in a bundle manifest.
+ *
+ * Schema V2 uses UTF-16 code-unit comparison so a bundle's `planId` is a
+ * property of its contents, not of the collation of whichever machine sealed
+ * it.
+ *
+ * Schema V1 keeps ambient `localeCompare`, and this retention is
+ * verification-critical. `validateManifestShape` runs on every read path —
+ * `#verifyEnvelope`, `FileRecoveryBundleStore.put`, and
+ * `FileRecoveryBundleStore.get` — and it **re-sorts** `objects` and
+ * `recipients` before recomputing the manifest-material digest and comparing
+ * it to the stored `planId`. Both are JSON arrays, and RFC 8785
+ * preserves array order, so the pre-sort is load-bearing rather than inert
+ * (the opposite of the Execution Package's object-valued `sourceState`, which
+ * is why AD-029's normalization was safe there and is not safe here).
+ * `open()` compounds it: `recipientIndex` is taken from the re-sorted
+ * `manifest.recipients` and used to index the **stored** `jwe.recipients`
+ * array, so a comparator change would also select the wrong encryption
+ * recipient. Normalizing V1 would strand every stored bundle; compatibility
+ * rule 1 applies in full.
+ */
+function compareIdentity(version: RecoveryBundleSchemaVersion, left: string, right: string): number {
+  if (version === 1) return left.localeCompare(right);
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
 }
 
 function isRow(value: unknown): value is Row {
@@ -198,7 +236,7 @@ export interface RecoveryRecipientRef {
 }
 
 export interface RecoveryBundleManifest {
-  readonly schemaVersion: 1;
+  readonly schemaVersion: RecoveryBundleSchemaVersion;
   readonly planId: string;
   readonly workspaceId: string;
   readonly snapshotBarrierId: string;
@@ -253,7 +291,7 @@ const PLAN_FIELDS = Object.freeze([
   "expiresAt"
 ]);
 
-function normalizeObjectInputs(value: unknown): readonly RecoveryObjectInput[] {
+function normalizeObjectInputs(value: unknown, version: RecoveryBundleSchemaVersion): readonly RecoveryObjectInput[] {
   if (!Array.isArray(value) || value.length === 0) fail("VES_RECOVERY_INVALID", "objects are required");
   const objects = value.map((entry, index) => {
     const row = exactRow(entry, `objects[${index}]`, ["objectId", "kind", "bytes"]);
@@ -264,7 +302,9 @@ function normalizeObjectInputs(value: unknown): readonly RecoveryObjectInput[] {
       bytes: new Uint8Array(row.bytes)
     });
   });
-  objects.sort((left, right) => left.objectId.localeCompare(right.objectId));
+  // Must agree with `validateManifestShape`'s object sort: `assertClosure`
+  // compares the two positionally.
+  objects.sort((left, right) => compareIdentity(version, left.objectId, right.objectId));
   if (new Set(objects.map((entry) => entry.objectId)).size !== objects.length)
     fail("VES_RECOVERY_INVALID", "object IDs must be unique");
   return Object.freeze(objects);
@@ -285,7 +325,8 @@ function objectRefs(objects: readonly RecoveryObjectInput[]): readonly RecoveryO
 }
 
 async function normalizeRecipientInputs(
-  value: unknown
+  value: unknown,
+  version: RecoveryBundleSchemaVersion
 ): Promise<readonly (RecoveryRecipientInput & RecoveryRecipientRef)[]> {
   if (!Array.isArray(value) || value.length === 0) fail("VES_RECOVERY_INVALID", "recipients are required");
   const normalized = await Promise.all(
@@ -302,7 +343,9 @@ async function normalizeRecipientInputs(
       });
     })
   );
-  normalized.sort((left, right) => left.recipientId.localeCompare(right.recipientId));
+  // Must agree with `validateManifestShape`'s recipient sort: `build` compares
+  // the two positionally and the JWE recipient array is built in this order.
+  normalized.sort((left, right) => compareIdentity(version, left.recipientId, right.recipientId));
   if (new Set(normalized.map((entry) => entry.recipientId)).size !== normalized.length)
     fail("VES_RECOVERY_INVALID", "recipient IDs must be unique");
   if (new Set(normalized.map((entry) => entry.keyThumbprint)).size !== normalized.length)
@@ -316,7 +359,9 @@ function manifestMaterial(manifest: Omit<RecoveryBundleManifest, "planId">): Jso
 
 function bindingFor(manifest: RecoveryBundleManifest) {
   return Object.freeze({
-    schema: Object.freeze({ name: "recovery-bundle", version: 1 }),
+    // Carried into the signed Statement and the predicate type, so a V1 bundle
+    // and a V2 bundle are distinct signed documents.
+    schema: Object.freeze({ name: "recovery-bundle", version: manifest.schemaVersion }),
     purpose: "recovery-bundle",
     bindingId: `${manifest.workspaceId}:${manifest.planId}`,
     sourceStateDigest: manifest.sourceStateDigest.slice("sha256:".length)
@@ -326,11 +371,12 @@ function bindingFor(manifest: RecoveryBundleManifest) {
 function assertClosure(
   refs: readonly RecoveryObjectRef[],
   objectsInput: unknown,
+  version: RecoveryBundleSchemaVersion,
   code: RecoveryBundleErrorCode = "VES_RECOVERY_CLOSURE_INVALID"
 ): readonly RecoveryObjectInput[] {
   let objects: readonly RecoveryObjectInput[];
   try {
-    objects = normalizeObjectInputs(objectsInput);
+    objects = normalizeObjectInputs(objectsInput, version);
   } catch (error) {
     if (error instanceof RecoveryBundleError) fail(code, "Recovery object closure is malformed", { cause: error });
     throw error;
@@ -354,7 +400,9 @@ function assertClosure(
 
 function validateManifestShape(value: unknown): RecoveryBundleManifest {
   const row = exactRow(value, "manifest", PLAN_FIELDS);
-  if (row.schemaVersion !== 1) fail("VES_RECOVERY_INVALID", "manifest schema version is invalid");
+  // The verifier is selected from the recorded version, never guessed, and an
+  // unknown version fails closed rather than defaulting.
+  const version = schemaVersionOf(row.schemaVersion);
   const includedClasses = sortedUnique(row.includedClasses, "includedClasses");
   const excludedClasses = sortedUnique(row.excludedClasses, "excludedClasses");
   for (const required of MANDATORY_EXCLUSIONS) {
@@ -376,7 +424,7 @@ function validateManifestShape(value: unknown): RecoveryBundleManifest {
       required: true as const
     });
   });
-  objects.sort((left, right) => left.objectId.localeCompare(right.objectId));
+  objects.sort((left, right) => compareIdentity(version, left.objectId, right.objectId));
   if (new Set(objects.map((entry) => entry.objectId)).size !== objects.length)
     fail("VES_RECOVERY_INVALID", "manifest object IDs are duplicated");
   if (!Array.isArray(row.recipients) || row.recipients.length === 0)
@@ -388,7 +436,7 @@ function validateManifestShape(value: unknown): RecoveryBundleManifest {
       keyThumbprint: thumbprint(recipient.keyThumbprint, `manifest.recipients[${index}].keyThumbprint`)
     });
   });
-  recipients.sort((left, right) => left.recipientId.localeCompare(right.recipientId));
+  recipients.sort((left, right) => compareIdentity(version, left.recipientId, right.recipientId));
   if (new Set(recipients.map((entry) => entry.recipientId)).size !== recipients.length)
     fail("VES_RECOVERY_INVALID", "manifest recipient IDs are duplicated");
   const createdAt = instant(row.createdAt, "createdAt");
@@ -396,7 +444,7 @@ function validateManifestShape(value: unknown): RecoveryBundleManifest {
   if (Date.parse(expiresAt) <= Date.parse(createdAt))
     fail("VES_RECOVERY_INVALID", "bundle expiry must follow creation");
   const withoutPlan = {
-    schemaVersion: 1 as const,
+    schemaVersion: version,
     workspaceId: text(row.workspaceId, "workspaceId"),
     snapshotBarrierId: text(row.snapshotBarrierId, "snapshotBarrierId"),
     runtimeStateDigest: digest(row.runtimeStateDigest, "runtimeStateDigest"),
@@ -416,7 +464,7 @@ function validateManifestShape(value: unknown): RecoveryBundleManifest {
     expiresAt
   };
   const planId = text(row.planId, "planId");
-  if (sha256Digest(manifestMaterial(withoutPlan)) !== planId)
+  if (sha256DigestForVersion(version, manifestMaterial(withoutPlan)) !== planId)
     fail("VES_RECOVERY_INVALID", "manifest plan identity is invalid");
   return deepFreeze({ ...withoutPlan, planId });
 }
@@ -431,9 +479,14 @@ export class RecoveryBundleBuilder {
   async plan(input: unknown): Promise<RecoveryBundlePlan> {
     assertNoProhibitedFields(input);
     const row = exactRow(input, "recovery plan", PLAN_FIELDS);
-    if (row.schemaVersion !== 1) fail("VES_RECOVERY_INVALID", "recovery schema version is invalid");
-    const objects = normalizeObjectInputs(row.objects);
-    const recipients = await normalizeRecipientInputs(row.recipients);
+    // Omitting the version selects the locale-independent V2 contract; an
+    // explicit 1 stays V1; anything else fails closed.
+    const version =
+      row.schemaVersion === undefined
+        ? (2 as const)
+        : schemaVersionOf(row.schemaVersion, "recovery schema version is invalid");
+    const objects = normalizeObjectInputs(row.objects, version);
+    const recipients = await normalizeRecipientInputs(row.recipients, version);
     const includedClasses = sortedUnique(row.includedClasses, "includedClasses");
     const excludedClasses = sortedUnique(row.excludedClasses, "excludedClasses");
     for (const required of MANDATORY_EXCLUSIONS) {
@@ -447,7 +500,7 @@ export class RecoveryBundleBuilder {
     if (Date.parse(expiresAt) <= Date.parse(createdAt))
       fail("VES_RECOVERY_INVALID", "bundle expiry must follow creation");
     const material = deepFreeze({
-      schemaVersion: 1 as const,
+      schemaVersion: version,
       workspaceId: text(row.workspaceId, "workspaceId"),
       snapshotBarrierId: text(row.snapshotBarrierId, "snapshotBarrierId"),
       runtimeStateDigest: digest(row.runtimeStateDigest, "runtimeStateDigest"),
@@ -468,7 +521,7 @@ export class RecoveryBundleBuilder {
       createdAt,
       expiresAt
     });
-    const planId = sha256Digest(manifestMaterial(material));
+    const planId = sha256DigestForVersion(version, manifestMaterial(material));
     const manifest = deepFreeze({ ...material, planId });
     return deepFreeze({ planId, manifest });
   }
@@ -481,8 +534,9 @@ export class RecoveryBundleBuilder {
     if (!isRow(planInput) || !isRow(planInput.manifest) || planInput.planId !== planInput.manifest.planId)
       fail("VES_RECOVERY_INVALID", "recovery plan is malformed");
     const manifest = validateManifestShape(planInput.manifest);
-    const objects = assertClosure(manifest.objects, objectsInput);
-    const recipients = await normalizeRecipientInputs(recipientsInput);
+    const version = manifest.schemaVersion;
+    const objects = assertClosure(manifest.objects, objectsInput, version);
+    const recipients = await normalizeRecipientInputs(recipientsInput, version);
     const expectedRecipients = manifest.recipients;
     if (
       recipients.length !== expectedRecipients.length ||
@@ -493,8 +547,11 @@ export class RecoveryBundleBuilder {
       )
     )
       fail("VES_RECOVERY_CLOSURE_INVALID", "recipient closure does not match its manifest");
+    // The archive and the protected encryption header both carry the manifest's
+    // schema version, so a V1 archive cannot be opened as a V2 one (or the
+    // reverse): `open` requires both to equal the manifest's recorded version.
     const archive = {
-      schemaVersion: 1,
+      schemaVersion: version,
       planId: manifest.planId,
       objects: objects.map((entry) => ({
         objectId: entry.objectId,
@@ -502,10 +559,12 @@ export class RecoveryBundleBuilder {
         bytes: Buffer.from(entry.bytes).toString("base64url")
       }))
     };
-    const encryptor = new GeneralEncrypt(Buffer.from(canonicalizeJson(archive), "utf8")).setProtectedHeader({
+    const encryptor = new GeneralEncrypt(
+      Buffer.from(canonicalizeJsonForVersion(version, archive), "utf8")
+    ).setProtectedHeader({
       enc: "A256GCM",
       typ: "application/verchestra-recovery+json",
-      v: 1,
+      v: version,
       plan: manifest.planId
     });
     for (const recipient of recipients) {
@@ -579,7 +638,7 @@ export class RecoveryBundleBuilder {
       const protectedHeader = decrypted.protectedHeader;
       if (
         protectedHeader?.typ !== "application/verchestra-recovery+json" ||
-        protectedHeader["v"] !== 1 ||
+        protectedHeader["v"] !== manifest.schemaVersion ||
         protectedHeader["plan"] !== manifest.planId
       )
         fail("VES_RECOVERY_CLOSURE_INVALID", "protected encryption binding is invalid");
@@ -595,7 +654,11 @@ export class RecoveryBundleBuilder {
       fail("VES_RECOVERY_CLOSURE_INVALID", "decrypted recovery archive is malformed", { cause: error });
     }
     const archiveRow = exactRow(archive, "recovery archive", ["schemaVersion", "planId", "objects"]);
-    if (archiveRow.schemaVersion !== 1 || archiveRow.planId !== manifest.planId || !Array.isArray(archiveRow.objects))
+    if (
+      archiveRow.schemaVersion !== manifest.schemaVersion ||
+      archiveRow.planId !== manifest.planId ||
+      !Array.isArray(archiveRow.objects)
+    )
       fail("VES_RECOVERY_CLOSURE_INVALID", "decrypted recovery archive binding is invalid");
     const objects = archiveRow.objects.map((entry, index) => {
       const object = exactRow(entry, `archive.objects[${index}]`, ["objectId", "kind", "bytes"]);
@@ -605,7 +668,7 @@ export class RecoveryBundleBuilder {
         bytes: decodeBase64url(object.bytes)
       };
     });
-    return deepFreeze({ manifest, objects: assertClosure(manifest.objects, objects) });
+    return deepFreeze({ manifest, objects: assertClosure(manifest.objects, objects, manifest.schemaVersion) });
   }
 
   async #verifyEnvelope(
@@ -668,7 +731,11 @@ export class ConsistentSnapshotCoordinator {
   }
 
   async capture<T>(workspaceId: string, sourcesInput: readonly SnapshotSource<T>[]) {
-    const sources = [...sourcesInput].sort((left, right) => left.sourceId.localeCompare(right.sourceId));
+    // Snapshot capture order only: no digest, no sealed byte and no stored
+    // identity depends on it, so it normalizes to code-unit order outright
+    // rather than carrying a V1 branch. Determinism still matters — the
+    // before/after digest pairing is positional.
+    const sources = normalizeDeclaredSet(sourcesInput, (source) => source.sourceId);
     if (sources.length === 0 || new Set(sources.map((entry) => entry.sourceId)).size !== sources.length)
       fail("VES_RECOVERY_INVALID", "snapshot sources are invalid");
     return this.#barrier.run(workspaceId, async () => {
@@ -794,9 +861,11 @@ async function safeTarget(root: string, target: string): Promise<void> {
 
 function assertStoredEnvelope(bundle: SignedRecoveryBundle): void {
   try {
+    // Canonicalizer selected from the recorded schema version, never guessed.
+    const version = schemaVersionOf(bundle.schema.version);
     if (
       !/^[a-f0-9]{64}$/u.test(bundle.artifactId) ||
-      sha256Digest(bundle.payload) !== bundle.payloadDigest ||
+      sha256DigestForVersion(version, bundle.payload) !== bundle.payloadDigest ||
       !sealedProjectionMatches(bundle)
     )
       fail("VES_RECOVERY_STORAGE_INTEGRITY", "recovery bundle content address is invalid");
@@ -820,7 +889,7 @@ export class FileRecoveryBundleStore {
     const target = join(root, `${manifest.planId}.json`);
     await safeTarget(root, target);
     // The persisted object IS the DSSE envelope (#248); flat fields derive on read.
-    const bytes = `${canonicalizeJson(dsseEnvelopeOf(bundle) as unknown as JsonValue)}\n`;
+    const bytes = `${canonicalizeJsonForVersion(manifest.schemaVersion, dsseEnvelopeOf(bundle) as unknown as JsonValue)}\n`;
     try {
       const existing = await readFile(target, "utf8");
       if (existing !== bytes) fail("VES_RECOVERY_STORAGE_CONFLICT", "recovery plan already has different bytes");
@@ -853,9 +922,14 @@ export class FileRecoveryBundleStore {
     try {
       const stored = await readFile(target, "utf8");
       const envelope = JSON.parse(stored) as JsonValue;
-      if (`${canonicalizeJson(envelope)}\n` !== stored)
-        fail("VES_RECOVERY_STORAGE_INTEGRITY", "stored recovery bytes are not canonical");
+      // The envelope is decoded first because the canonicalizer for the stored
+      // bytes is selected from the schema version recorded inside the signed
+      // Statement. Anything that is not a declared attestation throws here and
+      // is reported as a storage-integrity failure by the enclosing catch,
+      // which is the same outcome the byte check gave before.
       const bundle = sealedArtifactFromEnvelope(envelope) as SignedRecoveryBundle;
+      if (`${canonicalizeJsonForVersion(schemaVersionOf(bundle.schema.version), envelope)}\n` !== stored)
+        fail("VES_RECOVERY_STORAGE_INTEGRITY", "stored recovery bytes are not canonical");
       assertStoredEnvelope(bundle);
       if (validateManifestShape(bundle.payload.manifest).planId !== planId)
         fail("VES_RECOVERY_STORAGE_INTEGRITY", "stored recovery plan identity is invalid");

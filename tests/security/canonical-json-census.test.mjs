@@ -197,7 +197,7 @@ test("a duplicate classification and a stale source entry are rejected", () => {
   assert.deepEqual(result.stalePaths, ["packages/example/src/stale.ts"]);
 });
 
-test("the compatibility matrix names the canonical census and the ordered pending verticals", async () => {
+test("the compatibility matrix names the canonical census and the ordered verticals", async () => {
   const matrix = await readFile(matrixPath, "utf8");
   const evidence = matrix.indexOf("signed-evidence vertical");
   const release = matrix.indexOf("release vertical");
@@ -209,6 +209,11 @@ test("the compatibility matrix names the canonical census and the ordered pendin
   assert.ok(portableOwners > release);
   assert.match(
     portableOwners >= 0 ? matrix.slice(portableOwners) : "",
-    /registries,\s+connectors, extension host, drivers, memory, and policy bundles/u
+    /registries,\s+connectors,\s+extension host,\s+drivers,\s+memory,\s+policy bundles/u
   );
+  // Every vertical is now done, so the matrix must say what is still true
+  // rather than reading as complete: two V1-only comparators are retained by
+  // design and the scanner's own fingerprint helper keeps its V1 sites.
+  assert.match(matrix, /What is \*not\*\s+claimed/u);
+  assert.match(matrix, /V1-only\s+verification comparators are retained by design/u);
 });

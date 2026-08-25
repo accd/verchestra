@@ -352,7 +352,7 @@
       12
     ],
     "packages/evidence/src/recovery-bundle/recovery-bundle.ts :: Function 'validateManifestShape'": [
-      13
+      12
     ],
     "packages/evidence/src/recovery-bundle/recovery-bundle.ts :: Private async method #verifyEnvelope": [
       17
@@ -364,10 +364,10 @@
       11
     ],
     "packages/evidence/src/run-capsule/run-capsule.ts :: Function 'normalizePayload'": [
-      45
+      44
     ],
     "packages/evidence/src/support-bundle/support-bundle.ts :: Async method 'open'": [
-      40
+      34
     ],
     "packages/evidence/src/support-bundle/support-bundle.ts :: Function 'assertNormalizedValue'": [
       22
@@ -379,7 +379,7 @@
       20
     ],
     "packages/evidence/src/support-bundle/support-bundle.ts :: Private method #assertPlan": [
-      37
+      36
     ],
     "packages/extension-host/src/index.ts :: Async generator method 'execute'": [
       11

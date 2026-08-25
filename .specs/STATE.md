@@ -296,6 +296,37 @@ note. -->
   regression campaigns) say so explicitly, so the distinction between "did not
   move" and "moved and we accepted it" stays legible.
 
+### AD-031 — A V1 verifier that re-sorts an array keeps its comparator (#58)
+
+- **Status:** active; bounds AD-029 and AD-030 rather than extending them.
+- **Decision:** Owner decision (accd, 2026-08-25). Run Capsule and Recovery
+  Bundle each retain exactly one ambient-locale comparator, reachable only from
+  their V1 verification path. Their V2 emission paths are code-unit throughout,
+  and both types now default to `schemaVersion: 2`. Support Bundle retains none.
+  `docs/canonical-json-compatibility.md` is amended to admit this case, and each
+  retained site is pinned by an exact ceiling in the locale allowlist.
+- **Rationale:** AD-029 normalized the Execution Package's V1 ordering on the
+  argument that verification compares stored bytes to a stored digest and never
+  re-sorts. Probing showed that argument is _specific to that owner_, not
+  general: the Execution Package's re-sorted member is an object, whose keys JCS
+  re-sorts anyway, so its pre-sort is inert. Run Capsule's `sourceStateRefs` and
+  Recovery Bundle's `objects`/`recipients` are **arrays**, and RFC 8785
+  preserves array order — so their verifiers recompute a signed digest _from_
+  the re-sorted order. Measured, not assumed: a stored capsule verified under a
+  divergent collation returns `VES_RUN_CAPSULE_BINDING_INVALID`, and Recovery
+  Bundle's `open()` additionally takes `recipientIndex` from the re-sorted list
+  and uses it to index the _stored_ `jwe.recipients`, so a comparator change
+  mis-selects the decryption recipient. Normalizing would have stranded stored
+  artifacts to make a census column read zero.
+- **Consequences:** #58's criterion is met in its precise sense — no **V2**
+  digest input is ordered by ambient collation — and the two exceptions are
+  recorded rather than hidden. Support Bundle's sites were removed as a genuine
+  bug fix: `plan()` sorted with `localeCompare` while `#assertPlan` already
+  required code-unit order, so a plan built under a divergent collation was
+  rejected by its own validator. The general lesson for any future migration:
+  before reusing AD-029's reasoning, check whether the re-sorted member is an
+  array or an object, because JCS treats those differently.
+
 ## Handoff
 
 - **Feature:** `milestone-2-completion` P0 on `codex/milestone-2-p0-sync`,
