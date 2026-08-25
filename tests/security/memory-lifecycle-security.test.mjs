@@ -369,3 +369,94 @@ test("lifecycle operates through roots reached by a canonicalizing directory lin
   lifecycle.close();
   await rm(aliasParent, { recursive: true, force: true });
 });
+
+// #58 (memory vertical): memory-lifecycle.ts ordered canonical-JSON object
+// members -- and the promoted artifact's fragment list -- with
+// String.prototype.localeCompare, which is locale-dependent and diverges from
+// UTF-16 code-unit order for the mixed-case ASCII identifiers this surface
+// accepts (SAFE allows [A-Za-z0-9]). It also joined the fragment sort key with
+// NUL, which ICU treats as completely ignorable, collapsing the field
+// boundary. Replacing localeCompare with a comparator that reverses code-unit
+// order simulates a divergent collation without depending on any particular
+// installed ICU locale disagreeing on the host running the test.
+async function withHostileLocaleCompare(run) {
+  const original = String.prototype.localeCompare;
+  String.prototype.localeCompare = function hostileLocaleCompare(other) {
+    const left = String(this);
+    return left < other ? 1 : left > other ? -1 : 0;
+  };
+  try {
+    return await run();
+  } finally {
+    String.prototype.localeCompare = original;
+  }
+}
+
+function mixedCaseFragment(index, sourceId, chunkId) {
+  const hit = memoryHit(index, { sourceId, chunkId });
+  return { ...hit, provenance: { ...hit.provenance, sourceId } };
+}
+
+const mixedCasePromotion = () =>
+  promotionInput({
+    fragments: [mixedCaseFragment(1, "source-a", "chunk-a"), mixedCaseFragment(2, "Source-b", "Chunk-b")]
+  });
+
+test("promotion plan identity and artifact bytes are stable across divergent locale collations", async () => {
+  const { lifecycle } = await opened();
+  const plain = lifecycle.proposePromotion(mixedCasePromotion());
+  const hostile = await withHostileLocaleCompare(() => lifecycle.proposePromotion(mixedCasePromotion()));
+  assert.equal(plain.planId, hostile.planId);
+  assert.equal(plain.artifactDigest, hostile.artifactDigest);
+  assert.equal(plain.artifactContent, hostile.artifactContent);
+  // Code-unit order specifically, not merely "some" deterministic order:
+  // uppercase sorts before lowercase in UTF-16, so "Source-b" leads even
+  // though every ambient collation the repository has met orders "source-a"
+  // first.
+  assert.deepEqual(
+    JSON.parse(plain.artifactContent).fragments.map((fragment) => fragment.source.sourceId),
+    ["Source-b", "source-a"]
+  );
+  lifecycle.close();
+});
+
+test("a promotion plan proposed under a hostile locale still verifies and publishes", async () => {
+  const { controlRoot, lifecycle } = await opened();
+  const plan = await withHostileLocaleCompare(() => lifecycle.proposePromotion(mixedCasePromotion()));
+  const outcome = await lifecycle.applyPromotion(plan, approval(plan));
+  assert.equal(outcome.outcome, "published");
+  const published = join(controlRoot, ...plan.writePlan.writes[0].logicalPath.split("/"));
+  assert.equal(digest(await readFile(published, "utf8")), plan.artifactDigest);
+  lifecycle.close();
+});
+
+test("managed object identity is stable across divergent locale collations", async () => {
+  const plain = await opened();
+  const hostile = await opened();
+  const first = await plain.lifecycle.registerObject(objectInput(1));
+  const second = await withHostileLocaleCompare(() => hostile.lifecycle.registerObject(objectInput(1)));
+  assert.equal(first.objectId, second.objectId);
+  plain.lifecycle.close();
+  hostile.lifecycle.close();
+});
+
+test("garbage collection plan identity, stored receipt and state digest are locale-independent", async () => {
+  const { lifecycle } = await opened();
+  await lifecycle.registerObject(objectInput(1));
+  await lifecycle.registerObject(objectInput(2));
+  const request = { schemaVersion: 1, workspaceId, evaluatedAt: now, quotaBytes: 0 };
+  const plan = lifecycle.planGarbageCollection(request);
+  const hostilePlan = await withHostileLocaleCompare(() => lifecycle.planGarbageCollection(request));
+  assert.equal(plan.planId, hostilePlan.planId);
+  assert.deepEqual(plan.candidates, hostilePlan.candidates);
+
+  // The receipt is stored as canonical JSON and re-encoded on replay: applying
+  // under a hostile collation and replaying under the ambient one must agree,
+  // or the replay fails closed with VES_MEMORY_LIFECYCLE_CORRUPT.
+  const applied = await withHostileLocaleCompare(() => lifecycle.applyGarbageCollection(plan));
+  const replayed = await lifecycle.applyGarbageCollection(plan);
+  assert.deepEqual(replayed.quarantinedObjectIds, applied.quarantinedObjectIds);
+
+  assert.equal(lifecycle.stateDigest(), await withHostileLocaleCompare(() => lifecycle.stateDigest()));
+  lifecycle.close();
+});

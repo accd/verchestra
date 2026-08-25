@@ -353,3 +353,62 @@ test("generation and lexical ordering are stable across reopen", async () => {
   assert.equal(reopened.stateDigest(), digestBefore);
   reopened.close();
 });
+
+// #58 (memory vertical): memory-store.ts ordered canonical-JSON object members
+// and the ingestion manifest's source list with String.prototype.localeCompare,
+// which is locale-dependent and diverges from UTF-16 code-unit order for the
+// mixed-case ASCII identifiers IDENTIFIER_PATTERN accepts. Replacing
+// localeCompare with a comparator that reverses code-unit order simulates a
+// divergent collation without depending on any particular installed ICU locale
+// disagreeing on the host running the test.
+async function withHostileLocaleCompare(run) {
+  const original = String.prototype.localeCompare;
+  String.prototype.localeCompare = function hostileLocaleCompare(other) {
+    const left = String(this);
+    return left < other ? 1 : left > other ? -1 : 0;
+  };
+  try {
+    return await run();
+  } finally {
+    String.prototype.localeCompare = original;
+  }
+}
+
+const mixedCaseBatch = () =>
+  batch([source("Source-b", { contents: ["beta content"] }), source("source-a", { contents: ["alpha content"] })]);
+
+test("ingestion identity and persisted manifest order are stable across divergent locale collations", async () => {
+  const plain = await opened();
+  const hostile = await opened();
+  const first = plain.store.ingest(mixedCaseBatch());
+  const second = await withHostileLocaleCompare(() => hostile.store.ingest(mixedCaseBatch()));
+  assert.equal(first.generationId, second.generationId);
+  assert.equal(first.manifestDigest, second.manifestDigest);
+
+  const manifests = plain.store.listIngestionManifests({ workspaceId, projectId });
+  assert.deepEqual(manifests, hostile.store.listIngestionManifests({ workspaceId, projectId }));
+  // Code-unit order specifically, not merely "some" deterministic order:
+  // uppercase sorts before lowercase in UTF-16, so "Source-b" leads the
+  // persisted manifest even though every ambient collation the repository has
+  // met orders "source-a" first. The digests identify which source is which.
+  assert.deepEqual(manifests[0].sourceDigests, [
+    plain.store.listSources({ workspaceId, projectId }).find((entry) => entry.sourceId === "Source-b").contentDigest,
+    plain.store.listSources({ workspaceId, projectId }).find((entry) => entry.sourceId === "source-a").contentDigest
+  ]);
+
+  // The state digest canonicalizes raw column names, so it too must not move
+  // with the ambient collation.
+  assert.equal(plain.store.stateDigest(), await withHostileLocaleCompare(() => plain.store.stateDigest()));
+  assert.equal(plain.store.stateDigest(), hostile.store.stateDigest());
+  plain.store.close();
+  hostile.store.close();
+});
+
+test("re-ingesting a mixed-case batch under a hostile locale stays idempotent", async () => {
+  const { store } = await opened();
+  const first = store.ingest(mixedCaseBatch());
+  const replay = await withHostileLocaleCompare(() => store.ingest(mixedCaseBatch()));
+  assert.equal(replay.changed, false);
+  assert.equal(replay.generationId, first.generationId);
+  store.close();
+});

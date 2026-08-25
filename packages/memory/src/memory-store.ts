@@ -4,6 +4,8 @@ import { readFile, rename, rm } from "node:fs/promises";
 import { dirname } from "node:path";
 import { DatabaseSync, backup } from "node:sqlite";
 
+import { canonicalizeJsonV2 } from "@verchestra/domain";
+
 interface UnknownRecord {
   readonly [key: string]: unknown;
   readonly schemaVersion?: unknown;
@@ -287,15 +289,22 @@ function mapSqliteError(error: unknown): Error {
 const rawSha256 = (value: string | Uint8Array): string => createHash("sha256").update(value).digest("hex");
 const sha256 = (value: string | Uint8Array): string => `sha256:${rawSha256(value)}`;
 
-function canonical(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
-  if (value !== null && typeof value === "object") {
-    const entries = Object.entries(value as UnknownRecord)
-      .filter(([, item]) => item !== undefined)
-      .sort(([left], [right]) => left.localeCompare(right));
-    return `{${entries.map(([key, item]) => `${JSON.stringify(key)}:${canonical(item)}`).join(",")}}`;
-  }
-  return JSON.stringify(value);
+// This module's former private recursive serializer ordered object members
+// with the ambient-locale `String.prototype.localeCompare`; `canonicalizeJsonV2`
+// (RFC 8785, UTF-16 code-unit member order) replaces it at every call site
+// below (issue #58). The observation ID, the persisted ingestion manifest
+// bytes, the manifest digest, the generation ID and the memory state digest
+// are all derived from those bytes, so the encoder must not depend on the
+// machine's collation.
+
+// Code-unit comparison, not localeCompare: the orderings below fix the
+// persisted chunk sequence and the ingestion manifest's source order, which
+// feed the observation ID, the stored manifest JSON, the manifest digest and
+// the generation ID (issue #58).
+function codeUnitCompare(left: string, right: string): number {
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
 }
 
 const DIGEST_PATTERN = /^sha256:[a-f0-9]{64}$/u;
@@ -400,7 +409,7 @@ function normalizeBatch(value: unknown): NormalizedBatch {
           if (sha256(content) !== contentDigest) inputError(`Chunk digest mismatch: ${chunkId}`);
           return Object.freeze({ chunkId, ordinal, content, contentDigest });
         })
-        .sort((left, right) => left.ordinal - right.ordinal || left.chunkId.localeCompare(right.chunkId));
+        .sort((left, right) => left.ordinal - right.ordinal || codeUnitCompare(left.chunkId, right.chunkId));
       chunks.forEach((chunk, index) => {
         if (chunk.ordinal !== index) inputError(`Chunk ordinals must be contiguous for ${sourceId}`);
       });
@@ -428,11 +437,11 @@ function normalizeBatch(value: unknown): NormalizedBatch {
         validUntil,
         classification: source.classification as Classification,
         contentDigest,
-        observationId: sha256(canonical(identity)),
+        observationId: sha256(canonicalizeJsonV2(identity)),
         chunks: Object.freeze(chunks)
       });
     })
-    .sort((left, right) => left.sourceId.localeCompare(right.sourceId));
+    .sort((left, right) => codeUnitCompare(left.sourceId, right.sourceId));
   const manifest = {
     schemaVersion: 1,
     workspaceId,
@@ -445,14 +454,14 @@ function normalizeBatch(value: unknown): NormalizedBatch {
       chunkDigests: source.chunks.map((chunk) => chunk.contentDigest)
     }))
   };
-  const manifestJson = canonical(manifest);
+  const manifestJson = canonicalizeJsonV2(manifest);
   const manifestDigest = sha256(manifestJson);
   return Object.freeze({
     schemaVersion: 1,
     workspaceId,
     projectId,
     manifestRef,
-    generationId: sha256(canonical({ workspaceId, projectId, manifestDigest })),
+    generationId: sha256(canonicalizeJsonV2({ workspaceId, projectId, manifestDigest })),
     manifestDigest,
     manifestJson,
     sources: Object.freeze(sources)
@@ -531,7 +540,7 @@ function activeState(db: DatabaseSync): unknown {
 
 function memoryStateDigest(db: DatabaseSync): string {
   assertAuthoritativeProjection(db);
-  return sha256(canonical(activeState(db)));
+  return sha256(canonicalizeJsonV2(activeState(db)));
 }
 
 function stateDigestFromFile(path: string): string {
@@ -875,7 +884,7 @@ export class MemoryStore {
       const results = batches
         .sort(
           (left, right) =>
-            left.workspaceId.localeCompare(right.workspaceId) || left.projectId.localeCompare(right.projectId)
+            codeUnitCompare(left.workspaceId, right.workspaceId) || codeUnitCompare(left.projectId, right.projectId)
         )
         .map((batch) => this.#applyIngestion(batch));
       db.exec("COMMIT");
