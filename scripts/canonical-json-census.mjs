@@ -13,7 +13,9 @@ export const CENSUS_SCOPE_EXCLUSIONS = Object.freeze(
     ["packages/drivers/src/codex-driver.ts", "Protocol frame serialization, not a canonical product identity."],
     ["packages/self-test/src/git-fixtures.ts", "Git fixture serialization, not product behavior."],
     ["scripts/agent-context.mjs", "Diagnostic command output, not product behavior."],
+    ["scripts/canonical-json-census-refresh.mjs", "Census maintenance diagnostic, not a scanned product source."],
     ["scripts/canonical-json-census.mjs", "Census implementation, not a scanned product source."],
+    ["scripts/requirements-trace.mjs", "Requirement traceability diagnostic output, not product behavior."],
     ["scripts/select-gates.mjs", "Diagnostic command output, not product behavior."]
   ])
 );
