@@ -419,7 +419,7 @@ test("a repeated receipt is compared by canonical content, not by key insertion 
   const repository = new InMemoryEffectRepository();
   const planned = await repository.insertOrGet(intent());
   const fields = {
-    receiptId: `receipt_${planned.idempotencyKey.slice("sha256:".length)}`,
+    receiptId: `receipt_${/[a-f0-9]{64}$/u.exec(planned.idempotencyKey)[0]}`,
     effectId: planned.effectId,
     idempotencyKey: planned.idempotencyKey,
     adapterId: "mock-effect-adapter",
@@ -446,4 +446,19 @@ test("a repeated receipt is compared by canonical content, not by key insertion 
     repository.complete(planned.idempotencyKey, { ...fields, safeEvidenceRefs: ["evidence:two", "evidence:one"] }),
     { code: "VES_EFFECT_RECEIPT_CONFLICT" }
   );
+});
+
+test("a receipt id carries the digest hex whichever canonicalization version the key declares", async () => {
+  for (const canonicalizationVersion of [1, 2]) {
+    const repository = new InMemoryEffectRepository();
+    const broker = new EffectBroker({ repository, adapter: new MockEffectAdapter() });
+    const input = { ...base, canonicalizationVersion };
+    const planned = await broker.plan(createEffectIntent({ ...input, idempotencyKey: buildIdempotencyKey(input) }));
+    const receipt = await broker.execute(planned.idempotencyKey);
+    const hex = /[a-f0-9]{64}$/u.exec(planned.idempotencyKey)[0];
+    assert.equal(receipt.receiptId, `receipt_${hex}`);
+    // The V2 prefix is `v2:sha256:`, so stripping a fixed `"sha256:".length`
+    // used to leave `56:` glued to the hex.
+    assert.doesNotMatch(receipt.receiptId, /receipt_\d+:/u);
+  }
 });
