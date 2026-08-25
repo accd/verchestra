@@ -13,3 +13,9 @@ second bundle license component; this preserves the candidate's exactly-one
 evidence rule. A collision with a generated identity is rejected. Returned
 component bytes are suitable as the input to the later TUF publisher; no
 private key or network capability exists in this module.
+
+`writeTufReleasePublication` is the filesystem publication boundary. It
+copies the signed metadata and target maps into separate `metadata/` and
+`targets/` trees below a sibling staging directory, rejects traversal and
+existing destinations, and renames the complete tree into place. The writer
+only receives signed bytes; it never reads or stores a private key.

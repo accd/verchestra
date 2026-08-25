@@ -1,4 +1,6 @@
 import { createHash } from "node:crypto";
+import { lstat, mkdir, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
+import { dirname, join, resolve, sep } from "node:path";
 
 import { canonicalize } from "@tufjs/canonical-json";
 
@@ -44,6 +46,12 @@ export interface TufReleasePublication {
   readonly bundle: HermeticDistributionBundle;
 }
 
+export interface TufReleasePublicationDirectory {
+  readonly directory: string;
+  readonly metadataDirectory: string;
+  readonly targetsDirectory: string;
+}
+
 export class TufPublicationError extends Error {
   readonly code: string;
 
@@ -80,6 +88,108 @@ const cloneBytes = (value: Uint8Array, label: string): Uint8Array => {
   if (!(value instanceof Uint8Array) || value.byteLength === 0)
     fail("VES_TUF_PUBLICATION_BYTES_INVALID", `${label} must contain non-empty bytes`);
   return Buffer.from(value);
+};
+
+const codeUnitCompare = (left: string, right: string): number => {
+  const length = Math.min(left.length, right.length);
+  for (let index = 0; index < length; index += 1) {
+    const difference = left.charCodeAt(index) - right.charCodeAt(index);
+    if (difference !== 0) return difference;
+  }
+  return left.length - right.length;
+};
+
+const safeRelativePath = (value: unknown, label: string): string => {
+  const path =
+    typeof value === "string"
+      ? value
+      : fail("VES_TUF_PUBLICATION_PATH_INVALID", `${label} is not a safe relative path`);
+  if (
+    !SAFE_PATH.test(path) ||
+    path.startsWith("/") ||
+    path.includes("\\") ||
+    path.includes("//") ||
+    path.split("/").some((segment) => segment.length === 0 || segment === "." || segment === "..")
+  )
+    fail("VES_TUF_PUBLICATION_PATH_INVALID", `${label} is not a safe relative path`);
+  return path;
+};
+
+const assertWithin = (root: string, candidate: string): void => {
+  const normalizedRoot = resolve(root);
+  const normalizedCandidate = resolve(candidate);
+  if (normalizedCandidate !== normalizedRoot && !normalizedCandidate.startsWith(`${normalizedRoot}${sep}`))
+    fail("VES_TUF_PUBLICATION_PATH_INVALID", "publication path escapes its destination");
+};
+
+const sortedEntries = (
+  values: ReadonlyMap<string, Uint8Array>,
+  label: string
+): readonly (readonly [string, Uint8Array])[] =>
+  [...values.entries()]
+    .map(([path, bytes]) => [safeRelativePath(path, `${label} path`), cloneBytes(bytes, `${label} ${path}`)] as const)
+    .sort(([left], [right]) => codeUnitCompare(left, right));
+
+const writePublicationTree = async (
+  root: string,
+  values: readonly (readonly [string, Uint8Array])[],
+  label: string
+): Promise<void> => {
+  assertWithin(root, root);
+  for (const [relativePath, bytes] of values) {
+    const target = resolve(root, ...relativePath.split("/"));
+    assertWithin(root, target);
+    await mkdir(dirname(target), { recursive: true, mode: 0o700 });
+    try {
+      await writeFile(target, bytes, { flag: "wx", mode: 0o600 });
+    } catch (error) {
+      return fail("VES_TUF_PUBLICATION_WRITE_FAILED", `unable to write ${label} ${relativePath}`, error);
+    }
+  }
+};
+
+const ensureDestinationAbsent = async (root: string): Promise<void> => {
+  try {
+    await lstat(root);
+    fail("VES_TUF_PUBLICATION_DESTINATION_EXISTS", "publication destination already exists");
+  } catch (error) {
+    if (error instanceof TufPublicationError) throw error;
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT")
+      return fail("VES_TUF_PUBLICATION_WRITE_FAILED", "publication destination cannot be inspected", error);
+  }
+};
+
+const assertMatchingTrustedRoot = (publication: TufReleasePublication): void => {
+  const rootBytes = publication.metadata.get("root.json");
+  if (rootBytes === undefined || Buffer.compare(Buffer.from(rootBytes), Buffer.from(publication.trustedRoot)) !== 0)
+    fail("VES_TUF_PUBLICATION_ROOT_MISMATCH", "trusted root does not match root metadata");
+};
+
+const commitPublicationDirectory = async (
+  root: string,
+  metadata: readonly (readonly [string, Uint8Array])[],
+  targets: readonly (readonly [string, Uint8Array])[]
+): Promise<TufReleasePublicationDirectory> => {
+  const parent = dirname(root);
+  await mkdir(parent, { recursive: true, mode: 0o700 });
+  const staging = await mkdtemp(join(parent, ".vestra-tuf-publication-"));
+  let published = false;
+  try {
+    await writePublicationTree(join(staging, "metadata"), metadata, "metadata");
+    await writePublicationTree(join(staging, "targets"), targets, "target");
+    await rename(staging, root);
+    published = true;
+    return Object.freeze({
+      directory: root,
+      metadataDirectory: join(root, "metadata"),
+      targetsDirectory: join(root, "targets")
+    });
+  } catch (error) {
+    if (error instanceof TufPublicationError) throw error;
+    return fail("VES_TUF_PUBLICATION_WRITE_FAILED", "publication could not be committed", error);
+  } finally {
+    if (!published) await rm(staging, { recursive: true, force: true });
+  }
 };
 
 const validateSigner = (signer: TufSigningKey, index: number): void => {
@@ -324,4 +434,32 @@ export function buildTufReleasePublication(input: TufPublicationInput): TufRelea
     targets,
     bundle
   });
+}
+
+/**
+ * Persist a complete TUF publication as a new repository directory.
+ *
+ * The destination must not exist. Files are written below a sibling staging
+ * directory and the directory is renamed into place only after every metadata
+ * and target byte has been written. Private signing material never crosses
+ * this boundary; signing is completed by buildTufReleasePublication before
+ * this function is called.
+ */
+export async function writeTufReleasePublication(
+  publication: TufReleasePublication,
+  directory: string
+): Promise<TufReleasePublicationDirectory> {
+  if (publication === null || typeof publication !== "object")
+    fail("VES_TUF_PUBLICATION_INPUT_INVALID", "publication must be an object");
+  if (typeof directory !== "string" || directory.length === 0)
+    fail("VES_TUF_PUBLICATION_INPUT_INVALID", "publication directory is invalid");
+
+  const root = resolve(directory);
+  await ensureDestinationAbsent(root);
+  assertMatchingTrustedRoot(publication);
+  return commitPublicationDirectory(
+    root,
+    sortedEntries(publication.metadata, "metadata"),
+    sortedEntries(publication.targets, "target")
+  );
 }

@@ -20,8 +20,13 @@ Issue: #17
   candidate and TUF publication that resolves the same release in online,
   mirror, offline, and air-gapped source modes; two such staged releases can
   be activated and the first can be independently rolled back.
+- **RM-06** — A signed TUF publication can be persisted as a new repository
+  directory with separate metadata and targets views; every byte is written
+  before an atomic directory commit, and unsafe paths or an existing
+  destination fail closed.
 
 ## Boundary
 
-This slice does not create a ReleaseCandidate, sign evidence, publish TUF
-views, activate a release, execute rollback, or close #17.
+This slice does not provision release signing keys, publish to a public
+service, or close #17. The filesystem publisher persists an already signed
+publication but does not own private-key custody.

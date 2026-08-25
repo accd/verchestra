@@ -7,5 +7,7 @@
       and non-pass evaluation tests.
 - [x] Bind the materialized bytes into a candidate and TUF publication, and
       resolve all four source modes.
-- [ ] Feed the materialized bytes into candidate construction and TUF release
-      views, then independently verify rollback execution.
+- [x] Persist the signed TUF metadata and targets into an atomic filesystem
+      publication, with traversal and destination-collision rejection.
+- [ ] Obtain independent verification of candidate construction, four source
+      views, filesystem publication, and rollback execution.

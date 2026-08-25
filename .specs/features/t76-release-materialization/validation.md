@@ -10,9 +10,10 @@ boundary and does not claim #17 completion.
 | RM-03       | `tests/build/release-materializer.test.mjs:77-90` proves order-independent identity, bytes, and finding preservation                                                                  | PASS   |
 | RM-04       | `tests/security/release-materializer-security.test.mjs:48-109` rejects generated inputs/collisions, preserves failed mutant findings, and kills source-byte tampering                 | PASS   |
 | RM-05       | `tests/build/materialized-tuf-publication.test.mjs:78-150,161-209` binds materialized bytes to a candidate/TUF publication, resolves all four modes, and verifies activation/rollback | PASS   |
+| RM-06       | `tests/build/tuf-publication.test.mjs:79-115` verifies separate metadata/targets trees, byte preservation, atomic destination commit, and traversal rejection                         | PASS   |
 
-Focused materializer result: 8 passed, 0 failed/skipped/todo (the aggregate
-artifact/census suite ran 21 passed). Typecheck, `agent:check`,
+Focused materializer/TUF result: 15 passed, 0 failed/skipped/todo (the
+aggregate artifact/census suite ran 21 passed). Typecheck, `agent:check`,
 complexity, ESLint, Prettier, and `git diff --check` pass.
 
 Full gates:
@@ -23,6 +24,6 @@ Full gates:
   1,077 security, 284 fault, and 28 release tests; zero
   failures/skips/todos.
 
-The focused assertions map one-to-one to RM-01 through RM-05; no test is
+The focused assertions map one-to-one to RM-01 through RM-06; no test is
 unclaimed, skipped, todo, or used as a vacuous pass. Independent rollback
 evidence and T76 review remain required before #17 can close.
