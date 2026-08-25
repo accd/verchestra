@@ -3,13 +3,15 @@ import { mkdirSync } from "node:fs";
 import { link, lstat, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { join, relative, resolve } from "node:path";
 
+import { normalizeDeclaredSet } from "@verchestra/domain";
+
 import {
   ArtifactSealer,
   dsseEnvelopeOf,
   sealedArtifactFromEnvelope,
   sealedProjectionMatches
 } from "../integrity/artifact-sealer.ts";
-import { canonicalizeJson, sha256Digest } from "../integrity/canonical.ts";
+import { canonicalizeJsonForVersion, sha256DigestForVersion } from "../integrity/canonical.ts";
 import type { JsonValue, SealedArtifact, TrustRoot } from "../integrity/types.ts";
 
 type Row = Record<string, unknown>;
@@ -80,7 +82,7 @@ export interface RunCapsuleBudgetEvidence {
 }
 
 export interface RunCapsuleBuildInput {
-  readonly schemaVersion: 1;
+  readonly schemaVersion: 1 | 2;
   readonly workspaceId: string;
   readonly runId: string;
   readonly runKind: "feature" | "recovery";
@@ -195,6 +197,40 @@ function fail(code: RunCapsuleErrorCode, message: string): never {
   throw new RunCapsuleError(code, message);
 }
 
+export type RunCapsuleSchemaVersion = RunCapsuleBuildInput["schemaVersion"];
+
+function schemaVersionOf(value: unknown): RunCapsuleSchemaVersion {
+  if (value !== 1 && value !== 2) fail("VES_RUN_CAPSULE_INVALID", "Unsupported schema version");
+  return value;
+}
+
+/**
+ * Ordering for the set-like reference arrays sealed into a Capsule.
+ *
+ * Schema V2 uses UTF-16 code-unit comparison, so a Capsule's identity is a
+ * property of its values rather than of the sealing machine's collation.
+ *
+ * Schema V1 keeps ambient `localeCompare`, and that retention is
+ * verification-critical rather than cosmetic. Unlike the Execution Package
+ * (AD-029), whose normalized member is a JSON *object* that RFC 8785 re-sorts
+ * by key anyway — making its pre-sort inert — `sourceStateRefs` is an
+ * **array**, and RFC 8785 preserves array order. `RunCapsuleBuilder.verify`
+ * re-runs `normalizePayload` over the stored payload and recomputes
+ * `bindingFor(...).sourceStateDigest` from the re-sorted array, comparing it to
+ * the digest signed at seal time. Normalizing V1 onto code-unit order would
+ * therefore change that recomputation and make every stored V1 Capsule whose
+ * `artifactId` values differ by case or punctuation fail verification with
+ * `VES_RUN_CAPSULE_BINDING_INVALID`. AD-029's "verification never re-sorts"
+ * argument does not hold for this owner, so compatibility rule 1 applies in
+ * full: V1 keeps its bytes and its verifier.
+ */
+function compareIdentity(version: RunCapsuleSchemaVersion, left: string, right: string): number {
+  if (version === 1) return left.localeCompare(right);
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
+}
+
 function row(value: unknown, label: string, allowed: readonly string[]): Row {
   if (value === null || typeof value !== "object" || Array.isArray(value))
     fail("VES_RUN_CAPSULE_INVALID", `${label} must be an object`);
@@ -250,7 +286,7 @@ function ref(value: unknown, label: string): RunCapsuleRef {
   });
 }
 
-function refs(value: unknown, label: string): readonly RunCapsuleRef[] {
+function refs(value: unknown, label: string, version: RunCapsuleSchemaVersion): readonly RunCapsuleRef[] {
   if (!Array.isArray(value)) fail("VES_RUN_CAPSULE_INVALID", `${label} must be an array`);
   const normalized = value.map((entry, index) => ref(entry, `${label}[${index}]`));
   const identities = normalized.map((entry) => `${entry.artifactId}\0${entry.digest}`);
@@ -258,7 +294,9 @@ function refs(value: unknown, label: string): readonly RunCapsuleRef[] {
     fail("VES_RUN_CAPSULE_INVALID", `${label} contains duplicate references`);
   return Object.freeze(
     normalized.sort(
-      (left, right) => left.artifactId.localeCompare(right.artifactId) || left.digest.localeCompare(right.digest)
+      (left, right) =>
+        compareIdentity(version, left.artifactId, right.artifactId) ||
+        compareIdentity(version, left.digest, right.digest)
     )
   );
 }
@@ -267,10 +305,10 @@ function optionalRef(value: unknown, label: string): RunCapsuleRef | undefined {
   return value === undefined ? undefined : ref(value, label);
 }
 
-function evidence(value: unknown, riskTier: RunRiskTier): RunCapsuleEvidence {
+function evidence(value: unknown, riskTier: RunRiskTier, version: RunCapsuleSchemaVersion): RunCapsuleEvidence {
   const valueRow = row(value, "evidence", EVIDENCE_KEYS);
   const normalized = Object.fromEntries(
-    EVIDENCE_KEYS.map((key) => [key, refs(valueRow[key], `evidence.${key}`)])
+    EVIDENCE_KEYS.map((key) => [key, refs(valueRow[key], `evidence.${key}`, version)])
   ) as unknown as RunCapsuleEvidence;
   for (const key of RISK_REQUIRED[riskTier]) {
     if (normalized[key].length === 0)
@@ -279,7 +317,7 @@ function evidence(value: unknown, riskTier: RunRiskTier): RunCapsuleEvidence {
   return Object.freeze(normalized);
 }
 
-function normalizeHandoff(value: unknown): RunCapsuleHandoff {
+function normalizeHandoff(value: unknown, version: RunCapsuleSchemaVersion): RunCapsuleHandoff {
   const valueRow = row(value, "handoff", [
     "packageRef",
     "publicationReceiptRefs",
@@ -288,7 +326,7 @@ function normalizeHandoff(value: unknown): RunCapsuleHandoff {
   ]);
   if (valueRow["receiverApprovalInherited"] !== false)
     fail("VES_RUN_CAPSULE_INVALID", "Receiver Approval must never be inherited");
-  const publicationReceiptRefs = refs(valueRow["publicationReceiptRefs"], "handoff.publicationReceiptRefs");
+  const publicationReceiptRefs = refs(valueRow["publicationReceiptRefs"], "handoff.publicationReceiptRefs", version);
   if (publicationReceiptRefs.length === 0)
     fail("VES_RUN_CAPSULE_EVIDENCE_INCOMPLETE", "Handoff publication evidence is required");
   return Object.freeze({
@@ -387,7 +425,7 @@ function normalizeBudgetEvidence(value: unknown): RunCapsuleBudgetEvidence {
 function normalizePayload(value: unknown): RunCapsulePayload {
   inspectPrivateMaterial(value);
   const valueRow = row(value, "Run Capsule", PAYLOAD_FIELDS);
-  if (valueRow["schemaVersion"] !== 1) fail("VES_RUN_CAPSULE_INVALID", "Unsupported schema version");
+  const version = schemaVersionOf(valueRow["schemaVersion"]);
   if (!RUN_TERMINAL_STATUSES.includes(valueRow["status"] as RunTerminalStatus))
     fail("VES_RUN_CAPSULE_INVALID", "Terminal status is invalid");
   const status = valueRow["status"] as RunTerminalStatus;
@@ -396,14 +434,14 @@ function normalizePayload(value: unknown): RunCapsulePayload {
   const riskTier = valueRow["riskTier"] as RunRiskTier;
   if (valueRow["runKind"] !== "feature" && valueRow["runKind"] !== "recovery")
     fail("VES_RUN_CAPSULE_INVALID", "Run kind is invalid");
-  const sourceStateRefs = refs(valueRow["sourceStateRefs"], "sourceStateRefs");
+  const sourceStateRefs = refs(valueRow["sourceStateRefs"], "sourceStateRefs", version);
   if (sourceStateRefs.length === 0) fail("VES_RUN_CAPSULE_EVIDENCE_INCOMPLETE", "Source state is required");
   if (!Array.isArray(valueRow["policyDigests"]) || valueRow["policyDigests"].length === 0)
     fail("VES_RUN_CAPSULE_EVIDENCE_INCOMPLETE", "Policy evidence is required");
   const policyDigests = Object.freeze(
     [...new Set(valueRow["policyDigests"].map((entry) => digest(entry, "policyDigest")))].sort()
   );
-  const normalizedEvidence = evidence(valueRow["evidence"], riskTier);
+  const normalizedEvidence = evidence(valueRow["evidence"], riskTier, version);
   const terminalTransition = normalizeTransition(valueRow["terminalTransition"], status);
   const sealedAt = instant(valueRow["sealedAt"], "sealedAt");
   if (Date.parse(sealedAt) < Date.parse(terminalTransition.occurredAt))
@@ -412,7 +450,7 @@ function normalizePayload(value: unknown): RunCapsulePayload {
   const humanReviewRef = optionalRef(valueRow["humanReviewRef"], "humanReviewRef");
   const terminalErrorRef = optionalRef(valueRow["terminalErrorRef"], "terminalErrorRef");
   const recoveryRef = optionalRef(valueRow["recoveryRef"], "recoveryRef");
-  const handoff = valueRow["handoff"] === undefined ? undefined : normalizeHandoff(valueRow["handoff"]);
+  const handoff = valueRow["handoff"] === undefined ? undefined : normalizeHandoff(valueRow["handoff"], version);
   const budgetEvidence =
     valueRow["budgetEvidence"] === undefined ? undefined : normalizeBudgetEvidence(valueRow["budgetEvidence"]);
 
@@ -443,7 +481,7 @@ function normalizePayload(value: unknown): RunCapsulePayload {
     fail("VES_RUN_CAPSULE_INVALID", "Recovered status requires a recovery run");
 
   return Object.freeze({
-    schemaVersion: 1,
+    schemaVersion: version,
     workspaceId: safe(valueRow["workspaceId"], "workspaceId"),
     runId: safe(valueRow["runId"], "runId"),
     runKind: valueRow["runKind"],
@@ -477,10 +515,14 @@ function normalizePayload(value: unknown): RunCapsulePayload {
 
 function bindingFor(payload: RunCapsulePayload) {
   return Object.freeze({
-    schema: Object.freeze({ name: "run-capsule", version: 1 }),
+    // The schema version travels into the signed in-toto Statement and selects
+    // the predicate type, so a V1 Capsule cannot be reinterpreted as V2: the
+    // two are different signed documents, and `verify` additionally requires
+    // the envelope's schema version to equal the payload's.
+    schema: Object.freeze({ name: "run-capsule", version: payload.schemaVersion }),
     purpose: "run-capsule",
     bindingId: `${payload.workspaceId}:${payload.runId}:v${payload.runVersion}:${payload.status}`,
-    sourceStateDigest: sha256Digest(payload.sourceStateRefs)
+    sourceStateDigest: sha256DigestForVersion(payload.schemaVersion, payload.sourceStateRefs)
   });
 }
 
@@ -499,7 +541,14 @@ export class RunCapsuleBuilder {
   }
 
   async build(input: unknown): Promise<SignedRunCapsule> {
-    const payload = normalizePayload(input);
+    // A caller that omits the version receives the locale-independent V2
+    // contract; an explicit schemaVersion: 1 stays V1 and is never silently
+    // upgraded, and an unknown version fails closed in `schemaVersionOf`.
+    const versioned =
+      input !== null && typeof input === "object" && !Array.isArray(input) && !("schemaVersion" in input)
+        ? { ...(input as Row), schemaVersion: 2 }
+        : input;
+    const payload = normalizePayload(versioned);
     return deepFreeze(
       (await this.#sealer.seal(payload as unknown as JsonValue, bindingFor(payload), {
         issuedAt: payload.sealedAt
@@ -570,7 +619,13 @@ function assertEnvelope(artifact: SignedRunCapsule, expectedId?: string): void {
   try {
     if (!ARTIFACT_ID.test(artifact.artifactId) || (expectedId !== undefined && artifact.artifactId !== expectedId))
       fail("VES_RUN_CAPSULE_STORAGE_INTEGRITY", "Capsule identity is invalid");
-    if (sha256Digest(artifact.payload) !== artifact.payloadDigest || !sealedProjectionMatches(artifact))
+    // The canonicalizer is selected from the recorded schema version, never
+    // guessed, so a stored V1 Capsule is re-digested exactly as it was sealed.
+    const version = schemaVersionOf(artifact.schema.version);
+    if (
+      sha256DigestForVersion(version, artifact.payload) !== artifact.payloadDigest ||
+      !sealedProjectionMatches(artifact)
+    )
       fail("VES_RUN_CAPSULE_STORAGE_INTEGRITY", "Capsule content address is invalid");
   } catch (error) {
     if (error instanceof RunCapsuleError) throw error;
@@ -613,7 +668,7 @@ export class FileRunCapsuleStore {
     const target = join(root, `${artifact.artifactId}.json`);
     await safeTarget(root, target);
     // The persisted object IS the DSSE envelope (#248); flat fields derive on read.
-    const bytes = `${canonicalizeJson(dsseEnvelopeOf(artifact) as unknown as JsonValue)}\n`;
+    const bytes = `${canonicalizeJsonForVersion(schemaVersionOf(artifact.schema.version), dsseEnvelopeOf(artifact) as unknown as JsonValue)}\n`;
     try {
       const existing = await readFile(target, "utf8");
       if (existing !== bytes) fail("VES_RUN_CAPSULE_STORAGE_CONFLICT", "Capsule target contains different bytes");
@@ -712,9 +767,11 @@ export class RunCapsuleRecoveryCoordinator {
       readonly journal: string;
     }[]
   > {
-    const intents = [...this.#journal.listUnsealedTerminalRuns()].sort((left, right) =>
-      left.runId.localeCompare(right.runId)
-    );
+    // Recovery order only, not a digest input and not version-bearing: no
+    // sealed byte depends on it, so it normalizes to code-unit order outright
+    // rather than carrying a V1 branch. Deterministic ordering still matters —
+    // it makes the sealed-and-recorded sequence reproducible across machines.
+    const intents = normalizeDeclaredSet(this.#journal.listUnsealedTerminalRuns(), (intent) => intent.runId);
     const results: { runId: string; capsuleId: string; storage: string; journal: string }[] = [];
     for (const intent of intents) {
       const input = await this.#resolver.resolve(intent);

@@ -2,8 +2,10 @@ import { createHmac } from "node:crypto";
 
 import { GeneralEncrypt, calculateJwkThumbprint, exportJWK, generalDecrypt, type GeneralJWE } from "jose";
 
+import { normalizeDeclaredSet } from "@verchestra/domain";
+
 import { ArtifactSealer } from "../integrity/artifact-sealer.ts";
-import { canonicalizeJson, sha256Digest } from "../integrity/canonical.ts";
+import { canonicalizeJsonForVersion, sha256DigestForVersion } from "../integrity/canonical.ts";
 import type { JsonValue, SealedArtifact, TrustRoot } from "../integrity/types.ts";
 
 type Row = Record<string, unknown>;
@@ -101,6 +103,13 @@ function fail(code: SupportBundleErrorCode, message: string, options?: ErrorOpti
   throw new SupportBundleError(code, message, options);
 }
 
+export type SupportBundleSchemaVersion = 1 | 2;
+
+function schemaVersionOf(value: unknown, label: string): SupportBundleSchemaVersion {
+  if (value !== 1 && value !== 2) fail("VES_SUPPORT_INVALID", label);
+  return value;
+}
+
 function row(value: unknown, label: string, allowed: readonly string[]): Row {
   if (value === null || typeof value !== "object" || Array.isArray(value))
     fail("VES_SUPPORT_INVALID", `${label} must be an object`);
@@ -133,8 +142,8 @@ function deepFreeze<T>(value: T, seen = new Set<object>()): T {
   return Object.freeze(value);
 }
 
-function cloneJson<T>(value: T): T {
-  return JSON.parse(canonicalizeJson(value as unknown as JsonValue)) as T;
+function cloneJson<T>(value: T, version: SupportBundleSchemaVersion): T {
+  return JSON.parse(canonicalizeJsonForVersion(version, value as unknown as JsonValue)) as T;
 }
 
 export class HmacPathPseudonymizer {
@@ -198,7 +207,11 @@ export class SupportCodeRegistry {
     )
       fail("VES_SUPPORT_INVALID", "stable diagnostic code registry is invalid");
     this.#codes = new Set(codes);
-    this.digest = `sha256:${sha256Digest(codes)}`;
+    // A registry is shared across bundle schema versions, so its digest is
+    // version-independent by construction: `codes` is a plain string array
+    // already ordered by default `Array#sort` (UTF-16 code unit), and both the
+    // V1 and V2 encoders are RFC 8785, which agree byte-for-byte on that shape.
+    this.digest = `sha256:${sha256DigestForVersion(1, codes)}`;
     Object.freeze(this);
   }
 
@@ -339,7 +352,7 @@ export interface SupportRecipientRef {
 }
 
 export interface SupportBundleManifest {
-  readonly schemaVersion: 1;
+  readonly schemaVersion: SupportBundleSchemaVersion;
   readonly planId: string;
   readonly registryVersion: string;
   readonly registryDigest: Digest;
@@ -375,7 +388,7 @@ export interface SupportBundleInspection {
 }
 
 interface SupportBundleSummary {
-  readonly schemaVersion: 1;
+  readonly schemaVersion: SupportBundleSchemaVersion;
   readonly planId: string;
   readonly workspaceId: string;
   readonly runId: string;
@@ -413,26 +426,63 @@ async function normalizeRecipients(value: unknown): Promise<readonly (SupportRec
       };
     })
   );
-  normalized.sort((left, right) => left.recipientId.localeCompare(right.recipientId));
+  // Code-unit order for every schema version, deliberately not version-gated.
+  // `#assertPlan` — the only verifier, reached from `inspect`, `authorizedBuild`
+  // and `open` — already requires `recipientIds` to equal `[...recipientIds]
+  // .sort()`, which is default `Array#sort` and therefore UTF-16 code-unit
+  // order. So code-unit *is* V1's verification contract here, and the previous
+  // `localeCompare` sort was a latent contradiction: under a divergent
+  // collation `plan()` produced a manifest its own validator rejected with
+  // "Support Bundle recipients are not canonical". Removing it is a fix, not a
+  // normalization, and no stored bundle can be invalidated by it because no
+  // bundle that ever passed `#assertPlan` was ordered any other way.
+  const ordered = normalizeDeclaredSet(normalized, (entry) => entry.recipientId);
   if (
-    new Set(normalized.map((entry) => entry.recipientId)).size !== normalized.length ||
-    new Set(normalized.map((entry) => entry.keyThumbprint)).size !== normalized.length
+    new Set(ordered.map((entry) => entry.recipientId)).size !== ordered.length ||
+    new Set(ordered.map((entry) => entry.keyThumbprint)).size !== ordered.length
   )
     fail("VES_SUPPORT_INVALID", "Support Bundle recipients must be unique");
-  return Object.freeze(normalized);
+  return Object.freeze(ordered);
 }
 
-function registryDigest(): Digest {
-  return `sha256:${sha256Digest(DEFINITIONS)}`;
+function registryDigest(version: SupportBundleSchemaVersion): Digest {
+  return `sha256:${sha256DigestForVersion(version, DEFINITIONS)}`;
 }
 
 function manifestMaterial(manifest: Omit<SupportBundleManifest, "planId">): JsonValue {
   return manifest as unknown as JsonValue;
 }
 
+/**
+ * Whether a decrypted archive manifest agrees with the summary that was signed.
+ *
+ * The schema version is compared alongside the identity fields so a V1 archive
+ * cannot be presented against a V2 summary, or the reverse, even if every other
+ * field matched.
+ */
+function archiveMatchesSummary(manifest: SupportBundleManifest, summary: SupportBundleSummary): boolean {
+  const version = summary.schemaVersion;
+  const projected = manifest.diagnostics.map((entry) => ({
+    fieldId: entry.fieldId,
+    valueDigest: `sha256:${sha256DigestForVersion(version, entry.value)}`
+  }));
+  return (
+    manifest.schemaVersion === version &&
+    manifest.planId === summary.planId &&
+    manifest.workspaceId === summary.workspaceId &&
+    manifest.runId === summary.runId &&
+    manifest.registryDigest === summary.registryDigest &&
+    manifest.codeRegistryDigest === summary.codeRegistryDigest &&
+    manifest.releaseDigest === summary.releaseDigest &&
+    canonicalizeJsonForVersion(version, projected) === canonicalizeJsonForVersion(version, summary.fields)
+  );
+}
+
 function bindingFor(summary: SupportBundleSummary) {
   return Object.freeze({
-    schema: Object.freeze({ name: "support-bundle", version: 1 }),
+    // Carried into the signed Statement and the predicate type, so a V1 bundle
+    // and a V2 bundle are distinct signed documents.
+    schema: Object.freeze({ name: "support-bundle", version: summary.schemaVersion }),
     purpose: "support-bundle",
     bindingId: `${summary.workspaceId}:${summary.runId}:${summary.planId}:${summary.destinationId}`,
     sourceStateDigest: summary.planId
@@ -478,7 +528,13 @@ export class SupportBundleBuilder {
       "createdAt",
       "expiresAt"
     ]);
-    if (value["schemaVersion"] !== 1 || value["registryVersion"] !== "1.0.0")
+    // Omitting the version selects the locale-independent V2 contract; an
+    // explicit 1 stays V1; anything else fails closed.
+    const version =
+      value["schemaVersion"] === undefined
+        ? (2 as const)
+        : schemaVersionOf(value["schemaVersion"], "Support Bundle schema or registry version is invalid");
+    if (value["registryVersion"] !== "1.0.0")
       fail("VES_SUPPORT_INVALID", "Support Bundle schema or registry version is invalid");
     const workspaceId = safe(value["workspaceId"], "workspaceId");
     const runId = safe(value["runId"], "runId");
@@ -501,10 +557,16 @@ export class SupportBundleBuilder {
       if (normalized.pseudonymized) pathsPseudonymized += 1;
       return Object.freeze({ fieldId, value: normalized.value });
     });
-    diagnostics.sort((left, right) => left.fieldId.localeCompare(right.fieldId));
-    if (new Set(diagnostics.map((entry) => entry.fieldId)).size !== diagnostics.length)
+    // Code-unit order for every schema version, deliberately not version-gated:
+    // `#assertPlan` already requires `fieldIds` to equal `[...fieldIds].sort()`
+    // (default `Array#sort`, i.e. UTF-16 code unit), so code-unit is V1's
+    // verification contract. The previous `localeCompare` sort contradicted it —
+    // under a divergent collation `plan()` produced a manifest its own validator
+    // rejected with "Support Bundle diagnostic order is not canonical".
+    const ordered = normalizeDeclaredSet(diagnostics, (entry) => entry.fieldId);
+    if (new Set(ordered.map((entry) => entry.fieldId)).size !== ordered.length)
       fail("VES_SUPPORT_INVALID", "diagnostic fields must be unique");
-    const releaseField = diagnostics.find((entry) => entry.fieldId === "release.digest");
+    const releaseField = ordered.find((entry) => entry.fieldId === "release.digest");
     if (releaseField !== undefined && releaseField.value !== releaseDigest)
       fail("VES_SUPPORT_VALUE_INVALID", "release diagnostic does not match the bundle release");
     const recipients = await normalizeRecipients(value["recipients"]);
@@ -512,14 +574,14 @@ export class SupportBundleBuilder {
     const expiresAt = instant(value["expiresAt"], "expiresAt");
     if (Date.parse(expiresAt) <= Date.parse(createdAt)) fail("VES_SUPPORT_INVALID", "Support Bundle expiry is invalid");
     const material = deepFreeze({
-      schemaVersion: 1 as const,
+      schemaVersion: version,
       registryVersion: "1.0.0",
-      registryDigest: registryDigest(),
+      registryDigest: registryDigest(version),
       codeRegistryDigest: this.#codeRegistry.digest,
       workspaceId,
       runId,
       releaseDigest,
-      diagnostics: Object.freeze(diagnostics),
+      diagnostics: Object.freeze(ordered),
       redactionSummary: Object.freeze({ pathsPseudonymized, prohibitedFieldsExcluded: 10 as const }),
       recipients: Object.freeze(
         recipients.map(({ recipientId, keyThumbprint }) => Object.freeze({ recipientId, keyThumbprint }))
@@ -528,7 +590,7 @@ export class SupportBundleBuilder {
       expiresAt
     });
     this.#scanner.assertSafe({ diagnostics: material.diagnostics, redactionSummary: material.redactionSummary });
-    const planId = sha256Digest(manifestMaterial(material));
+    const planId = sha256DigestForVersion(version, manifestMaterial(material));
     return deepFreeze({ planId, manifest: { ...material, planId } });
   }
 
@@ -548,7 +610,10 @@ export class SupportBundleBuilder {
       recipients: manifest.recipients,
       expiresAt: manifest.expiresAt
     };
-    return deepFreeze({ ...inspection, inspectionDigest: `sha256:${sha256Digest(inspection)}` as Digest });
+    return deepFreeze({
+      ...inspection,
+      inspectionDigest: `sha256:${sha256DigestForVersion(manifest.schemaVersion, inspection)}` as Digest
+    });
   }
 
   async authorizedBuild(
@@ -571,11 +636,14 @@ export class SupportBundleBuilder {
     )
       fail("VES_SUPPORT_INVALID", "Support Bundle recipient closure changed after inspection");
     this.#scanner.assertSafe(plan.manifest);
-    const archive = Buffer.from(canonicalizeJson(plan.manifest as unknown as JsonValue), "utf8");
+    const version = plan.manifest.schemaVersion;
+    // The protected encryption header carries the manifest's schema version, so
+    // `open` can refuse a V1 archive presented against a V2 summary.
+    const archive = Buffer.from(canonicalizeJsonForVersion(version, plan.manifest as unknown as JsonValue), "utf8");
     const encryptor = new GeneralEncrypt(archive).setProtectedHeader({
       enc: "A256GCM",
       typ: "application/verchestra-support+json",
-      v: 1,
+      v: version,
       plan: plan.planId
     });
     for (const recipient of recipients) {
@@ -584,7 +652,7 @@ export class SupportBundleBuilder {
         .setUnprotectedHeader({ alg: "ECDH-ES+A256KW", kid: recipient.recipientId });
     }
     const summary: SupportBundleSummary = deepFreeze({
-      schemaVersion: 1,
+      schemaVersion: version,
       planId: plan.planId,
       workspaceId: plan.manifest.workspaceId,
       runId: plan.manifest.runId,
@@ -594,7 +662,7 @@ export class SupportBundleBuilder {
       releaseDigest: plan.manifest.releaseDigest,
       fields: plan.manifest.diagnostics.map((entry) => ({
         fieldId: entry.fieldId,
-        valueDigest: `sha256:${sha256Digest(entry.value)}` as Digest
+        valueDigest: `sha256:${sha256DigestForVersion(version, entry.value)}` as Digest
       })),
       redactionSummary: plan.manifest.redactionSummary,
       recipients: plan.manifest.recipients,
@@ -668,7 +736,7 @@ export class SupportBundleBuilder {
       });
       if (
         decrypted.protectedHeader?.typ !== "application/verchestra-support+json" ||
-        decrypted.protectedHeader["v"] !== 1 ||
+        decrypted.protectedHeader["v"] !== summary.schemaVersion ||
         decrypted.protectedHeader["plan"] !== summary.planId
       )
         fail("VES_SUPPORT_DECRYPT_FAILED", "Support Bundle encryption binding is invalid");
@@ -685,23 +753,10 @@ export class SupportBundleBuilder {
       if (error instanceof SupportBundleError) throw error;
       fail("VES_SUPPORT_DECRYPT_FAILED", "Support Bundle archive is malformed", { cause: error });
     }
-    if (
-      manifest.planId !== summary.planId ||
-      manifest.workspaceId !== summary.workspaceId ||
-      manifest.runId !== summary.runId ||
-      manifest.registryDigest !== summary.registryDigest ||
-      manifest.codeRegistryDigest !== summary.codeRegistryDigest ||
-      manifest.releaseDigest !== summary.releaseDigest ||
-      canonicalizeJson(
-        manifest.diagnostics.map((entry) => ({
-          fieldId: entry.fieldId,
-          valueDigest: `sha256:${sha256Digest(entry.value)}`
-        }))
-      ) !== canonicalizeJson(summary.fields)
-    )
+    if (!archiveMatchesSummary(manifest, summary))
       fail("VES_SUPPORT_DECRYPT_FAILED", "Support Bundle archive does not match its signed summary");
     this.#scanner.assertSafe(manifest);
-    return deepFreeze(cloneJson(manifest));
+    return deepFreeze(cloneJson(manifest, summary.schemaVersion));
   }
 
   #assertPlan(plan: SupportBundlePlan): void {
@@ -728,10 +783,11 @@ export class SupportBundleBuilder {
       "createdAt",
       "expiresAt"
     ]);
+    // The verifier is selected from the recorded version, never guessed.
+    const version = schemaVersionOf(manifest["schemaVersion"], "Support Bundle manifest identity is invalid");
     if (
-      manifest["schemaVersion"] !== 1 ||
       manifest["registryVersion"] !== "1.0.0" ||
-      manifest["registryDigest"] !== registryDigest() ||
+      manifest["registryDigest"] !== registryDigest(version) ||
       manifest["codeRegistryDigest"] !== this.#codeRegistry.digest ||
       typeof manifest["planId"] !== "string" ||
       !/^[a-f0-9]{64}$/u.test(manifest["planId"])
@@ -762,7 +818,7 @@ export class SupportBundleBuilder {
     }
     if (
       new Set(fieldIds).size !== fieldIds.length ||
-      canonicalizeJson(fieldIds) !== canonicalizeJson([...fieldIds].sort())
+      canonicalizeJsonForVersion(version, fieldIds) !== canonicalizeJsonForVersion(version, [...fieldIds].sort())
     )
       fail("VES_SUPPORT_INVALID", "Support Bundle diagnostic order is not canonical");
     const releaseField = plan.manifest.diagnostics.find((entry) => entry.fieldId === "release.digest");
@@ -789,16 +845,17 @@ export class SupportBundleBuilder {
     if (
       new Set(recipientIds).size !== recipientIds.length ||
       new Set(thumbprints).size !== thumbprints.length ||
-      canonicalizeJson(recipientIds) !== canonicalizeJson([...recipientIds].sort())
+      canonicalizeJsonForVersion(version, recipientIds) !==
+        canonicalizeJsonForVersion(version, [...recipientIds].sort())
     )
       fail("VES_SUPPORT_INVALID", "Support Bundle recipients are not canonical");
     const material = Object.fromEntries(
       Object.entries(plan.manifest).filter(([key]) => key !== "planId")
     ) as unknown as Omit<SupportBundleManifest, "planId">;
     if (
-      sha256Digest(manifestMaterial(material)) !== plan.planId ||
+      sha256DigestForVersion(version, manifestMaterial(material)) !== plan.planId ||
       plan.manifest.registryVersion !== "1.0.0" ||
-      plan.manifest.registryDigest !== registryDigest() ||
+      plan.manifest.registryDigest !== registryDigest(version) ||
       plan.manifest.codeRegistryDigest !== this.#codeRegistry.digest
     )
       fail("VES_SUPPORT_INVALID", "Support Bundle plan identity is invalid");
@@ -864,9 +921,10 @@ export class SupportExportCoordinator {
     request: { readonly approvalRef: string; readonly destinationId: string }
   ): Promise<{ readonly status: string; readonly receiptId: string; readonly artifactId: string }> {
     const currentInspection = this.#builder.inspect(plan);
+    const version = plan.manifest.schemaVersion;
     if (
-      canonicalizeJson(currentInspection as unknown as JsonValue) !==
-      canonicalizeJson(inspection as unknown as JsonValue)
+      canonicalizeJsonForVersion(version, currentInspection as unknown as JsonValue) !==
+      canonicalizeJsonForVersion(version, inspection as unknown as JsonValue)
     )
       fail("VES_SUPPORT_INSPECTION_STALE", "Support Bundle inspection is stale or incomplete");
     const approval = await this.#approval.verify({
@@ -901,7 +959,10 @@ export class SupportExportCoordinator {
     authorizedTokens.add(authorization);
     const bundle = await this.#builder.authorizedBuild(plan, recipients, authorization);
     const published = await this.#sink.publish({
-      idempotencyKey: sha256Digest({ planId: plan.planId, destinationId: request.destinationId }),
+      idempotencyKey: sha256DigestForVersion(version, {
+        planId: plan.planId,
+        destinationId: request.destinationId
+      }),
       destinationId: request.destinationId,
       bundle
     });

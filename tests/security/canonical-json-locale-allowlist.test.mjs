@@ -71,6 +71,36 @@ const MATRIX_CEILINGS = Object.freeze({
   "packages/workspace/src/scanner/scanner-primitives.ts": 2,
   // V1 compatibility uses explicit UTF-16 code-unit ordering; no ambient locale remains.
   "packages/evidence/src/execution-package/execution-package.ts": 0,
+  // Signed-evidence vertical (issue #58): the remaining three signed artifact
+  // types, promoted here from UNCLASSIFIED_CEILINGS because the matrix
+  // classifies all three as signed + persistent. Each widened `schemaVersion`
+  // to `1 | 2`, defaults new artifacts to V2 with UTF-16 code-unit ordering,
+  // and declares its own `/v2` in-toto predicate so the versions cannot be
+  // confused.
+  //
+  // run-capsule and recovery-bundle are NOT zero, and deliberately so. Each
+  // retains exactly one ambient-locale site: the `version === 1` branch of its
+  // `compareIdentity` helper. That branch is verification-critical, not
+  // cosmetic. Both types order **arrays** (`sourceStateRefs`;
+  // `objects`/`recipients`), RFC 8785 preserves array order, and both re-sort
+  // those arrays on the read path before recomputing a digest they compare
+  // against the one that was signed — `bindingFor(...).sourceStateDigest` for
+  // the Capsule, `planId` for the Bundle. Normalizing V1 onto code-unit order
+  // would strand every stored V1 artifact whose identifiers differ by case or
+  // punctuation. AD-029 could normalize the Execution Package's V1 branch only
+  // because its re-sorted member is a JSON *object* whose keys RFC 8785
+  // re-sorts anyway, making that pre-sort inert; that argument does not
+  // transfer here, so compatibility rule 1 applies in full and V1 keeps its
+  // own verifier. Every V2 path is ambient-locale free.
+  "packages/evidence/src/run-capsule/run-capsule.ts": 1,
+  "packages/evidence/src/recovery-bundle/recovery-bundle.ts": 1,
+  // support-bundle reaches 0: its verifier (`#assertPlan`) already required
+  // default `Array#sort` (code-unit) order for both diagnostic fieldIds and
+  // recipientIds, so code-unit was already V1's verification contract and the
+  // `localeCompare` sorts in `plan()` contradicted it — under a divergent
+  // collation the builder rejected its own output. Removing them is a fix, not
+  // a normalization, and no stored bundle is invalidated.
+  "packages/evidence/src/support-bundle/support-bundle.ts": 0,
   // T4a owners: migrated (T4/T5/T6/T7), ceiling tightened to 0 in T9.
   "packages/application/src/promotion/promotion-gate.ts": 0,
   "packages/application/src/regression/campaigns.ts": 0,
@@ -94,9 +124,9 @@ const UNCLASSIFIED_CEILINGS = Object.freeze({
   "packages/drivers/src/index.ts": 1,
   "packages/drivers/src/opencode-driver.ts": 1,
   "packages/effects/src/effect-kernel.ts": 2,
-  "packages/evidence/src/recovery-bundle/recovery-bundle.ts": 5,
-  "packages/evidence/src/run-capsule/run-capsule.ts": 3,
-  "packages/evidence/src/support-bundle/support-bundle.ts": 2,
+  // The three signed-evidence owners moved to MATRIX_CEILINGS above when the
+  // signed-evidence vertical migrated them; leaving stale copies here would
+  // win the `{...MATRIX, ...UNCLASSIFIED}` merge and silently loosen them.
   "packages/extension-host/src/index.ts": 1,
   // Memory owners: migrated (issue #58), ceilings tightened to 0. Every
   // private canonical-JSON serializer is now `canonicalizeJsonV2`, and every

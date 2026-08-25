@@ -63,11 +63,23 @@ equal, and rejects a duplicate, stale, signal-mismatched, unreasoned,
 exception-invalid, or unclassified entry. The current 86-source census has no
 unclassified group.
 
-Only the inventory's closed `presentation-or-fixture` entries may retain an
-ambient-locale ordering exception. A structured trust or persistent identity
-cannot use that classification. A raw-byte digest is not a canonical JSON
-exception: it hashes already-defined bytes or a fixed primitive rather than a
-locally canonicalized structured value.
+Two classifications may retain an ambient-locale ordering site, and only two.
+The inventory's closed `presentation-or-fixture` entries may, because they
+decide nothing durable; a structured trust or persistent identity cannot use
+that classification. A **versioned owner** may also retain one — but only on a
+path that exclusively serves its V1 contract, and only where migrating it
+would strand already-signed artifacts. That is compatibility rule 1 doing its
+job rather than an escape from it: rule 1 requires keeping the V1 verifier, and
+for an owner whose V1 verifier re-sorts an array, keeping the verifier means
+keeping its comparator. Such an owner is classified by what it *emits*
+(`migrated-v2`), and its non-zero ceiling in
+`tests/security/canonical-json-locale-allowlist.test.mjs` must be pinned to the
+exact retained count with the reason stated inline. A retained site on a V2
+emission path is never admissible.
+
+A raw-byte digest is not a canonical JSON exception: it hashes already-defined
+bytes or a fixed primitive rather than a locally canonicalized structured
+value.
 
 The scanner keeps only the following closed scope exclusions for serializations
 that are not product identities: build-time diagnostics, test and fake-driver
@@ -76,18 +88,25 @@ diagnostic command output. Each path and reason is declared in
 `scripts/canonical-json-census.mjs` and asserted by the census security test;
 no trust, persistence, or portable-identity source can enter that exclusion.
 
-### Pending migration order
+### Migration order, and what remains
 
-1. The **signed-evidence vertical** versions the V1 facade and the Execution
-   Package, Run Capsule, Recovery Bundle, Support Bundle, and their persisted
-   DSSE payload verification before changing any evidence ordering.
-2. The **release vertical** versions hermetic bundle material first and
-   transactional activation second, retaining V1 verification for release and
-   durable activation records.
-3. The **portable-owner verticals** then proceed independently for registries,
-   connectors, extension host, drivers, memory, and policy bundles. Each is
-   classified in the census but remains pending until its own compatibility
-   design, tests, gate evidence, and review are complete.
+1. The **signed-evidence vertical** — **done.** The Execution Package (AD-029),
+   then Run Capsule, Recovery Bundle, and Support Bundle, each versioned before
+   any ordering changed. `integrity/canonical.ts` stays the qualified V1 facade;
+   replacing it with a domain-backed facade is still its own reviewed migration.
+2. The **release vertical** — **done** (T4j): hermetic bundle material first,
+   transactional activation second, V1 verification retained throughout.
+3. The **portable-owner verticals** — **done**: registries, connectors,
+   extension host, drivers, memory, policy bundles, agent runtime, application
+   bootstrap and regression, the platform-node stores, and the CLI Self-Test
+   surfaces, across five reviewed batches.
+
+The census records no `pending-versioned-migration` entry. What is *not*
+claimed: that no ambient-locale ordering remains anywhere. Two V1-only
+verification comparators are retained by design under the rule above, and
+`workspace/scanner-primitives.ts` keeps two sites inside the V1 `canonical()`
+helper that `buildInventoryFingerprint` requires byte-identical. Each is pinned
+by an exact ceiling rather than left to drift.
 
 The historical rows below record previous slice decisions. The mechanical
 census, not a historical ceiling or duplicate transition row, is the complete
@@ -120,6 +139,7 @@ current classification source.
 | Agent runtime backend: `backend-serializers.ts` | `SerializedContext.meaningDigest`, the `SemanticEquivalenceOracle`'s cross-run tree-equality comparison, and the `ContextCapacityEstimatorPort` surface named alongside it | portable, in-memory only; classified transient (T4e) — see rationale below | **Migrated (T4e).** Private `canonicalJson()` (was `backend-serializers.ts:59-65`) removed; `canonicalizeJsonV2` used for both the outbound serialization and the Oracle's cross-run comparison. | Done. `tests/contract/context-serializers.test.mjs`, `tests/security/context-serializer-security.test.mjs` (42 cases, including 6 cross-backend Oracle-equivalence tests). |
 | Policy: `cedar-policy.ts` | Policy view/evidence material and normalized layer order | authority | Recursive serializer and locale ordering | Version policy-view evidence; policy decisions never compare V1 and V2 digests as equal. |
 | Data probe: `database-knowledge.ts` + `index.ts` + `sqlserver-adapter.ts` + `sqlite-adapter.ts` + `sap-ase-adapter.ts` + `postgresql-adapter.ts` + `oracle-adapter.ts` + `mysql-family-adapter.ts` + `mongodb-adapter.ts` | Source, fact-value, knowledge-package, promotion-plan, and per-engine parsed-operation digests | classified transient (T4h) — see rationale below | **Migrated (T4h).** `canonicalizeJsonV2` replaces each file's independent recursive serializer; every functional sort (columns, entities, sources, facts, scenarios, per-engine parsed objects) now uses code-unit `<`/`>` instead of `localeCompare`. | Done. `tests/unit/database-knowledge.test.mjs` (cross-locale test) plus the full per-engine contract/security/integration suites, 523/528 cases unchanged (5 pre-existing Node-version-gap failures on this machine's `node:sqlite`, unrelated to this change and reproduced on `upstream/main` before it). |
+| Signed evidence: `run-capsule.ts` + `recovery-bundle.ts` + `support-bundle.ts` | Capsule source-state binding digest, Recovery manifest plan identity and recipient selection, Support Bundle plan and archive identity | signed + persistent; versioned per compatibility rule 1 | **Migrated (#58 signed-evidence slice).** All three widened `schemaVersion` to `1 | 2` with V2 as the omission default and their own `/v2` predicates; V1 is never upgraded. Run Capsule and Recovery Bundle each **retain one V1-only comparator**: their re-sorted members are *arrays*, which RFC 8785 preserves, so V1 verification recomputes a digest from the re-sorted order and normalizing it would strand stored artifacts. Support Bundle needed no gate — `plan()` sorted with `localeCompare` while `#assertPlan` already required code-unit order, so a plan built under a divergent collation was rejected by its own validator; both sites were deleted as the bug fix they are. | Done. Seven cases per type. Mutants: reverting each source kills 4 of 7; reverting only a V2 ordering branch kills exactly the 2 cross-locale cases, isolating ordering from the version gate. Stated honestly: the "stored V1 still verifies" cases are regression guards, not discriminators, because HEAD is V1-only. |
 | Effects, policy bundles, drivers, extension host: `effects/effect-kernel.ts` + `policy/policy-bundle.ts` + `drivers/index.ts` + `drivers/opencode-driver.ts` + `extension-host/index.ts` | Dispatch order and receipt-content equality; signed policy bundle digest and persisted policy order; driver and probe frame payload digests; OpenCode model catalogue order | mixed: signed-portable (policy bundle), live-wire only (driver and probe frames), in-memory (effect kernel) | **Migrated (#58 effects/policy/drivers/extension-host slice).** `canonicalizeJsonV2` replaces three private serializers; all 7 `localeCompare` sites replaced. The effect kernel holds no identity of its own — versioned idempotency keys already live in `application/effects/effect-contract.ts` and the durable outbox is the runtime store, so its dispatch-order change is a *convergence*: the SQL store already ordered by SQLite BINARY collation and the in-memory repository was the one disagreeing. Left unchanged: OpenCode's redaction sort, which orders by length so longer secrets are redacted before their substrings. | Done. Six cross-locale cases across effect-kernel, policy-hardening, driver-protocol, probe-worker-protocol and opencode-driver suites, each verified to fail against the pre-migration source and each re-asserting its fail-closed path. Policy bundles have no installed base: the fixture provisioner mints a fresh keypair and timestamp per run and no tracked fixture pins a bundle digest. |
 | Application bootstrap and regression, platform-node stores, CLI Self-Test: `bootstrap/machine-bootstrap.ts` + `regression/campaigns.ts` + `self-test/self-test.ts` + `authority-store-adapter.ts` + `machine-bootstrap-adapters.ts` + `self-test-driver-authority.ts` + `self-test-full-scenario.ts` | Machine Profile identity and persisted row, secret-declaration equality, sealed regression corpus digest, Driver review equality, persisted Approval and Grant records, Self-Test durable-outcome digests | persistent (two runtime-store tables) and portable; no installed base | **Migrated (#58 application/platform-node/CLI slice).** `canonicalizeJsonV2` replaces two private serializers and every `JSON.stringify` identity; all 6 `localeCompare` sites replaced. Fixed two real defects: the conflicting-secret check compared `JSON.stringify` of an in-file declaration against one parsed from config, so a member-order difference read as a conflict; and Driver review equality fixed only top-level member order, so a nested Tool written `{access,name}` was rejected as a different review with no content difference. Arrays still carry order, so a reordered tool list is still a different review. | Done. Nineteen cross-locale and member-order cases across bootstrap, authority-runtime, regression, self-test and scenario suites. Discrimination verified per file for six of seven; `self-test-driver-authority.ts` is honestly recorded as non-discriminating, because its V1 encoder was internally consistent within a process and the decision it feeds is covered by `self-test.ts`. Neither runtime-store table is invalidated: the authority store re-derives its digest from stored text, and the machine profile row is latest-wins with one self-healing `profileChanged: true` after upgrade. |
 | Connectors: `confluence/architecture-source.ts` + `confluence/delivery-projection.ts` + `jira/jira.ts` | Confluence revision and fragment identities, delivery section/content digests and plan equality, Jira projection digest and idempotency key | portable boundary identities; no installed base (verified byte-identical before and after) | **Migrated (#58 connectors slice).** `canonicalizeJsonV2` replaces all three private recursive serializers; the eight ordering sites that feed a digest or an observable read order use `normalizeDeclaredSet`. Raw-string digests (page bodies, attachment content) stay raw-byte digests. Ordering that mirrors the provider API (pagination, remote page order) is untouched. | Done. Six cross-locale cases across `tests/contract/confluence-readonly-contract.test.mjs`, `confluence-delivery-contract.test.mjs`, and `jira-connector-contract.test.mjs`. Discrimination verified for architecture-source and jira; the delivery pair are regression guards only, because that file encoded both sides of its comparison with the same serializer so ambient collation cancelled out. |
@@ -586,11 +606,12 @@ ceilings for both files are tightened to 0.
 
 ## Explicit exclusions
 
-Only sources recorded as `presentation-or-fixture` in the mechanical census
-are ordering exceptions. Source/document loaders, tests, and closed-field
-checks such as `Object.keys(value).sort()` require classification before they
-are treated as presentation or validation-only. They are not evidence that V2
-has been adopted.
+Sources recorded as `presentation-or-fixture` in the mechanical census are
+ordering exceptions, as is a versioned owner's V1-only verification comparator
+under the rule above. Source/document loaders, tests, and closed-field checks
+such as `Object.keys(value).sort()` require classification before they are
+treated as presentation or validation-only. They are not evidence that V2 has
+been adopted.
 
 ## Required proof for each migration PR
 
