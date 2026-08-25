@@ -9,7 +9,9 @@ import { buildReleaseCandidate } from "../../packages/distribution/src/release-c
 import { materializeHermeticReleaseFromFiles } from "../../packages/distribution/src/release-materializer.ts";
 import { buildTufReleasePublication } from "../../packages/distribution/src/tuf-publication.ts";
 import { TufUpdateClient } from "../../packages/distribution/src/tuf-update-client.ts";
+import { TransactionalActivationManager } from "../../packages/distribution/src/transactional-activation.ts";
 import { components, releaseId } from "../helpers/hermetic-bundle-fixture.mjs";
+import { healthGate } from "../helpers/activation-fixture.mjs";
 import { MapDistributionSource } from "../helpers/tuf-publication-fixture.mjs";
 
 const sourceComponents = () =>
@@ -29,12 +31,12 @@ const descriptors = () =>
     executable: component.executable
   }));
 
-const writeFixture = async (root) => {
+const writeFixture = async (root, suffix = "") => {
   await mkdir(join(root, "payload"), { recursive: true });
   for (const [index, component] of sourceComponents().entries())
     await writeFile(
       join(root, "payload", `${String(index).padStart(2, "0")}.bin`),
-      `material:${component.componentId}`
+      `material:${component.componentId}${suffix}`
     );
 };
 
@@ -74,6 +76,34 @@ const candidateFor = (materialized) =>
       verificationDigest: digest("materialized-rollback-proof")
     }
   });
+
+const materializePublication = async (root, value) => {
+  await writeFixture(root, value.suffix ?? "");
+  const materialized = await materializeHermeticReleaseFromFiles({
+    schemaVersion: 1,
+    releaseId: value.releaseId,
+    semanticVersion: value.semanticVersion,
+    createdAt: "2026-08-25T00:00:00.000Z",
+    target: { platform: "win32", arch: "x64", nodeVersion: "24.14.0" },
+    runtimeResolver: false,
+    rootDirectory: root,
+    sources: descriptors(),
+    revision: value.revision,
+    evaluations: [{ profile: "release", result: "pass", assertionCount: 20, skipped: 0, todo: 0, survivingMutants: 0 }]
+  });
+  const candidate = candidateFor(materialized);
+  const publication = buildTufReleasePublication({
+    schemaVersion: 1,
+    candidate,
+    componentBytes: materialized.componentBytes,
+    metadataVersion: 1,
+    expires: "2035-01-01T00:00:00.000Z",
+    threshold: 2,
+    signers: signers(),
+    consistentSnapshot: true
+  });
+  return { materialized, publication };
+};
 
 test("materialized bytes feed candidate closure and TUF resolution in every source mode", async () => {
   const root = await mkdtemp(join(tmpdir(), "vestra-materialized-tuf-"));
@@ -125,5 +155,59 @@ test("materialized bytes feed candidate closure and TUF resolution in every sour
       rm(trustRoot, { recursive: true, force: true }),
       rm(stagingRoot, { recursive: true, force: true })
     ]);
+  }
+});
+
+test("materialized TUF staged releases activate and rollback through the transactional manager", async () => {
+  const root = await mkdtemp(join(tmpdir(), "vestra-materialized-rollback-"));
+  const firstRoot = await mkdtemp(join(root, "first-"));
+  const secondRoot = await mkdtemp(join(root, "second-"));
+  const trustRoot = join(root, "trust");
+  const stagingRoot = join(root, "staging");
+  const installRoot = join(root, "install");
+  try {
+    const first = await materializePublication(firstRoot, {
+      releaseId,
+      semanticVersion: "1.0.0",
+      revision: "d".repeat(40)
+    });
+    const second = await materializePublication(secondRoot, {
+      releaseId: "release:verchestra:2.0.0:win32-x64",
+      semanticVersion: "2.0.0",
+      revision: "e".repeat(40),
+      suffix: ":next"
+    });
+    const firstStaged = await new TufUpdateClient({
+      trustRootDirectory: join(trustRoot, "first"),
+      stagingRoot,
+      trustedRoot: first.publication.trustedRoot,
+      source: new MapDistributionSource(first.publication, "offline"),
+      chunkSize: 31
+    }).resolveAndStage({ platform: "win32", arch: "x64" });
+    const secondStaged = await new TufUpdateClient({
+      trustRootDirectory: join(trustRoot, "second"),
+      stagingRoot,
+      trustedRoot: second.publication.trustedRoot,
+      source: new MapDistributionSource(second.publication, "offline"),
+      chunkSize: 31
+    }).resolveAndStage({ platform: "win32", arch: "x64" });
+    const gate = healthGate();
+    const manager = new TransactionalActivationManager({
+      installRoot,
+      stagingRoot,
+      platform: "win32",
+      arch: "x64",
+      healthGate: gate
+    });
+    const firstReceipt = await manager.activate(firstStaged);
+    const secondReceipt = await manager.activate(secondStaged);
+    const rolled = await manager.rollback(firstReceipt.active.releaseDigest);
+    assert.equal(secondReceipt.active.releaseDigest, second.materialized.bundle.releaseDigest);
+    assert.equal(rolled.operation, "rollback");
+    assert.equal(rolled.active.releaseDigest, first.materialized.bundle.releaseDigest);
+    assert.equal((await manager.active()).releaseDigest, first.materialized.bundle.releaseDigest);
+    assert.equal(gate.calls.length, 3);
+  } finally {
+    await rm(root, { recursive: true, force: true });
   }
 });

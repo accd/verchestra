@@ -18,7 +18,8 @@ Issue: #17
   in the materialized evaluation document.
 - **RM-05** — The materialized bundle bytes can be bound into a verified
   candidate and TUF publication that resolves the same release in online,
-  mirror, offline, and air-gapped source modes.
+  mirror, offline, and air-gapped source modes; two such staged releases can
+  be activated and the first can be independently rolled back.
 
 ## Boundary
 
