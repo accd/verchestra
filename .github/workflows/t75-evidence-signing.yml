@@ -106,6 +106,26 @@ jobs:
             exit 1
           }
           node scripts/t75-evidence-index.mjs --revision "$CANDIDATE_REVISION" --out unsigned-evidence-index.json "${fleet_indexes[@]}"
+      - name: Refuse to sign contradictory qualification evidence
+        env:
+          CANDIDATE_REVISION: ${{ inputs.revision }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFile } from "node:fs/promises";
+
+          const index = JSON.parse(await readFile("unsigned-evidence-index.json", "utf8"));
+          if (index.revision !== process.env.CANDIDATE_REVISION)
+            throw new Error("regenerated evidence index does not bind the requested candidate");
+          if (index.signingState?.signed !== false)
+            throw new Error("the signing workflow must start from an explicitly unsigned index");
+          if (index.summary?.contradictions !== 0)
+            throw new Error(`refusing to sign ${index.summary?.contradictions ?? "unknown"} evidence contradiction(s)`);
+          const profiles = index.profiles ?? [];
+          const expected = new Set(["gate:quick", "gate:full", "gate:build", "gate:security", "gate:release"]);
+          const observed = new Set(profiles.map(({ gate }) => gate));
+          if (profiles.length !== expected.size || observed.size !== expected.size || [...expected].some((gate) => !observed.has(gate)))
+            throw new Error("the regenerated index must contain exactly one profile for each T75 gate");
+          NODE
       - name: Sign and self-verify public qualification evidence
         env:
           CANDIDATE_REVISION: ${{ inputs.revision }}

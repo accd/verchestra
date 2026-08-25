@@ -12,6 +12,9 @@ test("the T75 evidence workflow is manual, exact-SHA bound, and accepts all five
   assert.match(workflow, /does not resolve to the requested exact revision/u);
   assert.match(workflow, /platform-evidence-index\.json/u);
   assert.match(workflow, /t75-evidence-index\.mjs --revision "\$CANDIDATE_REVISION"/u);
+  assert.match(workflow, /Refuse to sign contradictory qualification evidence/u);
+  assert.match(workflow, /summary\?\.contradictions !== 0/u);
+  assert.match(workflow, /exactly one profile for each T75 gate/u);
 });
 
 test("the workflow reads a protected PKCS#8 secret only in the signing step and verifies before publishing", () => {
