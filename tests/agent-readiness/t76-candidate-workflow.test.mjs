@@ -92,7 +92,11 @@ test("lifecycle scripts run only for the packages whose native binaries are requ
   // binary the same way. Rather than dropping the restriction wholesale as the
   // three older workflows do, the tree installs with scripts off and exactly
   // three exact-pinned packages are rebuilt by name.
-  assert.match(workflow, /pnpm install --frozen-lockfile --ignore-scripts\s+pnpm rebuild esbuild/u);
+  assert.match(workflow, /pnpm install --frozen-lockfile --ignore-scripts\s+pnpm rebuild esbuild opencode-ai/u);
+  // The rebuild list is proven, not trusted: each binary a gate executes is
+  // exercised here so an incomplete list fails at install with a clear cause.
+  assert.match(workflow, /require\('esbuild'\)\.buildSync/u);
+  assert.match(workflow, /node_modules\/\.bin\/opencode --version/u);
   assert.match(
     workflow,
     /npm install --global --ignore-scripts --no-audit --no-fund @anthropic-ai\/claude-code@[\d.]+ @openai\/codex@[\d.]+\s+npm rebuild --global @anthropic-ai\/claude-code @openai\/codex/u
