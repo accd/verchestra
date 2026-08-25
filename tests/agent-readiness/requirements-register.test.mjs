@@ -38,11 +38,29 @@ test("T77 closure is met only when no requirement is still waiting for evidence"
   assert.equal(isClosed(result), register.openGaps.length === 0);
 });
 
+// The register exists to fail closed on a requirement nothing proves, so that
+// mechanism has to be demonstrated rather than assumed. It used to be shown by
+// dropping the declared gaps: with gaps open, the same requirements reappeared
+// as unevidenced and the register read INCONSISTENT. Now that every gap is
+// retired there is no unevidenced requirement left in the repository to borrow,
+// and a register with nothing to report is not evidence that it would report.
+// The subject is synthesized instead — an evidenced requirement stripped of its
+// evidence — which exercises the same audit and keeps holding whether or not a
+// future gap is declared.
 test("an unevidenced requirement outside the declared gaps is reported", async () => {
   const references = await collectReferences(ROOT);
   const register = JSON.parse(await readFile(registerPath, "utf8"));
   const withoutGaps = { ...register, openGaps: [] };
-  const result = evaluateRegister(withoutGaps, references);
-  assert.equal(result.withoutEvidence.length, register.openGaps.length);
+  // Whatever is currently declared as a gap is unevidenced without that
+  // declaration; with no gaps declared, nothing is.
+  assert.equal(evaluateRegister(withoutGaps, references).withoutEvidence.length, register.openGaps.length);
+
+  const evidenced = [...references].find(([, entry]) => entry.test.length > 0 || entry.qualificationReport.length > 0);
+  assert.ok(evidenced, "the repository has at least one evidenced requirement to strip");
+  const [id, entry] = evidenced;
+  const stripped = new Map(references);
+  stripped.set(id, { ...entry, test: [], qualificationReport: [] });
+  const result = evaluateRegister(withoutGaps, stripped);
+  assert.deepEqual(result.withoutEvidence, [id]);
   assert.equal(isConsistent(result), false);
 });

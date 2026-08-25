@@ -135,6 +135,45 @@ test("a non-finite threshold cannot be sealed into the corpus digest", () => {
   assert.throws(() => canonicalizeCorpus(defs), { code: "VES_CANONICAL_NON_FINITE_NUMBER" });
 });
 
+// VES-RLS-006 / CAM-01: "a `corpusDigest` computed over the canonical
+// definitions SHALL detect any addition, removal, or edit". The edit half is
+// covered above; addition and removal are the halves that matter when the
+// corpus is trimmed rather than tuned, and a candidate binds one digest, so a
+// corpus that silently lost the campaign a candidate regresses must not seal to
+// the digest the candidate was evaluated under.
+test("VES-RLS-006: the sealed corpus digest detects an added or removed campaign", () => {
+  const sealed = canonicalizeCorpus(corpus(21));
+  assert.notEqual(canonicalizeCorpus(corpus(22)), sealed, "an added campaign moves the digest");
+  assert.notEqual(canonicalizeCorpus(corpus(21).slice(0, 20)), sealed, "a removed trailing campaign moves the digest");
+  const withoutMiddle = corpus(21);
+  withoutMiddle.splice(5, 1);
+  assert.notEqual(canonicalizeCorpus(withoutMiddle), sealed, "a removed middle campaign moves the digest");
+  // Removal is still detected when the corpus stays above the minimum, so the
+  // count check is not what is doing the work here.
+  assert.equal(withoutMiddle.length, MINIMUM_CAMPAIGNS);
+  assert.doesNotThrow(() => assertCampaignCorpus(withoutMiddle));
+});
+
+// VES-RLS-006 / CAM-01: every field a definition carries is inside the sealed
+// bytes. A digest that ignored one field would let that field be edited after
+// the candidate bound the corpus.
+test("VES-RLS-006: editing any single campaign field moves the sealed corpus digest", () => {
+  const sealed = canonicalizeCorpus(corpus());
+  for (const overrides of [
+    { id: "campaign-renamed" },
+    { requirement: "CAM-99" },
+    { owner: "someone-else" },
+    { threshold: 0.5 },
+    { fixtureRef: "fixtures/other" },
+    { evidenceRef: "docs/qualification/t74-validation.md" },
+    { sampleSize: 500 }
+  ]) {
+    const edited = corpus();
+    edited[7] = definition(7, overrides);
+    assert.notEqual(canonicalizeCorpus(edited), sealed, JSON.stringify(overrides));
+  }
+});
+
 test("a deterministic passing campaign has a lower bound of one", () => {
   const result = evaluateCampaign(definition(0), [true]);
   assert.equal(result.verdict, "PASS");
@@ -156,6 +195,68 @@ test("the verdict uses the lower confidence bound, not the point estimate", () =
   assert.equal(strict.verdict, "FAIL");
   const lenient = evaluateCampaign(definition(0, { threshold: 0.85, sampleSize: 100 }), outcomes);
   assert.equal(lenient.verdict, "PASS");
+});
+
+// VES-MDL-003 / CAM-03: "the verdict SHALL use the lower confidence bound
+// against the threshold, never a single run". The bound is only meaningful if
+// it is genuinely a *lower* bound: an implementation that returned the point
+// estimate would still satisfy a test that only checks one sample size, and
+// would report a lucky short run as if it were established behavior.
+test("VES-MDL-003: the reported bound is never above the point estimate", () => {
+  for (const [passes, samples] of [
+    [1, 1],
+    [8, 10],
+    [9, 10],
+    [19, 20],
+    [47, 50],
+    [90, 100],
+    [95, 100],
+    [900, 1000]
+  ]) {
+    const outcomes = Array.from({ length: samples }, (_, index) => index < passes);
+    const result = evaluateCampaign(definition(0, { threshold: 0, sampleSize: samples }), outcomes);
+    assert.equal(result.samples, samples);
+    assert.equal(result.passes, passes);
+    assert.ok(
+      result.lowerConfidenceBound <= result.passRate,
+      `${passes}/${samples}: bound ${result.lowerConfidenceBound} exceeds rate ${result.passRate}`
+    );
+  }
+});
+
+// The distribution, not the score, is what clears a threshold: the same 90%
+// pass rate is evidence of different strength at 10, 100, and 1000 samples, and
+// only the largest sample clears 0.85. A cherry-picked ten-run campaign cannot
+// buy the verdict a thousand-run campaign earns.
+test("VES-MDL-003: the same pass rate clears a threshold only once enough samples support it", () => {
+  const campaign = (samples) =>
+    evaluateCampaign(
+      definition(0, { threshold: 0.85, sampleSize: samples }),
+      Array.from({ length: samples }, (_, index) => index < samples * 0.9)
+    );
+  const small = campaign(10);
+  const medium = campaign(100);
+  const large = campaign(1000);
+  for (const result of [small, medium, large]) assert.equal(result.passRate, 0.9);
+  assert.ok(small.lowerConfidenceBound < medium.lowerConfidenceBound, "more evidence raises the bound");
+  assert.ok(medium.lowerConfidenceBound < large.lowerConfidenceBound, "more evidence raises the bound");
+  assert.deepEqual(
+    [small.verdict, medium.verdict, large.verdict],
+    ["FAIL", "FAIL", "PASS"],
+    "0.9 clears a 0.85 threshold only when the sample supports it"
+  );
+});
+
+// The case that separates a lower-bound verdict from a point-estimate verdict:
+// the point estimate clears the threshold and the campaign still fails.
+test("VES-MDL-003: a campaign whose point estimate clears its threshold still fails on the bound", () => {
+  const result = evaluateCampaign(
+    definition(0, { threshold: 0.85, sampleSize: 50 }),
+    Array.from({ length: 50 }, (_, index) => index < 47)
+  );
+  assert.ok(result.passRate > 0.85, "47/50 is a 0.94 pass rate");
+  assert.ok(result.lowerConfidenceBound < 0.85, "its lower bound is below the threshold");
+  assert.equal(result.verdict, "FAIL");
 });
 
 test("a campaign that runs fewer than its declared samples fails closed", () => {

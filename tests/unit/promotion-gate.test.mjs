@@ -100,6 +100,122 @@ test("a campaign lower bound below its threshold blocks promotion", () => {
   );
 });
 
+// VES-RLS-006 / PROM-01: the oracle sealed under the holdout digest is
+// "campaign ids, thresholds, repetition counts", and PROM-04 relies on that
+// digest alone to catch drift. So every one of those fields has to be inside
+// the sealed bytes: a repetition count that could drift outside the digest
+// would let a candidate be promoted on less evidence than the oracle
+// predeclared, with nothing in the decision recording that it happened.
+test("VES-RLS-006: every sealed oracle field is covered by the holdout digest", () => {
+  for (const [name, drift] of [
+    [
+      "a lowered threshold",
+      (holdout) => {
+        holdout.entries[0].threshold = 0.5;
+      }
+    ],
+    [
+      // Raised, but still under the observed lower bound, so the drift itself
+      // is the only thing this run can block on.
+      "a raised threshold",
+      (holdout) => {
+        holdout.entries[1].threshold = 0.95;
+      }
+    ],
+    [
+      "a lowered repetition count",
+      (holdout) => {
+        holdout.entries[1].repetitionCount = 1;
+      }
+    ],
+    [
+      "a raised repetition count",
+      (holdout) => {
+        holdout.entries[0].repetitionCount = 5;
+      }
+    ],
+    [
+      "a changed policy id",
+      (holdout) => {
+        holdout.policyId = "other-policy";
+      }
+    ]
+  ]) {
+    const drifted = oracle();
+    const sealed = `sha256:${sha(canonicalizeOracle(drifted))}`;
+    drift(drifted); // change after sealing
+    assert.notEqual(`sha256:${sha(canonicalizeOracle(drifted))}`, sealed, name);
+    assert.deepEqual(
+      [...decide({ oracle: drifted, sealedHoldoutDigest: sealed }).blocks],
+      ["VES_PROMOTION_ORACLE_TAMPERED"],
+      name
+    );
+  }
+});
+
+// The membership half of PROM-01. Both runs below are internally consistent —
+// the oracle, its entries, and the observations all agree with each other — so
+// the sealed digest is the only thing that can notice that the oracle being
+// evaluated is not the oracle the candidate was bound to.
+test("VES-RLS-006: an oracle that lost or gained a campaign after sealing blocks promotion", () => {
+  const sealed = `sha256:${sha(canonicalizeOracle(oracle()))}`;
+  const reduced = { policyId: "release-policy", entries: [oracle().entries[0]] };
+  assert.deepEqual(
+    [
+      ...decide({
+        oracle: reduced,
+        sealedHoldoutDigest: sealed,
+        observations: [{ campaignId: "camp-a", outcomes: Array(100).fill(true) }]
+      }).blocks
+    ],
+    ["VES_PROMOTION_ORACLE_TAMPERED"],
+    "dropping a sealed campaign is detected"
+  );
+  const widened = oracle();
+  widened.entries.push({ campaignId: "camp-c", threshold: 0.9, repetitionCount: 1 });
+  assert.deepEqual(
+    [
+      ...decide({
+        oracle: widened,
+        sealedHoldoutDigest: sealed,
+        observations: [...observations(), { campaignId: "camp-c", outcomes: Array(100).fill(true) }]
+      }).blocks
+    ],
+    ["VES_PROMOTION_ORACLE_TAMPERED"],
+    "adding a campaign after sealing is detected"
+  );
+});
+
+// VES-MDL-003 / PROM-07: the verdict is taken from each campaign's lower
+// confidence bound, never from its point estimate. camp-b is sealed at a 0.85
+// threshold; 47 of 50 is a 0.94 pass rate whose Wilson lower bound is 0.8378,
+// so a gate that compared the score would promote this candidate and a gate
+// that compares the distribution blocks it.
+test("VES-MDL-003: a candidate whose point estimate clears every threshold is blocked on the bound", () => {
+  const decision = decide({
+    observations: observations(
+      Array(100).fill(true),
+      Array.from({ length: 50 }, (_, index) => index < 47)
+    )
+  });
+  assert.equal(decision.verdict, "BLOCKED");
+  assert.deepEqual([...decision.blocks], ["VES_PROMOTION_CAMPAIGN_FAILED"]);
+});
+
+// VES-MDL-003 / PROM-03: repetition is predeclared, so a flawless run is not a
+// substitute for enough of them. The pair is asserted at the sealed boundary
+// (49 versus 50) because that is where a repetition check that is present but
+// off by one still looks like it works.
+test("VES-MDL-003: a perfect but under-repeated run is blocked at the sealed repetition count", () => {
+  const perfect = (samples) => observations(Array(100).fill(true), Array(samples).fill(true));
+  assert.deepEqual(
+    [...decide({ observations: perfect(49) }).blocks],
+    ["VES_PROMOTION_INSUFFICIENT_REPETITION"],
+    "one sample short of the sealed count is not enough evidence"
+  );
+  assert.equal(decide({ observations: perfect(50) }).verdict, "PROMOTED");
+});
+
 test("duplicate and extra observations fail closed instead of using last-write-wins", () => {
   assert.throws(
     () => decide({ observations: [...observations(), { campaignId: "camp-a", outcomes: Array(100).fill(true) }] }),

@@ -199,3 +199,66 @@ test("an out-of-range verdict is rejected", () => {
 test("the report fields are exactly the six-field allowlist", () => {
   assert.deepEqual([...DOCTOR_REPORT_FIELDS].sort(), Object.keys(buildDoctorReport(allPass(), 1)).sort());
 });
+
+// VES-TST-008 / DOC-03: "WHEN a check observes a missing or unhealthy subsystem
+// THEN the report SHALL name the exact blocked capability id and a registered
+// remediation code, and SHALL never carry a raw error message, secret, or
+// machine-local path."
+//
+// "Exact" is per check, so it is asserted for the whole catalog rather than for
+// one representative: an operator told `state.durable` is blocked when the
+// unhealthy subsystem was Git has been told the wrong thing, and the report
+// carries no prose that could correct it.
+test("VES-TST-008: every unhealthy subsystem names its own capability and a registered remediation", () => {
+  for (const [index, checkId] of DOCTOR_CHECK_IDS.entries()) {
+    for (const status of ["blocked", "fail"]) {
+      const facts = allPass();
+      facts[index] = { ...facts[index], status, remediationCode: "install-git" };
+      const report = buildDoctorReport(facts, 3);
+      assert.equal(report["doctor.verdict"], status === "fail" ? "FAIL" : "BLOCKED", checkId);
+      assert.deepEqual(report["doctor.remediation_codes"], ["install-git"], checkId);
+      assert.deepEqual(
+        report["doctor.blocked_capabilities"],
+        status === "blocked" ? [DOCTOR_CAPABILITY_IDS[checkId]] : [],
+        checkId
+      );
+    }
+  }
+});
+
+// A capability borrowed from another check is the case the report's own
+// allowlist cannot catch: it is a registered, well-formed id, so only the exact
+// per-check binding rejects it. Without that binding a blocked subsystem could
+// be reported under a healthy one's capability and still seal.
+test("VES-TST-008: a check naming another check's registered capability fails closed", () => {
+  for (const [index, checkId] of DOCTOR_CHECK_IDS.entries()) {
+    const borrowed = DOCTOR_CAPABILITY_IDS[DOCTOR_CHECK_IDS[(index + 1) % DOCTOR_CHECK_IDS.length]];
+    assert.notEqual(borrowed, DOCTOR_CAPABILITY_IDS[checkId]);
+    const facts = allPass();
+    facts[index] = { ...facts[index], status: "blocked", remediationCode: "install-git", capabilityId: borrowed };
+    assert.throws(() => buildDoctorReport(facts, 3), { code: "VES_DOCTOR_CHECK_FACT_INVALID" }, checkId);
+  }
+});
+
+// The other half of DOC-03: neither channel a non-passing check writes to can
+// carry raw text. The remediation channel is closed by the registry, and the
+// capability channel is closed by the sealing allowlist.
+test("VES-TST-008: neither the remediation nor the capability channel can carry a raw error or path", () => {
+  for (const raw of [
+    "ENOENT: no such file or directory, open '/home/user/.vestra/state.db'",
+    "C:\\Users\\me\\AppData\\Local\\vestra",
+    "token=sk-live-0123456789"
+  ]) {
+    assert.throws(
+      () => assertDoctorCheckFacts(withFirst({ status: "blocked", remediationCode: raw })),
+      { code: "VES_DOCTOR_REMEDIATION_UNKNOWN" },
+      raw
+    );
+    const report = buildDoctorReport(allPass(), 1);
+    assert.throws(
+      () => assertDoctorReportPayload({ ...report, "doctor.blocked_capabilities": [raw] }),
+      { code: "VES_DOCTOR_REPORT_CONTENT_PROHIBITED" },
+      raw
+    );
+  }
+});
