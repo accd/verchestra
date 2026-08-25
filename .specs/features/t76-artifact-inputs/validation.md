@@ -9,18 +9,26 @@ not claim T76/#17 completion.
 | AI-02 bytes determine identity         | `tests/build/release-artifact-inputs.test.mjs` complete bundle assertion and digest/size checks | PASS   |
 | AI-03 no machine path projection       | `tests/build/release-artifact-inputs.test.mjs` root/source-path redaction assertion             | PASS   |
 | AI-04 deterministic and duplicate-safe | `tests/build/release-artifact-inputs.test.mjs` reversed-order and duplicate-source assertions   | PASS   |
+| T76-INPUT-01 exact revision and host binding | `tests/build/reproducible-target-build.test.mjs` exact `HEAD`, platform/architecture, Node runtime, and native asset assertions | PASS |
+| T76-INPUT-02 complete gate evidence | `tests/build/reproducible-target-build.test.mjs` rejects missing, failed, skipped, todo, and surviving-mutant evaluations | PASS |
+| T76-INPUT-03 byte reproducibility | `tests/build/reproducible-target-build.test.mjs` runs two isolated builds from identical inputs and compares every emitted file | PASS |
 
 ## Checks
 
 - `node --test tests/build/release-artifact-inputs.test.mjs` — 5 passed, 0
   failed, skipped, or todo.
+- `node --test tests/build/reproducible-target-build.test.mjs` — 3 passed, 0
+  failed, skipped, or todo.
 - `corepack pnpm typecheck` — PASS.
 - `corepack pnpm agent:check` — PASS.
 - `corepack pnpm gate:quick` — PASS (2093 unit + 153 readiness cases; zero
   failures/skips/todos).
-- `corepack pnpm gate:release` — PASS (2093 unit, 39 architecture, 251
-  qualification, 1077 security, 284 fault, and 28 release cases; zero
+- `corepack pnpm gate:security` — PASS (2093 unit, 39 architecture, 251
+  qualification, 1087 security, 165 e2e, and 284 fault cases; zero
   failures/skips/todos).
+- `corepack pnpm gate:release` — PASS (2093 unit, 39 architecture, 251
+  qualification, 1087 security, 165 e2e, 284 fault, and 28 release cases;
+  zero failures/skips/todos).
 
 Independent sensor review and the original #17 acceptance criteria remain
 required for the PR and for T76 completion.
