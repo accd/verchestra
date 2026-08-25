@@ -22,13 +22,13 @@
     {
       "path": "apps/site/src/lib/repository-docs-loader.ts",
       "classification": "raw-byte-digest",
-      "reason": "The build-time site digest covers raw parsed-data JSON plus Markdown; it is not a portable structured identity.",
       "signals": {
         "canonicalizer": 0,
         "digest": 0,
         "localeCompare": 0,
         "serialization": 1
-      }
+      },
+      "reason": "The build-time site digest covers raw parsed-data JSON plus Markdown; it is not a portable structured identity."
     },
     {
       "path": "apps/vestra-cli/src/cli.ts",
@@ -308,24 +308,24 @@
     {
       "path": "packages/application/src/regression/campaigns.ts",
       "classification": "pending-versioned-migration",
-      "reason": "The public regression corpus is structured evidence sealed by a digest and awaits an explicit versioned canonical contract.",
       "signals": {
         "canonicalizer": 1,
         "digest": 0,
         "localeCompare": 0,
         "serialization": 1
-      }
+      },
+      "reason": "The public regression corpus is structured evidence sealed by a digest and awaits an explicit versioned canonical contract."
     },
     {
       "path": "packages/application/src/self-test/self-test.ts",
       "classification": "pending-versioned-migration",
-      "reason": "Authority-relevant Driver review equality awaits a dedicated versioned canonical contract.",
       "signals": {
         "canonicalizer": 0,
         "digest": 0,
         "localeCompare": 0,
         "serialization": 1
-      }
+      },
+      "reason": "Authority-relevant Driver review equality awaits a dedicated versioned canonical contract."
     },
     {
       "path": "packages/application/src/sync/workspace-reconcile.ts",
@@ -504,17 +504,6 @@
       "reason": "The reviewed source emits unsigned license, SBOM, provenance, and evaluation documents with the declared V2 canonical contract and hashes their canonical bytes."
     },
     {
-      "path": "packages/distribution/src/tuf-publication.ts",
-      "classification": "raw-byte-digest",
-      "signals": {
-        "canonicalizer": 0,
-        "digest": 2,
-        "localeCompare": 0,
-        "serialization": 1
-      },
-      "reason": "The reviewed source emits TUF metadata using the external TUF canonicalization standard and hashes the resulting metadata and target bytes; it does not define a local portable identity contract."
-    },
-    {
       "path": "packages/distribution/src/transactional-activation.ts",
       "classification": "migrated-v2",
       "signals": {
@@ -524,6 +513,17 @@
         "serialization": 2
       },
       "reason": "The reviewed source uses the declared V2 canonical contract (T4j, direct swap — same-tick equality check only, #58)."
+    },
+    {
+      "path": "packages/distribution/src/tuf-publication.ts",
+      "classification": "raw-byte-digest",
+      "signals": {
+        "canonicalizer": 0,
+        "digest": 2,
+        "localeCompare": 0,
+        "serialization": 1
+      },
+      "reason": "The reviewed source emits TUF metadata using the external TUF canonicalization standard and hashes the resulting metadata and target bytes; it does not define a local portable identity contract."
     },
     {
       "path": "packages/distribution/src/tuf-update-client.ts",
@@ -737,13 +737,13 @@
     {
       "path": "packages/platform-node/src/authority-store-adapter.ts",
       "classification": "pending-versioned-migration",
-      "reason": "Durable authority records are persisted as JSON and await a dedicated versioned persistence migration.",
       "signals": {
         "canonicalizer": 0,
         "digest": 0,
         "localeCompare": 0,
         "serialization": 2
-      }
+      },
+      "reason": "Durable authority records are persisted as JSON and await a dedicated versioned persistence migration."
     },
     {
       "path": "packages/platform-node/src/encrypted-file-key-provider.ts",
@@ -781,24 +781,24 @@
     {
       "path": "packages/platform-node/src/machine-bootstrap-adapters.ts",
       "classification": "pending-versioned-migration",
-      "reason": "The durable machine profile record awaits a dedicated versioned persistence migration.",
       "signals": {
         "canonicalizer": 0,
         "digest": 0,
         "localeCompare": 0,
         "serialization": 1
-      }
+      },
+      "reason": "The durable machine profile record awaits a dedicated versioned persistence migration."
     },
     {
       "path": "packages/platform-node/src/policy-store-adapter.ts",
       "classification": "retained-v1-versioned",
-      "reason": "The active policy view retains its authoritative schemaVersion 1 record pending a compatible migration.",
       "signals": {
         "canonicalizer": 0,
         "digest": 0,
         "localeCompare": 0,
         "serialization": 1
-      }
+      },
+      "reason": "The active policy view retains its authoritative schemaVersion 1 record pending a compatible migration."
     },
     {
       "path": "packages/platform-node/src/runtime-store/runtime-store.ts",
@@ -869,24 +869,24 @@
     {
       "path": "packages/workspace/src/init/safe-init.ts",
       "classification": "retained-v1-versioned",
-      "reason": "The recovery journal preserves both retained version 1 and version 2 records for compatible recovery.",
       "signals": {
         "canonicalizer": 0,
         "digest": 0,
         "localeCompare": 0,
         "serialization": 4
-      }
+      },
+      "reason": "The recovery journal preserves both retained version 1 and version 2 records for compatible recovery."
     },
     {
       "path": "packages/workspace/src/placement/artifact-placement.ts",
       "classification": "migrated-v2",
-      "reason": "The write plan emits the declared V2 plan identity while retaining its collision comparison.",
       "signals": {
         "canonicalizer": 0,
         "digest": 0,
         "localeCompare": 0,
         "serialization": 2
-      }
+      },
+      "reason": "The write plan emits the declared V2 plan identity while retaining its collision comparison."
     },
     {
       "path": "packages/workspace/src/scanner/scanner-primitives.ts",
@@ -920,6 +920,17 @@
         "serialization": 0
       },
       "reason": "Closed presentation, fixture, or repository-diagnostic ordering only; not a trust or persistent identity."
+    },
+    {
+      "path": "scripts/canonical-json-census-refresh.mjs",
+      "classification": "pending-versioned-migration",
+      "signals": {
+        "canonicalizer": 0,
+        "digest": 0,
+        "localeCompare": 0,
+        "serialization": 1
+      },
+      "reason": "New candidate; classification not yet reviewed."
     },
     {
       "path": "scripts/complexity.mjs",
@@ -975,6 +986,17 @@
         "serialization": 2
       },
       "reason": "The reviewed source hashes raw bytes or a fixed primitive and serializes fixture content for on-disk provisioning; it does not compute a canonical JSON identity."
+    },
+    {
+      "path": "scripts/requirements-trace.mjs",
+      "classification": "pending-versioned-migration",
+      "signals": {
+        "canonicalizer": 0,
+        "digest": 0,
+        "localeCompare": 0,
+        "serialization": 1
+      },
+      "reason": "New candidate; classification not yet reviewed."
     },
     {
       "path": "scripts/t75-evidence-attestation.mjs",
