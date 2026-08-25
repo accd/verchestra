@@ -44,6 +44,14 @@ test("each target checks the exact revision, qualified runtime, and runner ident
   assert.match(workflow, /process\.arch !== process\.env\.MATRIX_ARCH/u);
 });
 
+test("the runtime is installed before its version is verified", () => {
+  const setupNode = workflow.indexOf("- name: Set up Node");
+  const verifyRuntime = workflow.indexOf("- name: Verify revision, target, and runtime");
+  assert.notEqual(setupNode, -1);
+  assert.notEqual(verifyRuntime, -1);
+  assert.ok(setupNode < verifyRuntime, "runtime setup must precede the exact-version check");
+});
+
 test("every closed gate is executed and its counters are sealed before building", () => {
   assert.match(workflow, /profiles=\(quick full build security release\)/u);
   assert.match(workflow, /pnpm "gate:\$\{profile\}"/u);

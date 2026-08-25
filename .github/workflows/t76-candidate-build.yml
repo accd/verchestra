@@ -69,6 +69,18 @@ jobs:
           ref: ${{ inputs.revision }}
           fetch-depth: 0
 
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 10.34.5
+          run_install: false
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.14.0
+          cache: pnpm
+
       - name: Verify revision, target, and runtime
         env:
           CANDIDATE_REVISION: ${{ inputs.revision }}
@@ -94,18 +106,6 @@ jobs:
           if (process.arch !== process.env.MATRIX_ARCH)
             throw new Error(`runner arch ${process.arch} does not match ${process.env.MATRIX_ARCH}`);
           NODE
-
-      - name: Set up pnpm
-        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
-        with:
-          version: 10.34.5
-          run_install: false
-
-      - name: Set up Node
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 24.14.0
-          cache: pnpm
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile --ignore-scripts
