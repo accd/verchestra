@@ -61,6 +61,22 @@ jobs:
             echo "checked-out revision does not resolve to the requested exact revision" >&2
             exit 1
           }
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 10.34.5
+          run_install: false
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.14.0
+          cache: pnpm
+      - name: Install dependencies
+        # The attestation script reaches packages/evidence, whose V1
+        # canonicalizer is a real dependency. Without this the run cannot even
+        # load the signer. Lifecycle scripts stay off: signing executes no
+        # native binary, so nothing here needs a postinstall.
+        run: pnpm install --frozen-lockfile --ignore-scripts
       - name: Download gate quick evidence
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
