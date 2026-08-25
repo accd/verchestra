@@ -30,10 +30,28 @@ test("the workflow reads a protected PKCS#8 secret only in the signing step and 
 
 test("the workflow publishes only public verification material through pinned actions", () => {
   const uses = [...workflow.matchAll(/uses: (\S+)@([a-f0-9]{40}) # (\S+)/gu)];
-  assert.equal(uses.length, 7, "checkout, five artifact downloads, and one upload are expected");
+  // checkout, pnpm setup, node setup, five artifact downloads, one upload.
+  // The two setup actions are what let the run load the signer at all: the
+  // attestation script reaches packages/evidence, whose V1 canonicalizer is a
+  // real dependency, and this workflow previously had no install step.
+  assert.equal(uses.length, 9, "checkout, two setups, five artifact downloads, and one upload are expected");
   for (const [, action, , version] of uses)
     assert.match(version, /^v\d+\.\d+\.\d+$/u, `${action} must carry its reviewed action version comment`);
   assert.match(workflow, /docs\/qualification-evidence-attestation\.md/u);
   assert.match(workflow, /public_key_ref_path/u);
   assert.match(workflow, /qualification-evidence-index\.dsse\.json/u);
+});
+
+test("a workflow that runs repository Node code installs its dependencies first", () => {
+  // This workflow ran `node scripts/t75-evidence-attestation.mjs` with no Node
+  // setup and no install at all, so it could not even load the signer:
+  // packages/evidence's V1 canonicalizer is a real dependency. It had never
+  // been dispatched, so nothing caught it.
+  const install = workflow.indexOf("pnpm install --frozen-lockfile");
+  const firstNodeRun = workflow.indexOf("node scripts/");
+  assert.ok(install >= 0, "the workflow installs dependencies");
+  assert.ok(firstNodeRun >= 0, "the workflow runs repository Node code");
+  assert.ok(install < firstNodeRun, "dependencies are installed before any repository script runs");
+  assert.match(workflow, /actions\/setup-node@[0-9a-f]{40}/u);
+  assert.match(workflow, /node-version: 24\.14\.0/u);
 });
