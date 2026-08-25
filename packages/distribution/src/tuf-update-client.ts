@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { constants, createReadStream } from "node:fs";
-import { lstat, mkdir, open, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, lstat, mkdir, open, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join, parse, resolve, sep } from "node:path";
 import { Readable } from "node:stream";
 import { Updater } from "tuf-js";
@@ -233,6 +233,16 @@ const optionalStat = async (path: string) => {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
     throw error;
   }
+};
+
+// A staged component keeps the executability the bundle declares for it. The
+// bundle validator already binds `executable` to the component kind, so a
+// runtime or launcher is exactly the set that must be spawnable. Without this
+// every target lands 0o600 and `copyFile` carries that into the install root,
+// so on POSIX the activation health gate cannot execute the release it just
+// verified. On Windows the bit is inert and this is a no-op.
+const applyDeclaredMode = async (path: string, component: HermeticBundleComponent): Promise<void> => {
+  await chmod(path, component.executable ? 0o700 : 0o600);
 };
 
 const verifyFile = async (path: string, component: HermeticBundleComponent): Promise<boolean> => {
@@ -539,7 +549,7 @@ export class TufUpdateClient {
     await ensureNoSymlink(finalPath);
     await ensureNoSymlink(partialPath);
     await ensureDirectoryChain(stageRoot, dirname(finalPath));
-    if (await verifyFile(finalPath, component)) return;
+    if (await verifyFile(finalPath, component)) return applyDeclaredMode(finalPath, component);
     if (await optionalStat(finalPath)) await rm(finalPath, { force: true });
     let offset = (await optionalStat(partialPath))?.size ?? 0;
     if (offset > component.sizeBytes) {
@@ -575,6 +585,7 @@ export class TufUpdateClient {
       fail("VES_TUF_INTEGRITY", `staged target digest is invalid: ${component.componentId}`);
     }
     await rename(partialPath, finalPath);
+    await applyDeclaredMode(finalPath, component);
   }
 
   async resolveAndStage(request: TufUpdateRequest): Promise<TufStagedRelease> {

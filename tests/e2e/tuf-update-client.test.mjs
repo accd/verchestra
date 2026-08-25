@@ -143,3 +143,26 @@ test("receipt source identity is local configuration rather than repository-cont
   const result = await client.resolveAndStage({ platform: "win32", arch: "x64" });
   assert.equal(result.sourceId, "mirror:team-a:approved");
 });
+
+test("a staged component carries the executability its bundle declares", async () => {
+  const { client, fixture, root } = await setup();
+  const staged = await client.resolveAndStage({ platform: "win32", arch: "x64" });
+  const stageRoot = join(root, "staging", staged.releaseDigest.slice("sha256:".length));
+  const executable = fixture.bundle.components.filter((component) => component.executable);
+  const inert = fixture.bundle.components.filter((component) => !component.executable);
+  assert.ok(executable.length > 0);
+  assert.ok(inert.length > 0);
+  // This discriminates on POSIX only. Node's chmod on Windows toggles just the
+  // read-only bit, so both branches read 0o666 there and a mutant that always
+  // wrote 0o600 would survive a Windows-only run. Linux and macOS CI carry the
+  // real signal, which is also where the defect could actually strand a user:
+  // a non-executable staged runtime the activation health gate cannot spawn.
+  for (const component of executable) {
+    const mode = (await stat(join(stageRoot, component.logicalPath))).mode & 0o777;
+    assert.equal(mode, process.platform === "win32" ? 0o666 : 0o700, component.componentId);
+  }
+  for (const component of inert) {
+    const mode = (await stat(join(stageRoot, component.logicalPath))).mode & 0o777;
+    assert.equal(mode, process.platform === "win32" ? 0o666 : 0o600, component.componentId);
+  }
+});
