@@ -19,11 +19,12 @@ const POLICY = Object.freeze({ target: 10, variant: "classic" });
 // roots because the policy enforces production scopes only.
 const REPORT_ROOTS = ["scripts", "tests", "apps", "packages"];
 const CHECK_ROOTS = ["scripts", "apps", "packages"];
-const PRODUCTION_SCOPES = new Set(["packages-src", "vestra-cli", "site-src", "scripts"]);
+const PRODUCTION_SCOPES = new Set(["packages-src", "vestra-cli", "vestra-launcher", "site-src", "scripts"]);
 
 export function scopeOf(path) {
   if (/^packages\/[^/]+\/src\//.test(path)) return "packages-src";
   if (/^apps\/vestra-cli\/src\//.test(path)) return "vestra-cli";
+  if (/^apps\/vestra-launcher\/src\//.test(path)) return "vestra-launcher";
   if (/^apps\/site\/src\//.test(path)) return "site-src";
   if (/^scripts\//.test(path)) return "scripts";
   if (/^apps\/site\/tests\//.test(path)) return "site-tests";

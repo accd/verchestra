@@ -6,7 +6,15 @@ Read the root and closest scoped `AGENTS.md` before editing any area.
 
 Portable dependencies point inward: contracts → domain → application.
 Adapter packages may depend on those inward packages but never on sibling
-adapters. `apps/vestra-cli` is the composition root. `apps/site` is an
+adapters. `apps/vestra-cli` is the private composition root and may import any
+package it needs. `apps/vestra-launcher` is the public composition root and is
+stricter than every other package: its `src/` may import no workspace package
+at all, because its published tarball must reach nothing but Node built-ins.
+Its build-input directory `closure/` is the one exception — it composes the
+activation closure from `packages/distribution` and `packages/platform-node`
+by repository-relative path, never by package name, so the launcher still
+declares no dependency edge and the closure is resolved by the bundler at
+build time rather than by the published tarball at run time. `apps/site` is an
 independent build-time documentation projection.
 
 ## Workspace packages
@@ -14,6 +22,7 @@ independent build-time documentation projection.
 | Package | Responsibility | Allowed internal dependencies | Relevant tests | Canonical documentation |
 | --- | --- | --- | --- | --- |
 | `apps/vestra-cli` | CLI parsing, composition, launchers, and public errors | Any package needed for composition | CLI unit/integration/E2E and release tests | `README.md`, `docs/architecture.md` |
+| `apps/vestra-launcher` | Publishable `vestra` npm launcher: host gate, pinned public release inputs, and the bootstrap that activates a verified release | None from `src/`; `closure/` reaches `packages/distribution` and `packages/platform-node` by relative path, at build time only | `tests/architecture/vestra-launcher-boundaries.test.mjs`, `tests/build/vestra-launcher-package.test.mjs`, `tests/security/vestra-launcher-package-security.test.mjs` | `.specs/features/npx-launcher/`, `apps/vestra-launcher/README.md` |
 | `apps/site` | Static product and documentation website | No runtime product-package dependency | `apps/site/tests`, Playwright, Axe, Lighthouse | Repository Markdown and site guides |
 | `packages/contracts` | Versioned portable schemas and generated contract types | None | Contract and schema tests | `schemas/`, `VERSIONING.md` |
 | `packages/domain` | Platform-free primitives, workflow rules, and errors | `contracts` only | Domain unit/property tests | `docs/architecture.md` |

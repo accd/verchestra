@@ -23,6 +23,7 @@ export const GATE_STAGES = Object.freeze({
     "test:integration",
     "test:e2e",
     "test:architecture",
+    "test:build",
     "test:qualification"
   ],
   "gate:security": [
@@ -47,6 +48,7 @@ export const GATE_STAGES = Object.freeze({
     "build",
     "test:unit",
     "test:architecture",
+    "test:build",
     "test:qualification",
     "test:security",
     "test:fault",

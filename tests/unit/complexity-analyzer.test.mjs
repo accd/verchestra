@@ -87,6 +87,7 @@ test("the analyzer discriminates: adding one decision construct raises the measu
 test("scope classification separates production from tests and site sources", () => {
   assert.equal(scopeOf("packages/evidence/src/integrity/canonical.ts"), "packages-src");
   assert.equal(scopeOf("apps/vestra-cli/src/cli.ts"), "vestra-cli");
+  assert.equal(scopeOf("apps/vestra-launcher/src/bootstrap.ts"), "vestra-launcher");
   assert.equal(scopeOf("apps/site/src/lib/repository-content.ts"), "site-src");
   assert.equal(scopeOf("scripts/gate.mjs"), "scripts");
   assert.equal(scopeOf("tests/unit/example.test.mjs"), "tests");

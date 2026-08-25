@@ -119,6 +119,17 @@
       "reason": "Structured material already uses the V2 contract or is a V2 support primitive."
     },
     {
+      "path": "apps/vestra-launcher/src/pinned-inputs.ts",
+      "classification": "raw-byte-digest",
+      "signals": {
+        "canonicalizer": 0,
+        "digest": 2,
+        "localeCompare": 0,
+        "serialization": 2
+      },
+      "reason": "SHA-256 applies to bytes or a fixed primitive, not to a locally canonicalized structured value."
+    },
+    {
       "path": "packages/agent-runtime/src/context/backend-serializers.ts",
       "classification": "migrated-v2",
       "signals": {
@@ -735,6 +746,17 @@
       "reason": "Structured material already uses the V2 contract or is a V2 support primitive."
     },
     {
+      "path": "packages/platform-node/src/activation-launcher-adapters.ts",
+      "classification": "migrated-v2",
+      "signals": {
+        "canonicalizer": 6,
+        "digest": 2,
+        "localeCompare": 0,
+        "serialization": 0
+      },
+      "reason": "Structured material already uses the V2 contract or is a V2 support primitive."
+    },
+    {
       "path": "packages/platform-node/src/authority-store-adapter.ts",
       "classification": "migrated-v2",
       "signals": {
@@ -920,6 +942,17 @@
         "serialization": 0
       },
       "reason": "Closed presentation, fixture, or repository-diagnostic ordering only; not a trust or persistent identity."
+    },
+    {
+      "path": "scripts/build-vestra-launcher.mjs",
+      "classification": "raw-byte-digest",
+      "signals": {
+        "canonicalizer": 0,
+        "digest": 2,
+        "localeCompare": 0,
+        "serialization": 4
+      },
+      "reason": "SHA-256 applies to bytes or a fixed primitive, not to a locally canonicalized structured value."
     },
     {
       "path": "scripts/complexity.mjs",

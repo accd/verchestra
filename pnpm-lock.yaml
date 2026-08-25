@@ -36,6 +36,9 @@ importers:
       '@types/node':
         specifier: 24.13.3
         version: 24.13.3
+      esbuild:
+        specifier: 0.28.2
+        version: 0.28.2
       eslint:
         specifier: 10.8.0
         version: 10.8.0
@@ -142,6 +145,8 @@ importers:
       '@verchestra/workspace':
         specifier: workspace:0.0.0
         version: link:../../packages/workspace
+
+  apps/vestra-launcher: {}
 
   packages/agent-runtime:
     dependencies:
