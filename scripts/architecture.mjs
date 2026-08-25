@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 
 export const EXPECTED_PACKAGES = Object.freeze([
   "apps/vestra-cli",
+  "apps/vestra-launcher",
   "packages/contracts",
   "packages/domain",
   "packages/application",
@@ -35,23 +36,33 @@ const ADAPTERS = new Set(
     .filter((name) => !CORE.has(name))
 );
 
+// The inward direction as data rather than a branch ladder: each origin names
+// the exact set it may import, and the code raised when it reaches past that
+// set. apps/vestra-launcher is the public composition root, and its whole
+// contract is that the published tarball reaches nothing but Node built-ins and
+// its own compiled siblings - so its permitted set is empty and it is a product
+// package rather than a NON_PRODUCT_WORKSPACE, precisely so scanWorkspace reads
+// its sources and enforces that.
+const PERMITTED_TARGETS = new Map([
+  ["contracts", new Set()],
+  ["domain", new Set(["contracts"])],
+  ["application", new Set(["contracts", "domain"])],
+  ["vestra-launcher", new Set()]
+]);
+const ADAPTER_TARGETS = new Set(["contracts", "domain", "application"]);
+const DENIAL_CODES = new Map([
+  ["contracts", "VES_ARCH_INWARD_RULE"],
+  ["domain", "VES_ARCH_INWARD_RULE"],
+  ["application", "VES_ARCH_CONCRETE_ADAPTER_IMPORT"],
+  ["vestra-launcher", "VES_ARCH_PUBLIC_LAUNCHER_ISOLATED"]
+]);
+
 export function validateDependencyEdge(from, to) {
-  if (from === to) return { allowed: true };
-  if (from === "vestra-cli") return { allowed: true };
-  if (from === "contracts") return { allowed: false, code: "VES_ARCH_INWARD_RULE" };
-  if (from === "domain")
-    return to === "contracts" ? { allowed: true } : { allowed: false, code: "VES_ARCH_INWARD_RULE" };
-  if (from === "application") {
-    return new Set(["contracts", "domain"]).has(to)
-      ? { allowed: true }
-      : { allowed: false, code: "VES_ARCH_CONCRETE_ADAPTER_IMPORT" };
-  }
-  if (ADAPTERS.has(from)) {
-    return new Set(["contracts", "domain", "application"]).has(to)
-      ? { allowed: true }
-      : { allowed: false, code: "VES_ARCH_ADAPTER_COUPLING" };
-  }
-  return { allowed: false, code: "VES_ARCH_PACKAGE_UNKNOWN" };
+  if (from === to || from === "vestra-cli") return { allowed: true };
+  const permitted = ADAPTERS.has(from) ? ADAPTER_TARGETS : PERMITTED_TARGETS.get(from);
+  if (permitted === undefined) return { allowed: false, code: "VES_ARCH_PACKAGE_UNKNOWN" };
+  if (permitted.has(to)) return { allowed: true };
+  return { allowed: false, code: ADAPTERS.has(from) ? "VES_ARCH_ADAPTER_COUPLING" : DENIAL_CODES.get(from) };
 }
 
 export function inspectSource(packageName, source) {
@@ -65,7 +76,13 @@ export function inspectSource(packageName, source) {
       if (packageName === "domain") findings.push({ code: "VES_ARCH_DOMAIN_NODE_IMPORT", detail: dependency });
     } else if (packageName === "contracts" && dependency.startsWith("ajv")) {
       continue;
-    } else if (!dependency.startsWith(".") && new Set(["contracts", "domain", "application"]).has(packageName)) {
+    } else if (
+      !dependency.startsWith(".") &&
+      // vestra-launcher joins the inward core here: a third-party import in the
+      // public launcher would become a runtime dependency of a published
+      // tarball, which the artifact contract forbids.
+      new Set(["contracts", "domain", "application", "vestra-launcher"]).has(packageName)
+    ) {
       findings.push({ code: "VES_ARCH_THIRD_PARTY_IMPORT", detail: dependency });
     }
   }

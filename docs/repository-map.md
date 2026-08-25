@@ -6,14 +6,19 @@ Read the root and closest scoped `AGENTS.md` before editing any area.
 
 Portable dependencies point inward: contracts → domain → application.
 Adapter packages may depend on those inward packages but never on sibling
-adapters. `apps/vestra-cli` is the composition root. `apps/site` is an
-independent build-time documentation projection.
+adapters. `apps/vestra-cli` is the private composition root and may import any
+package it needs. `apps/vestra-launcher` is the public composition root and is
+stricter than every other package: it may import no workspace package at all,
+because its published tarball must reach nothing but Node built-ins and its own
+compiled siblings. `apps/site` is an independent build-time documentation
+projection.
 
 ## Workspace packages
 
 | Package | Responsibility | Allowed internal dependencies | Relevant tests | Canonical documentation |
 | --- | --- | --- | --- | --- |
 | `apps/vestra-cli` | CLI parsing, composition, launchers, and public errors | Any package needed for composition | CLI unit/integration/E2E and release tests | `README.md`, `docs/architecture.md` |
+| `apps/vestra-launcher` | Publishable `vestra` npm launcher: host gate, pinned public release inputs, and the fail-closed bootstrap boundary | None; no workspace package may be imported | `tests/architecture/vestra-launcher-boundaries.test.mjs`, `tests/build/vestra-launcher-package.test.mjs`, `tests/security/vestra-launcher-package-security.test.mjs` | `.specs/features/npx-launcher/`, `apps/vestra-launcher/README.md` |
 | `apps/site` | Static product and documentation website | No runtime product-package dependency | `apps/site/tests`, Playwright, Axe, Lighthouse | Repository Markdown and site guides |
 | `packages/contracts` | Versioned portable schemas and generated contract types | None | Contract and schema tests | `schemas/`, `VERSIONING.md` |
 | `packages/domain` | Platform-free primitives, workflow rules, and errors | `contracts` only | Domain unit/property tests | `docs/architecture.md` |

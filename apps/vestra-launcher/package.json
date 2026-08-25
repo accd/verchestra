@@ -1,0 +1,7 @@
+{
+  "name": "@verchestra/vestra-launcher",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Tracked build inputs for the publishable `vestra` npm launcher"
+}
