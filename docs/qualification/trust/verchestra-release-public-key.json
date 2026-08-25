@@ -1,0 +1,7 @@
+{
+  "algorithm": "Ed25519",
+  "encoding": "spki-pem",
+  "keyId": "verchestra-release-20260825",
+  "publicKey": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAOrzVJQfZqfM0Tl6qMNOBKhodS1GN9GZ0vTM0sgCrj6U=\n-----END PUBLIC KEY-----\n",
+  "purposes": ["tuf-release-root"]
+}
