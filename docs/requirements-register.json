@@ -1,0 +1,585 @@
+{
+  "schemaVersion": 1,
+  "requirements": [
+    {
+      "id": "VES-BST-001",
+      "declaredIn": null,
+      "home": "qualification-report-only",
+      "evidence": "report"
+    },
+    {
+      "id": "VES-BST-002",
+      "declaredIn": null,
+      "home": "qualification-report-only",
+      "evidence": "report"
+    },
+    {
+      "id": "VES-BST-003",
+      "declaredIn": null,
+      "home": "qualification-report-only",
+      "evidence": "report"
+    },
+    {
+      "id": "VES-BST-004",
+      "declaredIn": null,
+      "home": "qualification-report-only",
+      "evidence": "report"
+    },
+    {
+      "id": "VES-BST-005",
+      "declaredIn": null,
+      "home": "qualification-report-only",
+      "evidence": "report"
+    },
+    {
+      "id": "VES-CLI-001",
+      "declaredIn": null,
+      "home": "qualification-report-only",
+      "evidence": "report"
+    },
+    {
+      "id": "VES-CLI-002",
+      "declaredIn": null,
+      "home": "qualification-report-only",
+      "evidence": "report"
+    },
+    {
+      "id": "VES-CLI-003",
+      "declaredIn": null,
+      "home": "qualification-report-only",
+      "evidence": "report"
+    },
+    {
+      "id": "VES-CLI-004",
+      "declaredIn": null,
+      "home": "qualification-report-only",
+      "evidence": "report"
+    },
+    {
+      "id": "VES-CLI-005",
+      "declaredIn": ".specs/features/deep-doctor/spec.md",
+      "home": "specification",
+      "evidence": "report"
+    },
+    {
+      "id": "VES-CTX-001",
+      "declaredIn": null,
+      "home": "qualification-report-only",
+      "evidence": "report"
+    },
+    {
+      "id": "VES-CTX-002",
+      "declaredIn": null,
+      "home": "qualification-report-only",
+      "evidence": "report"
+    },
+    {
+      "id": "VES-CTX-003",
+      "declaredIn": null,
+      "home": "qualification-report-only",
+      "evidence": "report"
+    },
+    {
+      "id": "VES-CTX-004",
+      "declaredIn": null,
+      "home": "qualification-report-only",
+      "evidence": "report"
+    },
+    {
+      "id": "VES-CTX-005",
+      "declaredIn": null,
+      "home": "qualification-report-only",
+      "evidence": "test"
+    },
+    {
+      "id": "VES-CTX-006",
+      "declaredIn": null,
+      "home": "qualification-report-only",
+      "evidence": "report"
+    },
+    {
+      "id": "VES-DBP-001",
+      "declaredIn": null,
+      "home": "qualification-report-only",
+      "evidence": "report"
+    },
+    {
+      "id": "VES-DBP-002",
+      "declaredIn": null,
+      "home": "qualification-report-only",
+      "evidence": "report"
+    },
+    {
+      "id": "VES-DBP-003",
+      "declaredIn": null,
+      "home": "qualification-report-only",
+      "evidence": "report"
+    },
+    {
+      "id": "VES-DBP-004",
+      "declaredIn": null,
+      "home": "qualification-report-only",
+      "evidence": "report"
+    },
+    {
+      "id": "VES-DBP-005",
+      "declaredIn": null,
+      "home": "qualification-report-only",
+      "evidence": "report"
+    },
+    {
+      "id": "VES-DBP-006",
+      "declaredIn": null,
+      "home": "qualification-report-only",
+      "evidence": "report"
+    },
+    {
+      "id": "VES-DSC-001",
+      "declaredIn": null,
+      "home": "qualification-report-only",
+      "evidence": "report"
+    },
+    {
+      "id": "VES-DSC-004",
+      "declaredIn": null,
+      "home": "qualification-report-only",
+      "evidence": "report"
+    },
+    {
+      "id": "VES-DSC-005",
+      "declaredIn": null,
+      "home": "qualification-report-only",
+      "evidence": "report"
+    },
+    {
+      "id": "VES-EXE-001",
+      "declaredIn": null,
+      "home": "qualification-report-only",
+      "evidence": "test"
+    },
+    {
+      "id": "VES-EXE-002",
+      "declaredIn": null,
+      "home": "qualification-report-only",
+      "evidence": "report"
+    },
+    {
+      "id": "VES-EXE-003",
+      "declaredIn": null,
+      "home": "qualification-report-only",
+      "evidence": "report"
+    },
+    {
+      "id": "VES-EXE-004",
+      "declaredIn": null,
+      "home": "qualification-report-only",
+      "evidence": "report"
+    },
+    {
+      "id": "VES-EXE-005",
+      "declaredIn": null,
+      "home": "qualification-report-only",
+      "evidence": "report"
+    },
+    {
+      "id": "VES-EXE-006",
+      "declaredIn": null,
+      "home": "qualification-report-only",
+      "evidence": "test"
+    },
+    {
+      "id": "VES-HOF-001",
+      "declaredIn": null,
+      "home": "qualification-report-only",
+      "evidence": "report"
+    },
+    {
+      "id": "VES-HOF-002",
+      "declaredIn": null,
+      "home": "qualification-report-only",
+      "evidence": "report"
+    },
+    {
+      "id": "VES-HOF-003",
+      "declaredIn": null,
+      "home": "qualification-report-only",
+      "evidence": "report"
+    },
+    {
+      "id": "VES-HOF-004",
+      "declaredIn": null,
+      "home": "qualification-report-only",
+      "evidence": "report"
+    },
+    {
+      "id": "VES-HOF-005",
+      "declaredIn": ".specs/features/self-test-full-driver-profiles/spec.md",
+      "home": "specification",
+      "evidence": "report"
+    },
+    {
+      "id": "VES-HOF-006",
+      "declaredIn": null,
+      "home": "qualification-report-only",
+      "evidence": "report"
+    },
+    {
+      "id": "VES-INT-001",
+      "declaredIn": null,
+      "home": "qualification-report-only",
+      "evidence": "report"
+    },
+    {
+      "id": "VES-INT-002",
+      "declaredIn": null,
+      "home": "qualification-report-only",
+      "evidence": "report"
+    },
+    {
+      "id": "VES-INT-003",
+      "declaredIn": null,
+      "home": "qualification-report-only",
+      "evidence": "report"
+    },
+    {
+      "id": "VES-INT-004",
+      "declaredIn": null,
+      "home": "qualification-report-only",
+      "evidence": "report"
+    },
+    {
+      "id": "VES-INT-005",
+      "declaredIn": null,
+      "home": "qualification-report-only",
+      "evidence": "report"
+    },
+    {
+      "id": "VES-MDL-001",
+      "declaredIn": null,
+      "home": "qualification-report-only",
+      "evidence": "report"
+    },
+    {
+      "id": "VES-MDL-002",
+      "declaredIn": null,
+      "home": "qualification-report-only",
+      "evidence": "report"
+    },
+    {
+      "id": "VES-MDL-003",
+      "declaredIn": ".specs/features/regression-campaigns/spec.md",
+      "home": "specification",
+      "evidence": "none"
+    },
+    {
+      "id": "VES-MDL-005",
+      "declaredIn": null,
+      "home": "qualification-report-only",
+      "evidence": "report"
+    },
+    {
+      "id": "VES-MEM-001",
+      "declaredIn": null,
+      "home": "qualification-report-only",
+      "evidence": "report"
+    },
+    {
+      "id": "VES-MEM-002",
+      "declaredIn": null,
+      "home": "qualification-report-only",
+      "evidence": "report"
+    },
+    {
+      "id": "VES-MEM-003",
+      "declaredIn": null,
+      "home": "qualification-report-only",
+      "evidence": "report"
+    },
+    {
+      "id": "VES-MEM-004",
+      "declaredIn": null,
+      "home": "qualification-report-only",
+      "evidence": "report"
+    },
+    {
+      "id": "VES-ORD-001",
+      "declaredIn": null,
+      "home": "qualification-report-only",
+      "evidence": "test"
+    },
+    {
+      "id": "VES-RLS-001",
+      "declaredIn": null,
+      "home": "qualification-report-only",
+      "evidence": "report"
+    },
+    {
+      "id": "VES-RLS-002",
+      "declaredIn": null,
+      "home": "qualification-report-only",
+      "evidence": "report"
+    },
+    {
+      "id": "VES-RLS-003",
+      "declaredIn": ".specs/features/deep-doctor/spec.md",
+      "home": "specification",
+      "evidence": "report"
+    },
+    {
+      "id": "VES-RLS-004",
+      "declaredIn": ".specs/features/deep-doctor/spec.md",
+      "home": "specification",
+      "evidence": "report"
+    },
+    {
+      "id": "VES-RLS-005",
+      "declaredIn": null,
+      "home": "qualification-report-only",
+      "evidence": "report"
+    },
+    {
+      "id": "VES-RLS-006",
+      "declaredIn": ".specs/features/regression-campaigns/spec.md",
+      "home": "specification",
+      "evidence": "none"
+    },
+    {
+      "id": "VES-SEC-001",
+      "declaredIn": null,
+      "home": "qualification-report-only",
+      "evidence": "report"
+    },
+    {
+      "id": "VES-SEC-002",
+      "declaredIn": null,
+      "home": "qualification-report-only",
+      "evidence": "report"
+    },
+    {
+      "id": "VES-SEC-003",
+      "declaredIn": null,
+      "home": "qualification-report-only",
+      "evidence": "report"
+    },
+    {
+      "id": "VES-SEC-004",
+      "declaredIn": null,
+      "home": "qualification-report-only",
+      "evidence": "report"
+    },
+    {
+      "id": "VES-SEC-005",
+      "declaredIn": null,
+      "home": "qualification-report-only",
+      "evidence": "report"
+    },
+    {
+      "id": "VES-SEC-006",
+      "declaredIn": ".specs/features/sealed-holdout/spec.md",
+      "home": "specification",
+      "evidence": "report"
+    },
+    {
+      "id": "VES-SKL-001",
+      "declaredIn": null,
+      "home": "qualification-report-only",
+      "evidence": "report"
+    },
+    {
+      "id": "VES-SKL-004",
+      "declaredIn": null,
+      "home": "qualification-report-only",
+      "evidence": "report"
+    },
+    {
+      "id": "VES-SKL-005",
+      "declaredIn": null,
+      "home": "qualification-report-only",
+      "evidence": "report"
+    },
+    {
+      "id": "VES-SKL-006",
+      "declaredIn": ".specs/features/regression-campaigns/spec.md",
+      "home": "specification",
+      "evidence": "report"
+    },
+    {
+      "id": "VES-SPC-001",
+      "declaredIn": null,
+      "home": "qualification-report-only",
+      "evidence": "test"
+    },
+    {
+      "id": "VES-SPC-003",
+      "declaredIn": null,
+      "home": "qualification-report-only",
+      "evidence": "test"
+    },
+    {
+      "id": "VES-SPC-004",
+      "declaredIn": null,
+      "home": "qualification-report-only",
+      "evidence": "test"
+    },
+    {
+      "id": "VES-SPC-005",
+      "declaredIn": null,
+      "home": "qualification-report-only",
+      "evidence": "report"
+    },
+    {
+      "id": "VES-STF-001",
+      "declaredIn": null,
+      "home": "qualification-report-only",
+      "evidence": "none"
+    },
+    {
+      "id": "VES-STF-002",
+      "declaredIn": null,
+      "home": "qualification-report-only",
+      "evidence": "none"
+    },
+    {
+      "id": "VES-TST-001",
+      "declaredIn": null,
+      "home": "qualification-report-only",
+      "evidence": "report"
+    },
+    {
+      "id": "VES-TST-002",
+      "declaredIn": null,
+      "home": "qualification-report-only",
+      "evidence": "report"
+    },
+    {
+      "id": "VES-TST-003",
+      "declaredIn": ".specs/features/regression-campaigns/spec.md",
+      "home": "specification",
+      "evidence": "report"
+    },
+    {
+      "id": "VES-TST-004",
+      "declaredIn": ".specs/features/deep-doctor/spec.md",
+      "home": "specification",
+      "evidence": "report"
+    },
+    {
+      "id": "VES-TST-005",
+      "declaredIn": ".specs/features/self-test-full-driver-profiles/spec.md",
+      "home": "specification",
+      "evidence": "report"
+    },
+    {
+      "id": "VES-TST-006",
+      "declaredIn": ".specs/features/self-test-full-driver-profiles/spec.md",
+      "home": "specification",
+      "evidence": "report"
+    },
+    {
+      "id": "VES-TST-007",
+      "declaredIn": ".specs/features/deep-doctor/spec.md",
+      "home": "specification",
+      "evidence": "report"
+    },
+    {
+      "id": "VES-TST-008",
+      "declaredIn": ".specs/features/deep-doctor/spec.md",
+      "home": "specification",
+      "evidence": "none"
+    },
+    {
+      "id": "VES-VFY-001",
+      "declaredIn": null,
+      "home": "qualification-report-only",
+      "evidence": "test"
+    },
+    {
+      "id": "VES-VFY-002",
+      "declaredIn": null,
+      "home": "qualification-report-only",
+      "evidence": "test"
+    },
+    {
+      "id": "VES-VFY-003",
+      "declaredIn": null,
+      "home": "qualification-report-only",
+      "evidence": "test"
+    },
+    {
+      "id": "VES-VFY-004",
+      "declaredIn": null,
+      "home": "qualification-report-only",
+      "evidence": "test"
+    },
+    {
+      "id": "VES-VFY-006",
+      "declaredIn": null,
+      "home": "qualification-report-only",
+      "evidence": "report"
+    },
+    {
+      "id": "VES-WSP-001",
+      "declaredIn": null,
+      "home": "qualification-report-only",
+      "evidence": "report"
+    },
+    {
+      "id": "VES-WSP-002",
+      "declaredIn": null,
+      "home": "qualification-report-only",
+      "evidence": "report"
+    },
+    {
+      "id": "VES-WSP-003",
+      "declaredIn": null,
+      "home": "qualification-report-only",
+      "evidence": "report"
+    },
+    {
+      "id": "VES-WSP-004",
+      "declaredIn": null,
+      "home": "qualification-report-only",
+      "evidence": "report"
+    },
+    {
+      "id": "VES-WSP-005",
+      "declaredIn": null,
+      "home": "qualification-report-only",
+      "evidence": "report"
+    },
+    {
+      "id": "VES-WSP-006",
+      "declaredIn": null,
+      "home": "qualification-report-only",
+      "evidence": "report"
+    },
+    {
+      "id": "VES-WSP-007",
+      "declaredIn": null,
+      "home": "qualification-report-only",
+      "evidence": "report"
+    }
+  ],
+  "openGaps": [
+    {
+      "id": "VES-MDL-003",
+      "reason": "Declared by .specs/features/regression-campaigns/spec.md and .specs/features/sealed-holdout/spec.md; neither t73-validation.md nor t74-validation.md traces it, so no report carries its evidence."
+    },
+    {
+      "id": "VES-RLS-006",
+      "reason": "Declared by .specs/features/regression-campaigns/spec.md and .specs/features/sealed-holdout/spec.md; neither t73-validation.md nor t74-validation.md traces it, so no report carries its evidence."
+    },
+    {
+      "id": "VES-STF-001",
+      "reason": "Referenced by Self-Test source (packages/application/src/self-test/self-test.ts and the vestra-cli Self-Test composition) but asserted by no test and traced by no qualification report."
+    },
+    {
+      "id": "VES-STF-002",
+      "reason": "Referenced by packages/application/src/self-test/self-test.ts but asserted by no test and traced by no qualification report."
+    },
+    {
+      "id": "VES-TST-008",
+      "reason": "Declared by .specs/features/deep-doctor/spec.md; t72-validation.md does not trace it, so no report carries its evidence."
+    }
+  ]
+}
