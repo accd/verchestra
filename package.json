@@ -13,6 +13,7 @@
     "lint": "eslint eslint.config.mjs scripts tests apps packages",
     "proof:generate": "node scripts/generate-proof-artifact.mjs",
     "t75:evidence-index": "node scripts/t75-evidence-index.mjs",
+    "t76:build-target": "node scripts/t76-build-candidate.mjs",
     "complexity:report": "node scripts/complexity.mjs report",
     "complexity:check": "node scripts/complexity.mjs check",
     "complexity:update": "node scripts/complexity.mjs update",
