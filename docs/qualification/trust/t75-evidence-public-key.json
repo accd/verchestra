@@ -1,0 +1,7 @@
+{
+  "algorithm": "Ed25519",
+  "encoding": "spki-der-base64url",
+  "keyId": "t75-evidence-20260825",
+  "publicKey": "MCowBQYDK2VwAyEA1hPd4njMABVD5Z_EegDf2LSWZRZ1sN-fRfmfN81O4Tg",
+  "purposes": ["qualification-evidence-index"]
+}
