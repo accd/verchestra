@@ -153,47 +153,36 @@
     },
     {
       "path": "packages/agent-runtime/src/discovery/discovery-router.ts",
-      "classification": "pending-versioned-migration",
+      "classification": "migrated-v2",
       "signals": {
-        "canonicalizer": 3,
+        "canonicalizer": 2,
         "digest": 2,
-        "localeCompare": 1,
-        "serialization": 2
-      },
-      "reason": "The reviewed source produces a structured portable, trust, or persistent identity awaiting a dedicated versioned migration."
-    },
-    {
-      "path": "packages/agent-runtime/src/models/model-router.ts",
-      "classification": "pending-versioned-migration",
-      "signals": {
-        "canonicalizer": 0,
-        "digest": 0,
-        "localeCompare": 4,
+        "localeCompare": 0,
         "serialization": 0
       },
-      "reason": "The reviewed source produces a structured portable, trust, or persistent identity awaiting a dedicated versioned migration."
+      "reason": "Structured material already uses the V2 contract or is a V2 support primitive."
     },
     {
       "path": "packages/agent-runtime/src/models/passport-registry.ts",
-      "classification": "pending-versioned-migration",
+      "classification": "migrated-v2",
       "signals": {
-        "canonicalizer": 11,
+        "canonicalizer": 2,
         "digest": 0,
-        "localeCompare": 2,
-        "serialization": 2
+        "localeCompare": 0,
+        "serialization": 0
       },
-      "reason": "The reviewed source produces a structured portable, trust, or persistent identity awaiting a dedicated versioned migration."
+      "reason": "Structured material already uses the V2 contract or is a V2 support primitive."
     },
     {
       "path": "packages/agent-runtime/src/skills/governed-skill-registry.ts",
-      "classification": "pending-versioned-migration",
+      "classification": "migrated-v2",
       "signals": {
-        "canonicalizer": 3,
+        "canonicalizer": 2,
         "digest": 2,
-        "localeCompare": 1,
-        "serialization": 2
+        "localeCompare": 0,
+        "serialization": 0
       },
-      "reason": "The reviewed source produces a structured portable, trust, or persistent identity awaiting a dedicated versioned migration."
+      "reason": "Structured material already uses the V2 contract or is a V2 support primitive."
     },
     {
       "path": "packages/application/src/authority/authority.ts",
@@ -546,6 +535,17 @@
         "serialization": 2
       },
       "reason": "The reviewed source uses the declared V2 canonical contract."
+    },
+    {
+      "path": "packages/domain/src/canonical/canonical-optional.ts",
+      "classification": "migrated-v2",
+      "signals": {
+        "canonicalizer": 1,
+        "digest": 0,
+        "localeCompare": 0,
+        "serialization": 0
+      },
+      "reason": "Structured material already uses the V2 contract or is a V2 support primitive."
     },
     {
       "path": "packages/domain/src/canonical/canonical-sets.ts",

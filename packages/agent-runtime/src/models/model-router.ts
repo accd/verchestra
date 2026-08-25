@@ -1,4 +1,4 @@
-import { StableId } from "@verchestra/domain";
+import { StableId, normalizeDeclaredSet } from "@verchestra/domain";
 
 import type { MachinePassportIndex, PassportRecord } from "./passport-registry.ts";
 
@@ -148,12 +148,25 @@ function preference(value: string, preferred: readonly string[]): number {
   return index < 0 ? preferred.length + 1 : index;
 }
 
+// Issue #58: a routing decision is a trust-relevant identity here. The final
+// rank component is the Passport ID, so this comparison is what picks a model
+// when two Passports tie on independence, status, preference, confidence and
+// capacity -- ambient `localeCompare` let two machines route the same roles to
+// different providers from the same Local Machine Profile, and the resulting
+// `ranking` is reported as the explanation for the choice. UTF-16 code-unit
+// order makes the decision a property of the IDs alone.
+function compareCodeUnits(left: string, right: string): number {
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
+}
+
 function compareRank(left: readonly (number | string)[], right: readonly (number | string)[]): number {
   for (let index = 0; index < left.length; index += 1) {
     const a = left[index];
     const b = right[index];
     if (typeof a === "number" && typeof b === "number" && a !== b) return a - b;
-    if (typeof a === "string" && typeof b === "string" && a !== b) return a.localeCompare(b);
+    if (typeof a === "string" && typeof b === "string" && a !== b) return compareCodeUnits(a, b);
   }
   return 0;
 }
@@ -176,10 +189,14 @@ export class CapabilityModelRouter {
       index.passports.some((entry) => !Number.isSafeInteger(entry.revision) || entry.revision <= 0)
     )
       throw new ModelRouterError("VES_MODEL_PROFILE_INVALID", "Local Machine Profile is invalid");
+    // The Machine Profile lists Passports as a declared set; this order becomes
+    // the candidate order, and candidate order is the tie-break the eligible
+    // sort inherits for equal ranks (issue #58).
     const resolved = await Promise.all(
-      [...index.passports]
-        .sort((a, b) => a.passportId.localeCompare(b.passportId))
-        .map(async (reference) => ({ reference, passport: await this.#passports.current(reference.passportId) }))
+      normalizeDeclaredSet(index.passports, (entry) => entry.passportId).map(async (reference) => ({
+        reference,
+        passport: await this.#passports.current(reference.passportId)
+      }))
     );
     const candidates = resolved
       .filter(
@@ -229,7 +246,9 @@ export class CapabilityModelRouter {
       if (winner === undefined)
         throw new ModelRouterError("VES_MODEL_NO_ELIGIBLE", "No Model Passport satisfies hard requirements", {
           roleId: role.roleId,
-          exclusions: deepFreeze(exclusions.sort((a, b) => a.passportId.localeCompare(b.passportId)))
+          // The reported exclusion list is the machine-readable explanation of
+          // a refusal; two machines must present it in the same order (#58).
+          exclusions: deepFreeze(normalizeDeclaredSet(exclusions, (entry) => entry.passportId))
         });
       const independent = reference === undefined || winner.passport.independenceClass !== reference.independenceClass;
       const independence = role.independence.mode === "none" ? "not-required" : independent ? "satisfied" : "degraded";
@@ -241,7 +260,7 @@ export class CapabilityModelRouter {
           endpointModelIdentityDigest: winner.passport.endpointModelIdentityDigest,
           independence,
           ranking: winner.rank,
-          exclusions: deepFreeze(exclusions.sort((a, b) => a.passportId.localeCompare(b.passportId)))
+          exclusions: deepFreeze(normalizeDeclaredSet(exclusions, (entry) => entry.passportId))
         })
       );
       selected.set(role.roleId, winner.passport);

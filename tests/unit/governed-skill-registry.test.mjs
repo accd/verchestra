@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { GovernedSkillRegistry } from "../../packages/agent-runtime/src/skills/governed-skill-registry.ts";
 import { grillSkill, lock, profile, skill, verifier } from "../helpers/skill-registry-fixture.mjs";
+import { withHostileLocaleCompare } from "../helpers/hostile-locale.mjs";
 
 function registry() {
   return new GovernedSkillRegistry({
@@ -115,6 +116,18 @@ test("profile rejects an unknown enabled Skill", async () => {
     registry().resolve(profile({ enabledSkillIds: ["tlc-spec-driven", "unknown"] }), lock()),
     (error) => error.code === "VES_SKILL_UNKNOWN"
   );
+});
+
+// Issue #58: skillLockDigest used to hash a private recursive serialization
+// whose object members were ordered by ambient localeCompare. A Skill lock
+// sealed on one machine was therefore reported as VES_SKILL_LOCK_TAMPERED on
+// another whose collation ordered one member pair differently -- a portability
+// defect that reads as a supply-chain attack.
+test("a Skill lock sealed under one collation still verifies under another", async () => {
+  const sealed = lock();
+  assert.equal((await withHostileLocaleCompare(() => lock())).lockDigest, sealed.lockDigest);
+  const resolved = await withHostileLocaleCompare(() => registry().resolve(profile(), sealed));
+  assert.equal(resolved.lockDigest, sealed.lockDigest);
 });
 
 test("ownership graph rejects a dependency cycle", async () => {

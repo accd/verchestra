@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { GovernedSkillRegistry } from "../../packages/agent-runtime/src/skills/governed-skill-registry.ts";
 import { grillSkill, lock, skill, verifier } from "../helpers/skill-registry-fixture.mjs";
+import { withHostileLocaleCompare } from "../helpers/hostile-locale.mjs";
 
 function setup(transaction) {
   return new GovernedSkillRegistry({
@@ -29,6 +30,22 @@ test("update plan binds current/candidate locks, qualification, and visible diff
   assert.equal(plan.candidateLockDigest, candidate().lockDigest);
   assert.equal(plan.diff.length, 1);
   assert.equal(plan.planId.startsWith("sha256:"), true);
+});
+
+// Issue #58: planId is the identity a human review and the activation
+// transaction bind to, and it was hashed from a serialization whose object
+// members were ordered by ambient localeCompare. The same reviewed update must
+// carry the same plan identity on the machine that activates it.
+test("plan identity is byte-identical across two divergent locale collations", async () => {
+  const plan = () =>
+    setup().planUpdate({
+      current: lock(),
+      candidate: candidate(),
+      qualification: { passed: true, evidenceDigest: "sha256:" + "f".repeat(64) },
+      diff: [{ path: "skills/tlc/SKILL.md", change: "modified" }]
+    });
+  const planned = await plan();
+  assert.equal((await withHostileLocaleCompare(plan)).planId, planned.planId);
 });
 
 for (const [name, request, code] of [

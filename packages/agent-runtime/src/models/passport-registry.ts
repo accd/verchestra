@@ -1,4 +1,10 @@
-import { IsoInstant, StableId } from "@verchestra/domain";
+import {
+  IsoInstant,
+  StableId,
+  canonicalizeJsonV2,
+  dropUndefinedMembers,
+  normalizeDeclaredSet
+} from "@verchestra/domain";
 
 import type { ContextDigestPort } from "../context/source-snapshots.ts";
 
@@ -88,16 +94,8 @@ export interface MachinePassportIndex {
   readonly passports: readonly { readonly passportId: string; readonly revision: number }[];
 }
 
-function canonicalJson(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
-  if (value !== null && typeof value === "object") {
-    return `{${Object.entries(value as Readonly<Record<string, unknown>>)
-      .filter(([, entry]) => entry !== undefined)
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([key, entry]) => `${JSON.stringify(key)}:${canonicalJson(entry)}`)
-      .join(",")}}`;
-  }
-  return JSON.stringify(value);
+function canonicalV2(value: unknown): string {
+  return canonicalizeJsonV2(dropUndefinedMembers(value));
 }
 
 function deepFreeze<T>(value: T): T {
@@ -181,9 +179,14 @@ function normalize(input: PassportCandidate, now: string, allowExpired: boolean)
     ...input,
     endpointIdentity: { ...input.endpointIdentity },
     dataHandling: { ...input.dataHandling },
-    observedCapabilities: [...input.observedCapabilities]
-      .map((entry) => ({ ...entry }))
-      .sort((a, b) => a.capability.localeCompare(b.capability)),
+    // A declared set, not a caller-meaningful order: it is folded into
+    // `candidateDigest`, so ambient collation here decided Passport identity.
+    // Capability names admit `.` and `-`, which many collations treat as
+    // ignorable, so this is not a case-only divergence (issue #58).
+    observedCapabilities: normalizeDeclaredSet(
+      input.observedCapabilities.map((entry) => ({ ...entry })),
+      (entry) => entry.capability
+    ),
     contextCapacity: { ...input.contextCapacity },
     driverContractEvidence: [...new Set(input.driverContractEvidence)].sort(),
     eligibleRiskTiers: [...new Set(input.eligibleRiskTiers)].sort()
@@ -251,7 +254,7 @@ export class ModelPassportRegistry {
     const history = await this.#store.history(candidate.passportId);
     const all = await this.#store.all();
     const current = history.at(-1);
-    if (current !== undefined && canonicalJson(current.endpointIdentity) !== canonicalJson(candidate.endpointIdentity))
+    if (current !== undefined && canonicalV2(current.endpointIdentity) !== canonicalV2(candidate.endpointIdentity))
       fail("VES_PASSPORT_IDENTITY_CONFLICT", "Passport identity is bound to another endpoint");
     if (current !== undefined && current.resolvedModelId !== candidate.resolvedModelId)
       fail("VES_PASSPORT_IDENTITY_CONFLICT", "Passport identity is bound to another resolved model");
@@ -260,16 +263,16 @@ export class ModelPassportRegistry {
     );
     if (
       endpointPeer !== undefined &&
-      canonicalJson(endpointPeer.endpointIdentity) !== canonicalJson(candidate.endpointIdentity)
+      canonicalV2(endpointPeer.endpointIdentity) !== canonicalV2(candidate.endpointIdentity)
     )
       fail("VES_PASSPORT_ENDPOINT_CONFLICT", "Endpoint identity metadata conflicts with history");
     const endpointModelIdentityDigest = this.#digest.sha256(
-      canonicalJson({
+      canonicalV2({
         endpointIdentity: candidate.endpointIdentity,
         resolvedModelId: candidate.resolvedModelId
       })
     );
-    const candidateDigest = this.#digest.sha256(canonicalJson(candidate));
+    const candidateDigest = this.#digest.sha256(canonicalV2(candidate));
     if (current?.candidateDigest === candidateDigest) {
       await this.#verified(current);
       return current;
@@ -311,8 +314,8 @@ export class ModelPassportRegistry {
       revision: current.revision + 1,
       status: "quarantined" as const,
       issuedAt: this.#now(),
-      drift: { kind, observedDigest: this.#digest.sha256(canonicalJson(observation)) },
-      candidateDigest: this.#digest.sha256(canonicalJson({ previous: current.candidateDigest, kind, observation }))
+      drift: { kind, observedDigest: this.#digest.sha256(canonicalV2(observation)) },
+      candidateDigest: this.#digest.sha256(canonicalV2({ previous: current.candidateDigest, kind, observation }))
     });
     return this.#appendSigned(payload);
   }

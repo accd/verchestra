@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { CapabilityModelRouter, ModelRouterError } from "../../packages/agent-runtime/src/index.ts";
 import { IDS, passports, resolver, role, routeInput } from "../helpers/model-router-fixture.mjs";
+import { withHostileLocaleCompare } from "../helpers/hostile-locale.mjs";
 
 function permutations(values) {
   if (values.length < 2) return [values];
@@ -289,3 +290,40 @@ for (const [name, candidates, requirement, expected] of rankingCases) {
     assert.equal(result.selections[0].passportId, expected);
   });
 }
+
+// Issue #58: a routing decision is a trust-relevant identity. model-router.ts
+// used to break a rank tie, order the candidate list, and order the reported
+// exclusions with ambient localeCompare, so the same Local Machine Profile
+// could route the same role to a different provider on another machine. The
+// twin below ties with IDS.claude on independence, status, preference,
+// confidence and capacity, leaving the Passport ID as the only discriminator.
+const TWIN = "passport_018f0000-0000-7000-8000-000000001300";
+const twinCandidates = () => [passports.claude(), { ...passports.claude(), passportId: TWIN }];
+
+test("a rank tie resolves to the same Passport across two divergent locale collations", async () => {
+  const route = () =>
+    new CapabilityModelRouter({ passports: resolver(twinCandidates()) }).route(routeInput([role("planning")]));
+  const plain = await route();
+  const hostile = await withHostileLocaleCompare(route);
+  // Code-unit order specifically: the tie is broken by the smaller ID, never
+  // by whichever candidate the machine's collation happened to place first.
+  assert.equal(plain.selections[0].passportId, TWIN);
+  assert.equal(hostile.selections[0].passportId, plain.selections[0].passportId);
+  assert.deepEqual(hostile.selections[0].ranking, plain.selections[0].ranking);
+});
+
+test("the reported exclusion order is identical across two divergent locale collations", async () => {
+  const refuse = async () => {
+    try {
+      await new CapabilityModelRouter({ passports: resolver(twinCandidates()) }).route(
+        routeInput([role("writer", { requiredCapabilities: ["write-effects"] })])
+      );
+    } catch (error) {
+      return error.exclusions.map((entry) => entry.passportId);
+    }
+    throw new Error("expected VES_MODEL_NO_ELIGIBLE");
+  };
+  const plain = await refuse();
+  assert.deepEqual(plain, [TWIN, IDS.claude]);
+  assert.deepEqual(await withHostileLocaleCompare(refuse), plain);
+});
