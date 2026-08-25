@@ -1052,6 +1052,17 @@
         "serialization": 0
       },
       "reason": "The candidate materializer validates real bundle projections and emits the declared V2 canonical candidate closure."
+    },
+    {
+      "path": "scripts/t76-publish-release.mjs",
+      "classification": "migrated-v2",
+      "signals": {
+        "canonicalizer": 13,
+        "digest": 3,
+        "localeCompare": 0,
+        "serialization": 0
+      },
+      "reason": "The publication boundary verifies sealed candidate closures and emits release artifacts with the declared V2 canonical contract."
     }
   ]
 }
