@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { DiscoveryRouter } from "../../packages/agent-runtime/src/discovery/discovery-router.ts";
-import { intake, qualification, request } from "../helpers/discovery-fixture.mjs";
+import { intake, output, qualification, request } from "../helpers/discovery-fixture.mjs";
+import { withHostileLocaleCompare } from "../helpers/hostile-locale.mjs";
 
 test("documented project uses bounded built-in intake", () => {
   const decision = new DiscoveryRouter().choose(request(), [qualification("reversa"), qualification("codenavi")]);
@@ -64,6 +65,23 @@ test("routing is deterministic across qualification order", () => {
     router.choose(request(), values).decisionDigest,
     router.choose(request(), [...values].reverse()).decisionDigest
   );
+});
+
+// Issue #58: discovery-router.ts used to hash a private recursive
+// serialization whose object members were ordered by ambient localeCompare, so
+// the same intake report, routing decision, or Discovery Packet could be
+// addressed by a different digest on another machine. All three are content
+// addresses a reviewer and a promotion step quote, so they must be a property
+// of the content alone.
+test("intake, decision, and packet digests are byte-identical across two divergent locale collations", async () => {
+  const router = new DiscoveryRouter();
+  const digests = () => ({
+    intake: router.intake(intake()).intakeDigest,
+    decision: router.choose(request(), [qualification("reversa"), qualification("codenavi")]).decisionDigest,
+    packet: router.normalize(output()).packetDigest
+  });
+  const plain = digests();
+  assert.deepEqual(await withHostileLocaleCompare(digests), plain);
 });
 
 test("complete intake reports every canonical section with provenance", () => {

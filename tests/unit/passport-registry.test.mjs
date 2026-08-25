@@ -6,6 +6,7 @@ import {
   ModelPassportRegistry
 } from "../../packages/agent-runtime/src/index.ts";
 import { candidate, digest, machineId, passportId, registryFixture } from "../helpers/passport-fixture.mjs";
+import { withHostileLocaleCompare } from "../helpers/hostile-locale.mjs";
 
 function registry(overrides = {}) {
   const fixture = registryFixture(overrides);
@@ -101,6 +102,33 @@ test("machine profile index contains only verified current eligible refs", async
   const index = await service.indexMachine(machineId, [passportId]);
   assert.deepEqual(index.passports, [{ passportId, revision: 1 }]);
   assert.equal(await service.machineIndex(machineId), index);
+});
+
+// Issue #58: passport-registry.ts used to order the capability set and the
+// members of its own serialization with ambient localeCompare, and both feed
+// candidateDigest. Capability names admit "." and "-", which many collations
+// treat as ignorable, so this is not a case-only divergence: re-qualifying the
+// same evidence on a differently collated machine appended a spurious signed
+// revision instead of being idempotent.
+test("a Passport sealed under one collation stays idempotent and identically ordered under another", async () => {
+  const { service } = registry();
+  const hyphenated = candidate({
+    observedCapabilities: [
+      { capability: "toolbox", supported: true, evidenceRef: digest.sha256("toolbox") },
+      { capability: "tool-use", supported: true, evidenceRef: digest.sha256("tools") },
+      { capability: "planning", supported: true, evidenceRef: digest.sha256("planning") }
+    ]
+  });
+  const first = await service.qualify(hyphenated);
+  assert.deepEqual(
+    first.observedCapabilities.map((entry) => entry.capability),
+    ["planning", "tool-use", "toolbox"]
+  );
+  const second = await withHostileLocaleCompare(() => service.qualify(hyphenated));
+  assert.equal(second, first);
+  assert.equal(second.candidateDigest, first.candidateDigest);
+  assert.equal(second.endpointModelIdentityDigest, first.endpointModelIdentityDigest);
+  assert.equal((await service.history(passportId)).length, 1);
 });
 
 for (const [index, riskOrder] of permutations(["low", "medium", "high"]).entries()) {

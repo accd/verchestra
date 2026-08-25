@@ -79,10 +79,13 @@ const MATRIX_CEILINGS = Object.freeze({
 });
 
 const UNCLASSIFIED_CEILINGS = Object.freeze({
-  "packages/agent-runtime/src/discovery/discovery-router.ts": 1,
-  "packages/agent-runtime/src/models/model-router.ts": 4,
-  "packages/agent-runtime/src/models/passport-registry.ts": 2,
-  "packages/agent-runtime/src/skills/governed-skill-registry.ts": 1,
+  // Migrated (issue #58): the four remaining agent-runtime owners now use the
+  // V2 canonical contract and code-unit ordering, so their ceilings tighten to
+  // 0 and any reintroduced ambient-locale sort fails here.
+  "packages/agent-runtime/src/discovery/discovery-router.ts": 0,
+  "packages/agent-runtime/src/models/model-router.ts": 0,
+  "packages/agent-runtime/src/models/passport-registry.ts": 0,
+  "packages/agent-runtime/src/skills/governed-skill-registry.ts": 0,
   "packages/application/src/bootstrap/machine-bootstrap.ts": 6,
   "packages/connectors/src/confluence/architecture-source.ts": 5,
   "packages/connectors/src/confluence/delivery-projection.ts": 1,

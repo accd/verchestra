@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
 
+import { canonicalizeJsonV2, dropUndefinedMembers } from "@verchestra/domain";
+
 const DIGEST = /^sha256:[a-f0-9]{64}$/u;
 const SAFE = /^[a-z0-9][a-z0-9._:@/+\-]{0,255}$/u;
 const INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u;
@@ -55,19 +57,10 @@ interface DiscoveryRequest {
   readonly evaluatedAt: string;
 }
 
-function canonical(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
-  if (value !== null && typeof value === "object")
-    return `{${Object.entries(value as Readonly<Record<string, unknown>>)
-      .filter(([, entry]) => entry !== undefined)
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([key, entry]) => `${JSON.stringify(key)}:${canonical(entry)}`)
-      .join(",")}}`;
-  return JSON.stringify(value);
-}
-
 function digest(value: unknown): string {
-  return `sha256:${createHash("sha256").update(canonical(value)).digest("hex")}`;
+  return `sha256:${createHash("sha256")
+    .update(canonicalizeJsonV2(dropUndefinedMembers(value)))
+    .digest("hex")}`;
 }
 
 function validInstant(value: unknown): value is string {
