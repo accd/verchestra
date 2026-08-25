@@ -111,7 +111,9 @@ test("the reviewed serialization scope exclusions are closed", () => {
     "packages/drivers/src/codex-driver.ts",
     "packages/self-test/src/git-fixtures.ts",
     "scripts/agent-context.mjs",
+    "scripts/canonical-json-census-refresh.mjs",
     "scripts/canonical-json-census.mjs",
+    "scripts/requirements-trace.mjs",
     "scripts/select-gates.mjs"
   ]);
   for (const reason of CENSUS_SCOPE_EXCLUSIONS.values()) assert.ok(reason.length > 0);

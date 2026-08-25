@@ -922,17 +922,6 @@
       "reason": "Closed presentation, fixture, or repository-diagnostic ordering only; not a trust or persistent identity."
     },
     {
-      "path": "scripts/canonical-json-census-refresh.mjs",
-      "classification": "pending-versioned-migration",
-      "signals": {
-        "canonicalizer": 0,
-        "digest": 0,
-        "localeCompare": 0,
-        "serialization": 1
-      },
-      "reason": "New candidate; classification not yet reviewed."
-    },
-    {
       "path": "scripts/complexity.mjs",
       "classification": "presentation-or-fixture",
       "signals": {
@@ -986,17 +975,6 @@
         "serialization": 2
       },
       "reason": "The reviewed source hashes raw bytes or a fixed primitive and serializes fixture content for on-disk provisioning; it does not compute a canonical JSON identity."
-    },
-    {
-      "path": "scripts/requirements-trace.mjs",
-      "classification": "pending-versioned-migration",
-      "signals": {
-        "canonicalizer": 0,
-        "digest": 0,
-        "localeCompare": 0,
-        "serialization": 1
-      },
-      "reason": "New candidate; classification not yet reviewed."
     },
     {
       "path": "scripts/t75-evidence-attestation.mjs",
