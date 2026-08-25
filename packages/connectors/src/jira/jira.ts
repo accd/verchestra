@@ -8,6 +8,7 @@ import {
   type EffectIntent,
   type PriorEffectState
 } from "@verchestra/application";
+import { canonicalizeJsonV2 } from "@verchestra/domain";
 
 const DIGEST = /^sha256:[a-f0-9]{64}$/u;
 const PROJECT_KEY = /^[A-Z][A-Z0-9_]{1,19}$/u;
@@ -234,17 +235,13 @@ const requireTimestamp = (value: unknown, code: string, label: string): string =
   return timestamp;
 };
 
-const canonicalJson = (value: unknown): string => {
-  if (value === null || typeof value !== "object") return JSON.stringify(value);
-  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
-  return `{${Object.entries(value as Record<string, unknown>)
-    .sort(([left], [right]) => left.localeCompare(right))
-    .map(([key, entry]) => `${JSON.stringify(key)}:${canonicalJson(entry)}`)
-    .join(",")}}`;
-};
-
+// The shared RFC 8785 canonicalizer replaces the private recursive serializer
+// this file used to carry, whose member ordering went through the ambient
+// locale (issue #58). Object member order is the only thing that decided the
+// bytes here, so the projection digest and claim identity are unchanged for
+// every key set this connector builds.
 const sha256 = (value: unknown): string =>
-  `sha256:${createHash("sha256").update(canonicalJson(value), "utf8").digest("hex")}`;
+  `sha256:${createHash("sha256").update(canonicalizeJsonV2(value), "utf8").digest("hex")}`;
 
 const canonicalTokens = (value: unknown, code: string, label: string, allowEmpty: boolean): readonly string[] => {
   if (!Array.isArray(value) || (!allowEmpty && value.length === 0)) {
@@ -506,7 +503,7 @@ export class JiraProjectionEffectAdapter implements EffectAdapter {
 
   register(plan: JiraProjectionPlan): void {
     const current = this.#plans.get(plan.idempotencyKey);
-    if (current !== undefined && canonicalJson(current) !== canonicalJson(plan)) {
+    if (current !== undefined && canonicalizeJsonV2(current) !== canonicalizeJsonV2(plan)) {
       throw new JiraConnectorError(
         "VES_JIRA_PLAN_CONFLICT",
         "Idempotency key is already registered to different Jira content"
@@ -619,7 +616,7 @@ export class JiraProjectionEffectAdapter implements EffectAdapter {
     if (
       issue.marker.projectionDigest !== plan.projectionDigest ||
       issue.managedDigest !== plan.projectionDigest ||
-      canonicalJson(issue.managed) !== canonicalJson(plan.managed)
+      canonicalizeJsonV2(issue.managed) !== canonicalizeJsonV2(plan.managed)
     ) {
       throw new JiraConnectorError(
         "VES_JIRA_REMOTE_INVALID",

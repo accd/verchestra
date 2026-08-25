@@ -340,36 +340,36 @@
     },
     {
       "path": "packages/connectors/src/confluence/architecture-source.ts",
-      "classification": "pending-versioned-migration",
+      "classification": "migrated-v2",
       "signals": {
-        "canonicalizer": 6,
+        "canonicalizer": 3,
         "digest": 2,
-        "localeCompare": 5,
-        "serialization": 4
+        "localeCompare": 0,
+        "serialization": 2
       },
-      "reason": "The reviewed source produces a structured portable, trust, or persistent identity awaiting a dedicated versioned migration."
+      "reason": "Structured material already uses the V2 contract or is a V2 support primitive."
     },
     {
       "path": "packages/connectors/src/confluence/delivery-projection.ts",
-      "classification": "pending-versioned-migration",
+      "classification": "migrated-v2",
       "signals": {
         "canonicalizer": 4,
         "digest": 2,
-        "localeCompare": 1,
-        "serialization": 4
+        "localeCompare": 0,
+        "serialization": 2
       },
-      "reason": "The reviewed source produces a structured portable, trust, or persistent identity awaiting a dedicated versioned migration."
+      "reason": "Structured material already uses the V2 contract or is a V2 support primitive."
     },
     {
       "path": "packages/connectors/src/jira/jira.ts",
-      "classification": "pending-versioned-migration",
+      "classification": "migrated-v2",
       "signals": {
-        "canonicalizer": 8,
+        "canonicalizer": 6,
         "digest": 2,
-        "localeCompare": 1,
-        "serialization": 4
+        "localeCompare": 0,
+        "serialization": 2
       },
-      "reason": "The reviewed source produces a structured portable, trust, or persistent identity awaiting a dedicated versioned migration."
+      "reason": "Structured material already uses the V2 contract or is a V2 support primitive."
     },
     {
       "path": "packages/data-probe/src/canonical-material.ts",

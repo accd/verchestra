@@ -2,11 +2,12 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
+  JiraClaimConnector,
   JiraConnectorError,
   buildJiraProjectionPlan,
   createJiraProjectionIntent
 } from "../../packages/connectors/src/index.ts";
-import { projectionInput, sha } from "../helpers/jira-fixture.mjs";
+import { MockJiraTransport, projectionInput, sha, workspaceId } from "../helpers/jira-fixture.mjs";
 
 test("projection plan contains every required managed Jira field", () => {
   const plan = buildJiraProjectionPlan(projectionInput());
@@ -73,4 +74,63 @@ test("effect intent exactly binds plan identity and high-risk authority", () => 
   assert.equal(intent.canonicalInputDigest, plan.projectionDigest);
   assert.equal(intent.semanticIdentity, plan.correlationId);
   assert.equal(intent.riskTier, "high");
+});
+
+// Issue #58 (T4k): the projection digest, the idempotency key derived from it,
+// and the claim identity are Verchestra identities persisted in the Jira
+// marker and claim record. Before the canonical JSON V2 migration their bytes
+// came from a private recursive serializer that ordered object members with
+// String.prototype.localeCompare, so two machines with different ambient
+// locales could publish different digests for the same projection. Mocking
+// localeCompare with a comparator that reverses code-unit order simulates a
+// divergent locale without depending on any particular installed ICU locale
+// disagreeing today.
+async function withHostileLocaleCompare(fn) {
+  const original = String.prototype.localeCompare;
+  String.prototype.localeCompare = function hostileLocaleCompare(other) {
+    const left = String(this);
+    return left < other ? 1 : left > other ? -1 : 0;
+  };
+  try {
+    return await fn();
+  } finally {
+    String.prototype.localeCompare = original;
+  }
+}
+
+// Mixed-case, punctuation-bearing identifiers: by code unit "-" < "1" < "B" <
+// "a" < "b", an order a language-sensitive collation does not reproduce.
+const collationSensitiveInput = () =>
+  projectionInput({
+    package: { packageRef: "execution-package:Alpha", packageDigest: sha("package") },
+    owner: { ownerRef: "owner:Team-AI", ownerDigest: sha("owner") },
+    currentTaskIds: ["T-1", "T-a"],
+    pendingTaskIds: ["T-B", "T-b"]
+  });
+
+test("projection digest and idempotency key are byte-identical under a hostile ambient collation", async () => {
+  const baseline = buildJiraProjectionPlan(collationSensitiveInput());
+  const hostile = await withHostileLocaleCompare(() => buildJiraProjectionPlan(collationSensitiveInput()));
+  assert.equal(hostile.projectionDigest, baseline.projectionDigest);
+  assert.equal(hostile.idempotencyKey, baseline.idempotencyKey);
+  assert.equal(hostile.marker.projectionDigest, baseline.projectionDigest);
+  assert.deepEqual(hostile.managed.currentTaskIds, ["T-1", "T-a"]);
+  assert.deepEqual(hostile.managed.pendingTaskIds, ["T-B", "T-b"]);
+});
+
+test("Jira claim identity is byte-identical under a hostile ambient collation", async () => {
+  const acquire = () =>
+    new JiraClaimConnector({ transport: new MockJiraTransport() }).acquire({
+      schemaVersion: 1,
+      workspaceId,
+      correlationId: "feature:Verchestra-1.0",
+      owner: { runId: "run:Alpha", actorId: "actor:_beta" },
+      now: "2026-07-15T10:00:00.000Z",
+      expiresAt: "2026-07-15T10:05:00.000Z"
+    });
+  const baseline = await acquire();
+  const hostile = await withHostileLocaleCompare(acquire);
+  assert.equal(baseline.status, "acquired");
+  assert.equal(hostile.status, "acquired");
+  assert.equal(hostile.claim.claimId, baseline.claim.claimId);
 });
