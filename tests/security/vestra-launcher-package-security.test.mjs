@@ -19,6 +19,7 @@ import { buildVestraLauncher } from "../../scripts/build-vestra-launcher.mjs";
 import {
   disposeLauncherFixtures,
   fixtureReleaseSource,
+  fixtureTargets,
   fixtureTrustRoot,
   outputDirectory,
   pinnedInputDirectory
@@ -46,12 +47,24 @@ async function packageRoot(options = {}) {
   return root;
 }
 
+/** The fleet target map with one override applied to the `win32-x64` entry. */
+const targetsWith = (entryOverrides) => {
+  const targets = fixtureTargets();
+  targets["win32-x64"] = { ...targets["win32-x64"], ...entryOverrides };
+  return targets;
+};
+
 test("valid pinned inputs load into a frozen public release identity", async () => {
   const inputs = await loadPinnedInputs(await packageRoot());
-  assert.equal(inputs.source.schemaVersion, 1);
-  assert.equal(inputs.source.metadataBaseUrl, "https://releases.example.invalid/metadata/");
+  assert.equal(inputs.source.schemaVersion, 2);
+  assert.equal(
+    inputs.source.targets["win32-x64"].metadataBaseUrl,
+    "https://releases.example.invalid/win32-x64/metadata/"
+  );
   assert.equal(Object.isFrozen(inputs), true);
   assert.equal(Object.isFrozen(inputs.source), true);
+  assert.equal(Object.isFrozen(inputs.source.targets), true);
+  assert.equal(Object.isFrozen(inputs.source.targets["win32-x64"]), true);
   assert.ok(inputs.trustedRoot.byteLength > 0);
 });
 
@@ -69,7 +82,7 @@ test("a source location that is not credential-free HTTPS is refused", async () 
   ];
   for (const metadataBaseUrl of rejected) {
     await assert.rejects(
-      loadPinnedInputs(await packageRoot({ sourceOverrides: { metadataBaseUrl } })),
+      loadPinnedInputs(await packageRoot({ sourceOverrides: { targets: targetsWith({ metadataBaseUrl }) } })),
       { code: "VES_VESTRA_INPUTS_INVALID" },
       metadataBaseUrl
     );
@@ -78,20 +91,42 @@ test("a source location that is not credential-free HTTPS is refused", async () 
 
 test("a target location is held to the same pinned public contract", async () => {
   await assert.rejects(
-    loadPinnedInputs(await packageRoot({ sourceOverrides: { targetBaseUrl: "https://x:y@host.invalid/targets/" } })),
+    loadPinnedInputs(
+      await packageRoot({
+        sourceOverrides: { targets: targetsWith({ targetBaseUrl: "https://x:y@host.invalid/targets/" }) }
+      })
+    ),
     { code: "VES_VESTRA_INPUTS_INVALID" }
   );
 });
 
 test("release configuration with missing, unknown, or malformed fields is refused", async () => {
+  const withoutTargets = { ...fixtureReleaseSource() };
+  delete withoutTargets.targets;
   const cases = [
     { rawSource: "not json" },
     { rawSource: JSON.stringify([]) },
     { rawSource: JSON.stringify({ ...fixtureReleaseSource(), extra: true }) },
-    { sourceOverrides: { schemaVersion: 2 } },
+    // Version 1 was never published, so no compatibility path exists: the
+    // version bump is the migration and 1 is refused like any other non-2.
+    { sourceOverrides: { schemaVersion: 1 } },
     { sourceOverrides: { semanticVersion: "one.point.oh" } },
     { sourceOverrides: { sourceId: "" } },
-    { sourceOverrides: { rootDigest: "sha1:abc" } }
+    { sourceOverrides: { rootDigest: "sha1:abc" } },
+    { rawSource: JSON.stringify(withoutTargets) },
+    { sourceOverrides: { targets: [] } },
+    { sourceOverrides: { targets: {} } },
+    { sourceOverrides: { targets: { ...fixtureTargets(), "win32-mips": fixtureTargets()["win32-x64"] } } },
+    { sourceOverrides: { targets: targetsWith({ extra: true }) } },
+    {
+      sourceOverrides: {
+        targets: {
+          ...fixtureTargets(),
+          "win32-x64": { metadataBaseUrl: "https://releases.example.invalid/win32-x64/metadata/" }
+        }
+      }
+    },
+    { sourceOverrides: { targets: { ...fixtureTargets(), "win32-x64": "not an entry" } } }
   ];
   for (const options of cases) {
     await assert.rejects(loadPinnedInputs(await packageRoot(options)), { code: "VES_VESTRA_INPUTS_INVALID" });

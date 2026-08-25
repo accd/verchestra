@@ -17,6 +17,7 @@ import { dirname, join } from "node:path";
 
 import { buildExecutableRelease } from "./activation-health-fixture.mjs";
 import { createUpdateKeys, hex, metadataFile, serialize } from "./tuf-update-fixture.mjs";
+import { FLEET_TARGET_KEYS, fixtureTargets } from "./vestra-launcher-fixture.mjs";
 
 const FUTURE = "2035-01-01T00:00:00.000Z";
 const METADATA_VERSION = 1;
@@ -170,13 +171,14 @@ export async function publishExecutableRelease(options = {}) {
     root,
     trustedRoot: new Uint8Array(metadata.get("root.json")),
     source: Object.freeze({
-      schemaVersion: 1,
+      schemaVersion: 2,
       sourceId: "source:offline:launcher-e2e",
       releaseId: bundle.releaseId,
       semanticVersion: bundle.semanticVersion,
-      metadataBaseUrl: "https://releases.example.invalid/metadata/",
-      targetBaseUrl: "https://releases.example.invalid/targets/",
-      rootDigest: `sha256:${hex(metadata.get("root.json"))}`
+      rootDigest: `sha256:${hex(metadata.get("root.json"))}`,
+      // The e2e bootstrap runs on the real host, so the current process key
+      // must be in the pinned map even if the fleet list did not name it.
+      targets: fixtureTargets([...new Set([...FLEET_TARGET_KEYS, `${process.platform}-${process.arch}`])])
     })
   });
 }

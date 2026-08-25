@@ -37,15 +37,31 @@ export function fixtureTrustRoot() {
   })}\n`;
 }
 
+// The schemaVersion-2 pinned source is a per-host map: one published tarball
+// must resolve every fleet platform. Every key gets a distinct URL pair so a
+// selection test can detect one host aliasing another host's locations.
+export const FLEET_TARGET_KEYS = Object.freeze(["darwin-arm64", "darwin-x64", "linux-arm64", "linux-x64", "win32-x64"]);
+
+export function fixtureTargets(keys = FLEET_TARGET_KEYS) {
+  return Object.fromEntries(
+    keys.map((key) => [
+      key,
+      {
+        metadataBaseUrl: `https://releases.example.invalid/${key}/metadata/`,
+        targetBaseUrl: `https://releases.example.invalid/${key}/targets/`
+      }
+    ])
+  );
+}
+
 export function fixtureReleaseSource(overrides = {}) {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     sourceId: "source:offline:fixture",
     releaseId: "release:verchestra:fixture",
     semanticVersion: FIXTURE_SEMANTIC_VERSION,
-    metadataBaseUrl: "https://releases.example.invalid/metadata/",
-    targetBaseUrl: "https://releases.example.invalid/targets/",
     rootDigest: digestOf(fixtureTrustRoot()),
+    targets: fixtureTargets(),
     ...overrides
   };
 }

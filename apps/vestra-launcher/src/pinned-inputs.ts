@@ -14,24 +14,36 @@ import { LauncherBootstrapError } from "./public-errors.ts";
 const DIGEST = /^sha256:[a-f0-9]{64}$/u;
 const SEMVER = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?$/u;
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9:._@+/-]{0,255}$/u;
+// Schema version 2 pins a per-host map of source locations instead of one
+// global pair, because the one published tarball must resolve every fleet
+// platform (win32-x64, linux-x64, linux-arm64, darwin-x64, darwin-arm64).
+// No version-1 file was ever published, so there is no compatibility path to
+// maintain: the launcher accepts version 2 only, and the version bump is the
+// migration.
+const TARGET_KEY = /^(?:win32|linux|darwin)-(?:x64|arm64)$/u;
 const SOURCE_KEYS = Object.freeze([
   "schemaVersion",
   "sourceId",
   "releaseId",
   "semanticVersion",
-  "metadataBaseUrl",
-  "targetBaseUrl",
-  "rootDigest"
+  "rootDigest",
+  "targets"
 ]);
+const TARGET_SOURCE_KEYS = Object.freeze(["metadataBaseUrl", "targetBaseUrl"]);
+
+/** The pinned source locations for exactly one `<platform>-<arch>` host. */
+export interface PinnedTargetSource {
+  readonly metadataBaseUrl: string;
+  readonly targetBaseUrl: string;
+}
 
 export interface PinnedReleaseSource {
-  readonly schemaVersion: 1;
+  readonly schemaVersion: 2;
   readonly sourceId: string;
   readonly releaseId: string;
   readonly semanticVersion: string;
-  readonly metadataBaseUrl: string;
-  readonly targetBaseUrl: string;
   readonly rootDigest: string;
+  readonly targets: Readonly<Record<string, PinnedTargetSource>>;
 }
 
 export interface PinnedLauncherInputs {
@@ -49,6 +61,9 @@ const missing = (message: string): never => {
 
 const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
   value !== null && typeof value === "object" && !Array.isArray(value);
+
+const hasExactKeys = (value: Readonly<Record<string, unknown>>, keys: readonly string[]): boolean =>
+  JSON.stringify(Object.keys(value).sort()) === JSON.stringify([...keys].sort());
 
 async function readPinnedFile(root: string, name: string): Promise<Buffer> {
   try {
@@ -88,11 +103,35 @@ export function assertPinnedHttpsBase(value: unknown, label: string): string {
   return url.href;
 }
 
+function assertTargetSource(value: unknown, key: string): PinnedTargetSource {
+  if (!isRecord(value) || !hasExactKeys(value, TARGET_SOURCE_KEYS))
+    invalid(`the packaged release configuration target ${key} has missing or unknown fields`);
+  const record = value as Readonly<Record<string, unknown>>;
+  return Object.freeze({
+    metadataBaseUrl: assertPinnedHttpsBase(record["metadataBaseUrl"], `targets.${key}.metadataBaseUrl`),
+    targetBaseUrl: assertPinnedHttpsBase(record["targetBaseUrl"], `targets.${key}.targetBaseUrl`)
+  });
+}
+
+function assertTargets(value: unknown): Readonly<Record<string, PinnedTargetSource>> {
+  if (!isRecord(value)) invalid("the packaged release configuration field targets is not a target map");
+  const record = value as Readonly<Record<string, unknown>>;
+  const entries = Object.entries(record);
+  if (entries.length === 0) invalid("the packaged release configuration names no target platform");
+  const targets: Record<string, PinnedTargetSource> = {};
+  for (const [key, entry] of entries) {
+    if (!TARGET_KEY.test(key))
+      invalid(`the packaged release configuration target ${key} is not a supported platform-arch key`);
+    targets[key] = assertTargetSource(entry, key);
+  }
+  return Object.freeze(targets);
+}
+
 function assertSourceShape(value: unknown): PinnedReleaseSource {
-  if (!isRecord(value) || JSON.stringify(Object.keys(value).sort()) !== JSON.stringify([...SOURCE_KEYS].sort()))
+  if (!isRecord(value) || !hasExactKeys(value, SOURCE_KEYS))
     invalid("the packaged release configuration has missing or unknown fields");
   const record = value as Readonly<Record<string, unknown>>;
-  if (record["schemaVersion"] !== 1) invalid("the packaged release configuration is not version 1");
+  if (record["schemaVersion"] !== 2) invalid("the packaged release configuration is not version 2");
   for (const [key, pattern] of [
     ["sourceId", SAFE_ID],
     ["releaseId", SAFE_ID],
@@ -103,13 +142,12 @@ function assertSourceShape(value: unknown): PinnedReleaseSource {
       invalid(`the packaged release configuration field ${key} is invalid`);
   }
   return Object.freeze({
-    schemaVersion: 1 as const,
+    schemaVersion: 2 as const,
     sourceId: record["sourceId"] as string,
     releaseId: record["releaseId"] as string,
     semanticVersion: record["semanticVersion"] as string,
-    metadataBaseUrl: assertPinnedHttpsBase(record["metadataBaseUrl"], "metadataBaseUrl"),
-    targetBaseUrl: assertPinnedHttpsBase(record["targetBaseUrl"], "targetBaseUrl"),
-    rootDigest: record["rootDigest"] as string
+    rootDigest: record["rootDigest"] as string,
+    targets: assertTargets(record["targets"])
   });
 }
 
