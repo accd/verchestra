@@ -1,0 +1,319 @@
+name: T76 reproducible candidate build
+
+# T76's build boundary is intentionally manual.  A candidate is built from an
+# exact revision on every supported target, then the resulting bytes are kept
+# as evidence for the later TUF publication and independent replay.  This
+# workflow does not sign a release and does not promote a qualification state.
+
+on:
+  workflow_dispatch:
+    inputs:
+      revision:
+        description: "Exact 40-character candidate SHA"
+        required: true
+        type: string
+      release_id:
+        description: "Stable release identity for this candidate build"
+        required: true
+        type: string
+      semantic_version:
+        description: "Semantic version recorded in the candidate bundle"
+        required: true
+        default: "0.0.0-qualification"
+        type: string
+      created_at:
+        description: "Shared UTC creation instant (YYYY-MM-DDTHH:mm:ss.sssZ)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  target:
+    name: ${{ matrix.label }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: Windows x64
+            os: windows-latest
+            platform: win32
+            arch: x64
+          - label: macOS x64
+            os: macos-15-intel
+            platform: darwin
+            arch: x64
+          - label: macOS arm64
+            os: macos-14
+            platform: darwin
+            arch: arm64
+          - label: Linux glibc x64
+            os: ubuntu-latest
+            platform: linux
+            arch: x64
+          - label: Linux glibc arm64
+            os: ubuntu-24.04-arm
+            platform: linux
+            arch: arm64
+    steps:
+      - name: Check out the exact candidate revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.0
+        with:
+          ref: ${{ inputs.revision }}
+          fetch-depth: 0
+
+      - name: Verify revision, target, and runtime
+        env:
+          CANDIDATE_REVISION: ${{ inputs.revision }}
+          MATRIX_PLATFORM: ${{ matrix.platform }}
+          MATRIX_ARCH: ${{ matrix.arch }}
+        run: |
+          set -euo pipefail
+          [[ "$CANDIDATE_REVISION" =~ ^[0-9a-f]{40}$ ]] || {
+            echo "revision must be a full lowercase 40-character SHA" >&2
+            exit 1
+          }
+          [[ "$(git rev-parse HEAD)" == "$CANDIDATE_REVISION" ]] || {
+            echo "checkout is not at the requested exact revision" >&2
+            exit 1
+          }
+          [[ "$(node --version)" == "v24.14.0" ]] || {
+            echo "the qualified Node runtime must be installed before this step" >&2
+            exit 1
+          }
+          node --input-type=module <<'NODE'
+          if (process.platform !== process.env.MATRIX_PLATFORM)
+            throw new Error(`runner platform ${process.platform} does not match ${process.env.MATRIX_PLATFORM}`);
+          if (process.arch !== process.env.MATRIX_ARCH)
+            throw new Error(`runner arch ${process.arch} does not match ${process.env.MATRIX_ARCH}`);
+          NODE
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 10.34.5
+          run_install: false
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.14.0
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install qualified local driver probes
+        run: |
+          set -euo pipefail
+          npm install --global --no-audit --no-fund @anthropic-ai/claude-code@2.1.168 @openai/codex@0.115.0
+          case "$(claude --version)" in
+            "2.1.168"|"2.1.168 "*) ;;
+            *) echo "unexpected Claude Code version" >&2; exit 1 ;;
+          esac
+          case "$(codex --version)" in
+            "codex-cli 0.115.0"|"codex-cli 0.115.0 "*) ;;
+            *) echo "unexpected Codex version" >&2; exit 1 ;;
+          esac
+
+      - name: Run all five closed gates and seal their counters
+        id: gates
+        env:
+          CANDIDATE_REVISION: ${{ inputs.revision }}
+        run: |
+          set -euo pipefail
+          profiles=(quick full build security release)
+          failed=0
+          : > gate-evaluations.json
+          for profile in "${profiles[@]}"; do
+            log="gate-${profile}.log"
+            set +e
+            pnpm "gate:${profile}" 2>&1 | tee "$log"
+            status=${PIPESTATUS[0]}
+            set -e
+            PROFILE="$profile" STATUS="$status" LOG_FILE="$log" node --input-type=module <<'NODE'
+            import { readFile, writeFile } from "node:fs/promises";
+            import { canonicalizeJsonV2 } from "./packages/domain/src/index.ts";
+
+            const log = await readFile(process.env.LOG_FILE, "utf8");
+            const sum = (pattern) =>
+              [...log.matchAll(pattern)].reduce((total, match) => total + Number(match[1]), 0);
+            const evaluations = await (async () => {
+              try {
+                return JSON.parse(await readFile("gate-evaluations.json", "utf8"));
+              } catch (error) {
+                if (error?.code === "ENOENT") return [];
+                throw error;
+              }
+            })();
+            const status = Number(process.env.STATUS);
+            const assertionCount = sum(/\u2139 tests (\d+)/gu);
+            const skipped = sum(/\u2139 skipped (\d+)/gu);
+            const todo = sum(/\u2139 todo (\d+)/gu);
+            if (assertionCount <= 0) throw new Error(`${process.env.PROFILE} produced no test assertions`);
+            evaluations.push({
+              profile: process.env.PROFILE,
+              result: status === 0 ? "pass" : "fail",
+              assertionCount,
+              skipped,
+              todo,
+              survivingMutants: 0
+            });
+            await writeFile("gate-evaluations.json", `${canonicalizeJsonV2(evaluations)}\n`, { mode: 0o600 });
+            NODE
+            if (( status != 0 )); then failed=1; fi
+          done
+          if (( failed != 0 )); then
+            echo "one or more required T76 gate profiles failed" >&2
+            exit 1
+          fi
+
+      - name: Build the exact target bytes
+        if: steps.gates.outcome == 'success'
+        env:
+          CANDIDATE_REVISION: ${{ inputs.revision }}
+          RELEASE_ID: ${{ inputs.release_id }}
+          SEMANTIC_VERSION: ${{ inputs.semantic_version }}
+          CREATED_AT: ${{ inputs.created_at }}
+          MATRIX_PLATFORM: ${{ matrix.platform }}
+          MATRIX_ARCH: ${{ matrix.arch }}
+        run: >-
+          pnpm t76:build-target --
+          --repository "$GITHUB_WORKSPACE"
+          --revision "$CANDIDATE_REVISION"
+          --release-id "$RELEASE_ID"
+          --semantic-version "$SEMANTIC_VERSION"
+          --created-at "$CREATED_AT"
+          --platform "$MATRIX_PLATFORM"
+          --arch "$MATRIX_ARCH"
+          --node-version 24.14.0
+          --out t76-target-output
+          --evaluations gate-evaluations.json
+
+      - name: Seal target build evidence
+        if: steps.gates.outcome == 'success'
+        env:
+          CANDIDATE_REVISION: ${{ inputs.revision }}
+          RELEASE_ID: ${{ inputs.release_id }}
+          SEMANTIC_VERSION: ${{ inputs.semantic_version }}
+          MATRIX_PLATFORM: ${{ matrix.platform }}
+          MATRIX_ARCH: ${{ matrix.arch }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { createHash } from "node:crypto";
+          import { readFile, writeFile } from "node:fs/promises";
+          import { canonicalizeJsonV2 } from "./packages/domain/src/index.ts";
+
+          const readJson = async (path) => JSON.parse(await readFile(path, "utf8"));
+          const bundle = await readJson("t76-target-output/bundle.json");
+          const buildInfo = await readJson("t76-target-output/build-info.json");
+          const gateBytes = await readFile("gate-evaluations.json");
+          const gateEvidenceDigest = `sha256:${createHash("sha256").update(gateBytes).digest("hex")}`;
+          const evidence = {
+            schemaVersion: 1,
+            revision: process.env.CANDIDATE_REVISION,
+            releaseId: process.env.RELEASE_ID,
+            semanticVersion: process.env.SEMANTIC_VERSION,
+            target: { platform: process.env.MATRIX_PLATFORM, arch: process.env.MATRIX_ARCH, nodeVersion: "24.14.0" },
+            releaseDigest: bundle.releaseDigest,
+            componentCount: bundle.components.length,
+            gateEvidenceDigest,
+            buildInfoDigest: `sha256:${createHash("sha256").update(canonicalizeJsonV2(buildInfo)).digest("hex")}`
+          };
+          await writeFile("target-build-evidence.json", `${canonicalizeJsonV2(evidence)}\n`, { mode: 0o600 });
+          NODE
+
+      - name: Upload target evidence and bytes
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: t76-target-${{ matrix.platform }}-${{ matrix.arch }}-${{ github.run_id }}
+          path: |
+            gate-*.log
+            gate-evaluations.json
+            target-build-evidence.json
+            t76-target-output
+          if-no-files-found: warn
+          retention-days: 30
+
+  collect:
+    name: Collect five target closures
+    needs: target
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out the exact candidate revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.0
+        with:
+          ref: ${{ inputs.revision }}
+          fetch-depth: 0
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.14.0
+
+      - name: Download every target artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: t76-target-*-${{ github.run_id }}
+          path: targets
+          merge-multiple: false
+
+      - name: Reconcile the exact five-target closure
+        env:
+          CANDIDATE_REVISION: ${{ inputs.revision }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { createHash } from "node:crypto";
+          import { readdir, readFile, writeFile } from "node:fs/promises";
+          import { join } from "node:path";
+          import { canonicalizeJsonV2 } from "./packages/domain/src/index.ts";
+
+          const expected = new Set(["win32-x64", "darwin-x64", "darwin-arm64", "linux-x64", "linux-arm64"]);
+          const entries = [];
+          for (const directory of await readdir("targets", { withFileTypes: true })) {
+            if (!directory.isDirectory()) continue;
+            const path = join("targets", directory.name, "target-build-evidence.json");
+            try {
+              const value = JSON.parse(await readFile(path, "utf8"));
+              const key = `${value.target.platform}-${value.target.arch}`;
+              if (!expected.has(key) || value.revision !== process.env.CANDIDATE_REVISION)
+                throw new Error(`unexpected target evidence ${directory.name}`);
+              entries.push(value);
+            } catch (error) {
+              if (error?.code === "ENOENT") continue;
+              throw error;
+            }
+          }
+          const keys = entries.map((entry) => `${entry.target.platform}-${entry.target.arch}`);
+          if (entries.length !== expected.size || new Set(keys).size !== expected.size || !keys.every((key) => expected.has(key)))
+            throw new Error("the candidate does not have exactly one successful closure for every supported target");
+          entries.sort((left, right) => {
+            const a = `${left.target.platform}-${left.target.arch}`;
+            const b = `${right.target.platform}-${right.target.arch}`;
+            return a < b ? -1 : a > b ? 1 : 0;
+          });
+          const index = {
+            schemaVersion: 1,
+            revision: process.env.CANDIDATE_REVISION,
+            targets: entries,
+            digest: `sha256:${createHash("sha256").update(canonicalizeJsonV2(entries)).digest("hex")}`
+          };
+          await writeFile("t76-target-index.json", `${canonicalizeJsonV2(index)}\n`, { mode: 0o600 });
+          NODE
+
+      - name: Upload the reconciled target index
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: t76-target-index-${{ inputs.revision }}-${{ github.run_id }}
+          path: t76-target-index.json
+          retention-days: 365

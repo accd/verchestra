@@ -5,10 +5,10 @@ issue: 17
 status: in_progress
 branch: codex/issue-17-candidate-manifest
 baseRevision: 1f034e3be8b0252963208d8bab26e3839c68f558
-lastCompletedTask: T5
-nextTask: "Execute exact-SHA builds and candidate materialization on all supported targets with five passing gate-evidence inputs, then construct the approved TUF publication before independent replay."
-lastGate: "HEAD d330848; builder suite 3/3 and candidate-materializer suite 3/3; gate:quick PASS (2093 unit + 153 readiness) and gate:release PASS (2093 unit + 39 architecture + 251 qualification + 1087 security + 165 e2e + 284 fault + 28 release); Sonar PASS; independent review pending"
-updatedAt: 2026-08-25T05:20:00Z
+lastCompletedTask: T4
+nextTask: "Dispatch t76-candidate-build.yml at an exact reviewed SHA, materialize and verify the candidate closure from all five target artifacts, then publish and independently replay TUF views."
+lastGate: "HEAD 99152c8 plus T4 workflow; builder suite 3/3, candidate suite 3/3, workflow contract suite 6/6; prior gate:quick and gate:release PASS; dispatch and independent review pending"
+updatedAt: 2026-08-25T06:00:00Z
 ---
 
 # Scope completed
