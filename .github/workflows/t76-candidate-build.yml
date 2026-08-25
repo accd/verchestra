@@ -112,11 +112,17 @@ jobs:
       - name: Install dependencies
         run: |
           set -euo pipefail
-          # Lifecycle scripts stay off for the dependency tree; esbuild is the
-          # one package whose postinstall is required (it fetches the platform
-          # binary the launcher bundle is built with), so it is rebuilt by name.
+          # Lifecycle scripts stay off for the dependency tree; only the
+          # packages whose postinstall fetches a binary the gates actually
+          # execute are rebuilt, by name. esbuild builds the launcher bundle;
+          # opencode-ai is probed live by the OpenCode driver qualification.
           pnpm install --frozen-lockfile --ignore-scripts
-          pnpm rebuild esbuild
+          pnpm rebuild esbuild opencode-ai
+          # Prove the rebuild list is complete rather than trusting it: every
+          # binary a gate executes must be runnable here, or the run fails now
+          # with a clear cause instead of inside an unrelated gate assertion.
+          node -e "require('esbuild').buildSync({stdin:{contents:''},write:false})"
+          node_modules/.bin/opencode --version
 
       - name: Install qualified local driver probes
         run: |
