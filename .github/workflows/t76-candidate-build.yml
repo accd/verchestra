@@ -110,12 +110,22 @@ jobs:
           NODE
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: |
+          set -euo pipefail
+          # Lifecycle scripts stay off for the dependency tree; esbuild is the
+          # one package whose postinstall is required (it fetches the platform
+          # binary the launcher bundle is built with), so it is rebuilt by name.
+          pnpm install --frozen-lockfile --ignore-scripts
+          pnpm rebuild esbuild
 
       - name: Install qualified local driver probes
         run: |
           set -euo pipefail
-          npm install --global --no-audit --no-fund @anthropic-ai/claude-code@2.1.168 @openai/codex@0.115.0
+          # Same restriction as the dependency tree: install without lifecycle
+          # scripts, then run them only for these two exact-pinned packages,
+          # whose postinstall fetches the native binary the probes execute.
+          npm install --global --ignore-scripts --no-audit --no-fund @anthropic-ai/claude-code@2.1.168 @openai/codex@0.115.0
+          npm rebuild --global @anthropic-ai/claude-code @openai/codex
           case "$(claude --version)" in
             "2.1.168"|"2.1.168 "*) ;;
             *) echo "unexpected Claude Code version" >&2; exit 1 ;;
