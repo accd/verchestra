@@ -226,12 +226,13 @@ function schemaVersion(value: unknown): ExecutionPackageSchemaVersion {
   return value;
 }
 
-function compareIdentity(version: ExecutionPackageSchemaVersion, left: string, right: string): number {
+function compareIdentity(_version: ExecutionPackageSchemaVersion, left: string, right: string): number {
   // V1 used JavaScript's default Array#sort, which compares UTF-16 code units.
-  // Keep that byte identity when normalizing legacy packages; V2 makes the
-  // same ordering explicit so both versions remain locale-independent.
-  if (version === 1) return left < right ? -1 : left > right ? 1 : 0;
-  return left < right ? -1 : left > right ? 1 : 0;
+  // Keep that byte identity when normalizing legacy packages; V2 uses the
+  // same ordering explicitly so both versions remain locale-independent.
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
 }
 
 function fail(code: string, message: string): never {
