@@ -85,18 +85,22 @@ test("collection requires exactly one successful closure for every target", () =
   assert.match(workflow, /t76-target-index-\$\{\{ inputs\.revision \}\}/u);
 });
 
-test("the candidate build installs the same way every other qualified workflow does", () => {
+test("lifecycle scripts run only for the packages whose native binaries are required", () => {
   // The first dispatch failed on all five targets with "claude native binary
-  // not installed": this workflow alone carried `--ignore-scripts`, which
-  // suppresses the postinstall that fetches the driver's native binary. The
-  // repository's own gates also now build the launcher bundle through esbuild,
-  // whose platform binary arrives the same way. Divergence from the qualified
-  // install line is what broke it, so the install line is pinned here.
-  const qualified = readFileSync(new URL("../../.github/workflows/ci.yml", import.meta.url), "utf8");
-  const globalInstall =
-    /npm install --global --no-audit --no-fund @anthropic-ai\/claude-code@[\d.]+ @openai\/codex@[\d.]+/u;
-  assert.match(qualified, globalInstall);
-  assert.match(workflow, globalInstall);
-  assert.match(workflow, /run: pnpm install --frozen-lockfile\n/u);
-  assert.doesNotMatch(workflow, /--ignore-scripts/u);
+  // not installed": a blanket `--ignore-scripts` suppresses the postinstall that
+  // fetches the driver binary, and the launcher bundle needs esbuild's platform
+  // binary the same way. Rather than dropping the restriction wholesale as the
+  // three older workflows do, the tree installs with scripts off and exactly
+  // three exact-pinned packages are rebuilt by name.
+  assert.match(workflow, /pnpm install --frozen-lockfile --ignore-scripts\s+pnpm rebuild esbuild/u);
+  assert.match(
+    workflow,
+    /npm install --global --ignore-scripts --no-audit --no-fund @anthropic-ai\/claude-code@[\d.]+ @openai\/codex@[\d.]+\s+npm rebuild --global @anthropic-ai\/claude-code @openai\/codex/u
+  );
+  // No install may run the whole dependency tree's scripts.
+  assert.doesNotMatch(workflow, /pnpm install --frozen-lockfile\n/u);
+  assert.doesNotMatch(workflow, /npm install --global --no-audit/u);
+  // The probes must still prove the binaries actually run.
+  assert.match(workflow, /claude --version/u);
+  assert.match(workflow, /codex --version/u);
 });
