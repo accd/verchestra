@@ -1,6 +1,9 @@
 import { execFile, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { promisify } from "node:util";
+
+import { normalizeDeclaredSet } from "@verchestra/domain";
+
 import {
   DriverProtocolError,
   validateDriverStartRequest,
@@ -137,7 +140,15 @@ function flattenCatalog(value: unknown): readonly CatalogModel[] {
         })
       );
   }
-  return Object.freeze(models.sort((left, right) => left.id.localeCompare(right.id)));
+  // Declared-set ordering by UTF-16 code unit, not localeCompare (issue #58).
+  // This order is the portable one: `discoverModels()` hands the whole array
+  // back across the driver boundary, and `start()` resolves a model out of the
+  // same flattened catalog, so an ambient locale that collated
+  // `provider/model` identifiers differently -- punctuation-heavy strings like
+  // `openai/gpt-4` versus `openai/gpt4`, where locale collation may ignore the
+  // separator entirely -- would make the same OpenCode installation report a
+  // different catalog on a different machine.
+  return Object.freeze(normalizeDeclaredSet(models, (entry) => entry.id));
 }
 
 async function productionServerFactory(options: Readonly<Record<string, unknown>>): Promise<OpenCodeInstance> {

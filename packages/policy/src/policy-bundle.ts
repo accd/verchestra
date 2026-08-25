@@ -4,6 +4,8 @@
 // package is an adapter and cannot import the evidence adapter; the
 // composition root wires the two, exactly as it does for artifact sealing.
 
+import { canonicalizeJsonV2, normalizeDeclaredSet } from "@verchestra/domain";
+
 export type PolicyBundleErrorCode = "VES_POLICY_BUNDLE_INVALID";
 
 export class PolicyBundleError extends Error {
@@ -49,15 +51,16 @@ const SAFE = /^[\x21-\x7e]{1,240}$/u;
 const VERSION = /^\d+\.\d+\.\d+$/u;
 const DIGEST = /^sha256:[a-f0-9]{64}$/u;
 
+// The bundle's signed material is canonicalized by the repository's V2
+// contract (RFC 8785) instead of a private recursive serializer whose object
+// keys were ordered by the ambient locale (issue #58). The swap is direct
+// rather than versioned: no signed V1 bundle bytes exist to invalidate.
+// `scripts/provision-doctor-fixtures.mjs` mints a fresh key pair and a fresh
+// `createdAt` on every run, and no tracked fixture pins a bundle digest, so
+// the only bundles a verifier ever sees are produced by the same build that
+// verifies them.
 function canonical(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
-  if (value !== null && typeof value === "object")
-    return `{${Object.entries(value as Record<string, unknown>)
-      .filter(([, entry]) => entry !== undefined)
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([key, entry]) => `${JSON.stringify(key)}:${canonical(entry)}`)
-      .join(",")}}`;
-  return JSON.stringify(value);
+  return canonicalizeJsonV2(value);
 }
 
 function normalizeEntries(value: unknown, sha256: (value: string) => string): readonly PolicyBundleEntry[] {
@@ -79,7 +82,12 @@ function normalizeEntries(value: unknown, sha256: (value: string) => string): re
     });
   });
   // Order-independence: two bundles with the same policies are the same bundle.
-  return Object.freeze([...entries].sort((left, right) => left.id.localeCompare(right.id)));
+  // Declared-set ordering by UTF-16 code unit, not localeCompare: this order is
+  // both the digest input order and the persisted `policies` array order that
+  // `verifyPolicyBundle` walks positionally against the recorded
+  // `sourceDigest`s, so an ambient locale that disagreed would change a signed
+  // artifact's bytes and which policy a mismatch is reported against (#58).
+  return Object.freeze(normalizeDeclaredSet(entries, (entry) => entry.id));
 }
 
 export function buildPolicyBundle(

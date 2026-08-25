@@ -560,36 +560,36 @@
     },
     {
       "path": "packages/drivers/src/index.ts",
-      "classification": "pending-versioned-migration",
+      "classification": "migrated-v2",
       "signals": {
         "canonicalizer": 4,
         "digest": 2,
-        "localeCompare": 1,
-        "serialization": 3
+        "localeCompare": 0,
+        "serialization": 1
       },
-      "reason": "The reviewed source produces a structured portable, trust, or persistent identity awaiting a dedicated versioned migration."
+      "reason": "Structured material already uses the V2 contract or is a V2 support primitive."
     },
     {
       "path": "packages/drivers/src/opencode-driver.ts",
-      "classification": "pending-versioned-migration",
+      "classification": "migrated-v2",
       "signals": {
         "canonicalizer": 0,
         "digest": 0,
-        "localeCompare": 1,
+        "localeCompare": 0,
         "serialization": 2
       },
-      "reason": "The reviewed source produces a structured portable, trust, or persistent identity awaiting a dedicated versioned migration."
+      "reason": "Ordering-only migration: the model catalogue sort is a declared set ordered by code unit; this file holds no canonicalized identity of its own."
     },
     {
       "path": "packages/effects/src/effect-kernel.ts",
-      "classification": "pending-versioned-migration",
+      "classification": "migrated-v2",
       "signals": {
-        "canonicalizer": 0,
+        "canonicalizer": 3,
         "digest": 0,
-        "localeCompare": 2,
-        "serialization": 2
+        "localeCompare": 0,
+        "serialization": 0
       },
-      "reason": "The reviewed source produces a structured portable, trust, or persistent identity awaiting a dedicated versioned migration."
+      "reason": "Structured material already uses the V2 contract or is a V2 support primitive."
     },
     {
       "path": "packages/evidence/src/execution-package/execution-package.ts",
@@ -681,14 +681,14 @@
     },
     {
       "path": "packages/extension-host/src/index.ts",
-      "classification": "pending-versioned-migration",
+      "classification": "migrated-v2",
       "signals": {
-        "canonicalizer": 3,
+        "canonicalizer": 4,
         "digest": 2,
-        "localeCompare": 1,
-        "serialization": 4
+        "localeCompare": 0,
+        "serialization": 2
       },
-      "reason": "The reviewed source produces a structured portable, trust, or persistent identity awaiting a dedicated versioned migration."
+      "reason": "Structured material already uses the V2 contract or is a V2 support primitive."
     },
     {
       "path": "packages/memory/src/memory-lifecycle.ts",
@@ -835,14 +835,14 @@
     },
     {
       "path": "packages/policy/src/policy-bundle.ts",
-      "classification": "pending-versioned-migration",
+      "classification": "migrated-v2",
       "signals": {
-        "canonicalizer": 4,
+        "canonicalizer": 5,
         "digest": 0,
-        "localeCompare": 2,
-        "serialization": 2
+        "localeCompare": 0,
+        "serialization": 0
       },
-      "reason": "The reviewed source produces a structured portable, trust, or persistent identity awaiting a dedicated versioned migration."
+      "reason": "Structured material already uses the V2 contract or is a V2 support primitive."
     },
     {
       "path": "packages/self-test/src/disposable-roots.ts",

@@ -187,7 +187,11 @@ importers:
 
   packages/domain: {}
 
-  packages/drivers: {}
+  packages/drivers:
+    dependencies:
+      '@verchestra/domain':
+        specifier: workspace:0.0.0
+        version: link:../domain
 
   packages/effects:
     dependencies:
@@ -213,7 +217,11 @@ importers:
         specifier: 6.2.8
         version: 6.2.8
 
-  packages/extension-host: {}
+  packages/extension-host:
+    dependencies:
+      '@verchestra/domain':
+        specifier: workspace:0.0.0
+        version: link:../domain
 
   packages/memory:
     dependencies:

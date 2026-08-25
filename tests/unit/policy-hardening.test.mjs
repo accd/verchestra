@@ -223,3 +223,67 @@ test("a policy source that does not match its recorded digest fails verification
   tampered.policies[0] = { ...tampered.policies[0], cedar: "permit(principal, action, resource);" };
   assert.throws(() => verifyPolicyBundle(tampered, crypto), /source does not match its recorded digest/u);
 });
+
+// #58/T4: `policy-bundle.ts` ordered its signed material's object keys and its
+// declared policy set with `String.prototype.localeCompare`. Mocking
+// `localeCompare` with a comparator that reverses code-unit order simulates a
+// hostile or merely divergent locale without depending on any specific
+// installed ICU locale actually disagreeing today.
+function withHostileLocaleCompare(fn) {
+  const original = String.prototype.localeCompare;
+  String.prototype.localeCompare = function hostileLocaleCompare(other) {
+    const left = String(this);
+    return left < other ? 1 : left > other ? -1 : 0;
+  };
+  try {
+    return fn();
+  } finally {
+    String.prototype.localeCompare = original;
+  }
+}
+
+// Mixed-case ids are where locale collation and code-unit order actually part
+// company: ICU collates case-insensitively at its primary level, so
+// "alphaForbid" sorts before "BetaForbid", while UTF-16 code units put every
+// uppercase letter first.
+const mixedCaseBundleInput = () => ({
+  version: "1.0.0",
+  policies: [
+    { id: "alphaForbid", cedar: "forbid(principal, action, resource) when { context.workspace != 'w1' };" },
+    { id: "ZetaForbid", cedar: "forbid(principal, action, resource) when { context.workspace != 'w2' };" },
+    { id: "BetaForbid", cedar: "forbid(principal, action, resource) when { context.workspace != 'w3' };" }
+  ],
+  createdAt: "2026-07-30T00:00:00.000Z"
+});
+
+test("a signed bundle's digest and policy order are code-unit stable across locales", () => {
+  const crypto = bundleCrypto();
+  const codeUnitOrder = ["BetaForbid", "ZetaForbid", "alphaForbid"];
+  const plain = buildPolicyBundle(mixedCaseBundleInput(), crypto);
+  assert.deepEqual(
+    plain.policies.map((entry) => entry.id),
+    codeUnitOrder
+  );
+  const hostile = withHostileLocaleCompare(() => buildPolicyBundle(mixedCaseBundleInput(), crypto));
+  assert.deepEqual(
+    hostile.policies.map((entry) => entry.id),
+    codeUnitOrder
+  );
+  // Both the declared-set order and the canonical key order feed the signed
+  // digest, so one identical value covers both.
+  assert.equal(hostile.bundleDigest, plain.bundleDigest);
+});
+
+test("a bundle signed on one machine verifies on a machine with a different locale", () => {
+  const crypto = bundleCrypto();
+  const signed = buildPolicyBundle(mixedCaseBundleInput(), crypto);
+  assert.equal(withHostileLocaleCompare(() => verifyPolicyBundle(signed, crypto)).bundleDigest, signed.bundleDigest);
+  // Verification still recomputes rather than trusting the recorded digest.
+  assert.throws(
+    () =>
+      withHostileLocaleCompare(() =>
+        verifyPolicyBundle({ ...signed, policies: [...signed.policies].reverse() }, crypto)
+      ),
+    { code: "VES_POLICY_BUNDLE_INVALID" }
+  );
+});

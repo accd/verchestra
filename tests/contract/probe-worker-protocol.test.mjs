@@ -131,3 +131,52 @@ for (const [label, mutate, code] of [
     });
   });
 }
+
+// #58/T4: the probe envelope's `payloadDigest` was produced by a private
+// recursive serializer whose object keys were ordered with
+// `String.prototype.localeCompare`. Mocking `localeCompare` with a comparator
+// that reverses code-unit order simulates a hostile or merely divergent locale
+// without depending on any specific installed ICU locale actually disagreeing
+// today.
+function withHostileLocaleCompare(fn) {
+  const original = String.prototype.localeCompare;
+  String.prototype.localeCompare = function hostileLocaleCompare(other) {
+    const left = String(this);
+    return left < other ? 1 : left > other ? -1 : 0;
+  };
+  try {
+    return fn();
+  } finally {
+    String.prototype.localeCompare = original;
+  }
+}
+
+// Mixed-case keys are where locale collation and code-unit order actually part
+// company: ICU collates case-insensitively at its primary level, so "alpha"
+// sorts before "Beta", while UTF-16 code units put every uppercase key first.
+const mixedCaseRows = Object.freeze({
+  rows: Object.freeze([Object.freeze({ alpha: 1, Beta: 2, Zeta: Object.freeze({ inner: 3, Inner: 4 }) })]),
+  bytes: 10
+});
+
+test("a probe frame encoded under a hostile locale is byte-identical and still decodes", () => {
+  const plain = encodeProbeFrame(envelope({ payload: mixedCaseRows }));
+  const hostile = withHostileLocaleCompare(() => encodeProbeFrame(envelope({ payload: mixedCaseRows })));
+  assert.deepEqual(hostile, plain);
+
+  // The host re-derives the digest on receipt, so a worker and a host whose
+  // locales disagreed would terminate the worker and revoke its grant on every
+  // result chunk.
+  const decoder = new ProbeFrameDecoder({ workspaceId, maximumHeaderBytes: 128, maximumMessageBytes: 2048 });
+  const decoded = decoder.push(hostile);
+  assert.equal(decoded.length, 1);
+  assert.deepEqual(decoded[0].payload, mixedCaseRows);
+
+  // A tampered payload digest still terminates the worker: the canonical swap
+  // did not soften the check it feeds.
+  const tampered = encodeProbeFrame(envelope({ payload: mixedCaseRows, payloadDigest: `sha256:${"c".repeat(64)}` }));
+  assert.throws(
+    () => new ProbeFrameDecoder({ workspaceId, maximumHeaderBytes: 128, maximumMessageBytes: 2048 }).push(tampered),
+    { code: "VES_PROBE_ENVELOPE_DIGEST", terminateWorker: true, revokeGrant: true }
+  );
+});

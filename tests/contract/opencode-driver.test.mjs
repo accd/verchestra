@@ -202,3 +202,75 @@ test("OpenCode Driver rejects follow-up input for isolated sessions", async () =
     (error) => error.code === "VES_OPENCODE_SEND_UNSUPPORTED"
   );
 });
+
+// #58/T4: `flattenCatalog` ordered the discovered model set with
+// `String.prototype.localeCompare`. Mocking `localeCompare` with a comparator
+// that reverses code-unit order simulates a hostile or merely divergent locale
+// without depending on any specific installed ICU locale actually disagreeing
+// today. Async-aware on purpose: `discoverModels` awaits the server factory
+// and the provider listing, so a synchronous wrapper would restore the real
+// comparator before the work under test finished.
+async function withHostileLocaleCompare(fn) {
+  const original = String.prototype.localeCompare;
+  String.prototype.localeCompare = function hostileLocaleCompare(other) {
+    const left = String(this);
+    return left < other ? 1 : left > other ? -1 : 0;
+  };
+  try {
+    return await fn();
+  } finally {
+    String.prototype.localeCompare = original;
+  }
+}
+
+// Two places where locale collation and code-unit order part company: ICU
+// collates case-insensitively at its primary level ("acme" before "Zebra") and
+// treats a separator as ignorable punctuation ("gpt4" before "gpt-4"), while
+// UTF-16 code units put uppercase first and "-" (0x2D) before "4" (0x34).
+function divergentCatalogDriver() {
+  return new OpenCodeDriver(
+    openCodeFixture().dependencies({
+      serverFactory: async () => ({
+        client: {
+          provider: {
+            list: async () => ({
+              data: {
+                all: [
+                  { id: "Zebra", models: { gpt4: { id: "gpt4" }, "gpt-4": { id: "gpt-4" } } },
+                  { id: "acme", models: { "b-model": { id: "b-model" } } }
+                ],
+                connected: ["acme"],
+                default: { acme: "b-model" }
+              }
+            })
+          }
+        },
+        server: { close: () => {} }
+      })
+    })
+  );
+}
+
+test("OpenCode model discovery reports the same catalog order under a hostile locale", async () => {
+  const codeUnitOrder = ["Zebra/gpt-4", "Zebra/gpt4", "acme/b-model"];
+  const plain = await divergentCatalogDriver().discoverModels();
+  assert.deepEqual(
+    plain.models.map((model) => model.id),
+    codeUnitOrder
+  );
+  const hostile = await withHostileLocaleCompare(() => divergentCatalogDriver().discoverModels());
+  assert.deepEqual(
+    hostile.models.map((model) => model.id),
+    codeUnitOrder
+  );
+  // Ordering is the only thing normalized: connectivity and default flags are
+  // still carried per entry.
+  assert.deepEqual(
+    hostile.models.map((model) => [model.connected, model.isDefault]),
+    [
+      [false, false],
+      [false, false],
+      [true, true]
+    ]
+  );
+});

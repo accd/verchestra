@@ -360,3 +360,90 @@ test("effect public errors are stable and schema-valid", async () => {
     assert.equal(schemas.validate("public-error", "1", effectPublicErrorRegistry.create(code, {})).code, code);
   }
 });
+
+// #58/T4: `InMemoryEffectRepository` ordered its dispatch queue with
+// `String.prototype.localeCompare` and decided receipt-conflict identity with
+// `JSON.stringify`. Mocking `localeCompare` with a comparator that reverses
+// code-unit order simulates a hostile or merely divergent locale without
+// depending on any specific installed ICU locale actually disagreeing today.
+// Async-aware on purpose: `dispatchReady` awaits an adapter between the sort
+// and its result, so a synchronous wrapper would restore the real comparator
+// before the work under test finished.
+async function withHostileLocaleCompare(fn) {
+  const original = String.prototype.localeCompare;
+  String.prototype.localeCompare = function hostileLocaleCompare(other) {
+    const left = String(this);
+    return left < other ? 1 : left > other ? -1 : 0;
+  };
+  try {
+    return await fn();
+  } finally {
+    String.prototype.localeCompare = original;
+  }
+}
+
+test("dispatch order stays oldest-first under a hostile ambient locale", async () => {
+  const repository = new InMemoryEffectRepository();
+  const adapter = new MockEffectAdapter();
+  const broker = new EffectBroker({ repository, adapter });
+  const late = intent({
+    effectId: "effect_018f0b6d-7b1a-7abc-8def-8123456789ab",
+    logicalTarget: "jira:locale-late",
+    semanticIdentity: "locale-late",
+    createdAt: "2026-07-13T12:02:00.000Z"
+  });
+  const early = intent({
+    effectId: "effect_018f0b6d-7b1a-7abc-8def-9123456789ab",
+    logicalTarget: "jira:locale-early",
+    semanticIdentity: "locale-early",
+    createdAt: "2026-07-13T12:00:00.000Z"
+  });
+  const middle = intent({
+    effectId: "effect_018f0b6d-7b1a-7abc-8def-a123456789ab",
+    logicalTarget: "jira:locale-middle",
+    semanticIdentity: "locale-middle",
+    createdAt: "2026-07-13T12:01:00.000Z"
+  });
+  await Promise.all([broker.plan(late), broker.plan(early), broker.plan(middle)]);
+  const receipts = await withHostileLocaleCompare(() => broker.dispatchReady(2));
+  // The durable outbox orders by SQLite BINARY collation; a locale-ordered
+  // in-memory queue would drain the newest two here and disagree with it.
+  assert.deepEqual(
+    receipts.map((receipt) => receipt.effectId),
+    [early.effectId, middle.effectId]
+  );
+  assert.equal(repository.intents.find((entry) => entry.effectId === late.effectId).status, "planned");
+});
+
+test("a repeated receipt is compared by canonical content, not by key insertion order", async () => {
+  const repository = new InMemoryEffectRepository();
+  const planned = await repository.insertOrGet(intent());
+  const fields = {
+    receiptId: `receipt_${planned.idempotencyKey.slice("sha256:".length)}`,
+    effectId: planned.effectId,
+    idempotencyKey: planned.idempotencyKey,
+    adapterId: "mock-effect-adapter",
+    attempt: 1,
+    outcome: "applied",
+    remoteIdentity: "jira:KEY-42",
+    outputDigest: digest,
+    safeEvidenceRefs: ["evidence:one", "evidence:two"],
+    startedAt: "2026-07-13T12:00:00.000Z",
+    completedAt: "2026-07-13T12:00:01.000Z"
+  };
+  await repository.complete(planned.idempotencyKey, { ...fields });
+  const reordered = Object.fromEntries(Object.entries(fields).reverse());
+  await repository.complete(planned.idempotencyKey, reordered);
+  assert.equal(repository.receipts.length, 1);
+  // The write-once guarantee is unchanged: content that genuinely differs
+  // still conflicts.
+  await assert.rejects(repository.complete(planned.idempotencyKey, { ...fields, outcome: "already-applied" }), {
+    code: "VES_EFFECT_RECEIPT_CONFLICT"
+  });
+  // Array order is content, not a set: `canonicalizeJsonV2` never reorders an
+  // array, so a permuted evidence list is still a conflict.
+  await assert.rejects(
+    repository.complete(planned.idempotencyKey, { ...fields, safeEvidenceRefs: ["evidence:two", "evidence:one"] }),
+    { code: "VES_EFFECT_RECEIPT_CONFLICT" }
+  );
+});
