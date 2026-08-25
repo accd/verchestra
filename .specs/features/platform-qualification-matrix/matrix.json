@@ -55,18 +55,30 @@
       "dimension": "driver",
       "source": "packages/drivers/src",
       "cases": [
-        { "case": "claude-code", "status": "qualified", "evidence": "spikes/claude-code-driver probe against the pinned 2.1.168 install" },
-        { "case": "codex", "status": "qualified", "evidence": "spikes/codex-driver probe against the pinned 0.115.0 install" },
-        { "case": "opencode", "status": "qualified", "evidence": "spikes/opencode-driver probe against the repo-local install" },
+        {
+          "case": "claude-code",
+          "status": "qualified",
+          "evidence": "tests/contract/driver-lifecycle-matrix.test.mjs proves the lifecycle contract and the not-configured degradation hermetically; spikes/claude-code-driver/test/claude-driver.test.mjs probes the pinned 2.1.168 install."
+        },
+        {
+          "case": "codex",
+          "status": "qualified",
+          "evidence": "tests/contract/driver-lifecycle-matrix.test.mjs proves the lifecycle contract and the not-configured degradation hermetically; spikes/codex-driver/test/codex-driver.test.mjs probes the pinned 0.115.0 install."
+        },
+        {
+          "case": "opencode",
+          "status": "qualified",
+          "evidence": "tests/contract/driver-lifecycle-matrix.test.mjs proves the lifecycle contract and the not-configured degradation hermetically; spikes/opencode-driver/test/opencode-driver.test.mjs probes the repo-local install."
+        },
         {
           "case": "pi",
           "status": "contract-qualified",
-          "evidence": "Embedded SDK, not a CLI. The probe reads the installed @earendil-works/pi-agent-core manifest and reports not-available when absent (#242 era fix); no live session is qualified."
+          "evidence": "Embedded SDK, not a CLI. tests/contract/driver-lifecycle-matrix.test.mjs and tests/contract/pi-driver.test.mjs prove the probe reads the installed @earendil-works/pi-agent-core manifest and reports not-available when absent (#242 era fix); no live session is qualified."
         },
         {
           "case": "cross-driver-verification",
           "status": "qualified",
-          "evidence": "The full profile resolves the verifier from real probes via resolveVerifierDriver (#35); claude-code implements, codex verifies."
+          "evidence": "tests/integration/self-test-full-scenario.test.mjs: the full profile resolves the verifier from real probes via resolveVerifierDriver (#35); claude-code implements, codex verifies."
         }
       ]
     },
