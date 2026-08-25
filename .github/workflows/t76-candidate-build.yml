@@ -158,12 +158,15 @@ jobs:
             const sum = (pattern) =>
               [...log.matchAll(pattern)].reduce((total, match) => total + Number(match[1]), 0);
             const evaluations = await (async () => {
-              try {
-                return JSON.parse(await readFile("gate-evaluations.json", "utf8"));
-              } catch (error) {
-                if (error?.code === "ENOENT") return [];
+              // The step truncates this file before the loop, so the first
+              // profile reads an existing but EMPTY file: that is not ENOENT,
+              // and JSON.parse("") throws. Absent and empty both mean "no
+              // evaluations recorded yet"; malformed content still fails closed.
+              const raw = await readFile("gate-evaluations.json", "utf8").catch((error) => {
+                if (error?.code === "ENOENT") return "";
                 throw error;
-              }
+              });
+              return raw.trim() === "" ? [] : JSON.parse(raw);
             })();
             const status = Number(process.env.STATUS);
             const assertionCount = sum(/\u2139 tests (\d+)/gu);
