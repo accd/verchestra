@@ -47,3 +47,29 @@ export {
   type NodeAtomicGitCommitAdapterOptions,
   type NodeGateProcessRunnerOptions
 } from "./gate-commit-adapters.ts";
+export {
+  ACTIVATION_LAUNCHER_ERROR_CODES,
+  ACTIVATION_LAUNCHER_PUBLIC_ERROR_DEFINITIONS,
+  ActivationLauncherError,
+  activationLauncherPublicErrorRegistry,
+  type ActivationLauncherErrorCode
+} from "./activation-launcher-errors.ts";
+export {
+  ACTIVATION_HEALTH_ARGUMENT,
+  NodeActivationHealthGate,
+  NodeVerifiedLauncherHandoff,
+  supportedLauncherHost,
+  type ActivationHealthBundleView,
+  type ActivationHealthCheckName,
+  type ActivationHealthComponentView,
+  type CanonicalLauncherId,
+  type NodeActivationHealthGateOptions,
+  type ObservedActivationCheck,
+  type ObservedActivationHealth,
+  type ObservedLauncherHealth,
+  type SupportedLauncherArch,
+  type SupportedLauncherHost,
+  type SupportedLauncherPlatform,
+  type VerifiedLauncherHandoffRequest,
+  type VerifiedLauncherHandoffResult
+} from "./activation-launcher-adapters.ts";

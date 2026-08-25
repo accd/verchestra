@@ -50,7 +50,8 @@ that links its issue.
 ## Scope
 
 Enforced production scopes: `packages/*/src`, `apps/vestra-cli/src`,
-`apps/site/src`, `scripts`. Tests, site tests, fixtures, and spikes are
+`apps/vestra-launcher/src`, `apps/site/src`, `scripts`. Tests, site tests,
+fixtures, and spikes are
 measured in `report` but never enforced: test complexity is usually case
 matrices and fault campaigns, and forcing production thresholds there would
 punish exhaustiveness. `.astro` component files are outside the lint scope

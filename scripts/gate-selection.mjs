@@ -23,7 +23,8 @@ const RULES = Object.freeze([
   {
     gate: "gate:release",
     reason: "distribution and release identity",
-    match: /^(?:packages\/distribution\/|apps\/vestra-cli\/)/u
+    match:
+      /^(?:packages\/distribution\/|apps\/vestra-cli\/|apps\/vestra-launcher\/|scripts\/build-vestra-launcher\.mjs$)/u
   },
   {
     gate: "gate:security",
@@ -34,7 +35,7 @@ const RULES = Object.freeze([
   {
     gate: "gate:build",
     reason: "package boundary",
-    match: /^(?:packages\/|apps\/|scripts\/architecture\.mjs$|tests\/architecture\/)/u
+    match: /^(?:packages\/|apps\/|scripts\/architecture\.mjs$|tests\/architecture\/|tests\/build\/)/u
   },
   {
     gate: "gate:full",
@@ -45,7 +46,7 @@ const RULES = Object.freeze([
     gate: ALWAYS_GATE,
     reason: "documentation, specification, or repository metadata",
     match:
-      /^(?:docs\/|\.specs\/|spikes\/|scripts\/|tests\/agent-readiness\/|tests\/agent-eval\/|tests\/build\/|\.github\/(?!workflows\/)|[^/]+\.(?:md|txt|json|yaml|yml)$|\.[^/]+$)/u
+      /^(?:docs\/|\.specs\/|spikes\/|scripts\/|tests\/agent-readiness\/|tests\/agent-eval\/|\.github\/(?!workflows\/)|[^/]+\.(?:md|txt|json|yaml|yml)$|\.[^/]+$)/u
   }
 ]);
 

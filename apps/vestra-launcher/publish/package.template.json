@@ -1,0 +1,23 @@
+{
+  "name": "vestra",
+  "version": "0.0.0-unpinned",
+  "description": "Verified launcher for the Verchestra AI software-delivery harness",
+  "keywords": ["verchestra", "vestra", "tuf", "verified-delivery"],
+  "license": "Apache-2.0",
+  "type": "module",
+  "engines": {
+    "node": ">=24.14.0"
+  },
+  "bin": {
+    "vestra": "./bin/vestra.mjs"
+  },
+  "files": ["bin", "lib", "config", "LICENSE", "README.md"],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/accd/verchestra.git"
+  },
+  "homepage": "https://github.com/accd/verchestra",
+  "bugs": {
+    "url": "https://github.com/accd/verchestra/issues"
+  }
+}

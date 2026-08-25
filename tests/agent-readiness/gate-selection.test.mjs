@@ -161,11 +161,33 @@ test("the stage union is deterministic and executes each selected stage once", (
     "test:mutation",
     "build",
     "test:architecture",
+    "test:build",
     "test:qualification",
     "test:security",
     "test:release"
   ]);
   assert.deepEqual(GATE_STAGES["gate:quick"], stages.slice(0, 6));
+});
+
+test("the release/build suite is executed by the gates its path selects", () => {
+  // tests/build/ carries the distribution, TUF publication, and npm artifact
+  // evidence. It was routed to gate:quick and executed by no stage at all, so
+  // nine suites were orphaned: selected but never run. The path must select a
+  // gate, and that gate must actually run the stage.
+  const gates = gatesFor("tests/build/vestra-launcher-package.test.mjs");
+  assert.ok(gates.includes("gate:build"));
+  assert.ok(GATE_STAGES["gate:build"].includes("test:build"));
+  assert.ok(GATE_STAGES["gate:release"].includes("test:build"));
+});
+
+for (const path of ["apps/vestra-launcher/src/bootstrap.ts", "scripts/build-vestra-launcher.mjs"]) {
+  test(`${path} (public launcher artifact) selects the release gate`, () =>
+    assert.ok(gatesFor(path).includes("gate:release")));
+}
+
+test("the public launcher package boundary also selects the architecture gate", () => {
+  assert.ok(gatesFor("apps/vestra-launcher/publish/package.template.json").includes("gate:build"));
+  assert.ok(GATE_STAGES["gate:build"].includes("test:architecture"));
 });
 
 test("every gate profile enforces the complexity ratchet immediately after lint", () => {

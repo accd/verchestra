@@ -143,6 +143,8 @@ importers:
         specifier: workspace:0.0.0
         version: link:../../packages/workspace
 
+  apps/vestra-launcher: {}
+
   packages/agent-runtime:
     dependencies:
       '@verchestra/application':
