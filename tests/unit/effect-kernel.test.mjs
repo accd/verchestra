@@ -462,3 +462,24 @@ test("a receipt id carries the digest hex whichever canonicalization version the
     assert.doesNotMatch(receipt.receiptId, /receipt_\d+:/u);
   }
 });
+
+test("dropping the key prefix does not make a V1 and a V2 receipt collide", async () => {
+  // `operation_receipts.receipt_id` is a primary key, so deriving it from the
+  // digest alone is only safe because the canonicalization version is part of
+  // the hashed material, not just the prefix. Pin that: the same logical effect
+  // hashes differently under each version, so the two receipts stay distinct.
+  const receiptIdFor = async (canonicalizationVersion) => {
+    const input = { ...base, canonicalizationVersion };
+    const broker = new EffectBroker({
+      repository: new InMemoryEffectRepository(),
+      adapter: new MockEffectAdapter()
+    });
+    const planned = await broker.plan(createEffectIntent({ ...input, idempotencyKey: buildIdempotencyKey(input) }));
+    return (await broker.execute(planned.idempotencyKey)).receiptId;
+  };
+  const first = await receiptIdFor(1);
+  const second = await receiptIdFor(2);
+  assert.notEqual(first, second);
+  assert.match(first, /^receipt_[a-f0-9]{64}$/u);
+  assert.match(second, /^receipt_[a-f0-9]{64}$/u);
+});
