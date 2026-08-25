@@ -5,7 +5,7 @@ import { test } from "node:test";
 import { buildEvidenceIndex } from "../../scripts/t75-evidence-index.mjs";
 
 const FEATURE = new URL("../../.specs/features/platform-qualification-matrix/", import.meta.url);
-const REVISION = "97fa851ae8d84cc97d1eb0a2df3e5426bcb08421";
+const REVISION = "95b2b80a2c24fa3b956949dafee0383b4d3b9808";
 
 const read = (name) => JSON.parse(readFileSync(new URL(name, FEATURE), "utf8"));
 
@@ -34,6 +34,20 @@ test("the committed fleet evidence binds one candidate", () => {
     "gate:release",
     "gate:security"
   ]);
+});
+
+test("the committed index is exactly what the committed fleet regenerates", () => {
+  // This is the assertion that was missing. The drift test below compared only
+  // summary counts, so a committed index generated from a DIFFERENT fleet run
+  // passed unnoticed for as long as both runs happened to be green: the index
+  // cited run ids 3276940xxxx at b738b047 while fleet/ held 3257939xxxx at
+  // 97fa851, and nobody could regenerate the recorded verdict from the
+  // recorded inputs. Comparing the whole object is what makes the index
+  // independently reproducible rather than merely plausible.
+  const committed = read("evidence-index.json");
+  assert.deepEqual(committed, buildEvidenceIndex(read("matrix.json"), fleet, REVISION));
+  assert.equal(committed.revision, REVISION);
+  for (const profile of committed.profiles) assert.equal(profile.revision ?? REVISION, REVISION);
 });
 
 test("the recorded T75 verdict regenerates from the committed evidence", () => {

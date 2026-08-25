@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "canonicalizationVersion": 2,
   "task": "T75",
-  "revision": "b738b047ffad6101f50538185c5decf6c55b7915",
+  "revision": "95b2b80a2c24fa3b956949dafee0383b4d3b9808",
   "summary": {
     "cases": 52,
     "qualified": 42,
@@ -26,28 +26,28 @@
           "evidence": "fleet leg",
           "observed": [
             {
-              "gate": "gate:quick",
-              "runId": "32769400281",
+              "gate": "gate:build",
+              "runId": "32865032462",
               "status": "qualified"
             },
             {
               "gate": "gate:full",
-              "runId": "32769403159",
+              "runId": "32865022966",
               "status": "qualified"
             },
             {
-              "gate": "gate:build",
-              "runId": "32769406518",
-              "status": "qualified"
-            },
-            {
-              "gate": "gate:security",
-              "runId": "32769409313",
+              "gate": "gate:quick",
+              "runId": "32865013434",
               "status": "qualified"
             },
             {
               "gate": "gate:release",
-              "runId": "32769412066",
+              "runId": "32865042356",
+              "status": "qualified"
+            },
+            {
+              "gate": "gate:security",
+              "runId": "32864662729",
               "status": "qualified"
             }
           ]
@@ -59,28 +59,28 @@
           "evidence": "fleet leg",
           "observed": [
             {
-              "gate": "gate:quick",
-              "runId": "32769400281",
+              "gate": "gate:build",
+              "runId": "32865032462",
               "status": "qualified"
             },
             {
               "gate": "gate:full",
-              "runId": "32769403159",
+              "runId": "32865022966",
               "status": "qualified"
             },
             {
-              "gate": "gate:build",
-              "runId": "32769406518",
-              "status": "qualified"
-            },
-            {
-              "gate": "gate:security",
-              "runId": "32769409313",
+              "gate": "gate:quick",
+              "runId": "32865013434",
               "status": "qualified"
             },
             {
               "gate": "gate:release",
-              "runId": "32769412066",
+              "runId": "32865042356",
+              "status": "qualified"
+            },
+            {
+              "gate": "gate:security",
+              "runId": "32864662729",
               "status": "qualified"
             }
           ]
@@ -92,28 +92,28 @@
           "evidence": "fleet leg",
           "observed": [
             {
-              "gate": "gate:quick",
-              "runId": "32769400281",
+              "gate": "gate:build",
+              "runId": "32865032462",
               "status": "qualified"
             },
             {
               "gate": "gate:full",
-              "runId": "32769403159",
+              "runId": "32865022966",
               "status": "qualified"
             },
             {
-              "gate": "gate:build",
-              "runId": "32769406518",
-              "status": "qualified"
-            },
-            {
-              "gate": "gate:security",
-              "runId": "32769409313",
+              "gate": "gate:quick",
+              "runId": "32865013434",
               "status": "qualified"
             },
             {
               "gate": "gate:release",
-              "runId": "32769412066",
+              "runId": "32865042356",
+              "status": "qualified"
+            },
+            {
+              "gate": "gate:security",
+              "runId": "32864662729",
               "status": "qualified"
             }
           ]
@@ -125,28 +125,28 @@
           "evidence": "fleet leg",
           "observed": [
             {
-              "gate": "gate:quick",
-              "runId": "32769400281",
+              "gate": "gate:build",
+              "runId": "32865032462",
               "status": "qualified"
             },
             {
               "gate": "gate:full",
-              "runId": "32769403159",
+              "runId": "32865022966",
               "status": "qualified"
             },
             {
-              "gate": "gate:build",
-              "runId": "32769406518",
-              "status": "qualified"
-            },
-            {
-              "gate": "gate:security",
-              "runId": "32769409313",
+              "gate": "gate:quick",
+              "runId": "32865013434",
               "status": "qualified"
             },
             {
               "gate": "gate:release",
-              "runId": "32769412066",
+              "runId": "32865042356",
+              "status": "qualified"
+            },
+            {
+              "gate": "gate:security",
+              "runId": "32864662729",
               "status": "qualified"
             }
           ]
@@ -158,28 +158,28 @@
           "evidence": "The macos-15-intel runner passed all five exact-head gate profiles at the T75 candidate; its platform, architecture, runtime, candidate revision, and leg digest are bound in the committed fleet indexes.",
           "observed": [
             {
-              "gate": "gate:quick",
-              "runId": "32769400281",
+              "gate": "gate:build",
+              "runId": "32865032462",
               "status": "qualified"
             },
             {
               "gate": "gate:full",
-              "runId": "32769403159",
+              "runId": "32865022966",
               "status": "qualified"
             },
             {
-              "gate": "gate:build",
-              "runId": "32769406518",
-              "status": "qualified"
-            },
-            {
-              "gate": "gate:security",
-              "runId": "32769409313",
+              "gate": "gate:quick",
+              "runId": "32865013434",
               "status": "qualified"
             },
             {
               "gate": "gate:release",
-              "runId": "32769412066",
+              "runId": "32865042356",
+              "status": "qualified"
+            },
+            {
+              "gate": "gate:security",
+              "runId": "32864662729",
               "status": "qualified"
             }
           ]
@@ -197,7 +197,7 @@
           "observed": [
             {
               "gate": "gate:quick",
-              "runId": "32769400281",
+              "runId": "32865013434",
               "status": "qualified"
             }
           ]
@@ -210,7 +210,7 @@
           "observed": [
             {
               "gate": "gate:full",
-              "runId": "32769403159",
+              "runId": "32865022966",
               "status": "qualified"
             }
           ]
@@ -223,7 +223,7 @@
           "observed": [
             {
               "gate": "gate:build",
-              "runId": "32769406518",
+              "runId": "32865032462",
               "status": "qualified"
             }
           ]
@@ -236,7 +236,7 @@
           "observed": [
             {
               "gate": "gate:security",
-              "runId": "32769409313",
+              "runId": "32864662729",
               "status": "qualified"
             }
           ]
@@ -249,7 +249,7 @@
           "observed": [
             {
               "gate": "gate:release",
-              "runId": "32769412066",
+              "runId": "32865042356",
               "status": "qualified"
             }
           ]
@@ -331,35 +331,35 @@
           "case": "claude-code",
           "declaredStatus": "qualified",
           "status": "qualified",
-          "evidence": "spikes/claude-code-driver probe against the pinned 2.1.168 install",
+          "evidence": "tests/contract/driver-lifecycle-matrix.test.mjs proves the lifecycle contract and the not-configured degradation hermetically; spikes/claude-code-driver/test/claude-driver.test.mjs probes the pinned 2.1.168 install.",
           "observed": []
         },
         {
           "case": "codex",
           "declaredStatus": "qualified",
           "status": "qualified",
-          "evidence": "spikes/codex-driver probe against the pinned 0.115.0 install",
+          "evidence": "tests/contract/driver-lifecycle-matrix.test.mjs proves the lifecycle contract and the not-configured degradation hermetically; spikes/codex-driver/test/codex-driver.test.mjs probes the pinned 0.115.0 install.",
           "observed": []
         },
         {
           "case": "opencode",
           "declaredStatus": "qualified",
           "status": "qualified",
-          "evidence": "spikes/opencode-driver probe against the repo-local install",
+          "evidence": "tests/contract/driver-lifecycle-matrix.test.mjs proves the lifecycle contract and the not-configured degradation hermetically; spikes/opencode-driver/test/opencode-driver.test.mjs probes the repo-local install.",
           "observed": []
         },
         {
           "case": "pi",
           "declaredStatus": "contract-qualified",
           "status": "contract-qualified",
-          "evidence": "Embedded SDK, not a CLI. The probe reads the installed @earendil-works/pi-agent-core manifest and reports not-available when absent (#242 era fix); no live session is qualified.",
+          "evidence": "Embedded SDK, not a CLI. tests/contract/driver-lifecycle-matrix.test.mjs and tests/contract/pi-driver.test.mjs prove the probe reads the installed @earendil-works/pi-agent-core manifest and reports not-available when absent (#242 era fix); no live session is qualified.",
           "observed": []
         },
         {
           "case": "cross-driver-verification",
           "declaredStatus": "qualified",
           "status": "qualified",
-          "evidence": "The full profile resolves the verifier from real probes via resolveVerifierDriver (#35); claude-code implements, codex verifies.",
+          "evidence": "tests/integration/self-test-full-scenario.test.mjs: the full profile resolves the verifier from real probes via resolveVerifierDriver (#35); claude-code implements, codex verifies.",
           "observed": []
         }
       ]
@@ -593,8 +593,8 @@
   ],
   "profiles": [
     {
-      "gate": "gate:quick",
-      "runId": "32769400281",
+      "gate": "gate:build",
+      "runId": "32865032462",
       "complete": true,
       "legs": [
         {
@@ -603,9 +603,9 @@
           "platform": "win32",
           "arch": "x64",
           "runtime": "v24.14.0",
-          "revision": "b738b047ffad6101f50538185c5decf6c55b7915",
-          "identityDigest": "sha256:9dae7dc53a2988c53fc45ecb6e40913b5263fbb83f23301833d50cb0ea3d0caa",
-          "legDigest": "sha256:da47da2df5c537366dc8dbc1b7515624732f125c53dbf6b60c1e0aba1452d88a"
+          "revision": "95b2b80a2c24fa3b956949dafee0383b4d3b9808",
+          "identityDigest": "sha256:8b38d28d552a6f04f4d6b3f293742657aec28563dab7f525d4f15fdc5a86af0a",
+          "legDigest": "sha256:27dd9372e0a354c2cfe35e2a034bcab356e33f49d899eb207eb4c22f7cbd238f"
         },
         {
           "leg": "darwin-x64",
@@ -613,9 +613,9 @@
           "platform": "darwin",
           "arch": "x64",
           "runtime": "v24.14.0",
-          "revision": "b738b047ffad6101f50538185c5decf6c55b7915",
-          "identityDigest": "sha256:615563ff4782e1287266d12ebdc17f04866ea68dabd22d54025bbb1b6622075f",
-          "legDigest": "sha256:dff98be6f3707b2d9505897db36c8b1de70583ba18a527922b628459fe18467d"
+          "revision": "95b2b80a2c24fa3b956949dafee0383b4d3b9808",
+          "identityDigest": "sha256:9bbd912a7253c7b8848d48279f06314772435a8f8ee124de3ad464fde66d82c2",
+          "legDigest": "sha256:71c48451b446c9e08d5ef103f74e964fa784c1914f679208d0a3f213e236cfc8"
         },
         {
           "leg": "darwin-arm64",
@@ -623,9 +623,9 @@
           "platform": "darwin",
           "arch": "arm64",
           "runtime": "v24.14.0",
-          "revision": "b738b047ffad6101f50538185c5decf6c55b7915",
-          "identityDigest": "sha256:379a76edf549c6ad749edb7f4b8ad78b5fdc11e48df7c33af4c31113bc5802ba",
-          "legDigest": "sha256:f3f08acd489b474683e787dbe1f6dbac7fd2ca5c970123e550cbbb8beb94a54f"
+          "revision": "95b2b80a2c24fa3b956949dafee0383b4d3b9808",
+          "identityDigest": "sha256:7b9726ce8c2a436fe94098bca9ccc93e73549c30dcb85e1feb839831c05d56d5",
+          "legDigest": "sha256:512afb6374d318305d570677918ee5b049fdccc6ddb90f120eaf2426ae11d5a6"
         },
         {
           "leg": "linux-x64",
@@ -633,9 +633,9 @@
           "platform": "linux",
           "arch": "x64",
           "runtime": "v24.14.0",
-          "revision": "b738b047ffad6101f50538185c5decf6c55b7915",
-          "identityDigest": "sha256:983c44a84a52579bdc7b41693bd0e7567a4fb4e355bf01e873e33ec619dbf1c6",
-          "legDigest": "sha256:6638a6b08ddd43cfca573705992c416efc2500af8548dd3f6606044b323f1836"
+          "revision": "95b2b80a2c24fa3b956949dafee0383b4d3b9808",
+          "identityDigest": "sha256:09d050bf7d7e2c4595988d82d07e9d43292e44d820826b306c708cc13a7d22a3",
+          "legDigest": "sha256:3fbb397c24e3ee334a26555bd8d6f66f902294c16991da5605c0a7f6c8fd9d5b"
         },
         {
           "leg": "linux-arm64",
@@ -643,16 +643,16 @@
           "platform": "linux",
           "arch": "arm64",
           "runtime": "v24.14.0",
-          "revision": "b738b047ffad6101f50538185c5decf6c55b7915",
-          "identityDigest": "sha256:14e09fb683b51bb7f04a5f7a570af5dd7042de5e08f92200bc6412279419f77f",
-          "legDigest": "sha256:e467992e9efd671353630339aa3e684866e506b82364bd8252fd90751f7a8955"
+          "revision": "95b2b80a2c24fa3b956949dafee0383b4d3b9808",
+          "identityDigest": "sha256:ff9f1576109e0d5e1eed3854bd3b76c7f097a719290659385706a90255083443",
+          "legDigest": "sha256:53334fc55603c9f1e322ba8ecececb0bf27b0212780f5b5f21cf47d21d53c4af"
         }
       ],
       "excused": []
     },
     {
       "gate": "gate:full",
-      "runId": "32769403159",
+      "runId": "32865022966",
       "complete": true,
       "legs": [
         {
@@ -661,9 +661,9 @@
           "platform": "win32",
           "arch": "x64",
           "runtime": "v24.14.0",
-          "revision": "b738b047ffad6101f50538185c5decf6c55b7915",
-          "identityDigest": "sha256:0ecd66cb0ffba01e0bd8d0b0186da8bd3834b4d8e93b405707df4eddca61e4d4",
-          "legDigest": "sha256:7b2abe947abc4d48bfbfe0b0c4cd34344b011581e497604ecea8bfea767493c9"
+          "revision": "95b2b80a2c24fa3b956949dafee0383b4d3b9808",
+          "identityDigest": "sha256:ffbe656b2ae545bc87a4b008e1b1a4658dfcd758ab1159420cda5f8afdba13a6",
+          "legDigest": "sha256:9a49a1c0689f29d26397e372b19f9152ce13306b8ec7e9ea3a9a6f424612a5e8"
         },
         {
           "leg": "darwin-x64",
@@ -671,9 +671,9 @@
           "platform": "darwin",
           "arch": "x64",
           "runtime": "v24.14.0",
-          "revision": "b738b047ffad6101f50538185c5decf6c55b7915",
-          "identityDigest": "sha256:3a45ea3b6262f4654702b36df95b62ba11a3d7ce046527570806c430aedaa785",
-          "legDigest": "sha256:d98380e0f0534470dca7343b9966a48c9a8f21eb8a1d9b39c48c881611c0153e"
+          "revision": "95b2b80a2c24fa3b956949dafee0383b4d3b9808",
+          "identityDigest": "sha256:9ea809952eb81a05c6c36f972154fdb6402897f3980d6d1b6082db2e908a645a",
+          "legDigest": "sha256:801da6f84f36e1c7ddfe94763a39afdc26002e8390617960334676a7fecec689"
         },
         {
           "leg": "darwin-arm64",
@@ -681,9 +681,9 @@
           "platform": "darwin",
           "arch": "arm64",
           "runtime": "v24.14.0",
-          "revision": "b738b047ffad6101f50538185c5decf6c55b7915",
-          "identityDigest": "sha256:34da87498bde8745ba387f3e2c693bc915d555479f70bfdc314249cee1228369",
-          "legDigest": "sha256:d617e30a1fa038a464a954b44b083b886426633f9f8a008b5e50658172a2b1b2"
+          "revision": "95b2b80a2c24fa3b956949dafee0383b4d3b9808",
+          "identityDigest": "sha256:33e51e8a9adf69b0dbef0c4af3eb784df98e591f0f1bfe1d97f96b36bb18fd0e",
+          "legDigest": "sha256:d0a8291ee29088c557cab7be0058889c4db16d99493c5d6075fac37364e1e429"
         },
         {
           "leg": "linux-x64",
@@ -691,9 +691,9 @@
           "platform": "linux",
           "arch": "x64",
           "runtime": "v24.14.0",
-          "revision": "b738b047ffad6101f50538185c5decf6c55b7915",
-          "identityDigest": "sha256:5b1f19bd1af64ab760f116a2cc2348772cc74771906ce40ce78f1ff73c20eff7",
-          "legDigest": "sha256:5d2a39986ba180820ce4a10cc235ec3827e518646a283a62a90ec00484a7eb83"
+          "revision": "95b2b80a2c24fa3b956949dafee0383b4d3b9808",
+          "identityDigest": "sha256:95fc18ef47706fe6d394d26d9a9043a179b3d0fb30343ea7198633d3033c82fe",
+          "legDigest": "sha256:f7035a7971b983fbe0dfe47d8b87d05f3232628361d5b6ce8e9e3b9bd1df038f"
         },
         {
           "leg": "linux-arm64",
@@ -701,16 +701,16 @@
           "platform": "linux",
           "arch": "arm64",
           "runtime": "v24.14.0",
-          "revision": "b738b047ffad6101f50538185c5decf6c55b7915",
-          "identityDigest": "sha256:b1d9f04b4e9e6a74eb87d94494d7cd97622d9d6d82375af9cb476e9ffc798cdc",
-          "legDigest": "sha256:d9df50def15168ba4c24fb1a19655393588ffa8ae974c0ade222caeae5749e3c"
+          "revision": "95b2b80a2c24fa3b956949dafee0383b4d3b9808",
+          "identityDigest": "sha256:6dbaa04f88ca7fe0d946a9cc449edc14121ec11f024a74889068caf0e929962c",
+          "legDigest": "sha256:bd7661e979d3ecd016e262c345cd00e24b64e3a3b1e52950629f4a66752679a3"
         }
       ],
       "excused": []
     },
     {
-      "gate": "gate:build",
-      "runId": "32769406518",
+      "gate": "gate:quick",
+      "runId": "32865013434",
       "complete": true,
       "legs": [
         {
@@ -719,9 +719,9 @@
           "platform": "win32",
           "arch": "x64",
           "runtime": "v24.14.0",
-          "revision": "b738b047ffad6101f50538185c5decf6c55b7915",
-          "identityDigest": "sha256:28f8453cb6fc7e96aa229cee51185ab5e3cce5b47f0e75fe37ee7e84f949eb83",
-          "legDigest": "sha256:5563b1bcf0290a4f58bc0b43a38422cc32d75720badcba4ccb6669a78cc591a0"
+          "revision": "95b2b80a2c24fa3b956949dafee0383b4d3b9808",
+          "identityDigest": "sha256:5b4c4d25fbfe0a40304127988f43373882b0c94ef7419f8bae6d7855b0f18f24",
+          "legDigest": "sha256:4c7ace24ba9a86fd1360a5a9bc7b8b55cf888b870f230b5f042d8061509dc925"
         },
         {
           "leg": "darwin-x64",
@@ -729,9 +729,9 @@
           "platform": "darwin",
           "arch": "x64",
           "runtime": "v24.14.0",
-          "revision": "b738b047ffad6101f50538185c5decf6c55b7915",
-          "identityDigest": "sha256:b7970519977291690a3c1bf5525acf6e2005f7af6b3b0d6660dec8bb4083d613",
-          "legDigest": "sha256:34558d169b6ceaa6631f3b4db3e33b4c7684119df5045d71230d70c7ac11b152"
+          "revision": "95b2b80a2c24fa3b956949dafee0383b4d3b9808",
+          "identityDigest": "sha256:5b8bba27d44d7827531c4889a2a14fec2b9e9aa2f2eca29b7d337e0d5c8f4a21",
+          "legDigest": "sha256:0c305ca319b6433464319b608bbf5a276af34b7b9832d31709899fffe4854e69"
         },
         {
           "leg": "darwin-arm64",
@@ -739,9 +739,9 @@
           "platform": "darwin",
           "arch": "arm64",
           "runtime": "v24.14.0",
-          "revision": "b738b047ffad6101f50538185c5decf6c55b7915",
-          "identityDigest": "sha256:685b789ecc63bbce991a325a343848e6db995484d9f59a3369d5841dba186a49",
-          "legDigest": "sha256:ca12e76c2d37e205b8ad889449a9457b6c178bb4c192565d56b1c4933847ef59"
+          "revision": "95b2b80a2c24fa3b956949dafee0383b4d3b9808",
+          "identityDigest": "sha256:5b6f28a17a83369ef12c4e632c1dc93666ecf2090689e1e36d6d93f4cb261f25",
+          "legDigest": "sha256:f061116f878b0ce6d5b41a8619e90e9e0a135a92fe0a517809ce7d909b810184"
         },
         {
           "leg": "linux-x64",
@@ -749,9 +749,9 @@
           "platform": "linux",
           "arch": "x64",
           "runtime": "v24.14.0",
-          "revision": "b738b047ffad6101f50538185c5decf6c55b7915",
-          "identityDigest": "sha256:8bc4097936b4771fbb496a4e737d043b6eab073fb311ad3cdd26ca9b898c7e7f",
-          "legDigest": "sha256:c856eacd492222aedb05988b73270d9fc2bcd2d24d4363d8acc1ccd1a3e6f803"
+          "revision": "95b2b80a2c24fa3b956949dafee0383b4d3b9808",
+          "identityDigest": "sha256:5d6314fc476ee0e130e52b65a83d6e17671882e6db185a95e2de4f86a68f5c4d",
+          "legDigest": "sha256:32d4760422c848f8c4cc7af1ad52e11c4d4c0037bcd7065498d1d57e5fc0e3af"
         },
         {
           "leg": "linux-arm64",
@@ -759,74 +759,16 @@
           "platform": "linux",
           "arch": "arm64",
           "runtime": "v24.14.0",
-          "revision": "b738b047ffad6101f50538185c5decf6c55b7915",
-          "identityDigest": "sha256:d82a4023dcbd307f41710e12ccb9f67c6b1f9fb25f727dd952427a1c2d0bcf49",
-          "legDigest": "sha256:749aa5dd3392120239faedbdc9a0f4736571bbfaaa88ef32c16bbff27d0d1b47"
-        }
-      ],
-      "excused": []
-    },
-    {
-      "gate": "gate:security",
-      "runId": "32769409313",
-      "complete": true,
-      "legs": [
-        {
-          "leg": "win32-x64",
-          "status": "qualified",
-          "platform": "win32",
-          "arch": "x64",
-          "runtime": "v24.14.0",
-          "revision": "b738b047ffad6101f50538185c5decf6c55b7915",
-          "identityDigest": "sha256:840bf7ab946db53b6b837cfaf19ebd05b3e25c71b2e325d24920ac94b72a2a8e",
-          "legDigest": "sha256:8c8351736e9bb52bb793d8670186d4fc5d256dd2febcbf79deec072213b7fd6a"
-        },
-        {
-          "leg": "darwin-x64",
-          "status": "qualified",
-          "platform": "darwin",
-          "arch": "x64",
-          "runtime": "v24.14.0",
-          "revision": "b738b047ffad6101f50538185c5decf6c55b7915",
-          "identityDigest": "sha256:ca7c79c378d43eb474cacd01acb7595ca911295aebcb98de411749ad8cf9f398",
-          "legDigest": "sha256:069b65ab027c864d0c7351361e48f4e2b644fe8dd5143da73a144e9f34eb75f8"
-        },
-        {
-          "leg": "darwin-arm64",
-          "status": "qualified",
-          "platform": "darwin",
-          "arch": "arm64",
-          "runtime": "v24.14.0",
-          "revision": "b738b047ffad6101f50538185c5decf6c55b7915",
-          "identityDigest": "sha256:b54111398c8542ecc1817e07324368e78ecb02ee87c6e701b71f55679e9cbc67",
-          "legDigest": "sha256:14849e66114f5a89c82cb32e731c4ffcbe54c3a785f6d94d02de679dca5ecc5b"
-        },
-        {
-          "leg": "linux-x64",
-          "status": "qualified",
-          "platform": "linux",
-          "arch": "x64",
-          "runtime": "v24.14.0",
-          "revision": "b738b047ffad6101f50538185c5decf6c55b7915",
-          "identityDigest": "sha256:d0c63ffe248dc2d05c11c7ba3805f20c8f4b305f229d305a9295e8c22077a592",
-          "legDigest": "sha256:b2f5230f7f643b357b9f8f1f054269a97fa72663b2eb3e64ca2edf03e703979b"
-        },
-        {
-          "leg": "linux-arm64",
-          "status": "qualified",
-          "platform": "linux",
-          "arch": "arm64",
-          "runtime": "v24.14.0",
-          "revision": "b738b047ffad6101f50538185c5decf6c55b7915",
-          "identityDigest": "sha256:38ca4b1819f53b523c1153133a15afc28bff109b58951d917e5f419946a3b1ff",
-          "legDigest": "sha256:364843ddd823ab3ab7c57a90e5479650593abdafc9c7a453a929c59b9a58b4f3"
+          "revision": "95b2b80a2c24fa3b956949dafee0383b4d3b9808",
+          "identityDigest": "sha256:8062ab8374ddad4f456ea7aa76bc90000bb83d812099923facb86db800dffe02",
+          "legDigest": "sha256:9602a25d1fac0f8b2c16c225e6ae2e05b9aa7458c1e6f04eefea1b86d1660047"
         }
       ],
       "excused": []
     },
     {
       "gate": "gate:release",
-      "runId": "32769412066",
+      "runId": "32865042356",
       "complete": true,
       "legs": [
         {
@@ -835,9 +777,9 @@
           "platform": "win32",
           "arch": "x64",
           "runtime": "v24.14.0",
-          "revision": "b738b047ffad6101f50538185c5decf6c55b7915",
-          "identityDigest": "sha256:c996de1f4a33a364932aedfb5a53888dc2e31b5a593e20701112967c012b3ad6",
-          "legDigest": "sha256:1bee3236236605bf56a8a68ae6858e56d1e8b26e54170b8ce606c52be574c89e"
+          "revision": "95b2b80a2c24fa3b956949dafee0383b4d3b9808",
+          "identityDigest": "sha256:200e508adeb03d841ae5cb8f7876dd61bc8e81ba59cd4dc2b160c6ceff27701b",
+          "legDigest": "sha256:ee9f920a69a9ce194d28ee545d5beacf498d35b2aba2c2d3a122d9008c633ac1"
         },
         {
           "leg": "darwin-x64",
@@ -845,9 +787,9 @@
           "platform": "darwin",
           "arch": "x64",
           "runtime": "v24.14.0",
-          "revision": "b738b047ffad6101f50538185c5decf6c55b7915",
-          "identityDigest": "sha256:71335b35ee09125c4c3cdcd1b375f8f3980edf119b9c3d7a92b421a21f4ee453",
-          "legDigest": "sha256:e1db591a285dd8dbf627ece3117d39bcbfa8a46b91375a656123730cf4e35133"
+          "revision": "95b2b80a2c24fa3b956949dafee0383b4d3b9808",
+          "identityDigest": "sha256:e3c8ff30b10908d5e1ab796311ea80a90b884d2226a35dd39b56d8b78174e253",
+          "legDigest": "sha256:2fa2fce141fd1169662a7a2ba98d088d238cf44efa5db329d0b41f60ab0105de"
         },
         {
           "leg": "darwin-arm64",
@@ -855,9 +797,9 @@
           "platform": "darwin",
           "arch": "arm64",
           "runtime": "v24.14.0",
-          "revision": "b738b047ffad6101f50538185c5decf6c55b7915",
-          "identityDigest": "sha256:636212ed634b13ac2d8fc74732d4e6684a4e37ceb056e7282b399ec3c3b3fac4",
-          "legDigest": "sha256:98bd03f4f7f45f95eb6eda5905e0c578f61a297438c11a749601a0e31fd0b2ec"
+          "revision": "95b2b80a2c24fa3b956949dafee0383b4d3b9808",
+          "identityDigest": "sha256:461d86efb54c2ed8c30ff879bc02a6f3368a1fd2f21b379eaf3be43bfb562c06",
+          "legDigest": "sha256:302ddd849fb69f0da433c8f7aae223515f04e931931bb7eee4587002f070857c"
         },
         {
           "leg": "linux-x64",
@@ -865,9 +807,9 @@
           "platform": "linux",
           "arch": "x64",
           "runtime": "v24.14.0",
-          "revision": "b738b047ffad6101f50538185c5decf6c55b7915",
-          "identityDigest": "sha256:cf5bea0540873205a2b4f4d563789d3a4fc65edec87ccf0f64f0e00dd3763d84",
-          "legDigest": "sha256:dedf0895b3c3ee8a3b9339abc3e3fe5fda3a8585152bc44599aff29f58c2cbb2"
+          "revision": "95b2b80a2c24fa3b956949dafee0383b4d3b9808",
+          "identityDigest": "sha256:78e95722965fa7dc109b2a8b8772817c274b5dd419d7437572ab03a6ca8f67eb",
+          "legDigest": "sha256:faeb0c9307a114599ed182dbe555eded8e8a91fe42e274e717367f682d669766"
         },
         {
           "leg": "linux-arm64",
@@ -875,15 +817,73 @@
           "platform": "linux",
           "arch": "arm64",
           "runtime": "v24.14.0",
-          "revision": "b738b047ffad6101f50538185c5decf6c55b7915",
-          "identityDigest": "sha256:8d9951fdbed20cae7e0df2882f8eb93b59b0acdd99846748cf71ae130081e43f",
-          "legDigest": "sha256:0a167940e9a9d7e0f6522623294ad42d20108121b0dcbaa3389d1ac4cfff7099"
+          "revision": "95b2b80a2c24fa3b956949dafee0383b4d3b9808",
+          "identityDigest": "sha256:0802f404941e47d4e942ebb526e02b78f072060b149ebd62093784a95e7ae19d",
+          "legDigest": "sha256:964dc7b69bf51a9d4d363a870b59bb00ede8ea530d0ec68679ad83818ae1fd6b"
+        }
+      ],
+      "excused": []
+    },
+    {
+      "gate": "gate:security",
+      "runId": "32864662729",
+      "complete": true,
+      "legs": [
+        {
+          "leg": "win32-x64",
+          "status": "qualified",
+          "platform": "win32",
+          "arch": "x64",
+          "runtime": "v24.14.0",
+          "revision": "95b2b80a2c24fa3b956949dafee0383b4d3b9808",
+          "identityDigest": "sha256:8a8df24bf57e83299aa4ffb2ff36f3ce68a196c9a662f2b0f8efe0700c39d8b5",
+          "legDigest": "sha256:c130bda53ea7c908af7aa539905f89a6cccb82916a3ec4d163095545fcd2fa82"
+        },
+        {
+          "leg": "darwin-x64",
+          "status": "qualified",
+          "platform": "darwin",
+          "arch": "x64",
+          "runtime": "v24.14.0",
+          "revision": "95b2b80a2c24fa3b956949dafee0383b4d3b9808",
+          "identityDigest": "sha256:2169ca723019091f141b7f251917e324fdb3b46b750d4e71ff4da4d3225bd12e",
+          "legDigest": "sha256:2bc3ec0965ed59401d31c2317534013248a313858175cf0caeca2b3836fd6b56"
+        },
+        {
+          "leg": "darwin-arm64",
+          "status": "qualified",
+          "platform": "darwin",
+          "arch": "arm64",
+          "runtime": "v24.14.0",
+          "revision": "95b2b80a2c24fa3b956949dafee0383b4d3b9808",
+          "identityDigest": "sha256:af9fd526895903aaad44d9f314986d84a97d75db73da10e7c38e81a52091390c",
+          "legDigest": "sha256:e7f3dc76d15542b8372b2f5d9fda08465e5101e2c53305bd5dc691f14c054180"
+        },
+        {
+          "leg": "linux-x64",
+          "status": "qualified",
+          "platform": "linux",
+          "arch": "x64",
+          "runtime": "v24.14.0",
+          "revision": "95b2b80a2c24fa3b956949dafee0383b4d3b9808",
+          "identityDigest": "sha256:835fc7ffac88b9e644266693a10ef9a637a9356021befffcfab97b10aa6ec6a2",
+          "legDigest": "sha256:06395c61e5f1c701fd7ab805180147156c5e8e061f9ca50fce2a1908b1c6682b"
+        },
+        {
+          "leg": "linux-arm64",
+          "status": "qualified",
+          "platform": "linux",
+          "arch": "arm64",
+          "runtime": "v24.14.0",
+          "revision": "95b2b80a2c24fa3b956949dafee0383b4d3b9808",
+          "identityDigest": "sha256:9d4994cb9e5634cb2ed26d488fe938442d04c5012f9f6079625662af3f9ab8a7",
+          "legDigest": "sha256:396694f447068f1e8d82c52496673e65a6e17168065f3f784c31e409f7adb531"
         }
       ],
       "excused": []
     }
   ],
-  "bodyDigest": "sha256:620b510b6ae57cd97abe7e03d74660f3a12987a5c2e7c712420092ddace5aa52",
+  "bodyDigest": "sha256:c22a32570ea9114371a6482080eb77507b74a5890892be703f275d538e86dd0a",
   "signingState": {
     "signed": false,
     "reason": "No release signing identity is configured for qualification evidence. A TEST-ONLY key would carry no trust; signing is an owner key-custody decision, scheduled by AD-014."

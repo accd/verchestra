@@ -1,0 +1,84 @@
+{
+  "schemaVersion": 1,
+  "runId": "32865022966",
+  "gate": "gate:full",
+  "revision": "95b2b80a2c24fa3b956949dafee0383b4d3b9808",
+  "complete": true,
+  "legs": [
+    {
+      "leg": "win32-x64",
+      "status": "qualified",
+      "identity": {
+        "revision": "95b2b80a2c24fa3b956949dafee0383b4d3b9808",
+        "ref": "refs/heads/main",
+        "gate": "gate:full",
+        "platform": "win32",
+        "arch": "x64",
+        "runtime": "v24.14.0",
+        "runner": "Windows"
+      },
+      "identityDigest": "sha256:ffbe656b2ae545bc87a4b008e1b1a4658dfcd758ab1159420cda5f8afdba13a6",
+      "legDigest": "sha256:9a49a1c0689f29d26397e372b19f9152ce13306b8ec7e9ea3a9a6f424612a5e8"
+    },
+    {
+      "leg": "darwin-x64",
+      "status": "qualified",
+      "identity": {
+        "revision": "95b2b80a2c24fa3b956949dafee0383b4d3b9808",
+        "ref": "refs/heads/main",
+        "gate": "gate:full",
+        "platform": "darwin",
+        "arch": "x64",
+        "runtime": "v24.14.0",
+        "runner": "macOS"
+      },
+      "identityDigest": "sha256:9ea809952eb81a05c6c36f972154fdb6402897f3980d6d1b6082db2e908a645a",
+      "legDigest": "sha256:801da6f84f36e1c7ddfe94763a39afdc26002e8390617960334676a7fecec689"
+    },
+    {
+      "leg": "darwin-arm64",
+      "status": "qualified",
+      "identity": {
+        "revision": "95b2b80a2c24fa3b956949dafee0383b4d3b9808",
+        "ref": "refs/heads/main",
+        "gate": "gate:full",
+        "platform": "darwin",
+        "arch": "arm64",
+        "runtime": "v24.14.0",
+        "runner": "macOS"
+      },
+      "identityDigest": "sha256:33e51e8a9adf69b0dbef0c4af3eb784df98e591f0f1bfe1d97f96b36bb18fd0e",
+      "legDigest": "sha256:d0a8291ee29088c557cab7be0058889c4db16d99493c5d6075fac37364e1e429"
+    },
+    {
+      "leg": "linux-x64",
+      "status": "qualified",
+      "identity": {
+        "revision": "95b2b80a2c24fa3b956949dafee0383b4d3b9808",
+        "ref": "refs/heads/main",
+        "gate": "gate:full",
+        "platform": "linux",
+        "arch": "x64",
+        "runtime": "v24.14.0",
+        "runner": "Linux"
+      },
+      "identityDigest": "sha256:95fc18ef47706fe6d394d26d9a9043a179b3d0fb30343ea7198633d3033c82fe",
+      "legDigest": "sha256:f7035a7971b983fbe0dfe47d8b87d05f3232628361d5b6ce8e9e3b9bd1df038f"
+    },
+    {
+      "leg": "linux-arm64",
+      "status": "qualified",
+      "identity": {
+        "revision": "95b2b80a2c24fa3b956949dafee0383b4d3b9808",
+        "ref": "refs/heads/main",
+        "gate": "gate:full",
+        "platform": "linux",
+        "arch": "arm64",
+        "runtime": "v24.14.0",
+        "runner": "Linux"
+      },
+      "identityDigest": "sha256:6dbaa04f88ca7fe0d946a9cc449edc14121ec11f024a74889068caf0e929962c",
+      "legDigest": "sha256:bd7661e979d3ecd016e262c345cd00e24b64e3a3b1e52950629f4a66752679a3"
+    }
+  ]
+}
