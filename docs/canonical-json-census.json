@@ -564,10 +564,10 @@
       "signals": {
         "canonicalizer": 6,
         "digest": 5,
-        "localeCompare": 1,
+        "localeCompare": 0,
         "serialization": 0
       },
-      "reason": "New packages use the declared V2 schema and code-unit set ordering; the version-gated V1 verifier retains its authoritative historical ordering."
+      "reason": "New packages use the declared V2 schema and code-unit set ordering; V1 compatibility is preserved explicitly with the same UTF-16 code-unit comparator rather than an ambient locale."
     },
     {
       "path": "packages/evidence/src/index.ts",

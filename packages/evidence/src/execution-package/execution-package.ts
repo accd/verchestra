@@ -227,7 +227,10 @@ function schemaVersion(value: unknown): ExecutionPackageSchemaVersion {
 }
 
 function compareIdentity(version: ExecutionPackageSchemaVersion, left: string, right: string): number {
-  if (version === 1) return left.localeCompare(right);
+  // V1 used JavaScript's default Array#sort, which compares UTF-16 code units.
+  // Keep that byte identity when normalizing legacy packages; V2 makes the
+  // same ordering explicit so both versions remain locale-independent.
+  if (version === 1) return left < right ? -1 : left > right ? 1 : 0;
   return left < right ? -1 : left > right ? 1 : 0;
 }
 

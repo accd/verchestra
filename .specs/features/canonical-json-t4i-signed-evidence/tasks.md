@@ -23,11 +23,20 @@ nothing about it. The other 10 sorted arrays (`artifactRefs`, `requirements`,
 `invalidations`' `results`) are used only for internal uniqueness/shape
 validation or are never persisted at all (`invalidations` is an ephemeral
 return value) — none of their re-sorted output is compared against a stored
-counterpart. `derivePendingTasks`'s output *is* stored (`payload.pendingTasks`)
-and *is* re-derived-and-compared at verify time
+counterpart. `derivePendingTasks`'s output _is_ stored (`payload.pendingTasks`)
+and _is_ re-derived-and-compared at verify time
 (`canonicalizeJson(derived) !== canonicalizeJson(payload.pendingTasks)`) — the
 one site that actually needs `schemaVersion` gating. The other 10 can switch
 to unconditional code-unit ordering.
+
+### Follow-up correction
+
+The merged implementation's version-gated helper used `localeCompare` for V1,
+which was not the historical V1 behavior: the pre-migration collection sites
+used JavaScript's default UTF-16 code-unit ordering. The follow-up replaces that
+branch with the explicit relational comparator and adds a mixed-case regression
+over every versioned collection. This preserves the pinned V1 bytes and lowers
+the Execution Package census/allowlist locale ceiling to zero.
 
 ## T1 — Widen schemaVersion; migrate the 10 non-derivation sort sites
 
@@ -48,25 +57,26 @@ by code unit (e.g. `"T-1"` before `"t-2"`), independent of a mocked
 ## T2 — Version-gate derivePendingTasks; wire schemaVersion through build/verify
 
 **What**: `derivePendingTasks(tasks, completedTaskEvidence, version: 1 | 2 = 2)`
-sorts with `codeUnitCompare` for `version === 2`, `.localeCompare` for
-`version === 1`. `ExecutionPackageBuilder.build()` passes `base.schemaVersion`;
+sorts with the explicit UTF-16 code-unit comparator for both recorded versions;
+the version is retained at the call boundary so V1/V2 verification cannot be
+implicitly reinterpreted. `ExecutionPackageBuilder.build()` passes `base.schemaVersion`;
 `.verify()` passes `payload.schemaVersion`. `build()` defaults its own input's
 `schemaVersion` to `2` when the caller omits it (CJ4I-03).
 **Requirement**: CJ4I-01, CJ4I-02, CJ4I-03, CJ4I-04, CJ4I-05, CJ4I-06
 **Depends on**: T1
 **Tests first**:
+
 - Cross-locale determinism: build the same `schemaVersion: 2` input under
   two different `localeCompare` mocks, assert identical sealed bytes/digest
   (CJ4I-01, CJ4I-02).
-- Backward compat: construct a `schemaVersion: 1` artifact whose stored
-  `pendingTasks` reflects `localeCompare` order for a mixed-case `taskId`
-  pair that would sort differently under code-unit order; verify it after
-  the change and assert `ok: true` (CJ4I-04, CJ4I-05).
+- Backward compat: construct a `schemaVersion: 1` artifact with mixed-case
+  identifiers and assert the historical UTF-16 code-unit order and successful
+  verification (CJ4I-04, CJ4I-05).
 - New-version re-derivation: a `schemaVersion: 2` package's `pendingTasks`
   re-derives identically at verify time (CJ4I-06).
-**Gate**: `node --test tests/unit/execution-package.test.mjs
+  **Gate**: `node --test tests/unit/execution-package.test.mjs
 tests/integration/execution-package.test.mjs` (adjust path if the
-integration suite lives elsewhere — check first), `pnpm gate:quick`.
+  integration suite lives elsewhere — check first), `pnpm gate:quick`.
 
 ## T3 — Discrimination sensor
 
@@ -95,15 +105,15 @@ on**: T1, T2, T3
 
 ## Traceability
 
-| Requirement ID | Task |
-| --- | --- |
-| CJ4I-01 | T1, T2 |
-| CJ4I-02 | T2 |
-| CJ4I-03 | T2 |
-| CJ4I-04 | T2 |
-| CJ4I-05 | T2 |
-| CJ4I-06 | T2 |
-| CJ4I-07 | T3 |
-| CJ4I-08 | T1 |
+| Requirement ID | Task   |
+| -------------- | ------ |
+| CJ4I-01        | T1, T2 |
+| CJ4I-02        | T2     |
+| CJ4I-03        | T2     |
+| CJ4I-04        | T2     |
+| CJ4I-05        | T2     |
+| CJ4I-06        | T2     |
+| CJ4I-07        | T3     |
+| CJ4I-08        | T1     |
 
 Coverage: 8/8 mapped.

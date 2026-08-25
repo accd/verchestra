@@ -133,7 +133,7 @@ current classification source.
 | Application regression: `campaigns.ts` | Campaign ordering inside `canonicalizeCorpus`/`buildCampaignSummary`, validated against `regression-campaign-summary@1` | persistent (schema-validated release evidence) | **Migrated (T4a).** `buildCampaignSummary` normalizes results with `normalizeDeclaredSet` before assembly; `canonicalizeCorpus` (the actual `corpusDigest` input) already had zero locale dependency. | Done. Commit `7f1adc4`; `tests/unit/regression-campaigns.test.mjs`, `pnpm test:release` (28 cases, frozen 22-campaign corpus unaffected). |
 | Application doctor: `doctor.ts` | `sortedUnique` orders capability/check lists inside the sealed, signed `doctor-report` payload | signed persistent identity | **Migrated (T4a).** `sortedUnique` now normalizes through `normalizeDeclaredSet`. | Done. Commit `6ccb1c7`; `tests/unit/doctor-rules.test.mjs` (cross-locale test), all 62 existing doctor cases unchanged. |
 | Application self-test: `self-test.ts` (`semanticFingerprint`, line ~292) | Ordered `checkId:status` pairs, compared directly by `assertConvergence` across two independently provisioned runs; not itself hashed or sealed in this file | presentation (direct list comparison, not a digest input) — migrated anyway, see resolution | **Migrated (T4a).** Classified presentation by the matrix's own digest/signature test, but migrated regardless: locale-dependent order could make two genuinely convergent runs compare as non-convergent (`VES_SELFTEST_NONCONVERGENT`) under different ambient locales — a portability defect even without a signed digest at stake. | Done. Commit `4cd6afa`; `tests/unit/self-test-scenario-rules.test.mjs` (cross-locale test). |
-| Evidence: `execution-package/execution-package.ts` | Declared package sets, payload digest, artifact ID, DSSE statement, and persisted envelope | signed + persistent authority | **Migrated (signed-evidence Execution Package slice).** New packages emit `schemaVersion: 2`, the declared V2 in-toto predicate, RFC 8785 bytes through the domain facade, and code-unit ordering for every set-like package list. Schema V1 keeps its V1 digest, predicate, and one version-gated `localeCompare` path solely for backward verification. A V1 artifact cannot be reinterpreted as V2. Run Capsule, Recovery Bundle, Support Bundle, and release artifacts remain separate pending slices. |
+| Evidence: `execution-package/execution-package.ts` | Declared package sets, payload digest, artifact ID, DSSE statement, and persisted envelope | signed + persistent authority | **Migrated (signed-evidence Execution Package slice).** New packages emit `schemaVersion: 2`, the declared V2 in-toto predicate, RFC 8785 bytes through the domain facade, and code-unit ordering for every set-like package list. Schema V1 keeps its V1 digest and predicate while using an explicit UTF-16 code-unit comparator that preserves the historical default `Array#sort` bytes; no ambient locale remains. A V1 artifact cannot be reinterpreted as V2. Run Capsule, Recovery Bundle, Support Bundle, and release artifacts remain separate pending slices. |
 
 ## T4 slice ordering
 
@@ -441,9 +441,10 @@ deferred rather than being forced through the direct-swap pattern:
   (`apps/vestra-cli/src/self-test-full-execution.ts`). A sort-order change
   that silently changes the payload digest for an existing signed package is
   exactly the kind of migration compatibility rule 1 exists to prevent. The
-  Execution Package slice now retains that path only for schema V1 verification;
-  new schema V2 packages use the domain RFC 8785 facade, code-unit ordering, and
-  the declared V2 predicate. V1 and V2 cannot be reinterpreted as each other.
+  Execution Package slice now preserves that path for schema V1 verification
+  with an explicit UTF-16 code-unit comparator; new schema V2 packages use the
+  domain RFC 8785 facade, code-unit ordering, and the declared V2 predicate.
+  V1 and V2 cannot be reinterpreted as each other.
 - `hermetic-bundle.ts` has the same shape (a private recursive `canonical()`
   plus a `componentId` sort using the same broad, case-permitting pattern) for
   a release manifest digest — signed release identity, the highest-stakes
@@ -454,7 +455,9 @@ The remaining signed-evidence owners and T4j need the versioned-facade design
 the matrix already specifies (preserve V1 verification, introduce a V2 facade
 gated by an explicit schema or envelope version, never compare a V1 and V2
 digest as equal) as their own reviewed units of work. The Execution Package
-ceiling is now one V1-only site; T4j remains at its original ceiling.
+ceiling is now zero: V1 compatibility is expressed with an explicit UTF-16
+code-unit comparator, so it does not require an ambient `localeCompare`
+exception. T4j remains at its original ceiling.
 
 This decision was made following the same process as every other slice in
 this chain: not asserted unilaterally, chosen by brunomjanuario (WS-C),
@@ -500,24 +503,15 @@ assumed — while implementing:
    reorders arrays — the locale dependency was entirely upstream, in this
    file's own 11 `.localeCompare()` pre-sort call sites, not in the
    canonicalizer they feed into.
-2. **Only one of the 11 sites was ever backward-compat-sensitive, and it
-   turned out to be unreachable.** `derivePendingTasks`'s `(sequence,
-   taskId)` sort key was the one output persisted and re-derived-and-compared
-   at verify time (`canonicalizeJson(derived) !== canonicalizeJson(payload.pendingTasks)`),
-   so it was the one site kept `schemaVersion`-gated (V1 keeps
-   `.localeCompare`, V2 uses code-unit order) rather than swapped
-   unconditionally. But `normalizeTasks` already enforces unique `sequence`
-   values across every task, for both the build and verify-time re-parse
-   paths, so `left.sequence - right.sequence` is never `0` for two distinct
-   tasks and the `taskId` comparator after `||` never executes — confirmed
-   directly, not merely reasoned: building `derivePendingTasks` output under
-   a hostile `localeCompare` mock that reverses comparator order produced
-   byte-identical output to the unmocked call, for real task sets. The other
-   10 sites' sorted output is used only for internal uniqueness/shape
-   validation or is never persisted at all (`invalidations`'s `results` is
-   an ephemeral return value) — none of it is compared against a stored
-   counterpart, so all 10 were swapped to unconditional code-unit ordering
-   with no compatibility risk.
+2. **The V1 comparator required an explicit compatibility correction.** The
+   earlier implementation used `localeCompare` in the version-gated helper,
+   which changed historical V1 bytes for mixed-case identifiers. The corrected
+   implementation uses JavaScript's UTF-16 code-unit relational comparison for
+   V1 and V2, with a regression covering every versioned collection. The
+   pinned V1 artifact remains verifiable and the census/allowlist now record
+   zero ambient-locale sites. `derivePendingTasks` still carries the recorded
+   schema version at its call boundary, although unique task sequences make
+   its task-id tie-break unreachable for valid packages.
 
 `ExecutionPackagePayload.schemaVersion` widened from the literal `1` to
 `1 | 2`; `ExecutionPackageBuilder.build()` defaults to `schemaVersion: 2`
