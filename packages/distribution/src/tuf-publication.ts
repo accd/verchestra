@@ -382,7 +382,16 @@ export function buildTufReleasePublication(input: TufPublicationInput): TufRelea
           keyids: names.map((signer) => signer.keyId),
           threshold: input.threshold,
           terminating: true,
-          paths: ["components/*", "bin/*", "licenses/*", "evidence/*"]
+          // Exact component paths, never wildcards. tuf-js matches delegation
+          // patterns segment by segment and requires EQUAL segment counts, so
+          // "components/*" can never match the nested paths a real candidate
+          // carries (components/<trackedPath> runs three to seven segments),
+          // and runtime/* and native/* matched no former glob at all. Literal
+          // paths always match themselves, SAFE_PATH admits no minimatch
+          // metacharacter, and duplicates are rejected upstream, so deriving
+          // the list from the bundle makes unreachable targets impossible by
+          // construction.
+          paths: bundle.components.map((component) => component.logicalPath).sort(codeUnitCompare)
         }
       ]
     }
