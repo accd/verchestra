@@ -4,7 +4,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 
-import { TufUpdateClient } from "../../packages/distribution/src/tuf-update-client.ts";
+import {
+  NodeFilesystemDistributionSource,
+  TufUpdateClient
+} from "../../packages/distribution/src/tuf-update-client.ts";
 import {
   buildTufReleasePublication,
   writeTufReleasePublication
@@ -89,6 +92,18 @@ test("writes a complete publication atomically into metadata and targets views",
     for (const [path, bytes] of publication.targets) {
       assert.deepEqual(await readFile(join(layout.targetsDirectory, path)), Buffer.from(bytes));
     }
+    const staged = await new TufUpdateClient({
+      trustRootDirectory: join(root, "trust"),
+      stagingRoot: join(root, "staging"),
+      trustedRoot: publication.trustedRoot,
+      source: new NodeFilesystemDistributionSource({
+        mode: "offline",
+        sourceId: "source:offline:filesystem",
+        root: layout.directory
+      }),
+      chunkSize: 17
+    }).resolveAndStage({ platform: "win32", arch: "x64" });
+    assert.equal(staged.releaseDigest, publication.releaseDigest);
     await assert.rejects(() => writeTufReleasePublication(publication, destination), {
       code: "VES_TUF_PUBLICATION_DESTINATION_EXISTS"
     });
