@@ -2,13 +2,13 @@
 schema: verchestra-feature-handoff/v1
 feature: platform-qualification-matrix
 issue: 16
-status: in_progress
-branch: codex/issue-16-t75-evidence
-baseRevision: b738b047ffad6101f50538185c5decf6c55b7915
+status: complete
+branch: main
+baseRevision: be92397ca0a5caaf7ff8b70dad23659b09899d7d
 lastCompletedTask: T75
-nextTask: "Obtain the owner-approved signing identity, run the signing workflow, then have MiguelCorre independently author t75-validation.md and advance T75 to T76."
-lastGate: FLEET GREEN — all five exact-head profiles passed on Windows x64, macOS x64/arm64, Linux x64/arm64 at candidate b738b047 (quick 32769400281, full 32769403159, build 32769406518, security 32769409313, release 32769412066); reconciled index records 42/52 qualified and 0 contradictions, but remains unsigned.
-updatedAt: 2026-08-24T00:00:00Z
+nextTask: "T75 is complete. T76 continues in .specs/features/t76-release-candidate/: publish the signed TUF release views for the built candidate, then author t76-validation.md."
+lastGate: "Fleet green on all five profiles at be92397 (quick 32883219310, full 32883227369, build 32883235839, security 32883244056, release 32883252338); 25 legs qualified, zero excused; evidence index signed and verified outside its producing run; docs/qualification/t75-validation.md records the PASS and the chain advanced to T76."
+updatedAt: 2026-08-25T21:00:00Z
 ---
 
 # Exact-head fleet evidence (T75 candidate `b738b047ffad6101f50538185c5decf6c55b7915`)
@@ -20,13 +20,13 @@ downloaded and reconciled by `scripts/t75-evidence-index.mjs`; the tracked
 `.specs/features/platform-qualification-matrix/evidence-index.json` now binds
 all five run ids, platform/architecture/runtime identities, and leg digests.
 
-| Profile | Run | Result |
-| --- | --- | --- |
-| `quick` | [32769400281](https://github.com/accd/verchestra/actions/runs/32769400281) | 5/5 legs green |
-| `full` | [32769403159](https://github.com/accd/verchestra/actions/runs/32769403159) | 5/5 legs green |
-| `build` | [32769406518](https://github.com/accd/verchestra/actions/runs/32769406518) | 5/5 legs green |
+| Profile    | Run                                                                        | Result         |
+| ---------- | -------------------------------------------------------------------------- | -------------- |
+| `quick`    | [32769400281](https://github.com/accd/verchestra/actions/runs/32769400281) | 5/5 legs green |
+| `full`     | [32769403159](https://github.com/accd/verchestra/actions/runs/32769403159) | 5/5 legs green |
+| `build`    | [32769406518](https://github.com/accd/verchestra/actions/runs/32769406518) | 5/5 legs green |
 | `security` | [32769409313](https://github.com/accd/verchestra/actions/runs/32769409313) | 5/5 legs green |
-| `release` | [32769412066](https://github.com/accd/verchestra/actions/runs/32769412066) | 5/5 legs green |
+| `release`  | [32769412066](https://github.com/accd/verchestra/actions/runs/32769412066) | 5/5 legs green |
 
 The reconciled result is **42/52 qualified with zero contradictions**. This
 is platform and gate-profile evidence only; the remaining declared topology,
@@ -135,7 +135,7 @@ it. This handoff is only the two red findings it exposed.
   31195616672, bound `55d9efd`): 4/5 legs green (macOS x64 stayed queued). It
   confirmed the hard unknowns: the `ubuntu-24.04-arm` runner label is valid,
   bash-on-Windows heredocs/`set -euo pipefail`/`case` work, `pnpm install
-  --frozen-lockfile` succeeds on darwin/arm, and the runner-arch self-check
+--frozen-lockfile` succeeds on darwin/arm, and the runner-arch self-check
   passes.
 - Root causes fully diagnosed (below). Neither is a workflow bug.
 - **F1 DONE** (commit `07f51be`, verified on darwin-arm64 — an unqualified host,
@@ -151,12 +151,12 @@ it. This handoff is only the two red findings it exposed.
 ## Corrections to this handoff's own earlier F1 text
 
 - The prescription said to assert `inspectSqliteRuntime().sqliteVecSha256 ===
-  null` on an unqualified host. That is wrong: `inspectSqliteRuntime` hashes the
+null` on an unqualified host. That is wrong: `inspectSqliteRuntime` hashes the
   asset it actually loaded and returns a real digest (`193e480c…` on
   darwin-arm64). It is `QUALIFIED_SQLITE.sqliteVecSha256` that is `null`. The
   commit asserts the real contract.
 - The failing-test list omitted line 99 (`wrong vector asset checksum fails
-  closed…`). It fails on an unqualified host too, because the platform check
+closed…`). It fails on an unqualified host too, because the platform check
   refuses before any checksum is compared, yielding `VES_VECTOR_UNAVAILABLE`
   rather than `VES_VECTOR_ASSET_MISMATCH`. Now covered.
 
@@ -189,7 +189,7 @@ it. This handoff is only the two red findings it exposed.
   `new ClaudeCodeDriver({ command: ["claude"], minimumVersion: "2.1.168" }).probe()`
   against the globally-installed CLI and asserts `result.available === true`
   (line 15). On Windows it is `false` (the log shows `actual:false,
-  expected:true`). The Codex probe fails identically.
+expected:true`). The Codex probe fails identically.
 - Root cause (high confidence, classic win32): the driver spawns the bare
   command `claude`/`codex` without `shell:true` and without resolving the
   Windows executable extension. npm's global bin is `claude.cmd` (plus `.ps1`
@@ -203,11 +203,11 @@ it. This handoff is only the two red findings it exposed.
 All three driver probe tests fail here, and none of the three failures is the
 win32 spawn. Each depends on real provider tooling that is not part of the repo:
 
-| spike | probe test | pinned | this machine | failure |
-| --- | --- | --- | --- | --- |
-| claude-code-driver | `claude-driver.test.mjs:13` | `2.1.168` | `claude` 2.1.220 installed | version drift |
-| codex-driver | `codex-driver.test.mjs:12` | `0.115.0` | `codex` not installed | `available:false` |
-| opencode-driver | `opencode-driver.test.mjs:58` | `1.18.9` | probe reports `1.18.5` | silent PATH fallback (below) |
+| spike              | probe test                    | pinned    | this machine               | failure                      |
+| ------------------ | ----------------------------- | --------- | -------------------------- | ---------------------------- |
+| claude-code-driver | `claude-driver.test.mjs:13`   | `2.1.168` | `claude` 2.1.220 installed | version drift                |
+| codex-driver       | `codex-driver.test.mjs:12`    | `0.115.0` | `codex` not installed      | `available:false`            |
+| opencode-driver    | `opencode-driver.test.mjs:58` | `1.18.9`  | probe reports `1.18.5`     | silent PATH fallback (below) |
 
 ### The opencode row is the most serious of the three — diagnosed
 
@@ -215,8 +215,12 @@ win32 spawn. Each depends on real provider tooling that is not part of the repo:
 a cwd-relative path and falls back to a bare PATH lookup when it misses:
 
 ```js
-const executable = path.resolve("node_modules", "opencode-ai", "bin",
-  process.platform === "win32" ? "opencode.exe" : "opencode");
+const executable = path.resolve(
+  "node_modules",
+  "opencode-ai",
+  "bin",
+  process.platform === "win32" ? "opencode.exe" : "opencode"
+);
 return existsSync(executable) ? [executable] : ["opencode"];
 ```
 
