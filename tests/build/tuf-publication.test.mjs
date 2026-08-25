@@ -12,6 +12,7 @@ import {
   buildTufReleasePublication,
   writeTufReleasePublication
 } from "../../packages/distribution/src/tuf-publication.ts";
+import { component } from "../helpers/hermetic-bundle-fixture.mjs";
 import { fixture, MapDistributionSource } from "../helpers/tuf-publication-fixture.mjs";
 
 const resolvePublication = async (publication, mode) => {
@@ -125,6 +126,69 @@ test("rejects unsafe target paths before creating a publication directory", asyn
       code: "VES_TUF_PUBLICATION_PATH_INVALID"
     });
     await assert.rejects(() => lstat(destination), { code: "ENOENT" });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("a realistic bundle with nested and runtime component paths stages end to end", async () => {
+  // tuf-js matches delegation patterns segment by segment with equal segment
+  // counts, so the former "components/*" glob could never match the nested
+  // components/<trackedPath> paths a real candidate carries, and runtime/* and
+  // native/* matched no glob at all — every such target was unresolvable. The
+  // shared fixture's two-segment paths are exactly why this never surfaced,
+  // so this bundle mirrors the real candidate's shape instead.
+  const realistic = [
+    component("node-runtime", "runtime:node", { logicalPath: "runtime/node" }),
+    component("core-code", "core:verchestra", {
+      logicalPath: "components/packages/distribution/src/tuf-update-client.ts"
+    }),
+    component("schema", "schemas:contracts", {
+      logicalPath: "components/schemas/contracts/execution-package.schema.json"
+    }),
+    component("migration", "migrations:runtime", {
+      logicalPath: "components/packages/workspace/src/init/safe-init.ts"
+    }),
+    component("policy", "policy:cedar", { logicalPath: "components/packages/policy/src/cedar-policy.ts" }),
+    component("cedar-wasm", "wasm:cedar", { logicalPath: "native/cedar-wasm.wasm" }),
+    component("sqlite-native", "native:sqlite", { logicalPath: "native/sqlite-vec" }),
+    component("driver", "driver:claude", { logicalPath: "components/packages/drivers/src/claude-code-driver.ts" }),
+    component("connector", "connector:jira", { logicalPath: "components/packages/connectors/src/jira/jira.ts" }),
+    component("skill", "skill:tlc", { logicalPath: "components/packages/agent-runtime/src/skills/tlc.md" }),
+    component("license", "license:product", { logicalPath: "licenses/product.txt" }),
+    component("sbom", "sbom:cyclonedx", { logicalPath: "evidence/sbom.cdx.json" }),
+    component("provenance", "provenance:build", { logicalPath: "evidence/provenance.intoto.jsonl" }),
+    component("evaluation", "evaluation:release", { logicalPath: "evidence/evaluation.json" }),
+    component("launcher", "launcher:vestra", { logicalPath: "bin/vestra.mjs" }),
+    component("launcher", "launcher:verchestra", { logicalPath: "bin/verchestra.mjs" })
+  ];
+  const { bundle, publication } = fixture({ components: realistic });
+  const nested = bundle.components.filter((entry) => entry.logicalPath.split("/").length >= 4);
+  assert.ok(nested.length >= 5, "the bundle genuinely carries nested component paths");
+
+  const staged = await resolvePublication(publication, "online");
+  assert.equal(staged.releaseDigest, bundle.releaseDigest);
+  assert.equal(staged.components.length, bundle.components.length);
+  assert.deepEqual(
+    staged.components.map((entry) => entry.logicalPath).sort(),
+    bundle.components.map((entry) => entry.logicalPath).sort()
+  );
+
+  const root = await mkdtemp(join(tmpdir(), "verchestra-tuf-realistic-"));
+  try {
+    const written = await writeTufReleasePublication(publication, join(root, "publication"));
+    const offline = await new TufUpdateClient({
+      trustRootDirectory: join(root, "trust"),
+      stagingRoot: join(root, "staging"),
+      trustedRoot: publication.trustedRoot,
+      source: new NodeFilesystemDistributionSource({
+        mode: "offline",
+        sourceId: "source:offline:realistic",
+        root: written.directory
+      })
+    }).resolveAndStage({ platform: "win32", arch: "x64" });
+    assert.equal(offline.releaseDigest, bundle.releaseDigest);
+    assert.equal(offline.components.length, bundle.components.length);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

@@ -19,8 +19,11 @@ const keys = (count = 2) =>
     };
   });
 
-export function fixture() {
-  const rawComponents = components();
+export function fixture(options = {}) {
+  // options.components lets a test supply realistic logicalPaths (nested
+  // components/<trackedPath>, runtime/node, native/*) without changing the
+  // shared component list other suites depend on.
+  const rawComponents = options.components ?? components();
   const componentBytes = rawComponents.map((component) => {
     const bytes = Buffer.from(`tuf-publication:${component.componentId}`);
     return { logicalPath: component.logicalPath, bytes };
