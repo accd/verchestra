@@ -1,4 +1,5 @@
-// Deterministic build of the publishable `vestra` npm package (NPX-01, NPX-02,
+// Deterministic build of the publishable `verchestra` npm package (NPX-01,
+// NPX-02,
 // NPX-08, NPX-10).
 //
 // The tarball is assembled, never scraped: this script typechecks
@@ -13,7 +14,7 @@
 // activation closure while declaring no dependency at all: `apps/vestra-launcher`
 // may not import a workspace package, so the closure is inlined here, at build
 // time, from repository sources. Nothing is downloaded when a user runs
-// `npx vestra`.
+// `npx verchestra`.
 //
 // The build is deterministic by construction. esbuild is invoked with a fixed
 // option vector, no source map, and no timestamp; the working directory is the
@@ -44,10 +45,11 @@ const PACKAGE_ROOT = join(ROOT, "apps", "vestra-launcher");
 const SEMVER = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?$/u;
 const NODE_VERSION = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/u;
 
-/** The exact set of paths a published `vestra` tarball may contain. */
+/** The exact set of paths a published `verchestra` tarball may contain. */
 export const PUBLISHED_FILE_ALLOWLIST = Object.freeze([
   "LICENSE",
   "README.md",
+  "bin/verchestra.mjs",
   "bin/vestra.mjs",
   "config/release-source.json",
   "config/root.json",
@@ -281,6 +283,7 @@ export async function buildVestraLauncher(options) {
   await bundle(outputDirectory);
   await assertSelfContained(outputDirectory);
   await writeStaged(outputDirectory, "bin/vestra.mjs", await readFile(join(PACKAGE_ROOT, "bin", "vestra.mjs")));
+  await writeStaged(outputDirectory, "bin/verchestra.mjs", await readFile(join(PACKAGE_ROOT, "bin", "verchestra.mjs")));
   await writeStaged(outputDirectory, "README.md", await readFile(join(PACKAGE_ROOT, "README.md")));
   await writeStaged(outputDirectory, "LICENSE", await readFile(join(ROOT, "LICENSE")));
   await writeStaged(outputDirectory, "package.json", await renderManifest(pinned.semanticVersion));

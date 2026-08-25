@@ -46,7 +46,7 @@ test("the emitted package is exactly the declared file allowlist", async () => {
     receipt.files.map((file) => file.path),
     [...PUBLISHED_FILE_ALLOWLIST]
   );
-  assert.equal(receipt.packageName, "vestra");
+  assert.equal(receipt.packageName, "verchestra");
   assert.equal(receipt.packageVersion, FIXTURE_SEMANTIC_VERSION);
   for (const file of receipt.files) {
     assert.match(file.contentDigest, /^sha256:[a-f0-9]{64}$/u);
@@ -58,7 +58,7 @@ test("npm pack --dry-run reports exactly the declared allowlist", async () => {
   const receipt = await sharedPackage();
   const report = JSON.parse(await runNpm(receipt.outputDirectory, ["pack", "--dry-run", "--json"]));
   assert.equal(report.length, 1);
-  assert.equal(report[0].name, "vestra");
+  assert.equal(report[0].name, "verchestra");
   assert.equal(report[0].version, FIXTURE_SEMANTIC_VERSION);
   assert.deepEqual(report[0].files.map((file) => file.path).sort(), [...PUBLISHED_FILE_ALLOWLIST]);
 });
@@ -68,7 +68,7 @@ test("the packed tarball itself contains exactly the declared allowlist", async 
   const destination = await disposableDirectory();
   await runNpm(receipt.outputDirectory, ["pack", "--pack-destination", destination]);
   const archive = (await readdir(destination)).find((entry) => entry.endsWith(".tgz"));
-  assert.equal(archive, `vestra-${FIXTURE_SEMANTIC_VERSION}.tgz`);
+  assert.equal(archive, `verchestra-${FIXTURE_SEMANTIC_VERSION}.tgz`);
 
   const entries = listTarEntries(await readFile(join(destination, archive)));
   assert.deepEqual(

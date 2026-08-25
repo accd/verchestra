@@ -17,7 +17,7 @@ T1, T2, and T3 are complete, including T3's activation closure. The owner
 approved a build-time bundler, so `esbuild` is a pinned root devDependency and
 `scripts/build-vestra-launcher.mjs` inlines the qualified TUF and activation
 code into the single emitted `lib/bootstrap.js`. The published manifest still
-declares no dependencies; `npx vestra` downloads the tarball and nothing else.
+declares no dependencies; `npx verchestra` downloads the tarball and nothing else.
 
 `VES_VESTRA_ACTIVATION_UNAVAILABLE` is no longer unconditional. It now fires
 only when activation genuinely cannot complete, and it carries the canonical
@@ -29,7 +29,7 @@ still waiting on a decision.
 
 # Scope
 
-Deliver AD-016's `npx vestra` bootstrap over the qualified TUF and
+Deliver AD-016's `npx verchestra` bootstrap over the qualified TUF and
 transactional-activation path. Ambient Node is bootstrap-only; product control
 passes to the activated bundle's `launcher:vestra` and embedded Node 24.14.0.
 
@@ -79,7 +79,7 @@ passes to the activated bundle's `launcher:vestra` and embedded Node 24.14.0.
 - The build now typechecks `src/` and `closure/` together, then bundles
   `closure/bootstrap-entry.ts` with esbuild `0.28.2` into one ESM module:
   `--platform=node --format=esm --target=node24.14.0 --minify --keep-names
-  --legal-comments=none`, `cwd` at the repository root, no source map. The
+--legal-comments=none`, `cwd` at the repository root, no source map. The
   allowlist shrank from ten paths to seven — `lib/pinned-inputs.js`,
   `lib/public-errors.js`, and `lib/supported-host.js` are now inside
   `lib/bootstrap.js` — and all three verifications (the build's own allowlist

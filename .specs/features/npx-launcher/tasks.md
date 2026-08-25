@@ -35,9 +35,9 @@ Done when:
 
 - [x] A valid active release resolves one immutable pointer/path result.
 - [x] The resolver uses component identity and manifest logical path, not a
-  fixture filename.
+      fixture filename.
 - [x] Missing active state, mixed identity, missing/duplicate launcher,
-  tampered bytes, and path redirection fail before returning a path.
+      tampered bytes, and path redirection fail before returning a path.
 - [x] Existing activation tests remain unchanged except for additive cases.
 
 Evidence: 44 focused integration/security cases pass with zero failed,
@@ -54,7 +54,7 @@ bootstrap.
 **Where:** `packages/platform-node/src/activation-launcher-adapters.ts` and
 `packages/platform-node/src/activation-launcher-errors.ts`, with unit,
 integration, security, and fault suites.
-**Depends on:** T1. T76 no longer blocks it: this task *defines* the executable
+**Depends on:** T1. T76 no longer blocks it: this task _defines_ the executable
 launcher health protocol that T76's launchers must answer.
 **Reuses:** `ActivationHealthGatePort` (satisfied structurally) and the safe
 process contract from `gate-commit-adapters.ts`.
@@ -85,7 +85,7 @@ binds the evidence to the release it actually ran.
 
 The safe process-tree termination routine now exists twice: in
 `gate-commit-adapters.ts` (T59) and in `activation-launcher-adapters.ts`.
-`design.md` says to *follow* that pattern, and refactoring a qualified security
+`design.md` says to _follow_ that pattern, and refactoring a qualified security
 adapter was out of scope, so it was followed rather than extracted. Extracting
 one shared `terminateProcessTree` helper is a reasonable follow-up.
 
@@ -151,7 +151,7 @@ is not the pinned release both stop before `active.json` is written.
    the gates.
 3. **The activation closure is closed with an approved build-time bundler.**
    The owner chose esbuild over a public runtime dependency on `tuf-js`, so the
-   published manifest still declares no dependencies and `npx vestra` downloads
+   published manifest still declares no dependencies and `npx verchestra` downloads
    nothing beyond the tarball. `esbuild` is a root **devDependency** pinned to
    the exact version `0.28.2`, which the lockfile already resolved transitively
    through `vitest`/`vite`; adding it cost three lockfile lines and no new
@@ -207,22 +207,22 @@ Done when:
 
 ## Dependency Cross-Check
 
-| Task | Declared dependency | Diagram | Status |
-| --- | --- | --- | --- |
-| T1 | None | Start | Match |
-| T2 | T1 | T1 -> T2 | Match; T2 defines the protocol T76 must answer |
-| T3 | T2 + release/registry inputs | T2 -> T3 | Match; artifact and closure both done |
-| T4 | T3 + T76 candidate | T3 -> T4 | Match; blocked only on T76 inputs and the npm name |
+| Task | Declared dependency          | Diagram  | Status                                             |
+| ---- | ---------------------------- | -------- | -------------------------------------------------- |
+| T1   | None                         | Start    | Match                                              |
+| T2   | T1                           | T1 -> T2 | Match; T2 defines the protocol T76 must answer     |
+| T3   | T2 + release/registry inputs | T2 -> T3 | Match; artifact and closure both done              |
+| T4   | T3 + T76 candidate           | T3 -> T4 | Match; blocked only on T76 inputs and the npm name |
 
 ## Test Co-location Check
 
-| Task | Layer | Required evidence | Task evidence | Status |
-| --- | --- | --- | --- | --- |
-| T1 | Distribution trust boundary | Integration + security | Integration + security | OK |
-| T2 | Process/health boundary | Unit/integration/security/fault | Same task | OK |
-| T3 | Package/architecture boundary | Architecture/build/security | Same task | OK |
-| T3 | Bootstrap activation path | Unit + e2e | Same task | OK |
-| T4 | User journey/release | E2E/release/platform | Same task | OK |
+| Task | Layer                         | Required evidence               | Task evidence          | Status |
+| ---- | ----------------------------- | ------------------------------- | ---------------------- | ------ |
+| T1   | Distribution trust boundary   | Integration + security          | Integration + security | OK     |
+| T2   | Process/health boundary       | Unit/integration/security/fault | Same task              | OK     |
+| T3   | Package/architecture boundary | Architecture/build/security     | Same task              | OK     |
+| T3   | Bootstrap activation path     | Unit + e2e                      | Same task              | OK     |
+| T4   | User journey/release          | E2E/release/platform            | Same task              | OK     |
 
 Granularity: each task produces one independently reviewable boundary. Tests
 are co-located with the behavior they establish; no later task is used to

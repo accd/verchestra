@@ -8,13 +8,13 @@ it transactionally, but no stable command maps the authoritative
 component. The source CLI is private and imports TypeScript directly, so it is
 not a publishable clean-machine entry point.
 
-AD-016 fixes the 1.0 shape as `npx vestra`: ambient Node performs bootstrap
+AD-016 fixes the 1.0 shape as `npx verchestra`: ambient Node performs bootstrap
 only, then control transfers to the activated hermetic bundle and its embedded
 Node 24.14.0 runtime.
 
 ## Goals
 
-- Provide a thin, publishable npm package named `vestra` with one `vestra` bin.
+- Provide a thin, publishable npm package named `verchestra` with `verchestra` and `vestra` bins.
 - Reuse the qualified TUF staging and transactional activation path.
 - Resolve the active launcher from verified installed metadata, never from a
   hard-coded fixture path.
@@ -22,23 +22,23 @@ Node 24.14.0 runtime.
 
 ## Out of Scope
 
-| Item | Reason |
-| --- | --- |
-| Per-target single binary | Explicitly deferred post-1.0 by AD-016. |
-| A second updater or installer | TUF resolution and transactional activation are canonical. |
-| Publishing or promoting 1.0 | T76 creates the candidate; T77 decides acceptance. |
+| Item                                                              | Reason                                                       |
+| ----------------------------------------------------------------- | ------------------------------------------------------------ |
+| Per-target single binary                                          | Explicitly deferred post-1.0 by AD-016.                      |
+| A second updater or installer                                     | TUF resolution and transactional activation are canonical.   |
+| Publishing or promoting 1.0                                       | T76 creates the candidate; T77 decides acceptance.           |
 | Runtime package/dependency resolution inside the activated bundle | The hermetic bundle contract fixes `runtimeResolver: false`. |
 
 ## User Stories
 
 ### P1: Clean-machine entry point
 
-As a user on a supported machine, I want `npx vestra` to resolve, activate,
+As a user on a supported machine, I want `npx verchestra` to resolve, activate,
 and run the verified CLI without cloning or building the repository.
 
 Acceptance criteria:
 
-1. WHEN `npx vestra` runs on a supported platform and architecture THEN the
+1. WHEN `npx verchestra` runs on a supported platform and architecture THEN the
    bootstrap SHALL resolve the pinned release through the bundled TUF trust
    root, activate it transactionally, and execute its `launcher:vestra` with
    the original arguments.
@@ -107,18 +107,18 @@ Acceptance criteria:
 
 ## Requirements
 
-| ID | Requirement | Status |
-| --- | --- | --- |
-| NPX-01 | One repository-free `npx vestra` command on every supported target | Blocked by T76 artifacts |
-| NPX-02 | Pinned in-package TUF root and fixed credential-free HTTPS source | Blocked by T76 inputs |
-| NPX-03 | Qualified resolve, stage, and transactional activation reuse | Done |
-| NPX-04 | Read-only verified active-launcher resolution | Done |
-| NPX-05 | Real pre-publication activation health gate | Blocked by T76 launcher protocol |
-| NPX-06 | Shell-free argument-preserving handoff and exact exit propagation | Pending |
-| NPX-07 | Deterministic supported-host and public-error contract | Pending |
-| NPX-08 | Minimal compiled npm tarball with no workspace/runtime-resolution leak | Done |
-| NPX-09 | Help, version, portability demo, cleanup, and per-platform evidence | Blocked by T76 candidate |
-| NPX-10 | No clone, source build, credential, or hidden authority prerequisite | Pending |
+| ID     | Requirement                                                            | Status                           |
+| ------ | ---------------------------------------------------------------------- | -------------------------------- |
+| NPX-01 | One repository-free `npx verchestra` command on every supported target | Blocked by T76 artifacts         |
+| NPX-02 | Pinned in-package TUF root and fixed credential-free HTTPS source      | Blocked by T76 inputs            |
+| NPX-03 | Qualified resolve, stage, and transactional activation reuse           | Done                             |
+| NPX-04 | Read-only verified active-launcher resolution                          | Done                             |
+| NPX-05 | Real pre-publication activation health gate                            | Blocked by T76 launcher protocol |
+| NPX-06 | Shell-free argument-preserving handoff and exact exit propagation      | Pending                          |
+| NPX-07 | Deterministic supported-host and public-error contract                 | Pending                          |
+| NPX-08 | Minimal compiled npm tarball with no workspace/runtime-resolution leak | Done                             |
+| NPX-09 | Help, version, portability demo, cleanup, and per-platform evidence    | Blocked by T76 candidate         |
+| NPX-10 | No clone, source build, credential, or hidden authority prerequisite   | Pending                          |
 
 Coverage: 10 requirements; 10 mapped in `tasks.md`; 0 unmapped.
 
@@ -127,8 +127,13 @@ Coverage: 10 requirements; 10 mapped in `tasks.md`; 0 unmapped.
 T76 issue #17 owns the real candidate closure, TUF root and delegated
 metadata, online/offline views, executable launchers, and rollback target.
 Those artifacts do not exist in the repository at the start of this feature.
-The npm registry reports that `vestra` was unpublished on 2026-07-25; the
-repository owner must confirm control/republication before a public release.
+The npm name is `verchestra`, chosen by the owner on 2026-08-25 and verified
+free (a clean 404 with no publish history). `vestra` was ruled out: it carried
+ten published versions before being unpublished on 2026-07-25, and npm reserves
+an unpublished name to its original publisher, who is not this repository's
+owner. `vectra` was ruled out as an active third-party package. `vestra`
+survives as the short bin alias, which npm scopes to the installing tree and
+which therefore cannot collide with anyone.
 Neither condition blocks the verified active-launcher bridge, but both block a
 truthful completion claim for #36.
 

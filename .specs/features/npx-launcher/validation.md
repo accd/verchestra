@@ -13,15 +13,15 @@ candidate release, and the npm name is unconfirmed.
 
 ## T1 evidence
 
-| Outcome | Assertion evidence | Result |
-| --- | --- | --- |
-| Bundle-owned launcher path | `active launcher resolution revalidates the bundle-owned logical path` uses `tools/vestra-direct`, proving no `bin/vestra.cmd` assumption | PASS |
-| Immutable authority result | The same case proves the resolution and nested active pointer are frozen | PASS |
-| Active pointer required | `active launcher resolution requires an authoritative active pointer` | PASS |
-| Pointer/bundle identity bound | `active launcher resolution rejects pointer and installed release identity drift` | PASS |
-| Installed bytes rehashed | `active launcher resolution rehashes installed launcher bytes` | PASS |
-| Path containment | `active launcher resolution rejects a launcher path junction` | PASS |
-| Closed launcher identity | Existing Hermetic Bundle build/security cases reject missing, duplicate, wrong-kind, and incomplete launcher closure | PASS |
+| Outcome                       | Assertion evidence                                                                                                                        | Result |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| Bundle-owned launcher path    | `active launcher resolution revalidates the bundle-owned logical path` uses `tools/vestra-direct`, proving no `bin/vestra.cmd` assumption | PASS   |
+| Immutable authority result    | The same case proves the resolution and nested active pointer are frozen                                                                  | PASS   |
+| Active pointer required       | `active launcher resolution requires an authoritative active pointer`                                                                     | PASS   |
+| Pointer/bundle identity bound | `active launcher resolution rejects pointer and installed release identity drift`                                                         | PASS   |
+| Installed bytes rehashed      | `active launcher resolution rehashes installed launcher bytes`                                                                            | PASS   |
+| Path containment              | `active launcher resolution rejects a launcher path junction`                                                                             | PASS   |
+| Closed launcher identity      | Existing Hermetic Bundle build/security cases reject missing, duplicate, wrong-kind, and incomplete launcher closure                      | PASS   |
 
 Command:
 
@@ -40,18 +40,18 @@ structurally. Conformance is proved behaviorally rather than by a type
 assertion: a case drives the real `TransactionalActivationManager` with the
 real gate and the manager's own `validateHealth` accepts the result.
 
-| Requirement | Assertion evidence | Result |
-| --- | --- | --- |
-| NPX-05 observed from real bytes | `the observed health gate runs both canonical launchers from the staged bytes`; `the behavior digest is derived from launcher output, not from the manifest`; `the observed behavior digest is computed over exactly what the launcher printed` recomputes the expected digest independently | PASS |
-| NPX-05 accepted by activation | `transactional activation accepts the observed evidence and records it with the release` | PASS |
-| NPX-05 deterministic | `the same observed launcher output produces the same evidence twice` | PASS |
-| NPX-06 no shell | `the launcher adapters never open a shell and never build a command string` (static, over the adapter source); `shell metacharacters in user arguments reach the launcher as data and expand nothing` (behavioral, asserts no side-effect file) | PASS |
-| NPX-06 exact propagation | `the verified handoff preserves the argument vector and propagates the launcher's exact exit status` compares the child's own record of `process.argv` to the injected vector | PASS |
-| NPX-07 host contract | `the supported-host contract accepts exactly the qualified platform and architecture pairs`; `an unsupported host is refused deterministically before any process or filesystem effect` | PASS |
-| NPX-07 public errors | `the activation launcher public error contract is closed and schema-valid`; `every observed launcher failure renders a public code without a machine-local path` | PASS |
-| Fail-closed release shape | `a launcher component path that escapes the release root is refused before any process starts`; `a runtime component path that escapes the release root is refused`; `a release without a unique runtime or both canonical launchers is refused` | PASS |
-| Fail-closed identity | `a launcher that reports another identity or another release version is refused`; `canonical launchers that observe different behavior or different checks are refused`; `a health check that did not pass never becomes passing evidence` | PASS |
-| Exit, signal, timeout, bound, cleanup | `a launcher that exits non-zero...`; `a launcher that terminates abnormally...`; `a launcher that never returns is stopped at the health budget`; `a timed-out launcher leaves no descendant process behind`; `a launcher that floods its output is stopped at the output bound`; `a launcher whose report is unreadable or incomplete never becomes evidence`; `a release whose hermetic runtime cannot start fails closed instead of falling back` | PASS |
+| Requirement                           | Assertion evidence                                                                                                                                                                                                                                                                                                                                                                                                                                   | Result |
+| ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| NPX-05 observed from real bytes       | `the observed health gate runs both canonical launchers from the staged bytes`; `the behavior digest is derived from launcher output, not from the manifest`; `the observed behavior digest is computed over exactly what the launcher printed` recomputes the expected digest independently                                                                                                                                                         | PASS   |
+| NPX-05 accepted by activation         | `transactional activation accepts the observed evidence and records it with the release`                                                                                                                                                                                                                                                                                                                                                             | PASS   |
+| NPX-05 deterministic                  | `the same observed launcher output produces the same evidence twice`                                                                                                                                                                                                                                                                                                                                                                                 | PASS   |
+| NPX-06 no shell                       | `the launcher adapters never open a shell and never build a command string` (static, over the adapter source); `shell metacharacters in user arguments reach the launcher as data and expand nothing` (behavioral, asserts no side-effect file)                                                                                                                                                                                                      | PASS   |
+| NPX-06 exact propagation              | `the verified handoff preserves the argument vector and propagates the launcher's exact exit status` compares the child's own record of `process.argv` to the injected vector                                                                                                                                                                                                                                                                        | PASS   |
+| NPX-07 host contract                  | `the supported-host contract accepts exactly the qualified platform and architecture pairs`; `an unsupported host is refused deterministically before any process or filesystem effect`                                                                                                                                                                                                                                                              | PASS   |
+| NPX-07 public errors                  | `the activation launcher public error contract is closed and schema-valid`; `every observed launcher failure renders a public code without a machine-local path`                                                                                                                                                                                                                                                                                     | PASS   |
+| Fail-closed release shape             | `a launcher component path that escapes the release root is refused before any process starts`; `a runtime component path that escapes the release root is refused`; `a release without a unique runtime or both canonical launchers is refused`                                                                                                                                                                                                     | PASS   |
+| Fail-closed identity                  | `a launcher that reports another identity or another release version is refused`; `canonical launchers that observe different behavior or different checks are refused`; `a health check that did not pass never becomes passing evidence`                                                                                                                                                                                                           | PASS   |
+| Exit, signal, timeout, bound, cleanup | `a launcher that exits non-zero...`; `a launcher that terminates abnormally...`; `a launcher that never returns is stopped at the health budget`; `a timed-out launcher leaves no descendant process behind`; `a launcher that floods its output is stopped at the output bound`; `a launcher whose report is unreadable or incomplete never becomes evidence`; `a release whose hermetic runtime cannot start fails closed instead of falling back` | PASS   |
 
 Commands and results:
 
@@ -75,18 +75,18 @@ loosened to a set.
 Implementation: `apps/vestra-launcher/` plus
 `scripts/build-vestra-launcher.mjs`.
 
-| Requirement | Assertion evidence | Result |
-| --- | --- | --- |
-| NPX-08 exact allowlist | `the emitted package is exactly the declared file allowlist`; `npm pack --dry-run reports exactly the declared allowlist`; `the packed tarball itself contains exactly the declared allowlist` (reads the real `.tgz` with a dependency-free tar reader) | PASS |
-| NPX-08 compiled code only | `every public launcher source imports only Node built-ins and its own siblings`; `the tracked bin shim resolves only compiled sibling JavaScript`; the build itself refuses a workspace reference, a `.ts` import, a `node_modules` path, or a machine-local path in any emitted `.js`/`.mjs` | PASS |
-| NPX-08 no install script | `the publish manifest declares one bin, no scripts, and no dependency`, and the build refuses a rendered manifest carrying scripts or dependencies | PASS |
-| NPX-10 no workspace import | `the public launcher may import no workspace package at all, not even inward`; `a third-party import in the public launcher is a boundary violation` | PASS |
-| NPX-02 pinned credential-free source | `a source location that is not credential-free HTTPS is refused` (nine rejected forms); `a target location is held to the same pinned public contract` | PASS |
-| NPX-02 pinned trust root | `a trust root that is substituted or is not a TUF root role is refused`; the build refuses inputs whose `rootDigest` does not match the root bytes | PASS |
-| NPX-02 no environment substitution | `no environment variable can select a different root, repository, or release`, which also asserts no launcher source reads `process.env` | PASS |
-| Determinism | `two builds from identical pinned inputs emit byte-identical files` | PASS |
-| Fail-closed build | `the build refuses to emit without reviewed pinned release inputs`; `the build refuses to overwrite an existing output tree` | PASS |
-| Deterministic public failure | `the emitted bootstrap runs, fails closed, and reports a stable public code` (exit 70, `VES_VESTRA_ACTIVATION_UNAVAILABLE`, empty stdout) | PASS |
+| Requirement                          | Assertion evidence                                                                                                                                                                                                                                                                            | Result |
+| ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| NPX-08 exact allowlist               | `the emitted package is exactly the declared file allowlist`; `npm pack --dry-run reports exactly the declared allowlist`; `the packed tarball itself contains exactly the declared allowlist` (reads the real `.tgz` with a dependency-free tar reader)                                      | PASS   |
+| NPX-08 compiled code only            | `every public launcher source imports only Node built-ins and its own siblings`; `the tracked bin shim resolves only compiled sibling JavaScript`; the build itself refuses a workspace reference, a `.ts` import, a `node_modules` path, or a machine-local path in any emitted `.js`/`.mjs` | PASS   |
+| NPX-08 no install script             | `the publish manifest declares one bin, no scripts, and no dependency`, and the build refuses a rendered manifest carrying scripts or dependencies                                                                                                                                            | PASS   |
+| NPX-10 no workspace import           | `the public launcher may import no workspace package at all, not even inward`; `a third-party import in the public launcher is a boundary violation`                                                                                                                                          | PASS   |
+| NPX-02 pinned credential-free source | `a source location that is not credential-free HTTPS is refused` (nine rejected forms); `a target location is held to the same pinned public contract`                                                                                                                                        | PASS   |
+| NPX-02 pinned trust root             | `a trust root that is substituted or is not a TUF root role is refused`; the build refuses inputs whose `rootDigest` does not match the root bytes                                                                                                                                            | PASS   |
+| NPX-02 no environment substitution   | `no environment variable can select a different root, repository, or release`, which also asserts no launcher source reads `process.env`                                                                                                                                                      | PASS   |
+| Determinism                          | `two builds from identical pinned inputs emit byte-identical files`                                                                                                                                                                                                                           | PASS   |
+| Fail-closed build                    | `the build refuses to emit without reviewed pinned release inputs`; `the build refuses to overwrite an existing output tree`                                                                                                                                                                  | PASS   |
+| Deterministic public failure         | `the emitted bootstrap runs, fails closed, and reports a stable public code` (exit 70, `VES_VESTRA_ACTIVATION_UNAVAILABLE`, empty stdout)                                                                                                                                                     | PASS   |
 
 Commands and results:
 
@@ -113,22 +113,22 @@ Implementation: `apps/vestra-launcher/src/activation-closure.ts`,
 `apps/vestra-launcher/closure/bootstrap-entry.ts`, and the esbuild stage of
 `scripts/build-vestra-launcher.mjs`.
 
-| Requirement | Assertion evidence | Result |
-| --- | --- | --- |
-| NPX-03 real resolve, stage, and transactional activation | `the bootstrap resolves, activates, and runs the pinned release end to end` - a signed filesystem TUF repository holding a release with a real Node runtime and two launchers; `active.json` afterwards equals the published bundle's pointer exactly | PASS |
-| NPX-03 pinned release binding | `a release that is not the pinned release is refused before activation` - `VES_TUF_RELEASE_VIEW_MIXED`, no `active.json` written | PASS |
-| NPX-03 integrity fail-closed | `a tampered component byte stops the bootstrap before anything is activated` - exit 70, canonical TUF code preserved, no `active.json` written | PASS |
-| NPX-03 revalidation on reuse | `a second run revalidates the active release and still executes it` - and a committed activation leaves no journal behind | PASS |
-| NPX-06 argument fidelity | The activated launcher recorded its own `process.argv` and it equals the given vector byte for byte, including `$(echo pwned)` and `; echo pwned`; `the argument vector reaches the closure exactly as it was given`; `an argument vector carrying a null byte never reaches the closure` | PASS |
-| NPX-06 exit propagation | `a clean child exit becomes the bootstrap's own exit status`; `a child terminated by signal is reported the way a shell reports one`; `an unusable termination status is a launch failure, never a success`; end to end, `--exit=3` produced status 3 and `--exit=7` produced status 7 | PASS |
-| NPX-08 zero runtime dependencies | `the emitted bootstrap is one bundled module that imports only Node built-ins` - every static specifier in the emitted `lib/bootstrap.js` starts with `node:`; the build asserts the same before writing a receipt | PASS |
-| NPX-08 no runtime resolution at all | `the bundle's require shim serves Node built-ins and refuses every package` - the shipped shim resolves `node:path` and `util` and throws for `tuf-js`, a relative path, and two absolute paths | PASS |
-| NPX-08 the closure is real, not declared | `the emitted bootstrap fails from inside a real activation closure` - the emitted tarball's failure carries `(VES_TUF_TRUST_ROOT_INVALID)`, which only the bundled anchoring check can raise, and never says "carries no activation closure" | PASS |
-| NPX-08 no leak through the bundler | `the emitted bundle leaks no machine-local path, account name, or dependency path` - scans the real emitted bytes for the repository root, `homedir()`, `tmpdir()`, the account name, `node_modules`, `.pnpm`, `sourceMappingURL`, POSIX and Windows home paths, and `@verchestra/` | PASS |
-| NPX-07 closed public error set | `an upstream failure contributes only a bare canonical code to the public line` - six smuggling attempts and six malformed shapes all yield no detail; the upstream message and path never render | PASS |
-| Boundary preserved | `the build-time closure reaches the workspace only by repository path, never by package name`; `no published launcher source reaches into the build-time closure`; `the published tree carries neither source directory and declares no dependency` | PASS |
-| Determinism preserved | `two builds from identical pinned inputs emit byte-identical files` still passes, unchanged, with the bundler in the path | PASS |
-| No side effect on failure | The emitted `bin/vestra.mjs`, run with `HOME`/`USERPROFILE` redirected to an empty directory, exits 70 and leaves that directory empty: the anchoring check runs before any root is derived, any directory is created, or any name is resolved | PASS |
+| Requirement                                              | Assertion evidence                                                                                                                                                                                                                                                                        | Result |
+| -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| NPX-03 real resolve, stage, and transactional activation | `the bootstrap resolves, activates, and runs the pinned release end to end` - a signed filesystem TUF repository holding a release with a real Node runtime and two launchers; `active.json` afterwards equals the published bundle's pointer exactly                                     | PASS   |
+| NPX-03 pinned release binding                            | `a release that is not the pinned release is refused before activation` - `VES_TUF_RELEASE_VIEW_MIXED`, no `active.json` written                                                                                                                                                          | PASS   |
+| NPX-03 integrity fail-closed                             | `a tampered component byte stops the bootstrap before anything is activated` - exit 70, canonical TUF code preserved, no `active.json` written                                                                                                                                            | PASS   |
+| NPX-03 revalidation on reuse                             | `a second run revalidates the active release and still executes it` - and a committed activation leaves no journal behind                                                                                                                                                                 | PASS   |
+| NPX-06 argument fidelity                                 | The activated launcher recorded its own `process.argv` and it equals the given vector byte for byte, including `$(echo pwned)` and `; echo pwned`; `the argument vector reaches the closure exactly as it was given`; `an argument vector carrying a null byte never reaches the closure` | PASS   |
+| NPX-06 exit propagation                                  | `a clean child exit becomes the bootstrap's own exit status`; `a child terminated by signal is reported the way a shell reports one`; `an unusable termination status is a launch failure, never a success`; end to end, `--exit=3` produced status 3 and `--exit=7` produced status 7    | PASS   |
+| NPX-08 zero runtime dependencies                         | `the emitted bootstrap is one bundled module that imports only Node built-ins` - every static specifier in the emitted `lib/bootstrap.js` starts with `node:`; the build asserts the same before writing a receipt                                                                        | PASS   |
+| NPX-08 no runtime resolution at all                      | `the bundle's require shim serves Node built-ins and refuses every package` - the shipped shim resolves `node:path` and `util` and throws for `tuf-js`, a relative path, and two absolute paths                                                                                           | PASS   |
+| NPX-08 the closure is real, not declared                 | `the emitted bootstrap fails from inside a real activation closure` - the emitted tarball's failure carries `(VES_TUF_TRUST_ROOT_INVALID)`, which only the bundled anchoring check can raise, and never says "carries no activation closure"                                              | PASS   |
+| NPX-08 no leak through the bundler                       | `the emitted bundle leaks no machine-local path, account name, or dependency path` - scans the real emitted bytes for the repository root, `homedir()`, `tmpdir()`, the account name, `node_modules`, `.pnpm`, `sourceMappingURL`, POSIX and Windows home paths, and `@verchestra/`       | PASS   |
+| NPX-07 closed public error set                           | `an upstream failure contributes only a bare canonical code to the public line` - six smuggling attempts and six malformed shapes all yield no detail; the upstream message and path never render                                                                                         | PASS   |
+| Boundary preserved                                       | `the build-time closure reaches the workspace only by repository path, never by package name`; `no published launcher source reaches into the build-time closure`; `the published tree carries neither source directory and declares no dependency`                                       | PASS   |
+| Determinism preserved                                    | `two builds from identical pinned inputs emit byte-identical files` still passes, unchanged, with the bundler in the path                                                                                                                                                                 | PASS   |
+| No side effect on failure                                | The emitted `bin/vestra.mjs`, run with `HOME`/`USERPROFILE` redirected to an empty directory, exits 70 and leaves that directory empty: the anchoring check runs before any root is derived, any directory is created, or any name is resolved                                            | PASS   |
 
 Commands and results:
 
@@ -199,27 +199,27 @@ command resolves a real release today.
 
 ## Repository gates
 
-| Command | Result |
-| --- | --- |
-| `corepack pnpm agent:check` | PASS |
-| `corepack pnpm gate:quick` | PASS - 164 cases, 0 failed, 0 skipped, 0 todo |
-| `corepack pnpm gate:build` | PASS end-to-end on `d8893a2` |
-| `corepack pnpm gate:security` | PASS end-to-end on `d8893a2` |
+| Command                       | Result                                        |
+| ----------------------------- | --------------------------------------------- |
+| `corepack pnpm agent:check`   | PASS                                          |
+| `corepack pnpm gate:quick`    | PASS - 164 cases, 0 failed, 0 skipped, 0 todo |
+| `corepack pnpm gate:build`    | PASS end-to-end on `d8893a2`                  |
+| `corepack pnpm gate:security` | PASS end-to-end on `d8893a2`                  |
 
 Both gates were re-run to completion on `d8893a2`, the current HEAD, after the
 tree moved beneath earlier runs. Every stage: 0 failed, 0 skipped, 0 todo.
 
-| Stage | `gate:build` | `gate:security` |
-| --- | --- | --- |
-| `test:unit` | 2103 | 2103 |
-| `test:contract` | 503 | 503 |
-| `test:integration` | 642 | - |
-| `test:e2e` | 165 | 165 |
-| `test:architecture` | 46 | 46 |
-| `test:build` | 62 | - |
-| `test:qualification` | 251 | 251 |
-| `test:security` | - | 1113 |
-| `test:fault` | - | 291 |
+| Stage                | `gate:build` | `gate:security` |
+| -------------------- | ------------ | --------------- |
+| `test:unit`          | 2103         | 2103            |
+| `test:contract`      | 503          | 503             |
+| `test:integration`   | 642          | -               |
+| `test:e2e`           | 165          | 165             |
+| `test:architecture`  | 46           | 46              |
+| `test:build`         | 62           | -               |
+| `test:qualification` | 251          | 251             |
+| `test:security`      | -            | 1113            |
+| `test:fault`         | -            | 291             |
 
 ### Gates after the activation closure
 
@@ -228,24 +228,24 @@ Every stage: 0 failed, 0 skipped, 0 todo. `complexity:check` reported PASS with
 179 baselined hotspot keys and nothing above 10 unaccounted, so
 `complexity-baseline.json` needed no change.
 
-| Command | Result |
-| --- | --- |
-| `corepack pnpm gate:quick` | PASS |
-| `corepack pnpm gate:build` | PASS |
-| `corepack pnpm gate:security` | PASS |
+| Command                       | Result |
+| ----------------------------- | ------ |
+| `corepack pnpm gate:quick`    | PASS   |
+| `corepack pnpm gate:build`    | PASS   |
+| `corepack pnpm gate:security` | PASS   |
 
-| Stage | `gate:quick` | `gate:build` | `gate:security` | Delta |
-| --- | --- | --- | --- | --- |
-| `test:unit` | 2110 | 2110 | 2110 | +7 |
-| `test:agent-readiness` | 169 | - | - | 0 |
-| `test:contract` | - | 503 | 503 | 0 |
-| `test:integration` | - | 642 | - | 0 |
-| `test:e2e` | - | 170 | 170 | +5 |
-| `test:architecture` | - | 49 | 49 | +3 |
-| `test:build` | - | 65 | - | +3 |
-| `test:qualification` | - | 251 | 251 | 0 |
-| `test:security` | - | - | 1117 | +4 |
-| `test:fault` | - | - | 291 | 0 |
+| Stage                  | `gate:quick` | `gate:build` | `gate:security` | Delta |
+| ---------------------- | ------------ | ------------ | --------------- | ----- |
+| `test:unit`            | 2110         | 2110         | 2110            | +7    |
+| `test:agent-readiness` | 169          | -            | -               | 0     |
+| `test:contract`        | -            | 503          | 503             | 0     |
+| `test:integration`     | -            | 642          | -               | 0     |
+| `test:e2e`             | -            | 170          | 170             | +5    |
+| `test:architecture`    | -            | 49           | 49              | +3    |
+| `test:build`           | -            | 65           | -               | +3    |
+| `test:qualification`   | -            | 251          | 251             | 0     |
+| `test:security`        | -            | -            | 1117            | +4    |
+| `test:fault`           | -            | -            | 291             | 0     |
 
 Every delta is an addition. No case was removed, renamed away, or merged: the
 22 new cases are 7 unit, 5 e2e, 3 architecture, 3 build, and 4 security.
@@ -337,9 +337,9 @@ stopped before `test:fault`, which is therefore recorded on its own.
 
 `corepack pnpm test:fault` was run twice.
 
-| Run | Result |
-| --- | --- |
-| First | 291 cases, 290 passed, 1 failed, 0 skipped, 0 todo |
+| Run    | Result                                             |
+| ------ | -------------------------------------------------- |
+| First  | 291 cases, 290 passed, 1 failed, 0 skipped, 0 todo |
 | Second | 291 cases, 291 passed, 0 failed, 0 skipped, 0 todo |
 
 The first run's failure was `the production crash matrix satisfies the closed
@@ -368,7 +368,7 @@ retried, or skipped to obtain the green run.
   above drives a filesystem TUF repository, because no test may reach the public
   network or trust a self-signed certificate. `HttpsDistributionSource` is
   qualified by its own suites and by the pinned-input contract, but the
-  composed `npx vestra` -> HTTPS -> activation path is proved only by T4's
+  composed `npx verchestra` -> HTTPS -> activation path is proved only by T4's
   clean-machine run.
 
 Fixtures are not accepted as substitutes for any of these items.

@@ -10,19 +10,19 @@ ambient-Node process performs only host validation, TUF resolution, staging,
 activation, active-launcher resolution, and process handoff. Product behavior
 runs exclusively inside the activated bundle.
 
-Flow: `npx vestra` -> bundled root/config -> `TufUpdateClient` ->
+Flow: `npx verchestra` -> bundled root/config -> `TufUpdateClient` ->
 `TransactionalActivationManager` -> verified active launcher -> embedded
 runtime/CLI.
 
 ## Reuse Analysis
 
-| Component | Location | Reuse |
-| --- | --- | --- |
-| TUF client and HTTPS source | `packages/distribution/src/tuf-update-client.ts` | Resolve and stage the exact host release with pinned trust. |
-| Transactional activation | `packages/distribution/src/transactional-activation.ts` | Reverify, health-gate, publish, recover, and switch `active.json`. |
-| State-root conventions | `packages/platform-node/src/state-root.ts` | Derive an OS-qualified machine-local parent; launcher state remains separate from workspaces. |
-| Safe child-process contract | `packages/platform-node/src/gate-commit-adapters.ts` | Follow argument-array, `shell: false`, timeout, bounded-output, and process cleanup patterns. |
-| Hermetic bundle manifest | `packages/distribution/src/hermetic-bundle.ts` | Select components by identity and verified logical path. |
+| Component                   | Location                                                | Reuse                                                                                         |
+| --------------------------- | ------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| TUF client and HTTPS source | `packages/distribution/src/tuf-update-client.ts`        | Resolve and stage the exact host release with pinned trust.                                   |
+| Transactional activation    | `packages/distribution/src/transactional-activation.ts` | Reverify, health-gate, publish, recover, and switch `active.json`.                            |
+| State-root conventions      | `packages/platform-node/src/state-root.ts`              | Derive an OS-qualified machine-local parent; launcher state remains separate from workspaces. |
+| Safe child-process contract | `packages/platform-node/src/gate-commit-adapters.ts`    | Follow argument-array, `shell: false`, timeout, bounded-output, and process cleanup patterns. |
+| Hermetic bundle manifest    | `packages/distribution/src/hermetic-bundle.ts`          | Select components by identity and verified logical path.                                      |
 
 ## Components
 
@@ -72,22 +72,22 @@ trust root, repository, executable, or release.
 
 ## Error Strategy
 
-| Scenario | Outcome |
-| --- | --- |
-| Unsupported host | Stable public error before effects |
-| TUF or activation failure | Preserve canonical error code; execute nothing |
-| Missing/tampered active release | Integrity error; execute nothing |
-| Ambiguous/missing launcher | Closed launcher-resolution error |
-| Child non-zero/signal | Propagate the child's observable result |
-| Missing T76 inputs | Package build/release fails; never substitutes fixtures |
+| Scenario                        | Outcome                                                 |
+| ------------------------------- | ------------------------------------------------------- |
+| Unsupported host                | Stable public error before effects                      |
+| TUF or activation failure       | Preserve canonical error code; execute nothing          |
+| Missing/tampered active release | Integrity error; execute nothing                        |
+| Ambiguous/missing launcher      | Closed launcher-resolution error                        |
+| Child non-zero/signal           | Propagate the child's observable result                 |
+| Missing T76 inputs              | Package build/release fails; never substitutes fixtures |
 
 ## Decisions
 
-| Decision | Choice | Rationale |
-| --- | --- | --- |
-| Entry point | `npx vestra` | AD-016 owner decision |
-| Active path | Reopen verified installed manifest | `active.json` intentionally contains no path |
-| Launcher identity | `componentId === "launcher:vestra"` | Logical paths are bundle-owned and target-specific |
-| Execution | Direct process, `shell: false` | Prevent argument interpolation/injection |
-| Real trust/config | Generated or supplied by T76 | Fixtures are not release authority |
-| Completion | Remains open until clean-machine platform evidence | Avoid installer/readiness claims before T76 |
+| Decision          | Choice                                             | Rationale                                          |
+| ----------------- | -------------------------------------------------- | -------------------------------------------------- |
+| Entry point       | `npx verchestra`                                   | AD-016 owner decision                              |
+| Active path       | Reopen verified installed manifest                 | `active.json` intentionally contains no path       |
+| Launcher identity | `componentId === "launcher:vestra"`                | Logical paths are bundle-owned and target-specific |
+| Execution         | Direct process, `shell: false`                     | Prevent argument interpolation/injection           |
+| Real trust/config | Generated or supplied by T76                       | Fixtures are not release authority                 |
+| Completion        | Remains open until clean-machine platform evidence | Avoid installer/readiness claims before T76        |
