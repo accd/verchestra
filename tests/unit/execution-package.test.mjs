@@ -52,6 +52,72 @@ test("a pinned V1 package remains verifiable under its V1 predicate", async () =
   assert.equal((await builder.verify(sealed, trust, currentState(input))).ok, true);
 });
 
+test("V1 preserves UTF-16 identity ordering for every versioned collection", async () => {
+  const base = packageInput({ schemaVersion: 1 });
+  const unorderedRefs = [
+    { artifactId: "alpha", digest: digest("alpha") },
+    { artifactId: "Zulu", digest: digest("Zulu") }
+  ];
+  const unorderedRoles = [
+    { ...base.roleRequirements[0], role: "alpha" },
+    { ...base.roleRequirements[1], role: "Zulu" }
+  ];
+  const unorderedGates = [
+    { gateId: "alpha", command: "alpha", evidenceRequired: true },
+    { gateId: "Zulu", command: "Zulu", evidenceRequired: true }
+  ];
+  const unorderedCriteria = [
+    { criterionId: "alpha", requirementIds: ["VES-SPC-001"], verificationRefs: ["alpha"] },
+    { criterionId: "Zulu", requirementIds: ["VES-SPC-004"], verificationRefs: ["Zulu"] }
+  ];
+  const input = packageInput({
+    schemaVersion: 1,
+    decisions: unorderedRefs,
+    contextRecipes: unorderedRefs,
+    discoveryEvidence: unorderedRefs,
+    dataPolicies: unorderedRefs,
+    seedSpecifications: unorderedRefs,
+    roleRequirements: unorderedRoles,
+    gates: unorderedGates,
+    completionCriteria: unorderedCriteria,
+    completedTaskEvidence: [],
+    bindings: {
+      ...base.bindings,
+      sourceState: {
+        alpha: digest("alpha-source"),
+        Zulu: digest("Zulu-source")
+      }
+    }
+  });
+  const { builder } = executionHarness();
+  const sealed = await builder.build(input);
+  const expected = ["Zulu", "alpha"];
+  for (const collection of [
+    sealed.payload.decisions,
+    sealed.payload.contextRecipes,
+    sealed.payload.discoveryEvidence,
+    sealed.payload.dataPolicies,
+    sealed.payload.seedSpecifications
+  ])
+    assert.deepEqual(
+      collection.map((entry) => entry.artifactId),
+      expected
+    );
+  assert.deepEqual(
+    sealed.payload.roleRequirements.map((entry) => entry.role),
+    expected
+  );
+  assert.deepEqual(
+    sealed.payload.gates.map((entry) => entry.gateId),
+    expected
+  );
+  assert.deepEqual(
+    sealed.payload.completionCriteria.map((entry) => entry.criterionId),
+    expected
+  );
+  assert.deepEqual(Object.keys(sealed.payload.bindings.sourceState), expected);
+});
+
 test("V1 retains code-unit ordering at every legacy default-sort site", async () => {
   const base = packageInput({ schemaVersion: 1 });
   const tasks = structuredClone(base.tasks);

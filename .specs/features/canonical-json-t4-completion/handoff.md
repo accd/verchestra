@@ -59,9 +59,11 @@ becomes mandatory and permanent.
   its own issue. It uses `JSON.stringify` on a fixed-order literal, was never
   locale-dependent, and its ceiling is already 0; its real risk is at-most-once
   correctness, a distinct design unit.
-- T4i will likely end at a **non-zero ceiling by design**: retaining V1
-  verification means retaining the V1 sort. #58's "no `localeCompare`" box
-  closes as "no unintentional ordering", with residuals named (CJ5-12).
+- T4i's V1 compatibility does not require a non-zero ambient-locale ceiling:
+  the historical default sort is preserved explicitly with UTF-16 code-unit
+  comparison. The Execution Package owner therefore has a zero
+  `localeCompare` ceiling; the correction and mixed-case regression are
+  recorded in `.specs/features/canonical-json-t4i-signed-evidence/validation.md`.
 - Phase order inverts the matrix's risk order (T4j before T4i) because the
   dominant constraint is a closing window, not risk.
 
