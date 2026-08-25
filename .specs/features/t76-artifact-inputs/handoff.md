@@ -7,8 +7,8 @@ branch: codex/issue-17-candidate-manifest
 baseRevision: 1f034e3be8b0252963208d8bab26e3839c68f558
 lastCompletedTask: T4
 nextTask: "Dispatch t76-candidate-build.yml at an exact reviewed SHA, retain the five target artifacts and reconciled index, then materialize the four views and rollback proof before TUF publication."
-lastGate: "HEAD 99152c8 plus T4 workflow; workflow contract suite 6/6; prior gate:quick and gate:release PASS; dispatch and independent review pending"
-updatedAt: 2026-08-25T06:00:00Z
+lastGate: "HEAD 71b9089; workflow contract suite 6/6; agent:check PASS; gate:quick PASS (2093 unit + 159 readiness) and gate:release PASS (2093 unit + 39 architecture + 251 qualification + 1087 security + 284 fault + 28 release); dispatch and independent review pending"
+updatedAt: 2026-08-25T06:40:00Z
 ---
 
 # Scope completed

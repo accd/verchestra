@@ -28,14 +28,17 @@ not claim T76/#17 completion.
   passed, 0 failed, skipped, or todo.
 - `corepack pnpm typecheck` — PASS.
 - `corepack pnpm agent:check` — PASS.
-- `corepack pnpm gate:quick` — PASS (2093 unit + 153 readiness cases; zero
+- `corepack pnpm gate:quick` — PASS (2093 unit + 159 readiness cases; zero
   failures/skips/todos).
 - `corepack pnpm gate:security` — PASS (2093 unit, 39 architecture, 251
   qualification, 1087 security, 165 e2e, and 284 fault cases; zero
   failures/skips/todos).
 - `corepack pnpm gate:release` — PASS (2093 unit, 39 architecture, 251
-  qualification, 1087 security, 165 e2e, 284 fault, and 28 release cases;
+  qualification, 1087 security, 284 fault, and 28 release cases;
   zero failures/skips/todos).
+- `corepack pnpm gate:release` at `71b9089` — PASS (2093 unit, 39
+  architecture, 251 qualification, 1087 security, 284 fault, and 28 release
+  cases; zero failures/skips/todos).
 - SonarCloud Code Analysis for PR #324 at `d330848` — PASS.
 
 Independent sensor review and the original #17 acceptance criteria remain
