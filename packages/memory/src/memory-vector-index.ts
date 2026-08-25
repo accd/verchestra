@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { readFileSync, statSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 
+import { canonicalizeJsonV2 } from "@verchestra/domain";
 import { getLoadablePath } from "sqlite-vec";
 
 import { MemoryStoreError } from "./memory-store.ts";
@@ -167,16 +168,22 @@ function embeddingDigest(values: readonly number[]): string {
   return sha256(bytes);
 }
 
-function canonical(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
-  if (value !== null && typeof value === "object") {
-    return `{${Object.entries(value as Row)
-      .filter(([, item]) => item !== undefined)
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([key, item]) => `${JSON.stringify(key)}:${canonical(item)}`)
-      .join(",")}}`;
-  }
-  return JSON.stringify(value);
+// This module's former private recursive serializer ordered object members
+// with the ambient-locale `String.prototype.localeCompare`; `canonicalizeJsonV2`
+// (RFC 8785, UTF-16 code-unit member order) replaces it at every call site
+// below (issue #58). The vector table name, the authority digest, the stored
+// model JSON and its digest, the vector digest and the generation ID are all
+// derived from those bytes -- and `assertTableName` and `#verifyGeneration`
+// re-derive them against persisted rows -- so the encoder must not depend on
+// the machine's collation.
+
+// Code-unit comparison, not localeCompare: this ordering fixes the persisted
+// `memory_vector_members.row_id` sequence and the vector digest that
+// `#verifyGeneration` re-derives from it (issue #58).
+function codeUnitCompare(left: string, right: string): number {
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
 }
 
 const codeOf = (error: unknown): string | undefined =>
@@ -219,7 +226,7 @@ function qualifiedDigest(value: unknown, name: string): string {
 }
 
 function tableName(workspaceId: string, projectId: string, slot: VectorSlot): string {
-  return `memory_vec_${rawSha256(canonical({ workspaceId, projectId })).slice(0, 24)}_${slot}`;
+  return `memory_vec_${rawSha256(canonicalizeJsonV2({ workspaceId, projectId })).slice(0, 24)}_${slot}`;
 }
 
 function assertTableName(value: string, workspaceId: string, projectId: string, slot: VectorSlot): void {
@@ -286,7 +293,7 @@ function authoritySnapshot(db: DatabaseSync, value: { readonly workspaceId: stri
     chunks
   };
   return Object.freeze({
-    authorityDigest: sha256(canonical(state)),
+    authorityDigest: sha256(canonicalizeJsonV2(state)),
     lexicalGenerationId: state.generationId,
     chunks: Object.freeze(chunks.map((chunk) => Object.freeze(chunk)))
   });
@@ -363,9 +370,11 @@ function normalizeBuild(value: unknown): NormalizedBuild {
         embeddingDigest: embeddingDigest(embedding)
       });
     })
-    .sort((left, right) => left.sourceId.localeCompare(right.sourceId) || left.chunkId.localeCompare(right.chunkId));
+    .sort(
+      (left, right) => codeUnitCompare(left.sourceId, right.sourceId) || codeUnitCompare(left.chunkId, right.chunkId)
+    );
   const vectorDigest = sha256(
-    canonical(
+    canonicalizeJsonV2(
       vectors.map((vector) => ({
         sourceId: vector.sourceId,
         chunkId: vector.chunkId,
@@ -374,7 +383,7 @@ function normalizeBuild(value: unknown): NormalizedBuild {
       }))
     )
   );
-  const modelDigest = sha256(canonical(model));
+  const modelDigest = sha256(canonicalizeJsonV2(model));
   return Object.freeze({
     schemaVersion: 1,
     workspaceId,
@@ -384,7 +393,7 @@ function normalizeBuild(value: unknown): NormalizedBuild {
     modelDigest,
     vectors: Object.freeze(vectors),
     vectorDigest,
-    generationId: sha256(canonical({ workspaceId, projectId, authorityDigest, modelDigest, vectorDigest }))
+    generationId: sha256(canonicalizeJsonV2({ workspaceId, projectId, authorityDigest, modelDigest, vectorDigest }))
   });
 }
 
@@ -536,7 +545,7 @@ export class MemoryVectorIndex {
     if (generation.extensionVersion !== this.#status.version || generation.assetSha256 !== this.#status.assetSha256) {
       throw vectorError("VES_VECTOR_CORRUPT", "Vector generation runtime identity is incompatible", true);
     }
-    const modelDigest = sha256(canonical(generation.model));
+    const modelDigest = sha256(canonicalizeJsonV2(generation.model));
     if (
       modelDigest !== String(row["model_digest"]) ||
       generation.model.dimensions !== Number(row["dimensions"]) ||
@@ -545,7 +554,7 @@ export class MemoryVectorIndex {
       throw vectorError("VES_VECTOR_CORRUPT", "Vector model metadata digest mismatch", true);
     }
     const expectedGenerationId = sha256(
-      canonical({
+      canonicalizeJsonV2({
         workspaceId: generation.workspaceId,
         projectId: generation.projectId,
         authorityDigest: generation.authorityDigest,
@@ -589,7 +598,7 @@ export class MemoryVectorIndex {
       }
     }
     const vectorDigest = sha256(
-      canonical(
+      canonicalizeJsonV2(
         members.map((member) => ({
           sourceId: String(member["source_id"]),
           chunkId: String(member["chunk_id"]),
@@ -625,7 +634,7 @@ export class MemoryVectorIndex {
     const actual = build.vectors
       .map((vector) => `${vector.sourceId}\0${vector.chunkId}\0${vector.contentDigest}`)
       .sort();
-    if (canonical(expected) !== canonical(actual)) {
+    if (canonicalizeJsonV2(expected) !== canonicalizeJsonV2(actual)) {
       throw vectorError("VES_VECTOR_AUTHORITY_MISMATCH", "Vector set differs from active lexical chunks");
     }
     const existing = this.#rowForGeneration(build.generationId);
@@ -668,7 +677,7 @@ export class MemoryVectorIndex {
         build.workspaceId,
         build.projectId,
         build.authorityDigest,
-        canonical(build.model),
+        canonicalizeJsonV2(build.model),
         build.modelDigest,
         build.model.dimensions,
         build.vectors.length,

@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
 
+import { canonicalizeJsonV2 } from "@verchestra/domain";
+
 type Classification = "public" | "internal" | "confidential" | "restricted" | "secret";
 type SourceKind = "repository" | "tracker" | "knowledge" | "memory" | "database";
 type SemanticMode = "disabled" | "preferred" | "required";
@@ -262,16 +264,21 @@ function integrity(message: string): never {
   throw new MemoryRetrievalError("VES_MEMORY_RETRIEVAL_INTEGRITY", message);
 }
 
-function canonical(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
-  if (value !== null && typeof value === "object") {
-    return `{${Object.entries(value as Row)
-      .filter(([, entry]) => entry !== undefined)
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([key, entry]) => `${JSON.stringify(key)}:${canonical(entry)}`)
-      .join(",")}}`;
-  }
-  return JSON.stringify(value);
+// This module's former private recursive serializer ordered object members
+// with the ambient-locale `String.prototype.localeCompare`; `canonicalizeJsonV2`
+// (RFC 8785, UTF-16 code-unit member order) replaces it at every call site
+// below (issue #58). The logical key, the fragment ID and the search ID are all
+// derived from these bytes, and a promoted memory artifact carries the fragment
+// and search IDs into Git, so the encoder must not depend on the machine's
+// collation.
+
+// Code-unit comparison, not localeCompare: this is the stable tie-break the
+// result explanation advertises as "fragment-id-ascending", so it fixes the
+// emitted result ranks and therefore the searchId digest (issue #58).
+function codeUnitCompare(left: string, right: string): number {
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
 }
 
 const sha256 = (value: string): string => `sha256:${createHash("sha256").update(value).digest("hex")}`;
@@ -319,7 +326,7 @@ function logicalKey(value: {
   readonly sourceId: string;
   readonly chunkId: string;
 }): string {
-  return canonical({
+  return canonicalizeJsonV2({
     workspaceId: value.workspaceId,
     projectId: value.projectId,
     sourceId: value.sourceId,
@@ -411,7 +418,9 @@ function normalizeRecord(value: unknown): NormalizedRecord {
     contentDigest: qualifiedDigest(row["contentDigest"], "record.contentDigest"),
     state: enumValue(row["state"], STATES, "record.state"),
     logicalKey: logicalKey({ workspaceId, projectId, sourceId, chunkId }),
-    fragmentId: sha256(canonical({ workspaceId, projectId, sourceId, chunkId, contentDigest: row["contentDigest"] })),
+    fragmentId: sha256(
+      canonicalizeJsonV2({ workspaceId, projectId, sourceId, chunkId, contentDigest: row["contentDigest"] })
+    ),
     retrievedAtMs: retrievedAt.milliseconds,
     validUntilMs: validUntil?.milliseconds ?? null
   } satisfies NormalizedRecord;
@@ -618,7 +627,7 @@ export class ExplainableMemoryRetriever {
       (left, right) =>
         right.finalScore - left.finalScore ||
         right.rrfScore - left.rrfScore ||
-        left.record.logicalKey.localeCompare(right.record.logicalKey)
+        codeUnitCompare(left.record.logicalKey, right.record.logicalKey)
     );
 
     const materialize = (entry: (typeof scored)[number], rank: number) =>
@@ -709,7 +718,7 @@ export class ExplainableMemoryRetriever {
       degradations,
       explanation
     };
-    return deepFreeze({ ...payload, searchId: sha256(canonical(payload)) });
+    return deepFreeze({ ...payload, searchId: sha256(canonicalizeJsonV2(payload)) });
   }
 }
 
@@ -839,7 +848,19 @@ function mergeSourceRecords(
       sourceId: row["sourceId"],
       chunkId: row["chunkId"]
     });
-    const fingerprint = canonical(value);
+    // A source port's record is untrusted and not yet validated here.
+    // `canonicalizeJsonV2` rejects material the old serializer silently
+    // encoded (an `undefined` member, a cycle, a non-plain prototype); such a
+    // record is kept rather than deduplicated, so the strict record
+    // normalization downstream still reports it under this module's own error
+    // codes instead of a canonicalization failure escaping the merge.
+    let fingerprint: string;
+    try {
+      fingerprint = canonicalizeJsonV2(value);
+    } catch {
+      merged.push(value);
+      continue;
+    }
     if (fingerprints.get(key) === fingerprint) continue;
     fingerprints.set(key, fingerprint);
     merged.push(value);

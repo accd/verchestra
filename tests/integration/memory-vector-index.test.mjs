@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { afterEach, test } from "node:test";
 
 import {
@@ -359,4 +360,105 @@ test("generation identity changes with model, authority, or embedding content", 
   assert.notEqual(first.vectorDigest, vectorChanged.vectorDigest);
   index.close();
   store.close();
+});
+
+// #58 (memory vertical): memory-vector-index.ts ordered canonical-JSON object
+// members and the vector list with String.prototype.localeCompare, which is
+// locale-dependent and diverges from UTF-16 code-unit order for the mixed-case
+// ASCII identifiers IDENTIFIER_PATTERN accepts. The vector order fixes the
+// persisted memory_vector_members.row_id sequence and the vector digest that
+// #verifyGeneration re-derives from it. Replacing localeCompare with a
+// comparator that reverses code-unit order simulates a divergent collation
+// without depending on any particular installed ICU locale disagreeing on the
+// host running the test.
+async function withHostileLocaleCompare(run) {
+  const original = String.prototype.localeCompare;
+  String.prototype.localeCompare = function hostileLocaleCompare(other) {
+    const left = String(this);
+    return left < other ? 1 : left > other ? -1 : 0;
+  };
+  try {
+    return await run();
+  } finally {
+    String.prototype.localeCompare = original;
+  }
+}
+
+const mixedCaseBatch = () =>
+  batch([source("Source-b", { contents: ["beta content"] }), source("source-a", { contents: ["alpha content"] })]);
+
+async function mixedCaseReady() {
+  const context = await opened();
+  context.store.ingest(mixedCaseBatch());
+  const index = new MemoryVectorIndex({
+    dbPath: context.dbPath,
+    mode: "preferred",
+    now: () => now,
+    ...localVectorAsset()
+  });
+  index.open();
+  return { ...context, index };
+}
+
+// Vectors are handed in reversed so the module's own ordering, not the caller's
+// argument order, decides the persisted row sequence.
+function reversedMixedCaseBuild(index) {
+  const snapshot = index.authoritySnapshot({ workspaceId, projectId });
+  const vectors = snapshot.chunks.map((chunk, position) => ({
+    workspaceId,
+    projectId,
+    sourceId: chunk.sourceId,
+    chunkId: chunk.chunkId,
+    contentDigest: chunk.contentDigest,
+    embedding: position === 0 ? [1, 0, 0] : [0, 1, 0]
+  }));
+  return {
+    schemaVersion: 1,
+    workspaceId,
+    projectId,
+    authorityDigest: snapshot.authorityDigest,
+    model: model(),
+    vectors: [...vectors].reverse()
+  };
+}
+
+test("vector generation identity and persisted row order are stable across divergent locale collations", async () => {
+  const { dbPath, index, store } = await mixedCaseReady();
+  const built = index.buildGeneration(reversedMixedCaseBuild(index));
+  // Rebuilding the identical input under a hostile collation must reproduce the
+  // exact generation identity, so the index recognizes it rather than staging a
+  // new slot.
+  const rebuilt = await withHostileLocaleCompare(() => index.buildGeneration(reversedMixedCaseBuild(index)));
+  assert.equal(rebuilt.changed, false);
+  assert.equal(rebuilt.generationId, built.generationId);
+  assert.equal(rebuilt.vectorDigest, built.vectorDigest);
+  assert.equal(rebuilt.tableName, built.tableName);
+  assert.equal(rebuilt.authorityDigest, built.authorityDigest);
+
+  // activeGeneration re-derives the table name, the model digest and the
+  // generation identity against the stored row and fails closed on a mismatch.
+  assert.deepEqual(
+    await withHostileLocaleCompare(() => index.activeGeneration({ workspaceId, projectId })),
+    index.activeGeneration({ workspaceId, projectId })
+  );
+
+  index.close();
+  store.close();
+
+  // Code-unit order specifically, not merely "some" deterministic order:
+  // uppercase sorts before lowercase in UTF-16, so "Source-b" holds row 1 even
+  // though every ambient collation the repository has met orders "source-a"
+  // first.
+  const db = new DatabaseSync(dbPath, { readOnly: true, allowExtension: false });
+  try {
+    const members = db
+      .prepare("SELECT row_id, source_id FROM memory_vector_members WHERE generation_id=? ORDER BY row_id")
+      .all(built.generationId);
+    assert.deepEqual(
+      members.map((row) => String(row.source_id)),
+      ["Source-b", "source-a"]
+    );
+  } finally {
+    db.close();
+  }
 });

@@ -220,6 +220,9 @@ importers:
       '@verchestra/application':
         specifier: workspace:0.0.0
         version: link:../application
+      '@verchestra/domain':
+        specifier: workspace:0.0.0
+        version: link:../domain
       sqlite-vec:
         specifier: 0.1.9
         version: 0.1.9

@@ -309,3 +309,109 @@ test("lexical source exception is sanitized and vector is never called", async (
   );
   assert.deepEqual(fixture.calls, ["policy", "lexical"]);
 });
+
+// #58 (memory vertical): memory-retriever.ts ordered canonical-JSON object
+// members with String.prototype.localeCompare and broke result ties with
+// `logicalKey.localeCompare(...)`. Both are locale-dependent and diverge from
+// UTF-16 code-unit order for the mixed-case ASCII identifiers SAFE_ID accepts.
+// Replacing localeCompare with a comparator that reverses code-unit order
+// simulates a divergent collation without depending on any particular
+// installed ICU locale disagreeing on the host running the test.
+async function withHostileLocaleCompare(run) {
+  const original = String.prototype.localeCompare;
+  String.prototype.localeCompare = function hostileLocaleCompare(other) {
+    const left = String(this);
+    return left < other ? 1 : left > other ? -1 : 0;
+  };
+  try {
+    return await run();
+  } finally {
+    String.prototype.localeCompare = original;
+  }
+}
+
+// Two records that tie on every numeric term of the ranking (each is ranked 1
+// in exactly one modality, both are equally fresh), so the stable tie-break
+// this surface advertises as "fragment-id-ascending" -- a comparison of the
+// canonical logical keys -- is the only thing that decides their order.
+function tiedRetrievalInput() {
+  const upper = record(1, { sourceId: "Source-b", chunkId: "Chunk-b", content: "upper case identity" });
+  const lower = record(2, { sourceId: "source-a", chunkId: "chunk-a", content: "lower case identity" });
+  return retrievalInput({
+    records: [lower, upper],
+    lexical: { generationId: digest("lexical-generation"), candidates: [lexicalCandidate(upper, 1)] },
+    vector: {
+      status: "ready",
+      generationId: digest("vector-generation"),
+      candidates: [vectorCandidate(lower, 1)]
+    }
+  });
+}
+
+test("retrieval identity, fragment identity and tie-break order are stable across divergent locale collations", async () => {
+  const input = tiedRetrievalInput();
+  const plain = retriever.search(input);
+  const hostile = await withHostileLocaleCompare(() => retriever.search(tiedRetrievalInput()));
+  assert.equal(plain.searchId, hostile.searchId);
+  assert.deepEqual(
+    plain.results.map((hit) => hit.fragmentId),
+    hostile.results.map((hit) => hit.fragmentId)
+  );
+  assert.deepEqual(
+    plain.results.map((hit) => hit.chunkId),
+    hostile.results.map((hit) => hit.chunkId)
+  );
+  // The two hits really do tie on score, so the code-unit tie-break is load
+  // bearing here.
+  assert.equal(plain.results.length, 2);
+  assert.equal(plain.results[0].explanation.finalScore, plain.results[1].explanation.finalScore);
+  // Code-unit order specifically, not merely "some" deterministic order: the
+  // canonical logical key leads with "chunkId", and uppercase sorts before
+  // lowercase in UTF-16, so "Chunk-b" ranks first even though every ambient
+  // collation the repository has met orders "chunk-a" first.
+  assert.deepEqual(
+    plain.results.map((hit) => hit.chunkId),
+    ["Chunk-b", "chunk-a"]
+  );
+});
+
+test("source-record merge deduplication is stable across divergent locale collations", async () => {
+  const duplicated = record(1, { sourceId: "Source-b", chunkId: "Chunk-b" });
+  const build = () => ({
+    policy: { authorize: async () => retrievalInput().policy },
+    lexical: {
+      retrieve: async () => ({
+        generationId: digest("lexical-generation"),
+        records: [duplicated],
+        candidates: [lexicalCandidate(duplicated, 1)]
+      })
+    },
+    vector: {
+      retrieve: async () => ({
+        status: "ready",
+        generationId: digest("vector-generation"),
+        records: [{ ...duplicated }],
+        candidates: [vectorCandidate(duplicated, 1)]
+      })
+    }
+  });
+  const request = {
+    schemaVersion: 1,
+    workspaceId,
+    projectId,
+    query: "refund workflow",
+    purpose: "discovery",
+    evaluatedAt,
+    limit: 5,
+    embedding: [1, 0, 0]
+  };
+  // The merge fingerprint is canonical JSON: if it varied by collation the two
+  // structurally identical records would stop deduplicating and the strict
+  // uniqueness check downstream would reject the search.
+  const plain = await new PolicyFilteredMemoryRetrievalService(build()).search(request);
+  const hostile = await withHostileLocaleCompare(() =>
+    new PolicyFilteredMemoryRetrievalService(build()).search(request)
+  );
+  assert.equal(plain.searchId, hostile.searchId);
+  assert.equal(plain.results.length, 1);
+});

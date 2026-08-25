@@ -95,10 +95,14 @@ const UNCLASSIFIED_CEILINGS = Object.freeze({
   "packages/evidence/src/run-capsule/run-capsule.ts": 3,
   "packages/evidence/src/support-bundle/support-bundle.ts": 2,
   "packages/extension-host/src/index.ts": 1,
-  "packages/memory/src/memory-lifecycle.ts": 2,
-  "packages/memory/src/memory-retriever.ts": 2,
-  "packages/memory/src/memory-store.ts": 5,
-  "packages/memory/src/memory-vector-index.ts": 3,
+  // Memory owners: migrated (issue #58), ceilings tightened to 0. Every
+  // private canonical-JSON serializer is now `canonicalizeJsonV2`, and every
+  // ordering that reaches a digest, a stored identity or persisted bytes uses
+  // explicit UTF-16 code-unit comparison.
+  "packages/memory/src/memory-lifecycle.ts": 0,
+  "packages/memory/src/memory-retriever.ts": 0,
+  "packages/memory/src/memory-store.ts": 0,
+  "packages/memory/src/memory-vector-index.ts": 0,
   "packages/policy/src/policy-bundle.ts": 2,
   "packages/platform-node/src/git-worktree-adapter.ts": 0
 });

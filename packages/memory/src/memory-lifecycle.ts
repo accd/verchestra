@@ -10,6 +10,7 @@ import type {
   PlacementSnapshot,
   WritePlan
 } from "@verchestra/application";
+import { canonicalizeJsonV2, normalizeDeclaredSet } from "@verchestra/domain";
 
 type Row = Record<string, unknown>;
 type Classification = "public" | "internal" | "confidential" | "restricted";
@@ -187,22 +188,40 @@ const CLASSIFICATIONS: readonly Classification[] = ["public", "internal", "confi
 const PROTECTIONS: readonly ObjectProtection[] = ["none", "canonical", "required-evidence"];
 const SOURCE_KINDS = ["repository", "tracker", "knowledge", "memory", "database"] as const;
 
-function canonical(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
-  if (value !== null && typeof value === "object") {
-    return `{${Object.entries(value as Row)
-      .filter(([, entry]) => entry !== undefined)
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([key, entry]) => `${JSON.stringify(key)}:${canonical(entry)}`)
-      .join(",")}}`;
-  }
-  return JSON.stringify(value);
-}
-
+// This module's former private recursive serializer ordered object members
+// with the ambient-locale `String.prototype.localeCompare`; `canonicalizeJsonV2`
+// (RFC 8785, UTF-16 code-unit member order) replaces it at every call site
+// below (issue #58). Every identity here -- promotion plan IDs, managed object
+// IDs, garbage-collection plan IDs, the stored GC receipt and the lifecycle
+// state digest -- is derived from those bytes, so the encoder must not depend
+// on the machine's collation.
 const digest = (value: string | Uint8Array): string => `sha256:${createHash("sha256").update(value).digest("hex")}`;
 
 function invalid(message: string): never {
   throw new MemoryLifecycleError("VES_MEMORY_LIFECYCLE_INVALID", message);
+}
+
+// Both plan-integrity checks previously re-encoded `{ ...plan, planId:
+// undefined }`, relying on the old serializer silently dropping `undefined`
+// members to mean "every plan field except its own identity".
+// `canonicalizeJsonV2` rejects `undefined` instead of dropping it, so the
+// identity member is removed rather than blanked -- the same bytes without
+// depending on a silent prune. Every other own enumerable member is kept, so a
+// plan carrying a tampered extra field still fails its identity check.
+function planMaterial(plan: object): Readonly<Record<string, unknown>> {
+  return Object.fromEntries(Object.entries(plan).filter(([key]) => key !== "planId"));
+}
+
+// A caller-supplied plan is untrusted input. A value canonicalizeJsonV2
+// refuses to encode (an `undefined` member, a cycle, a non-plain prototype) is
+// an invalid plan, so it fails closed under this surface's own plan-integrity
+// code rather than escaping as a canonicalization error (issue #58).
+function planIdentity(plan: object, code: string, message: string): string {
+  try {
+    return digest(canonicalizeJsonV2(planMaterial(plan)));
+  } catch (error) {
+    throw new MemoryLifecycleError(code, message, false, { cause: error });
+  }
 }
 
 function closed(value: unknown, name: string, keys: readonly string[]): Row {
@@ -403,10 +422,15 @@ function promotionArtifact(value: unknown): {
       })
     });
   });
-  fragments.sort((left, right) =>
-    `${left.source.sourceId}\0${left.source.chunkId}\0${left.fragmentId}`.localeCompare(
-      `${right.source.sourceId}\0${right.source.chunkId}\0${right.fragmentId}`
-    )
+  // Declared set, ordered by UTF-16 code unit rather than by localeCompare:
+  // this order is emitted into the promoted artifact's bytes (and therefore
+  // into its artifactDigest and planId), and the sort key joins fields with
+  // NUL, which ICU treats as completely ignorable -- so the previous
+  // localeCompare both varied by machine collation and collapsed the field
+  // boundary (issue #58).
+  const orderedFragments = normalizeDeclaredSet(
+    fragments,
+    (fragment) => `${fragment.source.sourceId}\0${fragment.source.chunkId}\0${fragment.fragmentId}`
   );
   const artifact = {
     schemaVersion: 1,
@@ -417,7 +441,7 @@ function promotionArtifact(value: unknown): {
     purpose,
     classification,
     retrievalSearchId,
-    fragments
+    fragments: orderedFragments
   };
   return {
     workspaceId,
@@ -533,7 +557,7 @@ export class MemoryPromotionLifecycle {
     try {
       for (const [table, expected] of Object.entries(LIFECYCLE_COLUMNS)) {
         const actual = (db.prepare(`PRAGMA table_xinfo("${table}")`).all() as Row[]).map((row) => String(row["name"]));
-        if (canonical(actual) !== canonical(expected)) throw new Error(`schema mismatch: ${table}`);
+        if (canonicalizeJsonV2(actual) !== canonicalizeJsonV2(expected)) throw new Error(`schema mismatch: ${table}`);
       }
       const scopeIndex = db
         .prepare("SELECT 1 AS present FROM sqlite_schema WHERE type='index' AND name='memory_managed_objects_scope'")
@@ -574,7 +598,7 @@ export class MemoryPromotionLifecycle {
       writePlan,
       status: "review-required" as const
     };
-    return Object.freeze({ ...portable, planId: digest(canonical(portable)) });
+    return Object.freeze({ ...portable, planId: digest(canonicalizeJsonV2(portable)) });
   }
 
   async applyPromotion(
@@ -587,7 +611,7 @@ export class MemoryPromotionLifecycle {
   }> {
     if (
       digest(plan.artifactContent) !== plan.artifactDigest ||
-      digest(canonical({ ...plan, planId: undefined })) !== plan.planId
+      planIdentity(plan, "VES_MEMORY_PROMOTION_PLAN_INVALID", "Promotion plan integrity is invalid") !== plan.planId
     )
       throw new MemoryLifecycleError("VES_MEMORY_PROMOTION_PLAN_INVALID", "Promotion plan integrity is invalid");
     if (plan.writePlan.writes.length !== 1 || plan.writePlan.writes[0]?.contentDigest !== plan.artifactDigest)
@@ -655,7 +679,7 @@ export class MemoryPromotionLifecycle {
           plan.artifactDigest,
           write.gitOwnerId,
           write.logicalPath,
-          canonical(approval),
+          canonicalizeJsonV2(approval),
           this.#now()
         );
     } catch (error) {
@@ -695,7 +719,7 @@ export class MemoryPromotionLifecycle {
     if (new Set<Classification>(["confidential", "restricted"]).has(classification) && encryptionKeyRef === null)
       invalid("sensitive managed objects require an encryption key reference");
     const bytes = Buffer.byteLength(row["content"], "utf8");
-    const objectId = digest(canonical({ workspaceId, projectId, kind, classification, contentDigest }));
+    const objectId = digest(canonicalizeJsonV2({ workspaceId, projectId, kind, classification, contentDigest }));
     const relativePath = `${workspaceId}/objects/${objectId.slice(7)}.blob`;
     const target = ownerTarget(this.#options.objectRoot, relativePath);
     const prior = this.#database().prepare("SELECT * FROM memory_managed_objects WHERE object_id=?").get(objectId) as
@@ -900,7 +924,7 @@ export class MemoryPromotionLifecycle {
       protectedObjectIds: Object.freeze([...protectedIds].sort()),
       legalHoldObjectIds: Object.freeze([...legalHoldIds].sort())
     };
-    return Object.freeze({ ...portable, planId: digest(canonical(portable)) });
+    return Object.freeze({ ...portable, planId: digest(canonicalizeJsonV2(portable)) });
   }
 
   async #quarantineObject(object: MemoryManagedObject): Promise<{ readonly source: string; readonly target: string }> {
@@ -925,7 +949,9 @@ export class MemoryPromotionLifecycle {
     readonly planId: string;
     readonly quarantinedObjectIds: readonly string[];
   }> {
-    if (digest(canonical({ ...plan, planId: undefined })) !== plan.planId)
+    if (
+      planIdentity(plan, "VES_MEMORY_GC_PLAN_INVALID", "Garbage collection plan integrity is invalid") !== plan.planId
+    )
       throw new MemoryLifecycleError("VES_MEMORY_GC_PLAN_INVALID", "Garbage collection plan integrity is invalid");
     const receipt = Object.freeze({
       planId: plan.planId,
@@ -935,7 +961,7 @@ export class MemoryPromotionLifecycle {
       .prepare("SELECT receipt_json FROM memory_gc_runs WHERE plan_id=? AND workspace_id=?")
       .get(plan.planId, plan.workspaceId) as Row | undefined;
     if (recorded !== undefined) {
-      if (String(recorded["receipt_json"]) !== canonical(receipt))
+      if (String(recorded["receipt_json"]) !== canonicalizeJsonV2(receipt))
         throw new MemoryLifecycleError(
           "VES_MEMORY_LIFECYCLE_CORRUPT",
           "Stored garbage collection receipt conflicts with its plan",
@@ -974,7 +1000,7 @@ export class MemoryPromotionLifecycle {
       db.prepare("INSERT INTO memory_gc_runs(plan_id,workspace_id,receipt_json,applied_at) VALUES(?,?,?,?)").run(
         plan.planId,
         plan.workspaceId,
-        canonical(receipt),
+        canonicalizeJsonV2(receipt),
         this.#now()
       );
       db.exec("COMMIT");
@@ -1149,7 +1175,7 @@ export class MemoryPromotionLifecycle {
   stateDigest(): string {
     const db = this.#database();
     return digest(
-      canonical({
+      canonicalizeJsonV2({
         promotions: db.prepare("SELECT * FROM memory_promotions ORDER BY plan_id").all(),
         objects: db.prepare("SELECT * FROM memory_managed_objects ORDER BY object_id").all(),
         gcRuns: db.prepare("SELECT * FROM memory_gc_runs ORDER BY plan_id").all(),
