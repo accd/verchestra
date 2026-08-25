@@ -12,7 +12,7 @@ boundary and does not claim #17 completion.
 | RM-05       | `tests/build/materialized-tuf-publication.test.mjs:78-150,161-209` binds materialized bytes to a candidate/TUF publication, resolves all four modes, and verifies activation/rollback | PASS   |
 | RM-06       | `tests/build/tuf-publication.test.mjs:79-115` verifies separate metadata/targets trees, byte preservation, atomic destination commit, and traversal rejection                         | PASS   |
 
-Focused materializer/TUF result: 15 passed, 0 failed/skipped/todo (the
+Focused materializer/TUF result: 13 passed, 0 failed/skipped/todo (the
 aggregate artifact/census suite ran 21 passed). Typecheck, `agent:check`,
 complexity, ESLint, Prettier, and `git diff --check` pass.
 
