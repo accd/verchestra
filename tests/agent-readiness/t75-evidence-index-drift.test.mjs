@@ -5,7 +5,7 @@ import { test } from "node:test";
 import { buildEvidenceIndex } from "../../scripts/t75-evidence-index.mjs";
 
 const FEATURE = new URL("../../.specs/features/platform-qualification-matrix/", import.meta.url);
-const REVISION = "95b2b80a2c24fa3b956949dafee0383b4d3b9808";
+const REVISION = "be92397ca0a5caaf7ff8b70dad23659b09899d7d";
 
 const read = (name) => JSON.parse(readFileSync(new URL(name, FEATURE), "utf8"));
 
