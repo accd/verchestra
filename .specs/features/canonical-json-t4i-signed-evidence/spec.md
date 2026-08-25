@@ -6,9 +6,10 @@
 arrays (`artifactRefs`, `requirements`, `tasks`, `completedTaskEvidence`,
 `derivePendingTasks`, `roleRequirements`, `gates`, `completionCriteria`,
 `normalizePending`, `invalidations`, and one object-entries sort for
-`bindings.sourceState`) using an identity comparator. The original V1 contract
-used JavaScript's default UTF-16 code-unit ordering, while the first migration
-accidentally used `String.prototype.localeCompare` in its version-gated helper.
+`bindings.sourceState`) using an identity comparator. These sites have ordered
+with `String.prototype.localeCompare` since the file's first commit
+(`867ce74`), so ambient collation produced the historical V1 ordering; AD-018
+normalizes V1 onto UTF-16 code-unit ordering rather than preserving it.
 Every sorted
 field (`taskId`, `requirementId`, `role`, `gateId`, `criterionId`, `field`,
 `artifactId`) is validated only against the broad `SAFE` pattern
@@ -51,7 +52,7 @@ instantiated.
 | Assumption / decision            | Chosen default                                                                                                                                                        | Rationale                                                                                                                                                                                                                                                                                                                                                        | Confirmed?                                        |
 | -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
 | `ArtifactSealer` needs no change | Confirmed via direct trace + empirical test (`packages/evidence/src/integrity/canonical.ts`'s `canonicalize` dependency preserves array order)                        | Initially assumed the opposite; corrected after re-reading `ArtifactSealer.seal`/`.verify` and `dsse.ts`'s `buildStatement`/`statementBytes` — the outer payload digest check compares stored bytes against a stored digest and never re-sorts; only this file's own internal re-derivation (`derivePendingTasks` vs. stored `pendingTasks`) is order-sensitive. | y (user, 2026-08-23)                              |
-| Identity sort comparator         | Explicit UTF-16 code-unit relational comparison (`<`/`>`) for both V1 and V2                                                                                          | It preserves the historical V1 default `Array#sort` bytes while making V2 locale-independent and keeping the comparator behavior visible at every call site.                                                                                                                                                                                                     | y (correction; flagged for review in PR)          |
+| Identity sort comparator         | Explicit UTF-16 code-unit relational comparison (`<`/`>`) for both V1 and V2                                                                                          | AD-018: a deliberate normalization, not a preservation. V1 historically ordered with ambient `localeCompare`, so rebuilt V1 ordering changes for identifier sets differing only by case; stored-artifact verification never re-sorts, no such artifact exists outside the fixtures, and #58 requires zero ambient-locale ordering on trust surfaces.                                                                                                                                                                                                     | y (correction; flagged for review in PR)          |
 | Discriminator field              | Widen existing `ExecutionPackagePayload.schemaVersion: 1` to `1 \| 2`                                                                                                 | Already the field `normalizeBuildInput`/`normalizePayload` read and validate (`row["schemaVersion"] !== 1`); matches `safe-init.ts`'s exact T3 precedent (`value.schemaVersion === 2 ? V2 : V1`) rather than inventing a second, parallel version field like T4g's `canonicalizationVersion`.                                                                    | y (design-time default; flagged for review in PR) |
 | New-package default              | `ExecutionPackageBuilder.build()` defaults to `schemaVersion: 2` when the caller doesn't specify one; `schemaVersion: 1` remains constructible for legacy/test parity | Matches T4g's "defaults new effects to explicit V2... preserves V1 bytes and reads" pattern; avoids silently changing every existing caller's build output shape without an explicit code review of the call site.                                                                                                                                               | y (design-time default; flagged for review in PR) |
 
@@ -110,9 +111,12 @@ verification regression here would break real in-flight execution plans.
    exactly as before, including the `derivePendingTasks` re-derivation
    check.
 2. WHEN a `schemaVersion: 1` package's stored `pendingTasks` array reflects
-   the historical UTF-16 code-unit order for a mixed-case `taskId` set THEN
-   `verify()` SHALL still report `ok: true` (never a spurious
-   `VES_EXECUTION_PACKAGE_DERIVATION_INVALID`).
+   code-unit order for a mixed-case `taskId` set THEN `verify()` SHALL report
+   `ok: true` (never a spurious `VES_EXECUTION_PACKAGE_DERIVATION_INVALID`).
+   A V1 package whose stored order reflects the superseded ambient-collation
+   ordering for such a set is a known, accepted casualty of AD-018: none
+   exists outside the fixtures, and re-derivation is the only path that
+   re-sorts.
 3. WHEN a `schemaVersion: 2` package's stored `pendingTasks` array is
    re-derived at verify time THEN the re-derivation SHALL use code-unit
    order, matching what `build()` produced.
