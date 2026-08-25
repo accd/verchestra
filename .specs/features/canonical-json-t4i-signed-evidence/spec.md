@@ -6,7 +6,10 @@
 arrays (`artifactRefs`, `requirements`, `tasks`, `completedTaskEvidence`,
 `derivePendingTasks`, `roleRequirements`, `gates`, `completionCriteria`,
 `normalizePending`, `invalidations`, and one object-entries sort for
-`bindings.sourceState`) using `String.prototype.localeCompare`. Every sorted
+`bindings.sourceState`) using an identity comparator. The original V1 contract
+used JavaScript's default UTF-16 code-unit ordering, while the first migration
+accidentally used `String.prototype.localeCompare` in its version-gated helper.
+Every sorted
 field (`taskId`, `requirementId`, `role`, `gateId`, `criterionId`, `field`,
 `artifactId`) is validated only against the broad `SAFE` pattern
 (`/^[A-Za-z0-9][A-Za-z0-9._:@/+-]{0,511}$/u`), which permits mixed case — and
@@ -34,23 +37,23 @@ instantiated.
 
 ## Out of Scope
 
-| Feature | Reason |
-| --- | --- |
-| Changing `ArtifactSealer`'s own canonicalization | Traced and confirmed unnecessary: `canonicalizeJson` (V1, `ArtifactSealer`'s primitive) already sorts object keys by code unit and never reorders arrays. The whole defect is upstream of it, in this file's own pre-sort comparators. Widening `ArtifactSealer` was considered and explicitly rejected — see Assumptions. |
-| T4j (release identity, `hermetic-bundle.ts`) | A separate, independently reviewable vertical per `docs/canonical-json-compatibility.md`'s ordering; not started by this feature. |
-| `bindings.sourceState`'s object-entries sort (line ~502) | Confirmed digest-irrelevant: the sorted array is immediately converted via `Object.fromEntries` into an object, and canonical JSON already sorts object keys by code unit regardless of insertion order. Migrated for census-classification consistency (CJ4I-08) but carries no compatibility risk of its own. |
-| Any change to `ExecutionPackagePayload`'s validated field contents (requirement IDs, task shapes, etc.) | This is an ordering-determinism fix, not a schema change beyond the `schemaVersion` widening itself. |
+| Feature                                                                                                 | Reason                                                                                                                                                                                                                                                                                                                     |
+| ------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Changing `ArtifactSealer`'s own canonicalization                                                        | Traced and confirmed unnecessary: `canonicalizeJson` (V1, `ArtifactSealer`'s primitive) already sorts object keys by code unit and never reorders arrays. The whole defect is upstream of it, in this file's own pre-sort comparators. Widening `ArtifactSealer` was considered and explicitly rejected — see Assumptions. |
+| T4j (release identity, `hermetic-bundle.ts`)                                                            | A separate, independently reviewable vertical per `docs/canonical-json-compatibility.md`'s ordering; not started by this feature.                                                                                                                                                                                          |
+| `bindings.sourceState`'s object-entries sort (line ~502)                                                | Confirmed digest-irrelevant: the sorted array is immediately converted via `Object.fromEntries` into an object, and canonical JSON already sorts object keys by code unit regardless of insertion order. Migrated for census-classification consistency (CJ4I-08) but carries no compatibility risk of its own.            |
+| Any change to `ExecutionPackagePayload`'s validated field contents (requirement IDs, task shapes, etc.) | This is an ordering-determinism fix, not a schema change beyond the `schemaVersion` widening itself.                                                                                                                                                                                                                       |
 
 ---
 
 ## Assumptions & Open Questions
 
-| Assumption / decision | Chosen default | Rationale | Confirmed? |
-| --- | --- | --- | --- |
-| `ArtifactSealer` needs no change | Confirmed via direct trace + empirical test (`packages/evidence/src/integrity/canonical.ts`'s `canonicalize` dependency preserves array order) | Initially assumed the opposite; corrected after re-reading `ArtifactSealer.seal`/`.verify` and `dsse.ts`'s `buildStatement`/`statementBytes` — the outer payload digest check compares stored bytes against a stored digest and never re-sorts; only this file's own internal re-derivation (`derivePendingTasks` vs. stored `pendingTasks`) is order-sensitive. | y (user, 2026-08-23) |
-| V2 sort comparator | Default `Array.prototype.sort()` (no comparator) on the sort key, i.e. native UTF-16 code-unit string comparison | This is literally what "deterministic Unicode/code-unit ordering" means for strings in JS — no new primitive needed, matches `canonicalizeJsonV2`'s own key-ordering contract without requiring every array-sort call site to import it. | y (design-time default; flagged for review in PR) |
-| Discriminator field | Widen existing `ExecutionPackagePayload.schemaVersion: 1` to `1 \| 2` | Already the field `normalizeBuildInput`/`normalizePayload` read and validate (`row["schemaVersion"] !== 1`); matches `safe-init.ts`'s exact T3 precedent (`value.schemaVersion === 2 ? V2 : V1`) rather than inventing a second, parallel version field like T4g's `canonicalizationVersion`. | y (design-time default; flagged for review in PR) |
-| New-package default | `ExecutionPackageBuilder.build()` defaults to `schemaVersion: 2` when the caller doesn't specify one; `schemaVersion: 1` remains constructible for legacy/test parity | Matches T4g's "defaults new effects to explicit V2... preserves V1 bytes and reads" pattern; avoids silently changing every existing caller's build output shape without an explicit code review of the call site. | y (design-time default; flagged for review in PR) |
+| Assumption / decision            | Chosen default                                                                                                                                                        | Rationale                                                                                                                                                                                                                                                                                                                                                        | Confirmed?                                        |
+| -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
+| `ArtifactSealer` needs no change | Confirmed via direct trace + empirical test (`packages/evidence/src/integrity/canonical.ts`'s `canonicalize` dependency preserves array order)                        | Initially assumed the opposite; corrected after re-reading `ArtifactSealer.seal`/`.verify` and `dsse.ts`'s `buildStatement`/`statementBytes` — the outer payload digest check compares stored bytes against a stored digest and never re-sorts; only this file's own internal re-derivation (`derivePendingTasks` vs. stored `pendingTasks`) is order-sensitive. | y (user, 2026-08-23)                              |
+| Identity sort comparator         | Explicit UTF-16 code-unit relational comparison (`<`/`>`) for both V1 and V2                                                                                          | It preserves the historical V1 default `Array#sort` bytes while making V2 locale-independent and keeping the comparator behavior visible at every call site.                                                                                                                                                                                                     | y (correction; flagged for review in PR)          |
+| Discriminator field              | Widen existing `ExecutionPackagePayload.schemaVersion: 1` to `1 \| 2`                                                                                                 | Already the field `normalizeBuildInput`/`normalizePayload` read and validate (`row["schemaVersion"] !== 1`); matches `safe-init.ts`'s exact T3 precedent (`value.schemaVersion === 2 ? V2 : V1`) rather than inventing a second, parallel version field like T4g's `canonicalizationVersion`.                                                                    | y (design-time default; flagged for review in PR) |
+| New-package default              | `ExecutionPackageBuilder.build()` defaults to `schemaVersion: 2` when the caller doesn't specify one; `schemaVersion: 1` remains constructible for legacy/test parity | Matches T4g's "defaults new effects to explicit V2... preserves V1 bytes and reads" pattern; avoids silently changing every existing caller's build output shape without an explicit code review of the call site.                                                                                                                                               | y (design-time default; flagged for review in PR) |
 
 **Open questions:** none — all resolved or logged above.
 
@@ -80,10 +83,11 @@ the signed-evidence surface can silently diverge across machines.
 3. WHEN `ExecutionPackageBuilder.build()` is called without an explicit
    `schemaVersion` THEN the system SHALL default to `schemaVersion: 2`.
 
-**Independent Test**: Build the same input object under two mocked
-`localeCompare` implementations (one ASCII-order, one reversed-case-order)
-and assert identical output bytes for `schemaVersion: 2`, non-identical for
-`schemaVersion: 1` (proving the sensor can actually distinguish them).
+**Independent Test**: Build the same mixed-case input with a hostile
+`localeCompare` implementation and assert identical output bytes for both
+recorded versions, with `schemaVersion: 1` retaining the pinned UTF-16
+code-unit collection order. The mixed-case assertions kill a mutation that
+reintroduces `localeCompare` into either version.
 
 ---
 
@@ -106,17 +110,17 @@ verification regression here would break real in-flight execution plans.
    exactly as before, including the `derivePendingTasks` re-derivation
    check.
 2. WHEN a `schemaVersion: 1` package's stored `pendingTasks` array reflects
-   `localeCompare` order that would differ under code-unit order for some
-   mixed-case `taskId` set THEN `verify()` SHALL still report `ok: true`
-   (never a spurious `VES_EXECUTION_PACKAGE_DERIVATION_INVALID`).
+   the historical UTF-16 code-unit order for a mixed-case `taskId` set THEN
+   `verify()` SHALL still report `ok: true` (never a spurious
+   `VES_EXECUTION_PACKAGE_DERIVATION_INVALID`).
 3. WHEN a `schemaVersion: 2` package's stored `pendingTasks` array is
    re-derived at verify time THEN the re-derivation SHALL use code-unit
    order, matching what `build()` produced.
 
 **Independent Test**: Hand-construct (or build under a simulated V1 path) a
-`schemaVersion: 1` artifact whose `pendingTasks` order is `localeCompare`-
-derived and would differ under code-unit order for a mixed-case fixture;
-verify it after the migration lands and assert `ok: true`.
+`schemaVersion: 1` artifact whose `pendingTasks` order is the historical
+code-unit order for a mixed-case fixture; verify it after the migration lands
+and assert `ok: true`.
 
 ---
 
@@ -161,16 +165,16 @@ is a verification mechanism, not core behavior — P1 stories must land first.
 
 ## Requirement Traceability
 
-| Requirement ID | Story | Phase | Status |
-| --- | --- | --- | --- |
-| CJ4I-01 | P1: Deterministic ordering | Verified | Verified |
-| CJ4I-02 | P1: Deterministic ordering | Verified | Verified |
-| CJ4I-03 | P1: Deterministic ordering | Verified | Verified |
-| CJ4I-04 | P1: Backward-compatible verification | Verified | Verified |
-| CJ4I-05 | P1: Backward-compatible verification | Verified | Verified |
-| CJ4I-06 | P1: Backward-compatible verification | Verified | Verified |
-| CJ4I-07 | P2: Discrimination sensor | Verified | Verified |
-| CJ4I-08 | Out of scope note: sourceState consistency | Verified | Verified |
+| Requirement ID | Story                                      | Phase    | Status   |
+| -------------- | ------------------------------------------ | -------- | -------- |
+| CJ4I-01        | P1: Deterministic ordering                 | Verified | Verified |
+| CJ4I-02        | P1: Deterministic ordering                 | Verified | Verified |
+| CJ4I-03        | P1: Deterministic ordering                 | Verified | Verified |
+| CJ4I-04        | P1: Backward-compatible verification       | Verified | Verified |
+| CJ4I-05        | P1: Backward-compatible verification       | Verified | Verified |
+| CJ4I-06        | P1: Backward-compatible verification       | Verified | Verified |
+| CJ4I-07        | P2: Discrimination sensor                  | Verified | Verified |
+| CJ4I-08        | Out of scope note: sourceState consistency | Verified | Verified |
 
 **Coverage:** 8 requirements (CJ4I-01–07 mapped to acceptance criteria
 above 1:1 in story order; CJ4I-08 covers the sourceState consistency edge
