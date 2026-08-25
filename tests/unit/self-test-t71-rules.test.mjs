@@ -442,3 +442,93 @@ test("Driver PASS checks cannot be created from a duplicate-provider set", () =>
     code: "VES_SELFTEST_DRIVER_SCENARIO_INVALID"
   });
 });
+
+// VES-STF-001 is the requirement every `full` profile PASS check is attributed
+// to (packages/application/src/self-test/self-test.ts, and `full.crash-recovery`
+// from the CLI composition root). The attribution is the claim a report reader
+// acts on, so it is asserted here: which checks carry it, that they carry it
+// only as a complete set, and that the rule layer never mints it for a boundary
+// it did not observe.
+test("VES-STF-001: the full profile's PASS checks are the delivery catalog under one requirement", () => {
+  const checks = fullWorkflowChecks(fullFacts());
+  assert.deepEqual(
+    checks.map((check) => check.checkId),
+    FULL_CHECK_IDS.filter((checkId) => checkId !== "full.crash-recovery")
+  );
+  assert.deepEqual([...new Set(checks.map((check) => check.requirement))], ["VES-STF-001"]);
+  assert.deepEqual([...new Set(checks.map((check) => check.status))], ["pass"]);
+  // Crash recovery is not observable from workflow facts: only the durable
+  // boundary matrix proves it, so the rule layer must not claim it here.
+  assert.ok(
+    !checks.some((check) => check.checkId === "full.crash-recovery"),
+    "the rule layer does not claim a crash-recovery pass it did not observe"
+  );
+});
+
+// Every field of the delivery contract gates the attribution: a single degraded
+// outcome anywhere on the path means no VES-STF-001 check exists at all, rather
+// than a catalog with one check quietly missing or downgraded.
+test("VES-STF-001: no check is attributed to it when any delivery outcome is degraded", () => {
+  const mutations = [
+    { packageStored: "conflict" },
+    { packageVerified: false },
+    { approvalVerified: false },
+    { contextFragments: 0 },
+    { routedPassportId: "" },
+    { executionStatus: "FAILED" },
+    { effectApplyCalls: 0 },
+    { effectApplyCalls: 2 },
+    { gateStatus: "PENDING" },
+    { verificationVerdict: "FAIL" },
+    { handoffStatus: "PREPARED" },
+    { capsuleStored: "conflict" },
+    { capsuleVerified: false },
+    { portableEvidenceValid: false }
+  ];
+  for (const mutation of mutations)
+    assert.throws(
+      () => fullWorkflowChecks(fullFacts(mutation)),
+      { code: "VES_SELFTEST_FULL_FACTS_INVALID" },
+      JSON.stringify(mutation)
+    );
+});
+
+// VES-STF-002 is the requirement every approved-Driver PASS check is attributed
+// to. The same rule applies: the seven checks are one indivisible claim about a
+// reviewed, offline, read-only Driver run.
+test("VES-STF-002: the drivers profile's PASS checks are the driver catalog under one requirement", () => {
+  const checks = driverScenarioChecks(driverScenarioFacts());
+  assert.deepEqual(
+    checks.map((check) => check.checkId),
+    [...DRIVER_CHECK_IDS]
+  );
+  assert.deepEqual([...new Set(checks.map((check) => check.requirement))], ["VES-STF-002"]);
+  assert.deepEqual([...new Set(checks.map((check) => check.status))], ["pass"]);
+});
+
+// The `drivers.offline` and `drivers.no-writer-tools` checks are the two claims
+// most worth forging, so a run that observed a network attempt or a writer Tool
+// request must not be able to mint the VES-STF-002 set that asserts it did not.
+test("VES-STF-002: a run that reached the network, a writer Tool, or a denied provider mints no check", () => {
+  for (const lifecycle of [
+    { sessionStarted: 3, sessionClosed: 3, writerToolRequests: 1, networkAttempts: 0 },
+    { sessionStarted: 3, sessionClosed: 3, writerToolRequests: 0, networkAttempts: 1 }
+  ])
+    assert.throws(
+      () => driverScenarioChecks(driverScenarioFacts({ lifecycle })),
+      { code: "VES_SELFTEST_DRIVER_SCENARIO_INVALID" },
+      JSON.stringify(lifecycle)
+    );
+  const deniedReachedProvider = driverScenarioFacts();
+  assert.throws(
+    () =>
+      driverScenarioChecks({
+        ...deniedReachedProvider,
+        invocations: [
+          ...deniedReachedProvider.invocations.slice(0, 3),
+          invocation({ authorized: false, providerBoundaryEntries: 1 })
+        ]
+      }),
+    { code: "VES_SELFTEST_PROVIDER_CALL_REACHED" }
+  );
+});

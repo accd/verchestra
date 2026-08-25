@@ -269,7 +269,7 @@
       "id": "VES-MDL-003",
       "declaredIn": ".specs/features/regression-campaigns/spec.md",
       "home": "specification",
-      "evidence": "none"
+      "evidence": "test"
     },
     {
       "id": "VES-MDL-005",
@@ -341,7 +341,7 @@
       "id": "VES-RLS-006",
       "declaredIn": ".specs/features/regression-campaigns/spec.md",
       "home": "specification",
-      "evidence": "none"
+      "evidence": "test"
     },
     {
       "id": "VES-SEC-001",
@@ -431,13 +431,13 @@
       "id": "VES-STF-001",
       "declaredIn": null,
       "home": "qualification-report-only",
-      "evidence": "none"
+      "evidence": "test"
     },
     {
       "id": "VES-STF-002",
       "declaredIn": null,
       "home": "qualification-report-only",
-      "evidence": "none"
+      "evidence": "test"
     },
     {
       "id": "VES-TST-001",
@@ -485,7 +485,7 @@
       "id": "VES-TST-008",
       "declaredIn": ".specs/features/deep-doctor/spec.md",
       "home": "specification",
-      "evidence": "none"
+      "evidence": "test"
     },
     {
       "id": "VES-VFY-001",
@@ -560,26 +560,5 @@
       "evidence": "report"
     }
   ],
-  "openGaps": [
-    {
-      "id": "VES-MDL-003",
-      "reason": "Declared by .specs/features/regression-campaigns/spec.md and .specs/features/sealed-holdout/spec.md; neither t73-validation.md nor t74-validation.md traces it, so no report carries its evidence."
-    },
-    {
-      "id": "VES-RLS-006",
-      "reason": "Declared by .specs/features/regression-campaigns/spec.md and .specs/features/sealed-holdout/spec.md; neither t73-validation.md nor t74-validation.md traces it, so no report carries its evidence."
-    },
-    {
-      "id": "VES-STF-001",
-      "reason": "Referenced by Self-Test source (packages/application/src/self-test/self-test.ts and the vestra-cli Self-Test composition) but asserted by no test and traced by no qualification report."
-    },
-    {
-      "id": "VES-STF-002",
-      "reason": "Referenced by packages/application/src/self-test/self-test.ts but asserted by no test and traced by no qualification report."
-    },
-    {
-      "id": "VES-TST-008",
-      "reason": "Declared by .specs/features/deep-doctor/spec.md; t72-validation.md does not trace it, so no report carries its evidence."
-    }
-  ]
+  "openGaps": []
 }
