@@ -9,7 +9,7 @@ criteriaEvidence: 4 of 4 acceptance criteria proven
 skipped: 0
 todo: 0
 discriminationSensor: 8 killed, 0 survived
-reviewedIn: https://github.com/accd/verchestra/pull/REPLACE_ME
+reviewedIn: https://github.com/accd/verchestra/pull/369
 ---
 
 # T76 Verified Release Candidate and Publication Validation
