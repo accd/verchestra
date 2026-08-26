@@ -1,9 +1,9 @@
 ---
 title: Develop from source
-description: Work on Verchestra from a clean clone before public installation exists.
+description: Work on the Verchestra source tree from a clean clone.
 ---
 
-Public package installation is not available during qualification. Contributors can develop from source:
+To run Verchestra, [install and run](/verchestra/docs/install-and-run/) the published launcher. This page is for working on the source tree instead:
 
 ```bash
 git clone https://github.com/accd/verchestra.git

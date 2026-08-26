@@ -1,7 +1,7 @@
 # npx Launcher Tasks
 
 **Design:** `.specs/features/npx-launcher/design.md`
-**Status:** In Progress
+**Status:** Complete
 
 ## Execution Plan
 
@@ -188,6 +188,8 @@ is not the pinned release both stop before `active.json` is written.
 
 ### T4: Prove the clean-machine journey
 
+**Status:** Done.
+
 **What:** Install the tarball into repository-free temporary homes and run
 help, version, portability, recovery, and cleanup scenarios per supported
 platform.
@@ -200,10 +202,54 @@ platform.
 
 Done when:
 
-- [ ] No clone, source build, credential, or unrecorded fixture is present.
-- [ ] Help/version/demo execute the activated embedded runtime.
-- [ ] Supported-platform evidence and cleanup instructions are recorded.
-- [ ] #36 can close without claiming T76/T77 completion.
+- [x] No clone, source build, credential, or unrecorded fixture is present.
+- [x] Help/version/demo execute the activated embedded runtime.
+- [x] Supported-platform evidence and cleanup instructions are recorded.
+- [x] #36 can close without claiming T76/T77 completion.
+
+Evidence: every run started from `npx -y verchestra` against the published
+registry package `verchestra@0.0.0-qualification` (dist-tag `latest`, shasum
+`c6a482d25b59ebae93c4094974b7de5b85ca467a`); no repository checkout took part
+in any of them. Per platform:
+
+| Platform  | Environment                                              | Help                        | Version                        | `self-test --profile smoke`                                 |
+| --------- | -------------------------------------------------------- | --------------------------- | ------------------------------ | ----------------------------------------------------------- |
+| linux-x64 | clean container (`docker run --rm --platform linux/amd64 node:24`), cwd `~` | `init`, `self-test`, `doctor` | `0.0.0-qualification`, exit `0` | `PASS`, 6 checks, 151 ms, 0 failure codes, 0 redactions |
+| win32-x64 | native Windows 11, managed state wiped before the run, cwd a normal project directory | `init`, `self-test`, `doctor` | `0.0.0-qualification`, cold run 2 m 39 s | `PASS`, 6 checks, 1070 ms, 0 failure codes, 0 redactions |
+
+A cold `npx -y verchestra --version` on an identical clean linux-x64 container
+completed in 1 m 46 s, covering TUF resolution, download, staging, the
+activation health gate, and the verified handoff.
+
+Recovery and cleanup were exercised, not only documented: the win32-x64 run
+began from a wiped managed state root and reactivated from scratch, and the
+managed state root was removed afterwards (`%LOCALAPPDATA%\Verchestra`). The
+linux-x64 containers were `--rm`, so nothing persisted.
+
+Documentation landed with the evidence: `README.md` gained an "Install and run"
+section (install, first-run behaviour, the `git` prerequisite, the portability
+demonstration, the #370 limitation, managed state, recovery, cleanup), the
+documentation portal gained `docs/install-and-run`, and
+`apps/vestra-launcher/README.md` — the README inside the published tarball —
+was corrected from "not published" and given the same recovery and cleanup
+paths.
+
+One limitation is recorded rather than smoothed over: `self-test` refuses when
+the working directory is an ancestor of the OS temporary directory, which on
+Windows includes the default home directory
+([#370](https://github.com/accd/verchestra/issues/370)). It is a product
+defect, not a packaging one — a repository checkout reproduces it identically,
+and the published bundle passes from any other directory. Linux is unaffected
+because `/tmp` is not inside the container's home directory.
+
+### T4 decision for review
+
+AD-032 (owner, 2026-08-26) fixes `npx verchestra self-test --profile smoke` as
+the clean-machine portability demonstration #36 requires, superseding R13's
+repository-bound two-minute demo recorded in
+`docs/qualification/t68a-validation.md:61-83`. The demo's shape follows AD-016;
+the package name follows the owner's 2026-08-25 decision recorded in
+`spec.md`.
 
 ## Dependency Cross-Check
 
@@ -212,7 +258,7 @@ Done when:
 | T1   | None                         | Start    | Match                                              |
 | T2   | T1                           | T1 -> T2 | Match; T2 defines the protocol T76 must answer     |
 | T3   | T2 + release/registry inputs | T2 -> T3 | Match; artifact and closure both done              |
-| T4   | T3 + T76 candidate           | T3 -> T4 | Match; blocked only on T76 inputs and the npm name |
+| T4   | T3 + T76 candidate           | T3 -> T4 | Match; both inputs supplied, clean-machine evidence recorded |
 
 ## Test Co-location Check
 

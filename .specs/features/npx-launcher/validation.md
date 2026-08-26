@@ -2,14 +2,23 @@
 
 ## Current verdict
 
-**PARTIAL - T1, T2, T3 PASS; #36 remains open.** The verified active-launcher
-bridge, the observed activation health gate, the shell-free handoff, the
-publishable package's artifact contract, and the activation closure that tarball
-now carries are implemented and verified. The bootstrap completes a real
-resolve, verify, activate, and handoff end to end against a signed TUF
-repository holding an executable release. The clean-machine journey is still not
-claimed: the package carries no T76-owned trust root, source URLs, or executable
-candidate release, and the npm name is unconfirmed.
+**PASS - T1, T2, T3, T4.** The verified active-launcher bridge, the observed
+activation health gate, the shell-free handoff, the publishable package's
+artifact contract, and the activation closure that tarball carries are
+implemented and verified. The bootstrap completes a real resolve, verify,
+activate, and handoff end to end against a signed TUF repository holding an
+executable release. Both former external inputs arrived: T76 supplied the
+reviewed pinned inputs and the executable candidate release, and the owner
+settled the npm name as `verchestra` on 2026-08-25 and published
+`verchestra@0.0.0-qualification` on 2026-08-26. T4 recorded the clean-machine
+journey - help, version, portability demo, recovery, and cleanup - on
+linux-x64 and win32-x64, every run starting from `npx -y verchestra` against
+the published registry package with no repository checkout involved.
+
+This verdict covers this feature only. It is not a claim that T77, production
+readiness, or 1.0 is reached, and one product defect is recorded rather than
+hidden: `self-test` refuses when the working directory is an ancestor of the OS
+temporary directory ([#370](https://github.com/accd/verchestra/issues/370)).
 
 ## T1 evidence
 
@@ -354,21 +363,28 @@ activation-launcher fault cases passed in both runs.
 The flake is reported rather than suppressed. No assertion was weakened,
 retried, or skipped to obtain the green run.
 
-## Remaining completion evidence
+## T4 evidence
 
-- Real TUF root, fixed source URLs, and source identity from T76, supplied to
-  `build:vestra-launcher --release-inputs`. The `releaseId` and
-  `semanticVersion` in that `release-source.json` are now asserted against the
-  resolved release, so they must name the exact release T76 publishes.
-- T76 launchers that answer `--activation-health` with the version 1 report
-  this feature's health gate consumes.
-- Owner control or republication of the npm name `vestra`.
-- Repository-free `npm pack` installation and supported-platform evidence (T4).
-- One live resolution over the pinned HTTPS source. The end-to-end evidence
-  above drives a filesystem TUF repository, because no test may reach the public
-  network or trust a self-signed certificate. `HttpsDistributionSource` is
-  qualified by its own suites and by the pinned-input contract, but the
-  composed `npx verchestra` -> HTTPS -> activation path is proved only by T4's
-  clean-machine run.
+Package under test: `verchestra@0.0.0-qualification` from the public npm
+registry (dist-tag `latest`, shasum
+`c6a482d25b59ebae93c4094974b7de5b85ca467a`). Every run starts from
+`npx -y verchestra`; no repository checkout takes part in any of them.
 
-Fixtures are not accepted as substitutes for any of these items.
+| Outcome                              | Evidence                                                                                                                                | Result |
+| ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| Help, linux-x64                       | Clean container (`docker run --rm --platform linux/amd64 node:24`), cwd the home directory: `--help` renders `init`, `self-test`, `doctor` | PASS   |
+| Version, linux-x64                    | `--version` prints `0.0.0-qualification`, exit `0`; a cold run on an identical container took 1 m 46 s end to end                          | PASS   |
+| Portability demo, linux-x64           | `self-test --profile smoke`: `verdict: PASS`, `check_count: 6`, `duration_ms: 151`, `failure_codes: []`, `redaction_count: 0`              | PASS   |
+| Help, win32-x64                       | Native Windows 11: `--help` renders the same command surface                                                                              | PASS   |
+| Version, win32-x64                    | Cold `--version` from a wiped managed state root, 2 m 39 s                                                                                | PASS   |
+| Portability demo, win32-x64           | `self-test --profile smoke` from a project directory: `verdict: PASS`, `check_count: 6`, `duration_ms: 1070`, `failure_codes: []`          | PASS   |
+| Recovery                              | The win32-x64 run began from a wiped managed state root and reactivated from scratch                                                       | PASS   |
+| Cleanup                               | Windows managed state root removed (`%LOCALAPPDATA%\Verchestra`); the linux-x64 containers were `--rm`, so nothing persisted               | PASS   |
+| Live HTTPS resolution                 | Both platforms resolved the real release over the published HTTPS bases, closing the gap the filesystem-repository e2e test left open      | PASS   |
+| Documented limitation                 | `self-test` refuses when the cwd is an ancestor of `tmpdir()`; stated plainly in `README.md`, `docs/install-and-run`, and the tarball README | Recorded |
+
+No fixture substitutes for any row above. The limitation row is recorded, not
+claimed as a pass: it is a product defect reproducible from a repository
+checkout, tracked as
+[#370](https://github.com/accd/verchestra/issues/370), and it does not affect
+any other supported working directory.

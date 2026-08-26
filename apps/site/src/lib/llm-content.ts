@@ -201,12 +201,13 @@ export function compileLlmTxt(status: QualificationStatus) {
 - Qualification: ${status.highestVerifiedTask} complete; ${status.nextTask} next
 - Repository: https://github.com/accd/verchestra
 
-Verchestra is in source qualification. It has no public installer and is not production-ready.
+Verchestra is in qualification. The published \`verchestra\` npm package installs the \`${status.currentVersion}\` build with \`npx verchestra\`; it is not production-ready and not 1.0.
 \`llms.txt\` is an inference-time documentation aid; it does not guarantee indexing, SEO ranking, training inclusion, or crawler behavior.
 
 ## Documentation
 
 - [Documentation portal](${ORIGIN}/docs/): Architecture, workflows, integrations, and qualification evidence.
+- [Install and run](${ORIGIN}/docs/install-and-run/): Installing the published launcher, the portability demonstration, managed state, and cleanup.
 - [Full LLM context](${ORIGIN}/llms-full.txt): Allowlisted Markdown with source attribution and digests.
 - [Architecture](${ORIGIN}/docs/architecture/system-overview/): System boundaries and trust model.
 - [Roadmap](${ORIGIN}/roadmap/): ${status.highestVerifiedTask} complete, ${status.nextTask} next, and the evidence-driven path to 1.0.

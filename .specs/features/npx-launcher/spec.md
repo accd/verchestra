@@ -48,6 +48,9 @@ Acceptance criteria:
    standard streams SHALL be the command's observable result.
 4. WHEN `--help`, `--version`, or the portability demo is requested THEN output
    SHALL describe only composed behavior and the activated release identity.
+   The portability demo is `npx verchestra self-test --profile smoke`
+   (AD-032); R13's repository-bound two-minute demo
+   (`docs/qualification/t68a-validation.md:61-83`) is superseded, not deleted.
 
 ### P1: Fail-closed bootstrap
 
@@ -109,24 +112,26 @@ Acceptance criteria:
 
 | ID     | Requirement                                                            | Status                           |
 | ------ | ---------------------------------------------------------------------- | -------------------------------- |
-| NPX-01 | One repository-free `npx verchestra` command on every supported target | Blocked by T76 artifacts         |
-| NPX-02 | Pinned in-package TUF root and fixed credential-free HTTPS source      | Blocked by T76 inputs            |
-| NPX-03 | Qualified resolve, stage, and transactional activation reuse           | Done                             |
-| NPX-04 | Read-only verified active-launcher resolution                          | Done                             |
-| NPX-05 | Real pre-publication activation health gate                            | Blocked by T76 launcher protocol |
-| NPX-06 | Shell-free argument-preserving handoff and exact exit propagation      | Pending                          |
-| NPX-07 | Deterministic supported-host and public-error contract                 | Pending                          |
-| NPX-08 | Minimal compiled npm tarball with no workspace/runtime-resolution leak | Done                             |
-| NPX-09 | Help, version, portability demo, cleanup, and per-platform evidence    | Blocked by T76 candidate         |
-| NPX-10 | No clone, source build, credential, or hidden authority prerequisite   | Pending                          |
+| NPX-01 | One repository-free `npx verchestra` command on every supported target | Done — T4 evidence on linux-x64 and win32-x64 |
+| NPX-02 | Pinned in-package TUF root and fixed credential-free HTTPS source      | Done — T76 supplied the reviewed inputs       |
+| NPX-03 | Qualified resolve, stage, and transactional activation reuse           | Done                                          |
+| NPX-04 | Read-only verified active-launcher resolution                          | Done                                          |
+| NPX-05 | Real pre-publication activation health gate                            | Done — T76's sealed launchers answer it       |
+| NPX-06 | Shell-free argument-preserving handoff and exact exit propagation      | Done                                          |
+| NPX-07 | Deterministic supported-host and public-error contract                 | Done                                          |
+| NPX-08 | Minimal compiled npm tarball with no workspace/runtime-resolution leak | Done                                          |
+| NPX-09 | Help, version, portability demo, cleanup, and per-platform evidence    | Done — T4                                     |
+| NPX-10 | No clone, source build, credential, or hidden authority prerequisite   | Done — T4; `git` on `PATH` is documented       |
 
 Coverage: 10 requirements; 10 mapped in `tasks.md`; 0 unmapped.
 
-## Current External Inputs
+## External Inputs (both supplied)
 
 T76 issue #17 owns the real candidate closure, TUF root and delegated
 metadata, online/offline views, executable launchers, and rollback target.
-Those artifacts do not exist in the repository at the start of this feature.
+Those artifacts did not exist in the repository at the start of this feature;
+T76 has since produced and published them, and
+`verchestra@0.0.0-qualification` is published on the public npm registry.
 The npm name is `verchestra`, chosen by the owner on 2026-08-25 and verified
 free (a clean 404 with no publish history). `vestra` was ruled out: it carried
 ten published versions before being unpublished on 2026-07-25, and npm reserves
@@ -134,8 +139,8 @@ an unpublished name to its original publisher, who is not this repository's
 owner. `vectra` was ruled out as an active third-party package. `vestra`
 survives as the short bin alias, which npm scopes to the installing tree and
 which therefore cannot collide with anyone.
-Neither condition blocks the verified active-launcher bridge, but both block a
-truthful completion claim for #36.
+Neither condition blocked the verified active-launcher bridge, and neither
+blocks a truthful completion claim for #36 any longer.
 
 ## Success Criteria
 

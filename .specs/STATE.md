@@ -16,7 +16,7 @@
 
 ### AD-003 — Public status language
 
-- **Status:** active
+- **Status:** active; narrowed by AD-032 for the installer clause only. The `verchestra` npm package is published, so repository-canonical surfaces and the documentation portal describe it truthfully. Production readiness and 1.0 stay unclaimed, and the homepage's typed `installable` flag and the copy driven by it remain an owner decision.
 - **Decision:** The site describes `0.0.0-qualification`, T68 complete, and T69 next. It must not claim a public installer, production readiness, or a 1.0 release.
 - **Rationale:** Evidence and release state take precedence over marketing language.
 
@@ -326,6 +326,50 @@ note. -->
   rejected by its own validator. The general lesson for any future migration:
   before reusing AD-029's reasoning, check whether the re-sorted member is an
   array or an object, because JCS treats those differently.
+
+### AD-032 — The packaged Self-Test smoke profile is #36's portability demo (#36)
+
+- **Status:** active
+- **Decision:** Owner decision (accd, 2026-08-26). `npx verchestra self-test
+  --profile smoke` is the clean-machine portability demonstration that issue
+  #36 requires. It supersedes R13's original "replayable two-minute
+  demonstration", which was repository-bound (`corepack pnpm install
+  --frozen-lockfile` followed by `node --test
+  tests/e2e/key-lifecycle-portability.test.mjs`, recorded in
+  `docs/qualification/t68a-validation.md:61-83`). The demo's shape follows
+  AD-016, which fixed the 1.0 entry point as an npx launcher over hermetic TUF
+  activation, and the npm-name decision recorded in
+  `.specs/features/npx-launcher/spec.md:129-137` (`verchestra` is the package,
+  `vestra` the short bin alias).
+- **Rationale:** R13 was written when the only runnable surface was a clean
+  clone, so the only honest demonstration it could name was a repository test.
+  That premise no longer holds: `verchestra@0.0.0-qualification` is published
+  on the public npm registry and resolves a live signed release, so the
+  composed product can now demonstrate its own portability without a checkout.
+  The Self-Test smoke profile is the successor rather than a new artifact: it
+  is a packaged profile of the qualified Self-Test trust domain (AD-010), it
+  runs inside a disposable, isolated enclave, and it emits a sealed verdict —
+  which is exactly what a portability claim needs and what a repository-bound
+  `node --test` invocation cannot supply from a machine that has no
+  repository. Keeping the repo-bound transcript as #36's demo would have meant
+  closing a distribution issue on evidence that requires the thing
+  distribution exists to remove.
+- **Consequences:** #36's acceptance closes on per-platform clean-machine
+  evidence for help, version, this demo, recovery, and cleanup, recorded in
+  `.specs/features/npx-launcher/` (T4, NPX-01/NPX-09/NPX-10). The root
+  `AGENTS.md` mission line stops forbidding a public-installer claim, because
+  the package is genuinely published; production readiness and 1.0 remain
+  unclaimed. `docs/qualification/t68a-validation.md` is untouched — it is a
+  dated report and its transcript stays true of the revision it names. One
+  limitation is stated rather than smoothed over: `self-test` refuses when the
+  working directory is an ancestor of the OS temporary directory, which on
+  Windows includes the default home directory
+  ([#370](https://github.com/accd/verchestra/issues/370)); the demo is
+  documented as run from a project directory until the fix is republished.
+  AD-003's public-status language is narrowed only for repository-canonical
+  surfaces and the documentation portal; the homepage's typed `installable`
+  flag (`apps/site/src/data/product.ts`) and the copy driven by it stay as the
+  owner left them and are not reinterpreted by this decision.
 
 ## Handoff
 

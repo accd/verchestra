@@ -105,6 +105,7 @@ export default defineConfig({
             { label: "Overview", slug: "docs" },
             { label: "Why Verchestra", slug: "docs/why-verchestra" },
             { label: "Current qualification status", slug: "docs/current-qualification-status" },
+            { label: "Install and run", slug: "docs/install-and-run" },
             { label: "Develop from source", slug: "docs/develop-from-source" }
           ]
         },
