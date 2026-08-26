@@ -62,7 +62,9 @@ export async function opened(options = {}) {
 }
 
 export async function cleanup() {
-  await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
+  await Promise.all(
+    roots.splice(0).map((root) => rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }))
+  );
 }
 
 // The installed sqlite-vec extension's own identity (path, sha256, byte size).

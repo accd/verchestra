@@ -91,7 +91,9 @@ export async function disposableDirectory() {
 }
 
 export async function disposeLauncherFixtures() {
-  await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
+  await Promise.all(
+    roots.splice(0).map((root) => rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }))
+  );
 }
 
 function npmCli() {

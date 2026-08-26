@@ -25,7 +25,9 @@ const roots = [];
 
 /** Releases every repository this module materialized. */
 export async function disposeLauncherReleaseFixtures() {
-  await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
+  await Promise.all(
+    roots.splice(0).map((root) => rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }))
+  );
 }
 
 /** The consistent-snapshot name of a target, derived from its known digest. */
