@@ -48,14 +48,17 @@ const hermeticGitEnv = (home) => ({
   GIT_COMMITTER_DATE: FIXED_INSTANT
 });
 
+// Git must be discovered through PATH here, exactly as every other fixture
+// and build script in this repository discovers it (for example
+// tests/helpers/workspace-scanner-fixture.mjs and scripts/t76-build-candidate.mjs):
+// the suite runs on operator and CI machines whose Git lives at different
+// fixed locations, and the hermetic env built above is what isolates the
+// replica from ambient Git behavior.
 const git = (repository, env, args) =>
   execFileSync("git", ["-C", repository, ...args], { encoding: "utf8", windowsHide: true, env });
 
 function currentTreeFiles() {
-  return execFileSync("git", ["-C", REPOSITORY_ROOT, "ls-files", "--cached", "--others", "--exclude-standard", "-z"], {
-    encoding: "utf8",
-    windowsHide: true
-  })
+  return git(REPOSITORY_ROOT, process.env, ["ls-files", "--cached", "--others", "--exclude-standard", "-z"])
     .split("\0")
     .filter((path) => path.length > 0 && !path.startsWith(".tmp-"))
     .sort();
