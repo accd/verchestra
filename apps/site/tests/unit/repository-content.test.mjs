@@ -68,9 +68,9 @@ test("derives the exact public status from the canonical repository", async () =
 
   assert.deepEqual(status, {
     currentVersion: "0.0.0-qualification",
-    highestVerifiedTask: "T75",
-    nextTask: "T76",
-    reportCount: 79
+    highestVerifiedTask: "T76",
+    nextTask: "T77",
+    reportCount: 80
   });
   await assertProjectStatus(repositoryRoot, status);
 });
