@@ -65,7 +65,12 @@ const sourceCodeMetadata = {
           <span class="qualification-pill__signal"></span>
           <code>{productStatus.version}</code>
           <span>{productStatus.completedTask} verified</span>
-          <span>{productStatus.nextTask} next</span>
+          {
+            /* Once the declared chain has no next task, the thing still ahead
+          is not a task at all — it is the signed release decision, and saying
+          so is the difference between a verified chain and a shipped 1.0. */
+          }
+          <span>{productStatus.nextTask === null ? "1.0 decision pending" : `${productStatus.nextTask} next`}</span>
         </div>
         <p class="status-note">
           Public source development and a published qualification package are available. A production release is not.
@@ -260,26 +265,38 @@ const sourceCodeMetadata = {
 
     <section class="qualification section-frame" aria-labelledby="qualification-title">
       <div>
-        <h2 id="qualification-title">{productStatus.completedTask} is evidence. {productStatus.nextTask} is work.</h2>
+        <h2 id="qualification-title">
+          {productStatus.completedTask} is evidence. {productStatus.nextTask ?? "The signed 1.0 decision"} is work.
+        </h2>
         <p>
-          Foundations through {productStatus.completedTask} are backed by public validation reports. Independent acceptance
-          and the explicit 1.0 release decision remain ahead.
+          Foundations through {productStatus.completedTask} are backed by public validation reports.{" "}
+          {
+            productStatus.nextTask === null
+              ? "The declared qualification chain is fully verified. The signed promote-or-reject decision a 1.0 release requires has not been made."
+              : "Independent acceptance and the explicit 1.0 release decision remain ahead."
+          }
         </p>
       </div>
       <div
         class="qualification-progress"
-        aria-label={`${productStatus.completedTask} complete, ${productStatus.nextTask} next`}
+        aria-label={`${productStatus.completedTask} complete, ${productStatus.nextTask ?? "1.0 decision"} next`}
       >
         <div class="qualification-progress__complete">
           <span>T01</span><span>{productStatus.completedTask}</span>
         </div>
-        <div class="qualification-progress__next">{productStatus.nextTask}</div>
+        <div class="qualification-progress__next">{productStatus.nextTask ?? "1.0 decision"}</div>
         {
           /* The declared chain ends at T77, so once the derived next task IS
         T77 this cell would repeat it. Rendering it only while T77 is still
-        ahead keeps the strip honest instead of showing one milestone twice. */
+        ahead keeps the strip honest instead of showing one milestone twice.
+        Once T77 itself is verified there is no chain task left to show, and the
+        next cell is the release decision, which is not a chain task. */
         }
-        {productStatus.nextTask !== "T77" && <div class="qualification-progress__future">T77</div>}
+        {
+          productStatus.nextTask !== null && productStatus.nextTask !== "T77" && (
+            <div class="qualification-progress__future">T77</div>
+          )
+        }
       </div>
       <div class="qualification__actions">
         <a class="button button--primary" href={withBase("roadmap/")}>View the verified roadmap</a>

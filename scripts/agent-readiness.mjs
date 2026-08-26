@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { readFile, readdir, stat } from "node:fs/promises";
 import { dirname, join, posix, relative, resolve, sep } from "node:path";
@@ -230,32 +231,41 @@ export function validateQualificationReport(source, taskId, { isRepositoryCommit
   return errors;
 }
 
+// Whether a revision exists, and whether it is reachable from the checkout being
+// validated, are facts about the repository rather than claims in a file. Both
+// qualification reports and release decisions bind to trusted history for the
+// same reason, so both read those facts through one helper instead of two
+// implementations that can drift apart.
+function revisionTrust(root, trustedRevision) {
+  const known = new Map();
+  // `HEAD` is the checkout being validated. An artifact may bind to an earlier
+  // implementation commit, but not to an object available only through an
+  // unrelated local or remote ref. The target comes from Git, never from the
+  // frontmatter.
+  const trustedHead = trustedRevision ?? git(root, ["rev-parse", "HEAD^{commit}"]);
+  const trusted = new Map();
+  return {
+    isRepositoryCommit: (revision) => {
+      if (!known.has(revision)) known.set(revision, git(root, ["cat-file", "-e", `${revision}^{commit}`]) !== null);
+      return known.get(revision);
+    },
+    isTrustedRevision: (revision) => {
+      if (!trusted.has(revision))
+        trusted.set(
+          revision,
+          trustedHead !== null && git(root, ["merge-base", "--is-ancestor", revision, trustedHead]) !== null
+        );
+      return trusted.get(revision);
+    }
+  };
+}
+
 export async function readQualificationReports(root, { trustedRevision } = {}) {
   const directory = join(root, "docs", "qualification");
   const tasks = new Set();
   const errors = [];
   if (!existsSync(directory)) return { tasks, errors };
-  // Whether a revision exists is a fact about the repository, not a claim in the
-  // file, so the report author cannot supply it.
-  const known = new Map();
-  const isRepositoryCommit = (revision) => {
-    if (!known.has(revision)) known.set(revision, git(root, ["cat-file", "-e", `${revision}^{commit}`]) !== null);
-    return known.get(revision);
-  };
-  // `HEAD` is the checkout being qualified. A report may bind to an earlier
-  // implementation commit, but not to an object available only through an
-  // unrelated local or remote ref. The target comes from Git, never from the
-  // report frontmatter.
-  const trustedHead = trustedRevision ?? git(root, ["rev-parse", "HEAD^{commit}"]);
-  const trusted = new Map();
-  const isTrustedRevision = (revision) => {
-    if (!trusted.has(revision))
-      trusted.set(
-        revision,
-        trustedHead !== null && git(root, ["merge-base", "--is-ancestor", revision, trustedHead]) !== null
-      );
-    return trusted.get(revision);
-  };
+  const { isRepositoryCommit, isTrustedRevision } = revisionTrust(root, trustedRevision);
   for (const entry of (await readdir(directory)).sort()) {
     const task = QUALIFICATION_REPORT_FILE.exec(entry);
     if (!task) {
@@ -278,12 +288,259 @@ export async function validatedTasks(root, options) {
   return (await readQualificationReports(root, options)).tasks;
 }
 
+export const RELEASE_DECISION_SCHEMA = "verchestra-release-decision/v1";
+// The decision file is named for the version it decides, so the version is part
+// of the file's identity rather than a field the author can re-point at another
+// release after the fact.
+export const RELEASE_DECISION_FILE = new RegExp(
+  String.raw`^release-decision-(\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?)\.md$`,
+  "u"
+);
+export const RELEASE_DECISIONS = Object.freeze(["promote", "reject"]);
+// `RELEASE-DECISION-CONTRACT.md`: "1.0 is the one decision where the narrowest
+// gate is not a choice." A broader set that merely includes `gate:release` still
+// names a gate other than `gate:release`, so it is refused too.
+const RELEASE_DECISION_GATE = "gate:release";
+// Closed formats, for the reason the report contract closes its own: `5 open,
+// 93 total` must not read as complete to a parser that finds two numbers.
+const REQUIREMENTS_CLOSED = /^(\d+) of (\d+) requirements evidenced$/u;
+const RFC3339_UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/u;
+const REGISTER_DIGEST = /^(?:sha256:)?([0-9a-f]{64})$/u;
+const RELEASE_DIGEST = /^sha256:[0-9a-f]{64}$/u;
+const DECISION_TASK = /^T\d+[a-z]?$/u;
+const PULL_REQUEST_URL = /^https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/pull\/\d+$/u;
+
+// A field still carrying a template marker is absent, not present. The contract
+// writes its own placeholders as `<GitHub identity>`, and this repository's
+// report drafts use `REPLACE_ME`; copying either verbatim must fail closed
+// rather than satisfying a presence check.
+function unfilled(value) {
+  if (typeof value !== "string") return true;
+  const trimmed = value.trim();
+  if (trimmed.length === 0 || trimmed.includes("REPLACE_ME")) return true;
+  return /^(?:tbd|todo|none|n\/a|pending|<[^>]*>)$/iu.test(trimmed);
+}
+
+function splitList(value) {
+  return (value ?? "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function decisionFrontmatter(source) {
+  const match = /^---\r?\n([\s\S]*?)\r?\n---\r?\n/u.exec(source);
+  if (!match) return { fields: null, error: "decision is missing the release-decision frontmatter" };
+  const fields = {};
+  for (const line of match[1].split(/\r?\n/u)) {
+    const field = /^([A-Za-z][A-Za-z0-9]*):\s*(.*)$/u.exec(line);
+    if (!field) return { fields: null, error: "malformed frontmatter line" };
+    fields[field[1]] = field[2].trim();
+  }
+  return { fields, error: null };
+}
+
+function checkDecisionIdentity(fields, version, report) {
+  if (fields.schema !== RELEASE_DECISION_SCHEMA) report("unsupported decision schema");
+  if (fields.version !== version) report(`decision claims version ${fields.version ?? "nothing"}`);
+  if (!RELEASE_DECISIONS.includes(fields.decision ?? ""))
+    report(`decision must be promote or reject, found ${fields.decision ?? "nothing"}`);
+}
+
+// Returns the candidate revision only when it is a commit this repository
+// contains and history a clean clone of the trusted target can reach, because
+// every later check that reads the repository at that revision would otherwise
+// be reading whatever the author chose to name.
+function checkDecisionRevision(fields, report, { isRepositoryCommit, isTrustedRevision }) {
+  const revision = fields.candidateRevision ?? "";
+  if (!/^[0-9a-f]{40}$/u.test(revision)) report("candidateRevision is not a full commit id");
+  else if (isRepositoryCommit !== undefined && !isRepositoryCommit(revision))
+    report(`candidateRevision ${revision.slice(0, 12)} is not a commit in this repository`);
+  else if (isTrustedRevision !== undefined && !isTrustedRevision(revision))
+    report(`candidateRevision ${revision.slice(0, 12)} is not reachable from the trusted release target`);
+  else return revision;
+  return null;
+}
+
+function checkDecisionBinding(fields, report) {
+  if ((fields.gateRevision ?? "") !== (fields.candidateRevision ?? ""))
+    report("gate evidence is not bound to the candidate revision");
+  if (!RELEASE_DIGEST.test(fields.candidateReleaseDigest ?? ""))
+    report("candidateReleaseDigest must read sha256:<64 hex>");
+}
+
+function checkRequirementsClosure(fields, report) {
+  const closed = REQUIREMENTS_CLOSED.exec(fields.requirementsClosed ?? "");
+  if (closed === null) {
+    report('requirementsClosed must read "<n> of <n> requirements evidenced"');
+    return null;
+  }
+  if (Number(closed[1]) < 1 || closed[1] !== closed[2]) {
+    report(`only ${closed[1]} of ${closed[2]} requirements are evidenced`);
+    return null;
+  }
+  return Number(closed[2]);
+}
+
+// The denominator must be the reviewed register at the candidate revision, not a
+// number retyped into the decision, so both the digest and the count are read
+// out of Git rather than out of the file making the claim.
+function checkRegisterDigest(fields, revision, closedCount, report, registerAt) {
+  const declared = REGISTER_DIGEST.exec(fields.requirementsRegister ?? "");
+  if (declared === null) report("requirementsRegister must be the sha256 of docs/requirements-register.json");
+  if (revision === null || registerAt === undefined) return;
+  const register = registerAt(revision);
+  if (register === null) {
+    report(`docs/requirements-register.json could not be read at ${revision.slice(0, 12)}`);
+    return;
+  }
+  if (declared !== null && declared[1] !== register.digest)
+    report(`requirementsRegister does not match the register at ${revision.slice(0, 12)}`);
+  if (closedCount !== null && closedCount !== register.count)
+    report(`requirementsClosed names ${closedCount} requirements; the register declares ${register.count}`);
+}
+
+function checkDecisionGates(fields, report) {
+  const gates = splitList(fields.gates).map((gate) => gate.replace(/^pnpm\s+/u, ""));
+  const results = splitList(fields.gateResults).map((result) => result.toLowerCase());
+  for (const gate of gates) if (gate !== RELEASE_DECISION_GATE) report(`${gate} is not the release decision gate`);
+  if (!gates.includes(RELEASE_DECISION_GATE)) report("gate:release was not recorded");
+  if (gates.length !== results.length) report("every gate needs a recorded result");
+  else
+    for (const [index, result] of results.entries()) if (result !== "pass") report(`gate ${gates[index]} did not pass`);
+  for (const field of ["skipped", "todo", "survivingMutants"])
+    if (fields[field] !== "0") report(`${field} must be 0, found ${fields[field] ?? "nothing"}`);
+}
+
+// A decision cannot skip a link in the chain: every task it names has to have a
+// qualification report that satisfies `REPORT-CONTRACT.md`, which is derived
+// from disk rather than declared here.
+function checkDecisionChain(fields, report, tasks) {
+  const declared = splitList(fields.qualificationReports);
+  if (declared.length === 0) {
+    report("qualificationReports names no task in the chain");
+    return;
+  }
+  const malformed = declared.filter((task) => !DECISION_TASK.test(task));
+  if (malformed.length > 0) report(`qualificationReports names a value that is not a task id: ${malformed.join(", ")}`);
+  if (tasks === undefined) return;
+  const missing = declared.filter((task) => DECISION_TASK.test(task) && !tasks.has(task));
+  if (missing.length > 0) report(`no qualification report satisfies the contract for: ${missing.join(", ")}`);
+}
+
+// What this cannot establish, stated rather than implied: that the reviewers
+// reviewed, that the signature verifies, or that the key reference resolves to
+// the key that produced it. Three distinct present identities, an RFC 3339
+// instant, a present signature and key reference, and the pull request the
+// decision was reviewed in are the checkable parts. The rest is carried by the
+// `Protect main` ruleset and the signature itself, exactly as
+// `RELEASE-DECISION-CONTRACT.md` says.
+function checkDecisionIdentities(fields, report) {
+  const roles = ["operationalReviewer", "securityReviewer", "decidedBy"];
+  const present = [];
+  for (const role of roles) {
+    if (unfilled(fields[role])) report(`${role} must name a GitHub identity`);
+    else present.push(fields[role]);
+  }
+  if (present.length === roles.length && new Set(present).size !== roles.length)
+    report("operationalReviewer, securityReviewer, and decidedBy must be three distinct identities");
+}
+
+function checkDecisionAccountability(fields, report) {
+  checkDecisionIdentities(fields, report);
+  if (!RFC3339_UTC.test(fields.decidedAt ?? "")) report("decidedAt must be an RFC 3339 UTC timestamp");
+  for (const field of ["signature", "publicKeyRef"]) if (unfilled(fields[field])) report(`${field} must be present`);
+  if (!PULL_REQUEST_URL.test(fields.reviewedIn ?? ""))
+    report("reviewedIn must name the pull request URL the decision was reviewed in");
+}
+
+// `RELEASE-DECISION-CONTRACT.md` documented a fail-closed frontmatter that
+// nothing enforced. This is that table, and only that table: a decision that
+// promotes or rejects a version has to bind to trusted history, to the reviewed
+// requirement denominator, to the release gate, and to three distinct
+// accountable identities, or it does not count.
+export function validateReleaseDecision(source, version, options = {}) {
+  const errors = [];
+  const report = (message) => errors.push(`release-decision-${version}.md: ${message}`);
+  const { fields, error } = decisionFrontmatter(source);
+  if (fields === null) {
+    report(error);
+    return errors;
+  }
+  checkDecisionIdentity(fields, version, report);
+  const revision = checkDecisionRevision(fields, report, options);
+  checkDecisionBinding(fields, report);
+  checkRegisterDigest(fields, revision, checkRequirementsClosure(fields, report), report, options.registerAt);
+  checkDecisionGates(fields, report);
+  checkDecisionChain(fields, report, options.validatedTasks);
+  checkDecisionAccountability(fields, report);
+  return errors;
+}
+
+export async function readReleaseDecisions(root, { trustedRevision, validatedTasks: tasks } = {}) {
+  const directory = join(root, "docs", "qualification");
+  const decisions = new Map();
+  const errors = [];
+  // Absence is not a failure. No decision has been made, and a repository that
+  // has not decided must not read as one that decided badly.
+  if (!existsSync(directory)) return { decisions, errors };
+  const options = { ...revisionTrust(root, trustedRevision), registerAt: registerReader(root), validatedTasks: tasks };
+  for (const entry of (await readdir(directory)).sort()) {
+    const named = RELEASE_DECISION_FILE.exec(entry);
+    if (named === null) continue;
+    const source = await readFile(join(directory, entry), "utf8");
+    const problems = validateReleaseDecision(source, named[1], options);
+    // There is at most one decision per version. Grouping by the version the
+    // file declares, not by its name, keeps the rule meaningful even for a file
+    // whose name and frontmatter disagree.
+    const claimed = decisionFrontmatter(source).fields?.version ?? named[1];
+    if (decisions.has(claimed)) errors.push(`${entry}: version ${claimed} already has a decision file`);
+    else decisions.set(claimed, { file: entry, decision: decisionFrontmatter(source).fields?.decision ?? null });
+    errors.push(...problems);
+  }
+  return { decisions, errors };
+}
+
 function git(root, args) {
   try {
     return execFileSync("git", ["-C", root, ...args], {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"]
     }).trim();
+  } catch {
+    return null;
+  }
+}
+
+// The register's bytes decide its digest, so they are read raw. `git()` trims,
+// which would silently drop the trailing newline and produce a digest that
+// matches nothing an operator can reproduce with `sha256sum`.
+function gitBytes(root, args) {
+  try {
+    return execFileSync("git", ["-C", root, ...args], {
+      stdio: ["ignore", "pipe", "ignore"],
+      maxBuffer: 64 * 1024 * 1024
+    });
+  } catch {
+    return null;
+  }
+}
+
+function registerReader(root) {
+  const cache = new Map();
+  return (revision) => {
+    if (!cache.has(revision)) cache.set(revision, readRegisterAt(root, revision));
+    return cache.get(revision);
+  };
+}
+
+function readRegisterAt(root, revision) {
+  const bytes = gitBytes(root, ["cat-file", "-p", `${revision}:docs/requirements-register.json`]);
+  if (bytes === null) return null;
+  try {
+    const register = JSON.parse(bytes.toString("utf8"));
+    if (!Array.isArray(register?.requirements)) return null;
+    return { digest: createHash("sha256").update(bytes).digest("hex"), count: register.requirements.length };
   } catch {
     return null;
   }
@@ -614,6 +871,16 @@ async function checkQualificationChain(root, errors) {
     if (resolved.errors.length === 0 && resolved.highestVerifiedTask === null)
       errors.push("ROADMAP.md does not declare a verified qualification chain");
   }
+  return reports.tasks;
+}
+
+// The report contract has been enforced here since T68a; the release decision
+// contract described a fail-closed frontmatter that nothing checked. Both are
+// evidence contracts over the same directory, so both are enforced from the same
+// place, in the same error style, by the same command.
+async function checkReleaseDecisions(root, tasks, errors) {
+  const decisions = await readReleaseDecisions(root, { validatedTasks: tasks });
+  for (const problem of decisions.errors) errors.push(`docs/qualification: ${problem}`);
 }
 
 async function checkFeatureHandoffs(root, errors) {
@@ -645,7 +912,7 @@ export async function checkRepository(root = ROOT) {
   await checkReferencedCommands(root, manifest, instructionFiles, errors);
   const context = await compileAgentContext(root);
   await checkStatusLineAgreement(root, context, errors);
-  await checkQualificationChain(root, errors);
+  await checkReleaseDecisions(root, await checkQualificationChain(root, errors), errors);
   await checkFeatureHandoffs(root, errors);
   await checkMarkdownLinks(root, files, errors);
   return [...new Set(errors)].sort();
