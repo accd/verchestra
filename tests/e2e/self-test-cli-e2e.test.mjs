@@ -2,15 +2,14 @@
 // (.specs/features/self-test-profiles/spec.md PRF-07).
 //
 // The invoking repository is placed under the repository's own scratch
-// directory rather than os.tmpdir(): on macOS, os.tmpdir() resolves through
-// a system symlink (/var -> /private/var), and collectLinkChain
-// (packages/self-test/src/disposable-roots.ts, sealed T69 evidence) records
-// that ancestor hop as a candidate path. When both the guarded root (the
-// invoking cwd) and the self-test disposable root sit under os.tmpdir(), the
-// shared "/var" ancestor false-positives as an overlap via naive path-prefix
-// matching, and the run is wrongly BLOCKED. This is a real, pre-existing
-// latent bug in T69's overlap rule — flagged in the handoff for a follow-up
-// task rather than reopened here — that this suite avoids by construction.
+// directory rather than os.tmpdir(), because a repository fixture wants a
+// stable, inspectable location; the suite no longer needs that placement to
+// avoid a guarded-root coincidence. The overlap this file previously
+// documented as an unavoidable hazard — a control root that is an ancestor of
+// the temporary directory, which is every Windows home directory — is fixed:
+// the CLI now guards the Workspace it can actually locate rather than
+// whatever directory the user is standing in. The two cases at the bottom of
+// this file pin both halves of that behavior.
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -44,11 +43,11 @@ afterEach(async () => {
   );
 });
 
-function launch(args, cwd) {
+function launch(args, cwd, environment = {}) {
   return spawnSync(
     process.execPath,
     [fileURLToPath(new URL("../../apps/vestra-cli/bin/vestra.mjs", import.meta.url)), ...args],
-    { cwd, encoding: "utf8", env: { ...process.env, NO_COLOR: "1" } }
+    { cwd, encoding: "utf8", env: { ...process.env, NO_COLOR: "1", ...environment } }
   );
 }
 
@@ -118,4 +117,45 @@ test("self-test leaves the invoking Git repository byte-identical", async () => 
   const result = launch(["self-test", "--profile", "smoke"], cwd);
   assert.equal(result.status, 0, result.stderr);
   assert.equal(byteListing(cwd), before);
+});
+
+// Issue #370. The disposable base always lives under the OS temporary
+// directory, so a control root that is an ancestor of it used to read as an
+// overlap and refuse the run. On Windows that is the default home directory,
+// so `npx verchestra self-test` failed for the first command a user would
+// naturally type. Relocating the temporary directory into the control root
+// reproduces exactly that configuration on every platform.
+test("a control root that contains the temporary directory does not refuse the run", async () => {
+  const root = await repositoryRoot();
+  const temporary = join(root, "tmp");
+  await mkdir(temporary, { recursive: true });
+  const result = launch(["self-test", "--profile", "smoke"], root, {
+    TMPDIR: temporary,
+    TEMP: temporary,
+    TMP: temporary
+  });
+  assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+  assert.match(result.stdout, /self_test\.verdict: PASS/u);
+});
+
+// The guard itself must keep failing closed on the case it exists for: a
+// disposable root provisioned inside real production state. A Workspace is
+// production state, and it is what the workspace and full scenarios would
+// damage, so a temporary directory inside a Workspace must still refuse.
+test("a disposable root inside a real Workspace still fails closed", async () => {
+  const root = await repositoryRoot();
+  await mkdir(join(root, ".verchestra"), { recursive: true });
+  await writeFile(
+    join(root, ".verchestra", "workspace.yaml"),
+    'schemaVersion: 1\nworkspaceId: guard-fixture\ndisplayName: "guard fixture"\nlanguage: en\nplacementMode: centralized\n'
+  );
+  const temporary = join(root, "tmp");
+  await mkdir(temporary, { recursive: true });
+  const result = launch(["self-test", "--profile", "smoke"], root, {
+    TMPDIR: temporary,
+    TEMP: temporary,
+    TMP: temporary
+  });
+  assert.notEqual(result.status, 0);
+  assert.doesNotMatch(result.stdout, /self_test\.verdict: PASS/u);
 });
