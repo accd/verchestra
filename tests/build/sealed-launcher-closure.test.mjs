@@ -285,13 +285,17 @@ test("the sealed launcher is the real CLI for every other argument vector", asyn
 // checkout reports for the same project (tests/e2e/doctor-cli-e2e.test.mjs
 // owns that source-mode expectation).
 //
-// Recorded limitation, deliberately NOT worked around: no layout can reach
-// PASS. `doctor.native-asset` keys off `resolveReleaseIdentity().releaseDigest`
-// (apps/vestra-cli/src/doctor-composition.ts), which release-manifest.ts
-// returns as null in BOTH branches by protocol - the digest covers a manifest
-// containing the launcher's own content digest, so any compiled-in value would
-// be circular. BLOCKED is therefore the honest ceiling until a release can
-// name its own digest without circularity.
+// Recorded limitation, deliberately NOT worked around here: this staged layout
+// cannot reach PASS. `doctor.native-asset` reads the activation record of the
+// install the sealed bundle sits in (apps/vestra-cli/src/main.ts derives it
+// three levels up from the bin directory, and doctor-composition.ts cross-checks
+// active.json against releases/<digest>/release.json). This test runs the bundle
+// from a disposable staged root that was never activated - it holds no
+// active.json - so the asset is honestly blocked. A genuinely activated release
+// reports it present (tests/integration/doctor-native-asset-probe.test.mjs
+// proves that path). secret-presence stays blocked regardless: no production
+// secret backend exists to observe yet (#18, L2). BLOCKED is the honest verdict
+// for this unprovisioned, un-activated layout.
 test("doctor from the staged layout reports the machine, not the packaging", async () => {
   const releaseRoot = await stagedLayout(sealedBins);
   const project = await invokingProject();
@@ -311,8 +315,8 @@ test("doctor from the staged layout reports the machine, not the packaging", asy
   assert.equal(source.status, 4, source.stderr);
   assert.equal(sourceReport["doctor.verdict"], sealedReport["doctor.verdict"]);
   assert.deepEqual(sealedReport["doctor.check_codes"], sourceReport["doctor.check_codes"]);
-  // The limitation above, asserted rather than assumed, so a future change
-  // that makes the digest non-null cannot leave this comment stale.
+  // The limitation above, asserted rather than assumed: a staged, never-activated
+  // bundle observes no activation record and reports the asset blocked.
   assert.ok(sealedReport["doctor.check_codes"].includes("doctor.native-asset:blocked"));
 });
 

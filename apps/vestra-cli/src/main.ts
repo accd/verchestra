@@ -1,3 +1,6 @@
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
 import type { CliCommand, CommandBus, CommandResult } from "@verchestra/application";
 import { doctorExitCode } from "@verchestra/application";
 import { PublicErrorException } from "@verchestra/domain";
@@ -6,7 +9,7 @@ import { SafeInitService, buildCanonicalInitFiles } from "@verchestra/workspace"
 import { cliError, cliPublicErrorRegistry } from "./cli-errors.ts";
 import { runCli } from "./cli.ts";
 import { runDoctorDeep } from "./doctor-composition.ts";
-import { installedReleaseManifest } from "./release-manifest.ts";
+import { installedReleaseManifest, isSealedRelease } from "./release-manifest.ts";
 import { runSelfTestProfile } from "./self-test-composition.ts";
 
 // The command bus is parameterized by controlRoot so the exact same
@@ -77,10 +80,33 @@ async function executeSelfTest(command: CliCommand): Promise<CommandResult> {
 // diagnostic's TEST-ONLY signing identity must not be reachable from the
 // mutating command path. A non-PASS verdict is a health signal, not a command
 // error, so the report is still rendered and the exit code carries the state.
+// The install root of the release this process is actually part of, derived
+// from the sealed bundle's own location — the launcher activates a release to
+// <installRoot>/releases/<digest>/bin/vestra.mjs (node-activation-closure.ts),
+// which this file is bundled into, so three levels up from that bin directory
+// is the install root that also holds active.json. Deriving it from the running
+// bundle rather than the machine's canonical state root keeps the observation
+// about THIS release, and keeps a staged or relocated bundle honestly blocked
+// instead of borrowing an unrelated install's activation record. A source
+// checkout has no install to inspect, so the native-asset probe stays honestly
+// blocked there (#18, L2).
+function activeInstallRoot(): string | undefined {
+  if (!isSealedRelease()) return undefined;
+  try {
+    return join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
+  } catch {
+    return undefined;
+  }
+}
+
 async function executeDoctor(command: CliCommand): Promise<CommandResult> {
   let run: Awaited<ReturnType<typeof runDoctorDeep>>;
   try {
-    run = await runDoctorDeep({ controlRoot: process.cwd() });
+    const installRoot = activeInstallRoot();
+    run = await runDoctorDeep({
+      controlRoot: process.cwd(),
+      live: installRoot === undefined ? {} : { installRoot }
+    });
   } catch (error) {
     throw new PublicErrorException(
       cliPublicErrorRegistry.create("VES_CLI_COMMAND_FAILED", { command: command.name }),
