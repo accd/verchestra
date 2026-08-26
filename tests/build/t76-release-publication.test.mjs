@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { generateKeyPairSync } from "node:crypto";
+import { createHash, createPublicKey, generateKeyPairSync } from "node:crypto";
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -33,7 +33,8 @@ import {
   priorCandidateClosure,
   sha,
   tamperPayload,
-  testSigningKeyBase64
+  testSigningKeyBase64,
+  writeMatchingReleaseAnchor
 } from "../helpers/t76-publication-fixture.mjs";
 
 const execute = promisify(execFile);
@@ -43,16 +44,24 @@ after(async () => {
   await disposePublicationFixtures();
 });
 
-const optionsFor = (closure, environment, rollbackIndexPath) => ({
-  indexPath: closure.indexPath,
-  targetsDirectory: closure.targetsDirectory,
-  outputDirectory: closure.outputDirectory,
-  baseUrl: PUBLICATION_BASE_URL,
-  revision: closure.revision,
-  expires: PUBLICATION_EXPIRES,
-  rollbackIndexPath,
-  protectedEnvironment: environment
-});
+const optionsFor = (closure, environment, rollbackIndexPath) => {
+  // The publisher binds the signing key to the reviewed release anchor. Tests
+  // sign with a throwaway key, so a matching anchor is written for whatever key
+  // this environment carries; a missing key (the missing-key path) needs none.
+  const key = environment?.VESTRA_RELEASE_SIGNING_KEY_PKCS8_BASE64;
+  return {
+    indexPath: closure.indexPath,
+    targetsDirectory: closure.targetsDirectory,
+    outputDirectory: closure.outputDirectory,
+    baseUrl: PUBLICATION_BASE_URL,
+    revision: closure.revision,
+    expires: PUBLICATION_EXPIRES,
+    rollbackIndexPath,
+    protectedEnvironment: environment,
+    releaseAnchorPath:
+      typeof key === "string" && key.length > 0 ? writeMatchingReleaseAnchor(closure.root, key) : undefined
+  };
+};
 
 const withKey = (key = testSigningKeyBase64()) => ({ VESTRA_RELEASE_SIGNING_KEY_PKCS8_BASE64: key });
 
@@ -115,6 +124,49 @@ test("one trust root serves all five targets and every metadata role is signed b
   assert.equal(root.signatures[0].keyid, manifest.signingKeyId);
   assert.deepEqual(Object.keys(root.signed.roles).sort(), ["root", "snapshot", "targets", "timestamp"]);
   for (const role of Object.values(root.signed.roles)) assert.deepEqual(role.keyids, [manifest.signingKeyId]);
+});
+
+test("refuses a well-formed signing key that is not the reviewed release anchor, before any output", async () => {
+  // The key is valid Ed25519 and would sign fine; it simply is not the reviewed
+  // anchor. Dropping the test anchor makes the committed default apply, so this
+  // also proves the production default is the committed anchor rather than any
+  // key the operator happens to hold (#18, F3).
+  const rollback = await sharedPrior();
+  const closure = await candidateClosure();
+  const { releaseAnchorPath, ...boundToCommittedAnchor } = optionsFor(closure, withKey(), rollback.indexPath);
+  assert.equal(typeof releaseAnchorPath, "string");
+  await assert.rejects(() => publishT76Release(boundToCommittedAnchor), {
+    code: "VES_T76_PUBLISH_KEY_MISMATCH"
+  });
+  await assert.rejects(() => readdir(closure.outputDirectory), { code: "ENOENT" });
+});
+
+test("binds the emitted root to the reviewed anchor: every root role delegates to the anchor's own key id", async () => {
+  // Independently derive the anchor's TUF key id from the committed-shape anchor
+  // file, then prove the emitted root.json — its signature and all four role
+  // delegations — carries exactly that id. This is the binding F3 asked for:
+  // the artifact a human reviews is mechanically tied to what the root delegates.
+  const rollback = await sharedPrior();
+  const closure = await candidateClosure();
+  const key = testSigningKeyBase64();
+  const anchorPath = writeMatchingReleaseAnchor(closure.root, key);
+  const anchor = JSON.parse(await readFile(anchorPath, "utf8"));
+  const anchorKeyId = createHash("sha256")
+    .update(createPublicKey(anchor.publicKey).export({ format: "der", type: "spki" }))
+    .digest("hex");
+  const manifest = await publishT76Release({
+    ...optionsFor(closure, withKey(key), rollback.indexPath),
+    releaseAnchorPath: anchorPath
+  });
+  assert.equal(manifest.signingKeyId, anchorKeyId);
+  const root = JSON.parse(
+    await readFile(join(closure.outputDirectory, "publication", "win32-x64", "metadata", "root.json"), "utf8")
+  );
+  assert.deepEqual(
+    root.signatures.map((signature) => signature.keyid),
+    [anchorKeyId]
+  );
+  for (const role of Object.values(root.signed.roles)) assert.deepEqual(role.keyids, [anchorKeyId]);
 });
 
 test("the upload manifest names every asset, its digest, and the remote key it must land at", async () => {
@@ -514,7 +566,11 @@ test("the command line never emits key material on success or on failure", async
     "--expires",
     PUBLICATION_EXPIRES,
     "--rollback-index",
-    rollback.indexPath
+    rollback.indexPath,
+    // The release workflow omits this and binds to the committed anchor; the
+    // subprocess signs with a throwaway key, so it points at a matching one.
+    "--release-anchor",
+    writeMatchingReleaseAnchor(closure.root, key)
   ];
   const run = async (environment) =>
     await execute(process.execPath, args, {
