@@ -7,17 +7,35 @@ import { bundleInput, components, releaseId } from "./hermetic-bundle-fixture.mj
 
 export const sha = (value) => `sha256:${createHash("sha256").update(value).digest("hex")}`;
 
-const keys = (count = 2) =>
+const keys = (count, label) =>
   Array.from({ length: count }, (_, index) => {
     const pair = generateKeyPairSync("ed25519");
     const publicKeyPem = pair.publicKey.export({ format: "pem", type: "spki" }).toString();
-    const keyId = createHash("sha256").update(`tuf-publication-${index}:${publicKeyPem}`).digest("hex");
+    const keyId = createHash("sha256").update(`tuf-publication-${label}-${index}:${publicKeyPem}`).digest("hex");
     return {
       keyId,
       publicKeyPem,
       sign: (payload) => sign(null, payload, pair.privateKey)
     };
   });
+
+// Role-separated authority (#18, F1): an offline key set signs root and targets,
+// a distinct online key set signs timestamp and snapshot.
+export const rolesFor = (offline, online) => ({
+  root: { threshold: offline.length, signers: offline },
+  targets: { threshold: offline.length, signers: offline },
+  timestamp: { threshold: online.length, signers: online },
+  snapshot: { threshold: online.length, signers: online }
+});
+
+// Per-role expiry (#18, F2): the online metadata expires before the offline
+// horizon, ordered timestamp <= snapshot <= targets <= root.
+export const defaultExpiries = Object.freeze({
+  timestamp: "2030-01-01T00:00:00.000Z",
+  snapshot: "2030-01-01T00:00:00.000Z",
+  targets: "2035-01-01T00:00:00.000Z",
+  root: "2035-01-01T00:00:00.000Z"
+});
 
 export function fixture(options = {}) {
   // options.components lets a test supply realistic logicalPaths (nested
@@ -63,18 +81,21 @@ export function fixture(options = {}) {
       verificationDigest: sha("rollback-proof")
     }
   });
-  const signers = keys();
+  const offline = options.offline ?? keys(2, "offline");
+  const online = options.online ?? keys(1, "online");
+  const roles = options.roles ?? rolesFor(offline, online);
+  const expires = options.expires ?? defaultExpiries;
   const publication = buildTufReleasePublication({
     schemaVersion: 1,
     candidate,
     componentBytes,
-    metadataVersion: 1,
-    expires: "2035-01-01T00:00:00.000Z",
-    threshold: 2,
-    signers,
-    consistentSnapshot: true
+    metadataVersion: options.metadataVersion ?? 1,
+    rootVersion: options.rootVersion ?? 1,
+    expires,
+    roles,
+    consistentSnapshot: options.consistentSnapshot ?? true
   });
-  return { bundle, candidate, componentBytes, publication, signers };
+  return { bundle, candidate, componentBytes, publication, offline, online, roles, expires };
 }
 
 export class MapDistributionSource {

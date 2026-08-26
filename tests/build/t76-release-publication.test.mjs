@@ -44,11 +44,16 @@ after(async () => {
   await disposePublicationFixtures();
 });
 
+const anchorFor = (closure, key) =>
+  typeof key === "string" && key.length > 0 ? writeMatchingReleaseAnchor(closure.root, key) : undefined;
+
 const optionsFor = (closure, environment, rollbackIndexPath) => {
-  // The publisher binds the signing key to the reviewed release anchor. Tests
-  // sign with a throwaway key, so a matching anchor is written for whatever key
-  // this environment carries; a missing key (the missing-key path) needs none.
-  const key = environment?.VESTRA_RELEASE_SIGNING_KEY_PKCS8_BASE64;
+  // The publisher binds each role-separated signing key to its own reviewed
+  // anchor (#18, F1/F3). Tests sign with throwaway keys, so a matching anchor is
+  // written for whatever keys this environment carries; a missing key (the
+  // missing-key path) needs none.
+  const release = environment?.VESTRA_RELEASE_SIGNING_KEY_PKCS8_BASE64;
+  const timestamp = environment?.VESTRA_RELEASE_TIMESTAMP_SIGNING_KEY_PKCS8_BASE64;
   return {
     indexPath: closure.indexPath,
     targetsDirectory: closure.targetsDirectory,
@@ -58,12 +63,17 @@ const optionsFor = (closure, environment, rollbackIndexPath) => {
     expires: PUBLICATION_EXPIRES,
     rollbackIndexPath,
     protectedEnvironment: environment,
-    releaseAnchorPath:
-      typeof key === "string" && key.length > 0 ? writeMatchingReleaseAnchor(closure.root, key) : undefined
+    releaseAnchorPath: anchorFor(closure, release),
+    timestampAnchorPath: anchorFor(closure, timestamp)
   };
 };
 
-const withKey = (key = testSigningKeyBase64()) => ({ VESTRA_RELEASE_SIGNING_KEY_PKCS8_BASE64: key });
+// The offline root/targets key and the online timestamp/snapshot key are always
+// distinct throwaway keys, matching production's two-key custody.
+const withKey = (release = testSigningKeyBase64(), timestamp = testSigningKeyBase64()) => ({
+  VESTRA_RELEASE_SIGNING_KEY_PKCS8_BASE64: release,
+  VESTRA_RELEASE_TIMESTAMP_SIGNING_KEY_PKCS8_BASE64: timestamp
+});
 
 // One sealed prior closure serves every rollback index below: a different
 // revision with entirely distinct payload bytes, exactly what a real
@@ -112,7 +122,7 @@ test("publishes exactly one signed TUF repository for every supported target", a
   }
 });
 
-test("one trust root serves all five targets and every metadata role is signed by the release key", async () => {
+test("one trust root serves all five targets, role-separated between the offline and online keys", async () => {
   const { closure, manifest } = await sharedPublication();
   const roots = [];
   for (const entry of manifest.targets)
@@ -120,10 +130,24 @@ test("one trust root serves all five targets and every metadata role is signed b
   assert.equal(new Set(roots.map((bytes) => sha(bytes))).size, 1);
   assert.equal(sha(roots[0]), manifest.rootDigest);
   const root = JSON.parse(roots[0].toString("utf8"));
+  // The root is signed by the offline release key alone.
   assert.equal(root.signatures.length, 1);
   assert.equal(root.signatures[0].keyid, manifest.signingKeyId);
   assert.deepEqual(Object.keys(root.signed.roles).sort(), ["root", "snapshot", "targets", "timestamp"]);
-  for (const role of Object.values(root.signed.roles)) assert.deepEqual(role.keyids, [manifest.signingKeyId]);
+  // Role separation (#18, F1): root and targets delegate to the offline release
+  // key; timestamp and snapshot to the distinct online key.
+  assert.deepEqual(root.signed.roles.root.keyids, [manifest.signingKeyId]);
+  assert.deepEqual(root.signed.roles.targets.keyids, [manifest.signingKeyId]);
+  assert.deepEqual(root.signed.roles.timestamp.keyids, [manifest.timestampSigningKeyId]);
+  assert.deepEqual(root.signed.roles.snapshot.keyids, [manifest.timestampSigningKeyId]);
+  assert.notEqual(manifest.signingKeyId, manifest.timestampSigningKeyId);
+  // The root declares exactly the union of both keys.
+  assert.deepEqual(
+    Object.keys(root.signed.keys).sort(),
+    [manifest.signingKeyId, manifest.timestampSigningKeyId].sort()
+  );
+  // The online timestamp metadata expires no later than the offline horizon (F2).
+  assert.ok(Date.parse(manifest.timestampExpires) <= Date.parse(manifest.expires));
 });
 
 test("refuses a well-formed signing key that is not the reviewed release anchor, before any output", async () => {
@@ -141,11 +165,12 @@ test("refuses a well-formed signing key that is not the reviewed release anchor,
   await assert.rejects(() => readdir(closure.outputDirectory), { code: "ENOENT" });
 });
 
-test("binds the emitted root to the reviewed anchor: every root role delegates to the anchor's own key id", async () => {
+test("binds the emitted root's offline roles to the reviewed release anchor's own key id", async () => {
   // Independently derive the anchor's TUF key id from the committed-shape anchor
-  // file, then prove the emitted root.json — its signature and all four role
-  // delegations — carries exactly that id. This is the binding F3 asked for:
-  // the artifact a human reviews is mechanically tied to what the root delegates.
+  // file, then prove the emitted root.json — its signature and the root/targets
+  // delegations — carries exactly that id. This is the binding F3 asked for: the
+  // artifact a human reviews is mechanically tied to what the offline roles
+  // delegate to. The online roles carry the distinct timestamp key (F1).
   const rollback = await sharedPrior();
   const closure = await candidateClosure();
   const key = testSigningKeyBase64();
@@ -166,7 +191,66 @@ test("binds the emitted root to the reviewed anchor: every root role delegates t
     root.signatures.map((signature) => signature.keyid),
     [anchorKeyId]
   );
-  for (const role of Object.values(root.signed.roles)) assert.deepEqual(role.keyids, [anchorKeyId]);
+  assert.deepEqual(root.signed.roles.root.keyids, [anchorKeyId]);
+  assert.deepEqual(root.signed.roles.targets.keyids, [anchorKeyId]);
+  assert.deepEqual(root.signed.roles.timestamp.keyids, [manifest.timestampSigningKeyId]);
+  assert.deepEqual(root.signed.roles.snapshot.keyids, [manifest.timestampSigningKeyId]);
+  assert.notEqual(anchorKeyId, manifest.timestampSigningKeyId);
+});
+
+test("refuses a timestamp key that is not the reviewed timestamp anchor, before any output", async () => {
+  const rollback = await sharedPrior();
+  const closure = await candidateClosure();
+  // Valid keys and a matching release anchor; only the timestamp anchor names a
+  // different key. The online key is bound to its own reviewed anchor too (F1).
+  const options = {
+    ...optionsFor(closure, withKey(), rollback.indexPath),
+    timestampAnchorPath: writeMatchingReleaseAnchor(closure.root, testSigningKeyBase64())
+  };
+  await assert.rejects(() => publishT76Release(options), { code: "VES_T76_PUBLISH_KEY_MISMATCH" });
+  await assert.rejects(() => readdir(closure.outputDirectory), { code: "ENOENT" });
+});
+
+test("fails closed when the reviewed timestamp anchor is absent (the owner must provision it)", async () => {
+  const rollback = await sharedPrior();
+  const closure = await candidateClosure();
+  const options = {
+    ...optionsFor(closure, withKey(), rollback.indexPath),
+    timestampAnchorPath: join(closure.root, "no-such-timestamp-anchor.json")
+  };
+  await assert.rejects(() => publishT76Release(options), { code: "VES_T76_PUBLISH_ANCHOR_MISSING" });
+  await assert.rejects(() => readdir(closure.outputDirectory), { code: "ENOENT" });
+});
+
+test("refuses the same key for the offline and online roles", async () => {
+  const rollback = await sharedPrior();
+  const closure = await candidateClosure();
+  const key = testSigningKeyBase64();
+  await assert.rejects(() => publishT76Release(optionsFor(closure, withKey(key, key), rollback.indexPath)), {
+    code: "VES_T76_PUBLISH_KEY_MISMATCH"
+  });
+  await assert.rejects(() => readdir(closure.outputDirectory), { code: "ENOENT" });
+});
+
+test("an operator can set a short online window decoupled from the offline horizon (#18, F2)", async () => {
+  const rollback = await sharedPrior();
+  const closure = await candidateClosure();
+  // Earlier than the horizon PUBLICATION_EXPIRES, and still in the future.
+  const timestampExpires = "2028-01-01T00:00:00.000Z";
+  const manifest = await publishT76Release({
+    ...optionsFor(closure, withKey(), rollback.indexPath),
+    timestampExpires
+  });
+  assert.equal(manifest.timestampExpires, timestampExpires);
+  assert.ok(Date.parse(manifest.timestampExpires) < Date.parse(manifest.expires));
+  const metadata = async (name) =>
+    JSON.parse(await readFile(join(closure.outputDirectory, "publication", "win32-x64", "metadata", name), "utf8"));
+  // The offline root and targets keep the horizon; the online timestamp and
+  // snapshot carry the short window — the decoupling F2 asked for.
+  assert.equal((await metadata("root.json")).signed.expires, manifest.expires);
+  assert.equal((await metadata("1.targets.json")).signed.expires, manifest.expires);
+  assert.equal((await metadata("timestamp.json")).signed.expires, timestampExpires);
+  assert.equal((await metadata("1.snapshot.json")).signed.expires, timestampExpires);
 });
 
 test("the upload manifest names every asset, its digest, and the remote key it must land at", async () => {
@@ -551,6 +635,7 @@ test("the command line never emits key material on success or on failure", async
   const rollback = await sharedPrior();
   const closure = await candidateClosure();
   const key = testSigningKeyBase64();
+  const timestampKey = testSigningKeyBase64();
   const args = [
     SCRIPT,
     "--index",
@@ -567,31 +652,44 @@ test("the command line never emits key material on success or on failure", async
     PUBLICATION_EXPIRES,
     "--rollback-index",
     rollback.indexPath,
-    // The release workflow omits this and binds to the committed anchor; the
-    // subprocess signs with a throwaway key, so it points at a matching one.
+    // The release workflow omits these and binds to the committed anchors; the
+    // subprocess signs with throwaway keys, so it points at matching ones.
     "--release-anchor",
-    writeMatchingReleaseAnchor(closure.root, key)
+    writeMatchingReleaseAnchor(closure.root, key),
+    "--timestamp-anchor",
+    writeMatchingReleaseAnchor(closure.root, timestampKey)
   ];
-  const run = async (environment) =>
+  const run = async (release) =>
     await execute(process.execPath, args, {
       encoding: "utf8",
       windowsHide: true,
       maxBuffer: 64 * 1024 * 1024,
-      env: { ...process.env, ...environment }
+      env: {
+        ...process.env,
+        VESTRA_RELEASE_SIGNING_KEY_PKCS8_BASE64: release,
+        VESTRA_RELEASE_TIMESTAMP_SIGNING_KEY_PKCS8_BASE64: timestampKey
+      }
     }).catch((error) => ({ stdout: error.stdout ?? "", stderr: error.stderr ?? "" }));
 
-  const secrets = [key, key.slice(0, 32), Buffer.from(key, "base64").toString("hex")];
-  const success = await run({ VESTRA_RELEASE_SIGNING_KEY_PKCS8_BASE64: key });
+  const secrets = [
+    key,
+    key.slice(0, 32),
+    Buffer.from(key, "base64").toString("hex"),
+    timestampKey,
+    Buffer.from(timestampKey, "base64").toString("hex")
+  ];
+  const success = await run(key);
   const combined = `${success.stdout}${success.stderr}`;
   for (const secret of secrets) assert.equal(combined.includes(secret), false, "no key material may reach a log");
   assert.match(success.stdout, /"signingKeyId"/u);
+  assert.match(success.stdout, /"timestampSigningKeyId"/u);
 
   const emitted = JSON.parse(await readFile(join(closure.outputDirectory, "publication-manifest.json"), "utf8"));
   const serialized = JSON.stringify(emitted);
   for (const secret of secrets)
     assert.equal(serialized.includes(secret), false, "no key material may reach an artifact");
 
-  const failure = await run({ VESTRA_RELEASE_SIGNING_KEY_PKCS8_BASE64: `${key}!!` });
+  const failure = await run(`${key}!!`);
   const failed = `${failure.stdout}${failure.stderr}`;
   for (const secret of secrets) assert.equal(failed.includes(secret), false, "a rejected key may not be echoed");
   assert.match(failed, /VES_T76_PUBLISH_SIGNING_KEY_INVALID/u);

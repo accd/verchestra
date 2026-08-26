@@ -13,10 +13,12 @@
 //
 // Authority boundaries this script does not cross:
 //
-//   * The private key is read only from the process environment, only under
-//     `VESTRA_RELEASE_SIGNING_KEY_PKCS8_BASE64`, and never from a file path or
-//     a command-line argument. It is a different key with different authority
-//     from the T75 evidence key and the two are never interchangeable.
+//   * Signing authority is role-separated (#18, F1): the offline key under
+//     `VESTRA_RELEASE_SIGNING_KEY_PKCS8_BASE64` signs root and targets, the
+//     online key under `VESTRA_RELEASE_TIMESTAMP_SIGNING_KEY_PKCS8_BASE64` signs
+//     timestamp and snapshot. Each is read only from the process environment,
+//     never a file path or a command-line argument, is bound to its own reviewed
+//     anchor before any output, and both differ from the T75 evidence key.
 //   * No decoded key byte, no base64 character of it, and no OpenSSL cause
 //     chain derived from it is ever written to stdout, stderr, an emitted file,
 //     or an error message. Key failures deliberately carry no `cause`.
@@ -47,8 +49,15 @@ import {
   writeTufReleasePublication
 } from "../packages/distribution/src/index.ts";
 
-/** The one environment name that may carry release signing authority. */
+/** The offline environment name that carries root and targets signing authority. */
 export const KEY_ENVIRONMENT_NAME = "VESTRA_RELEASE_SIGNING_KEY_PKCS8_BASE64";
+
+/**
+ * The online environment name that carries timestamp and snapshot signing
+ * authority (#18, F1). A distinct, fast-rotating key so a compromise of the
+ * online key can neither swap the release nor rewrite the root.
+ */
+export const TIMESTAMP_KEY_ENVIRONMENT_NAME = "VESTRA_RELEASE_TIMESTAMP_SIGNING_KEY_PKCS8_BASE64";
 
 /** The exact fleet a candidate closure must cover, in code-unit order. */
 export const SUPPORTED_TARGET_KEYS = Object.freeze([
@@ -155,15 +164,15 @@ const absolutePath = (value, label) => {
 // A key failure must never quote the value it rejected, and must never carry an
 // OpenSSL `cause` that could echo decoded material into a log. Both rules are
 // enforced here rather than at every call site.
-const decodeProtectedPkcs8 = (environment) => {
-  const encoded = record(environment ?? {}, "protected environment")[KEY_ENVIRONMENT_NAME];
+const decodeProtectedPkcs8 = (environment, keyName) => {
+  const encoded = record(environment ?? {}, "protected environment")[keyName];
   if (typeof encoded !== "string" || encoded.length === 0)
-    fail("VES_T76_PUBLISH_SIGNING_KEY_MISSING", `${KEY_ENVIRONMENT_NAME} is not configured`);
+    fail("VES_T76_PUBLISH_SIGNING_KEY_MISSING", `${keyName} is not configured`);
   if (!BASE64.test(encoded) || encoded.length % 4 !== 0)
-    fail("VES_T76_PUBLISH_SIGNING_KEY_INVALID", "the release signing key is not base64 PKCS#8 material");
+    fail("VES_T76_PUBLISH_SIGNING_KEY_INVALID", "a release signing key is not base64 PKCS#8 material");
   const decoded = Buffer.from(encoded, "base64");
   if (decoded.byteLength === 0)
-    fail("VES_T76_PUBLISH_SIGNING_KEY_INVALID", "the release signing key decodes to no PKCS#8 material");
+    fail("VES_T76_PUBLISH_SIGNING_KEY_INVALID", "a release signing key decodes to no PKCS#8 material");
   return decoded;
 };
 
@@ -171,19 +180,21 @@ const privateKeyFrom = (der) => {
   try {
     return createPrivateKey({ key: der, format: "der", type: "pkcs8" });
   } catch {
-    return fail("VES_T76_PUBLISH_SIGNING_KEY_INVALID", "the release signing key is not a PKCS#8 private key");
+    return fail("VES_T76_PUBLISH_SIGNING_KEY_INVALID", "a release signing key is not a PKCS#8 private key");
   }
 };
 
 /**
- * Derives the TUF signer from the protected environment. The returned object
+ * Derives a TUF signer from the protected environment. The returned object
  * exposes a public key, a public key identity, and a signing callback; the
- * private key stays inside this closure and is never serialized.
+ * private key stays inside this closure and is never serialized. `keyName`
+ * selects which protected variable holds it — the offline root/targets key by
+ * default, or the online timestamp/snapshot key (#18, F1).
  */
-export function releaseSignerFromEnvironment(environment) {
-  const privateKey = privateKeyFrom(decodeProtectedPkcs8(environment));
+export function releaseSignerFromEnvironment(environment, keyName = KEY_ENVIRONMENT_NAME) {
+  const privateKey = privateKeyFrom(decodeProtectedPkcs8(environment, keyName));
   if (privateKey.asymmetricKeyType !== "ed25519")
-    fail("VES_T76_PUBLISH_SIGNING_KEY_INVALID", "the release signing key is not an Ed25519 key");
+    fail("VES_T76_PUBLISH_SIGNING_KEY_INVALID", "a release signing key is not an Ed25519 key");
   const publicKey = createPublicKey(privateKey);
   return Object.freeze({
     keyId: createHash("sha256")
@@ -211,6 +222,14 @@ const DEFAULT_RELEASE_ANCHOR = new URL(
   import.meta.url
 );
 
+// The reviewed public half of the online timestamp/snapshot key (#18, F1). Like
+// the release anchor, the CLI never overrides it, so a live publication is
+// always bound to the reviewed timestamp key.
+const DEFAULT_TIMESTAMP_ANCHOR = new URL(
+  "../docs/qualification/trust/release-timestamp-snapshot-public-key.json",
+  import.meta.url
+);
+
 const anchorKeyIdOf = (ref) => {
   const decoded = record(ref, "release anchor");
   const material = (() => {
@@ -232,22 +251,33 @@ const anchorKeyIdOf = (ref) => {
     .digest("hex");
 };
 
-// Resolves the TUF keyId the emitted root.json must carry from the reviewed
-// anchor. A missing or malformed anchor fails closed before any output byte.
-const expectedAnchorKeyId = async (anchorPath) => {
+// Resolves the TUF keyId the emitted metadata must carry from a reviewed anchor.
+// A missing or malformed anchor fails closed before any output byte.
+const expectedAnchorKeyId = async (anchorPath, defaultAnchor) => {
   let raw;
   try {
-    raw = await readFile(anchorPath ?? DEFAULT_RELEASE_ANCHOR, "utf8");
+    raw = await readFile(anchorPath ?? defaultAnchor, "utf8");
   } catch (error) {
-    return fail("VES_T76_PUBLISH_ANCHOR_MISSING", "the reviewed release anchor cannot be read", error);
+    return fail("VES_T76_PUBLISH_ANCHOR_MISSING", "a reviewed signing anchor cannot be read", error);
   }
   let parsed;
   try {
     parsed = JSON.parse(raw);
   } catch (error) {
-    return fail("VES_T76_PUBLISH_ANCHOR_INVALID", "the reviewed release anchor is not JSON", error);
+    return fail("VES_T76_PUBLISH_ANCHOR_INVALID", "a reviewed signing anchor is not JSON", error);
   }
   return anchorKeyIdOf(parsed);
+};
+
+// Per-role expiry (#18, F2): root and targets keep the operator's horizon; the
+// online timestamp and snapshot metadata may expire sooner, decoupled from the
+// root so a short freeze-attack-defense window no longer forces the offline root
+// to expire too. The window defaults to the full horizon — a shorter one is an
+// expiry time-bomb until the monthly online re-signing routine exists, so it is
+// opt-in through --timestamp-expires. The publication core enforces the ordering.
+const roleExpiries = (horizon, timestampExpires) => {
+  const online = timestampExpires ?? horizon;
+  return Object.freeze({ timestamp: online, snapshot: online, targets: horizon, root: horizon });
 };
 
 // ---------------------------------------------------------------------------
@@ -354,11 +384,18 @@ const validateOptions = (value) => {
     baseUrl: validateBaseUrl(input.baseUrl),
     revision: text(input.revision, "revision", REVISION),
     expires: text(input.expires, "expires", INSTANT),
+    timestampExpires:
+      input.timestampExpires === undefined ? undefined : text(input.timestampExpires, "timestampExpires", INSTANT),
     metadataVersion: validateMetadataVersion(input.metadataVersion),
+    rootVersion: validateMetadataVersion(input.rootVersion ?? 1),
     rollbackIndexPath: absolutePath(input.rollbackIndexPath, "rollbackIndexPath"),
     protectedEnvironment: record(input.protectedEnvironment ?? {}, "protectedEnvironment"),
     releaseAnchorPath:
-      input.releaseAnchorPath === undefined ? undefined : absolutePath(input.releaseAnchorPath, "releaseAnchorPath")
+      input.releaseAnchorPath === undefined ? undefined : absolutePath(input.releaseAnchorPath, "releaseAnchorPath"),
+    timestampAnchorPath:
+      input.timestampAnchorPath === undefined
+        ? undefined
+        : absolutePath(input.timestampAnchorPath, "timestampAnchorPath")
   });
 };
 
@@ -622,15 +659,22 @@ const candidateFor = (options, bundle, buildInfo, manifestBytes, rollback) => {
   }
 };
 
-const publicationFor = (options, signer, candidate, componentBytes) =>
+const publicationFor = (options, signing, candidate, componentBytes) =>
   buildTufReleasePublication({
     schemaVersion: 1,
     candidate,
     componentBytes,
     metadataVersion: options.metadataVersion,
-    expires: options.expires,
-    threshold: 1,
-    signers: [signer],
+    rootVersion: options.rootVersion,
+    expires: roleExpiries(options.expires, options.timestampExpires),
+    // Role-separated authority (#18, F1): the offline release key signs root and
+    // targets; the online key signs timestamp and snapshot.
+    roles: {
+      root: { threshold: 1, signers: [signing.release] },
+      targets: { threshold: 1, signers: [signing.release] },
+      timestamp: { threshold: 1, signers: [signing.timestamp] },
+      snapshot: { threshold: 1, signers: [signing.timestamp] }
+    },
     consistentSnapshot: true
   });
 
@@ -716,14 +760,14 @@ const targetManifestEntry = (options, target, bundle, candidate, publication) =>
   };
 };
 
-const publishOneTarget = async (options, signer, target, rollbackProofs) => {
+const publishOneTarget = async (options, signing, target, rollbackProofs) => {
   const bundle = await loadBundle(target.buildDirectory, target.evidence);
   const buildInfo = await loadBuildInfo(target.buildDirectory, target.evidence);
   await assertComponentManifest(target.buildDirectory, bundle);
   const componentBytes = await readComponentBytes(target.buildDirectory, bundle);
   const manifestBytes = releaseManifestBytes(bundle);
   const candidate = candidateFor(options, bundle, buildInfo, manifestBytes, rollbackProofs.get(target.key));
-  const publication = publicationFor(options, signer, candidate, componentBytes);
+  const publication = publicationFor(options, signing, candidate, componentBytes);
   assertPublicationBinding(publication, bundle, sha256(manifestBytes));
   await writeTufReleasePublication(publication, join(options.outputDirectory, "publication", target.key));
   return Object.freeze({
@@ -737,15 +781,18 @@ const assertSingleTrustRoot = (published) => {
     fail("VES_T76_PUBLISH_ROOT_INCONSISTENT", "the published targets do not share exactly one trust root");
 };
 
-const manifestFor = (options, signer, identity, published, rootDigest) => ({
+const manifestFor = (options, signing, identity, published, rootDigest) => ({
   schemaVersion: 1,
   revision: options.revision,
   releaseId: identity.releaseId,
   semanticVersion: identity.semanticVersion,
   baseUrl: options.baseUrl,
   metadataVersion: options.metadataVersion,
+  rootVersion: options.rootVersion,
   expires: options.expires,
-  signingKeyId: signer.keyId,
+  timestampExpires: roleExpiries(options.expires, options.timestampExpires).timestamp,
+  signingKeyId: signing.release.keyId,
+  timestampSigningKeyId: signing.timestamp.keyId,
   rootDigest,
   host: "r2",
   steps: [...MANUAL_UPLOAD_STEPS],
@@ -760,15 +807,21 @@ const manifestFor = (options, signer, identity, published, rootDigest) => ({
  */
 export async function publishT76Release(rawOptions) {
   const options = validateOptions(rawOptions);
-  const signer = releaseSignerFromEnvironment(options.protectedEnvironment);
-  // The signing key must be the reviewed release anchor, not merely a well-formed
-  // Ed25519 key. Checked before any output exists so a wrong key never produces a
-  // publication tree (#18, F3 — "the committed release anchor is declaratory,
-  // never bound"). signer.keyId is sha256(SPKI-DER), the same identity the
-  // emitted root.json carries in every role, so this binds the reviewed anchor to
-  // what the published root actually delegates to.
-  if (signer.keyId !== (await expectedAnchorKeyId(options.releaseAnchorPath)))
+  // Two role-separated signers (#18, F1): the offline key signs root and targets,
+  // the online key signs timestamp and snapshot. Each is bound to its own reviewed
+  // anchor before any output exists, so neither a wrong key nor a swapped role can
+  // ever produce a publication tree (#18, F3). A signer.keyId is sha256(SPKI-DER),
+  // the same identity the emitted root.json carries for that role.
+  const signing = Object.freeze({
+    release: releaseSignerFromEnvironment(options.protectedEnvironment),
+    timestamp: releaseSignerFromEnvironment(options.protectedEnvironment, TIMESTAMP_KEY_ENVIRONMENT_NAME)
+  });
+  if (signing.release.keyId !== (await expectedAnchorKeyId(options.releaseAnchorPath, DEFAULT_RELEASE_ANCHOR)))
     fail("VES_T76_PUBLISH_KEY_MISMATCH", "the release signing key does not match the reviewed release anchor");
+  if (signing.timestamp.keyId !== (await expectedAnchorKeyId(options.timestampAnchorPath, DEFAULT_TIMESTAMP_ANCHOR)))
+    fail("VES_T76_PUBLISH_KEY_MISMATCH", "the timestamp signing key does not match the reviewed timestamp anchor");
+  if (signing.release.keyId === signing.timestamp.keyId)
+    fail("VES_T76_PUBLISH_KEY_MISMATCH", "the release and timestamp signing keys must be different keys");
   await assertOutputAbsent(options.outputDirectory);
   const index = validateIndex(await readCanonicalJson(options.indexPath, "target index"), options.revision);
   const entries = index.targets.map((entry, position) =>
@@ -783,12 +836,12 @@ export async function publishT76Release(rawOptions) {
   const bound = bindTargets(entries, await readTargetArtifacts(options.targetsDirectory));
   await mkdir(options.outputDirectory, { recursive: false, mode: 0o700 });
   const published = [];
-  for (const target of bound) published.push(await publishOneTarget(options, signer, target, rollbackProofs));
+  for (const target of bound) published.push(await publishOneTarget(options, signing, target, rollbackProofs));
   assertSingleTrustRoot(published);
   const rootDigest = await writeReleaseInputs(options, identity, published[0].trustedRoot);
   const manifest = manifestFor(
     options,
-    signer,
+    signing,
     identity,
     published.map((item) => item.entry),
     rootDigest
@@ -809,6 +862,8 @@ export function publicationSummary(manifest) {
     semanticVersion: manifest.semanticVersion,
     baseUrl: manifest.baseUrl,
     signingKeyId: manifest.signingKeyId,
+    timestampSigningKeyId: manifest.timestampSigningKeyId,
+    rootVersion: manifest.rootVersion,
     rootDigest: manifest.rootDigest,
     targets: manifest.targets.map((entry) => ({
       targetKey: entry.targetKey,
@@ -839,12 +894,18 @@ const runCli = async () => {
     baseUrl: argument(args, "--base-url"),
     revision: argument(args, "--revision"),
     expires: argument(args, "--expires"),
+    // Optional shorter online-metadata window (#18, F2). Omitted here defaults to
+    // the full horizon, so a fresh publication never expires before its root;
+    // the monthly online re-signing routine passes a short one.
+    timestampExpires: optionalArgument(args, "--timestamp-expires", undefined),
     metadataVersion: Number(optionalArgument(args, "--metadata-version", "1")),
+    rootVersion: Number(optionalArgument(args, "--root-version", "1")),
     rollbackIndexPath: argument(args, "--rollback-index"),
     // Omitted by the release workflow, so a live publication is always bound to
-    // the committed anchor; overridable only for tests that sign with a
-    // throwaway key.
+    // the committed anchors; overridable only for tests that sign with throwaway
+    // keys.
     releaseAnchorPath: optionalArgument(args, "--release-anchor", undefined),
+    timestampAnchorPath: optionalArgument(args, "--timestamp-anchor", undefined),
     protectedEnvironment: process.env
   });
   console.log(canonicalizeJsonV2(publicationSummary(manifest)));

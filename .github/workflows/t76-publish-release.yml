@@ -14,11 +14,16 @@ name: T76 sign and stage a release publication
 # produces leaves as a workflow artifact plus a manifest naming each object,
 # its digest, and the exact remote key it must land at.
 #
-# The release signing key is a repository secret held in the same custody
-# pattern as the T75 qualification-evidence signing key, but it is a DIFFERENT
-# key with different authority and the two are never interchangeable: this file
-# reads only VESTRA_RELEASE_SIGNING_KEY_PKCS8_BASE64, and it reads it in exactly
-# one step, only through `env:`.  The publication script never prints it.
+# The release signing authority is role-separated (#18, F1).  Two repository
+# secrets are held in the same custody pattern as the T75 qualification-evidence
+# signing key, both DIFFERENT keys with different authority from it and from each
+# other, none interchangeable: VESTRA_RELEASE_SIGNING_KEY_PKCS8_BASE64 is the
+# offline key that signs root and targets, and
+# VESTRA_RELEASE_TIMESTAMP_SIGNING_KEY_PKCS8_BASE64 is the online key that signs
+# timestamp and snapshot — so a compromise of the online key can neither swap the
+# release nor rewrite the root.  This file reads both, in exactly one step, only
+# through `env:`, and the publication script never prints either.  Each is bound
+# to its own committed anchor under docs/qualification/trust/ before any output.
 #
 # Every dispatch input is untrusted.  No input is interpolated into a `run:`
 # block; each one crosses into the shell only as an `env:` value, is validated
@@ -189,6 +194,7 @@ jobs:
           METADATA_EXPIRES: ${{ inputs.expires }}
           METADATA_VERSION: ${{ inputs.metadata_version }}
           VESTRA_RELEASE_SIGNING_KEY_PKCS8_BASE64: ${{ secrets.VESTRA_RELEASE_SIGNING_KEY_PKCS8_BASE64 }}
+          VESTRA_RELEASE_TIMESTAMP_SIGNING_KEY_PKCS8_BASE64: ${{ secrets.VESTRA_RELEASE_TIMESTAMP_SIGNING_KEY_PKCS8_BASE64 }}
         run: >-
           node scripts/t76-publish-release.mjs
           --index candidate/t76-target-index.json

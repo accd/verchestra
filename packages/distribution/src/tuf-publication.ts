@@ -22,14 +22,40 @@ export interface TufPublicationComponentBytes {
   readonly bytes: Uint8Array;
 }
 
+// A TUF role's own signing authority. Separating them (#18, F1) is TUF's
+// central value: an online timestamp/snapshot key that rotates fast, and an
+// offline root/targets key that does not, so compromise of the online key can
+// neither swap the release nor rewrite the root.
+export interface TufRoleSigners {
+  readonly threshold: number;
+  readonly signers: readonly TufSigningKey[];
+}
+
+export interface TufPublicationRoles {
+  readonly root: TufRoleSigners;
+  readonly timestamp: TufRoleSigners;
+  readonly snapshot: TufRoleSigners;
+  readonly targets: TufRoleSigners;
+}
+
+// Per-role metadata expiry (#18, F2). The online timestamp/snapshot metadata
+// must expire no later than the offline targets/root horizon, so the standard
+// short-timestamp freeze-attack defense no longer forces the root to expire too.
+export interface TufRoleExpiries {
+  readonly root: string;
+  readonly timestamp: string;
+  readonly snapshot: string;
+  readonly targets: string;
+}
+
 export interface TufPublicationInput {
   readonly schemaVersion: 1;
   readonly candidate: ReleaseCandidate;
   readonly componentBytes: readonly TufPublicationComponentBytes[];
   readonly metadataVersion: number;
-  readonly expires: string;
-  readonly threshold: number;
-  readonly signers: readonly TufSigningKey[];
+  readonly rootVersion: number;
+  readonly expires: TufRoleExpiries;
+  readonly roles: TufPublicationRoles;
   readonly consistentSnapshot: boolean;
 }
 
@@ -209,17 +235,67 @@ const validateSigners = (signers: readonly TufSigningKey[]): void => {
     fail("VES_TUF_PUBLICATION_SIGNER_INVALID", "signer key identities are duplicated");
 };
 
+const ROLE_NAMES = ["root", "timestamp", "snapshot", "targets"] as const;
+// The expiry ordering the freeze-attack defense requires, soonest first.
+const ROLE_EXPIRY_ORDER = ["timestamp", "snapshot", "targets", "root"] as const;
+
+const validateRole = (value: unknown, name: string): void => {
+  const record = object(value, `${name} role`);
+  const signers = record["signers"] as readonly TufSigningKey[];
+  validateSigners(signers);
+  const threshold = record["threshold"];
+  if (!Number.isSafeInteger(threshold) || (threshold as number) <= 0 || (threshold as number) > signers.length)
+    fail("VES_TUF_PUBLICATION_THRESHOLD_INVALID", `${name} signature threshold is invalid`);
+};
+
+const futureInstant = (value: unknown, label: string): number => {
+  const parsed = Date.parse(text(value, label, INSTANT));
+  if (!(parsed > Date.now())) fail("VES_TUF_PUBLICATION_INPUT_INVALID", `${label} must be a future UTC instant`);
+  return parsed;
+};
+
+const positiveInteger = (value: unknown, label: string): void => {
+  if (!Number.isSafeInteger(value) || (value as number) <= 0)
+    fail("VES_TUF_PUBLICATION_INPUT_INVALID", `${label} must be a positive integer`);
+};
+
+// Freeze-attack containment (F2): a short online-metadata window must not drag
+// the offline root's expiry down with it, so the four role expiries must be
+// ordered timestamp <= snapshot <= targets <= root.
+const validateRoleExpiries = (value: unknown): void => {
+  const expires = object(value, "expires");
+  const ordered = ROLE_EXPIRY_ORDER.map((name) => futureInstant(expires[name], `${name} expires`));
+  const inOrder = ordered.every((instant, index) => index === 0 || ordered[index - 1]! <= instant);
+  if (!inOrder)
+    fail(
+      "VES_TUF_PUBLICATION_EXPIRY_ORDER_INVALID",
+      "role expiries must be ordered timestamp <= snapshot <= targets <= root"
+    );
+};
+
 const validateMetadataInputs = (input: TufPublicationInput): void => {
   if (input.schemaVersion !== 1) fail("VES_TUF_PUBLICATION_INPUT_INVALID", "schemaVersion must be 1");
-  validateSigners(input.signers);
-  if (!Number.isSafeInteger(input.metadataVersion) || input.metadataVersion <= 0)
-    fail("VES_TUF_PUBLICATION_INPUT_INVALID", "metadataVersion must be a positive integer");
-  if (!INSTANT.test(input.expires) || Date.parse(input.expires) <= Date.now())
-    fail("VES_TUF_PUBLICATION_INPUT_INVALID", "expires must be a future UTC instant");
-  if (!Number.isSafeInteger(input.threshold) || input.threshold <= 0 || input.threshold > input.signers.length)
-    fail("VES_TUF_PUBLICATION_THRESHOLD_INVALID", "signature threshold is invalid");
+  const roles = object(input.roles, "roles");
+  for (const name of ROLE_NAMES) validateRole(roles[name], name);
+  positiveInteger(input.metadataVersion, "metadataVersion");
+  positiveInteger(input.rootVersion, "rootVersion");
+  validateRoleExpiries(input.expires);
   if (typeof input.consistentSnapshot !== "boolean")
     fail("VES_TUF_PUBLICATION_INPUT_INVALID", "consistentSnapshot must be boolean");
+};
+
+// A key id that appears under two roles (root and targets share the offline key
+// in the two-key split) must carry the SAME public key, or the root would
+// declare one key id with two different public keys.
+const unionKeys = (signers: readonly TufSigningKey[]): readonly TufSigningKey[] => {
+  const byKeyId = new Map<string, TufSigningKey>();
+  for (const signer of signers) {
+    const existing = byKeyId.get(signer.keyId);
+    if (existing !== undefined && existing.publicKeyPem !== signer.publicKeyPem)
+      fail("VES_TUF_PUBLICATION_SIGNER_INVALID", "one key id declares two different public keys across roles");
+    if (existing === undefined) byKeyId.set(signer.keyId, signer);
+  }
+  return [...byKeyId.values()];
 };
 
 const validateComponentBytes = (
@@ -327,18 +403,22 @@ export function buildTufReleasePublication(input: TufPublicationInput): TufRelea
   const bytesByPath = validateComponentBytes(bundle, input.componentBytes);
   const path = manifestPath(bundle);
   const manifestBytes = canonicalBytes(bundle);
-  const names = input.signers;
+  const { root: rootRole, timestamp: timestampRole, snapshot: snapshotRole, targets: targetsRole } = input.roles;
   const trustedRootSigned: Record<string, unknown> = {
     _type: "root",
     spec_version: "1.0.0",
-    version: 1,
-    expires: input.expires,
-    keys: keyMap(names),
+    version: input.rootVersion,
+    expires: input.expires.root,
+    // The root declares every role's keys; each role delegates only to its own,
+    // so an online timestamp/snapshot key cannot sign root or targets metadata.
+    keys: keyMap(
+      unionKeys([...rootRole.signers, ...timestampRole.signers, ...snapshotRole.signers, ...targetsRole.signers])
+    ),
     roles: {
-      root: role(names, input.threshold),
-      timestamp: role(names, input.threshold),
-      snapshot: role(names, input.threshold),
-      targets: role(names, input.threshold)
+      root: role(rootRole.signers, rootRole.threshold),
+      timestamp: role(timestampRole.signers, timestampRole.threshold),
+      snapshot: role(snapshotRole.signers, snapshotRole.threshold),
+      targets: role(targetsRole.signers, targetsRole.threshold)
     },
     consistent_snapshot: input.consistentSnapshot
   };
@@ -357,14 +437,14 @@ export function buildTufReleasePublication(input: TufPublicationInput): TufRelea
     _type: "targets",
     spec_version: "1.0.0",
     version: input.metadataVersion,
-    expires: input.expires,
+    expires: input.expires.targets,
     targets: delegatedTargets
   };
   const topTargetsSigned: Record<string, unknown> = {
     _type: "targets",
     spec_version: "1.0.0",
     version: input.metadataVersion,
-    expires: input.expires,
+    expires: input.expires.targets,
     targets: {
       [path]: targetFile(manifestBytes, {
         releaseId: bundle.releaseId,
@@ -375,12 +455,14 @@ export function buildTufReleasePublication(input: TufPublicationInput): TufRelea
       })
     },
     delegations: {
-      keys: keyMap(names),
+      // The components delegation is signed by the offline targets key, so a
+      // compromised online key cannot introduce or rewrite a component target.
+      keys: keyMap(targetsRole.signers),
       roles: [
         {
           name: "components",
-          keyids: names.map((signer) => signer.keyId),
-          threshold: input.threshold,
+          keyids: targetsRole.signers.map((signer) => signer.keyId),
+          threshold: targetsRole.threshold,
           terminating: true,
           // Exact component paths, never wildcards. tuf-js matches delegation
           // patterns segment by segment and requires EQUAL segment counts, so
@@ -396,28 +478,28 @@ export function buildTufReleasePublication(input: TufPublicationInput): TufRelea
       ]
     }
   };
-  const delegatedBytes = signedEnvelope(delegatedSigned, names);
-  const topTargetsBytes = signedEnvelope(topTargetsSigned, names);
+  const delegatedBytes = signedEnvelope(delegatedSigned, targetsRole.signers);
+  const topTargetsBytes = signedEnvelope(topTargetsSigned, targetsRole.signers);
   const snapshotSigned: Record<string, unknown> = {
     _type: "snapshot",
     spec_version: "1.0.0",
     version: input.metadataVersion,
-    expires: input.expires,
+    expires: input.expires.snapshot,
     meta: {
       "targets.json": metadataFile(topTargetsBytes, input.metadataVersion),
       "components.json": metadataFile(delegatedBytes, input.metadataVersion)
     }
   };
-  const snapshotBytes = signedEnvelope(snapshotSigned, names);
+  const snapshotBytes = signedEnvelope(snapshotSigned, snapshotRole.signers);
   const timestampSigned: Record<string, unknown> = {
     _type: "timestamp",
     spec_version: "1.0.0",
     version: input.metadataVersion,
-    expires: input.expires,
+    expires: input.expires.timestamp,
     meta: { "snapshot.json": metadataFile(snapshotBytes, input.metadataVersion) }
   };
-  const timestampBytes = signedEnvelope(timestampSigned, names);
-  const rootBytes = signedEnvelope(trustedRootSigned, names);
+  const timestampBytes = signedEnvelope(timestampSigned, timestampRole.signers);
+  const rootBytes = signedEnvelope(trustedRootSigned, rootRole.signers);
   const metadata = new Map<string, Uint8Array>([
     ["root.json", rootBytes],
     ["timestamp.json", timestampBytes],
