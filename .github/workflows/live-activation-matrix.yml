@@ -1,0 +1,154 @@
+name: Live activation matrix
+
+# Matrix limitation L7 (#18): live activation was recorded on win32-x64 and
+# linux-x64 only, and no live update, rollback, or disaster recovery has been
+# performed at all. Deterministic five-profile gates cover every target
+# (platform-matrix.yml), but a deterministic gate is not a live install.
+#
+# This workflow runs the real installed-user lifecycle on every supported
+# target, against the published npm package and its live release endpoint — no
+# repository build, no fixtures. Each leg activates the base release, updates to
+# a newer published release, rolls back to the base (last-known-good), proves the
+# installation with self-test smoke, wipes the managed state root, and recovers
+# from nothing. Every phase's output and exit code is uploaded as a transcript,
+# so a reviewer verifies the five legs by content rather than by a green check.
+#
+# It is workflow_dispatch only and carries NO secrets and NO write permission:
+# it installs and runs a public package and writes only to the ephemeral runner.
+# Standard GitHub-hosted runners — including macOS and ubuntu-*-arm — are free
+# minutes on this public repository, so the whole fleet costs no billed time. It
+# publishes nothing and advances no qualification state on its own; recording the
+# transcripts into `.specs` and the matrix is a separate, reviewed step.
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_version:
+        description: "Published version to activate, roll back to, and recover (the last-known-good)"
+        required: true
+        default: "0.0.0-qualification"
+        type: string
+      update_version:
+        description: "Published version to update to before rolling back"
+        required: true
+        default: "0.0.0-qualification.2"
+        type: string
+
+permissions:
+  contents: read
+
+# One bash entry point serves all five platforms; on Windows it is the runner's
+# bundled Git bash, and npx resolves the same way there as on the Unix runners.
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  live:
+    name: ${{ matrix.label }}
+    runs-on: ${{ matrix.os }}
+    # A live leg pulls the package, activates from the endpoint, and runs the
+    # smoke profile; the slowest platforms sit well inside this budget.
+    timeout-minutes: 30
+    strategy:
+      # A single platform that cannot activate live is exactly the signal this
+      # workflow exists to surface, so a failing leg must never cancel the others.
+      fail-fast: false
+      matrix:
+        include:
+          - label: Windows x64
+            os: windows-latest
+            platform: win32
+            arch: x64
+          - label: macOS x64
+            os: macos-15-intel
+            platform: darwin
+            arch: x64
+          - label: macOS arm64
+            os: macos-14
+            platform: darwin
+            arch: arm64
+          - label: Linux glibc x64
+            os: ubuntu-latest
+            platform: linux
+            arch: x64
+          - label: Linux glibc arm64
+            os: ubuntu-24.04-arm
+            platform: linux
+            arch: arm64
+    steps:
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.14.0
+      - name: Run the live activation lifecycle
+        id: lifecycle
+        # The version selectors reach the shell only through env, never
+        # interpolated into this script, and are validated before they can reach
+        # a command line.
+        env:
+          BASE_VERSION: ${{ inputs.base_version }}
+          UPDATE_VERSION: ${{ inputs.update_version }}
+          MATRIX_PLATFORM: ${{ matrix.platform }}
+          MATRIX_ARCH: ${{ matrix.arch }}
+        run: |
+          set -uo pipefail
+          mkdir -p transcript
+
+          # The runner must actually be the platform the matrix claims, or the
+          # transcript would attribute a live activation to the wrong target.
+          node_platform="$(node -e 'process.stdout.write(process.platform)')"
+          node_arch="$(node -e 'process.stdout.write(process.arch)')"
+          [ "$node_platform" = "$MATRIX_PLATFORM" ] || { echo "runner platform $node_platform != $MATRIX_PLATFORM" >&2; exit 1; }
+          [ "$node_arch" = "$MATRIX_ARCH" ] || { echo "runner arch $node_arch != $MATRIX_ARCH" >&2; exit 1; }
+
+          for v in "$BASE_VERSION" "$UPDATE_VERSION"; do
+            case "$v" in
+              "" | *[!A-Za-z0-9.-]*) echo "invalid version selector: '$v'" >&2; exit 1 ;;
+            esac
+          done
+
+          case "$RUNNER_OS" in
+            Windows) STATE_ROOT="${LOCALAPPDATA:-$HOME/AppData/Local}/Verchestra/state" ;;
+            macOS)   STATE_ROOT="$HOME/Library/Application Support/Verchestra/state" ;;
+            Linux)   STATE_ROOT="${XDG_STATE_HOME:-$HOME/.local/state}/verchestra" ;;
+            *) echo "unknown RUNNER_OS: $RUNNER_OS" >&2; exit 1 ;;
+          esac
+
+          status=0
+          run_phase() {
+            name="$1"; shift
+            echo "::group::$name"
+            "$@" >"transcript/$name.log" 2>&1
+            code=$?
+            printf '%s exit=%s\n' "$name" "$code" | tee -a transcript/summary.txt
+            cat "transcript/$name.log"
+            echo "::endgroup::"
+            return "$code"
+          }
+
+          # activate: first run resolves, verifies, and activates the base release
+          # from the live endpoint, then runs the CLI.
+          run_phase activate  npx --yes "verchestra@$BASE_VERSION"   --version || status=1
+          # update: activate a newer published release over the base.
+          run_phase update    npx --yes "verchestra@$UPDATE_VERSION" --version || status=1
+          # rollback: re-activate the base as the last-known-good.
+          run_phase rollback  npx --yes "verchestra@$BASE_VERSION"   --version || status=1
+          # prove the installation works, from the sealed bundle, no checkout.
+          run_phase self-test npx --yes "verchestra@$BASE_VERSION"   self-test --profile smoke --output json || status=1
+          # disaster recovery: wipe the managed state root, then recover from nothing.
+          printf 'wipe %s\n' "$STATE_ROOT" | tee -a transcript/summary.txt
+          rm -rf "$STATE_ROOT"
+          run_phase recover   npx --yes "verchestra@$BASE_VERSION"   --version || status=1
+
+          printf 'overall exit=%s (%s-%s, base=%s update=%s)\n' \
+            "$status" "$MATRIX_PLATFORM" "$MATRIX_ARCH" "$BASE_VERSION" "$UPDATE_VERSION" | tee -a transcript/summary.txt
+          exit "$status"
+      - name: Upload the live transcript
+        # A failed leg is evidence too, so the transcript uploads regardless.
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: live-activation-${{ matrix.platform }}-${{ matrix.arch }}-${{ github.run_id }}
+          path: transcript
+          retention-days: 30
