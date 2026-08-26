@@ -121,6 +121,13 @@ test("the real target builder binds exact revision, host assets, and all supply-
         (component) => component.logicalPath === "components/apps/vestra-cli/closure/vestra-entry.ts"
       )
     );
+    // The sealed runtime carries the executable extension exactly on the one
+    // platform whose process creation requires it: Windows resolves image
+    // names through PATHEXT, so identical bytes spawn as `node.exe` and
+    // ENOENT as extensionless `node`. Each fleet leg asserts its own host's
+    // naming, which is what makes this behavioral where it matters.
+    const runtime = result.bundle.components.find((component) => component.kind === "node-runtime");
+    assert.equal(runtime.logicalPath, process.platform === "win32" ? "runtime/node.exe" : "runtime/node");
     const bundleBytes = await readFile(join(output, "bundle.json"), "utf8");
     assert.equal(bundleBytes, canonicalizeJsonV2(result.bundle));
     const buildInfo = JSON.parse(await readFile(join(output, "build-info.json"), "utf8"));
