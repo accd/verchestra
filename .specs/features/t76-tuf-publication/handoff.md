@@ -2,12 +2,12 @@
 schema: verchestra-feature-handoff/v1
 feature: t76-tuf-publication
 issue: 17
-status: in_progress
-branch: r2-pr3
-baseRevision: d05ade95e06b940faed2861731a0755d78850113
-lastCompletedTask: T9
-nextTask: "T7 — rebuild the candidate at a revision containing the sealed-launcher fix (the be92397/af8bcf0 candidates seal dev-shim launchers and fail activation health on a live install), then: operator provisions the release signing secret and storage endpoint, dispatches t76-publish-release.yml at that exact reviewed SHA with the base URL and prior rollback run, uploads the emitted publication/ tree by hand, and verifies the live endpoint with the verification launcher package."
-lastGate: "Sealed-launcher closure (7) and reproducible-target-build (3) suites pass with zero failures/skips/todos; gate:quick, gate:build, and gate:security PASS with the sealed launcher bundling in place"
+status: complete
+branch: docs/t76-validation-chain-advance
+baseRevision: a49f3dd5aa3e639db87f8715077446ec075600e9
+lastCompletedTask: T8
+nextTask: "T77 — independent acceptance and the explicit 1.0 decision: drive requirements closure with scripts/requirements-trace.mjs against docs/requirements-register.json until every VES requirement carries evidence (T77 closure MET), then obtain real second-reviewer independence and record the human promote-or-reject decision."
+lastGate: "gate:quick PASS, site:check PASS, site:test PASS, agent:check PASS, test:agent-readiness PASS in the chain-advance worktree; the bound revision's own evidence is candidate run 32927839487 (five targets x five gate profiles, all pass)"
 updatedAt: 2026-08-26T00:00:00Z
 ---
 
@@ -66,29 +66,32 @@ are complete.
 
 # Next Exact Action
 
-Two operator steps remain, in order: run the verification launcher package on
-a Linux host against the live endpoint (`node bin/vestra.mjs --version` from
-the package built with `--release-inputs`), then `npm publish` the packed
-`verchestra-0.0.0-qualification.tgz` by hand. Everything before those is done
-and recorded under "Live publication evidence" in validation.md: the
-candidate at `a49f3dd5aa3e639db87f8715077446ec075600e9` (run 32927839487) is
-signed and published (run 32929312169), all 990 objects are uploaded to the
-operator's endpoint with per-object integrity verification, endpoint
-conformance is probed, and the live Windows activation passes end to end
-through the real health gate and verified handoff.
+T76 is complete. The remaining work is T77: run
+`pnpm requirements:trace` and close every VES requirement still waiting for
+evidence in `docs/requirements-register.json` until the script reports
+`T77 closure MET`, then obtain the real second-reviewer independence that
+`docs/audits/2026-08-verchestra-product-repository-audit.md` records as
+mandatory before T77 can close, and record the human 1.0 promote-or-reject
+decision.
+
+One post-revision hardening item is landing in parallel and is deliberately
+excluded from this revision's evidence: emitting the `views` array into
+`publication-manifest.json` and adding a real cross-adapter equivalence test
+(HTTPS-online against filesystem-offline over the same emitted tree). The
+limitation it addresses is recorded honestly in
+`docs/qualification/t76-validation.md` under "Recorded limitation".
 
 # Blockers
 
-Any candidate built before the sealed-launcher fix (including be92397 and
-af8bcf0) fails activation on a real install: it stages, then
-`VES_ACTIVATION_HEALTH_FAILED` because its launchers import
-`../src/main.ts`. T7 dispatched at `a49f3dd`, which contains T9 and the
-win32 sealed-runtime extension; the earlier af8bcf0 objects that no longer
-appear in any manifest remain in the bucket as unreferenced garbage (TUF
-never resolves them; deletable at leisure).
-
-None otherwise for repository work. T7 requires operator-held secret and storage
-custody that must never exist in a development environment.
+None. The live publication, activation, reproducibility, and registry evidence
+are recorded in `docs/qualification/t76-validation.md` and under "Live
+publication evidence" in `validation.md`. Historical note: any candidate built
+before the sealed-launcher fix (including be92397 and af8bcf0) fails activation
+on a real install with `VES_ACTIVATION_HEALTH_FAILED`, because its launchers
+import `../src/main.ts`; the published candidate `a49f3dd` contains the fix and
+the win32 sealed-runtime extension. The earlier af8bcf0 objects that no longer
+appear in any manifest remain in the bucket as unreferenced garbage (TUF never
+resolves them; deletable at leisure).
 
 # Decisions
 

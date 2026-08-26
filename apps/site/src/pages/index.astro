@@ -262,8 +262,8 @@ const sourceCodeMetadata = {
       <div>
         <h2 id="qualification-title">{productStatus.completedTask} is evidence. {productStatus.nextTask} is work.</h2>
         <p>
-          Foundations through {productStatus.completedTask} are backed by public validation reports. Self-Test, regression,
-          sealed holdout, platform qualification, and the release decision remain ahead.
+          Foundations through {productStatus.completedTask} are backed by public validation reports. Independent acceptance
+          and the explicit 1.0 release decision remain ahead.
         </p>
       </div>
       <div
@@ -274,7 +274,12 @@ const sourceCodeMetadata = {
           <span>T01</span><span>{productStatus.completedTask}</span>
         </div>
         <div class="qualification-progress__next">{productStatus.nextTask}</div>
-        <div class="qualification-progress__future">T77</div>
+        {
+          /* The declared chain ends at T77, so once the derived next task IS
+        T77 this cell would repeat it. Rendering it only while T77 is still
+        ahead keeps the strip honest instead of showing one milestone twice. */
+        }
+        {productStatus.nextTask !== "T77" && <div class="qualification-progress__future">T77</div>}
       </div>
       <div class="qualification__actions">
         <a class="button button--primary" href={withBase("roadmap/")}>View the verified roadmap</a>
