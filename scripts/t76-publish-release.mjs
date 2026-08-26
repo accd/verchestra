@@ -195,6 +195,62 @@ export function releaseSignerFromEnvironment(environment) {
 }
 
 // ---------------------------------------------------------------------------
+// Reviewed release anchor
+// ---------------------------------------------------------------------------
+
+// The committed public half a human actually reviews. Binding the signing key
+// to it here is what stops the anchor from being a declaration nothing checks:
+// before #18/F3 it was referenced only by a separation test and tied to nothing
+// that signs or verifies, so the trust chain bottomed out in npm tarball
+// integrity rather than the reviewed key. The default is that reviewed file; a
+// caller may point at a different anchor for testing, and the CLI never does, so
+// a live publication is always bound to the reviewed release key. The comparison
+// is over public key material only — nothing secret is read, logged, or emitted.
+const DEFAULT_RELEASE_ANCHOR = new URL(
+  "../docs/qualification/trust/verchestra-release-public-key.json",
+  import.meta.url
+);
+
+const anchorKeyIdOf = (ref) => {
+  const decoded = record(ref, "release anchor");
+  const material = (() => {
+    if (decoded.encoding === "spki-pem" && typeof decoded.publicKey === "string") return decoded.publicKey;
+    if (decoded.encoding === "spki-der-base64url" && typeof decoded.publicKey === "string")
+      return { key: Buffer.from(decoded.publicKey, "base64url"), format: "der", type: "spki" };
+    return fail("VES_T76_PUBLISH_ANCHOR_INVALID", "the release anchor is not an spki public key reference");
+  })();
+  let publicKey;
+  try {
+    publicKey = createPublicKey(material);
+  } catch (error) {
+    return fail("VES_T76_PUBLISH_ANCHOR_INVALID", "the release anchor is not a usable public key", error);
+  }
+  if (publicKey.asymmetricKeyType !== "ed25519")
+    fail("VES_T76_PUBLISH_ANCHOR_INVALID", "the release anchor is not an Ed25519 public key");
+  return createHash("sha256")
+    .update(publicKey.export({ format: "der", type: "spki" }))
+    .digest("hex");
+};
+
+// Resolves the TUF keyId the emitted root.json must carry from the reviewed
+// anchor. A missing or malformed anchor fails closed before any output byte.
+const expectedAnchorKeyId = async (anchorPath) => {
+  let raw;
+  try {
+    raw = await readFile(anchorPath ?? DEFAULT_RELEASE_ANCHOR, "utf8");
+  } catch (error) {
+    return fail("VES_T76_PUBLISH_ANCHOR_MISSING", "the reviewed release anchor cannot be read", error);
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (error) {
+    return fail("VES_T76_PUBLISH_ANCHOR_INVALID", "the reviewed release anchor is not JSON", error);
+  }
+  return anchorKeyIdOf(parsed);
+};
+
+// ---------------------------------------------------------------------------
 // Input reading
 // ---------------------------------------------------------------------------
 
@@ -300,7 +356,9 @@ const validateOptions = (value) => {
     expires: text(input.expires, "expires", INSTANT),
     metadataVersion: validateMetadataVersion(input.metadataVersion),
     rollbackIndexPath: absolutePath(input.rollbackIndexPath, "rollbackIndexPath"),
-    protectedEnvironment: record(input.protectedEnvironment ?? {}, "protectedEnvironment")
+    protectedEnvironment: record(input.protectedEnvironment ?? {}, "protectedEnvironment"),
+    releaseAnchorPath:
+      input.releaseAnchorPath === undefined ? undefined : absolutePath(input.releaseAnchorPath, "releaseAnchorPath")
   });
 };
 
@@ -703,6 +761,14 @@ const manifestFor = (options, signer, identity, published, rootDigest) => ({
 export async function publishT76Release(rawOptions) {
   const options = validateOptions(rawOptions);
   const signer = releaseSignerFromEnvironment(options.protectedEnvironment);
+  // The signing key must be the reviewed release anchor, not merely a well-formed
+  // Ed25519 key. Checked before any output exists so a wrong key never produces a
+  // publication tree (#18, F3 — "the committed release anchor is declaratory,
+  // never bound"). signer.keyId is sha256(SPKI-DER), the same identity the
+  // emitted root.json carries in every role, so this binds the reviewed anchor to
+  // what the published root actually delegates to.
+  if (signer.keyId !== (await expectedAnchorKeyId(options.releaseAnchorPath)))
+    fail("VES_T76_PUBLISH_KEY_MISMATCH", "the release signing key does not match the reviewed release anchor");
   await assertOutputAbsent(options.outputDirectory);
   const index = validateIndex(await readCanonicalJson(options.indexPath, "target index"), options.revision);
   const entries = index.targets.map((entry, position) =>
@@ -775,6 +841,10 @@ const runCli = async () => {
     expires: argument(args, "--expires"),
     metadataVersion: Number(optionalArgument(args, "--metadata-version", "1")),
     rollbackIndexPath: argument(args, "--rollback-index"),
+    // Omitted by the release workflow, so a live publication is always bound to
+    // the committed anchor; overridable only for tests that sign with a
+    // throwaway key.
+    releaseAnchorPath: optionalArgument(args, "--release-anchor", undefined),
     protectedEnvironment: process.env
   });
   console.log(canonicalizeJsonV2(publicationSummary(manifest)));
