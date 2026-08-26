@@ -175,7 +175,13 @@ class SourceFetcher implements Fetcher {
       await writeFile(temporaryFile, bytes, { mode: 0o600, flag: "wx" });
       return await handler(temporaryFile);
     } finally {
-      await rm(temporaryRoot, { recursive: true, force: true });
+      // The handler reads the downloaded target — for a release that is a whole
+      // runtime — and Windows can still hold that file for a moment after the
+      // read completes. This removal runs in `finally`, so a transient EBUSY
+      // here would replace an otherwise successful download with a cleanup
+      // failure. `maxRetries` covers exactly that class and is inert on POSIX
+      // and whenever the first attempt succeeds.
+      await rm(temporaryRoot, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
     }
   }
 }

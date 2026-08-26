@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
+import { once } from "node:events";
 import { access, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -8,12 +10,18 @@ import { TransactionalActivationManager } from "../../packages/distribution/src/
 import { healthGate, materializeStagedRelease } from "../helpers/activation-fixture.mjs";
 
 const roots = [];
+const children = [];
 const temporary = async () => {
   const root = await mkdtemp(join(tmpdir(), "verchestra-t68-fault-"));
   roots.push(root);
   return root;
 };
-afterEach(async () => Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))));
+afterEach(async () => {
+  for (const child of children.splice(0)) if (child.exitCode === null && child.signalCode === null) child.kill();
+  await Promise.all(
+    roots.splice(0).map((root) => rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }))
+  );
+});
 
 const managerFor = (state, options = {}) =>
   new TransactionalActivationManager({
@@ -198,4 +206,55 @@ test("crash after committed journal preserves a byte-valid active pointer", asyn
   await assert.rejects(crashing.activate(state.candidate.receipt), { code: "VES_ACTIVATION_FAILED" });
   const persisted = JSON.parse(await readFile(join(state.installRoot, "active.json"), "utf8"));
   assert.equal(persisted.releaseDigest, state.candidate.bundle.releaseDigest);
+});
+
+// The activation health gate runs both canonical launchers through the
+// release's own runtime with the transaction payload root as their working
+// directory. A child that has only just exited can still leave that directory
+// held for a moment, so this reproduces the condition directly: a real process
+// takes the payload root as its cwd at `after-health` and releases it shortly
+// afterwards, which is precisely the window the publish rename and the
+// transaction cleanup fall into.
+//
+// What this proves depends on the platform, and the difference is real:
+//
+//   - On win32 a held working directory makes both `rename` and a recursive
+//     `rm` of that directory fail with EBUSY. Without the bounded retry the
+//     publish rename throws, `activate` reports VES_ACTIVATION_FAILED, and the
+//     launcher surfaces that as VES_VESTRA_ACTIVATION_UNAVAILABLE — exit 70,
+//     the observed CI failure. Here the assertions are a true discriminator.
+//   - On POSIX a held working directory blocks neither call, so the activation
+//     would succeed with or without the retry. The assertions below still
+//     describe the correct outcome there, but they prove nothing about the
+//     retry itself; win32 CI carries that signal.
+test("a transaction root still held by a live child is published rather than failed", async () => {
+  const state = await seeded();
+  const digest = state.candidate.bundle.releaseDigest.slice("sha256:".length);
+  const transactionRoot = join(state.installRoot, "transactions", digest);
+  const payloadRoot = join(transactionRoot, "release");
+  let held = false;
+
+  const manager = managerFor(state, {
+    async fault(point) {
+      if (point !== "after-health" || held) return;
+      held = true;
+      // Exits on its own, releasing the directory inside the retry budget.
+      const child = spawn(process.execPath, ["-e", "setTimeout(() => {}, 500)"], {
+        cwd: payloadRoot,
+        stdio: "ignore"
+      });
+      children.push(child);
+      await once(child, "spawn");
+    }
+  });
+
+  const receipt = await manager.activate(state.candidate.receipt);
+
+  assert.equal(held, true, "the transaction root was actually held while the publish rename ran");
+  assert.equal(receipt.active.releaseDigest, state.candidate.bundle.releaseDigest);
+  assert.equal(receipt.releaseReused, false, "this candidate was published by the rename under test");
+  await access(join(state.installRoot, "releases", digest));
+  assert.deepEqual(await manager.active(), receipt.active);
+  await assert.rejects(access(transactionRoot), "the held transaction root is still cleaned up once it is free");
+  await assert.rejects(access(join(state.installRoot, "activation-journal.json")));
 });

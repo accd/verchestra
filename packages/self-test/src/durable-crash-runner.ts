@@ -133,7 +133,12 @@ export class DurableCrashRunner {
         resumeExitCode: resume.exitCode
       });
     } finally {
-      await rm(casePath, { recursive: true, force: true });
+      // Both child processes ran with this case directory beneath them and have
+      // only just exited. On Windows the handles on their images and working
+      // directory outlive the exit briefly, so removing the tree immediately can
+      // observe EBUSY. `maxRetries` waits out that transient class rather than
+      // failing a case whose boundary facts were already collected.
+      await rm(casePath, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
     }
   }
 }

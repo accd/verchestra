@@ -3,15 +3,27 @@ schema: verchestra-feature-handoff/v1
 feature: npx-launcher
 issue: 36
 status: complete
-branch: docs/npx-clean-machine-evidence
-baseRevision: 5514322cb19a4bf89d1db16e750ea71019cb6eba
-lastCompletedTask: T4
+branch: fix/windows-lock-retries-product
+baseRevision: aaf493ceb4c8853ed0eb589cca6386fa5a542d2d
+lastCompletedTask: T5
 nextTask: none for this feature; republish the launcher once the #370 self-test working-directory fix ships, so the portability demo also passes from a default home directory
-lastGate: gate:quick, agent:check, test:agent-readiness, and the site unit/astro/build/built-site checks all PASS for the T4 documentation change
+lastGate: T5 ran gate:quick, gate:build, gate:security, agent-check, and the touched fault/e2e suites; counters are in validation.md
 updatedAt: 2026-08-26T00:00:00Z
 ---
 
 # Task State
+
+T5 is complete and fixes [#363](https://github.com/accd/verchestra/issues/363)
+on the product side. CI observed the exposure rather than only predicting it:
+run 32980992904's first attempt failed the `Windows x64` leg at
+`tests/e2e/vestra-launcher-activation.test.mjs:105` with exit 70 instead of 0,
+while the other four legs of that same attempt and revision passed. The cause is
+the publish `rename` of the transaction payload root, which the activation
+health gate's just-exited children can still hold on Windows. That rename and
+the whole-tree removals around it now retry the transient lock class and still
+fail closed on a persistent one. The per-site decisions, including the four
+places deliberately left alone, are in `tasks.md`; the discrimination evidence
+and the measured win32 lock table are in `validation.md`.
 
 T1 through T4 are complete. T1, T2, and T3 delivered the verified
 active-launcher resolution, the observed activation health gate and shell-free

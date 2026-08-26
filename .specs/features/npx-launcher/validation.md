@@ -388,3 +388,106 @@ claimed as a pass: it is a product defect reproducible from a repository
 checkout, tracked as
 [#370](https://github.com/accd/verchestra/issues/370), and it does not affect
 any other supported working directory.
+
+## T5 evidence
+
+### The observed failure
+
+[#363](https://github.com/accd/verchestra/issues/363) was filed as a latent
+Windows exposure. CI then observed it. In the T76 reproducible candidate build
+run
+[32980992904](https://github.com/accd/verchestra/actions/runs/32980992904),
+first attempt, the `Windows x64` leg failed while the `Linux glibc x64`,
+`Linux glibc arm64`, `macOS x64`, and `macOS arm64` legs of that same attempt,
+at that same revision, all passed:
+
+```
+test at tests\e2e\vestra-launcher-activation.test.mjs:105:1
+✖ a second run revalidates the active release and still executes it
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  70 !== 0
+      at .../tests/e2e/vestra-launcher-activation.test.mjs:107:10
+    actual: 70, expected: 0
+ℹ tests 190
+ℹ pass 189
+ℹ fail 1
+```
+
+Line 107 is the first `runBootstrap` of that case, so nothing in the test had
+executed the release yet: the race is inside the first activation. Exit 70 is
+`VES_VESTRA_ACTIVATION_UNAVAILABLE`
+(`apps/vestra-launcher/src/public-errors.ts:25`), which is what the launcher
+returns for an `ActivationError`. One leg differing from four at the same
+revision is a platform signature, not a defect introduced by that revision.
+
+### The mechanism, measured on win32 rather than assumed
+
+`NodeActivationHealthGate.evaluate` spawns the release's own hermetic runtime
+twice with `cwd: releaseRoot`, and during activation that root is the
+transaction payload root. `activate` then renames that directory to its
+published location. Three conditions were measured directly on Windows 11 to
+find which actually block, rather than assuming all of them do:
+
+| Condition on the directory             | `rename` of it | recursive `rm` of it |
+| -------------------------------------- | -------------- | -------------------- |
+| An open read handle on a child file    | `EPERM`        | succeeds             |
+| A live child process holding it as cwd | `EBUSY`        | `EBUSY`              |
+| A running executable image inside it   | succeeds       | succeeds             |
+
+The cwd row is the production condition and the only one that blocks both calls,
+so it is what the regression test reproduces. The open-handle row is why the fix
+covers `EPERM` as well as `EBUSY`. The third row is recorded because it is the
+intuition that turns out to be wrong: an open handle alone does not block `rm`,
+so a test built on one would not have discriminated.
+
+### Discrimination
+
+New case: `a transaction root still held by a live child is published rather
+than failed` in
+`tests/fault-injection/transactional-activation-faults.test.mjs`. It uses the
+manager's own `after-health` fault point to spawn a real process holding the
+payload root as its working directory, then lets that process exit inside the
+retry budget — exactly the window the publish rename falls into.
+
+With `renameThroughTransientLock` reverted to a bare `rename` and nothing else
+changed, the new case fails with the production error chain intact:
+
+```
+Error [ActivationError]: transactional activation failed
+  code: 'VES_ACTIVATION_FAILED',
+  [cause]: Error: EBUSY: resource busy or locked, rename
+    '...\install\transactions\<digest>\release'
+    -> '...\install\releases\<digest>'
+```
+
+`VES_ACTIVATION_FAILED` is the code the launcher maps to exit 70, so the local
+reproduction and the CI failure are the same defect. Restoring the retry returns
+the file to 18 of 18 passing. The revert was performed against a copy of the
+fixed file and restored from that copy, so no new work was discarded.
+
+| Outcome                                    | Assertion evidence                                                                                   | Result          |
+| ------------------------------------------ | ---------------------------------------------------------------------------------------------------- | --------------- |
+| A held payload root still publishes        | `a transaction root still held by a live child is published rather than failed`; `activate` resolves   | PASS            |
+| The rename actually landed                 | Same case: `releases/<digest>` exists and `releaseReused` is `false`                                   | PASS            |
+| The held transaction root is still cleaned | Same case: `access(transactionRoot)` rejects after the activation completes                            | PASS            |
+| A committed activation leaves no journal   | Same case: `access(activation-journal.json)` rejects                                                   | PASS            |
+| The lock was genuinely held                | Same case asserts the fault point fired before the publish rename ran                                  | PASS            |
+| A persistent lock still fails closed       | `renameThroughTransientLock` rethrows the original error once the budget is exhausted                   | By construction |
+
+### What this proves per platform
+
+The test file states this in place, because it is not the same claim everywhere:
+
+- **win32** — a held working directory blocks both `rename` and recursive `rm`,
+  so the assertions are a true discriminator. This is where the defect strands a
+  user and where CI carries the signal.
+- **POSIX** — a held working directory blocks neither call, so the activation
+  succeeds with or without the retry. The assertions still describe the correct
+  outcome there but prove nothing about the retry itself. No failure is faked
+  there and the case is not skipped, following the precedent already set by the
+  POSIX-only staging exec-bit case in
+  `tests/e2e/tuf-update-client.test.mjs:155-167`.
+
+`fs.rm`'s `maxRetries` and `retryDelay` retry exactly the transient
+`EBUSY`/`EPERM`/`ENOTEMPTY` class and are inert when the first attempt succeeds,
+so the unchanged sites and every POSIX run behave exactly as before.

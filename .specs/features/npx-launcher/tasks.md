@@ -251,6 +251,61 @@ repository-bound two-minute demo recorded in
 the package name follows the owner's 2026-08-25 decision recorded in
 `spec.md`.
 
+### T5: Survive a briefly held transaction root on Windows
+
+Fixes [#363](https://github.com/accd/verchestra/issues/363) on the product
+side. The fixture side already landed in #362; the product paths were
+deliberately left for their own change, and this is it.
+
+The activation health gate runs both canonical launchers through the release's
+own hermetic runtime with the transaction payload root as their working
+directory. On Windows that directory stays held for a short moment after those
+children exit, so the publish `rename` that immediately follows can fail with
+`EBUSY`. `activate` reports `VES_ACTIVATION_FAILED` and the launcher surfaces it
+as `VES_VESTRA_ACTIVATION_UNAVAILABLE` — exit 70.
+
+Changed, because a just-executed or still-open file plausibly lives there:
+
+- `packages/distribution/src/transactional-activation.ts` — the publish rename
+  of the payload root retries the transient lock class through
+  `renameThroughTransientLock`, because `rename` has no `maxRetries` option.
+  The transaction-root cleanup after commit, the stale transaction root cleared
+  before a copy, and both uninstall tree removals carry the same budget through
+  `REMOVE_TREE`. The post-commit cleanup matters beyond tidiness: it runs after
+  the pointer switch and the committed journal, so an unretried `EBUSY` there
+  turned a fully committed activation into exit 70.
+- `packages/distribution/src/tuf-update-client.ts` — the temporary staging root
+  holds the downloaded runtime and is removed in a `finally`, so a transient
+  lock there replaced a successful download with a cleanup failure.
+- `packages/self-test/src/durable-crash-runner.ts` — the case directory's two
+  child processes have only just exited when it is removed.
+- `packages/self-test/src/disposable-roots.ts` — the swallowed rejection stays,
+  because `cleanup` reports whether the root survived rather than how the
+  attempt failed, and `lstat` is the authority on that. The retry budget makes
+  that observation truthful: without it a transient lock was reported as
+  `removed: false` and judged a durable leak that never existed.
+
+Deliberately left alone, with the reason:
+
+- `packages/distribution/src/tuf-publication.ts` — the staging tree holds
+  metadata and target bytes this process wrote and closed itself. Nothing is
+  executed and no child process is involved.
+- `packages/memory/src/memory-lifecycle.ts` — the promotion staging directory
+  holds one text artifact written and renamed out by this process.
+- `packages/workspace/src/init/safe-init.ts` — init writes workspace text
+  files. A lock here is an editor or another tool holding a file, which is the
+  persistent class; that must fail closed and roll the transaction back rather
+  than spin against a conflict that will not clear.
+- Single-file `rm` and `rename` calls inside the install root, including
+  `atomicJson` and the activation lock recovery. A held directory does not block
+  creating or renaming files within it, and those paths are serialized by the
+  activation lock. Only whole-tree removals and the directory rename carry the
+  budget.
+
+`tests/e2e/vestra-launcher-activation.test.mjs` gains no new case. The race is in
+product code and that file already asserts the behavior end to end; it only
+became flaky. A second case there would be redundant.
+
 ## Dependency Cross-Check
 
 | Task | Declared dependency          | Diagram  | Status                                             |
@@ -259,6 +314,7 @@ the package name follows the owner's 2026-08-25 decision recorded in
 | T2   | T1                           | T1 -> T2 | Match; T2 defines the protocol T76 must answer     |
 | T3   | T2 + release/registry inputs | T2 -> T3 | Match; artifact and closure both done              |
 | T4   | T3 + T76 candidate           | T3 -> T4 | Match; both inputs supplied, clean-machine evidence recorded |
+| T5   | T2 health gate + T4 evidence | T4 -> T5 | Match; fixes the win32 activation race #363 exposed |
 
 ## Test Co-location Check
 
@@ -269,6 +325,7 @@ the package name follows the owner's 2026-08-25 decision recorded in
 | T3   | Package/architecture boundary | Architecture/build/security     | Same task              | OK     |
 | T3   | Bootstrap activation path     | Unit + e2e                      | Same task              | OK     |
 | T4   | User journey/release          | E2E/release/platform            | Same task              | OK     |
+| T5   | Activation recovery boundary  | Fault-injection                 | Same task              | OK     |
 
 Granularity: each task produces one independently reviewable boundary. Tests
 are co-located with the behavior they establish; no later task is used to
