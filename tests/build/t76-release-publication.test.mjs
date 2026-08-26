@@ -11,6 +11,7 @@ import { promisify } from "node:util";
 import { loadPinnedInputs } from "../../apps/vestra-launcher/src/pinned-inputs.ts";
 import { canonicalizeJsonV2 } from "../../packages/domain/src/index.ts";
 import {
+  HttpsDistributionSource,
   NodeFilesystemDistributionSource,
   TufUpdateClient
 } from "../../packages/distribution/src/tuf-update-client.ts";
@@ -207,6 +208,133 @@ test("every published target repository resolves and stages through the TUF clie
     } finally {
       await rm(scratch, { recursive: true, force: true });
     }
+  }
+});
+
+test("the emitted manifest exposes the four sealed release views for every target", async () => {
+  // RC-02 requires exactly one view per source mode, all naming one release.
+  // The candidate seals that into `candidateDigest`; this asserts a reviewer
+  // holding only the emitted artifacts can check it without trusting a digest.
+  const { closure, manifest } = await sharedPublication();
+  for (const entry of manifest.targets) {
+    const { bundle } = closure.targets.find(
+      (item) => `${item.bundle.target.platform}-${item.bundle.target.arch}` === entry.targetKey
+    );
+    assert.deepEqual(
+      entry.views.map((view) => view.mode),
+      ["air-gapped", "mirror", "offline", "online"]
+    );
+    for (const view of entry.views) {
+      assert.deepEqual(Object.keys(view).sort(), [
+        "metadataDigest",
+        "mode",
+        "releaseDigest",
+        "sourceId",
+        "targetDigest"
+      ]);
+      assert.equal(view.releaseDigest, bundle.releaseDigest);
+      assert.equal(view.sourceId, `source:${view.mode}:r2`);
+      assert.equal(view.metadataDigest, entry.views[0].metadataDigest);
+      assert.equal(view.targetDigest, entry.views[0].targetDigest);
+    }
+  }
+});
+
+test("one published tree resolves to one closure through the HTTPS and filesystem adapters", async () => {
+  // The four-view claim is that online, mirror, offline, and air-gapped resolve
+  // the same release. Elsewhere that is exercised with a source double whose
+  // mode is a constructor label over one byte source. Here the two REAL
+  // adapters read the one emitted publication tree by their own transports —
+  // HTTP 200 metadata and 206 byte ranges against the manifest's remote keys,
+  // and filesystem reads against the same directory — and must agree on the
+  // whole closure, component for component.
+  const { closure, manifest } = await sharedPublication();
+  const trustedRoot = await readFile(join(closure.outputDirectory, "release-inputs", "root.json"));
+  const key = "win32-x64";
+  const entry = manifest.targets.find((item) => item.targetKey === key);
+  const { bundle } = closure.targets.find(
+    (item) => `${item.bundle.target.platform}-${item.bundle.target.arch}` === key
+  );
+
+  // Serves exactly what the manifest says must land at each remote key, with
+  // the response shape the pinned HTTPS source requires.
+  // The base URL names a prefix inside the store, so a request's remote key is
+  // its path relative to that prefix - the same mapping a real object store
+  // applies, and the one the manifest's remote keys are written against.
+  const basePrefix = new URL(PUBLICATION_BASE_URL).pathname;
+  const servedKeys = [];
+  const endpoint = async (input, init = {}) => {
+    const remoteKey = new URL(input).pathname
+      .slice(basePrefix.length)
+      .split("/")
+      .filter(Boolean)
+      .map(decodeURIComponent)
+      .join("/");
+    const asset = entry.assets.find((item) => item.remoteKey === remoteKey);
+    if (!asset) return new Response(null, { status: 404 });
+    servedKeys.push(remoteKey);
+    const bytes = await readFile(join(closure.outputDirectory, ...asset.path.split("/")));
+    if (asset.area === "metadata")
+      return new Response(bytes, { status: 200, headers: { "content-length": String(bytes.length) } });
+    const range = /^bytes=(\d+)-(\d+)$/u.exec(new Headers(init.headers).get("range") ?? "");
+    if (!range) return new Response(null, { status: 416 });
+    const start = Number(range[1]);
+    const end = Math.min(Number(range[2]), bytes.length - 1);
+    const chunk = bytes.subarray(start, end + 1);
+    return new Response(chunk, {
+      status: 206,
+      headers: {
+        "content-length": String(chunk.length),
+        "content-range": `bytes ${start}-${end}/${bytes.length}`
+      }
+    });
+  };
+
+  const scratch = await mkdtemp(join(tmpdir(), "verchestra-t76-views-"));
+  try {
+    const stage = (name, source) =>
+      new TufUpdateClient({
+        trustRootDirectory: join(scratch, name, "trust"),
+        stagingRoot: join(scratch, name, "staging"),
+        trustedRoot,
+        source
+      }).resolveAndStage({ platform: "win32", arch: "x64" });
+
+    const online = await stage(
+      "online",
+      new HttpsDistributionSource({
+        mode: "online",
+        sourceId: "source:online:r2",
+        metadataBaseUrl: entry.metadataBaseUrl,
+        targetBaseUrl: entry.targetBaseUrl,
+        fetch: endpoint
+      })
+    );
+    const offline = await stage(
+      "offline",
+      new NodeFilesystemDistributionSource({
+        mode: "offline",
+        sourceId: "source:offline:r2",
+        root: join(closure.outputDirectory, "publication", key)
+      })
+    );
+
+    assert.equal(online.sourceMode, "online");
+    assert.equal(offline.sourceMode, "offline");
+    assert.ok(servedKeys.length > 0, "the online staging must have gone through the HTTPS transport");
+    assert.equal(online.releaseDigest, bundle.releaseDigest);
+    assert.equal(offline.releaseDigest, online.releaseDigest);
+    assert.deepEqual(online.bundle, offline.bundle);
+    assert.deepEqual(online.components, offline.components);
+    const byCodeUnits = (left, right) => (left < right ? -1 : left > right ? 1 : 0);
+    assert.deepEqual(
+      online.components.map((component) => component.logicalPath).sort(byCodeUnits),
+      bundle.components.map((component) => component.logicalPath).sort(byCodeUnits)
+    );
+    const sealed = entry.views.find((view) => view.mode === "online");
+    assert.equal(sealed.releaseDigest, online.releaseDigest);
+  } finally {
+    await rm(scratch, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   }
 });
 

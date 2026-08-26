@@ -631,6 +631,12 @@ const assetsFrom = (values, area, key) =>
     sizeBytes: bytes.byteLength
   }));
 
+// The candidate requires exactly one view per source mode, all naming the same
+// release digest, and seals them into `candidateDigest`. Sealed is not the same
+// as auditable: without the views in the emitted manifest, a reviewer holding
+// only the artifacts cannot check that four-view property, and has to trust the
+// digest. The manifest therefore carries the normalized views the candidate
+// sealed, so the claim can be read from what the operator actually uploads.
 const targetManifestEntry = (options, target, bundle, candidate, publication) => {
   const urls = urlsFor(options.baseUrl, target.key);
   const assets = [
@@ -643,6 +649,7 @@ const targetManifestEntry = (options, target, bundle, candidate, publication) =>
     releaseId: bundle.releaseId,
     releaseDigest: bundle.releaseDigest,
     candidateDigest: candidate.candidateDigest,
+    views: candidate.views.map((view) => ({ ...view })),
     manifestPath: publication.manifestPath,
     metadataBaseUrl: urls.metadataBaseUrl,
     targetBaseUrl: urls.targetBaseUrl,
