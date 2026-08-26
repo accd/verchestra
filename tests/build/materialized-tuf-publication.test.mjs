@@ -12,7 +12,7 @@ import { TufUpdateClient } from "../../packages/distribution/src/tuf-update-clie
 import { TransactionalActivationManager } from "../../packages/distribution/src/transactional-activation.ts";
 import { components, releaseId } from "../helpers/hermetic-bundle-fixture.mjs";
 import { healthGate } from "../helpers/activation-fixture.mjs";
-import { MapDistributionSource } from "../helpers/tuf-publication-fixture.mjs";
+import { MapDistributionSource, defaultExpiries, rolesFor } from "../helpers/tuf-publication-fixture.mjs";
 
 const sourceComponents = () =>
   components().filter((component) => !["sbom", "provenance", "evaluation"].includes(component.kind));
@@ -97,9 +97,9 @@ const materializePublication = async (root, value) => {
     candidate,
     componentBytes: materialized.componentBytes,
     metadataVersion: 1,
-    expires: "2035-01-01T00:00:00.000Z",
-    threshold: 2,
-    signers: signers(),
+    rootVersion: 1,
+    expires: defaultExpiries,
+    roles: rolesFor(signers(), signers()),
     consistentSnapshot: true
   });
   return { materialized, publication };
@@ -131,9 +131,9 @@ test("materialized bytes feed candidate closure and TUF resolution in every sour
       candidate,
       componentBytes: materialized.componentBytes,
       metadataVersion: 1,
-      expires: "2035-01-01T00:00:00.000Z",
-      threshold: 2,
-      signers: signers(),
+      rootVersion: 1,
+      expires: defaultExpiries,
+      roles: rolesFor(signers(), signers()),
       consistentSnapshot: true
     });
     assert.equal(publication.bundle.releaseDigest, materialized.bundle.releaseDigest);

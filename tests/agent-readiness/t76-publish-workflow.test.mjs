@@ -55,17 +55,20 @@ test("the T76 publication workflow is manual, read-only, and publishes nothing",
   assert.doesNotMatch(workflow, /releases\/assets|uploads\.github\.com/u);
 });
 
-test("the workflow owns no storage endpoint, no upload tool, and exactly one secret", () => {
+test("the workflow owns no storage endpoint, no upload tool, and only the two role-separated release secrets", () => {
   // The object store belongs to the operator, not to CI: no storage CLI, no
-  // storage credential, and no repository-derived location may appear here.
-  // The only secret this workflow may ever name is the release signing key.
+  // storage credential, and no repository-derived location may appear here. The
+  // only secrets this workflow may name are the two role-separated signing keys.
   assert.doesNotMatch(workflow, /github\.repository/u);
   assert.doesNotMatch(workflow, /wrangler/iu);
   assert.doesNotMatch(workflow, /rclone/iu);
   assert.doesNotMatch(workflow, /aws s3/iu);
   assert.doesNotMatch(workflow, /cloudflarestorage/iu);
   const secretNames = new Set([...workflow.matchAll(/secrets\.([A-Za-z0-9_]+)/gu)].map(([, name]) => name));
-  assert.deepEqual([...secretNames], ["VESTRA_RELEASE_SIGNING_KEY_PKCS8_BASE64"]);
+  assert.deepEqual(
+    [...secretNames].sort(),
+    ["VESTRA_RELEASE_SIGNING_KEY_PKCS8_BASE64", "VESTRA_RELEASE_TIMESTAMP_SIGNING_KEY_PKCS8_BASE64"].sort()
+  );
 });
 
 test("every dispatch input is declared and validated against an exact pattern before use", () => {
@@ -105,18 +108,17 @@ test("no untrusted value reaches a run block except through env", () => {
     );
 });
 
-test("the release signing secret is a distinct key, reaches one step, and is never echoed", () => {
-  const uses = [...workflow.matchAll(/VESTRA_RELEASE_SIGNING_KEY_PKCS8_BASE64: \$\{\{ secrets\.\S+ \}\}/gu)];
-  assert.equal(uses.length, 1, "the release key reaches exactly one step");
-  assert.match(
-    workflow,
-    /VESTRA_RELEASE_SIGNING_KEY_PKCS8_BASE64: \$\{\{ secrets\.VESTRA_RELEASE_SIGNING_KEY_PKCS8_BASE64 \}\}/u
-  );
+test("each role-separated release secret is a distinct key, reaches one step, and is never echoed", () => {
+  for (const name of ["VESTRA_RELEASE_SIGNING_KEY_PKCS8_BASE64", "VESTRA_RELEASE_TIMESTAMP_SIGNING_KEY_PKCS8_BASE64"]) {
+    const uses = [...workflow.matchAll(new RegExp(`\\b${name}: \\$\\{\\{ secrets\\.\\S+ \\}\\}`, "gu"))];
+    assert.equal(uses.length, 1, `${name} reaches exactly one step`);
+    assert.match(workflow, new RegExp(`\\b${name}: \\$\\{\\{ secrets\\.${name} \\}\\}`, "u"));
+  }
   // The T75 evidence key carries different authority and must never be
-  // substituted for, or read alongside, the release key.
+  // substituted for, or read alongside, either release key.
   assert.doesNotMatch(workflow, /VESTRA_T75_EVIDENCE_SIGNING_KEY/u);
-  assert.doesNotMatch(workflow, /echo.*VESTRA_RELEASE_SIGNING_KEY/iu);
-  assert.doesNotMatch(workflow, /cat.*VESTRA_RELEASE_SIGNING_KEY/iu);
+  assert.doesNotMatch(workflow, /echo.*VESTRA_RELEASE/iu);
+  assert.doesNotMatch(workflow, /cat.*VESTRA_RELEASE/iu);
 });
 
 test("the sealed closure and the prior rollback index come from exact run ids", () => {

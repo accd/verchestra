@@ -47,15 +47,15 @@ test("publishes a signed root, delegated components, and a complete bundle", asy
 });
 
 test("publication identity is independent of component descriptor order", () => {
-  const { candidate, componentBytes, signers, publication } = fixture();
+  const { candidate, componentBytes, roles, expires, publication } = fixture();
   const reversed = buildTufReleasePublication({
     schemaVersion: 1,
     candidate,
     componentBytes: [...componentBytes].reverse(),
     metadataVersion: 1,
-    expires: "2035-01-01T00:00:00.000Z",
-    threshold: 2,
-    signers,
+    rootVersion: 1,
+    expires,
+    roles,
     consistentSnapshot: true
   });
   assert.equal(Buffer.from(publication.trustedRoot).toString("hex"), Buffer.from(reversed.trustedRoot).toString("hex"));
@@ -64,15 +64,15 @@ test("publication identity is independent of component descriptor order", () => 
 });
 
 test("publication can emit non-consistent-snapshot paths without changing the bundle", async () => {
-  const { bundle, candidate, componentBytes, signers } = fixture();
+  const { bundle, candidate, componentBytes, roles, expires } = fixture();
   const publication = buildTufReleasePublication({
     schemaVersion: 1,
     candidate,
     componentBytes,
     metadataVersion: 1,
-    expires: "2035-01-01T00:00:00.000Z",
-    threshold: 2,
-    signers,
+    rootVersion: 1,
+    expires,
+    roles,
     consistentSnapshot: false
   });
   const staged = await resolvePublication(publication, "offline");
