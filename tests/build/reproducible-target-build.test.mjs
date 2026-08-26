@@ -145,7 +145,17 @@ test("the same exact inputs produce byte-identical target output", async () => {
   const second = join(parent, "second");
   try {
     const one = await buildReproducibleT76Target(options(first));
-    const two = await buildReproducibleT76Target(options(second));
+    // An untracked byproduct beside a faithful tree (a CI output directory,
+    // a gate evidence file) must neither refuse the build nor reach it: the
+    // byte-identity assertion below is what proves it cannot leak.
+    const byproduct = join(replica.repository, "ci-byproduct.txt");
+    await writeFile(byproduct, "untracked byproduct\n");
+    let two;
+    try {
+      two = await buildReproducibleT76Target(options(second));
+    } finally {
+      await rm(byproduct, { force: true });
+    }
     assert.equal(two.bundle.releaseDigest, one.bundle.releaseDigest);
     const firstFiles = await walk(first);
     const secondFiles = await walk(second);
@@ -166,17 +176,22 @@ test("the builder refuses revision, tree, target, and evaluation drift before em
       buildReproducibleT76Target(options(join(parent, "revision"), { revision: "a".repeat(40) })),
       (error) => error.code === "VES_T76_BUILD_REVISION_MISMATCH"
     );
-    // A modified working tree at the right revision is still not the sealed
+    // A modified TRACKED file at the right revision is still not the sealed
     // revision's content, and the launcher bundles compile from that tree.
-    const driftFile = join(replica.repository, "drift-marker.txt");
-    await writeFile(driftFile, "uncommitted drift\n");
+    // Untracked byproducts are tolerated (the determinism test proves they
+    // cannot leak into the output), so the drift here edits a tracked source
+    // that feeds the bundle, and the refusal must name it.
+    const driftFile = join(replica.repository, "apps", "vestra-cli", "closure", "vestra-entry.ts");
+    const driftOriginal = await readFile(driftFile);
+    await writeFile(driftFile, Buffer.concat([driftOriginal, Buffer.from("// drift\n")]));
     try {
       await assert.rejects(buildReproducibleT76Target(options(join(parent, "dirty"))), (error) => {
         assert.equal(error.code, "VES_T76_BUILD_TREE_DIRTY");
+        assert.match(error.message, /vestra-entry[.]ts/u);
         return true;
       });
     } finally {
-      await rm(driftFile, { force: true });
+      await writeFile(driftFile, driftOriginal);
     }
     await assert.rejects(
       buildReproducibleT76Target(

@@ -260,15 +260,23 @@ const assertRevisionAtHead = async (repository, revision) => {
 // (esbuild resolves the closure entries and their whole workspace graph from
 // disk), so the tree must be exactly the sealed revision's content: HEAD is
 // already asserted equal to the revision, and this asserts nothing is
-// modified, staged, or untracked on top of it. `--porcelain` respects
-// .gitignore, so lockfile-installed node_modules - the pinned third-party
-// inputs the bundle inlines - do not count as drift.
+// modified, staged, or deleted on top of it. Only TRACKED drift is refused:
+// the bundle graph starts at tracked entries, every repository import names
+// its file with an explicit extension, and third-party inputs come from the
+// lockfile-installed store, so an untracked file cannot reach the bundle
+// without first modifying a tracked one - and untracked byproducts (CI
+// output directories, gate evidence) are legitimate beside a faithful tree.
 const assertWorktreeClean = async (repository) => {
-  const status = (await git(repository, ["status", "--porcelain"], "VES_T76_BUILD_REVISION_INVALID"))
+  const status = (
+    await git(repository, ["status", "--porcelain", "--untracked-files=no"], "VES_T76_BUILD_REVISION_INVALID")
+  )
     .toString("utf8")
     .trim();
   if (status.length > 0)
-    fail("VES_T76_BUILD_TREE_DIRTY", "the build repository working tree differs from the sealed revision");
+    fail(
+      "VES_T76_BUILD_TREE_DIRTY",
+      `the build repository working tree differs from the sealed revision: ${status.slice(0, 2000)}`
+    );
 };
 
 /** The two sealed launchers and the tracked closure entry each is bundled from. */
