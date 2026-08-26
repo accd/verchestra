@@ -260,28 +260,33 @@ gets a schema-valid report that exposes no absolute machine path.
 | --- | --- |
 | `tests/e2e/doctor-cli-e2e.test.mjs` — the report validates against `doctor-report@1`; a bare source machine reports `BLOCKED` and exits 4; human and JSON renderers project the same verdict; the report exposes no absolute machine path; every check belongs to the closed twelve-id catalog; two runs converge on the same fingerprint; the diagnostic writes nothing | 8 tests, 8 pass, 0 fail, 0 skipped, 0 todo |
 
-**Honest qualification — `doctor` cannot reach `PASS`.** This is a protocol
-consequence, not a defect in the diagnostic:
+**Honest qualification — `doctor` cannot reach `PASS` on a real machine, now for
+one documented reason.** Two checks were `blocked` by design; one is resolved and
+one remains:
 
-- `apps/vestra-cli/src/release-manifest.ts` returns `releaseDigest: null` on
-  **both** paths — line 27 for a sealed bundle, line 33 for a source checkout —
-  because that digest covers a manifest containing the launcher's own content
-  digest, so any compiled-in value would be circular.
-- `apps/vestra-cli/src/doctor-composition.ts:120` therefore always evaluates
-  `resolveReleaseIdentity().releaseDigest === null ? absent : present(true)` to
-  `absent` for the native-asset probe.
-- `packages/application/src/doctor/doctor-facts.ts:56` maps an absent
-  observation to `status: "blocked"`, and
-  `packages/application/src/doctor/doctor.ts:195` computes
-  `failed.length > 0 ? "FAIL" : blocked.length > 0 ? "BLOCKED" : "PASS"`.
+- **native-asset — resolved (was the circular-digest blocker).** It no longer
+  keys off the protocol-null `releaseDigest`. `doctor.native-asset` now reads the
+  machine's activation record: the composition root supplies the install root the
+  sealed bundle actually sits in (`apps/vestra-cli/src/main.ts`, three levels up
+  from its own `bin/`), and the probe cross-checks `<installRoot>/active.json`
+  against `releases/<digest>/release.json`
+  (`apps/vestra-cli/src/doctor-composition.ts`). A genuinely activated release
+  reports `pass`; a source checkout or un-activated layout reports `blocked`,
+  honestly; an inconsistent activation record reports `fail`. Asserted by
+  `tests/integration/doctor-native-asset-probe.test.mjs` and the sealed-mode case
+  in `tests/build/sealed-launcher-closure.test.mjs:295`.
+- **secret-presence — the remaining blocker
+  ([#379](https://github.com/accd/verchestra/issues/379)).**
+  `doctor.secret-presence` is `absent` → `blocked` because no production
+  `SecretAdapter` exists to observe: the only real adapter,
+  `QualifiedOsSecretAdapter`, needs an OS keychain bridge
+  (`packages/platform-node/src/secret-broker.ts`) that the product does not yet
+  construct. `packages/application/src/doctor/doctor-facts.ts:56` maps `absent` to
+  `blocked`, and `doctor.ts:195` computes `PASS` only when nothing is `blocked`.
 
-So at least one check is permanently `blocked` and the verdict can never be
-`PASS`, in a sealed release exactly as in a source checkout. The comment at
-`doctor-composition.ts:118` — "legitimately absent until T76 ships a candidate"
-— is now stale: T76 shipped on 2026-08-26 and the digest is still null by
-design. **No tracked file states this consequence, and no test asserts a
-sealed-mode doctor verdict.** Recorded here as a finding, not repaired, because
-repairing it is a product change outside this matrix.
+So `doctor` still cannot report `PASS` on a real machine — but the reason is now
+the missing secret backend (#379), not the circular release digest, and a
+sealed-mode doctor verdict is now asserted where before none was.
 
 ### 2.10 J10 — Recover a machine, and send diagnostics safely
 
@@ -607,13 +612,19 @@ security reviewer, "both distinct from the deciding human and from the
 implementation author". This matrix is in the same position and says so at the
 top.
 
-**L2. `doctor` cannot report `PASS`, and nothing records that.** Derived in
-section 2.9 from `release-manifest.ts:27,33`, `doctor-composition.ts:120`,
-`doctor-facts.ts:56`, and `doctor.ts:195`. The one adjacent written record —
-`doctor-composition.ts:118`, "legitimately absent until T76 ships a candidate"
-— is stale, because T76 shipped without changing the digest. No test asserts a
-sealed-mode doctor verdict. A 1.0 decision that promises a working `doctor`
-must either accept a permanently `BLOCKED` verdict or change the protocol.
+**L2. `doctor` cannot report `PASS` on a real machine — now for one documented
+reason ([#379](https://github.com/accd/verchestra/issues/379)), not the circular
+digest.** The native-asset half is resolved: the probe reads the activation
+record (`active.json` cross-checked against `releases/<digest>/release.json`)
+instead of the protocol-null `releaseDigest`, and a sealed-mode doctor verdict is
+now asserted (`tests/build/sealed-launcher-closure.test.mjs`,
+`tests/integration/doctor-native-asset-probe.test.mjs`) where the earlier version
+of this matrix noted none existed. The remaining blocker is
+`doctor.secret-presence`: no production `SecretAdapter`/OS keychain backend exists
+to observe (`secret-broker.ts`), so it stays `blocked`, and because `doctor.ts:195`
+reaches `PASS` only when nothing is `blocked`, `doctor` stays `BLOCKED`. Tracked
+as #379. A 1.0 decision that promises a working `doctor` must either accept a
+permanently `BLOCKED` verdict until #379 ships, or scope the promise accordingly.
 
 **L3. `gate:release` was historically vacuous and its closure must be
 re-checked.** `docs/audits/2026-08-verchestra-product-repository-audit.md:47`

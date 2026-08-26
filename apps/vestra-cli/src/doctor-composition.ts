@@ -71,12 +71,19 @@ export interface DoctorRunResult {
 // content, or machine path can be placed in a doctor fact or sealed report.
 // Leaving a port unconfigured is an honest blocked observation for source mode.
 export interface DoctorLiveProbeOptions {
+  // The activated install root (<stateRoot>/launcher/install), supplied by the
+  // composition root only for a sealed release that has an install to inspect.
+  // A source checkout supplies none, so the native-asset probe stays honestly
+  // blocked there (#18, L2).
+  readonly installRoot?: string;
   readonly workspaceId?: string;
   readonly secret?: {
     readonly logicalName: string;
     readonly adapter: Pick<SecretAdapter, "has">;
   };
 }
+
+const DIGEST = /^sha256:[a-f0-9]{64}$/u;
 
 // Binds the sealed report to the exact closed catalog it was produced against,
 // so a report cannot be replayed against a build with different checks.
@@ -114,13 +121,37 @@ function installationProbe(): DoctorObservation {
   }
 }
 
-function nativeAssetProbe(): DoctorObservation {
-  // Source mode has no verified release artifact (releaseDigest is null), so the
-  // hermetic native asset is legitimately absent until T76 ships a candidate.
+// A verified native release asset exists only when a release has been
+// transactionally activated on this machine: the installer records the active
+// release digest in <installRoot>/active.json and lays that release down under
+// releases/<digest>/release.json (transactional-activation.ts). The launcher's
+// own releaseDigest is null by protocol — it would cover a manifest containing
+// the launcher's own content digest, so any compiled-in value is circular — so
+// the sealed doctor reads the activation record instead of that null digest
+// (#18, L2). The composition root supplies no install root in source mode, so
+// this stays honestly absent (blocked) there, exactly as before.
+//
+// absent (blocked): no install root, or no activated release — not provisioned.
+// present(false) (fail): the active pointer is malformed, or names a release
+//   that is not laid down or disagrees with itself — a genuine inconsistency.
+// present(true) (pass): the recorded active release is on disk and self-consistent.
+function nativeAssetProbe(installRoot: string | undefined): DoctorObservation {
+  if (installRoot === undefined) return absent;
+  let active: { readonly releaseDigest?: unknown };
   try {
-    return resolveReleaseIdentity().releaseDigest === null ? absent : present(true);
+    active = JSON.parse(readFileSync(join(installRoot, "active.json"), "utf8")) as { readonly releaseDigest?: unknown };
   } catch {
     return absent;
+  }
+  const digest = active.releaseDigest;
+  if (typeof digest !== "string" || !DIGEST.test(digest)) return present(false);
+  try {
+    const record = JSON.parse(
+      readFileSync(join(installRoot, "releases", digest.slice("sha256:".length), "release.json"), "utf8")
+    ) as { readonly bundle?: { readonly releaseDigest?: unknown } };
+    return present(record.bundle?.releaseDigest === digest);
+  } catch {
+    return present(false);
   }
 }
 
@@ -340,7 +371,7 @@ function buildRealProbes(
     "doctor.contract-schema": () => schemaProbe(registry),
     "doctor.cedar-policy": () => cedarPolicyProbe(metadataRoot),
     "doctor.sqlite-durable-state": () => sqliteDurableStateProbe(metadataRoot),
-    "doctor.native-asset": nativeAssetProbe,
+    "doctor.native-asset": () => nativeAssetProbe(live.installRoot),
     "doctor.git": gitProbe,
     "doctor.secret-presence": () => secretPresenceProbe(live),
     "doctor.clock": () => clockProbe(now),
