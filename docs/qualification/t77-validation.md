@@ -9,7 +9,7 @@ criteriaEvidence: 7 of 7 acceptance criteria proven
 skipped: 0
 todo: 0
 discriminationSensor: 12 killed, 0 survived
-reviewedIn: https://github.com/accd/verchestra/pull/REPLACE_ME
+reviewedIn: https://github.com/accd/verchestra/pull/375
 ---
 
 # T77 Final Acceptance Evidence and Release Decision Machinery Validation
