@@ -6,8 +6,11 @@ import { promisify } from "node:util";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { lstat, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 
+import { build as esbuild } from "esbuild";
+
 import { canonicalizeJsonV2 } from "../packages/domain/src/index.ts";
 import { materializeHermeticReleaseFromFiles } from "../packages/distribution/src/release-materializer.ts";
+import { BUNDLE_REQUIRE_GUARD } from "./build-vestra-launcher.mjs";
 
 const execute = promisify(execFile);
 const require = createRequire(import.meta.url);
@@ -126,6 +129,11 @@ const sourceKind = (path) => {
 
 const isSourcePath = (path) => {
   if (path.startsWith("apps/vestra-cli/src/") && SOURCE_EXTENSIONS.has(path.slice(path.lastIndexOf(".")))) return true;
+  // The launcher closure entries are build inputs to the sealed `bin/*.mjs`
+  // bundles, so the release carries them as sources for independent
+  // verification, exactly like the CLI sources they import.
+  if (path.startsWith("apps/vestra-cli/closure/") && SOURCE_EXTENSIONS.has(path.slice(path.lastIndexOf("."))))
+    return true;
   return sourceKind(path) !== undefined;
 };
 
@@ -248,6 +256,99 @@ const assertRevisionAtHead = async (repository, revision) => {
     fail("VES_T76_BUILD_REVISION_MISMATCH", "the build repository is not at the requested exact revision");
 };
 
+// The launcher bundles are compiled from the build repository's working tree
+// (esbuild resolves the closure entries and their whole workspace graph from
+// disk), so the tree must be exactly the sealed revision's content: HEAD is
+// already asserted equal to the revision, and this asserts nothing is
+// modified, staged, or untracked on top of it. `--porcelain` respects
+// .gitignore, so lockfile-installed node_modules - the pinned third-party
+// inputs the bundle inlines - do not count as drift.
+const assertWorktreeClean = async (repository) => {
+  const status = (await git(repository, ["status", "--porcelain"], "VES_T76_BUILD_REVISION_INVALID"))
+    .toString("utf8")
+    .trim();
+  if (status.length > 0)
+    fail("VES_T76_BUILD_TREE_DIRTY", "the build repository working tree differs from the sealed revision");
+};
+
+/** The two sealed launchers and the tracked closure entry each is bundled from. */
+export const SEALED_LAUNCHER_ENTRIES = Object.freeze({
+  "launcher:vestra": "apps/vestra-cli/closure/vestra-entry.ts",
+  "launcher:verchestra": "apps/vestra-cli/closure/verchestra-entry.ts"
+});
+
+// The bundle-time substitute for `node:sqlite` (see that file's header): it
+// keeps SQLite - and its experimental-feature warning on stderr - as lazy in
+// the sealed bundle as the repository's own dynamic-import discipline keeps it
+// in development, which the activation health protocol's clean-output
+// requirement depends on.
+const NODE_SQLITE_LAZY_ALIAS = "./apps/vestra-cli/closure/node-sqlite-lazy.ts";
+
+// A sealed launcher may import Node built-ins and nothing else: the same
+// artifact-level statement scripts/build-vestra-launcher.mjs makes for the
+// published bootstrap, applied to the release's own `bin/*.mjs`.
+const assertSelfContainedLauncher = (text, componentId) => {
+  if (!text.startsWith(BUNDLE_REQUIRE_GUARD))
+    fail("VES_T76_BUILD_LAUNCHER_NOT_SELF_CONTAINED", `${componentId} does not carry the fail-closed require guard`);
+  const specifiers = [...text.matchAll(/(?:^|[\s;}])import\s*(?:[^"';]*?from\s*)?["']([^"']+)["']/gu)].map(
+    (match) => match[1]
+  );
+  const external = specifiers.filter((specifier) => !specifier.startsWith("node:"));
+  if (external.length > 0)
+    fail("VES_T76_BUILD_LAUNCHER_NOT_SELF_CONTAINED", `${componentId} imports ${external.join(", ")} at run time`);
+};
+
+/**
+ * Deterministically bundles one sealed launcher from its tracked closure
+ * entry. The option vector is fixed and mirrors `bundle()` in
+ * scripts/build-vestra-launcher.mjs exactly - esbuild's JS API, platform node,
+ * ESM, the pinned Node target, minify with kept names, no legal comments, no
+ * source map, no timestamp, the fail-closed require banner, and the build
+ * repository as the working directory so no absolute path can reach the
+ * output. Two additions carry the sealed identity and the release layout:
+ * `define` compiles the candidate's semantic version into the launcher, and
+ * `alias` substitutes the lazy node:sqlite shim. Identical inputs produce
+ * byte-identical output.
+ */
+export async function bundleSealedLauncher(options) {
+  const repository = resolve(options.repository);
+  const entry = SEALED_LAUNCHER_ENTRIES[options.componentId];
+  if (entry === undefined)
+    fail("VES_T76_BUILD_INPUT_INVALID", `${String(options.componentId)} is not a sealed launcher component`);
+  const semanticVersion = text(options.semanticVersion, "semanticVersion", SEMVER);
+  const nodeVersion = text(options.nodeVersion, "nodeVersion", NODE_VERSION);
+  let result;
+  try {
+    result = await esbuild({
+      absWorkingDir: repository,
+      entryPoints: [resolve(repository, ...entry.split("/"))],
+      write: false,
+      outfile: resolve(repository, "bin", "launcher.mjs"),
+      bundle: true,
+      platform: "node",
+      format: "esm",
+      target: `node${nodeVersion}`,
+      minify: true,
+      keepNames: true,
+      legalComments: "none",
+      banner: { js: BUNDLE_REQUIRE_GUARD },
+      alias: { "node:sqlite": NODE_SQLITE_LAZY_ALIAS },
+      define: { __VERCHESTRA_SEALED_SEMANTIC_VERSION__: JSON.stringify(semanticVersion) },
+      logLevel: "silent"
+    });
+  } catch (error) {
+    return fail("VES_T76_BUILD_LAUNCHER_BUNDLE_FAILED", `${options.componentId} did not bundle`, error);
+  }
+  if (result.errors.length > 0 || result.warnings.length > 0 || result.outputFiles.length !== 1)
+    fail(
+      "VES_T76_BUILD_LAUNCHER_BUNDLE_FAILED",
+      `${options.componentId} bundle reported diagnostics: ${JSON.stringify([...result.errors, ...result.warnings])}`
+    );
+  const bytes = Buffer.from(result.outputFiles[0].contents);
+  assertSelfContainedLauncher(bytes.toString("utf8"), options.componentId);
+  return bytes;
+}
+
 const sourceDescriptors = async (options, inputRoot, paths) => {
   const descriptors = [];
   for (const path of paths.filter(isSourcePath)) {
@@ -271,8 +372,17 @@ const sourceDescriptors = async (options, inputRoot, paths) => {
   return descriptors;
 };
 
-const hostDescriptors = async (inputRoot, target, repository, revision) => {
+const hostDescriptors = async (inputRoot, options) => {
+  const { target } = options;
   const assets = hostAssets();
+  // The launchers are no longer the tracked development shims sealed
+  // verbatim: those import `../src/main.ts` and workspace packages by name,
+  // which resolve in a repository checkout but not in a staged release layout
+  // (proven live: activation staged the full release, then
+  // `runtime/node bin/vestra.mjs --activation-health` died with
+  // ERR_MODULE_NOT_FOUND). Each launcher is now the deterministic
+  // self-contained bundle of its tracked closure entry, so the sealed
+  // `bin/*.mjs` IS the real CLI and answers the activation health protocol.
   const entries = [
     {
       componentId: "runtime:node",
@@ -301,7 +411,7 @@ const hostDescriptors = async (inputRoot, target, repository, revision) => {
       kind: "launcher",
       logicalPath: "bin/vestra.mjs",
       sourcePath: "bin/vestra.mjs",
-      trackedPath: "apps/vestra-cli/bin/vestra.mjs",
+      bundled: true,
       executable: true
     },
     {
@@ -309,7 +419,7 @@ const hostDescriptors = async (inputRoot, target, repository, revision) => {
       kind: "launcher",
       logicalPath: "bin/verchestra.mjs",
       sourcePath: "bin/verchestra.mjs",
-      trackedPath: "apps/vestra-cli/bin/verchestra.mjs",
+      bundled: true,
       executable: true
     }
   ];
@@ -318,8 +428,13 @@ const hostDescriptors = async (inputRoot, target, repository, revision) => {
     await writeOutput(
       inputRoot,
       entry.sourcePath,
-      entry.trackedPath
-        ? await trackedBytes(repository, revision, entry.trackedPath)
+      entry.bundled
+        ? await bundleSealedLauncher({
+            repository: options.repository,
+            componentId: entry.componentId,
+            semanticVersion: options.semanticVersion,
+            nodeVersion: options.target.nodeVersion
+          })
         : await readFile(entry.path).catch((error) =>
             fail("VES_T76_BUILD_SOURCE_READ_FAILED", `${entry.kind} asset cannot be read`, error)
           ),
@@ -385,10 +500,11 @@ export async function buildReproducibleT76Target(rawOptions) {
     outputCreated = true;
     await mkdir(inputRoot, { mode: 0o700 });
     await assertRevisionAtHead(options.repository, options.revision);
+    await assertWorktreeClean(options.repository);
     const paths = await trackedPaths(options.repository, options.revision);
     const sources = [
       ...(await sourceDescriptors(options, inputRoot, paths)),
-      ...(await hostDescriptors(inputRoot, options.target, options.repository, options.revision))
+      ...(await hostDescriptors(inputRoot, options))
     ];
     const materialized = await materializeHermeticReleaseFromFiles({
       schemaVersion: 1,

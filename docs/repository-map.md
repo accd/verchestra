@@ -21,7 +21,7 @@ independent build-time documentation projection.
 
 | Package | Responsibility | Allowed internal dependencies | Relevant tests | Canonical documentation |
 | --- | --- | --- | --- | --- |
-| `apps/vestra-cli` | CLI parsing, composition, launchers, and public errors | Any package needed for composition | CLI unit/integration/E2E and release tests | `README.md`, `docs/architecture.md` |
+| `apps/vestra-cli` | CLI parsing, composition, launchers, and public errors; `closure/` holds the entries the T76 candidate builder bundles into a sealed release's `bin/*.mjs` | Any package needed for composition | CLI unit/integration/E2E and release tests | `README.md`, `docs/architecture.md` |
 | `apps/vestra-launcher` | Publishable `verchestra` npm launcher: host gate, pinned public release inputs, and the bootstrap that activates a verified release | None from `src/`; `closure/` reaches `packages/distribution` and `packages/platform-node` by relative path, at build time only | `tests/architecture/vestra-launcher-boundaries.test.mjs`, `tests/build/vestra-launcher-package.test.mjs`, `tests/security/vestra-launcher-package-security.test.mjs` | `.specs/features/npx-launcher/`, `apps/vestra-launcher/README.md` |
 | `apps/site` | Static product and documentation website | No runtime product-package dependency | `apps/site/tests`, Playwright, Axe, Lighthouse | Repository Markdown and site guides |
 | `packages/contracts` | Versioned portable schemas and generated contract types | None | Contract and schema tests | `schemas/`, `VERSIONING.md` |

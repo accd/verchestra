@@ -64,6 +64,17 @@
       "reason": "The reviewed source uses the declared V2 canonical contract."
     },
     {
+      "path": "apps/vestra-cli/src/sealed-launcher.ts",
+      "classification": "raw-byte-digest",
+      "signals": {
+        "canonicalizer": 0,
+        "digest": 2,
+        "localeCompare": 0,
+        "serialization": 2
+      },
+      "reason": "SHA-256 applies to fixed migration statement strings, and JSON.stringify only prints the activation health protocol document; its canonical identity is computed by the health gate with the qualified V2 contract."
+    },
+    {
       "path": "apps/vestra-cli/src/self-test-composition.ts",
       "classification": "raw-byte-digest",
       "signals": {
@@ -1038,7 +1049,7 @@
         "canonicalizer": 2,
         "digest": 2,
         "localeCompare": 0,
-        "serialization": 0
+        "serialization": 2
       },
       "reason": "The build boundary emits portable candidate records with the declared V2 canonical contract."
     },

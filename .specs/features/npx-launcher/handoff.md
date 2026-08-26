@@ -54,6 +54,18 @@ passes to the activated bundle's `launcher:vestra` and embedded Node 24.14.0.
   content digest, and the installed `release.json` does not exist at
   pre-publication health time - so the gate binds the evidence to the release it
   actually ran.
+- The `--activation-health` protocol T2 defined is now implemented by the
+  product (2026-08-26): T76's candidate builder bundles
+  `apps/vestra-cli/closure/{vestra,verchestra}-entry.ts` into the sealed
+  `bin/*.mjs`, and `apps/vestra-cli/src/sealed-launcher.ts` answers the
+  protocol with honest migration/native/driver observations while delegating
+  every other argument vector to the real CLI `main()`. The previous
+  candidates sealed the development shims verbatim and failed activation
+  health on a live install (`ERR_MODULE_NOT_FOUND` on `release/src/main.ts`);
+  `tests/build/sealed-launcher-closure.test.mjs` now runs the real gate over
+  the real bundled launchers from a realistic staged layout - closing, for
+  this surface, the fixture-realism gap this handoff's synthetic launcher
+  fixtures left open. See `.specs/features/t76-tuf-publication/` (TP-10).
 - T3 adds `apps/vestra-launcher/` and `scripts/build-vestra-launcher.mjs`. The
   emitted tarball is exactly ten paths, verified three ways: the build's own
   allowlist check, `npm pack --dry-run --json`, and a dependency-free reader

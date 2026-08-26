@@ -5,9 +5,9 @@ issue: 17
 status: in_progress
 branch: r2-pr3
 baseRevision: d05ade95e06b940faed2861731a0755d78850113
-lastCompletedTask: T6
-nextTask: "T7 — operator provisions the release signing secret and storage endpoint, dispatches t76-publish-release.yml at an exact reviewed SHA with the base URL and prior rollback run, uploads the emitted publication/ tree by hand, and verifies the live endpoint with the verification launcher package."
-lastGate: "Focused publication (18), workflow readiness (12), tuf-publication (6), launcher package (11), and canonical-json census (10) suites pass with zero failures/skips/todos; gate:quick, gate:build, and gate:security PASS on this branch"
+lastCompletedTask: T9
+nextTask: "T7 — rebuild the candidate at a revision containing the sealed-launcher fix (the be92397/af8bcf0 candidates seal dev-shim launchers and fail activation health on a live install), then: operator provisions the release signing secret and storage endpoint, dispatches t76-publish-release.yml at that exact reviewed SHA with the base URL and prior rollback run, uploads the emitted publication/ tree by hand, and verifies the live endpoint with the verification launcher package."
+lastGate: "Sealed-launcher closure (7) and reproducible-target-build (3) suites pass with zero failures/skips/todos; gate:quick, gate:build, and gate:security PASS with the sealed launcher bundling in place"
 updatedAt: 2026-08-26T00:00:00Z
 ---
 
@@ -44,6 +44,25 @@ are complete.
 - `docs/canonical-json-census.json` — `scripts/t76-publish-release.mjs`
   classified `migrated-v2` after `census:refresh`.
 - Gate evidence recorded in `validation.md`.
+- T9 (TP-10): `scripts/t76-build-candidate.mjs` now bundles
+  `apps/vestra-cli/closure/{vestra,verchestra}-entry.ts` deterministically
+  (esbuild JS API, same option-vector discipline as
+  `scripts/build-vestra-launcher.mjs`, plus a `define` carrying the sealed
+  semantic version and an `alias` substituting the lazy `node:sqlite` shim)
+  instead of sealing `apps/vestra-cli/bin/*.mjs` verbatim, asserts the build
+  tree is clean (`VES_T76_BUILD_TREE_DIRTY`), and seals the closure entries as
+  release sources. The sealed launcher (`apps/vestra-cli/src/sealed-launcher.ts`)
+  delegates every ordinary argument vector to the real `main()` and answers
+  `--activation-health` with honest observations: the compiled-in migration
+  registry (extracted to
+  `packages/platform-node/src/runtime-store/runtime-migrations.ts` and
+  re-exported through `/readonly` so the observation never loads
+  node:sqlite), the release-layout `native/*` byte sizes, the compiled-in
+  driver classes plus the packaged `drivers` self-test profile, and a
+  behavior projection of the installed release manifest.
+  `tests/build/sealed-launcher-closure.test.mjs` drives the real
+  `NodeActivationHealthGate` against the staged layout - and proves the old
+  dev-shim launchers fail it exactly the way the live install failed.
 
 # Next Exact Action
 
@@ -57,7 +76,12 @@ package, and only then build and `npm publish` by hand.
 
 # Blockers
 
-None for repository work. T7 requires operator-held secret and storage
+Any candidate built before the sealed-launcher fix (including be92397 and
+af8bcf0) fails activation on a real install: it stages, then
+`VES_ACTIVATION_HEALTH_FAILED` because its launchers import
+`../src/main.ts`. T7 must dispatch at a revision that contains T9.
+
+None otherwise for repository work. T7 requires operator-held secret and storage
 custody that must never exist in a development environment.
 
 # Decisions
@@ -73,6 +97,17 @@ custody that must never exist in a development environment.
   different revision and cover the whole fleet.
 - CI owns no upload path: no storage credential, CLI, or endpoint identity
   appears in the workflow, and nothing publishes.
+- Sealed launchers are bundles of tracked closure entries; the development
+  shims in `apps/vestra-cli/bin/` are never sealed. The builder bundles only
+  from a clean tree at the exact sealed revision, and tests satisfy that with
+  a sealed single-commit replica of the working tree
+  (`tests/helpers/sealed-repository-fixture.mjs`), never by committing into
+  the developer's checkout.
+- The sealed runtime component is still `runtime/node` on every platform; a
+  win32 host cannot spawn an extensionless executable, so the health gate
+  would fail before any launcher runs there. Recorded in `validation.md`;
+  renaming the component is a separate change because publication path
+  derivation and fixtures pin the current logical path.
 
 # Files Intentionally Left Unchanged
 

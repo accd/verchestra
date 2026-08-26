@@ -48,9 +48,22 @@ test("the readonly subpath's export surface is exactly the approved read-only sy
     (match) => match[1]
   );
   const exported = [...braceExports, ...declaredFunctionExports];
+  // DEFAULT_RUNTIME_MIGRATIONS and its RuntimeMigration type joined the
+  // surface for the sealed launcher's activation-health observation: the
+  // registry is frozen data re-exported from runtime-migrations.ts, which
+  // imports nothing, so admitting it widens the reachable graph by zero
+  // writers and zero side effects.
   assert.deepEqual(
     [...exported].sort(),
-    ["ProtectedPathBroker", "ProtectedPathHandle", "SecretAdapter", "inspectRuntimeDatabase", "secretPresence"].sort()
+    [
+      "DEFAULT_RUNTIME_MIGRATIONS",
+      "ProtectedPathBroker",
+      "ProtectedPathHandle",
+      "RuntimeMigration",
+      "SecretAdapter",
+      "inspectRuntimeDatabase",
+      "secretPresence"
+    ].sort()
   );
 });
 
