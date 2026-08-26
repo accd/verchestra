@@ -11,6 +11,46 @@ import type { TufStagedRelease } from "./tuf-update-client.ts";
 const DIGEST = /^sha256:[a-f0-9]{64}$/u;
 const HEALTH_NAMES = ["migration", "native", "driver"] as const;
 
+// Windows releases the handle on a just-executed image, and on a child's
+// working directory, a short moment after that child has already exited. The
+// activation health gate runs both canonical launchers through the release's
+// own hermetic runtime from inside the transaction root, so the publish rename
+// and every directory-tree removal that follows can observe EBUSY, EPERM,
+// EACCES, or ENOTEMPTY against a tree that is about to become free. Those codes
+// are the transient class and a brief bounded wait resolves them. A lock that
+// outlives the budget is a real conflict, so the original error is rethrown and
+// the activation still fails closed rather than reporting a success it did not
+// achieve. POSIX never reaches the retry: the first attempt succeeds there
+// because an open handle does not block unlink or rename.
+const LOCK_RETRY_LIMIT = 10;
+const LOCK_RETRY_DELAY_MS = 100;
+const TRANSIENT_LOCK_CODES: ReadonlySet<string> = new Set(["EBUSY", "EPERM", "EACCES", "ENOTEMPTY"]);
+
+// `rm` retries exactly this class itself, and the options are inert when the
+// first attempt succeeds. Only whole-tree removals carry the budget: single
+// files inside the install root are serialized by the activation lock and are
+// never the thing Windows is still holding.
+const REMOVE_TREE = Object.freeze({
+  recursive: true,
+  force: true,
+  maxRetries: LOCK_RETRY_LIMIT,
+  retryDelay: LOCK_RETRY_DELAY_MS
+});
+
+// `rename` has no equivalent option, so the same budget is applied by hand.
+const renameThroughTransientLock = async (from: string, to: string): Promise<void> => {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      await rename(from, to);
+      return;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code ?? "";
+      if (attempt >= LOCK_RETRY_LIMIT || !TRANSIENT_LOCK_CODES.has(code)) throw error;
+      await new Promise((settle) => setTimeout(settle, LOCK_RETRY_DELAY_MS * (attempt + 1)));
+    }
+  }
+};
+
 export interface ActivationHealthCheckEvidence {
   readonly name: (typeof HEALTH_NAMES)[number];
   readonly status: "pass";
@@ -484,7 +524,7 @@ export class TransactionalActivationManager {
     const existingTarget = await optionalStat(targetRoot);
     if (existingTarget !== undefined && (await lstat(targetRoot)).isSymbolicLink())
       fail("VES_ACTIVATION_STAGE_INVALID", "transaction root is a symbolic link", previous);
-    await rm(targetRoot, { recursive: true, force: true });
+    await rm(targetRoot, REMOVE_TREE);
     await mkdir(targetRoot, { recursive: true, mode: 0o700 });
     for (const component of bundle.components) {
       const source = join(sourceRoot, component.logicalPath);
@@ -581,7 +621,7 @@ export class TransactionalActivationManager {
         };
         await this.#writeJournal(prepared);
         await this.#fault("after-journal-prepared");
-        await rename(payloadRoot, releaseRoot);
+        await renameThroughTransientLock(payloadRoot, releaseRoot);
         await this.#fault("after-publish");
         await this.#writeJournal({ ...prepared, state: "PUBLISHED" });
         await this.#fault("after-journal-published");
@@ -597,7 +637,7 @@ export class TransactionalActivationManager {
         health
       });
       await this.#fault("after-journal-committed");
-      await rm(transactionRoot, { recursive: true, force: true });
+      await rm(transactionRoot, REMOVE_TREE);
       await rm(join(this.#installRoot, "activation-journal.json"), { force: true });
       return Object.freeze({ schemaVersion: 1, operation: "activate", previous, active: target, releaseReused });
     } catch (error) {
@@ -648,10 +688,10 @@ export class TransactionalActivationManager {
     try {
       await rm(join(this.#installRoot, "active.json"), { force: true });
       await rm(join(this.#installRoot, "activation-journal.json"), { force: true });
-      await rm(join(this.#installRoot, "transactions"), { recursive: true, force: true });
+      await rm(join(this.#installRoot, "transactions"), REMOVE_TREE);
       await mkdir(join(this.#installRoot, "transactions"), { mode: 0o700 });
       if (options.purgeReleases) {
-        await rm(join(this.#installRoot, "releases"), { recursive: true, force: true });
+        await rm(join(this.#installRoot, "releases"), REMOVE_TREE);
         await mkdir(join(this.#installRoot, "releases"), { mode: 0o700 });
       }
       return Object.freeze({

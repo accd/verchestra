@@ -69,8 +69,19 @@ export class DisposableRootProvider {
 
   // Cleanup reports facts: removal is proven only when the root demonstrably
   // no longer exists. Anything else is residue for the rules to judge.
+  //
+  // The swallowed rejection is deliberate and stays: this method's contract is
+  // to observe whether the root survived, not to propagate how the attempt
+  // failed, and `lstat` below is the authority on that. The retry budget is
+  // what makes the observation truthful on Windows, where a profile's child
+  // process can still hold its working directory for a moment after exiting; a
+  // transient EBUSY without it is reported as `removed: false` and judged a
+  // durable leak that never existed. A lock that outlives the budget still
+  // surfaces as residue, so a real leak is not hidden.
   async cleanup(root: RootFacts): Promise<{ readonly removed: boolean; readonly residue: readonly string[] }> {
-    await rm(root.canonicalPath, { recursive: true, force: true }).catch(() => undefined);
+    await rm(root.canonicalPath, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }).catch(
+      () => undefined
+    );
     const stillThere = await lstat(root.canonicalPath).catch(() => null);
     if (stillThere === null) return Object.freeze({ removed: true, residue: Object.freeze([]) });
     return Object.freeze({ removed: false, residue: await listResidue(root.canonicalPath) });
