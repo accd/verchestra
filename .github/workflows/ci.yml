@@ -55,6 +55,12 @@ jobs:
           case "$claude_version" in "2.1.168"|"2.1.168 "*) ;; *) exit 1 ;; esac
           case "$codex_version" in "codex-cli 0.115.0"|"codex-cli 0.115.0 "*) ;; *) exit 1 ;; esac
       - name: Run each selected stage once
+        # The fleet installs the exact pinned provider CLIs above, so the driver
+        # qualification enforces those exact versions here; an independent
+        # reviewer without this flag reproduces a green gate against whatever
+        # supported build they have installed (#18, F4).
+        env:
+          VES_REQUIRE_PINNED_PROVIDERS: "1"
         run: |
           set -euo pipefail
           for stage in ${{ steps.selection.outputs.stages }}; do

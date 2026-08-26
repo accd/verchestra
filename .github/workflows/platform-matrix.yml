@@ -202,6 +202,8 @@ jobs:
         id: gate
         env:
           CANDIDATE_GATE: ${{ steps.candidate.outputs.gate }}
+          # Exact-pin enforcement for the fleet's driver qualification (#18, F4).
+          VES_REQUIRE_PINNED_PROVIDERS: "1"
         run: pnpm "$CANDIDATE_GATE"
       # A leg that passed and a leg that failed are both evidence. Recording only
       # the successful ones would let the index report a green fleet by omission,
