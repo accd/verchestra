@@ -292,10 +292,7 @@ export const RELEASE_DECISION_SCHEMA = "verchestra-release-decision/v1";
 // The decision file is named for the version it decides, so the version is part
 // of the file's identity rather than a field the author can re-point at another
 // release after the fact.
-export const RELEASE_DECISION_FILE = new RegExp(
-  String.raw`^release-decision-(\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?)\.md$`,
-  "u"
-);
+export const RELEASE_DECISION_FILE = /^release-decision-(\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?)\.md$/u;
 export const RELEASE_DECISIONS = Object.freeze(["promote", "reject"]);
 // `RELEASE-DECISION-CONTRACT.md`: "1.0 is the one decision where the narrowest
 // gate is not a choice." A broader set that merely includes `gate:release` still
@@ -328,12 +325,17 @@ function splitList(value) {
     .filter(Boolean);
 }
 
+// Scanned line by line rather than matched with one lazy pattern: a
+// `[\s\S]*?` bounded by a repeated delimiter backtracks super-linearly on a
+// document that almost closes its frontmatter many times, and a validator is
+// exactly the place that reads adversarial input.
 function decisionFrontmatter(source) {
-  const match = /^---\r?\n([\s\S]*?)\r?\n---\r?\n/u.exec(source);
-  if (!match) return { fields: null, error: "decision is missing the release-decision frontmatter" };
+  const lines = source.split(/\r?\n/u);
+  const closing = lines[0] === "---" ? lines.indexOf("---", 1) : -1;
+  if (closing === -1) return { fields: null, error: "decision is missing the release-decision frontmatter" };
   const fields = {};
-  for (const line of match[1].split(/\r?\n/u)) {
-    const field = /^([A-Za-z][A-Za-z0-9]*):\s*(.*)$/u.exec(line);
+  for (const line of lines.slice(1, closing)) {
+    const field = /^([A-Za-z][A-Za-z0-9]*):(.*)$/u.exec(line);
     if (!field) return { fields: null, error: "malformed frontmatter line" };
     fields[field[1]] = field[2].trim();
   }
@@ -467,6 +469,10 @@ export function validateReleaseDecision(source, version, options = {}) {
     report(error);
     return errors;
   }
+  return validateDecisionFields(fields, version, report, errors, options);
+}
+
+function validateDecisionFields(fields, version, report, errors, options) {
   checkDecisionIdentity(fields, version, report);
   const revision = checkDecisionRevision(fields, report, options);
   checkDecisionBinding(fields, report);
