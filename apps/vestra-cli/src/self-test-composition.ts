@@ -8,7 +8,6 @@ import { createHash } from "node:crypto";
 import { readFile, readdir, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 import {
   DURABLE_CRASH_PHASES,
   FULL_DURABLE_BOUNDARY_IDS,
@@ -48,6 +47,7 @@ import {
 import { scanWorkspace } from "@verchestra/workspace";
 import { runCli } from "./cli.ts";
 import { createCommandBus } from "./main.ts";
+import { resolveDurableCrashChild } from "./release-layout.ts";
 import { installedReleaseManifest } from "./release-manifest.ts";
 
 // Every VES_SELFTEST_* code the domain can emit into
@@ -247,8 +247,13 @@ export function createFullScenario(): SelfTestScenario {
     async run({ root }) {
       const { runFullWorkflowScenario } = await import("./self-test-full-scenario.ts");
       const successful = await runFullWorkflowScenario(root);
+      // The crash child is spawned, not imported, so the sealed bundle cannot
+      // inline it: the candidate builder emits it as its own sealed artifact
+      // beside `bin/*.mjs`, and this resolves whichever layout is running
+      // (release-layout.ts). Naming only the tracked `.ts` file killed the full
+      // profile from a sealed release with VES_SELFTEST_CRASH_PROCESS_FAILED.
       const runner = new DurableCrashRunner({
-        entrypoint: fileURLToPath(new URL("./self-test-full-crash-child.ts", import.meta.url)),
+        entrypoint: resolveDurableCrashChild(import.meta.url),
         timeoutMs: 60_000
       });
       const boundaryFacts = [];

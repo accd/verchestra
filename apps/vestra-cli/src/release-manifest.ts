@@ -9,6 +9,16 @@ import type { InstalledCliManifest } from "./cli.ts";
 // literal and the filesystem is never consulted.
 declare const __VERCHESTRA_SEALED_SEMANTIC_VERSION__: string;
 
+// The single source of truth for "is this module running inside a T76 sealed
+// bundle rather than a repository checkout". Only the builder's esbuild
+// `define` can make the guarded constant a string, so nothing at run time can
+// claim sealed form it does not have. Everything that must resolve a file of
+// its own release (release-layout.ts) asks here rather than keeping a second
+// local copy of this test.
+export function isSealedRelease(): boolean {
+  return typeof __VERCHESTRA_SEALED_SEMANTIC_VERSION__ === "string";
+}
+
 // Ownership of the release identity is explicit and has exactly two sources.
 // In source mode the repository root package.json owns the version, and there
 // is no verified release artifact to bind a digest to, so releaseDigest is null
@@ -23,7 +33,7 @@ export function resolveReleaseIdentity(root = new URL("../../../", import.meta.u
   semanticVersion: string;
   releaseDigest: string | null;
 } {
-  if (typeof __VERCHESTRA_SEALED_SEMANTIC_VERSION__ === "string") {
+  if (isSealedRelease()) {
     return { semanticVersion: __VERCHESTRA_SEALED_SEMANTIC_VERSION__, releaseDigest: null };
   }
   const manifest = JSON.parse(readFileSync(new URL("package.json", root), "utf8")) as { version?: unknown };

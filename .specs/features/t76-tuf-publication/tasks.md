@@ -52,3 +52,20 @@
       ERR_MODULE_NOT_FOUND on `release/src/main.ts` - the health fixtures ran
       synthetic launcher scripts, so no gate ever executed the real tracked
       bins from a realistic sealed layout.
+- [x] T10 — Resolve every delegated command's run-time files for the layout it
+      is running in (TP-11), again out of numeric order and again driven by a
+      packaging failure rather than a design idea. Three specifiers were
+      repository-shaped and therefore landed outside a sealed release: the
+      doctor's schema registry (resolved two levels ABOVE the release root, so
+      the registry was always null and the verdict FAIL/exit 1 from a bundle
+      only), the Self-Test full profile's `execFile`d durable-crash child (a
+      `.ts` file esbuild never emits), and the fake driver both Self-Test
+      driver profiles spawn (absent beside `bin/`, so every driver probe was
+      unavailable). `apps/vestra-cli/src/release-layout.ts` now names both
+      layouts once and picks the one that exists, the candidate builder emits
+      the crash child as its own sealed `core-code` component beside the
+      launchers with the identical option vector, and
+      `tests/build/sealed-launcher-closure.test.mjs` EXECUTES `doctor` and both
+      Self-Test profiles from the staged layout instead of only checking that
+      `--help` mentions them. Recorded limitation: `doctor` cannot reach PASS
+      in any layout while `releaseDigest` is protocol-null.

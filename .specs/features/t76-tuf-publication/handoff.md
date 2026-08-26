@@ -3,20 +3,21 @@ schema: verchestra-feature-handoff/v1
 feature: t76-tuf-publication
 issue: 17
 status: complete
-branch: docs/t76-validation-chain-advance
-baseRevision: a49f3dd5aa3e639db87f8715077446ec075600e9
-lastCompletedTask: T8
+branch: fix/installed-bundle-commands
+baseRevision: 5514322cb19a4bf89d1db16e750ea71019cb6eba
+lastCompletedTask: T10
 nextTask: "T77 — independent acceptance and the explicit 1.0 decision: drive requirements closure with scripts/requirements-trace.mjs against docs/requirements-register.json until every VES requirement carries evidence (T77 closure MET), then obtain real second-reviewer independence and record the human promote-or-reject decision."
-lastGate: "gate:quick PASS, site:check PASS, site:test PASS, agent:check PASS, test:agent-readiness PASS in the chain-advance worktree; the bound revision's own evidence is candidate run 32927839487 (five targets x five gate profiles, all pass)"
+lastGate: "gate:quick PASS, gate:build PASS, gate:security PASS, agent:check PASS on fix/installed-bundle-commands; the published candidate's own evidence remains run 32927839487 (five targets x five gate profiles, all pass)"
 updatedAt: 2026-08-26T00:00:00Z
 ---
 
 # Scope
 
-TP-01 through TP-09 in `spec.md`. The publisher library slice (T1–T3), the
+TP-01 through TP-11 in `spec.md`. The publisher library slice (T1–T3), the
 delegation-path derivation fix (T4), the schemaVersion-2 pinned-input map
-(T5), and the operator-base-URL publication script, workflow, and tests (T6)
-are complete.
+(T5), the operator-base-URL publication script, workflow, and tests (T6), the
+sealed-launcher closure (T9, TP-10), and the installed-bundle command layout
+resolution (T10, TP-11) are complete.
 
 # Completed Evidence
 
@@ -63,6 +64,22 @@ are complete.
   `tests/build/sealed-launcher-closure.test.mjs` drives the real
   `NodeActivationHealthGate` against the staged layout - and proves the old
   dev-shim launchers fail it exactly the way the live install failed.
+- T10 (TP-11): `apps/vestra-cli/src/release-layout.ts` is the single place that
+  knows a delegated command runs from two layouts (repository module vs one
+  sealed `bin/*.mjs`), and `isSealedRelease()` in
+  `apps/vestra-cli/src/release-manifest.ts` is the single test for which one.
+  It fixes three references that landed outside a sealed release: the doctor's
+  schema registry (now `<releaseRoot>/components/schemas/`), the Self-Test
+  durable-crash child (now a sealed `bin/` artifact,
+  `self-test:full-crash-child`, `core-code`/portable/non-executable, bundled by
+  the same `bundleSealedLauncher` option vector), and the Self-Test fake driver
+  (the already-sealed `components/apps/vestra-cli/src/self-test-driver-fake.mjs`).
+  `tests/build/sealed-launcher-closure.test.mjs` (11 tests) now EXECUTES
+  `doctor --deep`, `self-test --profile smoke`, and `self-test --profile full`
+  from the staged layout; `tests/build/reproducible-target-build.test.mjs`
+  pins the crash-child component identity and digest;
+  `tests/architecture/doctor-readonly-graph.test.mjs` records the reviewed
+  allowlist widening and proves the new module writes nothing.
 
 # Next Exact Action
 
@@ -91,7 +108,11 @@ on a real install with `VES_ACTIVATION_HEALTH_FAILED`, because its launchers
 import `../src/main.ts`; the published candidate `a49f3dd` contains the fix and
 the win32 sealed-runtime extension. The earlier af8bcf0 objects that no longer
 appear in any manifest remain in the bucket as unreferenced garbage (TUF never
-resolves them; deletable at leisure).
+resolves them; deletable at leisure). The published `a49f3dd` candidate
+activates and runs, but it predates T10, so in that release `doctor` reports
+FAIL/exit 1 and `self-test --profile {full,drivers}` refuses; both are fixed
+here and reach users only through a re-published candidate, which is an
+operator step outside this change.
 
 # Decisions
 
@@ -112,6 +133,20 @@ resolves them; deletable at leisure).
   a sealed single-commit replica of the working tree
   (`tests/helpers/sealed-repository-fixture.mjs`), never by committing into
   the developer's checkout.
+- A run-time file reference in a delegated command names BOTH layouts through
+  `release-layout.ts` and takes the first that exists, ordered by the layout
+  the process is actually in. A repository checkout therefore keeps its exact
+  previous resolution, and a sealed bundle cannot be captured by an unrelated
+  directory that happens to sit above its release root.
+- The Self-Test crash child is sealed as `core-code`, not `launcher`: the
+  hermetic bundle contract admits exactly the two canonical launchers, and the
+  child is never an entry point activation runs. It is passed as an argument to
+  the release's own `runtime/node`, so it carries no executable bit, and its
+  bytes depend only on the sources and the pinned Node target, so it is
+  platform/arch `any`.
+- `doctor` cannot reach PASS in any layout while `releaseDigest` is
+  protocol-null. Not worked around; recorded in `spec.md` and asserted in the
+  staged-layout test so it cannot go stale silently.
 - The sealed runtime component is still `runtime/node` on every platform; a
   win32 host cannot spawn an extensionless executable, so the health gate
   would fail before any launcher runs there. Recorded in `validation.md`;

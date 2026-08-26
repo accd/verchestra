@@ -285,6 +285,22 @@ export const SEALED_LAUNCHER_ENTRIES = Object.freeze({
   "launcher:verchestra": "apps/vestra-cli/closure/verchestra-entry.ts"
 });
 
+/**
+ * The Self-Test full profile's durable-crash child. Every other sibling the
+ * CLI reaches is an import and is therefore inlined into the launcher bundles,
+ * but this one is `execFile`d as a real child process
+ * (packages/self-test/src/durable-crash-runner.ts), so a sealed release that
+ * carries only the launchers resolves it to a `.ts` file that does not exist
+ * and the full profile dies with VES_SELFTEST_CRASH_PROCESS_FAILED. It is
+ * bundled with the identical option vector and emitted beside the launchers.
+ */
+export const SEALED_CHILD_ENTRIES = Object.freeze({
+  "self-test:full-crash-child": "apps/vestra-cli/src/self-test-full-crash-child.ts"
+});
+
+/** Every sealed `bin/` artifact and the tracked entry it is bundled from. */
+export const SEALED_BUNDLE_ENTRIES = Object.freeze({ ...SEALED_LAUNCHER_ENTRIES, ...SEALED_CHILD_ENTRIES });
+
 // The bundle-time substitute for `node:sqlite` (see that file's header): it
 // keeps SQLite - and its experimental-feature warning on stderr - as lazy in
 // the sealed bundle as the repository's own dynamic-import discipline keeps it
@@ -292,9 +308,9 @@ export const SEALED_LAUNCHER_ENTRIES = Object.freeze({
 // requirement depends on.
 const NODE_SQLITE_LAZY_ALIAS = "./apps/vestra-cli/closure/node-sqlite-lazy.ts";
 
-// A sealed launcher may import Node built-ins and nothing else: the same
-// artifact-level statement scripts/build-vestra-launcher.mjs makes for the
-// published bootstrap, applied to the release's own `bin/*.mjs`.
+// A sealed `bin/` artifact may import Node built-ins and nothing else: the
+// same artifact-level statement scripts/build-vestra-launcher.mjs makes for
+// the published bootstrap, applied to the release's own `bin/*.mjs`.
 const assertSelfContainedLauncher = (text, componentId) => {
   if (!text.startsWith(BUNDLE_REQUIRE_GUARD))
     fail("VES_T76_BUILD_LAUNCHER_NOT_SELF_CONTAINED", `${componentId} does not carry the fail-closed require guard`);
@@ -307,8 +323,9 @@ const assertSelfContainedLauncher = (text, componentId) => {
 };
 
 /**
- * Deterministically bundles one sealed launcher from its tracked closure
- * entry. The option vector is fixed and mirrors `bundle()` in
+ * Deterministically bundles one sealed `bin/` artifact - either launcher, or
+ * the Self-Test durable-crash child - from its tracked entry. The option
+ * vector is fixed and shared by all three, and mirrors `bundle()` in
  * scripts/build-vestra-launcher.mjs exactly - esbuild's JS API, platform node,
  * ESM, the pinned Node target, minify with kept names, no legal comments, no
  * source map, no timestamp, the fail-closed require banner, and the build
@@ -320,9 +337,9 @@ const assertSelfContainedLauncher = (text, componentId) => {
  */
 export async function bundleSealedLauncher(options) {
   const repository = resolve(options.repository);
-  const entry = SEALED_LAUNCHER_ENTRIES[options.componentId];
+  const entry = SEALED_BUNDLE_ENTRIES[options.componentId];
   if (entry === undefined)
-    fail("VES_T76_BUILD_INPUT_INVALID", `${String(options.componentId)} is not a sealed launcher component`);
+    fail("VES_T76_BUILD_INPUT_INVALID", `${String(options.componentId)} is not a sealed bundle component`);
   const semanticVersion = text(options.semanticVersion, "semanticVersion", SEMVER);
   const nodeVersion = text(options.nodeVersion, "nodeVersion", NODE_VERSION);
   let result;
@@ -434,6 +451,22 @@ const hostDescriptors = async (inputRoot, options) => {
       sourcePath: "bin/verchestra.mjs",
       bundled: true,
       executable: true
+    },
+    // The Self-Test full profile's crash child: a real spawned process, so no
+    // launcher bundle can inline it. It is `core-code`, not `launcher` - the
+    // hermetic bundle contract admits exactly the two canonical launchers
+    // (packages/distribution/src/hermetic-bundle.ts `validateClosure`), and
+    // this artifact is never an entry point activation runs. It is executed as
+    // an argument to the release's own `runtime/node`, so it needs no
+    // executable bit, and the bundled bytes depend only on the sources and the
+    // pinned Node target, never on the host platform.
+    {
+      componentId: "self-test:full-crash-child",
+      kind: "core-code",
+      logicalPath: "bin/self-test-full-crash-child.mjs",
+      sourcePath: "bin/self-test-full-crash-child.mjs",
+      bundled: true,
+      portable: true
     }
   ];
   const descriptors = [];
@@ -457,8 +490,8 @@ const hostDescriptors = async (inputRoot, options) => {
       descriptor({
         componentId: entry.componentId,
         kind: entry.kind,
-        platform: entry.kind === "cedar-wasm" ? "any" : target.platform,
-        arch: entry.kind === "cedar-wasm" ? "any" : target.arch,
+        platform: entry.kind === "cedar-wasm" || entry.portable === true ? "any" : target.platform,
+        arch: entry.kind === "cedar-wasm" || entry.portable === true ? "any" : target.arch,
         logicalPath: entry.logicalPath,
         sourcePath: entry.sourcePath,
         executable: entry.executable ?? false
