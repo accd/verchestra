@@ -235,5 +235,7 @@ export async function tamperPayload(closure, key, componentId) {
 }
 
 export async function disposePublicationFixtures() {
-  await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
+  await Promise.all(
+    roots.splice(0).map((root) => rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }))
+  );
 }

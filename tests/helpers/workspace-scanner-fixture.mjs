@@ -62,5 +62,7 @@ export async function byteSnapshot(root) {
 }
 
 export async function cleanupScannerRoots() {
-  await Promise.all(scannerRoots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
+  await Promise.all(
+    scannerRoots.splice(0).map((root) => rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }))
+  );
 }

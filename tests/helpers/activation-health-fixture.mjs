@@ -65,7 +65,7 @@ export async function disposeHealthFixtures() {
   runtimeCache = undefined;
   const roots = disposable.splice(0);
   if (cache !== undefined) roots.push((await cache).root);
-  await Promise.all(roots.map((root) => rm(root, { recursive: true, force: true })));
+  await Promise.all(roots.map((root) => rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })));
 }
 
 /** A launcher whose observations satisfy the activation health protocol. */

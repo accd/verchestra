@@ -93,7 +93,7 @@ export async function realSqliteFixture(options = {}) {
     },
     async cleanup() {
       connection.close();
-      await rm(directory, { recursive: true, force: true });
+      await rm(directory, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
     }
   };
 }
