@@ -14,7 +14,7 @@ Foundations through T76 have public validation reports. They cover the CLI, work
 The T69 Self-Test trust domain, T70 smoke and workspace profiles, T71 full, fault, and approved-driver profiles, T72 deep diagnostics, T73 public regression campaigns, T74 sealed-holdout promotion, T75 platform, security, and fault qualification, and T76 verified release publication are complete. T77 adds independent acceptance and the explicit 1.0 decision. The public CLI exposes init, all four Self-Test profiles, and `doctor --deep`. Seven source-mode doctor checks still report fixture presence rather than live subsystem health; their provisioned-machine upgrades remain tracked beyond T76.
 
 :::caution[No implied release]
-Completed foundations are evidence about implemented contracts. They do not mean Verchestra is installable, production-ready, or accepted as 1.0.
+Completed foundations are evidence about implemented contracts. The published `verchestra` npm package installs `0.0.0-qualification`; that does not mean Verchestra is production-ready or accepted as 1.0.
 :::
 
 Read the canonical [roadmap](/verchestra/roadmap/) or inspect the [qualification evidence](/verchestra/docs/qualification/).

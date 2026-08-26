@@ -2,30 +2,36 @@
 schema: verchestra-feature-handoff/v1
 feature: npx-launcher
 issue: 36
-status: in_progress
-branch: npx-36
-baseRevision: 6e413246605d2ea0023aba4e967837225692f51f
-lastCompletedTask: T3
-nextTask: T4 after T76 supplies the candidate release and reviewed pinned inputs, and the owner confirms the npm name
-lastGate: gate:quick, gate:build, and gate:security all PASS end-to-end with the bundled activation closure
-updatedAt: 2026-08-25T00:00:00Z
+status: complete
+branch: docs/npx-clean-machine-evidence
+baseRevision: 5514322cb19a4bf89d1db16e750ea71019cb6eba
+lastCompletedTask: T4
+nextTask: none for this feature; republish the launcher once the #370 self-test working-directory fix ships, so the portability demo also passes from a default home directory
+lastGate: gate:quick, agent:check, test:agent-readiness, and the site unit/astro/build/built-site checks all PASS for the T4 documentation change
+updatedAt: 2026-08-26T00:00:00Z
 ---
 
 # Task State
 
-T1, T2, and T3 are complete, including T3's activation closure. The owner
-approved a build-time bundler, so `esbuild` is a pinned root devDependency and
-`scripts/build-vestra-launcher.mjs` inlines the qualified TUF and activation
-code into the single emitted `lib/bootstrap.js`. The published manifest still
-declares no dependencies; `npx verchestra` downloads the tarball and nothing else.
+T1 through T4 are complete. T1, T2, and T3 delivered the verified
+active-launcher resolution, the observed activation health gate and shell-free
+handoff, and the publishable tarball with its build-time activation closure.
+The owner approved a build-time bundler, so `esbuild` is a pinned root
+devDependency and `scripts/build-vestra-launcher.mjs` inlines the qualified TUF
+and activation code into the single emitted `lib/bootstrap.js`. The published
+manifest still declares no dependencies; `npx verchestra` downloads the tarball
+and nothing else.
 
 `VES_VESTRA_ACTIVATION_UNAVAILABLE` is no longer unconditional. It now fires
 only when activation genuinely cannot complete, and it carries the canonical
 upstream code as a bounded diagnostic detail.
 
-What remains for #36 is external: T76's candidate release and reviewed pinned
-inputs, and owner confirmation of the npm name. Nothing in the code path is
-still waiting on a decision.
+Both external inputs arrived. T76 published the reproducible candidate release
+and its reviewed pinned inputs, and the owner settled the npm name on
+2026-08-25: the package is **`verchestra`**, with **`vestra`** kept only as the
+short bin alias. `verchestra@0.0.0-qualification` is published on the public
+npm registry with dist-tag `latest` and resolves a live signed release. T4's
+clean-machine evidence is recorded below.
 
 # Scope
 
@@ -103,8 +109,43 @@ passes to the activated bundle's `launcher:vestra` and embedded Node 24.14.0.
   verified, activated behind the observed health gate, and handed control. The
   activated launcher's exit status became the command's status and it recorded
   the argument vector verbatim, including `$(echo pwned)` and `; echo pwned`.
-- The npm registry reports `vestra` as unpublished on 2026-07-25; owner control
-  or reclaim must be confirmed before release. Nothing here publishes.
+- The npm name is settled. The published package is **`verchestra`**, chosen by
+  the owner on 2026-08-25 and verified free at the time; **`vestra`** survives
+  only as the short bin alias, because it carried ten published versions before
+  being unpublished on 2026-07-25 and npm reserves an unpublished name to its
+  original publisher, who is not this repository's owner. The full analysis is
+  in `spec.md`, "Current External Inputs". Nothing in this repository publishes;
+  `npm publish` remains a human step, performed by the owner under 2FA on
+  2026-08-26.
+- T4 proved the clean-machine journey against the published registry package.
+  Every run started from `npx -y verchestra` against
+  `verchestra@0.0.0-qualification` (dist-tag `latest`, shasum
+  `c6a482d25b59ebae93c4094974b7de5b85ca467a`); no repository checkout took part
+  in any of them.
+  - **linux-x64**, clean container (`docker run --rm --platform linux/amd64
+    node:24`), cwd the container's home directory, `git version 2.39.5` on
+    `PATH`: `--help` renders the activated CLI's real command surface (`init`,
+    `self-test`, `doctor`); `--version` prints `0.0.0-qualification` and exits
+    `0`; `self-test --profile smoke` returns `self_test.verdict: PASS` with
+    `check_count: 6`, `duration_ms: 151`, `failure_codes: []`,
+    `evidence_refs: []`, `redaction_count: 0`. A cold `--version` on an
+    identical container completed in 1 m 46 s including TUF resolution,
+    download, staging, the activation health gate, and the verified handoff.
+  - **win32-x64**, native Windows 11 with the managed state root wiped
+    beforehand, cwd a normal project directory: the same help surface; a cold
+    `--version` in 2 m 39 s; `self-test --profile smoke` returns
+    `self_test.verdict: PASS` with `check_count: 6`, `duration_ms: 1070`,
+    `failure_codes: []`, `evidence_refs: []`, `redaction_count: 0`.
+  - **Recovery** was exercised rather than only described: the win32-x64 run
+    began from a wiped managed state root and reactivated from scratch.
+    **Cleanup** followed the documented path — the Windows managed state root
+    (`%LOCALAPPDATA%\Verchestra`) was removed, and the linux-x64 containers
+    were `--rm`, so nothing persisted.
+- T4's user documentation landed with that evidence: `README.md` gained an
+  "Install and run" section, the documentation portal gained
+  `docs/install-and-run`, and `apps/vestra-launcher/README.md` — the README
+  inside the published tarball — was corrected from its "not published" status
+  block and given the concrete recovery and cleanup paths.
 
 # Review Item Before Merge
 
@@ -130,27 +171,21 @@ analysis.
 
 # Next Exact Action
 
-The activation-closure build path is decided and implemented, so T4 now waits on
-exactly two owner-owned inputs:
+Nothing in this feature is outstanding. The one remaining action for the demo's
+worst case is a republication, not a code or documentation task: once the #370
+fix ships — `self-test` refusing when the working directory is an ancestor of
+the OS temporary directory — rebuild and republish the launcher so
+`npx verchestra self-test --profile smoke` also passes from a default Windows
+home directory. Until then the documented instruction is to run the demo from a
+project directory, which every supported platform satisfies today.
 
-1. **T76's reviewed pinned inputs**: a real `root.json` and a
-   `release-source.json` naming the fixed credential-free HTTPS metadata and
-   target bases, passed as
-   `corepack pnpm build:vestra-launcher -- --release-inputs <dir> --out <dir>`.
-   The `release-source.json` is now load-bearing beyond configuration: its
-   `releaseId` and `semanticVersion` are asserted against the resolved release,
-   so they must name the exact release T76 publishes.
-2. **Owner confirmation of the npm name `vestra`.**
+# Closed Blockers
 
-Once those exist, T4 installs the packed tarball into repository-free temporary
-homes and records help, version, portability, recovery, and cleanup evidence per
-supported platform. The tarball built here is already functional; only its
-pinned inputs are still fixtures.
-
-# Blockers
-
-T1, T2, and T3 are complete. T4 remains blocked on the two inputs above. They
-block closing #36; they do not block the work already landed.
+T1 through T4 are complete. Both former blockers are resolved: T76 supplied the
+candidate release and reviewed pinned inputs, and the owner settled the npm
+name as `verchestra` on 2026-08-25 and published the package on 2026-08-26.
+Neither #370 nor T77 blocks this feature: #370 is a product defect reproducible
+from a repository checkout, and T77's acceptance decision is out of scope here.
 
 # Decisions
 
@@ -162,7 +197,13 @@ block closing #36; they do not block the work already landed.
 - Resolve through pointer -> verified release manifest -> component identity.
 - No shell interpolation of user arguments, on any platform.
 - Do not claim a public installer, clean-machine pass, or issue completion
-  until T76-owned inputs and platform evidence exist.
+  until T76-owned inputs and platform evidence exist. Satisfied on 2026-08-26:
+  the inputs exist, the package is published, and the per-platform evidence is
+  recorded above. Production readiness and 1.0 stay unclaimed; that is T77.
+- AD-032 (owner, 2026-08-26): `npx verchestra self-test --profile smoke` is the
+  clean-machine portability demonstration #36 requires, superseding R13's
+  repository-bound two-minute demo
+  (`docs/qualification/t68a-validation.md:61-83`).
 - Bundle at build time; never declare a runtime dependency. `esbuild` is a root
   devDependency pinned to `0.28.2`, and the publish manifest template must keep
   declaring no `dependencies`.
@@ -224,17 +265,49 @@ block closing #36; they do not block the work already landed.
   published wiring pins HTTPS through `HttpsDistributionSource`, and no test may
   reach the public network or trust a self-signed certificate, so the HTTPS
   construction itself is covered by the pinned-input contract rather than by a
-  live fetch. T4's clean-machine evidence closes that last gap.
+  live fetch. Closed by T4: the clean-machine runs resolved the real release
+  over the published HTTPS bases, on two platforms, from `npx -y verchestra`
+  alone.
+- `self-test` refuses when the working directory is an ancestor of the OS
+  temporary directory, because the whole working directory is declared
+  production state and the disposable enclave under `tmpdir()` then reads as an
+  overlap. On Windows the default home directory is such an ancestor, so the
+  demo fails there with `VES_CLI_COMMAND_FAILED`. Tracked as
+  [#370](https://github.com/accd/verchestra/issues/370) and documented plainly
+  in `README.md`, the `docs/install-and-run` portal page, and the published
+  tarball's README. It is a product defect, not a packaging one: a repository
+  checkout reproduces it identically, and the published bundle passes from any
+  other directory. Linux is unaffected because `/tmp` is not inside the home
+  directory.
 
 # Files Intentionally Left Unchanged
 
-- `.specs/STATE.md`, `docs/canonical-json-census.json`, and
+Left unchanged by T1–T3:
+
+- `docs/canonical-json-census.json` and
   `docs/canonical-json-compatibility.md`; concurrent work owns them.
-- `docs/repository-map.md` and the root `tsconfig.json`; both are outside this
-  task's edit scope and both carry a recorded follow-up above.
+- `docs/repository-map.md` and the root `tsconfig.json`; both are outside those
+  tasks' edit scope and both carry a recorded follow-up above.
 - Qualification-chain reports and derived status surfaces.
-- `AGENTS.md`; the launcher's stricter rule is recorded in
-  `docs/repository-map.md`, which `AGENTS.md` already points to.
+
+Left unchanged by T4:
+
+- `docs/qualification/t68a-validation.md`. R13's repository-bound two-minute
+  demo stays exactly as recorded: it is a dated report and its transcript is
+  still true of the revision it names. AD-032 supersedes the demo going
+  forward; it does not rewrite the evidence.
+- `apps/site/src/data/product.ts`'s `installable: false` flag, the homepage
+  status note in `apps/site/src/pages/index.astro` that expresses it, and the
+  `installable: false` assertion in
+  `apps/site/tests/unit/product-contract.test.mjs`. The public homepage posture
+  is an owner decision and is deliberately not flipped here, so the homepage
+  still reads as pre-installer while the documentation portal and `README.md`
+  describe the published package. That divergence is recorded for the owner
+  rather than resolved unilaterally.
+
+T4 does change `AGENTS.md` and `.specs/STATE.md`, which T1–T3 had left alone:
+the mission line's installer prohibition became false when the package was
+published, and AD-032 is the decision that records the demo mapping.
 
 # Pinned Source Schema Version 2
 

@@ -10,6 +10,7 @@ const requiredGuides = [
   "index.mdx",
   "why-verchestra.md",
   "current-qualification-status.md",
+  "install-and-run.md",
   "develop-from-source.md",
   "workflows/first-project-discovery.md",
   "workflows/feature-delivery.md",

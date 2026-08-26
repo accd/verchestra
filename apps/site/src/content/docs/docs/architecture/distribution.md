@@ -7,6 +7,6 @@ Distribution foundations include hermetic bundle identities, SBOM inputs, proven
 
 T76 produced and published the reproducible candidate release. T77 will run final acceptance and the explicit promote-or-reject decision.
 
-:::caution[Not a public installer]
-The distribution architecture exists in qualification form, but no public package installation is offered at `0.0.0-qualification`.
+:::caution[A qualification installer, not a 1.0 release]
+This path is exercised in public: `npx verchestra` resolves, verifies, and activates the signed release through it. What it installs is `0.0.0-qualification`, not a production release. See [install and run](/verchestra/docs/install-and-run/).
 :::

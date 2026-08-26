@@ -10,7 +10,7 @@ export const productStatus = {
   version: "0.0.0-qualification",
   completedTask: "T76",
   nextTask: "T77",
-  installable: false
+  installable: true
 } as const;
 
 export const deliveryStages = [
@@ -182,11 +182,11 @@ export const capabilityMatrix: readonly CapabilityEntry[] = [
 // Trust is built as much by what is ruled out as by what is promised. Every
 // line here is a present-tense fact about the current repository.
 export const notToday: readonly string[] = [
-  "It is not a public production release - the version is 0.0.0-qualification and there is no installer.",
-  "It is not a hosted service - everything runs from a source checkout on your machine.",
+  "It is not a public production release - the published npm package installs 0.0.0-qualification, not 1.0.",
+  "It is not a hosted service - everything runs on your own machine.",
   "It does not transfer provider credentials - a handoff carries evidence and next actions, never sessions or secrets.",
   "It does not make unapproved paid model calls - a missing provider reports not configured, never a silent pass.",
   "It does not treat CI as human review - acceptance is an explicit human decision recorded as evidence.",
   "It does not call same-author checks independent verification - that distinction is stated, not blurred.",
-  "It does not expose unqualified commands - the installed CLI advertises init and nothing else."
+  "It does not expose unqualified commands - the installed CLI advertises init, self-test, and doctor and nothing else."
 ] as const;

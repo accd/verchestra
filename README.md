@@ -14,7 +14,7 @@
 
 **Verchestra is a verified AI software-delivery harness.** It turns discovery, planning, implementation, validation, and human approval into portable, signed, and reviewable delivery work.
 
-> **Current status:** `0.0.0-qualification` — pre-1.0 development. The source is public and the qualification suite is active. A public installer and package release are not available yet.
+> **Current status:** `0.0.0-qualification` — pre-1.0 development. The source is public, the qualification suite is active, and `verchestra@0.0.0-qualification` is published on the public npm registry. That package installs the qualification build; it is not a production release and not 1.0.
 
 Explore the [product website and searchable documentation](https://accd.github.io/verchestra/), or continue below for the repository overview.
 
@@ -81,13 +81,13 @@ Full reports live under [docs/qualification/](docs/qualification/) and on the
 
 ## What Verchestra is not
 
-- It is not a public production release - the version is `0.0.0-qualification` and there is no installer.
-- It is not a hosted service - everything runs from a source checkout on your machine.
+- It is not a public production release - the published npm package installs `0.0.0-qualification`, not 1.0.
+- It is not a hosted service - everything runs on your own machine.
 - It does not transfer provider credentials - a handoff carries evidence and next actions, never sessions or secrets.
 - It does not make unapproved paid model calls - a missing provider reports `not configured`, never a silent pass.
 - It does not treat CI as human review - acceptance is an explicit human decision recorded as evidence.
 - It does not call same-author checks independent verification - that distinction is stated, not blurred.
-- It does not expose unqualified commands - the installed CLI advertises `init` and nothing else.
+- It does not expose unqualified commands - the installed CLI advertises `init`, `self-test`, and `doctor` and nothing else.
 
 ## How it fits together
 
@@ -132,9 +132,76 @@ sequenceDiagram
 | Evidence              | Signed packages, run capsules, recovery bundles, support bundles, provenance, and TUF-backed distribution inputs |
 | Governance            | Cedar policy, approvals, claims, leases, egress control, independent verification, human review                  |
 
+## Install and run
+
+Verchestra is published as one npm package. Installing it needs no clone, no
+build, no credential, and no configuration.
+
+```bash
+npx verchestra --help
+```
+
+The package provides two equivalent binaries, `verchestra` and `vestra`.
+
+The first run does the real work: it reads the trust root pinned inside the
+package, resolves the pinned release through TUF, verifies every component byte,
+activates the release transactionally behind a health gate, and hands control to
+the activated release's own launcher. Your ambient Node runs the bootstrap and
+nothing else — the activated release carries its own Node runtime, so Node is
+not a prerequisite beyond what `npx` itself needs. Expect a couple of minutes on
+a cold first run and a few seconds once a release is activated.
+
+One prerequisite is not bundled: a `git` binary must be on `PATH`, because the
+Self-Test profiles provision their fixtures by invoking `git`
+(`packages/self-test/src/git-fixtures.ts`).
+
+### Portability demonstration
+
+```bash
+npx verchestra self-test --profile smoke
+```
+
+A `self_test.verdict: PASS` with an empty `self_test.failure_codes` means this
+machine resolved and verified a signed release, activated it, and ran the
+packaged Self-Test profile inside a disposable, isolated trust domain — with no
+repository checkout anywhere in the journey.
+
+> **Known limitation.** `self-test` currently refuses when the working directory
+> is an ancestor of the operating system's temporary directory. On Windows the
+> default home directory is such an ancestor, so a shell opened at its default
+> location fails with `VES_CLI_COMMAND_FAILED`. Run the command from a project
+> directory until the fix ships. Tracked as
+> [issue #370](https://github.com/accd/verchestra/issues/370).
+
+### Managed state, recovery, and cleanup
+
+The launcher keeps its staged releases, its activated install, its trust anchor,
+and the active-release pointer under one machine-local state root. Nothing of
+yours is stored there.
+
+| Platform | Managed state root                                |
+| -------- | ------------------------------------------------- |
+| Windows  | `%LOCALAPPDATA%\Verchestra\state`                 |
+| macOS    | `~/Library/Application Support/Verchestra/state`  |
+| Linux    | `~/.local/state/verchestra`                       |
+
+The launcher derives that location from your home directory and the platform
+alone; it deliberately reads no environment variable, so redirecting
+`LOCALAPPDATA` or `XDG_STATE_HOME` does not move it and cannot be used to
+redirect a trust root or a release.
+
+To recover from a failed run, run the command again: activation is transactional
+and converges. If activation keeps failing, delete the managed state root and run
+the command again — the next run resolves and activates from scratch.
+
+To remove Verchestra completely, delete the managed state root and clear the
+downloaded package with `npm cache clean --force`. The two are independent, and
+neither touches your own workspace data.
+
 ## Developer quick start
 
-Use this only to work on the source tree. It does not install Verchestra into another project yet.
+Use this only to work on the source tree. To run Verchestra, use `npx verchestra`
+above.
 
 ```bash
 git clone https://github.com/accd/verchestra.git
@@ -148,9 +215,9 @@ Requirements are Node `24.14.0` and pnpm `10.34.5`.
 
 ## Qualified local alpha: initialize a workspace
 
-The current local alpha exposes only `init`. It is run from a source checkout;
-there is no public installer or production release. From the root of a
-disposable Git repository, invoke the checked-out CLI with an explicit,
+`init` is the qualified workspace command. Run it through `npx verchestra init`,
+or, when you are working on the source tree, invoke the checked-out CLI
+directly. From the root of a disposable Git repository, pass an explicit,
 portable workspace identity:
 
 ```bash
@@ -163,8 +230,8 @@ node /path/to/verchestra/apps/vestra-cli/bin/vestra.mjs init --dry-run \
 
 `--dry-run` is read-only and returns the canonical ordered plan. Review it,
 then repeat the command without `--dry-run` to apply the qualified workspace
-files. Repeating the identical apply is a no-op. `bootstrap`, `sync`,
-`workspace reconcile`, and `doctor` are intentionally not advertised yet.
+files. Repeating the identical apply is a no-op. `bootstrap`, `sync`, and
+`workspace reconcile` are intentionally not advertised yet.
 
 ### Website development
 

@@ -3,8 +3,10 @@
 ## Mission and current status
 
 Verchestra is a verified AI software-delivery harness. It is currently
-`0.0.0-qualification`: T76 is complete and T77 is the next product task. Do not
-claim a public installer, production readiness, or a 1.0 release.
+`0.0.0-qualification`: T76 is complete and T77 is the next product task. The
+`verchestra` npm package is published at `0.0.0-qualification`, so a public
+installer exists and may be described truthfully; do not claim production
+readiness or a 1.0 release.
 
 These instructions are provider-neutral and sufficient after a clean clone. Git
 and tracked repository artifacts are authoritative; chat history, provider

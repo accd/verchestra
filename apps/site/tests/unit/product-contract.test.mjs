@@ -30,7 +30,7 @@ test("publishes the approved first-viewport product contract", () => {
     version: "0.0.0-qualification",
     completedTask: "T76",
     nextTask: "T77",
-    installable: false
+    installable: true
   });
 });
 

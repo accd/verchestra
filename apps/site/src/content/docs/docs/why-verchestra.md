@@ -14,4 +14,4 @@ Verchestra separates durable delivery facts from local authority:
 
 The goal is not to hide model differences. It is to make those differences unable to silently change the delivery contract.
 
-Verchestra is currently qualifying this design. It is not yet a public installer or production release.
+Verchestra is currently qualifying this design. The published `verchestra` npm package installs the `0.0.0-qualification` build; it is not yet a production release.
