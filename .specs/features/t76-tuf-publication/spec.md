@@ -59,6 +59,18 @@ Issue: #17
   differs from the sealed revision (`VES_T76_BUILD_TREE_DIRTY`), and the
   compiled-in semantic version comes from the build's own
   `--semantic-version` input, not a repository `package.json`.
+- **TP-11** — Every file a delegated CLI command reaches at run time is
+  resolved for the layout the command is actually running in. A sealed bundle
+  is one file at `<releaseRoot>/bin/*.mjs`, so a repository-shaped specifier
+  written against `apps/vestra-cli/src/` lands outside the release; the
+  candidate builder must emit or seal each such file, and resolution must name
+  both layouts and choose the one that exists. Three references are covered:
+  the contract schema registry (`<releaseRoot>/components/schemas/`), the
+  Self-Test durable-crash child (bundled as its own sealed `bin/` artifact with
+  the identical option vector as the launchers), and the Self-Test fake driver
+  executable (already sealed as a tracked source component). `doctor` and
+  `self-test` must therefore report from a staged release exactly what they
+  report from a repository checkout for the same invoking project.
 
 ## Acceptance criteria
 
@@ -80,6 +92,13 @@ Issue: #17
    for both canonical launchers, and the same sealed binaries SHALL execute
    ordinary CLI argument vectors, reporting the compiled-in sealed semantic
    version.
+5. WHEN `doctor --deep` is executed from a staged release layout THEN the
+   verdict, exit code, and the full ordered check catalog SHALL equal what the
+   repository checkout reports for the same invoking project.
+6. WHEN `self-test --profile smoke` and `self-test --profile full` are executed
+   from a staged release layout THEN both SHALL report PASS with their declared
+   check counts, the full profile driving its sealed durable-crash child and
+   the sealed fake driver through the release's own runtime.
 
 ## Edge cases
 
@@ -87,7 +106,24 @@ A rollback index that seals the published revision, seals a target twice, is
 re-serialized, omits a fleet target, or repeats the current release digest; a
 base URL that only normalizes to a trailing slash; a closure target whose
 artifact contradicts the reconciled index; an output directory that already
-exists.
+exists; a sealed bundle whose release root happens to sit below a directory
+that also contains a `schemas/` sibling.
+
+## Recorded limitation (TP-11)
+
+`doctor` cannot report PASS from any layout, and this change deliberately does
+not try to make it. `doctor.native-asset`
+(`apps/vestra-cli/src/doctor-composition.ts`) keys off
+`resolveReleaseIdentity().releaseDigest`, which `apps/vestra-cli/src/release-manifest.ts`
+returns as `null` in BOTH the sealed and source branches by protocol: that
+digest covers a manifest that itself contains the launcher's own content
+digest, so any compiled-in value would be circular (the same reasoning
+`packages/platform-node/src/activation-launcher-adapters.ts` records for the
+activation-health protocol). BLOCKED with exit 4 is therefore the honest
+ceiling for a bare machine, in a sealed release exactly as in a checkout, until
+a release can name its own digest without circularity. The FAIL/exit 1 this
+slice removes was never that limitation - it was an unresolvable schema
+registry reported as an unhealthy machine.
 
 ## Safety and authority
 
@@ -101,7 +137,9 @@ identity; every dispatch input is untrusted and pattern-validated behind
 Every requirement has file-and-assertion evidence in
 `tests/build/tuf-publication.test.mjs`,
 `tests/security/tuf-publication-security.test.mjs`,
-`tests/build/t76-release-publication.test.mjs`, and
+`tests/build/t76-release-publication.test.mjs`,
+`tests/build/sealed-launcher-closure.test.mjs`,
+`tests/build/reproducible-target-build.test.mjs`, and
 `tests/agent-readiness/t76-publish-workflow.test.mjs`, with gates green and
 independent human review before any publication is performed.
 

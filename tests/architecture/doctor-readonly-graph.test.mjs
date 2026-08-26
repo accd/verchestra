@@ -39,6 +39,12 @@ const READ_ONLY_IMPORTS = Object.freeze(
     "@verchestra/evidence",
     "@verchestra/platform-node/readonly",
     "@verchestra/policy/readonly",
+    // Reviewed widening: release-layout.ts decides WHICH copy of the schema
+    // registry to load - the repository's `schemas/` or a sealed release's
+    // `components/schemas/`. It resolves URLs and tests for existence and does
+    // nothing else, which the read-only assertion below proves against its own
+    // text; the closure walk further down covers what it imports.
+    "./release-layout.ts",
     "./release-manifest.ts"
   ])
 );
@@ -85,6 +91,32 @@ test("deep doctor spawns only a read-only git version probe", () => {
   assert.equal(spawns.length, 1, "exactly one child process is expected, the git probe");
   assert.equal(spawns[0][1], "git", "the only spawned process is git");
   assert.match(spawns[0][2], /"--version"/u, "git is invoked read-only, for its version");
+});
+
+// The layout resolver is the one module the doctor graph gained, so it carries
+// the same burden of proof as the composition root itself: it may observe the
+// filesystem to pick between two candidate locations, and it may not write.
+test("the release layout resolver observes the filesystem and never writes to it", () => {
+  const layout = readFileSync(new URL("../../apps/vestra-cli/src/release-layout.ts", import.meta.url), "utf8");
+  for (const specifier of importSpecifiers(layout))
+    assert.ok(
+      new Set(["node:fs", "node:url", "./release-manifest.ts"]).has(specifier),
+      `release-layout imports ${specifier}, which the doctor's read-only graph does not admit`
+    );
+  for (const forbidden of [
+    "writeFileSync",
+    "appendFileSync",
+    "mkdirSync",
+    "rmSync",
+    "rmdirSync",
+    "unlinkSync",
+    "createWriteStream",
+    "writeFile",
+    "openSync",
+    "spawnSync",
+    "execFileSync"
+  ])
+    assert.doesNotMatch(layout, new RegExp(`\\b${forbidden}\\b`, "u"), `release-layout must not call ${forbidden}`);
 });
 
 test("deep doctor names no command bus, provider, connector, or writer adapter", () => {

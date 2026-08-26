@@ -121,6 +121,36 @@ test("the real target builder binds exact revision, host assets, and all supply-
         (component) => component.logicalPath === "components/apps/vestra-cli/closure/vestra-entry.ts"
       )
     );
+    // The Self-Test full profile's durable-crash child is `execFile`d, not
+    // imported, so no launcher bundle can inline it. It is sealed as its own
+    // component - TUF-covered like every other file - with the same
+    // deterministic bytes the same bundler produces. It is `core-code` rather
+    // than `launcher` because the closure contract admits exactly the two
+    // canonical launchers, and it is portable because the bundle depends only
+    // on the sources and the pinned Node target.
+    const crashChild = result.bundle.components.find(
+      (component) => component.componentId === "self-test:full-crash-child"
+    );
+    assert.equal(crashChild.kind, "core-code");
+    assert.equal(crashChild.logicalPath, "bin/self-test-full-crash-child.mjs");
+    assert.equal(crashChild.executable, false);
+    assert.equal(crashChild.platform, "any");
+    assert.equal(crashChild.arch, "any");
+    const bundledChild = await bundleSealedLauncher({
+      repository: replica.repository,
+      componentId: "self-test:full-crash-child",
+      semanticVersion: "0.0.0-qualification",
+      nodeVersion: target.nodeVersion
+    });
+    assert.equal(crashChild.contentDigest, `sha256:${createHash("sha256").update(bundledChild).digest("hex")}`);
+    // The fake driver both Self-Test driver profiles spawn needs no new build
+    // output: it is a tracked `.mjs` source and therefore already travels as a
+    // sealed component, which is exactly where the layout resolver points.
+    assert.ok(
+      result.bundle.components.some(
+        (component) => component.logicalPath === "components/apps/vestra-cli/src/self-test-driver-fake.mjs"
+      )
+    );
     // The sealed runtime carries the executable extension exactly on the one
     // platform whose process creation requires it: Windows resolves image
     // names through PATHEXT, so identical bytes spawn as `node.exe` and

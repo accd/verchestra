@@ -1,5 +1,4 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 
 import {
@@ -54,6 +53,7 @@ import {
 import { NodeContentDigest, RuntimeAuthorityStore, RuntimeStore } from "@verchestra/platform-node";
 import { FileRecordStore } from "@verchestra/self-test";
 
+import { resolveSelfTestDriverFake } from "./release-layout.ts";
 import { runSelfTestExecutionAndGate } from "./self-test-full-execution.ts";
 
 const NOW = "2026-07-15T15:00:00.000Z";
@@ -72,7 +72,13 @@ const MACHINE_ID = "machine_018f0b6d-7b1a-7abc-8def-312345678901";
 // report binds. The drivers are the same fake-backed ones the `drivers` profile
 // composes, so this needs no provider install and stays hermetic — what is real
 // here is the *resolution*, which is what the acceptance bar is about.
-const FAKE_DRIVER_PATH = fileURLToPath(new URL("./self-test-driver-fake.mjs", import.meta.url));
+//
+// Spawned, never imported, so no bundle can inline it: a sealed release
+// carries it as the sealed `core-code` component the builder already emits,
+// not as a sibling of `bin/`. Resolving only the repository specifier made
+// every driver probe unavailable from a sealed release and refused the full
+// profile at `deriveDriverBinding` below (release-layout.ts).
+const FAKE_DRIVER_PATH = resolveSelfTestDriverFake(import.meta.url);
 
 export interface SelfTestDriverBinding {
   readonly implementerDriverId: string;

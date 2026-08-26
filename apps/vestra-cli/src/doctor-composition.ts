@@ -38,6 +38,7 @@ import {
 } from "@verchestra/platform-node/readonly";
 import { type PolicyBundleCrypto, verifyPolicyBundle } from "@verchestra/policy/readonly";
 
+import { schemaRegistryCandidates } from "./release-layout.ts";
 import { resolveReleaseIdentity } from "./release-manifest.ts";
 
 // The workspace root and every subsystem path below it are owned by the
@@ -365,6 +366,19 @@ export function captureControlRootSentinels(controlRoot: string): readonly Senti
   return Object.freeze(facts);
 }
 
+// The schema registry belongs to the release the diagnostic is running from,
+// so both layouts are named (release-layout.ts) and the first that loads wins.
+// Resolving only the repository path made `doctor.schema` report
+// present-but-unhealthy from every sealed bundle - a FAIL verdict and exit 1
+// that was purely a packaging artifact, never an observation of the machine.
+export async function loadDoctorSchemaRegistry(): Promise<SchemaRegistry | null> {
+  for (const root of schemaRegistryCandidates(import.meta.url)) {
+    const registry = await SchemaRegistry.load(root).catch(() => null);
+    if (registry !== null) return registry;
+  }
+  return null;
+}
+
 // The one entry point main.ts needs. Constructs the TEST-ONLY signing identity
 // and the real read-only probes here, and nowhere else.
 export async function runDoctorDeep(options: {
@@ -372,7 +386,7 @@ export async function runDoctorDeep(options: {
   readonly live?: DoctorLiveProbeOptions;
 }): Promise<DoctorRunResult> {
   const now = (): number => Date.now();
-  const registry = await SchemaRegistry.load(new URL("../../../schemas/", import.meta.url)).catch(() => null);
+  const registry = await loadDoctorSchemaRegistry();
   const signer = NodeEd25519Signer.generate({ keyId: "doctor-cli", purposes: ["doctor-report"] });
   return runDoctor({
     probes: buildRealProbes(options.controlRoot, registry, now, options.live ?? {}),

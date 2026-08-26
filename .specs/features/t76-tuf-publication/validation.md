@@ -16,6 +16,7 @@ operator-base-URL publication script, workflow, and pinned-input contract
 | TP-08       | `tests/build/t76-release-publication.test.mjs` no-cause key failures and CLI never-echoes-key proof; `tests/agent-readiness/t76-publish-workflow.test.mjs` single-secret single-step assertions                                                                                                                                                                      | PASS   |
 | TP-09       | `tests/agent-readiness/t76-publish-workflow.test.mjs` read-only, env-mediation, SHA-pin, ownership-boundary, and publishes-nothing assertions                                                                                                                                                                                                                        | PASS   |
 | TP-10       | `tests/build/sealed-launcher-closure.test.mjs` real `NodeActivationHealthGate` over the staged layout, honest observation contents, delegated `--version`/`--help`, dev-shim red case, byte-identical rebuilds, built-ins-only imports; `tests/build/reproducible-target-build.test.mjs` bundled-launcher digest, sealed closure sources, `VES_T76_BUILD_TREE_DIRTY` | PASS   |
+| TP-11       | `tests/build/sealed-launcher-closure.test.mjs` `doctor --deep` and `self-test --profile {smoke,full}` executed from the staged layout, sealed-vs-checkout check-catalog equality, per-layout resolver assertions; `tests/build/reproducible-target-build.test.mjs` crash-child component identity and digest, sealed fake-driver component; `tests/architecture/doctor-readonly-graph.test.mjs` reviewed allowlist widening | PASS   |
 
 Focused results on this branch:
 
@@ -29,16 +30,27 @@ Focused results on this branch:
 - `tests/security/canonical-json-census.test.mjs` — 10 passed, 0
   failed/skipped/todo, with `scripts/t76-publish-release.mjs` classified
   `migrated-v2` after `census:refresh`.
-- `tests/build/sealed-launcher-closure.test.mjs` — 7 passed, 0
+- `tests/build/sealed-launcher-closure.test.mjs` — 11 passed, 0
   failed/skipped/todo. Both sealed launchers pass the real activation health
   gate from a staged layout with no `src/` and no `node_modules/`; the
   development shims fail the same gate with ERR_MODULE_NOT_FOUND, which is
-  the exact live failure mode the previous synthetic fixtures never observed.
+  the exact live failure mode the previous synthetic fixtures never observed;
+  and `doctor --deep` (BLOCKED, exit 4, catalog equal to the checkout's),
+  `self-test --profile smoke` (PASS, 6 checks), and `self-test --profile full`
+  (PASS, 10 checks, about 26s) now execute from that layout through the
+  release's own runtime.
 - `tests/build/reproducible-target-build.test.mjs` — 3 passed, 0
   failed/skipped/todo, now against a sealed single-commit replica of the
   working tree (tests/helpers/sealed-repository-fixture.mjs) because the
   builder refuses a dirty tree; the launcher component digest is proved equal
-  to the deterministic bundle and not equal to the development shim.
+  to the deterministic bundle and not equal to the development shim, and the
+  crash-child component's kind, logical path, portability, non-executability,
+  and digest are proved against the same bundler.
+- `tests/architecture/doctor-readonly-graph.test.mjs` — 7 passed, 0
+  failed/skipped/todo, with `./release-layout.ts` added to the reviewed
+  read-only allowlist and a new assertion proving that module imports only
+  `node:fs`, `node:url`, and `./release-manifest.ts` and calls no writing or
+  spawning function.
 - `apps/vestra-cli/src/sealed-launcher.ts` classified `raw-byte-digest` in
   `docs/canonical-json-census.json` after `census:refresh` and review: its
   SHA-256 covers fixed migration statement strings, and its JSON.stringify
@@ -61,11 +73,18 @@ Full gates on this branch:
 - `gate:quick` PASS — 2,166 unit and 195 readiness tests; zero
   failures/skips/todos. `agent:check` PASS.
 - `gate:build` PASS — 2,166 unit, 541 contract, 657 integration, 188 e2e,
-  49 architecture, 84 build, and 251 qualification tests; zero
+  50 architecture, 97 build, and 251 qualification tests; zero
   failures/skips/todos.
-- `gate:security` PASS — 2,166 unit, 541 contract, 188 e2e, 49 architecture,
+- `gate:security` PASS — 2,166 unit, 541 contract, 188 e2e, 50 architecture,
   251 qualification, 1,177 security, and 299 fault tests; zero
   failures/skips/todos.
+
+(The architecture and build counters rose by the TP-11 additions: one reviewed
+allowlist guard in `tests/architecture/doctor-readonly-graph.test.mjs`, and the
+staged-layout command tests in `tests/build/sealed-launcher-closure.test.mjs`,
+which now runs 11 tests. `docs/canonical-json-census.json` needs no refresh:
+the new `apps/vestra-cli/src/release-layout.ts` carries no canonicalization
+signal, and `tests/security/canonical-json-census.test.mjs` passes unchanged.)
 
 Test adequacy review for the new slice:
 
@@ -82,6 +101,57 @@ through TP-09; there are no unclaimed tests, skipped tests, TODOs, or vacuous
 assertions. Fixtures use ephemeral in-process signing keys and
 `mkdtemp(tmpdir())` roots only; no repository or CI secret, real revision,
 username, or machine-local path appears in any tracked file.
+
+## TP-11: installed-bundle command resolution
+
+Three run-time file references in the delegated CLI were written for the
+repository layout only, so they landed nowhere in a sealed release. Nothing
+caught them because no test had ever RUN a command from the staged layout -
+`tests/build/sealed-launcher-closure.test.mjs` only asserted that `--help`
+MENTIONS `doctor` and `self-test`.
+
+| Defect                                                                                        | Sealed symptom                                                                                | Fix                                                                                                                                                        |
+| --------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `doctor-composition.ts` loaded the schema registry from `../../../schemas/`                   | Two levels ABOVE the release root, so the registry was always null; verdict FAIL, exit 1      | `loadDoctorSchemaRegistry` tries the ordered candidates from `release-layout.ts`; sealed is `<releaseRoot>/components/schemas/`                             |
+| `self-test-composition.ts` pointed `execFile` at `./self-test-full-crash-child.ts`            | esbuild emits no such file; the full profile died before its first durable boundary           | The builder bundles it as a second sealed `bin/` artifact (`self-test:full-crash-child`, `core-code`, portable) and `resolveDurableCrashChild` picks a layout |
+| `self-test-{full,driver}-scenario.ts` spawned `./self-test-driver-fake.mjs`                   | Absent beside `bin/`, so every driver probe was unavailable and the full profile refused      | `resolveSelfTestDriverFake` names the already-sealed component `components/apps/vestra-cli/src/self-test-driver-fake.mjs`                                    |
+
+The third was found only by executing the full profile; the first two were
+reported. Resolution is ordered by the layout the process is actually in
+(`isSealedRelease()`, the single guarded-constant test in
+`release-manifest.ts`) and falls back to the other candidate, so a repository
+checkout keeps its exact previous resolution and a sealed bundle cannot be
+captured by an unrelated directory above its root.
+
+Discrimination, each fix reverted in isolation with the rest of the change in
+place:
+
+| Reverted fix   | Observed failure                                                                                                              |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| schema registry | `doctor from the staged layout reports the machine, not the packaging` — exit **1** (FAIL verdict), expected 4                 |
+| crash child     | `self-test --profile full runs its sealed crash child from the staged layout` — exit **5**, non-PASS verdict, expected 0       |
+| fake driver     | same test, exit **5**; direct child run names it: "found no available driver to attribute the implementation to"              |
+
+The `self-test --profile smoke` test is a regression guard rather than a
+discriminator: smoke spawns neither sibling, so it passes with or without the
+fixes. It locks the sealed self-test path (PASS, 6 checks) against future
+layout drift.
+
+Recorded limitation, deliberately not worked around: `doctor` cannot reach PASS
+in any layout. `doctor.native-asset` keys off
+`resolveReleaseIdentity().releaseDigest`, which is protocol-`null` in BOTH
+branches because the digest covers a manifest containing the launcher's own
+content digest. BLOCKED with exit 4 is the honest ceiling; the test asserts
+`doctor.native-asset:blocked` explicitly so the limitation cannot go stale
+silently. See `spec.md` "Recorded limitation (TP-11)".
+
+Test-adequacy note: the invoking project for the command tests is created under
+the repository's own scratch directory, not `os.tmpdir()`. The staged release
+root is in `os.tmpdir()`, and the Self-Test overlap rule reads a shared
+temp-root ancestor between the guarded cwd and the disposable root as an
+overlap and BLOCKS the run (issue #370, a pre-existing latent defect being
+fixed separately). `tests/e2e/self-test-cli-e2e.test.mjs` avoids the same trap
+the same way.
 
 This slice still performs no publication: no storage credential exists in the
 repository, the workflow uploads nothing to any endpoint, and `npm publish`

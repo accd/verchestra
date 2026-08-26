@@ -1,5 +1,3 @@
-import { fileURLToPath } from "node:url";
-
 import {
   assertNoNetworkAttempts,
   driverScenarioChecks,
@@ -19,12 +17,15 @@ import {
 import { sha256Digest } from "@verchestra/evidence";
 import { offlineGuard } from "@verchestra/self-test";
 
+import { resolveSelfTestDriverFake } from "./release-layout.ts";
 import { runAuthorizedDriverBoundary, type DriverAuthorityFacts } from "./self-test-driver-authority.ts";
 
 const WORKSPACE_ID = "workspace_018f0000-0000-7000-8000-000000001501";
 const RUN_ID = "run_018f0000-0000-7000-8000-000000001502";
 const PASSPORT_ID = "passport_018f0000-0000-7000-8000-000000001504";
-const FAKE_DRIVER_PATH = fileURLToPath(new URL("./self-test-driver-fake.mjs", import.meta.url));
+// Spawned, never imported: resolved per layout for the same reason the full
+// scenario resolves it that way (release-layout.ts).
+const FAKE_DRIVER_PATH = resolveSelfTestDriverFake(import.meta.url);
 const digest = (value: string): `sha256:${string}` => `sha256:${sha256Digest(value)}`;
 
 export interface DriverScenarioResult {
