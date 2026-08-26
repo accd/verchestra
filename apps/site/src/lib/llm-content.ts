@@ -10,7 +10,9 @@ import {
   extractDescription,
   extractTitle,
   QUALIFICATION_REPORT_FILE,
+  qualificationStatusLine,
   resolveRepositoryPath,
+  roadmapStatusSummary,
   type QualificationStatus
 } from "./repository-content.ts";
 
@@ -198,7 +200,7 @@ export function compileLlmTxt(status: QualificationStatus) {
 > Verified AI software delivery that survives the model, the machine, and the handoff.
 
 - Version: ${status.currentVersion}
-- Qualification: ${status.highestVerifiedTask} complete; ${status.nextTask} next
+- Qualification: ${qualificationStatusLine(status)}
 - Repository: https://github.com/accd/verchestra
 
 Verchestra is in qualification. The published \`verchestra\` npm package installs the \`${status.currentVersion}\` build with \`npx verchestra\`; it is not production-ready and not 1.0.
@@ -210,7 +212,7 @@ Verchestra is in qualification. The published \`verchestra\` npm package install
 - [Install and run](${ORIGIN}/docs/install-and-run/): Installing the published launcher, the portability demonstration, managed state, and cleanup.
 - [Full LLM context](${ORIGIN}/llms-full.txt): Allowlisted Markdown with source attribution and digests.
 - [Architecture](${ORIGIN}/docs/architecture/system-overview/): System boundaries and trust model.
-- [Roadmap](${ORIGIN}/roadmap/): ${status.highestVerifiedTask} complete, ${status.nextTask} next, and the evidence-driven path to 1.0.
+- [Roadmap](${ORIGIN}/roadmap/): ${roadmapStatusSummary(status)}
 - [Contributing with agents](https://github.com/accd/verchestra/blob/main/docs/contributing-with-agents.md): Provider-neutral clean-clone workflow and safety model.
 `;
 }
@@ -231,7 +233,7 @@ ${document.markdown.trim()}
   const output = `# Verchestra Full LLM Context
 
 - Version: ${status.currentVersion}
-- Qualification: ${status.highestVerifiedTask} complete; ${status.nextTask} next
+- Qualification: ${qualificationStatusLine(status)}
 - Reports: ${status.reportCount}
 
 This deterministic context is an inference-time documentation aid. It does not guarantee indexing, SEO ranking, training inclusion, crawler behavior, public installation, or production readiness.

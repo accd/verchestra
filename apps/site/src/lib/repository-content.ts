@@ -21,6 +21,28 @@ export interface QualificationStatus {
   reportCount: number;
 }
 
+// `nextTask` is null once every task the roadmap declares has a validation
+// report, which is a real terminal state rather than a missing chain. This
+// renders the same sentence `qualificationStatusLine` in
+// `scripts/agent-readiness.mjs` renders, so the public projection and the
+// repository's own readiness check agree by construction rather than by
+// coincidence — `agent:check` compares the two.
+export function qualificationStatusLine(status: Pick<QualificationStatus, "highestVerifiedTask" | "nextTask">) {
+  if (status.nextTask === null) return `${status.highestVerifiedTask} complete; the declared chain is fully verified`;
+  return `${status.highestVerifiedTask} complete; ${status.nextTask} next`;
+}
+
+// A fully verified chain is not a promoted release. `ROADMAP.md` promotes 1.0
+// only once human operational and security reviewers sign the decision, so the
+// path to 1.0 stays the thing the roadmap describes either way.
+export function roadmapStatusSummary(status: Pick<QualificationStatus, "highestVerifiedTask" | "nextTask">) {
+  const progress =
+    status.nextTask === null
+      ? `${status.highestVerifiedTask} complete, the declared chain fully verified`
+      : `${status.highestVerifiedTask} complete, ${status.nextTask} next`;
+  return `${progress}, and the evidence-driven path to 1.0.`;
+}
+
 export const rewriteCanonicalLinks = (
   markdown: string,
   source: RepositoryContentSource,

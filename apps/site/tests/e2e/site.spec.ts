@@ -26,8 +26,8 @@ test("landing presents the honest delivery and qualification contract", async ({
     "AI delivery that survives the model, the machine, and the handoff."
   );
   await expect(page.getByLabel("Current public status")).toContainText("0.0.0-qualification");
-  await expect(page.getByLabel("Current public status")).toContainText("T76 verified");
-  await expect(page.getByLabel("Current public status")).toContainText("T77 next");
+  await expect(page.getByLabel("Current public status")).toContainText("T77 verified");
+  await expect(page.getByLabel("Current public status")).toContainText("1.0 decision pending");
   await expect(page.getByText("SAP ASE / Sybase", { exact: true })).toBeVisible();
   await expect(page.getByText("OpenCode / Qwen", { exact: true }).first()).toBeVisible();
   await expect(page.locator('a[href^="/"]:not([href^="/verchestra/"])')).toHaveCount(0);
@@ -80,9 +80,9 @@ test("deep routes, roadmap links, community calls to action, and recovery resolv
 
   await page.goto("roadmap/");
   // The qualification-range badge renders in a responsive large/small pair; the
-  // hidden variant is first in the DOM, so target the visible T76 text directly
+  // hidden variant is first in the DOM, so target the visible T77 text directly
   // rather than whichever variant happens to come first.
-  await expect(page.getByText(/T76/u).and(page.locator(":visible")).first()).toBeVisible();
+  await expect(page.getByText(/T77/u).and(page.locator(":visible")).first()).toBeVisible();
 
   await page.goto("community/");
   await expect(page.getByRole("link", { name: /Join GitHub Discussions/u })).toHaveAttribute(
