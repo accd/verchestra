@@ -66,20 +66,26 @@ are complete.
 
 # Next Exact Action
 
-Operator-only: provision `VESTRA_RELEASE_SIGNING_KEY_PKCS8_BASE64` and the
-object-storage endpoint behind the chosen HTTPS base URL, dispatch
-`t76-publish-release.yml` at an exact reviewed SHA (candidate run id, base
-URL, expiry, prior rollback revision and run id), then follow the emitted
-manifest's manual steps: upload `publication/` preserving every remote key,
-verify digests, verify the live endpoint with the verification launcher
-package, and only then build and `npm publish` by hand.
+Two operator steps remain, in order: run the verification launcher package on
+a Linux host against the live endpoint (`node bin/vestra.mjs --version` from
+the package built with `--release-inputs`), then `npm publish` the packed
+`verchestra-0.0.0-qualification.tgz` by hand. Everything before those is done
+and recorded under "Live publication evidence" in validation.md: the
+candidate at `a49f3dd5aa3e639db87f8715077446ec075600e9` (run 32927839487) is
+signed and published (run 32929312169), all 990 objects are uploaded to the
+operator's endpoint with per-object integrity verification, endpoint
+conformance is probed, and the live Windows activation passes end to end
+through the real health gate and verified handoff.
 
 # Blockers
 
 Any candidate built before the sealed-launcher fix (including be92397 and
 af8bcf0) fails activation on a real install: it stages, then
 `VES_ACTIVATION_HEALTH_FAILED` because its launchers import
-`../src/main.ts`. T7 must dispatch at a revision that contains T9.
+`../src/main.ts`. T7 dispatched at `a49f3dd`, which contains T9 and the
+win32 sealed-runtime extension; the earlier af8bcf0 objects that no longer
+appear in any manifest remain in the bucket as unreferenced garbage (TUF
+never resolves them; deletable at leisure).
 
 None otherwise for repository work. T7 requires operator-held secret and storage
 custody that must never exist in a development environment.
