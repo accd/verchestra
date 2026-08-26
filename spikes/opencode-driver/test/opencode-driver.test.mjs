@@ -55,17 +55,56 @@ function driver(mode = "success", calls = [], options = {}) {
   return new OpenCodeDriver({ command: [process.execPath, fileURLToPath(new URL("./fake-opencode.mjs", import.meta.url))], serverFactory: fakeFactory(mode, calls), minimumVersion: "1.17.18", ...options });
 }
 
+// See claude-driver.test.mjs: the gate stays reproducible for an independent
+// reviewer while the fleet keeps its exact-pin proof through
+// VES_REQUIRE_PINNED_PROVIDERS=1 (#18, F4). OpenCode is lockfile-pinned, so the
+// reviewer path and the pinned path coincide on a frozen install; the branch is
+// applied uniformly with the other providers. Never a skip, never a silent pass.
+const PIN_REQUIRED = process.env.VES_REQUIRE_PINNED_PROVIDERS === "1";
+
+function assertLiveProbe(result, { requirePinned, pinnedVersion, capabilities }) {
+  if (requirePinned) {
+    assert.equal(result.available, true);
+    assert.equal(result.version, pinnedVersion);
+  } else if (result.available) {
+    assert.match(result.version ?? "", /^\d+\.\d+\.\d+/u);
+  } else {
+    assert.match(result.error.code, /_(VERSION_UNSUPPORTED|NOT_AVAILABLE)$/u);
+    return;
+  }
+  for (const [name, value] of Object.entries(capabilities)) assert.equal(result.capabilities[name], value);
+}
+
 test("probes the exact repo-local OpenCode without model inference", async () => {
   const result = await new OpenCodeDriver({ minimumVersion: "1.17.18" }).probe();
-  assert.equal(result.available, true);
-  assert.equal(result.version, "1.18.18");
-  assert.equal(result.capabilities.sdkEvents, true);
+  assertLiveProbe(result, {
+    requirePinned: PIN_REQUIRED,
+    pinnedVersion: "1.18.18",
+    capabilities: { sdkEvents: true }
+  });
 });
 
 test("rejects an unsupported OpenCode version", async () => {
   const result = await driver().probe({ environment: { FAKE_OPENCODE_VERSION: "1.16.0" } });
   assert.equal(result.available, false);
   assert.equal(result.error.code, "VES_OPENCODE_VERSION_UNSUPPORTED");
+});
+
+test("the pinned-provider gate discriminates a version drift from an exact pin", async () => {
+  const newer = await driver().probe({ environment: { FAKE_OPENCODE_VERSION: "1.19.0" } });
+  assert.equal(newer.available, true);
+  assert.doesNotThrow(() =>
+    assertLiveProbe(newer, { requirePinned: false, pinnedVersion: "1.18.18", capabilities: {} })
+  );
+  assert.throws(() => assertLiveProbe(newer, { requirePinned: true, pinnedVersion: "1.18.18", capabilities: {} }));
+  const unsupported = await driver().probe({ environment: { FAKE_OPENCODE_VERSION: "1.16.0" } });
+  assert.equal(unsupported.available, false);
+  assert.doesNotThrow(() =>
+    assertLiveProbe(unsupported, { requirePinned: false, pinnedVersion: "1.18.18", capabilities: {} })
+  );
+  assert.throws(() =>
+    assertLiveProbe(unsupported, { requirePinned: true, pinnedVersion: "1.18.18", capabilities: {} })
+  );
 });
 
 test("keeps run-json fallback pure, stdin-driven, and without bypass flags", () => {

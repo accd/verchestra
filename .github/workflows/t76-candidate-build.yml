@@ -145,6 +145,8 @@ jobs:
         id: gates
         env:
           CANDIDATE_REVISION: ${{ inputs.revision }}
+          # Exact-pin enforcement for the fleet's driver qualification (#18, F4).
+          VES_REQUIRE_PINNED_PROVIDERS: "1"
         run: |
           set -euo pipefail
           profiles=(quick full build security release)

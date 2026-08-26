@@ -9,19 +9,54 @@ function fakeDriver(options = {}) {
   return new CodexDriver({ command: [process.execPath, fixture], minimumVersion: "0.115.0", ...options });
 }
 
+// See claude-driver.test.mjs: the gate stays reproducible for an independent
+// reviewer while the fleet keeps its exact-pin proof through
+// VES_REQUIRE_PINNED_PROVIDERS=1 (#18, F4). Never a skip, never a silent pass.
+const PIN_REQUIRED = process.env.VES_REQUIRE_PINNED_PROVIDERS === "1";
+
+function assertLiveProbe(result, { requirePinned, pinnedVersion, capabilities }) {
+  if (requirePinned) {
+    assert.equal(result.available, true);
+    assert.equal(result.version, pinnedVersion);
+  } else if (result.available) {
+    assert.match(result.version ?? "", /^\d+\.\d+\.\d+/u);
+  } else {
+    assert.match(result.error.code, /_(VERSION_UNSUPPORTED|NOT_AVAILABLE)$/u);
+    return;
+  }
+  for (const [name, value] of Object.entries(capabilities)) assert.equal(result.capabilities[name], value);
+}
+
 test("probes installed Codex without invoking a model", async () => {
   const result = await new CodexDriver({ minimumVersion: "0.115.0" }).probe();
-  assert.equal(result.available, true);
-  assert.equal(result.version, "0.115.0");
-  assert.equal(result.capabilities.appServerJsonl, true);
-  assert.equal(result.capabilities.ephemeralThreads, true);
-  assert.equal(result.capabilities.dynamicToolsExperimental, true);
+  assertLiveProbe(result, {
+    requirePinned: PIN_REQUIRED,
+    pinnedVersion: "0.115.0",
+    capabilities: { appServerJsonl: true, ephemeralThreads: true, dynamicToolsExperimental: true }
+  });
 });
 
 test("rejects an unsupported Codex version", async () => {
   const result = await fakeDriver().probe({ environment: { FAKE_CODEX_VERSION: "0.114.0" } });
   assert.equal(result.available, false);
   assert.equal(result.error.code, "VES_CODEX_VERSION_UNSUPPORTED");
+});
+
+test("the pinned-provider gate discriminates a version drift from an exact pin", async () => {
+  const newer = await fakeDriver().probe({ environment: { FAKE_CODEX_VERSION: "0.116.0" } });
+  assert.equal(newer.available, true);
+  assert.doesNotThrow(() =>
+    assertLiveProbe(newer, { requirePinned: false, pinnedVersion: "0.115.0", capabilities: {} })
+  );
+  assert.throws(() => assertLiveProbe(newer, { requirePinned: true, pinnedVersion: "0.115.0", capabilities: {} }));
+  const unsupported = await fakeDriver().probe({ environment: { FAKE_CODEX_VERSION: "0.114.0" } });
+  assert.equal(unsupported.available, false);
+  assert.doesNotThrow(() =>
+    assertLiveProbe(unsupported, { requirePinned: false, pinnedVersion: "0.115.0", capabilities: {} })
+  );
+  assert.throws(() =>
+    assertLiveProbe(unsupported, { requirePinned: true, pinnedVersion: "0.115.0", capabilities: {} })
+  );
 });
 
 test("builds a local stdio app-server invocation without bypass flags", () => {

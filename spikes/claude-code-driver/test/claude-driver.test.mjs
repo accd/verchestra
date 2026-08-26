@@ -10,20 +10,65 @@ function fakeDriver(options = {}) {
   return new ClaudeCodeDriver({ command: [process.execPath, fixture], minimumVersion: "2.1.168", ...options });
 }
 
+// The qualification gate must be reproducible by an independent reviewer whose
+// machine carries a different provider CLI than the pin, without weakening the
+// fleet's exact-pin proof (#18, F4). On the fleet the exact provider is installed
+// and VES_REQUIRE_PINNED_PROVIDERS=1 keeps any drift a hard failure; for a
+// reviewer, whatever build is present is asserted honestly — a supported build as
+// available, anything else as an explicit not-configured outcome. Never a skip
+// and never a silent pass (AGENTS.md: a missing provider is not configured,
+// never a pass).
+const PIN_REQUIRED = process.env.VES_REQUIRE_PINNED_PROVIDERS === "1";
+
+function assertLiveProbe(result, { requirePinned, pinnedVersion, capabilities }) {
+  if (requirePinned) {
+    assert.equal(result.available, true);
+    assert.equal(result.version, pinnedVersion);
+  } else if (result.available) {
+    assert.match(result.version ?? "", /^\d+\.\d+\.\d+/u);
+  } else {
+    assert.match(result.error.code, /_(VERSION_UNSUPPORTED|NOT_AVAILABLE)$/u);
+    return;
+  }
+  for (const [name, value] of Object.entries(capabilities)) assert.equal(result.capabilities[name], value);
+}
+
 test("probes the installed Claude Code without invoking a model", async () => {
   // No explicit command: the driver's resolved default is exactly what a real
   // composition uses, including the Windows npm cmd-shim resolution.
   const result = await new ClaudeCodeDriver({ minimumVersion: "2.1.168" }).probe();
-  assert.equal(result.available, true);
-  assert.equal(result.version, "2.1.168");
-  assert.equal(result.capabilities.streamJson, true);
-  assert.equal(result.capabilities.noSessionPersistence, true);
+  assertLiveProbe(result, {
+    requirePinned: PIN_REQUIRED,
+    pinnedVersion: "2.1.168",
+    capabilities: { streamJson: true, noSessionPersistence: true }
+  });
 });
 
 test("rejects an unsupported Claude Code version", async () => {
   const result = await fakeDriver().probe({ environment: { FAKE_CLAUDE_VERSION: "2.0.0" } });
   assert.equal(result.available, false);
   assert.equal(result.error.code, "VES_CLAUDE_VERSION_UNSUPPORTED");
+});
+
+test("the pinned-provider gate discriminates a version drift from an exact pin", async () => {
+  // A supported newer build: available and honest for a reviewer, a hard failure
+  // when the fleet requires the exact pin.
+  const newer = await fakeDriver().probe({ environment: { FAKE_CLAUDE_VERSION: "2.1.220" } });
+  assert.equal(newer.available, true);
+  assert.doesNotThrow(() =>
+    assertLiveProbe(newer, { requirePinned: false, pinnedVersion: "2.1.168", capabilities: {} })
+  );
+  assert.throws(() => assertLiveProbe(newer, { requirePinned: true, pinnedVersion: "2.1.168", capabilities: {} }));
+  // An unsupported build: a not-configured outcome for a reviewer, still a hard
+  // failure on the fleet.
+  const unsupported = await fakeDriver().probe({ environment: { FAKE_CLAUDE_VERSION: "2.0.0" } });
+  assert.equal(unsupported.available, false);
+  assert.doesNotThrow(() =>
+    assertLiveProbe(unsupported, { requirePinned: false, pinnedVersion: "2.1.168", capabilities: {} })
+  );
+  assert.throws(() =>
+    assertLiveProbe(unsupported, { requirePinned: true, pinnedVersion: "2.1.168", capabilities: {} })
+  );
 });
 
 test("builds a locked-down structured invocation", () => {
