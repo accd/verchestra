@@ -16,6 +16,11 @@
     "noPropertyAccessFromIndexSignature": true,
     "skipLibCheck": false
   },
-  "include": ["apps/*/src/**/*.ts", "apps/vestra-launcher/closure/**/*.ts", "packages/*/src/**/*.ts"],
+  "include": [
+    "apps/*/src/**/*.ts",
+    "apps/vestra-cli/closure/**/*.ts",
+    "apps/vestra-launcher/closure/**/*.ts",
+    "packages/*/src/**/*.ts"
+  ],
   "exclude": ["apps/site/**"]
 }

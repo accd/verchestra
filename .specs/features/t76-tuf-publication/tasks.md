@@ -21,3 +21,18 @@
       the verification launcher package.
 - [ ] T8 — Obtain independent T76 verification; this feature does not close
       #17 by itself.
+- [x] T9 — Seal launchers that run the CLI (completed out of numeric
+      order, ahead of T7/T8, because a live install failed): bundle
+      `apps/vestra-cli/closure/{vestra,verchestra}-entry.ts` with the
+      candidate builder's deterministic esbuild step instead of sealing the
+      development shims verbatim (TP-10). The sealed `bin/*.mjs` delegates
+      every ordinary argument vector to the real `main()` and answers
+      `--activation-health` with honest migration/native/driver observations;
+      the builder now refuses a dirty build tree (`VES_T76_BUILD_TREE_DIRTY`)
+      and compiles the candidate semantic version into the bundle. Driven by
+      a live failure: the be92397/af8bcf0 candidates staged a full release
+      and then failed `VES_ACTIVATION_HEALTH_FAILED` because
+      `runtime/node bin/vestra.mjs --activation-health` died with
+      ERR_MODULE_NOT_FOUND on `release/src/main.ts` - the health fixtures ran
+      synthetic launcher scripts, so no gate ever executed the real tracked
+      bins from a realistic sealed layout.

@@ -17,6 +17,12 @@
 
 export { ProtectedPathBroker, type ProtectedPathHandle } from "./protected-path.ts";
 
+// The compiled-in migration registry is frozen data, not a writer: the sealed
+// launcher's `--activation-health` migration observation projects it, and it
+// must be importable without loading node:sqlite (see runtime-migrations.ts
+// for why that load would corrupt the health protocol's output).
+export { DEFAULT_RUNTIME_MIGRATIONS, type RuntimeMigration } from "./runtime-store/runtime-migrations.ts";
+
 // Deferred, not a static re-export: node:sqlite prints an experimental-feature
 // warning to stderr the moment anything imports it, and runtime-store.ts
 // imports node:sqlite at its own top level. This file is loaded on every CLI

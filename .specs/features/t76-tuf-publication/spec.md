@@ -45,6 +45,20 @@ Issue: #17
   env-mediated. It owns no storage endpoint identity and no upload tool: no
   repository-derived location, no storage CLI, no storage credential, and no
   publish of any kind. Uploading the tree and `npm publish` stay human steps.
+- **TP-10** — The candidate's `bin/vestra.mjs` and `bin/verchestra.mjs` are
+  deterministic self-contained bundles of the tracked closure entries
+  `apps/vestra-cli/closure/{vestra,verchestra}-entry.ts`, never the
+  development shims sealed verbatim. From the staged release layout alone -
+  no repository sources, no `node_modules/` - each sealed launcher must run
+  the real CLI and answer `--activation-health` per the protocol
+  `packages/platform-node/src/activation-launcher-adapters.ts` requires: one
+  JSON object on a clean stream, exactly `schemaVersion`, `report`,
+  `componentId`, `semanticVersion`, `checks` (`migration`, `native`, `driver`,
+  each an honest observation), and `behavior` (identical across both
+  launchers), exit 0. The builder refuses to bundle from a working tree that
+  differs from the sealed revision (`VES_T76_BUILD_TREE_DIRTY`), and the
+  compiled-in semantic version comes from the build's own
+  `--semantic-version` input, not a repository `package.json`.
 
 ## Acceptance criteria
 
@@ -60,6 +74,12 @@ Issue: #17
 3. WHEN the emitted `release-inputs/` directory is fed to the launcher's
    `loadPinnedInputs` and to `build:vestra-launcher` THEN both SHALL accept it
    unchanged, for every supported target key at once.
+4. WHEN a built candidate's launchers and hermetic runtime are staged into a
+   release layout with no repository sources and no dependency store THEN the
+   real `NodeActivationHealthGate` SHALL return activation health evidence
+   for both canonical launchers, and the same sealed binaries SHALL execute
+   ordinary CLI argument vectors, reporting the compiled-in sealed semantic
+   version.
 
 ## Edge cases
 

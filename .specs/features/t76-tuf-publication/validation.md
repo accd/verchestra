@@ -15,6 +15,7 @@ operator-base-URL publication script, workflow, and pinned-input contract
 | TP-07       | `tests/build/t76-release-publication.test.mjs` rollback-index incompleteness, re-serialization, same-revision, and same-digest rejections | PASS   |
 | TP-08       | `tests/build/t76-release-publication.test.mjs` no-cause key failures and CLI never-echoes-key proof; `tests/agent-readiness/t76-publish-workflow.test.mjs` single-secret single-step assertions | PASS   |
 | TP-09       | `tests/agent-readiness/t76-publish-workflow.test.mjs` read-only, env-mediation, SHA-pin, ownership-boundary, and publishes-nothing assertions | PASS   |
+| TP-10       | `tests/build/sealed-launcher-closure.test.mjs` real `NodeActivationHealthGate` over the staged layout, honest observation contents, delegated `--version`/`--help`, dev-shim red case, byte-identical rebuilds, built-ins-only imports; `tests/build/reproducible-target-build.test.mjs` bundled-launcher digest, sealed closure sources, `VES_T76_BUILD_TREE_DIRTY` | PASS   |
 
 Focused results on this branch:
 
@@ -28,6 +29,32 @@ Focused results on this branch:
 - `tests/security/canonical-json-census.test.mjs` — 10 passed, 0
   failed/skipped/todo, with `scripts/t76-publish-release.mjs` classified
   `migrated-v2` after `census:refresh`.
+- `tests/build/sealed-launcher-closure.test.mjs` — 7 passed, 0
+  failed/skipped/todo. Both sealed launchers pass the real activation health
+  gate from a staged layout with no `src/` and no `node_modules/`; the
+  development shims fail the same gate with ERR_MODULE_NOT_FOUND, which is
+  the exact live failure mode the previous synthetic fixtures never observed.
+- `tests/build/reproducible-target-build.test.mjs` — 3 passed, 0
+  failed/skipped/todo, now against a sealed single-commit replica of the
+  working tree (tests/helpers/sealed-repository-fixture.mjs) because the
+  builder refuses a dirty tree; the launcher component digest is proved equal
+  to the deterministic bundle and not equal to the development shim.
+- `apps/vestra-cli/src/sealed-launcher.ts` classified `raw-byte-digest` in
+  `docs/canonical-json-census.json` after `census:refresh` and review: its
+  SHA-256 covers fixed migration statement strings, and its JSON.stringify
+  prints the health protocol document whose canonical identity the gate
+  computes with the qualified V2 contract.
+
+Known adjacent defect, recorded not fixed here: the candidate builder seals
+the hermetic runtime at logical path `runtime/node` for every platform, but a
+Windows host cannot spawn an extensionless executable (the platform's process
+search appends an executable extension), so a win32 candidate's health gate
+would fail with `VES_LAUNCHER_PROCESS_FAILED` before reaching any launcher.
+`tests/helpers/activation-health-fixture.mjs` and
+`tests/build/sealed-launcher-closure.test.mjs` therefore stage
+`runtime/node.exe` on win32. Renaming the sealed runtime component is a
+separate change because publication path derivation and fixtures pin the
+current logical path.
 
 Full gates on this branch:
 

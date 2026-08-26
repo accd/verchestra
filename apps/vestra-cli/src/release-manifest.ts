@@ -2,16 +2,30 @@ import { readFileSync } from "node:fs";
 
 import type { InstalledCliManifest } from "./cli.ts";
 
+// The T76 candidate builder compiles the sealed release's semantic version
+// into the bundled launcher with an esbuild `define` of this constant. In the
+// repository it is never declared, so the `typeof` guard below reads
+// "undefined" and dev mode is untouched; in a sealed bundle it is a string
+// literal and the filesystem is never consulted.
+declare const __VERCHESTRA_SEALED_SEMANTIC_VERSION__: string;
+
 // Ownership of the release identity is explicit and has exactly two sources.
 // In source mode the repository root package.json owns the version, and there
 // is no verified release artifact to bind a digest to, so releaseDigest is null
-// rather than invented. Once T76 produces a verified release candidate, a
-// generated manifest shipped beside the binary owns both, and the digest is
-// bound to that artifact.
+// rather than invented. In sealed (T76 candidate) form the build owns the
+// version, injected at bundle time - not the repository package.json, which
+// does not exist in a staged release layout. The launcher still reports no
+// release digest: that digest covers a manifest containing the launcher's own
+// content digest, so any compiled-in value would be circular (see the
+// activation-health protocol note in
+// packages/platform-node/src/activation-launcher-adapters.ts).
 export function resolveReleaseIdentity(root = new URL("../../../", import.meta.url)): {
   semanticVersion: string;
   releaseDigest: string | null;
 } {
+  if (typeof __VERCHESTRA_SEALED_SEMANTIC_VERSION__ === "string") {
+    return { semanticVersion: __VERCHESTRA_SEALED_SEMANTIC_VERSION__, releaseDigest: null };
+  }
   const manifest = JSON.parse(readFileSync(new URL("package.json", root), "utf8")) as { version?: unknown };
   if (typeof manifest.version !== "string" || manifest.version.length === 0) {
     throw new Error("repository package.json does not declare a version");

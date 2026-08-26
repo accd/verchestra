@@ -1,17 +1,25 @@
+// Drives the real T76 candidate builder end to end.
+//
+// The builder now bundles the sealed launchers from the working tree and
+// therefore refuses to build from a dirty tree (VES_T76_BUILD_TREE_DIRTY), so
+// this suite runs it against a sealed single-commit replica of the current
+// repository state (tests/helpers/sealed-repository-fixture.mjs) instead of
+// the developer's checkout: the replica satisfies the builder's clean-tree
+// guarantee by construction while still building the real, current sources
+// under test, and no test ever commits into - or depends on the cleanliness
+// of - the tree a developer is actually working in.
+
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, readdir, rm, stat } from "node:fs/promises";
-import { fileURLToPath } from "node:url";
+import { mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { tmpdir } from "node:os";
-import { test } from "node:test";
+import { after, before, test } from "node:test";
 
 import { canonicalizeJsonV2 } from "../../packages/domain/src/index.ts";
-import { buildReproducibleT76Target } from "../../scripts/t76-build-candidate.mjs";
+import { buildReproducibleT76Target, bundleSealedLauncher } from "../../scripts/t76-build-candidate.mjs";
+import { createSealedRepositoryReplica } from "../helpers/sealed-repository-fixture.mjs";
 
-const repositoryRoot = fileURLToPath(new URL("../../", import.meta.url));
-const revision = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repositoryRoot, encoding: "utf8" }).trim();
 const target = Object.freeze({ platform: process.platform, arch: process.arch, nodeVersion: process.version.slice(1) });
 const evaluations = Object.freeze(
   ["build", "full", "quick", "release", "security"].map((profile) => ({
@@ -24,9 +32,19 @@ const evaluations = Object.freeze(
   }))
 );
 
+let replica;
+
+before(async () => {
+  replica = await createSealedRepositoryReplica();
+});
+
+after(async () => {
+  await replica?.dispose();
+});
+
 const options = (outputDirectory, overrides = {}) => ({
-  repositoryRoot,
-  revision,
+  repositoryRoot: replica.repository,
+  revision: replica.revision,
   releaseId: "release:verchestra:test:target",
   semanticVersion: "0.0.0-qualification",
   createdAt: "2026-08-25T00:00:00.000Z",
@@ -70,7 +88,7 @@ test("the real target builder binds exact revision, host assets, and all supply-
   const output = join(parent, "candidate");
   try {
     const result = await buildReproducibleT76Target(options(output));
-    assert.equal(result.revision, revision);
+    assert.equal(result.revision, replica.revision);
     assert.equal(result.target.platform, target.platform);
     assert.equal(result.target.arch, target.arch);
     assert.match(result.bundle.releaseDigest, /^sha256:[a-f0-9]{64}$/u);
@@ -83,17 +101,30 @@ test("the real target builder binds exact revision, host assets, and all supply-
       "sbom"
     ]);
     assert.equal(await stat(join(output, "input-root")).catch(() => undefined), undefined);
-    const trackedLauncher = execFileSync(
-      "git",
-      ["-C", repositoryRoot, "show", `${revision}:apps/vestra-cli/bin/vestra.mjs`],
-      { encoding: "buffer" }
-    );
+    // The sealed launcher is the deterministic bundle of its tracked closure
+    // entry, never the development shim sealed verbatim: the shim imports
+    // `../src/main.ts`, which does not resolve in a staged release layout
+    // (tests/build/sealed-launcher-closure.test.mjs proves both halves).
+    const bundledLauncher = await bundleSealedLauncher({
+      repository: replica.repository,
+      componentId: "launcher:vestra",
+      semanticVersion: "0.0.0-qualification",
+      nodeVersion: target.nodeVersion
+    });
     const launcher = result.bundle.components.find((component) => component.componentId === "launcher:vestra");
-    assert.equal(launcher.contentDigest, `sha256:${createHash("sha256").update(trackedLauncher).digest("hex")}`);
+    assert.equal(launcher.contentDigest, `sha256:${createHash("sha256").update(bundledLauncher).digest("hex")}`);
+    const trackedShim = await readFile(join(replica.repository, "apps", "vestra-cli", "bin", "vestra.mjs"));
+    assert.notEqual(launcher.contentDigest, `sha256:${createHash("sha256").update(trackedShim).digest("hex")}`);
+    // The closure entries the bundle is compiled from are sealed as sources.
+    assert.ok(
+      result.bundle.components.some(
+        (component) => component.logicalPath === "components/apps/vestra-cli/closure/vestra-entry.ts"
+      )
+    );
     const bundleBytes = await readFile(join(output, "bundle.json"), "utf8");
     assert.equal(bundleBytes, canonicalizeJsonV2(result.bundle));
     const buildInfo = JSON.parse(await readFile(join(output, "build-info.json"), "utf8"));
-    assert.equal(buildInfo.revision, revision);
+    assert.equal(buildInfo.revision, replica.revision);
     assert.equal(Object.hasOwn(buildInfo, "repositoryRoot"), false);
     assert.equal(buildInfo.target.nodeVersion, process.version.slice(1));
   } finally {
@@ -121,13 +152,25 @@ test("the same exact inputs produce byte-identical target output", async () => {
   }
 });
 
-test("the builder refuses revision, target, and evaluation drift before emitting a candidate", async () => {
+test("the builder refuses revision, tree, target, and evaluation drift before emitting a candidate", async () => {
   const parent = await mkdtemp(join(tmpdir(), "verchestra-t76-build-reject-"));
   try {
     await assert.rejects(
       buildReproducibleT76Target(options(join(parent, "revision"), { revision: "a".repeat(40) })),
       (error) => error.code === "VES_T76_BUILD_REVISION_MISMATCH"
     );
+    // A modified working tree at the right revision is still not the sealed
+    // revision's content, and the launcher bundles compile from that tree.
+    const driftFile = join(replica.repository, "drift-marker.txt");
+    await writeFile(driftFile, "uncommitted drift\n");
+    try {
+      await assert.rejects(buildReproducibleT76Target(options(join(parent, "dirty"))), (error) => {
+        assert.equal(error.code, "VES_T76_BUILD_TREE_DIRTY");
+        return true;
+      });
+    } finally {
+      await rm(driftFile, { force: true });
+    }
     await assert.rejects(
       buildReproducibleT76Target(
         options(join(parent, "target"), { target: { ...target, arch: target.arch === "x64" ? "arm64" : "x64" } })
