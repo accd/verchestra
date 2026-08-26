@@ -383,12 +383,17 @@ const hostDescriptors = async (inputRoot, options) => {
   // ERR_MODULE_NOT_FOUND). Each launcher is now the deterministic
   // self-contained bundle of its tracked closure entry, so the sealed
   // `bin/*.mjs` IS the real CLI and answers the activation health protocol.
+  // Windows cannot spawn an extensionless executable: process creation
+  // resolves the image name with PATHEXT extensions, so identical bytes run
+  // as `node.exe` and ENOENT as `node`. The sealed runtime therefore carries
+  // the extension exactly on the one platform whose loader requires it.
+  const runtimePath = target.platform === "win32" ? "runtime/node.exe" : "runtime/node";
   const entries = [
     {
       componentId: "runtime:node",
       kind: "node-runtime",
-      logicalPath: "runtime/node",
-      sourcePath: "runtime/node",
+      logicalPath: runtimePath,
+      sourcePath: runtimePath,
       path: assets.node,
       executable: true
     },
