@@ -5,9 +5,9 @@
 // real @verchestra/workspace-backed CLI, and the evidence boundary are all
 // constructed here, in the composition root, and nowhere else.
 import { createHash } from "node:crypto";
-import { readFile, readdir } from "node:fs/promises";
+import { readFile, readdir, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, relative } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   DURABLE_CRASH_PHASES,
@@ -178,6 +178,43 @@ export class SelfTestComposition {
   }
 }
 
+// A guarded root exists to stop the disposable root this domain provisions -
+// and then deletes - from being created inside production state. The
+// directory a user happens to be standing in is not that. The disposable base
+// always lives under the OS temporary directory, which is production state on
+// no platform; Windows merely nests it inside the user's home directory. So
+// guarding a coarse ancestor of the temporary directory can only ever produce
+// that one false positive and never a true one, which is exactly what made
+// `self-test` refuse to run from a Windows home directory - the directory a
+// shell opens in by default.
+//
+// What must be guarded is the Workspace: precise, genuinely production state,
+// and the thing the workspace and full scenarios would damage if a disposable
+// root were ever provisioned inside it. It is identified by the canonical
+// marker `init` writes, so this walks up from the control root looking for
+// one. A control root with no Workspace above it has no Verchestra production
+// state to protect, and the run proceeds with nothing guarded rather than
+// refusing on a path coincidence.
+const MARKER = join(".verchestra", "workspace.yaml");
+
+const isDirectoryOf = async (root: string): Promise<boolean> => {
+  try {
+    return (await stat(join(root, MARKER))).isFile();
+  } catch {
+    return false;
+  }
+};
+
+async function guardedWorkspaceRoots(controlRoot: string): Promise<readonly RootFacts[]> {
+  let current = resolve(controlRoot);
+  for (;;) {
+    if (await isDirectoryOf(current)) return [await probeRootFacts(current)];
+    const parent = dirname(current);
+    if (parent === current) return [];
+    current = parent;
+  }
+}
+
 // T70: the only entry point the CLI needs to run a packaged profile. This
 // stays here, not in main.ts, because it is the only place that may
 // construct the TEST-ONLY signing identity and read the real guarded root —
@@ -190,7 +227,7 @@ export async function runSelfTestProfile(
   const signer = NodeEd25519Signer.generate({ keyId: "self-test-cli", purposes: ["self-test-report"] });
   const composition = new SelfTestComposition({
     baseDirectory: join(tmpdir(), "verchestra-self-test"),
-    guardedRoots: [await probeRootFacts(options.controlRoot)],
+    guardedRoots: await guardedWorkspaceRoots(options.controlRoot),
     sentinels: [],
     scenario:
       profileId === "smoke"
