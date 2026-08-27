@@ -30,7 +30,9 @@ const SIGNAL_FIELDS = Object.freeze(["canonicalizer", "digest", "localeCompare",
 const PRESENTATION_OR_FIXTURE_PATHS = new Set([
   "apps/site/src/lib/llm-content.ts",
   "apps/vestra-cli/src/cli.ts",
-  "scripts/agent-readiness.mjs",
+  // scripts/agent-readiness.mjs left this exception when B5 (#18) made it verify
+  // release-decision signatures: a canonicalizer that influences a signature is a
+  // trust operation, reclassified to migrated-v2 in the census inventory (#395).
   "scripts/complexity.mjs",
   "scripts/gate-selection.mjs",
   "scripts/generate-contract-types.mjs"
