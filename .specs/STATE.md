@@ -371,6 +371,26 @@ note. -->
   flag (`apps/site/src/data/product.ts`) and the copy driven by it stay as the
   owner left them and are not reinterpreted by this decision.
 
+### AD-033 — The signed decision body is the §4.1 canonical projection (#18)
+
+- **Status:** proposed (owner ratifies by reviewing the pull request that
+  carries the signature-verifying validator).
+- **Decision:** The bytes a release decision's `signature` covers are the RFC
+  8785 canonical JSON of `{ claims, bodyDigest }`, where `claims` is the decision
+  frontmatter with the `signature` field removed and `bodyDigest` is
+  `sha256:<hex>` over the Markdown body — the definition proposed in
+  `.specs/features/release-decision/prepared-decision.md §4.1` and executed by its
+  §4.3 signing procedure. The decision validator (`scripts/agent-readiness.mjs`)
+  now recomputes those bytes and verifies the Ed25519 signature against the key
+  resolved from `publicKeyRef`, replacing the previous presence-only check and
+  closing the security reviewer's remaining must-fix (#18, "the signature is
+  checked for presence, not verified").
+- **Consequence:** A decision on disk is verified, not merely present — a wrong
+  key, a tampered claim, an edited body, or an unresolvable reference all fail
+  closed (`tests/agent-readiness/release-decision.test.mjs`). Which bytes are
+  signed is still the owner's call; this records the definition the validator
+  enforces so a promote's signature is accountable rather than decorative.
+
 ## Handoff
 
 - **Feature:** `milestone-2-completion` P0 on `codex/milestone-2-p0-sync`,

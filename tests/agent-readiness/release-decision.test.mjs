@@ -1,29 +1,59 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, generateKeyPairSync, sign as signBytes } from "node:crypto";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+
+import { canonicalizeJsonV2 } from "../../packages/domain/src/index.ts";
 import {
   RELEASE_DECISION_FILE,
   readReleaseDecisions,
   validateReleaseDecision
 } from "../../scripts/agent-readiness.mjs";
 
-// Everything below is synthetic. No real signature, no real key, and no real
-// reviewer identity appears in any fixture: a decision fixture that carried one
-// would read as a decision that was actually taken.
+// Everything below is synthetic. The keys are throwaway pairs generated per run,
+// no real reviewer identity appears in any fixture, and none of it is committed:
+// a decision fixture carrying a real signature or key would read as a decision
+// that was actually taken.
 const SHA = "a".repeat(40);
 const OTHER_SHA = "b".repeat(40);
 const REGISTER_DIGEST = "9".repeat(64);
 const RELEASE_DIGEST = `sha256:${"c".repeat(64)}`;
 const CHAIN = ["T69", "T70", "T71", "T72", "T73", "T74", "T75", "T76"];
 
-// Whether a revision exists, whether it is reachable from the trusted target,
-// what the register hashes to at that revision, and which tasks have a report
-// that satisfies the report contract are all repository facts. The decision
-// author cannot write any of them into the file, so validation receives them.
+// The signing key the fixtures use, and its committed-shape public anchor. The
+// decision points publicKeyRef at a path under docs/qualification/trust/, which
+// the repository fixtures write, so readReleaseDecisions can resolve and verify.
+const KEY_PAIR = generateKeyPairSync("ed25519");
+const WRONG_KEY_PAIR = generateKeyPairSync("ed25519");
+const PUBLIC_KEY_REF = "docs/qualification/trust/release-decision-fixture.json";
+const anchorFor = (keyPair) =>
+  `${JSON.stringify({
+    algorithm: "Ed25519",
+    encoding: "spki-pem",
+    keyId: "release-decision-fixture",
+    publicKey: keyPair.publicKey.export({ format: "pem", type: "spki" }).toString(),
+    purposes: ["release-decision"]
+  })}\n`;
+const provisionKey = async (root, keyPair = KEY_PAIR) => {
+  await mkdir(join(root, "docs", "qualification", "trust"), { recursive: true });
+  await writeFile(join(root, PUBLIC_KEY_REF), anchorFor(keyPair));
+};
+
+// The Markdown body every fixture decision carries, and the §4.1 canonical body
+// over which the signature is computed — the same bytes the validator recomputes.
+const BODY = "\n# Release decision 1.0.0\n";
+const signDecision = (fields, keyPair = KEY_PAIR) => {
+  const claims = {};
+  for (const [key, value] of Object.entries(fields)) if (value !== null && key !== "signature") claims[key] = value;
+  const bodyDigest = `sha256:${createHash("sha256").update(BODY, "utf8").digest("hex")}`;
+  return signBytes(null, Buffer.from(canonicalizeJsonV2({ claims, bodyDigest }), "utf8"), keyPair.privateKey).toString(
+    "base64url"
+  );
+};
+
 const REPOSITORY = {
   isRepositoryCommit: (revision) => revision === SHA,
   isTrustedRevision: (revision) => revision === SHA,
@@ -31,7 +61,7 @@ const REPOSITORY = {
   validatedTasks: new Set(CHAIN)
 };
 
-const decision = (overrides = {}) => {
+const decision = (overrides = {}, signWith = KEY_PAIR) => {
   const fields = {
     schema: "verchestra-release-decision/v1",
     version: "1.0.0",
@@ -51,16 +81,18 @@ const decision = (overrides = {}) => {
     securityReviewer: "security-reviewer-fixture",
     decidedBy: "deciding-human-fixture",
     decidedAt: "2026-08-26T00:00:00Z",
-    signature: "c3ludGhldGljLXNpZ25hdHVyZS1maXh0dXJl",
-    publicKeyRef: "docs/qualification/keys/release-decision-fixture.pub",
+    publicKeyRef: PUBLIC_KEY_REF,
     reviewedIn: "https://github.com/accd/verchestra/pull/371",
     ...overrides
   };
+  // A real signature over the final fields, unless the caller pins one (to test
+  // a missing/placeholder/tampered signature) or signs with a different key.
+  if (!Object.prototype.hasOwnProperty.call(overrides, "signature")) fields.signature = signDecision(fields, signWith);
   const body = Object.entries(fields)
     .filter(([, value]) => value !== null)
     .map(([key, value]) => `${key}: ${value}`)
     .join("\n");
-  return `---\n${body}\n---\n\n# Release decision 1.0.0\n`;
+  return `---\n${body}\n---\n${BODY}`;
 };
 
 const git = (root, ...args) => execFileSync("git", ["-C", root, ...args], { encoding: "utf8" }).trim();
@@ -83,6 +115,7 @@ const REGISTER_BYTES = `${JSON.stringify(
 
 async function repositoryFixture(root) {
   await mkdir(join(root, "docs", "qualification"), { recursive: true });
+  await provisionKey(root);
   git(root, "init", "--initial-branch=main");
   git(root, "config", "core.autocrlf", "false");
   await writeFile(join(root, "docs", "requirements-register.json"), REGISTER_BYTES);
@@ -292,6 +325,76 @@ test("the register digest and count come from Git, not from the decision", async
     errors.some((problem) => problem.includes("requirementsRegister does not match the register at")),
     `expected the moved register to reject the retyped digest, got ${JSON.stringify(errors)}`
   );
+});
+
+test("the decision signature is verified against the resolved key, not merely present", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "verchestra-decision-signature-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const revision = await repositoryFixture(root);
+  const digest = createHash("sha256").update(REGISTER_BYTES).digest("hex");
+  const bound = {
+    candidateRevision: revision,
+    gateRevision: revision,
+    requirementsRegister: digest,
+    requirementsClosed: "4 of 4 requirements evidenced"
+  };
+  const path = join(root, "docs", "qualification", "release-decision-1.0.0.md");
+  const errorsFor = async () => (await readReleaseDecisions(root, { validatedTasks: new Set(CHAIN) })).errors;
+
+  // A genuine signature over this exact decision verifies — nothing else was
+  // wrong, so the whole decision clears.
+  await writeFile(path, decision(bound));
+  assert.deepEqual(await errorsFor(), []);
+
+  // Signed with a key other than the committed anchor.
+  await writeFile(path, decision(bound, WRONG_KEY_PAIR));
+  assert.ok(
+    (await errorsFor()).some((problem) => problem.includes("signature does not verify")),
+    "a signature from the wrong key must be refused"
+  );
+
+  // The body edited after signing: the recomputed bodyDigest no longer matches.
+  await writeFile(path, decision(bound).replace("# Release decision 1.0.0", "# Release decision 1.0.0 (edited)"));
+  assert.ok(
+    (await errorsFor()).some((problem) => problem.includes("signature does not verify")),
+    "an edited body must invalidate the signature"
+  );
+
+  // A claim edited after signing: the signed claims no longer match the file.
+  await writeFile(path, decision(bound).replace(RELEASE_DIGEST, `sha256:${"d".repeat(64)}`));
+  assert.ok(
+    (await errorsFor()).some((problem) => problem.includes("signature does not verify")),
+    "an edited claim must invalidate the signature"
+  );
+});
+
+test("the decision signature fails closed when the key reference cannot be resolved", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "verchestra-decision-keyref-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const revision = await repositoryFixture(root);
+  const digest = createHash("sha256").update(REGISTER_BYTES).digest("hex");
+  const bound = {
+    candidateRevision: revision,
+    gateRevision: revision,
+    requirementsRegister: digest,
+    requirementsClosed: "4 of 4 requirements evidenced"
+  };
+  const path = join(root, "docs", "qualification", "release-decision-1.0.0.md");
+  const errorsFor = async () => (await readReleaseDecisions(root, { validatedTasks: new Set(CHAIN) })).errors;
+
+  // A reference outside docs/qualification/trust/ is not a committed key.
+  await writeFile(path, decision({ ...bound, publicKeyRef: "docs/qualification/keys/elsewhere.json" }));
+  assert.ok(
+    (await errorsFor()).some((problem) => problem.includes("publicKeyRef does not resolve to a committed key"))
+  );
+
+  // The reference resolves, but the anchor is not a usable Ed25519 key.
+  await writeFile(
+    join(root, PUBLIC_KEY_REF),
+    `${JSON.stringify({ algorithm: "Ed25519", encoding: "spki-pem", publicKey: "not a public key" })}\n`
+  );
+  await writeFile(path, decision(bound));
+  assert.ok((await errorsFor()).some((problem) => problem.includes("usable Ed25519 public key")));
 });
 
 test("a candidate revision with no register at all is refused rather than assumed", async (t) => {
