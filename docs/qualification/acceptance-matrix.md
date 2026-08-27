@@ -112,7 +112,7 @@ defensibly have been two rows:
 
 | Id | Outcome, in user terms | Status |
 | --- | --- | --- |
-| J01 | I install Verchestra on a clean machine with one command and get a verified, activated release. | Proven, deterministic and live on 2 platforms |
+| J01 | I install Verchestra on a clean machine with one command and get a verified, activated release. | Proven, deterministic and live on all 5 platforms |
 | J02 | I move an installed machine to a new release, back to the old one, and can remove it without losing my data. | Proven deterministically; no live rollback recorded |
 | J03 | I turn my repository into a Workspace, previewing every change first, and bind the AI backends on this machine. | Proven |
 | J04 | I hand a task to a driver and it cannot reach "done" without passing a gate and a human review. | Proven |
@@ -120,8 +120,8 @@ defensibly have been two rows:
 | J06 | Work I started under one AI backend finishes under a different one, unchanged. | Proven |
 | J07 | A sealed Execution Package survives a move between machines with different local keys. | Proven |
 | J08 | I can prove my installation actually works, without a repository checkout. | Proven, with one recorded defect (#370) |
-| J09 | I ask what is wrong with this machine and get an actionable, path-free report. | Proven — and cannot report `PASS`, by protocol |
-| J10 | I restore a machine from an encrypted bundle, and send diagnostics without leaking my paths. | Proven deterministically; no live restore recorded |
+| J09 | I ask what is wrong with this machine and get an actionable, path-free report. | Proven — and cannot report `PASS` until a secret backend (#379) |
+| J10 | I restore a machine from an encrypted bundle, and send diagnostics without leaking my paths. | Proven deterministically; live restore recorded on all 5 (run 33087399859) |
 | J11 | I turn a revision into a signed, reproducible release a stranger can verify from a public endpoint. | Proven deterministically; performed live once |
 | J12 | A third party verifies the evidence behind a release without any access to this repository. | Proven; custody is single-operator |
 
@@ -139,10 +139,11 @@ ends up with a cryptographically verified, activated Verchestra release.
 | `tests/e2e/tuf-source-adapters.test.mjs` — traversal, junction, symlink, redirect, and length-bound refusals in the filesystem and HTTPS adapters | 16 tests, 16 pass, 0 fail, 0 skipped, 0 todo |
 | Live, `linux-x64` and `win32-x64`, from the published registry package | `.specs/features/npx-launcher/validation.md` "T4 evidence"; `docs/qualification/t76-validation.md` "Clean-machine registry smoke" |
 
-**Honest qualification.** Live activation was executed on two of the five
-supported targets. `darwin-arm64`, `darwin-x64`, and `linux-arm64` carry
-deterministic five-profile gate coverage at the candidate revision
-(`t76-validation.md`, candidate run 32927839487) but no live activation record.
+**Honest qualification.** Live activation is now recorded on **all five** targets.
+The live-activation matrix (run 33087399859,
+`.specs/features/live-activation-matrix/validation.md`) activates the published
+release live on `win32-x64`, `linux-x64`, `linux-arm64`, `darwin-x64`, and
+`darwin-arm64`, alongside the deterministic five-profile gate coverage. See L7.
 
 ### 2.2 J02 — Update, roll back, and uninstall an installed release
 
@@ -299,8 +300,11 @@ can open.
 | `tests/e2e/recovery-bundle-e2e.test.mjs` — General JWE opens the same signed closure per recipient; inspection exposes metadata without decrypting object bytes; a consistent-snapshot barrier rejects state movement mid-capture; staged restore validates, rebinds, reconciles, then activates | 9 tests, 9 pass, 0 fail, 0 skipped, 0 todo |
 | `tests/e2e/support-bundle-e2e.test.mjs` — machine paths become deterministic non-reversible pseudonyms; export verifies inspection then Approval then egress before publication; a denied Approval or denied Data Egress produces no encryption and no publication | 10 tests, 10 pass, 0 fail, 0 skipped, 0 todo |
 
-**Honest qualification.** No live disaster recovery has been performed on a
-real machine. Both proofs are deterministic.
+**Honest qualification.** Live disaster recovery is now recorded on all five
+targets: the live-activation matrix (run 33087399859,
+`.specs/features/live-activation-matrix/validation.md`) wipes the managed state
+root and re-activates from nothing on every target. The support-bundle proof
+remains deterministic.
 
 ### 2.11 J11 — Build, promote, and publish a verified release
 
@@ -661,11 +665,18 @@ in the emitted `publication-manifest.json`". The parallel hardening PR is
 "deliberately not counted as evidence" for the bound revision
 (`t76-validation.md:134`, `:252`).
 
-**L7. Live activation covered two of five supported targets.**
-`docs/qualification/t76-validation.md:197,204` record live activation on
-`win32-x64` and `linux-x64` only. Deterministic five-profile gates ran on all
-five targets in candidate run 32927839487; no `darwin-*` or `linux-arm64` live
-activation record exists. Reflected in J01.
+**L7. Live activation is now five of five; live update/rollback is not.** The
+original gap — live activation on `win32-x64` and `linux-x64` only
+(`docs/qualification/t76-validation.md:197,204`) — is closed: the live-activation
+matrix (run 33087399859,
+`.specs/features/live-activation-matrix/validation.md`) activates the published
+release **live on all five targets**, and additionally proves live self-test smoke
+and live disaster recovery on all five. What remains open is the live
+**update/rollback** exercise: the published `0.0.0-qualification.2` is
+unactivatable (`VES_TUF_SOURCE_HTTP`,
+[#387](https://github.com/accd/verchestra/issues/387)), so there is no working
+second published release to move between. That leg is deferred to the `.3`
+republication.
 
 **L8. Single-operator custody of the signing keys and the storage endpoint.**
 T76's live evidence is one operator, one Cloudflare R2 bucket, and one npm
