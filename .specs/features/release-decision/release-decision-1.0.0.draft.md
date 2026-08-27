@@ -194,12 +194,20 @@ and only the owner can resolve it).
 
 The promote-readiness work on #18 closes the reviewers' technical findings, each
 reviewed before merge (F5): F3 [#377], F4 [#378], F1+F2 [#383], the `doctor`
-native-asset half [#380], and the live-activation matrix that closes L7 [#381] —
-all now on `main`. Open, tracked: the doctor secret backend [#379], the timestamp
-refresh routine [#382], and — organisational, owner-only — a second human
-custodian and reviewer (L1/L8). These land after this candidate, so a future
-round decides on a fresh candidate with its own decision file; they do not make
-`3d363f782bad` promotable.
+native-asset half [#380], and the live-activation matrix [#381] — all now on
+`main`. The matrix raises live activation from 2/5 to **5/5** and adds the first
+live disaster-recovery and self-test-smoke runs on all five targets, but it does
+**not** fully close L7: the live update/rollback leg is still open. That leg is
+blocked by a release-process defect, not an unactivatable package — both
+`0.0.0-qualification` and `.2` activate cleanly from a fresh state on all five
+targets, but they were published with the same TUF `metadataVersion`, so
+activating one over the other's cached metadata fails `VES_TUF_SOURCE_HTTP`
+[#387]; it closes when the `.3` republication ships with an incremented
+`metadataVersion`. Open, tracked: the doctor secret backend [#379], the timestamp
+refresh routine [#382], the `.3` republication [#387], and — organisational,
+owner-only — a second human custodian and reviewer (L1/L8). These land after this
+candidate, so a future round decides on a fresh candidate with its own decision
+file; they do not make `3d363f782bad` promotable.
 
 ## The remaining human acts
 
