@@ -3,12 +3,12 @@ schema: verchestra-feature-handoff/v1
 feature: tuf-role-separation
 issue: 18
 status: in_progress
-branch: fix/tuf-role-separation
-baseRevision: 3d1a1f8f15c287567ae71b57c2e6b055d2c38a03
+branch: fix/publish-metadata-version-monotonic
+baseRevision: eeba159659a480977088e93c582d4c4f7f56a02e
 lastCompletedTask: null
-nextTask: "Owner provisions the online timestamp/snapshot key and commits its anchor (see below); a short --timestamp-expires becomes safe once the #382 refresh routine ships."
+nextTask: "Owner provisions the online timestamp/snapshot key and commits its anchor (see below), then follows republish-v3-runbook.md. A short --timestamp-expires becomes safe once the #382 refresh routine ships."
 lastGate: "gate:quick PASS; 97 tests across the affected TUF and publish suites"
-updatedAt: 2026-08-26T00:00:00Z
+updatedAt: 2026-08-27T00:00:00Z
 ---
 
 # TUF role separation (#18, F1 + F2)
@@ -68,11 +68,23 @@ until the anchor exists, and the publish workflow needs the second secret:
    trust identities (evidence, release, timestamp-snapshot) are pairwise
    distinct in key material and purpose.
 
+## The republication itself
+
+See `republish-v3-runbook.md` (this directory) for the owner-gated `.3` procedure
+and, critically, three findings from the #387 investigation that constrain it:
+each release must use a strictly greater TUF `metadataVersion` (#387, now enforced
+by the publish tooling); a role-separated root cannot be updated *in place* over
+v1/`.2` (`VES_TUF_TRUST_ROOT_MISMATCH`), so the new lineage is a fresh trust
+anchor; and a genuine live rollback collides with TUF anti-rollback (#393) because
+the launcher always re-resolves. The live update/rollback leg needs a second
+same-root release and the #393 decision — a single `.3` cannot close it.
+
 ## Notes
 
 - **Republish, not retrofit.** These changes alter `rootDigest`, so they reach
   users only on the next republication (the `.3` release under a new base-URL
-  prefix). The already-published package is unaffected.
+  prefix). The already-published package is unaffected. Because the root changes,
+  existing installs do not update in place to `.3` (finding 2 in the runbook).
 - **Time-bomb / follow-up (#382).** A short online window is only safe once a
   monthly timestamp/snapshot re-signing routine exists; until then the window
   defaults to the horizon. The routine (`t76-refresh-timestamp.yml`) is tracked

@@ -898,7 +898,11 @@ const runCli = async () => {
     // the full horizon, so a fresh publication never expires before its root;
     // the monthly online re-signing routine passes a short one.
     timestampExpires: optionalArgument(args, "--timestamp-expires", undefined),
-    metadataVersion: Number(optionalArgument(args, "--metadata-version", "1")),
+    // Required, no default: two releases sharing a TUF metadata version collide
+    // in the update client's consistent-snapshot cache and cannot be updated over
+    // one another (#387). The operator states it, and it must strictly exceed the
+    // prior publication's.
+    metadataVersion: Number(argument(args, "--metadata-version")),
     rootVersion: Number(optionalArgument(args, "--root-version", "1")),
     rollbackIndexPath: argument(args, "--rollback-index"),
     // Omitted by the release workflow, so a live publication is always bound to

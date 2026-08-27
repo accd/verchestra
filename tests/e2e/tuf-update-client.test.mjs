@@ -87,6 +87,68 @@ test("a repeated staging request returns the same receipt and reuses verified co
   );
 });
 
+// Regression for #387. Two distinct releases that share one managed install's
+// trusted root must still be publishable one-over-the-other. The failure the
+// live-activation matrix caught was not an unavailable endpoint: it was two
+// releases published with the SAME TUF metadataVersion. Under consistent
+// snapshots both expose `1.snapshot.json`/`1.targets.json`; the persistent
+// metadata cache then reuses the first release's targets and resolves a target
+// hash the successor never serves. Incrementing the successor's metadataVersion
+// forces a re-fetch and resolves it.
+const distinctRelease = (metadataVersion, tag, keys) =>
+  buildTufUpdateFixture({
+    keys,
+    metadataVersion,
+    releaseId: `release:verchestra:0.0.0${tag}:win32-x64`,
+    semanticVersion: `0.0.0${tag}`
+  });
+
+const stageOverSharedInstall = (root, fixture) =>
+  new TufUpdateClient({
+    trustRootDirectory: join(root, "trust"),
+    stagingRoot: join(root, "staging"),
+    trustedRoot: fixture.trustedRoot,
+    source: new FixtureDistributionSource(fixture, { mode: "online" }),
+    chunkSize: 4096
+  }).resolveAndStage({ platform: "win32", arch: "x64" });
+
+test("a successor sharing the predecessor's TUF metadataVersion cannot be staged over it (#387)", async () => {
+  const keys = createUpdateKeys();
+  const predecessor = distinctRelease(1, "-a", keys);
+  const successor = distinctRelease(1, "-b", keys);
+  // The two releases are genuinely different builds sharing one trust root.
+  assert.notEqual(successor.bundle.releaseDigest, predecessor.bundle.releaseDigest);
+  assert.equal(successor.trustedRoot.equals(predecessor.trustedRoot), true);
+
+  const root = await temporary();
+  const first = await stageOverSharedInstall(root, predecessor);
+  assert.equal(first.releaseDigest, predecessor.bundle.releaseDigest);
+  // Same metadataVersion over the cached install: the successor's own targets
+  // are never reached because the stale cached metadata resolves the
+  // predecessor's release-manifest hash, which the successor never serves. The
+  // fixture source reports the absent hash as a partial publish; the live HTTPS
+  // adapter reports the same collision as VES_TUF_SOURCE_HTTP via its 206 check
+  // (the failure the live-activation matrix recorded, #387).
+  await assert.rejects(stageOverSharedInstall(root, successor), (error) => {
+    assert.equal(error.code, "VES_TUF_PARTIAL_PUBLISH");
+    assert.match(error.cause?.message ?? "", /release\.json/u);
+    return true;
+  });
+});
+
+test("a successor with an incremented TUF metadataVersion stages cleanly over its predecessor (#387 fix)", async () => {
+  const keys = createUpdateKeys();
+  const predecessor = distinctRelease(1, "-a", keys);
+  const successor = distinctRelease(2, "-b", keys);
+  assert.notEqual(successor.bundle.releaseDigest, predecessor.bundle.releaseDigest);
+  assert.equal(successor.trustedRoot.equals(predecessor.trustedRoot), true);
+
+  const root = await temporary();
+  await stageOverSharedInstall(root, predecessor);
+  const updated = await stageOverSharedInstall(root, successor);
+  assert.equal(updated.releaseDigest, successor.bundle.releaseDigest);
+});
+
 test("staged bytes exactly match every TUF-bound component", async () => {
   const { client, fixture, root } = await setup();
   await client.resolveAndStage({ platform: "win32", arch: "x64" });
