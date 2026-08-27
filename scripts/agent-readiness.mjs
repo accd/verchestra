@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
-import { createHash } from "node:crypto";
-import { existsSync } from "node:fs";
+import { createHash, createPublicKey, verify as verifyBytes } from "node:crypto";
+import { existsSync, readFileSync } from "node:fs";
 import { readFile, readdir, stat } from "node:fs/promises";
 import { dirname, join, posix, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -448,12 +448,84 @@ function checkDecisionIdentities(fields, report) {
     report("operationalReviewer, securityReviewer, and decidedBy must be three distinct identities");
 }
 
-function checkDecisionAccountability(fields, report) {
+// RFC 8785 (JCS) canonical JSON, inlined so this validator keeps its
+// node-builtins-only import graph — `pnpm agent:context` must stay read-only and
+// usable before dependencies are installed, so it cannot reach @verchestra/domain.
+// tests/agent-readiness/release-decision.test.mjs proves this equals
+// canonicalizeJsonV2 for the decision body shape.
+function canonicalJson(value) {
+  if (value === null) return "null";
+  if (typeof value === "boolean") return value ? "true" : "false";
+  if (typeof value === "number" || typeof value === "string") return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  return `{${Object.keys(value)
+    .sort()
+    .map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`)
+    .join(",")}}`;
+}
+
+// The §4.1 canonical decision body: the frontmatter claims (every field except
+// `signature`) plus the sha256 of the Markdown body, exactly the bytes
+// prepared-decision.md §4.3 signs. Verifying it — rather than checking the
+// signature for presence only — is the security reviewer's remaining must-fix.
+function decisionSignatureBytes(source, fields) {
+  const parsed = /^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/u.exec(source);
+  if (parsed === null) return null;
+  const claims = {};
+  for (const [key, value] of Object.entries(fields)) if (key !== "signature") claims[key] = value;
+  const bodyDigest = `sha256:${createHash("sha256").update(parsed[2], "utf8").digest("hex")}`;
+  return Buffer.from(canonicalJson({ claims, bodyDigest }), "utf8");
+}
+
+// Decodes a committed trust reference (spki-pem or spki-der-base64url) to an
+// Ed25519 public key, or null if it is not a usable one.
+function decisionPublicKey(reference) {
+  let parsed;
+  try {
+    parsed = JSON.parse(reference);
+  } catch {
+    return null;
+  }
+  try {
+    const key =
+      parsed?.encoding === "spki-der-base64url" && typeof parsed.publicKey === "string"
+        ? createPublicKey({ key: Buffer.from(parsed.publicKey, "base64url"), format: "der", type: "spki" })
+        : typeof parsed?.publicKey === "string"
+          ? createPublicKey(parsed.publicKey)
+          : null;
+    return key !== null && key.asymmetricKeyType === "ed25519" ? key : null;
+  } catch {
+    return null;
+  }
+}
+
+// Verifies the decision signature when the key can be resolved. Skipped only when
+// no resolver is supplied (a direct unit call); readReleaseDecisions always
+// supplies one, so a decision on disk is always verified, not merely present.
+function checkDecisionSignature(source, fields, report, resolveKeyRef) {
+  if (resolveKeyRef === undefined || unfilled(fields.signature) || unfilled(fields.publicKeyRef)) return;
+  const reference = resolveKeyRef(fields.publicKeyRef);
+  if (reference === null) return report("publicKeyRef does not resolve to a committed key");
+  const publicKey = decisionPublicKey(reference);
+  if (publicKey === null) return report("publicKeyRef does not resolve to a usable Ed25519 public key");
+  const signed = decisionSignatureBytes(source, fields);
+  if (signed === null) return report("decision body could not be read for signature verification");
+  let signature;
+  try {
+    signature = Buffer.from(fields.signature, "base64url");
+  } catch {
+    return report("signature is not base64url");
+  }
+  if (!verifyBytes(null, signed, publicKey, signature)) report("signature does not verify against publicKeyRef");
+}
+
+function checkDecisionAccountability(source, fields, report, options) {
   checkDecisionIdentities(fields, report);
   if (!RFC3339_UTC.test(fields.decidedAt ?? "")) report("decidedAt must be an RFC 3339 UTC timestamp");
   for (const field of ["signature", "publicKeyRef"]) if (unfilled(fields[field])) report(`${field} must be present`);
   if (!PULL_REQUEST_URL.test(fields.reviewedIn ?? ""))
     report("reviewedIn must name the pull request URL the decision was reviewed in");
+  checkDecisionSignature(source, fields, report, options.resolveKeyRef);
 }
 
 // `RELEASE-DECISION-CONTRACT.md` documented a fail-closed frontmatter that
@@ -469,17 +541,17 @@ export function validateReleaseDecision(source, version, options = {}) {
     report(error);
     return errors;
   }
-  return validateDecisionFields(fields, version, report, errors, options);
+  return validateDecisionFields(source, fields, version, report, errors, options);
 }
 
-function validateDecisionFields(fields, version, report, errors, options) {
+function validateDecisionFields(source, fields, version, report, errors, options) {
   checkDecisionIdentity(fields, version, report);
   const revision = checkDecisionRevision(fields, report, options);
   checkDecisionBinding(fields, report);
   checkRegisterDigest(fields, revision, checkRequirementsClosure(fields, report), report, options.registerAt);
   checkDecisionGates(fields, report);
   checkDecisionChain(fields, report, options.validatedTasks);
-  checkDecisionAccountability(fields, report);
+  checkDecisionAccountability(source, fields, report, options);
   return errors;
 }
 
@@ -490,7 +562,21 @@ export async function readReleaseDecisions(root, { trustedRevision, validatedTas
   // Absence is not a failure. No decision has been made, and a repository that
   // has not decided must not read as one that decided badly.
   if (!existsSync(directory)) return { decisions, errors };
-  const options = { ...revisionTrust(root, trustedRevision), registerAt: registerReader(root), validatedTasks: tasks };
+  // The key reference is resolved from the repository, so a decision on disk is
+  // verified, not merely present. A path outside docs/qualification/trust/ or a
+  // missing file resolves to null and fails closed at the verification step.
+  const resolveKeyRef = (reference) => {
+    if (typeof reference !== "string" || !/^docs\/qualification\/trust\/[A-Za-z0-9._-]+\.json$/u.test(reference))
+      return null;
+    const path = join(root, reference);
+    return existsSync(path) ? readFileSync(path, "utf8") : null;
+  };
+  const options = {
+    ...revisionTrust(root, trustedRevision),
+    registerAt: registerReader(root),
+    validatedTasks: tasks,
+    resolveKeyRef
+  };
   for (const entry of (await readdir(directory)).sort()) {
     const named = RELEASE_DECISION_FILE.exec(entry);
     if (named === null) continue;
