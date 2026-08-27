@@ -22,13 +22,34 @@ test("every committed trust reference is a usable Ed25519 public key", () => {
   }
 });
 
-test("the evidence and release identities share neither purpose nor key material", () => {
-  const evidence = read("t75-evidence-public-key.json");
-  const release = read("verchestra-release-public-key.json");
-  assert.notDeepEqual(evidence.purposes, release.purposes);
-  assert.notEqual(evidence.keyId, release.keyId);
+// Generalized to every pair, not the two named ones, so a role-separated key
+// added later — the online timestamp/snapshot key (#18, F1) and the
+// release-decision key — is held to the same disjointness the moment it lands,
+// with no further test change. Each identity answers a different question
+// ("this evidence is mine", "this software is mine", "this timestamp is mine",
+// "this decision is mine"); conflating any two would let one authority act as
+// another.
+test("every pair of committed trust identities is disjoint in key material, key id, and purpose", () => {
   const material = (ref) => createPublicKey(decode(ref)).export({ format: "der", type: "spki" }).toString("hex");
-  assert.notEqual(material(evidence), material(release));
+  const refs = readdirSync(TRUST)
+    .filter((name) => name.endsWith(".json"))
+    .map((name) => {
+      const ref = read(name);
+      return { name, keyId: ref.keyId, purposes: ref.purposes, material: material(ref) };
+    });
+  assert.ok(refs.length >= 2, "at least two trust identities must exist to separate");
+  for (let i = 0; i < refs.length; i += 1)
+    for (let j = i + 1; j < refs.length; j += 1) {
+      const [a, b] = [refs[i], refs[j]];
+      const pair = `${a.name} vs ${b.name}`;
+      assert.notEqual(a.material, b.material, `${pair} share key material`);
+      assert.notEqual(a.keyId, b.keyId, `${pair} share a key id`);
+      assert.equal(
+        a.purposes.some((purpose) => b.purposes.includes(purpose)),
+        false,
+        `${pair} share a purpose`
+      );
+    }
 });
 
 test("no committed trust reference carries private key material", () => {
