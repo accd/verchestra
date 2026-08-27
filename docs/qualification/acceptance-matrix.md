@@ -657,13 +657,18 @@ directory, and therefore the default location for the one-command demo.
 republished once the fix ships. Until republication, the artifact on the public
 registry is not the artifact a 1.0 decision would want to promote.
 
-**L6. The four TUF source modes are not proven by cross-adapter equivalence.**
-`docs/qualification/t76-validation.md:102-135` records this under "Recorded
-limitation": the four-mode loops use `MapDistributionSource`, whose `mode` is
-"a cosmetic constructor label", and the `views` descriptors are "not observable
-in the emitted `publication-manifest.json`". The parallel hardening PR is
-"deliberately not counted as evidence" for the bound revision
-(`t76-validation.md:134`, `:252`).
+**L6. Resolved: the source modes are proven by cross-adapter equivalence over
+the emitted tree.** `docs/qualification/t76-validation.md:102-135` recorded that
+the four-mode loops used `MapDistributionSource`, whose `mode` is "a cosmetic
+constructor label", so the equivalence was not proven by a real transport.
+`tests/build/t76-release-publication.test.mjs` ("one published tree resolves to
+one closure through every mode of both real adapters") now stages the single
+emitted publication tree through every mode each **real** adapter admits — the
+filesystem transport for `mirror`/`offline`/`air-gapped` and the HTTPS transport
+(200 metadata, 206 byte ranges) for `online`/`mirror` — and asserts all five
+resolve the identical closure, component for component, digest for digest, each
+matching its own sealed view. The mode is a label; that all five agree is the
+equivalence.
 
 **L7. Live activation is now five of five; live update/rollback is not.** The
 original gap — live activation on `win32-x64` and `linux-x64` only
