@@ -1,6 +1,14 @@
 ---
-name: tuf-role-separation
+schema: verchestra-feature-handoff/v1
+feature: tuf-role-separation
+issue: 18
 status: in_progress
+branch: fix/tuf-role-separation
+baseRevision: 3d1a1f8f15c287567ae71b57c2e6b055d2c38a03
+lastCompletedTask: null
+nextTask: "Owner provisions the online timestamp/snapshot key and commits its anchor (see below); a short --timestamp-expires becomes safe once the #382 refresh routine ships."
+lastGate: "gate:quick PASS; 97 tests across the affected TUF and publish suites"
+updatedAt: 2026-08-26T00:00:00Z
 ---
 
 # TUF role separation (#18, F1 + F2)
