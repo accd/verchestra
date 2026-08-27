@@ -662,6 +662,8 @@ test("the command line never emits key material on success or on failure", async
     closure.revision,
     "--expires",
     PUBLICATION_EXPIRES,
+    "--metadata-version",
+    "1",
     "--rollback-index",
     rollback.indexPath,
     // The release workflow omits these and binds to the committed anchors; the

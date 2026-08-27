@@ -51,9 +51,12 @@ on:
         required: true
         type: string
       metadata_version:
-        description: "TUF metadata version for this publication"
+        # Must STRICTLY increase with every publication to the same lineage. Two
+        # releases sharing a TUF metadata version collide in the update client's
+        # consistent-snapshot cache and cannot be updated over one another (#387).
+        # No default: the operator states it consciously each time.
+        description: "TUF metadata version for this publication (must strictly exceed the prior publication's)"
         required: true
-        default: "1"
         type: string
       rollback_revision:
         description: "Exact 40-character SHA of the prior published candidate"

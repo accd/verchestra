@@ -87,6 +87,16 @@ test("every dispatch input is declared and validated against an exact pattern be
   );
   assert.match(workflow, /\[\[ "\$METADATA_EXPIRES" =~ /u);
   assert.match(workflow, /\[\[ "\$METADATA_VERSION" =~ \^\[1-9\]/u);
+  // metadata_version must carry no default: a silent default of "1" is exactly
+  // what let 0.0.0-qualification.2 be published sharing v1's TUF version (#387).
+  // The operator must state a strictly increasing version consciously each time.
+  const metadataVersionBlock = /^ {6}metadata_version:\n(?: {8}.*\n)+/mu.exec(workflow)?.[0] ?? "";
+  assert.match(metadataVersionBlock, /required: true/u);
+  assert.doesNotMatch(
+    metadataVersionBlock,
+    /^ {8}default:/mu,
+    "metadata_version must not carry a silent default (#387)"
+  );
   assert.match(workflow, /\[\[ "\$ROLLBACK_REVISION" =~ \^\[0-9a-f\]\{40\}\$ \]\]/u);
   assert.match(workflow, /\[\[ "\$ROLLBACK_RUN_ID" =~ \^\[0-9\]\{1,20\}\$ \]\]/u);
   assert.match(workflow, /node --version.*v24\.14\.0/u);
