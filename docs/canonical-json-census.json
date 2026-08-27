@@ -945,14 +945,14 @@
     },
     {
       "path": "scripts/agent-readiness.mjs",
-      "classification": "presentation-or-fixture",
+      "classification": "migrated-v2",
       "signals": {
-        "canonicalizer": 0,
-        "digest": 2,
+        "canonicalizer": 5,
+        "digest": 3,
         "localeCompare": 1,
-        "serialization": 0
+        "serialization": 2
       },
-      "reason": "Closed presentation, fixture, or repository-diagnostic ordering only; not a trust or persistent identity."
+      "reason": "Verifies release-decision signatures (#18/B5): reconstructs the signed bytes as canonical JSON to check an Ed25519 signature, so its canonicalizer influences a trust decision and cannot use the presentation exception. It uses a node-builtins-only local canonicalizer (the agent-readiness script must not import workspace packages) proven byte-equal to canonicalizeJsonV2 by tests/agent-readiness/release-decision.test.mjs. Whether a proven-equivalent local canonicalizer is acceptable here, or the file should import the shared V2 canonicalizer, is the open policy question tracked in #395."
     },
     {
       "path": "scripts/build-vestra-launcher.mjs",
@@ -1069,7 +1069,7 @@
       "classification": "migrated-v2",
       "signals": {
         "canonicalizer": 13,
-        "digest": 3,
+        "digest": 4,
         "localeCompare": 0,
         "serialization": 0
       },
