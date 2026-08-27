@@ -677,11 +677,15 @@ matrix (run 33087399859,
 `.specs/features/live-activation-matrix/validation.md`) activates the published
 release **live on all five targets**, and additionally proves live self-test smoke
 and live disaster recovery on all five. What remains open is the live
-**update/rollback** exercise: the published `0.0.0-qualification.2` is
-unactivatable (`VES_TUF_SOURCE_HTTP`,
-[#387](https://github.com/accd/verchestra/issues/387)), so there is no working
-second published release to move between. That leg is deferred to the `.3`
-republication.
+**update/rollback** exercise. It is *not* blocked by an unactivatable package:
+both `0.0.0-qualification` and `0.0.0-qualification.2` activate cleanly from a
+fresh state on all five targets, and every byte `.2` needs is served live (run
+33092399993 activates fresh `.2` `0/5`). The block is a release-process defect —
+both releases were published with the same TUF `metadataVersion`, so activating
+one over the other's cached metadata reuses stale targets and fails
+`VES_TUF_SOURCE_HTTP` on the update path
+([#387](https://github.com/accd/verchestra/issues/387)). That leg closes when the
+`.3` republication is published with an incremented `metadataVersion`.
 
 **L8. Single-operator custody of the signing keys and the storage endpoint.**
 T76's live evidence is one operator, one Cloudflare R2 bucket, and one npm
