@@ -376,7 +376,7 @@ test("the emitted manifest exposes the four sealed release views for every targe
   }
 });
 
-test("one published tree resolves to one closure through the HTTPS and filesystem adapters", async () => {
+test("one published tree resolves to one closure through every mode of both real adapters", async () => {
   // The four-view claim is that online, mirror, offline, and air-gapped resolve
   // the same release. Elsewhere that is exercised with a source double whose
   // mode is a constructor label over one byte source. Here the two REAL
@@ -436,39 +436,51 @@ test("one published tree resolves to one closure through the HTTPS and filesyste
         source
       }).resolveAndStage({ platform: "win32", arch: "x64" });
 
-    const online = await stage(
-      "online",
+    // Every mode each REAL adapter admits, over the one emitted tree: the
+    // filesystem transport for mirror/offline/air-gapped and the HTTPS transport
+    // for online/mirror. The mode is a constructor label, so proving all five
+    // resolve the identical closure — component for component, digest for digest
+    // — is the cross-adapter equivalence the four-view claim rests on (#18, L6),
+    // rather than a source double whose mode never changes the bytes it reads.
+    const filesystemFor = (mode) =>
+      new NodeFilesystemDistributionSource({
+        mode,
+        sourceId: `source:${mode}:r2`,
+        root: join(closure.outputDirectory, "publication", key)
+      });
+    const httpsFor = (mode) =>
       new HttpsDistributionSource({
-        mode: "online",
-        sourceId: "source:online:r2",
+        mode,
+        sourceId: `source:${mode}:r2`,
         metadataBaseUrl: entry.metadataBaseUrl,
         targetBaseUrl: entry.targetBaseUrl,
         fetch: endpoint
-      })
-    );
-    const offline = await stage(
-      "offline",
-      new NodeFilesystemDistributionSource({
-        mode: "offline",
-        sourceId: "source:offline:r2",
-        root: join(closure.outputDirectory, "publication", key)
-      })
-    );
+      });
 
-    assert.equal(online.sourceMode, "online");
-    assert.equal(offline.sourceMode, "offline");
-    assert.ok(servedKeys.length > 0, "the online staging must have gone through the HTTPS transport");
-    assert.equal(online.releaseDigest, bundle.releaseDigest);
-    assert.equal(offline.releaseDigest, online.releaseDigest);
-    assert.deepEqual(online.bundle, offline.bundle);
-    assert.deepEqual(online.components, offline.components);
+    const staged = [];
+    for (const mode of ["mirror", "offline", "air-gapped"])
+      staged.push([`fs-${mode}`, mode, await stage(`fs-${mode}`, filesystemFor(mode))]);
+    for (const mode of ["online", "mirror"])
+      staged.push([`https-${mode}`, mode, await stage(`https-${mode}`, httpsFor(mode))]);
+
+    assert.ok(servedKeys.length > 0, "the HTTPS stagings must have gone through the transport");
     const byCodeUnits = (left, right) => (left < right ? -1 : left > right ? 1 : 0);
-    assert.deepEqual(
-      online.components.map((component) => component.logicalPath).sort(byCodeUnits),
-      bundle.components.map((component) => component.logicalPath).sort(byCodeUnits)
-    );
-    const sealed = entry.views.find((view) => view.mode === "online");
-    assert.equal(sealed.releaseDigest, online.releaseDigest);
+    const [, , first] = staged[0];
+    for (const [name, mode, result] of staged) {
+      assert.equal(result.sourceMode, mode, `${name} must report its own mode`);
+      assert.equal(result.releaseDigest, bundle.releaseDigest, `${name} must resolve the sealed release digest`);
+      assert.deepEqual(result.bundle, first.bundle, `${name} must resolve the identical bundle`);
+      assert.deepEqual(result.components, first.components, `${name} must resolve the identical closure`);
+      assert.deepEqual(
+        result.components.map((component) => component.logicalPath).sort(byCodeUnits),
+        bundle.components.map((component) => component.logicalPath).sort(byCodeUnits),
+        `${name} must resolve every component path`
+      );
+      // Each mode's sealed view digest equals what that mode actually resolves,
+      // so the emitted manifest's four views are checkable, not decorative.
+      const sealed = entry.views.find((view) => view.mode === mode);
+      assert.equal(sealed.releaseDigest, result.releaseDigest, `${name} must match its sealed view`);
+    }
   } finally {
     await rm(scratch, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   }
