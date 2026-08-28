@@ -19,7 +19,7 @@ decidedBy: accd
 decidedAt: 2026-08-28T19:14:48Z
 signature: PENDING-owner-signature
 publicKeyRef: docs/qualification/trust/release-decision-public-key.json
-reviewedIn: PENDING-pr-url
+reviewedIn: https://github.com/accd/verchestra/pull/397
 ---
 
 # 1.0.0 release decision: reject (a recorded hold)
