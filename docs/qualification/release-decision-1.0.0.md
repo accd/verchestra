@@ -17,7 +17,7 @@ operationalReviewer: MiguelCorre
 securityReviewer: brunomjanuario
 decidedBy: accd
 decidedAt: 2026-08-28T19:14:48Z
-signature: PENDING-owner-signature
+signature: 98gvdNDijpl3uDFp5xwwmsUAtER_ev2GwHKFGViGiW3Y_uf84ft3xrYcSYCNngv9HMMQeO8QnY-2nm6VqDiLDg
 publicKeyRef: docs/qualification/trust/release-decision-public-key.json
 reviewedIn: https://github.com/accd/verchestra/pull/397
 ---
