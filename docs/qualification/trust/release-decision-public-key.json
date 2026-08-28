@@ -1,0 +1,7 @@
+{
+  "algorithm": "Ed25519",
+  "encoding": "spki-der-base64url",
+  "keyId": "release-decision-20260828",
+  "publicKey": "MCowBQYDK2VwAyEA4k1dThMdmZOlmprjgybqbkduDA2W5IfQG0HITo75ntY",
+  "purposes": ["release-decision"]
+}
