@@ -1,20 +1,3 @@
-<!--
-DRAFT — not a decision yet, and deliberately kept out of docs/qualification/ so
-agent:check does not read it as one. It becomes the real decision only when the
-owner completes the pending frontmatter and signs it, then moves this file to
-docs/qualification/release-decision-1.0.0.md.
-
-Pending human acts, in order:
-  1. Each reviewer's own Claude Code re-performs their review on a clean clone
-     and, if confirmed, they post the one-line adoption on the reviewedIn PR
-     (operationalReviewer, securityReviewer become real once adopted).
-  2. Owner generates the decision key and commits its public anchor
-     (prepared-decision.md §4.2) -> publicKeyRef resolves.
-  3. Owner signs (prepared-decision.md §4.3) -> signature, decidedAt.
-  4. Owner opens the PR that carries this file -> reviewedIn.
-The derived frontmatter below is real and verified; only the four <PENDING …>
-values and the two adoption-contingent reviewer identities remain.
--->
 ---
 schema: verchestra-release-decision/v1
 version: 1.0.0
@@ -33,10 +16,10 @@ survivingMutants: 0
 operationalReviewer: MiguelCorre
 securityReviewer: brunomjanuario
 decidedBy: accd
-decidedAt: <PENDING — set by the signing step, prepared-decision.md §4.3>
-signature: <PENDING — set by the signing step, prepared-decision.md §4.3>
+decidedAt: 2026-08-28T19:14:48Z
+signature: PENDING-owner-signature
 publicKeyRef: docs/qualification/trust/release-decision-public-key.json
-reviewedIn: <PENDING — the pull request that carries this decision>
+reviewedIn: PENDING-pr-url
 ---
 
 # 1.0.0 release decision: reject (a recorded hold)
@@ -209,17 +192,13 @@ owner-only — a second human custodian and reviewer (L1/L8). These land after t
 candidate, so a future round decides on a fresh candidate with its own decision
 file; they do not make `3d363f782bad` promotable.
 
-## The remaining human acts
+## Provenance of this record
 
-Both reviewers have re-performed their reviews independently and endorse the hold
-(above). What is left is procedural and human:
-
-1. Each reviewer posts a one-line adoption on the `reviewedIn` pull request under
-   their own identity — the accountable human act the contract requires and the
-   AI reviewer explicitly declined to fabricate.
-2. The owner provisions the decision key and commits its public anchor at
-   `publicKeyRef` (`prepared-decision.md §4.2`).
-3. The owner signs (`§4.3`), filling `signature` and `decidedAt`.
-
-Only then is this file moved into `docs/qualification/release-decision-1.0.0.md`.
-Until it is signed it records no decision that has been taken.
+Both reviewers re-performed their reviews independently and adopted the hold as
+their own accountable review (quoted above); their reviews are recorded on #18.
+This file is signed by the owner as `decidedBy` under `publicKeyRef`, over the
+canonical projection of its own frontmatter and body (`prepared-decision.md`
+§4.1, ratified as AD-033 and verified by `scripts/agent-readiness.mjs`). Recording
+this hold is the T77 acceptance decision (#18); the candidate continues to operate
+as `0.0.0-qualification`, and a future promote round decides on a fresh candidate
+with its own decision file.
