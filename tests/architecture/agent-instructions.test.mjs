@@ -18,9 +18,11 @@ test("root instructions are concise and expose required repository rules", async
   for (const required of [
     "0.0.0-qualification",
     String.raw`T77 is complete and the declared qualification chain is\s+fully verified`,
-    // A fully verified chain is not a release. The instructions have to say so
-    // in the same breath, or the next reader takes the counter for a verdict.
-    String.raw`signed promote-or-reject decision[\s\S]{0,80}has not been made`,
+    // A fully verified chain is not a 1.0 release. The recorded decision is a
+    // signed reject (a hold); the instructions must say so in the same breath,
+    // or the next reader takes the verified chain for a promote verdict.
+    String.raw`signed promote-or-reject decision[\s\S]{0,120}has been`,
+    "not promoted to",
     "git status --short --branch",
     "corepack pnpm agent:context",
     "pnpm gate:quick",
