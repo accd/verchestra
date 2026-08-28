@@ -4,9 +4,13 @@
 
 Verchestra is a verified AI software-delivery harness. It is currently
 `0.0.0-qualification`: T77 is complete and the declared qualification chain is
-fully verified. That is not a release. The signed promote-or-reject decision in
-`docs/qualification/RELEASE-DECISION-CONTRACT.md` has not been made, and it is
-the remaining product step. The `verchestra` npm package is published at
+fully verified. That is not a release. The signed promote-or-reject decision the
+contract (`docs/qualification/RELEASE-DECISION-CONTRACT.md`) requires **has been
+made**: it is a signed **reject** — a recorded hold —
+(`docs/qualification/release-decision-1.0.0.md`, #18). The candidate is fit to
+keep operating as `0.0.0-qualification` and is not promoted to `1.0.0`; a promote
+round would decide on a fresh candidate with its own decision file, after the
+tracked promote-readiness work lands. The `verchestra` npm package is published at
 `0.0.0-qualification`, so a public installer exists and may be described
 truthfully; do not claim production readiness or a 1.0 release.
 
