@@ -21,7 +21,7 @@
     "@fontsource-variable/jetbrains-mono": "5.3.0",
     "@fontsource-variable/manrope": "5.3.0",
     "astro": "7.2.3",
-    "mermaid": "11.17.0"
+    "mermaid": "11.17.2"
   },
   "devDependencies": {
     "@astrojs/check": "0.9.10",
