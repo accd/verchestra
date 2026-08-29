@@ -67,7 +67,7 @@
     "@tufjs/canonical-json": "2.0.0",
     "@types/node": "24.13.3",
     "esbuild": "0.28.2",
-    "eslint": "10.8.0",
+    "eslint": "10.9.1",
     "jose": "6.2.8",
     "json-schema-to-typescript": "15.0.4",
     "opencode-ai": "1.18.18",
