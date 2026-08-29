@@ -10,6 +10,6 @@
     "@verchestra/contracts": "workspace:*",
     "@verchestra/domain": "workspace:*",
     "canonicalize": "3.0.0",
-    "jose": "6.2.8"
+    "jose": "6.2.10"
   }
 }
