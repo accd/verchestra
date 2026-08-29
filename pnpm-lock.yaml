@@ -43,8 +43,8 @@ importers:
         specifier: 10.8.0
         version: 10.8.0
       jose:
-        specifier: 6.2.8
-        version: 6.2.8
+        specifier: 6.2.10
+        version: 6.2.10
       json-schema-to-typescript:
         specifier: 15.0.4
         version: 15.0.4
@@ -219,8 +219,8 @@ importers:
         specifier: 3.0.0
         version: 3.0.0
       jose:
-        specifier: 6.2.8
-        version: 6.2.8
+        specifier: 6.2.10
+        version: 6.2.10
 
   packages/extension-host:
     dependencies:
@@ -3059,8 +3059,8 @@ packages:
   isomorphic-fetch@3.0.0:
     resolution: {integrity: sha512-qvUtwJ3j6qwsF3jLxkZ72qCgjMysPzDfeV240JHiGZsANBYd+EEuu35v7dfrJ9Up0Ak07D7GGSkGhCHTqg/5wA==}
 
-  jose@6.2.8:
-    resolution: {integrity: sha512-Bsdjwm3Qsd/P0jR+BHDe3LytDfY7WBq2HmCCLIwuVRHMuEC9ae7/R474GIUdF1NgCyZjzVo/A9DOiOBtXq8ZoQ==}
+  jose@6.2.10:
+    resolution: {integrity: sha512-iiW7J9qRFlGxvCOIBDBDxFePQSn7ZMAnrYGhrrOo6siO/MIqwfyilLR27pkfDgUk+raLuzADS8A3S/KLBisc0g==}
 
   jpeg-js@0.4.4:
     resolution: {integrity: sha512-WZzeDOEtTOBK4Mdsar0IqEU5sMr3vSV2RqkAIzUEV2BHnUfKGyswWFPFwK5EeDo93K3FohSHbLAjj0s1Wzd+dg==}
@@ -8240,7 +8240,7 @@ snapshots:
     transitivePeerDependencies:
       - encoding
 
-  jose@6.2.8: {}
+  jose@6.2.10: {}
 
   jpeg-js@0.4.4: {}
 
