@@ -3,6 +3,11 @@ import { randomUUID } from "node:crypto";
 import readline from "node:readline";
 import { promisify } from "node:util";
 import {
+  codexProcessEnvironment,
+  snapshotCodexProcessContext,
+  type CodexProcessContext
+} from "./codex-process-context.ts";
+import {
   DriverProtocolError,
   validateDriverStartRequest,
   type Driver,
@@ -40,6 +45,7 @@ export interface CodexDriverDependencies {
   readonly command?: readonly string[];
   readonly minimumVersion?: string;
   readonly probeEnvironment?: Readonly<Record<string, string>>;
+  readonly processContext?: CodexProcessContext;
   readonly terminateTree?: (pid: number) => Promise<void>;
   readonly onSpawn?: (pid: number) => void;
   readonly onMessageSent?: (message: Readonly<Record<string, unknown>>) => void;
@@ -81,21 +87,32 @@ export class CodexDriver implements Driver {
   readonly #dependencies: CodexDriverDependencies;
   readonly #command: readonly string[];
   readonly #minimumVersion: string;
+  readonly #processContext: CodexProcessContext | undefined;
   readonly #sessions = new Map<string, CodexSession>();
   readonly #closedSessions = new Set<string>();
 
   constructor(dependencies: CodexDriverDependencies) {
     this.#dependencies = dependencies;
-    this.#command = dependencies.command ?? ["codex"];
+    this.#command = Object.freeze([...(dependencies.command ?? ["codex"])]);
     this.#minimumVersion = dependencies.minimumVersion ?? "0.115.0";
+    this.#processContext =
+      dependencies.processContext === undefined
+        ? undefined
+        : snapshotCodexProcessContext(dependencies.processContext, this.#command[0]);
   }
 
   buildEnvironment(explicit: Readonly<Record<string, string>> = {}): NodeJS.ProcessEnv {
     const environment: NodeJS.ProcessEnv = {};
-    for (const key of SAFE_ENV_KEYS) if (process.env[key] !== undefined) environment[key] = process.env[key];
-    const merged = { ...environment, ...explicit };
-    delete merged["CODEX_THREAD_ID"];
-    delete merged["CODEX_TURN_ID"];
+    if (this.#processContext === undefined) {
+      for (const key of SAFE_ENV_KEYS) if (process.env[key] !== undefined) environment[key] = process.env[key];
+    }
+    const merged =
+      this.#processContext === undefined
+        ? { ...environment, ...explicit }
+        : codexProcessEnvironment(this.#processContext, explicit);
+    for (const key of Object.keys(merged)) {
+      if (["CODEX_THREAD_ID", "CODEX_TURN_ID"].includes(key.toUpperCase())) delete merged[key];
+    }
     return merged;
   }
 
@@ -103,10 +120,14 @@ export class CodexDriver implements Driver {
     return Object.freeze([...this.#command.slice(1), "app-server", "--listen", "stdio://"]);
   }
 
+  #workingDirectory(): string {
+    return this.#processContext?.cwd ?? process.cwd();
+  }
+
   buildThreadParams(execution: CodexExecution) {
     return Object.freeze({
       model: execution.model,
-      cwd: process.cwd(),
+      cwd: this.#workingDirectory(),
       ephemeral: true,
       sandbox: "read-only",
       approvalPolicy: "untrusted",
@@ -121,6 +142,7 @@ export class CodexDriver implements Driver {
     try {
       const { stdout } = await execFileAsync(this.#command[0] as string, [...this.#command.slice(1), "--version"], {
         encoding: "utf8",
+        cwd: this.#workingDirectory(),
         env: this.buildEnvironment(this.#dependencies.probeEnvironment),
         windowsHide: true
       });
@@ -176,7 +198,7 @@ export class CodexDriver implements Driver {
     this.#sessions.set(sessionId, state);
     const redact = redactor(execution.sensitiveValues ?? []);
     const child = spawn(this.#command[0] as string, [...this.buildArguments()], {
-      cwd: process.cwd(),
+      cwd: this.#workingDirectory(),
       env: this.buildEnvironment(execution.environment),
       stdio: ["pipe", "pipe", "pipe"],
       windowsHide: true
