@@ -22,7 +22,9 @@ async function provisionedRoot() {
 }
 
 afterEach(async () => {
-  await Promise.all(roots.splice(0).map((path) => rm(path, { recursive: true, force: true })));
+  await Promise.all(
+    roots.splice(0).map((path) => rm(path, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }))
+  );
 });
 
 function isGitRepository(path) {
