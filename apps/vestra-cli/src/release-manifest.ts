@@ -85,7 +85,40 @@ export const installedReleaseManifest: InstalledCliManifest = Object.freeze({
       summary: "Run read-only deep diagnostics and emit a signed report",
       supportsJson: true,
       mutating: false,
-      options: Object.freeze([Object.freeze({ name: "deep", kind: "boolean" as const })])
+      options: Object.freeze([
+        Object.freeze({ name: "deep", kind: "boolean" as const }),
+        Object.freeze({ name: "keychain", kind: "string" as const })
+      ])
+    }),
+    Object.freeze({
+      name: "secret set",
+      summary: "Store a Workspace credential in the OS credential store, read from stdin",
+      supportsJson: true,
+      mutating: true,
+      options: Object.freeze([
+        Object.freeze({ name: "name", kind: "string" as const }),
+        Object.freeze({ name: "keychain", kind: "string" as const })
+      ])
+    }),
+    Object.freeze({
+      name: "secret status",
+      summary: "Report whether a Workspace credential is bound, never its value",
+      supportsJson: true,
+      mutating: false,
+      options: Object.freeze([
+        Object.freeze({ name: "name", kind: "string" as const }),
+        Object.freeze({ name: "keychain", kind: "string" as const })
+      ])
+    }),
+    Object.freeze({
+      name: "secret delete",
+      summary: "Remove a Workspace credential from the OS credential store",
+      supportsJson: true,
+      mutating: true,
+      options: Object.freeze([
+        Object.freeze({ name: "name", kind: "string" as const }),
+        Object.freeze({ name: "keychain", kind: "string" as const })
+      ])
     })
   ])
 });

@@ -53,6 +53,12 @@ class OpaqueSecretHandle implements SecretHandle {
   }
 }
 
+const LOGICAL_SECRET_NAME = /^[a-z][a-z0-9.-]{0,126}[a-z0-9]$/u;
+
+export function isValidLogicalSecretName(value: unknown): value is string {
+  return typeof value === "string" && LOGICAL_SECRET_NAME.test(value);
+}
+
 function validateBinding(binding: SecretBinding): void {
   for (const field of ["workspaceId", "logicalName", "purpose", "blockedCapability", "expectedStore"] as const) {
     const value = binding[field];
@@ -65,7 +71,7 @@ function validateBinding(binding: SecretBinding): void {
       throw new PlatformSecurityError("VES_SECRET_BINDING_INVALID", `Secret binding ${field} is invalid`);
     }
   }
-  if (!/^[a-z][a-z0-9.-]{0,126}[a-z0-9]$/u.test(binding.logicalName)) {
+  if (!isValidLogicalSecretName(binding.logicalName)) {
     throw new PlatformSecurityError("VES_SECRET_BINDING_INVALID", "Logical secret name is invalid");
   }
 }
@@ -147,11 +153,31 @@ export class MockSecretAdapter implements SecretAdapter {
   }
 }
 
-interface OsSecretBackend {
-  has(locator: Readonly<{ namespace: string; logicalName: string }>): Promise<boolean>;
-  read(locator: Readonly<{ namespace: string; logicalName: string }>): Promise<Uint8Array | undefined>;
+export interface OsSecretLocator {
+  readonly namespace: string;
+  readonly logicalName: string;
 }
 
+// invariant: every OS store item is namespaced by its owning Workspace, so one
+// Workspace's logical name can never resolve another Workspace's credential.
+export function osSecretNamespace(workspaceId: string): string {
+  return `verchestra/${workspaceId}`;
+}
+
+export interface OsSecretBackend {
+  has(locator: Readonly<OsSecretLocator>): Promise<boolean>;
+  read(locator: Readonly<OsSecretLocator>): Promise<Uint8Array | undefined>;
+}
+
+export interface OsSecretQualificationEvidence {
+  readonly digest: string;
+  readonly controls: readonly string[];
+}
+
+// invariant: key material (signing and recipient keys) must stay
+// non-exportable. This contract is never relaxed to admit a readable
+// credential; readable credentials qualify against OS_CREDENTIAL_CONTROLS
+// below instead (AD-034).
 const OS_SECRET_CONTROLS = Object.freeze({
   win32: Object.freeze({
     adapterId: "windows-cng",
@@ -167,56 +193,120 @@ const OS_SECRET_CONTROLS = Object.freeze({
   })
 });
 
+// why: an API key must be handed to a child process, so it is readable by
+// construction and cannot honestly claim non-exportable. This is the separate,
+// honest contract for readable provider credentials (AD-034). Only darwin has
+// a platform qualification; linux and win32 stay unqualified until they earn
+// their own evidence.
+export const OS_CREDENTIAL_CONTROLS = Object.freeze({
+  darwin: Object.freeze({
+    adapterId: "apple-keychain-credential",
+    controls: Object.freeze(["keychain", "user-scope", "workspace-namespace", "not-in-argv", "presence-without-value"])
+  })
+});
+
+function qualifies(
+  contract: { readonly controls: readonly string[] } | undefined,
+  evidence: OsSecretQualificationEvidence | undefined
+): boolean {
+  return (
+    contract !== undefined &&
+    evidence !== undefined &&
+    /^[a-f0-9]{64}$/u.test(evidence.digest) &&
+    contract.controls.every((control) => evidence.controls.includes(control))
+  );
+}
+
+function assertBridge(backend: OsSecretBackend): void {
+  if (typeof backend?.has !== "function" || typeof backend?.read !== "function") {
+    throw new PlatformSecurityError("VES_SECRET_STORE_UNQUALIFIED", "OS secret-store bridge contract is incomplete");
+  }
+}
+
+// why: these codes tell the user what to do (unlock, fix the path) and carry
+// no backend text, so they pass through; everything else is collapsed into
+// VES_SECRET_BACKEND_FAILURE so no private native wording escapes.
+const ACTIONABLE_BACKEND_CODES = new Set(["VES_SECRET_KEYCHAIN_INTERACTION_REQUIRED", "VES_SECRET_KEYCHAIN_INVALID"]);
+
+function backendFailure(error: unknown, message: string): PlatformSecurityError {
+  if (error instanceof PlatformSecurityError && ACTIONABLE_BACKEND_CODES.has(error.code)) return error;
+  return new PlatformSecurityError("VES_SECRET_BACKEND_FAILURE", message, {}, { cause: error });
+}
+
+async function bridgeHas(backend: OsSecretBackend, workspaceId: string, logicalName: string): Promise<boolean> {
+  try {
+    return await backend.has(Object.freeze({ namespace: osSecretNamespace(workspaceId), logicalName }));
+  } catch (error) {
+    throw backendFailure(error, "Qualified OS secret-store lookup failed");
+  }
+}
+
+async function bridgeRead(
+  backend: OsSecretBackend,
+  workspaceId: string,
+  logicalName: string
+): Promise<Uint8Array | undefined> {
+  try {
+    const value = await backend.read(Object.freeze({ namespace: osSecretNamespace(workspaceId), logicalName }));
+    return value === undefined ? undefined : Uint8Array.from(value);
+  } catch (error) {
+    throw backendFailure(error, "Qualified OS secret-store read failed");
+  }
+}
+
 export class QualifiedOsSecretAdapter implements SecretAdapter {
   readonly adapterId: string;
   readonly #backend: OsSecretBackend;
 
   constructor(options: {
     readonly platform: string;
-    readonly evidence?: { readonly digest: string; readonly controls: readonly string[] };
+    readonly evidence?: OsSecretQualificationEvidence;
     readonly backend: OsSecretBackend;
   }) {
     const contract = OS_SECRET_CONTROLS[options.platform as keyof typeof OS_SECRET_CONTROLS];
-    const evidence = options.evidence;
-    if (
-      contract === undefined ||
-      evidence === undefined ||
-      !/^[a-f0-9]{64}$/u.test(evidence.digest) ||
-      !contract.controls.every((control) => evidence.controls.includes(control))
-    ) {
+    if (contract === undefined || !qualifies(contract, options.evidence)) {
       throw new PlatformSecurityError("VES_SECRET_STORE_UNQUALIFIED", "OS secret store lacks complete qualification");
     }
-    if (typeof options.backend.has !== "function" || typeof options.backend.read !== "function") {
-      throw new PlatformSecurityError("VES_SECRET_STORE_UNQUALIFIED", "OS secret-store bridge contract is incomplete");
-    }
+    assertBridge(options.backend);
     this.adapterId = contract.adapterId;
     this.#backend = options.backend;
   }
 
   async has(workspaceId: string, logicalName: string): Promise<boolean> {
-    try {
-      return await this.#backend.has(Object.freeze({ namespace: `verchestra/${workspaceId}`, logicalName }));
-    } catch (error) {
-      throw new PlatformSecurityError(
-        "VES_SECRET_BACKEND_FAILURE",
-        "Qualified OS secret-store lookup failed",
-        {},
-        { cause: error }
-      );
-    }
+    return bridgeHas(this.#backend, workspaceId, logicalName);
   }
 
   async read(workspaceId: string, logicalName: string): Promise<Uint8Array | undefined> {
-    try {
-      const value = await this.#backend.read(Object.freeze({ namespace: `verchestra/${workspaceId}`, logicalName }));
-      return value === undefined ? undefined : Uint8Array.from(value);
-    } catch (error) {
+    return bridgeRead(this.#backend, workspaceId, logicalName);
+  }
+}
+
+export class QualifiedOsCredentialAdapter implements SecretAdapter {
+  readonly adapterId: string;
+  readonly #backend: OsSecretBackend;
+
+  constructor(options: {
+    readonly platform: string;
+    readonly evidence?: OsSecretQualificationEvidence;
+    readonly backend: OsSecretBackend;
+  }) {
+    const contract = OS_CREDENTIAL_CONTROLS[options.platform as keyof typeof OS_CREDENTIAL_CONTROLS];
+    if (contract === undefined || !qualifies(contract, options.evidence)) {
       throw new PlatformSecurityError(
-        "VES_SECRET_BACKEND_FAILURE",
-        "Qualified OS secret-store read failed",
-        {},
-        { cause: error }
+        "VES_SECRET_STORE_UNQUALIFIED",
+        "OS credential store lacks complete qualification"
       );
     }
+    assertBridge(options.backend);
+    this.adapterId = contract.adapterId;
+    this.#backend = options.backend;
+  }
+
+  async has(workspaceId: string, logicalName: string): Promise<boolean> {
+    return bridgeHas(this.#backend, workspaceId, logicalName);
+  }
+
+  async read(workspaceId: string, logicalName: string): Promise<Uint8Array | undefined> {
+    return bridgeRead(this.#backend, workspaceId, logicalName);
   }
 }

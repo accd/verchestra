@@ -249,7 +249,7 @@ test("the health report carries only honest observations of the staged closure",
   assert.equal(driver.observation.selfTestProfile.profileId, "drivers");
   assert.deepEqual(
     report.behavior.commands.map((command) => command.name),
-    ["init", "self-test", "doctor"]
+    ["init", "self-test", "doctor", "secret set", "secret status", "secret delete"]
   );
 });
 
@@ -275,7 +275,8 @@ test("the sealed launcher is the real CLI for every other argument vector", asyn
   const help = spawnSealed(releaseRoot, "verchestra.mjs", ["--help"]);
   assert.equal(help.status, 0);
   assert.equal(help.stderr, "");
-  for (const command of ["init", "self-test", "doctor"]) assert.match(help.stdout, new RegExp(`\\b${command}\\b`, "u"));
+  for (const command of ["init", "self-test", "doctor", "secret set", "secret status", "secret delete"])
+    assert.match(help.stdout, new RegExp(`\\b${command}\\b`, "u"));
 });
 
 // Executing `doctor` from the staged layout, not merely finding its name in
@@ -293,9 +294,10 @@ test("the sealed launcher is the real CLI for every other argument vector", asyn
 // from a disposable staged root that was never activated - it holds no
 // active.json - so the asset is honestly blocked. A genuinely activated release
 // reports it present (tests/integration/doctor-native-asset-probe.test.mjs
-// proves that path). secret-presence stays blocked regardless: no production
-// secret backend exists to observe yet (#18, L2). BLOCKED is the honest verdict
-// for this unprovisioned, un-activated layout.
+// proves that path). secret-presence stays blocked here too: the invoking
+// project has no Workspace, so no credential is bound to observe (#379 made a
+// bound credential observable; tests/e2e/secret-cli-e2e.test.mjs proves it).
+// BLOCKED is the honest verdict for this unprovisioned, un-activated layout.
 test("doctor from the staged layout reports the machine, not the packaging", async () => {
   const releaseRoot = await stagedLayout(sealedBins);
   const project = await invokingProject();
