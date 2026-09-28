@@ -117,6 +117,23 @@ export interface ActivationReceipt {
   readonly releaseReused: boolean;
 }
 
+// invariant: `trustRootDigest` names the root a TUF resolution verified the
+// stage under. Only `activate` records it; a bound `rollback` only reads it.
+export interface ActivationProvenance {
+  readonly trustRootDigest: string;
+}
+
+export interface RetainedReleaseQuery {
+  readonly trustRootDigest: string;
+  readonly releaseId: string;
+  readonly semanticVersion: string;
+}
+
+export interface RetainedRelease {
+  readonly active: ActiveReleasePointer;
+  readonly bundle: HermeticDistributionBundle;
+}
+
 export interface UninstallReceipt {
   readonly schemaVersion: 1;
   readonly previous: ActiveReleasePointer | null;
@@ -138,12 +155,14 @@ export class ActivationError extends Error {
 
 interface ActivationJournal {
   readonly schemaVersion: 1;
-  readonly operation: "activate";
+  readonly operation: "activate" | "rollback";
   readonly state: "PREPARED" | "PUBLISHED" | "COMMITTED";
   readonly target: ActiveReleasePointer;
   readonly previous: ActiveReleasePointer | null;
   readonly health: ActivationHealthEvidence;
 }
+
+type VerifiedReleaseEntry = Omit<ActiveReleasePointer, "schemaVersion">;
 
 const fail = (code: string, message: string, previous: ActiveReleasePointer | null, cause?: unknown): never => {
   throw new ActivationError(code, message, previous, cause === undefined ? undefined : { cause });
@@ -215,6 +234,77 @@ const pointer = (bundle: HermeticDistributionBundle): ActiveReleasePointer =>
     releaseDigest: bundle.releaseDigest,
     semanticVersion: bundle.semanticVersion
   });
+
+const entryOf = (target: ActiveReleasePointer): VerifiedReleaseEntry =>
+  Object.freeze({
+    releaseId: target.releaseId,
+    releaseDigest: target.releaseDigest,
+    semanticVersion: target.semanticVersion
+  });
+
+const trustRootOf = (provenance: ActivationProvenance | undefined, previous: ActiveReleasePointer | null) => {
+  if (provenance === undefined) return undefined;
+  if (
+    provenance === null ||
+    typeof provenance !== "object" ||
+    !hasExactKeys(provenance, ["trustRootDigest"]) ||
+    typeof provenance.trustRootDigest !== "string" ||
+    !DIGEST.test(provenance.trustRootDigest)
+  )
+    fail("VES_ACTIVATION_PROVENANCE_INVALID", "activation provenance is malformed", previous);
+  return provenance.trustRootDigest;
+};
+
+const isVerifiedEntry = (entry: Partial<VerifiedReleaseEntry> | null): boolean =>
+  entry !== null &&
+  typeof entry === "object" &&
+  hasExactKeys(entry, ["releaseId", "releaseDigest", "semanticVersion"]) &&
+  typeof entry.releaseId === "string" &&
+  entry.releaseId.length > 0 &&
+  typeof entry.semanticVersion === "string" &&
+  entry.semanticVersion.length > 0 &&
+  typeof entry.releaseDigest === "string" &&
+  DIGEST.test(entry.releaseDigest);
+
+const verifiedEntries = (
+  value: unknown,
+  trustRootDigest: string,
+  previous: ActiveReleasePointer | null
+): readonly VerifiedReleaseEntry[] => {
+  const record = value as {
+    readonly schemaVersion?: unknown;
+    readonly trustRootDigest?: unknown;
+    readonly releases?: unknown;
+  };
+  if (
+    value === null ||
+    typeof value !== "object" ||
+    !hasExactKeys(value, ["schemaVersion", "trustRootDigest", "releases"]) ||
+    record.schemaVersion !== 1 ||
+    record.trustRootDigest !== trustRootDigest ||
+    !Array.isArray(record.releases)
+  )
+    fail("VES_ACTIVATION_RECORD_INVALID", "verified-release record is malformed", previous);
+  const releases = record.releases as readonly Partial<VerifiedReleaseEntry>[];
+  if (
+    !releases.every(isVerifiedEntry) ||
+    new Set(releases.map((entry) => entry.releaseDigest)).size !== releases.length
+  )
+    fail("VES_ACTIVATION_RECORD_INVALID", "verified-release record entry is malformed", previous);
+  return Object.freeze(releases.map((entry) => Object.freeze({ ...entry }) as VerifiedReleaseEntry));
+};
+
+const retainedQueryRoot = (query: RetainedReleaseQuery): string => {
+  if (
+    query === null ||
+    typeof query !== "object" ||
+    !hasExactKeys(query, ["trustRootDigest", "releaseId", "semanticVersion"]) ||
+    typeof query.releaseId !== "string" ||
+    typeof query.semanticVersion !== "string"
+  )
+    fail("VES_ACTIVATION_PROVENANCE_INVALID", "retained release query is malformed", null);
+  return trustRootOf({ trustRootDigest: query.trustRootDigest }, null)!;
+};
 
 const validateHealth = (
   value: ActivationHealthEvidence,
@@ -307,7 +397,7 @@ export class TransactionalActivationManager {
   async #initialize(): Promise<void> {
     await mkdir(this.#installRoot, { recursive: true, mode: 0o700 });
     await ensureRealChain(this.#installRoot, this.#installRoot);
-    for (const name of ["releases", "transactions"] as const) {
+    for (const name of ["releases", "transactions", "verified"] as const) {
       const path = join(this.#installRoot, name);
       await mkdir(path, { mode: 0o700 }).catch((error: NodeJS.ErrnoException) => {
         if (error.code !== "EEXIST") throw error;
@@ -354,6 +444,82 @@ export class TransactionalActivationManager {
       fail("VES_ACTIVATION_INTEGRITY", "active launcher path is invalid", active, error)
     );
     return Object.freeze({ schemaVersion: 1, active, executablePath });
+  }
+
+  #recordPath(trustRootDigest: string): string {
+    return join(this.#installRoot, "verified", `${trustRootDigest.slice("sha256:".length)}.json`);
+  }
+
+  // invariant: a record lists each digest at most once, ordered by verification
+  // recency; the last entry is the latest TUF-verified release under its root.
+  async #verifiedReleases(
+    trustRootDigest: string,
+    previous: ActiveReleasePointer | null
+  ): Promise<readonly VerifiedReleaseEntry[]> {
+    const path = this.#recordPath(trustRootDigest);
+    let value: unknown;
+    try {
+      await ensureRealChain(this.#installRoot, path);
+      value = JSON.parse(await readFile(path, "utf8"));
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return Object.freeze([]);
+      return fail("VES_ACTIVATION_RECORD_INVALID", "verified-release record is unreadable", previous, error);
+    }
+    return verifiedEntries(value, trustRootDigest, previous);
+  }
+
+  async #recordVerified(
+    trustRootDigest: string,
+    target: ActiveReleasePointer,
+    previous: ActiveReleasePointer | null
+  ): Promise<void> {
+    const entry = entryOf(target);
+    const releases = await this.#verifiedReleases(trustRootDigest, previous);
+    if (releases.length > 0 && equal(releases.at(-1), entry)) return;
+    await atomicJson(this.#recordPath(trustRootDigest), {
+      schemaVersion: 1,
+      trustRootDigest,
+      releases: [...releases.filter((item) => item.releaseDigest !== entry.releaseDigest), entry]
+    });
+  }
+
+  // invariant (AD-034): a release is retained only when exactly one entry
+  // under the pinned root carries the pinned identity, it is still installed,
+  // and a later TUF-verified activation superseded it. Reads only; `rollback`
+  // re-verifies every byte before it switches.
+  async retainedRelease(query: RetainedReleaseQuery): Promise<RetainedRelease | null> {
+    const releases = await this.#verifiedReleases(retainedQueryRoot(query), null);
+    const matches = releases.filter(
+      (entry) => entry.releaseId === query.releaseId && entry.semanticVersion === query.semanticVersion
+    );
+    // why: the latest verified release keeps the network path, so metadata
+    // expiry and publisher revocation stay observed for the steady state.
+    if (matches.length !== 1 || equal(matches[0], releases.at(-1))) return null;
+    return await this.#retainedManifest(matches[0]!);
+  }
+
+  async #retainedManifest(match: VerifiedReleaseEntry): Promise<RetainedRelease | null> {
+    const root = join(this.#installRoot, "releases", match.releaseDigest.slice("sha256:".length));
+    const record = await optionalJson(join(root, "release.json")).catch((error) =>
+      fail("VES_ROLLBACK_TARGET_INVALID", "installed release manifest is unreadable", null, error)
+    );
+    if (record === undefined) return null;
+    let bundle: HermeticDistributionBundle;
+    try {
+      bundle = verifyHermeticDistributionBundle((record as { bundle?: unknown }).bundle);
+    } catch (error) {
+      return fail("VES_ROLLBACK_TARGET_INVALID", "installed release manifest is invalid", null, error);
+    }
+    if (!equal(entryOf(pointer(bundle)), match))
+      fail("VES_ROLLBACK_TARGET_INVALID", "installed release identity conflicts with its record", null);
+    return Object.freeze({ active: pointer(bundle), bundle });
+  }
+
+  async #assertNoForeignJournal(target: ActiveReleasePointer, previous: ActiveReleasePointer | null): Promise<void> {
+    const existingJournal = (await optionalJson(join(this.#installRoot, "activation-journal.json"))) as
+      ActivationJournal | undefined;
+    if (existingJournal !== undefined && !equal(existingJournal.target, target))
+      fail("VES_ACTIVATION_RECOVERY_REQUIRED", "another activation journal requires reconciliation", previous);
   }
 
   async #acquireLock(): Promise<() => Promise<void>> {
@@ -573,19 +739,18 @@ export class TransactionalActivationManager {
     await atomicJson(join(this.#installRoot, "active.json"), target);
   }
 
-  async activate(staged: TufStagedRelease): Promise<ActivationReceipt> {
+  async activate(staged: TufStagedRelease, provenance?: ActivationProvenance): Promise<ActivationReceipt> {
+    const trustRootDigest = trustRootOf(provenance, null);
     await this.#initialize();
     const releaseLock = await this.#acquireLock();
     let previous = await this.active();
     try {
       const opened = await this.#openStage(staged, previous);
       const targetFromInput = pointer(opened.bundle);
-      const existingJournal = (await optionalJson(join(this.#installRoot, "activation-journal.json"))) as
-        ActivationJournal | undefined;
-      if (existingJournal !== undefined && !equal(existingJournal.target, targetFromInput))
-        fail("VES_ACTIVATION_RECOVERY_REQUIRED", "another activation journal requires reconciliation", previous);
+      await this.#assertNoForeignJournal(targetFromInput, previous);
       if (equal(previous, targetFromInput)) {
         await this.#installedBundle(targetFromInput.releaseDigest, previous);
+        if (trustRootDigest !== undefined) await this.#recordVerified(trustRootDigest, targetFromInput, previous);
         await rm(join(this.#installRoot, "activation-journal.json"), { force: true });
         return Object.freeze({
           schemaVersion: 1,
@@ -626,6 +791,9 @@ export class TransactionalActivationManager {
         await this.#writeJournal({ ...prepared, state: "PUBLISHED" });
         await this.#fault("after-journal-published");
       }
+      // why: recording before the switch means a record failure leaves the
+      // previous release active; a crash in between converges on retry.
+      if (trustRootDigest !== undefined) await this.#recordVerified(trustRootDigest, target, previous);
       await this.#switchPointer(target);
       await this.#fault("after-pointer");
       await this.#writeJournal({
@@ -649,16 +817,43 @@ export class TransactionalActivationManager {
     }
   }
 
-  async rollback(releaseDigest: string): Promise<ActivationReceipt> {
+  // invariant (AD-034): with `binding`, the release must be recorded as
+  // TUF-verified under that root and built for this host. Unbound, it keeps
+  // the operator semantics. Both re-hash every byte and pass health first.
+  async rollback(releaseDigest: string, binding?: ActivationProvenance): Promise<ActivationReceipt> {
+    const trustRootDigest = trustRootOf(binding, null);
     await this.#initialize();
     const releaseLock = await this.#acquireLock();
     const previous = await this.active();
     try {
       const installed = await this.#installedBundle(releaseDigest, previous);
       const target = pointer(installed.bundle);
-      await this.#health(installed.root, installed.bundle, previous);
+      if (trustRootDigest !== undefined) {
+        if (installed.bundle.target.platform !== this.#platform || installed.bundle.target.arch !== this.#arch)
+          fail("VES_ACTIVATION_RELEASE_MIXED", "retained release is not built for this host", previous);
+        const recorded = (await this.#verifiedReleases(trustRootDigest, previous)).find(
+          (entry) => entry.releaseDigest === target.releaseDigest
+        );
+        if (recorded === undefined || !equal(recorded, entryOf(target)))
+          fail("VES_ROLLBACK_TARGET_UNTRUSTED", "release was not verified under this trust root", previous);
+      }
+      await this.#assertNoForeignJournal(target, previous);
+      const health = await this.#health(installed.root, installed.bundle, previous);
+      const prepared: ActivationJournal = {
+        schemaVersion: 1,
+        operation: "rollback",
+        state: "PREPARED",
+        target,
+        previous,
+        health
+      };
+      await this.#writeJournal(prepared);
+      await this.#fault("after-journal-prepared");
       await this.#switchPointer(target);
       await this.#fault("after-pointer");
+      await this.#writeJournal({ ...prepared, state: "COMMITTED" });
+      await this.#fault("after-journal-committed");
+      await rm(join(this.#installRoot, "activation-journal.json"), { force: true });
       return Object.freeze({
         schemaVersion: 1,
         operation: "rollback",
@@ -691,8 +886,10 @@ export class TransactionalActivationManager {
       await rm(join(this.#installRoot, "transactions"), REMOVE_TREE);
       await mkdir(join(this.#installRoot, "transactions"), { mode: 0o700 });
       if (options.purgeReleases) {
-        await rm(join(this.#installRoot, "releases"), REMOVE_TREE);
-        await mkdir(join(this.#installRoot, "releases"), { mode: 0o700 });
+        for (const name of ["releases", "verified"] as const) {
+          await rm(join(this.#installRoot, name), REMOVE_TREE);
+          await mkdir(join(this.#installRoot, name), { mode: 0o700 });
+        }
       }
       return Object.freeze({
         schemaVersion: 1,

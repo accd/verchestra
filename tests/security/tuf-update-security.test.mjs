@@ -209,6 +209,25 @@ test("a pinned bootstrap root cannot be replaced by caller-controlled root bytes
   await rejected(stage(replacement.client), "VES_TUF_TRUST_ROOT_MISMATCH");
 });
 
+test("the trust-anchor probe refuses a replaced anchor instead of reporting it unanchored", async () => {
+  const { client, root } = await clientFor(buildTufUpdateFixture());
+  await stage(client);
+  const second = buildTufUpdateFixture();
+  const replacement = await clientFor(second, {}, { root, trustedRoot: second.trustedRoot });
+  await rejected(replacement.client.trustAnchored(), "VES_TUF_TRUST_ROOT_MISMATCH");
+  assert.equal(replacement.source.reads.length, 0);
+});
+
+test("the trust-anchor probe refuses a symbolic-link anchor", async () => {
+  const fixture = buildTufUpdateFixture();
+  const root = await temporary();
+  const outside = join(root, "outside");
+  await mkdir(outside);
+  await symlink(outside, join(root, "trust"), "junction");
+  const { client } = await clientFor(fixture, {}, { root });
+  await rejected(client.trustAnchored(), "VES_TUF_STAGE_PATH_INVALID");
+});
+
 test("older metadata is rejected after a newer trusted view", async () => {
   const keys = createUpdateKeys();
   const newer = buildTufUpdateFixture({ keys, metadataVersion: 2 });
