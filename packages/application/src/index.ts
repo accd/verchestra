@@ -152,7 +152,8 @@ export {
   type GateRepairErrorCode,
   type GateRepairOutcome,
   type GateRepairPolicy,
-  type GateRepairPorts
+  type GateRepairPorts,
+  type GateRepairStatePort
 } from "./execution/gate-repair.ts";
 export {
   BudgetMeterError,
@@ -184,6 +185,7 @@ export {
   TaskGateError,
   canonicalTaskGatePlan,
   type TaskGateCommand,
+  type TaskGateCheckpointPort,
   type TaskGateCommitInput,
   type TaskGateErrorCode,
   type TaskGateRunnerResult

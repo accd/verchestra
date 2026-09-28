@@ -31,6 +31,18 @@ export const RUNTIME_PUBLIC_ERROR_DEFINITIONS = Object.freeze([
   ),
   define("VES_RUNTIME_BUSY", "conflict", "safe", "Retry within the bounded SQLite busy policy."),
   define(
+    "VES_RUNTIME_CHECKPOINT_CONFLICT",
+    "conflict",
+    "never",
+    "Resume from the latest stored checkpoint instead of rewriting its history."
+  ),
+  define(
+    "VES_RUNTIME_CHECKPOINT_CORRUPT",
+    "integrity",
+    "after-change",
+    "Stop the run and recover the task from a verified backup or a fresh approval."
+  ),
+  define(
     "VES_RUNTIME_CLAIM_CONFLICT",
     "conflict",
     "after-change",

@@ -81,11 +81,11 @@ end-to-end composition (E6–E9) are a separate slice built on this branch.
   only the next contiguous sequence for that workspace/run/task, SHALL return
   the same `checkpointRef` for an identical replay, and SHALL reject a
   conflicting record at an existing sequence or a sequence gap with
-  `VES_CHECKPOINT_CONFLICT`.
+  `VES_RUNTIME_CHECKPOINT_CONFLICT`.
 - **GTC-09** — WHEN a checkpoint is loaded THEN the store SHALL return the
   latest record only after verifying its digest, exact shape, and identity;
   a tampered, malformed, or foreign record SHALL fail closed with
-  `VES_CHECKPOINT_CORRUPT`.
+  `VES_RUNTIME_CHECKPOINT_CORRUPT`.
 - **GTC-10** — WHEN the gate/commit coordinator saves or loads THEN the store
   SHALL accept only the declared gate stages, SHALL be idempotent for an
   identical latest record, SHALL return no resumable checkpoint after a

@@ -44,6 +44,14 @@ test("default raw migration applies once and records its checksum", async () => 
   store.close();
 });
 
+test("the migration registry is pinned to twelve entries ending at the execution checkpoints", () => {
+  assert.equal(DEFAULT_RUNTIME_MIGRATIONS.length, 12);
+  assert.deepEqual(
+    DEFAULT_RUNTIME_MIGRATIONS.slice(-2).map((migration) => migration.id),
+    ["011_effect_identity_canonicalization", "012_execution_checkpoints"]
+  );
+});
+
 test("reopening is migration-idempotent", async () => {
   const { dbPath, store } = await opened();
   store.close();
@@ -367,7 +375,9 @@ test("foreign-key enforcement rejects orphan authority records", async () => {
 });
 
 test("runtime public-error catalog is complete and schema-valid", async () => {
-  assert.equal(runtimePublicErrorRegistry.codes.length, 17);
+  assert.equal(runtimePublicErrorRegistry.codes.length, 19);
+  assert.ok(runtimePublicErrorRegistry.codes.includes("VES_RUNTIME_CHECKPOINT_CONFLICT"));
+  assert.ok(runtimePublicErrorRegistry.codes.includes("VES_RUNTIME_CHECKPOINT_CORRUPT"));
   const schemas = await SchemaRegistry.load(new URL("../../schemas/", import.meta.url));
   for (const code of runtimePublicErrorRegistry.codes) {
     assert.equal(schemas.validate("public-error", "1", runtimePublicErrorRegistry.create(code, {})).code, code);
