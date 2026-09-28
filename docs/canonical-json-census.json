@@ -273,6 +273,17 @@
       "reason": "The reviewed source uses the declared V2 canonical contract."
     },
     {
+      "path": "packages/application/src/execution/task-request.ts",
+      "classification": "migrated-v2",
+      "signals": {
+        "canonicalizer": 2,
+        "digest": 0,
+        "localeCompare": 0,
+        "serialization": 0
+      },
+      "reason": "The reviewed source uses the declared V2 canonical contract."
+    },
+    {
       "path": "packages/application/src/handoff/coordinator.ts",
       "classification": "migrated-v2",
       "signals": {

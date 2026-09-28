@@ -5,9 +5,9 @@ issue: 405
 status: in_progress
 branch: feat/405-governed-task-foundations
 baseRevision: 4ff9bed6e5e19ba38e11d45d9112667d81a4b254
-lastCompletedTask: T0
-nextTask: "T1 — add the Task Request v1 schema, generated type, and normalizeTaskRequest with contract tests."
-lastGate: null
+lastCompletedTask: T1
+nextTask: "T2 — add migration 012_execution_checkpoints and RuntimeCheckpointStore for executor, gate, and repair checkpoints."
+lastGate: "pnpm test:contract PASS (583); generated contracts current"
 updatedAt: 2026-09-29T00:00:00Z
 ---
 
@@ -21,6 +21,10 @@ ExecutionDriverPort adapter. No CLI command is added here.
 # Completed Evidence
 
 T0: spec, design, threat model, tasks, validation, and AD-034.
+
+T1: Task Request v1 schema, generated type, and `normalizeTaskRequest`
+(`packages/application/src/execution/task-request.ts`) with schema/normalizer
+parity tests and untrusted-input security tests.
 
 # Files Intentionally Left Unchanged
 
