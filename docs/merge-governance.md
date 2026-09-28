@@ -85,6 +85,10 @@ same issue must record the restoration of the ruleset and receive an
 independent retrospective review. Break-glass is not a way to merge routine
 agent or maintainer work.
 
+Custody of release effects beyond merging (signing, publication, recovery, and
+rotation) is described in `docs/release-custody.md`, a proposed model that is
+not yet ratified; the operating posture remains single-operator custody.
+
 ## Live verification
 
 The ruleset is read-only verifiable through:
