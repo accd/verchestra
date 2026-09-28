@@ -13,6 +13,14 @@ updates:
         patterns:
           - opencode-ai
           - "@opencode-ai/*"
+      site-framework:
+        patterns:
+          - astro
+          - "@astrojs/*"
+      security-fixes:
+        applies-to: security-updates
+        patterns:
+          - "*"
     ignore:
       - dependency-name: tuf-js
         update-types:
