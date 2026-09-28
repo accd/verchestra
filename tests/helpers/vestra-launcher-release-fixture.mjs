@@ -20,7 +20,6 @@ import { createUpdateKeys, hex, metadataFile, serialize } from "./tuf-update-fix
 import { FLEET_TARGET_KEYS, fixtureTargets } from "./vestra-launcher-fixture.mjs";
 
 const FUTURE = "2035-01-01T00:00:00.000Z";
-const METADATA_VERSION = 1;
 const roots = [];
 
 /** Releases every repository this module materialized. */
@@ -83,7 +82,7 @@ function targetsRole(bundle, manifestBytes, manifestPath) {
   return targets;
 }
 
-function metadataFor(bundle, manifestBytes, manifestPath, keys) {
+function metadataFor(bundle, manifestBytes, manifestPath, keys, metadataVersion) {
   const anchor = signedRoles(keys);
   const rootBytes = serialize(
     {
@@ -101,7 +100,7 @@ function metadataFor(bundle, manifestBytes, manifestPath, keys) {
     {
       _type: "targets",
       spec_version: "1.0.0",
-      version: METADATA_VERSION,
+      version: metadataVersion,
       expires: FUTURE,
       targets: targetsRole(bundle, manifestBytes, manifestPath)
     },
@@ -112,9 +111,9 @@ function metadataFor(bundle, manifestBytes, manifestPath, keys) {
     {
       _type: "snapshot",
       spec_version: "1.0.0",
-      version: METADATA_VERSION,
+      version: metadataVersion,
       expires: FUTURE,
-      meta: { "targets.json": metadataFile(targets, METADATA_VERSION) }
+      meta: { "targets.json": metadataFile(targets, metadataVersion) }
     },
     keys,
     keys.length
@@ -123,9 +122,9 @@ function metadataFor(bundle, manifestBytes, manifestPath, keys) {
     {
       _type: "timestamp",
       spec_version: "1.0.0",
-      version: METADATA_VERSION,
+      version: metadataVersion,
       expires: FUTURE,
-      meta: { "snapshot.json": metadataFile(snapshot, METADATA_VERSION) }
+      meta: { "snapshot.json": metadataFile(snapshot, metadataVersion) }
     },
     keys,
     keys.length
@@ -133,8 +132,8 @@ function metadataFor(bundle, manifestBytes, manifestPath, keys) {
   return new Map([
     ["root.json", rootBytes],
     ["timestamp.json", timestamp],
-    [`${METADATA_VERSION}.snapshot.json`, snapshot],
-    [`${METADATA_VERSION}.targets.json`, targets]
+    [`${metadataVersion}.snapshot.json`, snapshot],
+    [`${metadataVersion}.targets.json`, targets]
   ]);
 }
 
@@ -142,17 +141,19 @@ function metadataFor(bundle, manifestBytes, manifestPath, keys) {
  * Publishes one executable release into `<root>/metadata` and `<root>/targets`,
  * laid out exactly as `NodeFilesystemDistributionSource` reads them, and returns
  * the trust root a launcher would carry plus the pinned source configuration
- * that names it.
+ * that names it. Two publications given the same `keys` share one trust root,
+ * which is how a test models an update or a rollback between releases.
  */
 export async function publishExecutableRelease(options = {}) {
   const { bundle, files } = await buildExecutableRelease(options);
-  const keys = createUpdateKeys(2);
+  const keys = options.keys ?? createUpdateKeys(2);
+  const metadataVersion = options.metadataVersion ?? 1;
   const manifestPath = `releases/${bundle.target.platform}-${bundle.target.arch}/release.json`;
   const manifestBytes = Buffer.from(JSON.stringify(bundle));
   const root = await mkdtemp(join(tmpdir(), "verchestra-launcher-release-"));
   roots.push(root);
   const repositoryRoot = join(root, "repository");
-  const metadata = metadataFor(bundle, manifestBytes, manifestPath, keys);
+  const metadata = metadataFor(bundle, manifestBytes, manifestPath, keys, metadataVersion);
   for (const [name, bytes] of metadata) {
     await mkdir(join(repositoryRoot, "metadata"), { recursive: true });
     await writeFile(join(repositoryRoot, "metadata", name), bytes);
