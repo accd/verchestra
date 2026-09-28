@@ -49,7 +49,8 @@ test("registry exposes only declared canonical schema versions", () => {
     "public-error@1",
     "regression-campaign-summary@1",
     "release-manifest@1",
-    "subsystem-availability@1"
+    "subsystem-availability@1",
+    "task-request@1"
   ]);
 });
 

@@ -42,7 +42,7 @@ slice built on top of this branch by a separate change.
 | Task | Status | Evidence |
 | --- | --- | --- |
 | T0 | Done | This directory; AD-034 in `.specs/STATE.md` |
-| T1 | Pending | |
+| T1 | Done | `schemas/task-request/1.schema.json`, generated `TaskRequest`, `normalizeTaskRequest`; 42 contract + 6 security tests |
 | T2 | Pending | |
 | T3 | Pending | |
 | T4 | Pending | |
