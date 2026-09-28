@@ -45,3 +45,4 @@ export {
   type InitRecoveryReceipt,
   type InitTransactionHooks
 } from "./init/safe-init.ts";
+export { readWorkspaceIdentity, type WorkspaceIdentity } from "./init/workspace-identity.ts";

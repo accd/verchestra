@@ -103,9 +103,18 @@ async function executeDoctor(command: CliCommand): Promise<CommandResult> {
   let run: Awaited<ReturnType<typeof runDoctorDeep>>;
   try {
     const installRoot = activeInstallRoot();
+    const keychain = command.options["keychain"];
+    // why: a dynamic import, like self-test's scenarios, so commands that never
+    // touch a credential store never load it.
+    const { composeDoctorSecretProbe } = await import("./secret-composition.ts");
+    const secretProbe = await composeDoctorSecretProbe({
+      controlRoot: process.cwd(),
+      platform: process.platform,
+      ...(typeof keychain === "string" ? { keychainPath: keychain } : {})
+    });
     run = await runDoctorDeep({
       controlRoot: process.cwd(),
-      live: installRoot === undefined ? {} : { installRoot }
+      live: { ...(installRoot === undefined ? {} : { installRoot }), ...secretProbe }
     });
   } catch (error) {
     throw new PublicErrorException(
@@ -115,6 +124,16 @@ async function executeDoctor(command: CliCommand): Promise<CommandResult> {
     );
   }
   return { data: run.payload, diagnostics: [], exitCode: doctorExitCode(run.verdict) };
+}
+
+async function executeSecret(command: CliCommand): Promise<CommandResult> {
+  const { executeSecretCommand } = await import("./secret-composition.ts");
+  return executeSecretCommand(command, {
+    controlRoot: process.cwd(),
+    platform: process.platform,
+    stdin: process.stdin,
+    stderr: (value) => process.stderr.write(value)
+  });
 }
 
 export async function main(invokedAs: string, argv: readonly string[]): Promise<number> {
@@ -132,7 +151,9 @@ export async function main(invokedAs: string, argv: readonly string[]): Promise<
           ? executeSelfTest(command)
           : command.name === "doctor"
             ? executeDoctor(command)
-            : commandBus.execute(command, context)
+            : command.name.startsWith("secret ")
+              ? executeSecret(command)
+              : commandBus.execute(command, context)
     },
     stdout: (value) => process.stdout.write(value),
     stderr: (value) => process.stderr.write(value)

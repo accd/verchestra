@@ -35,6 +35,12 @@ export const INIT_PUBLIC_ERROR_DEFINITIONS = Object.freeze([
     "after-change",
     "Normalize the user-owned gitignore newline style, then preview init again."
   ),
+  define(
+    "VES_INIT_IDENTITY_INVALID",
+    "integrity",
+    "after-change",
+    "Repair the Workspace identity in .verchestra/workspace.yaml, or initialize the Workspace again."
+  ),
   define("VES_INIT_INPUT_INVALID", "validation", "never", "Correct the canonical portable init input."),
   define("VES_INIT_PREVIEW_INVALID", "security", "never", "Create a fresh preview with the applying service."),
   define("VES_INIT_PREVIEW_STALE", "conflict", "safe", "Create and review a fresh init preview."),
@@ -61,6 +67,12 @@ export const INIT_PUBLIC_ERROR_DEFINITIONS = Object.freeze([
     "security",
     "after-change",
     "Remove the broad ignore rule or choose an authorized centralized placement."
+  ),
+  define(
+    "VES_INIT_WORKSPACE_MISSING",
+    "state",
+    "after-change",
+    "Run vestra init in this directory before using Workspace-scoped commands."
   )
 ]);
 

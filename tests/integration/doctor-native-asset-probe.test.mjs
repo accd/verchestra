@@ -14,9 +14,10 @@ import { runDoctorDeep } from "../../apps/vestra-cli/src/doctor-composition.ts";
 // is driven directly against provisioned and un-provisioned install roots.
 //
 // It is deliberately NOT enough to reach a PASS verdict on its own: secret
-// presence has no production secret backend to observe, so a real machine's
-// doctor stays BLOCKED regardless. These cases assert only the native-asset
-// check code, which is exactly what this change moves.
+// presence also needs a Workspace with a credential bound in a qualified OS
+// store (#379, tests/integration/doctor-secret-backend.test.mjs). These cases
+// assert only the native-asset check code, which is exactly what this change
+// moves.
 
 const DIGEST = `sha256:${"a".repeat(64)}`;
 const OTHER_DIGEST = `sha256:${"b".repeat(64)}`;
