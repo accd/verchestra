@@ -2,13 +2,13 @@
 schema: verchestra-feature-handoff/v1
 feature: tuf-role-separation
 issue: 18
-status: in_progress
-branch: fix/publish-metadata-version-monotonic
-baseRevision: eeba159659a480977088e93c582d4c4f7f56a02e
+status: blocked
+branch: fix/gate-census-and-handoff-drift
+baseRevision: 20071a78eb5b96b9de63e5e9c863b6997643c767
 lastCompletedTask: null
-nextTask: "Owner provisions the online timestamp/snapshot key and commits its anchor (see below), then follows republish-v3-runbook.md. A short --timestamp-expires becomes safe once the #382 refresh routine ships."
+nextTask: "Owner provisions the online timestamp/snapshot key and commits docs/qualification/trust/release-timestamp-snapshot-public-key.json (steps 1-3 below); then extend trust-key-separation.test.mjs (step 4) and follow republish-v3-runbook.md for .3 (#387). Keep --timestamp-expires at the full horizon until #382's refresh routine ships (it is still open)."
 lastGate: "gate:quick PASS; 97 tests across the affected TUF and publish suites"
-updatedAt: 2026-08-27T00:00:00Z
+updatedAt: 2026-09-29T00:00:00Z
 ---
 
 # TUF role separation (#18, F1 + F2)
@@ -92,3 +92,26 @@ same-root release and the #393 decision — a single `.3` cannot close it.
 - **Custody.** Two role-separated keys narrow F1, but both still sit with one
   operator; a second human custodian (matrix L8) remains a separate promote
   precondition only the owner can resolve.
+
+# Blockers
+
+Reconciled 2026-09-29 (#407).
+
+- **The code has landed.** Role separation landed in `1ee646e`, and the
+  monotonic `metadataVersion` guard for #387 landed in `5ac3122`.
+- **The online key and anchor are still owner-gated.**
+  `docs/qualification/trust/` holds only the evidence, release, and
+  release-decision anchors. `release-timestamp-snapshot-public-key.json` does
+  not exist yet, so publishing fails closed with
+  `VES_T76_PUBLISH_ANCHOR_MISSING`. Step 4 (the pairwise trust-separation test)
+  depends on that anchor.
+- **The `.3` republication is owner-gated.** It covers keys, R2 upload, and
+  `npm publish` under 2FA, and it is tracked by #387. A single `.3` does not
+  close live update/rollback (runbook finding 2; see
+  `.specs/features/live-activation-matrix/handoff.md`).
+- **#382 is still open.** The routine `t76-refresh-timestamp.yml` does not exist
+  in `.github/workflows/`. `republish-v3-runbook.md` line 92 says the opposite
+  ("short now that #382's refresh routine exists"), and that statement is
+  false. The runbook is left unchanged here because another branch owns it.
+  Until #382 ships, `--timestamp-expires` stays at the full horizon, as the
+  "Time-bomb" note above says.

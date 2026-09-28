@@ -2,13 +2,13 @@
 schema: verchestra-feature-handoff/v1
 feature: t75-evidence-signing
 issue: 294
-status: blocked
-branch: codex/issue-294-t75-evidence-signature
-baseRevision: d5c7c75276bc0a972c18d8b3860531ddb98c2ef7
-lastCompletedTask: T2
-nextTask: Owner-provision the protected secret and a matching committed PublicKeyRef, then run the exact-SHA workflow and obtain independent verification; do not provision or access a release key locally.
-lastGate: focused signing/workflow tests and pnpm gate:quick PASS; pnpm gate:security reached E2E but a disposable-repository cleanup hit a Windows EBUSY lock, pending the separately reviewed cleanup fix
-updatedAt: 2026-08-23T00:00:00Z
+status: complete
+branch: fix/gate-census-and-handoff-drift
+baseRevision: 20071a78eb5b96b9de63e5e9c863b6997643c767
+lastCompletedTask: T3
+nextTask: "No further action for this feature: the owner-provisioned key signed the T75 evidence index and the attestation was verified outside the producing run (docs/qualification/t75-validation.md:65-73). Independent human verification of future qualification evidence is owned by #408."
+lastGate: "T75 report docs/qualification/t75-validation.md (reviewed in PR #354) records signed: true and external verification; agent:check PASS at 20071a7"
+updatedAt: 2026-09-29T00:00:00Z
 ---
 
 # Scope
@@ -36,7 +36,32 @@ index from all five profile artifacts at the requested revision, rejects
 contradictions, verifies the result before publishing, and exposes only public
 verification artifacts.
 
-# Blockers
+# Reconciliation (2026-09-29, #407)
+
+The blocker below is resolved. It is kept as it was written on 2026-08-23.
+
+- **The owner committed the public reference in `84ae20a`.** The file is
+  `docs/qualification/trust/t75-evidence-public-key.json`, and no private
+  material is tracked.
+- **The signed attestation was committed in `11f9318`.**
+  `.specs/features/platform-qualification-matrix/signed-evidence-index.json`
+  has `signingState.signed: true` and key id `t75-evidence-20260825`. Its DSSE
+  envelope is `qualification-evidence-index.dsse.json`. Both are bound to
+  revision `be92397ca0a5caaf7ff8b70dad23659b09899d7d`.
+- **`docs/qualification/t75-validation.md:65-73` records the external
+  verification.** The index is `signed: true`, and the attestation was verified
+  outside the run that produced it, from the committed public key.
+  `docs/qualification/acceptance-matrix.md` L16 marks this resolved.
+- **What is not claimed.** `t75-validation.md` states that no independent
+  verifier distinct from the implementation author reviewed T75. The report
+  itself was reviewed in PR #354. Independent human custody for a future
+  promotion round is owned by #408. It is not outstanding work for this
+  signing feature.
+- **Transition note.** The status moves from `blocked` to `complete` in one
+  reconciliation. The verification step that `verification` would have
+  represented is the T75 report above.
+
+# Blockers (historical, 2026-08-23 — resolved, see Reconciliation)
 
 The implementation is merged in PR #303 and the issue is closed, but the
 qualification path is blocked until the owner provisions the protected secret

@@ -5,4 +5,4 @@
 | T0 | Specification, custody decision, and portable handoff | TES-01–TES-07 | `pnpm agent:check` | Complete |
 | T1 | Closed predicate and fail-closed signer/verifier with test-only ephemeral fixtures | TES-01–TES-05, TES-07 | unit + security | Complete |
 | T2 | Exact-SHA signing workflow and public verification instructions | TES-06–TES-07 | workflow + security | Complete |
-| T3 | Owner-provisioned public reference and protected secret; real candidate attestation | TES-02–TES-07 | workflow run + independent verification | Blocked on owner provisioning |
+| T3 | Owner-provisioned public reference and protected secret; real candidate attestation | TES-02–TES-07 | workflow run + independent verification | Complete — `84ae20a` (public reference), `11f9318` (signed attestation), verified outside the producing run per `docs/qualification/t75-validation.md:65-73`; no independent human verifier is claimed (#408) |

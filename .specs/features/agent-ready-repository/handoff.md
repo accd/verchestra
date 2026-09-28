@@ -6,9 +6,9 @@ status: verification
 branch: main
 baseRevision: 9029f3ee566d18fbf2c7ce5508cabe9459ade42f
 lastCompletedTask: T8
-nextTask: Add the three repository topics from a maintainer session
+nextTask: "Add the repository topics agents-md, llms-txt, and ai-coding-agents from a maintainer session (re-checked 2026-09-29: still absent; no open issue tracks this), then read the topic set back and mark LLM-06 verified."
 lastGate: corepack pnpm agent:check && corepack pnpm gate:quick && corepack pnpm site:test && corepack pnpm site:build
-updatedAt: 2026-07-28T23:43:34Z
+updatedAt: 2026-09-29T00:00:00Z
 ---
 
 # Scope
@@ -108,6 +108,13 @@ One maintainer action remains: add the repository topics `agents-md`,
 other topics, so this is discovery metadata rather than a functional gap, and
 it is deliberately left to a human because repository settings are not an
 agent's to change.
+
+Re-checked read-only on 2026-09-29 (#407): `gh repo view accd/verchestra --json
+repositoryTopics` still returns the same twelve topics, and none of the three
+requested ones. No other work in this feature is open. LLM-02 and LLM-03 cleared
+when production deployed (see above). After the three topics are added, a
+session reads the topic set back, compares it exactly, and marks the handoff
+`complete`. The owner may instead drop the topics from LLM-06 explicitly.
 
 # Blockers
 
