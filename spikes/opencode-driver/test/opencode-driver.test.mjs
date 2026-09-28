@@ -79,7 +79,7 @@ test("probes the exact repo-local OpenCode without model inference", async () =>
   const result = await new OpenCodeDriver({ minimumVersion: "1.17.18" }).probe();
   assertLiveProbe(result, {
     requirePinned: PIN_REQUIRED,
-    pinnedVersion: "1.18.18",
+    pinnedVersion: "1.18.33",
     capabilities: { sdkEvents: true }
   });
 });
@@ -94,16 +94,16 @@ test("the pinned-provider gate discriminates a version drift from an exact pin",
   const newer = await driver().probe({ environment: { FAKE_OPENCODE_VERSION: "1.19.0" } });
   assert.equal(newer.available, true);
   assert.doesNotThrow(() =>
-    assertLiveProbe(newer, { requirePinned: false, pinnedVersion: "1.18.18", capabilities: {} })
+    assertLiveProbe(newer, { requirePinned: false, pinnedVersion: "1.18.33", capabilities: {} })
   );
-  assert.throws(() => assertLiveProbe(newer, { requirePinned: true, pinnedVersion: "1.18.18", capabilities: {} }));
+  assert.throws(() => assertLiveProbe(newer, { requirePinned: true, pinnedVersion: "1.18.33", capabilities: {} }));
   const unsupported = await driver().probe({ environment: { FAKE_OPENCODE_VERSION: "1.16.0" } });
   assert.equal(unsupported.available, false);
   assert.doesNotThrow(() =>
-    assertLiveProbe(unsupported, { requirePinned: false, pinnedVersion: "1.18.18", capabilities: {} })
+    assertLiveProbe(unsupported, { requirePinned: false, pinnedVersion: "1.18.33", capabilities: {} })
   );
   assert.throws(() =>
-    assertLiveProbe(unsupported, { requirePinned: true, pinnedVersion: "1.18.18", capabilities: {} })
+    assertLiveProbe(unsupported, { requirePinned: true, pinnedVersion: "1.18.33", capabilities: {} })
   );
 });
 
