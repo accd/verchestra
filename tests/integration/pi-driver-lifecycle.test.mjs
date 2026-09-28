@@ -5,10 +5,23 @@ import { PiDriver } from "../../packages/drivers/src/pi-driver.ts";
 import { piFixture } from "../helpers/pi-driver-fixture.mjs";
 
 test("Pi Driver creates a fresh Pi transcript for every start", async () => {
-  const fixture = piFixture([
-    (context) => fauxAssistantMessage(`visible:${context.messages.length}`),
-    (context) => fauxAssistantMessage(`visible:${context.messages.length}`)
-  ]);
+  // invariant: since Pi 0.86 the authorized tools reach the provider as a leading
+  // system message rather than a separate context field, so freshness is the
+  // exact provider-visible transcript, not its raw length: one tool declaration
+  // with an empty system prompt, then this start's single user prompt.
+  const observed = [];
+  const respond = (context) => {
+    observed.push(
+      context.messages.map((message) =>
+        message.role === "system"
+          ? { role: "system", content: message.content, tools: (message.toolsAdded ?? []).map((tool) => tool.name) }
+          : { role: message.role }
+      )
+    );
+    const visible = context.messages.filter((message) => message.role !== "system").length;
+    return fauxAssistantMessage(`visible:${visible}`);
+  };
+  const fixture = piFixture([respond, respond]);
   const driver = new PiDriver(fixture.dependencies());
   const outputs = [];
   for (const request of [fixture.request(), fixture.request({ runId: "run_018f0000-0000-7000-8000-000000001599" })]) {
@@ -23,6 +36,8 @@ test("Pi Driver creates a fresh Pi transcript for every start", async () => {
     await driver.close(session);
   }
   assert.deepEqual(outputs, ["visible:1", "visible:1"]);
+  const freshTranscript = [{ role: "system", content: "", tools: ["vestra_read"] }, { role: "user" }];
+  assert.deepEqual(observed, [freshTranscript, freshTranscript]);
 });
 
 test("Pi Driver sends a follow-up through the same session and event sequence", async () => {
