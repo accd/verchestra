@@ -109,3 +109,30 @@ test("every leg's transcript is uploaded even on failure, and named uniquely", (
     /name: live-activation-\$\{\{ matrix\.platform \}\}-\$\{\{ matrix\.arch \}\}-\$\{\{ github\.run_id \}\}/u
   );
 });
+
+test("the lifecycle is verified by the active pointer, so a rollback cannot pass trivially (#393)", () => {
+  // Run 33087399859's rollback phase passed only because the update had failed
+  // and nothing had moved. The pointer is now recorded after each phase, and a
+  // leg fails unless update moved it off the base and rollback restored it.
+  assert.match(workflow, /ACTIVE_POINTER="\$STATE_ROOT\/launcher\/install\/active\.json"/u);
+  for (const phase of ["activate", "update", "rollback"])
+    assert.match(
+      workflow,
+      new RegExp(`run_phase ${phase}\\s+npx [^\\n]*\\|\\| status=1\\r?\\n\\s*record_pointer ${phase}\\r?\\n`, "u"),
+      `the ${phase} phase must be followed by its pointer record`
+    );
+  assert.match(
+    workflow,
+    /if \[ "\$\(pointer_of update\)" = "\$\(pointer_of activate\)" \]; then\r?\n[^\n]*update did not move[^\n]*\r?\n\s*status=1/u
+  );
+  assert.match(
+    workflow,
+    /if \[ "\$\(pointer_of activate\)" = "none" \] \|\| \[ "\$\(pointer_of rollback\)" != "\$\(pointer_of activate\)" \]; then\r?\n[^\n]*rollback did not restore[^\n]*\r?\n\s*status=1/u
+  );
+});
+
+test("the rollback semantics and the source-side alternative are stated in the workflow (#393)", () => {
+  assert.match(workflow, /anti-rollback refuses the older metadata with VES_TUF_ROLLBACK/u);
+  assert.match(workflow, /retained-\s*#?\s*release path/u);
+  assert.match(workflow, /NEW forward publication \(a higher\s*#\s*TUF metadata version\)/u);
+});

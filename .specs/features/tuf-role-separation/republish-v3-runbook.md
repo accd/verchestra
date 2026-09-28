@@ -73,6 +73,16 @@ roll-*forward* publication that points at the prior content, add a reviewed
 retained-bundle re-activation path, or narrow what J02 claims. **Settle #393
 before promising a live rollback demonstration.**
 
+**Status (AD-034, proposed).** The retained-release path is implemented: a
+launcher whose pinned release this machine already verified under the same root,
+and which a later verified release superseded, re-activates it from its
+installed bytes with no source read. The roll-forward publication remains the
+way to serve an older release to every client. For step 6 this means both `.3`
+and `.4` must be built from a revision that carries AD-034, because each
+activation records the release it verified; the naive rollback then passes
+through the retained path, and the workflow now fails a leg unless the rollback
+restores the base's active pointer.
+
 ## Recommended sequence (my judgment; owner and reviewers to ratify)
 
 Publish the role-separated lineage as its own trust anchor and demonstrate the
@@ -99,9 +109,10 @@ Publish the role-separated lineage as its own trust anchor and demonstrate the
 6. **Demonstrate the forward update leg.** To exercise a *successful* update, a
    second role-separated release sharing `.3`'s root and a higher
    `metadata_version` is needed (e.g. `.4`). Run the live-matrix with
-   `base=0.0.0-qualification.3`, `update=0.0.0-qualification.4`. Handle the
-   rollback phase per the #393 decision — do not expect the naive
-   re-invoke-the-base rollback to pass after a successful update.
+   `base=0.0.0-qualification.3`, `update=0.0.0-qualification.4`. The rollback
+   phase passes only if both releases carry AD-034 (see finding 3's status);
+   without it, do not expect the naive re-invoke-the-base rollback to pass after
+   a successful update.
 7. **Record.** Update `docs/qualification/acceptance-matrix.md` (L5, L7, J02),
    the live-matrix `validation.md`/`handoff.md`, and this feature's handoff with
    the run ids and transcript digests, verified by content.

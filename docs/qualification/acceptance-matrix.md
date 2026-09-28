@@ -164,6 +164,19 @@ is the publication-side rollback index sealed from the prior candidate
 (`af8bcf044cf8`), not a client that moved between two published releases. A
 live update/rollback is **not executed in this pass**.
 
+**Rollback after an update through the launcher (#393, AD-034).** Re-invoking
+an older launcher after an update is a TUF metadata downgrade, which
+anti-rollback refuses with `VES_TUF_ROLLBACK`; that refusal is unchanged
+(`tests/e2e/tuf-update-client.test.mjs`, "re-staging a predecessor after its
+successor advanced the cache is refused as a rollback"). The launcher now
+re-activates a superseded release it already verified under the same trust root
+from its installed bytes, with no source read. This is proven deterministically
+only: `tests/e2e/vestra-launcher-activation.test.mjs` runs A@v1 → B@v2 → A
+against a fetch-counting source that records zero reads, and fails closed for a
+tampered retained release, a never-installed older release, and a different
+trust root. No published package carries this path, and no live run has
+exercised it.
+
 ### 2.3 J03 — Initialize a Workspace and bind this machine's backends
 
 **Outcome.** A developer turns an existing Git repository into a Workspace,
@@ -684,8 +697,16 @@ fresh state on all five targets, and every byte `.2` needs is served live (run
 both releases were published with the same TUF `metadataVersion`, so activating
 one over the other's cached metadata reuses stale targets and fails
 `VES_TUF_SOURCE_HTTP` on the update path
-([#387](https://github.com/accd/verchestra/issues/387)). That leg closes when the
-`.3` republication is published with an incremented `metadataVersion`.
+([#387](https://github.com/accd/verchestra/issues/387)). A successful update
+then exposes a second, deliberate refusal: re-invoking the base is a metadata
+downgrade that anti-rollback rejects
+([#393](https://github.com/accd/verchestra/issues/393)). AD-034 adds a local
+re-activation path for a superseded, already-verified release, proven
+deterministically only (see J02), and the live-activation workflow now fails a
+leg unless its rollback restores the base's active pointer. The leg closes only
+when two same-root releases, each with a strictly greater `metadataVersion` and
+both built from a revision that carries AD-034, are published and the workflow
+passes against them. No such run has happened.
 
 **L8. Single-operator custody of the signing keys and the storage endpoint.**
 T76's live evidence is one operator, one Cloudflare R2 bucket, and one npm
