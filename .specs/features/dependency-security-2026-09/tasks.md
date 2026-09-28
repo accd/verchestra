@@ -1,0 +1,12 @@
+# September 2026 Dependency Security Batch Tasks
+
+| Task | Deliverable                                                                                                                                         | Verification                                              | Status           |
+| ---- | --------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- | ---------------- |
+| T1   | #411 astro 7.2.8, which clears critical alerts 32–35 and the transitive svgo/sharp/devalue alerts 29, 30, 39 and 41                                 | required checks on the exact head                         | Merged `20071a7` |
+| T2   | #410 closed as a duplicate of #411                                                                                                                  | PR comment                                                | Closed           |
+| T3   | Overrides for fast-uri 3.1.8, js-yaml 4.3.2 and brace-expansion 5.0.12; qs 6.16.0 and ip-address 10.7.2 via a lockfile refresh; Dependabot grouping | `gate:quick`, `gate:security`, `site:check`, `pnpm audit` | This PR          |
+| T4   | #412 vitest 4.1.11 (alerts 36–38)                                                                                                                   | required checks                                           | Sequential       |
+| T5   | #413, #404, #403, #402, #401                                                                                                                        | required checks; `gate:security` for jose                 | Sequential       |
+| T6   | #400 OpenCode 1.18.23 requalification                                                                                                               | `qualify:opencode`, `test:qualification`                  | Sequential       |
+| T7   | #415 Pi 0.85.1 requalification                                                                                                                      | `qualify:pi`, `test:qualification`                        | Sequential       |
+| T8   | Zero open alerts and zero batch PRs; `main` green                                                                                                   | `gh api …/dependabot/alerts`, `gh pr list`                | Final            |

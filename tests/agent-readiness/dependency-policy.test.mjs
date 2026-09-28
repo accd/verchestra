@@ -42,6 +42,8 @@ test("groups Pi and OpenCode updates and suppresses runtime-incompatible major p
   const policy = read(".github/dependabot.yml");
   assert.match(policy, /groups:\s*\n\s+pi-runtime:\s*\n\s+patterns:\s*\n\s+- "@earendil-works\/pi-\*"/u);
   assert.match(policy, /opencode-driver:\s*\n\s+patterns:\s*\n\s+- opencode-ai\s*\n\s+- "@opencode-ai\/\*"/u);
+  assert.match(policy, /site-framework:\s*\n\s+patterns:\s*\n\s+- astro\s*\n\s+- "@astrojs\/\*"/u);
+  assert.match(policy, /security-fixes:\s*\n\s+applies-to: security-updates\s*\n\s+patterns:\s*\n\s+- "\*"/u);
   assert.match(policy, /dependency-name: tuf-js\s*\n\s+update-types:\s*\n\s+- version-update:semver-major/u);
   assert.match(policy, /dependency-name: "@types\/node"\s*\n\s+update-types:\s*\n\s+- version-update:semver-major/u);
 });
