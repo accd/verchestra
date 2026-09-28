@@ -391,6 +391,42 @@ note. -->
   signed is still the owner's call; this records the definition the validator
   enforces so a promote's signature is accountable rather than decorative.
 
+### AD-034 — A superseded, retained release re-activates locally; a remote downgrade still fails (#393)
+
+- **Status:** proposed (owner ratifies by reviewing the pull request that
+  carries it).
+- **Decision:** The launcher closure re-activates the pinned release without a
+  TUF refresh and without any source read only when all of the following hold:
+  the machine's trust anchor for the pinned root exists and equals the pinned
+  root digest; a verified-release record under that same root names exactly one
+  installed release with the pinned `releaseId` and `semanticVersion`; and a
+  later TUF-verified activation under that root has superseded it. It then calls
+  `TransactionalActivationManager.rollback(digest, { trustRootDigest })`, which
+  re-verifies the installed manifest and every component byte, checks the host
+  target and the recorded identity, runs the health gate, and switches the
+  pointer under a `rollback` journal. Any failure is fail closed. Every other
+  case keeps the unchanged `resolveAndStage` path. Records are written only by a
+  TUF-verified `activate` that is given the trust-root digest, never by
+  `rollback`. This is option 2 of #393; option 1, a source-side roll-forward
+  publication that points at the old bytes, is documented as the way to serve an
+  older release to every client.
+- **Rationale:** Anti-rollback correctly rejects older metadata, so re-invoking
+  an older release after an update can never be a metadata operation. The
+  release's bytes were already verified under the same authority and are still
+  on disk; re-hashing them proves what TUF proved without asking the network a
+  question whose honest answer is "that is a downgrade". Restricting the path to
+  a *superseded* release keeps the steady state on the network path, so metadata
+  expiry and publisher revocation stay observed for the current release. Keying
+  the records by trust-root digest keeps a release verified under one root from
+  ever running under another. Threat model and pre-mortem:
+  `.specs/features/retained-release-rollback/design.md`.
+- **Consequences:** The local path observes neither revocation nor metadata
+  expiry for a superseded release (residual risks R1, R2); deleting the state
+  root or a purging uninstall removes every retained release and record. The
+  published `0.0.0-qualification` and `.2` packages do not carry this code, so a
+  live rollback demonstration needs two same-root publications built from a
+  revision that does. No live run is claimed by this decision.
+
 ## Handoff
 
 - **Reconciliation (2026-09-29, #407):** The feature handoffs were audited
