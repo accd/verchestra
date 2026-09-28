@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readdir, rm, symlink } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, test } from "node:test";
@@ -236,6 +236,80 @@ test("older metadata is rejected after a newer trusted view", async () => {
   const older = buildTufUpdateFixture({ keys, metadataVersion: 1 });
   const retry = await clientFor(older, {}, { root, trustedRoot: newer.trustedRoot });
   await rejected(stage(retry.client), "VES_TUF_ROLLBACK");
+});
+
+// #391 precision: the metadata-version collision check must name exactly one
+// situation, a signed equal-version timestamp with different content. Every
+// neighbouring case keeps its own code or still succeeds.
+const collisionFixtures = (keys, options = {}) => ({
+  predecessor: buildTufUpdateFixture({
+    keys,
+    semanticVersion: "0.0.0-a",
+    releaseId: "release:verchestra:0.0.0-a:win32-x64"
+  }),
+  successor: buildTufUpdateFixture({
+    keys,
+    semanticVersion: "0.0.0-b",
+    releaseId: "release:verchestra:0.0.0-b:win32-x64",
+    ...options
+  })
+});
+
+test("a replayed older release is still a rollback, not a version collision (#391)", async () => {
+  const keys = createUpdateKeys();
+  const older = buildTufUpdateFixture({ keys, metadataVersion: 1 });
+  const newer = buildTufUpdateFixture({
+    keys,
+    metadataVersion: 2,
+    semanticVersion: "1.0.1",
+    releaseId: "release:verchestra:1.0.1:win32-x64"
+  });
+  const { client, root } = await clientFor(older);
+  await stage(client);
+  await stage((await clientFor(newer, {}, { root })).client);
+  // The genuine, validly signed version-1 metadata served again after version 2
+  // was trusted: an anti-rollback rejection, never a collision.
+  const replay = await clientFor(older, {}, { root });
+  await rejected(stage(replay.client), "VES_TUF_ROLLBACK");
+  const persisted = JSON.parse(await readFile(join(root, "trust", "timestamp.json"), "utf8"));
+  assert.equal(persisted.signed.version, 2);
+});
+
+test("identical metadata served again is accepted without a collision (#391)", async () => {
+  const fixture = buildTufUpdateFixture();
+  const { client, root } = await clientFor(fixture);
+  const first = await stage(client);
+  const trusted = await readFile(join(root, "trust", "timestamp.json"));
+  const again = await clientFor(fixture, {}, { root });
+  assert.deepEqual(await stage(again.client), first);
+  assert.deepEqual(await readFile(join(root, "trust", "timestamp.json")), trusted);
+});
+
+test("an unsigned equal-version timestamp is a signature failure, not a version collision (#391)", async () => {
+  const { predecessor, successor } = collisionFixtures(createUpdateKeys(), { corruptRole: "timestamp" });
+  const { client, root } = await clientFor(predecessor);
+  await stage(client);
+  // Same version, different content, but not signed by the trusted timestamp
+  // keys: tuf-js rejects it before any version comparison, and the collision
+  // check must not relabel a forgery as a publisher mistake.
+  const forged = await clientFor(successor, {}, { root });
+  await rejected(stage(forged.client), "VES_TUF_THRESHOLD");
+});
+
+test("an equal-version timestamp accepted under a rotated root is not a collision (#391)", async () => {
+  const keys = createUpdateKeys();
+  const { predecessor, successor } = collisionFixtures(keys, { rootVersion: 2, rotatedKeys: createUpdateKeys() });
+  assert.equal(successor.trustedRoot.equals(predecessor.trustedRoot), true);
+  const { client, root } = await clientFor(predecessor);
+  await stage(client);
+  // The rotated root no longer trusts the cached timestamp's keys, so tuf-js
+  // discards the cache and accepts the successor's version-1 timestamp. The
+  // version number matches the cached one, yet nothing stale is in use: the
+  // update must succeed.
+  const rotated = await clientFor(successor, {}, { root });
+  const staged = await stage(rotated.client);
+  assert.equal(staged.releaseDigest, successor.bundle.releaseDigest);
+  assert.deepEqual(await readFile(join(root, "trust", "timestamp.json")), successor.metadata.get("timestamp.json"));
 });
 
 test("snapshot-to-targets mix-and-match metadata is rejected", async () => {

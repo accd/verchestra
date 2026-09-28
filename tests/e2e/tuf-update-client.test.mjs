@@ -88,14 +88,15 @@ test("a repeated staging request returns the same receipt and reuses verified co
   );
 });
 
-// Regression for #387. Two distinct releases that share one managed install's
-// trusted root must still be publishable one-over-the-other. The failure the
-// live-activation matrix caught was not an unavailable endpoint: it was two
-// releases published with the SAME TUF metadataVersion. Under consistent
-// snapshots both expose `1.snapshot.json`/`1.targets.json`; the persistent
-// metadata cache then reuses the first release's targets and resolves a target
-// hash the successor never serves. Incrementing the successor's metadataVersion
-// forces a re-fetch and resolves it.
+// Regression for #387 and #391. Two distinct releases that share one managed
+// install's trusted root must still be publishable one-over-the-other. The
+// failure the live-activation matrix caught was not an unavailable endpoint: it
+// was two releases published with the SAME TUF metadataVersion. Under consistent
+// snapshots both expose `1.snapshot.json`/`1.targets.json`, and tuf-js keeps its
+// cached equal-version timestamp, snapshot and targets. Before #391 the client
+// then resolved a target hash the successor never serves and failed as a source
+// error; it now names the collision before any target is read. Incrementing the
+// successor's metadataVersion forces a re-fetch and resolves it.
 const distinctRelease = (metadataVersion, tag, keys) =>
   buildTufUpdateFixture({
     keys,
@@ -104,16 +105,24 @@ const distinctRelease = (metadataVersion, tag, keys) =>
     semanticVersion: `0.0.0${tag}`
   });
 
-const stageOverSharedInstall = (root, fixture) =>
+const stageOverSharedInstall = (root, fixture, source = new FixtureDistributionSource(fixture, { mode: "online" })) =>
   new TufUpdateClient({
     trustRootDirectory: join(root, "trust"),
     stagingRoot: join(root, "staging"),
     trustedRoot: fixture.trustedRoot,
-    source: new FixtureDistributionSource(fixture, { mode: "online" }),
+    source,
     chunkSize: 4096
   }).resolveAndStage({ platform: "win32", arch: "x64" });
 
-test("a successor sharing the predecessor's TUF metadataVersion cannot be staged over it (#387)", async () => {
+const rejectsAsVersionCollision = async (promise) =>
+  assert.rejects(promise, (error) => {
+    assert.equal(error.code, "VES_TUF_STALE_METADATA");
+    assert.equal(error.activationAllowed, false);
+    assert.match(error.message, /metadata version collision: timestamp version 1 was re-published/u);
+    return true;
+  });
+
+test("a successor sharing the predecessor's TUF metadataVersion fails as a named version collision (#387, #391)", async () => {
   const keys = createUpdateKeys();
   const predecessor = distinctRelease(1, "-a", keys);
   const successor = distinctRelease(1, "-b", keys);
@@ -124,15 +133,40 @@ test("a successor sharing the predecessor's TUF metadataVersion cannot be staged
   const root = await temporary();
   const first = await stageOverSharedInstall(root, predecessor);
   assert.equal(first.releaseDigest, predecessor.bundle.releaseDigest);
-  // Same metadataVersion over the cached install: the successor's own targets
-  // are never reached because the stale cached metadata resolves the
-  // predecessor's release-manifest hash, which the successor never serves. The
-  // fixture source reports the absent hash as a partial publish; the live HTTPS
-  // adapter reports the same collision as VES_TUF_SOURCE_HTTP via its 206 check
-  // (the failure the live-activation matrix recorded, #387).
+  const trustedTimestamp = await readFile(join(root, "trust", "timestamp.json"));
+
+  const source = new FixtureDistributionSource(successor, { mode: "online" });
+  await rejectsAsVersionCollision(stageOverSharedInstall(root, successor, source));
+  // The collision is named before a single target byte is requested, so it can
+  // no longer degrade into a misleading target-fetch failure.
+  assert.deepEqual(
+    source.reads.filter(({ kind }) => kind === "target"),
+    []
+  );
+  assert.equal(
+    source.reads.some(({ path }) => path === "timestamp.json"),
+    true
+  );
+  // Nothing the successor served was trusted in place of the cached view.
+  assert.deepEqual(await readFile(join(root, "trust", "timestamp.json")), trustedTimestamp);
+  assert.deepEqual(await readdir(join(root, "staging")), [predecessor.bundle.releaseDigest.slice("sha256:".length)]);
+});
+
+test("a version collision is still named when the cached snapshot must be re-fetched (#391)", async () => {
+  const keys = createUpdateKeys();
+  const predecessor = distinctRelease(1, "-a", keys);
+  const successor = distinctRelease(1, "-b", keys);
+  const root = await temporary();
+  await stageOverSharedInstall(root, predecessor);
+  // Without its cached snapshot the client re-fetches `1.snapshot.json`, which
+  // the successor serves with different bytes than the trusted timestamp pins:
+  // refresh fails after the timestamp step, and the cause is still the reused
+  // version rather than a bare integrity failure.
+  await rm(join(root, "trust", "snapshot.json"));
   await assert.rejects(stageOverSharedInstall(root, successor), (error) => {
-    assert.equal(error.code, "VES_TUF_PARTIAL_PUBLISH");
-    assert.match(error.cause?.message ?? "", /release\.json/u);
+    assert.equal(error.code, "VES_TUF_STALE_METADATA");
+    assert.match(error.message, /metadata version collision/u);
+    assert.notEqual(error.cause, undefined);
     return true;
   });
 });
@@ -148,6 +182,11 @@ test("a successor with an incremented TUF metadataVersion stages cleanly over it
   await stageOverSharedInstall(root, predecessor);
   const updated = await stageOverSharedInstall(root, successor);
   assert.equal(updated.releaseDigest, successor.bundle.releaseDigest);
+  // The negative control for the collision check: a genuine increment replaces
+  // the trusted timestamp instead of tripping VES_TUF_STALE_METADATA.
+  const persisted = JSON.parse(await readFile(join(root, "trust", "timestamp.json"), "utf8"));
+  assert.equal(persisted.signed.version, 2);
+  assert.deepEqual(await readFile(join(root, "trust", "timestamp.json")), successor.metadata.get("timestamp.json"));
 });
 
 // #393. After a successor advances the shared metadata cache, staging the
