@@ -30,9 +30,10 @@
 // Fail-closed contract: a missing or malformed key, an invalid base URL, a
 // closure whose targets disagree on release identity, a target count other
 // than five, a rollback index that does not seal a distinct prior release for
-// every target, a trust root that differs across targets, or any digest that
-// contradicts the sealed bytes stops the run before a single publication byte
-// is written.
+// every target, a trust root that differs across targets, a metadata version
+// that does not strictly exceed every version the committed publication ledger
+// records for the same root (#387), or any digest that contradicts the sealed
+// bytes stops the run before a single publication byte is written.
 
 import { createHash, createPrivateKey, createPublicKey, sign as signBytes } from "node:crypto";
 import { lstat, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
@@ -45,9 +46,11 @@ import { canonicalizeJsonV2 } from "../packages/domain/src/index.ts";
 import {
   buildReleaseCandidate,
   buildTufReleasePublication,
+  buildTufTrustedRoot,
   verifyHermeticDistributionBundle,
   writeTufReleasePublication
 } from "../packages/distribution/src/index.ts";
+import { assertMonotonicMetadataVersion, readPublicationLedger } from "./tuf-publication-ledger.mjs";
 
 /** The offline environment name that carries root and targets signing authority. */
 export const KEY_ENVIRONMENT_NAME = "VESTRA_RELEASE_SIGNING_KEY_PKCS8_BASE64";
@@ -75,7 +78,8 @@ export const MANUAL_UPLOAD_STEPS = Object.freeze([
   "Verify each uploaded object's sha256 against targets[].assets[].contentDigest before serving anything.",
   "Confirm the endpoint serves timestamp.json uncached, hash-named files with long-lived caching, no redirects, no content-encoding on metadata, and exact 206 byte ranges on targets.",
   "Run the verification launcher package (node bin/vestra.mjs --version) against the live endpoint before publishing anything.",
-  "Build the npm package with build:vestra-launcher --release-inputs release-inputs and run npm publish by hand; no workflow publishes."
+  "Build the npm package with build:vestra-launcher --release-inputs release-inputs and run npm publish by hand; no workflow publishes.",
+  "Once the release is live, append a release entry for it (releaseId, semanticVersion, baseUrl, rootDigest, rootVersion, metadataVersion from this manifest) to docs/qualification/tuf-publication-ledger.json in a reviewed pull request; the next publication is checked against it."
 ]);
 
 const VIEW_MODES = Object.freeze(["air-gapped", "mirror", "offline", "online"]);
@@ -368,11 +372,12 @@ const validateBaseUrl = (value) => {
   return url.href;
 };
 
-const validateMetadataVersion = (value) => {
-  const version = value ?? 1;
-  if (!Number.isSafeInteger(version) || version <= 0)
-    fail("VES_T76_PUBLISH_INPUT_INVALID", "metadataVersion must be a positive integer");
-  return version;
+// why: no default. A silent fallback to 1 is what let 0.0.0-qualification.2
+// reuse v1's metadata version (#387), so every caller states both versions.
+const validateVersion = (value, label) => {
+  if (!Number.isSafeInteger(value) || value <= 0)
+    fail("VES_T76_PUBLISH_INPUT_INVALID", `${label} must be an explicit positive integer`);
+  return value;
 };
 
 const validateOptions = (value) => {
@@ -386,9 +391,10 @@ const validateOptions = (value) => {
     expires: text(input.expires, "expires", INSTANT),
     timestampExpires:
       input.timestampExpires === undefined ? undefined : text(input.timestampExpires, "timestampExpires", INSTANT),
-    metadataVersion: validateMetadataVersion(input.metadataVersion),
-    rootVersion: validateMetadataVersion(input.rootVersion ?? 1),
+    metadataVersion: validateVersion(input.metadataVersion, "metadataVersion"),
+    rootVersion: validateVersion(input.rootVersion, "rootVersion"),
     rollbackIndexPath: absolutePath(input.rollbackIndexPath, "rollbackIndexPath"),
+    ledgerPath: input.ledgerPath === undefined ? undefined : absolutePath(input.ledgerPath, "ledgerPath"),
     protectedEnvironment: record(input.protectedEnvironment ?? {}, "protectedEnvironment"),
     releaseAnchorPath:
       input.releaseAnchorPath === undefined ? undefined : absolutePath(input.releaseAnchorPath, "releaseAnchorPath"),
@@ -659,24 +665,39 @@ const candidateFor = (options, bundle, buildInfo, manifestBytes, rollback) => {
   }
 };
 
+// Role-separated authority (#18, F1): the offline release key signs root and
+// targets; the online key signs timestamp and snapshot.
+const rootInputsFor = (options, signing) => ({
+  rootVersion: options.rootVersion,
+  expires: roleExpiries(options.expires, options.timestampExpires),
+  roles: {
+    root: { threshold: 1, signers: [signing.release] },
+    targets: { threshold: 1, signers: [signing.release] },
+    timestamp: { threshold: 1, signers: [signing.timestamp] },
+    snapshot: { threshold: 1, signers: [signing.timestamp] }
+  },
+  consistentSnapshot: true
+});
+
 const publicationFor = (options, signing, candidate, componentBytes) =>
   buildTufReleasePublication({
     schemaVersion: 1,
     candidate,
     componentBytes,
     metadataVersion: options.metadataVersion,
-    rootVersion: options.rootVersion,
-    expires: roleExpiries(options.expires, options.timestampExpires),
-    // Role-separated authority (#18, F1): the offline release key signs root and
-    // targets; the online key signs timestamp and snapshot.
-    roles: {
-      root: { threshold: 1, signers: [signing.release] },
-      targets: { threshold: 1, signers: [signing.release] },
-      timestamp: { threshold: 1, signers: [signing.timestamp] },
-      snapshot: { threshold: 1, signers: [signing.timestamp] }
-    },
-    consistentSnapshot: true
+    ...rootInputsFor(options, signing)
   });
+
+// why: the ledger is keyed by the pinned root digest, which only exists once the
+// root envelope is signed. That one in-memory root signature is the only one
+// made before this check: no timestamp, snapshot, or targets metadata is signed
+// and no output byte is written until the metadata version is proven strictly
+// greater than every version the ledger records for the same root (#387).
+const assertLedgerAdmits = (ledger, options, signing) => {
+  const rootDigest = sha256(buildTufTrustedRoot(rootInputsFor(options, signing)));
+  assertMonotonicMetadataVersion(ledger, { rootDigest, metadataVersion: options.metadataVersion });
+  return rootDigest;
+};
 
 const assertPublicationBinding = (publication, bundle, metadataDigest) => {
   if (publication.releaseDigest !== bundle.releaseDigest)
@@ -776,9 +797,13 @@ const publishOneTarget = async (options, signing, target, rollbackProofs) => {
   });
 };
 
-const assertSingleTrustRoot = (published) => {
-  if (new Set(published.map((item) => sha256(Buffer.from(item.trustedRoot)))).size !== 1)
+const assertSingleTrustRoot = (published, checkedRootDigest) => {
+  const digests = new Set(published.map((item) => sha256(Buffer.from(item.trustedRoot))));
+  if (digests.size !== 1)
     fail("VES_T76_PUBLISH_ROOT_INCONSISTENT", "the published targets do not share exactly one trust root");
+  // invariant: the root every target carries is the root the ledger check keyed.
+  if (!digests.has(checkedRootDigest))
+    fail("VES_T76_PUBLISH_ROOT_INCONSISTENT", "the published trust root is not the root the ledger check admitted");
 };
 
 const manifestFor = (options, signing, identity, published, rootDigest) => ({
@@ -807,6 +832,7 @@ const manifestFor = (options, signing, identity, published, rootDigest) => ({
  */
 export async function publishT76Release(rawOptions) {
   const options = validateOptions(rawOptions);
+  const ledger = await readPublicationLedger(options.ledgerPath);
   // Two role-separated signers (#18, F1): the offline key signs root and targets,
   // the online key signs timestamp and snapshot. Each is bound to its own reviewed
   // anchor before any output exists, so neither a wrong key nor a swapped role can
@@ -822,6 +848,7 @@ export async function publishT76Release(rawOptions) {
     fail("VES_T76_PUBLISH_KEY_MISMATCH", "the timestamp signing key does not match the reviewed timestamp anchor");
   if (signing.release.keyId === signing.timestamp.keyId)
     fail("VES_T76_PUBLISH_KEY_MISMATCH", "the release and timestamp signing keys must be different keys");
+  const checkedRootDigest = assertLedgerAdmits(ledger, options, signing);
   await assertOutputAbsent(options.outputDirectory);
   const index = validateIndex(await readCanonicalJson(options.indexPath, "target index"), options.revision);
   const entries = index.targets.map((entry, position) =>
@@ -837,7 +864,7 @@ export async function publishT76Release(rawOptions) {
   await mkdir(options.outputDirectory, { recursive: false, mode: 0o700 });
   const published = [];
   for (const target of bound) published.push(await publishOneTarget(options, signing, target, rollbackProofs));
-  assertSingleTrustRoot(published);
+  assertSingleTrustRoot(published, checkedRootDigest);
   const rootDigest = await writeReleaseInputs(options, identity, published[0].trustedRoot);
   const manifest = manifestFor(
     options,
@@ -900,11 +927,15 @@ const runCli = async () => {
     timestampExpires: optionalArgument(args, "--timestamp-expires", undefined),
     // Required, no default: two releases sharing a TUF metadata version collide
     // in the update client's consistent-snapshot cache and cannot be updated over
-    // one another (#387). The operator states it, and it must strictly exceed the
-    // prior publication's.
+    // one another (#387). The operator states it, and the committed publication
+    // ledger refuses it unless it strictly exceeds every version recorded for the
+    // same root.
     metadataVersion: Number(argument(args, "--metadata-version")),
     rootVersion: Number(optionalArgument(args, "--root-version", "1")),
     rollbackIndexPath: argument(args, "--rollback-index"),
+    // why: omitted by the release workflow, so a live publication is always
+    // checked against the committed ledger; overridable only for tests.
+    ledgerPath: optionalArgument(args, "--ledger", undefined),
     // Omitted by the release workflow, so a live publication is always bound to
     // the committed anchors; overridable only for tests that sign with throwaway
     // keys.
