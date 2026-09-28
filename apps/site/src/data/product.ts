@@ -188,5 +188,5 @@ export const notToday: readonly string[] = [
   "It does not make unapproved paid model calls - a missing provider reports not configured, never a silent pass.",
   "It does not treat CI as human review - acceptance is an explicit human decision recorded as evidence.",
   "It does not call same-author checks independent verification - that distinction is stated, not blurred.",
-  "It does not expose unqualified commands - the installed CLI advertises init, self-test, and doctor and nothing else."
+  "It does not expose unqualified commands - the installed CLI advertises init, self-test, doctor, and secret and nothing else, and secret reports not configured on any platform without a qualified credential store."
 ] as const;

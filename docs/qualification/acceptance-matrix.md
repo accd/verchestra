@@ -120,7 +120,7 @@ defensibly have been two rows:
 | J06 | Work I started under one AI backend finishes under a different one, unchanged. | Proven |
 | J07 | A sealed Execution Package survives a move between machines with different local keys. | Proven |
 | J08 | I can prove my installation actually works, without a repository checkout. | Proven, with one recorded defect (#370) |
-| J09 | I ask what is wrong with this machine and get an actionable, path-free report. | Proven — and cannot report `PASS` until a secret backend (#379) |
+| J09 | I ask what is wrong with this machine and get an actionable, path-free report. | Proven — secret presence observable on macOS since #379; still `blocked` on Linux and Windows |
 | J10 | I restore a machine from an encrypted bundle, and send diagnostics without leaking my paths. | Proven deterministically; live restore recorded on all 5 (run 33087399859) |
 | J11 | I turn a revision into a signed, reproducible release a stranger can verify from a public endpoint. | Proven deterministically; performed live once |
 | J12 | A third party verifies the evidence behind a release without any access to this repository. | Proven; custody is single-operator |
@@ -291,16 +291,27 @@ one remains:
   in `tests/build/sealed-launcher-closure.test.mjs:295`.
 - **secret-presence — the remaining blocker
   ([#379](https://github.com/accd/verchestra/issues/379)).**
-  `doctor.secret-presence` is `absent` → `blocked` because no production
-  `SecretAdapter` exists to observe: the only real adapter,
-  `QualifiedOsSecretAdapter`, needs an OS keychain bridge
-  (`packages/platform-node/src/secret-broker.ts`) that the product does not yet
-  construct. `packages/application/src/doctor/doctor-facts.ts:56` maps `absent` to
-  `blocked`, and `doctor.ts:195` computes `PASS` only when nothing is `blocked`.
+  `doctor.secret-presence` was `absent` → `blocked` because no production
+  `SecretAdapter` existed to observe. `packages/application/src/doctor/doctor-facts.ts:56`
+  maps `absent` to `blocked`, and `doctor.ts:195` computes `PASS` only when
+  nothing is `blocked`.
 
-So `doctor` still cannot report `PASS` on a real machine — but the reason is now
-the missing secret backend (#379), not the circular release digest, and a
-sealed-mode doctor verdict is now asserted where before none was.
+  **Note added by #379 (after this matrix's recorded revision):** a qualified
+  macOS credential backend now exists
+  (`docs/qualification/os-secret-backend-darwin.md`, AD-034). In an initialized
+  Workspace, `vestra secret set --name anthropic-api-key` binds the credential
+  in the keychain, and deep doctor observes its presence without reading it.
+  `tests/integration/doctor-secret-backend.test.mjs` asserts `pass` when bound,
+  `blocked` when unbound, and `fail` when the store cannot answer.
+  `tests/e2e/secret-cli-e2e.test.mjs` asserts `pass` through the real binary
+  against a disposable keychain. Linux and Windows have no qualified credential
+  store, so the check stays `blocked` there. A full `PASS` verdict on a
+  provisioned macOS machine has not been observed end to end in this matrix.
+
+So on Linux and Windows `doctor` still cannot report `PASS` on a real machine,
+and the reason is the missing credential backend (#379), not the circular
+release digest. On macOS that blocker is removed for a Workspace with a bound
+credential. A sealed-mode doctor verdict is now asserted where before none was.
 
 ### 2.10 J10 — Recover a machine, and send diagnostics safely
 
@@ -642,6 +653,11 @@ to observe (`secret-broker.ts`), so it stays `blocked`, and because `doctor.ts:1
 reaches `PASS` only when nothing is `blocked`, `doctor` stays `BLOCKED`. Tracked
 as #379. A 1.0 decision that promises a working `doctor` must either accept a
 permanently `BLOCKED` verdict until #379 ships, or scope the promise accordingly.
+
+**Update from #379:** the macOS half has shipped as a qualified keychain
+credential backend (`docs/qualification/os-secret-backend-darwin.md`). On
+macOS, a Workspace with `anthropic-api-key` bound no longer blocks this check.
+Linux and Windows still do, until each has its own qualified store.
 
 **L3. `gate:release` was historically vacuous and its closure must be
 re-checked.** `docs/audits/2026-08-verchestra-product-repository-audit.md:47`

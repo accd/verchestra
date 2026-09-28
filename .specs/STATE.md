@@ -391,6 +391,51 @@ note. -->
   signed is still the owner's call; this records the definition the validator
   enforces so a promote's signature is accountable rather than decorative.
 
+### AD-034 — Readable provider credentials get their own qualified contract; key material keeps non-exportable (#379)
+
+- **Status:** proposed (the owner ratifies by reviewing the pull request that
+  carries `feat/os-secret-backend`).
+- **Decision:** Two qualified OS-store contracts, not one relaxed contract.
+  `OS_SECRET_CONTROLS` (key material: signing and recipient keys) is
+  unchanged and still requires `non-exportable` on darwin and win32. A new
+  `OS_CREDENTIAL_CONTROLS` governs **readable provider credentials** — API keys
+  a governed task injects into a child process. Its vocabulary claims only what
+  is true: `keychain`, `user-scope`, `workspace-namespace`, `not-in-argv`,
+  `presence-without-value`. `QualifiedOsCredentialAdapter` enforces it, and
+  only darwin has a contract (`docs/qualification/os-secret-backend-darwin.md`,
+  bound by digest). The backend is `/usr/bin/security`, with a write path that
+  passes the hex-encoded value over stdin to `security -i`.
+- **Rationale:** An API key must be readable, so claiming `non-exportable` for
+  it would be false. Admitting such a store under the key-material contract
+  would quietly weaken the guarantee every key-material caller relies on. A
+  separate contract keeps both honest, and a test proves that credential
+  evidence cannot qualify the key-material adapter. `access-control` is not
+  claimed either: an item created with `-T /usr/bin/security` is readable,
+  without a prompt, by any same-user process that runs that tool.
+- **Keychain selection:** an explicit per-invocation `--keychain <path>` option
+  on `secret set|status|delete` and `doctor`, not an environment variable. The
+  README records that the launcher "deliberately reads no environment
+  variable" so ambient state cannot redirect a trust input. A credential source
+  is a trust input: #405 injects whatever it returns into a provider child. A
+  flag is visible on the command line and in the output (`keychain:
+  explicit`), and the path is proven to be a user-owned keychain file before
+  every operation. Tests use the same flag with a disposable keychain, so no
+  hidden test seam exists.
+- **Measured constraints adopted as invariants:** `add-generic-password`
+  silently falls back to the login keychain for an unusable path; `security -i`
+  splits lines over 4095 bytes and echoes the tail; `-w` output is ambiguous
+  hex; `-U` combined with `-T` raises an access-list approval dialog. Hence:
+  a file check before every operation, a value budget derived from the line
+  limit (`MAX_CREDENTIAL_VALUE_BYTES`), reads with `-g`, and rotation as delete
+  then add (non-atomic, reported as `VES_SECRET_ROTATION_INCOMPLETE`). Every
+  spawn is bounded, and a timeout is `VES_SECRET_KEYCHAIN_INTERACTION_REQUIRED`.
+- **Consequences:** `.specs/features/os-secret-backend/`. Deep doctor observes
+  `anthropic-api-key` through a presence-only closure, so a bound credential on
+  macOS removes L2's remaining blocker there. Linux (Secret Service) and Windows
+  stay unqualified and report `not configured` until each has its own
+  qualification report. The maximum value is 1416 bytes, not 8 KiB, because the
+  line limit dictates it.
+
 ### AD-036 — A superseded, retained release re-activates locally; a remote downgrade still fails (#393)
 
 - **Status:** proposed (owner ratifies by reviewing the pull request that
@@ -448,6 +493,12 @@ note. -->
 
 ## Handoff
 
+- **Feature:** `os-secret-backend` (#379) on `feat/os-secret-backend`.
+- **Completed:** qualified macOS keychain credential backend (AD-034),
+  `vestra secret set|status|delete`, and deep doctor's presence-only
+  `anthropic-api-key` check. See `.specs/features/os-secret-backend/handoff.md`.
+- **Next:** independent review; the owner binds the credential on a
+  provisioned macOS machine and records a `doctor --deep` verdict.
 - **Reconciliation (2026-09-29, #407):** The feature handoffs were audited
   against their source reports. The per-file evidence is in
   `.specs/features/handoff-reconciliation/validation.md`.
