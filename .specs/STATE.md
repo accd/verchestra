@@ -651,6 +651,43 @@ note. -->
     15 s budget;
   - Linux needs `/usr/bin/secret-tool` and `/usr/bin/dbus-send`.
 
+### AD-034 — Claude Code implements through a mediated MCP tool bridge over an authenticated Unix socket (#405)
+
+- **Status:** proposed (owner decision that Claude Code is the implementer and
+  Codex the verifier is recorded in #405; the channel design is ratified by
+  reviewing the pull request that carries it).
+- **Context:** The T03 Claude Code profile disables every built-in tool and
+  loads no MCP server, so it cannot change files. Enabling Claude Code's own
+  Edit/Write tools would let the model write without the executor's scope,
+  protected-path, capability-grant, and tool-effect authority checks. Claude
+  Code launches MCP servers itself as stdio children, so Verchestra cannot hand
+  the bridge an inherited file descriptor.
+- **Decision:** Claude Code runs with `--tools ""` and a strict MCP
+  configuration naming one server, `verchestra`, whose process is a thin relay
+  (`packages/agent-runtime/src/execution/mcp-tool-bridge.ts`). The relay speaks
+  MCP JSON-RPC 2.0 on stdio and forwards `tools/call` to the controller over a
+  Unix domain socket created in a fresh per-run `0700` directory. The relay
+  must first present a 256-bit random token (from its MCP-config environment,
+  written `0600` inside the per-run `0700` Claude config directory, never in
+  argv); the controller compares it in constant time, accepts exactly one
+  authenticated connection, and serves nothing before authentication. All
+  authority stays in the controller: read tools are confined to the worktree
+  and the approved read scope; `write_file`/`delete_file` become
+  `control.invokeTool` requests whose content travels as a
+  `payload:sha256:<hex>` reference, so the executor re-checks scope, protected
+  paths, capability grant, and tool-effect authority before
+  `ExecutionToolPort` writes.
+- **Alternatives rejected:** Claude Code built-in tools with permission rules
+  (the executor would not see the effect before it happens); loopback TCP with a
+  token (reachable by every local user, port races); an inherited descriptor
+  (not offered by Claude Code's MCP launcher); putting authority in the relay
+  (it runs in the model's process tree).
+- **Consequence:** The T03 profile is requalified as a new `mediated-mcp`
+  profile (`docs/qualification/claude-code-driver-mediated.md`); the original
+  profile and its report are unchanged. Only macOS/Linux sockets are in scope;
+  Windows reports not configured. Same-user processes remain out of the threat
+  model (see `.specs/features/governed-task-cli/threat-model.md`).
+
 ## Handoff
 
 - **Feature:** `init-probe-scaffold` (#234) on `feat/234-init-probe-scaffold`,
