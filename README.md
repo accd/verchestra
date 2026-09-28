@@ -87,7 +87,7 @@ Full reports live under [docs/qualification/](docs/qualification/) and on the
 - It does not make unapproved paid model calls - a missing provider reports `not configured`, never a silent pass.
 - It does not treat CI as human review - acceptance is an explicit human decision recorded as evidence.
 - It does not call same-author checks independent verification - that distinction is stated, not blurred.
-- It does not expose unqualified commands - the installed CLI advertises `init`, `self-test`, and `doctor` and nothing else.
+- It does not expose unqualified commands - the installed CLI advertises `init`, `self-test`, `doctor`, and `secret` and nothing else, and `secret` reports `not configured` on any platform without a qualified credential store.
 
 ## How it fits together
 
@@ -172,6 +172,33 @@ repository checkout anywhere in the journey.
 > location fails with `VES_CLI_COMMAND_FAILED`. Run the command from a project
 > directory until the fix ships. Tracked as
 > [issue #370](https://github.com/accd/verchestra/issues/370).
+
+### Bind a provider credential (macOS)
+
+Governed work that calls a provider reads its API key from the operating
+system's credential store, never from an ambient environment variable, and
+injects it only into the child process that needs it. On macOS that store is
+your keychain. Run these from the root of an initialized Workspace (`init`):
+
+```bash
+npx verchestra secret set --name anthropic-api-key
+npx verchestra secret status --name anthropic-api-key
+npx verchestra secret delete --name anthropic-api-key
+```
+
+`secret set` reads the value from standard input. In a terminal it prompts
+without echoing. From a pipe it takes the whole input and strips one trailing
+newline. It accepts printable ASCII without whitespace, up to the documented
+size limit, and never prints the value. `secret status` reports presence only.
+Each credential is bound to its Workspace: the keychain item's service is
+`verchestra/<workspaceId>`. `--keychain <path>` selects a keychain file you own
+instead of your default keychain. `doctor --deep` checks that
+`anthropic-api-key` is bound, and reports `blocked`, not `pass`, until it is.
+
+Linux and Windows have no qualified credential store yet. There, every
+`secret` command reports `VES_SECRET_STORE_UNQUALIFIED`. The qualification and
+its limits are in
+[docs/qualification/os-secret-backend-darwin.md](docs/qualification/os-secret-backend-darwin.md).
 
 ### Managed state, recovery, and cleanup
 
