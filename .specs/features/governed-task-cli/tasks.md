@@ -43,7 +43,7 @@ slice built on top of this branch by a separate change.
 | --- | --- | --- |
 | T0 | Done | This directory; AD-034 in `.specs/STATE.md` |
 | T1 | Done | `schemas/task-request/1.schema.json`, generated `TaskRequest`, `normalizeTaskRequest`; 42 contract + 6 security tests |
-| T2 | Pending | |
+| T2 | Done | Migration `012_execution_checkpoints`, `RuntimeStore.appendExecutionCheckpoint`/`latestExecutionCheckpoint`, `RuntimeCheckpointStore`; 15 integration tests; migration and public-error pins extended |
 | T3 | Pending | |
 | T4 | Pending | |
 | T5 | Pending | |

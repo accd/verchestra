@@ -115,6 +115,8 @@ export interface GateRepairPorts {
   }): Promise<void>;
 }
 
+export type GateRepairStatePort = Pick<GateRepairPorts, "loadState" | "saveState">;
+
 function normalizePolicy(value: unknown): GateRepairPolicy {
   if (value === undefined) return Object.freeze({ maxAttempts: 1, feedbackToDriver: false, escalateAfter: 1 });
   if (value === null || typeof value !== "object") fail("VES_REPAIR_INPUT_INVALID", "repair policy is invalid");

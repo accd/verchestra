@@ -264,6 +264,10 @@ interface GatePorts {
   };
 }
 
+// The gate/commit coordinator's durable checkpoint seam. Records are flat:
+// identity, gatePlanDigest, changeDigest, stage, and the stage's own fields.
+export type TaskGateCheckpointPort = GatePorts["checkpoints"];
+
 interface AtomicCommitRequest {
   readonly workspaceId: string;
   readonly runId: string;
