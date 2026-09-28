@@ -57,6 +57,26 @@ The launcher runs under your ambient Node **only as a bootstrap**. It:
 Ambient Node never runs product code. Your arguments cross the process
 boundary as an argument vector; no shell is involved.
 
+## Running an earlier release again
+
+After you move to a newer release, running the earlier package again
+(`npx verchestra@<earlier version>`) cannot re-resolve it: its signed metadata is
+older than what this machine now trusts, and TUF anti-rollback refuses it with
+`VES_TUF_ROLLBACK`. That refusal is deliberate and is never relaxed.
+
+Instead, when this machine already verified, installed, and activated that exact
+release under the **same** pinned trust root, and a newer release verified under
+that root has since superseded it, the launcher re-activates the retained
+release from its installed bytes without contacting any source. It re-hashes
+every installed component against the release's recorded digests, re-runs the
+activation health gate, and switches the active pointer transactionally. A
+missing, altered, or differently rooted release is refused rather than fetched.
+The release you most recently moved to always resolves through TUF as before.
+
+The published `0.0.0-qualification` and `0.0.0-qualification.2` packages predate
+this path and do not record what it needs. A release this machine never
+installed still has to come from a new signed publication.
+
 ## What travels in this package
 
 Seven files: one bundled JavaScript module, the bin shim, the pinned public
@@ -99,6 +119,10 @@ install, the trust anchor, and the `active.json` pointer:
 That location is derived from the home directory and the platform alone; no
 environment variable selects it, so redirecting `LOCALAPPDATA` or
 `XDG_STATE_HOME` neither moves it nor redirects a trust root or a release.
+
+The install directory also keeps each release that was activated there, with a
+record of the trust root that verified it; that is what lets an earlier release
+run again. Deleting the state root removes them all.
 
 To recover from a failed run, run the command again — activation is
 transactional and converges. If activation keeps failing, delete the managed
