@@ -453,7 +453,9 @@ function checkDecisionIdentities(fields, report) {
 // usable before dependencies are installed, so it cannot reach @verchestra/domain.
 // tests/agent-readiness/release-decision.test.mjs proves this equals
 // canonicalizeJsonV2 for the decision body shape.
-function canonicalJson(value) {
+// invariant: exported only so that proof can compare bytes directly; the census
+// admits this local copy solely on that proof (#395).
+export function canonicalJson(value) {
   if (value === null) return "null";
   if (typeof value === "boolean") return value ? "true" : "false";
   if (typeof value === "number" || typeof value === "string") return JSON.stringify(value);

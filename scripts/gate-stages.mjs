@@ -1,5 +1,16 @@
 export const GATE_STAGES = Object.freeze({
-  "gate:quick": ["format:check", "lint", "complexity:check", "typecheck", "test:unit", "test:agent-readiness"],
+  // why: the canonical-JSON census once ran only under security and release, so a
+  // script that gained a canonicalizer merged red on gate:quick alone (#395). The
+  // census is a sub-second static scan, so every change now pays for it.
+  "gate:quick": [
+    "format:check",
+    "lint",
+    "complexity:check",
+    "typecheck",
+    "test:unit",
+    "test:agent-readiness",
+    "test:census"
+  ],
   "gate:full": [
     "format:check",
     "lint",

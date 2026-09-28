@@ -952,7 +952,7 @@
         "localeCompare": 1,
         "serialization": 2
       },
-      "reason": "Verifies release-decision signatures (#18/B5): reconstructs the signed bytes as canonical JSON to check an Ed25519 signature, so its canonicalizer influences a trust decision and cannot use the presentation exception. It uses a node-builtins-only local canonicalizer (the agent-readiness script must not import workspace packages) proven byte-equal to canonicalizeJsonV2 by tests/agent-readiness/release-decision.test.mjs. Whether a proven-equivalent local canonicalizer is acceptable here, or the file should import the shared V2 canonicalizer, is the open policy question tracked in #395."
+      "reason": "Verifies release-decision signatures (#18/B5): reconstructs the signed bytes as canonical JSON to check an Ed25519 signature, so its canonicalizer influences a trust decision and cannot use the presentation exception. Proven local canonicalizer (#395, docs/canonical-json-compatibility.md): importing canonicalizeJsonV2 is forbidden here because pnpm agent:context must stay node-builtins-only and usable before install, so it inlines an RFC 8785 encoder whose bytes are proven equal to canonicalizeJsonV2 by tests/agent-readiness/release-decision.test.mjs, which signs fixtures with canonicalizeJsonV2 and requires this verifier to accept them."
     },
     {
       "path": "scripts/build-vestra-launcher.mjs",
