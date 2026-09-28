@@ -81,6 +81,44 @@ A raw-byte digest is not a canonical JSON exception: it hashes already-defined
 bytes or a fixed primitive rather than a locally canonicalized structured
 value.
 
+### Proven local canonicalizers
+
+A `migrated-v2` source imports `canonicalizeJsonV2`. It may define its own
+canonicalizer instead only when both conditions hold (#395):
+
+1. **Importing the package is forbidden for that source.** A preference or a
+   convenience does not qualify; the constraint must be a stated repository
+   rule. The only current case is `scripts/agent-readiness.mjs`, which verifies
+   release-decision signatures and must keep a node-builtins-only import graph
+   so that `pnpm agent:context` stays read-only and usable before dependencies
+   are installed.
+2. **A byte-equality proof test exists and the census reason names it.** The
+   test must compare the local encoder's output with `canonicalizeJsonV2` byte
+   for byte, over the value shapes the source canonicalizes. For
+   `scripts/agent-readiness.mjs` that test is
+   `tests/agent-readiness/release-decision.test.mjs`, which asserts direct
+   equality and also verifies signatures produced over `canonicalizeJsonV2`
+   bytes.
+
+The census enforces this mechanically. `scripts/canonical-json-census.mjs`
+keeps a closed allowlist that maps each proven local canonicalizer to its proof
+test. The census security test (also run by `gate:quick` as `test:census`)
+rejects three cases: a `migrated-v2` source that defines a canonicalizer
+without importing `canonicalizeJsonV2` and is not allowlisted; an allowlisted
+source whose census reason does not name its proof test; and a stale allowlist
+entry whose source no longer needs the exception. A comment that merely names
+`canonicalizeJsonV2` does not count as an import. The V2 reference encoder in
+`packages/domain/src/canonical/canonical-json.ts` defines the function, so it
+is the only source outside the rule. The check detects definitions named
+`canonical`, `canonicalize*`, or `canonicalJson*`, the same vocabulary the
+census canonicalizer signal uses. A source that imports the V2 encoder and also
+defines a second, independent encoder is outside the check's reach. Review
+still owns that case.
+
+A change to any inventoried source selects `gate:security` in
+`scripts/gate-selection.mjs`. So does a change to the census itself, this
+document, or the census scripts.
+
 The scanner keeps only the following closed scope exclusions for serializations
 that are not product identities: build-time diagnostics, test and fake-driver
 fixtures, an ephemeral Self-Test child handoff, driver protocol frames, and

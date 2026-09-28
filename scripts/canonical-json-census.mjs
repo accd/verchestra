@@ -37,6 +37,20 @@ const PRESENTATION_OR_FIXTURE_PATHS = new Set([
   "scripts/gate-selection.mjs",
   "scripts/generate-contract-types.mjs"
 ]);
+// invariant: a migrated-v2 source that defines its own canonicalizer instead of
+// importing canonicalizeJsonV2 is admissible only where importing the package is
+// forbidden, and only with a byte-equality proof test that its census reason
+// names (docs/canonical-json-compatibility.md, "Proven local canonicalizers").
+// Each entry maps the source to that proof test; the list is closed.
+export const PROVEN_LOCAL_CANONICALIZERS = Object.freeze(
+  new Map([["scripts/agent-readiness.mjs", "tests/agent-readiness/release-decision.test.mjs"]])
+);
+// why: the V2 reference encoder defines canonicalizeJsonV2 rather than importing it.
+const V2_REFERENCE_IMPLEMENTATION = "packages/domain/src/canonical/canonical-json.ts";
+const LOCAL_CANONICALIZER_DEFINITION =
+  /(?:function\s+|(?:const|let)\s+)canonical(?:ize[A-Za-z0-9]*|Json[A-Za-z0-9]*)?\s*[=(]/u;
+// hazard: a comment that merely names canonicalizeJsonV2 must not count as using it.
+const V2_IMPORT = /^\s*import\s*\{[^}]*\bcanonicalizeJsonV2\b[^}]*\}\s*from\s*["'][^"']+["']/mu;
 const PRESENTATION_OR_FIXTURE_REASON =
   "Closed presentation, fixture, or repository-diagnostic ordering only; not a trust or persistent identity.";
 const DETECTORS = Object.freeze({
@@ -132,5 +146,47 @@ export function validateCensusInventory(candidates, inventory) {
     missingPaths: sorted([...candidateByPath.keys()].filter((path) => !seen.has(path))),
     signalMismatches: sorted(new Set(signalMismatches)),
     stalePaths: sorted(new Set(stalePaths))
+  });
+}
+
+export function localCanonicalizerFacts(source) {
+  return Object.freeze({
+    definesLocal: LOCAL_CANONICALIZER_DEFINITION.test(source),
+    importsV2: V2_IMPORT.test(source)
+  });
+}
+
+// why: the census test binds every entry's signals to the live source, so the
+// inventory, not a second scan, decides which files carry a canonicalizer.
+export async function collectLocalCanonicalizerFacts(root, inventory) {
+  const entries = Array.isArray(inventory?.entries) ? inventory.entries : [];
+  const facts = [];
+  for (const entry of entries) {
+    if (entry.classification !== "migrated-v2" || !(entry.signals?.canonicalizer > 0)) continue;
+    facts.push({ path: entry.path, ...localCanonicalizerFacts(await readFile(join(root, entry.path), "utf8")) });
+  }
+  return facts.sort((left, right) => (left.path < right.path ? -1 : left.path > right.path ? 1 : 0));
+}
+
+export function validateLocalCanonicalizers(facts, inventory, allowlist = PROVEN_LOCAL_CANONICALIZERS) {
+  const entries = Array.isArray(inventory?.entries) ? inventory.entries : [];
+  const reasonByPath = new Map(entries.map((entry) => [entry.path, entry.reason]));
+  const local = new Set(
+    facts
+      .filter((fact) => fact.definesLocal && !fact.importsV2 && fact.path !== V2_REFERENCE_IMPLEMENTATION)
+      .map((fact) => fact.path)
+  );
+  const unprovenPaths = [...local].filter((path) => !allowlist.has(path));
+  const unnamedProofPaths = [...allowlist]
+    .filter(([path]) => local.has(path))
+    .filter(([path, proof]) => typeof reasonByPath.get(path) !== "string" || !reasonByPath.get(path).includes(proof))
+    .map(([path]) => path);
+  // why: a closed allowlist must shrink when a source starts importing V2 or
+  // stops canonicalizing; a stale entry would pre-authorize a future local copy.
+  const staleAllowlistPaths = [...allowlist.keys()].filter((path) => !local.has(path));
+  return Object.freeze({
+    staleAllowlistPaths: sorted(staleAllowlistPaths),
+    unnamedProofPaths: sorted(unnamedProofPaths),
+    unprovenPaths: sorted(unprovenPaths)
   });
 }

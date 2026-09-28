@@ -9,6 +9,7 @@ import { test } from "node:test";
 import { canonicalizeJsonV2 } from "../../packages/domain/src/index.ts";
 import {
   RELEASE_DECISION_FILE,
+  canonicalJson,
   readReleaseDecisions,
   validateReleaseDecision
 } from "../../scripts/agent-readiness.mjs";
@@ -123,6 +124,32 @@ async function repositoryFixture(root) {
   commit(root, "register");
   return git(root, "rev-parse", "HEAD");
 }
+
+// The census admits agent-readiness.mjs's inlined canonicalizer only on a
+// byte-equality proof against the shared V2 encoder (#395). The signature test
+// below proves it for one fixture; this proves it over the orderings and scalars
+// a decision body can carry, including the code-unit member order JCS requires.
+test("the inlined decision canonicalizer is byte-equal to canonicalizeJsonV2", () => {
+  const values = [
+    {
+      claims: {
+        schema: "verchestra-release-decision/v1",
+        version: "1.0.0",
+        decision: "reject",
+        requirementsClosed: "93 of 93 requirements evidenced",
+        candidateRevision: SHA,
+        count: 93,
+        reviewedIn: null
+      },
+      bodyDigest: RELEASE_DIGEST
+    },
+    { "\uffff": 1, "\u{1f600}": 2, "\u00e9": 3, Z: 4, a: 5, "": 6, 10: 7, 9: 8 },
+    { quote: 'say "hi"\\', control: "\u0000\u001f\n\t", unicode: "caf\u00e9 \u2028 \u{1f600}" },
+    [0, -0, 1, -1, 0.1, 1e21, 1e-7, 123456789012345, Number.MAX_SAFE_INTEGER, true, false, null],
+    { nested: [{ b: [], a: {} }, [[["deep"]]]] }
+  ];
+  for (const value of values) assert.equal(canonicalJson(value), canonicalizeJsonV2(value));
+});
 
 test("a complete decision is accepted", () => {
   assert.deepEqual(validateReleaseDecision(decision(), "1.0.0", REPOSITORY), []);

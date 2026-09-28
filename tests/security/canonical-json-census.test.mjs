@@ -7,8 +7,12 @@ import { test } from "node:test";
 
 import {
   CENSUS_SCOPE_EXCLUSIONS,
+  PROVEN_LOCAL_CANONICALIZERS,
   collectCensusCandidates,
-  validateCensusInventory
+  collectLocalCanonicalizerFacts,
+  localCanonicalizerFacts,
+  validateCensusInventory,
+  validateLocalCanonicalizers
 } from "../../scripts/canonical-json-census.mjs";
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
@@ -216,4 +220,72 @@ test("the compatibility matrix names the canonical census and the ordered vertic
   // design and the scanner's own fingerprint helper keeps its V1 sites.
   assert.match(matrix, /What is \*not\*\s+claimed/u);
   assert.match(matrix, /V1-only\s+verification comparators are retained by design/u);
+});
+
+// #395: a migrated-v2 source may carry its own canonicalizer instead of importing
+// canonicalizeJsonV2 only where the import is forbidden and a named byte-equality
+// proof exists (docs/canonical-json-compatibility.md, "Proven local canonicalizers").
+test("every migrated-v2 local canonicalizer imports the V2 encoder or is a proven, allowlisted copy", async () => {
+  const census = await inventory();
+  const facts = await collectLocalCanonicalizerFacts(root, census);
+
+  assert.ok(facts.length > 0);
+  assert.deepEqual(validateLocalCanonicalizers(facts, census), {
+    staleAllowlistPaths: [],
+    unnamedProofPaths: [],
+    unprovenPaths: []
+  });
+  assert.deepEqual([...PROVEN_LOCAL_CANONICALIZERS.keys()], ["scripts/agent-readiness.mjs"]);
+  for (const [path, proof] of PROVEN_LOCAL_CANONICALIZERS) {
+    const entry = census.entries.find((candidate) => candidate.path === path);
+    assert.equal(entry?.classification, "migrated-v2", `${path} must stay a trust classification`);
+    assert.ok(entry.reason.includes(proof), `${path}'s census reason must name ${proof}`);
+    const source = await readFile(join(root, proof), "utf8");
+    assert.match(source, /import \{ canonicalizeJsonV2 \} from/u, `${proof} must compare against the V2 encoder`);
+    assert.ok(source.includes(`scripts/${path.split("/").at(-1)}`), `${proof} must exercise ${path}`);
+    assert.match(source, /assert\.equal\(canonicalJson\(value\), canonicalizeJsonV2\(value\)\)/u);
+  }
+});
+
+test("a local canonicalizer without the V2 import or an allowlisted proof is rejected", () => {
+  const path = "scripts/new-signer.mjs";
+  const census = {
+    entries: [{ path, classification: "migrated-v2", reason: "Signs a manifest.", signals: {} }]
+  };
+  const local = localCanonicalizerFacts(
+    "// canonicalizeJsonV2 is mentioned here but never imported.\nfunction canonicalJson(value) { return JSON.stringify(value); }\n"
+  );
+  assert.deepEqual(local, { definesLocal: true, importsV2: false });
+  assert.deepEqual(validateLocalCanonicalizers([{ path, ...local }], census, new Map()).unprovenPaths, [path]);
+
+  const imported = localCanonicalizerFacts(
+    'import {\n  canonicalizeJsonV2\n} from "@verchestra/domain";\nconst canonicalJson = (value) => canonicalizeJsonV2(value);\n'
+  );
+  assert.deepEqual(imported, { definesLocal: true, importsV2: true });
+  assert.deepEqual(validateLocalCanonicalizers([{ path, ...imported }], census, new Map()).unprovenPaths, []);
+});
+
+test("an allowlisted local canonicalizer must name its proof and the allowlist cannot go stale", () => {
+  const path = "scripts/new-signer.mjs";
+  const proof = "tests/agent-readiness/new-signer.test.mjs";
+  const local = { path, definesLocal: true, importsV2: false };
+  const allowlist = new Map([[path, proof]]);
+  const withReason = (reason) => ({ entries: [{ path, classification: "migrated-v2", reason, signals: {} }] });
+
+  assert.deepEqual(validateLocalCanonicalizers([local], withReason("Proven local copy."), allowlist), {
+    staleAllowlistPaths: [],
+    unnamedProofPaths: [path],
+    unprovenPaths: []
+  });
+  assert.deepEqual(validateLocalCanonicalizers([local], withReason(`Proven by ${proof}.`), allowlist), {
+    staleAllowlistPaths: [],
+    unnamedProofPaths: [],
+    unprovenPaths: []
+  });
+  // Once the source imports the V2 encoder, its exception must be removed.
+  assert.deepEqual(
+    validateLocalCanonicalizers([{ ...local, importsV2: true }], withReason(`Proven by ${proof}.`), allowlist)
+      .staleAllowlistPaths,
+    [path]
+  );
 });

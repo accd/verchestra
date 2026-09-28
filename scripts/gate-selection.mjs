@@ -4,7 +4,10 @@
 // being assumed harmless, because the failure this policy exists to prevent was
 // exactly a surface nobody had mapped.
 
+import { readFileSync } from "node:fs";
+
 export const ALWAYS_GATE = "gate:quick";
+export const CENSUS_GATE = "gate:security";
 
 // No single gate is a superset of the others: `build` carries contract,
 // integration, and e2e; `release` carries architecture, qualification,
@@ -52,13 +55,44 @@ const RULES = Object.freeze([
 
 export const QUALIFICATION_REPORT = /^docs\/qualification\/t\d+[a-z]?-validation\.md$/u;
 
-export function selectGates(changedPaths) {
+// why: a script that carries canonical-JSON signals sits under the scripts/
+// catch-all, which selects only gate:quick, so a canonicalizer that decides a
+// signature could change with no security review (#395). The census inventory is
+// the reviewed list of exactly those files, so it is the routing source, not a
+// second hand-kept path list. The census machinery and its policy are the same
+// surface.
+const CENSUS_SURFACE =
+  /^(?:docs\/canonical-json-(?:census\.json|compatibility\.md)|scripts\/canonical-json-census(?:-refresh)?\.mjs)$/u;
+
+// hazard: an unreadable or malformed census must fail selection loudly; treating
+// it as empty would silently drop every census path back to gate:quick.
+export function loadCensusPaths(url = new URL("../docs/canonical-json-census.json", import.meta.url)) {
+  const inventory = JSON.parse(readFileSync(url, "utf8"));
+  if (!Array.isArray(inventory?.entries)) throw new Error("canonical-JSON census has no entries array");
+  return new Set(inventory.entries.map((entry) => entry.path));
+}
+
+const DEFAULT_CENSUS_PATHS = loadCensusPaths();
+
+function selectCensusGate(path, censusPaths, selected, reasons) {
+  if (!censusPaths.has(path) && !CENSUS_SURFACE.test(path)) return;
+  selected.add(CENSUS_GATE);
+  if (!reasons.has(CENSUS_GATE)) reasons.set(CENSUS_GATE, "canonical-JSON census surface");
+}
+
+function censusPathsFrom(options) {
+  return options?.censusPaths ?? DEFAULT_CENSUS_PATHS;
+}
+
+export function selectGates(changedPaths, options) {
+  const censusPaths = censusPathsFrom(options);
   const selected = new Set([ALWAYS_GATE]);
   const reasons = new Map();
   const unmapped = [];
   for (const path of changedPaths) {
     const normalized = path.replaceAll("\\", "/").replace(/^\.\/+/u, "");
     if (normalized.length === 0) continue;
+    selectCensusGate(normalized, censusPaths, selected, reasons);
     if (CONSERVATIVE_PATH.test(normalized)) {
       for (const gate of CONSERVATIVE_GATES) {
         selected.add(gate);
