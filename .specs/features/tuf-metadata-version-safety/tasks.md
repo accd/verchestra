@@ -7,6 +7,6 @@
 2. **T2 (#387 follow-up)** — add the committed publication ledger, enforce
    strict monotonicity per root digest in the publish script before signing,
    remove the `?? 1` fallbacks, add the ledger contract test and publication
-   tests, and update the runbook and tuf-role-separation handoff. Status: pending.
+   tests, and update the runbook and tuf-role-separation handoff. Status: done.
 3. **T3** — run focused tests, `pnpm gate:quick`, `gate:build`, `gate:security`,
    `gate:release`, and `pnpm agent:check`; record results in `validation.md`.

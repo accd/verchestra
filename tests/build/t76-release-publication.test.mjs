@@ -16,6 +16,7 @@ import {
   TufUpdateClient
 } from "../../packages/distribution/src/tuf-update-client.ts";
 import { buildVestraLauncher } from "../../scripts/build-vestra-launcher.mjs";
+import { PUBLICATION_LEDGER_SCHEMA, ledgerEntryDigest } from "../../scripts/tuf-publication-ledger.mjs";
 import {
   MANUAL_UPLOAD_STEPS,
   SUPPORTED_TARGET_KEYS,
@@ -61,6 +62,9 @@ const optionsFor = (closure, environment, rollbackIndexPath) => {
     baseUrl: PUBLICATION_BASE_URL,
     revision: closure.revision,
     expires: PUBLICATION_EXPIRES,
+    // Both versions are explicit: library callers get no silent default (#387).
+    metadataVersion: 1,
+    rootVersion: 1,
     rollbackIndexPath,
     protectedEnvironment: environment,
     releaseAnchorPath: anchorFor(closure, release),
@@ -634,6 +638,198 @@ test("a signing-key failure carries no cause chain that could echo key material"
   assert.equal(error.code, "VES_T76_PUBLISH_SIGNING_KEY_INVALID");
   assert.equal(error.cause, undefined);
   assert.equal(error.message.includes("still"), false);
+});
+
+// ---------------------------------------------------------------------------
+// Monotonic metadata versions against the committed publication ledger (#387)
+// ---------------------------------------------------------------------------
+
+// A ledger file in the closure's own temporary root, hash-chained exactly like
+// the committed one. Each entry defaults to a release that records nothing but
+// what the test states.
+const writeLedger = async (directory, entries) => {
+  const chained = [];
+  for (const [index, entry] of entries.entries()) {
+    chained.push({
+      sequence: index + 1,
+      previousEntryDigest: index === 0 ? null : ledgerEntryDigest(chained[index - 1]),
+      kind: "release",
+      releaseId: null,
+      semanticVersion: `0.0.0-ledger.${index + 1}`,
+      baseUrl: null,
+      urlPrefix: null,
+      rootDigest: null,
+      rootDigestPrefix: null,
+      roles: { root: 1, snapshot: 1, targets: 1, timestamp: 1 },
+      publicationRunId: null,
+      evidence: ["docs/qualification/tuf-publication-ledger.json"],
+      ...entry
+    });
+  }
+  const path = join(directory, `publication-ledger-${entries.length}-${Date.now()}.json`);
+  await writeFile(
+    path,
+    `${JSON.stringify({ schema: PUBLICATION_LEDGER_SCHEMA, policy: "test ledger", entries: chained })}\n`
+  );
+  return path;
+};
+
+const recordedVersions = (version) => ({ root: 1, snapshot: version, targets: version, timestamp: version });
+
+// One lineage: a fixed key pair and horizon always derive the same pinned root,
+// so every publication below either shares it or deliberately does not.
+let lineage;
+const sharedLineage = async () => {
+  lineage ??= (async () => {
+    const keys = withKey();
+    const rollback = await sharedPrior();
+    const closure = await candidateClosure();
+    const manifest = await publishT76Release({
+      ...optionsFor(closure, keys, rollback.indexPath),
+      ledgerPath: await writeLedger(closure.root, [])
+    });
+    return { keys, rollback, rootDigest: manifest.rootDigest };
+  })();
+  return await lineage;
+};
+
+const publishOnLineage = async (metadataVersion, entries) => {
+  const { keys, rollback } = await sharedLineage();
+  const closure = await candidateClosure();
+  const options = {
+    ...optionsFor(closure, keys, rollback.indexPath),
+    metadataVersion,
+    ledgerPath: await writeLedger(closure.root, entries)
+  };
+  return { closure, publish: () => publishT76Release(options) };
+};
+
+const refusedAsNotMonotonic = async ({ closure, publish }, pattern) => {
+  await assert.rejects(publish, (error) => {
+    assert.equal(error.code, "VES_T76_PUBLISH_METADATA_VERSION_NOT_MONOTONIC");
+    assert.match(error.message, pattern);
+    return true;
+  });
+  // Refused before any release metadata is signed or any output byte exists.
+  await assert.rejects(() => readdir(closure.outputDirectory), { code: "ENOENT" });
+};
+
+test("the ledger refuses a metadataVersion equal to one it records for the same root", async () => {
+  const { rootDigest } = await sharedLineage();
+  await refusedAsNotMonotonic(
+    await publishOnLineage(3, [{ rootDigest, roles: recordedVersions(3) }]),
+    /metadataVersion 3 must be strictly greater than the snapshot version 3/u
+  );
+});
+
+test("the ledger refuses a metadataVersion lower than one it records for the same root", async () => {
+  const { rootDigest } = await sharedLineage();
+  await refusedAsNotMonotonic(
+    await publishOnLineage(2, [{ rootDigest, roles: recordedVersions(3) }]),
+    /metadataVersion 2 must be strictly greater/u
+  );
+});
+
+test("a timestamp/snapshot refresh entry raises the bar for the same root (#382 shape)", async () => {
+  const { rootDigest } = await sharedLineage();
+  await refusedAsNotMonotonic(
+    await publishOnLineage(4, [
+      { rootDigest, roles: recordedVersions(3) },
+      { kind: "role-refresh", rootDigest, roles: { snapshot: 5, timestamp: 5 } }
+    ]),
+    /strictly greater than the snapshot version 5 ledger entry 2/u
+  );
+});
+
+test("the ledger admits a metadataVersion strictly greater than every version it records for the same root", async () => {
+  const { rootDigest } = await sharedLineage();
+  const { closure, publish } = await publishOnLineage(4, [
+    { rootDigest, roles: recordedVersions(1) },
+    { rootDigest, roles: recordedVersions(3) }
+  ]);
+  const manifest = await publish();
+  assert.equal(manifest.metadataVersion, 4);
+  assert.equal(manifest.rootDigest, rootDigest);
+  const metadata = await readdir(join(closure.outputDirectory, "publication", "win32-x64", "metadata"));
+  assert.deepEqual(metadata.sort(), [
+    "4.components.json",
+    "4.snapshot.json",
+    "4.targets.json",
+    "root.json",
+    "timestamp.json"
+  ]);
+});
+
+test("a different root digest is an independent lineage", async () => {
+  const { rootDigest } = await sharedLineage();
+  const otherRoot = sha("an unrelated trust root");
+  assert.notEqual(otherRoot, rootDigest);
+  const { publish } = await publishOnLineage(1, [{ rootDigest: otherRoot, roles: recordedVersions(9) }]);
+  const manifest = await publish();
+  assert.equal(manifest.metadataVersion, 1);
+  assert.equal(manifest.rootDigest, rootDigest);
+});
+
+test("an unknown root digest whose recorded prefix admits this root binds it conservatively", async () => {
+  const { rootDigest } = await sharedLineage();
+  await refusedAsNotMonotonic(
+    await publishOnLineage(1, [
+      { rootDigestPrefix: rootDigest.slice(0, "sha256:".length + 8), roles: recordedVersions(1) }
+    ]),
+    /strictly greater/u
+  );
+});
+
+test("an unknown recorded version on a possibly shared root refuses the publication", async () => {
+  const { rootDigest } = await sharedLineage();
+  await refusedAsNotMonotonic(
+    await publishOnLineage(7, [{ rootDigest, roles: { root: 1, snapshot: 1, targets: null, timestamp: 1 } }]),
+    /unknown targets version/u
+  );
+});
+
+test("a malformed or broken-chain ledger is refused before any output", async () => {
+  const { keys, rollback, rootDigest } = await sharedLineage();
+  const closure = await candidateClosure();
+  const ledgerPath = await writeLedger(closure.root, [
+    { rootDigest, roles: recordedVersions(1) },
+    { rootDigest, roles: recordedVersions(2) }
+  ]);
+  const ledger = JSON.parse(await readFile(ledgerPath, "utf8"));
+  // Rewriting a recorded version breaks the chain the next entry carries.
+  ledger.entries[0].roles.targets = 5;
+  await writeFile(ledgerPath, JSON.stringify(ledger));
+  await assert.rejects(() => publishT76Release({ ...optionsFor(closure, keys, rollback.indexPath), ledgerPath }), {
+    code: "VES_T76_PUBLISH_LEDGER_INVALID"
+  });
+  await assert.rejects(
+    () =>
+      publishT76Release({
+        ...optionsFor(closure, keys, rollback.indexPath),
+        ledgerPath: join(closure.root, "no-such-ledger.json")
+      }),
+    { code: "VES_T76_PUBLISH_LEDGER_INVALID" }
+  );
+  await assert.rejects(() => readdir(closure.outputDirectory), { code: "ENOENT" });
+});
+
+test("library callers state metadataVersion and rootVersion explicitly", async () => {
+  const rollback = await sharedPrior();
+  const closure = await candidateClosure();
+  const options = optionsFor(closure, withKey(), rollback.indexPath);
+  for (const field of ["metadataVersion", "rootVersion"]) {
+    const { [field]: omitted, ...rest } = options;
+    assert.equal(omitted, 1);
+    await assert.rejects(
+      () => publishT76Release(rest),
+      (error) => {
+        assert.equal(error.code, "VES_T76_PUBLISH_INPUT_INVALID");
+        assert.match(error.message, new RegExp(`${field} must be an explicit positive integer`, "u"));
+        return true;
+      }
+    );
+  }
+  await assert.rejects(() => readdir(closure.outputDirectory), { code: "ENOENT" });
 });
 
 test("refuses to overwrite an existing publication output", async () => {
