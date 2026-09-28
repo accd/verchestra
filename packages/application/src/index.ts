@@ -125,6 +125,14 @@ export {
   type TaskExecutorErrorCode
 } from "./execution/task-executor.ts";
 export {
+  canonicalTaskRequest,
+  normalizeTaskRequest,
+  TaskRequestError,
+  type NormalizedTaskRequest,
+  type TaskRequestErrorCode,
+  type TaskRequestGate
+} from "./execution/task-request.ts";
+export {
   normalizeTaskSchedule,
   TaskScheduleCoordinator,
   TaskSchedulerError,

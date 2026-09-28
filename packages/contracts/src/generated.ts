@@ -137,3 +137,112 @@ export interface SubsystemAvailability {
   subsystem: "driver" | "connector" | "probe";
   available: boolean;
 }
+
+/**
+ * Untrusted user request for one governed delivery task. Identity, digests, executables, credentials and approvals are derived locally and never carried here.
+ */
+export interface TaskRequest {
+  schemaVersion: 1;
+  sourceRevision: string;
+  task: {
+    taskId: string;
+    /**
+     * @minItems 1
+     * @maxItems 100
+     */
+    requirementIds: [string, ...string[]];
+    /**
+     * @minItems 0
+     * @maxItems 100
+     */
+    dependencyTaskIds: string[];
+    component: string;
+    /**
+     * @minItems 1
+     * @maxItems 100
+     */
+    changeScope: [string, ...string[]];
+    /**
+     * @minItems 1
+     * @maxItems 100
+     */
+    protectedPaths: [string, ...string[]];
+    /**
+     * @minItems 1
+     * @maxItems 100
+     */
+    verificationCommands: [string, ...string[]];
+    /**
+     * @minItems 1
+     * @maxItems 100
+     */
+    doneCriteria: [string, ...string[]];
+    risk: "low" | "medium" | "high" | "critical";
+    expectedCommitBoundary: string;
+  };
+  /**
+   * @minItems 1
+   * @maxItems 50
+   */
+  gates: [
+    {
+      gateId: string;
+      /**
+       * @minItems 1
+       * @maxItems 100
+       */
+      requirementIds: [string, ...string[]];
+      declaredCommand: string;
+      commandRef: string;
+      /**
+       * @minItems 0
+       * @maxItems 100
+       */
+      args: string[];
+      cwd: string;
+      timeoutMs: number;
+      outputLimitBytes: number;
+      resultProtocol: "exit-code" | "test-summary";
+      minimumTests: number;
+    },
+    ...{
+      gateId: string;
+      /**
+       * @minItems 1
+       * @maxItems 100
+       */
+      requirementIds: [string, ...string[]];
+      declaredCommand: string;
+      commandRef: string;
+      /**
+       * @minItems 0
+       * @maxItems 100
+       */
+      args: string[];
+      cwd: string;
+      timeoutMs: number;
+      outputLimitBytes: number;
+      resultProtocol: "exit-code" | "test-summary";
+      minimumTests: number;
+    }[]
+  ];
+  budgets: {
+    maximumCostUsd: number;
+    maximumTokens: number;
+    maximumDurationMs: number;
+  };
+  onGateFailure?: {
+    maxAttempts: number;
+    feedbackToDriver: boolean;
+    escalateAfter: number;
+  };
+  driver: {
+    driverId: "claude-code";
+    model: string;
+  };
+  verifier: {
+    driverId: "codex";
+    model: string;
+  };
+  instructions: string;
+}
