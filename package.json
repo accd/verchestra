@@ -35,6 +35,7 @@
     "test:build": "node scripts/test-scope.mjs build tests/build",
     "test:qualification": "node --test spikes/node-runtime/test/*.test.mjs spikes/pi-runtime/test/*.test.mjs spikes/claude-code-driver/test/*.test.mjs spikes/codex-driver/test/*.test.mjs spikes/opencode-driver/test/*.test.mjs spikes/cedar/test/*.test.mjs spikes/sqlite/test/*.test.mjs spikes/isolation/test/*.test.mjs spikes/supply-chain/test/*.test.mjs",
     "test:security": "node scripts/test-scope.mjs security tests/security",
+    "test:census": "node --test tests/security/canonical-json-census.test.mjs",
     "test:fault": "node scripts/test-scope.mjs fault tests/fault-injection",
     "test:release": "node scripts/test-scope.mjs release tests/public-regression tests/system",
     "test:mutation": "node scripts/test-scope.mjs mutation tests/mutation",

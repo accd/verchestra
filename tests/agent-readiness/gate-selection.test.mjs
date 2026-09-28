@@ -4,8 +4,16 @@ import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { pathToFileURL } from "node:url";
 
-import { ALWAYS_GATE, CONSERVATIVE_GATES, QUALIFICATION_REPORT, selectGates } from "../../scripts/gate-selection.mjs";
+import {
+  ALWAYS_GATE,
+  CENSUS_GATE,
+  CONSERVATIVE_GATES,
+  QUALIFICATION_REPORT,
+  loadCensusPaths,
+  selectGates
+} from "../../scripts/gate-selection.mjs";
 import { GATE_STAGES, stagesForGates } from "../../scripts/gate-stages.mjs";
 import { githubOutputFor } from "../../scripts/gate-output.mjs";
 import { buildEvidence } from "../../scripts/select-gates.mjs";
@@ -154,6 +162,7 @@ test("the stage union is deterministic and executes each selected stage once", (
     "typecheck",
     "test:unit",
     "test:agent-readiness",
+    "test:census",
     "test:contract",
     "test:integration",
     "test:e2e",
@@ -166,7 +175,7 @@ test("the stage union is deterministic and executes each selected stage once", (
     "test:security",
     "test:release"
   ]);
-  assert.deepEqual(GATE_STAGES["gate:quick"], stages.slice(0, 6));
+  assert.deepEqual(GATE_STAGES["gate:quick"], stages.slice(0, 7));
 });
 
 test("the release/build suite is executed by the gates its path selects", () => {
@@ -338,4 +347,63 @@ test("the regression that CI missed now selects a detecting gate", () => {
     selection.gates.some((gate) => ["gate:build", "gate:security", "gate:release"].includes(gate)),
     "a change to the package graph must select a gate that runs test:architecture"
   );
+});
+
+// #395: a script that gained canonical-JSON signals merged red because the census
+// ran only under gate:security/gate:release and a scripts/ change selected only
+// gate:quick. Both halves of that path are closed and asserted here.
+test("the quick gate runs the canonical-JSON census on every change", () => {
+  assert.ok(GATE_STAGES["gate:quick"].includes("test:census"));
+  const manifest = JSON.parse(readFileSync(new URL("../../package.json", import.meta.url), "utf8"));
+  assert.equal(manifest.scripts["test:census"], "node --test tests/security/canonical-json-census.test.mjs");
+  // The census stays in the security suite as well; the quick stage is an
+  // additional run, never a relocation.
+  assert.match(manifest.scripts["test:security"], /tests\/security$/u);
+  for (const gate of ["gate:security", "gate:release"]) assert.ok(GATE_STAGES[gate].includes("test:security"));
+});
+
+test("every file the canonical-JSON census inventories selects the security gate", () => {
+  const censusPaths = loadCensusPaths();
+  assert.ok(censusPaths.size > 0);
+  const scripts = [...censusPaths].filter((path) => path.startsWith("scripts/"));
+  // The scripts/ catch-all is exactly the surface that selected only gate:quick.
+  assert.ok(scripts.includes("scripts/agent-readiness.mjs"));
+  assert.ok(scripts.includes("scripts/t76-publish-release.mjs"));
+  for (const path of censusPaths) {
+    const selection = selectGates([path]);
+    assert.ok(selection.gates.includes(CENSUS_GATE), `${path} must select ${CENSUS_GATE}`);
+  }
+  assert.equal(selectGates(["scripts/agent-readiness.mjs"]).reasons[CENSUS_GATE], "canonical-JSON census surface");
+});
+
+test("census routing reads the inventory rather than a fixed path list", () => {
+  const censusPaths = new Set(["scripts/new-signer.mjs"]);
+  assert.ok(selectGates(["scripts/new-signer.mjs"], { censusPaths }).gates.includes(CENSUS_GATE));
+  // A script outside the inventory keeps its narrower surface.
+  assert.deepEqual(selectGates(["scripts/new-signer.mjs"], { censusPaths: new Set() }).gates, [ALWAYS_GATE]);
+  assert.deepEqual(gatesFor("scripts/agent-context.mjs"), [ALWAYS_GATE]);
+});
+
+for (const path of [
+  "docs/canonical-json-census.json",
+  "docs/canonical-json-compatibility.md",
+  "scripts/canonical-json-census.mjs",
+  "scripts/canonical-json-census-refresh.mjs"
+]) {
+  test(`${path} (census inventory, policy, or machinery) selects the security gate`, () =>
+    assert.ok(selectGates([path], { censusPaths: new Set() }).gates.includes(CENSUS_GATE)));
+}
+
+test("an unreadable census fails selection instead of routing as empty", () => {
+  const directory = mkdtempSync(join(tmpdir(), "verchestra-census-routing-"));
+  try {
+    const path = join(directory, "census.json");
+    writeFileSync(path, '{"entries": 3}\n');
+    assert.throws(() => loadCensusPaths(pathToFileURL(path)), /no entries array/u);
+    writeFileSync(path, "not json");
+    assert.throws(() => loadCensusPaths(pathToFileURL(path)), SyntaxError);
+    assert.throws(() => loadCensusPaths(pathToFileURL(join(directory, "missing.json"))), /ENOENT/u);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
 });
