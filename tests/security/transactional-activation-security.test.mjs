@@ -188,3 +188,140 @@ test("dead process activation lock is reclaimed before journal reconciliation", 
   const result = await state.manager.activate(state.staged.receipt);
   assert.equal(result.active.releaseDigest, state.staged.bundle.releaseDigest);
 });
+
+// #393 / AD-034. The verified-release record decides which installed release a
+// launcher may re-activate without resolving metadata, so every way of forging,
+// redirecting, or confusing it must fail closed rather than widen that set.
+
+const TRUST_ROOT = `sha256:${"1".repeat(64)}`;
+const OTHER_ROOT = `sha256:${"2".repeat(64)}`;
+const recordPath = (installRoot, trustRootDigest = TRUST_ROOT) =>
+  join(installRoot, "verified", `${trustRootDigest.slice("sha256:".length)}.json`);
+
+async function retainedPair() {
+  const state = await setup();
+  const next = await materializeStagedRelease(state.stagingRoot, {
+    releaseId: "release:verchestra:2.0.0:win32-x64",
+    semanticVersion: "2.0.0"
+  });
+  const first = await state.manager.activate(state.staged.receipt, { trustRootDigest: TRUST_ROOT });
+  const second = await state.manager.activate(next.receipt, { trustRootDigest: TRUST_ROOT });
+  return { ...state, next, first, second };
+}
+
+const queryOf = (bundle, trustRootDigest = TRUST_ROOT) => ({
+  trustRootDigest,
+  releaseId: bundle.releaseId,
+  semanticVersion: bundle.semanticVersion
+});
+
+for (const [label, provenance] of [
+  ["a malformed digest", { trustRootDigest: "sha256:forged" }],
+  ["an unknown field", { trustRootDigest: TRUST_ROOT, trusted: true }],
+  ["a non-object", "sha256:forged"]
+]) {
+  test(`activation provenance with ${label} is refused before anything is created`, async () => {
+    const state = await setup();
+    await assert.rejects(state.manager.activate(state.staged.receipt, provenance), {
+      code: "VES_ACTIVATION_PROVENANCE_INVALID"
+    });
+    await assert.rejects(readFile(join(state.installRoot, "active.json")), { code: "ENOENT" });
+  });
+}
+
+test("a trust-bound rollback refuses malformed provenance", async () => {
+  const state = await retainedPair();
+  await assert.rejects(
+    state.manager.rollback(state.first.active.releaseDigest, { trustRootDigest: TRUST_ROOT, extra: 1 }),
+    { code: "VES_ACTIVATION_PROVENANCE_INVALID" }
+  );
+  assert.deepEqual(await state.manager.active(), state.second.active);
+});
+
+test("a malformed verified-release record fails closed for lookup, rollback, and activation", async () => {
+  const state = await retainedPair();
+  await writeFile(recordPath(state.installRoot), "{}\n");
+  await assert.rejects(state.manager.retainedRelease(queryOf(state.staged.bundle)), {
+    code: "VES_ACTIVATION_RECORD_INVALID"
+  });
+  await assert.rejects(state.manager.rollback(state.first.active.releaseDigest, { trustRootDigest: TRUST_ROOT }), {
+    code: "VES_ACTIVATION_RECORD_INVALID"
+  });
+  await assert.rejects(state.manager.activate(state.staged.receipt, { trustRootDigest: TRUST_ROOT }), {
+    code: "VES_ACTIVATION_RECORD_INVALID"
+  });
+  assert.deepEqual(await state.manager.active(), state.second.active, "no pointer moved on a forged record");
+});
+
+test("a record copied under another root's name cannot vouch for that root", async () => {
+  const state = await retainedPair();
+  await writeFile(recordPath(state.installRoot, OTHER_ROOT), await readFile(recordPath(state.installRoot)));
+  await assert.rejects(state.manager.retainedRelease(queryOf(state.staged.bundle, OTHER_ROOT)), {
+    code: "VES_ACTIVATION_RECORD_INVALID"
+  });
+  await assert.rejects(state.manager.rollback(state.first.active.releaseDigest, { trustRootDigest: OTHER_ROOT }), {
+    code: "VES_ACTIVATION_RECORD_INVALID"
+  });
+});
+
+test("a record that renames an installed release is refused rather than retained", async () => {
+  const state = await retainedPair();
+  const record = JSON.parse(await readFile(recordPath(state.installRoot), "utf8"));
+  record.releases[0].releaseId = "release:verchestra:forged";
+  await writeFile(recordPath(state.installRoot), JSON.stringify(record));
+  await assert.rejects(
+    state.manager.retainedRelease({ ...queryOf(state.staged.bundle), releaseId: "release:verchestra:forged" }),
+    { code: "VES_ROLLBACK_TARGET_INVALID" }
+  );
+  await assert.rejects(state.manager.rollback(state.first.active.releaseDigest, { trustRootDigest: TRUST_ROOT }), {
+    code: "VES_ROLLBACK_TARGET_UNTRUSTED"
+  });
+  assert.deepEqual(await state.manager.active(), state.second.active);
+});
+
+test("a duplicated digest in the record fails closed", async () => {
+  const state = await retainedPair();
+  const record = JSON.parse(await readFile(recordPath(state.installRoot), "utf8"));
+  record.releases.push(record.releases[0]);
+  await writeFile(recordPath(state.installRoot), JSON.stringify(record));
+  await assert.rejects(state.manager.retainedRelease(queryOf(state.staged.bundle)), {
+    code: "VES_ACTIVATION_RECORD_INVALID"
+  });
+});
+
+test("a verified-record directory junction cannot redirect the record", async () => {
+  const state = await setup();
+  const outside = join(state.root, "outside");
+  await mkdir(join(state.installRoot), { recursive: true });
+  await mkdir(outside);
+  await symlink(outside, join(state.installRoot, "verified"), "junction");
+  await assert.rejects(state.manager.activate(state.staged.receipt, { trustRootDigest: TRUST_ROOT }), {
+    message: /symbolic link/u
+  });
+  await assert.rejects(state.manager.retainedRelease(queryOf(state.staged.bundle)), {
+    code: "VES_ACTIVATION_RECORD_INVALID"
+  });
+  await assert.rejects(readFile(join(outside, `${"1".repeat(64)}.json`)), { code: "ENOENT" });
+});
+
+test("a trust-bound rollback refuses a retained release built for another host", async () => {
+  const state = await setup();
+  const linux = new TransactionalActivationManager({
+    installRoot: state.installRoot,
+    stagingRoot: state.stagingRoot,
+    platform: "linux",
+    arch: "x64",
+    healthGate: healthGate()
+  });
+  const foreign = await materializeStagedRelease(state.stagingRoot, {
+    platform: "linux",
+    arch: "x64",
+    releaseId: "release:verchestra:1.0.0:linux-x64"
+  });
+  const installed = await linux.activate(foreign.receipt, { trustRootDigest: TRUST_ROOT });
+  const current = await state.manager.activate(state.staged.receipt, { trustRootDigest: TRUST_ROOT });
+  await assert.rejects(state.manager.rollback(installed.active.releaseDigest, { trustRootDigest: TRUST_ROOT }), {
+    code: "VES_ACTIVATION_RELEASE_MIXED"
+  });
+  assert.deepEqual(await state.manager.active(), current.active);
+});

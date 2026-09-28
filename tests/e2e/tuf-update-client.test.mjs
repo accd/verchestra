@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readFile, readdir, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -147,6 +148,35 @@ test("a successor with an incremented TUF metadataVersion stages cleanly over it
   await stageOverSharedInstall(root, predecessor);
   const updated = await stageOverSharedInstall(root, successor);
   assert.equal(updated.releaseDigest, successor.bundle.releaseDigest);
+});
+
+// #393. After a successor advances the shared metadata cache, staging the
+// predecessor again is a metadata downgrade. The client must keep refusing it:
+// the launcher's retained-release path (AD-034) never asks the client, so
+// nothing about this refusal may soften.
+test("re-staging a predecessor after its successor advanced the cache is refused as a rollback (#393)", async () => {
+  const keys = createUpdateKeys();
+  const predecessor = distinctRelease(1, "-a", keys);
+  const successor = distinctRelease(2, "-b", keys);
+  const root = await temporary();
+  await stageOverSharedInstall(root, predecessor);
+  await stageOverSharedInstall(root, successor);
+  await assert.rejects(stageOverSharedInstall(root, predecessor), (error) => {
+    assert.equal(error.code, "VES_TUF_ROLLBACK");
+    assert.match(error.cause?.message ?? "", /version 1 is less than current version 2/u);
+    return true;
+  });
+});
+
+test("the trust-anchor probe reads only the local anchor and creates nothing", async () => {
+  const { root, source, client, fixture } = await setup();
+  assert.equal(await client.trustAnchored(), false, "an unanchored machine is not anchored");
+  await assert.rejects(stat(join(root, "trust")), { code: "ENOENT" });
+  await client.resolveAndStage({ platform: "win32", arch: "x64" });
+  const reads = source.reads.length;
+  assert.equal(await client.trustAnchored(), true);
+  assert.equal(source.reads.length, reads, "probing the anchor never reads the source");
+  assert.equal(client.trustRootDigest, `sha256:${createHash("sha256").update(fixture.trustedRoot).digest("hex")}`);
 });
 
 test("staged bytes exactly match every TUF-bound component", async () => {

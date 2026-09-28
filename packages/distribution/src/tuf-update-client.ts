@@ -487,6 +487,31 @@ export class TufUpdateClient {
     this.#chunkSize = chunkSize;
   }
 
+  get trustRootDigest(): string {
+    return sha256(this.#trustedRoot);
+  }
+
+  // invariant: reads the anchor `#bootstrapTrust` pins and nothing else. It
+  // creates no directory and touches no source, so a caller can ask whether
+  // this machine already trusts the packaged root without any network effect.
+  async trustAnchored(): Promise<boolean> {
+    try {
+      await ensureNoSymlink(this.#metadataDirectory);
+      const bootstrapDigestPath = join(this.#metadataDirectory, "bootstrap-root.sha256");
+      await ensureNoSymlink(bootstrapDigestPath);
+      const existingDigest = await readFile(bootstrapDigestPath, "utf8").catch((error: NodeJS.ErrnoException) => {
+        if (error.code === "ENOENT") return undefined;
+        throw error;
+      });
+      if (existingDigest === undefined) return false;
+      if (existingDigest !== this.trustRootDigest)
+        fail("VES_TUF_TRUST_ROOT_MISMATCH", "bootstrap trust root cannot be replaced");
+      return true;
+    } catch (error) {
+      throw mapError(error);
+    }
+  }
+
   async #bootstrapTrust(): Promise<void> {
     await ensureNoSymlink(this.#metadataDirectory);
     await mkdir(this.#metadataDirectory, { recursive: true, mode: 0o700 });
@@ -494,7 +519,7 @@ export class TufUpdateClient {
     const rootPath = join(this.#metadataDirectory, "root.json");
     await ensureNoSymlink(bootstrapDigestPath);
     await ensureNoSymlink(rootPath);
-    const expectedDigest = sha256(this.#trustedRoot);
+    const expectedDigest = this.trustRootDigest;
     const existingDigest = await readFile(bootstrapDigestPath, "utf8").catch((error: NodeJS.ErrnoException) => {
       if (error.code === "ENOENT") return undefined;
       throw error;
