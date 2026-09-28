@@ -57,6 +57,22 @@ interface RuntimeStoreOptions {
   readonly now?: () => string;
 }
 
+export type ExecutionCheckpointKind = "executor" | "gate" | "repair";
+
+export interface StoredExecutionCheckpoint {
+  readonly checkpointId: string;
+  readonly kind: ExecutionCheckpointKind;
+  readonly workspaceId: string;
+  readonly runId: string;
+  readonly taskId: string;
+  readonly sequence: number;
+  readonly stage: string;
+  readonly recordJson: string;
+}
+
+const CHECKPOINT_KINDS: readonly string[] = ["executor", "gate", "repair"];
+const MAXIMUM_CHECKPOINT_RECORD_BYTES = 262_144;
+
 interface EventMetadata {
   readonly eventId: string;
   readonly payloadDigest: string;
@@ -157,7 +173,8 @@ const STATE_TABLE_ORDER = Object.freeze({
   active_policy_views: "workspace_id",
   authority_approvals: "approval_id",
   authority_grants: "grant_id",
-  run_capsule_seals: "run_id"
+  run_capsule_seals: "run_id",
+  execution_checkpoints: "kind, workspace_id, run_id, task_id, sequence"
 });
 
 function runtimeStateDigest(db: DatabaseSync): string {
@@ -1125,6 +1142,124 @@ export class RuntimeStore {
         created_at AS createdAt FROM artifact_refs WHERE run_id=? ORDER BY created_at, ref_id`
       )
       .all(runId) as UnknownRecord[];
+  }
+
+  // Appends one execution checkpoint. With an explicit sequence the caller
+  // owns ordering (the executor): only the next contiguous sequence, or an
+  // identical replay of an existing one, is accepted. Without one the store
+  // assigns the next sequence and treats an identical latest record as a
+  // replay (gate and repair state).
+  appendExecutionCheckpoint(value: {
+    readonly kind: ExecutionCheckpointKind;
+    readonly workspaceId: string;
+    readonly runId: string;
+    readonly taskId: string;
+    readonly stage: string;
+    readonly sequence?: number;
+    readonly recordJson: string;
+  }): { readonly checkpointId: string; readonly sequence: number; readonly replayed: boolean } {
+    if (!CHECKPOINT_KINDS.includes(value.kind))
+      throw runtimeError("VES_RUNTIME_CONSTRAINT", "Execution checkpoint kind is invalid");
+    if (Buffer.byteLength(value.recordJson, "utf8") > MAXIMUM_CHECKPOINT_RECORD_BYTES)
+      throw runtimeError("VES_RUNTIME_CONSTRAINT", "Execution checkpoint record exceeds its bound");
+    const recordDigest = sha256(value.recordJson);
+    const db = this.#database();
+    const identity = [value.kind, value.workspaceId, value.runId, value.taskId] as const;
+    try {
+      db.exec("BEGIN IMMEDIATE");
+      const resolved = this.#nextCheckpointSequence(identity, value.sequence, recordDigest);
+      if (resolved.replayOf !== undefined) {
+        db.exec("COMMIT");
+        return Object.freeze({ checkpointId: resolved.replayOf, sequence: resolved.sequence, replayed: true });
+      }
+      const sequence = resolved.sequence;
+      const checkpointId = sha256(canonicalizeJsonV2([...identity, sequence, recordDigest]));
+      db.prepare(
+        `INSERT INTO execution_checkpoints(
+          checkpoint_id, kind, workspace_id, run_id, task_id, sequence, stage, record_json, record_digest, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).run(checkpointId, ...identity, sequence, value.stage, value.recordJson, recordDigest, this.#now());
+      db.exec("COMMIT");
+      return Object.freeze({ checkpointId, sequence, replayed: false });
+    } catch (error) {
+      if (db.isTransaction) db.exec("ROLLBACK");
+      if (errorCode(error)?.startsWith("VES_") === true) throw error;
+      throw mapSqliteError(error);
+    }
+  }
+
+  #nextCheckpointSequence(
+    identity: readonly [string, string, string, string],
+    requested: number | undefined,
+    recordDigest: string
+  ): { readonly sequence: number; readonly replayOf?: string } {
+    const db = this.#database();
+    const latest = db
+      .prepare(
+        `SELECT checkpoint_id, sequence, record_digest FROM execution_checkpoints
+         WHERE kind=? AND workspace_id=? AND run_id=? AND task_id=? ORDER BY sequence DESC LIMIT 1`
+      )
+      .get(...identity) as UnknownRecord | undefined;
+    const latestSequence = latest === undefined ? 0 : Number(latest["sequence"]);
+    if (requested === undefined) {
+      return latest !== undefined && latest["record_digest"] === recordDigest
+        ? { sequence: latestSequence, replayOf: String(latest["checkpoint_id"]) }
+        : { sequence: latestSequence + 1 };
+    }
+    const existing = db
+      .prepare(
+        `SELECT checkpoint_id, record_digest FROM execution_checkpoints
+         WHERE kind=? AND workspace_id=? AND run_id=? AND task_id=? AND sequence=?`
+      )
+      .get(...identity, requested) as UnknownRecord | undefined;
+    if (existing !== undefined) {
+      if (existing["record_digest"] !== recordDigest)
+        throw runtimeError("VES_RUNTIME_CHECKPOINT_CONFLICT", "Checkpoint sequence is bound to another record");
+      return { sequence: requested, replayOf: String(existing["checkpoint_id"]) };
+    }
+    if (requested !== latestSequence + 1)
+      throw runtimeError("VES_RUNTIME_CHECKPOINT_CONFLICT", "Checkpoint sequence is not contiguous");
+    return { sequence: requested };
+  }
+
+  // Returns the latest checkpoint only after its stored digest matches its
+  // bytes; a row edited behind the store fails closed instead of steering a
+  // resumed coordinator.
+  latestExecutionCheckpoint(
+    kind: ExecutionCheckpointKind,
+    workspaceId: string,
+    runId: string,
+    taskId: string
+  ): StoredExecutionCheckpoint | undefined {
+    const row = this.#database()
+      .prepare(
+        `SELECT checkpoint_id, kind, workspace_id, run_id, task_id, sequence, stage, record_json, record_digest
+         FROM execution_checkpoints
+         WHERE kind=? AND workspace_id=? AND run_id=? AND task_id=? ORDER BY sequence DESC LIMIT 1`
+      )
+      .get(kind, workspaceId, runId, taskId) as UnknownRecord | undefined;
+    if (row === undefined) return undefined;
+    const recordJson = row["record_json"];
+    const sequence = Number(row["sequence"]);
+    if (
+      typeof recordJson !== "string" ||
+      sha256(recordJson) !== row["record_digest"] ||
+      !Number.isSafeInteger(sequence) ||
+      sequence < 1 ||
+      row["checkpoint_id"] !==
+        sha256(canonicalizeJsonV2([kind, workspaceId, runId, taskId, sequence, row["record_digest"]]))
+    )
+      throw runtimeError("VES_RUNTIME_CHECKPOINT_CORRUPT", "Execution checkpoint failed integrity validation");
+    return Object.freeze({
+      checkpointId: String(row["checkpoint_id"]),
+      kind,
+      workspaceId,
+      runId,
+      taskId,
+      sequence,
+      stage: String(row["stage"]),
+      recordJson
+    });
   }
 
   createEffectRepository() {

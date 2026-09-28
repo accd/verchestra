@@ -291,6 +291,26 @@ ALTER TABLE effect_intents ADD COLUMN canonicalization_version INTEGER NOT NULL 
 CREATE UNIQUE INDEX effect_intents_logical_identity
   ON effect_intents(workspace_id, operation_kind, logical_target, canonical_input_digest, semantic_identity);`;
 
+// #405: durable executor, gate/commit, and gate-repair checkpoints. There is no
+// foreign key to runs: an execution checkpoint is written before (and
+// independently of) any workflow run row, and resume must not depend on it.
+// The sequence is contiguous per (kind, workspace, run, task) so a resumed
+// coordinator can detect a lost or forged record instead of skipping it.
+const EXECUTION_CHECKPOINT_SCHEMA = `
+CREATE TABLE execution_checkpoints (
+  checkpoint_id TEXT PRIMARY KEY,
+  kind TEXT NOT NULL CHECK (kind IN ('executor', 'gate', 'repair')),
+  workspace_id TEXT NOT NULL,
+  run_id TEXT NOT NULL,
+  task_id TEXT NOT NULL,
+  sequence INTEGER NOT NULL CHECK (sequence > 0),
+  stage TEXT NOT NULL,
+  record_json TEXT NOT NULL,
+  record_digest TEXT NOT NULL CHECK (length(record_digest) = 64),
+  created_at TEXT NOT NULL,
+  UNIQUE (kind, workspace_id, run_id, task_id, sequence)
+) STRICT;`;
+
 export const DEFAULT_RUNTIME_MIGRATIONS: readonly RuntimeMigration[] = Object.freeze([
   Object.freeze({ id: "001_runtime", up: RUNTIME_SCHEMA }),
   Object.freeze({ id: "002_effects", up: EFFECT_SCHEMA }),
@@ -305,5 +325,6 @@ export const DEFAULT_RUNTIME_MIGRATIONS: readonly RuntimeMigration[] = Object.fr
   // review at the time this migration was written); this follows at 010 to
   // avoid a numbering collision regardless of merge order.
   Object.freeze({ id: "010_policy_view_digest_reencoding", up: POLICY_VIEW_DIGEST_REENCODING }),
-  Object.freeze({ id: "011_effect_identity_canonicalization", up: EFFECT_IDENTITY_CANONICALIZATION })
+  Object.freeze({ id: "011_effect_identity_canonicalization", up: EFFECT_IDENTITY_CANONICALIZATION }),
+  Object.freeze({ id: "012_execution_checkpoints", up: EXECUTION_CHECKPOINT_SCHEMA })
 ]);
