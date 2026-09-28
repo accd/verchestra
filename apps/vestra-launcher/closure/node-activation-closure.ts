@@ -1,7 +1,12 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import type { ActiveLauncherResolution } from "../../../packages/distribution/src/transactional-activation.ts";
+import type { HermeticDistributionBundle } from "../../../packages/distribution/src/hermetic-bundle.ts";
+import type {
+  ActivationReceipt,
+  ActiveLauncherResolution,
+  RetainedRelease
+} from "../../../packages/distribution/src/transactional-activation.ts";
 import { TransactionalActivationManager } from "../../../packages/distribution/src/transactional-activation.ts";
 import type { DistributionSourcePort, TufStagedRelease } from "../../../packages/distribution/src/tuf-update-client.ts";
 import { HttpsDistributionSource, TufUpdateClient } from "../../../packages/distribution/src/tuf-update-client.ts";
@@ -12,6 +17,7 @@ import {
 import { resolveStateRoot } from "../../../packages/platform-node/src/state-root.ts";
 import type {
   ActivationClosurePort,
+  ActivationPathEvidence,
   ActivationRequest,
   HandoffRequest,
   LauncherHandoffOutcome,
@@ -152,20 +158,31 @@ function assertPinnedRelease(staged: TufStagedRelease, source: PinnedReleaseSour
   return staged;
 }
 
+// invariant: a re-activated release is still exactly the release the tarball pins.
+function assertPinnedResolution(
+  resolution: ActiveLauncherResolution,
+  source: PinnedReleaseSource
+): ActiveLauncherResolution {
+  if (resolution.active.releaseId !== source.releaseId || resolution.active.semanticVersion !== source.semanticVersion)
+    unavailable("the re-activated release is not the release this build pins", "VES_ACTIVATION_RELEASE_MIXED");
+  return resolution;
+}
+
 /**
  * Binds the verified launcher to the hermetic runtime that must execute it. The
  * launcher path comes from `resolveActiveLauncher`, which reverified every
  * installed component byte; the runtime path comes from the same release, which
- * the digest equality below proves is the release just resolved.
+ * the digest equality below proves is the release just resolved or retained.
  */
 function verifiedTarget(
   installRoot: string,
   resolution: ActiveLauncherResolution,
-  staged: TufStagedRelease
+  release: { readonly releaseDigest: string; readonly bundle: HermeticDistributionBundle },
+  activation: ActivationPathEvidence
 ): VerifiedLauncherTarget {
-  if (resolution.active.releaseDigest !== staged.releaseDigest)
+  if (resolution.active.releaseDigest !== release.releaseDigest)
     unavailable("the activated release is not the release that was resolved", "VES_ACTIVATION_RELEASE_MIXED");
-  const runtimes = staged.bundle.components.filter((component) => component.kind === "node-runtime");
+  const runtimes = release.bundle.components.filter((component) => component.kind === "node-runtime");
   if (runtimes.length !== 1)
     unavailable("the activated release has no unique hermetic runtime", "VES_ACTIVATION_RELEASE_MIXED");
   const releaseRoot = join(installRoot, "releases", resolution.active.releaseDigest.slice("sha256:".length));
@@ -173,7 +190,27 @@ function verifiedTarget(
     runtimeExecutable: join(releaseRoot, ...runtimes[0]!.logicalPath.split("/")),
     launcherPath: resolution.executablePath,
     releaseId: resolution.active.releaseId,
-    semanticVersion: resolution.active.semanticVersion
+    semanticVersion: resolution.active.semanticVersion,
+    activation
+  });
+}
+
+const pathEvidence = (receipt: ActivationReceipt, network: boolean): ActivationPathEvidence =>
+  Object.freeze({ operation: receipt.operation, releaseReused: receipt.releaseReused, network });
+
+// invariant (AD-034): the decision reads only local state — the trust anchor
+// and the install root's verified-release record — so no remote response can
+// select the retained path, and taking it performs zero source reads.
+async function retainedPinnedRelease(
+  client: TufUpdateClient,
+  manager: TransactionalActivationManager,
+  source: PinnedReleaseSource
+): Promise<RetainedRelease | null> {
+  if (!(await client.trustAnchored())) return null;
+  return await manager.retainedRelease({
+    trustRootDigest: client.trustRootDigest,
+    releaseId: source.releaseId,
+    semanticVersion: source.semanticVersion
   });
 }
 
@@ -198,10 +235,8 @@ export class NodeActivationClosure implements ActivationClosurePort {
       trustedRoot: request.trustedRoot,
       source: environment.createSource(request.source)
     });
-    const staged = assertPinnedRelease(
-      await client.resolveAndStage({ platform: request.host.platform, arch: request.host.arch }),
-      request.source
-    );
+    if (client.trustRootDigest !== request.source.rootDigest)
+      unavailable("the packaged trust root is not the root the release source pins", "VES_TUF_TRUST_ROOT_MISMATCH");
     const manager = new TransactionalActivationManager({
       installRoot: environment.installRoot,
       stagingRoot: environment.stagingRoot,
@@ -209,8 +244,32 @@ export class NodeActivationClosure implements ActivationClosurePort {
       arch: request.host.arch,
       healthGate: new NodeActivationHealthGate()
     });
-    await manager.activate(staged);
-    return verifiedTarget(environment.installRoot, await manager.resolveActiveLauncher(), staged);
+    const provenance = { trustRootDigest: client.trustRootDigest };
+    const retained = await retainedPinnedRelease(client, manager, request.source);
+    // why: resolving a superseded release again is a metadata downgrade that
+    // anti-rollback rightly refuses, so its verified installed bytes are reused.
+    if (retained !== null) {
+      // hazard: a failed local re-activation must throw, never fall back to the
+      // network, or a tampered retained release would be silently replaced.
+      const receipt = await manager.rollback(retained.active.releaseDigest, provenance);
+      return verifiedTarget(
+        environment.installRoot,
+        assertPinnedResolution(await manager.resolveActiveLauncher(), request.source),
+        { releaseDigest: retained.active.releaseDigest, bundle: retained.bundle },
+        pathEvidence(receipt, false)
+      );
+    }
+    const staged = assertPinnedRelease(
+      await client.resolveAndStage({ platform: request.host.platform, arch: request.host.arch }),
+      request.source
+    );
+    const receipt = await manager.activate(staged, provenance);
+    return verifiedTarget(
+      environment.installRoot,
+      await manager.resolveActiveLauncher(),
+      staged,
+      pathEvidence(receipt, true)
+    );
   }
 
   async handoff(request: HandoffRequest): Promise<LauncherHandoffOutcome> {
