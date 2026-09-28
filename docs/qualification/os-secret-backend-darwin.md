@@ -1,0 +1,106 @@
+# macOS Keychain Credential Backend Qualification
+
+**Scope:** issue #379, decision AD-034
+**Status:** Candidate. Qualified on darwin by the tests named below; pending independent review
+**Adapter:** `apple-keychain-credential` (`QualifiedOsCredentialAdapter` over `DarwinKeychainBackend`)
+
+## Qualification boundary
+
+This report qualifies one thing: storing a **readable provider credential**
+(an API key that a governed task later injects into a child process) as a
+generic-password item in a macOS keychain, through the system tool
+`/usr/bin/security`. It does not qualify key material. Signing and recipient
+keys stay on the separate key-material contract, which still requires
+`non-exportable` storage, and this backend's evidence cannot satisfy that
+contract (asserted in `tests/security/os-secret-backend-security.test.mjs`).
+
+Linux (Secret Service) and Windows (CNG) have no credential backend. On those
+platforms every `vestra secret` command reports `VES_SECRET_STORE_UNQUALIFIED`
+and deep doctor's secret-presence check stays `blocked`.
+
+## Controls claimed
+
+| Control | Meaning | Proof |
+| --- | --- | --- |
+| `keychain` | The value is a generic-password item in a macOS keychain file, encrypted at rest and unlocked with the user's session. | `tests/integration/os-secret-backend-darwin-keychain.test.mjs` round-trips set, has, read, rotate, and delete through the real `security` tool |
+| `user-scope` | Items live in the invoking user's keychain. By default that is the login keychain. `--keychain <path>` selects a keychain file, which must be owned by the invoking user. | `tests/unit/os-secret-backend-darwin.test.mjs` keychain-file checks |
+| `workspace-namespace` | The item's service is `verchestra/<workspaceId>` and its account is the logical name. One Workspace's name never resolves another Workspace's credential. | Workspace-binding cases in the security test and in `tests/integration/doctor-secret-backend.test.mjs` |
+| `not-in-argv` | The value never appears in any process argv or environment. A write sends the hex-encoded value over stdin to `security -i`. A read takes it from the child's captured stderr. The child environment is an allowlist (`PATH`, `HOME`, `USER`, `LOGNAME`). | Security test: argv, environment, error, and output assertions |
+| `presence-without-value` | Presence is `find-generic-password` without `-g` or `-w`: it returns item attributes, never the value. Deep doctor receives only this operation. | Unit and doctor tests assert that no presence or doctor call carries `-g` or `-w` |
+
+## Controls not claimed
+
+- **`non-exportable`.** A credential that must be handed to a child process is
+  readable by construction. Claiming it would be false.
+- **`access-control` beyond the keychain's own.** Items are created with
+  `-T /usr/bin/security`, the same trust the tool grants its own items by
+  default. Any process running as the same user can call that tool and read
+  the item without a prompt. That is the macOS model for a CLI-owned item, and
+  it is recorded here as a limit, not presented as isolation.
+
+## Measured behavior of `security` that shaped the design
+
+Each of these was observed on macOS while building this backend. Each one is
+now a guarded invariant with a test.
+
+1. **Silent fallback to the login keychain.** `add-generic-password` given a
+   missing file, a non-keychain file, or a directory as its keychain argument
+   exits 0 and writes to the default keychain. The backend checks the named
+   file before every operation: it must be a regular file (not a symlink),
+   owned by the user, and start with the keychain magic `kych`. The backend
+   never calls `security` to make this check, because asking `security` about a
+   locked keychain raises an unlock dialog.
+2. **A 4095-byte interactive line.** `security -i` reads each command into a
+   4096-byte buffer. A longer line is split: the tail runs as a separate
+   command and is echoed to stderr, and the truncated head loses its keychain
+   argument and lands in the default keychain. The backend derives
+   `MAX_CREDENTIAL_VALUE_BYTES` from the worst-case line (longest namespace,
+   logical name, and keychain path). It refuses a larger value before
+   spawning anything, and asserts the line length again before writing.
+3. **Ambiguous `-w` output.** `-w` prints a printable value raw but prints a
+   value with any non-printable byte as bare hex, with no marker. The backend
+   reads with `-g`, whose `password: 0x…` form marks hex unambiguously.
+4. **Updating an item in place with `-U` together with `-T` rewrites its
+   access list and raises an approval dialog.** A rotation therefore deletes
+   the old item and adds a fresh one, and never uses `-U`. This makes rotation
+   non-atomic. A failure after the delete is reported as
+   `VES_SECRET_ROTATION_INCOMPLETE` (the credential is now absent; run
+   `vestra secret set` again).
+5. **Prompts block instead of failing.** A locked keychain, or an item another
+   application created, can raise a GUI dialog. The tool offers no switch to
+   refuse user interaction. Every spawn is bounded (presence 4 s, inside deep
+   doctor's 5 s probe budget; read 30 s; write 15 s). A timeout is reported as
+   `VES_SECRET_KEYCHAIN_INTERACTION_REQUIRED`, never as a hang.
+
+## Value policy
+
+A credential value is 1 to `MAX_CREDENTIAL_VALUE_BYTES` bytes of printable ASCII
+without whitespace (0x21-0x7e). Every provider API-key format fits, and stray
+whitespace from a paste is refused instead of stored. `vestra secret set` reads
+the value from stdin and strips exactly one trailing newline. From a terminal it
+reads without echo. The composition root and the backend zero their value
+buffers after use. Node strings cannot be zeroed, and the value is never held
+in one.
+
+## Evidence
+
+- `tests/unit/os-secret-backend-darwin.test.mjs`: command protocol, exit-code
+  mapping, the line budget, rotation, the access-list invariant, timeout
+  mapping, and keychain-file checks, against a fake runner.
+- `tests/security/os-secret-backend-security.test.mjs`: argv, environment,
+  error and output non-disclosure, Workspace binding, name validation, the
+  key-material contract, and the digest binding this report to the evidence
+  constant.
+- `tests/integration/os-secret-backend-darwin-keychain.test.mjs`: the real
+  tool against a disposable keychain that is never on the user's search list.
+  After each case it proves by an attribute-only search-list lookup (exit 44)
+  that the login keychain holds nothing for the test namespace.
+- `tests/e2e/secret-cli-e2e.test.mjs`: the `vestra` binary as a child process,
+  including deep doctor's secret-presence check passing against a bound
+  credential.
+- `tests/integration/doctor-secret-backend.test.mjs`: deep doctor's `pass`,
+  `blocked`, and `fail` mappings for the credential check on every platform.
+
+On a platform other than darwin, the darwin-only integration and end-to-end
+cases assert that the store is refused. They do not skip, so a non-darwin run
+never records a pass it did not earn.

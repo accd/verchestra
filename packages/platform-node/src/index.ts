@@ -14,12 +14,38 @@ export {
 export { ProtectedPathBroker, type ProtectedPathHandle } from "./protected-path.ts";
 export {
   MockSecretAdapter,
+  OS_CREDENTIAL_CONTROLS,
+  QualifiedOsCredentialAdapter,
   QualifiedOsSecretAdapter,
   SecretBroker,
+  isValidLogicalSecretName,
+  osSecretNamespace,
+  type OsSecretBackend,
+  type OsSecretLocator,
+  type OsSecretQualificationEvidence,
   type SecretAdapter,
   type SecretBinding,
   type SecretHandle
 } from "./secret-broker.ts";
+export {
+  DARWIN_KEYCHAIN_CREDENTIAL_QUALIFICATION,
+  createOsCredentialStore,
+  type OsCredentialStore
+} from "./os-secret-backends/credential-store.ts";
+export {
+  DarwinKeychainBackend,
+  MAX_CREDENTIAL_VALUE_BYTES,
+  PRESENCE_TIMEOUT_MS,
+  SECURITY_EXECUTABLE,
+  SECURITY_INTERACTIVE_LINE_LIMIT,
+  isValidCredentialValue,
+  nodeSecurityRunner,
+  securityChildEnvironment,
+  type CredentialProvisioner,
+  type SecurityInvocation,
+  type SecurityResult,
+  type SecurityRunner
+} from "./os-secret-backends/darwin-keychain.ts";
 export {
   ensureWorkspaceState,
   resolveStateRoot,

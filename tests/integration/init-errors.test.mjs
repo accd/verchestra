@@ -9,13 +9,15 @@ test("init public errors are exact and schema-valid", async () => {
     "VES_INIT_APPLY_FAILED",
     "VES_INIT_GITIGNORE_AMBIGUOUS",
     "VES_INIT_GITIGNORE_NEWLINE_AMBIGUOUS",
+    "VES_INIT_IDENTITY_INVALID",
     "VES_INIT_INPUT_INVALID",
     "VES_INIT_PREVIEW_INVALID",
     "VES_INIT_PREVIEW_STALE",
     "VES_INIT_RECOVERY_CONFLICT",
     "VES_INIT_RECOVERY_REQUIRED",
     "VES_INIT_TARGET_CONFLICT",
-    "VES_INIT_TARGET_IGNORED"
+    "VES_INIT_TARGET_IGNORED",
+    "VES_INIT_WORKSPACE_MISSING"
   ]);
   const schemas = await SchemaRegistry.load(new URL("../../schemas/", import.meta.url));
   for (const code of initPublicErrorRegistry.codes) {

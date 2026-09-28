@@ -64,12 +64,36 @@ export const PLATFORM_SECURITY_PUBLIC_ERROR_DEFINITIONS = Object.freeze([
     "never",
     "Bind the secret again through the active Workspace broker."
   ),
+  define(
+    "VES_SECRET_KEYCHAIN_INTERACTION_REQUIRED",
+    "external",
+    "after-change",
+    "Unlock the keychain or answer its approval dialog, then retry the command."
+  ),
+  define(
+    "VES_SECRET_KEYCHAIN_INVALID",
+    "validation",
+    "after-change",
+    "Name an existing keychain file by absolute path, or omit it to use the default keychain."
+  ),
   define("VES_SECRET_MISSING", "state", "after-change", "Bind the logical name in the expected local secret store."),
+  define(
+    "VES_SECRET_ROTATION_INCOMPLETE",
+    "state",
+    "safe",
+    "The previous credential was removed and the new one was not stored; run vestra secret set again."
+  ),
   define(
     "VES_SECRET_STORE_UNQUALIFIED",
     "security",
     "after-change",
     "Install and qualify the required OS secret-store adapter."
+  ),
+  define(
+    "VES_SECRET_VALUE_INVALID",
+    "validation",
+    "never",
+    "Provide a non-empty printable ASCII credential without whitespace, within the documented size limit."
   ),
   define("VES_SECRET_WORKSPACE_MISMATCH", "security", "never", "Use a secret binding owned by the active Workspace."),
   define("VES_STATE_PLATFORM_UNSUPPORTED", "state", "after-change", "Use a platform qualified by this release."),
