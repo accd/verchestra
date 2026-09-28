@@ -144,15 +144,84 @@ const targetMetadataPath = (urlValue: string): string => {
   return decodeURIComponent(parts.join("/"));
 };
 
+interface TimestampView {
+  readonly digest: string;
+  readonly version: number;
+  readonly snapshotVersion: number | undefined;
+}
+
+// invariant: a structural read only, never a trust decision. tuf-js verifies
+// every timestamp it loads; this view names what the collision check compares.
+const timestampView = (bytes: Uint8Array): TimestampView | undefined => {
+  try {
+    const parsed = JSON.parse(Buffer.from(bytes).toString("utf8")) as {
+      readonly signed?: {
+        readonly version?: unknown;
+        readonly meta?: Readonly<Record<string, { readonly version?: unknown } | undefined>>;
+      };
+    };
+    const version = parsed.signed?.version;
+    if (typeof version !== "number" || !Number.isSafeInteger(version)) return undefined;
+    const snapshotVersion = parsed.signed?.meta?.["snapshot.json"]?.version;
+    return {
+      digest: sha256(bytes),
+      version,
+      snapshotVersion:
+        typeof snapshotVersion === "number" && Number.isSafeInteger(snapshotVersion) ? snapshotVersion : undefined
+    };
+  } catch {
+    return undefined;
+  }
+};
+
+interface TimestampCollision {
+  readonly trusted: TimestampView;
+  readonly incoming: TimestampView;
+}
+
+const equalVersionCollision = (
+  trusted: Uint8Array | undefined,
+  remote: Uint8Array | undefined
+): TimestampCollision | undefined => {
+  const before = trusted === undefined ? undefined : timestampView(trusted);
+  const incoming = remote === undefined ? undefined : timestampView(remote);
+  if (before === undefined || incoming === undefined) return undefined;
+  if (incoming.version !== before.version || incoming.digest === before.digest) return undefined;
+  return { trusted: before, incoming };
+};
+
+// invariant: the message carries only metadata version integers, never a path,
+// URL or digest, so it is safe on every public error surface.
+const collisionMessage = ({ trusted, incoming }: TimestampCollision): string => {
+  const snapshots =
+    trusted.snapshotVersion === undefined || incoming.snapshotVersion === undefined
+      ? ""
+      : ` (trusted snapshot version ${trusted.snapshotVersion}, incoming snapshot version ${incoming.snapshotVersion})`;
+  return `TUF metadata version collision: timestamp version ${incoming.version} was re-published with different content${snapshots}; a new publication must use a strictly greater metadata version`;
+};
+
 class SourceFetcher implements Fetcher {
   readonly #source: DistributionSourcePort;
+  #remoteTimestamp: Buffer | undefined;
+  #metadataReadsAfterTimestamp = 0;
 
   constructor(source: DistributionSourcePort) {
     this.#source = source;
   }
 
+  get remoteTimestamp(): Buffer | undefined {
+    return this.#remoteTimestamp;
+  }
+
+  // invariant: tuf-js fetches nothing after timestamp.json unless its timestamp
+  // step returned normally, so a later metadata read proves that step completed.
+  get timestampStepCompleted(): boolean {
+    return this.#metadataReadsAfterTimestamp > 0;
+  }
+
   async downloadBytes(url: string, maximumLength: number): Promise<Buffer> {
     const path = targetMetadataPath(url);
+    if (this.#remoteTimestamp !== undefined) this.#metadataReadsAfterTimestamp += 1;
     let raw: Uint8Array;
     try {
       raw = await this.#source.readMetadata(path, maximumLength);
@@ -162,6 +231,7 @@ class SourceFetcher implements Fetcher {
     }
     const bytes = Buffer.from(raw);
     if (bytes.length > maximumLength) throw new Error("metadata length exceeds maximum");
+    if (path === "timestamp.json") this.#remoteTimestamp = Buffer.from(bytes);
     return bytes;
   }
 
@@ -532,6 +602,46 @@ export class TufUpdateClient {
     }
   }
 
+  async #readTrustedTimestamp(): Promise<Buffer | undefined> {
+    const path = join(this.#metadataDirectory, "timestamp.json");
+    await ensureNoSymlink(path);
+    return readFile(path).catch((error: NodeJS.ErrnoException) => {
+      if (error.code === "ENOENT") return undefined;
+      throw error;
+    });
+  }
+
+  // why: tuf-js keeps its cached timestamp when the remote one carries the same
+  // version (it swallows EqualVersionError), and with it the cached snapshot and
+  // targets. A publisher that reused a metadata version for different content
+  // would otherwise surface only later, as a target fetch the new release never
+  // serves (#391), so the collision is named before any target is read.
+  async #assertNoVersionCollision(trusted: Buffer | undefined, fetcher: SourceFetcher, cause?: unknown): Promise<void> {
+    const collision = equalVersionCollision(trusted, fetcher.remoteTimestamp);
+    if (collision === undefined) return;
+    // invariant: tuf-js persists every remote timestamp it accepts, and it only
+    // discards one without failing after the current root's timestamp keys have
+    // verified it. An unchanged trusted file therefore proves this is a signed,
+    // equal-version timestamp with different content, not a forgery or a
+    // timestamp the client accepted under a rotated root.
+    const after = await this.#readTrustedTimestamp();
+    if (after === undefined || sha256(after) !== collision.trusted.digest) return;
+    fail("VES_TUF_STALE_METADATA", collisionMessage(collision), cause);
+  }
+
+  async #refresh(updater: Updater, fetcher: SourceFetcher, trusted: Buffer | undefined): Promise<void> {
+    try {
+      await updater.refresh();
+    } catch (error) {
+      // why: a collision can still fail later in refresh (for example an expired
+      // cached timestamp, or a cached snapshot that must be re-fetched), and the
+      // collision is the cause worth naming.
+      if (fetcher.timestampStepCompleted) await this.#assertNoVersionCollision(trusted, fetcher, error);
+      throw error;
+    }
+    await this.#assertNoVersionCollision(trusted, fetcher);
+  }
+
   async #resolveTarget(updater: Updater, path: string): Promise<TargetInfo> {
     const target = await updater.getTargetInfo(path);
     if (target === undefined) throw new TufUpdateError("VES_TUF_PARTIAL_PUBLISH", `TUF target is missing: ${path}`);
@@ -627,14 +737,16 @@ export class TufUpdateClient {
       fail("VES_TUF_TARGET_INVALID", "requested release target is invalid");
     try {
       await this.#bootstrapTrust();
+      const trustedTimestamp = await this.#readTrustedTimestamp();
+      const fetcher = new SourceFetcher(this.#source);
       const updater = new Updater({
         metadataDir: this.#metadataDirectory,
         metadataBaseUrl: "https://source.invalid/metadata/",
         targetBaseUrl: "https://source.invalid/targets/",
-        fetcher: new SourceFetcher(this.#source),
+        fetcher,
         config: { maxRootRotations: MAX_ROOT_ROTATIONS, prefixTargetsWithHash: true }
       });
-      await updater.refresh();
+      await this.#refresh(updater, fetcher, trustedTimestamp);
       const consistentSnapshot = await parseConsistentSnapshot(this.#metadataDirectory);
       const manifestPath = `releases/${request.platform}-${request.arch}/release.json`;
       const manifestTarget = await this.#resolveTarget(updater, manifestPath);

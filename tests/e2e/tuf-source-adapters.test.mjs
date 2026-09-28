@@ -9,7 +9,7 @@ import {
   NodeFilesystemDistributionSource,
   TufUpdateClient
 } from "../../packages/distribution/src/tuf-update-client.ts";
-import { buildTufUpdateFixture } from "../helpers/tuf-update-fixture.mjs";
+import { buildTufUpdateFixture, createUpdateKeys } from "../helpers/tuf-update-fixture.mjs";
 
 const roots = [];
 const temporary = async () => {
@@ -108,6 +108,52 @@ for (const mode of ["online", "mirror"]) {
     assert.equal(result.sourceMode, mode);
   });
 }
+
+test("HTTPS adapter names a reused metadata version instead of failing the target range (#391)", async () => {
+  // The live-activation matrix shape (#387): two releases share one managed
+  // install and one metadata version, each served under its own URL prefix.
+  const keys = createUpdateKeys();
+  const release = (tag) =>
+    buildTufUpdateFixture({
+      keys,
+      semanticVersion: `0.0.0-${tag}`,
+      releaseId: `release:verchestra:0.0.0-${tag}:win32-x64`
+    });
+  const predecessor = release("a");
+  const successor = release("b");
+  const local = await temporary();
+  const targetRequests = [];
+  const client = (fixture, prefix) => {
+    const fetchRelease = repositoryFetch(fixture);
+    return new TufUpdateClient({
+      trustRootDirectory: join(local, "trust"),
+      stagingRoot: join(local, "staging"),
+      trustedRoot: fixture.trustedRoot,
+      source: new HttpsDistributionSource({
+        mode: "online",
+        sourceId: "https-source:online:release",
+        metadataBaseUrl: `https://repository.invalid/metadata/${prefix}/`,
+        targetBaseUrl: `https://repository.invalid/targets/${prefix}/`,
+        fetch: async (input, init) => {
+          const url = new URL(input);
+          if (url.pathname.startsWith("/targets/")) targetRequests.push(url.pathname);
+          url.pathname = url.pathname.replace(`/${prefix}/`, "/");
+          return fetchRelease(url.href, init);
+        }
+      }),
+      chunkSize: 4096
+    }).resolveAndStage({ platform: "win32", arch: "x64" });
+  };
+  await client(predecessor, "v1");
+  targetRequests.length = 0;
+  await assert.rejects(client(successor, "v2"), (error) => {
+    assert.equal(error.code, "VES_TUF_STALE_METADATA");
+    assert.notEqual(error.code, "VES_TUF_SOURCE_HTTP");
+    assert.match(error.message, /metadata version collision/u);
+    return true;
+  });
+  assert.deepEqual(targetRequests, []);
+});
 
 test("filesystem adapter rejects lexical traversal before opening a file", async () => {
   const root = await temporary();
