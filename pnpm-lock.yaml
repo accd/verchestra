@@ -28,8 +28,8 @@ importers:
         specifier: 0.84.2
         version: 0.84.2(ws@8.21.3)(zod@4.6.1)
       '@opencode-ai/sdk':
-        specifier: 1.18.23
-        version: 1.18.23
+        specifier: 1.18.33
+        version: 1.18.33
       '@tufjs/canonical-json':
         specifier: 2.0.0
         version: 2.0.0
@@ -49,8 +49,8 @@ importers:
         specifier: 15.0.4
         version: 15.0.4
       opencode-ai:
-        specifier: 1.18.23
-        version: 1.18.23
+        specifier: 1.18.33
+        version: 1.18.33
       prettier:
         specifier: 3.9.6
         version: 3.9.6
@@ -1224,8 +1224,8 @@ packages:
       '@emnapi/core': ^1.7.1 || ^2.0.0-alpha.4
       '@emnapi/runtime': ^1.7.1 || ^2.0.0-alpha.4
 
-  '@opencode-ai/sdk@1.18.23':
-    resolution: {integrity: sha512-VouYbL8O2ynLq0atr5fjzCv8YLtFi/zKLQ/uYkCvTJ4CmUdA01XwPn8om+u3TvxnGEfQsBfmThGU141vt3sg5w==}
+  '@opencode-ai/sdk@1.18.33':
+    resolution: {integrity: sha512-Nyurky9+AA2tvZ6my8UtO5pxPoXxrNypqjeEqMshBGiR542glOy+KE1Y+3lwWU+Z6HC/hSmrdXNbX81+qiuTzg==}
 
   '@opentelemetry/api-logs@0.220.0':
     resolution: {integrity: sha512-CmVa4ImJ+ynfrPMNaAXHET6Bhb44SwzmfyVJFq9ni2jgXJR/l7C6gfVFddNmHP+ZOkP9cf4f9DBe68qVLTHc9w==}
@@ -3731,72 +3731,72 @@ packages:
       zod:
         optional: true
 
-  opencode-ai@1.18.23:
-    resolution: {integrity: sha512-3NkT0XINL7d0HYkTyGV1SPChHXhvRgKqNaTgKRTGb0TXUWszXA7MW/y3zMZw29y1AQuUDAzRvVYmQ9KGRQhroA==}
+  opencode-ai@1.18.33:
+    resolution: {integrity: sha512-58P1ffLRXiAY4QeoABqUjqf6DEzm1ihpovvn9Ad+oOLbLiwK/rf88wruT9IATJ7AtNjmi8iA7pC8tN4o5y799Q==}
     cpu: [arm64, x64]
     os: [darwin, linux, win32]
     hasBin: true
 
-  opencode-darwin-arm64@1.18.23:
-    resolution: {integrity: sha512-QP9PjwpHtZoLVXw2WvUmPZecz7mWbQkT4t3K36B//fCaDG+zWa+SsztIeaW5azujNwwtUemLA5icE/zINng48Q==}
+  opencode-darwin-arm64@1.18.33:
+    resolution: {integrity: sha512-rZm4Phz7eu/kVz2lynergU/LzKS/L0ofErB2fRXfaoAH528b3EnVcISZ/13dwk78FPxVhop7hWXshowT88C8Yw==}
     cpu: [arm64]
     os: [darwin]
 
-  opencode-darwin-x64-baseline@1.18.23:
-    resolution: {integrity: sha512-QGx6I/nFYur7qJ/Nx2L3fC4XYQt44cyDsm7p8twNA+cdjGX3ndnPbMdAl5ikdZyAfSMUGYK8VWY2JMxv0rmfjw==}
+  opencode-darwin-x64-baseline@1.18.33:
+    resolution: {integrity: sha512-WSDWMcsz//P4fk43KqMObQ9KP62z7QP8dn4AuC1BFxmpD/krMw6NJXvXwbXHRwTAlejpK08vKwK3B9m9Ygn9BQ==}
     cpu: [x64]
     os: [darwin]
 
-  opencode-darwin-x64@1.18.23:
-    resolution: {integrity: sha512-R9nWP3edz/0FnEfwmuxtiWBB7bS4NtZCyCffJyiMlrbwdDC+bIXYrWxWXVrzaP1mJujs6g2MAwTCUSx/qpBhDw==}
+  opencode-darwin-x64@1.18.33:
+    resolution: {integrity: sha512-2y+0nvT9SEJu4MFJbymDR0YPoJNILEZrvguG4/dvkJm1EAKE9dzwfXk9iBsiq7BI2V3dnXqcg95e5Si/MNflxw==}
     cpu: [x64]
     os: [darwin]
 
-  opencode-linux-arm64-musl@1.18.23:
-    resolution: {integrity: sha512-VyDkzUJfJgkx9h9RhazTW9xeTgSXBmVFPblsbPGBW9tR612f6gjQxfOfu4cpHnQHK1qjuW9ClzLKHWqv3EcJTA==}
+  opencode-linux-arm64-musl@1.18.33:
+    resolution: {integrity: sha512-fWMAQdQk2M/34FWbiJytTyxMq/yg6HvktiZtRo3uu+mceHcVlQW+FeUXFeV6KuoG++od9VcyglHvciAP1+XbCA==}
     cpu: [arm64]
     os: [linux]
     libc: [musl]
 
-  opencode-linux-arm64@1.18.23:
-    resolution: {integrity: sha512-g1zDFhuE9FOYwjSGderlu69wfd4GQzS0xsDiIY11QUciuBmM6DrHqLvmhlLFsUVHYVnCPY1YeN1pq5ewE3x72Q==}
+  opencode-linux-arm64@1.18.33:
+    resolution: {integrity: sha512-8aKOjIz6Cw3POGpvLvaByyMmfV2OCWgDdOBB9h7nqYV6rCGOzOsdQkT0OhjbAa5/JKGp28RSBEhDeMhINajs1g==}
     cpu: [arm64]
     os: [linux]
 
-  opencode-linux-x64-baseline-musl@1.18.23:
-    resolution: {integrity: sha512-c1DPxauhzAurlIBhJBr/rokDpc65l084T4qTl36gDDT9Xzc/Nk5Q5yMDaPm1DDI3WeHKDt11MDlxT5AjQW5gtw==}
+  opencode-linux-x64-baseline-musl@1.18.33:
+    resolution: {integrity: sha512-G/PAs06QCX3e7D/47I13bxzgTuH5mDqGVL7PSR/148DshvrZpLgzn3lBD5XoZoCf00yGA9N7J/RCPIAhaO/QoA==}
     cpu: [x64]
     os: [linux]
     libc: [musl]
 
-  opencode-linux-x64-baseline@1.18.23:
-    resolution: {integrity: sha512-yUhBOXfTQour2JCdAkwD3DDqSnyxB0grefwdPqEhYmJHIkYxfJIIzyy6V//pyouvkE0XMouFtiuZXw8S6Wo0iQ==}
+  opencode-linux-x64-baseline@1.18.33:
+    resolution: {integrity: sha512-1KQGBiiDDeL/VHHbHkOvvFo8Jr97WT5+C1tear+p7IcDTnXgVHXqIjU4O4jM4mHQzykTP2i884FCnW5LDa+zCA==}
     cpu: [x64]
     os: [linux]
 
-  opencode-linux-x64-musl@1.18.23:
-    resolution: {integrity: sha512-t/5mlnTBZKdZpqKHwdwxlWqGakntauvMSmXtyJc17M7XJRmZaaGHtNSaSefbbYFIL4agoQCXTvIkhhyxOvr7zQ==}
+  opencode-linux-x64-musl@1.18.33:
+    resolution: {integrity: sha512-5HEFrYzg1N9hEYc/II7LlgGvHrsnMyVMk9U4ZW/hCKzZdrVFRAdEZ5pNV2Ud49xvOnwb2Zjp/ayLa1alxp+l4A==}
     cpu: [x64]
     os: [linux]
     libc: [musl]
 
-  opencode-linux-x64@1.18.23:
-    resolution: {integrity: sha512-5x9d1Cm/YtqzR6lAlNbgVprTQ3R3hx7qGTWCzm5l5u6lBNkhYTrhy2s8k25dxKKuxqZ9Kngqz9JYWvSVHy2Lmw==}
+  opencode-linux-x64@1.18.33:
+    resolution: {integrity: sha512-q/t/3p2CTxOT9y2kvjesb/LZab2+1eqlhhWA02Be6mjTtmYtNBcBsrI5yDo4Fw7ZSPBW2oyMIGMNRqiKQjiAWw==}
     cpu: [x64]
     os: [linux]
 
-  opencode-windows-arm64@1.18.23:
-    resolution: {integrity: sha512-QtJQcLU0yPz6on3jjks3f/EHgZuIDFw7FvAKu3wsHhL09NYDh7GczfRXDPRHa3NgqnU8dkB8p9mhqgaPRPogoQ==}
+  opencode-windows-arm64@1.18.33:
+    resolution: {integrity: sha512-ZuUMjYBlY8mGuQvCRYTKOluqsh47+XmOZw62e3+Gn2XdSBe+fysxQaZqdhzYHq0kOFm30kEkp8alN7X5rLticg==}
     cpu: [arm64]
     os: [win32]
 
-  opencode-windows-x64-baseline@1.18.23:
-    resolution: {integrity: sha512-AqXsTKaPcDx3rrid5bLUwJbQ/3vr9rJ6fvOStIznTzwrbOgP8wy5G4jCoIzu6KB/WxGx/d1MrV4cGaJ73qnjBA==}
+  opencode-windows-x64-baseline@1.18.33:
+    resolution: {integrity: sha512-ydc5xt5frz+vEF9iUpBHjRUgYm/j7NT18TnHjihWBixOnPwaVZ+0dp8VMfAWMZGIcSgCaYZ8Qn2cQtKV2jcV/g==}
     cpu: [x64]
     os: [win32]
 
-  opencode-windows-x64@1.18.23:
-    resolution: {integrity: sha512-mMaIITuXzkNfjdcYL8uZaZuMDjulFyH/UCq9bxblam2mUZf9uWisoi5J6CXFsS/mkN7CZfTAt6PttSp4n3PH4g==}
+  opencode-windows-x64@1.18.33:
+    resolution: {integrity: sha512-jNrfHad+xUpGNL7doZkjfDGvNYuff1IzPT7VqqjzUUeH4ZOIDpzpC1VRsiauSczhrhfj0X59lb72U7DbUGl/dg==}
     cpu: [x64]
     os: [win32]
 
@@ -6155,7 +6155,7 @@ snapshots:
       '@tybys/wasm-util': 0.10.3
     optional: true
 
-  '@opencode-ai/sdk@1.18.23':
+  '@opencode-ai/sdk@1.18.33':
     dependencies:
       cross-spawn: 7.0.6
 
@@ -9249,55 +9249,55 @@ snapshots:
       ws: 8.21.3
       zod: 4.6.1
 
-  opencode-ai@1.18.23:
+  opencode-ai@1.18.33:
     optionalDependencies:
-      opencode-darwin-arm64: 1.18.23
-      opencode-darwin-x64: 1.18.23
-      opencode-darwin-x64-baseline: 1.18.23
-      opencode-linux-arm64: 1.18.23
-      opencode-linux-arm64-musl: 1.18.23
-      opencode-linux-x64: 1.18.23
-      opencode-linux-x64-baseline: 1.18.23
-      opencode-linux-x64-baseline-musl: 1.18.23
-      opencode-linux-x64-musl: 1.18.23
-      opencode-windows-arm64: 1.18.23
-      opencode-windows-x64: 1.18.23
-      opencode-windows-x64-baseline: 1.18.23
+      opencode-darwin-arm64: 1.18.33
+      opencode-darwin-x64: 1.18.33
+      opencode-darwin-x64-baseline: 1.18.33
+      opencode-linux-arm64: 1.18.33
+      opencode-linux-arm64-musl: 1.18.33
+      opencode-linux-x64: 1.18.33
+      opencode-linux-x64-baseline: 1.18.33
+      opencode-linux-x64-baseline-musl: 1.18.33
+      opencode-linux-x64-musl: 1.18.33
+      opencode-windows-arm64: 1.18.33
+      opencode-windows-x64: 1.18.33
+      opencode-windows-x64-baseline: 1.18.33
 
-  opencode-darwin-arm64@1.18.23:
+  opencode-darwin-arm64@1.18.33:
     optional: true
 
-  opencode-darwin-x64-baseline@1.18.23:
+  opencode-darwin-x64-baseline@1.18.33:
     optional: true
 
-  opencode-darwin-x64@1.18.23:
+  opencode-darwin-x64@1.18.33:
     optional: true
 
-  opencode-linux-arm64-musl@1.18.23:
+  opencode-linux-arm64-musl@1.18.33:
     optional: true
 
-  opencode-linux-arm64@1.18.23:
+  opencode-linux-arm64@1.18.33:
     optional: true
 
-  opencode-linux-x64-baseline-musl@1.18.23:
+  opencode-linux-x64-baseline-musl@1.18.33:
     optional: true
 
-  opencode-linux-x64-baseline@1.18.23:
+  opencode-linux-x64-baseline@1.18.33:
     optional: true
 
-  opencode-linux-x64-musl@1.18.23:
+  opencode-linux-x64-musl@1.18.33:
     optional: true
 
-  opencode-linux-x64@1.18.23:
+  opencode-linux-x64@1.18.33:
     optional: true
 
-  opencode-windows-arm64@1.18.23:
+  opencode-windows-arm64@1.18.33:
     optional: true
 
-  opencode-windows-x64-baseline@1.18.23:
+  opencode-windows-x64-baseline@1.18.33:
     optional: true
 
-  opencode-windows-x64@1.18.23:
+  opencode-windows-x64@1.18.33:
     optional: true
 
   optionator@0.9.4:
