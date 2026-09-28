@@ -2,13 +2,13 @@
 schema: verchestra-feature-handoff/v1
 feature: deep-doctor-live-probes
 issue: 207
-status: verification
-branch: feat/deep-doctor-live-probes
-baseRevision: 0d7ad9a2bad3b29c4defb4338d1106e4fe22c6e1
+status: blocked
+branch: fix/gate-census-and-handoff-drift
+baseRevision: 20071a78eb5b96b9de63e5e9c863b6997643c767
 lastCompletedTask: T21
-nextTask: T22 — pending human trigger of the T75 platform-matrix workflow (see tasks.md's T22 note); not blocking merge
+nextTask: "T22 (DDL-14) — blocked: the T75 platform-matrix evidence carries no deep-doctor report and platform-matrix.yml has no doctor step. The maintainer files an issue (none tracks T22; #207 is closed), adds a reviewed doctor-capture step, and dispatches it at an exact SHA; #379 governs whether secret-presence can leave blocked."
 lastGate: pnpm gate:full PASS; pnpm gate:security PASS (post-review path-hardening correction; focused doctor/provision tests 59/59, zero skips/todos)
-updatedAt: 2026-08-23T00:00:00Z
+updatedAt: 2026-09-29T00:00:00Z
 ---
 
 # Scope
@@ -598,6 +598,45 @@ logicalPath: "escape/runtime.db" })`. Refusal with
 
 # Next Exact Action
 
+Reconciled 2026-09-29 (#407). T1 to T21 are merged (PRs #302 and #306; #207 is
+closed). T22 (DDL-14) remains open. The T75 platform matrix has since run on
+all five targets at `be92397ca0a5caaf7ff8b70dad23659b09899d7d`
+(`docs/qualification/t75-validation.md`). That run does not satisfy T22:
+
+- The fleet files under `.specs/features/platform-qualification-matrix/fleet/`
+  record leg identity, status, and digests. None carries a deep-doctor report.
+- `.github/workflows/platform-matrix.yml` has no doctor step, so dispatching it
+  again would not produce one either.
+- The only deep-doctor evidence is J09 in
+  `docs/qualification/acceptance-matrix.md`. It is a local end-to-end test in
+  which a bare machine reports `BLOCKED`. Limitation L2 records that doctor
+  cannot yet reach `PASS`.
+
+The exact next action:
+
+1. The maintainer files an issue for T22. No open issue tracks it.
+2. The maintainer adds a reviewed step to `platform-matrix.yml` that provisions
+   the T75 doctor fixtures (`scripts/provision-doctor-fixtures.mjs`), runs deep
+   doctor, and uploads the sealed report without machine-local paths.
+3. The maintainer dispatches that step at an exact SHA and commits the reports
+   under `fleet/`.
+
+Open #379 (no production secret backend for `secret-presence`) decides whether
+all seven checks can leave `blocked` on a real runner. If they cannot, the
+owner may instead re-scope DDL-14 explicitly.
+
+# Blockers
+
+- **T22 needs a workflow change and a human dispatch.** Editing
+  `.github/workflows/` is maintainer-reviewed. `platform-matrix.yml` is
+  `workflow_dispatch` only.
+- **No open issue owns T22.**
+- **#379** may prevent `secret-presence` from leaving `blocked`.
+
+## Historical (2026-08-23, superseded)
+
+### Next Exact Action (historical)
+
 No local next action remains. T15 is now complete (see the PR #306
 review-response entry above); T22 (T75 fleet evidence) needs a
 human-triggered CI run — see tasks.md's T22 note and this file's Decisions
@@ -606,7 +645,7 @@ session can review its evidence, close T22, and change PR #306 from
 `Refs #207` back to a close. Nothing about T1-T21 or the review-response
 fixes needs revisiting first.
 
-# Blockers
+### Blockers (historical)
 
 None. The Node/FTS5 environment blocker recorded earlier is resolved
 (2026-08-22): `fnm` installed via Homebrew, Node 24.14.0 installed and pinned

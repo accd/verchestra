@@ -2,13 +2,13 @@
 schema: verchestra-feature-handoff/v1
 feature: release-decision
 issue: 18
-status: verification
-branch: docs/t77-validation-decision
-baseRevision: 3d363f782bad40e5c5be8252e6626216b4f60248
-lastCompletedTask: T6
-nextTask: "T7 — ratify the canonical decision body definition in prepared-decision.md section 4.1, then extend the validator to verify the signature; T8 — provision the decision signing key, obtain both reviews, sign docs/qualification/release-decision-1.0.0.md, and open the pull request that carries it."
-lastGate: "gate:quick PASS, agent:check PASS, site:test PASS on this branch; the candidate's own evidence is run 32967293127 — five targets x five gate profiles, all pass at 3d363f78"
-updatedAt: 2026-08-26T00:00:00Z
+status: complete
+branch: fix/gate-census-and-handoff-drift
+baseRevision: 20071a78eb5b96b9de63e5e9c863b6997643c767
+lastCompletedTask: T8
+nextTask: "No further action for this feature: the signed 1.0.0 decision (reject, a recorded hold) is committed and verified. A future promote round is separate work on a fresh candidate with its own decision file; its prerequisites are owned by #408 (independent custody), #382, #387, #379, #405, and #406."
+lastGate: "agent:check PASS at 20071a7 with docs/qualification/release-decision-1.0.0.md present and its signature verified against docs/qualification/trust/release-decision-public-key.json"
+updatedAt: 2026-09-29T00:00:00Z
 ---
 
 # Scope
@@ -42,7 +42,40 @@ added here refuses it.
   `3d363f782bad40e5c5be8252e6626216b4f60248`, carrying the per-leg gate table
   from candidate run 32967293127 and the twelve-mutation discrimination sensor.
 
-# Next Exact Action
+# Reconciliation (2026-09-29, #407)
+
+T7 and T8 are both complete. The text under "Next Exact Action (historical)"
+and "Blockers (historical)" below is kept as it was written on 2026-08-26. It
+no longer describes outstanding work.
+
+- **T7 is done in `9d5d6e3`.** The validator verifies the signature, not only
+  its presence. `decisionSignatureBytes` in `scripts/agent-readiness.mjs`
+  recomputes the §4.1 body `{ claims, bodyDigest }`, and the Ed25519 signature
+  is verified against the key that `publicKeyRef` resolves to. `.specs/STATE.md`
+  AD-033 records the signed-bytes definition. AD-033 still reads "proposed".
+  The owner signed over exactly that definition in `62ccde4`, but marking it
+  ratified is the owner's call, so this reconciliation leaves it alone.
+- **T8 is done in `045a73b`, `e0c1d2a`, and `62ccde4` (PR #397, merged
+  2026-08-28).**
+  - `docs/qualification/release-decision-1.0.0.md` records `decision: reject`,
+    a recorded hold, for candidate `3d363f782bad40e5c5be8252e6626216b4f60248`.
+  - It names three distinct identities: `decidedBy`, `operationalReviewer`, and
+    `securityReviewer`.
+  - It carries a signature that verifies against the committed anchor
+    `docs/qualification/trust/release-decision-public-key.json`.
+  - `951e25f` propagated the decision to the status surfaces.
+- **The completed decision is the signed reject.** It does not leave a promote
+  pending on this feature. A future promote round is separate work. It needs a
+  fresh candidate, a fresh T77 run bound to that candidate, and a new decision
+  file. The work that must land first is tracked in these open issues:
+  - #408: independent human custody and review (limitation L1).
+  - #382: TUF timestamp/snapshot refresh.
+  - #387: the live update leg and the `.3` republication.
+  - #379: doctor reaching `PASS`.
+  - #405: the governed task path through the installed CLI.
+  - #406: the supervised real-task pilot.
+
+# Next Exact Action (historical, 2026-08-26 — completed, see Reconciliation)
 
 T7: take `prepared-decision.md` section 4.1 to the owner for ratification of the
 canonical decision body — which bytes the signature covers. Once ratified, extend
@@ -54,7 +87,7 @@ the gap as closed.
 Do not author `docs/qualification/release-decision-1.0.0.md` before T8's human
 acts have happened.
 
-# Blockers
+# Blockers (historical, 2026-08-26 — resolved by the signed decision)
 
 None for T7. T8 is blocked on people, not on the repository: the contract
 requires an operational reviewer and a security reviewer, both distinct from the
@@ -75,7 +108,8 @@ maintainer's own pull requests. That is limitation L1 in
 - `gates` for a decision must be exactly `pnpm gate:release`. A broader set that
   merely includes it still names a gate the contract does not admit, and is
   refused.
-- The signature is checked for presence and not verified, and that is recorded as
+- (Superseded by `9d5d6e3`, which verifies the signature; see Reconciliation.)
+  The signature is checked for presence and not verified, and that is recorded as
   an open gap in three places rather than left implicit. Verifying it requires
   ratifying which bytes are signed, which is the owner's call.
 - `candidateReleaseDigest` is recorded as the reconciled five-target closure

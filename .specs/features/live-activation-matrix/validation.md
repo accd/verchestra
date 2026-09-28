@@ -101,3 +101,20 @@ then `gh run download <run> --repo accd/verchestra` and read each leg's
 this record cites. To reproduce the endpoint probe, request any metadata file
 under `…/v2/<target>/metadata/` (expect `200`) and any target under
 `…/v2/<target>/targets/…` with `Range: bytes=0-99` (expect `206`).
+
+## Correction to the recorded next step (2026-09-29, #407)
+
+The section "What is NOT proven, and why" says that live update/rollback is
+deferred to `.3`, after which the workflow re-runs with
+`update_version=0.0.0-qualification.3`. That plan is superseded. The run record
+above is unchanged. What changes is the plan:
+
+- **`.3` cannot be the update target from this base.** A role-separated `.3`
+  changes the trust root. Installs of v1 or `.2` cannot update to it in place
+  (`VES_TUF_TRUST_ROOT_MISMATCH`; `republish-v3-runbook.md` finding 2).
+- **The forward leg needs two releases on the same root.** It needs `.3` plus
+  a later release on that root with a higher `metadata_version`.
+- **A genuine rollback needs the #393 decision.** Anti-rollback rejects the
+  naive re-invocation of the base after a successful update (finding 3).
+
+The current plan is in `handoff.md`.
