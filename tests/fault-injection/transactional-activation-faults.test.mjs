@@ -153,6 +153,82 @@ test("rollback acknowledgement loss after pointer converges on retry", async () 
   assert.equal(retried.active.releaseDigest, state.stable.bundle.releaseDigest);
 });
 
+// #393 / AD-034. A rollback journals its pointer switch like an activation
+// does: whichever fault point a crash hits, the pointer stays byte-valid at
+// either the release being left or the release being re-selected, a retry
+// converges, and no journal survives the retry.
+const ROLLBACK_TRUST_ROOT = `sha256:${"1".repeat(64)}`;
+
+for (const point of ["after-journal-prepared", "after-pointer", "after-journal-committed"]) {
+  test(`trust-bound rollback crash at ${point} converges on retry`, async () => {
+    const state = await seeded();
+    const bound = { trustRootDigest: ROLLBACK_TRUST_ROOT };
+    await managerFor(state).activate(state.stable.receipt, bound);
+    const next = await managerFor(state).activate(state.candidate.receipt, bound);
+    let injected = false;
+    const crashing = managerFor(state, {
+      fault(current) {
+        if (!injected && current === point) {
+          injected = true;
+          throw new Error(`crash:${point}`);
+        }
+      }
+    });
+    await assert.rejects(crashing.rollback(state.stable.bundle.releaseDigest, bound), { code: "VES_ROLLBACK_FAILED" });
+    const journal = JSON.parse(await readFile(join(state.installRoot, "activation-journal.json"), "utf8"));
+    assert.equal(journal.operation, "rollback");
+    assert.equal(journal.target.releaseDigest, state.stable.bundle.releaseDigest);
+    assert.equal(journal.state, point === "after-journal-committed" ? "COMMITTED" : "PREPARED");
+    const afterCrash = await crashing.active();
+    if (point === "after-journal-prepared") assert.deepEqual(afterCrash, next.active);
+    else assert.deepEqual(afterCrash, state.stablePointer);
+
+    const retried = await managerFor(state).rollback(state.stable.bundle.releaseDigest, bound);
+    assert.deepEqual(retried.active, state.stablePointer);
+    assert.deepEqual(await managerFor(state).active(), state.stablePointer);
+    await assert.rejects(access(join(state.installRoot, "activation-journal.json")));
+  });
+}
+
+test("an interrupted rollback journal blocks activating a different release until it converges", async () => {
+  const state = await seeded();
+  await state.manager.activate(state.candidate.receipt);
+  const crashing = managerFor(state, {
+    fault(point) {
+      if (point === "after-journal-prepared") throw new Error("crash before the rollback pointer");
+    }
+  });
+  await assert.rejects(crashing.rollback(state.stable.bundle.releaseDigest), { code: "VES_ROLLBACK_FAILED" });
+  const third = await materializeStagedRelease(state.stagingRoot, {
+    releaseId: "release:verchestra:3.0.0:win32-x64",
+    semanticVersion: "3.0.0"
+  });
+  await assert.rejects(managerFor(state).activate(third.receipt), { code: "VES_ACTIVATION_RECOVERY_REQUIRED" });
+  await managerFor(state).rollback(state.stable.bundle.releaseDigest);
+  const recovered = await managerFor(state).activate(third.receipt);
+  assert.equal(recovered.active.releaseDigest, third.bundle.releaseDigest);
+});
+
+test("a foreign activation journal blocks a rollback to a different release", async () => {
+  const state = await seeded();
+  const next = await state.manager.activate(state.candidate.receipt);
+  await writeFile(
+    join(state.installRoot, "activation-journal.json"),
+    `${JSON.stringify({
+      schemaVersion: 1,
+      operation: "activate",
+      state: "PUBLISHED",
+      target: next.active,
+      previous: state.stablePointer,
+      health: {}
+    })}\n`
+  );
+  await assert.rejects(managerFor(state).rollback(state.stable.bundle.releaseDigest), {
+    code: "VES_ACTIVATION_RECOVERY_REQUIRED"
+  });
+  assert.deepEqual(await managerFor(state).active(), next.active);
+});
+
 test("staging-root junction is rejected before component reads", async () => {
   const root = await temporary();
   const actual = join(root, "actual-stage");
