@@ -12,8 +12,8 @@ Issue: #18 (T77). Bound revision `3d363f782bad40e5c5be8252e6626216b4f60248`.
 | T4 | Write the exact signing procedure using the existing evidence-key custody pattern | Done — `prepared-decision.md` section 4 |
 | T5 | Rank the reasons the recorded verdict is `reject`, each citing a tracked file and naming what would lift it | Done — `prepared-decision.md` section 5 |
 | T6 | State what each reviewer is being asked to review | Done — `prepared-decision.md` section 6 |
-| T7 | Ratify the canonical decision body definition, then verify the signature in the validator | **Not started.** Requires the owner's ratification; see section 5. |
-| T8 | Provision the decision signing key, obtain both reviews, sign, and open the decision pull request | **Not started.** Human acts. |
+| T7 | Ratify the canonical decision body definition, then verify the signature in the validator | Done — `9d5d6e3` verifies the Ed25519 signature over the §4.1 body. AD-033 records the definition; the owner signed over it in `62ccde4`. |
+| T8 | Provision the decision signing key, obtain both reviews, sign, and open the decision pull request | Done — `045a73b`, `e0c1d2a`, `62ccde4` (PR #397): a signed `reject` (a recorded hold) with three distinct identities. |
 
 ## Test coverage matrix
 
@@ -65,6 +65,10 @@ violation is asserted to be accepted by the first case in the file.
 - Discrimination sensor: twelve mutations, twelve killed, zero survivors. Recorded in `docs/qualification/t77-validation.md`.
 
 ## 5. Open gaps, stated rather than implied
+
+> **Closed (reconciled 2026-09-29, #407).** `9d5d6e3` verifies the signature
+> against the key that `publicKeyRef` resolves to. The gap below is kept as it
+> was recorded before that commit.
 
 **The signature is checked for presence, not verified.**
 `RELEASE-DECISION-CONTRACT.md`'s fail-closed table names "An unresolvable

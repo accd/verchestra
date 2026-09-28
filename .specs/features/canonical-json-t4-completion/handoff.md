@@ -3,12 +3,12 @@ schema: verchestra-feature-handoff/v1
 feature: canonical-json-t4-completion
 issue: 58
 status: in_progress
-branch: codex/milestone-2-p0-sync
-baseRevision: 190e06f50e5a0b014013bda4dd7618104db3182a
-lastCompletedTask: null
-nextTask: T1 of T4j — prove the no-installed-base release-identity claim, then continue T4k census closure.
-lastGate: PR #307 / T4i merged at 190e06f; T4j/T4k gates not started
-updatedAt: 2026-08-23T00:00:00Z
+branch: fix/gate-census-and-handoff-drift
+baseRevision: 20071a78eb5b96b9de63e5e9c863b6997643c767
+lastCompletedTask: T20
+nextTask: "T21 — de-duplicate MATRIX_CEILINGS (9 duplicate keys) and UNCLASSIFIED_CEILINGS (5) in tests/security/canonical-json-locale-allowlist.test.mjs and add a duplicate-key assertion; no open issue tracks it (#58 is closed), so the maintainer first files one or takes it as a focused security change."
+lastGate: "T4j b738b04 and T4k 44c7a85 merged; census has no pending-versioned-migration entry; T21 not started"
+updatedAt: 2026-09-29T00:00:00Z
 ---
 
 # Scope
@@ -33,14 +33,48 @@ T4i's independent correction and human-reviewed merge are now recorded in
 The source-derived census remains tracked and security-tested; its pending
 versioned entries are not a qualification pass.
 
-# Next Exact Action
+# Reconciliation (2026-09-29, #407)
+
+Phases 1 to 3 are merged. #58 was closed on 2026-08-25. The "Next Exact
+Action" and "Blockers" below are historical: they predate T4j. The same drift
+is acceptance-matrix L18.
+
+- **T4j (T1 to T6), release identity, merged in `b738b04` (PR #311).**
+  `hermetic-bundle.ts` and `transactional-activation.ts` use
+  `canonicalizeJsonV2` and code-unit ordering.
+  `.specs/features/canonical-json-t4j-release-identity/validation.md` reads
+  "Verdict: PASS", and AD-026 records the direct swap. T1's planned
+  `tests/build/release-identity-census.test.mjs` was never created. The
+  no-installed-base claim was checked in the T4j slice instead, as its commit
+  and validation record.
+- **T4k (T7 to T12), census closure, merged in `44c7a85`.** Follow-ups landed
+  in `5a530c4`, `95b2b80`, and `6f77378`. `docs/canonical-json-census.json` has
+  no `pending-versioned-migration` entry.
+- **T4i (T13 to T20), signed evidence, merged.** `190e06f` (PR #307) covers the
+  Execution Package. `e469dbd` covers Run Capsule, Recovery Bundle, and Support
+  Bundle. AD-029 and AD-031 record the decisions.
+- **Still open: T21, the ratchet repair.**
+  `tests/security/canonical-json-locale-allowlist.test.mjs` still declares
+  duplicate object keys, and the later value wins:
+  - 9 in `MATRIX_CEILINGS`, including `gate-commit.ts` 0 then 1 and
+    `cedar-policy.ts` 0 then 2.
+  - 5 in `UNCLASSIFIED_CEILINGS`.
+
+  Nothing fails today, because the real counts are at or below the intended
+  ceilings. A regression up to the looser duplicate would still pass. This is
+  the defect "Open Follow-Up" names. No open issue tracks it.
+- **Superseded by #58's closure: T22 and T23.** T22 would record acceptance
+  evidence on #58, and T23 would run the close-out gates. Neither was recorded
+  for this feature. Once T21 lands, T23's gates rerun on that change.
+
+# Next Exact Action (historical, 2026-08-23 — superseded, see Reconciliation)
 
 T1: add `tests/build/release-identity-census.test.mjs` asserting
 `resolveReleaseIdentity().releaseDigest === null` and that no tracked fixture
 pins a V1 release-manifest digest. If either assertion fails, stop and re-plan
 Phase 1 as a versioned facade. Then `pnpm gate:quick`.
 
-# Blockers
+# Blockers (historical, 2026-08-23)
 
 None for implementation. One scheduling window applies: Phase 1 (T4j) must land **before T76**
 ships a release candidate. The direct-swap route depends on there being no

@@ -6,12 +6,18 @@ status: complete
 branch: codex/issue-58-canonical-json-census
 baseRevision: 7bcc236255742ad3edf2c16094abbabbcd4f50e4
 lastCompletedTask: T14
-nextTask: Continue the remaining #58 T4j/T4k migration from canonical-json-t4-completion.
+nextTask: "No further action for this feature; #58 is closed. T4j (b738b04) and T4k (44c7a85) merged; the one remaining #58 item, the T21 ceiling-ratchet repair, is tracked in canonical-json-t4-completion."
 lastGate: pnpm gate:quick PASS; pnpm gate:security PASS
 updatedAt: 2026-08-23T00:00:00Z
 ---
 
 # Current scope
+
+> **Reconciled 2026-09-29 (#407).** The paragraph below was true when the
+> vertical merged. Every #58 vertical it names has since merged. Execution
+> Package, Run Capsule, Recovery Bundle, and Support Bundle landed in
+> `190e06f` and `e469dbd`. The hermetic bundle and transactional activation
+> landed in `b738b04`. The census closed in `44c7a85`. #58 is closed.
 
 This historical effect-identity vertical is complete and was merged through
 PR #301. It does not claim that

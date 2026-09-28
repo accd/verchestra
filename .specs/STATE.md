@@ -393,6 +393,28 @@ note. -->
 
 ## Handoff
 
+- **Reconciliation (2026-09-29, #407):** The feature handoffs were audited
+  against their source reports. The per-file evidence is in
+  `.specs/features/handoff-reconciliation/validation.md`.
+  - **Marked `complete`, with evidence:**
+    - `release-decision`: T7 `9d5d6e3`; T8 `62ccde4`, a signed reject (a
+      recorded hold).
+    - `t75-evidence-signing`: `84ae20a`, `11f9318`.
+    - The four T76 slices, superseded by `docs/qualification/t76-validation.md`.
+  - **Still open, each with its owner:**
+    - `milestone-2-completion`: blocked on #408.
+    - `deep-doctor-live-probes`: T22 blocked, with no tracking issue; see #379.
+    - `live-activation-matrix`: blocked on #387 and #393. A single `.3` does
+      not close J02.
+    - `tuf-role-separation`: blocked on the owner's online key; #382 is still
+      open.
+    - `canonical-json-t4-completion`: T21 ratchet repair, with no tracking
+      issue.
+    - `agent-ready-repository`: the repository topics.
+  - **The entries below are historical.** "T75 remains next" and "#58 remains
+    open" are superseded: T77 is complete, and #16, #17, #18, and #58 are
+    closed.
+
 - **Feature:** `milestone-2-completion` P0 on `codex/milestone-2-p0-sync`,
   based on `origin/main` `190e06f50e5a0b014013bda4dd7618104db3182a`.
 - **Completed:** Reconciled the programme to the current remote state. #16
