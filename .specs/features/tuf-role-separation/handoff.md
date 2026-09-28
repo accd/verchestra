@@ -27,7 +27,7 @@ for any future promote.
   root `version` is an input, not a hardcoded `1`. The root declares the **union**
   of all role keys; each role's metadata is signed **only** by its own key. The
   core enforces the freeze-defense ordering `timestamp <= snapshot <= targets <=
-  root`. Role separation is transparent to the TUF client, proven by the existing
+root`. Role separation is transparent to the TUF client, proven by the existing
   resolve/stage round-trip and the new F1/F2 assertions in
   `tests/security/tuf-publication-security.test.mjs`.
 - `scripts/t76-publish-release.mjs` — signs with two role-separated keys: the
@@ -73,7 +73,9 @@ until the anchor exists, and the publish workflow needs the second secret:
 See `republish-v3-runbook.md` (this directory) for the owner-gated `.3` procedure
 and, critically, three findings from the #387 investigation that constrain it:
 each release must use a strictly greater TUF `metadataVersion` (#387, now enforced
-by the publish tooling); a role-separated root cannot be updated *in place* over
+by the publish tooling against the committed ledger
+`docs/qualification/tuf-publication-ledger.json`, which records v1 and `.2` and
+must gain an entry for every later publication); a role-separated root cannot be updated _in place_ over
 v1/`.2` (`VES_TUF_TRUST_ROOT_MISMATCH`), so the new lineage is a fresh trust
 anchor; and a genuine live rollback collides with TUF anti-rollback (#393) because
 the launcher always re-resolves. The live update/rollback leg needs a second

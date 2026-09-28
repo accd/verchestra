@@ -6,10 +6,12 @@ what a republication can and cannot do. It is not itself a publication step — 
 publication is owner-gated (signing keys, R2 upload, `npm publish` under 2FA) —
 but everything the owner needs to get it right is here.
 
-The publish tooling now enforces the part that can be enforced (monotonic TUF
-metadata versions, #387). The rest is procedure and two open design decisions the
-owner and reviewers must settle before the live update/rollback leg (matrix J02 /
-limitation L7) can close.
+The publish tooling now enforces the part that can be enforced: strictly
+increasing TUF metadata versions per trust root, checked against the committed
+publication ledger `docs/qualification/tuf-publication-ledger.json` (#387). The
+rest is procedure and two open design decisions the owner and reviewers must
+settle before the live update/rollback leg (matrix J02 / limitation L7) can
+close.
 
 ## Three findings that constrain a republication
 
@@ -20,27 +22,41 @@ limitation L7) can close.
 `1.snapshot.json` / `1.targets.json`; the update client's persistent metadata
 cache then reuses the first release's targets and resolves a target hash the
 successor never serves, failing `VES_TUF_SOURCE_HTTP` on the update path. This is
-the live-matrix update-leg failure.
+the live-matrix update-leg failure. Launchers built after #391 name the same
+collision as `VES_TUF_STALE_METADATA` before any target is fetched; the
+already-published launchers are immutable and keep the old code.
 
-`.3` **must** publish with `metadata_version` strictly greater than the highest
-previously published (so **≥ 3** if v1 = 1 and `.2` = 2 — confirm `.2`'s actual
-published version first; see "Confirm the prior version" below). The tooling now
-requires this to be a conscious choice:
+Every publication **must** use a `metadata_version` strictly greater than every
+snapshot, targets, and timestamp version already published under the **same
+root digest**. The tooling enforces it:
 
-- `scripts/t76-publish-release.mjs` — `--metadata-version` is **required** (no
-  silent default).
+- `docs/qualification/tuf-publication-ledger.json` — the committed, append-only,
+  hash-chained ledger of every publication (releaseId, semantic version, base URL
+  and URL prefix, root digest, per-role versions). It records v1 and `.2` at
+  metadata version 1 under the root digest prefix `sha256:491673b9`; facts the
+  repository does not record (the full root digest, the root version, `.2`'s
+  releaseId and host) are `null`, and the checker treats them conservatively.
+  Role-only entries (`kind: "role-refresh"`) are reserved for the #382
+  timestamp/snapshot re-signing routine.
+- `scripts/t76-publish-release.mjs` — `--metadata-version` is **required**, and
+  the script refuses it with `VES_T76_PUBLISH_METADATA_VERSION_NOT_MONOTONIC`
+  unless it strictly exceeds every version the ledger records for the same root
+  digest, before any timestamp, snapshot, or targets metadata is signed and
+  before any output byte exists. A different root digest is an independent
+  lineage.
 - `.github/workflows/t76-publish-release.yml` — the `metadata_version` dispatch
   input has **no default**; the operator states it each time.
-- Regression proof: `tests/e2e/tuf-update-client.test.mjs` — a successor sharing
-  its predecessor's `metadataVersion` cannot be staged over it; an incremented
-  one stages cleanly.
+- Regression proof: `tests/build/t76-release-publication.test.mjs` (equal and
+  lower refused, higher admitted, a different root independent) and
+  `tests/e2e/tuf-update-client.test.mjs` (a successor sharing its predecessor's
+  `metadataVersion` fails `VES_TUF_STALE_METADATA`; an incremented one stages
+  cleanly).
 
-The tooling cannot yet *derive* the prior version from a committed ledger (the
-rollback index does not carry it — see the follow-up note), so strict
-monotonicity across releases remains the operator's responsibility, guarded by
-the required flag and this runbook.
+The workflow checks the ledger at the **candidate revision** it checks out, so a
+candidate must be built from a revision whose ledger already records every prior
+publication.
 
-### 2. Role separation changes the root, so `.3` cannot be updated *in place* over v1/.2
+### 2. Role separation changes the root, so `.3` cannot be updated _in place_ over v1/.2
 
 The role-separation work (F1/F2) adds a separate online timestamp/snapshot key,
 which changes `rootDigest`. The update client pins the bootstrap trust root per
@@ -66,10 +82,10 @@ less than current version M"). This is a security property, not a bug — a clie
 must not be downgraded by replayed metadata.
 
 The live-matrix `rollback` leg (`npx verchestra@$BASE_VERSION` after `update`)
-only passed in run 33087399859 because the update *failed* (cache unchanged). A
+only passed in run 33087399859 because the update _failed_ (cache unchanged). A
 successful update makes the naive rollback fail by anti-rollback. Closing J02's
 rollback half requires a design decision (#393): reframe rollback as a
-roll-*forward* publication that points at the prior content, add a reviewed
+roll-_forward_ publication that points at the prior content, add a reviewed
 retained-bundle re-activation path, or narrow what J02 claims. **Settle #393
 before promising a live rollback demonstration.**
 
@@ -91,31 +107,39 @@ Publish the role-separated lineage as its own trust anchor and demonstrate the
 1. **Complete role separation (owner).** Provision the online timestamp/snapshot
    key and commit its anchor; extend the pairwise trust-separation test. Steps
    are in this feature's `handoff.md` ("What the owner must do to complete it").
-2. **Confirm the prior version.** Read the highest published TUF metadata version
-   (`.2`'s `timestamp.json` `signed.version` from the live endpoint). `.3` uses
-   the next integer above it.
+2. **Confirm the prior version.** Read `docs/qualification/tuf-publication-ledger.json`
+   on `main`. `.3`'s role-separated root is a new lineage, so the ledger admits
+   any version for it; `.3` should still use `2` (above every recorded version),
+   which keeps versions monotonic across lineages at no cost. For any later
+   same-root release, use the next integer above the highest version the ledger
+   records for that root digest.
 3. **Build the `.3` candidate** from `main` (post-merges) via the candidate-build
    workflow; capture its run id and reconciled index (this becomes the rollback
    index the publish step seals).
 4. **Publish `.3`** (owner, via `t76-publish-release.yml`): role-separated keys,
-   both anchors committed, `metadata_version` = the next integer (step 2),
-   `--timestamp-expires` short now that #382's refresh routine exists, a new
+   both anchors committed, `metadata_version` from step 2, the default
+   `--timestamp-expires` (the full horizon: #382's refresh routine does not exist
+   yet, and a short online window without it is an expiry time-bomb), a new
    `/v3/` base-URL prefix, and the rollback index from step 3. The tooling signs
    root+targets offline and timestamp+snapshot online, each bound to its anchor.
 5. **Upload to R2 and verify live BEFORE `npm publish`** (owner). Verify every
    object by sha256, then confirm the endpoint serves, for each target: the
    metadata chain `200`, and each target under a `Range` request `206`. Only then
    `npm publish` `.3` (2FA).
-6. **Demonstrate the forward update leg.** To exercise a *successful* update, a
+6. **Demonstrate the forward update leg.** To exercise a _successful_ update, a
    second role-separated release sharing `.3`'s root and a higher
    `metadata_version` is needed (e.g. `.4`). Run the live-matrix with
    `base=0.0.0-qualification.3`, `update=0.0.0-qualification.4`. The rollback
    phase passes only if both releases carry AD-036 (see finding 3's status);
    without it, do not expect the naive re-invoke-the-base rollback to pass after
    a successful update.
-7. **Record.** Update `docs/qualification/acceptance-matrix.md` (L5, L7, J02),
-   the live-matrix `validation.md`/`handoff.md`, and this feature's handoff with
-   the run ids and transcript digests, verified by content.
+7. **Record.** Append the `.3` (and later `.4`) release entry to
+   `docs/qualification/tuf-publication-ledger.json` from its
+   `publication-manifest.json` (the final manual step it lists), then update
+   `docs/qualification/acceptance-matrix.md` (L5, L7, J02), the live-matrix
+   `validation.md`/`handoff.md`, and this feature's handoff with the run ids and
+   transcript digests, verified by content. Record the ledger entry **before**
+   building the next candidate, so that candidate's ledger carries it.
 
 ## What `.3` alone does and does not close
 
@@ -125,7 +149,7 @@ Publish the role-separated lineage as its own trust anchor and demonstrate the
 - **Does not close by itself:** the live update/rollback leg (J02/L7). That needs
   a second same-root release for the forward update (step 6) and the #393
   decision for rollback. A single `.3` cannot demonstrate an update leg — there is
-  nothing correctly-versioned to move *to*.
+  nothing correctly-versioned to move _to_.
 
 ## Follow-ups referenced
 
@@ -134,7 +158,7 @@ Publish the role-separated lineage as its own trust anchor and demonstrate the
 - #382 — the monthly timestamp/snapshot refresh routine (makes a short
   `--timestamp-expires` safe).
 - #391 — the update client surfacing a version collision as a misleading source
-  error rather than a clear one.
-- Possible follow-up: record each published TUF `metadataVersion` in a committed,
-  tamper-evident ledger so the publish tooling can enforce strict monotonicity
-  against it rather than relying on the operator plus this runbook.
+  error; resolved for future launchers by `VES_TUF_STALE_METADATA`.
+- The committed publication ledger (`docs/qualification/tuf-publication-ledger.json`,
+  feature `tuf-metadata-version-safety`) now carries each published TUF version,
+  so the tooling enforces strict monotonicity instead of relying on the operator.

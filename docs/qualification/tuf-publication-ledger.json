@@ -1,0 +1,51 @@
+{
+  "schema": "verchestra-tuf-publication-ledger/v1",
+  "policy": "Append-only. Add one entry per TUF publication (kind release) or online timestamp/snapshot re-signing (kind role-refresh, #382) in a reviewed pull request once it is live; never edit, reorder, or remove an entry. Each entry chains to the canonical digest of the one before it. null means the fact is not recorded in this repository, and the publish tooling treats it conservatively: an unknown root digest matches every root its recorded prefix admits, and an unknown snapshot, targets, or timestamp version on a matching entry refuses the publication.",
+  "entries": [
+    {
+      "sequence": 1,
+      "previousEntryDigest": null,
+      "kind": "release",
+      "releaseId": "release:verchestra:0.0.0-qualification:a49f3dd5aa3e",
+      "semanticVersion": "0.0.0-qualification",
+      "baseUrl": "https://pub-0fa3e4c3f26540e793952fa2c187d536.r2.dev/",
+      "urlPrefix": "",
+      "rootDigest": null,
+      "rootDigestPrefix": "sha256:491673b9",
+      "roles": {
+        "root": null,
+        "snapshot": 1,
+        "targets": 1,
+        "timestamp": 1
+      },
+      "publicationRunId": "32929312169",
+      "evidence": [
+        "docs/qualification/t76-validation.md",
+        ".specs/features/t76-tuf-publication/validation.md",
+        ".specs/features/live-activation-matrix/validation.md"
+      ]
+    },
+    {
+      "sequence": 2,
+      "previousEntryDigest": "sha256:42974eb43a606d2a49e7d8917b554aa8aa513ed902a298827e445db726c7c293",
+      "kind": "release",
+      "releaseId": null,
+      "semanticVersion": "0.0.0-qualification.2",
+      "baseUrl": null,
+      "urlPrefix": "v2/",
+      "rootDigest": null,
+      "rootDigestPrefix": "sha256:491673b9",
+      "roles": {
+        "root": null,
+        "snapshot": 1,
+        "targets": 1,
+        "timestamp": 1
+      },
+      "publicationRunId": null,
+      "evidence": [
+        ".specs/features/live-activation-matrix/validation.md",
+        ".specs/features/tuf-role-separation/republish-v3-runbook.md"
+      ]
+    }
+  ]
+}

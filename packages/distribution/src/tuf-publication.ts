@@ -59,6 +59,10 @@ export interface TufPublicationInput {
   readonly consistentSnapshot: boolean;
 }
 
+// why: exactly the inputs the trusted root is derived from, so a publisher can
+// learn the pinned root digest before any release metadata is signed (#387).
+export type TufTrustedRootInput = Pick<TufPublicationInput, "rootVersion" | "expires" | "roles" | "consistentSnapshot">;
+
 export interface TufReleasePublication {
   readonly schemaVersion: 1;
   readonly releaseId: string;
@@ -273,15 +277,19 @@ const validateRoleExpiries = (value: unknown): void => {
     );
 };
 
-const validateMetadataInputs = (input: TufPublicationInput): void => {
-  if (input.schemaVersion !== 1) fail("VES_TUF_PUBLICATION_INPUT_INVALID", "schemaVersion must be 1");
+const validateRootInputs = (input: TufTrustedRootInput): void => {
   const roles = object(input.roles, "roles");
   for (const name of ROLE_NAMES) validateRole(roles[name], name);
-  positiveInteger(input.metadataVersion, "metadataVersion");
   positiveInteger(input.rootVersion, "rootVersion");
   validateRoleExpiries(input.expires);
   if (typeof input.consistentSnapshot !== "boolean")
     fail("VES_TUF_PUBLICATION_INPUT_INVALID", "consistentSnapshot must be boolean");
+};
+
+const validateMetadataInputs = (input: TufPublicationInput): void => {
+  if (input.schemaVersion !== 1) fail("VES_TUF_PUBLICATION_INPUT_INVALID", "schemaVersion must be 1");
+  validateRootInputs(input);
+  positiveInteger(input.metadataVersion, "metadataVersion");
 };
 
 // A key id that appears under two roles (root and targets share the offline key
@@ -388,21 +396,7 @@ const requireCandidateBundle = (candidate: ReleaseCandidate): HermeticDistributi
   }
 };
 
-/**
- * Create a signed, consistent-snapshot TUF repository from an already verified
- * candidate. Signers are injected callbacks so private key custody remains
- * outside the repository and outside this module.
- */
-export function buildTufReleasePublication(input: TufPublicationInput): TufReleasePublication {
-  if (input === null || typeof input !== "object")
-    fail("VES_TUF_PUBLICATION_INPUT_INVALID", "publication input must be an object");
-  validateMetadataInputs(input);
-  const bundle = requireCandidateBundle(input.candidate);
-  if (input.candidate.semanticVersion !== bundle.semanticVersion)
-    fail("VES_TUF_PUBLICATION_CANDIDATE_INVALID", "candidate semantic version differs from bundle");
-  const bytesByPath = validateComponentBytes(bundle, input.componentBytes);
-  const path = manifestPath(bundle);
-  const manifestBytes = canonicalBytes(bundle);
+const signedTrustedRoot = (input: TufTrustedRootInput): Buffer => {
   const { root: rootRole, timestamp: timestampRole, snapshot: snapshotRole, targets: targetsRole } = input.roles;
   const trustedRootSigned: Record<string, unknown> = {
     _type: "root",
@@ -422,6 +416,36 @@ export function buildTufReleasePublication(input: TufPublicationInput): TufRelea
     },
     consistent_snapshot: input.consistentSnapshot
   };
+  return signedEnvelope(trustedRootSigned, rootRole.signers);
+};
+
+/**
+ * Derive the signed trusted root a publication with these inputs would carry,
+ * byte for byte, without signing any timestamp, snapshot, or targets metadata.
+ */
+export function buildTufTrustedRoot(input: TufTrustedRootInput): Uint8Array {
+  if (input === null || typeof input !== "object")
+    fail("VES_TUF_PUBLICATION_INPUT_INVALID", "trusted root input must be an object");
+  validateRootInputs(input);
+  return signedTrustedRoot(input);
+}
+
+/**
+ * Create a signed, consistent-snapshot TUF repository from an already verified
+ * candidate. Signers are injected callbacks so private key custody remains
+ * outside the repository and outside this module.
+ */
+export function buildTufReleasePublication(input: TufPublicationInput): TufReleasePublication {
+  if (input === null || typeof input !== "object")
+    fail("VES_TUF_PUBLICATION_INPUT_INVALID", "publication input must be an object");
+  validateMetadataInputs(input);
+  const bundle = requireCandidateBundle(input.candidate);
+  if (input.candidate.semanticVersion !== bundle.semanticVersion)
+    fail("VES_TUF_PUBLICATION_CANDIDATE_INVALID", "candidate semantic version differs from bundle");
+  const bytesByPath = validateComponentBytes(bundle, input.componentBytes);
+  const path = manifestPath(bundle);
+  const manifestBytes = canonicalBytes(bundle);
+  const { timestamp: timestampRole, snapshot: snapshotRole, targets: targetsRole } = input.roles;
   const delegatedTargets = Object.fromEntries(
     bundle.components.map((component) => [
       component.logicalPath,
@@ -499,7 +523,7 @@ export function buildTufReleasePublication(input: TufPublicationInput): TufRelea
     meta: { "snapshot.json": metadataFile(snapshotBytes, input.metadataVersion) }
   };
   const timestampBytes = signedEnvelope(timestampSigned, timestampRole.signers);
-  const rootBytes = signedEnvelope(trustedRootSigned, rootRole.signers);
+  const rootBytes = signedTrustedRoot(input);
   const metadata = new Map<string, Uint8Array>([
     ["root.json", rootBytes],
     ["timestamp.json", timestampBytes],

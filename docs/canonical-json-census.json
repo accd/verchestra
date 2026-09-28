@@ -1085,6 +1085,17 @@
         "serialization": 0
       },
       "reason": "The publication boundary verifies sealed candidate closures and emits release artifacts with the declared V2 canonical contract."
+    },
+    {
+      "path": "scripts/tuf-publication-ledger.mjs",
+      "classification": "migrated-v2",
+      "signals": {
+        "canonicalizer": 2,
+        "digest": 2,
+        "localeCompare": 0,
+        "serialization": 0
+      },
+      "reason": "The TUF publication ledger chains each entry to the V2 canonical digest of the entry before it, born on the declared V2 contract."
     }
   ]
 }
