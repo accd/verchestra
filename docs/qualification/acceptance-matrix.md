@@ -714,7 +714,10 @@ fresh state on all five targets, and every byte `.2` needs is served live (run
 both releases were published with the same TUF `metadataVersion`, so activating
 one over the other's cached metadata reuses stale targets and fails
 `VES_TUF_SOURCE_HTTP` on the update path
-([#387](https://github.com/accd/verchestra/issues/387)). A successful update
+([#387](https://github.com/accd/verchestra/issues/387)). The update client now
+names that collision as `VES_TUF_STALE_METADATA` before any target is fetched
+([#391](https://github.com/accd/verchestra/issues/391)); the already-published
+launchers are immutable and keep the old code. A successful update
 then exposes a second, deliberate refusal: re-invoking the base is a metadata
 downgrade that anti-rollback rejects
 ([#393](https://github.com/accd/verchestra/issues/393)). AD-036 adds a local
