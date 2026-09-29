@@ -100,3 +100,18 @@ function firstExisting(candidates: readonly URL[]): string {
   const resolved = candidates.map((url) => fileURLToPath(url));
   return resolved.find((path) => existsSync(path)) ?? resolved[0]!;
 }
+
+// why: the mediated MCP bridge relay Claude Code launches through
+// `--mcp-config` (#405) is, like the crash child, a real child process, so no
+// launcher bundle can inline it. The builder emits it as its own sealed bundle
+// at `<releaseRoot>/bin/mcp-tool-bridge.mjs`, and a repository checkout runs
+// the tracked TypeScript entry. It resolves against this module's own
+// location, so the answer does not depend on which command module asks.
+export function resolveMcpBridgeRelay(moduleUrl: string = import.meta.url): string {
+  return firstExisting(
+    releaseLayoutCandidates(moduleUrl, {
+      sealed: "./mcp-tool-bridge.mjs",
+      source: "../../../packages/agent-runtime/src/execution/mcp-tool-bridge-main.ts"
+    })
+  );
+}

@@ -69,10 +69,24 @@ test("help excludes a command absent from the installed manifest", async () => {
   assert.equal(result.streams.stdout[0].includes("doctor"), false);
 });
 
-test("the source manifest advertises the composed init, self-test, doctor, and secret slice", () => {
+test("the source manifest advertises the composed init, self-test, doctor, secret, and task slice", () => {
   assert.deepEqual(
     installedReleaseManifest.commands.map((command) => command.name),
-    ["init", "self-test", "doctor", "secret set", "secret status", "secret delete"]
+    [
+      "init",
+      "self-test",
+      "doctor",
+      "secret set",
+      "secret status",
+      "secret delete",
+      "task plan",
+      "task approve",
+      "task start",
+      "task status",
+      "task resume",
+      "task cancel",
+      "task review"
+    ]
   );
   assert.deepEqual(
     installedReleaseManifest.commands[0].options.map((option) => option.name),
@@ -96,7 +110,7 @@ test("the source manifest advertises the composed init, self-test, doctor, and s
     );
   }
   assert.deepEqual(
-    installedReleaseManifest.commands.slice(3).map((command) => [command.name, command.mutating]),
+    installedReleaseManifest.commands.slice(3, 6).map((command) => [command.name, command.mutating]),
     [
       ["secret set", true],
       ["secret status", false],
@@ -129,6 +143,64 @@ test("the init probe options advertise exactly the generator's engines and langu
   assert.throws(
     () => parseCliArguments(["init", "--probe-engine", "db2"], installedReleaseManifest),
     (error) => error.envelope.code === "VES_CLI_ARGUMENT_INVALID"
+  );
+});
+
+test("the task slice takes no positional argument, a run ID, and the keychain where credentials are read", () => {
+  const task = Object.fromEntries(
+    installedReleaseManifest.commands
+      .filter((command) => command.name.startsWith("task "))
+      .map((command) => [command.name, command.options.map((option) => [option.name, option.kind])])
+  );
+  assert.deepEqual(task, {
+    "task plan": [
+      ["request", "string"],
+      ["dry-run", "boolean"],
+      ["keychain", "string"]
+    ],
+    "task approve": [
+      ["run-id", "string"],
+      ["binding-digest", "string"],
+      ["confirm-stdin", "boolean"],
+      ["keychain", "string"]
+    ],
+    "task start": [
+      ["run-id", "string"],
+      ["keychain", "string"]
+    ],
+    "task status": [
+      ["run-id", "string"],
+      ["keychain", "string"]
+    ],
+    "task resume": [
+      ["run-id", "string"],
+      ["keychain", "string"]
+    ],
+    "task cancel": [
+      ["run-id", "string"],
+      ["keychain", "string"]
+    ],
+    "task review": [
+      ["run-id", "string"],
+      ["outcome", "string"],
+      ["surface-digest", "string"],
+      ["confirm-stdin", "boolean"],
+      ["keychain", "string"]
+    ]
+  });
+  const review = installedReleaseManifest.commands.find((command) => command.name === "task review");
+  assert.deepEqual(review.options.find((option) => option.name === "outcome").values, ["accepted", "rejected"]);
+  assert.deepEqual(
+    installedReleaseManifest.commands.slice(6).map((command) => [command.name, command.mutating]),
+    [
+      ["task plan", true],
+      ["task approve", true],
+      ["task start", true],
+      ["task status", false],
+      ["task resume", true],
+      ["task cancel", true],
+      ["task review", true]
+    ]
   );
 });
 

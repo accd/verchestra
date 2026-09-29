@@ -31,12 +31,17 @@ import assert from "node:assert/strict";
 import { copyFile, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { after, before, test } from "node:test";
 
-import { resolveDurableCrashChild, resolveSelfTestDriverFake } from "../../apps/vestra-cli/src/release-layout.ts";
+import {
+  resolveDurableCrashChild,
+  resolveMcpBridgeRelay,
+  resolveSelfTestDriverFake
+} from "../../apps/vestra-cli/src/release-layout.ts";
 import { NodeActivationHealthGate } from "../../packages/platform-node/src/activation-launcher-adapters.ts";
 import { DEFAULT_RUNTIME_MIGRATIONS } from "../../packages/platform-node/src/runtime-store/runtime-migrations.ts";
 import { SEALED_LAUNCHER_ENTRIES, bundleSealedLauncher } from "../../scripts/t76-build-candidate.mjs";
@@ -56,7 +61,27 @@ const LAUNCHER_IDS = Object.freeze(["launcher:vestra", "launcher:verchestra"]);
 // about it too.
 const CRASH_CHILD_ID = "self-test:full-crash-child";
 const CRASH_CHILD_LOGICAL_PATH = "bin/self-test-full-crash-child.mjs";
-const SEALED_BIN_IDS = Object.freeze([...LAUNCHER_IDS, CRASH_CHILD_ID]);
+// The mediated MCP bridge relay (#405) is the second spawned sibling: Claude
+// Code starts it through `--mcp-config`, so it is bundled and staged the same
+// way as the crash child.
+const RELAY_ID = "mcp:tool-bridge-relay";
+const RELAY_LOGICAL_PATH = "bin/mcp-tool-bridge.mjs";
+const SEALED_BIN_IDS = Object.freeze([...LAUNCHER_IDS, CRASH_CHILD_ID, RELAY_ID]);
+const SEALED_COMMANDS = Object.freeze([
+  "init",
+  "self-test",
+  "doctor",
+  "secret set",
+  "secret status",
+  "secret delete",
+  "task plan",
+  "task approve",
+  "task start",
+  "task status",
+  "task resume",
+  "task cancel",
+  "task review"
+]);
 const NATIVE_PLACEHOLDERS = Object.freeze({
   "native/sqlite-vec": Buffer.alloc(4096, 7),
   "native/cedar-wasm.wasm": Buffer.alloc(1536, 9)
@@ -130,6 +155,8 @@ async function stagedLayout(bins) {
   await writeFile(join(releaseRoot, "bin", "verchestra.mjs"), bins["launcher:verchestra"]);
   if (bins[CRASH_CHILD_ID] !== undefined)
     await writeFile(join(releaseRoot, ...CRASH_CHILD_LOGICAL_PATH.split("/")), bins[CRASH_CHILD_ID]);
+  if (bins[RELAY_ID] !== undefined)
+    await writeFile(join(releaseRoot, ...RELAY_LOGICAL_PATH.split("/")), bins[RELAY_ID]);
   await stageSealedComponents(releaseRoot);
   return releaseRoot;
 }
@@ -172,7 +199,7 @@ function spawnSealed(releaseRoot, launcher, args, options = {}) {
       cwd: options.cwd ?? releaseRoot,
       encoding: "utf8",
       windowsHide: true,
-      env: { ...process.env, NO_COLOR: "1" },
+      env: { ...process.env, NO_COLOR: "1", ...options.env },
       timeout: options.timeoutMs ?? 60_000
     }
   );
@@ -251,7 +278,7 @@ test("the health report carries only honest observations of the staged closure",
   assert.equal(driver.observation.selfTestProfile.profileId, "drivers");
   assert.deepEqual(
     report.behavior.commands.map((command) => command.name),
-    ["init", "self-test", "doctor", "secret set", "secret status", "secret delete"]
+    SEALED_COMMANDS
   );
 });
 
@@ -277,8 +304,7 @@ test("the sealed launcher is the real CLI for every other argument vector", asyn
   const help = spawnSealed(releaseRoot, "verchestra.mjs", ["--help"]);
   assert.equal(help.status, 0);
   assert.equal(help.stderr, "");
-  for (const command of ["init", "self-test", "doctor", "secret set", "secret status", "secret delete"])
-    assert.match(help.stdout, new RegExp(`\\b${command}\\b`, "u"));
+  for (const command of SEALED_COMMANDS) assert.match(help.stdout, new RegExp(`\\b${command}\\b`, "u"));
 });
 
 // Executing `doctor` from the staged layout, not merely finding its name in
@@ -434,4 +460,105 @@ test("a sealed launcher bundle imports Node built-ins only", () => {
     );
     assert.doesNotMatch(text, /import\s*\{[^}]*\}\s*from\s*"node:sqlite"/u, "node:sqlite must stay lazy");
   }
+});
+
+// #405: `vestra task` must be reachable from the sealed bundle, the bridge
+// relay Claude Code launches must be staged beside the launchers and runnable
+// by the release's own runtime, and the task authority must load Cedar from
+// the release's `native/cedar-wasm.wasm` rather than from a dependency store
+// the staged layout does not have. A dry-run plan exercises all three without
+// a credential, a provider, or any write to the Workspace state.
+test("vestra task is reachable from the sealed bundle and its bridge relay is staged and runnable", async () => {
+  const releaseRoot = await stagedLayout(sealedBins);
+  const stagedRelay = join(releaseRoot, ...RELAY_LOGICAL_PATH.split("/"));
+  assert.ok(existsSync(stagedRelay), "the candidate must emit the bridge relay as its own sealed artifact");
+  assert.equal(resolveMcpBridgeRelay(pathToFileURL(join(releaseRoot, "bin", "vestra.mjs")).href), stagedRelay);
+  assert.equal(
+    resolveMcpBridgeRelay(),
+    fileURLToPath(new URL("../../packages/agent-runtime/src/execution/mcp-tool-bridge-main.ts", import.meta.url))
+  );
+  // With no controller channel the relay refuses on its own, through the
+  // release runtime, which proves it is a self-contained program.
+  const relay = spawnSync(join(releaseRoot, ...RUNTIME_LOGICAL_PATH.split("/")), [stagedRelay], {
+    encoding: "utf8",
+    input: "",
+    env: { PATH: process.env.PATH ?? "" },
+    timeout: 30_000
+  });
+  assert.equal(relay.status, 1);
+  assert.match(relay.stderr, /^verchestra bridge: VES_[A-Z_]+\n$/u);
+
+  const cedar = createRequire(import.meta.url).resolve("@cedar-policy/cedar-wasm/nodejs");
+  await copyFile(join(dirname(cedar), "cedar_wasm_bg.wasm"), join(releaseRoot, "native", "cedar-wasm.wasm"));
+  const project = await invokingProject();
+  const home = await mkdtemp(join(SCRATCH_BASE, "home-"));
+  disposable.push(home);
+  const workspaceId = "workspace_7c1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f";
+  const env = { HOME: home };
+  const init = spawnSealed(
+    releaseRoot,
+    "vestra.mjs",
+    ["init", "--workspace-id", workspaceId, "--name", "Sealed task", "--placement", "colocated"],
+    { cwd: project, env }
+  );
+  assert.equal(init.status, 0, init.stderr);
+  const state = join(home, "Library", "Application Support", "Verchestra", "state", "workspaces", workspaceId);
+  const allowlist = {
+    schemaVersion: 1,
+    commands: { node: { executable: process.execPath, protocols: ["exit-code"] } }
+  };
+  await mkdir(state, { recursive: true });
+  await writeFile(join(state, "task-gates.json"), JSON.stringify(allowlist));
+  const revision = execFileSync("git", ["rev-parse", "HEAD"], { cwd: project, encoding: "utf8" }).trim();
+  const request = join(home, "request.json");
+  await writeFile(
+    request,
+    JSON.stringify({
+      schemaVersion: 1,
+      sourceRevision: revision,
+      task: {
+        taskId: "T1",
+        requirementIds: ["VES-EXE-001"],
+        dependencyTaskIds: [],
+        component: "src",
+        changeScope: ["src"],
+        protectedPaths: [".git"],
+        verificationCommands: ["node --version"],
+        doneCriteria: ["the sealed plan binds"],
+        risk: "low",
+        expectedCommitBoundary: "feat(src): sealed plan"
+      },
+      gates: [
+        {
+          gateId: "gate:version",
+          requirementIds: ["VES-EXE-001"],
+          declaredCommand: "node --version",
+          commandRef: "node",
+          args: ["--version"],
+          cwd: ".",
+          timeoutMs: 10_000,
+          outputLimitBytes: 10_000,
+          resultProtocol: "exit-code",
+          minimumTests: 0
+        }
+      ],
+      budgets: { maximumCostUsd: 1, maximumTokens: 1000, maximumDurationMs: 60_000 },
+      driver: { driverId: "claude-code", model: "claude-sonnet-5" },
+      verifier: { driverId: "codex", model: "gpt-5.2-codex" },
+      instructions: "A sealed dry run."
+    })
+  );
+  const plan = spawnSealed(
+    releaseRoot,
+    "vestra.mjs",
+    ["task", "plan", "--request", request, "--dry-run", "--output", "json"],
+    { cwd: project, env, timeoutMs: 120_000 }
+  );
+  assert.equal(plan.status, 0, plan.stderr);
+  const surface = JSON.parse(plan.stdout).data;
+  assert.equal(surface.dryRun, true);
+  assert.equal(surface.state, "NOT_PERSISTED");
+  assert.match(surface.bindingDigest, /^sha256:[a-f0-9]{64}$/u);
+  assert.equal(existsSync(join(state, "tasks")), false, "a dry run writes no task state");
+  assert.equal(existsSync(join(state, "runtime")), false, "a dry run opens no runtime store");
 });

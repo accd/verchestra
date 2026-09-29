@@ -14,7 +14,8 @@
 //
 // Module resolution inside the replica is self-contained: `node_modules/`
 // links point each workspace package name at the replica's own copy, and the
-// three third-party names the CLI graph imports (ajv, jose, canonicalize) at
+// third-party names the CLI graph imports (ajv, jose, canonicalize, and the
+// cedar-wasm glue the task authority loads) at
 // the exact lockfile-installed store directories of the host repository.
 // Directory junctions are used so no Windows privilege is required, and
 // `node_modules/` is git-ignored by the replica's own copied .gitignore, so
@@ -28,6 +29,7 @@ import { fileURLToPath } from "node:url";
 
 const REPOSITORY_ROOT = resolve(fileURLToPath(new URL("../../", import.meta.url)));
 const THIRD_PARTY_ANCHORS = Object.freeze({
+  "@cedar-policy/cedar-wasm": "packages/policy",
   ajv: "packages/contracts",
   canonicalize: "packages/evidence",
   jose: "packages/evidence"
@@ -100,8 +102,10 @@ async function linkWorkspacePackages(replica) {
 // store siblings.
 async function linkThirdPartyPackages(replica) {
   for (const [name, anchor] of Object.entries(THIRD_PARTY_ANCHORS)) {
-    const root = await realpath(join(REPOSITORY_ROOT, ...anchor.split("/"), "node_modules", name));
-    await symlink(root, join(replica, "node_modules", name), "junction");
+    const root = await realpath(join(REPOSITORY_ROOT, ...anchor.split("/"), "node_modules", ...name.split("/")));
+    const link = join(replica, "node_modules", ...name.split("/"));
+    await mkdir(dirname(link), { recursive: true });
+    await symlink(root, link, "junction");
   }
 }
 
