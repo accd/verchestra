@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash, createPrivateKey, createPublicKey, sign } from "node:crypto";
 import { lstat, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -192,4 +193,50 @@ test("a realistic bundle with nested and runtime component paths stages end to e
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+});
+
+test("per-role versions (#382) leave every existing publication byte unchanged", () => {
+  // why: seeded throwaway Ed25519 keys make the signatures deterministic, so the
+  // digests below, taken from the implementation before the per-role refactor,
+  // pin the emitted bytes for consistent and non-consistent snapshots alike.
+  const seeded = (seed, label) => {
+    const der = Buffer.concat([Buffer.from("302e020100300506032b657004220420", "hex"), Buffer.alloc(32, seed)]);
+    const privateKey = createPrivateKey({ key: der, format: "der", type: "pkcs8" });
+    const publicKeyPem = createPublicKey(privateKey).export({ format: "pem", type: "spki" }).toString();
+    return {
+      keyId: createHash("sha256").update(`${label}${publicKeyPem}`).digest("hex"),
+      publicKeyPem,
+      sign: (payload) => sign(null, payload, privateKey)
+    };
+  };
+  const value = fixture({ offline: [seeded(1, "a")], online: [seeded(2, "b")] });
+  const digests = (metadataVersion, consistentSnapshot) => {
+    const publication = buildTufReleasePublication({
+      schemaVersion: 1,
+      candidate: value.candidate,
+      componentBytes: value.componentBytes,
+      metadataVersion,
+      rootVersion: 1,
+      expires: value.expires,
+      roles: value.roles,
+      consistentSnapshot
+    });
+    return Object.fromEntries(
+      [...publication.metadata].map(([name, bytes]) => [name, createHash("sha256").update(bytes).digest("hex")])
+    );
+  };
+  assert.deepEqual(digests(1, true), {
+    "1.components.json": "c24de4cf76fe2f232e72c24c145a9b55ce0e9e10b7e31fb38fab86947914e374",
+    "1.snapshot.json": "6d2f0fa919fdd747ebd6d90d21f6a557aaef798a5ab4146db22e5cd873718ee1",
+    "1.targets.json": "5f9378bc12aa092fd66c477b53f6545f9448d4f35ba8b8f703f0048efda391b8",
+    "root.json": "bc54c9f0c871a2bd230753a37bf57ee8a636b80415003374e1b4f94f57efc0c9",
+    "timestamp.json": "db8ad22c3101e63a986a88dff99c6f5ec4b212605134ccdc153913844c4686e5"
+  });
+  assert.deepEqual(digests(7, false), {
+    "components.json": "66f5d2d2b901a14898778d70d61873a4e1d5d50c914737d280890301a23e79ec",
+    "root.json": "6c8a2c3ced695c6e041e56dac7940c3ed4025020dc0ec984967fb65810831072",
+    "snapshot.json": "150cbd3d85833c159e7e701378ec69498e8cccf31e8241af984428756211eb3c",
+    "targets.json": "5e12ce66a8f02eda68476efde9201b1c7cf5a4cd015d1dd8104ff23f30bb8181",
+    "timestamp.json": "9e470aba815026edce748c8e7334c687212ca76971cccb3f38d10a251a23c327"
+  });
 });

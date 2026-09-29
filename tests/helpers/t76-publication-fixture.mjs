@@ -75,16 +75,17 @@ export function testSigningKeyBase64() {
  * a publish signed with that throwaway key satisfies the reviewed-anchor binding
  * the publisher enforces. Production reads the committed anchor instead; this
  * exists only so tests need not hold the reviewed release private key. Returns
- * the file path, named by the key id so repeated calls for one key are stable.
+ * the file path, named by the purpose and key id so repeated calls for one key
+ * are stable. why: the #382 refresh also checks the declared purpose.
  */
-export function writeMatchingReleaseAnchor(directory, keyBase64) {
+export function writeMatchingReleaseAnchor(directory, keyBase64, purpose = "tuf-release-root") {
   const publicKey = createPublicKey(
     createPrivateKey({ key: Buffer.from(keyBase64, "base64"), format: "der", type: "pkcs8" })
   );
   const keyId = createHash("sha256")
     .update(publicKey.export({ format: "der", type: "spki" }))
     .digest("hex");
-  const path = join(directory, `release-anchor-${keyId.slice(0, 16)}.json`);
+  const path = join(directory, `${purpose}-anchor-${keyId.slice(0, 16)}.json`);
   writeFileSync(
     path,
     `${JSON.stringify({
@@ -92,7 +93,7 @@ export function writeMatchingReleaseAnchor(directory, keyBase64) {
       encoding: "spki-pem",
       keyId: `test-release-anchor-${keyId.slice(0, 16)}`,
       publicKey: publicKey.export({ format: "pem", type: "spki" }).toString(),
-      purposes: ["tuf-release-root"]
+      purposes: [purpose]
     })}\n`
   );
   return path;

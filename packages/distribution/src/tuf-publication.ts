@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, createPublicKey, verify } from "node:crypto";
 import { lstat, mkdir, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve, sep } from "node:path";
 
@@ -48,6 +48,15 @@ export interface TufRoleExpiries {
   readonly targets: string;
 }
 
+// invariant: per-role metadata versions (#382). A release signs every role at its one
+// metadataVersion; an online refresh re-signs only timestamp and snapshot at a
+// higher version and leaves the offline-signed targets at the version they carry.
+export interface TufRoleVersions {
+  readonly targets: number;
+  readonly snapshot: number;
+  readonly timestamp: number;
+}
+
 export interface TufPublicationInput {
   readonly schemaVersion: 1;
   readonly candidate: ReleaseCandidate;
@@ -74,6 +83,43 @@ export interface TufReleasePublication {
   readonly metadata: ReadonlyMap<string, Uint8Array>;
   readonly targets: ReadonlyMap<string, Uint8Array>;
   readonly bundle: HermeticDistributionBundle;
+}
+
+// invariant: the online roles an offline-signed publication delegates to (#382).
+export interface TufOnlineRoles {
+  readonly timestamp: TufRoleSigners;
+  readonly snapshot: TufRoleSigners;
+}
+
+export interface TufOnlineRoleRefreshInput {
+  readonly schemaVersion: 1;
+  // invariant: the published, offline-signed metadata, byte for byte. None is re-signed.
+  readonly trustedRoot: Uint8Array;
+  readonly targets: Uint8Array;
+  readonly components: Uint8Array;
+  readonly versions: Pick<TufRoleVersions, "snapshot" | "timestamp">;
+  readonly expires: Pick<TufRoleExpiries, "snapshot" | "timestamp">;
+  readonly roles: TufOnlineRoles;
+}
+
+export interface TufPublishedRoleKeys {
+  readonly keyids: readonly string[];
+  readonly threshold: number;
+}
+
+export interface TufOnlineRoleRefresh {
+  readonly schemaVersion: 1;
+  readonly rootDigest: string;
+  readonly consistentSnapshot: boolean;
+  readonly versions: TufRoleVersions;
+  readonly expires: TufRoleExpiries;
+  // why: the keys the verified root declares, so a caller can bind them to its own
+  // reviewed anchors: role name to key ids, and key id to its public PEM.
+  readonly rootRoles: Readonly<Record<"root" | "timestamp" | "snapshot" | "targets", TufPublishedRoleKeys>>;
+  readonly rootKeys: ReadonlyMap<string, string>;
+  readonly releaseTargets: Readonly<Record<string, unknown>>;
+  // invariant: exactly timestamp.json and the new snapshot; never root, targets, or components.
+  readonly metadata: ReadonlyMap<string, Uint8Array>;
 }
 
 export interface TufReleasePublicationDirectory {
@@ -378,6 +424,42 @@ const consistentTargetPath = (path: string, bytes: Uint8Array, consistentSnapsho
   return `${directory}${sha256Hex(bytes)}.${name}`;
 };
 
+const releaseRoleVersions = (metadataVersion: number): TufRoleVersions =>
+  Object.freeze({ targets: metadataVersion, snapshot: metadataVersion, timestamp: metadataVersion });
+
+const consistentMetadataName = (role: string, version: number, consistentSnapshot: boolean): string =>
+  consistentSnapshot ? `${version}.${role}.json` : `${role}.json`;
+
+// invariant: the only code that signs snapshot and timestamp metadata, shared by
+// a release and an online refresh, so both emit the same shape. The snapshot
+// pins the offline-signed targets and components at versions.targets.
+const signOnlineRoles = (
+  offline: { readonly targets: Uint8Array; readonly components: Uint8Array },
+  versions: TufRoleVersions,
+  expires: Pick<TufRoleExpiries, "snapshot" | "timestamp">,
+  roles: TufOnlineRoles
+): { readonly snapshot: Buffer; readonly timestamp: Buffer } => {
+  const snapshotSigned: Record<string, unknown> = {
+    _type: "snapshot",
+    spec_version: "1.0.0",
+    version: versions.snapshot,
+    expires: expires.snapshot,
+    meta: {
+      "targets.json": metadataFile(offline.targets, versions.targets),
+      "components.json": metadataFile(offline.components, versions.targets)
+    }
+  };
+  const snapshot = signedEnvelope(snapshotSigned, roles.snapshot.signers);
+  const timestampSigned: Record<string, unknown> = {
+    _type: "timestamp",
+    spec_version: "1.0.0",
+    version: versions.timestamp,
+    expires: expires.timestamp,
+    meta: { "snapshot.json": metadataFile(snapshot, versions.snapshot) }
+  };
+  return { snapshot, timestamp: signedEnvelope(timestampSigned, roles.timestamp.signers) };
+};
+
 const manifestPath = (bundle: HermeticDistributionBundle): string =>
   `releases/${bundle.target.platform}-${bundle.target.arch}/release.json`;
 
@@ -504,32 +586,18 @@ export function buildTufReleasePublication(input: TufPublicationInput): TufRelea
   };
   const delegatedBytes = signedEnvelope(delegatedSigned, targetsRole.signers);
   const topTargetsBytes = signedEnvelope(topTargetsSigned, targetsRole.signers);
-  const snapshotSigned: Record<string, unknown> = {
-    _type: "snapshot",
-    spec_version: "1.0.0",
-    version: input.metadataVersion,
-    expires: input.expires.snapshot,
-    meta: {
-      "targets.json": metadataFile(topTargetsBytes, input.metadataVersion),
-      "components.json": metadataFile(delegatedBytes, input.metadataVersion)
-    }
-  };
-  const snapshotBytes = signedEnvelope(snapshotSigned, snapshotRole.signers);
-  const timestampSigned: Record<string, unknown> = {
-    _type: "timestamp",
-    spec_version: "1.0.0",
-    version: input.metadataVersion,
-    expires: input.expires.timestamp,
-    meta: { "snapshot.json": metadataFile(snapshotBytes, input.metadataVersion) }
-  };
-  const timestampBytes = signedEnvelope(timestampSigned, timestampRole.signers);
+  const versions = releaseRoleVersions(input.metadataVersion);
+  const online = signOnlineRoles({ targets: topTargetsBytes, components: delegatedBytes }, versions, input.expires, {
+    timestamp: timestampRole,
+    snapshot: snapshotRole
+  });
   const rootBytes = signedTrustedRoot(input);
   const metadata = new Map<string, Uint8Array>([
     ["root.json", rootBytes],
-    ["timestamp.json", timestampBytes],
-    [input.consistentSnapshot ? `${input.metadataVersion}.snapshot.json` : "snapshot.json", snapshotBytes],
-    [input.consistentSnapshot ? `${input.metadataVersion}.targets.json` : "targets.json", topTargetsBytes],
-    [input.consistentSnapshot ? `${input.metadataVersion}.components.json` : "components.json", delegatedBytes]
+    ["timestamp.json", online.timestamp],
+    [consistentMetadataName("snapshot", versions.snapshot, input.consistentSnapshot), online.snapshot],
+    [consistentMetadataName("targets", versions.targets, input.consistentSnapshot), topTargetsBytes],
+    [consistentMetadataName("components", versions.targets, input.consistentSnapshot), delegatedBytes]
   ]);
   const targets = new Map<string, Uint8Array>();
   targets.set(consistentTargetPath(path, manifestBytes, input.consistentSnapshot), manifestBytes);
@@ -548,6 +616,282 @@ export function buildTufReleasePublication(input: TufPublicationInput): TufRelea
     metadata,
     targets,
     bundle
+  });
+}
+
+interface PublishedEnvelope {
+  readonly signatures: readonly { readonly keyid: string; readonly sig: string }[];
+  readonly signed: RecordValue;
+}
+
+const HEX = /^[a-f0-9]+$/u;
+
+const unverified = (message: string, cause?: unknown): never =>
+  fail("VES_TUF_PUBLICATION_REFRESH_UNVERIFIED", message, cause);
+
+const isRecord = (value: unknown): value is RecordValue =>
+  value !== null && typeof value === "object" && !Array.isArray(value);
+
+const parseEnvelope = (bytes: Uint8Array, type: string, label: string): PublishedEnvelope => {
+  if (!(bytes instanceof Uint8Array) || bytes.byteLength === 0) return unverified(`${label} is empty`);
+  let value: unknown;
+  try {
+    value = JSON.parse(Buffer.from(bytes).toString("utf8"));
+  } catch (error) {
+    return unverified(`${label} is not JSON`, error);
+  }
+  if (!isRecord(value) || !isRecord(value["signed"]) || !Array.isArray(value["signatures"]))
+    return unverified(`${label} is not a signed TUF envelope`);
+  const signed = value["signed"];
+  if (signed["_type"] !== type) unverified(`${label} is not ${type} metadata`);
+  const signatures = (value["signatures"] as readonly unknown[]).map((entry) => {
+    if (!isRecord(entry) || typeof entry["keyid"] !== "string" || typeof entry["sig"] !== "string")
+      return unverified(`${label} carries a malformed signature`);
+    return { keyid: entry["keyid"], sig: entry["sig"] };
+  });
+  return { signatures, signed };
+};
+
+const publishedKeys = (value: unknown, label: string): ReadonlyMap<string, string> => {
+  if (!isRecord(value)) return unverified(`${label} keys are not an object`);
+  const keys = new Map<string, string>();
+  for (const [keyId, entry] of Object.entries(value)) {
+    const keyval = isRecord(entry) ? entry["keyval"] : undefined;
+    if (
+      !KEY_ID.test(keyId) ||
+      !isRecord(entry) ||
+      entry["keytype"] !== "ed25519" ||
+      entry["scheme"] !== "ed25519" ||
+      !isRecord(keyval) ||
+      typeof keyval["public"] !== "string"
+    )
+      unverified(`${label} declares a key that is not an ed25519 public key`);
+    keys.set(keyId, (keyval as RecordValue)["public"] as string);
+  }
+  return keys;
+};
+
+const publishedRole = (value: unknown, label: string): TufPublishedRoleKeys => {
+  if (!isRecord(value) || !Array.isArray(value["keyids"])) return unverified(`${label} is not a role`);
+  const keyids = value["keyids"] as readonly unknown[];
+  const threshold = value["threshold"];
+  if (
+    keyids.length === 0 ||
+    keyids.some((keyId) => typeof keyId !== "string" || !KEY_ID.test(keyId)) ||
+    new Set(keyids).size !== keyids.length ||
+    !Number.isSafeInteger(threshold) ||
+    (threshold as number) <= 0 ||
+    (threshold as number) > keyids.length
+  )
+    unverified(`${label} declares invalid key ids or threshold`);
+  return Object.freeze({ keyids: Object.freeze([...(keyids as string[])]), threshold: threshold as number });
+};
+
+const verifyEnvelope = (
+  envelope: PublishedEnvelope,
+  keys: ReadonlyMap<string, string>,
+  role: TufPublishedRoleKeys,
+  label: string
+): void => {
+  const payload = canonicalBytes(envelope.signed);
+  const valid = new Set<string>();
+  for (const { keyid, sig } of envelope.signatures) {
+    const publicKey = keys.get(keyid);
+    if (!role.keyids.includes(keyid) || publicKey === undefined || !HEX.test(sig) || valid.has(keyid)) continue;
+    try {
+      if (verify(null, payload, publicKey, Buffer.from(sig, "hex"))) valid.add(keyid);
+    } catch {
+      // why: an unusable declared key contributes no signature; the threshold decides.
+    }
+  }
+  if (valid.size < role.threshold) unverified(`${label} does not meet its signature threshold`);
+};
+
+const unexpiredInstant = (value: unknown, label: string): string => {
+  if (typeof value !== "string" || !INSTANT.test(value)) return unverified(`${label} expiry is invalid`);
+  // why: expired offline metadata cannot be rescued online; only the offline key can renew it.
+  if (!(Date.parse(value) > Date.now())) unverified(`${label} has expired and needs an offline re-signing`);
+  return value;
+};
+
+const metadataVersionOf = (envelope: PublishedEnvelope, label: string): number => {
+  const version = envelope.signed["version"];
+  if (!Number.isSafeInteger(version) || (version as number) <= 0) return unverified(`${label} version is invalid`);
+  return version as number;
+};
+
+const spkiOf = (publicKey: string): string => {
+  try {
+    return createPublicKey(publicKey).export({ format: "der", type: "spki" }).toString("hex");
+  } catch (error) {
+    return fail("VES_TUF_PUBLICATION_SIGNER_INVALID", "a signer public key is unusable", error);
+  }
+};
+
+// invariant: an online signer must be a key the verified root declares for its
+// own role, and must share neither a key id nor key material with any key that
+// holds root, targets, or delegated-targets authority. Compromise of the online
+// key therefore still cannot swap the release or rewrite the root (#18, F1).
+const assertOnlineSigners = (
+  roles: TufOnlineRoles,
+  rootRoles: TufOnlineRoleRefresh["rootRoles"],
+  rootKeys: ReadonlyMap<string, string>,
+  offlineKeys: ReadonlyMap<string, string>
+): void => {
+  const offlineMaterial = new Set([...offlineKeys.values()].map(spkiOf));
+  for (const name of ["timestamp", "snapshot"] as const) {
+    validateRole(roles[name], name);
+    const declared = rootRoles[name];
+    if (roles[name].signers.length < declared.threshold)
+      fail("VES_TUF_PUBLICATION_THRESHOLD_INVALID", `${name} signers cannot meet the published root's threshold`);
+    for (const signer of roles[name].signers) {
+      const material = spkiOf(signer.publicKeyPem);
+      if (offlineKeys.has(signer.keyId) || offlineMaterial.has(material))
+        fail("VES_TUF_PUBLICATION_ROLE_SEPARATION", `a ${name} signer holds root or targets authority`);
+      const published = rootKeys.get(signer.keyId);
+      if (!declared.keyids.includes(signer.keyId) || published === undefined || spkiOf(published) !== material)
+        fail("VES_TUF_PUBLICATION_SIGNER_INVALID", `a ${name} signer is not a key the published root declares for it`);
+    }
+  }
+};
+
+interface VerifiedOfflineMetadata {
+  readonly root: PublishedEnvelope;
+  readonly targets: PublishedEnvelope;
+  readonly rootRoles: TufOnlineRoleRefresh["rootRoles"];
+  readonly rootKeys: ReadonlyMap<string, string>;
+  readonly offlineKeys: ReadonlyMap<string, string>;
+  readonly targetsVersion: number;
+  readonly targetsExpires: string;
+}
+
+const verifyRoot = (bytes: Uint8Array) => {
+  const root = parseEnvelope(bytes, "root", "published root");
+  const rootKeys = publishedKeys(root.signed["keys"], "published root");
+  const roles = isRecord(root.signed["roles"]) ? root.signed["roles"] : unverified("published root has no roles");
+  const rootRoles = Object.freeze(
+    Object.fromEntries(ROLE_NAMES.map((name) => [name, publishedRole(roles[name], `published root ${name} role`)]))
+  ) as TufOnlineRoleRefresh["rootRoles"];
+  verifyEnvelope(root, rootKeys, rootRoles.root, "published root");
+  metadataVersionOf(root, "published root");
+  if (typeof root.signed["consistent_snapshot"] !== "boolean")
+    unverified("published root does not declare consistent_snapshot");
+  unexpiredInstant(root.signed["expires"], "published root");
+  return { root, rootKeys, rootRoles };
+};
+
+const componentsDelegation = (targets: PublishedEnvelope) => {
+  const delegations = targets.signed["delegations"];
+  const roles = isRecord(delegations) && Array.isArray(delegations["roles"]) ? delegations["roles"] : [];
+  if (!isRecord(delegations) || roles.length !== 1 || !isRecord(roles[0]) || roles[0]["name"] !== "components")
+    return unverified("published targets does not delegate exactly the components role");
+  return {
+    keys: publishedKeys(delegations["keys"], "published components delegation"),
+    role: publishedRole(roles[0], "published components delegation")
+  };
+};
+
+// invariant: root, targets, and components are only verified here, never
+// re-signed. A refresh that cannot prove all three under the published root
+// refuses before any online signature exists.
+const verifyOfflineMetadata = (input: TufOnlineRoleRefreshInput): VerifiedOfflineMetadata => {
+  const { root, rootKeys, rootRoles } = verifyRoot(input.trustedRoot);
+  const targets = parseEnvelope(input.targets, "targets", "published targets");
+  verifyEnvelope(targets, rootKeys, rootRoles.targets, "published targets");
+  const delegation = componentsDelegation(targets);
+  const components = parseEnvelope(input.components, "targets", "published components");
+  verifyEnvelope(components, delegation.keys, delegation.role, "published components");
+  const targetsVersion = metadataVersionOf(targets, "published targets");
+  if (metadataVersionOf(components, "published components") !== targetsVersion)
+    unverified("published components and targets carry different versions");
+  if (!isRecord(targets.signed["targets"])) unverified("published targets lists no targets");
+  const targetsExpires = unexpiredInstant(targets.signed["expires"], "published targets");
+  const componentsExpires = unexpiredInstant(components.signed["expires"], "published components");
+  const offlineKeys = new Map<string, string>();
+  for (const name of ["root", "targets"] as const)
+    for (const keyId of rootRoles[name].keyids) {
+      const publicKey = rootKeys.get(keyId);
+      if (publicKey !== undefined) offlineKeys.set(keyId, publicKey);
+    }
+  for (const [keyId, publicKey] of delegation.keys)
+    if (delegation.role.keyids.includes(keyId)) offlineKeys.set(keyId, publicKey);
+  return {
+    root,
+    targets,
+    rootRoles,
+    rootKeys,
+    offlineKeys,
+    targetsVersion,
+    targetsExpires: Date.parse(componentsExpires) < Date.parse(targetsExpires) ? componentsExpires : targetsExpires
+  };
+};
+
+const refreshVersions = (value: unknown, targetsVersion: number): TufRoleVersions => {
+  const versions = object(value, "versions");
+  for (const name of ["snapshot", "timestamp"] as const) {
+    positiveInteger(versions[name], `${name} version`);
+    if ((versions[name] as number) <= targetsVersion)
+      fail(
+        "VES_TUF_PUBLICATION_REFRESH_VERSION_INVALID",
+        `${name} version must exceed the published targets version ${targetsVersion}`
+      );
+  }
+  return Object.freeze({
+    targets: targetsVersion,
+    snapshot: versions["snapshot"] as number,
+    timestamp: versions["timestamp"] as number
+  });
+};
+
+// invariant: re-signs only the online timestamp and snapshot metadata over an
+// already published, offline-signed root, targets, and components (#382). The
+// offline metadata is verified under the published root and never re-signed;
+// the new online metadata is ordered timestamp <= snapshot <= targets <= root
+// and verifies under the same root.
+export function buildTufOnlineRoleRefresh(input: TufOnlineRoleRefreshInput): TufOnlineRoleRefresh {
+  if (input === null || typeof input !== "object")
+    fail("VES_TUF_PUBLICATION_INPUT_INVALID", "refresh input must be an object");
+  if (input.schemaVersion !== 1) fail("VES_TUF_PUBLICATION_INPUT_INVALID", "schemaVersion must be 1");
+  const offline = verifyOfflineMetadata(input);
+  const versions = refreshVersions(input.versions, offline.targetsVersion);
+  const requested = object(input.expires, "expires");
+  const expires: TufRoleExpiries = Object.freeze({
+    timestamp: requested["timestamp"] as string,
+    snapshot: requested["snapshot"] as string,
+    targets: offline.targetsExpires,
+    root: offline.root.signed["expires"] as string
+  });
+  validateRoleExpiries(expires);
+  const roles = object(input.roles, "roles") as unknown as TufOnlineRoles;
+  assertOnlineSigners(roles, offline.rootRoles, offline.rootKeys, offline.offlineKeys);
+  const consistentSnapshot = offline.root.signed["consistent_snapshot"] as boolean;
+  const online = signOnlineRoles({ targets: input.targets, components: input.components }, versions, expires, roles);
+  // invariant: what is emitted verifies under the very root it was checked against.
+  verifyEnvelope(
+    parseEnvelope(online.snapshot, "snapshot", "refreshed snapshot"),
+    offline.rootKeys,
+    offline.rootRoles.snapshot,
+    "refreshed snapshot"
+  );
+  verifyEnvelope(
+    parseEnvelope(online.timestamp, "timestamp", "refreshed timestamp"),
+    offline.rootKeys,
+    offline.rootRoles.timestamp,
+    "refreshed timestamp"
+  );
+  return Object.freeze({
+    schemaVersion: 1,
+    rootDigest: sha256(input.trustedRoot),
+    consistentSnapshot,
+    versions,
+    expires,
+    rootRoles: offline.rootRoles,
+    rootKeys: offline.rootKeys,
+    releaseTargets: offline.targets.signed["targets"] as RecordValue,
+    metadata: new Map<string, Uint8Array>([
+      ["timestamp.json", online.timestamp],
+      [consistentMetadataName("snapshot", versions.snapshot, consistentSnapshot), online.snapshot]
+    ])
   });
 }
 

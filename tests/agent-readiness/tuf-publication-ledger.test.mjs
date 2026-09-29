@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
@@ -8,9 +9,12 @@ import { test } from "node:test";
 import {
   DEFAULT_PUBLICATION_LEDGER_PATH,
   PUBLICATION_LEDGER_SCHEMA,
+  assertLedgerPrefix,
   assertMonotonicMetadataVersion,
+  assertRefreshAdmitted,
   entryMayShareRoot,
   ledgerEntryDigest,
+  nextLedgerEntry,
   readPublicationLedger,
   validatePublicationLedger
 } from "../../scripts/tuf-publication-ledger.mjs";
@@ -186,5 +190,87 @@ test("an unknown role version on a possibly shared root makes monotonicity unpro
     withUnknown,
     { rootDigest: rootWithPrefix(RECORDED_ROOT_PREFIX, "a"), metadataVersion: 50 },
     /unknown timestamp version/u
+  );
+});
+
+const withRefresh = (ledger, roles = { snapshot: 2, timestamp: 2 }) => {
+  const [first] = ledger.entries;
+  const entry = nextLedgerEntry(ledger, { ...first, kind: "role-refresh", roles });
+  return { ...ledger, entries: [...ledger.entries, entry] };
+};
+
+test("a checked-out ledger must be an unedited prefix of main's", () => {
+  const main = withRefresh(committed());
+  assert.doesNotThrow(() => assertLedgerPrefix(committed(), main));
+  assert.doesNotThrow(() => assertLedgerPrefix(main, main));
+  assert.doesNotThrow(() => assertLedgerPrefix({ ...main, entries: [] }, main));
+  const diverged = (candidate, target = main) =>
+    assert.throws(() => assertLedgerPrefix(candidate, target), { code: "VES_T76_PUBLISH_LEDGER_DIVERGED" });
+  // why: a candidate that knows more than main, or that rewrote a shared entry.
+  diverged(main, committed());
+  const rewritten = committed();
+  rewritten.entries[1] = { ...rewritten.entries[1], publicationRunId: "1" };
+  diverged(rewritten);
+  diverged({ ...committed(), schema: "verchestra-tuf-publication-ledger/v0" });
+});
+
+test("the assert-prefix command line fails closed on a diverged ledger", () => {
+  const directory = mkdtempSync(join(tmpdir(), "verchestra-ledger-prefix-"));
+  try {
+    const mainPath = join(directory, "main.json");
+    const candidatePath = join(directory, "candidate.json");
+    writeFileSync(mainPath, JSON.stringify(withRefresh(committed())));
+    const run = () =>
+      spawnSync(process.execPath, ["scripts/tuf-publication-ledger.mjs", "assert-prefix", candidatePath, mainPath], {
+        cwd: ROOT,
+        encoding: "utf8"
+      });
+    writeFileSync(candidatePath, JSON.stringify(committed()));
+    const accepted = run();
+    assert.equal(accepted.status, 0, accepted.stderr);
+    assert.match(accepted.stdout, /ledger prefix verified: 2 of 3 entries on main/u);
+    const ahead = withRefresh(withRefresh(committed()), { snapshot: 3, timestamp: 3 });
+    writeFileSync(candidatePath, JSON.stringify(ahead));
+    const refusedRun = run();
+    assert.notEqual(refusedRun.status, 0);
+    assert.match(refusedRun.stderr, /VES_T76_PUBLISH_LEDGER_DIVERGED/u);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("a refresh is admitted only for a recorded lineage, above every version, over its newest targets", () => {
+  const ledger = committed();
+  const recordedLineage = rootWithPrefix(RECORDED_ROOT_PREFIX, "a");
+  assert.doesNotThrow(() =>
+    assertRefreshAdmitted(ledger, { rootDigest: recordedLineage, metadataVersion: 2, targetsVersion: 1 })
+  );
+  assert.throws(
+    () => assertRefreshAdmitted(ledger, { rootDigest: recordedLineage, metadataVersion: 1, targetsVersion: 1 }),
+    { code: "VES_T76_PUBLISH_METADATA_VERSION_NOT_MONOTONIC" }
+  );
+  // why: a recorded refresh raises the bar for the next one.
+  assert.throws(
+    () =>
+      assertRefreshAdmitted(withRefresh(ledger), {
+        rootDigest: recordedLineage,
+        metadataVersion: 2,
+        targetsVersion: 1
+      }),
+    { code: "VES_T76_PUBLISH_METADATA_VERSION_NOT_MONOTONIC" }
+  );
+  assert.throws(
+    () =>
+      assertRefreshAdmitted(ledger, {
+        rootDigest: rootWithPrefix("sha256:00000000", "b"),
+        metadataVersion: 2,
+        targetsVersion: 1
+      }),
+    { code: "VES_T76_REFRESH_LINEAGE_UNKNOWN" }
+  );
+  // why: re-signing anything but the newest recorded targets would roll fresh clients back.
+  assert.throws(
+    () => assertRefreshAdmitted(ledger, { rootDigest: recordedLineage, metadataVersion: 3, targetsVersion: 2 }),
+    { code: "VES_T76_REFRESH_TARGETS_CHANGED" }
   );
 });
