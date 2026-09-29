@@ -3,11 +3,11 @@ schema: verchestra-feature-handoff/v1
 feature: tuf-role-separation
 issue: 18
 status: blocked
-branch: fix/gate-census-and-handoff-drift
-baseRevision: 20071a78eb5b96b9de63e5e9c863b6997643c767
+branch: feat/382-tuf-timestamp-refresh
+baseRevision: 59db9b430bef01f385137afa703020d6df102676
 lastCompletedTask: null
-nextTask: "Owner provisions the online timestamp/snapshot key and commits docs/qualification/trust/release-timestamp-snapshot-public-key.json (steps 1-3 below); then extend trust-key-separation.test.mjs (step 4) and follow republish-v3-runbook.md for .3 (#387). Keep --timestamp-expires at the full horizon until #382's refresh routine ships (it is still open)."
-lastGate: "gate:quick PASS; 97 tests across the affected TUF and publish suites"
+nextTask: "Owner provisions the online timestamp/snapshot key and commits its anchor docs/qualification/trust/release-timestamp-snapshot-public-key.json (see below), then follows republish-v3-runbook.md for .3 (#387). A short timestamp_expires is safe only while the monthly refresh in republish-v3-runbook.md (#382) runs for that root."
+lastGate: "gate:quick, gate:build, gate:security, gate:release, agent:check PASS (feat/382-tuf-timestamp-refresh)"
 updatedAt: 2026-09-29T00:00:00Z
 ---
 
@@ -87,10 +87,16 @@ same-root release and the #393 decision — a single `.3` cannot close it.
   users only on the next republication (the `.3` release under a new base-URL
   prefix). The already-published package is unaffected. Because the root changes,
   existing installs do not update in place to `.3` (finding 2 in the runbook).
-- **Time-bomb / follow-up (#382).** A short online window is only safe once a
-  monthly timestamp/snapshot re-signing routine exists; until then the window
-  defaults to the horizon. The routine (`t76-refresh-timestamp.yml`) is tracked
-  as #382.
+- **Short online window (#382).** The monthly re-signing routine now exists:
+  `.github/workflows/t76-refresh-timestamp.yml` runs
+  `scripts/t76-refresh-timestamp.mjs`, which re-signs only timestamp and snapshot
+  with the online key over the verified, untouched root, targets, and components,
+  and emits the files, an upload manifest, and the ledger entry to append. The
+  publish workflow's `timestamp_expires` input is now required (no default). A
+  short window is safe only while the operator runs the monthly procedure in
+  `republish-v3-runbook.md` ("Monthly online refresh") for that root:
+  refresh, verify, upload (snapshot before timestamp), append the ledger entry.
+  Feature: `.specs/features/tuf-timestamp-refresh/`.
 - **Custody.** Two role-separated keys narrow F1, but both still sit with one
   operator; a second human custodian (matrix L8) remains a separate promote
   precondition only the owner can resolve.
