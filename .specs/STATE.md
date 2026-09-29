@@ -688,7 +688,62 @@ note. -->
   Windows reports not configured. Same-user processes remain out of the threat
   model (see `.specs/features/governed-task-cli/threat-model.md`).
 
+### AD-0XX (to be numbered at merge) — The governed `vestra task` composition: local human confirmation, one Workspace evidence key, forbid-only Workspace authority, and checked verifier claims (#405)
+
+- **Status:** proposed (ratified by reviewing the pull request that carries
+  `feat/405-governed-task-cli`). Owner decisions from #405 bind it: Claude Code
+  implements through the mediated bridge, Codex verifies independently,
+  provider credentials live in the macOS keychain, and nothing merges
+  automatically.
+- **Decision:**
+  1. **Human decisions are typed back.** `approve` and `review` record a
+     decision only after the exact binding or surface digest is typed at an
+     interactive terminal. The only other path is the explicit, non-default
+     `--confirm-stdin` flag with the digest on standard input, for scripted
+     tests and automation that must spell the digest out. This is local human
+     authority, not a cryptographic proof of identity.
+  2. **One Workspace evidence key.** The Execution Package, the approval, the
+     context manifest, and the run capsule are signed by one Ed25519 key held
+     by the existing `EncryptedFileKeyProvider` under the Workspace state root.
+     Its passphrase is the brokered credential `evidence-signing-passphrase`;
+     its public key is pinned on first use so verification needs no secret.
+  3. **Authority is a task Cedar view.** A built-in layer permits
+     `task-start`, `tool-effect` (with the capability grant), `gate-commit`,
+     and `human-review` only for an approved run. A Workspace may add
+     forbid-only policies in `.verchestra/policy/task-authority.json`; the
+     view's digest is bound into the approval, so changing it after approval
+     makes the approval stale. The Cedar glue lives in the CLI composition
+     root; Cedar loads from the release's `native/cedar-wasm.wasm` through the
+     package's `web` glue.
+  4. **Verifier claims are checked, not trusted.** Codex answers per
+     requirement with a cited assertion and the implementation file; the
+     coordinator accepts a requirement only when the cited lines exist at the
+     task commit and reverting the named file makes the covering gates fail in
+     a scratch worktree, with the user's checkout unchanged.
+  5. **Gates run only allowlisted executables** named by `commandRef` in a
+     machine-local `task-gates.json` under the Workspace state root.
+- **Alternatives rejected:** a TTY-only approval (no deterministic test path
+  without a hook in product code); an environment variable to skip
+  confirmation (ambient state could approve by accident); a separate key per
+  artifact kind (more secrets for no added separation on one machine); letting
+  a Workspace permit (would let local configuration widen authority);
+  accepting the verifier's verdict as-is (a model's PASS would be the only
+  evidence).
+- **Consequence:** `.specs/features/governed-task-cli/` (GTC-24..41),
+  `docs/quick-start.md`. Limits recorded there: macOS only, one implementer and
+  one verifier, token and cost ceilings checked when usage is reported, local
+  human authority, live pilot pending (#406).
+
 ## Handoff
+
+- **Feature:** `governed-task-cli` E6–E9 (#405) on
+  `feat/405-governed-task-cli`, stacked on `feat/405-governed-task-foundations`,
+  PR #409, and `feat/os-secret-backend`.
+- **Completed:** `TaskRunCoordinator`, the `vestra task` commands and their
+  composition root, the sealed bridge relay, the child-process journeys and
+  security suite, and `docs/quick-start.md`. See
+  `.specs/features/governed-task-cli/handoff.md`.
+- **Next:** independent review; then the supervised live pilot (#406).
 
 - **Feature:** `init-probe-scaffold` (#234) on `feat/234-init-probe-scaffold`,
   based on local `feat/os-secret-backend` at `e281ba9`.

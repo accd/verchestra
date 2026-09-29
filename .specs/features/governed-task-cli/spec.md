@@ -18,8 +18,9 @@ Before a `vestra task` command can be composed, the product is missing:
   protected-path, capability, and tool-effect authority checks;
 - an adapter from the `Driver` protocol to the executor's `ExecutionDriverPort`.
 
-This slice delivers those foundations (E0–E5). The CLI commands and the
-end-to-end composition (E6–E9) are a separate slice built on this branch.
+The foundations slice delivers E0–E5. The composition slice (E6–E9) builds on
+it: the application run coordinator, the `vestra task` commands and their
+composition root, the child-process journeys, and the quick-start.
 
 ## Owner Decisions (binding)
 
@@ -35,7 +36,8 @@ end-to-end composition (E6–E9) are a separate slice built on this branch.
 
 | Exclusion | Reason |
 | --- | --- |
-| `vestra task` commands, release-manifest entries, composition root | E6–E9 on top of this branch. |
+| Automated repair after a failed independent verification | The run stops in `REPAIRING`; a human cancels and plans again. |
+| Merging, pushing, or opening a pull request | Never; the human merges the anchored task branch. |
 | Live provider calls | Requires separately authorized #406 pilot; fixtures are labeled deterministic fakes. |
 | OS keychain backend | #379. |
 | Platforms other than macOS for the mediated profile qualification | One supported platform first; others report not configured. |
@@ -158,6 +160,97 @@ end-to-end composition (E6–E9) are a separate slice built on this branch.
 - **GTC-23** — WHEN the driver requests a tool that is not one of the bridge
   tools, or reports an error, THEN the adapter SHALL cancel the session and
   fail closed with `VES_DRIVER_TOOL_OUTSIDE_BRIDGE` or a failed status.
+
+### E6 — Task run coordinator
+
+- **GTC-24** — WHEN an approved run is started THEN `TaskRunCoordinator` SHALL
+  apply `START_IMPLEMENTATION` with the current binding, run the executor
+  inside the gate repair loop, apply `START_VERIFICATION` after the task commit,
+  run independent verification, and SHALL stop at `HUMAN_REVIEW`; it SHALL
+  never apply `APPROVE_HUMAN_REVIEW` itself.
+- **GTC-25** — WHEN a run is resumed THEN the coordinator SHALL skip the
+  implementer when a valid awaiting-gate result describes the live worktree,
+  SHALL skip the gates when the task is already committed, and SHALL resume
+  verification from `VERIFYING` without re-running either.
+- **GTC-26** — WHEN a run ends without a task commit THEN the coordinator SHALL
+  classify it exactly: gate failure without a policy → `FAILED`; declared
+  policy exhausted → `ESCALATED` (run left for a human); budget exhausted →
+  `FAILED` with `VES_EXECUTOR_BUDGET_EXCEEDED`; cancellation → `ABORTED` by the
+  requesting human; any other executor failure → `FAILED` with its stable code;
+  a stale binding → back to `AWAITING_EXECUTION_APPROVAL`; and it SHALL release
+  the uncommitted worktree and the writer lease.
+
+### E7 — `vestra task` composition
+
+- **GTC-27** — The installed manifest SHALL advertise exactly `task plan`,
+  `approve`, `start`, `status`, `resume`, `cancel`, and `review`, with named
+  options only and `--keychain` on each, and `main.ts` SHALL reach the
+  composition only through a dynamic import.
+- **GTC-28** — WHEN `task plan` runs THEN it SHALL normalize the untrusted
+  request, prove `sourceRevision` is a commit, require every gate `commandRef`
+  in the machine-local allowlist, compile and persist the context manifest at
+  that revision, seal the Execution Package, create the run in
+  `AWAITING_EXECUTION_APPROVAL`, and print the approval surface and binding
+  digest; WITH `--dry-run` it SHALL write nothing and read no credential.
+- **GTC-29** — WHEN `task approve` runs THEN it SHALL require the exact
+  binding digest, an unchanged sealed package, the Workspace policy the plan
+  bound, and the digest typed back from a terminal or through the explicit
+  `--confirm-stdin` flag, before it seals the approval with the Workspace
+  evidence key and applies `GRANT_EXECUTION_APPROVAL`.
+- **GTC-30** — WHEN `task start` or `resume` runs THEN both provider
+  credentials, both provider executables, the gate allowlist, and the writer
+  lease SHALL be proven before the first workflow transition or effect, and a
+  missing one SHALL be reported as `VES_TASK_NOT_CONFIGURED` naming it.
+- **GTC-31** — Authority SHALL be the task Cedar policy view (built-in permits,
+  Workspace forbid-only narrowing at `.verchestra/policy/task-authority.json`)
+  evaluated at start, at every tool effect (with the capability grant through
+  `CapabilityBroker`), and before every gate step, each time re-verifying the
+  approval against a binding rebuilt from the current policy.
+- **GTC-32** — The implementer SHALL be `ClaudeCodeDriver` in the
+  `mediated-mcp` profile behind `DriverExecutionAdapter`, launched with the
+  bundled bridge relay, and SHALL receive only `ANTHROPIC_API_KEY`; the
+  verifier SHALL be `CodexDriver` with a `CodexProcessContext` (isolated
+  `CODEX_HOME` and `HOME`, read-only sandbox, zero tools) and SHALL receive
+  only `OPENAI_API_KEY`; the drivers SHALL differ (`VES_VERIFIER_DRIVER_CONFLICT`).
+- **GTC-33** — Verification SHALL accept a requirement only when the cited
+  assertion lines exist at the task commit and reverting the implementation
+  file the verifier named makes the covering gates fail in a scratch worktree,
+  with the user's checkout unchanged before and after; a malformed verdict
+  covers nothing.
+- **GTC-34** — Gates SHALL run only allowlisted executables in the task
+  worktree, the task commit SHALL be anchored on `vestra/<runId>/<taskId>`, and
+  the user's checkout, index, and working tree SHALL be unchanged.
+- **GTC-35** — WHEN `task cancel` targets a run a live process drives THEN the
+  process SHALL observe the persisted request (or SIGINT/SIGTERM) and abort the
+  run; WHEN no process drives it THEN cancel SHALL remove the uncommitted
+  worktree, release the lease, and apply `ABORT` itself.
+- **GTC-36** — WHEN `task review` runs THEN it SHALL require `HUMAN_REVIEW`, the
+  current surface digest, and its typed-back confirmation; `accepted` SHALL
+  reach `COMPLETED` and seal the run capsule and SHALL NOT merge; `rejected`
+  SHALL record the review, abort the run, and keep the task branch.
+- **GTC-37** — `task status` SHALL report the durable state, checkpoints,
+  evidence references, and next allowed actions, and a tampered or malformed
+  state file SHALL fail every command closed with `VES_TASK_STATE_INVALID`.
+- **GTC-38** — The sealed release SHALL carry the bridge relay as
+  `bin/mcp-tool-bridge.mjs`, reach `vestra task` from the bundle, and load
+  Cedar from its own `native/cedar-wasm.wasm`.
+
+### E8 — Journeys and hostile behavior
+
+- **GTC-39** — Child-process journeys SHALL cover success to `COMPLETED`, scope
+  denial, authority denial, a missing credential, budget exhaustion, cancel,
+  interruption with resume (no duplicated tool receipt), a malformed state
+  file, and a rejected review, using labeled fake `claude` and `codex`
+  executables first on `PATH` and no test hook in product code.
+- **GTC-40** — Traversal, a planted symlink, protected paths, and a prompt
+  injection read from the repository SHALL neither write outside the change
+  scope nor reach a tool outside the bridge.
+
+### E9 — Documentation
+
+- **GTC-41** — `docs/quick-start.md` SHALL give the exact install, credential,
+  allowlist, request, plan, approve, start, status, review, and merge-yourself
+  path, a complete request example, and the limits of this build.
 
 ## Success Criteria
 
