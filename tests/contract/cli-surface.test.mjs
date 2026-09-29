@@ -10,6 +10,7 @@ import {
   runCli
 } from "../../apps/vestra-cli/src/index.ts";
 import { SchemaRegistry } from "../../packages/contracts/src/index.ts";
+import { PROBE_SCAFFOLD_ENGINES, PROBE_SCAFFOLD_LANGUAGES } from "../../packages/workspace/src/index.ts";
 import { RecordingBus, io, manifest, releaseDigest } from "../helpers/cli-fixture.mjs";
 
 async function execute(argv, options = {}) {
@@ -75,7 +76,7 @@ test("the source manifest advertises the composed init, self-test, doctor, and s
   );
   assert.deepEqual(
     installedReleaseManifest.commands[0].options.map((option) => option.name),
-    ["dry-run", "workspace-id", "name", "placement"]
+    ["dry-run", "workspace-id", "name", "placement", "probe-engine", "probe-language", "probe-dir"]
   );
   assert.deepEqual(
     installedReleaseManifest.commands[1].options.map((option) => option.name),
@@ -101,6 +102,33 @@ test("the source manifest advertises the composed init, self-test, doctor, and s
       ["secret status", false],
       ["secret delete", true]
     ]
+  );
+});
+
+// #234: the manifest spells the probe option values as literals so the doctor's
+// read-only closure never imports @verchestra/workspace; this pins them to the
+// generator's own lists.
+test("the init probe options advertise exactly the generator's engines and languages", () => {
+  const options = new Map(installedReleaseManifest.commands[0].options.map((option) => [option.name, option]));
+  assert.deepEqual(options.get("probe-engine"), {
+    name: "probe-engine",
+    kind: "string",
+    values: [...PROBE_SCAFFOLD_ENGINES]
+  });
+  assert.deepEqual(options.get("probe-language"), {
+    name: "probe-language",
+    kind: "string",
+    values: [...PROBE_SCAFFOLD_LANGUAGES]
+  });
+  assert.deepEqual(options.get("probe-dir"), { name: "probe-dir", kind: "string" });
+  const parsed = parseCliArguments(
+    ["init", "--probe-engine", "sap-ase", "--probe-dir", ".verchestra/probes/ase"],
+    installedReleaseManifest
+  );
+  assert.deepEqual(parsed.command.options, { "probe-engine": "sap-ase", "probe-dir": ".verchestra/probes/ase" });
+  assert.throws(
+    () => parseCliArguments(["init", "--probe-engine", "db2"], installedReleaseManifest),
+    (error) => error.envelope.code === "VES_CLI_ARGUMENT_INVALID"
   );
 });
 
