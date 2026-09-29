@@ -126,6 +126,9 @@ if (scenario === "read-write") {
 } else if (scenario === "read-escape") {
   await call("read_file", { path: "../outside.txt" });
   await call("read_file", { path: ".git/config" });
+} else if (scenario === "write-outside") {
+  await call("write_file", { path: "docs/outside.txt", content: "outside the change scope\n" });
+  await call("write_file", { path: "src/a.txt", content: "implemented inside the scope\n" });
 } else if (scenario === "outside-tool") {
   emit({ type: "assistant", message: { content: [{ type: "tool_use", id: "tool-bash", name: "Bash", input: { command: "id" } }] } });
 } else if (scenario === "secret") {

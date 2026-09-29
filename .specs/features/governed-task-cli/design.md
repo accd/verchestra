@@ -116,7 +116,7 @@ re-hashes before use. Deletes carry the tombstone `payload:none`.
 
 ## E4 — Mediated MCP tool bridge
 
-See AD-034 in `.specs/STATE.md` for the channel decision. The module
+See AD-0XX (to be numbered at merge) in `.specs/STATE.md` for the channel decision. The module
 `packages/agent-runtime/src/execution/mcp-tool-bridge.ts` has three parts:
 
 1. **Protocol** — tool definitions and bounded JSON-RPC 2.0 framing, shared by

@@ -8,7 +8,7 @@ slice built on top of this branch by a separate change.
 
 | Task | Step | Deliverable | Requirements | Depends on | Verification |
 | --- | --- | --- | --- | --- | --- |
-| T0 | E0 | Spec, design, threat model, tasks, handoff, validation; AD-034 | — | None | `pnpm agent:check` |
+| T0 | E0 | Spec, design, threat model, tasks, handoff, validation; AD-0XX (to be numbered at merge) | — | None | `pnpm agent:check` |
 | T1 | E1 | `schemas/task-request/1.schema.json`, generated type, `normalizeTaskRequest` | GTC-01..06 | T0 | `pnpm test:contract`, unit tests |
 | T2 | E2 | Migration `012_execution_checkpoints`, `RuntimeCheckpointStore` | GTC-07..10 | T0 | integration + fault tests, build closure test |
 | T3 | E3 | `NodeGitContextSource`, `NodeWorktreeToolAdapter`, task-branch anchoring | GTC-11..15 | T2 | integration + security tests |
@@ -41,9 +41,9 @@ slice built on top of this branch by a separate change.
 
 | Task | Status | Evidence |
 | --- | --- | --- |
-| T0 | Done | This directory; AD-034 in `.specs/STATE.md` |
+| T0 | Done | This directory; AD-0XX (to be numbered at merge) in `.specs/STATE.md` |
 | T1 | Done | `schemas/task-request/1.schema.json`, generated `TaskRequest`, `normalizeTaskRequest`; 42 contract + 6 security tests |
 | T2 | Done | Migration `012_execution_checkpoints`, `RuntimeStore.appendExecutionCheckpoint`/`latestExecutionCheckpoint`, `RuntimeCheckpointStore`; 15 integration tests; migration and public-error pins extended |
 | T3 | Done | `NodeGitContextSource`, `NodeWorktreeToolAdapter`, `ExecutionPayloadPort`, `NodeGitWorktreeAdapter.resolvePath` and opt-in `anchorTaskCommits`; 19 integration + 20 security tests |
 | T4 | Done | `McpToolBridgeController`, relay `runMcpToolBridgeRelay` + entry, `InMemoryExecutionPayloadStore`, `ClaudeCodeDriver` `mediated-mcp` profile, `docs/qualification/claude-code-driver-mediated.md`; 5 integration + 18 security + 4 contract + 16 spike tests |
-| T5 | Pending | |
+| T5 | Done | `DriverExecutionAdapter`; 9 integration tests with a labeled scripted fake driver and 3 e2e journeys with the fake `claude` executable |

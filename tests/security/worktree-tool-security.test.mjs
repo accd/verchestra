@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, test } from "node:test";
 
+import { NodeWorktreeToolAdapter } from "../../packages/platform-node/src/index.ts";
 import { cleanupWorktreeTools, worktreeToolFixture } from "../helpers/worktree-tool-fixture.mjs";
 
 const outsideRoots = [];
@@ -109,6 +110,28 @@ test("a duplicate request ID bound to a different request fails closed without a
   });
   assert.equal(await readFile(join(worktreePath, "src", "value.txt"), "utf8"), "implemented\n");
   await assert.rejects(access(join(worktreePath, "src", "other.txt")), { code: "ENOENT" });
+});
+
+test("the adapter binds a request ID to its content even when the receipt store does not", async () => {
+  const fixture = await worktreeToolFixture();
+  const repository = fixture.store.createEffectRepository();
+  // A permissive store that returns any existing intent for a key without
+  // comparing its content: the adapter's own binding must still refuse.
+  const permissive = {
+    ...repository,
+    insertOrGet: async (intent) => (await repository.get(intent.idempotencyKey)) ?? repository.insertOrGet(intent)
+  };
+  const adapter = new NodeWorktreeToolAdapter({
+    workspaceId: "workspace_tool",
+    worktrees: fixture.worktrees,
+    receipts: permissive,
+    payloads: fixture.payloads
+  });
+  await adapter.invoke(fixture.request());
+  await assert.rejects(adapter.invoke(fixture.request({ payloadRef: fixture.payloads.put("second content\n") })), {
+    code: "VES_TOOL_REQUEST_CONFLICT"
+  });
+  assert.equal(await readFile(join(fixture.worktreePath, "src", "value.txt"), "utf8"), "implemented\n");
 });
 
 test("a request naming several targets or unknown fields is refused", async () => {
