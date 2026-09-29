@@ -36,8 +36,8 @@ root digest**. The tooling enforces it:
   metadata version 1 under the root digest prefix `sha256:491673b9`; facts the
   repository does not record (the full root digest, the root version, `.2`'s
   releaseId and host) are `null`, and the checker treats them conservatively.
-  Role-only entries (`kind: "role-refresh"`) are reserved for the #382
-  timestamp/snapshot re-signing routine.
+  Role-only entries (`kind: "role-refresh"`) record each run of the #382
+  timestamp/snapshot re-signing routine (see "Monthly online refresh" below).
 - `scripts/t76-publish-release.mjs` — `--metadata-version` is **required**, and
   the script refuses it with `VES_T76_PUBLISH_METADATA_VERSION_NOT_MONOTONIC`
   unless it strictly exceeds every version the ledger records for the same root
@@ -52,9 +52,12 @@ root digest**. The tooling enforces it:
   `metadataVersion` fails `VES_TUF_STALE_METADATA`; an incremented one stages
   cleanly).
 
-The workflow checks the ledger at the **candidate revision** it checks out, so a
-candidate must be built from a revision whose ledger already records every prior
-publication.
+The workflow reads the ledger from **`origin/main`'s tip**, not from the
+candidate revision it checks out, and fails unless the candidate's committed copy
+is an unedited prefix of main's (`scripts/tuf-publication-ledger.mjs
+assert-prefix`). A candidate cut before a later publication or refresh was
+recorded is therefore still bounded by it. Every publication and refresh must
+still be recorded on `main` before the next one runs.
 
 ### 2. Role separation changes the root, so `.3` cannot be updated _in place_ over v1/.2
 
@@ -117,11 +120,12 @@ Publish the role-separated lineage as its own trust anchor and demonstrate the
    workflow; capture its run id and reconciled index (this becomes the rollback
    index the publish step seals).
 4. **Publish `.3`** (owner, via `t76-publish-release.yml`): role-separated keys,
-   both anchors committed, `metadata_version` from step 2, the default
-   `--timestamp-expires` (the full horizon: #382's refresh routine does not exist
-   yet, and a short online window without it is an expiry time-bomb), a new
-   `/v3/` base-URL prefix, and the rollback index from step 3. The tooling signs
-   root+targets offline and timestamp+snapshot online, each bound to its anchor.
+   both anchors committed, `metadata_version` from step 2, a new `/v3/` base-URL
+   prefix, and the rollback index from step 3. `timestamp_expires` is a required
+   input: pass the same value as `expires` for the full horizon, or a short
+   window (for example 45 days) **only** if the monthly online refresh below will
+   be run for this root without a gap. The tooling signs root+targets offline and
+   timestamp+snapshot online, each bound to its anchor.
 5. **Upload to R2 and verify live BEFORE `npm publish`** (owner). Verify every
    object by sha256, then confirm the endpoint serves, for each target: the
    metadata chain `200`, and each target under a `Range` request `206`. Only then
@@ -141,6 +145,62 @@ Publish the role-separated lineage as its own trust anchor and demonstrate the
    transcript digests, verified by content. Record the ledger entry **before**
    building the next candidate, so that candidate's ledger carries it.
 
+## Monthly online refresh (#382)
+
+A short online window is the freeze-attack defense (#18 F2): a client refuses a
+`timestamp.json` past its expiry (`VES_TUF_EXPIRED`), so a mirror or attacker
+replaying old metadata is detected within the window. The window is only safe
+while someone renews it. `t76-refresh-timestamp.yml` (script
+`scripts/t76-refresh-timestamp.mjs`) re-signs **only** `timestamp.json` and the
+next `<version>.snapshot.json` for all five targets with the online key. It never
+reads the offline key (it refuses to run if that key is in its environment),
+never re-signs root, targets, or components, and publishes nothing.
+
+Preconditions (owner, once): the online key is provisioned as the
+`VESTRA_RELEASE_TIMESTAMP_SIGNING_KEY_PKCS8_BASE64` secret and its public half is
+committed as `docs/qualification/trust/release-timestamp-snapshot-public-key.json`
+with `"purposes": ["tuf-timestamp-snapshot"]` (see `handoff.md`). Until that
+anchor exists the refresh fails closed with `VES_T76_PUBLISH_ANCHOR_MISSING`. The
+routine refreshes only role-separated lineages, so it cannot apply to v1/`.2`.
+
+Every month, at least one full cycle before the current `timestampExpires`:
+
+1. **Pick the version.** Read `docs/qualification/tuf-publication-ledger.json` on
+   `main`. The new `metadata_version` must strictly exceed every snapshot,
+   targets, and timestamp version recorded for the root (use the next integer
+   above the highest). Pick `timestamp_expires`: no later than the published
+   targets expiry; about 45 days out keeps a two-week margin on a monthly cadence.
+2. **Refresh.** Dispatch `t76-refresh-timestamp.yml` with `publish_revision` and
+   `publish_run_id` of the `t76-publish-release` run that published the current
+   release (its `t76-release-metadata-…` artifact holds the offline-signed root,
+   targets, and components), plus `metadata_version` and `timestamp_expires`.
+   The run reads the ledger from `origin/main`, verifies the published root
+   against both committed anchors and the targets and components under that root,
+   refuses an unrecorded lineage (`VES_T76_REFRESH_LINEAGE_UNKNOWN`), targets that
+   are not the newest recorded release for the root
+   (`VES_T76_REFRESH_TARGETS_CHANGED`), or a non-increasing version
+   (`VES_T76_PUBLISH_METADATA_VERSION_NOT_MONOTONIC`), and uploads one artifact:
+   `refresh-manifest.json`, `ledger-entry.json`, and
+   `publication/<target>/metadata/{<version>.snapshot.json,timestamp.json}`.
+3. **Verify.** Check each file's sha256 against `refresh-manifest.json`, and that
+   the artifact holds no `root.json`, `*.targets.json`, or `*.components.json`.
+4. **Upload.** For each target, upload `<version>.snapshot.json` **before**
+   `timestamp.json`, preserving the relative keys under the release base URL.
+   Never overwrite or delete root, targets, components, or any target file. Then
+   confirm `timestamp.json` is served uncached and run the published launcher
+   against the live endpoint.
+5. **Append the ledger entry.** Append `ledger-entry.json` verbatim to
+   `docs/qualification/tuf-publication-ledger.json` in a reviewed pull request and
+   merge it before the next refresh or publication. If another entry landed on
+   `main` first, the emitted `sequence`/`previousEntryDigest` no longer chain:
+   rerun the refresh against the current `main` rather than editing the entry.
+
+A missed month is a freeze, not a compromise: clients refuse the expired
+timestamp (`VES_TUF_EXPIRED`) until a refresh is uploaded, and then resume with
+no reinstall. The artifact the refresh reads is retained for 365 days; a lineage
+older than that needs its offline-signed metadata re-supplied from the live
+endpoint or a fresh publication.
+
 ## What `.3` alone does and does not close
 
 - **Closes / advances:** F1/F2 (role separation reaches users), L5 (a fixed,
@@ -156,7 +216,8 @@ Publish the role-separated lineage as its own trust anchor and demonstrate the
 - #387 — the metadata-version collision (fix: this runbook + the tooling guard).
 - #393 — rollback vs anti-rollback; the launcher always re-resolves.
 - #382 — the monthly timestamp/snapshot refresh routine (makes a short
-  `--timestamp-expires` safe).
+  `timestamp_expires` safe): `t76-refresh-timestamp.yml`, procedure above,
+  feature `.specs/features/tuf-timestamp-refresh/`.
 - #391 — the update client surfacing a version collision as a misleading source
   error; resolved for future launchers by `VES_TUF_STALE_METADATA`.
 - The committed publication ledger (`docs/qualification/tuf-publication-ledger.json`,
