@@ -191,3 +191,53 @@ Remaining for E6/E7: the authority port (`RuntimeAuthorityStore` + Cedar), the
 coordination port, the context compiler binding (`contextDigest ===
 contextManifestDigest`), the gate allowlist, cross-process cancel, the bundled
 relay entry in the sealed launcher, and the Codex verifier.
+
+## E6–E9 — Composition slice
+
+### E6 — `TaskRunCoordinator` (application)
+
+`packages/application/src/execution/task-run.ts` sequences the owners against
+the workflow machine and nothing else. From `EXECUTION_AUTHORIZED` it applies
+`START_IMPLEMENTATION` with the binding rebuilt from the current policy (a
+changed binding returns the run to `AWAITING_EXECUTION_APPROVAL`). In
+`IMPLEMENTING` it returns early when the task is already committed; otherwise
+it runs `runGateRepairLoop`, whose attempt takes the executor's resumable
+awaiting-gate result when one still describes the live worktree and runs the
+executor only when not. After the commit it applies `START_VERIFICATION` and
+calls verification, which moves the run to `HUMAN_REVIEW`, `REPAIRING`, or
+`HUMAN_RESOLUTION_REQUIRED`. A cancelled run is released and aborted by the
+requesting human; every other failure is released and failed by the
+controller with its stable code. It never applies `APPROVE_HUMAN_REVIEW`.
+
+### E7 — `apps/vestra-cli/src/task/`
+
+| Module | Role |
+| --- | --- |
+| `task-command.ts` | The only module `main.ts` imports (dynamically); dispatch and public-error mapping. |
+| `task-plan.ts` | Intake, source state, context compile, package seal, approval request, run creation. |
+| `task-approve.ts`, `task-confirm.ts` | Binding check, typed-back confirmation, sealed approval, `GRANT_EXECUTION_APPROVAL`. |
+| `task-policy.ts`, `task-authority.ts` | Cedar task policy view; approval, capability grant, and Cedar decisions for executor, gates, and review. |
+| `task-run.ts`, `task-implementer.ts` | Prerequisites, writer lease, executor and gate ports, resume and crash recovery, cancel watch. |
+| `task-verifier.ts`, `task-codex.ts` | Codex session, verdict parsing, evidence inspection, revert-implementation sensor. |
+| `task-review.ts`, `task-surface.ts` | Review surface digest, human review, run capsule. |
+| `task-status.ts` | Status and cancel. |
+| `task-credentials.ts`, `task-signing.ts` | Secret broker reads; the Workspace evidence key and its pinned trust anchor. |
+| `task-files.ts`, `task-plan-record.ts`, `task-evidence.ts`, `task-workflow.ts`, `task-workspace.ts`, `task-gates.ts`, `task-context.ts`, `task-git.ts` | Sealed state records, gate evidence, workflow persistence, Workspace layout, allowlist, context, git. |
+
+Durable state is split by owner. The runtime store keeps the run, events,
+approvals, grants, lease, executor/gate/repair checkpoints, and tool receipts.
+The run directory `<workspaceState>/tasks/<runId>/` keeps the sealed plan
+record, the context manifest, the Execution Package, gate evidence, the commit
+record, the verification report, the review record, and the capsule. Every
+record there is either content-addressed or sealed by its own digest and fails
+closed when edited.
+
+Verification turns Codex's answer into claims the coordinator can check
+without trusting it: the expected outcome is derived from the approved task,
+the cited assertion lines must exist at the commit, and the mutation reverts
+the named implementation file in a scratch worktree and must make the covering
+gates fail, while the user's checkout digest stays the same.
+
+The sealed release adds `bin/mcp-tool-bridge.mjs` beside the launchers and
+loads Cedar through the `web` glue from `native/cedar-wasm.wasm`; a repository
+checkout reads the installed package's identical bytes.

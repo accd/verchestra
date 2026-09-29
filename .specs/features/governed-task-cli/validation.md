@@ -1,7 +1,8 @@
 # Governed Task CLI Foundations Validation (#405)
 
 Base revision: `4ff9bed6e5e19ba38e11d45d9112667d81a4b254`.
-Branch: `feat/405-governed-task-foundations`.
+Branches: `feat/405-governed-task-foundations` (GTC-01..23) and, stacked on it
+with PR #409 and #379, `feat/405-governed-task-cli` (GTC-24..41).
 This is implementation evidence, not independent qualification or issue closure.
 Deterministic fakes are labeled in their files: `ScriptedFakeDriver`
 (`tests/integration/driver-execution-adapter.test.mjs`) and the fake `claude`
@@ -35,7 +36,65 @@ executable (`spikes/claude-code-driver/test/fake-claude-mediated.mjs`).
 | GTC-22 | `tests/integration/driver-execution-adapter.test.mjs:83` (usage metered on the resolved model; portable start/finish checkpoints), `:119` (bridge writes reach `invokeTool`), `:161` (executor cancel), `:176` (caller abort), `:198` (unmeterable usage stops the run); `tests/e2e/mediated-task-execution-e2e.test.mjs:133` (real executor + mediated driver + bridge + tool adapter + durable checkpoints reach `AWAITING_GATE`), `:147` (out-of-scope write denied while in-scope work proceeds). |
 | GTC-23 | `tests/integration/driver-execution-adapter.test.mjs:133` (error event → failed with stable code, no path leak), `:148` (tool outside the bridge → `VES_DRIVER_TOOL_OUTSIDE_BRIDGE`, session cancelled), `:184` (fatal denial ends the run); `tests/e2e/mediated-task-execution-e2e.test.mjs:156` (outside-bridge tool fails the real run closed and removes the worktree). |
 
-## Gate results (pinned Node 24.14.0, macOS arm64)
+## Composition slice requirements (E6–E9)
+
+Deterministic fakes are labeled in their files: `tests/helpers/task-cli-fakes/`
+(`claude`, `codex`, `fake-claude-task.mjs`, `fake-codex-task.mjs`) and the
+fake keychain preload `tests/helpers/fake-keychain-spawn.mjs`, which installs
+the deny guard first. The child-process journeys run on macOS; off macOS the
+suite asserts the honest `not configured` refusal instead
+(`tests/e2e/task-cli-e2e.test.mjs:134`).
+
+| Requirement | Evidence |
+| --- | --- |
+| GTC-24 | `tests/unit/task-run-coordinator.test.mjs:126` (authorized run reaches `HUMAN_REVIEW` through START_IMPLEMENTATION and START_VERIFICATION only), `:237` (a failed verification never reaches review); `tests/e2e/task-cli-e2e.test.mjs:143` (the real binary stops at `HUMAN_REVIEW`; only `review` completes, `:250`). |
+| GTC-25 | `tests/unit/task-run-coordinator.test.mjs:137` (resumable awaiting-gate skips the implementer), `:146` (committed task skips the gates), `:153` (verifying run resumes verification only); `tests/e2e/task-cli-e2e.test.mjs:378` (killed mid-gate, resumed with one implementer session and one tool receipt, `:404`/`:410`). |
+| GTC-26 | `tests/unit/task-run-coordinator.test.mjs:159` (stale binding back to approval), `:167` (gate failure → FAILED, released), `:176` (repair with feedback converges), `:187` (escalation left for a human), `:197` (budget outcome), `:212` (cancel → ABORTED by the human), `:226` (executor code preserved), `:245` (non-startable states refused before any port). |
+| GTC-27 | `tests/contract/cli-surface.test.mjs:71` (manifest lists the seven task commands after the existing slice), `:121` (named options only, `--keychain` on each, outcome enum, mutating flags); `tests/e2e/cli-launchers-e2e.test.mjs:45` (exact help for both launchers, with empty stderr, so the dynamic import keeps SQLite lazy). |
+| GTC-28 | `tests/e2e/task-cli-e2e.test.mjs:143` (plan prints the surface and binding digest, run awaits approval); `tests/build/sealed-launcher-closure.test.mjs:471` (`--dry-run` from the sealed layout writes no task state and opens no runtime store). |
+| GTC-29 | `tests/e2e/task-cli-e2e.test.mjs:165` (wrong digest → `VES_TASK_BINDING_MISMATCH`), `:177`/`:195` (no confirmation or a mistyped one → `VES_TASK_CONFIRMATION_REQUIRED`, state unchanged); `tests/unit/task-cli-composition.test.mjs:142` (terminal prompt, `--confirm-stdin`, exact match only). |
+| GTC-30 | `tests/e2e/task-cli-e2e.test.mjs:308` (missing `anthropic-api-key` → `VES_TASK_NOT_CONFIGURED` naming it, state still `EXECUTION_AUTHORIZED`, no grant, no worktree, no provider call, `:315`), `:360` (a second writer refused while the lease is held, state unchanged). |
+| GTC-31 | `tests/unit/task-cli-composition.test.mjs:38` (built-in permits need approval; writes need the grant), `:49` (Workspace forbid narrows and changes the digest), `:64` (a Workspace permit is refused as non-monotonic); `tests/e2e/task-cli-e2e.test.mjs:284` (a Workspace forbid denies the start: `FAILED` with `VES_EXECUTOR_APPROVAL_INVALID`, no worktree, no provider call, `:302`). |
+| GTC-32 | `tests/e2e/task-cli-e2e.test.mjs:232-235` (implementer saw only its brokered credential, in an isolated home, without the verifier's key), `:237-241` (verifier read-only, zero tools, its own credential only, `CODEX_HOME` under the Workspace state); driver conflict: `tests/unit/verification-driver-isolation.test.mjs` (unchanged, `VES_VERIFIER_DRIVER_CONFLICT`). |
+| GTC-33 | `tests/unit/task-cli-composition.test.mjs:80` (verdict fields validated, foreign requirement ignored, absolute evidence path uncovers), `:108` (malformed or reversed verdict covers nothing); `tests/e2e/task-cli-e2e.test.mjs:143` (report verdict PASS only after the revert-implementation sensor killed the mutant and the checkout stayed unchanged). |
+| GTC-34 | `tests/e2e/task-cli-e2e.test.mjs:143` (branch `vestra/<run>/T1` holds only `src/value.txt`, parent is the source revision, trailers name the run), `:261` (HEAD, status, files, and registered worktrees unchanged). |
+| GTC-35 | `tests/e2e/task-cli-e2e.test.mjs:339` (cancel from another process stops the run: `ABORTED`, worktree removed, `:363`; a second cancel of the ended run is refused), `:449` (with no live process, cancel removes the uncommitted worktree, releases the lease so a new run starts, and aborts). |
+| GTC-36 | `tests/e2e/task-cli-e2e.test.mjs:243` (stale surface refused), `:246` (unconfirmed review refused), `:250-252` (accepted → `COMPLETED`, capsule sealed, never merges), `:435` (rejected → `ABORTED`, branch kept, checkout untouched, `:441`). |
+| GTC-37 | `tests/e2e/task-cli-e2e.test.mjs:265` (status next actions empty once complete), `:415` (tampered and non-JSON plan fail status and start closed, `:428`). |
+| GTC-38 | `tests/build/sealed-launcher-closure.test.mjs:471` (relay staged, resolvable from the bundle, runnable by the release runtime; task dry run loads Cedar from `native/cedar-wasm.wasm`), `:245`/`:298` (health report and help list the task commands). |
+| GTC-39 | `tests/e2e/task-cli-e2e.test.mjs:143`, `:269`, `:284`, `:308`, `:324`, `:339`, `:378`, `:415`, `:435`, `:449` (the journeys). |
+| GTC-40 | `tests/security/task-cli-security.test.mjs:86` (traversal), `:100` (planted symlink, nothing written outside, `:105`), `:110` (protected path unchanged in the commit, `:117`), `:122` (injection read as untrusted data, `:126`, cannot widen scope and ends at `VES_DRIVER_TOOL_OUTSIDE_BRIDGE`, `:131`). |
+| GTC-41 | `docs/quick-start.md` (install, credentials, allowlist, complete request, plan → approve → start → status → review, merge yourself, limits). |
+
+## Prerequisite requirements from PR #409 (task-delivery-cli)
+
+| Requirement | Evidence |
+| --- | --- |
+| TDC-01 | `tests/integration/codex-process-context.test.mjs:14` (probe and execution run in the selected directory; controller cwd unchanged). |
+| TDC-02 | `tests/integration/codex-process-context.test.mjs:14` with `tests/helpers/codex-context-observer.mjs` (exact identity directories, no inherited synthetic identity), `:132` (each identity directory required). |
+| TDC-03 | `tests/integration/codex-process-context.test.mjs:73`, `:80`, `:114` (malformed context, mutation after construction, relative executable refused). |
+| TDC-04 | `tests/contract/codex-driver.test.mjs` and `tests/integration/codex-driver-lifecycle.test.mjs` unchanged and passing. |
+
+The TDC-01 test compared the controller's `mkdtemp` path with the child's
+`process.cwd()`; on macOS the temporary directory is reached through
+`/var -> /private/var`, so it failed there on PR #409's own branch (reproduced
+at `470aab3`). The fixture root is now resolved once (`eee4bb9`); the exact
+assertion and the discrimination control are unchanged.
+
+## Composition gate results (pinned Node 24.14.0, macOS arm64)
+
+| Command | Result |
+| --- | --- |
+| `pnpm gate:quick` | PASS — unit 2214/2214, agent-readiness 252/252; format, lint, complexity, typecheck clean |
+| `pnpm gate:build` | PASS — unit 2214, contract 588, integration 732, e2e 211, architecture 61, build 104, qualification 270; 0 failed, 0 skipped, 0 todo |
+| `pnpm gate:security` | PASS — unit 2214, contract 588, e2e 211, architecture 61, qualification 270, security 1246, fault 300; 0 failed, 0 skipped, 0 todo |
+| `pnpm gate:release` | PASS — unit 2214, architecture 61, build 104, qualification 270, security 1246, fault 300, release 28; 0 failed, 0 skipped, 0 todo |
+| `pnpm test:e2e` | PASS as a stage of gate:build and gate:security — 211/211 (task journeys 11/11) |
+| `pnpm agent:check` | PASS |
+| `pnpm site:check` | PASS — site unit 50/50, astro check 0 errors, build and built-output checks |
+| `pnpm site:test` | Not runnable on this machine: its Playwright stage needs a browser that is not installed (the `site:check` part passed) |
+
+## Foundations gate results (pinned Node 24.14.0, macOS arm64)
 
 | Command | Result |
 | --- | --- |

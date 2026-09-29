@@ -87,7 +87,7 @@ Full reports live under [docs/qualification/](docs/qualification/) and on the
 - It does not make unapproved paid model calls - a missing provider reports `not configured`, never a silent pass.
 - It does not treat CI as human review - acceptance is an explicit human decision recorded as evidence.
 - It does not call same-author checks independent verification - that distinction is stated, not blurred.
-- It does not expose unqualified commands - the installed CLI advertises `init`, `self-test`, `doctor`, and `secret` and nothing else, and `secret` reports `not configured` on any platform without a qualified credential store.
+- It does not expose unqualified commands - the installed CLI advertises `init`, `self-test`, `doctor`, `secret`, and `task` and nothing else, and `secret` and `task` report `not configured` on any platform without a qualified credential store.
 
 ## How it fits together
 
@@ -213,6 +213,27 @@ qualification and its limits are in
 [docs/qualification/os-secret-backend-darwin.md](docs/qualification/os-secret-backend-darwin.md),
 [docs/qualification/os-secret-backend-linux.md](docs/qualification/os-secret-backend-linux.md), and
 [docs/qualification/os-secret-backend-windows.md](docs/qualification/os-secret-backend-windows.md).
+
+### Deliver a governed task (macOS)
+
+`vestra task` takes one change from a request file to a reviewed commit on a
+task branch: you approve the sealed plan, Claude Code implements it through a
+mediated tool bridge in an isolated worktree, your allowlisted gates run,
+Codex verifies read-only, and you review the result. Verchestra never merges;
+you inspect and merge the branch yourself.
+
+```bash
+npx vestra task plan    --request task-request.json
+npx vestra task approve --run-id <runId> --binding-digest <sha256:…>
+npx vestra task start   --run-id <runId>
+npx vestra task status  --run-id <runId>
+npx vestra task review  --run-id <runId> --outcome accepted --surface-digest <sha256:…>
+```
+
+The full walkthrough, a complete request example, and the limits of this
+qualification build (macOS only, one implementer and one verifier, token and
+cost ceilings checked when usage is reported, local human authority, live
+pilot pending in #406) are in [docs/quick-start.md](docs/quick-start.md).
 
 ### Managed state, recovery, and cleanup
 
