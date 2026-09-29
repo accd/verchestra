@@ -1,4 +1,4 @@
-import { runBootstrap as runVerifiedBootstrap, type BootstrapContext } from "../src/bootstrap.ts";
+import { packageRootOf, runBootstrap as runVerifiedBootstrap, type BootstrapContext } from "../src/bootstrap.ts";
 import { NodeActivationClosure, machineLocalEnvironment } from "./node-activation-closure.ts";
 
 // The bundle entry point, and the only wiring the published `bin/vestra.mjs`
@@ -12,7 +12,14 @@ import { NodeActivationClosure, machineLocalEnvironment } from "./node-activatio
 
 export async function runBootstrap(
   args: readonly string[],
-  context?: BootstrapContext,
+  // why: the package root is derived from this module's own location, which
+  // only the npm bundle has; the single binary names its embedded inputs
+  // instead, so the default lives here rather than in the shared bootstrap.
+  context: BootstrapContext = {
+    platform: process.platform,
+    arch: process.arch,
+    packageRoot: packageRootOf(import.meta.url)
+  },
   write?: (line: string) => void
 ): Promise<number> {
   return await runVerifiedBootstrap(args, context, write, new NodeActivationClosure(machineLocalEnvironment));
