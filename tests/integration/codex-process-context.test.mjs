@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -12,7 +12,11 @@ import { codexFixture } from "../helpers/codex-driver-fixture.mjs";
 const execFileAsync = promisify(execFile);
 
 test("explicit Codex context isolates real probe and execution from a synthetic controller environment", async () => {
-  const root = await mkdtemp(join(tmpdir(), "verchestra-codex-context-"));
+  // why: a child's process.cwd() is the real path, and on macOS the temp
+  // directory is reached through the /var -> /private/var link, so the
+  // selected worktree is named by its real path or the exact-cwd check
+  // compares two spellings of one directory.
+  const root = await realpath(await mkdtemp(join(tmpdir(), "verchestra-codex-context-")));
   try {
     const worktree = join(root, "worktree");
     await mkdir(worktree);
