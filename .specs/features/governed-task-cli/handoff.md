@@ -5,9 +5,9 @@ issue: 405
 status: in_progress
 branch: feat/405-governed-task-foundations
 baseRevision: 4ff9bed6e5e19ba38e11d45d9112667d81a4b254
-lastCompletedTask: T2
-nextTask: "T3 — add NodeGitContextSource, NodeWorktreeToolAdapter, and opt-in task-branch anchoring in NodeGitWorktreeAdapter."
-lastGate: "focused integration 78/78, test:architecture 50/50, sealed-launcher-closure 11/11 PASS"
+lastCompletedTask: T3
+nextTask: "T4 — add the mediated MCP tool bridge, the Claude Code mediated-mcp profile, and the requalification report."
+lastGate: "focused E3 suites 60/60, census 10/10, test:architecture 50/50 PASS"
 updatedAt: 2026-09-29T00:00:00Z
 ---
 
@@ -30,6 +30,12 @@ T2: migration `012_execution_checkpoints` and `RuntimeCheckpointStore`
 (`packages/platform-node/src/checkpoint-store-adapter.ts`) serving the executor,
 gate/commit, and repair-loop checkpoint ports; runtime public errors
 `VES_RUNTIME_CHECKPOINT_CONFLICT` and `VES_RUNTIME_CHECKPOINT_CORRUPT`.
+
+T3: `NodeGitContextSource` (committed blobs only, bounded, fail closed),
+`NodeWorktreeToolAdapter` (realpath confinement, link refusal, idempotency by
+`requestId` in operation receipts, command denied), the application
+`ExecutionPayloadPort`, and opt-in task-branch anchoring in
+`NodeGitWorktreeAdapter` cleanup.
 
 # Files Intentionally Left Unchanged
 
