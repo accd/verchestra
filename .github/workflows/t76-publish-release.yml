@@ -30,6 +30,11 @@ name: T76 sign and stage a release publication
 # against an exact pattern before it is used, and is passed to the script as a
 # quoted argument.  The base URL pattern's character classes structurally
 # exclude credentials, queries, fragments, and substitution markers.
+#
+# why: the publication ledger that bounds metadata_version is read from origin/main's
+# tip, not from the candidate revision (#387, #382): a candidate cut before a
+# later publication or refresh was recorded would otherwise reuse its version.
+# The candidate's own committed copy must be an unedited prefix of main's.
 
 on:
   workflow_dispatch:
@@ -48,6 +53,13 @@ on:
         type: string
       expires:
         description: "TUF metadata expiry (YYYY-MM-DDTHH:mm:ss.sssZ)"
+        required: true
+        type: string
+      timestamp_expires:
+        # why: the online timestamp/snapshot window (#18 F2). No default: pass the same
+        # value as expires for the full horizon, or a short window only while the
+        # monthly t76-refresh-timestamp routine (#382) is operating for this root.
+        description: "Online timestamp/snapshot expiry, no later than expires (YYYY-MM-DDTHH:mm:ss.sssZ)"
         required: true
         type: string
       metadata_version:
@@ -109,6 +121,7 @@ jobs:
           CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
           PUBLICATION_BASE_URL: ${{ inputs.base_url }}
           METADATA_EXPIRES: ${{ inputs.expires }}
+          TIMESTAMP_EXPIRES: ${{ inputs.timestamp_expires }}
           METADATA_VERSION: ${{ inputs.metadata_version }}
           ROLLBACK_REVISION: ${{ inputs.rollback_revision }}
           ROLLBACK_RUN_ID: ${{ inputs.rollback_run_id }}
@@ -132,6 +145,10 @@ jobs:
           }
           [[ "$METADATA_EXPIRES" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}Z$ ]] || {
             echo "expires must be a UTC instant with milliseconds" >&2
+            exit 1
+          }
+          [[ "$TIMESTAMP_EXPIRES" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}Z$ ]] || {
+            echo "timestamp_expires must be a UTC instant with milliseconds" >&2
             exit 1
           }
           [[ "$METADATA_VERSION" =~ ^[1-9][0-9]{0,8}$ ]] || {
@@ -165,6 +182,16 @@ jobs:
           # Prove the rebuild list is complete rather than trusting it.
           node -e "require('esbuild').buildSync({stdin:{contents:''},write:false})"
 
+      - name: Read the publication ledger from main's tip
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          mkdir -p main-ledger
+          git show origin/main:docs/qualification/tuf-publication-ledger.json > main-ledger/tuf-publication-ledger.json
+          node scripts/tuf-publication-ledger.mjs assert-prefix \
+            docs/qualification/tuf-publication-ledger.json \
+            main-ledger/tuf-publication-ledger.json
+
       - name: Download the reconciled five-target index
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
@@ -195,6 +222,7 @@ jobs:
           CANDIDATE_REVISION: ${{ inputs.revision }}
           PUBLICATION_BASE_URL: ${{ inputs.base_url }}
           METADATA_EXPIRES: ${{ inputs.expires }}
+          TIMESTAMP_EXPIRES: ${{ inputs.timestamp_expires }}
           METADATA_VERSION: ${{ inputs.metadata_version }}
           VESTRA_RELEASE_SIGNING_KEY_PKCS8_BASE64: ${{ secrets.VESTRA_RELEASE_SIGNING_KEY_PKCS8_BASE64 }}
           VESTRA_RELEASE_TIMESTAMP_SIGNING_KEY_PKCS8_BASE64: ${{ secrets.VESTRA_RELEASE_TIMESTAMP_SIGNING_KEY_PKCS8_BASE64 }}
@@ -206,7 +234,9 @@ jobs:
           --base-url "$PUBLICATION_BASE_URL"
           --revision "$CANDIDATE_REVISION"
           --expires "$METADATA_EXPIRES"
+          --timestamp-expires "$TIMESTAMP_EXPIRES"
           --metadata-version "$METADATA_VERSION"
+          --ledger main-ledger/tuf-publication-ledger.json
           --rollback-index rollback/t76-target-index.json
 
       - name: Build the publishable package from the emitted pinned inputs
@@ -229,6 +259,8 @@ jobs:
             `releaseId: \`${manifest.releaseId}\``,
             `baseUrl: \`${manifest.baseUrl}\``,
             `rootDigest: \`${manifest.rootDigest}\``,
+            `metadataVersion: \`${manifest.metadataVersion}\``,
+            `timestampExpires: \`${manifest.timestampExpires}\``,
             `signingKeyId: \`${manifest.signingKeyId}\``,
             "",
             "### Manual steps",

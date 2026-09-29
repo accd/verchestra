@@ -14,6 +14,7 @@
 
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { canonicalizeJsonV2 } from "../packages/domain/src/index.ts";
@@ -224,3 +225,70 @@ export function assertMonotonicMetadataVersion(ledger, { rootDigest, metadataVer
     if (entryMayShareRoot(entry, rootDigest)) assertEntryBound(entry, metadataVersion);
   }
 }
+
+// invariant: a refresh re-signs the online roles of the newest release recorded
+// for its root and nothing else. An unrecorded lineage, a version that does not
+// strictly exceed every recorded one, or targets older than the newest recorded
+// release (a rollback for fresh clients) is refused before any signature.
+export function assertRefreshAdmitted(ledger, { rootDigest, metadataVersion, targetsVersion }) {
+  const releases = ledger.entries.filter((entry) => entry.kind === "release" && entryMayShareRoot(entry, rootDigest));
+  if (releases.length === 0)
+    throw new PublicationLedgerError(
+      "VES_T76_REFRESH_LINEAGE_UNKNOWN",
+      "the publication ledger records no release for this root, so there is nothing to refresh"
+    );
+  assertMonotonicMetadataVersion(ledger, { rootDigest, metadataVersion });
+  const newest = Math.max(...releases.map((entry) => entry.roles.targets));
+  if (targetsVersion !== newest)
+    throw new PublicationLedgerError(
+      "VES_T76_REFRESH_TARGETS_CHANGED",
+      `the targets being refreshed carry version ${targetsVersion}, but the newest release recorded for this root carries ${newest}`
+    );
+}
+
+// invariant: the returned entry chains to the ledger's last entry and the
+// extended ledger validates, so appending it verbatim keeps the chain intact.
+export function nextLedgerEntry(ledger, fields) {
+  const previous = ledger.entries.at(-1);
+  // why: the chain fields are derived, never taken from the caller, and stay first.
+  const chain = {
+    sequence: ledger.entries.length + 1,
+    previousEntryDigest: previous === undefined ? null : ledgerEntryDigest(previous)
+  };
+  const entry = Object.assign({ ...chain }, fields, chain);
+  validatePublicationLedger({ ...ledger, entries: [...ledger.entries, entry] });
+  return entry;
+}
+
+// why: a workflow reads the ledger from origin/main's tip rather than from the
+// revision it checks out, so a publication recorded after that revision was cut
+// still bounds the next version. The checked-out copy must be an unedited prefix
+// of main's, or one of the two has been rewritten.
+export function assertLedgerPrefix(candidate, main) {
+  if (candidate.schema !== main.schema)
+    throw new PublicationLedgerError("VES_T76_PUBLISH_LEDGER_DIVERGED", "the two ledgers use different schemas");
+  if (candidate.entries.length > main.entries.length)
+    throw new PublicationLedgerError(
+      "VES_T76_PUBLISH_LEDGER_DIVERGED",
+      `the checked-out ledger has ${candidate.entries.length} entries, more than main's ${main.entries.length}`
+    );
+  candidate.entries.forEach((entry, index) => {
+    if (canonicalizeJsonV2(entry) !== canonicalizeJsonV2(main.entries[index]))
+      throw new PublicationLedgerError(
+        "VES_T76_PUBLISH_LEDGER_DIVERGED",
+        `checked-out ledger entry ${index + 1} differs from main's`
+      );
+  });
+}
+
+const runCli = async () => {
+  const [command, candidatePath, mainPath] = process.argv.slice(2);
+  if (command !== "assert-prefix" || candidatePath === undefined || mainPath === undefined)
+    throw new Error("usage: tuf-publication-ledger.mjs assert-prefix <checked-out ledger> <main ledger>");
+  const candidate = await readPublicationLedger(candidatePath);
+  const main = await readPublicationLedger(mainPath);
+  assertLedgerPrefix(candidate, main);
+  console.log(`ledger prefix verified: ${candidate.entries.length} of ${main.entries.length} entries on main`);
+};
+
+if (process.argv[1] && fileURLToPath(new URL(import.meta.url)) === resolve(process.argv[1])) await runCli();

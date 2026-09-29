@@ -221,7 +221,7 @@ export function releaseSignerFromEnvironment(environment, keyName = KEY_ENVIRONM
 // caller may point at a different anchor for testing, and the CLI never does, so
 // a live publication is always bound to the reviewed release key. The comparison
 // is over public key material only — nothing secret is read, logged, or emitted.
-const DEFAULT_RELEASE_ANCHOR = new URL(
+export const DEFAULT_RELEASE_ANCHOR = new URL(
   "../docs/qualification/trust/verchestra-release-public-key.json",
   import.meta.url
 );
@@ -229,13 +229,20 @@ const DEFAULT_RELEASE_ANCHOR = new URL(
 // The reviewed public half of the online timestamp/snapshot key (#18, F1). Like
 // the release anchor, the CLI never overrides it, so a live publication is
 // always bound to the reviewed timestamp key.
-const DEFAULT_TIMESTAMP_ANCHOR = new URL(
+export const DEFAULT_TIMESTAMP_ANCHOR = new URL(
   "../docs/qualification/trust/release-timestamp-snapshot-public-key.json",
   import.meta.url
 );
 
-const anchorKeyIdOf = (ref) => {
+const anchorKeyIdOf = (ref, purpose) => {
   const decoded = record(ref, "release anchor");
+  // why: a caller that names a purpose (the #382 refresh) refuses an anchor
+  // reviewed for a different authority, even when its key would verify.
+  if (
+    purpose !== undefined &&
+    (!Array.isArray(decoded.purposes) || decoded.purposes.length !== 1 || decoded.purposes[0] !== purpose)
+  )
+    fail("VES_T76_PUBLISH_ANCHOR_INVALID", `the signing anchor is not reviewed for ${purpose}`);
   const material = (() => {
     if (decoded.encoding === "spki-pem" && typeof decoded.publicKey === "string") return decoded.publicKey;
     if (decoded.encoding === "spki-der-base64url" && typeof decoded.publicKey === "string")
@@ -257,7 +264,7 @@ const anchorKeyIdOf = (ref) => {
 
 // Resolves the TUF keyId the emitted metadata must carry from a reviewed anchor.
 // A missing or malformed anchor fails closed before any output byte.
-const expectedAnchorKeyId = async (anchorPath, defaultAnchor) => {
+export const expectedAnchorKeyId = async (anchorPath, defaultAnchor, purpose) => {
   let raw;
   try {
     raw = await readFile(anchorPath ?? defaultAnchor, "utf8");
@@ -270,15 +277,16 @@ const expectedAnchorKeyId = async (anchorPath, defaultAnchor) => {
   } catch (error) {
     return fail("VES_T76_PUBLISH_ANCHOR_INVALID", "a reviewed signing anchor is not JSON", error);
   }
-  return anchorKeyIdOf(parsed);
+  return anchorKeyIdOf(parsed, purpose);
 };
 
 // Per-role expiry (#18, F2): root and targets keep the operator's horizon; the
 // online timestamp and snapshot metadata may expire sooner, decoupled from the
 // root so a short freeze-attack-defense window no longer forces the offline root
-// to expire too. The window defaults to the full horizon — a shorter one is an
-// expiry time-bomb until the monthly online re-signing routine exists, so it is
-// opt-in through --timestamp-expires. The publication core enforces the ordering.
+// to expire too. The window defaults to the full horizon for library callers; a
+// shorter one is safe only while the monthly online re-signing routine
+// (scripts/t76-refresh-timestamp.mjs, #382) keeps renewing it, so it is opt-in
+// through --timestamp-expires. The publication core enforces the ordering.
 const roleExpiries = (horizon, timestampExpires) => {
   const online = timestampExpires ?? horizon;
   return Object.freeze({ timestamp: online, snapshot: online, targets: horizon, root: horizon });
@@ -922,8 +930,9 @@ const runCli = async () => {
     revision: argument(args, "--revision"),
     expires: argument(args, "--expires"),
     // Optional shorter online-metadata window (#18, F2). Omitted here defaults to
-    // the full horizon, so a fresh publication never expires before its root;
-    // the monthly online re-signing routine passes a short one.
+    // the full horizon, so a fresh publication never expires before its root.
+    // The release workflow always states it; a short one must then be renewed
+    // by the monthly online refresh (scripts/t76-refresh-timestamp.mjs, #382).
     timestampExpires: optionalArgument(args, "--timestamp-expires", undefined),
     // Required, no default: two releases sharing a TUF metadata version collide
     // in the update client's consistent-snapshot cache and cannot be updated over
@@ -933,8 +942,10 @@ const runCli = async () => {
     metadataVersion: Number(argument(args, "--metadata-version")),
     rootVersion: Number(optionalArgument(args, "--root-version", "1")),
     rollbackIndexPath: argument(args, "--rollback-index"),
-    // why: omitted by the release workflow, so a live publication is always
-    // checked against the committed ledger; overridable only for tests.
+    // why: the release workflow passes the ledger read from origin/main's tip,
+    // after proving the candidate's committed copy is a prefix of it, so a
+    // candidate built before a later publication was recorded cannot reuse that
+    // publication's version. Omitted, the committed ledger applies.
     ledgerPath: optionalArgument(args, "--ledger", undefined),
     // Omitted by the release workflow, so a live publication is always bound to
     // the committed anchors; overridable only for tests that sign with throwaway
