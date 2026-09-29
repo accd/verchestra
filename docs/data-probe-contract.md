@@ -84,3 +84,15 @@ single generic `..._CONNECTION_FAILURE` code before it reaches the caller,
 because a real error message may itself contain the failing statement or a
 bound value. See `packages/data-probe/src/postgresql-adapter.ts`'s
 `execute()` for the reference implementation of this split.
+
+## Out-of-process workers (post-1.0, #235)
+
+A team may also ship its probe as a separate process in any language that
+speaks `verchestra-probe/1` over stdio, instead of a TypeScript adapter. The
+product supervises it with the same bounds. It is admitted only when the
+team's signed skill lock pins the worker's bytes under an approved Tool or
+Plugin `extensionRef` and a controller grant binds it; the host is
+`process-contained` and POSIX-only. The wire contract is in
+`.specs/features/out-of-process-probe-host/spec.md`, the reference workers in
+`tests/fixtures/probe-workers/`, and the qualification and its limits in
+`docs/qualification/out-of-process-probe-host.md`.
