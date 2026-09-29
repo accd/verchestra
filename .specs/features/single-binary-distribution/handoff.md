@@ -7,7 +7,7 @@ branch: feat/236-single-binary
 baseRevision: aa6cf42b0c6e26cdbe3a23ce474ca4ea39a47a94
 lastCompletedTask: T5
 nextTask: "T6: after merge, dispatch .github/workflows/single-binary-build.yml at the merge revision (first with no release inputs, then with a t76-publish-release run), record the five per-leg transcripts in validation.md, then hand the owner the macOS Developer ID/notarization and Windows Authenticode signing steps."
-lastGate: "Local darwin-arm64 host: focused single-binary suites 49/49, gate:quick, gate:build, gate:security, gate:release, gate:full, agent:check - see validation.md."
+lastGate: "Local darwin-arm64 host at 8dd0111: focused single-binary suites 52/52; gate:quick, gate:build, gate:security, gate:release, gate:full, agent:check all PASS with 0 skipped - see validation.md."
 updatedAt: 2026-09-29T00:00:00Z
 ---
 
