@@ -4,13 +4,57 @@ import { fileURLToPath } from "node:url";
 import type { CliCommand, CommandBus, CommandResult } from "@verchestra/application";
 import { doctorExitCode } from "@verchestra/application";
 import { PublicErrorException } from "@verchestra/domain";
-import { SafeInitService, buildCanonicalInitFiles } from "@verchestra/workspace";
+import {
+  SafeInitService,
+  buildCanonicalInitFiles,
+  buildProbeScaffoldFiles,
+  defaultProbeScaffoldDirectory,
+  isProbeScaffoldDirectory,
+  isProbeScaffoldEngine,
+  type ProbeScaffoldEngine
+} from "@verchestra/workspace";
 
 import { cliError, cliPublicErrorRegistry } from "./cli-errors.ts";
 import { runCli } from "./cli.ts";
 import { runDoctorDeep } from "./doctor-composition.ts";
 import { installedReleaseManifest, isSealedRelease } from "./release-manifest.ts";
 import { runSelfTestProfile } from "./self-test-composition.ts";
+
+// why: the probe scaffold rides the same preview/apply transaction as the
+// canonical files, so --dry-run, path safety, the ownership manifest, and the
+// receipt cover it without a second writer. Its options are validated here so
+// a mistake is an argument error, not an internal one.
+function probeScaffoldDirectory(options: CliCommand["options"], engine: ProbeScaffoldEngine): string {
+  const directory = options["probe-dir"];
+  if (directory === undefined) return defaultProbeScaffoldDirectory(engine);
+  if (typeof directory !== "string" || !isProbeScaffoldDirectory(directory))
+    throw cliError(
+      "VES_CLI_ARGUMENT_INVALID",
+      { argument: "--probe-dir" },
+      "Probe directory must be a lowercase path under .verchestra/probes/"
+    );
+  return directory;
+}
+
+function probeScaffoldFiles(options: CliCommand["options"]): Readonly<Record<string, string>> {
+  const engine = options["probe-engine"];
+  if (engine === undefined) {
+    for (const name of ["probe-language", "probe-dir"])
+      if (options[name] !== undefined)
+        throw cliError("VES_CLI_ARGUMENT_INVALID", { argument: `--${name}` }, "Probe option needs --probe-engine");
+    return {};
+  }
+  if (typeof engine !== "string" || !isProbeScaffoldEngine(engine))
+    throw cliError("VES_CLI_ARGUMENT_INVALID", { argument: "--probe-engine" }, "Probe engine is not supported");
+  const language = options["probe-language"];
+  if (language !== undefined && language !== "typescript")
+    throw cliError("VES_CLI_ARGUMENT_INVALID", { argument: "--probe-language" }, "Probe language is not supported");
+  return buildProbeScaffoldFiles({
+    engine,
+    language: "typescript",
+    directory: probeScaffoldDirectory(options, engine)
+  });
+}
 
 // The command bus is parameterized by controlRoot so the exact same
 // controller path this function drives in production can be reused by the
@@ -29,12 +73,15 @@ export function createCommandBus(controlRoot: string): CommandBus {
           throw cliError("VES_CLI_ARGUMENT_INVALID", { argument: "--name" }, "Workspace name is required");
         if (placement !== "centralized" && placement !== "colocated")
           throw cliError("VES_CLI_ARGUMENT_INVALID", { argument: "--placement" }, "Workspace placement is required");
-        const files = buildCanonicalInitFiles({
-          workspaceId,
-          displayName,
-          placementMode: placement,
-          generatorVersion: installedReleaseManifest.semanticVersion
-        });
+        const files = {
+          ...buildCanonicalInitFiles({
+            workspaceId,
+            displayName,
+            placementMode: placement,
+            generatorVersion: installedReleaseManifest.semanticVersion
+          }),
+          ...probeScaffoldFiles(command.options)
+        };
         const service = new SafeInitService();
         const preview = await service.preview({ controlRoot, files });
         if (command.options["dry-run"] === true) return { data: preview, diagnostics: [] };

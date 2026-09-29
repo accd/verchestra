@@ -64,7 +64,26 @@ export const installedReleaseManifest: InstalledCliManifest = Object.freeze({
           name: "placement",
           kind: "string" as const,
           values: Object.freeze(["centralized", "colocated"])
-        })
+        }),
+        // invariant: literals, not an import of @verchestra/workspace, because
+        // the doctor's read-only closure reaches this module. The contract test
+        // cli-surface pins them to PROBE_SCAFFOLD_ENGINES and _LANGUAGES.
+        Object.freeze({
+          name: "probe-engine",
+          kind: "string" as const,
+          values: Object.freeze([
+            "postgresql",
+            "mysql",
+            "mariadb",
+            "sqlserver",
+            "sap-ase",
+            "oracle",
+            "sqlite",
+            "mongodb"
+          ])
+        }),
+        Object.freeze({ name: "probe-language", kind: "string" as const, values: Object.freeze(["typescript"]) }),
+        Object.freeze({ name: "probe-dir", kind: "string" as const })
       ])
     }),
     Object.freeze({
