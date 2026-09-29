@@ -6,8 +6,8 @@ status: verification
 branch: feat/os-secret-backend
 baseRevision: 20071a78eb5b96b9de63e5e9c863b6997643c767
 lastCompletedTask: T7
-nextTask: "T8 — independent review of AD-034 and the darwin qualification report; then the owner binds anthropic-api-key on a provisioned macOS machine and records a full doctor --deep verdict"
-lastGate: "pnpm gate:quick PASS (unit 2194/2194, agent-readiness 252/252, 0 skipped, 0 todo)"
+nextTask: "T8 — the owner runs corepack pnpm qualify:keychain on an unlocked macOS session and records the result in docs/qualification/os-secret-backend-darwin.md; independent review of AD-034"
+lastGate: "pnpm gate:build PASS; pnpm gate:security PASS; pnpm gate:quick PASS; pnpm agent:check PASS (0 skipped, 0 todo; no gate spawns /usr/bin/security)"
 updatedAt: 2026-09-29T00:00:00Z
 ---
 
@@ -33,10 +33,23 @@ OSB-13 in `spec.md`; decision AD-034 in `.specs/STATE.md`; threats in
 - `vestra secret set|status|delete --name <logical> [--keychain <path>]`;
   `doctor --keychain <path>`; deep doctor observes `anthropic-api-key`
   presence through a `{ has }` closure.
+- Gate suites use fake or spy runners only, and never spawn `/usr/bin/security`.
+  This is enforced by `tests/architecture/no-keychain-spawn-in-tests.test.mjs`
+  and the preloaded `tests/helpers/deny-keychain-spawn.mjs`.
+- The real-keychain evidence is the standalone `pnpm qualify:keychain` suite
+  (`spikes/os-secret-store`). It is **pending**: an automated session could
+  not set up a disposable keychain while the login keychain was locked, and
+  the coordinator stopped all `security` activity on this machine.
 - Tests and the discrimination sensor are listed in `validation.md`.
 
 # Owner actions
 
+0. From an unlocked macOS desktop session, run `corepack pnpm qualify:keychain`
+   once. It uses only disposable keychain files and never the login keychain.
+   Record the result and the revision in
+   `docs/qualification/os-secret-backend-darwin.md` ("Real-keychain evidence"),
+   then update `DARWIN_KEYCHAIN_CREDENTIAL_QUALIFICATION.digest`; the security
+   test fails until it matches.
 1. In an initialized Workspace on macOS, run
    `vestra secret set --name anthropic-api-key` and, for Codex,
    `vestra secret set --name openai-api-key` (the value is read from stdin, or
@@ -47,11 +60,13 @@ OSB-13 in `spec.md`; decision AD-034 in `.specs/STATE.md`; threats in
 
 # Next Exact Action
 
-Submit `feat/os-secret-backend` for independent review. The reviewer ratifies
+Owner action 0, then submit `feat/os-secret-backend` for independent review. The reviewer ratifies
 or amends AD-034, in particular the explicit `--keychain` flag instead of an
 environment variable, and the 1416-byte value limit.
 
 # Blockers
 
+- The real-keychain qualification run requires the owner on an unlocked macOS
+  session; no automation may run it.
 - Linux and Windows credential backends are out of scope and report
   `VES_SECRET_STORE_UNQUALIFIED` until each has its own qualification.

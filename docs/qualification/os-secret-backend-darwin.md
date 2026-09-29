@@ -1,7 +1,7 @@
 # macOS Keychain Credential Backend Qualification
 
 **Scope:** issue #379, decision AD-034
-**Status:** Candidate. Qualified on darwin by the tests named below; pending independent review
+**Status:** Candidate. The contract and the command protocol are proven by gate tests. Real-keychain evidence is **pending** (see "Real-keychain evidence"). Independent review is pending.
 **Adapter:** `apple-keychain-credential` (`QualifiedOsCredentialAdapter` over `DarwinKeychainBackend`)
 
 ## Qualification boundary
@@ -22,7 +22,7 @@ and deep doctor's secret-presence check stays `blocked`.
 
 | Control | Meaning | Proof |
 | --- | --- | --- |
-| `keychain` | The value is a generic-password item in a macOS keychain file, encrypted at rest and unlocked with the user's session. | `tests/integration/os-secret-backend-darwin-keychain.test.mjs` round-trips set, has, read, rotate, and delete through the real `security` tool |
+| `keychain` | The value is a generic-password item in a macOS keychain file, encrypted at rest and unlocked with the user's session. | Gate: the command protocol against a fake runner. Real round trip: `pnpm qualify:keychain` (pending) |
 | `user-scope` | Items live in the invoking user's keychain. By default that is the login keychain. `--keychain <path>` selects a keychain file, which must be owned by the invoking user. | `tests/unit/os-secret-backend-darwin.test.mjs` keychain-file checks |
 | `workspace-namespace` | The item's service is `verchestra/<workspaceId>` and its account is the logical name. One Workspace's name never resolves another Workspace's credential. | Workspace-binding cases in the security test and in `tests/integration/doctor-secret-backend.test.mjs` |
 | `not-in-argv` | The value never appears in any process argv or environment. A write sends the hex-encoded value over stdin to `security -i`. A read takes it from the child's captured stderr. The child environment is an allowlist (`PATH`, `HOME`, `USER`, `LOGNAME`). | Security test: argv, environment, error, and output assertions |
@@ -84,23 +84,48 @@ in one.
 
 ## Evidence
 
+### Gate evidence (every platform, never spawns `security`)
+
+No gate suite spawns `/usr/bin/security`.
+`tests/architecture/no-keychain-spawn-in-tests.test.mjs` proves it: no gate
+test names the real runner or spawns the tool, and every test that can reach a
+credential store preloads `tests/helpers/deny-keychain-spawn.mjs`, which makes
+any such spawn throw.
+
 - `tests/unit/os-secret-backend-darwin.test.mjs`: command protocol, exit-code
   mapping, the line budget, rotation, the access-list invariant, timeout
-  mapping, and keychain-file checks, against a fake runner.
+  mapping, and keychain-file checks (a missing or non-keychain path spawns
+  nothing), against a fake runner.
 - `tests/security/os-secret-backend-security.test.mjs`: argv, environment,
-  error and output non-disclosure, Workspace binding, name validation, the
-  key-material contract, and the digest binding this report to the evidence
-  constant.
-- `tests/integration/os-secret-backend-darwin-keychain.test.mjs`: the real
-  tool against a disposable keychain that is never on the user's search list.
-  After each case it proves by an attribute-only search-list lookup (exit 44)
-  that the login keychain holds nothing for the test namespace.
-- `tests/e2e/secret-cli-e2e.test.mjs`: the `vestra` binary as a child process,
-  including deep doctor's secret-presence check passing against a bound
-  credential.
+  error and output non-disclosure, Workspace binding, name validation,
+  `--keychain` reaching every invocation, the key-material contract, and the
+  digest binding this report to the evidence constant.
 - `tests/integration/doctor-secret-backend.test.mjs`: deep doctor's `pass`,
-  `blocked`, and `fail` mappings for the credential check on every platform.
+  `blocked`, and `fail` mappings for the credential check.
+- `tests/e2e/secret-cli-e2e.test.mjs`: the `vestra` binary as a child process,
+  for every refusal that happens before a keychain is consulted.
 
-On a platform other than darwin, the darwin-only integration and end-to-end
-cases assert that the store is refused. They do not skip, so a non-darwin run
-never records a pass it did not earn.
+### Real-keychain evidence — PENDING
+
+The real round trip is the standalone suite `spikes/os-secret-store/test/`.
+It runs set, has, read, rotate, and delete through `/usr/bin/security`, the
+fallback guard, the oversize refusal, and the full `vestra secret` and
+`doctor --deep` journey, with doctor reporting `pass` for a bound credential.
+It is not part of any gate. Each case creates a disposable keychain file with
+a random password, unlocks it, disables its auto-lock, and deletes it
+afterwards. Every call goes through a runner that refuses to spawn unless the
+call names that file. The file's own attribute dump then proves exactly which
+items the case left. The suite never reads or writes the login keychain, the
+search list, or the default keychain. On a platform other than darwin it
+asserts that the store is refused. It does not skip.
+
+It has **not** passed yet on a recorded revision. An automated session could
+not complete disposable-keychain setup while the login keychain was locked.
+The owner runs it once from an unlocked macOS desktop session:
+
+```bash
+corepack pnpm qualify:keychain
+```
+
+Until that run is recorded here, the real-keychain round trip is unproven, and
+nothing in this report claims it.

@@ -1,5 +1,6 @@
 // invariant: #379 D1, the darwin keychain backend's command protocol, against a fake
 // `security` runner. Platform-independent: nothing here spawns a process.
+import "../helpers/deny-keychain-spawn.mjs";
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";

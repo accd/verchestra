@@ -1,6 +1,7 @@
 // invariant: #379 D5 — `vestra secret set` reads the credential without echo
 // from a terminal, strips exactly one trailing newline from a pipe, stops at
 // the size budget, and never writes the value to stderr.
+import "../helpers/deny-keychain-spawn.mjs";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 

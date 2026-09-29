@@ -1,16 +1,18 @@
-// invariant: #379 end to end through the real `vestra` binary as a child
-// process. On darwin every keychain operation targets a disposable keychain
-// passed with `--keychain`, never the login keychain; on any other platform
-// the same journeys assert the store is honestly not configured.
+// invariant: #379's `vestra secret` refusals end to end through the real binary
+// as a child process. Every case is refused before a keychain is consulted, and
+// each child runs with tests/helpers/deny-keychain-spawn.mjs preloaded, so a
+// regression that reached `/usr/bin/security` fails here instead of touching a
+// keychain. The real-keychain journey (set, status, doctor pass, delete) is
+// the standalone `pnpm qualify:keychain` suite in spikes/os-secret-store.
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { after, test } from "node:test";
 
-import { createDisposableKeychain, searchListLookupStatus } from "../helpers/disposable-keychain.mjs";
+import { DENY_KEYCHAIN_SPAWN } from "../helpers/deny-keychain-spawn.mjs";
 
 const DARWIN = process.platform === "darwin";
 const VESTRA = fileURLToPath(new URL("../../apps/vestra-cli/bin/vestra.mjs", import.meta.url));
@@ -21,7 +23,7 @@ const roots = [];
 after(() => Promise.all(roots.map((root) => rm(root, { recursive: true, force: true }))));
 
 function launch(args, cwd, input = "") {
-  const result = spawnSync(process.execPath, [VESTRA, ...args], {
+  const result = spawnSync(process.execPath, ["--import", DENY_KEYCHAIN_SPAWN.href, VESTRA, ...args], {
     cwd,
     input,
     encoding: "utf8",
@@ -33,9 +35,14 @@ function launch(args, cwd, input = "") {
   return result;
 }
 
-async function workspace() {
-  const root = await mkdtemp(join(tmpdir(), "verchestra-secret-e2e-"));
+async function scratch(prefix) {
+  const root = await mkdtemp(join(tmpdir(), prefix));
   roots.push(root);
+  return root;
+}
+
+async function workspace() {
+  const root = await scratch("verchestra-secret-e2e-");
   spawnSync("git", ["init", "--quiet", root], { timeout: 30_000 });
   const init = launch(
     ["init", "--workspace-id", workspaceId, "--name", "Secret E2E", "--placement", "colocated"],
@@ -45,14 +52,17 @@ async function workspace() {
   return root;
 }
 
-function json(result) {
-  return JSON.parse(result.stdout);
+// invariant: a file with the keychain magic passes the backend's pre-spawn
+// check but is never handed to `security`: every case using it is refused on
+// the value first.
+async function fakeKeychain(root) {
+  const path = join(root, "fake.keychain-db");
+  await writeFile(path, Buffer.concat([Buffer.from("kych"), Buffer.alloc(60)]));
+  return path;
 }
 
-function secretPresence(root, keychain) {
-  const args = ["doctor", "--deep", "--output", "json", ...(keychain === undefined ? [] : ["--keychain", keychain])];
-  const codes = json(launch(args, root)).data["doctor.check_codes"];
-  return codes.find((code) => code.startsWith("doctor.secret-presence:"));
+function json(result) {
+  return JSON.parse(result.stdout);
 }
 
 function assertNoValue(text, label) {
@@ -60,101 +70,53 @@ function assertNoValue(text, label) {
   assert.equal(text.toLowerCase().includes(SENTINEL_HEX), false, `${label} carries the hex-encoded value`);
 }
 
-test(
-  "darwin: set, status, doctor, and delete journey against a disposable keychain",
-  { timeout: 180_000 },
-  async (t) => {
-    const root = await workspace();
-    if (!DARWIN) {
-      t.diagnostic(`not darwin (${process.platform}): asserting the store is not configured instead`);
-      const status = launch(["secret", "status", "--name", "anthropic-api-key", "--output", "json"], root);
-      assert.equal(status.status, 5);
-      assert.equal(json(status).error.code, "VES_SECRET_STORE_UNQUALIFIED");
-      assert.equal(secretPresence(root), "doctor.secret-presence:blocked");
-      return;
-    }
-    const keychain = await createDisposableKeychain();
-    try {
-      const kc = ["--keychain", keychain.path];
-      assert.equal(secretPresence(root, keychain.path), "doctor.secret-presence:blocked");
-      const set = launch(["secret", "set", "--name", "anthropic-api-key", ...kc], root, `${SENTINEL}\n`);
-      assert.equal(set.status, 0, set.stderr);
-      assertNoValue(set.stdout, "stdout");
-      assertNoValue(set.stderr, "stderr");
-      assert.match(set.stdout, /stored: true/u);
-      assert.match(set.stdout, /keychain: explicit/u);
-      const status = json(launch(["secret", "status", "--name", "anthropic-api-key", "--output", "json", ...kc], root));
-      assert.deepEqual(status.data, {
-        workspaceId,
-        logicalName: "anthropic-api-key",
-        store: "apple-keychain-credential",
-        keychain: "explicit",
-        present: true
-      });
-      assert.equal(secretPresence(root, keychain.path), "doctor.secret-presence:pass");
-      const rotate = launch(["secret", "set", "--name", "anthropic-api-key", ...kc], root, "sk-ant-rotated");
-      assert.equal(rotate.status, 0, rotate.stderr);
-      const removed = json(
-        launch(["secret", "delete", "--name", "anthropic-api-key", "--output", "json", ...kc], root)
-      );
-      assert.equal(removed.data.deleted, true);
-      const again = json(launch(["secret", "delete", "--name", "anthropic-api-key", "--output", "json", ...kc], root));
-      assert.equal(again.data.deleted, false);
-      const after = json(launch(["secret", "status", "--name", "anthropic-api-key", "--output", "json", ...kc], root));
-      assert.equal(after.data.present, false);
-      assert.equal(secretPresence(root, keychain.path), "doctor.secret-presence:blocked");
-    } finally {
-      await keychain.dispose();
-    }
-    assert.equal(searchListLookupStatus(`verchestra/${workspaceId}`), 44, "the login keychain was never written");
-  }
-);
+test("the preloaded guard refuses to spawn a security tool in the child", async () => {
+  const result = spawnSync(
+    process.execPath,
+    [
+      "--import",
+      DENY_KEYCHAIN_SPAWN.href,
+      "--input-type=module",
+      "-e",
+      'import { spawnSync } from "node:child_process"; try { spawnSync("/nonexistent/security", ["help"]); process.exit(3); } catch { process.exit(0); }'
+    ],
+    { encoding: "utf8", timeout: 30_000 }
+  );
+  assert.equal(result.status, 0, result.stderr);
+});
 
-test("darwin: an oversize or empty value is refused and never echoed", { timeout: 120_000 }, async (t) => {
+test("an oversize, empty, or whitespace value is refused and never echoed", { timeout: 120_000 }, async () => {
   const root = await workspace();
-  if (!DARWIN) {
-    t.diagnostic(`not darwin (${process.platform}): asserting the store is not configured instead`);
-    const set = launch(["secret", "set", "--name", "anthropic-api-key"], root, SENTINEL);
+  const keychain = ["--keychain", await fakeKeychain(root)];
+  for (const input of [`${SENTINEL}${"A".repeat(4096)}`, "", "\n", "has space"]) {
+    const set = launch(["secret", "set", "--name", "anthropic-api-key", ...keychain], root, input);
     assert.equal(set.status, 5);
-    assert.match(set.stderr, /^VES_SECRET_STORE_UNQUALIFIED:/u);
-    return;
+    assert.match(set.stderr, DARWIN ? /^VES_SECRET_VALUE_INVALID:/u : /^VES_SECRET_STORE_UNQUALIFIED:/u);
+    assertNoValue(set.stdout, "stdout");
+    assertNoValue(set.stderr, "stderr");
   }
-  const keychain = await createDisposableKeychain();
-  try {
-    const kc = ["--keychain", keychain.path];
-    for (const input of [`${SENTINEL}${"A".repeat(4096)}`, "", "\n", "has space"]) {
-      const set = launch(["secret", "set", "--name", "anthropic-api-key", ...kc], root, input);
-      assert.equal(set.status, 5);
-      assert.match(set.stderr, /^VES_SECRET_VALUE_INVALID:/u);
-      assertNoValue(set.stdout, "stdout");
-      assertNoValue(set.stderr, "stderr");
-    }
-    const status = json(launch(["secret", "status", "--name", "anthropic-api-key", "--output", "json", ...kc], root));
-    assert.equal(status.data.present, false);
-  } finally {
-    await keychain.dispose();
-  }
-  assert.equal(searchListLookupStatus(`verchestra/${workspaceId}`), 44, "the login keychain was never written");
 });
 
 test("an unusable --keychain path is refused before any keychain command", { timeout: 60_000 }, async () => {
   const root = await workspace();
   const expected = DARWIN ? "VES_SECRET_KEYCHAIN_INVALID" : "VES_SECRET_STORE_UNQUALIFIED";
-  for (const path of [join(root, "missing.keychain-db"), "relative.keychain-db", join(root, ".verchestra")]) {
-    const set = launch(
-      ["secret", "set", "--name", "anthropic-api-key", "--keychain", path, "--output", "json"],
-      root,
-      SENTINEL
-    );
-    assert.equal(set.status, 5);
-    assert.equal(json(set).error.code, expected, path);
+  const junk = join(root, "junk.keychain-db");
+  await writeFile(junk, "not a keychain");
+  for (const path of [join(root, "missing.keychain-db"), "relative.keychain-db", join(root, ".verchestra"), junk]) {
+    for (const command of ["set", "status", "delete"]) {
+      const result = launch(
+        ["secret", command, "--name", "anthropic-api-key", "--keychain", path, "--output", "json"],
+        root,
+        SENTINEL
+      );
+      assert.equal(result.status, 5);
+      assert.equal(json(result).error.code, expected, `${command} ${path}`);
+    }
   }
-  if (DARWIN) assert.equal(searchListLookupStatus(`verchestra/${workspaceId}`), 44);
 });
 
 test("secret commands refuse an uninitialized directory and an invalid name", { timeout: 60_000 }, async () => {
-  const bare = await mkdtemp(join(tmpdir(), "verchestra-secret-bare-"));
-  roots.push(bare);
+  const bare = await scratch("verchestra-secret-bare-");
   const outside = launch(["secret", "status", "--name", "anthropic-api-key", "--output", "json"], bare);
   assert.equal(outside.status, 5);
   assert.equal(json(outside).error.code, "VES_INIT_WORKSPACE_MISSING");
@@ -164,6 +126,11 @@ test("secret commands refuse an uninitialized directory and an invalid name", { 
     assert.equal(invalid.status, 2, name);
     assert.equal(json(invalid).error.code, "VES_CLI_ARGUMENT_INVALID");
   }
-  const bareSecret = launch(["secret"], root);
-  assert.equal(bareSecret.status, 2);
+  assert.equal(launch(["secret"], root).status, 2);
+});
+
+test("the help lists the secret commands", () => {
+  const help = launch(["--help"], process.cwd());
+  assert.equal(help.status, 0);
+  for (const command of ["secret set", "secret status", "secret delete"]) assert.ok(help.stdout.includes(command));
 });
