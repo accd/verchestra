@@ -212,6 +212,64 @@ test("the supervisor refuses a forged workspace trust with the admitted shape", 
   );
 });
 
+test("the supervisor refuses an admission minted for another Workspace's plan", async () => {
+  const extension = await resolvedExtension();
+  const foreign = "workspace_018f0b6d-7b1a-7abc-8def-0000000000ff";
+  const trust = admitWorkspaceProbeWorker({
+    workspaceId: foreign,
+    extension,
+    grant: controllerGrant(extension, foreign)
+  });
+  const plan = await probePlan();
+  assert.throws(
+    () =>
+      new ProbeWorkerSupervisor({
+        worker: {},
+        parameters: new MemoryProtectedParameterBroker(),
+        results: new MemoryProbeResultSink(),
+        plan,
+        workspaceTrust: trust,
+        maximumMessageBytes: 65_536
+      }),
+    { code: "VES_PROBE_WORKSPACE_TRUST_WORKSPACE" }
+  );
+});
+
+test("a launched worker whose host-measured digest differs from the approval never reaches identity", async () => {
+  const extension = await resolvedExtension();
+  const trust = admitWorkspaceProbeWorker({ workspaceId, extension, grant: controllerGrant(extension, workspaceId) });
+  const calls = [];
+  const worker = {
+    launchedComponentDigest: DIGEST,
+    handshake: async () => {
+      calls.push("handshake");
+      return {
+        protocol: "verchestra-probe/1",
+        supportedSchemas: ["probe.plan/1", "probe.result/1"],
+        component: { id: trust.componentId, digest: trust.componentDigest },
+        capabilities: ["database-read"],
+        maximumMessageBytes: 65_536
+      };
+    },
+    verifyIdentity: async () => calls.push("identity"),
+    cancel: async () => calls.push("cancel"),
+    terminate: async () => calls.push("terminate")
+  };
+  const results = new MemoryProbeResultSink();
+  const parameters = new MemoryProtectedParameterBroker();
+  const supervisor = new ProbeWorkerSupervisor({
+    worker,
+    parameters,
+    results,
+    plan: await probePlan(),
+    workspaceTrust: trust,
+    maximumMessageBytes: 65_536
+  });
+  await assert.rejects(supervisor.execute(), { code: "VES_PROBE_WORKSPACE_TRUST_DIGEST", revokeGrant: true });
+  assert.deepEqual(calls, ["handshake", "cancel"]);
+  assert.equal(results.commits, 0);
+});
+
 test("the product port of authorizeSkillExecution matches the qualified isolation rule", () => {
   const cases = [
     { kind: "skill", requestsExecution: false, explicitGrant: false },

@@ -427,6 +427,25 @@ note. -->
   live rollback demonstration needs two same-root publications built from a
   revision that does. No live run is claimed by this decision.
 
+### AD-034 — Workspace probe workers run out of process under `process-contained` supervision (#235)
+
+- **Status:** proposed (the owner ratifies by reviewing the pull request that
+  carries `.specs/features/out-of-process-probe-host/`).
+- **Decision:** `verchestra-probe/1` goes on the execution path:
+  `FramedProbeWorker` (extension-host) drives a worker spawned by
+  `SpawnedProbeWorker` (platform-node) through the bounded codec, a strict
+  sequence guard, payload digests, and Workspace binding, under the unchanged
+  supervisor bounds. A workspace worker is admitted only from a signed lock's
+  `extensionRef` + `approvalRef` (`GovernedSkillRegistry.resolveExecutableExtension`)
+  plus a controller grant accepted by `authorizeSkillExecution`; admission is
+  denied by default. The host is `process-contained`, POSIX-only, and refuses
+  `high-untrusted-executable` work. Full record: `.specs/features/out-of-process-probe-host/adr.md`.
+- **Consequence:** Protocol-level containment is qualified
+  (`docs/qualification/out-of-process-probe-host.md`); OS-level containment is
+  not, so an admitted worker keeps the host user's filesystem and network
+  authority until a stronger isolation grade is qualified. Post-1.0; the signed
+  1.0.0 hold is unchanged.
+
 ## Handoff
 
 - **Reconciliation (2026-09-29, #407):** The feature handoffs were audited
