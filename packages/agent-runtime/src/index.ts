@@ -86,3 +86,10 @@ export {
   type McpBridgeStatistics,
   type McpToolBridgeControllerOptions
 } from "./execution/mcp-tool-bridge.ts";
+export {
+  DriverExecutionAdapter,
+  DriverExecutionAdapterError,
+  type DriverExecutionAdapterOptions,
+  type DriverExecutionSession,
+  type DriverSessionPort
+} from "./execution/driver-execution-adapter.ts";

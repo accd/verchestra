@@ -1,6 +1,6 @@
 # Claude Code Driver Requalification: Mediated MCP Profile
 
-**Task:** T03 requalification for #405 (AD-034)
+**Task:** T03 requalification for #405 (decision AD-0XX, to be numbered at merge)
 **Status:** Candidate pending independent verification and human review
 **Installed Claude Code observed:** 2.1.282 (read-only `--version` and `--help`; no model invoked)
 **Supersedes:** nothing. `docs/qualification/claude-code-driver.md` remains the
@@ -13,7 +13,7 @@ Code cannot change files. #405 makes Claude Code the implementer. Its writes mus
 pass through the executor's scope, protected-path, capability-grant, and
 tool-effect authority checks, so the implementer gets no tool of its own. It
 gets a single MCP server, `verchestra`, whose relay forwards calls to the
-Verchestra controller over an authenticated Unix socket (AD-034).
+Verchestra controller over an authenticated Unix socket (decision AD-0XX in `.specs/STATE.md`).
 
 ## Qualified invocation profile (`mediated-mcp`)
 
