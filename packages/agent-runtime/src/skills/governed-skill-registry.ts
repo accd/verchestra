@@ -216,6 +216,40 @@ export class GovernedSkillRegistry {
     });
   }
 
+  // why: consumes the extensionRef every executable lock entry already had to
+  // declare. This is the only route by which workspace-supplied executable code
+  // gains an identity the out-of-process Probe host will admit: a signed lock, an
+  // approved Tool or Plugin reference, and one executable entry pinned by digest.
+  // It grants nothing by itself; admission still requires a controller grant.
+  async resolveExecutableExtension(
+    lock: SkillLock,
+    request: { readonly skillId: string; readonly extensionId: string; readonly entryPath: string }
+  ) {
+    const skill = (await this.#validateLock(lock)).find((candidate) => candidate.id === request.skillId);
+    if (skill === undefined) throw new SkillRegistryError("VES_SKILL_UNKNOWN", "Extension references an unknown Skill");
+    const reference = skill.extensionRef;
+    if (reference === undefined || reference.id !== request.extensionId || reference.approvalRef.length === 0)
+      throw new SkillRegistryError(
+        "VES_SKILL_EXECUTION_UNAUTHORIZED",
+        "Executable Skill content requires an approved Tool or Plugin"
+      );
+    const entry = skill.contents.find(
+      (content) => content.path === request.entryPath && content.declaredClass === "executable"
+    );
+    if (entry === undefined)
+      throw new SkillRegistryError(
+        "VES_SKILL_EXTENSION_ENTRY_UNKNOWN",
+        "Extension entry is not locked executable content"
+      );
+    return Object.freeze({
+      lockDigest: lock.lockDigest,
+      skillId: skill.id,
+      skillVersion: skill.version,
+      extensionRef: Object.freeze({ kind: reference.kind, id: reference.id, approvalRef: reference.approvalRef }),
+      entry: Object.freeze({ path: entry.path, digest: entry.digest })
+    });
+  }
+
   async planUpdate(request: UpdateRequest): Promise<SkillUpdatePlan> {
     await this.#validateLock(request.current);
     await this.#validateLock(request.candidate);

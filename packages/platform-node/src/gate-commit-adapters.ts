@@ -8,6 +8,7 @@ import { promisify } from "node:util";
 import type { TaskGateCommand, TaskGateRunnerResult } from "@verchestra/application";
 
 import { NodeGitWorktreeAdapter } from "./git-worktree-adapter.ts";
+import { terminateProcessGroup } from "./process-tree-terminator.ts";
 
 const execFileAsync = promisify(execFile);
 const WORKTREE_REF = /^worktree:([a-f0-9]{32}):([a-f0-9]{40}|[a-f0-9]{64})$/u;
@@ -101,30 +102,9 @@ function parseNodeTestSummary(output: string) {
 }
 
 async function terminate(pid: number): Promise<void> {
-  if (process.platform === "win32") {
-    try {
-      await execFileAsync("taskkill", ["/pid", String(pid), "/T", "/F"], { windowsHide: true });
-    } catch {
-      // The process may already have exited.
-    }
-  } else {
-    try {
-      process.kill(-pid, "SIGKILL");
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
-      return;
-    }
-    for (let attempt = 0; attempt < 20; attempt += 1) {
-      await new Promise((resolve) => setTimeout(resolve, 25));
-      try {
-        process.kill(-pid, 0);
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code === "ESRCH") return;
-        throw error;
-      }
-    }
-    fail("VES_GATE_ADAPTER_TERMINATION_INCOMPLETE", "Gate process group remained alive after termination");
-  }
+  await terminateProcessGroup(pid, () =>
+    fail("VES_GATE_ADAPTER_TERMINATION_INCOMPLETE", "Gate process group remained alive after termination")
+  );
 }
 
 export class NodeGateProcessRunner {

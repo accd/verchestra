@@ -845,6 +845,17 @@
       "reason": "The reviewed source uses the declared V2 canonical contract."
     },
     {
+      "path": "packages/platform-node/src/spawned-probe-worker.ts",
+      "classification": "raw-byte-digest",
+      "signals": {
+        "canonicalizer": 0,
+        "digest": 3,
+        "localeCompare": 0,
+        "serialization": 0
+      },
+      "reason": "The probe host hashes the raw bytes of the approved worker entry and of the worker's stderr stream; it computes no structured JSON identity."
+    },
+    {
       "path": "packages/platform-node/src/sync-adapters.ts",
       "classification": "raw-byte-digest",
       "signals": {
