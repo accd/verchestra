@@ -13,6 +13,7 @@ const DISPATCH_INPUTS = Object.freeze([
   "candidate_run_id",
   "base_url",
   "expires",
+  "timestamp_expires",
   "metadata_version",
   "rollback_revision",
   "rollback_run_id"
@@ -86,6 +87,19 @@ test("every dispatch input is declared and validated against an exact pattern be
     "base_url must be validated against the exact structural pattern"
   );
   assert.match(workflow, /\[\[ "\$METADATA_EXPIRES" =~ /u);
+  // why: the online window (#18 F2, #382) is validated against the exact instant
+  // pattern and, like metadata_version, carries no silent default.
+  assert.equal(
+    workflow.includes(
+      '[[ "$TIMESTAMP_EXPIRES" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$ ]]'
+    ),
+    true,
+    "timestamp_expires must be validated against the exact instant pattern"
+  );
+  const timestampExpiresBlock = /^ {6}timestamp_expires:\n(?: {8}.*\n)+/mu.exec(workflow)?.[0] ?? "";
+  assert.match(timestampExpiresBlock, /required: true/u);
+  assert.doesNotMatch(timestampExpiresBlock, /^ {8}default:/mu);
+  assert.match(workflow, /--timestamp-expires "\$TIMESTAMP_EXPIRES"/u);
   assert.match(workflow, /\[\[ "\$METADATA_VERSION" =~ \^\[1-9\]/u);
   // metadata_version must carry no default: a silent default of "1" is exactly
   // what let 0.0.0-qualification.2 be published sharing v1's TUF version (#387).
@@ -240,4 +254,23 @@ test("the emitted pinned inputs are proved against the real launcher build", () 
   assert.match(workflow, /--release-inputs "t76-release-publication\/release-inputs"/u);
   assert.doesNotMatch(workflow, /VERIFIED_TARGET_KEY/u);
   assert.match(workflow, /name: t76-launcher-package-verification-/u);
+});
+
+test("the ledger that bounds metadata_version is main's tip, and the candidate's copy must be its prefix", () => {
+  // why: a candidate cut before a later publication or refresh was recorded must not
+  // be checked against its own stale copy (#387, #382).
+  assert.match(workflow, /git fetch --no-tags origin \+refs\/heads\/main:refs\/remotes\/origin\/main/u);
+  assert.match(
+    workflow,
+    /git show origin\/main:docs\/qualification\/tuf-publication-ledger\.json > main-ledger\/tuf-publication-ledger\.json/u
+  );
+  assert.match(
+    workflow,
+    /node scripts\/tuf-publication-ledger\.mjs assert-prefix \\\s+docs\/qualification\/tuf-publication-ledger\.json \\\s+main-ledger\/tuf-publication-ledger\.json/u
+  );
+  assert.match(workflow, /--ledger main-ledger\/tuf-publication-ledger\.json/u);
+  const prefixCheck = workflow.indexOf("assert-prefix");
+  const signing = workflow.indexOf("node scripts/t76-publish-release.mjs");
+  assert.ok(prefixCheck > workflow.indexOf("pnpm install --frozen-lockfile"), "the check runs after install");
+  assert.ok(prefixCheck < signing, "the ledger is proven before anything is signed");
 });
