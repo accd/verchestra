@@ -43,6 +43,40 @@ claimed live-qualified by this repository.
    kit run stay in your workspace's own repo, gated by your own CI. Nothing
    is uploaded to or merged into this repository.
 
+## Scaffolding the probe with `vestra init` (#234)
+
+`vestra init --probe-engine <engine>` writes a starting point for step 1 into
+the team's repository, under `.verchestra/probes/<engine>` (or the lowercase
+`--probe-dir` path below `.verchestra/probes/` you choose). The generator lives
+in `packages/workspace/src/init/probe-scaffold.ts` and is keyed by engine and
+contract version (`PROBE_CONTRACT_VERSION`, currently 1). It is deterministic:
+no clock, no product version, sorted files, LF endings. It uses no AI, makes no
+network call, and adds no dependency.
+
+| File | Content |
+| --- | --- |
+| `contract.mts` | A copy of the engine's connection port and its plan, operation, and observation types |
+| `connection.mts` | A class implementing the port; every method throws `VES_PROBE_DRIVER_TODO` and carries a `TODO(driver)` comment that names candidate driver packages |
+| `conformance-kit.mts` | A port-level kit that drives the connection through the same calls as the published adapter and applies the same read-only verdicts |
+| `conformance.test.mts` | A `node --test` file that runs the kit against the connection, with a `TODO(target)` for the team's disposable database |
+
+The published kit in `tests/helpers/` imports this repository's sources, and
+`@verchestra/data-probe` is not distributed as a package, so the scaffold
+carries its own copy of the contract and a port-level kit instead of importing
+them. Three repository tests keep that copy honest:
+`tests/contract/probe-scaffold-typecheck.test.mjs` proves each copied type is
+identical to the published one and fails on drift;
+`tests/contract/probe-scaffold-kit.test.mjs` proves the scaffold kit issues the
+same session calls as the published adapter and reaches the same verdict on
+read-only and non-read-only fixtures; and the same file proves the kit run
+against the unimplemented connection fails with `VES_PROBE_DRIVER_TODO` rather
+than passing. Every other kit failure carries a `VES_PROBE_KIT_*` code.
+
+Filling the TODOs with AI is a separate, user-triggered step: a normal
+Verchestra delivery task through the configured Driver, with gates, review,
+and a commit, once the governed task command (#405) is available. The AI only
+proposes changes in the workspace; nothing cognitive enters the product.
+
 ## Read-only session obligations per engine
 
 Every adapter's `configureReadOnlySession` (or `configureAuthorization` /
