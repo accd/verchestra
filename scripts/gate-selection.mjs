@@ -27,7 +27,7 @@ const RULES = Object.freeze([
     gate: "gate:release",
     reason: "distribution and release identity",
     match:
-      /^(?:packages\/distribution\/|apps\/vestra-cli\/|apps\/vestra-launcher\/|scripts\/build-vestra-launcher\.mjs$)/u
+      /^(?:packages\/distribution\/|apps\/vestra-cli\/|apps\/vestra-launcher\/|scripts\/(?:build-vestra-launcher|build-vestra-binary|sea-inject|node-runtime-archive)\.mjs$)/u
   },
   {
     gate: "gate:security",

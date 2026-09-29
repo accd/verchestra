@@ -189,7 +189,14 @@ test("the release/build suite is executed by the gates its path selects", () => 
   assert.ok(GATE_STAGES["gate:release"].includes("test:build"));
 });
 
-for (const path of ["apps/vestra-launcher/src/bootstrap.ts", "scripts/build-vestra-launcher.mjs"]) {
+for (const path of [
+  "apps/vestra-launcher/src/bootstrap.ts",
+  "scripts/build-vestra-launcher.mjs",
+  "apps/vestra-launcher/single-binary/node-runtime.json",
+  "scripts/build-vestra-binary.mjs",
+  "scripts/sea-inject.mjs",
+  "scripts/node-runtime-archive.mjs"
+]) {
   test(`${path} (public launcher artifact) selects the release gate`, () =>
     assert.ok(gatesFor(path).includes("gate:release")));
 }
