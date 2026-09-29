@@ -1,0 +1,53 @@
+# Single-Binary Distribution Validation (#236)
+
+## Current verdict
+
+**PASS on the darwin-arm64 build host for T1–T5. Pending across the fleet
+(T6).** Every requirement below has assertion evidence on the build host. The
+four other targets still need the native CI legs, and signing still needs the
+owner's identities. This verdict is not a release, promotion, or 1.0 claim.
+
+## Requirement evidence
+
+| Req | Evidence (file:line — assertion) | Result |
+| --- | --- | --- |
+| SBD-01 | `tests/unit/node-runtime-archive.test.mjs:96`: the tracked pins name exactly five targets at `engines.node`. `:172`: a byte-changed archive is refused. `:180`: a member that does not match its own pin is refused inside a pinned archive. `:208`: an installed runtime and its LICENSE must both match their pins. `tests/build/vestra-binary.test.mjs:270`: a fake archive or executable is refused, and no output is left behind. | PASS |
+| SBD-02 | `tests/unit/sea-inject.test.mjs:31`: per format, the blob is recovered byte for byte and the fuse is flipped exactly once. `:60`: an un-injected executable is never reported as carrying a blob. `tests/build/vestra-binary.test.mjs:181`: `manifest.sea.blob` equals `locateSeaBlob` of the emitted executable. `scripts/build-vestra-binary.mjs:275` (`emitExecutable`) refuses an unverifiable artifact. | PASS |
+| SBD-03 | `tests/build/vestra-binary.test.mjs:163`: two builds produce identical file trees and digests. `tests/unit/sea-inject.test.mjs:45`: injection is deterministic in each format. | PASS |
+| SBD-04 | `tests/build/vestra-binary.test.mjs:181`: target, executable digest, signature state, runtime archive and member digests, pins route, root digest, SEA settings, asset digests, license digests, SBOM runtime hash, and SBOM npm components listed in the notices are all present, and there is no machine-local path. | PASS |
+| SBD-05 | `apps/vestra-launcher/closure/single-binary-bootstrap.ts:74` composes `runBootstrap` with `NodeActivationClosure(machineLocalEnvironment)`. `apps/vestra-launcher/src/pinned-inputs.ts:189` holds the shared validation. `tests/unit/vestra-single-binary-bootstrap.test.mjs:93`: the same public codes are returned for tampered or missing inputs and for an unsupported host. `tests/build/vestra-binary.test.mjs:251`: the real closure anchors the embedded root. `tests/build/vestra-binary.test.mjs:300`: the build refuses inputs the launcher refuses. The unchanged npm suites (`tests/build/vestra-launcher-package.test.mjs`, `tests/e2e/vestra-launcher-activation.test.mjs`, `tests/security/vestra-launcher-package-security.test.mjs`) still pass. | PASS |
+| SBD-06 | `tests/unit/vestra-single-binary-bootstrap.test.mjs:83`: a lone `--version` never activates. `:111`: `[]`, `--version --output json`, and shell-hostile argument vectors reach the handoff verbatim. | PASS |
+| SBD-07 | `tests/build/vestra-binary.test.mjs:236`: `PATH=""` plus a hostile `NODE_OPTIONS --require` still gives `--version` with an empty stderr. `:251`: with `PATH=""` and `HOME` redirected, the run dials the pinned loopback source and exits 70 with a `VES_TUF_*` diagnostic. `scripts/build-vestra-binary.mjs:134`: the bundle loads only built-ins and carries the require guard. | PASS |
+| SBD-08 | `tests/build/vestra-binary.test.mjs:323`: unsupported target, both or neither runtime given, missing inputs, and existing output are each refused. `tests/unit/sea-inject.test.mjs:49`, `:54`, `:87`, `:96`, `:131`, `:188`, `:192`: already injected, fuse count, unknown Mach-O command, misplaced signature, no ELF slack, PE overlay, and unknown or fat format are each refused. | PASS |
+| SBD-09 | `tests/build/vestra-binary.test.mjs:181` asserts `executable.signature` is `ad-hoc` on darwin and `none` elsewhere. `tests/unit/sea-inject.test.mjs:65` (Mach-O signature dropped before re-signing) and `:137` (PE certificate directory cleared). The owner actions are listed in `design.md` § Code signing. | PASS (owner actions pending) |
+| SBD-10 | `tests/agent-readiness/single-binary-workflow.test.mjs:38`: manual, read-only, no identity or secret. `:48`: exactly the five fleet legs. `:62`: actions SHA-pinned. `:68`: no input interpolated into a shell. `:81`: nothing can publish or sign. `:101`: the pinned archive is verified first. `:111`: zero skips are enforced. `:119`: the reviewed build is compared byte for byte. | PASS (dispatch pending) |
+| SBD-11 | `docs/qualification/single-binary-distribution.md`: the "Proven locally" and "Pending" tables. | PASS |
+| SBD-12 | `docs/qualification/single-binary-distribution.md` "Release state" and "Verdict". AD-0XX says the channel changes no T76, T77, or 1.0.0 status. `pnpm agent:check` status agreement. | PASS |
+
+## Discrimination sensor
+
+Each mutant was applied to the source in place, the named suite was run, and
+the file was restored from a copy. Every mutant was killed.
+
+| Mutant | Suite | Result |
+| --- | --- | --- |
+| M1 Mach-O `__LINKEDIT` offsets not shifted | `tests/unit/sea-inject.test.mjs` | killed (1 failure) |
+| M2 fuse left unflipped | `tests/unit/sea-inject.test.mjs` | killed (3) |
+| M3 ELF `PT_PHDR` not relocated | `tests/unit/sea-inject.test.mjs` | killed (1) |
+| M4 PE certificate directory kept | `tests/unit/sea-inject.test.mjs` | killed (1) |
+| M5 archive digest not checked | `tests/unit/node-runtime-archive.test.mjs` | killed (1) |
+| M6 installed LICENSE not checked | `tests/unit/node-runtime-archive.test.mjs` | killed (1) |
+| M7 `--version` answered beside other arguments | `tests/unit/vestra-single-binary-bootstrap.test.mjs` | killed (1) |
+| M8 macOS binary left unsigned | `tests/build/vestra-binary.test.mjs` | killed (2) |
+| M9 launcher input validation skipped at build | `tests/build/vestra-binary.test.mjs` | killed (1) |
+| M10 embedded config read from the wrong asset key | `tests/unit/vestra-single-binary-bootstrap.test.mjs` | killed (4) |
+| M11 `execArgvExtension: "env"` (NODE_OPTIONS honored) | `tests/build/vestra-binary.test.mjs` | killed (1) |
+
+Result: 11 killed, 0 survived.
+
+## Gates
+
+Build host: darwin-arm64, Node 24.14.0, pnpm 10.34.5. The worktree was based on
+`origin/main` `aa6cf42b0c6e26cdbe3a23ce474ca4ea39a47a94`.
+
+GATE-RESULTS-PLACEHOLDER
