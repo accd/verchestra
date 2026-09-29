@@ -138,6 +138,86 @@ export const installedReleaseManifest: InstalledCliManifest = Object.freeze({
         Object.freeze({ name: "name", kind: "string" as const }),
         Object.freeze({ name: "keychain", kind: "string" as const })
       ])
+    }),
+    Object.freeze({
+      name: "task plan",
+      summary: "Plan a governed task from a request file and print its approval surface",
+      supportsJson: true,
+      mutating: true,
+      options: Object.freeze([
+        Object.freeze({ name: "request", kind: "string" as const }),
+        Object.freeze({ name: "dry-run", kind: "boolean" as const }),
+        Object.freeze({ name: "keychain", kind: "string" as const })
+      ])
+    }),
+    Object.freeze({
+      name: "task approve",
+      summary: "Record the human execution approval for a planned task run",
+      supportsJson: true,
+      mutating: true,
+      options: Object.freeze([
+        Object.freeze({ name: "run-id", kind: "string" as const }),
+        Object.freeze({ name: "binding-digest", kind: "string" as const }),
+        Object.freeze({ name: "confirm-stdin", kind: "boolean" as const }),
+        Object.freeze({ name: "keychain", kind: "string" as const })
+      ])
+    }),
+    Object.freeze({
+      name: "task start",
+      summary: "Run an approved task: implement, gate, commit to a task branch, and verify",
+      supportsJson: true,
+      mutating: true,
+      options: Object.freeze([
+        Object.freeze({ name: "run-id", kind: "string" as const }),
+        Object.freeze({ name: "keychain", kind: "string" as const })
+      ])
+    }),
+    Object.freeze({
+      name: "task status",
+      summary: "Report a task run's durable state, evidence, and next allowed actions",
+      supportsJson: true,
+      mutating: false,
+      options: Object.freeze([
+        Object.freeze({ name: "run-id", kind: "string" as const }),
+        Object.freeze({ name: "keychain", kind: "string" as const })
+      ])
+    }),
+    Object.freeze({
+      name: "task resume",
+      summary: "Resume an interrupted task run without repeating completed effects",
+      supportsJson: true,
+      mutating: true,
+      options: Object.freeze([
+        Object.freeze({ name: "run-id", kind: "string" as const }),
+        Object.freeze({ name: "keychain", kind: "string" as const })
+      ])
+    }),
+    Object.freeze({
+      name: "task cancel",
+      summary: "Cancel a task run; a running process stops and the run is aborted",
+      supportsJson: true,
+      mutating: true,
+      options: Object.freeze([
+        Object.freeze({ name: "run-id", kind: "string" as const }),
+        Object.freeze({ name: "keychain", kind: "string" as const })
+      ])
+    }),
+    Object.freeze({
+      name: "task review",
+      summary: "Record the human review of a verified task run; never merges",
+      supportsJson: true,
+      mutating: true,
+      options: Object.freeze([
+        Object.freeze({ name: "run-id", kind: "string" as const }),
+        Object.freeze({
+          name: "outcome",
+          kind: "string" as const,
+          values: Object.freeze(["accepted", "rejected"])
+        }),
+        Object.freeze({ name: "surface-digest", kind: "string" as const }),
+        Object.freeze({ name: "confirm-stdin", kind: "boolean" as const }),
+        Object.freeze({ name: "keychain", kind: "string" as const })
+      ])
     })
   ])
 });

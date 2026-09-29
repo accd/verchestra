@@ -1,4 +1,5 @@
 export const packageName = "@verchestra/policy" as const;
+export { createCedarEngine, installedCedarWasmPath } from "./cedar-engine.ts";
 export {
   CedarPolicyAdapter,
   POLICY_LAYERS,
