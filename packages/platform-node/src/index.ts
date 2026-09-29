@@ -73,3 +73,11 @@ export {
   type VerifiedLauncherHandoffRequest,
   type VerifiedLauncherHandoffResult
 } from "./activation-launcher-adapters.ts";
+export {
+  SpawnedProbeWorker,
+  SpawnedProbeWorkerError,
+  type ProbeTransportListener,
+  type SpawnedProbeWorkerDiagnostics,
+  type SpawnedProbeWorkerLimits,
+  type SpawnedProbeWorkerOptions
+} from "./spawned-probe-worker.ts";

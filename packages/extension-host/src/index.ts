@@ -2,7 +2,18 @@ import { createHash, randomUUID } from "node:crypto";
 
 import { canonicalizeJsonV2 } from "@verchestra/domain";
 
+import { isAdmittedWorkspaceTrust, type WorkspaceProbeWorkerTrust } from "./workspace-trust.ts";
+
 export const packageName = "@verchestra/extension-host" as const;
+export { FramedProbeWorker, type ProbeWorkerTransport } from "./framed-probe-worker.ts";
+export {
+  admitWorkspaceProbeWorker,
+  authorizeSkillExecution,
+  isAdmittedWorkspaceTrust,
+  type WorkspaceProbeWorkerExtension,
+  type WorkspaceProbeWorkerGrant,
+  type WorkspaceProbeWorkerTrust
+} from "./workspace-trust.ts";
 
 const DIGEST = /^sha256:[a-f0-9]{64}$/u;
 const SAFE = /^[A-Za-z0-9][A-Za-z0-9._:@/+\-]{0,511}$/u;
@@ -192,6 +203,14 @@ export class ProbeFrameDecoder {
 export class ProbeSequenceGuard {
   #nextSequence = 0;
   readonly #messages = new Map<string, string>();
+  readonly #rejectDuplicates: boolean;
+
+  // why: an idempotent duplicate is tolerated where a transport may redeliver.
+  // A private stdio pipe never redelivers, so the out-of-process channel sets
+  // `duplicates: "reject"` and treats any replay as a hostile worker.
+  constructor(options: { readonly duplicates?: "idempotent" | "reject" } = {}) {
+    this.#rejectDuplicates = options.duplicates === "reject";
+  }
 
   accept(envelope: Pick<ProbeProtocolEnvelope, "messageId" | "sequence" | "payloadDigest">) {
     const recorded = this.#messages.get(envelope.messageId);
@@ -199,6 +218,7 @@ export class ProbeSequenceGuard {
       if (recorded !== envelope.payloadDigest) {
         terminate("VES_PROBE_MESSAGE_CONFLICT", "Probe message identity was reused incompatibly");
       }
+      if (this.#rejectDuplicates) terminate("VES_PROBE_SEQUENCE_REPLAY", "Probe message was replayed");
       return Object.freeze({ accepted: false, duplicate: true, nextSequence: this.#nextSequence });
     }
     if (envelope.sequence !== this.#nextSequence) {
@@ -289,6 +309,9 @@ interface ProbeSessionEvidence {
 }
 
 interface ProbeWorkerPort {
+  // invariant: for an out-of-process worker this is the digest the host measured
+  // over the bytes it executed, not a value the worker reported about itself.
+  readonly launchedComponentDigest?: string;
   handshake(): Promise<ProbeWorkerHandshake>;
   verifyIdentity(plan: ProbePlanView): Promise<ProbeIdentityEvidence | undefined>;
   configureReadOnlySession(plan: ProbePlanView): Promise<ProbeSessionEvidence>;
@@ -417,12 +440,45 @@ function probeFailure(error: unknown): ProbeProtocolError {
   return new ProbeProtocolError("VES_PROBE_WORKER_FAILURE", "Probe worker failed");
 }
 
+type ProbeWorkerTrust =
+  | { readonly kind: "product"; readonly component: { readonly id: string; readonly digest: string } }
+  | WorkspaceProbeWorkerTrust;
+
+// invariant: exactly one trust root per supervisor. The product root pins a
+// product-hardcoded component; the workspace root exists only as a value minted
+// by admitWorkspaceProbeWorker, so it cannot be forged by shape.
+function resolveTrust(options: {
+  readonly plan: ProbePlanView;
+  readonly expectedComponent?: { readonly id: string; readonly digest: string };
+  readonly workspaceTrust?: WorkspaceProbeWorkerTrust;
+}): ProbeWorkerTrust {
+  if ((options.expectedComponent === undefined) === (options.workspaceTrust === undefined))
+    fail("VES_PROBE_TRUST_INVALID", "Probe supervisor requires exactly one trust root");
+  if (options.expectedComponent !== undefined) return { kind: "product", component: options.expectedComponent };
+  if (!isAdmittedWorkspaceTrust(options.workspaceTrust))
+    fail("VES_PROBE_WORKSPACE_TRUST_DENIED", "Workspace Probe worker was not admitted");
+  if (options.workspaceTrust.workspaceId !== options.plan.workspaceId)
+    fail("VES_PROBE_WORKSPACE_TRUST_WORKSPACE", "Workspace Probe worker admission belongs to another Workspace");
+  return options.workspaceTrust;
+}
+
+// why: worker calls other than execute() take no signal, so a worker that never
+// answers its handshake would otherwise outlive the time bound indefinitely.
+function untilAborted<T>(pending: Promise<T>, signal: AbortSignal): Promise<T> {
+  if (signal.aborted) return Promise.reject(new ProbeProtocolError("VES_PROBE_ABORTED", "Probe execution was aborted"));
+  return new Promise<T>((resolve, reject) => {
+    const abort = () => reject(new ProbeProtocolError("VES_PROBE_ABORTED", "Probe execution was aborted"));
+    signal.addEventListener("abort", abort, { once: true });
+    pending.then(resolve, reject).finally(() => signal.removeEventListener("abort", abort));
+  });
+}
+
 export class ProbeWorkerSupervisor {
   readonly #worker: ProbeWorkerPort;
   readonly #parameters: MemoryProtectedParameterBroker;
   readonly #results: MemoryProbeResultSink;
   readonly #plan: ProbePlanView;
-  readonly #expectedComponent: { readonly id: string; readonly digest: string };
+  readonly #trust: ProbeWorkerTrust;
   readonly #maximumMessageBytes: number;
   concurrency = new ProbeConcurrencyGate();
 
@@ -431,15 +487,33 @@ export class ProbeWorkerSupervisor {
     readonly parameters: MemoryProtectedParameterBroker;
     readonly results: MemoryProbeResultSink;
     readonly plan: ProbePlanView;
-    readonly expectedComponent: { readonly id: string; readonly digest: string };
+    readonly expectedComponent?: { readonly id: string; readonly digest: string };
+    readonly workspaceTrust?: WorkspaceProbeWorkerTrust;
     readonly maximumMessageBytes: number;
   }) {
     this.#worker = options.worker;
     this.#parameters = options.parameters;
     this.#results = options.results;
     this.#plan = options.plan;
-    this.#expectedComponent = options.expectedComponent;
+    this.#trust = resolveTrust(options);
     this.#maximumMessageBytes = options.maximumMessageBytes;
+  }
+
+  #negotiate(handshake: ProbeWorkerHandshake) {
+    const trust = this.#trust;
+    if (trust.kind === "workspace" && this.#worker.launchedComponentDigest !== trust.componentDigest)
+      terminate("VES_PROBE_WORKSPACE_TRUST_DIGEST", "Launched Probe worker does not match its approved digest");
+    return negotiateProbeHandshake(
+      {
+        protocol: "verchestra-probe/1",
+        requiredSchemas: ["probe.plan/1", "probe.result/1"],
+        expectedComponent:
+          trust.kind === "product" ? trust.component : { id: trust.componentId, digest: trust.componentDigest },
+        allowedCapabilities: trust.kind === "product" ? ["database-read"] : trust.capabilities,
+        maximumMessageBytes: this.#maximumMessageBytes
+      },
+      handshake
+    );
   }
 
   async execute(signal?: AbortSignal): Promise<ProbeResultEnvelope> {
@@ -460,17 +534,8 @@ export class ProbeWorkerSupervisor {
       controller.abort();
     }, plan.bounds.timeoutMs);
     try {
-      negotiateProbeHandshake(
-        {
-          protocol: "verchestra-probe/1",
-          requiredSchemas: ["probe.plan/1", "probe.result/1"],
-          expectedComponent: this.#expectedComponent,
-          allowedCapabilities: ["database-read"],
-          maximumMessageBytes: this.#maximumMessageBytes
-        },
-        await this.#worker.handshake()
-      );
-      const identity = await this.#worker.verifyIdentity(plan);
+      this.#negotiate(await untilAborted(this.#worker.handshake(), controller.signal));
+      const identity = await untilAborted(this.#worker.verifyIdentity(plan), controller.signal);
       if (identity === undefined) fail("VES_PROBE_IDENTITY_INVALID", "Probe principal evidence is missing");
       if (identity.databaseId !== plan.databaseId || !DIGEST.test(identity.principalFingerprint)) {
         fail("VES_PROBE_IDENTITY_INVALID", "Probe principal evidence is invalid");
@@ -478,7 +543,7 @@ export class ProbeWorkerSupervisor {
       if (!identity.principalReadOnly) {
         fail("VES_PROBE_IDENTITY_NOT_READ_ONLY", "Database principal is not read-only");
       }
-      const session = await this.#worker.configureReadOnlySession(plan);
+      const session = await untilAborted(this.#worker.configureReadOnlySession(plan), controller.signal);
       if (session.planDigest !== plan.planDigest)
         fail("VES_PROBE_SESSION_INVALID", "Probe session evidence is invalid");
       if (!session.sessionReadOnly || !session.transactionReadOnly) {
