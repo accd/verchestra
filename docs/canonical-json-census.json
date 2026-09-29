@@ -185,6 +185,28 @@
       "reason": "Structured material already uses the V2 contract or is a V2 support primitive."
     },
     {
+      "path": "packages/agent-runtime/src/execution/execution-payload-store.ts",
+      "classification": "raw-byte-digest",
+      "signals": {
+        "canonicalizer": 0,
+        "digest": 2,
+        "localeCompare": 0,
+        "serialization": 0
+      },
+      "reason": "SHA-256 applies to raw payload bytes to form a content address; no structured identity is canonicalized."
+    },
+    {
+      "path": "packages/agent-runtime/src/execution/mcp-tool-bridge.ts",
+      "classification": "raw-byte-digest",
+      "signals": {
+        "canonicalizer": 0,
+        "digest": 2,
+        "localeCompare": 0,
+        "serialization": 3
+      },
+      "reason": "SHA-256 equalizes token lengths for a constant-time comparison, and JSON.stringify frames transient wire messages; no persisted or signed identity."
+    },
+    {
       "path": "packages/agent-runtime/src/models/passport-registry.ts",
       "classification": "migrated-v2",
       "signals": {
