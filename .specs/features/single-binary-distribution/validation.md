@@ -50,4 +50,32 @@ Result: 11 killed, 0 survived.
 Build host: darwin-arm64, Node 24.14.0, pnpm 10.34.5. The worktree was based on
 `origin/main` `aa6cf42b0c6e26cdbe3a23ce474ca4ea39a47a94`.
 
-GATE-RESULTS-PLACEHOLDER
+Every gate below was run on the tree at `8dd0111` (T1–T5 committed) with a
+clean worktree.
+
+| Command | Result |
+| --- | --- |
+| `node --test tests/unit/sea-inject.test.mjs tests/unit/node-runtime-archive.test.mjs tests/unit/vestra-single-binary-bootstrap.test.mjs tests/build/vestra-binary.test.mjs tests/agent-readiness/single-binary-workflow.test.mjs` | PASS: 52 tests, 0 failed, 0 skipped, 0 todo |
+| `pnpm gate:quick` | PASS: unit 2202, agent-readiness 265 |
+| `pnpm gate:build` | PASS: unit 2202, contract 541, integration 663, e2e 192, architecture 50, build 110, qualification 254 |
+| `pnpm gate:security` | PASS: unit 2202, contract 541, e2e 192, architecture 50, qualification 254, security 1179, fault 300 |
+| `pnpm gate:release` | PASS: unit 2202, architecture 50, build 110, qualification 254, security 1179, fault 300, release 28 |
+| `pnpm gate:full` | PASS: unit 2202, contract 541, integration 663, e2e 192, fault 300, mutation 8 |
+| `pnpm agent:check` | PASS |
+
+Every stage reported 0 failed, 0 skipped, and 0 todo. `gate:full` also ran,
+because gate selection treats a new workflow and a `scripts/gate-selection.mjs`
+change as conservative-control-surface paths.
+
+A first `gate:security` and `gate:release` run failed on one assertion: the
+canonical JSON census did not classify the two new scripts. It was fixed by
+classifying them (`docs/canonical-json-census.json`: `build-vestra-binary.mjs`
+as migrated-v2 and `node-runtime-archive.mjs` as raw-byte-digest), not by
+changing the census test.
+
+## Pending evidence (T6)
+
+- The five native legs of `.github/workflows/single-binary-build.yml`, run at
+  the merge revision.
+- A reviewed-input build reconciled across all five targets.
+- Owner signing: Developer ID with notarization, and Authenticode.
