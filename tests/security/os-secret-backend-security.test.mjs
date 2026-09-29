@@ -2,6 +2,7 @@
 // keychain — the value never crosses argv, the child environment, an error,
 // or command output; items are bound to their Workspace; names are strict;
 // and key material still requires non-exportable storage (AD-034).
+import "../helpers/deny-keychain-spawn.mjs";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { mkdtemp, readFile, rm, writeFile, mkdir } from "node:fs/promises";
@@ -25,7 +26,7 @@ import {
   composeDoctorSecretProbe,
   executeSecretCommand
 } from "../../apps/vestra-cli/src/secret-composition.ts";
-import { fakeSecurityRunner } from "../helpers/fake-security-runner.mjs";
+import { fakeKeychainFile, fakeSecurityRunner } from "../helpers/fake-security-runner.mjs";
 
 const SENTINEL = "sk-ant-sentinel-SECURITY-9f3c";
 const SENTINEL_HEX = Buffer.from(SENTINEL).toString("hex");
@@ -207,6 +208,39 @@ test("a keychain that needs interaction surfaces as a clear error, never a hang"
   for (const command of ["secret set", "secret status", "secret delete"]) {
     const { error } = await runSecret(command, { name: "anthropic-api-key" }, { root, input: SENTINEL, fake });
     assert.equal(error.envelope.code, "VES_SECRET_KEYCHAIN_INTERACTION_REQUIRED", command);
+  }
+});
+
+test("with --keychain, every command and the doctor probe name that keychain in every invocation", async (t) => {
+  const root = await workspaceRoot(workspaceA);
+  const keychain = await fakeKeychainFile(await mkdtemp(join(scratch, "kc-")));
+  if (process.platform === "win32") {
+    // invariant: a keychain path is POSIX by construction; on win32 the same
+    // fixture proves a native path is refused rather than exercised.
+    t.diagnostic("win32: asserting a native keychain path is refused as non-canonical");
+    assert.throws(() => createOsCredentialStore({ platform: "darwin", keychainPath: keychain }), {
+      code: "VES_SECRET_KEYCHAIN_INVALID"
+    });
+    return;
+  }
+  const fake = fakeSecurityRunner();
+  const options = { name: "anthropic-api-key", keychain };
+  await runSecret("secret set", options, { root, input: SENTINEL, fake });
+  await runSecret("secret set", options, { root, input: "sk-ant-rotated", fake });
+  await runSecret("secret status", options, { root, fake });
+  await runSecret("secret delete", options, { root, fake });
+  const probe = await composeDoctorSecretProbe({
+    controlRoot: root,
+    platform: "darwin",
+    keychainPath: keychain,
+    runner: fake.runner
+  });
+  await probe.secret.adapter.has(workspaceA, DOCTOR_CREDENTIAL_NAME);
+  const kinds = new Set(fake.invocations.map((invocation) => invocation.args[0]));
+  assert.deepEqual([...kinds].sort(), ["-i", "delete-generic-password", "find-generic-password"]);
+  for (const invocation of fake.invocations) {
+    if (invocation.args[0] === "-i") assert.equal(invocation.stdin.endsWith(` ${keychain}\n`), true);
+    else assert.equal(invocation.args.at(-1), keychain, invocation.args[0]);
   }
 });
 

@@ -53,6 +53,7 @@
     "qualify:sqlite": "node --test spikes/sqlite/test/*.test.mjs",
     "qualify:isolation": "node --test spikes/isolation/test/*.test.mjs",
     "qualify:supply-chain": "node --test spikes/supply-chain/test/*.test.mjs",
+    "qualify:keychain": "node --test spikes/os-secret-store/test/*.test.mjs",
     "site:dev": "pnpm --filter @verchestra/site dev",
     "site:check": "pnpm --filter @verchestra/site check",
     "site:build": "pnpm --filter @verchestra/site build",

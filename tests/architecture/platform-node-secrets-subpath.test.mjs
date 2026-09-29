@@ -5,6 +5,7 @@
 // so this subpath's whole static and dynamic import closure must never reach
 // node:sqlite or the runtime store, and the CLI must reach the credential
 // store only through it.
+import "../helpers/deny-keychain-spawn.mjs";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";

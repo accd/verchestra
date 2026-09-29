@@ -419,8 +419,9 @@ note. -->
   is a trust input: #405 injects whatever it returns into a provider child. A
   flag is visible on the command line and in the output (`keychain:
   explicit`), and the path is proven to be a user-owned keychain file before
-  every operation. Tests use the same flag with a disposable keychain, so no
-  hidden test seam exists.
+  every operation. The real-keychain qualification suite (`pnpm qualify:keychain`)
+  uses the same flag with a disposable keychain. Gate tests inject a fake
+  runner in process and never spawn `security`. No hidden test seam exists.
 - **Measured constraints adopted as invariants:** `add-generic-password`
   silently falls back to the login keychain for an unusable path; `security -i`
   splits lines over 4095 bytes and echoes the tail; `-w` output is ambiguous
