@@ -152,6 +152,18 @@ export {
   type TaskSchedulerErrorCode
 } from "./execution/task-scheduler.ts";
 export {
+  TaskRunCoordinator,
+  TaskRunError,
+  type TaskRunCommit,
+  type TaskRunErrorCode,
+  type TaskRunExecution,
+  type TaskRunInput,
+  type TaskRunOutcome,
+  type TaskRunPorts,
+  type TaskRunVerification,
+  type TaskRunWorkflowCommand
+} from "./execution/task-run.ts";
+export {
   FEEDBACK_BYTE_BUDGET,
   GateRepairError,
   runGateRepairLoop,
