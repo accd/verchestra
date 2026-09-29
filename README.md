@@ -260,6 +260,37 @@ then repeat the command without `--dry-run` to apply the qualified workspace
 files. Repeating the identical apply is a no-op. `bootstrap`, `sync`, and
 `workspace reconcile` are intentionally not advertised yet.
 
+### Scaffold a database probe
+
+`init` can also emit a probe scaffold for one engine of the
+[published probe contract](docs/data-probe-contract.md). Add the probe options
+to the same command:
+
+```bash
+node /path/to/verchestra/apps/vestra-cli/bin/vestra.mjs init --dry-run \
+  --workspace-id workspace_018f0b6d-7b1a-7abc-8def-0123456789ab \
+  --name "My workspace" \
+  --placement centralized \
+  --probe-engine postgresql \
+  --output json
+```
+
+`--probe-engine` is one of `postgresql`, `mysql`, `mariadb`, `sqlserver`,
+`sap-ase`, `oracle`, `sqlite`, or `mongodb`. `--probe-language` accepts only
+`typescript`. `--probe-dir` defaults to `.verchestra/probes/<engine>` and must
+be a lowercase path under `.verchestra/probes/`. The scaffold goes through the
+same preview and apply as the workspace files, so `--dry-run` writes nothing,
+the ownership manifest records the files, and a file you have already edited
+is never overwritten.
+
+The scaffold holds a copy of the engine's connection port, a connection class
+whose methods throw `VES_PROBE_DRIVER_TODO`, a port-level conformance kit, and
+a `node --test` file that runs the kit. The output is byte-identical for a
+given engine and contract version. It typechecks as generated, and its kit run
+fails with `VES_PROBE_DRIVER_TODO` until you implement the connection. The
+generator uses no AI, makes no network call, needs no configured Driver, and
+adds no dependency. The driver package appears only in `TODO(driver)` comments.
+
 ### Website development
 
 The website is the private `@verchestra/site` workspace package. It remains static, uses the `/verchestra/` base path, and loads canonical repository documents at build time.

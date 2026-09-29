@@ -437,6 +437,41 @@ note. -->
   qualification report. The maximum value is 1416 bytes, not 8 KiB, because the
   line limit dictates it.
 
+### AD-035 — The `init` probe scaffold carries a checked copy of the contract and a port-level kit (#234)
+
+- **Status:** proposed (the owner ratifies by reviewing the pull request that
+  carries `feat/234-init-probe-scaffold`). It changes no 1.0 claim and leaves
+  the recorded 1.0.0 hold untouched.
+- **Decision:** `vestra init --probe-engine <engine>` emits five files through
+  the existing `SafeInitService` preview/apply: `contract.mts` (a copy of the
+  engine's published port and supporting types), `connection.mts` (a class whose
+  methods throw `VES_PROBE_DRIVER_TODO`), `conformance-kit.mts` (a port-level
+  kit), `conformance.test.mts` (a `node --test` wiring), and `README.md`. The
+  generator is `packages/workspace/src/init/probe-scaffold.ts`, keyed by engine
+  and `PROBE_CONTRACT_VERSION` 1, with no clock, no product version, and no
+  dependency. The directory is confined to lowercase paths under
+  `.verchestra/probes/`. Files are `.mts` so they are ES modules whatever the
+  team's `package.json` `type` is.
+- **Rationale:** AD-017 has the team run the kit in its own CI, but the
+  published kit (`tests/helpers/*-probe-fixture.mjs`) imports this repository's
+  sources and `@verchestra/data-probe` is private, so generated wiring that
+  imports either would neither typecheck nor run in a team repository. A copy is
+  only safe when it cannot drift silently: a type-identity test fails when any
+  copied type differs from the published one, and a fidelity test requires the
+  scaffold kit to make the same session calls and reach the same verdicts as
+  the published adapter. `SafeInitService` writes only under `.verchestra/`, and
+  widening that writer authority is a separate decision, so `--probe-dir` stays
+  inside it rather than reaching into the team's source tree. The generator
+  lives in `packages/workspace`, which the CLI already depends on, so no package
+  edge or lockfile change is needed; the CLI manifest spells the option values
+  as literals because the doctor's read-only closure reaches that module.
+- **Consequences:** `.specs/features/init-probe-scaffold/`. Re-running `init`
+  never overwrites a filled-in scaffold (`VES_INIT_TARGET_CONFLICT`); an
+  upgrade path for a contract version bump is future work. Once the kit is
+  distributed as a package, or the out-of-process host (#235) lands, the copy
+  can be replaced by an import. AI completion stays a user-triggered delivery
+  task through `vestra task` (#405) and is not built here.
+
 ### AD-036 — A superseded, retained release re-activates locally; a remote downgrade still fails (#393)
 
 - **Status:** proposed (owner ratifies by reviewing the pull request that
@@ -537,6 +572,13 @@ note. -->
   - It changes no T76, T77, or 1.0.0 status.
 
 ## Handoff
+
+- **Feature:** `init-probe-scaffold` (#234) on `feat/234-init-probe-scaffold`,
+  based on local `feat/os-secret-backend` at `e281ba9`.
+- **Completed:** deterministic probe scaffold for all eight engines through
+  `vestra init` (AD-035). See `.specs/features/init-probe-scaffold/handoff.md`.
+- **Next:** independent review of AD-035, then rebase onto `main` after #379
+  merges.
 
 - **Feature:** `os-secret-backend` (#379) on `feat/os-secret-backend`.
 - **Completed:** qualified macOS keychain credential backend (AD-034),
