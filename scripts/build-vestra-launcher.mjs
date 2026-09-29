@@ -73,7 +73,7 @@ export const BUNDLE_REQUIRE_GUARD = [
 ].join("\n");
 
 /** Content that must never appear in a published file. */
-const FORBIDDEN_CONTENT = Object.freeze([
+export const FORBIDDEN_CONTENT = Object.freeze([
   [/@verchestra\//u, "a workspace package reference"],
   [/from\s+["'][^"']+\.ts["']/u, "a TypeScript source import"],
   [/\bnode_modules\b/u, "a dependency-resolution path"],
@@ -125,7 +125,7 @@ async function walk(root, current = root) {
   return files.sort();
 }
 
-async function readPinnedInputs(directory) {
+export async function readPinnedInputs(directory) {
   const inputs = {};
   for (const name of ["release-source.json", "root.json"]) {
     try {
@@ -153,7 +153,7 @@ async function readPinnedInputs(directory) {
   return { bytes: inputs, semanticVersion: source.semanticVersion };
 }
 
-async function typecheck() {
+export async function typecheck() {
   try {
     await execute(
       process.execPath,
@@ -166,7 +166,7 @@ async function typecheck() {
 }
 
 /** The exact Node the repository pins; the bundle may target nothing else. */
-async function pinnedNodeTarget() {
+export async function pinnedNodeTarget() {
   const manifest = JSON.parse(await readFile(join(ROOT, "package.json"), "utf8"));
   const version = manifest?.engines?.node;
   if (typeof version !== "string" || !NODE_VERSION.test(version))
