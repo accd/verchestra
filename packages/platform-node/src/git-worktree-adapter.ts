@@ -10,6 +10,11 @@ const execFileAsync = promisify(execFile);
 const OBJECT_ID = /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u;
 const WORKTREE_REF = /^worktree:([a-f0-9]{32}):([a-f0-9]{40}|[a-f0-9]{64})$/u;
 const LOGICAL_PATH = /^(?![A-Za-z]:)(?!\/)(?!.*\\)(?!.*(?:^|\/)\.\.(?:\/|$))[A-Za-z0-9._@+/-]+$/u;
+// invariant: a run or task ID becomes one ref component of
+// refs/heads/vestra/<runId>/<taskId>, so it may not contain a separator or any
+// character git check-ref-format rejects; git still validates the whole ref.
+const REF_COMPONENT = /^(?!.*\.\.)(?!.*\.lock$)[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
+const TRAILER = /^(Verchestra-Task|Verchestra-Run|Verchestra-Idempotency-Key): (.+)$/gmu;
 
 export type GitWorktreeErrorCode =
   | "VES_GIT_WORKTREE_INPUT_INVALID"
@@ -37,6 +42,10 @@ export interface NodeGitWorktreeAdapterOptions {
   readonly repositoryRoot: string;
   readonly worktreesRoot: string;
   readonly runGit?: (cwd: string, args: readonly string[]) => Promise<GitResult>;
+  // why: the gate commit lives only in the detached worktree; removing the
+  // worktree leaves it unreachable. When enabled, cleanup first anchors it on
+  // refs/heads/vestra/<runId>/<taskId>. Off by default for existing callers.
+  readonly anchorTaskCommits?: boolean;
 }
 
 function fail(code: GitWorktreeErrorCode, message: string, options?: ErrorOptions): never {
@@ -72,16 +81,31 @@ function worktreeEntries(porcelain: string): ReadonlyMap<string, string> {
   return entries;
 }
 
+function taskTrailers(message: string): { runId: string; taskId: string; idempotencyKey: string } {
+  const trailers = new Map([...message.matchAll(TRAILER)].map((match) => [match[1], (match[2] ?? "").trim()]));
+  return {
+    runId: trailers.get("Verchestra-Run") ?? "",
+    taskId: trailers.get("Verchestra-Task") ?? "",
+    idempotencyKey: trailers.get("Verchestra-Idempotency-Key") ?? ""
+  };
+}
+
+function anchorRef(runId: string, taskId: string): string {
+  return `refs/heads/vestra/${runId}/${taskId}`;
+}
+
 export class NodeGitWorktreeAdapter implements ExecutionWorktreePort {
   readonly #repositoryRoot: string;
   readonly #worktreesRoot: string;
   readonly #runGit: (cwd: string, args: readonly string[]) => Promise<GitResult>;
+  readonly #anchorTaskCommits: boolean;
 
   constructor(options: NodeGitWorktreeAdapterOptions) {
     if (!isAbsolute(options.repositoryRoot) || !isAbsolute(options.worktreesRoot))
       fail("VES_GIT_WORKTREE_INPUT_INVALID", "Git worktree roots must be absolute");
     this.#repositoryRoot = resolve(options.repositoryRoot);
     this.#worktreesRoot = resolve(options.worktreesRoot);
+    this.#anchorTaskCommits = options.anchorTaskCommits === true;
     this.#runGit =
       options.runGit ??
       (async (cwd, args) => {
@@ -109,6 +133,7 @@ export class NodeGitWorktreeAdapter implements ExecutionWorktreePort {
   }): Promise<{ readonly worktreeRef: string; readonly baseCommit: string }> {
     if (!OBJECT_ID.test(input.sourceRevision))
       fail("VES_GIT_WORKTREE_INPUT_INVALID", "Source revision must be a complete Git object ID");
+    await this.#assertAnchorable(input.runId, input.taskId);
     const repositoryRoot = await this.#qualifiedRepositoryRoot();
     const worktreesRoot = await this.#qualifiedWorktreesRoot(repositoryRoot);
     const baseCommit = (
@@ -201,8 +226,71 @@ export class NodeGitWorktreeAdapter implements ExecutionWorktreePort {
     const entries = worktreeEntries((await this.#git(repositoryRoot, ["worktree", "list", "--porcelain"])).stdout);
     if (!entries.has(target)) return;
     await this.#assertExistingTarget(target, worktreesRoot);
+    if (this.#anchorTaskCommits) await this.#anchorTaskCommit(repositoryRoot, target, handle.baseCommit);
     await this.#git(repositoryRoot, ["worktree", "remove", "--force", "--", target]);
     await this.#git(repositoryRoot, ["worktree", "prune"]);
+  }
+
+  // The real, Git-registered directory behind a worktree handle, for adapters
+  // that must confine their own effects to it.
+  async resolvePath(worktreeRef: string): Promise<string> {
+    const baseCommit = WORKTREE_REF.exec(worktreeRef)?.[2];
+    if (baseCommit === undefined) fail("VES_GIT_WORKTREE_INPUT_INVALID", "Worktree reference is invalid");
+    return (await this.#resolveHandle({ worktreeRef, baseCommit })).target;
+  }
+
+  async #assertAnchorable(runId: string, taskId: string): Promise<void> {
+    if (!this.#anchorTaskCommits) return;
+    if (!REF_COMPONENT.test(runId) || !REF_COMPONENT.test(taskId))
+      fail("VES_GIT_WORKTREE_INPUT_INVALID", "Run and task IDs must be valid task-branch components");
+    await this.#git(this.#repositoryRoot, ["check-ref-format", anchorRef(runId, taskId)]);
+  }
+
+  // Anchors the one verified task commit before its worktree is removed. Any
+  // other history keeps the worktree in place: losing an unexplained commit is
+  // worse than leaving a directory for reconciliation.
+  async #anchorTaskCommit(repositoryRoot: string, target: string, baseCommit: string): Promise<void> {
+    const head = (await this.#git(target, ["rev-parse", "HEAD"])).stdout.trim();
+    if (head === baseCommit) return;
+    const ref = await this.#verifiedTaskBranch(target, head, baseCommit);
+    const current = await this.#refTarget(repositoryRoot, ref);
+    if (current !== undefined && current !== head)
+      fail("VES_GIT_WORKTREE_CONFLICT", "Task branch already points at another commit");
+    if (current === undefined)
+      await this.#git(repositoryRoot, [
+        "update-ref",
+        "-m",
+        "verchestra: anchor task commit",
+        ref,
+        head,
+        "0".repeat(head.length)
+      ]);
+    if ((await this.#refTarget(repositoryRoot, ref)) !== head)
+      fail("VES_GIT_WORKTREE_CONFLICT", "Task branch was not anchored on the task commit");
+  }
+
+  // The task branch named by a single commit on the base whose trailers are
+  // the ones NodeAtomicGitCommitAdapter writes; anything else is refused.
+  async #verifiedTaskBranch(target: string, head: string, baseCommit: string): Promise<string> {
+    const lineage = (await this.#git(target, ["rev-list", "--parents", "-n", "1", "HEAD"])).stdout.trim().split(/\s+/u);
+    if (lineage.length !== 2 || lineage[0] !== head || lineage[1] !== baseCommit || !OBJECT_ID.test(head))
+      fail("VES_GIT_WORKTREE_CONFLICT", "Worktree history is not a single task commit on its base");
+    const { runId, taskId, idempotencyKey } = taskTrailers(
+      (await this.#git(target, ["show", "-s", "--format=%B", "HEAD"])).stdout
+    );
+    const verified =
+      /^sha256:[a-f0-9]{64}$/u.test(idempotencyKey) && REF_COMPONENT.test(runId) && REF_COMPONENT.test(taskId);
+    if (!verified) fail("VES_GIT_WORKTREE_CONFLICT", "Worktree commit is not a verified task commit");
+    return anchorRef(runId, taskId);
+  }
+
+  async #refTarget(repositoryRoot: string, ref: string): Promise<string | undefined> {
+    const listed = (await this.#git(repositoryRoot, ["for-each-ref", "--format=%(refname) %(objectname)", ref])).stdout;
+    for (const line of listed.split(/\r?\n/u)) {
+      const [name, objectId] = line.split(" ");
+      if (name === ref) return objectId;
+    }
+    return undefined;
   }
 
   async #resolveHandle(handle: {

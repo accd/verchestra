@@ -99,6 +99,19 @@ export {
   type NodeGitWorktreeAdapterOptions
 } from "./git-worktree-adapter.ts";
 export {
+  GitContextError,
+  NodeGitContextSource,
+  type GitContextErrorCode,
+  type GitTreeFile,
+  type NodeGitContextSourceOptions
+} from "./git-context-source.ts";
+export {
+  NodeWorktreeToolAdapter,
+  WorktreeToolError,
+  type NodeWorktreeToolAdapterOptions,
+  type WorktreeToolErrorCode
+} from "./worktree-tool-adapter.ts";
+export {
   GateAdapterError,
   NodeAtomicGitCommitAdapter,
   NodeGateProcessRunner,

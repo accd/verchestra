@@ -125,6 +125,14 @@ export {
   type TaskExecutorErrorCode
 } from "./execution/task-executor.ts";
 export {
+  EXECUTION_PAYLOAD_REF,
+  EXECUTION_PAYLOAD_TOMBSTONE,
+  MAXIMUM_EXECUTION_PAYLOAD_BYTES,
+  executionPayloadDigest,
+  type ExecutionPayloadPort,
+  type ExecutionPayloadStore
+} from "./execution/execution-payload.ts";
+export {
   canonicalTaskRequest,
   normalizeTaskRequest,
   TaskRequestError,
