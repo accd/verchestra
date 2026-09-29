@@ -36,7 +36,7 @@ const files = testFiles(testsRoot).map((path) => ({
 const CREDENTIAL_SURFACE =
   /\b(?:createOsCredentialStore|DarwinKeychainBackend|LinuxSecretServiceBackend|WindowsCredentialManagerBackend|executeSecretCommand|composeDoctorSecretProbe)\b|secret-composition/u;
 const CLI_LAUNCH = /apps\/vestra-cli\/bin\/|spawnSealed/u;
-const KEYCHAIN_COMMAND = /"(?:doctor|secret)"/u;
+const KEYCHAIN_COMMAND = /"(?:doctor|secret|task)"/u;
 
 // invariant: each exemption is reviewed. The staged sealed layout runs doctor
 // from a project with no Workspace, so no credential lookup can happen.
