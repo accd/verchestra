@@ -249,3 +249,15 @@ test("a run outside the startable states is refused before any port is touched",
     assert.deepEqual([calls.commands.length, calls.executed, calls.released], [0, 0, 0]);
   }
 });
+
+test("resuming an escalated run never buys the attempts the escalation point withheld", async () => {
+  const policy = { maxAttempts: 3, feedbackToDriver: false, escalateAfter: 1 };
+  const { ports, calls } = harness({ gateResults: ["fail", "pass"] });
+  const first = await new TaskRunCoordinator(ports).run(input({ onGateFailure: policy }));
+  assert.equal(first.status, "ESCALATED");
+  assert.equal(calls.executed, 1);
+  const resumed = await new TaskRunCoordinator(ports).run(input({ onGateFailure: policy }));
+  assert.equal(resumed.status, "ESCALATED");
+  assert.equal(calls.executed, 1);
+  assert.equal(calls.committed, 1);
+});

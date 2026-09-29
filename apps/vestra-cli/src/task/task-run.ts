@@ -34,7 +34,7 @@ import { loadContextManifest } from "./task-context.ts";
 import { IMPLEMENTER_CREDENTIAL, VERIFIER_CREDENTIAL, readCredentials } from "./task-credentials.ts";
 import { stateInvalid, taskError } from "./task-errors.ts";
 import { TaskEvidenceStore, readPlainJson } from "./task-evidence.ts";
-import { sha256, writeJsonAtomic, writeSealedRecord } from "./task-files.ts";
+import { canonicalDigest, sha256, writeJsonAtomic, writeSealedRecord } from "./task-files.ts";
 import { loadGateAllowlist } from "./task-gates.ts";
 import { git } from "./task-git.ts";
 import { findExecutable, implementerAdapter } from "./task-implementer.ts";
@@ -438,7 +438,7 @@ class TaskRunComposition {
       JSON.stringify({ runId: this.#plan.runId, taskId: this.#task.taskId, ...input })
     ) as object;
     await writeSealedRecord(join(this.#directory, "attempts", `${input.attempt}.json`), record);
-    return { capsuleDigest: sha256(JSON.stringify(record)) };
+    return { capsuleDigest: canonicalDigest(record) };
   }
 
   repair(): TaskRunPorts["repair"] {

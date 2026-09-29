@@ -171,6 +171,17 @@ export class TaskRunCoordinator {
     input: TaskRunInput
   ): Promise<{ readonly status: "COMMITTED" } | { readonly status: "STOPPED"; readonly outcome: TaskRunOutcome }> {
     if ((await this.#ports.gates.committed()) !== undefined) return { status: "COMMITTED" };
+    // invariant: an escalated repair loop belongs to a human; resuming it
+    // must not buy the attempts the declared escalation point withheld.
+    const prior = (await this.#ports.repair.loadState()) as { readonly stage?: unknown } | undefined;
+    if (prior?.stage === "escalated")
+      return {
+        status: "STOPPED",
+        outcome: Object.freeze({
+          status: "ESCALATED" as const,
+          failure: { failedGateId: "repair-escalated", evidenceRef: "repair:escalated" }
+        })
+      };
     const outcome = await runGateRepairLoop(
       { onGateFailure: input.onGateFailure },
       { ...this.#ports.repair, attempt: (attempt) => this.#attempt(input, attempt) }
