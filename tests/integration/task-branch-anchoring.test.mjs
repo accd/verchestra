@@ -22,7 +22,7 @@ async function commitTask(fixture) {
     workspaceId: "workspace_tool",
     runId: "run_405",
     taskId: "T405.3",
-    requirementIds: ["VES-TSK-001"],
+    requirementIds: ["VES-EXE-001"],
     worktreeRef: fixture.handle.worktreeRef,
     baseCommit: fixture.baseCommit,
     subject: "feat(app): implement the task",

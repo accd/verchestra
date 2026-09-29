@@ -47,6 +47,14 @@
   configuration, not an OS sandbox; egress confinement is outside this slice.
 - A process of the same OS user can read the per-run config and connect with
   the token. That actor can already read the repository and credentials.
+- Claude Code starts the relay with its own environment merged into the relay's
+  configured environment, so the relay process can see the brokered
+  credential. The relay never reads, logs, or forwards it, and holds no other
+  authority.
+- The executor compares change scope and protected paths case-sensitively. On a
+  case-insensitive volume the worktree tool adapter and the read tools also
+  refuse case aliases of `.git` and protected roots; the executor's own
+  comparison is unchanged in this slice.
 - The mediated profile is qualified with a labeled fake executable and a
   read-only `--help`/`--version` probe of the installed build; live model
   behavior is evidence for #406, not this slice.

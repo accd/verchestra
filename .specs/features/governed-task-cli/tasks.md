@@ -45,5 +45,5 @@ slice built on top of this branch by a separate change.
 | T1 | Done | `schemas/task-request/1.schema.json`, generated `TaskRequest`, `normalizeTaskRequest`; 42 contract + 6 security tests |
 | T2 | Done | Migration `012_execution_checkpoints`, `RuntimeStore.appendExecutionCheckpoint`/`latestExecutionCheckpoint`, `RuntimeCheckpointStore`; 15 integration tests; migration and public-error pins extended |
 | T3 | Done | `NodeGitContextSource`, `NodeWorktreeToolAdapter`, `ExecutionPayloadPort`, `NodeGitWorktreeAdapter.resolvePath` and opt-in `anchorTaskCommits`; 19 integration + 20 security tests |
-| T4 | Pending | |
+| T4 | Done | `McpToolBridgeController`, relay `runMcpToolBridgeRelay` + entry, `InMemoryExecutionPayloadStore`, `ClaudeCodeDriver` `mediated-mcp` profile, `docs/qualification/claude-code-driver-mediated.md`; 5 integration + 18 security + 4 contract + 16 spike tests |
 | T5 | Pending | |
