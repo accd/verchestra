@@ -584,8 +584,13 @@ export class DriverSupervisor {
 
 export { PiDriver } from "./pi-driver.ts";
 export type { PiDriverDependencies, PiExecution } from "./pi-driver.ts";
-export { ClaudeCodeDriver } from "./claude-code-driver.ts";
-export type { ClaudeCodeDriverDependencies, ClaudeCodeExecution } from "./claude-code-driver.ts";
+export { CLAUDE_MEDIATED_MINIMUM_VERSION, CLAUDE_MEDIATED_TOOLS, ClaudeCodeDriver } from "./claude-code-driver.ts";
+export type {
+  ClaudeCodeDriverDependencies,
+  ClaudeCodeExecution,
+  ClaudeCodeMediatedProfile,
+  ClaudeCodeMediation
+} from "./claude-code-driver.ts";
 export { CodexDriver } from "./codex-driver.ts";
 export type { CodexDriverDependencies, CodexExecution } from "./codex-driver.ts";
 export type { CodexProcessContext } from "./codex-process-context.ts";

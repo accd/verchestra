@@ -67,3 +67,22 @@ export {
   type ResolvedContextFragment,
   type ResolvedContextSource
 } from "./context/source-snapshots.ts";
+export { ExecutionPayloadStoreError, InMemoryExecutionPayloadStore } from "./execution/execution-payload-store.ts";
+export {
+  MCP_BRIDGE_QUALIFIED_TOOLS,
+  MCP_BRIDGE_SERVER_NAME,
+  MCP_BRIDGE_SOCKET_ENV,
+  MCP_BRIDGE_TOKEN_ENV,
+  MCP_BRIDGE_TOOL_DEFINITIONS,
+  MCP_BRIDGE_TOOLS,
+  type BridgeToolResult,
+  type McpBridgeTool
+} from "./execution/mcp-bridge-protocol.ts";
+export { BridgeToolError, WorktreeReadView, type WorktreeReadViewOptions } from "./execution/mcp-bridge-tools.ts";
+export {
+  McpToolBridgeController,
+  McpToolBridgeError,
+  runMcpToolBridgeRelay,
+  type McpBridgeStatistics,
+  type McpToolBridgeControllerOptions
+} from "./execution/mcp-tool-bridge.ts";

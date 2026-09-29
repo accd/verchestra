@@ -47,7 +47,7 @@ test("the repair policy is optional and absent when not declared", () => {
 
 test("the canonical encoding is independent of key order and gate requirement order", () => {
   const reordered = mutated((value) => {
-    value.gates[0].requirementIds = ["VES-TSK-001"];
+    value.gates[0].requirementIds = ["VES-EXE-001"];
     value.task = Object.fromEntries(Object.entries(value.task).reverse());
   });
   assert.equal(canonicalTaskRequest(reordered), canonicalTaskRequest(validTaskRequest()));
@@ -120,12 +120,12 @@ const crossFieldRejections = [
   ],
   [
     "a gate citing a requirement outside the task",
-    (r) => (r.gates[1].requirementIds = ["VES-TSK-009"]),
+    (r) => (r.gates[1].requirementIds = ["VES-SPC-003"]),
     "VES_TASK_REQUEST_GATES_INVALID"
   ],
   [
     "a task requirement no gate covers",
-    (r) => (r.task.requirementIds = [...r.task.requirementIds, "VES-TSK-003"]),
+    (r) => (r.task.requirementIds = [...r.task.requirementIds, "VES-EXE-006"]),
     "VES_TASK_REQUEST_GATES_INVALID"
   ],
   ["duplicate gate IDs", (r) => (r.gates[1].gateId = r.gates[0].gateId), "VES_TASK_REQUEST_GATES_INVALID"],

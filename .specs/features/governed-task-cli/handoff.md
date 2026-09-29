@@ -5,9 +5,9 @@ issue: 405
 status: in_progress
 branch: feat/405-governed-task-foundations
 baseRevision: 4ff9bed6e5e19ba38e11d45d9112667d81a4b254
-lastCompletedTask: T3
-nextTask: "T4 — add the mediated MCP tool bridge, the Claude Code mediated-mcp profile, and the requalification report."
-lastGate: "focused E3 suites 60/60, census 10/10, test:architecture 50/50 PASS"
+lastCompletedTask: T4
+nextTask: "T5 — add DriverExecutionAdapter (Driver to ExecutionDriverPort) with usage, checkpoint, cancel, and outside-bridge violation mapping."
+lastGate: "qualify:claude 30/30, bridge and driver focused suites 74/74, agent-readiness 252/252 PASS"
 updatedAt: 2026-09-29T00:00:00Z
 ---
 
@@ -36,6 +36,10 @@ T3: `NodeGitContextSource` (committed blobs only, bounded, fail closed),
 `requestId` in operation receipts, command denied), the application
 `ExecutionPayloadPort`, and opt-in task-branch anchoring in
 `NodeGitWorktreeAdapter` cleanup.
+
+T4: the mediated MCP tool bridge (`packages/agent-runtime/src/execution/`),
+the `mediated-mcp` Claude Code profile, and the requalification report
+`docs/qualification/claude-code-driver-mediated.md`.
 
 # Files Intentionally Left Unchanged
 
