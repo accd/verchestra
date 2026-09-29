@@ -3,7 +3,12 @@ import { dirname, isAbsolute } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import type { ActivationClosurePort, LauncherHandoffOutcome, VerifiedLauncherTarget } from "./activation-closure.ts";
-import { loadPinnedInputs, type PinnedLauncherInputs } from "./pinned-inputs.ts";
+import {
+  loadPinnedInputs,
+  readPinnedInputs,
+  type PinnedConfigReader,
+  type PinnedLauncherInputs
+} from "./pinned-inputs.ts";
 import { LauncherBootstrapError, diagnosticCodeOf, exitCodeFor, renderPublicError } from "./public-errors.ts";
 import { supportedHost, type LauncherHost } from "./supported-host.ts";
 
@@ -23,11 +28,18 @@ import { supportedHost, type LauncherHost } from "./supported-host.ts";
 const MAXIMUM_EXIT_STATUS = 255;
 const SIGNAL_EXIT_BASE = 128;
 
-export interface BootstrapContext {
+interface BootstrapHost {
   readonly platform: string;
   readonly arch: string;
-  readonly packageRoot: string;
 }
+
+/**
+ * why: the npm channel reads its pinned inputs from the installed package root,
+ * while the single binary carries them embedded in its own executable; exactly
+ * one of the two sources is named, so no context can mix them.
+ */
+export type BootstrapContext = BootstrapHost &
+  ({ readonly packageRoot: string } | { readonly readPinnedConfig: PinnedConfigReader });
 
 export interface BootstrapPlan {
   readonly host: LauncherHost;
@@ -45,7 +57,10 @@ export function packageRootOf(moduleUrl: string): string {
  */
 export async function planBootstrap(context: BootstrapContext): Promise<BootstrapPlan> {
   const host = supportedHost({ platform: context.platform, arch: context.arch });
-  const inputs = await loadPinnedInputs(context.packageRoot);
+  const inputs =
+    "readPinnedConfig" in context
+      ? await readPinnedInputs(context.readPinnedConfig)
+      : await loadPinnedInputs(context.packageRoot);
   return Object.freeze({ host, inputs });
 }
 
@@ -124,11 +139,7 @@ export function exitStatusOf(outcome: LauncherHandoffOutcome): number {
 
 export async function runBootstrap(
   args: readonly string[],
-  context: BootstrapContext = {
-    platform: process.platform,
-    arch: process.arch,
-    packageRoot: packageRootOf(import.meta.url)
-  },
+  context: BootstrapContext,
   write: (line: string) => void = (line) => process.stderr.write(line),
   closure?: ActivationClosurePort
 ): Promise<number> {
