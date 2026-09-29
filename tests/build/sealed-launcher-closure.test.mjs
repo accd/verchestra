@@ -296,7 +296,8 @@ test("the sealed launcher is the real CLI for every other argument vector", asyn
 // reports it present (tests/integration/doctor-native-asset-probe.test.mjs
 // proves that path). secret-presence stays blocked here too: the invoking
 // project has no Workspace, so no credential is bound to observe (#379 made a
-// bound credential observable; tests/e2e/secret-cli-e2e.test.mjs proves it).
+// bound credential observable; tests/integration/doctor-secret-backend.test.mjs
+// proves it).
 // BLOCKED is the honest verdict for this unprovisioned, un-activated layout.
 test("doctor from the staged layout reports the machine, not the packaging", async () => {
   const releaseRoot = await stagedLayout(sealedBins);

@@ -1,11 +1,14 @@
-// hazard: this throwaway macOS keychain serves credential-store tests (#379),
+// hazard: this throwaway macOS keychain serves the real-keychain qualification
+// suite (`pnpm qualify:keychain`, #379) and never a gate suite,
 // and a keychain operation that can raise a GUI dialog (an unlock prompt,
 // an access-control prompt) hangs an unattended run and asks the owner for a
 // password they do not know. Every rule below exists to make that impossible:
 // - the keychain is created with an explicit random password, unlocked with
 //   it, and set to never auto-lock before anything touches it;
-// - it is never added to the user's search list or made the default, and the
-//   helper proves both stayed byte-identical;
+// - every `security` call names the disposable keychain file explicitly; no
+//   test reads or writes the login keychain, the search list, or the default
+//   keychain, not even read-only (a CI machine or a locked session makes any
+//   such call fragile);
 // - items are written with `-T /usr/bin/security` (the product backend does
 //   this), so reads never ask for access approval;
 // - every `security` call carries a hard timeout, so a hidden prompt fails the
@@ -17,30 +20,24 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { nodeSecurityRunner } from "../../../packages/platform-node/src/index.ts";
+
 export const SECURITY = "/usr/bin/security";
 export const SECURITY_TIMEOUT_MS = 10_000;
 
-export function security(args, options = {}) {
+function security(args) {
   const result = spawnSync(SECURITY, args, {
     encoding: "utf8",
-    timeout: options.timeoutMs ?? SECURITY_TIMEOUT_MS,
+    timeout: SECURITY_TIMEOUT_MS,
     killSignal: "SIGKILL",
-    ...(options.input === undefined ? { stdio: ["ignore", "pipe", "pipe"] } : { input: options.input })
+    stdio: ["ignore", "pipe", "pipe"]
   });
   if (result.error?.code === "ETIMEDOUT" || result.signal === "SIGKILL")
     throw new Error(`security ${args[0]} timed out — a keychain prompt may have been raised`);
   return result;
 }
 
-function userKeychainState() {
-  return {
-    searchList: security(["list-keychains", "-d", "user"]).stdout,
-    defaultKeychain: security(["default-keychain", "-d", "user"]).stdout
-  };
-}
-
 export async function createDisposableKeychain() {
-  const before = userKeychainState();
   const directory = await mkdtemp(join(tmpdir(), "verchestra-keychain-"));
   const path = join(directory, "verchestra-test.keychain-db");
   // hazard: this password is in argv, which is acceptable only because it
@@ -58,20 +55,25 @@ export async function createDisposableKeychain() {
       throw new Error(`disposable keychain setup failed at ${step[0]} (exit ${result.status})`);
     }
   }
-  const after = userKeychainState();
-  if (after.searchList !== before.searchList || after.defaultKeychain !== before.defaultKeychain) {
-    await destroy(path, directory);
-    throw new Error("creating the disposable keychain changed the user's keychain search list or default");
-  }
   return Object.freeze({
     path,
     directory,
-    userState: before,
+    // invariant: attributes only (no -d), from this file only. Returns the
+    // sorted `service\0account` pairs so a test can prove exactly which items
+    // its commands left in the keychain they named.
+    items() {
+      const result = security(["dump-keychain", path]);
+      if (result.status !== 0) throw new Error(`dump-keychain failed (exit ${result.status})`);
+      const items = [];
+      for (const block of result.stdout.split(/^keychain: /mu).slice(1)) {
+        const service = /"svce"<blob>="([^"]*)"/u.exec(block)?.[1];
+        const account = /"acct"<blob>="([^"]*)"/u.exec(block)?.[1];
+        if (service !== undefined && account !== undefined) items.push(`${service}\u0000${account}`);
+      }
+      return items.sort();
+    },
     async dispose() {
       await destroy(path, directory);
-      const final = userKeychainState();
-      if (final.searchList !== before.searchList || final.defaultKeychain !== before.defaultKeychain)
-        throw new Error("the user's keychain search list or default changed during the test");
     }
   });
 }
@@ -84,9 +86,22 @@ async function destroy(path, directory) {
   }
 }
 
-// invariant: an attribute-only lookup of a service across the user's search
-// list. It never retrieves a value; exit 44 proves no item with that service name exists in
-// the login keychain (or any other searched keychain).
-export function searchListLookupStatus(service) {
-  return security(["find-generic-password", "-s", service]).status;
+// invariant: a runner that refuses, before spawning, any `security` call that
+// does not name the disposable keychain — the last argv entry for a direct
+// command, the last token of the stdin line for `security -i`. It records argv
+// only, never stdin, so the log can hold no credential.
+export function keychainBoundRunner(path) {
+  const commands = [];
+  async function runner(invocation) {
+    const bound =
+      invocation.args[0] === "-i"
+        ? Buffer.from(invocation.stdin ?? [])
+            .toString("latin1")
+            .endsWith(` ${path}\n`)
+        : invocation.args.at(-1) === path;
+    if (!bound) throw new Error(`security ${invocation.args[0]} does not name the disposable keychain`);
+    commands.push(invocation.args[0] === "-i" ? "-i add-generic-password" : invocation.args[0]);
+    return nodeSecurityRunner(invocation);
+  }
+  return Object.freeze({ runner, commands });
 }

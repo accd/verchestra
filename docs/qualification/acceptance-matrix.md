@@ -302,9 +302,10 @@ one remains:
   Workspace, `vestra secret set --name anthropic-api-key` binds the credential
   in the keychain, and deep doctor observes its presence without reading it.
   `tests/integration/doctor-secret-backend.test.mjs` asserts `pass` when bound,
-  `blocked` when unbound, and `fail` when the store cannot answer.
-  `tests/e2e/secret-cli-e2e.test.mjs` asserts `pass` through the real binary
-  against a disposable keychain. Linux and Windows have no qualified credential
+  `blocked` when unbound, and `fail` when the store cannot answer, against a
+  fake `security` runner. The real-binary journey against a disposable keychain
+  is the standalone `pnpm qualify:keychain` suite, which is **pending** an owner
+  run on an unlocked macOS session. Linux and Windows have no qualified credential
   store, so the check stays `blocked` there. A full `PASS` verdict on a
   provisioned macOS machine has not been observed end to end in this matrix.
 

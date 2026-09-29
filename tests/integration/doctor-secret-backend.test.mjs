@@ -3,6 +3,7 @@
 // secret-presence check passes; unbound, it stays blocked; a store that cannot
 // answer is a failure, never a pass. The store is the darwin backend over a
 // fake `security` runner, so this runs identically on every platform.
+import "../helpers/deny-keychain-spawn.mjs";
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";

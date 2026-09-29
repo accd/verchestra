@@ -11,6 +11,7 @@ import { fileURLToPath } from "node:url";
 import { afterEach, test } from "node:test";
 
 import { SchemaRegistry } from "../../packages/contracts/src/schema-registry.ts";
+import { DENY_KEYCHAIN_SPAWN } from "../helpers/deny-keychain-spawn.mjs";
 
 const registry = await SchemaRegistry.load(new URL("../../schemas/", import.meta.url));
 const dirs = [];
@@ -29,7 +30,13 @@ afterEach(async () => {
 function launch(args, at) {
   return spawnSync(
     process.execPath,
-    [fileURLToPath(new URL("../../apps/vestra-cli/bin/vestra.mjs", import.meta.url)), ...args],
+    // invariant: preloaded so a doctor run can never reach a real keychain (#379).
+    [
+      "--import",
+      DENY_KEYCHAIN_SPAWN.href,
+      fileURLToPath(new URL("../../apps/vestra-cli/bin/vestra.mjs", import.meta.url)),
+      ...args
+    ],
     { cwd: at, encoding: "utf8", env: { ...process.env, NO_COLOR: "1" } }
   );
 }
