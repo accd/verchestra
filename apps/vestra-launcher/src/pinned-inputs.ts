@@ -65,14 +65,25 @@ const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
 const hasExactKeys = (value: Readonly<Record<string, unknown>>, keys: readonly string[]): boolean =>
   JSON.stringify(Object.keys(value).sort()) === JSON.stringify([...keys].sort());
 
-async function readPinnedFile(root: string, name: string): Promise<Buffer> {
-  try {
-    return await readFile(join(root, "config", name));
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT")
-      return missing(`the packaged release configuration ${name} is not present`);
-    return invalid(`the packaged release configuration ${name} cannot be read`);
-  }
+export type PinnedConfigName = "release-source.json" | "root.json";
+
+/**
+ * invariant: a reader returns the exact bytes that travel with the launcher or
+ * throws a `LauncherBootstrapError`; it never substitutes, fetches, or derives
+ * content, so no channel can widen where release authority comes from.
+ */
+export type PinnedConfigReader = (name: PinnedConfigName) => Promise<Uint8Array>;
+
+export function packagedConfigReader(packageRoot: string): PinnedConfigReader {
+  return async (name) => {
+    try {
+      return await readFile(join(packageRoot, "config", name));
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT")
+        return missing(`the packaged release configuration ${name} is not present`);
+      return invalid(`the packaged release configuration ${name} cannot be read`);
+    }
+  };
 }
 
 function parsePinnedLocation(value: unknown, label: string): URL {
@@ -170,9 +181,13 @@ function assertTrustedRoot(bytes: Buffer, expectedDigest: string): Uint8Array {
   return new Uint8Array(bytes);
 }
 
-/** Loads and validates the pinned public inputs that travel inside the tarball. */
-export async function loadPinnedInputs(packageRoot: string): Promise<PinnedLauncherInputs> {
-  const sourceBytes = await readPinnedFile(packageRoot, "release-source.json");
+/**
+ * why: the npm tarball and the single binary carry their pinned inputs in
+ * different containers, so validation is separated from reading and every
+ * channel applies exactly the same contract to the same bytes.
+ */
+export async function readPinnedInputs(read: PinnedConfigReader): Promise<PinnedLauncherInputs> {
+  const sourceBytes = Buffer.from(await read("release-source.json"));
   let parsed: unknown;
   try {
     parsed = JSON.parse(sourceBytes.toString("utf8"));
@@ -180,6 +195,11 @@ export async function loadPinnedInputs(packageRoot: string): Promise<PinnedLaunc
     return invalid("the packaged release configuration is not JSON");
   }
   const source = assertSourceShape(parsed);
-  const trustedRoot = assertTrustedRoot(await readPinnedFile(packageRoot, "root.json"), source.rootDigest);
+  const trustedRoot = assertTrustedRoot(Buffer.from(await read("root.json")), source.rootDigest);
   return Object.freeze({ source, trustedRoot });
+}
+
+/** Loads and validates the pinned public inputs that travel inside the tarball. */
+export async function loadPinnedInputs(packageRoot: string): Promise<PinnedLauncherInputs> {
+  return await readPinnedInputs(packagedConfigReader(packageRoot));
 }
