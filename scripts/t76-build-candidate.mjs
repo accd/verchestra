@@ -295,7 +295,12 @@ export const SEALED_LAUNCHER_ENTRIES = Object.freeze({
  * bundled with the identical option vector and emitted beside the launchers.
  */
 export const SEALED_CHILD_ENTRIES = Object.freeze({
-  "self-test:full-crash-child": "apps/vestra-cli/src/self-test-full-crash-child.ts"
+  "self-test:full-crash-child": "apps/vestra-cli/src/self-test-full-crash-child.ts",
+  // why: the mediated MCP bridge relay (#405) is the child Claude Code starts
+  // through `--mcp-config`, so like the crash child it cannot be inlined and
+  // is emitted beside the launchers as `bin/mcp-tool-bridge.mjs`
+  // (apps/vestra-cli/src/release-layout.ts `resolveMcpBridgeRelay`).
+  "mcp:tool-bridge-relay": "packages/agent-runtime/src/execution/mcp-tool-bridge-main.ts"
 });
 
 /** Every sealed `bin/` artifact and the tracked entry it is bundled from. */
@@ -465,6 +470,14 @@ const hostDescriptors = async (inputRoot, options) => {
       kind: "core-code",
       logicalPath: "bin/self-test-full-crash-child.mjs",
       sourcePath: "bin/self-test-full-crash-child.mjs",
+      bundled: true,
+      portable: true
+    },
+    {
+      componentId: "mcp:tool-bridge-relay",
+      kind: "core-code",
+      logicalPath: "bin/mcp-tool-bridge.mjs",
+      sourcePath: "bin/mcp-tool-bridge.mjs",
       bundled: true,
       portable: true
     }

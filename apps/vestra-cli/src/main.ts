@@ -183,6 +183,20 @@ async function executeSecret(command: CliCommand): Promise<CommandResult> {
   });
 }
 
+async function executeTask(command: CliCommand): Promise<CommandResult> {
+  // why: a dynamic import, like secret and self-test, so only `vestra task`
+  // loads the governed task composition and the runtime store it opens.
+  const { executeTaskCommand } = await import("./task/task-command.ts");
+  return executeTaskCommand(command, {
+    controlRoot: process.cwd(),
+    platform: process.platform,
+    env: process.env,
+    stdin: process.stdin,
+    stderr: (value) => process.stderr.write(value),
+    pid: process.pid
+  });
+}
+
 export async function main(invokedAs: string, argv: readonly string[]): Promise<number> {
   const commandBus = createCommandBus(process.cwd());
   return runCli({
@@ -197,6 +211,7 @@ export async function main(invokedAs: string, argv: readonly string[]): Promise<
         if (command.name === "self-test") return executeSelfTest(command);
         if (command.name === "doctor") return executeDoctor(command);
         if (command.name.startsWith("secret ")) return executeSecret(command);
+        if (command.name.startsWith("task ")) return executeTask(command);
         return commandBus.execute(command, context);
       }
     },
