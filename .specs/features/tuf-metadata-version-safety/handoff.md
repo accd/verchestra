@@ -23,10 +23,9 @@ Review and merge. No code task remains on this branch.
 
 # Open decisions
 
-- The publish workflow checks out the candidate revision, so it checks the ledger
-  as of that revision. The runbook requires recording each publication in the
-  ledger before building the next candidate. Reading the ledger from `main`
-  instead would need a workflow change that this feature does not make.
+- Resolved by `tuf-timestamp-refresh` (#382): the publish and refresh workflows
+  now read the ledger from `origin/main`'s tip and fail unless the checked-out
+  copy is an unedited prefix of it.
 - The full root digest of the v1/`.2` lineage, its root version, and `.2`'s
   releaseId and host are not recorded in the repository. They stay `null` (only
   the digest prefix `sha256:491673b9` is recorded). An owner who holds the
