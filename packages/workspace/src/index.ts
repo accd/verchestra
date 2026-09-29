@@ -46,3 +46,16 @@ export {
   type InitTransactionHooks
 } from "./init/safe-init.ts";
 export { readWorkspaceIdentity, type WorkspaceIdentity } from "./init/workspace-identity.ts";
+export {
+  PROBE_CONTRACT_VERSION,
+  PROBE_DRIVER_TODO_CODE,
+  PROBE_SCAFFOLD_ENGINES,
+  PROBE_SCAFFOLD_LANGUAGES,
+  buildProbeScaffoldFiles,
+  defaultProbeScaffoldDirectory,
+  isProbeScaffoldDirectory,
+  isProbeScaffoldEngine,
+  type ProbeScaffoldEngine,
+  type ProbeScaffoldInput,
+  type ProbeScaffoldLanguage
+} from "./init/probe-scaffold.ts";
