@@ -37,8 +37,27 @@
 | Task commit lost when worktree is removed | Opt-in anchoring of `refs/heads/vestra/<run>/<task>` before removal; mismatch keeps the worktree | GTC-15 |
 | Oversized request, frame, or file exhausts memory | Bounds on request text, JSON-RPC frames, file reads, searches, payloads | GTC-05, GTC-16, GTC-18 |
 | Budget bypass by a silent driver | Usage forwarded to the executor meter; the executor's duration timer still fires | GTC-22 |
+| Approval of something other than what was reviewed | The binding digest covers package, source state, scope, destinations, budgets, gates, policy, and context manifest; the human types it back; the package and policy are re-proven before sealing | GTC-29 |
+| An approval outliving a policy change | The binding is rebuilt from the current Workspace policy at every check; a changed policy makes it stale | GTC-31 |
+| A script approving or reviewing by accident | No terminal and no `--confirm-stdin` is refused; the flag still requires the exact digest on stdin | GTC-29, GTC-36 |
+| A request smuggling an executable into a gate | Gates name a `commandRef`; executables come only from the user's machine-local allowlist | GTC-28, GTC-34 |
+| Credential exposure across roles | Each provider child gets only its own key from the broker; neither key reaches the other child or any evidence | GTC-32 |
+| A verifier that rubber-stamps | Its claims are checked: cited lines must exist at the commit and reverting the named file must fail the gates | GTC-33 |
+| Tampered run state steering a later command | Plan, commit, evidence, and review records are sealed by digest and re-validated on load | GTC-37 |
+| Two writers in one Workspace | One writer lease per Workspace, proven before the first transition | GTC-30 |
 
 ## Residual risks (accepted, documented)
+
+- Human approval and review are local decisions confirmed by typing a digest
+  back; they are not a cryptographic proof of identity. `--confirm-stdin`
+  exists for scripted use and is documented as such.
+- The `evidence-signing-passphrase` and both provider keys are readable by any
+  process of the same user that can run `/usr/bin/security` (AD-034).
+- Token and cost ceilings are evaluated when usage is reported, and Claude
+  Code reports at the end of its session; the duration timer is the hard
+  guard.
+- A run interrupted during the implementer session resumes with a new session
+  in the same worktree; writes it re-issues are new receipts.
 
 - The controller checks paths and then acts; a concurrent writer inside the
   worktree could swap a parent directory between check and write. The

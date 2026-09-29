@@ -3,20 +3,23 @@ schema: verchestra-feature-handoff/v1
 feature: governed-task-cli
 issue: 405
 status: verification
-branch: feat/405-governed-task-foundations
+branch: feat/405-governed-task-cli
 baseRevision: 4ff9bed6e5e19ba38e11d45d9112667d81a4b254
-lastCompletedTask: T5
-nextTask: "Independent verification and human review of the E0-E5 foundations; then T6 (E6 TaskRunCoordinator) and T7 (E7 CLI composition) on top of this branch."
-lastGate: "gate:quick PASS; gate:build PASS; gate:security PASS; test:e2e 195/195; test:qualification 270/270; agent:check PASS"
+lastCompletedTask: T9
+nextTask: "Independent verification and human review of the E0-E9 stack (split into the foundations, #409, #379, and composition PRs); then the supervised live pilot (#406) with real Claude Code and Codex."
+lastGate: "Composition stack on Node 24.14.0 macOS arm64: gate:quick PASS; gate:build PASS; gate:security PASS; gate:release PASS; test:e2e 211/211; agent:check PASS; site:check PASS (site:test Playwright not runnable here: no local browser)"
 updatedAt: 2026-09-29T00:00:00Z
 ---
 
 # Scope
 
-Foundations slice (E0–E5) of #405: Task Request v1 contract, durable execution
-checkpoints, Node context/tool/worktree adapters, the mediated MCP tool bridge
-with the Claude Code `mediated-mcp` profile, and the Driver to
-ExecutionDriverPort adapter. No CLI command is added here, and #405 stays open.
+#405 in two slices on one stack. Foundations (E0–E5, T0–T5): Task Request v1
+contract, durable execution checkpoints, Node context/tool/worktree adapters,
+the mediated MCP tool bridge with the Claude Code `mediated-mcp` profile, and
+the Driver to ExecutionDriverPort adapter. Composition (E6–E9, T6–T9): the
+application `TaskRunCoordinator`, the `vestra task` commands and composition
+root, the sealed bridge relay, the child-process journeys and security suite,
+and the quick-start. #405 stays open until the live pilot (#406).
 
 # Completed Evidence
 
@@ -46,7 +49,33 @@ T5: `DriverExecutionAdapter`
 foundations journey `tests/e2e/mediated-task-execution-e2e.test.mjs`. Every
 requirement is mapped in `validation.md`.
 
-# Next Action for the Composition Slice (E6/E7)
+T6: `TaskRunCoordinator` (`packages/application/src/execution/task-run.ts`).
+
+T7: `apps/vestra-cli/src/task/` (see design.md), seven manifest entries,
+`createCedarEngine` in `packages/policy`, and `bin/mcp-tool-bridge.mjs` in the
+sealed release.
+
+T8: `tests/e2e/task-cli-e2e.test.mjs`, `tests/security/task-cli-security.test.mjs`,
+the labeled fakes in `tests/helpers/task-cli-fakes/`, and the fake keychain
+preload.
+
+T9: `docs/quick-start.md`, README, the site status line, the acceptance-matrix
+note, AD-0XX in `.specs/STATE.md`, and this directory. Every requirement is
+mapped in validation.md, including #409's TDC-01..04.
+
+# Stack for the coordinator
+
+- Foundations: `9579066`..`740dd48` (six commits from
+  `feat/405-governed-task-foundations`).
+- PR #409: `56c9a3f`, `3954150` (cherry-picked from
+  `origin/feat/405-codex-execution-context`).
+- #379: `024096d`, `405f69f`, `30141ef` (cherry-picked from
+  `feat/os-secret-backend`; the AD-034/AD-0XX conflict in `.specs/STATE.md`
+  kept both).
+- Composition: every later commit. `eee4bb9` fixes #409's own
+  `codex-process-context` test on macOS and can be folded into #409.
+
+# Historical: what the foundations handed to the composition slice (E6/E7)
 
 Wire, in `apps/vestra-cli/src/task/`: `RuntimeCheckpointStore` (executor, gate,
 repair views), `NodeGitWorktreeAdapter({ anchorTaskCommits: true })`,
@@ -63,5 +92,14 @@ bundle entry for `mcp-tool-bridge-main.ts`.
 # Files Intentionally Left Unchanged
 
 Existing qualification reports (including `docs/qualification/claude-code-driver.md`),
-the existing Claude Code profile, CLI commands, release manifest, schemas other
-than the new `task-request`, and dependency versions.
+the existing Claude Code profile, existing CLI commands, schemas other than the
+new `task-request`, dependency versions, and #409's own
+`.specs/features/task-delivery-cli/` artifacts.
+
+# Known limits (also in docs/quick-start.md)
+
+macOS only; one implementer and one verifier; token and cost ceilings are
+checked when usage is reported (the duration timer is the hard guard); local
+human authority is not cryptographic identity; a failed verification leaves
+the run in `REPAIRING` (no automated repair); the live pilot (#406) is
+pending.

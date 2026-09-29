@@ -207,6 +207,24 @@ claim rests on.
 | `tests/e2e/gate-commit-negative.test.mjs` — pre- and post-gate diff drift block the commit; an invalid commit receipt cannot mark the task committed; stale gate authority, Approval expiry, expired writer coordination, and a gate plan digest mismatch each block before effects | 23 tests, 23 pass, 0 fail, 0 skipped, 0 todo |
 | `tests/e2e/verification-human-review.test.mjs` — PASS verification enters `HUMAN_REVIEW` but never `COMPLETED`; a non-human reviewer cannot authorize completion; a caller-declared PASS cannot replace an authenticated verification report | 13 tests, 13 pass, 0 fail, 0 skipped, 0 todo |
 
+**Note added by #405 (after this matrix's recorded revision; counters are not
+yet recorded here):** the journey is now composed into the installed CLI as
+`vestra task plan | approve | start | status | resume | cancel | review`
+(`docs/quick-start.md`, `.specs/features/governed-task-cli/`).
+`tests/e2e/task-cli-e2e.test.mjs` drives the real `vestra` binary as a child
+process against a disposable repository, with labeled deterministic fakes of
+Claude Code and Codex first on `PATH` and a fake keychain: a run reaches
+`HUMAN_REVIEW` and, after an accepted review, `COMPLETED` on an anchored task
+branch with the user's checkout unchanged; scope denial, a Workspace Cedar
+forbid, a missing credential, budget exhaustion, cross-process cancel,
+interruption with resume (tool receipts counted), a malformed state file, and a
+rejected review each end as stated. `tests/security/task-cli-security.test.mjs`
+covers traversal, a planted symlink, protected paths, and a prompt injection
+read from the repository. The live pilot with real providers is
+[#406](https://github.com/accd/verchestra/issues/406) and is **pending**; until
+it runs, J04 through the installed CLI is proven deterministically on macOS
+only.
+
 ### 2.5 J05 — Hand work to another machine or operator
 
 **Outcome.** An operator hands in-flight delivery work to a successor without
