@@ -18,7 +18,7 @@ import { DarwinKeychainBackend, type SecurityRunner } from "./darwin-keychain.ts
 export const DARWIN_KEYCHAIN_CREDENTIAL_QUALIFICATION: OsSecretQualificationEvidence & { readonly report: string } =
   Object.freeze({
     report: "docs/qualification/os-secret-backend-darwin.md",
-    digest: "808baaec89a65297c970775e6c69cad406d9835191d6c8f4ae92597797f16d4a",
+    digest: "fee272380cf06636d386959a612c9b37f5c925ef10eba827d13366e7aaf948c6",
     controls: OS_CREDENTIAL_CONTROLS.darwin.controls
   });
 
