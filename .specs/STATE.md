@@ -492,7 +492,7 @@ note. -->
   authority until a stronger isolation grade is qualified. Post-1.0; the signed
   1.0.0 hold is unchanged.
 
-### AD-0XX (to be numbered at merge) — The single binary is a Node 24.14.0 SEA injected by a repository-owned injector (#236)
+### AD-038 — The single binary is a Node 24.14.0 SEA injected by a repository-owned injector (#236)
 
 - **Status:** proposed. The owner ratifies it by reviewing the pull request
   that carries `.specs/features/single-binary-distribution/`.
