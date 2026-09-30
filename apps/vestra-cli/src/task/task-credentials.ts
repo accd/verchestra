@@ -37,6 +37,10 @@ function mapped(error: unknown, logicalName: string): PublicErrorException {
     return notConfigured("credential-store", "No OS credential store is qualified on this platform", {
       cause: error
     });
+  if (code === "VES_SECRET_STORE_UNAVAILABLE")
+    return notConfigured("credential-store", "The OS credential store is not running in this session", {
+      cause: error
+    });
   if (platformSecurityPublicErrorRegistry.codes.includes(code))
     return new PublicErrorException(
       platformSecurityPublicErrorRegistry.create(code, {}),

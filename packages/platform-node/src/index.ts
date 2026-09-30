@@ -49,7 +49,8 @@ export {
   SECRET_TOOL_EXECUTABLE,
   searchItemsArguments,
   nodeSecretServiceRunner,
-  secretToolChildEnvironment
+  secretToolChildEnvironment,
+  sessionBusReachable
 } from "./os-secret-backends/linux-secret-service.ts";
 export {
   CREDENTIAL_PERSISTENCE,
