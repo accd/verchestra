@@ -3,12 +3,12 @@ schema: verchestra-feature-handoff/v1
 feature: tuf-role-separation
 issue: 18
 status: blocked
-branch: feat/382-online-key-anchor
-baseRevision: 4dde7e9edbec3c6ef1cc5f1bc1d6f995908e85c5
+branch: feat/408-protected-signing-environments
+baseRevision: 0f7dedde2a2a9ff334b873d42ea5ae1760be1507
 lastCompletedTask: null
-nextTask: "Follow republish-v3-runbook.md for .3 (#387): build the candidate, publish under /v3/ with a metadata_version above the ledger, verify R2 (200 metadata, 206 targets) before npm publish, then append the ledger entry. The npm 2FA session and the R2 upload are owner-held. Run t76-refresh-timestamp.yml monthly for any root published with a short timestamp_expires."
-lastGate: "gate:quick, gate:build, gate:security, gate:release, agent:check PASS (feat/382-tuf-timestamp-refresh)"
-updatedAt: 2026-09-30T07:15:00Z
+nextTask: "After the #408 custody change merges, follow republish-v3-runbook.md for .3 (#387): build a NEW candidate from main (the 2026-09-30 .3 signing used the retired keys and must never be uploaded), dispatch t76-publish-release.yml from main and approve it in the tuf-release-signing environment, publish under /v3/ with a metadata_version above the ledger, verify R2 (200 metadata, 206 targets) before npm publish, then append the ledger entry. The npm 2FA session and the R2 upload are owner-held. Run t76-refresh-timestamp.yml monthly, from main with environment approval, for any root published with a short timestamp_expires."
+lastGate: "gate:quick, gate:build, gate:security, gate:release, agent:check PASS (feat/408-protected-signing-environments)"
+updatedAt: 2026-09-30T22:00:00Z
 ---
 
 # TUF role separation (#18, F1 + F2)
@@ -42,7 +42,13 @@ root`. Role separation is transparent to the TUF client, proven by the existing
   (`tests/agent-readiness/t76-publish-workflow.test.mjs`) updated from "exactly
   one secret" to the two role-separated secrets.
 
-## What the owner must do to complete it
+## What the owner had to do to complete it (done; superseded by #408)
+
+The steps below provisioned the first online key on 2026-09-30. #408 rotated
+it the same day: the current keys are secrets of the protected
+`tuf-release-signing` environment, and the old anchors are retired (see
+"Custody of the signing keys" in `republish-v3-runbook.md`). Kept as the record
+of how the first key was provisioned.
 
 The online key and its committed anchor are owner-gated, exactly like the release
 key and the #18 decision key — the code fails closed (`VES_T76_PUBLISH_ANCHOR_MISSING`)
@@ -107,13 +113,21 @@ Reconciled 2026-09-29 (#407).
 
 - **The code has landed.** Role separation landed in `1ee646e`, and the
   monotonic `metadataVersion` guard for #387 landed in `5ac3122`.
-- **The online key and anchor are provisioned (2026-09-30).**
-  `VESTRA_RELEASE_TIMESTAMP_SIGNING_KEY_PKCS8_BASE64` is a repository secret,
-  generated in memory and never written to disk. Its public half is committed
-  as `docs/qualification/trust/release-timestamp-snapshot-public-key.json` with
-  `purposes: ["tuf-timestamp-snapshot"]`. `tests/security/trust-key-separation.test.mjs`
-  already checks every pair of trust files, so the new anchor is covered.
-  Moving the release secrets into protected environments is tracked by #408 (O2).
+- **The keys are under protected custody (2026-09-30, #408).** The offline and
+  online keys were rotated, generated in memory, and piped straight into the
+  `VESTRA_TUF_OFFLINE_KEY_PKCS8_BASE64` and `VESTRA_TUF_ONLINE_KEY_PKCS8_BASE64`
+  secrets of the `tuf-release-signing` environment (required reviewer, `main`
+  only, admin bypass off). Their anchors are committed with new key ids
+  (`verchestra-release-20260930-custody`,
+  `verchestra-release-timestamp-20260930-custody`). The first online key
+  (`verchestra-release-timestamp-20260930`) and the v1/`.2` offline key
+  (`verchestra-release-20260825`) are retired under
+  `docs/qualification/trust/retired/`, and the tooling refuses them. The
+  retired repository-level secrets remain until the owner deletes them
+  (`docs/release-custody.md` section 9, O2 step 4).
+- **The 2026-09-30 `.3` signing is void.** Publish run `36771571763` signed
+  candidate `0f7dedd` with the retired keys. Never upload it; `.3` is re-signed
+  from a new candidate built on `main` after the #408 change.
 - **The `.3` republication is owner-gated.** It covers keys, R2 upload, and
   `npm publish` under 2FA, and it is tracked by #387. A single `.3` does not
   close live update/rollback (runbook finding 2; see

@@ -3,12 +3,12 @@ schema: verchestra-feature-handoff/v1
 feature: release-custody
 issue: 408
 status: blocked
-branch: docs/408-independent-custody-model
-baseRevision: 2500c6c4fe59479d893912b889efce337a6cbda1
-lastCompletedTask: T2
-nextTask: "Owner: decide O1 (custodian #2 and a distinct ratifying reviewer) from docs/release-custody.md section 9, then O2 before any access change."
-lastGate: "agent:check PASS; gate:quick PASS; focused custody suites 51/51 PASS"
-updatedAt: 2026-09-29T00:00:00Z
+branch: feat/408-protected-signing-environments
+baseRevision: 0f7dedde2a2a9ff334b873d42ea5ae1760be1507
+lastCompletedTask: T11
+nextTask: "Merge the protected-environment change, re-sign .3 from a new main candidate with environment approval, then the owner deletes the three retired repository-level secrets (O2 step 4) and decides O1 (custodian #2 and a distinct ratifying reviewer)."
+lastGate: "gate:quick, gate:build, gate:security, gate:release, agent:check PASS (feat/408-protected-signing-environments)"
+updatedAt: 2026-09-30T22:00:00Z
 ---
 
 # Scope
@@ -35,22 +35,49 @@ promotion readiness, and the signed hold is unchanged.
     held by one operator and reachable by three identities.
   - `docs/merge-governance.md` still says the repository has one collaborator;
     that sentence is stale.
+- T5 and T11 (2026-09-30, owner-authorized): the O2 technical part and O3.
+  - Environments `tuf-release-signing` (id `23152805342`) and
+    `t75-evidence-signing` (id `23152805929`): required reviewer `accd`,
+    `prevent_self_review: false` (single maintainer, RR10), `can_admins_bypass:
+    false`, deployment branch policy `main` only.
+  - The offline, online, and evidence keys were rotated, generated in memory,
+    and piped straight into the environment secrets
+    `VESTRA_TUF_OFFLINE_KEY_PKCS8_BASE64`, `VESTRA_TUF_ONLINE_KEY_PKCS8_BASE64`,
+    and `VESTRA_T75_EVIDENCE_KEY_PKCS8_BASE64`. No private key was printed or
+    written.
+  - New anchors carry new key ids; the old ones are retired under
+    `docs/qualification/trust/retired/` and refused by every signing path. The
+    committed T75 evidence still verifies under its retired anchor.
+  - The three signing jobs bind their environments and read only the renamed
+    environment secrets. A run of each workflow dispatched from the feature
+    branch was refused before its first step. See `validation.md`.
+  - `docs/release-custody.md` records the new posture, the retired-anchor
+    mechanism (7.4), rehearsal case D6, and residual risks RR10-RR14.
 
 # Blockers
 
 Every remaining step needs an owner decision or action that an agent cannot
 take:
 
-- **O1.** Name custodian #2, and a distinct ratifying reviewer.
-- **O2.** Move signing secrets into protected environments and delete the
-  repository copies. This must happen before any further access change. It
-  depends on T5 being merged.
-- **O3.** Decide whether to rotate the keys reachable by write collaborators
-  (RR4).
+- **Merge.** The workflow, script, anchor, and test change must merge to `main`
+  before any signing run can use the new keys: the old workflows name the
+  retired repository secrets, and the new anchors exist only on the branch.
+- **`.3` re-sign.** The 2026-09-30 `.3` signing (publish run `36771571763`) used
+  the retired keys and must never be uploaded. Build a new candidate from
+  `main`, dispatch `t76-publish-release.yml` from `main`, and approve it in
+  `tuf-release-signing` (`republish-v3-runbook.md`).
+- **O1.** Name custodian #2, and a distinct ratifying reviewer. This is
+  human-only.
+- **O2 step 4.** Delete the three retired repository-level secrets
+  (`VESTRA_RELEASE_SIGNING_KEY_PKCS8_BASE64`,
+  `VESTRA_RELEASE_TIMESTAMP_SIGNING_KEY_PKCS8_BASE64`,
+  `VESTRA_T75_EVIDENCE_SIGNING_KEY_PKCS8_BASE64`) after the merge and the `.3`
+  re-sign. Until then a write collaborator can still read the retired values
+  (RR4, RR11).
+- **O2 reviewer switch.** Once custodian #2 exists, make them the required
+  reviewer of both environments with `prevent_self_review: true`.
 - **O4.** Grant custodian #2 `write`. Custodian #2 authors the CODEOWNERS pull
   request, and the owner approves it.
-- **O5.** Provision the online key into a `tuf-online` environment and commit
-  its anchor with custodian #2's approval.
 - **O6.** Decide npm maintainership, then configure trusted publishing and
   disallow tokens.
 - **O7.** Scope the R2 token, add bucket locks, and give custodian #2
@@ -62,6 +89,7 @@ take:
 
 # Next action
 
-The owner reads `docs/release-custody.md` sections 3, 5, and 9, and records O1
-on #408. An agent can then take T5, the workflow `environment:` wiring, as a
-separate reviewed change that strengthens enforcement.
+The coordinator merges `feat/408-protected-signing-environments` (maintainer
+bypass; enforcement strengthened). The owner then re-signs `.3` from a new
+`main` candidate with environment approval, deletes the three retired
+repository-level secrets, and records O1 on #408.
