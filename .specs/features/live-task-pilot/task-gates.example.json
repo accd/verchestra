@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "commands": {
+    "node": {
+      "executable": "REPLACE-WITH-THE-ABSOLUTE-PATH-PRINTED-BY-command-v-node-FOR-NODE-24.14.0",
+      "protocols": ["test-summary"]
+    },
+    "hold": {
+      "executable": "/bin/sleep",
+      "protocols": ["exit-code"]
+    }
+  }
+}
