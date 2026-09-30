@@ -324,8 +324,8 @@ function argumentsFor(name: unknown, input: unknown): Record<string, unknown> {
   if (args === null || typeof args !== "object" || Array.isArray(args))
     throw new BridgeToolError("VES_BRIDGE_ARGUMENTS_INVALID", "Tool arguments must be an object");
   const row = args as Record<string, unknown>;
-  const allowed = [...shape.required, ...shape.optional];
-  if (Object.keys(row).some((key) => !allowed.includes(key)) || shape.required.some((key) => !Object.hasOwn(row, key)))
+  const allowed = new Set([...shape.required, ...shape.optional]);
+  if (Object.keys(row).some((key) => !allowed.has(key)) || shape.required.some((key) => !Object.hasOwn(row, key)))
     throw new BridgeToolError("VES_BRIDGE_ARGUMENTS_INVALID", "Tool arguments do not match the tool");
   return row;
 }
