@@ -1,3 +1,0 @@
-#!/bin/sh
-# DETERMINISTIC FAKE - not Codex. Test fixture for tests/e2e/task-cli-e2e.test.mjs.
-exec node "$(dirname "$0")/fake-codex-task.mjs" "$@"
