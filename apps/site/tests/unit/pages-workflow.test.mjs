@@ -12,9 +12,9 @@ test("publishes only the exact site artifact that passed both required gates", (
   // format, lint, typecheck, and test stages serially.
   assert.match(workflow, /node scripts\/select-gates\.mjs/u);
   assert.match(workflow, /if: contains\(steps\.selection\.outputs\.stages, 'test:qualification'\)/u);
-  assert.match(workflow, /@anthropic-ai\/claude-code@2\.1\.168 @openai\/codex@0\.115\.0/u);
+  assert.match(workflow, /@anthropic-ai\/claude-code@2\.1\.282 @openai\/codex@0\.115\.0/u);
   assert.doesNotMatch(workflow, /npm install --global --ignore-scripts/u);
-  assert.match(workflow, /case "\$claude_version" in "2\.1\.168"\|"2\.1\.168 "\*/u);
+  assert.match(workflow, /case "\$claude_version" in "2\.1\.282"\|"2\.1\.282 "\*/u);
   assert.match(workflow, /case "\$codex_version" in "codex-cli 0\.115\.0"\|"codex-cli 0\.115\.0 "\*/u);
   assert.match(workflow, /for stage in \$\{\{ steps\.selection\.outputs\.stages \}\}/u);
   assert.match(workflow, /pnpm run "\$stage"/u);

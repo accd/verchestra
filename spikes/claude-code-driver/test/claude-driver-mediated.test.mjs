@@ -5,15 +5,20 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
+import { constants } from "node:fs";
 import { access, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
-import { join } from "node:path";
+import { delimiter, isAbsolute, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { afterEach, test } from "node:test";
 
 import { InMemoryExecutionPayloadStore, McpToolBridgeController } from "../../../packages/agent-runtime/src/index.ts";
-import { CLAUDE_MEDIATED_TOOLS, ClaudeCodeDriver } from "../../../packages/drivers/src/index.ts";
+import {
+  CLAUDE_MEDIATED_MINIMUM_VERSION,
+  CLAUDE_MEDIATED_TOOLS,
+  ClaudeCodeDriver
+} from "../../../packages/drivers/src/index.ts";
 import { mockRequest } from "../../../tests/helpers/driver-protocol-fixture.mjs";
 import { resolveClaudeCommand } from "../src/claude-code-driver.mjs";
 
@@ -77,7 +82,7 @@ async function mediatedFixture(options = {}) {
     ...options.execution
   };
   const driver = new ClaudeCodeDriver({
-    command: [process.execPath, fakeClaude],
+    command: [process.execPath, fakeClaude, "--fixture-observations", observations],
     profile: { kind: "mediated-mcp", environment: { TMPDIR: observations }, isolationRoot },
     resolveExecution: async () => execution,
     onSpawn: (pid) => spawned.push(pid),
@@ -92,7 +97,8 @@ async function mediatedFixture(options = {}) {
   };
   const observation = async () =>
     JSON.parse(await readFile(join(observations, "fake-claude-observation.json"), "utf8"));
-  return { controller, driver, invoked, isolationRoot, observation, payloads, run, spawned, worktree };
+  const observed = () => access(join(observations, "fake-claude-observation.json")).then(() => true, () => false);
+  return { controller, driver, invoked, isolationRoot, observation, observed, payloads, run, spawned, worktree };
 }
 
 const errors = (events) => events.filter((event) => event.type === "error").map((event) => event.code);
@@ -149,7 +155,6 @@ test("the child runs in the worktree with per-run identity directories and only 
     assert.notEqual(observed.home, homedir());
     assert.ok(observed.home.startsWith(`${fixture.isolationRoot}/`));
     assert.ok(observed.configDirectory.startsWith(`${fixture.isolationRoot}/`));
-    assert.equal(observed.credentialDigest, createHash("sha256").update(credential).digest("hex"));
     // why: macOS CoreFoundation injects __CF_USER_TEXT_ENCODING into every
     // process it starts; the driver does not pass it.
     const passed = observed.environmentKeys.filter((key) => !(process.platform === "darwin" && key === "__CF_USER_TEXT_ENCODING"));
@@ -163,6 +168,12 @@ test("the child runs in the worktree with per-run identity directories and only 
     ]);
     await assert.rejects(access(observed.home), { code: "ENOENT" });
     await assert.rejects(access(observed.configDirectory), { code: "ENOENT" });
+    // why: the fake echoes the key it received and the driver redacts only the
+    // brokered value, so an exact `[REDACTED]` proves the child saw exactly the
+    // brokered credential without the fake hashing or recording it.
+    const { events } = await (await mediatedFixture({ scenario: "secret" })).run();
+    assert.ok(events.some((event) => event.type === "content.delta" && event.text === "key:[REDACTED]"));
+    assert.equal(JSON.stringify(events).includes("ambient-credential"), false);
   } finally {
     for (const [key, value] of [
       ["ANTHROPIC_API_KEY", previous.key],
@@ -254,8 +265,10 @@ test("cancellation terminates the mediated session and still removes its isolati
   const controller = new AbortController();
   const pending = fixture.run(controller.signal);
   const deadline = Date.now() + 10_000;
-  while (fixture.spawned.length === 0 && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 20));
-  await new Promise((resolve) => setTimeout(resolve, 300));
+  // why: abort only once the fake has recorded its identity directories and is
+  // hanging; a fixed delay raced the MCP handshake on slower CI runners.
+  while (!(await fixture.observed()) && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(fixture.spawned.length, 1);
   controller.abort();
   const { events, closed } = await pending;
   assert.deepEqual(errors(events), ["VES_CLAUDE_ABORTED"]);
@@ -264,18 +277,61 @@ test("cancellation terminates the mediated session and still removes its isolati
   await assert.rejects(access(home), { code: "ENOENT" });
 });
 
-// Read-only probe of the installed Claude Code: `--help` never invokes a model.
-// Every flag the mediated profile passes must exist in that build. A machine
-// without Claude Code reports not configured, never a pass by omission.
+const PIN_REQUIRED = process.env.VES_REQUIRE_PINNED_PROVIDERS === "1";
+
+function atLeast(actual, minimum) {
+  const [left, right] = [actual, minimum].map((version) => version.split(".").map(Number));
+  for (let index = 0; index < 3; index += 1) if (left[index] !== right[index]) return left[index] > right[index];
+  return true;
+}
+
+// why: the mediated profile needs an absolute executable; this resolves the
+// same bare name the T03 probe runs, from the PATH the probe inherits.
+async function absoluteClaude(command) {
+  if (isAbsolute(command)) return command;
+  for (const directory of (process.env.PATH ?? "").split(delimiter)) {
+    if (!isAbsolute(directory)) continue;
+    const candidate = join(directory, command);
+    if (await access(candidate, constants.X_OK).then(() => true, () => false)) return candidate;
+  }
+  return assert.fail("the installed Claude Code answered --version but is not on an absolute PATH entry");
+}
+
+// Read-only probe of the installed Claude Code: `--version` and `--help` never
+// invoke a model. A build at or above the mediated minimum must carry every
+// mediated flag; an older build must be refused by the mediated profile with its
+// version code rather than launched with flags it lacks. The fleet pin must
+// reach the minimum. A machine without Claude Code reports not configured,
+// never a pass by omission.
 test("every mediated flag exists in the installed Claude Code help", async () => {
   const [command, ...prefix] = resolveClaudeCommand();
+  let versionText;
   let help;
   try {
-    help = (await execFileAsync(command, [...prefix, "--help"], { encoding: "utf8", timeout: 20_000, windowsHide: true })).stdout;
+    const options = { encoding: "utf8", timeout: 20_000, windowsHide: true };
+    versionText = (await execFileAsync(command, [...prefix, "--version"], options)).stdout;
+    help = (await execFileAsync(command, [...prefix, "--help"], options)).stdout;
   } catch (error) {
-    assert.match(String(error.code), /^(ENOENT|EACCES|[0-9]+)$/u, "Claude Code is not configured on this machine");
+    assert.equal(PIN_REQUIRED, false, "the fleet must install its pinned Claude Code");
+    assert.match(String(error.code), /^(ENOENT|EACCES|\d+)$/u, "Claude Code is not configured on this machine");
     return;
   }
+  const installed = /^(\d+\.\d+\.\d+)/u.exec(versionText.trim())?.[1];
+  assert.ok(installed !== undefined, "the installed Claude Code reports a version");
+  const qualified = atLeast(installed, CLAUDE_MEDIATED_MINIMUM_VERSION);
+  if (PIN_REQUIRED) assert.ok(qualified, `the fleet pin ${installed} is below the mediated minimum`);
+  const probe = await new ClaudeCodeDriver({
+    command: [await absoluteClaude(command), ...prefix],
+    profile: { kind: "mediated-mcp", environment: { PATH: process.env.PATH ?? "" } },
+    resolveExecution: async () => assert.fail("not reached")
+  }).probe();
+  assert.equal(probe.version, installed);
+  if (!qualified) {
+    assert.equal(probe.available, false);
+    assert.equal(probe.error.code, "VES_CLAUDE_VERSION_UNSUPPORTED");
+    return;
+  }
+  assert.equal(probe.available, true);
   const flags = new ClaudeCodeDriver({
     command: [process.execPath, fakeClaude],
     profile: { kind: "mediated-mcp" },
@@ -284,4 +340,12 @@ test("every mediated flag exists in the installed Claude Code help", async () =>
     .buildMediatedArguments("claude-sonnet-5", "/mcp.json")
     .filter((argument) => argument.startsWith("--"));
   for (const flag of flags) assert.ok(help.includes(flag), `installed Claude Code lacks ${flag}`);
+});
+
+test("the mediated version floor compares every component numerically", () => {
+  assert.equal(atLeast("2.1.282", "2.1.282"), true);
+  assert.equal(atLeast("2.1.300", "2.1.282"), true);
+  assert.equal(atLeast("2.2.0", "2.1.282"), true);
+  assert.equal(atLeast("2.1.168", "2.1.282"), false);
+  assert.equal(atLeast("2.0.999", "2.1.282"), false);
 });
