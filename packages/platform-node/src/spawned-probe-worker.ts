@@ -7,7 +7,7 @@ import { extname, isAbsolute, join } from "node:path";
 import { killProcesses, snapshotDescendants, terminateProcessGroup } from "./process-tree-terminator.ts";
 
 const DIGEST = /^sha256:[a-f0-9]{64}$/u;
-const WORKSPACE = /^[A-Za-z0-9][A-Za-z0-9._:@/+\-]{0,511}$/u;
+const WORKSPACE = /^[A-Za-z0-9][A-Za-z0-9._:@/+-]{0,511}$/u;
 const ENVIRONMENT_NAME = /^[A-Z][A-Z0-9_]{0,63}$/u;
 const SECRET_LIKE_NAME = /SECRET|TOKEN|PASSW|CREDENTIAL|PRIVATE|API_?KEY|ACCESS_?KEY|AUTH|SESSION|COOKIE/u;
 const ENTRY_EXTENSION = /^\.[a-z0-9]{1,8}$/u;
@@ -17,7 +17,7 @@ const BASE_PATH = "/usr/bin:/bin";
 const SECRET_SHAPES = [
   /\bBEGIN [A-Z ]*PRIVATE KEY\b[\s\S]*/gu,
   /\b(?:sk|ghp|gho|ghs|xox[abp])[-_][A-Za-z0-9_-]{12,}/gu,
-  /\bbearer\s+[A-Za-z0-9._~+/=-]{8,}/giu,
+  /\bbearer\s+[a-z0-9._~+/=-]{8,}/giu,
   /\b(?:password|passwd|pwd|secret|token|api[_-]?key)\s*[=:]\s*\S+/giu,
   /\b[a-f0-9]{40,}\b/gu
 ];
@@ -186,9 +186,9 @@ export class SpawnedProbeWorker {
   #exitCode: number | null = null;
   #signal: string | null = null;
   #exited = false;
-  #closed: Promise<void>;
+  readonly #closed: Promise<void>;
   #listener: ProbeTransportListener | undefined;
-  #pending: TransportEvent[] = [];
+  readonly #pending: TransportEvent[] = [];
   #termination: Promise<void> | undefined;
   #terminated = false;
   #workDirectoryRemoved = false;

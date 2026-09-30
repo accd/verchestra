@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { copyFile, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 
-import { FramedProbeWorker } from "../../packages/extension-host/src/index.ts";
+import { FramedProbeWorker, encodeProbeFrame } from "../../packages/extension-host/src/index.ts";
 import { SpawnedProbeWorker } from "../../packages/platform-node/src/index.ts";
 import { workspaceId } from "../helpers/database-probe-fixture.mjs";
 import {
@@ -45,6 +46,61 @@ test("a Python worker speaking only the published frames completes the same prob
   assert.equal(fixture.trust.componentDigest, fileDigest(PYTHON_WORKER));
   assert.equal(fixture.transport.diagnostics().workDirectoryRemoved, true);
   assert.equal(await eventuallyDead(fixture.transport.pid), true);
+});
+
+// why: U+1F600 is a surrogate pair (0xD83D 0xDE00), so it sorts below U+E000 by
+// UTF-16 code unit but above it by code point. A worker that orders keys by code
+// point derives a different payload digest for this payload than the host does.
+const MIXED_PLANE_PAYLOAD = Object.freeze({ "\uE000": 0, "\u{1F600}": 0 });
+
+function sha256(text) {
+  return `sha256:${createHash("sha256").update(text, "utf8").digest("hex")}`;
+}
+
+function controllerFrame(name, payload) {
+  return encodeProbeFrame({
+    protocol: "verchestra-probe/1",
+    messageId: "controller:0",
+    correlationId: "probe-channel:ordering",
+    workspaceId,
+    sequence: 0,
+    payloadSchema: { name, version: 1 },
+    payload
+  });
+}
+
+// invariant: a reference worker verifies every inbound payload digest and exits 3
+// on a mismatch; `probe.cancel` makes a worker that agrees exit 0.
+async function exitCodeAfterCancel(worker, executable, args) {
+  const transport = await SpawnedProbeWorker.launch({
+    executable,
+    args,
+    entry: { path: worker, digest: fileDigest(worker) },
+    workspaceId
+  });
+  try {
+    const exited = new Promise((resolve) => transport.attach({ data() {}, fault() {}, exit: resolve }));
+    await transport.send(controllerFrame("probe.cancel", MIXED_PLANE_PAYLOAD));
+    await exited;
+    return transport.diagnostics().exitCode;
+  } finally {
+    await transport.terminate();
+  }
+}
+
+test("the host orders payload keys by UTF-16 code unit, as RFC 8785 specifies", () => {
+  const frame = controllerFrame("probe.cancel", MIXED_PLANE_PAYLOAD);
+  const envelope = JSON.parse(frame.subarray(frame.indexOf("\r\n\r\n") + 4).toString("utf8"));
+  assert.equal(envelope.payloadDigest, sha256('{"\u{1F600}":0,"\uE000":0}'));
+  assert.notEqual(envelope.payloadDigest, sha256('{"\uE000":0,"\u{1F600}":0}'), "code-point order is not the protocol");
+});
+
+test("the Node reference worker derives the host's digest for keys above the BMP", { skip: POSIX_ONLY }, async () => {
+  assert.equal(await exitCodeAfterCancel(NODE_WORKER, process.execPath, []), 0);
+});
+
+test("the Python reference worker derives the host's digest for keys above the BMP", { skip: pythonSkip }, async () => {
+  assert.equal(await exitCodeAfterCancel(PYTHON_WORKER, python, ["-I", "-B"]), 0);
 });
 
 test(

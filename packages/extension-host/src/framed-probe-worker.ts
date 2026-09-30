@@ -31,9 +31,18 @@ interface PlanView {
 
 const SCHEMA_VERSION = 1;
 
+// invariant: ordinal UTF-16 code-unit order, the order RFC 8785 and the default
+// `sort()` use; never the ambient locale.
+function compareCodeUnit(left: string, right: string): number {
+  return Number(left > right) - Number(left < right);
+}
+
 function exactKeys(value: unknown, keys: string): value is UnknownRecord {
   return (
-    value !== null && typeof value === "object" && !Array.isArray(value) && Object.keys(value).sort().join(",") === keys
+    value !== null &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    Object.keys(value).sort(compareCodeUnit).join(",") === keys
   );
 }
 

@@ -19,10 +19,20 @@ with open(sys.argv[0], "rb") as handle:
     OWN_DIGEST = "sha256:" + hashlib.sha256(handle.read()).hexdigest()
 
 
+def code_units(key):
+    # invariant: RFC 8785 orders object keys by UTF-16 code units. Python's str
+    # order is by code point, which differs for keys above the BMP (a surrogate
+    # pair sorts below U+E000..U+FFFF), so the key is compared as UTF-16BE bytes.
+    return key.encode("utf-16-be", "surrogatepass")
+
+
 def canonical(value):
-    # invariant: JCS orders keys by UTF-16 code units; for the ASCII keys this
-    # protocol uses that equals Python's code-point sort.
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    if isinstance(value, dict):
+        keys = sorted(value, key=code_units)
+        return "{" + ",".join(json.dumps(key, ensure_ascii=False) + ":" + canonical(value[key]) for key in keys) + "}"
+    if isinstance(value, list):
+        return "[" + ",".join(canonical(item) for item in value) + "]"
+    return json.dumps(value, ensure_ascii=False)
 
 
 def digest(value):

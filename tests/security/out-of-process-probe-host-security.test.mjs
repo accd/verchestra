@@ -1,11 +1,17 @@
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
 
+import { SpawnedProbeWorker } from "../../packages/platform-node/src/index.ts";
+import { workspaceId } from "../helpers/database-probe-fixture.mjs";
 import {
   ObservingResultSink,
   POSIX_ONLY,
   eventuallyDead,
+  fileDigest,
   spawnedProbe
 } from "../helpers/spawned-probe-worker-fixture.mjs";
 
@@ -153,3 +159,23 @@ for (const name of [
     });
   });
 }
+
+test("a bearer credential on stderr is redacted whatever its letter case", { skip: POSIX_ONLY }, async (t) => {
+  const token = "AbCdEfGh0123XyZ";
+  const directory = await mkdtemp(join(tmpdir(), "verchestra-probe-bearer-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const worker = join(directory, "worker.mjs");
+  await writeFile(worker, `process.stderr.write("Authorization: BEARER ${token}\\n");\n`);
+  const transport = await SpawnedProbeWorker.launch({
+    executable: process.execPath,
+    entry: { path: worker, digest: fileDigest(worker) },
+    workspaceId
+  });
+  await new Promise((resolve) => transport.attach({ data() {}, fault() {}, exit: resolve }));
+  const diagnostics = transport.diagnostics();
+  await transport.terminate();
+  assert.ok(diagnostics.stderrBytes > 0, "the worker did write the credential to stderr");
+  assert.equal(diagnostics.stderrExcerpt.includes(token), false, "the retained stderr excerpt is scrubbed");
+  assert.equal(diagnostics.stderrExcerpt.includes("[redacted]"), true);
+  assert.equal(diagnostics.stderrRedactions, 1);
+});
