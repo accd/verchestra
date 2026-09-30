@@ -68,7 +68,7 @@ export const PLATFORM_SECURITY_PUBLIC_ERROR_DEFINITIONS = Object.freeze([
     "VES_SECRET_KEYCHAIN_INTERACTION_REQUIRED",
     "external",
     "after-change",
-    "Unlock the keychain or answer its approval dialog, then retry the command."
+    "Unlock the keychain or keyring, or answer its approval prompt, then retry the command."
   ),
   define(
     "VES_SECRET_KEYCHAIN_INVALID",
@@ -82,6 +82,12 @@ export const PLATFORM_SECURITY_PUBLIC_ERROR_DEFINITIONS = Object.freeze([
     "state",
     "safe",
     "The previous credential was removed and the new one was not stored; run vestra secret set again."
+  ),
+  define(
+    "VES_SECRET_STORE_UNAVAILABLE",
+    "external",
+    "after-change",
+    "Start the platform credential store in this session (a Secret Service provider on the D-Bus session bus on Linux; an interactive logon with a loaded profile on Windows), then retry."
   ),
   define(
     "VES_SECRET_STORE_UNQUALIFIED",
