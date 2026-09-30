@@ -4,9 +4,9 @@
 // the MCP handshake and tool calls over stdio, and reports stream-json events.
 // It never contacts a provider. Scenario selection comes from the prompt text.
 import { spawn } from "node:child_process";
-import { createHash } from "node:crypto";
-import { readFileSync, statSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { readFileSync, realpathSync, statSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { resolve, sep } from "node:path";
 
 const VERSION = "2.1.282";
 if (process.argv.includes("--version")) {
@@ -14,7 +14,12 @@ if (process.argv.includes("--version")) {
   process.exit(0);
 }
 
-const argv = process.argv.slice(2);
+// why: the test names its private observation directory through a fixture
+// prefix on the command, never through an ambient temp directory; the prefix
+// is not part of the driver's invocation, so it is not observed as argv.
+const fixturePrefix = process.argv[2] === "--fixture-observations";
+const observationDirectory = fixturePrefix ? process.argv[3] : undefined;
+const argv = process.argv.slice(fixturePrefix ? 4 : 2);
 const option = (name) => {
   const index = argv.indexOf(name);
   return index < 0 ? undefined : argv[index + 1];
@@ -36,14 +41,20 @@ const observation = {
   environmentKeys: Object.keys(process.env).sort((left, right) => Number(left > right) - Number(left < right)),
   home: process.env.HOME,
   configDirectory: process.env.CLAUDE_CONFIG_DIR,
-  credentialDigest: createHash("sha256").update(process.env.ANTHROPIC_API_KEY ?? "").digest("hex"),
   mcpConfigMode: statSync(mcpConfigPath).mode & 0o777,
   mcpServers: Object.keys(mcpConfig.mcpServers),
   toolResults: []
 };
+// hazard: the named directory must resolve inside the private temp directory
+// the driver gave this child, so an argument can never aim the write elsewhere.
+function observationPath() {
+  const base = `${realpathSync(tmpdir())}${sep}`;
+  const target = resolve(realpathSync(observationDirectory), "fake-claude-observation.json");
+  if (!target.startsWith(base)) throw new Error("observation directory is outside the child temp directory");
+  return target;
+}
 const observe = () => {
-  if (process.env.TMPDIR !== undefined)
-    writeFileSync(join(process.env.TMPDIR, "fake-claude-observation.json"), JSON.stringify(observation));
+  if (observationDirectory !== undefined) writeFileSync(observationPath(), JSON.stringify(observation));
 };
 
 function mcpClient() {
@@ -70,7 +81,7 @@ function mcpClient() {
       const id = nextId;
       const response = new Promise((resolve, reject) => {
         waiting.set(id, resolve);
-        exited.then(() => reject(new Error("MCP server exited")));
+        void exited.then(() => reject(new Error("MCP server exited")));
       });
       child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", id, method, params })}\n`);
       return response;

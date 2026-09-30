@@ -1,8 +1,12 @@
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 import { test } from "node:test";
-import { ClaudeCodeDriver } from "../src/claude-code-driver.mjs";
+import { ClaudeCodeDriver, resolveClaudeCommand } from "../src/claude-code-driver.mjs";
+
+const execFileAsync = promisify(execFile);
 
 const fixture = fileURLToPath(new URL("./fake-claude.mjs", import.meta.url));
 
@@ -39,9 +43,31 @@ test("probes the installed Claude Code without invoking a model", async () => {
   const result = await new ClaudeCodeDriver({ minimumVersion: "2.1.168" }).probe();
   assertLiveProbe(result, {
     requirePinned: PIN_REQUIRED,
-    pinnedVersion: "2.1.168",
+    pinnedVersion: "2.1.282",
     capabilities: { streamJson: true, noSessionPersistence: true }
   });
+});
+
+// Read-only `--help` probe: every flag of the T03 invocation must exist in the
+// installed build, so a requalified pin cannot silently drop one. A machine
+// without Claude Code reports not configured; the fleet must have its pin.
+test("every T03 flag exists in the installed Claude Code help", async () => {
+  const [command, ...prefix] = resolveClaudeCommand();
+  let help;
+  try {
+    const options = { encoding: "utf8", timeout: 20_000, windowsHide: true };
+    help = (await execFileAsync(command, [...prefix, "--help"], options)).stdout;
+  } catch (error) {
+    assert.equal(PIN_REQUIRED, false, "the fleet must install its pinned Claude Code");
+    assert.match(String(error.code), /^(ENOENT|EACCES|\d+)$/u, "Claude Code is not configured on this machine");
+    return;
+  }
+  const flags = fakeDriver()
+    .buildArguments({ model: "claude-opus-4-8" })
+    .filter((argument) => argument.startsWith("--"));
+  assert.ok(flags.length > 10);
+  for (const flag of flags) assert.ok(help.includes(flag), `installed Claude Code lacks ${flag}`);
+  assert.ok(help.includes("dontAsk"), "installed Claude Code lacks the dontAsk permission mode");
 });
 
 test("rejects an unsupported Claude Code version", async () => {
@@ -53,21 +79,21 @@ test("rejects an unsupported Claude Code version", async () => {
 test("the pinned-provider gate discriminates a version drift from an exact pin", async () => {
   // A supported newer build: available and honest for a reviewer, a hard failure
   // when the fleet requires the exact pin.
-  const newer = await fakeDriver().probe({ environment: { FAKE_CLAUDE_VERSION: "2.1.220" } });
+  const newer = await fakeDriver().probe({ environment: { FAKE_CLAUDE_VERSION: "2.1.300" } });
   assert.equal(newer.available, true);
   assert.doesNotThrow(() =>
-    assertLiveProbe(newer, { requirePinned: false, pinnedVersion: "2.1.168", capabilities: {} })
+    assertLiveProbe(newer, { requirePinned: false, pinnedVersion: "2.1.282", capabilities: {} })
   );
-  assert.throws(() => assertLiveProbe(newer, { requirePinned: true, pinnedVersion: "2.1.168", capabilities: {} }));
+  assert.throws(() => assertLiveProbe(newer, { requirePinned: true, pinnedVersion: "2.1.282", capabilities: {} }));
   // An unsupported build: a not-configured outcome for a reviewer, still a hard
   // failure on the fleet.
   const unsupported = await fakeDriver().probe({ environment: { FAKE_CLAUDE_VERSION: "2.0.0" } });
   assert.equal(unsupported.available, false);
   assert.doesNotThrow(() =>
-    assertLiveProbe(unsupported, { requirePinned: false, pinnedVersion: "2.1.168", capabilities: {} })
+    assertLiveProbe(unsupported, { requirePinned: false, pinnedVersion: "2.1.282", capabilities: {} })
   );
   assert.throws(() =>
-    assertLiveProbe(unsupported, { requirePinned: true, pinnedVersion: "2.1.168", capabilities: {} })
+    assertLiveProbe(unsupported, { requirePinned: true, pinnedVersion: "2.1.282", capabilities: {} })
   );
 });
 

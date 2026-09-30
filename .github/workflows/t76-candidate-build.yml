@@ -130,10 +130,10 @@ jobs:
           # Same restriction as the dependency tree: install without lifecycle
           # scripts, then run them only for these two exact-pinned packages,
           # whose postinstall fetches the native binary the probes execute.
-          npm install --global --ignore-scripts --no-audit --no-fund @anthropic-ai/claude-code@2.1.168 @openai/codex@0.115.0
+          npm install --global --ignore-scripts --no-audit --no-fund @anthropic-ai/claude-code@2.1.282 @openai/codex@0.115.0
           npm rebuild --global @anthropic-ai/claude-code @openai/codex
           case "$(claude --version)" in
-            "2.1.168"|"2.1.168 "*) ;;
+            "2.1.282"|"2.1.282 "*) ;;
             *) echo "unexpected Claude Code version" >&2; exit 1 ;;
           esac
           case "$(codex --version)" in
