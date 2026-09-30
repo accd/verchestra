@@ -195,13 +195,34 @@ const OS_SECRET_CONTROLS = Object.freeze({
 
 // why: an API key must be handed to a child process, so it is readable by
 // construction and cannot honestly claim non-exportable. This is the separate,
-// honest contract for readable provider credentials (AD-034). Only darwin has
-// a platform qualification; linux and win32 stay unqualified until they earn
-// their own evidence.
+// honest contract for readable provider credentials (AD-034). Each platform
+// names only what its own store guarantees and earns its own qualification
+// report (AD-041).
 export const OS_CREDENTIAL_CONTROLS = Object.freeze({
   darwin: Object.freeze({
     adapterId: "apple-keychain-credential",
     controls: Object.freeze(["keychain", "user-scope", "workspace-namespace", "not-in-argv", "presence-without-value"])
+  }),
+  linux: Object.freeze({
+    adapterId: "secret-service-credential",
+    controls: Object.freeze([
+      "secret-service",
+      "user-scope",
+      "workspace-namespace",
+      "not-in-argv",
+      "presence-without-value"
+    ])
+  }),
+  win32: Object.freeze({
+    adapterId: "windows-credential-manager",
+    controls: Object.freeze([
+      "credential-manager",
+      "dpapi-at-rest",
+      "user-scope",
+      "workspace-namespace",
+      "not-in-argv",
+      "presence-without-value"
+    ])
   })
 });
 
@@ -223,10 +244,14 @@ function assertBridge(backend: OsSecretBackend): void {
   }
 }
 
-// why: these codes tell the user what to do (unlock, fix the path) and carry
-// no backend text, so they pass through; everything else is collapsed into
-// VES_SECRET_BACKEND_FAILURE so no private native wording escapes.
-const ACTIONABLE_BACKEND_CODES = new Set(["VES_SECRET_KEYCHAIN_INTERACTION_REQUIRED", "VES_SECRET_KEYCHAIN_INVALID"]);
+// why: these codes tell the user what to do (unlock, fix the path, start the
+// store) and carry no backend text, so they pass through; everything else is
+// collapsed into VES_SECRET_BACKEND_FAILURE so no private native wording escapes.
+const ACTIONABLE_BACKEND_CODES = new Set([
+  "VES_SECRET_KEYCHAIN_INTERACTION_REQUIRED",
+  "VES_SECRET_KEYCHAIN_INVALID",
+  "VES_SECRET_STORE_UNAVAILABLE"
+]);
 
 function backendFailure(error: unknown, message: string): PlatformSecurityError {
   if (error instanceof PlatformSecurityError && ACTIONABLE_BACKEND_CODES.has(error.code)) return error;

@@ -3,6 +3,7 @@ import { StableId } from "@verchestra/domain";
 import { PlatformSecurityError } from "../platform-security-errors.ts";
 import {
   OS_CREDENTIAL_CONTROLS,
+  type OsSecretBackend,
   type OsSecretLocator,
   type OsSecretQualificationEvidence,
   QualifiedOsCredentialAdapter,
@@ -10,7 +11,10 @@ import {
   isValidLogicalSecretName,
   osSecretNamespace
 } from "../secret-broker.ts";
-import { DarwinKeychainBackend, type SecurityRunner } from "./darwin-keychain.ts";
+import type { CredentialToolRunner } from "./credential-tool.ts";
+import { DarwinKeychainBackend } from "./darwin-keychain.ts";
+import { LinuxSecretServiceBackend } from "./linux-secret-service.ts";
+import { WindowsCredentialManagerBackend } from "./windows-credential-manager.ts";
 
 // invariant: `digest` is the SHA-256 of the committed qualification report
 // named by `report`; tests/security/os-secret-backend-security.test.mjs
@@ -20,6 +24,23 @@ export const DARWIN_KEYCHAIN_CREDENTIAL_QUALIFICATION: OsSecretQualificationEvid
     report: "docs/qualification/os-secret-backend-darwin.md",
     digest: "fee272380cf06636d386959a612c9b37f5c925ef10eba827d13366e7aaf948c6",
     controls: OS_CREDENTIAL_CONTROLS.darwin.controls
+  });
+
+// invariant: bound by digest to its report exactly as the darwin evidence is.
+export const LINUX_SECRET_SERVICE_CREDENTIAL_QUALIFICATION: OsSecretQualificationEvidence & {
+  readonly report: string;
+} = Object.freeze({
+  report: "docs/qualification/os-secret-backend-linux.md",
+  digest: "0000000000000000000000000000000000000000000000000000000000000000",
+  controls: OS_CREDENTIAL_CONTROLS.linux.controls
+});
+
+// invariant: bound by digest to its report exactly as the darwin evidence is.
+export const WINDOWS_CREDENTIAL_MANAGER_QUALIFICATION: OsSecretQualificationEvidence & { readonly report: string } =
+  Object.freeze({
+    report: "docs/qualification/os-secret-backend-windows.md",
+    digest: "0000000000000000000000000000000000000000000000000000000000000000",
+    controls: OS_CREDENTIAL_CONTROLS.win32.controls
   });
 
 export interface OsCredentialStore {
@@ -43,34 +64,77 @@ function locator(workspaceId: string, logicalName: string): Readonly<OsSecretLoc
   return Object.freeze({ namespace: osSecretNamespace(workspaceId), logicalName });
 }
 
-// why: the one place a platform is mapped to a qualified credential backend.
-// A platform without its own qualification report is refused here, so a
-// linux or win32 caller reports "not configured" rather than a fake store.
-export function createOsCredentialStore(options: {
+interface ProvisioningBackend extends OsSecretBackend {
+  store(locator: Readonly<OsSecretLocator>, value: Uint8Array): Promise<void>;
+  delete(locator: Readonly<OsSecretLocator>): Promise<boolean>;
+}
+
+interface PlatformBinding {
+  readonly evidence: OsSecretQualificationEvidence;
+  readonly backend: ProvisioningBackend;
+  readonly keychain: "default" | "explicit";
+  readonly verify: () => Promise<void>;
+}
+
+function withRunner(runner: CredentialToolRunner | undefined): { readonly runner?: CredentialToolRunner } {
+  return runner === undefined ? {} : { runner };
+}
+
+function bindPlatform(options: {
   readonly platform: string;
   readonly keychainPath?: string;
-  readonly runner?: SecurityRunner;
-}): OsCredentialStore {
-  if (options.platform !== "darwin") {
+  readonly runner?: CredentialToolRunner;
+}): PlatformBinding {
+  if (options.platform === "darwin") {
+    const backend = new DarwinKeychainBackend({
+      ...withRunner(options.runner),
+      ...(options.keychainPath === undefined ? {} : { keychainPath: options.keychainPath })
+    });
+    return {
+      evidence: DARWIN_KEYCHAIN_CREDENTIAL_QUALIFICATION,
+      backend,
+      keychain: backend.keychain,
+      verify: () => backend.verifyKeychain()
+    };
+  }
+  if (options.platform !== "linux" && options.platform !== "win32") {
     throw new PlatformSecurityError(
       "VES_SECRET_STORE_UNQUALIFIED",
       "No OS credential store is qualified on this platform"
     );
   }
-  const backend = new DarwinKeychainBackend({
-    ...(options.runner === undefined ? {} : { runner: options.runner }),
-    ...(options.keychainPath === undefined ? {} : { keychainPath: options.keychainPath })
-  });
-  const adapter = new QualifiedOsCredentialAdapter({
-    platform: options.platform,
-    evidence: DARWIN_KEYCHAIN_CREDENTIAL_QUALIFICATION,
-    backend
-  });
+  // invariant: a keychain file is a macOS concept. Elsewhere the flag is
+  // refused rather than ignored, so it never silently selects the default store.
+  if (options.keychainPath !== undefined) {
+    throw new PlatformSecurityError("VES_SECRET_KEYCHAIN_INVALID", "A keychain path applies only on macOS");
+  }
+  const linux = options.platform === "linux";
+  return {
+    evidence: linux ? LINUX_SECRET_SERVICE_CREDENTIAL_QUALIFICATION : WINDOWS_CREDENTIAL_MANAGER_QUALIFICATION,
+    backend: linux
+      ? new LinuxSecretServiceBackend(withRunner(options.runner))
+      : new WindowsCredentialManagerBackend(withRunner(options.runner)),
+    keychain: "default",
+    verify: async () => undefined
+  };
+}
+
+// why: the one place a platform is mapped to a qualified credential backend.
+// Each of darwin, linux, and win32 has its own qualification report; any other
+// platform is refused here, so its caller reports "not configured" rather
+// than a fake store.
+export function createOsCredentialStore(options: {
+  readonly platform: string;
+  readonly keychainPath?: string;
+  readonly runner?: CredentialToolRunner;
+}): OsCredentialStore {
+  const { evidence, backend, keychain, verify } = bindPlatform(options);
+  const adapter = new QualifiedOsCredentialAdapter({ platform: options.platform, evidence, backend });
   return Object.freeze({
     storeId: adapter.adapterId,
-    keychain: backend.keychain,
+    keychain,
     adapter,
-    verify: () => backend.verifyKeychain(),
+    verify,
     store: (workspaceId: string, logicalName: string, value: Uint8Array) =>
       backend.store(locator(workspaceId, logicalName), value),
     delete: (workspaceId: string, logicalName: string) => backend.delete(locator(workspaceId, logicalName))

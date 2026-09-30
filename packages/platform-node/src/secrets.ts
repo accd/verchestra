@@ -5,9 +5,16 @@
 // file's import closure never reaches node:sqlite.
 export {
   DARWIN_KEYCHAIN_CREDENTIAL_QUALIFICATION,
+  LINUX_SECRET_SERVICE_CREDENTIAL_QUALIFICATION,
+  WINDOWS_CREDENTIAL_MANAGER_QUALIFICATION,
   createOsCredentialStore,
   type OsCredentialStore
 } from "./os-secret-backends/credential-store.ts";
+export type {
+  CredentialToolInvocation,
+  CredentialToolResult,
+  CredentialToolRunner
+} from "./os-secret-backends/credential-tool.ts";
 export {
   MAX_CREDENTIAL_VALUE_BYTES,
   SECURITY_INTERACTIVE_LINE_LIMIT,
