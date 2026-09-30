@@ -84,6 +84,12 @@ export const PLATFORM_SECURITY_PUBLIC_ERROR_DEFINITIONS = Object.freeze([
     "The previous credential was removed and the new one was not stored; run vestra secret set again."
   ),
   define(
+    "VES_SECRET_STORE_LOGGED",
+    "security",
+    "after-change",
+    "This machine enforces PowerShell script block logging or transcription, which would record the credential; bind it on a machine without that policy."
+  ),
+  define(
     "VES_SECRET_STORE_UNAVAILABLE",
     "external",
     "after-change",
