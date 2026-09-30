@@ -140,4 +140,18 @@ bound credential.
 
 It runs in `.github/workflows/os-credential-store.yml` on `windows-latest`.
 
-RESULT_PLACEHOLDER
+### Recorded result
+
+| Field | Value |
+| --- | --- |
+| Result | **PASS** — 20 tests, 20 passed, 0 failed, 0 skipped, 0 todo, 0 cancelled |
+| Run | [36681219761](https://github.com/accd/verchestra/actions/runs/36681219761) (`workflow_dispatch`), job `credential-store (Windows)` 109776890202 |
+| Revision | `95fbf7704bfe57e1a59d18053efdaed0ae809b2f` on `feat/379-linux-windows-credential-stores` |
+| Runner | `windows-2025-vs2026` image 20260925.250.1 (Windows Server 2025), win32 x64, Node v24.14.0, Windows PowerShell 5.1 |
+| Witness | `cmdkey /list:<target>`: `Type: Generic`, `User: anthropic-api-key`, `Local machine persistence` |
+| Measured | warm presence 304 ms; the first PowerShell start of an earlier run on a cold runner took 4083 ms |
+
+The same run passed the Linux and macOS legs, and on this leg the Linux and
+macOS cases asserted that their backends are refused on Windows. This report
+changes only by recording results; the revision after it differs from the
+tested one in documentation and in the evidence digests alone.
