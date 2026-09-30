@@ -7,7 +7,7 @@ import { afterEach, test } from "node:test";
 import { TransactionalActivationManager } from "../../packages/distribution/src/transactional-activation.ts";
 import { healthGate, materializeStagedRelease } from "../helpers/activation-fixture.mjs";
 
-// #393 / AD-034. The verified-release record and the trust-bound rollback that
+// #393 / AD-036. The verified-release record and the trust-bound rollback that
 // reads it. The launcher-level sequence is in
 // tests/e2e/vestra-launcher-activation.test.mjs; these cases pin the manager's
 // half of the contract directly.

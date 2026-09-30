@@ -483,7 +483,7 @@ export class TransactionalActivationManager {
     });
   }
 
-  // invariant (AD-034): a release is retained only when exactly one entry
+  // invariant (AD-036): a release is retained only when exactly one entry
   // under the pinned root carries the pinned identity, it is still installed,
   // and a later TUF-verified activation superseded it. Reads only; `rollback`
   // re-verifies every byte before it switches.
@@ -817,7 +817,7 @@ export class TransactionalActivationManager {
     }
   }
 
-  // invariant (AD-034): with `binding`, the release must be recorded as
+  // invariant (AD-036): with `binding`, the release must be recorded as
   // TUF-verified under that root and built for this host. Unbound, it keeps
   // the operator semantics. Both re-hash every byte and pass health first.
   async rollback(releaseDigest: string, binding?: ActivationProvenance): Promise<ActivationReceipt> {
