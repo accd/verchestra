@@ -30,19 +30,5 @@ function run(label, args, stdin, env) {
 }
 
 const args = ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", "-"];
-const addType = "Add-Type -TypeDefinition 'public static class Probe { public static string Hi() { return \"hi\"; } }'\n[Console]::Out.WriteLine([Probe]::Hi())\nexit 0\n";
-const pick = (keys) => Object.fromEntries(keys.flatMap((key) => (process.env[key] === undefined ? [] : [[key, process.env[key]]])));
-const groups = {
-  modules: ["PSModulePath"],
-  programFiles: ["ProgramFiles", "ProgramFiles(x86)", "ProgramW6432", "CommonProgramFiles", "CommonProgramFiles(x86)", "CommonProgramW6432"],
-  machine: ["COMPUTERNAME", "NUMBER_OF_PROCESSORS", "PROCESSOR_IDENTIFIER", "PROCESSOR_LEVEL", "PROCESSOR_REVISION", "OS"],
-  shell: ["ComSpec", "PATHEXT"],
-  profile: ["ALLUSERSPROFILE", "PUBLIC", "HOMEDRIVE", "HOMEPATH"]
-};
-for (const [name, keys] of Object.entries(groups))
-  await run(`add-type, product env + ${name}`, args, addType, { ...powershellChildEnvironment(), ...pick(keys) });
-await run("add-type, product env + all groups", args, addType, { ...powershellChildEnvironment(), ...pick(Object.values(groups).flat()) });
-await run("add-type, full env", args, addType, process.env);
-const literal = "$p = 'aGVsbG8='\n[Console]::Out.WriteLine('got:' + $p)\nexit 0\n";
-await run("literal payload line", args, literal, process.env);
-console.log(JSON.stringify(Object.keys(process.env).sort()));
+for (let attempt = 1; attempt <= 3; attempt += 1)
+  await run(`has program ${attempt}, product env`, args, credentialProgram("Has", locator), powershellChildEnvironment());

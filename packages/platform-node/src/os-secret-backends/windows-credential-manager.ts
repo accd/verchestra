@@ -1,9 +1,9 @@
 // invariant: the Windows credential backend stores a generic credential in
 // the invoking user's Credential Manager through Windows PowerShell and a
 // small inline P/Invoke of advapi32 CredReadW, CredWriteW, and CredDeleteW
-// (#379, AD-041). The program reaches PowerShell on stdin; the value reaches
-// it on stdin too, as one base64 data line the program consumes as data, so it
-// is never parsed as script, never in argv, and never in the environment.
+// (#379, AD-041). The program reaches PowerShell on stdin, and so does the
+// value: base64-encoded, as the string literal of one assignment line of that
+// program. It is never in argv and never in the environment.
 import { PlatformSecurityError } from "../platform-security-errors.ts";
 import type { OsSecretBackend, OsSecretLocator } from "../secret-broker.ts";
 import {
@@ -42,8 +42,8 @@ export function powershellExecutable(): string {
 
 export function powershellChildEnvironment(): NodeJS.ProcessEnv {
   // invariant: the profile and temporary directories Windows PowerShell and
-  // Add-Type need, the variables that locate the user's Credential Manager,
-  // and a fixed PATH; never an ambient credential.
+  // the C# compiler need, the variables that locate the user's Credential
+  // Manager, and a fixed PATH; never an ambient credential.
   const root = systemRoot();
   return pickEnvironment(
     [
@@ -79,7 +79,7 @@ export const CREDENTIAL_PERSISTENCE = "CRED_PERSIST_LOCAL_MACHINE";
 // line at a time and a statement split over lines would need a blank line to
 // end it. No single quote appears in it, so it sits inside a PowerShell
 // single-quoted string unchanged. Every buffer that held the value is zeroed
-// before it is freed; .NET strings cannot be, and the base64 line is one.
+// before it is freed; .NET strings cannot be, and the base64 literal is one.
 const CREDENTIAL_MANAGER_SOURCE = [
   "using System;",
   "using System.Runtime.InteropServices;",
@@ -110,8 +110,8 @@ const CREDENTIAL_MANAGER_SOURCE = [
   "value = new byte[found.CredentialBlobSize]; if (value.Length > 0) Marshal.Copy(found.CredentialBlob, value, 0, value.Length);",
   "Wipe(found.CredentialBlob, value.Length);",
   'return Marker + "value:" + Convert.ToBase64String(value); } finally { Array.Clear(value, 0, value.Length); CredFree(pointer); } }',
-  'public static string Write(string target, string user, string line) { if (line == null || !line.StartsWith("#")) return Marker + "error:payload";',
-  "byte[] value = Convert.FromBase64String(line.Substring(1)); IntPtr blob = Marshal.AllocHGlobal(Math.Max(value.Length, 1));",
+  'public static string Write(string target, string user, string encoded) { if (String.IsNullOrEmpty(encoded)) return Marker + "error:payload";',
+  "byte[] value = Convert.FromBase64String(encoded); IntPtr blob = Marshal.AllocHGlobal(Math.Max(value.Length, 1));",
   "IntPtr targetName = Marshal.StringToHGlobalUni(target); IntPtr userName = Marshal.StringToHGlobalUni(user);",
   "try { Marshal.Copy(value, 0, blob, value.Length); Credential credential = new Credential(); credential.Type = Generic;",
   "credential.TargetName = targetName; credential.UserName = userName; credential.CredentialBlobSize = (uint)value.Length;",
@@ -136,32 +136,50 @@ export function credentialTarget(locator: Readonly<OsSecretLocator>): string {
 
 type Operation = "Has" | "Read" | "Write" | "Delete";
 
+// why: measured on a hosted Windows runner — the Add-Type cmdlet first loads
+// its module through PowerShell's command discovery, which took 23 to 33 s
+// with the child's allowlisted environment (a cold module-analysis cache),
+// far beyond the presence budget. The same compiler is reached directly
+// through CSharpCodeProvider with no cmdlet at all, so no module is ever
+// discovered, loaded, or shadowed, and the program runs in well under a
+// second.
 const PREAMBLE = [
   "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue'",
-  `Add-Type -TypeDefinition '${CREDENTIAL_MANAGER_SOURCE}'`
+  [
+    "$verchestraOptions = [System.CodeDom.Compiler.CompilerParameters]::new();",
+    "$verchestraOptions.GenerateInMemory = $true;",
+    "$verchestraBuild = [Microsoft.CSharp.CSharpCodeProvider]::new().CompileAssemblyFromSource($verchestraOptions,",
+    `[string[]]@('${CREDENTIAL_MANAGER_SOURCE}'));`,
+    "if ($verchestraBuild.Errors.HasErrors) { [Console]::Out.WriteLine('verchestra-credential:error:compile'); exit 1 };",
+    "$verchestraType = $verchestraBuild.CompiledAssembly.GetType('VerchestraCredentialManager')"
+  ].join(" ")
 ];
 
 export function credentialProgram(operation: Operation, locator: Readonly<OsSecretLocator>): string {
   const target = credentialTarget(locator);
   const call =
     operation === "Write"
-      ? `[VerchestraCredentialManager]::Write('${target}', '${locator.logicalName}', $verchestraPayload)`
-      : `[VerchestraCredentialManager]::${operation}('${target}')`;
+      ? `$verchestraType::Write('${target}', '${locator.logicalName}', $verchestraPayload)`
+      : `$verchestraType::${operation}('${target}')`;
   return [...PREAMBLE, `[Console]::Out.WriteLine(${call})`, "exit 0", ""].join("\n");
 }
 
-// invariant: the value line sits between the statement that reads it and the
-// call that consumes it, and starts with `#`. Should PowerShell ever read that
-// line as script instead of handing it to ReadLine, it is a comment: nothing
-// runs, nothing is echoed, and the write fails closed on a missing payload.
+// hazard: measured on Windows PowerShell 5.1 — under `-Command -` the host
+// reads stdin ahead of the program, so `[Console]::In.ReadLine()` inside the
+// program gets nothing. The value therefore travels as the base64 literal of
+// its own one-statement line. That line holds no keyword that triggers
+// PowerShell's automatic suspicious-script-block logging, but a machine that
+// enforces Script Block Logging by policy records every line, this one
+// included, in its PowerShell Operational event log
+// (docs/qualification/os-secret-backend-windows.md, "Controls not claimed").
 function writeInput(locator: Readonly<OsSecretLocator>, value: Uint8Array): Buffer {
   const target = credentialTarget(locator);
-  const head = Buffer.from([...PREAMBLE, "$verchestraPayload = [Console]::In.ReadLine()", "#"].join("\n"), "latin1");
+  const head = Buffer.from(`${PREAMBLE.join("\n")}\n$verchestraPayload = '`, "latin1");
   const encoded = Buffer.from(Buffer.from(value).toString("base64"), "latin1");
   const tail = Buffer.from(
     [
-      "",
-      `[Console]::Out.WriteLine([VerchestraCredentialManager]::Write('${target}', '${locator.logicalName}', $verchestraPayload))`,
+      "'",
+      `[Console]::Out.WriteLine($verchestraType::Write('${target}', '${locator.logicalName}', $verchestraPayload))`,
       "$verchestraPayload = $null",
       "exit 0",
       ""

@@ -57,8 +57,17 @@ test("the program is one complete statement per line and names the operation and
     const lines = program.split("\n");
     assert.equal(lines.at(-1), "", "the program ends with a newline");
     assert.equal(lines[0], "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue'");
-    assert.match(lines[1], /^Add-Type -TypeDefinition '[^']*'$/u, "the C# source holds no single quote");
-    assert.equal(lines[2], `[Console]::Out.WriteLine([VerchestraCredentialManager]::${operation}('${target}'))`);
+    assert.match(
+      lines[1],
+      /^\$verchestraOptions = \[System\.CodeDom\.Compiler\.CompilerParameters\]::new\(\); \$verchestraOptions\.GenerateInMemory = \$true; \$verchestraBuild = \[Microsoft\.CSharp\.CSharpCodeProvider\]::new\(\)\.CompileAssemblyFromSource\(\$verchestraOptions, \[string\[\]\]@\('[^']*'\)\); if /u,
+      "the C# source holds no single quote"
+    );
+    assert.doesNotMatch(
+      lines[1],
+      /Add-Type|Import-Module|New-Object/u,
+      "no cmdlet, so no module is discovered or loaded"
+    );
+    assert.equal(lines[2], `[Console]::Out.WriteLine($verchestraType::${operation}('${target}'))`);
     assert.equal(lines[3], "exit 0");
   }
 });
@@ -75,20 +84,26 @@ test("the inline P/Invoke is advapi32 CredReadW, CredWriteW, and CredDeleteW on 
   assert.doesNotMatch(source, /Persist(?:Enterprise|Session)|= 3;/u);
 });
 
-test("a write carries the value only as one base64 data line, prefixed so it can never run as script", async () => {
+test("a write carries the value only as the base64 literal of one assignment line", async () => {
   const fake = fakePowerShellRunner();
   await new WindowsCredentialManagerBackend({ runner: fake.runner }).store(locator, value());
   const { stdin, args } = fake.invocations[0];
   const encoded = Buffer.from(VALUE).toString("base64");
   const lines = stdin.split("\n");
-  const reader = lines.indexOf("$verchestraPayload = [Console]::In.ReadLine()");
-  assert.ok(reader > 0);
-  assert.equal(lines[reader + 1], `#${encoded}`);
+  const payload = lines.indexOf(`$verchestraPayload = '${encoded}'`);
+  assert.equal(payload, 2, "the payload follows the preamble");
   assert.equal(
-    lines[reader + 2],
-    `[Console]::Out.WriteLine([VerchestraCredentialManager]::Write('${target}', 'anthropic-api-key', $verchestraPayload))`
+    lines[payload + 1],
+    `[Console]::Out.WriteLine($verchestraType::Write('${target}', 'anthropic-api-key', $verchestraPayload))`
   );
+  assert.equal(lines[payload + 2], "$verchestraPayload = $null");
+  assert.equal(lines[payload + 3], "exit 0");
   assert.equal(stdin.split(encoded).length, 2, "the encoded value appears exactly once");
+  assert.doesNotMatch(
+    lines[payload],
+    /Add-Type|DllImport|FromBase64String|Marshal|Invoke/iu,
+    "the value line holds no keyword that triggers automatic script block logging"
+  );
   assert.equal(stdin.includes(VALUE), false, "the raw value is never in the program");
   assert.equal(stdin.includes(Buffer.from(VALUE).toString("hex")), false);
   assert.equal(args.join(" ").includes(encoded), false);
