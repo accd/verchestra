@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "sourceRevision": "1fffec16713ca76c85dcda696abca9d011f9c51b",
+  "task": {
+    "taskId": "PILOT-S1",
+    "requirementIds": [
+      "VES-EXE-001"
+    ],
+    "dependencyTaskIds": [],
+    "component": "cli",
+    "changeScope": [
+      "cli.js",
+      "test.js"
+    ],
+    "protectedPaths": [
+      ".git",
+      ".verchestra"
+    ],
+    "verificationCommands": [
+      "node --test test.js"
+    ],
+    "doneCriteria": [
+      "cli.js computes the distance once from the complete standard input, so input written in several chunks gives the same result as one chunk",
+      "A new separate test in test.js writes sturgeon, waits at least 100 ms, ends with urgently, and asserts stdout 6; reverting cli.js makes it fail",
+      "All existing tests in test.js still pass unchanged"
+    ],
+    "risk": "medium",
+    "expectedCommitBoundary": "fix(cli): compute the distance from the complete standard input"
+  },
+  "gates": [
+    {
+      "gateId": "gate:target-tests",
+      "requirementIds": [
+        "VES-EXE-001"
+      ],
+      "declaredCommand": "node --test test.js",
+      "commandRef": "node",
+      "args": [
+        "--test",
+        "test.js"
+      ],
+      "cwd": ".",
+      "timeoutMs": 120000,
+      "outputLimitBytes": 1000000,
+      "resultProtocol": "test-summary",
+      "minimumTests": 5
+    }
+  ],
+  "budgets": {
+    "maximumCostUsd": 2,
+    "maximumTokens": 1000000,
+    "maximumDurationMs": 900000
+  },
+  "driver": {
+    "driverId": "claude-code",
+    "model": "claude-sonnet-5"
+  },
+  "verifier": {
+    "driverId": "codex",
+    "model": "gpt-5.2-codex"
+  },
+  "instructions": "Bug: when the CLI reads its two words from standard input, cli.js computes a result for every `data` chunk instead of for the whole input. Input that arrives in more than one chunk (for example `sturgeon`, then ` urgently` written 200 ms later) prints the usage text and exits with code 1 instead of printing `6`. Fix cli.js so it accumulates standard input and computes the distance once, when the input ends. Keep every other behaviour unchanged: the argument path, -i/--insensitive, -h/--help, -v/--version, and the usage error for fewer or more than two words. Add a new, separate test (its own top-level test() call) at the end of test.js that writes `sturgeon` to the CLI's standard input, waits at least 100 ms, then ends the input with ` urgently`, and asserts no error, stdout `6\\n`, and empty stderr. Do not change the existing tests."
+}
