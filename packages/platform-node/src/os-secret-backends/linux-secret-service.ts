@@ -123,15 +123,16 @@ export class LinuxSecretServiceBackend implements OsSecretBackend {
     if (!(await this.has(locator))) throw backendFailure("Secret Service write did not land in the default collection");
   }
 
-  // why: `secret-tool clear` exits 0 whether or not an item matched, so the
-  // reported outcome comes from presence before and after, never from it.
+  // why: `secret-tool clear` exits 1 silently when nothing matched, exactly
+  // like a lookup miss, so the reported outcome comes from presence before
+  // and after, never from its exit status alone.
   async delete(locator: Readonly<OsSecretLocator>): Promise<boolean> {
     if (!(await this.has(locator))) return false;
     const result = await runBounded(this.#runner, {
       args: ["clear", ...attributes(locator)],
       timeoutMs: WRITE_TIMEOUT_MS
     });
-    if (result.exitCode !== 0) throw classify(result, "delete");
+    if (result.exitCode !== 0 && !isNotFound(result)) throw classify(result, "delete");
     if (await this.has(locator)) throw backendFailure("Secret Service delete left the item in place");
     return true;
   }

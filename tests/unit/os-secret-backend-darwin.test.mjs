@@ -274,9 +274,11 @@ test("every operation re-proves the explicit keychain is a real keychain file be
   assert.equal(backend.keychain, "explicit");
 });
 
-test("only darwin has a qualified OS credential store", () => {
-  for (const platform of ["linux", "win32", "freebsd"])
+test("darwin maps to the keychain store; a platform without a qualified store is refused", () => {
+  for (const platform of ["freebsd", "openbsd", "sunos", "aix"])
     assert.throws(() => createOsCredentialStore({ platform }), { code: "VES_SECRET_STORE_UNQUALIFIED" });
+  for (const platform of ["linux", "win32"])
+    assert.notEqual(createOsCredentialStore({ platform }).storeId, "apple-keychain-credential", platform);
   const store = createOsCredentialStore({ platform: "darwin", runner: fakeSecurityRunner().runner });
   assert.equal(store.storeId, "apple-keychain-credential");
   assert.equal(store.keychain, "default");

@@ -86,7 +86,7 @@ test(
       const missing = secretTool(session, ["lookup", ...attributes]);
       assert.deepEqual([missing.status, missing.stdout, missing.stderr], [1, "", ""], "a miss exits 1 silently");
       const clear = secretTool(session, ["clear", ...attributes]);
-      assert.deepEqual([clear.status, clear.stderr], [0, ""], "clearing nothing still exits 0");
+      assert.deepEqual([clear.status, clear.stdout, clear.stderr], [1, "", ""], "clearing nothing exits 1 silently");
       await store.store(workspaceId, "anthropic-api-key", encode("sk-ant-exact"));
       const found = secretTool(session, ["lookup", ...attributes]);
       assert.deepEqual([found.status, found.stdout], [0, "sk-ant-exact"], "a piped lookup prints exactly the value");
@@ -152,11 +152,12 @@ test("linux: a locked collection is never reported as present or read", { timeou
   if (!LINUX) return refusedElsewhere(t);
   await withSession(async ({ session, store }) => {
     await store.store(workspaceId, "anthropic-api-key", encode("sk-ant-locked-sentinel"));
-    const lock = secretTool(session, ["lock", "--collection=/org/freedesktop/secrets/aliases/default"]);
+    const lock = secretTool(session, ["lock", "--collection=login"]);
     t.diagnostic(`lock: exit ${lock.status}, stderr ${JSON.stringify(lock.stderr.trim())}`);
     for (const [label, operation] of [
       ["has", () => store.adapter.has(workspaceId, "anthropic-api-key")],
-      ["read", () => store.adapter.read(workspaceId, "anthropic-api-key")]
+      ["read", () => store.adapter.read(workspaceId, "anthropic-api-key")],
+      ["store", () => store.store(workspaceId, "anthropic-api-key", encode("sk-ant-while-locked"))]
     ]) {
       const started = performance.now();
       let outcome;
