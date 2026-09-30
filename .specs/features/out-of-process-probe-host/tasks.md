@@ -24,12 +24,12 @@
 
 ## T2 — Threat model, ADR, qualification
 
-**Status:** Done. `threat-model.md`, `adr.md` (AD-034 in `.specs/STATE.md`),
+**Status:** Done. `threat-model.md`, `adr.md` (AD-037 in `.specs/STATE.md`),
 `validation.md`, and `docs/qualification/out-of-process-probe-host.md`.
 
 ## T3 — Composition root wiring (not started)
 
-**Status:** Planned, blocked on AD-034 ratification. Compose
+**Status:** Planned, blocked on AD-037 ratification. Compose
 `SpawnedProbeWorker` + `FramedProbeWorker` + the registry and grant issuance in
 `apps/vestra-cli`, and decide how a controller grant is issued and recorded
 (the authority store is the likely home).

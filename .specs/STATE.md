@@ -427,7 +427,7 @@ note. -->
   live rollback demonstration needs two same-root publications built from a
   revision that does. No live run is claimed by this decision.
 
-### AD-034 — Workspace probe workers run out of process under `process-contained` supervision (#235)
+### AD-037 — Workspace probe workers run out of process under `process-contained` supervision (#235)
 
 - **Status:** proposed (the owner ratifies by reviewing the pull request that
   carries `.specs/features/out-of-process-probe-host/`).
