@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { test } from "node:test";
 
 import { canonicalizeJsonV2 } from "../../packages/domain/src/index.ts";
@@ -125,5 +126,69 @@ test("missing protected configuration and a mismatched public reference fail bef
       issuedAt: "2026-08-22T21:10:00.000Z"
     }),
     /does not match the committed public reference/u
+  );
+});
+
+// why: #408 rotated the evidence key. The retired reference keeps its key and
+// gains `validUntil`, so it verifies what it signed before that instant and
+// signs nothing after it, whatever `issuedAt` a caller asserts.
+const RETIRED_AT = "2026-09-30T21:25:00.000Z";
+
+test("a retired reference verifies what it signed before retirement and signs nothing new", async () => {
+  const input = fixture();
+  const retired = { ...input.publicKeyRef, validUntil: RETIRED_AT };
+  const before = await signQualificationEvidenceIndex({
+    ...input,
+    revision,
+    issuedAt: "2026-08-25T18:41:00.000Z",
+    now: new Date("2026-08-25T18:41:00.000Z")
+  });
+  assert.equal(
+    verifyQualificationEvidenceIndex({ index: input.index, envelope: before, publicKeyRef: retired, revision }),
+    true
+  );
+  const after = await signQualificationEvidenceIndex({
+    ...input,
+    revision,
+    issuedAt: "2026-10-01T00:00:00.000Z",
+    now: new Date("2026-10-01T00:00:00.000Z")
+  });
+  assert.equal(
+    verifyQualificationEvidenceIndex({ index: input.index, envelope: after, publicKeyRef: retired, revision }),
+    false,
+    "an attestation issued after retirement does not verify under the retired reference"
+  );
+  for (const [issuedAt, now] of [
+    ["2026-10-01T00:00:00.000Z", "2026-10-01T00:00:00.000Z"],
+    // hazard: a backdated issuedAt must not reopen the window on a later clock.
+    ["2026-08-25T18:41:00.000Z", "2026-10-01T00:00:00.000Z"]
+  ])
+    await assert.rejects(
+      signQualificationEvidenceIndex({ ...input, publicKeyRef: retired, revision, issuedAt, now: new Date(now) }),
+      /retired or not yet valid and admits no new signature/u
+    );
+});
+
+test("the committed T75 evidence verifies under its retired anchor, not the rotated one, which signs nothing new", async () => {
+  const read = (path) => JSON.parse(readFileSync(new URL(`../../${path}`, import.meta.url), "utf8"));
+  const feature = ".specs/features/platform-qualification-matrix/";
+  const committed = {
+    index: read(`${feature}signed-evidence-index.json`),
+    envelope: read(`${feature}qualification-evidence-index.dsse.json`),
+    revision: "be92397ca0a5caaf7ff8b70dad23659b09899d7d"
+  };
+  const retired = read("docs/qualification/trust/retired/t75-evidence-20260825.json");
+  const active = read("docs/qualification/trust/t75-evidence-public-key.json");
+  assert.equal(verifyQualificationEvidenceIndex({ ...committed, publicKeyRef: retired }), true);
+  assert.equal(verifyQualificationEvidenceIndex({ ...committed, publicKeyRef: active }), false);
+  await assert.rejects(
+    signQualificationEvidenceIndex({
+      index: index(),
+      publicKeyRef: retired,
+      revision,
+      issuedAt: "2026-08-25T18:41:00.000Z",
+      protectedEnvironment: {}
+    }),
+    /retired or not yet valid and admits no new signature/u
   );
 });

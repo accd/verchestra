@@ -1,7 +1,7 @@
 {
   "algorithm": "Ed25519",
   "encoding": "spki-der-base64url",
-  "keyId": "t75-evidence-20260825",
-  "publicKey": "MCowBQYDK2VwAyEA1hPd4njMABVD5Z_EegDf2LSWZRZ1sN-fRfmfN81O4Tg",
+  "keyId": "t75-evidence-20260930-custody",
+  "publicKey": "MCowBQYDK2VwAyEAn1uKl0ExTzzosszZvplprdtz9FfAWN1H-cxtP8l9UFU",
   "purposes": ["qualification-evidence-index"]
 }

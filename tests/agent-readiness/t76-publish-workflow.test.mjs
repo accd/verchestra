@@ -19,6 +19,13 @@ const DISPATCH_INPUTS = Object.freeze([
   "rollback_run_id"
 ]);
 
+// invariant: each process variable the publisher reads is filled from one secret of
+// the protected environment (#408), never from a repository secret of the same name.
+const ROLE_SECRETS = Object.freeze({
+  VESTRA_RELEASE_SIGNING_KEY_PKCS8_BASE64: "VESTRA_TUF_OFFLINE_KEY_PKCS8_BASE64",
+  VESTRA_RELEASE_TIMESTAMP_SIGNING_KEY_PKCS8_BASE64: "VESTRA_TUF_ONLINE_KEY_PKCS8_BASE64"
+});
+
 const lines = workflow.split(/\r?\n/);
 
 // Every line that the shell actually executes, i.e. the body of a `run:` block.
@@ -66,10 +73,14 @@ test("the workflow owns no storage endpoint, no upload tool, and only the two ro
   assert.doesNotMatch(workflow, /aws s3/iu);
   assert.doesNotMatch(workflow, /cloudflarestorage/iu);
   const secretNames = new Set([...workflow.matchAll(/secrets\.([A-Za-z0-9_]+)/gu)].map(([, name]) => name));
-  assert.deepEqual(
-    [...secretNames].sort(),
-    ["VESTRA_RELEASE_SIGNING_KEY_PKCS8_BASE64", "VESTRA_RELEASE_TIMESTAMP_SIGNING_KEY_PKCS8_BASE64"].sort()
-  );
+  assert.deepEqual([...secretNames].sort(), Object.values(ROLE_SECRETS).sort());
+});
+
+test("the signing job is bound to the protected tuf-release-signing environment (#408)", () => {
+  // why: the environment is what keeps both keys out of reach of a branch
+  // workflow: the job cannot start until its reviewer approves a run from main.
+  assert.equal([...workflow.matchAll(/^ {4}environment: /gmu)].length, 1, "exactly one job binds an environment");
+  assert.match(workflow, /^ {2}publish:\n(?: {4}.*\n)*? {4}environment: tuf-release-signing\n/mu);
 });
 
 test("every dispatch input is declared and validated against an exact pattern before use", () => {
@@ -133,10 +144,11 @@ test("no untrusted value reaches a run block except through env", () => {
 });
 
 test("each role-separated release secret is a distinct key, reaches one step, and is never echoed", () => {
-  for (const name of ["VESTRA_RELEASE_SIGNING_KEY_PKCS8_BASE64", "VESTRA_RELEASE_TIMESTAMP_SIGNING_KEY_PKCS8_BASE64"]) {
+  for (const [name, secret] of Object.entries(ROLE_SECRETS)) {
     const uses = [...workflow.matchAll(new RegExp(`\\b${name}: \\$\\{\\{ secrets\\.\\S+ \\}\\}`, "gu"))];
     assert.equal(uses.length, 1, `${name} reaches exactly one step`);
-    assert.match(workflow, new RegExp(`\\b${name}: \\$\\{\\{ secrets\\.${name} \\}\\}`, "u"));
+    assert.match(workflow, new RegExp(`\\b${name}: \\$\\{\\{ secrets\\.${secret} \\}\\}`, "u"));
+    assert.equal(workflow.split(`secrets.${secret}`).length, 2, `${secret} is read exactly once`);
   }
   // The T75 evidence key carries different authority and must never be
   // substituted for, or read alongside, either release key.

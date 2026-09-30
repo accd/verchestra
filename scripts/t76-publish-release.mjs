@@ -234,10 +234,21 @@ export const DEFAULT_TIMESTAMP_ANCHOR = new URL(
   import.meta.url
 );
 
+// invariant: the only authority each committed anchor may admit (#18, F1). The
+// publisher and the #382 refresh both name the one their role needs.
+export const RELEASE_ANCHOR_PURPOSE = "tuf-release-root";
+export const TIMESTAMP_ANCHOR_PURPOSE = "tuf-timestamp-snapshot";
+
 const anchorKeyIdOf = (ref, purpose) => {
   const decoded = record(ref, "release anchor");
-  // why: a caller that names a purpose (the #382 refresh) refuses an anchor
-  // reviewed for a different authority, even when its key would verify.
+  // invariant: a retired anchor (#408) carries the instant it stopped being valid.
+  // It stays committed under docs/qualification/trust/retired/ so what it signed
+  // before then stays auditable, but no role ever admits it for a new signature,
+  // whatever path a caller points at.
+  if (Object.hasOwn(decoded, "validUntil"))
+    fail("VES_T76_PUBLISH_ANCHOR_RETIRED", "the signing anchor is retired and admits no new signature");
+  // why: an anchor reviewed for a different authority is refused even when its
+  // key would verify.
   if (
     purpose !== undefined &&
     (!Array.isArray(decoded.purposes) || decoded.purposes.length !== 1 || decoded.purposes[0] !== purpose)
@@ -852,9 +863,21 @@ export async function publishT76Release(rawOptions) {
     release: releaseSignerFromEnvironment(options.protectedEnvironment),
     timestamp: releaseSignerFromEnvironment(options.protectedEnvironment, TIMESTAMP_KEY_ENVIRONMENT_NAME)
   });
-  if (signing.release.keyId !== (await expectedAnchorKeyId(options.releaseAnchorPath, DEFAULT_RELEASE_ANCHOR)))
+  // why: each anchor must be reviewed for its own role (#408), so the offline anchor
+  // cannot stand in for the online one, nor the evidence anchor for either.
+  const releaseAnchor = await expectedAnchorKeyId(
+    options.releaseAnchorPath,
+    DEFAULT_RELEASE_ANCHOR,
+    RELEASE_ANCHOR_PURPOSE
+  );
+  const timestampAnchor = await expectedAnchorKeyId(
+    options.timestampAnchorPath,
+    DEFAULT_TIMESTAMP_ANCHOR,
+    TIMESTAMP_ANCHOR_PURPOSE
+  );
+  if (signing.release.keyId !== releaseAnchor)
     fail("VES_T76_PUBLISH_KEY_MISMATCH", "the release signing key does not match the reviewed release anchor");
-  if (signing.timestamp.keyId !== (await expectedAnchorKeyId(options.timestampAnchorPath, DEFAULT_TIMESTAMP_ANCHOR)))
+  if (signing.timestamp.keyId !== timestampAnchor)
     fail("VES_T76_PUBLISH_KEY_MISMATCH", "the timestamp signing key does not match the reviewed timestamp anchor");
   if (signing.release.keyId === signing.timestamp.keyId)
     fail("VES_T76_PUBLISH_KEY_MISMATCH", "the release and timestamp signing keys must be different keys");

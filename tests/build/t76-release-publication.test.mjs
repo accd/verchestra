@@ -18,8 +18,13 @@ import {
 import { buildVestraLauncher } from "../../scripts/build-vestra-launcher.mjs";
 import { PUBLICATION_LEDGER_SCHEMA, ledgerEntryDigest } from "../../scripts/tuf-publication-ledger.mjs";
 import {
+  DEFAULT_RELEASE_ANCHOR,
+  DEFAULT_TIMESTAMP_ANCHOR,
   MANUAL_UPLOAD_STEPS,
+  RELEASE_ANCHOR_PURPOSE,
   SUPPORTED_TARGET_KEYS,
+  TIMESTAMP_ANCHOR_PURPOSE,
+  expectedAnchorKeyId,
   publishT76Release,
   releaseSignerFromEnvironment
 } from "../../scripts/t76-publish-release.mjs";
@@ -35,7 +40,8 @@ import {
   sha,
   tamperPayload,
   testSigningKeyBase64,
-  writeMatchingReleaseAnchor
+  writeMatchingReleaseAnchor,
+  writeRetiredAnchorCopy
 } from "../helpers/t76-publication-fixture.mjs";
 
 const execute = promisify(execFile);
@@ -45,8 +51,8 @@ after(async () => {
   await disposePublicationFixtures();
 });
 
-const anchorFor = (closure, key) =>
-  typeof key === "string" && key.length > 0 ? writeMatchingReleaseAnchor(closure.root, key) : undefined;
+const anchorFor = (closure, key, purpose) =>
+  typeof key === "string" && key.length > 0 ? writeMatchingReleaseAnchor(closure.root, key, purpose) : undefined;
 
 const optionsFor = (closure, environment, rollbackIndexPath) => {
   // The publisher binds each role-separated signing key to its own reviewed
@@ -67,8 +73,8 @@ const optionsFor = (closure, environment, rollbackIndexPath) => {
     rootVersion: 1,
     rollbackIndexPath,
     protectedEnvironment: environment,
-    releaseAnchorPath: anchorFor(closure, release),
-    timestampAnchorPath: anchorFor(closure, timestamp)
+    releaseAnchorPath: anchorFor(closure, release, RELEASE_ANCHOR_PURPOSE),
+    timestampAnchorPath: anchorFor(closure, timestamp, TIMESTAMP_ANCHOR_PURPOSE)
   };
 };
 
@@ -209,7 +215,7 @@ test("refuses a timestamp key that is not the reviewed timestamp anchor, before 
   // different key. The online key is bound to its own reviewed anchor too (F1).
   const options = {
     ...optionsFor(closure, withKey(), rollback.indexPath),
-    timestampAnchorPath: writeMatchingReleaseAnchor(closure.root, testSigningKeyBase64())
+    timestampAnchorPath: writeMatchingReleaseAnchor(closure.root, testSigningKeyBase64(), TIMESTAMP_ANCHOR_PURPOSE)
   };
   await assert.rejects(() => publishT76Release(options), { code: "VES_T76_PUBLISH_KEY_MISMATCH" });
   await assert.rejects(() => readdir(closure.outputDirectory), { code: "ENOENT" });
@@ -224,6 +230,58 @@ test("fails closed when the reviewed timestamp anchor is absent (the owner must 
   };
   await assert.rejects(() => publishT76Release(options), { code: "VES_T76_PUBLISH_ANCHOR_MISSING" });
   await assert.rejects(() => readdir(closure.outputDirectory), { code: "ENOENT" });
+});
+
+test("refuses an anchor reviewed for the other role, even when it names the right key (#408)", async () => {
+  const rollback = await sharedPrior();
+  const closure = await candidateClosure();
+  const keys = withKey();
+  for (const [option, key, purpose] of [
+    ["releaseAnchorPath", keys.VESTRA_RELEASE_SIGNING_KEY_PKCS8_BASE64, TIMESTAMP_ANCHOR_PURPOSE],
+    ["timestampAnchorPath", keys.VESTRA_RELEASE_TIMESTAMP_SIGNING_KEY_PKCS8_BASE64, RELEASE_ANCHOR_PURPOSE]
+  ]) {
+    const options = {
+      ...optionsFor(closure, keys, rollback.indexPath),
+      [option]: writeMatchingReleaseAnchor(closure.root, key, purpose)
+    };
+    await assert.rejects(() => publishT76Release(options), { code: "VES_T76_PUBLISH_ANCHOR_INVALID" });
+    await assert.rejects(() => readdir(closure.outputDirectory), { code: "ENOENT" });
+  }
+});
+
+test("refuses a retired anchor for either role, even when it names the signing key, before any output (#408)", async () => {
+  // why: the keys match their anchors exactly; only the retirement instant
+  // differs, so the retirement alone is what refuses the run.
+  const rollback = await sharedPrior();
+  const closure = await candidateClosure();
+  const base = optionsFor(closure, withKey(), rollback.indexPath);
+  for (const option of ["releaseAnchorPath", "timestampAnchorPath"]) {
+    const options = { ...base, [option]: writeRetiredAnchorCopy(base[option]) };
+    await assert.rejects(() => publishT76Release(options), {
+      code: "VES_T76_PUBLISH_ANCHOR_RETIRED"
+    });
+    await assert.rejects(() => readdir(closure.outputDirectory), { code: "ENOENT" });
+  }
+});
+
+test("the committed anchors rotated by #408 are retired, and their active successors are admitted", async () => {
+  const retired = (name) => new URL(`../../docs/qualification/trust/retired/${name}.json`, import.meta.url);
+  for (const [name, purpose] of [
+    ["verchestra-release-20260825", RELEASE_ANCHOR_PURPOSE],
+    ["verchestra-release-timestamp-20260930", TIMESTAMP_ANCHOR_PURPOSE]
+  ])
+    await assert.rejects(() => expectedAnchorKeyId(fileURLToPath(retired(name)), undefined, purpose), {
+      code: "VES_T76_PUBLISH_ANCHOR_RETIRED"
+    });
+  // why: the fingerprints recorded in docs/release-custody.md for the new keys.
+  assert.equal(
+    await expectedAnchorKeyId(undefined, DEFAULT_RELEASE_ANCHOR, RELEASE_ANCHOR_PURPOSE),
+    "f120cbbb93391adc3a71d35d74048c148753f755eb228739a3ddada8560ce467"
+  );
+  assert.equal(
+    await expectedAnchorKeyId(undefined, DEFAULT_TIMESTAMP_ANCHOR, TIMESTAMP_ANCHOR_PURPOSE),
+    "0ad7e44bfe1d6b77c683438b9ed1a78b1319f8a8194453bec659d149bd09d6f1"
+  );
 });
 
 test("refuses the same key for the offline and online roles", async () => {
@@ -867,7 +925,7 @@ test("the command line never emits key material on success or on failure", async
     "--release-anchor",
     writeMatchingReleaseAnchor(closure.root, key),
     "--timestamp-anchor",
-    writeMatchingReleaseAnchor(closure.root, timestampKey)
+    writeMatchingReleaseAnchor(closure.root, timestampKey, TIMESTAMP_ANCHOR_PURPOSE)
   ];
   const run = async (release) =>
     await execute(process.execPath, args, {

@@ -1,0 +1,8 @@
+{
+  "algorithm": "Ed25519",
+  "encoding": "spki-pem",
+  "keyId": "verchestra-release-timestamp-20260930",
+  "publicKey": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEANJz+VCKuvgu+y0bZXMOHxpfrSO7C2eCIT5z/gNEVjss=\n-----END PUBLIC KEY-----\n",
+  "purposes": ["tuf-timestamp-snapshot"],
+  "validUntil": "2026-09-30T21:25:00.000Z"
+}

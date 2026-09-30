@@ -18,14 +18,29 @@ test("the T75 evidence workflow is manual, exact-SHA bound, and accepts all five
 });
 
 test("the workflow reads a protected PKCS#8 secret only in the signing step and verifies before publishing", () => {
+  // invariant: the key is the protected environment's secret (#408), read into the
+  // process variable the attestation script expects, and nowhere else.
   assert.match(
     workflow,
-    /VESTRA_T75_EVIDENCE_SIGNING_KEY_PKCS8_BASE64: \$\{\{ secrets\.VESTRA_T75_EVIDENCE_SIGNING_KEY_PKCS8_BASE64 \}\}/u
+    /^ {10}VESTRA_T75_EVIDENCE_SIGNING_KEY_PKCS8_BASE64: \$\{\{ secrets\.VESTRA_T75_EVIDENCE_KEY_PKCS8_BASE64 \}\}$/mu
   );
-  assert.doesNotMatch(workflow, /echo.*VESTRA_T75_EVIDENCE_SIGNING_KEY_PKCS8_BASE64/iu);
+  const secretNames = new Set([...workflow.matchAll(/secrets\.([A-Za-z0-9_]+)/gu)].map(([, name]) => name));
+  assert.deepEqual([...secretNames], ["VESTRA_T75_EVIDENCE_KEY_PKCS8_BASE64"]);
+  assert.equal([...workflow.matchAll(/secrets\.VESTRA_T75_EVIDENCE_KEY_PKCS8_BASE64/gu)].length, 1);
+  assert.doesNotMatch(workflow, /echo.*VESTRA_T75_EVIDENCE/iu);
   assert.match(workflow, /t75-evidence-attestation\.mjs sign/u);
   assert.match(workflow, /t75-evidence-attestation\.mjs verify/u);
   assert.match(workflow, /signed-evidence-index\.json/u);
+});
+
+test("the signing job is bound to the protected t75-evidence-signing environment and refuses a retired reference (#408)", () => {
+  assert.equal([...workflow.matchAll(/^ {4}environment: /gmu)].length, 1, "exactly one job binds an environment");
+  assert.match(workflow, /^ {2}attest:\n(?: {4}.*\n)*? {4}environment: t75-evidence-signing\n/mu);
+  // why: retired references live under docs/qualification/trust/retired/; the
+  // nested-path refusal precedes the accepting pattern, which would match it.
+  const nested = workflow.indexOf("docs/qualification/trust/*/*) echo");
+  const accepted = workflow.indexOf("docs/qualification/trust/*.json) ;;");
+  assert.ok(nested >= 0 && accepted > nested, "a nested reference is refused before a committed one is accepted");
 });
 
 test("the workflow publishes only public verification material through pinned actions", () => {
