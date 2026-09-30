@@ -56,9 +56,17 @@ test("the matrix is exactly Linux, Windows, and macOS, and one failing store nev
 });
 
 test("Linux installs the Secret Service tools, and every leg runs the qualification suite unconditionally", () => {
-  assert.match(
-    workflow,
-    /- name: Install the Secret Service tools\r?\n\s*if: matrix\.platform == 'linux'\r?\n\s*run: \|\r?\n(?:\s+.*\r?\n)*?\s+sudo apt-get install --yes --no-install-recommends libsecret-tools gnome-keyring dbus-x11\r?\n/u
+  const start = workflow.indexOf("- name: Install the Secret Service tools");
+  assert.ok(start >= 0, "the Secret Service install step exists");
+  const next = workflow.indexOf("- name: ", start + 1);
+  const step = workflow
+    .slice(start, next === -1 ? undefined : next)
+    .split(/\r?\n/u)
+    .map((line) => line.trim());
+  assert.equal(step[1], "if: matrix.platform == 'linux'");
+  assert.equal(step[2], "run: |");
+  assert.ok(
+    step.slice(3).includes("sudo apt-get install --yes --no-install-recommends libsecret-tools gnome-keyring dbus-x11")
   );
   assert.match(workflow, /- name: Qualify the platform credential store\r?\n\s*run: pnpm qualify:keychain\s*$/u);
   assert.equal([...workflow.matchAll(/run: pnpm qualify:keychain/gu)].length, 1);

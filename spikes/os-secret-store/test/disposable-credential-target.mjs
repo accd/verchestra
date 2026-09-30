@@ -42,12 +42,13 @@ export function isListed(target) {
 export async function withRandomTargets(names, body, options = {}) {
   const workspaceId = randomWorkspaceId();
   const store = createOsCredentialStore({ platform: "win32", ...options });
+  let leftovers = [];
   try {
     await body({ workspaceId, store, target: (name) => `verchestra/${workspaceId}/${name}` });
   } finally {
     const cleanup = createOsCredentialStore({ platform: "win32" });
     for (const name of names) await cleanup.delete(workspaceId, name);
-    for (const name of names)
-      if (isListed(`verchestra/${workspaceId}/${name}`)) throw new Error(`cleanup left ${name} behind`);
+    leftovers = names.filter((name) => isListed(`verchestra/${workspaceId}/${name}`));
   }
+  if (leftovers.length > 0) throw new Error(`cleanup left ${leftovers.join(", ")} behind`);
 }
