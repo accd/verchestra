@@ -122,13 +122,15 @@ export function storeUnavailable(cause?: unknown): PlatformSecurityError {
   );
 }
 
-// invariant: every spawn is bounded. A child killed at its timeout is a store
-// waiting for a person (locked, or an approval prompt nobody answered), and a
-// tool that cannot be started is a store that is not installed; neither is
-// ever reported as a hang or as a generic failure.
+// invariant: every spawn is bounded. A child killed at its timeout is, by
+// default, a store waiting for a person (locked, or an approval prompt nobody
+// answered); a backend whose store never prompts names its own timeout error.
+// A tool that cannot be started is a store that is not installed. Neither is
+// ever reported as a hang.
 export async function runBounded(
   runner: CredentialToolRunner,
-  invocation: CredentialToolInvocation
+  invocation: CredentialToolInvocation,
+  onTimeout: () => PlatformSecurityError = interactionRequired
 ): Promise<CredentialToolResult> {
   let result: CredentialToolResult;
   try {
@@ -137,7 +139,7 @@ export async function runBounded(
     if (error instanceof CredentialToolUnavailableError) throw storeUnavailable(error);
     throw error;
   }
-  if (result.timedOut === true) throw interactionRequired();
+  if (result.timedOut === true) throw onTimeout();
   return result;
 }
 

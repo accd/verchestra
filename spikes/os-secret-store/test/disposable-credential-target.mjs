@@ -32,8 +32,12 @@ export function describeTarget(target) {
   return result.stdout;
 }
 
+// why: measured — `cmdkey /list:<target>` prints a generic credential written
+// through CredWriteW as `Target: <target>`, with no `LegacyGeneric:` prefix.
 export function isListed(target) {
-  return describeTarget(target).includes(`target=${target}`);
+  return describeTarget(target)
+    .split(/\r?\n/u)
+    .some((line) => line.trim() === `Target: ${target}`);
 }
 
 // invariant: every name the caller used under the random Workspace is deleted
