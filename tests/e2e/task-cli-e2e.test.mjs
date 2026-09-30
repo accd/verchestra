@@ -1,12 +1,12 @@
 // invariant: #405's governed task journeys, end to end through the real
 // `vestra` binary as a child process. The implementer and verifier are the
 // DETERMINISTIC FAKE `claude` and `codex` executables in
-// tests/helpers/task-cli-fakes (first on PATH); credentials come from the fake
-// keychain preload (tests/helpers/fake-keychain-spawn.mjs, layered on the deny
-// guard); the gate is a real process run through the machine-local allowlist.
-// No provider is contacted and no product code carries a test hook.
+// tests/helpers/task-cli-fakes, run through per-fixture wrappers first on PATH;
+// credentials come from the fake keychain preload
+// (tests/helpers/fake-keychain-spawn.mjs, layered on the deny guard); the gate
+// is a real process run through the machine-local allowlist. No provider is
+// contacted and no product code carries a test hook.
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { rm, writeFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
@@ -23,7 +23,6 @@ import {
 after(cleanupTaskFixtures);
 
 const TIMEOUT = { timeout: 300_000 };
-const sha = (value) => createHash("sha256").update(value).digest("hex");
 
 function ok(result, label) {
   assert.equal(result.status, 0, `${label}: ${result.stderr}\n${result.stdout}`);
@@ -220,14 +219,14 @@ test("a governed task is planned, approved, implemented, gated, verified, and ac
   // The implementer saw only its brokered credential, in an isolated home; the
   // verifier ran read-only with no tools, its own credential, and CODEX_HOME.
   const [claude] = logLines(fixture, "fake-claude.log");
-  assert.equal(claude.credentialDigest, sha(CREDENTIALS["anthropic-api-key"]));
+  assert.equal(claude.credentialMatchesStore, true);
   assert.notEqual(claude.home, fixture.home);
   assert.equal(claude.environmentKeys.includes("OPENAI_API_KEY"), false);
   assert.equal(claude.environmentKeys.includes("VERCHESTRA_TEST_FAKE_KEYCHAIN_STORE"), false);
   const [codex] = logLines(fixture, "fake-codex.log");
   assert.equal(codex.sandbox, "read-only");
   assert.equal(codex.tools, 0);
-  assert.equal(codex.credentialDigest, sha(CREDENTIALS["openai-api-key"]));
+  assert.equal(codex.credentialMatchesStore, true);
   assert.ok(codex.codexHome.startsWith(fixture.stateRoot));
   assert.equal(codex.environmentKeys.includes("ANTHROPIC_API_KEY"), false);
 

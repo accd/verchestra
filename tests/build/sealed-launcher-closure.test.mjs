@@ -46,6 +46,7 @@ import { NodeActivationHealthGate } from "../../packages/platform-node/src/activ
 import { DEFAULT_RUNTIME_MIGRATIONS } from "../../packages/platform-node/src/runtime-store/runtime-migrations.ts";
 import { SEALED_LAUNCHER_ENTRIES, bundleSealedLauncher } from "../../scripts/t76-build-candidate.mjs";
 import { createSealedRepositoryReplica } from "../helpers/sealed-repository-fixture.mjs";
+import { systemGit } from "../helpers/system-git.mjs";
 
 const SEALED_VERSION = "9.9.9-sealed";
 const NODE_VERSION = process.version.slice(1);
@@ -509,7 +510,7 @@ test("vestra task is reachable from the sealed bundle and its bridge relay is st
   };
   await mkdir(state, { recursive: true });
   await writeFile(join(state, "task-gates.json"), JSON.stringify(allowlist));
-  const revision = execFileSync("git", ["rev-parse", "HEAD"], { cwd: project, encoding: "utf8" }).trim();
+  const revision = execFileSync(systemGit(), ["rev-parse", "HEAD"], { cwd: project, encoding: "utf8" }).trim();
   const request = join(home, "request.json");
   await writeFile(
     request,

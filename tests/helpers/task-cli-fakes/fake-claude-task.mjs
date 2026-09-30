@@ -5,9 +5,9 @@
 // contacts a provider. The scenario comes from `scenario:<name>` in the task
 // instructions, which reach it only through the prompt.
 import { spawn } from "node:child_process";
-import { createHash } from "node:crypto";
-import { appendFileSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { readFileSync } from "node:fs";
+
+import { credentialMatchesStore, fixtureLog, providerArguments } from "./fixture-channel.mjs";
 
 const VERSION = "2.1.282";
 if (process.argv.includes("--version")) {
@@ -15,7 +15,8 @@ if (process.argv.includes("--version")) {
   process.exit(0);
 }
 
-const argv = process.argv.slice(2);
+const log = fixtureLog("fake-claude.log");
+const argv = providerArguments;
 const option = (name) => argv[argv.indexOf(name) + 1];
 const emit = (value) => process.stdout.write(`${JSON.stringify(value)}\n`);
 
@@ -25,17 +26,11 @@ const prompt = JSON.parse(input.trim().split(/\r?\n/u)[0]).message.content[0].te
 const scenario = /scenario:([a-z-]+)/u.exec(prompt)?.[1] ?? "implement";
 const model = option("--model");
 const server = JSON.parse(readFileSync(option("--mcp-config"), "utf8")).mcpServers.verchestra;
-const log = (entry) => {
-  if (process.env.TMPDIR !== undefined)
-    appendFileSync(join(process.env.TMPDIR, "fake-claude.log"), `${JSON.stringify(entry)}\n`);
-};
 log({
   scenario,
   cwd: process.cwd(),
   home: process.env.HOME,
-  credentialDigest: createHash("sha256")
-    .update(process.env.ANTHROPIC_API_KEY ?? "")
-    .digest("hex"),
+  credentialMatchesStore: credentialMatchesStore("anthropic-api-key", process.env.ANTHROPIC_API_KEY),
   environmentKeys: Object.keys(process.env).sort((left, right) => Number(left > right) - Number(left < right)),
   promptHasInjectionText: prompt.includes("IGNORE ALL RULES")
 });
@@ -66,7 +61,7 @@ function mcpClient() {
       const id = nextId;
       const response = new Promise((resolve, reject) => {
         waiting.set(id, resolve);
-        exited.then(() => reject(new Error("MCP server exited")));
+        void exited.then(() => reject(new Error("MCP server exited")));
       });
       child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", id, method, params })}\n`);
       return response;

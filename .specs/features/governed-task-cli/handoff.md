@@ -56,8 +56,9 @@ T7: `apps/vestra-cli/src/task/` (see design.md), seven manifest entries,
 sealed release.
 
 T8: `tests/e2e/task-cli-e2e.test.mjs`, `tests/security/task-cli-security.test.mjs`,
-the labeled fakes in `tests/helpers/task-cli-fakes/`, and the fake keychain
-preload.
+the labeled fakes in `tests/helpers/task-cli-fakes/` (run through per-fixture
+wrappers that name the log directory and fake keychain store explicitly), and
+the fake keychain preload.
 
 T9: `docs/quick-start.md`, README, the site status line, the acceptance-matrix
 note, AD-040 in `.specs/STATE.md`, and this directory. Every requirement is
