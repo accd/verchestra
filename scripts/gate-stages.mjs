@@ -1,21 +1,12 @@
+const STATIC_CHECKS = ["format:check", "lint", "complexity:check", "typecheck"];
+
 export const GATE_STAGES = Object.freeze({
   // why: the canonical-JSON census once ran only under security and release, so a
   // script that gained a canonicalizer merged red on gate:quick alone (#395). The
   // census is a sub-second static scan, so every change now pays for it.
-  "gate:quick": [
-    "format:check",
-    "lint",
-    "complexity:check",
-    "typecheck",
-    "test:unit",
-    "test:agent-readiness",
-    "test:census"
-  ],
+  "gate:quick": [...STATIC_CHECKS, "test:unit", "test:agent-readiness", "test:census"],
   "gate:full": [
-    "format:check",
-    "lint",
-    "complexity:check",
-    "typecheck",
+    ...STATIC_CHECKS,
     "test:unit",
     "test:contract",
     "test:integration",
@@ -24,10 +15,7 @@ export const GATE_STAGES = Object.freeze({
     "test:mutation"
   ],
   "gate:build": [
-    "format:check",
-    "lint",
-    "complexity:check",
-    "typecheck",
+    ...STATIC_CHECKS,
     "build",
     "test:unit",
     "test:contract",
@@ -38,10 +26,7 @@ export const GATE_STAGES = Object.freeze({
     "test:qualification"
   ],
   "gate:security": [
-    "format:check",
-    "lint",
-    "complexity:check",
-    "typecheck",
+    ...STATIC_CHECKS,
     "build",
     "test:unit",
     "test:contract",
@@ -52,10 +37,7 @@ export const GATE_STAGES = Object.freeze({
     "test:fault"
   ],
   "gate:release": [
-    "format:check",
-    "lint",
-    "complexity:check",
-    "typecheck",
+    ...STATIC_CHECKS,
     "build",
     "test:unit",
     "test:architecture",
