@@ -36,7 +36,7 @@ log({
   credentialDigest: createHash("sha256")
     .update(process.env.ANTHROPIC_API_KEY ?? "")
     .digest("hex"),
-  environmentKeys: Object.keys(process.env).sort(),
+  environmentKeys: Object.keys(process.env).sort((left, right) => Number(left > right) - Number(left < right)),
   promptHasInjectionText: prompt.includes("IGNORE ALL RULES")
 });
 

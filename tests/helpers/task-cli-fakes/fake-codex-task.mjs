@@ -55,7 +55,7 @@ lines.on("line", (line) => {
       credentialDigest: createHash("sha256")
         .update(process.env.OPENAI_API_KEY ?? "")
         .digest("hex"),
-      environmentKeys: Object.keys(process.env).sort()
+      environmentKeys: Object.keys(process.env).sort((left, right) => Number(left > right) - Number(left < right))
     });
     emit({ id: message.id, result: { thread: { id: "private-thread-id" } } });
     emit({ method: "thread/started", params: { thread: { id: "private-thread-id" } } });
