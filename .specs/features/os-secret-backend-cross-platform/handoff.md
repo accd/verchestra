@@ -7,7 +7,7 @@ branch: feat/379-linux-windows-credential-stores
 baseRevision: f0d01e01ad2a98d7521e9aca0ae4f28ffe666899
 lastCompletedTask: T8
 nextTask: "T9 — independent review of AD-041, in particular the Windows value channel (a base64 literal line guarded by the PowerShell logging-policy check) versus the alternative of a script via -EncodedCommand with the value as stdin data"
-lastGate: "GATE_PLACEHOLDER"
+lastGate: "pnpm gate:quick PASS; pnpm gate:build PASS; pnpm gate:security PASS; pnpm test:e2e PASS (215); pnpm agent:check PASS; pnpm site:check PASS; 0 skipped, 0 todo; pnpm qualify:keychain green on ubuntu-latest, windows-latest, macos-latest (run 36681219761)"
 updatedAt: 2026-09-30T00:00:00Z
 ---
 
@@ -50,7 +50,6 @@ reviewer ratifies or amends AD-041, and in particular:
 1. After review, merge, then run `vestra secret set --name anthropic-api-key`
    and `vestra doctor --deep` once on a real Linux desktop and a real Windows
    logon, and record the verdicts.
-2. When PR #430, which records the macOS owner run, merges, update the darwin
-   report's paragraph that says Linux and Windows have no backend, then rebind
-   `DARWIN_KEYCHAIN_CREDENTIAL_QUALIFICATION.digest`. That paragraph was left
-   alone here to avoid a conflict with #430.
+2. PR #430's macOS owner run is merged. The darwin report now points to the
+   Linux and Windows reports and records the CI macOS leg, and
+   `DARWIN_KEYCHAIN_CREDENTIAL_QUALIFICATION.digest` is rebound.
