@@ -149,7 +149,7 @@ serialization target* set, not a driver registry.
 
 | Driver | Qualified version | Pin location | Real probe? |
 | ------ | ----------------- | ------------ | ----------- |
-| Claude Code | `2.1.168` | `packages/drivers/src/claude-code-driver.ts:86`; CI install `platform-matrix.yml:190` | **Yes** — `spikes/claude-code-driver/test/claude-driver.test.mjs:16`, `--version` only |
+| Claude Code | T03 minimum `2.1.168`, mediated minimum `2.1.282`, installed `2.1.282` | `packages/drivers/src/claude-code-driver.ts:240`; CI install `platform-matrix.yml:194` | **Yes** — `spikes/claude-code-driver/test/claude-driver.test.mjs:39`, `--version` only; the mediated flags are read from `--help` |
 | Codex | `0.115.0` | `codex-driver.ts:90`; same CI line | **Yes** — `spikes/codex-driver/test/codex-driver.test.mjs:13` |
 | OpenCode | minimum `1.17.18`, installed `1.18.33` | `opencode-driver.ts:238`; root devDependency | **Yes** — `spikes/opencode-driver/test/opencode-driver.test.mjs:79` |
 | Pi | `0.87.1` | `packages/drivers/src/pi-driver.ts:14` | **Yes** — `PiDriver.probe()` resolves the installed `@earendil-works/pi-agent-core/package.json`, rejects drift, and reports the observed version |
@@ -161,7 +161,9 @@ Every other driver test in the repository is fake-backed (`fake-claude.mjs`,
 means the Driver matrix's real axis is exactly three `--version` probes.
 
 **Version drift to record:** OpenCode's production default minimum
-(`1.17.18`) is not the installed qualified version (`1.18.33`).
+(`1.17.18`) is not the installed qualified version (`1.18.33`). Claude Code's
+T03 default minimum (`2.1.168`) is not the installed qualified version
+(`2.1.282`), which is the mediated profile's minimum.
 
 **Cross-driver matrix: composed and exercised in PR #296.** The focused
 integration scenario resolves Claude Code as implementer and Codex as verifier,

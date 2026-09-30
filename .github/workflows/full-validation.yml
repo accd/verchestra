@@ -118,12 +118,12 @@ jobs:
       - name: Install the qualified local driver probes
         if: steps.probes.outputs.needed == 'yes'
         run: |
-          npm install --global --no-audit --no-fund @anthropic-ai/claude-code@2.1.168 @openai/codex@0.115.0
+          npm install --global --no-audit --no-fund @anthropic-ai/claude-code@2.1.282 @openai/codex@0.115.0
           claude_version="$(claude --version)"
           codex_version="$(codex --version)"
           printf 'Claude Code version: %s\n' "$claude_version"
           printf 'Codex version: %s\n' "$codex_version"
-          case "$claude_version" in "2.1.168"|"2.1.168 "*) ;; *) exit 1 ;; esac
+          case "$claude_version" in "2.1.282"|"2.1.282 "*) ;; *) exit 1 ;; esac
           case "$codex_version" in "codex-cli 0.115.0"|"codex-cli 0.115.0 "*) ;; *) exit 1 ;; esac
       - name: Run selected qualification gate
         env:

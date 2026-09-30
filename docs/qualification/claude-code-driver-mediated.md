@@ -81,7 +81,9 @@ stream-json events.
 - Cancellation terminates the session and still removes the isolation
   directory.
 - Every flag the profile passes appears in the installed Claude Code's `--help`
-  output. The check reports not configured when Claude Code is absent.
+  output. On a build below the minimum, the check instead proves that the
+  profile refuses that build with `VES_CLAUDE_VERSION_UNSUPPORTED`. The check
+  reports not configured when Claude Code is absent.
 
 Also covered:
 
@@ -100,9 +102,10 @@ Also covered:
   the installed build. The live `system/init` tool surface, live MCP launch, and
   live model behavior are evidence for the separately authorized #406 pilot.
   This report does not claim them.
-- The fleet pin for the T03 profile (`2.1.168`) is unchanged. The mediated
-  profile requires `2.1.282` or later within major 2 and is not qualified on
-  older builds.
+- The fleet pin moves from `2.1.168` to `2.1.282`, recorded in
+  `docs/qualification/claude-code-driver-2.1.282.md`; the T03 floor stays
+  `2.1.168`. The mediated profile requires `2.1.282` or later within major 2
+  and is not qualified on older builds.
 - macOS and Linux only. On Windows the profile and the bridge report not
   configured.
 - This is process configuration, not an OS sandbox. Claude Code keeps network
