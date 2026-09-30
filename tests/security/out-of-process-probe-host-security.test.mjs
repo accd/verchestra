@@ -9,9 +9,10 @@ import { SpawnedProbeWorker } from "../../packages/platform-node/src/index.ts";
 import { workspaceId } from "../helpers/database-probe-fixture.mjs";
 import {
   ObservingResultSink,
-  POSIX_ONLY,
+  WIN32_HOST,
   eventuallyDead,
   fileDigest,
+  probeHostRefusedOnWin32,
   spawnedProbe
 } from "../helpers/spawned-probe-worker-fixture.mjs";
 
@@ -41,49 +42,45 @@ for (const [label, mode, code] of [
   ["a replayed sequence number under a new message id", "stale-sequence", "VES_PROBE_SEQUENCE_GAP"],
   ["a self-reported component digest that differs from the approved one", "lie-digest", "VES_PROBE_HANDSHAKE_COMPONENT"]
 ]) {
-  test(`a spawned worker sending ${label} is terminated`, { skip: POSIX_ONLY }, async () => {
+  test(`a spawned worker sending ${label} is terminated`, async (t) => {
+    if (WIN32_HOST) return probeHostRefusedOnWin32(t);
     await assertContained(await spawnedProbe({ mode }), code);
   });
 }
 
-test(
-  "a workspace worker without workspace admission cannot pass the product handshake pin",
-  { skip: POSIX_ONLY },
-  async () => {
-    const fixture = await spawnedProbe({
-      productComponent: { id: "probe-worker:postgresql", digest: `sha256:${"1".repeat(64)}` }
-    });
-    await assertContained(fixture, "VES_PROBE_HANDSHAKE_COMPONENT");
-  }
-);
+test("a workspace worker without workspace admission cannot pass the product handshake pin", async (t) => {
+  if (WIN32_HOST) return probeHostRefusedOnWin32(t);
+  const fixture = await spawnedProbe({
+    productComponent: { id: "probe-worker:postgresql", digest: `sha256:${"1".repeat(64)}` }
+  });
+  await assertContained(fixture, "VES_PROBE_HANDSHAKE_COMPONENT");
+});
 
-test(
-  "a secret echoed in a result is detected, never committed, and zeroized on every host copy",
-  { skip: POSIX_ONLY },
-  async () => {
-    const fixture = await spawnedProbe({ mode: "leak", parameter: SECRET });
-    await assert.rejects(fixture.supervisor.execute(), (error) => {
-      assert.equal(error.code, "VES_PROBE_SECRET_LEAK");
-      assert.equal(JSON.stringify(error).includes(SECRET), false);
-      assert.equal(error.message.includes(SECRET), false);
-      return true;
-    });
-    assert.equal(fixture.results.commits, 0);
-    assert.equal(fixture.results.rollbacks, 1);
-    assert.equal(
-      fixture.parameters.lastDelivered.every((byte) => byte === 0),
-      true,
-      "the delivered parameter bytes are zeroized"
-    );
-    assert.equal(fixture.framed.parameterFrameZeroized, true, "the outbound parameter frame is zeroized");
-    const diagnostics = fixture.transport.diagnostics();
-    assert.ok(diagnostics.stderrBytes > 0, "the worker did write the secret to stderr");
-    assert.equal(diagnostics.stderrExcerpt.includes(SECRET), false, "the retained stderr excerpt is scrubbed");
-    assert.equal(await eventuallyDead(fixture.transport.pid), true);
-  }
-);
+test("a secret echoed in a result is detected, never committed, and zeroized on every host copy", async (t) => {
+  if (WIN32_HOST) return probeHostRefusedOnWin32(t);
+  const fixture = await spawnedProbe({ mode: "leak", parameter: SECRET });
+  await assert.rejects(fixture.supervisor.execute(), (error) => {
+    assert.equal(error.code, "VES_PROBE_SECRET_LEAK");
+    assert.equal(JSON.stringify(error).includes(SECRET), false);
+    assert.equal(error.message.includes(SECRET), false);
+    return true;
+  });
+  assert.equal(fixture.results.commits, 0);
+  assert.equal(fixture.results.rollbacks, 1);
+  assert.equal(
+    fixture.parameters.lastDelivered.every((byte) => byte === 0),
+    true,
+    "the delivered parameter bytes are zeroized"
+  );
+  assert.equal(fixture.framed.parameterFrameZeroized, true, "the outbound parameter frame is zeroized");
+  const diagnostics = fixture.transport.diagnostics();
+  assert.ok(diagnostics.stderrBytes > 0, "the worker did write the secret to stderr");
+  assert.equal(diagnostics.stderrExcerpt.includes(SECRET), false, "the retained stderr excerpt is scrubbed");
+  assert.equal(await eventuallyDead(fixture.transport.pid), true);
+});
 
-test("a worker error message carrying protected material is sanitized", { skip: POSIX_ONLY }, async () => {
+test("a worker error message carrying protected material is sanitized", async (t) => {
+  if (WIN32_HOST) return probeHostRefusedOnWin32(t);
   const fixture = await spawnedProbe({ mode: "error", parameter: SECRET });
   await assert.rejects(fixture.supervisor.execute(), (error) => {
     assert.equal(error.code, "VES_PROBE_WORKER_FAILURE");
@@ -94,28 +91,27 @@ test("a worker error message carrying protected material is sanitized", { skip: 
   assert.equal(fixture.results.commits, 0);
 });
 
-test(
-  "a stderr flood is bounded, terminates the tree, and keeps only a bounded excerpt",
-  { skip: POSIX_ONLY },
-  async () => {
-    const fixture = await spawnedProbe({
-      mode: "stderr-flood",
-      limits: { stderrBytes: 64 * 1024, stderrExcerptBytes: 512 }
-    });
-    await assertContained(fixture, "VES_PROBE_HOST_STDERR_LIMIT");
-    const diagnostics = fixture.transport.diagnostics();
-    assert.ok(diagnostics.stderrBytes > 64 * 1024);
-    assert.ok(diagnostics.stderrExcerpt.length <= 512);
-    assert.equal(diagnostics.stderrTruncated, true);
-    assert.match(diagnostics.stderrDigest, /^sha256:[a-f0-9]{64}$/u);
-  }
-);
+test("a stderr flood is bounded, terminates the tree, and keeps only a bounded excerpt", async (t) => {
+  if (WIN32_HOST) return probeHostRefusedOnWin32(t);
+  const fixture = await spawnedProbe({
+    mode: "stderr-flood",
+    limits: { stderrBytes: 64 * 1024, stderrExcerptBytes: 512 }
+  });
+  await assertContained(fixture, "VES_PROBE_HOST_STDERR_LIMIT");
+  const diagnostics = fixture.transport.diagnostics();
+  assert.ok(diagnostics.stderrBytes > 64 * 1024);
+  assert.ok(diagnostics.stderrExcerpt.length <= 512);
+  assert.equal(diagnostics.stderrTruncated, true);
+  assert.match(diagnostics.stderrDigest, /^sha256:[a-f0-9]{64}$/u);
+});
 
-test("a worker whose stdout exceeds the host output bound is terminated", { skip: POSIX_ONLY }, async () => {
+test("a worker whose stdout exceeds the host output bound is terminated", async (t) => {
+  if (WIN32_HOST) return probeHostRefusedOnWin32(t);
   await assertContained(await spawnedProbe({ limits: { stdoutBytes: 256 } }), "VES_PROBE_HOST_STDOUT_LIMIT");
 });
 
-test("the worker environment is built from nothing and inherits no ambient secret", { skip: POSIX_ONLY }, async () => {
+test("the worker environment is built from nothing and inherits no ambient secret", async (t) => {
+  if (WIN32_HOST) return probeHostRefusedOnWin32(t);
   const ambient = "VERCHESTRA_TEST_AMBIENT_SECRET";
   process.env[ambient] = SECRET;
   try {
@@ -153,14 +149,16 @@ for (const name of [
   "PATH",
   "VERCHESTRA_PROBE_WORKSPACE_ID"
 ]) {
-  test(`the host refuses to pass ${name} into a worker environment`, { skip: POSIX_ONLY }, async () => {
+  test(`the host refuses to pass ${name} into a worker environment`, async (t) => {
+    if (WIN32_HOST) return probeHostRefusedOnWin32(t);
     await assert.rejects(spawnedProbe({ environment: { [name]: "value" } }), {
       code: "VES_PROBE_HOST_ENVIRONMENT_DENIED"
     });
   });
 }
 
-test("a bearer credential on stderr is redacted whatever its letter case", { skip: POSIX_ONLY }, async (t) => {
+test("a bearer credential on stderr is redacted whatever its letter case", async (t) => {
+  if (WIN32_HOST) return probeHostRefusedOnWin32(t);
   const token = "AbCdEfGh0123XyZ";
   const directory = await mkdtemp(join(tmpdir(), "verchestra-probe-bearer-"));
   t.after(() => rm(directory, { recursive: true, force: true }));
