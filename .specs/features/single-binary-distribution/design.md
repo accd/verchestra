@@ -87,10 +87,13 @@ All of these were checked against the official
     describing it. Older kernels find the table through `e_phoff` relative to
     the first load address, and newer ones through `PT_PHDR`. Both work.
   - **PE:** removes the Authenticode certificate table, which must end the
-    file. It rebuilds the resource directory in a new `.sea` section, keeping
-    every existing data entry's address, and adds `RT_RCDATA/NODE_SEA_BLOB`
-    (language neutral). It then updates `SizeOfImage` and the resource
-    directory and recomputes the image checksum.
+    file. It rebuilds the resource directory in a new `.sea` section, followed
+    by a copy of every existing resource's bytes and then the blob as
+    `RT_RCDATA/NODE_SEA_BLOB` (language neutral). The resource directory spans
+    the whole section, because Windows refuses to start an image whose
+    resource data lies outside the section that holds the directory (T8). The
+    original `.rsrc` stays mapped but unused. The injector then updates
+    `SizeOfImage` and recomputes the image checksum.
   - **All formats:** the injector flips exactly one fuse and refuses a runtime
     that has already been injected. It returns new bytes and leaves its input
     unchanged. `locateSeaBlob` recovers the blob the way the runtime's own
