@@ -65,7 +65,7 @@ ${template.contractTypes}
 // through here, which also keeps literal import lines out of this module's
 // source, where the repository's textual import-closure guards would read them.
 function importStatement(head: string, names: readonly string[], from: string): string {
-  const sorted = [...new Set(names)].sort();
+  const sorted = [...new Set(names)].sort((left, right) => Number(left > right) - Number(left < right));
   const single = `import ${head}{ ${sorted.join(", ")} } from "${from}";`;
   if (single.length <= 120) return single;
   return `import ${head}{\n${sorted.map((name) => `  ${name}`).join(",\n")}\n} from "${from}";`;
