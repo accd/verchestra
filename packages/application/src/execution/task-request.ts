@@ -15,11 +15,8 @@ import { normalizeTask, TaskExecutorError, type AtomicExecutionTask } from "./ta
 type Row = Record<string, unknown>;
 
 const OBJECT_ID = /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u;
-// invariant: identical to the schema's gate-argument pattern. An argument is
-// passed to a locally allowlisted executable inside the worktree, so it may not
-// name an absolute location or climb out of the worktree.
-const GATE_ARGUMENT =
-  /^(?![\\/])(?![A-Za-z]:)(?!.*=[\\/])(?!.*=[A-Za-z]:)(?!.*(?:^|[\\/=])\.\.(?:[\\/]|$))[\x20-\x7e]{1,512}$/u;
+const PRINTABLE_GATE_ARGUMENT = /^[\x20-\x7e]{1,512}$/u;
+const DRIVE_LETTER = /^[A-Za-z]$/u;
 const DRIVER_MODEL = /^claude-[a-z0-9][a-z0-9.-]{0,63}$/u;
 const VERIFIER_MODEL = /^gpt-[a-z0-9][a-z0-9.-]{0,63}$/u;
 // hazard: bidirectional overrides and isolates (Trojan Source) make reviewed
@@ -95,9 +92,28 @@ function deepFreeze<T>(value: T, seen = new Set<object>()): T {
   return Object.freeze(value);
 }
 
+function namesAbsoluteLocation(argument: string, index: number): boolean {
+  const first = argument[index];
+  if (first === "/" || first === "\\") return true;
+  return first !== undefined && DRIVE_LETTER.test(first) && argument[index + 1] === ":";
+}
+
+// invariant: accepts exactly the strings the schema's gate-argument pattern
+// accepts; tests/contract/task-request.test.mjs compares the two. An argument
+// is passed to a locally allowlisted executable inside the worktree, so it may
+// not name an absolute location, directly or after `=`, or climb out of it.
+function isGateArgument(argument: unknown): boolean {
+  if (typeof argument !== "string" || !PRINTABLE_GATE_ARGUMENT.test(argument)) return false;
+  if (namesAbsoluteLocation(argument, 0)) return false;
+  for (let index = argument.indexOf("="); index >= 0; index = argument.indexOf("=", index + 1))
+    if (namesAbsoluteLocation(argument, index + 1)) return false;
+  // hazard: `=` opens a parent segment (`--dir=..`) but does not close one.
+  return !argument.split(/[\\/]/u).some((segment) => segment === ".." || segment.endsWith("=.."));
+}
+
 function assertGateArguments(gate: unknown): void {
   const args = exact(gate, "gate", "VES_TASK_REQUEST_GATES_INVALID", TASK_GATE_COMMAND_FIELDS)["args"];
-  if (!Array.isArray(args) || args.some((argument) => typeof argument !== "string" || !GATE_ARGUMENT.test(argument)))
+  if (!Array.isArray(args) || args.some((argument) => !isGateArgument(argument)))
     fail("VES_TASK_REQUEST_GATES_INVALID", "gate arguments must be bounded, relative, and inside the worktree");
 }
 

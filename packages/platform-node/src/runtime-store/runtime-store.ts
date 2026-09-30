@@ -70,7 +70,7 @@ export interface StoredExecutionCheckpoint {
   readonly recordJson: string;
 }
 
-const CHECKPOINT_KINDS: readonly string[] = ["executor", "gate", "repair"];
+const CHECKPOINT_KINDS: ReadonlySet<string> = new Set(["executor", "gate", "repair"]);
 const MAXIMUM_CHECKPOINT_RECORD_BYTES = 262_144;
 
 interface EventMetadata {
@@ -1158,7 +1158,7 @@ export class RuntimeStore {
     readonly sequence?: number;
     readonly recordJson: string;
   }): { readonly checkpointId: string; readonly sequence: number; readonly replayed: boolean } {
-    if (!CHECKPOINT_KINDS.includes(value.kind))
+    if (!CHECKPOINT_KINDS.has(value.kind))
       throw runtimeError("VES_RUNTIME_CONSTRAINT", "Execution checkpoint kind is invalid");
     if (Buffer.byteLength(value.recordJson, "utf8") > MAXIMUM_CHECKPOINT_RECORD_BYTES)
       throw runtimeError("VES_RUNTIME_CONSTRAINT", "Execution checkpoint record exceeds its bound");
@@ -1202,7 +1202,7 @@ export class RuntimeStore {
       .get(...identity) as UnknownRecord | undefined;
     const latestSequence = latest === undefined ? 0 : Number(latest["sequence"]);
     if (requested === undefined) {
-      return latest !== undefined && latest["record_digest"] === recordDigest
+      return latest?.["record_digest"] === recordDigest
         ? { sequence: latestSequence, replayOf: String(latest["checkpoint_id"]) }
         : { sequence: latestSequence + 1 };
     }
