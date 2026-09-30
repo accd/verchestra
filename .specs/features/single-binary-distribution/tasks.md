@@ -63,7 +63,7 @@ with a CycloneDX SBOM. Gate selection routes the new scripts to
 **Status:** Done.
 **What:** `.github/workflows/single-binary-build.yml` (manual, read-only, five
 native legs, zero skips, artifacts only) with its shape test, plus
-`docs/qualification/single-binary-distribution.md` and AD-0XX in
+`docs/qualification/single-binary-distribution.md` and AD-038 in
 `.specs/STATE.md`.
 **Requirements:** SBD-10 to SBD-12.
 **Tests:** `tests/agent-readiness/single-binary-workflow.test.mjs`.

@@ -1,6 +1,6 @@
 # Single-Binary Distribution Design and ADR (#236)
 
-**Status:** Proposed. Recorded in `.specs/STATE.md` as AD-0XX (to be numbered
+**Status:** Proposed. Recorded in `.specs/STATE.md` as AD-038 (to be numbered
 at merge). The owner ratifies it by reviewing the pull request that carries it.
 **Spec:** `.specs/features/single-binary-distribution/spec.md`
 

@@ -22,7 +22,7 @@ owner's identities. This verdict is not a release, promotion, or 1.0 claim.
 | SBD-09 | `tests/build/vestra-binary.test.mjs:181` asserts `executable.signature` is `ad-hoc` on darwin and `none` elsewhere. `tests/unit/sea-inject.test.mjs:65` (Mach-O signature dropped before re-signing) and `:137` (PE certificate directory cleared). The owner actions are listed in `design.md` § Code signing. | PASS (owner actions pending) |
 | SBD-10 | `tests/agent-readiness/single-binary-workflow.test.mjs:38`: manual, read-only, no identity or secret. `:48`: exactly the five fleet legs. `:62`: actions SHA-pinned. `:68`: no input interpolated into a shell. `:81`: nothing can publish or sign. `:101`: the pinned archive is verified first. `:111`: zero skips are enforced. `:119`: the reviewed build is compared byte for byte. | PASS (dispatch pending) |
 | SBD-11 | `docs/qualification/single-binary-distribution.md`: the "Proven locally" and "Pending" tables. | PASS |
-| SBD-12 | `docs/qualification/single-binary-distribution.md` "Release state" and "Verdict". AD-0XX says the channel changes no T76, T77, or 1.0.0 status. `pnpm agent:check` status agreement. | PASS |
+| SBD-12 | `docs/qualification/single-binary-distribution.md` "Release state" and "Verdict". AD-038 says the channel changes no T76, T77, or 1.0.0 status. `pnpm agent:check` status agreement. | PASS |
 
 ## Discrimination sensor
 

@@ -16,7 +16,7 @@ updatedAt: 2026-09-29T00:00:00Z
 Issue #236: one `vestra` executable per fleet target, embedding the pinned
 official Node 24.14.0 runtime and running the npm launcher's bootstrap with no
 ambient Node. Requirements SBD-01 to SBD-12 are in `spec.md`. The design and
-the ADR are in `design.md`, recorded in `.specs/STATE.md` as AD-0XX (to be
+the ADR are in `design.md`, recorded in `.specs/STATE.md` as AD-038 (to be
 numbered at merge, status proposed).
 
 # Completed Evidence
