@@ -85,13 +85,12 @@ export function fakeSecretToolRunner(options = {}) {
   return Object.freeze({ runner, invocations, items, locked });
 }
 
-const CALL =
-  /\[VerchestraCredentialManager\]::(Has|Read|Write|Delete)\('([^']+)'(?:, '([^']+)', \$verchestraPayload)?\)/u;
-const PAYLOAD = /^\$verchestraPayload = \[Console\]::In\.ReadLine\(\)\n(#[^\n]*)\n/mu;
+const CALL = /\$verchestraType::(Has|Read|Write|Delete)\('([^']+)'(?:, '([^']+)', \$verchestraPayload)?\)/u;
+const PAYLOAD = /^\$verchestraPayload = '([A-Za-z0-9+/=]*)'$/mu;
 
 // invariant: the fake interprets only the program shape the backend writes —
 // the operation and target from the single call line, and the value from the
-// `#`-prefixed data line after the ReadLine statement — and answers with the
+// base64 literal of the one payload assignment line — and answers with the
 // same `verchestra-credential:` result lines the real program prints.
 export function fakePowerShellRunner(options = {}) {
   const items = new Map();
@@ -119,7 +118,7 @@ export function fakePowerShellRunner(options = {}) {
     }
     const payload = PAYLOAD.exec(stdin)?.[1];
     if (payload === undefined) return answer("error:payload");
-    items.set(target, { user, value: Buffer.from(payload.slice(1), "base64") });
+    items.set(target, { user, value: Buffer.from(payload, "base64") });
     return answer("stored");
   }
 
