@@ -134,7 +134,7 @@ export async function createDisposableSecretService() {
   }
 
   try {
-    const bus = spawn("dbus-daemon", [`--config-file=${configuration}`, "--nofork", "--nopidfile", "--print-address=1"], {
+    const bus = spawn("/usr/bin/dbus-daemon", [`--config-file=${configuration}`, "--nofork", "--nopidfile", "--print-address=1"], {
       env: environment,
       stdio: ["ignore", "pipe", "pipe"]
     });
@@ -142,7 +142,7 @@ export async function createDisposableSecretService() {
     session.address = await firstLine(bus, "dbus-daemon");
     if (!session.address.startsWith(`unix:path=${socket}`))
       throw new Error("the disposable bus is not listening on its own socket");
-    const keyring = spawn("gnome-keyring-daemon", ["--foreground", "--unlock", "--components=secrets"], {
+    const keyring = spawn("/usr/bin/gnome-keyring-daemon", ["--foreground", "--unlock", "--components=secrets"], {
       env: { ...environment, DBUS_SESSION_BUS_ADDRESS: session.address },
       stdio: ["pipe", "pipe", "pipe"]
     });
