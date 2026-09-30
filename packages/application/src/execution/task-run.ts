@@ -123,7 +123,7 @@ function errorCode(error: unknown): string {
 
 // invariant: a run is started or resumed only from a state this coordinator
 // can continue from.
-const STARTABLE: readonly RunState[] = ["EXECUTION_AUTHORIZED", "IMPLEMENTING", "VERIFYING"];
+const STARTABLE: ReadonlySet<RunState> = new Set<RunState>(["EXECUTION_AUTHORIZED", "IMPLEMENTING", "VERIFYING"]);
 
 export class TaskRunCoordinator {
   readonly #ports: TaskRunPorts;
@@ -134,7 +134,7 @@ export class TaskRunCoordinator {
 
   async run(input: TaskRunInput): Promise<TaskRunOutcome> {
     let snapshot = await this.#ports.workflow.current();
-    if (!STARTABLE.includes(snapshot.state))
+    if (!STARTABLE.has(snapshot.state))
       throw new TaskRunError("VES_TASK_RUN_STATE_INVALID", `a run in ${snapshot.state} cannot be started or resumed`);
     try {
       if (snapshot.state === "EXECUTION_AUTHORIZED") {

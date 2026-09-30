@@ -39,8 +39,11 @@ executable (`spikes/claude-code-driver/test/fake-claude-mediated.mjs`).
 ## Composition slice requirements (E6–E9)
 
 Deterministic fakes are labeled in their files: `tests/helpers/task-cli-fakes/`
-(`claude`, `codex`, `fake-claude-task.mjs`, `fake-codex-task.mjs`) and the
-fake keychain preload `tests/helpers/fake-keychain-spawn.mjs`, which installs
+(`fake-claude-task.mjs`, `fake-codex-task.mjs`, run through the private
+`claude` and `codex` wrappers that `tests/helpers/task-cli-fixture.mjs`
+generates per fixture; through `fixture-channel.mjs` they read and write only
+inside their private temp directory and record only whether each child
+received its brokered credential, never a digest of it) and the fake keychain preload `tests/helpers/fake-keychain-spawn.mjs`, which installs
 the deny guard first. The child-process journeys run on macOS; off macOS the
 suite asserts the honest `not configured` refusal instead
 (`tests/e2e/task-cli-e2e.test.mjs:142`).
