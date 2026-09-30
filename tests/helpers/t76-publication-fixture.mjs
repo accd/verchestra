@@ -8,7 +8,7 @@
 // material, a real revision, or a machine-local path.
 
 import { createHash, createPrivateKey, createPublicKey, generateKeyPairSync } from "node:crypto";
-import { writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -96,6 +96,17 @@ export function writeMatchingReleaseAnchor(directory, keyBase64, purpose = "tuf-
       purposes: [purpose]
     })}\n`
   );
+  return path;
+}
+
+/**
+ * Writes a retired copy of an anchor (#408): the same key and purpose, plus the
+ * `validUntil` retirement instant a rotation adds when it moves an anchor to
+ * docs/qualification/trust/retired/.
+ */
+export function writeRetiredAnchorCopy(anchorPath, validUntil = "2026-09-30T21:25:00.000Z") {
+  const path = `${anchorPath}.retired.json`;
+  writeFileSync(path, `${JSON.stringify({ ...JSON.parse(readFileSync(anchorPath, "utf8")), validUntil })}\n`);
   return path;
 }
 
