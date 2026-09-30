@@ -11,7 +11,7 @@ import type { LauncherHost } from "./supported-host.ts";
 // time. A build that supplies no adapter fails closed rather than approximating
 // a resolve, which is exactly what `VES_VESTRA_ACTIVATION_UNAVAILABLE` means.
 
-// invariant: `network: false` is the retained-release path (AD-034) — a
+// invariant: `network: false` is the retained-release path (AD-036) — a
 // superseded release re-activated from its verified installed bytes with no
 // source read — and it always pairs with `operation: "rollback"`.
 export interface ActivationPathEvidence {

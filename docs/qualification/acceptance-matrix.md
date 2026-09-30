@@ -164,7 +164,7 @@ is the publication-side rollback index sealed from the prior candidate
 (`af8bcf044cf8`), not a client that moved between two published releases. A
 live update/rollback is **not executed in this pass**.
 
-**Rollback after an update through the launcher (#393, AD-034).** Re-invoking
+**Rollback after an update through the launcher (#393, AD-036).** Re-invoking
 an older launcher after an update is a TUF metadata downgrade, which
 anti-rollback refuses with `VES_TUF_ROLLBACK`; that refusal is unchanged
 (`tests/e2e/tuf-update-client.test.mjs`, "re-staging a predecessor after its
@@ -700,12 +700,12 @@ one over the other's cached metadata reuses stale targets and fails
 ([#387](https://github.com/accd/verchestra/issues/387)). A successful update
 then exposes a second, deliberate refusal: re-invoking the base is a metadata
 downgrade that anti-rollback rejects
-([#393](https://github.com/accd/verchestra/issues/393)). AD-034 adds a local
+([#393](https://github.com/accd/verchestra/issues/393)). AD-036 adds a local
 re-activation path for a superseded, already-verified release, proven
 deterministically only (see J02), and the live-activation workflow now fails a
 leg unless its rollback restores the base's active pointer. The leg closes only
 when two same-root releases, each with a strictly greater `metadataVersion` and
-both built from a revision that carries AD-034, are published and the workflow
+both built from a revision that carries AD-036, are published and the workflow
 passes against them. No such run has happened.
 
 **L8. Single-operator custody of the signing keys and the storage endpoint.**

@@ -13,7 +13,7 @@ name: Live activation matrix
 # from nothing. Every phase's output and exit code is uploaded as a transcript,
 # so a reviewer verifies the five legs by content rather than by a green check.
 #
-# Rollback semantics (#393, AD-034). After a successful update the machine's TUF
+# Rollback semantics (#393, AD-036). After a successful update the machine's TUF
 # metadata cache is at the successor's version, so re-invoking the base cannot
 # re-resolve it: anti-rollback refuses the older metadata with VES_TUF_ROLLBACK,
 # by design. The `rollback` phase passes only through the launcher's retained-
@@ -167,7 +167,7 @@ jobs:
           run_phase update    npx --yes "verchestra@$UPDATE_VERSION" --version || status=1
           record_pointer update
           # rollback: re-activate the retained base as the last-known-good, with
-          # no source read (AD-034); see the rollback semantics note above.
+          # no source read (AD-036); see the rollback semantics note above.
           run_phase rollback  npx --yes "verchestra@$BASE_VERSION"   --version || status=1
           record_pointer rollback
           if [ "$(pointer_of update)" = "$(pointer_of activate)" ]; then

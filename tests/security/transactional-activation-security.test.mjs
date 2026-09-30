@@ -189,7 +189,7 @@ test("dead process activation lock is reclaimed before journal reconciliation", 
   assert.equal(result.active.releaseDigest, state.staged.bundle.releaseDigest);
 });
 
-// #393 / AD-034. The verified-release record decides which installed release a
+// #393 / AD-036. The verified-release record decides which installed release a
 // launcher may re-activate without resolving metadata, so every way of forging,
 // redirecting, or confusing it must fail closed rather than widen that set.
 

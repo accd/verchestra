@@ -1,6 +1,6 @@
 # Retained Release Rollback Design (#393)
 
-Decision record: `.specs/STATE.md` AD-034. This document holds the threat model,
+Decision record: `.specs/STATE.md` AD-036. This document holds the threat model,
 the pre-mortem, and the mechanics.
 
 ## Threat model

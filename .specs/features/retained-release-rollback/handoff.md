@@ -6,7 +6,7 @@ status: verification
 branch: feat/393-retained-release-rollback
 baseRevision: 2500c6c4fe59479d893912b889efce337a6cbda1
 lastCompletedTask: T5
-nextTask: "Human review of AD-034 and this change. After merge, the owner publishes two same-root releases built from a revision carrying it (each with a strictly greater metadataVersion) and runs the live-activation matrix (T6)."
+nextTask: "Human review of AD-036 and this change. After merge, the owner publishes two same-root releases built from a revision carrying it (each with a strictly greater metadataVersion) and runs the live-activation matrix (T6)."
 lastGate: "pnpm gate:quick, gate:build, gate:security, gate:release, test:e2e, test:fault, agent:check"
 updatedAt: 2026-09-29T00:00:00Z
 ---
@@ -15,13 +15,13 @@ updatedAt: 2026-09-29T00:00:00Z
 
 Issue #393: after a successful update, re-invoking the base launcher is a TUF
 metadata downgrade that anti-rollback refuses. Requirements RR-01 to RR-08 in
-`spec.md`; decision AD-034 in `.specs/STATE.md`; threat model and pre-mortem in
+`spec.md`; decision AD-036 in `.specs/STATE.md`; threat model and pre-mortem in
 `design.md`.
 
 # Completed Evidence
 
 - T1: `design.md` threat model, residual risks R1–R3, pre-mortem PM1–PM11;
-  AD-034 recorded as proposed.
+  AD-036 recorded as proposed.
 - T2–T4: verified-release record under `<installRoot>/verified/`, trust-bound
   `rollback` with a `rollback` journal, `retainedRelease` lookup,
   `TufUpdateClient.trustAnchored()`, and the closure's retained path. Evidence
@@ -34,7 +34,7 @@ metadata downgrade that anti-rollback refuses. Requirements RR-01 to RR-08 in
 
 # Next Exact Action
 
-Submit for independent review. Reviewers should check AD-034's residual risks
+Submit for independent review. Reviewers should check AD-036's residual risks
 (no revocation or expiry check for a superseded retained release) and the new
 workflow pointer check, which makes the live `rollback` phase stricter.
 
