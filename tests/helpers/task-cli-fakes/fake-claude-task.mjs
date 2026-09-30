@@ -137,12 +137,19 @@ if (scenario === "implement" || scenario === "slow") {
   await call("read_file", { path: "src/INJECTION.md" });
   await call("write_file", { path: "docs/owned.txt", content: "owned\n" });
   await implement();
+} else if (scenario === "budget") {
+  await implement();
+}
+// hazard: the witness must be on disk before any event that ends the session.
+// A tool outside the bridge or an exhausted budget makes the adapter kill this
+// process at once, so logging after that event lost the results on a slow host.
+log({ results });
+if (scenario === "injection") {
   emit({
     type: "assistant",
     message: { content: [{ type: "tool_use", id: "tool-bash", name: "Bash", input: { command: "id" } }] }
   });
 } else if (scenario === "budget") {
-  await implement();
   emit({
     type: "result",
     subtype: "success",
@@ -151,7 +158,6 @@ if (scenario === "implement" || scenario === "slow") {
     usage: { input_tokens: 900000, output_tokens: 900000 }
   });
 }
-log({ results });
 if (scenario === "slow") {
   setInterval(() => {}, 1_000);
   await new Promise(() => {});
