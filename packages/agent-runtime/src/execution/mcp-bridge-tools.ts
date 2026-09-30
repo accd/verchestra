@@ -4,7 +4,9 @@ import { join } from "node:path";
 
 import { codeUnitCompare } from "../context/code-unit-compare.ts";
 
-const LOGICAL_PATH = /^(?![A-Za-z]:)(?!\/)(?!.*\\)(?!.*(?:^|\/)\.\.(?:\/|$))[A-Za-z0-9._@+/-]+$/u;
+// hazard: model-supplied paths are checked by linear scans, never by a regex
+// that can backtrack over a long run of separators.
+const LOGICAL_PATH_CHARACTERS = new Set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._@+/-");
 const MAXIMUM_READ_BYTES = 262_144;
 const MAXIMUM_LIST_ENTRIES = 1_000;
 const MAXIMUM_SEARCH_MATCHES = 100;
@@ -26,6 +28,20 @@ function deny(code: string, message: string): never {
   throw new BridgeToolError(code, message);
 }
 
+// invariant: non-empty, portable characters only, not rooted, and no `..`
+// segment; a backslash or a drive colon falls outside the character set.
+function isLogicalPath(value: unknown): value is string {
+  if (typeof value !== "string" || value.length === 0 || value.startsWith("/")) return false;
+  for (const character of value) if (!LOGICAL_PATH_CHARACTERS.has(character)) return false;
+  return !value.split("/").includes("..");
+}
+
+function withoutTrailingSeparators(value: string): string {
+  let end = value.length;
+  while (end > 0 && value[end - 1] === "/") end -= 1;
+  return value.slice(0, end);
+}
+
 function under(path: string, root: string): boolean {
   return root === "." || path === root || path.startsWith(`${root}/`);
 }
@@ -34,9 +50,8 @@ function under(path: string, root: string): boolean {
 // root. Git metadata is refused at any depth and in any letter case.
 export function logicalSegments(value: unknown): readonly string[] {
   if (value === ".") return [];
-  if (typeof value !== "string" || !LOGICAL_PATH.test(value))
-    deny("VES_BRIDGE_PATH_INVALID", "Path is not a repository-relative logical path");
-  const segments = value.replace(/\/+$/u, "").split("/");
+  if (!isLogicalPath(value)) deny("VES_BRIDGE_PATH_INVALID", "Path is not a repository-relative logical path");
+  const segments = withoutTrailingSeparators(value).split("/");
   if (segments.some((segment) => segment === "" || segment === "."))
     deny("VES_BRIDGE_PATH_INVALID", "Path is not normalized");
   if (segments.some((segment) => segment.toLowerCase() === ".git"))
@@ -78,7 +93,7 @@ export class WorktreeReadView {
     });
     if (scope.length === 0) deny("VES_BRIDGE_SCOPE_INVALID", "Read scope is empty");
     const protectedPaths = options.protectedPaths.map((entry) => {
-      if (!LOGICAL_PATH.test(entry)) deny("VES_BRIDGE_SCOPE_INVALID", "Protected path is not a logical path");
+      if (!isLogicalPath(entry)) deny("VES_BRIDGE_SCOPE_INVALID", "Protected path is not a logical path");
       return entry.toLowerCase();
     });
     return new WorktreeReadView(root, Object.freeze(scope), Object.freeze(protectedPaths));

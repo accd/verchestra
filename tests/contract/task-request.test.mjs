@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 
 import { SchemaRegistry } from "../../packages/contracts/src/schema-registry.ts";
@@ -109,6 +110,35 @@ for (const [name, mutate, code] of shapeRejections) {
     );
   });
 }
+
+const schemaGateArgument = new RegExp(
+  JSON.parse(await readFile(new URL("../../schemas/task-request/1.schema.json", import.meta.url), "utf8")).properties
+    .gates.items.properties.args.items.pattern,
+  "u"
+);
+
+function normalizerRefusesArgument(argument) {
+  try {
+    normalizeTaskRequest(mutated((r) => (r.gates[0].args = [argument])));
+    return false;
+  } catch (error) {
+    return error.message === "gate arguments must be bounded, relative, and inside the worktree";
+  }
+}
+
+// The normalizer checks gate arguments without the schema's lookahead pattern
+// (SonarCloud S5843); both must accept exactly the same strings.
+test("the normalizer and the schema accept exactly the same gate arguments", () => {
+  let level = [""];
+  const candidates = ["", "x".repeat(512), "x".repeat(513), "tab\there", "caf\u00e9"];
+  for (let length = 1; length <= 5; length += 1) {
+    level = level.flatMap((prefix) => ["a", "C", ":", "/", "\\", "=", ".", " ", "-"].map((next) => prefix + next));
+    candidates.push(...level);
+  }
+  for (const argument of candidates)
+    assert.equal(normalizerRefusesArgument(argument), !schemaGateArgument.test(argument), JSON.stringify(argument));
+  assert.equal(candidates.length, 66_434);
+});
 
 // Cross-field rules a JSON Schema cannot express. The schema admits the shape;
 // only the normalizer, which the CLI always runs, refuses it.

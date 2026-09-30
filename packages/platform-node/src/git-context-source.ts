@@ -15,7 +15,7 @@ const execFileAsync = promisify(execFile);
 const OBJECT_ID = /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u;
 const SAFE = /^[A-Za-z0-9][A-Za-z0-9._:@/+-]{0,511}$/u;
 const LOGICAL_PATH = /^(?![A-Za-z]:)(?!\/)(?!.*\\)(?!.*(?:^|\/)\.\.(?:\/|$))[A-Za-z0-9._@+/-]+$/u;
-const TREE_ENTRY = /^([0-7]{6}) (blob|tree|commit) ([a-f0-9]{40}|[a-f0-9]{64}) +(-|[0-9]+)\t(.+)$/su;
+const TREE_ENTRY = /^([0-7]{6}) (blob|tree|commit) ([a-f0-9]{40}|[a-f0-9]{64}) +(-|\d+)\t(.+)$/su;
 // invariant: only ordinary committed files are context; symlinks (120000) and
 // submodules (160000) would point outside the reviewed revision.
 const FILE_MODES = new Set(["100644", "100755"]);

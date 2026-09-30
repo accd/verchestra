@@ -13,7 +13,7 @@ type Row = Record<string, unknown>;
 const SAFE = /^[A-Za-z0-9][A-Za-z0-9._:@/+-]{0,511}$/u;
 const DIGEST = /^sha256:[a-f0-9]{64}$/u;
 const OBJECT_ID = /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u;
-const REQUIREMENT = /^VES-[A-Z]{3}-[0-9]{3}$/u;
+const REQUIREMENT = /^VES-[A-Z]{3}-\d{3}$/u;
 const GATE_IDENTITY = ["workspaceId", "runId", "taskId", "gatePlanDigest", "changeDigest", "stage"] as const;
 const passedFields = (row: Row): boolean =>
   matches(row["gateEvidenceDigest"], DIGEST) && list(row["gateEvidenceRefs"], SAFE);
@@ -36,7 +36,13 @@ const GATE_STAGES: Readonly<
     valid: (row: Row) => matches(row["commitId"], OBJECT_ID) && matches(row["idempotencyKey"], DIGEST)
   }
 });
-const REPAIR_STAGES = ["repair", "escalated", "converged", "gate-failed", "budget-exceeded"];
+const REPAIR_STAGES: ReadonlySet<string> = new Set([
+  "repair",
+  "escalated",
+  "converged",
+  "gate-failed",
+  "budget-exceeded"
+]);
 
 export class CheckpointStoreError extends Error {
   readonly code: "VES_RUNTIME_CONSTRAINT" | "VES_RUNTIME_CHECKPOINT_CORRUPT";
@@ -140,7 +146,7 @@ function validateRepairState(value: unknown, reject: Failure): Row {
   const ledger = row["budgetLedger"];
   const ledgerShape = ledger === null || (typeof ledger === "object" && !Array.isArray(ledger));
   if (
-    !REPAIR_STAGES.includes(row["stage"] as string) ||
+    !REPAIR_STAGES.has(row["stage"] as string) ||
     !validAttemptChain(row["attempts"], row["attemptCapsuleDigests"]) ||
     !ledgerShape
   )

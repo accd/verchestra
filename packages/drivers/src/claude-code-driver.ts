@@ -19,7 +19,7 @@ const SAFE_ENV_KEYS = ["PATH", "SystemRoot", "ComSpec", "TEMP", "TMP", "HOME", "
 // The mediated profile passes only these ambient-free locale/search values
 // through; identity directories are created per run and the credential comes
 // from resolveExecution alone.
-const MEDIATED_ENV_KEYS: readonly string[] = ["PATH", "LANG", "LC_ALL", "LC_CTYPE", "TZ", "TMPDIR"];
+const MEDIATED_ENV_KEYS: ReadonlySet<string> = new Set(["PATH", "LANG", "LC_ALL", "LC_CTYPE", "TZ", "TMPDIR"]);
 const MEDIATED_CREDENTIAL = "ANTHROPIC_API_KEY";
 const ENVIRONMENT_NAME = /^[A-Z][A-Z0-9_]{0,63}$/u;
 // invariant: identical to MCP_BRIDGE_QUALIFIED_TOOLS in agent-runtime; a
@@ -141,7 +141,7 @@ function mediationError(message: string): DriverProtocolError {
 
 function allowlistedEnvironment(environment: Readonly<Record<string, string>>): Readonly<Record<string, string>> {
   for (const [key, value] of Object.entries(environment))
-    if (!MEDIATED_ENV_KEYS.includes(key) || !safeValue(value))
+    if (!MEDIATED_ENV_KEYS.has(key) || !safeValue(value))
       throw claudeError("VES_CLAUDE_ENVIRONMENT_DENIED", "The mediated profile environment is not allowlisted");
   return Object.freeze({ ...environment });
 }

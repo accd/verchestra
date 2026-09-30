@@ -9,12 +9,13 @@ import {
   NodeWorktreeToolAdapter,
   RuntimeStore
 } from "../../packages/platform-node/src/index.ts";
+import { systemGit } from "./system-git.mjs";
 
 export const roots = [];
 const stores = [];
 
 export function git(cwd, ...args) {
-  return execFileSync("git", args, { cwd, encoding: "utf8", windowsHide: true }).trim();
+  return execFileSync(systemGit(), args, { cwd, encoding: "utf8", windowsHide: true }).trim();
 }
 
 // Content-addressed payloads, as the bridge controller stores them.
