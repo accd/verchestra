@@ -594,7 +594,9 @@ note. -->
     advapi32 `CredReadW`, `CredWriteW`, and `CredDeleteW`, for a
     `CRED_TYPE_GENERIC` credential with target `verchestra/<ws>/<name>` and
     `CRED_PERSIST_LOCAL_MACHINE` persistence. `ENTERPRISE` would roam the key
-    to other machines; `SESSION` would lose it at logoff.
+    to other machines; `SESSION` would lose it at logoff. Presence is
+    `%SystemRoot%\System32\cmdkey.exe /list:<target>`, which prints the
+    target's attributes and never its value.
   - **Both:** the store is selected by platform in `createOsCredentialStore`,
     and `--keychain` is refused there. A store that is not running in the
     session is a new `VES_SECRET_STORE_UNAVAILABLE`, which deep doctor reads
@@ -618,30 +620,35 @@ note. -->
   - The `Add-Type` cmdlet took 23 to 33 s in the allowlisted child environment,
     because command discovery ran against a cold module-analysis cache. The
     program therefore calls `CSharpCodeProvider` directly and uses no cmdlet.
+  - A cold PowerShell start that compiles the P/Invoke took over 4 s, beyond
+    the presence budget inside deep doctor's 5 s probe (run 36682126079 failed
+    on it). Presence therefore runs `cmdkey`, which answered in 21 ms.
   - Credential Manager never prompts, so a Windows timeout is a retryable
     `VES_SECRET_BACKEND_FAILURE`, not an interaction-required error.
 - **Rationale:** Each platform claims only what its store guarantees. The
-  value never enters argv or the environment on any platform. Linux presence
-  is attribute-only, like macOS. Windows presence decrypts inside the
-  PowerShell child, because Credential Manager has no attribute-only query.
-  It returns only `present` or `absent`, and the report says so.
+  value never enters argv or the environment on any platform. Presence never
+  returns the value on any platform. On Linux it is the Secret Service's
+  attribute-only search. On Windows it is `cmdkey`'s attribute listing, which
+  is the operating system's own program.
 - **Evidence:** `pnpm qualify:keychain` (`spikes/os-secret-store`) runs in
   `.github/workflows/os-credential-store.yml` on `ubuntu-latest`,
   `windows-latest`, and `macos-latest`. On Linux it uses a disposable
   `dbus-daemon` and gnome-keyring with a temporary HOME. On Windows it uses
   random target prefixes, deleted in `finally`. On macOS it uses a disposable
-  keychain. Gate suites use fake runners only, and the spawn guard now refuses
-  `secret-tool`, `dbus-send`, and PowerShell as well as `security`.
+  keychain. Green on all three in run 36682622312 (revision `a885a2b`). Gate
+  suites use fake runners only, and the spawn guard now refuses
+  `secret-tool`, `dbus-send`, PowerShell, and `cmdkey` as well as `security`.
 - **Consequences:** #379's store exists on every supported platform, and L2's
   secret-presence blocker is gone wherever `anthropic-api-key` is bound. The
   reported limits:
   - same-user processes can read any of these stores;
-  - Windows presence decrypts inside the PowerShell child;
   - AMSI sees the Windows program lines;
   - the logging-policy guard's effect is designed, not observed under an
     enforced policy;
-  - the first cold PowerShell start measured about 4 s, at the edge of the 4 s
-    presence budget;
+  - Windows presence depends on `cmdkey`'s output shape (a `<label>: <target>`
+    line, with the label possibly localized);
+  - a cold Windows read or write can take several seconds, within its 30 s or
+    15 s budget;
   - Linux needs `/usr/bin/secret-tool` and `/usr/bin/dbus-send`.
 
 ## Handoff

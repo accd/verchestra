@@ -12,8 +12,8 @@
 | Contracts and digests | `tests/security/os-secret-backend-security.test.mjs` | per-platform evidence, every control required, key-material contract, report digests | `pnpm test:security` |
 | Error registry | `tests/security/secret-broker.test.mjs` | `VES_SECRET_STORE_LOGGED` and `VES_SECRET_STORE_UNAVAILABLE` registered and schema-valid | `pnpm test:security` |
 | Doctor mapping | `tests/integration/doctor-secret-backend.test.mjs` | `pass`, `blocked`, `fail` on linux and win32; presence only | `pnpm test:integration` |
-| CLI refusals | `tests/e2e/secret-cli-e2e.test.mjs` | value and `--keychain` refusals through the binary on every platform, guard preloaded for all four tools | `pnpm test:e2e` |
-| Gate isolation | `tests/architecture/no-keychain-spawn-in-tests.test.mjs` | no real runner named, no tool spawned, guard wherever a store is reachable, guard refuses all four tools | `pnpm test:architecture` |
+| CLI refusals | `tests/e2e/secret-cli-e2e.test.mjs` | value and `--keychain` refusals through the binary on every platform, guard preloaded | `pnpm test:e2e` |
+| Gate isolation | `tests/architecture/no-keychain-spawn-in-tests.test.mjs` | no real runner named, no tool spawned, guard wherever a store is reachable, guard refuses all five tools | `pnpm test:architecture` |
 | Workflow shape | `tests/agent-readiness/os-credential-store-workflow.test.mjs` | triggers, permissions, matrix, apt packages, pins, no interpolation | `pnpm test:agent-readiness` |
 | Real stores (not a gate) | `spikes/os-secret-store/test/*.test.mjs` | Linux, Windows, and macOS round trips, measured conventions, CLI and doctor journeys; refusal elsewhere | `pnpm qualify:keychain` (CI: `os-credential-store.yml`) |
 

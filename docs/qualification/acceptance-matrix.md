@@ -316,7 +316,7 @@ one remains:
   is asserted for both against fake runners, and the standalone
   `pnpm qualify:keychain` suite passed against the real stores on
   `ubuntu-latest`, `windows-latest`, and `macos-latest`
-  (`.github/workflows/os-credential-store.yml`), including the full
+  (`.github/workflows/os-credential-store.yml`, run 36682622312), including the full
   `vestra secret` and `doctor --deep` journey with doctor reporting `pass` for
   a bound credential. A store that is not running in the session reads as
   `blocked` (not configured), never `pass`.

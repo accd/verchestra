@@ -72,7 +72,7 @@ Each one is a guarded invariant with a test.
    1 and name the connection failure on stderr. That wording (kept stable with
    `LC_ALL=C`) selects `VES_SECRET_STORE_UNAVAILABLE`; no stderr text ever
    reaches an error. A missing program is the same code.
-7. **Presence is fast.** `SearchItems` answered in about 10 ms, far inside deep
+7. **Presence is fast.** `SearchItems` answered in 4 to 10 ms, far inside deep
    doctor's 5 s probe budget. Every spawn is still bounded (presence 4 s, read
    30 s, write 15 s), and a timeout is `VES_SECRET_KEYCHAIN_INTERACTION_REQUIRED`
    (an unlock prompt nobody answered).
@@ -125,14 +125,18 @@ It runs in `.github/workflows/os-credential-store.yml`, which installs
 | Field | Value |
 | --- | --- |
 | Result | **PASS** — 20 tests, 20 passed, 0 failed, 0 skipped, 0 todo, 0 cancelled |
-| Run | [36681219761](https://github.com/accd/verchestra/actions/runs/36681219761) (`workflow_dispatch`), job `credential-store (Linux)` 109776889838 |
-| Revision | `95fbf7704bfe57e1a59d18053efdaed0ae809b2f` on `feat/379-linux-windows-credential-stores` |
+| Run | [36682622312](https://github.com/accd/verchestra/actions/runs/36682622312) (`workflow_dispatch`), job `credential-store (Linux)` 109782103184 |
+| Revision | `a885a2b479d3dbb999765af9c5a0b9d2d19f96e3` on `feat/379-linux-windows-credential-stores` |
 | Runner | `ubuntu-24.04` image 20260920.314.1, linux x64, Node v24.14.0 |
 | Packages | `libsecret-tools` 0.21.4-1build3, `gnome-keyring` 46.1-2ubuntu0.2, `dbus-x11` 1.14.10-4ubuntu4.1; `dbus-send` from the image |
-| Measured | presence (`SearchItems`) 4 ms; on a locked collection presence, read, delete, and store each reported interaction required in 4 to 29 ms |
+| Measured | presence (`SearchItems`) 5 ms; on a locked collection presence, read, delete, and store each reported interaction required in 4 to 23 ms |
 
-The same run passed the Windows and macOS legs (below and in their own
-reports), and on this leg the Windows and macOS cases asserted that their
-backends are refused on Linux. This report changes only by recording results;
-the revision after it differs from the tested one in documentation and in the
+The same run passed the Windows and macOS legs (their macOS leg on a second
+attempt, after the first attempt's pnpm setup failed on an npm network
+timeout before any test ran). On this leg the Windows and macOS cases asserted
+that their backends are refused on Linux. An earlier revision
+(`95fbf7704bfe57e1a59d18053efdaed0ae809b2f`, run
+[36681219761](https://github.com/accd/verchestra/actions/runs/36681219761))
+passed identically. This report changes only by recording results; the
+revision after it differs from the tested one in documentation and in the
 evidence digests alone.

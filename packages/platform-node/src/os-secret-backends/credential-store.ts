@@ -22,7 +22,7 @@ import { WindowsCredentialManagerBackend } from "./windows-credential-manager.ts
 export const DARWIN_KEYCHAIN_CREDENTIAL_QUALIFICATION: OsSecretQualificationEvidence & { readonly report: string } =
   Object.freeze({
     report: "docs/qualification/os-secret-backend-darwin.md",
-    digest: "46b3409d1fa61dab837f71bbae01a79c8aeea6d688fa44607d1ca0906baf84e4",
+    digest: "f33cb217e3af6347fd45a787661e4630ed08d6311b5629cd2329637c6e6ed8cc",
     controls: OS_CREDENTIAL_CONTROLS.darwin.controls
   });
 
@@ -31,7 +31,7 @@ export const LINUX_SECRET_SERVICE_CREDENTIAL_QUALIFICATION: OsSecretQualificatio
   readonly report: string;
 } = Object.freeze({
   report: "docs/qualification/os-secret-backend-linux.md",
-  digest: "5c82ef0f0c0807458609a145bb21c2cff90a7b2766bb94b5143765e972490758",
+  digest: "c4887ffe04346f77b44ba09379ed73af22648251877a3aab0a7575db703bd393",
   controls: OS_CREDENTIAL_CONTROLS.linux.controls
 });
 
@@ -39,7 +39,7 @@ export const LINUX_SECRET_SERVICE_CREDENTIAL_QUALIFICATION: OsSecretQualificatio
 export const WINDOWS_CREDENTIAL_MANAGER_QUALIFICATION: OsSecretQualificationEvidence & { readonly report: string } =
   Object.freeze({
     report: "docs/qualification/os-secret-backend-windows.md",
-    digest: "952601c646d697859d7d627d256405795548e7302ceae6b93202212cf815e8dc",
+    digest: "17927fcd4ce0e1e2f2ba50648402d451f46ac5bb11f73005c9beda497e26a5c8",
     controls: OS_CREDENTIAL_CONTROLS.win32.controls
   });
 
