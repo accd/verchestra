@@ -20,6 +20,7 @@ import {
   ClaudeCodeDriver
 } from "../../../packages/drivers/src/index.ts";
 import { mockRequest } from "../../../tests/helpers/driver-protocol-fixture.mjs";
+import { WIN32_HOST, mediationRefusedOnWin32 } from "../../../tests/helpers/mediation-platform.mjs";
 import { resolveClaudeCommand } from "../src/claude-code-driver.mjs";
 
 const execFileAsync = promisify(execFile);
@@ -103,7 +104,8 @@ async function mediatedFixture(options = {}) {
 
 const errors = (events) => events.filter((event) => event.type === "error").map((event) => event.code);
 
-test("fake claude completes the MCP handshake and reaches the controller through the bridge", async () => {
+test("fake claude completes the MCP handshake and reaches the controller through the bridge", async (t) => {
+  if (WIN32_HOST) return mediationRefusedOnWin32(t);
   const fixture = await mediatedFixture();
   const { events, closed } = await fixture.run();
   assert.deepEqual(errors(events), []);
@@ -124,7 +126,8 @@ test("fake claude completes the MCP handshake and reaches the controller through
   assert.equal(await readFile(join(fixture.worktree, "src", "a.txt"), "utf8"), "alpha\n");
 });
 
-test("the mediated invocation disables built-ins, allows only bridge tools, and never bypasses permissions", async () => {
+test("the mediated invocation disables built-ins, allows only bridge tools, and never bypasses permissions", async (t) => {
+  if (WIN32_HOST) return mediationRefusedOnWin32(t);
   const fixture = await mediatedFixture();
   await fixture.run();
   const { argv, mcpServers, mcpConfigMode } = await fixture.observation();
@@ -143,7 +146,8 @@ test("the mediated invocation disables built-ins, allows only bridge tools, and 
   assert.equal(mcpConfigMode, 0o600);
 });
 
-test("the child runs in the worktree with per-run identity directories and only the brokered credential", async () => {
+test("the child runs in the worktree with per-run identity directories and only the brokered credential", async (t) => {
+  if (WIN32_HOST) return mediationRefusedOnWin32(t);
   const previous = { key: process.env.ANTHROPIC_API_KEY, session: process.env.CLAUDE_CODE_SESSION };
   process.env.ANTHROPIC_API_KEY = "ambient-credential";
   process.env.CLAUDE_CODE_SESSION = "ambient-session";
@@ -184,7 +188,8 @@ test("the child runs in the worktree with per-run identity directories and only 
   }
 });
 
-test("reads outside the approved scope are denied at the bridge", async () => {
+test("reads outside the approved scope are denied at the bridge", async (t) => {
+  if (WIN32_HOST) return mediationRefusedOnWin32(t);
   const fixture = await mediatedFixture({ scenario: "read-escape" });
   await fixture.run();
   const { toolResults } = await fixture.observation();
@@ -194,20 +199,23 @@ test("reads outside the approved scope are denied at the bridge", async () => {
   ]);
 });
 
-test("a session advertising a built-in tool fails closed", async () => {
+test("a session advertising a built-in tool fails closed", async (t) => {
+  if (WIN32_HOST) return mediationRefusedOnWin32(t);
   const fixture = await mediatedFixture({ scenario: "extra-tool" });
   const { events, closed } = await fixture.run();
   assert.deepEqual(errors(events), ["VES_CLAUDE_TOOL_SURFACE_UNEXPECTED"]);
   assert.equal(closed.outcome, "failed");
 });
 
-test("a session whose bridge is not connected fails closed", async () => {
+test("a session whose bridge is not connected fails closed", async (t) => {
+  if (WIN32_HOST) return mediationRefusedOnWin32(t);
   const fixture = await mediatedFixture({ scenario: "bridge-down" });
   const { events } = await fixture.run();
   assert.deepEqual(errors(events), ["VES_CLAUDE_BRIDGE_UNAVAILABLE"]);
 });
 
-test("the brokered credential is redacted from model output", async () => {
+test("the brokered credential is redacted from model output", async (t) => {
+  if (WIN32_HOST) return mediationRefusedOnWin32(t);
   const fixture = await mediatedFixture({ scenario: "secret" });
   const { events } = await fixture.run();
   assert.equal(JSON.stringify(events).includes(credential), false);
@@ -225,14 +233,16 @@ for (const [name, execution, code] of [
     "VES_CLAUDE_MEDIATION_INVALID"
   ]
 ]) {
-  test(`${name} is refused before Claude Code is spawned`, async () => {
+  test(`${name} is refused before Claude Code is spawned`, async (t) => {
+    if (WIN32_HOST) return mediationRefusedOnWin32(t);
     const fixture = await mediatedFixture({ execution });
     await assert.rejects(fixture.run(), { code });
     assert.deepEqual(fixture.spawned, []);
   });
 }
 
-test("the profile refuses a relative executable and non-allowlisted ambient values at construction", () => {
+test("the profile refuses a relative executable and non-allowlisted ambient values at construction", (t) => {
+  if (WIN32_HOST) return mediationRefusedOnWin32(t);
   const resolveExecution = async () => assert.fail("not reached");
   assert.throws(() => new ClaudeCodeDriver({ command: ["claude"], profile: { kind: "mediated-mcp" }, resolveExecution }), {
     code: "VES_CLAUDE_MEDIATION_INVALID"
@@ -248,7 +258,8 @@ test("the profile refuses a relative executable and non-allowlisted ambient valu
   );
 });
 
-test("the mediated profile requires at least the qualified Claude Code build", async () => {
+test("the mediated profile requires at least the qualified Claude Code build", async (t) => {
+  if (WIN32_HOST) return mediationRefusedOnWin32(t);
   const fixture = await mediatedFixture({ dependencies: { minimumVersion: "2.1.300" } });
   const probe = await fixture.driver.probe();
   assert.equal(probe.available, false);
@@ -260,7 +271,8 @@ test("the mediated profile requires at least the qualified Claude Code build", a
   }).probe()).version, "2.1.282");
 });
 
-test("cancellation terminates the mediated session and still removes its isolation directory", async () => {
+test("cancellation terminates the mediated session and still removes its isolation directory", async (t) => {
+  if (WIN32_HOST) return mediationRefusedOnWin32(t);
   const fixture = await mediatedFixture({ scenario: "hang" });
   const controller = new AbortController();
   const pending = fixture.run(controller.signal);
@@ -303,7 +315,8 @@ async function absoluteClaude(command) {
 // version code rather than launched with flags it lacks. The fleet pin must
 // reach the minimum. A machine without Claude Code reports not configured,
 // never a pass by omission.
-test("every mediated flag exists in the installed Claude Code help", async () => {
+test("every mediated flag exists in the installed Claude Code help", async (t) => {
+  if (WIN32_HOST) return mediationRefusedOnWin32(t);
   const [command, ...prefix] = resolveClaudeCommand();
   let versionText;
   let help;
