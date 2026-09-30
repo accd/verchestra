@@ -2,13 +2,13 @@
 schema: verchestra-feature-handoff/v1
 feature: dependency-security-2026-09
 issue: null
-status: in_progress
-branch: fix/dependency-security-2026-09
-baseRevision: 20071a78eb5b96b9de63e5e9c863b6997643c767
-lastCompletedTask: T2
-nextTask: T3 — merge the override and lockfile security PR, then continue the sequential Dependabot merges (T4–T7).
-lastGate: pnpm gate:quick
-updatedAt: 2026-09-28T23:30:00Z
+status: verification
+branch: fix/lodash-es-override
+baseRevision: 4dde7e9edbec3c6ef1cc5f1bc1d6f995908e85c5
+lastCompletedTask: T7
+nextTask: T8/T9 — merge the lodash-es override, then confirm that the Dependabot alerts API reports zero open alerts and that no Dependabot PR is open.
+lastGate: pnpm audit
+updatedAt: 2026-09-30T06:10:00Z
 ---
 
 # Scope
@@ -18,16 +18,16 @@ Dependabot pull request. Required checks and qualification pins stay as they are
 
 # Completed Evidence
 
-- #411 merged as `20071a7`. Its checks were green on the exact head: Quality
-  gate, Site quality, CodeQL.
-- #410 closed as a duplicate of #411.
-- Baseline on `951e25f` with Node 24.14.0: `pnpm gate:quick` PASS (252 tests)
-  and `pnpm gate:security` PASS (300 tests).
+T1–T7 are merged. The commits are in `tasks.md`. Alerts 1–44 are fixed, and #410 is closed
+as a duplicate. The two driver runtime updates were requalified at the latest
+patch, with immutable reports `docs/qualification/opencode-driver-1.18.33.md` and
+`docs/qualification/pi-runtime-0.87.1.md`.
 
 # Next Exact Action
 
-Merge this PR. Then rebase-merge #412, #413, #404, #403, #402 and #401 in that
-order, and requalify #400 and #415.
+Merge the lodash-es override. Then check that
+`gh api repos/accd/verchestra/dependabot/alerts` lists no open alert and that
+`pnpm audit` on `main` reports none.
 
 # Blockers
 
