@@ -328,7 +328,9 @@ const readCanonicalJsonIfPresent = async (path, label) => {
   return parseCanonical(bytes, label);
 };
 
-const writeExclusive = async (path, bytes, label) => {
+// why: shared with the online refresh (#382), so both scripts refuse to
+// overwrite any output byte the same way.
+export const writeExclusive = async (path, bytes, label) => {
   try {
     await writeFile(path, bytes, { flag: "wx", mode: 0o600 });
   } catch (error) {
@@ -336,15 +338,15 @@ const writeExclusive = async (path, bytes, label) => {
   }
 };
 
-const assertOutputAbsent = async (path) => {
+export const assertOutputAbsent = async (path, subject = "publication") => {
   try {
     await lstat(path);
   } catch (error) {
     if (error?.code === "ENOENT") return;
-    fail("VES_T76_PUBLISH_INPUT_INVALID", "the publication output cannot be inspected", error);
+    fail("VES_T76_PUBLISH_INPUT_INVALID", `the ${subject} output cannot be inspected`, error);
     return;
   }
-  fail("VES_T76_PUBLISH_OUTPUT_EXISTS", "the publication output already exists");
+  fail("VES_T76_PUBLISH_OUTPUT_EXISTS", `the ${subject} output already exists`);
 };
 
 // ---------------------------------------------------------------------------
