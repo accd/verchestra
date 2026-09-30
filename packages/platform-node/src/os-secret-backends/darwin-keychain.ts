@@ -2,14 +2,21 @@
 // encoded, via `security -i`) or on the child's captured stderr (reads), and
 // never in any argv or environment (#379, AD-034). Presence is an
 // attribute-only lookup that never retrieves the value.
-import { spawn } from "node:child_process";
 import { constants } from "node:fs";
 import { lstat, open } from "node:fs/promises";
 
-import { StableId } from "@verchestra/domain";
-
 import { PlatformSecurityError } from "../platform-security-errors.ts";
-import { type OsSecretBackend, type OsSecretLocator, isValidLogicalSecretName } from "../secret-broker.ts";
+import type { OsSecretBackend, OsSecretLocator } from "../secret-broker.ts";
+import {
+  type CredentialToolInvocation,
+  type CredentialToolResult,
+  type CredentialToolRunner,
+  assertLocator,
+  backendFailure as failure,
+  pickEnvironment,
+  runBounded,
+  spawnCredentialTool
+} from "./credential-tool.ts";
 
 export const SECURITY_EXECUTABLE = "/usr/bin/security";
 
@@ -25,7 +32,6 @@ const ITEM_NOT_FOUND = 44;
 const MAX_KEYCHAIN_PATH_LENGTH = 1024;
 const KEYCHAIN_PATH = /^\/[A-Za-z0-9._/+-]+$/u;
 const KEYCHAIN_MAGIC = "kych";
-const MAX_CAPTURED_OUTPUT = 1024 * 1024;
 
 // why: a presence lookup must finish inside deep doctor's 5 s probe budget so
 // this module, not the doctor's timer, kills a hung `security` child.
@@ -35,101 +41,17 @@ export const PRESENCE_TIMEOUT_MS = 4_000;
 export const READ_TIMEOUT_MS = 30_000;
 export const WRITE_TIMEOUT_MS = 15_000;
 
-export interface SecurityInvocation {
-  readonly args: readonly string[];
-  readonly stdin?: Uint8Array;
-  readonly timeoutMs: number;
-}
-
-export interface SecurityResult {
-  // invariant: null when the child was killed (timeout) or ended by a signal.
-  readonly exitCode: number | null;
-  readonly stdout: string;
-  readonly stderr: string;
-  // invariant: true only when the runner killed the child at its timeout.
-  readonly timedOut?: boolean;
-}
-
-export type SecurityRunner = (invocation: SecurityInvocation) => Promise<SecurityResult>;
+export type SecurityInvocation = CredentialToolInvocation;
+export type SecurityResult = CredentialToolResult;
+export type SecurityRunner = CredentialToolRunner;
 
 export function securityChildEnvironment(): NodeJS.ProcessEnv {
   // invariant: the child inherits no ambient variable beyond what `security`
   // needs to locate the invoking user's keychains, and never a credential.
-  const environment: NodeJS.ProcessEnv = { PATH: "/usr/bin:/bin" };
-  for (const key of ["HOME", "USER", "LOGNAME"]) {
-    const value = process.env[key];
-    if (value !== undefined) environment[key] = value;
-  }
-  return environment;
+  return pickEnvironment(["HOME", "USER", "LOGNAME"], { PATH: "/usr/bin:/bin" });
 }
 
-export const nodeSecurityRunner: SecurityRunner = (invocation) =>
-  new Promise((resolveResult, rejectResult) => {
-    const child = spawn(SECURITY_EXECUTABLE, [...invocation.args], {
-      env: securityChildEnvironment(),
-      stdio: ["pipe", "pipe", "pipe"],
-      windowsHide: true
-    });
-    const stdout: Buffer[] = [];
-    const stderr: Buffer[] = [];
-    let captured = 0;
-    const collect = (sink: Buffer[]) => (chunk: Buffer) => {
-      captured += chunk.length;
-      if (captured <= MAX_CAPTURED_OUTPUT) sink.push(chunk);
-    };
-    child.stdout.on("data", collect(stdout));
-    child.stderr.on("data", collect(stderr));
-    let timedOut = false;
-    const timer = setTimeout(() => {
-      timedOut = true;
-      child.kill("SIGKILL");
-    }, invocation.timeoutMs);
-    child.on("error", () => {
-      clearTimeout(timer);
-      rejectResult(new Error("the security executable could not be started"));
-    });
-    child.on("close", (code) => {
-      clearTimeout(timer);
-      const result = {
-        exitCode: code,
-        timedOut,
-        stdout: Buffer.concat(stdout).toString("utf8"),
-        stderr: Buffer.concat(stderr).toString("utf8")
-      };
-      for (const chunk of [...stdout, ...stderr]) chunk.fill(0);
-      resolveResult(result);
-    });
-    child.stdin.on("error", () => undefined);
-    child.stdin.end(invocation.stdin);
-  });
-
-function failure(message: string, exitCode?: number | null): PlatformSecurityError {
-  // invariant: no stdout or stderr text reaches an error — either stream may
-  // carry the value or, for an oversize line, its hex encoding.
-  return new PlatformSecurityError("VES_SECRET_BACKEND_FAILURE", message, { exitStatus: exitStatus(exitCode) });
-}
-
-function exitStatus(exitCode: number | null | undefined): string {
-  if (exitCode === undefined) return "none";
-  if (exitCode === null) return "killed";
-  return String(exitCode);
-}
-
-function assertLocator(locator: Readonly<OsSecretLocator>): void {
-  const prefix = "verchestra/";
-  let workspaceValid = false;
-  if (typeof locator?.namespace === "string" && locator.namespace.startsWith(prefix)) {
-    try {
-      StableId.parse(locator.namespace.slice(prefix.length), "workspace");
-      workspaceValid = true;
-    } catch {
-      workspaceValid = false;
-    }
-  }
-  if (!workspaceValid || !isValidLogicalSecretName(locator.logicalName)) {
-    throw new PlatformSecurityError("VES_SECRET_BINDING_INVALID", "Keychain locator is not a canonical binding");
-  }
-}
+export const nodeSecurityRunner: SecurityRunner = spawnCredentialTool(SECURITY_EXECUTABLE, securityChildEnvironment);
 
 export function assertKeychainPathSyntax(path: string): void {
   if (
@@ -245,14 +167,7 @@ export class DarwinKeychainBackend implements OsSecretBackend, CredentialProvisi
   // reported as "keychain interaction required" — a locked keychain or an
   // approval dialog nobody answered — never as a hang or a generic failure.
   async #run(invocation: SecurityInvocation): Promise<SecurityResult> {
-    const result = await this.#runner(invocation);
-    if (result.timedOut === true) {
-      throw new PlatformSecurityError(
-        "VES_SECRET_KEYCHAIN_INTERACTION_REQUIRED",
-        "Keychain did not answer in time; it is locked or waiting for approval"
-      );
-    }
-    return result;
+    return runBounded(this.#runner, invocation);
   }
 
   async has(locator: Readonly<OsSecretLocator>): Promise<boolean> {

@@ -29,15 +29,41 @@ export {
 } from "./secret-broker.ts";
 export {
   DARWIN_KEYCHAIN_CREDENTIAL_QUALIFICATION,
+  LINUX_SECRET_SERVICE_CREDENTIAL_QUALIFICATION,
+  WINDOWS_CREDENTIAL_MANAGER_QUALIFICATION,
   createOsCredentialStore,
   type OsCredentialStore
 } from "./os-secret-backends/credential-store.ts";
 export {
+  CredentialToolUnavailableError,
+  type CredentialToolInvocation,
+  type CredentialToolResult,
+  type CredentialToolRunner
+} from "./os-secret-backends/credential-tool.ts";
+export {
+  LinuxSecretServiceBackend,
+  SECRET_TOOL_EXECUTABLE,
+  nodeSecretToolRunner,
+  secretToolChildEnvironment
+} from "./os-secret-backends/linux-secret-service.ts";
+export {
+  CREDENTIAL_PERSISTENCE,
+  POWERSHELL_ARGUMENTS,
+  WindowsCredentialManagerBackend,
+  credentialProgram,
+  credentialTarget,
+  nodePowerShellRunner,
+  powershellChildEnvironment,
+  powershellExecutable
+} from "./os-secret-backends/windows-credential-manager.ts";
+export {
   DarwinKeychainBackend,
   MAX_CREDENTIAL_VALUE_BYTES,
   PRESENCE_TIMEOUT_MS,
+  READ_TIMEOUT_MS,
   SECURITY_EXECUTABLE,
   SECURITY_INTERACTIVE_LINE_LIMIT,
+  WRITE_TIMEOUT_MS,
   isValidCredentialValue,
   nodeSecurityRunner,
   securityChildEnvironment,

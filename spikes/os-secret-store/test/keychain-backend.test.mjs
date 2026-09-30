@@ -4,8 +4,8 @@
 // spawn unless it names that file, and the file's own attribute dump proves
 // exactly which items the test left behind. Nothing here reads or writes the
 // login keychain or the search list. On any other platform the same tests
-// assert, not skip, that no credential store is qualified there — a skipped
-// case would read as a pass it never earned.
+// assert, not skip, that the keychain backend is not selected there — a
+// skipped case would read as a pass it never earned.
 import assert from "node:assert/strict";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -25,9 +25,16 @@ const namespace = `verchestra/${workspaceId}`;
 const item = (logicalName) => `${namespace}\u0000${logicalName}`;
 
 function refusedElsewhere(t) {
-  t.diagnostic(`not darwin (${process.platform}): asserting the credential store is refused instead`);
-  assert.throws(() => createOsCredentialStore({ platform: process.platform }), {
-    code: "VES_SECRET_STORE_UNQUALIFIED"
+  t.diagnostic(`not darwin (${process.platform}): asserting the keychain backend is refused instead`);
+  if (process.platform !== "linux" && process.platform !== "win32") {
+    assert.throws(() => createOsCredentialStore({ platform: process.platform }), {
+      code: "VES_SECRET_STORE_UNQUALIFIED"
+    });
+    return;
+  }
+  assert.notEqual(createOsCredentialStore({ platform: process.platform }).storeId, "apple-keychain-credential");
+  assert.throws(() => createOsCredentialStore({ platform: process.platform, keychainPath: "/tmp/x.keychain-db" }), {
+    code: "VES_SECRET_KEYCHAIN_INVALID"
   });
 }
 

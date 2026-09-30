@@ -5,10 +5,10 @@
 import type { CliCommand, CommandResult } from "@verchestra/application";
 import { PublicErrorException } from "@verchestra/domain";
 import {
+  type CredentialToolRunner,
   MAX_CREDENTIAL_VALUE_BYTES,
   type OsCredentialStore,
   type SecretAdapter,
-  type SecurityRunner,
   createOsCredentialStore,
   isValidCredentialValue,
   isValidLogicalSecretName,
@@ -38,7 +38,7 @@ export interface SecretCommandIo {
   readonly platform: string;
   readonly stdin: SecretInput;
   readonly stderr: (value: string) => void;
-  readonly runner?: SecurityRunner;
+  readonly runner?: CredentialToolRunner;
 }
 
 function publicError(error: unknown, command: string): PublicErrorException {
@@ -237,12 +237,15 @@ export interface DoctorSecretProbe {
 // why: deep doctor gets a presence closure, never the adapter, so `read` is
 // structurally unreachable from the diagnostic. An uninitialized or unreadable
 // Workspace, or a platform without a qualified credential store, leaves the
-// port unset and the check honestly blocked.
+// port unset and the check honestly blocked. A qualified store that is not
+// running in this session (no Secret Service on the bus, no Credential
+// Manager for this logon) is "not configured" too, so it also reads as
+// blocked; a store that is present but cannot answer stays a failure.
 export async function composeDoctorSecretProbe(options: {
   readonly controlRoot: string;
   readonly platform: string;
   readonly keychainPath?: string;
-  readonly runner?: SecurityRunner;
+  readonly runner?: CredentialToolRunner;
 }): Promise<DoctorSecretProbe> {
   const identity = await readWorkspaceIdentity(options.controlRoot).catch(() => undefined);
   if (identity === undefined) return {};
@@ -259,7 +262,14 @@ export async function composeDoctorSecretProbe(options: {
     secret: Object.freeze({
       logicalName: DOCTOR_CREDENTIAL_NAME,
       adapter: Object.freeze({
-        has: (workspaceId: string, logicalName: string) => adapter.has(workspaceId, logicalName)
+        has: async (workspaceId: string, logicalName: string) => {
+          try {
+            return await adapter.has(workspaceId, logicalName);
+          } catch (error) {
+            if ((error as { readonly code?: unknown }).code === "VES_SECRET_STORE_UNAVAILABLE") return false;
+            throw error;
+          }
+        }
       })
     })
   });
