@@ -3,11 +3,11 @@ schema: verchestra-feature-handoff/v1
 feature: single-binary-distribution
 issue: 236
 status: verification
-branch: feat/236-single-binary
-baseRevision: aa6cf42b0c6e26cdbe3a23ce474ca4ea39a47a94
-lastCompletedTask: T7
+branch: fix/236-windows-sea-pe
+baseRevision: 4dde7e9edbec3c6ef1cc5f1bc1d6f995908e85c5
+lastCompletedTask: T8
 nextTask: "T6: after merge, dispatch .github/workflows/single-binary-build.yml at the merge revision (first with no release inputs, then with a t76-publish-release run), record the five per-leg transcripts in validation.md, then hand the owner the macOS Developer ID/notarization and Windows Authenticode signing steps."
-lastGate: "Local darwin-arm64 host, T7 tree: focused single-binary suites 57/57 (byte determinism included); gate:quick, gate:build, gate:security, gate:release, agent:check all PASS with 0 skipped - see validation.md."
+lastGate: "T8 on a local darwin-arm64 host: focused single-binary suites 59/59; gate:quick, gate:build, gate:release, and agent:check PASS with 0 skipped. single-binary-build.yml run 36677942597 (tests only) PASS on all five legs, 50/50 each with 0 skipped. See validation.md."
 updatedAt: 2026-09-30T00:00:00Z
 ---
 
@@ -29,6 +29,13 @@ T7 resolved the SonarCloud findings on the pull request and hardened the
 pinned-archive reader (SBD-13). The workflow now grants `actions: read` only
 to the `target` job. The emitted bytes are unchanged, and the two-build
 determinism test still passes.
+
+T8 made the Windows executable loadable. On Windows x64, run 36675382810 failed
+with `spawn EFTYPE`, because the injector left every existing resource's
+bytes in `.rsrc` after moving the resource tree to `.sea`. A bisection on the
+Windows runner, recorded in `validation.md`, isolated that rule. The new
+section now holds the tree, the copied resource bytes, and the blob. Run
+36677942597 then passed on all five legs. Mach-O and ELF bytes are unchanged.
 
 # Next Exact Action
 
