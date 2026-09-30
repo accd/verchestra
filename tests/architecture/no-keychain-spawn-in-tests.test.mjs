@@ -1,6 +1,7 @@
 // invariant: gate suites never spawn a real OS credential-store program
-// (#379): the macOS `security` tool, libsecret's `secret-tool`, or the Windows
-// PowerShell that runs the Credential Manager program. A call from a gate can
+// (#379): the macOS `security` tool, libsecret's `secret-tool`, `dbus-send`
+// (the Secret Service presence query), or the Windows PowerShell that runs the
+// Credential Manager program. A call from a gate can
 // raise a dialog, hang an unattended run, or touch the owner's keychain,
 // keyring, or Credential Manager, and a CI machine or a locked session makes
 // even a read fragile. Real-store evidence belongs to the standalone
@@ -54,7 +55,7 @@ test("no gate test references a real credential-tool runner", () => {
 
 test("no gate test spawns a credential tool directly", () => {
   const direct =
-    /\b(?:spawn|spawnSync|execFile|execFileSync|exec|execSync)\(\s*(?:["'`](?:\/usr\/bin\/)?(?:security|secret-tool)["'`]|["'`][^"'`]*(?:powershell|pwsh)(?:\.exe)?["'`]|SECURITY(?:_EXECUTABLE)?\b|SECRET_TOOL(?:_EXECUTABLE)?\b|powershellExecutable\b)/iu;
+    /\b(?:spawn|spawnSync|execFile|execFileSync|exec|execSync)\(\s*(?:["'`](?:\/usr\/bin\/)?(?:security|secret-tool|dbus-send)["'`]|["'`][^"'`]*(?:powershell|pwsh)(?:\.exe)?["'`]|SECURITY(?:_EXECUTABLE)?\b|SECRET_TOOL(?:_EXECUTABLE)?\b|DBUS_SEND(?:_EXECUTABLE)?\b|powershellExecutable\b)/iu;
   for (const { path, source } of files) assert.doesNotMatch(source, direct, `${path} spawns a credential tool`);
 });
 
@@ -78,6 +79,7 @@ test("the spawn guard refuses every credential tool in process", () => {
   for (const tool of [
     "/nonexistent/security",
     "/nonexistent/secret-tool",
+    "/nonexistent/dbus-send",
     "C:\\nonexistent\\WindowsPowerShell\\v1.0\\powershell.exe",
     "C:\\nonexistent\\PowerShell.EXE",
     "/nonexistent/pwsh"

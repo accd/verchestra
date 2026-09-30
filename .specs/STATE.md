@@ -434,7 +434,7 @@ note. -->
   `anthropic-api-key` through a presence-only closure, so a bound credential on
   macOS removes L2's remaining blocker there. Linux (Secret Service) and Windows
   stay unqualified and report `not configured` until each has its own
-  qualification report. The maximum value is 1416 bytes, not 8 KiB, because the
+  qualification report (since done: AD-041). The maximum value is 1416 bytes, not 8 KiB, because the
   line limit dictates it.
 
 ### AD-035 — The `init` probe scaffold carries a checked copy of the contract and a port-level kit (#234)
@@ -571,6 +571,79 @@ note. -->
     (`.github/workflows/single-binary-build.yml`).
   - It changes no T76, T77, or 1.0.0 status.
 
+### AD-041 — Linux and Windows credentials qualify on the same readable-credential contract, each with its own evidence (#379)
+
+- **Status:** proposed. The owner ratifies it by reviewing the pull request
+  that carries `feat/379-linux-windows-credential-stores`
+  (`.specs/features/os-secret-backend-cross-platform/`).
+- **Decision:** `OS_CREDENTIAL_CONTROLS` (AD-034) gains a `linux` and a `win32`
+  contract, each qualified by its own digest-bound report. The key-material
+  contract is unchanged, and no credential evidence satisfies it.
+  - **Linux:** `secret-service-credential`, controls `secret-service`,
+    `user-scope`, `workspace-namespace`, `not-in-argv`, and
+    `presence-without-value`. The backend writes with
+    `/usr/bin/secret-tool store` (value on stdin) and reads with
+    `secret-tool lookup` (value on captured stdout). Presence is the Secret
+    Service's own `SearchItems` method through `/usr/bin/dbus-send`, which
+    returns item paths and never a secret.
+  - **Windows:** `windows-credential-manager`, controls `credential-manager`,
+    `dpapi-at-rest`, `user-scope`, `workspace-namespace`, `not-in-argv`, and
+    `presence-without-value`. The backend runs
+    `powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command -`
+    with a program on stdin. The program compiles an inline P/Invoke of
+    advapi32 `CredReadW`, `CredWriteW`, and `CredDeleteW`, for a
+    `CRED_TYPE_GENERIC` credential with target `verchestra/<ws>/<name>` and
+    `CRED_PERSIST_LOCAL_MACHINE` persistence. `ENTERPRISE` would roam the key
+    to other machines; `SESSION` would lose it at logoff.
+  - **Both:** the store is selected by platform in `createOsCredentialStore`,
+    and `--keychain` is refused there. A store that is not running in the
+    session is a new `VES_SECRET_STORE_UNAVAILABLE`, which deep doctor reads
+    as `blocked` (not configured), never `pass`. The injectable runner
+    carries an optional `tool` name so the Linux backend can run its two fixed
+    programs.
+- **Measured constraints adopted as invariants** (hosted `ubuntu-latest` and
+  `windows-latest` runners, recorded in the two reports):
+  - `secret-tool search` prints the secret, so presence cannot use it.
+  - With no prompter in the session, `secret-tool lookup` of a locked item
+    misses silently, exactly like a missing item. A read miss is therefore
+    confirmed by `SearchItems`, and a locked-only match is
+    `VES_SECRET_KEYCHAIN_INTERACTION_REQUIRED`.
+  - `secret-tool clear` of nothing exits 1 silently, so delete decides from
+    presence.
+  - Under `-Command -`, Windows PowerShell reads stdin ahead of the program,
+    so `[Console]::In.ReadLine()` gets nothing. The value therefore travels as
+    the base64 literal of one program line. A read or write first checks the
+    Script Block Logging and transcription policies, and stops with a new
+    `VES_SECRET_STORE_LOGGED` if either is enforced.
+  - The `Add-Type` cmdlet took 23 to 33 s in the allowlisted child environment,
+    because command discovery ran against a cold module-analysis cache. The
+    program therefore calls `CSharpCodeProvider` directly and uses no cmdlet.
+  - Credential Manager never prompts, so a Windows timeout is a retryable
+    `VES_SECRET_BACKEND_FAILURE`, not an interaction-required error.
+- **Rationale:** Each platform claims only what its store guarantees. The
+  value never enters argv or the environment on any platform. Linux presence
+  is attribute-only, like macOS. Windows presence decrypts inside the
+  PowerShell child, because Credential Manager has no attribute-only query.
+  It returns only `present` or `absent`, and the report says so.
+- **Evidence:** `pnpm qualify:keychain` (`spikes/os-secret-store`) runs in
+  `.github/workflows/os-credential-store.yml` on `ubuntu-latest`,
+  `windows-latest`, and `macos-latest`. On Linux it uses a disposable
+  `dbus-daemon` and gnome-keyring with a temporary HOME. On Windows it uses
+  random target prefixes, deleted in `finally`. On macOS it uses a disposable
+  keychain. Gate suites use fake runners only, and the spawn guard now refuses
+  `secret-tool`, `dbus-send`, and PowerShell as well as `security`.
+- **Consequences:** #379's store exists on every supported platform, and L2's
+  secret-presence blocker is gone wherever `anthropic-api-key` is bound. The
+  reported limits:
+  - same-user processes can read any of these stores;
+  - Windows presence decrypts inside the PowerShell child;
+  - AMSI sees the Windows program lines;
+  - the logging-policy guard's effect is designed, not observed under an
+    enforced policy;
+  - the first cold PowerShell start measured about 4 s, at the edge of the 4 s
+    presence budget;
+  - Linux needs `/usr/bin/secret-tool` and `/usr/bin/dbus-send`.
+
 ## Handoff
 
 - **Feature:** `init-probe-scaffold` (#234) on `feat/234-init-probe-scaffold`,
@@ -579,6 +652,14 @@ note. -->
   `vestra init` (AD-035). See `.specs/features/init-probe-scaffold/handoff.md`.
 - **Next:** independent review of AD-035, then rebase onto `main` after #379
   merges.
+
+- **Feature:** `os-secret-backend-cross-platform` (#379) on
+  `feat/379-linux-windows-credential-stores`.
+- **Completed:** qualified Linux Secret Service and Windows Credential Manager
+  credential backends (AD-041), proven against the real stores in CI on all
+  three platforms. See
+  `.specs/features/os-secret-backend-cross-platform/handoff.md`.
+- **Next:** independent review of AD-041.
 
 - **Feature:** `os-secret-backend` (#379) on `feat/os-secret-backend`.
 - **Completed:** qualified macOS keychain credential backend (AD-034),
