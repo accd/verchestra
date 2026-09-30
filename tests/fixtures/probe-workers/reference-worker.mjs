@@ -16,11 +16,21 @@ const workspaceId = process.env.VERCHESTRA_PROBE_WORKSPACE_ID;
 const componentId = process.env.PROBE_FIXTURE_COMPONENT ?? "plugin:acme-orders-probe";
 const ownDigest = `sha256:${createHash("sha256").update(readFileSync(process.argv[1])).digest("hex")}`;
 
+// invariant: RFC 8785 orders object keys by UTF-16 code units, which is what a
+// plain `<` on JavaScript strings compares; never the ambient locale.
+function compareCodeUnit(left, right) {
+  return Number(left > right) - Number(left < right);
+}
+
+function member(value, key) {
+  return `${JSON.stringify(key)}:${canonical(value[key])}`;
+}
+
 function canonical(value) {
   if (value === null || typeof value !== "object") return JSON.stringify(value);
   if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
-  const keys = Object.keys(value).sort();
-  return `{${keys.map((key) => `${JSON.stringify(key)}:${canonical(value[key])}`).join(",")}}`;
+  const keys = Object.keys(value).sort(compareCodeUnit);
+  return `{${keys.map((key) => member(value, key)).join(",")}}`;
 }
 
 function digest(value) {
@@ -111,7 +121,9 @@ function execute(request) {
     return;
   }
   if (mode === "report-environment") {
-    send("probe.result.chunk", { rows: [{ environmentKeys: Object.keys(process.env).sort(), cwd: process.cwd() }] });
+    send("probe.result.chunk", {
+      rows: [{ environmentKeys: Object.keys(process.env).sort(compareCodeUnit), cwd: process.cwd() }]
+    });
     send("probe.result.end", { chunkCount: 1 });
     return;
   }

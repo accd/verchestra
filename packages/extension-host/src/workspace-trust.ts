@@ -1,7 +1,7 @@
 import { ProbeProtocolError } from "./index.ts";
 
 const DIGEST = /^sha256:[a-f0-9]{64}$/u;
-const SAFE = /^[A-Za-z0-9][A-Za-z0-9._:@/+\-]{0,511}$/u;
+const SAFE = /^[A-Za-z0-9][A-Za-z0-9._:@/+-]{0,511}$/u;
 // invariant: product workers own this namespace. A workspace extension that
 // claims it could otherwise pass the product handshake pin by name alone.
 const PRODUCT_COMPONENT_NAMESPACE = "probe-worker:";
