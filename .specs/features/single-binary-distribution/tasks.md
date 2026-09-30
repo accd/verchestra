@@ -93,3 +93,17 @@ hardened as SBD-13 describes.
 **Tests:** `tests/unit/node-runtime-archive.test.mjs`,
 `tests/agent-readiness/single-binary-workflow.test.mjs`, and
 `tests/build/vestra-binary.test.mjs` (byte determinism).
+
+### T8: Loadable Windows executable
+
+**Status:** Done.
+**What:** Fix the PE injector so that Windows starts the injected `vestra.exe`.
+Run 36675382810 failed on Windows x64 with `spawn EFTYPE`. The rebuilt
+resource tree now lives in the same section as a copy of every resource's
+bytes and the blob, and the locator refuses any other layout. An independent
+reader of the loader's PE rules, `tests/helpers/pe-loader-checks.mjs`, runs on
+the synthetic PE on every host and on the real `vestra.exe` on the Windows leg.
+Mach-O and ELF bytes are unchanged.
+**Requirements:** SBD-02, SBD-07, SBD-09.
+**Tests:** `tests/unit/sea-inject.test.mjs`, `tests/build/vestra-binary.test.mjs`,
+and `single-binary-build.yml` run 36677942597 (five legs, zero skips).
