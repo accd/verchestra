@@ -39,6 +39,19 @@ function fail(code: TaskGateErrorCode, message: string, options?: ErrorOptions):
   throw new TaskGateError(code, message, options);
 }
 
+export const TASK_GATE_COMMAND_FIELDS = [
+  "gateId",
+  "requirementIds",
+  "declaredCommand",
+  "commandRef",
+  "args",
+  "cwd",
+  "timeoutMs",
+  "outputLimitBytes",
+  "resultProtocol",
+  "minimumTests"
+] as const;
+
 function exact(value: unknown, label: string, allowed: readonly string[], code: TaskGateErrorCode): Row {
   if (value === null || typeof value !== "object" || Array.isArray(value)) fail(code, `${label} must be an object`);
   const row = value as Row;
@@ -124,23 +137,7 @@ function normalizePlanMaterial(value: unknown): NormalizedGatePlanMaterial {
     fail("VES_GATE_PLAN_INVALID", "gate plan is invalid");
   if (plan["commands"].length > 50) fail("VES_GATE_PLAN_INVALID", "gate plan has too many commands");
   const commands = plan["commands"].map((value, index) => {
-    const command = exact(
-      value,
-      `gate command ${index}`,
-      [
-        "gateId",
-        "requirementIds",
-        "declaredCommand",
-        "commandRef",
-        "args",
-        "cwd",
-        "timeoutMs",
-        "outputLimitBytes",
-        "resultProtocol",
-        "minimumTests"
-      ],
-      "VES_GATE_PLAN_INVALID"
-    );
+    const command = exact(value, `gate command ${index}`, TASK_GATE_COMMAND_FIELDS, "VES_GATE_PLAN_INVALID");
     const resultProtocol = command["resultProtocol"];
     if (!(resultProtocol === "exit-code" || resultProtocol === "test-summary"))
       fail("VES_GATE_PLAN_INVALID", "gate result protocol is invalid");

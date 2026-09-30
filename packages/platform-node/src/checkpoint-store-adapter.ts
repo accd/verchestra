@@ -57,11 +57,15 @@ const rejectStored: Failure = (message) => {
   throw new CheckpointStoreError("VES_RUNTIME_CHECKPOINT_CORRUPT", message);
 };
 
+function codeUnitCompare(left: string, right: string): number {
+  return Number(left > right) - Number(left < right);
+}
+
 function exactRow(value: unknown, keys: readonly string[], reject: Failure, label: string): Row {
   if (value === null || typeof value !== "object" || Array.isArray(value)) reject(`${label} must be an object`);
   const row = value as Row;
-  const actual = Object.keys(row).sort();
-  const expected = [...keys].sort();
+  const actual = Object.keys(row).sort(codeUnitCompare);
+  const expected = [...keys].sort(codeUnitCompare);
   if (actual.length !== expected.length || actual.some((key, index) => key !== expected[index]))
     reject(`${label} does not have the declared fields`);
   return row;
