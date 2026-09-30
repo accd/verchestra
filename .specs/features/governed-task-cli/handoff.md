@@ -4,11 +4,11 @@ feature: governed-task-cli
 issue: 405
 status: verification
 branch: feat/405-governed-task-cli
-baseRevision: 4ff9bed6e5e19ba38e11d45d9112667d81a4b254
+baseRevision: f0dd6c2539e95424c4eb3dc9bda167fdba4c0680
 lastCompletedTask: T9
-nextTask: "Independent verification and human review of the E0-E9 stack (split into the foundations, #409, #379, and composition PRs); then the supervised live pilot (#406) with real Claude Code and Codex."
-lastGate: "Composition stack on Node 24.14.0 macOS arm64: gate:quick PASS; gate:build PASS; gate:security PASS; gate:release PASS; test:e2e 211/211; agent:check PASS; site:check PASS (site:test Playwright not runnable here: no local browser)"
-updatedAt: 2026-09-29T00:00:00Z
+nextTask: "Independent verification and human review of the E0-E9 stack (the foundations and composition PRs; #409 and #379 are on main); then the supervised live pilot (#406) with real Claude Code and Codex."
+lastGate: "Restacked on main, Node 24.14.0 macOS arm64: gate:quick PASS; gate:build PASS; gate:security PASS; gate:release PASS; test:e2e 229/229; agent:check PASS; 0 skipped"
+updatedAt: 2026-09-30T00:00:00Z
 ---
 
 # Scope
@@ -60,20 +60,18 @@ the labeled fakes in `tests/helpers/task-cli-fakes/`, and the fake keychain
 preload.
 
 T9: `docs/quick-start.md`, README, the site status line, the acceptance-matrix
-note, AD-0XX in `.specs/STATE.md`, and this directory. Every requirement is
+note, AD-040 in `.specs/STATE.md`, and this directory. Every requirement is
 mapped in validation.md, including #409's TDC-01..04.
 
 # Stack for the coordinator
 
-- Foundations: `9579066`..`740dd48` (six commits from
-  `feat/405-governed-task-foundations`).
-- PR #409: `56c9a3f`, `3954150` (cherry-picked from
-  `origin/feat/405-codex-execution-context`).
-- #379: `024096d`, `405f69f`, `30141ef` (cherry-picked from
-  `feat/os-secret-backend`; the AD-034/AD-0XX conflict in `.specs/STATE.md`
-  kept both).
-- Composition: every later commit. `eee4bb9` fixes #409's own
-  `codex-process-context` test on macOS and can be folded into #409.
+- Base: `main` at `f0dd6c2`, which already carries #409 (Codex process
+  context), #379 (os-secret-backend), and every other change this stack once
+  cherry-picked.
+- Foundations: the eight commits of `feat/405-governed-task-foundations` (E0–E5,
+  the AD-039 numbering, and its SonarCloud-class refactor).
+- Composition: every later commit on `feat/405-governed-task-cli` (E6–E9 and
+  the AD-040 numbering).
 
 # Historical: what the foundations handed to the composition slice (E6/E7)
 

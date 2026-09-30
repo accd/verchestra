@@ -688,7 +688,7 @@ note. -->
   Windows reports not configured. Same-user processes remain out of the threat
   model (see `.specs/features/governed-task-cli/threat-model.md`).
 
-### AD-0XX (to be numbered at merge) — The governed `vestra task` composition: local human confirmation, one Workspace evidence key, forbid-only Workspace authority, and checked verifier claims (#405)
+### AD-040 — The governed `vestra task` composition: local human confirmation, one Workspace evidence key, forbid-only Workspace authority, and checked verifier claims (#405)
 
 - **Status:** proposed (ratified by reviewing the pull request that carries
   `feat/405-governed-task-cli`). Owner decisions from #405 bind it: Claude Code
@@ -737,8 +737,8 @@ note. -->
 ## Handoff
 
 - **Feature:** `governed-task-cli` E6–E9 (#405) on
-  `feat/405-governed-task-cli`, stacked on `feat/405-governed-task-foundations`,
-  PR #409, and `feat/os-secret-backend`.
+  `feat/405-governed-task-cli`, stacked on `feat/405-governed-task-foundations`
+  (#409 and #379 are already on `main`).
 - **Completed:** `TaskRunCoordinator`, the `vestra task` commands and their
   composition root, the sealed bridge relay, the child-process journeys and
   security suite, and `docs/quick-start.md`. See
