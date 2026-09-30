@@ -606,7 +606,7 @@ function orderedEntries(entries) {
   return [...named, ...numbered];
 }
 
-function withSeaResource(root, blobSize) {
+function withSeaResource(root, blob) {
   let rcdata = root.entries.find((entry) => entry.id === RT_RCDATA && entry.directory !== undefined);
   if (rcdata === undefined) {
     rcdata = { id: RT_RCDATA, directory: emptyDirectory() };
@@ -614,10 +614,9 @@ function withSeaResource(root, blobSize) {
   }
   if (rcdata.directory.entries.some((entry) => entry.name?.toUpperCase() === SEA_RESOURCE_NAME))
     fail("VES_SEA_ALREADY_INJECTED", "the runtime already carries a NODE_SEA_BLOB resource");
-  const language = { id: 0, data: { rva: 0, size: blobSize, codePage: 0 } };
+  const language = { id: 0, data: { rva: 0, size: blob.length, codePage: 0, content: blob } };
   const named = { name: SEA_RESOURCE_NAME, directory: { ...emptyDirectory(), entries: [language] } };
   rcdata.directory.entries = orderedEntries([...rcdata.directory.entries, named]);
-  return language.data;
 }
 
 function layoutResources(root) {
@@ -647,7 +646,12 @@ function layoutResources(root) {
     entry.nameAt = offset;
     offset += 2 + entry.name.length * 2;
   }
-  return { directories, dataEntries, names, size: alignUp(offset, 8) };
+  for (const entry of dataEntries) {
+    offset = alignUp(offset, 8);
+    entry.contentAt = offset;
+    offset += entry.data.size;
+  }
+  return { directories, dataEntries, names, size: offset };
 }
 
 function writeDirectory(tree, directory) {
@@ -663,14 +667,15 @@ function writeDirectory(tree, directory) {
   });
 }
 
-function encodeResources(root) {
+function encodeResources(root, sectionRva) {
   const layout = layoutResources(root);
   const tree = Buffer.alloc(layout.size);
   for (const directory of layout.directories) writeDirectory(tree, directory);
   for (const entry of layout.dataEntries) {
-    tree.writeUInt32LE(entry.data.rva, entry.dataAt);
+    tree.writeUInt32LE(sectionRva + entry.contentAt, entry.dataAt);
     tree.writeUInt32LE(entry.data.size, entry.dataAt + 4);
     tree.writeUInt32LE(entry.data.codePage, entry.dataAt + 8);
+    entry.data.content.copy(tree, entry.contentAt);
   }
   for (const entry of layout.names) {
     tree.writeUInt16LE(entry.name.length, entry.nameAt);
@@ -719,19 +724,34 @@ function peSectionHeader(name, virtualSize, virtualAddress, rawSize, rawPointer)
   return header;
 }
 
+/**
+ * why: the Windows loader resolves resource data only inside the section that
+ * holds the resource directory; a tree that points back into the old `.rsrc`
+ * makes CreateProcess refuse the image as ERROR_BAD_EXE_FORMAT (#236, proven
+ * on the windows-latest runner). So, as `rc` and LIEF lay it out, the new
+ * section carries the whole tree and a copy of every resource's bytes, and the
+ * directory entry spans all of it. The original `.rsrc` stays mapped, unused.
+ */
+function withResourceContent(bytes, pe, directory) {
+  for (const entry of directory.entries) {
+    if (entry.directory !== undefined) withResourceContent(bytes, pe, entry.directory);
+    else if (entry.data.content === undefined) {
+      const at = peFileOffset(pe, entry.data.rva, entry.data.size);
+      entry.data.content = bytes.subarray(at, at + entry.data.size);
+    }
+  }
+  return directory;
+}
+
 function peSeaSection(bytes, pe, blob) {
   const sectionAlignment = bytes.readUInt32LE(pe.optional + 32);
   const fileAlignment = bytes.readUInt32LE(pe.optional + 36);
   const last = pe.sections.at(-1);
   const virtualAddress = alignUp(last.virtualAddress + Math.max(last.virtualSize, last.rawSize), sectionAlignment);
-  const resources = readResources(bytes, pe);
-  const seaData = withSeaResource(resources, blob.length);
-  // why: the tree's size does not depend on the blob's address, so it is laid
-  // out once to learn where the blob starts and once more to record it.
-  const treeSize = encodeResources(resources).length;
-  seaData.rva = virtualAddress + treeSize;
-  const content = Buffer.concat([encodeResources(resources), blob]);
-  return { content, treeSize, virtualAddress, sectionAlignment, fileAlignment };
+  const resources = withResourceContent(bytes, pe, readResources(bytes, pe));
+  withSeaResource(resources, blob);
+  const content = encodeResources(resources, virtualAddress);
+  return { content, virtualAddress, sectionAlignment, fileAlignment };
 }
 
 export function injectPe(executable, blob) {
@@ -762,16 +782,36 @@ export function injectPe(executable, blob) {
     pe.optional + 56
   );
   output.writeUInt32LE(section.virtualAddress, pe.optional + 112 + RESOURCE_DIRECTORY * 8);
-  output.writeUInt32LE(section.treeSize, pe.optional + 116 + RESOURCE_DIRECTORY * 8);
+  output.writeUInt32LE(section.content.length, pe.optional + 116 + RESOURCE_DIRECTORY * 8);
   output.writeUInt32LE(0, pe.optional + 112 + SECURITY_DIRECTORY * 8);
   output.writeUInt32LE(0, pe.optional + 116 + SECURITY_DIRECTORY * 8);
   output.writeUInt32LE(peChecksum(output, pe.optional + 64), pe.optional + 64);
   return output;
 }
 
+/**
+ * invariant: a PE is reported as carrying a blob only when the resource
+ * directory's span lies inside one section and every resource's bytes lie
+ * inside that span, the only layout the Windows loader starts.
+ */
+function containedResources(bytes, pe) {
+  const span = peDirectory(bytes, pe, RESOURCE_DIRECTORY);
+  peFileOffset(pe, span.address, span.size);
+  const root = readResources(bytes, pe);
+  const pending = [root];
+  while (pending.length > 0) {
+    for (const entry of pending.shift().entries) {
+      if (entry.directory !== undefined) pending.push(entry.directory);
+      else if (entry.data.rva < span.address || entry.data.rva + entry.data.size > span.address + span.size)
+        fail("VES_SEA_LAYOUT_INVALID", "a PE resource lies outside the resource directory's section span");
+    }
+  }
+  return root;
+}
+
 function locatePe(bytes) {
   const pe = parsePe(bytes);
-  const rcdata = readResources(bytes, pe).entries.find((entry) => entry.id === RT_RCDATA && entry.directory);
+  const rcdata = containedResources(bytes, pe).entries.find((entry) => entry.id === RT_RCDATA && entry.directory);
   const named = rcdata?.directory.entries.filter((entry) => entry.name?.toUpperCase() === SEA_RESOURCE_NAME) ?? [];
   const data = named.length === 1 ? named[0].directory?.entries[0]?.data : undefined;
   if (data === undefined) fail("VES_SEA_BLOB_MISSING", "the executable carries no single NODE_SEA_BLOB resource");

@@ -126,8 +126,8 @@ export function syntheticElf(options = {}) {
   return withFuse(bytes, 0x1010, options.fuses ?? 1);
 }
 
-// invariant: one RT_VERSION (16) resource, id 1, language 1033, whose data RVA
-// the PE injection test proves is carried into the rebuilt tree unchanged.
+// invariant: one RT_VERSION (16) resource, id 1, language 1033, whose bytes
+// the PE injection test proves are carried into the rebuilt section unchanged.
 function versionResources(sectionRva) {
   const tree = Buffer.alloc(0x80);
   const directory = (at, id, child) => {
@@ -158,6 +158,7 @@ export function syntheticPe(options = {}) {
   bytes.writeUInt16LE(0x8664, coff);
   bytes.writeUInt16LE(2, coff + 2);
   bytes.writeUInt16LE(240, coff + 16);
+  bytes.writeUInt16LE(0x22, coff + 18);
   const optional = coff + 20;
   bytes.writeUInt16LE(0x20b, optional);
   bytes.writeUInt32LE(0x1000, optional + 32);
