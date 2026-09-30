@@ -8,6 +8,7 @@ import { test } from "node:test";
 import {
   CREDENTIAL_PERSISTENCE,
   CredentialToolUnavailableError,
+  LOGGING_POLICY_GUARD,
   MAX_CREDENTIAL_VALUE_BYTES,
   POWERSHELL_ARGUMENTS,
   PRESENCE_TIMEOUT_MS,
@@ -67,9 +68,38 @@ test("the program is one complete statement per line and names the operation and
       /Add-Type|Import-Module|New-Object/u,
       "no cmdlet, so no module is discovered or loaded"
     );
-    assert.equal(lines[2], `[Console]::Out.WriteLine($verchestraType::${operation}('${target}'))`);
-    assert.equal(lines[3], "exit 0");
+    const call = operation === "Read" ? 3 : 2;
+    if (operation === "Read")
+      assert.equal(lines[2], LOGGING_POLICY_GUARD, "a read, which prints the value, is guarded");
+    else assert.equal(program.includes(LOGGING_POLICY_GUARD), false, "presence and delete carry no value");
+    assert.equal(lines[call], `[Console]::Out.WriteLine($verchestraType::${operation}('${target}'))`);
+    assert.equal(lines[call + 1], "exit 0");
+    assert.equal(lines.length, call + 3);
   }
+});
+
+test("the logging-policy guard checks script block logging and transcription in both policy hives", () => {
+  for (const hive of ["HKEY_LOCAL_MACHINE", "HKEY_CURRENT_USER"]) assert.ok(LOGGING_POLICY_GUARD.includes(`'${hive}'`));
+  assert.match(LOGGING_POLICY_GUARD, /@\('ScriptBlockLogging', 'EnableScriptBlockLogging'\)/u);
+  assert.match(LOGGING_POLICY_GUARD, /@\('Transcription', 'EnableTranscripting'\)/u);
+  assert.ok(LOGGING_POLICY_GUARD.includes("\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell\\"));
+  assert.match(
+    LOGGING_POLICY_GUARD,
+    /\[Console\]::Out\.WriteLine\('verchestra-credential:error:logging'\); exit 0 \}$/u
+  );
+  assert.doesNotMatch(LOGGING_POLICY_GUARD, /\n/u, "one statement line");
+});
+
+test("a machine that records PowerShell input or output refuses reads and writes before the value moves", async () => {
+  const logged = new WindowsCredentialManagerBackend({ runner: answer("verchestra-credential:error:logging\r\n") });
+  await assert.rejects(logged.read(locator), { code: "VES_SECRET_STORE_LOGGED" });
+  await assert.rejects(logged.store(locator, value()), { code: "VES_SECRET_STORE_LOGGED" });
+  const fake = fakePowerShellRunner();
+  await new WindowsCredentialManagerBackend({ runner: fake.runner }).store(locator, value());
+  const lines = fake.invocations[0].stdin.split("\n");
+  const guard = lines.indexOf(LOGGING_POLICY_GUARD);
+  const payload = lines.findIndex((line) => line.startsWith("$verchestraPayload = '"));
+  assert.ok(guard > 0 && guard < payload, "the guard runs, and can exit, before the payload line");
 });
 
 test("the inline P/Invoke is advapi32 CredReadW, CredWriteW, and CredDeleteW on generic, machine-local credentials", () => {
@@ -91,7 +121,7 @@ test("a write carries the value only as the base64 literal of one assignment lin
   const encoded = Buffer.from(VALUE).toString("base64");
   const lines = stdin.split("\n");
   const payload = lines.indexOf(`$verchestraPayload = '${encoded}'`);
-  assert.equal(payload, 2, "the payload follows the preamble");
+  assert.equal(payload, 3, "the payload follows the preamble and the logging-policy guard");
   assert.equal(
     lines[payload + 1],
     `[Console]::Out.WriteLine($verchestraType::Write('${target}', 'anthropic-api-key', $verchestraPayload))`
