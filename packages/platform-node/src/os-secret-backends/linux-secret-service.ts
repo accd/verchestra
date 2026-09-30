@@ -4,6 +4,9 @@
 // environment. Presence is the Secret Service's own attribute search
 // (SearchItems, through `dbus-send`), which returns item paths and never a
 // secret, and which alone tells a locked item apart from a missing one.
+import { statSync } from "node:fs";
+import { join } from "node:path";
+
 import type { OsSecretBackend, OsSecretLocator } from "../secret-broker.ts";
 import {
   type CredentialToolResult,
@@ -101,11 +104,33 @@ export function searchItemsArguments(locator: Readonly<OsSecretLocator>): string
   ];
 }
 
+// why: without a session bus address or the per-user bus socket, libdbus has no
+// session to reach, and the tools then fail with wording that varies by
+// distribution. Deciding "not available here" before any spawn keeps that
+// outcome deterministic instead of depending on stderr text.
+export function sessionBusReachable(environment: NodeJS.ProcessEnv = process.env): boolean {
+  if ((environment["DBUS_SESSION_BUS_ADDRESS"] ?? "") !== "") return true;
+  const runtime = environment["XDG_RUNTIME_DIR"] ?? "";
+  if (runtime === "") return false;
+  try {
+    return statSync(join(runtime, "bus")).isSocket();
+  } catch {
+    return false;
+  }
+}
+
 export class LinuxSecretServiceBackend implements OsSecretBackend {
   readonly #runner: CredentialToolRunner;
+  readonly #busReachable: () => boolean;
 
-  constructor(options: { readonly runner?: CredentialToolRunner } = {}) {
+  constructor(options: { readonly runner?: CredentialToolRunner; readonly sessionBusReachable?: () => boolean } = {}) {
     this.#runner = options.runner ?? nodeSecretServiceRunner;
+    this.#busReachable =
+      options.sessionBusReachable ?? (options.runner === undefined ? () => sessionBusReachable() : () => true);
+  }
+
+  #requireSessionBus(): void {
+    if (!this.#busReachable()) throw storeUnavailable();
   }
 
   async #search(locator: Readonly<OsSecretLocator>): Promise<SearchResult> {
@@ -124,6 +149,7 @@ export class LinuxSecretServiceBackend implements OsSecretBackend {
   // present nor absent; it needs the user to unlock the keyring.
   async has(locator: Readonly<OsSecretLocator>): Promise<boolean> {
     assertLocator(locator);
+    this.#requireSessionBus();
     const { unlocked, locked } = await this.#search(locator);
     if (unlocked > 0) return true;
     if (locked > 0) throw interactionRequired();
@@ -132,6 +158,7 @@ export class LinuxSecretServiceBackend implements OsSecretBackend {
 
   async read(locator: Readonly<OsSecretLocator>): Promise<Uint8Array | undefined> {
     assertLocator(locator);
+    this.#requireSessionBus();
     const result = await runBounded(this.#runner, {
       args: ["lookup", ...attributes(locator)],
       timeoutMs: READ_TIMEOUT_MS
@@ -159,6 +186,7 @@ export class LinuxSecretServiceBackend implements OsSecretBackend {
       );
     }
     assertLocator(locator);
+    this.#requireSessionBus();
     const stdin = Buffer.from(value);
     try {
       const result = await runBounded(this.#runner, {
