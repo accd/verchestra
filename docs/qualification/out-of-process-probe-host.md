@@ -1,6 +1,6 @@
 # Out-of-Process Probe Host Qualification
 
-Issue #235. Decision AD-034 (proposed). Specification, threat model, and
+Issue #235. Decision AD-037 (proposed). Specification, threat model, and
 assertion-level evidence: `.specs/features/out-of-process-probe-host/`.
 
 This is a post-1.0 security surface with its own qualification. It is not part
@@ -65,7 +65,7 @@ extension, approval, and digest. Everything else is denied.
 - CPU and memory limits beyond wall-clock time.
 - Database credential delivery to a workspace worker; the reference workers
   return synthetic evidence and rows.
-- Windows, and a CLI composition (a follow-up after AD-034 is ratified).
+- Windows, and a CLI composition (a follow-up after AD-037 is ratified).
 
 ## Evidence
 

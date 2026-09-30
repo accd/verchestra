@@ -1,6 +1,6 @@
 # Out-of-Process Probe Host Specification
 
-Issue: #235. Decision: AD-034 (`adr.md`). Threat model: `threat-model.md`.
+Issue: #235. Decision: AD-037 (`adr.md`). Threat model: `threat-model.md`.
 
 ## Problem statement
 
@@ -32,7 +32,7 @@ grant (`authorizeSkillExecution`), but neither is consumed.
 | OS sandboxing (filesystem, network, CPU, memory) | The host implements the `process-contained` grade only; `native-restricted` and `container-isolated` stay unqualified (`docs/qualification/isolation.md`). |
 | Windows | Process-group semantics differ; the host refuses win32 explicitly rather than claim it. |
 | Database credential delivery to a workspace worker | No secret handle is passed; the reference workers are protocol references with synthetic evidence. |
-| CLI composition and a user-facing command | The composition root wiring is a follow-up once the owner ratifies AD-034. |
+| CLI composition and a user-facing command | The composition root wiring is a follow-up once the owner ratifies AD-037. |
 | Any change to the signed 1.0.0 hold or a release claim | This is a post-1.0 surface with its own qualification. |
 
 ## Requirements
