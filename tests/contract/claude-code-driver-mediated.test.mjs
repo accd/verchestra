@@ -8,6 +8,7 @@ import {
   ClaudeCodeDriver
 } from "../../packages/drivers/src/index.ts";
 import { claudeFixture, fakeClaudePath } from "../helpers/claude-driver-fixture.mjs";
+import { WIN32_HOST, mediationRefusedOnWin32 } from "../helpers/mediation-platform.mjs";
 
 test("the driver allowlist and the bridge advertise the same five qualified tools", () => {
   assert.deepEqual([...CLAUDE_MEDIATED_TOOLS], [...MCP_BRIDGE_QUALIFIED_TOOLS]);
@@ -58,8 +59,8 @@ test("the mediated profile refuses Windows before anything is spawned", () => {
   );
 });
 
-test("the mediated profile builds its exact qualified invocation", () => {
-  if (process.platform === "win32") return;
+test("the mediated profile builds its exact qualified invocation", (t) => {
+  if (WIN32_HOST) return mediationRefusedOnWin32(t);
   const driver = new ClaudeCodeDriver({
     command: [process.execPath, fakeClaudePath],
     profile: { kind: "mediated-mcp" },
