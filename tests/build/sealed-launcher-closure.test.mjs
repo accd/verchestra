@@ -562,6 +562,16 @@ test("vestra task is reachable from the sealed bundle and its bridge relay is st
     ["task", "plan", "--request", request, "--dry-run", "--output", "json"],
     { cwd: project, env, timeoutMs: 120_000 }
   );
+  if (process.platform === "win32") {
+    // invariant: the mediated implementer is not configured on Windows, so the
+    // sealed CLI refuses the plan as not configured and records nothing.
+    assert.equal(plan.status, 5, plan.stderr);
+    const refusal = JSON.parse(plan.stdout).error;
+    assert.equal(refusal.code, "VES_TASK_NOT_CONFIGURED");
+    assert.equal(refusal.safeDetails.requirement, "platform");
+    assert.equal(existsSync(join(state, "tasks")), false);
+    return;
+  }
   assert.equal(plan.status, 0, plan.stderr);
   const surface = JSON.parse(plan.stdout).data;
   assert.equal(surface.dryRun, true);

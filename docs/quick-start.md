@@ -13,9 +13,12 @@ Verchestra never merges: the result is a branch you inspect and merge yourself.
 
 ## What you need
 
-- **macOS.** It is the only platform with a qualified credential store and the
-  qualified mediated Claude Code profile. Elsewhere every `task` command that
-  needs a credential reports `VES_TASK_NOT_CONFIGURED`.
+- **macOS.** The full `task` journey is qualified end to end only there.
+  Linux has a qualified credential store (Secret Service) and the mediated
+  profile, but its full journey is not yet qualified; without a running
+  Secret Service session a `task` command reports `VES_TASK_NOT_CONFIGURED`
+  (requirement `credential-store`). On Windows every `task` command reports
+  `VES_TASK_NOT_CONFIGURED` (requirement `platform`) before any effect.
 - **`git`** on `PATH`, and a Git repository whose root you work from.
 - **Claude Code** (`claude`, version 2.1.282 or later in the 2.x line) and the
   **Codex CLI** (`codex`, version 0.115.0 or later) on `PATH`.
@@ -255,7 +258,8 @@ approval makes the approval stale, and the run is refused until you plan again.
 
 ## Limits of this qualification build
 
-- **macOS only.** Linux and Windows report `not configured`.
+- **macOS end to end.** Linux is partially qualified (credential store and
+  mediated profile). Windows is refused as a platform before any effect.
 - **One implementer and one verifier.** Claude Code implements through the
   mediated MCP bridge; Codex verifies. They must differ, and they cannot be
   swapped.

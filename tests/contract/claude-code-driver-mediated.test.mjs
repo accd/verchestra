@@ -42,7 +42,24 @@ test("the T03 profile keeps its exact invocation for existing callers", () => {
   ]);
 });
 
+// invariant: the bridge reaches its controller over a Unix socket, so Windows
+// refuses the mediated profile at construction, before any spawn; the exact
+// invocation is asserted wherever the profile is supported.
+test("the mediated profile refuses Windows before anything is spawned", () => {
+  if (process.platform !== "win32") return;
+  assert.throws(
+    () =>
+      new ClaudeCodeDriver({
+        command: [process.execPath, fakeClaudePath],
+        profile: { kind: "mediated-mcp" },
+        resolveExecution: async () => assert.fail("not reached")
+      }),
+    { code: "VES_CLAUDE_MEDIATION_UNSUPPORTED" }
+  );
+});
+
 test("the mediated profile builds its exact qualified invocation", () => {
+  if (process.platform === "win32") return;
   const driver = new ClaudeCodeDriver({
     command: [process.execPath, fakeClaudePath],
     profile: { kind: "mediated-mcp" },
