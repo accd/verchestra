@@ -31,7 +31,12 @@ npx verchestra --version
 
 The package provides two equivalent binaries, `verchestra` and `vestra`. The
 first run verifies and activates the pinned release; later runs start in a few
-seconds. The rest of this guide writes `npx vestra`.
+seconds.
+
+Always invoke it through the `verchestra` package name, as this guide does.
+`vestra` is only a binary inside that package: a bare `npx vestra` outside an
+install asks the registry for an unrelated package named `vestra`, which
+Verchestra does not own.
 
 ## 2. Initialize the Workspace
 
@@ -40,7 +45,7 @@ followed by a version 4 or 7 UUID.
 
 ```bash
 cd ~/src/my-repo
-npx vestra init --workspace-id "workspace_$(node -e 'console.log(crypto.randomUUID())')" \
+npx verchestra init --workspace-id "workspace_$(node -e 'console.log(crypto.randomUUID())')" \
   --name "My repository" --placement colocated
 ```
 
@@ -53,9 +58,9 @@ Each value is read from standard input without echo, stored in your macOS
 keychain under the service `verchestra/<workspaceId>`, and never printed.
 
 ```bash
-npx vestra secret set --name anthropic-api-key
-npx vestra secret set --name openai-api-key
-npx vestra secret set --name evidence-signing-passphrase
+npx verchestra secret set --name anthropic-api-key
+npx verchestra secret set --name openai-api-key
+npx verchestra secret set --name evidence-signing-passphrase
 ```
 
 - `anthropic-api-key` is injected only into the Claude Code child process.
@@ -150,7 +155,7 @@ The canonical contract is
 ## 6. Plan
 
 ```bash
-npx vestra task plan --request task-request.json
+npx verchestra task plan --request task-request.json
 ```
 
 Planning compiles the repository context at `sourceRevision`, seals the
@@ -162,7 +167,7 @@ surface while writing nothing and reading no credential.
 ## 7. Approve
 
 ```bash
-npx vestra task approve --run-id <runId> --binding-digest <sha256:…>
+npx verchestra task approve --run-id <runId> --binding-digest <sha256:…>
 ```
 
 In a terminal you are asked to type the binding digest back. The approval is
@@ -174,7 +179,7 @@ instead; it never happens by accident.
 ## 8. Start
 
 ```bash
-npx vestra task start --run-id <runId>
+npx verchestra task start --run-id <runId>
 ```
 
 `start` proves both provider credentials, both executables, and the gate
@@ -196,9 +201,9 @@ Your own checkout, index, and working tree are not touched at any point.
 ## 9. Status, cancel, and resume
 
 ```bash
-npx vestra task status --run-id <runId>
-npx vestra task cancel --run-id <runId>
-npx vestra task resume --run-id <runId>
+npx verchestra task status --run-id <runId>
+npx verchestra task cancel --run-id <runId>
+npx verchestra task resume --run-id <runId>
 ```
 
 - `status` prints the durable state, the checkpoints, the evidence
@@ -213,7 +218,7 @@ npx vestra task resume --run-id <runId>
 ## 10. Review
 
 ```bash
-npx vestra task review --run-id <runId> --outcome accepted --surface-digest <sha256:…>
+npx verchestra task review --run-id <runId> --outcome accepted --surface-digest <sha256:…>
 ```
 
 You type the surface digest back, as for the approval. `accepted` completes the

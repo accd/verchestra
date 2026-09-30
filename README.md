@@ -223,11 +223,11 @@ Codex verifies read-only, and you review the result. Verchestra never merges;
 you inspect and merge the branch yourself.
 
 ```bash
-npx vestra task plan    --request task-request.json
-npx vestra task approve --run-id <runId> --binding-digest <sha256:…>
-npx vestra task start   --run-id <runId>
-npx vestra task status  --run-id <runId>
-npx vestra task review  --run-id <runId> --outcome accepted --surface-digest <sha256:…>
+npx verchestra task plan    --request task-request.json
+npx verchestra task approve --run-id <runId> --binding-digest <sha256:…>
+npx verchestra task start   --run-id <runId>
+npx verchestra task status  --run-id <runId>
+npx verchestra task review  --run-id <runId> --outcome accepted --surface-digest <sha256:…>
 ```
 
 The full walkthrough, a complete request example, and the limits of this
