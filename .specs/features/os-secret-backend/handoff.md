@@ -3,12 +3,12 @@ schema: verchestra-feature-handoff/v1
 feature: os-secret-backend
 issue: 379
 status: verification
-branch: feat/os-secret-backend
-baseRevision: 20071a78eb5b96b9de63e5e9c863b6997643c767
-lastCompletedTask: T7
-nextTask: "T8 — the owner runs corepack pnpm qualify:keychain on an unlocked macOS session and records the result in docs/qualification/os-secret-backend-darwin.md; independent review of AD-034"
-lastGate: "pnpm gate:build PASS; pnpm gate:security PASS; pnpm gate:quick PASS; pnpm agent:check PASS (0 skipped, 0 todo; no gate spawns /usr/bin/security)"
-updatedAt: 2026-09-29T00:00:00Z
+branch: docs/379-real-keychain-evidence
+baseRevision: 4dde7e9edbec3c6ef1cc5f1bc1d6f995908e85c5
+lastCompletedTask: T8
+nextTask: "Linux Secret Service and Windows Credential Manager backends, each with its own platform qualification; the owner binds anthropic-api-key on the working machine (vestra secret set --name anthropic-api-key) for doctor --deep"
+lastGate: "corepack pnpm qualify:keychain 8/8 PASS on 4dde7e9 (macOS 26.6.2 arm64); tests/security/os-secret-backend-security.test.mjs 18/18"
+updatedAt: 2026-09-30T07:00:00Z
 ---
 
 # Scope
