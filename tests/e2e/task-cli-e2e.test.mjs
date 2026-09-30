@@ -143,15 +143,14 @@ function exited(child) {
 // configured; on Windows the credential is simply unbound. Either way the
 // refusal comes before any task state exists.
 test(
-  "off macOS an unusable credential store or unbound credential is not configured before any effect",
+  "off macOS the task path reports its missing platform or credential store as not configured before any effect",
   TIMEOUT,
   async (t) => {
     if (DARWIN) return t.diagnostic("macOS runs the full journeys below");
     const fixture = await taskFixture();
     const plan = fixture.launch(["task", "plan", "--request", fixture.requestPath, "--output", "json"]);
     const error = refused(plan, "VES_TASK_NOT_CONFIGURED", "plan");
-    if (process.platform === "linux") assert.equal(error.safeDetails.requirement, "credential-store");
-    else assert.match(error.safeDetails.requirement, /^(credential-store|[a-z][a-z0-9-]*)$/u);
+    assert.equal(error.safeDetails.requirement, process.platform === "win32" ? "platform" : "credential-store");
     assert.equal(existsSync(join(fixture.stateRoot, "tasks")), false);
   }
 );
