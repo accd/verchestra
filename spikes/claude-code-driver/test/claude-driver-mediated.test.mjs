@@ -1,4 +1,4 @@
-// T03 requalification for the mediated-mcp profile (AD-0XX, the mediated MCP bridge decision). The production
+// T03 requalification for the mediated-mcp profile (AD-039, the mediated MCP bridge decision). The production
 // ClaudeCodeDriver and the production MCP tool bridge run against a
 // DETERMINISTIC FAKE `claude` executable (fake-claude-mediated.mjs). The only
 // real-provider evidence is the read-only `--help` probe; no model is invoked.
