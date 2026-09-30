@@ -12,13 +12,13 @@ import { type OsSecretLocator, isValidLogicalSecretName } from "../secret-broker
 const MAX_CAPTURED_OUTPUT = 1024 * 1024;
 
 export interface CredentialToolInvocation {
+  // invariant: which of a backend's fixed programs runs, for a backend that
+  // has more than one; its runner maps the name to an absolute path and
+  // refuses any other. Omitted, the backend's primary program runs.
+  readonly tool?: string;
   readonly args: readonly string[];
   readonly stdin?: Uint8Array;
   readonly timeoutMs: number;
-  // invariant: when true the child's stdout is the null device, so whatever
-  // the tool prints there (a presence lookup's value) never enters this
-  // process; the result's stdout is then always empty.
-  readonly discardStdout?: boolean;
 }
 
 export interface CredentialToolResult {
@@ -47,7 +47,7 @@ export function spawnCredentialTool(executable: string, environment: () => NodeJ
     new Promise((resolveResult, rejectResult) => {
       const child = spawn(executable, [...invocation.args], {
         env: environment(),
-        stdio: ["pipe", invocation.discardStdout === true ? "ignore" : "pipe", "pipe"],
+        stdio: ["pipe", "pipe", "pipe"],
         windowsHide: true
       });
       const stdout: Buffer[] = [];
@@ -58,8 +58,8 @@ export function spawnCredentialTool(executable: string, environment: () => NodeJ
         if (captured <= MAX_CAPTURED_OUTPUT) sink.push(chunk);
         else chunk.fill(0);
       };
-      child.stdout?.on("data", collect(stdout));
-      child.stderr?.on("data", collect(stderr));
+      child.stdout.on("data", collect(stdout));
+      child.stderr.on("data", collect(stderr));
       let timedOut = false;
       const timer = setTimeout(() => {
         timedOut = true;
@@ -80,8 +80,8 @@ export function spawnCredentialTool(executable: string, environment: () => NodeJ
         for (const chunk of [...stdout, ...stderr]) chunk.fill(0);
         resolveResult(result);
       });
-      child.stdin?.on("error", () => undefined);
-      child.stdin?.end(invocation.stdin);
+      child.stdin.on("error", () => undefined);
+      child.stdin.end(invocation.stdin);
     });
 }
 

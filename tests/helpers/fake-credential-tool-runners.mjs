@@ -13,35 +13,66 @@ function pairs(args, from) {
 
 const itemKey = (attributes) => `${attributes.get("service")}\u0000${attributes.get("account")}`;
 
+function searchReply(unlocked, locked) {
+  const paths = (count, from) =>
+    Array.from(
+      { length: count },
+      (_, index) => `      object path "/org/freedesktop/secrets/collection/login/${from + index}"\n`
+    ).join("");
+  return (
+    "method return time=1.0 sender=:1.1 -> destination=:1.2 serial=7 reply_serial=2\n" +
+    `   array [\n${paths(unlocked, 1)}   ]\n` +
+    `   array [\n${paths(locked, 100)}   ]\n`
+  );
+}
+
 // invariant: `secret-tool lookup` and `clear` exit 1 and print nothing when
-// nothing matches; `store` replaces the item with the same attributes; a
-// piped lookup prints exactly the value.
+// nothing matches; `store` replaces the item with the same attributes; a piped
+// lookup prints exactly the value; `dbus-send` SearchItems answers with the
+// unlocked and the locked item paths. An item in `locked` is found by the
+// search but, as measured on gnome-keyring without a prompter, missed by a
+// lookup and refused by a store.
 export function fakeSecretToolRunner(options = {}) {
   const items = new Map();
+  const locked = new Set();
   const invocations = [];
 
   async function runner(invocation) {
     const record = {
+      tool: invocation.tool ?? "secret-tool",
       args: [...invocation.args],
       stdin: invocation.stdin === undefined ? undefined : Buffer.from(invocation.stdin).toString("latin1"),
-      timeoutMs: invocation.timeoutMs,
-      discardStdout: invocation.discardStdout === true
+      timeoutMs: invocation.timeoutMs
     };
     invocations.push(record);
     if (options.override) {
       const forced = await options.override(record);
       if (forced !== undefined) return forced;
     }
+    if (record.tool === "dbus-send") {
+      const query = /^dict:string:string:service,([^,]+),account,([^,]+)$/u.exec(invocation.args.at(-1) ?? "");
+      if (query === null) return { exitCode: 1, stdout: "", stderr: "Error org.freedesktop.DBus.Error.InvalidArgs\n" };
+      const key = `${query[1]}\u0000${query[2]}`;
+      const present = items.has(key);
+      return {
+        exitCode: 0,
+        stdout: searchReply(present && !locked.has(key) ? 1 : 0, locked.has(key) ? 1 : 0),
+        stderr: ""
+      };
+    }
     const [command] = invocation.args;
     if (command === "lookup") {
-      const stored = items.get(itemKey(pairs(invocation.args, 1)));
-      if (stored === undefined) return { exitCode: 1, stdout: "", stderr: "" };
-      return { exitCode: 0, stdout: record.discardStdout ? "" : stored.toString("utf8"), stderr: "" };
+      const key = itemKey(pairs(invocation.args, 1));
+      const stored = items.get(key);
+      if (stored === undefined || locked.has(key)) return { exitCode: 1, stdout: "", stderr: "" };
+      return { exitCode: 0, stdout: stored.toString("utf8"), stderr: "" };
     }
     if (command === "store") {
       const label = invocation.args[1];
       if (!label?.startsWith("--label=")) return { exitCode: 2, stdout: "", stderr: "usage: secret-tool store\n" };
-      items.set(itemKey(pairs(invocation.args, 2)), Buffer.from(invocation.stdin ?? []));
+      const key = itemKey(pairs(invocation.args, 2));
+      if (locked.has(key)) return { exitCode: 1, stdout: "", stderr: "secret-tool: Cannot prompt: no prompter\n" };
+      items.set(key, Buffer.from(invocation.stdin ?? []));
       return { exitCode: 0, stdout: "", stderr: "" };
     }
     if (command === "clear") {
@@ -51,10 +82,11 @@ export function fakeSecretToolRunner(options = {}) {
     return { exitCode: 2, stdout: "", stderr: "unsupported fake command\n" };
   }
 
-  return Object.freeze({ runner, invocations, items });
+  return Object.freeze({ runner, invocations, items, locked });
 }
 
-const CALL = /\[VerchestraCredentialManager\]::(Has|Read|Write|Delete)\('([^']+)'(?:, '([^']+)', \$verchestraPayload)?\)/u;
+const CALL =
+  /\[VerchestraCredentialManager\]::(Has|Read|Write|Delete)\('([^']+)'(?:, '([^']+)', \$verchestraPayload)?\)/u;
 const PAYLOAD = /^\$verchestraPayload = \[Console\]::In\.ReadLine\(\)\n(#[^\n]*)\n/mu;
 
 // invariant: the fake interprets only the program shape the backend writes —
