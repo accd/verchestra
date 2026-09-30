@@ -7,6 +7,7 @@ import { after, test } from "node:test";
 import { crc32, deflateRawSync, gzipSync } from "node:zlib";
 
 import {
+  ARCHIVE_LIMITS,
   SINGLE_BINARY_TARGETS,
   loadNodeRuntimePins,
   parseNodeRuntimePins,
@@ -44,6 +45,14 @@ function tarEntry(name, body, type = "0") {
   return Buffer.concat([header, body, Buffer.alloc((512 - (body.length % 512)) % 512)]);
 }
 
+/** invariant: a pax record's decimal length counts its own digits, the space, and the newline. */
+function paxRecord(key, value) {
+  const payload = ` ${key}=${value}\n`;
+  let length = Buffer.byteLength(payload) + 1;
+  while (String(length).length + Buffer.byteLength(payload) !== length) length += 1;
+  return Buffer.from(`${length}${payload}`, "utf8");
+}
+
 function tarGz(entries) {
   return gzipSync(Buffer.concat([...entries, Buffer.alloc(1024)]));
 }
@@ -52,7 +61,7 @@ function zipOf(files) {
   const locals = [];
   const central = [];
   let offset = 0;
-  for (const { name, body, method } of files) {
+  for (const { name, body, method, unixMode, recordedSize, localName } of files) {
     const stored = method === 8 ? deflateRawSync(body) : body;
     const nameBytes = Buffer.from(name, "utf8");
     const local = Buffer.alloc(30);
@@ -60,13 +69,15 @@ function zipOf(files) {
     local.writeUInt16LE(nameBytes.length, 26);
     const record = Buffer.alloc(46);
     record.writeUInt32LE(0x02014b50, 0);
+    if (unixMode !== undefined) record.writeUInt8(3, 5);
     record.writeUInt16LE(method, 10);
     record.writeUInt32LE(crc32(body), 16);
     record.writeUInt32LE(stored.length, 20);
-    record.writeUInt32LE(body.length, 24);
+    record.writeUInt32LE(recordedSize ?? body.length, 24);
     record.writeUInt16LE(nameBytes.length, 28);
+    record.writeUInt32LE(((unixMode ?? 0) << 16) >>> 0, 38);
     record.writeUInt32LE(offset, 42);
-    locals.push(local, nameBytes, stored);
+    locals.push(local, localName === undefined ? nameBytes : Buffer.from(localName, "utf8"), stored);
     central.push(record, nameBytes);
     offset += local.length + nameBytes.length + stored.length;
   }
@@ -124,7 +135,20 @@ test("pins that do not name exactly the supported targets are refused", async ()
     extra,
     badDigest,
     { ...document, schemaVersion: 2 },
-    { ...document, version: "24" }
+    { ...document, version: "24" },
+    ...[
+      ["archive", "fileName", "../node-v24.14.0-darwin-arm64.tar.gz"],
+      ["archive", "fileName", "nested/node-v24.14.0-darwin-arm64.tar.gz"],
+      ["executable", "member", "../../outside/bin/node"],
+      ["executable", "member", "/node-v24.14.0-darwin-arm64/bin/node"],
+      ["executable", "member", "node-v24.14.0-darwin-arm64/./bin/node"],
+      ["licenseFile", "member", "node-v24.14.0-darwin-arm64\\LICENSE"],
+      ["licenseFile", "member", "node-v24.14.0-darwin-arm64//LICENSE"]
+    ].map(([file, key, value]) => {
+      const escaping = structuredClone(document);
+      escaping.targets["darwin-arm64"][file][key] = value;
+      return escaping;
+    })
   ]) {
     assert.throws(() => parseNodeRuntimePins(candidate), { code: "VES_BINARY_RUNTIME_PINS_INVALID" });
   }
@@ -133,7 +157,7 @@ test("pins that do not name exactly the supported targets are refused", async ()
 test("a verified tar.gz yields exactly its pinned members, including pax and GNU long names", async () => {
   const cache = await scratch();
   const longDirectory = `node-v24.14.0-linux-x64/${"nested/".repeat(20)}`;
-  const pax = Buffer.from(`${`path=${longDirectory}bin/node`.length + 4} path=${longDirectory}bin/node\n`, "utf8");
+  const pax = paxRecord("path", `${longDirectory}bin/node`);
   const gnu = Buffer.from(`${longDirectory}LICENSE\0`, "utf8");
   const archive = tarGz([
     tarEntry("node-v24.14.0-linux-x64/", Buffer.alloc(0), "5"),
@@ -229,4 +253,140 @@ test("an installed runtime is accepted only when the executable and its LICENSE 
   await assert.rejects(runtimeFromInstallation(pins, "win32-x64", join(windows, "node.exe")), {
     code: "VES_BINARY_RUNTIME_DIGEST_MISMATCH"
   });
+});
+
+test("a pax header is walked by record length, so a record value cannot forge a path", async () => {
+  const cache = await scratch();
+  const forged = paxRecord("comment", `x\n${paxRecord("path", "n/bin/node").toString("utf8")}`);
+  const archive = tarGz([
+    tarEntry("PaxHeader", forged, "x"),
+    tarEntry("decoy", Buffer.from("not the runtime")),
+    tarEntry("n/bin/node", EXECUTABLE),
+    tarEntry("n/LICENSE", LICENSE)
+  ]);
+  await writeFile(join(cache, "node.tar.gz"), archive);
+  const pins = pinsFor("node.tar.gz", archive, { executable: "n/bin/node", license: "n/LICENSE" });
+  assert.deepEqual((await runtimeFromArchive(pins, "linux-x64", cache)).executable, EXECUTABLE);
+
+  const malformed = tarGz([
+    tarEntry("PaxHeader", Buffer.from("99 path=n/bin/node\n"), "x"),
+    tarEntry("n/bin/node", EXECUTABLE),
+    tarEntry("n/LICENSE", LICENSE)
+  ]);
+  await writeFile(join(cache, "malformed.tar.gz"), malformed);
+  const malformedPins = pinsFor("malformed.tar.gz", malformed, { executable: "n/bin/node", license: "n/LICENSE" });
+  await assert.rejects(runtimeFromArchive(malformedPins, "linux-x64", cache), {
+    code: "VES_BINARY_RUNTIME_ARCHIVE_INVALID",
+    message: /pax extended header is malformed/u
+  });
+});
+
+test("a link, a duplicate, or a truncated entry under a pinned tar member name refuses the archive", async () => {
+  const cache = await scratch();
+  const cases = [
+    ["symlink", [tarEntry("n/bin/node", Buffer.alloc(0), "2"), tarEntry("n/LICENSE", LICENSE)], /not a regular file/u],
+    ["hardlink", [tarEntry("n/bin/node", Buffer.alloc(0), "1"), tarEntry("n/LICENSE", LICENSE)], /not a regular file/u],
+    [
+      "duplicate",
+      [tarEntry("n/bin/node", EXECUTABLE), tarEntry("n/bin/node", EXECUTABLE), tarEntry("n/LICENSE", LICENSE)],
+      /appears more than once/u
+    ]
+  ];
+  for (const [label, entries, message] of cases) {
+    const archive = tarGz(entries);
+    await writeFile(join(cache, `${label}.tar.gz`), archive);
+    const pins = pinsFor(`${label}.tar.gz`, archive, { executable: "n/bin/node", license: "n/LICENSE" });
+    await assert.rejects(
+      runtimeFromArchive(pins, "linux-x64", cache),
+      { code: "VES_BINARY_RUNTIME_ARCHIVE_INVALID", message },
+      label
+    );
+  }
+
+  const whole = Buffer.concat([tarEntry("n/LICENSE", LICENSE), tarEntry("n/bin/node", EXECUTABLE)]);
+  const truncated = gzipSync(whole.subarray(0, 3 * 512 + 4));
+  await writeFile(join(cache, "truncated.tar.gz"), truncated);
+  const truncatedPins = pinsFor("truncated.tar.gz", truncated, { executable: "n/bin/node", license: "n/LICENSE" });
+  await assert.rejects(runtimeFromArchive(truncatedPins, "linux-x64", cache), {
+    code: "VES_BINARY_RUNTIME_ARCHIVE_INVALID",
+    message: /extends past the end/u
+  });
+});
+
+test("expansion is bounded: an oversized tar, tar member, or zip member is refused before it is read", async () => {
+  const cache = await scratch();
+  const archive = tarGz([tarEntry("n/bin/node", EXECUTABLE), tarEntry("n/LICENSE", LICENSE)]);
+  await writeFile(join(cache, "node.tar.gz"), archive);
+  const pins = pinsFor("node.tar.gz", archive, { executable: "n/bin/node", license: "n/LICENSE" });
+  await assert.rejects(runtimeFromArchive(pins, "linux-x64", cache, { ...ARCHIVE_LIMITS, expandedTarBytes: 1024 }), {
+    code: "VES_BINARY_RUNTIME_ARCHIVE_INVALID",
+    message: /does not expand within its bound/u
+  });
+  await assert.rejects(
+    runtimeFromArchive(pins, "linux-x64", cache, { ...ARCHIVE_LIMITS, memberBytes: EXECUTABLE.length - 1 }),
+    { code: "VES_BINARY_RUNTIME_ARCHIVE_INVALID", message: /exceeds the member size bound/u }
+  );
+
+  const zip = zipOf([
+    { name: "w/node.exe", body: EXECUTABLE, method: 8 },
+    { name: "w/LICENSE", body: LICENSE, method: 0 }
+  ]);
+  await writeFile(join(cache, "node.zip"), zip);
+  const zipPins = pinsFor("node.zip", zip, { executable: "w/node.exe", license: "w/LICENSE" });
+  await assert.rejects(
+    runtimeFromArchive(zipPins, "win32-x64", cache, { ...ARCHIVE_LIMITS, memberBytes: EXECUTABLE.length - 1 }),
+    { code: "VES_BINARY_RUNTIME_ARCHIVE_INVALID", message: /exceeds the member size bound/u }
+  );
+  assert.ok(ARCHIVE_LIMITS.expandedTarBytes >= 1024 ** 3 && ARCHIVE_LIMITS.memberBytes >= 256 * 1024 ** 2);
+});
+
+test("a zip member that is a symlink, overflows its size, or disagrees with its local header is refused", async () => {
+  const cache = await scratch();
+  const license = { name: "w/LICENSE", body: LICENSE, method: 0 };
+  const cases = [
+    [
+      "symlink",
+      { name: "w/node.exe", body: Buffer.from("../../elsewhere"), method: 0, unixMode: 0o120777 },
+      /not a regular file/u
+    ],
+    ["bomb", { name: "w/node.exe", body: EXECUTABLE, method: 8, recordedSize: 4 }, /does not inflate within/u],
+    ["renamed", { name: "w/node.exe", body: EXECUTABLE, method: 8, localName: "w/nodX.exe" }, /disagrees/u]
+  ];
+  for (const [label, member, message] of cases) {
+    const zip = zipOf([member, license]);
+    await writeFile(join(cache, `${label}.zip`), zip);
+    const pins = pinsFor(`${label}.zip`, zip, { executable: "w/node.exe", license: "w/LICENSE" });
+    await assert.rejects(
+      runtimeFromArchive(pins, "win32-x64", cache),
+      { code: "VES_BINARY_RUNTIME_ARCHIVE_INVALID", message },
+      label
+    );
+  }
+
+  const zip = zipOf([{ name: "w/node.exe", body: EXECUTABLE, method: 0 }, license]);
+  zip.writeUInt32LE(zip.length, zip.length - 22 + 16);
+  await writeFile(join(cache, "outside.zip"), zip);
+  const pins = pinsFor("outside.zip", zip, { executable: "w/node.exe", license: "w/LICENSE" });
+  await assert.rejects(runtimeFromArchive(pins, "win32-x64", cache), {
+    code: "VES_BINARY_RUNTIME_ARCHIVE_INVALID",
+    message: /lies outside the zip archive/u
+  });
+});
+
+test("a NUL-terminated name ends at its first NUL, however long the padding after it", async () => {
+  const cache = await scratch();
+  const padded = Buffer.concat([
+    Buffer.from("n/bin/node\0", "utf8"),
+    Buffer.from(`ignored${"\0".repeat(64)}`.repeat(4096), "utf8")
+  ]);
+  const archive = tarGz([
+    tarEntry("././@LongLink", padded, "L"),
+    tarEntry("truncated-name", EXECUTABLE),
+    tarEntry("n/LICENSE\0trailing", LICENSE)
+  ]);
+  await writeFile(join(cache, "node.tar.gz"), archive);
+  const pins = pinsFor("node.tar.gz", archive, { executable: "n/bin/node", license: "n/LICENSE" });
+  const runtime = await runtimeFromArchive(pins, "linux-x64", cache);
+  assert.deepEqual(runtime.executable, EXECUTABLE);
+  assert.deepEqual(runtime.license, LICENSE);
 });

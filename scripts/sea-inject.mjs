@@ -48,11 +48,11 @@ const u64 = (bytes, offset) => {
   return Number(value);
 };
 const writeU64 = (bytes, offset, value) => bytes.writeBigUInt64LE(BigInt(value), offset);
-const cString = (bytes, offset, length) =>
-  bytes
-    .subarray(offset, offset + length)
-    .toString("latin1")
-    .replace(/\0.*$/su, "");
+const cString = (bytes, offset, length) => {
+  const text = bytes.subarray(offset, offset + length).toString("latin1");
+  const end = text.indexOf("\0");
+  return end === -1 ? text : text.slice(0, end);
+};
 const inBounds = (bytes, offset, length) =>
   Number.isSafeInteger(offset) &&
   Number.isSafeInteger(length) &&
@@ -291,8 +291,10 @@ function machoCommands(bytes, parsed, linkedit, span, blobLength, unsignedEnd) {
       commands.push(machoCommandCopy(bytes, command, linkedit, span));
       continue;
     }
-    commands.push(machoSeaSegment(linkedit.segment.vmaddr, linkedit.segment.fileoff, span, blobLength));
-    commands.push(relocatedLinkedit(bytes, linkedit, span, unsignedEnd));
+    commands.push(
+      machoSeaSegment(linkedit.segment.vmaddr, linkedit.segment.fileoff, span, blobLength),
+      relocatedLinkedit(bytes, linkedit, span, unsignedEnd)
+    );
   }
   return commands;
 }

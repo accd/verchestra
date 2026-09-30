@@ -28,13 +28,15 @@ export type EmbeddedAssetReader = (key: string) => ArrayBuffer;
  * identically and no asset-lookup message ever reaches the user.
  */
 export function embeddedConfigReader(readAsset: EmbeddedAssetReader = getAsset): PinnedConfigReader {
-  return async (name) => {
+  return (name) => {
     try {
-      return new Uint8Array(readAsset(EMBEDDED_CONFIG_KEYS[name]));
+      return Promise.resolve(new Uint8Array(readAsset(EMBEDDED_CONFIG_KEYS[name])));
     } catch {
-      throw new LauncherBootstrapError(
-        "VES_VESTRA_INPUTS_MISSING",
-        `the embedded release configuration ${name} is not present`
+      return Promise.reject(
+        new LauncherBootstrapError(
+          "VES_VESTRA_INPUTS_MISSING",
+          `the embedded release configuration ${name} is not present`
+        )
       );
     }
   };
@@ -71,13 +73,15 @@ async function reportVersion(context: BootstrapContext, io: SingleBinaryIo): Pro
   }
 }
 
+const embeddedContext = (): BootstrapContext => ({
+  platform: process.platform,
+  arch: process.arch,
+  readPinnedConfig: embeddedConfigReader()
+});
+
 export async function runSingleBinary(
   args: readonly string[],
-  context: BootstrapContext = {
-    platform: process.platform,
-    arch: process.arch,
-    readPinnedConfig: embeddedConfigReader()
-  },
+  context: BootstrapContext = embeddedContext(),
   io: SingleBinaryIo = processIo,
   closure: ActivationClosurePort = new NodeActivationClosure(machineLocalEnvironment)
 ): Promise<number> {

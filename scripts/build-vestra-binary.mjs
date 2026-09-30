@@ -201,7 +201,7 @@ async function bundledPackage(directory) {
 async function bundledPackages(inputs) {
   const directories = [...new Set(inputs.map((input) => PACKAGE_DIRECTORY.exec(input)?.[1]).filter(Boolean))];
   const packages = await Promise.all(directories.map(bundledPackage));
-  return packages.sort((left, right) => (left.name < right.name ? -1 : left.name > right.name ? 1 : 0));
+  return packages.sort((left, right) => Number(left.name > right.name) - Number(left.name < right.name));
 }
 
 function thirdPartyNotices(packages) {

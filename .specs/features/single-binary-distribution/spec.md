@@ -49,6 +49,7 @@ promotes a release or claims release readiness.
 | SBD-10 | A manual, read-only workflow SHALL build and test all five targets on native runners, with SHA-pinned actions, no publication, artifacts only, and zero skipped cases. |
 | SBD-11 | A qualification document SHALL state what is proven locally and what is still pending. |
 | SBD-12 | No status surface SHALL claim 1.0, promotion, or production readiness. |
+| SBD-13 | Reading the pinned Node archive SHALL stay inside its bounds. Pinned archive and member names SHALL be plain relative paths. A pinned member SHALL be taken only from one regular-file entry; a link, a duplicate, a truncated entry, or a malformed header SHALL refuse the archive. The expanded tar and each member SHALL be size-bounded, and extraction SHALL never write an entry name to the filesystem. |
 
 ## Acceptance Criteria
 
