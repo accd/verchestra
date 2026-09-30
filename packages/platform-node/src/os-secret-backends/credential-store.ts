@@ -31,7 +31,7 @@ export const LINUX_SECRET_SERVICE_CREDENTIAL_QUALIFICATION: OsSecretQualificatio
   readonly report: string;
 } = Object.freeze({
   report: "docs/qualification/os-secret-backend-linux.md",
-  digest: "0000000000000000000000000000000000000000000000000000000000000000",
+  digest: "5c82ef0f0c0807458609a145bb21c2cff90a7b2766bb94b5143765e972490758",
   controls: OS_CREDENTIAL_CONTROLS.linux.controls
 });
 
@@ -39,7 +39,7 @@ export const LINUX_SECRET_SERVICE_CREDENTIAL_QUALIFICATION: OsSecretQualificatio
 export const WINDOWS_CREDENTIAL_MANAGER_QUALIFICATION: OsSecretQualificationEvidence & { readonly report: string } =
   Object.freeze({
     report: "docs/qualification/os-secret-backend-windows.md",
-    digest: "0000000000000000000000000000000000000000000000000000000000000000",
+    digest: "952601c646d697859d7d627d256405795548e7302ceae6b93202212cf815e8dc",
     controls: OS_CREDENTIAL_CONTROLS.win32.controls
   });
 
