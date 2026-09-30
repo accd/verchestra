@@ -12,7 +12,13 @@ import { rm, writeFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { after, test } from "node:test";
 
-import { CREDENTIALS, DARWIN, cleanupTaskFixtures, taskFixture } from "../helpers/task-cli-fixture.mjs";
+import {
+  CREDENTIALS,
+  DARWIN,
+  approveArguments,
+  cleanupTaskFixtures,
+  taskFixture
+} from "../helpers/task-cli-fixture.mjs";
 
 after(cleanupTaskFixtures);
 
@@ -30,6 +36,21 @@ function refused(result, code, label) {
   return result.json.error;
 }
 
+// why: the resume and cancel journeys both need a run whose driving process
+// died while its gate was held.
+async function killedAtHeldGate(fixture, plan) {
+  await writeFile(join(fixture.home, "hold-gate"), "");
+  const child = fixture.launchAsync(startArguments(fixture, plan.runId));
+  const finished = exited(child);
+  await waitFor(() => existsSync(join(fixture.home, "gate-held")));
+  const gatePid = Number(readFileSync(join(fixture.home, "gate-held"), "utf8"));
+  child.kill("SIGKILL");
+  const exit = await finished;
+  process.kill(-gatePid, "SIGKILL");
+  await rm(join(fixture.home, "hold-gate"));
+  return exit;
+}
+
 async function planned(fixture) {
   const plan = ok(
     fixture.launch(["task", "plan", "--request", fixture.requestPath, ...fixture.keychainArgs, "--output", "json"]),
@@ -40,29 +61,16 @@ async function planned(fixture) {
 
 async function approved(fixture) {
   const plan = await planned(fixture);
-  ok(
-    fixture.launch(
-      [
-        "task",
-        "approve",
-        "--run-id",
-        plan.runId,
-        "--binding-digest",
-        plan.bindingDigest,
-        "--confirm-stdin",
-        ...fixture.keychainArgs,
-        "--output",
-        "json"
-      ],
-      `${plan.bindingDigest}\n`
-    ),
-    "approve"
-  );
+  ok(fixture.launch(approveArguments(fixture, plan), `${plan.bindingDigest}\n`), "approve");
   return plan;
 }
 
+function startArguments(fixture, runId, verb = "start") {
+  return ["task", verb, "--run-id", runId, ...fixture.keychainArgs, "--output", "json"];
+}
+
 function start(fixture, runId, verb = "start") {
-  return fixture.launch(["task", verb, "--run-id", runId, ...fixture.keychainArgs, "--output", "json"]);
+  return fixture.launch(startArguments(fixture, runId, verb));
 }
 
 function status(fixture, runId) {
@@ -198,24 +206,7 @@ test("a governed task is planned, approved, implemented, gated, verified, and ac
   assert.equal(status(fixture, plan.runId).state, "AWAITING_EXECUTION_APPROVAL");
   refused(start(fixture, plan.runId), "VES_TASK_TRANSITION_REFUSED", "start before approval");
 
-  const approval = ok(
-    fixture.launch(
-      [
-        "task",
-        "approve",
-        "--run-id",
-        plan.runId,
-        "--binding-digest",
-        plan.bindingDigest,
-        "--confirm-stdin",
-        ...fixture.keychainArgs,
-        "--output",
-        "json"
-      ],
-      `${plan.bindingDigest}\n`
-    ),
-    "approve"
-  );
+  const approval = ok(fixture.launch(approveArguments(fixture, plan), `${plan.bindingDigest}\n`), "approve");
   assert.equal(approval.state, "EXECUTION_AUTHORIZED");
 
   const run = ok(start(fixture, plan.runId), "start");
@@ -340,15 +331,7 @@ test("cancel stops a running task from another process and aborts the run", TIME
   if (!DARWIN) return;
   const fixture = await taskFixture({ request: { instructions: "Work slowly. scenario:slow" } });
   const plan = await approved(fixture);
-  const child = fixture.launchAsync([
-    "task",
-    "start",
-    "--run-id",
-    plan.runId,
-    ...fixture.keychainArgs,
-    "--output",
-    "json"
-  ]);
+  const child = fixture.launchAsync(startArguments(fixture, plan.runId));
   const finished = exited(child);
   let stdout = "";
   child.stdout.on("data", (chunk) => (stdout += chunk));
@@ -379,23 +362,7 @@ test("an interrupted run resumes at its gate without repeating the implementer's
   if (!DARWIN) return;
   const fixture = await taskFixture();
   const plan = await approved(fixture);
-  await writeFile(join(fixture.home, "hold-gate"), "");
-  const child = fixture.launchAsync([
-    "task",
-    "start",
-    "--run-id",
-    plan.runId,
-    ...fixture.keychainArgs,
-    "--output",
-    "json"
-  ]);
-  const finished = exited(child);
-  await waitFor(() => existsSync(join(fixture.home, "gate-held")));
-  const gatePid = Number(readFileSync(join(fixture.home, "gate-held"), "utf8"));
-  child.kill("SIGKILL");
-  assert.equal((await finished).signal, "SIGKILL");
-  process.kill(-gatePid, "SIGKILL");
-  await rm(join(fixture.home, "hold-gate"));
+  assert.equal((await killedAtHeldGate(fixture, plan)).signal, "SIGKILL");
 
   const interrupted = status(fixture, plan.runId);
   assert.equal(interrupted.state, "IMPLEMENTING");
@@ -450,23 +417,7 @@ test("cancel with no process driving the run removes its worktree, frees the lea
   if (!DARWIN) return;
   const fixture = await taskFixture();
   const plan = await approved(fixture);
-  await writeFile(join(fixture.home, "hold-gate"), "");
-  const child = fixture.launchAsync([
-    "task",
-    "start",
-    "--run-id",
-    plan.runId,
-    ...fixture.keychainArgs,
-    "--output",
-    "json"
-  ]);
-  const finished = exited(child);
-  await waitFor(() => existsSync(join(fixture.home, "gate-held")));
-  const gatePid = Number(readFileSync(join(fixture.home, "gate-held"), "utf8"));
-  child.kill("SIGKILL");
-  await finished;
-  process.kill(-gatePid, "SIGKILL");
-  await rm(join(fixture.home, "hold-gate"));
+  await killedAtHeldGate(fixture, plan);
   assert.equal(fixture.git(["worktree", "list", "--porcelain"]).split("\n\n").length, 2);
 
   const cancelled = ok(fixture.launch(["task", "cancel", "--run-id", plan.runId, "--output", "json"]), "cancel");

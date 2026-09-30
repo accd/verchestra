@@ -9,7 +9,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { after, test } from "node:test";
 
-import { DARWIN, cleanupTaskFixtures, taskFixture } from "../helpers/task-cli-fixture.mjs";
+import { DARWIN, approveArguments, cleanupTaskFixtures, taskFixture } from "../helpers/task-cli-fixture.mjs";
 
 after(cleanupTaskFixtures);
 
@@ -30,24 +30,7 @@ async function run(scenario) {
     fixture.launch(["task", "plan", "--request", fixture.requestPath, ...fixture.keychainArgs, "--output", "json"]),
     "plan"
   );
-  data(
-    fixture.launch(
-      [
-        "task",
-        "approve",
-        "--run-id",
-        plan.runId,
-        "--binding-digest",
-        plan.bindingDigest,
-        "--confirm-stdin",
-        ...fixture.keychainArgs,
-        "--output",
-        "json"
-      ],
-      `${plan.bindingDigest}\n`
-    ),
-    "approve"
-  );
+  data(fixture.launch(approveArguments(fixture, plan), `${plan.bindingDigest}\n`), "approve");
   const started = fixture.launch([
     "task",
     "start",
