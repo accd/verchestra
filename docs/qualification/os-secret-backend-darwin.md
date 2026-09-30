@@ -143,9 +143,9 @@ This proves the darwin credential contract on one owner machine. Independent
 review of this report is still pending.
 
 A second run, in CI: the `credential-store (macOS)` job of run
-[36681219761](https://github.com/accd/verchestra/actions/runs/36681219761)
-(`.github/workflows/os-credential-store.yml`, revision
-`95fbf7704bfe57e1a59d18053efdaed0ae809b2f`, image `macos-26-arm64`
-20260907.0351.1, Node v24.14.0) passed the same suite, extended by AD-041 with
-the Linux and Windows cases that assert refusal on macOS: 20 tests, 20 passed,
-0 failed, 0 skipped, 0 todo. The macOS cases are the ones above.
+[36682622312](https://github.com/accd/verchestra/actions/runs/36682622312) (`.github/workflows/os-credential-store.yml`, revision
+`a885a2b479d3dbb999765af9c5a0b9d2d19f96e3`, image `macos-26-arm64` 20260907.0351.1, Node v24.14.0; second attempt,
+after the first attempt's pnpm setup failed on an npm network timeout before
+any test ran) passed the same suite, extended by AD-041 with the Linux and
+Windows cases that assert refusal on macOS: 20 tests, 20 passed, 0 failed,
+0 skipped, 0 todo. The macOS cases are the ones above.
