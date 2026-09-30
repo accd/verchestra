@@ -198,7 +198,7 @@ test("the published wiring derives its roots from the home directory alone", asy
   }
 });
 
-// #393 / AD-034. One machine, one trust root, two launchers: A pins release
+// #393 / AD-036. One machine, one trust root, two launchers: A pins release
 // 1.0.0 published at TUF metadata version 1, B pins 2.0.0 at version 2. After A
 // then B, the persistent metadata cache is at version 2, so resolving A again is
 // a metadata downgrade that anti-rollback refuses. A retained, superseded A must

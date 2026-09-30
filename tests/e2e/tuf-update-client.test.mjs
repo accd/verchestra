@@ -152,7 +152,7 @@ test("a successor with an incremented TUF metadataVersion stages cleanly over it
 
 // #393. After a successor advances the shared metadata cache, staging the
 // predecessor again is a metadata downgrade. The client must keep refusing it:
-// the launcher's retained-release path (AD-034) never asks the client, so
+// the launcher's retained-release path (AD-036) never asks the client, so
 // nothing about this refusal may soften.
 test("re-staging a predecessor after its successor advanced the cache is refused as a rollback (#393)", async () => {
   const keys = createUpdateKeys();

@@ -391,7 +391,7 @@ note. -->
   signed is still the owner's call; this records the definition the validator
   enforces so a promote's signature is accountable rather than decorative.
 
-### AD-034 — A superseded, retained release re-activates locally; a remote downgrade still fails (#393)
+### AD-036 — A superseded, retained release re-activates locally; a remote downgrade still fails (#393)
 
 - **Status:** proposed (owner ratifies by reviewing the pull request that
   carries it).

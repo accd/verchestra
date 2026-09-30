@@ -153,7 +153,7 @@ test("rollback acknowledgement loss after pointer converges on retry", async () 
   assert.equal(retried.active.releaseDigest, state.stable.bundle.releaseDigest);
 });
 
-// #393 / AD-034. A rollback journals its pointer switch like an activation
+// #393 / AD-036. A rollback journals its pointer switch like an activation
 // does: whichever fault point a crash hits, the pointer stays byte-valid at
 // either the release being left or the release being re-selected, a retry
 // converges, and no journal survives the retry.

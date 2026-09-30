@@ -6,7 +6,7 @@ status: blocked
 branch: feat/393-retained-release-rollback
 baseRevision: 0c94df8746578ce59a9b75015fca4aad447f74b0
 lastCompletedTask: null
-nextTask: "J02 needs the owner-gated lineage: the online key and anchor, then .3 published with a strictly greater metadata_version (#387), then a later release on .3's root (for example .4) with a higher metadata_version, both built from a revision carrying the retained-release rollback (AD-034, #393). Then re-run this matrix with base=.3 update=.4; its rollback phase now exercises the local re-activation and checks the active pointer."
+nextTask: "J02 needs the owner-gated lineage: the online key and anchor, then .3 published with a strictly greater metadata_version (#387), then a later release on .3's root (for example .4) with a higher metadata_version, both built from a revision carrying the retained-release rollback (AD-036, #393). Then re-run this matrix with base=.3 update=.4; its rollback phase now exercises the local re-activation and checks the active pointer."
 lastGate: "live-activation-matrix runs 33087399859 + 33091253051 (reproduction): activate + self-test + recover pass 5/5; update fails 5/5 (#387). Run 33092399993: fresh .2 activates 5/5."
 updatedAt: 2026-09-29T00:00:00Z
 ---
@@ -62,7 +62,7 @@ supplies them.
    `base_version=0.0.0-qualification.3` and
    `update_version=0.0.0-qualification.4` for the forward update leg.
 4. **The rollback half (#393, decided).** The retained-release re-activation
-   (option 2, AD-034) is implemented, and the roll-forward publication (option 1)
+   (option 2, AD-036) is implemented, and the roll-forward publication (option 1)
    is documented. See "Rollback after a successful update" below. Both releases
    in step 3 must be built from a revision that carries it.
 5. **Record the result.** Record the run ids and transcript digests in
@@ -78,7 +78,7 @@ verifies by content (`gh run download 33087399859`).
   and later same-root publications, R2 upload, and `npm publish` under 2FA
   (#387).
 
-## Rollback after a successful update (#393, AD-034)
+## Rollback after a successful update (#393, AD-036)
 
 Fixing #387 makes the update succeed, which exposes a second, deliberate
 refusal: the update advances the machine's TUF metadata cache to the successor's
@@ -93,7 +93,7 @@ Two rollback mechanisms now exist, and neither weakens anti-rollback:
    a strictly higher TUF metadata version — whose targets point at the prior
    release's bytes. Clients update to it as they would to any release. In this
    workflow, that is dispatched as the `update_version` of a later run.
-2. **Local retained-release re-activation (option 2, AD-034).** A launcher whose
+2. **Local retained-release re-activation (option 2, AD-036).** A launcher whose
    pinned release this machine already verified and activated under the same
    trust root, and which a later verified release has superseded, re-activates
    it from its installed bytes with no source read, after re-hashing every
@@ -106,7 +106,7 @@ restored the base pointer byte for byte. Deterministic evidence:
 `tests/e2e/vestra-launcher-activation.test.mjs` (A@v1 → B@v2 → A with zero
 source reads) and `tests/agent-readiness/live-activation-workflow.test.mjs`.
 No live run has exercised either mechanism yet; the published `0.0.0-qualification`
-and `.2` packages predate AD-034 and cannot pass `rollback` after a successful
+and `.2` packages predate AD-036 and cannot pass `rollback` after a successful
 update.
 
 ## Next (historical, 2026-08-27 — withdrawn, see above)
@@ -115,7 +115,7 @@ update.
   release served from R2), so the update client re-fetches instead of reusing the
   cached, same-versioned metadata.
 - Re-run this workflow with a base and an update that share one root, both built
-  from a revision carrying AD-034, to close the update/rollback leg; update
+  from a revision carrying AD-036, to close the update/rollback leg; update
   `validation.md` and the acceptance matrix J02.
 - The five per-leg transcripts of run 33087399859 are the evidence a reviewer
   verifies by content (`gh run download 33087399859`).

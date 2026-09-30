@@ -198,7 +198,7 @@ function verifiedTarget(
 const pathEvidence = (receipt: ActivationReceipt, network: boolean): ActivationPathEvidence =>
   Object.freeze({ operation: receipt.operation, releaseReused: receipt.releaseReused, network });
 
-// invariant (AD-034): the decision reads only local state — the trust anchor
+// invariant (AD-036): the decision reads only local state — the trust anchor
 // and the install root's verified-release record — so no remote response can
 // select the retained path, and taking it performs zero source reads.
 async function retainedPinnedRelease(
