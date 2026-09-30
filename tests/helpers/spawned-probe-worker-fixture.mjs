@@ -1,3 +1,4 @@
+import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { delimiter, join } from "node:path";
@@ -17,10 +18,16 @@ import { grillSkill, lock, skill, verifier } from "./skill-registry-fixture.mjs"
 
 export const NODE_WORKER = fileURLToPath(new URL("../fixtures/probe-workers/reference-worker.mjs", import.meta.url));
 export const PYTHON_WORKER = fileURLToPath(new URL("../fixtures/probe-workers/reference_worker.py", import.meta.url));
-export const POSIX_ONLY =
-  process.platform === "win32"
-    ? "The out-of-process probe host is qualified on POSIX only; win32 refusal is asserted separately"
-    : false;
+// invariant: the out-of-process probe host is qualified on POSIX only. On win32
+// every case asserts, instead of skipping, that the whole admitted path is
+// refused for the platform before any worker is spawned, so the sealed gate
+// counters never record a skip and no case passes there without asserting.
+export const WIN32_HOST = process.platform === "win32";
+
+export async function probeHostRefusedOnWin32(t) {
+  t.diagnostic("win32: asserting the out-of-process probe host refuses this platform instead");
+  await assert.rejects(spawnedProbe(), { code: "VES_PROBE_HOST_PLATFORM_UNSUPPORTED" });
+}
 
 export function fileDigest(path) {
   return `sha256:${createHash("sha256").update(readFileSync(path)).digest("hex")}`;
