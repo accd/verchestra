@@ -173,12 +173,14 @@ repository checkout anywhere in the journey.
 > directory until the fix ships. Tracked as
 > [issue #370](https://github.com/accd/verchestra/issues/370).
 
-### Bind a provider credential (macOS)
+### Bind a provider credential
 
 Governed work that calls a provider reads its API key from the operating
 system's credential store, never from an ambient environment variable, and
-injects it only into the child process that needs it. On macOS that store is
-your keychain. Run these from the root of an initialized Workspace (`init`):
+injects it only into the child process that needs it. The store is your macOS
+keychain, your Linux Secret Service keyring (for example gnome-keyring), or
+your Windows Credential Manager. Run these from the root of an initialized
+Workspace (`init`):
 
 ```bash
 npx verchestra secret set --name anthropic-api-key
@@ -190,15 +192,27 @@ npx verchestra secret delete --name anthropic-api-key
 without echoing. From a pipe it takes the whole input and strips one trailing
 newline. It accepts printable ASCII without whitespace, up to the documented
 size limit, and never prints the value. `secret status` reports presence only.
-Each credential is bound to its Workspace: the keychain item's service is
-`verchestra/<workspaceId>`. `--keychain <path>` selects a keychain file you own
-instead of your default keychain. `doctor --deep` checks that
-`anthropic-api-key` is bound, and reports `blocked`, not `pass`, until it is.
+Each credential is bound to its Workspace under `verchestra/<workspaceId>`.
+`doctor --deep` checks that `anthropic-api-key` is bound, and reports
+`blocked`, not `pass`, until it is.
 
-Linux and Windows have no qualified credential store yet. There, every
-`secret` command reports `VES_SECRET_STORE_UNQUALIFIED`. The qualification and
-its limits are in
-[docs/qualification/os-secret-backend-darwin.md](docs/qualification/os-secret-backend-darwin.md).
+- **macOS:** `--keychain <path>` selects a keychain file you own instead of
+  your default keychain.
+- **Linux:** needs `secret-tool` (package `libsecret-tools`) and a Secret
+  Service provider on your D-Bus session bus. A locked keyring is reported as
+  needing you to unlock it; no session bus or provider is reported as
+  `VES_SECRET_STORE_UNAVAILABLE`.
+- **Windows:** uses Windows PowerShell and stores a generic, machine-local
+  credential. On a machine that enforces PowerShell script block logging or
+  transcription, `secret set` refuses with `VES_SECRET_STORE_LOGGED` rather
+  than let the policy record the value.
+
+`--keychain` is refused on Linux and Windows. On any other platform every
+`secret` command reports `VES_SECRET_STORE_UNQUALIFIED`. Each store's
+qualification and its limits are in
+[docs/qualification/os-secret-backend-darwin.md](docs/qualification/os-secret-backend-darwin.md),
+[docs/qualification/os-secret-backend-linux.md](docs/qualification/os-secret-backend-linux.md), and
+[docs/qualification/os-secret-backend-windows.md](docs/qualification/os-secret-backend-windows.md).
 
 ### Managed state, recovery, and cleanup
 
@@ -206,11 +220,11 @@ The launcher keeps its staged releases, its activated install, its trust anchor,
 and the active-release pointer under one machine-local state root. Nothing of
 yours is stored there.
 
-| Platform | Managed state root                                |
-| -------- | ------------------------------------------------- |
-| Windows  | `%LOCALAPPDATA%\Verchestra\state`                 |
-| macOS    | `~/Library/Application Support/Verchestra/state`  |
-| Linux    | `~/.local/state/verchestra`                       |
+| Platform | Managed state root                               |
+| -------- | ------------------------------------------------ |
+| Windows  | `%LOCALAPPDATA%\Verchestra\state`                |
+| macOS    | `~/Library/Application Support/Verchestra/state` |
+| Linux    | `~/.local/state/verchestra`                      |
 
 The launcher derives that location from your home directory and the platform
 alone; it deliberately reads no environment variable, so redirecting

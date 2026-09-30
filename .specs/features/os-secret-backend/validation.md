@@ -4,6 +4,13 @@ Author validation on `feat/os-secret-backend`. No independent verifier has
 reviewed it yet, and none is claimed. Gate evidence never spawns
 `/usr/bin/security`. The real-keychain qualification (OSB-14) is **pending**.
 
+**Superseded in part by AD-041:** Linux and Windows now construct qualified
+credential stores, so "only darwin constructs a store" (OSB-08) and the
+"unqualified platform" cases below now use platforms without a store (such as
+`freebsd`). The line references below were recorded before that change; the
+current evidence for all three platforms is
+`.specs/features/os-secret-backend-cross-platform/validation.md`.
+
 | Requirement | Evidence (file:line — assertion) | Result |
 | --- | --- | --- |
 | OSB-01 | `tests/security/os-secret-backend-security.test.mjs:321`: credential evidence and controls without non-exportable are refused by `QualifiedOsSecretAdapter`, and the credential vocabulary never claims `non-exportable`. `:356`: the credential contract is darwin-only and requires every control. | PASS |
@@ -19,7 +26,7 @@ reviewed it yet, and none is claimed. Gate evidence never spawns
 | OSB-11 | `tests/unit/secret-cli-input.test.mjs:46`: hidden TTY entry restores the terminal and never echoes. `:67`: exactly one trailing newline is stripped. `tests/security/os-secret-backend-security.test.mjs:261`: name validation before any spawn. `:274`: an uninitialized directory is refused. `:281`: an unqualified platform is refused. `:214`: `--keychain` reaches every invocation. `tests/e2e/secret-cli-e2e.test.mjs:118`: the same through the binary. | PASS |
 | OSB-12 | `tests/integration/doctor-secret-backend.test.mjs:43`: bound is `pass`. `:62`: unbound is `blocked`. `:67`: another Workspace does not count. `:78`: a store that cannot answer is `fail`. `:86`: the doctor never asks for the value. `tests/security/os-secret-backend-security.test.mjs:299`: the closure exposes only `has`. | PASS |
 | OSB-13 | `tests/architecture/no-keychain-spawn-in-tests.test.mjs:42`: no gate test names the real runner. `:47`: none spawns the tool. `:53`: every test that can reach a store installs `tests/helpers/deny-keychain-spawn.mjs`. `:69`: the guard throws in process. `tests/e2e/secret-cli-e2e.test.mjs:73`: the guard throws in a preloaded child. | PASS |
-| OSB-14 | `spikes/os-secret-store/test/keychain-backend.test.mjs` and `keychain-cli.test.mjs`, run by `corepack pnpm qualify:keychain` only. `tests/architecture/no-keychain-spawn-in-tests.test.mjs:74`: no other script runs them. | PENDING — owner run on an unlocked macOS session |
+| OSB-14 | `spikes/os-secret-store/test/keychain-backend.test.mjs` and `credential-cli.test.mjs` (renamed from `keychain-cli.test.mjs` by AD-041), run by `corepack pnpm qualify:keychain` only. `tests/architecture/no-keychain-spawn-in-tests.test.mjs:74`: no other script runs them. | PENDING — owner run on an unlocked macOS session |
 
 ## Discrimination sensor
 

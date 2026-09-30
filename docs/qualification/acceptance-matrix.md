@@ -120,7 +120,7 @@ defensibly have been two rows:
 | J06 | Work I started under one AI backend finishes under a different one, unchanged. | Proven |
 | J07 | A sealed Execution Package survives a move between machines with different local keys. | Proven |
 | J08 | I can prove my installation actually works, without a repository checkout. | Proven, with one recorded defect (#370) |
-| J09 | I ask what is wrong with this machine and get an actionable, path-free report. | Proven — secret presence observable on macOS since #379; still `blocked` on Linux and Windows |
+| J09 | I ask what is wrong with this machine and get an actionable, path-free report. | Proven — secret presence observable on macOS, Linux, and Windows since #379 (AD-034, AD-041) |
 | J10 | I restore a machine from an encrypted bundle, and send diagnostics without leaking my paths. | Proven deterministically; live restore recorded on all 5 (run 33087399859) |
 | J11 | I turn a revision into a signed, reproducible release a stranger can verify from a public endpoint. | Proven deterministically; performed live once |
 | J12 | A third party verifies the evidence behind a release without any access to this repository. | Proven; custody is single-operator |
@@ -309,9 +309,22 @@ one remains:
   store, so the check stays `blocked` there. A full `PASS` verdict on a
   provisioned macOS machine has not been observed end to end in this matrix.
 
-So on Linux and Windows `doctor` still cannot report `PASS` on a real machine,
-and the reason is the missing credential backend (#379), not the circular
-release digest. On macOS that blocker is removed for a Workspace with a bound
+  **Note added by #379 (AD-041, after this matrix's recorded revision):**
+  qualified Linux (Secret Service) and Windows (Credential Manager) credential
+  backends now exist (`docs/qualification/os-secret-backend-linux.md`,
+  `docs/qualification/os-secret-backend-windows.md`). The same doctor mapping
+  is asserted for both against fake runners, and the standalone
+  `pnpm qualify:keychain` suite passed against the real stores on
+  `ubuntu-latest`, `windows-latest`, and `macos-latest`
+  (`.github/workflows/os-credential-store.yml`), including the full
+  `vestra secret` and `doctor --deep` journey with doctor reporting `pass` for
+  a bound credential. A store that is not running in the session reads as
+  `blocked` (not configured), never `pass`.
+
+So, as of this matrix's recorded revision, on Linux and Windows `doctor` could
+not report `PASS` on a real machine, and the reason was the missing credential
+backend (#379), not the circular release digest. AD-041 removes that blocker
+for a Workspace with a bound credential on every supported platform. On macOS that blocker is removed for a Workspace with a bound
 credential. A sealed-mode doctor verdict is now asserted where before none was.
 
 ### 2.10 J10 — Recover a machine, and send diagnostics safely
@@ -658,7 +671,14 @@ permanently `BLOCKED` verdict until #379 ships, or scope the promise accordingly
 **Update from #379:** the macOS half has shipped as a qualified keychain
 credential backend (`docs/qualification/os-secret-backend-darwin.md`). On
 macOS, a Workspace with `anthropic-api-key` bound no longer blocks this check.
-Linux and Windows still do, until each has its own qualified store.
+
+**Update from #379 (AD-041):** Linux and Windows now have their own qualified
+credential stores (`docs/qualification/os-secret-backend-linux.md`,
+`docs/qualification/os-secret-backend-windows.md`), each proven against the
+real store in CI. A Workspace with `anthropic-api-key` bound no longer blocks
+this check on any supported platform. Other deep-doctor checks still need
+their own provisioning, and a full `PASS` on a provisioned machine has not been
+recorded in this matrix.
 
 **L3. `gate:release` was historically vacuous and its closure must be
 re-checked.** `docs/audits/2026-08-verchestra-product-repository-audit.md:47`

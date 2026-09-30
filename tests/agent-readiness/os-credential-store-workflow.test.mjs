@@ -1,3 +1,4 @@
+import "../helpers/deny-keychain-spawn.mjs";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import { test } from "node:test";
@@ -60,7 +61,7 @@ test("Linux installs the Secret Service tools, and every leg runs the qualificat
     /- name: Install the Secret Service tools\r?\n\s*if: matrix\.platform == 'linux'\r?\n\s*run: \|\r?\n(?:\s+.*\r?\n)*?\s+sudo apt-get install --yes --no-install-recommends libsecret-tools gnome-keyring dbus-x11\r?\n/u
   );
   assert.match(workflow, /- name: Qualify the platform credential store\r?\n\s*run: pnpm qualify:keychain\s*$/u);
-  assert.equal([...workflow.matchAll(/pnpm qualify:keychain/gu)].length, 1);
+  assert.equal([...workflow.matchAll(/run: pnpm qualify:keychain/gu)].length, 1);
   assert.match(workflow, /node-version: 24\.14\.0/u);
   assert.match(workflow, /pnpm install --frozen-lockfile/u);
 });
