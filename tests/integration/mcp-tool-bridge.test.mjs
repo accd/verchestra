@@ -4,12 +4,14 @@ import { afterEach, test } from "node:test";
 
 import { MCP_BRIDGE_TOOLS } from "../../packages/agent-runtime/src/index.ts";
 import { bridgeWorktree, cleanupBridges, openController, startRelay } from "../helpers/mcp-bridge-fixture.mjs";
+import { WIN32_HOST, mediationRefusedOnWin32 } from "../helpers/mediation-platform.mjs";
 
 afterEach(cleanupBridges);
 
 const text = (result) => result.content.map((entry) => entry.text).join("");
 
-test("the relay completes the MCP handshake and lists exactly the five bridge tools", async () => {
+test("the relay completes the MCP handshake and lists exactly the five bridge tools", async (t) => {
+  if (WIN32_HOST) return mediationRefusedOnWin32(t);
   const { worktree } = await bridgeWorktree();
   const { controller } = await openController(worktree);
   const relay = startRelay(controller.environment);
@@ -27,7 +29,8 @@ test("the relay completes the MCP handshake and lists exactly the five bridge to
   assert.equal(await relay.close(), 0);
 });
 
-test("read tools serve scoped content and hide everything outside the approved scope", async () => {
+test("read tools serve scoped content and hide everything outside the approved scope", async (t) => {
+  if (WIN32_HOST) return mediationRefusedOnWin32(t);
   const { worktree } = await bridgeWorktree();
   const { controller } = await openController(worktree);
   const relay = startRelay(controller.environment);
@@ -52,7 +55,8 @@ test("read tools serve scoped content and hide everything outside the approved s
   await relay.close();
 });
 
-test("write_file and delete_file become executor tool requests addressed by content digest", async () => {
+test("write_file and delete_file become executor tool requests addressed by content digest", async (t) => {
+  if (WIN32_HOST) return mediationRefusedOnWin32(t);
   const { worktree } = await bridgeWorktree();
   const { controller, invoked, payloads } = await openController(worktree);
   const relay = startRelay(controller.environment);
@@ -85,7 +89,8 @@ test("write_file and delete_file become executor tool requests addressed by cont
   await relay.close();
 });
 
-test("an executor denial returns to the model as a tool error and a fatal denial stops the run", async () => {
+test("an executor denial returns to the model as a tool error and a fatal denial stops the run", async (t) => {
+  if (WIN32_HOST) return mediationRefusedOnWin32(t);
   const { worktree } = await bridgeWorktree();
   const denials = ["VES_EXECUTOR_SCOPE_DENIED", "VES_EXECUTOR_APPROVAL_INVALID"];
   const { controller, fatal } = await openController(worktree, {
@@ -104,7 +109,8 @@ test("an executor denial returns to the model as a tool error and a fatal denial
   await relay.close();
 });
 
-test("protocol errors are answered without reaching the controller", async () => {
+test("protocol errors are answered without reaching the controller", async (t) => {
+  if (WIN32_HOST) return mediationRefusedOnWin32(t);
   const { worktree } = await bridgeWorktree();
   const { controller, invoked } = await openController(worktree);
   const relay = startRelay(controller.environment);

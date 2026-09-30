@@ -4,6 +4,7 @@ import { afterEach, test } from "node:test";
 import { DriverExecutionAdapter, InMemoryExecutionPayloadStore } from "../../packages/agent-runtime/src/index.ts";
 import { executorInput } from "../helpers/task-executor-fixture.mjs";
 import { bridgeWorktree, cleanupBridges, relayEntry, startRelay } from "../helpers/mcp-bridge-fixture.mjs";
+import { WIN32_HOST } from "../helpers/mediation-platform.mjs";
 
 afterEach(cleanupBridges);
 
@@ -80,7 +81,21 @@ async function adapterFixture(driver, options = {}) {
   return { adapter, calls, control, request, sessions };
 }
 
-test("usage is metered against the resolved model and checkpoints carry portable facts only", async () => {
+// invariant: on win32 the adapter refuses the mediated path when it opens the
+// bridge, before any session exists, any driver starts, or any checkpoint,
+// usage, or tool call is recorded.
+async function adapterRefusedOnWin32(t) {
+  t.diagnostic("win32: asserting the adapter refuses the mediated bridge instead");
+  const driver = new ScriptedFakeDriver(async () => assert.fail("the driver never starts"));
+  const { adapter, calls, control, request, sessions } = await adapterFixture(driver);
+  await assert.rejects(adapter.execute(request, control), { code: "VES_BRIDGE_PLATFORM_UNSUPPORTED" });
+  assert.deepEqual(sessions, []);
+  assert.deepEqual(calls, { checkpoints: [], usage: [], tools: [] });
+  assert.equal(driver.closed, 0);
+}
+
+test("usage is metered against the resolved model and checkpoints carry portable facts only", async (t) => {
+  if (WIN32_HOST) return adapterRefusedOnWin32(t);
   const driver = new ScriptedFakeDriver(async ({ emit }) => {
     emit({ type: "model.resolved", resolvedModel: "claude-opus-5" });
     emit({ type: "tool.requested", toolCallId: "t1", name: "mcp__verchestra__read_file", input: {} });
@@ -116,7 +131,8 @@ function bridgeScript(fixture, calls) {
   };
 }
 
-test("writes through the bridge reach the executor's invokeTool during the session", async () => {
+test("writes through the bridge reach the executor's invokeTool during the session", async (t) => {
+  if (WIN32_HOST) return adapterRefusedOnWin32(t);
   const holder = {};
   const driver = new ScriptedFakeDriver(
     bridgeScript(holder, [["write_file", { path: "src/a.txt", content: "via bridge\n" }]])
@@ -130,7 +146,8 @@ test("writes through the bridge reach the executor's invokeTool during the sessi
   assert.equal(calls.checkpoints.at(-1).data.writes, 1);
 });
 
-test("a driver error event yields a failed status with its stable code", async () => {
+test("a driver error event yields a failed status with its stable code", async (t) => {
+  if (WIN32_HOST) return adapterRefusedOnWin32(t);
   const driver = new ScriptedFakeDriver(async ({ emit }) => {
     emit({
       type: "error",
@@ -145,7 +162,8 @@ test("a driver error event yields a failed status with its stable code", async (
   assert.equal(JSON.stringify(calls.checkpoints).includes("/private/path"), false);
 });
 
-test("a tool requested outside the bridge cancels the session and fails closed", async () => {
+test("a tool requested outside the bridge cancels the session and fails closed", async (t) => {
+  if (WIN32_HOST) return adapterRefusedOnWin32(t);
   const driver = new ScriptedFakeDriver(async ({ emit }) => {
     emit({ type: "tool.requested", toolCallId: "t1", name: "Edit", input: { file_path: "/etc/hosts" } });
   });
@@ -158,7 +176,8 @@ test("a tool requested outside the bridge cancels the session and fails closed",
   );
 });
 
-test("the executor's cancel stops the active session and reports it cancelled", async () => {
+test("the executor's cancel stops the active session and reports it cancelled", async (t) => {
+  if (WIN32_HOST) return adapterRefusedOnWin32(t);
   let adapterRef;
   const driver = new ScriptedFakeDriver(async ({ signal }) => {
     await adapterRef.cancel("worktree:fake");
@@ -173,7 +192,8 @@ test("the executor's cancel stops the active session and reports it cancelled", 
   );
 });
 
-test("an aborted caller signal reaches the driver before it starts work", async () => {
+test("an aborted caller signal reaches the driver before it starts work", async (t) => {
+  if (WIN32_HOST) return adapterRefusedOnWin32(t);
   const controller = new AbortController();
   controller.abort();
   const driver = new ScriptedFakeDriver(async ({ signal }) => assert.equal(signal.aborted, true));
@@ -181,7 +201,8 @@ test("an aborted caller signal reaches the driver before it starts work", async 
   assert.equal((await adapter.execute(request, control)).status, "cancelled");
 });
 
-test("a fatal executor denial through the bridge ends the run with that denial", async () => {
+test("a fatal executor denial through the bridge ends the run with that denial", async (t) => {
+  if (WIN32_HOST) return adapterRefusedOnWin32(t);
   const holder = {};
   const denial = Object.assign(new Error("stale approval"), { code: "VES_EXECUTOR_APPROVAL_INVALID" });
   const driver = new ScriptedFakeDriver(bridgeScript(holder, [["write_file", { path: "src/a.txt", content: "x" }]]));
@@ -195,7 +216,8 @@ test("a fatal executor denial through the bridge ends the run with that denial",
   assert.equal(driver.cancelled.length, 1);
 });
 
-test("usage that cannot be metered stops the run instead of running unmetered", async () => {
+test("usage that cannot be metered stops the run instead of running unmetered", async (t) => {
+  if (WIN32_HOST) return adapterRefusedOnWin32(t);
   const failure = Object.assign(new Error("unpriced"), { code: "VES_BUDGET_MODEL_UNKNOWN" });
   const driver = new ScriptedFakeDriver(async ({ emit }) =>
     emit({ type: "usage.updated", inputTokens: 1, outputTokens: 1 })
@@ -208,7 +230,7 @@ test("usage that cannot be metered stops the run instead of running unmetered", 
   await assert.rejects(adapter.execute(request, control), (error) => error === failure);
 });
 
-test("the adapter refuses a relative bridge command and a session without a model", async () => {
+test("the adapter refuses a relative bridge command and a session without a model", async (t) => {
   assert.throws(
     () =>
       new DriverExecutionAdapter({
@@ -219,6 +241,7 @@ test("the adapter refuses a relative bridge command and a session without a mode
       }),
     { code: "VES_DRIVER_ADAPTER_INPUT_INVALID" }
   );
+  if (WIN32_HOST) return adapterRefusedOnWin32(t);
   const { adapter, control, request } = await adapterFixture(new ScriptedFakeDriver(async () => undefined), {
     model: ""
   });

@@ -5,6 +5,7 @@ import { dirname } from "node:path";
 import { afterEach, test } from "node:test";
 
 import { bridgeWorktree, cleanupBridges, openController, startRelay } from "../helpers/mcp-bridge-fixture.mjs";
+import { WIN32_HOST, mediationRefusedOnWin32 } from "../helpers/mediation-platform.mjs";
 
 afterEach(cleanupBridges);
 
@@ -19,7 +20,8 @@ function rawClient(socketPath) {
   return { socket, closed, data: () => data };
 }
 
-test("the channel lives in a private directory and disappears with the controller", async () => {
+test("the channel lives in a private directory and disappears with the controller", async (t) => {
+  if (WIN32_HOST) return mediationRefusedOnWin32(t);
   const { worktree } = await bridgeWorktree();
   const { controller } = await openController(worktree);
   const directory = dirname(controller.socketPath);
@@ -30,7 +32,8 @@ test("the channel lives in a private directory and disappears with the controlle
   await assert.rejects(access(directory), { code: "ENOENT" });
 });
 
-test("a relay presenting the wrong token is refused and serves no tool", async () => {
+test("a relay presenting the wrong token is refused and serves no tool", async (t) => {
+  if (WIN32_HOST) return mediationRefusedOnWin32(t);
   const { worktree } = await bridgeWorktree();
   const { controller, invoked } = await openController(worktree);
   const relay = startRelay({ ...controller.environment, VERCHESTRA_BRIDGE_TOKEN: "0".repeat(64) });
@@ -46,7 +49,8 @@ test("a relay without a configured channel exits as not configured", async () =>
   assert.match(relay.stderr(), /VES_BRIDGE_NOT_CONFIGURED/u);
 });
 
-test("a call before authentication is refused without reaching the executor", async () => {
+test("a call before authentication is refused without reaching the executor", async (t) => {
+  if (WIN32_HOST) return mediationRefusedOnWin32(t);
   const { worktree } = await bridgeWorktree();
   const { controller, invoked } = await openController(worktree);
   const client = rawClient(controller.socketPath);
@@ -58,7 +62,8 @@ test("a call before authentication is refused without reaching the executor", as
   assert.equal(invoked.length, 0);
 });
 
-test("only one authenticated connection is ever accepted", async () => {
+test("only one authenticated connection is ever accepted", async (t) => {
+  if (WIN32_HOST) return mediationRefusedOnWin32(t);
   const { worktree } = await bridgeWorktree();
   const { controller } = await openController(worktree);
   const relay = startRelay(controller.environment);
@@ -85,7 +90,8 @@ for (const [path, code] of [
   ["src/linkdir/victim.txt", "VES_BRIDGE_SYMLINK_DENIED"],
   ["src/linkfile.txt", "VES_BRIDGE_SYMLINK_DENIED"]
 ]) {
-  test(`read_file refuses ${path}`, async () => {
+  test(`read_file refuses ${path}`, async (t) => {
+    if (WIN32_HOST) return mediationRefusedOnWin32(t);
     const { worktree } = await bridgeWorktree();
     const { controller } = await openController(worktree);
     const relay = startRelay(controller.environment);
@@ -98,7 +104,8 @@ for (const [path, code] of [
   });
 }
 
-test("listing and search never cross links, protected paths, or the read scope", async () => {
+test("listing and search never cross links, protected paths, or the read scope", async (t) => {
+  if (WIN32_HOST) return mediationRefusedOnWin32(t);
   const { worktree } = await bridgeWorktree();
   const { controller } = await openController(worktree);
   const relay = startRelay(controller.environment);
@@ -113,7 +120,8 @@ test("listing and search never cross links, protected paths, or the read scope",
   await relay.close();
 });
 
-test("an oversized MCP frame is refused instead of buffered", async () => {
+test("an oversized MCP frame is refused instead of buffered", async (t) => {
+  if (WIN32_HOST) return mediationRefusedOnWin32(t);
   const { worktree } = await bridgeWorktree();
   const { controller, invoked } = await openController(worktree);
   const relay = startRelay(controller.environment);
@@ -124,7 +132,8 @@ test("an oversized MCP frame is refused instead of buffered", async () => {
   assert.equal(invoked.length, 0);
 });
 
-test("oversized write content is refused before it reaches the payload store", async () => {
+test("oversized write content is refused before it reaches the payload store", async (t) => {
+  if (WIN32_HOST) return mediationRefusedOnWin32(t);
   const { worktree } = await bridgeWorktree();
   const { controller, invoked } = await openController(worktree);
   const relay = startRelay(controller.environment);

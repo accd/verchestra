@@ -14,6 +14,7 @@ import { TaskExecutionCoordinator } from "../../packages/application/src/index.t
 import { ClaudeCodeDriver } from "../../packages/drivers/src/index.ts";
 import { NodeWorktreeToolAdapter, RuntimeCheckpointStore } from "../../packages/platform-node/src/index.ts";
 import { mockRequest } from "../helpers/driver-protocol-fixture.mjs";
+import { WIN32_HOST } from "../helpers/mediation-platform.mjs";
 import { cleanupWorktreeTools, worktreeToolFixture } from "../helpers/worktree-tool-fixture.mjs";
 
 const fakeClaude = fileURLToPath(
@@ -130,7 +131,19 @@ async function journey(scenario) {
   return { coordinator, fixture, input, stages, usage, worktree: () => worktreePaths.at(-1) };
 }
 
-test("the mediated implementer changes the worktree only through the executor and reaches AWAITING_GATE", async () => {
+// invariant: on win32 the journey fails closed at the bridge: the implementer
+// is never spawned, the worktree is removed, and the run records a failure.
+async function journeyRefusedOnWin32(t) {
+  t.diagnostic("win32: asserting the mediated journey is refused at the bridge instead");
+  const { coordinator, input, stages, usage, worktree } = await journey("read-write");
+  await assert.rejects(coordinator.execute(input), { code: "VES_BRIDGE_PLATFORM_UNSUPPORTED" });
+  await assert.rejects(access(worktree()), { code: "ENOENT" });
+  assert.deepEqual(usage, []);
+  assert.equal((await stages()).stage, "failed");
+}
+
+test("the mediated implementer changes the worktree only through the executor and reaches AWAITING_GATE", async (t) => {
+  if (WIN32_HOST) return journeyRefusedOnWin32(t);
   const { coordinator, input, stages, usage, worktree } = await journey("read-write");
   const result = await coordinator.execute(input);
   assert.equal(result.status, "AWAITING_GATE");
@@ -144,7 +157,8 @@ test("the mediated implementer changes the worktree only through the executor an
   assert.equal(latest.sequence, 3);
 });
 
-test("a write outside the change scope is denied by the executor while in-scope work proceeds", async () => {
+test("a write outside the change scope is denied by the executor while in-scope work proceeds", async (t) => {
+  if (WIN32_HOST) return journeyRefusedOnWin32(t);
   const { coordinator, input, worktree } = await journey("write-outside");
   const result = await coordinator.execute(input);
   assert.deepEqual(result.changedPaths, ["src/a.txt"]);
@@ -153,7 +167,8 @@ test("a write outside the change scope is denied by the executor while in-scope 
   assert.equal(await readFile(join(worktree(), "src", "a.txt"), "utf8"), "implemented inside the scope\n");
 });
 
-test("a tool requested outside the bridge fails the run closed and removes the worktree", async () => {
+test("a tool requested outside the bridge fails the run closed and removes the worktree", async (t) => {
+  if (WIN32_HOST) return journeyRefusedOnWin32(t);
   const { coordinator, input, stages, worktree } = await journey("outside-tool");
   await assert.rejects(coordinator.execute(input), { code: "VES_DRIVER_TOOL_OUTSIDE_BRIDGE" });
   await assert.rejects(access(worktree()), { code: "ENOENT" });
