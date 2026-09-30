@@ -13,6 +13,8 @@ import { after, test } from "node:test";
 import {
   DARWIN_KEYCHAIN_CREDENTIAL_QUALIFICATION,
   DarwinKeychainBackend,
+  LINUX_SECRET_SERVICE_CREDENTIAL_QUALIFICATION,
+  WINDOWS_CREDENTIAL_MANAGER_QUALIFICATION,
   MAX_CREDENTIAL_VALUE_BYTES,
   OS_CREDENTIAL_CONTROLS,
   QualifiedOsCredentialAdapter,
@@ -278,9 +280,9 @@ test("a command outside an initialized Workspace is refused, not guessed", async
   assert.equal(fake.invocations.length, 0);
 });
 
-test("an unqualified platform reports the store as not configured", async () => {
+test("a platform without a qualified store reports it as not configured", async () => {
   const root = await workspaceRoot(workspaceA);
-  for (const platform of ["linux", "win32"]) {
+  for (const platform of ["freebsd", "openbsd"]) {
     const fake = fakeSecurityRunner();
     let error;
     try {
@@ -315,7 +317,7 @@ test("deep doctor's secret port stays unset without a Workspace or a qualified s
   const bare = await mkdtemp(join(scratch, "bare-doctor-"));
   assert.deepEqual(await composeDoctorSecretProbe({ controlRoot: bare, platform: "darwin" }), {});
   const root = await workspaceRoot(workspaceA);
-  assert.deepEqual(await composeDoctorSecretProbe({ controlRoot: root, platform: "linux" }), {});
+  assert.deepEqual(await composeDoctorSecretProbe({ controlRoot: root, platform: "freebsd" }), {});
 });
 
 test("key material still requires non-exportable storage; credential evidence cannot qualify it", () => {
@@ -346,43 +348,78 @@ test("key material still requires non-exportable storage; credential evidence ca
       true
     );
   }
-  assert.equal(
-    OS_CREDENTIAL_CONTROLS.darwin.controls.includes("non-exportable"),
-    false,
-    "a readable credential never claims it"
-  );
+  for (const [platform, evidence] of [
+    ["darwin", DARWIN_KEYCHAIN_CREDENTIAL_QUALIFICATION],
+    ["linux", LINUX_SECRET_SERVICE_CREDENTIAL_QUALIFICATION],
+    ["win32", WINDOWS_CREDENTIAL_MANAGER_QUALIFICATION]
+  ]) {
+    assert.equal(
+      OS_CREDENTIAL_CONTROLS[platform].controls.includes("non-exportable"),
+      false,
+      `a readable ${platform} credential never claims it`
+    );
+    assert.equal(OS_CREDENTIAL_CONTROLS[platform].controls.includes("access-control"), false, platform);
+    for (const keyPlatform of ["darwin", "linux", "win32"])
+      assert.throws(() => new QualifiedOsSecretAdapter({ platform: keyPlatform, evidence, backend }), {
+        code: "VES_SECRET_STORE_UNQUALIFIED"
+      });
+  }
 });
 
-test("the credential contract is darwin-only and requires every declared control", () => {
+test("each platform's credential contract needs its own evidence and every declared control", () => {
   const backend = { has: async () => true, read: async () => undefined };
-  const evidence = DARWIN_KEYCHAIN_CREDENTIAL_QUALIFICATION;
-  for (const platform of ["linux", "win32"])
-    assert.throws(() => new QualifiedOsCredentialAdapter({ platform, evidence, backend }), {
-      code: "VES_SECRET_STORE_UNQUALIFIED"
-    });
-  for (const dropped of evidence.controls) {
-    assert.throws(
-      () =>
-        new QualifiedOsCredentialAdapter({
-          platform: "darwin",
-          evidence: { digest: evidence.digest, controls: evidence.controls.filter((control) => control !== dropped) },
-          backend
-        }),
-      { code: "VES_SECRET_STORE_UNQUALIFIED" },
-      dropped
+  const byPlatform = {
+    darwin: DARWIN_KEYCHAIN_CREDENTIAL_QUALIFICATION,
+    linux: LINUX_SECRET_SERVICE_CREDENTIAL_QUALIFICATION,
+    win32: WINDOWS_CREDENTIAL_MANAGER_QUALIFICATION
+  };
+  for (const [platform, evidence] of Object.entries(byPlatform)) {
+    for (const [other, foreign] of Object.entries(byPlatform)) {
+      if (other === platform) continue;
+      assert.throws(
+        () => new QualifiedOsCredentialAdapter({ platform, evidence: foreign, backend }),
+        { code: "VES_SECRET_STORE_UNQUALIFIED" },
+        `${other} evidence must not qualify ${platform}`
+      );
+    }
+    for (const dropped of evidence.controls) {
+      assert.throws(
+        () =>
+          new QualifiedOsCredentialAdapter({
+            platform,
+            evidence: { digest: evidence.digest, controls: evidence.controls.filter((control) => control !== dropped) },
+            backend
+          }),
+        { code: "VES_SECRET_STORE_UNQUALIFIED" },
+        `${platform} without ${dropped}`
+      );
+    }
+    assert.equal(
+      new QualifiedOsCredentialAdapter({ platform, evidence, backend }).adapterId,
+      OS_CREDENTIAL_CONTROLS[platform].adapterId
     );
   }
+  for (const platform of ["freebsd", "openbsd", "sunos"])
+    assert.throws(
+      () => new QualifiedOsCredentialAdapter({ platform, evidence: DARWIN_KEYCHAIN_CREDENTIAL_QUALIFICATION, backend }),
+      { code: "VES_SECRET_STORE_UNQUALIFIED" }
+    );
   assert.equal(
     createOsCredentialStore({ platform: "darwin", runner: fakeSecurityRunner().runner }).storeId,
     "apple-keychain-credential"
   );
 });
 
-test("the darwin credential evidence digest is the SHA-256 of its committed qualification report", async () => {
-  const evidence = DARWIN_KEYCHAIN_CREDENTIAL_QUALIFICATION;
-  const report = await readFile(new URL(`../../${evidence.report}`, import.meta.url));
-  assert.equal(evidence.digest, createHash("sha256").update(report).digest("hex"));
-  const text = report.toString("utf8");
-  for (const control of evidence.controls) assert.match(text, new RegExp(`\`${control}\``, "u"), control);
-  assert.doesNotMatch(text, /[A-Za-z]:\\Users|\/(?:Users|home)\/[^/\s]+/u, "no machine-local path");
+test("each credential evidence digest is the SHA-256 of its committed qualification report", async () => {
+  for (const evidence of [
+    DARWIN_KEYCHAIN_CREDENTIAL_QUALIFICATION,
+    LINUX_SECRET_SERVICE_CREDENTIAL_QUALIFICATION,
+    WINDOWS_CREDENTIAL_MANAGER_QUALIFICATION
+  ]) {
+    const report = await readFile(new URL(`../../${evidence.report}`, import.meta.url));
+    assert.equal(evidence.digest, createHash("sha256").update(report).digest("hex"), evidence.report);
+    const text = report.toString("utf8");
+    for (const control of evidence.controls) assert.match(text, new RegExp(`\`${control}\``, "u"), control);
+    assert.doesNotMatch(text, /[A-Za-z]:\\Users|\/(?:Users|home)\/[^/\s]+/u, "no machine-local path");
+  }
 });

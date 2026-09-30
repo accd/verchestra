@@ -22,8 +22,9 @@ import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 
 import {
+  DBUS_SEND_EXECUTABLE,
   SECRET_TOOL_EXECUTABLE,
-  nodeSecretToolRunner,
+  nodeSecretServiceRunner,
   secretToolChildEnvironment
 } from "../../../packages/platform-node/src/index.ts";
 
@@ -63,20 +64,29 @@ function firstLine(child, label) {
   });
 }
 
-// invariant: the only direct `secret-tool` call outside the product backend.
-// It runs with exactly the product's child environment, so it can only reach
-// the bus that environment names — asserted to be the disposable one.
-export function secretTool(session, args, input) {
+// invariant: the only direct `secret-tool` and `dbus-send` calls outside the
+// product backend. They run with exactly the product's child environment, so
+// they can only reach the bus that environment names — asserted to be the
+// disposable one.
+function boundTool(executable, session, args, input) {
   const environment = secretToolChildEnvironment();
   if (environment.DBUS_SESSION_BUS_ADDRESS !== session.address)
-    throw new Error("secret-tool would not reach the disposable session bus");
-  return spawnSync(SECRET_TOOL_EXECUTABLE, args, {
+    throw new Error(`${executable} would not reach the disposable session bus`);
+  return spawnSync(executable, args, {
     env: environment,
     input,
     encoding: "utf8",
     timeout: SESSION_TIMEOUT_MS,
     killSignal: "SIGKILL"
   });
+}
+
+export function secretTool(session, args, input) {
+  return boundTool(SECRET_TOOL_EXECUTABLE, session, args, input);
+}
+
+export function dbusSend(session, args) {
+  return boundTool(DBUS_SEND_EXECUTABLE, session, args);
 }
 
 async function waitForSecretService(session) {
@@ -174,16 +184,17 @@ export async function createDisposableSecretService() {
   });
 }
 
-// invariant: a runner that refuses, before spawning, any `secret-tool` call
-// whose child environment would not name the disposable session bus. It
+// invariant: a runner that refuses, before spawning, any `secret-tool` or
+// `dbus-send` call whose child environment would not name the disposable
+// session bus. It
 // records argv only, never stdin, so the log can hold no credential.
 export function sessionBoundRunner(session) {
   const commands = [];
   async function runner(invocation) {
     if (secretToolChildEnvironment().DBUS_SESSION_BUS_ADDRESS !== session.address)
-      throw new Error(`secret-tool ${invocation.args[0]} would not reach the disposable session bus`);
-    commands.push(invocation.args[0]);
-    return nodeSecretToolRunner(invocation);
+      throw new Error(`${invocation.tool ?? "secret-tool"} would not reach the disposable session bus`);
+    commands.push(invocation.tool === "dbus-send" ? "SearchItems" : invocation.args[0]);
+    return nodeSecretServiceRunner(invocation);
   }
   return Object.freeze({ runner, commands });
 }

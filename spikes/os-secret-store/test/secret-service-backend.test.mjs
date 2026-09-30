@@ -11,12 +11,13 @@ import { test } from "node:test";
 
 import {
   LinuxSecretServiceBackend,
+  searchItemsArguments,
   MAX_CREDENTIAL_VALUE_BYTES,
   PRESENCE_TIMEOUT_MS,
   createOsCredentialStore,
-  nodeSecretToolRunner
+  nodeSecretServiceRunner
 } from "../../../packages/platform-node/src/index.ts";
-import { createDisposableSecretService, secretTool, sessionBoundRunner } from "./disposable-secret-service.mjs";
+import { createDisposableSecretService, dbusSend, secretTool, sessionBoundRunner } from "./disposable-secret-service.mjs";
 
 const LINUX = process.platform === "linux";
 const workspaceId = "workspace_6e2f1a0b-3c4d-4e5f-8a9b-0c1d2e3f4a5b";
@@ -31,7 +32,7 @@ async function refusedElsewhere(t) {
     ? createOsCredentialStore({ platform: process.platform }).storeId
     : undefined;
   assert.notEqual(own, "secret-service-credential");
-  const backend = new LinuxSecretServiceBackend({ runner: nodeSecretToolRunner });
+  const backend = new LinuxSecretServiceBackend({ runner: nodeSecretServiceRunner });
   await assert.rejects(backend.has({ namespace, logicalName: "anthropic-api-key" }), {
     code: "VES_SECRET_STORE_UNAVAILABLE"
   });
@@ -71,13 +72,13 @@ test(
       assert.equal(await store.delete(workspaceId, "anthropic-api-key"), false);
       assert.equal(await store.adapter.has(workspaceId, "anthropic-api-key"), false);
       assert.deepEqual(session.items(namespace), [item("openai-api-key")]);
-      for (const command of ["lookup", "store", "clear"]) assert.ok(bound.commands.includes(command), command);
+      for (const command of ["SearchItems", "lookup", "store", "clear"]) assert.ok(bound.commands.includes(command), command);
     });
   }
 );
 
 test(
-  "linux: the tool conventions the backend relies on hold on the real secret-tool",
+  "linux: the tool conventions the backend relies on hold on the real secret-tool and dbus-send",
   { timeout: 120_000 },
   async (t) => {
     if (!LINUX) return refusedElsewhere(t);
@@ -90,6 +91,17 @@ test(
       await store.store(workspaceId, "anthropic-api-key", encode("sk-ant-exact"));
       const found = secretTool(session, ["lookup", ...attributes]);
       assert.deepEqual([found.status, found.stdout], [0, "sk-ant-exact"], "a piped lookup prints exactly the value");
+      // why: the reason presence does not use `secret-tool search` — it loads
+      // and prints the secret along with the attributes.
+      const searched = secretTool(session, ["search", ...attributes]);
+      assert.equal(searched.status, 0);
+      assert.match(`${searched.stdout}${searched.stderr}`, /^secret = sk-ant-exact$/mu);
+      const reply = dbusSend(session, searchItemsArguments({ namespace, logicalName: "anthropic-api-key" }));
+      t.diagnostic(`SearchItems reply: ${JSON.stringify(reply.stdout)}`);
+      assert.equal(reply.status, 0, reply.stderr);
+      assert.equal(reply.stdout.includes("sk-ant-exact"), false, "SearchItems never carries the secret");
+      assert.match(reply.stdout, /^method return /u);
+      assert.equal(reply.stdout.match(/^ *array \[/gmu)?.length, 2);
       await store.delete(workspaceId, "anthropic-api-key");
     });
   }
@@ -104,7 +116,7 @@ test(
       const observed = [];
       const recording = async (invocation) => {
         const result = await bound.runner(invocation);
-        observed.push({ args: invocation.args, discard: invocation.discardStdout === true, stdout: result.stdout });
+        observed.push({ tool: invocation.tool, args: invocation.args, output: `${result.stdout}${result.stderr}` });
         return result;
       };
       const store = createOsCredentialStore({ platform: "linux", runner: recording });
@@ -115,9 +127,10 @@ test(
       const elapsed = performance.now() - started;
       t.diagnostic(`presence took ${Math.round(elapsed)} ms`);
       assert.ok(elapsed < PRESENCE_TIMEOUT_MS, `presence took ${elapsed} ms`);
-      assert.deepEqual(observed, [
-        { args: ["lookup", "service", namespace, "account", "anthropic-api-key"], discard: true, stdout: "" }
-      ]);
+      assert.equal(observed.length, 1);
+      assert.equal(observed[0].tool, "dbus-send");
+      assert.deepEqual(observed[0].args, searchItemsArguments({ namespace, logicalName: "anthropic-api-key" }));
+      assert.equal(observed[0].output.includes("sk-ant-presence-sentinel"), false);
       assert.equal(await store.delete(workspaceId, "anthropic-api-key"), true);
       assert.deepEqual(session.items(namespace), []);
     });
@@ -134,7 +147,7 @@ test("linux: a session without a reachable Secret Service is not configured", { 
       const saved = process.env.DBUS_SESSION_BUS_ADDRESS;
       process.env.DBUS_SESSION_BUS_ADDRESS = absentBus;
       try {
-        return await nodeSecretToolRunner(invocation);
+        return await nodeSecretServiceRunner(invocation);
       } finally {
         process.env.DBUS_SESSION_BUS_ADDRESS = saved;
       }
@@ -148,28 +161,29 @@ test("linux: a session without a reachable Secret Service is not configured", { 
   });
 });
 
-test("linux: a locked collection is never reported as present or read", { timeout: 120_000 }, async (t) => {
+test("linux: a locked collection needs the user, and is never reported absent or read", { timeout: 120_000 }, async (t) => {
   if (!LINUX) return refusedElsewhere(t);
   await withSession(async ({ session, store }) => {
     await store.store(workspaceId, "anthropic-api-key", encode("sk-ant-locked-sentinel"));
     const lock = secretTool(session, ["lock", "--collection=login"]);
-    t.diagnostic(`lock: exit ${lock.status}, stderr ${JSON.stringify(lock.stderr.trim())}`);
+    assert.equal(lock.status, 0, lock.stderr);
+    // hazard: measured — with no prompter in the session, a lookup of a
+    // locked item misses silently, exactly like a missing item.
+    const attributes = ["service", namespace, "account", "anthropic-api-key"];
+    const lookup = secretTool(session, ["lookup", ...attributes]);
+    assert.deepEqual([lookup.status, lookup.stdout, lookup.stderr], [1, "", ""]);
     for (const [label, operation] of [
       ["has", () => store.adapter.has(workspaceId, "anthropic-api-key")],
       ["read", () => store.adapter.read(workspaceId, "anthropic-api-key")],
+      ["delete", () => store.delete(workspaceId, "anthropic-api-key")],
       ["store", () => store.store(workspaceId, "anthropic-api-key", encode("sk-ant-while-locked"))]
     ]) {
       const started = performance.now();
-      let outcome;
-      try {
-        outcome = { value: await operation() };
-      } catch (error) {
-        outcome = { code: error.code };
-      }
-      t.diagnostic(`${label} on a locked collection: ${JSON.stringify(outcome)} after ${Math.round(performance.now() - started)} ms`);
-      assert.notEqual(outcome.value, true, `${label} reported a locked item as present`);
-      assert.equal(outcome.value instanceof Uint8Array, false, `${label} returned a value from a locked item`);
+      await assert.rejects(operation(), { code: "VES_SECRET_KEYCHAIN_INTERACTION_REQUIRED" }, label);
+      t.diagnostic(`${label} on a locked collection: interaction required after ${Math.round(performance.now() - started)} ms`);
     }
+    const store2 = secretTool(session, ["store", "--label=probe", ...attributes], "sk-ant-probe");
+    t.diagnostic(`secret-tool store on a locked collection: exit ${store2.status}, stderr ${JSON.stringify(store2.stderr.trim())}`);
   });
 });
 
