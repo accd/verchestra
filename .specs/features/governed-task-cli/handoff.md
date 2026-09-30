@@ -20,8 +20,7 @@ ExecutionDriverPort adapter. No CLI command is added here, and #405 stays open.
 
 # Completed Evidence
 
-T0: spec, design, threat model, tasks, validation, and AD-0XX (to be numbered
-at merge) in `.specs/STATE.md`.
+T0: spec, design, threat model, tasks, validation, and AD-039 in `.specs/STATE.md`.
 
 T1: Task Request v1 schema, generated type, and `normalizeTaskRequest`
 (`packages/application/src/execution/task-request.ts`) with schema/normalizer

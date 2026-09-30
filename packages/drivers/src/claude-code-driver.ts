@@ -75,7 +75,7 @@ export interface ClaudeCodeDriverDependencies {
   readonly terminateTree?: (pid: number) => Promise<void>;
   readonly onSpawn?: (pid: number) => void;
   // Absent: the T03 profile, unchanged. Present: the qualified mediated-mcp
-  // profile (AD-0XX), which requires an absolute executable.
+  // profile (AD-039), which requires an absolute executable.
   readonly profile?: ClaudeCodeMediatedProfile;
 }
 

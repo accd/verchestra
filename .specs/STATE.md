@@ -651,7 +651,7 @@ note. -->
     15 s budget;
   - Linux needs `/usr/bin/secret-tool` and `/usr/bin/dbus-send`.
 
-### AD-0XX (to be numbered at merge) — Claude Code implements through a mediated MCP tool bridge over an authenticated Unix socket (#405)
+### AD-039 — Claude Code implements through a mediated MCP tool bridge over an authenticated Unix socket (#405)
 
 - **Status:** proposed (owner decision that Claude Code is the implementer and
   Codex the verifier is recorded in #405; the channel design is ratified by
