@@ -69,12 +69,15 @@ const invalid = (message, cause) => {
   );
 };
 
+// why: key order is ordinal (UTF-16 code unit), never ambient collation.
+const compareCodeUnits = (left, right) => Number(left > right) - Number(left < right);
+
 const isRecord = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
 
 const exactKeys = (value, keys, label) => {
   if (!isRecord(value)) invalid(`${label} must be an object`);
-  const actual = Object.keys(value).sort();
-  const expected = [...keys].sort();
+  const actual = Object.keys(value).sort(compareCodeUnits);
+  const expected = [...keys].sort(compareCodeUnits);
   if (actual.length !== expected.length || actual.some((key, index) => key !== expected[index]))
     invalid(`${label} must carry exactly ${expected.join(", ")}`);
   return value;
