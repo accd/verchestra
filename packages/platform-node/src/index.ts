@@ -53,9 +53,10 @@ export {
   LOGGING_POLICY_GUARD,
   POWERSHELL_ARGUMENTS,
   WindowsCredentialManagerBackend,
+  cmdkeyExecutable,
   credentialProgram,
   credentialTarget,
-  nodePowerShellRunner,
+  nodeCredentialManagerRunner,
   powershellChildEnvironment,
   powershellExecutable
 } from "./os-secret-backends/windows-credential-manager.ts";

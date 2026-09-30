@@ -85,31 +85,51 @@ export function fakeSecretToolRunner(options = {}) {
   return Object.freeze({ runner, invocations, items, locked });
 }
 
-const CALL = /\$verchestraType::(Has|Read|Write|Delete)\('([^']+)'(?:, '([^']+)', \$verchestraPayload)?\)/u;
+const CALL = /\$verchestraType::(Read|Write|Delete)\('([^']+)'(?:, '([^']+)', \$verchestraPayload)?\)/u;
 const PAYLOAD = /^\$verchestraPayload = '([A-Za-z0-9+/=]*)'$/mu;
+
+// invariant: `cmdkey /list:<target>` as measured on a hosted Windows runner —
+// a header that echoes the query and ends with a colon, then, when the
+// credential exists, its target, type, user, and persistence, never its value.
+function cmdkeyList(target, stored) {
+  const header = `\r\nCurrently stored credentials for ${target}:\r\n\r\n`;
+  if (stored === undefined) return `${header}* NONE *\r\n`;
+  return `${header}    Target: ${target}\r\n    Type: Generic \r\n    User: ${stored.user}\r\n    Local machine persistence\r\n\r\n`;
+}
 
 // invariant: the fake interprets only the program shape the backend writes —
 // the operation and target from the single call line, and the value from the
 // base64 literal of the one payload assignment line — and answers with the
-// same `verchestra-credential:` result lines the real program prints.
+// same `verchestra-credential:` result lines the real program prints; a
+// `cmdkey` invocation is answered from the same items.
 export function fakePowerShellRunner(options = {}) {
   const items = new Map();
   const invocations = [];
 
   async function runner(invocation) {
     const stdin = invocation.stdin === undefined ? "" : Buffer.from(invocation.stdin).toString("latin1");
-    const record = { args: [...invocation.args], stdin, timeoutMs: invocation.timeoutMs };
+    const record = {
+      tool: invocation.tool ?? "powershell",
+      args: [...invocation.args],
+      stdin,
+      timeoutMs: invocation.timeoutMs
+    };
     invocations.push(record);
     if (options.override) {
       const forced = await options.override(record);
       if (forced !== undefined) return forced;
+    }
+    if (record.tool === "cmdkey") {
+      const target = /^\/list:(.+)$/u.exec(invocation.args[0] ?? "")?.[1];
+      if (target === undefined || invocation.args.length !== 1)
+        return { exitCode: 1, stdout: "", stderr: "The command line parameters are incorrect.\r\n" };
+      return { exitCode: 0, stdout: cmdkeyList(target, items.get(target)), stderr: "" };
     }
     const call = CALL.exec(stdin);
     if (call === null) return { exitCode: 1, stdout: "", stderr: "unrecognized program\n" };
     const [, operation, target, user] = call;
     const answer = (status) => ({ exitCode: 0, stdout: `verchestra-credential:${status}\r\n`, stderr: "" });
     const stored = items.get(target);
-    if (operation === "Has") return answer(stored === undefined ? "absent" : "present");
     if (operation === "Read")
       return answer(stored === undefined ? "absent" : `value:${stored.value.toString("base64")}`);
     if (operation === "Delete") {

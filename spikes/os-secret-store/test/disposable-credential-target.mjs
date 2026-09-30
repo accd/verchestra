@@ -7,7 +7,7 @@
 import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 
-import { createOsCredentialStore, powershellExecutable } from "../../../packages/platform-node/src/index.ts";
+import { cmdkeyExecutable, createOsCredentialStore } from "../../../packages/platform-node/src/index.ts";
 
 export const TARGET_TIMEOUT_MS = 30_000;
 
@@ -15,15 +15,12 @@ export function randomWorkspaceId() {
   return `workspace_${randomUUID()}`;
 }
 
-function cmdkey() {
-  return powershellExecutable().replace(/WindowsPowerShell\\v1\.0\\powershell\.exe$/u, "cmdkey.exe");
-}
-
-// invariant: an independent witness. `cmdkey /list:<target>` reads Credential
-// Manager through a different program than the backend and prints the target,
-// its type, user, and persistence, never the value.
+// invariant: a witness independent of the backend's PowerShell reads and
+// writes. `cmdkey /list:<target>` prints the target, its type, user, and
+// persistence, never the value. (The backend's presence check uses the same
+// program; the witness here is for what the PowerShell program wrote.)
 export function describeTarget(target) {
-  const result = spawnSync(cmdkey(), [`/list:${target}`], {
+  const result = spawnSync(cmdkeyExecutable(), [`/list:${target}`], {
     encoding: "utf8",
     timeout: TARGET_TIMEOUT_MS,
     windowsHide: true

@@ -13,7 +13,7 @@ import {
   PRESENCE_TIMEOUT_MS,
   WindowsCredentialManagerBackend,
   createOsCredentialStore,
-  nodePowerShellRunner
+  nodeCredentialManagerRunner
 } from "../../../packages/platform-node/src/index.ts";
 import { describeTarget, isListed, withRandomTargets } from "./disposable-credential-target.mjs";
 
@@ -28,7 +28,7 @@ async function refusedElsewhere(t) {
     ? createOsCredentialStore({ platform: process.platform }).storeId
     : undefined;
   assert.notEqual(own, "windows-credential-manager");
-  const backend = new WindowsCredentialManagerBackend({ runner: nodePowerShellRunner });
+  const backend = new WindowsCredentialManagerBackend({ runner: nodeCredentialManagerRunner });
   await assert.rejects(
     backend.has({ namespace: "verchestra/workspace_6e2f1a0b-3c4d-4e5f-8a9b-0c1d2e3f4a5b", logicalName: "anthropic-api-key" }),
     { code: "VES_SECRET_STORE_UNAVAILABLE" }
@@ -76,7 +76,7 @@ test(
     const encoded = Buffer.from(sentinel).toString("base64");
     const observed = [];
     const recording = async (invocation) => {
-      const result = await nodePowerShellRunner(invocation);
+      const result = await nodeCredentialManagerRunner(invocation);
       observed.push({ args: invocation.args.join(" "), stdout: result.stdout, stderr: result.stderr });
       return result;
     };
@@ -97,7 +97,14 @@ test(
           }
         }
         assert.equal(observed.slice(writes).length, 1);
-        assert.match(observed.at(-1).stdout, /^verchestra-credential:present\r?$/mu);
+        assert.match(observed.at(-1).args, /^\/list:verchestra\/workspace_[0-9a-f-]{36}\/anthropic-api-key$/u);
+        assert.ok(
+          observed
+            .at(-1)
+            .stdout.split(/\r?\n/u)
+            .some((line) => /^\s*\S[^:]*: verchestra\/workspace_[0-9a-f-]{36}\/anthropic-api-key$/u.test(line)),
+          "presence is cmdkey's target line"
+        );
       },
       { runner: recording }
     );
@@ -109,7 +116,7 @@ test("win32: an oversize or unprintable value never reaches PowerShell", { timeo
   const spawned = [];
   const counting = async (invocation) => {
     spawned.push(invocation.args[0]);
-    return nodePowerShellRunner(invocation);
+    return nodeCredentialManagerRunner(invocation);
   };
   await withRandomTargets(
     NAMES,
@@ -131,14 +138,14 @@ test("win32: an oversize or unprintable value never reaches PowerShell", { timeo
 
 test("win32: the real runner kills a child at its timeout, and the backend reports a failure, not a prompt", { timeout: 120_000 }, async (t) => {
   if (!WIN32) return refusedElsewhere(t);
-  const killed = await nodePowerShellRunner({
+  const killed = await nodeCredentialManagerRunner({
     args: ["-NoProfile", "-NonInteractive", "-Command", "-"],
     stdin: Buffer.from("Start-Sleep -Seconds 30\n"),
     timeoutMs: 1_000
   });
   assert.equal(killed.timedOut, true);
   const backend = new WindowsCredentialManagerBackend({
-    runner: (invocation) => nodePowerShellRunner({ ...invocation, timeoutMs: 1 })
+    runner: (invocation) => nodeCredentialManagerRunner({ ...invocation, timeoutMs: 1 })
   });
   await assert.rejects(
     backend.has({ namespace: "verchestra/workspace_6e2f1a0b-3c4d-4e5f-8a9b-0c1d2e3f4a5b", logicalName: "anthropic-api-key" }),
