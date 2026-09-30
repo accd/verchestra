@@ -41,9 +41,11 @@ export {
   type CredentialToolRunner
 } from "./os-secret-backends/credential-tool.ts";
 export {
+  DBUS_SEND_EXECUTABLE,
   LinuxSecretServiceBackend,
   SECRET_TOOL_EXECUTABLE,
-  nodeSecretToolRunner,
+  searchItemsArguments,
+  nodeSecretServiceRunner,
   secretToolChildEnvironment
 } from "./os-secret-backends/linux-secret-service.ts";
 export {

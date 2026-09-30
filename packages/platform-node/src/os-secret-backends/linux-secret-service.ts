@@ -1,8 +1,9 @@
-// invariant: the Linux credential backend drives the Secret Service through
-// libsecret's `secret-tool` (#379, AD-041). The value crosses the process
-// boundary only on the child's stdin (store) or captured stdout (read), and
-// never in any argv or environment. Presence runs a lookup whose stdout is the
-// null device, so the value never enters this process.
+// invariant: the Linux credential backend drives the Secret Service (#379,
+// AD-041). The value crosses the process boundary only on `secret-tool`'s
+// stdin (store) or captured stdout (read), and never in any argv or
+// environment. Presence is the Secret Service's own attribute search
+// (SearchItems, through `dbus-send`), which returns item paths and never a
+// secret, and which alone tells a locked item apart from a missing one.
 import type { OsSecretBackend, OsSecretLocator } from "../secret-broker.ts";
 import {
   type CredentialToolResult,
@@ -18,15 +19,21 @@ import {
 import { PRESENCE_TIMEOUT_MS, READ_TIMEOUT_MS, WRITE_TIMEOUT_MS, isValidCredentialValue } from "./darwin-keychain.ts";
 import { PlatformSecurityError } from "../platform-security-errors.ts";
 
-// why: a fixed path, never a PATH lookup, so an ambient PATH entry cannot
-// substitute the program that receives the credential.
+// why: fixed paths, never a PATH lookup, so an ambient PATH entry cannot
+// substitute a program that receives the credential or answers for the store.
 export const SECRET_TOOL_EXECUTABLE = "/usr/bin/secret-tool";
+export const DBUS_SEND_EXECUTABLE = "/usr/bin/dbus-send";
+
+const LINUX_TOOLS: Readonly<Record<string, string>> = Object.freeze({
+  "secret-tool": SECRET_TOOL_EXECUTABLE,
+  "dbus-send": DBUS_SEND_EXECUTABLE
+});
 
 export const SECRET_TOOL_LABEL_PREFIX = "Verchestra credential";
 
 export function secretToolChildEnvironment(): NodeJS.ProcessEnv {
-  // invariant: only what `secret-tool` needs to reach the invoking user's
-  // session bus. DISPLAY is withheld on purpose: without a bus, libdbus would
+  // invariant: only what `secret-tool` and `dbus-send` need to reach the
+  // invoking user's session bus. DISPLAY is withheld on purpose: without a bus, libdbus would
   // otherwise autolaunch a new one through X11 instead of failing.
   // LC_ALL=C keeps the tool's diagnostics in the wording classified below.
   return pickEnvironment(["HOME", "USER", "LOGNAME", "DBUS_SESSION_BUS_ADDRESS", "XDG_RUNTIME_DIR"], {
@@ -35,19 +42,39 @@ export function secretToolChildEnvironment(): NodeJS.ProcessEnv {
   });
 }
 
-export const nodeSecretToolRunner: CredentialToolRunner = spawnCredentialTool(
-  SECRET_TOOL_EXECUTABLE,
-  secretToolChildEnvironment
-);
+// invariant: runs `secret-tool` unless the invocation names `dbus-send`; any
+// other tool name is refused before anything is spawned.
+export const nodeSecretServiceRunner: CredentialToolRunner = (invocation) => {
+  const executable = LINUX_TOOLS[invocation.tool ?? "secret-tool"];
+  if (executable === undefined) return Promise.reject(new Error("unknown Secret Service tool"));
+  return spawnCredentialTool(executable, secretToolChildEnvironment)(invocation);
+};
 
-// why: measured on libsecret's `secret-tool` (docs/qualification/os-secret-backend-linux.md).
-// A lookup that matches nothing exits 1 and prints nothing; every real error
-// exits 1 too, but always names itself on stderr. The wording below is the
-// tool's own (LC_ALL=C), and it only selects an error code: no stderr text
-// ever reaches an error.
+// why: measured on the real tools (docs/qualification/os-secret-backend-linux.md).
+// A `secret-tool` lookup or clear that matches nothing exits 1 and prints
+// nothing; every real error exits 1 too, but always names itself on stderr.
+// The wording below is the tools' own (LC_ALL=C), and it only selects an
+// error code: no stderr text ever reaches an error.
 const NO_SESSION_BUS =
-  /Cannot autolaunch D-Bus|Could not connect|Failed to connect|No such file or directory|was not provided by any \.service files|ServiceUnknown|Error spawning command line|dbus-launch/u;
+  /autolaunch|Could not connect|Failed to connect|Failed to open connection|No such file or directory|was not provided by any \.service files|ServiceUnknown|Error spawning command line/iu;
 const WAITING_FOR_A_PERSON = /locked|prompt|dismiss|cancel/iu;
+const SEARCH_ITEMS = "org.freedesktop.Secret.Service.SearchItems";
+const OBJECT_PATH = /object path "\/org\/freedesktop\/secrets\/[^"\n]*"/gu;
+
+interface SearchResult {
+  readonly unlocked: number;
+  readonly locked: number;
+}
+
+// invariant: SearchItems replies with two arrays of item paths, unlocked then
+// locked, and nothing else; a reply of any other shape is a failure.
+function parseSearch(stdout: string): SearchResult | undefined {
+  if (!stdout.startsWith("method return ")) return undefined;
+  const arrays = stdout.split(/^ *array \[/mu).slice(1);
+  if (arrays.length !== 2) return undefined;
+  const count = (text: string) => text.match(OBJECT_PATH)?.length ?? 0;
+  return { unlocked: count(arrays[0] ?? ""), locked: count(arrays[1] ?? "") };
+}
 
 function classify(result: CredentialToolResult, operation: string): PlatformSecurityError {
   if (NO_SESSION_BUS.test(result.stderr)) return storeUnavailable();
@@ -63,23 +90,44 @@ function attributes(locator: Readonly<OsSecretLocator>): string[] {
   return ["service", locator.namespace, "account", locator.logicalName];
 }
 
+export function searchItemsArguments(locator: Readonly<OsSecretLocator>): string[] {
+  return [
+    "--session",
+    "--print-reply",
+    "--dest=org.freedesktop.secrets",
+    "/org/freedesktop/secrets",
+    SEARCH_ITEMS,
+    `dict:string:string:${attributes(locator).join(",")}`
+  ];
+}
+
 export class LinuxSecretServiceBackend implements OsSecretBackend {
   readonly #runner: CredentialToolRunner;
 
   constructor(options: { readonly runner?: CredentialToolRunner } = {}) {
-    this.#runner = options.runner ?? nodeSecretToolRunner;
+    this.#runner = options.runner ?? nodeSecretServiceRunner;
   }
 
+  async #search(locator: Readonly<OsSecretLocator>): Promise<SearchResult> {
+    const result = await runBounded(this.#runner, {
+      tool: "dbus-send",
+      args: searchItemsArguments(locator),
+      timeoutMs: PRESENCE_TIMEOUT_MS
+    });
+    if (result.exitCode !== 0) throw classify(result, "presence search");
+    const found = parseSearch(result.stdout);
+    if (found === undefined) throw backendFailure("Secret Service returned an unrecognized search reply");
+    return found;
+  }
+
+  // invariant: an item that exists only in a locked collection is neither
+  // present nor absent; it needs the user to unlock the keyring.
   async has(locator: Readonly<OsSecretLocator>): Promise<boolean> {
     assertLocator(locator);
-    const result = await runBounded(this.#runner, {
-      args: ["lookup", ...attributes(locator)],
-      timeoutMs: PRESENCE_TIMEOUT_MS,
-      discardStdout: true
-    });
-    if (result.exitCode === 0) return true;
-    if (isNotFound(result)) return false;
-    throw classify(result, "presence lookup");
+    const { unlocked, locked } = await this.#search(locator);
+    if (unlocked > 0) return true;
+    if (locked > 0) throw interactionRequired();
+    return false;
   }
 
   async read(locator: Readonly<OsSecretLocator>): Promise<Uint8Array | undefined> {
@@ -88,11 +136,17 @@ export class LinuxSecretServiceBackend implements OsSecretBackend {
       args: ["lookup", ...attributes(locator)],
       timeoutMs: READ_TIMEOUT_MS
     });
-    if (isNotFound(result)) return undefined;
-    if (result.exitCode !== 0) throw classify(result, "read");
-    // invariant: `secret-tool` appends a newline only when stdout is a
-    // terminal; through a pipe the stdout bytes are exactly the value.
-    return Uint8Array.from(Buffer.from(result.stdout, "utf8"));
+    if (result.exitCode === 0) {
+      // invariant: `secret-tool` appends a newline only when stdout is a
+      // terminal; through a pipe the stdout bytes are exactly the value.
+      return Uint8Array.from(Buffer.from(result.stdout, "utf8"));
+    }
+    if (!isNotFound(result)) throw classify(result, "read");
+    // hazard: a lookup whose unlock prompt cannot be shown (no prompter in
+    // this session) reports a locked item exactly like a missing one, so a
+    // miss is confirmed by an attribute search before it is called absent.
+    if (await this.has(locator)) throw backendFailure("Secret Service lookup missed an unlocked item");
+    return undefined;
   }
 
   // why: `secret-tool store` replaces the item whose attributes match, so a
