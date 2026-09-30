@@ -110,6 +110,10 @@ function interactiveByte(collector: CredentialCollector, byte: number): InputOut
     collector.erase();
     return undefined;
   }
+  return pipedByte(collector, byte);
+}
+
+function pipedByte(collector: CredentialCollector, byte: number): InputOutcome | undefined {
   return collector.push(byte) ? undefined : "overflow";
 }
 
@@ -144,7 +148,7 @@ export function readCredentialValue(io: SecretCommandIo, logicalName: string): P
     };
     io.stdin.on("data", (chunk: Buffer) => {
       for (const byte of chunk) {
-        const outcome = interactive ? interactiveByte(collector, byte) : collector.push(byte) ? undefined : "overflow";
+        const outcome = interactive ? interactiveByte(collector, byte) : pipedByte(collector, byte);
         if (outcome !== undefined) {
           settle(outcome);
           break;

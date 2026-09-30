@@ -146,14 +146,12 @@ export async function main(invokedAs: string, argv: readonly string[]): Promise<
     // so they cannot disagree about which version this is.
     installedCliVersion: installedReleaseManifest.semanticVersion,
     commandBus: {
-      execute: (command, context) =>
-        command.name === "self-test"
-          ? executeSelfTest(command)
-          : command.name === "doctor"
-            ? executeDoctor(command)
-            : command.name.startsWith("secret ")
-              ? executeSecret(command)
-              : commandBus.execute(command, context)
+      execute: (command, context) => {
+        if (command.name === "self-test") return executeSelfTest(command);
+        if (command.name === "doctor") return executeDoctor(command);
+        if (command.name.startsWith("secret ")) return executeSecret(command);
+        return commandBus.execute(command, context);
+      }
     },
     stdout: (value) => process.stdout.write(value),
     stderr: (value) => process.stderr.write(value)

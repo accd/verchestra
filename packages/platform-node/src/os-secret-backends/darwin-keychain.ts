@@ -106,9 +106,13 @@ export const nodeSecurityRunner: SecurityRunner = (invocation) =>
 function failure(message: string, exitCode?: number | null): PlatformSecurityError {
   // invariant: no stdout or stderr text reaches an error — either stream may
   // carry the value or, for an oversize line, its hex encoding.
-  return new PlatformSecurityError("VES_SECRET_BACKEND_FAILURE", message, {
-    exitStatus: exitCode === undefined ? "none" : exitCode === null ? "killed" : String(exitCode)
-  });
+  return new PlatformSecurityError("VES_SECRET_BACKEND_FAILURE", message, { exitStatus: exitStatus(exitCode) });
+}
+
+function exitStatus(exitCode: number | null | undefined): string {
+  if (exitCode === undefined) return "none";
+  if (exitCode === null) return "killed";
+  return String(exitCode);
 }
 
 function assertLocator(locator: Readonly<OsSecretLocator>): void {
