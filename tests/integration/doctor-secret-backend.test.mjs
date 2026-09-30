@@ -12,8 +12,9 @@ import { after, test } from "node:test";
 
 import { runDoctorDeep } from "../../apps/vestra-cli/src/doctor-composition.ts";
 import { composeDoctorSecretProbe } from "../../apps/vestra-cli/src/secret-composition.ts";
-import { createOsCredentialStore } from "../../packages/platform-node/src/index.ts";
+import { CredentialToolUnavailableError, createOsCredentialStore } from "../../packages/platform-node/src/index.ts";
 import { buildCanonicalInitFiles } from "../../packages/workspace/src/index.ts";
+import { fakePowerShellRunner, fakeSecretToolRunner } from "../helpers/fake-credential-tool-runners.mjs";
 import { fakeSecurityRunner } from "../helpers/fake-security-runner.mjs";
 
 const workspaceId = "workspace_9c8b7a6d-5e4f-4a3b-9c2d-1e0f9a8b7c6d";
@@ -93,3 +94,61 @@ test("the doctor never asks the store for the value", async () => {
     assert.equal(invocation.args.includes("-g") || invocation.args.includes("-w"), false);
   }
 });
+
+// invariant: the same mapping holds on the Linux Secret Service and Windows
+// Credential Manager stores (AD-041), and a store that is not running in the
+// session is "not configured", so it blocks rather than fails.
+for (const [platform, makeFake] of [
+  ["linux", fakeSecretToolRunner],
+  ["win32", fakePowerShellRunner]
+]) {
+  async function presenceOn(root, runner) {
+    const live = await composeDoctorSecretProbe({ controlRoot: root, platform, runner });
+    const run = await runDoctorDeep({ controlRoot: root, live });
+    return run.payload["doctor.check_codes"].find((code) => code.startsWith("doctor.secret-presence:"));
+  }
+
+  test(`${platform}: bound passes, unbound or another Workspace's blocks`, async () => {
+    const root = await initializedRoot();
+    const fake = makeFake();
+    assert.equal(await presenceOn(root, fake.runner), "doctor.secret-presence:blocked");
+    const store = createOsCredentialStore({ platform, runner: fake.runner });
+    await store.store(
+      "workspace_1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+      "anthropic-api-key",
+      new TextEncoder().encode("sk-ant-x")
+    );
+    assert.equal(await presenceOn(root, fake.runner), "doctor.secret-presence:blocked");
+    await store.store(workspaceId, "anthropic-api-key", new TextEncoder().encode("sk-ant-doctor-fixture"));
+    assert.equal(await presenceOn(root, fake.runner), "doctor.secret-presence:pass");
+  });
+
+  test(`${platform}: a store not running in this session blocks, and one that cannot answer fails`, async () => {
+    const root = await initializedRoot();
+    const unavailable = async () => {
+      throw new CredentialToolUnavailableError();
+    };
+    assert.equal(await presenceOn(root, unavailable), "doctor.secret-presence:blocked");
+    const timedOut = async () => ({ exitCode: null, timedOut: true, stdout: "", stderr: "" });
+    assert.equal(await presenceOn(root, timedOut), "doctor.secret-presence:fail");
+    const broken = async () => ({ exitCode: 3, stdout: "", stderr: "" });
+    assert.equal(await presenceOn(root, broken), "doctor.secret-presence:fail");
+  });
+
+  test(`${platform}: the doctor never asks the store for the value`, async () => {
+    const root = await initializedRoot();
+    const fake = makeFake();
+    await createOsCredentialStore({ platform, runner: fake.runner }).store(
+      workspaceId,
+      "anthropic-api-key",
+      new TextEncoder().encode("sk-ant-doctor-fixture")
+    );
+    fake.invocations.length = 0;
+    assert.equal(await presenceOn(root, fake.runner), "doctor.secret-presence:pass");
+    assert.ok(fake.invocations.length > 0);
+    for (const invocation of fake.invocations) {
+      if (platform === "linux") assert.equal(invocation.tool, "dbus-send");
+      else assert.match(invocation.stdin, /\$verchestraType::Has\(/u);
+    }
+  });
+}

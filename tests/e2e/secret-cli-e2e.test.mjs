@@ -1,9 +1,10 @@
 // invariant: #379's `vestra secret` refusals end to end through the real binary
-// as a child process. Every case is refused before a keychain is consulted, and
-// each child runs with tests/helpers/deny-keychain-spawn.mjs preloaded, so a
-// regression that reached `/usr/bin/security` fails here instead of touching a
-// keychain. The real-keychain journey (set, status, doctor pass, delete) is
-// the standalone `pnpm qualify:keychain` suite in spikes/os-secret-store.
+// as a child process. Every case is refused before a credential store is
+// consulted, and each child runs with tests/helpers/deny-keychain-spawn.mjs
+// preloaded, so a regression that reached `security`, `secret-tool`, or
+// PowerShell fails here instead of touching a real store. The real-store
+// journeys (set, status, doctor pass, delete) are the standalone
+// `pnpm qualify:keychain` suite in spikes/os-secret-store.
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -15,6 +16,7 @@ import { after, test } from "node:test";
 import { DENY_KEYCHAIN_SPAWN } from "../helpers/deny-keychain-spawn.mjs";
 
 const DARWIN = process.platform === "darwin";
+const QUALIFIED = new Set(["darwin", "linux", "win32"]).has(process.platform);
 const VESTRA = fileURLToPath(new URL("../../apps/vestra-cli/bin/vestra.mjs", import.meta.url));
 const SENTINEL = "sk-ant-e2e-sentinel-4c1d";
 const SENTINEL_HEX = Buffer.from(SENTINEL).toString("hex");
@@ -70,36 +72,44 @@ function assertNoValue(text, label) {
   assert.equal(text.toLowerCase().includes(SENTINEL_HEX), false, `${label} carries the hex-encoded value`);
 }
 
-test("the preloaded guard refuses to spawn a security tool in the child", async () => {
-  const result = spawnSync(
-    process.execPath,
-    [
-      "--import",
-      DENY_KEYCHAIN_SPAWN.href,
-      "--input-type=module",
-      "-e",
-      'import { spawnSync } from "node:child_process"; try { spawnSync("/nonexistent/security", ["help"]); process.exit(3); } catch { process.exit(0); }'
-    ],
-    { encoding: "utf8", timeout: 30_000 }
-  );
-  assert.equal(result.status, 0, result.stderr);
+test("the preloaded guard refuses to spawn any credential tool in the child", async () => {
+  for (const tool of ["/nonexistent/security", "/nonexistent/secret-tool", "C:\\\\nonexistent\\\\powershell.exe"]) {
+    const result = spawnSync(
+      process.execPath,
+      [
+        "--import",
+        DENY_KEYCHAIN_SPAWN.href,
+        "--input-type=module",
+        "-e",
+        `import { spawnSync } from "node:child_process"; try { spawnSync(${JSON.stringify(tool)}, ["help"]); process.exit(3); } catch { process.exit(0); }`
+      ],
+      { encoding: "utf8", timeout: 30_000 }
+    );
+    assert.equal(result.status, 0, `${tool}: ${result.stderr}`);
+  }
 });
 
 test("an oversize, empty, or whitespace value is refused and never echoed", { timeout: 120_000 }, async () => {
   const root = await workspace();
-  const keychain = ["--keychain", await fakeKeychain(root)];
+  // invariant: on darwin a file with the keychain magic passes the pre-spawn
+  // check; on linux and win32 no flag is passed. Either way the value is
+  // refused before any store program could run, and the preloaded guard would
+  // fail the child if one did.
+  const store = DARWIN ? ["--keychain", await fakeKeychain(root)] : [];
   for (const input of [`${SENTINEL}${"A".repeat(4096)}`, "", "\n", "has space"]) {
-    const set = launch(["secret", "set", "--name", "anthropic-api-key", ...keychain], root, input);
+    const set = launch(["secret", "set", "--name", "anthropic-api-key", ...store], root, input);
     assert.equal(set.status, 5);
-    assert.match(set.stderr, DARWIN ? /^VES_SECRET_VALUE_INVALID:/u : /^VES_SECRET_STORE_UNQUALIFIED:/u);
+    assert.match(set.stderr, QUALIFIED ? /^VES_SECRET_VALUE_INVALID:/u : /^VES_SECRET_STORE_UNQUALIFIED:/u);
     assertNoValue(set.stdout, "stdout");
     assertNoValue(set.stderr, "stderr");
   }
 });
 
-test("an unusable --keychain path is refused before any keychain command", { timeout: 60_000 }, async () => {
+test("an unusable --keychain path is refused before any store command", { timeout: 60_000 }, async () => {
   const root = await workspace();
-  const expected = DARWIN ? "VES_SECRET_KEYCHAIN_INVALID" : "VES_SECRET_STORE_UNQUALIFIED";
+  // why: on darwin the path fails the keychain-file check; on linux and win32
+  // the flag itself is refused, since a keychain file is a macOS concept.
+  const expected = QUALIFIED ? "VES_SECRET_KEYCHAIN_INVALID" : "VES_SECRET_STORE_UNQUALIFIED";
   const junk = join(root, "junk.keychain-db");
   await writeFile(junk, "not a keychain");
   for (const path of [join(root, "missing.keychain-db"), "relative.keychain-db", join(root, ".verchestra"), junk]) {
