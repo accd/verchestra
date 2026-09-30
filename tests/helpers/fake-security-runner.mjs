@@ -12,20 +12,48 @@ function printable(bytes) {
   return bytes.every((byte) => byte >= 0x20 && byte <= 0x7e && byte !== 0x22 && byte !== 0x5c);
 }
 
+const itemKey = (keychain, service, account) => `${keychain ?? "default"}\u0000${service}\u0000${account}`;
+
+function lookup(args) {
+  const service = args[args.indexOf("-s") + 1];
+  const account = args[args.indexOf("-a") + 1];
+  const flagged = new Set(["-s", "-a"]);
+  const keychain = args.slice(1).find((entry, index, all) => !entry.startsWith("-") && !flagged.has(all[index - 1]));
+  return { service, account, keychain };
+}
+
+function addFromStdin(items, stdin) {
+  const tokens = (stdin ?? "").replace(/\n$/u, "").split(" ");
+  if (tokens[0] !== "add-generic-password") return { exitCode: 1, stdout: "", stderr: "unknown command\n" };
+  const at = (flag) => tokens[tokens.indexOf(flag) + 1];
+  const keychain = tokens[tokens.indexOf("-X") + 2];
+  const key = itemKey(keychain, at("-s"), at("-a"));
+  // invariant: without -U, adding an existing item fails as security(1) does.
+  if (!tokens.includes("-U") && items.has(key))
+    return { exitCode: 45, stdout: "", stderr: "The specified item already exists in the keychain.\n" };
+  items.set(key, Buffer.from(at("-X"), "hex"));
+  return { exitCode: 0, stdout: "", stderr: "" };
+}
+
+function find(args, stored, { account, keychain }) {
+  if (stored === undefined) return { exitCode: 44, stdout: "", stderr: NOT_FOUND };
+  const attributes = `keychain: "${keychain ?? "default"}"\nattributes:\n    "acct"<blob>="${account}"\n`;
+  if (!args.includes("-g")) return { exitCode: 0, stdout: attributes, stderr: "" };
+  const password = printable([...stored])
+    ? `password: "${stored.toString("latin1")}"\n`
+    : `password: 0x${stored.toString("hex").toUpperCase()}  "escaped"\n`;
+  return { exitCode: 0, stdout: attributes, stderr: password };
+}
+
+function remove(items, stored, key) {
+  if (stored === undefined) return { exitCode: 44, stdout: "", stderr: NOT_FOUND };
+  items.delete(key);
+  return { exitCode: 0, stdout: "password has been deleted.\n", stderr: "" };
+}
+
 export function fakeSecurityRunner(options = {}) {
   const items = new Map();
   const invocations = [];
-  const key = (keychain, service, account) => `${keychain ?? "default"}\u0000${service}\u0000${account}`;
-
-  function lookup(args) {
-    const service = args[args.indexOf("-s") + 1];
-    const account = args[args.indexOf("-a") + 1];
-    const flagged = new Set(["-s", "-a"]);
-    const positional = args
-      .slice(1)
-      .filter((entry, index, all) => !entry.startsWith("-") && !flagged.has(all[index - 1]));
-    return { service, account, keychain: positional[0] };
-  }
 
   async function runner(invocation) {
     const record = {
@@ -39,36 +67,12 @@ export function fakeSecurityRunner(options = {}) {
       if (forced !== undefined) return forced;
     }
     const [command] = invocation.args;
-    if (command === "-i") {
-      const line = record.stdin ?? "";
-      const tokens = line.replace(/\n$/u, "").split(" ");
-      if (tokens[0] !== "add-generic-password") return { exitCode: 1, stdout: "", stderr: "unknown command\n" };
-      const at = (flag) => tokens[tokens.indexOf(flag) + 1];
-      const keychain = tokens[tokens.indexOf("-X") + 2];
-      const itemKey = key(keychain, at("-s"), at("-a"));
-      // invariant: without -U, adding an existing item fails as security(1) does.
-      if (!tokens.includes("-U") && items.has(itemKey))
-        return { exitCode: 45, stdout: "", stderr: "The specified item already exists in the keychain.\n" };
-      items.set(itemKey, Buffer.from(at("-X"), "hex"));
-      return { exitCode: 0, stdout: "", stderr: "" };
-    }
-    const { service, account, keychain } = lookup(invocation.args);
-    const stored = items.get(key(keychain, service, account));
-    if (command === "find-generic-password") {
-      if (stored === undefined) return { exitCode: 44, stdout: "", stderr: NOT_FOUND };
-      const attributes = `keychain: "${keychain ?? "default"}"\nattributes:\n    "acct"<blob>="${account}"\n`;
-      if (!invocation.args.includes("-g")) return { exitCode: 0, stdout: attributes, stderr: "" };
-      const bytes = [...stored];
-      const password = printable(bytes)
-        ? `password: "${stored.toString("latin1")}"\n`
-        : `password: 0x${stored.toString("hex").toUpperCase()}  "escaped"\n`;
-      return { exitCode: 0, stdout: attributes, stderr: password };
-    }
-    if (command === "delete-generic-password") {
-      if (stored === undefined) return { exitCode: 44, stdout: "", stderr: NOT_FOUND };
-      items.delete(key(keychain, service, account));
-      return { exitCode: 0, stdout: "password has been deleted.\n", stderr: "" };
-    }
+    if (command === "-i") return addFromStdin(items, record.stdin);
+    const located = lookup(invocation.args);
+    const key = itemKey(located.keychain, located.service, located.account);
+    const stored = items.get(key);
+    if (command === "find-generic-password") return find(invocation.args, stored, located);
+    if (command === "delete-generic-password") return remove(items, stored, key);
     return { exitCode: 1, stdout: "", stderr: "unsupported fake command\n" };
   }
 

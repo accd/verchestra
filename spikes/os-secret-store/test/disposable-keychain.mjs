@@ -70,7 +70,7 @@ export async function createDisposableKeychain() {
         const account = /"acct"<blob>="([^"]*)"/u.exec(block)?.[1];
         if (service !== undefined && account !== undefined) items.push(`${service}\u0000${account}`);
       }
-      return items.sort();
+      return items.sort((left, right) => Number(left > right) - Number(left < right));
     },
     async dispose() {
       await destroy(path, directory);
