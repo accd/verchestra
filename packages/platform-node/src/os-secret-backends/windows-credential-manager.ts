@@ -155,26 +155,42 @@ const PREAMBLE = [
   ].join(" ")
 ];
 
-export function credentialProgram(operation: Operation, locator: Readonly<OsSecretLocator>): string {
+// invariant: a program that carries the value (a write) or prints it (a
+// read) first refuses to continue on a machine whose policy makes PowerShell
+// record what it runs or prints: Script Block Logging would store the write's
+// payload line in the PowerShell Operational event log, and transcription
+// would copy input and output to a transcript file. The check runs, and
+// exits, before the payload line is ever executed.
+export const LOGGING_POLICY_GUARD = [
+  "$verchestraLogged = $false;",
+  "foreach ($verchestraHive in 'HKEY_LOCAL_MACHINE', 'HKEY_CURRENT_USER') {",
+  "foreach ($verchestraPolicy in @(@('ScriptBlockLogging', 'EnableScriptBlockLogging'), @('Transcription', 'EnableTranscripting'))) {",
+  '$verchestraSetting = [Microsoft.Win32.Registry]::GetValue("$verchestraHive\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell\\$($verchestraPolicy[0])", $verchestraPolicy[1], $null);',
+  "if ($verchestraSetting -eq 1) { $verchestraLogged = $true } } };",
+  "if ($verchestraLogged) { [Console]::Out.WriteLine('verchestra-credential:error:logging'); exit 0 }"
+].join(" ");
+
+export function credentialProgram(operation: Exclude<Operation, "Write">, locator: Readonly<OsSecretLocator>): string {
   const target = credentialTarget(locator);
-  const call =
-    operation === "Write"
-      ? `$verchestraType::Write('${target}', '${locator.logicalName}', $verchestraPayload)`
-      : `$verchestraType::${operation}('${target}')`;
-  return [...PREAMBLE, `[Console]::Out.WriteLine(${call})`, "exit 0", ""].join("\n");
+  const guard = operation === "Read" ? [LOGGING_POLICY_GUARD] : [];
+  return [
+    ...PREAMBLE,
+    ...guard,
+    `[Console]::Out.WriteLine($verchestraType::${operation}('${target}'))`,
+    "exit 0",
+    ""
+  ].join("\n");
 }
 
 // hazard: measured on Windows PowerShell 5.1 — under `-Command -` the host
 // reads stdin ahead of the program, so `[Console]::In.ReadLine()` inside the
 // program gets nothing. The value therefore travels as the base64 literal of
-// its own one-statement line. That line holds no keyword that triggers
-// PowerShell's automatic suspicious-script-block logging, but a machine that
-// enforces Script Block Logging by policy records every line, this one
-// included, in its PowerShell Operational event log
-// (docs/qualification/os-secret-backend-windows.md, "Controls not claimed").
+// its own one-statement line, after the logging-policy guard. That line holds
+// no keyword that triggers PowerShell's automatic suspicious-script-block
+// logging (docs/qualification/os-secret-backend-windows.md).
 function writeInput(locator: Readonly<OsSecretLocator>, value: Uint8Array): Buffer {
   const target = credentialTarget(locator);
-  const head = Buffer.from(`${PREAMBLE.join("\n")}\n$verchestraPayload = '`, "latin1");
+  const head = Buffer.from(`${[...PREAMBLE, LOGGING_POLICY_GUARD].join("\n")}\n$verchestraPayload = '`, "latin1");
   const encoded = Buffer.from(Buffer.from(value).toString("base64"), "latin1");
   const tail = Buffer.from(
     [
@@ -211,6 +227,11 @@ function outcome(result: CredentialToolResult, operation: Operation): Outcome {
   const [, status = "", encoded, error] = match;
   if (error !== undefined) {
     if (NO_CREDENTIAL_SESSION.has(error)) throw storeUnavailable();
+    if (error === "logging")
+      throw new PlatformSecurityError(
+        "VES_SECRET_STORE_LOGGED",
+        "PowerShell logging policy on this machine would record the credential"
+      );
     throw backendFailure(`Credential Manager ${operation.toLowerCase()} failed`, result.exitCode);
   }
   if (encoded !== undefined) return { status: "value", value: Uint8Array.from(Buffer.from(encoded, "base64")) };
