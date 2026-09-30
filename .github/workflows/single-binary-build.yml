@@ -46,10 +46,9 @@ on:
         default: ""
         type: string
 
-# invariant: read-only. `actions: read` lets download-artifact reach the publication run's
-# pinned inputs by run id; it grants no write of any kind.
+# invariant: read-only. The workflow grants only `contents: read`; the one job
+# that downloads another run's pinned inputs adds `actions: read` for itself.
 permissions:
-  actions: read
   contents: read
 
 defaults:
@@ -61,6 +60,11 @@ jobs:
     name: ${{ matrix.label }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
+    # invariant: `actions: read` lets download-artifact reach the publication
+    # run's pinned inputs by run id; it grants no write of any kind.
+    permissions:
+      actions: read
+      contents: read
     strategy:
       fail-fast: false
       matrix:

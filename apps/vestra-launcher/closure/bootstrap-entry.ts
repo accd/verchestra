@@ -10,16 +10,18 @@ import { NodeActivationClosure, machineLocalEnvironment } from "./node-activatio
 // and no environment read. `machineLocalEnvironment` is named here in full so
 // the composition a published tarball performs is greppable in one line.
 
+// why: the package root is derived from this module's own location, which
+// only the npm bundle has; the single binary names its embedded inputs
+// instead, so the default lives here rather than in the shared bootstrap.
+const packagedContext = (): BootstrapContext => ({
+  platform: process.platform,
+  arch: process.arch,
+  packageRoot: packageRootOf(import.meta.url)
+});
+
 export async function runBootstrap(
   args: readonly string[],
-  // why: the package root is derived from this module's own location, which
-  // only the npm bundle has; the single binary names its embedded inputs
-  // instead, so the default lives here rather than in the shared bootstrap.
-  context: BootstrapContext = {
-    platform: process.platform,
-    arch: process.arch,
-    packageRoot: packageRootOf(import.meta.url)
-  },
+  context: BootstrapContext = packagedContext(),
   write?: (line: string) => void
 ): Promise<number> {
   return await runVerifiedBootstrap(args, context, write, new NodeActivationClosure(machineLocalEnvironment));

@@ -38,7 +38,14 @@ function runBlocks() {
 test("the workflow is manual, read-only, and requests no identity", () => {
   assert.match(workflow, /^on:\r?\n {2}workflow_dispatch:/mu);
   assert.doesNotMatch(workflow, /^ {2}(push|pull_request|schedule|workflow_run):/mu);
-  assert.match(workflow, /^permissions:\r?\n {2}actions: read\r?\n {2}contents: read\r?\n\r?\n/mu);
+  assert.match(workflow, /^permissions:\r?\n {2}contents: read\r?\n\r?\n/mu);
+  assert.match(
+    workflow,
+    /^ {2}target:\r?\n(?: {4}\S.*\r?\n)*? {4}permissions:\r?\n {6}actions: read\r?\n {6}contents: read\r?\n/mu,
+    "only the job that downloads another run's inputs may read actions"
+  );
+  assert.equal([...workflow.matchAll(/^\s*actions: read$/gmu)].length, 1, "actions: read is granted exactly once");
+  assert.equal([...workflow.matchAll(/^\s*permissions:/gmu)].length, 2, "no other job widens the workflow grant");
   assert.doesNotMatch(workflow, /:\s*write\b/u, "no scope may be granted write");
   assert.doesNotMatch(workflow, /id-token/u, "no OIDC identity may be requested");
   assert.doesNotMatch(workflow, /secrets\./u, "no secret may be read");
