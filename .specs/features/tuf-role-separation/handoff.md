@@ -3,12 +3,12 @@ schema: verchestra-feature-handoff/v1
 feature: tuf-role-separation
 issue: 18
 status: blocked
-branch: feat/382-tuf-timestamp-refresh
-baseRevision: 59db9b430bef01f385137afa703020d6df102676
+branch: feat/382-online-key-anchor
+baseRevision: 4dde7e9edbec3c6ef1cc5f1bc1d6f995908e85c5
 lastCompletedTask: null
-nextTask: "Owner provisions the online timestamp/snapshot key and commits its anchor docs/qualification/trust/release-timestamp-snapshot-public-key.json (see below), then follows republish-v3-runbook.md for .3 (#387). A short timestamp_expires is safe only while the monthly refresh in republish-v3-runbook.md (#382) runs for that root."
+nextTask: "Follow republish-v3-runbook.md for .3 (#387): build the candidate, publish under /v3/ with a metadata_version above the ledger, verify R2 (200 metadata, 206 targets) before npm publish, then append the ledger entry. The npm 2FA session and the R2 upload are owner-held. Run t76-refresh-timestamp.yml monthly for any root published with a short timestamp_expires."
 lastGate: "gate:quick, gate:build, gate:security, gate:release, agent:check PASS (feat/382-tuf-timestamp-refresh)"
-updatedAt: 2026-09-29T00:00:00Z
+updatedAt: 2026-09-30T07:15:00Z
 ---
 
 # TUF role separation (#18, F1 + F2)
@@ -107,19 +107,17 @@ Reconciled 2026-09-29 (#407).
 
 - **The code has landed.** Role separation landed in `1ee646e`, and the
   monotonic `metadataVersion` guard for #387 landed in `5ac3122`.
-- **The online key and anchor are still owner-gated.**
-  `docs/qualification/trust/` holds only the evidence, release, and
-  release-decision anchors. `release-timestamp-snapshot-public-key.json` does
-  not exist yet, so publishing fails closed with
-  `VES_T76_PUBLISH_ANCHOR_MISSING`. Step 4 (the pairwise trust-separation test)
-  depends on that anchor.
+- **The online key and anchor are provisioned (2026-09-30).**
+  `VESTRA_RELEASE_TIMESTAMP_SIGNING_KEY_PKCS8_BASE64` is a repository secret,
+  generated in memory and never written to disk. Its public half is committed
+  as `docs/qualification/trust/release-timestamp-snapshot-public-key.json` with
+  `purposes: ["tuf-timestamp-snapshot"]`. `tests/security/trust-key-separation.test.mjs`
+  already checks every pair of trust files, so the new anchor is covered.
+  Moving the release secrets into protected environments is tracked by #408 (O2).
 - **The `.3` republication is owner-gated.** It covers keys, R2 upload, and
   `npm publish` under 2FA, and it is tracked by #387. A single `.3` does not
   close live update/rollback (runbook finding 2; see
   `.specs/features/live-activation-matrix/handoff.md`).
-- **#382 is still open.** The routine `t76-refresh-timestamp.yml` does not exist
-  in `.github/workflows/`. `republish-v3-runbook.md` line 92 says the opposite
-  ("short now that #382's refresh routine exists"), and that statement is
-  false. The runbook is left unchanged here because another branch owns it.
-  Until #382 ships, `--timestamp-expires` stays at the full horizon, as the
-  "Time-bomb" note above says.
+- **The #382 refresh routine has shipped** (`t76-refresh-timestamp.yml`,
+  `scripts/t76-refresh-timestamp.mjs`, merged in #428). A short
+  `timestamp_expires` is safe only for a root whose monthly refresh is running.
