@@ -11,6 +11,7 @@ import { join } from "node:path";
 import { after, test } from "node:test";
 
 import {
+  CredentialToolUnavailableError,
   LinuxSecretServiceBackend,
   WindowsCredentialManagerBackend,
   powershellChildEnvironment,
@@ -119,7 +120,11 @@ for (const [platform, { fake: makeFake, store }] of Object.entries(PLATFORMS)) {
     assert.ok(seen.length >= 2);
     for (const { invocation, answer } of seen) {
       assertNoValue(`${answer.stdout}${answer.stderr}`, "presence output");
-      if (platform === "linux") assert.equal(invocation.tool, "dbus-send", "presence is an attribute-only search");
+      assert.equal(
+        invocation.tool,
+        platform === "linux" ? "dbus-send" : "cmdkey",
+        "presence is an attribute-only query"
+      );
     }
   });
 
@@ -170,11 +175,14 @@ for (const [platform, { fake: makeFake, store }] of Object.entries(PLATFORMS)) {
 
   test(`${platform}: a store that is not running is not configured, for commands and for doctor`, async () => {
     const root = await workspaceRoot(workspaceA);
+    // why: on Linux, no session bus; on Windows, no PowerShell or cmdkey to
+    // start. The PowerShell program's own no-logon-session answer (1312) is
+    // covered by the backend unit tests.
     const unavailable = {
-      runner: async () =>
-        platform === "linux"
-          ? { exitCode: 1, stdout: "", stderr: "secret-tool: Cannot autolaunch D-Bus without X11 $DISPLAY\n" }
-          : { exitCode: 0, stdout: "verchestra-credential:error:1312\r\n", stderr: "" }
+      runner: async () => {
+        if (platform === "win32") throw new CredentialToolUnavailableError();
+        return { exitCode: 1, stdout: "", stderr: "secret-tool: Cannot autolaunch D-Bus without X11 $DISPLAY\n" };
+      }
     };
     for (const command of ["secret set", "secret status", "secret delete"]) {
       const { error } = await runSecret(platform, command, { root, input: SENTINEL, fake: unavailable });
@@ -201,8 +209,8 @@ test("backend errors never carry the child's output, which may hold the value", 
     stdout: SENTINEL,
     stderr: `secret-tool: failed on ${ENCODINGS.join(" ")}`
   });
-  const leakyPowerShell = async () => ({
-    exitCode: 0,
+  const leakyPowerShell = async (invocation) => ({
+    exitCode: invocation.tool === "cmdkey" ? 1 : 0,
     stdout: `verchestra-credential:error:5\r\n${SENTINEL}`,
     stderr: ENCODINGS.join(" ")
   });

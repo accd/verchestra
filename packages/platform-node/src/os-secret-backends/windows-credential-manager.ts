@@ -3,7 +3,9 @@
 // small inline P/Invoke of advapi32 CredReadW, CredWriteW, and CredDeleteW
 // (#379, AD-041). The program reaches PowerShell on stdin, and so does the
 // value: base64-encoded, as the string literal of one assignment line of that
-// program. It is never in argv and never in the environment.
+// program. It is never in argv and never in the environment. Presence is
+// `cmdkey /list:<target>`, which prints the target's attributes and never its
+// value.
 import { PlatformSecurityError } from "../platform-security-errors.ts";
 import type { OsSecretBackend, OsSecretLocator } from "../secret-broker.ts";
 import {
@@ -66,8 +68,18 @@ export function powershellChildEnvironment(): NodeJS.ProcessEnv {
   );
 }
 
-export const nodePowerShellRunner: CredentialToolRunner = (invocation) =>
-  spawnCredentialTool(powershellExecutable(), powershellChildEnvironment)(invocation);
+export function cmdkeyExecutable(): string {
+  return `${systemRoot()}\\System32\\cmdkey.exe`;
+}
+
+// invariant: runs Windows PowerShell unless the invocation names `cmdkey`;
+// any other tool name is refused before anything is spawned.
+export const nodeCredentialManagerRunner: CredentialToolRunner = (invocation) => {
+  const tool = invocation.tool ?? "powershell";
+  if (tool !== "powershell" && tool !== "cmdkey") return Promise.reject(new Error("unknown Credential Manager tool"));
+  const executable = tool === "cmdkey" ? cmdkeyExecutable() : powershellExecutable();
+  return spawnCredentialTool(executable, powershellChildEnvironment)(invocation);
+};
 
 // why: CRED_PERSIST_LOCAL_MACHINE keeps the credential for this user on this
 // machine across logon sessions. CRED_PERSIST_ENTERPRISE would also copy it
@@ -101,10 +113,6 @@ const CREDENTIAL_MANAGER_SOURCE = [
   "private static string Failure() { int code = Marshal.GetLastWin32Error();",
   'return code == NotFound ? Marker + "absent" : Marker + "error:" + code; }',
   "private static void Wipe(IntPtr blob, int size) { if (blob != IntPtr.Zero && size > 0) Marshal.Copy(new byte[size], 0, blob, size); }",
-  "public static string Has(string target) { IntPtr pointer; if (!CredRead(target, Generic, 0, out pointer)) return Failure();",
-  "try { Credential found = (Credential)Marshal.PtrToStructure(pointer, typeof(Credential));",
-  "Wipe(found.CredentialBlob, (int)found.CredentialBlobSize); } finally { CredFree(pointer); }",
-  'return Marker + "present"; }',
   "public static string Read(string target) { IntPtr pointer; if (!CredRead(target, Generic, 0, out pointer)) return Failure();",
   "byte[] value = new byte[0]; try { Credential found = (Credential)Marshal.PtrToStructure(pointer, typeof(Credential));",
   "value = new byte[found.CredentialBlobSize]; if (value.Length > 0) Marshal.Copy(found.CredentialBlob, value, 0, value.Length);",
@@ -134,7 +142,7 @@ export function credentialTarget(locator: Readonly<OsSecretLocator>): string {
   return target;
 }
 
-type Operation = "Has" | "Read" | "Write" | "Delete";
+type Operation = "Read" | "Write" | "Delete";
 
 // why: measured on a hosted Windows runner — the Add-Type cmdlet first loads
 // its module through PowerShell's command discovery, which took 23 to 33 s
@@ -207,7 +215,7 @@ function writeInput(locator: Readonly<OsSecretLocator>, value: Uint8Array): Buff
   return input;
 }
 
-const RESULT = /^verchestra-credential:(present|absent|stored|deleted|value:([A-Za-z0-9+/]*={0,2})|error:(\w+))\r?$/mu;
+const RESULT = /^verchestra-credential:(absent|stored|deleted|value:([A-Za-z0-9+/]*={0,2})|error:(\w+))\r?$/mu;
 
 // why: Win32 errors that mean "no Credential Manager for this logon", such as
 // a network or service logon without a loaded profile, not a broken store.
@@ -243,7 +251,7 @@ export class WindowsCredentialManagerBackend implements OsSecretBackend {
   readonly #runner: CredentialToolRunner;
 
   constructor(options: { readonly runner?: CredentialToolRunner } = {}) {
-    this.#runner = options.runner ?? nodePowerShellRunner;
+    this.#runner = options.runner ?? nodeCredentialManagerRunner;
   }
 
   // why: CredReadW, CredWriteW, and CredDeleteW never prompt, so a child
@@ -256,12 +264,23 @@ export class WindowsCredentialManagerBackend implements OsSecretBackend {
     return outcome(result, operation);
   }
 
+  // why: measured — a cold Windows PowerShell start that also compiles the
+  // P/Invoke took over 4 s, beyond the presence budget inside deep doctor's
+  // 5 s probe. `cmdkey` is a small native program that answers in well under
+  // a second, reads Credential Manager itself, and prints a credential's
+  // target, type, user, and persistence, never its value. The target line is
+  // `<label>: <target>` (the label is localized); the header line that echoes
+  // the query ends with a colon instead, so it never counts.
   async has(locator: Readonly<OsSecretLocator>): Promise<boolean> {
     assertLocator(locator);
-    const { status } = await this.#run("Has", Buffer.from(credentialProgram("Has", locator)), PRESENCE_TIMEOUT_MS);
-    if (status === "present") return true;
-    if (status === "absent") return false;
-    throw unexpected("Has");
+    const target = credentialTarget(locator);
+    const result = await runBounded(
+      this.#runner,
+      { tool: "cmdkey", args: [`/list:${target}`], timeoutMs: PRESENCE_TIMEOUT_MS },
+      () => backendFailure("Credential Manager presence did not finish in time")
+    );
+    if (result.exitCode !== 0) throw backendFailure("Credential Manager presence failed", result.exitCode);
+    return result.stdout.split(/\r?\n/u).some((line) => line.trim().endsWith(`: ${target}`));
   }
 
   async read(locator: Readonly<OsSecretLocator>): Promise<Uint8Array | undefined> {
