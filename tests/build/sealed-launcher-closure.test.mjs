@@ -44,6 +44,7 @@ import {
 } from "../../apps/vestra-cli/src/release-layout.ts";
 import { NodeActivationHealthGate } from "../../packages/platform-node/src/activation-launcher-adapters.ts";
 import { DEFAULT_RUNTIME_MIGRATIONS } from "../../packages/platform-node/src/runtime-store/runtime-migrations.ts";
+import { resolveStateRoot } from "../../packages/platform-node/src/state-root.ts";
 import { SEALED_LAUNCHER_ENTRIES, bundleSealedLauncher } from "../../scripts/t76-build-candidate.mjs";
 import { createSealedRepositoryReplica } from "../helpers/sealed-repository-fixture.mjs";
 import { systemGit } from "../helpers/system-git.mjs";
@@ -503,7 +504,13 @@ test("vestra task is reachable from the sealed bundle and its bridge relay is st
     { cwd: project, env }
   );
   assert.equal(init.status, 0, init.stderr);
-  const state = join(home, "Library", "Application Support", "Verchestra", "state", "workspaces", workspaceId);
+  // why: the sealed CLI resolves its state root per platform, so the gate
+  // allowlist must be written where that platform's layout puts it.
+  const state = join(
+    resolveStateRoot({ platform: process.platform, homeDirectory: home, env }),
+    "workspaces",
+    workspaceId
+  );
   const allowlist = {
     schemaVersion: 1,
     commands: { node: { executable: process.execPath, protocols: ["exit-code"] } }
