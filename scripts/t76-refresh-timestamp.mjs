@@ -32,7 +32,7 @@
 // snapshot <= targets <= root stops the run before a single output byte exists.
 
 import { createHash, createPublicKey } from "node:crypto";
-import { lstat, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -45,8 +45,10 @@ import {
   SUPPORTED_TARGET_KEYS,
   T76PublishError,
   TIMESTAMP_KEY_ENVIRONMENT_NAME,
+  assertOutputAbsent,
   expectedAnchorKeyId,
-  releaseSignerFromEnvironment
+  releaseSignerFromEnvironment,
+  writeExclusive
 } from "./t76-publish-release.mjs";
 import { assertRefreshAdmitted, nextLedgerEntry, readPublicationLedger } from "./tuf-publication-ledger.mjs";
 
@@ -309,25 +311,6 @@ const refreshOneTarget = (published, options, anchors, manifest) => {
   return refresh;
 };
 
-const writeExclusive = async (path, bytes, label) => {
-  try {
-    await writeFile(path, bytes, { flag: "wx", mode: 0o600 });
-  } catch (error) {
-    fail("VES_T76_PUBLISH_OUTPUT_EXISTS", `unable to write ${label}`, error);
-  }
-};
-
-const assertOutputAbsent = async (path) => {
-  try {
-    await lstat(path);
-  } catch (error) {
-    if (error?.code === "ENOENT") return;
-    fail("VES_T76_PUBLISH_INPUT_INVALID", "the refresh output cannot be inspected", error);
-    return;
-  }
-  fail("VES_T76_PUBLISH_OUTPUT_EXISTS", "the refresh output already exists");
-};
-
 // invariant: snapshot before timestamp, the order a human must upload them in.
 const uploadOrder = (name) => (name === "timestamp.json" ? 1 : 0);
 
@@ -417,7 +400,7 @@ export async function refreshT76Timestamp(rawOptions) {
       fail("VES_T76_REFRESH_TARGETS_CHANGED", "a published targets file is not named by its own version");
   const entry = ledgerEntryFor(ledger, manifest, options);
   const refreshManifest = refreshManifestFor(manifest, options, anchors, refreshed);
-  await assertOutputAbsent(options.outputDirectory);
+  await assertOutputAbsent(options.outputDirectory, "refresh");
   await mkdir(options.outputDirectory, { recursive: false, mode: 0o700 });
   for (const { key, refresh } of refreshed) await writeTarget(options.outputDirectory, key, refresh);
   await writeExclusive(
