@@ -11,7 +11,7 @@
 | Workspace identity | `tests/unit/workspace-identity.test.mjs` | Round trip with `init`, absent, fail-closed | `pnpm test:unit` |
 | Credential controls | `tests/security/os-secret-backend-security.test.mjs` | argv, env, error, and output non-disclosure; Workspace binding; names; key-material contract; evidence digest | `pnpm test:security` |
 | Real keychain (not a gate) | `spikes/os-secret-store/test/keychain-backend.test.mjs` | Disposable keychain round trip, fallback guard, oversize, real timeout | `pnpm qualify:keychain` (pending) |
-| Real CLI journey (not a gate) | `spikes/os-secret-store/test/keychain-cli.test.mjs` | `secret set/status/delete` and `doctor --deep` `pass` against a disposable keychain | `pnpm qualify:keychain` (pending) |
+| Real CLI journey (not a gate) | `spikes/os-secret-store/test/credential-cli.test.mjs` (renamed from `keychain-cli.test.mjs` by AD-041) | `secret set/status/delete` and `doctor --deep` `pass` against a disposable keychain | `pnpm qualify:keychain` (pending) |
 | Gate isolation | `tests/architecture/no-keychain-spawn-in-tests.test.mjs` | No gate test spawns `security`; spawn guard present wherever a store is reachable | `pnpm test:architecture` |
 | Doctor mapping | `tests/integration/doctor-secret-backend.test.mjs` | `pass`, `blocked`, and `fail`; no value request | `pnpm test:integration` |
 | CLI refusals | `tests/e2e/secret-cli-e2e.test.mjs` | Every pre-keychain refusal through the binary, with the spawn guard preloaded | `pnpm test:e2e` |
