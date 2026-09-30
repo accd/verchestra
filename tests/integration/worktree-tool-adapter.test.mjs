@@ -25,7 +25,10 @@ test("a write creates missing parents and lands only inside the registered workt
 test("an overwrite keeps the file mode Git tracks", async () => {
   const { adapter, request, worktreePath } = await worktreeToolFixture();
   await adapter.invoke(request({ targetPaths: ["src/tool.sh"] }));
-  assert.equal((await stat(join(worktreePath, "src", "tool.sh"))).mode & 0o777, 0o755);
+  // why: win32 keeps no executable bit, so there Git's own view, which reports
+  // any mode change as a summary line, is the whole assertion.
+  if (process.platform !== "win32")
+    assert.equal((await stat(join(worktreePath, "src", "tool.sh"))).mode & 0o777, 0o755);
   assert.equal(git(worktreePath, "diff", "--summary"), "");
 });
 

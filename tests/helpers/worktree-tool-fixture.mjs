@@ -42,6 +42,9 @@ export async function worktreeToolFixture(options = {}) {
   await writeFile(join(repositoryRoot, "src", "value.txt"), "base\n");
   await writeFile(join(repositoryRoot, "src", "tool.sh"), "#!/bin/sh\necho base\n", { mode: 0o755 });
   git(repositoryRoot, "init", "--quiet");
+  // why: a Windows runner converts LF to CRLF on checkout by default, so the
+  // worktree would not hold the committed bytes the assertions compare.
+  git(repositoryRoot, "config", "core.autocrlf", "false");
   git(repositoryRoot, "config", "user.email", "qualification@verchestra.invalid");
   git(repositoryRoot, "config", "user.name", "Verchestra Qualification");
   git(repositoryRoot, "add", ".");
