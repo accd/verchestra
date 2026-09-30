@@ -193,7 +193,10 @@ function writeInput(locator: Readonly<OsSecretLocator>, value: Uint8Array): Buff
 
 const RESULT = /^verchestra-credential:(present|absent|stored|deleted|value:([A-Za-z0-9+/]*={0,2})|error:(\w+))\r?$/mu;
 
-// why: Win32 errors that mean "no Credential Manager for this logon", such as
+// why: CredReadW, CredWriteW, and CredDeleteW never prompt, so a child killed
+// at its timeout is a slow or stuck PowerShell, not a store waiting for the
+// user; it is a (retryable) backend failure, never "interaction required".
+// Win32 errors that mean "no Credential Manager for this logon", such as
 // a network or service logon without a loaded profile, not a broken store.
 const NO_CREDENTIAL_SESSION = new Set(["1312", "1004"]);
 
@@ -226,7 +229,9 @@ export class WindowsCredentialManagerBackend implements OsSecretBackend {
   }
 
   async #run(operation: Operation, stdin: Uint8Array, timeoutMs: number): Promise<Outcome> {
-    const result = await runBounded(this.#runner, { args: POWERSHELL_ARGUMENTS, stdin, timeoutMs });
+    const result = await runBounded(this.#runner, { args: POWERSHELL_ARGUMENTS, stdin, timeoutMs }, () =>
+      backendFailure(`Credential Manager ${operation.toLowerCase()} did not finish in time`)
+    );
     return outcome(result, operation);
   }
 
