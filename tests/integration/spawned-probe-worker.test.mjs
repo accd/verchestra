@@ -10,15 +10,17 @@ import { SpawnedProbeWorker } from "../../packages/platform-node/src/index.ts";
 import { workspaceId } from "../helpers/database-probe-fixture.mjs";
 import {
   NODE_WORKER,
-  POSIX_ONLY,
+  WIN32_HOST,
   PYTHON_WORKER,
   eventuallyDead,
   fileDigest,
   findPython,
+  probeHostRefusedOnWin32,
   spawnedProbe
 } from "../helpers/spawned-probe-worker-fixture.mjs";
 
-test("a plain Node reference worker completes a probe over stdio frames", { skip: POSIX_ONLY }, async () => {
+test("a plain Node reference worker completes a probe over stdio frames", async (t) => {
+  if (WIN32_HOST) return probeHostRefusedOnWin32(t);
   const fixture = await spawnedProbe();
   const result = await fixture.supervisor.execute();
   assert.equal(result.status, "complete");
@@ -32,13 +34,15 @@ test("a plain Node reference worker completes a probe over stdio frames", { skip
 });
 
 const python = findPython();
+// why: on win32 the Python cases assert the platform refusal like every other
+// case, so only a POSIX runner without python3 reports an explicit skip.
 const pythonSkip =
-  POSIX_ONLY ||
-  (python === undefined
+  !WIN32_HOST && python === undefined
     ? "python3 is not on this runner's PATH, so second-language neutrality is unproven on this host"
-    : false);
+    : false;
 
-test("a Python worker speaking only the published frames completes the same probe", { skip: pythonSkip }, async () => {
+test("a Python worker speaking only the published frames completes the same probe", { skip: pythonSkip }, async (t) => {
+  if (WIN32_HOST) return probeHostRefusedOnWin32(t);
   const fixture = await spawnedProbe({ worker: PYTHON_WORKER, executable: python, args: ["-I", "-B"] });
   const result = await fixture.supervisor.execute();
   assert.equal(result.status, "complete");
@@ -95,53 +99,51 @@ test("the host orders payload keys by UTF-16 code unit, as RFC 8785 specifies", 
   assert.notEqual(envelope.payloadDigest, sha256('{"\uE000":0,"\u{1F600}":0}'), "code-point order is not the protocol");
 });
 
-test("the Node reference worker derives the host's digest for keys above the BMP", { skip: POSIX_ONLY }, async () => {
+test("the Node reference worker derives the host's digest for keys above the BMP", async (t) => {
+  if (WIN32_HOST) return probeHostRefusedOnWin32(t);
   assert.equal(await exitCodeAfterCancel(NODE_WORKER, process.execPath, []), 0);
 });
 
-test("the Python reference worker derives the host's digest for keys above the BMP", { skip: pythonSkip }, async () => {
-  assert.equal(await exitCodeAfterCancel(PYTHON_WORKER, python, ["-I", "-B"]), 0);
+test(
+  "the Python reference worker derives the host's digest for keys above the BMP",
+  { skip: pythonSkip },
+  async (t) => {
+    if (WIN32_HOST) return probeHostRefusedOnWin32(t);
+    assert.equal(await exitCodeAfterCancel(PYTHON_WORKER, python, ["-I", "-B"]), 0);
+  }
+);
+
+test("the host refuses to spawn an entry whose bytes differ from the approved digest", async (t) => {
+  if (WIN32_HOST) return probeHostRefusedOnWin32(t);
+  await assert.rejects(
+    SpawnedProbeWorker.launch({
+      executable: process.execPath,
+      entry: { path: NODE_WORKER, digest: `sha256:${"0".repeat(64)}` },
+      workspaceId
+    }),
+    { code: "VES_PROBE_HOST_ENTRY_DIGEST" }
+  );
 });
 
-test(
-  "the host refuses to spawn an entry whose bytes differ from the approved digest",
-  { skip: POSIX_ONLY },
-  async () => {
-    await assert.rejects(
-      SpawnedProbeWorker.launch({
-        executable: process.execPath,
-        entry: { path: NODE_WORKER, digest: `sha256:${"0".repeat(64)}` },
-        workspaceId
-      }),
-      { code: "VES_PROBE_HOST_ENTRY_DIGEST" }
-    );
-  }
-);
-
-test(
-  "the executed file is a private copy, so a later change to the source cannot swap the code",
-  {
-    skip: POSIX_ONLY
-  },
-  async (t) => {
-    const directory = await mkdtemp(join(tmpdir(), "verchestra-probe-source-"));
-    t.after(() => rm(directory, { recursive: true, force: true }));
-    const source = join(directory, "worker.mjs");
-    await copyFile(NODE_WORKER, source);
-    const transport = await SpawnedProbeWorker.launch({
-      executable: process.execPath,
-      entry: { path: source, digest: fileDigest(NODE_WORKER) },
-      workspaceId
-    });
-    await writeFile(source, "process.exit(99);\n");
-    const framed = new FramedProbeWorker({ transport, workspaceId, maximumMessageBytes: 65_536 });
-    const handshake = await framed.handshake();
-    assert.equal(handshake.component.digest, fileDigest(NODE_WORKER), "the running code is the approved bytes");
-    assert.equal(transport.launchedComponentDigest, fileDigest(NODE_WORKER));
-    await framed.terminate();
-    assert.notEqual(transport.diagnostics().exitCode, 99);
-  }
-);
+test("the executed file is a private copy, so a later change to the source cannot swap the code", async (t) => {
+  if (WIN32_HOST) return probeHostRefusedOnWin32(t);
+  const directory = await mkdtemp(join(tmpdir(), "verchestra-probe-source-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const source = join(directory, "worker.mjs");
+  await copyFile(NODE_WORKER, source);
+  const transport = await SpawnedProbeWorker.launch({
+    executable: process.execPath,
+    entry: { path: source, digest: fileDigest(NODE_WORKER) },
+    workspaceId
+  });
+  await writeFile(source, "process.exit(99);\n");
+  const framed = new FramedProbeWorker({ transport, workspaceId, maximumMessageBytes: 65_536 });
+  const handshake = await framed.handshake();
+  assert.equal(handshake.component.digest, fileDigest(NODE_WORKER), "the running code is the approved bytes");
+  assert.equal(transport.launchedComponentDigest, fileDigest(NODE_WORKER));
+  await framed.terminate();
+  assert.notEqual(transport.diagnostics().exitCode, 99);
+});
 
 test("the probe host refuses a win32 host rather than claim an unqualified platform", async () => {
   await assert.rejects(
@@ -161,7 +163,8 @@ for (const [label, options] of [
   ["a malformed Workspace", { workspaceId: "../escape" }],
   ["a zero limit", { limits: { stderrBytes: 0 } }]
 ]) {
-  test(`the probe host refuses ${label}`, { skip: POSIX_ONLY }, async () => {
+  test(`the probe host refuses ${label}`, async (t) => {
+    if (WIN32_HOST) return probeHostRefusedOnWin32(t);
     await assert.rejects(
       SpawnedProbeWorker.launch({
         executable: process.execPath,
@@ -174,7 +177,8 @@ for (const [label, options] of [
   });
 }
 
-test("termination is idempotent and closes the channel", { skip: POSIX_ONLY }, async () => {
+test("termination is idempotent and closes the channel", async (t) => {
+  if (WIN32_HOST) return probeHostRefusedOnWin32(t);
   const transport = await SpawnedProbeWorker.launch({
     executable: process.execPath,
     entry: { path: NODE_WORKER, digest: fileDigest(NODE_WORKER) },

@@ -3,9 +3,10 @@ import { test } from "node:test";
 
 import {
   ObservingResultSink,
-  POSIX_ONLY,
+  WIN32_HOST,
   eventuallyDead,
   isAlive,
+  probeHostRefusedOnWin32,
   spawnedProbe
 } from "../helpers/spawned-probe-worker-fixture.mjs";
 
@@ -30,7 +31,8 @@ for (const [label, mode] of [
   ["during execution", "hang"],
   ["before answering its handshake", "hang-handshake"]
 ]) {
-  test(`a worker that hangs ${label} is killed at the time bound`, { skip: POSIX_ONLY }, async () => {
+  test(`a worker that hangs ${label} is killed at the time bound`, async (t) => {
+    if (WIN32_HOST) return probeHostRefusedOnWin32(t);
     const fixture = await spawnedProbe({ mode, request: { bounds: BOUNDS } });
     const started = Date.now();
     await assert.rejects(fixture.supervisor.execute(), { code: "VES_PROBE_TIMEOUT" });
@@ -44,28 +46,24 @@ for (const [label, mode] of [
   });
 }
 
-test(
-  "a worker that forks grandchildren has its whole tree killed, including a setsid escapee",
-  {
-    skip: POSIX_ONLY
-  },
-  async (t) => {
-    const results = new ObservingResultSink();
-    const fixture = await spawnedProbe({ mode: "fork", results, request: { bounds: BOUNDS } });
-    await assert.rejects(fixture.supervisor.execute(), { code: "VES_PROBE_TIMEOUT" });
-    const [descendants] = results.observed;
-    assert.ok(Number.isSafeInteger(descendants?.sameGroup), "the worker reported its same-group grandchild");
-    assert.ok(Number.isSafeInteger(descendants?.escaped), "the worker reported its setsid grandchild");
-    reap(t, [descendants.sameGroup, descendants.escaped]);
-    assert.equal(await eventuallyDead(fixture.transport.pid), true, "the worker is dead");
-    assert.equal(await eventuallyDead(descendants.sameGroup), true, "the same-group grandchild is dead");
-    assert.equal(await eventuallyDead(descendants.escaped), true, "the setsid grandchild is dead");
-    assert.equal(results.rollbacks, 1);
-    assert.equal(results.commits, 0);
-  }
-);
+test("a worker that forks grandchildren has its whole tree killed, including a setsid escapee", async (t) => {
+  if (WIN32_HOST) return probeHostRefusedOnWin32(t);
+  const results = new ObservingResultSink();
+  const fixture = await spawnedProbe({ mode: "fork", results, request: { bounds: BOUNDS } });
+  await assert.rejects(fixture.supervisor.execute(), { code: "VES_PROBE_TIMEOUT" });
+  const [descendants] = results.observed;
+  assert.ok(Number.isSafeInteger(descendants?.sameGroup), "the worker reported its same-group grandchild");
+  assert.ok(Number.isSafeInteger(descendants?.escaped), "the worker reported its setsid grandchild");
+  reap(t, [descendants.sameGroup, descendants.escaped]);
+  assert.equal(await eventuallyDead(fixture.transport.pid), true, "the worker is dead");
+  assert.equal(await eventuallyDead(descendants.sameGroup), true, "the same-group grandchild is dead");
+  assert.equal(await eventuallyDead(descendants.escaped), true, "the setsid grandchild is dead");
+  assert.equal(results.rollbacks, 1);
+  assert.equal(results.commits, 0);
+});
 
-test("a worker that exits mid-stream produces no partial promoted evidence", { skip: POSIX_ONLY }, async () => {
+test("a worker that exits mid-stream produces no partial promoted evidence", async (t) => {
+  if (WIN32_HOST) return probeHostRefusedOnWin32(t);
   const fixture = await spawnedProbe({ mode: "exit-mid-stream" });
   await assert.rejects(fixture.supervisor.execute(), { code: "VES_PROBE_WORKER_EXITED" });
   assert.equal(fixture.results.rollbacks, 1);
@@ -73,7 +71,8 @@ test("a worker that exits mid-stream produces no partial promoted evidence", { s
   assert.equal(fixture.transport.diagnostics().workDirectoryRemoved, true);
 });
 
-test("an external abort kills the worker tree and rolls back", { skip: POSIX_ONLY }, async () => {
+test("an external abort kills the worker tree and rolls back", async (t) => {
+  if (WIN32_HOST) return probeHostRefusedOnWin32(t);
   const fixture = await spawnedProbe({ mode: "hang" });
   const controller = new AbortController();
   const pending = fixture.supervisor.execute(controller.signal);
