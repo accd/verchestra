@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { RuntimeStore } from "../../packages/platform-node/src/index.ts";
 
 export const roots = [];
+const stores = [];
 export const runId = "run_018f0b6d-7b1a-7abc-8def-0123456789ab";
 export const bindingDigest = `sha256:${"a".repeat(64)}`;
 export const rawDigest = "a".repeat(64);
@@ -17,10 +18,15 @@ export async function opened(options = {}) {
   const dbPath = join(root, "runtime.sqlite");
   const store = new RuntimeStore({ dbPath, timeoutMs: 10, now: () => now, ...options });
   const result = store.open();
+  stores.push(store);
   return { root, dbPath, store, result };
 }
 
 export async function cleanup() {
+  // hazard: Windows refuses to unlink a database file, or its -wal and -shm
+  // companions, while a connection holds them, so every store a test left
+  // open is closed before its root is removed.
+  for (const store of stores.splice(0)) store.close();
   await Promise.all(
     roots.splice(0).map((root) => rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }))
   );
