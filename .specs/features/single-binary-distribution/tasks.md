@@ -1,13 +1,13 @@
 # Single-Binary Distribution Tasks (#236)
 
 **Design:** `.specs/features/single-binary-distribution/design.md`
-**Status:** T1–T5 done locally. T6 is the next action (CI dispatch and owner
-signing).
+**Status:** T1–T5 and T7 done locally. T6 is the next action (CI dispatch
+and owner signing).
 
 ## Execution Plan
 
 ```
-T1 -> T2 -> T3 -> T4 -> T5 -> T6
+T1 -> T2 -> T3 -> T4 -> T5 -> T7 -> T6
 ```
 
 ## Task Breakdown
@@ -79,3 +79,17 @@ native legs, zero skips, artifacts only) with its shape test, plus
    Authenticode signing on Windows, and the signed digests are recorded.
 
 **Requirements:** SBD-09, SBD-10, SBD-11.
+
+### T7: SonarCloud remediation and archive hardening
+
+**Status:** Done.
+**What:** Resolve the SonarCloud findings on the #236 pull request without
+changing the emitted bytes. `actions: read` moves from the workflow to the one
+job that needs it. The regex-based NUL trimming and pax parsing become linear
+scans. Nested ternaries are extracted. The pin sort gets an ordinal comparator.
+The launcher defaults move into named factories. The pinned-archive reader is
+hardened as SBD-13 describes.
+**Requirements:** SBD-10, SBD-13.
+**Tests:** `tests/unit/node-runtime-archive.test.mjs`,
+`tests/agent-readiness/single-binary-workflow.test.mjs`, and
+`tests/build/vestra-binary.test.mjs` (byte determinism).

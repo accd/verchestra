@@ -5,10 +5,10 @@ issue: 236
 status: verification
 branch: feat/236-single-binary
 baseRevision: aa6cf42b0c6e26cdbe3a23ce474ca4ea39a47a94
-lastCompletedTask: T5
+lastCompletedTask: T7
 nextTask: "T6: after merge, dispatch .github/workflows/single-binary-build.yml at the merge revision (first with no release inputs, then with a t76-publish-release run), record the five per-leg transcripts in validation.md, then hand the owner the macOS Developer ID/notarization and Windows Authenticode signing steps."
-lastGate: "Local darwin-arm64 host at 8dd0111: focused single-binary suites 52/52; gate:quick, gate:build, gate:security, gate:release, gate:full, agent:check all PASS with 0 skipped - see validation.md."
-updatedAt: 2026-09-29T00:00:00Z
+lastGate: "Local darwin-arm64 host, T7 tree: focused single-binary suites 57/57 (byte determinism included); gate:quick, gate:build, gate:security, gate:release, agent:check all PASS with 0 skipped - see validation.md."
+updatedAt: 2026-09-30T00:00:00Z
 ---
 
 # Scope
@@ -24,6 +24,11 @@ numbered at merge, status proposed).
 T1–T5 are done on the darwin-arm64 build host. `validation.md` maps every
 requirement to file-and-assertion evidence and gives the gate results and the
 discrimination sensor (11 killed, 0 survived).
+
+T7 resolved the SonarCloud findings on the pull request and hardened the
+pinned-archive reader (SBD-13). The workflow now grants `actions: read` only
+to the `target` job. The emitted bytes are unchanged, and the two-build
+determinism test still passes.
 
 # Next Exact Action
 
