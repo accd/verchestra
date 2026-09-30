@@ -30,11 +30,12 @@ owner checklist, so that closing #408 needs only owner decisions and actions.
 | Exclusion | Reason |
 | --- | --- |
 | Choosing or appointing custodian #2 | Owner-only decision (#408). |
-| Provisioning, reading, or rotating any real key or credential | Owner custody; agents never touch key material. |
-| Changing the ruleset, CODEOWNERS, environments, npm, or R2 settings | Governance changes need the owner and an independent review. |
+| Reading any real key or credential | Owner custody; agents never read key material back. |
+| Provisioning or rotating a real key, or creating environments, without the owner's explicit authorization | The owner authorized the O2/O3 steps on 2026-09-30; keys were generated in memory and piped straight into environment secrets. |
+| Changing the ruleset, CODEOWNERS, npm, or R2 settings | Governance changes need the owner and an independent review. |
 | Timestamp/snapshot refresh routine | #382. |
 | Release lifecycle (`.3`, metadata versions, rollback) | #387, #393. |
-| Workflow `environment:` wiring, trusted-publishing workflow, detached threshold signing | Follow-up implementation tasks (T5-T7), each a separate reviewed change. |
+| Trusted-publishing workflow, detached threshold signing | Follow-up implementation tasks (T6-T7), each a separate reviewed change. |
 | Updating acceptance-matrix L1/L8 | Only after the controls are verified and ratified. |
 
 ## Requirements
@@ -62,9 +63,29 @@ owner checklist, so that closing #408 needs only owner decisions and actions.
 - **CUST-08**: No tracked file SHALL contain key material, credentials,
   environment values, emails, or machine-local paths.
 
+### Protected signing environments and rotation (T5, T11; O2/O3 technical part)
+
+- **CUST-09**: Each job that reads a signing key SHALL bind the protected
+  environment that holds it (`tuf-release-signing` for the offline and online
+  TUF keys, `t75-evidence-signing` for the evidence key). No signing secret SHALL
+  be read outside a job bound to its environment, only the declared signing jobs
+  SHALL bind those environments, and no workflow SHALL name a retired
+  repository-level signing secret.
+- **CUST-10**: The keys that were reachable as repository secrets SHALL be
+  rotated. Each old anchor SHALL stay committed as a retired anchor with a
+  retirement instant, and no signing path SHALL admit a retired anchor for a new
+  signature. Committed historical evidence SHALL still verify under its retired
+  anchor.
+- **CUST-11**: Every committed trust identity, active or retired, SHALL differ
+  from every other in key material and key id. Each retired anchor SHALL be
+  named by its key id and have an active successor for its role.
+- **CUST-12**: A signing workflow dispatched from any branch other than `main`
+  SHALL be refused by its environment before any step runs.
+
 ## Acceptance
 
-CUST-01 to CUST-08 are met by documentation, verified in `validation.md`. #408
+CUST-01 to CUST-08 are met by documentation, and CUST-09 to CUST-12 by code,
+tests, and an observed refusal, all verified in `validation.md`. #408
 itself closes only after the owner and an independent reviewer ratify the model
 and the checklist evidence is recorded. `handoff.md` tracks that state as
 `blocked`.

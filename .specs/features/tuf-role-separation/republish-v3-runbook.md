@@ -102,6 +102,34 @@ activation records the release it verified; the naive rollback then passes
 through the retained path, and the workflow now fails a leg unless the rollback
 restores the base's active pointer.
 
+## Custody of the signing keys (#408)
+
+Since 2026-09-30 the offline and online keys are rotated and exist only as
+secrets of the protected `tuf-release-signing` environment
+(`VESTRA_TUF_OFFLINE_KEY_PKCS8_BASE64`, `VESTRA_TUF_ONLINE_KEY_PKCS8_BASE64`).
+Their anchors are the committed
+`docs/qualification/trust/verchestra-release-public-key.json`
+(`verchestra-release-20260930-custody`) and
+`docs/qualification/trust/release-timestamp-snapshot-public-key.json`
+(`verchestra-release-timestamp-20260930-custody`). The old anchors are retired
+under `docs/qualification/trust/retired/`, and the tooling refuses them
+(`VES_T76_PUBLISH_ANCHOR_RETIRED`). This has three consequences for `.3`:
+
+- **Dispatch from `main` only.** `t76-publish-release.yml` and
+  `t76-refresh-timestamp.yml` bind `tuf-release-signing`, which admits only
+  runs dispatched from `main`. A run from any other branch fails before its
+  first step, and no approval is requested.
+- **Approve each run.** The job waits until the environment's reviewer approves
+  it. Before approving, the reviewer checks the dispatch inputs (revision, run
+  ids, versions, expiries). The environment gates the dispatch ref, not the
+  checked-out candidate (`docs/release-custody.md` RR13).
+- **Rebuild the candidate.** The publish job checks out the candidate revision
+  and binds the keys to that revision's anchors. The `.3` publication signed on
+  2026-09-30 (publish run `36771571763`, candidate `0f7dedd`, candidate run
+  `36768094824`) used the retired keys. Never upload it. Build a new candidate
+  from `main` after the #408 change merges, so it carries the new anchors, and
+  sign that.
+
 ## Recommended sequence (my judgment; owner and reviewers to ratify)
 
 Publish the role-separated lineage as its own trust anchor and demonstrate the
@@ -116,10 +144,11 @@ Publish the role-separated lineage as its own trust anchor and demonstrate the
    which keeps versions monotonic across lineages at no cost. For any later
    same-root release, use the next integer above the highest version the ledger
    records for that root digest.
-3. **Build the `.3` candidate** from `main` (post-merges) via the candidate-build
-   workflow; capture its run id and reconciled index (this becomes the rollback
-   index the publish step seals).
-4. **Publish `.3`** (owner, via `t76-publish-release.yml`): role-separated keys,
+3. **Build the `.3` candidate** from `main` (post-merges, including #408) via the
+   candidate-build workflow; capture its run id and reconciled index (this
+   becomes the rollback index the publish step seals).
+4. **Publish `.3`** (owner, via `t76-publish-release.yml` dispatched from `main`,
+   then approved in the `tuf-release-signing` environment): role-separated keys,
    both anchors committed, `metadata_version` from step 2, a new `/v3/` base-URL
    prefix, and the rollback index from step 3. `timestamp_expires` is a required
    input: pass the same value as `expires` for the full horizon, or a short
@@ -156,12 +185,16 @@ next `<version>.snapshot.json` for all five targets with the online key. It neve
 reads the offline key (it refuses to run if that key is in its environment),
 never re-signs root, targets, or components, and publishes nothing.
 
-Preconditions (owner, once): the online key is provisioned as the
-`VESTRA_RELEASE_TIMESTAMP_SIGNING_KEY_PKCS8_BASE64` secret and its public half is
-committed as `docs/qualification/trust/release-timestamp-snapshot-public-key.json`
-with `"purposes": ["tuf-timestamp-snapshot"]` (see `handoff.md`). Until that
-anchor exists the refresh fails closed with `VES_T76_PUBLISH_ANCHOR_MISSING`. The
-routine refreshes only role-separated lineages, so it cannot apply to v1/`.2`.
+Preconditions (met on 2026-09-30, #408): the online key is the
+`VESTRA_TUF_ONLINE_KEY_PKCS8_BASE64` secret of the protected `tuf-release-signing`
+environment, and its public half is committed as
+`docs/qualification/trust/release-timestamp-snapshot-public-key.json` with
+`"purposes": ["tuf-timestamp-snapshot"]`. A missing anchor fails closed with
+`VES_T76_PUBLISH_ANCHOR_MISSING`, and a retired one with
+`VES_T76_PUBLISH_ANCHOR_RETIRED`. The routine refreshes only role-separated
+lineages, so it cannot apply to v1/`.2`. Dispatch it from `main`; each run waits
+for the environment reviewer's approval, so plan the monthly refresh around the
+reviewer's availability.
 
 Every month, at least one full cycle before the current `timestampExpires`:
 
@@ -170,11 +203,12 @@ Every month, at least one full cycle before the current `timestampExpires`:
    targets, and timestamp version recorded for the root (use the next integer
    above the highest). Pick `timestamp_expires`: no later than the published
    targets expiry; about 45 days out keeps a two-week margin on a monthly cadence.
-2. **Refresh.** Dispatch `t76-refresh-timestamp.yml` with `publish_revision` and
-   `publish_run_id` of the `t76-publish-release` run that published the current
-   release (its `t76-release-metadata-…` artifact holds the offline-signed root,
-   targets, and components), plus `metadata_version` and `timestamp_expires`.
-   The run reads the ledger from `origin/main`, verifies the published root
+2. **Refresh.** Dispatch `t76-refresh-timestamp.yml` from `main` with
+   `publish_revision` and `publish_run_id` of the `t76-publish-release` run that
+   published the current release (its `t76-release-metadata-…` artifact holds
+   the offline-signed root, targets, and components), plus `metadata_version`
+   and `timestamp_expires`. Approve the run in `tuf-release-signing` after
+   checking those inputs. The run reads the ledger from `origin/main`, verifies the published root
    against both committed anchors and the targets and components under that root,
    refuses an unrecorded lineage (`VES_T76_REFRESH_LINEAGE_UNKNOWN`), targets that
    are not the newest recorded release for the root
