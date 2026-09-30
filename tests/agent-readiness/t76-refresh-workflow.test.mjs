@@ -10,7 +10,10 @@ const candidateBuild = readFileSync(
 );
 
 const DISPATCH_INPUTS = Object.freeze(["publish_revision", "publish_run_id", "metadata_version", "timestamp_expires"]);
-const ONLINE_SECRET = "VESTRA_RELEASE_TIMESTAMP_SIGNING_KEY_PKCS8_BASE64";
+// invariant: the online key is the protected environment's secret (#408), read into
+// the process variable the refresh script expects.
+const ONLINE_SECRET = "VESTRA_TUF_ONLINE_KEY_PKCS8_BASE64";
+const ONLINE_VARIABLE = "VESTRA_RELEASE_TIMESTAMP_SIGNING_KEY_PKCS8_BASE64";
 
 const lines = workflow.split(/\r?\n/);
 
@@ -65,17 +68,25 @@ test("only the online key is available, in exactly one step, never echoed", () =
   assert.deepEqual([...secretNames], [ONLINE_SECRET]);
   // why: the offline root/targets key and the T75 evidence key never appear here.
   assert.doesNotMatch(workflow, /VESTRA_RELEASE_SIGNING_KEY_PKCS8_BASE64/u);
-  assert.doesNotMatch(workflow, /VESTRA_T75_EVIDENCE_SIGNING_KEY/u);
+  assert.doesNotMatch(workflow, /VESTRA_TUF_OFFLINE_KEY/u);
+  assert.doesNotMatch(workflow, /VESTRA_T75_EVIDENCE_(?:SIGNING_)?KEY/u);
   const bearing = steps().filter((step) => step.text.includes(`secrets.${ONLINE_SECRET}`));
   assert.equal(bearing.length, 1, "the online secret reaches exactly one step");
   assert.match(
     bearing[0].text,
-    new RegExp(`^ {10}${ONLINE_SECRET}: \\$\\{\\{ secrets\\.${ONLINE_SECRET} \\}\\}$`, "mu")
+    new RegExp(`^ {10}${ONLINE_VARIABLE}: \\$\\{\\{ secrets\\.${ONLINE_SECRET} \\}\\}$`, "mu")
   );
   assert.match(bearing[0].text, /node scripts\/t76-refresh-timestamp\.mjs/u);
   assert.doesNotMatch(workflow, /echo.*VESTRA_RELEASE/iu);
   assert.doesNotMatch(workflow, /cat.*VESTRA_RELEASE/iu);
   assert.doesNotMatch(workflow, /printenv|set -x|env \|/u);
+});
+
+test("the refresh job is bound to the protected tuf-release-signing environment (#408)", () => {
+  // why: the online key lives only in that environment; the job cannot start
+  // until its reviewer approves a run dispatched from main.
+  assert.equal([...workflow.matchAll(/^ {4}environment: /gmu)].length, 1, "exactly one job binds an environment");
+  assert.match(workflow, /^ {2}refresh:\n(?: {4}.*\n)*? {4}environment: tuf-release-signing\n/mu);
 });
 
 test("every dispatch input is declared, required, default-free, and validated against an exact pattern", () => {

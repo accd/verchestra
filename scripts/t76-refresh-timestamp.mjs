@@ -42,8 +42,10 @@ import {
   DEFAULT_RELEASE_ANCHOR,
   DEFAULT_TIMESTAMP_ANCHOR,
   KEY_ENVIRONMENT_NAME,
+  RELEASE_ANCHOR_PURPOSE,
   SUPPORTED_TARGET_KEYS,
   T76PublishError,
+  TIMESTAMP_ANCHOR_PURPOSE,
   TIMESTAMP_KEY_ENVIRONMENT_NAME,
   assertOutputAbsent,
   expectedAnchorKeyId,
@@ -52,8 +54,7 @@ import {
 } from "./t76-publish-release.mjs";
 import { assertRefreshAdmitted, nextLedgerEntry, readPublicationLedger } from "./tuf-publication-ledger.mjs";
 
-export const RELEASE_ANCHOR_PURPOSE = "tuf-release-root";
-export const TIMESTAMP_ANCHOR_PURPOSE = "tuf-timestamp-snapshot";
+export { RELEASE_ANCHOR_PURPOSE, TIMESTAMP_ANCHOR_PURPOSE };
 
 // why: the tracked procedure a refresh ledger entry cites as its evidence.
 export const REFRESH_EVIDENCE = Object.freeze([".specs/features/tuf-role-separation/republish-v3-runbook.md"]);

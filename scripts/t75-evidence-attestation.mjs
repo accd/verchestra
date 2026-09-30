@@ -82,6 +82,23 @@ function assertPublicKeyRef(value) {
   return value;
 }
 
+// invariant: a reference's validity window bounds the attestations it vouches for
+// (#408). A retired reference carries `validUntil`: it still verifies what it
+// signed before that instant, and never signs again. `issuedAt` is asserted by
+// the signer, so a new signature is also refused once the window has closed on
+// the wall clock, which a backdated `issuedAt` cannot evade.
+function withinReferenceWindow(publicKeyRef, instant) {
+  const at = Date.parse(instant);
+  if (Number.isNaN(at)) return false;
+  if (publicKeyRef.validFrom !== undefined && at < Date.parse(publicKeyRef.validFrom)) return false;
+  return publicKeyRef.validUntil === undefined || at < Date.parse(publicKeyRef.validUntil);
+}
+
+function assertReferenceAdmitsNewSignature(publicKeyRef, issuedAt, now) {
+  if (!withinReferenceWindow(publicKeyRef, issuedAt) || !withinReferenceWindow(publicKeyRef, now))
+    throw new Error("committed public reference is retired or not yet valid and admits no new signature");
+}
+
 function decodeProtectedPkcs8(environment) {
   const encoded = environment[KEY_ENVIRONMENT_NAME];
   if (typeof encoded !== "string" || encoded.length === 0) throw new Error("protected signing key is not configured");
@@ -215,6 +232,7 @@ export async function signQualificationEvidenceIndex(input) {
   if (body.revision !== input.revision)
     throw new Error("qualification evidence index revision does not match requested revision");
   const binding = bindingFor(input.revision, input.issuedAt);
+  assertReferenceAdmitsNewSignature(publicKeyRef, input.issuedAt, (input.now ?? new Date()).toISOString());
   const signer = NodeEd25519Signer.fromPkcs8(
     {
       keyId: publicKeyRef.keyId,
@@ -263,6 +281,7 @@ export function verifyQualificationEvidenceIndex(input) {
     if (parsed === undefined) return false;
     const { envelope, statement } = parsed;
     if (!statementMatchesQualificationIndex(statement, body, input.revision)) return false;
+    if (!withinReferenceWindow(publicKeyRef, statement.predicate.binding.issuedAt)) return false;
     if (envelope.signatures[0].keyid !== publicKeyRef.keyId) return false;
     return verifyBytes(
       null,

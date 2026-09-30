@@ -37,10 +37,18 @@ permissions:
   actions: read
   contents: read
 
+# invariant: the evidence key is a secret of the protected `t75-evidence-signing`
+# environment, never a repository secret (#408, O2).  The job cannot start, and
+# so cannot read the key, until the environment's required reviewer approves the
+# run, and only a run dispatched from `main` may deploy to it.  The secret name
+# differs from the retired repository-level name, so the job never falls back to
+# a repository secret.
+
 jobs:
   attest:
     name: Regenerate and attest T75 evidence
     runs-on: ubuntu-latest
+    environment: t75-evidence-signing
     timeout-minutes: 15
     steps:
       - name: Check out the requested candidate
@@ -146,9 +154,10 @@ jobs:
         env:
           CANDIDATE_REVISION: ${{ inputs.revision }}
           PUBLIC_KEY_REF_PATH: ${{ inputs.public_key_ref_path }}
-          VESTRA_T75_EVIDENCE_SIGNING_KEY_PKCS8_BASE64: ${{ secrets.VESTRA_T75_EVIDENCE_SIGNING_KEY_PKCS8_BASE64 }}
+          VESTRA_T75_EVIDENCE_SIGNING_KEY_PKCS8_BASE64: ${{ secrets.VESTRA_T75_EVIDENCE_KEY_PKCS8_BASE64 }}
         run: |
           case "$PUBLIC_KEY_REF_PATH" in
+            docs/qualification/trust/*/*) echo "a retired or nested public key reference cannot sign" >&2; exit 1 ;;
             docs/qualification/trust/*.json) ;;
             *) echo "public key reference must be a committed qualification trust file" >&2; exit 1 ;;
           esac

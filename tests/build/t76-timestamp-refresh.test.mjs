@@ -26,7 +26,8 @@ import {
   priorCandidateClosure,
   sha,
   testSigningKeyBase64,
-  writeMatchingReleaseAnchor
+  writeMatchingReleaseAnchor,
+  writeRetiredAnchorCopy
 } from "../helpers/t76-publication-fixture.mjs";
 import { FixtureDistributionSource } from "../helpers/tuf-update-fixture.mjs";
 
@@ -92,6 +93,7 @@ const publishLineage = async ({ timestampExpires } = {}) => {
   const rollback = await sharedPrior();
   const closure = await candidateClosure();
   const releaseAnchorPath = writeMatchingReleaseAnchor(closure.root, offline);
+  const timestampAnchorPath = writeMatchingReleaseAnchor(closure.root, online, TIMESTAMP_PURPOSE);
   const manifest = await publishT76Release({
     indexPath: closure.indexPath,
     targetsDirectory: closure.targetsDirectory,
@@ -106,7 +108,7 @@ const publishLineage = async ({ timestampExpires } = {}) => {
     ledgerPath: await writeLedger(closure.root, []),
     protectedEnvironment: { [OFFLINE]: offline, [ONLINE]: online },
     releaseAnchorPath,
-    timestampAnchorPath: writeMatchingReleaseAnchor(closure.root, online)
+    timestampAnchorPath
   });
   const release = {
     releaseId: manifest.releaseId,
@@ -121,7 +123,7 @@ const publishLineage = async ({ timestampExpires } = {}) => {
     online,
     release,
     releaseAnchorPath,
-    timestampAnchorPath: writeMatchingReleaseAnchor(closure.root, online, TIMESTAMP_PURPOSE)
+    timestampAnchorPath
   };
 };
 
@@ -412,12 +414,27 @@ test("fails closed on a missing or mis-purposed timestamp anchor", async () => {
     await refreshOptions(value, { timestampAnchorPath: join(value.closure.root, "no-such-anchor.json") }),
     "VES_T76_PUBLISH_ANCHOR_MISSING"
   );
-  // why: the publish-time anchor names the same key but is reviewed for the release role.
+  // why: this anchor names the online key but is reviewed for the release role.
   await refused(
     await refreshOptions(value, { timestampAnchorPath: writeMatchingReleaseAnchor(value.closure.root, value.online) }),
     "VES_T76_PUBLISH_ANCHOR_INVALID",
     /tuf-timestamp-snapshot/u
   );
+});
+
+test("a retired anchor for either role admits no refresh (#408)", async () => {
+  const value = await sharedLineage();
+  // why: the lineage's own anchors, retired: the keys still match, so only the
+  // retirement can be what refuses them.
+  for (const [option, path] of [
+    ["timestampAnchorPath", value.timestampAnchorPath],
+    ["releaseAnchorPath", value.releaseAnchorPath]
+  ])
+    await refused(
+      await refreshOptions(value, { [option]: writeRetiredAnchorCopy(path) }),
+      "VES_T76_PUBLISH_ANCHOR_RETIRED",
+      /retired/u
+    );
 });
 
 test("refuses an online window that is past or outlives the offline targets", async () => {
