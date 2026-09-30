@@ -129,7 +129,7 @@ test("win32: an oversize or unprintable value never reaches PowerShell", { timeo
   );
 });
 
-test("win32: the real runner kills a child at its timeout and says so", { timeout: 120_000 }, async (t) => {
+test("win32: the real runner kills a child at its timeout, and the backend reports a failure, not a prompt", { timeout: 120_000 }, async (t) => {
   if (!WIN32) return refusedElsewhere(t);
   const killed = await nodePowerShellRunner({
     args: ["-NoProfile", "-NonInteractive", "-Command", "-"],
@@ -142,7 +142,7 @@ test("win32: the real runner kills a child at its timeout and says so", { timeou
   });
   await assert.rejects(
     backend.has({ namespace: "verchestra/workspace_6e2f1a0b-3c4d-4e5f-8a9b-0c1d2e3f4a5b", logicalName: "anthropic-api-key" }),
-    { code: "VES_SECRET_KEYCHAIN_INTERACTION_REQUIRED" }
+    { code: "VES_SECRET_BACKEND_FAILURE" }
   );
 });
 

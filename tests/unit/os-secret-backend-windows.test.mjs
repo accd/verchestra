@@ -136,7 +136,7 @@ test("result lines map to presence, value, and outcome; errors are classified wi
   }
 });
 
-test("a timeout needs a person and a missing PowerShell is not configured", async () => {
+test("a timeout is a retryable failure, never a prompt, and a missing PowerShell is not configured", async () => {
   const timedOut = new WindowsCredentialManagerBackend({
     runner: async () => ({ exitCode: null, timedOut: true, stdout: "", stderr: "" })
   });
@@ -146,10 +146,10 @@ test("a timeout needs a person and a missing PowerShell is not configured", asyn
     }
   });
   for (const operation of ["has", "read", "delete"]) {
-    await assert.rejects(timedOut[operation](locator), { code: "VES_SECRET_KEYCHAIN_INTERACTION_REQUIRED" });
+    await assert.rejects(timedOut[operation](locator), { code: "VES_SECRET_BACKEND_FAILURE" });
     await assert.rejects(missing[operation](locator), { code: "VES_SECRET_STORE_UNAVAILABLE" });
   }
-  await assert.rejects(timedOut.store(locator, value()), { code: "VES_SECRET_KEYCHAIN_INTERACTION_REQUIRED" });
+  await assert.rejects(timedOut.store(locator, value()), { code: "VES_SECRET_BACKEND_FAILURE" });
   await assert.rejects(missing.store(locator, value()), { code: "VES_SECRET_STORE_UNAVAILABLE" });
 });
 

@@ -186,8 +186,10 @@ for (const [platform, { fake: makeFake, store }] of Object.entries(PLATFORMS)) {
       runner: async () => ({ exitCode: null, timedOut: true, stdout: "", stderr: "" })
     };
     const stuck = await composeDoctorSecretProbe({ controlRoot: root, platform, runner: locked.runner });
+    // why: a Secret Service child can be waiting on an unlock prompt; a
+    // Credential Manager call never prompts, so its timeout is a failure.
     await assert.rejects(stuck.secret.adapter.has(workspaceA, DOCTOR_CREDENTIAL_NAME), {
-      code: "VES_SECRET_KEYCHAIN_INTERACTION_REQUIRED"
+      code: platform === "linux" ? "VES_SECRET_KEYCHAIN_INTERACTION_REQUIRED" : "VES_SECRET_BACKEND_FAILURE"
     });
   });
 }
