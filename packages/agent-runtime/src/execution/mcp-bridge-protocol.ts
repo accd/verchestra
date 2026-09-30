@@ -88,6 +88,43 @@ export function textResult(text: string, isError = false): BridgeToolResult {
   return Object.freeze({ content: Object.freeze([Object.freeze({ type: "text" as const, text })]), isError });
 }
 
+class BoundedLineSplitter {
+  readonly #maximumBytes: number;
+  readonly #onLine: (line: string) => void;
+  #pending: Buffer[] = [];
+  #pendingBytes = 0;
+
+  constructor(maximumBytes: number, onLine: (line: string) => void) {
+    this.#maximumBytes = maximumBytes;
+    this.#onLine = onLine;
+  }
+
+  // invariant: returns false once a line exceeds the bound; the caller stops feeding it.
+  push(chunk: Buffer): boolean {
+    let data = chunk;
+    let newline = data.indexOf(0x0a);
+    while (newline >= 0) {
+      if (!this.#emit(data.subarray(0, newline))) return false;
+      data = data.subarray(newline + 1);
+      newline = data.indexOf(0x0a);
+    }
+    this.#pendingBytes += data.byteLength;
+    if (this.#pendingBytes > this.#maximumBytes) return false;
+    if (data.byteLength > 0) this.#pending.push(data);
+    return true;
+  }
+
+  #emit(tail: Buffer): boolean {
+    const line = Buffer.concat([...this.#pending, tail]);
+    this.#pending = [];
+    this.#pendingBytes = 0;
+    if (line.byteLength > this.#maximumBytes) return false;
+    const text = line.toString("utf8").replace(/\r$/u, "");
+    if (text.length > 0) this.#onLine(text);
+    return true;
+  }
+}
+
 // Splits a byte stream into newline-terminated UTF-8 lines, refusing any line
 // longer than the frame bound instead of buffering it.
 export function readBoundedLines(
@@ -96,34 +133,13 @@ export function readBoundedLines(
   onOverflow: () => void,
   maximumBytes = MAXIMUM_BRIDGE_FRAME_BYTES
 ): void {
-  let pending: Buffer[] = [];
-  let pendingBytes = 0;
+  const splitter = new BoundedLineSplitter(maximumBytes, onLine);
   let overflowed = false;
   stream.on("data", (chunk: Buffer | string) => {
     if (overflowed) return;
-    let data = typeof chunk === "string" ? Buffer.from(chunk, "utf8") : chunk;
-    let newline = data.indexOf(0x0a);
-    while (newline >= 0) {
-      const line = Buffer.concat([...pending, data.subarray(0, newline)]);
-      pending = [];
-      pendingBytes = 0;
-      if (line.byteLength > maximumBytes) {
-        overflowed = true;
-        onOverflow();
-        return;
-      }
-      const text = line.toString("utf8").replace(/\r$/u, "");
-      if (text.length > 0) onLine(text);
-      data = data.subarray(newline + 1);
-      newline = data.indexOf(0x0a);
-    }
-    pendingBytes += data.byteLength;
-    if (pendingBytes > maximumBytes) {
-      overflowed = true;
-      onOverflow();
-      return;
-    }
-    if (data.byteLength > 0) pending.push(data);
+    if (splitter.push(typeof chunk === "string" ? Buffer.from(chunk, "utf8") : chunk)) return;
+    overflowed = true;
+    onOverflow();
   });
 }
 

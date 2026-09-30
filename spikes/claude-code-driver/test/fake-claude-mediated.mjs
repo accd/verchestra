@@ -33,7 +33,7 @@ const server = mcpConfig.mcpServers.verchestra;
 const observation = {
   argv,
   cwd: process.cwd(),
-  environmentKeys: Object.keys(process.env).sort(),
+  environmentKeys: Object.keys(process.env).sort((left, right) => Number(left > right) - Number(left < right)),
   home: process.env.HOME,
   configDirectory: process.env.CLAUDE_CONFIG_DIR,
   credentialDigest: createHash("sha256").update(process.env.ANTHROPIC_API_KEY ?? "").digest("hex"),
