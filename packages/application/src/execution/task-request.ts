@@ -1,7 +1,7 @@
 import { canonicalizeJsonV2 } from "@verchestra/domain";
 
 import type { DeclaredBudgets } from "./budget-meter.ts";
-import { canonicalTaskGatePlan, TaskGateError, type TaskGateCommand } from "./gate-commit.ts";
+import { canonicalTaskGatePlan, TASK_GATE_COMMAND_FIELDS, TaskGateError, type TaskGateCommand } from "./gate-commit.ts";
 import type { GateRepairPolicy } from "./gate-repair.ts";
 import { modelPriceTable } from "./model-price-table.ts";
 import { normalizeTask, TaskExecutorError, type AtomicExecutionTask } from "./task-executor.ts";
@@ -25,7 +25,7 @@ const VERIFIER_MODEL = /^gpt-[a-z0-9][a-z0-9.-]{0,63}$/u;
 // hazard: bidirectional overrides and isolates (Trojan Source) make reviewed
 // text differ from what a model reads; C0 controls other than tab and newline
 // and DEL have no place in human instructions.
-const INSTRUCTIONS = /^[^\u0000-\u0008\u000B-\u001F\u007F‪-‮⁦-⁩]+$/u;
+const INSTRUCTIONS = /^[^\u0000-\u0008\u000B-\u001F\u007F\u202A-\u202E\u2066-\u2069]+$/u;
 const MAXIMUM_INSTRUCTION_CHARACTERS = 8192;
 const MAXIMUM_INSTRUCTION_BYTES = 16_384;
 const MAXIMUM_COST_USD = 1000;
@@ -95,21 +95,8 @@ function deepFreeze<T>(value: T, seen = new Set<object>()): T {
   return Object.freeze(value);
 }
 
-const GATE_FIELDS = [
-  "gateId",
-  "requirementIds",
-  "declaredCommand",
-  "commandRef",
-  "args",
-  "cwd",
-  "timeoutMs",
-  "outputLimitBytes",
-  "resultProtocol",
-  "minimumTests"
-] as const;
-
 function assertGateArguments(gate: unknown): void {
-  const args = exact(gate, "gate", "VES_TASK_REQUEST_GATES_INVALID", GATE_FIELDS)["args"];
+  const args = exact(gate, "gate", "VES_TASK_REQUEST_GATES_INVALID", TASK_GATE_COMMAND_FIELDS)["args"];
   if (!Array.isArray(args) || args.some((argument) => typeof argument !== "string" || !GATE_ARGUMENT.test(argument)))
     fail("VES_TASK_REQUEST_GATES_INVALID", "gate arguments must be bounded, relative, and inside the worktree");
 }

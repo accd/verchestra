@@ -1,5 +1,8 @@
+import type { Dirent } from "node:fs";
 import { lstat, open, readdir, realpath } from "node:fs/promises";
 import { join } from "node:path";
+
+import { codeUnitCompare } from "../context/code-unit-compare.ts";
 
 const LOGICAL_PATH = /^(?![A-Za-z]:)(?!\/)(?!.*\\)(?!.*(?:^|\/)\.\.(?:\/|$))[A-Za-z0-9._@+/-]+$/u;
 const MAXIMUM_READ_BYTES = 262_144;
@@ -21,11 +24,6 @@ export class BridgeToolError extends Error {
 
 function deny(code: string, message: string): never {
   throw new BridgeToolError(code, message);
-}
-
-function codeUnitCompare(left: string, right: string): number {
-  if (left < right) return -1;
-  return left > right ? 1 : 0;
 }
 
 function under(path: string, root: string): boolean {
@@ -54,6 +52,12 @@ export interface WorktreeReadViewOptions {
 
 // Read-only view of one worktree, limited to the approved read scope minus
 // protected paths. Every component is lstat-checked; links are never followed.
+function entryKind(entry: Dirent): "file" | "directory" | undefined {
+  if (entry.isDirectory()) return "directory";
+  if (entry.isFile()) return "file";
+  return undefined;
+}
+
 export class WorktreeReadView {
   readonly #root: string;
   readonly #scope: readonly string[];
@@ -108,7 +112,7 @@ export class WorktreeReadView {
       codeUnitCompare(left.name, right.name)
     )) {
       const child = logical === "." ? entry.name : `${logical}/${entry.name}`;
-      const kind = entry.isDirectory() ? "directory" : entry.isFile() ? "file" : undefined;
+      const kind = entryKind(entry);
       if (kind === undefined || !this.#visible(child, kind)) continue;
       if (entries.length === MAXIMUM_LIST_ENTRIES) {
         truncated = true;

@@ -195,23 +195,37 @@ export class McpToolBridgeController {
       socket,
       (line) => {
         const frame = parseJsonObject(line);
-        if (!authenticated) {
-          clearTimeout(timer);
-          if (frame === undefined || !this.#verifyHello(frame)) return this.#reject(socket);
-          authenticated = true;
-          this.#authenticated = true;
-          send(socket, { type: "ready", protocol: MCP_BRIDGE_CHANNEL_PROTOCOL });
+        if (authenticated) {
+          this.#enqueueCall(socket, frame);
           return;
         }
-        if (frame?.["type"] !== "call" || !Number.isSafeInteger(frame["id"])) return this.#reject(socket);
-        const id = frame["id"] as number;
-        this.#queue = this.#queue.then(async () => {
-          const result = await this.#call(frame["name"], frame["arguments"]);
-          if (!socket.destroyed) send(socket, { type: "result", id, ...result });
-        });
+        clearTimeout(timer);
+        authenticated = this.#authenticate(socket, frame);
       },
       () => this.#reject(socket)
     );
+  }
+
+  #authenticate(socket: Socket, frame: Record<string, unknown> | undefined): boolean {
+    if (frame === undefined || !this.#verifyHello(frame)) {
+      this.#reject(socket);
+      return false;
+    }
+    this.#authenticated = true;
+    send(socket, { type: "ready", protocol: MCP_BRIDGE_CHANNEL_PROTOCOL });
+    return true;
+  }
+
+  #enqueueCall(socket: Socket, frame: Record<string, unknown> | undefined): void {
+    if (frame?.["type"] !== "call" || !Number.isSafeInteger(frame["id"])) {
+      this.#reject(socket);
+      return;
+    }
+    const id = frame["id"] as number;
+    this.#queue = this.#queue.then(async () => {
+      const result = await this.#call(frame["name"], frame["arguments"]);
+      if (!socket.destroyed) send(socket, { type: "result", id, ...result });
+    });
   }
 
   #reject(socket: Socket): void {
@@ -389,6 +403,41 @@ function jsonRpcError(id: unknown, code: number, message: string) {
   return { jsonrpc: "2.0", id: id ?? null, error: { code, message } };
 }
 
+function relayControllerResult(line: string, pending: Map<number, unknown>, output: Writable): void {
+  const frame = parseJsonObject(line);
+  const id = frame?.["id"];
+  if (frame?.["type"] !== "result" || typeof id !== "number" || !pending.has(id)) return;
+  const rpcId = pending.get(id);
+  pending.delete(id);
+  send(output, {
+    jsonrpc: "2.0",
+    id: rpcId,
+    result: { content: frame["content"], isError: frame["isError"] === true }
+  });
+}
+
+function handleRelayMessage(
+  message: Record<string, unknown>,
+  output: Writable,
+  forward: (id: unknown, params: Record<string, unknown>) => void
+): void {
+  const id = message["id"];
+  const method = message["method"];
+  const params = (message["params"] ?? {}) as Record<string, unknown>;
+  if (message["jsonrpc"] !== "2.0" || typeof method !== "string") {
+    if (id !== undefined) send(output, jsonRpcError(id, -32600, "Invalid request"));
+    return;
+  }
+  // why: notifications (no id) such as notifications/initialized need no answer.
+  if (id === undefined) return;
+  if (method === "tools/call") {
+    forward(id, params);
+    return;
+  }
+  const result = localResult(method, params);
+  send(output, result === undefined ? jsonRpcError(id, -32601, "Method not found") : { jsonrpc: "2.0", id, result });
+}
+
 export async function runMcpToolBridgeRelay(options: RelayOptions): Promise<void> {
   const socket = await connectController(options.environment);
   const pending = new Map<number, unknown>();
@@ -399,18 +448,7 @@ export async function runMcpToolBridgeRelay(options: RelayOptions): Promise<void
   socket.on("error", () => socket.destroy());
   readBoundedLines(
     socket,
-    (line) => {
-      const frame = parseJsonObject(line);
-      const id = frame?.["id"];
-      if (frame?.["type"] !== "result" || typeof id !== "number" || !pending.has(id)) return;
-      const rpcId = pending.get(id);
-      pending.delete(id);
-      send(options.output, {
-        jsonrpc: "2.0",
-        id: rpcId,
-        result: { content: frame["content"], isError: frame["isError"] === true }
-      });
-    },
+    (line) => relayControllerResult(line, pending, options.output),
     () => socket.destroy()
   );
   const forward = (id: unknown, params: Record<string, unknown>) => {
@@ -418,23 +456,7 @@ export async function runMcpToolBridgeRelay(options: RelayOptions): Promise<void
     pending.set(nextCall, id);
     send(socket, { type: "call", id: nextCall, name: params["name"], arguments: params["arguments"] ?? {} });
   };
-  const handle = (message: Record<string, unknown>) => {
-    const id = message["id"];
-    const method = message["method"];
-    const params = (message["params"] ?? {}) as Record<string, unknown>;
-    if (message["jsonrpc"] !== "2.0" || typeof method !== "string") {
-      if (id !== undefined) send(options.output, jsonRpcError(id, -32600, "Invalid request"));
-      return;
-    }
-    // why: notifications (no id) such as notifications/initialized need no answer.
-    if (id === undefined) return;
-    if (method === "tools/call") return forward(id, params);
-    const result = localResult(method, params);
-    send(
-      options.output,
-      result === undefined ? jsonRpcError(id, -32601, "Method not found") : { jsonrpc: "2.0", id, result }
-    );
-  };
+  const handle = (message: Record<string, unknown>) => handleRelayMessage(message, options.output, forward);
   await new Promise<void>((resolve) => {
     readBoundedLines(
       options.input,
