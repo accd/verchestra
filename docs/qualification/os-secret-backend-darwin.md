@@ -1,7 +1,7 @@
 # macOS Keychain Credential Backend Qualification
 
 **Scope:** issue #379, decision AD-034
-**Status:** Candidate. The contract and the command protocol are proven by gate tests. Real-keychain evidence is **pending** (see "Real-keychain evidence"). Independent review is pending.
+**Status:** Qualified on darwin (one owner machine). The contract and the command protocol are proven by gate tests. Real-keychain evidence is **recorded** (see "Real-keychain evidence"). Independent review is pending.
 **Adapter:** `apple-keychain-credential` (`QualifiedOsCredentialAdapter` over `DarwinKeychainBackend`)
 
 ## Qualification boundary
@@ -22,7 +22,7 @@ and deep doctor's secret-presence check stays `blocked`.
 
 | Control | Meaning | Proof |
 | --- | --- | --- |
-| `keychain` | The value is a generic-password item in a macOS keychain file, encrypted at rest and unlocked with the user's session. | Gate: the command protocol against a fake runner. Real round trip: `pnpm qualify:keychain` (pending) |
+| `keychain` | The value is a generic-password item in a macOS keychain file, encrypted at rest and unlocked with the user's session. | Gate: the command protocol against a fake runner. Real round trip: `pnpm qualify:keychain` (recorded) |
 | `user-scope` | Items live in the invoking user's keychain. By default that is the login keychain. `--keychain <path>` selects a keychain file, which must be owned by the invoking user. | `tests/unit/os-secret-backend-darwin.test.mjs` keychain-file checks |
 | `workspace-namespace` | The item's service is `verchestra/<workspaceId>` and its account is the logical name. One Workspace's name never resolves another Workspace's credential. | Workspace-binding cases in the security test and in `tests/integration/doctor-secret-backend.test.mjs` |
 | `not-in-argv` | The value never appears in any process argv or environment. A write sends the hex-encoded value over stdin to `security -i`. A read takes it from the child's captured stderr. The child environment is an allowlist (`PATH`, `HOME`, `USER`, `LOGNAME`). | Security test: argv, environment, error, and output assertions |
@@ -105,7 +105,7 @@ any such spawn throw.
 - `tests/e2e/secret-cli-e2e.test.mjs`: the `vestra` binary as a child process,
   for every refusal that happens before a keychain is consulted.
 
-### Real-keychain evidence — PENDING
+### Real-keychain evidence — RECORDED
 
 The real round trip is the standalone suite `spikes/os-secret-store/test/`.
 It runs set, has, read, rotate, and delete through `/usr/bin/security`, the
@@ -119,13 +119,24 @@ items the case left. The suite never reads or writes the login keychain, the
 search list, or the default keychain. On a platform other than darwin it
 asserts that the store is refused. It does not skip.
 
-It has **not** passed yet on a recorded revision. An automated session could
-not complete disposable-keychain setup while the login keychain was locked.
-The owner runs it once from an unlocked macOS desktop session:
+Recorded run (2026-09-30):
 
-```bash
-corepack pnpm qualify:keychain
-```
+- Revision: `4dde7e9` (`origin/main`), macOS 26.6.2 on arm64, Node 24.14.0,
+  from an unlocked desktop session.
+- Command: `corepack pnpm qualify:keychain`.
+- Result: 8 tests, 8 passed, 0 failed, 0 skipped, 0 todo:
+  - set, has, read, update, and delete round trip in a disposable keychain;
+  - an unusable keychain path is refused before `security` is ever spawned;
+  - an oversize value never reaches `security`;
+  - the real runner kills a child at its timeout and reports it;
+  - the `set`, `status`, `doctor`, and `delete` journey against a disposable
+    keychain;
+  - an oversize or empty value is refused and never echoed;
+  - an unusable `--keychain` path is refused before any keychain command;
+  - the secret commands refuse an uninitialized directory and an invalid name.
+- No keychain dialog appeared. The output of `security list-keychains -d user`
+  was byte-identical before and after the run.
 
-Until that run is recorded here, the real-keychain round trip is unproven, and
-nothing in this report claims it.
+This proves the darwin credential contract on one owner machine. Linux and
+Windows remain unqualified. Independent review of this report is still
+pending.
