@@ -6,7 +6,7 @@ status: verification
 branch: feat/235-out-of-process-probe-host
 baseRevision: aa6cf42b0c6e26cdbe3a23ce474ca4ea39a47a94
 lastCompletedTask: T2
-nextTask: Independent review of AD-034 and the threat model; on ratification, start T3 (composition root wiring and grant issuance).
+nextTask: Independent review of AD-037 and the threat model; on ratification, start T3 (composition root wiring and grant issuance).
 lastGate: pnpm gate:security PASS (2026-09-29)
 updatedAt: 2026-09-29T01:00:00Z
 ---
@@ -26,7 +26,7 @@ The gate adapter's process-group terminator was extracted unchanged into
 
 ## Open decisions for the owner
 
-1. Ratify AD-034, in particular that an admitted worker keeps the host user's
+1. Ratify AD-037, in particular that an admitted worker keeps the host user's
    filesystem and network authority under `process-contained` (see
    `threat-model.md`, residual risks).
 2. Where controller grants for workspace workers are issued and recorded (T3).

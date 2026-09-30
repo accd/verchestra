@@ -1,4 +1,4 @@
-# AD-034 — Workspace probe workers run out of process under `process-contained` supervision (#235)
+# AD-037 — Workspace probe workers run out of process under `process-contained` supervision (#235)
 
 - **Status:** proposed (the owner ratifies by reviewing the pull request that
   carries this feature). Recorded in `.specs/STATE.md`.
