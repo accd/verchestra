@@ -72,10 +72,14 @@ async function cedarEngine(): Promise<CedarEnginePort> {
   return engine;
 }
 
+function codeUnitCompare(left: string, right: string): number {
+  return Number(left > right) - Number(left < right);
+}
+
 function forbidLayer(stored: unknown): Readonly<Record<string, string>> {
   const row = objectRow(stored, "task authority policy");
   const forbid = objectRow(row["forbid"], "task authority policy forbid");
-  if (row["schemaVersion"] !== 1 || Object.keys(row).sort().join(",") !== "forbid,schemaVersion")
+  if (row["schemaVersion"] !== 1 || Object.keys(row).sort(codeUnitCompare).join(",") !== "forbid,schemaVersion")
     throw taskError("VES_TASK_FAILED", { reason: "VES_POLICY_VIEW_INVALID" }, "Task authority policy is invalid");
   for (const value of Object.values(forbid))
     if (typeof value !== "string")

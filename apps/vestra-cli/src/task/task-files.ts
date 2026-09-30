@@ -52,6 +52,10 @@ export async function writeSealedRecord(path: string, record: unknown): Promise<
   await writeJsonAtomic(path, { record, digest: canonicalDigest(record) });
 }
 
+function codeUnitCompare(left: string, right: string): number {
+  return Number(left > right) - Number(left < right);
+}
+
 export async function readSealedRecord(path: string, label: string): Promise<unknown> {
   const stored = await readJsonFile(path, label);
   if (stored === undefined) return undefined;
@@ -60,7 +64,7 @@ export async function readSealedRecord(path: string, label: string): Promise<unk
     stored === null ||
     typeof stored !== "object" ||
     Array.isArray(stored) ||
-    Object.keys(stored).sort().join(",") !== "digest,record"
+    Object.keys(stored).sort(codeUnitCompare).join(",") !== "digest,record"
   )
     throw stateInvalid("VES_TASK_STATE_MALFORMED", `${label} has an unexpected shape`);
   let computed: string;

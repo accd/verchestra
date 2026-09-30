@@ -90,6 +90,21 @@ export function taskRequest(revision, overrides = {}) {
 
 // why: every journey starts from the same committed repository; the returned
 // launcher runs `vestra` there with the fixture's environment.
+export function approveArguments(fixture, plan) {
+  return [
+    "task",
+    "approve",
+    "--run-id",
+    plan.runId,
+    "--binding-digest",
+    plan.bindingDigest,
+    "--confirm-stdin",
+    ...fixture.keychainArgs,
+    "--output",
+    "json"
+  ];
+}
+
 export async function taskFixture(options = {}) {
   const root = await mkdtemp(join(tmpdir(), "vestra-task-e2e-"));
   roots.push(root);
