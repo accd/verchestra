@@ -9,11 +9,19 @@ relabel that posture as independent custody. It does not claim promotion
 readiness. It does not change the signed hold in
 `docs/qualification/release-decision-1.0.0.md`.
 
+**Progress (2026-09-30).** The technical part of O2 and the O3 decision are done:
+the signing keys were rotated into protected GitHub environments, and the old
+keys are retired (section 9). The owner still has to delete the retired
+repository-level secrets. Custodian #2 (O1) does not exist yet, so the
+environment reviewer is the owner and the posture is still single-operator
+custody (RR10).
+
 This is owner-led governance. The repository and its agents cannot appoint an
-accountable human, read or provision a key, change the `Protect main` ruleset, or
-configure a GitHub environment, npm package, or object-store account. This
-document gets those actions ready. Only the owner and the second custodian can
-take them.
+accountable human, read a key, change the `Protect main` ruleset, or configure an
+npm package or object-store account. An agent configures a GitHub environment or
+provisions a key only under the owner's explicit authorization, as for O2/O3 on
+2026-09-30, and never reads a private key back. This document gets the remaining
+actions ready. Only the owner and the second custodian can take them.
 
 Scope boundaries. The timestamp/snapshot refresh routine is implemented under
 [#382](https://github.com/accd/verchestra/issues/382). The release lifecycle
@@ -51,10 +59,11 @@ These do **not** count as a two-person control:
 - **Two admins.** Two accounts that can each act alone are two single-person
   controls. They improve availability, not separation.
 
-## 2. Current posture (observed 2026-09-29, read-only)
+## 2. Current posture (observed 2026-09-29, read-only; signing rows updated 2026-09-30)
 
 These are sanitized facts. Each one comes from a read-only query listed in
-section 9.
+section 9. The signing-secret and environment rows reflect the O2/O3 change of
+2026-09-30.
 
 | Surface | Observed state |
 | --- | --- |
@@ -62,8 +71,8 @@ section 9.
 | Other collaborators | Two, both `write`: `MiguelCorre` and `brunomjanuario`, the #18 reviewers. `docs/merge-governance.md` still says "one collaborator"; that sentence is stale. |
 | `.github/CODEOWNERS` | One owner (`@accd`) on every path. |
 | `Protect main` bypass | One actor, `Repository admin`, `bypass_mode: always`. |
-| Release signing secrets | `VESTRA_RELEASE_SIGNING_KEY_PKCS8_BASE64` (offline root/targets role) and `VESTRA_T75_EVIDENCE_SIGNING_KEY_PKCS8_BASE64` (evidence) are **repository-level** secrets. The online key `VESTRA_RELEASE_TIMESTAMP_SIGNING_KEY_PKCS8_BASE64` is not provisioned. Its anchor `docs/qualification/trust/release-timestamp-snapshot-public-key.json` is not committed. |
-| GitHub environments | `github-pages` (branch policy only) and `copilot` (no rules). No environment protects a signing or publication job. Both report `can_admins_bypass: true`. |
+| Release signing secrets | Rotated on 2026-09-30 (O3). The new keys exist only as **environment** secrets: `VESTRA_TUF_OFFLINE_KEY_PKCS8_BASE64` (offline root/targets) and `VESTRA_TUF_ONLINE_KEY_PKCS8_BASE64` (online timestamp/snapshot) in `tuf-release-signing`, and `VESTRA_T75_EVIDENCE_KEY_PKCS8_BASE64` in `t75-evidence-signing`. The three retired keys are still **repository-level** secrets under their old names (`VESTRA_RELEASE_SIGNING_KEY_PKCS8_BASE64`, `VESTRA_RELEASE_TIMESTAMP_SIGNING_KEY_PKCS8_BASE64`, `VESTRA_T75_EVIDENCE_SIGNING_KEY_PKCS8_BASE64`) until the owner deletes them. No workflow names them (`tests/agent-readiness/signing-environments.test.mjs`). |
+| GitHub environments | `tuf-release-signing` (id `23152805342`) and `t75-evidence-signing` (id `23152805929`): required reviewer `accd`, `prevent_self_review: false`, `can_admins_bypass: false`, deployment branch policy `main` only. `github-pages` (branch policy only) and `copilot` (no rules) are unchanged and report `can_admins_bypass: true`. |
 | Release-decision key | Owner-provisioned and owner-held outside GitHub. Its public half is `docs/qualification/trust/release-decision-public-key.json`. |
 | npm package `verchestra` | One maintainer (`accd`). The published versions carry no provenance attestation. Publication is a manual `npm publish` under the owner's 2FA (`t76-validation.md`, "Registry publication"). |
 | Object store | One Cloudflare R2 bucket behind a managed public base URL. Upload is a manual step by the owner (`t76-validation.md`, "Publication"). |
@@ -71,16 +80,18 @@ section 9.
 **Correction to the single-operator description.** GitHub documents that "any
 user with write access to your repository has read access to all secrets
 configured in your repository". A write collaborator can push a branch whose
-workflow reads a repository secret. So the offline release key and the evidence
-key are **held** by one operator but **reachable** by three GitHub identities.
-Nothing suggests they were ever reached. The exposure is a capability, and it
-must be removed before custody is widened (section 9, step O2). Adding a second
-custodian as a write collaborator does not create separation. Without that step,
-it only widens this capability.
+workflow reads a repository secret. So until 2026-09-30 the release keys and the
+evidence key were **held** by one operator but **reachable** by three GitHub
+identities. Nothing suggests they were ever reached. The exposure was a
+capability. O2 removes it for the new keys: an environment secret reaches only a
+job that runs from `main` after the environment's reviewer approves it. The
+retired keys stay reachable until their repository copies are deleted (RR4,
+RR11). Adding a second custodian as a write collaborator does not create
+separation by itself.
 
 **"Offline" is a role name, not a storage property.** The root/targets key is
 called offline because it signs rarely-changing roles. Today it lives in a GitHub
-repository secret and is used by a hosted runner.
+environment secret and is used by a hosted runner.
 
 ## 3. Responsibilities
 
@@ -91,17 +102,19 @@ choose them.
 
 ### 3.1 Offline root and targets signing
 
-- **Current holder.** The owner alone, as the `VESTRA_RELEASE_SIGNING_KEY_PKCS8_BASE64`
-  repository secret. It is used by `.github/workflows/t76-publish-release.yml`
-  on manual dispatch. The script binds it to
-  `docs/qualification/trust/verchestra-release-public-key.json` before any output
-  (`VES_T76_PUBLISH_KEY_MISMATCH` otherwise).
-- **Target model.** The key moves to an environment secret in a protected
-  environment (proposed name `release-signing`):
-  - required reviewer: custodian #2;
+- **Current holder.** The owner alone, as the `VESTRA_TUF_OFFLINE_KEY_PKCS8_BASE64`
+  secret of the `tuf-release-signing` environment (reviewer `accd`, admin
+  bypass off, `main` only). It is used by `.github/workflows/t76-publish-release.yml`
+  on manual dispatch, after the owner approves the run. The script binds it to
+  `docs/qualification/trust/verchestra-release-public-key.json`, which must be
+  reviewed for `tuf-release-root` and must not be retired, before any output
+  (`VES_T76_PUBLISH_KEY_MISMATCH`, `VES_T76_PUBLISH_ANCHOR_INVALID`, or
+  `VES_T76_PUBLISH_ANCHOR_RETIRED` otherwise).
+- **Target model.** The key stays in `tuf-release-signing`, with these changes:
+  - required reviewer: custodian #2 instead of the owner;
   - `Prevent self-review` on;
-  - `Allow administrators to bypass configured protection rules` off;
-  - deployment branch policy: `main` only.
+  - `Allow administrators to bypass configured protection rules` off (already);
+  - deployment branch policy: `main` only (already).
   The owner dispatches, and custodian #2 approves before the job can read the
   key. For the root role specifically, the target is a 2-of-2 TUF threshold with
   one key per custodian, signed **detached** (each custodian signs the canonical
@@ -116,13 +129,20 @@ choose them.
 
 ### 3.2 Online timestamp and snapshot refresh (#382)
 
-- **Current holder.** None. The online key is not provisioned, and the refresh
-  routine does not exist (#382). Published releases are single-key roots.
-- **Target model.** The owner provisions the online key (tuf-role-separation
-  handoff, steps 1-4). Custodian #2 reviews and approves the pull request that
-  commits its anchor. The key lives in an environment secret (proposed
-  `tuf-online`) with branch policy `main` only and admin bypass off. It carries
-  no required reviewer, because the refresh must run unattended.
+- **Current holder.** The owner, as the `VESTRA_TUF_ONLINE_KEY_PKCS8_BASE64`
+  secret of `tuf-release-signing`. The refresh routine exists
+  (`t76-refresh-timestamp.yml`, #382) and binds the same environment, so each
+  refresh needs the reviewer's approval. The published v1 and `.2` releases are
+  single-key roots and never use it.
+- **Why it shares the offline key's environment.** The publish job signs all four
+  roles in one job, and a job binds exactly one environment. A separate
+  unattended environment (the earlier `tuf-online` proposal) would need the
+  online key twice or a split publish job. The refresh is manually dispatched
+  today, so the approval costs one step, not an unattended routine (RR14).
+- **Target model.** Custodian #2 approves the pull request that commits any new
+  online anchor. If the refresh must later run unattended, the online key moves
+  to its own environment with branch policy `main` only, admin bypass off, and no
+  required reviewer, and the publish job is split to match.
 - **Independent control.** Cryptographic role separation: the online key can
   sign only timestamp and snapshot. It cannot change targets or root. The short
   online expiry bounds how long misuse lasts. As a detective control, custodian #2
@@ -191,11 +211,12 @@ choose them.
 
 ### 3.6 Qualification-evidence signing (T75)
 
-- **Current holder.** The owner, as the `VESTRA_T75_EVIDENCE_SIGNING_KEY_PKCS8_BASE64`
-  repository secret. It is used by `.github/workflows/t75-evidence-signing.yml`.
-- **Target model.** Same as 3.1, in its own environment (proposed
-  `evidence-signing`) with custodian #2 as required reviewer. The key stays
-  pairwise distinct from every release identity
+- **Current holder.** The owner, as the `VESTRA_T75_EVIDENCE_KEY_PKCS8_BASE64`
+  secret of the `t75-evidence-signing` environment (reviewer `accd`, admin
+  bypass off, `main` only). It is used by `.github/workflows/t75-evidence-signing.yml`.
+- **Target model.** Same as 3.1, in `t75-evidence-signing`, with custodian #2 as
+  required reviewer and self-review prevented. The key stays pairwise distinct
+  from every release identity, active or retired
   (`tests/security/trust-key-separation.test.mjs`).
 - **Independent control.** Environment approval by custodian #2.
 
@@ -231,8 +252,8 @@ choose them.
 | Release effect | Who can cause it alone today | Target control | Remaining single-person path |
 | --- | --- | --- | --- |
 | A new trust root reaches new installs | Owner (npm publish) | Trusted-publishing environment approved by custodian #2; provenance checked by custodian #2 | Interactive `npm publish` by any npm maintainer |
-| Existing installs accept new release content | Owner, or anyone who can read the repository secret | Environment approval by custodian #2; later a detached 2-of-2 targets/root threshold | Admin re-enables bypass or edits reviewers (until the threshold exists) |
-| Clients see fresh or frozen metadata | Nobody yet (no online key) | Role-separated online key; short expiry; detective review of refresh runs | Online-key holder can freeze clients until expiry |
+| Existing installs accept new release content | Owner (self-approved environment run). For v1/`.2` installs only, also anyone holding the retired offline key who can serve their base URL (RR11) | Environment approval by custodian #2; later a detached 2-of-2 targets/root threshold | Admin re-enables bypass or edits reviewers (until the threshold exists) |
+| Clients see fresh or frozen metadata | Owner (online key, self-approved environment run) | Role-separated online key; short expiry; detective review of refresh runs | Online-key holder can freeze clients until expiry |
 | Served bytes change or disappear | Owner (R2 account) | Scoped short-lived token; bucket locks; TUF rejects unsigned bytes | Account owner removes locks or deletes the bucket (availability only) |
 | A release decision is recorded | Owner (sign + bypass merge) | Independent reviews + approval of the `reviewedIn` pull request | `Repository admin` bypass while it exists |
 | Code or governance reaches `main` | Owner (bypass) | Custodian #2 as second code owner; bypass removed or narrowed | Admin edits the ruleset or CODEOWNERS |
@@ -256,10 +277,11 @@ model must accept each one consciously, not inherit it.
 - **RR3. npm has no two-person publish.** Every npm maintainer can publish alone
   with 2FA (3.3). Because npm delivers the bootstrap root, this path sits above
   every TUF control. Mitigation is provenance plus independent monitoring.
-- **RR4. Custody of the release keys is currently reachable by write
-  collaborators** (section 2). It stays reachable until step O2 moves the keys
-  into protected environments and deletes the repository-level copies. Whether
-  to also rotate is an owner decision (O3).
+- **RR4. The retired keys are still reachable by write collaborators** (section
+  2). O2 moved the signing keys into protected environments, and O3 rotated
+  them, so the reachable values are retired: no signing path admits their
+  anchors. The repository-level copies stay readable through a branch workflow
+  until the owner deletes them (section 9, O2 step 4).
 - **RR5. The threshold is in-process.** Until detached signing exists (tasks
   T6), a `k`-of-`n` role threshold does not separate people. Do not describe a
   threshold root as a two-person control before then.
@@ -279,6 +301,37 @@ model must accept each one consciously, not inherit it.
   ratifies this model or signs as a decision reviewer, they review the controls
   they operate. The ratifying reviewer should be a different person
   (section 9, O1).
+- **RR10. The environment reviewer is the dispatcher.** With one maintainer, the
+  required reviewer of both signing environments is the owner, and
+  `prevent_self_review` is `false`, or no run could ever start. The gate still
+  restricts every signing run to `main`, records an explicit approval, and keeps
+  the keys away from branch workflows. It is not a two-person control. That
+  needs custodian #2 as the reviewer with self-review prevented (O1, O4).
+- **RR11. v1 and `.2` installs still trust the retired offline key.** Their
+  launchers pin a single-key root that names it, and a pinned root is never
+  replaced in place (RR6). Anyone holding that key who can also serve the v1 or
+  `.2` base URL could offer those installs new signed metadata. Serving needs
+  the R2 account (3.4). Mitigations: delete the repository copy, move users to
+  the `.3` lineage, and let the owner decide on `npm deprecate` for v1 and `.2`
+  once `.3` is live.
+- **RR12. The retired evidence key can still produce backdated evidence.** A
+  retired anchor verifies any envelope whose asserted `issuedAt` precedes its
+  `validUntil`. `issuedAt` is chosen by the signer, so a holder of the exposed
+  key could forge an envelope dated before the retirement. The committed T75
+  evidence is pinned by `tests/security/t75-evidence-attestation.test.mjs`,
+  which verifies those exact bytes. Treat any other envelope under
+  `t75-evidence-20260825` as untrusted.
+- **RR13. The approval gates the dispatch, not the inputs.** The environment
+  admits only runs dispatched from `main`, but the publish and evidence jobs
+  check out and run the requested candidate revision. The reviewer must check
+  the revision and run ids before approving. A candidate cut before this change
+  carries the retired anchors, which do not name the new keys, so its run fails
+  closed with `VES_T76_PUBLISH_KEY_MISMATCH` or a public-reference mismatch.
+- **RR14. The online key shares the reviewer-gated environment** (3.2). Each
+  refresh waits for the reviewer (RR8). The refresh job could also reach the
+  offline key through the environment, although its workflow never names it.
+  `tests/agent-readiness/signing-environments.test.mjs` and the refresh
+  script's `VES_T76_REFRESH_OFFLINE_KEY_PRESENT` guard keep it that way.
 
 ## 6. What does not change
 
@@ -341,6 +394,35 @@ it covers release effects as well as merges.
   anchor through an independently approved pull request. Past signatures stay
   verifiable against the old anchor at their recorded revision. Do not rewrite
   history.
+- **Retiring an anchor (every role).** A rotation moves the old anchor to
+  `docs/qualification/trust/retired/<keyId>.json`. It keeps its public key,
+  key id, and purpose, and gains `validUntil`, the instant it stopped signing.
+  The active anchor keeps the role's file name and gets the new key and a new
+  key id. The tooling enforces the split:
+  - `scripts/t76-publish-release.mjs` and `scripts/t76-refresh-timestamp.mjs`
+    refuse any anchor that carries `validUntil`, for either role, with
+    `VES_T76_PUBLISH_ANCHOR_RETIRED`, whatever path the caller passes;
+  - `scripts/t75-evidence-attestation.mjs` refuses to sign under a reference
+    whose window has closed, both at the asserted `issuedAt` and on the wall
+    clock. It verifies an envelope only if its `issuedAt` falls inside the
+    reference's window;
+  - `t75-evidence-signing.yml` refuses a nested reference path, and the release
+    decision verifier accepts only a direct child of `docs/qualification/trust/`;
+  - `tests/security/trust-key-separation.test.mjs` requires every retired
+    anchor to be named by its key id, to carry an exact retirement instant, and
+    to have an active successor for its role. No key material or key id may
+    repeat across active and retired anchors.
+  The 2026-09-30 rotation retired `verchestra-release-20260825`,
+  `verchestra-release-timestamp-20260930`, and `t75-evidence-20260825`. The
+  committed T75 evidence at `be92397` still verifies:
+
+  ```bash
+  node scripts/t75-evidence-attestation.mjs verify \
+    --index .specs/features/platform-qualification-matrix/signed-evidence-index.json \
+    --envelope .specs/features/platform-qualification-matrix/qualification-evidence-index.dsse.json \
+    --public-key-ref docs/qualification/trust/retired/t75-evidence-20260825.json \
+    --revision be92397ca0a5caaf7ff8b70dad23659b09899d7d
+  ```
 - **npm and R2 credentials.** Revoke immediately, then re-create with the scopes
   in 3.3 and 3.4.
 
@@ -417,6 +499,8 @@ echo "D3"; publish --release-anchor "$REHEARSAL/offline-anchor.json"
 echo "D4"; VESTRA_RELEASE_TIMESTAMP_SIGNING_KEY_PKCS8_BASE64="$OFFLINE" publish \
   --release-anchor "$REHEARSAL/offline-anchor.json" --timestamp-anchor "$REHEARSAL/offline-anchor.json"
 echo "D5"; publish --release-anchor "$REHEARSAL/offline-anchor.json" --timestamp-anchor "$REHEARSAL/online-anchor.json"
+echo "D6"; publish --release-anchor docs/qualification/trust/retired/verchestra-release-20260825.json \
+  --timestamp-anchor "$REHEARSAL/online-anchor.json"
 test ! -e "$REHEARSAL/out" && echo "no publication directory was created"
 rm -rf "$REHEARSAL"; unset OFFLINE ONLINE VESTRA_RELEASE_SIGNING_KEY_PKCS8_BASE64 VESTRA_RELEASE_TIMESTAMP_SIGNING_KEY_PKCS8_BASE64
 ```
@@ -425,9 +509,10 @@ rm -rf "$REHEARSAL"; unset OFFLINE ONLINE VESTRA_RELEASE_SIGNING_KEY_PKCS8_BASE6
 | --- | --- | --- |
 | D1 | The key-holding custodian is absent: no key in the job | `VES_T76_PUBLISH_SIGNING_KEY_MISSING` |
 | D2 | A key the reviewed release anchor does not name (a non-custodian key) | `VES_T76_PUBLISH_KEY_MISMATCH` |
-| D3 | The online role has a key, but no committed anchor | `VES_T76_PUBLISH_ANCHOR_MISSING` while `release-timestamp-snapshot-public-key.json` is absent. `VES_T76_PUBLISH_KEY_MISMATCH` once the owner commits it. |
-| D4 | One key presented for both roles | `VES_T76_PUBLISH_KEY_MISMATCH` (keys must differ) |
+| D3 | The online role has a key the committed anchor does not name | `VES_T76_PUBLISH_KEY_MISMATCH` (it was `VES_T76_PUBLISH_ANCHOR_MISSING` before the anchor was committed) |
+| D4 | One key presented for both roles, through the offline anchor | `VES_T76_PUBLISH_ANCHOR_INVALID` (the offline anchor is not reviewed for the online role) |
 | D5 | Both roles held and anchored, with absent disposable inputs | Custody checks pass; stops at `VES_T76_PUBLISH_INPUT_MISSING` |
+| D6 | A retired anchor offered for the offline role | `VES_T76_PUBLISH_ANCHOR_RETIRED` |
 | all | No partial output | `no publication directory was created` |
 
 Positive controls, using throwaway keys only:
@@ -538,37 +623,64 @@ the audit log. The ratifying reviewer should be a different person (RR9).
 Record both on #408.
 
 **O2. Move signing secrets out of repository scope. Do this before any access
-changes.**
+changes.** Steps 1-3 were done on 2026-09-30; step 4 is the owner's.
 
-1. Merge a reviewed workflow change that adds `environment:` to the signing jobs
-   (tasks T5). This does not break anything: environment jobs still see
-   repository secrets until they are deleted.
-2. Create `release-signing` and `evidence-signing` with custodian #2 as required
-   reviewer, self-review prevented, admin bypass off, and `main` only.
-3. Re-enter each private key as an environment secret from the owner's own
-   custody.
-4. Delete the repository-level copies.
+1. Done. The signing jobs declare `environment:` and read environment secrets
+   whose names differ from the repository-level ones, so no job can fall back to
+   a repository secret (tasks T5, `tests/agent-readiness/signing-environments.test.mjs`).
+2. Done, with the owner as reviewer until custodian #2 exists (RR10). The
+   environments are `tuf-release-signing` (offline and online keys) and
+   `t75-evidence-signing`. Both have required reviewer `accd`,
+   `prevent_self_review: false`, admin bypass off, and `main` only. When
+   custodian #2 exists, replace the reviewer and set `prevent_self_review: true`.
+3. Done, as a rotation (O3). The keys were generated in memory and piped
+   straight into the environment secrets. No private key was printed or written.
+4. **Owner, after the change is merged and `.3` is re-signed from `main`:**
+   delete the three repository-level secrets
+   (`gh secret delete <name> --repo accd/verchestra` for each retired name in
+   section 2).
 
 ```bash
 gh api repos/accd/verchestra/actions/secrets --jq '[.secrets[].name]'
-gh api repos/accd/verchestra/environments/release-signing --jq '{name, can_admins_bypass, rules: [.protection_rules[] | {type, prevent_self_review, reviewers: [.reviewers[]?.reviewer.login]}]}'
-gh api repos/accd/verchestra/environments/release-signing/secrets --jq '[.secrets[].name]'
-gh api repos/accd/verchestra/environments/release-signing/deployment-branch-policies --jq '[.branch_policies[].name]'
+gh api repos/accd/verchestra/environments/tuf-release-signing --jq '{name, can_admins_bypass, rules: [.protection_rules[] | {type, prevent_self_review, reviewers: [.reviewers[]?.reviewer.login]}]}'
+gh api repos/accd/verchestra/environments/tuf-release-signing/secrets --jq '[.secrets[].name]'
+gh api repos/accd/verchestra/environments/tuf-release-signing/deployment-branch-policies --jq '[.branch_policies[].name]'
 ```
 
 Expected output:
 
-- The repository-level list contains neither signing key name.
+- The repository-level list contains no signing key name. Until step 4 it still
+  lists the three retired names.
 - `can_admins_bypass` is `false`.
-- A `required_reviewers` rule shows `prevent_self_review: true` and custodian #2.
+- A `required_reviewers` rule names the reviewer: `accd` with
+  `prevent_self_review: false` today, custodian #2 with
+  `prevent_self_review: true` in the target model.
+- The environment secret list is `["VESTRA_TUF_OFFLINE_KEY_PKCS8_BASE64","VESTRA_TUF_ONLINE_KEY_PKCS8_BASE64"]`.
 - The branch policy list is `["main"]`.
 
-Repeat the checks for `evidence-signing`.
+Repeat the checks for `t75-evidence-signing`, whose secret list is
+`["VESTRA_T75_EVIDENCE_KEY_PKCS8_BASE64"]`.
 
-**O3. Decide whether to rotate the reachable keys.** RR4 describes the exposure.
-The `.3` lineage already needs a new root (runbook finding 2), so generating a
-fresh offline key for it under the new custody costs little now. Record the
-decision on #408.
+A run dispatched from any branch other than `main` must fail before its first
+step with `Branch "<name>" is not allowed to deploy to <environment> due to
+environment protection rules`, and no approval is requested. This was observed
+on 2026-09-30 for all three signing workflows
+(`.specs/features/release-custody/validation.md`).
+
+**O3. Decide whether to rotate the reachable keys.** Decided and done on
+2026-09-30: all three reachable keys were rotated. The `.3` lineage needed a new
+root anyway (runbook finding 2), so the new offline and online keys cost no
+extra lineage break. The committed T75 evidence still verifies under its
+retired anchor (7.4).
+
+| Role | Retired key id | Active key id | Active key SHA-256 (SPKI DER) |
+| --- | --- | --- | --- |
+| Offline root/targets | `verchestra-release-20260825` | `verchestra-release-20260930-custody` | `f120cbbb93391adc3a71d35d74048c148753f755eb228739a3ddada8560ce467` |
+| Online timestamp/snapshot | `verchestra-release-timestamp-20260930` | `verchestra-release-timestamp-20260930-custody` | `0ad7e44bfe1d6b77c683438b9ed1a78b1319f8a8194453bec659d149bd09d6f1` |
+| T75 evidence | `t75-evidence-20260825` | `t75-evidence-20260930-custody` | `67f59b1a43394a506a03c515bd3963c8eb703b760a0dc4bf5198e55a0bb014aa` |
+
+For the two TUF keys, the SHA-256 is also the TUF key id that `root.json`
+carries.
 
 **O4. Add custodian #2 as a collaborator and a code owner.** Grant `write`, not
 `admin`. Custodian #2 then **authors** the `.github/CODEOWNERS` pull request that
@@ -583,9 +695,9 @@ gh api repos/accd/verchestra/codeowners/errors --jq '.errors | length'
 Expected: custodian #2 is listed with `write`, and there are `0` CODEOWNERS
 errors.
 
-**O5. Provision the online key under custody** (tuf-role-separation handoff,
-steps 1-4). The key goes into a `tuf-online` environment, not a repository
-secret. Custodian #2 approves the anchor pull request.
+**O5. Provision the online key under custody.** Done on 2026-09-30 as part of
+O2/O3: the key is in `tuf-release-signing`, not a repository secret, for the
+reason in 3.2. Custodian #2 approves any later anchor pull request.
 
 **O6. npm.** Decide whether custodian #2 becomes a second maintainer. That
 improves availability and creates a second unilateral publisher (3.3). Configure

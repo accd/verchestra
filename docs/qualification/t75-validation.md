@@ -68,7 +68,9 @@ on all five profiles, so no platform case is excused.
   `application/vnd.in-toto+json` envelope with one signature over the bound
   revision. The signing identity was provisioned by the owner, the public
   reference is committed at `docs/qualification/trust/t75-evidence-public-key.json`,
-  and no private material is tracked. The attestation was verified **outside**
+  and no private material is tracked. (#408 later rotated that key; the
+  reference that verifies this evidence is now
+  `docs/qualification/trust/retired/t75-evidence-20260825.json`.) The attestation was verified **outside**
   the run that produced it, from the committed public key, and again after
   formatting touched the files.
 - **Every platform-specific gap resolved without weakening shared contracts.**
