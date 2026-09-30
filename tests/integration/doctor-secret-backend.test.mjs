@@ -148,7 +148,7 @@ for (const [platform, makeFake] of [
     assert.ok(fake.invocations.length > 0);
     for (const invocation of fake.invocations) {
       if (platform === "linux") assert.equal(invocation.tool, "dbus-send");
-      else assert.match(invocation.stdin, /\$verchestraType::Has\(/u);
+      else assert.equal(invocation.tool, "cmdkey");
     }
   });
 }

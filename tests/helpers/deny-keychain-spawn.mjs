@@ -2,8 +2,8 @@
 // Importing this module — in process, or as `node --import` in a child
 // `vestra` — makes every child_process entry point throw before spawning the
 // macOS `security` tool, libsecret's `secret-tool`, `dbus-send` (the Secret
-// Service presence query), or Windows PowerShell (the Credential Manager
-// backend's only program), so a test that forgot its fake
+// Service presence query), or Windows PowerShell and `cmdkey` (the Credential
+// Manager programs), so a test that forgot its fake
 // runner fails loudly instead of touching the user's keychain, keyring, or
 // Credential Manager, or raising a prompt. Real-store evidence lives only in
 // the standalone `pnpm qualify:keychain` suite (spikes/os-secret-store).
@@ -11,9 +11,10 @@ import childProcess from "node:child_process";
 import { syncBuiltinESMExports } from "node:module";
 import { promisify } from "node:util";
 
-const CREDENTIAL_TOOL = /(?:^|[\\/])(?:security|secret-tool|dbus-send|powershell(?:\.exe)?|pwsh(?:\.exe)?)$/iu;
+const CREDENTIAL_TOOL =
+  /(?:^|[\\/])(?:security|secret-tool|dbus-send|cmdkey(?:\.exe)?|powershell(?:\.exe)?|pwsh(?:\.exe)?)$/iu;
 const CREDENTIAL_COMMAND =
-  /^\s*"?(?:[^\s"]*[\\/])?(?:security|secret-tool|dbus-send|powershell(?:\.exe)?|pwsh(?:\.exe)?)"?(?:\s|$)/iu;
+  /^\s*"?(?:[^\s"]*[\\/])?(?:security|secret-tool|dbus-send|cmdkey(?:\.exe)?|powershell(?:\.exe)?|pwsh(?:\.exe)?)"?(?:\s|$)/iu;
 
 function refuse(target) {
   throw new Error(`a gate test attempted to run ${target}; use a fake or spy runner instead`);

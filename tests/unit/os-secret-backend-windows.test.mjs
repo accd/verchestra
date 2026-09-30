@@ -33,7 +33,7 @@ const answer =
   (stdout, exitCode = 0) =>
   async () => ({ exitCode, stdout, stderr: "" });
 
-test("every operation runs Windows PowerShell with the program on stdin and a fixed argv", async () => {
+test("reads, writes, and deletes run Windows PowerShell with the program on stdin; presence runs cmdkey", async () => {
   assert.deepEqual(
     [...POWERSHELL_ARGUMENTS],
     ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", "-"]
@@ -45,15 +45,38 @@ test("every operation runs Windows PowerShell with the program on stdin and a fi
   await backend.read(locator);
   await backend.delete(locator);
   assert.deepEqual(
-    fake.invocations.map((invocation) => invocation.timeoutMs),
-    [WRITE_TIMEOUT_MS, PRESENCE_TIMEOUT_MS, PRESENCE_TIMEOUT_MS, READ_TIMEOUT_MS, WRITE_TIMEOUT_MS]
+    fake.invocations.map((invocation) => [invocation.tool, invocation.timeoutMs]),
+    [
+      ["powershell", WRITE_TIMEOUT_MS],
+      ["cmdkey", PRESENCE_TIMEOUT_MS],
+      ["cmdkey", PRESENCE_TIMEOUT_MS],
+      ["powershell", READ_TIMEOUT_MS],
+      ["powershell", WRITE_TIMEOUT_MS]
+    ]
   );
-  for (const invocation of fake.invocations) assert.deepEqual(invocation.args, [...POWERSHELL_ARGUMENTS]);
+  for (const invocation of fake.invocations) {
+    if (invocation.tool === "cmdkey") {
+      assert.deepEqual(invocation.args, [`/list:${target}`]);
+      assert.equal(invocation.stdin, "", "presence sends nothing on stdin");
+    } else assert.deepEqual(invocation.args, [...POWERSHELL_ARGUMENTS]);
+  }
   assert.ok(PRESENCE_TIMEOUT_MS < DOCTOR_PROBE_TIMEOUT_MS);
 });
 
+test("presence is the cmdkey target line, never the header that echoes the query", async () => {
+  const has = (stdout, exitCode = 0) =>
+    new WindowsCredentialManagerBackend({ runner: answer(stdout, exitCode) }).has(locator);
+  const header = `\r\nCurrently stored credentials for ${target}:\r\n\r\n`;
+  assert.equal(await has(`${header}    Target: ${target}\r\n    Type: Generic \r\n`), true);
+  assert.equal(await has(`${header}    Ziel: ${target}\r\n`), true, "a localized label still counts");
+  assert.equal(await has(`${header}* NONE *\r\n`), false);
+  assert.equal(await has(`${header}    Target: ${target}-other\r\n`), false, "another target never counts");
+  assert.equal(await has(`    Target: x${target}\r\n`), false);
+  await assert.rejects(has(`${header}    Target: ${target}\r\n`, 1), { code: "VES_SECRET_BACKEND_FAILURE" });
+});
+
 test("the program is one complete statement per line and names the operation and target once", () => {
-  for (const operation of ["Has", "Read", "Delete"]) {
+  for (const operation of ["Read", "Delete"]) {
     const program = credentialProgram(operation, locator);
     const lines = program.split("\n");
     assert.equal(lines.at(-1), "", "the program ends with a newline");
@@ -103,7 +126,7 @@ test("a machine that records PowerShell input or output refuses reads and writes
 });
 
 test("the inline P/Invoke is advapi32 CredReadW, CredWriteW, and CredDeleteW on generic, machine-local credentials", () => {
-  const source = credentialProgram("Has", locator).split("\n")[1];
+  const source = credentialProgram("Delete", locator).split("\n")[1];
   for (const entry of ["CredReadW", "CredWriteW", "CredDeleteW"])
     assert.match(source, new RegExp(`\\[DllImport\\("advapi32\\.dll", EntryPoint = "${entry}"`, "u"));
   assert.match(source, /private const uint Generic = 1;/u, "CRED_TYPE_GENERIC");
@@ -141,11 +164,9 @@ test("a write carries the value only as the base64 literal of one assignment lin
   assert.deepEqual([...fake.items.get(target).value], [...value()]);
 });
 
-test("result lines map to presence, value, and outcome; errors are classified without their text", async () => {
+test("result lines map to value and outcome; errors are classified without their text", async () => {
   const backend = (stdout, exitCode) => new WindowsCredentialManagerBackend({ runner: answer(stdout, exitCode) });
-  assert.equal(await backend("verchestra-credential:present\r\n").has(locator), true);
-  assert.equal(await backend("noise\r\nverchestra-credential:absent\r\n").has(locator), false);
-  assert.equal(await backend("verchestra-credential:absent\r\n").read(locator), undefined);
+  assert.equal(await backend("noise\r\nverchestra-credential:absent\r\n").read(locator), undefined);
   assert.deepEqual(
     await backend(`verchestra-credential:value:${Buffer.from(VALUE).toString("base64")}\r\n`).read(locator),
     value()
@@ -157,13 +178,17 @@ test("result lines map to presence, value, and outcome; errors are classified wi
     ["verchestra-credential:error:1004\r\n", 0, "VES_SECRET_STORE_UNAVAILABLE"],
     ["verchestra-credential:error:5\r\n", 0, "VES_SECRET_BACKEND_FAILURE"],
     ["verchestra-credential:error:payload\r\n", 0, "VES_SECRET_BACKEND_FAILURE"],
+    ["verchestra-credential:error:compile\r\n", 1, "VES_SECRET_BACKEND_FAILURE"],
     ["", 0, "VES_SECRET_BACKEND_FAILURE"],
-    ["verchestra-credential:present\r\n", 1, "VES_SECRET_BACKEND_FAILURE"],
+    ["verchestra-credential:deleted\r\n", 1, "VES_SECRET_BACKEND_FAILURE"],
     ["verchestra-credential:stored\r\n", 0, "VES_SECRET_BACKEND_FAILURE"],
     ["verchestra-credential:value:!!\r\n", 0, "VES_SECRET_BACKEND_FAILURE"]
   ]) {
-    await assert.rejects(backend(stdout, exitCode).has(locator), { code }, JSON.stringify(stdout));
+    await assert.rejects(backend(stdout, exitCode).read(locator), { code }, JSON.stringify(stdout));
   }
+  await assert.rejects(backend("verchestra-credential:value:c2s=\r\n").delete(locator), {
+    code: "VES_SECRET_BACKEND_FAILURE"
+  });
 });
 
 test("a timeout is a retryable failure, never a prompt, and a missing PowerShell is not configured", async () => {
@@ -193,7 +218,7 @@ test("a rotation is one replacing write, and a write that did not persist is a f
   assert.equal(new TextDecoder().decode(await backend.read(locator)), "sk-ant-rotated");
   const forgetful = new WindowsCredentialManagerBackend({
     runner: async (invocation) => {
-      const program = Buffer.from(invocation.stdin).toString("latin1");
+      const program = Buffer.from(invocation.stdin ?? []).toString("latin1");
       return {
         exitCode: 0,
         stdout: program.includes("::Write(") ? "verchestra-credential:stored\r\n" : "verchestra-credential:absent\r\n",
