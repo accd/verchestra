@@ -3,6 +3,9 @@
 // nothing here spawns a process.
 import "../helpers/deny-keychain-spawn.mjs";
 import assert from "node:assert/strict";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
 
 import {
@@ -16,7 +19,8 @@ import {
   WRITE_TIMEOUT_MS,
   createOsCredentialStore,
   searchItemsArguments,
-  secretToolChildEnvironment
+  secretToolChildEnvironment,
+  sessionBusReachable
 } from "../../packages/platform-node/src/index.ts";
 import { DOCTOR_PROBE_TIMEOUT_MS } from "../../packages/application/src/index.ts";
 import { fakeSecretToolRunner } from "../helpers/fake-credential-tool-runners.mjs";
@@ -298,4 +302,36 @@ test("the linux store is the qualified Secret Service adapter and refuses a keyc
   assert.throws(() => createOsCredentialStore({ platform: "linux", keychainPath: "/tmp/a.keychain-db" }), {
     code: "VES_SECRET_KEYCHAIN_INVALID"
   });
+});
+
+test("without a reachable session bus every operation is unavailable and nothing is spawned", async () => {
+  const calls = [];
+  const backend = new LinuxSecretServiceBackend({
+    runner: async (invocation) => {
+      calls.push(invocation);
+      return { exitCode: 0, stdout: "", stderr: "" };
+    },
+    sessionBusReachable: () => false
+  });
+  for (const attempt of [
+    () => backend.has(locator),
+    () => backend.read(locator),
+    () => backend.store(locator, new TextEncoder().encode("sk-test")),
+    () => backend.delete(locator)
+  ])
+    await assert.rejects(attempt(), { code: "VES_SECRET_STORE_UNAVAILABLE" });
+  assert.deepEqual(calls, []);
+});
+
+test("the session bus is reachable through its address or the per-user bus socket, and not otherwise", async () => {
+  assert.equal(sessionBusReachable({ DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/1000/bus" }), true);
+  assert.equal(sessionBusReachable({}), false);
+  assert.equal(sessionBusReachable({ XDG_RUNTIME_DIR: "/nonexistent-verchestra-runtime" }), false);
+  const runtime = await mkdtemp(join(tmpdir(), "verchestra-bus-"));
+  try {
+    await writeFile(join(runtime, "bus"), "not a socket");
+    assert.equal(sessionBusReachable({ XDG_RUNTIME_DIR: runtime }), false);
+  } finally {
+    await rm(runtime, { recursive: true, force: true });
+  }
 });
