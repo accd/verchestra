@@ -10,6 +10,7 @@ import { after, before, test } from "node:test";
 import { BINARY_MANIFEST, SEA_SETTINGS, buildVestraBinary } from "../../scripts/build-vestra-binary.mjs";
 import { loadNodeRuntimePins, sha256Of } from "../../scripts/node-runtime-archive.mjs";
 import { locateSeaBlob } from "../../scripts/sea-inject.mjs";
+import { peLoaderViolations } from "../helpers/pe-loader-checks.mjs";
 import { createUpdateKeys, serialize } from "../helpers/tuf-update-fixture.mjs";
 import {
   FLEET_TARGET_KEYS,
@@ -200,6 +201,7 @@ test(
 
     const { format, blob } = locateSeaBlob(executable);
     assert.equal(manifest.executable.format, format);
+    if (format === "pe") assert.deepEqual(peLoaderViolations(executable), [], "the Windows loader would start it");
     assert.equal(manifest.sea.blob.contentDigest, `sha256:${sha256Of(blob)}`, "the recorded blob is the embedded blob");
     assert.ok(blob.includes(Buffer.from(manifest.launcherBundle.path)), "the blob names the recorded main script");
     for (const [setting, value] of Object.entries(SEA_SETTINGS)) assert.equal(manifest.sea[setting], value, setting);

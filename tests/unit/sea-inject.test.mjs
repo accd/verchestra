@@ -3,6 +3,7 @@ import { Buffer } from "node:buffer";
 import { test } from "node:test";
 
 import { SEA_FUSE, executableFormatOf, injectSeaBlob, locateSeaBlob } from "../../scripts/sea-inject.mjs";
+import { peLoaderViolations } from "../helpers/pe-loader-checks.mjs";
 import { FUSE_UNSET, peLayout, syntheticElf, syntheticMachO, syntheticPe } from "../helpers/sea-executable-fixture.mjs";
 
 // why: the injector is the one piece of #236 written against binary formats
@@ -146,6 +147,11 @@ test("pe: the resource tree keeps every existing resource and the signature is r
   assert.equal(injected.subarray(sectionAt, sectionAt + 4).toString("latin1"), ".sea");
   assert.equal(injected.readUInt32LE(sectionAt + 20), 0x600, "the new section starts where the signature was");
   assert.equal(injected.readUInt32LE(optional + 56), 0x4000, "SizeOfImage covers the new section");
+  assert.equal(
+    injected.readUInt32LE(optional + 116 + 2 * 8),
+    injected.readUInt32LE(sectionAt + 8),
+    "the resource directory spans the whole new section"
+  );
 
   const tree = injected.readUInt32LE(sectionAt + 20);
   const entries = (at) =>
@@ -163,11 +169,37 @@ test("pe: the resource tree keeps every existing resource and the signature is r
     "RT_RCDATA joins RT_VERSION in ascending id order"
   );
   const version = entries(entries(root[1].child & 0x7fffffff)[0].child & 0x7fffffff)[0];
+  const versionRva = injected.readUInt32LE(tree + version.child);
+  assert.ok(versionRva >= 0x3000 && versionRva + 4 <= 0x3000 + 0x200, "the version bytes moved into the new section");
+  assert.equal(injected.readUInt32LE(tree + version.child + 4), 4);
   assert.equal(
-    injected.readUInt32LE(tree + version.child),
-    peLayout.versionDataRva,
-    "the version resource is untouched"
+    injected.subarray(tree + versionRva - 0x3000, tree + versionRva - 0x3000 + 4).toString("latin1"),
+    "VERS",
+    "the version resource keeps its exact bytes"
   );
+});
+
+// why: this is the rule the first Windows build broke. Its resource tree moved
+// to the new section while every existing resource's bytes stayed in `.rsrc`,
+// and CreateProcess refused the image as ERROR_BAD_EXE_FORMAT on the
+// windows-latest runner.
+test("pe: the injected image passes every Windows loader check", () => {
+  assert.deepEqual(peLoaderViolations(injectSeaBlob(syntheticPe(), BLOB)), []);
+});
+
+test("pe: resource bytes outside the resource section are reported and never located", () => {
+  const injected = injectSeaBlob(syntheticPe(), BLOB);
+  const tree = injected.readUInt32LE(peLayout.optional + 240 + 2 * 40 + 20);
+  const dataEntries = [];
+  for (let at = tree; at < injected.length - 16; at += 4)
+    if (injected.readUInt32LE(at + 4) === 4 && injected.readUInt32LE(at) >= 0x3000) dataEntries.push(at);
+  assert.equal(dataEntries.length, 1, "exactly the version data entry is found");
+  injected.writeUInt32LE(peLayout.versionDataRva, dataEntries[0]);
+  assert.deepEqual(
+    peLoaderViolations(injected).filter((violation) => !violation.startsWith("CheckSum")),
+    ["resource /16/1/1033 bytes lie outside the resource directory span"]
+  );
+  assert.throws(() => locateSeaBlob(injected), { code: "VES_SEA_LAYOUT_INVALID" });
 });
 
 test("pe: the image checksum is recomputed over the final bytes", () => {
