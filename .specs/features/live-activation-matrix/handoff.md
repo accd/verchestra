@@ -3,12 +3,12 @@ schema: verchestra-feature-handoff/v1
 feature: live-activation-matrix
 issue: 18
 status: blocked
-branch: feat/393-retained-release-rollback
-baseRevision: 0c94df8746578ce59a9b75015fca4aad447f74b0
+branch: docs/387-ledger-qualification-3
+baseRevision: 6725554a8e14aba44a0dcdb9edf76decc58ac4d2
 lastCompletedTask: null
-nextTask: "J02 needs the owner-gated lineage: the online key and anchor, then .3 published with a strictly greater metadata_version (#387), then a later release on .3's root (for example .4) with a higher metadata_version, both built from a revision carrying the retained-release rollback (AD-036, #393). Then re-run this matrix with base=.3 update=.4; its rollback phase now exercises the local re-activation and checks the active pointer."
-lastGate: "live-activation-matrix runs 33087399859 + 33091253051 (reproduction): activate + self-test + recover pass 5/5; update fails 5/5 (#387). Run 33092399993: fresh .2 activates 5/5."
-updatedAt: 2026-09-29T00:00:00Z
+nextTask: "Publish a second release on the .3 root (.4, metadata_version 3, same expires so the root digest is unchanged), then run this matrix with base_version=0.0.0-qualification.3 and update_version=0.0.0-qualification.4; its rollback phase exercises the retained-release path (AD-036) and checks the active pointer. Record run ids and transcript digests here and close #387."
+lastGate: ".3 published 2026-10-01: 1275/1275 objects verified live (200 + sha256 for metadata, 206 ranges for targets); fresh npx verchestra activates .3 and self-test smoke PASS"
+updatedAt: 2026-10-01T21:00:00Z
 ---
 
 # Live activation matrix (#18, L7)
@@ -89,7 +89,7 @@ could only ever pass trivially, when the update had failed and nothing moved.
 Two rollback mechanisms now exist, and neither weakens anti-rollback:
 
 1. **Source-side roll-forward (option 1, no client change).** A publisher serves
-   an older release to every client by publishing a *new* forward publication —
+   an older release to every client by publishing a _new_ forward publication —
    a strictly higher TUF metadata version — whose targets point at the prior
    release's bytes. Clients update to it as they would to any release. In this
    workflow, that is dispatched as the `update_version` of a later run.
