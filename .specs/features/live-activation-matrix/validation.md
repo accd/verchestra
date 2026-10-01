@@ -13,13 +13,13 @@ the deterministic gates cannot.
 
 ## Per-target result (exit code per phase)
 
-| Target | activate | update | rollback | self-test | recover | transcript digest (sha256) |
-| --- | --- | --- | --- | --- | --- | --- |
-| win32-x64 | 0 | **70** | 0 | PASS | 0 | `7549f451…31cc4af` |
-| linux-x64 | 0 | **70** | 0 | PASS | 0 | `bf0557a4…ef9db465` |
-| linux-arm64 | 0 | **70** | 0 | PASS | 0 | `17ba8cc0…c6c1e0a549` |
-| darwin-x64 | 0 | **70** | 0 | PASS | 0 | `b03bd2f1…293a14de09` |
-| darwin-arm64 | 0 | **70** | 0 | PASS | 0 | `1c7f716d…931978749` |
+| Target       | activate | update | rollback | self-test | recover | transcript digest (sha256) |
+| ------------ | -------- | ------ | -------- | --------- | ------- | -------------------------- |
+| win32-x64    | 0        | **70** | 0        | PASS      | 0       | `7549f451…31cc4af`         |
+| linux-x64    | 0        | **70** | 0        | PASS      | 0       | `bf0557a4…ef9db465`        |
+| linux-arm64  | 0        | **70** | 0        | PASS      | 0       | `17ba8cc0…c6c1e0a549`      |
+| darwin-x64   | 0        | **70** | 0        | PASS      | 0       | `b03bd2f1…293a14de09`      |
+| darwin-arm64 | 0        | **70** | 0        | PASS      | 0       | `1c7f716d…931978749`       |
 
 Each digest is `sha256` over that leg's ordered phase logs and summary, computed
 from the run's uploaded `live-activation-<platform>-<arch>-33087399859` artifact.
@@ -68,10 +68,10 @@ from the run's uploaded `live-activation-<platform>-<arch>-33087399859` artifact
   release's target hash — then fetches that hash under the **second** release's URL
   prefix, where only the second release's hash exists → `404` → non-`206` →
   `VES_TUF_SOURCE_HTTP`. The failure is symmetric: whichever release is installed
-  *second* fails on the update path.
+  _second_ fails on the update path.
 
   So the `rollback` phase reports `0` only because it re-activates the base into a
-  cache that already holds the base; no move *from* the updated release ever
+  cache that already holds the base; no move _from_ the updated release ever
   succeeded. Live update/rollback is deferred to the `.3` republication, which must
   be published with an **incremented** `metadataVersion` (so its
   `2.snapshot.json`/`2.targets.json` force a re-fetch), after which this workflow
@@ -88,8 +88,8 @@ from the run's uploaded `live-activation-<platform>-<arch>-33087399859` artifact
   a network artifact).
 - **Direction experiment — run 33092399993**
   (`base=0.0.0-qualification.2`, `update=0.0.0-qualification`): **fresh
-  `0.0.0-qualification.2` activates `0` on all five targets**, and the update *to
-  v1* over it then fails `70`. This proves both that `.2` is fully activatable from
+  `0.0.0-qualification.2` activates `0` on all five targets**, and the update _to
+  v1_ over it then fails `70`. This proves both that `.2` is fully activatable from
   a clean state and that the defect is the version collision on the update path,
   independent of which release is `latest`.
 
@@ -118,3 +118,45 @@ above is unchanged. What changes is the plan:
   naive re-invocation of the base after a successful update (finding 3).
 
 The current plan is in `handoff.md`.
+
+## Publication of `0.0.0-qualification.3` (2026-10-01, #387)
+
+`.3` is the first release on the role-separated root. It was signed under
+protected custody, after #440 moved signing into environments.
+
+| Fact               | Value                                                                                      |
+| ------------------ | ------------------------------------------------------------------------------------------ |
+| Candidate revision | `6725554a8e14aba44a0dcdb9edf76decc58ac4d2` (`main`)                                        |
+| Candidate build    | run `36781862073`: five target legs and the reconciled closure passed                      |
+| Signing            | run `36785647398`, from `main`, approved in environment `tuf-release-signing`              |
+| Release id         | `release:verchestra:0.0.0-qualification.3:6725554a8e14`                                    |
+| Root digest        | `sha256:949fbce3c56f7a10729750d3d18dc54537eb32f2701aae7eb8370ff06e5dcff7` (root version 1) |
+| Offline key id     | `f120cbbb93391adc3a71d35d74048c148753f755eb228739a3ddada8560ce467`                         |
+| Online key id      | `0ad7e44bfe1d6b77c683438b9ed1a78b1319f8a8194453bec659d149bd09d6f1`                         |
+| Metadata version   | `2` for targets, snapshot and timestamp                                                    |
+| Base URL           | `https://pub-0fa3e4c3f26540e793952fa2c187d536.r2.dev/v3/`                                  |
+| Rollback proof     | binds the `.2` candidate `3d363f782bad40e5c5be8252e6626216b4f60248`, run `32980992904`     |
+
+Verification before `npm publish`:
+
+- **Upload.** 1275 objects were uploaded under `v3/`. `rclone check` against the
+  signed tree reported 1275 matching files and 0 differences.
+- **Live endpoint.** Each of the 1275 objects in `publication-manifest.json` was
+  requested from the public URL. Every metadata object answered `200` with the
+  manifest's SHA-256 and no `Content-Encoding`. Every target answered
+  `Range: bytes=0-99` with `206` and a correct `Content-Range`.
+- **npm package.** A local `build:vestra-launcher --release-inputs` build was
+  byte-identical to the workflow's verified launcher package.
+- **Fresh install.** With an empty home and an empty npm cache,
+  `npx verchestra` (npm `latest` = `0.0.0-qualification.3`) activated
+  `release:verchestra:0.0.0-qualification.3:6725554a8e14`, listed every
+  installed command, and `self-test --profile smoke` reported `PASS`
+  (macOS arm64).
+
+After `.3` became `latest`, the superseded `0.0.0-qualification` (bucket root)
+and `.2` (`v2/`) objects were removed from the bucket, on the owner's
+instruction. Those two npm versions can no longer activate. Their original run
+artifacts expire on 2026-11-24.
+
+What this does **not** prove: an update or a rollback. Both need a second
+release on this root (`.4`). See `handoff.md`.

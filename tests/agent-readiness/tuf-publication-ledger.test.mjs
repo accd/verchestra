@@ -228,7 +228,8 @@ test("the assert-prefix command line fails closed on a diverged ledger", () => {
     writeFileSync(candidatePath, JSON.stringify(committed()));
     const accepted = run();
     assert.equal(accepted.status, 0, accepted.stderr);
-    assert.match(accepted.stdout, /ledger prefix verified: 2 of 3 entries on main/u);
+    const recorded = committed().entries.length;
+    assert.equal(accepted.stdout, `ledger prefix verified: ${recorded} of ${recorded + 1} entries on main\n`);
     const ahead = withRefresh(withRefresh(committed()), { snapshot: 3, timestamp: 3 });
     writeFileSync(candidatePath, JSON.stringify(ahead));
     const refusedRun = run();
