@@ -50,7 +50,7 @@ Result: 11 killed, 0 survived.
 ## Gates
 
 Build host: darwin-arm64, Node 24.14.0, pnpm 10.34.5. The worktree was based on
-`origin/main` `aa6cf42b0c6e26cdbe3a23ce474ca4ea39a47a94`.
+`origin/main` `cb563611da8b1ff80aa204536138f9440a0bff91`.
 
 Every gate below was run on the tree at `8dd0111` (T1–T5 committed) with a
 clean worktree.

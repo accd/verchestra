@@ -81,7 +81,7 @@ new live evidence into historical evidence.
   invoked as `npx --yes verchestra@0.0.0-qualification.4 <command>`. It is **not
   yet published**; at pre-registration the registry lists
   `0.0.0-qualification` and `0.0.0-qualification.2`. `0.0.0-qualification.3` is
-  being built from `a3df97a`, the first `main` commit carrying the governed task
+  being built from `c57c15f`, the first `main` commit carrying the governed task
   commands (#405).
 - **Recorded at execution:** the output of
   `npx --yes verchestra@0.0.0-qualification.4 --version`, the package's

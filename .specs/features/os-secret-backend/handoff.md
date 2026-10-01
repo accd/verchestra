@@ -4,10 +4,10 @@ feature: os-secret-backend
 issue: 379
 status: verification
 branch: docs/379-real-keychain-evidence
-baseRevision: 4dde7e9edbec3c6ef1cc5f1bc1d6f995908e85c5
+baseRevision: 8422c9ff064cb47a6239a12cf577c0b4f7f79cbb
 lastCompletedTask: T8
 nextTask: "Linux Secret Service and Windows Credential Manager backends, each with its own platform qualification; the owner binds anthropic-api-key on the working machine (vestra secret set --name anthropic-api-key) for doctor --deep"
-lastGate: "corepack pnpm qualify:keychain 8/8 PASS on 4dde7e9 (macOS 26.6.2 arm64); tests/security/os-secret-backend-security.test.mjs 18/18"
+lastGate: "corepack pnpm qualify:keychain 8/8 PASS on 8422c9f (macOS 26.6.2 arm64); tests/security/os-secret-backend-security.test.mjs 18/18"
 updatedAt: 2026-09-30T07:00:00Z
 ---
 

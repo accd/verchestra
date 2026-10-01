@@ -4,7 +4,7 @@ feature: out-of-process-probe-host
 issue: 235
 status: verification
 branch: feat/235-out-of-process-probe-host
-baseRevision: aa6cf42b0c6e26cdbe3a23ce474ca4ea39a47a94
+baseRevision: cb563611da8b1ff80aa204536138f9440a0bff91
 lastCompletedTask: T2
 nextTask: Independent review of AD-037 and the threat model; on ratification, start T3 (composition root wiring and grant issuance).
 lastGate: pnpm gate:security PASS (2026-09-29)

@@ -4,7 +4,7 @@ feature: os-secret-backend-cross-platform
 issue: 379
 status: verification
 branch: feat/379-linux-windows-credential-stores
-baseRevision: f0d01e01ad2a98d7521e9aca0ae4f28ffe666899
+baseRevision: 0f4f29cdc414d7486ccb41e9e5ea733c63a2e1a0
 lastCompletedTask: T8
 nextTask: "T9 — independent review of AD-041, in particular the Windows value channel (a base64 literal line guarded by the PowerShell logging-policy check) versus the alternative of a script via -EncodedCommand with the value as stdin data"
 lastGate: "pnpm gate:quick PASS; pnpm gate:build PASS; pnpm gate:security PASS; pnpm test:e2e PASS (215); pnpm agent:check PASS; pnpm site:check PASS; 0 skipped, 0 todo; pnpm qualify:keychain green on ubuntu-latest, windows-latest, macos-latest (run 36682622312)"

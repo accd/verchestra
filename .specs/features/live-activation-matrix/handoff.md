@@ -4,7 +4,7 @@ feature: live-activation-matrix
 issue: 18
 status: blocked
 branch: docs/387-ledger-qualification-3
-baseRevision: 6725554a8e14aba44a0dcdb9edf76decc58ac4d2
+baseRevision: b173de01799be53d35f244b6835c6dae35eccf00
 lastCompletedTask: null
 nextTask: "Publish a second release on the .3 root (.4, metadata_version 3, same expires so the root digest is unchanged), then run this matrix with base_version=0.0.0-qualification.3 and update_version=0.0.0-qualification.4; its rollback phase exercises the retained-release path (AD-036) and checks the active pointer. Record run ids and transcript digests here and close #387."
 lastGate: ".3 published 2026-10-01: 1275/1275 objects verified live (200 + sha256 for metadata, 206 ranges for targets); fresh npx verchestra activates .3 and self-test smoke PASS"

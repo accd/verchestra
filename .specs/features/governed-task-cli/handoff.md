@@ -4,7 +4,7 @@ feature: governed-task-cli
 issue: 405
 status: verification
 branch: feat/405-governed-task-cli
-baseRevision: f0dd6c2539e95424c4eb3dc9bda167fdba4c0680
+baseRevision: d21340801c2b9de73c0f0b82c49d525fb8ff4344
 lastCompletedTask: T9
 nextTask: "Independent verification and human review of the E0-E9 stack (the foundations and composition PRs; #409 and #379 are on main); then the supervised live pilot (#406) with real Claude Code and Codex."
 lastGate: "Restacked on main, Node 24.14.0 macOS arm64: gate:quick PASS; gate:build PASS; gate:security PASS; gate:release PASS; test:e2e 229/229; agent:check PASS; 0 skipped"
@@ -66,7 +66,7 @@ mapped in validation.md, including #409's TDC-01..04.
 
 # Stack for the coordinator
 
-- Base: `main` at `f0dd6c2`, which already carries #409 (Codex process
+- Base: `main` at `d213408`, which already carries #409 (Codex process
   context), #379 (os-secret-backend), and every other change this stack once
   cherry-picked.
 - Foundations: the eight commits of `feat/405-governed-task-foundations` (E0–E5,

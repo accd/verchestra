@@ -125,7 +125,7 @@ under `docs/qualification/trust/retired/`, and the tooling refuses them
   checked-out candidate (`docs/release-custody.md` RR13).
 - **Rebuild the candidate.** The publish job checks out the candidate revision
   and binds the keys to that revision's anchors. The `.3` publication signed on
-  2026-09-30 (publish run `36771571763`, candidate `0f7dedd`, candidate run
+  2026-09-30 (publish run `36771571763`, candidate `4e95805`, candidate run
   `36768094824`) used the retired keys. Never upload it. Build a new candidate
   from `main` after the #408 change merges, so it carries the new anchors, and
   sign that.

@@ -4,7 +4,7 @@ feature: pi-runtime-0-87-1
 issue: 415
 status: verification
 branch: requal/pi-0.85.1
-baseRevision: 3a752a693aabdee3b6dfa5cbd4f0895dbd76c5a5
+baseRevision: c4bfe0d7d61edd2d6e739c920736a553a220835d
 lastCompletedTask: T4
 nextTask: Push the branch as the qualification successor of Dependabot #415 and wait for exact-head Linux CI and human review.
 lastGate: corepack pnpm gate:full && corepack pnpm gate:security && corepack pnpm agent:check

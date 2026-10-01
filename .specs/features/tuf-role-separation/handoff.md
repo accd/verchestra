@@ -4,7 +4,7 @@ feature: tuf-role-separation
 issue: 18
 status: blocked
 branch: feat/408-protected-signing-environments
-baseRevision: 0f7dedde2a2a9ff334b873d42ea5ae1760be1507
+baseRevision: 4e95805586c321a56bcd7b6587a3408e0c175ec3
 lastCompletedTask: null
 nextTask: "After the #408 custody change merges, follow republish-v3-runbook.md for .3 (#387): build a NEW candidate from main (the 2026-09-30 .3 signing used the retired keys and must never be uploaded), dispatch t76-publish-release.yml from main and approve it in the tuf-release-signing environment, publish under /v3/ with a metadata_version above the ledger, verify R2 (200 metadata, 206 targets) before npm publish, then append the ledger entry. The npm 2FA session and the R2 upload are owner-held. Run t76-refresh-timestamp.yml monthly, from main with environment approval, for any root published with a short timestamp_expires."
 lastGate: "gate:quick, gate:build, gate:security, gate:release, agent:check PASS (feat/408-protected-signing-environments)"
@@ -126,7 +126,7 @@ Reconciled 2026-09-29 (#407).
   retired repository-level secrets remain until the owner deletes them
   (`docs/release-custody.md` section 9, O2 step 4).
 - **The 2026-09-30 `.3` signing is void.** Publish run `36771571763` signed
-  candidate `0f7dedd` with the retired keys. Never upload it; `.3` is re-signed
+  candidate `4e95805` with the retired keys. Never upload it; `.3` is re-signed
   from a new candidate built on `main` after the #408 change.
 - **The `.3` republication is owner-gated.** It covers keys, R2 upload, and
   `npm publish` under 2FA, and it is tracked by #387. A single `.3` does not

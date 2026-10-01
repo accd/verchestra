@@ -1,7 +1,7 @@
 # Pi runtime 0.87.1 validation
 
 **Date:** 2026-09-29
-**Diff:** `requal/pi-0.85.1` from `aa6cf42b0c6e26cdbe3a23ce474ca4ea39a47a94`
+**Diff:** `requal/pi-0.85.1` from `cb563611da8b1ff80aa204536138f9440a0bff91`
 **Verifier:** primary agent local verification; GitHub required checks remain authoritative
 
 ## Root cause

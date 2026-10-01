@@ -123,7 +123,7 @@ asserts that the store is refused. It does not skip.
 
 Recorded run (2026-09-30):
 
-- Revision: `4dde7e9` (`origin/main`), macOS 26.6.2 on arm64, Node 24.14.0,
+- Revision: `8422c9f` (`origin/main`), macOS 26.6.2 on arm64, Node 24.14.0,
   from an unlocked desktop session.
 - Command: `corepack pnpm qualify:keychain`.
 - Result: 8 tests, 8 passed, 0 failed, 0 skipped, 0 todo:

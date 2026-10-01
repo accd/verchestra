@@ -1,6 +1,6 @@
 # Governed Task CLI Foundations Validation (#405)
 
-Base revision: `4ff9bed6e5e19ba38e11d45d9112667d81a4b254`.
+Base revision: `f31264c9623c6588fe0732d7890484ab2f6386cc`.
 Branches: `feat/405-governed-task-foundations` (GTC-01..23) and, stacked on it
 with PR #409 and #379, `feat/405-governed-task-cli` (GTC-24..41).
 This is implementation evidence, not independent qualification or issue closure.

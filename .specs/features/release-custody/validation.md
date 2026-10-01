@@ -7,7 +7,7 @@ need humans: ratification, the verified permission arrangement, the authorized
 approval rehearsal, and accountable acceptance. Those stay open under
 `handoff.md` `# Blockers`.
 
-Base revision: `2500c6c4fe59479d893912b889efce337a6cbda1`.
+Base revision: `ac7021bd8b45a29ea636d30cd020196675eef7f4`.
 
 ## Requirement to evidence
 
@@ -61,7 +61,7 @@ not expose secret values.
 
 ## Protected signing environments and rotation (T5, T11; 2026-09-30)
 
-Base revision: `0f7dedde2a2a9ff334b873d42ea5ae1760be1507`. The owner authorized
+Base revision: `4e95805586c321a56bcd7b6587a3408e0c175ec3`. The owner authorized
 the O2/O3 technical steps. No private key was printed, written, or read back.
 
 | Requirement | Evidence |

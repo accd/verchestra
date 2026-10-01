@@ -4,7 +4,7 @@ feature: release-custody
 issue: 408
 status: blocked
 branch: feat/408-protected-signing-environments
-baseRevision: 0f7dedde2a2a9ff334b873d42ea5ae1760be1507
+baseRevision: 4e95805586c321a56bcd7b6587a3408e0c175ec3
 lastCompletedTask: T11
 nextTask: "Merge the protected-environment change, re-sign .3 from a new main candidate with environment approval, then the owner deletes the three retired repository-level secrets (O2 step 4) and decides O1 (custodian #2 and a distinct ratifying reviewer)."
 lastGate: "gate:quick, gate:build, gate:security, gate:release, agent:check PASS (feat/408-protected-signing-environments)"

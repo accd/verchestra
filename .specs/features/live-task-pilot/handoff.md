@@ -4,7 +4,7 @@ feature: live-task-pilot
 issue: 406
 status: blocked
 branch: docs/406-pilot-preregistration
-baseRevision: a3df97a73831488f9b2d3d3cdee6eed0faa11951
+baseRevision: c57c15f1a952573ef98f0d2eba8f557ac136fc1d
 lastCompletedTask: T0
 nextTask: "T1: the owner resolves every item under Blockers; only then T2 (prepare the clean machine) and the runs, in the order fixed in spec.md section 6."
 lastGate: "Node 24.14.0 macOS arm64: agent:check PASS; gate:quick PASS (2330 + 305 + 13 tests, 0 failed, 0 skipped, 0 todo); no provider called, no cost incurred"
@@ -37,7 +37,7 @@ The owner must provide each of these before T2 starts:
 1. **The candidate.** Publish `verchestra@0.0.0-qualification.4` to npm and
    state its source revision. At pre-registration it is not published (the
    registry lists `0.0.0-qualification` and `0.0.0-qualification.2`;
-   `0.0.0-qualification.3` is being built from `a3df97a`). If the owner prefers
+   `0.0.0-qualification.3` is being built from `c57c15f`). If the owner prefers
    another candidate, that is a change to `spec.md` §2 made before T2, in a
    reviewed change.
 2. **Cost and time approval.** Approve, or replace, the proposed ceilings:

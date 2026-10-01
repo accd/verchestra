@@ -4,7 +4,7 @@ feature: claude-code-2-1-282
 issue: 405
 status: verification
 branch: feat/405-governed-task-foundations
-baseRevision: ec4036b7da4168bbc638b201da9c39cea5bfc8ce
+baseRevision: be032b24442d244f6d1f7798a8b0a2fbbf51566c
 lastCompletedTask: T4
 nextTask: Push the foundations branch to PR #433 and wait for Quality, Site, CodeQL, and the SonarCloud gate on the exact head
 lastGate: VES_REQUIRE_PINNED_PROVIDERS=1 corepack pnpm qualify:claude

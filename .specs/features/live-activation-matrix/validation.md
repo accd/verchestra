@@ -124,18 +124,18 @@ The current plan is in `handoff.md`.
 `.3` is the first release on the role-separated root. It was signed under
 protected custody, after #440 moved signing into environments.
 
-| Fact               | Value                                                                                      |
-| ------------------ | ------------------------------------------------------------------------------------------ |
-| Candidate revision | `6725554a8e14aba44a0dcdb9edf76decc58ac4d2` (`main`)                                        |
-| Candidate build    | run `36781862073`: five target legs and the reconciled closure passed                      |
-| Signing            | run `36785647398`, from `main`, approved in environment `tuf-release-signing`              |
-| Release id         | `release:verchestra:0.0.0-qualification.3:6725554a8e14`                                    |
-| Root digest        | `sha256:949fbce3c56f7a10729750d3d18dc54537eb32f2701aae7eb8370ff06e5dcff7` (root version 1) |
-| Offline key id     | `f120cbbb93391adc3a71d35d74048c148753f755eb228739a3ddada8560ce467`                         |
-| Online key id      | `0ad7e44bfe1d6b77c683438b9ed1a78b1319f8a8194453bec659d149bd09d6f1`                         |
-| Metadata version   | `2` for targets, snapshot and timestamp                                                    |
-| Base URL           | `https://pub-0fa3e4c3f26540e793952fa2c187d536.r2.dev/v3/`                                  |
-| Rollback proof     | binds the `.2` candidate `3d363f782bad40e5c5be8252e6626216b4f60248`, run `32980992904`     |
+| Fact               | Value                                                                                                                                        |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| Candidate revision | `6725554a8e14aba44a0dcdb9edf76decc58ac4d2` (now `b173de01799b` on `main`, same tree; see `docs/qualification/history-rewrite-2026-10-01.md`) |
+| Candidate build    | run `36781862073`: five target legs and the reconciled closure passed                                                                        |
+| Signing            | run `36785647398`, from `main`, approved in environment `tuf-release-signing`                                                                |
+| Release id         | `release:verchestra:0.0.0-qualification.3:6725554a8e14`                                                                                      |
+| Root digest        | `sha256:949fbce3c56f7a10729750d3d18dc54537eb32f2701aae7eb8370ff06e5dcff7` (root version 1)                                                   |
+| Offline key id     | `f120cbbb93391adc3a71d35d74048c148753f755eb228739a3ddada8560ce467`                                                                           |
+| Online key id      | `0ad7e44bfe1d6b77c683438b9ed1a78b1319f8a8194453bec659d149bd09d6f1`                                                                           |
+| Metadata version   | `2` for targets, snapshot and timestamp                                                                                                      |
+| Base URL           | `https://pub-0fa3e4c3f26540e793952fa2c187d536.r2.dev/v3/`                                                                                    |
+| Rollback proof     | binds the `.2` candidate `3d363f782bad40e5c5be8252e6626216b4f60248`, run `32980992904`                                                       |
 
 Verification before `npm publish`:
 

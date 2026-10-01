@@ -1,6 +1,6 @@
 # Candidate cross-platform gates (#405, #235)
 
-T76 candidate build run 36756695837 at main `d37c533` passed on Linux x64 and
+T76 candidate build run 36756695837 at main `27eced5` passed on Linux x64 and
 arm64 and failed in "Run all five closed gates" on Windows x64, macOS arm64,
 and macOS x64. PR CI runs Ubuntu only, so these escaped review. Each failure is
 fixed at its root cause; no assertion is weakened and no gate is bypassed.

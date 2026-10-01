@@ -4,7 +4,7 @@ feature: opencode-runtime-1-18-33
 issue: 400
 status: verification
 branch: requal/opencode-1.18.23
-baseRevision: 209bc18c1f96de431daf0a5690fa76c5acb232d3
+baseRevision: e0beb57dc72f7a125184ce46130415b74d7c6fa2
 lastCompletedTask: T3
 nextTask: Push the exact qualification surface to PR #400, wait for Quality/Site/CodeQL, then merge with rebase only if all pass
 lastGate: pnpm gate:full

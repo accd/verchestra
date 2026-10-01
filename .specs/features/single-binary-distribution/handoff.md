@@ -4,7 +4,7 @@ feature: single-binary-distribution
 issue: 236
 status: verification
 branch: fix/236-windows-sea-pe
-baseRevision: 4dde7e9edbec3c6ef1cc5f1bc1d6f995908e85c5
+baseRevision: 8422c9ff064cb47a6239a12cf577c0b4f7f79cbb
 lastCompletedTask: T8
 nextTask: "T6: after merge, dispatch .github/workflows/single-binary-build.yml at the merge revision (first with no release inputs, then with a t76-publish-release run), record the five per-leg transcripts in validation.md, then hand the owner the macOS Developer ID/notarization and Windows Authenticode signing steps."
 lastGate: "T8 on a local darwin-arm64 host: focused single-binary suites 59/59; gate:quick, gate:build, gate:release, and agent:check PASS with 0 skipped. single-binary-build.yml run 36677942597 (tests only) PASS on all five legs, 50/50 each with 0 skipped. See validation.md."

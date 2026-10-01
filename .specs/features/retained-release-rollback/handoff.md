@@ -4,7 +4,7 @@ feature: retained-release-rollback
 issue: 393
 status: verification
 branch: feat/393-retained-release-rollback
-baseRevision: 2500c6c4fe59479d893912b889efce337a6cbda1
+baseRevision: ac7021bd8b45a29ea636d30cd020196675eef7f4
 lastCompletedTask: T5
 nextTask: "Human review of AD-036 and this change. After merge, the owner publishes two same-root releases built from a revision carrying it (each with a strictly greater metadataVersion) and runs the live-activation matrix (T6)."
 lastGate: "pnpm gate:quick, gate:build, gate:security, gate:release, test:e2e, test:fault, agent:check"

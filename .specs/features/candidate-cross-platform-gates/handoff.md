@@ -4,7 +4,7 @@ feature: candidate-cross-platform-gates
 issue: 405
 status: verification
 branch: fix/candidate-cross-platform-gates
-baseRevision: d37c533f02e44adababb27211ad610b1499da98b
+baseRevision: 27eced58a714e846576f6a5754a6afba863ddcf8
 lastCompletedTask: T6
 nextTask: "Independent review and maintainer merge. After merge, dispatch the T76 candidate build on main to confirm the five legs on the merged revision."
 lastGate: "gate:quick, gate:build, gate:security, agent:check PASS locally; T76 candidate build 36763826241 green on all five legs"

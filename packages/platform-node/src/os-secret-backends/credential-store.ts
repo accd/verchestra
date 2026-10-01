@@ -22,7 +22,7 @@ import { WindowsCredentialManagerBackend } from "./windows-credential-manager.ts
 export const DARWIN_KEYCHAIN_CREDENTIAL_QUALIFICATION: OsSecretQualificationEvidence & { readonly report: string } =
   Object.freeze({
     report: "docs/qualification/os-secret-backend-darwin.md",
-    digest: "f33cb217e3af6347fd45a787661e4630ed08d6311b5629cd2329637c6e6ed8cc",
+    digest: "cb5867e2c2de3f3aaa372378e7e22a704bfbe46a97ad355aba7c00279b8e1e5f",
     controls: OS_CREDENTIAL_CONTROLS.darwin.controls
   });
 
