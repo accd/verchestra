@@ -53,9 +53,9 @@ configuration, login, or keychain entry was read.
 | SPA-06 | `S:225` (a policy file, a populated policy directory, and a directory that cannot be listed refuse before spawn; an absent path and an empty directory do not), `S:256` (relative path refused; the option refused on the bare profile). |
 | SPA-07 | `tests/contract/claude-code-driver-mediated.test.mjs:18` and `:45` (T03 and `mediated-mcp` invocations, unchanged file), `spikes/claude-code-driver/test/claude-driver-mediated.test.mjs:57`, `:77` (unchanged assertions: flags, worktree working directory, exact environment), `S:176` (a hook event or a second server does not fail the bare profile), `S:218` (the bare profile refuses the subscription token). |
 | SPA-08 | `S:31` (production driver and bridge against the fake), `spikes/claude-code-driver/test/fake-claude-mediated.mjs:97-103` (the fake's own argument and credential check), `spikes/claude-code-driver/test/claude-driver-mediated.test.mjs:239` (every flag of both profiles, `setup-token`, and the `--bare` sentence in the installed `--help`); report `docs/qualification/claude-code-driver-subscription.md`. |
-| SPA-09 | `I:68` (directory name, `0700`, `config.toml` `0600` and exact content), `I:81` (planted configuration replaced; login untouched), `I:92` (a link refused); `spikes/codex-driver/test/codex-identity-probe.test.mjs:87` (the installed Codex loads the pinned configuration), `:104` (an API-key login there is not a login). |
-| SPA-10 | `I:113` (ChatGPT accepted; isolated `HOME`; no ambient key), `I:132` (not logged in, API key, access token, wrong exit code, unknown text → `codex-login`, exact command on standard error, no path in the public error), `I:148` (hang and missing executable); `E:425` (`task start` refuses before any effect and prints the command; the same run starts after the login), `E:453` (API-key login refused). |
-| SPA-11 | `I:228` (identity directory as `CODEX_HOME`, no `OPENAI_API_KEY`, per-session `HOME` removed, identity kept, configuration re-pinned), `I:246` (no login → fails closed), `I:257` (API-key mode unchanged), `I:268` (both or neither source refused); `E:175` (lines 258-267). `vestra` has no code that opens `auth.json`. |
+| SPA-09 | `I:76` (directory name, `0700`, `config.toml` `0600` and exact content), `I:89` (planted configuration replaced; login untouched), `I:100` (a link refused); `spikes/codex-driver/test/codex-identity-probe.test.mjs:87` (the installed Codex loads the pinned configuration), `:104` (an API-key login there is not a login). |
+| SPA-10 | `I:142` (ChatGPT accepted; isolated `HOME`; no ambient key), `I:172` (not logged in, API key, access token, wrong exit code, unknown text → `codex-login`, exact command on standard error, no path in the public error), `I:196` (a status check that hangs), `I:215` (an executable that cannot start; runs on every platform); `E:425` (`task start` refuses before any effect and prints the command; the same run starts after the login), `E:453` (API-key login refused). |
+| SPA-11 | `I:277` (identity directory as `CODEX_HOME`, no `OPENAI_API_KEY`, per-session `HOME` removed, identity kept, configuration re-pinned), `I:295` (no login → fails closed), `I:306` (API-key mode unchanged), `I:317` (both or neither source refused); `E:175` (lines 258-267). `vestra` has no code that opens `auth.json`. |
 | SPA-12 | `U:39`, `U:53-77`, `U:79-97`, `U:99`, `U:116`, `U:124`; `E:464` (malformed setting refused at plan time, with no task state, and at start). |
 | SPA-13 | `E:357` (token missing while API keys are bound → `claude-code-oauth-token`; no status check, nothing started), `E:367` (API-key mode: `anthropic-api-key`, then `openai-api-key`), `E:425`. The default fixture binds no API key (`tests/helpers/task-cli-fixture.mjs`, `MODE_CREDENTIALS`), so every default-mode journey proves none is read. |
 | SPA-14 | `E:175` (lines 245-267: not bare, token variable, identity directory), `E:387` (bare, API-key variable, per-session `CODEX_HOME`, identity directory never created), `E:492` (one provider per mode). |
@@ -101,14 +101,14 @@ run again on the rebased tree with the same result.
 | `CLAUDE_CODE_DISABLE_CLAUDE_MDS` dropped | `S:104` |
 | `--settings` dropped | `S`, `C` |
 | Token not required to be a sensitive value | `S:193-215` |
-| Any exit-0 Codex status accepted | `I:132` |
-| Forced ChatGPT method dropped from `config.toml` | `I:68` |
+| Any exit-0 Codex status accepted | `I:172` |
+| Forced ChatGPT method dropped from `config.toml` | `I:76` |
 | `config.toml` not rewritten | `I` (9 cases) |
-| A link accepted as the identity directory | `I:92` |
-| Status check inherits the ambient environment | `I:113` |
-| A subscription session also gets an API key | `I:228`, `I:246` |
-| No command printed for the owner | `I:132` |
-| Identity directory removed with the session | `I:228` |
+| A link accepted as the identity directory | `I:100` |
+| Status check inherits the ambient environment | `I:142` |
+| A subscription session also gets an API key | `I:277`, `I:295` |
+| No command printed for the owner | `I:172` |
+| Identity directory removed with the session | `I:277` |
 | Unbilled model priced | `M` (5 cases) |
 | Unbilled usage escapes the token ceiling | `M` (4 cases) |
 | A billed unknown model runs for free | `M:75`, `M:160` |
@@ -193,13 +193,78 @@ implementation; the mediated cases and assertions are unchanged.
   `VES_CLAUDE_MANAGED_POLICY_PRESENT` instead of passing.
 - The journeys and the task security suite run their cases only on macOS, as
   before; on other hosts those cases return without asserting, which is the
-  existing behaviour of those files.
+  existing behaviour of those files. See "Windows behaviour" below.
 - The task ledger shown by `task status` holds the implementer's usage; the
   verifier's usage spends from the same ceilings and is not added to that
   ledger. This is unchanged from the API-key path.
 - PR CI runs on Ubuntu only. The task path and the drivers changed, so the
   platform matrix must prove this branch before merge
   (`.specs/features/architecture-deepening/spec.md`, Constraints).
+
+## Windows behaviour
+
+The platform matrix (run 37003050689, build gate, Windows x64) failed one case:
+`I`, "a ChatGPT login is accepted and its check never sees the invoking home or
+an ambient key", with `VES_TASK_NOT_CONFIGURED` (`codex-login`). The other four
+targets and the whole security gate passed.
+
+**Cause.** The fake `codex` died before it answered. Its fixture channel
+(`tests/helpers/task-cli-fakes/fixture-channel.mjs`) writes an observation only
+inside the child's own temp directory, and on Windows that directory is not the
+one the test names: `os.tmpdir()` reads `TEMP`, never `TMPDIR`, and the child's
+`TEMP` is the runner's, not the fixture's. The path comparison then fails (the
+fixture resolves its root with the native `realpath`, the fake with the
+JavaScript one, and the two differ where the runner's temp path has an 8.3
+short name), the fake exits non-zero, and that reads as not logged in. This
+could not be run on Windows locally; aiming `TMPDIR` at another directory on
+macOS reproduces the same failure. The five "is not configured" cases and the
+hang case passed on Windows for that wrong reason.
+
+**Fix.** Tests only; no product code changed. On POSIX every case that starts
+the fake now also asserts the fake's own observation (the login it reported,
+the identity directory it read, the pinned configuration), so a fake that could
+not run fails the case instead of passing as "not logged in": with the fake
+made to die before answering, 7 cases fail where 6 used to pass. On Windows
+those cases assert what is true there, following
+`tests/helpers/mediation-platform.mjs`: `task start`, `task resume`, and `task
+status` are refused with `VES_TASK_NOT_CONFIGURED` (requirement `platform`), so
+no Codex check is reachable. Nothing is skipped.
+
+| Case in `I` | On Windows |
+| --- | --- |
+| `:76` identity directory pinned | Runs: directory name, exact `config.toml`, directory listing (mode bits are asserted on POSIX only) |
+| `:89` planted configuration replaced | Runs unchanged |
+| `:100` a link refused | Runs; an account that cannot create a link asserts `EPERM` |
+| `:142` ChatGPT login accepted | Asserts the task-path refusal |
+| `:172` five statuses that are not a login | Each asserts the task-path refusal |
+| `:196` a status check that hangs | Asserts the task-path refusal |
+| `:215` an executable that cannot start | Runs unchanged: no process starts; `codex-login`, the exact command, and the pinned configuration are asserted |
+| `:235` the one-time command is quoted | Runs unchanged |
+| `:277`, `:295`, `:306`, `:317` verifier sessions | Each asserts the task-path refusal (as before) |
+
+With the platform constant forced to the Windows branch on macOS the file
+passes 16 of 16, 11 of them through the refusal.
+
+**The other suites on Windows.**
+
+| Suite | How it passed |
+| --- | --- |
+| `tests/integration/doctor-secret-backend.test.mjs` | By asserting. Its credential stores are in-process fakes; no process starts and no environment is passed through. The three mode cases use the host's own platform with the Windows store fake. |
+| `spikes/codex-driver/test/codex-identity-probe.test.mjs` | By asserting, against the installed Codex with an explicit environment that carries `TEMP`, `TMP`, and `SystemRoot`; it does not use the fixture channel. The forced-method half of its second case is conditioned on the build (0.157.1 or later) on every platform, so on the fleet's pinned 0.115.0 that case asserts only that the answer is not a ChatGPT login. |
+| `spikes/claude-code-driver/test/claude-driver-subscription.test.mjs`, `tests/contract/claude-code-driver-subscription.test.mjs` | By refusal: each case asserts `VES_CLAUDE_MEDIATION_UNSUPPORTED` and the bridge refusal through `mediationRefusedOnWin32`. |
+| `tests/unit/task-provider-auth.test.mjs` | By asserting; in-process. |
+| `tests/e2e/task-cli-e2e.test.mjs` | One case asserts the `platform` refusal. The other 17, including the 6 this feature added, return at `if (!DARWIN) return;` without asserting. That is the file's existing pattern, not the convention above. |
+| `tests/security/task-cli-security.test.mjs` | All 9 cases, including the 5 this feature added, return without asserting, by the same existing pattern. |
+
+**Not changed.** The production status check passes only the locale and search
+variables plus `HOME`, `USERPROFILE`, and `CODEX_HOME`. On Windows the real
+`codex login status` would not need more (the process launcher fills `TEMP`,
+`SYSTEMROOT`, and the other required variables from the parent), but it would
+also inherit `HOMEDRIVE`, `HOMEPATH`, and `USERNAME` from the invoking user,
+which `CodexProcessContext` blanks for the driver, and the executable lookup
+does not resolve an npm `.cmd` shim. Both would have to be settled before the
+task path could be qualified on Windows. They are left alone because the path
+is refused there.
 
 ## Human review
 
