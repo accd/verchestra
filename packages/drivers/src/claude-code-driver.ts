@@ -1,7 +1,7 @@
 import { execFile, spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { chmod, mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { chmod, lstat, mkdir, mkdtemp, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { tmpdir, userInfo } from "node:os";
 import { isAbsolute, join } from "node:path";
 import readline from "node:readline";
 import { promisify } from "node:util";
@@ -20,7 +20,35 @@ const SAFE_ENV_KEYS = ["PATH", "SystemRoot", "ComSpec", "TEMP", "TMP", "HOME", "
 // through; identity directories are created per run and the credential comes
 // from resolveExecution alone.
 const MEDIATED_ENV_KEYS: ReadonlySet<string> = new Set(["PATH", "LANG", "LC_ALL", "LC_CTYPE", "TZ", "TMPDIR"]);
-const MEDIATED_CREDENTIAL = "ANTHROPIC_API_KEY";
+const SUBSCRIPTION_PROFILE = "mediated-mcp-subscription";
+// invariant: each mediated profile accepts exactly one credential variable; the
+// composition names it from here instead of spelling it a second time.
+export const CLAUDE_PROFILE_CREDENTIAL_VARIABLES = Object.freeze({
+  "mediated-mcp": "ANTHROPIC_API_KEY",
+  [SUBSCRIPTION_PROFILE]: "CLAUDE_CODE_OAUTH_TOKEN"
+} as const);
+const CREDENTIAL_LABELS = Object.freeze({
+  "mediated-mcp": "Anthropic credential",
+  [SUBSCRIPTION_PROFILE]: "Claude Code subscription token"
+} as const);
+// why: `--bare` never reads `CLAUDE_CODE_OAUTH_TOKEN`, so the subscription
+// profile reproduces its isolation with these documented switches instead:
+// no CLAUDE.md or auto memory, no background work, no plugin marketplace
+// registration, and no title, update, telemetry, or feature-flag request.
+const SUBSCRIPTION_SWITCHES = Object.freeze({
+  DISABLE_AUTOUPDATER: "1",
+  CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
+  CLAUDE_CODE_DISABLE_CLAUDE_MDS: "1",
+  CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1",
+  CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1",
+  CLAUDE_CODE_DISABLE_OFFICIAL_MARKETPLACE_AUTOINSTALL: "1",
+  CLAUDE_CODE_DISABLE_TERMINAL_TITLE: "1"
+});
+// why: `--settings` outranks every user, project, and local file, so hooks and
+// auto memory stay off whatever a settings file would say. A settings value
+// that fails validation is ignored whole in print mode, so only these two
+// documented keys are passed.
+export const CLAUDE_SUBSCRIPTION_SETTINGS = '{"disableAllHooks":true,"autoMemoryEnabled":false}';
 const ENVIRONMENT_NAME = /^[A-Z][A-Z0-9_]{0,63}$/u;
 // invariant: identical to MCP_BRIDGE_QUALIFIED_TOOLS in agent-runtime; a
 // contract test pins the two lists together.
@@ -36,10 +64,13 @@ export const CLAUDE_MEDIATED_TOOLS: readonly string[] = Object.freeze([
 export const CLAUDE_MEDIATED_MINIMUM_VERSION = "2.1.282";
 
 export interface ClaudeCodeMediatedProfile {
-  readonly kind: "mediated-mcp";
+  readonly kind: keyof typeof CLAUDE_PROFILE_CREDENTIAL_VARIABLES;
   readonly environment?: Readonly<Record<string, string>>;
   // Parent for the per-run 0700 isolation directory; defaults to the OS temp dir.
   readonly isolationRoot?: string;
+  // why: subscription profile only. The machine-wide Claude Code policy
+  // locations whose presence refuses the launch; defaults to the documented ones.
+  readonly managedPolicyPaths?: readonly string[];
 }
 
 export interface ClaudeCodeMediation {
@@ -63,7 +94,7 @@ export interface ClaudeCodeExecution {
   readonly environment?: Readonly<Record<string, string>>;
   readonly sensitiveValues?: readonly string[];
   readonly maxOutputBytes?: number;
-  // Required by, and only accepted by, the mediated-mcp profile.
+  // Required by, and only accepted by, a mediated profile.
   readonly mediation?: ClaudeCodeMediation;
 }
 
@@ -74,16 +105,23 @@ export interface ClaudeCodeDriverDependencies {
   readonly probeEnvironment?: Readonly<Record<string, string>>;
   readonly terminateTree?: (pid: number) => Promise<void>;
   readonly onSpawn?: (pid: number) => void;
-  // Absent: the T03 profile, unchanged. Present: the qualified mediated-mcp
-  // profile (AD-039), which requires an absolute executable.
+  // Absent: the T03 profile, unchanged. Present: a qualified mediated profile
+  // (AD-039), which requires an absolute executable.
   readonly profile?: ClaudeCodeMediatedProfile;
 }
+
+type ProfileKind = ClaudeCodeMediatedProfile["kind"];
+// invariant: the stream checks a session is held to. `open` is T03, `bridge`
+// requires the bridge tools and a connected bridge, and `bridge-only` also
+// refuses any other MCP server and any hook event.
+type StreamSurface = "open" | "bridge" | "bridge-only";
 
 interface MediatedLaunch {
   readonly root: string;
   readonly arguments: readonly string[];
   readonly environment: NodeJS.ProcessEnv;
   readonly cwd: string;
+  readonly surface: StreamSurface;
 }
 
 interface ClaudeSession {
@@ -123,8 +161,10 @@ function userMessage(prompt: string): string {
 }
 
 interface NormalizedMediatedProfile {
+  readonly kind: ProfileKind;
   readonly environment: Readonly<Record<string, string>>;
   readonly isolationRoot?: string;
+  readonly managedPolicyPaths: readonly string[];
 }
 
 function safeValue(value: unknown): value is string {
@@ -146,33 +186,88 @@ function allowlistedEnvironment(environment: Readonly<Record<string, string>>): 
   return Object.freeze({ ...environment });
 }
 
+// why: managed settings outrank `--settings` and are the one source of hooks,
+// instructions, and credential helpers the subscription profile cannot switch
+// off, so their documented machine-wide locations are refused, never ignored.
+function documentedManagedPolicyPaths(): readonly string[] {
+  if (process.platform !== "darwin") return ["/etc/claude-code"];
+  const preferences = "/Library/Managed Preferences";
+  const domain = "com.anthropic.claudecode.plist";
+  return [
+    "/Library/Application Support/ClaudeCode",
+    join(preferences, domain),
+    join(preferences, accountName(), domain)
+  ];
+}
+
+function accountName(): string {
+  try {
+    return userInfo().username;
+  } catch {
+    return "unknown-account";
+  }
+}
+
+function managedPolicyPaths(profile: ClaudeCodeMediatedProfile): readonly string[] {
+  if (profile.managedPolicyPaths === undefined)
+    return profile.kind === SUBSCRIPTION_PROFILE ? documentedManagedPolicyPaths() : [];
+  if (profile.kind !== SUBSCRIPTION_PROFILE || !profile.managedPolicyPaths.every(absolutePath))
+    throw mediationError("Managed policy paths must be absolute and belong to the subscription profile");
+  return [...profile.managedPolicyPaths];
+}
+
 function mediatedProfile(profile: ClaudeCodeMediatedProfile, command: readonly string[]): NormalizedMediatedProfile {
   if (process.platform === "win32")
     throw claudeError(
       "VES_CLAUDE_MEDIATION_UNSUPPORTED",
       "The mediated Claude Code profile is not configured on Windows"
     );
-  if (profile.kind !== "mediated-mcp") throw mediationError("Claude Code profile is unknown");
+  if (!Object.hasOwn(CLAUDE_PROFILE_CREDENTIAL_VARIABLES, profile.kind))
+    throw mediationError("Claude Code profile is unknown");
   if (!absolutePath(command[0]))
     throw mediationError("The mediated profile requires an absolute Claude Code executable");
+  const kind = profile.kind;
   const environment = allowlistedEnvironment(profile.environment ?? {});
-  if (profile.isolationRoot === undefined) return Object.freeze({ environment });
+  const managed = managedPolicyPaths(profile);
+  if (profile.isolationRoot === undefined) return Object.freeze({ kind, environment, managedPolicyPaths: managed });
   if (!absolutePath(profile.isolationRoot)) throw mediationError("The isolation root must be absolute");
-  return Object.freeze({ environment, isolationRoot: profile.isolationRoot });
+  return Object.freeze({ kind, environment, isolationRoot: profile.isolationRoot, managedPolicyPaths: managed });
 }
 
 // The only credential the mediated child sees, and it must be redactable.
-function mediatedCredential(execution: ClaudeCodeExecution): string {
+function mediatedCredential(execution: ClaudeCodeExecution, kind: ProfileKind): string {
+  const variable = CLAUDE_PROFILE_CREDENTIAL_VARIABLES[kind];
+  const label = CREDENTIAL_LABELS[kind];
   const environment = execution.environment ?? {};
   const keys = Object.keys(environment);
-  if (keys.some((key) => key !== MEDIATED_CREDENTIAL))
-    throw claudeError("VES_CLAUDE_ENVIRONMENT_DENIED", "Only the brokered Anthropic credential may be supplied");
-  const credential = environment[MEDIATED_CREDENTIAL];
+  if (keys.some((key) => key !== variable))
+    throw claudeError("VES_CLAUDE_ENVIRONMENT_DENIED", `Only the brokered ${label} may be supplied`);
+  const credential = environment[variable];
   if (credential === undefined || credential.length === 0 || !safeValue(credential))
-    throw claudeError("VES_CLAUDE_CREDENTIAL_MISSING", "The Anthropic credential is not configured");
+    throw claudeError("VES_CLAUDE_CREDENTIAL_MISSING", `The ${label} is not configured`);
   if (!(execution.sensitiveValues ?? []).includes(credential))
-    throw claudeError("VES_CLAUDE_CREDENTIAL_UNREDACTED", "The Anthropic credential must be a sensitive value");
+    throw claudeError("VES_CLAUDE_CREDENTIAL_UNREDACTED", `The ${label} must be a sensitive value`);
   return credential;
+}
+
+async function policyPresent(path: string): Promise<boolean> {
+  const metadata = await lstat(path).catch(() => undefined);
+  if (metadata === undefined) return false;
+  if (!metadata.isDirectory()) return true;
+  // hazard: a policy directory that cannot be listed still counts as present.
+  return readdir(path).then(
+    (entries) => entries.length > 0,
+    () => true
+  );
+}
+
+async function refuseManagedPolicy(paths: readonly string[]): Promise<void> {
+  for (const path of paths)
+    if (await policyPresent(path))
+      throw claudeError(
+        "VES_CLAUDE_MANAGED_POLICY_PRESENT",
+        "A machine-wide Claude Code policy is present, so the subscription profile cannot prove its isolation"
+      );
 }
 
 function validBridge(bridge: ClaudeCodeMediation["bridge"] | undefined): boolean {
@@ -211,9 +306,40 @@ function mediatedSurfaceFailure(event: Record<string, unknown>): string | undefi
   return connected ? undefined : "VES_CLAUDE_BRIDGE_UNAVAILABLE";
 }
 
-function initEventFailure(event: Record<string, unknown>, model: string, mediated: boolean): string | undefined {
+// invariant: the subscription profile runs without `--bare`, so a second MCP
+// server (a claude.ai connector, a project or plugin server) would mean
+// `--strict-mcp-config` did not hold.
+function extraServerFailure(event: Record<string, unknown>): string | undefined {
+  return (event["mcp_servers"] as readonly unknown[]).length === 1 ? undefined : "VES_CLAUDE_TOOL_SURFACE_UNEXPECTED";
+}
+
+function initEventFailure(event: Record<string, unknown>, model: string, surface: StreamSurface): string | undefined {
   if (event["model"] !== model) return "VES_CLAUDE_IDENTITY_MISMATCH";
-  return mediated ? mediatedSurfaceFailure(event) : undefined;
+  if (surface === "open") return undefined;
+  const failure = mediatedSurfaceFailure(event);
+  return failure === undefined && surface === "bridge-only" ? extraServerFailure(event) : failure;
+}
+
+function surfaceOf(launch: MediatedLaunch | undefined): StreamSurface {
+  return launch === undefined ? "open" : launch.surface;
+}
+
+function hookEvent(event: unknown): boolean {
+  const row = event as { readonly type?: unknown; readonly subtype?: unknown } | null;
+  return row?.type === "system" && typeof row.subtype === "string" && row.subtype.startsWith("hook_");
+}
+
+// invariant: with `--include-hook-events` every hook that runs is reported in
+// the stream, and the subscription profile disables all of them; one hook
+// event therefore means a managed or injected hook ran, and the session ends.
+function streamEvent(line: string, surface: StreamSurface): Record<string, unknown> | string {
+  let event: Record<string, unknown>;
+  try {
+    event = JSON.parse(line) as Record<string, unknown>;
+  } catch {
+    return "VES_CLAUDE_STREAM_INVALID";
+  }
+  return surface === "bridge-only" && hookEvent(event) ? "VES_CLAUDE_HOOK_UNEXPECTED" : event;
 }
 
 // The per-run isolation directory holds the bridge token; it is removed as
@@ -278,6 +404,43 @@ export class ClaudeCodeDriver implements Driver {
       "--no-chrome",
       "--setting-sources",
       "",
+      "--model",
+      model
+    ]);
+  }
+
+  // why: the subscription profile is the mediated surface without `--bare`,
+  // which would discard the subscription token. Hooks and auto memory are
+  // switched off by `--settings`, and a hook that still ran is reported.
+  buildSubscriptionArguments(model: string, mcpConfigPath: string): readonly string[] {
+    return Object.freeze([
+      ...this.#command.slice(1),
+      "--print",
+      "--input-format",
+      "stream-json",
+      "--output-format",
+      "stream-json",
+      "--verbose",
+      "--include-partial-messages",
+      "--include-hook-events",
+      "--no-session-persistence",
+      "--disable-slash-commands",
+      "--strict-mcp-config",
+      "--mcp-config",
+      mcpConfigPath,
+      "--tools",
+      "",
+      "--allowedTools",
+      CLAUDE_MEDIATED_TOOLS.join(","),
+      "--permission-mode",
+      "dontAsk",
+      "--permission-prompts",
+      "none",
+      "--no-chrome",
+      "--setting-sources",
+      "",
+      "--settings",
+      CLAUDE_SUBSCRIPTION_SETTINGS,
       "--model",
       model
     ]);
@@ -377,6 +540,7 @@ export class ClaudeCodeDriver implements Driver {
       throw claudeError("VES_CLAUDE_OUTPUT_LIMIT_INVALID", "Claude Code output limit is invalid");
 
     const launch = await this.#mediatedLaunch(execution);
+    const surface = surfaceOf(launch);
     try {
       const sessionId = `claude-session:${randomUUID()}`;
       const state: ClaudeSession = { sink, sequence: 0, outcome: "completed", closed: false };
@@ -421,16 +585,14 @@ export class ClaudeCodeDriver implements Driver {
           void terminate();
           return;
         }
-        let event: Record<string, unknown>;
-        try {
-          event = JSON.parse(line) as Record<string, unknown>;
-        } catch {
-          streamFailure = "VES_CLAUDE_STREAM_INVALID";
+        const event = streamEvent(line, surface);
+        if (typeof event === "string") {
+          streamFailure = event;
           void terminate();
           return;
         }
         if (event["type"] === "system" && event["subtype"] === "init") {
-          const initFailure = initEventFailure(event, execution.model, launch !== undefined);
+          const initFailure = initEventFailure(event, execution.model, surface);
           if (initFailure !== undefined) {
             streamFailure = initFailure;
             void terminate();
@@ -536,7 +698,10 @@ export class ClaudeCodeDriver implements Driver {
     }
   }
 
-  #spawnPlan(execution: ClaudeCodeExecution, launch: MediatedLaunch | undefined): Omit<MediatedLaunch, "root"> {
+  #spawnPlan(
+    execution: ClaudeCodeExecution,
+    launch: MediatedLaunch | undefined
+  ): Pick<MediatedLaunch, "arguments" | "cwd" | "environment"> {
     if (launch !== undefined) return launch;
     return {
       arguments: this.buildArguments(execution.model),
@@ -551,8 +716,9 @@ export class ClaudeCodeDriver implements Driver {
         throw claudeError("VES_CLAUDE_MEDIATION_INVALID", "Mediation requires the mediated-mcp profile");
       return undefined;
     }
-    const credential = mediatedCredential(execution);
+    const credential = mediatedCredential(execution, this.#profile.kind);
     const mediation = await validMediation(execution.mediation);
+    await refuseManagedPolicy(this.#profile.managedPolicyPaths);
     const root = await mkdtemp(join(this.#profile.isolationRoot ?? tmpdir(), "verchestra-claude-"));
     try {
       await chmod(root, 0o700);
@@ -576,9 +742,15 @@ export class ClaudeCodeDriver implements Driver {
         }),
         { mode: 0o600, flag: "wx" }
       );
+      if (this.#profile.kind === SUBSCRIPTION_PROFILE)
+        return await this.#subscriptionLaunch({ root, home, config, mcpConfigPath }, execution.model, {
+          ...this.#profile.environment,
+          [CLAUDE_PROFILE_CREDENTIAL_VARIABLES[SUBSCRIPTION_PROFILE]]: credential
+        });
       return Object.freeze({
         root,
         cwd: mediation.cwd,
+        surface: "bridge",
         arguments: this.buildMediatedArguments(execution.model, mcpConfigPath),
         environment: {
           ...this.#profile.environment,
@@ -586,13 +758,33 @@ export class ClaudeCodeDriver implements Driver {
           CLAUDE_CONFIG_DIR: config,
           DISABLE_AUTOUPDATER: "1",
           CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
-          [MEDIATED_CREDENTIAL]: credential
+          [CLAUDE_PROFILE_CREDENTIAL_VARIABLES["mediated-mcp"]]: credential
         }
       });
     } catch (error) {
       await rm(root, { recursive: true, force: true });
       throw error;
     }
+  }
+
+  // why: the model reaches the worktree only through the bridge, so the
+  // subscription child runs in an empty per-run directory. Nothing the
+  // repository carries (CLAUDE.md, AGENTS.md, `.claude/`, `.mcp.json`) is then
+  // in its working directory to be discovered, whatever a switch covers.
+  async #subscriptionLaunch(
+    paths: { readonly root: string; readonly home: string; readonly config: string; readonly mcpConfigPath: string },
+    model: string,
+    environment: Readonly<Record<string, string>>
+  ): Promise<MediatedLaunch> {
+    const cwd = join(paths.root, "workspace");
+    await mkdir(cwd, { mode: 0o700 });
+    return Object.freeze({
+      root: paths.root,
+      cwd,
+      surface: "bridge-only",
+      arguments: this.buildSubscriptionArguments(model, paths.mcpConfigPath),
+      environment: { ...environment, HOME: paths.home, CLAUDE_CONFIG_DIR: paths.config, ...SUBSCRIPTION_SWITCHES }
+    });
   }
 
   async send(session: DriverSessionRef, input: Readonly<Record<string, unknown>>): Promise<void> {
