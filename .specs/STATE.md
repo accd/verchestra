@@ -1211,6 +1211,71 @@ note. -->
   is a decision for the drivers. Evidence is in
   `.specs/features/architecture-deepening/validation-c4.md`.
 
+### AD-049 — Stopping a Claude Code or Codex provider terminates its process tree; the composition root injects the terminator (ADP-4)
+
+- **Status:** proposed (ratified by reviewing the pull request that carries
+  the process-tree termination range of `refactor/driver-session-runner`).
+- **Context:** `vestra task` stopped Claude Code and Codex with a `SIGKILL` of
+  the one process the driver had started, written out twice in the composition
+  root. Whatever that process had started kept running. A descendant that
+  held the provider's output open also kept the session waiting, because a
+  driver waits for that pipe to close, and `vestra task cancel` waited with it.
+  The routine that kills a group and the descendants that left it already
+  existed in `packages/platform-node`, inline in the probe host, and a driver
+  may not import a sibling adapter.
+- **Decision:**
+  1. On macOS and Linux the Claude Code and Codex drivers start their provider
+     `detached`, so it leads a process group and a session of its own. Windows
+     has no process groups, and its spawn is unchanged.
+  2. `packages/drivers/src/driver-process-tree.ts` holds what the two drivers
+     share: whether a provider leads its own group, and the terminator a driver
+     uses when the composition injects none, which signals that group and
+     never rejects when nothing is left to stop.
+  3. `terminateProcessTree` in
+     `packages/platform-node/src/process-tree-terminator.ts` is the one
+     routine that records a child's descendants, kills its group, confirms the
+     group is gone, and kills what the group signal could not reach. The probe
+     host calls it, and it is exported to the composition root.
+  4. `terminateProviderTree` in `apps/vestra-cli/src/task/task-process-tree.ts`
+     is the one terminator the task composition injects into both drivers. It
+     never rejects, because a driver calls it from an abort listener, where a
+     rejection would be unhandled and end the whole command.
+  5. On its abort and stream-failure path the Claude Code driver starts one
+     termination per child. A terminator that reads the process table cannot
+     be asked once for every line left in a pipe.
+  6. Both drivers are requalified with reports of their own. The existing
+     reports are not edited: no argument, environment variable, working
+     directory or stream check of any profile changed. The mediated profiles
+     and `vestra task` stay refused on Windows.
+- **Alternatives rejected:** a driver importing the terminator from
+  `platform-node` (adapter coupling, which the architecture check refuses);
+  leaving the provider in the caller's group and walking its tree instead (a
+  walk races with a fork, and a group is one address); `detached` on Windows
+  (it opens a console and gives no group); one termination shared by the
+  cancel and the abort path (the ledger contract keeps a session cancellable
+  after a stop that failed); a driver error code for a tree that could not be
+  confirmed gone (it adds a code and a branch to two `start` methods that are
+  already complexity hotspots, for a state `SIGKILL` leaves almost
+  unreachable; it is left as an open point); handling the terminal's hang-up
+  in `vestra task` by aborting the run (a lost terminal would then end a run
+  that is resumable today).
+- **Consequence:** `pnpm qualify:claude` and `pnpm qualify:codex` each run one
+  shared contract against their driver and labeled fake: a cancel and an
+  aborted start signal leave no process of a three-process tree alive, one of
+  which left the group with `setsid()`.
+  `tests/architecture/provider-process-tree-termination.test.mjs` fails when a
+  driver stops starting its provider in its own group, when the composition
+  builds a provider driver without the tree terminator, or when a task source
+  signals a process itself. An operator can notice three things: a cancel no
+  longer waits for a process a provider left behind; a provider no longer
+  receives the terminal's own signals; and when the `vestra` process itself is
+  killed, or its terminal goes away, nothing stops the provider until its
+  closed pipes make it exit. The change is platform-specific and needs a
+  platform matrix run on the branch before merge. Evidence is in
+  `.specs/features/architecture-deepening/validation-c4.md` and in
+  `docs/qualification/claude-code-driver-process-tree.md` and
+  `docs/qualification/codex-driver-process-tree.md`.
+
 ## Handoff
 
 - **Feature:** `subscription-provider-auth` (ADP-A, tasks TA1 and TA2) on
