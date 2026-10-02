@@ -722,7 +722,6 @@ function structurallyPortable(value: unknown): boolean {
 
 function verificationPorts(hooks: FullScenarioBoundaryHooks, records: FileRecordStore): VerificationPorts {
   return {
-    digest: { sha256: digest },
     expectations: {
       derive: async (criterion) => ({
         expectedOutcomeRef: `expected:${criterion.criterionId}`,
@@ -758,23 +757,9 @@ function verificationPorts(hooks: FullScenarioBoundaryHooks, records: FileRecord
             reportDigest: digest(canonical(value))
           };
         });
-      },
-      verify: async (value) => {
-        const report = await records.load("verification:report");
-        return {
-          valid: report !== undefined,
-          reportRef: textField(value, "reportRef"),
-          reportDigest: textField(value, "reportDigest"),
-          verdict: textField(value, "verdict"),
-          commitId: textField(value, "commitId")
-        };
       }
     },
-    workflow: { apply: async (snapshot, command) => WorkflowMachine.decide(snapshot, command) },
-    humanAuthority: { verify: async () => ({ authorized: true, authorizationRef: "human:self-test" }) },
-    reviews: {
-      save: async (value) => ({ reviewRef: "review:self-test", reviewDigest: digest(canonical(value)) })
-    }
+    workflow: { apply: async (snapshot, command) => WorkflowMachine.decide(snapshot, command) }
   };
 }
 

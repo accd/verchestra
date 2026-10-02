@@ -78,5 +78,5 @@ test("Handoff publication, claim, Capsule, verification report, and review stay 
   assert.equal(result.handoffState.claimsDisposed, 1);
   assert.equal(result.handoffState.claimsAcquired, 1);
   assert.equal(result.verificationState.reports.length, 1);
-  assert.equal(result.verificationState.reviews.length, 1);
+  assert.equal(result.humanReviewState.reviews.length, 1);
 });

@@ -178,8 +178,13 @@ interface VerificationInput {
   readonly mutations: readonly Mutation[];
 }
 
+interface WorkflowPort {
+  readonly apply: (snapshot: RunSnapshot, command: WorkflowCommand) => Promise<WorkflowDecision>;
+}
+
+// invariant: each operation declares only the ports it reads, so a
+// composition root supplies no adapter the operation never calls.
 export interface VerificationPorts {
-  readonly digest: { readonly sha256: (value: string) => string };
   readonly expectations: {
     readonly derive: (criterion: Criterion) => Promise<unknown>;
   };
@@ -201,15 +206,15 @@ export interface VerificationPorts {
     }) => Promise<unknown>;
   };
   readonly lessons: { readonly record: (lesson: Readonly<Row>) => Promise<unknown> };
-  readonly reports: {
-    readonly save: (report: Readonly<Row>) => Promise<unknown>;
-    readonly verify: (verification: Readonly<Row>) => Promise<unknown>;
-  };
-  readonly workflow: {
-    readonly apply: (snapshot: RunSnapshot, command: WorkflowCommand) => Promise<WorkflowDecision>;
-  };
+  readonly reports: { readonly save: (report: Readonly<Row>) => Promise<unknown> };
+  readonly workflow: WorkflowPort;
+}
+
+export interface HumanReviewPorts {
+  readonly reports: { readonly verify: (verification: Readonly<Row>) => Promise<unknown> };
   readonly humanAuthority: { readonly verify: (review: Readonly<Row>) => Promise<unknown> };
   readonly reviews: { readonly save: (review: Readonly<Row>) => Promise<unknown> };
+  readonly workflow: WorkflowPort;
 }
 
 function list(value: unknown, label: string, max: number, code: VerificationErrorCode): readonly unknown[] {
@@ -643,6 +648,14 @@ export class IndependentVerificationCoordinator {
       nextState: decision.nextState,
       repairCycles: decision.snapshot.repairCycles
     });
+  }
+}
+
+export class HumanReviewCoordinator {
+  private readonly ports: HumanReviewPorts;
+
+  constructor(ports: HumanReviewPorts) {
+    this.ports = ports;
   }
 
   async review(value: unknown): Promise<Readonly<Row>> {

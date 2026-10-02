@@ -3,7 +3,9 @@ import { test } from "node:test";
 
 import {
   coordinator,
+  humanReviewCoordinator,
   humanReviewInput,
+  humanReviewPorts,
   sha,
   verificationInput,
   verificationPorts
@@ -41,8 +43,8 @@ test("fourth unresolved gap enters HUMAN_RESOLUTION_REQUIRED", async () => {
 });
 
 test("accepted Human Review is the only service path to COMPLETED", async () => {
-  const { state, ports } = verificationPorts();
-  const result = await coordinator(ports).review(humanReviewInput());
+  const { state, ports } = humanReviewPorts();
+  const result = await humanReviewCoordinator(ports).review(humanReviewInput());
   assert.equal(result.status, "COMPLETED");
   assert.equal(state.decisions[0].snapshot.state, "COMPLETED");
   assert.equal(state.decisions[0].snapshot.terminalCapsuleRequired, true);
@@ -52,8 +54,8 @@ test("rejected Human Review persists the outcome and never completes", async () 
   const input = humanReviewInput();
   input.outcome = "rejected";
   input.findingRefs = ["finding:changes-required"];
-  const { state, ports } = verificationPorts();
-  const result = await coordinator(ports).review(input);
+  const { state, ports } = humanReviewPorts();
+  const result = await humanReviewCoordinator(ports).review(input);
   assert.equal(result.status, "REVIEW_REJECTED");
   assert.equal(state.decisions.length, 0);
   assert.equal(state.reviews[0].outcome, "rejected");
@@ -62,33 +64,33 @@ test("rejected Human Review persists the outcome and never completes", async () 
 test("non-human reviewer cannot authorize final completion", async () => {
   const input = humanReviewInput();
   input.reviewer.actorKind = "model";
-  const { state, ports } = verificationPorts();
-  await assert.rejects(coordinator(ports).review(input), { code: "VES_HUMAN_REVIEW_ACTOR_INVALID" });
+  const { state, ports } = humanReviewPorts();
+  await assert.rejects(humanReviewCoordinator(ports).review(input), { code: "VES_HUMAN_REVIEW_ACTOR_INVALID" });
   assert.equal(state.reviews.length, 0);
 });
 
 test("stale Human Review surface cannot authorize completion", async () => {
   const input = humanReviewInput();
   input.currentSurfaceDigest = sha("changed-surface");
-  const { state, ports } = verificationPorts();
-  await assert.rejects(coordinator(ports).review(input), { code: "VES_HUMAN_REVIEW_STALE" });
+  const { state, ports } = humanReviewPorts();
+  await assert.rejects(humanReviewCoordinator(ports).review(input), { code: "VES_HUMAN_REVIEW_STALE" });
   assert.equal(state.reviews.length, 0);
 });
 
 test("non-PASS verification report cannot reach Human Review completion", async () => {
   const input = humanReviewInput({ verdict: "FAIL" });
-  const { state, ports } = verificationPorts();
-  await assert.rejects(coordinator(ports).review(input), { code: "VES_HUMAN_REVIEW_REPORT_INVALID" });
+  const { state, ports } = humanReviewPorts();
+  await assert.rejects(humanReviewCoordinator(ports).review(input), { code: "VES_HUMAN_REVIEW_REPORT_INVALID" });
   assert.equal(state.decisions.length, 0);
 });
 
 test("caller-declared PASS cannot replace an authenticated verification report", async () => {
-  const { state, ports } = verificationPorts({
+  const { state, ports } = humanReviewPorts({
     reports: {
       verify: async (verification) => ({ ...verification, valid: false })
     }
   });
-  await assert.rejects(coordinator(ports).review(humanReviewInput()), {
+  await assert.rejects(humanReviewCoordinator(ports).review(humanReviewInput()), {
     code: "VES_HUMAN_REVIEW_REPORT_INVALID"
   });
   assert.equal(state.reviews.length, 0);
@@ -96,18 +98,20 @@ test("caller-declared PASS cannot replace an authenticated verification report",
 });
 
 test("denied or forged Human Review authority creates no record", async () => {
-  const { state, ports } = verificationPorts({
+  const { state, ports } = humanReviewPorts({
     humanAuthority: { verify: async () => ({ authorized: false }) }
   });
-  await assert.rejects(coordinator(ports).review(humanReviewInput()), { code: "VES_HUMAN_REVIEW_AUTHORITY_DENIED" });
+  await assert.rejects(humanReviewCoordinator(ports).review(humanReviewInput()), {
+    code: "VES_HUMAN_REVIEW_AUTHORITY_DENIED"
+  });
   assert.equal(state.reviews.length, 0);
   assert.equal(state.decisions.length, 0);
 });
 
 test("Human Review record binds exact verifier report commit and review surface", async () => {
   const input = humanReviewInput();
-  const { state, ports } = verificationPorts();
-  await coordinator(ports).review(input);
+  const { state, ports } = humanReviewPorts();
+  await humanReviewCoordinator(ports).review(input);
   assert.equal(state.reviews[0].verificationReportDigest, input.verification.reportDigest);
   assert.equal(state.reviews[0].commitId, input.verification.commitId);
   assert.equal(state.reviews[0].reviewSurfaceDigest, input.reviewSurfaceDigest);

@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import { IndependentVerificationCoordinator } from "../../packages/application/src/index.ts";
+import { HumanReviewCoordinator, IndependentVerificationCoordinator } from "../../packages/application/src/index.ts";
 import { WorkflowMachine } from "../../packages/domain/src/index.ts";
 
 export const sha = (value) => `sha256:${createHash("sha256").update(value).digest("hex")}`;
@@ -101,10 +101,19 @@ export const humanReviewInput = (report) => ({
   findingRefs: ["finding:none"]
 });
 
+const workflowPort = (state, overrides) => ({
+  apply: async (snapshot, command) => {
+    state.calls.push(`workflow:${command.type}`);
+    const decision = WorkflowMachine.decide(snapshot, command);
+    state.decisions.push(decision);
+    return decision;
+  },
+  ...overrides
+});
+
 export function verificationPorts(overrides = {}) {
-  const state = { calls: [], reports: [], lessons: [], reviews: [], decisions: [], sensorRuns: 0 };
+  const state = { calls: [], reports: [], lessons: [], decisions: [], sensorRuns: 0 };
   const ports = {
-    digest: { sha256: sha },
     expectations: {
       derive: async (criterion) => {
         state.calls.push(`derive:${criterion.criterionId}`);
@@ -152,13 +161,6 @@ export function verificationPorts(overrides = {}) {
       ...overrides.lessons
     },
     reports: {
-      verify: async (verification) => ({
-        valid: true,
-        reportRef: verification.reportRef,
-        reportDigest: verification.reportDigest,
-        verdict: verification.verdict,
-        commitId: verification.commitId
-      }),
       save: async (report) => {
         state.calls.push("report:save");
         state.reports.push(report);
@@ -166,14 +168,23 @@ export function verificationPorts(overrides = {}) {
       },
       ...overrides.reports
     },
-    workflow: {
-      apply: async (snapshot, command) => {
-        state.calls.push(`workflow:${command.type}`);
-        const decision = WorkflowMachine.decide(snapshot, command);
-        state.decisions.push(decision);
-        return decision;
-      },
-      ...overrides.workflow
+    workflow: workflowPort(state, overrides.workflow)
+  };
+  return { state, ports };
+}
+
+export function humanReviewPorts(overrides = {}) {
+  const state = { calls: [], reviews: [], decisions: [] };
+  const ports = {
+    reports: {
+      verify: async (verification) => ({
+        valid: true,
+        reportRef: verification.reportRef,
+        reportDigest: verification.reportDigest,
+        verdict: verification.verdict,
+        commitId: verification.commitId
+      }),
+      ...overrides.reports
     },
     humanAuthority: {
       verify: async () => ({ authorized: true, authorizationRef: "human-review-authorization:001" }),
@@ -186,9 +197,11 @@ export function verificationPorts(overrides = {}) {
         return { reviewRef: "human-review:001", reviewDigest: sha(JSON.stringify(review)) };
       },
       ...overrides.reviews
-    }
+    },
+    workflow: workflowPort(state, overrides.workflow)
   };
   return { state, ports };
 }
 
 export const coordinator = (ports) => new IndependentVerificationCoordinator(ports);
+export const humanReviewCoordinator = (ports) => new HumanReviewCoordinator(ports);

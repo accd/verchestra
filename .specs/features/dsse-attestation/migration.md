@@ -178,7 +178,7 @@ path must be specified before proceeding. The inventory command and its
 result are recorded as evidence in the implementation change.
 
 **Precedent:** rejecting rather than shimming an old sealed schema is the
-established pattern — `packages/application/src/verification/verification.ts:267`
+established pattern — `packages/application/src/verification/verification.ts:272`
 bumped a sealed report to `schemaVersion: 2` and rejects `1` outright. The
 dual-acceptance pattern at `packages/workspace/src/init/safe-init.ts:115-128`
 exists only because a hard crash can genuinely leave a v1 journal on disk;
