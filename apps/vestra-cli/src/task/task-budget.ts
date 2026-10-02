@@ -1,4 +1,4 @@
-import { budgetBilling, type BudgetLedger } from "@verchestra/application";
+import { budgetBilling, type BudgetLedger, type BudgetMeter, type UsageEvent } from "@verchestra/application";
 
 import { stateInvalid } from "./task-errors.ts";
 import { objectRow } from "./task-files.ts";
@@ -46,6 +46,58 @@ export function storedBudgetLedger(value: unknown): BudgetLedger | undefined {
   const row = objectRow(value, "budget ledger");
   if (!isBudgetLedger(row)) throw stateInvalid("VES_TASK_STATE_MALFORMED", "The stored budget ledger is malformed");
   return row;
+}
+
+// invariant: a run's ledger only grows. A ledger with fewer tokens, events or
+// unbilled tokens, or with less cost, than the one already recorded would hand
+// spent usage back to the run, which is a fresh ceiling by another name.
+// why: the duration is left out. A clock measures it, and a clock that was set
+// back must not make a run's usage impossible to record.
+export function continuesLedger(recorded: BudgetLedger, next: BudgetLedger): boolean {
+  return (
+    next.consumedTokens >= recorded.consumedTokens &&
+    next.usageEvents >= recorded.usageEvents &&
+    next.consumedCostUsd >= recorded.consumedCostUsd &&
+    (next.unbilledTokens ?? 0) >= (recorded.unbilledTokens ?? 0)
+  );
+}
+
+// invariant: where a run's one ledger is read and recorded. The Run record's
+// checkpoint projections are the implementation.
+export interface RunLedger {
+  repair(): Promise<{ readonly budgetLedger: BudgetLedger | undefined } | undefined>;
+  recordBudgetLedger(ledger: BudgetLedger): void;
+}
+
+// invariant: one run, one account of usage. Work that spends outside the
+// repair loop is handed a meter that continues from the run's ledger and
+// records its own ledger back as each usage event is metered. A crash after
+// the event therefore cannot lose what was spent, and the next meter, resumed
+// from that ledger, cannot count it twice.
+// why: the ledger is recorded once more when the work ends, however it ends.
+// Time passes after the last usage event (the verifier's mutation runs), and a
+// duration ceiling is reached without one.
+// hazard: a failure to record is not a budget stop. It leaves `recordUsage`
+// as the error it is, and the session that reported the usage ends on it.
+export async function meterOnRunLedger<T>(
+  run: RunLedger,
+  create: (resume: BudgetLedger | undefined) => BudgetMeter,
+  work: (meter: BudgetMeter) => Promise<T>
+): Promise<T> {
+  const meter = create((await run.repair())?.budgetLedger);
+  const record = () => run.recordBudgetLedger(meter.ledger());
+  const recording: BudgetMeter = Object.freeze({
+    ...meter,
+    recordUsage(event: UsageEvent): void {
+      meter.recordUsage(event);
+      record();
+    }
+  });
+  try {
+    return await work(recording);
+  } finally {
+    record();
+  }
 }
 
 // why: a ledger of billed usage alone is reported exactly as it was stored, so

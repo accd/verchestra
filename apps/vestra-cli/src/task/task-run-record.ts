@@ -20,7 +20,7 @@ import {
 } from "@verchestra/evidence";
 import { NodeContentDigest, RuntimeCheckpointStore, isGitObjectId, type RuntimeStore } from "@verchestra/platform-node";
 
-import { storedBudgetLedger } from "./task-budget.ts";
+import { continuesLedger, storedBudgetLedger } from "./task-budget.ts";
 import { stateInvalid, taskError } from "./task-errors.ts";
 import { TaskEvidenceStore } from "./task-evidence.ts";
 import {
@@ -187,6 +187,17 @@ function looseRow(value: unknown): Row {
   return value !== null && typeof value === "object" && !Array.isArray(value) ? (value as Row) : {};
 }
 
+// why: a run interrupted after its task commit and before the repair loop
+// saved its state has none. Usage is recorded outside the loop only once that
+// commit exists, so its ledger is filed under `converged` with no attempt
+// recorded: what the commit proves, and all that is known.
+const UNRECORDED_LOOP: Row = Object.freeze({
+  stage: "converged",
+  attempts: 0,
+  attemptCapsuleDigests: Object.freeze([]),
+  budgetLedger: null
+});
+
 // invariant: the one reader of a Run's checkpoint rows. The runtime store
 // keeps them as records of unknown shape; every command gets these typed
 // projections instead of reading a row itself. The three ports are the
@@ -247,6 +258,29 @@ export class RunCheckpoints {
     if (stored === undefined) return undefined;
     const row = objectRow(stored, "repair state");
     return { stage: textField(row, "stage", "repair state"), budgetLedger: storedBudgetLedger(row["budgetLedger"]) };
+  }
+
+  // invariant: a Run has one account of usage, the ledger its latest repair
+  // state carries. Usage metered after the repair loop ended (the verifier's)
+  // is recorded on that same state: its stage, attempt count and attempt chain
+  // stay as the loop left them and only the ledger moves. `status`, the Run
+  // Capsule and the next meter therefore read one ledger, and it only grows:
+  // a ledger that does not continue the recorded one is refused, not stored.
+  // hazard: synchronous on purpose. A usage event is metered inside a driver's
+  // stream handling, where nothing can be awaited, and what it spent must be
+  // stored before the next event is read.
+  recordBudgetLedger(ledger: BudgetLedger): void {
+    const state = this.#store.inspectRepair(...this.#identity) ?? UNRECORDED_LOOP;
+    const recorded = storedBudgetLedger(state["budgetLedger"]);
+    const next = storedBudgetLedger(ledger);
+    if (next === undefined || (recorded !== undefined && !continuesLedger(recorded, next)))
+      throw stateInvalid("VES_TASK_STATE_MISMATCH", "The ledger does not continue the usage recorded for the run");
+    this.#store.recordRepair(...this.#identity, {
+      stage: state["stage"],
+      attempts: state["attempts"],
+      attemptCapsuleDigests: state["attemptCapsuleDigests"],
+      budgetLedger: next
+    });
   }
 }
 

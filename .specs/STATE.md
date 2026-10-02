@@ -1658,6 +1658,96 @@ note. -->
   `docs/qualification/claude-code-driver-provider-ends.md` and
   `docs/qualification/codex-driver-provider-ends.md`.
 
+### AD-055 — A run has one account of usage: the verifier's usage is recorded on the run's ledger as it is metered
+
+- **Status:** proposed (ratified by reviewing the pull request that carries
+  `fix/verifier-usage-recorded`).
+- **Context:** A governed task meters two providers against one set of
+  ceilings. The repair loop saves the implementer's budget ledger in its repair
+  state when an attempt ends. `TaskRunComposition#verify` built the verifier's
+  meter from that ledger, and `meterUsage` in `task-codex.ts` recorded every
+  Codex usage event on it and stopped the verifier at a ceiling. Nothing saved
+  that meter's ledger afterwards. `task status` and the Run Capsule therefore
+  reported the implementer's usage alone; a run with the implementer on a
+  subscription and the verifier on an API key reported no cost; a run the
+  verifier's usage stopped failed with a ledger that named no ceiling; and a
+  verification repeated by `resume` started again from the implementer's
+  total, so what the interrupted one had spent no longer counted against the
+  ceilings. The end-to-end journeys pinned 18 tokens for a run whose two
+  labeled fakes report 18 and 8.
+- **Decision:**
+  1. **The ledger stays where it is.** A run's account of usage is the
+     `budgetLedger` of its latest repair state, a `repair` checkpoint in the
+     runtime store. It is the run's ledger, not the repair loop's alone. No
+     second store, no file in the Run directory, no checkpoint kind and no
+     migration are added.
+  2. `RunCheckpoints#recordBudgetLedger` in `task-run-record.ts` records usage
+     metered after the repair loop ended. It keeps the stage, the attempt count
+     and the attempt chain the loop left and moves only the ledger. A run
+     whose loop saved no state (it was interrupted after its task commit and
+     before the loop recorded it) has its ledger filed under `converged` with
+     no attempt recorded.
+  3. **The ledger only grows.** A ledger with fewer tokens, usage events or
+     unbilled tokens, or with less cost, than the recorded one is refused with
+     `VES_TASK_STATE_INVALID`, reason `VES_TASK_STATE_MISMATCH`, and nothing is
+     stored. The duration is not compared: a clock measures it. No error code
+     is added.
+  4. `meterOnRunLedger` in `task-budget.ts` is the one place that meters work
+     outside the repair loop. It builds the meter from the run's ledger, hands
+     the work a meter that records its ledger back when each usage event is
+     metered, and records it once more when the work ends, however it ends.
+     `TaskRunComposition#verify` runs verification inside it.
+  5. **The record is synchronous.** A usage event is metered inside a driver's
+     stream handling, where nothing can be awaited. `RuntimeCheckpointStore`
+     gains `inspectRepair` and `recordRepair`, the repair state without a
+     promise; the `repairState` port now calls them, so both forms apply the
+     same checks.
+  6. A failure to record is not a budget stop. It leaves `recordUsage` as the
+     error it is, the session runner ends the session on it (AD-048), and the
+     run fails with that error's code.
+  7. **The Run Capsule keeps its shape.** `budgetEvidence` has the same
+     members, the capsule schema version and every digest rule are unchanged,
+     and capsules sealed before this change verify as they did. What changes
+     is what `consumed` (`tokens`, `durationMs`, `usageEvents`, `costUsd`,
+     `unbilledTokens`), `billing` and `stopReason` cover: the whole run, where
+     they covered the implementer's attempts. A capsule sealed before this
+     change understates its run by the verifier's usage, and nothing in a
+     capsule says which of the two it holds.
+- **Alternatives rejected:** a sealed ledger file in the Run directory (a
+  second store beside the repair state: a reader would add two ledgers, and a
+  resumed meter built from their sum would be added again; it also moves the
+  layout ADP-2 recorded); a checkpoint kind of its own (the kinds are a
+  constraint of migration 012, so it needs a thirteenth migration); an
+  executor checkpoint (the executor owns that sequence, and `resume` reads its
+  latest stage); a verifier ledger kept apart and added when it is read (the
+  ceilings would need the sum too, and the two could disagree); recording once
+  when verification ends (a process killed during the mutation runs, the long
+  part of verification, would lose the verifier's tokens); a record that is
+  awaited later (a failure would be found after the session had gone on); a
+  repair stage that names verification (it would replace `converged` in
+  `status`); a new member in `budgetEvidence` that says what it covers (a
+  change to the shape of signed evidence; left to the owner, below).
+- **Consequence:** `task status` and the Run Capsule report one total for the
+  run. With the labeled fakes that is 26 tokens in two usage events where it
+  was 18 in one, and 34 in three after a verification that was killed and
+  resumed. A run on API keys reports the price table's cost for both
+  providers. A run with one provider on a subscription now reports
+  `billing: mixed`, with the billed provider's cost beside the unbilled token
+  count; it reported `not billed (subscription)` or a plain cost before. A run
+  the verifier's usage stops now names the ceiling in its ledger. A
+  verification repeated by `resume` spends from what the interrupted one left.
+  Evidence is in `.specs/features/verifier-usage-recorded/validation.md`.
+  **Open points for the owner:** (a) the implementer's usage is still saved
+  only when a gate attempt ends, so a run killed during an attempt reports,
+  after `resume`, a total without what that attempt had spent; (b) a verifier
+  is still started when the run's ceiling was already reached, and stopped on
+  its first usage event; (c) a run the verifier's budget stops ends with
+  reason `VES_TASK_FAILED`, not `VES_EXECUTOR_BUDGET_EXCEEDED`; (d) whether
+  `budgetEvidence` should say what it covers; (e) the live pilot
+  pre-registration (`.specs/features/live-task-pilot/spec.md`) records
+  `status.checkpoints.budget` as "Implementer usage" and the verifier's as
+  unavailable, which is no longer what that field holds.
+
 ## Handoff
 
 - **Feature:** `subscription-provider-auth` (ADP-A, tasks TA1 and TA2) on

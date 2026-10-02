@@ -24,10 +24,24 @@ import {
   cleanupTaskFixtures,
   taskFixture
 } from "../helpers/task-cli-fixture.mjs";
+import {
+  IMPLEMENTER,
+  IMPLEMENTER_TOKENS,
+  VERIFIER,
+  VERIFIER_TOKENS,
+  priced
+} from "../helpers/verifier-usage-fixture.mjs";
 
 after(cleanupTaskFixtures);
 
 const TIMEOUT = { timeout: 300_000 };
+// why: a run's reported usage is the implementer's and the verifier's. The
+// fake implementer reports 11 input and 7 output tokens in one usage event and
+// the fake verifier 5 and 3 in one, so a run that verifies once has spent
+// 18 + 8 = 26 tokens in 2 events. These journeys pinned 18 while the
+// verifier's usage was metered against the ceilings and never recorded.
+const RUN_TOKENS = IMPLEMENTER_TOKENS + VERIFIER_TOKENS;
+const RUN_USAGE_EVENTS = 2;
 
 function ok(result, label) {
   assert.equal(result.status, 0, `${label}: ${result.stderr}\n${result.stdout}`);
@@ -266,10 +280,14 @@ test("a governed task is planned, approved, implemented, gated, verified, and ac
     assert.equal(codex.environmentKeys.includes(key), false, key);
   // invariant: nothing is billed per token on a subscription. The ceilings
   // were metered, and the cost is reported as not billed, never as dollars.
+  // why: 26 tokens, not 18: the implementer's 11 + 7 and the verifier's 5 + 3.
   assert.equal(inReview.checkpoints.budget.consumedCostUsd, "not billed (subscription)");
   assert.equal(inReview.checkpoints.budget.billing, "subscription");
-  assert.equal(inReview.checkpoints.budget.consumedTokens, 18);
-  assert.equal(inReview.checkpoints.budget.unbilledTokens, 18);
+  assert.equal(RUN_TOKENS, 26);
+  assert.equal(inReview.checkpoints.budget.consumedTokens, RUN_TOKENS);
+  assert.equal(inReview.checkpoints.budget.unbilledTokens, RUN_TOKENS);
+  assert.equal(inReview.checkpoints.budget.usageEvents, RUN_USAGE_EVENTS);
+  assert.equal(inReview.checkpoints.budget.stopReason, null);
 
   refused(review(fixture, plan.runId, "accepted", `sha256:${"1".repeat(64)}`), "VES_TASK_SURFACE_MISMATCH", "stale");
   refused(
@@ -294,11 +312,17 @@ test("a governed task is planned, approved, implemented, gated, verified, and ac
   assert.equal(done.state, "COMPLETED");
   assert.equal(done.capsuleId, accepted.capsuleId);
   assert.deepEqual(done.next, []);
+  // invariant: the Run Capsule seals the ledger `status` printed: the run's
+  // 26 tokens in 2 events, and the time the whole run took, verification
+  // included.
   const budget = capsuleBudget(fixture, plan.runId);
   assert.equal(budget.billing, "subscription");
   assert.equal(Object.hasOwn(budget.consumed, "costUsd"), false);
   assert.equal(budget.consumed.unbilledTokens, budget.consumed.tokens);
-  assert.equal(budget.consumed.tokens, 18);
+  assert.equal(budget.consumed.tokens, RUN_TOKENS);
+  assert.equal(budget.consumed.usageEvents, RUN_USAGE_EVENTS);
+  assert.equal(budget.consumed.durationMs, inReview.checkpoints.budget.consumedDurationMs);
+  assert.equal(budget.stopReason, null);
   refused(start(fixture, plan.runId), "VES_TASK_TRANSITION_REFUSED", "restart a completed run");
 });
 
@@ -411,15 +435,21 @@ test("in API-key mode a task runs bare with the two keys and reports a dollar co
   assert.equal(codex.environmentKeys.includes("ANTHROPIC_API_KEY"), false);
   assert.equal(existsSync(fixture.codexIdentity), false);
   assert.deepEqual(logLines(fixture, "fake-codex-status.log"), []);
+  // invariant: the cost is the price table's for both providers' usage: the
+  // implementer's 11 + 7 tokens at its model's rates plus the verifier's 5 + 3
+  // at its own.
   const budget = status(fixture, plan.runId).checkpoints.budget;
-  assert.equal(typeof budget.consumedCostUsd, "number");
-  assert.ok(budget.consumedCostUsd > 0);
+  assert.equal(budget.consumedCostUsd, priced(IMPLEMENTER) + priced(VERIFIER));
+  assert.ok(budget.consumedCostUsd > priced(IMPLEMENTER), "the verifier's usage was not priced");
+  assert.equal(budget.consumedTokens, RUN_TOKENS);
+  assert.equal(budget.usageEvents, RUN_USAGE_EVENTS);
   assert.equal(Object.hasOwn(budget, "billing"), false);
   assert.equal(Object.hasOwn(budget, "unbilledTokens"), false);
   ok(review(fixture, plan.runId, "accepted", run.surfaceDigest), "review");
   const sealed = capsuleBudget(fixture, plan.runId);
   assert.equal(Object.hasOwn(sealed, "billing"), false);
   assert.equal(sealed.consumed.costUsd, budget.consumedCostUsd);
+  assert.equal(sealed.consumed.tokens, RUN_TOKENS);
 });
 
 test(
@@ -503,9 +533,23 @@ test("one provider on a subscription and the other on a key is metered as mixed"
   const [codex] = logLines(fixture, "fake-codex.log");
   assert.equal(codex.credentialMatchesStore, true);
   assert.notEqual(codex.codexHome, fixture.codexIdentity);
-  // invariant: the implementer's usage is the only usage in the run ledger,
-  // and it is unbilled; the verifier's billed usage spends from the same ceilings.
-  assert.equal(status(fixture, plan.runId).checkpoints.budget.consumedCostUsd, "not billed (subscription)");
+  // invariant: the run ledger holds both providers' usage. The implementer's
+  // 18 tokens are unbilled and the verifier's 8 are priced by the table, so the
+  // run is metered as mixed and its cost is the verifier's alone.
+  // why: this journey asserted `not billed (subscription)` while the verifier's
+  // billed usage was left out of the ledger.
+  const budget = status(fixture, plan.runId).checkpoints.budget;
+  assert.equal(budget.billing, "mixed");
+  assert.equal(budget.consumedTokens, RUN_TOKENS);
+  assert.equal(budget.unbilledTokens, IMPLEMENTER_TOKENS);
+  assert.equal(budget.consumedCostUsd, priced(VERIFIER));
+  ok(review(fixture, plan.runId, "accepted", run.surfaceDigest), "review");
+  const sealed = capsuleBudget(fixture, plan.runId);
+  assert.equal(sealed.billing, "mixed");
+  assert.equal(sealed.consumed.costUsd, priced(VERIFIER));
+  assert.equal(sealed.consumed.tokens, RUN_TOKENS);
+  assert.equal(sealed.consumed.unbilledTokens, IMPLEMENTER_TOKENS);
+  assert.equal(sealed.consumed.usageEvents, RUN_USAGE_EVENTS);
 });
 
 test("an exhausted budget stops the implementer and fails the run as a budget outcome", TIMEOUT, async () => {
@@ -1195,5 +1239,95 @@ test(
     await restoreGrant();
     assert.equal(status(fixture, plan.runId).state, "HUMAN_REVIEW");
     assert.equal(ok(review(fixture, plan.runId, "accepted", resumed.surfaceDigest), "review").state, "COMPLETED");
+  }
+);
+
+// invariant: one run, one account of usage. A run that verifies is killed after
+// its verifier answered, while the verification's mutation run is held, so the
+// verifier's usage was metered and nothing after it was recorded. `status`
+// still reports that usage, and the resumed run, which asks the verifier
+// again, adds the second session once.
+test(
+  "a run killed during verification keeps the verifier's usage, and resume counts the repeated one once",
+  TIMEOUT,
+  async (t) => {
+    if (!DARWIN) return notConfiguredOffMacOS(t);
+    const fixture = await taskFixture();
+    const plan = await approved(fixture);
+    const held = join(fixture.home, "mutation-held");
+    await writeFile(join(fixture.home, "hold-mutation"), "");
+    const child = fixture.launchAsync(startArguments(fixture, plan.runId));
+    const finished = exited(child);
+    // hazard: a case that fails before the kill would leave the command and
+    // the held gate alive.
+    t.after(() => {
+      child.kill("SIGKILL");
+      if (existsSync(held) && running(Number(readFileSync(held, "utf8"))))
+        process.kill(-Number(readFileSync(held, "utf8")), "SIGKILL");
+    });
+    await waitFor(() => existsSync(held));
+    child.kill("SIGKILL");
+    assert.equal((await finished).signal, "SIGKILL");
+    process.kill(-Number(readFileSync(held, "utf8")), "SIGKILL");
+    await rm(join(fixture.home, "hold-mutation"));
+
+    const interrupted = status(fixture, plan.runId);
+    assert.equal(interrupted.state, "VERIFYING");
+    assert.equal(interrupted.activeProcess, false);
+    assert.equal(interrupted.checkpoints.repair, "converged");
+    assert.equal(interrupted.evidence.verificationVerdict, null, "the killed verification was decided");
+    // why: 18 from the implementer and 8 from the verifier session that had
+    // answered before the kill.
+    assert.equal(interrupted.checkpoints.budget.consumedTokens, RUN_TOKENS);
+    assert.equal(interrupted.checkpoints.budget.usageEvents, RUN_USAGE_EVENTS);
+
+    const resumed = ok(start(fixture, plan.runId, "resume"), "resume");
+    assert.equal(resumed.state, "HUMAN_REVIEW");
+    assert.equal(logLines(fixture, "fake-claude.log").filter((entry) => entry.scenario !== undefined).length, 1);
+    assert.equal(logLines(fixture, "fake-codex.log").length, 2, "the resumed run asks the verifier again");
+    // why: the implementer ran once and the verifier twice: 18 + 8 + 8 = 34
+    // tokens in 3 events. 26 would have lost the killed session and 42 would
+    // have counted one of them twice.
+    const budget = status(fixture, plan.runId).checkpoints.budget;
+    assert.equal(budget.consumedTokens, RUN_TOKENS + VERIFIER_TOKENS);
+    assert.equal(budget.consumedTokens, 34);
+    assert.equal(budget.unbilledTokens, 34);
+    assert.equal(budget.usageEvents, 3);
+    assert.equal(budget.billing, "subscription");
+
+    assert.equal(ok(review(fixture, plan.runId, "accepted", resumed.surfaceDigest), "review").state, "COMPLETED");
+    const sealed = capsuleBudget(fixture, plan.runId);
+    assert.equal(sealed.consumed.tokens, 34);
+    assert.equal(sealed.consumed.unbilledTokens, 34);
+    assert.equal(sealed.consumed.usageEvents, 3);
+  }
+);
+
+// invariant: the verifier spends from the run's ceilings, not from its own.
+// 90% of 28 tokens is 25.2: the implementer's 18 are below it, so its gate
+// converges and the task is committed; the verifier's 8 are below it too; the
+// run's 26 are not. The run fails when the verifier reports, and the ledger
+// names the ceiling and the whole of what was spent.
+test(
+  "a ceiling the implementer and the verifier reach only together fails the run in verification",
+  TIMEOUT,
+  async (t) => {
+    if (!DARWIN) return notConfiguredOffMacOS(t);
+    const fixture = await taskFixture({
+      request: { budgets: { maximumCostUsd: 5, maximumTokens: 28, maximumDurationMs: 600_000 } }
+    });
+    const plan = await approved(fixture);
+    const run = start(fixture, plan.runId);
+    assert.equal(run.status, 1, run.stderr);
+    assert.equal(run.json.data.state, "FAILED");
+    assert.equal(logLines(fixture, "fake-codex.log").length, 1, "the verifier was never asked");
+    const after = status(fixture, plan.runId);
+    assert.equal(after.state, "FAILED");
+    assert.equal(after.checkpoints.repair, "converged", "the implementer alone reached the ceiling");
+    assert.match(after.evidence.commitId, /^[a-f0-9]{40}$/u);
+    assert.equal(after.evidence.verificationVerdict, null);
+    assert.equal(after.checkpoints.budget.stopReason, "token-threshold");
+    assert.equal(after.checkpoints.budget.consumedTokens, RUN_TOKENS);
+    assert.equal(after.checkpoints.budget.usageEvents, RUN_USAGE_EVENTS);
   }
 );

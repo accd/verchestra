@@ -94,8 +94,16 @@ if (home !== "" && existsSync(\`\${home}/hold-gate\`)) {
 } else {
   const value = readFileSync("src/value.txt", "utf8");
   if (value !== "new\\n") {
-    console.error("src/value.txt is not new");
-    process.exit(1);
+    // why: only the verifier's mutation run, which reverts the implementation,
+    // judges the old value after the task commit. Holding it there stops a run
+    // after its verifier answered and before the verification is decided.
+    if (home !== "" && existsSync(\`\${home}/hold-mutation\`)) {
+      writeFileSync(\`\${home}/mutation-held\`, String(process.pid));
+      setInterval(() => {}, 1000);
+    } else {
+      console.error("src/value.txt is not new");
+      process.exit(1);
+    }
   }
 }
 `;

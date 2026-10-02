@@ -98,7 +98,8 @@ test("the task commands do not import one another for Run state", () => {
 // Run record module turns them into typed projections, and no command reads
 // or casts a row itself.
 test("only the Run record module opens the checkpoint store or reads a checkpoint row", () => {
-  const store = /\bRuntimeCheckpointStore\b|\.(?:inspectGate|executorCheckpoints|gateCheckpoints|repairState)\(/u;
+  const store =
+    /\bRuntimeCheckpointStore\b|\.(?:inspectGate|inspectRepair|recordRepair|executorCheckpoints|gateCheckpoints|repairState)\(/u;
   assert.deepEqual(offenders(store), []);
   assert.match(owner, store);
   const cast = /\bas\s+(?:Readonly<)?\{[^}]*\b(?:budgetLedger|toolReceiptRefs|changeDigest|changedPaths|stage)\??:/u;
@@ -178,4 +179,20 @@ test("task review reads the grant marker once, before the review surface", () =>
   assert.equal(review.match(/\.loadGrant\(\)/gu)?.length, 1);
   assert.ok(review.indexOf(".loadGrant()") < review.indexOf("await reviewSurface("), "the grant is read too late");
   assert.ok(review.indexOf(".loadGrant()") > review.indexOf("export async function reviewTask("));
+});
+
+// invariant: one run, one account of usage. The task composition verifies
+// inside `meterOnRunLedger`, which builds the meter on the Run's ledger and
+// records it; the verifier is handed that meter and no other, and the budget
+// module is the one caller that records a ledger on the Run record.
+test("the verifier spends from the Run's ledger, and only the budget module records one", () => {
+  const run = sources.find(({ name }) => name === "task-run.ts")?.source ?? "";
+  assert.match(run, /return meterOnRunLedger\(\s*this\.#checkpoints,/u);
+  assert.match(run, /\(meter\)\s*=>\s*verifyTask\(/u, "verification is not the metered work");
+  assert.equal(run.match(/\bverifyTask\(/gu)?.length, 1, "verification is started in more than one place");
+  assert.doesNotMatch(run, /\bmeter:/u, "the verifier is handed a meter that is not on the Run's ledger");
+  assert.match(owner, /\brecordBudgetLedger\(ledger: BudgetLedger\): void\b/u);
+  assert.deepEqual(offenders(/\.recordBudgetLedger\(/u), ["task-budget.ts"]);
+  const budget = sources.find(({ name }) => name === "task-budget.ts")?.source ?? "";
+  assert.match(budget, /finally\s*\{\s*record\(\);/u, "the ledger is not recorded when the metered work ends");
 });

@@ -81,7 +81,10 @@ transactional work (`BEGIN IMMEDIATE`) and digest verification;
   which the coordinator rejects, so the composition must consult
   `inspectGate()` first.
 - `repairState(workspaceId, runId, taskId)` → `loadState`/`saveState` for
-  `runGateRepairLoop`.
+  `runGateRepairLoop`. `inspectRepair` and `recordRepair` are the same two
+  operations without a promise, and are what the port calls: the task
+  composition records the run's ledger from inside a driver's event stream,
+  where nothing can be awaited.
 
 ## E3 — Node adapters
 
@@ -296,6 +299,21 @@ without trusting it: the expected outcome is derived from the approved task,
 the cited assertion lines must exist at the commit, and the mutation reverts
 the named implementation file in a scratch worktree and must make the covering
 gates fail, while the user's checkout digest stays the same.
+
+A run has one account of usage: the budget ledger its latest repair state
+carries. The repair loop saves it when an attempt ends. The verifier spends
+from the same ledger: `meterOnRunLedger` (`task-budget.ts`) builds its meter
+from the stored ledger and records the meter's ledger back, through
+`RunCheckpoints#recordBudgetLedger`, when each usage event is metered and once
+more when verification ends. That record keeps the stage, attempt count and
+attempt chain the loop left and moves only the ledger, and it refuses a ledger
+that does not continue the recorded one. `status` and the Run Capsule read
+that one ledger, so they report the implementer's usage and the verifier's; a
+run killed after the verifier answered still reports what it spent; and a
+verification repeated by `resume` continues from the recorded total, so it
+adds its own usage once. One gap is left with the repair loop: usage metered
+during an attempt that never ended (the driving process was killed) was never
+saved, so the total of a run resumed after that leaves it out.
 
 The sealed release adds `bin/mcp-tool-bridge.mjs` beside the launchers and
 loads Cedar through the `web` glue from `native/cedar-wasm.wasm`; a repository
