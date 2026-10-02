@@ -668,7 +668,7 @@ Two findings shape the plan and are already resolved as decisions:
   `.vestra` → `.verchestra` fix landed; the same drift persists one level down.
   Resolved by AD-019 (layout contract + T75 fixtures) and enforced by T4.
 - `inspectRuntimeDatabase` now exists and is exported
-  (`packages/platform-node/src/runtime-store/runtime-store.ts:212`), so one of
+  (`packages/platform-node/src/runtime-store/runtime-store.ts:148`), so one of
   the blockers named in the issue body is already resolved.
 
 # Decisions
