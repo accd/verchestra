@@ -328,5 +328,45 @@ Verification:
   active pointer then named `.5` with the manifest's `darwin-arm64` release
   digest. `self-test --profile smoke` returned `verdict: PASS`.
 
-Not yet done: `npm publish` of the `.5` launcher (owner two-factor step), and
-the five-target `live-activation-matrix` run with base `.4` and update `.5`.
+Done on 2026-10-02: the owner published the `.5` launcher to npm (`latest`,
+tarball shasum `51a52567dfc4c87a272778ab9a684b8a922e8d9b`), and the
+five-target run with base `.4` and update `.5` is recorded in the next
+section.
+
+## Live update and rollback `.4` to `.5` on all five targets — run 37047903756 (2026-10-02)
+
+- Workflow: `.github/workflows/live-activation-matrix.yml`
+- Run: <https://github.com/accd/verchestra/actions/runs/37047903756>
+- Dispatched revision: `a59ebc50b2f323ade2ce81ff3b273e451502b710` (`main`)
+- Inputs: `base_version=0.0.0-qualification.4`,
+  `update_version=0.0.0-qualification.5`
+- Started 2026-10-02T18:30:31Z, finished 2026-10-02T18:39:00Z
+
+Every phase exits `0` on every target: activate, update, rollback, self-test
+smoke (`verdict: PASS`), and recover.
+
+| Target       | after activate and after rollback (`.4`) | after update (`.5`)        |
+| ------------ | ---------------------------------------- | -------------------------- |
+| win32-x64    | `sha256:9017bd8c…e3d7a0a3`               | `sha256:ffccd4ca…6762a68f` |
+| linux-x64    | `sha256:f946315d…cf33ced5`               | `sha256:a70fa90e…5328bc9e` |
+| linux-arm64  | `sha256:7a83a32c…657b7864`               | `sha256:a8165329…0e0fa45a` |
+| darwin-x64   | `sha256:2337d44b…f194e712`               | `sha256:70338b0b…f48a9e6b` |
+| darwin-arm64 | `sha256:3ffe9a7f…a31d8fb3`               | `sha256:2f5606f9…a5ee1877` |
+
+On every target `rollback.active.json` is byte-identical to
+`activate.active.json`, and `update.active.json` names `.5`. The `.4` digests
+are the ones run 36997576112 recorded after its update to `.4`, so the two
+runs agree on what `.4` is.
+
+| Target       | Artifact digest (sha256)                                           | `summary.txt` (sha256)                                             |
+| ------------ | ------------------------------------------------------------------ | ------------------------------------------------------------------ |
+| win32-x64    | `659a29a96139305e2ae600f20536e2255dd01c1725fbb8562b204b72cf24f2a4` | `dd457926d992a578654d1e1d94adb1285922bbf592be4e39f26338e0b32cc0d1` |
+| linux-x64    | `9bb4f5e04cca06daa11631a70fb86358aef43e5a68dd734045e8624f971039c0` | `eeab8ed8365a1d977713b03cab2b367b5d15ca5edbfffa190a24328292eab1cc` |
+| linux-arm64  | `38f4f34e24b17b55fd02d179c6ef43908bd4248ce93ec8f1a144a9b591481643` | `2bc08eea5a3f4c154570cf9a008af817b37b85c2bb29e09601dd68de52bd08e6` |
+| darwin-x64   | `6ea18087ddb5ed00fafe118a494e1e9344467a994e3ece10a5fc8a4e918cbe1e` | `b431ea4332ab816f5d20cb24e38a9efc9e620b89da04abd9bf4076347b802cf7` |
+| darwin-arm64 | `039f18d30f113509351514198f66aa44a1e7587641d55407396bafe74e370899` | `7959130bd9f837441fda11f5337f178ebc6f60c17e9ae91ace13633a74bd6500` |
+
+The artifacts expire on 2026-11-01. What this run does not prove is unchanged
+from run 36997576112: no source-side roll-forward, no live uninstall, and
+single-operator custody (L8). It also says nothing about the governed task
+path: `self-test --profile smoke` does not start a provider.
