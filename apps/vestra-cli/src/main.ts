@@ -1,3 +1,4 @@
+import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -157,6 +158,8 @@ async function executeDoctor(command: CliCommand): Promise<CommandResult> {
     const secretProbe = await composeDoctorSecretProbe({
       controlRoot: process.cwd(),
       platform: process.platform,
+      env: process.env,
+      homeDirectory: homedir(),
       ...(typeof keychain === "string" ? { keychainPath: keychain } : {})
     });
     run = await runDoctorDeep({

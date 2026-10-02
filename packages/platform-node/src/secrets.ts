@@ -25,3 +25,8 @@ export {
 } from "./os-secret-backends/darwin-keychain.ts";
 export { PlatformSecurityError, platformSecurityPublicErrorRegistry } from "./platform-security-errors.ts";
 export { type SecretAdapter, isValidLogicalSecretName } from "./secret-broker.ts";
+// why: which credential a provider uses is a setting under the Workspace state
+// root, and the credential check that needs it must not load the runtime
+// store. Both are pure path functions; the writer `ensureWorkspaceState` stays
+// behind the package root.
+export { resolveStateRoot, resolveWorkspaceState } from "./state-root.ts";

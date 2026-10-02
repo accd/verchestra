@@ -30,9 +30,11 @@ import {
   type RuntimeStore
 } from "@verchestra/platform-node";
 
+import { loadProviderAuth, type ProviderAuth, type ProviderAuthMode } from "../task-provider-auth.ts";
 import { TaskAuthority } from "./task-authority.ts";
+import { requireCodexSubscription } from "./task-codex-identity.ts";
 import { loadContextManifest } from "./task-context.ts";
-import { IMPLEMENTER_CREDENTIAL, VERIFIER_CREDENTIAL, readCredentials } from "./task-credentials.ts";
+import { IMPLEMENTER_CREDENTIALS, VERIFIER_CREDENTIAL, readCredentials } from "./task-credentials.ts";
 import { stateInvalid, taskError } from "./task-errors.ts";
 import { TaskEvidenceStore, readPlainJson } from "./task-evidence.ts";
 import { canonicalDigest, sha256, writeJsonAtomic, writeSealedRecord } from "./task-files.ts";
@@ -51,9 +53,16 @@ import { openRuntime, openTaskWorkspace, parseRunId, runDirectory, type TaskWork
 const LEASE_MARGIN_MS = 60 * 60 * 1000;
 const CANCEL_POLL_MS = 200;
 
+// invariant: a verifier has exactly one credential source, an API key or the
+// Codex identity directory of a subscription.
+type VerifierAccess =
+  | { readonly executable: string; readonly credential: string }
+  | { readonly executable: string; readonly identityDirectory: string };
+
 interface Prepared {
-  readonly implementer: { readonly executable: string; readonly credential: string };
-  readonly verifier: { readonly executable: string; readonly credential: string };
+  readonly implementer: { readonly executable: string; readonly auth: ProviderAuthMode; readonly credential: string };
+  readonly verifier: VerifierAccess;
+  readonly unbilledModels: readonly string[];
   readonly gates: Readonly<Record<string, GateCommandProfile>>;
   readonly authority: TaskAuthority;
   readonly manifest: ContextManifest;
@@ -136,23 +145,59 @@ export async function recoverCommittedTask(recovery: CommittedTaskRecovery): Pro
   return commit;
 }
 
+// why: a model reached through a subscription is not billed per token, so the
+// run's meter counts its tokens and duration and never prices it.
+function unbilledModels(auth: ProviderAuth, request: TaskPlanRecord["request"]): readonly string[] {
+  return [
+    ...(auth.implementer === "subscription" ? [request.driver.model] : []),
+    ...(auth.verifier === "subscription" ? [request.verifier.model] : [])
+  ];
+}
+
+async function verifierAccess(
+  io: TaskCommandIo,
+  workspace: TaskWorkspace,
+  executable: string,
+  credential: string | undefined
+): Promise<VerifierAccess> {
+  if (credential !== undefined) return { executable, credential };
+  const identityDirectory = await requireCodexSubscription({
+    workspaceRoot: workspace.layout.workspaceRoot,
+    sessionsRoot: workspace.layout.sessionsRoot,
+    command: [executable],
+    env: io.env,
+    stderr: io.stderr
+  });
+  return { executable, identityDirectory };
+}
+
 async function prepare(io: TaskCommandIo, workspace: TaskWorkspace, plan: TaskPlanRecord, runtime: RuntimeStore) {
+  const auth = await loadProviderAuth(workspace.layout.workspaceRoot);
+  const implementerCredential = IMPLEMENTER_CREDENTIALS[auth.implementer];
+  // invariant: a run reads exactly the credentials its modes name. A verifier
+  // on a subscription reads none here; its login is proven below instead.
   const credentials = await readCredentials(
     {
       workspaceId: workspace.workspaceId,
       platform: io.platform,
       ...(io.keychainPath === undefined ? {} : { keychainPath: io.keychainPath })
     },
-    [IMPLEMENTER_CREDENTIAL, VERIFIER_CREDENTIAL]
+    auth.verifier === "api-key" ? [implementerCredential, VERIFIER_CREDENTIAL] : [implementerCredential]
   );
   const [claude, codex] = await Promise.all([findExecutable("claude", io.env), findExecutable("codex", io.env)]);
+  const verifier = await verifierAccess(io, workspace, codex, credentials.get(VERIFIER_CREDENTIAL));
   const gates = await loadGateAllowlist(workspace, plan.request);
   const policy = await loadTaskPolicy(io.controlRoot);
   const authority = new TaskAuthority({ runtime, plan, policy, trust: await workspaceTrustRoot(workspace) });
   const manifest = await loadContextManifest(runDirectory(workspace, plan.runId), plan.contextManifestDigest);
   return {
-    implementer: { executable: claude, credential: credentials.get(IMPLEMENTER_CREDENTIAL) as string },
-    verifier: { executable: codex, credential: credentials.get(VERIFIER_CREDENTIAL) as string },
+    implementer: {
+      executable: claude,
+      auth: auth.implementer,
+      credential: credentials.get(implementerCredential) as string
+    },
+    verifier,
+    unbilledModels: unbilledModels(auth, plan.request),
     gates,
     authority,
     manifest
@@ -286,6 +331,7 @@ class TaskRunComposition {
       request: this.#plan.request,
       manifest: this.#prepared.manifest,
       executable: this.#prepared.implementer.executable,
+      auth: this.#prepared.implementer.auth,
       credential: this.#prepared.implementer.credential,
       env: this.#io.env,
       isolationRoot: this.#workspace.layout.sessionsRoot,
@@ -472,6 +518,7 @@ class TaskRunComposition {
     return createBudgetMeter({
       budgets: this.#plan.request.budgets,
       priceTable: modelPriceTable,
+      unbilledModels: this.#prepared.unbilledModels,
       ...(resume === undefined ? {} : { resume })
     });
   }
@@ -488,8 +535,7 @@ class TaskRunComposition {
         runtime: this.#runtime,
         runDirectory: this.#directory,
         gates: this.#prepared.gates,
-        codexExecutable: this.#prepared.verifier.executable,
-        credential: this.#prepared.verifier.credential,
+        verifier: this.#prepared.verifier,
         env: this.#io.env,
         meter: this.#meter(ledger)
       },

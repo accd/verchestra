@@ -18,14 +18,16 @@ import {
   secretToolChildEnvironment
 } from "../../packages/platform-node/src/index.ts";
 import { buildCanonicalInitFiles } from "../../packages/workspace/src/index.ts";
-import {
-  DOCTOR_CREDENTIAL_NAME,
-  composeDoctorSecretProbe,
-  executeSecretCommand
-} from "../../apps/vestra-cli/src/secret-composition.ts";
+import { composeDoctorSecretProbe, executeSecretCommand } from "../../apps/vestra-cli/src/secret-composition.ts";
 import { fakePowerShellRunner, fakeSecretToolRunner } from "../helpers/fake-credential-tool-runners.mjs";
 
 const SENTINEL = "sk-ant-sentinel-CROSS-4b7d";
+// why: the presence closure takes the name it is asked about; these cases ask
+// about the credential the fixture stored. Which name deep doctor itself asks
+// for follows the Workspace's mode and is covered in
+// tests/integration/doctor-secret-backend.test.mjs.
+const STORED_CREDENTIAL = "anthropic-api-key";
+const DOCTOR_LOCATION = Object.freeze({ env: {}, homeDirectory: "/verchestra-doctor-fixture/home" });
 const ENCODINGS = [SENTINEL, Buffer.from(SENTINEL).toString("hex"), Buffer.from(SENTINEL).toString("base64")];
 const workspaceA = "workspace_0b0e8d4c-6a1e-4f7a-9d55-3e3c6f0c1a2b";
 const workspaceB = "workspace_7f1c2e3d-4b5a-4c6d-8e7f-901a2b3c4d5e";
@@ -115,8 +117,8 @@ for (const [platform, { fake: makeFake, store }] of Object.entries(PLATFORMS)) {
     };
     const status = await runSecret(platform, "secret status", { root, fake: { runner: watching } });
     assert.equal(status.result.data.present, true);
-    const probe = await composeDoctorSecretProbe({ controlRoot: root, platform, runner: watching });
-    assert.equal(await probe.secret.adapter.has(workspaceA, DOCTOR_CREDENTIAL_NAME), true);
+    const probe = await composeDoctorSecretProbe({ controlRoot: root, platform, runner: watching, ...DOCTOR_LOCATION });
+    assert.equal(await probe.secret.adapter.has(workspaceA, STORED_CREDENTIAL), true);
     assert.ok(seen.length >= 2);
     for (const { invocation, answer } of seen) {
       assertNoValue(`${answer.stdout}${answer.stderr}`, "presence output");
@@ -188,15 +190,25 @@ for (const [platform, { fake: makeFake, store }] of Object.entries(PLATFORMS)) {
       const { error } = await runSecret(platform, command, { root, input: SENTINEL, fake: unavailable });
       assert.equal(error.envelope.code, "VES_SECRET_STORE_UNAVAILABLE", command);
     }
-    const probe = await composeDoctorSecretProbe({ controlRoot: root, platform, runner: unavailable.runner });
-    assert.equal(await probe.secret.adapter.has(workspaceA, DOCTOR_CREDENTIAL_NAME), false);
+    const probe = await composeDoctorSecretProbe({
+      controlRoot: root,
+      platform,
+      runner: unavailable.runner,
+      ...DOCTOR_LOCATION
+    });
+    assert.equal(await probe.secret.adapter.has(workspaceA, STORED_CREDENTIAL), false);
     const locked = {
       runner: async () => ({ exitCode: null, timedOut: true, stdout: "", stderr: "" })
     };
-    const stuck = await composeDoctorSecretProbe({ controlRoot: root, platform, runner: locked.runner });
+    const stuck = await composeDoctorSecretProbe({
+      controlRoot: root,
+      platform,
+      runner: locked.runner,
+      ...DOCTOR_LOCATION
+    });
     // why: a Secret Service child can be waiting on an unlock prompt; a
     // Credential Manager call never prompts, so its timeout is a failure.
-    await assert.rejects(stuck.secret.adapter.has(workspaceA, DOCTOR_CREDENTIAL_NAME), {
+    await assert.rejects(stuck.secret.adapter.has(workspaceA, STORED_CREDENTIAL), {
       code: platform === "linux" ? "VES_SECRET_KEYCHAIN_INTERACTION_REQUIRED" : "VES_SECRET_BACKEND_FAILURE"
     });
   });

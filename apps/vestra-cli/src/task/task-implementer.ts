@@ -4,14 +4,21 @@ import { delimiter, isAbsolute, join } from "node:path";
 
 import { DriverExecutionAdapter, InMemoryExecutionPayloadStore, type ContextManifest } from "@verchestra/agent-runtime";
 import type { NormalizedTaskRequest } from "@verchestra/application";
-import { ClaudeCodeDriver, type DriverStartRequest } from "@verchestra/drivers";
+import { CLAUDE_PROFILE_CREDENTIAL_VARIABLES, ClaudeCodeDriver, type DriverStartRequest } from "@verchestra/drivers";
 import type { NodeGitWorktreeAdapter } from "@verchestra/platform-node";
 
 import { resolveMcpBridgeRelay } from "../release-layout.ts";
+import type { ProviderAuthMode } from "../task-provider-auth.ts";
 import { stableUuid } from "./task-context.ts";
 import { notConfigured } from "./task-errors.ts";
 
 const MAXIMUM_CONTEXT_CHARACTERS = 400_000;
+// invariant: the mode alone picks the qualified profile, and the profile
+// alone names the one variable its credential travels in.
+const PROFILES = Object.freeze({
+  subscription: "mediated-mcp-subscription",
+  "api-key": "mediated-mcp"
+} as const);
 // why: the mediated profile passes through only these locale and search
 // variables; identity directories are created per run by the driver.
 const PASS_THROUGH = ["PATH", "LANG", "LC_ALL", "LC_CTYPE", "TZ", "TMPDIR"] as const;
@@ -86,6 +93,7 @@ export interface ImplementerOptions {
   readonly request: NormalizedTaskRequest;
   readonly manifest: ContextManifest;
   readonly executable: string;
+  readonly auth: ProviderAuthMode;
   readonly credential: string;
   readonly env: Readonly<Record<string, string | undefined>>;
   readonly isolationRoot: string;
@@ -106,6 +114,7 @@ async function terminate(pid: number): Promise<void> {
 export function implementerAdapter(options: ImplementerOptions): DriverExecutionAdapter<DriverStartRequest> {
   const model = options.request.driver.model;
   const passportId = `passport_${stableUuid(`claude-code:${model}`)}`;
+  const kind = PROFILES[options.auth];
   return new DriverExecutionAdapter<DriverStartRequest>({
     resolveWorktree: async (worktreeRef) => {
       await options.onWorktree(worktreeRef);
@@ -125,7 +134,7 @@ export function implementerAdapter(options: ImplementerOptions): DriverExecution
       driver: new ClaudeCodeDriver({
         command: [options.executable],
         profile: {
-          kind: "mediated-mcp",
+          kind,
           environment: passThroughEnvironment(options.env),
           isolationRoot: options.isolationRoot
         },
@@ -134,7 +143,7 @@ export function implementerAdapter(options: ImplementerOptions): DriverExecution
           passport: { passportId, revision: 1, provider: "anthropic", resolvedModel: model },
           prompt: implementerPrompt(options.request, options.manifest, options.feedback()),
           model,
-          environment: { ANTHROPIC_API_KEY: options.credential },
+          environment: { [CLAUDE_PROFILE_CREDENTIAL_VARIABLES[kind]]: options.credential },
           sensitiveValues: [options.credential],
           mediation: { cwd: worktreePath, bridge }
         })

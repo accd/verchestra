@@ -13,6 +13,7 @@ import { RuntimeCheckpointStore, type RuntimeStore } from "@verchestra/platform-
 
 import { installedReleaseManifest } from "../release-manifest.ts";
 import { TaskAuthority } from "./task-authority.ts";
+import { capsuleBudgetConsumption } from "./task-budget.ts";
 import { confirmDigest } from "./task-confirm.ts";
 import { SIGNING_PASSPHRASE, readCredentials } from "./task-credentials.ts";
 import { taskError } from "./task-errors.ts";
@@ -65,12 +66,7 @@ async function budgetEvidence(context: ReviewContext) {
   return {
     budgetEvidence: {
       declared: context.plan.request.budgets,
-      consumed: {
-        costUsd: ledger["consumedCostUsd"],
-        tokens: ledger["consumedTokens"],
-        durationMs: ledger["consumedDurationMs"],
-        usageEvents: ledger["usageEvents"]
-      },
+      ...capsuleBudgetConsumption(ledger),
       priceTableVersion: modelPriceTable.version,
       stopReason: ledger["stopReason"] ?? null
     }

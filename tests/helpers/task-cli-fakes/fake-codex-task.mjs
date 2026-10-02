@@ -31,9 +31,17 @@ function readOptional(path) {
   return existsSync(path) ? readFileSync(path, "utf8") : undefined;
 }
 
+// why: like the CLI, the identity is CODEX_HOME, or `~/.codex` when it is
+// unset, so a composition that forgot CODEX_HOME would be caught using the
+// invoking user's own login.
+const codexHome = () => process.env.CODEX_HOME ?? join(process.env.HOME ?? "", ".codex");
+const ambientSeen = () =>
+  Object.values(process.env).some((value) => value.includes("ambient-session-marker")) ||
+  (readOptional(join(codexHome(), "auth.json")) ?? "").includes("ambient-session-marker");
+
 function fixtureLogin() {
-  const home = process.env.CODEX_HOME;
-  if (home === undefined || !existsSync(home)) return "configuration-error";
+  const home = codexHome();
+  if (!existsSync(home)) return "configuration-error";
   const config = readOptional(join(home, "config.toml")) ?? "";
   const stored = readOptional(join(home, "auth.json"));
   const login = stored === undefined ? "none" : JSON.parse(stored).fixtureLogin;
@@ -56,7 +64,8 @@ if (providerArguments[0] === "login" && providerArguments[1] === "status") {
     cwd: process.cwd(),
     codexHome: process.env.CODEX_HOME,
     home: process.env.HOME,
-    config: readOptional(join(process.env.CODEX_HOME ?? "", "config.toml")),
+    config: readOptional(join(codexHome(), "config.toml")),
+    ambientValueSeen: ambientSeen(),
     environmentKeys: environmentKeys()
   });
   if (login === "hang") await new Promise(() => setInterval(() => {}, 1_000));
@@ -99,7 +108,8 @@ lines.on("line", (line) => {
       codexHome: process.env.CODEX_HOME,
       home: process.env.HOME,
       login,
-      config: readOptional(join(process.env.CODEX_HOME ?? "", "config.toml")),
+      config: readOptional(join(codexHome(), "config.toml")),
+      ambientValueSeen: ambientSeen(),
       credentialMatchesStore: credentialMatchesStore("openai-api-key", process.env.OPENAI_API_KEY),
       environmentKeys: environmentKeys()
     });

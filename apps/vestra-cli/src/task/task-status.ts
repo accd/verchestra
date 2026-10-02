@@ -8,6 +8,7 @@ import {
   type RuntimeStore
 } from "@verchestra/platform-node";
 
+import { budgetStatus } from "./task-budget.ts";
 import { taskError } from "./task-errors.ts";
 import { readOptionalRecord, readPlainJson } from "./task-evidence.ts";
 import type { TaskCommandIo } from "./task-io.ts";
@@ -54,7 +55,7 @@ async function checkpointStages(runtime: RuntimeStore, plan: TaskPlanRecord) {
     gate: stageOf(store.inspectGate(...ids)),
     repair: stageOf(repair),
     toolReceipts: Array.isArray(receipts) ? receipts.length : 0,
-    budget: repair?.["budgetLedger"] ?? null
+    budget: budgetStatus(repair?.["budgetLedger"])
   };
 }
 

@@ -23,14 +23,15 @@ import {
   securityChildEnvironment
 } from "../../packages/platform-node/src/index.ts";
 import { buildCanonicalInitFiles } from "../../packages/workspace/src/index.ts";
-import {
-  DOCTOR_CREDENTIAL_NAME,
-  composeDoctorSecretProbe,
-  executeSecretCommand
-} from "../../apps/vestra-cli/src/secret-composition.ts";
+import { composeDoctorSecretProbe, executeSecretCommand } from "../../apps/vestra-cli/src/secret-composition.ts";
 import { fakeKeychainFile, fakeSecurityRunner } from "../helpers/fake-security-runner.mjs";
 
 const SENTINEL = "sk-ant-sentinel-SECURITY-9f3c";
+// why: deep doctor observes the implementer credential of the Workspace's
+// mode. With no machine-local setting that is the subscription token, and a
+// home that does not exist has no setting.
+const DOCTOR_CREDENTIAL_NAME = "claude-code-oauth-token";
+const DOCTOR_LOCATION = Object.freeze({ env: {}, homeDirectory: "/verchestra-doctor-fixture/home" });
 const SENTINEL_HEX = Buffer.from(SENTINEL).toString("hex");
 const workspaceA = "workspace_0b0e8d4c-6a1e-4f7a-9d55-3e3c6f0c1a2b";
 const workspaceB = "workspace_7f1c2e3d-4b5a-4c6d-8e7f-901a2b3c4d5e";
@@ -106,6 +107,36 @@ test("the value never appears in any argv, and reaches the child only on stdin",
   assert.equal(fake.invocations.filter((invocation) => invocation.stdin?.includes(SENTINEL_HEX)).length, 1);
   assertNoValue(JSON.stringify(result.data), "command output");
   assertNoValue(stderr, "stderr");
+});
+
+// invariant: the Claude Code subscription token is bound, observed, and
+// removed with the existing commands under its own logical name (SPA-16); it
+// travels like any credential, on stdin only, and status never returns it.
+test("the subscription token is set, observed, and deleted by its logical name", async () => {
+  const root = await workspaceRoot(workspaceA);
+  const fake = fakeSecurityRunner();
+  const options = { name: "claude-code-oauth-token" };
+  const set = await runSecret("secret set", options, { root, input: `${SENTINEL}\n`, fake });
+  assert.equal(set.result.data.stored, true);
+  assert.equal(set.result.data.logicalName, "claude-code-oauth-token");
+  const status = await runSecret("secret status", options, { root, fake });
+  assert.equal(status.result.data.present, true);
+  const probe = await composeDoctorSecretProbe({
+    controlRoot: root,
+    platform: "darwin",
+    runner: fake.runner,
+    ...DOCTOR_LOCATION
+  });
+  assert.equal(await probe.secret.adapter.has(workspaceA, probe.secret.logicalName), true);
+  assert.equal(
+    (await runSecret("secret status", { name: "anthropic-api-key" }, { root, fake })).result.data.present,
+    false
+  );
+  for (const invocation of fake.invocations) assertNoValue(invocation.args.join(" "), "argv");
+  for (const output of [set, status]) assertNoValue(`${JSON.stringify(output.result.data)}${output.stderr}`, "output");
+  const removed = await runSecret("secret delete", options, { root, fake });
+  assert.equal(removed.result.data.deleted, true);
+  assert.equal((await runSecret("secret status", options, { root, fake })).result.data.present, false);
 });
 
 test("the child environment is an allowlist that never carries an ambient credential", () => {
@@ -235,7 +266,8 @@ test("with --keychain, every command and the doctor probe name that keychain in 
     controlRoot: root,
     platform: "darwin",
     keychainPath: keychain,
-    runner: fake.runner
+    runner: fake.runner,
+    ...DOCTOR_LOCATION
   });
   await probe.secret.adapter.has(workspaceA, DOCTOR_CREDENTIAL_NAME);
   const kinds = new Set(fake.invocations.map((invocation) => invocation.args[0]));
@@ -301,10 +333,15 @@ test("a platform without a qualified store reports it as not configured", async 
 test("deep doctor receives a presence-only closure for the well-known credential", async () => {
   const root = await workspaceRoot(workspaceA);
   const fake = fakeSecurityRunner();
-  const probe = await composeDoctorSecretProbe({ controlRoot: root, platform: "darwin", runner: fake.runner });
+  const probe = await composeDoctorSecretProbe({
+    controlRoot: root,
+    platform: "darwin",
+    runner: fake.runner,
+    ...DOCTOR_LOCATION
+  });
   assert.equal(probe.workspaceId, workspaceA);
   assert.equal(probe.secret.logicalName, DOCTOR_CREDENTIAL_NAME);
-  assert.equal(DOCTOR_CREDENTIAL_NAME, "anthropic-api-key");
+  assert.equal(probe.secret.logicalName, "claude-code-oauth-token");
   assert.deepEqual(Object.keys(probe.secret.adapter), ["has"]);
   assert.equal(await probe.secret.adapter.has(workspaceA, DOCTOR_CREDENTIAL_NAME), false);
   assert.equal(
@@ -315,9 +352,12 @@ test("deep doctor receives a presence-only closure for the well-known credential
 
 test("deep doctor's secret port stays unset without a Workspace or a qualified store", async () => {
   const bare = await mkdtemp(join(scratch, "bare-doctor-"));
-  assert.deepEqual(await composeDoctorSecretProbe({ controlRoot: bare, platform: "darwin" }), {});
+  assert.deepEqual(await composeDoctorSecretProbe({ controlRoot: bare, platform: "darwin", ...DOCTOR_LOCATION }), {});
   const root = await workspaceRoot(workspaceA);
-  assert.deepEqual(await composeDoctorSecretProbe({ controlRoot: root, platform: "freebsd" }), {});
+  assert.deepEqual(await composeDoctorSecretProbe({ controlRoot: root, platform: "freebsd", ...DOCTOR_LOCATION }), {});
+  // invariant: a state location that cannot be resolved names no credential,
+  // so the port stays unset instead of guessing a mode.
+  assert.deepEqual(await composeDoctorSecretProbe({ controlRoot: root, platform: "darwin" }), {});
 });
 
 test("key material still requires non-exportable storage; credential evidence cannot qualify it", () => {

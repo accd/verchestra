@@ -3,6 +3,12 @@
 // (so the Workspace state root is disposable), per-fixture wrappers for the
 // labeled fake `claude` and `codex` executables first on PATH, and credentials
 // served by the fake keychain preload. Nothing here is a hook in product code.
+//
+// A fixture runs in one credential mode. The default is the product's default,
+// subscription: the fake keychain holds the Claude Code token and no API key,
+// and the Codex identity directory holds a fixture login in place of the
+// owner's one-time `codex login`. `mode: "api-key"` writes the machine-local
+// setting and binds the two API keys instead of the token.
 import { spawn, spawnSync } from "node:child_process";
 import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -20,10 +26,32 @@ export const FAKES = fileURLToPath(new URL("./task-cli-fakes/", import.meta.url)
 export const WORKSPACE_ID = "workspace_4b1c2d3e-5f60-4a7b-8c9d-0e1f2a3b4c5d";
 export const DARWIN = process.platform === "darwin";
 export const CREDENTIALS = Object.freeze({
+  "claude-code-oauth-token": "sk-ant-oat01-fake-e2e-subscription-token-6b7c",
   "anthropic-api-key": "sk-ant-fake-e2e-credential-4f1a",
   "openai-api-key": "sk-openai-fake-e2e-credential-9c2b",
   "evidence-signing-passphrase": "fake-e2e-signing-passphrase-7d3e"
 });
+const SIGNING = "evidence-signing-passphrase";
+// invariant: each mode binds only what it needs, so a journey that passes
+// proves the other mode's credentials were never required.
+export const MODE_CREDENTIALS = Object.freeze({
+  subscription: Object.freeze({
+    "claude-code-oauth-token": CREDENTIALS["claude-code-oauth-token"],
+    [SIGNING]: CREDENTIALS[SIGNING]
+  }),
+  "api-key": Object.freeze({
+    "anthropic-api-key": CREDENTIALS["anthropic-api-key"],
+    "openai-api-key": CREDENTIALS["openai-api-key"],
+    [SIGNING]: CREDENTIALS[SIGNING]
+  })
+});
+export const API_KEY_PROVIDERS = Object.freeze({
+  schemaVersion: 1,
+  providers: { "claude-code": { auth: "api-key" }, codex: { auth: "api-key" } }
+});
+// why: every ambient value carries this marker, so a fake can report whether
+// any reached it without recording a value.
+export const AMBIENT_MARKER = "ambient-session-marker";
 
 const roots = [];
 
@@ -127,6 +155,29 @@ async function fakeProviders(root, { log, store }) {
   return directory;
 }
 
+// invariant: an owner's own logged-in sessions and exported credentials, as a
+// machine that uses Claude Code and Codex every day would have them. None of
+// it may reach a provider child or stand in for a missing credential.
+async function ambientSessions(root, home) {
+  const claudeConfig = join(root, "ambient-claude-config");
+  const codexHome = join(root, "ambient-codex-home");
+  for (const directory of [join(home, ".claude"), join(home, ".codex"), claudeConfig, codexHome])
+    await mkdir(directory, { recursive: true });
+  const claudeLogin = JSON.stringify({ claudeAiOauth: { accessToken: `${AMBIENT_MARKER}-claude-login` } });
+  await writeFile(join(home, ".claude", ".credentials.json"), claudeLogin);
+  await writeFile(join(claudeConfig, ".credentials.json"), claudeLogin);
+  for (const directory of [join(home, ".codex"), codexHome])
+    await writeFile(join(directory, "auth.json"), JSON.stringify({ fixtureLogin: "chatgpt", marker: AMBIENT_MARKER }));
+  return {
+    CLAUDE_CODE_OAUTH_TOKEN: `${AMBIENT_MARKER}-oauth-token`,
+    ANTHROPIC_API_KEY: `${AMBIENT_MARKER}-anthropic-key`,
+    ANTHROPIC_AUTH_TOKEN: `${AMBIENT_MARKER}-bearer`,
+    OPENAI_API_KEY: `${AMBIENT_MARKER}-openai-key`,
+    CLAUDE_CONFIG_DIR: claudeConfig,
+    CODEX_HOME: codexHome
+  };
+}
+
 // why: every journey starts from the same committed repository; the returned
 // launcher runs `vestra` there with the fixture's environment.
 export function approveArguments(fixture, plan) {
@@ -177,7 +228,8 @@ export async function taskFixture(options = {}) {
   await writeFile(keychain, Buffer.concat([Buffer.from("kych"), Buffer.alloc(60)]));
   // why: the fakes may read only inside their private temp directory.
   const store = join(scratch, "keychain-store.json");
-  const credentials = options.credentials ?? CREDENTIALS;
+  const mode = options.mode ?? "subscription";
+  const credentials = options.credentials ?? MODE_CREDENTIALS[mode];
   await writeFile(
     store,
     JSON.stringify({
@@ -193,7 +245,8 @@ export async function taskFixture(options = {}) {
     TMPDIR: scratch,
     LANG: "C",
     NO_COLOR: "1",
-    VERCHESTRA_TEST_FAKE_KEYCHAIN_STORE: store
+    VERCHESTRA_TEST_FAKE_KEYCHAIN_STORE: store,
+    ...(options.ambient === true ? await ambientSessions(root, home) : {})
   };
   const args = (argv) => ["--import", FAKE_KEYCHAIN_SPAWN.href, VESTRA, ...argv];
   const launch = (argv, input = "") => {
@@ -228,6 +281,18 @@ export async function taskFixture(options = {}) {
         commands: { node: { executable: process.execPath, protocols: ["exit-code", "test-summary"] } }
       })
     );
+  const providersPath = join(stateRoot, "task-providers.json");
+  const providers = options.providers ?? (mode === "api-key" ? API_KEY_PROVIDERS : undefined);
+  if (providers !== undefined)
+    await writeFile(providersPath, typeof providers === "string" ? providers : JSON.stringify(providers));
+  const codexIdentity = join(stateRoot, "codex-identity");
+  // why: stands in for the owner's one-time `CODEX_HOME=<dir> codex login`.
+  const codexLogin = async (login) => {
+    await mkdir(codexIdentity, { recursive: true, mode: 0o700 });
+    await writeFile(join(codexIdentity, "auth.json"), JSON.stringify({ fixtureLogin: login }));
+  };
+  const login = options.codexLogin === undefined ? (mode === "subscription" ? "chatgpt" : null) : options.codexLogin;
+  if (login !== null) await codexLogin(login);
   const requestPath = join(root, "request.json");
   const writeRequest = async (overrides) => writeFile(requestPath, JSON.stringify(taskRequest(revision, overrides)));
   await writeRequest(options.request ?? {});
@@ -240,6 +305,10 @@ export async function taskFixture(options = {}) {
     keychain,
     store,
     stateRoot,
+    codexIdentity,
+    codexLogin,
+    providersPath,
+    mode,
     requestPath,
     writeRequest,
     launch,

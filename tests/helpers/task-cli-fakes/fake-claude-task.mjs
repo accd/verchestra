@@ -1,11 +1,15 @@
 // DETERMINISTIC FAKE - not Claude Code. A labeled stand-in that behaves like
-// `claude --print --input-format stream-json` in the mediated-mcp profile: it
+// `claude --print --input-format stream-json` in the mediated profiles: it
 // reads --mcp-config, starts the configured bridge relay, performs the MCP
 // handshake and scripted tool calls, and reports stream-json events. It never
 // contacts a provider. The scenario comes from `scenario:<name>` in the task
 // instructions, which reach it only through the prompt.
+//
+// Like the CLI it stands in for, it authenticates a `--bare` session with
+// ANTHROPIC_API_KEY alone and any other session with CLAUDE_CODE_OAUTH_TOKEN
+// alone, and refuses to run when the wrong variable, or both, arrive.
 import { spawn } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 
 import { credentialMatchesStore, fixtureLog, providerArguments } from "./fixture-channel.mjs";
 
@@ -26,14 +30,31 @@ const prompt = JSON.parse(input.trim().split(/\r?\n/u)[0]).message.content[0].te
 const scenario = /scenario:([a-z-]+)/u.exec(prompt)?.[1] ?? "implement";
 const model = option("--model");
 const server = JSON.parse(readFileSync(option("--mcp-config"), "utf8")).mcpServers.verchestra;
+const bare = argv.includes("--bare");
+const profile = bare
+  ? { variable: "ANTHROPIC_API_KEY", other: "CLAUDE_CODE_OAUTH_TOKEN", logicalName: "anthropic-api-key" }
+  : { variable: "CLAUDE_CODE_OAUTH_TOKEN", other: "ANTHROPIC_API_KEY", logicalName: "claude-code-oauth-token" };
+const credential = process.env[profile.variable];
+const authenticated = credential !== undefined && process.env[profile.other] === undefined;
 log({
   scenario,
+  argv,
+  bare,
   cwd: process.cwd(),
+  workingDirectoryEntries: readdirSync(process.cwd()).length,
   home: process.env.HOME,
-  credentialMatchesStore: credentialMatchesStore("anthropic-api-key", process.env.ANTHROPIC_API_KEY),
+  configDirectory: process.env.CLAUDE_CONFIG_DIR,
+  credentialVariable: profile.variable,
+  authenticated,
+  credentialMatchesStore: credentialMatchesStore(profile.logicalName, credential),
+  ambientValueSeen: Object.values(process.env).some((value) => value.includes("ambient-session-marker")),
   environmentKeys: Object.keys(process.env).sort((left, right) => Number(left > right) - Number(left < right)),
   promptHasInjectionText: prompt.includes("IGNORE ALL RULES")
 });
+if (!authenticated) {
+  process.stderr.write(`fake claude refused: this session authenticates with ${profile.variable} alone\n`);
+  process.exit(64);
+}
 
 function mcpClient() {
   const child = spawn(server.command, server.args, {
@@ -112,6 +133,12 @@ const implement = () => call("write_file", { path: "src/value.txt", content: "ne
 if (scenario === "implement" || scenario === "slow") {
   await call("read_file", { path: "src/value.txt" });
   await implement();
+} else if (scenario === "leak" || scenario === "leak-fail") {
+  // why: a session that repeats its own credential in its answer; the driver
+  // must redact it before anything is recorded, whether the run then succeeds
+  // or is ended for reaching outside the bridge.
+  emit({ type: "stream_event", event: { delta: { type: "text_delta", text: `my credential is ${credential}` } } });
+  await implement();
 } else if (scenario === "outside") {
   await call("write_file", { path: "docs/outside.txt", content: "outside the change scope\n" });
   await implement();
@@ -144,7 +171,7 @@ if (scenario === "implement" || scenario === "slow") {
 // A tool outside the bridge or an exhausted budget makes the adapter kill this
 // process at once, so logging after that event lost the results on a slow host.
 log({ results });
-if (scenario === "injection") {
+if (scenario === "injection" || scenario === "leak-fail") {
   emit({
     type: "assistant",
     message: { content: [{ type: "tool_use", id: "tool-bash", name: "Bash", input: { command: "id" } }] }

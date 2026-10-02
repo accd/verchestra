@@ -6,11 +6,15 @@ import {
   type SecurityRunner
 } from "@verchestra/platform-node/secrets";
 
+import { IMPLEMENTER_CREDENTIALS } from "../task-provider-auth.ts";
 import { notConfigured, stableCode } from "./task-errors.ts";
 
-// invariant: the three logical names a governed task reads, and the only ones.
+// invariant: the logical names a governed task reads, and the only ones.
 // `vestra secret set --name <name>` binds each in the OS credential store.
-export const IMPLEMENTER_CREDENTIAL = "anthropic-api-key";
+// A run reads the implementer name of its mode and never the other one; a
+// verifier on a subscription has no name here, because its credential lives
+// in the Codex identity directory and never enters the credential store.
+export { IMPLEMENTER_CREDENTIALS };
 export const VERIFIER_CREDENTIAL = "openai-api-key";
 export const SIGNING_PASSPHRASE = "evidence-signing-passphrase";
 
@@ -23,7 +27,14 @@ export interface TaskCredentialSource {
 
 const PURPOSES: Readonly<Record<string, { readonly purpose: string; readonly blockedCapability: string }>> =
   Object.freeze({
-    [IMPLEMENTER_CREDENTIAL]: { purpose: "implementer-provider", blockedCapability: "task-implementation" },
+    [IMPLEMENTER_CREDENTIALS.subscription]: {
+      purpose: "implementer-provider",
+      blockedCapability: "task-implementation"
+    },
+    [IMPLEMENTER_CREDENTIALS["api-key"]]: {
+      purpose: "implementer-provider",
+      blockedCapability: "task-implementation"
+    },
     [VERIFIER_CREDENTIAL]: { purpose: "verifier-provider", blockedCapability: "task-verification" },
     [SIGNING_PASSPHRASE]: { purpose: "evidence-signing-key", blockedCapability: "task-evidence-signing" }
   });
