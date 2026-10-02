@@ -1,4 +1,5 @@
 import { budgetBilling, type BudgetLedger, type BudgetMeter, type UsageEvent } from "@verchestra/application";
+import { PublicErrorException } from "@verchestra/domain";
 
 import { stateInvalid } from "./task-errors.ts";
 import { objectRow } from "./task-files.ts";
@@ -86,6 +87,20 @@ export function recordingMeter(run: Pick<RunLedger, "recordBudgetLedger">, meter
   });
 }
 
+const BUDGET_EXCEEDED = "VES_EXECUTOR_BUDGET_EXCEEDED";
+
+// invariant: a budget stop names itself. Metered work reports why it did not
+// complete as the `reason` of a task failure; when that reason is the budget's
+// (a reached ceiling, or the meter's own refusal of a usage event) the failure
+// leaves under that code, the one the executor's budget stop has, and the run
+// fails with it instead of with the code every task failure shares.
+function budgetStop(error: unknown): unknown {
+  if (!(error instanceof PublicErrorException) || error.code !== "VES_TASK_FAILED") return error;
+  const reason = error.envelope.safeDetails["reason"];
+  if (typeof reason !== "string" || (reason !== BUDGET_EXCEEDED && !reason.startsWith("VES_BUDGET_"))) return error;
+  return Object.assign(new Error("The run's budget stopped the work", { cause: error }), { code: reason });
+}
+
 // invariant: work that spends outside the repair loop (verification) is handed
 // a recording meter that continues from the run's ledger.
 // why: the ledger is recorded once more when the work ends, however it ends.
@@ -99,6 +114,8 @@ export async function meterOnRunLedger<T>(
   const meter = create((await run.repair())?.budgetLedger);
   try {
     return await work(recordingMeter(run, meter));
+  } catch (error) {
+    throw budgetStop(error);
   } finally {
     run.recordBudgetLedger(meter.ledger());
   }

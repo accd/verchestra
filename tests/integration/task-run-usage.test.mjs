@@ -1,7 +1,8 @@
 // invariant: one run, one account of usage, for the whole run. The
 // implementer's usage is recorded on the Run's ledger when it is metered, as
 // the verifier's is, so a run killed during an attempt keeps what the attempt
-// had reported and a resumed run adds it once.
+// had reported and a resumed run adds it once. A budget stop fails the run
+// with the budget's own code whichever provider it stopped.
 //
 // The run is the production task run coordinator, repair loop, workflow
 // machine and budget module over the Run record's checkpoint projections in a
@@ -9,12 +10,17 @@
 // (tests/helpers/verifier-usage-fixture.mjs). A provider is scripted: it
 // reports usage to the meter it is handed and then returns, fails, or never
 // returns, which is where a killed process leaves a run. A resumed run is a
-// new composition over a new connection to the same store.
+// new composition over a new connection to the same store. The cases that run
+// the verifier use the production session against the DETERMINISTIC FAKE
+// `codex`; on Windows the governed task path is refused before a verifier
+// session is reachable, so those cases assert that refusal there instead.
 import assert from "node:assert/strict";
 import { join } from "node:path";
-import { afterEach, test } from "node:test";
+import { after, afterEach, test } from "node:test";
 
+import { taskError } from "../../apps/vestra-cli/src/task/task-errors.ts";
 import { RuntimeStore } from "../../packages/platform-node/src/index.ts";
+import { WIN32_HOST, verifierFixtures, verifierRefusedOnWin32 } from "../helpers/codex-verifier-fixture.mjs";
 import { cleanup, opened } from "../helpers/runtime-store-fixture.mjs";
 import { filled } from "../helpers/task-run-record-fixture.mjs";
 import {
@@ -31,6 +37,7 @@ import {
 
 const RUN_TOKENS = IMPLEMENTER_TOKENS + VERIFIER_TOKENS;
 const BUDGET_EXCEEDED = "VES_EXECUTOR_BUDGET_EXCEEDED";
+const verifierSession = verifierFixtures(after);
 const reopened = [];
 
 afterEach(async () => {
@@ -206,6 +213,92 @@ test("a failure to record an implementer's usage fails the run as itself", async
   const composed = composedRun(unrecordable, run.workflow, { implement: spend(IMPLEMENTER) });
   assert.deepEqual(await composed.run(), { status: "FAILED", reason: "VES_RUNTIME_CONSTRAINT" });
   assert.equal(composed.calls.gated, 0, "the attempt went on to its gate");
+});
+
+// invariant: a budget stop names itself, on both paths. The implementer's is
+// raised by the executor under its own code. The verifier's is a task failure
+// whose reason is that code, and it fails the run under it as well.
+test("a budget stop fails the run with the budget's own code, whichever provider it stopped", async () => {
+  // why: as the executor does it: the usage that reaches the ceiling is
+  // metered (90% of 20 is 18), and the attempt then fails under its code.
+  const implementer = await newRun();
+  const stoppedImplementer = composedRun(implementer.checkpoints, implementer.workflow, {
+    metering: { budgets: { maximumTokens: 20 } },
+    implement: async (meter) => {
+      meter.recordUsage(IMPLEMENTER);
+      throw Object.assign(new Error("declared token-threshold was reached"), { code: BUDGET_EXCEEDED });
+    }
+  });
+  assert.deepEqual(await stoppedImplementer.run(), { status: "FAILED", reason: BUDGET_EXCEEDED });
+
+  const verifier = await newRun();
+  const stoppedVerifier = composedRun(verifier.checkpoints, verifier.workflow, {
+    implement: spend(IMPLEMENTER),
+    verify: async () => {
+      throw taskError("VES_TASK_FAILED", { reason: BUDGET_EXCEEDED }, "The independent verifier did not complete");
+    }
+  });
+  assert.deepEqual(await stoppedVerifier.run(), { status: "FAILED", reason: BUDGET_EXCEEDED });
+  assert.equal(verifier.workflow.current.state, "FAILED");
+  assert.equal(stoppedVerifier.calls.released, 1);
+});
+
+test("a verifier's usage the meter refuses fails the run with the meter's code, as an implementer's does", async () => {
+  const unpriced = { ...VERIFIER, model: "a-model-without-a-price" };
+  const implementer = await newRun();
+  assert.deepEqual(
+    await composedRun(implementer.checkpoints, implementer.workflow, { implement: spend(unpriced) }).run(),
+    { status: "FAILED", reason: "VES_BUDGET_MODEL_UNKNOWN" }
+  );
+
+  const verifier = await newRun();
+  const refused = composedRun(verifier.checkpoints, verifier.workflow, {
+    implement: spend(IMPLEMENTER),
+    verify: async () => {
+      throw taskError("VES_TASK_FAILED", { reason: "VES_BUDGET_MODEL_UNKNOWN" }, "The verifier did not complete");
+    }
+  });
+  assert.deepEqual(await refused.run(), { status: "FAILED", reason: "VES_BUDGET_MODEL_UNKNOWN" });
+});
+
+test("a verification failure that is not a budget stop keeps the code it had", async () => {
+  for (const [failure, reason] of [
+    [
+      taskError("VES_TASK_FAILED", { reason: "VES_TASK_VERIFIER_FAILED" }, "The verifier did not complete"),
+      "VES_TASK_FAILED"
+    ],
+    [taskError("VES_TASK_STATE_INVALID", { reason: BUDGET_EXCEEDED }, "not a task failure"), "VES_TASK_STATE_INVALID"],
+    [Object.assign(new Error("git failed"), { code: "VES_GIT_FAILED" }), "VES_GIT_FAILED"],
+    [new Error("no code at all"), "VES_TASK_RUN_FAILED"]
+  ]) {
+    const run = await newRun();
+    const composed = composedRun(run.checkpoints, run.workflow, {
+      implement: spend(IMPLEMENTER),
+      verify: async () => {
+        throw failure;
+      }
+    });
+    assert.deepEqual(await composed.run(), { status: "FAILED", reason }, reason);
+  }
+});
+
+test("the verifier reaching the run's ceiling fails the run as a budget stop and the ledger names it", async (t) => {
+  if (WIN32_HOST) return verifierRefusedOnWin32(t);
+  // why: 90% of 28 is 25.2: neither the implementer's 18 nor the verifier's 8
+  // reaches it, the run's 26 do.
+  const metering = { budgets: { maximumTokens: 28 } };
+  const run = await newRun();
+  const session = await verifierSession();
+  const composed = composedRun(run.checkpoints, run.workflow, {
+    metering,
+    implement: spend(IMPLEMENTER),
+    verify: (meter) => session.run(meter)
+  });
+  assert.deepEqual(await composed.run(), { status: "FAILED", reason: BUDGET_EXCEEDED });
+  assert.equal((await session.sessions()).length, 1, "the verifier was never asked");
+  const stored = await resumed(run).state();
+  assert.equal(stored.stage, "converged");
+  assertLedger(stored.budgetLedger, { consumedTokens: RUN_TOKENS, usageEvents: 2, stopReason: "token-threshold" });
 });
 
 test("a committed run whose loop saved no state has its verifier's usage filed under converged", async () => {

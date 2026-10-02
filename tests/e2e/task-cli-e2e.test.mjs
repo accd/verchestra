@@ -1396,9 +1396,13 @@ test(
     const run = start(fixture, plan.runId);
     assert.equal(run.status, 1, run.stderr);
     assert.equal(run.json.data.state, "FAILED");
+    // invariant: a budget stop names itself: the verifier's has the code the
+    // implementer's has.
+    assert.equal(run.json.data.reason, "VES_EXECUTOR_BUDGET_EXCEEDED");
     assert.equal(logLines(fixture, "fake-codex.log").length, 1, "the verifier was never asked");
     const after = status(fixture, plan.runId);
     assert.equal(after.state, "FAILED");
+    assert.equal(after.lastReason, "VES_EXECUTOR_BUDGET_EXCEEDED");
     assert.equal(after.checkpoints.repair, "converged", "the implementer alone reached the ceiling");
     assert.match(after.evidence.commitId, /^[a-f0-9]{40}$/u);
     assert.equal(after.evidence.verificationVerdict, null);

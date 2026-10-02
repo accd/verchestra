@@ -98,12 +98,13 @@ function interruptedAfter(checkpoints, metering, spend) {
   });
 }
 
-function failedWith(reason) {
-  return (error) => {
-    assert.equal(error.envelope.code, "VES_TASK_FAILED");
-    assert.deepEqual(error.envelope.safeDetails, { reason });
-    return true;
-  };
+// invariant: a budget stop names itself: metered work the budget stopped fails
+// under the budget's own code, and the verifier's task failure is its cause.
+function budgetExceeded(error) {
+  assert.equal(error.code, "VES_EXECUTOR_BUDGET_EXCEEDED");
+  assert.equal(error.cause.envelope.code, "VES_TASK_FAILED");
+  assert.deepEqual(error.cause.envelope.safeDetails, { reason: "VES_EXECUTOR_BUDGET_EXCEEDED" });
+  return true;
 }
 
 test("work metered on the run's ledger continues from it and stores each usage event when it is metered", async () => {
@@ -291,7 +292,7 @@ test("a ceiling the verifier reaches alone stops it as budget exceeded, and the 
   const session = await verifierSession();
   await assert.rejects(
     meteredOnLedger(run.checkpoints, { budgets: { maximumTokens: VERIFIER_TOKENS } }, (meter) => session.run(meter)),
-    failedWith("VES_EXECUTOR_BUDGET_EXCEEDED")
+    budgetExceeded
   );
   const stored = await run.recorded();
   assert.equal(stored.consumedTokens, VERIFIER_TOKENS);
@@ -314,7 +315,7 @@ test("a ceiling the implementer and the verifier reach only together stops the v
   const session = await verifierSession();
   await assert.rejects(
     meteredOnLedger(run.checkpoints, metering, (meter) => session.run(meter)),
-    failedWith("VES_EXECUTOR_BUDGET_EXCEEDED")
+    budgetExceeded
   );
   const stored = await run.recorded();
   assert.equal(stored.consumedTokens, RUN_TOKENS);
@@ -334,7 +335,7 @@ test(
     const session = await verifierSession({ scenario: "hang" });
     await assert.rejects(
       meteredOnLedger(run.checkpoints, metering, (meter) => session.run(meter)),
-      failedWith("VES_EXECUTOR_BUDGET_EXCEEDED")
+      budgetExceeded
     );
     const stored = await run.recorded();
     assert.equal(stored.stopReason, "duration-threshold");
