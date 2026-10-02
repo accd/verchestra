@@ -23,6 +23,8 @@ import { executeTaskCommand } from "../../apps/vestra-cli/src/task/task-command.
 
 const fakeCodex = fileURLToPath(new URL("../helpers/task-cli-fakes/fake-codex-task.mjs", import.meta.url));
 const POSIX = process.platform !== "win32";
+const listed = async (directory) =>
+  (await readdir(directory)).sort((left, right) => Number(left > right) - Number(left < right));
 const roots = [];
 after(() => Promise.all(roots.map((root) => rm(root, { recursive: true, force: true }))));
 
@@ -123,7 +125,7 @@ test("a ChatGPT login is accepted and its check never sees the invoking home or 
   for (const key of ["CODEX_HOME", "HOME", "PATH"]) assert.ok(status.environmentKeys.includes(key), key);
   // invariant: the disposable home is gone; the identity directory and its login stay.
   assert.deepEqual(await readdir(sessionsRoot), []);
-  assert.deepEqual((await readdir(directory)).sort(), ["auth.json", "config.toml"]);
+  assert.deepEqual(await listed(directory), ["auth.json", "config.toml"]);
 });
 
 for (const login of [undefined, "api-key", "access-token", "wrong-exit", "unknown-mode"]) {
@@ -238,7 +240,7 @@ test("a subscription verifier session uses the identity directory and supplies n
   assert.ok(observed.home.startsWith(`${session.sessionRoot}/`));
   // invariant: the per-session home is removed; the identity and its login stay.
   await assert.rejects(stat(session.sessionRoot), { code: "ENOENT" });
-  assert.deepEqual((await readdir(session.directory)).sort(), ["auth.json", "config.toml"]);
+  assert.deepEqual(await listed(session.directory), ["auth.json", "config.toml"]);
 });
 
 test("a subscription verifier without a ChatGPT login fails closed instead of using another credential", async (t) => {

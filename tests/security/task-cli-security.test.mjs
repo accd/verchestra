@@ -207,7 +207,7 @@ for (const [scenario, state] of [
         );
       assert.equal(data(launch(["task", "status", "--run-id", plan.runId, ...json]), "status").state, state);
 
-      // The fake received the brokered token and repeated it in its answer.
+      // why: the fake received the brokered token and repeated it in its answer.
       const [claude] = logged(fixture, "fake-claude.log");
       assert.equal(claude.credentialMatchesStore, true);
       assert.equal(
