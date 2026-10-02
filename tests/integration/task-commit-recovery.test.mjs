@@ -9,10 +9,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, test } from "node:test";
 
-import { TaskEvidenceStore } from "../../apps/vestra-cli/src/task/task-evidence.ts";
 import { canonicalDigest } from "../../apps/vestra-cli/src/task/task-files.ts";
+import { openRunRecord } from "../../apps/vestra-cli/src/task/task-run-record.ts";
 import { recoverCommittedTask } from "../../apps/vestra-cli/src/task/task-run.ts";
-import { loadCommit, saveCommit } from "../../apps/vestra-cli/src/task/task-surface.ts";
 import {
   OBJECT_FORMATS,
   cleanupObjectFormatRepositories,
@@ -22,6 +21,7 @@ import {
   taskBranches,
   taskWorktreeFixture
 } from "../helpers/git-object-format-fixture.mjs";
+import { RUN_ID, WORKSPACE_ID } from "../helpers/task-run-record-fixture.mjs";
 
 const links = [];
 const GATE_ID = "gate:value";
@@ -37,21 +37,21 @@ afterEach(async () => {
 // says `committed`, and nothing after that happened.
 async function crashedAfterCommit(format, options = {}) {
   const fixture = await taskWorktreeFixture(format, options);
-  const directory = join(fixture.root, "state", "tasks", "run_c1");
-  await mkdir(directory, { recursive: true });
-  const evidence = new TaskEvidenceStore(directory);
+  const tasksRoot = join(fixture.root, "state", "tasks");
+  const workspace = { workspaceId: WORKSPACE_ID, tasksRoot };
+  const runRecord = openRunRecord(workspace, RUN_ID);
+  const evidence = runRecord.gateEvidence;
   const changeDigest = (await fixture.worktrees.inspect(fixture.handle)).changeDigest;
   const released = [];
   const recovery = (gate) => ({
     repositoryRoot: fixture.repositoryRoot,
-    directory,
+    runRecord,
     worktrees: fixture.worktrees,
-    evidence,
     gateIds: [GATE_ID],
     inspectGate: () => gate,
     release: async () => void released.push("released")
   });
-  return { ...fixture, directory, evidence, changeDigest, released, recovery };
+  return { ...fixture, runRecord, evidence, changeDigest, released, recovery };
 }
 
 async function commitWithEvidence(crash) {
@@ -85,7 +85,7 @@ for (const format of OBJECT_FORMATS) {
       gateEvidenceDigest,
       gateEvidenceRefs: [evidenceRef]
     });
-    assert.deepEqual(await loadCommit(crash.directory), commit);
+    assert.deepEqual(await crash.runRecord.loadCommit(), commit);
     assert.equal(taskBranches(crash.repositoryRoot), `${TASK_BRANCH} ${commitId}`);
     assert.equal(registeredWorktreeCount(crash.repositoryRoot), 1);
     await assert.rejects(access(crash.worktreePath), { code: "ENOENT" });
@@ -139,7 +139,7 @@ for (const format of OBJECT_FORMATS) {
     const crash = await crashedAfterCommit(format);
     assert.equal(await recoverCommittedTask(crash.recovery(undefined)), undefined);
     assert.equal(await recoverCommittedTask(crash.recovery({ stage: "gates-passed", record: {} })), undefined);
-    assert.equal(await loadCommit(crash.directory), undefined);
+    assert.equal(await crash.runRecord.loadCommit(), undefined);
     assert.equal(registeredWorktreeCount(crash.repositoryRoot), 2);
     assert.deepEqual(crash.released, []);
   });
@@ -153,7 +153,7 @@ for (const format of OBJECT_FORMATS) {
       assert.equal(error.envelope.safeDetails.reason, "VES_TASK_EVIDENCE_MISSING");
       return true;
     });
-    assert.equal(await loadCommit(crash.directory), undefined);
+    assert.equal(await crash.runRecord.loadCommit(), undefined);
   });
 
   test(`a ${objectFormat} commit without a gate evidence trailer is refused`, async () => {
@@ -165,7 +165,7 @@ for (const format of OBJECT_FORMATS) {
       assert.equal(error.envelope.safeDetails.reason, "VES_TASK_EVIDENCE_MISSING");
       return true;
     });
-    assert.equal(await loadCommit(crash.directory), undefined);
+    assert.equal(await crash.runRecord.loadCommit(), undefined);
   });
 }
 
@@ -177,15 +177,15 @@ test("a commit record whose IDs are not complete object IDs is refused as malfor
     gateEvidenceDigest: `sha256:${"5".repeat(64)}`,
     gateEvidenceRefs: []
   };
-  await saveCommit(crash.directory, record);
-  assert.deepEqual(await loadCommit(crash.directory), record);
+  await crash.runRecord.saveCommit(record);
+  assert.deepEqual(await crash.runRecord.loadCommit(), record);
   for (const invalid of [
     { commitId: "c".repeat(63) },
     { commitId: "c".repeat(41) },
     { baseCommit: crash.baseCommit.slice(-40).slice(1) }
   ]) {
-    await saveCommit(crash.directory, { ...record, ...invalid });
-    await assert.rejects(loadCommit(crash.directory), (error) => {
+    await crash.runRecord.saveCommit({ ...record, ...invalid });
+    await assert.rejects(crash.runRecord.loadCommit(), (error) => {
       assert.equal(error.envelope.safeDetails.reason, "VES_TASK_STATE_MALFORMED");
       return true;
     });

@@ -82,10 +82,6 @@ export async function openTaskWorkspace(
   });
 }
 
-export function runDirectory(workspace: TaskWorkspace, runId: string): string {
-  return join(workspace.tasksRoot, parseRunId(runId));
-}
-
 // hazard: two processes (a running `start` and a `cancel` or `status`) share
 // this database; the default 100 ms busy timeout would turn ordinary contention
 // into a failure.
