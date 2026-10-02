@@ -100,8 +100,8 @@ Codex credential stays in that directory as a file and never enters the
 keychain. Verchestra pins the directory's `config.toml` to the file store and
 to the ChatGPT login, so an API-key login there counts as not signed in. If you
 skip this step, `task start` reports `VES_TASK_NOT_CONFIGURED` (requirement
-`codex-login`) before it changes anything and prints the same command with the
-exact path.
+`codex-login`) before it changes anything and prints the login command with
+the exact path.
 
 **Evidence signing passphrase.**
 

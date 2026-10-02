@@ -195,8 +195,9 @@ of bounds for TA1. The live confirmation is an owner step (see
 - **SPA-05** — WHEN the stream carries any hook lifecycle event THEN the
   session SHALL fail closed with `VES_CLAUDE_HOOK_UNEXPECTED`.
 - **SPA-06** — WHERE a documented machine-wide Claude Code policy location
-  exists (a file, or a directory that is not empty) THEN the profile SHALL
-  refuse with `VES_CLAUDE_MANAGED_POLICY_PRESENT` before any process starts.
+  exists (a file, a directory that is not empty, or a location that cannot be
+  inspected) THEN the profile SHALL refuse with
+  `VES_CLAUDE_MANAGED_POLICY_PRESENT` before any process starts.
 - **SPA-07** — The `mediated-mcp` profile's arguments, environment, working
   directory, and minimum build, and the T03 profile, SHALL be unchanged, and
   the `mediated-mcp` profile SHALL refuse the subscription token.
@@ -231,7 +232,9 @@ of bounds for TA1. The live confirmation is an owner step (see
 - **SPA-12** — The mode SHALL come only from `task-providers.json` under the
   Workspace's machine-local state root. Without the file both providers SHALL
   use `subscription`. A malformed file or an unknown provider or mode SHALL be
-  `VES_TASK_NOT_CONFIGURED` naming `provider-auth`.
+  `VES_TASK_NOT_CONFIGURED` naming `provider-auth`, at `task plan` before any
+  state is written and again at `task start` and `resume`. `task plan` SHALL
+  report the mode.
 - **SPA-13** — WHEN `task start` or `resume` runs THEN exactly the credentials
   the selected modes need SHALL be proven before the first transition:
   `claude-code-oauth-token` or `anthropic-api-key` for the implementer, and the
