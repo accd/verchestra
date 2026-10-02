@@ -26,7 +26,7 @@ One task and one pull request.
 
 | Task | Commit | Status |
 | --- | --- | --- |
-| T1 | the first commit of `fix/verifier-usage-recorded` | Done |
+| T1 | `97785fe` | Done |
 
 Evidence for every requirement is in `validation.md`. The next action is in
 `handoff.md`.
