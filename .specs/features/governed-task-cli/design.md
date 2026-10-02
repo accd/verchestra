@@ -234,21 +234,37 @@ records, the commit record, the verification report and its lessons, the
 review record, and the capsule. Each of those is either content-addressed or
 sealed by its own digest and fails closed when edited.
 
-Five files in the run directory are plain markers and are **not** sealed:
-`grant.json`, `active.json`, `worktree.json`, `cancel.json`, and
-`outcome.json`. They are canonical JSON written atomically. Where a marker's
-content is read (grant, worktree, outcome), a file that is not a bounded
-regular file holding a JSON object is refused; an unreadable active marker
-counts as no live process, and the cancel marker is only tested for existence.
-An edit to a marker is not detected. What limits an edited marker is the owner
-of the fact it names: the grant marker holds only a grant ID, and the grant itself is
-in the runtime store and is re-proven on every tool effect; the worktree
-marker holds a handle the worktree module validates before it removes
-anything; the active and cancel markers only say whether a process drives the
-run and whether it was asked to stop; the outcome marker is what `status`
-prints as the last outcome. The grant marker is digested into the Run Capsule
-as it is read. Sealing the five markers is tracked separately; it is not part
-of this design. `task-run-record.ts` is the one module that knows this layout.
+Five more files in the run directory are markers: `grant.json`,
+`active.json`, `worktree.json`, `cancel.json`, and `outcome.json`. A run
+planned from now on seals them like every other record: its plan record
+carries `markerSeal: 1`, and the Run record writes and reads each marker with
+the seal of `task-files.ts`. A run planned before that has a plan record
+without the member and keeps the five as plain canonical JSON, read as they
+always were, so a run in flight on a user's machine still resumes and is
+still cancelled. The plan record is the one place that says which form a run
+uses; it is sealed, and a marker cannot say it of itself. Replacing a sealed
+marker with a plain one therefore does not turn a sealed Run into a legacy
+one: the reader finds a file outside the seal envelope and refuses it. A plan
+record that names a marker seal this build does not know is refused.
+
+What a marker that does not verify means, in a sealed Run:
+
+| Marker | Read by | A marker that does not verify |
+| --- | --- | --- |
+| `grant.json` | `start` and `resume` (to reuse the grant), `status`, `review` (the Run Capsule binds it) | `status` and `review` stop with `VES_TASK_STATE_INVALID` (`VES_TASK_STATE_TAMPERED` for an edit, `VES_TASK_STATE_MALFORMED` for a plain marker or a record without a grant ID); `review` reads it before it records anything. A `start` or `resume` that reaches the implementer fails the run with that code. |
+| `worktree.json` | `cancel` of a run no process is driving | The cancel stops with the same refusal before the abort is recorded, as it already did for a marker it could not read, instead of reporting a stop that left the worktree behind. |
+| `outcome.json` | `status` | `status` stops with the same refusal. |
+| `active.json` | `start`, `resume`, `status`, `cancel` | It counts as a driver nobody can name. `start` and `resume` are refused with `VES_TASK_RUN_ACTIVE`, as under a live driver; `status` reports the run as driven and offers only `cancel`; `cancel` writes the request, waits as it waits for a live driver, and then clears the marker and ends the run itself. Reading it as "nobody drives the run" would let a second driver start and let a cancel abort under a live one; treating it as an error would leave a run nobody can cancel. A marker that verifies and names a live process is never cleared by `cancel`. |
+| `cancel.json` | the process driving the run | It is a request to stop by being there, whatever it holds and in either form. The only thing the marker can say is "stop", so honouring one that would not verify can only end a run, and ignoring it would let an edit keep a run going that its user asked to end. A request that is already present stands. |
+
+A reader returns the record in both forms, never the seal envelope. The Run
+Capsule digests the grant record it is given, so it binds the same digest for
+a sealed and a legacy Run, and that digest is the one recorded for ADP-2. In a
+legacy Run an edit to a marker is still not detected, and what limits it is
+the owner of the fact it names: the grant itself is in the runtime store and
+is re-proven on every tool effect, and the worktree module validates a handle
+before it removes anything. `task-run-record.ts` is the one module that knows
+this layout and which form a run uses.
 
 The task path keeps three state roots beside the Workspace layout: `tasks/`
 (the run directories), `keys/` (the evidence key and its trust anchor), and

@@ -405,6 +405,16 @@ approval makes the approval stale, and the run is refused until you plan again.
   link, wherever the link leads: nothing is read, written, or deleted through
   it. A link in the place of a single state file is refused as unreadable
   state (`VES_TASK_STATE_INVALID`) and is never replaced.
+- **Run state is sealed.** Every record in a run's directory carries a digest
+  of its content, and a command that finds an edited one stops with
+  `VES_TASK_STATE_INVALID`. From this build on that includes the five small
+  marker files (`grant.json`, `active.json`, `worktree.json`, `cancel.json`,
+  `outcome.json`); a run planned by an earlier build keeps its unsealed
+  markers and still resumes. `cancel` is the exception that keeps working: if
+  the marker that names the driving process does not verify, `status` shows
+  the run as active, `start` and `resume` report `VES_TASK_RUN_ACTIVE`, and
+  `cancel` waits up to a minute for a driver to stop and then ends the run
+  itself. The seal detects an edit; it is not a signature.
 - **One writer per Workspace.** A running task holds the Workspace writer
   lease; a second run is refused until the first one ends. If the process of
   a run dies, `resume` or `cancel` that run to release the lease; otherwise it

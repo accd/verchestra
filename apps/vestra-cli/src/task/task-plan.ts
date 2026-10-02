@@ -27,7 +27,7 @@ import { stableCode, taskError } from "./task-errors.ts";
 import { canonicalDigest, sha256 } from "./task-files.ts";
 import { loadGateAllowlist } from "./task-gates.ts";
 import { git } from "./task-git.ts";
-import { WRITE_CAPABILITY, type TaskPlanRecord } from "./task-plan-record.ts";
+import { MARKER_SEAL, WRITE_CAPABILITY, type TaskPlanRecord } from "./task-plan-record.ts";
 import { loadTaskPolicy } from "./task-policy.ts";
 import { openRunRecord } from "./task-run-record.ts";
 import { ephemeralSigner, workspaceSigner } from "./task-signing.ts";
@@ -324,7 +324,8 @@ export async function planTask(io: TaskCommandIo, requestPath: string, dryRun: b
     packageId: pkg.artifactId,
     packageDigest: `sha256:${pkg.payloadDigest}`,
     approvalIntent: intent,
-    approvalRequest
+    approvalRequest,
+    markerSeal: MARKER_SEAL
   };
   if (!dryRun) await persist(context, manifest, pkg, record);
   return planSurface(record, manifest, dryRun, providerAuth);

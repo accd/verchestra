@@ -29,8 +29,8 @@ is independently verifiable; T2 and T3 build on the task before them.
 | Task | Commit | Status |
 | --- | --- | --- |
 | T1 | `f6a6e8b` | Done |
-| T2 | the commit that carries this table | Done |
-| T3 | — | Planned |
+| T2 | `71fec27` | Done |
+| T3 | the commit that carries this table | Done |
 
 Evidence for every requirement is in `validation.md`. The next action is in
 `handoff.md`.

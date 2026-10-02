@@ -1043,3 +1043,157 @@ test(
     assert.equal(fixture.git(["worktree", "list", "--porcelain"]).split("\n\n").length, 1);
   }
 );
+
+// invariant: sealing the five markers changes no journey. A run planned now
+// names the marker seal in its plan record and writes its markers sealed; a
+// run planned before that (the legacy fixture: the same plan record without
+// the member) keeps its plain markers. Both are interrupted, resumed,
+// cancelled, and reviewed alike, and both bind the same digest of the grant
+// record into the Run Capsule.
+const MARKER_FORMS = Object.freeze(["legacy", "sealed"]);
+
+async function approvedAs(fixture, form) {
+  const plan = await planned(fixture);
+  assert.equal(fixture.planRecord(plan.runId).markerSeal, 1, "task plan did not name the marker seal");
+  if (form === "legacy") await fixture.asLegacyRun(plan.runId);
+  ok(fixture.launch(approveArguments(fixture, plan), `${plan.bindingDigest}\n`), "approve");
+  return plan;
+}
+
+function markerPath(fixture, runId, name) {
+  return join(fixture.stateRoot, "tasks", runId, name);
+}
+
+function assertMarkerForm(fixture, runId, names, form) {
+  for (const name of names) {
+    const stored = JSON.parse(readFileSync(markerPath(fixture, runId, name), "utf8"));
+    const sealed = Object.keys(stored).join(",") === "digest,record";
+    assert.equal(sealed, form === "sealed", `${name} of a ${form} Run`);
+    if (sealed) assert.equal(stored.digest, fixture.recordDigest(stored.record), `${name} is not sealed by its record`);
+  }
+}
+
+function capsuleGrants(fixture, runId) {
+  const directory = join(fixture.stateRoot, "tasks", runId, "capsules");
+  const [file] = readdirSync(directory, { recursive: true }).filter((name) => String(name).endsWith(".json"));
+  const envelope = JSON.parse(readFileSync(join(directory, String(file)), "utf8"));
+  const statement = JSON.parse(Buffer.from(envelope.payload, "base64").toString("utf8"));
+  return statement.predicate.content.evidence.capabilityGrants;
+}
+
+for (const form of MARKER_FORMS) {
+  test(
+    `a ${form} Run interrupted at its gate resumes, is accepted, and its capsule binds the grant record`,
+    TIMEOUT,
+    async (t) => {
+      if (!DARWIN) return notConfiguredOffMacOS(t);
+      const fixture = await taskFixture();
+      const plan = await approvedAs(fixture, form);
+      assert.equal((await killedAtHeldGate(fixture, plan)).signal, "SIGKILL");
+      assertMarkerForm(fixture, plan.runId, ["grant.json", "worktree.json", "active.json"], form);
+      const interrupted = status(fixture, plan.runId);
+      assert.equal(interrupted.state, "IMPLEMENTING");
+      assert.equal(interrupted.activeProcess, false);
+      assert.equal(interrupted.checkpoints.executor, "awaiting-gate");
+
+      const resumed = ok(start(fixture, plan.runId, "resume"), "resume");
+      assert.equal(resumed.state, "HUMAN_REVIEW");
+      assert.equal(logLines(fixture, "fake-claude.log").filter((entry) => entry.scenario !== undefined).length, 1);
+      assert.equal(receiptCount(fixture), 1);
+      assertMarkerForm(fixture, plan.runId, ["outcome.json"], form);
+      const { grantId } = status(fixture, plan.runId).evidence;
+      assert.match(grantId, /^grant_/u);
+
+      assert.equal(ok(review(fixture, plan.runId, "accepted", resumed.surfaceDigest), "review").state, "COMPLETED");
+      assert.deepEqual(capsuleGrants(fixture, plan.runId), [
+        { artifactId: `grant:${grantId}`, digest: fixture.recordDigest({ grantId }) }
+      ]);
+    }
+  );
+
+  test(`cancel ends a ${form} Run nobody is driving and frees the Workspace for the next run`, TIMEOUT, async (t) => {
+    if (!DARWIN) return notConfiguredOffMacOS(t);
+    const fixture = await taskFixture();
+    const plan = await approvedAs(fixture, form);
+    await killedAtHeldGate(fixture, plan);
+    assert.equal(fixture.git(["worktree", "list", "--porcelain"]).split("\n\n").length, 2);
+    const cancelled = ok(fixture.launch(["task", "cancel", "--run-id", plan.runId, "--output", "json"]), "cancel");
+    assert.equal(cancelled.state, "ABORTED");
+    assert.equal(cancelled.stopped, true);
+    assert.equal(fixture.git(["worktree", "list", "--porcelain"]).split("\n\n").length, 1);
+    assert.equal(fixture.git(["branch", "--list", "vestra/*"]), "");
+    const next = await approvedAs(fixture, form);
+    assert.equal(ok(start(fixture, next.runId), "next start").state, "HUMAN_REVIEW");
+  });
+
+  test(`cancel stops a running ${form} Run from another process`, TIMEOUT, async (t) => {
+    if (!DARWIN) return notConfiguredOffMacOS(t);
+    const fixture = await taskFixture({ request: { instructions: "Work slowly. scenario:slow" } });
+    const plan = await approvedAs(fixture, form);
+    const child = fixture.launchAsync(startArguments(fixture, plan.runId));
+    const finished = exited(child);
+    t.after(() => child.kill("SIGKILL"));
+    let stdout = "";
+    child.stdout.on("data", (chunk) => (stdout += chunk));
+    await waitFor(() => logLines(fixture, "fake-claude.log").some((entry) => entry.results !== undefined));
+    assert.equal(status(fixture, plan.runId).activeProcess, true);
+    assertMarkerForm(fixture, plan.runId, ["active.json"], form);
+    const cancelled = ok(fixture.launch(["task", "cancel", "--run-id", plan.runId, "--output", "json"]), "cancel");
+    assert.equal(cancelled.stopped, true);
+    assert.equal((await finished).code, 1);
+    assert.equal(JSON.parse(stdout).data.status, "ABORTED");
+    assertMarkerForm(fixture, plan.runId, ["cancel.json", "outcome.json"], form);
+    const after = status(fixture, plan.runId);
+    assert.equal(after.state, "ABORTED");
+    assert.equal(after.activeProcess, false);
+    assert.equal(fixture.git(["worktree", "list", "--porcelain"]).split("\n\n").length, 1);
+  });
+}
+
+// invariant: no downgrade. A sealed Run does not believe a marker that was
+// replaced by the plain form a legacy Run would hold. Its active marker then
+// counts as a driver, so a resume is refused as it is under a live one; its
+// grant marker fails status and review closed before anything is recorded.
+// Put back, each marker lets the same command succeed.
+test(
+  "a sealed Run refuses a marker replaced by a plain one, and accepts it again once restored",
+  TIMEOUT,
+  async (t) => {
+    if (!DARWIN) return notConfiguredOffMacOS(t);
+    const fixture = await taskFixture();
+    const plan = await approvedAs(fixture, "sealed");
+    await killedAtHeldGate(fixture, plan);
+    const downgrade = async (name) => {
+      const sealed = readFileSync(markerPath(fixture, plan.runId, name), "utf8");
+      await writeFile(markerPath(fixture, plan.runId, name), `${JSON.stringify(JSON.parse(sealed).record)}\n`);
+      return () => writeFile(markerPath(fixture, plan.runId, name), sealed);
+    };
+
+    const restoreActive = await downgrade("active.json");
+    const driven = status(fixture, plan.runId);
+    assert.equal(driven.activeProcess, true, "a plain active marker was believed");
+    assert.deepEqual(driven.next, [`vestra task cancel --run-id ${plan.runId}`]);
+    refused(start(fixture, plan.runId, "resume"), "VES_TASK_RUN_ACTIVE", "resume under a marker that does not verify");
+    await restoreActive();
+    const resumed = ok(start(fixture, plan.runId, "resume"), "resume");
+    assert.equal(resumed.state, "HUMAN_REVIEW");
+
+    const restoreGrant = await downgrade("grant.json");
+    const statusError = refused(
+      fixture.launch(["task", "status", "--run-id", plan.runId, "--output", "json"]),
+      "VES_TASK_STATE_INVALID",
+      "status"
+    );
+    assert.equal(statusError.safeDetails.reason, "VES_TASK_STATE_MALFORMED");
+    const reviewError = refused(
+      review(fixture, plan.runId, "accepted", resumed.surfaceDigest),
+      "VES_TASK_STATE_INVALID",
+      "review"
+    );
+    assert.equal(reviewError.safeDetails.reason, "VES_TASK_STATE_MALFORMED");
+    assert.equal(existsSync(markerPath(fixture, plan.runId, "review.json")), false, "a refused review was recorded");
+    await restoreGrant();
+    assert.equal(status(fixture, plan.runId).state, "HUMAN_REVIEW");
+    assert.equal(ok(review(fixture, plan.runId, "accepted", resumed.surfaceDigest), "review").state, "COMPLETED");
+  }
+);

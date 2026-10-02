@@ -10,6 +10,7 @@
 // owner's one-time `codex login`. `mode: "api-key"` writes the machine-local
 // setting and binds the two API keys instead of the token.
 import { spawn, spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
@@ -20,6 +21,7 @@ import { fileURLToPath } from "node:url";
 import "./deny-keychain-spawn.mjs";
 import { FAKE_KEYCHAIN_SPAWN } from "./fake-keychain-spawn.mjs";
 import { systemGit } from "./system-git.mjs";
+import { canonicalDigestOf, sealedText } from "./task-run-record-fixture.mjs";
 
 export const VESTRA = fileURLToPath(new URL("../../apps/vestra-cli/bin/vestra.mjs", import.meta.url));
 export const FAKES = fileURLToPath(new URL("./task-cli-fakes/", import.meta.url));
@@ -300,6 +302,17 @@ export async function taskFixture(options = {}) {
   const defaultLogin = mode === "subscription" ? "chatgpt" : null;
   const login = options.codexLogin === undefined ? defaultLogin : options.codexLogin;
   if (login !== null) await codexLogin(login);
+  // why: a run planned before the five markers were sealed has a plan record
+  // without `markerSeal`. Dropping that one member from a plan this build just
+  // wrote, and sealing the record again, gives exactly the bytes that build
+  // wrote, so the journeys can drive a legacy Run through the real binary.
+  const planPath = (runId) => join(stateRoot, "tasks", runId, "plan.json");
+  const planRecord = (runId) => JSON.parse(readFileSync(planPath(runId), "utf8")).record;
+  const asLegacyRun = async (runId) => {
+    const { markerSeal, ...legacy } = planRecord(runId);
+    if (markerSeal !== 1) throw new Error("the planned run names no marker seal to drop");
+    await writeFile(planPath(runId), sealedText(legacy));
+  };
   const requestPath = join(root, "request.json");
   const writeRequest = async (overrides) => writeFile(requestPath, JSON.stringify(taskRequest(revision, overrides)));
   await writeRequest(options.request ?? {});
@@ -318,6 +331,9 @@ export async function taskFixture(options = {}) {
     mode,
     requestPath,
     writeRequest,
+    planRecord,
+    asLegacyRun,
+    recordDigest: canonicalDigestOf,
     launch,
     launchAsync,
     git: (argv) => git(repository, argv),
