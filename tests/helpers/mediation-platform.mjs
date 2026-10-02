@@ -12,7 +12,7 @@ const fakeClaude = fileURLToPath(
 );
 
 // invariant: the mediated bridge reaches its controller over a Unix socket, so
-// Windows refuses both the bridge and the mediated Claude Code profile by
+// Windows refuses both the bridge and every mediated Claude Code profile by
 // design. Following the platform-conditional qualification in
 // spikes/os-secret-store, every mediated case on win32 asserts that refusal
 // instead of skipping, so the sealed gate counters never record a skip and no
@@ -37,15 +37,17 @@ export async function mediationRefusedOnWin32(t) {
       { code: "VES_BRIDGE_PLATFORM_UNSUPPORTED" }
     );
     assert.deepEqual(await readdir(socketRoot), [], "no bridge socket directory was created");
-    assert.throws(
-      () =>
-        new ClaudeCodeDriver({
-          command: [process.execPath, fakeClaude],
-          profile: { kind: "mediated-mcp" },
-          resolveExecution: async () => assert.fail("not reached")
-        }),
-      { code: "VES_CLAUDE_MEDIATION_UNSUPPORTED" }
-    );
+    for (const kind of ["mediated-mcp", "mediated-mcp-subscription"])
+      assert.throws(
+        () =>
+          new ClaudeCodeDriver({
+            command: [process.execPath, fakeClaude],
+            profile: { kind },
+            resolveExecution: async () => assert.fail("not reached")
+          }),
+        { code: "VES_CLAUDE_MEDIATION_UNSUPPORTED" },
+        kind
+      );
   } finally {
     await rm(socketRoot, { recursive: true, force: true });
   }

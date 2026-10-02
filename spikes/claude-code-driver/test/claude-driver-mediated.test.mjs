@@ -6,103 +6,31 @@ import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { constants } from "node:fs";
-import { access, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { access, readFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { delimiter, isAbsolute, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { afterEach, test } from "node:test";
 
-import { InMemoryExecutionPayloadStore, McpToolBridgeController } from "../../../packages/agent-runtime/src/index.ts";
 import {
   CLAUDE_MEDIATED_MINIMUM_VERSION,
   CLAUDE_MEDIATED_TOOLS,
   ClaudeCodeDriver
 } from "../../../packages/drivers/src/index.ts";
-import { mockRequest } from "../../../tests/helpers/driver-protocol-fixture.mjs";
+import {
+  MEDIATED_CREDENTIAL as credential,
+  abortOnceObserved,
+  cleanupMediatedFixtures,
+  fakeMediatedClaude as fakeClaude,
+  mediatedErrors as errors,
+  mediatedFixture
+} from "../../../tests/helpers/claude-mediated-fixture.mjs";
 import { WIN32_HOST, mediationRefusedOnWin32 } from "../../../tests/helpers/mediation-platform.mjs";
 import { resolveClaudeCommand } from "../src/claude-code-driver.mjs";
 
 const execFileAsync = promisify(execFile);
-const fakeClaude = fileURLToPath(new URL("./fake-claude-mediated.mjs", import.meta.url));
-const relayEntry = fileURLToPath(
-  new URL("../../../packages/agent-runtime/src/execution/mcp-tool-bridge-main.ts", import.meta.url)
-);
-const credential = "qualification-credential-value";
-const roots = [];
-const controllers = [];
 
-afterEach(async () => {
-  await Promise.all(controllers.splice(0).map((controller) => controller.close()));
-  await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
-});
-
-async function mediatedFixture(options = {}) {
-  const root = await realpath(await mkdtemp(join(tmpdir(), "verchestra-claude-mediated-")));
-  roots.push(root);
-  const worktree = join(root, "worktree");
-  const observations = join(root, "observations");
-  const isolationRoot = join(root, "isolation");
-  await mkdir(join(worktree, "src"), { recursive: true });
-  await mkdir(join(worktree, ".git"), { recursive: true });
-  await mkdir(observations);
-  await mkdir(isolationRoot);
-  await writeFile(join(worktree, "src", "a.txt"), "alpha\n");
-  await writeFile(join(worktree, ".git", "config"), "[core]\n");
-  const invoked = [];
-  const payloads = new InMemoryExecutionPayloadStore();
-  const controller = await McpToolBridgeController.open({
-    worktreePath: worktree,
-    readScope: ["src"],
-    protectedPaths: [".git"],
-    taskId: "T405.4",
-    capabilityGrantRef: "grant:writer:1",
-    payloads,
-    invokeTool: async (request) => {
-      invoked.push(request);
-      return { receiptRef: `receipt:${invoked.length}` };
-    }
-  });
-  controllers.push(controller);
-  const spawned = [];
-  const execution = {
-    passport: {
-      passportId: "passport_018f0000-0000-7000-8000-000000001504",
-      revision: 1,
-      provider: "anthropic",
-      resolvedModel: "claude-sonnet-5"
-    },
-    prompt: `scenario:${options.scenario ?? "read-write"}`,
-    model: "claude-sonnet-5",
-    environment: { ANTHROPIC_API_KEY: credential },
-    sensitiveValues: [credential],
-    mediation: {
-      cwd: worktree,
-      bridge: { command: [process.execPath, relayEntry], environment: controller.environment }
-    },
-    ...options.execution
-  };
-  const driver = new ClaudeCodeDriver({
-    command: [process.execPath, fakeClaude, "--fixture-observations", observations],
-    profile: { kind: "mediated-mcp", environment: { TMPDIR: observations }, isolationRoot },
-    resolveExecution: async () => execution,
-    onSpawn: (pid) => spawned.push(pid),
-    terminateTree: async (pid) => process.kill(pid),
-    ...options.dependencies
-  });
-  const run = async (signal = new AbortController().signal) => {
-    const events = [];
-    const session = await driver.start(mockRequest(), (event) => events.push(event), signal);
-    const closed = await driver.close(session);
-    return { events, closed };
-  };
-  const observation = async () =>
-    JSON.parse(await readFile(join(observations, "fake-claude-observation.json"), "utf8"));
-  const observed = () => access(join(observations, "fake-claude-observation.json")).then(() => true, () => false);
-  return { controller, driver, invoked, isolationRoot, observation, observed, payloads, run, spawned, worktree };
-}
-
-const errors = (events) => events.filter((event) => event.type === "error").map((event) => event.code);
+afterEach(cleanupMediatedFixtures);
 
 test("fake claude completes the MCP handshake and reaches the controller through the bridge", async (t) => {
   if (WIN32_HOST) return mediationRefusedOnWin32(t);
@@ -274,15 +202,8 @@ test("the mediated profile requires at least the qualified Claude Code build", a
 test("cancellation terminates the mediated session and still removes its isolation directory", async (t) => {
   if (WIN32_HOST) return mediationRefusedOnWin32(t);
   const fixture = await mediatedFixture({ scenario: "hang" });
-  const controller = new AbortController();
-  const pending = fixture.run(controller.signal);
-  const deadline = Date.now() + 10_000;
-  // why: abort only once the fake has recorded its identity directories and is
-  // hanging; a fixed delay raced the MCP handshake on slower CI runners.
-  while (!(await fixture.observed()) && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 20));
-  assert.equal(fixture.spawned.length, 1);
-  controller.abort();
-  const { events, closed } = await pending;
+  const { events, closed, spawned } = await abortOnceObserved(fixture);
+  assert.equal(spawned, 1);
   assert.deepEqual(errors(events), ["VES_CLAUDE_ABORTED"]);
   assert.equal(closed.outcome, "cancelled");
   const { home } = await fixture.observation();
@@ -345,14 +266,22 @@ test("every mediated flag exists in the installed Claude Code help", async (t) =
     return;
   }
   assert.equal(probe.available, true);
-  const flags = new ClaudeCodeDriver({
-    command: [process.execPath, fakeClaude],
-    profile: { kind: "mediated-mcp" },
-    resolveExecution: async () => assert.fail("not reached")
-  })
-    .buildMediatedArguments("claude-sonnet-5", "/mcp.json")
-    .filter((argument) => argument.startsWith("--"));
+  const builder = (kind) =>
+    new ClaudeCodeDriver({
+      command: [process.execPath, fakeClaude],
+      profile: { kind },
+      resolveExecution: async () => assert.fail("not reached")
+    });
+  const flags = [
+    ...builder("mediated-mcp").buildMediatedArguments("claude-sonnet-5", "/mcp.json"),
+    ...builder("mediated-mcp-subscription").buildSubscriptionArguments("claude-sonnet-5", "/mcp.json")
+  ].filter((argument) => argument.startsWith("--"));
+  assert.ok(flags.includes("--bare") && flags.includes("--settings") && flags.includes("--include-hook-events"));
   for (const flag of flags) assert.ok(help.includes(flag), `installed Claude Code lacks ${flag}`);
+  // why: the subscription profile depends on `claude setup-token`, and on
+  // `--bare` still being the mode that never reads an OAuth token.
+  assert.match(help, /setup-token\s+Set up a long-lived authentication token/u);
+  assert.match(help.replace(/\s+/gu, " "), /OAuth and keychain are never read/u);
 });
 
 test("the mediated version floor compares every component numerically", () => {

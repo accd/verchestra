@@ -584,7 +584,13 @@ export class DriverSupervisor {
 
 export { PiDriver } from "./pi-driver.ts";
 export type { PiDriverDependencies, PiExecution } from "./pi-driver.ts";
-export { CLAUDE_MEDIATED_MINIMUM_VERSION, CLAUDE_MEDIATED_TOOLS, ClaudeCodeDriver } from "./claude-code-driver.ts";
+export {
+  CLAUDE_MEDIATED_MINIMUM_VERSION,
+  CLAUDE_MEDIATED_TOOLS,
+  CLAUDE_PROFILE_CREDENTIAL_VARIABLES,
+  CLAUDE_SUBSCRIPTION_SETTINGS,
+  ClaudeCodeDriver
+} from "./claude-code-driver.ts";
 export type {
   ClaudeCodeDriverDependencies,
   ClaudeCodeExecution,
