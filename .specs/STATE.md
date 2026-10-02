@@ -1096,6 +1096,14 @@ note. -->
      `VES_BUDGET_INVALID`), and a committed gate checkpoint that names no
      commit (it reached git as the text `undefined`). The runtime store
      writes neither.
+  8. The three state roots the task path keeps beside the Workspace layout
+     (`tasks/`, `keys/`, `verification/`) are named in `task-workspace.ts` and
+     checked there on every command: one that exists must resolve strictly
+     inside the Workspace state root, or the command stops with
+     `VES_STATE_ROOT_ESCAPE` before it reads or writes there. The check only
+     reads, and a root that does not exist yet passes, so a dry run still
+     creates nothing. It is not part of `ensureWorkspaceState`, which creates
+     every directory it checks.
 - **Alternatives rejected:** the module in `packages/platform-node` (it
   cannot import the evidence stores or the context manifest type); an artifact
   store keyed by caller-supplied names (the callers would keep the layout);
@@ -1109,16 +1117,23 @@ note. -->
   by contract, and the ledger's meaning belongs to the budget meter, so the
   projections would still be needed above the store); a projection that
   returns an unchecked ledger typed as one (resume would then trust what the
-  meter refuses).
+  meter refuses); adding the three roots to `ensureWorkspaceState` (a dry run
+  would create them); refusing any link at those roots (the Workspace layout
+  already accepts a link that resolves inside the Workspace state root, and
+  the key provider keeps its own stricter rule for `keys/`).
 - **Consequence:** `tests/architecture/task-run-record-locality.test.mjs` fails
   when another task source names a file of the Run directory, joins a path
   into one of its directories, opens one of its stores or the checkpoint
-  store, reads or writes a sealed record, casts a checkpoint row, or imports
-  another command's module for Run state. The
+  store, reads or writes a sealed record, casts a checkpoint row, joins a
+  task state root onto the Workspace root, or imports another command's module
+  for Run state. A Workspace whose `tasks`, `keys`, or `verification`
+  directory is a link out of its state root can no longer run a task command
+  until the link is removed. The
   module's refusals are exercised in a temporary directory on every platform
   (`tests/unit/task-run-record.test.mjs`,
   `tests/integration/task-review-surface.test.mjs`,
-  `tests/integration/task-run-checkpoints.test.mjs`). Evidence is in
+  `tests/integration/task-run-checkpoints.test.mjs`,
+  `tests/integration/task-workspace-containment.test.mjs`). Evidence is in
   `.specs/features/architecture-deepening/validation-c2.md`.
 
 ## Handoff

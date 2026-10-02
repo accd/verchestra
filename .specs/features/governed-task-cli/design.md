@@ -249,6 +249,14 @@ prints as the last outcome. The grant marker is digested into the Run Capsule
 as it is read. Sealing the five markers is tracked separately; it is not part
 of this design. `task-run-record.ts` is the one module that knows this layout.
 
+The task path keeps three state roots beside the Workspace layout: `tasks/`
+(the run directories), `keys/` (the evidence key and its trust anchor), and
+`verification/` (scratch checkouts, which are deleted recursively). None is
+created when the Workspace is opened; each is created by its first write, so a
+dry run creates none. `task-workspace.ts` names them and, on every command,
+refuses one that exists and does not resolve strictly inside the Workspace
+state root (`VES_STATE_ROOT_ESCAPE`). The check only reads.
+
 Verification turns Codex's answer into claims the coordinator can check
 without trusting it: the expected outcome is derived from the approved task,
 the cited assertion lines must exist at the commit, and the mutation reverts

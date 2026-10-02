@@ -12,7 +12,7 @@
 // identity directory. The API-key mode has its own journeys below.
 import assert from "node:assert/strict";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
-import { rm, writeFile, mkdir } from "node:fs/promises";
+import { rm, writeFile, mkdir, symlink } from "node:fs/promises";
 import { join } from "node:path";
 import { after, test } from "node:test";
 
@@ -659,3 +659,54 @@ test("a SHA-256 repository is cancelled when idle and delivered through acceptan
   assert.equal(fixture.git(["show", `${run.branch}:src/value.txt`]), "new");
   assert.deepEqual(checkout(fixture), before);
 });
+
+function stateListing(fixture) {
+  return readdirSync(fixture.stateRoot, { recursive: true })
+    .map(String)
+    .sort((left, right) => Number(left > right) - Number(left < right));
+}
+
+function dryRunArguments(fixture) {
+  return ["task", "plan", "--request", fixture.requestPath, "--dry-run", "--output", "json"];
+}
+
+// invariant: a dry run prints the surface a real plan would bind and writes
+// nothing: no Run record, no runtime store, no evidence key. It reads no
+// credential, so it runs wherever the task path is not refused outright.
+test("a dry run prints the plan surface and leaves the Workspace state as it was", TIMEOUT, async (t) => {
+  if (process.platform === "win32") return t.diagnostic("the task path is refused on Windows");
+  const fixture = await taskFixture();
+  const before = stateListing(fixture);
+  const plan = ok(fixture.launch(dryRunArguments(fixture)), "dry run");
+  assert.equal(plan.dryRun, true);
+  assert.equal(plan.state, "NOT_PERSISTED");
+  assert.match(plan.bindingDigest, /^sha256:[a-f0-9]{64}$/u);
+  assert.deepEqual(stateListing(fixture), before);
+  for (const name of ["tasks", "runtime", "keys", "verification"])
+    assert.equal(existsSync(join(fixture.stateRoot, name)), false, `${name} was created by a dry run`);
+});
+
+// invariant: a task state root that is a link out of the Workspace state root
+// stops every task command with a stable public code, and nothing is written
+// through the link.
+test(
+  "a task state root that links out of the Workspace is refused with nothing written through it",
+  TIMEOUT,
+  async (t) => {
+    if (process.platform === "win32") return t.diagnostic("the task path is refused on Windows");
+    for (const name of ["tasks", "keys", "verification"]) {
+      const fixture = await taskFixture();
+      const outside = join(fixture.root, "outside-state");
+      await mkdir(outside);
+      await symlink(outside, join(fixture.stateRoot, name));
+      const error = refused(fixture.launch(dryRunArguments(fixture)), "VES_STATE_ROOT_ESCAPE", `dry run with ${name}`);
+      assert.deepEqual(error.safeDetails, {});
+      refused(
+        fixture.launch(["task", "plan", "--request", fixture.requestPath, ...fixture.keychainArgs, "--output", "json"]),
+        "VES_STATE_ROOT_ESCAPE",
+        `plan with ${name}`
+      );
+      assert.deepEqual(readdirSync(outside), [], `${name} was written through the link`);
+    }
+  }
+);

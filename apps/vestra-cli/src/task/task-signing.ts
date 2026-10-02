@@ -14,7 +14,7 @@ export const EVIDENCE_KEY_ID = "workspace-task-evidence";
 export const EVIDENCE_PURPOSES = Object.freeze(["execution-package", "approval", "run-capsule", "context-manifest"]);
 
 function anchorPath(workspace: TaskWorkspace): string {
-  return join(workspace.layout.workspaceRoot, "keys", "task-evidence-trust.json");
+  return join(workspace.keysRoot, "task-evidence-trust.json");
 }
 
 export async function workspaceSigner(workspace: TaskWorkspace, passphrase: string): Promise<EvidenceSigner> {

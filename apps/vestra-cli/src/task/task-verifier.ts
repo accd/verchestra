@@ -42,7 +42,7 @@ export interface VerifierContext {
 }
 
 function verificationRoot(context: VerifierContext): string {
-  return join(context.workspace.layout.workspaceRoot, "verification", context.plan.runId);
+  return join(context.workspace.verificationRoot, context.plan.runId);
 }
 
 // invariant: the verification sensor compares this digest before and after

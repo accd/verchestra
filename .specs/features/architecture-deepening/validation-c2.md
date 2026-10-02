@@ -294,3 +294,135 @@ sources, names exactly the three sources: `task-review.ts`, `task-run.ts`,
 | `pnpm gate:quick` | PASS — unit 2449, agent-readiness 323, census 13 |
 | `pnpm test:architecture` | PASS — 75 |
 | `pnpm agent:check` | PASS |
+
+## C2-3 (T2c) — the task state roots resolve inside the Workspace
+
+The task path keeps three state roots beside the Workspace layout: `tasks/`
+(the Run records), `keys/` (the evidence key and its trust anchor) and
+`verification/` (scratch checkouts, which verification deletes recursively).
+`ensureWorkspaceState` checks the eight layout directories and creates each
+one, so these three were never checked: a link at one of them carried every
+write, and the recursive delete, to wherever it pointed.
+
+`openTaskWorkspace` in `task-workspace.ts` now names the three roots
+(`tasksRoot`, `keysRoot`, `verificationRoot`) and refuses one that exists and
+does not resolve strictly inside the Workspace state root, with the code the
+layout check already uses, `VES_STATE_ROOT_ESCAPE`. The check only reads. A
+root that does not exist yet passes and is created later by its first write.
+`task-signing.ts` and `task-verifier.ts` take their roots from the opened
+Workspace instead of joining a name onto the Workspace root.
+
+### Requirement evidence
+
+`W` is `tests/integration/task-workspace-containment.test.mjs`; `E` is
+`tests/e2e/task-cli-e2e.test.mjs`. Every `W` case runs once as a dry run
+(`ensure: false`) and once as a command (`ensure: true`), on a real repository
+with a fixture-owned home.
+
+| Clause | Definition (symbol) | Assertion evidence |
+| --- | --- | --- |
+| `tasks/`, `keys/` and `verification/` must resolve inside the Workspace | `requireContained`, `openTaskWorkspace` | A link out of the Workspace is refused for each root `W:101`, and nothing is written through it `W:102`; a link whose target is gone `W:110-111`; a root that resolves to the Workspace state root or to its parent `W:119`. Through the real binary, with the public code and no detail: `E:702-709` |
+| What is contained is accepted | — | Real directories `W:93`; a link that resolves inside the Workspace state root, the rule the layout already follows `W:130` |
+| The check is in `task-workspace.ts` | `TASK_STATE_ROOTS` | `tests/architecture/task-run-record-locality.test.mjs:115-118`: the module names the three roots and the refusal, and no task source joins a root onto the Workspace root |
+| Not in `ensureWorkspaceState`; a dry run creates nothing | — | A dry run returns the three roots and creates no state at all `W:73-77`; a command creates the eight layout directories and none of the three `W:83-85`; a refused dry run leaves the state root as it was `W:104`. Through the real binary: `task plan --dry-run` prints the surface and the state listing is unchanged, with no `tasks`, `runtime`, `keys` or `verification` `E:681-686` |
+| A stable public code | `PlatformSecurityError` | `W:138-139`; `E:702-703` |
+
+`task plan --dry-run` had no test before this change; `E:676-687` is its
+first, and it runs on macOS and Linux because a dry run reads no credential.
+
+### Behaviour change and its bounds
+
+- New refusal: when `tasks`, `keys` or `verification` under the Workspace
+  state root is a link that leads outside it (or to the root itself, or
+  nowhere), every `task` command, a dry run included, stops with
+  `VES_STATE_ROOT_ESCAPE` before it reads or writes there.
+  `docs/quick-start.md` states it under the limits.
+- A link that resolves inside the Workspace state root is accepted, as the
+  layout check accepts one. `EncryptedFileKeyProvider` keeps its own stricter
+  rule and still refuses any link at `keys/` when a key is loaded.
+- Not covered: a link below a root (for example at `tasks/<runId>`), and a
+  root replaced by a link between the check and a later write. The package
+  and capsule stores refuse a linked root of their own.
+
+### Tests replaced
+
+No case was deleted.
+
+### Discrimination (disposable copy)
+
+Unmutated copy: 30 pass, 0 fail (`W` 21, the locality scan 7, the two `E`
+journeys).
+
+| Mutation in the copy | Failing cases |
+| --- | --- |
+| P1 — the task state roots are not checked | 15: every refusal case in `W` and the `E` link journey |
+| P2 — a root may resolve to the Workspace state root itself | 2 |
+| P3 — a link whose target is gone counts as absent | 6 |
+| P4 — only the `tasks` root is checked | 11, including the `E` link journey |
+| P5 — opening the Workspace creates the task state roots | 11, including "a dry run resolves the three task state roots and creates nothing" and the `E` dry run journey |
+| P6 — the owner is compared by its configured path, not its real path | 4: the four acceptance cases |
+| P7 — `task-verifier` joins the verification root onto the Workspace root again | 1 in the locality scan |
+| P8 — a root may resolve to the parent of the Workspace state root | 2 |
+
+### Guardrails
+
+- Complexity: no baseline entry changed; no new function is above 10.
+- Census: no file gained or lost `JSON.stringify` or `createHash`.
+- Citations: no cited line of `task-workspace.ts`, `task-signing.ts` or
+  `task-verifier.ts` moved.
+- No error code was added: `VES_STATE_ROOT_ESCAPE` is in the platform security
+  catalog already. Migration count (12) and runtime error catalog count (19)
+  unchanged.
+
+
+### Gates (Node 24.14.0, macOS arm64, git 2.50.1)
+
+| Command | Result |
+| --- | --- |
+| `node --test tests/integration/task-workspace-containment.test.mjs tests/architecture/task-run-record-locality.test.mjs` | PASS — 28 passed |
+| `node --test tests/unit/task-run-record.test.mjs tests/integration/task-review-surface.test.mjs tests/integration/task-run-checkpoints.test.mjs tests/integration/task-commit-recovery.test.mjs tests/integration/task-idle-cancel.test.mjs` | PASS — 98 passed |
+| `node --test tests/e2e/task-cli-e2e.test.mjs tests/e2e/mediated-task-execution-e2e.test.mjs` | PASS — 23 passed |
+| `node --test tests/unit/task-cli-composition.test.mjs tests/security/task-cli-security.test.mjs` | PASS — 15 passed |
+| `pnpm gate:quick` | PASS — unit 2449, agent-readiness 323, census 13 |
+| `pnpm test:architecture` | PASS — 76 |
+| `pnpm agent:check` | PASS |
+| `pnpm site:check` | PASS — 50 (the `docs/quick-start.md` projection) |
+
+## Open points for the reviewer
+
+- **Platform matrix.** Every result here is from macOS arm64. The new suites
+  run on every platform, and three things in them have never run off macOS:
+  `openTaskWorkspace` on Windows (the command refuses Windows before it is
+  reached, the function does not), directory links created as junctions
+  there, and `task plan --dry-run` through the real binary on Linux. The four
+  sub-cases marked POSIX do not run on Windows. `platform-matrix.yml` must be
+  green on the branch before merge.
+- **Sealing the five plain markers** is not part of this candidate. The grant
+  marker is digested into the Run Capsule as it is read, so sealing it changes
+  bytes that Runs in flight and that digest depend on, and needs a reader that
+  accepts both forms.
+- **`review` reads the Execution Package unchecked against the plan.** It
+  uses `loadPackage`, as it did before; `approve` uses `approvedPackage`.
+  Moving `review` to the checked reader changes the public error a damaged
+  package store raises there, so it was left for a decision.
+- **A link below a task state root** (for example at `tasks/<runId>`) is not
+  checked by C2-3.
+- `TaskRunComposition#release` still swallows every cleanup error, as noted in
+  `validation-c1.md`. It is unchanged.
+
+## Gates at the tip of the branch (Node 24.14.0, macOS arm64, git 2.50.1)
+
+| Command | Result |
+| --- | --- |
+| `pnpm gate:build` | PASS — unit 2449, contract 673, integration 899, e2e 238, architecture 76, build 146, qualification 296 |
+| `pnpm gate:security` | PASS — unit 2449, contract 673, e2e 238, architecture 76, qualification 296, security 1339, fault 310 |
+| `node --test tests/e2e/task-cli-e2e.test.mjs tests/e2e/mediated-task-execution-e2e.test.mjs` | PASS — 23 passed |
+| `node --test tests/unit/task-cli-composition.test.mjs tests/security/task-cli-security.test.mjs` | PASS — 15 passed |
+| `pnpm gate:quick` | PASS — unit 2449, agent-readiness 323, census 13 |
+| `pnpm test:architecture` | PASS — 76 |
+| `pnpm agent:check` | PASS |
+| `pnpm site:check` | PASS — 50 |
+
+No test was skipped in any stage. Each of the three commits was measured on
+its own after the rebase onto `0158e48`; the two gates above that are not in
+a commit's own table were run at the tip only.
