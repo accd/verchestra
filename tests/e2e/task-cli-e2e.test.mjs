@@ -435,3 +435,38 @@ test("cancel with no process driving the run removes its worktree, frees the lea
   const next = await approved(fixture);
   assert.equal(ok(start(fixture, next.runId), "next start").state, "HUMAN_REVIEW");
 });
+
+// invariant: nothing on the task path assumes a 40-digit object ID. In a
+// SHA-256 repository an idle cancel removes the worktree it reports stopped,
+// and a second run is implemented, gated, committed, verified through a
+// scratch checkout, and accepted into a sealed Run Capsule.
+test("a SHA-256 repository is cancelled when idle and delivered through acceptance", TIMEOUT, async () => {
+  if (!DARWIN) return;
+  const fixture = await taskFixture({ objectFormat: "sha256" });
+  assert.match(fixture.revision, /^[a-f0-9]{64}$/u);
+  const before = checkout(fixture);
+  const plan = await approved(fixture);
+  await killedAtHeldGate(fixture, plan);
+  assert.equal(fixture.git(["worktree", "list", "--porcelain"]).split("\n\n").length, 2);
+
+  const cancelled = ok(fixture.launch(["task", "cancel", "--run-id", plan.runId, "--output", "json"]), "cancel");
+  assert.equal(cancelled.state, "ABORTED");
+  assert.equal(cancelled.stopped, true);
+  assert.equal(fixture.git(["worktree", "list", "--porcelain"]).split("\n\n").length, 1);
+  assert.equal(fixture.git(["branch", "--list", "vestra/*"]), "");
+
+  const next = await approved(fixture);
+  const run = ok(start(fixture, next.runId), "start");
+  assert.equal(run.state, "HUMAN_REVIEW");
+  assert.match(run.commitId, /^[a-f0-9]{64}$/u);
+  const inReview = status(fixture, next.runId);
+  assert.equal(inReview.evidence.verificationVerdict, "PASS");
+  assert.equal(inReview.evidence.commitId, run.commitId);
+  const accepted = ok(review(fixture, next.runId, "accepted", run.surfaceDigest), "review");
+  assert.equal(accepted.state, "COMPLETED");
+  assert.match(accepted.capsuleId, /^[a-f0-9]{64}$/u);
+  assert.equal(fixture.git(["rev-parse", run.branch]), run.commitId);
+  assert.equal(fixture.git(["rev-parse", `${run.branch}^`]), fixture.revision);
+  assert.equal(fixture.git(["show", `${run.branch}:src/value.txt`]), "new");
+  assert.deepEqual(checkout(fixture), before);
+});

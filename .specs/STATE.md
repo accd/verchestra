@@ -800,15 +800,49 @@ note. -->
      trailer bytes are unchanged, because a resumed run re-derives the ID,
      tool-receipt idempotency keys include the handle, and a reconciled commit
      is compared against the whole message.
+  3. The handle is opaque to the CLI composition as well. What the CLI did by
+     taking the handle apart is now an operation of `NodeGitWorktreeAdapter`,
+     off the port like `resolvePath`: `cleanupHandle` (cleanup from the handle
+     alone), `cleanupAtCommit` (cleanup of the worktree whose registered HEAD
+     is a given commit, compared against the canonical worktrees root), and
+     `scratchWorktreeHandle` (a handle for a scratch checkout verification
+     registered itself). The CLI's git calls go through the module's runner.
+  4. **SHA-256 repositories are supported, not refused.** Every object ID
+     check on the task path admits a complete SHA-1 (40 hex) or SHA-256 (64
+     hex) name. The two sites that admitted 40 only (the CLI commit record and
+     the verification input and human-review checks in
+     `packages/application/src/verification/verification.ts`) now use the same
+     pattern as the adapters. No signed evidence format restricts an object ID
+     to 40 digits: `schemas/task-request/1.schema.json` already admits both,
+     the Execution Package carries no object ID (its `expectedCommit` is the
+     commit boundary text), and the Run Capsule and the verification report
+     carry the commit ID inside an artifact reference and a digested record.
+     A SHA-256 journey is sealed into a Run Capsule end to end in
+     `tests/e2e/task-cli-e2e.test.mjs`. A plan-time refusal was therefore not
+     needed, and no public error code was added.
+  5. **Idle cancel no longer hides a failed cleanup** (owner-approved
+     behaviour change). `vestra task cancel` of a run no process is driving
+     ignores only `VES_GIT_WORKTREE_NOT_FOUND`. Any other refusal stops the
+     cancel before the lease is released or the abort is recorded and surfaces
+     as `VES_TASK_FAILED` with the adapter's code as its reason. `cleanup`
+     reports a worktree Git still lists but whose directory was deleted as
+     `VES_GIT_WORKTREE_NOT_FOUND` instead of a bare `ENOENT`, so that case
+     still cancels.
 - **Alternatives rejected:** a typed handle object at the port (every test
   double and the durable checkpoints carry the handle as text, so the port
   would have to parse it and the encoding would leak inward into
   `packages/application`); keeping the regular expression in a shared constant
-  only (the slicing and rebuilding sites would remain).
+  only (the slicing and rebuilding sites would remain); refusing a SHA-256
+  repository at `task plan` (justified only if signed evidence could not carry
+  a 64-digit ID, which it can); recording the abort and releasing the lease
+  even when the idle cleanup is refused (the cancel would again report an end
+  state while the worktree remains, only with an error beside it).
 - **Consequence:** `tests/architecture/task-worktree-locality.test.mjs` fails
-  when another source under `packages/` spells out the handle encoding, the
-  task branch name, or a trailer. The copies in the CLI composition are removed
-  by the next change of this branch. Evidence is in
+  when another source under `packages/` or `apps/` spells out the handle
+  encoding, the task branch name, or a trailer. An idle cancel that meets a
+  worktree it must not remove now needs the worktree reconciled by hand before
+  the cancel succeeds; until then the run keeps its writer lease, as it did
+  before the cancel was tried. Evidence is in
   `.specs/features/architecture-deepening/validation-c1.md`.
 
 ## Handoff

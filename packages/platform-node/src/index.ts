@@ -96,10 +96,22 @@ export { RuntimeLocalLease } from "./coordination-adapters.ts";
 export {
   GitWorktreeError,
   NodeGitWorktreeAdapter,
+  scratchWorktreeHandle,
   type GitWorktreeErrorCode,
   type NodeGitWorktreeAdapterOptions
 } from "./git-worktree-adapter.ts";
-export type { GitOutput, GitRunner } from "./task-worktree.ts";
+export {
+  isGitObjectId,
+  parseTaskCommitTrailers,
+  refTarget,
+  runGit,
+  runGitBytes,
+  taskBranchName,
+  taskBranchRef,
+  type GitOutput,
+  type GitRunner,
+  type TaskCommitTrailers
+} from "./task-worktree.ts";
 export {
   GitContextError,
   NodeGitContextSource,

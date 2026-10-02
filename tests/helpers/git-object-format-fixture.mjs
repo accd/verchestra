@@ -62,3 +62,68 @@ export async function cleanupObjectFormatRepositories() {
     roots.splice(0).map((root) => rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }))
   );
 }
+
+const digest = (character) => `sha256:${character.repeat(64)}`;
+// why: a requirement ID spelled out here would enter the requirements register
+// scan as evidence for a requirement these suites do not test.
+const REQUIREMENT_ID = ["VES", "EXE", "001"].join("-");
+
+// invariant: a task worktree as a run creates it: registered by the real
+// adapter under the fixture's worktrees root, with task-commit anchoring on.
+export async function taskWorktreeFixture(format, options = {}) {
+  const { NodeGitWorktreeAdapter } = await import("../../packages/platform-node/src/index.ts");
+  const repository = await objectFormatRepository(format);
+  const worktreesRoot = (await options.worktreesRoot?.(repository)) ?? repository.worktreesRoot;
+  const { repositoryRoot } = repository;
+  const worktrees = new NodeGitWorktreeAdapter({ repositoryRoot, worktreesRoot, anchorTaskCommits: true });
+  const handle = await worktrees.create({
+    workspaceId: "workspace_c1",
+    runId: "run_c1",
+    taskId: "T1",
+    sourceStateDigest: digest("2"),
+    sourceRevision: repository.baseCommit,
+    changeScope: ["src"],
+    protectedPaths: [".git"]
+  });
+  assert.equal(handle.baseCommit.length, format.objectIdLength);
+  const worktreePath = await worktrees.resolvePath(handle.worktreeRef);
+  return { ...repository, repositoryRoot, worktreesRoot, worktrees, handle, worktreePath };
+}
+
+// invariant: the one verified task commit of the fixture's run is written by
+// the real atomic commit adapter, so its trailers are the ones a run writes.
+export async function commitFixtureTask(fixture, overrides = {}) {
+  const { NodeAtomicGitCommitAdapter } = await import("../../packages/platform-node/src/index.ts");
+  await writeFile(join(fixture.worktreePath, "src", "value.txt"), "implemented\n");
+  const inspection = await fixture.worktrees.inspect(fixture.handle);
+  const receipt = await new NodeAtomicGitCommitAdapter({
+    repositoryRoot: fixture.repositoryRoot,
+    worktreesRoot: fixture.worktreesRoot
+  }).commitAtomic({
+    workspaceId: "workspace_c1",
+    runId: "run_c1",
+    taskId: "T1",
+    requirementIds: [REQUIREMENT_ID],
+    worktreeRef: fixture.handle.worktreeRef,
+    baseCommit: fixture.baseCommit,
+    subject: "feat(src): implement the task",
+    expectedChangedPaths: inspection.changedPaths,
+    expectedChangeDigest: inspection.changeDigest,
+    gatePlanDigest: digest("1"),
+    gateEvidenceDigest: digest("5"),
+    gateEvidenceRefs: ["evidence:gate:1"],
+    idempotencyKey: digest("3"),
+    ...overrides
+  });
+  return { commitId: receipt.commitId, changeDigest: inspection.changeDigest };
+}
+
+export function registeredWorktreeCount(repositoryRoot) {
+  return git(repositoryRoot, "worktree", "list", "--porcelain")
+    .split(/\r?\n/u)
+    .filter((line) => line.startsWith("worktree ")).length;
+}
+
+export function taskBranches(repositoryRoot) {
+  return git(repositoryRoot, "for-each-ref", "--format=%(refname) %(objectname)", "refs/heads/vestra/");
+}

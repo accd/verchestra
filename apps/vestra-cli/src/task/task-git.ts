@@ -1,31 +1,16 @@
-import { execFile } from "node:child_process";
 import { rm } from "node:fs/promises";
-import { promisify } from "node:util";
 
-const execFileAsync = promisify(execFile);
+import { runGit, runGitBytes } from "@verchestra/platform-node";
 
 // invariant: every git call the task composition makes itself goes through
-// here: an argument vector (never a shell), a bounded buffer, and the
-// repository as the working directory.
-export async function git(cwd: string, args: readonly string[], maxBuffer = 16 * 1024 * 1024): Promise<string> {
-  return (await execFileAsync("git", [...args], { cwd, encoding: "utf8", maxBuffer, windowsHide: true })).stdout;
+// the task worktree module's one runner: an argument vector (never a shell), a
+// bounded buffer, and the repository as the working directory.
+export async function git(cwd: string, args: readonly string[]): Promise<string> {
+  return (await runGit(cwd, args)).stdout;
 }
 
 export async function gitBuffer(cwd: string, args: readonly string[], maxBuffer: number): Promise<Buffer> {
-  return (await execFileAsync("git", [...args], { cwd, encoding: "buffer", maxBuffer, windowsHide: true })).stdout;
-}
-
-export async function refTarget(repositoryRoot: string, ref: string): Promise<string | undefined> {
-  const listed = await git(repositoryRoot, ["for-each-ref", "--format=%(refname) %(objectname)", ref]);
-  for (const line of listed.split(/\r?\n/u)) {
-    const [name, objectId] = line.split(" ");
-    if (name === ref) return objectId;
-  }
-  return undefined;
-}
-
-export function taskBranch(runId: string, taskId: string): string {
-  return `refs/heads/vestra/${runId}/${taskId}`;
+  return runGitBytes(cwd, args, maxBuffer);
 }
 
 // why: the scratch worktrees verification uses are registered in the user's

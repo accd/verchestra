@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { lstat, mkdir, readFile, readlink, realpath } from "node:fs/promises";
-import { isAbsolute, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 import type { ExecutionWorktreePort } from "@verchestra/application";
 
@@ -72,6 +72,13 @@ function handleFor(id: string, baseCommit: string): string {
     encodeWorktreeHandle({ id, baseCommit }) ??
     fail("VES_GIT_WORKTREE_INPUT_INVALID", "Worktree handle cannot be encoded")
   );
+}
+
+// why: verification registers its own scratch checkout of a commit under a root
+// it owns and runs gates there. The gate runner accepts only a handle, so the
+// owner of the encoding issues one for the checkout directory named `id`.
+export function scratchWorktreeHandle(checkout: { readonly id: string; readonly commitId: string }): string {
+  return handleFor(checkout.id, checkout.commitId);
 }
 
 export class NodeGitWorktreeAdapter implements ExecutionWorktreePort {
@@ -192,10 +199,38 @@ export class NodeGitWorktreeAdapter implements ExecutionWorktreePort {
     const target = this.#targetFromRef(handle.worktreeRef, worktreesRoot, handle.baseCommit);
     const entries = registeredWorktrees((await this.#git(repositoryRoot, ["worktree", "list", "--porcelain"])).stdout);
     if (!entries.has(target)) return;
-    await this.#assertExistingTarget(target, worktreesRoot);
+    await this.#assertRegisteredTarget(target, worktreesRoot);
     if (this.#anchorTaskCommits) await this.#anchorTaskCommit(repositoryRoot, target, handle.baseCommit);
     await this.#git(repositoryRoot, ["worktree", "remove", "--force", "--", target]);
     await this.#git(repositoryRoot, ["worktree", "prune"]);
+  }
+
+  // why: a caller that kept only the handle (a durable marker of an idle run)
+  // cleans up without taking the handle apart to find its base commit.
+  async cleanupHandle(worktreeRef: string): Promise<void> {
+    const baseCommit = parseWorktreeHandle(worktreeRef)?.baseCommit;
+    if (baseCommit === undefined) fail("VES_GIT_WORKTREE_INPUT_INVALID", "Worktree reference is invalid");
+    await this.cleanup({ worktreeRef, baseCommit });
+  }
+
+  // why: after a crash between the task commit and its record, the commit ID is
+  // the only durable fact; the worktree that holds it is found by its
+  // registered HEAD and cleaned up (anchoring the commit first when enabled).
+  // invariant: the root compared against Git's listing is the canonical one, so
+  // a state root reached through a link still finds its worktree.
+  async cleanupAtCommit(commit: { readonly commitId: string; readonly baseCommit: string }): Promise<boolean> {
+    if (!isGitObjectId(commit.commitId) || !isGitObjectId(commit.baseCommit))
+      fail("VES_GIT_WORKTREE_INPUT_INVALID", "Commit and base must be complete Git object IDs");
+    const repositoryRoot = await this.#qualifiedRepositoryRoot();
+    const worktreesRoot = await this.#qualifiedWorktreesRoot(repositoryRoot);
+    const entries = registeredWorktrees((await this.#git(repositoryRoot, ["worktree", "list", "--porcelain"])).stdout);
+    for (const [path, head] of entries) {
+      const worktreeRef = encodeWorktreeHandle({ id: basename(path), baseCommit: commit.baseCommit });
+      if (head !== commit.commitId || dirname(path) !== worktreesRoot || worktreeRef === undefined) continue;
+      await this.cleanup({ worktreeRef, baseCommit: commit.baseCommit });
+      return true;
+    }
+    return false;
   }
 
   // The real, Git-registered directory behind a worktree handle, for adapters
@@ -310,6 +345,18 @@ export class NodeGitWorktreeAdapter implements ExecutionWorktreePort {
     const root = await realpath(this.#worktreesRoot);
     if (root === repositoryRoot) fail("VES_GIT_WORKTREE_ESCAPE", "Worktree root cannot equal repository root");
     return root;
+  }
+
+  // why: Git keeps listing a worktree whose directory was deleted by hand.
+  // Nothing is left there to anchor or remove, and a caller can tell that
+  // apart from a refusal by its code.
+  async #assertRegisteredTarget(target: string, root: string): Promise<void> {
+    try {
+      await this.#assertExistingTarget(target, root);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      fail("VES_GIT_WORKTREE_NOT_FOUND", "Registered worktree directory no longer exists", { cause: error });
+    }
   }
 
   async #assertExistingTarget(target: string, root: string): Promise<void> {

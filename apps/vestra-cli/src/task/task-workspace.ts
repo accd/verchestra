@@ -1,7 +1,5 @@
-import { execFile } from "node:child_process";
 import { realpath } from "node:fs/promises";
 import { join } from "node:path";
-import { promisify } from "node:util";
 
 import { StableId } from "@verchestra/domain";
 import {
@@ -16,8 +14,7 @@ import { PublicErrorException } from "@verchestra/domain";
 
 import { cliError } from "../cli-errors.ts";
 import { notConfigured } from "./task-errors.ts";
-
-const execFileAsync = promisify(execFile);
+import { git } from "./task-git.ts";
 
 export interface TaskWorkspace {
   readonly workspaceId: string;
@@ -45,13 +42,7 @@ export function parseRunId(value: unknown): string {
 async function repositoryRoot(controlRoot: string): Promise<string> {
   let top: string;
   try {
-    top = (
-      await execFileAsync("git", ["rev-parse", "--show-toplevel"], {
-        cwd: controlRoot,
-        encoding: "utf8",
-        windowsHide: true
-      })
-    ).stdout.trim();
+    top = (await git(controlRoot, ["rev-parse", "--show-toplevel"])).trim();
   } catch (error) {
     throw notConfigured("git-repository", "The Workspace is not inside a Git repository", { cause: error });
   }
