@@ -39,6 +39,11 @@ export {
 } from "./os-secret-backends/credential-store.ts";
 export {
   CredentialToolUnavailableError,
+  PRESENCE_TIMEOUT_MS,
+  READ_TIMEOUT_MS,
+  WRITE_TIMEOUT_MS,
+  isValidCredentialValue,
+  type CredentialProvisioner,
   type CredentialToolInvocation,
   type CredentialToolResult,
   type CredentialToolRunner
@@ -67,15 +72,10 @@ export {
 export {
   DarwinKeychainBackend,
   MAX_CREDENTIAL_VALUE_BYTES,
-  PRESENCE_TIMEOUT_MS,
-  READ_TIMEOUT_MS,
   SECURITY_EXECUTABLE,
   SECURITY_INTERACTIVE_LINE_LIMIT,
-  WRITE_TIMEOUT_MS,
-  isValidCredentialValue,
   nodeSecurityRunner,
   securityChildEnvironment,
-  type CredentialProvisioner,
   type SecurityInvocation,
   type SecurityResult,
   type SecurityRunner

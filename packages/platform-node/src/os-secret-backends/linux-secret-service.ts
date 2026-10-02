@@ -9,9 +9,14 @@ import { join } from "node:path";
 
 import type { OsSecretBackend, OsSecretLocator } from "../secret-broker.ts";
 import {
+  type CredentialProvisioner,
   type CredentialToolResult,
   type CredentialToolRunner,
+  PRESENCE_TIMEOUT_MS,
+  READ_TIMEOUT_MS,
+  WRITE_TIMEOUT_MS,
   assertLocator,
+  assertStorable,
   backendFailure,
   interactionRequired,
   pickEnvironment,
@@ -19,8 +24,7 @@ import {
   spawnCredentialTool,
   storeUnavailable
 } from "./credential-tool.ts";
-import { PRESENCE_TIMEOUT_MS, READ_TIMEOUT_MS, WRITE_TIMEOUT_MS, isValidCredentialValue } from "./darwin-keychain.ts";
-import { PlatformSecurityError } from "../platform-security-errors.ts";
+import type { PlatformSecurityError } from "../platform-security-errors.ts";
 
 // why: fixed paths, never a PATH lookup, so an ambient PATH entry cannot
 // substitute a program that receives the credential or answers for the store.
@@ -119,7 +123,7 @@ export function sessionBusReachable(environment: NodeJS.ProcessEnv = process.env
   }
 }
 
-export class LinuxSecretServiceBackend implements OsSecretBackend {
+export class LinuxSecretServiceBackend implements OsSecretBackend, CredentialProvisioner {
   readonly #runner: CredentialToolRunner;
   readonly #busReachable: () => boolean;
 
@@ -179,13 +183,7 @@ export class LinuxSecretServiceBackend implements OsSecretBackend {
   // why: `secret-tool store` replaces the item whose attributes match, so a
   // rotation is one call and never leaves the credential absent.
   async store(locator: Readonly<OsSecretLocator>, value: Uint8Array): Promise<void> {
-    if (!isValidCredentialValue(value)) {
-      throw new PlatformSecurityError(
-        "VES_SECRET_VALUE_INVALID",
-        "Credential value is empty, oversize, or not printable"
-      );
-    }
-    assertLocator(locator);
+    assertStorable(locator, value);
     this.#requireSessionBus();
     const stdin = Buffer.from(value);
     try {

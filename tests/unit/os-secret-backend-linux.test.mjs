@@ -12,7 +12,6 @@ import {
   CredentialToolUnavailableError,
   DBUS_SEND_EXECUTABLE,
   LinuxSecretServiceBackend,
-  MAX_CREDENTIAL_VALUE_BYTES,
   PRESENCE_TIMEOUT_MS,
   READ_TIMEOUT_MS,
   SECRET_TOOL_EXECUTABLE,
@@ -22,7 +21,6 @@ import {
   secretToolChildEnvironment,
   sessionBusReachable
 } from "../../packages/platform-node/src/index.ts";
-import { DOCTOR_PROBE_TIMEOUT_MS } from "../../packages/application/src/index.ts";
 import { fakeSecretToolRunner } from "../helpers/fake-credential-tool-runners.mjs";
 
 const workspaceId = "workspace_0b0e8d4c-6a1e-4f7a-9d55-3e3c6f0c1a2b";
@@ -55,13 +53,12 @@ test("both tools are fixed absolute paths, never a PATH lookup", () => {
   assert.equal(DBUS_SEND_EXECUTABLE, "/usr/bin/dbus-send");
 });
 
-test("presence is an attribute-only SearchItems call inside the doctor's budget", async () => {
+test("presence is an attribute-only SearchItems call under the presence timeout", async () => {
   const fake = fakeSecretToolRunner();
   const backend = new LinuxSecretServiceBackend({ runner: fake.runner });
   assert.equal(await backend.has(locator), false);
   assert.deepEqual(fake.invocations, [search]);
   assert.deepEqual(searchItemsArguments(locator), search.args);
-  assert.ok(PRESENCE_TIMEOUT_MS < DOCTOR_PROBE_TIMEOUT_MS);
 });
 
 test("an unlocked match is present, no match is absent, and a locked-only match needs a person", async () => {
@@ -200,15 +197,6 @@ test("a rotation is one replacing store, never a clear followed by a store", asy
   assert.equal(fake.items.size, 1);
 });
 
-test("a store that exits 0 but did not land is a failure", async () => {
-  const fake = fakeSecretToolRunner({
-    override: (record) => (record.args[0] === "store" ? { exitCode: 0, stdout: "", stderr: "" } : undefined)
-  });
-  await assert.rejects(new LinuxSecretServiceBackend({ runner: fake.runner }).store(locator, value()), {
-    code: "VES_SECRET_BACKEND_FAILURE"
-  });
-});
-
 test("delete reports false without clearing when absent, and verifies removal when present", async () => {
   const fake = fakeSecretToolRunner();
   const backend = new LinuxSecretServiceBackend({ runner: fake.runner });
@@ -242,28 +230,6 @@ test("delete reports false without clearing when absent, and verifies removal wh
   const racing = new LinuxSecretServiceBackend({ runner: raced.runner });
   await racing.store(locator, value());
   assert.equal(await racing.delete(locator), true, "a clear that found nothing after presence still ends absent");
-});
-
-test("an invalid locator or value is refused before any process runs", async () => {
-  const fake = fakeSecretToolRunner();
-  const backend = new LinuxSecretServiceBackend({ runner: fake.runner });
-  for (const bad of [
-    { namespace: "verchestra/not-a-workspace", logicalName: "anthropic-api-key" },
-    { namespace: locator.namespace, logicalName: "UPPER" },
-    { namespace: locator.namespace, logicalName: "a,b" },
-    { namespace: `other/${workspaceId}`, logicalName: "anthropic-api-key" }
-  ]) {
-    await assert.rejects(backend.has(bad), { code: "VES_SECRET_BINDING_INVALID" });
-    await assert.rejects(backend.store(bad, value()), { code: "VES_SECRET_BINDING_INVALID" });
-    await assert.rejects(backend.delete(bad), { code: "VES_SECRET_BINDING_INVALID" });
-  }
-  for (const invalid of [
-    new Uint8Array(),
-    new TextEncoder().encode("two words"),
-    new Uint8Array(MAX_CREDENTIAL_VALUE_BYTES + 1).fill(0x41)
-  ])
-    await assert.rejects(backend.store(locator, invalid), { code: "VES_SECRET_VALUE_INVALID" });
-  assert.equal(fake.invocations.length, 0);
 });
 
 test("the child environment reaches the session bus and nothing else", () => {

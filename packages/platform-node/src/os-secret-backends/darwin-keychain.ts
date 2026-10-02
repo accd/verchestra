@@ -8,10 +8,15 @@ import { lstat, open } from "node:fs/promises";
 import { PlatformSecurityError } from "../platform-security-errors.ts";
 import type { OsSecretBackend, OsSecretLocator } from "../secret-broker.ts";
 import {
+  type CredentialProvisioner,
   type CredentialToolInvocation,
   type CredentialToolResult,
   type CredentialToolRunner,
+  PRESENCE_TIMEOUT_MS,
+  READ_TIMEOUT_MS,
+  WRITE_TIMEOUT_MS,
   assertLocator,
+  assertStorable,
   backendFailure as failure,
   pickEnvironment,
   runBounded,
@@ -32,14 +37,6 @@ const ITEM_NOT_FOUND = 44;
 const MAX_KEYCHAIN_PATH_LENGTH = 1024;
 const KEYCHAIN_PATH = /^\/[A-Za-z0-9._/+-]+$/u;
 const KEYCHAIN_MAGIC = "kych";
-
-// why: a presence lookup must finish inside deep doctor's 5 s probe budget so
-// this module, not the doctor's timer, kills a hung `security` child.
-export const PRESENCE_TIMEOUT_MS = 4_000;
-// why: a read of the default keychain may legitimately wait for the user to
-// approve a keychain prompt; the timeout bounds that wait instead of hanging.
-export const READ_TIMEOUT_MS = 30_000;
-export const WRITE_TIMEOUT_MS = 15_000;
 
 export type SecurityInvocation = CredentialToolInvocation;
 export type SecurityResult = CredentialToolResult;
@@ -65,14 +62,6 @@ export function assertKeychainPathSyntax(path: string): void {
   }
 }
 
-// why: printable ASCII without whitespace (0x21-0x7e) covers every provider
-// API key and makes stray whitespace from a paste an error, not a credential.
-export function isValidCredentialValue(value: Uint8Array): boolean {
-  if (!(value instanceof Uint8Array) || value.length === 0 || value.length > MAX_CREDENTIAL_VALUE_BYTES) return false;
-  for (const byte of value) if (byte < 0x21 || byte > 0x7e) return false;
-  return true;
-}
-
 function addCommandPrefix(locator: Readonly<OsSecretLocator>): string {
   return `add-generic-password -s ${locator.namespace} -a ${locator.logicalName} -T ${SECURITY_EXECUTABLE} -X `;
 }
@@ -90,6 +79,9 @@ const WORST_CASE_OVERHEAD =
     logicalName: "a".repeat(128)
   }).length + keychainSuffix(`/${"a".repeat(MAX_KEYCHAIN_PATH_LENGTH - 1)}`).length;
 
+// invariant: the value policy in credential-tool.ts admits exactly this many
+// bytes on every platform; it cannot import the number from this adapter, so
+// tests/unit/os-secret-backend-policy.test.mjs holds the two equal.
 export const MAX_CREDENTIAL_VALUE_BYTES = Math.floor((SECURITY_INTERACTIVE_LINE_LIMIT - WORST_CASE_OVERHEAD) / 2);
 
 const PASSWORD_LINE = /^password: (?:"([\x20\x21\x23-\x5b\x5d-\x7e]*)"|0x((?:[0-9A-F]{2})*)(?: {2}"[^\n]*")?)$/mu;
@@ -116,11 +108,6 @@ async function isUserKeychainFile(path: string): Promise<boolean> {
   } finally {
     await handle?.close();
   }
-}
-
-export interface CredentialProvisioner {
-  store(locator: Readonly<OsSecretLocator>, value: Uint8Array): Promise<void>;
-  delete(locator: Readonly<OsSecretLocator>): Promise<boolean>;
 }
 
 export class DarwinKeychainBackend implements OsSecretBackend, CredentialProvisioner {
@@ -198,13 +185,7 @@ export class DarwinKeychainBackend implements OsSecretBackend, CredentialProvisi
   }
 
   async store(locator: Readonly<OsSecretLocator>, value: Uint8Array): Promise<void> {
-    if (!isValidCredentialValue(value)) {
-      throw new PlatformSecurityError(
-        "VES_SECRET_VALUE_INVALID",
-        "Credential value is empty, oversize, or not printable"
-      );
-    }
-    assertLocator(locator);
+    assertStorable(locator, value);
     await this.verifyKeychain();
     const prefix = Buffer.from(addCommandPrefix(locator), "latin1");
     const suffix = Buffer.from(`${keychainSuffix(this.#keychainPath)}\n`, "latin1");
