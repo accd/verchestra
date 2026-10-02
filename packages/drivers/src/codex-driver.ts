@@ -7,6 +7,7 @@ import {
   snapshotCodexProcessContext,
   type CodexProcessContext
 } from "./codex-process-context.ts";
+import { sensitiveValueRedactor } from "./driver-redaction.ts";
 import { DriverSessionLedger } from "./driver-session-ledger.ts";
 import { probeDriverVersion } from "./driver-version-probe.ts";
 import {
@@ -77,13 +78,6 @@ const PROBE_PROFILE = Object.freeze({
     "read-only"
   ])
 });
-
-function redactor(values: readonly string[]): (text: unknown) => string {
-  const secrets = [...new Set(values.filter((value) => value.length > 0))].sort(
-    (left, right) => right.length - left.length
-  );
-  return (text) => secrets.reduce((safe, secret) => safe.replaceAll(secret, "[REDACTED]"), String(text));
-}
 
 export class CodexDriver implements Driver {
   readonly #dependencies: CodexDriverDependencies;
@@ -177,7 +171,7 @@ export class CodexDriver implements Driver {
 
     const sessionId = `codex-session:${randomUUID()}`;
     const state = this.#sessions.open(sessionId, sink, {});
-    const redact = redactor(execution.sensitiveValues ?? []);
+    const redact = sensitiveValueRedactor(execution.sensitiveValues ?? []);
     const child = spawn(this.#command[0] as string, [...this.buildArguments()], {
       cwd: this.#workingDirectory(),
       env: this.buildEnvironment(execution.environment),

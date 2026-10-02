@@ -4,6 +4,7 @@ import { promisify } from "node:util";
 
 import { normalizeDeclaredSet } from "@verchestra/domain";
 
+import { sensitiveValueRedactor } from "./driver-redaction.ts";
 import { DriverSessionLedger } from "./driver-session-ledger.ts";
 import { probeDriverVersion } from "./driver-version-probe.ts";
 import {
@@ -86,13 +87,6 @@ const PROBE_PROFILE = Object.freeze({
   noun: "OpenCode",
   capabilities: Object.freeze(["sdk-events", "model-discovery", "permission-mediation", "loopback-only"])
 });
-
-function redactor(values: readonly string[]): (value: unknown) => string {
-  const secrets = [...new Set(values.filter((value) => value.length > 0))].sort(
-    (left, right) => right.length - left.length
-  );
-  return (value) => secrets.reduce((safe, secret) => safe.replaceAll(secret, "[REDACTED]"), String(value));
-}
 
 function sanitize(value: unknown, redact: (value: unknown) => string): unknown {
   if (value === undefined) return undefined;
@@ -298,7 +292,7 @@ export class OpenCodeDriver implements Driver {
     const { client, server } = instance;
     const sessionRef = `opencode-session:${randomUUID()}`;
     const state = this.#sessions.open(sessionRef, sink, undefined);
-    const redact = redactor(execution.sensitiveValues ?? []);
+    const redact = sensitiveValueRedactor(execution.sensitiveValues ?? []);
     let providerSessionId: string | undefined;
     let aborted = false;
     let finishAbort!: () => void;
