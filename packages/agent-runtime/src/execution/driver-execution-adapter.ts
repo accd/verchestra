@@ -2,13 +2,17 @@ import { isAbsolute } from "node:path";
 
 import type { ExecutionDriverPort, ExecutionPayloadStore } from "@verchestra/application";
 
-import type { DriverSessionPort } from "./driver-session-runner.ts";
+import {
+  runDriverSession,
+  type DriverSessionEvent,
+  type DriverSessionPort,
+  type DriverSessionResult
+} from "./driver-session-runner.ts";
 import { MCP_BRIDGE_QUALIFIED_TOOLS } from "./mcp-bridge-protocol.ts";
 import { McpToolBridgeController } from "./mcp-tool-bridge.ts";
 
 type ExecuteRequest = Parameters<ExecutionDriverPort["execute"]>[0];
 type ExecuteControl = Parameters<ExecutionDriverPort["execute"]>[1];
-type DriverOutcome = "completed" | "failed" | "cancelled";
 type Row = Readonly<Record<string, unknown>>;
 
 export interface DriverExecutionSession<TStartRequest> {
@@ -47,17 +51,11 @@ export class DriverExecutionAdapterError extends Error {
 
 interface RunState {
   model: string;
-  sessionId: string | undefined;
   violation: string | undefined;
   fatal: unknown;
   usageFailure: unknown;
   toolRequests: number;
-  readonly errorCodes: string[];
   readonly checkpoints: Promise<unknown>[];
-}
-
-function safeCode(value: unknown): string {
-  return typeof value === "string" && /^VES_[A-Z0-9_]{1,96}$/u.test(value) ? value : "VES_DRIVER_ERROR";
 }
 
 // ExecutionDriverPort over a Driver session whose only tools are the mediated
@@ -85,12 +83,10 @@ export class DriverExecutionAdapter<TStartRequest> implements ExecutionDriverPor
     this.#active.set(request.worktreeRef, abort);
     const state: RunState = {
       model: "",
-      sessionId: undefined,
       violation: undefined,
       fatal: undefined,
       usageFailure: undefined,
       toolRequests: 0,
-      errorCodes: [],
       checkpoints: []
     };
     let bridge: McpToolBridgeController | undefined;
@@ -105,7 +101,7 @@ export class DriverExecutionAdapter<TStartRequest> implements ExecutionDriverPor
       if (typeof session.model !== "string" || session.model.length === 0)
         throw new DriverExecutionAdapterError("VES_DRIVER_ADAPTER_INPUT_INVALID", "Driver session has no model");
       state.model = session.model;
-      const outcome = await this.#run(session, state, abort, control);
+      const { outcome, errorCodes } = await this.#run(session, state, abort, control);
       const statistics = bridge.statistics();
       await control.checkpoint("driver-finished", {
         outcome,
@@ -113,7 +109,7 @@ export class DriverExecutionAdapter<TStartRequest> implements ExecutionDriverPor
         writes: statistics.writes,
         deletes: statistics.deletes,
         denied: statistics.denied,
-        errorCodes: [...state.errorCodes]
+        errorCodes: [...errorCodes]
       });
       return Object.freeze({ status: outcome, outputRefs: Object.freeze([]) });
     } finally {
@@ -146,27 +142,24 @@ export class DriverExecutionAdapter<TStartRequest> implements ExecutionDriverPor
     });
   }
 
+  // invariant: the session runner owns start, cancel on abort, close, and the
+  // outcome; this adapter owns what a mediated implementer session may do, so
+  // its own refusals are raised before the runner's outcome is read.
   async #run(
     session: DriverExecutionSession<TStartRequest>,
     state: RunState,
     abort: AbortController,
     control: ExecuteControl
-  ): Promise<DriverOutcome> {
-    const stop = () => {
-      if (state.sessionId !== undefined)
-        void session.driver.cancel({ sessionId: state.sessionId }, "stopped by Verchestra").catch(() => undefined);
-    };
-    abort.signal.addEventListener("abort", stop, { once: true });
-    let closed: Row = {};
+  ): Promise<DriverSessionResult> {
+    let finished: DriverSessionResult;
     try {
-      const reference = await session.driver.start(
-        session.startRequest,
-        (event) => this.#observe(event, state, abort, control),
-        abort.signal
-      );
-      closed = await session.driver.close(reference);
+      finished = await runDriverSession({
+        driver: session.driver,
+        startRequest: session.startRequest,
+        signal: abort.signal,
+        observe: (event) => this.#observe(event, state, abort, control)
+      });
     } finally {
-      abort.signal.removeEventListener("abort", stop);
       await Promise.all(state.checkpoints);
     }
     if (state.violation !== undefined)
@@ -176,14 +169,12 @@ export class DriverExecutionAdapter<TStartRequest> implements ExecutionDriverPor
       );
     if (state.fatal !== undefined) throw state.fatal;
     if (state.usageFailure !== undefined) throw state.usageFailure;
-    if (abort.signal.aborted || closed["outcome"] === "cancelled") return "cancelled";
-    return state.errorCodes.length > 0 || closed["outcome"] === "failed" ? "failed" : "completed";
+    return finished;
   }
 
-  #observe(event: Row & { readonly type: string }, state: RunState, abort: AbortController, control: ExecuteControl) {
+  #observe(event: DriverSessionEvent, state: RunState, abort: AbortController, control: ExecuteControl) {
     switch (event.type) {
       case "session.started":
-        state.sessionId = typeof event["sessionId"] === "string" ? event["sessionId"] : undefined;
         // invariant: checkpoints carry portable facts only; the provider
         // session identity stays local.
         state.checkpoints.push(control.checkpoint("driver-started", { model: state.model }));
@@ -196,9 +187,6 @@ export class DriverExecutionAdapter<TStartRequest> implements ExecutionDriverPor
         break;
       case "tool.requested":
         this.#toolRequested(event, state, abort);
-        break;
-      case "error":
-        state.errorCodes.push(safeCode(event["code"]));
         break;
       default:
         break;
