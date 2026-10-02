@@ -99,6 +99,7 @@ export {
   type GitWorktreeErrorCode,
   type NodeGitWorktreeAdapterOptions
 } from "./git-worktree-adapter.ts";
+export type { GitOutput, GitRunner } from "./task-worktree.ts";
 export {
   GitContextError,
   NodeGitContextSource,

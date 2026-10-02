@@ -1,18 +1,21 @@
 import { createHash } from "node:crypto";
-import { execFile } from "node:child_process";
 import { lstat, mkdir, realpath } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { spawn } from "node:child_process";
-import { promisify } from "node:util";
 
 import type { TaskGateCommand, TaskGateRunnerResult } from "@verchestra/application";
 
 import { NodeGitWorktreeAdapter } from "./git-worktree-adapter.ts";
 import { terminateProcessGroup } from "./process-tree-terminator.ts";
+import {
+  isGitObjectId,
+  parseWorktreeHandle,
+  registeredWorktrees,
+  runGit,
+  taskCommitMessage,
+  type GitRunner
+} from "./task-worktree.ts";
 
-const execFileAsync = promisify(execFile);
-const WORKTREE_REF = /^worktree:([a-f0-9]{32}):([a-f0-9]{40}|[a-f0-9]{64})$/u;
-const OBJECT_ID = /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u;
 const DIGEST = /^sha256:[a-f0-9]{64}$/u;
 
 export class GateAdapterError extends Error {
@@ -35,8 +38,8 @@ function within(root: string, candidate: string): boolean {
 }
 
 async function targetFromRef(worktreesRootValue: string, worktreeRef: string, baseCommit?: string): Promise<string> {
-  const match = WORKTREE_REF.exec(worktreeRef);
-  if (match?.[1] === undefined || (baseCommit !== undefined && match[2] !== baseCommit))
+  const handle = parseWorktreeHandle(worktreeRef);
+  if (handle === undefined || (baseCommit !== undefined && handle.baseCommit !== baseCommit))
     fail("VES_GATE_ADAPTER_HANDLE_INVALID", "Worktree handle is invalid");
   await mkdir(worktreesRootValue, { recursive: true });
   const metadata = await lstat(worktreesRootValue);
@@ -52,7 +55,7 @@ async function targetFromRef(worktreesRootValue: string, worktreeRef: string, ba
   // against this canonical root, so a benign alias is safe while a real escape
   // is still caught.
   const root = await realpath(worktreesRootValue);
-  const candidate = join(root, match[1]);
+  const candidate = join(root, handle.id);
   if (!within(root, candidate)) fail("VES_GATE_ADAPTER_PATH_ESCAPE", "Worktree handle escaped its root");
   const targetMetadata = await lstat(candidate);
   if (targetMetadata.isSymbolicLink() || !targetMetadata.isDirectory())
@@ -140,21 +143,11 @@ export class NodeGateProcessRunner {
     if ([...(profile.fixedArgs ?? []), ...command.args].some((argument) => argument.includes("\0")))
       fail("VES_GATE_ADAPTER_COMMAND_DENIED", "Gate argument contains a null byte");
     const target = await targetFromRef(this.#worktreesRoot, command.worktreeRef);
-    const expectedBase = WORKTREE_REF.exec(command.worktreeRef)?.[2];
-    const registered = (
-      await execFileAsync("git", ["worktree", "list", "--porcelain"], {
-        cwd: this.#repositoryRoot,
-        encoding: "utf8",
-        windowsHide: true
-      })
-    ).stdout;
-    let registeredHead: string | undefined;
-    let currentTarget: string | undefined;
-    for (const line of registered.split(/\r?\n/u)) {
-      if (line.startsWith("worktree ")) currentTarget = resolve(line.slice("worktree ".length));
-      if (currentTarget === target && line.startsWith("HEAD ")) registeredHead = line.slice("HEAD ".length);
-    }
-    if (registeredHead !== expectedBase)
+    const expectedBase = parseWorktreeHandle(command.worktreeRef)?.baseCommit;
+    const registered = registeredWorktrees(
+      (await runGit(this.#repositoryRoot, ["worktree", "list", "--porcelain"])).stdout
+    );
+    if (registered.get(target) !== expectedBase)
       fail("VES_GATE_ADAPTER_HANDLE_INVALID", "Gate target is not the expected registered worktree");
     const requestedCwd = command.cwd === "." ? target : join(target, ...command.cwd.split("/"));
     const cwd = await realpath(requestedCwd);
@@ -243,13 +236,13 @@ interface CommitRequest {
 export interface NodeAtomicGitCommitAdapterOptions {
   readonly repositoryRoot: string;
   readonly worktreesRoot: string;
-  readonly runGit?: (cwd: string, args: readonly string[]) => Promise<{ stdout: string; stderr: string }>;
+  readonly runGit?: GitRunner;
 }
 
 export class NodeAtomicGitCommitAdapter {
   readonly #repositoryRoot: string;
   readonly #worktreesRoot: string;
-  readonly #runGit: (cwd: string, args: readonly string[]) => Promise<{ stdout: string; stderr: string }>;
+  readonly #runGit: GitRunner;
   readonly #worktrees: NodeGitWorktreeAdapter;
 
   constructor(options: NodeAtomicGitCommitAdapterOptions) {
@@ -259,12 +252,7 @@ export class NodeAtomicGitCommitAdapter {
       options.runGit ??
       (async (cwd, args) => {
         try {
-          return await execFileAsync("git", [...args], {
-            cwd,
-            encoding: "utf8",
-            maxBuffer: 16 * 1024 * 1024,
-            windowsHide: true
-          });
+          return await runGit(cwd, args);
         } catch (error) {
           fail("VES_GATE_GIT_COMMAND_FAILED", "Atomic Git command failed", { cause: error });
         }
@@ -311,24 +299,20 @@ export class NodeAtomicGitCommitAdapter {
     });
     if (afterStage.changeDigest !== request.expectedChangeDigest)
       fail("VES_GATE_GIT_DIFF_DRIFT", "Worktree changed while staging the atomic commit");
-    await this.#git(target, ["commit", "--no-verify", "--no-gpg-sign", "-m", this.#message(request)]);
+    await this.#git(target, ["commit", "--no-verify", "--no-gpg-sign", "-m", taskCommitMessage(request)]);
     const status = (await this.#git(target, ["status", "--porcelain=v1", "-z", "--untracked-files=all"])).stdout;
     if (status !== "") fail("VES_GATE_GIT_COMMIT_UNCERTAIN", "Commit succeeded but worktree is not clean");
     return await this.#receipt(target, request, "committed");
-  }
-
-  #message(request: CommitRequest): string {
-    return `${request.subject}\n\nVerchestra-Task: ${request.taskId}\nVerchestra-Run: ${request.runId}\nVerchestra-Requirements: ${[...request.requirementIds].sort().join(",")}\nVerchestra-Gate-Plan: ${request.gatePlanDigest}\nVerchestra-Gate-Evidence: ${request.gateEvidenceDigest}\nVerchestra-Change: ${request.expectedChangeDigest}\nVerchestra-Idempotency-Key: ${request.idempotencyKey}`;
   }
 
   async #receipt(target: string, request: CommitRequest, status: "committed" | "already-committed") {
     const line = (await this.#git(target, ["rev-list", "--parents", "-n", "1", "HEAD"])).stdout.trim().split(/\s+/u);
     const commitId = line[0];
     const parentCommit = line[1];
-    if (!OBJECT_ID.test(commitId ?? "") || parentCommit !== request.baseCommit || line.length !== 2)
+    if (!isGitObjectId(commitId ?? "") || parentCommit !== request.baseCommit || line.length !== 2)
       fail("VES_GATE_GIT_COMMIT_CONFLICT", "Commit parent does not match the authorized base");
     const message = (await this.#git(target, ["show", "-s", "--format=%B", "HEAD"])).stdout.trimEnd();
-    if (message !== this.#message(request))
+    if (message !== taskCommitMessage(request))
       fail("VES_GATE_GIT_COMMIT_CONFLICT", "Commit trailers do not match the authorized gate evidence");
     return Object.freeze({
       status,
@@ -342,7 +326,7 @@ export class NodeAtomicGitCommitAdapter {
 
   #validateRequest(request: CommitRequest): void {
     if (
-      !OBJECT_ID.test(request.baseCommit) ||
+      !isGitObjectId(request.baseCommit) ||
       !DIGEST.test(request.expectedChangeDigest) ||
       !DIGEST.test(request.gatePlanDigest) ||
       !DIGEST.test(request.gateEvidenceDigest) ||

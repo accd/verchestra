@@ -108,7 +108,7 @@ Two things follow, and both matter more than the fix itself:
 2. **F3 was fixed as one adapter's bug when it was a repository-wide
    pattern.** Grepping the pattern now finds exactly three
    `relative(...) !== ""` comparisons left, and the two that remain
-   (`gate-commit-adapters.ts:53`, `git-worktree-adapter.ts:270`) are the
+   (`gate-commit-adapters.ts:64`, `git-worktree-adapter.ts:320`) are the
    target-level checks F3 deliberately kept, which cannot fire on a benign
    alias once the parent chain is canonical. A `gate=release` dispatch of the
    same revision (run 31320314440) passed on all four reporting legs, which
@@ -185,7 +185,7 @@ implied by the deterministic verifier fixture.
 | ---- | ---------- |
 | Isolation grade | `spikes/isolation/src/isolation-policy.mjs:17-23` — `process-contained`, `native-restricted`, `container-isolated`. **Spike-only; no product counterpart** — nothing in `packages/` mentions `process-contained` |
 | Native control sets (per platform) | `isolation-policy.mjs:25-29` — win32: job-object, restricted-token, filesystem-acl, network-deny; linux: namespaces, seccomp, cgroup-v2, network-namespace; darwin: signed-app-sandbox, filesystem-profile, network-deny, process-group |
-| Process-tree termination | Product `packages/platform-node/src/gate-commit-adapters.ts:96-121` (POSIX process **group** via `detached`, win32 `taskkill /T /F`); spike `worker-supervisor.mjs:25-46` (walks the tree, descendants-first) |
+| Process-tree termination | Product `packages/platform-node/src/gate-commit-adapters.ts:107-111` calling `packages/platform-node/src/process-tree-terminator.ts:12-37` (POSIX process **group** via `detached`, win32 `taskkill /T /F`); spike `worker-supervisor.mjs:25-46` (walks the tree, descendants-first) |
 | Path protection | `packages/platform-node/src/protected-path.ts:76-251` — handle-based, TOCTOU-checked by dev/inode re-verification; case-folded comparison on win32 only (`:53-55`) |
 | Disposable/guarded roots | `packages/self-test/src/disposable-roots.ts` |
 | Egress boundary | `packages/application/src/egress/trust-egress.ts:93,231` — Cedar-backed default-deny |

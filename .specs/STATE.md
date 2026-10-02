@@ -776,6 +776,41 @@ note. -->
   `docs/release-custody.md` (3.1). A release whose record lives outside
   `RELEASE_EVIDENCE` needs that list changed in a reviewed pull request first.
 
+### AD-043 — The task worktree module owns the handle, the task branch name, and the commit trailers; the handle is opaque at the port (ADP-1)
+
+- **Status:** proposed (ratified by reviewing the pull requests that carry
+  `refactor/task-worktree-module`).
+- **Context:** The worktree handle `worktree:<id>:<base>` was encoded in one
+  adapter, matched by a regular expression copied into two, and taken apart or
+  rebuilt by hand in three places in the CLI composition. The task branch name
+  was defined three times and the commit trailers were written in one file and
+  parsed in two others. Each copy could drift on its own, and one already had:
+  a handle sliced by a fixed 40 digits is wrong for a SHA-256 repository.
+- **Decision:**
+  1. `packages/platform-node/src/task-worktree.ts` is the one module that
+     defines the handle encoding and its parser, the task branch ref and its
+     short name, the commit message writer and the trailer parser, the ref
+     lookup, the worktree registration reader, and the one git runner of the
+     task path. The worktree adapter, the gate and commit adapters, and the Git
+     context source consume it.
+  2. The handle stays an opaque string at `ExecutionWorktreePort`. The port
+     keeps `create`, `inspect`, and `cleanup` and gains no parsing duty: test
+     doubles and other adapters may use any handle text, and only the Node
+     worktree module reads its own encoding. The handle ID derivation and the
+     trailer bytes are unchanged, because a resumed run re-derives the ID,
+     tool-receipt idempotency keys include the handle, and a reconciled commit
+     is compared against the whole message.
+- **Alternatives rejected:** a typed handle object at the port (every test
+  double and the durable checkpoints carry the handle as text, so the port
+  would have to parse it and the encoding would leak inward into
+  `packages/application`); keeping the regular expression in a shared constant
+  only (the slicing and rebuilding sites would remain).
+- **Consequence:** `tests/architecture/task-worktree-locality.test.mjs` fails
+  when another source under `packages/` spells out the handle encoding, the
+  task branch name, or a trailer. The copies in the CLI composition are removed
+  by the next change of this branch. Evidence is in
+  `.specs/features/architecture-deepening/validation-c1.md`.
+
 ## Handoff
 
 - **Feature:** `governed-task-cli` E6–E9 (#405) on

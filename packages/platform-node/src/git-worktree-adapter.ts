@@ -1,20 +1,24 @@
 import { createHash } from "node:crypto";
-import { execFile } from "node:child_process";
 import { lstat, mkdir, readFile, readlink, realpath } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
-import { promisify } from "node:util";
 
 import type { ExecutionWorktreePort } from "@verchestra/application";
 
-const execFileAsync = promisify(execFile);
-const OBJECT_ID = /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u;
-const WORKTREE_REF = /^worktree:([a-f0-9]{32}):([a-f0-9]{40}|[a-f0-9]{64})$/u;
+import {
+  encodeWorktreeHandle,
+  isGitObjectId,
+  isTaskBranchComponent,
+  parseTaskCommitTrailers,
+  parseWorktreeHandle,
+  refTarget,
+  registeredWorktrees,
+  runGit,
+  taskBranchRef,
+  type GitOutput,
+  type GitRunner
+} from "./task-worktree.ts";
+
 const LOGICAL_PATH = /^(?![A-Za-z]:)(?!\/)(?!.*\\)(?!.*(?:^|\/)\.\.(?:\/|$))[A-Za-z0-9._@+/-]+$/u;
-// invariant: a run or task ID becomes one ref component of
-// refs/heads/vestra/<runId>/<taskId>, so it may not contain a separator or any
-// character git check-ref-format rejects; git still validates the whole ref.
-const REF_COMPONENT = /^(?!.*\.\.)(?!.*\.lock$)[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
-const TRAILER = /^(Verchestra-Task|Verchestra-Run|Verchestra-Idempotency-Key): (.+)$/gmu;
 
 export type GitWorktreeErrorCode =
   | "VES_GIT_WORKTREE_INPUT_INVALID"
@@ -33,15 +37,10 @@ export class GitWorktreeError extends Error {
   }
 }
 
-interface GitResult {
-  readonly stdout: string;
-  readonly stderr: string;
-}
-
 export interface NodeGitWorktreeAdapterOptions {
   readonly repositoryRoot: string;
   readonly worktreesRoot: string;
-  readonly runGit?: (cwd: string, args: readonly string[]) => Promise<GitResult>;
+  readonly runGit?: GitRunner;
   // why: the gate commit lives only in the detached worktree; removing the
   // worktree leaves it unreachable. When enabled, cleanup first anchors it on
   // refs/heads/vestra/<runId>/<taskId>. Off by default for existing callers.
@@ -68,36 +67,17 @@ function nulList(value: string): readonly string[] {
     });
 }
 
-function worktreeEntries(porcelain: string): ReadonlyMap<string, string> {
-  const entries = new Map<string, string>();
-  let path: string | undefined;
-  for (const line of porcelain.split(/\r?\n/u)) {
-    if (line.startsWith("worktree ")) path = resolve(line.slice("worktree ".length));
-    if (path !== undefined && line.startsWith("HEAD ")) {
-      entries.set(path, line.slice("HEAD ".length));
-      path = undefined;
-    }
-  }
-  return entries;
-}
-
-function taskTrailers(message: string): { runId: string; taskId: string; idempotencyKey: string } {
-  const trailers = new Map([...message.matchAll(TRAILER)].map((match) => [match[1], (match[2] ?? "").trim()]));
-  return {
-    runId: trailers.get("Verchestra-Run") ?? "",
-    taskId: trailers.get("Verchestra-Task") ?? "",
-    idempotencyKey: trailers.get("Verchestra-Idempotency-Key") ?? ""
-  };
-}
-
-function anchorRef(runId: string, taskId: string): string {
-  return `refs/heads/vestra/${runId}/${taskId}`;
+function handleFor(id: string, baseCommit: string): string {
+  return (
+    encodeWorktreeHandle({ id, baseCommit }) ??
+    fail("VES_GIT_WORKTREE_INPUT_INVALID", "Worktree handle cannot be encoded")
+  );
 }
 
 export class NodeGitWorktreeAdapter implements ExecutionWorktreePort {
   readonly #repositoryRoot: string;
   readonly #worktreesRoot: string;
-  readonly #runGit: (cwd: string, args: readonly string[]) => Promise<GitResult>;
+  readonly #runGit: GitRunner;
   readonly #anchorTaskCommits: boolean;
 
   constructor(options: NodeGitWorktreeAdapterOptions) {
@@ -106,20 +86,7 @@ export class NodeGitWorktreeAdapter implements ExecutionWorktreePort {
     this.#repositoryRoot = resolve(options.repositoryRoot);
     this.#worktreesRoot = resolve(options.worktreesRoot);
     this.#anchorTaskCommits = options.anchorTaskCommits === true;
-    this.#runGit =
-      options.runGit ??
-      (async (cwd, args) => {
-        try {
-          return await execFileAsync("git", [...args], {
-            cwd,
-            encoding: "utf8",
-            maxBuffer: 16 * 1024 * 1024,
-            windowsHide: true
-          });
-        } catch (error) {
-          fail("VES_GIT_WORKTREE_COMMAND_FAILED", "Git worktree command failed", { cause: error });
-        }
-      });
+    this.#runGit = options.runGit ?? runGit;
   }
 
   async create(input: {
@@ -131,7 +98,7 @@ export class NodeGitWorktreeAdapter implements ExecutionWorktreePort {
     readonly changeScope: readonly string[];
     readonly protectedPaths: readonly string[];
   }): Promise<{ readonly worktreeRef: string; readonly baseCommit: string }> {
-    if (!OBJECT_ID.test(input.sourceRevision))
+    if (!isGitObjectId(input.sourceRevision))
       fail("VES_GIT_WORKTREE_INPUT_INVALID", "Source revision must be a complete Git object ID");
     await this.#assertAnchorable(input.runId, input.taskId);
     const repositoryRoot = await this.#qualifiedRepositoryRoot();
@@ -139,7 +106,7 @@ export class NodeGitWorktreeAdapter implements ExecutionWorktreePort {
     const baseCommit = (
       await this.#git(repositoryRoot, ["rev-parse", "--verify", `${input.sourceRevision}^{commit}`])
     ).stdout.trim();
-    if (!OBJECT_ID.test(baseCommit) || baseCommit !== input.sourceRevision)
+    if (!isGitObjectId(baseCommit) || baseCommit !== input.sourceRevision)
       fail("VES_GIT_WORKTREE_INPUT_INVALID", "Source revision does not resolve exactly");
 
     const id = createHash("sha256")
@@ -156,11 +123,11 @@ export class NodeGitWorktreeAdapter implements ExecutionWorktreePort {
       )
       .digest("hex")
       .slice(0, 32);
-    const worktreeRef = `worktree:${id}:${baseCommit}` as const;
+    const worktreeRef = handleFor(id, baseCommit);
     const target = join(worktreesRoot, id);
     if (!within(worktreesRoot, target)) fail("VES_GIT_WORKTREE_ESCAPE", "Derived worktree escaped its protected root");
 
-    const entries = worktreeEntries((await this.#git(repositoryRoot, ["worktree", "list", "--porcelain"])).stdout);
+    const entries = registeredWorktrees((await this.#git(repositoryRoot, ["worktree", "list", "--porcelain"])).stdout);
     if (entries.has(target)) {
       await this.#assertExistingTarget(target, worktreesRoot);
       if (entries.get(target) !== baseCommit)
@@ -223,7 +190,7 @@ export class NodeGitWorktreeAdapter implements ExecutionWorktreePort {
     const repositoryRoot = await this.#qualifiedRepositoryRoot();
     const worktreesRoot = await this.#qualifiedWorktreesRoot(repositoryRoot);
     const target = this.#targetFromRef(handle.worktreeRef, worktreesRoot, handle.baseCommit);
-    const entries = worktreeEntries((await this.#git(repositoryRoot, ["worktree", "list", "--porcelain"])).stdout);
+    const entries = registeredWorktrees((await this.#git(repositoryRoot, ["worktree", "list", "--porcelain"])).stdout);
     if (!entries.has(target)) return;
     await this.#assertExistingTarget(target, worktreesRoot);
     if (this.#anchorTaskCommits) await this.#anchorTaskCommit(repositoryRoot, target, handle.baseCommit);
@@ -234,16 +201,16 @@ export class NodeGitWorktreeAdapter implements ExecutionWorktreePort {
   // The real, Git-registered directory behind a worktree handle, for adapters
   // that must confine their own effects to it.
   async resolvePath(worktreeRef: string): Promise<string> {
-    const baseCommit = WORKTREE_REF.exec(worktreeRef)?.[2];
+    const baseCommit = parseWorktreeHandle(worktreeRef)?.baseCommit;
     if (baseCommit === undefined) fail("VES_GIT_WORKTREE_INPUT_INVALID", "Worktree reference is invalid");
     return (await this.#resolveHandle({ worktreeRef, baseCommit })).target;
   }
 
   async #assertAnchorable(runId: string, taskId: string): Promise<void> {
     if (!this.#anchorTaskCommits) return;
-    if (!REF_COMPONENT.test(runId) || !REF_COMPONENT.test(taskId))
+    if (!isTaskBranchComponent(runId) || !isTaskBranchComponent(taskId))
       fail("VES_GIT_WORKTREE_INPUT_INVALID", "Run and task IDs must be valid task-branch components");
-    await this.#git(this.#repositoryRoot, ["check-ref-format", anchorRef(runId, taskId)]);
+    await this.#git(this.#repositoryRoot, ["check-ref-format", taskBranchRef(runId, taskId)]);
   }
 
   // Anchors the one verified task commit before its worktree is removed. Any
@@ -273,45 +240,40 @@ export class NodeGitWorktreeAdapter implements ExecutionWorktreePort {
   // the ones NodeAtomicGitCommitAdapter writes; anything else is refused.
   async #verifiedTaskBranch(target: string, head: string, baseCommit: string): Promise<string> {
     const lineage = (await this.#git(target, ["rev-list", "--parents", "-n", "1", "HEAD"])).stdout.trim().split(/\s+/u);
-    if (lineage.length !== 2 || lineage[0] !== head || lineage[1] !== baseCommit || !OBJECT_ID.test(head))
+    if (lineage.length !== 2 || lineage[0] !== head || lineage[1] !== baseCommit || !isGitObjectId(head))
       fail("VES_GIT_WORKTREE_CONFLICT", "Worktree history is not a single task commit on its base");
-    const { runId, taskId, idempotencyKey } = taskTrailers(
+    const { runId, taskId, idempotencyKey } = parseTaskCommitTrailers(
       (await this.#git(target, ["show", "-s", "--format=%B", "HEAD"])).stdout
     );
     const verified =
-      /^sha256:[a-f0-9]{64}$/u.test(idempotencyKey) && REF_COMPONENT.test(runId) && REF_COMPONENT.test(taskId);
+      /^sha256:[a-f0-9]{64}$/u.test(idempotencyKey) && isTaskBranchComponent(runId) && isTaskBranchComponent(taskId);
     if (!verified) fail("VES_GIT_WORKTREE_CONFLICT", "Worktree commit is not a verified task commit");
-    return anchorRef(runId, taskId);
+    return taskBranchRef(runId, taskId);
   }
 
-  async #refTarget(repositoryRoot: string, ref: string): Promise<string | undefined> {
-    const listed = (await this.#git(repositoryRoot, ["for-each-ref", "--format=%(refname) %(objectname)", ref])).stdout;
-    for (const line of listed.split(/\r?\n/u)) {
-      const [name, objectId] = line.split(" ");
-      if (name === ref) return objectId;
-    }
-    return undefined;
+  #refTarget(repositoryRoot: string, ref: string): Promise<string | undefined> {
+    return refTarget(repositoryRoot, ref, (cwd, args) => this.#git(cwd, args));
   }
 
   async #resolveHandle(handle: {
     readonly worktreeRef: string;
     readonly baseCommit: string;
   }): Promise<{ target: string }> {
-    if (!OBJECT_ID.test(handle.baseCommit)) fail("VES_GIT_WORKTREE_INPUT_INVALID", "Worktree base commit is invalid");
+    if (!isGitObjectId(handle.baseCommit)) fail("VES_GIT_WORKTREE_INPUT_INVALID", "Worktree base commit is invalid");
     const repositoryRoot = await this.#qualifiedRepositoryRoot();
     const worktreesRoot = await this.#qualifiedWorktreesRoot(repositoryRoot);
     const target = this.#targetFromRef(handle.worktreeRef, worktreesRoot, handle.baseCommit);
-    const entries = worktreeEntries((await this.#git(repositoryRoot, ["worktree", "list", "--porcelain"])).stdout);
+    const entries = registeredWorktrees((await this.#git(repositoryRoot, ["worktree", "list", "--porcelain"])).stdout);
     if (!entries.has(target)) fail("VES_GIT_WORKTREE_NOT_FOUND", "Worktree handle is not registered by Git");
     await this.#assertExistingTarget(target, worktreesRoot);
     return { target };
   }
 
   #targetFromRef(worktreeRef: string, worktreesRoot: string, expectedBaseCommit: string): string {
-    const match = WORKTREE_REF.exec(worktreeRef);
-    if (match?.[1] === undefined || match[2] !== expectedBaseCommit)
+    const handle = parseWorktreeHandle(worktreeRef);
+    if (handle?.baseCommit !== expectedBaseCommit)
       fail("VES_GIT_WORKTREE_INPUT_INVALID", "Worktree reference is invalid");
-    const target = join(worktreesRoot, match[1]);
+    const target = join(worktreesRoot, handle.id);
     if (!within(worktreesRoot, target))
       fail("VES_GIT_WORKTREE_ESCAPE", "Worktree reference escaped its protected root");
     return target;
@@ -359,7 +321,7 @@ export class NodeGitWorktreeAdapter implements ExecutionWorktreePort {
       fail("VES_GIT_WORKTREE_ESCAPE", "Worktree target escaped its protected root");
   }
 
-  async #git(cwd: string, args: readonly string[]): Promise<GitResult> {
+  async #git(cwd: string, args: readonly string[]): Promise<GitOutput> {
     try {
       return await this.#runGit(cwd, args);
     } catch (error) {
