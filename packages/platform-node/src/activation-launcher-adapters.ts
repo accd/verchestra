@@ -1,11 +1,11 @@
-import { execFile, spawn } from "node:child_process";
+import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { isAbsolute, relative, resolve, sep } from "node:path";
-import { promisify } from "node:util";
 
 import { canonicalizeJsonV2 } from "@verchestra/domain";
 
 import { ActivationLauncherError, type ActivationLauncherErrorCode } from "./activation-launcher-errors.ts";
+import { terminateProcessGroup } from "./process-tree-terminator.ts";
 
 // NPX-05/NPX-06/NPX-07. `ActivationHealthGatePort` is declared by
 // packages/distribution, but a process-spawning implementation is a concrete
@@ -19,8 +19,6 @@ import { ActivationLauncherError, type ActivationLauncherErrorCode } from "./act
 // component, never ambient Node and never a shell. That is also what keeps
 // Windows honest: `bin/*.mjs` is not directly spawnable there, and enabling a
 // shell to work around it is the one escape this contract must never take.
-
-const execFileAsync = promisify(execFile);
 
 const HEALTH_CHECK_NAMES = Object.freeze(["migration", "native", "driver"] as const);
 const CANONICAL_LAUNCHER_IDS = Object.freeze(["launcher:vestra", "launcher:verchestra"] as const);
@@ -222,27 +220,14 @@ function uniqueComponent(
   return matches[0]!;
 }
 
-async function terminateTree(pid: number): Promise<void> {
-  if (process.platform === "win32") {
-    await execFileAsync("taskkill", ["/pid", String(pid), "/T", "/F"], { windowsHide: true }).catch(() => undefined);
-    return;
-  }
-  try {
-    process.kill(-pid, "SIGKILL");
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
-    return;
-  }
-  for (let attempt = 0; attempt < 20; attempt += 1) {
-    await new Promise((settle) => setTimeout(settle, 25));
-    try {
-      process.kill(-pid, 0);
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ESRCH") return;
-      throw error;
-    }
-  }
-  fail("VES_LAUNCHER_TERMINATION_INCOMPLETE", "launcher process group remained alive after termination");
+// why: the launcher ends a child through the one qualified group termination
+// instead of a copy of it. The copy treated every error but ESRCH as fatal, so
+// on Darwin a fully killed group whose members were zombies awaiting their
+// reaper (EPERM) failed the activation it had just stopped correctly.
+function terminateTree(pid: number): Promise<void> {
+  return terminateProcessGroup(pid, () =>
+    fail("VES_LAUNCHER_TERMINATION_INCOMPLETE", "launcher process group remained alive after termination")
+  );
 }
 
 async function observeChild(
