@@ -1,3 +1,4 @@
+import { spawn } from "node:child_process";
 import readline from "node:readline";
 
 if (process.argv.includes("--version")) {
@@ -40,6 +41,14 @@ lines.on("line", (line) => {
       emit({ method: "item/agentMessage/delta", params: { threadId: "private-thread-id", turnId: "private-turn-id", itemId: "msg-1", delta: `value:${process.env.TEST_SECRET}` } });
       emit({ method: "turn/completed", params: { threadId: "private-thread-id", turn: { id: "private-turn-id", status: "completed" }, usage: { inputTokens: 1, outputTokens: 1 } } });
       process.exit(0);
+    } else if (mode === "fork") {
+      // why: a provider that starts processes of its own and then never answers.
+      // One descendant stays in the provider's process group and holds its
+      // output open; the other leaves the group with setsid().
+      const idle = ["-e", "setInterval(() => {}, 1000)"];
+      const sameGroup = spawn(process.execPath, idle, { stdio: ["ignore", "inherit", "ignore"] });
+      const escaped = spawn(process.execPath, idle, { stdio: "ignore", detached: true });
+      emit({ method: "item/agentMessage/delta", params: { threadId: "private-thread-id", turnId: "private-turn-id", itemId: "msg-1", delta: `tree:${process.pid}:${sameGroup.pid}:${escaped.pid}` } });
     } else if (mode !== "hang") {
       emit({ method: "item/agentMessage/delta", params: { threadId: "private-thread-id", turnId: "private-turn-id", itemId: "msg-1", delta: `echo:${prompt}` } });
       emit({ method: "turn/completed", params: { threadId: "private-thread-id", turn: { id: "private-turn-id", status: "completed" }, usage: { inputTokens: 7, outputTokens: 4 } } });

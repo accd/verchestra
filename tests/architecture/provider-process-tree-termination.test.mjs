@@ -1,0 +1,70 @@
+// invariant: stopping a Claude Code or Codex provider stops its whole process
+// tree (ADP-4). Three things must hold together for that, and each is a line a
+// later change could drop without a behaviour test on the pull request's own
+// platform noticing: the two drivers start the provider in a process group of
+// its own, the task composition hands every provider driver the tree
+// terminator, and nothing in the task composition signals one process alone.
+import assert from "node:assert/strict";
+import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
+import { test } from "node:test";
+import { fileURLToPath } from "node:url";
+
+const repositoryRoot = fileURLToPath(new URL("../../", import.meta.url));
+const read = (path) => readFileSync(join(repositoryRoot, path), "utf8");
+// why: a comment may name a signal to explain a decision; only code counts.
+const code = (source) =>
+  source
+    .split(/\r?\n/u)
+    .filter((line) => !/^\s*(?:\/\/|\*|\/\*)/u.test(line))
+    .join("\n");
+
+const TASK_ROOT = "apps/vestra-cli/src/task";
+const taskSources = readdirSync(join(repositoryRoot, TASK_ROOT))
+  .filter((name) => name.endsWith(".ts"))
+  .map((name) => ({ name, source: code(read(`${TASK_ROOT}/${name}`)) }));
+const PROVIDER_DRIVER = /\bnew\s+(?:ClaudeCodeDriver|CodexDriver)\s*\(/gu;
+
+for (const driver of ["claude-code-driver.ts", "codex-driver.ts"]) {
+  test(`${driver} starts its provider in a process group of its own and stops it through one terminator`, () => {
+    const source = code(read(`packages/drivers/src/${driver}`));
+    assert.match(source, /\bspawn\([^;]*?\bdetached: OWN_PROCESS_GROUP\b/su);
+    assert.match(source, /processTreeTerminator\(dependencies\.terminateTree\)/u);
+    assert.doesNotMatch(source, /process\.kill\(/u, "the driver signals a process itself");
+  });
+}
+
+test("a provider leads its own process group everywhere but on Windows, and the fallback signals that group", () => {
+  const source = code(read("packages/drivers/src/driver-process-tree.ts"));
+  assert.match(source, /export const OWN_PROCESS_GROUP = process\.platform !== "win32";/u);
+  assert.match(source, /process\.kill\(OWN_PROCESS_GROUP \? -pid : pid\)/u);
+  assert.doesNotMatch(source, /@verchestra\/platform-node/u, "a driver may not import a sibling adapter");
+});
+
+test("the task composition hands every provider driver it builds the tree terminator", () => {
+  const builders = taskSources.filter(({ source }) => source.match(PROVIDER_DRIVER) !== null);
+  assert.deepEqual(
+    builders.map(({ name }) => name),
+    ["task-codex.ts", "task-implementer.ts"]
+  );
+  for (const { name, source } of builders)
+    assert.equal(
+      source.match(/\bterminateTree: terminateProviderTree\b/gu)?.length,
+      source.match(PROVIDER_DRIVER).length,
+      `${name} builds a provider driver without the tree terminator`
+    );
+});
+
+test("the tree terminator is platform-node's, and no task source signals a process itself", () => {
+  assert.match(
+    code(read(`${TASK_ROOT}/task-process-tree.ts`)),
+    /import \{ terminateProcessTree \} from "@verchestra\/platform-node";/u
+  );
+  // why: signal 0 only asks whether a process exists, which the Run record
+  // does for the process that drives a run; every other signal is a kill.
+  const signals = /process\.kill\((?![^)]*,\s*0\))/u;
+  assert.deepEqual(
+    taskSources.filter(({ source }) => signals.test(source)).map(({ name }) => name),
+    []
+  );
+});

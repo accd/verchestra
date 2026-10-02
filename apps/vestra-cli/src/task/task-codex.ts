@@ -16,6 +16,7 @@ import { ensureCodexIdentity } from "./task-codex-identity.ts";
 import { stableUuid } from "./task-context.ts";
 import { passThroughEnvironment } from "./task-implementer.ts";
 import { taskError } from "./task-errors.ts";
+import { terminateProviderTree } from "./task-process-tree.ts";
 
 const LOGICAL_PATH = /^(?![A-Za-z]:)(?!\/)(?!.*\\)(?!.*(?:^|\/)\.\.(?:\/|$))[A-Za-z0-9._@+/-]{1,1024}$/u;
 const BEGIN = "VERCHESTRA-VERDICT-BEGIN";
@@ -205,13 +206,7 @@ export async function runCodexVerifier(options: CodexSessionOptions): Promise<st
         CODEX_HOME: identity.codexHome
       }
     },
-    terminateTree: async (pid) => {
-      try {
-        process.kill(pid, "SIGKILL");
-      } catch {
-        // why: the verifier may already have exited.
-      }
-    },
+    terminateTree: terminateProviderTree,
     resolveExecution: async () => ({
       passport: { passportId, revision: 1, provider: "openai", resolvedModel: model },
       prompt: options.prompt,
