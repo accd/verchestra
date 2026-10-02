@@ -360,6 +360,15 @@ approval makes the approval stale, and the run is refused until you plan again.
   A machine that carries a managed Claude Code policy is refused with
   `VES_CLAUDE_MANAGED_POLICY_PRESENT`. None of this has been observed with a
   real subscription yet.
+- **Provider processes.** Claude Code and Codex each run in a process group of
+  their own. `cancel` and Ctrl-C stop everything a provider started, including
+  a process that left that group, as described in
+  [docs/qualification/claude-code-driver-process-tree.md](qualification/claude-code-driver-process-tree.md)
+  and
+  [docs/qualification/codex-driver-process-tree.md](qualification/codex-driver-process-tree.md).
+  If the `vestra` process itself is killed, or its terminal goes away, nothing
+  stops the provider: it runs until its closed pipes make it exit. This is
+  proven with deterministic stand-ins only.
 - **Local human authority.** Approvals and reviews are decisions confirmed on
   this machine by typing a digest back. They are not a cryptographic proof of
   who you are.
