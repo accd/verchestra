@@ -33,8 +33,8 @@ entry was read.
 | Clause of ADP-A | Evidence |
 | --- | --- |
 | A Workspace selects subscription authentication for a provider | `U:39` (default), `U:53-77` (per provider), `U:79-97` (anything unrecognized is not configured), `U:116` (never from a Task Request); `E:464` (refused at plan time and at start) |
-| A task runs with that provider's subscription credential | `E:175` (lines 245-272: Claude Code not bare with `CLAUDE_CODE_OAUTH_TOKEN`; Codex from the identity directory; run reaches `COMPLETED`), `S:31`, `I:228` |
-| The credential is supplied explicitly | `S:104` (exactly the declared environment; the echoed token is the brokered one), `S:193-215` (refusals before spawn), `I:113` (login proven in the identity directory), `tests/contract/claude-code-driver-subscription.test.mjs:48` (exact invocation) |
+| A task runs with that provider's subscription credential | `E:175` (lines 245-272: Claude Code not bare with `CLAUDE_CODE_OAUTH_TOKEN`; Codex from the identity directory; run reaches `COMPLETED`), `S:31`, `I:277` |
+| The credential is supplied explicitly | `S:104` (exactly the declared environment; the echoed token is the brokered one), `S:193-215` (refusals before spawn), `I:142` (login proven in the identity directory), `tests/contract/claude-code-driver-subscription.test.mjs:48` (exact invocation) |
 | No ambient session is read | `S:104` (five ambient values not inherited; per-run `HOME` and config directory), `X:241` (no ambient value reaches Claude Code, the Codex status check, or the Codex session), `X:275` (an ambient Claude Code session does not stand in for an unbound token), `X:292` (an ambient Codex login does not stand in for the identity) |
 | No API key is required | the default fixture binds no API key (`tests/helpers/task-cli-fixture.mjs`, `MODE_CREDENTIALS`), and every default-mode journey in `E` passes; `E:357` (bound API keys are not used in place of a missing token) |
 | When the credential is absent the task reports not configured before any effect | `E:357` (`claude-code-oauth-token`), `E:425` (`codex-login`, with the exact command), `E:453`, `E:367` (API-key mode); each asserts no transition, no grant, no provider child, and no worktree |
@@ -92,6 +92,11 @@ Run on the tree of `b4e7a8b8b68816a14c9a243f819ced04da506097` (the last revision
   subscription invocation is the owner's first supervised run. If an
   assumption is wrong the driver fails closed with a named code
   (`docs/qualification/claude-code-driver-subscription.md`).
+- **Windows.** The first matrix run failed one case of `I` on Windows x64
+  because the fake `codex` could not run there. The cases that start the fake
+  now assert its own observation on POSIX and the `platform` refusal of the
+  task path on Windows; see "Windows behaviour" in the feature's
+  `validation.md`, which also says how each other suite passed there.
 - **Platform matrix.** The task path and the drivers changed, and PR CI runs
   on Ubuntu only, where the journeys do not run their cases. The matrix must
   prove this branch before merge.

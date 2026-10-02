@@ -3,6 +3,14 @@
 // login, and only the exact ChatGPT status line with exit code 0 counts as a
 // login. The DETERMINISTIC FAKE `codex` in tests/helpers/task-cli-fakes stands
 // in for the CLI; its login is a fixture file, never a real credential.
+//
+// invariant: every case that starts the fake asserts, on POSIX, that the fake
+// really answered (its own observation names the login it reported), so a fake
+// that died before answering can never pass as "not logged in". On Windows the
+// governed task path is refused before any Codex check, and the fake's fixture
+// channel is not qualified there, so each of those cases asserts that refusal
+// instead: no case is skipped and none passes without asserting. The cases that
+// start no process run and assert on every platform.
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, readFile, readdir, realpath, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
@@ -110,11 +118,34 @@ test("a link in place of the identity directory is refused", async (t) => {
   assert.deepEqual(await readdir(elsewhere), []);
 });
 
-test("a ChatGPT login is accepted and its check never sees the invoking home or an ambient key", async () => {
+// invariant: on Windows every `vestra task` command is refused with requirement
+// `platform` before it reads a request, opens state, or touches a credential,
+// so neither the Codex login check nor a verifier session is reachable there.
+// A case that needs the fake asserts exactly that refusal on win32, following
+// tests/helpers/mediation-platform.mjs, instead of skipping.
+async function taskPathRefusedOnWindows(t) {
+  t.diagnostic("win32: asserting the governed task path is refused instead");
+  for (const name of ["task start", "task resume", "task status"])
+    await assert.rejects(
+      executeTaskCommand(
+        { name, options: { "run-id": "run_018f0000-0000-7000-8000-000000001502" } },
+        { controlRoot: tmpdir(), platform: "win32", env: {}, stdin: process.stdin, stderr: () => undefined, pid: 1 }
+      ),
+      (error) => {
+        assert.equal(error.envelope.code, "VES_TASK_NOT_CONFIGURED");
+        assert.equal(error.envelope.safeDetails.requirement, "platform");
+        return true;
+      }
+    );
+}
+
+test("a ChatGPT login is accepted and its check never sees the invoking home or an ambient key", async (t) => {
+  if (!POSIX) return taskPathRefusedOnWindows(t);
   const { options, directory, sessionsRoot, stderr, observed } = await fixture("chatgpt");
   assert.equal(await requireCodexSubscription(options), directory);
   assert.deepEqual(stderr, []);
-  const [status] = await observed();
+  const [status, ...repeated] = await observed();
+  assert.deepEqual(repeated, [], "the status check runs once");
   assert.equal(status.login, "chatgpt");
   assert.equal(status.codexHome, directory);
   assert.equal(status.config, CODEX_IDENTITY_CONFIG);
@@ -128,9 +159,19 @@ test("a ChatGPT login is accepted and its check never sees the invoking home or 
   assert.deepEqual(await listed(directory), ["auth.json", "config.toml"]);
 });
 
-for (const login of [undefined, "api-key", "access-token", "wrong-exit", "unknown-mode"]) {
-  test(`a Codex status of ${login ?? "not logged in"} is not configured, with the exact one-time command`, async () => {
-    const { options, directory, sessionsRoot, stderr } = await fixture(login);
+// invariant: the second member is the login the fake itself reports it
+// answered with. A login the fixture did not write, and an API-key login under
+// the pinned ChatGPT method, are both answered as not logged in.
+for (const [login, answered] of [
+  [undefined, "none"],
+  ["api-key", "none"],
+  ["access-token", "access-token"],
+  ["wrong-exit", "wrong-exit"],
+  ["unknown-mode", "unknown-mode"]
+]) {
+  test(`a Codex status of ${login ?? "not logged in"} is not configured, with the exact one-time command`, async (t) => {
+    if (!POSIX) return taskPathRefusedOnWindows(t);
+    const { options, directory, sessionsRoot, stderr, observed } = await fixture(login);
     await assert.rejects(requireCodexSubscription(options), (error) => {
       assert.equal(error.envelope.code, "VES_TASK_NOT_CONFIGURED");
       assert.deepEqual(error.envelope.safeDetails, { requirement: "codex-login" });
@@ -142,10 +183,18 @@ for (const login of [undefined, "api-key", "access-token", "wrong-exit", "unknow
     ]);
     assert.equal(await readFile(join(directory, "config.toml"), "utf8"), CODEX_IDENTITY_CONFIG);
     assert.deepEqual(await readdir(sessionsRoot), []);
+    // invariant: the refusal came from the fake's answer, not from a fake that
+    // could not run: it observed the identity directory and reported this login.
+    const [status, ...repeated] = await observed();
+    assert.deepEqual(repeated, [], "the status check runs once");
+    assert.equal(status.login, answered);
+    assert.equal(status.codexHome, directory);
+    assert.equal(status.config, CODEX_IDENTITY_CONFIG);
   });
 }
 
-test("a status check that hangs or cannot start is not a login", async () => {
+test("a status check that hangs is not a login", async (t) => {
+  if (!POSIX) return taskPathRefusedOnWindows(t);
   const hanging = await fixture("hang");
   const started = Date.now();
   await assert.rejects(requireCodexSubscription({ ...hanging.options, timeoutMs: 500 }), (error) => {
@@ -153,16 +202,34 @@ test("a status check that hangs or cannot start is not a login", async () => {
     return true;
   });
   assert.ok(Date.now() - started < 10_000);
+  // invariant: the fake had started and was hanging when the check gave up.
+  assert.deepEqual(
+    (await hanging.observed()).map((status) => status.login),
+    ["hang"]
+  );
+  assert.deepEqual(await readdir(hanging.sessionsRoot), []);
+});
+
+// invariant: no process starts in this case, so it runs and asserts on every
+// platform, Windows included.
+test("a status check whose executable cannot start is not a login", async () => {
   const missing = await fixture("chatgpt");
+  const command = [join(missing.root, "no-such-codex")];
   assert.equal(
-    await codexSubscriptionLoggedIn({
-      command: [join(missing.root, "no-such-codex")],
-      directory: missing.directory,
-      home: missing.sessionsRoot,
-      env: {}
-    }),
+    await codexSubscriptionLoggedIn({ command, directory: missing.directory, home: missing.sessionsRoot, env: {} }),
     false
   );
+  await assert.rejects(requireCodexSubscription({ ...missing.options, command }), (error) => {
+    assert.equal(error.envelope.code, "VES_TASK_NOT_CONFIGURED");
+    assert.deepEqual(error.envelope.safeDetails, { requirement: "codex-login" });
+    return true;
+  });
+  assert.deepEqual(missing.stderr, [
+    `Codex is not signed in with a ChatGPT plan for this Workspace. Run once:\n  CODEX_HOME='${missing.directory}' codex login\n`
+  ]);
+  assert.equal(await readFile(join(missing.directory, "config.toml"), "utf8"), CODEX_IDENTITY_CONFIG);
+  assert.deepEqual(await readdir(missing.sessionsRoot), []);
+  await assert.rejects(readFile(join(missing.root, "log", "fake-codex-status.log")), { code: "ENOENT" });
 });
 
 test("the one-time command quotes the directory for a shell", () => {
@@ -172,24 +239,6 @@ test("the one-time command quotes the directory for a shell", () => {
   );
   assert.equal(codexLoginCommand("/state/it's"), "CODEX_HOME='/state/it'\\''s' codex login");
 });
-
-// invariant: a verifier session needs a POSIX executable wrapper for the fake.
-// On Windows the governed task path is refused before any verifier starts, so
-// each session case asserts that refusal there instead of passing unasserted.
-async function taskPathRefusedOnWindows(t) {
-  t.diagnostic("win32: asserting the governed task path is refused instead");
-  await assert.rejects(
-    executeTaskCommand(
-      { name: "task status", options: { "run-id": "run_018f0000-0000-7000-8000-000000001502" } },
-      { controlRoot: tmpdir(), platform: "win32", env: {}, stdin: process.stdin, stderr: () => undefined, pid: 1 }
-    ),
-    (error) => {
-      assert.equal(error.envelope.code, "VES_TASK_NOT_CONFIGURED");
-      assert.equal(error.envelope.safeDetails.requirement, "platform");
-      return true;
-    }
-  );
-}
 
 async function verifierSession(login, source) {
   const base = await fixture(login);
