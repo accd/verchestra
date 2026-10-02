@@ -1411,3 +1411,37 @@ test(
     assert.equal(after.checkpoints.budget.usageEvents, RUN_USAGE_EVENTS);
   }
 );
+
+// invariant: a verifier does not start when the run's ceiling was already
+// reached. The duration ceiling passes while the implementation gate is held:
+// 90% of 12 s is 10.8 s. The gate then passes and the task is committed, and
+// the run fails as a budget stop before a Codex process is started.
+test("a run whose ceiling was reached before verification starts no verifier", TIMEOUT, async (t) => {
+  if (!DARWIN) return notConfiguredOffMacOS(t);
+  const fixture = await taskFixture({
+    request: { budgets: { maximumCostUsd: 5, maximumTokens: 1_000_000, maximumDurationMs: 12_000 } }
+  });
+  const plan = await approved(fixture);
+  await writeFile(join(fixture.home, "pause-gate"), "");
+  const startedAt = Date.now();
+  const child = fixture.launchAsync(startArguments(fixture, plan.runId));
+  const finished = exited(child);
+  let stdout = "";
+  child.stdout.on("data", (chunk) => (stdout += chunk));
+  t.after(() => child.kill("SIGKILL"));
+  await waitFor(() => existsSync(join(fixture.home, "gate-paused")));
+  await new Promise((resolve) => setTimeout(resolve, Math.max(0, startedAt + 11_500 - Date.now())));
+  await rm(join(fixture.home, "pause-gate"));
+  assert.deepEqual(await finished, { code: 1, signal: null });
+  const outcome = JSON.parse(stdout).data;
+  assert.equal(outcome.state, "FAILED");
+  assert.equal(outcome.reason, "VES_EXECUTOR_BUDGET_EXCEEDED");
+  assert.deepEqual(logLines(fixture, "fake-codex.log"), [], "a Codex process opened a thread");
+  assert.deepEqual(logLines(fixture, "fake-codex-turn.log"), [], "a Codex process opened a turn");
+  const after = status(fixture, plan.runId);
+  assert.equal(after.checkpoints.repair, "converged", "the gate did not pass");
+  assert.match(after.evidence.commitId, /^[a-f0-9]{40}$/u);
+  assert.equal(after.checkpoints.budget.stopReason, "duration-threshold");
+  assert.equal(after.checkpoints.budget.consumedTokens, IMPLEMENTER_TOKENS);
+  assert.equal(after.checkpoints.budget.usageEvents, 1);
+});

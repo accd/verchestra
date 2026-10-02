@@ -187,6 +187,15 @@ function failureReason(options: CodexSessionOptions, stop: VerifierStop): string
 // remaining budget, and the duration timer is the hard stop.
 export async function runCodexVerifier(options: CodexSessionOptions): Promise<string> {
   const credential = sessionCredential(options);
+  // invariant: a verifier does not start on a budget that is already gone.
+  // The meter's verdict is asked before anything of the session exists, so no
+  // Codex process is started to be stopped on its first usage event.
+  if (options.meter?.shouldStop().stop === true)
+    throw taskError(
+      "VES_TASK_FAILED",
+      { reason: "VES_EXECUTOR_BUDGET_EXCEEDED" },
+      "The run's budget was reached before the verifier started"
+    );
   const identity = await isolatedIdentity(options.sessionRoot, options.identityDirectory);
   const model = options.request.verifier.model;
   const passportId = `passport_${stableUuid(`codex:${model}`)}`;
