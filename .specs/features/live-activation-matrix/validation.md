@@ -160,3 +160,37 @@ artifacts expire on 2026-11-24.
 
 What this does **not** prove: an update or a rollback. Both need a second
 release on this root (`.4`). See `handoff.md`.
+
+## TUF publication of `0.0.0-qualification.4` (2026-10-01, #387)
+
+`.4` is the second release on the role-separated root, so a `.3` install can
+update to it in place.
+
+| Fact               | Value                                                                                           |
+| ------------------ | ----------------------------------------------------------------------------------------------- |
+| Candidate revision | `d58a25f3d80a720000bbdd4cbbc8650cdc8c9686` (`main`)                                             |
+| Candidate build    | run `36928077854`: five target legs and the reconciled closure passed                           |
+| Signing            | run `36930995598`, from `main`, approved in environment `tuf-release-signing`                   |
+| Release id         | `release:verchestra:0.0.0-qualification.4:d58a25f3d80a`                                         |
+| Root digest        | `sha256:949fbce3c56f7a10729750d3d18dc54537eb32f2701aae7eb8370ff06e5dcff7` (unchanged from `.3`) |
+| Metadata version   | `3` for targets, snapshot and timestamp                                                         |
+| Base URL           | `https://pub-0fa3e4c3f26540e793952fa2c187d536.r2.dev/v4/`                                       |
+| Rollback proof     | binds the `.3` candidate `6725554a8e14aba44a0dcdb9edf76decc58ac4d2`, run `36781862073`          |
+
+Verification:
+
+- **Upload.** 1275 objects under `v4/`; `rclone check` reported 1275 matching
+  files and 0 differences.
+- **Live endpoint.** 1275 of 1275 objects answered as the manifest records:
+  `200` with the SHA-256 for metadata, `206` byte ranges for targets.
+- **npm package.** A local `build:vestra-launcher --release-inputs` build was
+  byte-identical to the workflow's verified launcher package.
+- **Update and rollback, macOS arm64, against the live endpoint.** With one
+  empty home: the `.3` launcher activated `.3`; the `.4` launcher then
+  activated `.4`; the `.3` launcher then re-activated `.3` with exit `0`
+  (the retained-release path, AD-036); the `.4` launcher activated `.4`
+  again. The active pointer matched the expected release digest after each
+  step.
+
+Not yet done: `npm publish` of the `.4` launcher (owner two-factor step), and
+the five-target `live-activation-matrix` run with base `.3` and update `.4`.
