@@ -5,6 +5,7 @@ import { tmpdir, userInfo } from "node:os";
 import { isAbsolute, join } from "node:path";
 import readline from "node:readline";
 import { promisify } from "node:util";
+import { sensitiveValueRedactor } from "./driver-redaction.ts";
 import { DriverSessionLedger } from "./driver-session-ledger.ts";
 import { probeDriverVersion } from "./driver-version-probe.ts";
 import {
@@ -143,13 +144,6 @@ const PROBE_PROFILE = Object.freeze({
   noun: "Claude Code",
   capabilities: Object.freeze(["stream", "tools", "usage", "abort", "no-session-persistence"])
 });
-
-function redactor(values: readonly string[]): (text: string) => string {
-  const secrets = [...new Set(values.filter((value) => value.length > 0))].sort(
-    (left, right) => right.length - left.length
-  );
-  return (text) => secrets.reduce((safe, secret) => safe.replaceAll(secret, "[REDACTED]"), text);
-}
 
 function userMessage(prompt: string): string {
   return JSON.stringify({ type: "user", message: { role: "user", content: [{ type: "text", text: prompt }] } });
@@ -523,7 +517,7 @@ export class ClaudeCodeDriver implements Driver {
     try {
       const sessionId = `claude-session:${randomUUID()}`;
       const state = this.#sessions.open(sessionId, sink, {});
-      const redact = redactor(execution.sensitiveValues ?? []);
+      const redact = sensitiveValueRedactor(execution.sensitiveValues ?? []);
       const plan = this.#spawnPlan(execution, launch);
       const child = spawn(this.#command[0] as string, [...plan.arguments], {
         cwd: plan.cwd,
