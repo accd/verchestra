@@ -80,6 +80,46 @@ outside the repair loop; today that is verification.
 - **VUR-12** — The repair state SHALL be readable and recordable without a
   promise, under the same checks as the repair state port.
 
+### T2–T4 — the run's account is complete
+
+T1 left three gaps, recorded as open points in `validation.md`: a run killed
+during a gate attempt lost what its implementer had reported; a verifier was
+started when the run's ceiling was already reached; and a run the verifier's
+budget stopped failed with the code every task failure shares. T2, T3 and T4
+close them.
+
+- **VUR-13** (T2) — WHEN a usage event of the implementer is metered THEN the
+  repair loop's meter SHALL record its ledger as the run's ledger before the
+  next event is read, through the same Run record projection the verifier's
+  usage is recorded through, so that a run killed during an attempt keeps what
+  the attempt had reported.
+- **VUR-14** (T2) — IF the run has no repair state when its ledger is recorded
+  THEN the ledger SHALL be filed with no attempt recorded, under stage
+  `converged` when the gate checkpoint says the task is committed and under
+  stage `repair` otherwise. This replaces the second sentence of VUR-02.
+- **VUR-15** (T2) — WHEN a run is resumed THEN the repair loop's meter SHALL
+  continue from the run's ledger, so the usage an interrupted attempt recorded
+  is counted once: an attempt resumed at its gate adds nothing, and an attempt
+  that runs its implementer again adds that session's usage.
+- **VUR-16** (T2) — A provider session that was ended before it reported usage
+  has nothing to record, and nothing SHALL be recorded or estimated for it.
+  `docs/quick-start.md` SHALL say so.
+- **VUR-17** (T2) — IF recording the ledger of an implementer's usage fails
+  THEN the run SHALL fail with that failure's code and the attempt SHALL NOT
+  go on to its gate.
+- **VUR-18** (T3) — WHEN work metered on the run's ledger fails as a task
+  failure whose reason is `VES_EXECUTOR_BUDGET_EXCEEDED` or a `VES_BUDGET_*`
+  code THEN the run SHALL fail with that reason as its code, the code the
+  implementer's path reports for the same stop. Every other failure SHALL keep
+  the code it had. No code SHALL be added.
+- **VUR-19** (T4) — IF the run's meter already says stop when the verifier
+  session is about to start THEN the session SHALL be refused with reason
+  `VES_EXECUTOR_BUDGET_EXCEEDED` before a session directory, an identity
+  directory or a Codex process exists, and the run's ledger SHALL name the
+  ceiling.
+- **VUR-20** (T2) — Every meter the task composition builds SHALL record on
+  the run's ledger. This extends VUR-11 to the repair loop's meter.
+
 ## Constraints
 
 - No second store, no file in the Run directory, no checkpoint kind and no
@@ -88,16 +128,19 @@ outside the repair loop; today that is verification.
 - No public error code is added. The runtime error catalog stays at 19 codes,
   the task error catalog at 10, and the migration count at 12.
 - No dependency is added.
+- The Run Capsule's shape, schema version and digest rules do not change.
+- `packages/application` (the meter, the repair loop, the executor, the task
+  run coordinator) is not changed by T2–T4.
 
 ## Out of scope
 
-- The implementer's usage during a gate attempt that never ended. The repair
-  loop saves the ledger when an attempt ends, so a run killed during an attempt
-  has not saved what that attempt spent. Observed and recorded in
-  `validation.md`; it needs a decision of its own.
-- Refusing to start a verifier when the run's ceiling was already reached.
-- The reason a run reports when the verifier's budget stops it
-  (`VES_TASK_FAILED`).
+- Usage a provider never reported. Claude Code reports usage when its session
+  ends and Codex when its turn ends, so a session killed before that leaves
+  nothing to record (VUR-16).
+- The duration an interrupted attempt took after its last recorded usage
+  event. The loop records the time when an attempt ends.
+- Stopping a converged attempt whose duration ceiling passed during its gates.
+  The repair loop does not; the run then fails at verification (VUR-19).
 - A member in `budgetEvidence` that says what the block covers.
 - The live task pilot's pre-registration, which names `status.checkpoints.budget`
   "Implementer usage". It is listed in `validation.md` and not edited here.
