@@ -2,13 +2,13 @@
 schema: verchestra-feature-handoff/v1
 feature: architecture-deepening
 issue: null
-status: in_progress
+status: verification
 branch: main
-baseRevision: e17abb3c8970b72c837bbbd07f86b4676ca9adb3
-lastCompletedTask: T2
-nextTask: "T4a-T4d (branch refactor/driver-session-runner): the driver session runner, its adoption by the verifier and the self-test scenarios, and process-tree termination with driver requalification. Each needs the platform matrix on all five targets before merge. Then a five-target candidate build from main and a fresh architecture review."
-lastGate: "Required checks and SonarCloud PASS on #458-#463; platform matrix PASS on the TA, T3 and T2 branches (see Completed Evidence)"
-updatedAt: 2026-10-02T14:10:00Z
+baseRevision: 9eb2881ea0c24c2bea9028036093e9cd8cbad3f9
+lastCompletedTask: T4
+nextTask: "Every task of the programme is merged. Closing checks: the five-target candidate build from main (run 37046348715, in progress when this was written) and a fresh architecture review of main. Follow-ups in progress on their own branches: Run record hardening (fix/run-record-hardening) and the driver event order after a cancel (fix/driver-cancel-terminal-event)."
+lastGate: "Required checks and SonarCloud PASS on #466-#470; platform matrix PASS on the T4 branch at 2627e5d (build run 37040215226, security run 37040219530)"
+updatedAt: 2026-10-02T18:20:00Z
 ---
 
 # Scope
@@ -42,6 +42,10 @@ Merged to `main`, each with its evidence file:
 | T2a      | #461         | `c0bc40c` | `validation-c2.md`; AD-047                                               |
 | T2b      | #462         | `b90df87` | `validation-c2.md`                                                       |
 | T2c      | #463         | `e17abb3` | `validation-c2.md`                                                       |
+| T4a      | #466         | `28b4e74` | `validation-c4.md`; AD-048                                               |
+| T4b      | #467         | `91a906e` | `validation-c4.md`                                                       |
+| T4c      | #468         | `0961c9f` | `validation-c4.md`                                                       |
+| T4d      | #470         | `9eb2881` | `validation-c4.md`; AD-049; two driver requalification reports           |
 
 T6 and T1 ran the platform matrix on their branches before merge and passed on
 all five targets. T1b supports SHA-256 repositories end to end and makes an
@@ -61,17 +65,31 @@ Nothing in TA ran against a real Claude Code or Codex session. The first live
 run is the pilot (#406), which needs a published release that carries TA and
 the owner's two subscription logins (`docs/quick-start.md`).
 
+T4 on the platform matrix, five targets: the first build run (37035210650)
+failed one case on Windows x64, a real defect (a stop asked the Claude Code
+driver's terminator twice, and the terminal event lost its reason). It was fixed
+in T4d, and build run 37040215226 and security run 37040219530 passed at
+`2627e5d`. The review before merge also found that a closed terminal orphaned a
+provider once it led its own process group; T4d stops the provider tree on a
+hang-up or a termination request and leaves the run resumable.
+
+CodeQL reported a polynomial regular expression in the version probe (T3b)
+while T4c was in review. #469 (`832aa5e`) bounds the text and starts each
+pattern at a digit run; no alert is open.
+
 # Next Exact Action
 
-T4a-T4d are in progress on `refactor/driver-session-runner`. T4d (process-tree
-termination) is its own pull request, requalifies the Claude Code and Codex
-drivers, and merges only with a platform matrix run that passes on all five
-targets. After T4: a five-target candidate build from `main`, and a fresh
-architecture review to confirm the eight frictions are gone.
+All tasks are merged. Two closing checks remain: the five-target candidate
+build from `main` at `9eb2881` (run 37046348715), and a fresh architecture
+review of that revision to confirm the eight frictions are gone.
 
-Follow-ups recorded by T2, not started: seal the five plain per-Run markers,
-check links below a per-Run root, and make `review` verify the plan digest as
-`approve` does.
+Follow-ups, each on its own branch and with its own evidence: Run record
+hardening (`review` verifies the plan digest, containment below a per-Run
+root, sealing the five plain markers) and the driver event order after a
+cancel (nothing follows the terminal event).
+
+`0.0.0-qualification.5` was published from `e17abb3`, before T4. A release
+that carries T4 is the next publication.
 
 # Blockers
 

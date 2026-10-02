@@ -17,10 +17,10 @@ evidence in `validation-<id>.md`.
 | T2a  | ADP-2       | Run record module                                                                             | T1b, T5    | Done (#461, `c0bc40c`; AD-047) |
 | T2b  | ADP-2       | Typed checkpoint projections                                                                  | T2a        | Done (#462, `b90df87`)         |
 | T2c  | ADP-2       | Containment of the per-Run directories                                                        | T2a        | Done (#463, `e17abb3`)         |
-| T4a  | ADP-4       | Driver session runner                                                                         | T3b        | In progress                    |
-| T4b  | ADP-4       | Verifier adopts the runner                                                                    | T4a, T2a   | In progress                    |
-| T4c  | ADP-4       | Self-test scenarios adopt the runner                                                          | T4a        | In progress                    |
-| T4d  | ADP-4       | Process-tree termination for Claude Code and Codex                                            | T4b        | In progress                    |
+| T4a  | ADP-4       | Driver session runner                                                                         | T3b        | Done (#466, `28b4e74`; AD-048) |
+| T4b  | ADP-4       | Verifier adopts the runner                                                                    | T4a, T2a   | Done (#467, `91a906e`)         |
+| T4c  | ADP-4       | Self-test scenarios adopt the runner                                                          | T4a        | Done (#468, `0961c9f`)         |
+| T4d  | ADP-4       | Process-tree termination for Claude Code and Codex                                            | T4b        | Done (#470, `9eb2881`; AD-049) |
 | T6a  | ADP-6       | Legacy runtime store methods removed                                                          | T0         | Done (#447, `0cb454b`)         |
 | T6b  | ADP-6       | Effect repository in its own file                                                             | T6a        | Done (#448, `ac59fac`)         |
 | T7a  | ADP-7       | Shared custody helpers for the publication scripts                                            | T0         | Done (#446, `d195400`)         |
