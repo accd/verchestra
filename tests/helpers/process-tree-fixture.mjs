@@ -109,8 +109,9 @@ async function stoppedOnWin32(t, build, dependencies, stop) {
 // a provider, so the cases are written once and each qualification suite runs
 // them against its own driver and labeled fake. `build(dependencies, mode)`
 // returns a driver whose fake provider runs in that mode, and its request;
-// `terminator` is the one the composition root injects.
-export function processTreeSuite(test, { label, build, terminator }) {
+// `terminator` is the one the composition root injects, and `reported` holds
+// what it wrote about a tree it could not confirm stopped.
+export function processTreeSuite(test, { label, build, terminator, reported }) {
   const options = { timeout: 60_000 };
   const cancel = ({ driver, sessionId }) => driver.cancel({ sessionId }, "user-request");
 
@@ -133,6 +134,7 @@ export function processTreeSuite(test, { label, build, terminator }) {
         [{ outcome: "cancelled", reason: "user-request" }]
       );
       await driver.close(reference);
+      assert.deepEqual(reported, [], "a tree that was stopped is not reported as running");
     }
   );
 
@@ -148,6 +150,7 @@ export function processTreeSuite(test, { label, build, terminator }) {
     const reference = await session.run;
     await assertTreeGone(tree);
     assert.equal((await driver.close(reference)).outcome, "cancelled");
+    assert.deepEqual(reported, [], "a tree that was stopped is not reported as running");
   });
 
   test(

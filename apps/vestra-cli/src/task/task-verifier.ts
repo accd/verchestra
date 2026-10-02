@@ -21,6 +21,7 @@ import { parseVerdict, runCodexVerifier, verifierPrompt, type VerifierClaim } fr
 import { canonicalDigest, sha256 } from "./task-files.ts";
 import { addDetachedWorktree, git, gitBuffer, removeWorktree } from "./task-git.ts";
 import { IMPLEMENTER_ACTOR, VERIFIER_ACTOR, type TaskPlanRecord } from "./task-plan-record.ts";
+import type { ProviderProcesses } from "./task-process-tree.ts";
 import type { RunRecord } from "./task-run-record.ts";
 import { applyWorkflow, verificationRun } from "./task-workflow.ts";
 import type { TaskWorkspace } from "./task-workspace.ts";
@@ -39,6 +40,7 @@ export interface VerifierContext {
     | { readonly executable: string; readonly identityDirectory: string };
   readonly env: Readonly<Record<string, string | undefined>>;
   readonly meter: BudgetMeter | undefined;
+  readonly providers: ProviderProcesses;
 }
 
 function verificationRoot(context: VerifierContext): string {
@@ -305,7 +307,8 @@ export async function verifyTask(
       cwd: await realpath(review),
       prompt: verifierPrompt(context.plan.request, diff, commit.commitId),
       meter: context.meter,
-      signal
+      signal,
+      providers: context.providers
     });
     const claims = parseVerdict(text, context.plan.request.task.requirementIds);
     const result = await new IndependentVerificationCoordinator(ports(context, commit)).verify(

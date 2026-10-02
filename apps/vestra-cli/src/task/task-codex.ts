@@ -16,7 +16,7 @@ import { ensureCodexIdentity } from "./task-codex-identity.ts";
 import { stableUuid } from "./task-context.ts";
 import { passThroughEnvironment } from "./task-implementer.ts";
 import { taskError } from "./task-errors.ts";
-import { terminateProviderTree } from "./task-process-tree.ts";
+import { ProviderProcesses } from "./task-process-tree.ts";
 
 const LOGICAL_PATH = /^(?![A-Za-z]:)(?!\/)(?!.*\\)(?!.*(?:^|\/)\.\.(?:\/|$))[A-Za-z0-9._@+/-]{1,1024}$/u;
 const BEGIN = "VERCHESTRA-VERDICT-BEGIN";
@@ -119,6 +119,9 @@ export interface CodexSessionOptions {
   readonly prompt: string;
   readonly meter: BudgetMeter | undefined;
   readonly signal: AbortSignal;
+  // why: the provider processes of the task command this session belongs to.
+  // A session run outside a command has its own and reports to stderr.
+  readonly providers?: ProviderProcesses;
 }
 
 async function isolatedIdentity(root: string, identityDirectory: string | undefined) {
@@ -195,6 +198,8 @@ export async function runCodexVerifier(options: CodexSessionOptions): Promise<st
     tools: []
   };
   assertReadOnlyGrant(request.tools);
+  const providers = options.providers ?? new ProviderProcesses({ stderr: (text) => void process.stderr.write(text) });
+  const provider = providers.session("Codex");
   const driver = new CodexDriver({
     command: [options.executable],
     processContext: {
@@ -206,7 +211,8 @@ export async function runCodexVerifier(options: CodexSessionOptions): Promise<st
         CODEX_HOME: identity.codexHome
       }
     },
-    terminateTree: terminateProviderTree,
+    terminateTree: provider.terminateTree,
+    onSpawn: provider.onSpawn,
     resolveExecution: async () => ({
       passport: { passportId, revision: 1, provider: "openai", resolvedModel: model },
       prompt: options.prompt,
@@ -250,6 +256,9 @@ export async function runCodexVerifier(options: CodexSessionOptions): Promise<st
       );
     return text;
   } finally {
+    // invariant: once the command is being interrupted this never returns, so
+    // a verifier stopped by the signal is not reported as one that failed.
+    await provider.end();
     if (timer !== undefined) clearTimeout(timer);
     await rm(options.sessionRoot, { recursive: true, force: true });
   }

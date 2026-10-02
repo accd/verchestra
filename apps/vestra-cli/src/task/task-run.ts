@@ -39,6 +39,7 @@ import { findExecutable, implementerAdapter } from "./task-implementer.ts";
 import type { TaskCommandIo } from "./task-io.ts";
 import { HUMAN_ACTOR, IMPLEMENTER_ACTOR, type TaskPlanRecord } from "./task-plan-record.ts";
 import { loadTaskPolicy } from "./task-policy.ts";
+import { ProviderProcesses } from "./task-process-tree.ts";
 import { openRunRecord, type GateCheckpoint, type RunCheckpoints, type RunRecord } from "./task-run-record.ts";
 import { workspaceTrustRoot } from "./task-signing.ts";
 import { branchName, reviewSurface } from "./task-surface.ts";
@@ -187,6 +188,7 @@ class TaskRunComposition {
   readonly #worktrees: NodeGitWorktreeAdapter;
   readonly #lease: RuntimeLocalLease;
   readonly #payloads = new InMemoryExecutionPayloadStore();
+  readonly providers: ProviderProcesses;
   readonly #feedback = new Map<string, string>();
   #currentFeedback: string | undefined;
   #lastHandle: { readonly worktreeRef: string; readonly baseCommit: string } | undefined;
@@ -212,6 +214,7 @@ class TaskRunComposition {
       anchorTaskCommits: true
     });
     this.#lease = new RuntimeLocalLease(runtime);
+    this.providers = new ProviderProcesses({ stderr: io.stderr });
   }
 
   get #task() {
@@ -305,6 +308,7 @@ class TaskRunComposition {
       credential: this.#prepared.implementer.credential,
       env: this.#io.env,
       isolationRoot: this.#workspace.layout.sessionsRoot,
+      providers: this.providers,
       worktrees: this.#worktrees,
       payloads: this.#payloads,
       feedback: () => this.#currentFeedback,
@@ -492,7 +496,8 @@ class TaskRunComposition {
         gates: this.#prepared.gates,
         verifier: this.#prepared.verifier,
         env: this.#io.env,
-        meter: this.#meter(ledger)
+        meter: this.#meter(ledger),
+        providers: this.providers
       },
       commit,
       run,
@@ -528,19 +533,29 @@ class TaskRunComposition {
   }
 }
 
-function watchCancellation(runRecord: RunRecord, controller: AbortController): () => void {
+function watchCancellation(
+  runRecord: RunRecord,
+  controller: AbortController,
+  providers: ProviderProcesses
+): () => void {
   const interrupt = () => controller.abort("interrupted");
+  // invariant: while a provider is running, a termination request belongs to
+  // the provider processes: they are stopped and the command ends with the run
+  // left resumable. At any other moment it cancels the run, as SIGINT always does.
+  const terminate = () => {
+    if (!providers.running()) interrupt();
+  };
   const timer = setInterval(() => {
     void runRecord.cancelRequested().then((requested) => {
       if (requested) controller.abort("cancel requested");
     });
   }, CANCEL_POLL_MS);
   process.once("SIGINT", interrupt);
-  process.once("SIGTERM", interrupt);
+  process.on("SIGTERM", terminate);
   return () => {
     clearInterval(timer);
     process.off("SIGINT", interrupt);
-    process.off("SIGTERM", interrupt);
+    process.off("SIGTERM", terminate);
   };
 }
 
@@ -593,7 +608,7 @@ export async function runTask(io: TaskCommandIo, options: { readonly runId: unkn
     await runRecord.claimActive(io.pid);
     const composition = new TaskRunComposition(io, workspace, plan, runtime, prepared, runRecord);
     const controller = new AbortController();
-    const stop = watchCancellation(runRecord, controller);
+    const stop = watchCancellation(runRecord, controller, composition.providers);
     try {
       await composition.claimWriterLease();
       const outcome = await new TaskRunCoordinator(composition.ports()).run({

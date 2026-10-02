@@ -7,14 +7,20 @@
 // or one of its two idle descendants.
 import { test } from "node:test";
 
-import { terminateProviderTree } from "../../../apps/vestra-cli/src/task/task-process-tree.ts";
+import { ProviderProcesses } from "../../../apps/vestra-cli/src/task/task-process-tree.ts";
 import { CodexDriver } from "../../../packages/drivers/src/index.ts";
 import { codexFixture } from "../../../tests/helpers/codex-driver-fixture.mjs";
 import { processTreeSuite } from "../../../tests/helpers/process-tree-fixture.mjs";
 
+// invariant: the terminator is the one `vestra task` hands this driver, and a
+// tree it could not confirm stopped would be named in `reported`.
+const reported = [];
+const providers = new ProviderProcesses({ stderr: (text) => reported.push(text) });
+
 processTreeSuite(test, {
   label: "codex",
-  terminator: terminateProviderTree,
+  terminator: providers.session("Codex").terminateTree,
+  reported,
   build: (dependencies, mode) => {
     const fixture = codexFixture({ environment: { FAKE_CODEX_MODE: mode } });
     return { driver: new CodexDriver(fixture.dependencies(dependencies)), request: fixture.request() };

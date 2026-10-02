@@ -1,6 +1,6 @@
 // DETERMINISTIC FAKE support - the fixture channel shared by the labeled fake
 // provider CLIs in this directory. It never contacts a provider.
-import { appendFileSync, readFileSync, realpathSync } from "node:fs";
+import { appendFileSync, existsSync, readFileSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve, sep } from "node:path";
 
@@ -30,6 +30,12 @@ export function fixtureLog(name) {
     if (fixture["--fixture-log"] !== undefined)
       appendFileSync(insideTemp(join(fixture["--fixture-log"], name)), `${JSON.stringify(entry)}\n`);
   };
+}
+
+// why: a test steers a fake between two runs of one request by leaving, or
+// removing, an empty file of this name in the fixture's private log directory.
+export function fixtureFlag(name) {
+  return fixture["--fixture-log"] !== undefined && existsSync(insideTemp(join(fixture["--fixture-log"], name)));
 }
 
 // why: the observation proves which credential the child received as a

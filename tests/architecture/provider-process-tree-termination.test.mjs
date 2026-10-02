@@ -41,30 +41,59 @@ test("a provider leads its own process group everywhere but on Windows, and the 
   assert.doesNotMatch(source, /@verchestra\/platform-node/u, "a driver may not import a sibling adapter");
 });
 
-test("the task composition hands every provider driver it builds the tree terminator", () => {
+// invariant: a provider session of the task composition comes from the
+// command's provider processes, which give the driver the tree terminator and
+// learn the provider's process from `onSpawn`, so that an interrupt can stop it.
+test("the task composition hands every provider driver it builds the tree terminator and its spawn observer", () => {
   const builders = taskSources.filter(({ source }) => source.match(PROVIDER_DRIVER) !== null);
   assert.deepEqual(
     builders.map(({ name }) => name),
     ["task-codex.ts", "task-implementer.ts"]
   );
-  for (const { name, source } of builders)
+  for (const { name, source } of builders) {
+    const built = source.match(PROVIDER_DRIVER).length;
     assert.equal(
-      source.match(/\bterminateTree: terminateProviderTree\b/gu)?.length,
-      source.match(PROVIDER_DRIVER).length,
+      source.match(/\bterminateTree: (?:session|provider)\.terminateTree\b/gu)?.length,
+      built,
       `${name} builds a provider driver without the tree terminator`
     );
+    assert.equal(
+      source.match(/\bonSpawn: (?:session|provider)\.onSpawn\b/gu)?.length,
+      built,
+      `${name} builds a provider driver the command cannot stop on an interrupt`
+    );
+    assert.match(source, /\b(?:session|provider) = [A-Za-z.]*providers\.session\("(?:Claude Code|Codex)"\)/u);
+    assert.match(source, /await (?:session|provider)\.end\(\)/u, `${name} never ends its provider session`);
+  }
 });
 
-test("the tree terminator is platform-node's, and no task source signals a process itself", () => {
-  assert.match(
-    code(read(`${TASK_ROOT}/task-process-tree.ts`)),
-    /import \{ terminateProcessTree \} from "@verchestra\/platform-node";/u
-  );
+test("the tree terminator is platform-node's, and no task source signals a provider itself", () => {
+  const owner = code(read(`${TASK_ROOT}/task-process-tree.ts`));
+  assert.match(owner, /import \{ terminateProcessTree \} from "@verchestra\/platform-node";/u);
+  assert.match(owner, /options\.terminateTree \?\? terminateProcessTree/u);
   // why: signal 0 only asks whether a process exists, which the Run record
-  // does for the process that drives a run; every other signal is a kill.
-  const signals = /process\.kill\((?![^)]*,\s*0\))/u;
+  // does for the process that drives a run. The one other signal a task
+  // source sends is to the command itself, to end as the signal it received
+  // would have ended it.
+  const signals = /process\.kill\((?![^)]*,\s*0\))(?!process\.pid, signal\))/u;
   assert.deepEqual(
     taskSources.filter(({ source }) => signals.test(source)).map(({ name }) => name),
     []
+  );
+  assert.equal(owner.match(/process\.kill\(/gu)?.length, 1, "the provider processes send one signal: to the command");
+});
+
+// invariant: a hang-up and a termination request are the provider processes'
+// to answer, and only while a provider runs; SIGINT stays the run's cancel.
+test("the interrupt handlers are the provider processes', and SIGINT is not among them", () => {
+  const owner = code(read(`${TASK_ROOT}/task-process-tree.ts`));
+  assert.match(owner, /INTERRUPT_SIGNALS: readonly InterruptSignal\[\] = \["SIGHUP", "SIGTERM"\]/u);
+  assert.doesNotMatch(owner, /SIGINT/u);
+  const run = code(read(`${TASK_ROOT}/task-run.ts`));
+  assert.match(run, /process\.once\("SIGINT", interrupt\)/u);
+  assert.match(run, /if \(!providers\.running\(\)\) interrupt\(\);/u);
+  assert.deepEqual(
+    taskSources.filter(({ source }) => /"SIGHUP"/u.test(source)).map(({ name }) => name),
+    ["task-process-tree.ts"]
   );
 });
