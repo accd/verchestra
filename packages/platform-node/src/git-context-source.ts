@@ -1,7 +1,5 @@
 import { createHash } from "node:crypto";
-import { execFile } from "node:child_process";
 import { isAbsolute, resolve } from "node:path";
-import { promisify } from "node:util";
 
 import type {
   ContextFragmentInput,
@@ -11,7 +9,8 @@ import type {
 } from "@verchestra/application";
 import type { DataClassificationValue } from "@verchestra/domain";
 
-const execFileAsync = promisify(execFile);
+import { runGitBytes } from "./task-worktree.ts";
+
 const OBJECT_ID = /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u;
 const SAFE = /^[A-Za-z0-9][A-Za-z0-9._:@/+-]{0,511}$/u;
 const LOGICAL_PATH = /^(?![A-Za-z]:)(?!\/)(?!.*\\)(?!.*(?:^|\/)\.\.(?:\/|$))[A-Za-z0-9._@+/-]+$/u;
@@ -221,13 +220,7 @@ export class NodeGitContextSource implements ContextSourcePort {
 
   async #git(args: readonly string[], maxBuffer: number): Promise<Buffer> {
     try {
-      const { stdout } = await execFileAsync("git", [...args], {
-        cwd: this.#repositoryRoot,
-        encoding: "buffer",
-        maxBuffer,
-        windowsHide: true
-      });
-      return stdout;
+      return await runGitBytes(this.#repositoryRoot, args, maxBuffer);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER")
         fail("VES_GIT_CONTEXT_LIMIT", "Git output exceeded its bound", { cause: error });
