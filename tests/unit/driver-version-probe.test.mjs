@@ -96,6 +96,40 @@ test("output the pattern cannot read is unsupported, with the version key presen
   }
 });
 
+test("text longer than a version line is unsupported and is never matched, however many digits it holds", async () => {
+  // invariant: 1024 characters is the bound; one more is not a version.
+  const padded = `2.1.282 ${"x".repeat(1024 - "2.1.282 ".length)}`;
+  assert.equal(padded.length, 1024);
+  assert.equal((await minimum(padded)).version, "2.1.282");
+  for (const output of [`${padded}x`, "0".repeat(200_000), `${"0".repeat(200_000)}.1.2`]) {
+    const started = Date.now();
+    const report = await minimum(output, "0.115.0", NAMED);
+    assert.equal(report.available, false);
+    assert.deepEqual(report.error, UNSUPPORTED);
+    assert.equal(report.version, undefined);
+    assert.ok(Date.now() - started < 1_000, "an oversized answer is refused without scanning it");
+  }
+  // why: surrounding whitespace is not part of the answer and does not count.
+  assert.equal((await minimum(`${" ".repeat(4_000)}2.1.282\n`)).version, "2.1.282");
+});
+
+test("a pattern that starts at a digit-run boundary reads the same version as an unanchored one", async () => {
+  const BOUNDED = /(?:^|\D)(\d+)\.(\d+)\.(\d+)/u;
+  const UNANCHORED = /(\d+)\.(\d+)\.(\d+)/u;
+  for (const [output, version] of [
+    ["0.116.0", "0.116.0"],
+    ["fixture-cli 0.116.0", "0.116.0"],
+    ["v0.116.0", "0.116.0"],
+    ["fixture 7 0.116.0-rc.1 (build 9.9.9)", "0.116.0"],
+    ["x10.20.30y", "10.20.30"],
+    ["no version here", undefined]
+  ]) {
+    const bounded = await minimum(output, "0.0.1", BOUNDED);
+    assert.deepEqual(bounded, await minimum(output, "0.0.1", UNANCHORED), output);
+    assert.equal(bounded.version, version, output);
+  }
+});
+
 test("the driver's pattern decides what counts as a version line", async () => {
   assert.equal((await minimum("fixture-cli 2.1.282")).available, false, "an anchored pattern refuses a prefix");
   assert.equal((await minimum("fixture-cli 2.1.282", "2.1.282", NAMED)).available, true);

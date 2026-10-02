@@ -78,7 +78,9 @@ function openCodeError(code: string, message: string): DriverProtocolError {
   return new DriverProtocolError(code, message);
 }
 
-const VERSION_PATTERN = /(\d+)\.(\d+)\.(\d+)/u;
+// invariant: a version starts a digit run, so the match is tried once per run
+// and a long run of digits costs linear time.
+const VERSION_PATTERN = /(?:^|\D)(\d+)\.(\d+)\.(\d+)/u;
 // invariant: the probe refusals are VES_OPENCODE_NOT_AVAILABLE and
 // VES_OPENCODE_VERSION_UNSUPPORTED.
 const PROBE_PROFILE = Object.freeze({
