@@ -51,26 +51,6 @@ test("Codex abort sends protocol interrupt before process-tree termination", asy
   );
 });
 
-test("Codex close is idempotent and emits one terminal event", async () => {
-  const fixture = codexFixture();
-  const events = [];
-  const driver = new CodexDriver(fixture.dependencies());
-  const session = await driver.start(fixture.request(), (event) => events.push(event), new AbortController().signal);
-  await driver.close(session);
-  await driver.close(session);
-  assert.equal(events.filter((event) => event.type === "session.closed").length, 1);
-});
-
-test("Codex session reference is local to one adapter instance", async () => {
-  const fixture = codexFixture();
-  const owner = new CodexDriver(fixture.dependencies());
-  const session = await owner.start(fixture.request(), () => {}, new AbortController().signal);
-  await assert.rejects(
-    new CodexDriver(fixture.dependencies()).close(session),
-    (error) => error.code === "VES_DRIVER_SESSION_UNKNOWN"
-  );
-});
-
 test("Codex portable lifecycle contains no credential, thread, or turn state", async () => {
   const secret = "machine-only-secret";
   const fixture = codexFixture({

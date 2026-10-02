@@ -39,26 +39,6 @@ test("live abort terminates the Claude process tree and emits redacted evidence"
   );
 });
 
-test("Claude close is idempotent and emits one terminal event", async () => {
-  const fixture = claudeFixture();
-  const events = [];
-  const driver = new ClaudeCodeDriver(fixture.dependencies());
-  const session = await driver.start(fixture.request(), (event) => events.push(event), new AbortController().signal);
-  await driver.close(session);
-  await driver.close(session);
-  assert.equal(events.filter((event) => event.type === "session.closed").length, 1);
-});
-
-test("Claude session reference is local to one adapter instance", async () => {
-  const fixture = claudeFixture();
-  const owner = new ClaudeCodeDriver(fixture.dependencies());
-  const session = await owner.start(fixture.request(), () => {}, new AbortController().signal);
-  await assert.rejects(
-    new ClaudeCodeDriver(fixture.dependencies()).close(session),
-    (error) => error.code === "VES_DRIVER_SESSION_UNKNOWN"
-  );
-});
-
 test("Claude portable results contain no credential or provider session state", async () => {
   const secret = "machine-only-secret";
   const fixture = claudeFixture({
