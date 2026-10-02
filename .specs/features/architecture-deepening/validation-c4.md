@@ -372,3 +372,126 @@ was needed. `qualify:keychain` was not run.
   Codex is killed without the `turn/interrupt` grace period. The driver's own
   abort path is unchanged and still interrupts first.
 - **Platform matrix.** As for C4-1.
+
+## C4-3 (T4c) — the two Self-Test scenarios adopt the runner
+
+`S` is `tests/integration/self-test-verifier-session.test.mjs` and `Y` is
+`tests/architecture/driver-session-runner-locality.test.mjs`.
+
+`exercise` in `apps/vestra-cli/src/self-test-driver-scenario.ts` and
+`runVerifierDriverSession` in `apps/vestra-cli/src/self-test-full-scenario.ts`
+lose their own start and close and run their session through
+`runDriverSession`. The `drivers` scenario still takes its facts from the
+lifecycle events alone. The `full` scenario records its verifier session only
+when the runner reports it completed.
+
+The runner hands an observer the driver's own event type: `DriverSessionPort`
+and `DriverSessionRun` carry it as a parameter that defaults to the widest
+shape, so a scenario that holds a `Driver` collects `DriverEvent` and the
+adapter is unchanged. It is a type-only change.
+
+`runVerifierDriverSession` is exported and takes the driver commands, as
+`resolveDriverBinding` already does, because no test could reach its refusal
+before.
+
+### Requirement evidence
+
+| Clause | Definition (symbol) | Assertion evidence |
+| --- | --- | --- |
+| The `drivers` scenario runs its three sessions through the runner | `exercise` | `tests/integration/self-test-driver-scenario.test.mjs` (unmodified, 5 cases): three sessions started and closed, the check catalog, no writer request. `Y:64-79` names it as a consumer |
+| The `full` scenario's verifier session runs through the runner | `runVerifierDriverSession` | Completed, read-only and closed, on the driver the binding names: `S:18-28`, `S:30-34`. `tests/integration/self-test-full-scenario.test.mjs`, the Self-Test end-to-end suite and the crash matrix pass unmodified. `Y:64-79` |
+| A verifier session that does not complete is refused | `runVerifierDriverSession` | A driver that reports a qualified version and ends before it answers: `S:36-41` |
+| A verifier session that requests a tool is refused | `runVerifierDriverSession`, `assertNoToolRequests` | `VES_VERIFIER_GRANT_INVALID` from the events the runner delivered: `S:45-56` |
+| A binding to a driver that is not composed is refused | `verifierDriver` | `S:58-63` |
+| The start, observe and close loop is implemented once | the runner | No other source of the composition root or of `agent-runtime` calls `start`: `Y:54-58`. None cancels or closes a session on a driver it holds: `Y:60-62`. The consumers are exactly the adapter, the verifier and the two scenarios: `Y:64-79`. The scan reads both roots and finds the three calls in the runner: `Y:48-52` |
+| An observer reads events as the driver types them | `DriverSessionPort`, `DriverSessionRun` | `pnpm typecheck`: both scenarios push the observed events into `DriverEvent[]` |
+
+### Behaviour changes
+
+1. The `full` scenario refuses a verifier session that emitted an error event
+   even when its close reports `completed`. Before, only the close was read.
+   No driver emits an error event and then closes as completed.
+
+Nothing else changes: the `drivers` scenario never read the outcome of a
+session and still does not.
+
+### Tests changed
+
+None deleted and none modified. Added: `S` (5 cases) with two labeled fakes
+under `tests/helpers/self-test-fakes/`, and `Y` (4 cases).
+
+### Discrimination (disposable copy)
+
+Same method, on a copy of the tree at `60f619e`. Suites run:
+`tests/integration/self-test-driver-scenario.test.mjs`, `S`,
+`tests/integration/self-test-full-scenario.test.mjs`,
+`tests/unit/self-test-driver-binding.test.mjs`, `Y`, `R` and `D`. Unmutated
+copy: 67 passed, 0 failed.
+
+| Mutation in the copy | Failing cases |
+| --- | --- |
+| **The `drivers` scenario as it was before this range** (the file of `e17abb3`: start and close by hand) | 3: `Y:54-58`, `Y:60-62`, `Y:64-79`. Its five behaviour cases still pass, which is the evidence that the scenario's behaviour did not change |
+| **The `full` scenario as it was before this range** (the file of `e17abb3`) | 4: the same three cases of `Y`, and `S` as a whole, which cannot load without the seam |
+| The `full` scenario records a verifier session whatever its outcome | 1: `S:36-41` |
+| The `full` scenario does not observe its verifier session | 1: `S:45-56` |
+| The `full` scenario does not check its verifier session for tool requests | 1: `S:45-56` |
+| The verifier session ignores the commands it is given | 2: `S:36-41`, `S:45-56` |
+| The verifier session always runs on Codex | 2: `S:45-56`, `S:58-63` |
+| The `drivers` scenario does not observe its sessions | 5: every case of `self-test-driver-scenario.test.mjs` |
+| The `drivers` scenario runs no session | 6: the same five and `Y:64-79` |
+| The verifier of `vestra task` closes its session a second time by hand | 1: `Y:60-62` |
+
+All 10 mutations failed at least one case. One more was checked with the
+compiler, because no test can see a type: with the observer typed as the widest
+event again, `pnpm typecheck` fails in both scenario sources.
+
+### Guardrails
+
+- Complexity baseline: no entry changed, no key added or moved.
+- Census: no file gained or lost `JSON.stringify` or `createHash`.
+- Citation fixed in `.specs/features/architecture-deepening/validation-c5.md`:
+  the verification ports of the full scenario, now
+  `self-test-full-scenario.ts:731-772`. The other citations of that file in
+  `.specs` name lines of earlier revisions and were already stale.
+- No file under `docs/qualification/` changed. Migration count (12) and runtime
+  error catalog count (19) unchanged. No public error code was added, removed
+  or changed.
+- `tests/mutation/*`, the fault-injection suites and the Self-Test suites pass
+  unmodified.
+
+### Gates (Node 24.14.0, macOS arm64)
+
+Each row was measured on a detached checkout of exactly that commit.
+
+| Commit | `pnpm gate:quick` | `pnpm test:architecture` | Focused suites |
+| --- | --- | --- | --- |
+| `b4984f9` the typed observer | PASS — unit 2482, agent-readiness 323, census 13 | PASS — 76 | `R`, `D`, `A`: PASS — 49 |
+| `cfa6433` the two scenarios | PASS — 2482, 323, 13 | PASS — 76 | `self-test-driver-scenario.test.mjs`, `S`, `self-test-full-scenario.test.mjs`, `self-test-driver-binding.test.mjs`: PASS — 25 |
+| `60f619e` the locality test | PASS — 2482, 323, 13 | PASS — 80 | `Y`, the four suites above and `tests/e2e/self-test-cli-e2e.test.mjs`: PASS — 39 |
+
+At the last code commit of the range:
+
+| Command (at `60f619e`) | Result |
+| --- | --- |
+| `pnpm gate:build` | PASS — unit 2482, contract 756, integration 924, e2e 238, architecture 80, build 146, qualification 296 |
+| `pnpm gate:security` | PASS — unit 2482, contract 756, e2e 238, architecture 80, qualification 296, security 1339, fault 310 |
+| `pnpm test:fault` | PASS — 310 |
+| `pnpm test:contract` | PASS — 756 |
+| `pnpm test:integration` | PASS — 924 |
+| `pnpm qualify:claude` | PASS — 53 |
+| `pnpm qualify:codex` | PASS — 20 |
+| `node --test tests/e2e/task-cli-e2e.test.mjs tests/e2e/mediated-task-execution-e2e.test.mjs` | PASS — 23 |
+| `pnpm agent:check` | PASS |
+
+No test was skipped in any stage. No provider session was started and no login
+was needed. `qualify:keychain` was not run.
+
+### Open points for the reviewer
+
+- **The seam on the verifier session.** `runVerifierDriverSession` is exported
+  and takes the driver commands so that its two refusals can be reached. The
+  alternative was to leave them untested, as they were.
+- **The locality test reads source text.** It forbids a call to `start` in the
+  composition root and in `agent-runtime` outside the runner. A source that
+  needs another `start` method there will have to say why in that test.
+- **Platform matrix.** As for C4-1.
