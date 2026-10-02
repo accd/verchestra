@@ -1136,6 +1136,78 @@ note. -->
   `tests/integration/task-workspace-containment.test.mjs`). Evidence is in
   `.specs/features/architecture-deepening/validation-c2.md`.
 
+### AD-048 — One driver session runner above the Driver interface; a stop always ends as cancelled (ADP-4)
+
+- **Status:** proposed (ratified by reviewing the pull requests that carry
+  `refactor/driver-session-runner`).
+- **Context:** Four places started a driver, observed its events, and closed
+  it: `DriverExecutionAdapter#run`, the Codex verifier of `vestra task`, and
+  the two Self-Test scenarios. Only the first cancelled the session when it was
+  stopped, each had its own rule for how a session ended, and the verifier
+  started Codex for a caller that was already cancelled. AD-012 names "a driver
+  session runner over `Driver.start` → deltas → close" as a missing piece and
+  forbids a generic runtime. ADP-3 recorded one defect for this decision to
+  settle: cancelling a running session emits `session.closed` with `cancelled`,
+  then an error event, and `close` answers `failed`.
+- **Decision:**
+  1. `packages/agent-runtime/src/execution/driver-session-runner.ts` is the one
+     module that runs a driver session. Its interface is `runDriverSession`,
+     which takes a driver, a start request, an optional signal and an optional
+     observer, and returns an outcome (`completed`, `failed`, `cancelled`) and
+     the stable codes of the error events. It sits beside the structural
+     `DriverSessionPort`, so `agent-runtime` still imports no driver.
+  2. **The name and the interface are bound to drivers.** The runner knows the
+     Driver protocol and nothing about a role. What an observer does with an
+     event, and what an outcome means, stay with the consumer: the adapter
+     keeps the tool surface, metering, checkpoints and the precedence of its
+     own refusals; the verifier keeps its verdict text and its failure reasons;
+     a Self-Test scenario keeps its facts.
+  3. The caller's signal is the one way to stop a session. A caller that is
+     already aborted never starts the driver. A stop cancels the announced
+     session once, and the runner waits for that cancel before it closes, so
+     the terminal event carries the cancel and its reason. A session announced
+     after the stop is cancelled as soon as it is known.
+  4. **A stop always ends as `cancelled`.** So does a session whose terminal
+     event or whose close says `cancelled`. An error event or a `failed` close
+     after that does not turn a cancel into a failure, and the late event is
+     still delivered. `completed` is what the driver's close says and nothing
+     less, with no error event observed; everything else is `failed`. This is
+     the answer to the defect ADP-3 recorded. The drivers' event sequence is
+     not changed.
+  5. An observer runs inside a driver's stream handling. An error it throws is
+     held, the session is cancelled and closed, and the error is rethrown.
+  6. A start that fails after it announced a session has that session closed by
+     its announced identifier, so the driver releases what it holds. A start
+     that fails after the stop is the cancel the caller asked for.
+  7. `recordUsageAndDecide` in
+     `packages/application/src/execution/budget-meter.ts` is the one step that
+     records a usage event and returns the verdict. Only the meter's own
+     refusal is a budget stop; any other error is rethrown. The executor and
+     the verifier meter through it.
+- **Alternatives rejected:** a generic session or agent runtime (AD-012); the
+  runner in `packages/drivers` (the adapter that needs it lives in
+  `agent-runtime`, which may not import a sibling adapter); a controller owned
+  by the runner and handed to the observer (every consumer already owns one,
+  for an executor's cancel, a timer or a fatal denial); dropping events after
+  the terminal event (the adapter's checkpoint would then depend on which of
+  two events a driver emitted first); the adapter's former rule, under which a
+  close with no outcome counted as completed (it would have weakened the
+  verifier and the Self-Test verifier session, which already required
+  `completed`); changing the drivers' event sequence in the same change (it is
+  pinned by the lifecycle matrix and the ledger contract and belongs to a
+  requalification of its own); rethrowing a failed cancel (the stop has
+  already decided the outcome).
+- **Consequence:** `tests/contract/driver-session-runner.test.mjs` is the
+  contract, and `tests/integration/driver-session-runner-drivers.test.mjs` runs
+  it against the Claude Code, Codex and Pi drivers. The driver execution
+  adapter runs its session through it. The verifier and the two Self-Test
+  scenarios adopt it in the tasks that follow (T4b, T4c). One point is left
+  open: a cancelled
+  Claude Code or Pi run still emits an error event after its terminal event
+  and still answers `failed` on close. The runner tolerates that; changing it
+  is a decision for the drivers. Evidence is in
+  `.specs/features/architecture-deepening/validation-c4.md`.
+
 ## Handoff
 
 - **Feature:** `subscription-provider-auth` (ADP-A, tasks TA1 and TA2) on
