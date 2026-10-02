@@ -980,6 +980,60 @@ note. -->
   interface is unchanged, so the session runner (ADP-4) can be built on it
   without touching the ledger.
 
+### AD-046 — One version probe, parametrised by error-code prefix and noun; the redactor is a module of its own (ADP-3)
+
+- **Status:** proposed (ratified by reviewing the pull request that carries
+  `refactor/driver-version-probe`).
+- **Context:** The Claude Code, Codex and OpenCode drivers each parsed the
+  provider's version line, compared it with a floor, and built the available,
+  unsupported and unavailable reports by hand. Pi built the same three reports
+  around an exact pin. The three CLI drivers also each carried the same
+  sensitive-value redactor.
+- **Decision:**
+  1. `packages/drivers/src/driver-version-probe.ts` owns the parse, the
+     comparison and the three reports. A driver supplies a profile (identity
+     fields, error-code prefix, noun, capabilities), a requirement, and a
+     function that observes the provider's version text. Observation stays in
+     the driver: the `--version` spawn with its own environment and working
+     directory for the CLI drivers, the manifest read for Pi.
+  2. **The probe takes the error-code prefix and the noun.** The codes are
+     `<prefix>_NOT_AVAILABLE` and `<prefix>_VERSION_UNSUPPORTED`, and the
+     messages "<noun> is unavailable" and "<noun> version is unsupported". The
+     four drivers already followed that scheme, so every code and message is
+     unchanged. Because the codes are no longer literals in the product source,
+     each driver names its two codes in a comment beside its profile, and the
+     driver suites and the lifecycle matrix assert all eight literally.
+  3. A requirement is a **minimum** or **exact**. A minimum is read with the
+     driver's own pattern, admits one major line only, and qualifies nothing
+     when the floor itself cannot be read. Exact compares the reported text
+     with the qualified version and parses nothing, so a suffixed or longer
+     version is drift and is reported as the provider spelled it. Pi is exact.
+     The floors keep their values: `2.1.168` for the T03 profile,
+     `CLAUDE_MEDIATED_MINIMUM_VERSION` (`2.1.282`) for the mediated profiles,
+     `0.115.0` for Codex and `1.17.18` for OpenCode.
+  4. **The redactor is `packages/drivers/src/driver-redaction.ts`, not part of
+     the probe module.** The plan asked for one module for parse, compare and
+     redact. Redacting provider text shares no state and no vocabulary with
+     version probing; a reader looking for either would not look in the other.
+     Both land in the same pull request, each in its own commit.
+- **Alternatives rejected:** a full error object per driver instead of prefix
+  and noun (four strings where two generate them, and a driver could then
+  leave the naming scheme the matrix relies on); moving the `--version` spawn
+  into the module (each driver's environment and working directory differ,
+  and child-process handling stays per driver); parsing Pi's version (a
+  suffixed version would compare equal, or the report would lose the text the
+  manifest gave); comparing the captured numbers directly instead of re-reading
+  the normalized version (it would admit a version number too long to print in
+  full, which `supported` refused).
+- **Consequence:** `tests/unit/driver-version-probe.test.mjs` and
+  `tests/unit/driver-redaction.test.mjs` are the contracts. Three things the
+  drivers did and no test pinned are now pinned: the floor each CLI driver
+  applies when a composition states none (a floor axis in
+  `tests/contract/driver-lifecycle-matrix.test.mjs`), the anchoring of the
+  Claude Code pattern, and Pi refusing a newer or suffixed runtime. A change
+  to any floor now fails a test and is a requalification. Evidence is in
+  `.specs/features/architecture-deepening/validation-c3.md`.
+
 ## Handoff
 
 - **Feature:** `subscription-provider-auth` (ADP-A, tasks TA1 and TA2) on
