@@ -159,6 +159,7 @@ export {
   type VerifiedLauncherHandoffRequest,
   type VerifiedLauncherHandoffResult
 } from "./activation-launcher-adapters.ts";
+export { terminateProcessTree } from "./process-tree-terminator.ts";
 export {
   SpawnedProbeWorker,
   SpawnedProbeWorkerError,

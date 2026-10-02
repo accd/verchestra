@@ -109,3 +109,17 @@ export function killProcesses(pids: readonly number[]): void {
     }
   }
 }
+
+// why: a group signal alone leaves a setsid() escapee alive, so the tree is
+// recorded first and what the signal could not reach is killed afterwards. The
+// probe host and the provider drivers stop a child through this one routine.
+// invariant: the escapees are killed even when the group could not be
+// confirmed dead, so a failed termination still stops everything it found.
+export async function terminateProcessTree(pid: number, incomplete: () => never): Promise<void> {
+  const escapees = await snapshotDescendants(pid);
+  try {
+    await terminateProcessGroup(pid, incomplete);
+  } finally {
+    killProcesses(escapees);
+  }
+}

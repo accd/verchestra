@@ -4,7 +4,7 @@ import { chmod, mkdtemp, readFile, realpath, rm, stat, writeFile } from "node:fs
 import { tmpdir } from "node:os";
 import { extname, isAbsolute, join } from "node:path";
 
-import { killProcesses, snapshotDescendants, terminateProcessGroup } from "./process-tree-terminator.ts";
+import { terminateProcessTree } from "./process-tree-terminator.ts";
 
 const DIGEST = /^sha256:[a-f0-9]{64}$/u;
 const WORKSPACE = /^[A-Za-z0-9][A-Za-z0-9._:@/+-]{0,511}$/u;
@@ -316,16 +316,10 @@ export class SpawnedProbeWorker {
     this.#terminated = true;
     const pid = this.#child.pid;
     try {
-      if (pid !== undefined) {
-        const escapees = await snapshotDescendants(pid);
-        try {
-          await terminateProcessGroup(pid, () =>
-            fail("VES_PROBE_HOST_TERMINATION_INCOMPLETE", "Probe worker process group remained alive after termination")
-          );
-        } finally {
-          killProcesses(escapees);
-        }
-      }
+      if (pid !== undefined)
+        await terminateProcessTree(pid, () =>
+          fail("VES_PROBE_HOST_TERMINATION_INCOMPLETE", "Probe worker process group remained alive after termination")
+        );
       this.#child.stdin.destroy();
       await Promise.race([
         this.#closed,
