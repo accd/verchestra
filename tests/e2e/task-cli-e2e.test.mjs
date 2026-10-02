@@ -609,6 +609,11 @@ test("an interrupted run resumes at its gate without repeating the implementer's
   assert.equal(interrupted.activeProcess, false);
   assert.equal(interrupted.checkpoints.executor, "awaiting-gate");
   assert.equal(receiptCount(fixture), 1);
+  // invariant: the implementer's usage was recorded when it was reported, on a
+  // repair state with no attempt yet: the attempt was killed at its gate.
+  assert.equal(interrupted.checkpoints.repair, "repair");
+  assert.equal(interrupted.checkpoints.budget.consumedTokens, IMPLEMENTER_TOKENS);
+  assert.equal(interrupted.checkpoints.budget.usageEvents, 1);
   refused(start(fixture, plan.runId), "VES_TASK_TRANSITION_REFUSED", "start an interrupted run");
 
   const resumed = ok(start(fixture, plan.runId, "resume"), "resume");
@@ -616,8 +621,68 @@ test("an interrupted run resumes at its gate without repeating the implementer's
   assert.equal(logLines(fixture, "fake-claude.log").filter((entry) => entry.scenario !== undefined).length, 1);
   assert.equal(receiptCount(fixture), 1);
   assert.equal(fixture.git(["show", `${resumed.branch}:src/value.txt`]), "new");
+  // why: the implementer ran once, before the kill, and the verifier once,
+  // after the resume: 18 + 8 = 26 tokens in 2 events. This run reported 8 in
+  // 1 event while the killed attempt's usage was never recorded.
+  const budget = status(fixture, plan.runId).checkpoints.budget;
+  assert.equal(budget.consumedTokens, RUN_TOKENS);
+  assert.equal(budget.unbilledTokens, RUN_TOKENS);
+  assert.equal(budget.usageEvents, RUN_USAGE_EVENTS);
   refused(start(fixture, plan.runId, "resume"), "VES_TASK_TRANSITION_REFUSED", "resume a run in review");
 });
+
+// invariant: usage is recorded when it arrives, wherever the attempt then is.
+// Here the implementer has reported its usage and its process is still open,
+// so the attempt has not reached its gate when the run is killed. `status`
+// reports that usage, and the resumed run, which has no finished attempt to
+// resume and runs the implementer again, adds the second session to it.
+test(
+  "a run killed after its implementer reported usage keeps it, and resume adds the new session",
+  TIMEOUT,
+  async (t) => {
+    if (!DARWIN) return notConfiguredOffMacOS(t);
+    const fixture = await taskFixture();
+    await writeFile(join(fixture.scratch, "linger-implementer"), "");
+    const plan = await approved(fixture);
+    const child = fixture.launchAsync(startArguments(fixture, plan.runId));
+    const finished = exited(child);
+    const lingering = () =>
+      logLines(fixture, "fake-claude.log").find((entry) => entry.lingering !== undefined)?.lingering;
+    // hazard: a case that fails before the kill would leave the command and
+    // the lingering fake alive.
+    t.after(() => {
+      child.kill("SIGKILL");
+      if (lingering() !== undefined && running(lingering())) process.kill(lingering(), "SIGKILL");
+    });
+    await waitFor(() => lingering() !== undefined);
+    await waitFor(() => status(fixture, plan.runId).checkpoints.budget !== null);
+    child.kill("SIGKILL");
+    assert.equal((await finished).signal, "SIGKILL");
+    process.kill(lingering(), "SIGKILL");
+    await rm(join(fixture.scratch, "linger-implementer"));
+
+    const interrupted = status(fixture, plan.runId);
+    assert.equal(interrupted.state, "IMPLEMENTING");
+    assert.equal(interrupted.activeProcess, false);
+    assert.notEqual(interrupted.checkpoints.executor, "awaiting-gate", "the attempt had reached its gate");
+    assert.equal(interrupted.checkpoints.repair, "repair");
+    assert.equal(interrupted.checkpoints.budget.consumedTokens, IMPLEMENTER_TOKENS);
+    assert.equal(interrupted.checkpoints.budget.usageEvents, 1);
+
+    const resumed = ok(start(fixture, plan.runId, "resume"), "resume");
+    assert.equal(resumed.state, "HUMAN_REVIEW");
+    assert.equal(logLines(fixture, "fake-claude.log").filter((entry) => entry.scenario !== undefined).length, 2);
+    // why: two implementer sessions reported usage and one verifier session:
+    // 18 + 18 + 8 = 44 tokens in 3 events. 26 would have lost the killed
+    // session's usage.
+    const budget = status(fixture, plan.runId).checkpoints.budget;
+    assert.equal(budget.consumedTokens, 2 * IMPLEMENTER_TOKENS + VERIFIER_TOKENS);
+    assert.equal(budget.consumedTokens, 44);
+    assert.equal(budget.unbilledTokens, 44);
+    assert.equal(budget.usageEvents, 3);
+    assert.equal(status(fixture, plan.runId).checkpoints.repair, "converged");
+  }
+);
 
 test("a malformed state file fails closed before any effect", TIMEOUT, async () => {
   if (!DARWIN) return;
@@ -824,12 +889,17 @@ const INTERRUPTED_PROVIDERS = [
     provider: "the implementer",
     flag: "fork-implementer",
     state: "IMPLEMENTING",
+    // why: Claude Code reports usage when its session ends. A session that was
+    // stopped before that reported none, so there is nothing to record.
+    recorded: null,
     tree: (fixture) => logLines(fixture, "fake-claude.log").find((entry) => entry.tree !== undefined)?.tree
   },
   {
     provider: "the verifier",
     flag: "fork-verifier",
     state: "VERIFYING",
+    // why: the implementer's usage; the stopped verifier had reported none.
+    recorded: IMPLEMENTER_TOKENS,
     tree: (fixture) => {
       const turn = logLines(fixture, "fake-codex-turn.log").find((entry) => entry.scenario === "fork");
       return turn === undefined ? undefined : { provider: turn.pid, sameGroup: turn.sameGroup, escaped: turn.escaped };
@@ -853,7 +923,7 @@ async function assertTreeGone(tree, label) {
   }
 }
 
-for (const { provider, flag, state, tree } of INTERRUPTED_PROVIDERS) {
+for (const { provider, flag, state, tree, recorded } of INTERRUPTED_PROVIDERS) {
   for (const signal of ["SIGHUP", "SIGTERM"]) {
     test(
       `${signal} while ${provider} runs stops its whole tree, records no abort, and leaves a run that resume completes`,
@@ -888,12 +958,18 @@ for (const { provider, flag, state, tree } of INTERRUPTED_PROVIDERS) {
         const runDirectory = join(fixture.stateRoot, "tasks", plan.runId);
         assert.equal(existsSync(join(runDirectory, "cancel.json")), false, "a cancel marker was written");
         assert.equal(existsSync(join(runDirectory, "outcome.json")), false, "an outcome was recorded");
+        assert.equal(interrupted.checkpoints.budget?.consumedTokens ?? null, recorded);
         refused(start(fixture, plan.runId), "VES_TASK_TRANSITION_REFUSED", "start an interrupted run");
 
         await rm(join(fixture.scratch, flag));
         const resumed = ok(start(fixture, plan.runId, "resume"), "resume");
         assert.equal(resumed.state, "HUMAN_REVIEW");
         assert.equal(fixture.git(["show", `${resumed.branch}:src/value.txt`]), "new");
+        // invariant: the total is the usage the providers reported: the stopped
+        // session reported none, the sessions of the resumed run 18 and 8.
+        const budget = status(fixture, plan.runId).checkpoints.budget;
+        assert.equal(budget.consumedTokens, RUN_TOKENS);
+        assert.equal(budget.usageEvents, RUN_USAGE_EVENTS);
       }
     );
   }

@@ -279,9 +279,9 @@ test("the projections add nothing to what the store's ports hold", async () => {
 });
 
 // invariant: a Run has one account of usage, the ledger its latest repair
-// state carries. Usage metered after the repair loop ended is recorded there
-// through `recordBudgetLedger`: only the ledger moves, it is stored when the
-// call returns, and it never moves backwards.
+// state carries. Usage is recorded there as it is metered, through
+// `recordBudgetLedger`: only the ledger moves, it is stored when the call
+// returns, and it never moves backwards.
 const SPENT_MORE = Object.freeze({
   consumedCostUsd: 0.5,
   consumedTokens: 1208,
@@ -296,7 +296,7 @@ function mismatch(error) {
   return true;
 }
 
-test("usage recorded after the repair loop moves only the ledger of the latest repair state", async () => {
+test("usage recorded outside the loop's own saves moves only the ledger of the latest repair state", async () => {
   for (const stage of ["converged", "repair"]) {
     const { checkpoints } = await run();
     await checkpoints.repairPort().saveState(repairState(BILLED, stage));
@@ -306,15 +306,33 @@ test("usage recorded after the repair loop moves only the ledger of the latest r
   }
 });
 
-test("a run whose repair loop saved no state gets its ledger under converged with no attempt", async () => {
+// invariant: a run whose repair loop has saved no state is filed under what its
+// gate checkpoint proves: `repair` while an attempt is in flight, `converged`
+// once the task is committed. No attempt is recorded in either case.
+test("a run whose repair loop saved no state is filed under repair until its task is committed", async () => {
+  const unrecorded = (stage) => ({ stage, attempts: 0, attemptCapsuleDigests: [], budgetLedger: BILLED });
+  const gates = [
+    undefined,
+    gateRow("gate-failed", {
+      gateId: "gate:unit",
+      requirementIds: [REQUIREMENT_ID],
+      evidenceRef: `gate-evidence:${"e".repeat(32)}`,
+      evidenceDigest: filled("5")
+    }),
+    gateRow("gates-passed", { gateEvidenceDigest: filled("5"), gateEvidenceRefs: [`gate-evidence:${"e".repeat(32)}`] })
+  ];
+  for (const gate of gates) {
+    const { checkpoints } = await run();
+    if (gate !== undefined) await checkpoints.gatePort().save(gate);
+    checkpoints.recordBudgetLedger(BILLED);
+    assert.deepEqual(await checkpoints.repairPort().loadState(), unrecorded("repair"), gate?.stage ?? "no gate");
+    assert.deepEqual(await checkpoints.repair(), { stage: "repair", budgetLedger: BILLED });
+  }
+
   const { checkpoints } = await run();
+  await checkpoints.gatePort().save(gateRow("committed", { commitId: "c".repeat(40), idempotencyKey: filled("3") }));
   checkpoints.recordBudgetLedger(BILLED);
-  assert.deepEqual(await checkpoints.repairPort().loadState(), {
-    stage: "converged",
-    attempts: 0,
-    attemptCapsuleDigests: [],
-    budgetLedger: BILLED
-  });
+  assert.deepEqual(await checkpoints.repairPort().loadState(), unrecorded("converged"));
   assert.deepEqual(await checkpoints.repair(), { stage: "converged", budgetLedger: BILLED });
 });
 

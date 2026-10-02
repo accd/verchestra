@@ -69,34 +69,38 @@ export interface RunLedger {
   recordBudgetLedger(ledger: BudgetLedger): void;
 }
 
-// invariant: one run, one account of usage. Work that spends outside the
-// repair loop is handed a meter that continues from the run's ledger and
-// records its own ledger back as each usage event is metered. A crash after
-// the event therefore cannot lose what was spent, and the next meter, resumed
-// from that ledger, cannot count it twice.
+// invariant: one run, one account of usage. A meter the run spends through
+// records its ledger on the run as each usage event is metered, so a process
+// killed after the event leaves what was spent in the runtime store, and the
+// next meter, resumed from that ledger, cannot count it twice. The repair
+// loop's meter and the verifier's are both this one.
+// hazard: a failure to record is not a budget stop. It leaves `recordUsage`
+// as the error it is, and the session that reported the usage ends on it.
+export function recordingMeter(run: Pick<RunLedger, "recordBudgetLedger">, meter: BudgetMeter): BudgetMeter {
+  return Object.freeze({
+    ...meter,
+    recordUsage(event: UsageEvent): void {
+      meter.recordUsage(event);
+      run.recordBudgetLedger(meter.ledger());
+    }
+  });
+}
+
+// invariant: work that spends outside the repair loop (verification) is handed
+// a recording meter that continues from the run's ledger.
 // why: the ledger is recorded once more when the work ends, however it ends.
 // Time passes after the last usage event (the verifier's mutation runs), and a
 // duration ceiling is reached without one.
-// hazard: a failure to record is not a budget stop. It leaves `recordUsage`
-// as the error it is, and the session that reported the usage ends on it.
 export async function meterOnRunLedger<T>(
   run: RunLedger,
   create: (resume: BudgetLedger | undefined) => BudgetMeter,
   work: (meter: BudgetMeter) => Promise<T>
 ): Promise<T> {
   const meter = create((await run.repair())?.budgetLedger);
-  const record = () => run.recordBudgetLedger(meter.ledger());
-  const recording: BudgetMeter = Object.freeze({
-    ...meter,
-    recordUsage(event: UsageEvent): void {
-      meter.recordUsage(event);
-      record();
-    }
-  });
   try {
-    return await work(recording);
+    return await work(recordingMeter(run, meter));
   } finally {
-    record();
+    run.recordBudgetLedger(meter.ledger());
   }
 }
 

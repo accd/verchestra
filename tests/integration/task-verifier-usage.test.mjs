@@ -34,6 +34,7 @@ import {
   IMPLEMENTER_TOKENS,
   VERIFIER,
   VERIFIER_TOKENS,
+  commitGate,
   meterOptions,
   meteredOnLedger,
   priced,
@@ -65,6 +66,8 @@ async function runWith(ledger) {
   const { root, dbPath, store } = await opened();
   const tasksRoot = join(root, "tasks");
   const checkpoints = runCheckpoints(store, tasksRoot);
+  // why: verification follows the task commit, so every run here has one.
+  await commitGate(checkpoints);
   if (ledger !== undefined)
     await checkpoints
       .repairPort()

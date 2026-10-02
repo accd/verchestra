@@ -211,3 +211,10 @@ emit({
   usage: { input_tokens: 11, output_tokens: 7 },
   session_id: "private-session-id"
 });
+// why: the `linger-implementer` flag keeps this process open after it reported
+// its result, so a test can stop a run whose implementer's usage has arrived
+// and whose attempt has not reached its gate. The log names the process.
+if (fixtureFlag("linger-implementer")) {
+  log({ lingering: process.pid });
+  setInterval(() => {}, 1_000);
+}
