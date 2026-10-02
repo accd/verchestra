@@ -533,10 +533,10 @@ class TaskRunComposition {
   }
 }
 
-function watchCancellation(
-  runRecord: RunRecord,
+export function watchCancellation(
+  runRecord: Pick<RunRecord, "cancelRequested">,
   controller: AbortController,
-  providers: ProviderProcesses
+  providers: Pick<ProviderProcesses, "running">
 ): () => void {
   const interrupt = () => controller.abort("interrupted");
   // invariant: while a provider is running, a termination request belongs to
@@ -545,10 +545,15 @@ function watchCancellation(
   const terminate = () => {
     if (!providers.running()) interrupt();
   };
+  // invariant: a run whose driver cannot tell whether a cancel was requested
+  // is stopped as if one was. Running on would make it a run nobody can stop.
   const timer = setInterval(() => {
-    void runRecord.cancelRequested().then((requested) => {
-      if (requested) controller.abort("cancel requested");
-    });
+    void runRecord.cancelRequested().then(
+      (requested) => {
+        if (requested) controller.abort("cancel requested");
+      },
+      () => controller.abort("cancel request unreadable")
+    );
   }, CANCEL_POLL_MS);
   process.once("SIGINT", interrupt);
   process.on("SIGTERM", terminate);

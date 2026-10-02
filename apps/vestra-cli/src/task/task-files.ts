@@ -16,9 +16,25 @@ export function canonicalDigest(value: unknown): `sha256:${string}` {
   return sha256(canonicalizeJsonV2(value));
 }
 
+// invariant: a write replaces a regular file or creates one. Anything else in
+// the file's place (a link, a directory) is refused as a reader refuses it,
+// not replaced, so what a link was planted to shadow is never silently lost.
+async function requireReplaceable(path: string): Promise<void> {
+  let metadata;
+  try {
+    metadata = await lstat(path);
+  } catch (error) {
+    if ((error as { readonly code?: unknown }).code === "ENOENT") return;
+    throw stateInvalid("VES_TASK_STATE_UNREADABLE", "A state file cannot be replaced", { cause: error });
+  }
+  if (!metadata.isFile())
+    throw stateInvalid("VES_TASK_STATE_UNREADABLE", "A state file to replace is not a regular file");
+}
+
 // invariant: state files are written whole or not at all (same-directory
 // temporary file, then rename), private to the user, and never through a link.
 export async function writeJsonAtomic(path: string, value: unknown): Promise<void> {
+  await requireReplaceable(path);
   await mkdir(dirname(path), { recursive: true, mode: 0o700 });
   const temporary = join(dirname(path), `.${randomUUID()}.tmp`);
   try {

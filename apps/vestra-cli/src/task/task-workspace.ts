@@ -63,13 +63,17 @@ async function repositoryRoot(controlRoot: string): Promise<string> {
   return real;
 }
 
+function absent(error: unknown): boolean {
+  const code = (error as { readonly code?: unknown }).code;
+  return code === "ENOENT" || code === "ENOTDIR";
+}
+
 async function present(path: string): Promise<boolean> {
   try {
     await lstat(path);
     return true;
   } catch (error) {
-    const code = (error as { readonly code?: unknown }).code;
-    if (code === "ENOENT" || code === "ENOTDIR") return false;
+    if (absent(error)) return false;
     throw error;
   }
 }
@@ -98,6 +102,30 @@ async function requireContained(workspaceRoot: string, directory: string): Promi
   }
   if (child === "" || child === ".." || child.startsWith(`..${sep}`) || isAbsolute(child))
     throw new PlatformSecurityError("VES_STATE_ROOT_ESCAPE", "Workspace state path resolves outside its owner");
+}
+
+// invariant: below a task state root nothing is reached through a link. The
+// directories named here, from a per-Run root down, are created by the task
+// path itself and are real. A link at one of them would carry every read,
+// write, and recursive delete below it to wherever it points, which is the
+// escape the root check refuses, so it takes the same code.
+// hazard: this only reads, and a directory that does not exist ends the walk:
+// its first write creates it as a real directory. A file in a directory's
+// place is left to the reader or writer that finds it.
+export async function requireRealDirectories(root: string, directories: readonly string[]): Promise<void> {
+  let current = root;
+  for (const name of directories) {
+    current = join(current, name);
+    let metadata;
+    try {
+      metadata = await lstat(current);
+    } catch (error) {
+      if (absent(error)) return;
+      throw error;
+    }
+    if (metadata.isSymbolicLink())
+      throw new PlatformSecurityError("VES_STATE_ROOT_ESCAPE", "A directory below a task state root is a link");
+  }
 }
 
 // why: `plan --dry-run` must write nothing, so it resolves the state layout

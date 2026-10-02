@@ -258,6 +258,23 @@ dry run creates none. `task-workspace.ts` names them and, on every command,
 refuses one that exists and does not resolve strictly inside the Workspace
 state root (`VES_STATE_ROOT_ESCAPE`). The check only reads.
 
+Below those roots nothing is reached through a link. The directories there
+are created by the task path itself, from a per-Run root
+(`tasks/<runId>`, `verification/<runId>`) down, and are real. Before every
+read and write the Run record checks each directory from the Run directory
+down to the one that holds the artifact, and the verifier checks each
+directory from its scratch root down to the checkout it is about to create or
+delete; a link at one of them is refused with the same code,
+`VES_STATE_ROOT_ESCAPE`, wherever it leads. `task-workspace.ts` defines that
+check (`requireRealDirectories`) beside the roots. It only reads, and a
+directory that does not exist yet passes. A link in the place of an artifact
+is not an escape, because nothing is read or written through it: a reader
+refuses it as it refuses anything that is not a bounded regular file
+(`VES_TASK_STATE_UNREADABLE`), and a writer refuses it with the same reason
+instead of replacing it. A cancel marker that is already present stands as
+the request, so that refusal never stops a cancel. The package and capsule
+stores keep their own refusal of a linked file.
+
 Verification turns Codex's answer into claims the coordinator can check
 without trusting it: the expected outcome is derived from the approved task,
 the cited assertion lines must exist at the commit, and the mutation reverts

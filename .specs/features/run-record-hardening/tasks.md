@@ -28,8 +28,8 @@ is independently verifiable; T2 and T3 build on the task before them.
 
 | Task | Commit | Status |
 | --- | --- | --- |
-| T1 | the commit that carries this table | Done |
-| T2 | — | Planned |
+| T1 | `f6a6e8b` | Done |
+| T2 | the commit that carries this table | Done |
 | T3 | — | Planned |
 
 Evidence for every requirement is in `validation.md`. The next action is in

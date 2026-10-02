@@ -400,7 +400,11 @@ approval makes the approval stale, and the run is refused until you plan again.
   `tasks`, `keys`, and `verification` beside `task-gates.json`. If one of them
   is a link that leads outside that directory, every `task` command, a dry run
   included, stops with `VES_STATE_ROOT_ESCAPE` before it writes anything
-  there. Remove the link.
+  there. Remove the link. The same code stops a command when a run's own
+  directory under `tasks` or `verification`, or a directory inside it, is a
+  link, wherever the link leads: nothing is read, written, or deleted through
+  it. A link in the place of a single state file is refused as unreadable
+  state (`VES_TASK_STATE_INVALID`) and is never replaced.
 - **One writer per Workspace.** A running task holds the Workspace writer
   lease; a second run is refused until the first one ends. If the process of
   a run dies, `resume` or `cancel` that run to release the lease; otherwise it
