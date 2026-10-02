@@ -94,7 +94,8 @@ before this feature.
   of a sealed Run THEN it SHALL return the sealed record. IF the file is a
   plain marker THEN the read SHALL be refused with reason
   `VES_TASK_STATE_MALFORMED`; IF its content does not match its seal THEN with
-  reason `VES_TASK_STATE_TAMPERED`.
+  reason `VES_TASK_STATE_TAMPERED`; IF the sealed record lacks the member its
+  reader needs THEN with reason `VES_TASK_STATE_MALFORMED`.
 - **RRH-14** — WHEN the Run record reads a marker of a legacy Run THEN it SHALL
   read it as it does today, so a run in flight resumes and is cancelled
   unchanged.

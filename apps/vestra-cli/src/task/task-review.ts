@@ -27,6 +27,7 @@ interface ReviewContext {
   readonly workspace: TaskWorkspace;
   readonly plan: TaskPlanRecord;
   readonly pkg: Awaited<ReturnType<RunRecord["approvedPackage"]>>;
+  readonly grant: Awaited<ReturnType<RunRecord["loadGrant"]>>;
   readonly runtime: RuntimeStore;
   readonly runRecord: RunRecord;
   readonly checkpoints: RunCheckpoints;
@@ -79,8 +80,7 @@ async function capsuleInput(
   snapshot: RunSnapshot,
   review: Readonly<Record<string, unknown>>
 ) {
-  const { plan, pkg } = context;
-  const grant = await context.runRecord.loadGrant();
+  const { plan, pkg, grant } = context;
   const events = context.runtime.listEvents(plan.runId);
   const terminal = events.at(-1) as Readonly<Record<string, unknown>>;
   return {
@@ -242,6 +242,9 @@ export async function reviewTask(
     // plan bound, so that package is proven before the surface is read, the
     // human confirms, or the review is recorded, exactly as `approve` proves it.
     const pkg = await runRecord.approvedPackage(plan);
+    // invariant: the Run Capsule binds the grant marker, so a marker that
+    // does not verify stops the review here, not after it is recorded.
+    const grant = await runRecord.loadGrant();
     const surface = await reviewSurface(workspace.repositoryRoot, plan, runRecord);
     if (options.surfaceDigest !== surface.digest)
       throw taskError("VES_TASK_SURFACE_MISMATCH", {}, "The review surface changed or the digest is wrong");
@@ -258,7 +261,7 @@ export async function reviewTask(
     const policy = await loadTaskPolicy(io.controlRoot);
     const authority = new TaskAuthority({ runtime, plan, policy, trust: await workspaceTrustRoot(workspace) });
     const checkpoints = runRecord.checkpoints(runtime, plan.request.task.taskId);
-    const context: ReviewContext = { io, workspace, plan, pkg, runtime, runRecord, checkpoints, authority };
+    const context: ReviewContext = { io, workspace, plan, pkg, grant, runtime, runRecord, checkpoints, authority };
     const review = await new HumanReviewCoordinator(reviewPorts(context)).review(
       reviewInput(context, surface, String(options.outcome), String(options.surfaceDigest))
     );

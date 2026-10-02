@@ -149,3 +149,33 @@ test("only the task Workspace module refuses a link below a task state root, and
     "a scratch path is built outside the checked function"
   );
 });
+
+// invariant: which form a Run's five markers take is one fact with one
+// reader. The plan record's module names the seal, `task plan` stamps it on a
+// new run, and only the Run record reads it and writes a marker accordingly.
+test("the marker seal is stamped by task plan and read only by the Run record", () => {
+  const named = /\bmarkerSeal\b|\bMARKER_SEAL\b/u;
+  const allowed = new Set([OWNER, "task-plan.ts", "task-plan-record.ts"]);
+  assert.deepEqual(
+    offenders(
+      named,
+      sources.filter(({ name }) => !allowed.has(name))
+    ),
+    []
+  );
+  assert.match(sources.find(({ name }) => name === "task-plan.ts")?.source ?? "", /markerSeal: MARKER_SEAL\b/u);
+  assert.match(owner, /plan\.markerSeal === MARKER_SEAL/u);
+  const plainMarkerWrite = /writeJsonAtomic\(await this\.#file\(LAYOUT\.(?:grant|active|worktree|cancel|outcome)\)/u;
+  assert.doesNotMatch(owner, plainMarkerWrite, "a marker is written without asking which form the Run uses");
+  for (const marker of ["grant", "active", "worktree", "cancel", "outcome"])
+    assert.match(owner, new RegExp(`#writeMarker\\(LAYOUT\\.${marker},`, "u"), marker);
+});
+
+// invariant: `task review` reads everything the Run Capsule binds from the
+// Run directory's markers before it asks the human or records the review.
+test("task review reads the grant marker once, before the review surface", () => {
+  const review = sources.find(({ name }) => name === "task-review.ts")?.source ?? "";
+  assert.equal(review.match(/\.loadGrant\(\)/gu)?.length, 1);
+  assert.ok(review.indexOf(".loadGrant()") < review.indexOf("await reviewSurface("), "the grant is read too late");
+  assert.ok(review.indexOf(".loadGrant()") > review.indexOf("export async function reviewTask("));
+});

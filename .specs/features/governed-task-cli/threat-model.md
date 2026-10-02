@@ -44,7 +44,8 @@
 | A request smuggling an executable into a gate | Gates name a `commandRef`; executables come only from the user's machine-local allowlist | GTC-28, GTC-34 |
 | Credential exposure across roles | Each provider child gets only its own key from the broker; neither key reaches the other child or any evidence | GTC-32 |
 | A verifier that rubber-stamps | Its claims are checked: cited lines must exist at the commit and reverting the named file must fail the gates | GTC-33 |
-| Tampered run state steering a later command | Plan, commit, evidence, and review records are sealed by digest and re-validated on load | GTC-37 |
+| Tampered run state steering a later command | Plan, commit, evidence, and review records are sealed by digest and re-validated on load. The five markers of a run planned with a marker seal are sealed the same way, and a plain marker in a sealed Run is refused (no downgrade) | GTC-37; RRH-11..19 (`.specs/features/run-record-hardening/`) |
+| An edited active or cancel marker making a run impossible to stop, or letting a second driver start | An active marker that does not verify counts as a driver: no second driver starts, and `cancel` waits and then ends the run itself. Any cancel marker that is present stops the run | RRH-16, RRH-17 |
 | A link planted below a task state root redirecting a read, a write, or the recursive delete of a scratch checkout | Every directory from the per-Run root down is checked to be a real one before each read and write (`VES_STATE_ROOT_ESCAPE`); a link in the place of an artifact is refused by readers and writers and never replaced | RRH-04..10 (`.specs/features/run-record-hardening/`) |
 | Two writers in one Workspace | One writer lease per Workspace, proven before the first transition | GTC-30 |
 
@@ -64,6 +65,14 @@
 - The controller checks paths and then acts; a concurrent writer inside the
   worktree could swap a parent directory between check and write. The
   implementer has no write tool of its own, so the only writer is the adapter.
+- The seal on a state file is a digest stored beside the record. It detects an
+  edit; it does not stop a writer who recomputes the digest, and that writer
+  could also rewrite the plan record to drop its marker seal. Such a writer is
+  another process of the same user. A run planned before the markers were
+  sealed keeps its plain markers, where an edit is still not detected.
+- A build older than the marker seal does not know it. Driving a sealed Run
+  with such a build would read the sealed markers as plain ones and write
+  plain ones back, which the newer build then refuses.
 - The task state checks read and then act. A link placed below a task state
   root between a check and the read or write that follows it is not detected.
   The only writer there besides Verchestra is another process of the same

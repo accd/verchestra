@@ -32,7 +32,7 @@ import {
   writeJsonAtomic,
   writeSealedRecord
 } from "./task-files.ts";
-import type { TaskPlanRecord } from "./task-plan-record.ts";
+import { MARKER_SEAL, type TaskPlanRecord } from "./task-plan-record.ts";
 import { parseRunId, requireRealDirectories, type TaskWorkspace } from "./task-workspace.ts";
 
 type Digest = `sha256:${string}`;
@@ -63,9 +63,10 @@ const LAYOUT = Object.freeze({
   lessons: ["verification", "lessons"],
   review: ["review.json"],
   capsules: ["capsules"],
-  // hazard: these five markers are plain canonical JSON, not sealed. A reader
-  // gets what the file holds; the grant marker is digested into the Run
-  // Capsule exactly as it is read.
+  // invariant: the five markers. A run whose plan record names the marker
+  // seal writes and reads them sealed; a run planned before that keeps them as
+  // plain canonical JSON. A reader returns the record in both forms, never the
+  // seal envelope, so the Run Capsule binds the same grant digest for both.
   grant: ["grant.json"],
   active: ["active.json"],
   worktree: ["worktree.json"],
@@ -83,14 +84,34 @@ async function markerRow(path: string, label: string): Promise<Row | undefined> 
   return stored === undefined ? undefined : objectRow(stored, label);
 }
 
-function alive(pid: unknown): boolean {
-  if (!Number.isSafeInteger(pid) || (pid as number) <= 0) return false;
+function processId(value: unknown): number | undefined {
+  return Number.isSafeInteger(value) && (value as number) > 0 ? (value as number) : undefined;
+}
+
+function alive(pid: number | undefined): pid is number {
+  if (pid === undefined) return false;
   try {
-    process.kill(pid as number, 0);
+    process.kill(pid, 0);
     return true;
   } catch (error) {
     return (error as { readonly code?: unknown }).code === "EPERM";
   }
+}
+
+// invariant: what `activeProcess` answers for an active marker of a sealed Run
+// that is there and does not verify. It is not `undefined`: whoever asks must
+// treat the run as one a process may be driving.
+export const UNVERIFIED_DRIVER = "unverified";
+export type RunDriver = number | typeof UNVERIFIED_DRIVER | undefined;
+
+// invariant: the marker seal a plan record names, or none for a run planned
+// before the markers were sealed. A seal this build does not know is refused,
+// never read as either form.
+function sealsMarkers(row: Row): boolean {
+  const seal = row["markerSeal"];
+  if (seal !== undefined && seal !== MARKER_SEAL)
+    throw stateInvalid("VES_TASK_STATE_MALFORMED", "plan.markerSeal is not a marker seal this build knows");
+  return seal === MARKER_SEAL;
 }
 
 function digestField(row: Row, key: string): void {
@@ -120,6 +141,7 @@ function validatedPlan(identity: { readonly workspaceId: string; readonly runId:
   digestField(approval, "bindingDigest");
   textField(approval, "approvalId", "plan.approvalRequest");
   objectRow(row["approvalIntent"], "plan.approvalIntent");
+  sealsMarkers(row);
   return { ...(row as unknown as TaskPlanRecord), request };
 }
 
@@ -237,6 +259,7 @@ export class RunRecord {
   readonly gateEvidence: TaskEvidenceStore;
   readonly #workspaceId: string;
   readonly #tasksRoot: string;
+  #sealedMarkers: boolean | undefined;
 
   constructor(options: { readonly workspaceId: string; readonly runId: string; readonly tasksRoot: string }) {
     this.runId = options.runId;
@@ -269,11 +292,48 @@ export class RunRecord {
     await writeSealedRecord(await this.#file(LAYOUT.plan), plan);
   }
 
-  async loadPlan(): Promise<TaskPlanRecord> {
+  async #storedPlan(): Promise<TaskPlanRecord | undefined> {
     const stored = await readSealedRecord(await this.#file(LAYOUT.plan), "plan record");
-    if (stored === undefined)
+    if (stored === undefined) return undefined;
+    const plan = validatedPlan({ workspaceId: this.#workspaceId, runId: this.runId }, stored);
+    this.#sealedMarkers = plan.markerSeal === MARKER_SEAL;
+    return plan;
+  }
+
+  async loadPlan(): Promise<TaskPlanRecord> {
+    const plan = await this.#storedPlan();
+    if (plan === undefined)
       throw taskError("VES_TASK_RUN_NOT_FOUND", {}, "No planned run with this ID exists in the Workspace");
-    return validatedPlan({ workspaceId: this.#workspaceId, runId: this.runId }, stored);
+    return plan;
+  }
+
+  // invariant: the form of a Run's markers is the one its sealed plan record
+  // names, read from that record and from nowhere else. A marker cannot say
+  // which form it is in, so replacing a sealed marker with a plain one does
+  // not turn a sealed Run into a legacy one. A run with no plan record yet has
+  // no markers a command would read; it writes the plain form.
+  async #sealsMarkers(): Promise<boolean> {
+    if (this.#sealedMarkers === undefined) await this.#storedPlan();
+    return this.#sealedMarkers ?? false;
+  }
+
+  async #writeMarker(segments: readonly string[], record: object): Promise<void> {
+    const path = await this.#file(segments);
+    if (await this.#sealsMarkers()) await writeSealedRecord(path, record);
+    else await writeJsonAtomic(path, record);
+  }
+
+  // invariant: a sealed Run's marker is read through its seal: a plain marker
+  // in its place is outside the envelope and refused, an edited one does not
+  // match its digest and is refused, and the member a reader needs must be
+  // text. A legacy Run's marker is the plain object the file holds, as it was
+  // before the markers were sealed.
+  async #marker(segments: readonly string[], label: string, key: string): Promise<Row | undefined> {
+    const path = await this.#file(segments);
+    if (!(await this.#sealsMarkers())) return markerRow(path, label);
+    const record = await sealedRow(path, label);
+    if (record !== undefined) textField(record, key, label);
+    return record;
   }
 
   async saveContextManifest(manifest: ContextManifest): Promise<void> {
@@ -333,20 +393,37 @@ export class RunRecord {
   }
 
   async saveGrant(grantId: string): Promise<void> {
-    await writeJsonAtomic(await this.#file(LAYOUT.grant), { grantId });
+    await this.#writeMarker(LAYOUT.grant, { grantId });
   }
 
-  async loadGrant(): Promise<Row | undefined> {
-    return markerRow(await this.#file(LAYOUT.grant), "capability grant marker");
+  loadGrant(): Promise<Row | undefined> {
+    return this.#marker(LAYOUT.grant, "capability grant marker", "grantId");
   }
 
-  // why: a marker that cannot be read names no live process, so a run whose
-  // driver died while writing it can still be resumed or cancelled.
-  async activeProcess(): Promise<number | undefined> {
+  // invariant: who drives the run: a live process, nobody, or, for a sealed
+  // Run, a marker that is there and does not verify. That last answer fails
+  // closed. An edited or replaced marker must not read as "nobody", or a
+  // second driver could start and a cancel would abort under a live one. It
+  // must not be an error either, or the run could never be cancelled.
+  // why: a legacy Run's marker that cannot be read names no live process, as
+  // it always did, so a legacy Run in flight still resumes and cancels.
+  async activeProcess(): Promise<RunDriver> {
     const path = await this.#file(LAYOUT.active);
-    const active = await markerRow(path, "active run marker").catch(() => undefined);
-    const pid = active?.["pid"];
-    return alive(pid) ? (pid as number) : undefined;
+    if (!(await this.#sealsMarkers())) {
+      const plain = await markerRow(path, "active run marker").catch(() => undefined);
+      const pid = processId(plain?.["pid"]);
+      return alive(pid) ? pid : undefined;
+    }
+    let active: Row | undefined;
+    try {
+      active = await sealedRow(path, "active run marker");
+    } catch {
+      return UNVERIFIED_DRIVER;
+    }
+    if (active === undefined) return undefined;
+    const pid = processId(active["pid"]);
+    if (pid === undefined) return UNVERIFIED_DRIVER;
+    return alive(pid) ? pid : undefined;
   }
 
   // invariant: one process drives a run. Claiming it clears a cancel request
@@ -355,7 +432,7 @@ export class RunRecord {
     if ((await this.activeProcess()) !== undefined)
       throw taskError("VES_TASK_RUN_ACTIVE", {}, "Another process is already driving this run");
     await rm(await this.#file(LAYOUT.cancel), { force: true });
-    await writeJsonAtomic(await this.#file(LAYOUT.active), { pid, startedAt: new Date().toISOString() });
+    await this.#writeMarker(LAYOUT.active, { pid, startedAt: new Date().toISOString() });
   }
 
   async releaseActive(): Promise<void> {
@@ -367,10 +444,13 @@ export class RunRecord {
   // which must never be what stops a user from stopping a run.
   async requestCancel(actorId: string): Promise<void> {
     if (await this.cancelRequested()) return;
-    await writeJsonAtomic(await this.#file(LAYOUT.cancel), { requestedAt: new Date().toISOString(), actorId });
+    await this.#writeMarker(LAYOUT.cancel, { requestedAt: new Date().toISOString(), actorId });
   }
 
-  // invariant: a cancel marker is a request by being there, whatever it holds.
+  // invariant: a cancel marker is a request by being there, whatever it holds
+  // and in either form. The only thing it can say is "stop", so a marker that
+  // would not verify still stops the run: reading it as no request would let an
+  // edit keep a run going that its user asked to end.
   // hazard: this rejects when it cannot tell whether one is there (the Run
   // directory is a link, or cannot be read). The process driving the run
   // treats that as a request to stop.
@@ -389,21 +469,21 @@ export class RunRecord {
   // why: `cancel` of a run no process is driving removes its uncommitted
   // worktree, and only this marker names it without recreating it.
   async saveWorktreeRef(worktreeRef: string): Promise<void> {
-    await writeJsonAtomic(await this.#file(LAYOUT.worktree), { worktreeRef });
+    await this.#writeMarker(LAYOUT.worktree, { worktreeRef });
   }
 
   async loadWorktreeRef(): Promise<string | undefined> {
-    const marker = await markerRow(await this.#file(LAYOUT.worktree), "worktree marker");
+    const marker = await this.#marker(LAYOUT.worktree, "worktree marker", "worktreeRef");
     const worktreeRef = marker?.["worktreeRef"];
     return typeof worktreeRef === "string" ? worktreeRef : undefined;
   }
 
   async saveOutcome(outcome: TaskRunOutcome): Promise<void> {
-    await writeJsonAtomic(await this.#file(LAYOUT.outcome), { ...outcome, at: new Date().toISOString() });
+    await this.#writeMarker(LAYOUT.outcome, { ...outcome, at: new Date().toISOString() });
   }
 
-  async loadOutcome(): Promise<Row | undefined> {
-    return markerRow(await this.#file(LAYOUT.outcome), "run outcome");
+  loadOutcome(): Promise<Row | undefined> {
+    return this.#marker(LAYOUT.outcome, "run outcome", "status");
   }
 
   async saveCommit(commit: TaskRunCommit): Promise<void> {

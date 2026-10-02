@@ -1416,6 +1416,81 @@ note. -->
   two steps; a link placed between them is not seen. Evidence is in
   `.specs/features/run-record-hardening/validation.md`.
 
+### AD-052 — The five markers are sealed for a run that names the marker seal; a marker that does not verify fails closed and never blocks a cancel
+
+- **Status:** proposed (ratified by reviewing the pull request that carries
+  the third range of `fix/run-record-hardening`).
+- **Context:** AD-047 kept `grant.json`, `active.json`, `worktree.json`,
+  `cancel.json` and `outcome.json` plain, because sealing them moves the
+  bytes of runs in flight and because the Run Capsule digested the grant
+  marker as it was read. An edit to a marker was not detected. Two readers
+  also failed open: an active marker that could not be read counted as "no
+  process drives the run", so a second driver could start and a cancel would
+  remove the worktree under a live one; and the cancel marker was tested only
+  for existence, which was already the safe direction.
+- **Decision:**
+  1. **The plan record says which form a run uses.** `task plan` writes
+     `markerSeal: 1` into the plan record of a new run. The plan record
+     already exists and is sealed. A plan record without the member is a
+     legacy Run; no existing plan record is rewritten, so its bytes and its
+     golden digest stay. A value this build does not know is refused as
+     `VES_TASK_STATE_MALFORMED`. The Run record reads the form from the stored
+     plan record, whether or not the command loaded the plan through it.
+  2. A sealed Run writes each marker with the seal of `task-files.ts` and
+     reads it through that seal. **No downgrade:** a marker cannot say which
+     form it is in, so a plain marker in a sealed Run is a file outside the
+     seal envelope and is refused (`VES_TASK_STATE_MALFORMED`); an edited one
+     is `VES_TASK_STATE_TAMPERED`. A legacy Run writes and reads plain markers
+     exactly as before.
+  3. **The Run Capsule does not move.** A marker reader returns the record in
+     both forms, never the envelope, and the capsule digests what the reader
+     returns. The grant digest recorded for ADP-2 holds for both forms; in the
+     sealed form it is also the seal written in the file.
+  4. **An active marker that does not verify counts as a driver nobody can
+     name.** `RunRecord#activeProcess` answers a process ID, `undefined`, or
+     `"unverified"`. Every caller already treated any answer but `undefined`
+     as "driven", so `start` and `resume` are refused with
+     `VES_TASK_RUN_ACTIVE` and `status` shows the run as driven with `cancel`
+     as its only action. `cancel` writes the request, waits the same minute it
+     waits for a live driver, and, if the marker is still there, clears it and
+     ends the run as an idle one. A marker that verifies and names a live
+     process is never cleared. This is the fail-closed answer that still lets
+     a user stop a run: "nobody" would be fail-open, and an error would make
+     the run impossible to cancel.
+  5. **A cancel marker is a request by being there,** in either form and
+     whatever it holds. The only thing it can say is "stop". The record is
+     sealed like the others, and no decision reads it.
+  6. `task review` reads the grant marker before it asks for the confirmation
+     or records the review, so a marker that does not verify stops the review
+     with nothing recorded. Before, it was read while the capsule was built.
+- **Alternatives rejected:** recognising the form from the file's own shape
+  (a plain marker would then be believed, which is the downgrade); a new
+  schema version of the plan record (the ADP-2 suite pins version 2 as a
+  mismatch, and existing plan records would need a migration); a format file
+  beside the markers (one more unsealed file to protect); returning the seal
+  envelope from the grant reader (the capsule would digest the envelope and
+  its digest would move); an unverifiable active marker as an error on every
+  command (a run nobody can cancel) or as "no process" (fail-open); letting
+  `cancel` end the run at once when the marker does not verify (a live driver
+  would lose its worktree before it could answer the request); verifying the
+  cancel marker before honouring it (an edit could then keep a run going);
+  a keyed seal (the key would sit beside the files it protects, readable by
+  the same user).
+- **Consequence:** runs planned from this build on have sealed markers; runs
+  in flight are untouched. An operator can notice four things. An edited
+  grant or outcome marker of a sealed Run now fails `status` (and the grant
+  fails `review` before anything is recorded) with `VES_TASK_STATE_INVALID`.
+  An edited worktree marker stops an idle `cancel` with the same code, as an
+  unreadable one already did. An active marker that does not verify blocks
+  `start` and `resume` with `VES_TASK_RUN_ACTIVE` until `cancel`, which then
+  takes up to a minute. And a build older than this one cannot drive a sealed
+  Run: it would read the markers as plain and write plain ones back, which
+  this build refuses. **Residual risk:** the seal is a digest, not a
+  signature; a writer who recomputes it, or who rewrites the plan record
+  without its marker seal, is not detected. That writer is another process
+  of the same user, which the governed task threat model places out of
+  scope. Evidence is in `.specs/features/run-record-hardening/validation.md`.
+
 ## Handoff
 
 - **Feature:** `subscription-provider-auth` (ADP-A, tasks TA1 and TA2) on

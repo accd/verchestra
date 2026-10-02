@@ -5,7 +5,7 @@ import { budgetStatus } from "./task-budget.ts";
 import { taskError } from "./task-errors.ts";
 import type { TaskCommandIo } from "./task-io.ts";
 import { HUMAN_ACTOR, type TaskPlanRecord } from "./task-plan-record.ts";
-import { openRunRecord, type RunCheckpoints, type RunRecord } from "./task-run-record.ts";
+import { UNVERIFIED_DRIVER, openRunRecord, type RunCheckpoints, type RunRecord } from "./task-run-record.ts";
 import { branchName, reviewSurface } from "./task-surface.ts";
 import { applyWorkflow, currentRun } from "./task-workflow.ts";
 import { openRuntime, openTaskWorkspace, parseRunId, type TaskWorkspace } from "./task-workspace.ts";
@@ -158,10 +158,18 @@ export async function cancelTask(io: TaskCommandIo, options: { readonly runId: u
     const state = currentRun(runtime, runId).state;
     if ((TERMINAL_WORKFLOW_STATES as readonly string[]).includes(state))
       throw taskError("VES_TASK_TRANSITION_REFUSED", { state, command: "cancel" }, "The run has already ended");
-    if ((await runRecord.activeProcess()) !== undefined) {
+    const driver = await runRecord.activeProcess();
+    if (driver !== undefined) {
       await runRecord.requestCancel(HUMAN_ACTOR);
       const stopped = await waitForStop(runRecord, runtime);
-      return { runId, state: currentRun(runtime, runId).state, cancelRequested: true, stopped };
+      if (stopped || driver !== UNVERIFIED_DRIVER)
+        return { runId, state: currentRun(runtime, runId).state, cancelRequested: true, stopped };
+      // invariant: a user can always stop a run. An active marker that does
+      // not verify names no process to wait for. A driver that was alive has
+      // had the whole wait to answer the request and release the marker; none
+      // did, so the marker is cleared and the run is ended here, as an idle
+      // one. A marker that verifies and names a live process never gets here.
+      await runRecord.releaseActive();
     }
     await abortIdle(workspace, runtime, runRecord);
     return { runId, state: currentRun(runtime, runId).state, cancelRequested: true, stopped: true };

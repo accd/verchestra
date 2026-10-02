@@ -235,3 +235,166 @@ fail; the four link journeys of `E`, 4 pass.
 | `pnpm site:check` | PASS — 50 (the `docs/quick-start.md` projection) |
 
 No test was skipped in any stage.
+
+## T3 — the five markers are sealed (RRH-11..19)
+
+`task plan` writes `markerSeal: 1` into the plan record of a new run
+(`MARKER_SEAL` in `task-plan-record.ts`, stamped in `task-plan.ts`). The Run
+record reads the form from the stored plan record (`RunRecord##sealsMarkers`)
+and writes and reads the five markers through `##writeMarker` and `##marker`,
+with the seal of `task-files.ts` for a sealed Run and as plain canonical JSON
+for a legacy one. `RunRecord#activeProcess` answers a process ID, `undefined`,
+or `"unverified"`.
+
+### The two markers a user's ability to stop a run depends on
+
+| Marker | What a marker that does not verify means | Why this is fail-closed and still cancellable |
+| --- | --- | --- |
+| `active.json` (sealed Run) | A driver nobody can name. `start` and `resume`: `VES_TASK_RUN_ACTIVE`. `status`: driven, with `cancel` as the only action. `cancel`: writes the request, waits the minute it waits for a live driver, then clears the marker and ends the run as an idle one | "Nobody drives the run" is the fail-open answer: a second driver could start, and a cancel would remove the worktree under a live one. An error on every command is a run nobody can cancel. Counting it as a driver refuses the second driver and still leaves `cancel` a way to end the run. The wait gives a driver that is in fact alive the time to answer the request and release its marker; a marker that verifies and names a live process is never cleared |
+| `cancel.json` (both forms) | A request to stop, whatever it holds | The marker can only say "stop". Honouring one that would not verify can only end a run; refusing it would let an edit keep a run going that its user asked to end. The record is sealed like the others, and no decision reads it |
+
+A legacy Run keeps its own rule for `active.json` (a marker that cannot be
+read names no live process), so a run in flight resumes and cancels as it did.
+
+An idle `cancel` of a sealed Run whose **worktree** marker does not verify
+still stops before the abort is recorded (`VES_TASK_STATE_INVALID`). That is
+the rule an unreadable worktree marker already had, kept on purpose: the
+command will not report a stop that left the worktree behind. Nothing is
+running in that state.
+
+### Requirement evidence
+
+`K` is `tests/unit/task-run-markers.test.mjs`, `M` is
+`tests/integration/task-marker-commands.test.mjs`, `L` is
+`tests/architecture/task-run-record-locality.test.mjs`, `E` is
+`tests/e2e/task-cli-e2e.test.mjs`, `U` is the ADP-2 suite
+`tests/unit/task-run-record.test.mjs`. Every expected digest in `K` is
+computed from the declared V2 canonical contract and SHA-256, never with the
+module under test. `M` calls `statusTask`, `cancelTask` and `reviewTask` on a
+real Workspace on every platform; the one-minute cancel wait is advanced with
+the test runner's mock timers.
+
+| Requirement | Definition (symbol) | Assertion evidence |
+| --- | --- | --- |
+| RRH-11 the plan record names the seal; a legacy plan keeps its bytes | `MARKER_SEAL`, `sealsMarkers`, `planTask` | A plan without the member keeps the ADP-2 golden `e6c97cd7…d0272f` `K:169-173` (and `U:162-165`, unmodified); a plan with it `34b00af7…137eca` `K:176-180`. A seal this build does not know (six values) is refused for the plan and for every marker `K:189-192`. `task plan` stamps it: `L:166`, and through the real binary `E:1057` |
+| RRH-12 sealed writes for a sealed Run, plain for a legacy Run | `RunRecord##writeMarker` | Golden text and file digest of the grant and worktree markers, plain `K:84-91` and sealed `K:99-113`; the seal is the canonical digest of the canonical record `K:104`. Active, cancel and outcome: the envelope and its digest `K:146-147`, over the same members a legacy Run writes plain `K:156-163`. The form is read from the stored plan by a Run record that never loaded it `K:202-207`. Every marker write asks the form `L:168-171`. Through the real binary, on disk: `E:1093`, `E:1103`, `E:1140`, `E:1145` (checked by `E:1067-1072`) |
+| RRH-13 a sealed Run refuses an edited marker and a plain one (no downgrade) | `RunRecord##marker`, `sealedRow` | One tamper case per read marker (grant, worktree, outcome): an edited record `K:246-247`, a replaced digest `K:249`, intact again `K:251`. One downgrade case per read marker: the exact plain file a legacy Run holds is refused `K:261-262`, and a legacy Run reads it `K:266-267`. A sealed record without the member its reader needs `K:273`. At the commands: `status` `M:146`, `M:148`, `M:154`; idle `cancel` `M:137-138`. Through the real binary: `status` and `review` refuse a grant marker replaced by its plain form `E:1182-1194` and accept it once restored `E:1196-1197` |
+| RRH-14 a legacy Run reads and writes as before | the legacy branch of `##marker`, `##writeMarker`, `activeProcess` | The ADP-2 suite passes unmodified, including the plain goldens `U:98-108`, `U:232-234`, `U:253-273` and the active marker rule `U:625-649`. `K:266-267`, `K:312-314`, `M:122-129`, `M:158`. The journeys on a legacy fixture (the plan record this build wrote, without the member, sealed again): interrupted and resumed `E:1092-1110`, cancelled when idle `E:1119-1126`, cancelled while running `E:1139-1149`, each with its markers plain on disk |
+| RRH-15 the Run Capsule binds the digest of the grant record | `RunRecord#loadGrant`, `capsuleInput` | The reader returns `{ grantId }` in both forms and its digest is the ADP-2 golden `383c2a3c…9d0473` `K:126-127`; in the sealed form that digest is the seal in the file `K:131`. The existing golden `U:103-107` passes unmodified. Through the real binary, the sealed capsule of a legacy and of a sealed Run carries `grant:<id>` with the canonical digest of `{ grantId }` `E:1108-1110` |
+| RRH-16 an active marker that does not verify counts as a driver | `RunRecord#activeProcess`, `claimActive`, `cancelTask` | Tamper: an edit that names a dead process is `"unverified"` and a second driver is refused `K:288-290`. Downgrade: a plain marker is not believed, whatever process it names `K:307-308`. Unreadable, outside the envelope, or sealing no process ID `K:322`, `K:326`; a marker that verifies and names a dead process is nobody `K:330`. `status` shows the run as driven with only `cancel` `M:69-70`. `cancel` asks, waits, clears, aborts `M:78-82`, also for a plain replacement `M:89-91`. A live driver that has not stopped is never aborted or cleared, in both forms `M:103-106`; one that released its marker is reported stopped `M:117-118`. Through the real binary: `status` and `resume` under a downgraded active marker `E:1174-1176`, and the resume succeeds once it is restored `E:1179` |
+| RRH-17 a cancel marker is a request in any form | `RunRecord#cancelRequested`, `requestCancel` | Tamper and downgrade for the cancel marker: edited, plain, not JSON, empty are all a request `K:348`, and the request stands `K:350`; claiming the run clears it `K:353`. The running driver is stopped by a sealed and by a plain request `E:1142-1149` |
+| RRH-18 `review` reads the grant before it records anything | `reviewTask` | `M:172-176`; the read is before the review surface `L:178-180`; through the real binary `E:1188-1194` |
+| RRH-19 the design and the threat model say what is true | — | `.specs/features/governed-task-cli/design.md` (the paragraph and table on the five markers), `threat-model.md` (two rows and two residual risks) |
+
+### Behaviour changes a user of `vestra task` could notice
+
+For a run planned by this build (a sealed Run):
+
+- The five marker files hold `{"digest":…,"record":…}` instead of the bare
+  record.
+- `status` stops with `VES_TASK_STATE_INVALID` when the grant or outcome
+  marker was edited or replaced by a plain one. Before, it printed what the
+  file held.
+- `review` stops with the same code, before anything is recorded, when the
+  grant marker does not verify. This read also moved earlier for a legacy
+  Run, whose unreadable grant marker used to fail the command after the
+  review was recorded.
+- A `start` or `resume` that reaches the implementer with a grant marker that
+  does not verify fails the run with `VES_TASK_STATE_INVALID`. Before, a
+  marker without a grant ID caused a second grant to be issued.
+- An active marker that does not verify makes `status` show the run as
+  active, makes `start` and `resume` report `VES_TASK_RUN_ACTIVE`, and makes
+  `cancel` take up to a minute before it ends the run. Before, such a marker
+  counted as no process.
+- An idle `cancel` stops with `VES_TASK_STATE_INVALID` when the worktree
+  marker was edited. Before, only a marker that could not be read did that.
+- A build older than this one cannot drive a sealed Run: it would read the
+  markers as plain and write plain ones back, which this build refuses.
+
+For a run planned before this build (a legacy Run) nothing changes except the
+earlier grant read in `review`.
+
+### Tests replaced
+
+No case was deleted and no existing case was changed. The ADP-2 suite is not
+in the diff. The journeys and the locality cases were appended to their
+files. `tests/helpers/task-cli-fixture.mjs` gained `planRecord`,
+`asLegacyRun` and `recordDigest` on the fixture it returns.
+
+### Discrimination (disposable copy)
+
+Unmutated copy: `K`, `M`, `U`, `L` and the containment suite, 144 pass, 0
+fail; the seven form journeys of `E`, 7 pass.
+
+| Mutation in the copy | Failing cases |
+| --- | --- |
+| S1 — a sealed Run writes its markers plain | 14, including the sealed goldens `K:95`, `K:121`, `K:134`. Four of the form journeys fail too |
+| S2 — a sealed Run believes a plain marker (the downgrade) | 12: the three downgrade cases `K:256`, the three tamper cases `K:241`, the three member cases, `M:133`, `M:141`, `M:164` |
+| S3 — every run is read as a legacy Run | 23. Three form journeys fail too |
+| S4 — every run is read as a sealed Run | 17, including the ADP-2 goldens `U:98`, `U:178`, `U:253` and `K:80`. The legacy resume and running-cancel journeys fail too |
+| S5 — the grant reader returns the seal envelope | 8, including `K:121`. The sealed resume journey fails at the capsule's grant digest |
+| S6 — a sealed active marker that does not verify reads as no process | 6: `K:281`, `K:303`, `K:317`, `M:64`, `M:73`, `M:85`. The downgrade journey fails too |
+| S7 — a sealed active marker that seals no process ID reads as no process | 1: `K:317` |
+| S8 — `cancel` ends such a run at once, without asking or waiting | 2: `M:73`, `M:85` |
+| S9 — `cancel` never ends such a run | 2: `M:73`, `M:85` |
+| S10 — `cancel` ends a run under a live driver that has not stopped | 2: `M:98` in both forms |
+| S11 — `cancel` leaves the marker that did not verify in place | 2: `M:73`, `M:85` |
+| S12 — a sealed Run honours only a cancel marker that verifies | 1: `K:336` |
+| S13 — an unknown marker seal is read as a legacy Run | 1: `K:183` |
+| S14 — `task plan` does not name the marker seal | 1: the locality case `L:156`. All seven form journeys fail |
+| S15 — `review` reads the grant marker after the review is recorded | 2: `M:164` and the locality case `L:176` |
+| S16 — a sealed record is returned without checking its member | 3: `K:270` for each marker |
+| S17 — a legacy Run's unreadable active marker counts as a driver | 47, including the ADP-2 cases `U:275`, `U:625` |
+| S18 — claiming a run keeps a cancel request | 2: `K:336`, `U:651` |
+| S19 — the form is taken from the marker's own shape | 4: the three downgrade cases `K:256` and `M:141` |
+
+### Guardrails
+
+- Complexity: no baseline entry changed; no new function is above 10.
+- Census: `pnpm census:refresh` left the inventory as it was (115 entries); no
+  product source gained or lost `JSON.stringify` or `createHash`.
+- Citations: `.specs/features/architecture-deepening/validation-c5.md` cites
+  the line that composes the Human Review coordinator; it is now
+  `task-review.ts:265`. `:172-198` did not move, and neither did the cited
+  lines of `task-status.ts`.
+- No error code was added. Migration count (12), runtime error catalog count
+  (19) and task error catalog count (10) unchanged.
+- Bytes and paths of every artifact that is not one of the five markers are
+  unchanged: the ADP-2 suite, its goldens included, is not in the diff and
+  passes.
+
+### Gates (Node 24.14.0, macOS arm64, git 2.50.1)
+
+| Command | Result |
+| --- | --- |
+| `node --test tests/unit/task-run-markers.test.mjs tests/integration/task-marker-commands.test.mjs tests/integration/task-run-containment.test.mjs tests/unit/task-run-record.test.mjs tests/architecture/task-run-record-locality.test.mjs tests/integration/task-workspace-containment.test.mjs tests/integration/task-review-package.test.mjs tests/integration/task-review-surface.test.mjs tests/integration/task-run-checkpoints.test.mjs tests/integration/task-commit-recovery.test.mjs tests/integration/task-idle-cancel.test.mjs` | PASS — 212 passed |
+| `pnpm gate:quick` | PASS — unit 2504, agent-readiness 323, census 13 |
+| `pnpm test:architecture` | PASS — 90 |
+| `pnpm gate:build` | PASS — unit 2504, contract 756, integration 1009, e2e 257, architecture 90, build 146, qualification 302 |
+| `pnpm gate:security` | PASS — unit 2504, contract 756, e2e 257, architecture 90, qualification 302, security 1339, fault 310 |
+| `node --test tests/e2e/task-cli-e2e.test.mjs tests/e2e/mediated-task-execution-e2e.test.mjs` | PASS — 42 passed |
+| `node --test tests/unit/task-cli-composition.test.mjs tests/security/task-cli-security.test.mjs` | PASS — 15 passed |
+| `pnpm agent:check` | PASS |
+| `pnpm site:check` | PASS — 50 (the `docs/quick-start.md` projection) |
+
+No test was skipped in any stage.
+
+## Open points for the reviewer
+
+- **Platform matrix.** Every result here is from macOS arm64. The new suites
+  run on every platform and have never run off macOS: the junction cases of
+  `tests/integration/task-run-containment.test.mjs` on Windows, the mock-timer
+  cases of `tests/integration/task-marker-commands.test.mjs` on Windows and
+  Linux, and the first link journey of `tests/e2e/task-cli-e2e.test.mjs` on
+  Linux and Windows. `platform-matrix.yml` must be green on each range before
+  it merges.
+- **The seal is not a signature.** See the residual risks in the governed
+  task threat model.
+- **A tampered plan record still stops `cancel`.** Every command reads the
+  plan record first, `cancel` included, so a run whose plan record does not
+  verify cannot be cancelled from another terminal; the terminal that runs it
+  still stops it. That was so before this feature and is outside its three
+  tasks.
+- **An unverifiable active marker costs a minute.** `cancel` waits the full
+  wait before it ends such a run. A shorter wait for that case is possible
+  and was not chosen: a live driver in the middle of a gate needs the time.

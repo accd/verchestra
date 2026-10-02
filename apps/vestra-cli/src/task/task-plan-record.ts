@@ -7,6 +7,12 @@ export const VERIFIER_ACTOR = "actor:codex-verifier";
 export const HUMAN_ACTOR = "human:local-operator";
 export const WRITE_CAPABILITY = "worktree-write";
 
+// invariant: the seal a run planned now names for the five markers of its Run
+// directory. A plan record without `markerSeal` belongs to a run planned
+// before the markers were sealed: that run keeps its plain markers, and its
+// plan record is never rewritten to add the member.
+export const MARKER_SEAL = 1;
+
 // invariant: everything a later command needs to act on a planned run. The
 // Run record seals it by its own digest and validates it on every load.
 export interface TaskPlanRecord {
@@ -24,4 +30,5 @@ export interface TaskPlanRecord {
   readonly packageDigest: Digest;
   readonly approvalIntent: ApprovalIntent;
   readonly approvalRequest: ApprovalRequest;
+  readonly markerSeal?: typeof MARKER_SEAL;
 }
