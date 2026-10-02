@@ -11,6 +11,16 @@ const emit = (message) => process.stdout.write(`${JSON.stringify(message)}\n`);
 const lines = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
 let prompt = "";
 
+// why: a provider that starts processes of its own. One descendant stays in the
+// provider's process group and holds its output open; the other leaves the
+// group with setsid(). The message names all three processes.
+function forkTree() {
+  const idle = ["-e", "setInterval(() => {}, 1000)"];
+  const sameGroup = spawn(process.execPath, idle, { stdio: ["ignore", "inherit", "ignore"] });
+  const escaped = spawn(process.execPath, idle, { stdio: "ignore", detached: true });
+  emit({ method: "item/agentMessage/delta", params: { threadId: "private-thread-id", turnId: "private-turn-id", itemId: "msg-1", delta: `tree:${process.pid}:${sameGroup.pid}:${escaped.pid}` } });
+}
+
 lines.on("line", (line) => {
   const message = JSON.parse(line);
   if (message.method === "initialize") {
@@ -24,6 +34,10 @@ lines.on("line", (line) => {
     prompt = message.params.input?.[0]?.text ?? "";
     emit({ id: message.id, result: { turn: { id: "private-turn-id", status: "inProgress" } } });
     emit({ method: "turn/started", params: { threadId: "private-thread-id", turn: { id: "private-turn-id" } } });
+    // invariant: FAKE_CODEX_FORK=1 makes any mode start that tree and name it
+    // before the mode acts, so a provider that fails or ends its turn can be
+    // one that has descendants.
+    if (process.env.FAKE_CODEX_FORK === "1") forkTree();
     if (mode === "malformed") {
       process.stdout.write("{not-json}\n");
     } else if (mode === "tool") {
@@ -43,12 +57,11 @@ lines.on("line", (line) => {
       process.exit(0);
     } else if (mode === "fork") {
       // why: a provider that starts processes of its own and then never answers.
-      // One descendant stays in the provider's process group and holds its
-      // output open; the other leaves the group with setsid().
-      const idle = ["-e", "setInterval(() => {}, 1000)"];
-      const sameGroup = spawn(process.execPath, idle, { stdio: ["ignore", "inherit", "ignore"] });
-      const escaped = spawn(process.execPath, idle, { stdio: "ignore", detached: true });
-      emit({ method: "item/agentMessage/delta", params: { threadId: "private-thread-id", turnId: "private-turn-id", itemId: "msg-1", delta: `tree:${process.pid}:${sameGroup.pid}:${escaped.pid}` } });
+      forkTree();
+    } else if (mode === "linger") {
+      // why: a provider that completes its turn and does not exit, as an App
+      // Server does. Its run ends while it is still running.
+      emit({ method: "turn/completed", params: { threadId: "private-thread-id", turn: { id: "private-turn-id", status: "completed" }, usage: { inputTokens: 2, outputTokens: 1 } } });
     } else if (mode === "garbled") {
       // why: a provider whose stream breaks, that says one more thing after the
       // break, and that then never answers. A reader that is stopped once it has

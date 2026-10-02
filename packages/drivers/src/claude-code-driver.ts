@@ -9,6 +9,7 @@ import {
   OWN_PROCESS_GROUP,
   processTreeTerminator,
   singleTermination,
+  unawaitedTermination,
   type ProcessTreeTerminator
 } from "./driver-process-tree.ts";
 import { sensitiveValueRedactor } from "./driver-redaction.ts";
@@ -545,6 +546,7 @@ export class ClaudeCodeDriver implements Driver {
         aborted = true;
         await stopChild?.();
       };
+      const endChild = unawaitedTermination(terminate);
       if (child.pid !== undefined) {
         stopChild = singleTermination(this.#terminateTree, child.pid);
         state.resources.stop = terminate;
@@ -560,31 +562,35 @@ export class ClaudeCodeDriver implements Driver {
         outputBytes += chunk.length;
         if (outputBytes > maximum) {
           streamFailure = "VES_CLAUDE_OUTPUT_LIMIT";
-          void terminate();
+          endChild();
         }
       });
+      // invariant: a provider that no longer reads its input cannot be given
+      // its prompt, so it is ended like any stream that failed.
       child.stdin.on("error", () => {
-        if (!aborted) streamFailure = "VES_CLAUDE_STDIN_FAILED";
+        if (aborted) return;
+        streamFailure = "VES_CLAUDE_STDIN_FAILED";
+        endChild();
       });
       const lines = readline.createInterface({ input: child.stdout, crlfDelay: Infinity });
       lines.on("line", (line) => {
         outputBytes += Buffer.byteLength(line) + 1;
         if (outputBytes > maximum) {
           streamFailure = "VES_CLAUDE_OUTPUT_LIMIT";
-          void terminate();
+          endChild();
           return;
         }
         const event = streamEvent(line, surface);
         if (typeof event === "string") {
           streamFailure = event;
-          void terminate();
+          endChild();
           return;
         }
         if (event["type"] === "system" && event["subtype"] === "init") {
           const initFailure = initEventFailure(event, execution.model, surface);
           if (initFailure !== undefined) {
             streamFailure = initFailure;
-            void terminate();
+            endChild();
             return;
           }
           const model = execution.model;
@@ -607,7 +613,7 @@ export class ClaudeCodeDriver implements Driver {
             if (content["type"] === "tool_use") {
               if (typeof content["id"] !== "string" || typeof content["name"] !== "string") {
                 streamFailure = "VES_CLAUDE_STREAM_INVALID";
-                void terminate();
+                endChild();
                 return;
               }
               state.emit({
@@ -630,7 +636,7 @@ export class ClaudeCodeDriver implements Driver {
             outputTokens < 0
           ) {
             streamFailure = "VES_CLAUDE_STREAM_INVALID";
-            void terminate();
+            endChild();
             return;
           }
           state.emit({

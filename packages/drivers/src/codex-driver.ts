@@ -11,6 +11,7 @@ import {
   OWN_PROCESS_GROUP,
   processTreeTerminator,
   singleTermination,
+  unawaitedTermination,
   type ProcessTreeTerminator
 } from "./driver-process-tree.ts";
 import { sensitiveValueRedactor } from "./driver-redaction.ts";
@@ -198,14 +199,24 @@ export class CodexDriver implements Driver {
     const stopRequested = () => {
       if (streamFailure === undefined) aborted = true;
     };
+    let stopChild = async (): Promise<void> => undefined;
     if (child.pid !== undefined) {
-      const stopChild = singleTermination(this.#terminateTree, child.pid);
+      stopChild = singleTermination(this.#terminateTree, child.pid);
       state.resources.stop = () => {
         stopRequested();
         return stopChild();
       };
       this.#dependencies.onSpawn?.(child.pid);
     }
+    // invariant: a stream that failed and a run that ended with the provider
+    // still running end the provider through the termination of its tree, as a
+    // stop does. A signal to the one process would leave its descendants.
+    let ending = false;
+    const terminateUnawaited = unawaitedTermination(() => stopChild());
+    const endChild = () => {
+      ending = true;
+      terminateUnawaited();
+    };
 
     let nextId = 1;
     let outputBytes = 0;
@@ -233,10 +244,10 @@ export class CodexDriver implements Driver {
       if (streamFailure !== undefined) return;
       streamFailure = code;
       finishRun();
-      child.kill();
+      endChild();
     };
     const interrupt = () => {
-      if (!aborted || threadId === undefined || turnId === undefined || interruptSent || child.killed) return;
+      if (!aborted || threadId === undefined || turnId === undefined || interruptSent || ending) return;
       interruptSent = true;
       void rpc("turn/interrupt", { threadId, turnId }).catch(() => undefined);
     };
@@ -382,7 +393,7 @@ export class CodexDriver implements Driver {
     } catch {
       if (!aborted && streamFailure === undefined) streamFailure = "VES_CODEX_PROTOCOL_FAILED";
     }
-    if (!child.killed && child.exitCode === null && child.signalCode === null) child.kill();
+    if (child.exitCode === null && child.signalCode === null) endChild();
     const exit = await closed;
     signal.removeEventListener("abort", abort);
     lines.close();

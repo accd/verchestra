@@ -97,3 +97,14 @@ test("the interrupt handlers are the provider processes', and SIGINT is not amon
     ["task-process-tree.ts"]
   );
 });
+
+// invariant: a provider child is ended through the tree termination on every
+// path, not only when a session is stopped. A driver that signals its child
+// itself reaches that one process and leaves its descendants.
+for (const driver of ["claude-code-driver.ts", "codex-driver.ts"]) {
+  test(`${driver} never signals its provider process itself`, () => {
+    const source = code(read(`packages/drivers/src/${driver}`));
+    assert.doesNotMatch(source, /\.kill\(/u, "the driver signals one process instead of terminating its tree");
+    assert.match(source, /\bunawaitedTermination\(/u);
+  });
+}
