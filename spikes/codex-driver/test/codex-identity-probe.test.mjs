@@ -45,10 +45,14 @@ async function installedCodex() {
   const [command, ...prefix] = resolveCodexCommand();
   const executable = await absolute(command);
   if (executable === undefined) return undefined;
-  const { stdout } = await execFileAsync(executable, [...prefix, "--version"], { encoding: "utf8", timeout: 20_000 });
+  // why: an executable that cannot answer `--version` is not an installed
+  // Codex, the same judgment the driver's own probe makes.
+  const stdout = await execFileAsync(executable, [...prefix, "--version"], { encoding: "utf8", timeout: 20_000 }).then(
+    (result) => result.stdout,
+    () => ""
+  );
   const version = /(\d+)\.(\d+)\.(\d+)/u.exec(stdout)?.slice(1).map(Number);
-  assert.ok(version !== undefined, "the installed Codex reports a version");
-  return { executable, prefix, version };
+  return version === undefined ? undefined : { executable, prefix, version };
 }
 
 async function loginStatus(codex, files) {

@@ -291,7 +291,8 @@ export async function taskFixture(options = {}) {
     await mkdir(codexIdentity, { recursive: true, mode: 0o700 });
     await writeFile(join(codexIdentity, "auth.json"), JSON.stringify({ fixtureLogin: login }));
   };
-  const login = options.codexLogin === undefined ? (mode === "subscription" ? "chatgpt" : null) : options.codexLogin;
+  const defaultLogin = mode === "subscription" ? "chatgpt" : null;
+  const login = options.codexLogin === undefined ? defaultLogin : options.codexLogin;
   if (login !== null) await codexLogin(login);
   const requestPath = join(root, "request.json");
   const writeRequest = async (overrides) => writeFile(requestPath, JSON.stringify(taskRequest(revision, overrides)));
