@@ -210,8 +210,8 @@ test("every driver distinguishes an absent provider from an unqualified one", as
 //
 // invariant: `complete` builds drivers whose run ends by itself. `hanging`
 // builds one whose run ends only when it is stopped, with `stops()` counting
-// how often the provider was told to stop; it is null where a driver has
-// nothing to stop.
+// how often the provider was told to stop. Every driver has a provider that
+// a cancel stops, so every row has both.
 function completing(Driver, fixture) {
   return { request: fixture.request(), build: () => new Driver(fixture.dependencies()) };
 }
@@ -237,9 +237,9 @@ const SESSION_MATRIX = [
     driverId: "opencode",
     noun: "OpenCode",
     complete: () => completing(OpenCodeDriver, openCodeFixture()),
-    // why: an OpenCode cancel only records the terminal state; the SDK session
-    // is aborted through the start signal, which the lifecycle suite covers.
-    hanging: null
+    // why: OpenCode is an SDK session on an isolated server; a stop aborts
+    // that session, which the fixture's client records.
+    hanging: openCodeHanging
   },
   {
     driverId: "pi",
@@ -335,7 +335,7 @@ for (const row of SESSION_MATRIX) {
   });
 }
 
-for (const row of SESSION_MATRIX.filter((entry) => entry.hanging !== null)) {
+for (const row of SESSION_MATRIX) {
   test(
     `${row.driverId} cancel stops the running provider before it emits the terminal event`,
     { timeout: 30_000 },
@@ -412,4 +412,11 @@ for (const row of DEFAULT_FLOORS) {
     assert.equal(below.version, row.below);
     assert.equal(below.error.code, MATRIX.find((entry) => entry.driverId === row.driverId).versionUnsupportedCode);
   });
+}
+
+// why: declared after the rows that name it, so that the lines of the axes
+// above, which the validation evidence cites, stay where they are.
+function openCodeHanging() {
+  const fixture = openCodeFixture({}, "hang");
+  return { ...completing(OpenCodeDriver, fixture), running: fixture.running, stops: fixture.aborts };
 }

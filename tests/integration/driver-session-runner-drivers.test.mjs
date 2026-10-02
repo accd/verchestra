@@ -11,12 +11,12 @@ import { piAbortableFixture, piFixture } from "../helpers/pi-driver-fixture.mjs"
 
 // why: tests/contract/driver-session-runner.test.mjs asserts the runner's
 // contract against a scripted stand-in. This suite runs the same contract
-// against the drivers a provider can be stopped in, so the structural port the
-// runner declares is proven to be the one the drivers implement, and the end
-// of a cancelled run is classified from what a real driver emits.
+// against the four drivers, so the structural port the runner declares is
+// proven to be the one the drivers implement, and the end of a cancelled run
+// is classified from what a real driver emits.
 //
-// Every case is hermetic: Claude Code and Codex run against the repository's
-// labeled fake executables, and Pi against its faux provider.
+// Every case is hermetic: Claude Code and Codex run against labeled fake
+// executables, OpenCode against a fake SDK client, Pi against its faux provider.
 
 function childProcessRow(driverId, Driver, fixtureOf, hangMode) {
   return {
@@ -58,7 +58,7 @@ const ROWS = [
     },
     untouched: (fixture) => assert.equal(fixture.calls.resolve, 0)
   }
-];
+].concat(openCodeRow());
 
 function terminalEvents(events) {
   return events.filter((event) => event.type === "session.closed");
@@ -193,3 +193,29 @@ test(
     assert.deepEqual(finished, { outcome: "cancelled", errorCodes: ["VES_CLAUDE_STREAM_INCOMPLETE"] });
   }
 );
+
+// why: the OpenCode row and what it imports are declared after the cases, so
+// that the lines of those cases, which the validation evidence cites, stay
+// where they are.
+import { OpenCodeDriver } from "../../packages/drivers/src/opencode-driver.ts";
+import { openCodeFixture } from "../helpers/opencode-driver-fixture.mjs";
+
+function openCodeRow() {
+  return {
+    driverId: "opencode",
+    complete: () => {
+      const fixture = openCodeFixture();
+      return { fixture, driver: new OpenCodeDriver(fixture.dependencies()) };
+    },
+    hanging: () => {
+      const fixture = openCodeFixture({}, "hang");
+      return {
+        driver: new OpenCodeDriver(fixture.dependencies()),
+        request: fixture.request(),
+        running: fixture.running,
+        stops: fixture.aborts
+      };
+    },
+    untouched: (fixture) => assert.deepEqual([fixture.counters.resolve, fixture.calls], [0, []])
+  };
+}
