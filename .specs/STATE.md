@@ -1303,6 +1303,47 @@ note. -->
   `docs/qualification/claude-code-driver-process-tree.md` and
   `docs/qualification/codex-driver-process-tree.md`.
 
+### AD-050 — `task review` proves the Execution Package as `task approve` does
+
+- **Status:** proposed (ratified by reviewing the pull request that carries
+  the first range of `fix/run-record-hardening`).
+- **Context:** AD-047 left one reader of the Execution Package unchecked.
+  `task approve` reads the package through `RunRecord#approvedPackage`, which
+  compares its payload digest with the digest the plan bound. `task review`
+  used the package store's own reader, and used it only while it built the Run
+  Capsule, after the review had been recorded and the workflow had moved. A
+  package swapped after approval therefore ended the command with
+  `VES_TASK_FAILED` (reason `VES_EXECUTION_PACKAGE_STORAGE_INTEGRITY`) and left
+  a run that was `COMPLETED`, with a review record and no Run Capsule. A package
+  the store found intact but that was not the one the plan bound was sealed
+  into the capsule without a refusal. AD-047 rejected the checked reader at
+  review because it changes that public error; this decision accepts the
+  change.
+- **Decision:**
+  1. `task review` reads the package through `RunRecord#approvedPackage`,
+     directly after the state check and before the review surface is read, the
+     confirmation is asked, a credential is read, or anything is recorded. The
+     Run Capsule is built from that one read.
+  2. The refusal is `VES_TASK_STATE_INVALID` with reason
+     `VES_TASK_PACKAGE_INVALID`, the code `task approve` already raises. No
+     code is added.
+  3. `RunRecord#loadPackage` stays on the interface for the layout golden of
+     ADP-2, and no command calls it.
+- **Alternatives rejected:** keeping the store's reader and adding only the
+  digest comparison (two readers of one artifact with two error codes);
+  checking the package where the capsule is built (the review is already
+  recorded by then, so the refusal would still leave an ended run without a
+  capsule); removing `loadPackage` from the interface (the ADP-2 layout golden
+  calls it and must pass unmodified).
+- **Consequence:** a user who reviews a run whose package was replaced or
+  damaged now sees `VES_TASK_STATE_INVALID` (`VES_TASK_PACKAGE_INVALID`)
+  instead of `VES_TASK_FAILED` (`VES_EXECUTION_PACKAGE_STORAGE_INTEGRITY` or
+  `VES_EXECUTION_PACKAGE_STORAGE_INVALID`), and the run stays in
+  `HUMAN_REVIEW` with nothing recorded, so restoring the package lets the same
+  review succeed. `tests/architecture/task-run-record-locality.test.mjs` fails
+  when a command calls the unchecked reader. Evidence is in
+  `.specs/features/run-record-hardening/validation.md`.
+
 ## Handoff
 
 - **Feature:** `subscription-provider-auth` (ADP-A, tasks TA1 and TA2) on

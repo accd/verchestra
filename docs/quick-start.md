@@ -310,6 +310,11 @@ You type the surface digest back, as for the approval. `accepted` completes the
 run and seals its run capsule. `rejected` records your decision, aborts the
 run, and keeps the branch for inspection.
 
+Before it asks for the digest, `review` checks that the package on disk is
+still the one the plan bound, as `approve` does. If it is not, `review` stops
+with `VES_TASK_STATE_INVALID` (reason `VES_TASK_PACKAGE_INVALID`), records
+nothing, and leaves the run in `HUMAN_REVIEW`.
+
 ## 11. Inspect and merge it yourself
 
 ```bash

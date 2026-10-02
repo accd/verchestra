@@ -38,6 +38,7 @@
 | Oversized request, frame, or file exhausts memory | Bounds on request text, JSON-RPC frames, file reads, searches, payloads | GTC-05, GTC-16, GTC-18 |
 | Budget bypass by a silent driver | Usage forwarded to the executor meter; the executor's duration timer still fires | GTC-22 |
 | Approval of something other than what was reviewed | The binding digest covers package, source state, scope, destinations, budgets, gates, policy, and context manifest; the human types it back; the package and policy are re-proven before sealing | GTC-29 |
+| A review sealing a Run Capsule over a package other than the approved one | `review` proves the package against the digest the plan bound, through the reader `approve` uses, before the surface is read or the review is recorded | RRH-01, RRH-02 (`.specs/features/run-record-hardening/`) |
 | An approval outliving a policy change | The binding is rebuilt from the current Workspace policy at every check; a changed policy makes it stale | GTC-31 |
 | A script approving or reviewing by accident | No terminal and no `--confirm-stdin` is refused; the flag still requires the exact digest on stdin | GTC-29, GTC-36 |
 | A request smuggling an executable into a gate | Gates name a `commandRef`; executables come only from the user's machine-local allowlist | GTC-28, GTC-34 |

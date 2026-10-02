@@ -117,3 +117,12 @@ test("only the task Workspace module names and checks a task state root", () => 
   const joined = /workspaceRoot\s*,\s*["'`](?:tasks|keys|verification)["'`]/u;
   assert.deepEqual(offenders(joined, sources), [], "a task state root is joined onto the Workspace root by hand");
 });
+
+// invariant: a command acts on the Execution Package the plan bound. The Run
+// record's checked reader compares the package with the plan's digest; the
+// unchecked one is the store's own read and no command calls it.
+test("no task command reads the Execution Package without the plan digest check", () => {
+  assert.deepEqual(offenders(/\.loadPackage\(/u), []);
+  for (const name of ["task-approve.ts", "task-review.ts"])
+    assert.match(sources.find((entry) => entry.name === name)?.source ?? "", /\.approvedPackage\(plan\)/u, name);
+});
