@@ -18,7 +18,8 @@
 //     the offline root/targets key is present in its environment, and refuses an
 //     online key that holds root or targets authority.
 //   * No decoded key byte, no base64 character of it, and no OpenSSL cause chain
-//     derived from it is written anywhere (the publish script's key rules apply).
+//     derived from it is written anywhere (the shared custody module's key rules
+//     apply).
 //   * Nothing here publishes or uploads, and the ledger is not edited. It writes
 //     the new files, an upload manifest, and the ledger entry a human appends in
 //     a reviewed pull request.
@@ -51,7 +52,7 @@ import {
   expectedAnchorKeyId,
   releaseSignerFromEnvironment,
   writeExclusive
-} from "./t76-publish-release.mjs";
+} from "./t76-signing-custody.mjs";
 import { assertRefreshAdmitted, nextLedgerEntry, readPublicationLedger } from "./tuf-publication-ledger.mjs";
 
 export { RELEASE_ANCHOR_PURPOSE, TIMESTAMP_ANCHOR_PURPOSE };

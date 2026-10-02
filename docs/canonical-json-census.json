@@ -1223,7 +1223,7 @@
       "classification": "migrated-v2",
       "signals": {
         "canonicalizer": 13,
-        "digest": 4,
+        "digest": 2,
         "localeCompare": 0,
         "serialization": 0
       },
@@ -1239,6 +1239,17 @@
         "serialization": 1
       },
       "reason": "The online timestamp refresh verifies the canonical publication manifest and emits its refresh manifest with the declared V2 canonical contract; the ledger entry it writes is pretty-printed for review and chained by its V2 canonical digest."
+    },
+    {
+      "path": "scripts/t76-signing-custody.mjs",
+      "classification": "raw-byte-digest",
+      "signals": {
+        "canonicalizer": 0,
+        "digest": 3,
+        "localeCompare": 0,
+        "serialization": 0
+      },
+      "reason": "SHA-256 applies to the SPKI DER bytes of a signing key or a reviewed anchor to derive its TUF key id; no structured value is canonicalized."
     },
     {
       "path": "scripts/tuf-publication-ledger.mjs",

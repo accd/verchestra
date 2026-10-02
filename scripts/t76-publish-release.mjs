@@ -35,8 +35,8 @@
 // records for the same root (#387), or any digest that contradicts the sealed
 // bytes stops the run before a single publication byte is written.
 
-import { createHash, createPrivateKey, createPublicKey, sign as signBytes } from "node:crypto";
-import { lstat, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdir, readFile, readdir } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { join, resolve } from "node:path";
 
@@ -50,26 +50,40 @@ import {
   verifyHermeticDistributionBundle,
   writeTufReleasePublication
 } from "../packages/distribution/src/index.ts";
+import {
+  DEFAULT_RELEASE_ANCHOR,
+  DEFAULT_TIMESTAMP_ANCHOR,
+  KEY_ENVIRONMENT_NAME,
+  RELEASE_ANCHOR_PURPOSE,
+  SUPPORTED_TARGET_KEYS,
+  T76PublishError,
+  TIMESTAMP_ANCHOR_PURPOSE,
+  TIMESTAMP_KEY_ENVIRONMENT_NAME,
+  assertOutputAbsent,
+  expectedAnchorKeyId,
+  releaseSignerFromEnvironment,
+  writeExclusive
+} from "./t76-signing-custody.mjs";
 import { assertMonotonicMetadataVersion, readPublicationLedger } from "./tuf-publication-ledger.mjs";
 
-/** The offline environment name that carries root and targets signing authority. */
-export const KEY_ENVIRONMENT_NAME = "VESTRA_RELEASE_SIGNING_KEY_PKCS8_BASE64";
-
-/**
- * The online environment name that carries timestamp and snapshot signing
- * authority (#18, F1). A distinct, fast-rotating key so a compromise of the
- * online key can neither swap the release nor rewrite the root.
- */
-export const TIMESTAMP_KEY_ENVIRONMENT_NAME = "VESTRA_RELEASE_TIMESTAMP_SIGNING_KEY_PKCS8_BASE64";
-
-/** The exact fleet a candidate closure must cover, in code-unit order. */
-export const SUPPORTED_TARGET_KEYS = Object.freeze([
-  "darwin-arm64",
-  "darwin-x64",
-  "linux-arm64",
-  "linux-x64",
-  "win32-x64"
-]);
+// why: the signer, the anchors, the exclusive writes and the error class are
+// shared with the online refresh (#382) and live in t76-signing-custody.mjs.
+// They stay importable from this path, which the publication tests and the
+// custody rehearsal already use.
+export {
+  DEFAULT_RELEASE_ANCHOR,
+  DEFAULT_TIMESTAMP_ANCHOR,
+  KEY_ENVIRONMENT_NAME,
+  RELEASE_ANCHOR_PURPOSE,
+  SUPPORTED_TARGET_KEYS,
+  T76PublishError,
+  TIMESTAMP_ANCHOR_PURPOSE,
+  TIMESTAMP_KEY_ENVIRONMENT_NAME,
+  assertOutputAbsent,
+  expectedAnchorKeyId,
+  releaseSignerFromEnvironment,
+  writeExclusive
+};
 
 /** What a human must do with the emitted directory. Nothing here does it. */
 export const MANUAL_UPLOAD_STEPS = Object.freeze([
@@ -88,7 +102,6 @@ const EVIDENCE_FILE = "target-build-evidence.json";
 const DIGEST = /^sha256:[a-f0-9]{64}$/u;
 const REVISION = /^[0-9a-f]{40}$/u;
 const INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u;
-const BASE64 = /^[A-Za-z0-9+/]+={0,2}$/u;
 const BASE_URL_MAX_LENGTH = 512;
 const INDEX_KEYS = Object.freeze(["schemaVersion", "revision", "targets", "digest"]);
 const TARGET_KEYS = Object.freeze(["platform", "arch", "nodeVersion"]);
@@ -114,16 +127,6 @@ const BUILD_INFO_KEYS = Object.freeze([
 ]);
 const COMPONENT_KEYS = Object.freeze(["componentId", "kind", "logicalPath", "contentDigest", "sizeBytes"]);
 const EVIDENCE_ENTRY_KEYS = Object.freeze(["kind", "logicalPath", "contentDigest", "sizeBytes"]);
-
-export class T76PublishError extends Error {
-  code;
-
-  constructor(code, message, options) {
-    super(message, options);
-    this.name = "T76PublishError";
-    this.code = code;
-  }
-}
 
 const fail = (code, message, cause) => {
   throw new T76PublishError(code, message, cause === undefined ? undefined : { cause });
@@ -159,136 +162,6 @@ const text = (value, label, pattern) => {
 const absolutePath = (value, label) => {
   if (typeof value !== "string" || value.length === 0) fail("VES_T76_PUBLISH_INPUT_INVALID", `${label} is required`);
   return resolve(value);
-};
-
-// ---------------------------------------------------------------------------
-// Signing authority
-// ---------------------------------------------------------------------------
-
-// A key failure must never quote the value it rejected, and must never carry an
-// OpenSSL `cause` that could echo decoded material into a log. Both rules are
-// enforced here rather than at every call site.
-const decodeProtectedPkcs8 = (environment, keyName) => {
-  const encoded = record(environment ?? {}, "protected environment")[keyName];
-  if (typeof encoded !== "string" || encoded.length === 0)
-    fail("VES_T76_PUBLISH_SIGNING_KEY_MISSING", `${keyName} is not configured`);
-  if (!BASE64.test(encoded) || encoded.length % 4 !== 0)
-    fail("VES_T76_PUBLISH_SIGNING_KEY_INVALID", "a release signing key is not base64 PKCS#8 material");
-  const decoded = Buffer.from(encoded, "base64");
-  if (decoded.byteLength === 0)
-    fail("VES_T76_PUBLISH_SIGNING_KEY_INVALID", "a release signing key decodes to no PKCS#8 material");
-  return decoded;
-};
-
-const privateKeyFrom = (der) => {
-  try {
-    return createPrivateKey({ key: der, format: "der", type: "pkcs8" });
-  } catch {
-    return fail("VES_T76_PUBLISH_SIGNING_KEY_INVALID", "a release signing key is not a PKCS#8 private key");
-  }
-};
-
-/**
- * Derives a TUF signer from the protected environment. The returned object
- * exposes a public key, a public key identity, and a signing callback; the
- * private key stays inside this closure and is never serialized. `keyName`
- * selects which protected variable holds it — the offline root/targets key by
- * default, or the online timestamp/snapshot key (#18, F1).
- */
-export function releaseSignerFromEnvironment(environment, keyName = KEY_ENVIRONMENT_NAME) {
-  const privateKey = privateKeyFrom(decodeProtectedPkcs8(environment, keyName));
-  if (privateKey.asymmetricKeyType !== "ed25519")
-    fail("VES_T76_PUBLISH_SIGNING_KEY_INVALID", "a release signing key is not an Ed25519 key");
-  const publicKey = createPublicKey(privateKey);
-  return Object.freeze({
-    keyId: createHash("sha256")
-      .update(publicKey.export({ format: "der", type: "spki" }))
-      .digest("hex"),
-    publicKeyPem: publicKey.export({ format: "pem", type: "spki" }).toString(),
-    sign: (payload) => signBytes(null, payload, privateKey)
-  });
-}
-
-// ---------------------------------------------------------------------------
-// Reviewed release anchor
-// ---------------------------------------------------------------------------
-
-// The committed public half a human actually reviews. Binding the signing key
-// to it here is what stops the anchor from being a declaration nothing checks:
-// before #18/F3 it was referenced only by a separation test and tied to nothing
-// that signs or verifies, so the trust chain bottomed out in npm tarball
-// integrity rather than the reviewed key. The default is that reviewed file; a
-// caller may point at a different anchor for testing, and the CLI never does, so
-// a live publication is always bound to the reviewed release key. The comparison
-// is over public key material only — nothing secret is read, logged, or emitted.
-export const DEFAULT_RELEASE_ANCHOR = new URL(
-  "../docs/qualification/trust/verchestra-release-public-key.json",
-  import.meta.url
-);
-
-// The reviewed public half of the online timestamp/snapshot key (#18, F1). Like
-// the release anchor, the CLI never overrides it, so a live publication is
-// always bound to the reviewed timestamp key.
-export const DEFAULT_TIMESTAMP_ANCHOR = new URL(
-  "../docs/qualification/trust/release-timestamp-snapshot-public-key.json",
-  import.meta.url
-);
-
-// invariant: the only authority each committed anchor may admit (#18, F1). The
-// publisher and the #382 refresh both name the one their role needs.
-export const RELEASE_ANCHOR_PURPOSE = "tuf-release-root";
-export const TIMESTAMP_ANCHOR_PURPOSE = "tuf-timestamp-snapshot";
-
-const anchorKeyIdOf = (ref, purpose) => {
-  const decoded = record(ref, "release anchor");
-  // invariant: a retired anchor (#408) carries the instant it stopped being valid.
-  // It stays committed under docs/qualification/trust/retired/ so what it signed
-  // before then stays auditable, but no role ever admits it for a new signature,
-  // whatever path a caller points at.
-  if (Object.hasOwn(decoded, "validUntil"))
-    fail("VES_T76_PUBLISH_ANCHOR_RETIRED", "the signing anchor is retired and admits no new signature");
-  // why: an anchor reviewed for a different authority is refused even when its
-  // key would verify.
-  if (
-    purpose !== undefined &&
-    (!Array.isArray(decoded.purposes) || decoded.purposes.length !== 1 || decoded.purposes[0] !== purpose)
-  )
-    fail("VES_T76_PUBLISH_ANCHOR_INVALID", `the signing anchor is not reviewed for ${purpose}`);
-  const material = (() => {
-    if (decoded.encoding === "spki-pem" && typeof decoded.publicKey === "string") return decoded.publicKey;
-    if (decoded.encoding === "spki-der-base64url" && typeof decoded.publicKey === "string")
-      return { key: Buffer.from(decoded.publicKey, "base64url"), format: "der", type: "spki" };
-    return fail("VES_T76_PUBLISH_ANCHOR_INVALID", "the release anchor is not an spki public key reference");
-  })();
-  let publicKey;
-  try {
-    publicKey = createPublicKey(material);
-  } catch (error) {
-    return fail("VES_T76_PUBLISH_ANCHOR_INVALID", "the release anchor is not a usable public key", error);
-  }
-  if (publicKey.asymmetricKeyType !== "ed25519")
-    fail("VES_T76_PUBLISH_ANCHOR_INVALID", "the release anchor is not an Ed25519 public key");
-  return createHash("sha256")
-    .update(publicKey.export({ format: "der", type: "spki" }))
-    .digest("hex");
-};
-
-// Resolves the TUF keyId the emitted metadata must carry from a reviewed anchor.
-// A missing or malformed anchor fails closed before any output byte.
-export const expectedAnchorKeyId = async (anchorPath, defaultAnchor, purpose) => {
-  let raw;
-  try {
-    raw = await readFile(anchorPath ?? defaultAnchor, "utf8");
-  } catch (error) {
-    return fail("VES_T76_PUBLISH_ANCHOR_MISSING", "a reviewed signing anchor cannot be read", error);
-  }
-  let parsed;
-  try {
-    parsed = JSON.parse(raw);
-  } catch (error) {
-    return fail("VES_T76_PUBLISH_ANCHOR_INVALID", "a reviewed signing anchor is not JSON", error);
-  }
-  return anchorKeyIdOf(parsed, purpose);
 };
 
 // Per-role expiry (#18, F2): root and targets keep the operator's horizon; the
@@ -337,27 +210,6 @@ const readCanonicalJsonIfPresent = async (path, label) => {
     return undefined;
   }
   return parseCanonical(bytes, label);
-};
-
-// why: shared with the online refresh (#382), so both scripts refuse to
-// overwrite any output byte the same way.
-export const writeExclusive = async (path, bytes, label) => {
-  try {
-    await writeFile(path, bytes, { flag: "wx", mode: 0o600 });
-  } catch (error) {
-    fail("VES_T76_PUBLISH_OUTPUT_EXISTS", `unable to write ${label}`, error);
-  }
-};
-
-export const assertOutputAbsent = async (path, subject = "publication") => {
-  try {
-    await lstat(path);
-  } catch (error) {
-    if (error?.code === "ENOENT") return;
-    fail("VES_T76_PUBLISH_INPUT_INVALID", `the ${subject} output cannot be inspected`, error);
-    return;
-  }
-  fail("VES_T76_PUBLISH_OUTPUT_EXISTS", `the ${subject} output already exists`);
 };
 
 // ---------------------------------------------------------------------------
