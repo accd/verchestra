@@ -1,6 +1,6 @@
 import { join } from "node:path";
 
-import { IndependentVerificationCoordinator, modelPriceTable, type VerificationPorts } from "@verchestra/application";
+import { HumanReviewCoordinator, modelPriceTable, type HumanReviewPorts } from "@verchestra/application";
 import { WorkflowMachine, type RunSnapshot } from "@verchestra/domain";
 import {
   ArtifactSealer,
@@ -170,14 +170,9 @@ async function sealCapsule(
   return capsule.artifactId;
 }
 
-function reviewPorts(
-  context: ReviewContext
-): Pick<VerificationPorts, "reports" | "humanAuthority" | "reviews" | "workflow"> {
+function reviewPorts(context: ReviewContext): HumanReviewPorts {
   return {
-    reports: {
-      save: async () => Promise.reject(new Error("review never writes a verification report")),
-      verify: async (verification) => verifyReport(context.directory, verification)
-    },
+    reports: { verify: async (verification) => verifyReport(context.directory, verification) },
     humanAuthority: {
       verify: async () => {
         const decision = context.authority.decide("human-review", true);
@@ -201,17 +196,6 @@ function reviewPorts(
         return decided;
       }
     }
-  };
-}
-
-function unusedPorts(): Omit<VerificationPorts, "reports" | "humanAuthority" | "reviews" | "workflow"> {
-  const refuse = async () => Promise.reject(new Error("review runs no verification"));
-  return {
-    digest: { sha256: (value) => canonicalDigest(value) },
-    expectations: { derive: refuse },
-    evidence: { inspect: refuse },
-    sensor: { activeStateDigest: refuse, run: refuse },
-    lessons: { record: refuse }
   };
 }
 
@@ -272,7 +256,7 @@ export async function reviewTask(
     const policy = await loadTaskPolicy(io.controlRoot);
     const authority = new TaskAuthority({ runtime, plan, policy, trust: await workspaceTrustRoot(workspace) });
     const context: ReviewContext = { io, workspace, plan, runtime, directory, authority };
-    const review = await new IndependentVerificationCoordinator({ ...unusedPorts(), ...reviewPorts(context) }).review(
+    const review = await new HumanReviewCoordinator(reviewPorts(context)).review(
       reviewInput(context, surface, String(options.outcome), String(options.surfaceDigest))
     );
     if (review["status"] === "REVIEW_REJECTED")

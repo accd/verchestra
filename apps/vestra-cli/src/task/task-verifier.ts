@@ -192,7 +192,6 @@ function ports(context: VerifierContext, commit: TaskRunCommit): VerificationPor
     expectedOutcome(context.plan, commit, criterion.criterionId, criterion.requirementId);
   const sensor = new VerificationSensor(context);
   return {
-    digest: { sha256: (value) => sha256(value) },
     expectations: {
       derive: async (criterion) => ({
         expectedOutcomeRef: `expected:${criterion.criterionId}`,
@@ -219,12 +218,9 @@ function ports(context: VerifierContext, commit: TaskRunCommit): VerificationPor
         await writeSealedRecord(reportPath(context.runDirectory), report);
         const reportDigest = canonicalDigest(report);
         return { reportRef: `verification:${reportDigest.slice(7, 39)}`, reportDigest };
-      },
-      verify: async (verification) => verifyReport(context.runDirectory, verification)
+      }
     },
-    workflow: workflowPort(context),
-    humanAuthority: { verify: async () => ({ authorized: false, authorizationRef: "verification:no-review" }) },
-    reviews: { save: async () => Promise.reject(new Error("verification never records a review")) }
+    workflow: workflowPort(context)
   };
 }
 

@@ -211,12 +211,14 @@ export {
   type TaskGateRunnerResult
 } from "./execution/gate-commit.ts";
 export {
+  HumanReviewCoordinator,
   IndependentVerificationCoordinator,
   VerificationError,
   assertNoToolRequests,
   assertReadOnlyGrant,
   resolveVerifierDriver,
   type DriverAvailabilityFact,
+  type HumanReviewPorts,
   type VerificationErrorCode,
   type VerificationPorts,
   type VerifierDriverResolution

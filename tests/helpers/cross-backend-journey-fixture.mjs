@@ -38,7 +38,9 @@ import {
 } from "./gate-commit-fixture.mjs";
 import {
   coordinator as verificationCoordinator,
+  humanReviewCoordinator,
   humanReviewInput,
+  humanReviewPorts,
   verificationInput,
   verificationPorts
 } from "./verification-fixture.mjs";
@@ -286,19 +288,19 @@ export async function runCrossBackendJourney(options = {}) {
   const gate = await gateCoordinator(commitFixture.ports).execute(commitFixture.input);
 
   const verifierFixture = verificationPorts();
-  const verifier = verificationCoordinator(verifierFixture.ports);
   const verifierInput = verificationInput();
   verifierInput.workspaceId = workspaceId;
   verifierInput.run.runId = successorRunId;
   verifierInput.packageDigest = packageDigest;
   verifierInput.commit.commitId = gate.commitId;
   verifierInput.commit.gateEvidenceDigest = gate.gateEvidenceDigest;
-  const verification = await verifier.verify(verifierInput);
+  const verification = await verificationCoordinator(verifierFixture.ports).verify(verifierInput);
   const finalReviewInput = humanReviewInput(verification);
   finalReviewInput.workspaceId = workspaceId;
   finalReviewInput.run.runId = successorRunId;
   finalReviewInput.verification.commitId = gate.commitId;
-  const review = await verifier.review(finalReviewInput);
+  const reviewFixture = humanReviewPorts();
+  const review = await humanReviewCoordinator(reviewFixture.ports).review(finalReviewInput);
 
   const portableHandoff = handoffFixture.state.artifacts.get(prepared.handoffRef).artifact;
   const sharedArtifacts = Object.freeze([
@@ -341,6 +343,7 @@ export async function runCrossBackendJourney(options = {}) {
     verification,
     verificationInput: verifierInput,
     verificationState: verifierFixture.state,
+    humanReviewState: reviewFixture.state,
     review,
     reviewInput: finalReviewInput,
     sharedArtifacts,

@@ -122,7 +122,7 @@
       "path": "apps/vestra-cli/src/self-test-full-scenario.ts",
       "classification": "migrated-v2",
       "signals": {
-        "canonicalizer": 11,
+        "canonicalizer": 10,
         "digest": 2,
         "localeCompare": 0,
         "serialization": 0
@@ -578,7 +578,7 @@
         "localeCompare": 0,
         "serialization": 2
       },
-      "reason": "The reviewed source uses the declared V2 canonical contract (T4j, direct swap \u2014 no installed base, no pinned digest fixture, #58)."
+      "reason": "The reviewed source uses the declared V2 canonical contract (T4j, direct swap — no installed base, no pinned digest fixture, #58)."
     },
     {
       "path": "packages/distribution/src/release-candidate.ts",
@@ -611,7 +611,7 @@
         "localeCompare": 0,
         "serialization": 2
       },
-      "reason": "The reviewed source uses the declared V2 canonical contract (T4j, direct swap \u2014 same-tick equality check only, #58)."
+      "reason": "The reviewed source uses the declared V2 canonical contract (T4j, direct swap — same-tick equality check only, #58)."
     },
     {
       "path": "packages/distribution/src/tuf-publication.ts",
