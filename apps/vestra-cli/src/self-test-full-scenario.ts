@@ -25,6 +25,7 @@ import {
   CapabilityModelRouter,
   ContextSnapshotResolver,
   DeterministicContextCompiler,
+  runDriverSession,
   type ContextRecipe,
   type PassportRecord
 } from "@verchestra/agent-runtime";
@@ -145,7 +146,7 @@ export async function resolveDriverBinding(
   );
 }
 
-interface VerifierSessionEvidence {
+export interface VerifierSessionEvidence {
   readonly closed: true;
   readonly driverId: string;
   readonly grantedToolCount: 0;
@@ -163,10 +164,10 @@ function verifierStartRequest(): DriverStartRequest {
   };
 }
 
-function verifierDriver(driverId: string, request: DriverStartRequest): Driver {
+function verifierDriver(driverId: string, request: DriverStartRequest, commands: SelfTestDriverCommands): Driver {
   if (driverId === "claude-code") {
     return new ClaudeCodeDriver({
-      command: [...DEFAULT_DRIVER_COMMANDS.claude],
+      command: [...commands.claude],
       minimumVersion: "2.1.168",
       resolveExecution: async () => ({
         passport: {
@@ -184,7 +185,7 @@ function verifierDriver(driverId: string, request: DriverStartRequest): Driver {
   }
   if (driverId === "codex") {
     return new CodexDriver({
-      command: [...DEFAULT_DRIVER_COMMANDS.codex],
+      command: [...commands.codex],
       minimumVersion: "0.115.0",
       resolveExecution: async () => ({
         passport: {
@@ -205,15 +206,22 @@ function verifierDriver(driverId: string, request: DriverStartRequest): Driver {
   throw new Error(`Self-Test has no composed verifier driver for ${driverId}`);
 }
 
-async function runVerifierDriverSession(binding: SelfTestDriverBinding): Promise<VerifierSessionEvidence> {
+// why: `commands` is injectable for the reason `resolveDriverBinding` takes it:
+// a test points the verifier at a driver that does not complete and proves the
+// composition root refuses, instead of recording a session that never passed.
+export async function runVerifierDriverSession(
+  binding: SelfTestDriverBinding,
+  commands: SelfTestDriverCommands = DEFAULT_DRIVER_COMMANDS
+): Promise<VerifierSessionEvidence> {
   const request = verifierStartRequest();
   assertReadOnlyGrant(request.tools);
   const events: DriverEvent[] = [];
-  const driver = verifierDriver(binding.verifierDriverId, request);
-  const session = await driver.start(request, (event) => events.push(event), new AbortController().signal);
-  const closed = await driver.close(session);
+  const driver = verifierDriver(binding.verifierDriverId, request, commands);
+  const finished = await runDriverSession({ driver, startRequest: request, observe: (event) => events.push(event) });
   assertNoToolRequests(events);
-  if (closed["closed"] !== true || closed["outcome"] !== "completed")
+  // invariant: the session runner reports `completed` only when the driver's
+  // close said so and no error event was observed.
+  if (finished.outcome !== "completed")
     throw new Error("Self-Test verifier driver did not complete its isolated session");
   return Object.freeze({
     closed: true,
