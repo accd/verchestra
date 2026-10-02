@@ -94,7 +94,7 @@ export interface ClaudeCodeExecution {
   readonly environment?: Readonly<Record<string, string>>;
   readonly sensitiveValues?: readonly string[];
   readonly maxOutputBytes?: number;
-  // Required by, and only accepted by, a mediated profile.
+  // invariant: required by, and only accepted by, a mediated profile.
   readonly mediation?: ClaudeCodeMediation;
 }
 
@@ -105,8 +105,8 @@ export interface ClaudeCodeDriverDependencies {
   readonly probeEnvironment?: Readonly<Record<string, string>>;
   readonly terminateTree?: (pid: number) => Promise<void>;
   readonly onSpawn?: (pid: number) => void;
-  // Absent: the T03 profile, unchanged. Present: a qualified mediated profile
-  // (AD-039), which requires an absolute executable.
+  // invariant: absent is the T03 profile, unchanged; present is a qualified
+  // mediated profile (AD-039), which requires an absolute executable.
   readonly profile?: ClaudeCodeMediatedProfile;
 }
 
@@ -250,15 +250,15 @@ function mediatedCredential(execution: ClaudeCodeExecution, kind: ProfileKind): 
   return credential;
 }
 
+// hazard: a location that exists but cannot be inspected or listed still
+// counts as present; only a path that is not there at all is absent.
 async function policyPresent(path: string): Promise<boolean> {
-  const metadata = await lstat(path).catch(() => undefined);
-  if (metadata === undefined) return false;
-  if (!metadata.isDirectory()) return true;
-  // hazard: a policy directory that cannot be listed still counts as present.
-  return readdir(path).then(
-    (entries) => entries.length > 0,
-    () => true
-  );
+  try {
+    const metadata = await lstat(path);
+    return !metadata.isDirectory() || (await readdir(path)).length > 0;
+  } catch (error) {
+    return !["ENOENT", "ENOTDIR"].includes(String((error as { readonly code?: unknown }).code));
+  }
 }
 
 async function refuseManagedPolicy(paths: readonly string[]): Promise<void> {

@@ -7,7 +7,7 @@
 // and no real subscription token is used.
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { access, mkdir, readFile, writeFile } from "node:fs/promises";
+import { access, chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, test } from "node:test";
@@ -239,6 +239,18 @@ test("a machine-wide managed policy refuses the subscription profile before any 
   }
   const clear = await subscriptionFixture({ profile: { managedPolicyPaths: [join(probe.root, "absent"), empty] } });
   assert.deepEqual(errors((await clear.run()).events), []);
+  // hazard: a policy location that cannot be listed is present, never absent.
+  const unreadable = join(probe.root, "unreadable-policy-directory");
+  await mkdir(unreadable);
+  await writeFile(join(unreadable, "managed-settings.json"), "{}\n");
+  await chmod(unreadable, 0o000);
+  try {
+    const fixture = await subscriptionFixture({ profile: { managedPolicyPaths: [unreadable] } });
+    await assert.rejects(fixture.run(), { code: "VES_CLAUDE_MANAGED_POLICY_PRESENT" });
+    assert.deepEqual(fixture.spawned, []);
+  } finally {
+    await chmod(unreadable, 0o700);
+  }
 });
 
 test("the subscription profile is validated at construction", (t) => {
