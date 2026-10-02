@@ -1,0 +1,164 @@
+// invariant: the Codex verifier session (ADP-4, C4-2). `runCodexVerifier` runs
+// its session through the driver session runner: a caller that is already
+// cancelled starts no Codex process, a stop cancels the running one, every
+// usage event spends from the run's budget, and a failure of the metering
+// itself is raised instead of being read as a verifier that merely failed.
+//
+// The DETERMINISTIC FAKE `codex` in tests/helpers/task-cli-fakes stands in for
+// the CLI. On Windows the governed task path is refused before a verifier
+// session is reachable, so each case asserts that refusal there instead.
+import assert from "node:assert/strict";
+import { stat } from "node:fs/promises";
+import { after, test } from "node:test";
+
+import { createBudgetMeter } from "../../packages/application/src/execution/budget-meter.ts";
+import {
+  VERIFIER_MODEL,
+  WIN32_HOST,
+  verifierFixtures,
+  verifierRefusedOnWin32
+} from "../helpers/codex-verifier-fixture.mjs";
+import { eventuallyDead, isAlive } from "../helpers/process-liveness.mjs";
+
+const verifierSession = verifierFixtures(after);
+// why: one turn of the fake reports 5 input and 3 output tokens.
+const TURN_TOKENS = 8;
+const PRICES = Object.freeze({
+  version: "test.1",
+  models: Object.freeze({ [VERIFIER_MODEL]: Object.freeze({ inputPerMToken: 1, outputPerMToken: 2 }) })
+});
+const meterWith = (budgets = {}, priceTable = PRICES) =>
+  createBudgetMeter({
+    budgets: { maximumCostUsd: 10, maximumTokens: 1_000_000, maximumDurationMs: 600_000, ...budgets },
+    priceTable
+  });
+
+function failedWith(reason) {
+  return (error) => {
+    assert.equal(error.envelope.code, "VES_TASK_FAILED");
+    assert.deepEqual(error.envelope.safeDetails, { reason });
+    return true;
+  };
+}
+
+test("a verifier whose caller is already cancelled starts no Codex process", async (t) => {
+  if (WIN32_HOST) return verifierRefusedOnWin32(t);
+  const controller = new AbortController();
+  controller.abort();
+  const session = await verifierSession({ signal: controller.signal });
+  await assert.rejects(session.run(), failedWith("VES_EXECUTOR_CANCELLED"));
+  assert.deepEqual(await session.sessions(), [], "Codex never opened a thread");
+  await assert.rejects(stat(session.sessionRoot), { code: "ENOENT" });
+});
+
+test("cancelling a running verifier stops its Codex process and fails as cancelled", { timeout: 60_000 }, async (t) => {
+  if (WIN32_HOST) return verifierRefusedOnWin32(t);
+  const controller = new AbortController();
+  t.after(() => controller.abort());
+  const session = await verifierSession({ scenario: "hang", signal: controller.signal });
+  const run = session.run();
+  // hazard: the rejection is observed only after the turn is open; without a
+  // handler it would be reported as unhandled if the run ended early.
+  const settled = run.then(
+    () => undefined,
+    (error) => error
+  );
+  const { pid, scenario } = await session.turn();
+  assert.equal(scenario, "hang");
+  assert.equal(isAlive(pid), true, "the verifier was running when it was cancelled");
+  const cancelledAt = Date.now();
+  controller.abort();
+  const error = await settled;
+  assert.ok(error, "a cancelled verifier does not return a verdict");
+  assert.equal(failedWith("VES_EXECUTOR_CANCELLED")(error), true);
+  // invariant: the runner cancels the session itself; it does not wait for the
+  // driver's interrupt grace period to pass before the process is stopped.
+  assert.ok(Date.now() - cancelledAt < 5_000, "the cancel did not hang");
+  assert.equal(await eventuallyDead(pid), true, "the Codex process is gone");
+  await assert.rejects(stat(session.sessionRoot), { code: "ENOENT" });
+});
+
+test("usage below every ceiling is spent from the run's budget and the verdict is returned", async (t) => {
+  if (WIN32_HOST) return verifierRefusedOnWin32(t);
+  const meter = meterWith();
+  const session = await verifierSession({ meter });
+  assert.match(await session.run(), /VERCHESTRA-VERDICT-BEGIN/u);
+  const snapshot = meter.snapshot();
+  assert.equal(snapshot.consumedTokens, TURN_TOKENS);
+  assert.equal(snapshot.usageEvents, 1);
+  assert.equal(snapshot.stopReason, null);
+});
+
+test("a verifier whose usage reaches the token ceiling fails as budget exceeded, not as a verdict", async (t) => {
+  if (WIN32_HOST) return verifierRefusedOnWin32(t);
+  // why: the threshold is 90% of the ceiling, so one turn of the fake reaches it.
+  const meter = meterWith({ maximumTokens: TURN_TOKENS });
+  const session = await verifierSession({ meter });
+  await assert.rejects(session.run(), failedWith("VES_EXECUTOR_BUDGET_EXCEEDED"));
+  assert.equal(meter.snapshot().consumedTokens, TURN_TOKENS);
+  assert.equal(meter.snapshot().stopReason, "token-threshold");
+  await assert.rejects(stat(session.sessionRoot), { code: "ENOENT" });
+});
+
+test(
+  "a verifier that outlives the run's remaining duration is stopped as budget exceeded",
+  { timeout: 60_000 },
+  async (t) => {
+    if (WIN32_HOST) return verifierRefusedOnWin32(t);
+    const startedAt = Date.now();
+    const meter = meterWith({ maximumDurationMs: 2_000 });
+    const session = await verifierSession({ scenario: "hang", meter });
+    await assert.rejects(session.run(), failedWith("VES_EXECUTOR_BUDGET_EXCEEDED"));
+    // why: the stop is the duration timer at 90% of the ceiling; a session that
+    // ended earlier ended for another reason.
+    assert.ok(Date.now() - startedAt >= 1_700, "the verifier was stopped before its duration was reached");
+    assert.equal(meter.snapshot().stopReason, "duration-threshold");
+    // invariant: whatever Codex process had opened a turn by then is gone.
+    for (const { pid } of await session.turns())
+      assert.equal(await eventuallyDead(pid), true, "the Codex process is gone");
+    await assert.rejects(stat(session.sessionRoot), { code: "ENOENT" });
+  }
+);
+
+test("usage the meter refuses stops the verifier with the meter's own code", async (t) => {
+  if (WIN32_HOST) return verifierRefusedOnWin32(t);
+  const meter = meterWith({}, { version: "test.1", models: {} });
+  const session = await verifierSession({ meter });
+  await assert.rejects(session.run(), failedWith("VES_BUDGET_MODEL_UNKNOWN"));
+  assert.equal(meter.snapshot().usageEvents, 0);
+});
+
+test("a defect in the metering is raised as itself, never as a verifier that failed", async (t) => {
+  if (WIN32_HOST) return verifierRefusedOnWin32(t);
+  const defect = new TypeError("the meter is broken");
+  const meter = {
+    ...meterWith(),
+    recordUsage: () => {
+      throw defect;
+    }
+  };
+  const session = await verifierSession({ meter });
+  await assert.rejects(session.run(), (error) => error === defect);
+  await assert.rejects(stat(session.sessionRoot), { code: "ENOENT" });
+});
+
+test("a verifier with no meter is not stopped by its usage", async (t) => {
+  if (WIN32_HOST) return verifierRefusedOnWin32(t);
+  const session = await verifierSession();
+  assert.match(await session.run(), /VERCHESTRA-VERDICT-BEGIN/u);
+  assert.equal((await session.sessions()).length, 1);
+});
+
+// invariant: the reason names a reached ceiling before a caller's cancel, as the
+// executor does: a run whose budget is gone is a budget outcome even when it
+// was also cancelled.
+test("a reached ceiling outranks a caller's cancel in the reason", async (t) => {
+  if (WIN32_HOST) return verifierRefusedOnWin32(t);
+  const meter = meterWith({ maximumTokens: TURN_TOKENS });
+  meter.recordUsage({ model: VERIFIER_MODEL, inputTokens: TURN_TOKENS, outputTokens: 0 });
+  const controller = new AbortController();
+  controller.abort();
+  const session = await verifierSession({ meter, signal: controller.signal });
+  await assert.rejects(session.run(), failedWith("VES_EXECUTOR_BUDGET_EXCEEDED"));
+  assert.deepEqual(await session.sessions(), [], "Codex never opened a thread");
+});

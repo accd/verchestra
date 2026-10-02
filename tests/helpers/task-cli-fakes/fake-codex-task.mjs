@@ -3,7 +3,8 @@
 // returns a verdict block, and for `codex login status`. It never contacts a
 // provider. It cites the gate script's own check as evidence and the
 // implementation file the task changed, reading both from its working
-// directory (the review checkout).
+// directory (the review checkout). `verifier-scenario:<name>` in the prompt
+// selects a turn that does not answer with a verdict.
 //
 // Its login is a fixture: `$CODEX_HOME/auth.json` holding
 // `{"fixtureLogin":"chatgpt"}` or `{"fixtureLogin":"api-key"}`, written by the
@@ -23,6 +24,9 @@ if (process.argv.includes("--version")) {
 
 const emit = (message) => process.stdout.write(`${JSON.stringify(message)}\n`);
 const log = fixtureLog("fake-codex.log");
+// why: a turn names its process in a log of its own, so a test can tell that a
+// verifier it stopped was really running, and that the process is gone.
+const turnLog = fixtureLog("fake-codex-turn.log");
 const models = ["gpt-5.2-codex"];
 const environmentKeys = () =>
   Object.keys(process.env).sort((left, right) => Number(left > right) - Number(left < right));
@@ -121,7 +125,12 @@ lines.on("line", (line) => {
     emit({ method: "thread/started", params: { thread: { id: "private-thread-id" } } });
   } else if (message.method === "turn/start") {
     const prompt = message.params.input?.[0]?.text ?? "";
+    const scenario = /verifier-scenario:([a-z-]+)/u.exec(prompt)?.[1] ?? "verdict";
     emit({ id: message.id, result: { turn: { id: "private-turn-id" } } });
+    turnLog({ pid: process.pid, scenario });
+    // why: `verifier-scenario:hang` leaves the turn open until the process is
+    // stopped, the way a verifier that never answers would.
+    if (scenario === "hang") return;
     emit({ method: "item/agentMessage/delta", params: { delta: verdict(prompt) } });
     emit({
       method: "turn/completed",
