@@ -727,7 +727,7 @@ function running(pid) {
 }
 
 test("cancel kills everything the implementer started, including a process that left its group", TIMEOUT, async (t) => {
-  if (!DARWIN) return;
+  if (!DARWIN) return notConfiguredOffMacOS(t);
   const fixture = await taskFixture({ request: { instructions: "Start helpers and never answer. scenario:fork" } });
   const plan = await approved(fixture);
   const child = fixture.launchAsync(startArguments(fixture, plan.runId));
@@ -752,4 +752,156 @@ test("cancel kills everything the implementer started, including a process that 
     assert.equal(running(pid), false, `${name} outlived the cancel`);
   }
   assert.equal(fixture.git(["worktree", "list", "--porcelain"]).split("\n\n").length, 1);
+});
+
+// invariant: off macOS these journeys cannot run, and each of them asserts why
+// instead of passing without an assertion: on Windows every task command is
+// refused for the platform, and on Linux the fixture has no credential store.
+function notConfiguredOffMacOS(t) {
+  t.diagnostic("off macOS: asserting that the task path reports not configured before any effect");
+  return taskFixture().then((fixture) => {
+    const plan = fixture.launch(["task", "plan", "--request", fixture.requestPath, "--output", "json"]);
+    const error = refused(plan, "VES_TASK_NOT_CONFIGURED", "plan");
+    assert.equal(error.safeDetails.requirement, process.platform === "win32" ? "platform" : "credential-store");
+    assert.equal(existsSync(join(fixture.stateRoot, "tasks")), false);
+  });
+}
+
+// invariant: a hang-up or a termination request while a provider runs (ADP-4).
+// The provider leads a process group of its own, so the terminal's signals no
+// longer reach it. `vestra` stops every provider tree it started and then ends
+// as the signal would have ended it. It records nothing: no abort, no cancel
+// marker, no outcome. The run is left as a killed command leaves it, and
+// `task resume` completes it. The `fork-implementer` and `fork-verifier` flags
+// make the fake provider fork one process into its group and one out of it and
+// never answer; removing the flag lets the resumed run finish.
+const INTERRUPTED_PROVIDERS = [
+  {
+    provider: "the implementer",
+    flag: "fork-implementer",
+    state: "IMPLEMENTING",
+    tree: (fixture) => logLines(fixture, "fake-claude.log").find((entry) => entry.tree !== undefined)?.tree
+  },
+  {
+    provider: "the verifier",
+    flag: "fork-verifier",
+    state: "VERIFYING",
+    tree: (fixture) => {
+      const turn = logLines(fixture, "fake-codex-turn.log").find((entry) => entry.scenario === "fork");
+      return turn === undefined ? undefined : { provider: turn.pid, sameGroup: turn.sameGroup, escaped: turn.escaped };
+    }
+  }
+];
+
+// hazard: a case that fails before it signals the command would leave the
+// command and the fake's processes alive.
+function reapForkedRun(t, child, tree) {
+  t.after(() => {
+    child.kill("SIGKILL");
+    for (const pid of Object.values(tree() ?? {})) if (running(pid)) process.kill(pid, "SIGKILL");
+  });
+}
+
+async function assertTreeGone(tree, label) {
+  for (const [name, pid] of Object.entries(tree)) {
+    await waitFor(() => !running(pid), 10_000).catch(() => undefined);
+    assert.equal(running(pid), false, `${name} outlived ${label}`);
+  }
+}
+
+for (const { provider, flag, state, tree } of INTERRUPTED_PROVIDERS) {
+  for (const signal of ["SIGHUP", "SIGTERM"]) {
+    test(
+      `${signal} while ${provider} runs stops its whole tree, records no abort, and leaves a run that resume completes`,
+      TIMEOUT,
+      async (t) => {
+        if (!DARWIN) return notConfiguredOffMacOS(t);
+        const fixture = await taskFixture();
+        await writeFile(join(fixture.scratch, flag), "");
+        const plan = await approved(fixture);
+        const child = fixture.launchAsync(startArguments(fixture, plan.runId));
+        const finished = exited(child);
+        let stdout = "";
+        let stderr = "";
+        child.stdout.on("data", (chunk) => (stdout += chunk));
+        child.stderr.on("data", (chunk) => (stderr += chunk));
+        reapForkedRun(t, child, () => tree(fixture));
+        await waitFor(() => tree(fixture) !== undefined);
+        const forked = tree(fixture);
+        for (const [name, pid] of Object.entries(forked))
+          assert.equal(running(pid), true, `${name} was running before the signal`);
+        assert.equal(status(fixture, plan.runId).state, state);
+
+        child.kill(signal);
+        assert.deepEqual(await finished, { code: null, signal }, "the command ends as the signal ends a process");
+        await assertTreeGone(forked, "the command");
+        assert.equal(stdout, "", "an interrupted command reports no outcome");
+        assert.equal(stderr.includes("vestra:"), false, "a tree that was stopped is not reported as running");
+
+        const interrupted = status(fixture, plan.runId);
+        assert.equal(interrupted.state, state, "no abort and no failure was recorded");
+        assert.equal(interrupted.activeProcess, false);
+        const runDirectory = join(fixture.stateRoot, "tasks", plan.runId);
+        assert.equal(existsSync(join(runDirectory, "cancel.json")), false, "a cancel marker was written");
+        assert.equal(existsSync(join(runDirectory, "outcome.json")), false, "an outcome was recorded");
+        refused(start(fixture, plan.runId), "VES_TASK_TRANSITION_REFUSED", "start an interrupted run");
+
+        await rm(join(fixture.scratch, flag));
+        const resumed = ok(start(fixture, plan.runId, "resume"), "resume");
+        assert.equal(resumed.state, "HUMAN_REVIEW");
+        assert.equal(fixture.git(["show", `${resumed.branch}:src/value.txt`]), "new");
+      }
+    );
+  }
+}
+
+// invariant: SIGINT is the cancel it has always been: the provider's whole
+// tree is stopped and the run is aborted.
+test(
+  "SIGINT while the implementer runs still cancels: the tree is stopped and the run is aborted",
+  TIMEOUT,
+  async (t) => {
+    if (!DARWIN) return notConfiguredOffMacOS(t);
+    const fixture = await taskFixture({ request: { instructions: "Start helpers and never answer. scenario:fork" } });
+    const plan = await approved(fixture);
+    const child = fixture.launchAsync(startArguments(fixture, plan.runId));
+    const finished = exited(child);
+    let stdout = "";
+    child.stdout.on("data", (chunk) => (stdout += chunk));
+    const tree = INTERRUPTED_PROVIDERS[0].tree;
+    reapForkedRun(t, child, () => tree(fixture));
+    await waitFor(() => tree(fixture) !== undefined);
+    const forked = tree(fixture);
+    child.kill("SIGINT");
+    assert.deepEqual(await finished, { code: 1, signal: null });
+    assert.equal(JSON.parse(stdout).data.status, "ABORTED");
+    assert.equal(status(fixture, plan.runId).state, "ABORTED");
+    await assertTreeGone(forked, "the cancel");
+  }
+);
+
+// invariant: the interrupt handlers exist only while a provider runs. A
+// termination request at any other moment is the cancel it was before. Here it
+// arrives while the gate is running: the command keeps running, the gate
+// passes, and the run is then aborted instead of going on to verification.
+test("SIGTERM while no provider is running still cancels the run", TIMEOUT, async (t) => {
+  if (!DARWIN) return notConfiguredOffMacOS(t);
+  const fixture = await taskFixture();
+  const plan = await approved(fixture);
+  await writeFile(join(fixture.home, "pause-gate"), "");
+  const child = fixture.launchAsync(startArguments(fixture, plan.runId));
+  const finished = exited(child);
+  let stdout = "";
+  child.stdout.on("data", (chunk) => (stdout += chunk));
+  t.after(() => child.kill("SIGKILL"));
+  await waitFor(() => existsSync(join(fixture.home, "gate-paused")));
+  child.kill("SIGTERM");
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  assert.equal(child.exitCode, null, "the signal did not end the command");
+  assert.equal(child.signalCode, null, "the signal did not end the command");
+  await rm(join(fixture.home, "pause-gate"));
+  assert.deepEqual(await finished, { code: 1, signal: null });
+  assert.equal(JSON.parse(stdout).data.status, "ABORTED");
+  assert.equal(status(fixture, plan.runId).state, "ABORTED");
+  assert.deepEqual(logLines(fixture, "fake-codex.log"), [], "the verifier never started");
 });

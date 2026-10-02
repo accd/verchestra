@@ -11,7 +11,7 @@
 import { spawn } from "node:child_process";
 import { readFileSync, readdirSync } from "node:fs";
 
-import { credentialMatchesStore, fixtureLog, providerArguments } from "./fixture-channel.mjs";
+import { credentialMatchesStore, fixtureFlag, fixtureLog, providerArguments } from "./fixture-channel.mjs";
 
 const VERSION = "2.1.282";
 if (process.argv.includes("--version")) {
@@ -185,7 +185,10 @@ if (scenario === "injection" || scenario === "leak-fail") {
     usage: { input_tokens: 900000, output_tokens: 900000 }
   });
 }
-if (scenario === "fork") {
+// why: the `fork-implementer` flag makes any session fork and hang, so one
+// request can be interrupted in its first run and completed when it is resumed.
+const forks = scenario === "fork" || fixtureFlag("fork-implementer");
+if (forks) {
   // why: a provider that starts processes of its own and then never answers.
   // One descendant stays in the provider's process group and holds its output
   // open; the other leaves the group with setsid(). The log names all three.
@@ -194,7 +197,7 @@ if (scenario === "fork") {
   const escaped = spawn(process.execPath, idle, { stdio: "ignore", detached: true });
   log({ tree: { provider: process.pid, sameGroup: sameGroup.pid, escaped: escaped.pid } });
 }
-if (scenario === "slow" || scenario === "fork") {
+if (scenario === "slow" || forks) {
   setInterval(() => {}, 1_000);
   await new Promise(() => {});
 }

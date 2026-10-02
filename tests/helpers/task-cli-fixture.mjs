@@ -80,6 +80,12 @@ function initializeRepository(root, repository, objectFormat) {
 
 const CHECK_VALUE = `import { existsSync, readFileSync, writeFileSync } from "node:fs";
 const home = process.env.HOME ?? "";
+// why: a paused gate waits until its pause file is removed and then judges the
+// change as usual, so a test can act while a gate runs and still let it pass.
+if (home !== "" && existsSync(\`\${home}/pause-gate\`)) {
+  writeFileSync(\`\${home}/gate-paused\`, String(process.pid));
+  while (existsSync(\`\${home}/pause-gate\`)) await new Promise((resolve) => setTimeout(resolve, 50));
+}
 if (home !== "" && existsSync(\`\${home}/hold-gate\`)) {
   writeFileSync(\`\${home}/gate-held\`, String(process.pid));
   setInterval(() => {}, 1000);

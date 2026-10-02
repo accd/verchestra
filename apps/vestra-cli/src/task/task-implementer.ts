@@ -3,7 +3,7 @@ import { access, stat } from "node:fs/promises";
 import { delimiter, isAbsolute, join } from "node:path";
 
 import { DriverExecutionAdapter, InMemoryExecutionPayloadStore, type ContextManifest } from "@verchestra/agent-runtime";
-import type { NormalizedTaskRequest } from "@verchestra/application";
+import type { ExecutionDriverPort, NormalizedTaskRequest } from "@verchestra/application";
 import { CLAUDE_PROFILE_CREDENTIAL_VARIABLES, ClaudeCodeDriver, type DriverStartRequest } from "@verchestra/drivers";
 import type { NodeGitWorktreeAdapter } from "@verchestra/platform-node";
 
@@ -11,7 +11,7 @@ import { resolveMcpBridgeRelay } from "../release-layout.ts";
 import type { ProviderAuthMode } from "../task-provider-auth.ts";
 import { stableUuid } from "./task-context.ts";
 import { notConfigured } from "./task-errors.ts";
-import { terminateProviderTree } from "./task-process-tree.ts";
+import type { ProviderProcesses } from "./task-process-tree.ts";
 
 const MAXIMUM_CONTEXT_CHARACTERS = 400_000;
 // invariant: the mode alone picks the qualified profile, and the profile
@@ -98,17 +98,23 @@ export interface ImplementerOptions {
   readonly credential: string;
   readonly env: Readonly<Record<string, string | undefined>>;
   readonly isolationRoot: string;
+  readonly providers: ProviderProcesses;
   readonly worktrees: NodeGitWorktreeAdapter;
   readonly payloads: InMemoryExecutionPayloadStore;
   readonly feedback: () => string | undefined;
   readonly onWorktree: (worktreeRef: string) => Promise<void>;
 }
 
-export function implementerAdapter(options: ImplementerOptions): DriverExecutionAdapter<DriverStartRequest> {
+// invariant: the implementer's port. Its session belongs to the command's
+// provider processes: Claude Code is stopped as a whole tree, and once the
+// command is being interrupted no checkpoint and no tool effect of the session
+// is made and the port never answers, so nothing is recorded after the signal.
+export function implementerAdapter(options: ImplementerOptions): ExecutionDriverPort {
   const model = options.request.driver.model;
   const passportId = `passport_${stableUuid(`claude-code:${model}`)}`;
   const kind = PROFILES[options.auth];
-  return new DriverExecutionAdapter<DriverStartRequest>({
+  const session = options.providers.session("Claude Code");
+  const adapter = new DriverExecutionAdapter<DriverStartRequest>({
     resolveWorktree: async (worktreeRef) => {
       await options.onWorktree(worktreeRef);
       return options.worktrees.resolvePath(worktreeRef);
@@ -131,7 +137,8 @@ export function implementerAdapter(options: ImplementerOptions): DriverExecution
           environment: passThroughEnvironment(options.env),
           isolationRoot: options.isolationRoot
         },
-        terminateTree: terminateProviderTree,
+        terminateTree: session.terminateTree,
+        onSpawn: session.onSpawn,
         resolveExecution: async () => ({
           passport: { passportId, revision: 1, provider: "anthropic", resolvedModel: model },
           prompt: implementerPrompt(options.request, options.manifest, options.feedback()),
@@ -143,4 +150,19 @@ export function implementerAdapter(options: ImplementerOptions): DriverExecution
       })
     })
   });
+  return {
+    cancel: (worktreeRef) => adapter.cancel(worktreeRef),
+    execute: async (request, control) => {
+      try {
+        return await adapter.execute(request, {
+          signal: control.signal,
+          reportUsage: (event) => control.reportUsage(event),
+          checkpoint: (stage, data) => session.unlessInterrupted(() => control.checkpoint(stage, data)),
+          invokeTool: (toolRequest) => session.unlessInterrupted(() => control.invokeTool(toolRequest))
+        });
+      } finally {
+        await session.end();
+      }
+    }
+  };
 }

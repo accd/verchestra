@@ -16,7 +16,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import readline from "node:readline";
 
-import { credentialMatchesStore, fixtureLog, providerArguments } from "./fixture-channel.mjs";
+import { credentialMatchesStore, fixtureFlag, fixtureLog, providerArguments } from "./fixture-channel.mjs";
 
 if (process.argv.includes("--version")) {
   process.stdout.write("codex-cli 0.130.0\n");
@@ -133,7 +133,11 @@ lines.on("line", (line) => {
     emit({ method: "thread/started", params: { thread: { id: "private-thread-id" } } });
   } else if (message.method === "turn/start") {
     const prompt = message.params.input?.[0]?.text ?? "";
-    const scenario = /verifier-scenario:([a-z-]+)/u.exec(prompt)?.[1] ?? "verdict";
+    // why: the `fork-verifier` flag selects the forking turn without a word in
+    // the prompt, so one request can be interrupted in its first run and
+    // verified when it is resumed.
+    const flagged = fixtureFlag("fork-verifier") ? "fork" : "verdict";
+    const scenario = /verifier-scenario:([a-z-]+)/u.exec(prompt)?.[1] ?? flagged;
     emit({ id: message.id, result: { turn: { id: "private-turn-id" } } });
     // why: `verifier-scenario:fork` is a verifier that starts processes of its
     // own: one stays in its process group and holds its output open, the
