@@ -239,3 +239,22 @@ test("Pi Driver session references and close result contain no private context",
   assert.equal(serialized.includes("private prompt"), false);
   assert.equal(Object.hasOwn(closed, "messages"), false);
 });
+
+// why: Pi qualifies one exact version, not a floor. A floor would admit each of
+// these, so each must be refused as drift and reported as the manifest spells it.
+for (const version of ["0.87.2", "0.88.0", "1.0.0", "0.87.1-beta.1"]) {
+  test(`Pi Driver refuses runtime ${version} instead of reading its pin as a floor`, async (t) => {
+    const root = await mkdtemp(join(tmpdir(), "verchestra-pi-drift-"));
+    t.after(() => rm(root, { recursive: true, force: true }));
+    const manifest = join(root, "package.json");
+    await writeFile(manifest, JSON.stringify({ name: "@earendil-works/pi-agent-core", version }));
+    const probe = await new PiDriver(piFixture().dependencies(), { versionResolver: () => manifest }).probe();
+    assert.deepEqual(probe, {
+      driverId: "pi",
+      package: "@earendil-works/pi-agent-core",
+      available: false,
+      version,
+      error: { code: "VES_PI_VERSION_UNSUPPORTED", message: "Pi runtime version is unsupported" }
+    });
+  });
+}

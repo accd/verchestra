@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { DriverSessionLedger } from "./driver-session-ledger.ts";
+import { probeDriverVersion } from "./driver-version-probe.ts";
 import {
   DriverProtocolError,
   validateDriverStartRequest,
@@ -86,6 +87,15 @@ async function installedPiVersion(resolver: PiVersionResolver): Promise<string |
 
 export type PiVersionResolver = () => Promise<string> | string;
 
+// invariant: the probe refusals are VES_PI_NOT_AVAILABLE and
+// VES_PI_VERSION_UNSUPPORTED.
+const PROBE_PROFILE = Object.freeze({
+  identity: Object.freeze({ driverId: "pi", package: PI_PACKAGE }),
+  errorCodePrefix: "VES_PI",
+  noun: "Pi runtime",
+  capabilities: Object.freeze(["stream", "tools", "usage", "abort"])
+});
+
 const defaultVersionResolver: PiVersionResolver = () =>
   createRequire(import.meta.url).resolve(`${PI_PACKAGE}/package.json`);
 
@@ -157,32 +167,12 @@ export class PiDriver implements Driver {
   }
 
   async probe() {
-    const version = await installedPiVersion(this.#resolveVersion);
-    if (version === undefined)
-      return Object.freeze({
-        driverId: "pi",
-        package: PI_PACKAGE,
-        available: false,
-        error: Object.freeze({ code: "VES_PI_NOT_AVAILABLE", message: "Pi runtime is unavailable" })
-      });
     // Pi is pinned to an exact qualified version rather than a floor: the driver
     // is written against that SDK's API, and the repository's dependency policy
     // asserts the exact pin, so any drift must surface instead of being accepted.
-    if (version !== QUALIFIED_PI_VERSION)
-      return Object.freeze({
-        driverId: "pi",
-        package: PI_PACKAGE,
-        available: false,
-        version,
-        error: Object.freeze({ code: "VES_PI_VERSION_UNSUPPORTED", message: "Pi runtime version is unsupported" })
-      });
-    return Object.freeze({
-      driverId: "pi",
-      package: PI_PACKAGE,
-      available: true,
-      version,
-      capabilities: Object.freeze(["stream", "tools", "usage", "abort"])
-    });
+    return probeDriverVersion(PROBE_PROFILE, { exact: QUALIFIED_PI_VERSION }, () =>
+      installedPiVersion(this.#resolveVersion)
+    );
   }
 
   async start(

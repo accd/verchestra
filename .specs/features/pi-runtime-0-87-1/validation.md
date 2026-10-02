@@ -7,7 +7,7 @@
 ## Root cause
 
 Both #415 failures are the exact-pin probe at
-`packages/drivers/src/pi-driver.ts:15` rejecting the new installed version.
+`packages/drivers/src/pi-driver.ts:16` rejecting the new installed version.
 `tests/contract/pi-driver.test.mjs:14` observed `VES_PI_VERSION_UNSUPPORTED`;
 `tests/contract/driver-lifecycle-matrix.test.mjs:136` observed the same probe as
 `available: false`. After the pin moved,
