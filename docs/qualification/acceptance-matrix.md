@@ -113,7 +113,7 @@ defensibly have been two rows:
 | Id | Outcome, in user terms | Status |
 | --- | --- | --- |
 | J01 | I install Verchestra on a clean machine with one command and get a verified, activated release. | Proven, deterministic and live on all 5 platforms |
-| J02 | I move an installed machine to a new release, back to the old one, and can remove it without losing my data. | Proven deterministically; no live rollback recorded |
+| J02 | I move an installed machine to a new release, back to the old one, and can remove it without losing my data. | Proven deterministically; live update and rollback recorded on all 5 (run 36997576112); no live uninstall |
 | J03 | I turn my repository into a Workspace, previewing every change first, and bind the AI backends on this machine. | Proven |
 | J04 | I hand a task to a driver and it cannot reach "done" without passing a gate and a human review. | Proven |
 | J05 | I hand in-flight work to another machine without handing over my machine's authority. | Proven |
@@ -158,11 +158,17 @@ uninstall (purge), per declared launcher host.
 | `tests/e2e/installer-lifecycle-matrix.test.mjs` — the matrix covers exactly the declared host set; a purge after a rollback removes every managed release and no user data; a rollback to a purged release is refused and the root stays usable; an undeclared host is refused as an activation target | 17 tests, 17 pass, 0 fail, 0 skipped, 0 todo |
 | `.specs/features/platform-qualification-matrix/matrix.json` — `installer` dimension, 4 cases, all `qualified` | Declared, reviewed |
 
-**Honest qualification.** No update or rollback has been executed against the
-live published endpoint. T76 published one release; the rollback evidence there
-is the publication-side rollback index sealed from the prior candidate
-(`af8bcf044cf8`), not a client that moved between two published releases. A
-live update/rollback is **not executed in this pass**.
+**Honest qualification.** A live update and a live rollback are now recorded on
+**all five** targets. The live-activation matrix (run 36997576112, 2026-10-02,
+`.specs/features/live-activation-matrix/validation.md`) activates
+`0.0.0-qualification.3`, updates in place to `0.0.0-qualification.4`, and rolls
+back to `.3`, against the published npm packages and the live endpoint. On
+every target the update moved the active pointer to `.4` and the rollback
+restored the `.3` pointer byte for byte. What is still deterministic only: the
+uninstall and purge half of this journey, and a source-side roll-forward
+publication. The pass at this matrix's recorded revision executed none of this;
+T76's rollback evidence at that time was the publication-side rollback index
+sealed from the prior candidate (`af8bcf044cf8`).
 
 **Rollback after an update through the launcher (#393, AD-036).** Re-invoking
 an older launcher after an update is a TUF metadata downgrade, which
@@ -174,8 +180,9 @@ from its installed bytes, with no source read. This is proven deterministically
 only: `tests/e2e/vestra-launcher-activation.test.mjs` runs A@v1 → B@v2 → A
 against a fetch-counting source that records zero reads, and fails closed for a
 tampered retained release, a never-installed older release, and a different
-trust root. No published package carries this path, and no live run has
-exercised it.
+trust root. The published `0.0.0-qualification.3` and `.4` packages carry this
+path, and run 36997576112 exercised it live on all five targets: its `rollback`
+phase is the `.3` launcher re-activating `.3` after `.4` superseded it.
 
 ### 2.3 J03 — Initialize a Workspace and bind this machine's backends
 
@@ -449,7 +456,9 @@ Three things were **not executed in this pass** and are marked as such above: a
 live update/rollback against the published endpoint (J02), a live disaster
 recovery (J10), and the key-lifecycle unit and security suites behind J07. The
 live rows in J01, J08, J11, and J12 were not re-executed either; they cite the
-T75/T76 reports and the npx-launcher validation, which recorded them.
+T75/T76 reports and the npx-launcher validation, which recorded them. Later
+live runs closed the first two: J10 cites run 33087399859 and J02 cites run
+36997576112.
 
 ---
 
@@ -738,7 +747,15 @@ resolve the identical closure, component for component, digest for digest, each
 matching its own sealed view. The mode is a label; that all five agree is the
 equivalence.
 
-**L7. Live activation is now five of five; live update/rollback is not.** The
+**L7. Resolved: live activation, update, rollback, and recovery are recorded on
+all five targets.** The update/rollback leg described below closed on
+2026-10-02: run 36997576112 passed activate, update, rollback, self-test, and
+recover on all five targets with base `0.0.0-qualification.3` and update
+`0.0.0-qualification.4`, two releases on one trust root, each with a strictly
+greater `metadataVersion`, both built from a revision that carries AD-036
+(`.specs/features/live-activation-matrix/validation.md`;
+[#387](https://github.com/accd/verchestra/issues/387) is closed). The rest of
+this entry is the history of the gap. The
 original gap — live activation on `win32-x64` and `linux-x64` only
 (`docs/qualification/t76-validation.md:197,204`) — is closed: the live-activation
 matrix (run 33087399859,
@@ -764,7 +781,7 @@ deterministically only (see J02), and the live-activation workflow now fails a
 leg unless its rollback restores the base's active pointer. The leg closes only
 when two same-root releases, each with a strictly greater `metadataVersion` and
 both built from a revision that carries AD-036, are published and the workflow
-passes against them. No such run has happened.
+passes against them. Run 36997576112 is that run.
 
 **L8. Single-operator custody of the signing keys and the storage endpoint.**
 T76's live evidence is one operator, one Cloudflare R2 bucket, and one npm
