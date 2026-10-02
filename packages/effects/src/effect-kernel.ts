@@ -49,7 +49,7 @@ function digestHexOf(idempotencyKey: string): string {
 // order the outbox drains in, so it decides which effect is applied first and
 // which receipts a bounded `dispatchReady` batch returns -- observable
 // behavior, not just serialization order. The durable outbox
-// (`packages/platform-node/src/runtime-store/runtime-store.ts`:
+// (`packages/platform-node/src/runtime-store/effect-repository.ts`:
 // `ORDER BY i.created_at, i.idempotency_key`) already orders by SQLite's
 // BINARY collation, so code-unit comparison is what makes the in-memory
 // repository agree with the persisted one instead of diverging under a

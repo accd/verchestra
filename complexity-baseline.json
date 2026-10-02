@@ -471,9 +471,6 @@
     "packages/platform-node/src/protected-path.ts :: Async method 'openExisting'": [
       14
     ],
-    "packages/platform-node/src/runtime-store/runtime-store.ts :: Async method 'complete'": [
-      12
-    ],
     "packages/platform-node/src/runtime-store/runtime-store.ts :: Method 'acquireLease'": [
       15
     ],

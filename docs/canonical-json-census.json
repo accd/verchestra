@@ -944,13 +944,24 @@
       "reason": "The active policy view retains its authoritative schemaVersion 1 record pending a compatible migration."
     },
     {
+      "path": "packages/platform-node/src/runtime-store/effect-repository.ts",
+      "classification": "migrated-v2",
+      "signals": {
+        "canonicalizer": 0,
+        "digest": 0,
+        "localeCompare": 0,
+        "serialization": 3
+      },
+      "reason": "The SQLite effect repository stores the canonicalization version the application computed for each idempotency identity and derives no identity of its own; JSON.stringify only compares two receipts in process and stores an ordered string array."
+    },
+    {
       "path": "packages/platform-node/src/runtime-store/runtime-store.ts",
       "classification": "migrated-v2",
       "signals": {
         "canonicalizer": 4,
         "digest": 2,
         "localeCompare": 0,
-        "serialization": 7
+        "serialization": 4
       },
       "reason": "The reviewed source uses the declared V2 canonical contract."
     },
