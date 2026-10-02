@@ -5,8 +5,8 @@ for the four drivers, with each driver's error codes and qualified invocation
 unchanged.
 
 Two task rows, each on its own branch: T3a (C3-1, the session ledger) on
-`refactor/driver-session-ledger`, and T3b (C3-2, the version probe) stacked on
-it. This file covers T3a; T3b adds its own section. Base revision `0158e48`.
+`refactor/driver-session-ledger`, and T3b (C3-2, the version probe) on
+`refactor/driver-version-probe`, stacked on it. Base revision `0158e48`.
 
 Sources are named by symbol. Assertions are cited by test file and line: `L` is
 `tests/contract/driver-session-ledger.test.mjs` and `M` is
@@ -207,3 +207,177 @@ labeled fakes, and probe an installed CLI only with `--version`, `--help` and
 - **Platform matrix.** Every result above is from macOS arm64. The change has no
   platform-specific code, but the drivers are on the list that requires a
   `platform-matrix.yml` run on the branch before merge.
+
+## C3-2 (T3b) — the version probe
+
+Branch `refactor/driver-version-probe`, stacked on the ledger branch. Two
+commits: the version probe, and the sensitive-value redactor.
+
+Owning modules: `packages/drivers/src/driver-version-probe.ts`
+(`probeDriverVersion`) and `packages/drivers/src/driver-redaction.ts`
+(`sensitiveValueRedactor`). Consumers: the four drivers for the probe, the
+three CLI drivers for the redactor.
+
+Each CLI driver loses `parseVersion`, `supported`, `redactor` and the three
+hand-built probe reports; Pi loses its three hand-built reports. What stays in
+each driver is its own: the `--version` spawn with its environment and working
+directory, its version pattern, its floor, and Pi's manifest read
+(`installedPiVersion`).
+
+`U` is `tests/unit/driver-version-probe.test.mjs`, `R` is
+`tests/unit/driver-redaction.test.mjs`, and `M` is the lifecycle matrix as
+above.
+
+### Requirement evidence
+
+| Clause | Definition (symbol) | Assertion evidence |
+| --- | --- | --- |
+| Parse with a pattern the driver supplies | `parseVersion` | The reported version is the three captured numbers, not the provider's text: `U:83-87`; the pattern decides what a version line is: `U:99-102`; unreadable output is unsupported with the version key present and undefined: `U:89-97` |
+| Compare against a minimum | `meetsMinimum` | Number by number, not as text: `U:52-64`; refused below the floor, on a newer major, and against a floor the pattern cannot read: `U:66-81` |
+| Compare exactly | `judge`, `exact` requirement | Text for text; a newer, longer, suffixed, padded or empty version is drift: `U:118-129` |
+| One report per outcome, unchanged | `probeDriverVersion` | Available: `U:40-50`; unavailable, with no version key and no detail of the failure: `U:104-116`; identity fields first, in the driver's order: `U:131-141`; frozen report, error and capabilities: `U:40-50`, `U:66-81`, `U:104-116`; each report has its own capabilities: `U:154-159` |
+| Error codes and messages unchanged | profile `errorCodePrefix`, `noun` | Derived from prefix and noun: `U:143-152`. Per driver, literally: `M:66-108` (the code table of the probe axis), `tests/contract/claude-code-driver.test.mjs:13-26`, `tests/contract/codex-driver.test.mjs:14-26`, `tests/contract/opencode-driver.test.mjs:13-26`, `tests/contract/pi-driver.test.mjs:25-50` |
+| The Claude Code and Codex minimums keep their values | `ClaudeCodeDriver`, `CodexDriver` constructors | Default floors `2.1.168`, `0.115.0` and OpenCode's `1.17.18`: `M:380-415` (new: every fixture states its floor, so the defaults were pinned nowhere). `CLAUDE_MEDIATED_MINIMUM_VERSION`: `tests/contract/claude-code-driver-mediated.test.mjs:62` and `tests/contract/claude-code-driver-subscription.test.mjs:48`, unmodified |
+| Claude Code's pattern stays anchored | `VERSION_PATTERN` in `claude-code-driver.ts` | `tests/contract/claude-code-driver.test.mjs:213-223` (new) |
+| Pi keeps exact equality and its manifest read | `PiDriver#probe`, `installedPiVersion` | `tests/contract/pi-driver.test.mjs:14-50`, unmodified; a newer or suffixed runtime is refused, which a floor would admit: `tests/contract/pi-driver.test.mjs:243-260` (new) |
+| Redaction implemented once | `sensitiveValueRedactor` | Every occurrence: `R:9-15`; a value containing another is replaced whole: `R:17-26`; an empty value is ignored: `R:28-31`; text form of a non-text value: `R:39-44`. Per driver, unmodified: `tests/contract/claude-code-driver.test.mjs:172`, `tests/contract/codex-driver.test.mjs:220`, `tests/security/opencode-driver-security.test.mjs:25`, `:54` |
+
+### Behaviour unchanged: the same probes on the hand-written implementations
+
+399 probes were run through the drivers of `0158e48` and through this branch:
+every pairing of 18 provider version strings with 7 floors (including no floor,
+an unreadable floor and other drivers' floors) for Claude Code, Codex and
+OpenCode, an absent executable for each, the mediated Claude Code profile, and
+11 Pi manifests (qualified, newer, older, suffixed, empty, not text, missing
+field, invalid JSON, absent file, a resolver that throws, and the installed
+package). The comparison records the keys of each report in order, a marker
+for a key whose value is undefined, and whether the report, its error and its
+capabilities are frozen. The two transcripts are byte-identical: 45 available,
+346 unsupported, 8 unavailable.
+
+The new driver-level cases (`M:380-415`, the Claude Code anchoring case and the
+four Pi cases) also pass against the drivers of `0158e48` in a disposable copy.
+
+### Tests replaced
+
+None deleted and none modified. The per-driver probe cases prove each driver's
+pattern, floor, codes and capabilities and stay. Added: `U` (20 cases), `R` (7),
+the floor axis of `M` (4), four Pi cases and one Claude Code case.
+
+### Discrimination (disposable copy)
+
+Same method as above, on a copy of this branch's tip. Suites run: `U`, `R`, `L`,
+`M`, the driver contract suites, the four lifecycle suites,
+`tests/security/opencode-driver-security.test.mjs` and the two mediated Claude
+Code spike suites. Unmutated copy: 253 passed, 0 failed.
+
+| Mutation in the copy of the probe | Failing cases |
+| --- | --- |
+| Version numbers compared as text | 4 in `U`, among them "2.1.99 is unsupported against 2.1.282: a patch that is only textually greater" |
+| A newer major is admitted | 3: "3.0.0 is unsupported…" in `U`, and "incompatible Claude CLI…" and "incompatible Codex…" in the lifecycle suites |
+| A higher minor is refused | 8: the unsupported-version case of each CLI driver, the codex drift and floor rows of `M`, 3 in `U` |
+| The patch must exceed the floor | every fixture sits exactly at its floor, so the driver suites fail throughout; in `U`, "a version at the floor is available…" |
+| An unreadable floor is treated as met | 1 in `U` |
+| **The exact requirement matches by prefix** | 2: "Pi Driver refuses runtime 0.87.1-beta.1 instead of reading its pin as a floor", and "an exact requirement admits only the qualified version, text for text" in `U` |
+| **The exact requirement is read as a floor** | 4: three of the Pi cases and the same case in `U` |
+| The version key is dropped when the output is unreadable | 2: the Claude Code anchoring case and 1 in `U` |
+| The unavailable report carries the failure text | 6: the unavailable case of each of the four drivers, 2 in `U` |
+| A provider failure is thrown instead of reported | 14: the not-configured, never-throws and no-local-path rows of the three CLI drivers and the absent-versus-unqualified case in `M`, the unavailable case of each CLI driver, 1 in `U` |
+| The reported version is the provider's raw text | 8 across the Claude Code and Codex suites, the floor rows of `M` and `U` |
+| The two refusal codes are swapped | 37 across every driver suite, `M` and `U` |
+| The available report is not frozen | 5: the never-throws row of all four drivers in `M`, 1 in `U` |
+| Identity fields follow the availability | 2 in `U` |
+| The output is not trimmed | 1 in `U` |
+| An unsupported report lists capabilities | 13 across the Pi suite and `U` |
+
+| Mutation in the copy of a driver or of the redactor | Failing cases |
+| --- | --- |
+| Claude Code reads its version with an unanchored pattern | 1: "Claude Code Driver reads its version only at the start of the version line" |
+| Codex gives the probe another driver's prefix | 7 across the Codex suites and `M` |
+| **Pi reads its pin as a floor** | 3 of the new Pi cases; the existing drift case, which uses an older version, still passes |
+| Pi drops its package from the identity | 7 in the Pi suite |
+| OpenCode drops a capability | 1: "OpenCode Driver probes exact SDK/server capabilities" |
+| OpenCode spells another noun | 1: "OpenCode Driver redacts unavailable CLI details" |
+| The mediated Claude Code floor is lowered | 2: the exact-invocation cases of the two mediated profiles |
+| The Claude Code T03 floor is lowered | 1: "claude-code qualifies 2.1.168 by default and nothing below it" |
+| The Codex floor is raised | 1: "codex qualifies 0.115.0 by default and nothing below it" |
+| The OpenCode floor is lowered | 1: "opencode qualifies 1.17.18 by default and nothing below it" |
+| Redactor: values are not ordered longest first | 1 in `R` |
+| Redactor: empty values are kept | 1 in `R` |
+| Redactor: only the first occurrence is replaced | 2 in `R` |
+| Redactor: the value is returned unredacted | 14: 6 in `R` and the redaction cases of the Claude Code, Codex and OpenCode suites |
+| Redactor: the value is not coerced to text | 1 in `R` |
+| Claude Code emits content without redaction | 5 across the Claude Code contract and spike suites |
+| Codex emits content without redaction | 1: "Codex Driver redacts content and excludes thread/turn identities" |
+| OpenCode authorizes a tool on unredacted input | 1: "OpenCode redacts permission metadata before controller authorization" |
+
+In each of the three floor rows, the unanchored pattern row and the "Pi reads
+its pin as a floor" row, every failing case is one this change adds. Before
+them, those five mutations failed no test in the suites above, and the same
+holes exist at `0158e48`.
+
+### Guardrails
+
+- Complexity baseline: no entry changed, no key added or moved. The new
+  functions are below the target of 10.
+- Census: no file gained or lost `JSON.stringify` or `createHash`.
+- Citations fixed in each commit: the four pin locations in
+  `.specs/features/platform-qualification-matrix/matrix.md`, the Claude Code and
+  Codex minimums in `.specs/features/live-task-pilot/validation.md`, where the
+  same-major comparison is now cited at
+  `packages/drivers/src/driver-version-probe.ts:36-42`,
+  `.specs/features/pi-runtime-0-87-1/validation.md` and
+  `.specs/features/dependency-refresh-2026-07/validation.md`. The floor axis is
+  appended to `M`, and the Pi and Claude Code cases are appended to their
+  suites, so no existing test citation moves.
+- No file under `docs/qualification/` changed. Migration count (12) and runtime
+  error catalog count (19) unchanged. No public error code or message was
+  added, removed or changed.
+
+### Gates (Node 24.14.0, macOS arm64)
+
+Each row was measured on a detached checkout of exactly that commit.
+
+| Commit | `pnpm gate:quick` | `pnpm test:architecture` | Driver suites (the command of C3-1, plus `tests/unit/driver-*.test.mjs`) |
+| --- | --- | --- | --- |
+| `8bbb4a4` (the ledger branch's tip) | PASS — unit 2395, agent-readiness 323, census 13 | PASS — 69 | PASS — 237 |
+| `ca2942e` the version probe | PASS — 2415, 323, 13 | PASS — 69 | PASS — 266 |
+| `bbdb4b8` the redactor | PASS — 2422, 323, 13 | PASS — 69 | PASS — 273 |
+
+At the last code commit of the branch:
+
+| Command (at `bbdb4b8`) | Result |
+| --- | --- |
+| `pnpm gate:build` | PASS — unit 2422, contract 731, integration 853, e2e 236, architecture 69, build 146, qualification 296 |
+| `pnpm gate:security` | PASS — unit 2422, contract 731, e2e 236, architecture 69, qualification 296, security 1339, fault 310 |
+| `pnpm test:qualification` | PASS — 296 |
+| `pnpm test:contract` | PASS — 731 |
+| `pnpm test:integration` | PASS — 853 |
+| `pnpm test:fault` | PASS — 310 |
+| `pnpm qualify:claude` | PASS — 53 |
+| `pnpm qualify:codex` | PASS — 20 |
+| `pnpm qualify:opencode` | PASS — 18 |
+| `pnpm qualify:pi` | PASS — 12 |
+| `pnpm agent:check` | PASS |
+
+The commit that adds this section and the decision entry changes nothing
+outside `.specs`; `pnpm gate:quick` (unit 2422, agent-readiness 323, census 13)
+and `pnpm agent:check` pass on it.
+
+No test was skipped in any stage. As for C3-1, no provider session was started
+and no login was needed. `qualify:keychain` was not run.
+
+### Open points for the reviewer
+
+- **Where the redactor lives.** The task asked for one module for parse,
+  compare and redact. The redactor is its own file and its own commit, because
+  redacting provider text shares nothing with version probing. The decision is
+  in `.specs/STATE.md` (the ADP-3 version probe entry).
+- **Codes are built from a prefix.** `VES_CLAUDE_NOT_AVAILABLE` and the seven
+  other probe codes are no longer literals in the product source; each driver
+  names its two codes in a comment beside its probe profile so that a search
+  still finds the driver. The tests assert all eight literally.
+- **A version number too long to print in full** (JavaScript prints it in
+  exponent form) is refused as before: the probe re-reads the normalized
+  version with the driver's pattern, exactly as `supported` did.
+- **Platform matrix.** As for C3-1.
