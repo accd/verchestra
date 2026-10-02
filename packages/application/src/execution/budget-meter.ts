@@ -173,6 +173,29 @@ export function budgetBilling(ledger: Pick<BudgetLedger, "consumedTokens" | "unb
   return unbilledTokens === 0 ? "per-token" : "mixed";
 }
 
+// invariant: the verdict of one metered usage event. `failure` is present only
+// when the meter refused the event itself; `reason` then carries its code.
+export type BudgetUsageDecision =
+  { readonly stop: false } | { readonly stop: true; readonly reason: string; readonly failure?: BudgetMeterError };
+
+// why: every place that meters a driver's usage (the executor for the
+// implementer, the task composition for the verifier) must stop on the same
+// conditions, so recording and deciding are one step with one verdict.
+// hazard: only the meter's own refusal is a budget stop. Any other error is a
+// defect in the caller or the meter and is rethrown, never read as a stop.
+export function recordUsageAndDecide(meter: BudgetMeter, event: UsageEvent): BudgetUsageDecision {
+  try {
+    meter.recordUsage(event);
+  } catch (error) {
+    if (!(error instanceof BudgetMeterError)) throw error;
+    return Object.freeze({ stop: true, reason: error.code, failure: error });
+  }
+  const verdict = meter.shouldStop();
+  return verdict.stop
+    ? Object.freeze({ stop: true, reason: verdict.reason ?? "budget" })
+    : Object.freeze({ stop: false });
+}
+
 export function createBudgetMeter(options: {
   readonly budgets: DeclaredBudgets;
   readonly priceTable: ModelPriceTable;

@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { budgetBilling, createBudgetMeter } from "../../packages/application/src/execution/budget-meter.ts";
+import {
+  budgetBilling,
+  createBudgetMeter,
+  recordUsageAndDecide
+} from "../../packages/application/src/execution/budget-meter.ts";
 
 const PRICES = Object.freeze({
   version: "test.1",
@@ -223,4 +227,86 @@ test("a run metered for a subscription reports no dollar figure even before its 
   // billed per token, not mixed.
   resumed.recordUsage({ model: "priced-model", inputTokens: 10, outputTokens: 0 });
   assert.equal(budgetBilling(resumed.ledger()), "per-token");
+});
+
+// invariant: recording and deciding are one step (ADP-4). The executor and the
+// verifier both meter through this function, so they stop on the same verdict.
+test("metering one usage event records it and reports no stop below every threshold", () => {
+  const meter = meterWith();
+  const decision = recordUsageAndDecide(meter, { model: "priced-model", inputTokens: 10, outputTokens: 5 });
+  assert.deepEqual(decision, { stop: false });
+  assert.ok(Object.isFrozen(decision));
+  assert.equal(meter.snapshot().consumedTokens, 15);
+  assert.equal(meter.snapshot().usageEvents, 1);
+});
+
+test("metering the event that reaches a threshold stops with that threshold as the reason", () => {
+  const meter = meterWith({ budgets: { maximumCostUsd: 1_000_000, maximumTokens: 1_000 } });
+  assert.deepEqual(recordUsageAndDecide(meter, { model: "priced-model", inputTokens: 899, outputTokens: 0 }), {
+    stop: false
+  });
+  const decision = recordUsageAndDecide(meter, { model: "priced-model", inputTokens: 1, outputTokens: 0 });
+  assert.deepEqual(decision, { stop: true, reason: "token-threshold" });
+  assert.equal(Object.hasOwn(decision, "failure"), false);
+  assert.ok(Object.isFrozen(decision));
+});
+
+test("an elapsed duration stops the next metered event even when its tokens are far below the ceiling", () => {
+  let clock = 0;
+  const meter = meterWith({ budgets: { maximumDurationMs: 1_000 }, now: () => clock });
+  clock = 900;
+  assert.deepEqual(recordUsageAndDecide(meter, { model: "priced-model", inputTokens: 1, outputTokens: 0 }), {
+    stop: true,
+    reason: "duration-threshold"
+  });
+});
+
+test("usage the meter refuses stops with the refusal as both reason and failure", () => {
+  const meter = meterWith();
+  const unknown = recordUsageAndDecide(meter, { model: "unpriced-model", inputTokens: 1, outputTokens: 1 });
+  assert.equal(unknown.stop, true);
+  assert.equal(unknown.reason, "VES_BUDGET_MODEL_UNKNOWN");
+  assert.equal(unknown.failure.name, "BudgetMeterError");
+  assert.equal(unknown.failure.code, "VES_BUDGET_MODEL_UNKNOWN");
+  const invalid = recordUsageAndDecide(meter, { model: "priced-model", inputTokens: -1, outputTokens: 0 });
+  assert.equal(invalid.reason, "VES_BUDGET_USAGE_INVALID");
+  assert.equal(invalid.failure.code, "VES_BUDGET_USAGE_INVALID");
+  assert.equal(meter.snapshot().usageEvents, 0);
+});
+
+test("an error that is not the meter's own refusal is rethrown, never read as a budget stop", () => {
+  const defect = new TypeError("the meter is broken");
+  const broken = {
+    recordUsage: () => {
+      throw defect;
+    },
+    shouldStop: () => assert.fail("no verdict is asked for after a defect")
+  };
+  assert.throws(
+    () => recordUsageAndDecide(broken, { model: "priced-model", inputTokens: 1, outputTokens: 0 }),
+    (error) => error === defect
+  );
+  // hazard: a look-alike is not the meter's refusal either; only its own error class is.
+  const lookalike = Object.assign(new Error("unpriced"), { code: "VES_BUDGET_MODEL_UNKNOWN" });
+  assert.throws(
+    () =>
+      recordUsageAndDecide(
+        {
+          recordUsage: () => {
+            throw lookalike;
+          },
+          shouldStop: () => ({ stop: false })
+        },
+        { model: "priced-model", inputTokens: 1, outputTokens: 0 }
+      ),
+    (error) => error === lookalike
+  );
+});
+
+test("a meter that stops without naming a threshold still stops, with the generic reason", () => {
+  const meter = { recordUsage: () => undefined, shouldStop: () => ({ stop: true }) };
+  assert.deepEqual(recordUsageAndDecide(meter, { model: "priced-model", inputTokens: 1, outputTokens: 0 }), {
+    stop: true,
+    reason: "budget"
+  });
 });
