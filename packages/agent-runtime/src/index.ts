@@ -90,6 +90,13 @@ export {
   DriverExecutionAdapter,
   DriverExecutionAdapterError,
   type DriverExecutionAdapterOptions,
-  type DriverExecutionSession,
-  type DriverSessionPort
+  type DriverExecutionSession
 } from "./execution/driver-execution-adapter.ts";
+export {
+  runDriverSession,
+  type DriverSessionEvent,
+  type DriverSessionOutcome,
+  type DriverSessionPort,
+  type DriverSessionResult,
+  type DriverSessionRun
+} from "./execution/driver-session-runner.ts";

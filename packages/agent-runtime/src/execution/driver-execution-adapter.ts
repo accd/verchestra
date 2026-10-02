@@ -2,6 +2,7 @@ import { isAbsolute } from "node:path";
 
 import type { ExecutionDriverPort, ExecutionPayloadStore } from "@verchestra/application";
 
+import type { DriverSessionPort } from "./driver-session-runner.ts";
 import { MCP_BRIDGE_QUALIFIED_TOOLS } from "./mcp-bridge-protocol.ts";
 import { McpToolBridgeController } from "./mcp-tool-bridge.ts";
 
@@ -9,19 +10,6 @@ type ExecuteRequest = Parameters<ExecutionDriverPort["execute"]>[0];
 type ExecuteControl = Parameters<ExecutionDriverPort["execute"]>[1];
 type DriverOutcome = "completed" | "failed" | "cancelled";
 type Row = Readonly<Record<string, unknown>>;
-
-// The Driver protocol (packages/drivers) as seen from here. agent-runtime may
-// not import a sibling adapter, so the shape is declared structurally and the
-// composition root passes the concrete driver.
-export interface DriverSessionPort<TStartRequest> {
-  start(
-    request: TStartRequest,
-    sink: (event: Row & { readonly type: string }) => void,
-    signal: AbortSignal
-  ): Promise<{ readonly sessionId: string }>;
-  cancel(session: { readonly sessionId: string }, reason: string): Promise<void>;
-  close(session: { readonly sessionId: string }): Promise<Row>;
-}
 
 export interface DriverExecutionSession<TStartRequest> {
   readonly driver: DriverSessionPort<TStartRequest>;
