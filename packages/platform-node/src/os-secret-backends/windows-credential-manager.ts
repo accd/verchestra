@@ -9,16 +9,20 @@
 import { PlatformSecurityError } from "../platform-security-errors.ts";
 import type { OsSecretBackend, OsSecretLocator } from "../secret-broker.ts";
 import {
+  type CredentialProvisioner,
   type CredentialToolResult,
   type CredentialToolRunner,
+  PRESENCE_TIMEOUT_MS,
+  READ_TIMEOUT_MS,
+  WRITE_TIMEOUT_MS,
   assertLocator,
+  assertStorable,
   backendFailure,
   pickEnvironment,
   runBounded,
   spawnCredentialTool,
   storeUnavailable
 } from "./credential-tool.ts";
-import { PRESENCE_TIMEOUT_MS, READ_TIMEOUT_MS, WRITE_TIMEOUT_MS, isValidCredentialValue } from "./darwin-keychain.ts";
 
 export const POWERSHELL_ARGUMENTS = Object.freeze([
   "-NoProfile",
@@ -247,7 +251,7 @@ function unexpected(operation: Operation): PlatformSecurityError {
   return backendFailure(`Credential Manager ${operation.toLowerCase()} returned an unexpected result`);
 }
 
-export class WindowsCredentialManagerBackend implements OsSecretBackend {
+export class WindowsCredentialManagerBackend implements OsSecretBackend, CredentialProvisioner {
   readonly #runner: CredentialToolRunner;
 
   constructor(options: { readonly runner?: CredentialToolRunner } = {}) {
@@ -294,13 +298,7 @@ export class WindowsCredentialManagerBackend implements OsSecretBackend {
   // why: CredWriteW replaces a credential with the same target and type, so
   // a rotation is one call and never leaves the credential absent.
   async store(locator: Readonly<OsSecretLocator>, value: Uint8Array): Promise<void> {
-    if (!isValidCredentialValue(value)) {
-      throw new PlatformSecurityError(
-        "VES_SECRET_VALUE_INVALID",
-        "Credential value is empty, oversize, or not printable"
-      );
-    }
-    assertLocator(locator);
+    assertStorable(locator, value);
     const stdin = writeInput(locator, value);
     let status: string;
     try {

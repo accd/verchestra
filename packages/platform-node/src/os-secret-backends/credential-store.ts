@@ -11,7 +11,7 @@ import {
   isValidLogicalSecretName,
   osSecretNamespace
 } from "../secret-broker.ts";
-import type { CredentialToolRunner } from "./credential-tool.ts";
+import type { CredentialProvisioner, CredentialToolRunner } from "./credential-tool.ts";
 import { DarwinKeychainBackend } from "./darwin-keychain.ts";
 import { LinuxSecretServiceBackend } from "./linux-secret-service.ts";
 import { WindowsCredentialManagerBackend } from "./windows-credential-manager.ts";
@@ -64,14 +64,9 @@ function locator(workspaceId: string, logicalName: string): Readonly<OsSecretLoc
   return Object.freeze({ namespace: osSecretNamespace(workspaceId), logicalName });
 }
 
-interface ProvisioningBackend extends OsSecretBackend {
-  store(locator: Readonly<OsSecretLocator>, value: Uint8Array): Promise<void>;
-  delete(locator: Readonly<OsSecretLocator>): Promise<boolean>;
-}
-
 interface PlatformBinding {
   readonly evidence: OsSecretQualificationEvidence;
-  readonly backend: ProvisioningBackend;
+  readonly backend: OsSecretBackend & CredentialProvisioner;
   readonly keychain: "default" | "explicit";
   readonly verify: () => Promise<void>;
 }

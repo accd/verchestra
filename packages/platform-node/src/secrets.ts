@@ -10,15 +10,15 @@ export {
   createOsCredentialStore,
   type OsCredentialStore
 } from "./os-secret-backends/credential-store.ts";
-export type {
-  CredentialToolInvocation,
-  CredentialToolResult,
-  CredentialToolRunner
+export {
+  isValidCredentialValue,
+  type CredentialToolInvocation,
+  type CredentialToolResult,
+  type CredentialToolRunner
 } from "./os-secret-backends/credential-tool.ts";
 export {
   MAX_CREDENTIAL_VALUE_BYTES,
   SECURITY_INTERACTIVE_LINE_LIMIT,
-  isValidCredentialValue,
   type SecurityInvocation,
   type SecurityResult,
   type SecurityRunner

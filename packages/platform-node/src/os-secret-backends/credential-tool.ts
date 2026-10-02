@@ -1,7 +1,10 @@
 // invariant: the one process boundary every OS credential backend crosses
 // (#379). A credential value reaches a child only on stdin and comes back only
 // on a captured stream; no backend places it in argv or in the child
-// environment, and no captured text ever reaches an error.
+// environment, and no captured text ever reaches an error. The policy every
+// backend applies at that boundary lives here too, not in one platform's
+// adapter: how long a child may run, which value may be stored, and the write
+// interface the credential store drives.
 import { spawn } from "node:child_process";
 
 import { StableId } from "@verchestra/domain";
@@ -31,6 +34,19 @@ export interface CredentialToolResult {
 }
 
 export type CredentialToolRunner = (invocation: CredentialToolInvocation) => Promise<CredentialToolResult>;
+
+// why: a presence lookup must finish inside deep doctor's 5 s probe budget so
+// the backend, not the doctor's timer, kills a hung child.
+export const PRESENCE_TIMEOUT_MS = 4_000;
+// why: a read may legitimately wait for the user to approve a prompt from the
+// store; the timeout bounds that wait instead of hanging.
+export const READ_TIMEOUT_MS = 30_000;
+export const WRITE_TIMEOUT_MS = 15_000;
+
+export interface CredentialProvisioner {
+  store(locator: Readonly<OsSecretLocator>, value: Uint8Array): Promise<void>;
+  delete(locator: Readonly<OsSecretLocator>): Promise<boolean>;
+}
 
 // why: an executable missing from its fixed path means the platform store is
 // not installed here; that is "not configured", distinct from a failure of a
@@ -157,4 +173,30 @@ export function assertLocator(locator: Readonly<OsSecretLocator>): void {
   if (!workspaceValid || !isValidLogicalSecretName(locator.logicalName)) {
     throw new PlatformSecurityError("VES_SECRET_BINDING_INVALID", "Credential locator is not a canonical binding");
   }
+}
+
+// why: one limit on every platform, so a credential that binds on one binds on
+// all. The number is macOS's `security -i` line budget, which
+// darwin-keychain.ts derives as MAX_CREDENTIAL_VALUE_BYTES;
+// tests/unit/os-secret-backend-policy.test.mjs holds the two equal.
+const VALUE_LIMIT_BYTES = 1416;
+
+// why: printable ASCII without whitespace (0x21-0x7e) covers every provider
+// API key and makes stray whitespace from a paste an error, not a credential.
+export function isValidCredentialValue(value: Uint8Array): boolean {
+  if (!(value instanceof Uint8Array) || value.length === 0 || value.length > VALUE_LIMIT_BYTES) return false;
+  for (const byte of value) if (byte < 0x21 || byte > 0x7e) return false;
+  return true;
+}
+
+// invariant: every backend's write starts here, so an invalid value or locator
+// is refused before any platform spawns anything.
+export function assertStorable(locator: Readonly<OsSecretLocator>, value: Uint8Array): void {
+  if (!isValidCredentialValue(value)) {
+    throw new PlatformSecurityError(
+      "VES_SECRET_VALUE_INVALID",
+      "Credential value is empty, oversize, or not printable"
+    );
+  }
+  assertLocator(locator);
 }

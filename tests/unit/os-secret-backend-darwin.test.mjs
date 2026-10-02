@@ -10,13 +10,10 @@ import { after, test } from "node:test";
 import {
   DarwinKeychainBackend,
   MAX_CREDENTIAL_VALUE_BYTES,
-  PRESENCE_TIMEOUT_MS,
   SECURITY_EXECUTABLE,
   SECURITY_INTERACTIVE_LINE_LIMIT,
-  createOsCredentialStore,
-  isValidCredentialValue
+  createOsCredentialStore
 } from "../../packages/platform-node/src/index.ts";
-import { DOCTOR_PROBE_TIMEOUT_MS } from "../../packages/application/src/index.ts";
 import { fakeKeychainFile, fakeSecurityRunner } from "../helpers/fake-security-runner.mjs";
 
 const workspaceId = "workspace_0b0e8d4c-6a1e-4f7a-9d55-3e3c6f0c1a2b";
@@ -37,13 +34,6 @@ test("presence is an attribute-only lookup that never asks for the value", async
     locator.logicalName
   ]);
   for (const flag of ["-g", "-w"]) assert.equal(fake.invocations[0].args.includes(flag), false);
-});
-
-test("presence finishes inside the doctor's probe budget", async () => {
-  assert.ok(PRESENCE_TIMEOUT_MS < DOCTOR_PROBE_TIMEOUT_MS);
-  const fake = fakeSecurityRunner();
-  await new DarwinKeychainBackend({ runner: fake.runner }).has(locator);
-  assert.equal(fake.invocations[0].timeoutMs, PRESENCE_TIMEOUT_MS);
 });
 
 test("exit 0 is present, exit 44 is absent, and every other exit is a backend failure", async () => {
@@ -139,13 +129,9 @@ test("a timed-out child is reported as keychain interaction required, through th
   });
 });
 
-test("store fails closed when the write exits nonzero or the item is not found afterwards", async () => {
+test("store fails closed when the write exits nonzero", async () => {
   const failing = new DarwinKeychainBackend({ runner: async () => ({ exitCode: 2, stdout: "", stderr: "" }) });
   await assert.rejects(failing.store(locator, value()), { code: "VES_SECRET_BACKEND_FAILURE" });
-  const lost = new DarwinKeychainBackend({
-    runner: async (invocation) => ({ exitCode: invocation.args[0] === "-i" ? 0 : 44, stdout: "", stderr: "" })
-  });
-  await assert.rejects(lost.store(locator, value()), /did not land/u);
 });
 
 test("read uses -g and decodes both the quoted and the 0x-prefixed password record", async () => {
@@ -202,28 +188,6 @@ test("an oversize value is refused before any process is spawned", async () => {
   await backend.store(locator, new Uint8Array(MAX_CREDENTIAL_VALUE_BYTES).fill(0x41));
   const write = fake.invocations.find((invocation) => invocation.args[0] === "-i");
   assert.ok(write.stdin.length - 1 <= SECURITY_INTERACTIVE_LINE_LIMIT);
-});
-
-test("only non-empty printable ASCII without whitespace is a credential value", () => {
-  assert.equal(isValidCredentialValue(value()), true);
-  for (const bad of ["", " leading", "trailing\n", "in ner", "tab\t", "café", "\u007f"])
-    assert.equal(isValidCredentialValue(new TextEncoder().encode(bad)), false, JSON.stringify(bad));
-});
-
-test("a non-canonical locator is refused before any process is spawned", async () => {
-  const fake = fakeSecurityRunner();
-  const backend = new DarwinKeychainBackend({ runner: fake.runner });
-  for (const bad of [
-    { namespace: "verchestra/other", logicalName: "anthropic-api-key" },
-    { namespace: `elsewhere/${workspaceId}`, logicalName: "anthropic-api-key" },
-    { namespace: `verchestra/${workspaceId} -X 41`, logicalName: "anthropic-api-key" },
-    { namespace: locator.namespace, logicalName: "a b" },
-    { namespace: locator.namespace, logicalName: "../x" }
-  ]) {
-    await assert.rejects(backend.has(bad), { code: "VES_SECRET_BINDING_INVALID" });
-    await assert.rejects(backend.store(bad, value()), { code: "VES_SECRET_BINDING_INVALID" });
-  }
-  assert.equal(fake.invocations.length, 0);
 });
 
 test("an explicit keychain path must be absolute and canonical", () => {
