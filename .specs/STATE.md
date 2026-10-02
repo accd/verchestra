@@ -1585,6 +1585,71 @@ note. -->
   `docs/qualification/opencode-driver-cancel-order.md` and
   `docs/qualification/pi-driver-cancel-order.md`.
 
+### AD-054 — Every end of a Claude Code or Codex provider goes through the tree termination; the OpenCode server and a Claude Code run that ends normally are left as they are (ADP-4)
+
+- **Status:** proposed (ratified by reviewing the pull request that carries
+  the provider ends range of `fix/driver-cancel-terminal-event`).
+- **Context:** AD-049 made a stop terminate a provider's process tree, once
+  per child. An architecture review of `main` found that a stop is not the
+  only way a driver ends its provider. The Codex driver still signalled the
+  one process with `child.kill()` when its stream failed and when a run ended
+  with the App Server still running, which is every completed turn. Checking
+  the other drivers found that the Claude Code driver did not end a provider
+  that had stopped reading its input, that the OpenCode driver's own server
+  factory ends the `opencode serve` process it starts with `child.kill()` on
+  every path, and that Pi starts no process.
+- **Decision:**
+  1. In the Claude Code and Codex drivers every end of the provider asks for
+     the single termination per child of AD-049: a stop, a stream that failed,
+     an output limit, an input the provider stopped reading, and a Codex run
+     that ended with the provider still running. Neither driver signals its
+     child itself, and
+     `tests/architecture/provider-process-tree-termination.test.mjs` fails
+     when one does.
+  2. An end that no caller awaits takes one form, `unawaitedTermination` in
+     `packages/drivers/src/driver-process-tree.ts`, which contains a
+     termination that fails. `child.kill()` could not throw, and a rejection
+     there would be unhandled and end the whole command. A stop is unchanged:
+     a cancel whose termination fails still rejects.
+  3. At the end of a Codex run the termination is asked for only while the
+     provider has not been seen to exit, as `child.kill()` was. A provider
+     that exited by itself is not swept.
+  4. **A Claude Code run that ends normally is not ended by the driver.** In
+     print mode the provider exits by itself and its exit code is part of the
+     result. A provider that reports its result and never exits keeps its
+     session waiting until a stop. Ending it would need a grace period and a
+     rule for the exit code of a provider the driver killed, which is a
+     decision of its own.
+  5. **The OpenCode server factory is not changed.** Terminating the tree of
+     `opencode serve` needs the server to lead its own process group, which
+     takes it out of reach of the terminal's signals, so the composition that
+     runs it must also stop it on a hang-up, as AD-049 item 6 does for
+     `vestra task`. No composition runs that factory: the Self-Test scenario
+     injects its own. Changing the spawn alone would trade a descendant that
+     survives for a server that survives a closed terminal.
+- **Alternatives rejected:** a signal to the one process beside the tree
+  termination (it can end the provider while the tree routine is still
+  reading its descendants from the process table; with it a stream-failure
+  case failed in some runs of the discrimination and not in others);
+  awaiting the termination at the end of a run (the run already waits for the
+  provider's output to close, and a terminator that never returns would hold
+  it); a tree termination for a provider that has already exited (its process
+  id is no longer its own); the OpenCode spawn change without a composition
+  (item 5); a watchdog for a Claude Code provider that does not exit (item 4).
+- **Consequence:** `pnpm qualify:claude` and `pnpm qualify:codex` each prove,
+  for a provider with a descendant that left its process group, that nothing
+  of its tree is left when its stream breaks, when it exceeds its output
+  limit, when it stops reading its input (Claude Code), and when its turn
+  completes without it exiting (Codex). An operator can notice one thing:
+  under `vestra task` the verifier's App Server is killed with `SIGKILL` at
+  the end of every verification, with whatever it started, where it received
+  `SIGTERM`. No event sequence changed. Whoever first composes the OpenCode
+  driver with its own server factory owes it the process group, the injected
+  terminator and the interrupt handling together. Evidence is in
+  `.specs/features/architecture-deepening/validation-cancel-order.md` and in
+  `docs/qualification/claude-code-driver-provider-ends.md` and
+  `docs/qualification/codex-driver-provider-ends.md`.
+
 ## Handoff
 
 - **Feature:** `subscription-provider-auth` (ADP-A, tasks TA1 and TA2) on

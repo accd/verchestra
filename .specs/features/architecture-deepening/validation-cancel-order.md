@@ -1,8 +1,10 @@
-# Validation — the cancel order (ADP-3 and ADP-4, follow-up)
+# Validation — the cancel order, and how a provider child ends (ADP-3 and ADP-4, follow-up)
 
-One range on the branch `fix/driver-cancel-terminal-event`. It settles the
-defect ADP-3 recorded and ADP-4 tolerated: what a driver emits when a running
-session is cancelled.
+Two ranges on one branch, `fix/driver-cancel-terminal-event`, each its own pull
+request. The first settles the defect ADP-3 recorded and ADP-4 tolerated: what
+a driver emits when a running session is cancelled. The second, under its own
+heading below, makes every end of a Claude Code or Codex provider go through
+the one tree termination per child.
 
 Base revision `77c7b8e`. Sources are named by symbol. Assertions are cited by
 test file and line: `L` is `tests/contract/driver-session-ledger.test.mjs`, `M`
@@ -356,3 +358,275 @@ session and need no login. `qualify:keychain` was not run.
   before, but the Claude Code and Codex run is already marked as stopped, so
   it ends as `…_ABORTED` whenever the provider exits. An aborted start signal
   always behaved so.
+
+## Range 2 — how a provider child ends
+
+A second range on the same branch and its own pull request, on top of range 1.
+An architecture review of `main` found that the Codex driver, whose provider
+leads its own process group since ADP-4, still signalled the one process with
+`child.kill()` on two paths. This range makes every end of a Claude Code or
+Codex provider go through the single tree termination per child that ADP-4
+introduced.
+
+`Q` is `tests/helpers/process-tree-fixture.mjs`, whose `providerEndSuite` holds
+the cases the two qualification suites run:
+`spikes/claude-code-driver/test/claude-driver-provider-ends.test.mjs` under
+`pnpm qualify:claude` and
+`spikes/codex-driver/test/codex-driver-provider-ends.test.mjs` under
+`pnpm qualify:codex`. `P` is `tests/integration/driver-process-tree.test.mjs`
+and `X` is `tests/architecture/provider-process-tree-termination.test.mjs`.
+Every process these suites start is a labeled fake or an idle Node process the
+fake started; each is killed by its identifier when its case ends.
+
+### What the review found, and what checking the four drivers found
+
+Every way each driver ends a process it started, read from the sources of
+`77c7b8e`:
+
+| Driver | End | Before | Now |
+| --- | --- | --- | --- |
+| Codex | A stop (start signal after the grace period, cancel) | The single tree termination | unchanged |
+| Codex | A stream that failed: a line that is not JSON, an invalid or undeclared tool call, invalid usage | `child.kill()` in `fail` | The single tree termination |
+| Codex | An output limit, on the output or the error stream | `child.kill()` in `fail` | The single tree termination |
+| Codex | A failed write to the provider's input | `child.kill()` in `fail` | The single tree termination |
+| Codex | A run that ended with the provider still running: a completed turn, or a protocol failure | `child.kill()` after the run | The single tree termination |
+| Codex | A provider that exited by itself | Nothing | unchanged |
+| Claude Code | A stop (start signal, cancel) | The single tree termination | unchanged |
+| Claude Code | A stream that failed: a line that is not JSON, a hook event on the bridge-only surface, an init event that does not match, an invalid tool request, invalid usage | The single tree termination, not awaited and not contained | The same, contained |
+| Claude Code | An output limit, on the output or the error stream | as above | as above |
+| Claude Code | A failed write to the provider's input | Nothing: the failure was recorded and the run waited for the provider to exit | The single tree termination |
+| Claude Code | A run that ended normally | The provider exits by itself; the driver ends nothing | unchanged (below) |
+| OpenCode | The isolated server its own factory starts: a start that timed out, exceeded its output limit or failed, an SDK that could not be loaded, and the end of every session and of every catalog discovery | `child.kill()` on each | unchanged (below) |
+| Pi | — | Starts no process | — |
+
+The review named the two Codex paths. The Claude Code input path and the
+OpenCode server were found by checking.
+
+**Claude Code has no end at which the provider is still running by design.**
+In print mode the provider exits after its result and the driver reads the
+exit code as part of it. A provider that reports its result and never exits
+keeps its session waiting until a stop; ending it would need a grace period
+and a rule for the exit code of a provider the driver killed. Not changed.
+
+**The OpenCode server is not changed.** The driver owns that child, and a
+descendant of `opencode serve` survives each of those ends. Terminating its
+tree needs the server to lead its own process group, which takes it out of
+reach of the terminal's signals; ADP-4's first review found exactly that for
+the other two drivers, and the fix was in the composition (the interrupt
+handling of `ProviderProcesses`). No composition runs the OpenCode server
+factory: the Self-Test scenario injects its own, and no test starts it.
+Changing the spawn alone would trade a descendant that survives a session for
+a server that survives a closed terminal. It is recorded in the decision entry
+for whoever first composes that factory.
+
+### Requirement evidence
+
+| Clause | Definition (symbol) | Assertion evidence |
+| --- | --- | --- |
+| A Codex stream failure ends the provider's tree | `CodexDriver#start` (`fail`, `endChild`) | A provider with a descendant that left its group writes a line that is not JSON and stays alive: the run ends by itself with `VES_CODEX_STREAM_INVALID`, and none of the three processes is alive: `Q:211-224`, end `garbled`. On every platform, one request to the injected terminator: `P:169-197` |
+| A Codex output limit ends the provider's tree | the same | `Q:211-224`, end `large`; `P:169-197` |
+| A Codex run that ends with the provider running ends its tree | `CodexDriver#start` | The turn completes and the provider does not exit: the run ends with no error, the session closes as `completed`, and none of the three processes is alive: `Q:211-224`, end `linger`; `P:169-197` |
+| A Claude Code stream failure and output limit end the provider's tree | `ClaudeCodeDriver#start` (`endChild`) | `Q:211-224`, ends `garbled` and `flood`. The single termination for a stream that keeps failing: `P:64-75` (unmodified) |
+| A Claude Code provider that stops reading its input is ended, with its tree | `ClaudeCodeDriver#start`, the input error handler | The provider closes its input before it has read a prompt larger than a pipe holds: the run ends with `VES_CLAUDE_STDIN_FAILED`, and none of the three processes is alive: `Q:211-224`, end `deaf`; `P:169-197` |
+| Neither driver signals its child itself | both drivers | `X:104-110` |
+| An end no caller awaits contains a termination that fails | `unawaitedTermination` | Each call asks, and a failure produces no unhandled rejection: `P:200-215` |
+| One termination per child, whoever asks | `singleTermination` (unchanged) | `P:77-91`, `P:103-141` (unmodified) |
+| A stop is unchanged | both drivers | The process-tree and cancel order qualification suites, `M` and `D` pass unmodified |
+| No event sequence changed | both drivers | The error codes and the outcome of every end above are what they were; the contract and lifecycle suites of both drivers pass unmodified |
+| Windows | `endedOnWin32` | The same cases assert that the session ends as reported and that the provider, which the fake keeps alive until it is terminated, is gone: `Q:189-200`. `P:169-197` counts the request to the terminator on every platform |
+
+### The cases asked for
+
+A fake provider that leaves a `setsid` descendant alive, and then:
+
+| | Claude Code | Codex |
+| --- | --- | --- |
+| (a) writes a malformed line | `garbled` with `FAKE_CLAUDE_FORK=1` | `garbled` with `FAKE_CODEX_FORK=1` |
+| (b) exceeds the output limit | `flood`, limit 1024 bytes | `large`, limit 2048 bytes |
+| (c) ends its turn without exiting | none: the driver has no such end (above) | `linger` |
+| (d) stops reading its input (added) | `deaf`, with a prompt of 2 MiB | reached through `fail`, as (a) and (b) |
+
+In each case the descendant in the provider's group, which holds its output
+open, and the one that left the group are gone afterwards, and the run ended
+by itself. The terminator is the one the task composition injects, as in the
+process-tree suites.
+
+### Behaviour changes
+
+1. A Codex session that ends on a stream failure, an output limit, a failed
+   input write, a protocol failure or a completed turn leaves nothing the
+   provider started behind, and no longer waits for a descendant that holds
+   the provider's output.
+2. **Under `vestra task` the verifier's App Server is killed with `SIGKILL` at
+   the end of every verification**, by the tree routine, with whatever it
+   started. It received one `SIGTERM`. With no terminator injected the
+   provider's group receives `SIGTERM` (the one process on Windows).
+3. The injected terminator is asked at each of those ends. A composition that
+   counts or reports its calls sees one per Codex session that ended with the
+   provider running. The task composition's terminator names a tree it could
+   not confirm stopped on stderr; that line can now follow a completed
+   verification.
+4. A Claude Code session whose provider stopped reading its input ends. It
+   waited for the provider to exit.
+5. A termination that fails at an end no caller awaits is contained. In the
+   Claude Code driver it was an unhandled rejection.
+6. A Codex stream failure noticed after the provider has exited asks for the
+   termination, which reaches what is left of its group. `child.kill()` did
+   nothing at that point.
+
+No event, error code, message or outcome changed.
+
+### Tests changed
+
+None deleted and none modified. Added: `providerEndSuite` in `Q` (appended)
+and the two qualification suites that run it (6 cases), five cases in `P`
+(appended), two in `X` (appended), a switch that makes any mode of the two
+labeled fakes start its process tree first, and the modes `flood` and `deaf`
+(Claude Code) and `linger` (Codex). The existing `fork` mode of both fakes is
+unchanged in what it does.
+
+### Discrimination (disposable copy)
+
+Same method as for range 1, on a copy of the tree at the tip of this range.
+Suites run: the two qualification suites of this range, the process-tree and
+cancel order qualification suites of both drivers, `P`, `X`, `M`, `D`, and the
+contract and lifecycle suites of both drivers. Unmutated copy: 177 passed,
+0 failed.
+
+| Mutation in the copy | Failing cases |
+| --- | --- |
+| **Codex: a stream that failed signals the one process (`child.kill()` restored)** | 3: the malformed-line and output-limit cases of `Q`, and `X:104-110` |
+| **Codex: a run that ended signals the one process (`child.kill()` restored)** | 4: the completed-turn case of `Q`, its case in `P:169-197`, `X:104-110`, and one of the two stream-failure cases of `Q`, a different one in different runs |
+| **Codex: both ends as they were before this range** | 7: the three cases of `Q`, the three Codex cases of `P:169-197`, `X:104-110` |
+| Codex: a run that ended with the provider still running does not end it | The completed-turn case of `Q`; the Codex contract suite then stops at "Codex Driver blocks a model absent from the app-server catalog", whose provider nothing ends, and the run was cut off at its time limit |
+| **Claude Code: a provider that stopped reading its input is not ended (as before this range)** | 2: the input case of `Q` and its case in `P:169-197` |
+| Claude Code: a stream that failed signals the one process | 6: the three cases of `Q`, `X:104-110`, `P:64-75`, and the input case of `P:169-197` |
+| An unawaited end does not contain a termination that fails | 1: `P:200-215` |
+| An unawaited end asks for nothing | 10 before the run was cut off at its time limit: the six cases of `Q` and four cases of the Codex contract suite |
+
+All 8 mutations failed at least one case. With `child.kill()` restored a case
+of `Q` fails in one of two ways: the descendant that holds the provider's
+output keeps the run waiting until the case's time limit, or the run ends and
+the descendant that left the group is still alive. Whatever still ran from the
+copy was killed by its process id after each run.
+
+The second row shows why the end of a run does not signal the provider
+beside the tree termination: in some runs the provider was gone before the
+tree routine had read its descendants.
+
+The first row is caught by `Q` only where a provider has a tree, and by `X`
+everywhere. Its case in `P` still passes, because the end of the run then asks
+the terminator for the provider the signal has not yet ended. On Windows that
+row rests on `X`.
+
+### Windows
+
+Nothing in this range was run on Windows. What executes there, by branch:
+
+- **`unawaitedTermination`** has no platform branch. It is the reason the
+  change is safe there: a kill of a process that has exited is an error on
+  Windows, and these ends ask for the termination at moments when the provider
+  may be exiting. `child.kill()` returned false in that case; the terminator
+  rejects, and the rejection is contained (`P:200-215`).
+- **The single termination per child** is unchanged, so a stop that follows
+  one of these ends shares its request, and a request that failed is tried
+  again.
+- **The fallback** signals the one process on Windows, inside a `try`. The
+  tree is reached there only through the terminator a composition injects.
+- **The fakes.** `flood`, `garbled`, `linger` and `deaf` keep the provider
+  alive until it is terminated, so "the provider is gone" is evidence on
+  Windows too. `deaf` closes its input descriptor; the case relies on a write
+  to a pipe whose reader has closed failing on Windows as it does on POSIX.
+  If it does not fail there, the two `deaf` cases run into their time limit;
+  that would be a defect of the fake's mode on Windows, not of the driver.
+- **The qualification cases** take the `endedOnWin32` path (`Q:189-200`): no
+  process group, no `setsid()`, one provider process, asserted gone.
+
+Confidence is high for the Codex paths, which replace one call with another
+under the same conditions, and moderate for the `deaf` cases for the reason
+above. A platform matrix run on the branch is required before merge.
+
+### Guardrails
+
+- Complexity baseline: one entry falls, none rises, no key added or moved.
+  `packages/drivers/src/codex-driver.ts :: Async method 'start'` goes from 27
+  to 26, because the end of a run no longer tests `child.killed`.
+  `claude-code-driver.ts :: Async method 'start'` stays 24.
+- Census: `pnpm census:refresh` changes nothing.
+- Citations fixed: one import line moved the cited lines of both drivers. The
+  Claude Code minimums are now `claude-code-driver.ts:74` and `:367`, the
+  Codex minimum `codex-driver.ts:106`, in
+  `.specs/features/live-task-pilot/validation.md` and
+  `.specs/features/platform-qualification-matrix/matrix.md`. `Q`, `P` and `X`
+  grew at their end, so the lines validation-c4 cites did not move.
+- Qualification reports: two new files under `docs/qualification/`; no
+  existing report is edited, the two process-tree reports included. The
+  digest-bound reports keep their digests.
+- Migration count (12) and runtime error catalog count (19) unchanged. No
+  public error code or message was added, removed or changed.
+- Documentation: `docs/quick-start.md` names the new behaviour.
+  `pnpm site:check` passes.
+- `tests/mutation/*` and the fault-injection suites pass unmodified.
+
+### Gates (Node 24.14.0, macOS arm64)
+
+Each row was measured on a detached checkout of exactly that commit, one
+command at a time.
+
+| Commit | `pnpm gate:quick` | `pnpm test:architecture` | Focused suites |
+| --- | --- | --- | --- |
+| `51df6bc` every end goes through the tree termination | PASS — unit 2484, agent-readiness 323, census 13 | PASS — 88 | The driver contract and integration suites, the verifier suite, the two task process suites, `X`, and the Claude Code and Codex qualification suites: PASS — 458 |
+| `ca609dc` the two reports | PASS — 2484, 323, 13 | PASS — 88 | — |
+
+At the last commit of the range outside `.specs`:
+
+| Command (at `ca609dc`) | Result |
+| --- | --- |
+| `pnpm gate:build` | PASS — unit 2484, contract 782, integration 959, e2e 245, architecture 88, build 146, qualification 329 |
+| `pnpm gate:security` | PASS — unit 2484, contract 782, e2e 245, architecture 88, qualification 329, security 1339, fault 310 |
+| `pnpm test:contract` | PASS — 782 |
+| `pnpm test:integration` | PASS — 959 |
+| `pnpm test:fault` | PASS — 310 |
+| `pnpm test:qualification` | PASS — 329 |
+| `pnpm qualify:claude` | PASS — 65 |
+| `pnpm qualify:codex` | PASS — 32 |
+| `pnpm qualify:opencode` | PASS — 23 |
+| `pnpm qualify:pi` | PASS — 16 |
+| `pnpm agent:check` | PASS |
+| `pnpm site:check` | PASS — 135 pages, internal links valid |
+
+The commit that adds this section and the decision entry changes nothing
+outside `.specs`; `pnpm gate:quick` (unit 2484, agent-readiness 323, census
+13), `pnpm test:architecture` (88) and `pnpm agent:check` pass on it.
+
+No test was skipped in any stage. No provider session was started and no login
+was needed. `qualify:keychain` was not run. After the suites no process they
+started was left running.
+
+### Not verified here
+
+- **The platform matrix.** Every result above is from macOS arm64. This range
+  is platform-specific in what it calls, the terminator, and in its fakes. See
+  the Windows section.
+- **A real provider.** See "What was not observed" in the two reports. The
+  one that matters most is the verifier's App Server, which is now killed at
+  the end of every completed verification.
+
+### Open points for the reviewer
+
+- **The verifier's App Server is killed, not terminated, at a normal end.**
+  That follows from sending a completed turn through the same termination as a
+  stop, which under `vestra task` is the tree routine with `SIGKILL`. If a
+  real App Server needs a gentler end after a completed turn, the place for it
+  is the composition's terminator (a termination request first, then the
+  kill), not a second signal in the driver.
+- **A Claude Code provider that never exits after its result.** Not ended by
+  the driver; see the decision entry.
+- **The OpenCode server.** Not changed; see the decision entry. The finding is
+  real and waits for the first composition that runs that factory.
+- **A termination that fails at an unawaited end is silent in the driver.**
+  The task composition's terminator reports a tree it could not confirm
+  stopped. A composition that injects another terminator hears nothing.
+- **Claude Code's stream-failure paths were changed in form only.** They
+  already asked for the tree termination. They now contain its failure, which
+  was an unhandled rejection before.
