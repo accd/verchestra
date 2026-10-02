@@ -4,11 +4,11 @@ feature: architecture-deepening
 issue: null
 status: in_progress
 branch: main
-baseRevision: 44c1c100ffdaf6764f34d6f00262d695ef126921
-lastCompletedTask: T7
-nextTask: "Integrate TA1/TA2 (branch feat/subscription-provider-auth) and T1a-T1c (branch refactor/task-worktree-module): review, platform matrix on the branch, then merge in that order. Then T3a (after TA2), T2a (after T1b), and T4a (after T3b)."
-lastGate: "Quality gate, Site quality, CodeQL and SonarCloud PASS on #444-#449; platform matrix PASS on the T6 branch (build run 36994423941, security run 36994427778)"
-updatedAt: 2026-10-02T11:00:00Z
+baseRevision: a6df70a2347d34d0ddec00b99bb5bccef73284dc
+lastCompletedTask: T1
+nextTask: "Merge TA1/TA2 (branch feat/subscription-provider-auth) once the platform matrix passes on all five targets; one integration test fails on Windows x64 in build run 37003050689 and is being corrected. T2a-T2c and T3a-T3b are in progress on branches based on that one. T4a starts after T3b."
+lastGate: "Required checks and SonarCloud PASS on #454-#456; platform matrix PASS on the T1 branch tip (build run 36997741260, security run 36997744391)"
+updatedAt: 2026-10-02T12:10:00Z
 ---
 
 # Scope
@@ -33,17 +33,26 @@ Merged to `main`, each with its evidence file:
 | T6a  | #447         | `0cb454b` | `validation-c6.md`               |
 | T6b  | #448         | `ac59fac` | `validation-c6.md`               |
 | T7b  | #449         | `44c1c10` | `validation-c7.md`; AD-042       |
+| T1a  | #454         | `7197954` | `validation-c1.md`; AD-043       |
+| T1b  | #455         | `8c305e4` | `validation-c1.md`               |
+| T1c  | #456         | `a6df70a` | `validation-c1.md`               |
 
-T6 ran the platform matrix on its branch before merge and passed on all five
-targets. T7b's workflow change has not run on a real dispatch yet; the next
-publication exercises it.
+T6 and T1 ran the platform matrix on their branches before merge and passed on
+all five targets. T1b supports SHA-256 repositories end to end and makes an
+idle cancel fail closed; T1c runs git with a scrubbed environment. T7b's
+workflow change has not run on a real dispatch yet; the next publication
+exercises it.
 
 # Next Exact Action
 
-TA1/TA2 and T1a-T1c are in progress on their branches. For each: review the
-evidence, dispatch `platform-matrix.yml` on the branch, and merge only when it
-passes on all five targets. T3a starts after TA2 because both change the Claude
-Code driver. T2a starts after T1b. T4a starts after T3b.
+TA1/TA2 are in review on `feat/subscription-provider-auth`. Its platform matrix
+passed the security gate on all five targets (run 37003053742) and failed one
+integration test on Windows x64 in the build gate (run 37003050689,
+`tests/integration/codex-identity.test.mjs`: the fake provider cannot write its
+log without `TEMP`). Merge it only after a build run passes on all five.
+T2a-T2c (`refactor/task-run-record`) and T3a-T3b
+(`refactor/driver-session-ledger`) are in progress on branches based on that
+one, and rebase onto `main` after it merges. T4a starts after T3b.
 
 # Blockers
 
