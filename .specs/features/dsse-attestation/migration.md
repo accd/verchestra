@@ -101,7 +101,7 @@ version:
 | Artifact kind                    | Sealed at                                                                     | Predicate type URI                                                              |
 | -------------------------------- | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
 | Execution Package                | `packages/evidence/src/execution-package/execution-package.ts:848`            | `https://accd.github.io/verchestra/attestation/execution-package/v1`            |
-| Run Capsule                      | `packages/evidence/src/run-capsule/run-capsule.ts:499`                        | `https://accd.github.io/verchestra/attestation/run-capsule/v1`                  |
+| Run Capsule                      | `packages/evidence/src/run-capsule/run-capsule.ts:534`                        | `https://accd.github.io/verchestra/attestation/run-capsule/v1`                  |
 | Recovery Bundle                  | `packages/evidence/src/recovery-bundle/recovery-bundle.ts:514`                | `https://accd.github.io/verchestra/attestation/recovery-bundle/v1`              |
 | Support Bundle                   | `packages/evidence/src/support-bundle/support-bundle.ts:609`                  | `https://accd.github.io/verchestra/attestation/support-bundle/v1`               |
 | Doctor report                    | `apps/vestra-cli/src/doctor-composition.ts:59`                                | `https://accd.github.io/verchestra/attestation/doctor-report/v1`                |
@@ -199,7 +199,7 @@ new `VES_ENVELOPE_UNSUPPORTED`), then `artifact-sealer.ts` `seal`
 **Step 2 — the four structural re-validation blocks.** Each evidence module
 re-reads envelope fields independently of the sealer and must be rewritten
 against the Statement shape: `execution-package.ts:860-889` (plus the
-`envelopeVersion` echo at 923), `run-capsule.ts:522-547` (echo 566),
+`envelopeVersion` echo at 923), `run-capsule.ts:557-582` (echo 601),
 `recovery-bundle.ts:613-632` (echo 792), `support-bundle.ts:625-638`.
 
 **Step 3 — the five sealing fixtures**, each of which builds its own

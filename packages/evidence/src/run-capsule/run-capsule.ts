@@ -72,13 +72,19 @@ export interface RunCapsuleBudgetEvidence {
     readonly maximumDurationMs: number;
   };
   readonly consumed: {
-    readonly costUsd: number;
+    // invariant: a dollar figure exists only for usage billed per token. A
+    // run on subscriptions alone carries no `costUsd`, never a zero.
+    readonly costUsd?: number;
     readonly tokens: number;
     readonly durationMs: number;
     readonly usageEvents: number;
+    readonly unbilledTokens?: number;
   };
   readonly priceTableVersion: string;
   readonly stopReason: string | null;
+  // invariant: absent means every token was billed per token, exactly as
+  // before this member existed.
+  readonly billing?: "subscription" | "mixed";
 }
 
 export interface RunCapsuleBuildInput {
@@ -389,8 +395,32 @@ function positiveNumber(value: unknown, label: string): number {
   return value;
 }
 
+// invariant: billing and the two members it governs agree. Without `billing`
+// the block is the per-token one: a cost and no unbilled tokens. `subscription`
+// has every token unbilled and no cost; `mixed` has a cost for the billed part
+// and some, not all, tokens unbilled.
+function normalizeBudgetBilling(
+  billing: unknown,
+  consumed: Row,
+  tokens: number
+): Pick<RunCapsuleBudgetEvidence, "billing"> &
+  Pick<RunCapsuleBudgetEvidence["consumed"], "costUsd" | "unbilledTokens"> {
+  const label = "budgetEvidence.consumed";
+  if (billing === undefined) {
+    if (consumed["unbilledTokens"] !== undefined)
+      fail("VES_RUN_CAPSULE_INVALID", `${label}.unbilledTokens needs budgetEvidence.billing`);
+    return { costUsd: nonNegativeNumber(consumed["costUsd"], `${label}.costUsd`) };
+  }
+  const unbilledTokens = nonNegativeNumber(consumed["unbilledTokens"], `${label}.unbilledTokens`);
+  if (billing === "subscription" && consumed["costUsd"] === undefined && unbilledTokens === tokens)
+    return { billing, unbilledTokens };
+  if (billing === "mixed" && unbilledTokens > 0 && unbilledTokens < tokens)
+    return { billing, unbilledTokens, costUsd: nonNegativeNumber(consumed["costUsd"], `${label}.costUsd`) };
+  return fail("VES_RUN_CAPSULE_INVALID", "budgetEvidence.billing does not match its consumed block");
+}
+
 function normalizeBudgetEvidence(value: unknown): RunCapsuleBudgetEvidence {
-  const valueRow = row(value, "budgetEvidence", ["declared", "consumed", "priceTableVersion", "stopReason"]);
+  const valueRow = row(value, "budgetEvidence", ["declared", "consumed", "priceTableVersion", "stopReason", "billing"]);
   const declared = row(valueRow["declared"], "budgetEvidence.declared", [
     "maximumCostUsd",
     "maximumTokens",
@@ -400,8 +430,11 @@ function normalizeBudgetEvidence(value: unknown): RunCapsuleBudgetEvidence {
     "costUsd",
     "tokens",
     "durationMs",
-    "usageEvents"
+    "usageEvents",
+    "unbilledTokens"
   ]);
+  const tokens = nonNegativeNumber(consumed["tokens"], "budgetEvidence.consumed.tokens");
+  const { billing, costUsd, unbilledTokens } = normalizeBudgetBilling(valueRow["billing"], consumed, tokens);
   const stopReason = valueRow["stopReason"];
   if (stopReason !== null && (typeof stopReason !== "string" || !SAFE.test(stopReason)))
     fail("VES_RUN_CAPSULE_INVALID", "budgetEvidence.stopReason is invalid");
@@ -412,13 +445,15 @@ function normalizeBudgetEvidence(value: unknown): RunCapsuleBudgetEvidence {
       maximumDurationMs: positiveNumber(declared["maximumDurationMs"], "budgetEvidence.declared.maximumDurationMs")
     }),
     consumed: Object.freeze({
-      costUsd: nonNegativeNumber(consumed["costUsd"], "budgetEvidence.consumed.costUsd"),
-      tokens: nonNegativeNumber(consumed["tokens"], "budgetEvidence.consumed.tokens"),
+      ...(costUsd === undefined ? {} : { costUsd }),
+      tokens,
       durationMs: nonNegativeNumber(consumed["durationMs"], "budgetEvidence.consumed.durationMs"),
-      usageEvents: nonNegativeNumber(consumed["usageEvents"], "budgetEvidence.consumed.usageEvents")
+      usageEvents: nonNegativeNumber(consumed["usageEvents"], "budgetEvidence.consumed.usageEvents"),
+      ...(unbilledTokens === undefined ? {} : { unbilledTokens })
     }),
     priceTableVersion: safe(valueRow["priceTableVersion"], "budgetEvidence.priceTableVersion"),
-    stopReason
+    stopReason,
+    ...(billing === undefined ? {} : { billing })
   });
 }
 
