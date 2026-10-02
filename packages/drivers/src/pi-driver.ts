@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
+import { DriverSessionLedger } from "./driver-session-ledger.ts";
 import {
   DriverProtocolError,
   validateDriverStartRequest,
@@ -112,12 +113,8 @@ export interface PiDriverDependencies {
   readonly resolveExecution: (request: DriverStartRequest) => Promise<PiExecution>;
 }
 
-interface PiSession {
-  readonly sink: (event: DriverEvent) => void;
+interface PiSessionResources {
   readonly agent: PiAgent;
-  sequence: number;
-  closed: boolean;
-  outcome: "completed" | "failed" | "cancelled";
   unsubscribe?: () => void;
 }
 
@@ -141,8 +138,17 @@ function textDelta(event: PiAgentEvent): string | undefined {
 
 export class PiDriver implements Driver {
   readonly #dependencies: PiDriverDependencies;
-  readonly #sessions = new Map<string, PiSession>();
-  readonly #closedSessions = new Set<string>();
+  readonly #sessions = new DriverSessionLedger<PiSessionResources>({
+    noun: "Pi Driver",
+    stop: ({ resources }) => {
+      resources.agent.abort();
+      return resources.agent.waitForIdle();
+    },
+    release: ({ resources }) => {
+      resources.unsubscribe?.();
+      resources.agent.reset();
+    }
+  });
   readonly #resolveVersion: PiVersionResolver;
 
   constructor(dependencies: PiDriverDependencies, options: { readonly versionResolver?: PiVersionResolver } = {}) {
@@ -216,25 +222,24 @@ export class PiDriver implements Driver {
         return verdict.allowed ? undefined : { block: true, reason: verdict.reason ?? "controller denied" };
       }
     });
-    const state: PiSession = { sink, agent, sequence: 0, closed: false, outcome: "completed" };
-    this.#sessions.set(sessionId, state);
-    this.#emit(state, { type: "session.started", sessionId });
-    this.#emit(state, {
+    const state = this.#sessions.open(sessionId, sink, { agent });
+    state.emit({ type: "session.started", sessionId });
+    state.emit({
       type: "model.resolved",
       passportRef: request.passportRef,
       provider: execution.model.provider,
       api: execution.model.api,
       resolvedModel: execution.model.id
     });
-    state.unsubscribe = agent.subscribe((event) => {
+    state.resources.unsubscribe = agent.subscribe((event) => {
       const delta = textDelta(event);
-      if (delta !== undefined) this.#emit(state, { type: "content.delta", text: delta });
+      if (delta !== undefined) state.emit({ type: "content.delta", text: delta });
       if (
         event.type === "tool_execution_start" &&
         typeof event.toolCallId === "string" &&
         typeof event.toolName === "string"
       )
-        this.#emit(state, {
+        state.emit({
           type: "tool.requested",
           toolCallId: event.toolCallId,
           name: event.toolName,
@@ -250,24 +255,24 @@ export class PiDriver implements Driver {
         .find((message): message is PiAssistantMessage => message.role === "assistant");
       if (finalMessage === undefined) {
         state.outcome = "failed";
-        this.#emit(state, {
+        state.emit({
           type: "error",
           code: "VES_PI_RUNTIME_FAILED",
           message: "Pi runtime failed",
           retryable: false
         });
       } else {
-        this.#emit(state, {
+        state.emit({
           type: "usage.updated",
           inputTokens: finalMessage.usage.input,
           outputTokens: finalMessage.usage.output
         });
         if (finalMessage.stopReason === "aborted") {
           state.outcome = "cancelled";
-          this.#emit(state, { type: "error", code: "VES_PI_ABORTED", message: "Pi run was aborted", retryable: true });
+          state.emit({ type: "error", code: "VES_PI_ABORTED", message: "Pi run was aborted", retryable: true });
         } else if (finalMessage.stopReason === "error") {
           state.outcome = "failed";
-          this.#emit(state, {
+          state.emit({
             type: "error",
             code: "VES_PI_PROVIDER_ERROR",
             message: "Pi provider failed",
@@ -275,7 +280,7 @@ export class PiDriver implements Driver {
           });
         } else if (finalMessage.stopReason === "length") {
           state.outcome = "failed";
-          this.#emit(state, {
+          state.emit({
             type: "warning",
             code: "VES_PI_OUTPUT_LIMIT",
             message: "Pi output reached its verified limit"
@@ -284,7 +289,7 @@ export class PiDriver implements Driver {
       }
     } catch {
       state.outcome = signal.aborted ? "cancelled" : "failed";
-      this.#emit(state, {
+      state.emit({
         type: "error",
         code: signal.aborted ? "VES_PI_ABORTED" : "VES_PI_RUNTIME_FAILED",
         message: signal.aborted ? "Pi run was aborted" : "Pi runtime failed",
@@ -297,39 +302,18 @@ export class PiDriver implements Driver {
   }
 
   async send(session: DriverSessionRef, input: Readonly<Record<string, unknown>>): Promise<void> {
-    const state = this.#active(session);
+    const state = this.#sessions.active(session);
     if (input["type"] !== "user.input" || typeof input["text"] !== "string")
       throw piError("VES_DRIVER_INPUT_INVALID", "Pi Driver input is invalid");
-    await state.agent.prompt(input["text"]);
+    await state.resources.agent.prompt(input["text"]);
   }
 
   async cancel(session: DriverSessionRef, reason: string): Promise<void> {
-    if (this.#closedSessions.has(session.sessionId)) return;
-    const state = this.#known(session);
-    if (state.closed) return;
-    state.agent.abort();
-    await state.agent.waitForIdle();
-    state.outcome = "cancelled";
-    this.#terminal(state, reason);
-    state.unsubscribe?.();
-    state.agent.reset();
+    await this.#sessions.cancel(session, reason);
   }
 
   async close(session: DriverSessionRef) {
-    if (this.#closedSessions.has(session.sessionId))
-      return Object.freeze({ sessionId: session.sessionId, closed: true, alreadyClosed: true });
-    const state = this.#known(session);
-    this.#terminal(state);
-    state.unsubscribe?.();
-    state.agent.reset();
-    this.#sessions.delete(session.sessionId);
-    this.#closedSessions.add(session.sessionId);
-    return Object.freeze({
-      sessionId: session.sessionId,
-      closed: true,
-      outcome: state.outcome,
-      finalSequence: state.sequence
-    });
+    return this.#sessions.close(session);
   }
 
   #validateExecution(request: DriverStartRequest, execution: PiExecution): void {
@@ -355,32 +339,5 @@ export class PiDriver implements Driver {
     const concrete = execution.tools.map((tool) => `${tool.name}:${tool.inputSchemaDigest}`).sort();
     if (declared.length !== concrete.length || declared.some((entry, index) => entry !== concrete[index]))
       throw piError("VES_PI_TOOLSET_MISMATCH", "Pi concrete tools do not match the authorized manifest");
-  }
-
-  #emit(state: PiSession, event: Readonly<Record<string, unknown>>): void {
-    state.sink(Object.freeze({ ...event, sequence: state.sequence }) as DriverEvent);
-    state.sequence += 1;
-  }
-
-  #terminal(state: PiSession, reason?: string): void {
-    if (state.closed) return;
-    this.#emit(state, {
-      type: "session.closed",
-      outcome: state.outcome,
-      ...(reason === undefined ? {} : { reason })
-    });
-    state.closed = true;
-  }
-
-  #known(session: DriverSessionRef): PiSession {
-    const state = this.#sessions.get(session.sessionId);
-    if (state === undefined) throw piError("VES_DRIVER_SESSION_UNKNOWN", "Pi Driver session is unknown");
-    return state;
-  }
-
-  #active(session: DriverSessionRef): PiSession {
-    const state = this.#known(session);
-    if (state.closed) throw piError("VES_DRIVER_SESSION_CLOSED", "Pi Driver session is closed");
-    return state;
   }
 }
