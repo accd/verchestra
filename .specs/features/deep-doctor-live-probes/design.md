@@ -87,7 +87,7 @@ records did not smuggle an adapter in.
 | Check | Surface | Sync | Notes |
 | ----- | ------- | ---- | ----- |
 | `sandbox` | `ProtectedPathBroker.create` then `openExisting` on an out-of-root path | async | Refusal is the pass signal. `create` performs `realpath` and `stat` only. |
-| `sqlite-durable-state` | `inspectRuntimeDatabase` | sync | Already exists (`runtime-store.ts:472`); opens `readOnly: true, allowExtension: false, defensive: true` and runs `PRAGMA integrity_check`. One of the issue's named blockers is already resolved. |
+| `sqlite-durable-state` | `inspectRuntimeDatabase` | sync | Already exists (`runtime-store.ts:212`); opens `readOnly: true, allowExtension: false, defensive: true` and runs `PRAGMA integrity_check`. One of the issue's named blockers is already resolved. |
 | `cedar-policy` | `verifyPolicyBundle` plus a new pure `policyViewDigest(view)` | async | The digest is currently computed inside `CedarPolicyAdapter.#compile` and needs a `CedarEnginePort`; the pure export removes that dependency. |
 | `secret-presence` | `SecretAdapter.has` | async | Never `SecretBrokerBindingInspector.isBound` — that calls `broker.bind()`, which mints a handle. |
 | `driver` / `connector` / `probe` | Availability record read | sync | See below. |

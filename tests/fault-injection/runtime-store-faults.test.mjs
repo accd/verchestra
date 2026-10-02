@@ -179,23 +179,23 @@ test("backup manifest remains bound to staging during a concurrent active write"
   store.close();
 });
 
-test("claim release by wrong owner leaves claim active", async () => {
+test("lease release by wrong owner leaves lease active", async () => {
   const { store } = await opened();
-  const claim = {
-    claimId: "claim_018f0b6d-7b1a-7abc-8def-9123456789ab",
+  const lease = {
+    leaseId: "lease_018f0b6d-7b1a-7abc-8def-6123456789ab",
     workspaceId: "workspace_018f0b6d-7b1a-7abc-8def-7123456789ab",
-    scopeDigest: "a".repeat(64),
     ownerId: "machine:a",
     now,
     expiresAt: "2026-07-13T13:00:00.000Z"
   };
-  store.acquireClaim(claim);
-  assert.throws(() => store.releaseClaim(claim.claimId, "machine:b"), {
-    code: "VES_RUNTIME_CLAIM_OWNER_MISMATCH"
+  const { fencingToken } = store.acquireLease(lease);
+  assert.throws(() => store.releaseLease(lease.workspaceId, "machine:b"), {
+    code: "VES_RUNTIME_LEASE_OWNER_MISMATCH"
   });
-  assert.throws(() => store.acquireClaim({ ...claim, ownerId: "machine:b" }), {
-    code: "VES_RUNTIME_CLAIM_CONFLICT"
+  assert.throws(() => store.acquireLease({ ...lease, ownerId: "machine:b" }), {
+    code: "VES_RUNTIME_LEASE_CONFLICT"
   });
+  assert.deepEqual(store.acquireLease({ ...lease, expectedFencingToken: fencingToken }), { fencingToken });
   store.close();
 });
 

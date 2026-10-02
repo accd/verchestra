@@ -180,3 +180,28 @@ test("persisted authority bytes do not depend on the ambient locale collation", 
     String.prototype.localeCompare = original;
   }
 });
+
+test("a persisted Capability Grant invokes only inside its validity window", async () => {
+  const value = await persisted();
+  const invocation = {
+    grantId: value.grant.grantId,
+    principal: value.grant.principal,
+    action: value.grant.action,
+    resource: value.grant.resource,
+    workspaceId: value.grant.workspaceId,
+    runId: value.grant.runId,
+    constraints: value.grant.constraints,
+    capability: value.grant.capability,
+    currentApprovalBinding: value.approval.binding,
+    policyRequest: {}
+  };
+  let applied = 0;
+  const operation = async () => ++applied;
+  value.clock.advanceBy(30 * 60 * 1000);
+  assert.equal(await value.broker.invoke(invocation, operation), 1);
+  value.clock.advanceBy(90 * 60 * 1000);
+  await assert.rejects(value.broker.invoke(invocation, operation), { code: "VES_CAPABILITY_EXPIRED" });
+  assert.equal(applied, 1);
+  assert.equal((await value.authorityStore.loadGrant(value.grant.grantId)).expiresAt, value.grant.expiresAt);
+  value.store.close();
+});
