@@ -539,3 +539,25 @@ test("the command line never emits key material on success or on failure", async
     for (const secret of secrets)
       assert.equal(bytes.toString("utf8").includes(secret), false, `${name} may not carry key material`);
 });
+
+test("the refresh is admitted over the ledger entry the publication itself emitted (ADP-7)", async () => {
+  const value = await sharedLineage();
+  // why: no field of the recorded release is assembled here. The ledger is the
+  // publication's own ledger-entry.json appended verbatim to the empty ledger it
+  // was admitted against.
+  const published = JSON.parse(await readFile(join(value.closure.outputDirectory, "ledger-entry.json"), "utf8"));
+  assert.equal(published.sequence, 1);
+  assert.equal(published.rootDigest, value.manifest.rootDigest);
+  const ledger = { schema: PUBLICATION_LEDGER_SCHEMA, policy: "test ledger", entries: [published] };
+  assert.doesNotThrow(() => validatePublicationLedger(ledger));
+  const ledgerPath = join(value.closure.root, "ledger-from-publication.json");
+  await writeFile(ledgerPath, `${JSON.stringify(ledger, null, 2)}\n`);
+  await refused(
+    await refreshOptions(value, { ledgerPath, metadataVersion: 1 }),
+    "VES_T76_PUBLISH_METADATA_VERSION_NOT_MONOTONIC"
+  );
+  const { ledgerEntry } = await refreshT76Timestamp(await refreshOptions(value, { ledgerPath }));
+  assert.equal(ledgerEntry.sequence, 2);
+  assert.equal(ledgerEntry.previousEntryDigest, ledgerEntryDigest(published));
+  assert.doesNotThrow(() => validatePublicationLedger({ ...ledger, entries: [published, ledgerEntry] }));
+});

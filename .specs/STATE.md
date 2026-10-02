@@ -734,6 +734,48 @@ note. -->
   one verifier, token and cost ceilings checked when usage is reported, local
   human authority, live pilot pending (#406).
 
+### AD-042 — The publication ledger module derives the release entry; the publisher writes it, a human appends it (ADP-7)
+
+- **Status:** proposed (ratified by reviewing the pull request that carries
+  `refactor/publication-ledger-derives-release-entry`).
+- **Decision:**
+  1. **One admission.** `admitRelease` in `scripts/tuf-publication-ledger.mjs`
+     refuses a `metadataVersion` that does not strictly exceed every version
+     recorded for the root, as `assertMonotonicMetadataVersion` did, and returns
+     the entry that records the release. The chain fields, the kind, and the
+     split of the base URL into origin and `urlPrefix` are derived there. The
+     publisher calls it once, before any output and before any signature other
+     than the in-memory root.
+  2. **The publisher writes, a human appends.** `scripts/t76-publish-release.mjs`
+     writes `ledger-entry.json` beside `publication-manifest.json`, takes
+     `--run-id`, and cites the fixed `RELEASE_EVIDENCE`. The workflow passes the
+     runner's `GITHUB_RUN_ID` and uploads the file. Nothing edits the committed
+     ledger: the entry is appended verbatim in a reviewed pull request.
+  3. **A release the ledger cannot record is not signed.** A base URL that does
+     not split back to itself, or whose prefix the ledger's entry rules refuse,
+     now fails with `VES_T76_PUBLISH_LEDGER_INVALID` before any output. The
+     release workflow's own `base_url` pattern already admits only recordable
+     URLs.
+  4. **The closure's identity is read before the admission**, because the entry
+     names the release. The ledger check therefore runs after the target index
+     is validated and still before `assertOutputAbsent`, the output directory,
+     and every timestamp, snapshot, and targets signature.
+- **Proof it changes no recorded fact:** deriving from the recorded inputs of
+  `.3` and `.4`, each over the ledger prefix that preceded it, reproduces the
+  committed entries 3 and 4 byte for byte
+  (`tests/agent-readiness/tuf-publication-ledger.test.mjs`). The committed
+  ledger is unchanged.
+- **Alternatives rejected:** keeping the hand-built entry (the `.3` and `.4`
+  entries needed `sequence` and `previousEntryDigest` typed by a human);
+  letting the workflow commit the entry (it would need `contents: write` in the
+  signing job and would remove the reviewed pull request); taking the evidence
+  paths on the command line (the refresh cites a fixed list too, and a path
+  typed at dispatch is one more untrusted input in the signing job).
+- **Consequence:** `.specs/features/architecture-deepening/validation-c7.md`,
+  `.specs/features/tuf-role-separation/republish-v3-runbook.md` (step 7),
+  `docs/release-custody.md` (3.1). A release whose record lives outside
+  `RELEASE_EVIDENCE` needs that list changed in a reviewed pull request first.
+
 ## Handoff
 
 - **Feature:** `governed-task-cli` E6–E9 (#405) on

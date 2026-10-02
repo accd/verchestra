@@ -22,10 +22,11 @@
 //   * No decoded key byte, no base64 character of it, and no OpenSSL cause
 //     chain derived from it is ever written to stdout, stderr, an emitted file,
 //     or an error message. Key failures deliberately carry no `cause`.
-//   * Nothing here publishes or uploads. It writes a directory and a manifest
-//     naming exactly what a human must copy, preserving every relative key, to
-//     the object-storage prefix the base URL serves. Uploading the tree and
-//     running `npm publish` stay human steps.
+//   * Nothing here publishes or uploads, and the ledger is not edited. It
+//     writes a directory, a manifest naming exactly what a human must copy,
+//     preserving every relative key, to the object-storage prefix the base URL
+//     serves, and the ledger entry a human appends in a reviewed pull request.
+//     Uploading the tree and running `npm publish` stay human steps.
 //
 // Fail-closed contract: a missing or malformed key, an invalid base URL, a
 // closure whose targets disagree on release identity, a target count other
@@ -64,7 +65,7 @@ import {
   releaseSignerFromEnvironment,
   writeExclusive
 } from "./t76-signing-custody.mjs";
-import { assertMonotonicMetadataVersion, readPublicationLedger } from "./tuf-publication-ledger.mjs";
+import { admitRelease, readPublicationLedger } from "./tuf-publication-ledger.mjs";
 
 // why: the signer, the anchors, the exclusive writes and the error class are
 // shared with the online refresh (#382) and live in t76-signing-custody.mjs.
@@ -85,6 +86,14 @@ export {
   writeExclusive
 };
 
+// why: the tracked record a release ledger entry cites as its evidence: where each
+// publication's facts are written down once it is live, and the procedure it
+// followed. The ledger refuses an entry that cites no tracked file.
+export const RELEASE_EVIDENCE = Object.freeze([
+  ".specs/features/live-activation-matrix/validation.md",
+  ".specs/features/tuf-role-separation/republish-v3-runbook.md"
+]);
+
 /** What a human must do with the emitted directory. Nothing here does it. */
 export const MANUAL_UPLOAD_STEPS = Object.freeze([
   "Download this run's metadata and target artifacts and keep the publication/ tree intact.",
@@ -93,7 +102,7 @@ export const MANUAL_UPLOAD_STEPS = Object.freeze([
   "Confirm the endpoint serves timestamp.json uncached, hash-named files with long-lived caching, no redirects, no content-encoding on metadata, and exact 206 byte ranges on targets.",
   "Run the verification launcher package (node bin/vestra.mjs --version) against the live endpoint before publishing anything.",
   "Build the npm package with build:vestra-launcher --release-inputs release-inputs and run npm publish by hand; no workflow publishes.",
-  "Once the release is live, append a release entry for it (releaseId, semanticVersion, baseUrl, rootDigest, rootVersion, metadataVersion from this manifest) to docs/qualification/tuf-publication-ledger.json in a reviewed pull request; the next publication is checked against it."
+  "Once the release is live, append ledger-entry.json verbatim to docs/qualification/tuf-publication-ledger.json in a reviewed pull request before the next publication or refresh, which is checked against it; if another entry landed first, rerun the publication against main's ledger instead of editing the entry."
 ]);
 
 const VIEW_MODES = Object.freeze(["air-gapped", "mirror", "offline", "online"]);
@@ -102,6 +111,7 @@ const EVIDENCE_FILE = "target-build-evidence.json";
 const DIGEST = /^sha256:[a-f0-9]{64}$/u;
 const REVISION = /^[0-9a-f]{40}$/u;
 const INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u;
+const RUN_ID = /^[0-9]{1,20}$/u;
 const BASE_URL_MAX_LENGTH = 512;
 const INDEX_KEYS = Object.freeze(["schemaVersion", "revision", "targets", "digest"]);
 const TARGET_KEYS = Object.freeze(["platform", "arch", "nodeVersion"]);
@@ -267,6 +277,8 @@ const validateOptions = (value) => {
     metadataVersion: validateVersion(input.metadataVersion, "metadataVersion"),
     rootVersion: validateVersion(input.rootVersion, "rootVersion"),
     rollbackIndexPath: absolutePath(input.rollbackIndexPath, "rollbackIndexPath"),
+    publicationRunId:
+      input.publicationRunId === undefined ? null : text(input.publicationRunId, "publicationRunId", RUN_ID),
     ledgerPath: input.ledgerPath === undefined ? undefined : absolutePath(input.ledgerPath, "ledgerPath"),
     protectedEnvironment: record(input.protectedEnvironment ?? {}, "protectedEnvironment"),
     releaseAnchorPath:
@@ -566,11 +578,21 @@ const publicationFor = (options, signing, candidate, componentBytes) =>
 // made before this check: no timestamp, snapshot, or targets metadata is signed
 // and no output byte is written until the metadata version is proven strictly
 // greater than every version the ledger records for the same root (#387).
-const assertLedgerAdmits = (ledger, options, signing) => {
-  const rootDigest = sha256(buildTufTrustedRoot(rootInputsFor(options, signing)));
-  assertMonotonicMetadataVersion(ledger, { rootDigest, metadataVersion: options.metadataVersion });
-  return rootDigest;
-};
+//
+// invariant: the admission returns the entry that records this release, chained
+// to the ledger it was checked against. It is derived here, before any output,
+// from the same facts the manifest carries, never assembled by hand (ADP-7).
+const admitToLedger = (ledger, options, signing, identity) =>
+  admitRelease(ledger, {
+    releaseId: identity.releaseId,
+    semanticVersion: identity.semanticVersion,
+    baseUrl: options.baseUrl,
+    rootDigest: sha256(buildTufTrustedRoot(rootInputsFor(options, signing))),
+    rootVersion: options.rootVersion,
+    metadataVersion: options.metadataVersion,
+    publicationRunId: options.publicationRunId,
+    evidence: RELEASE_EVIDENCE
+  });
 
 const assertPublicationBinding = (publication, bundle, metadataDigest) => {
   if (publication.releaseDigest !== bundle.releaseDigest)
@@ -700,8 +722,8 @@ const manifestFor = (options, signing, identity, published, rootDigest) => ({
 /**
  * Verifies a five-target candidate closure against its prior rollback index,
  * signs one TUF publication per target, writes the launcher's single shared
- * pinned release inputs, and returns the manual upload manifest. Publishing
- * itself is never performed here.
+ * pinned release inputs and the ledger entry that records the release, and
+ * returns the manual upload manifest. Publishing itself is never performed here.
  */
 export async function publishT76Release(rawOptions) {
   const options = validateOptions(rawOptions);
@@ -733,14 +755,16 @@ export async function publishT76Release(rawOptions) {
     fail("VES_T76_PUBLISH_KEY_MISMATCH", "the timestamp signing key does not match the reviewed timestamp anchor");
   if (signing.release.keyId === signing.timestamp.keyId)
     fail("VES_T76_PUBLISH_KEY_MISMATCH", "the release and timestamp signing keys must be different keys");
-  const checkedRootDigest = assertLedgerAdmits(ledger, options, signing);
-  await assertOutputAbsent(options.outputDirectory);
+  // why: the ledger entry names the release, so the closure's identity is read
+  // before the admission. Nothing is signed or written on the way there.
   const index = validateIndex(await readCanonicalJson(options.indexPath, "target index"), options.revision);
   const entries = index.targets.map((entry, position) =>
     validateEvidenceRecord(entry, `target index entry ${position}`)
   );
   validateClosureCoverage(entries);
   const identity = validateClosureIdentity(entries, options.revision);
+  const ledgerEntry = admitToLedger(ledger, options, signing, identity);
+  await assertOutputAbsent(options.outputDirectory);
   const rollbackProofs = validateRollbackIndex(
     await readCanonicalJson(options.rollbackIndexPath, "rollback index"),
     options.revision
@@ -749,7 +773,7 @@ export async function publishT76Release(rawOptions) {
   await mkdir(options.outputDirectory, { recursive: false, mode: 0o700 });
   const published = [];
   for (const target of bound) published.push(await publishOneTarget(options, signing, target, rollbackProofs));
-  assertSingleTrustRoot(published, checkedRootDigest);
+  assertSingleTrustRoot(published, ledgerEntry.rootDigest);
   const rootDigest = await writeReleaseInputs(options, identity, published[0].trustedRoot);
   const manifest = manifestFor(
     options,
@@ -757,6 +781,13 @@ export async function publishT76Release(rawOptions) {
     identity,
     published.map((item) => item.entry),
     rootDigest
+  );
+  // invariant: written beside the manifest, into the directory this run created,
+  // only after every target was signed under the root the entry records.
+  await writeExclusive(
+    join(options.outputDirectory, "ledger-entry.json"),
+    Buffer.from(`${JSON.stringify(ledgerEntry, null, 2)}\n`, "utf8"),
+    "ledger-entry.json"
   );
   await writeExclusive(
     join(options.outputDirectory, "publication-manifest.json"),
@@ -819,6 +850,9 @@ const runCli = async () => {
     metadataVersion: Number(argument(args, "--metadata-version")),
     rootVersion: Number(optionalArgument(args, "--root-version", "1")),
     rollbackIndexPath: argument(args, "--rollback-index"),
+    // why: the workflow run that signed this publication, recorded in the ledger
+    // entry. Omitted for a local run, which records none.
+    publicationRunId: optionalArgument(args, "--run-id", undefined),
     // why: the release workflow passes the ledger read from origin/main's tip,
     // after proving the candidate's committed copy is a prefix of it, so a
     // candidate built before a later publication was recorded cannot reuse that

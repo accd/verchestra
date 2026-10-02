@@ -243,7 +243,7 @@ test("every heredoc in the workflow terminates where the shell can find it", () 
   }
 });
 
-test("the run emits signed metadata, signed targets, pinned inputs, and the upload manifest", () => {
+test("the run emits signed metadata, signed targets, pinned inputs, the upload manifest, and the ledger entry", () => {
   assert.match(workflow, /--out t76-release-publication/u);
   assert.match(workflow, /name: t76-release-metadata-\$\{\{ inputs\.revision \}\}-\$\{\{ github\.run_id \}\}/u);
   assert.match(workflow, /name: t76-release-targets-\$\{\{ inputs\.revision \}\}-\$\{\{ github\.run_id \}\}/u);
@@ -255,6 +255,36 @@ test("the run emits signed metadata, signed targets, pinned inputs, and the uplo
   // nothing, so every upload fails closed instead of warning.
   assert.equal([...workflow.matchAll(/if-no-files-found: error/gu)].length, 3);
   assert.doesNotMatch(workflow, /if-no-files-found: (?:warn|ignore)/u);
+  // why: the ledger entry leaves in the metadata artifact, beside the manifest it
+  // records, so the refresh that later downloads that artifact finds both (ADP-7).
+  const metadataUpload = /name: t76-release-metadata-.*\n {10}path: \|\n((?: {12}\S.*\n)+)/u.exec(workflow);
+  assert.deepEqual(metadataUpload[1].trim().split(/\s+/u), [
+    "t76-release-publication/publication-manifest.json",
+    "t76-release-publication/ledger-entry.json",
+    "t76-release-publication/publication/*/metadata",
+    "t76-release-publication/release-inputs"
+  ]);
+});
+
+test("the ledger entry is derived by the signing step, never typed or edited by the workflow (ADP-7)", () => {
+  // why: the run id the entry records is the runner's own GITHUB_RUN_ID, read by
+  // the shell. It is not a dispatch input, and no workflow expression carries it
+  // into a run block (the injection test above covers every executed line).
+  assert.match(workflow, /--run-id "\$GITHUB_RUN_ID"/u);
+  assert.equal(workflow.split("--run-id").length, 2, "the run id is passed exactly once");
+  assert.doesNotMatch(runBlockLines().join("\n"), /github\.run_id/u);
+  // why: `if-no-files-found: error` fails only when a multi-path upload matches
+  // nothing at all, so the summary step reads the entry itself and fails the job
+  // before any upload when the signing step did not write it.
+  const summary = workflow.indexOf('readFile("t76-release-publication/ledger-entry.json", "utf8")');
+  const signing = workflow.indexOf("node scripts/t76-publish-release.mjs");
+  const firstUpload = workflow.indexOf("uses: actions/upload-artifact@");
+  assert.ok(signing >= 0 && summary > signing, "the entry is read after the signing step wrote it");
+  assert.ok(summary < firstUpload, "a missing entry fails the job before anything is uploaded");
+  // invariant: the workflow never writes the committed ledger, and never pushes.
+  const executed = runBlockLines().join("\n");
+  assert.doesNotMatch(executed, />+\s*docs\/qualification\/tuf-publication-ledger\.json/u);
+  assert.doesNotMatch(executed, /git (?:push|commit|add)\b/u);
 });
 
 test("the emitted pinned inputs are proved against the real launcher build", () => {

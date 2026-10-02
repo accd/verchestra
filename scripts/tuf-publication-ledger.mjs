@@ -4,7 +4,9 @@
 // another. The update client now names that collision (#391), but only a
 // publisher can prevent it. This ledger is what the publish tooling checks a new
 // `metadataVersion` against: it must strictly exceed every snapshot, targets,
-// and timestamp version recorded for the same root digest.
+// and timestamp version recorded for the same root digest. The same module
+// derives the entry each publication or refresh appends, so the chain fields
+// are never typed by hand.
 //
 // invariant: a fact not recorded anywhere in the repository is `null`, never a
 // guess, and every rule below treats an unknown conservatively: an unknown root
@@ -258,6 +260,59 @@ export function nextLedgerEntry(ledger, fields) {
   const entry = Object.assign({ ...chain }, fields, chain);
   validatePublicationLedger({ ...ledger, entries: [...ledger.entries, entry] });
   return entry;
+}
+
+// invariant: the committed entries record where a release is served as an origin
+// and the prefix under it. The two halves must concatenate back to the pinned
+// base URL byte for byte, so a credential, a query, a fragment, or a location
+// the URL parser would rewrite is refused instead of silently dropped.
+const servedLocation = (value) => {
+  let url;
+  try {
+    url = new URL(value);
+  } catch (error) {
+    return invalid("release baseUrl is not a URL", error);
+  }
+  const location = { baseUrl: `${url.origin}/`, urlPrefix: url.pathname.slice(1) };
+  if (`${location.baseUrl}${location.urlPrefix}` !== value)
+    invalid("release baseUrl must be exactly an origin followed by a directory prefix");
+  return location;
+};
+
+// invariant: a derived entry records every fact of its release. `null` is only
+// for the seed entries, whose facts the repository never recorded.
+const recorded = (value, label) => {
+  if (value === null || value === undefined) invalid(`release entry must record its ${label}`);
+  return value;
+};
+
+// invariant: the one admission a publication passes before it signs anything but
+// its root. It refuses a metadataVersion that does not strictly exceed every
+// version recorded for the root, exactly as assertMonotonicMetadataVersion does,
+// and returns the entry a human appends verbatim once the release is live. The
+// caller states the release; the chain fields, the kind, and the origin/prefix
+// split are derived here, so no entry is assembled by hand (ADP-7).
+export function admitRelease(ledger, release) {
+  const { rootDigest, metadataVersion } = release;
+  assertMonotonicMetadataVersion(ledger, { rootDigest, metadataVersion });
+  return nextLedgerEntry(ledger, {
+    kind: "release",
+    releaseId: recorded(release.releaseId, "releaseId"),
+    semanticVersion: release.semanticVersion,
+    ...servedLocation(release.baseUrl),
+    rootDigest,
+    rootDigestPrefix: null,
+    roles: {
+      root: recorded(release.rootVersion, "root version"),
+      snapshot: metadataVersion,
+      targets: metadataVersion,
+      timestamp: metadataVersion
+    },
+    publicationRunId: release.publicationRunId ?? null,
+    // why: a copy, so the entry never aliases the caller's list; anything but a
+    // list reaches the ledger validation unchanged and is refused there.
+    evidence: Array.isArray(release.evidence) ? [...release.evidence] : release.evidence
+  });
 }
 
 // why: a workflow reads the ledger from origin/main's tip rather than from the

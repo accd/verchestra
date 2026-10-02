@@ -1236,9 +1236,9 @@
         "canonicalizer": 13,
         "digest": 2,
         "localeCompare": 0,
-        "serialization": 0
+        "serialization": 1
       },
-      "reason": "The publication boundary verifies sealed candidate closures and emits release artifacts with the declared V2 canonical contract."
+      "reason": "The publication boundary verifies sealed candidate closures and emits release artifacts with the declared V2 canonical contract; the ledger entry it writes is pretty-printed for review and chained by its V2 canonical digest."
     },
     {
       "path": "scripts/t76-refresh-timestamp.mjs",

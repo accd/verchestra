@@ -16,12 +16,18 @@ import {
   TufUpdateClient
 } from "../../packages/distribution/src/tuf-update-client.ts";
 import { buildVestraLauncher } from "../../scripts/build-vestra-launcher.mjs";
-import { PUBLICATION_LEDGER_SCHEMA, ledgerEntryDigest } from "../../scripts/tuf-publication-ledger.mjs";
+import {
+  DEFAULT_PUBLICATION_LEDGER_PATH,
+  PUBLICATION_LEDGER_SCHEMA,
+  ledgerEntryDigest,
+  validatePublicationLedger
+} from "../../scripts/tuf-publication-ledger.mjs";
 import {
   DEFAULT_RELEASE_ANCHOR,
   DEFAULT_TIMESTAMP_ANCHOR,
   MANUAL_UPLOAD_STEPS,
   RELEASE_ANCHOR_PURPOSE,
+  RELEASE_EVIDENCE,
   SUPPORTED_TARGET_KEYS,
   TIMESTAMP_ANCHOR_PURPOSE,
   expectedAnchorKeyId,
@@ -920,6 +926,8 @@ test("the command line never emits key material on success or on failure", async
     "1",
     "--rollback-index",
     rollback.indexPath,
+    "--run-id",
+    "77",
     // The release workflow omits these and binds to the committed anchors; the
     // subprocess signs with throwaway keys, so it points at matching ones.
     "--release-anchor",
@@ -956,9 +964,133 @@ test("the command line never emits key material on success or on failure", async
   const serialized = JSON.stringify(emitted);
   for (const secret of secrets)
     assert.equal(serialized.includes(secret), false, "no key material may reach an artifact");
+  // why: the run id the workflow passes is recorded in the emitted ledger entry.
+  const ledgerEntry = await readFile(join(closure.outputDirectory, "ledger-entry.json"), "utf8");
+  assert.equal(JSON.parse(ledgerEntry).publicationRunId, "77");
+  for (const secret of secrets)
+    assert.equal(ledgerEntry.includes(secret), false, "no key material may reach the ledger entry");
 
   const failure = await run(`${key}!!`);
   const failed = `${failure.stdout}${failure.stderr}`;
   for (const secret of secrets) assert.equal(failed.includes(secret), false, "a rejected key may not be echoed");
   assert.match(failed, /VES_T76_PUBLISH_SIGNING_KEY_INVALID/u);
+});
+
+// why: everything below covers the ledger entry that records the release, which
+// the publisher derives through the ledger module and writes (ADP-7).
+
+const publicationOnLineage = async (overrides, ledgerPathFor) => {
+  const { keys, rollback } = await sharedLineage();
+  const closure = await candidateClosure();
+  const ledgerPath = await ledgerPathFor(closure);
+  const options = { ...optionsFor(closure, keys, rollback.indexPath), ledgerPath, ...overrides };
+  return { closure, ledgerPath, publish: () => publishT76Release(options) };
+};
+
+const emittedEntry = async (closure) => {
+  const bytes = await readFile(join(closure.outputDirectory, "ledger-entry.json"), "utf8");
+  return { bytes, entry: JSON.parse(bytes) };
+};
+
+test("the publication writes the ledger entry that records it, beside the manifest", async () => {
+  const { rootDigest } = await sharedLineage();
+  const { closure, ledgerPath, publish } = await publicationOnLineage(
+    { metadataVersion: 4, publicationRunId: "4242" },
+    (target) => writeLedger(target.root, [{ rootDigest, roles: recordedVersions(3) }])
+  );
+  const manifest = await publish();
+  assert.deepEqual(
+    (await readdir(closure.outputDirectory)).sort((left, right) => Number(left > right) - Number(left < right)),
+    ["ledger-entry.json", "publication", "publication-manifest.json", "release-inputs"]
+  );
+  const ledger = JSON.parse(await readFile(ledgerPath, "utf8"));
+  const { bytes, entry } = await emittedEntry(closure);
+  assert.deepEqual(entry, {
+    sequence: 2,
+    previousEntryDigest: ledgerEntryDigest(ledger.entries[0]),
+    kind: "release",
+    releaseId: PUBLICATION_RELEASE_ID,
+    semanticVersion: PUBLICATION_SEMANTIC_VERSION,
+    // why: the origin and the prefix under it, split as the committed entries record them.
+    baseUrl: "https://releases.example.invalid/",
+    urlPrefix: "verchestra/",
+    rootDigest: manifest.rootDigest,
+    rootDigestPrefix: null,
+    roles: { root: 1, snapshot: 4, targets: 4, timestamp: 4 },
+    publicationRunId: "4242",
+    evidence: [...RELEASE_EVIDENCE]
+  });
+  assert.equal(`${entry.baseUrl}${entry.urlPrefix}`, manifest.baseUrl);
+  assert.equal(entry.roles.root, manifest.rootVersion);
+  // why: the form a human appends: pretty-printed, in the committed ledger's key order.
+  assert.equal(bytes, `${JSON.stringify(entry, null, 2)}\n`);
+  const committed = JSON.parse(await readFile(DEFAULT_PUBLICATION_LEDGER_PATH, "utf8"));
+  assert.deepEqual(Object.keys(entry), Object.keys(committed.entries.at(-1)));
+  // why: the manual step names the file, and no longer asks for a hand-built entry.
+  assert.equal(MANUAL_UPLOAD_STEPS.length, 7);
+  assert.match(MANUAL_UPLOAD_STEPS.at(-1), /append ledger-entry\.json verbatim to docs\/qualification\//u);
+  assert.match(MANUAL_UPLOAD_STEPS.at(-1), /reviewed pull request/u);
+  assert.match(MANUAL_UPLOAD_STEPS.at(-1), /instead of editing the entry/u);
+
+  // why: appended verbatim, it keeps the chain intact and bounds the next publication.
+  const extended = { ...ledger, entries: [...ledger.entries, entry] };
+  assert.doesNotThrow(() => validatePublicationLedger(extended));
+  const extendedPath = join(closure.root, "extended-ledger.json");
+  await writeFile(extendedPath, `${JSON.stringify(extended, null, 2)}\n`);
+  await refusedAsNotMonotonic(
+    await publicationOnLineage({ metadataVersion: 4 }, () => extendedPath),
+    /strictly greater than the snapshot version 4 ledger entry 2/u
+  );
+  const next = await publicationOnLineage({ metadataVersion: 5 }, () => extendedPath);
+  await next.publish();
+  const following = (await emittedEntry(next.closure)).entry;
+  assert.equal(following.sequence, 3);
+  assert.equal(following.previousEntryDigest, ledgerEntryDigest(entry));
+  // why: a local run names no workflow run.
+  assert.equal(following.publicationRunId, null);
+});
+
+test("an empty ledger admits a first release, and its entry chains to nothing", async () => {
+  const { closure, publish } = await publicationOnLineage({}, (target) => writeLedger(target.root, []));
+  const manifest = await publish();
+  const { entry } = await emittedEntry(closure);
+  assert.equal(entry.sequence, 1);
+  assert.equal(entry.previousEntryDigest, null);
+  assert.equal(entry.rootDigest, manifest.rootDigest);
+  assert.deepEqual(entry.roles, { root: 1, snapshot: 1, targets: 1, timestamp: 1 });
+  assert.doesNotThrow(() =>
+    validatePublicationLedger({ schema: PUBLICATION_LEDGER_SCHEMA, policy: "test ledger", entries: [entry] })
+  );
+});
+
+test("refuses a run id that is not a workflow run id, before any output", async () => {
+  for (const publicationRunId of ["run-7", "", "7 ", 7, "123456789012345678901"]) {
+    const { closure, publish } = await publicationOnLineage({ publicationRunId }, (target) =>
+      writeLedger(target.root, [])
+    );
+    await assert.rejects(publish, (error) => {
+      assert.equal(error.code, "VES_T76_PUBLISH_INPUT_INVALID");
+      assert.match(error.message, /publicationRunId is invalid/u);
+      return true;
+    });
+    await assert.rejects(() => readdir(closure.outputDirectory), { code: "ENOENT" });
+  }
+});
+
+test("a base URL the ledger cannot record is refused before any output", async () => {
+  // why: the publisher's own rules admit a percent-encoded path; the ledger's
+  // prefix rule does not, and a release that cannot be recorded is not signed.
+  const { closure, publish } = await publicationOnLineage(
+    { baseUrl: "https://releases.example.invalid/release%20candidate/" },
+    (target) => writeLedger(target.root, [])
+  );
+  await assert.rejects(publish, { code: "VES_T76_PUBLISH_LEDGER_INVALID" });
+  await assert.rejects(() => readdir(closure.outputDirectory), { code: "ENOENT" });
+});
+
+test("the evidence a release entry cites is tracked, and is what the committed .3 and .4 entries cite", async () => {
+  for (const path of RELEASE_EVIDENCE)
+    await assert.doesNotReject(() => readFile(new URL(`../../${path}`, import.meta.url)), `${path} must exist`);
+  const committed = JSON.parse(await readFile(DEFAULT_PUBLICATION_LEDGER_PATH, "utf8"));
+  for (const sequence of [3, 4]) assert.deepEqual(committed.entries[sequence - 1].evidence, [...RELEASE_EVIDENCE]);
 });

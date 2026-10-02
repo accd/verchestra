@@ -41,6 +41,12 @@ name: T76 sign and stage a release publication
 # tip, not from the candidate revision (#387, #382): a candidate cut before a
 # later publication or refresh was recorded would otherwise reuse its version.
 # The candidate's own committed copy must be an unedited prefix of main's.
+#
+# invariant: the ledger is never edited here. The script derives the entry that
+# records this release, chained to main's ledger, and the run uploads it as
+# `ledger-entry.json`; a human appends it verbatim in a reviewed pull request.
+# The run id it records is the runner's own `GITHUB_RUN_ID`, read by the shell
+# from the environment, never interpolated into a `run:` block.
 
 on:
   workflow_dispatch:
@@ -245,6 +251,7 @@ jobs:
           --metadata-version "$METADATA_VERSION"
           --ledger main-ledger/tuf-publication-ledger.json
           --rollback-index rollback/t76-target-index.json
+          --run-id "$GITHUB_RUN_ID"
 
       - name: Build the publishable package from the emitted pinned inputs
         run: >-
@@ -252,13 +259,16 @@ jobs:
           --release-inputs "t76-release-publication/release-inputs"
           --out vestra-launcher-package
 
-      - name: Summarize what a human must upload
+      - name: Summarize what a human must upload and record
         run: |
           set -euo pipefail
           node --input-type=module <<'NODE'
           import { appendFile, readFile } from "node:fs/promises";
 
           const manifest = JSON.parse(await readFile("t76-release-publication/publication-manifest.json", "utf8"));
+          // why: a run without the ledger entry must fail here, not upload an
+          // artifact a human would have to complete by hand.
+          const ledgerEntry = await readFile("t76-release-publication/ledger-entry.json", "utf8");
           const lines = [
             "## T76 release publication (nothing was published)",
             "",
@@ -281,17 +291,24 @@ jobs:
               (target) =>
                 `| ${target.targetKey} | \`${target.releaseDigest}\` | ${target.assetCount} | \`${target.candidateDigest}\` |`
             ),
+            "",
+            "### Ledger entry to append verbatim once the release is live",
+            "",
+            "```json",
+            ledgerEntry.trimEnd(),
+            "```",
             ""
           ];
           await appendFile(process.env.GITHUB_STEP_SUMMARY, `${lines.join("\n")}\n`);
           NODE
 
-      - name: Upload signed metadata, pinned inputs, and the upload manifest
+      - name: Upload signed metadata, pinned inputs, the upload manifest, and the ledger entry
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: t76-release-metadata-${{ inputs.revision }}-${{ github.run_id }}
           path: |
             t76-release-publication/publication-manifest.json
+            t76-release-publication/ledger-entry.json
             t76-release-publication/publication/*/metadata
             t76-release-publication/release-inputs
           if-no-files-found: error
