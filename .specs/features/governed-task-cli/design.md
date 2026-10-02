@@ -222,7 +222,7 @@ controller with its stable code. It never applies `APPROVE_HUMAN_REVIEW`.
 | `task-review.ts`, `task-surface.ts` | Review surface digest, human review, run capsule. |
 | `task-status.ts` | Status and cancel. |
 | `task-credentials.ts`, `task-signing.ts` | Secret broker reads; the Workspace evidence key and its pinned trust anchor. |
-| `task-process-tree.ts` | The terminator both provider drivers are given: stopping a provider stops its whole process tree. |
+| `task-process-tree.ts` | The provider processes of a command: the terminator both provider drivers are given, which stops a whole process tree, and the answer to a hang-up or a termination request while a provider runs. |
 | `task-run-record.ts` | The Run record: the layout of the run directory and the sealed or plain, validated read and write of every artifact in it. |
 | `task-files.ts`, `task-plan-record.ts`, `task-evidence.ts`, `task-workflow.ts`, `task-workspace.ts`, `task-gates.ts`, `task-context.ts`, `task-git.ts` | The seal and atomic write, the plan record's shape, gate evidence, workflow persistence, Workspace layout, allowlist, context, git. |
 

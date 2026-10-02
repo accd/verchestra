@@ -37,9 +37,14 @@ whole process tree.
   signal the one process with `SIGTERM`. It now sends `SIGTERM` to the
   provider's group (to the one process on Windows). A fallback that finds
   nothing left to stop no longer rejects.
-- **One termination per child.** A stream that keeps failing asks to stop the
-  child once for every line still in the pipe. The driver now starts one
-  termination per child on that path and awaits it.
+- **One termination per child.** A stop reaches the driver twice, through its
+  start signal and through `cancel`, and a stream that keeps failing asks once
+  more for every line still in the pipe. The driver now starts one
+  termination per child, whoever asks. On Windows a kill of a process that has
+  already exited is an error; a terminator asked a second time failed there,
+  the cancel failed with it, and the session's terminal event lost the reason
+  of the stop. A termination that failed is forgotten, so a later request
+  tries again.
 - **Injected terminator.** `ClaudeCodeDriverDependencies.terminateTree` is
   unchanged in shape. The `vestra task` composition used to inject a `SIGKILL`
   of the one process. It now injects the tree terminator of
@@ -49,6 +54,14 @@ whole process tree.
   group is gone, and then kills every recorded descendant, which reaches one
   that left the group with `setsid()`. The driver package still imports
   nothing from `platform-node`.
+- **Interrupts.** A provider in its own group no longer receives the
+  terminal's signals. While a provider runs, `vestra task` therefore answers a
+  hang-up (`SIGHUP`) and a termination request (`SIGTERM`) itself: it stops
+  every provider tree it started with the same terminator and then ends as the
+  signal would have ended it. It records nothing after the signal, so the run
+  is left interrupted and `vestra task resume` continues it. The driver learns
+  nothing of this; the composition learns the provider's process from the
+  driver's `onSpawn`.
 
 ## What the deterministic fake proved
 
@@ -95,6 +108,14 @@ Also covered:
 - `tests/integration/task-process-tree.test.mjs` shows that the task
   composition's terminator resolves for a live provider, for a tree that is
   already gone, and for a kill the runtime refuses.
+- `tests/integration/task-provider-interrupt.test.mjs` sends `SIGHUP` and
+  `SIGTERM` to a real child process that composes the production provider
+  processes, this driver and its fake in `fork` mode: all three processes are
+  gone, the command ends by that signal, and nothing is recorded after it. A
+  tree routine that never returns does not keep the command alive.
+  `tests/e2e/task-cli-e2e.test.mjs` runs the same through the `vestra` binary
+  on macOS, during the implementer and during the verifier, and then resumes
+  the run to review.
 - `tests/architecture/provider-process-tree-termination.test.mjs` fails when
   the driver stops starting its provider in its own group, when the task
   composition builds a provider driver without the tree terminator, or when a
@@ -109,9 +130,17 @@ Also covered:
   cancel no longer waits for a process Claude Code left behind.
 - Claude Code no longer receives the terminal's own signals. Ctrl-C reaches
   `vestra`, which aborts the run and kills the tree.
-- If the `vestra` process itself is killed with `SIGKILL`, or its terminal
-  goes away, nothing stops Claude Code. It runs until its closed pipes make it
-  exit. Before this change a terminal hang-up reached it directly.
+- A closed terminal, or a `kill` of the `vestra` process, while Claude Code runs
+  stops the whole tree and ends `vestra`. The run is not aborted: it stays
+  interrupted, and `vestra task resume` continues it. A termination request
+  used to cancel the run at that moment; at any other moment it still does.
+  Under `nohup` a hang-up used to be ignored by `vestra` and by the provider;
+  it now ends both, and the run can be resumed.
+- If the `vestra` process itself is killed with `SIGKILL`, nothing stops
+  Claude Code: that signal cannot be handled. It runs until its closed pipes make
+  it exit. The provider's process group id is the process id of the provider,
+  so `kill -KILL -- -<pid>` stops the whole group. `vestra task status` then
+  shows the run as not active, and `resume` or `cancel` continues or ends it.
 
 ## What was not observed
 
@@ -134,8 +163,14 @@ Code process that the fake cannot make.
 - The process table is read with `ps`. Where it cannot be read, only the group
   signal applies and an escapee survives.
 - The task composition's terminator never rejects, because the driver calls it
-  from an abort listener. A tree that could not be confirmed gone is therefore
-  not reported: the session still ends, and it ends as cancelled.
+  from an abort listener. A tree that was not confirmed gone is named once on
+  stderr instead, with the provider, its process group id and the command
+  that stops it; the session still ends, and it ends as cancelled.
+- `SIGKILL` of the `vestra` process is not handled and there is no watchdog.
+  The provider is then stopped only by its closed pipes or by hand.
+- The single termination per child was written for a failure the platform
+  matrix found on Windows. It is reproduced on every platform by a terminator
+  that fails on a second request, and has not been run on Windows here.
 - A process identifier recorded before the kill can be reused by an unrelated
   process of the same user before the recorded descendant is killed. The
   window is the time the group kill takes.

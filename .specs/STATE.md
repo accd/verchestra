@@ -1236,14 +1236,30 @@ note. -->
      routine that records a child's descendants, kills its group, confirms the
      group is gone, and kills what the group signal could not reach. The probe
      host calls it, and it is exported to the composition root.
-  4. `terminateProviderTree` in `apps/vestra-cli/src/task/task-process-tree.ts`
-     is the one terminator the task composition injects into both drivers. It
-     never rejects, because a driver calls it from an abort listener, where a
-     rejection would be unhandled and end the whole command.
-  5. On its abort and stream-failure path the Claude Code driver starts one
-     termination per child. A terminator that reads the process table cannot
-     be asked once for every line left in a pipe.
-  6. Both drivers are requalified with reports of their own. The existing
+  4. `ProviderProcesses` in `apps/vestra-cli/src/task/task-process-tree.ts`
+     owns the provider processes of a task command. A provider session gets
+     its terminator and its spawn observer from it. The terminator never
+     rejects, because a driver calls it from an abort listener, where a
+     rejection would be unhandled and end the whole command; a tree that was
+     not confirmed stopped is named once on stderr instead, with the provider,
+     its process group id and the command that stops it.
+  5. Each driver starts one termination per child, whoever asks: the abort
+     path, a stream that keeps failing, or a cancel. A terminator that reads
+     the process table cannot be asked once for every line left in a pipe, and
+     on Windows a second kill of a provider that has already exited is an
+     error that failed the cancel and cost the stop its reason. A termination
+     that failed is forgotten, so the session stays cancellable.
+  6. **A hang-up or a termination request while a provider runs stops the
+     providers and ends the command; it is not a cancel.** A provider in its
+     own group no longer receives the terminal's signals, so the command
+     answers `SIGHUP` and `SIGTERM` itself, only while a provider is running:
+     it stops every provider tree it started, with a bounded wait, and then
+     ends as the signal would have ended it. Nothing is recorded after the
+     signal (no abort, no cancel marker, no checkpoint, no tool effect), so
+     the run is left as a killed command leaves it and `task resume`
+     continues it. `SIGINT` stays the cancel it was, and so does `SIGTERM` at
+     any moment when no provider is running.
+  7. Both drivers are requalified with reports of their own. The existing
      reports are not edited: no argument, environment variable, working
      directory or stream check of any profile changed. The mediated profiles
      and `vestra task` stay refused on Windows.
@@ -1251,14 +1267,17 @@ note. -->
   `platform-node` (adapter coupling, which the architecture check refuses);
   leaving the provider in the caller's group and walking its tree instead (a
   walk races with a fork, and a group is one address); `detached` on Windows
-  (it opens a console and gives no group); one termination shared by the
-  cancel and the abort path (the ledger contract keeps a session cancellable
-  after a stop that failed); a driver error code for a tree that could not be
-  confirmed gone (it adds a code and a branch to two `start` methods that are
-  already complexity hotspots, for a state `SIGKILL` leaves almost
-  unreachable; it is left as an open point); handling the terminal's hang-up
-  in `vestra task` by aborting the run (a lost terminal would then end a run
-  that is resumable today).
+  (it opens a console and gives no group); a termination per request (it
+  failed the cancel on Windows, and it reads the process table once per
+  request); a driver error code for a tree that could not be confirmed gone
+  (it adds a code and a branch to two `start` methods that are already
+  complexity hotspots; the line on stderr says the same to the one who can
+  act on it); handling the terminal's hang-up by aborting the run (a lost
+  terminal would then end a run that is resumable today, and an abort is
+  recorded as a human decision); keeping `SIGTERM` a cancel while a provider
+  runs (a termination request from the system is not a human's cancel
+  either); a watchdog process that outlives a killed `vestra` (a second
+  process to supervise, for the one signal that cannot be handled).
 - **Consequence:** `pnpm qualify:claude` and `pnpm qualify:codex` each run one
   shared contract against their driver and labeled fake: a cancel and an
   aborted start signal leave no process of a three-process tree alive, one of
@@ -1266,11 +1285,19 @@ note. -->
   `tests/architecture/provider-process-tree-termination.test.mjs` fails when a
   driver stops starting its provider in its own group, when the composition
   builds a provider driver without the tree terminator, or when a task source
-  signals a process itself. An operator can notice three things: a cancel no
+  signals a provider itself. An operator can notice four things: a cancel no
   longer waits for a process a provider left behind; a provider no longer
-  receives the terminal's own signals; and when the `vestra` process itself is
-  killed, or its terminal goes away, nothing stops the provider until its
-  closed pipes make it exit. The change is platform-specific and needs a
+  receives the terminal's own signals; a closed terminal or a `kill` of
+  `vestra` while a provider runs stops the providers and leaves the run
+  resumable, where a termination request at that moment used to abort it; and
+  under `nohup` a hang-up, which used to be ignored, now ends the command and
+  its providers.
+- **Residual risk:** `SIGKILL` of the `vestra` process cannot be handled, and
+  no watchdog is built for it. The provider then runs until its closed pipes
+  make it exit. Its process group id is its process id, so
+  `kill -KILL -- -<pid>` stops the whole group; `task status` shows the run as
+  not active, and `task resume` or `task cancel` continues or ends it. The
+  quick start says so. The change is platform-specific and needs a
   platform matrix run on the branch before merge. Evidence is in
   `.specs/features/architecture-deepening/validation-c4.md` and in
   `docs/qualification/claude-code-driver-process-tree.md` and
