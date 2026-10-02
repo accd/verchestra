@@ -4,6 +4,7 @@ import { promisify } from "node:util";
 
 import { normalizeDeclaredSet } from "@verchestra/domain";
 
+import { DriverSessionLedger } from "./driver-session-ledger.ts";
 import {
   DriverProtocolError,
   validateDriverStartRequest,
@@ -61,13 +62,6 @@ export interface OpenCodeDriverDependencies {
   readonly minimumVersion?: string;
   readonly probeEnvironment?: Readonly<Record<string, string>>;
   readonly serverFactory?: OpenCodeServerFactory;
-}
-
-interface OpenCodeSession {
-  readonly sink: (event: DriverEvent) => void;
-  sequence: number;
-  outcome: "completed" | "failed" | "cancelled";
-  closed: boolean;
 }
 
 interface CatalogModel {
@@ -229,8 +223,7 @@ export class OpenCodeDriver implements Driver {
   readonly #command: readonly string[];
   readonly #minimumVersion: string;
   readonly #factory: OpenCodeServerFactory;
-  readonly #sessions = new Map<string, OpenCodeSession>();
-  readonly #closedSessions = new Set<string>();
+  readonly #sessions = new DriverSessionLedger({ noun: "OpenCode" });
 
   constructor(dependencies: OpenCodeDriverDependencies) {
     this.#dependencies = dependencies;
@@ -324,8 +317,7 @@ export class OpenCodeDriver implements Driver {
     const instance = await this.#factory(this.serverOptions(execution.environment));
     const { client, server } = instance;
     const sessionRef = `opencode-session:${randomUUID()}`;
-    const state: OpenCodeSession = { sink, sequence: 0, outcome: "completed", closed: false };
-    this.#sessions.set(sessionRef, state);
+    const state = this.#sessions.open(sessionRef, sink, undefined);
     const redact = redactor(execution.sensitiveValues ?? []);
     let providerSessionId: string | undefined;
     let aborted = false;
@@ -349,8 +341,8 @@ export class OpenCodeDriver implements Driver {
         candidate.model !== execution.passport.resolvedModel
       )
         throw openCodeError("VES_OPENCODE_MODEL_UNAVAILABLE", "OpenCode model is unavailable");
-      this.#emit(state, { type: "session.started", sessionId: sessionRef });
-      this.#emit(state, {
+      state.emit({ type: "session.started", sessionId: sessionRef });
+      state.emit({
         type: "model.resolved",
         passportRef: request.passportRef,
         provider: candidate.provider,
@@ -388,13 +380,13 @@ export class OpenCodeDriver implements Driver {
                 ? properties["patterns"].filter((entry): entry is string => typeof entry === "string")
                 : []
             };
-            this.#emit(state, { type: "tool.requested", ...toolRequest });
+            state.emit({ type: "tool.requested", ...toolRequest });
             const allowed = await execution.authorizeTool(toolRequest);
             await client.permission.reply({ requestID: toolRequest.toolCallId, reply: allowed ? "once" : "reject" });
           } else if (event["type"] === "message.part.updated") {
             const part = (properties["part"] ?? {}) as Record<string, unknown>;
             if (part["type"] === "text" && part["time"] !== undefined) {
-              this.#emit(state, { type: "content.delta", text: redact(part["text"] ?? "") });
+              state.emit({ type: "content.delta", text: redact(part["text"] ?? "") });
             } else if (part["type"] === "step-finish") {
               const tokens = (part["tokens"] ?? {}) as Record<string, unknown>;
               const cache = (tokens["cache"] ?? {}) as Record<string, unknown>;
@@ -407,7 +399,7 @@ export class OpenCodeDriver implements Driver {
               ].map(Number);
               if (values.some((value) => !Number.isSafeInteger(value) || value < 0))
                 throw openCodeError("VES_OPENCODE_STREAM_INVALID", "OpenCode usage is invalid");
-              this.#emit(state, {
+              state.emit({
                 type: "usage.updated",
                 inputTokens: values[0],
                 outputTokens: values[1],
@@ -418,7 +410,7 @@ export class OpenCodeDriver implements Driver {
             }
           } else if (event["type"] === "session.error") {
             state.outcome = "failed";
-            this.#emit(state, {
+            state.emit({
               type: "error",
               code: "VES_OPENCODE_EXECUTION_FAILED",
               message: "OpenCode failed",
@@ -444,7 +436,7 @@ export class OpenCodeDriver implements Driver {
       if (!aborted) {
         state.outcome = "failed";
         const code = error instanceof DriverProtocolError ? error.code : "VES_OPENCODE_PROTOCOL_FAILED";
-        this.#emit(state, { type: "error", code, message: "OpenCode protocol failed", retryable: false });
+        state.emit({ type: "error", code, message: "OpenCode protocol failed", retryable: false });
       }
     } finally {
       if (providerSessionId !== undefined && !aborted)
@@ -454,7 +446,7 @@ export class OpenCodeDriver implements Driver {
     }
     if (aborted) {
       state.outcome = "cancelled";
-      this.#emit(state, {
+      state.emit({
         type: "error",
         code: "VES_OPENCODE_ABORTED",
         message: "OpenCode was aborted",
@@ -471,26 +463,11 @@ export class OpenCodeDriver implements Driver {
   }
 
   async cancel(session: DriverSessionRef, reason: string): Promise<void> {
-    if (this.#closedSessions.has(session.sessionId)) return;
-    const state = this.#known(session);
-    if (state.closed) return;
-    state.outcome = "cancelled";
-    this.#terminal(state, reason);
+    await this.#sessions.cancel(session, reason);
   }
 
   async close(session: DriverSessionRef) {
-    if (this.#closedSessions.has(session.sessionId))
-      return Object.freeze({ sessionId: session.sessionId, closed: true, alreadyClosed: true });
-    const state = this.#known(session);
-    this.#terminal(state);
-    this.#sessions.delete(session.sessionId);
-    this.#closedSessions.add(session.sessionId);
-    return Object.freeze({
-      sessionId: session.sessionId,
-      closed: true,
-      outcome: state.outcome,
-      finalSequence: state.sequence
-    });
+    return this.#sessions.close(session);
   }
 
   #validateExecution(request: DriverStartRequest, execution: OpenCodeExecution): void {
@@ -510,22 +487,5 @@ export class OpenCodeDriver implements Driver {
       execution.tools.some((tool) => !/^vestra_[a-z0-9_]+$/iu.test(tool.name))
     )
       throw openCodeError("VES_OPENCODE_TOOL_UNMEDIATED", "OpenCode tools must use the Verchestra effect bridge");
-  }
-
-  #emit(state: OpenCodeSession, event: Readonly<Record<string, unknown>>): void {
-    state.sink(Object.freeze({ ...event, sequence: state.sequence }) as DriverEvent);
-    state.sequence += 1;
-  }
-
-  #terminal(state: OpenCodeSession, reason?: string): void {
-    if (state.closed) return;
-    this.#emit(state, { type: "session.closed", outcome: state.outcome, ...(reason === undefined ? {} : { reason }) });
-    state.closed = true;
-  }
-
-  #known(session: DriverSessionRef): OpenCodeSession {
-    const state = this.#sessions.get(session.sessionId);
-    if (state === undefined) throw openCodeError("VES_DRIVER_SESSION_UNKNOWN", "OpenCode session is unknown");
-    return state;
   }
 }
