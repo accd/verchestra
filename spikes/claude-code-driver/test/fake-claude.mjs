@@ -19,12 +19,15 @@ async function forkTree() {
 const forks = process.env.FAKE_CLAUDE_FORK === "1";
 
 if (process.env.FAKE_CLAUDE_MODE === "deaf") {
-  // why: a provider that announces itself, stops reading its input before it
-  // has read its prompt, and never answers.
+  // why: a provider that announces itself, closes its input before it has read
+  // its prompt, and never answers.
   const init = JSON.stringify({ type: "system", subtype: "init", session_id: "private-session-id", model: "claude-opus-4-8", tools: [] });
   const announced = forks ? `${init}\n${await forkTree()}\n` : `${init}\n`;
   // why: the descriptor is closed directly; the runtime keeps a standard
   // stream's descriptor open when the stream is destroyed.
+  // hazard: on win32 the runtime does not close the descriptors of the
+  // standard streams at all. There this mode only never reads its input, and
+  // the writer's prompt stays pending instead of failing.
   const { closeSync } = await import("node:fs");
   process.stdout.write(announced, () => closeSync(0));
   await new Promise(() => setInterval(() => {}, 1_000));

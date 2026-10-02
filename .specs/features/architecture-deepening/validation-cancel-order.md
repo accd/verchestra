@@ -394,7 +394,7 @@ Every way each driver ends a process it started, read from the sources of
 | Claude Code | A stop (start signal, cancel) | The single tree termination | unchanged |
 | Claude Code | A stream that failed: a line that is not JSON, a hook event on the bridge-only surface, an init event that does not match, an invalid tool request, invalid usage | The single tree termination, not awaited and not contained | The same, contained |
 | Claude Code | An output limit, on the output or the error stream | as above | as above |
-| Claude Code | A failed write to the provider's input | Nothing: the failure was recorded and the run waited for the provider to exit | The single tree termination |
+| Claude Code | A failed write to the provider's input | Nothing: the failure was recorded and the run waited for the provider to exit | The single tree termination. Proven on macOS and Linux only; see "The Windows matrix failure" |
 | Claude Code | A run that ended normally | The provider exits by itself; the driver ends nothing | unchanged (below) |
 | OpenCode | The isolated server its own factory starts: a start that timed out, exceeded its output limit or failed, an SDK that could not be loaded, and the end of every session and of every catalog discovery | `child.kill()` on each | unchanged (below) |
 | Pi | — | Starts no process | — |
@@ -423,17 +423,18 @@ for whoever first composes that factory.
 
 | Clause | Definition (symbol) | Assertion evidence |
 | --- | --- | --- |
-| A Codex stream failure ends the provider's tree | `CodexDriver#start` (`fail`, `endChild`) | A provider with a descendant that left its group writes a line that is not JSON and stays alive: the run ends by itself with `VES_CODEX_STREAM_INVALID`, and none of the three processes is alive: `Q:211-224`, end `garbled`. On every platform, one request to the injected terminator: `P:169-197` |
-| A Codex output limit ends the provider's tree | the same | `Q:211-224`, end `large`; `P:169-197` |
-| A Codex run that ends with the provider running ends its tree | `CodexDriver#start` | The turn completes and the provider does not exit: the run ends with no error, the session closes as `completed`, and none of the three processes is alive: `Q:211-224`, end `linger`; `P:169-197` |
-| A Claude Code stream failure and output limit end the provider's tree | `ClaudeCodeDriver#start` (`endChild`) | `Q:211-224`, ends `garbled` and `flood`. The single termination for a stream that keeps failing: `P:64-75` (unmodified) |
-| A Claude Code provider that stops reading its input is ended, with its tree | `ClaudeCodeDriver#start`, the input error handler | The provider closes its input before it has read a prompt larger than a pipe holds: the run ends with `VES_CLAUDE_STDIN_FAILED`, and none of the three processes is alive: `Q:211-224`, end `deaf`; `P:169-197` |
+| A Codex stream failure ends the provider's tree | `CodexDriver#start` (`fail`, `endChild`) | A provider with a descendant that left its group writes a line that is not JSON and stays alive: the run ends by itself with `VES_CODEX_STREAM_INVALID`, and none of the three processes is alive: `Q:256-269`, end `garbled`. On every platform, one request to the injected terminator: `P:169-193` |
+| A Codex output limit ends the provider's tree | the same | `Q:256-269`, end `large`; `P:169-193` |
+| A Codex run that ends with the provider running ends its tree | `CodexDriver#start` | The turn completes and the provider does not exit: the run ends with no error, the session closes as `completed`, and none of the three processes is alive: `Q:256-269`, end `linger`; `P:169-193` |
+| A Claude Code stream failure and output limit end the provider's tree | `ClaudeCodeDriver#start` (`endChild`) | `Q:256-269`, ends `garbled` and `flood`. The single termination for a stream that keeps failing: `P:64-75` (unmodified) |
+| A Claude Code provider whose input write fails is ended, with its tree (macOS and Linux) | `ClaudeCodeDriver#start`, the input error handler | The provider closes its input before it has read a prompt larger than a pipe holds: the run ends with `VES_CLAUDE_STDIN_FAILED`, and none of the three processes is alive: `Q:256-269`, end `deaf`; one request to the terminator: `P:200-216`, the row off win32 |
+| On win32 that write does not fail with the fake, and a stop still ends the session | `stoppedWithInputPending` | A second after the session was announced nothing has ended it and no failure is reported; a cancel then ends it as `cancelled` with `VES_CLAUDE_ABORTED`, through one request to the terminator, and the provider is gone: `Q:220-242`, reached from `Q:189-206` and from the win32 row of `P:200-216` |
 | Neither driver signals its child itself | both drivers | `X:104-110` |
-| An end no caller awaits contains a termination that fails | `unawaitedTermination` | Each call asks, and a failure produces no unhandled rejection: `P:200-215` |
+| An end no caller awaits contains a termination that fails | `unawaitedTermination` | Each call asks, and a failure produces no unhandled rejection: `P:228-243` |
 | One termination per child, whoever asks | `singleTermination` (unchanged) | `P:77-91`, `P:103-141` (unmodified) |
 | A stop is unchanged | both drivers | The process-tree and cancel order qualification suites, `M` and `D` pass unmodified |
 | No event sequence changed | both drivers | The error codes and the outcome of every end above are what they were; the contract and lifecycle suites of both drivers pass unmodified |
-| Windows | `endedOnWin32` | The same cases assert that the session ends as reported and that the provider, which the fake keeps alive until it is terminated, is gone: `Q:189-200`. `P:169-197` counts the request to the terminator on every platform |
+| Windows | `endedOnWin32` | The cases of a stream failure, an output limit and a completed turn assert that the session ends as reported and that the provider, which the fake keeps alive until it is terminated, is gone: `Q:189-206`. `P:169-193` counts the request to the terminator on every platform. The input case asserts the row above |
 
 ### The cases asked for
 
@@ -444,7 +445,7 @@ A fake provider that leaves a `setsid` descendant alive, and then:
 | (a) writes a malformed line | `garbled` with `FAKE_CLAUDE_FORK=1` | `garbled` with `FAKE_CODEX_FORK=1` |
 | (b) exceeds the output limit | `flood`, limit 1024 bytes | `large`, limit 2048 bytes |
 | (c) ends its turn without exiting | none: the driver has no such end (above) | `linger` |
-| (d) stops reading its input (added) | `deaf`, with a prompt of 2 MiB | reached through `fail`, as (a) and (b) |
+| (d) closes its input (added; macOS and Linux) | `deaf`, with a prompt of 2 MiB | reached through `fail`, as (a) and (b); no case |
 
 In each case the descendant in the provider's group, which holds its output
 open, and the one that left the group are gone afterwards, and the run ended
@@ -466,8 +467,10 @@ process-tree suites.
    provider running. The task composition's terminator names a tree it could
    not confirm stopped on stderr; that line can now follow a completed
    verification.
-4. A Claude Code session whose provider stopped reading its input ends. It
-   waited for the provider to exit.
+4. A Claude Code session whose input write fails ends, which is what happens
+   on macOS and Linux when the provider closes its input. It waited for the
+   provider to exit. On Windows this is not proven. A provider that keeps its
+   input open and does not read it is not noticed on any platform, as before.
 5. A termination that fails at an end no caller awaits is contained. In the
    Claude Code driver it was an unhandled rejection.
 6. A Codex stream failure noticed after the provider has exited asks for the
@@ -485,6 +488,11 @@ labeled fakes start its process tree first, and the modes `flood` and `deaf`
 (Claude Code) and `linger` (Codex). The existing `fork` mode of both fakes is
 unchanged in what it does.
 
+After the platform matrix run, one commit on top changed the two input cases
+of this range, which had not merged: each is now named for a provider that
+closes its input, and asserts on win32 what holds there. No assertion of the
+other platforms changed. See "The Windows matrix failure".
+
 ### Discrimination (disposable copy)
 
 Same method as for range 1, on a copy of the tree at the tip of this range.
@@ -496,12 +504,12 @@ contract and lifecycle suites of both drivers. Unmutated copy: 177 passed,
 | Mutation in the copy | Failing cases |
 | --- | --- |
 | **Codex: a stream that failed signals the one process (`child.kill()` restored)** | 3: the malformed-line and output-limit cases of `Q`, and `X:104-110` |
-| **Codex: a run that ended signals the one process (`child.kill()` restored)** | 4: the completed-turn case of `Q`, its case in `P:169-197`, `X:104-110`, and one of the two stream-failure cases of `Q`, a different one in different runs |
-| **Codex: both ends as they were before this range** | 7: the three cases of `Q`, the three Codex cases of `P:169-197`, `X:104-110` |
+| **Codex: a run that ended signals the one process (`child.kill()` restored)** | 4: the completed-turn case of `Q`, its case in `P:169-193`, `X:104-110`, and one of the two stream-failure cases of `Q`, a different one in different runs |
+| **Codex: both ends as they were before this range** | 7: the three cases of `Q`, the three Codex cases of `P:169-193`, `X:104-110` |
 | Codex: a run that ended with the provider still running does not end it | The completed-turn case of `Q`; the Codex contract suite then stops at "Codex Driver blocks a model absent from the app-server catalog", whose provider nothing ends, and the run was cut off at its time limit |
-| **Claude Code: a provider that stopped reading its input is not ended (as before this range)** | 2: the input case of `Q` and its case in `P:169-197` |
-| Claude Code: a stream that failed signals the one process | 6: the three cases of `Q`, `X:104-110`, `P:64-75`, and the input case of `P:169-197` |
-| An unawaited end does not contain a termination that fails | 1: `P:200-215` |
+| **Claude Code: a provider whose input write failed is not ended (as before this range)** | 2: the input case of `Q` and its case in `P:169-193` |
+| Claude Code: a stream that failed signals the one process | 6: the three cases of `Q`, `X:104-110`, `P:64-75`, and the input case of `P:169-193` |
+| An unawaited end does not contain a termination that fails | 1: `P:228-243` |
 | An unawaited end asks for nothing | 10 before the run was cut off at its time limit: the six cases of `Q` and four cases of the Codex contract suite |
 
 All 8 mutations failed at least one case. With `child.kill()` restored a case
@@ -527,7 +535,7 @@ Nothing in this range was run on Windows. What executes there, by branch:
   change is safe there: a kill of a process that has exited is an error on
   Windows, and these ends ask for the termination at moments when the provider
   may be exiting. `child.kill()` returned false in that case; the terminator
-  rejects, and the rejection is contained (`P:200-215`).
+  rejects, and the rejection is contained (`P:228-243`).
 - **The single termination per child** is unchanged, so a stop that follows
   one of these ends shares its request, and a request that failed is tried
   again.
@@ -535,16 +543,73 @@ Nothing in this range was run on Windows. What executes there, by branch:
   tree is reached there only through the terminator a composition injects.
 - **The fakes.** `flood`, `garbled`, `linger` and `deaf` keep the provider
   alive until it is terminated, so "the provider is gone" is evidence on
-  Windows too. `deaf` closes its input descriptor; the case relies on a write
-  to a pipe whose reader has closed failing on Windows as it does on POSIX.
-  If it does not fail there, the two `deaf` cases run into their time limit;
-  that would be a defect of the fake's mode on Windows, not of the driver.
-- **The qualification cases** take the `endedOnWin32` path (`Q:189-200`): no
+  Windows too. `deaf` cannot close its input there; see the next section.
+- **The qualification cases** take the `endedOnWin32` path (`Q:189-206`): no
   process group, no `setsid()`, one provider process, asserted gone.
 
 Confidence is high for the Codex paths, which replace one call with another
-under the same conditions, and moderate for the `deaf` cases for the reason
-above. A platform matrix run on the branch is required before merge.
+under the same conditions; the matrix passed them on Windows. A platform
+matrix run on the tip that carries the next section's commit is required
+before merge.
+
+### The Windows matrix failure
+
+The matrix ran on `89cf445`. The security gate (run 37063709048) and the build
+gate (run 37063705718) each passed on four targets and failed one case on
+Windows x64, the same behaviour in two places: the `deaf` case of `Q`, which
+ran into its 60 second limit, and the `deaf` row of `P`, which ran into its
+30 second limit. Every other case passed on every target.
+
+Cause, read from the runtime's behaviour and not observed on Windows here: the
+`deaf` mode closes descriptor 0 so that the writer's prompt fails. On Windows
+the runtime does not close the descriptors of the standard streams, so the
+call does nothing there. The fake then never reads its input and never closes
+it, the prompt stays pending in the pipe, no write fails, and the driver has
+nothing to react to. It waited, as it did before this range.
+
+What that says about the product, and what it does not:
+
+- The driver reacts to a **failed write** to the provider's input. That code
+  has no platform branch. This range proves it on macOS and Linux, where a
+  provider that closes its input makes the pending write fail.
+- **On Windows it is not proven.** The labeled fake is a Node process and
+  cannot close its input there, so no case can produce the failed write.
+  Whether a real provider that closes its input makes the write fail on
+  Windows was not observed. The statement in the first version of this
+  section and of the report, that the behaviour holds on every platform, was
+  wrong and is corrected.
+- A provider that keeps its input open and does not read it is not noticed on
+  **any** platform. No write fails. The session waits until it is stopped, as
+  before this range.
+
+The driver does not bound that wait. Three reasons. A bound on the prompt
+write sees only a prompt larger than the pipe holds; a smaller one is written
+in full whether or not anyone reads it, so the bound would not cover the case
+it is for. Any bound short enough to matter can cut a provider that starts
+slowly and reads a large prompt late. And a provider that does not read is one
+form of a provider that hangs, for which the compositions already hold the
+bound, the budget's duration ceiling and the verifier's timer, and stop the
+session through the tree termination.
+
+The two cases now assert on win32 what holds there (`stoppedWithInputPending`,
+`Q:220-242`), without skipping and in about a second: once the session is
+announced the case waits one second, long enough for a write that was going to
+fail to have failed; the run has not ended and no failure is reported; a
+cancel then ends the session as `cancelled` with `VES_CLAUDE_ABORTED`, through
+one request to the terminator, with the prompt still unread, and the provider
+is gone. If the write does fail on some Windows host, the case fails with a
+message that says so, and the case of the other platforms is the one that
+applies there.
+
+Checked on macOS in the disposable copy, with the win32 path forced:
+
+| Condition in the copy | Result |
+| --- | --- |
+| The fake cannot close its input (the call that closes it removed), win32 path forced | Both cases pass, in about a second each |
+| The fake closes its input, win32 path forced | Both cases fail: "the run ended by itself: the write to the provider's input failed on this platform" |
+
+The second row shows that the win32 assertion is not one that passes whatever
+the platform does.
 
 ### Guardrails
 
@@ -630,3 +695,7 @@ started was left running.
 - **Claude Code's stream-failure paths were changed in form only.** They
   already asked for the tree termination. They now contain its failure, which
   was an unhandled rejection before.
+- **The input case on Windows.** Proven on macOS and Linux only, and the wait
+  for a provider that does not read is not bounded by the driver; see "The
+  Windows matrix failure". A fake that can close its input on Windows would
+  have to be a native executable, which this repository does not carry.

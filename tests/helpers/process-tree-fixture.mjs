@@ -192,6 +192,12 @@ async function endedOnWin32(t, build, terminator, end) {
   const dependencies = { terminateTree: terminator, onSpawn: (pid) => (provider = pid) };
   const { driver, request } = build(dependencies, end.mode, end.execution);
   reap(t, () => (provider === undefined ? [] : [provider]));
+  if (end.win32 !== undefined) {
+    t.diagnostic("win32: the fake cannot close its standard input; asserting that the session is stopped instead");
+    assert.deepEqual(await stoppedWithInputPending(driver, request), end.win32);
+    assert.equal(await eventuallyDead(provider), true, "the provider is still running");
+    return;
+  }
   const events = [];
   const reference = await driver.start(request, (event) => events.push(event), new AbortController().signal);
   assert.deepEqual(errorCodes(events), end.errors);
@@ -199,16 +205,55 @@ async function endedOnWin32(t, build, terminator, end) {
   assert.equal((await driver.close(reference)).outcome, end.outcome);
 }
 
+// why: long enough for a write that was going to fail to have failed, and far
+// below the time limit of a case.
+const INPUT_SETTLE_MS = 1_000;
+
+// invariant: what holds on win32 for a provider that does not read its input.
+// The runtime keeps the descriptors of the standard streams open there, so the
+// fake cannot close its input; the write of the prompt then neither fails nor
+// ends, and the driver learns nothing. Nothing ends that session by itself and
+// no failure is reported, the driver's wait is ended by a stop, and the
+// session then ends as any stopped session does.
+// hazard: if the run ends by itself here, the write did fail, and the case of
+// the other platforms is the one that applies.
+export async function stoppedWithInputPending(driver, request) {
+  const events = [];
+  let announce;
+  const announced = new Promise((resolve) => (announce = resolve));
+  let ended = false;
+  const run = driver.start(
+    request,
+    (event) => {
+      events.push(event);
+      if (event.type === "session.started") announce(event.sessionId);
+    },
+    new AbortController().signal
+  );
+  const settled = run.then(() => (ended = true));
+  const sessionId = await Promise.race([announced, settled.then(() => undefined)]);
+  assert.equal(typeof sessionId, "string", "the run ended before it announced a session");
+  await new Promise((resolve) => setTimeout(resolve, INPUT_SETTLE_MS));
+  assert.equal(ended, false, "the run ended by itself: the write to the provider's input failed on this platform");
+  assert.deepEqual(errorCodes(events), [], "a failure was reported before the session was stopped");
+  await driver.cancel({ sessionId }, "user-request");
+  const closed = await driver.close(await run);
+  return { errors: errorCodes(events), outcome: closed.outcome };
+}
+
 // why: a provider is ended in more ways than by a stop: its stream fails, it
-// exceeds its output limit, it stops reading its input, or its run ends while
-// it is still running. Each of these ends must leave nothing of its tree
-// behind, the descendant that left its process group included. `ends` names
-// the fake's mode for each, what the session reports, and how it closes;
+// exceeds its output limit, it closes its input, or its run ends while it is
+// still running. Each of these ends must leave nothing of its tree behind, the
+// descendant that left its process group included. `ends` names the fake's
+// mode for each, what the session reports, and how it closes;
 // `build(dependencies, mode, execution)` returns a driver whose fake provider
-// runs in that mode, forking its tree first when `execution.fork` is set.
+// runs in that mode, forking its tree first when `execution.fork` is set. An
+// end the fake cannot produce on win32 names what is asserted there instead,
+// as `win32`, and what the case is then called, as `win32Name`.
 export function providerEndSuite(test, { label, build, terminator, reported, ends }) {
   for (const end of ends) {
-    test(`${label}: a provider that ${end.name} leaves nothing of its tree behind`, { timeout: 60_000 }, async (t) => {
+    const name = WIN32_HOST ? (end.win32Name ?? end.name) : end.name;
+    test(`${label}: a provider that ${name} leaves nothing of its tree behind`, { timeout: 60_000 }, async (t) => {
       if (WIN32_HOST) return endedOnWin32(t, build, terminator, end);
       const { driver, request } = build({ terminateTree: terminator }, end.mode, { ...end.execution, fork: true });
       const session = forkingSession(t, driver, request);
