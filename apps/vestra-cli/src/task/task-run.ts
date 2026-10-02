@@ -98,9 +98,6 @@ export async function activeProcess(directory: string): Promise<number | undefin
   return alive(pid) ? (pid as number) : undefined;
 }
 
-// why: every requirement a run needs is proven before its first transition,
-// so a missing credential, executable, or allowlist entry is `not
-// configured` with no workflow change, worktree, or provider call behind it.
 export interface CommittedTaskRecovery {
   readonly repositoryRoot: string;
   readonly directory: string;
@@ -171,6 +168,9 @@ async function verifierAccess(
   return { executable, identityDirectory };
 }
 
+// why: every requirement a run needs is proven before its first transition,
+// so a missing credential, executable, or allowlist entry is `not
+// configured` with no workflow change, worktree, or provider call behind it.
 async function prepare(io: TaskCommandIo, workspace: TaskWorkspace, plan: TaskPlanRecord, runtime: RuntimeStore) {
   const auth = await loadProviderAuth(workspace.layout.workspaceRoot);
   const implementerCredential = IMPLEMENTER_CREDENTIALS[auth.implementer];
