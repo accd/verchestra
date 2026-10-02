@@ -3,53 +3,63 @@ schema: verchestra-feature-handoff/v1
 feature: verifier-usage-recorded
 issue: null
 status: verification
-branch: fix/verifier-usage-recorded
-baseRevision: bde8ad93730c412d66bd3b01dd3f3c9f6ed10897
-lastCompletedTask: T1
-nextTask: "Independent verification and human review of the one pull request; the platform matrix before merge, because the new suites have run on macOS only; the decision is numbered at merge."
-lastGate: "Node 24.14.0 macOS arm64 on the tree of the T1 commit: gate:quick PASS (unit 2504, agent-readiness 323, census 13); test:architecture 91; gate:build PASS (contract 756, integration 1029, e2e 259, build 146, qualification 302); gate:security PASS (security 1339, fault 310); task journeys 44; task composition and security 15; agent:check PASS; site:check PASS; 0 failed, 0 skipped, 0 todo; no provider called"
-updatedAt: 2026-10-02T21:33:00Z
+branch: fix/run-usage-complete
+baseRevision: d9dc5d5b32405bfa2fbc2675be4d81a175152f80
+lastCompletedTask: T4
+nextTask: "Independent verification and human review of the second pull request (T2, T3, T4); the platform matrix before merge, because the new suites have run on macOS only; the decision is numbered at merge; the owner amends the live pilot's recording template."
+lastGate: "Node 24.14.0 macOS arm64 on the tree of the T4 commit: gate:quick PASS (unit 2504, agent-readiness 323, census 13); test:architecture 93; gate:build PASS (contract 782, integration 1056, e2e 261, build 146, qualification 329); gate:security PASS (security 1339, fault 310); task journeys 46; task composition and security 15; agent:check PASS; site:check PASS; 0 failed, 0 skipped, 0 todo; no provider called"
+updatedAt: 2026-10-02T22:27:09Z
 ---
 
 # Scope
 
-One defect in the governed task path: the verifier's usage was metered against
-the run's ceilings and never recorded, so a run reported fewer tokens than it
-spent. Requirements VUR-01..12 in `spec.md`; one task and one pull request, in
+A run has one account of usage. T1 (merged, AD-055) recorded the verifier's
+usage on the run's ledger. T2, T3 and T4 close the three gaps T1 recorded: the
+implementer's usage is recorded as it arrives, a budget stop names itself, and
+a verifier does not start when the run's ceiling was already reached.
+Requirements VUR-01..20 in `spec.md`; four tasks in two pull requests, in
 `tasks.md`.
 
 # Completed Evidence
 
-T1: a run has one account of usage, the ledger its latest repair state carries.
-`RunCheckpoints#recordBudgetLedger` (`apps/vestra-cli/src/task/task-run-record.ts`)
-records usage metered after the repair loop ended: it keeps the stage, attempt
-count and attempt chain the loop left, moves only the ledger, and refuses a
-ledger that does not continue the recorded one. `meterOnRunLedger`
-(`apps/vestra-cli/src/task/task-budget.ts`) builds the meter from that ledger,
-records it back when each usage event is metered and once more when the work
-ends; `TaskRunComposition#verify` (`apps/vestra-cli/src/task/task-run.ts`)
-verifies inside it. `RuntimeCheckpointStore#inspectRepair` and `#recordRepair`
-(`packages/platform-node/src/checkpoint-store-adapter.ts`) are the repair state
-without a promise, and the port calls them.
+T1 (merged): `RunCheckpoints#recordBudgetLedger`
+(`apps/vestra-cli/src/task/task-run-record.ts`), `meterOnRunLedger`
+(`apps/vestra-cli/src/task/task-budget.ts`), `TaskRunComposition#verify`
+inside it (`apps/vestra-cli/src/task/task-run.ts`), and the repair state
+without a promise (`packages/platform-node/src/checkpoint-store-adapter.ts`).
 
-Tests: `tests/integration/task-verifier-usage.test.mjs` (the metered work on a
-real runtime store, the production verifier session against the labeled fake
-`codex`, a real process killed after the verifier's usage, the ceilings),
-seven cases at the Run record's interface in
-`tests/integration/task-run-checkpoints.test.mjs`, one at the adapter in
-`tests/integration/runtime-checkpoint-store.test.mjs`, one locality case, and
-in `tests/e2e/task-cli-e2e.test.mjs` the corrected totals of three journeys
-and two new journeys (a run killed during verification and resumed; a ceiling
-the two providers reach only together). `docs/quick-start.md` and
-`.specs/features/governed-task-cli/design.md` say what the reported usage
-covers.
+T2: `recordingMeter` in `task-budget.ts`, handed to the repair loop by
+`TaskRunComposition#repair` and to verification by `meterOnRunLedger`; the
+stage of a run without a repair state taken from its gate checkpoint
+(`RunCheckpoints` in `task-run-record.ts`). Tests:
+`tests/integration/task-run-usage.test.mjs` (a task run composed in process as
+the composition composes it, killed at each point usage can arrive and
+resumed), one case in `tests/integration/task-run-checkpoints.test.mjs`, the
+locality case, and in `tests/e2e/task-cli-e2e.test.mjs` a run killed at its
+gate, a run killed after its implementer reported usage, and the two
+interrupted-provider journeys.
+
+T3: `meterOnRunLedger` rethrows a task failure whose reason is the budget's
+under that code. Tests: four cases in `task-run-usage.test.mjs`, the three
+metered verifier sessions of `tests/integration/task-verifier-usage.test.mjs`,
+and the reason `start` prints in the ceiling journey.
+
+T4: `runCodexVerifier` (`apps/vestra-cli/src/task/task-codex.ts`) refuses
+before anything of the session exists when the meter already says stop. Tests:
+one case in `tests/integration/codex-verifier-session.test.mjs`, two in
+`task-run-usage.test.mjs`, and a journey whose gate is held past its duration
+ceiling. `docs/quick-start.md` and
+`.specs/features/governed-task-cli/design.md` say what is recorded and what
+cannot be.
 
 Every requirement is mapped in `validation.md`.
 
 # Next Exact Action
 
-Submit the pull request for independent verification and human review. The decision is AD-055 in `.specs/STATE.md`. Run the platform matrix before
-it merges: `validation.md` lists what has never run off macOS.
+Submit the range `d9dc5d5..` the tip of `fix/run-usage-complete` for
+independent verification and human review. The decision is AD-056 in `.specs/STATE.md`. Run the platform matrix before it merges. The owner amends
+`.specs/features/live-task-pilot/spec.md`: `validation.md` lists the four
+statements with their lines.
 
 # Blockers
 
@@ -57,20 +67,17 @@ None.
 
 # Decisions
 
-One entry in `.specs/STATE.md`: `AD-055`, a run has
-one account of usage. Six open points for the reviewer are at the end of
-`validation.md`; the first (the implementer's usage during an attempt that
-never ended) and the live pilot's recording template need the owner.
+Two entries in `.specs/STATE.md`: AD-055 (T1, a run has one account of usage)
+and `AD-056` (T2–T4, the account is complete). Open
+points for the reviewer are at the end of `validation.md`.
 
 # Files Intentionally Left Unchanged
 
-`tests/unit/task-run-record.test.mjs` and the hardening suites (the ADP-2
-goldens pass unmodified; no stored shape of the Run directory changed).
-`packages/evidence` (the Run Capsule keeps its shape and digest rules).
-`packages/application` (the meter, the repair loop and the executor are as
-they were). `.specs/features/live-task-pilot/spec.md` and
+`packages/application` (the meter, the repair loop, the executor and the task
+run coordinator are as they were) and `packages/evidence` (the Run Capsule
+keeps its shape and digest rules). `tests/unit/task-run-record.test.mjs` and
+the hardening suites (the ADP-2 goldens pass unmodified).
+`.specs/features/live-task-pilot/` (the coordinator owns its amendment) and
 `.specs/features/subscription-provider-auth/validation.md`, which describe the
-reported usage as it was (listed in `validation.md`).
-`.specs/features/architecture-deepening/spec.md`, `tasks.md` and `handoff.md`
-(the coordinator owns them). `complexity-baseline.json`. `CHANGELOG.md` (it
-has not tracked task-path changes since #405).
+reported usage as it was. `.specs/features/architecture-deepening/spec.md`,
+`tasks.md` and `handoff.md`. `complexity-baseline.json`. `CHANGELOG.md`.
