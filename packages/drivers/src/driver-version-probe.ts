@@ -28,8 +28,15 @@ export type DriverProbeReport<Identity> =
       }
     >;
 
+// hazard: what a provider prints is not under this module's control, and a
+// pattern that reads digit runs can cost quadratic time on a long run. A
+// version line is short, so longer text is not a version and is never matched.
+const MAXIMUM_VERSION_TEXT_LENGTH = 1024;
+
 function parseVersion(text: string, pattern: RegExp): readonly [number, number, number] | undefined {
-  const match = pattern.exec(text.trim());
+  const candidate = text.trim();
+  if (candidate.length > MAXIMUM_VERSION_TEXT_LENGTH) return undefined;
+  const match = pattern.exec(candidate);
   return match === null ? undefined : [Number(match[1]), Number(match[2]), Number(match[3])];
 }
 

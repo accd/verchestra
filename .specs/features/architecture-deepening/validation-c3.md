@@ -384,7 +384,7 @@ holes exist at `0158e48`.
   `.specs/features/platform-qualification-matrix/matrix.md`, the Claude Code and
   Codex minimums in `.specs/features/live-task-pilot/validation.md`, where the
   same-major comparison is now cited at
-  `packages/drivers/src/driver-version-probe.ts:36-42`,
+  `packages/drivers/src/driver-version-probe.ts:43-49`,
   `.specs/features/pi-runtime-0-87-1/validation.md` and
   `.specs/features/dependency-refresh-2026-07/validation.md`. The floor axis is
   appended to `M`, and the Pi and Claude Code cases are appended to their

@@ -62,7 +62,9 @@ function codexError(code: string, message: string): DriverProtocolError {
   return new DriverProtocolError(code, message);
 }
 
-const VERSION_PATTERN = /(?:codex-cli\s+)?(\d+)\.(\d+)\.(\d+)/u;
+// invariant: a version starts a digit run, so the match is tried once per run
+// and a long run of digits costs linear time.
+const VERSION_PATTERN = /(?:^|\D)(\d+)\.(\d+)\.(\d+)/u;
 // invariant: the probe refusals are VES_CODEX_NOT_AVAILABLE and
 // VES_CODEX_VERSION_UNSUPPORTED.
 const PROBE_PROFILE = Object.freeze({
