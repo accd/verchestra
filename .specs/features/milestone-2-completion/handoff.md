@@ -6,9 +6,9 @@ status: blocked
 branch: fix/gate-census-and-handoff-drift
 baseRevision: 20071a78eb5b96b9de63e5e9c863b6997643c767
 lastCompletedTask: null
-nextTask: "Blocked on #408: M2C-04 (an owner-designated independent verifier) is unmet and the signed 1.0.0 decision is a hold. After #408, a fresh promotion round (new candidate, T77 rerun, own decision file, with #382/#387/#379/#405/#406) decides 1.0; P7 (#234, #235, #236) stays post-1.0."
+nextTask: "Blocked: M2C-04 (an owner-designated independent verifier) is unmet and the signed 1.0.0 decision is a hold. On 2026-10-02 the owner named no second accountable human, so #408 is closed as not planned and no promote round can open (docs/release-custody.md). If the owner later names one, a fresh promotion round (new candidate, T77 rerun, own decision file, with #382/#387/#379/#405/#406) decides 1.0; P7 (#234, #235, #236) stays post-1.0."
 lastGate: "agent:context at 20071a7 derives T77 complete and the chain fully verified; agent:check PASS"
-updatedAt: 2026-09-29T00:00:00Z
+updatedAt: 2026-10-02T11:00:00Z
 ---
 # Current state (reconciled 2026-09-29, #407)
 
@@ -42,10 +42,13 @@ them:
 
 # Next exact action
 
-Resolve #408, the independent human custody and review model. The
-merge-protocol rule in `tasks.md` (item 4) sets this handoff to `blocked`
-until then. After #408, a promotion round starts from a fresh candidate. The
-open prerequisites for that round are:
+None while the owner is the only accountable human. #408, the independent
+human custody and review model, was closed as not planned on 2026-10-02: the
+owner named no second custodian (`docs/release-custody.md`). The
+merge-protocol rule in `tasks.md` (item 4) keeps this handoff `blocked`. If
+the owner later names one, the custody work resumes from O1, and a promotion
+round then starts from a fresh candidate. The prerequisites for that round
+are:
 
 - #382: TUF timestamp/snapshot refresh.
 - #387 and #393: the live update and rollback legs.
@@ -58,8 +61,9 @@ after a promote.
 
 # Blockers
 
-- **#408.** M2C-04 needs an owner-designated independent verifier. None
-  exists, and the maintainer cannot create one by configuration
+- **No independent human (#408, closed as not planned).** M2C-04 needs an
+  owner-designated independent verifier. None exists, the owner named none on
+  2026-10-02, and the maintainer cannot create one by configuration
   (acceptance-matrix L1).
 - **The signed 1.0.0 decision is a hold.** P7 depends on "P6 PASS".
 

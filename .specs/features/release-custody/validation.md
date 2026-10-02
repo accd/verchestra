@@ -122,5 +122,10 @@ created.
   of both environment reviewers to custodian #2 with self-review prevented.
 - The verified permission arrangement (O4-O8).
 - The authorized approval rehearsal G1-G6 (O9).
-- Accountable human acceptance. Until all four exist, #408 stays open and L8
-  stays as written.
+- Accountable human acceptance. Until all four exist, L8 stays as written.
+
+**Owner decision, 2026-10-02.** The owner named no custodian #2 because no
+second accountable human is available. The retired repository-level secrets
+were deleted on 2026-10-01 (`gh secret list` prints nothing). Everything else
+in this list needs custodian #2 and is not evidenced. #408 is closed as not
+planned; L8 and the signed hold are unchanged.
