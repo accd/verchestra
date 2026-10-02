@@ -100,11 +100,15 @@ class ObservedSession<TStartRequest, TEvent extends DriverSessionEvent> {
     if (this.#observer !== undefined) throw this.#observer.failure;
   }
 
-  // invariant: a stop always ends as `cancelled`, whatever the driver reports
-  // afterwards. A session the runner stopped, or whose terminal event said
-  // `cancelled`, may still emit how its process ended and report `failed` on
-  // close; neither turns a cancel into a failure. `completed` is what the
-  // driver's close says and nothing less, with no error event observed.
+  // invariant: a stop always ends as `cancelled`, whatever the driver reports.
+  // `completed` is what the driver's close says and nothing less, with no
+  // error event observed.
+  // why: the four drivers end a stopped session as `cancelled` themselves, and
+  // emit nothing after its terminal event. The rule stays because a stop is
+  // not theirs to judge: a session that had failed before the stop closes as
+  // `failed`, a cancel can fail and leave the close to say how the run ended,
+  // and a driver that keeps no session ledger may still report an error after
+  // its terminal event. None of these turns a stop into a failure.
   classify(closed: Row): DriverSessionOutcome {
     if (this.stopped || this.#terminalOutcome === "cancelled" || closed["outcome"] === "cancelled") return "cancelled";
     return this.errorCodes.length === 0 && closed["outcome"] === "completed" ? "completed" : "failed";

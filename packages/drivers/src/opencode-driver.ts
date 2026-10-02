@@ -317,6 +317,7 @@ export class OpenCodeDriver implements Driver {
     // does: the SDK session is aborted and the isolated server is closed. A
     // cancel that only recorded the terminal state left the provider working.
     state.resources.stop = async () => abort();
+    const runEnded = state.runStarted();
     signal.addEventListener("abort", abort, { once: true });
     if (signal.aborted) abort();
     try {
@@ -432,14 +433,18 @@ export class OpenCodeDriver implements Driver {
       signal.removeEventListener("abort", abort);
       delete state.resources.stop;
     }
-    if (aborted) {
-      state.outcome = "cancelled";
-      state.emit({
-        type: "error",
-        code: "VES_OPENCODE_ABORTED",
-        message: "OpenCode was aborted",
-        retryable: true
-      });
+    try {
+      if (aborted) {
+        state.outcome = "cancelled";
+        state.emit({
+          type: "error",
+          code: "VES_OPENCODE_ABORTED",
+          message: "OpenCode was aborted",
+          retryable: true
+        });
+      }
+    } finally {
+      runEnded();
     }
     return Object.freeze({ sessionId: sessionRef });
   }

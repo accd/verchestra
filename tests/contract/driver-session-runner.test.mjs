@@ -142,10 +142,10 @@ test("the cancel finishes before the session is closed", async () => {
   assert.deepEqual(driver.calls, ["start", "cancel", "cancel:finished", "close"]);
 });
 
-// invariant: the defect ADP-3 recorded. A cancelled Claude Code or Pi run emits
-// `session.closed` with `cancelled`, then reports how its process ended as an
-// error event, and its close answers `failed`. At the runner's interface that
-// end is `cancelled`, and the late event is still observed.
+// invariant: the end ADP-3 recorded, which the four drivers no longer produce:
+// `session.closed` with `cancelled`, then an error event, and a close that
+// answers `failed`. A driver that keeps no session ledger may still end so. At
+// the runner's interface that end is `cancelled`, and the late event is observed.
 test("a cancel-initiated end is cancelled even when an error follows the terminal event and close reports failed", async () => {
   const controller = new AbortController();
   const driver = new ScriptedDriver(

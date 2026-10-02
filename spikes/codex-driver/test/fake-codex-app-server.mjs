@@ -49,6 +49,12 @@ lines.on("line", (line) => {
       const sameGroup = spawn(process.execPath, idle, { stdio: ["ignore", "inherit", "ignore"] });
       const escaped = spawn(process.execPath, idle, { stdio: "ignore", detached: true });
       emit({ method: "item/agentMessage/delta", params: { threadId: "private-thread-id", turnId: "private-turn-id", itemId: "msg-1", delta: `tree:${process.pid}:${sameGroup.pid}:${escaped.pid}` } });
+    } else if (mode === "garbled") {
+      // why: a provider whose stream breaks, that says one more thing after the
+      // break, and that then never answers. A reader that is stopped once it has
+      // seen that last thing is stopped after its stream had already failed.
+      const delta = JSON.stringify({ method: "item/agentMessage/delta", params: { threadId: "private-thread-id", turnId: "private-turn-id", itemId: "msg-1", delta: "after-the-failure" } });
+      process.stdout.write(`{not-json}\n${delta}\n`);
     } else if (mode !== "hang") {
       emit({ method: "item/agentMessage/delta", params: { threadId: "private-thread-id", turnId: "private-turn-id", itemId: "msg-1", delta: `echo:${prompt}` } });
       emit({ method: "turn/completed", params: { threadId: "private-thread-id", turn: { id: "private-turn-id", status: "completed" }, usage: { inputTokens: 7, outputTokens: 4 } } });

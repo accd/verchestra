@@ -187,9 +187,23 @@ export class CodexDriver implements Driver {
       detached: OWN_PROCESS_GROUP,
       windowsHide: true
     });
+    const runEnded = state.runStarted();
     state.resources.child = child;
+    let streamFailure: string | undefined;
+    let aborted = false;
+    // invariant: a stop marks the run as aborted before the provider is
+    // terminated, so the run ends as aborted and not as a process that failed.
+    // why: a stream that had already failed keeps its own report; the stop did
+    // not cause that failure.
+    const stopRequested = () => {
+      if (streamFailure === undefined) aborted = true;
+    };
     if (child.pid !== undefined) {
-      state.resources.stop = singleTermination(this.#terminateTree, child.pid);
+      const stopChild = singleTermination(this.#terminateTree, child.pid);
+      state.resources.stop = () => {
+        stopRequested();
+        return stopChild();
+      };
       this.#dependencies.onSpawn?.(child.pid);
     }
 
@@ -197,8 +211,6 @@ export class CodexDriver implements Driver {
     let outputBytes = 0;
     const maximum = execution.maxOutputBytes ?? 1_048_576;
     const grace = execution.cancelGraceMs ?? 250;
-    let streamFailure: string | undefined;
-    let aborted = false;
     let threadId: string | undefined;
     let turnId: string | undefined;
     let interruptSent = false;
@@ -338,7 +350,7 @@ export class CodexDriver implements Driver {
     );
     const abort = () => {
       if (aborted) return;
-      aborted = true;
+      stopRequested();
       interrupt();
       const timer = setTimeout(() => {
         if (child.exitCode === null && child.signalCode === null) void state.resources.stop?.();
@@ -374,20 +386,24 @@ export class CodexDriver implements Driver {
     const exit = await closed;
     signal.removeEventListener("abort", abort);
     lines.close();
-    if (aborted) {
-      state.outcome = "cancelled";
-      state.emit({ type: "error", code: "VES_CODEX_ABORTED", message: "Codex was aborted", retryable: true });
-    } else if (streamFailure !== undefined) {
-      state.outcome = "failed";
-      state.emit({ type: "error", code: streamFailure, message: "Codex protocol failed", retryable: false });
-    } else if (!resultSeen) {
-      state.outcome = "failed";
-      state.emit({
-        type: "error",
-        code: exit.code !== 0 || exit.signal !== null ? "VES_CODEX_PROCESS_FAILED" : "VES_CODEX_STREAM_INCOMPLETE",
-        message: "Codex process failed",
-        retryable: false
-      });
+    try {
+      if (aborted) {
+        state.outcome = "cancelled";
+        state.emit({ type: "error", code: "VES_CODEX_ABORTED", message: "Codex was aborted", retryable: true });
+      } else if (streamFailure !== undefined) {
+        state.outcome = "failed";
+        state.emit({ type: "error", code: streamFailure, message: "Codex protocol failed", retryable: false });
+      } else if (!resultSeen) {
+        state.outcome = "failed";
+        state.emit({
+          type: "error",
+          code: exit.code !== 0 || exit.signal !== null ? "VES_CODEX_PROCESS_FAILED" : "VES_CODEX_STREAM_INCOMPLETE",
+          message: "Codex process failed",
+          retryable: false
+        });
+      }
+    } finally {
+      runEnded();
     }
     delete state.resources.child;
     delete state.resources.stop;
