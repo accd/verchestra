@@ -23,3 +23,19 @@ async function signalOwnGroup(pid: number): Promise<void> {
 export function processTreeTerminator(injected: ProcessTreeTerminator | undefined): ProcessTreeTerminator {
   return injected ?? signalOwnGroup;
 }
+
+// invariant: one termination per child, whoever asks: the abort path, a
+// stream that keeps failing, or a cancel. A stop reaches a driver twice, once
+// through its signal and once through `cancel`, and a provider that the first
+// request already stopped must not fail the second: on Windows a kill of a
+// process that has exited is an error, and a cancel that fails emits no
+// terminal event of its own, so the stop would lose its reason.
+// why: a termination that failed is forgotten, so a later request tries again.
+export function singleTermination(terminate: ProcessTreeTerminator, pid: number): () => Promise<void> {
+  let stopping: Promise<void> | undefined;
+  return () =>
+    (stopping ??= terminate(pid).catch((error: unknown) => {
+      stopping = undefined;
+      throw error;
+    }));
+}

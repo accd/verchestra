@@ -5,7 +5,12 @@ import { tmpdir, userInfo } from "node:os";
 import { isAbsolute, join } from "node:path";
 import readline from "node:readline";
 import { promisify } from "node:util";
-import { OWN_PROCESS_GROUP, processTreeTerminator, type ProcessTreeTerminator } from "./driver-process-tree.ts";
+import {
+  OWN_PROCESS_GROUP,
+  processTreeTerminator,
+  singleTermination,
+  type ProcessTreeTerminator
+} from "./driver-process-tree.ts";
 import { sensitiveValueRedactor } from "./driver-redaction.ts";
 import { DriverSessionLedger } from "./driver-session-ledger.ts";
 import { probeDriverVersion } from "./driver-version-probe.ts";
@@ -130,6 +135,7 @@ interface MediatedLaunch {
 
 interface ClaudeSessionResources {
   child?: ChildProcessWithoutNullStreams;
+  stop?: () => Promise<void>;
 }
 
 function claudeError(code: string, message: string): DriverProtocolError {
@@ -345,7 +351,7 @@ export class ClaudeCodeDriver implements Driver {
   readonly #terminateTree: ProcessTreeTerminator;
   readonly #sessions = new DriverSessionLedger<ClaudeSessionResources>({
     noun: "Claude Code",
-    stop: ({ resources }) => (resources.child?.pid === undefined ? undefined : this.#terminateTree(resources.child.pid))
+    stop: ({ resources }) => resources.stop?.()
   });
 
   readonly #profile: NormalizedMediatedProfile | undefined;
@@ -527,7 +533,10 @@ export class ClaudeCodeDriver implements Driver {
         windowsHide: true
       });
       state.resources.child = child;
-      if (child.pid !== undefined) this.#dependencies.onSpawn?.(child.pid);
+      if (child.pid !== undefined) {
+        state.resources.stop = singleTermination(this.#terminateTree, child.pid);
+        this.#dependencies.onSpawn?.(child.pid);
+      }
       let outputBytes = 0;
       const maximum = execution.maxOutputBytes ?? 1_048_576;
       let streamFailure: string | undefined;
@@ -535,12 +544,11 @@ export class ClaudeCodeDriver implements Driver {
       let resultSeen = false;
       let aborted = false;
       // invariant: one termination per child. A stream that keeps failing asks
-      // again for every line still in the pipe, and a tree terminator reads
-      // the process table each time it is asked.
-      let stopping: Promise<void> | undefined;
+      // again for every line still in the pipe, a tree terminator reads the
+      // process table each time it is asked, and a cancel asks once more.
       const terminate = async () => {
         aborted = true;
-        if (child.pid !== undefined) await (stopping ??= this.#terminateTree(child.pid));
+        await state.resources.stop?.();
       };
       signal.addEventListener("abort", terminate, { once: true });
       child.stderr.on("data", (chunk: Buffer) => {
@@ -668,6 +676,7 @@ export class ClaudeCodeDriver implements Driver {
         });
       }
       delete state.resources.child;
+      delete state.resources.stop;
       return Object.freeze({ sessionId });
     } finally {
       await releaseLaunch(launch);
