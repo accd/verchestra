@@ -30,7 +30,10 @@ one commit each, in this order.
 
 | Task | Commit | Status |
 | --- | --- | --- |
-| T1 | `97785fe` | Done |
+| T1 | `604ce8e` (merged as #478) | Done |
+| T2 | `22dc0d6` | Done |
+| T3 | `2a258ec` | Done |
+| T4 | `1fb2dae` | Done |
 
 Evidence for every requirement is in `validation.md`. The next action is in
 `handoff.md`.
