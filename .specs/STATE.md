@@ -926,6 +926,60 @@ note. -->
   `codex login status` in a disposable directory. A Workspace that used API
   keys must now say so in `task-providers.json`.
 
+### AD-045 — One session ledger per driver instance, parametrised by the driver's noun and two hooks (ADP-3)
+
+- **Status:** proposed (ratified by reviewing the pull request that carries
+  `refactor/driver-session-ledger`).
+- **Context:** The Claude Code, Codex, OpenCode and Pi drivers each kept a
+  session map, a set of closed references, an event numbering step, a guard on
+  the terminal event, and the cancel and close sequences. The four copies
+  agreed, and only review kept them agreeing.
+- **Decision:**
+  1. `packages/drivers/src/driver-session-ledger.ts` is the one module that
+     owns the session map, event numbering, the terminal event, cancel and
+     close. Each driver instance holds one ledger, so a session reference is
+     valid only for the instance that opened it. The session a driver holds
+     exposes `resources`, `outcome` and `emit`; the sequence and the terminal
+     state are not reachable from a driver.
+  2. **The ledger takes the driver's noun and no error-code prefix.** The plan
+     asked for both. Every session refusal already has a shared code
+     (`VES_DRIVER_SESSION_UNKNOWN`, `VES_DRIVER_SESSION_CLOSED`); only the
+     message names the driver ("Claude Code session is unknown"). A prefix
+     parameter would have had no reader. The driver-prefixed codes
+     (`VES_CLAUDE_ABORTED`, `VES_CODEX_STREAM_INVALID`, and the rest) belong to
+     each driver's run, which stays in the driver.
+  3. Two optional hooks carry what differs between drivers. `stop` ends the
+     provider's work before a cancel emits the terminal event: Claude Code and
+     Codex call their terminator, Pi aborts its agent and waits for it to be
+     idle, OpenCode has none. `release` runs after the terminal event, on
+     cancel and on the first close: Pi unsubscribes and resets its agent. A
+     `stop` with nothing to wait for returns nothing, so that cancel still
+     emits the terminal event in the caller's own turn.
+  4. The sink is called before the sequence advances, and emission is not
+     gated on the terminal event. Both are what the four drivers did. The
+     second means a run cancelled through `cancel()` still reports how it
+     ended after `session.closed`; whether it should is left to the session
+     runner (ADP-4).
+  5. `DeterministicMockDriver` keeps its own bookkeeping. It advances the
+     sequence before it calls the sink, keeps a closed session in its map, and
+     reports no outcome on close, so adopting the ledger would change its
+     events and results.
+- **Alternatives rejected:** a prefix parameter kept for symmetry (no reader);
+  a base class for the four drivers (they share bookkeeping, not a run
+  protocol, and the child-process handling must stay in files the census
+  excludes by path); session identifiers issued by the ledger (each driver's
+  identifier format is its own, and nothing gained from moving it); gating
+  `emit` on the terminal event (it changes the emitted sequence of a cancelled
+  run); moving the mock driver onto the ledger (item 5).
+- **Consequence:** `tests/contract/driver-session-ledger.test.mjs` is the
+  contract. `tests/contract/driver-lifecycle-matrix.test.mjs` gains a session
+  axis that proves each driver's wiring, including a cancel of a running
+  provider, which no test reached before; nine per-driver cases were retired
+  against it. Evidence and the map of retired cases are in
+  `.specs/features/architecture-deepening/validation-c3.md`. The `Driver`
+  interface is unchanged, so the session runner (ADP-4) can be built on it
+  without touching the ledger.
+
 ## Handoff
 
 - **Feature:** `subscription-provider-auth` (ADP-A, tasks TA1 and TA2) on
