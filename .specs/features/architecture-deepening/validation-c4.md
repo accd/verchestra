@@ -241,3 +241,134 @@ directory. `qualify:keychain` was not run.
 - **Platform matrix.** Every result above is from macOS arm64. The range has no
   platform-specific code, but the task path is on the list that requires a
   `platform-matrix.yml` run on the branch before merge.
+
+## C4-2 (T4b) — the Codex verifier adopts the runner
+
+`V` is `tests/integration/codex-verifier-session.test.mjs`. Its fixture is
+`tests/helpers/codex-verifier-fixture.mjs`, and the provider is the labeled
+fake `tests/helpers/task-cli-fakes/fake-codex-task.mjs`. On Windows the
+governed task path is refused before a verifier session is reachable, so every
+case of `V` asserts that refusal there instead of skipping.
+
+`runCodexVerifier` in `apps/vestra-cli/src/task/task-codex.ts` loses its own
+start, observation and close, and its own rule for a metering error. It runs
+the session through `runDriverSession` and meters through
+`recordUsageAndDecide`. What stays in it is the verifier's own: the isolated
+identity, the zero-tool grant, the verdict text, the duration timer, and the
+reason it gives for a session that did not complete.
+
+### Requirement evidence
+
+| Clause | Definition (symbol) | Assertion evidence |
+| --- | --- | --- |
+| The verifier runs its session through the runner | `runCodexVerifier` | Every case of `V` and the four verifier cases of `tests/integration/codex-identity.test.mjs` (unmodified) run through it; `tests/architecture/driver-session-runner-locality.test.mjs` (C4-3) fails if it starts a session itself |
+| The already-aborted check | `runCodexVerifier` → `runDriverSession` | No thread is opened, the reason is `VES_EXECUTOR_CANCELLED`, the session root is gone: `V:44-52` |
+| Cancel | `runCodexVerifier`, `failureReason` | A verifier with an open turn is cancelled, the reason is `VES_EXECUTOR_CANCELLED`, the Codex process is gone, the session root is gone: `V:54-79` |
+| Usage spends from the run's budget | `meterUsage` | Tokens and events recorded, verdict returned: `V:81-90`; no meter, no stop: `V:145-150` |
+| A reached ceiling is a budget outcome | `meterUsage`, `failureReason` | Tokens: `V:92-101`, with the meter's stop reason. Duration, through the timer, not before it: `V:103-121` |
+| A reached ceiling outranks the caller's cancel in the reason | `failureReason` | A meter that is already at its ceiling and a caller that is already cancelled: `VES_EXECUTOR_BUDGET_EXCEEDED`, no Codex process: `V:155-164` |
+| The meter's refusal stops the verifier under its own code | `meterUsage`, `failureReason` | `VES_BUDGET_MODEL_UNKNOWN`, nothing recorded: `V:123-129` |
+| An error that is not a budget error is not swallowed | `meterUsage` → `recordUsageAndDecide` → the runner's observer guard | The same error object is raised, and the session root is still removed: `V:131-143` |
+| The public error is unchanged | `runCodexVerifier` | `VES_TASK_FAILED` with exactly one safe detail, `reason`, in every refusal of `V` (`failedWith`, `V:35-41`); the subscription case of `codex-identity.test.mjs` still answers `VES_TASK_VERIFIER_FAILED` |
+
+### Behaviour changes
+
+1. A caller that is already cancelled starts no Codex process. Before, the
+   driver was started and answered `VES_DRIVER_CANCELLED`.
+2. A stop cancels the announced session through the runner, which stops the
+   Codex process at once. Before, an abort sent `turn/interrupt` and killed the
+   process after the 250 ms grace period.
+3. The `reason` detail of a session that did not complete is more specific.
+   A caller's cancel is `VES_EXECUTOR_CANCELLED` and the meter's refusal is the
+   meter's code (`VES_BUDGET_MODEL_UNKNOWN`, `VES_BUDGET_USAGE_INVALID`).
+   Before, both were `VES_TASK_VERIFIER_FAILED`. The public code stays
+   `VES_TASK_FAILED`, and a run whose signal was aborted still ends `ABORTED`.
+4. An error from the metering that is not the meter's own refusal is raised as
+   itself. Before, it stopped the session and was reported as
+   `VES_TASK_VERIFIER_FAILED`. For `vestra task` the run then fails with that
+   error's own code, or `VES_TASK_RUN_FAILED` when it has none, instead of
+   `VES_TASK_FAILED`.
+
+### Tests changed
+
+None deleted and none modified. Added: `V` (9 cases) with its fixture, and a
+neutral liveness helper, `tests/helpers/process-liveness.mjs`. The labeled fake
+Codex gains `verifier-scenario:hang`, a turn that never answers, and writes the
+process of each turn to a log of its own, `fake-codex-turn.log`; no existing
+reader of its other log is affected. The fixture kills, by identifier, every
+process named in such a log when the suite ends, so a failing case cannot keep
+the suite alive.
+
+### Discrimination (disposable copy)
+
+Same method as for C4-1, on a copy of the tree at `11df689`. Suites run: `V`,
+`tests/integration/codex-identity.test.mjs` and
+`tests/unit/task-cli-composition.test.mjs`. Unmutated copy: 31 passed, 0 failed.
+
+| Mutation in the copy of `task-codex.ts` | Failing cases |
+| --- | --- |
+| **The verifier as it was before this range** (the file of `e17abb3`: no runner, no cancel, every metering error swallowed) | 5 in `V`: `V:44-52`, `V:54-79`, `V:123-129`, `V:131-143`, `V:155-164` |
+| The session ignores the caller's signal | 3: `V:44-52`, `V:54-79`, `V:155-164` |
+| The session ignores the verifier's own stop | 3: `V:92-101`, `V:103-121`, `V:123-129` |
+| **Every metering error is swallowed and stops the session** | 1: `V:131-143` |
+| The meter's refusal is not kept | 1: `V:123-129` |
+| A budget verdict does not stop the session | 2: `V:92-101`, `V:123-129` |
+| There is no duration timer | 1: `V:103-121` |
+| A caller's cancel is reported as a verifier that failed | 2: `V:44-52`, `V:54-79` |
+| A reached ceiling is reported as a verifier that failed | 3: `V:92-101`, `V:103-121`, `V:155-164` |
+| The meter's refusal is reported as budget exceeded | 1: `V:123-129` |
+| The outcome is not read | 7: 6 in `V` and the subscription verifier without a login in `codex-identity.test.mjs` |
+| The session root is left behind | 7: 5 in `V` and the two completed verifier sessions in `codex-identity.test.mjs` |
+| Usage is metered against another model | 2: `V:81-90`, `V:92-101` |
+| Usage events are not metered | 4 in `V` |
+| The caller's cancel outranks a reached ceiling | 1: `V:155-164` |
+| The verdict text is not collected | 4: 2 in `V`, 2 in `codex-identity.test.mjs` |
+
+All 16 mutations failed at least one case. A mutation that removes a stop makes
+its case run into its own time limit; the copy is then run with a limit for the
+whole suite, so that a fake left running cannot keep the run alive.
+
+### Guardrails
+
+- Complexity baseline: no entry changed, no key added or moved. The new
+  functions are below the target of 10.
+- Census: no file gained or lost `JSON.stringify` or `createHash`.
+- No `file.ts:line` citation of `task-codex.ts` exists in `docs` or `.specs`.
+- No file under `docs/qualification/` changed. Migration count (12) and runtime
+  error catalog count (19) unchanged. No public error code was added, removed
+  or changed: the reasons above are values of the existing `reason` detail of
+  `VES_TASK_FAILED`, and each is a code that already exists.
+- `tests/mutation/*` and the fault-injection suites pass unmodified.
+
+### Gates (Node 24.14.0, macOS arm64)
+
+Measured on a detached checkout of `11df689`, the one code commit of the range.
+
+| Command (at `11df689`) | Result |
+| --- | --- |
+| `V`, `codex-identity.test.mjs`, `tests/unit/task-cli-composition.test.mjs`, `tests/security/task-cli-security.test.mjs` | PASS — 40 |
+| `pnpm gate:quick` | PASS — unit 2482, agent-readiness 323, census 13 |
+| `pnpm test:architecture` | PASS — 76 |
+| `pnpm gate:build` | PASS — unit 2482, contract 756, integration 919, e2e 238, architecture 76, build 146, qualification 296 |
+| `pnpm gate:security` | PASS — unit 2482, contract 756, e2e 238, architecture 76, qualification 296, security 1339, fault 310 |
+| `pnpm test:fault` | PASS — 310 |
+| `pnpm test:contract` | PASS — 756 |
+| `pnpm test:integration` | PASS — 919 |
+| `pnpm qualify:claude` | PASS — 53 |
+| `pnpm qualify:codex` | PASS — 20 |
+| `node --test tests/e2e/task-cli-e2e.test.mjs tests/e2e/mediated-task-execution-e2e.test.mjs` | PASS — 23 |
+| `pnpm agent:check` | PASS |
+
+No test was skipped in any stage. No provider session was started and no login
+was needed. `qualify:keychain` was not run.
+
+### Open points for the reviewer
+
+- **The reason of a metering refusal.** The verifier now reports the meter's
+  own code in the `reason` detail, as the executor raises the meter's own
+  error. The alternative was to keep `VES_TASK_VERIFIER_FAILED` for it, which
+  says less and is what a swallowed error looked like.
+- **The verifier is stopped at once.** The runner cancels a stopped session, so
+  Codex is killed without the `turn/interrupt` grace period. The driver's own
+  abort path is unchanged and still interrupts first.
+- **Platform matrix.** As for C4-1.
