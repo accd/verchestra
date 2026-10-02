@@ -371,6 +371,11 @@ approval makes the approval stale, and the run is refused until you plan again.
   [docs/qualification/claude-code-driver-process-tree.md](qualification/claude-code-driver-process-tree.md)
   and
   [docs/qualification/codex-driver-process-tree.md](qualification/codex-driver-process-tree.md).
+  A provider whose session ends without a stop is ended the same way: when its
+  output is not what Verchestra expects, when it exceeds its output limit, and
+  when the verifier's turn completes
+  ([Claude Code](qualification/claude-code-driver-provider-ends.md),
+  [Codex](qualification/codex-driver-provider-ends.md)).
   A closed terminal or a `kill` of `vestra` while a provider is running also
   stops everything the provider started, and then ends `vestra` without
   aborting the run: `task resume` continues it. If a provider's processes
