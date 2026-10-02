@@ -109,7 +109,11 @@ choose them.
   `docs/qualification/trust/verchestra-release-public-key.json`, which must be
   reviewed for `tuf-release-root` and must not be retired, before any output
   (`VES_T76_PUBLISH_KEY_MISMATCH`, `VES_T76_PUBLISH_ANCHOR_INVALID`, or
-  `VES_T76_PUBLISH_ANCHOR_RETIRED` otherwise).
+  `VES_T76_PUBLISH_ANCHOR_RETIRED` otherwise). The same run derives the entry
+  that records the release in `docs/qualification/tuf-publication-ledger.json`
+  and uploads it as `ledger-entry.json`. The workflow never edits the ledger: a
+  human appends the entry verbatim in a reviewed pull request, and no field of
+  it is typed by hand.
 - **Target model.** The key stays in `tuf-release-signing`, with these changes:
   - required reviewer: custodian #2 instead of the owner;
   - `Prevent self-review` on;

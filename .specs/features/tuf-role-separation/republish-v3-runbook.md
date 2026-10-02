@@ -43,7 +43,11 @@ root digest**. The tooling enforces it:
   unless it strictly exceeds every version the ledger records for the same root
   digest, before any timestamp, snapshot, or targets metadata is signed and
   before any output byte exists. A different root digest is an independent
-  lineage.
+  lineage. The same admission (`admitRelease` in
+  `scripts/tuf-publication-ledger.mjs`) derives the ledger entry that records
+  the release: its `sequence`, its `previousEntryDigest`, and the split of the
+  base URL into origin and prefix. The script writes it as `ledger-entry.json`
+  beside `publication-manifest.json`; `--run-id` records the signing run.
 - `.github/workflows/t76-publish-release.yml` — the `metadata_version` dispatch
   input has **no default**; the operator states it each time.
 - Regression proof: `tests/build/t76-release-publication.test.mjs` (equal and
@@ -166,13 +170,22 @@ Publish the role-separated lineage as its own trust anchor and demonstrate the
    phase passes only if both releases carry AD-036 (see finding 3's status);
    without it, do not expect the naive re-invoke-the-base rollback to pass after
    a successful update.
-7. **Record.** Append the `.3` (and later `.4`) release entry to
-   `docs/qualification/tuf-publication-ledger.json` from its
-   `publication-manifest.json` (the final manual step it lists), then update
-   `docs/qualification/acceptance-matrix.md` (L5, L7, J02), the live-matrix
-   `validation.md`/`handoff.md`, and this feature's handoff with the run ids and
-   transcript digests, verified by content. Record the ledger entry **before**
-   building the next candidate, so that candidate's ledger carries it.
+7. **Record.** Append the run's `ledger-entry.json` **verbatim** to
+   `docs/qualification/tuf-publication-ledger.json` in a reviewed pull request
+   (the final manual step the manifest lists). It is in the
+   `t76-release-metadata-…` artifact and in the run summary. Do not type or
+   edit `sequence`, `previousEntryDigest`, or any other field: the publish run
+   derived them against `main`'s ledger. If another entry landed on `main`
+   first, the emitted entry no longer chains; rerun the publication against the
+   current `main` rather than editing it. In the same pull request, record the
+   publication in the live-matrix `validation.md`, which the entry cites as
+   evidence, then update `docs/qualification/acceptance-matrix.md` (L5, L7,
+   J02), the live-matrix `handoff.md`, and this feature's handoff with the run
+   ids and transcript digests, verified by content. Record the ledger entry
+   **before** building the next candidate, so that candidate's ledger carries
+   it. The `.3` and `.4` entries were appended by hand before the
+   tooling derived them; `tests/agent-readiness/tuf-publication-ledger.test.mjs`
+   proves the derivation reproduces both byte for byte.
 
 ## Monthly online refresh (#382)
 
