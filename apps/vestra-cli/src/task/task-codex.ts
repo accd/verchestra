@@ -9,6 +9,7 @@ import {
 } from "@verchestra/application";
 import { CodexDriver, type DriverEvent, type DriverStartRequest } from "@verchestra/drivers";
 
+import { ensureCodexIdentity } from "./task-codex-identity.ts";
 import { stableUuid } from "./task-context.ts";
 import { passThroughEnvironment } from "./task-implementer.ts";
 import { taskError } from "./task-errors.ts";
@@ -103,7 +104,11 @@ export interface CodexSessionOptions {
   readonly manifestId: string;
   readonly request: NormalizedTaskRequest;
   readonly executable: string;
-  readonly credential: string;
+  // invariant: exactly one of the two. An API key is injected into a
+  // per-session CODEX_HOME; a subscription uses the Workspace identity
+  // directory and supplies no credential variable at all.
+  readonly credential?: string;
+  readonly identityDirectory?: string;
   readonly env: Readonly<Record<string, string | undefined>>;
   readonly sessionRoot: string;
   readonly cwd: string;
@@ -112,14 +117,29 @@ export interface CodexSessionOptions {
   readonly signal: AbortSignal;
 }
 
-async function isolatedIdentity(root: string) {
+async function isolatedIdentity(root: string, identityDirectory: string | undefined) {
   await rm(root, { recursive: true, force: true });
   const home = join(root, "home");
-  const codexHome = join(root, "codex-home");
-  await mkdir(codexHome, { recursive: true, mode: 0o700 });
+  const codexHome = identityDirectory ?? join(root, "codex-home");
+  if (identityDirectory === undefined) await mkdir(codexHome, { recursive: true, mode: 0o700 });
+  else await ensureCodexIdentity(identityDirectory);
   await mkdir(home, { recursive: true, mode: 0o700 });
   await chmod(root, 0o700);
   return { home, codexHome };
+}
+
+// invariant: a verifier session has exactly one way to authenticate; naming
+// both, or neither, is refused before Codex starts.
+function sessionCredential(options: CodexSessionOptions) {
+  if ((options.credential === undefined) === (options.identityDirectory === undefined))
+    throw taskError(
+      "VES_TASK_FAILED",
+      { reason: "VES_TASK_VERIFIER_CREDENTIAL_AMBIGUOUS" },
+      "The verifier needs exactly one credential source"
+    );
+  return options.credential === undefined
+    ? { environment: {}, sensitiveValues: [] }
+    : { environment: { OPENAI_API_KEY: options.credential }, sensitiveValues: [options.credential] };
 }
 
 function meterUsage(meter: BudgetMeter | undefined, model: string, event: DriverEvent, stop: () => void): void {
@@ -142,7 +162,8 @@ function meterUsage(meter: BudgetMeter | undefined, model: string, event: Driver
 // credential and a zero-tool grant; every usage event spends from the run's
 // remaining budget, and the duration timer is the hard stop.
 export async function runCodexVerifier(options: CodexSessionOptions): Promise<string> {
-  const identity = await isolatedIdentity(options.sessionRoot);
+  const credential = sessionCredential(options);
+  const identity = await isolatedIdentity(options.sessionRoot, options.identityDirectory);
   const model = options.request.verifier.model;
   const passportId = `passport_${stableUuid(`codex:${model}`)}`;
   const request: DriverStartRequest = {
@@ -176,8 +197,8 @@ export async function runCodexVerifier(options: CodexSessionOptions): Promise<st
       prompt: options.prompt,
       model,
       tools: [],
-      environment: { OPENAI_API_KEY: options.credential },
-      sensitiveValues: [options.credential],
+      environment: credential.environment,
+      sensitiveValues: credential.sensitiveValues,
       cancelGraceMs: 250
     })
   });
