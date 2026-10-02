@@ -1,7 +1,7 @@
 import { HumanReviewCoordinator, modelPriceTable, type HumanReviewPorts } from "@verchestra/application";
 import { WorkflowMachine, type RunSnapshot } from "@verchestra/domain";
 import { ArtifactSealer, RunCapsuleBuilder, type EvidenceSigner } from "@verchestra/evidence";
-import { RuntimeCheckpointStore, type RuntimeStore } from "@verchestra/platform-node";
+import type { RuntimeStore } from "@verchestra/platform-node";
 
 import { installedReleaseManifest } from "../release-manifest.ts";
 import { TaskAuthority } from "./task-authority.ts";
@@ -13,7 +13,7 @@ import { canonicalDigest } from "./task-files.ts";
 import type { TaskCommandIo } from "./task-io.ts";
 import { HUMAN_ACTOR, type TaskPlanRecord } from "./task-plan-record.ts";
 import { loadTaskPolicy } from "./task-policy.ts";
-import { openRunRecord, type RunRecord } from "./task-run-record.ts";
+import { openRunRecord, type RunCheckpoints, type RunRecord } from "./task-run-record.ts";
 import { workspaceSigner, workspaceTrustRoot } from "./task-signing.ts";
 import { branchName, reviewSurface } from "./task-surface.ts";
 import { applyWorkflow, currentRun, verificationRun } from "./task-workflow.ts";
@@ -28,6 +28,7 @@ interface ReviewContext {
   readonly plan: TaskPlanRecord;
   readonly runtime: RuntimeStore;
   readonly runRecord: RunRecord;
+  readonly checkpoints: RunCheckpoints;
   readonly authority: TaskAuthority;
 }
 
@@ -41,25 +42,19 @@ async function gateRefs(context: ReviewContext, refs: readonly string[]) {
 }
 
 async function toolReceipts(context: ReviewContext) {
-  const latest = await new RuntimeCheckpointStore(context.runtime)
-    .executorCheckpoints()
-    .load(context.workspace.workspaceId, context.plan.runId, context.plan.request.task.taskId);
-  const refs = (latest?.data as { readonly toolReceiptRefs?: unknown } | undefined)?.toolReceiptRefs;
-  return (Array.isArray(refs) ? refs : []).map((entry) => ref(String(entry), entry));
+  const latest = await context.checkpoints.executor();
+  return (latest?.toolReceiptRefs ?? []).map((entry) => ref(entry, entry));
 }
 
 async function budgetEvidence(context: ReviewContext) {
-  const state = (await new RuntimeCheckpointStore(context.runtime)
-    .repairState(context.workspace.workspaceId, context.plan.runId, context.plan.request.task.taskId)
-    .loadState()) as { readonly budgetLedger?: Readonly<Record<string, unknown>> | null } | undefined;
-  const ledger = state?.budgetLedger ?? undefined;
+  const ledger = (await context.checkpoints.repair())?.budgetLedger;
   if (ledger === undefined) return {};
   return {
     budgetEvidence: {
       declared: context.plan.request.budgets,
       ...capsuleBudgetConsumption(ledger),
       priceTableVersion: modelPriceTable.version,
-      stopReason: ledger["stopReason"] ?? null
+      stopReason: ledger.stopReason
     }
   };
 }
@@ -258,7 +253,8 @@ export async function reviewTask(
     const signer = await workspaceSigner(workspace, credentials.get(SIGNING_PASSPHRASE) as string);
     const policy = await loadTaskPolicy(io.controlRoot);
     const authority = new TaskAuthority({ runtime, plan, policy, trust: await workspaceTrustRoot(workspace) });
-    const context: ReviewContext = { io, workspace, plan, runtime, runRecord, authority };
+    const checkpoints = runRecord.checkpoints(runtime, plan.request.task.taskId);
+    const context: ReviewContext = { io, workspace, plan, runtime, runRecord, checkpoints, authority };
     const review = await new HumanReviewCoordinator(reviewPorts(context)).review(
       reviewInput(context, surface, String(options.outcome), String(options.surfaceDigest))
     );

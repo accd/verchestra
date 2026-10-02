@@ -1044,8 +1044,10 @@ note. -->
   composition: the grant marker was read in three, the commit record and the
   verification report were reached through sideways imports (`task-status`
   from `task-run`, `task-surface` from `task-verifier`), and each command
-  joined the Run directory with a file name of its own. The refusals that
-  guard this state (`VES_TASK_STATE_UNREADABLE`, `VES_TASK_STATE_MISMATCH`,
+  joined the Run directory with a file name of its own. Three of them
+  (`task-run`, `task-status`, `task-review`) also opened the checkpoint store
+  and cast its rows, which the runtime store returns with no declared shape.
+  The refusals that guard this state (`VES_TASK_STATE_UNREADABLE`, `VES_TASK_STATE_MISMATCH`,
   `VES_TASK_CONTEXT_*`, `VES_TASK_EVIDENCE_MISMATCH`,
   `VES_TASK_PACKAGE_INVALID`, `VES_TASK_REVIEW_UNAVAILABLE`) had no test,
   because only the macOS end-to-end journey reached the code that raises them.
@@ -1082,6 +1084,18 @@ note. -->
      Workspace (`VES_TASK_STATE_MISMATCH`). Before, the path was derived from
      the record, so the two could not disagree; now the path comes from the
      Run record and the check keeps that property.
+  7. The module is also the one reader of the Run's checkpoint rows, which
+     live in the runtime store. `RunRecord#checkpoints(runtime, taskId)`
+     returns typed projections of the latest executor, gate, and repair
+     checkpoints, and the store's three ports bound to the Run and task for
+     the coordinators that write. No command opens the checkpoint store or
+     casts a row. A member of the wrong type is absent from a projection. Two
+     states that could not be told apart before are now refused as
+     `VES_TASK_STATE_MALFORMED`: a stored budget ledger that is not a ledger
+     (it was printed by `status`, sealed by `review`, and failed on resume as
+     `VES_BUDGET_INVALID`), and a committed gate checkpoint that names no
+     commit (it reached git as the text `undefined`). The runtime store
+     writes neither.
 - **Alternatives rejected:** the module in `packages/platform-node` (it
   cannot import the evidence stores or the context manifest type); an artifact
   store keyed by caller-supplied names (the callers would keep the layout);
@@ -1090,14 +1104,21 @@ note. -->
   grant marker would then be digested differently into the Run Capsule than it
   is today); reading the Execution Package at review through the same checked
   reader `approve` uses (it would change the public error a damaged package
-  store raises at review).
+  store raises at review); typed gate and repair records returned by
+  `RuntimeCheckpointStore` itself (the executor checkpoint's data is free-form
+  by contract, and the ledger's meaning belongs to the budget meter, so the
+  projections would still be needed above the store); a projection that
+  returns an unchecked ledger typed as one (resume would then trust what the
+  meter refuses).
 - **Consequence:** `tests/architecture/task-run-record-locality.test.mjs` fails
   when another task source names a file of the Run directory, joins a path
-  into one of its directories, opens one of its stores, reads or writes a
-  sealed record, or imports another command's module for Run state. The
+  into one of its directories, opens one of its stores or the checkpoint
+  store, reads or writes a sealed record, casts a checkpoint row, or imports
+  another command's module for Run state. The
   module's refusals are exercised in a temporary directory on every platform
   (`tests/unit/task-run-record.test.mjs`,
-  `tests/integration/task-review-surface.test.mjs`). Evidence is in
+  `tests/integration/task-review-surface.test.mjs`,
+  `tests/integration/task-run-checkpoints.test.mjs`). Evidence is in
   `.specs/features/architecture-deepening/validation-c2.md`.
 
 ## Handoff

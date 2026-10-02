@@ -2,7 +2,15 @@ import { lstat, rm } from "node:fs/promises";
 import { join } from "node:path";
 
 import type { ContextManifest } from "@verchestra/agent-runtime";
-import { normalizeTaskRequest, type TaskRunCommit, type TaskRunOutcome } from "@verchestra/application";
+import {
+  normalizeTaskRequest,
+  type BudgetLedger,
+  type ExecutionCheckpointPort,
+  type GateRepairStatePort,
+  type TaskGateCheckpointPort,
+  type TaskRunCommit,
+  type TaskRunOutcome
+} from "@verchestra/application";
 import { canonicalizeJsonV2 } from "@verchestra/domain";
 import {
   FileExecutionPackageStore,
@@ -10,8 +18,9 @@ import {
   type SignedExecutionPackage,
   type SignedRunCapsule
 } from "@verchestra/evidence";
-import { NodeContentDigest, isGitObjectId } from "@verchestra/platform-node";
+import { NodeContentDigest, RuntimeCheckpointStore, isGitObjectId, type RuntimeStore } from "@verchestra/platform-node";
 
+import { storedBudgetLedger } from "./task-budget.ts";
 import { stateInvalid, taskError } from "./task-errors.ts";
 import { TaskEvidenceStore } from "./task-evidence.ts";
 import {
@@ -126,6 +135,97 @@ function validatedCommit(row: Row): TaskRunCommit {
   )
     throw stateInvalid("VES_TASK_STATE_MALFORMED", "The task commit record is malformed");
   return row as unknown as TaskRunCommit;
+}
+
+export interface ExecutorCheckpoint {
+  readonly stage: string;
+  readonly checkpointRef: string;
+  readonly changeDigest: string | undefined;
+  readonly toolReceiptRefs: readonly string[];
+}
+
+export interface GateCheckpoint {
+  readonly stage: string;
+  readonly changeDigest: string | undefined;
+  readonly commitId: string | undefined;
+}
+
+export interface RepairCheckpoint {
+  readonly stage: string;
+  readonly budgetLedger: BudgetLedger | undefined;
+}
+
+function text(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
+}
+
+// why: an executor checkpoint carries whatever the executor saved at that
+// stage, so its data is read member by member and never assumed to be a row.
+function looseRow(value: unknown): Row {
+  return value !== null && typeof value === "object" && !Array.isArray(value) ? (value as Row) : {};
+}
+
+// invariant: the one reader of a Run's checkpoint rows. The runtime store
+// keeps them as records of unknown shape; every command gets these typed
+// projections instead of reading a row itself. The three ports are the
+// store's own, bound to this Run and task, for the coordinators that write.
+export class RunCheckpoints {
+  readonly #store: RuntimeCheckpointStore;
+  readonly #identity: readonly [workspaceId: string, runId: string, taskId: string];
+
+  constructor(
+    runtime: RuntimeStore,
+    identity: { readonly workspaceId: string; readonly runId: string; readonly taskId: string }
+  ) {
+    this.#store = new RuntimeCheckpointStore(runtime);
+    this.#identity = [identity.workspaceId, identity.runId, identity.taskId];
+  }
+
+  executorPort(): ExecutionCheckpointPort {
+    return this.#store.executorCheckpoints();
+  }
+
+  gatePort(): TaskGateCheckpointPort {
+    return this.#store.gateCheckpoints();
+  }
+
+  repairPort(): GateRepairStatePort {
+    return this.#store.repairState(...this.#identity);
+  }
+
+  async executor(): Promise<ExecutorCheckpoint | undefined> {
+    const latest = await this.executorPort().load(...this.#identity);
+    if (latest === undefined) return undefined;
+    const data = looseRow(latest.data);
+    const receipts = data["toolReceiptRefs"];
+    return {
+      stage: latest.stage,
+      checkpointRef: latest.checkpointRef ?? `checkpoint:${latest.sequence}`,
+      changeDigest: text(data["changeDigest"]),
+      toolReceiptRefs: Array.isArray(receipts)
+        ? receipts.filter((entry): entry is string => typeof entry === "string")
+        : []
+    };
+  }
+
+  // why: unlike the gate port's load, this also reports a failed or committed
+  // gate, which a resume and a crash recovery must see.
+  gate(): GateCheckpoint | undefined {
+    const inspected = this.#store.inspectGate(...this.#identity);
+    if (inspected === undefined) return undefined;
+    return {
+      stage: inspected.stage,
+      changeDigest: text(inspected.record["changeDigest"]),
+      commitId: text(inspected.record["commitId"])
+    };
+  }
+
+  async repair(): Promise<RepairCheckpoint | undefined> {
+    const stored = await this.repairPort().loadState();
+    if (stored === undefined) return undefined;
+    const row = objectRow(stored, "repair state");
+    return { stage: textField(row, "stage", "repair state"), budgetLedger: storedBudgetLedger(row["budgetLedger"]) };
+  }
 }
 
 // invariant: the one owner of a Run's durable record on disk: where each
@@ -328,6 +428,12 @@ export class RunRecord {
 
   async saveCapsule(capsule: SignedRunCapsule): Promise<void> {
     await new FileRunCapsuleStore({ root: this.#path(LAYOUT.capsules) }).put(capsule);
+  }
+
+  // why: the checkpoints of a Run live in the runtime store, not in the Run
+  // directory, so they are reached only with an open store and the task ID.
+  checkpoints(runtime: RuntimeStore, taskId: string): RunCheckpoints {
+    return new RunCheckpoints(runtime, { workspaceId: this.#workspaceId, runId: this.runId, taskId });
   }
 }
 
