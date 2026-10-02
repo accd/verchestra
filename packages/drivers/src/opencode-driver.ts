@@ -38,6 +38,10 @@ interface OpenCodeInstance {
 
 type OpenCodeServerFactory = (options: Readonly<Record<string, unknown>>) => Promise<OpenCodeInstance>;
 
+interface OpenCodeSessionResources {
+  stop?: () => Promise<void>;
+}
+
 export interface OpenCodeExecution {
   readonly passport: {
     readonly passportId: string;
@@ -217,7 +221,10 @@ export class OpenCodeDriver implements Driver {
   readonly #command: readonly string[];
   readonly #minimumVersion: string;
   readonly #factory: OpenCodeServerFactory;
-  readonly #sessions = new DriverSessionLedger({ noun: "OpenCode" });
+  readonly #sessions = new DriverSessionLedger<OpenCodeSessionResources>({
+    noun: "OpenCode",
+    stop: ({ resources }) => resources.stop?.()
+  });
 
   constructor(dependencies: OpenCodeDriverDependencies) {
     this.#dependencies = dependencies;
@@ -293,7 +300,7 @@ export class OpenCodeDriver implements Driver {
     const instance = await this.#factory(this.serverOptions(execution.environment));
     const { client, server } = instance;
     const sessionRef = `opencode-session:${randomUUID()}`;
-    const state = this.#sessions.open(sessionRef, sink, undefined);
+    const state = this.#sessions.open(sessionRef, sink, {});
     const redact = sensitiveValueRedactor(execution.sensitiveValues ?? []);
     let providerSessionId: string | undefined;
     let aborted = false;
@@ -306,6 +313,10 @@ export class OpenCodeDriver implements Driver {
         void client.session.abort({ sessionID: providerSessionId }).catch(() => undefined);
       finishAbort();
     };
+    // invariant: a cancel stops the provider the way an aborted start signal
+    // does: the SDK session is aborted and the isolated server is closed. A
+    // cancel that only recorded the terminal state left the provider working.
+    state.resources.stop = async () => abort();
     signal.addEventListener("abort", abort, { once: true });
     if (signal.aborted) abort();
     try {
@@ -419,6 +430,7 @@ export class OpenCodeDriver implements Driver {
         await client.session.delete({ sessionID: providerSessionId }).catch(() => undefined);
       server.close();
       signal.removeEventListener("abort", abort);
+      delete state.resources.stop;
     }
     if (aborted) {
       state.outcome = "cancelled";

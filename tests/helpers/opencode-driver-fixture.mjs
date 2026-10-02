@@ -19,7 +19,9 @@ export function modelCatalog() {
   };
 }
 
-export function fakeOpenCodeFactory(mode = "success", calls = []) {
+// invariant: `prompted` is called once the provider has the prompt, which is
+// when a session of the fake is running.
+export function fakeOpenCodeFactory(mode = "success", calls = [], prompted = () => undefined) {
   return async (options) => {
     calls.push(["server", options]);
     const events = async function* () {
@@ -95,6 +97,7 @@ export function fakeOpenCodeFactory(mode = "success", calls = []) {
           },
           prompt: async (parameters) => {
             calls.push(["prompt", parameters]);
+            prompted();
             return mode === "prompt-error" ? { error: { message: "prompt rejected" } } : { data: {} };
           },
           abort: async (parameters) => {
@@ -121,6 +124,8 @@ export function fakeOpenCodeFactory(mode = "success", calls = []) {
 export function openCodeFixture(overrides = {}, mode = "success") {
   const calls = [];
   const counters = { resolve: 0 };
+  let markRunning;
+  const running = new Promise((resolve) => (markRunning = resolve));
   const execution = {
     passport: {
       passportId: "passport_018f0000-0000-7000-8000-000000001504",
@@ -140,11 +145,13 @@ export function openCodeFixture(overrides = {}, mode = "success") {
     calls,
     counters,
     execution,
+    running,
+    aborts: () => calls.filter(([name]) => name === "abort").length,
     request: (requestOverrides = {}) => mockRequest(requestOverrides),
     dependencies: (dependencyOverrides = {}) => ({
       command: [process.execPath, fakeOpenCodePath],
       minimumVersion: "1.17.18",
-      serverFactory: fakeOpenCodeFactory(mode, calls),
+      serverFactory: fakeOpenCodeFactory(mode, calls, markRunning),
       resolveExecution: async () => {
         counters.resolve += 1;
         return execution;
