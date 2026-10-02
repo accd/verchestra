@@ -373,6 +373,12 @@ approval makes the approval stale, and the run is refused until you plan again.
   is still working resumes by starting a new implementer session in the same
   worktree; writes it re-issues get new receipts. Only a run interrupted after
   the implementer finished resumes without repeating its effects.
+- **Task state stays inside the Workspace state directory.** `vestra task`
+  keeps its run records, its evidence key, and its verification checkouts in
+  `tasks`, `keys`, and `verification` beside `task-gates.json`. If one of them
+  is a link that leads outside that directory, every `task` command, a dry run
+  included, stops with `VES_STATE_ROOT_ESCAPE` before it writes anything
+  there. Remove the link.
 - **One writer per Workspace.** A running task holds the Workspace writer
   lease; a second run is refused until the first one ends. If the process of
   a run dies, `resume` or `cancel` that run to release the lease; otherwise it

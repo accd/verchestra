@@ -105,3 +105,15 @@ test("only the Run record module opens the checkpoint store or reads a checkpoin
   assert.deepEqual(offenders(cast, sources), [], "a checkpoint row is cast instead of read through a projection");
   assert.deepEqual(offenders(/\[\s*["'`](?:budgetLedger|toolReceiptRefs)["'`]\s*\]/u), []);
 });
+
+// invariant: the three task state roots beside the Workspace layout are named
+// in task-workspace.ts, which checks that each resolves inside the Workspace
+// state root; every other source takes them from the opened Workspace.
+test("only the task Workspace module names and checks a task state root", () => {
+  const workspace = sources.find(({ name }) => name === "task-workspace.ts")?.source ?? "";
+  for (const name of ["tasks", "keys", "verification"])
+    assert.match(workspace, quoted([name]), `task-workspace.ts no longer names ${name}`);
+  assert.match(workspace, /VES_STATE_ROOT_ESCAPE/u);
+  const joined = /workspaceRoot\s*,\s*["'`](?:tasks|keys|verification)["'`]/u;
+  assert.deepEqual(offenders(joined, sources), [], "a task state root is joined onto the Workspace root by hand");
+});
