@@ -1200,9 +1200,12 @@ note. -->
 - **Consequence:** `tests/contract/driver-session-runner.test.mjs` is the
   contract, and `tests/integration/driver-session-runner-drivers.test.mjs` runs
   it against the Claude Code, Codex and Pi drivers. The driver execution
-  adapter runs its session through it. The verifier and the two Self-Test
-  scenarios adopt it in the tasks that follow (T4b, T4c). One point is left
-  open: a cancelled
+  adapter, the verifier of `vestra task` and the two Self-Test scenarios run
+  their sessions through it, and
+  `tests/architecture/driver-session-runner-locality.test.mjs` fails when
+  another source of the composition root or of `agent-runtime` starts a driver
+  session. The verifier gained a cancel and the already-aborted check and no
+  longer swallows a metering defect. One point is left open: a cancelled
   Claude Code or Pi run still emits an error event after its terminal event
   and still answers `failed` on close. The runner tolerates that; changing it
   is a decision for the drivers. Evidence is in
