@@ -2,13 +2,13 @@
 schema: verchestra-feature-handoff/v1
 feature: architecture-deepening
 issue: null
-status: verification
+status: complete
 branch: main
-baseRevision: 9eb2881ea0c24c2bea9028036093e9cd8cbad3f9
+baseRevision: 5e588b1aeaecc6c84f7afbc4f921b7f2b23362f6
 lastCompletedTask: T4
-nextTask: "Every task of the programme is merged. Closing checks: the five-target candidate build from main (run 37046348715, in progress when this was written) and a fresh architecture review of main. Follow-ups in progress on their own branches: Run record hardening (fix/run-record-hardening) and the driver event order after a cancel (fix/driver-cancel-terminal-event)."
-lastGate: "Required checks and SonarCloud PASS on #466-#470; platform matrix PASS on the T4 branch at 2627e5d (build run 37040215226, security run 37040219530)"
-updatedAt: 2026-10-02T18:20:00Z
+nextTask: "No further action for this programme. Both closing checks are done and every follow-up it raised is merged. A second round on the candidates of the 2026-10-02 review is an owner decision."
+lastGate: "Five-target candidate build from main at 9eb2881 PASS (run 37046348715); follow-ups #473-#480 merged after the platform matrix passed on all five targets"
+updatedAt: 2026-10-03T00:00:00Z
 ---
 
 # Scope
@@ -79,17 +79,28 @@ pattern at a digit run; no alert is open.
 
 # Next Exact Action
 
-All tasks are merged. Two closing checks remain: the five-target candidate
-build from `main` at `9eb2881` (run 37046348715), and a fresh architecture
-review of that revision to confirm the eight frictions are gone.
+None for this programme. The two closing checks are done:
 
-Follow-ups, each on its own branch and with its own evidence: Run record
-hardening (`review` verifies the plan digest, containment below a per-Run
-root, sealing the five plain markers) and the driver event order after a
-cancel (nothing follows the terminal event).
+- **Candidate build.** The five-target candidate build from `main` at
+  `9eb2881` passed (run 37046348715).
+- **Fresh review.** The `improve-codebase-architecture` skill ran again on
+  `9eb2881` on 2026-10-02 and judged from the code, not from the evidence
+  files. Four of the eight frictions are gone (ADP-1, ADP-3, ADP-5, ADP-7) and
+  four are reduced (ADP-2: readers still return untyped rows; ADP-4: the Codex
+  driver signalled one process on two ends; ADP-6: the lease adapter only
+  forwards and six methods have test callers only; ADP-8: the value limit
+  exists twice). It found nine new candidates and two defects.
 
-`0.0.0-qualification.5` was published from `e17abb3`, before T4. A release
-that carries T4 is the next publication.
+Follow-ups merged after the review, each with its platform matrix before
+merge: Run record hardening (#473-#475), the driver event order after a cancel
+and every provider end through the tree termination (#476, #477; the ADP-4
+residue), the run's usage account (#478, #479; the review's first defect), and
+the launcher's group termination (#480; the review's second defect).
+
+Not started, an owner decision: a second round on the remaining candidates of
+that review (the ADP-2, ADP-6 and ADP-8 residues and the new candidates).
+`0.0.0-qualification.5` predates T4 and every follow-up; the next publication
+carries them.
 
 # Blockers
 

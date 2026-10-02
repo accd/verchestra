@@ -2,13 +2,13 @@
 schema: verchestra-feature-handoff/v1
 feature: verifier-usage-recorded
 issue: null
-status: verification
-branch: fix/run-usage-complete
-baseRevision: d9dc5d5b32405bfa2fbc2675be4d81a175152f80
+status: complete
+branch: main
+baseRevision: 150056e99c9442daf7905ed28cbabf290fdfacf2
 lastCompletedTask: T4
-nextTask: "Independent verification and human review of the second pull request (T2, T3, T4); the platform matrix before merge, because the new suites have run on macOS only; the decision is numbered at merge; the owner amends the live pilot's recording template."
-lastGate: "Node 24.14.0 macOS arm64 on the tree of the T4 commit: gate:quick PASS (unit 2504, agent-readiness 323, census 13); test:architecture 93; gate:build PASS (contract 782, integration 1056, e2e 261, build 146, qualification 329); gate:security PASS (security 1339, fault 310); task journeys 46; task composition and security 15; agent:check PASS; site:check PASS; 0 failed, 0 skipped, 0 todo; no provider called"
-updatedAt: 2026-10-02T22:27:09Z
+nextTask: "No further action for this feature: T1 merged as #478 (AD-055) and T2-T4 as #479 (AD-056). The live pilot pre-registration still describes the old meaning of checkpoints.budget; it is amended in the pilot's own change before any run on a release that carries this feature."
+lastGate: "Platform matrix PASS on five targets before each merge (#478: build 37067697399, security 37067700952; #479: build 37072700713, security 37072703814); required checks and SonarCloud PASS"
+updatedAt: 2026-10-03T00:00:00Z
 ---
 
 # Scope
@@ -56,10 +56,16 @@ Every requirement is mapped in `validation.md`.
 
 # Next Exact Action
 
-Submit the range `d9dc5d5..` the tip of `fix/run-usage-complete` for
-independent verification and human review. The decision is AD-056 in `.specs/STATE.md`. Run the platform matrix before it merges. The owner amends
-`.specs/features/live-task-pilot/spec.md`: `validation.md` lists the four
-statements with their lines.
+None for this feature. T1 merged as #478 (`d9dc5d5`, with one test variable
+renamed so that CodeQL would not read it as a secret) and T2-T4 as #479
+(`150056e`). Still open and recorded in `validation.md`: a converged attempt
+whose duration ceiling passed during its gates is committed before
+verification refuses.
+
+The live pilot's `spec.md` (§5 S2 and §7) describes `checkpoints.budget` as
+the implementer's usage. That is true of `0.0.0-qualification.5`, which
+predates this feature, and false of any later release. The pilot's own change
+amends it before a run on such a release.
 
 # Blockers
 
