@@ -173,9 +173,9 @@ test("unbilled usage stays unbilled and billed usage costs what the price table 
     billing: "subscription"
   });
 
-  const apiKey = await runWith(implementerLedger());
-  await meteredOnLedger(apiKey.checkpoints, undefined, spendVerifier);
-  const billed = await apiKey.recorded();
+  const pricedRun = await runWith(implementerLedger());
+  await meteredOnLedger(pricedRun.checkpoints, undefined, spendVerifier);
+  const billed = await pricedRun.recorded();
   assert.equal(billed.consumedCostUsd, priced(IMPLEMENTER) + priced(VERIFIER));
   assert.deepEqual(budgetStatus(billed), billed, "billed usage is reported as it is stored");
   assert.equal(capsuleBudgetConsumption(billed).consumed.costUsd, priced(IMPLEMENTER) + priced(VERIFIER));
