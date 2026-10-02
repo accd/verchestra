@@ -71,10 +71,18 @@ const REQUIREMENT_ID = ["VES", "EXE", "001"].join("-");
 // invariant: a task worktree as a run creates it: registered by the real
 // adapter under the fixture's worktrees root, with task-commit anchoring on.
 export async function taskWorktreeFixture(format, options = {}) {
-  const { NodeGitWorktreeAdapter } = await import("../../packages/platform-node/src/index.ts");
   const repository = await objectFormatRepository(format);
   const worktreesRoot = (await options.worktreesRoot?.(repository)) ?? repository.worktreesRoot;
-  const { repositoryRoot } = repository;
+  const fixture = await createTaskWorktree({ ...repository, worktreesRoot });
+  assert.equal(fixture.handle.baseCommit.length, format.objectIdLength);
+  return fixture;
+}
+
+// hazard: this part makes no fixture git call, only adapter calls, so a test
+// may run it under an environment that would misdirect the fixture's own git.
+export async function createTaskWorktree(repository) {
+  const { NodeGitWorktreeAdapter } = await import("../../packages/platform-node/src/index.ts");
+  const { repositoryRoot, worktreesRoot } = repository;
   const worktrees = new NodeGitWorktreeAdapter({ repositoryRoot, worktreesRoot, anchorTaskCommits: true });
   const handle = await worktrees.create({
     workspaceId: "workspace_c1",
@@ -85,9 +93,8 @@ export async function taskWorktreeFixture(format, options = {}) {
     changeScope: ["src"],
     protectedPaths: [".git"]
   });
-  assert.equal(handle.baseCommit.length, format.objectIdLength);
   const worktreePath = await worktrees.resolvePath(handle.worktreeRef);
-  return { ...repository, repositoryRoot, worktreesRoot, worktrees, handle, worktreePath };
+  return { ...repository, worktrees, handle, worktreePath };
 }
 
 // invariant: the one verified task commit of the fixture's run is written by

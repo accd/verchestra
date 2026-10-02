@@ -2,6 +2,8 @@ import { execFile } from "node:child_process";
 import { resolve } from "node:path";
 import { promisify } from "node:util";
 
+import { safeEnvironment } from "./safe-environment.ts";
+
 const execFileAsync = promisify(execFile);
 const MAXIMUM_GIT_OUTPUT_BYTES = 16 * 1024 * 1024;
 
@@ -109,13 +111,38 @@ export interface GitOutput {
 
 export type GitRunner = (cwd: string, args: readonly string[]) => Promise<GitOutput>;
 
+// why: the scrub must not cost git what it legitimately needs. These locate
+// the user's own configuration when it is not under HOME, and name the commit
+// identity when it is given by environment instead of configuration; none of
+// them can aim git at another repository or change what it executes.
+const GIT_VARIABLES = [
+  "XDG_CONFIG_HOME",
+  "GIT_AUTHOR_NAME",
+  "GIT_AUTHOR_EMAIL",
+  "GIT_COMMITTER_NAME",
+  "GIT_COMMITTER_EMAIL"
+] as const;
+
+// hazard: git reads its repository, index, object store, configuration, and
+// helper programs from GIT_* variables before it looks at its working
+// directory. An inherited GIT_DIR, GIT_CONFIG_* or GIT_EXEC_PATH would turn a
+// worktree operation into one on another repository or under other rules, so
+// git never inherits this process's environment.
+export function gitEnvironment(): NodeJS.ProcessEnv {
+  const environment = safeEnvironment();
+  for (const key of GIT_VARIABLES) {
+    if (process.env[key] !== undefined) environment[key] = process.env[key];
+  }
+  return environment;
+}
+
 function spawnOptions(cwd: string, maxBuffer: number) {
-  return { cwd, maxBuffer, windowsHide: true } as const;
+  return { cwd, env: gitEnvironment(), maxBuffer, windowsHide: true } as const;
 }
 
 // invariant: every git process the task path starts goes through runGit or
-// runGitBytes: an argument vector (never a shell), a bounded buffer, and an
-// explicit working directory.
+// runGitBytes: an argument vector (never a shell), a bounded buffer, an
+// explicit working directory, and the scrubbed environment above.
 export async function runGit(
   cwd: string,
   args: readonly string[],

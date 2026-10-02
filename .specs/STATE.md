@@ -828,6 +828,17 @@ note. -->
      reports a worktree Git still lists but whose directory was deleted as
      `VES_GIT_WORKTREE_NOT_FOUND` instead of a bare `ENOENT`, so that case
      still cancels.
+  6. **Git never inherits the process environment.** The module's runner is
+     the only place the task path starts git (an architecture test enforces
+     it), and it passes the scrubbed environment the gate runner already used
+     (`safeEnvironment`, now in
+     `packages/platform-node/src/safe-environment.ts`) plus five variables git
+     legitimately needs: `XDG_CONFIG_HOME`, which locates the user's own
+     configuration when it is not under `HOME`, and the author and committer
+     name and email variables, which name the commit identity when it is given
+     by environment. A `GIT_DIR`, `GIT_WORK_TREE`, `GIT_INDEX_FILE`,
+     `GIT_CONFIG_*`, or `GIT_EXEC_PATH` in the parent environment no longer
+     reaches a worktree operation.
 - **Alternatives rejected:** a typed handle object at the port (every test
   double and the durable checkpoints carry the handle as text, so the port
   would have to parse it and the encoding would leak inward into
@@ -836,7 +847,11 @@ note. -->
   repository at `task plan` (justified only if signed evidence could not carry
   a 64-digit ID, which it can); recording the abort and releasing the lease
   even when the idle cleanup is refused (the cancel would again report an end
-  state while the worktree remains, only with an error beside it).
+  state while the worktree remains, only with an error beside it); a
+  deny-list of `GIT_*` variables (git adds redirecting variables over time,
+  so only an allow-list fails closed); pinning the commit identity to a
+  Verchestra identity (the commit is the user's, and the trailers already
+  bind it to the run).
 - **Consequence:** `tests/architecture/task-worktree-locality.test.mjs` fails
   when another source under `packages/` or `apps/` spells out the handle
   encoding, the task branch name, or a trailer. An idle cancel that meets a

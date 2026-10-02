@@ -7,6 +7,7 @@ import type { TaskGateCommand, TaskGateRunnerResult } from "@verchestra/applicat
 
 import { NodeGitWorktreeAdapter } from "./git-worktree-adapter.ts";
 import { terminateProcessGroup } from "./process-tree-terminator.ts";
+import { safeEnvironment } from "./safe-environment.ts";
 import {
   isGitObjectId,
   parseWorktreeHandle,
@@ -77,15 +78,6 @@ export interface NodeGateProcessRunnerOptions {
   readonly worktreesRoot: string;
   readonly commands: Readonly<Record<string, GateCommandProfile>>;
   readonly environment?: Readonly<Record<string, string>>;
-}
-
-function safeEnvironment(explicit?: Readonly<Record<string, string>>): NodeJS.ProcessEnv {
-  if (explicit !== undefined) return { ...explicit, CI: "1", FORCE_COLOR: "0", NO_COLOR: "1" };
-  const result: NodeJS.ProcessEnv = { CI: "1", FORCE_COLOR: "0", NO_COLOR: "1" };
-  for (const key of ["PATH", "PATHEXT", "SystemRoot", "WINDIR", "TEMP", "TMP", "HOME", "USERPROFILE"]) {
-    if (process.env[key] !== undefined) result[key] = process.env[key];
-  }
-  return result;
 }
 
 function parseNodeTestSummary(output: string) {
