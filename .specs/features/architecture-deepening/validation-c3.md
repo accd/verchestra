@@ -119,14 +119,73 @@ Code spike suites. Unmutated copy: 241 passed, 0 failed.
 | Codex spells another driver's noun | 1: "codex session reference is local to one driver instance" |
 | OpenCode numbers one event itself | 3: two `opencode` rows in `M` and "OpenCode Driver emits common ordered Qwen lifecycle and reasoning usage" |
 | Claude Code keeps the child after the run | 1: "claude-code cancellation after execution is idempotent and closes once with its reason" |
-| **Pi gives the ledger no release hook** | **none** |
+| **Pi gives the ledger no release hook** | **none at the tip of T3a**; 5 since the Pi agent release suite was added (below) |
 
-The last row is a gap this change does not close. Once a Pi session has ended,
-nothing reachable through the `Driver` interface observes the agent, so no
-driver-level test can tell whether it was unsubscribed and reset. The same
-deletion in the hand-written `PiDriver` at `0158e48` fails no test either. What
-this change adds is the proof at the ledger's interface that the hook runs
-(`L:291-332`).
+At the tip of T3a the last row was a gap. Once a Pi session has ended, nothing
+reachable through the `Driver` interface observes the agent, so no test could
+tell whether it was unsubscribed and reset; the same deletion in the
+hand-written `PiDriver` at `0158e48` failed no test either. T3a proved only, at
+the ledger's interface, that the hook runs (`L:291-332`). The gap is closed by
+the suite below.
+
+### Pi's release hook at the driver (added after review)
+
+`A` is `tests/integration/pi-driver-agent-release.test.mjs`, a test-only commit
+on top of the version probe branch. It runs under `test:integration`. No
+product code changed.
+
+The driver builds its agent from the installed Pi package. `A` records
+`subscribe` on that package's `Agent` prototype, which yields the agent the
+driver built and changes nothing it does (`A:13-19`). Released means both
+halves of the hook ran: the agent's transcript is empty apart from the leading
+system message, and a prompt given to the agent afterwards really runs but
+reaches the session's sink with nothing (`A:29-35`).
+
+| Path on which a Pi session ends | Assertion evidence |
+| --- | --- |
+| A completed session is closed | `A:44-52`; the transcript is still there before the close (`A:49`) |
+| A session is cancelled after its run | `A:54-61` |
+| A running session is cancelled | `A:63-74`; the cancel itself releases the agent, before any close (`A:71`) |
+| A session whose run failed is closed | `A:76-85` |
+| A start that failed after subscribing is closed | `A:87-102` |
+
+The last path exists in one form only. After the agent is subscribed, every
+failure of the run is caught and reported as an event, so `start` rejects only
+when the sink itself throws. The caller then holds no session reference, only
+the identifier `session.started` announced; `A` closes the session with it and
+requires the release. Until that close the agent stays subscribed and unreset.
+That is what the hand-written driver did as well, and it is left unchanged.
+
+`A` also passes against the hand-written `PiDriver` of `0158e48` in a
+disposable copy (5 passed), so the hook's behaviour is the one the driver had.
+
+Discrimination, same method as above. Suites run: `A`, `L`, `M`,
+`tests/contract/pi-driver.test.mjs` and
+`tests/integration/pi-driver-lifecycle.test.mjs`. Unmutated copy: 110 passed.
+
+| Mutation in the copy | Failing cases |
+| --- | --- |
+| **Pi gives the ledger no release hook** | 5: every case of `A` |
+| The release hook does not unsubscribe | 5: every case of `A` |
+| The release hook does not reset the agent | 5: every case of `A` |
+| The subscription is never recorded for release | 5: every case of `A` |
+| The ledger skips release on close | 6: the three close cases of `A`, 3 in `L` |
+| The ledger skips release on cancel | 3: the two cancel cases of `A`, 1 in `L` |
+
+The abortable Pi fixture (`piAbortableFixture`) changed with it: only the first
+run hangs, and a later prompt to the same agent answers from queued responses.
+The running-cancel row of `M` passes unmodified against it.
+
+Gates on the commit that adds `A` (Node 24.14.0, macOS arm64, nothing skipped):
+
+| Command | Result |
+| --- | --- |
+| `node --test tests/integration/pi-driver-agent-release.test.mjs` | PASS — 5 |
+| `pnpm gate:quick` | PASS — unit 2422, agent-readiness 323, census 13 |
+| `pnpm test:integration` | PASS — 858 |
+| `pnpm test:contract` | PASS — 731 |
+| `pnpm qualify:pi` | PASS — 12 |
+| `pnpm agent:check` | PASS |
 
 ### Guardrails
 

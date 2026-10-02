@@ -52,14 +52,17 @@ export function piFixture(responses = [fauxAssistantMessage("hello")], options =
 }
 
 // why: a provider run that ends only when its own signal aborts, so a test can
-// observe that a cancel reached the provider and not only the ledger.
-export function piAbortableFixture() {
-  const fixture = piFixture();
-  const model = createFauxCore({ provider: "verchestra-pi-abortable" }).getModel();
+// observe that a cancel reached the provider and not only the ledger. Only the
+// first run hangs: a later prompt to the same agent answers from `laterResponses`.
+export function piAbortableFixture(laterResponses = []) {
+  const fixture = piFixture(laterResponses);
   const observed = { aborts: 0 };
   let markRunning;
   const running = new Promise((resolve) => (markRunning = resolve));
-  const streamFn = (_model, _context, options) => {
+  let hung = false;
+  const streamFn = (model, context, options) => {
+    if (hung) return fixture.faux.streamSimple(model, context, options);
+    hung = true;
     const stream = new AssistantMessageEventStream();
     options.signal.addEventListener(
       "abort",
@@ -72,11 +75,10 @@ export function piAbortableFixture() {
     markRunning();
     return stream;
   };
-  const passport = { ...fixture.execution.passport, provider: model.provider, api: model.api, resolvedModel: model.id };
   return {
     observed,
     running,
     request: fixture.request,
-    dependencies: () => fixture.dependencies({ model, streamFn, passport })
+    dependencies: () => fixture.dependencies({ streamFn })
   };
 }
