@@ -26,6 +26,7 @@ interface ReviewContext {
   readonly io: TaskCommandIo;
   readonly workspace: TaskWorkspace;
   readonly plan: TaskPlanRecord;
+  readonly pkg: Awaited<ReturnType<RunRecord["approvedPackage"]>>;
   readonly runtime: RuntimeStore;
   readonly runRecord: RunRecord;
   readonly checkpoints: RunCheckpoints;
@@ -78,8 +79,7 @@ async function capsuleInput(
   snapshot: RunSnapshot,
   review: Readonly<Record<string, unknown>>
 ) {
-  const { plan } = context;
-  const pkg = await context.runRecord.loadPackage(plan.packageId);
+  const { plan, pkg } = context;
   const grant = await context.runRecord.loadGrant();
   const events = context.runtime.listEvents(plan.runId);
   const terminal = events.at(-1) as Readonly<Record<string, unknown>>;
@@ -238,6 +238,10 @@ export async function reviewTask(
         { state, command: "review" },
         "Only a run in HUMAN_REVIEW can be reviewed"
       );
+    // invariant: the review seals a Run Capsule over the Execution Package the
+    // plan bound, so that package is proven before the surface is read, the
+    // human confirms, or the review is recorded, exactly as `approve` proves it.
+    const pkg = await runRecord.approvedPackage(plan);
     const surface = await reviewSurface(workspace.repositoryRoot, plan, runRecord);
     if (options.surfaceDigest !== surface.digest)
       throw taskError("VES_TASK_SURFACE_MISMATCH", {}, "The review surface changed or the digest is wrong");
@@ -254,7 +258,7 @@ export async function reviewTask(
     const policy = await loadTaskPolicy(io.controlRoot);
     const authority = new TaskAuthority({ runtime, plan, policy, trust: await workspaceTrustRoot(workspace) });
     const checkpoints = runRecord.checkpoints(runtime, plan.request.task.taskId);
-    const context: ReviewContext = { io, workspace, plan, runtime, runRecord, checkpoints, authority };
+    const context: ReviewContext = { io, workspace, plan, pkg, runtime, runRecord, checkpoints, authority };
     const review = await new HumanReviewCoordinator(reviewPorts(context)).review(
       reviewInput(context, surface, String(options.outcome), String(options.surfaceDigest))
     );

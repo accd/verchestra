@@ -905,3 +905,35 @@ test("SIGTERM while no provider is running still cancels the run", TIMEOUT, asyn
   assert.equal(status(fixture, plan.runId).state, "ABORTED");
   assert.deepEqual(logLines(fixture, "fake-codex.log"), [], "the verifier never started");
 });
+
+// invariant: `task review` proves the Execution Package against the plan as
+// `task approve` does, before it asks for the confirmation or records the
+// review. A package swapped after approval used to surface only when the Run
+// Capsule was sealed, after the review was recorded and the run had ended.
+test("review refuses a package swapped after approval and leaves the run in review", TIMEOUT, async (t) => {
+  if (!DARWIN) return notConfiguredOffMacOS(t);
+  const fixture = await taskFixture();
+  const plan = await approved(fixture);
+  const run = ok(start(fixture, plan.runId), "start");
+  const other = await planned(fixture);
+  const packageFile = (runId) => {
+    const directory = join(fixture.stateRoot, "tasks", runId, "packages");
+    const [name] = readdirSync(directory).filter((entry) => entry.endsWith(".json"));
+    return join(directory, name);
+  };
+  const runDirectory = join(fixture.stateRoot, "tasks", plan.runId);
+  const original = readFileSync(packageFile(plan.runId), "utf8");
+  await writeFile(packageFile(plan.runId), readFileSync(packageFile(other.runId), "utf8"));
+
+  const error = refused(review(fixture, plan.runId, "accepted", run.surfaceDigest), "VES_TASK_STATE_INVALID", "review");
+  assert.equal(error.safeDetails.reason, "VES_TASK_PACKAGE_INVALID");
+  const after = status(fixture, plan.runId);
+  assert.equal(after.state, "HUMAN_REVIEW", "a refused review ended the run");
+  assert.equal(after.evidence.reviewOutcome, null, "a refused review was recorded");
+  assert.equal(after.capsuleId, null);
+  assert.equal(existsSync(join(runDirectory, "review.json")), false);
+  assert.equal(existsSync(join(runDirectory, "capsules")), false);
+
+  await writeFile(packageFile(plan.runId), original);
+  assert.equal(ok(review(fixture, plan.runId, "accepted", run.surfaceDigest), "review").state, "COMPLETED");
+});

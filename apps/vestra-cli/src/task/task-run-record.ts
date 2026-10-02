@@ -294,12 +294,15 @@ export class RunRecord {
   // hazard: the package store creates its root when it reads, so this is the
   // one reader that is not free of effects. Every caller has read the plan
   // record first, so the Run directory already exists by then.
+  // hazard: this reader does not compare the package with the plan. A command
+  // reads the package through `approvedPackage`, never through this.
   loadPackage(packageId: string): Promise<SignedExecutionPackage> {
     return this.#packages().get(packageId);
   }
 
-  // invariant: the package the human approves is the one on disk, byte for byte
-  // the payload the plan bound; a swapped package fails before any approval.
+  // invariant: the package a human approves, and the one a review seals into
+  // the Run Capsule, is the one on disk, byte for byte the payload the plan
+  // bound; a swapped package fails before any approval or review is recorded.
   async approvedPackage(plan: Pick<TaskPlanRecord, "packageId" | "packageDigest">): Promise<SignedExecutionPackage> {
     let pkg: SignedExecutionPackage;
     try {
