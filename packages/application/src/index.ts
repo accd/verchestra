@@ -177,7 +177,9 @@ export {
 } from "./execution/gate-repair.ts";
 export {
   BudgetMeterError,
+  budgetBilling,
   createBudgetMeter,
+  type BudgetBilling,
   type BudgetLedger,
   type BudgetMeter,
   type BudgetMeterErrorCode,

@@ -38,6 +38,10 @@ export interface UsageEvent {
 
 export type BudgetStopReason = "cost-threshold" | "token-threshold" | "duration-threshold";
 
+// why: usage on a subscription is not billed per token, so it has tokens and
+// duration but no cost. The share of unbilled tokens says which a ledger holds.
+export type BudgetBilling = "per-token" | "subscription" | "mixed";
+
 export interface BudgetSnapshot {
   readonly schemaVersion: 1;
   readonly priceTableVersion: string;
@@ -48,6 +52,7 @@ export interface BudgetSnapshot {
   readonly consumedDurationMs: number;
   readonly usageEvents: number;
   readonly stopReason: BudgetStopReason | null;
+  readonly unbilledTokens?: number;
 }
 
 // The persistable part of a meter. A declared budget is a budget for the whole
@@ -60,6 +65,10 @@ export interface BudgetLedger {
   readonly consumedDurationMs: number;
   readonly usageEvents: number;
   readonly stopReason: BudgetStopReason | null;
+  // invariant: present only when the run was metered with a model that is not
+  // billed per token, so a ledger of billed usage alone is byte-identical to
+  // one written before.
+  readonly unbilledTokens?: number;
 }
 
 export interface BudgetMeter {
@@ -93,6 +102,24 @@ function ledgerAmount(value: unknown, label: string): number {
   return value;
 }
 
+function ledgerCount(value: unknown, label: string): number {
+  if (!Number.isSafeInteger(value) || (value as number) < 0) fail("VES_BUDGET_INVALID", `resumed ${label} is invalid`);
+  return value as number;
+}
+
+// hazard: unbilled tokens above the consumed total would let a resumed ledger
+// report billed usage as not billed.
+function resumedUnbilledTokens(value: unknown, consumedTokens: number): { readonly unbilledTokens?: number } {
+  if (value === undefined) return {};
+  const unbilledTokens = ledgerCount(value, "unbilledTokens");
+  if (unbilledTokens > consumedTokens) fail("VES_BUDGET_INVALID", "resumed unbilledTokens is invalid");
+  return { unbilledTokens };
+}
+
+function unbilledField(reported: boolean, unbilledTokens: number): { readonly unbilledTokens?: number } {
+  return reported ? { unbilledTokens } : {};
+}
+
 function normalizeLedger(value: unknown): BudgetLedger {
   if (value === null || typeof value !== "object") fail("VES_BUDGET_INVALID", "resumed ledger is invalid");
   const ledger = value as Record<string, unknown>;
@@ -102,19 +129,48 @@ function normalizeLedger(value: unknown): BudgetLedger {
     !["cost-threshold", "token-threshold", "duration-threshold"].includes(stopReason as string)
   )
     fail("VES_BUDGET_INVALID", "resumed stop reason is invalid");
-  const consumedTokens = ledger["consumedTokens"];
-  const usageEvents = ledger["usageEvents"];
-  if (!Number.isSafeInteger(consumedTokens) || (consumedTokens as number) < 0)
-    fail("VES_BUDGET_INVALID", "resumed consumedTokens is invalid");
-  if (!Number.isSafeInteger(usageEvents) || (usageEvents as number) < 0)
-    fail("VES_BUDGET_INVALID", "resumed usageEvents is invalid");
+  const consumedTokens = ledgerCount(ledger["consumedTokens"], "consumedTokens");
   return Object.freeze({
     consumedCostUsd: ledgerAmount(ledger["consumedCostUsd"], "consumedCostUsd"),
-    consumedTokens: consumedTokens as number,
+    consumedTokens,
     consumedDurationMs: ledgerAmount(ledger["consumedDurationMs"], "consumedDurationMs"),
-    usageEvents: usageEvents as number,
-    stopReason: stopReason as BudgetStopReason | null
+    usageEvents: ledgerCount(ledger["usageEvents"], "usageEvents"),
+    stopReason: stopReason as BudgetStopReason | null,
+    ...resumedUnbilledTokens(ledger["unbilledTokens"], consumedTokens)
   });
+}
+
+function unbilledModelSet(models: unknown): ReadonlySet<string> {
+  if (models === undefined) return new Set();
+  if (!Array.isArray(models) || models.some((model) => typeof model !== "string" || model.length === 0))
+    fail("VES_BUDGET_INVALID", "unbilledModels must name models");
+  return new Set(models as readonly string[]);
+}
+
+function resumedUnbilled(ledger: BudgetLedger | undefined): number {
+  return ledger?.unbilledTokens ?? 0;
+}
+
+// why: a run metered with an unbilled model says so even before its first
+// usage event, so a subscription run that consumed nothing is not reported
+// with a dollar figure of zero.
+function unbilledReported(models: ReadonlySet<string>, ledger: BudgetLedger | undefined): boolean {
+  return models.size > 0 || ledger?.unbilledTokens !== undefined;
+}
+
+// hazard: silent zero-cost for an unpriced model is a budget bypass, so an
+// unknown model stops the run instead of running for free.
+function pricedCost(table: ModelPriceTable, model: string, inputTokens: number, outputTokens: number): number {
+  const price = table.models[model];
+  if (price === undefined) fail("VES_BUDGET_MODEL_UNKNOWN", `model ${model} has no priced entry`);
+  return (inputTokens * price.inputPerMToken + outputTokens * price.outputPerMToken) / 1_000_000;
+}
+
+export function budgetBilling(ledger: Pick<BudgetLedger, "consumedTokens" | "unbilledTokens">): BudgetBilling {
+  const unbilledTokens = ledger.unbilledTokens;
+  if (unbilledTokens === undefined) return "per-token";
+  if (unbilledTokens === ledger.consumedTokens) return "subscription";
+  return unbilledTokens === 0 ? "per-token" : "mixed";
 }
 
 export function createBudgetMeter(options: {
@@ -125,6 +181,10 @@ export function createBudgetMeter(options: {
   // Prior consumption to continue from, so one declared budget spans every
   // executor call and survives a crash between them.
   readonly resume?: unknown;
+  // why: models the caller reaches through a subscription. Their usage counts
+  // toward the token and duration ceilings and is never priced; every other
+  // model keeps the priced path and still fails closed without a price.
+  readonly unbilledModels?: readonly string[];
 }): BudgetMeter {
   const declared = Object.freeze({
     maximumCostUsd: positive(options.budgets?.maximumCostUsd, "maximumCostUsd"),
@@ -138,6 +198,7 @@ export function createBudgetMeter(options: {
     fail("VES_BUDGET_INVALID", "price table version is required");
   const now = options.now ?? (() => Date.now());
   const resumed = options.resume === undefined ? undefined : normalizeLedger(options.resume);
+  const unbilledModels = unbilledModelSet(options.unbilledModels);
   const threshold = thresholdPercent / 100;
   // Resuming backdates the start so elapsed time continues across attempts and
   // across a crash, rather than restarting the clock at zero.
@@ -146,6 +207,8 @@ export function createBudgetMeter(options: {
   let consumedCostUsd = resumed?.consumedCostUsd ?? 0;
   let consumedTokens = resumed?.consumedTokens ?? 0;
   let usageEvents = resumed?.usageEvents ?? 0;
+  let unbilledTokens = resumedUnbilled(resumed);
+  const reportsUnbilled = unbilledReported(unbilledModels, resumed);
   let stopReason: BudgetStopReason | null = resumed?.stopReason ?? null;
 
   const consumedDurationMs = () => Math.max(0, now() - startedAt);
@@ -170,11 +233,8 @@ export function createBudgetMeter(options: {
       const outputTokens = tokenCount(event.outputTokens, "outputTokens");
       if (typeof event.model !== "string" || event.model.length === 0)
         fail("VES_BUDGET_USAGE_INVALID", "usage model is invalid");
-      const price = options.priceTable.models[event.model];
-      // Silent zero-cost for an unpriced model is a budget bypass, so an
-      // unknown model stops the run instead of running for free.
-      if (price === undefined) fail("VES_BUDGET_MODEL_UNKNOWN", `model ${event.model} has no priced entry`);
-      consumedCostUsd += (inputTokens * price.inputPerMToken + outputTokens * price.outputPerMToken) / 1_000_000;
+      if (unbilledModels.has(event.model)) unbilledTokens += inputTokens + outputTokens;
+      else consumedCostUsd += pricedCost(options.priceTable, event.model, inputTokens, outputTokens);
       consumedTokens += inputTokens + outputTokens;
       usageEvents += 1;
       evaluate();
@@ -192,7 +252,8 @@ export function createBudgetMeter(options: {
         consumedTokens,
         consumedDurationMs: consumedDurationMs(),
         usageEvents,
-        stopReason
+        stopReason,
+        ...unbilledField(reportsUnbilled, unbilledTokens)
       });
     },
     snapshot(): BudgetSnapshot {
@@ -205,7 +266,8 @@ export function createBudgetMeter(options: {
         consumedTokens,
         consumedDurationMs: consumedDurationMs(),
         usageEvents,
-        stopReason
+        stopReason,
+        ...unbilledField(reportsUnbilled, unbilledTokens)
       });
     }
   });

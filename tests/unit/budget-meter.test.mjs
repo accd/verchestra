@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { createBudgetMeter } from "../../packages/application/src/execution/budget-meter.ts";
+import { budgetBilling, createBudgetMeter } from "../../packages/application/src/execution/budget-meter.ts";
 
 const PRICES = Object.freeze({
   version: "test.1",
@@ -119,4 +119,108 @@ test("the snapshot is frozen evidence, not a live view", () => {
   meter.recordUsage({ model: "priced-model", inputTokens: 10, outputTokens: 0 });
   assert.equal(snapshot.usageEvents, 0);
   assert.equal(meter.snapshot().usageEvents, 1);
+});
+
+// invariant: usage on a subscription has tokens and duration but no cost
+// (SPA-17). A model named as unbilled is never priced; every other model keeps
+// the priced path and still fails closed without a price.
+const subscription = (overrides = {}) =>
+  createBudgetMeter({
+    budgets: { maximumCostUsd: 1, maximumTokens: 1_000, maximumDurationMs: 60_000 },
+    priceTable: PRICES,
+    unbilledModels: ["plan-model"],
+    ...overrides
+  });
+
+test("usage of an unbilled model counts tokens and events and adds no cost", () => {
+  const meter = subscription();
+  meter.recordUsage({ model: "plan-model", inputTokens: 100, outputTokens: 50 });
+  const ledger = meter.ledger();
+  assert.equal(ledger.consumedCostUsd, 0);
+  assert.equal(ledger.consumedTokens, 150);
+  assert.equal(ledger.unbilledTokens, 150);
+  assert.equal(ledger.usageEvents, 1);
+  assert.equal(meter.snapshot().unbilledTokens, 150);
+  assert.equal(budgetBilling(ledger), "subscription");
+  assert.equal(meter.shouldStop().stop, false);
+});
+
+test("an unbilled model still stops at the token and duration thresholds, never at the cost one", () => {
+  const tokens = subscription();
+  tokens.recordUsage({ model: "plan-model", inputTokens: 500, outputTokens: 400 });
+  assert.deepEqual(tokens.shouldStop(), { stop: true, reason: "token-threshold" });
+  assert.equal(tokens.ledger().consumedCostUsd, 0);
+  let now = 0;
+  const duration = subscription({ now: () => now });
+  duration.recordUsage({ model: "plan-model", inputTokens: 1, outputTokens: 1 });
+  now = 54_000;
+  assert.deepEqual(duration.shouldStop(), { stop: true, reason: "duration-threshold" });
+});
+
+test("an unbilled model needs no price, while a billed unknown model still fails closed", () => {
+  const meter = subscription({ unbilledModels: ["other-plan-model"] });
+  meter.recordUsage({ model: "other-plan-model", inputTokens: 10, outputTokens: 10 });
+  assert.equal(meter.ledger().unbilledTokens, 20);
+  assert.throws(() => meter.recordUsage({ model: "unpriced-model", inputTokens: 1, outputTokens: 1 }), {
+    code: "VES_BUDGET_MODEL_UNKNOWN"
+  });
+  // invariant: without the mode's declaration the same model is billed, and
+  // a billed model without a price never runs for free.
+  for (const unbilledModels of [undefined, []])
+    assert.throws(
+      () => subscription({ unbilledModels }).recordUsage({ model: "plan-model", inputTokens: 1, outputTokens: 1 }),
+      { code: "VES_BUDGET_MODEL_UNKNOWN" }
+    );
+});
+
+test("billed and unbilled usage in one run is mixed, and only the billed part has a cost", () => {
+  const meter = subscription();
+  meter.recordUsage({ model: "plan-model", inputTokens: 100, outputTokens: 0 });
+  meter.recordUsage({ model: "priced-model", inputTokens: 100, outputTokens: 0 });
+  const ledger = meter.ledger();
+  assert.equal(ledger.consumedTokens, 200);
+  assert.equal(ledger.unbilledTokens, 100);
+  assert.equal(ledger.consumedCostUsd, (100 * PRICES.models["priced-model"].inputPerMToken) / 1_000_000);
+  assert.equal(budgetBilling(ledger), "mixed");
+});
+
+test("a ledger of billed usage alone carries no unbilled member, exactly as before", () => {
+  const meter = subscription({ unbilledModels: undefined });
+  meter.recordUsage({ model: "priced-model", inputTokens: 10, outputTokens: 10 });
+  assert.deepEqual(Object.keys(meter.ledger()), [
+    "consumedCostUsd",
+    "consumedTokens",
+    "consumedDurationMs",
+    "usageEvents",
+    "stopReason"
+  ]);
+  assert.equal(Object.hasOwn(meter.snapshot(), "unbilledTokens"), false);
+  assert.equal(budgetBilling(meter.ledger()), "per-token");
+});
+
+test("unbilled tokens survive a resume and a tampered count is refused", () => {
+  const first = subscription();
+  first.recordUsage({ model: "plan-model", inputTokens: 100, outputTokens: 50 });
+  const resumed = subscription({ resume: first.ledger() });
+  resumed.recordUsage({ model: "plan-model", inputTokens: 10, outputTokens: 0 });
+  assert.equal(resumed.ledger().unbilledTokens, 160);
+  assert.equal(resumed.ledger().consumedTokens, 160);
+  for (const unbilledTokens of [151, -1, 1.5, "150"])
+    assert.throws(() => subscription({ resume: { ...first.ledger(), unbilledTokens } }), {
+      code: "VES_BUDGET_INVALID"
+    });
+  for (const unbilledModels of ["plan-model", [""], [1]])
+    assert.throws(() => subscription({ unbilledModels }), { code: "VES_BUDGET_INVALID" });
+});
+
+test("a run metered for a subscription reports no dollar figure even before its first usage", () => {
+  const meter = subscription();
+  assert.equal(meter.ledger().unbilledTokens, 0);
+  assert.equal(budgetBilling(meter.ledger()), "subscription");
+  const resumed = meterWith({ resume: meter.ledger() });
+  assert.equal(resumed.ledger().unbilledTokens, 0);
+  // invariant: once billed usage arrives with none unbilled, the run is
+  // billed per token, not mixed.
+  resumed.recordUsage({ model: "priced-model", inputTokens: 10, outputTokens: 0 });
+  assert.equal(budgetBilling(resumed.ledger()), "per-token");
 });
