@@ -2,13 +2,13 @@
 schema: verchestra-feature-handoff/v1
 feature: run-record-hardening
 issue: null
-status: verification
-branch: fix/run-record-hardening
-baseRevision: 77c7b8e51ca8d2b21a6b688d2e353421b0c874d8
+status: complete
+branch: main
+baseRevision: bde8ad93730c412d66bd3b01dd3f3c9f6ed10897
 lastCompletedTask: T3
-nextTask: "Independent verification and human review of the three ranges, one pull request each, in order; the platform matrix on each range, because the new suites have run on macOS only."
-lastGate: "Node 24.14.0 macOS arm64 on the tree of the T3 commit: gate:quick PASS (unit 2504, agent-readiness 323, census 13); test:architecture 90; gate:build PASS (contract 756, integration 1009, e2e 257, build 146, qualification 302); gate:security PASS (security 1339, fault 310); task journeys 42; agent:check PASS; site:check PASS; 0 failed, 0 skipped, 0 todo; no provider called"
-updatedAt: 2026-10-03T00:30:00Z
+nextTask: "No further action for this feature: T1-T3 merged as #473, #474 and #475 (AD-050 to AD-052) after the platform matrix passed on all five targets."
+lastGate: "Platform matrix PASS on five targets at the branch tip (build run 37062121997, security run 37062125645); required checks and SonarCloud PASS on #473-#475"
+updatedAt: 2026-10-03T00:00:00Z
 ---
 
 # Scope
@@ -58,11 +58,10 @@ Every requirement is mapped in `validation.md`.
 
 # Next Exact Action
 
-Submit the three ranges for independent verification and human review, one
-pull request each, in order: T1 `77c7b8e..f6a6e8b`, T2 `f6a6e8b..71fec27`, T3
-`71fec27..` the tip of `fix/run-record-hardening`. Run the platform matrix on
-each range before it merges: `validation.md` lists what has never run off
-macOS. The three decisions are AD-050, AD-051 and AD-052 in `.specs/STATE.md`.
+None. T1 merged as #473 (`29e1007`), T2 as #474 (`daf05e1`), T3 as #475
+(`bde8ad9`). The junction cases and the link journeys ran off macOS for the
+first time in the platform matrix before merge (build run 37062121997,
+security run 37062125645), and passed on all five targets.
 
 # Blockers
 
