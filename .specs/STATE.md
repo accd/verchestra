@@ -1491,6 +1491,100 @@ note. -->
   of the same user, which the governed task threat model places out of
   scope. Evidence is in `.specs/features/run-record-hardening/validation.md`.
 
+### AD-053 — A stopped session's run reports first, one terminal event follows, and nothing follows that event; the session ledger owns the order (ADP-3, ADP-4)
+
+- **Status:** proposed (ratified by reviewing the pull request that carries
+  the cancel order range of `fix/driver-cancel-terminal-event`).
+- **Context:** Cancelling a running session made a driver emit
+  `session.closed` with `cancelled`, then an error event, and `close` then
+  answered `failed`. AD-045 kept that order and AD-048 made the session runner
+  tolerate it. Recording the four sequences showed four different causes
+  behind one symptom. The Claude Code and Codex runs were not told that a
+  cancel had terminated their provider, so the child's exit handler reported a
+  process that died (`VES_CLAUDE_STREAM_INCOMPLETE`,
+  `VES_CODEX_PROCESS_FAILED`). The Pi cancel released the agent, which resets
+  its transcript, before the run had read from that transcript how it ended,
+  so the run reported `VES_PI_RUNTIME_FAILED`, for the session runner's stop
+  as well. The OpenCode cancel stopped nothing: the provider kept working and
+  its events followed the terminal event.
+- **Decision:**
+  1. **The session ledger owns the order of a cancel-initiated end.** A driver
+     brackets the run that reports how it ended (`runStarted`, and the
+     function it returns). A cancel that stopped the provider waits for a run
+     in flight before it emits the terminal event. The run's own report
+     therefore comes first, and the terminal event carries the outcome that
+     report recorded.
+  2. **A terminal session accepts no further event.** What is emitted after
+     the terminal event is not delivered and not numbered.
+  3. **A late event is dropped, not counted.** The reason to keep it would be
+     an error that explains a failure the stop did not cause. Item 1 delivers
+     that error before the terminal event, where it decides the outcome, so it
+     cannot be late. What can still arrive after a terminal event is the
+     output of a run whose session was closed while it ran, and a count of it
+     would have no reader: the close that could report it has already
+     answered.
+  4. **An outcome is recorded once.** The first `failed` or `cancelled`
+     stands, and nothing changes it after the terminal event, so `close`
+     answers what the terminal event said. A stop therefore never relabels a
+     failure that preceded it, by `cancel()` or by the start signal, and a
+     failure a provider reports after the stop does not turn the stop into a
+     failure.
+  5. In the drivers only what the ledger cannot know changes. A Claude Code
+     or Codex cancel marks the run as stopped through the same request as an
+     aborted start signal, so the run ends as `VES_CLAUDE_ABORTED` or
+     `VES_CODEX_ABORTED`; the one termination per child of AD-049 is the only
+     caller of the terminator, as before. A Codex stop no longer marks a run
+     whose stream had already failed, so that failure keeps its own code. The
+     OpenCode driver gives the ledger a stop hook: a cancel aborts the SDK
+     session and closes the isolated server, as an aborted start signal does.
+     The Pi driver only brackets its run.
+  6. **The session runner keeps its rule that a stop always ends as
+     `cancelled`** (AD-048, item 4). The end it was written for no longer
+     occurs with the four drivers, but the rule is still reachable: a session
+     that had failed before the stop now closes as `failed`, a cancel can fail
+     and leave the close to say how the run ended, a start can reject after
+     the stop, and a driver that keeps no session ledger (the deterministic
+     mock, or a later driver) may still report an error after its terminal
+     event. The runner's source changes in a comment only.
+  7. No error code or message is added, removed or changed. The four drivers
+     are requalified with reports of their own; no existing report is edited.
+- **Alternatives rejected:** dropping late events in the ledger and changing
+  no driver (a stream failure that preceded the stop would be dropped with the
+  rest, and the session would close as `cancelled`); delivering a late error
+  through the result of `close` (the terminal event would then say `cancelled`
+  and the close `failed`, which is the defect); counting late events (item 3);
+  letting `failed` outrank `cancelled` instead of recording the first (a
+  provider that reports the abort as an error would turn every stop into a
+  failure); a run that is implicitly in flight from `open` until the driver
+  says otherwise (a start that fails before its run begins would leave every
+  later cancel waiting); the wait inside each driver's stop hook (four copies
+  of the order the ledger exists to own); marking the Pi run (its
+  classification reads the agent's own stop reason, which the cancel already
+  sets); refusing a `close` while a run is in flight (it changes what `close`
+  answers to a caller that closes early, which is not this defect; it is left
+  as the open point below).
+- **Consequence:** `tests/contract/driver-session-ledger.test.mjs` asserts the
+  order at the ledger's interface; its case "an event emitted after the
+  terminal event is still delivered and numbered" is replaced by its opposite.
+  `tests/contract/driver-lifecycle-matrix.test.mjs` gains a cancel order axis
+  for the four drivers, and `pnpm qualify:claude`, `qualify:codex`,
+  `qualify:opencode` and `qualify:pi` each pin their driver's exact sequences
+  through one shared contract (`tests/helpers/driver-cancel-order-fixture.mjs`).
+  A caller of a driver can notice five things: the error event of a stopped
+  run comes before the terminal event and is the driver's `…_ABORTED`; `close`
+  answers `cancelled` for it; `cancel()` of a running session resolves once
+  the run has reported, not as soon as the provider was told to stop; a
+  session that had failed before it was stopped closes as `failed`; and an
+  OpenCode cancel stops the provider. Through the session runner the outcome
+  of a stop is unchanged. One point is left open: a session closed while its
+  run is in flight is terminal at once, and what the run reports afterwards
+  is dropped. No composition does that. Evidence is in
+  `.specs/features/architecture-deepening/validation-cancel-order.md` and in
+  `docs/qualification/claude-code-driver-cancel-order.md`,
+  `docs/qualification/codex-driver-cancel-order.md`,
+  `docs/qualification/opencode-driver-cancel-order.md` and
+  `docs/qualification/pi-driver-cancel-order.md`.
+
 ## Handoff
 
 - **Feature:** `subscription-provider-auth` (ADP-A, tasks TA1 and TA2) on
