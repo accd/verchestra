@@ -192,5 +192,94 @@ Verification:
   again. The active pointer matched the expected release digest after each
   step.
 
-Not yet done: `npm publish` of the `.4` launcher (owner two-factor step), and
-the five-target `live-activation-matrix` run with base `.3` and update `.4`.
+Done on 2026-10-02: the owner published the `.4` launcher to npm, and the
+five-target `live-activation-matrix` run with base `.3` and update `.4` is
+recorded in the next section.
+
+## Live update and rollback on all five targets — run 36997576112 (2026-10-02, #387)
+
+The first live run between two releases on one trust root, both built from a
+revision that carries AD-036. It closes the update/rollback leg that run
+33087399859 left open.
+
+- Workflow: `.github/workflows/live-activation-matrix.yml`
+- Run: <https://github.com/accd/verchestra/actions/runs/36997576112>
+- Dispatched revision: `44c1c100ffdaf6764f34d6f00262d695ef126921` (`main`)
+- Inputs: `base_version=0.0.0-qualification.3`,
+  `update_version=0.0.0-qualification.4`
+- Started 2026-10-02T10:49:12Z, finished 2026-10-02T10:57:13Z
+- Packages: `verchestra@0.0.0-qualification.3` and
+  `verchestra@0.0.0-qualification.4` from the public npm registry (`.4` is
+  `latest`, tarball shasum `39b6930385a5fd9d8c9d8a0b6420be9f7a269c6e`); release
+  bytes from the live R2 endpoint (`v3/` and `v4/`).
+
+### Per-target result (exit code per phase)
+
+| Target       | activate | update | rollback | self-test | recover | overall |
+| ------------ | -------- | ------ | -------- | --------- | ------- | ------- |
+| win32-x64    | 0        | 0      | 0        | PASS      | 0       | 0       |
+| linux-x64    | 0        | 0      | 0        | PASS      | 0       | 0       |
+| linux-arm64  | 0        | 0      | 0        | PASS      | 0       | 0       |
+| darwin-x64   | 0        | 0      | 0        | PASS      | 0       | 0       |
+| darwin-arm64 | 0        | 0      | 0        | PASS      | 0       | 0       |
+
+### Active pointer after each phase
+
+The workflow records `active.json` after `activate`, `update` and `rollback`.
+The release ids are `release:verchestra:0.0.0-qualification.3:6725554a8e14`
+(base) and `release:verchestra:0.0.0-qualification.4:d58a25f3d80a` (update) on
+every target. The release digests differ per target:
+
+| Target       | after activate and after rollback (`.3`) | after update (`.4`)        |
+| ------------ | ---------------------------------------- | -------------------------- |
+| win32-x64    | `sha256:abb36c03…d249345d`               | `sha256:9017bd8c…e3d7a0a3` |
+| linux-x64    | `sha256:4d37e19f…4ccdfb0c`               | `sha256:f946315d…cf33ced5` |
+| linux-arm64  | `sha256:1917895c…fa8b0295`               | `sha256:7a83a32c…657b7864` |
+| darwin-x64   | `sha256:006af2c0…591def37`               | `sha256:2337d44b…f194e712` |
+| darwin-arm64 | `sha256:ad0b8f9b…30ea21b9`               | `sha256:3ffe9a7f…a31d8fb3` |
+
+On every target `rollback.active.json` is byte-identical to
+`activate.active.json`, and `update.active.json` names `.4`. The rollback
+therefore did not pass trivially: the update moved the pointer and the rollback
+restored it.
+
+### Transcripts
+
+Each leg uploaded `live-activation-<target>-36997576112` (phase logs, the three
+pointer files and `summary.txt`). The artifact digest is the one GitHub records
+for the uploaded archive; the summary digest is `sha256` of `summary.txt`.
+
+| Target       | Artifact digest (sha256)                                           | `summary.txt` (sha256)                                             |
+| ------------ | ------------------------------------------------------------------ | ------------------------------------------------------------------ |
+| win32-x64    | `becfee54735f6751355ec74d4fb4208fc558089aa3f3b8594645973d80bd4222` | `b1073a660a724ea6c501dd8727064563adc89253a1e2babf0b117cb722ce7261` |
+| linux-x64    | `aec4582413caf116035b22e5a4c00621c7d9a4875583fb4c7f8af71a2769b94a` | `a1ca2f80b94a0161d1dd8354e0172cf6970a1f9ced825269dc21f5672b0f8a01` |
+| linux-arm64  | `0ab4b7c2912d2baf44c3253945a3f0aa282c71e431d21c86e1bfddc4c5734359` | `518a55cbec9d101391bcdb9de93efbe38ec849ef8f35df4ddbf386fd07f56fb0` |
+| darwin-x64   | `11fd7a03a25473ece205c5624d06d05a58b7afbe85f9493147846eff190eec6c` | `70b0bbe5c2292e489739aa3c05c07f3a661b0e569dc8374a8daca9482987dcf8` |
+| darwin-arm64 | `8e43a98e22d8a89a19b87f455d8052cc6df193218428788269e7bb78c6e14b14` | `8e56339145c15c0ee5a84916fc0bb2be5b0b75ede8c2fa149825e13395a4ad5b` |
+
+The artifacts expire on 2026-11-01; until then `gh run download 36997576112`
+reproduces them.
+
+### What is proven live, on all five targets
+
+- **Update in place.** A machine that activated `.3` activated `.4` with exit
+  `0`. The two releases share one trust root and `.4` carries a strictly
+  greater metadata version, so the metadata-version collision of #387 does not
+  occur.
+- **Rollback.** Re-invoking the `.3` launcher after the update exits `0` and
+  restores the base pointer byte for byte. This is the retained-release path
+  (AD-036): anti-rollback is unchanged, and the launcher re-activates a
+  release this machine already verified.
+- **Self-test.** `self-test --profile smoke` returns `verdict: PASS`,
+  `check_count: 6`, `failure_codes: []` on every target.
+- **Recovery.** After the managed state root is wiped, activation from nothing
+  exits `0` on every target.
+
+### What this does not prove
+
+- The source-side roll-forward (a new forward publication whose targets point
+  at an older release's bytes). No such publication exists.
+- An uninstall or purge against a live install. That part of J02 stays proven
+  deterministically (`tests/e2e/installer-lifecycle-matrix.test.mjs`).
+- Anything about custody: one operator signed and published both releases
+  (acceptance matrix L8).

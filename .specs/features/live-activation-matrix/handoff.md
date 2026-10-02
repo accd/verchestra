@@ -2,16 +2,27 @@
 schema: verchestra-feature-handoff/v1
 feature: live-activation-matrix
 issue: 18
-status: blocked
-branch: docs/387-ledger-qualification-3
-baseRevision: b173de01799be53d35f244b6835c6dae35eccf00
+status: complete
+branch: docs/387-live-update-rollback-evidence
+baseRevision: d0748dc43ab02799e862f620aa4599b8ca303fda
 lastCompletedTask: null
-nextTask: "Publish a second release on the .3 root (.4, metadata_version 3, same expires so the root digest is unchanged), then run this matrix with base_version=0.0.0-qualification.3 and update_version=0.0.0-qualification.4; its rollback phase exercises the retained-release path (AD-036) and checks the active pointer. Record run ids and transcript digests here and close #387."
-lastGate: ".3 published 2026-10-01: 1275/1275 objects verified live (200 + sha256 for metadata, 206 ranges for targets); fresh npx verchestra activates .3 and self-test smoke PASS"
-updatedAt: 2026-10-01T21:00:00Z
+nextTask: "No further action for this feature: run 36997576112 passed activate, update, rollback, self-test and recover on all five targets with base 0.0.0-qualification.3 and update 0.0.0-qualification.4 (validation.md), and #387 is closed. Acceptance-matrix J02 and L7 are updated in a separate reviewed change."
+lastGate: "live-activation-matrix run 36997576112: five of five legs exit 0; rollback restored the base active pointer byte for byte on every target"
+updatedAt: 2026-10-02T11:10:00Z
 ---
 
 # Live activation matrix (#18, L7)
+
+## Result of run 36997576112 (2026-10-02): the update/rollback leg is closed
+
+With base `0.0.0-qualification.3` and update `0.0.0-qualification.4`, both on
+the role-separated root and both built from a revision that carries AD-036,
+every phase exits `0` on all five targets: activate, update, rollback,
+self-test smoke, and recover. The update moved the active pointer to `.4` and
+the rollback restored the `.3` pointer byte for byte. See `validation.md`.
+Steps 1 to 5 of "Next (reconciled 2026-09-29, #407)" below are done, except
+the acceptance-matrix update in step 5, which is a separate reviewed change.
+The sections below are kept as the history of how the leg was closed.
 
 The workflow `.github/workflows/live-activation-matrix.yml` (from #381) runs the
 installed-user lifecycle on all five supported targets against the published npm
@@ -74,9 +85,8 @@ verifies by content (`gh run download 33087399859`).
 
 # Blockers
 
-- **Owner-gated publication.** This covers the online key and anchor, the `.3`
-  and later same-root publications, R2 upload, and `npm publish` under 2FA
-  (#387).
+None. The owner-gated publications (`.3` and `.4`, R2 upload, `npm publish`)
+were done on 2026-10-01 and 2026-10-02.
 
 ## Rollback after a successful update (#393, AD-036)
 
