@@ -366,8 +366,16 @@ approval makes the approval stale, and the run is refused until you plan again.
   [docs/qualification/claude-code-driver-process-tree.md](qualification/claude-code-driver-process-tree.md)
   and
   [docs/qualification/codex-driver-process-tree.md](qualification/codex-driver-process-tree.md).
-  If the `vestra` process itself is killed, or its terminal goes away, nothing
-  stops the provider: it runs until its closed pipes make it exit. This is
+  A closed terminal or a `kill` of `vestra` while a provider is running also
+  stops everything the provider started, and then ends `vestra` without
+  aborting the run: `task resume` continues it. If a provider's processes
+  could not be confirmed stopped, `vestra` says so on stderr and prints the
+  command that stops them. One case is not handled: when `vestra` itself is
+  killed with `SIGKILL`, nothing stops the provider, and it runs until its
+  closed pipes make it exit. Stop it with `kill -KILL -- -<pid>`, where
+  `<pid>` is the process id of the `claude` or `codex` process (it is also the
+  id of its process group); `task status` then shows the run as not active,
+  and `task resume` or `task cancel` continues or ends it. All of this is
   proven with deterministic stand-ins only.
 - **Local human authority.** Approvals and reviews are decisions confirmed on
   this machine by typing a digest back. They are not a cryptographic proof of

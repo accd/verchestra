@@ -521,7 +521,7 @@ that leaves the group with `setsid()`.
 | --- | --- | --- |
 | How a tree is killed, escapees included | Inline in the probe host | `terminateProcessTree` in `packages/platform-node/src/process-tree-terminator.ts`, exported to the composition root; the probe host calls it |
 | Which group a provider runs in, and the terminator a driver uses when none is injected | Twice, one expression in each driver, signalling one process | `packages/drivers/src/driver-process-tree.ts` (`OWN_PROCESS_GROUP`, `processTreeTerminator`) |
-| The terminator `vestra task` injects | Two single-process `SIGKILL`s, in `task-implementer.ts` and `task-codex.ts` | `terminateProviderTree` in `apps/vestra-cli/src/task/task-process-tree.ts` |
+| The terminator `vestra task` injects | Two single-process `SIGKILL`s, in `task-implementer.ts` and `task-codex.ts` | `ProviderProcesses` in `apps/vestra-cli/src/task/task-process-tree.ts`, whose sessions hand a driver its terminator |
 
 `packages/drivers` imports nothing from `packages/platform-node`.
 
@@ -529,16 +529,16 @@ that leaves the group with `setsid()`.
 
 | Clause | Definition (symbol) | Assertion evidence |
 | --- | --- | --- |
-| The drivers start their child in its own process group | `ClaudeCodeDriver#start`, `CodexDriver#start`, `OWN_PROCESS_GROUP` | In each qualification suite the provider leads a group that is not the caller's, one descendant is in it and one is not, before anything is stopped: `assertTreeRunning`, `Q:61-68`. Source: `X:29-34`, `X:37-42`, `P:27-29` |
-| A cancel terminates the whole tree, a `setsid` escapee included | ledger `stop` hook → `terminateProviderTree` → `terminateProcessTree` | Claude Code and Codex: `Q:116-136`. The run ends, which it cannot while a descendant holds the provider's output |
-| An aborted start signal terminates the whole tree | the drivers' abort paths | Claude Code and Codex: `Q:138-150` |
-| With no terminator injected the group is still stopped | `processTreeTerminator` | `Q:152-174`, where the escapee survives, which is why the composition injects one; `P:31-35`, `P:37-44`, `P:46-52` |
+| The drivers start their child in its own process group | `ClaudeCodeDriver#start`, `CodexDriver#start`, `OWN_PROCESS_GROUP` | In each qualification suite the provider leads a group that is not the caller's, one descendant is in it and one is not, before anything is stopped: `assertTreeRunning`, `Q:62-69`. Source: `X:29-34`, `X:37-42`, `P:34-36` |
+| A cancel terminates the whole tree, a `setsid` escapee included | ledger `stop` hook → `ProviderProcesses` → `terminateProcessTree` | Claude Code and Codex: `Q:118-139`. The run ends, which it cannot while a descendant holds the provider's output |
+| An aborted start signal terminates the whole tree | the drivers' abort paths | Claude Code and Codex: `Q:141-154` |
+| With no terminator injected the group is still stopped | `processTreeTerminator` | `Q:156-178`, where the escapee survives, which is why the composition injects one; `P:38-42`, `P:44-51`, `P:53-59` |
 | The tree routine itself | `terminateProcessTree` | A group signal alone leaves the escapee: `N:43-56`. The tree routine leaves nothing: `N:58-71`. A tree already gone: `N:73-79`. The probe host's fault suite, which requires the same property, passes unmodified |
-| The CLI injects the tree terminator into both drivers | `implementerAdapter`, `runCodexVerifier` | Verifier, as composed: `V:170-195`. Implementer, through the `vestra` binary on macOS: `E:729-755`. Both, by source: `X:44-56`. The single-process `SIGKILL`s are gone: `X:58-70` |
-| The injected terminator never rejects | `terminateProviderTree` | A live provider, a tree already gone, and a kill the runtime refuses: `K:17-30`, `K:32-36` |
-| One termination per child on the Claude Code failure path | `ClaudeCodeDriver#start` | `P:57-68` |
+| The CLI injects the tree terminator into both drivers | `implementerAdapter`, `runCodexVerifier` | Verifier, as composed: `V:170-195`. Implementer, through the `vestra` binary on macOS: `E:729-755`. Both, by source: `X:47-68`. The single-process `SIGKILL`s are gone: `X:70-84` |
+| The injected terminator never rejects | `ProviderProcesses#terminate` | A live provider, a tree already gone, and a kill the runtime refuses: `K:37-49`, `K:71-79`; a tree its final check still sees alive: `K:51-69` |
+| One termination per child on the Claude Code failure path | `ClaudeCodeDriver#start` | `P:64-75` |
 | `drivers` does not import `platform-node` | package edges | `tests/architecture/repository-boundaries.test.mjs` (unmodified); `X:37-42` |
-| Windows stays refused for the mediated path | `mediatedProfile`, the task command | Unchanged and still asserted by the mediated suites on win32. On win32 the three cases of `Q` assert that a stopped session ends, its terminal event says cancelled, and its provider is gone (`stoppedOnWin32`, `Q:82-105`); `V` and `E` assert the refusal of the task path |
+| Windows stays refused for the mediated path | `mediatedProfile`, the task command | Unchanged and still asserted by the mediated suites on win32. On win32 the three cases of `Q` assert that a stopped session ends, its terminal event says cancelled, and its provider is gone (`stoppedOnWin32`, `Q:83-106`); `V` and `E` assert the refusal of the task path |
 | Both drivers are requalified with new reports | `docs/qualification/` | `claude-code-driver-process-tree.md` and `codex-driver-process-tree.md` are new. No existing report is edited |
 
 ### Behaviour changes
@@ -548,8 +548,9 @@ that leaves the group with `setsid()`.
    and `vestra task cancel` waiting.
 2. A provider no longer receives the terminal's signals. Ctrl-C reaches
    `vestra`, which aborts the run and kills the tree with `SIGKILL`.
-3. If the `vestra` process is killed with `SIGKILL`, or its terminal goes away,
-   nothing stops the provider. Before, a terminal hang-up reached it directly.
+3. If the `vestra` process is killed with `SIGKILL`, nothing stops the
+   provider. A hang-up and a termination request are answered by `vestra`
+   itself, which stops the providers; see the continuation of this section.
 4. A stop takes as long as reading the process table and confirming that the
    group is gone, at most about half a second more than one signal.
 5. A driver composed without a terminator sends its `SIGTERM` to the provider's
@@ -576,7 +577,7 @@ five-minute limit, and `V` and `X` cover the same wiring.
 | --- | --- |
 | **The tree terminator records no descendants** | 7: `N:58-71`, the probe host's tree case, `V:170-195`, and the cancel and abort cases of both qualification suites |
 | The tree terminator does not kill what it recorded | 7: the same |
-| The tree terminator does not kill the group | 10: `N:58-71`, `N:73-79`, `K:17-30`, three cases of `V`, and the cancel and abort cases of both qualification suites |
+| The tree terminator does not kill the group | 10: `N:58-71`, `N:73-79`, `K:37-49`, three cases of `V`, and the cancel and abort cases of both qualification suites |
 | The descendants are recorded after the group is killed | 7: the same as the first row |
 | The probe host kills only the group | 1: the probe host's tree case |
 
@@ -585,20 +586,20 @@ five-minute limit, and `V` and `X` cover the same wiring.
 | **Claude Code starts its provider in the caller's process group** | 4: its three qualification cases and its row of `X:29-34` |
 | **Codex starts its provider in the caller's process group** | 7: its three qualification cases, its row of `X:29-34`, and three cases of `V` |
 | The fallback signals the provider process alone | 3: the fallback case of both qualification suites, `X:37-42` |
-| The fallback rejects when nothing is left to stop | 1: `P:46-52` |
-| The injected terminator is ignored | 11: `P:31-35`, `P:57-68`, `V:170-195`, the cancel and abort cases of both qualification suites, the running-cancel row of both drivers in the lifecycle matrix, and the abort case of each lifecycle suite |
-| Claude Code starts a termination for every failing line | 1: `P:57-68` |
+| The fallback rejects when nothing is left to stop | 1: `P:53-59` |
+| The injected terminator is ignored | 11: `P:38-42`, `P:64-75`, `V:170-195`, the cancel and abort cases of both qualification suites, the running-cancel row of both drivers in the lifecycle matrix, and the abort case of each lifecycle suite |
+| Claude Code starts a termination for every failing line | 1: `P:64-75` |
 | The Claude Code cancel does not stop the provider | 3: its cancel and fallback cases of `Q`, and its running-cancel row of the lifecycle matrix |
 | The Codex cancel does not stop the provider | 3: its cancel and fallback cases of `Q`, and its running-cancel row of the lifecycle matrix |
-| The Codex abort timer does not escalate to the terminator | 2: the Codex abort case of `Q:138-150` and "Codex abort sends protocol interrupt before process-tree termination" |
+| The Codex abort timer does not escalate to the terminator | 2: the Codex abort case of `Q:141-154` and "Codex abort sends protocol interrupt before process-tree termination" |
 
 | Mutation in the copy of the task composition | Failing cases |
 | --- | --- |
-| **The task composition kills the provider process alone** (as before this range) | 6: `V:170-195`, the cancel and abort cases of both qualification suites, `X:58-70` |
-| The task composition's terminator rejects when the kill fails | 1: `K:32-36` |
-| The verifier is built without the tree terminator | 2: `V:170-195`, `X:44-56` |
-| The implementer is built without the tree terminator | 1: `X:44-56` |
-| A task source kills one process itself | 2: `X:44-56`, `X:58-70` |
+| **The task composition kills the provider process alone** (as before this range) | 6: `V:170-195`, the cancel and abort cases of both qualification suites, `X:70-84` |
+| The task composition's terminator rejects when the kill fails | 1: `K:71-79` |
+| The verifier is built without the tree terminator | 2: `V:170-195`, `X:47-68` |
+| The implementer is built without the tree terminator | 1: `X:47-68` |
+| A task source kills one process itself | 2: `X:47-68`, `X:70-84` |
 
 All 19 mutations failed at least one case. A mutation that leaves a
 provider or a descendant alive makes its case run into its own time limit and
@@ -669,9 +670,9 @@ started was left running.
 
 - **The platform matrix.** Every result above is from macOS arm64. This range
   is platform-specific: process groups, `setsid()`, `ps`, and `taskkill` on
-  Windows. The Windows branches of `Q`, `N`, `P` and `K` have never run. A
-  `platform-matrix.yml` run on the branch, green on all five targets, is
-  required before merge and its run is to be linked here.
+  Windows. The first matrix run on the branch and what it found are in the
+  continuation of this section; a run on the tip that carries the fix, green
+  on all five targets, is required before merge.
 - **A real provider.** See "What was not observed" in the two reports.
 - **The site's browser and Lighthouse stages.** `pnpm site:test` could not
   start its preview server on this machine because another workspace held its
@@ -680,20 +681,8 @@ started was left running.
 
 ### Open points for the reviewer
 
-- **A tree that could not be confirmed gone is not reported.** The task
-  composition's terminator never rejects, because a driver calls it from an
-  abort listener, where a rejection would end the whole command. `SIGKILL`
-  makes that state almost unreachable. Reporting it needs a new driver error
-  code and a branch in two `start` methods that are complexity hotspots; the
-  recommendation is a follow-up that makes the drivers contain a rejecting
-  terminator and report it as an error event.
-- **The terminal's hang-up.** A provider used to receive it directly. It now
-  ends only when `vestra` stops it or its pipes close. `vestra task` handles
-  `SIGINT` and `SIGTERM` as a cancel, which aborts the run. Handling the
-  hang-up the same way would turn a lost terminal into an aborted run, where
-  today it leaves a run that can be resumed. The recommendation is to decide
-  that separately; one option is to stop the providers on a hang-up without
-  recording an abort.
+- **A tree that could not be confirmed gone** and **the terminal's hang-up**
+  were open here. Both are settled in the continuation of this section.
 - **The verifier is stopped at once.** See C4-2.
 - **`detached` also gives the provider a session of its own.** It has no
   controlling terminal. Neither provider reads one in the modes Verchestra
@@ -738,3 +727,220 @@ rollback case failed twice and one task start found its run still active; no
 cause other than the full disk was established for those three. The runs were
 stopped and repeated one at a time, which is the table above, and every one of
 those cases passed in each of them.
+
+## C4-4, continued — interrupts, the unconfirmed tree, and the Windows matrix failure
+
+Three commits on top of the range, added after its first review and its first
+platform matrix run. The decisions were numbered and the branch rewritten in
+between, so the commits of this continuation are named by their identifiers on
+the rewritten branch. `I` is `tests/integration/task-provider-interrupt.test.mjs`
+and its stand-in command is `tests/helpers/provider-interrupt-child.mjs`; `K`,
+`P`, `X`, `Q`, `V` and `E` are the suites named above, at their current lines.
+
+### What the review found
+
+Starting a provider in a process group of its own took it out of reach of the
+terminal's signals. A closed terminal used to deliver the hang-up to the
+provider as well, and both died. After the first three commits of this range
+the provider survived a hang-up with no command left to act for, and kept
+spending until it gave up. That is the orphan this task exists to remove.
+
+### Requirement evidence
+
+| Clause | Definition (symbol) | Assertion evidence |
+| --- | --- | --- |
+| SIGHUP or SIGTERM while a provider runs stops every provider tree the command started | `ProviderProcesses#interrupt` → the tree terminator | A real child command, both signals, both drivers, three processes of which one left the group: `I:66-96`. Through the `vestra` binary on macOS, during the implementer and during the verifier: `E:812-856` |
+| The command then ends as the signal would have ended it | `endBySignal` | Exit by that signal, no exit code: `I:66-96`, `E:812-856` |
+| No abort and no cancel marker is recorded; the run stays resumable | `ProviderSession#end`, `ProviderSession#unlessInterrupted`, `implementerAdapter`, `runCodexVerifier` | Neither the effect nor the continuation of the stand-in command is reached: `I:66-96`. The state is still `IMPLEMENTING` or `VERIFYING`, the command printed no outcome, no `cancel.json` and no `outcome.json` exist, `start` is refused, and `task resume` reaches `HUMAN_REVIEW` with the task's change: `E:812-856` |
+| SIGINT keeps its cancel | `watchCancellation` | The tree is stopped and the run is `ABORTED`: `E:860-881`. The provider processes never listen to it: `K:81-112`, `I:66-96` (handler counts), `X:88-99` |
+| Nothing else changes its signal behaviour | `ProviderProcesses#track`, `#untrack`, `watchCancellation` | The handlers exist only while a provider is tracked, one per signal however many providers run, and are gone with the last: `K:81-112`. A session that ends by itself leaves none and is not held back: `I:123-135`. SIGTERM while a gate runs still cancels: the command is not ended, the gate passes, the run is `ABORTED`, the verifier never starts: `E:887-907` |
+| The wait is bounded | `INTERRUPT_BACKSTOP_MS` | A tree routine that never returns: the command still ends by the signal, after the backstop and well within it: `I:101-121` |
+| Implementer and verifier are both covered | `implementerAdapter`, `runCodexVerifier` | Each builds its driver with the session's terminator and spawn observer and ends its session: `X:47-68`; behaviour: `E:812-856` for both |
+| A tree not confirmed stopped is named on stderr, once, and the terminator still never rejects | `ProviderProcesses#terminate` | The final check still sees a member alive: one line per process group, exact text, naming the provider and the group id and giving the command that stops it, and every request resolves: `K:51-69`. A kill the runtime refuses: `K:71-79`. A tree that was stopped produces no line: `K:37-49`, `Q:118-139`, `Q:141-154`, `I:66-96`, `E:812-856` |
+| On Windows the task path stays refused | the task command | Every case of `I` asserts that refusal there; off macOS every new case of `E` asserts that the task path reports not configured |
+
+### The Windows matrix failure
+
+The matrix ran on the rewritten branch before this continuation. The security
+gate passed on all five targets (run 37035214438). The build gate passed on
+four and failed one case on Windows x64 (run 37035210650): `D:127-147`, row
+`claude-code`, where the one terminal event had the outcome `cancelled` and no
+reason. The Codex and Pi rows passed there, and every other target passed the
+Claude Code row.
+
+Cause, read from the sources and not observed on Windows here: a stop reaches a
+driver twice, through its start signal and through `cancel`, and the Claude
+Code driver asked its terminator on both paths. On POSIX a second signal to a
+process that has not been reaped is accepted. On Windows a kill of a process
+that has exited is an error. The test's terminator does not contain that
+error, so the second request rejected, the cancel failed before the session
+ledger emitted its terminal event, the runner contained the failure as it is
+specified to (`R:239-250`), and the terminal event then came from the close,
+with the outcome and without the reason. Codex did not fail because its abort
+path waits out a grace period and asks only for a provider that is still
+running.
+
+It is a driver defect and not a test that assumed POSIX timing: any
+terminator that fails on a second request loses the reason of a stop, on any
+platform. The fallback the drivers had before this task was such a terminator
+on Windows; the fallback of this task and the tree terminator are not. The
+case the matrix failed is unchanged.
+
+| Clause | Definition (symbol) | Assertion evidence |
+| --- | --- | --- |
+| A child is terminated once, whoever asks | `singleTermination` | Overlapping requests share one termination, and one that failed is tried again: `P:77-91`. A stream that keeps failing: `P:64-75` |
+| A stop keeps its reason although the terminator fails on a second request | `ClaudeCodeDriver#start`, `CodexDriver#start` | The failure reproduced on every platform, for both drivers: one request, one terminal event with `cancelled` and the runner's reason: `P:103-141` |
+
+### Behaviour changes
+
+1. A closed terminal, or a `kill` of the `vestra` process, while a provider is
+   running stops everything the provider started and ends `vestra`. The run is
+   not aborted and `task resume` continues it. Before this range a hang-up
+   killed `vestra` and the provider together and left the same resumable run.
+2. **SIGTERM while a provider runs no longer cancels the run.** It used to
+   abort it, recorded as a human abort. It still cancels at any moment when no
+   provider is running, a gate for example. SIGINT is unchanged.
+3. Under `nohup` a hang-up used to be ignored by `vestra` and by the provider.
+   `vestra` now answers it while a provider runs, so it ends both; the run can
+   be resumed. The runtime gives no way to see that a signal was being ignored.
+4. A provider tree that was not confirmed stopped is named on stderr with the
+   command that stops it.
+5. An interrupted command prints no outcome and exits by the signal.
+
+### Residual risk
+
+`SIGKILL` of the `vestra` process cannot be handled in the process, and no
+watchdog is built for it. The provider then runs until its closed pipes make
+it exit. What a user does: the provider's process group id is the process id
+of the `claude` or `codex` process, so `kill -KILL -- -<pid>` stops the whole
+group; `task status` then shows the run as not active with `resume` and
+`cancel` as its next actions, and either continues or ends it. This is in
+`docs/quick-start.md`, in the decision entry and in the two reports.
+
+A provider that is killed while a tool effect of its session is in flight
+leaves that effect as a killed command leaves it; effects asked for after the
+signal are not made.
+
+### Tests changed
+
+No case was deleted. Changed, each in a commit of this continuation:
+
+| Suite | Change | Why |
+| --- | --- | --- |
+| `K` | Rewritten for `ProviderProcesses`: 2 cases became 5 | The function it tested, `terminateProviderTree`, is now a method of the provider processes. Its two assertions are kept (`K:37-49`, `K:71-79`); the second now also requires the line on stderr |
+| `X` | The case on the injected terminator asserts the session's terminator and spawn observer instead of the function's name; the case on signals allows the one signal the command sends to itself; one case added | The wiring it pins changed with the provider processes |
+| `Q` and the two qualification suites | Take the terminator from a provider session, and assert that it reported nothing | Same reason |
+| `E` | Its cancel journey asserts the off-macOS refusal instead of returning; 6 cases appended | No case may pass without asserting |
+
+Added: `I` (6 cases) with its stand-in command, 3 cases in `P`, a pause for the
+gate script of the task fixture, and a flag file by which a test steers the
+labeled fakes between two runs of one request.
+
+### Discrimination (disposable copy)
+
+Same method. Interrupts and the report, on a copy of the tree at `99ea171`;
+suites run: `I`, `K`, `X`, `V` and the two qualification suites. Unmutated
+copy: 33 passed, 0 failed.
+
+| Mutation in the copy | Failing cases |
+| --- | --- |
+| **No interrupt handler is installed** | 6: the four signal cases of `I`, its backstop case, `K:81-112`. Through the binary, run separately: both SIGHUP journeys of `E` fail with "provider outlived the command" |
+| **The command ends by the signal without stopping its providers** | 5: the four signal cases of `I` and its backstop case |
+| The command stops its providers and does not end | 5: the same |
+| The command ends with an exit code instead of the signal | 6: the same and `X:70-84` |
+| **A session that ended is not held when the command is being interrupted** | 4: the four signal cases of `I` |
+| An effect of the session still runs after the signal | 4: the same |
+| The handlers stay installed after the last provider ended | 2: `K:81-112`, `I:123-135` |
+| There is no backstop for a tree routine that never returns | 1: `I:101-121` |
+| SIGINT is answered like a hang-up | 5: the four signal cases of `I` and `X:88-99` |
+| **A tree that was not confirmed stopped is not reported** | 2: `K:51-69`, `K:71-79` |
+| It is reported on every request | 1: `K:51-69` |
+| The terminator rejects when the tree was not confirmed stopped | 2: `K:51-69`, `K:71-79` |
+| The report does not name the provider | 2: the same |
+| The report does not name the process group | 1: `K:51-69` |
+| A termination request cancels the run even while a provider runs | 1: `X:88-99` |
+| The implementer driver is built without the spawn observer | 1: `X:47-68` |
+| The verifier driver is built without the spawn observer | 1: `X:47-68` |
+| The verifier's session is never ended | 1: `X:47-68` |
+| The implementer's session is never ended | 1: `X:47-68` |
+
+All 19 mutations failed at least one case. The last five are caught by `X`
+alone among these suites. Their behaviour is asserted by `E`, which is not in
+the mutation run because a mutation that removes a stop makes its journeys run
+into a five-minute limit; the first row shows `E` failing for the one mutation
+it was run with.
+
+The single termination, on a copy of the tree at `0331c94`; suites run: `P`,
+`D`, the lifecycle matrix, the Claude Code and Codex contract and lifecycle
+suites, `X` and the two qualification suites. Unmutated copy: 131 passed,
+0 failed.
+
+| Mutation in the copy | Failing cases |
+| --- | --- |
+| **The Claude Code driver of the previous commit** (the abort path and the cancel each ask the terminator) | 1: the `claude-code` row of `P:103-141`, with the terminal event the matrix saw |
+| **The Codex driver of the previous commit** | 1: the `codex` row of `P:103-141` |
+| A child is terminated once per request | 4: `P:64-75`, `P:77-91`, both rows of `P:103-141` |
+| A termination that failed is remembered | 1: `P:77-91` |
+| The Claude Code cancel does not stop the provider | 7 across `P`, `D`, `Q` and the lifecycle matrix |
+| The Codex cancel does not stop the provider | 6 across the same |
+| The Codex abort timer does not escalate to the terminator | 2: the Codex abort case of `Q` and of its lifecycle suite |
+| The Claude Code abort path does not stop the provider | 3: `P:64-75`, the abort case of `Q` and of its lifecycle suite |
+
+All 8 mutations failed at least one case.
+
+### Guardrails
+
+- Complexity baseline: no entry changed, no key added or moved. The two
+  `start` methods keep 24 and 27.
+- Census: no file gained or lost `JSON.stringify` or `createHash`.
+- Citations fixed: `.specs/features/live-task-pilot/validation.md` (the cancel
+  poll, the signals, the resume shortcut and the start and resume states of
+  `task-run.ts`; the two driver minimums) and
+  `.specs/features/platform-qualification-matrix/matrix.md` (the two driver
+  minimums), and `validation-c5.md` (the verification ports of
+  `task-verifier.ts`). The citations of `Q`, `K`, `P` and `X` in the section
+  above are at their current lines.
+- Qualification reports: the two reports of this range are corrected in
+  place, as they are not merged; no third report is added and no report from
+  before this range is edited. The digest-bound reports keep their digests.
+- Migration count (12) and runtime error catalog count (19) unchanged. No
+  public error code was added, removed or changed. One line of text on stderr
+  is new.
+- `tests/mutation/*` and the fault-injection suites pass unmodified.
+- The pilot's pre-registration is still true: its interruption is a `SIGKILL`
+  while a gate runs, and a `SIGTERM` at that moment still cancels the run.
+
+### Gates (Node 24.14.0, macOS arm64)
+
+Each row was measured on a detached checkout of exactly that commit, one
+command at a time.
+
+| Commit | `pnpm gate:quick` | `pnpm test:architecture` | Focused suites |
+| --- | --- | --- | --- |
+| `99ea171` interrupts and the report | PASS — unit 2482, agent-readiness 323, census 13 | PASS — 86 | `I`, `K`, `X`: PASS — 17 |
+| `0331c94` the single termination | PASS — 2482, 323, 13 | PASS — 86 | `I`, `K`, `P`, `D`, `V`, `X`, the two qualification suites: PASS — 54 |
+
+| Command (at `0331c94`) | Result |
+| --- | --- |
+| `pnpm gate:build` | PASS — unit 2482, contract 756, integration 947, e2e 245, architecture 86, build 146, qualification 302 |
+| `pnpm gate:security` | PASS — unit 2482, contract 756, e2e 245, architecture 86, qualification 302, security 1339, fault 310 |
+| `pnpm test:fault` | PASS — 310 |
+| `pnpm test:contract` | PASS — 756 |
+| `pnpm test:integration` | PASS — 947 |
+| `pnpm qualify:claude` | PASS — 56 |
+| `pnpm qualify:codex` | PASS — 23 |
+| `node --test tests/e2e/task-cli-e2e.test.mjs tests/e2e/mediated-task-execution-e2e.test.mjs` | PASS — 30 |
+| `pnpm agent:check` | PASS |
+
+No test was skipped in any stage. No provider session was started and no login
+was needed. `qualify:keychain` was not run. After the suites no process they
+started was left running.
+
+### Not verified here
+
+- **Windows.** The single termination and every Windows branch of the new
+  suites were written without a Windows machine. The diagnosis above explains
+  each observation of the failed run, and it is reproduced on POSIX by a
+  terminator that behaves as a Windows kill does; that it is the whole cause
+  is shown only by the matrix run on this tip.
+- **A real provider** and **the site's browser stages**, as above.
