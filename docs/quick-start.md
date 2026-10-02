@@ -19,7 +19,12 @@ Verchestra never merges: the result is a branch you inspect and merge yourself.
   Secret Service session a `task` command reports `VES_TASK_NOT_CONFIGURED`
   (requirement `credential-store`). On Windows every `task` command reports
   `VES_TASK_NOT_CONFIGURED` (requirement `platform`) before any effect.
-- **`git`** on `PATH`, and a Git repository whose root you work from.
+- **`git`** on `PATH`, and a Git repository whose root you work from. `vestra
+  task` runs git with a scrubbed environment: your shell's `GIT_DIR`,
+  `GIT_CONFIG_*`, `GIT_EXEC_PATH`, and other `GIT_*` variables are not passed
+  on, so they cannot redirect a task. Git still reads your configuration under
+  your home directory or `XDG_CONFIG_HOME`, and `GIT_AUTHOR_*` and
+  `GIT_COMMITTER_*` name and email variables still set the commit identity.
 - **Claude Code** (`claude`, version 2.1.282 or later in the 2.x line) and the
   **Codex CLI** (`codex`, version 0.115.0 or later) on `PATH`.
 - An **Anthropic API key** and an **OpenAI API key**.

@@ -197,3 +197,92 @@ sources after each run; the tracked sources were never mutated.
 | `pnpm test:security` | PASS — 1333 |
 | `pnpm test:fault` | PASS — 310 |
 | `pnpm agent:check` | PASS |
+
+## C1-3 (T1c) — scrubbed environment for git
+
+The one git runner (`runGit`, `runGitBytes`) now passes `gitEnvironment()`:
+`safeEnvironment()` (moved unchanged from `gate-commit-adapters.ts` to
+`packages/platform-node/src/safe-environment.ts`, where the gate runner still
+uses it) plus `XDG_CONFIG_HOME`, `GIT_AUTHOR_NAME`, `GIT_AUTHOR_EMAIL`,
+`GIT_COMMITTER_NAME` and `GIT_COMMITTER_EMAIL`. This is a behaviour change:
+before it, every git process inherited the whole process environment.
+
+### Requirement evidence
+
+All in `tests/integration/task-worktree-git-environment.test.mjs`. Each case
+plants the hostile variables in the test process, runs only product code
+inside that scope, and inspects the result with the fixture's git outside it.
+
+| Clause | Assertion evidence |
+| --- | --- |
+| Only the admitted variables reach git | `:131` (every key is admitted), `:132` (none of 17 planted variables, including `GIT_DIR`, `GIT_WORK_TREE`, `GIT_INDEX_FILE`, `GIT_OBJECT_DIRECTORY`, `GIT_COMMON_DIR`, `GIT_CONFIG_GLOBAL`, `GIT_CONFIG_SYSTEM`, `GIT_CONFIG_COUNT` with its key and value pairs, `GIT_CONFIG_PARAMETERS`, `GIT_EXEC_PATH`, `GIT_EDITOR`, `GIT_PAGER`, and an unrelated secret), `:133-135` (identity, `PATH` and `HOME` are kept) |
+| A hostile `GIT_DIR`, work tree and index do not redirect the runner | `:147-151`: HEAD, top level, object format and blob all come from the working directory's repository |
+| Hostile `GIT_CONFIG_*` inject no configuration | `:165-167`: `user.name`, `user.email` and `core.hooksPath` are not the injected values |
+| A hostile `GIT_EXEC_PATH` and pager do not reach git | `:177-178` |
+| A worktree operation is unaffected | Create, gate, atomic commit and cleanup with anchoring, in both object formats: `:210-223`; the gate child sees no `GIT_DIR`; the commit carries the repository's identity, not the injected one `:214`; the other repository is untouched after each step `:115-118` |
+| Git still finds what it needs | The commit identity is taken from `~/.gitconfig` under `HOME`, from `$XDG_CONFIG_HOME/git/config`, and from the identity variables, with no identity in the repository: `:272-273` (three cases) |
+
+Commit identity at `NodeAtomicGitCommitAdapter#commitAtomic`
+(`git commit --no-verify --no-gpg-sign -m …`): the adapter never set an
+identity and still does not. Git resolves it as before from repository,
+global or system configuration, or from the four identity variables. `HOME`
+passes through when it is set; when it is intentionally absent, git has no
+global configuration, exactly as before this change.
+
+### Discrimination (disposable copy)
+
+Unmutated copy: 9 pass, 0 fail.
+
+| Mutation in the copy | Failing cases |
+| --- | --- |
+| E1 — the runner passes no `env` (git inherits) | 5 fail: the `GIT_DIR`, `GIT_CONFIG_*` and `GIT_EXEC_PATH` cases and the hostile worktree case in both formats |
+| E2 — `GIT_DIR` is added to the admitted variables | 4 fail: the allow-list case, the `GIT_DIR` case and the hostile worktree case in both formats |
+| E3 — the identity variables are dropped | 2 fail: the allow-list case and "identity from the identity variables" |
+| E4 — `XDG_CONFIG_HOME` is dropped | 2 fail: the allow-list case and "identity from the configuration under XDG_CONFIG_HOME" |
+| E5 — `HOME` and `USERPROFILE` are dropped from `safeEnvironment` | 2 fail: the allow-list case and "identity from the configuration under HOME" |
+
+### Tests replaced
+
+None deleted. The existing gate-runner environment cases in
+`tests/integration/gate-commit-adapters.test.mjs` pass unmodified against the
+moved `safeEnvironment`.
+
+### Guardrails
+
+- Complexity: no baseline entry changed; `gitEnvironment` and
+  `safeEnvironment` are below the target.
+- Census: no file gained or lost `JSON.stringify` or `createHash`.
+- Citations fixed: `.specs/features/platform-qualification-matrix/matrix.md`
+  (`gate-commit-adapters.ts` lines moved by the extraction).
+- `docs/quick-start.md` states the scrub under "What you need".
+
+### Open points for the reviewer
+
+- **Platform matrix.** The scrubbed environment was run on macOS arm64 with
+  Apple Git 2.50.1 only. Linux and Windows are expected to behave the same
+  (`PATH`, `PATHEXT`, `SystemRoot`, `WINDIR`, `TEMP`, `TMP`, `USERPROFILE` are
+  kept), but that is unproven until the platform matrix runs.
+- **Variables deliberately dropped.** `EMAIL` (git's fallback address),
+  `GIT_SSH_COMMAND`, `GIT_ASKPASS`, `LANG` and `LC_*` no longer reach git. The
+  task path runs no network git command and parses no localized output.
+- `TaskRunComposition#release` still swallows every cleanup error. It was
+  outside this task's brief and is unchanged.
+
+### Gates at the tip of the branch (Node 24.14.0, macOS arm64, git 2.50.1)
+
+| Command | Result |
+| --- | --- |
+| `node --test tests/integration/task-worktree-git-environment.test.mjs` | PASS — 9 passed |
+| `pnpm gate:quick` | PASS — unit 2365, agent-readiness 315, census 13 |
+| `pnpm test:architecture` | PASS — 66 |
+| `pnpm gate:build` | PASS — unit 2365, contract 666, integration 835, e2e 230, architecture 66, build 140, qualification 272 |
+| `pnpm gate:security` | PASS — unit 2365, contract 666, e2e 230, architecture 66, qualification 272, security 1333, fault 310 |
+| `pnpm test:e2e` | PASS — 230 |
+| `node --test tests/integration/git-worktree-adapter.test.mjs tests/integration/gate-commit-adapters.test.mjs tests/integration/task-branch-anchoring.test.mjs` | PASS — 23 passed, unmodified |
+| `pnpm agent:check` | PASS |
+| `pnpm site:check` | PASS — 50 (the `docs/quick-start.md` projection) |
+
+No test was skipped in any stage. `pnpm site:test` built the site and passed
+its built-site check (135 pages, links and metadata valid); its Playwright
+stage did not start because another process on the machine held the preview
+port, so it is not counted as a result here.
