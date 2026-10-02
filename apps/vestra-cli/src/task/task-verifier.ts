@@ -34,8 +34,9 @@ export interface VerifierContext {
   readonly runtime: RuntimeStore;
   readonly runDirectory: string;
   readonly gates: Readonly<Record<string, GateCommandProfile>>;
-  readonly codexExecutable: string;
-  readonly credential: string;
+  readonly verifier:
+    | { readonly executable: string; readonly credential: string }
+    | { readonly executable: string; readonly identityDirectory: string };
   readonly env: Readonly<Record<string, string | undefined>>;
   readonly meter: BudgetMeter | undefined;
 }
@@ -323,8 +324,7 @@ export async function verifyTask(
       runId: context.plan.runId,
       manifestId: context.plan.contextManifestDigest,
       request: context.plan.request,
-      executable: context.codexExecutable,
-      credential: context.credential,
+      ...context.verifier,
       env: context.env,
       sessionRoot: join(context.workspace.layout.sessionsRoot, `codex-${context.plan.runId}`),
       cwd: await realpath(review),

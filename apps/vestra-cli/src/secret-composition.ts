@@ -17,10 +17,7 @@ import {
 import { initPublicErrorRegistry, readWorkspaceIdentity } from "@verchestra/workspace";
 
 import { cliError, cliPublicErrorRegistry } from "./cli-errors.ts";
-
-// invariant: the credential deep doctor observes is the one the governed task
-// command injects for Claude Code (#405); both name it here.
-export const DOCTOR_CREDENTIAL_NAME = "anthropic-api-key";
+import { IMPLEMENTER_CREDENTIALS, providerAuthAt, type ProviderAuthLocation } from "./task-provider-auth.ts";
 
 export interface SecretInput {
   readonly isTTY?: boolean;
@@ -234,6 +231,15 @@ export interface DoctorSecretProbe {
   readonly secret?: { readonly logicalName: string; readonly adapter: Pick<SecretAdapter, "has"> };
 }
 
+// invariant: the credential deep doctor observes is the one the governed task
+// command injects for Claude Code in the Workspace's mode: the subscription
+// token by default, the API key when the machine-local setting says so. A
+// setting that cannot be read names no credential, so the check stays blocked.
+async function doctorCredentialName(location: ProviderAuthLocation): Promise<string | undefined> {
+  const auth = await providerAuthAt(location).catch(() => undefined);
+  return auth === undefined ? undefined : IMPLEMENTER_CREDENTIALS[auth.implementer];
+}
+
 // why: deep doctor gets a presence closure, never the adapter, so `read` is
 // structurally unreachable from the diagnostic. An uninitialized or unreadable
 // Workspace, or a platform without a qualified credential store, leaves the
@@ -241,14 +247,13 @@ export interface DoctorSecretProbe {
 // running in this session (no Secret Service on the bus, no Credential
 // Manager for this logon) is "not configured" too, so it also reads as
 // blocked; a store that is present but cannot answer stays a failure.
-export async function composeDoctorSecretProbe(options: {
-  readonly controlRoot: string;
-  readonly platform: string;
-  readonly keychainPath?: string;
-  readonly runner?: CredentialToolRunner;
-}): Promise<DoctorSecretProbe> {
+export async function composeDoctorSecretProbe(
+  options: ProviderAuthLocation & { readonly keychainPath?: string; readonly runner?: CredentialToolRunner }
+): Promise<DoctorSecretProbe> {
   const identity = await readWorkspaceIdentity(options.controlRoot).catch(() => undefined);
   if (identity === undefined) return {};
+  const logicalName = await doctorCredentialName(options);
+  if (logicalName === undefined) return {};
   let store: OsCredentialStore;
   try {
     store = createOsCredentialStore(options);
@@ -260,7 +265,7 @@ export async function composeDoctorSecretProbe(options: {
   return Object.freeze({
     workspaceId: identity.workspaceId,
     secret: Object.freeze({
-      logicalName: DOCTOR_CREDENTIAL_NAME,
+      logicalName,
       adapter: Object.freeze({
         has: async (workspaceId: string, logicalName: string) => {
           try {

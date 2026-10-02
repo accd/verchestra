@@ -6,8 +6,12 @@
 // (tests/helpers/fake-keychain-spawn.mjs, layered on the deny guard); the gate
 // is a real process run through the machine-local allowlist. No provider is
 // contacted and no product code carries a test hook.
+//
+// The journeys run in the default credential mode, subscription (ADP-A): the
+// Claude Code token from the keychain and the Codex login in the Workspace
+// identity directory. The API-key mode has its own journeys below.
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { rm, writeFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { after, test } from "node:test";
@@ -15,6 +19,7 @@ import { after, test } from "node:test";
 import {
   CREDENTIALS,
   DARWIN,
+  MODE_CREDENTIALS,
   approveArguments,
   cleanupTaskFixtures,
   taskFixture
@@ -95,6 +100,18 @@ function logLines(fixture, name) {
     : [];
 }
 
+// why: the sealed Run Capsule is the evidence a reviewer keeps; its budget
+// block is read back from the run directory, never from command output.
+function capsuleBudget(fixture, runId) {
+  const directory = join(fixture.stateRoot, "tasks", runId, "capsules");
+  const files = readdirSync(directory, { recursive: true }).filter((name) => String(name).endsWith(".json"));
+  assert.equal(files.length, 1, "one capsule is sealed");
+  const envelope = JSON.parse(readFileSync(join(directory, String(files[0])), "utf8"));
+  const statement = JSON.parse(Buffer.from(envelope.payload, "base64").toString("utf8"));
+  assert.ok(statement.predicate.content.budgetEvidence !== undefined, "the capsule carries budget evidence");
+  return statement.predicate.content.budgetEvidence;
+}
+
 function receiptCount(fixture) {
   const { DatabaseSync } = process.getBuiltinModule("node:sqlite");
   const database = new DatabaseSync(join(fixture.stateRoot, "runtime", "runtime.sqlite"), { readOnly: true });
@@ -164,6 +181,7 @@ test("a governed task is planned, approved, implemented, gated, verified, and ac
   assert.match(plan.bindingDigest, /^sha256:[a-f0-9]{64}$/u);
   assert.deepEqual(plan.review.scope, ["path:src"]);
   assert.deepEqual(plan.review.destinations, ["provider:anthropic", "provider:openai"]);
+  assert.deepEqual(plan.providerAuth, { "claude-code": "subscription", codex: "subscription" });
 
   // A wrong digest, a missing confirmation, and a mistyped one are refused
   // before anything is recorded.
@@ -224,19 +242,34 @@ test("a governed task is planned, approved, implemented, gated, verified, and ac
   assert.equal(inReview.evidence.verificationVerdict, "PASS");
   assert.deepEqual(inReview.checkpoints.toolReceipts, 1);
 
-  // The implementer saw only its brokered credential, in an isolated home; the
-  // verifier ran read-only with no tools, its own credential, and CODEX_HOME.
+  // invariant: the implementer saw only its brokered subscription token, never
+  // bare, in an isolated home and an empty directory that is not the worktree; the
+  // verifier ran read-only with no tools from the Workspace's Codex identity
+  // directory, with no API key. No API key is bound in this fixture at all.
   const [claude] = logLines(fixture, "fake-claude.log");
+  assert.equal(claude.bare, false);
+  assert.equal(claude.credentialVariable, "CLAUDE_CODE_OAUTH_TOKEN");
   assert.equal(claude.credentialMatchesStore, true);
   assert.notEqual(claude.home, fixture.home);
-  assert.equal(claude.environmentKeys.includes("OPENAI_API_KEY"), false);
-  assert.equal(claude.environmentKeys.includes("VERCHESTRA_TEST_FAKE_KEYCHAIN_STORE"), false);
+  assert.match(claude.cwd, /\/sessions\/verchestra-claude-[^/]+\/workspace$/u);
+  assert.equal(claude.workingDirectoryEntries, 0);
+  for (const key of ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "VERCHESTRA_TEST_FAKE_KEYCHAIN_STORE"])
+    assert.equal(claude.environmentKeys.includes(key), false, key);
   const [codex] = logLines(fixture, "fake-codex.log");
   assert.equal(codex.sandbox, "read-only");
   assert.equal(codex.tools, 0);
-  assert.equal(codex.credentialMatchesStore, true);
-  assert.ok(codex.codexHome.startsWith(fixture.stateRoot));
-  assert.equal(codex.environmentKeys.includes("ANTHROPIC_API_KEY"), false);
+  assert.equal(codex.login, "chatgpt");
+  assert.equal(codex.codexHome, fixture.codexIdentity);
+  assert.equal(codex.config, 'cli_auth_credentials_store = "file"\nforced_login_method = "chatgpt"\n');
+  assert.notEqual(codex.home, fixture.home);
+  for (const key of ["OPENAI_API_KEY", "ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN"])
+    assert.equal(codex.environmentKeys.includes(key), false, key);
+  // invariant: nothing is billed per token on a subscription. The ceilings
+  // were metered, and the cost is reported as not billed, never as dollars.
+  assert.equal(inReview.checkpoints.budget.consumedCostUsd, "not billed (subscription)");
+  assert.equal(inReview.checkpoints.budget.billing, "subscription");
+  assert.equal(inReview.checkpoints.budget.consumedTokens, 18);
+  assert.equal(inReview.checkpoints.budget.unbilledTokens, 18);
 
   refused(review(fixture, plan.runId, "accepted", `sha256:${"1".repeat(64)}`), "VES_TASK_SURFACE_MISMATCH", "stale");
   refused(
@@ -261,6 +294,11 @@ test("a governed task is planned, approved, implemented, gated, verified, and ac
   assert.equal(done.state, "COMPLETED");
   assert.equal(done.capsuleId, accepted.capsuleId);
   assert.deepEqual(done.next, []);
+  const budget = capsuleBudget(fixture, plan.runId);
+  assert.equal(budget.billing, "subscription");
+  assert.equal(Object.hasOwn(budget.consumed, "costUsd"), false);
+  assert.equal(budget.consumed.unbilledTokens, budget.consumed.tokens);
+  assert.equal(budget.consumed.tokens, 18);
   refused(start(fixture, plan.runId), "VES_TASK_TRANSITION_REFUSED", "restart a completed run");
 });
 
@@ -303,20 +341,171 @@ test("a Workspace forbid policy denies the start before any worktree or provider
   assert.equal(fixture.git(["branch", "--list", "vestra/*"]), "");
 });
 
-test("a missing credential is not configured before any transition, worktree, or provider call", TIMEOUT, async () => {
-  if (!DARWIN) return;
-  const { "anthropic-api-key": omitted, ...rest } = CREDENTIALS;
-  assert.ok(omitted);
-  const fixture = await taskFixture({ credentials: rest });
-  const plan = await approved(fixture);
-  const error = refused(start(fixture, plan.runId), "VES_TASK_NOT_CONFIGURED", "start");
-  assert.equal(error.safeDetails.requirement, "anthropic-api-key");
-  const after = status(fixture, plan.runId);
+// why: every missing-credential case ends the same way, with nothing started.
+function assertNothingStarted(fixture, runId) {
+  const after = status(fixture, runId);
   assert.equal(after.state, "EXECUTION_AUTHORIZED");
   assert.equal(after.checkpoints.executor, "none");
   assert.equal(after.evidence.grantId, null);
   assert.deepEqual(logLines(fixture, "fake-claude.log"), []);
+  assert.deepEqual(logLines(fixture, "fake-codex.log"), []);
   assert.equal(fixture.git(["worktree", "list", "--porcelain"]).split("\n\n").length, 1);
+}
+
+// invariant: the API keys are bound here and the token is not. A subscription
+// run names the token it needs and never falls back to a key that is present.
+test("a missing credential is not configured before any transition, worktree, or provider call", TIMEOUT, async () => {
+  if (!DARWIN) return;
+  const fixture = await taskFixture({ credentials: MODE_CREDENTIALS["api-key"] });
+  const plan = await approved(fixture);
+  const error = refused(start(fixture, plan.runId), "VES_TASK_NOT_CONFIGURED", "start");
+  assert.equal(error.safeDetails.requirement, "claude-code-oauth-token");
+  assertNothingStarted(fixture, plan.runId);
+  assert.deepEqual(logLines(fixture, "fake-codex-status.log"), []);
+});
+
+test("in API-key mode a missing API key is not configured before any effect", TIMEOUT, async () => {
+  if (!DARWIN) return;
+  const { "anthropic-api-key": omitted, ...rest } = CREDENTIALS;
+  assert.ok(omitted);
+  const fixture = await taskFixture({ mode: "api-key", credentials: rest });
+  const plan = await approved(fixture);
+  const error = refused(start(fixture, plan.runId), "VES_TASK_NOT_CONFIGURED", "start");
+  assert.equal(error.safeDetails.requirement, "anthropic-api-key");
+  assertNothingStarted(fixture, plan.runId);
+  const { "openai-api-key": verifierKey, ...withoutVerifier } = MODE_CREDENTIALS["api-key"];
+  assert.ok(verifierKey);
+  const second = await taskFixture({ mode: "api-key", credentials: withoutVerifier });
+  const secondPlan = await approved(second);
+  assert.equal(
+    refused(start(second, secondPlan.runId), "VES_TASK_NOT_CONFIGURED", "start").safeDetails.requirement,
+    "openai-api-key"
+  );
+  assertNothingStarted(second, secondPlan.runId);
+});
+
+test("in API-key mode a task runs bare with the two keys and reports a dollar cost", TIMEOUT, async () => {
+  if (!DARWIN) return;
+  const fixture = await taskFixture({ mode: "api-key" });
+  const plan = await approved(fixture);
+  assert.deepEqual(plan.providerAuth, { "claude-code": "api-key", codex: "api-key" });
+  const run = ok(start(fixture, plan.runId), "start");
+  assert.equal(run.state, "HUMAN_REVIEW");
+  // invariant: the implementer saw only its brokered API key, bare, in the
+  // worktree; the verifier ran with its own key and a per-session CODEX_HOME.
+  // The Workspace identity directory was never created and no token was needed.
+  const [claude] = logLines(fixture, "fake-claude.log");
+  assert.equal(claude.bare, true);
+  assert.equal(claude.credentialVariable, "ANTHROPIC_API_KEY");
+  assert.equal(claude.credentialMatchesStore, true);
+  assert.notEqual(claude.home, fixture.home);
+  assert.match(claude.cwd, /\/worktrees\//u);
+  for (const key of ["CLAUDE_CODE_OAUTH_TOKEN", "OPENAI_API_KEY", "VERCHESTRA_TEST_FAKE_KEYCHAIN_STORE"])
+    assert.equal(claude.environmentKeys.includes(key), false, key);
+  const [codex] = logLines(fixture, "fake-codex.log");
+  assert.equal(codex.sandbox, "read-only");
+  assert.equal(codex.tools, 0);
+  assert.equal(codex.credentialMatchesStore, true);
+  assert.ok(codex.codexHome.startsWith(fixture.stateRoot));
+  assert.notEqual(codex.codexHome, fixture.codexIdentity);
+  assert.equal(codex.environmentKeys.includes("ANTHROPIC_API_KEY"), false);
+  assert.equal(existsSync(fixture.codexIdentity), false);
+  assert.deepEqual(logLines(fixture, "fake-codex-status.log"), []);
+  const budget = status(fixture, plan.runId).checkpoints.budget;
+  assert.equal(typeof budget.consumedCostUsd, "number");
+  assert.ok(budget.consumedCostUsd > 0);
+  assert.equal(Object.hasOwn(budget, "billing"), false);
+  assert.equal(Object.hasOwn(budget, "unbilledTokens"), false);
+  ok(review(fixture, plan.runId, "accepted", run.surfaceDigest), "review");
+  const sealed = capsuleBudget(fixture, plan.runId);
+  assert.equal(Object.hasOwn(sealed, "billing"), false);
+  assert.equal(sealed.consumed.costUsd, budget.consumedCostUsd);
+});
+
+test(
+  "a Codex login that is missing is not configured, and the one-time command unblocks the same run",
+  TIMEOUT,
+  async () => {
+    if (!DARWIN) return;
+    const fixture = await taskFixture({ codexLogin: null });
+    const plan = await approved(fixture);
+    const refusedStart = start(fixture, plan.runId);
+    assert.equal(refused(refusedStart, "VES_TASK_NOT_CONFIGURED", "start").safeDetails.requirement, "codex-login");
+    assert.equal(refusedStart.stdout.includes(fixture.codexIdentity), false, "no machine path in the public error");
+    assert.match(
+      refusedStart.stderr,
+      new RegExp(
+        `Run once:\\n  CODEX_HOME='${fixture.codexIdentity.replaceAll(/[.*+?^${}()|[\]\\]/gu, "\\$&")}' codex login\\n`,
+        "u"
+      )
+    );
+    assertNothingStarted(fixture, plan.runId);
+    const [checked] = logLines(fixture, "fake-codex-status.log");
+    assert.equal(checked.login, "none");
+    assert.equal(checked.codexHome, fixture.codexIdentity);
+    assert.notEqual(checked.home, fixture.home);
+    // why: the owner runs the printed command once; the fixture stands in for it.
+    await fixture.codexLogin("chatgpt");
+    assert.equal(ok(start(fixture, plan.runId), "start after login").state, "HUMAN_REVIEW");
+  }
+);
+
+test("an API-key Codex login cannot stand in for the subscription", TIMEOUT, async () => {
+  if (!DARWIN) return;
+  const fixture = await taskFixture({ codexLogin: "api-key" });
+  const plan = await approved(fixture);
+  assert.equal(
+    refused(start(fixture, plan.runId), "VES_TASK_NOT_CONFIGURED", "start").safeDetails.requirement,
+    "codex-login"
+  );
+  assertNothingStarted(fixture, plan.runId);
+});
+
+test("a malformed provider setting is not configured at plan time and at start", TIMEOUT, async () => {
+  if (!DARWIN) return;
+  const broken = await taskFixture({ providers: "{not json" });
+  const plan = broken.launch([
+    "task",
+    "plan",
+    "--request",
+    broken.requestPath,
+    ...broken.keychainArgs,
+    "--output",
+    "json"
+  ]);
+  assert.equal(refused(plan, "VES_TASK_NOT_CONFIGURED", "plan").safeDetails.requirement, "provider-auth");
+  assert.equal(existsSync(join(broken.stateRoot, "tasks")), false);
+  for (const providers of [
+    { schemaVersion: 1, providers: { "claude-code": { auth: "ambient" } } },
+    { schemaVersion: 1, providers: { gemini: { auth: "subscription" } } },
+    { schemaVersion: 2, providers: {} }
+  ]) {
+    const fixture = await taskFixture();
+    const approvedPlan = await approved(fixture);
+    await writeFile(fixture.providersPath, JSON.stringify(providers));
+    const error = refused(start(fixture, approvedPlan.runId), "VES_TASK_NOT_CONFIGURED", "start");
+    assert.equal(error.safeDetails.requirement, "provider-auth");
+    assertNothingStarted(fixture, approvedPlan.runId);
+  }
+});
+
+test("one provider on a subscription and the other on a key is metered as mixed", TIMEOUT, async () => {
+  if (!DARWIN) return;
+  const fixture = await taskFixture({
+    providers: { schemaVersion: 1, providers: { codex: { auth: "api-key" } } },
+    credentials: { ...MODE_CREDENTIALS.subscription, "openai-api-key": CREDENTIALS["openai-api-key"] },
+    codexLogin: null
+  });
+  const plan = await approved(fixture);
+  const run = ok(start(fixture, plan.runId), "start");
+  assert.equal(run.state, "HUMAN_REVIEW");
+  assert.equal(logLines(fixture, "fake-claude.log")[0].credentialVariable, "CLAUDE_CODE_OAUTH_TOKEN");
+  const [codex] = logLines(fixture, "fake-codex.log");
+  assert.equal(codex.credentialMatchesStore, true);
+  assert.notEqual(codex.codexHome, fixture.codexIdentity);
+  // invariant: the implementer's usage is the only usage in the run ledger,
+  // and it is unbilled; the verifier's billed usage spends from the same ceilings.
+  assert.equal(status(fixture, plan.runId).checkpoints.budget.consumedCostUsd, "not billed (subscription)");
 });
 
 test("an exhausted budget stops the implementer and fails the run as a budget outcome", TIMEOUT, async () => {

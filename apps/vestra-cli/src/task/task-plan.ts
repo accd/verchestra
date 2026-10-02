@@ -20,6 +20,7 @@ import {
 } from "@verchestra/evidence";
 import { NodeContentDigest, SystemClock } from "@verchestra/platform-node";
 
+import { loadProviderAuth, type ProviderAuth } from "../task-provider-auth.ts";
 import type { TaskCommandIo } from "./task-io.ts";
 import { SIGNING_PASSPHRASE, readCredentials } from "./task-credentials.ts";
 import { compileTaskContext, saveContextManifest, REPOSITORY_SOURCE } from "./task-context.ts";
@@ -283,6 +284,9 @@ export async function planTask(io: TaskCommandIo, requestPath: string, dryRun: b
   const request = await readRequest(io, requestPath);
   const workspace = await openTaskWorkspace(io, { ensure: !dryRun });
   await loadGateAllowlist(workspace, request);
+  // why: a malformed credential mode is reported at plan time, before an
+  // approval is spent on a run that could never start. No credential is read.
+  const providerAuth = await loadProviderAuth(workspace.layout.workspaceRoot);
   const policy = await loadTaskPolicy(io.controlRoot);
   const context: PlanContext = {
     workspace,
@@ -323,13 +327,14 @@ export async function planTask(io: TaskCommandIo, requestPath: string, dryRun: b
     approvalRequest
   };
   if (!dryRun) await persist(context, manifest, pkg, record);
-  return planSurface(record, manifest, dryRun);
+  return planSurface(record, manifest, dryRun, providerAuth);
 }
 
 export function planSurface(
   record: TaskPlanRecord,
   manifest: Pick<ContextManifest, "fragments" | "omissions">,
-  dryRun: boolean
+  dryRun: boolean,
+  providerAuth: ProviderAuth
 ) {
   return {
     runId: record.runId,
@@ -343,6 +348,9 @@ export function planSurface(
     contextOmissions: manifest.omissions.length,
     implementer: record.request.driver,
     verifier: record.request.verifier,
+    // invariant: informational and machine-local. The mode is read again at
+    // start and is not part of the binding the human approves.
+    providerAuth: { "claude-code": providerAuth.implementer, codex: providerAuth.verifier },
     next: dryRun
       ? "Plan again without --dry-run to create an approvable run."
       : `vestra task approve --run-id ${record.runId} --binding-digest ${record.approvalRequest.bindingDigest}`
