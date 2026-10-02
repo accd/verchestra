@@ -520,9 +520,10 @@ export class ClaudeCodeDriver implements Driver {
 
     const launch = await this.#mediatedLaunch(execution);
     const surface = surfaceOf(launch);
+    const sessionId = `claude-session:${randomUUID()}`;
+    const state = this.#sessions.open(sessionId, sink, {});
+    const runEnded = state.runStarted();
     try {
-      const sessionId = `claude-session:${randomUUID()}`;
-      const state = this.#sessions.open(sessionId, sink, {});
       const redact = sensitiveValueRedactor(execution.sensitiveValues ?? []);
       const plan = this.#spawnPlan(execution, launch);
       const child = spawn(this.#command[0] as string, [...plan.arguments], {
@@ -533,8 +534,20 @@ export class ClaudeCodeDriver implements Driver {
         windowsHide: true
       });
       state.resources.child = child;
+      let aborted = false;
+      let stopChild: (() => Promise<void>) | undefined;
+      // invariant: one termination per child. A stream that keeps failing asks
+      // again for every line still in the pipe, a tree terminator reads the
+      // process table each time it is asked, and a cancel asks once more.
+      // invariant: a cancel stops the run through this same request, so the
+      // run it interrupts ends as aborted and not as a process that died.
+      const terminate = async () => {
+        aborted = true;
+        await stopChild?.();
+      };
       if (child.pid !== undefined) {
-        state.resources.stop = singleTermination(this.#terminateTree, child.pid);
+        stopChild = singleTermination(this.#terminateTree, child.pid);
+        state.resources.stop = terminate;
         this.#dependencies.onSpawn?.(child.pid);
       }
       let outputBytes = 0;
@@ -542,14 +555,6 @@ export class ClaudeCodeDriver implements Driver {
       let streamFailure: string | undefined;
       let initialized = false;
       let resultSeen = false;
-      let aborted = false;
-      // invariant: one termination per child. A stream that keeps failing asks
-      // again for every line still in the pipe, a tree terminator reads the
-      // process table each time it is asked, and a cancel asks once more.
-      const terminate = async () => {
-        aborted = true;
-        await state.resources.stop?.();
-      };
       signal.addEventListener("abort", terminate, { once: true });
       child.stderr.on("data", (chunk: Buffer) => {
         outputBytes += chunk.length;
@@ -679,6 +684,7 @@ export class ClaudeCodeDriver implements Driver {
       delete state.resources.stop;
       return Object.freeze({ sessionId });
     } finally {
+      runEnded();
       await releaseLaunch(launch);
     }
   }

@@ -420,3 +420,81 @@ function openCodeHanging() {
   const fixture = openCodeFixture({}, "hang");
   return { ...completing(OpenCodeDriver, fixture), running: fixture.running, stops: fixture.aborts };
 }
+
+// why: the cancel order axis. A cancel of a running session ends it in one
+// terminal event that nothing follows, and `close` reports what that event
+// said. The session ledger owns that order and its contract suite asserts it;
+// what can go wrong per driver is a run that does not know it was stopped, or
+// that reports how it ended after the terminal event. The rows are those of
+// tests/helpers/driver-cancel-order-fixture.mjs, and each driver's
+// qualification suite pins its exact sequence against the same rows. They are
+// imported here, with the axis that reads them, so that the lines above stay.
+import { assertEndedOnce, CANCEL_ORDER_ROWS, runningSession } from "../helpers/driver-cancel-order-fixture.mjs";
+
+test("the cancel order axis covers exactly the drivers of the session axis", () => {
+  assert.deepEqual(
+    Object.keys(CANCEL_ORDER_ROWS),
+    SESSION_MATRIX.map((row) => row.driverId)
+  );
+});
+
+for (const [driverId, row] of Object.entries(CANCEL_ORDER_ROWS)) {
+  const options = { timeout: 30_000 };
+
+  test(
+    `${driverId} cancel of a running session ends it with one terminal event that nothing follows`,
+    options,
+    async (t) => {
+      const session = runningSession(t, row.hanging());
+      const sessionId = await session.ready;
+      assert.equal(typeof sessionId, "string", "the run ended before it announced a session");
+      await session.driver.cancel({ sessionId }, "user-request");
+      const emitted = session.events.length;
+      assert.deepEqual(session.events.at(-1), {
+        type: "session.closed",
+        outcome: "cancelled",
+        reason: "user-request",
+        sequence: emitted - 1
+      });
+      assert.equal(session.stops(), 1, "the provider is stopped once");
+      await assertEndedOnce(session, "cancelled");
+      assert.equal(session.events.length, emitted, "the close of a cancelled session emits nothing");
+    }
+  );
+
+  test(`${driverId} session whose run failed before the stop is still failed`, options, async (t) => {
+    const session = runningSession(t, row.failing());
+    const reference = await session.run;
+    assert.equal(session.events.at(-1).type === "session.closed", false);
+    assert.ok(
+      session.events.some((event) => event.type === "error"),
+      "the run did not fail"
+    );
+    await session.driver.cancel(reference, "user-request");
+    assert.deepEqual(session.events.at(-1), {
+      type: "session.closed",
+      outcome: "failed",
+      reason: "user-request",
+      sequence: session.events.length - 1
+    });
+    await assertEndedOnce(session, "failed");
+  });
+}
+
+for (const row of SESSION_MATRIX) {
+  test(`${row.driverId} stop after the session completed and closed changes nothing`, async () => {
+    const controller = new AbortController();
+    const events = [];
+    const { request, build } = row.complete();
+    const driver = build();
+    const session = await driver.start(request, (event) => events.push(event), controller.signal);
+    assert.equal((await driver.close(session)).outcome, "completed");
+    const emitted = [...events];
+    controller.abort();
+    await driver.cancel(session, "late");
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(events, emitted);
+    assert.equal(events.at(-1).outcome, "completed");
+    assert.deepEqual(await driver.close(session), { sessionId: session.sessionId, closed: true, alreadyClosed: true });
+  });
+}

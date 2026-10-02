@@ -38,6 +38,13 @@ if (mode === "malformed") {
   emit({ type: "result", subtype: "success", is_error: false, result: `done:${process.env.TEST_SECRET}`, total_cost_usd: 0, usage: { input_tokens: 1, output_tokens: 1 }, session_id: "private-session-id" });
 } else if (mode === "hang") {
   setInterval(() => {}, 1_000);
+} else if (mode === "garbled") {
+  // why: a provider whose stream breaks, that says one more thing after the
+  // break, and that then never answers. A reader that is stopped once it has
+  // seen that last thing is stopped after its stream had already failed.
+  const delta = JSON.stringify({ type: "stream_event", event: { delta: { type: "text_delta", text: "after-the-failure" } } });
+  process.stdout.write(`{not-json}\n${delta}\n`);
+  setInterval(() => {}, 1_000);
 } else if (mode === "fork") {
   // why: a provider that starts processes of its own and then never answers. One
   // descendant stays in the provider's process group and holds its output

@@ -146,9 +146,9 @@ for (const row of ROWS) {
     }
   );
 
-  // invariant: the end ADP-3 recorded. A session cancelled through `cancel()`
-  // alone emits its terminal event, may then report how its process ended, and
-  // may answer `failed` on close. The runner reads that end as `cancelled`.
+  // invariant: a session cancelled through `cancel()` alone, behind the
+  // runner's back. Its run reports that it was aborted, and its terminal event
+  // and its close say `cancelled`. The runner reads that end as `cancelled`.
   test(
     `${row.driverId}: a running session cancelled behind the runner's back is cancelled, not failed`,
     { timeout: 30_000 },
@@ -172,27 +172,37 @@ for (const row of ROWS) {
   );
 }
 
-test(
-  "claude-code: the run a cancel interrupts still reports how its process ended, after the terminal event",
-  { timeout: 30_000 },
-  async (t) => {
-    const safetyNet = new AbortController();
-    t.after(() => safetyNet.abort());
-    const { driver, events, run, ready } = runningSession(ROWS[0], { signal: safetyNet.signal });
-    const sessionId = await ready;
-    assert.equal(typeof sessionId, "string");
-    await driver.cancel({ sessionId }, "user-request");
-    const finished = await run;
-    // invariant: this is the driver-level order the runner tolerates. It is
-    // pinned so a change to it is a decision and not an accident: the terminal
-    // event first, then the error, and the runner still answers `cancelled`.
-    assert.deepEqual(
-      events.slice(-2).map((event) => event.type),
-      ["session.closed", "error"]
-    );
-    assert.deepEqual(finished, { outcome: "cancelled", errorCodes: ["VES_CLAUDE_STREAM_INCOMPLETE"] });
-  }
-);
+// invariant: the driver-level order of a stopped run, pinned so that a change
+// to it is a decision and not an accident. The run reports that it was
+// aborted, the terminal event follows, and nothing follows that event. The
+// runner's answer carries the code of that one report.
+const ABORTED_CODES = {
+  "claude-code": "VES_CLAUDE_ABORTED",
+  codex: "VES_CODEX_ABORTED",
+  opencode: "VES_OPENCODE_ABORTED",
+  pi: "VES_PI_ABORTED"
+};
+
+for (const row of ROWS) {
+  test(
+    `${row.driverId}: the run a cancel interrupts reports that it was aborted before the terminal event, and nothing after it`,
+    { timeout: 30_000 },
+    async (t) => {
+      const safetyNet = new AbortController();
+      t.after(() => safetyNet.abort());
+      const { driver, events, run, ready } = runningSession(row, { signal: safetyNet.signal });
+      const sessionId = await ready;
+      assert.equal(typeof sessionId, "string");
+      await driver.cancel({ sessionId }, "user-request");
+      const finished = await run;
+      assert.deepEqual(
+        events.slice(-2).map((event) => event.type),
+        ["error", "session.closed"]
+      );
+      assert.deepEqual(finished, { outcome: "cancelled", errorCodes: [ABORTED_CODES[row.driverId]] });
+    }
+  );
+}
 
 // why: the OpenCode row and what it imports are declared after the cases, so
 // that the lines of those cases, which the validation evidence cites, stay

@@ -238,6 +238,10 @@ export class PiDriver implements Driver {
     });
     const abort = () => agent.abort();
     signal.addEventListener("abort", abort, { once: true });
+    // invariant: a cancel releases the agent, and a release resets its
+    // transcript. The run reads how it ended from that transcript, so a cancel
+    // waits until the run has reported.
+    const runEnded = state.runStarted();
     try {
       await agent.prompt(execution.prompt);
       const finalMessage = [...agent.state.messages]
@@ -287,6 +291,7 @@ export class PiDriver implements Driver {
       });
     } finally {
       signal.removeEventListener("abort", abort);
+      runEnded();
     }
     return Object.freeze({ sessionId });
   }

@@ -177,16 +177,16 @@ test("cancel after close is accepted, emits nothing, and stops nothing", async (
   assert.deepEqual(events, [{ type: "session.closed", outcome: "completed", sequence: 0 }]);
 });
 
-test("an event emitted after the terminal event is still delivered and numbered", async () => {
-  // hazard: a provider run that is cancelled through the driver reports how it
-  // ended after the terminal event; that report must not be dropped.
+test("a terminal session accepts no further event, after a cancel and after its close", async () => {
+  // invariant: the terminal event is the last one. What is emitted after it
+  // reaches no sink and spends no sequence number.
   const { ledger, session, events } = opened();
   await ledger.cancel(REFERENCE, "user-request");
   session.emit({ type: "error", code: "VES_FIXTURE_ABORTED", message: "Fixture was aborted", retryable: true });
-  assert.equal(events.at(-1).sequence, 1);
-  assert.equal(ledger.close(REFERENCE).finalSequence, 2);
+  assert.equal(events.at(-1).type, "session.closed");
+  assert.equal(ledger.close(REFERENCE).finalSequence, 1);
   session.emit({ type: "warning", code: "VES_FIXTURE_LATE", message: "late" });
-  assert.equal(events.at(-1).sequence, 2);
+  assert.deepEqual(events, [{ type: "session.closed", outcome: "cancelled", reason: "user-request", sequence: 0 }]);
   assert.equal(terminalEvents(events).length, 1);
 });
 
@@ -329,4 +329,162 @@ test("a release hook that throws on close leaves the session known, so the close
     finalSequence: 1
   });
   assert.equal(terminalEvents(events).length, 1);
+});
+
+// invariant: the cancel order. A cancel of a running session ends in one
+// terminal event that nothing follows, and `close` reports what that event
+// said. The cases below are appended, so the lines cited for the cases above
+// do not move.
+const ABORTED = Object.freeze({ type: "error", code: "VES_FIXTURE_ABORTED", message: "aborted", retryable: true });
+const BROKEN = Object.freeze({
+  type: "error",
+  code: "VES_FIXTURE_STREAM_INVALID",
+  message: "failed",
+  retryable: false
+});
+
+function brief(events) {
+  return events.map(({ type, outcome, reason, code }) => [type, outcome, reason, code].filter(Boolean).join(":"));
+}
+
+// invariant: a session whose run is in flight, as a driver opens it. `stopped`
+// settles the stop hook, and `runEnded` is what the driver calls once the run
+// has reported how it ended.
+function running(options = {}) {
+  let stopped;
+  const stopping = new Promise((resolve) => (stopped = resolve));
+  const fixture = opened({ stop: () => stopping, ...options });
+  return { ...fixture, stopped, runEnded: fixture.session.runStarted() };
+}
+
+test("a cancel that stopped the provider waits for the run to report, and its terminal event is the last", async () => {
+  const { ledger, session, events, stopped, runEnded } = running();
+  const cancelling = ledger.cancel(REFERENCE, "user-request");
+  stopped();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(events, [], "the terminal event waits for the run, not only for the stop");
+  session.outcome = "cancelled";
+  session.emit(ABORTED);
+  runEnded();
+  await cancelling;
+  assert.deepEqual(brief(events), ["error:VES_FIXTURE_ABORTED", "session.closed:cancelled:user-request"]);
+  session.emit({ type: "content.delta", text: "late" });
+  assert.deepEqual(ledger.close(REFERENCE), {
+    sessionId: REFERENCE.sessionId,
+    closed: true,
+    outcome: "cancelled",
+    finalSequence: 2
+  });
+  assert.equal(events.length, 2);
+});
+
+test("a failure the stop did not cause is reported before the terminal event, which says failed", async () => {
+  const { ledger, session, events, stopped, runEnded } = running();
+  const cancelling = ledger.cancel(REFERENCE, "user-request");
+  stopped();
+  session.outcome = "failed";
+  session.emit(BROKEN);
+  runEnded();
+  await cancelling;
+  assert.deepEqual(brief(events), ["error:VES_FIXTURE_STREAM_INVALID", "session.closed:failed:user-request"]);
+  assert.equal(ledger.close(REFERENCE).outcome, "failed");
+});
+
+test("a failure recorded before a cancel stands: the terminal event and the close say failed", async () => {
+  const { ledger, session, events } = opened();
+  session.outcome = "failed";
+  session.emit(BROKEN);
+  await ledger.cancel(REFERENCE, "user-request");
+  assert.deepEqual(brief(events), ["error:VES_FIXTURE_STREAM_INVALID", "session.closed:failed:user-request"]);
+  assert.equal(session.outcome, "failed");
+  assert.equal(ledger.close(REFERENCE).outcome, "failed");
+});
+
+for (const [first, second] of [
+  ["failed", "cancelled"],
+  ["cancelled", "failed"],
+  ["failed", "completed"]
+]) {
+  test(`an outcome is recorded once: ${first} is not replaced by ${second}`, () => {
+    const { ledger, session, events } = opened();
+    session.outcome = first;
+    session.outcome = second;
+    assert.equal(session.outcome, first);
+    assert.equal(ledger.close(REFERENCE).outcome, first);
+    assert.deepEqual(brief(events), [`session.closed:${first}`]);
+  });
+}
+
+test("an outcome recorded after the terminal event changes nothing: close reports what that event said", async () => {
+  const { ledger, session, events } = opened();
+  await ledger.cancel(REFERENCE, "user-request");
+  session.outcome = "failed";
+  assert.equal(session.outcome, "cancelled");
+  assert.equal(ledger.close(REFERENCE).outcome, events.at(-1).outcome);
+  const completed = opened();
+  completed.ledger.close(REFERENCE);
+  completed.session.outcome = "failed";
+  assert.equal(completed.session.outcome, "completed");
+});
+
+test("a cancel whose stop hook had nothing to wait for does not wait for the run either", () => {
+  const { ledger, session, events } = opened({ stop: () => undefined });
+  session.runStarted();
+  const cancelling = ledger.cancel(REFERENCE, "user-request");
+  assert.deepEqual(brief(events), ["session.closed:cancelled:user-request"]);
+  session.emit(ABORTED);
+  assert.equal(events.length, 1, "what the run reports after the terminal event is dropped");
+  return cancelling;
+});
+
+test("a cancel after the run reported waits for the stop alone", async () => {
+  const { ledger, events, stopped, runEnded } = running();
+  runEnded();
+  stopped();
+  await ledger.cancel(REFERENCE, "user-request");
+  assert.deepEqual(brief(events), ["session.closed:cancelled:user-request"]);
+});
+
+test("a stop hook that fails while the run is in flight leaves the session open and the run's report delivered", async () => {
+  let fail = true;
+  const { ledger, session, events } = opened({
+    stop: async () => {
+      if (fail) throw new Error("terminator failed");
+    }
+  });
+  const runEnded = session.runStarted();
+  await assert.rejects(ledger.cancel(REFERENCE, "user-request"), /terminator failed/u);
+  session.emit({ type: "content.delta", text: "still running" });
+  assert.equal(events.length, 1);
+  fail = false;
+  const cancelling = ledger.cancel(REFERENCE, "second-request");
+  session.emit(ABORTED);
+  runEnded();
+  await cancelling;
+  assert.deepEqual(brief(events), [
+    "content.delta",
+    "error:VES_FIXTURE_ABORTED",
+    "session.closed:cancelled:second-request"
+  ]);
+});
+
+test("a session closed while its run is in flight is terminal: what the run reports afterwards is dropped", () => {
+  const { ledger, session, events } = opened();
+  session.runStarted();
+  const closed = ledger.close(REFERENCE);
+  session.outcome = "failed";
+  session.emit(BROKEN);
+  assert.deepEqual(brief(events), ["session.closed:completed"]);
+  assert.equal(closed.finalSequence, 1);
+});
+
+test("two cancels of one running session end it once, with the reason of the first", async () => {
+  const { ledger, session, events, stopped, runEnded } = running();
+  const first = ledger.cancel(REFERENCE, "first-request");
+  const second = ledger.cancel(REFERENCE, "second-request");
+  stopped();
+  session.emit(ABORTED);
+  runEnded();
+  await Promise.all([first, second]);
+  assert.deepEqual(brief(events), ["error:VES_FIXTURE_ABORTED", "session.closed:cancelled:first-request"]);
 });

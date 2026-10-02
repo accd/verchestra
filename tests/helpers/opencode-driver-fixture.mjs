@@ -160,3 +160,24 @@ export function openCodeFixture(overrides = {}, mode = "success") {
     })
   };
 }
+
+// why: a provider that is still creating its session when the stop arrives. The
+// run can report that it was aborted only once `release()` lets the provider
+// answer, so a test can observe that a cancel waits for that report.
+export function openCodeLingeringFixture() {
+  const fixture = openCodeFixture({}, "hang");
+  let markCreating;
+  const running = new Promise((resolve) => (markCreating = resolve));
+  let release;
+  const released = new Promise((resolve) => (release = resolve));
+  const serverFactory = async (options) => {
+    const instance = await fakeOpenCodeFactory("hang", fixture.calls)(options);
+    const create = async (parameters) => {
+      markCreating();
+      await released;
+      return instance.client.session.create(parameters);
+    };
+    return { ...instance, client: { ...instance.client, session: { ...instance.client.session, create } } };
+  };
+  return { ...fixture, running, release, dependencies: () => fixture.dependencies({ serverFactory }) };
+}
