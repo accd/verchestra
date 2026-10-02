@@ -6,6 +6,7 @@ import {
   type DriverScenarioFacts,
   type SubjectRunFacts
 } from "@verchestra/application";
+import { runDriverSession } from "@verchestra/agent-runtime";
 import {
   ClaudeCodeDriver,
   CodexDriver,
@@ -75,9 +76,11 @@ function request(review: DriverReviewFacts): DriverStartRequest {
   };
 }
 
+// invariant: the scenario's facts are the lifecycle events the session emitted,
+// so the session runner starts, observes and closes it and its outcome is not
+// read here.
 async function exercise(driver: Driver, review: DriverReviewFacts, events: DriverEvent[]): Promise<void> {
-  const session = await driver.start(request(review), (event) => events.push(event), new AbortController().signal);
-  await driver.close(session);
+  await runDriverSession({ driver, startRequest: request(review), observe: (event) => events.push(event) });
 }
 
 function claude(events: DriverEvent[]): (review: DriverReviewFacts) => Promise<void> {
