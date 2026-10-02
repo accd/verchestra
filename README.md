@@ -175,26 +175,35 @@ repository checkout anywhere in the journey.
 
 ### Bind a provider credential
 
-Governed work that calls a provider reads its API key from the operating
-system's credential store, never from an ambient environment variable, and
-injects it only into the child process that needs it. The store is your macOS
-keychain, your Linux Secret Service keyring (for example gnome-keyring), or
-your Windows Credential Manager. Run these from the root of an initialized
-Workspace (`init`):
+Governed work that calls a provider reads its credential from the operating
+system's credential store, never from an ambient environment variable or from
+the session you are logged in to, and injects it only into the child process
+that needs it. The store is your macOS keychain, your Linux Secret Service
+keyring (for example gnome-keyring), or your Windows Credential Manager. Run
+these from the root of an initialized Workspace (`init`):
 
 ```bash
-npx verchestra secret set --name anthropic-api-key
-npx verchestra secret status --name anthropic-api-key
-npx verchestra secret delete --name anthropic-api-key
+npx verchestra secret set --name claude-code-oauth-token
+npx verchestra secret status --name claude-code-oauth-token
+npx verchestra secret delete --name claude-code-oauth-token
 ```
+
+By default a Workspace authenticates through subscriptions:
+`claude-code-oauth-token` is the long-lived token `claude setup-token` prints,
+and Codex signs in once into the Workspace's own identity directory with
+`CODEX_HOME=<directory> codex login`, so its credential never enters the
+credential store. A machine-local setting switches either provider to an API
+key (`anthropic-api-key`, `openai-api-key`). The steps are in
+[docs/quick-start.md](docs/quick-start.md).
 
 `secret set` reads the value from standard input. In a terminal it prompts
 without echoing. From a pipe it takes the whole input and strips one trailing
 newline. It accepts printable ASCII without whitespace, up to the documented
 size limit, and never prints the value. `secret status` reports presence only.
 Each credential is bound to its Workspace under `verchestra/<workspaceId>`.
-`doctor --deep` checks that `anthropic-api-key` is bound, and reports
-`blocked`, not `pass`, until it is.
+`doctor --deep` checks that the Claude Code credential of the Workspace's mode
+is bound (`claude-code-oauth-token` by default), and reports `blocked`, not
+`pass`, until it is.
 
 - **macOS:** `--keychain <path>` selects a keychain file you own instead of
   your default keychain.
@@ -230,10 +239,11 @@ npx verchestra task status  --run-id <runId>
 npx verchestra task review  --run-id <runId> --outcome accepted --surface-digest <sha256:…>
 ```
 
-The full walkthrough, a complete request example, and the limits of this
-qualification build (macOS only, one implementer and one verifier, token and
-cost ceilings checked when usage is reported, local human authority, live
-pilot pending in #406) are in [docs/quick-start.md](docs/quick-start.md).
+The full walkthrough, the one-time subscription setup, a complete request
+example, and the limits of this qualification build (macOS only, one
+implementer and one verifier, token and cost ceilings checked when usage is
+reported, subscription isolation not yet observed live, local human authority,
+live pilot pending in #406) are in [docs/quick-start.md](docs/quick-start.md).
 
 ### Managed state, recovery, and cleanup
 

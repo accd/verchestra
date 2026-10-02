@@ -27,7 +27,10 @@ Verchestra never merges: the result is a branch you inspect and merge yourself.
   `GIT_COMMITTER_*` name and email variables still set the commit identity.
 - **Claude Code** (`claude`, version 2.1.282 or later in the 2.x line) and the
   **Codex CLI** (`codex`, version 0.115.0 or later) on `PATH`.
-- An **Anthropic API key** and an **OpenAI API key**.
+- A **Claude subscription** (Pro, Max, Team, or Enterprise) and a **ChatGPT
+  plan that includes Codex**. This is the default. An Anthropic API key and an
+  OpenAI API key work instead; see
+  [Use API keys instead](#use-api-keys-instead-optional).
 - **Node** only as far as `npx` needs it. The activated release carries its own
   Node runtime.
 
@@ -60,26 +63,90 @@ npx verchestra init --workspace-id "workspace_$(node -e 'console.log(crypto.rand
 `init` writes `.verchestra/` metadata into the repository. It changes nothing
 else.
 
-## 3. Bind the three credentials
+## 3. Sign in the two providers and bind the signing passphrase
 
-Each value is read from standard input without echo, stored in your macOS
-keychain under the service `verchestra/<workspaceId>`, and never printed.
+A Workspace authenticates both providers through your subscriptions unless you
+tell it otherwise. Three one-time steps set that up. Verchestra never uses the
+Claude Code or Codex session you are logged in to day to day: each provider
+child gets its own isolated home, and a missing credential is reported as not
+configured instead of falling back to that session.
+
+**Claude Code.** Mint a long-lived subscription token and bind it:
+
+```bash
+claude setup-token
+npx verchestra secret set --name claude-code-oauth-token
+```
+
+`claude setup-token` opens the browser sign-in and prints a token that is valid
+for about a year. It does not save it. Paste the token at the hidden prompt of
+`secret set`, or pipe it in (for example `pbpaste | npx verchestra secret set
+--name claude-code-oauth-token`); one trailing newline is stripped. Do not put
+the token in a file or a shell profile. It is stored in your macOS keychain
+under the service `verchestra/<workspaceId>`, is never printed, and is injected
+only into the Claude Code child process, as `CLAUDE_CODE_OAUTH_TOKEN`.
+
+**Codex.** Sign in once into the Workspace's own Codex identity directory:
+
+```bash
+CODEX_IDENTITY="$HOME/Library/Application Support/Verchestra/state/workspaces/<workspaceId>/codex-identity"
+mkdir -p "$CODEX_IDENTITY" && chmod 700 "$CODEX_IDENTITY"
+CODEX_HOME="$CODEX_IDENTITY" codex login -c 'cli_auth_credentials_store="file"'
+CODEX_HOME="$CODEX_IDENTITY" codex login status   # Logged in using ChatGPT
+```
+
+This is a separate login from the one in `~/.codex`, which is never read. The
+Codex credential stays in that directory as a file and never enters the
+keychain. Verchestra pins the directory's `config.toml` to the file store and
+to the ChatGPT login, so an API-key login there counts as not signed in. If you
+skip this step, `task start` reports `VES_TASK_NOT_CONFIGURED` (requirement
+`codex-login`) before it changes anything and prints the same command with the
+exact path.
+
+**Evidence signing passphrase.**
+
+```bash
+npx verchestra secret set --name evidence-signing-passphrase
+```
+
+`evidence-signing-passphrase` unlocks the Workspace evidence key, which is
+created on first use and seals the Execution Package, the approval, and the
+run capsule. Choose a long random value and keep it; without it the key
+cannot be unlocked.
+
+Add `--keychain <path>` to any `secret` or `task` command to use a keychain
+file you own instead of your default keychain.
+
+### Use API keys instead (optional)
+
+The credential of each provider is a machine-local setting beside the gate
+allowlist. A task request cannot select it.
+
+```text
+~/Library/Application Support/Verchestra/state/workspaces/<workspaceId>/task-providers.json
+```
+
+```json
+{
+  "schemaVersion": 1,
+  "providers": {
+    "claude-code": { "auth": "api-key" },
+    "codex": { "auth": "api-key" }
+  }
+}
+```
+
+Each provider is `subscription` or `api-key`; a provider you leave out stays on
+`subscription`. Bind the key of each provider you switch:
 
 ```bash
 npx verchestra secret set --name anthropic-api-key
 npx verchestra secret set --name openai-api-key
-npx verchestra secret set --name evidence-signing-passphrase
 ```
 
-- `anthropic-api-key` is injected only into the Claude Code child process.
-- `openai-api-key` is injected only into the Codex child process.
-- `evidence-signing-passphrase` unlocks the Workspace evidence key, which is
-  created on first use and seals the Execution Package, the approval, and the
-  run capsule. Choose a long random value and keep it; without it the key
-  cannot be unlocked.
-
-Add `--keychain <path>` to any `secret` or `task` command to use a keychain
-file you own instead of your default keychain.
+`anthropic-api-key` is injected only into the Claude Code child process and
+`openai-api-key` only into the Codex child process. A run reads only the
+credentials its modes name.
 
 ## 4. Allowlist the gate commands
 
@@ -152,8 +219,9 @@ untracked.
   `protectedPaths` are refused even inside the scope.
 - The gates must cover every entry of `verificationCommands` exactly, and every
   requirement ID.
-- Models must be priced in the release's model price table; an unpriced model
-  is refused at planning, before any cost.
+- Models must be listed in the release's model price table; a model that is
+  not is refused at planning, before any cost. On a subscription the table is
+  only the list of supported models: nothing is priced.
 - An optional `onGateFailure` (`maxAttempts`, `feedbackToDriver`,
   `escalateAfter`) declares a bounded repair loop.
 
@@ -169,7 +237,8 @@ npx verchestra task plan --request task-request.json
 Planning compiles the repository context at `sourceRevision`, seals the
 Execution Package, creates the run, and prints the approval surface: scope,
 protected paths, destinations, models, budgets, gates, risk, and the
-`bindingDigest` your approval will bind. Add `--dry-run` to print the same
+`bindingDigest` your approval will bind. It also prints `providerAuth`, the
+credential mode each provider will use. Add `--dry-run` to print the same
 surface while writing nothing and reading no credential.
 
 ## 7. Approve
@@ -190,13 +259,16 @@ instead; it never happens by accident.
 npx verchestra task start --run-id <runId>
 ```
 
-`start` proves both provider credentials, both executables, and the gate
-allowlist before it changes anything. It then:
+`start` proves the credential of each provider's mode, both executables, and
+the gate allowlist before it changes anything. It then:
 
 1. creates an isolated Git worktree at `sourceRevision`;
-2. runs Claude Code in that worktree with no built-in tools; every write goes
-   through the Verchestra bridge, and the executor re-checks scope, protected
-   paths, the capability grant, and Cedar authority before it happens;
+2. runs Claude Code with no built-in tools; every read and write of that
+   worktree goes through the Verchestra bridge, and the executor re-checks
+   scope, protected paths, the capability grant, and Cedar authority before a
+   write happens. On a subscription Claude Code itself runs in an empty
+   directory, so it never loads the repository's own `CLAUDE.md`, `AGENTS.md`,
+   or `.claude/` settings;
 3. runs your gates, commits the change atomically, and anchors it on
    `vestra/<runId>/<taskId>`;
 4. runs Codex read-only over a checkout of that commit, then checks its claims
@@ -276,7 +348,18 @@ approval makes the approval stale, and the run is refused until you plan again.
 - **Budgets.** Token and cost ceilings are checked when a provider reports
   usage, and Claude Code reports at the end of its session, so a single
   session can overshoot them. The duration ceiling is enforced by a timer and
-  is the hard guard.
+  is the hard guard. On a subscription nothing is billed per token: the token
+  and duration ceilings still apply, `status` shows the cost as
+  `not billed (subscription)`, and the run capsule carries no cost. Your
+  plan's own usage limits are not metered; a run that hits one fails closed
+  and can be resumed or planned again.
+- **Subscription isolation.** The subscription path cannot use Claude Code's
+  `--bare` mode, which reads only an API key. It rebuilds that isolation from
+  named switches and adds fail-closed checks, described in
+  [docs/qualification/claude-code-driver-subscription.md](qualification/claude-code-driver-subscription.md).
+  A machine that carries a managed Claude Code policy is refused with
+  `VES_CLAUDE_MANAGED_POLICY_PRESENT`. None of this has been observed with a
+  real subscription yet.
 - **Local human authority.** Approvals and reviews are decisions confirmed on
   this machine by typing a digest back. They are not a cryptographic proof of
   who you are.

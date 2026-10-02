@@ -8,7 +8,7 @@ baseRevision: c57c15f1a952573ef98f0d2eba8f557ac136fc1d
 lastCompletedTask: T0
 nextTask: "T1: the owner resolves every item under Blockers; only then T2 (prepare the clean machine) and the runs, in the order fixed in spec.md section 6."
 lastGate: "Node 24.14.0 macOS arm64: agent:check PASS; gate:quick PASS (2330 + 305 + 13 tests, 0 failed, 0 skipped, 0 todo); no provider called, no cost incurred"
-updatedAt: 2026-09-30T00:00:00Z
+updatedAt: 2026-10-02T00:00:00Z
 ---
 
 # Scope
@@ -39,17 +39,23 @@ The owner must provide each of these before T2 starts:
    registry lists `0.0.0-qualification` and `0.0.0-qualification.2`;
    `0.0.0-qualification.3` is being built from `c57c15f`). If the owner prefers
    another candidate, that is a change to `spec.md` §2 made before T2, in a
-   reviewed change.
-2. **Cost and time approval.** Approve, or replace, the proposed ceilings:
-   US$25 total, US$8 per task run (P1–P3), US$2 for S1, US$4 each for S2 and S3,
-   the cost stop rule, the per-run duration ceilings, and the four-hour session
-   limit (`spec.md` §6).
-3. **Provider access.** An Anthropic API key that can use `claude-sonnet-5`
-   through Claude Code 2.1.282, and an OpenAI API key that can use
+   reviewed change. Since the 2026-10-02 amendment the candidate must be built
+   from a revision that carries the subscription path (ADP-A); a publication
+   that predates it has only the API-key path and cannot run this pilot.
+2. **Usage and time approval.** Approve, or replace, the proposed ceilings:
+   3,000,000 tokens per task run (P1–P3), 1,000,000 for S1, 2,000,000 each for
+   S2 and S3, the usage stop rule, the per-run duration ceilings, and the
+   four-hour session limit (`spec.md` §6). Nothing is billed per token; the
+   pilot draws on the owner's Claude and ChatGPT plans.
+3. **Provider access.** A Claude subscription that can use `claude-sonnet-5`
+   through Claude Code 2.1.282, and a ChatGPT plan that can use
    `gpt-5.2-codex` through Codex CLI 0.157.1. Model availability cannot be
-   confirmed without a paid call, so it was not checked. The owner binds the
-   two keys and a new `evidence-signing-passphrase` with `vestra secret set`
-   (names only in any record).
+   confirmed without a model call, so it was not checked. The owner mints the
+   Claude Code token with `claude setup-token` and binds it as
+   `claude-code-oauth-token`, binds a new `evidence-signing-passphrase`, and
+   signs Codex in once into the pilot Workspace's identity directory
+   (`docs/quick-start.md`, step 3; names only in any record). No API key is
+   needed.
 4. **The machine.** A macOS arm64 machine or fresh user account matching
    `spec.md` §3, where Node 24.14.0, Claude Code 2.1.282, and Codex CLI 0.157.1
    are the first `node`, `claude`, and `codex` on `PATH`.
@@ -59,6 +65,11 @@ The owner must provide each of these before T2 starts:
 6. **Sign-off on the pre-registration.** Approval of the target, the pinned
    revision, the tasks, their assertions, and the scenarios, given by reviewing
    and merging this change before the first run.
+7. **The subscription profile's open decisions.** The owner accepts or rejects
+   the gaps G1–G3 of the subscription profile (`.specs/STATE.md`, the
+   subscription provider authentication decision; managed policy, the Keychain
+   lookup, and startup requests) before T2. The pilot's first run is also the
+   first live observation of that profile.
 
 # Next Action
 
@@ -79,5 +90,9 @@ surface changes, because the qualification state did not change.
 - S1 has a timing window; one repeat is allowed (`spec.md` §5, S1).
 - S3's denied-call count may not be visible through a public command; it would
   be recorded as `unavailable` (`spec.md` §5, S3).
-- Claude Code reports usage at session end, so a run can overshoot its cost
+- Claude Code reports usage at session end, so a run can overshoot its token
   ceiling before it is stopped (`spec.md` §6).
+- The subscription profile has never run against Claude Code itself. If the
+  live session advertises a tool or an MCP server the profile does not expect,
+  or a hook runs, the first run fails closed with a `VES_CLAUDE_*` code and the
+  pilot stops (`spec.md` §6).
