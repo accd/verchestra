@@ -11,7 +11,7 @@ import { PiDriver } from "../../packages/drivers/src/pi-driver.ts";
 import { claudeFixture } from "../helpers/claude-driver-fixture.mjs";
 import { codexFixture } from "../helpers/codex-driver-fixture.mjs";
 import { openCodeFixture } from "../helpers/opencode-driver-fixture.mjs";
-import { piFixture } from "../helpers/pi-driver-fixture.mjs";
+import { piAbortableFixture, piFixture } from "../helpers/pi-driver-fixture.mjs";
 
 // T75 Driver matrix: every declared Driver x the lifecycle contract it must
 // satisfy.
@@ -199,3 +199,180 @@ test("every driver distinguishes an absent provider from an unqualified one", as
   }
   assert.equal(codes.size, MATRIX.length, "every driver must report absence under its own distinct code");
 });
+
+// why: the session axis. Session bookkeeping has one contract, the session
+// ledger's (packages/drivers/src/driver-session-ledger.ts), asserted at its
+// interface by tests/contract/driver-session-ledger.test.mjs. What can still go
+// wrong per driver is the wiring: a driver that numbers events differently,
+// shares its sessions with another instance, spells another driver's name, or
+// does not stop its provider before the terminal event. Each row therefore
+// runs a real session against the same hermetic fixtures as the probe axis.
+//
+// invariant: `complete` builds drivers whose run ends by itself. `hanging`
+// builds one whose run ends only when it is stopped, with `stops()` counting
+// how often the provider was told to stop; it is null where a driver has
+// nothing to stop.
+function completing(Driver, fixture) {
+  return { request: fixture.request(), build: () => new Driver(fixture.dependencies()) };
+}
+
+// why: Claude Code and Codex are child processes stopped through the injected
+// process-tree terminator, which their fixtures count.
+function childProcessRow(driverId, noun, Driver, fixtureOf, hangMode) {
+  return {
+    driverId,
+    noun,
+    complete: () => completing(Driver, fixtureOf()),
+    hanging: () => {
+      const fixture = fixtureOf({ environment: hangMode });
+      return { ...completing(Driver, fixture), running: Promise.resolve(), stops: () => fixture.calls.terminate };
+    }
+  };
+}
+
+const SESSION_MATRIX = [
+  childProcessRow("claude-code", "Claude Code", ClaudeCodeDriver, claudeFixture, { FAKE_CLAUDE_MODE: "hang" }),
+  childProcessRow("codex", "Codex", CodexDriver, codexFixture, { FAKE_CODEX_MODE: "hang" }),
+  {
+    driverId: "opencode",
+    noun: "OpenCode",
+    complete: () => completing(OpenCodeDriver, openCodeFixture()),
+    // why: an OpenCode cancel only records the terminal state; the SDK session
+    // is aborted through the start signal, which the lifecycle suite covers.
+    hanging: null
+  },
+  {
+    driverId: "pi",
+    noun: "Pi Driver",
+    complete: () => completing(PiDriver, piFixture()),
+    hanging: () => {
+      const fixture = piAbortableFixture();
+      return { ...completing(PiDriver, fixture), running: fixture.running, stops: () => fixture.observed.aborts };
+    }
+  }
+];
+
+async function completedSession(row) {
+  const events = [];
+  const { request, build } = row.complete();
+  const driver = build();
+  const session = await driver.start(request, (event) => events.push(event), new AbortController().signal);
+  return { driver, another: build(), session, events };
+}
+
+function terminalEvents(events) {
+  return events.filter((event) => event.type === "session.closed");
+}
+
+test("the session axis covers exactly the drivers of the probe axis", () => {
+  assert.deepEqual(
+    SESSION_MATRIX.map((row) => row.driverId),
+    MATRIX.map((row) => row.driverId)
+  );
+});
+
+for (const row of SESSION_MATRIX) {
+  test(`${row.driverId} numbers a session from zero without a gap and reports where it ended`, async () => {
+    const { driver, session, events } = await completedSession(row);
+    const closed = await driver.close(session);
+    assert.deepEqual(
+      events.map((event) => event.sequence),
+      events.map((_, index) => index)
+    );
+    assert.equal(events.every(Object.isFrozen), true);
+    assert.equal(events[0].type, "session.started");
+    assert.equal(events[0].sessionId, session.sessionId);
+    assert.deepEqual(events.at(-1), { type: "session.closed", outcome: "completed", sequence: events.length - 1 });
+    assert.deepEqual(closed, {
+      sessionId: session.sessionId,
+      closed: true,
+      outcome: "completed",
+      finalSequence: events.length
+    });
+    assert.equal(Object.isFrozen(closed), true);
+  });
+
+  test(`${row.driverId} close is idempotent and emits one terminal event`, async () => {
+    const { driver, session, events } = await completedSession(row);
+    await driver.close(session);
+    const repeated = await driver.close(session);
+    assert.equal(terminalEvents(events).length, 1);
+    assert.deepEqual(repeated, { sessionId: session.sessionId, closed: true, alreadyClosed: true });
+  });
+
+  test(`${row.driverId} session reference is local to one driver instance`, async () => {
+    const { driver, another, session, events } = await completedSession(row);
+    const unknown = { code: "VES_DRIVER_SESSION_UNKNOWN", message: `${row.noun} session is unknown` };
+    await assert.rejects(another.close(session), unknown);
+    await assert.rejects(another.cancel(session, "user-request"), unknown);
+    assert.equal(terminalEvents(events).length, 0, "another instance must not end the owner's session");
+    assert.equal((await driver.close(session)).outcome, "completed");
+  });
+
+  test(`${row.driverId} cancellation after execution is idempotent and closes once with its reason`, async () => {
+    const { driver, session, events } = await completedSession(row);
+    await driver.cancel(session, "user-request");
+    await driver.cancel(session, "second-request");
+    assert.equal(terminalEvents(events).length, 1);
+    assert.deepEqual(events.at(-1), {
+      type: "session.closed",
+      outcome: "cancelled",
+      reason: "user-request",
+      sequence: events.length - 1
+    });
+    const closed = await driver.close(session);
+    assert.equal(closed.outcome, "cancelled");
+    assert.equal(closed.finalSequence, events.length);
+    assert.equal(terminalEvents(events).length, 1);
+  });
+
+  test(`${row.driverId} accepts a cancel after close and emits nothing for it`, async () => {
+    const { driver, session, events } = await completedSession(row);
+    await driver.close(session);
+    const emitted = events.length;
+    await driver.cancel(session, "late");
+    assert.equal(events.length, emitted);
+  });
+}
+
+for (const row of SESSION_MATRIX.filter((entry) => entry.hanging !== null)) {
+  test(
+    `${row.driverId} cancel stops the running provider before it emits the terminal event`,
+    { timeout: 30_000 },
+    async (t) => {
+      const { request, build, running, stops } = row.hanging();
+      const events = [];
+      const stopsAtTerminal = [];
+      let announce;
+      const announced = new Promise((resolve) => (announce = resolve));
+      const driver = build();
+      // hazard: a driver that does not stop its provider would leave the run,
+      // and a child process, alive after this case fails; the start signal ends
+      // both whatever the outcome.
+      const safetyNet = new AbortController();
+      t.after(() => safetyNet.abort());
+      const run = driver.start(
+        request,
+        (event) => {
+          events.push(event);
+          if (event.type === "session.started") announce(event.sessionId);
+          if (event.type === "session.closed") stopsAtTerminal.push(stops());
+        },
+        safetyNet.signal
+      );
+      const sessionId = await Promise.race([announced, run.then(() => undefined)]);
+      assert.equal(typeof sessionId, "string", "the run ended before it announced a session");
+      await running;
+      assert.equal(stops(), 0, "nothing may stop the provider before the cancel");
+      await driver.cancel({ sessionId }, "user-request");
+      assert.deepEqual(stopsAtTerminal, [1], "the provider is stopped once, before the terminal event");
+      const session = await run;
+      assert.equal(session.sessionId, sessionId);
+      const [terminal] = terminalEvents(events);
+      assert.equal(terminal.outcome, "cancelled");
+      assert.equal(terminal.reason, "user-request");
+      await driver.close(session);
+      assert.equal(terminalEvents(events).length, 1);
+    }
+  );
+}
