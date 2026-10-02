@@ -7,6 +7,7 @@ import {
   snapshotCodexProcessContext,
   type CodexProcessContext
 } from "./codex-process-context.ts";
+import { OWN_PROCESS_GROUP, processTreeTerminator, type ProcessTreeTerminator } from "./driver-process-tree.ts";
 import { sensitiveValueRedactor } from "./driver-redaction.ts";
 import { DriverSessionLedger } from "./driver-session-ledger.ts";
 import { probeDriverVersion } from "./driver-version-probe.ts";
@@ -49,7 +50,7 @@ export interface CodexDriverDependencies {
   readonly minimumVersion?: string;
   readonly probeEnvironment?: Readonly<Record<string, string>>;
   readonly processContext?: CodexProcessContext;
-  readonly terminateTree?: (pid: number) => Promise<void>;
+  readonly terminateTree?: ProcessTreeTerminator;
   readonly onSpawn?: (pid: number) => void;
   readonly onMessageSent?: (message: Readonly<Record<string, unknown>>) => void;
 }
@@ -86,18 +87,17 @@ export class CodexDriver implements Driver {
   readonly #command: readonly string[];
   readonly #minimumVersion: string;
   readonly #processContext: CodexProcessContext | undefined;
+  readonly #terminateTree: ProcessTreeTerminator;
   readonly #sessions = new DriverSessionLedger<CodexSessionResources>({
     noun: "Codex",
-    stop: ({ resources }) =>
-      resources.child?.pid === undefined
-        ? undefined
-        : (this.#dependencies.terminateTree ?? (async (pid) => process.kill(pid)))(resources.child.pid)
+    stop: ({ resources }) => (resources.child?.pid === undefined ? undefined : this.#terminateTree(resources.child.pid))
   });
 
   constructor(dependencies: CodexDriverDependencies) {
     this.#dependencies = dependencies;
     this.#command = Object.freeze([...(dependencies.command ?? ["codex"])]);
     this.#minimumVersion = dependencies.minimumVersion ?? "0.115.0";
+    this.#terminateTree = processTreeTerminator(dependencies.terminateTree);
     this.#processContext =
       dependencies.processContext === undefined
         ? undefined
@@ -178,6 +178,7 @@ export class CodexDriver implements Driver {
       cwd: this.#workingDirectory(),
       env: this.buildEnvironment(execution.environment),
       stdio: ["pipe", "pipe", "pipe"],
+      detached: OWN_PROCESS_GROUP,
       windowsHide: true
     });
     state.resources.child = child;
@@ -332,7 +333,7 @@ export class CodexDriver implements Driver {
       interrupt();
       const timer = setTimeout(() => {
         if (child.exitCode === null && child.signalCode === null && child.pid !== undefined)
-          void (this.#dependencies.terminateTree ?? (async (pid) => process.kill(pid)))(child.pid);
+          void this.#terminateTree(child.pid);
       }, grace);
       timer.unref();
     };

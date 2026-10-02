@@ -5,6 +5,7 @@ import { tmpdir, userInfo } from "node:os";
 import { isAbsolute, join } from "node:path";
 import readline from "node:readline";
 import { promisify } from "node:util";
+import { OWN_PROCESS_GROUP, processTreeTerminator, type ProcessTreeTerminator } from "./driver-process-tree.ts";
 import { sensitiveValueRedactor } from "./driver-redaction.ts";
 import { DriverSessionLedger } from "./driver-session-ledger.ts";
 import { probeDriverVersion } from "./driver-version-probe.ts";
@@ -106,7 +107,7 @@ export interface ClaudeCodeDriverDependencies {
   readonly command?: readonly string[];
   readonly minimumVersion?: string;
   readonly probeEnvironment?: Readonly<Record<string, string>>;
-  readonly terminateTree?: (pid: number) => Promise<void>;
+  readonly terminateTree?: ProcessTreeTerminator;
   readonly onSpawn?: (pid: number) => void;
   // invariant: absent is the T03 profile, unchanged; present is a qualified
   // mediated profile (AD-039), which requires an absolute executable.
@@ -341,12 +342,10 @@ export class ClaudeCodeDriver implements Driver {
   readonly #dependencies: ClaudeCodeDriverDependencies;
   readonly #command: readonly string[];
   readonly #minimumVersion: string;
+  readonly #terminateTree: ProcessTreeTerminator;
   readonly #sessions = new DriverSessionLedger<ClaudeSessionResources>({
     noun: "Claude Code",
-    stop: ({ resources }) =>
-      resources.child?.pid === undefined
-        ? undefined
-        : (this.#dependencies.terminateTree ?? (async (pid) => process.kill(pid)))(resources.child.pid)
+    stop: ({ resources }) => (resources.child?.pid === undefined ? undefined : this.#terminateTree(resources.child.pid))
   });
 
   readonly #profile: NormalizedMediatedProfile | undefined;
@@ -354,6 +353,7 @@ export class ClaudeCodeDriver implements Driver {
   constructor(dependencies: ClaudeCodeDriverDependencies) {
     this.#dependencies = dependencies;
     this.#command = Object.freeze([...(dependencies.command ?? ["claude"])]);
+    this.#terminateTree = processTreeTerminator(dependencies.terminateTree);
     this.#profile =
       dependencies.profile === undefined ? undefined : mediatedProfile(dependencies.profile, this.#command);
     this.#minimumVersion =
@@ -523,6 +523,7 @@ export class ClaudeCodeDriver implements Driver {
         cwd: plan.cwd,
         env: plan.environment,
         stdio: ["pipe", "pipe", "pipe"],
+        detached: OWN_PROCESS_GROUP,
         windowsHide: true
       });
       state.resources.child = child;
@@ -533,10 +534,13 @@ export class ClaudeCodeDriver implements Driver {
       let initialized = false;
       let resultSeen = false;
       let aborted = false;
+      // invariant: one termination per child. A stream that keeps failing asks
+      // again for every line still in the pipe, and a tree terminator reads
+      // the process table each time it is asked.
+      let stopping: Promise<void> | undefined;
       const terminate = async () => {
         aborted = true;
-        if (child.pid !== undefined)
-          await (this.#dependencies.terminateTree ?? (async (pid) => process.kill(pid)))(child.pid);
+        if (child.pid !== undefined) await (stopping ??= this.#terminateTree(child.pid));
       };
       signal.addEventListener("abort", terminate, { once: true });
       child.stderr.on("data", (chunk: Buffer) => {
