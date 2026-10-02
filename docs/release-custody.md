@@ -11,10 +11,24 @@ readiness. It does not change the signed hold in
 
 **Progress (2026-09-30).** The technical part of O2 and the O3 decision are done:
 the signing keys were rotated into protected GitHub environments, and the old
-keys are retired (section 9). The owner still has to delete the retired
-repository-level secrets. Custodian #2 (O1) does not exist yet, so the
-environment reviewer is the owner and the posture is still single-operator
-custody (RR10).
+keys are retired (section 9). The owner deleted the retired repository-level
+secrets on 2026-10-01 (O2 step 4): the repository-level secret list is empty.
+
+**Owner decision (2026-10-02): no custodian #2 is named.** The owner stated on
+2026-10-02 that there is no second accountable human to name (O1). The
+consequences are recorded here so that nothing is relabeled:
+
+- The environment reviewer stays the owner, and the posture stays
+  **single-operator custody** (RR10, acceptance matrix L8).
+- This model stays **proposed, not ratified**. The steps that need custodian #2
+  cannot run: the reviewer switch in O2, O4, the audit membership in O7, the
+  approval rehearsal G1-G6 (O9), and ratification (O10).
+- The condition in `docs/qualification/release-decision-1.0.0.md` for a promote
+  round is not met. The signed hold stands, and no promote round can open while
+  L8 stands.
+- [#408](https://github.com/accd/verchestra/issues/408) is closed as not
+  planned, not as completed. Naming a custodian later reopens the work from O1
+  with this document as the starting point.
 
 This is owner-led governance. The repository and its agents cannot appoint an
 accountable human, read a key, change the `Protect main` ruleset, or configure an
@@ -625,7 +639,9 @@ logins, and settings, never values.
 **O1. Choose custodian #2 and the ratifying reviewer.** Custodian #2 is a named
 human who accepts accountability for approving release effects and reviewing
 the audit log. The ratifying reviewer should be a different person (RR9).
-Record both on #408.
+Record both on #408. Decided on 2026-10-02: the owner names no one, because no
+second accountable human is available. O4, O9, and O10 are not actionable until
+that changes.
 
 **O2. Move signing secrets out of repository scope. Do this before any access
 changes.** Steps 1-3 were done on 2026-09-30; step 4 is the owner's.
@@ -654,8 +670,8 @@ gh api repos/accd/verchestra/environments/tuf-release-signing/deployment-branch-
 
 Expected output:
 
-- The repository-level list contains no signing key name. Until step 4 it still
-  lists the three retired names.
+- The repository-level list contains no signing key name. Step 4 was done on
+  2026-10-01, and the list is empty.
 - `can_admins_bypass` is `false`.
 - A `required_reviewers` rule names the reviewer: `accd` with
   `prevent_self_review: false` today, custodian #2 with

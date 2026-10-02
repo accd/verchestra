@@ -6,9 +6,9 @@ status: blocked
 branch: feat/408-protected-signing-environments
 baseRevision: 4e95805586c321a56bcd7b6587a3408e0c175ec3
 lastCompletedTask: T11
-nextTask: "Merge the protected-environment change, re-sign .3 from a new main candidate with environment approval, then the owner deletes the three retired repository-level secrets (O2 step 4) and decides O1 (custodian #2 and a distinct ratifying reviewer)."
+nextTask: "None while no custodian #2 exists. The owner decided on 2026-10-02 to name none (O1); #408 is closed as not planned. If the owner later names a second accountable human, resume from O1 in docs/release-custody.md section 9."
 lastGate: "gate:quick, gate:build, gate:security, gate:release, agent:check PASS (feat/408-protected-signing-environments)"
-updatedAt: 2026-09-30T22:00:00Z
+updatedAt: 2026-10-02T11:00:00Z
 ---
 
 # Scope
@@ -53,6 +53,18 @@ promotion readiness, and the signed hold is unchanged.
     branch was refused before its first step. See `validation.md`.
   - `docs/release-custody.md` records the new posture, the retired-anchor
     mechanism (7.4), rehearsal case D6, and residual risks RR10-RR14.
+
+# Owner decision (2026-10-02)
+
+The owner stated that there is no second accountable human to name as custodian
+#2 (O1). O2 step 4 was done on 2026-10-01: the repository-level secret list is
+empty. The model stays proposed, not ratified; the posture stays
+single-operator custody (L8, RR10); the signed hold stands, and no promote
+round can open while L8 stands. #408 is closed as **not planned**, not as
+completed. The O1, O2 step 4, and `.3` re-sign entries below are history: the
+re-sign and the secret deletion are done, and O1 is decided as "none named".
+The entries that need custodian #2 (reviewer switch, O4, O7 audit membership,
+O9, O10) are not actionable.
 
 # Blockers
 
