@@ -8,6 +8,7 @@ import {
   type CodexProcessContext
 } from "./codex-process-context.ts";
 import { DriverSessionLedger } from "./driver-session-ledger.ts";
+import { probeDriverVersion } from "./driver-version-probe.ts";
 import {
   DriverProtocolError,
   validateDriverStartRequest,
@@ -60,18 +61,22 @@ function codexError(code: string, message: string): DriverProtocolError {
   return new DriverProtocolError(code, message);
 }
 
-function parseVersion(value: string): readonly [number, number, number] | undefined {
-  const match = /(?:codex-cli\s+)?(\d+)\.(\d+)\.(\d+)/u.exec(value.trim());
-  return match === null ? undefined : [Number(match[1]), Number(match[2]), Number(match[3])];
-}
-
-function supported(actual: string, minimum: string): boolean {
-  const left = parseVersion(actual);
-  const right = parseVersion(minimum);
-  if (left === undefined || right === undefined || left[0] !== right[0]) return false;
-  if (left[1] !== right[1]) return left[1] > right[1];
-  return left[2] >= right[2];
-}
+const VERSION_PATTERN = /(?:codex-cli\s+)?(\d+)\.(\d+)\.(\d+)/u;
+// invariant: the probe refusals are VES_CODEX_NOT_AVAILABLE and
+// VES_CODEX_VERSION_UNSUPPORTED.
+const PROBE_PROFILE = Object.freeze({
+  identity: Object.freeze({ driverId: "codex" }),
+  errorCodePrefix: "VES_CODEX",
+  noun: "Codex",
+  capabilities: Object.freeze([
+    "app-server-jsonl",
+    "ephemeral-threads",
+    "model-discovery",
+    "protocol-interrupt",
+    "dynamic-tools",
+    "read-only"
+  ])
+});
 
 function redactor(values: readonly string[]): (text: unknown) => string {
   const secrets = [...new Set(values.filter((value) => value.length > 0))].sort(
@@ -141,41 +146,16 @@ export class CodexDriver implements Driver {
   }
 
   async probe() {
-    try {
+    const requirement = { minimum: this.#minimumVersion, pattern: VERSION_PATTERN };
+    return probeDriverVersion(PROBE_PROFILE, requirement, async () => {
       const { stdout } = await execFileAsync(this.#command[0] as string, [...this.#command.slice(1), "--version"], {
         encoding: "utf8",
         cwd: this.#workingDirectory(),
         env: this.buildEnvironment(this.#dependencies.probeEnvironment),
         windowsHide: true
       });
-      const version = parseVersion(stdout)?.join(".");
-      if (version === undefined || !supported(version, this.#minimumVersion))
-        return Object.freeze({
-          driverId: "codex",
-          available: false,
-          version,
-          error: Object.freeze({ code: "VES_CODEX_VERSION_UNSUPPORTED", message: "Codex version is unsupported" })
-        });
-      return Object.freeze({
-        driverId: "codex",
-        available: true,
-        version,
-        capabilities: Object.freeze([
-          "app-server-jsonl",
-          "ephemeral-threads",
-          "model-discovery",
-          "protocol-interrupt",
-          "dynamic-tools",
-          "read-only"
-        ])
-      });
-    } catch {
-      return Object.freeze({
-        driverId: "codex",
-        available: false,
-        error: Object.freeze({ code: "VES_CODEX_NOT_AVAILABLE", message: "Codex is unavailable" })
-      });
-    }
+      return stdout;
+    });
   }
 
   async start(

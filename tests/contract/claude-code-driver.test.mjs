@@ -209,3 +209,15 @@ test("Claude Code Driver rejects follow-up input for one-shot print sessions", a
     (error) => error.code === "VES_CLAUDE_SEND_UNSUPPORTED"
   );
 });
+
+test("Claude Code Driver reads its version only at the start of the version line", async () => {
+  // why: Claude Code prints "<version> (Claude Code)". A line that starts with
+  // anything else is not that format and must not be searched for a version.
+  const result = await new ClaudeCodeDriver(
+    claudeFixture().dependencies({ probeEnvironment: { FAKE_CLAUDE_VERSION: "build 2.1.168" } })
+  ).probe();
+  assert.equal(result.available, false);
+  assert.equal(result.error.code, "VES_CLAUDE_VERSION_UNSUPPORTED");
+  assert.equal(Object.hasOwn(result, "version"), true);
+  assert.equal(result.version, undefined);
+});

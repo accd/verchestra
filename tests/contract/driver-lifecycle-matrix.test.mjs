@@ -376,3 +376,40 @@ for (const row of SESSION_MATRIX.filter((entry) => entry.hanging !== null)) {
     }
   );
 }
+
+// why: the floor axis. Every fixture above states its floor, so the floor a
+// driver applies when a composition states none was pinned nowhere. Changing
+// one of these is a requalification, not a refactor. Pi qualifies one exact
+// version instead, which tests/contract/pi-driver.test.mjs pins.
+function floorRow(driverId, floor, below, Driver, fixtureOf, versionVariable) {
+  const reporting = (version) =>
+    new Driver(
+      fixtureOf().dependencies({ minimumVersion: undefined, probeEnvironment: { [versionVariable]: version } })
+    );
+  return { driverId, floor, below, reporting };
+}
+
+const DEFAULT_FLOORS = [
+  floorRow("claude-code", "2.1.168", "2.1.167", ClaudeCodeDriver, claudeFixture, "FAKE_CLAUDE_VERSION"),
+  floorRow("codex", "0.115.0", "0.114.99", CodexDriver, codexFixture, "FAKE_CODEX_VERSION"),
+  floorRow("opencode", "1.17.18", "1.17.17", OpenCodeDriver, openCodeFixture, "FAKE_OPENCODE_VERSION")
+];
+
+test("the floor axis covers every driver that qualifies a floor", () => {
+  assert.deepEqual(
+    DEFAULT_FLOORS.map((row) => row.driverId),
+    MATRIX.filter((row) => row.versionDrift !== null).map((row) => row.driverId)
+  );
+});
+
+for (const row of DEFAULT_FLOORS) {
+  test(`${row.driverId} qualifies ${row.floor} by default and nothing below it`, async () => {
+    const atFloor = await row.reporting(row.floor).probe();
+    assert.equal(atFloor.available, true, `${row.driverId} refused its own default floor`);
+    assert.equal(atFloor.version, row.floor);
+    const below = await row.reporting(row.below).probe();
+    assert.equal(below.available, false, `${row.driverId} accepted a version below its default floor`);
+    assert.equal(below.version, row.below);
+    assert.equal(below.error.code, MATRIX.find((entry) => entry.driverId === row.driverId).versionUnsupportedCode);
+  });
+}
