@@ -5,6 +5,7 @@ import { tmpdir, userInfo } from "node:os";
 import { isAbsolute, join } from "node:path";
 import readline from "node:readline";
 import { promisify } from "node:util";
+import { DriverSessionLedger } from "./driver-session-ledger.ts";
 import {
   DriverProtocolError,
   validateDriverStartRequest,
@@ -124,11 +125,7 @@ interface MediatedLaunch {
   readonly surface: StreamSurface;
 }
 
-interface ClaudeSession {
-  readonly sink: (event: DriverEvent) => void;
-  sequence: number;
-  outcome: "completed" | "failed" | "cancelled";
-  closed: boolean;
+interface ClaudeSessionResources {
   child?: ChildProcessWithoutNullStreams;
 }
 
@@ -352,8 +349,13 @@ export class ClaudeCodeDriver implements Driver {
   readonly #dependencies: ClaudeCodeDriverDependencies;
   readonly #command: readonly string[];
   readonly #minimumVersion: string;
-  readonly #sessions = new Map<string, ClaudeSession>();
-  readonly #closedSessions = new Set<string>();
+  readonly #sessions = new DriverSessionLedger<ClaudeSessionResources>({
+    noun: "Claude Code",
+    stop: ({ resources }) =>
+      resources.child?.pid === undefined
+        ? undefined
+        : (this.#dependencies.terminateTree ?? (async (pid) => process.kill(pid)))(resources.child.pid)
+  });
 
   readonly #profile: NormalizedMediatedProfile | undefined;
 
@@ -543,8 +545,7 @@ export class ClaudeCodeDriver implements Driver {
     const surface = surfaceOf(launch);
     try {
       const sessionId = `claude-session:${randomUUID()}`;
-      const state: ClaudeSession = { sink, sequence: 0, outcome: "completed", closed: false };
-      this.#sessions.set(sessionId, state);
+      const state = this.#sessions.open(sessionId, sink, {});
       const redact = redactor(execution.sensitiveValues ?? []);
       const plan = this.#spawnPlan(execution, launch);
       const child = spawn(this.#command[0] as string, [...plan.arguments], {
@@ -553,7 +554,7 @@ export class ClaudeCodeDriver implements Driver {
         stdio: ["pipe", "pipe", "pipe"],
         windowsHide: true
       });
-      state.child = child;
+      state.resources.child = child;
       if (child.pid !== undefined) this.#dependencies.onSpawn?.(child.pid);
       let outputBytes = 0;
       const maximum = execution.maxOutputBytes ?? 1_048_576;
@@ -600,8 +601,8 @@ export class ClaudeCodeDriver implements Driver {
           }
           const model = execution.model;
           initialized = true;
-          this.#emit(state, { type: "session.started", sessionId });
-          this.#emit(state, {
+          state.emit({ type: "session.started", sessionId });
+          state.emit({
             type: "model.resolved",
             passportRef: request.passportRef,
             provider: "anthropic",
@@ -610,7 +611,7 @@ export class ClaudeCodeDriver implements Driver {
         } else if (event["type"] === "stream_event") {
           const nested = event["event"] as { delta?: { type?: string; text?: unknown } } | undefined;
           if (nested?.delta?.type === "text_delta")
-            this.#emit(state, { type: "content.delta", text: redact(String(nested.delta.text ?? "")) });
+            state.emit({ type: "content.delta", text: redact(String(nested.delta.text ?? "")) });
         } else if (event["type"] === "assistant") {
           const message = event["message"] as { content?: unknown[] } | undefined;
           for (const raw of message?.content ?? []) {
@@ -621,7 +622,7 @@ export class ClaudeCodeDriver implements Driver {
                 void terminate();
                 return;
               }
-              this.#emit(state, {
+              state.emit({
                 type: "tool.requested",
                 toolCallId: content["id"],
                 name: content["name"],
@@ -644,14 +645,14 @@ export class ClaudeCodeDriver implements Driver {
             void terminate();
             return;
           }
-          this.#emit(state, {
+          state.emit({
             type: "usage.updated",
             inputTokens,
             outputTokens
           });
           if (event["is_error"] === true) {
             state.outcome = "failed";
-            this.#emit(state, {
+            state.emit({
               type: "error",
               code: "VES_CLAUDE_EXECUTION_FAILED",
               message: "Claude Code failed",
@@ -668,7 +669,7 @@ export class ClaudeCodeDriver implements Driver {
       lines.close();
       if (aborted && streamFailure === undefined) {
         state.outcome = "cancelled";
-        this.#emit(state, {
+        state.emit({
           type: "error",
           code: "VES_CLAUDE_ABORTED",
           message: "Claude Code was aborted",
@@ -676,7 +677,7 @@ export class ClaudeCodeDriver implements Driver {
         });
       } else if (streamFailure !== undefined) {
         state.outcome = "failed";
-        this.#emit(state, {
+        state.emit({
           type: "error",
           code: streamFailure,
           message: "Claude Code stream failed",
@@ -684,14 +685,14 @@ export class ClaudeCodeDriver implements Driver {
         });
       } else if (!initialized || !resultSeen || exit.code !== 0) {
         state.outcome = "failed";
-        this.#emit(state, {
+        state.emit({
           type: "error",
           code: !resultSeen ? "VES_CLAUDE_STREAM_INCOMPLETE" : "VES_CLAUDE_PROCESS_FAILED",
           message: "Claude Code process failed",
           retryable: false
         });
       }
-      delete state.child;
+      delete state.resources.child;
       return Object.freeze({ sessionId });
     } finally {
       await releaseLaunch(launch);
@@ -794,44 +795,10 @@ export class ClaudeCodeDriver implements Driver {
   }
 
   async cancel(session: DriverSessionRef, reason: string): Promise<void> {
-    if (this.#closedSessions.has(session.sessionId)) return;
-    const state = this.#known(session);
-    if (state.closed) return;
-    if (state.child?.pid !== undefined)
-      await (this.#dependencies.terminateTree ?? (async (pid) => process.kill(pid)))(state.child.pid);
-    state.outcome = "cancelled";
-    this.#terminal(state, reason);
+    await this.#sessions.cancel(session, reason);
   }
 
   async close(session: DriverSessionRef) {
-    if (this.#closedSessions.has(session.sessionId))
-      return Object.freeze({ sessionId: session.sessionId, closed: true, alreadyClosed: true });
-    const state = this.#known(session);
-    this.#terminal(state);
-    this.#sessions.delete(session.sessionId);
-    this.#closedSessions.add(session.sessionId);
-    return Object.freeze({
-      sessionId: session.sessionId,
-      closed: true,
-      outcome: state.outcome,
-      finalSequence: state.sequence
-    });
-  }
-
-  #emit(state: ClaudeSession, event: Readonly<Record<string, unknown>>): void {
-    state.sink(Object.freeze({ ...event, sequence: state.sequence }) as DriverEvent);
-    state.sequence += 1;
-  }
-
-  #terminal(state: ClaudeSession, reason?: string): void {
-    if (state.closed) return;
-    this.#emit(state, { type: "session.closed", outcome: state.outcome, ...(reason === undefined ? {} : { reason }) });
-    state.closed = true;
-  }
-
-  #known(session: DriverSessionRef): ClaudeSession {
-    const state = this.#sessions.get(session.sessionId);
-    if (state === undefined) throw claudeError("VES_DRIVER_SESSION_UNKNOWN", "Claude Code session is unknown");
-    return state;
+    return this.#sessions.close(session);
   }
 }
