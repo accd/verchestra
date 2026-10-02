@@ -14,7 +14,7 @@ import {
 import { claudeFixture } from "../helpers/claude-driver-fixture.mjs";
 import { codexFixture } from "../helpers/codex-driver-fixture.mjs";
 import { eventuallyDead, isAlive } from "../helpers/process-liveness.mjs";
-import { reap } from "../helpers/process-tree-fixture.mjs";
+import { reap, stoppedWithInputPending, WIN32_HOST } from "../helpers/process-tree-fixture.mjs";
 
 // invariant: what the Claude Code and Codex drivers share for stopping a
 // provider (ADP-4, C4-4): which terminator a driver uses, what its fallback
@@ -143,7 +143,7 @@ for (const [label, Driver, fixtureOf, hang] of [
 
 // invariant: a provider is ended in more ways than by a stop, and each of them
 // goes through the injected terminator once: a stream that failed, an output
-// limit, an input the provider stopped reading, and a run that ended with the
+// limit, an input the provider closed, and a run that ended with the
 // provider still running. A signal to the one process would not be counted
 // here, and would leave the provider's descendants behind; the qualification
 // suites prove the tree, these cases prove the wiring on every platform.
@@ -171,30 +171,58 @@ for (const [label, Driver, fixtureOf, ended] of [
     "a Codex stream that fails",
     CodexDriver,
     () => codexFixture({ environment: { FAKE_CODEX_MODE: "garbled" } }),
-    { errors: ["VES_CODEX_STREAM_INVALID"], outcome: "failed", terminations: 1 }
+    { by: endedByItself, errors: ["VES_CODEX_STREAM_INVALID"], outcome: "failed", terminations: 1 }
   ],
   [
     "a Codex provider that exceeds its output limit",
     CodexDriver,
     () => codexFixture({ environment: { FAKE_CODEX_MODE: "large" }, maxOutputBytes: 2048 }),
-    { errors: ["VES_CODEX_OUTPUT_LIMIT"], outcome: "failed", terminations: 1 }
+    { by: endedByItself, errors: ["VES_CODEX_OUTPUT_LIMIT"], outcome: "failed", terminations: 1 }
   ],
   [
     "a Codex run that ends with its provider still running",
     CodexDriver,
     () => codexFixture({ environment: { FAKE_CODEX_MODE: "linger" } }),
-    { errors: [], outcome: "completed", terminations: 1 }
+    { by: endedByItself, errors: [], outcome: "completed", terminations: 1 }
   ],
-  [
-    "a Claude Code provider that stops reading its input",
-    ClaudeCodeDriver,
-    () => claudeFixture({ environment: { FAKE_CLAUDE_MODE: "deaf" }, prompt: "x".repeat(2 * 1024 * 1024) }),
-    { errors: ["VES_CLAUDE_STDIN_FAILED"], outcome: "failed", terminations: 1 }
-  ]
+  inputRow()
 ]) {
   test(`${label} ends that provider through one termination of its child`, { timeout: 30_000 }, async (t) => {
-    assert.deepEqual(await endedByItself(t, Driver, fixtureOf()), ended);
+    const { by, ...expected } = ended;
+    assert.deepEqual(await by(t, Driver, fixtureOf()), expected);
   });
+}
+
+// hazard: on win32 the fake cannot close its input, so no write fails there
+// and nothing ends the session but a stop. The row asserts there what holds:
+// nothing ends the session by itself, and a stop ends it through one
+// termination, with the prompt still unread.
+function inputRow() {
+  const fixtureOf = () =>
+    claudeFixture({ environment: { FAKE_CLAUDE_MODE: "deaf" }, prompt: "x".repeat(2 * 1024 * 1024) });
+  if (!WIN32_HOST)
+    return [
+      "a Claude Code provider that closes its input",
+      ClaudeCodeDriver,
+      fixtureOf,
+      { by: endedByItself, errors: ["VES_CLAUDE_STDIN_FAILED"], outcome: "failed", terminations: 1 }
+    ];
+  return [
+    "a stop of a Claude Code provider that does not read its input",
+    ClaudeCodeDriver,
+    fixtureOf,
+    { by: stoppedUnread, errors: ["VES_CLAUDE_ABORTED"], outcome: "cancelled", terminations: 1 }
+  ];
+}
+
+async function stoppedUnread(t, Driver, fixture) {
+  const counted = fixture.dependencies();
+  const onSpawn = (pid) => {
+    counted.onSpawn(pid);
+    reap(t, () => [pid]);
+  };
+  const stopped = await stoppedWithInputPending(new Driver({ ...counted, onSpawn }), fixture.request());
+  return { ...stopped, terminations: fixture.calls.terminate };
 }
 
 test("an end no caller awaits asks for the termination and contains its failure", async (t) => {

@@ -140,4 +140,8 @@ process that the fake cannot make.
 - The limits of the process-tree requalification apply unchanged: the tree is
   found through the process table, an escapee whose parent had exited is not
   found, and Windows has no process groups.
-- Nothing here was run on Windows.
+- A failed write to the provider's input is one of the stream failures above,
+  and no case produces it for this driver on any platform. The Claude Code
+  report records that the labeled fakes cannot produce it on Windows at all.
+- The three cases above passed on Windows x64 in the platform matrix (runs
+  37063709048 and 37063705718). Nothing was run on a Windows machine at hand.

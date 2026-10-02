@@ -565,8 +565,8 @@ export class ClaudeCodeDriver implements Driver {
           endChild();
         }
       });
-      // invariant: a provider that no longer reads its input cannot be given
-      // its prompt, so it is ended like any stream that failed.
+      // invariant: a provider whose input can no longer be written to cannot
+      // be given its prompt, so it is ended like any stream that failed.
       child.stdin.on("error", () => {
         if (aborted) return;
         streamFailure = "VES_CLAUDE_STDIN_FAILED";

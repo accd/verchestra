@@ -1,7 +1,7 @@
 // invariant: requalification of the Claude Code driver for how its provider
 // ends when no one stopped it (ADP-4, follow-up). The production
 // ClaudeCodeDriver ends a provider whose stream failed, that exceeded its
-// output limit, or that stopped reading its input through the same one tree
+// output limit, or that closed its input through the same one tree
 // termination as a stop. The provider is the DETERMINISTIC FAKE `claude`
 // executable (fake-claude.mjs) with FAKE_CLAUDE_FORK=1, in its `garbled`,
 // `flood` and `deaf` modes. No model is invoked, and every process started
@@ -39,11 +39,16 @@ providerEndSuite(test, {
     {
       // why: a prompt larger than any pipe buffer, so the write is still
       // pending when the provider closes its input.
-      name: "stops reading its input",
+      // hazard: on win32 the fake cannot close its input, so no write fails
+      // there and nothing ends the session but a stop. That is what the case
+      // asserts on win32, under the name it has there.
+      name: "closes its input",
       mode: "deaf",
       execution: { prompt: "x".repeat(2 * 1024 * 1024) },
       errors: ["VES_CLAUDE_STDIN_FAILED"],
-      outcome: "failed"
+      outcome: "failed",
+      win32Name: "does not read its input, once it is stopped,",
+      win32: { errors: ["VES_CLAUDE_ABORTED"], outcome: "cancelled" }
     }
   ]
 });

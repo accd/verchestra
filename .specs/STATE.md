@@ -1595,14 +1595,14 @@ note. -->
   one process with `child.kill()` when its stream failed and when a run ended
   with the App Server still running, which is every completed turn. Checking
   the other drivers found that the Claude Code driver did not end a provider
-  that had stopped reading its input, that the OpenCode driver's own server
+  whose input write had failed, that the OpenCode driver's own server
   factory ends the `opencode serve` process it starts with `child.kill()` on
   every path, and that Pi starts no process.
 - **Decision:**
   1. In the Claude Code and Codex drivers every end of the provider asks for
      the single termination per child of AD-049: a stop, a stream that failed,
-     an output limit, an input the provider stopped reading, and a Codex run
-     that ended with the provider still running. Neither driver signals its
+     an output limit, a write to the provider's input that failed, and a Codex
+     run that ended with the provider still running. Neither driver signals its
      child itself, and
      `tests/architecture/provider-process-tree-termination.test.mjs` fails
      when one does.
@@ -1635,12 +1635,20 @@ note. -->
   provider's output to close, and a terminator that never returns would hold
   it); a tree termination for a provider that has already exited (its process
   id is no longer its own); the OpenCode spawn change without a composition
-  (item 5); a watchdog for a Claude Code provider that does not exit (item 4).
+  (item 5); a watchdog for a Claude Code provider that does not exit (item 4);
+  a bound in the driver on the write of the prompt (it sees only a prompt
+  larger than the pipe holds, it can cut a provider that starts slowly, and a
+  provider that does not read is a provider that hangs, which the
+  compositions already bound and stop).
 - **Consequence:** `pnpm qualify:claude` and `pnpm qualify:codex` each prove,
   for a provider with a descendant that left its process group, that nothing
   of its tree is left when its stream breaks, when it exceeds its output
-  limit, when it stops reading its input (Claude Code), and when its turn
-  completes without it exiting (Codex). An operator can notice one thing:
+  limit, when it closes its input (Claude Code, on macOS and Linux), and when
+  its turn completes without it exiting (Codex). The input case is not proven
+  on Windows: the labeled fake cannot close its input there, the platform
+  matrix showed the driver waiting as before, and the cases assert on win32
+  that such a session is still ended by a stop. A provider that keeps its
+  input open and does not read it is not noticed on any platform. An operator can notice one thing:
   under `vestra task` the verifier's App Server is killed with `SIGKILL` at
   the end of every verification, with whatever it started, where it received
   `SIGTERM`. No event sequence changed. Whoever first composes the OpenCode
