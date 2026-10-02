@@ -14,6 +14,15 @@ This is new user-workflow evidence for the installed public path (`vestra task`,
 #405). It is not another copy of the frozen campaigns (#14) or of the signed
 1.0.0 hold (#18), and it makes no release claim.
 
+**Amended on 2026-10-02, before any run.** The owner uses Claude Code and Codex
+through subscriptions, so the pilot authenticates that way (requirement ADP-A,
+`.specs/features/subscription-provider-auth/`). The credentials in §3, the
+limits in §6, two rows of the recording template in §7, steps 5 and 11 of §8,
+one boundary in §9, and item 8 of §10 changed. The target, the revision, the
+tasks, the requests and their digests, the probes, and the scenarios did not.
+The candidate must be one that carries the subscription path; see
+`handoff.md`.
+
 ## Requirements
 
 | ID | Requirement |
@@ -23,7 +32,7 @@ This is new user-workflow evidence for the installed public path (`vestra task`,
 | PLT-03 | One platform and provider configuration identity is named, including the verifier's required minimum version and whether the installed version meets it. Credentials are named, never valued. |
 | PLT-04 | Three tasks (bug fix, small feature, refactor) are chosen from the pinned revision, each with an exact Task Request v1 and predeclared pass/fail assertions. |
 | PLT-05 | Cancellation, interruption plus resume, and an out-of-scope attempt have exact steps, expected outcomes, and expected error codes taken from the `vestra task` implementation. |
-| PLT-06 | Per-run and total cost ceilings, time limits, stop rules, and the definition of success are fixed. |
+| PLT-06 | Per-run usage ceilings, time limits, stop rules, and the definition of success are fixed. |
 | PLT-07 | A recording template fixes what each run records, including explicit `unavailable` values and a sanitized evidence path. |
 | PLT-08 | Clean-machine reproduction steps and honest boundaries are written down. |
 | PLT-09 | An independent review checklist is written down. |
@@ -102,10 +111,11 @@ new live evidence into historical evidence.
 | OS | macOS on arm64 (the only platform with a qualified credential store and the mediated Claude Code profile). The exact product version (`sw_vers -productVersion`) is recorded at execution. |
 | Node | 24.14.0, first `node` on `PATH` (the target's CLI tests start `./cli.js` through `#!/usr/bin/env node`, so the gate's `PATH` must resolve to it) |
 | Git | Recorded at execution (`git --version`) |
-| Implementer | Claude Code **2.1.282**, `mediated-mcp` profile, model `claude-sonnet-5`. The driver requires at least `2.1.282` in the same major line (`CLAUDE_MEDIATED_MINIMUM_VERSION`, `packages/drivers/src/claude-code-driver.ts`); 2.1.282 meets it exactly. |
+| Implementer | Claude Code **2.1.282**, `mediated-mcp-subscription` profile, model `claude-sonnet-5`. The driver requires at least `2.1.282` in the same major line (`CLAUDE_MEDIATED_MINIMUM_VERSION`, `packages/drivers/src/claude-code-driver.ts`); 2.1.282 meets it exactly. |
 | Verifier | Codex CLI, model `gpt-5.2-codex`. The driver requires at least **`0.115.0`** in the same major line (`packages/drivers/src/codex-driver.ts`, default `minimumVersion`). The installed **`codex-cli 0.157.1`** has the same major (0) and a higher minor (157 > 115), so it **meets** the minimum. |
-| Model pricing | Both models are priced in the release's model price table (`packages/application/src/execution/model-price-table.ts`, version `2026.7.0`): `claude-sonnet-5` US$3 input / US$15 output per million tokens; `gpt-5.2-codex` US$1.75 / US$14. Planning refuses an unpriced model before any cost. |
-| Credentials | Bound per Workspace with `VES secret set --name <name>` into the macOS keychain (#379). Names only: `anthropic-api-key`, `openai-api-key`, `evidence-signing-passphrase`. Values are typed by the owner, never written to a file, a shell history, or any tracked artifact. |
+| Model listing | Both models are listed in the release's model price table (`packages/application/src/execution/model-price-table.ts`, version `2026.7.0`). Planning refuses a model that is not listed. On a subscription the table is only the list of supported models: no usage is priced. |
+| Credential mode | `subscription` for both providers, the default of a Workspace with no `task-providers.json`. No API key is bound or used. |
+| Credentials | Names only. `claude-code-oauth-token`: the token `claude setup-token` prints, bound with `VES secret set --name claude-code-oauth-token` into the macOS keychain (#379). `evidence-signing-passphrase`: bound the same way. Codex: one `codex login` with `CODEX_HOME` set to the pilot Workspace's `codex-identity` directory; its credential stays in that directory and never enters the keychain. Values are typed or pasted by the owner, never written to a tracked artifact, a shell history, or a shell profile. |
 | Gate allowlist | The machine-local `task-gates.json` for the pilot Workspace, instantiated from [`task-gates.example.json`](task-gates.example.json) (PLT-10) |
 
 At execution the operator records `claude --version`, `codex --version`,
@@ -372,25 +382,27 @@ pinning.)
 
 ## 6. Limits and success (PLT-06)
 
-### Cost
+### Usage
+
+Nothing is billed per token on a subscription, so the pilot has no dollar
+ceiling to consume. Each request still declares `maximumCostUsd` (the contract
+requires it); the meter adds no cost to it and `status` reports the cost as
+`not billed (subscription)`.
 
 | Ceiling | Value | Status |
 | --- | --- | --- |
-| Total for the whole pilot | **US$25** | proposed, pending owner approval |
-| Per task run (P1, P2, P3) | **US$8** (`maximumCostUsd` 8) | proposed, pending owner approval |
-| Per scenario run | S1 US$2, S2 US$4, S3 US$4; S3b US$0 | proposed, pending owner approval |
+| Tokens per task run (P1, P2, P3) | **3,000,000** (`maximumTokens`) | proposed, pending owner approval |
+| Tokens per scenario run | S1 1,000,000; S2 and S3 2,000,000; S3b is refused at plan time and consumes none | proposed, pending owner approval |
+| Plan usage for the whole pilot | whatever the owner's Claude and ChatGPT plans allow; the pilot does not meter it | owner's own limit |
 
-The declared per-run ceilings add up to US$34, more than the total, so the total
-is enforced by a stop rule: **no run starts unless the pilot's measured spend so
-far plus that run's declared ceiling is at most US$25.** Measured spend is the
-provider-console figure where it can be attributed, otherwise the Verchestra
-ledger figure; the run record states which. Otherwise the pilot stops and the
-owner decides.
+Stop rule: **the pilot stops, and the owner decides, when a provider refuses a
+session for a plan usage or rate limit.** The run is recorded with its outcome
+and reason; it is not retried in the same session.
 
-A per-run ceiling is not a hard stop: token and cost ceilings are checked when a
-provider reports usage, and Claude Code reports at the end of its session, so a
-single session can overshoot (`docs/quick-start.md`, Limits). The duration
-ceiling is the hard guard. An overshoot is recorded, not hidden.
+A per-run token ceiling is not a hard stop: it is checked when a provider
+reports usage, and Claude Code reports at the end of its session, so a single
+session can overshoot (`docs/quick-start.md`, Limits). The duration ceiling is
+the hard guard. An overshoot is recorded, not hidden.
 
 ### Time
 
@@ -405,9 +417,14 @@ ceiling is the hard guard. An overshoot is recorded, not hidden.
 ### Order and stop rules
 
 Order: P1, P2, P3, S3b, S1, S3, S2. The pilot stops, records, and escalates to
-the owner on: the cost stop rule; any change to the checkout fingerprint; any
+the owner on: the usage stop rule; any change to the checkout fingerprint; any
 file changed outside a run's scope; any credential value appearing in output;
-or a `VES_TASK_STATE_INVALID` result.
+a `VES_TASK_STATE_INVALID` result; or a run that ends with
+`VES_CLAUDE_TOOL_SURFACE_UNEXPECTED`, `VES_CLAUDE_BRIDGE_UNAVAILABLE`,
+`VES_CLAUDE_HOOK_UNEXPECTED`, or `VES_CLAUDE_MANAGED_POLICY_PRESENT`. Those four
+are findings about the subscription profile itself
+(`docs/qualification/claude-code-driver-subscription.md`, "What needs the
+owner's real token"), not about the task.
 
 ### What counts as success for a task (P1–P3)
 
@@ -455,9 +472,9 @@ per-run record carries these fields:
 | Final state, outcome status, reason code | `start`/`resume` output and `status` | — |
 | Gate results | the `gate:*` evidence refs in `status` plus the independent `node --test test.js` counts at the task commit | `unavailable` |
 | Verification verdict | `status.evidence.verificationVerdict` | `unavailable` |
-| Implementer usage | `status.checkpoints.budget` (`consumedTokens`, `consumedCostUsd`, `usageEvents`) as reported, with the price table version | `unavailable` |
+| Implementer usage | `status.checkpoints.budget` (`consumedTokens`, `unbilledTokens`, `usageEvents`, `billing`, and `consumedCostUsd`, which must read `not billed (subscription)`) as reported | `unavailable` |
 | Verifier usage | whatever a public surface reports for the Codex session | `unavailable` |
-| Provider-console cost | the provider consoles, only when the charge can be attributed to this run | `unavailable` |
+| Plan usage | the providers' own usage pages, only when usage can be attributed to this run's time window | `unavailable` |
 | Tool receipts | `status.checkpoints.toolReceipts` | `unavailable` |
 | Denied tool calls (S3) | a public surface, if one exists | `unavailable` |
 | Checkout fingerprint before and after | [Unrelated work](#unrelated-work) | — |
@@ -493,7 +510,13 @@ On a macOS arm64 machine with a fresh user account:
    `pass 4`, `fail 0`, `skipped 0`.
 4. `VES --version`; then
    `VES init --workspace-id "workspace_$(node -e 'console.log(crypto.randomUUID())')" --name "Pilot 406" --placement colocated`.
-5. Bind the three credentials by name (§3). The owner types each value.
+5. Set up the credentials (§3), following `docs/quick-start.md` step 3: the
+   owner runs `claude setup-token` and binds `claude-code-oauth-token`, binds
+   `evidence-signing-passphrase`, and signs Codex in once with `CODEX_HOME` set
+   to the pilot Workspace's `codex-identity` directory. Before the first run the
+   owner also confirms that `claude auth status`, run with `CLAUDE_CONFIG_DIR`
+   and `HOME` pointing at two new empty directories, reports that it is not
+   logged in. Only the outcome is recorded.
 6. Instantiate the gate allowlist from `task-gates.example.json`: replace the
    `node` placeholder with the absolute path `command -v node` prints, and save it
    as `task-gates.json` in the Workspace state directory (see
@@ -505,8 +528,9 @@ On a macOS arm64 machine with a fresh user account:
     clone, checked out at the task commit: run `node --test test.js`, the task's
     probe, and its revert check.
 11. Write the sanitized evidence (§7), then delete the disposable clone, the
-    verification clones, and the pilot Workspace state. Remove the pilot's
-    credentials from the keychain.
+    verification clones, and the pilot Workspace state, which holds the Codex
+    identity directory and its login. Remove the pilot's credentials from the
+    keychain.
 
 ### Unrelated work
 
@@ -535,7 +559,12 @@ branches of runs that committed.
   production-readiness claim, and they do not change the signed 1.0.0 hold.
 - The target has no dependencies by selection. Targets whose gates need an
   install step in the task worktree are out of scope.
-- Budgets are not hard stops for cost or tokens (§6).
+- Budgets are not hard stops for tokens, and no cost is metered on a
+  subscription (§6).
+- The subscription profile's isolation is observed only through the driver's
+  fail-closed checks. What Claude Code loads beyond its advertised tools and
+  MCP servers, and whether it asks the keychain for anything, is not visible
+  through a public command and is not claimed.
 - Human authority is local: approvals and reviews are typed digests on this
   machine, not a cryptographic identity.
 - Deterministic gates (`pnpm gate:*` on the candidate) and live outcomes are
@@ -559,8 +588,8 @@ reviewer records pass, fail, or not verifiable, with a note, in `validation.md`.
    test.js`, the probe, and the revert check.
 6. Each scenario's expected outcomes and codes (§5) match the records.
 7. No unavailable metric was filled in; no cost was derived by hand.
-8. Total recorded spend is within US$25, and each run's recorded cost is within
-   its ceiling or the overshoot is recorded.
+8. No run records a dollar cost, and each run's recorded tokens and duration
+   are within its ceilings or the overshoot is recorded.
 9. The checkout fingerprint is unchanged across every run.
 10. The sanitized evidence contains no credential, machine-local path, user
     name, or host name.
