@@ -37,6 +37,19 @@ function git(cwd, args) {
   return result.stdout.trim();
 }
 
+// hazard: a git too old for --object-format would create a SHA-1 repository
+// and let a SHA-256 journey pass without ever seeing a 64-digit object ID.
+function initializeRepository(root, repository, objectFormat) {
+  if (objectFormat === undefined) {
+    git(root, ["init", "--quiet", "-b", "main", repository]);
+    return;
+  }
+  git(root, ["init", "--quiet", `--object-format=${objectFormat}`, "-b", "main", repository]);
+  const actual = git(repository, ["rev-parse", "--show-object-format"]);
+  if (actual !== objectFormat)
+    throw new Error(`the installed git created a ${actual} repository where ${objectFormat} was required`);
+}
+
 const CHECK_VALUE = `import { existsSync, readFileSync, writeFileSync } from "node:fs";
 const home = process.env.HOME ?? "";
 if (home !== "" && existsSync(\`\${home}/hold-gate\`)) {
@@ -141,7 +154,7 @@ export async function taskFixture(options = {}) {
   await mkdir(join(repository, "scripts"), { recursive: true });
   await mkdir(home, { recursive: true });
   await mkdir(scratch, { recursive: true });
-  git(root, ["init", "--quiet", "-b", "main", repository]);
+  initializeRepository(root, repository, options.objectFormat);
   git(repository, ["config", "user.email", "fixture@example.invalid"]);
   git(repository, ["config", "user.name", "Fixture"]);
   git(repository, ["config", "commit.gpgsign", "false"]);

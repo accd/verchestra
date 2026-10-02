@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
 const OWNER = "packages/platform-node/src/task-worktree.ts";
-const SCANNED_ROOTS = ["packages"];
+const SCANNED_ROOTS = ["packages", "apps"];
 
 function sourceFiles(directory) {
   return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
@@ -55,3 +55,16 @@ for (const [knowledge, pattern] of Object.entries(KNOWLEDGE)) {
     assert.deepEqual(copies, [], `${knowledge} is also spelled out in: ${copies.join(", ")}`);
   });
 }
+
+// invariant: the task path starts git in one place, so one environment policy
+// and one output bound cover every git process it runs.
+test("only the task worktree module spawns git on the task path", () => {
+  const spawn = /\b(?:execFile|execFileSync|execFileAsync|spawn|spawnSync)\(\s*["'`]git["'`]/u;
+  const taskPath = files.filter(({ path }) =>
+    /^(?:packages\/platform-node\/src|apps\/vestra-cli\/src\/task)\//u.test(path)
+  );
+  assert.ok(taskPath.length > 40, `only ${taskPath.length} task path sources were scanned`);
+  const spawners = taskPath.filter(({ source }) => spawn.test(source)).map(({ path }) => path);
+  assert.deepEqual(spawners, [], `git is also spawned in: ${spawners.join(", ")}`);
+  assert.match(code(readFileSync(join(repoRoot, OWNER), "utf8")), spawn);
+});

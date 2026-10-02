@@ -122,20 +122,36 @@ async function waitForStop(directory: string, runtime: RuntimeStore, runId: stri
   return (TERMINAL_WORKFLOW_STATES as readonly string[]).includes(currentRun(runtime, runId).state);
 }
 
+// why: a worktree that is already gone leaves nothing to cancel. Every other
+// refusal (an unreadable marker, an escaped root, history that is not one
+// verified task commit, a failed git command) stops the cancel before the
+// abort is recorded, instead of reporting a stop that left the worktree behind.
+function worktreeAlreadyGone(error: unknown): void {
+  if ((error as { readonly code?: unknown }).code !== "VES_GIT_WORKTREE_NOT_FOUND") throw error;
+}
+
+// invariant: the worktree an idle run left behind is named only by the handle
+// in its marker; the worktree module removes it from that handle alone.
+export async function removeIdleWorktree(
+  workspace: { readonly repositoryRoot: string; readonly layout: { readonly worktreesRoot: string } },
+  directory: string
+): Promise<void> {
+  const marker = await readPlainJson(worktreePath(directory), "worktree marker");
+  const worktreeRef = marker?.["worktreeRef"];
+  if (typeof worktreeRef !== "string" || (await loadCommit(directory)) !== undefined) return;
+  const worktrees = new NodeGitWorktreeAdapter({
+    repositoryRoot: workspace.repositoryRoot,
+    worktreesRoot: workspace.layout.worktreesRoot,
+    anchorTaskCommits: true
+  });
+  await worktrees.cleanupHandle(worktreeRef).catch(worktreeAlreadyGone);
+}
+
 // why: with no process driving the run, cancel itself ends it: the
 // uncommitted worktree is removed (an anchored task branch is kept), the
 // writer lease is released, and the human abort is recorded.
 async function abortIdle(workspace: TaskWorkspace, runtime: RuntimeStore, runId: string, directory: string) {
-  const marker = await readPlainJson(worktreePath(directory), "worktree marker");
-  const worktreeRef = marker?.["worktreeRef"];
-  if (typeof worktreeRef === "string" && (await loadCommit(directory)) === undefined) {
-    const worktrees = new NodeGitWorktreeAdapter({
-      repositoryRoot: workspace.repositoryRoot,
-      worktreesRoot: workspace.layout.worktreesRoot,
-      anchorTaskCommits: true
-    });
-    await worktrees.cleanup({ worktreeRef, baseCommit: worktreeRef.slice(-40) }).catch(() => undefined);
-  }
+  await removeIdleWorktree(workspace, directory);
   try {
     new RuntimeLocalLease(runtime).release(workspace.workspaceId, runId);
   } catch {

@@ -213,7 +213,12 @@ npx verchestra task resume --run-id <runId>
   references, and the next allowed actions.
 - `cancel` stops a running `start` from another terminal (Ctrl-C in the
   running terminal does the same) and aborts the run. An uncommitted worktree
-  is removed; an anchored task branch is kept.
+  is removed; an anchored task branch is kept. When no process is driving the
+  run and its worktree cannot be removed (for example it holds history that is
+  not the one verified task commit), `cancel` fails with `VES_TASK_FAILED`
+  naming the reason and leaves the run as it was, instead of reporting a stop
+  that left the worktree behind. A worktree that is already gone does not stop
+  the cancel.
 - `resume` continues an interrupted run. A run interrupted after the
   implementer finished resumes at its gates without starting the implementer
   again.

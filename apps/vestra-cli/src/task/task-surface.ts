@@ -1,15 +1,15 @@
 import { join } from "node:path";
 
 import type { TaskRunCommit } from "@verchestra/application";
+import { isGitObjectId, refTarget, taskBranchName, taskBranchRef } from "@verchestra/platform-node";
 
 import { stateInvalid } from "./task-errors.ts";
 import { readOptionalRecord } from "./task-evidence.ts";
 import { canonicalDigest, sha256, writeSealedRecord } from "./task-files.ts";
-import { git, refTarget, taskBranch } from "./task-git.ts";
+import { git } from "./task-git.ts";
 import type { TaskPlanRecord } from "./task-plan-record.ts";
 import { reportPath } from "./task-verifier.ts";
 
-const OBJECT_ID = /^[a-f0-9]{40}$/u;
 const DIGEST = /^sha256:[a-f0-9]{64}$/u;
 
 export function commitPath(runDirectory: string): string {
@@ -26,9 +26,9 @@ export async function loadCommit(runDirectory: string): Promise<TaskRunCommit | 
   const refs = row["gateEvidenceRefs"];
   if (
     typeof row["commitId"] !== "string" ||
-    !OBJECT_ID.test(row["commitId"]) ||
+    !isGitObjectId(row["commitId"]) ||
     typeof row["baseCommit"] !== "string" ||
-    !OBJECT_ID.test(row["baseCommit"]) ||
+    !isGitObjectId(row["baseCommit"]) ||
     typeof row["gateEvidenceDigest"] !== "string" ||
     !DIGEST.test(row["gateEvidenceDigest"]) ||
     !Array.isArray(refs)
@@ -38,7 +38,7 @@ export async function loadCommit(runDirectory: string): Promise<TaskRunCommit | 
 }
 
 export function branchName(plan: TaskPlanRecord): string {
-  return `vestra/${plan.runId}/${plan.request.task.taskId}`;
+  return taskBranchName(plan.runId, plan.request.task.taskId);
 }
 
 // invariant: the review surface is everything the human accepts or rejects,
@@ -66,7 +66,7 @@ export async function reviewSurface(repositoryRoot: string, plan: TaskPlanRecord
     baseCommit: commit.baseCommit,
     commitId: commit.commitId,
     branch: branchName(plan),
-    branchTarget: (await refTarget(repositoryRoot, taskBranch(plan.runId, plan.request.task.taskId))) ?? "missing",
+    branchTarget: (await refTarget(repositoryRoot, taskBranchRef(plan.runId, plan.request.task.taskId))) ?? "missing",
     changedPaths,
     diffDigest: sha256(diff),
     gateEvidenceDigest: commit.gateEvidenceDigest,

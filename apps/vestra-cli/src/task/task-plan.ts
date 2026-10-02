@@ -1,8 +1,6 @@
-import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { lstat, readFile } from "node:fs/promises";
 import { isAbsolute, join, resolve } from "node:path";
-import { promisify } from "node:util";
 
 import type { ContextManifest } from "@verchestra/agent-runtime";
 import {
@@ -28,6 +26,7 @@ import { compileTaskContext, saveContextManifest, REPOSITORY_SOURCE } from "./ta
 import { stableCode, taskError } from "./task-errors.ts";
 import { canonicalDigest, sha256 } from "./task-files.ts";
 import { loadGateAllowlist } from "./task-gates.ts";
+import { git } from "./task-git.ts";
 import { WRITE_CAPABILITY, savePlanRecord, type TaskPlanRecord } from "./task-plan-record.ts";
 import { loadTaskPolicy } from "./task-policy.ts";
 import { ephemeralSigner, workspaceSigner } from "./task-signing.ts";
@@ -35,7 +34,6 @@ import { applyWorkflow } from "./task-workflow.ts";
 import { openRuntime, openTaskWorkspace, runDirectory, type TaskWorkspace } from "./task-workspace.ts";
 
 type Digest = `sha256:${string}`;
-const execFileAsync = promisify(execFile);
 const MAXIMUM_REQUEST_BYTES = 256 * 1024;
 const APPROVAL_LIFETIME_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -56,18 +54,12 @@ async function readRequest(io: TaskCommandIo, path: string): Promise<NormalizedT
 // revision is immutable, so its digest binds the approval to content rather
 // than to a moving branch.
 async function sourceState(repositoryRoot: string, revision: string): Promise<Digest> {
-  const git = async (spec: string) =>
-    (
-      await execFileAsync("git", ["rev-parse", "--verify", "--end-of-options", spec], {
-        cwd: repositoryRoot,
-        encoding: "utf8",
-        windowsHide: true
-      })
-    ).stdout.trim();
+  const resolved = async (spec: string) =>
+    (await git(repositoryRoot, ["rev-parse", "--verify", "--end-of-options", spec])).trim();
   try {
-    const commit = await git(`${revision}^{commit}`);
+    const commit = await resolved(`${revision}^{commit}`);
     if (commit !== revision) throw new Error("revision is not exact");
-    return canonicalDigest({ revision, tree: await git(`${revision}^{tree}`) });
+    return canonicalDigest({ revision, tree: await resolved(`${revision}^{tree}`) });
   } catch (error) {
     throw taskError(
       "VES_TASK_REQUEST_REJECTED",

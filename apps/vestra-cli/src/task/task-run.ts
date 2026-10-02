@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { lstat, rm } from "node:fs/promises";
-import { basename, join, resolve } from "node:path";
+import { join } from "node:path";
 
 import { InMemoryExecutionPayloadStore, type ContextManifest } from "@verchestra/agent-runtime";
 import {
@@ -25,6 +25,7 @@ import {
   NodeWorktreeToolAdapter,
   RuntimeCheckpointStore,
   RuntimeLocalLease,
+  parseTaskCommitTrailers,
   type GateCommandProfile,
   type RuntimeStore
 } from "@verchestra/platform-node";
@@ -91,6 +92,50 @@ export async function activeProcess(directory: string): Promise<number | undefin
 // why: every requirement a run needs is proven before its first transition,
 // so a missing credential, executable, or allowlist entry is `not
 // configured` with no workflow change, worktree, or provider call behind it.
+export interface CommittedTaskRecovery {
+  readonly repositoryRoot: string;
+  readonly directory: string;
+  readonly worktrees: Pick<NodeGitWorktreeAdapter, "cleanupAtCommit">;
+  readonly evidence: Pick<TaskEvidenceStore, "recover">;
+  readonly gateIds: readonly string[];
+  readonly inspectGate: () =>
+    { readonly stage: string; readonly record: Readonly<Record<string, unknown>> } | undefined;
+  readonly release: () => Promise<void>;
+}
+
+// why: a crash between the committed checkpoint and the commit record (or
+// before the worktree was anchored) is finished here from durable facts:
+// the committed checkpoint, the commit's own trailers, and the recorded
+// gate evidence, never by re-running a gate.
+export async function recoverCommittedTask(recovery: CommittedTaskRecovery): Promise<TaskRunCommit | undefined> {
+  const recorded = await loadCommit(recovery.directory);
+  if (recorded !== undefined) return recorded;
+  const gate = recovery.inspectGate();
+  if (gate?.stage !== "committed") return undefined;
+  const commitId = String(gate.record["commitId"]);
+  const baseCommit = (await git(recovery.repositoryRoot, ["rev-parse", `${commitId}^`])).trim();
+  await recovery.worktrees.cleanupAtCommit({ commitId, baseCommit });
+  await recovery.release();
+  const { gateEvidenceDigest } = parseTaskCommitTrailers(
+    await git(recovery.repositoryRoot, ["show", "-s", "--format=%B", commitId])
+  );
+  if (gateEvidenceDigest === undefined)
+    throw stateInvalid("VES_TASK_EVIDENCE_MISSING", "The task commit carries no gate evidence digest");
+  const gateEvidenceRefs = await recovery.evidence.recover(
+    String(gate.record["changeDigest"]),
+    recovery.gateIds,
+    gateEvidenceDigest
+  );
+  const commit: TaskRunCommit = {
+    commitId,
+    baseCommit,
+    gateEvidenceDigest: gateEvidenceDigest as `sha256:${string}`,
+    gateEvidenceRefs
+  };
+  await saveCommit(recovery.directory, commit);
+  return commit;
+}
+
 async function prepare(io: TaskCommandIo, workspace: TaskWorkspace, plan: TaskPlanRecord, runtime: RuntimeStore) {
   const credentials = await readCredentials(
     {
@@ -381,50 +426,17 @@ class TaskRunComposition {
     return { passed: true as const, commit };
   }
 
-  // why: a crash between the committed checkpoint and the commit record (or
-  // before the worktree was anchored) is finished here from durable facts:
-  // the committed checkpoint, the commit's own trailers, and the recorded
-  // gate evidence, never by re-running a gate.
-  async committed(): Promise<TaskRunCommit | undefined> {
-    const recorded = await loadCommit(this.#directory);
-    if (recorded !== undefined) return recorded;
-    const gate = this.#checkpoints.inspectGate(this.#workspace.workspaceId, this.#plan.runId, this.#task.taskId);
-    if (gate?.stage !== "committed") return undefined;
-    const repositoryRoot = this.#workspace.repositoryRoot;
-    const commitId = String(gate.record["commitId"]);
-    const baseCommit = (await git(repositoryRoot, ["rev-parse", `${commitId}^`])).trim();
-    await this.#anchorAfterCrash(commitId, baseCommit);
-    const message = await git(repositoryRoot, ["show", "-s", "--format=%B", commitId]);
-    const gateEvidenceDigest = /^Verchestra-Gate-Evidence: (sha256:[a-f0-9]{64})$/mu.exec(message)?.[1];
-    if (gateEvidenceDigest === undefined)
-      throw stateInvalid("VES_TASK_EVIDENCE_MISSING", "The task commit carries no gate evidence digest");
-    const gateEvidenceRefs = await this.#evidence.recover(
-      String(gate.record["changeDigest"]),
-      this.#plan.request.gates.map((entry) => entry.gateId),
-      gateEvidenceDigest
-    );
-    const commit: TaskRunCommit = {
-      commitId,
-      baseCommit,
-      gateEvidenceDigest: gateEvidenceDigest as `sha256:${string}`,
-      gateEvidenceRefs
-    };
-    await saveCommit(this.#directory, commit);
-    return commit;
-  }
-
-  async #anchorAfterCrash(commitId: string, baseCommit: string): Promise<void> {
-    const listing = await git(this.#workspace.repositoryRoot, ["worktree", "list", "--porcelain"]);
-    const root = resolve(this.#workspace.layout.worktreesRoot);
-    let path: string | undefined;
-    for (const line of listing.split(/\r?\n/u)) {
-      if (line.startsWith("worktree ")) path = resolve(line.slice("worktree ".length));
-      if (line === `HEAD ${commitId}` && path !== undefined && resolve(path, "..") === root) {
-        await this.#worktrees.cleanup({ worktreeRef: `worktree:${basename(path)}:${baseCommit}`, baseCommit });
-        break;
-      }
-    }
-    await this.#coordination().release();
+  committed(): Promise<TaskRunCommit | undefined> {
+    return recoverCommittedTask({
+      repositoryRoot: this.#workspace.repositoryRoot,
+      directory: this.#directory,
+      worktrees: this.#worktrees,
+      evidence: this.#evidence,
+      gateIds: this.#plan.request.gates.map((entry) => entry.gateId),
+      inspectGate: () =>
+        this.#checkpoints.inspectGate(this.#workspace.workspaceId, this.#plan.runId, this.#task.taskId),
+      release: () => this.#coordination().release()
+    });
   }
 
   async release(): Promise<void> {

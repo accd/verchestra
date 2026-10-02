@@ -10,7 +10,12 @@ import {
   type VerificationPorts
 } from "@verchestra/application";
 import { WorkflowMachine, type RunSnapshot, type WorkflowCommand, type WorkflowDecision } from "@verchestra/domain";
-import { NodeGateProcessRunner, type GateCommandProfile, type RuntimeStore } from "@verchestra/platform-node";
+import {
+  NodeGateProcessRunner,
+  scratchWorktreeHandle,
+  type GateCommandProfile,
+  type RuntimeStore
+} from "@verchestra/platform-node";
 
 import { parseVerdict, runCodexVerifier, verifierPrompt, type VerifierClaim } from "./task-codex.ts";
 import { canonicalDigest, sha256, writeSealedRecord } from "./task-files.ts";
@@ -124,7 +129,7 @@ class VerificationSensor {
     for (const gate of this.#context.plan.request.gates.filter((entry) =>
       entry.requirementIds.includes(requirementId)
     )) {
-      const result = await runner.run({ ...gate, worktreeRef: `worktree:${id}:${commitId}` });
+      const result = await runner.run({ ...gate, worktreeRef: scratchWorktreeHandle({ id, commitId }) });
       if (!gatePassed(result, gate.minimumTests)) return true;
     }
     return false;
