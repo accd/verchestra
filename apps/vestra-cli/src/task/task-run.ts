@@ -21,7 +21,6 @@ import {
   NodeGateProcessRunner,
   NodeGitWorktreeAdapter,
   NodeWorktreeToolAdapter,
-  RuntimeCheckpointStore,
   RuntimeLocalLease,
   parseTaskCommitTrailers,
   type GateCommandProfile,
@@ -40,7 +39,7 @@ import { findExecutable, implementerAdapter } from "./task-implementer.ts";
 import type { TaskCommandIo } from "./task-io.ts";
 import { HUMAN_ACTOR, IMPLEMENTER_ACTOR, type TaskPlanRecord } from "./task-plan-record.ts";
 import { loadTaskPolicy } from "./task-policy.ts";
-import { openRunRecord, type RunRecord } from "./task-run-record.ts";
+import { openRunRecord, type GateCheckpoint, type RunCheckpoints, type RunRecord } from "./task-run-record.ts";
 import { workspaceTrustRoot } from "./task-signing.ts";
 import { branchName, reviewSurface } from "./task-surface.ts";
 import { verifyTask } from "./task-verifier.ts";
@@ -70,8 +69,7 @@ export interface CommittedTaskRecovery {
   readonly runRecord: Pick<RunRecord, "loadCommit" | "saveCommit" | "gateEvidence">;
   readonly worktrees: Pick<NodeGitWorktreeAdapter, "cleanupAtCommit">;
   readonly gateIds: readonly string[];
-  readonly inspectGate: () =>
-    { readonly stage: string; readonly record: Readonly<Record<string, unknown>> } | undefined;
+  readonly gate: () => GateCheckpoint | undefined;
   readonly release: () => Promise<void>;
 }
 
@@ -82,9 +80,11 @@ export interface CommittedTaskRecovery {
 export async function recoverCommittedTask(recovery: CommittedTaskRecovery): Promise<TaskRunCommit | undefined> {
   const recorded = await recovery.runRecord.loadCommit();
   if (recorded !== undefined) return recorded;
-  const gate = recovery.inspectGate();
+  const gate = recovery.gate();
   if (gate?.stage !== "committed") return undefined;
-  const commitId = String(gate.record["commitId"]);
+  const { commitId, changeDigest } = gate;
+  if (commitId === undefined || changeDigest === undefined)
+    throw stateInvalid("VES_TASK_STATE_MALFORMED", "The committed gate checkpoint names no commit or no change");
   const baseCommit = (await git(recovery.repositoryRoot, ["rev-parse", `${commitId}^`])).trim();
   await recovery.worktrees.cleanupAtCommit({ commitId, baseCommit });
   await recovery.release();
@@ -94,7 +94,7 @@ export async function recoverCommittedTask(recovery: CommittedTaskRecovery): Pro
   if (gateEvidenceDigest === undefined)
     throw stateInvalid("VES_TASK_EVIDENCE_MISSING", "The task commit carries no gate evidence digest");
   const gateEvidenceRefs = await recovery.runRecord.gateEvidence.recover(
-    String(gate.record["changeDigest"]),
+    changeDigest,
     recovery.gateIds,
     gateEvidenceDigest
   );
@@ -183,7 +183,7 @@ class TaskRunComposition {
   readonly #runtime: RuntimeStore;
   readonly #prepared: Prepared;
   readonly #runRecord: RunRecord;
-  readonly #checkpoints: RuntimeCheckpointStore;
+  readonly #checkpoints: RunCheckpoints;
   readonly #worktrees: NodeGitWorktreeAdapter;
   readonly #lease: RuntimeLocalLease;
   readonly #payloads = new InMemoryExecutionPayloadStore();
@@ -205,7 +205,7 @@ class TaskRunComposition {
     this.#runtime = runtime;
     this.#prepared = prepared;
     this.#runRecord = runRecord;
-    this.#checkpoints = new RuntimeCheckpointStore(runtime);
+    this.#checkpoints = runRecord.checkpoints(runtime, plan.request.task.taskId);
     this.#worktrees = new NodeGitWorktreeAdapter({
       repositoryRoot: workspace.repositoryRoot,
       worktreesRoot: workspace.layout.worktreesRoot,
@@ -314,7 +314,7 @@ class TaskRunComposition {
       authority: this.#prepared.authority.executor(grantId),
       coordination: { acquire: coordination.acquire, release: coordination.release },
       worktrees: this.#worktrees,
-      checkpoints: this.#checkpoints.executorCheckpoints(),
+      checkpoints: this.#checkpoints.executorPort(),
       context: {
         compile: async () => ({
           contextRef: `context:${this.#plan.contextManifestDigest.slice(7, 39)}`,
@@ -348,16 +348,14 @@ class TaskRunComposition {
   // with the same worktree, instead of starting the implementer again and
   // repeating its effects; any drift in the worktree voids the shortcut.
   async resumable(): Promise<TaskRunExecution | undefined> {
-    const ids = [this.#workspace.workspaceId, this.#plan.runId, this.#task.taskId] as const;
-    const latest = await this.#checkpoints.executorCheckpoints().load(...ids);
+    const latest = await this.#checkpoints.executor();
     if (latest?.stage !== "awaiting-gate") return undefined;
-    const data = latest.data as { readonly changeDigest?: unknown; readonly changedPaths?: unknown };
-    const gate = this.#checkpoints.inspectGate(...ids);
-    if (gate?.stage === "gate-failed" && gate.record["changeDigest"] === data.changeDigest) return undefined;
+    const gate = this.#checkpoints.gate();
+    if (gate?.stage === "gate-failed" && gate.changeDigest === latest.changeDigest) return undefined;
     const handle = await this.#worktreeHandle();
     this.#lastHandle = handle;
     const inspection = await this.#worktrees.inspect(handle);
-    if (inspection.changeDigest !== data.changeDigest || inspection.commitCountSinceBase !== 0) return undefined;
+    if (inspection.changeDigest !== latest.changeDigest || inspection.commitCountSinceBase !== 0) return undefined;
     const coordination = await this.#coordination().acquire();
     return {
       worktreeRef: handle.worktreeRef,
@@ -365,7 +363,7 @@ class TaskRunComposition {
       coordinationRef: coordination.coordinationRef,
       changeDigest: inspection.changeDigest as `sha256:${string}`,
       changedPaths: inspection.changedPaths,
-      checkpointRef: latest.checkpointRef ?? `checkpoint:${latest.sequence}`
+      checkpointRef: latest.checkpointRef
     };
   }
 
@@ -405,7 +403,7 @@ class TaskRunComposition {
         commands: this.#prepared.gates
       }),
       evidence: { record: (entry) => this.#runRecord.gateEvidence.record(entry) },
-      checkpoints: this.#checkpoints.gateCheckpoints(),
+      checkpoints: this.#checkpoints.gatePort(),
       git: new NodeAtomicGitCommitAdapter({
         repositoryRoot: this.#workspace.repositoryRoot,
         worktreesRoot: this.#workspace.layout.worktreesRoot
@@ -448,8 +446,7 @@ class TaskRunComposition {
       runRecord: this.#runRecord,
       worktrees: this.#worktrees,
       gateIds: this.#plan.request.gates.map((entry) => entry.gateId),
-      inspectGate: () =>
-        this.#checkpoints.inspectGate(this.#workspace.workspaceId, this.#plan.runId, this.#task.taskId),
+      gate: () => this.#checkpoints.gate(),
       release: () => this.#coordination().release()
     });
   }
@@ -461,7 +458,7 @@ class TaskRunComposition {
   }
 
   repair(): TaskRunPorts["repair"] {
-    const state = this.#checkpoints.repairState(this.#workspace.workspaceId, this.#plan.runId, this.#task.taskId);
+    const state = this.#checkpoints.repairPort();
     return {
       budget: { create: (resume) => this.#meter(resume) },
       buildFeedback: async (failure) => {
@@ -485,10 +482,7 @@ class TaskRunComposition {
   }
 
   async verify(commit: TaskRunCommit, run: RunSnapshot, signal: AbortSignal) {
-    const state = await this.#checkpoints
-      .repairState(this.#workspace.workspaceId, this.#plan.runId, this.#task.taskId)
-      .loadState();
-    const ledger = (state as { readonly budgetLedger?: BudgetLedger | null } | undefined)?.budgetLedger ?? undefined;
+    const ledger = (await this.#checkpoints.repair())?.budgetLedger;
     return verifyTask(
       {
         workspace: this.#workspace,

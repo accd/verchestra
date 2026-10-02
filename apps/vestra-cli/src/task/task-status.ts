@@ -1,16 +1,11 @@
 import { TERMINAL_WORKFLOW_STATES, type RunState } from "@verchestra/domain";
-import {
-  NodeGitWorktreeAdapter,
-  RuntimeCheckpointStore,
-  RuntimeLocalLease,
-  type RuntimeStore
-} from "@verchestra/platform-node";
+import { NodeGitWorktreeAdapter, RuntimeLocalLease, type RuntimeStore } from "@verchestra/platform-node";
 
 import { budgetStatus } from "./task-budget.ts";
 import { taskError } from "./task-errors.ts";
 import type { TaskCommandIo } from "./task-io.ts";
 import { HUMAN_ACTOR, type TaskPlanRecord } from "./task-plan-record.ts";
-import { openRunRecord, type RunRecord } from "./task-run-record.ts";
+import { openRunRecord, type RunCheckpoints, type RunRecord } from "./task-run-record.ts";
 import { branchName, reviewSurface } from "./task-surface.ts";
 import { applyWorkflow, currentRun } from "./task-workflow.ts";
 import { openRuntime, openTaskWorkspace, parseRunId, type TaskWorkspace } from "./task-workspace.ts";
@@ -34,23 +29,15 @@ function nextActions(state: RunState, runId: string, driven: boolean): readonly 
   return byState[state] ?? [cancel];
 }
 
-function stageOf(value: unknown): string {
-  const stage = (value as { readonly stage?: unknown } | undefined)?.stage;
-  return typeof stage === "string" ? stage : "none";
-}
-
-async function checkpointStages(runtime: RuntimeStore, plan: TaskPlanRecord) {
-  const store = new RuntimeCheckpointStore(runtime);
-  const ids = [plan.workspaceId, plan.runId, plan.request.task.taskId] as const;
-  const executor = await store.executorCheckpoints().load(...ids);
-  const repair = (await store.repairState(...ids).loadState()) as Readonly<Record<string, unknown>> | undefined;
-  const receipts = (executor?.data as { readonly toolReceiptRefs?: unknown } | undefined)?.toolReceiptRefs;
+async function checkpointStages(checkpoints: RunCheckpoints) {
+  const executor = await checkpoints.executor();
+  const repair = await checkpoints.repair();
   return {
-    executor: stageOf(executor),
-    gate: stageOf(store.inspectGate(...ids)),
-    repair: stageOf(repair),
-    toolReceipts: Array.isArray(receipts) ? receipts.length : 0,
-    budget: budgetStatus(repair?.["budgetLedger"])
+    executor: executor?.stage ?? "none",
+    gate: checkpoints.gate()?.stage ?? "none",
+    repair: repair?.stage ?? "none",
+    toolReceipts: executor?.toolReceiptRefs.length ?? 0,
+    budget: budgetStatus(repair?.budgetLedger)
   };
 }
 
@@ -98,7 +85,7 @@ export async function statusTask(io: TaskCommandIo, options: { readonly runId: u
       bindingDigest: plan.approvalRequest.bindingDigest,
       lastOutcome: outcome?.["status"] ?? null,
       lastReason: outcome?.["reason"] ?? null,
-      checkpoints: await checkpointStages(runtime, plan),
+      checkpoints: await checkpointStages(runRecord.checkpoints(runtime, plan.request.task.taskId)),
       evidence: await evidence(plan, runRecord),
       capsuleId: runtime.getRunCapsuleSeal(runId)?.["capsuleId"] ?? null,
       surfaceDigest: surface,

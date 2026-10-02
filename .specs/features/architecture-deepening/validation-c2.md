@@ -189,3 +189,108 @@ directory, four open a store or read a sealed record, and `task-status`,
 | `pnpm gate:quick` | PASS — unit 2449, agent-readiness 323, census 13 |
 | `pnpm test:architecture` | PASS — 74 |
 | `pnpm agent:check` | PASS |
+
+## C2-2 (T2b) — typed projections of the checkpoint rows
+
+The Run's executor, gate, and repair checkpoints live in the runtime store,
+which returns them as records with no declared shape. Three sources read
+them with casts: `task-run.ts` (`resumable`, `verify`, and the gate record in
+`recoverCommittedTask`), `task-status.ts` (`checkpointStages`, `stageOf`) and
+`task-review.ts` (`toolReceipts`, `budgetEvidence`). `task-budget.ts` cast the
+ledger twice more. They now read `RunCheckpoints`, returned by
+`RunRecord#checkpoints(runtime, taskId)`: three typed projections
+(`executor()`, `gate()`, `repair()`) and the store's own three ports bound to
+the Run and task. The ledger a repair checkpoint carries is read once, by
+`storedBudgetLedger` in `task-budget.ts`.
+
+### Requirement evidence
+
+`K` is `tests/integration/task-run-checkpoints.test.mjs`, which writes rows
+through the store's ports into a real runtime store and reads them back.
+
+| ADP-2 clause | Definition (symbol) | Assertion evidence |
+| --- | --- | --- |
+| Typed checkpoint projections in the one module | `RunCheckpoints#executor`, `#gate`, `#repair` | No checkpoint, no projection `K:60-62`; the latest executor checkpoint with its stage, ref, change digest and receipt refs `K:68-88`; every gate stage, with a commit ID only once committed, in both object ID lengths `K:123-143`; the repair stage and ledger `K:150-164` |
+| A member of the wrong type is absent, not trusted | `text`, `looseRow`, the receipt filter | Executor data that is `null`, text, an array, or carries a number or a mixed list: `K:107-109` |
+| The projections add nothing and hide nothing | `executorPort`, `gatePort`, `repairPort` | The ports are the store's own `K:165-169`, `K:278`; a row the store finds corrupt stays `VES_RUNTIME_CHECKPOINT_CORRUPT` `K:269-270`; a projection reads only its own run and task `K:252-254` |
+| The stored ledger is checked, then reported as before | `storedBudgetLedger`, `budgetStatus`, `capsuleBudgetConsumption` | A ledger that is not one is refused, eleven cases `K:239`. The status and Run Capsule reports for a billed, a billed-only, a mixed and a subscription ledger equal the values recorded from the base revision's functions: `K:185-219` |
+| No command opens the checkpoint store or casts a row | — | `tests/architecture/task-run-record-locality.test.mjs:102-106` |
+| A committed checkpoint is typed where recovery reads it | `recoverCommittedTask`, `GateCheckpoint` | A committed checkpoint with no commit ID or no change digest is refused before any git call: `tests/integration/task-commit-recovery.test.mjs:203-210` |
+
+### Behaviour changes and their bounds
+
+The runtime store never writes either state below; both were reachable only
+by a row edited behind the store with its digest recomputed.
+
+- A stored budget ledger that is not a ledger is refused with
+  `VES_TASK_STATE_INVALID`, reason `VES_TASK_STATE_MALFORMED`, by `status`,
+  `review`, and the verifier's meter on `resume`. Before, `status` printed it,
+  `review` sealed its members into the Run Capsule, and `resume` failed later
+  with `VES_BUDGET_INVALID`. The check mirrors the budget meter's resume
+  check (non-negative finite amounts, non-negative whole counts, a known stop
+  reason, unbilled tokens no greater than the consumed total) and also
+  refuses a missing `stopReason`, which the meter always writes. The meter
+  still applies its own check when it resumes.
+- A committed gate checkpoint that names no commit or no change is refused
+  with the same reason. Before, the text `undefined` reached `git rev-parse`.
+- A receipt ref that is not text is left out of the count `status` prints and
+  of the refs `review` seals. The executor writes only text.
+
+For every row the store does write, the outputs are unchanged: `K:185-219`
+for the ledger reports, and the end-to-end journeys below for `status`,
+`resume` and the sealed Run Capsule.
+
+### Tests replaced
+
+No case was deleted. `tests/integration/task-commit-recovery.test.mjs` passes
+the gate checkpoint in the typed shape (`{ stage, commitId, changeDigest }`
+instead of `{ stage, record: { … } }`, and `gate` instead of `inspectGate`);
+its fifteen cases keep their names, assertions and lines, and one case was
+added at the end.
+
+### Discrimination (disposable copy)
+
+Unmutated copy: 32 pass, 0 fail (`K` 10, the recovery suite 16, the locality
+scan 6).
+
+| Mutation in the copy | Failing cases |
+| --- | --- |
+| N1 — receipt refs are taken without narrowing to text | 1: "executor data of any other shape yields no change digest and only text receipt refs" |
+| N2 — the change digest is cast instead of narrowed | 1: the same case |
+| N3 — the gate projection reports a commit ID for every stage | 1: "the gate projection reports every stage, and a commit ID only once the gate committed" |
+| N4 — the stored ledger is cast instead of checked | 1: "a stored ledger that is not a ledger is refused, never reported or resumed" |
+| N5 — the ledger check ignores the unbilled token count | 1: the same case |
+| N6 — a committed checkpoint without a commit ID is passed on to git | 1: "a committed checkpoint that names no commit or no change is refused before any git call" |
+| N7 — status prints a dollar figure for subscription usage | 1: "status and the Run Capsule report a stored ledger as they did before" |
+| N8 — the capsule carries a cost for subscription usage | 1: the same case |
+| N9 — the projections are bound to the Workspace instead of the run | 5 |
+| N10 — `task-status` reads and casts a checkpoint row again | 1: the locality case for checkpoint rows |
+| N11 — the repair projection hides a row the store refuses | 1: "a row the store finds corrupt stays the store's refusal" |
+| N12 — the ledger check accepts any stop reason | 1 |
+| N14 — unbilled tokens may exceed the consumed total | 1: the same case |
+| N13 — the repair projection drops the ledger | 3 |
+
+The checkpoint case of the locality scan, run over the base revision's task
+sources, names exactly the three sources: `task-review.ts`, `task-run.ts`,
+`task-status.ts`.
+
+### Guardrails
+
+- Complexity: no baseline entry changed; no new function is above 10.
+- Census: no file gained or lost `JSON.stringify` or `createHash`.
+- Citations fixed: the same three files as in C2-1, for the lines this commit
+  moved in `task-run.ts`, `task-status.ts` and `task-review.ts`.
+- Migration count (12), runtime error catalog count (19) and task error
+  catalog count (10) unchanged.
+
+### Gates (Node 24.14.0, macOS arm64, git 2.50.1)
+
+| Command | Result |
+| --- | --- |
+| `node --test tests/integration/task-run-checkpoints.test.mjs tests/integration/task-commit-recovery.test.mjs tests/architecture/task-run-record-locality.test.mjs` | PASS — 32 passed |
+| `node --test tests/unit/task-run-record.test.mjs tests/integration/task-review-surface.test.mjs tests/integration/task-idle-cancel.test.mjs` | PASS — 72 passed |
+| `node --test tests/e2e/task-cli-e2e.test.mjs tests/e2e/mediated-task-execution-e2e.test.mjs` | PASS — 21 passed |
+| `node --test tests/unit/task-cli-composition.test.mjs tests/security/task-cli-security.test.mjs` | PASS — 15 passed |
+| `pnpm gate:quick` | PASS — unit 2449, agent-readiness 323, census 13 |
+| `pnpm test:architecture` | PASS — 75 |
+| `pnpm agent:check` | PASS |

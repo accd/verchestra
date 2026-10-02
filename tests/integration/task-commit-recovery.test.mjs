@@ -48,7 +48,7 @@ async function crashedAfterCommit(format, options = {}) {
     runRecord,
     worktrees: fixture.worktrees,
     gateIds: [GATE_ID],
-    inspectGate: () => gate,
+    gate: () => gate,
     release: async () => void released.push("released")
   });
   return { ...fixture, runRecord, evidence, changeDigest, released, recovery };
@@ -65,7 +65,7 @@ async function commitWithEvidence(crash) {
   });
   const gateEvidenceDigest = canonicalDigest({ evidenceDigests: [evidenceDigest], evidenceRefs: [evidenceRef] });
   const { commitId } = await commitFixtureTask(crash, { gateEvidenceDigest });
-  const gate = { stage: "committed", record: { commitId, changeDigest } };
+  const gate = { stage: "committed", commitId, changeDigest };
   return { commitId, gate, gateEvidenceDigest, evidenceRef };
 }
 
@@ -129,7 +129,7 @@ for (const format of OBJECT_FORMATS) {
     const second = await recoverCommittedTask({
       ...crash.recovery(undefined),
       repositoryRoot: join(crash.root, "absent"),
-      inspectGate: () => assert.fail("a recorded commit needs no checkpoint")
+      gate: () => assert.fail("a recorded commit needs no checkpoint")
     });
     assert.deepEqual(second, first);
     assert.deepEqual(crash.released, ["released"]);
@@ -138,7 +138,7 @@ for (const format of OBJECT_FORMATS) {
   test(`a ${objectFormat} run whose gate never committed has nothing to recover`, async () => {
     const crash = await crashedAfterCommit(format);
     assert.equal(await recoverCommittedTask(crash.recovery(undefined)), undefined);
-    assert.equal(await recoverCommittedTask(crash.recovery({ stage: "gates-passed", record: {} })), undefined);
+    assert.equal(await recoverCommittedTask(crash.recovery({ stage: "gates-passed" })), undefined);
     assert.equal(await crash.runRecord.loadCommit(), undefined);
     assert.equal(registeredWorktreeCount(crash.repositoryRoot), 2);
     assert.deepEqual(crash.released, []);
@@ -147,7 +147,7 @@ for (const format of OBJECT_FORMATS) {
   test(`${objectFormat} gate evidence recorded for another change is refused`, async () => {
     const crash = await crashedAfterCommit(format);
     const { gate } = await commitWithEvidence(crash);
-    const tampered = { ...gate, record: { ...gate.record, changeDigest: `sha256:${"0".repeat(64)}` } };
+    const tampered = { ...gate, changeDigest: `sha256:${"0".repeat(64)}` };
     await assert.rejects(recoverCommittedTask(crash.recovery(tampered)), (error) => {
       assert.equal(error.envelope.code, "VES_TASK_STATE_INVALID");
       assert.equal(error.envelope.safeDetails.reason, "VES_TASK_EVIDENCE_MISSING");
@@ -160,7 +160,7 @@ for (const format of OBJECT_FORMATS) {
     const crash = await crashedAfterCommit(format);
     git(crash.repositoryRoot, "commit", "--quiet", "--allow-empty", "-m", "no trailers");
     const commitId = git(crash.repositoryRoot, "rev-parse", "HEAD");
-    const gate = { stage: "committed", record: { commitId, changeDigest: crash.changeDigest } };
+    const gate = { stage: "committed", commitId, changeDigest: crash.changeDigest };
     await assert.rejects(recoverCommittedTask(crash.recovery(gate)), (error) => {
       assert.equal(error.envelope.safeDetails.reason, "VES_TASK_EVIDENCE_MISSING");
       return true;
@@ -190,4 +190,22 @@ test("a commit record whose IDs are not complete object IDs is refused as malfor
       return true;
     });
   }
+});
+
+test("a committed checkpoint that names no commit or no change is refused before any git call", async () => {
+  const crash = await crashedAfterCommit(OBJECT_FORMATS[0]);
+  const { gate } = await commitWithEvidence(crash);
+  for (const missing of ["commitId", "changeDigest"]) {
+    const recovery = {
+      ...crash.recovery({ ...gate, [missing]: undefined }),
+      repositoryRoot: join(crash.root, "absent")
+    };
+    await assert.rejects(recoverCommittedTask(recovery), (error) => {
+      assert.equal(error.envelope.code, "VES_TASK_STATE_INVALID");
+      assert.equal(error.envelope.safeDetails.reason, "VES_TASK_STATE_MALFORMED");
+      return true;
+    });
+  }
+  assert.equal(await crash.runRecord.loadCommit(), undefined);
+  assert.deepEqual(crash.released, []);
 });

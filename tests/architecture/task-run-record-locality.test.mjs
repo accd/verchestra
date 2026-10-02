@@ -93,3 +93,15 @@ test("the task commands do not import one another for Run state", () => {
     );
   }
 });
+
+// invariant: the runtime store returns checkpoint rows of unknown shape; the
+// Run record module turns them into typed projections, and no command reads
+// or casts a row itself.
+test("only the Run record module opens the checkpoint store or reads a checkpoint row", () => {
+  const store = /\bRuntimeCheckpointStore\b|\.(?:inspectGate|executorCheckpoints|gateCheckpoints|repairState)\(/u;
+  assert.deepEqual(offenders(store), []);
+  assert.match(owner, store);
+  const cast = /\bas\s+(?:Readonly<)?\{[^}]*\b(?:budgetLedger|toolReceiptRefs|changeDigest|changedPaths|stage)\??:/u;
+  assert.deepEqual(offenders(cast, sources), [], "a checkpoint row is cast instead of read through a projection");
+  assert.deepEqual(offenders(/\[\s*["'`](?:budgetLedger|toolReceiptRefs)["'`]\s*\]/u), []);
+});
