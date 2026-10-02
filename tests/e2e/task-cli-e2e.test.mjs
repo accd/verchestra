@@ -12,7 +12,7 @@
 // identity directory. The API-key mode has its own journeys below.
 import assert from "node:assert/strict";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
-import { rm, writeFile, mkdir, symlink } from "node:fs/promises";
+import { rm, writeFile, mkdir, symlink, rename } from "node:fs/promises";
 import { join } from "node:path";
 import { after, test } from "node:test";
 
@@ -937,3 +937,109 @@ test("review refuses a package swapped after approval and leaves the run in revi
   await writeFile(packageFile(plan.runId), original);
   assert.equal(ok(review(fixture, plan.runId, "accepted", run.surfaceDigest), "review").state, "COMPLETED");
 });
+
+// invariant: nothing below a task state root is reached through a link. A Run
+// directory that is a link stops every command that names the run before it
+// reads the plan record behind it. No credential is read before that, so the
+// refusal is asserted on macOS and Linux; on Windows each command is refused
+// for the platform, and in both cases nothing changes behind the link.
+function linkListing(directory) {
+  return readdirSync(directory, { recursive: true })
+    .map(String)
+    .sort((left, right) => Number(left > right) - Number(left < right));
+}
+
+function runCommands(fixture, runId) {
+  const digest = `sha256:${"0".repeat(64)}`;
+  const named = (verb, ...rest) => ["task", verb, "--run-id", runId, ...rest, "--output", "json"];
+  return [
+    ["approve", named("approve", "--binding-digest", digest)],
+    ["start", startArguments(fixture, runId)],
+    ["resume", startArguments(fixture, runId, "resume")],
+    ["status", named("status")],
+    ["cancel", named("cancel")],
+    ["review", named("review", "--outcome", "accepted", "--surface-digest", digest)]
+  ];
+}
+
+test(
+  "a Run directory that is a link is refused by every task command, with nothing changed behind it",
+  TIMEOUT,
+  async () => {
+    const fixture = await taskFixture();
+    const runId = "run_018f0b6d-7b1a-7abc-8def-112345678902";
+    const outside = join(fixture.root, "outside-run");
+    await mkdir(join(outside, "packages"), { recursive: true });
+    await writeFile(join(outside, "keep.txt"), "not a Run directory\n");
+    await mkdir(join(fixture.stateRoot, "tasks"), { recursive: true });
+    await symlink(outside, join(fixture.stateRoot, "tasks", runId), "junction");
+    const before = linkListing(outside);
+    for (const [name, argv] of runCommands(fixture, runId)) {
+      const result = fixture.launch(argv);
+      if (process.platform === "win32") {
+        const error = refused(result, "VES_TASK_NOT_CONFIGURED", name);
+        assert.equal(error.safeDetails.requirement, "platform");
+      } else assert.deepEqual(refused(result, "VES_STATE_ROOT_ESCAPE", name).safeDetails, {});
+      assert.deepEqual(linkListing(outside), before, `task ${name} changed something behind the link`);
+    }
+  }
+);
+
+test("a planned run moved behind a link is refused, and runs once it is moved back", TIMEOUT, async (t) => {
+  if (!DARWIN) return notConfiguredOffMacOS(t);
+  const fixture = await taskFixture();
+  const plan = await approved(fixture);
+  const runDirectory = join(fixture.stateRoot, "tasks", plan.runId);
+  const moved = join(fixture.root, "moved-run");
+  await rename(runDirectory, moved);
+  await symlink(moved, runDirectory);
+  const before = linkListing(moved);
+  for (const [name, argv] of runCommands(fixture, plan.runId))
+    refused(fixture.launch(argv), "VES_STATE_ROOT_ESCAPE", name);
+  assert.deepEqual(linkListing(moved), before);
+  assert.deepEqual(logLines(fixture, "fake-claude.log"), []);
+  await rm(runDirectory);
+  await rename(moved, runDirectory);
+  assert.equal(ok(start(fixture, plan.runId), "start").state, "HUMAN_REVIEW");
+});
+
+// invariant: verification deletes its scratch checkouts recursively. A link
+// at the run's scratch root fails the run before a checkout is created or a
+// directory behind the link is deleted.
+test("a linked verification scratch root fails the run before anything is deleted through it", TIMEOUT, async (t) => {
+  if (!DARWIN) return notConfiguredOffMacOS(t);
+  const fixture = await taskFixture();
+  const plan = await approved(fixture);
+  const outside = join(fixture.root, "outside-scratch");
+  await mkdir(join(outside, "review"), { recursive: true });
+  await writeFile(join(outside, "review", "keep.txt"), "not a scratch checkout\n");
+  await mkdir(join(fixture.stateRoot, "verification"), { recursive: true });
+  await symlink(outside, join(fixture.stateRoot, "verification", plan.runId));
+  const run = start(fixture, plan.runId);
+  assert.equal(run.status, 1, run.stderr);
+  assert.equal(run.json.data.state, "FAILED");
+  assert.equal(run.json.data.reason, "VES_STATE_ROOT_ESCAPE");
+  assert.deepEqual(linkListing(outside), ["review", "review/keep.txt"]);
+  assert.deepEqual(logLines(fixture, "fake-codex.log"), [], "the verifier was started");
+  assert.equal(fixture.git(["worktree", "list", "--porcelain"]).split("\n\n").length, 1);
+});
+
+test(
+  "a linked directory inside the Run directory fails the run with nothing written through it",
+  TIMEOUT,
+  async (t) => {
+    if (!DARWIN) return notConfiguredOffMacOS(t);
+    const fixture = await taskFixture();
+    const plan = await approved(fixture);
+    const outside = join(fixture.root, "outside-evidence");
+    await mkdir(outside);
+    await symlink(outside, join(fixture.stateRoot, "tasks", plan.runId, "gate-evidence"));
+    const run = start(fixture, plan.runId);
+    assert.equal(run.status, 1, run.stderr);
+    assert.equal(run.json.data.state, "FAILED");
+    assert.equal(run.json.data.reason, "VES_STATE_ROOT_ESCAPE");
+    assert.deepEqual(readdirSync(outside), [], "gate evidence was written through the link");
+    assert.equal(fixture.git(["branch", "--list", "vestra/*"]), "", "a task commit was made without its evidence");
+    assert.equal(fixture.git(["worktree", "list", "--porcelain"]).split("\n\n").length, 1);
+  }
+);

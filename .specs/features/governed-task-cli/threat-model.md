@@ -45,6 +45,7 @@
 | Credential exposure across roles | Each provider child gets only its own key from the broker; neither key reaches the other child or any evidence | GTC-32 |
 | A verifier that rubber-stamps | Its claims are checked: cited lines must exist at the commit and reverting the named file must fail the gates | GTC-33 |
 | Tampered run state steering a later command | Plan, commit, evidence, and review records are sealed by digest and re-validated on load | GTC-37 |
+| A link planted below a task state root redirecting a read, a write, or the recursive delete of a scratch checkout | Every directory from the per-Run root down is checked to be a real one before each read and write (`VES_STATE_ROOT_ESCAPE`); a link in the place of an artifact is refused by readers and writers and never replaced | RRH-04..10 (`.specs/features/run-record-hardening/`) |
 | Two writers in one Workspace | One writer lease per Workspace, proven before the first transition | GTC-30 |
 
 ## Residual risks (accepted, documented)
@@ -63,6 +64,10 @@
 - The controller checks paths and then acts; a concurrent writer inside the
   worktree could swap a parent directory between check and write. The
   implementer has no write tool of its own, so the only writer is the adapter.
+- The task state checks read and then act. A link placed below a task state
+  root between a check and the read or write that follows it is not detected.
+  The only writer there besides Verchestra is another process of the same
+  user.
 - Claude Code keeps network access to the provider API. This is process
   configuration, not an OS sandbox; egress confinement is outside this slice.
 - A process of the same OS user can read the per-run config and connect with

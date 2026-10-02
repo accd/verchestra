@@ -1344,6 +1344,78 @@ note. -->
   when a command calls the unchecked reader. Evidence is in
   `.specs/features/run-record-hardening/validation.md`.
 
+### AD-051 — Nothing below a task state root is reached through a link
+
+- **Status:** proposed (ratified by reviewing the pull request that carries
+  the second range of `fix/run-record-hardening`).
+- **Context:** AD-047 checks that `tasks/`, `keys/` and `verification/`
+  resolve inside the Workspace state root and stops there. A link below one
+  was followed: at `tasks/<runId>`, every read and write of the Run record
+  went where the link led; at a directory inside the Run directory, so did
+  that artifact family; at `verification/<runId>`, the verifier created its
+  scratch checkouts there and deleted them recursively. Only two things were
+  already refused: a reader refused a link in the place of a file as
+  `VES_TASK_STATE_UNREADABLE`, and the package and capsule stores refused a
+  linked root or file of their own. A writer replaced a link in the place of a
+  file by its atomic rename.
+- **Decision:**
+  1. `requireRealDirectories(root, directories)` in `task-workspace.ts` walks
+     the named directories below a task state root with `lstat` and refuses
+     the first one that is a link. It only reads. A directory that does not
+     exist ends the walk, so opening a Run record, reading a run that was
+     never planned, and a dry run still create nothing.
+  2. **A directory that is a link is an escape: `VES_STATE_ROOT_ESCAPE`.** It
+     is the code the root check and the Workspace layout already use, it is a
+     public code with no detail to leak, and its recovery text ("remove the
+     link") is the right action. `VES_TASK_STATE_INVALID` tells the user to
+     plan a new run, which does not help while the link is there. Below a root
+     the rule is stricter than at the root: any link is refused, also one that
+     resolves inside the Workspace state root, because the names below a root
+     are derived from run IDs and the layout, and a link there can only make
+     one run's directory another's.
+  3. **A link in the place of an artifact is unreadable state:
+     `VES_TASK_STATE_UNREADABLE`.** Nothing is read or written through it, so
+     it is not an escape. A reader already refused it with that reason, and
+     the ADP-2 suite pins that for nine readers. `writeJsonAtomic` now refuses
+     anything that is not a regular file in its target's place with the same
+     reason, instead of replacing it. One position, one code, for readers and
+     writers.
+  4. The Run record reaches every path through two private functions that run
+     the check immediately before the read or write. The gate evidence store
+     asks the Run record for its directory before each operation. The check
+     runs outside the `try` of `approvedPackage`, so a linked `packages/` is
+     an escape, not a damaged package.
+  5. The verifier reaches each scratch checkout through one function that
+     checks every directory from `verification/<runId>` down to the checkout.
+  6. A cancel marker that is already present stands as the request:
+     `requestCancel` does not write over it, so the refusal of point 3 never
+     stops a cancel. A driver that cannot tell whether a cancel was requested
+     (its Run directory became a link while it ran) stops the run.
+- **Alternatives rejected:** comparing real paths, as the root check does (it
+  would accept a link that resolves inside the root, and so let one run's
+  directory stand in for another's); one code for both positions (a reader of
+  a linked file would change from the reason the ADP-2 suite pins, for no gain
+  in what the user can do); letting a writer keep replacing a link (nothing is
+  written through it, but a replaced link hides that someone planted it, and
+  the command then goes on over state it did not write); checking once when the Run record is opened
+  (a command that runs for minutes would act on a check made at its start);
+  moving the check into `ensureWorkspaceState` (it creates what it checks);
+  the verifier checking only `verification/<runId>` (the checkout itself and
+  `mutations/` are deleted recursively too).
+- **Consequence:** a Workspace in which a run's directory, or a directory
+  inside it, is a link can no longer run a command on that run until the link
+  is removed. A link in the place of a marker that a command only writes
+  (`worktree.json`, `outcome.json`, `active.json`) now fails that command
+  instead of being replaced. `tests/integration/task-run-containment.test.mjs`
+  asserts the refusal for every artifact family, for a link at the Run
+  directory, at each directory inside it, and in the artifact's place, with a
+  junction on every platform; the six commands are asserted in process and
+  through the real binary; `tests/architecture/task-run-record-locality.test.mjs`
+  fails when another task source raises the code or builds a path below a root
+  outside the checked functions. **Residual risk:** the check and the act are
+  two steps; a link placed between them is not seen. Evidence is in
+  `.specs/features/run-record-hardening/validation.md`.
+
 ## Handoff
 
 - **Feature:** `subscription-provider-auth` (ADP-A, tasks TA1 and TA2) on

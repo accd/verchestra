@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { mkdir, realpath } from "node:fs/promises";
-import { join, relative, sep, isAbsolute } from "node:path";
+import { dirname, join, relative, sep, isAbsolute } from "node:path";
 
 import {
   IndependentVerificationCoordinator,
@@ -24,7 +24,7 @@ import { IMPLEMENTER_ACTOR, VERIFIER_ACTOR, type TaskPlanRecord } from "./task-p
 import type { ProviderProcesses } from "./task-process-tree.ts";
 import type { RunRecord } from "./task-run-record.ts";
 import { applyWorkflow, verificationRun } from "./task-workflow.ts";
-import type { TaskWorkspace } from "./task-workspace.ts";
+import { requireRealDirectories, type TaskWorkspace } from "./task-workspace.ts";
 
 type Row = Readonly<Record<string, unknown>>;
 const MAXIMUM_EVIDENCE_FILE_BYTES = 1024 * 1024;
@@ -43,8 +43,14 @@ export interface VerifierContext {
   readonly providers: ProviderProcesses;
 }
 
-function verificationRoot(context: VerifierContext): string {
-  return join(context.workspace.verificationRoot, context.plan.runId);
+// invariant: a scratch checkout is created, and deleted recursively, only
+// below real directories: the run's own scratch root and every directory from
+// it down to the checkout are checked before each use, so a link planted
+// under `verification/` never carries the delete somewhere else.
+async function scratchDirectory(context: VerifierContext, ...directories: readonly string[]): Promise<string> {
+  const path = [context.plan.runId, ...directories];
+  await requireRealDirectories(context.workspace.verificationRoot, path);
+  return join(context.workspace.verificationRoot, ...path);
 }
 
 // invariant: the verification sensor compares this digest before and after
@@ -82,9 +88,9 @@ class VerificationSensor {
       .update(`${request.mutation.mutationId}:${(this.#runs += 1)}`)
       .digest("hex")
       .slice(0, 32);
-    const root = join(verificationRoot(this.#context), "mutations");
+    const root = await scratchDirectory(this.#context, "mutations");
     await mkdir(root, { recursive: true, mode: 0o700 });
-    const scratch = join(root, id);
+    const scratch = await scratchDirectory(this.#context, "mutations", id);
     try {
       await addDetachedWorktree(repositoryRoot, scratch, request.commitId);
       const isolated = within(await realpath(root), await realpath(scratch));
@@ -283,9 +289,8 @@ export async function verifyTask(
   run: RunSnapshot,
   signal: AbortSignal
 ): Promise<TaskRunVerification> {
-  const root = verificationRoot(context);
-  const review = join(root, "review");
-  await mkdir(root, { recursive: true, mode: 0o700 });
+  const review = await scratchDirectory(context, "review");
+  await mkdir(dirname(review), { recursive: true, mode: 0o700 });
   const repositoryRoot = context.workspace.repositoryRoot;
   try {
     await addDetachedWorktree(repositoryRoot, review, commit.commitId);

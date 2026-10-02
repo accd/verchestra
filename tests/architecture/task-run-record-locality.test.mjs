@@ -126,3 +126,26 @@ test("no task command reads the Execution Package without the plan digest check"
   for (const name of ["task-approve.ts", "task-review.ts"])
     assert.match(sources.find((entry) => entry.name === name)?.source ?? "", /\.approvedPackage\(plan\)/u, name);
 });
+
+// invariant: the refusal of a link below a task state root is defined once,
+// beside the roots themselves. The Run record reaches every path of the Run
+// directory through its two checked functions, and the verifier reaches its
+// scratch checkouts through one.
+test("only the task Workspace module refuses a link below a task state root, and every path below one is checked", () => {
+  const elsewhere = sources.filter(({ name }) => name !== "task-workspace.ts");
+  assert.deepEqual(offenders(/VES_STATE_ROOT_ESCAPE/u, elsewhere), []);
+  assert.match(owner, /requireRealDirectories\(this\.#tasksRoot,/u);
+  assert.equal(
+    owner.match(/join\(this\.#tasksRoot\b/gu)?.length,
+    2,
+    "a Run path is built outside the checked functions"
+  );
+  assert.doesNotMatch(owner, /\btasksRoot,\s*id\b/u, "the Run directory is joined where the Run record is opened");
+  const verifier = sources.find(({ name }) => name === "task-verifier.ts")?.source ?? "";
+  assert.match(verifier, /requireRealDirectories\(context\.workspace\.verificationRoot,/u);
+  assert.equal(
+    verifier.match(/\bverificationRoot\b/gu)?.length,
+    2,
+    "a scratch path is built outside the checked function"
+  );
+});

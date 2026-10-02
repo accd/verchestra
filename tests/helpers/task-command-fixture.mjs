@@ -7,6 +7,11 @@
 import { mkdir, readdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
+// invariant: a command that got past the refusal a case expects would go on
+// to read a credential. With the deny guard installed that attempt throws
+// before the OS credential tool is started, so such a case fails without ever
+// touching the user's credential store.
+import "./deny-keychain-spawn.mjs";
 import { openRunRecord } from "../../apps/vestra-cli/src/task/task-run-record.ts";
 import { openRuntime, openTaskWorkspace } from "../../apps/vestra-cli/src/task/task-workspace.ts";
 import {
