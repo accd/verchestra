@@ -39,3 +39,15 @@ export function singleTermination(terminate: ProcessTreeTerminator, pid: number)
       throw error;
     }));
 }
+
+// invariant: a provider is ended in more ways than by a stop: its stream
+// fails, it exceeds its output limit, it stops reading its input, or its run
+// ends while it is still running. Each of these goes through the termination
+// of its child as well, so none of them leaves a descendant behind.
+// why: no caller awaits such an end. A termination that fails there has no one
+// to answer to, and the run still waits for the provider's own exit.
+export function unawaitedTermination(stop: () => Promise<void>): () => void {
+  return () => {
+    stop().catch(() => undefined);
+  };
+}

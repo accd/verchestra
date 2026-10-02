@@ -177,3 +177,50 @@ export function processTreeSuite(test, { label, build, terminator, reported }) {
     }
   );
 }
+
+function errorCodes(events) {
+  return events.filter((event) => event.type === "error").map((event) => event.code);
+}
+
+// invariant: win32 has no process groups and no setsid(), so there the suite
+// asserts what holds on every platform: the session ends the way that end is
+// reported, and the provider process, which the fake keeps alive until it is
+// terminated, is gone. No case is skipped.
+async function endedOnWin32(t, build, terminator, end) {
+  t.diagnostic("win32: no process groups; asserting that the session ends and its provider is gone");
+  let provider;
+  const dependencies = { terminateTree: terminator, onSpawn: (pid) => (provider = pid) };
+  const { driver, request } = build(dependencies, end.mode, end.execution);
+  reap(t, () => (provider === undefined ? [] : [provider]));
+  const events = [];
+  const reference = await driver.start(request, (event) => events.push(event), new AbortController().signal);
+  assert.deepEqual(errorCodes(events), end.errors);
+  assert.equal(await eventuallyDead(provider), true, "the provider is still running");
+  assert.equal((await driver.close(reference)).outcome, end.outcome);
+}
+
+// why: a provider is ended in more ways than by a stop: its stream fails, it
+// exceeds its output limit, it stops reading its input, or its run ends while
+// it is still running. Each of these ends must leave nothing of its tree
+// behind, the descendant that left its process group included. `ends` names
+// the fake's mode for each, what the session reports, and how it closes;
+// `build(dependencies, mode, execution)` returns a driver whose fake provider
+// runs in that mode, forking its tree first when `execution.fork` is set.
+export function providerEndSuite(test, { label, build, terminator, reported, ends }) {
+  for (const end of ends) {
+    test(`${label}: a provider that ${end.name} leaves nothing of its tree behind`, { timeout: 60_000 }, async (t) => {
+      if (WIN32_HOST) return endedOnWin32(t, build, terminator, end);
+      const { driver, request } = build({ terminateTree: terminator }, end.mode, { ...end.execution, fork: true });
+      const session = forkingSession(t, driver, request);
+      const tree = await session.tree;
+      assert.ok(tree, "the run ended before the provider named its processes");
+      // invariant: the run ends by itself. Nothing here stops the session; the
+      // driver ended the provider because of how its run ended.
+      const reference = await session.run;
+      assert.deepEqual(errorCodes(session.events), end.errors);
+      await assertTreeGone(tree);
+      assert.equal((await driver.close(reference)).outcome, end.outcome);
+      assert.deepEqual(reported, [], "a tree that was stopped is not reported as running");
+    });
+  }
+}
