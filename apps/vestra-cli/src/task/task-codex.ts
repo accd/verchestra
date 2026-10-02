@@ -1,13 +1,16 @@
 import { chmod, mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 
+import { runDriverSession, type DriverSessionEvent } from "@verchestra/agent-runtime";
 import {
   assertNoToolRequests,
   assertReadOnlyGrant,
+  recordUsageAndDecide,
   type BudgetMeter,
+  type BudgetMeterError,
   type NormalizedTaskRequest
 } from "@verchestra/application";
-import { CodexDriver, type DriverEvent, type DriverStartRequest } from "@verchestra/drivers";
+import { CodexDriver, type DriverStartRequest } from "@verchestra/drivers";
 
 import { ensureCodexIdentity } from "./task-codex-identity.ts";
 import { stableUuid } from "./task-context.ts";
@@ -142,19 +145,36 @@ function sessionCredential(options: CodexSessionOptions) {
     : { environment: { OPENAI_API_KEY: options.credential }, sensitiveValues: [options.credential] };
 }
 
-function meterUsage(meter: BudgetMeter | undefined, model: string, event: DriverEvent, stop: () => void): void {
+// invariant: what stopped a verifier session early. A refusal is the meter's
+// own failure to meter an event; the stop is then a budget stop like any other.
+interface VerifierStop {
+  readonly controller: AbortController;
+  refusal: BudgetMeterError | undefined;
+}
+
+// why: every usage event spends from the run's remaining budget through the
+// same step the executor uses, so the verifier stops on the same verdict.
+// hazard: an error that is not the meter's own refusal is rethrown; the
+// session runner then ends the session and raises it, so a defect in metering
+// can never pass as a verifier that merely failed.
+function meterUsage(meter: BudgetMeter | undefined, model: string, event: DriverSessionEvent, stop: VerifierStop) {
   if (meter === undefined || event.type !== "usage.updated") return;
-  try {
-    meter.recordUsage({
-      model,
-      inputTokens: event["inputTokens"] as number,
-      outputTokens: event["outputTokens"] as number
-    });
-  } catch {
-    stop();
-    return;
-  }
-  if (meter.shouldStop().stop) stop();
+  const decision = recordUsageAndDecide(meter, {
+    model,
+    inputTokens: event["inputTokens"] as number,
+    outputTokens: event["outputTokens"] as number
+  });
+  if (!decision.stop) return;
+  stop.refusal ??= decision.failure;
+  stop.controller.abort("verifier budget reached");
+}
+
+// invariant: the reason names what ended the session, most specific first: the
+// meter's refusal, a reached ceiling, the caller's cancel, then the verifier.
+function failureReason(options: CodexSessionOptions, stop: VerifierStop): string {
+  if (stop.refusal !== undefined) return stop.refusal.code;
+  if (options.meter?.shouldStop().stop === true) return "VES_EXECUTOR_BUDGET_EXCEEDED";
+  return options.signal.aborted ? "VES_EXECUTOR_CANCELLED" : "VES_TASK_VERIFIER_FAILED";
 }
 
 // why: Codex verifies from an isolated CODEX_HOME and HOME, in a read-only
@@ -202,36 +222,40 @@ export async function runCodexVerifier(options: CodexSessionOptions): Promise<st
       cancelGraceMs: 250
     })
   });
-  const abort = new AbortController();
-  const stop = () => abort.abort("verifier stopped");
-  options.signal.addEventListener("abort", stop, { once: true });
+  const stop: VerifierStop = { controller: new AbortController(), refusal: undefined };
   const timer =
     options.meter === undefined
       ? undefined
-      : setTimeout(stop, Math.max(1, Math.ceil(options.meter.remainingDurationMs())));
-  const events: DriverEvent[] = [];
+      : setTimeout(
+          () => stop.controller.abort("verifier duration reached"),
+          Math.max(1, Math.ceil(options.meter.remainingDurationMs()))
+        );
+  const events: DriverSessionEvent[] = [];
   let text = "";
   try {
-    const session = await driver.start(
-      request,
-      (event) => {
+    // invariant: the session runner owns the session: a caller that is already
+    // cancelled starts no Codex process, a stop cancels the running one, and
+    // only a close that reports `completed` is a completed verification.
+    const finished = await runDriverSession({
+      driver,
+      startRequest: request,
+      signal: AbortSignal.any([options.signal, stop.controller.signal]),
+      observe: (event) => {
         events.push(event);
         if (event.type === "content.delta" && typeof event["text"] === "string") text += event["text"];
         meterUsage(options.meter, model, event, stop);
-      },
-      abort.signal
-    );
-    const closed: Readonly<Record<string, unknown>> = await driver.close(session);
+      }
+    });
     assertNoToolRequests(events);
-    if (closed["outcome"] !== "completed") {
-      const reason =
-        options.meter?.shouldStop().stop === true ? "VES_EXECUTOR_BUDGET_EXCEEDED" : "VES_TASK_VERIFIER_FAILED";
-      throw taskError("VES_TASK_FAILED", { reason }, "The independent verifier did not complete");
-    }
+    if (finished.outcome !== "completed")
+      throw taskError(
+        "VES_TASK_FAILED",
+        { reason: failureReason(options, stop) },
+        "The independent verifier did not complete"
+      );
     return text;
   } finally {
     if (timer !== undefined) clearTimeout(timer);
-    options.signal.removeEventListener("abort", stop);
     await rm(options.sessionRoot, { recursive: true, force: true });
   }
 }
