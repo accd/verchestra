@@ -192,13 +192,57 @@ test("the executor's cancel stops the active session and reports it cancelled", 
   );
 });
 
-test("an aborted caller signal reaches the driver before it starts work", async (t) => {
+// invariant: the session runner makes the already-aborted check, so a caller
+// that was cancelled before the session began never reaches the driver at all.
+test("an already aborted caller is reported cancelled and its driver is never started", async (t) => {
   if (WIN32_HOST) return adapterRefusedOnWin32(t);
   const controller = new AbortController();
   controller.abort();
-  const driver = new ScriptedFakeDriver(async ({ signal }) => assert.equal(signal.aborted, true));
-  const { adapter, control, request } = await adapterFixture(driver, { signal: controller.signal });
+  const driver = new ScriptedFakeDriver(async () => assert.fail("the driver never starts"));
+  const { adapter, calls, control, request } = await adapterFixture(driver, { signal: controller.signal });
   assert.equal((await adapter.execute(request, control)).status, "cancelled");
+  assert.equal(driver.closed, 0);
+  assert.deepEqual(driver.cancelled, []);
+  assert.deepEqual(calls.checkpoints, [
+    {
+      stage: "driver-finished",
+      data: { outcome: "cancelled", toolRequests: 0, writes: 0, deletes: 0, denied: 0, errorCodes: [] }
+    }
+  ]);
+});
+
+// invariant: the adapter reports the session runner's outcome. A stopped
+// session stays cancelled when the driver then reports how its process ended
+// and answers `failed` on close, and the late code is still recorded.
+test("a session the executor cancelled stays cancelled when its driver then reports a failure", async (t) => {
+  if (WIN32_HOST) return adapterRefusedOnWin32(t);
+  let adapterRef;
+  const driver = new ScriptedFakeDriver(async ({ emit }) => {
+    await adapterRef.cancel("worktree:fake");
+    emit({ type: "session.closed", outcome: "cancelled", reason: "stopped by Verchestra" });
+    emit({ type: "error", code: "VES_CLAUDE_STREAM_INCOMPLETE", message: "process failed", retryable: false });
+  }, "failed");
+  const fixture = await adapterFixture(driver);
+  adapterRef = fixture.adapter;
+  assert.equal((await fixture.adapter.execute(fixture.request, fixture.control)).status, "cancelled");
+  assert.deepEqual(fixture.calls.checkpoints.at(-1), {
+    stage: "driver-finished",
+    data: {
+      outcome: "cancelled",
+      toolRequests: 0,
+      writes: 0,
+      deletes: 0,
+      denied: 0,
+      errorCodes: ["VES_CLAUDE_STREAM_INCOMPLETE"]
+    }
+  });
+});
+
+test("a session whose close does not report completed is failed, never completed", async (t) => {
+  if (WIN32_HOST) return adapterRefusedOnWin32(t);
+  const driver = new ScriptedFakeDriver(async () => undefined, null);
+  const { adapter, control, request } = await adapterFixture(driver);
+  assert.equal((await adapter.execute(request, control)).status, "failed");
 });
 
 test("a fatal executor denial through the bridge ends the run with that denial", async (t) => {
