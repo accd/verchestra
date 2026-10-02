@@ -101,8 +101,9 @@ other.
   redirected config directory, an unredacted token, and a missing mediation
   block are each refused before spawn. The `mediated-mcp` profile refuses the
   subscription token.
-- A managed policy file, or a policy directory that is not empty, refuses the
-  launch before spawn; an absent path and an empty directory do not.
+- A managed policy file, a policy directory that is not empty, and a policy
+  directory that cannot be listed each refuse the launch before spawn; an
+  absent path and an empty directory do not.
 - Construction refuses a relative executable, a non-allowlisted environment
   value, a relative managed-policy path, the managed-policy option on the bare
   profile, and an unknown profile kind.

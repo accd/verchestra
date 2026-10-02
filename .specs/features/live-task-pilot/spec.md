@@ -18,7 +18,7 @@ This is new user-workflow evidence for the installed public path (`vestra task`,
 through subscriptions, so the pilot authenticates that way (requirement ADP-A,
 `.specs/features/subscription-provider-auth/`). The credentials in §3, the
 limits in §6, two rows of the recording template in §7, steps 5 and 11 of §8,
-one boundary in §9, and item 8 of §10 changed. The target, the revision, the
+one limit in §9, and item 8 of §10 changed. The target, the revision, the
 tasks, the requests and their digests, the probes, and the scenarios did not.
 The candidate must be one that carries the subscription path; see
 `handoff.md`.

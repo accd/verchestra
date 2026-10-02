@@ -25,3 +25,17 @@ into one commit per concern.
 | Security | `pnpm gate:security` |
 | Qualification | `pnpm qualify:claude`, `pnpm qualify:codex` |
 | Readiness | `pnpm agent:check` |
+
+## Status
+
+| Task | Commits | Status |
+| --- | --- | --- |
+| T1 | `81ea454` | Done |
+| T2 | `b345a5b`, `e84e4b6` | Done |
+| T3 | `6ce1202` | Done |
+| T4 | `0f48448` | Done |
+| T5 | `ffe38f4`, `4fc9725`, `b4e7a8b` | Done |
+| T6 | `a143cb9` and the commit that carries this table | Done |
+
+Evidence for every requirement is in `validation.md`. The next action is in
+`handoff.md`.

@@ -76,7 +76,7 @@ branch lives in `#mediatedLaunch`, `#subscriptionLaunch`, `surfaceOf`,
 
 ## Codex subscription identity (`apps/vestra-cli/src/task/task-codex-identity.ts`)
 
-- `codexIdentityDirectory(workspace)` is `<workspaceRoot>/codex-identity`.
+- `codexIdentityDirectory(workspaceRoot)` is `<workspaceRoot>/codex-identity`.
 - `ensureCodexIdentity` creates it with mode `0700`, refuses anything that is
   not a real directory, and rewrites `config.toml` with exactly:
 
@@ -89,13 +89,14 @@ branch lives in `#mediatedLaunch`, `#subscriptionLaunch`, `surfaceOf`,
   directory and out of the OS credential store. The second makes an API-key
   login in that directory count as not logged in. Rewriting on every use means
   nothing a previous session left in `config.toml` carries over.
-- `codexLoginStatus` runs `<codex> login status` with a bounded timeout, the
-  pass-through environment, `CODEX_HOME` set to the identity directory, and a
-  disposable `HOME` under the Workspace sessions root. It answers `chatgpt`
-  only for exit code 0 with `Logged in using ChatGPT`; everything else is
-  `not-configured`.
-- `requireCodexSubscription` composes the two. On `not-configured` it writes
-  one line to standard error with the exact command,
+- `codexSubscriptionLoggedIn` runs `<codex> login status` with a bounded
+  timeout, the pass-through environment, `CODEX_HOME` set to the identity
+  directory, and a disposable `HOME` under the Workspace sessions root, which
+  is also its working directory. It is true only for exit code 0 with the
+  line `Logged in using ChatGPT`; an API-key login, an access token, an error,
+  a timeout, and any other answer are false.
+- `requireCodexSubscription` composes the two. When the login is not proven it
+  writes to standard error the exact command,
   `CODEX_HOME='<directory>' codex login`, and raises
   `VES_TASK_NOT_CONFIGURED` with requirement `codex-login`. The path is
   machine-local, so it goes to the terminal and never into the public error's
@@ -133,6 +134,10 @@ loading the runtime store.
 `prepare()` in `task-run.ts` loads the mode, reads only the credentials that
 mode needs, finds both executables, and then proves the Codex login when the
 verifier is on a subscription. All of it happens before the first transition.
+`task plan` loads the mode too, so a malformed setting is refused before an
+approval is spent, and prints it as `providerAuth`. The mode is informational
+there: it is read again at start and is not part of the approval binding,
+exactly like the gate allowlist.
 
 ## Budgets (`packages/application`, `packages/evidence`)
 
@@ -142,8 +147,11 @@ cost, and skips the price lookup. Every other model keeps the priced path and
 `VES_BUDGET_MODEL_UNKNOWN`. The cost ceiling therefore never trips for unbilled
 usage, while the token and duration ceilings are unchanged.
 
-The ledger's billing follows from `unbilledTokens`: none is `per-token`, all is
-`subscription`, otherwise `mixed`. `task status` reports `consumedCostUsd` as
+The ledger carries `unbilledTokens` only when the run was metered with an
+unbilled model, so a ledger of billed usage is byte-identical to one written
+before. Its billing follows from that member: absent is `per-token`, equal to
+the consumed tokens is `subscription` (including a run that has consumed
+nothing yet), otherwise `mixed`. `task status` reports `consumedCostUsd` as
 the text `not billed (subscription)` for `subscription`. The Run Capsule's
 `budgetEvidence` gains an optional `billing` member (`subscription` or `mixed`)
 and `consumed.unbilledTokens`; for `subscription` the `costUsd` member is
