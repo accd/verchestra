@@ -355,18 +355,23 @@ approval makes the approval stale, and the run is refused until you plan again.
   session can overshoot them. The duration ceiling is enforced by a timer and
   is the hard guard. The ceilings are the run's: the implementer and the
   verifier spend from the same ones, and the usage `status` prints under
-  `checkpoints.budget`, which the run capsule seals, is the total of both. A
-  verification that `resume` repeats adds what it spent to that total. One gap
-  remains: the implementer's usage is recorded when its gate attempt ends, so
-  a run killed during an attempt reports, after `resume`, a total without what
-  that attempt had spent. On a subscription nothing is billed per token: the
-  token and duration ceilings still apply, `status` shows the cost as
-  `not billed (subscription)`, and the run capsule carries no cost. With one
-  provider on a subscription and the other on an API key, `status` shows
-  `billing: mixed`: the cost of the billed provider's tokens beside the count
-  of tokens that were not billed. Your plan's own usage limits are not
-  metered; a run that hits one fails closed and can be resumed or planned
-  again.
+  `checkpoints.budget`, which the run capsule seals, is the total of both.
+  Usage is recorded when a provider reports it, so a run that is killed keeps
+  what was reported until then, and `resume` adds to that total what the
+  resumed run spends: a provider session that runs again is counted again,
+  because it was spent again. What was never reported cannot be recorded: a
+  provider session that is killed before it ends has reported no usage, so the
+  total leaves out what that session spent. A verifier is not started when a
+  ceiling was already reached. A run a ceiling stops fails with reason
+  `VES_EXECUTOR_BUDGET_EXCEEDED`, whichever provider reached it, and
+  `checkpoints.budget.stopReason` names the ceiling. On a subscription nothing
+  is billed per token: the token and duration ceilings still apply, `status`
+  shows the cost as `not billed (subscription)`, and the run capsule carries
+  no cost. With one provider on a subscription and the other on an API key,
+  `status` shows `billing: mixed`: the cost of the billed provider's tokens
+  beside the count of tokens that were not billed. Your plan's own usage
+  limits are not metered; a run that hits one fails closed and can be resumed
+  or planned again.
 - **Subscription isolation.** The subscription path cannot use Claude Code's
   `--bare` mode, which reads only an API key. It rebuilds that isolation from
   named switches and adds fail-closed checks, described in

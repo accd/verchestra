@@ -1748,6 +1748,78 @@ note. -->
   `status.checkpoints.budget` as "Implementer usage" and the verifier's as
   unavailable, which is no longer what that field holds.
 
+### AD-056 — The run's account of usage is complete: the implementer's usage is recorded as it arrives, a verifier does not start on a spent budget, and a budget stop names itself
+
+- **Status:** proposed (ratified by reviewing the pull request that carries
+  `fix/run-usage-complete`). It closes open points (a), (b) and (c) of AD-055
+  and replaces the second half of its decision 2.
+- **Context:** AD-055 recorded the verifier's usage on the run's ledger and
+  left three gaps. The repair loop saved the ledger only when an attempt
+  ended, so a run killed during an attempt lost what the implementer had
+  reported: a run killed at its implementation gate and resumed reported 8
+  tokens where 26 were spent. A verifier was started when the run's ceiling
+  had already been reached and stopped on its first usage event, which Codex
+  reports when its turn ends. And a run the verifier's budget stopped failed
+  with reason `VES_TASK_FAILED`, where the implementer's budget stop is
+  `VES_EXECUTOR_BUDGET_EXCEEDED`.
+- **Decision:**
+  1. **Every meter of a run records on the run's ledger.** `recordingMeter`
+     in `task-budget.ts` wraps a meter so that each metered usage event is
+     recorded through `RunCheckpoints#recordBudgetLedger` before the next is
+     read. The composition hands the repair loop that meter, and
+     `meterOnRunLedger` hands the same to verification. The repair loop, the
+     executor and `packages/application` are unchanged: the loop still saves
+     its state when an attempt ends, with the same meter's ledger.
+  2. **The stage of a run whose loop has saved no state is what its gate
+     checkpoint proves.** `repair` while an attempt is in flight, `converged`
+     once the task is committed; no attempt is recorded in either case. AD-055
+     filed every such run under `converged`, which was right only for
+     verification. A resumed loop reads that state as it reads its own: no
+     attempt has ended, and the ledger is what the run has spent.
+  3. **What was never reported is not recorded.** Claude Code reports usage
+     when its session ends and Codex when its turn ends. A session killed
+     before that has reported nothing, so the run's total leaves out what it
+     spent. `docs/quick-start.md` says so.
+  4. **A verifier does not start on a budget that is already gone.**
+     `runCodexVerifier` asks the meter before anything of the session exists
+     and refuses with the reason the meter's verdict has,
+     `VES_EXECUTOR_BUDGET_EXCEEDED`, as the executor refuses an attempt. No
+     Codex process, session directory or identity directory is created.
+  5. **A budget stop names itself.** `meterOnRunLedger` rethrows a task
+     failure whose reason is the budget's (`VES_EXECUTOR_BUDGET_EXCEEDED`, or
+     a `VES_BUDGET_*` code for usage the meter refused) under that code, with
+     the task failure as its cause, so the run fails with it. Both codes
+     exist and are the ones the implementer's path already reports
+     (`.specs/features/governed-task-cli/spec.md`: budget exhausted is
+     `FAILED` with `VES_EXECUTOR_BUDGET_EXCEEDED`). Every other verification
+     failure keeps the code it had. No code is added.
+- **Alternatives rejected:** recording inside the repair loop or the executor
+  (the application would save on every usage event of every caller, and the
+  loop's state port is asynchronous where the usage event is not); a stage
+  passed by the caller (two callers would have to agree on what the gate
+  checkpoint already says); estimating the usage of a session that was killed
+  (a number the provider did not report); refusing the verifier in
+  `meterOnRunLedger` (the session is the module that owns the verifier's
+  failure reasons, and it must refuse a spent meter whoever calls it);
+  changing the code of the verifier session's own failure (its envelope and
+  `reason` are its tested interface, and only the run's outcome needed the
+  budget's code); giving every verification failure its reason as the run's
+  code (it would publish `VES_TASK_VERIFIER_FAILED` as a new outcome reason,
+  which nobody asked for); a new error code for the verifier's budget stop
+  (the existing one is the documented reason for this situation).
+- **Consequence:** `status.checkpoints.budget` is no longer `null` during a
+  first attempt once the implementer has reported usage, and
+  `checkpoints.repair` then reads `repair` where it read `none`. A run killed
+  at its gate and resumed reports 26 tokens with the labeled fakes (18 before
+  the kill, 8 for the verifier) where it reported 8; a run killed after the
+  implementer reported usage and before its gate reports 44 after `resume`,
+  because the implementer runs again. A run whose ceiling was reached before
+  verification fails without a verifier session; it failed after one before.
+  A run a ceiling stops in verification prints
+  `reason: VES_EXECUTOR_BUDGET_EXCEEDED` where it printed `VES_TASK_FAILED`.
+  The Run Capsule is unchanged in shape and digest rules. Evidence is in
+  `.specs/features/verifier-usage-recorded/validation.md`.
+
 ## Handoff
 
 - **Feature:** `subscription-provider-auth` (ADP-A, tasks TA1 and TA2) on

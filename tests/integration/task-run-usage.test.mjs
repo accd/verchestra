@@ -1,8 +1,9 @@
 // invariant: one run, one account of usage, for the whole run. The
 // implementer's usage is recorded on the Run's ledger when it is metered, as
 // the verifier's is, so a run killed during an attempt keeps what the attempt
-// had reported and a resumed run adds it once. A budget stop fails the run
-// with the budget's own code whichever provider it stopped.
+// had reported and a resumed run adds it once. A verifier is not started when
+// the run's ceiling was already reached, and a budget stop fails the run with
+// the budget's own code whichever provider it stopped.
 //
 // The run is the production task run coordinator, repair loop, workflow
 // machine and budget module over the Run record's checkpoint projections in a
@@ -299,6 +300,66 @@ test("the verifier reaching the run's ceiling fails the run as a budget stop and
   const stored = await resumed(run).state();
   assert.equal(stored.stage, "converged");
   assertLedger(stored.budgetLedger, { consumedTokens: RUN_TOKENS, usageEvents: 2, stopReason: "token-threshold" });
+});
+
+// invariant: a verifier does not start when the run's ceiling was already
+// reached. A verification whose usage reached it was killed before the run
+// failed; the resumed run refuses before a Codex process exists, with the
+// verdict the meter would give on the first usage event.
+test("a resumed verification whose ceiling was already reached starts no verifier and spends nothing", async (t) => {
+  if (WIN32_HOST) return verifierRefusedOnWin32(t);
+  const metering = { budgets: { maximumTokens: 28 } };
+  const run = await newRun();
+  await killedWhen(run, { metering, implement: spend(IMPLEMENTER), verify: spend(VERIFIER) }, "verify");
+  assert.equal(run.workflow.current.state, "VERIFYING");
+  const reached = (await resumed(run).state()).budgetLedger;
+  assertLedger(reached, { consumedTokens: RUN_TOKENS, usageEvents: 2, stopReason: "token-threshold" });
+
+  const session = await verifierSession();
+  const again = resumed(run, { metering, verify: (meter) => session.run(meter) });
+  assert.deepEqual(await again.run(), { status: "FAILED", reason: BUDGET_EXCEEDED });
+  assert.deepEqual(again.calls, { implemented: 0, gated: 0, verified: 1, released: 1 });
+  assert.deepEqual(await session.sessions(), [], "Codex opened a thread");
+  assert.deepEqual(await session.turns(), [], "Codex opened a turn");
+  // why: 34 would be a verifier session started and stopped on its usage.
+  assertLedger((await again.state()).budgetLedger, {
+    consumedTokens: RUN_TOKENS,
+    usageEvents: 2,
+    stopReason: "token-threshold"
+  });
+});
+
+// invariant: the duration ceiling is reached without a usage event, here while
+// the gates ran. The loop does not stop a converged attempt, so verification
+// is where it is found: no verifier is started, and the record made when the
+// work ends puts the ceiling on the ledger.
+test("a run whose duration ceiling passed during its gates starts no verifier and names the ceiling", async (t) => {
+  if (WIN32_HOST) return verifierRefusedOnWin32(t);
+  let clock = 1_000_000;
+  const metering = { budgets: { maximumDurationMs: 10_000 }, now: () => clock };
+  const run = await newRun();
+  const session = await verifierSession();
+  const composed = composedRun(run.checkpoints, run.workflow, {
+    metering,
+    implement: async (meter) => {
+      clock += 1_000;
+      meter.recordUsage(IMPLEMENTER);
+      // why: the gate takes the run past 90% of its duration.
+      clock += 8_500;
+    },
+    verify: (meter) => session.run(meter)
+  });
+  assert.deepEqual(await composed.run(), { status: "FAILED", reason: BUDGET_EXCEEDED });
+  assert.equal(composed.calls.gated, 1, "the attempt did not converge");
+  assert.deepEqual(await session.sessions(), [], "Codex opened a thread");
+  const stored = await resumed(run).state();
+  assert.equal(stored.stage, "converged");
+  assertLedger(stored.budgetLedger, {
+    consumedTokens: IMPLEMENTER_TOKENS,
+    usageEvents: 1,
+    consumedDurationMs: 9_500,
+    stopReason: "duration-threshold"
+  });
 });
 
 test("a committed run whose loop saved no state has its verifier's usage filed under converged", async () => {

@@ -163,6 +163,34 @@ test("a reached ceiling outranks a caller's cancel in the reason", async (t) => 
   assert.deepEqual(await session.sessions(), [], "Codex never opened a thread");
 });
 
+// invariant: a verifier does not start on a budget that is already gone. The
+// refusal is the verdict the meter would give on the first usage event, it
+// comes before anything of the session exists, and nobody cancelled.
+test("a verifier whose run is already at its ceiling starts no Codex process", async (t) => {
+  if (WIN32_HOST) return verifierRefusedOnWin32(t);
+  const meter = meterWith({ maximumTokens: TURN_TOKENS });
+  meter.recordUsage({ model: VERIFIER_MODEL, inputTokens: TURN_TOKENS, outputTokens: 0 });
+  const session = await verifierSession({ meter });
+  await assert.rejects(session.run(), failedWith("VES_EXECUTOR_BUDGET_EXCEEDED"));
+  assert.deepEqual(await session.sessions(), [], "Codex opened a thread");
+  assert.deepEqual(await session.turns(), [], "Codex opened a turn");
+  await assert.rejects(stat(session.sessionRoot), { code: "ENOENT" });
+  assert.equal(meter.snapshot().consumedTokens, TURN_TOKENS, "a refused verifier spent tokens");
+
+  // why: the duration ceiling is a ceiling like the others.
+  let clock = 0;
+  const late = createBudgetMeter({
+    budgets: { maximumCostUsd: 10, maximumTokens: 1_000_000, maximumDurationMs: 10_000 },
+    priceTable: PRICES,
+    now: () => clock
+  });
+  clock = 9_000;
+  const second = await verifierSession({ meter: late });
+  await assert.rejects(second.run(), failedWith("VES_EXECUTOR_BUDGET_EXCEEDED"));
+  assert.deepEqual(await second.sessions(), [], "Codex opened a thread");
+  assert.equal(late.snapshot().stopReason, "duration-threshold");
+});
+
 // invariant: the task composition injects the tree terminator (ADP-4, C4-4).
 // A verifier that started processes of its own is stopped with all of them:
 // the one in its process group, which holds its output open, and the one that

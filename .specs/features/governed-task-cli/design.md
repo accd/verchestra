@@ -301,19 +301,24 @@ the named implementation file in a scratch worktree and must make the covering
 gates fail, while the user's checkout digest stays the same.
 
 A run has one account of usage: the budget ledger its latest repair state
-carries. The repair loop saves it when an attempt ends. The verifier spends
-from the same ledger: `meterOnRunLedger` (`task-budget.ts`) builds its meter
-from the stored ledger and records the meter's ledger back, through
-`RunCheckpoints#recordBudgetLedger`, when each usage event is metered and once
-more when verification ends. That record keeps the stage, attempt count and
-attempt chain the loop left and moves only the ledger, and it refuses a ledger
-that does not continue the recorded one. `status` and the Run Capsule read
-that one ledger, so they report the implementer's usage and the verifier's; a
-run killed after the verifier answered still reports what it spent; and a
-verification repeated by `resume` continues from the recorded total, so it
-adds its own usage once. One gap is left with the repair loop: usage metered
-during an attempt that never ended (the driving process was killed) was never
-saved, so the total of a run resumed after that leaves it out.
+carries. Every meter the composition builds records on it. The repair loop's
+meter is wrapped in `recordingMeter` (`task-budget.ts`), and verification is
+the work `meterOnRunLedger` meters: both record the meter's ledger, through
+`RunCheckpoints#recordBudgetLedger`, when each usage event is metered, and
+`meterOnRunLedger` records it once more when verification ends. That record
+keeps the stage, attempt count and attempt chain the loop left and moves only
+the ledger, and it refuses a ledger that does not continue the recorded one. A
+run whose loop has saved no state yet is filed under what its gate checkpoint
+proves: `repair` while an attempt is in flight, `converged` once the task is
+committed. `status` and the Run Capsule read that one ledger, so they report
+the implementer's usage and the verifier's; a run killed after a provider
+reported usage still reports it; and a resumed run continues from the recorded
+total, so it adds its own usage once. Usage a provider never reported cannot
+be recorded: Claude Code and Codex report when a session or a turn ends, so a
+session killed before that leaves nothing. A verifier is not started when the
+meter already says stop, and a budget stop fails the run with
+`VES_EXECUTOR_BUDGET_EXCEEDED` (or the meter's own code for usage it refused)
+whichever provider it stopped.
 
 The sealed release adds `bin/mcp-tool-bridge.mjs` beside the launchers and
 loads Cedar through the `web` glue from `native/cedar-wasm.wasm`; a repository
