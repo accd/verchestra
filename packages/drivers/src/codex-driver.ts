@@ -7,6 +7,7 @@ import {
   snapshotCodexProcessContext,
   type CodexProcessContext
 } from "./codex-process-context.ts";
+import { DriverSessionLedger } from "./driver-session-ledger.ts";
 import {
   DriverProtocolError,
   validateDriverStartRequest,
@@ -51,11 +52,7 @@ export interface CodexDriverDependencies {
   readonly onMessageSent?: (message: Readonly<Record<string, unknown>>) => void;
 }
 
-interface CodexSession {
-  readonly sink: (event: DriverEvent) => void;
-  sequence: number;
-  outcome: "completed" | "failed" | "cancelled";
-  closed: boolean;
+interface CodexSessionResources {
   child?: ChildProcessWithoutNullStreams;
 }
 
@@ -88,8 +85,13 @@ export class CodexDriver implements Driver {
   readonly #command: readonly string[];
   readonly #minimumVersion: string;
   readonly #processContext: CodexProcessContext | undefined;
-  readonly #sessions = new Map<string, CodexSession>();
-  readonly #closedSessions = new Set<string>();
+  readonly #sessions = new DriverSessionLedger<CodexSessionResources>({
+    noun: "Codex",
+    stop: ({ resources }) =>
+      resources.child?.pid === undefined
+        ? undefined
+        : (this.#dependencies.terminateTree ?? (async (pid) => process.kill(pid)))(resources.child.pid)
+  });
 
   constructor(dependencies: CodexDriverDependencies) {
     this.#dependencies = dependencies;
@@ -194,8 +196,7 @@ export class CodexDriver implements Driver {
     this.#validateExecution(request, execution);
 
     const sessionId = `codex-session:${randomUUID()}`;
-    const state: CodexSession = { sink, sequence: 0, outcome: "completed", closed: false };
-    this.#sessions.set(sessionId, state);
+    const state = this.#sessions.open(sessionId, sink, {});
     const redact = redactor(execution.sensitiveValues ?? []);
     const child = spawn(this.#command[0] as string, [...this.buildArguments()], {
       cwd: this.#workingDirectory(),
@@ -203,7 +204,7 @@ export class CodexDriver implements Driver {
       stdio: ["pipe", "pipe", "pipe"],
       windowsHide: true
     });
-    state.child = child;
+    state.resources.child = child;
     if (child.pid !== undefined) this.#dependencies.onSpawn?.(child.pid);
 
     let nextId = 1;
@@ -270,20 +271,20 @@ export class CodexDriver implements Driver {
       const method = message["method"];
       const params = (message["params"] ?? {}) as Record<string, unknown>;
       if (method === "thread/started") {
-        this.#emit(state, { type: "session.started", sessionId });
-        this.#emit(state, {
+        state.emit({ type: "session.started", sessionId });
+        state.emit({
           type: "model.resolved",
           passportRef: request.passportRef,
           provider: "openai",
           resolvedModel: execution.model
         });
       } else if (method === "item/agentMessage/delta") {
-        this.#emit(state, { type: "content.delta", text: redact(params["delta"] ?? "") });
+        state.emit({ type: "content.delta", text: redact(params["delta"] ?? "") });
       } else if (method === "item/tool/call" && typeof message["id"] === "number") {
         if (typeof params["callId"] !== "string" || typeof params["tool"] !== "string")
           return fail("VES_CODEX_STREAM_INVALID");
         if (!execution.tools.some((tool) => tool.name === params["tool"])) return fail("VES_CODEX_TOOL_UNDECLARED");
-        this.#emit(state, {
+        state.emit({
           type: "tool.requested",
           toolCallId: params["callId"],
           name: params["tool"],
@@ -300,7 +301,7 @@ export class CodexDriver implements Driver {
         (method === "item/commandExecution/requestApproval" || method === "item/fileChange/requestApproval") &&
         typeof message["id"] === "number"
       ) {
-        this.#emit(state, {
+        state.emit({
           type: "warning",
           code: "VES_CODEX_BUILTIN_TOOL_DENIED",
           message: "Codex built-in effect was denied"
@@ -308,7 +309,7 @@ export class CodexDriver implements Driver {
         write({ id: message["id"], result: { decision: "decline" } });
       } else if (method === "error") {
         state.outcome = "failed";
-        this.#emit(state, {
+        state.emit({
           type: "error",
           code: "VES_CODEX_EXECUTION_FAILED",
           message: "Codex failed",
@@ -327,10 +328,10 @@ export class CodexDriver implements Driver {
           outputTokens < 0
         )
           return fail("VES_CODEX_STREAM_INVALID");
-        this.#emit(state, { type: "usage.updated", inputTokens, outputTokens });
+        state.emit({ type: "usage.updated", inputTokens, outputTokens });
         if (turn["status"] === "failed" && state.outcome !== "failed") {
           state.outcome = "failed";
-          this.#emit(state, {
+          state.emit({
             type: "error",
             code: "VES_CODEX_EXECUTION_FAILED",
             message: "Codex failed",
@@ -390,20 +391,20 @@ export class CodexDriver implements Driver {
     lines.close();
     if (aborted) {
       state.outcome = "cancelled";
-      this.#emit(state, { type: "error", code: "VES_CODEX_ABORTED", message: "Codex was aborted", retryable: true });
+      state.emit({ type: "error", code: "VES_CODEX_ABORTED", message: "Codex was aborted", retryable: true });
     } else if (streamFailure !== undefined) {
       state.outcome = "failed";
-      this.#emit(state, { type: "error", code: streamFailure, message: "Codex protocol failed", retryable: false });
+      state.emit({ type: "error", code: streamFailure, message: "Codex protocol failed", retryable: false });
     } else if (!resultSeen) {
       state.outcome = "failed";
-      this.#emit(state, {
+      state.emit({
         type: "error",
         code: exit.code !== 0 || exit.signal !== null ? "VES_CODEX_PROCESS_FAILED" : "VES_CODEX_STREAM_INCOMPLETE",
         message: "Codex process failed",
         retryable: false
       });
     }
-    delete state.child;
+    delete state.resources.child;
     return Object.freeze({ sessionId });
   }
 
@@ -414,28 +415,11 @@ export class CodexDriver implements Driver {
   }
 
   async cancel(session: DriverSessionRef, reason: string): Promise<void> {
-    if (this.#closedSessions.has(session.sessionId)) return;
-    const state = this.#known(session);
-    if (state.closed) return;
-    if (state.child?.pid !== undefined)
-      await (this.#dependencies.terminateTree ?? (async (pid) => process.kill(pid)))(state.child.pid);
-    state.outcome = "cancelled";
-    this.#terminal(state, reason);
+    await this.#sessions.cancel(session, reason);
   }
 
   async close(session: DriverSessionRef) {
-    if (this.#closedSessions.has(session.sessionId))
-      return Object.freeze({ sessionId: session.sessionId, closed: true, alreadyClosed: true });
-    const state = this.#known(session);
-    this.#terminal(state);
-    this.#sessions.delete(session.sessionId);
-    this.#closedSessions.add(session.sessionId);
-    return Object.freeze({
-      sessionId: session.sessionId,
-      closed: true,
-      outcome: state.outcome,
-      finalSequence: state.sequence
-    });
+    return this.#sessions.close(session);
   }
 
   #validateExecution(request: DriverStartRequest, execution: CodexExecution): void {
@@ -455,22 +439,5 @@ export class CodexDriver implements Driver {
     for (const value of [execution.maxOutputBytes ?? 1, execution.cancelGraceMs ?? 0])
       if (!Number.isSafeInteger(value) || value < 0)
         throw codexError("VES_CODEX_LIMIT_INVALID", "Codex execution limit is invalid");
-  }
-
-  #emit(state: CodexSession, event: Readonly<Record<string, unknown>>): void {
-    state.sink(Object.freeze({ ...event, sequence: state.sequence }) as DriverEvent);
-    state.sequence += 1;
-  }
-
-  #terminal(state: CodexSession, reason?: string): void {
-    if (state.closed) return;
-    this.#emit(state, { type: "session.closed", outcome: state.outcome, ...(reason === undefined ? {} : { reason }) });
-    state.closed = true;
-  }
-
-  #known(session: DriverSessionRef): CodexSession {
-    const state = this.#sessions.get(session.sessionId);
-    if (state === undefined) throw codexError("VES_DRIVER_SESSION_UNKNOWN", "Codex session is unknown");
-    return state;
   }
 }
