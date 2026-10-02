@@ -153,6 +153,9 @@ function runStatement(statement: StatementSync, ...values: readonly (string | nu
   return Number(statement.run(...values).changes);
 }
 
+// invariant: approvals, grants, claims and artifact_refs have no writer in this
+// module, but migration 001 still creates them and a database written by an
+// older build may hold rows there, so the state digest keeps covering them.
 const STATE_TABLE_ORDER = Object.freeze({
   runs: "run_id",
   state_events: "run_id, sequence",
@@ -931,80 +934,6 @@ export class RuntimeStore {
     );
   }
 
-  putApproval(value: {
-    readonly approvalId: string;
-    readonly runId: string;
-    readonly action: string;
-    readonly bindingDigest: string;
-    readonly issuedAt: string;
-    readonly expiresAt: string;
-  }): void {
-    try {
-      this.#database()
-        .prepare(
-          `INSERT INTO approvals(approval_id, run_id, action, binding_digest, issued_at, expires_at)
-          VALUES (?, ?, ?, ?, ?, ?)`
-        )
-        .run(value.approvalId, value.runId, value.action, value.bindingDigest, value.issuedAt, value.expiresAt);
-    } catch (error) {
-      throw mapSqliteError(error);
-    }
-  }
-
-  getApproval(approvalId: string): UnknownRecord {
-    const row = requireRow(
-      this.#database()
-        .prepare(
-          `SELECT approval_id AS approvalId, run_id AS runId, action, binding_digest AS bindingDigest,
-          issued_at AS issuedAt, expires_at AS expiresAt, revoked_at AS revokedAt FROM approvals WHERE approval_id=?`
-        )
-        .get(approvalId)
-    );
-    return { ...row };
-  }
-
-  revokeApproval(approvalId: string, revokedAt: string): void {
-    if (
-      runStatement(
-        this.#database().prepare("UPDATE approvals SET revoked_at=? WHERE approval_id=?"),
-        revokedAt,
-        approvalId
-      ) !== 1
-    ) {
-      throw runtimeError("VES_RUNTIME_NOT_FOUND", "Approval was not found");
-    }
-  }
-
-  putGrant(value: {
-    readonly grantId: string;
-    readonly runId: string;
-    readonly action: string;
-    readonly bindingDigest: string;
-    readonly issuedAt: string;
-    readonly expiresAt: string;
-  }): void {
-    try {
-      this.#database()
-        .prepare(
-          `INSERT INTO grants(grant_id, run_id, action, binding_digest, issued_at, expires_at)
-          VALUES (?, ?, ?, ?, ?, ?)`
-        )
-        .run(value.grantId, value.runId, value.action, value.bindingDigest, value.issuedAt, value.expiresAt);
-    } catch (error) {
-      throw mapSqliteError(error);
-    }
-  }
-
-  listActiveGrants(runId: string, now: string): readonly UnknownRecord[] {
-    return this.#database()
-      .prepare(
-        `SELECT grant_id AS grantId, run_id AS runId, action, binding_digest AS bindingDigest,
-        issued_at AS issuedAt, expires_at AS expiresAt FROM grants
-        WHERE run_id=? AND issued_at<=? AND expires_at>? ORDER BY grant_id`
-      )
-      .all(runId, now, now) as UnknownRecord[];
-  }
-
   acquireLease(value: {
     readonly leaseId: string;
     readonly workspaceId: string;
@@ -1065,83 +994,6 @@ export class RuntimeStore {
       throw runtimeError("VES_RUNTIME_LEASE_OWNER_MISMATCH", "Only the lease owner may release it");
     }
     return runStatement(this.#database().prepare("DELETE FROM leases WHERE workspace_id=?"), workspaceId) === 1;
-  }
-
-  acquireClaim(value: {
-    readonly claimId: string;
-    readonly workspaceId: string;
-    readonly scopeDigest: string;
-    readonly ownerId: string;
-    readonly now: string;
-    readonly expiresAt: string;
-  }): void {
-    const db = this.#database();
-    try {
-      db.exec("BEGIN IMMEDIATE");
-      const current = db
-        .prepare("SELECT claim_id, owner_id, expires_at FROM claims WHERE workspace_id=? AND scope_digest=?")
-        .get(value.workspaceId, value.scopeDigest) as UnknownRecord | undefined;
-      if (
-        current !== undefined &&
-        String(current.owner_id) !== value.ownerId &&
-        String(current.expires_at) > value.now
-      ) {
-        throw runtimeError("VES_RUNTIME_CLAIM_CONFLICT", "Scope has an active work claim");
-      }
-      if (current === undefined) {
-        db.prepare(
-          "INSERT INTO claims(claim_id, workspace_id, scope_digest, owner_id, expires_at) VALUES (?, ?, ?, ?, ?)"
-        ).run(value.claimId, value.workspaceId, value.scopeDigest, value.ownerId, value.expiresAt);
-      } else {
-        db.prepare(
-          "UPDATE claims SET claim_id=?, owner_id=?, expires_at=? WHERE workspace_id=? AND scope_digest=?"
-        ).run(value.claimId, value.ownerId, value.expiresAt, value.workspaceId, value.scopeDigest);
-      }
-      db.exec("COMMIT");
-    } catch (error) {
-      if (db.isTransaction) db.exec("ROLLBACK");
-      if (errorCode(error)?.startsWith("VES_RUNTIME_") === true) throw error;
-      throw mapSqliteError(error);
-    }
-  }
-
-  releaseClaim(claimId: string, ownerId: string): boolean {
-    const current = this.#database().prepare("SELECT owner_id FROM claims WHERE claim_id=?").get(claimId) as
-      UnknownRecord | undefined;
-    if (current === undefined) return false;
-    if (current.owner_id !== ownerId) {
-      throw runtimeError("VES_RUNTIME_CLAIM_OWNER_MISMATCH", "Only the claim owner may release it");
-    }
-    return runStatement(this.#database().prepare("DELETE FROM claims WHERE claim_id=?"), claimId) === 1;
-  }
-
-  putArtifactRef(value: {
-    readonly refId: string;
-    readonly runId: string;
-    readonly kind: string;
-    readonly digest: string;
-    readonly logicalPath: string;
-    readonly createdAt: string;
-  }): void {
-    try {
-      this.#database()
-        .prepare(
-          `INSERT INTO artifact_refs(ref_id, run_id, kind, digest, logical_path, created_at)
-          VALUES (?, ?, ?, ?, ?, ?)`
-        )
-        .run(value.refId, value.runId, value.kind, value.digest, value.logicalPath, value.createdAt);
-    } catch (error) {
-      throw mapSqliteError(error);
-    }
-  }
-
-  listArtifactRefs(runId: string): readonly UnknownRecord[] {
-    return this.#database()
-      .prepare(
-        `SELECT ref_id AS refId, run_id AS runId, kind, digest, logical_path AS logicalPath,
-        created_at AS createdAt FROM artifact_refs WHERE run_id=? ORDER BY created_at, ref_id`
-      )
-      .all(runId) as UnknownRecord[];
   }
 
   // Appends one execution checkpoint. With an explicit sequence the caller

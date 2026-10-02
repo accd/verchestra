@@ -17,7 +17,6 @@ import {
   event,
   now,
   opened,
-  rawDigest,
   run,
   runId,
   transition
@@ -137,40 +136,6 @@ test("terminal transition persists capsule intent in the same transaction", asyn
   store.close();
 });
 
-test("approval repository round-trips and revokes authority", async () => {
-  const { store } = await opened();
-  store.createRun(run());
-  const approval = {
-    approvalId: "approval_018f0b6d-7b1a-7abc-8def-4123456789ab",
-    runId,
-    action: "execution",
-    bindingDigest,
-    issuedAt: now,
-    expiresAt: "2026-07-13T13:00:00.000Z"
-  };
-  store.putApproval(approval);
-  assert.deepEqual(store.getApproval(approval.approvalId), { ...approval, revokedAt: null });
-  store.revokeApproval(approval.approvalId, "2026-07-13T12:30:00.000Z");
-  assert.equal(store.getApproval(approval.approvalId).revokedAt, "2026-07-13T12:30:00.000Z");
-  store.close();
-});
-
-test("grant repository returns only active grants", async () => {
-  const { store } = await opened();
-  store.createRun(run());
-  store.putGrant({
-    grantId: "grant_018f0b6d-7b1a-7abc-8def-5123456789ab",
-    runId,
-    action: "workspace.write",
-    bindingDigest,
-    issuedAt: now,
-    expiresAt: "2026-07-13T13:00:00.000Z"
-  });
-  assert.equal(store.listActiveGrants(runId, "2026-07-13T12:30:00.000Z").length, 1);
-  assert.equal(store.listActiveGrants(runId, "2026-07-13T14:00:00.000Z").length, 0);
-  store.close();
-});
-
 test("workspace lease acquisition starts a fencing sequence", async () => {
   const { store } = await opened();
   const lease = store.acquireLease({
@@ -234,52 +199,6 @@ test("lease release requires the current owner", async () => {
   store.close();
 });
 
-test("work claim enforces one active owner per scope", async () => {
-  const { store } = await opened();
-  const claim = {
-    claimId: "claim_018f0b6d-7b1a-7abc-8def-9123456789ab",
-    workspaceId: "workspace_018f0b6d-7b1a-7abc-8def-7123456789ab",
-    scopeDigest: rawDigest,
-    ownerId: "machine:a",
-    now,
-    expiresAt: "2026-07-13T13:00:00.000Z"
-  };
-  store.acquireClaim(claim);
-  assert.throws(
-    () => store.acquireClaim({ ...claim, claimId: "claim_018f0b6d-7b1a-7abc-8def-a123456789ab", ownerId: "machine:b" }),
-    { code: "VES_RUNTIME_CLAIM_CONFLICT" }
-  );
-  assert.equal(store.releaseClaim(claim.claimId, "machine:a"), true);
-  store.close();
-});
-
-test("artifact refs are append-only and ordered", async () => {
-  const { store } = await opened();
-  store.createRun(run());
-  store.putArtifactRef({
-    refId: "ref_018f0b6d-7b1a-7abc-8def-b123456789ab",
-    runId,
-    kind: "execution-package",
-    digest: bindingDigest,
-    logicalPath: ".verchestra/packages/T42.json",
-    createdAt: now
-  });
-  assert.equal(store.listArtifactRefs(runId)[0].kind, "execution-package");
-  assert.throws(
-    () =>
-      store.putArtifactRef({
-        refId: "ref_018f0b6d-7b1a-7abc-8def-b123456789ab",
-        runId,
-        kind: "other",
-        digest: bindingDigest,
-        logicalPath: "other.json",
-        createdAt: now
-      }),
-    { code: "VES_RUNTIME_CONSTRAINT" }
-  );
-  store.close();
-});
-
 test("integrity check reports ok on active database", async () => {
   const { store } = await opened();
   assert.equal(store.integrityCheck(), "ok");
@@ -302,26 +221,24 @@ test("canonical runtime digest is independent of authority insertion order", asy
   const second = await opened();
   for (const store of [first.store, second.store]) store.createRun(run());
   const approvals = [
-    {
-      approvalId: "approval_018f0b6d-7b1a-7abc-8def-4123456789ab",
-      runId,
-      action: "execution",
-      bindingDigest,
-      issuedAt: now,
-      expiresAt: "2026-07-13T13:00:00.000Z"
-    },
-    {
-      approvalId: "approval_018f0b6d-7b1a-7abc-8def-5123456789ab",
-      runId,
-      action: "handoff-publication",
-      bindingDigest,
-      issuedAt: now,
-      expiresAt: "2026-07-13T13:00:00.000Z"
-    }
+    { approvalId: "approval_018f0b6d-7b1a-7abc-8def-4123456789ab", ...authorityRow("execution") },
+    { approvalId: "approval_018f0b6d-7b1a-7abc-8def-5123456789ab", ...authorityRow("handoff-publication") }
   ];
-  approvals.forEach((approval) => first.store.putApproval(approval));
-  approvals.toReversed().forEach((approval) => second.store.putApproval(approval));
+  const grants = [
+    { grantId: "grant_018f0b6d-7b1a-7abc-8def-6123456789ab", ...authorityRow("workspace.write") },
+    { grantId: "grant_018f0b6d-7b1a-7abc-8def-7123456789ab", ...authorityRow("workspace.read") }
+  ];
+  for (const approval of approvals) assert.equal(first.store.saveAuthorityApproval(approval).created, true);
+  for (const grant of grants) assert.equal(first.store.saveAuthorityGrant(grant).created, true);
+  for (const grant of grants.toReversed()) assert.equal(second.store.saveAuthorityGrant(grant).created, true);
+  for (const approval of approvals.toReversed()) {
+    assert.equal(second.store.saveAuthorityApproval(approval).created, true);
+  }
   assert.equal(first.store.stateDigest(), second.store.stateDigest());
+  // invariant: the digest still discriminates content, or the equality above
+  // would prove nothing about ordering.
+  assert.equal(second.store.revokeAuthorityApproval(approvals[0].approvalId, now, "reviewer-withdrew"), true);
+  assert.notEqual(first.store.stateDigest(), second.store.stateDigest());
   first.store.close();
   second.store.close();
 });
@@ -358,18 +275,16 @@ test("read-only inspector keeps extension loading unavailable", async () => {
 
 test("foreign-key enforcement rejects orphan authority records", async () => {
   const { dbPath, store } = await opened();
-  assert.throws(
-    () =>
-      store.putApproval({
-        approvalId: "approval_018f0b6d-7b1a-7abc-8def-4123456789ab",
-        runId,
-        action: "execution",
-        bindingDigest,
-        issuedAt: now,
-        expiresAt: "2026-07-13T13:00:00.000Z"
-      }),
-    { code: "VES_RUNTIME_CONSTRAINT" }
-  );
+  const approvalId = "approval_018f0b6d-7b1a-7abc-8def-4123456789ab";
+  const grantId = "grant_018f0b6d-7b1a-7abc-8def-6123456789ab";
+  assert.throws(() => store.saveAuthorityApproval({ approvalId, ...authorityRow("execution") }), {
+    code: "VES_RUNTIME_CONSTRAINT"
+  });
+  assert.throws(() => store.saveAuthorityGrant({ grantId, ...authorityRow("workspace.write") }), {
+    code: "VES_RUNTIME_CONSTRAINT"
+  });
+  assert.equal(store.loadAuthorityApproval(approvalId), undefined);
+  assert.equal(store.loadAuthorityGrant(grantId), undefined);
   assert.equal(inspectRuntimeDatabase(dbPath).integrity, "ok");
   store.close();
 });
@@ -383,3 +298,16 @@ test("runtime public-error catalog is complete and schema-valid", async () => {
     assert.equal(schemas.validate("public-error", "1", runtimePublicErrorRegistry.create(code, {})).code, code);
   }
 });
+
+// why: the store treats the record text as opaque and only the run binding is
+// relational, so a minimal row reaches both the state digest and the foreign key.
+function authorityRow(action) {
+  return {
+    workspaceId: "workspace_018f0b6d-7b1a-7abc-8def-7123456789ab",
+    runId,
+    action,
+    recordJson: JSON.stringify({ action, bindingDigest }),
+    issuedAt: now,
+    expiresAt: "2026-07-13T13:00:00.000Z"
+  };
+}
