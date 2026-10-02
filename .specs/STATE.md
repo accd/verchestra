@@ -860,7 +860,80 @@ note. -->
   before the cancel was tried. Evidence is in
   `.specs/features/architecture-deepening/validation-c1.md`.
 
+### AD-044 — Providers authenticate by subscription by default; the Claude Code subscription profile replaces `--bare` with named controls (ADP-A)
+
+- **Status:** proposed. The owner ratifies it by reviewing the pull request
+  that carries `feat/subscription-provider-auth`
+  (`.specs/features/subscription-provider-auth/`). The owner decided that the
+  task path must work with Claude and Codex subscriptions; the three gaps
+  below are open owner decisions.
+- **Context:** The `mediated-mcp` profile (AD-039) passes `--bare`, and bare
+  mode reads only `ANTHROPIC_API_KEY`. `claude --help` (2.1.282): "Anthropic
+  auth is strictly ANTHROPIC_API_KEY or apiKeyHelper via --settings (OAuth and
+  keychain are never read)". An owner on subscriptions could not run a task.
+- **Decision:**
+  1. **A second qualified profile, `mediated-mcp-subscription`.** It is the
+     mediated invocation without `--bare`. Its only credential is the
+     long-lived token from `claude setup-token`, in `CLAUDE_CODE_OAUTH_TOKEN`.
+     What `--bare` gave is rebuilt from named controls: `--setting-sources ""`,
+     `--settings` with `disableAllHooks` and `autoMemoryEnabled: false`,
+     `--strict-mcp-config`, `--disable-slash-commands`, `--tools ""`, seven
+     environment switches, a per-run `HOME` and `CLAUDE_CONFIG_DIR`, and an
+     empty per-run working directory in place of the worktree. The profile
+     adds three fail-closed checks the bare profile does not need: no MCP
+     server but the bridge, no hook event in the stream
+     (`--include-hook-events`), and no machine-wide managed policy location.
+     The `mediated-mcp` and T03 profiles are unchanged.
+  2. **A Codex identity directory per Workspace.** `codex-identity` under the
+     machine-local state root is the verifier's `CODEX_HOME`. `vestra` pins its
+     `config.toml` to the file credential store and ChatGPT login, accepts only
+     `Logged in using ChatGPT` from `codex login status`, and prints the one
+     command the owner runs once. The Codex credential never enters the OS
+     credential store and `vestra` never reads it.
+  3. **The mode is machine-local.** `task-providers.json` beside
+     `task-gates.json` selects `subscription` or `api-key` per provider.
+     Without it both are `subscription`. The Task Request cannot select it.
+  4. **Unbilled usage has no cost.** The budget meter counts tokens and
+     duration for a model on a subscription and adds no cost; status and the
+     Run Capsule say not billed (subscription). The priced path, and
+     `VES_BUDGET_MODEL_UNKNOWN`, are unchanged for billed models.
+- **Alternatives rejected:** dropping `--bare` and relying on flags alone while
+  keeping the worktree as the working directory (the `AGENTS.md` loader is not
+  named by any documented switch); `--safe-mode` (it also disables MCP
+  servers, so the bridge would not load); letting Claude Code find the owner's
+  logged-in session (an ambient credential the profile cannot name or redact);
+  copying `~/.codex/auth.json` into the Workspace (reads the owner's session,
+  and a rotated refresh token would break one of the two copies);
+  `codex login --with-access-token` (an Enterprise-workspace token, not a
+  personal plan); a mode field in the Task Request (untrusted input would pick
+  the credential); reporting a cost of zero (a dollar figure that reads as
+  free).
+- **Open owner decisions:**
+  - **G1.** Managed Claude Code policy (file, MDM, or server-managed) can add
+    hooks, instructions, or a credential helper the profile cannot switch off.
+    The profile refuses the file and MDM locations and ends a session on any
+    hook event; server-managed settings are not detectable before a session.
+    Decide whether the refusal stays, and whether a Team or Enterprise plan is
+    in scope.
+  - **G2.** Claude Code may still look up a Keychain entry named after the
+    per-run config directory. It cannot find the ambient session. Decide
+    whether that is acceptable without a switch that disables the lookup.
+  - **G3.** No documented switch covers every startup request Claude Code
+    makes with the token.
+- **Consequence:** `docs/qualification/claude-code-driver-subscription.md`
+  records what the labeled fake proved and what needs the owner's token.
+  Nothing was observed live: TA1 allowed only `--help`, `--version`, and
+  `codex login status` in a disposable directory. A Workspace that used API
+  keys must now say so in `task-providers.json`.
+
 ## Handoff
+
+- **Feature:** `subscription-provider-auth` (ADP-A, tasks TA1 and TA2) on
+  `feat/subscription-provider-auth`.
+- **Completed:** see `.specs/features/subscription-provider-auth/handoff.md`.
+- **Next:** independent review; then the owner's one-time setup and the first
+  supervised live run, which decide the gaps G1–G3.
+
 
 - **Feature:** `governed-task-cli` E6–E9 (#405) on
   `feat/405-governed-task-cli`, stacked on `feat/405-governed-task-foundations`
