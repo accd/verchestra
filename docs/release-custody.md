@@ -401,7 +401,8 @@ it covers release effects as well as merges.
   key id. The tooling enforces the split:
   - `scripts/t76-publish-release.mjs` and `scripts/t76-refresh-timestamp.mjs`
     refuse any anchor that carries `validUntil`, for either role, with
-    `VES_T76_PUBLISH_ANCHOR_RETIRED`, whatever path the caller passes;
+    `VES_T76_PUBLISH_ANCHOR_RETIRED`, whatever path the caller passes. Both
+    read anchors through the one shared module `scripts/t76-signing-custody.mjs`;
   - `scripts/t75-evidence-attestation.mjs` refuses to sign under a reference
     whose window has closed, both at the asserted `issuedAt` and on the wall
     clock. It verifies an envelope only if its `issuedAt` falls inside the

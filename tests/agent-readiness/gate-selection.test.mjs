@@ -376,6 +376,13 @@ test("every file the canonical-JSON census inventories selects the security gate
   // The scripts/ catch-all is exactly the surface that selected only gate:quick.
   assert.ok(scripts.includes("scripts/agent-readiness.mjs"));
   assert.ok(scripts.includes("scripts/t76-publish-release.mjs"));
+  // why: the custody rules both T76 signing scripts share (ADP-7) decide a
+  // signature, so the module that holds them is routed like the scripts are.
+  assert.ok(scripts.includes("scripts/t76-signing-custody.mjs"));
+  assert.deepEqual(
+    selectGates(["scripts/t76-signing-custody.mjs"]).gates,
+    selectGates(["scripts/t76-publish-release.mjs"]).gates
+  );
   for (const path of censusPaths) {
     const selection = selectGates([path]);
     assert.ok(selection.gates.includes(CENSUS_GATE), `${path} must select ${CENSUS_GATE}`);
