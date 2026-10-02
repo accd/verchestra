@@ -4,7 +4,7 @@ import { join } from "node:path";
 import type { GateAttemptFeedback, GateFailure } from "@verchestra/application";
 
 import { stateInvalid } from "./task-errors.ts";
-import { canonicalDigest, objectRow, readJsonFile, readSealedRecord, writeSealedRecord } from "./task-files.ts";
+import { canonicalDigest, objectRow, readSealedRecord, writeSealedRecord } from "./task-files.ts";
 
 type Digest = `sha256:${string}`;
 type Row = Readonly<Record<string, unknown>>;
@@ -22,8 +22,8 @@ export class TaskEvidenceStore {
   readonly #root: string;
   #changeDigest = "";
 
-  constructor(runDirectory: string) {
-    this.#root = join(runDirectory, "gate-evidence");
+  constructor(root: string) {
+    this.#root = root;
   }
 
   judging(changeDigest: string): void {
@@ -99,14 +99,4 @@ export class TaskEvidenceStore {
       }
     };
   }
-}
-
-export async function readOptionalRecord(path: string, label: string): Promise<Row | undefined> {
-  const stored = await readSealedRecord(path, label);
-  return stored === undefined ? undefined : objectRow(stored, label);
-}
-
-export async function readPlainJson(path: string, label: string): Promise<Row | undefined> {
-  const stored = await readJsonFile(path, label);
-  return stored === undefined ? undefined : objectRow(stored, label);
 }

@@ -1,14 +1,6 @@
-import { join } from "node:path";
-
 import { HumanReviewCoordinator, modelPriceTable, type HumanReviewPorts } from "@verchestra/application";
 import { WorkflowMachine, type RunSnapshot } from "@verchestra/domain";
-import {
-  ArtifactSealer,
-  FileExecutionPackageStore,
-  FileRunCapsuleStore,
-  RunCapsuleBuilder,
-  type EvidenceSigner
-} from "@verchestra/evidence";
+import { ArtifactSealer, RunCapsuleBuilder, type EvidenceSigner } from "@verchestra/evidence";
 import { RuntimeCheckpointStore, type RuntimeStore } from "@verchestra/platform-node";
 
 import { installedReleaseManifest } from "../release-manifest.ts";
@@ -17,16 +9,15 @@ import { capsuleBudgetConsumption } from "./task-budget.ts";
 import { confirmDigest } from "./task-confirm.ts";
 import { SIGNING_PASSPHRASE, readCredentials } from "./task-credentials.ts";
 import { taskError } from "./task-errors.ts";
-import { TaskEvidenceStore, readPlainJson } from "./task-evidence.ts";
-import { canonicalDigest, writeSealedRecord } from "./task-files.ts";
+import { canonicalDigest } from "./task-files.ts";
 import type { TaskCommandIo } from "./task-io.ts";
-import { HUMAN_ACTOR, loadPlanRecord, type TaskPlanRecord } from "./task-plan-record.ts";
+import { HUMAN_ACTOR, type TaskPlanRecord } from "./task-plan-record.ts";
 import { loadTaskPolicy } from "./task-policy.ts";
+import { openRunRecord, type RunRecord } from "./task-run-record.ts";
 import { workspaceSigner, workspaceTrustRoot } from "./task-signing.ts";
 import { branchName, reviewSurface } from "./task-surface.ts";
-import { verifyReport } from "./task-verifier.ts";
 import { applyWorkflow, currentRun, verificationRun } from "./task-workflow.ts";
-import { openRuntime, openTaskWorkspace, parseRunId, runDirectory, type TaskWorkspace } from "./task-workspace.ts";
+import { openRuntime, openTaskWorkspace, parseRunId, type TaskWorkspace } from "./task-workspace.ts";
 
 type Digest = `sha256:${string}`;
 type Surface = Awaited<ReturnType<typeof reviewSurface>>;
@@ -36,14 +27,14 @@ interface ReviewContext {
   readonly workspace: TaskWorkspace;
   readonly plan: TaskPlanRecord;
   readonly runtime: RuntimeStore;
-  readonly directory: string;
+  readonly runRecord: RunRecord;
   readonly authority: TaskAuthority;
 }
 
 const ref = (artifactId: string, value: unknown) => ({ artifactId, digest: canonicalDigest(value) });
 
 async function gateRefs(context: ReviewContext, refs: readonly string[]) {
-  const store = new TaskEvidenceStore(context.directory);
+  const store = context.runRecord.gateEvidence;
   const result = [];
   for (const evidenceRef of refs) result.push(ref(evidenceRef, (await store.load(evidenceRef)) ?? evidenceRef));
   return result;
@@ -93,8 +84,8 @@ async function capsuleInput(
   review: Readonly<Record<string, unknown>>
 ) {
   const { plan } = context;
-  const pkg = await new FileExecutionPackageStore({ root: join(context.directory, "packages") }).get(plan.packageId);
-  const grant = await readPlainJson(join(context.directory, "grant.json"), "capability grant marker");
+  const pkg = await context.runRecord.loadPackage(plan.packageId);
+  const grant = await context.runRecord.loadGrant();
   const events = context.runtime.listEvents(plan.runId);
   const terminal = events.at(-1) as Readonly<Record<string, unknown>>;
   return {
@@ -154,7 +145,7 @@ async function sealCapsule(
   const capsule = await new RunCapsuleBuilder({ sealer: new ArtifactSealer({ signer }) }).build(
     await capsuleInput(context, surface, snapshot, review)
   );
-  await new FileRunCapsuleStore({ root: join(context.directory, "capsules") }).put(capsule);
+  await context.runRecord.saveCapsule(capsule);
   context.runtime.recordRunCapsuleSeal({
     runId: context.plan.runId,
     stateVersion: snapshot.version,
@@ -166,9 +157,26 @@ async function sealCapsule(
   return capsule.artifactId;
 }
 
+// invariant: a review binds the verification report that is on disk; a claim
+// about any other report, or about none, is not valid.
+async function verifyReport(runRecord: RunRecord, verification: Readonly<Record<string, unknown>>) {
+  const report = await runRecord.loadReport();
+  if (report === undefined) return { valid: false, reportRef: "", reportDigest: "", verdict: "", commitId: "" };
+  const reportDigest = canonicalDigest(report);
+  return {
+    valid:
+      `verification:${reportDigest.slice(7, 39)}` === verification["reportRef"] &&
+      reportDigest === verification["reportDigest"],
+    reportRef: `verification:${reportDigest.slice(7, 39)}`,
+    reportDigest,
+    verdict: report["verdict"],
+    commitId: report["commitId"]
+  };
+}
+
 function reviewPorts(context: ReviewContext): HumanReviewPorts {
   return {
-    reports: { verify: async (verification) => verifyReport(context.directory, verification) },
+    reports: { verify: async (verification) => verifyReport(context.runRecord, verification) },
     humanAuthority: {
       verify: async () => {
         const decision = context.authority.decide("human-review", true);
@@ -179,9 +187,8 @@ function reviewPorts(context: ReviewContext): HumanReviewPorts {
       }
     },
     reviews: {
-      save: async (record) => {
-        await writeSealedRecord(join(context.directory, "review.json"), record);
-        const reviewDigest = canonicalDigest(record);
+      save: async (review) => {
+        const reviewDigest = await context.runRecord.saveReview(review);
         return { reviewRef: `review:${reviewDigest.slice(7, 39)}`, reviewDigest };
       }
     },
@@ -225,8 +232,8 @@ export async function reviewTask(
 ) {
   const runId = parseRunId(options.runId);
   const workspace = await openTaskWorkspace(io);
-  const plan = await loadPlanRecord(workspace, runId);
-  const directory = runDirectory(workspace, runId);
+  const runRecord = openRunRecord(workspace, runId);
+  const plan = await runRecord.loadPlan();
   const runtime = openRuntime(workspace);
   try {
     const state = currentRun(runtime, runId).state;
@@ -236,7 +243,7 @@ export async function reviewTask(
         { state, command: "review" },
         "Only a run in HUMAN_REVIEW can be reviewed"
       );
-    const surface = await reviewSurface(workspace.repositoryRoot, plan, directory);
+    const surface = await reviewSurface(workspace.repositoryRoot, plan, runRecord);
     if (options.surfaceDigest !== surface.digest)
       throw taskError("VES_TASK_SURFACE_MISMATCH", {}, "The review surface changed or the digest is wrong");
     await confirmDigest(io, surface.digest, { confirmStdin: options.confirmStdin, label: "surface" });
@@ -251,7 +258,7 @@ export async function reviewTask(
     const signer = await workspaceSigner(workspace, credentials.get(SIGNING_PASSPHRASE) as string);
     const policy = await loadTaskPolicy(io.controlRoot);
     const authority = new TaskAuthority({ runtime, plan, policy, trust: await workspaceTrustRoot(workspace) });
-    const context: ReviewContext = { io, workspace, plan, runtime, directory, authority };
+    const context: ReviewContext = { io, workspace, plan, runtime, runRecord, authority };
     const review = await new HumanReviewCoordinator(reviewPorts(context)).review(
       reviewInput(context, surface, String(options.outcome), String(options.surfaceDigest))
     );

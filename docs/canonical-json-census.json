@@ -144,7 +144,7 @@
       "path": "apps/vestra-cli/src/task/task-context.ts",
       "classification": "migrated-v2",
       "signals": {
-        "canonicalizer": 3,
+        "canonicalizer": 2,
         "digest": 2,
         "localeCompare": 0,
         "serialization": 0
@@ -163,15 +163,15 @@
       "reason": "The reviewed source uses the declared V2 canonical contract; raw SHA-256 applies only to bytes."
     },
     {
-      "path": "apps/vestra-cli/src/task/task-run.ts",
+      "path": "apps/vestra-cli/src/task/task-run-record.ts",
       "classification": "migrated-v2",
       "signals": {
-        "canonicalizer": 0,
+        "canonicalizer": 2,
         "digest": 0,
         "localeCompare": 0,
         "serialization": 1
       },
-      "reason": "The one JSON.stringify round trip drops undefined members before the record is digested with the declared V2 canonical contract."
+      "reason": "The reviewed source uses the declared V2 canonical contract; the one JSON.stringify round trip drops undefined members before an attempt record is digested with that contract."
     },
     {
       "path": "apps/vestra-cli/src/task/task-verifier.ts",

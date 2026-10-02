@@ -1034,6 +1034,72 @@ note. -->
   to any floor now fails a test and is a requalification. Evidence is in
   `.specs/features/architecture-deepening/validation-c3.md`.
 
+### AD-047 — The Run record module owns the layout, the seal, and the validation of a Run's durable record (ADP-2)
+
+- **Status:** proposed (ratified by reviewing the pull requests that carry
+  `refactor/task-run-record`).
+- **Context:** A governed task keeps fifteen artifacts under
+  `<workspaceState>/tasks/<runId>/`. Their paths, whether each is sealed, and
+  how each is validated were spelled out across nine sources of the CLI
+  composition: the grant marker was read in three, the commit record and the
+  verification report were reached through sideways imports (`task-status`
+  from `task-run`, `task-surface` from `task-verifier`), and each command
+  joined the Run directory with a file name of its own. The refusals that
+  guard this state (`VES_TASK_STATE_UNREADABLE`, `VES_TASK_STATE_MISMATCH`,
+  `VES_TASK_CONTEXT_*`, `VES_TASK_EVIDENCE_MISMATCH`,
+  `VES_TASK_PACKAGE_INVALID`, `VES_TASK_REVIEW_UNAVAILABLE`) had no test,
+  because only the macOS end-to-end journey reached the code that raises them.
+- **Decision:**
+  1. `apps/vestra-cli/src/task/task-run-record.ts` is the one module that
+     knows the layout of the Run directory, which artifacts are sealed, and
+     what a reader may trust about each. `openRunRecord(workspace, runId)`
+     returns it; every task command reads and writes the Run's files through
+     its interface and none joins a path into the Run directory. It reuses the
+     seal and atomic write of `task-files.ts`, `TaskEvidenceStore`,
+     `FileExecutionPackageStore`, and `FileRunCapsuleStore`.
+  2. The module stays in the composition root. It needs the stores of
+     `@verchestra/evidence` and the `ContextManifest` of
+     `@verchestra/agent-runtime`, and `packages/platform-node` may import
+     neither.
+  3. Nothing is created before the first write, so a command that only reads,
+     and a dry run, leave no `tasks/` directory. One reader inherits an effect
+     from its store: `FileExecutionPackageStore` creates its root when it
+     reads. Every caller has read the plan record first, so the Run directory
+     exists by then.
+  4. **Bytes, paths, and seals are unchanged.** Runs in flight and sealed Run
+     Capsules depend on them. Golden values recorded from the sources as they
+     stood before the module (the seal format, the review surface, the grant
+     marker, the attempt digests, the context manifest identity, and the whole
+     layout) are asserted against the module.
+  5. The five plain markers (`grant.json`, `active.json`, `worktree.json`,
+     `cancel.json`, `outcome.json`) stay plain. A marker reader returns what
+     the file holds, because the Run Capsule digests the grant marker as it is
+     read; sealing them would move the bytes of Runs in flight and that
+     digest, so it is a separate change. The governed task design text, which
+     said every record in the Run directory is sealed or content-addressed,
+     now says what is true.
+  6. One refusal is new: a plan record is filed only under its own run and
+     Workspace (`VES_TASK_STATE_MISMATCH`). Before, the path was derived from
+     the record, so the two could not disagree; now the path comes from the
+     Run record and the check keeps that property.
+- **Alternatives rejected:** the module in `packages/platform-node` (it
+  cannot import the evidence stores or the context manifest type); an artifact
+  store keyed by caller-supplied names (the callers would keep the layout);
+  sealing the markers in the same change (it moves bytes this change must not
+  move); marker readers that return only validated members (a hand-edited
+  grant marker would then be digested differently into the Run Capsule than it
+  is today); reading the Execution Package at review through the same checked
+  reader `approve` uses (it would change the public error a damaged package
+  store raises at review).
+- **Consequence:** `tests/architecture/task-run-record-locality.test.mjs` fails
+  when another task source names a file of the Run directory, joins a path
+  into one of its directories, opens one of its stores, reads or writes a
+  sealed record, or imports another command's module for Run state. The
+  module's refusals are exercised in a temporary directory on every platform
+  (`tests/unit/task-run-record.test.mjs`,
+  `tests/integration/task-review-surface.test.mjs`). Evidence is in
+  `.specs/features/architecture-deepening/validation-c2.md`.
+
 ## Handoff
 
 - **Feature:** `subscription-provider-auth` (ADP-A, tasks TA1 and TA2) on

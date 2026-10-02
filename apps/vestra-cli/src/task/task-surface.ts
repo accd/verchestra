@@ -1,41 +1,9 @@
-import { join } from "node:path";
+import { refTarget, taskBranchName, taskBranchRef } from "@verchestra/platform-node";
 
-import type { TaskRunCommit } from "@verchestra/application";
-import { isGitObjectId, refTarget, taskBranchName, taskBranchRef } from "@verchestra/platform-node";
-
-import { stateInvalid } from "./task-errors.ts";
-import { readOptionalRecord } from "./task-evidence.ts";
-import { canonicalDigest, sha256, writeSealedRecord } from "./task-files.ts";
+import { canonicalDigest, sha256 } from "./task-files.ts";
 import { git } from "./task-git.ts";
 import type { TaskPlanRecord } from "./task-plan-record.ts";
-import { reportPath } from "./task-verifier.ts";
-
-const DIGEST = /^sha256:[a-f0-9]{64}$/u;
-
-export function commitPath(runDirectory: string): string {
-  return join(runDirectory, "commit.json");
-}
-
-export async function saveCommit(runDirectory: string, commit: TaskRunCommit): Promise<void> {
-  await writeSealedRecord(commitPath(runDirectory), commit);
-}
-
-export async function loadCommit(runDirectory: string): Promise<TaskRunCommit | undefined> {
-  const row = await readOptionalRecord(commitPath(runDirectory), "task commit record");
-  if (row === undefined) return undefined;
-  const refs = row["gateEvidenceRefs"];
-  if (
-    typeof row["commitId"] !== "string" ||
-    !isGitObjectId(row["commitId"]) ||
-    typeof row["baseCommit"] !== "string" ||
-    !isGitObjectId(row["baseCommit"]) ||
-    typeof row["gateEvidenceDigest"] !== "string" ||
-    !DIGEST.test(row["gateEvidenceDigest"]) ||
-    !Array.isArray(refs)
-  )
-    throw stateInvalid("VES_TASK_STATE_MALFORMED", "The task commit record is malformed");
-  return row as unknown as TaskRunCommit;
-}
+import type { RunRecord } from "./task-run-record.ts";
 
 export function branchName(plan: TaskPlanRecord): string {
   return taskBranchName(plan.runId, plan.request.task.taskId);
@@ -44,11 +12,12 @@ export function branchName(plan: TaskPlanRecord): string {
 // invariant: the review surface is everything the human accepts or rejects,
 // and its digest is what they type back; any change to the commit, the
 // anchored branch, the diff, or the verification report changes the digest.
-export async function reviewSurface(repositoryRoot: string, plan: TaskPlanRecord, runDirectory: string) {
-  const commit = await loadCommit(runDirectory);
-  const report = await readOptionalRecord(reportPath(runDirectory), "verification report");
-  if (commit === undefined || report === undefined)
-    throw stateInvalid("VES_TASK_REVIEW_UNAVAILABLE", "The run has no verified task commit to review");
+export async function reviewSurface(
+  repositoryRoot: string,
+  plan: TaskPlanRecord,
+  runRecord: Pick<RunRecord, "verifiedCommit">
+) {
+  const { commit, report } = await runRecord.verifiedCommit();
   const diff = await git(repositoryRoot, [
     "diff",
     "--no-ext-diff",

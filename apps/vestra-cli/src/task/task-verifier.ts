@@ -18,12 +18,12 @@ import {
 } from "@verchestra/platform-node";
 
 import { parseVerdict, runCodexVerifier, verifierPrompt, type VerifierClaim } from "./task-codex.ts";
-import { canonicalDigest, sha256, writeSealedRecord } from "./task-files.ts";
+import { canonicalDigest, sha256 } from "./task-files.ts";
 import { addDetachedWorktree, git, gitBuffer, removeWorktree } from "./task-git.ts";
 import { IMPLEMENTER_ACTOR, VERIFIER_ACTOR, type TaskPlanRecord } from "./task-plan-record.ts";
+import type { RunRecord } from "./task-run-record.ts";
 import { applyWorkflow, verificationRun } from "./task-workflow.ts";
 import type { TaskWorkspace } from "./task-workspace.ts";
-import { readOptionalRecord } from "./task-evidence.ts";
 
 type Row = Readonly<Record<string, unknown>>;
 const MAXIMUM_EVIDENCE_FILE_BYTES = 1024 * 1024;
@@ -32,7 +32,7 @@ export interface VerifierContext {
   readonly workspace: TaskWorkspace;
   readonly plan: TaskPlanRecord;
   readonly runtime: RuntimeStore;
-  readonly runDirectory: string;
+  readonly runRecord: Pick<RunRecord, "saveReport" | "saveLesson">;
   readonly gates: Readonly<Record<string, GateCommandProfile>>;
   readonly verifier:
     | { readonly executable: string; readonly credential: string }
@@ -43,10 +43,6 @@ export interface VerifierContext {
 
 function verificationRoot(context: VerifierContext): string {
   return join(context.workspace.layout.workspaceRoot, "verification", context.plan.runId);
-}
-
-export function reportPath(runDirectory: string): string {
-  return join(runDirectory, "verification", "report.json");
 }
 
 // invariant: the verification sensor compares this digest before and after
@@ -210,38 +206,17 @@ function ports(context: VerifierContext, commit: TaskRunCommit): VerificationPor
       run: (request) => sensor.run(request)
     },
     lessons: {
-      record: async (lesson) => {
-        const digest = canonicalDigest(lesson);
-        await writeSealedRecord(
-          join(context.runDirectory, "verification", "lessons", `${digest.slice(7, 39)}.json`),
-          lesson
-        );
-        return { lessonRef: `lesson:${digest.slice(7, 39)}` };
-      }
+      record: async (lesson) => ({
+        lessonRef: `lesson:${(await context.runRecord.saveLesson(lesson)).slice(7, 39)}`
+      })
     },
     reports: {
       save: async (report) => {
-        await writeSealedRecord(reportPath(context.runDirectory), report);
-        const reportDigest = canonicalDigest(report);
+        const reportDigest = await context.runRecord.saveReport(report);
         return { reportRef: `verification:${reportDigest.slice(7, 39)}`, reportDigest };
       }
     },
     workflow: workflowPort(context)
-  };
-}
-
-export async function verifyReport(runDirectory: string, verification: Row): Promise<Row> {
-  const report = await readOptionalRecord(reportPath(runDirectory), "verification report");
-  if (report === undefined) return { valid: false, reportRef: "", reportDigest: "", verdict: "", commitId: "" };
-  const reportDigest = canonicalDigest(report);
-  return {
-    valid:
-      `verification:${reportDigest.slice(7, 39)}` === verification["reportRef"] &&
-      reportDigest === verification["reportDigest"],
-    reportRef: `verification:${reportDigest.slice(7, 39)}`,
-    reportDigest,
-    verdict: report["verdict"],
-    commitId: report["commitId"]
   };
 }
 

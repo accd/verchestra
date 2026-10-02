@@ -222,15 +222,32 @@ controller with its stable code. It never applies `APPROVE_HUMAN_REVIEW`.
 | `task-review.ts`, `task-surface.ts` | Review surface digest, human review, run capsule. |
 | `task-status.ts` | Status and cancel. |
 | `task-credentials.ts`, `task-signing.ts` | Secret broker reads; the Workspace evidence key and its pinned trust anchor. |
-| `task-files.ts`, `task-plan-record.ts`, `task-evidence.ts`, `task-workflow.ts`, `task-workspace.ts`, `task-gates.ts`, `task-context.ts`, `task-git.ts` | Sealed state records, gate evidence, workflow persistence, Workspace layout, allowlist, context, git. |
+| `task-run-record.ts` | The Run record: the layout of the run directory and the sealed or plain, validated read and write of every artifact in it. |
+| `task-files.ts`, `task-plan-record.ts`, `task-evidence.ts`, `task-workflow.ts`, `task-workspace.ts`, `task-gates.ts`, `task-context.ts`, `task-git.ts` | The seal and atomic write, the plan record's shape, gate evidence, workflow persistence, Workspace layout, allowlist, context, git. |
 
 Durable state is split by owner. The runtime store keeps the run, events,
 approvals, grants, lease, executor/gate/repair checkpoints, and tool receipts.
 The run directory `<workspaceState>/tasks/<runId>/` keeps the sealed plan
-record, the context manifest, the Execution Package, gate evidence, the commit
-record, the verification report, the review record, and the capsule. Every
-record there is either content-addressed or sealed by its own digest and fails
-closed when edited.
+record, the context manifest, the Execution Package, gate evidence, attempt
+records, the commit record, the verification report and its lessons, the
+review record, and the capsule. Each of those is either content-addressed or
+sealed by its own digest and fails closed when edited.
+
+Five files in the run directory are plain markers and are **not** sealed:
+`grant.json`, `active.json`, `worktree.json`, `cancel.json`, and
+`outcome.json`. They are canonical JSON written atomically. Where a marker's
+content is read (grant, worktree, outcome), a file that is not a bounded
+regular file holding a JSON object is refused; an unreadable active marker
+counts as no live process, and the cancel marker is only tested for existence.
+An edit to a marker is not detected. What limits an edited marker is the owner
+of the fact it names: the grant marker holds only a grant ID, and the grant itself is
+in the runtime store and is re-proven on every tool effect; the worktree
+marker holds a handle the worktree module validates before it removes
+anything; the active and cancel markers only say whether a process drives the
+run and whether it was asked to stop; the outcome marker is what `status`
+prints as the last outcome. The grant marker is digested into the Run Capsule
+as it is read. Sealing the five markers is tracked separately; it is not part
+of this design. `task-run-record.ts` is the one module that knows this layout.
 
 Verification turns Codex's answer into claims the coordinator can check
 without trusting it: the expected outcome is derived from the approved task,

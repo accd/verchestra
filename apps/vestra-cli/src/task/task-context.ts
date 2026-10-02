@@ -1,5 +1,4 @@
 import { createHash } from "node:crypto";
-import { join } from "node:path";
 
 import {
   ContextSnapshotResolver,
@@ -13,8 +12,7 @@ import { canonicalizeJsonV2 } from "@verchestra/domain";
 import type { EvidenceSigner } from "@verchestra/evidence";
 import { NodeContentDigest, NodeGitContextSource } from "@verchestra/platform-node";
 
-import { stateInvalid } from "./task-errors.ts";
-import { canonicalDigest, readJsonFile, writeJsonAtomic } from "./task-files.ts";
+import { canonicalDigest } from "./task-files.ts";
 
 export const REPOSITORY_SOURCE = "repository:workspace";
 const TASK_SOURCE = "task-request";
@@ -166,27 +164,4 @@ export async function compileTaskContext(input: {
     approvalRef: "approval:pending-human-review",
     capabilityRef: "capability:read-context"
   });
-}
-
-export function contextManifestPath(runDirectory: string): string {
-  return join(runDirectory, "context-manifest.json");
-}
-
-export async function saveContextManifest(runDirectory: string, manifest: ContextManifest): Promise<void> {
-  await writeJsonAtomic(contextManifestPath(runDirectory), manifest);
-}
-
-// invariant: the executor only accepts the manifest the approval bound; the
-// identity is recomputed from the stored content, so an edited file fails.
-export async function loadContextManifest(runDirectory: string, expected: string): Promise<ContextManifest> {
-  const stored = (await readJsonFile(contextManifestPath(runDirectory), "context manifest")) as
-    ContextManifest | undefined;
-  if (stored === undefined || typeof stored !== "object" || stored === null)
-    throw stateInvalid("VES_TASK_CONTEXT_MISSING", "The approved context manifest is missing");
-  const { manifestId, keyId, signature, ...unsigned } = stored;
-  void keyId;
-  void signature;
-  if (manifestId !== expected || new NodeContentDigest().sha256(canonicalizeJsonV2(unsigned)) !== expected)
-    throw stateInvalid("VES_TASK_CONTEXT_TAMPERED", "The context manifest does not match the approved digest");
-  return stored;
 }

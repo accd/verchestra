@@ -1,6 +1,4 @@
 import { randomUUID } from "node:crypto";
-import { lstat, rm } from "node:fs/promises";
-import { join } from "node:path";
 
 import { InMemoryExecutionPayloadStore, type ContextManifest } from "@verchestra/agent-runtime";
 import {
@@ -33,22 +31,21 @@ import {
 import { loadProviderAuth, type ProviderAuth, type ProviderAuthMode } from "../task-provider-auth.ts";
 import { TaskAuthority } from "./task-authority.ts";
 import { requireCodexSubscription } from "./task-codex-identity.ts";
-import { loadContextManifest } from "./task-context.ts";
 import { IMPLEMENTER_CREDENTIALS, VERIFIER_CREDENTIAL, readCredentials } from "./task-credentials.ts";
 import { stateInvalid, taskError } from "./task-errors.ts";
-import { TaskEvidenceStore, readPlainJson } from "./task-evidence.ts";
-import { canonicalDigest, sha256, writeJsonAtomic, writeSealedRecord } from "./task-files.ts";
+import { sha256 } from "./task-files.ts";
 import { loadGateAllowlist } from "./task-gates.ts";
 import { git } from "./task-git.ts";
 import { findExecutable, implementerAdapter } from "./task-implementer.ts";
 import type { TaskCommandIo } from "./task-io.ts";
-import { HUMAN_ACTOR, IMPLEMENTER_ACTOR, loadPlanRecord, type TaskPlanRecord } from "./task-plan-record.ts";
+import { HUMAN_ACTOR, IMPLEMENTER_ACTOR, type TaskPlanRecord } from "./task-plan-record.ts";
 import { loadTaskPolicy } from "./task-policy.ts";
+import { openRunRecord, type RunRecord } from "./task-run-record.ts";
 import { workspaceTrustRoot } from "./task-signing.ts";
-import { branchName, loadCommit, reviewSurface, saveCommit } from "./task-surface.ts";
+import { branchName, reviewSurface } from "./task-surface.ts";
 import { verifyTask } from "./task-verifier.ts";
 import { applyWorkflow, currentRun } from "./task-workflow.ts";
-import { openRuntime, openTaskWorkspace, parseRunId, runDirectory, type TaskWorkspace } from "./task-workspace.ts";
+import { openRuntime, openTaskWorkspace, parseRunId, type TaskWorkspace } from "./task-workspace.ts";
 
 const LEASE_MARGIN_MS = 60 * 60 * 1000;
 const CANCEL_POLL_MS = 200;
@@ -68,41 +65,10 @@ interface Prepared {
   readonly manifest: ContextManifest;
 }
 
-export function activePath(directory: string): string {
-  return join(directory, "active.json");
-}
-
-// why: `cancel` of a run no process is driving removes its uncommitted
-// worktree, and only this marker names it without recreating it.
-export function worktreePath(directory: string): string {
-  return join(directory, "worktree.json");
-}
-
-export function cancelPath(directory: string): string {
-  return join(directory, "cancel.json");
-}
-
-function alive(pid: unknown): boolean {
-  if (!Number.isSafeInteger(pid) || (pid as number) <= 0) return false;
-  try {
-    process.kill(pid as number, 0);
-    return true;
-  } catch (error) {
-    return (error as { readonly code?: unknown }).code === "EPERM";
-  }
-}
-
-export async function activeProcess(directory: string): Promise<number | undefined> {
-  const active = await readPlainJson(activePath(directory), "active run marker").catch(() => undefined);
-  const pid = active?.["pid"];
-  return alive(pid) ? (pid as number) : undefined;
-}
-
 export interface CommittedTaskRecovery {
   readonly repositoryRoot: string;
-  readonly directory: string;
+  readonly runRecord: Pick<RunRecord, "loadCommit" | "saveCommit" | "gateEvidence">;
   readonly worktrees: Pick<NodeGitWorktreeAdapter, "cleanupAtCommit">;
-  readonly evidence: Pick<TaskEvidenceStore, "recover">;
   readonly gateIds: readonly string[];
   readonly inspectGate: () =>
     { readonly stage: string; readonly record: Readonly<Record<string, unknown>> } | undefined;
@@ -114,7 +80,7 @@ export interface CommittedTaskRecovery {
 // the committed checkpoint, the commit's own trailers, and the recorded
 // gate evidence, never by re-running a gate.
 export async function recoverCommittedTask(recovery: CommittedTaskRecovery): Promise<TaskRunCommit | undefined> {
-  const recorded = await loadCommit(recovery.directory);
+  const recorded = await recovery.runRecord.loadCommit();
   if (recorded !== undefined) return recorded;
   const gate = recovery.inspectGate();
   if (gate?.stage !== "committed") return undefined;
@@ -127,7 +93,7 @@ export async function recoverCommittedTask(recovery: CommittedTaskRecovery): Pro
   );
   if (gateEvidenceDigest === undefined)
     throw stateInvalid("VES_TASK_EVIDENCE_MISSING", "The task commit carries no gate evidence digest");
-  const gateEvidenceRefs = await recovery.evidence.recover(
+  const gateEvidenceRefs = await recovery.runRecord.gateEvidence.recover(
     String(gate.record["changeDigest"]),
     recovery.gateIds,
     gateEvidenceDigest
@@ -138,7 +104,7 @@ export async function recoverCommittedTask(recovery: CommittedTaskRecovery): Pro
     gateEvidenceDigest: gateEvidenceDigest as `sha256:${string}`,
     gateEvidenceRefs
   };
-  await saveCommit(recovery.directory, commit);
+  await recovery.runRecord.saveCommit(commit);
   return commit;
 }
 
@@ -171,7 +137,13 @@ async function verifierAccess(
 // why: every requirement a run needs is proven before its first transition,
 // so a missing credential, executable, or allowlist entry is `not
 // configured` with no workflow change, worktree, or provider call behind it.
-async function prepare(io: TaskCommandIo, workspace: TaskWorkspace, plan: TaskPlanRecord, runtime: RuntimeStore) {
+async function prepare(
+  io: TaskCommandIo,
+  workspace: TaskWorkspace,
+  plan: TaskPlanRecord,
+  runtime: RuntimeStore,
+  runRecord: RunRecord
+) {
   const auth = await loadProviderAuth(workspace.layout.workspaceRoot);
   const implementerCredential = IMPLEMENTER_CREDENTIALS[auth.implementer];
   // invariant: a run reads exactly the credentials its modes name. A verifier
@@ -189,7 +161,7 @@ async function prepare(io: TaskCommandIo, workspace: TaskWorkspace, plan: TaskPl
   const gates = await loadGateAllowlist(workspace, plan.request);
   const policy = await loadTaskPolicy(io.controlRoot);
   const authority = new TaskAuthority({ runtime, plan, policy, trust: await workspaceTrustRoot(workspace) });
-  const manifest = await loadContextManifest(runDirectory(workspace, plan.runId), plan.contextManifestDigest);
+  const manifest = await runRecord.loadContextManifest(plan.contextManifestDigest);
   return {
     implementer: {
       executable: claude,
@@ -210,10 +182,9 @@ class TaskRunComposition {
   readonly #plan: TaskPlanRecord;
   readonly #runtime: RuntimeStore;
   readonly #prepared: Prepared;
-  readonly #directory: string;
+  readonly #runRecord: RunRecord;
   readonly #checkpoints: RuntimeCheckpointStore;
   readonly #worktrees: NodeGitWorktreeAdapter;
-  readonly #evidence: TaskEvidenceStore;
   readonly #lease: RuntimeLocalLease;
   readonly #payloads = new InMemoryExecutionPayloadStore();
   readonly #feedback = new Map<string, string>();
@@ -225,21 +196,21 @@ class TaskRunComposition {
     workspace: TaskWorkspace,
     plan: TaskPlanRecord,
     runtime: RuntimeStore,
-    prepared: Prepared
+    prepared: Prepared,
+    runRecord: RunRecord
   ) {
     this.#io = io;
     this.#workspace = workspace;
     this.#plan = plan;
     this.#runtime = runtime;
     this.#prepared = prepared;
-    this.#directory = runDirectory(workspace, plan.runId);
+    this.#runRecord = runRecord;
     this.#checkpoints = new RuntimeCheckpointStore(runtime);
     this.#worktrees = new NodeGitWorktreeAdapter({
       repositoryRoot: workspace.repositoryRoot,
       worktreesRoot: workspace.layout.worktreesRoot,
       anchorTaskCommits: true
     });
-    this.#evidence = new TaskEvidenceStore(this.#directory);
     this.#lease = new RuntimeLocalLease(runtime);
   }
 
@@ -313,13 +284,12 @@ class TaskRunComposition {
   // in force and reused on resume; a revoked or expired grant fails the next
   // tool effect instead of being silently re-issued.
   async #grant(): Promise<string> {
-    const path = join(this.#directory, "grant.json");
-    const stored = await readPlainJson(path, "capability grant marker");
+    const stored = await this.#runRecord.loadGrant();
     if (typeof stored?.["grantId"] === "string") return stored["grantId"];
     const approvalExpiry = Date.parse(this.#plan.approvalRequest.expiresAt);
     const wanted = Date.now() + this.#plan.request.budgets.maximumDurationMs + LEASE_MARGIN_MS;
     const grant = await this.#prepared.authority.grant(new Date(Math.min(approvalExpiry, wanted)).toISOString());
-    await writeJsonAtomic(path, { grantId: grant.grantId });
+    await this.#runRecord.saveGrant(grant.grantId);
     return grant.grantId;
   }
 
@@ -338,7 +308,7 @@ class TaskRunComposition {
       worktrees: this.#worktrees,
       payloads: this.#payloads,
       feedback: () => this.#currentFeedback,
-      onWorktree: (worktreeRef) => writeJsonAtomic(worktreePath(this.#directory), { worktreeRef })
+      onWorktree: (worktreeRef) => this.#runRecord.saveWorktreeRef(worktreeRef)
     });
     return new TaskExecutionCoordinator({
       authority: this.#prepared.authority.executor(grantId),
@@ -423,7 +393,7 @@ class TaskRunComposition {
   }
 
   async commit(execution: TaskRunExecution) {
-    this.#evidence.judging(execution.changeDigest);
+    this.#runRecord.gateEvidence.judging(execution.changeDigest);
     const coordination = this.#coordination();
     const result = await new TaskGateCommitCoordinator({
       digest: { sha256: (value) => sha256(value) },
@@ -434,7 +404,7 @@ class TaskRunComposition {
         worktreesRoot: this.#workspace.layout.worktreesRoot,
         commands: this.#prepared.gates
       }),
-      evidence: { record: (entry) => this.#evidence.record(entry) },
+      evidence: { record: (entry) => this.#runRecord.gateEvidence.record(entry) },
       checkpoints: this.#checkpoints.gateCheckpoints(),
       git: new NodeAtomicGitCommitAdapter({
         repositoryRoot: this.#workspace.repositoryRoot,
@@ -468,16 +438,15 @@ class TaskRunComposition {
       gateEvidenceDigest: result.gateEvidenceDigest,
       gateEvidenceRefs: result.gateEvidenceRefs
     };
-    await saveCommit(this.#directory, commit);
+    await this.#runRecord.saveCommit(commit);
     return { passed: true as const, commit };
   }
 
   committed(): Promise<TaskRunCommit | undefined> {
     return recoverCommittedTask({
       repositoryRoot: this.#workspace.repositoryRoot,
-      directory: this.#directory,
+      runRecord: this.#runRecord,
       worktrees: this.#worktrees,
-      evidence: this.#evidence,
       gateIds: this.#plan.request.gates.map((entry) => entry.gateId),
       inspectGate: () =>
         this.#checkpoints.inspectGate(this.#workspace.workspaceId, this.#plan.runId, this.#task.taskId),
@@ -486,17 +455,9 @@ class TaskRunComposition {
   }
 
   async release(): Promise<void> {
-    if (this.#lastHandle !== undefined && (await loadCommit(this.#directory)) === undefined)
+    if (this.#lastHandle !== undefined && (await this.#runRecord.loadCommit()) === undefined)
       await this.#worktrees.cleanup(this.#lastHandle).catch(() => undefined);
     await this.#coordination().release();
-  }
-
-  async attempt(input: { readonly attempt: number; readonly passed: boolean; readonly failure: unknown }) {
-    const record = JSON.parse(
-      JSON.stringify({ runId: this.#plan.runId, taskId: this.#task.taskId, ...input })
-    ) as object;
-    await writeSealedRecord(join(this.#directory, "attempts", `${input.attempt}.json`), record);
-    return { capsuleDigest: canonicalDigest(record) };
   }
 
   repair(): TaskRunPorts["repair"] {
@@ -504,11 +465,11 @@ class TaskRunComposition {
     return {
       budget: { create: (resume) => this.#meter(resume) },
       buildFeedback: async (failure) => {
-        const built = await this.#evidence.feedback(failure);
+        const built = await this.#runRecord.gateEvidence.feedback(failure);
         this.#feedback.set(built.feedback.feedbackRef, built.text);
         return built.feedback;
       },
-      sealAttempt: (input) => this.attempt(input),
+      sealAttempt: (input) => this.#runRecord.sealAttempt(this.#task.taskId, input),
       loadState: state.loadState,
       saveState: state.saveState
     };
@@ -533,7 +494,7 @@ class TaskRunComposition {
         workspace: this.#workspace,
         plan: this.#plan,
         runtime: this.#runtime,
-        runDirectory: this.#directory,
+        runRecord: this.#runRecord,
         gates: this.#prepared.gates,
         verifier: this.#prepared.verifier,
         env: this.#io.env,
@@ -573,13 +534,12 @@ class TaskRunComposition {
   }
 }
 
-function watchCancellation(directory: string, controller: AbortController): () => void {
+function watchCancellation(runRecord: RunRecord, controller: AbortController): () => void {
   const interrupt = () => controller.abort("interrupted");
   const timer = setInterval(() => {
-    void lstat(cancelPath(directory)).then(
-      () => controller.abort("cancel requested"),
-      () => undefined
-    );
+    void runRecord.cancelRequested().then((requested) => {
+      if (requested) controller.abort("cancel requested");
+    });
   }, CANCEL_POLL_MS);
   process.once("SIGINT", interrupt);
   process.once("SIGTERM", interrupt);
@@ -590,10 +550,16 @@ function watchCancellation(directory: string, controller: AbortController): () =
   };
 }
 
-async function present(workspace: TaskWorkspace, plan: TaskPlanRecord, outcome: TaskRunOutcome, state: string) {
+async function present(
+  repositoryRoot: string,
+  plan: TaskPlanRecord,
+  runRecord: RunRecord,
+  outcome: TaskRunOutcome,
+  state: string
+) {
   const base = { runId: plan.runId, status: outcome.status, state };
   if (outcome.status === "HUMAN_REVIEW") {
-    const review = await reviewSurface(workspace.repositoryRoot, plan, runDirectory(workspace, plan.runId));
+    const review = await reviewSurface(repositoryRoot, plan, runRecord);
     return {
       ...base,
       commitId: outcome.commit.commitId,
@@ -621,26 +587,19 @@ function assertStartable(state: string, resume: boolean): void {
     );
 }
 
-async function claimActive(directory: string, pid: number): Promise<void> {
-  if ((await activeProcess(directory)) !== undefined)
-    throw taskError("VES_TASK_RUN_ACTIVE", {}, "Another process is already driving this run");
-  await rm(cancelPath(directory), { force: true });
-  await writeJsonAtomic(activePath(directory), { pid, startedAt: new Date().toISOString() });
-}
-
 export async function runTask(io: TaskCommandIo, options: { readonly runId: unknown; readonly resume: boolean }) {
   const runId = parseRunId(options.runId);
   const workspace = await openTaskWorkspace(io);
-  const plan = await loadPlanRecord(workspace, runId);
-  const directory = runDirectory(workspace, runId);
+  const runRecord = openRunRecord(workspace, runId);
+  const plan = await runRecord.loadPlan();
   const runtime = openRuntime(workspace);
   try {
     assertStartable(currentRun(runtime, runId).state, options.resume);
-    const prepared = await prepare(io, workspace, plan, runtime);
-    await claimActive(directory, io.pid);
-    const composition = new TaskRunComposition(io, workspace, plan, runtime, prepared);
+    const prepared = await prepare(io, workspace, plan, runtime, runRecord);
+    await runRecord.claimActive(io.pid);
+    const composition = new TaskRunComposition(io, workspace, plan, runtime, prepared, runRecord);
     const controller = new AbortController();
-    const stop = watchCancellation(directory, controller);
+    const stop = watchCancellation(runRecord, controller);
     try {
       await composition.claimWriterLease();
       const outcome = await new TaskRunCoordinator(composition.ports()).run({
@@ -650,12 +609,12 @@ export async function runTask(io: TaskCommandIo, options: { readonly runId: unkn
         ...(plan.request.onGateFailure === undefined ? {} : { onGateFailure: plan.request.onGateFailure }),
         signal: controller.signal
       });
-      await writeJsonAtomic(join(directory, "outcome.json"), { ...outcome, at: new Date().toISOString() });
-      const data = await present(workspace, plan, outcome, currentRun(runtime, runId).state);
+      await runRecord.saveOutcome(outcome);
+      const data = await present(workspace.repositoryRoot, plan, runRecord, outcome, currentRun(runtime, runId).state);
       return { data, exitCode: outcome.status === "HUMAN_REVIEW" ? 0 : 1 };
     } finally {
       stop();
-      await rm(activePath(directory), { force: true });
+      await runRecord.releaseActive();
     }
   } finally {
     runtime.close();

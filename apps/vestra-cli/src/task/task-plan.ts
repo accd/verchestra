@@ -14,7 +14,6 @@ import {
 import {
   ArtifactSealer,
   ExecutionPackageBuilder,
-  FileExecutionPackageStore,
   type EvidenceSigner,
   type SignedExecutionPackage
 } from "@verchestra/evidence";
@@ -23,16 +22,17 @@ import { NodeContentDigest, SystemClock } from "@verchestra/platform-node";
 import { loadProviderAuth, type ProviderAuth } from "../task-provider-auth.ts";
 import type { TaskCommandIo } from "./task-io.ts";
 import { SIGNING_PASSPHRASE, readCredentials } from "./task-credentials.ts";
-import { compileTaskContext, saveContextManifest, REPOSITORY_SOURCE } from "./task-context.ts";
+import { compileTaskContext, REPOSITORY_SOURCE } from "./task-context.ts";
 import { stableCode, taskError } from "./task-errors.ts";
 import { canonicalDigest, sha256 } from "./task-files.ts";
 import { loadGateAllowlist } from "./task-gates.ts";
 import { git } from "./task-git.ts";
-import { WRITE_CAPABILITY, savePlanRecord, type TaskPlanRecord } from "./task-plan-record.ts";
+import { WRITE_CAPABILITY, type TaskPlanRecord } from "./task-plan-record.ts";
 import { loadTaskPolicy } from "./task-policy.ts";
+import { openRunRecord } from "./task-run-record.ts";
 import { ephemeralSigner, workspaceSigner } from "./task-signing.ts";
 import { applyWorkflow } from "./task-workflow.ts";
-import { openRuntime, openTaskWorkspace, runDirectory, type TaskWorkspace } from "./task-workspace.ts";
+import { openRuntime, openTaskWorkspace, type TaskWorkspace } from "./task-workspace.ts";
 
 type Digest = `sha256:${string}`;
 const MAXIMUM_REQUEST_BYTES = 256 * 1024;
@@ -254,10 +254,10 @@ async function persist(
   pkg: SignedExecutionPackage,
   record: TaskPlanRecord
 ) {
-  const directory = runDirectory(context.workspace, context.runId);
-  await new FileExecutionPackageStore({ root: join(directory, "packages") }).put(pkg);
-  await saveContextManifest(directory, manifest);
-  await savePlanRecord(context.workspace, record);
+  const runRecord = openRunRecord(context.workspace, context.runId);
+  await runRecord.savePackage(pkg);
+  await runRecord.saveContextManifest(manifest);
+  await runRecord.savePlan(record);
   const runtime = openRuntime(context.workspace);
   try {
     runtime.createRun({

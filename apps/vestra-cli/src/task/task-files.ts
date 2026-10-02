@@ -48,8 +48,10 @@ export async function readJsonFile(path: string, label: string): Promise<unknown
 
 // why: a record whose digest covers its canonical content fails closed when a
 // byte of it changes, instead of steering a resumed run with edited state.
-export async function writeSealedRecord(path: string, record: unknown): Promise<void> {
-  await writeJsonAtomic(path, { record, digest: canonicalDigest(record) });
+export async function writeSealedRecord(path: string, record: unknown): Promise<`sha256:${string}`> {
+  const digest = canonicalDigest(record);
+  await writeJsonAtomic(path, { record, digest });
+  return digest;
 }
 
 function codeUnitCompare(left: string, right: string): number {
