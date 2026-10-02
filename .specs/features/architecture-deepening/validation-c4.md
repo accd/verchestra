@@ -495,3 +495,246 @@ was needed. `qualify:keychain` was not run.
   composition root and in `agent-runtime` outside the runner. A source that
   needs another `start` method there will have to say why in that test.
 - **Platform matrix.** As for C4-1.
+
+## C4-4 (T4d) — process-tree termination
+
+`Q` is `tests/helpers/process-tree-fixture.mjs`, whose `processTreeSuite` holds
+the cases the two qualification suites run:
+`spikes/claude-code-driver/test/claude-driver-process-tree.test.mjs` under
+`pnpm qualify:claude` and
+`spikes/codex-driver/test/codex-driver-process-tree.test.mjs` under
+`pnpm qualify:codex`. `N` is `tests/integration/process-tree-termination.test.mjs`,
+`P` is `tests/integration/driver-process-tree.test.mjs`, `K` is
+`tests/integration/task-process-tree.test.mjs`, `X` is
+`tests/architecture/provider-process-tree-termination.test.mjs`, `V` is the
+verifier suite of C4-2, and `E` is `tests/e2e/task-cli-e2e.test.mjs`.
+
+Every process these suites start is a labeled fake or an idle Node process the
+fake started. Each is killed by its identifier when its case ends, and nothing
+outside those identifiers is signalled. The fakes' `fork` mode starts one
+process that stays in the provider's group and inherits its output, and one
+that leaves the group with `setsid()`.
+
+### What moved where
+
+| Knowledge | Before | Now |
+| --- | --- | --- |
+| How a tree is killed, escapees included | Inline in the probe host | `terminateProcessTree` in `packages/platform-node/src/process-tree-terminator.ts`, exported to the composition root; the probe host calls it |
+| Which group a provider runs in, and the terminator a driver uses when none is injected | Twice, one expression in each driver, signalling one process | `packages/drivers/src/driver-process-tree.ts` (`OWN_PROCESS_GROUP`, `processTreeTerminator`) |
+| The terminator `vestra task` injects | Two single-process `SIGKILL`s, in `task-implementer.ts` and `task-codex.ts` | `terminateProviderTree` in `apps/vestra-cli/src/task/task-process-tree.ts` |
+
+`packages/drivers` imports nothing from `packages/platform-node`.
+
+### Requirement evidence
+
+| Clause | Definition (symbol) | Assertion evidence |
+| --- | --- | --- |
+| The drivers start their child in its own process group | `ClaudeCodeDriver#start`, `CodexDriver#start`, `OWN_PROCESS_GROUP` | In each qualification suite the provider leads a group that is not the caller's, one descendant is in it and one is not, before anything is stopped: `assertTreeRunning`, `Q:61-68`. Source: `X:29-34`, `X:37-42`, `P:27-29` |
+| A cancel terminates the whole tree, a `setsid` escapee included | ledger `stop` hook → `terminateProviderTree` → `terminateProcessTree` | Claude Code and Codex: `Q:116-136`. The run ends, which it cannot while a descendant holds the provider's output |
+| An aborted start signal terminates the whole tree | the drivers' abort paths | Claude Code and Codex: `Q:138-150` |
+| With no terminator injected the group is still stopped | `processTreeTerminator` | `Q:152-174`, where the escapee survives, which is why the composition injects one; `P:31-35`, `P:37-44`, `P:46-52` |
+| The tree routine itself | `terminateProcessTree` | A group signal alone leaves the escapee: `N:43-56`. The tree routine leaves nothing: `N:58-71`. A tree already gone: `N:73-79`. The probe host's fault suite, which requires the same property, passes unmodified |
+| The CLI injects the tree terminator into both drivers | `implementerAdapter`, `runCodexVerifier` | Verifier, as composed: `V:170-195`. Implementer, through the `vestra` binary on macOS: `E:729-755`. Both, by source: `X:44-56`. The single-process `SIGKILL`s are gone: `X:58-70` |
+| The injected terminator never rejects | `terminateProviderTree` | A live provider, a tree already gone, and a kill the runtime refuses: `K:17-30`, `K:32-36` |
+| One termination per child on the Claude Code failure path | `ClaudeCodeDriver#start` | `P:57-68` |
+| `drivers` does not import `platform-node` | package edges | `tests/architecture/repository-boundaries.test.mjs` (unmodified); `X:37-42` |
+| Windows stays refused for the mediated path | `mediatedProfile`, the task command | Unchanged and still asserted by the mediated suites on win32. On win32 the three cases of `Q` assert that a stopped session ends, its terminal event says cancelled, and its provider is gone (`stoppedOnWin32`, `Q:82-105`); `V` and `E` assert the refusal of the task path |
+| Both drivers are requalified with new reports | `docs/qualification/` | `claude-code-driver-process-tree.md` and `codex-driver-process-tree.md` are new. No existing report is edited |
+
+### Behaviour changes
+
+1. Stopping a provider kills everything it started. Before, one process was
+   killed, and a descendant that held the provider's output kept the session
+   and `vestra task cancel` waiting.
+2. A provider no longer receives the terminal's signals. Ctrl-C reaches
+   `vestra`, which aborts the run and kills the tree with `SIGKILL`.
+3. If the `vestra` process is killed with `SIGKILL`, or its terminal goes away,
+   nothing stops the provider. Before, a terminal hang-up reached it directly.
+4. A stop takes as long as reading the process table and confirming that the
+   group is gone, at most about half a second more than one signal.
+5. A driver composed without a terminator sends its `SIGTERM` to the provider's
+   group, and a fallback that finds nothing left to stop no longer rejects.
+
+### Tests changed
+
+None deleted. One existing file gained a case and no existing case changed:
+`E` (appended at its end, so no cited line moves). Added: `N` (3 cases), `P`
+(5), `K` (2), `X` (5), one case in `V`, three cases in each qualification
+suite, and the `fork` and `chatter` modes of the labeled fakes.
+
+### Discrimination (disposable copy)
+
+Same method, on a copy of the tree at `a9d3003`. Suites run: the two
+qualification suites, `N`, `tests/integration/process-tree-terminator.test.mjs`,
+`P`, `K`, `V`, `X`, `tests/fault-injection/out-of-process-probe-host-faults.test.mjs`,
+`tests/contract/driver-lifecycle-matrix.test.mjs`, and the Claude Code and
+Codex lifecycle suites. Unmutated copy: 99 passed, 0 failed. `E` is
+not among them: under a mutation that removes a stop it runs into a
+five-minute limit, and `V` and `X` cover the same wiring.
+
+| Mutation in the copy of the terminator | Failing cases |
+| --- | --- |
+| **The tree terminator records no descendants** | 7: `N:58-71`, the probe host's tree case, `V:170-195`, and the cancel and abort cases of both qualification suites |
+| The tree terminator does not kill what it recorded | 7: the same |
+| The tree terminator does not kill the group | 10: `N:58-71`, `N:73-79`, `K:17-30`, three cases of `V`, and the cancel and abort cases of both qualification suites |
+| The descendants are recorded after the group is killed | 7: the same as the first row |
+| The probe host kills only the group | 1: the probe host's tree case |
+
+| Mutation in the copy of a driver | Failing cases |
+| --- | --- |
+| **Claude Code starts its provider in the caller's process group** | 4: its three qualification cases and its row of `X:29-34` |
+| **Codex starts its provider in the caller's process group** | 7: its three qualification cases, its row of `X:29-34`, and three cases of `V` |
+| The fallback signals the provider process alone | 3: the fallback case of both qualification suites, `X:37-42` |
+| The fallback rejects when nothing is left to stop | 1: `P:46-52` |
+| The injected terminator is ignored | 11: `P:31-35`, `P:57-68`, `V:170-195`, the cancel and abort cases of both qualification suites, the running-cancel row of both drivers in the lifecycle matrix, and the abort case of each lifecycle suite |
+| Claude Code starts a termination for every failing line | 1: `P:57-68` |
+| The Claude Code cancel does not stop the provider | 3: its cancel and fallback cases of `Q`, and its running-cancel row of the lifecycle matrix |
+| The Codex cancel does not stop the provider | 3: its cancel and fallback cases of `Q`, and its running-cancel row of the lifecycle matrix |
+| The Codex abort timer does not escalate to the terminator | 2: the Codex abort case of `Q:138-150` and "Codex abort sends protocol interrupt before process-tree termination" |
+
+| Mutation in the copy of the task composition | Failing cases |
+| --- | --- |
+| **The task composition kills the provider process alone** (as before this range) | 6: `V:170-195`, the cancel and abort cases of both qualification suites, `X:58-70` |
+| The task composition's terminator rejects when the kill fails | 1: `K:32-36` |
+| The verifier is built without the tree terminator | 2: `V:170-195`, `X:44-56` |
+| The implementer is built without the tree terminator | 1: `X:44-56` |
+| A task source kills one process itself | 2: `X:44-56`, `X:58-70` |
+
+All 19 mutations failed at least one case. A mutation that leaves a
+provider or a descendant alive makes its case run into its own time limit and
+leaves processes behind; the copy is then run with a limit for the whole suite,
+and whatever still runs from the copy is killed after each run.
+
+One thing the mutations show and the sources state: the tree terminator
+addresses the provider's group, so it stops nothing when the provider does not
+lead one. The two changes belong together, and `X` fails if either is dropped.
+
+### Guardrails
+
+- Complexity baseline: no entry changed, no key added or moved.
+  `packages/drivers/src/claude-code-driver.ts :: Async method 'start'` stays 24
+  and `packages/drivers/src/codex-driver.ts :: Async method 'start'` stays 27.
+- Census: no file gained or lost `JSON.stringify` or `createHash`.
+- Citations fixed: `.specs/features/live-task-pilot/validation.md` (the
+  mediated minimum, now `claude-code-driver.ts:68`, and the Codex minimum, now
+  `codex-driver.ts:97`) and
+  `.specs/features/platform-qualification-matrix/matrix.md` (the same Codex
+  line). `process-tree-terminator.ts` grew at its end, so the citations of its
+  lines 12-37, 24, 32 and 44 do not move. `E` and
+  `tests/integration/process-tree-terminator.test.mjs` are cited by line
+  elsewhere; `E` grew at its end and the other is untouched.
+- Qualification reports: two new files under `docs/qualification/`; no
+  existing report is edited. The driver reports are named by path and are not
+  bound by digest. The three digest-bound reports of `credential-store.ts`
+  keep their digests (`tests/security/os-secret-backend-security.test.mjs`,
+  unmodified, recomputes them under `gate:security`).
+- Migration count (12) and runtime error catalog count (19) unchanged. No
+  public error code was added, removed or changed.
+- `tests/mutation/*` and the fault-injection suites pass unmodified.
+- Documentation: `docs/quick-start.md` names the new limit, and
+  `.specs/features/governed-task-cli/design.md` lists the new task source.
+  `pnpm site:check` passes (135 pages, internal links valid).
+
+### Gates (Node 24.14.0, macOS arm64)
+
+Each row was measured on a detached checkout of exactly that commit.
+
+| Commit | `pnpm gate:quick` | `pnpm test:architecture` | Focused suites |
+| --- | --- | --- | --- |
+| `a1e8f0f` the tree routine | PASS — unit 2482, agent-readiness 323, census 13 | PASS — 80 | `N`, the group terminator suite, the probe host's fault suite: PASS — 10 |
+| `58e595c` the drivers' process group | PASS — 2482, 323, 13 | PASS — 80 | `P`, the lifecycle matrix, the Claude Code and Codex lifecycle and contract suites: PASS — 103 |
+| `2d2e916` the task composition | PASS — 2482, 323, 13 | PASS — 85 | `K`, `V`, `X`, the two qualification suites: PASS — 23 |
+| `a9d3003` the two reports | PASS — 2482, 323, 13 | PASS — 85 | `K`, `P`, `N`, `V`, `X`, the two qualification suites: PASS — 31 |
+
+At the last commit of the range outside `.specs`:
+
+| Command (at `a9d3003`) | Result |
+| --- | --- |
+| `pnpm gate:build` | PASS — unit 2482, contract 756, integration 935, e2e 239, architecture 85, build 146, qualification 302 |
+| `pnpm gate:security` | PASS — unit 2482, contract 756, e2e 239, architecture 85, qualification 302, security 1339, fault 310 |
+| `pnpm test:fault` | PASS — 310 |
+| `pnpm test:contract` | PASS — 756 |
+| `pnpm test:integration` | PASS — 935 |
+| `pnpm qualify:claude` | PASS — 56 |
+| `pnpm qualify:codex` | PASS — 23 |
+| `node --test tests/e2e/task-cli-e2e.test.mjs tests/e2e/mediated-task-execution-e2e.test.mjs` | PASS — 24 |
+| `pnpm test:mutation` | PASS — 8 |
+| `pnpm agent:check` | PASS |
+
+No test was skipped in any stage. No provider session was started and no login
+was needed. `qualify:keychain` was not run. After the suites no process they
+started was left running.
+
+### Not verified here
+
+- **The platform matrix.** Every result above is from macOS arm64. This range
+  is platform-specific: process groups, `setsid()`, `ps`, and `taskkill` on
+  Windows. The Windows branches of `Q`, `N`, `P` and `K` have never run. A
+  `platform-matrix.yml` run on the branch, green on all five targets, is
+  required before merge and its run is to be linked here.
+- **A real provider.** See "What was not observed" in the two reports.
+- **The site's browser and Lighthouse stages.** `pnpm site:test` could not
+  start its preview server on this machine because another workspace held its
+  port. Its unit stage (50 cases), `astro check`, the build and the built-site
+  check passed through `pnpm site:check`.
+
+### Open points for the reviewer
+
+- **A tree that could not be confirmed gone is not reported.** The task
+  composition's terminator never rejects, because a driver calls it from an
+  abort listener, where a rejection would end the whole command. `SIGKILL`
+  makes that state almost unreachable. Reporting it needs a new driver error
+  code and a branch in two `start` methods that are complexity hotspots; the
+  recommendation is a follow-up that makes the drivers contain a rejecting
+  terminator and report it as an error event.
+- **The terminal's hang-up.** A provider used to receive it directly. It now
+  ends only when `vestra` stops it or its pipes close. `vestra task` handles
+  `SIGINT` and `SIGTERM` as a cancel, which aborts the run. Handling the
+  hang-up the same way would turn a lost terminal into an aborted run, where
+  today it leaves a run that can be resumed. The recommendation is to decide
+  that separately; one option is to stop the providers on a hang-up without
+  recording an abort.
+- **The verifier is stopped at once.** See C4-2.
+- **`detached` also gives the provider a session of its own.** It has no
+  controlling terminal. Neither provider reads one in the modes Verchestra
+  uses, but that is a statement about the real CLIs that the fakes cannot
+  make, and it is listed in the reports.
+
+## The branch after its last rebase
+
+After the measurements above the branch was rebased onto `1cb85d9`, which
+changed two `.specs` files upstream, and the opening comment of three test
+helpers gained its prefix. Nothing else changed. Every commit was then measured
+again on a detached checkout of exactly that commit (Node 24.14.0, macOS
+arm64). "Full set" is the set of the tables above: `pnpm gate:quick`,
+`pnpm test:architecture`, `pnpm gate:build`, `pnpm gate:security`,
+`pnpm test:fault`, `pnpm test:contract`, `pnpm test:integration`,
+`pnpm qualify:claude`, `pnpm qualify:codex`, the two end-to-end suites and
+`pnpm agent:check`.
+
+| Task | Commit | Measured | Result |
+| --- | --- | --- | --- |
+| T4a | `59c18b6` the metering step | `gate:quick`, `test:architecture` | PASS — unit 2482, agent-readiness 323, census 13; architecture 76 |
+| T4a | `d44df7d` the runner and its suites | `gate:quick`, `test:architecture` | PASS — unit 2482, agent-readiness 323, census 13; architecture 76 |
+| T4a | `e098423` the adapter delegates | Full set | PASS — unit 2482, contract 756, integration 910, e2e 238, architecture 76, build 146, qualification 296, security 1339, fault 310, `qualify:claude` 53, `qualify:codex` 20, end-to-end suites 23 |
+| T4a | `ecd1a6c` evidence and decision | `gate:quick`, `test:architecture`, `agent:check` | PASS — unit 2482, agent-readiness 323, census 13; architecture 76 |
+| T4b | `8c8ef65` the verifier adopts the runner | Full set | PASS — unit 2482, contract 756, integration 919, e2e 238, architecture 76, build 146, qualification 296, security 1339, fault 310, `qualify:claude` 53, `qualify:codex` 20, end-to-end suites 23 |
+| T4b | `cea4975` evidence | `gate:quick`, `test:architecture`, `agent:check` | PASS — unit 2482, agent-readiness 323, census 13; architecture 76 |
+| T4c | `2f28bef` the typed observer | `gate:quick`, `test:architecture` | PASS — unit 2482, agent-readiness 323, census 13; architecture 76 |
+| T4c | `38ab983` the two scenarios | `gate:quick`, `test:architecture` | PASS — unit 2482, agent-readiness 323, census 13; architecture 76 |
+| T4c | `39e8dda` the locality test | Full set | PASS — unit 2482, contract 756, integration 924, e2e 238, architecture 80, build 146, qualification 296, security 1339, fault 310, `qualify:claude` 53, `qualify:codex` 20, end-to-end suites 23 |
+| T4c | `da21d40` evidence | `gate:quick`, `test:architecture`, `agent:check` | PASS — unit 2482, agent-readiness 323, census 13; architecture 80 |
+| T4d | `d1d234d` the tree routine | `gate:quick`, `test:architecture` | PASS — unit 2482, agent-readiness 323, census 13; architecture 80 |
+| T4d | `2a17924` the drivers' process group | `gate:quick`, `test:architecture` | PASS — unit 2482, agent-readiness 323, census 13; architecture 80 |
+| T4d | `7790868` the task composition | `gate:quick`, `test:architecture` | PASS — unit 2482, agent-readiness 323, census 13; architecture 85 |
+| T4d | `982c74e` the two reports | Full set | PASS — unit 2482, contract 756, integration 935, e2e 239, architecture 85, build 146, qualification 302, security 1339, fault 310, `qualify:claude` 56, `qualify:codex` 23, end-to-end suites 24 |
+
+No test was skipped in any stage.
+
+A first attempt ran three of the full sets at once, and two of them failed in
+the end-to-end stage while the machine's disk, which had under 8 GB free, was
+full. Three cases reported `ENOSPC` directly. In the same runs a launcher
+rollback case failed twice and one task start found its run still active; no
+cause other than the full disk was established for those three. The runs were
+stopped and repeated one at a time, which is the table above, and every one of
+those cases passed in each of them.
