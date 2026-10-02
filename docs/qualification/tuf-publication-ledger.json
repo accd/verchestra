@@ -90,6 +90,28 @@
         ".specs/features/live-activation-matrix/validation.md",
         ".specs/features/tuf-role-separation/republish-v3-runbook.md"
       ]
+    },
+    {
+      "sequence": 5,
+      "previousEntryDigest": "sha256:501dcf2f1272598b257ad90b68cfd166660c4692e89d647edc5c56ee7beefae6",
+      "kind": "release",
+      "releaseId": "release:verchestra:0.0.0-qualification.5:e17abb3c8970",
+      "semanticVersion": "0.0.0-qualification.5",
+      "baseUrl": "https://pub-0fa3e4c3f26540e793952fa2c187d536.r2.dev/",
+      "urlPrefix": "v5/",
+      "rootDigest": "sha256:949fbce3c56f7a10729750d3d18dc54537eb32f2701aae7eb8370ff06e5dcff7",
+      "rootDigestPrefix": null,
+      "roles": {
+        "root": 1,
+        "snapshot": 4,
+        "targets": 4,
+        "timestamp": 4
+      },
+      "publicationRunId": "37039015199",
+      "evidence": [
+        ".specs/features/live-activation-matrix/validation.md",
+        ".specs/features/tuf-role-separation/republish-v3-runbook.md"
+      ]
     }
   ]
 }

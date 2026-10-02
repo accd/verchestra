@@ -283,3 +283,50 @@ reproduces them.
   deterministically (`tests/e2e/installer-lifecycle-matrix.test.mjs`).
 - Anything about custody: one operator signed and published both releases
   (acceptance matrix L8).
+
+## TUF publication of `0.0.0-qualification.5` (2026-10-02)
+
+`.5` is the third release on the role-separated root. It carries subscription
+provider authentication (ADP-A) and the architecture deepening work merged up to
+`e17abb3` (ADP-1, ADP-2, ADP-3, ADP-5 to ADP-8).
+
+| Fact               | Value                                                                                           |
+| ------------------ | ----------------------------------------------------------------------------------------------- |
+| Candidate revision | `e17abb3c8970b72c837bbbd07f86b4676ca9adb3` (`main`)                                             |
+| Candidate build    | run `37017865729`: five target legs and the reconciled closure passed                           |
+| Signing            | run `37039015199`, from `main`, approved in environment `tuf-release-signing`                   |
+| Release id         | `release:verchestra:0.0.0-qualification.5:e17abb3c8970`                                         |
+| Root digest        | `sha256:949fbce3c56f7a10729750d3d18dc54537eb32f2701aae7eb8370ff06e5dcff7` (unchanged from `.4`) |
+| Metadata version   | `4` for targets, snapshot and timestamp                                                         |
+| Base URL           | `https://pub-0fa3e4c3f26540e793952fa2c187d536.r2.dev/v5/`                                       |
+| Rollback proof     | binds the `.4` candidate `d58a25f3d80a720000bbdd4cbbc8650cdc8c9686`, run `36928077854`          |
+
+Custody, stated as it happened: the environment approval was submitted through
+the owner's GitHub credential by the agent session, at the owner's explicit
+instruction in that session on 2026-10-02. One operator dispatched and approved;
+the posture is single-operator custody (acceptance matrix L8, RR10).
+
+The ledger entry is the `ledger-entry.json` the publication run derived
+(`admitRelease`, AD-042), appended verbatim as sequence 5. This is the first
+real dispatch of that derivation.
+
+Verification:
+
+- **Assembly.** Each of the 1330 objects was hashed locally against
+  `publication-manifest.json` (digest and size) before upload: 1330 matched.
+- **Upload.** 1330 objects under `v5/`; `rclone check` reported 1330 matching
+  files and 0 differences.
+- **Live endpoint.** 1330 of 1330 objects answered as the manifest records:
+  `200` with the SHA-256 for metadata, `206` byte ranges for targets.
+- **npm package.** A local `build:vestra-launcher --release-inputs` build at
+  the candidate revision was byte-identical to the workflow's verified launcher
+  package.
+- **Update and rollback, macOS arm64, against the live endpoint.** With one
+  empty home: the `.4` launcher activated `.4`; the `.5` launcher then
+  activated `.5`; the `.4` launcher then re-activated `.4` with exit `0` (the
+  retained-release path, AD-036); the `.5` launcher activated `.5` again. The
+  active pointer then named `.5` with the manifest's `darwin-arm64` release
+  digest. `self-test --profile smoke` returned `verdict: PASS`.
+
+Not yet done: `npm publish` of the `.5` launcher (owner two-factor step), and
+the five-target `live-activation-matrix` run with base `.4` and update `.5`.
