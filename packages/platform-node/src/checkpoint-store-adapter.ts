@@ -252,24 +252,34 @@ export class RuntimeCheckpointStore {
   repairState(workspaceId: string, runId: string, taskId: string): GateRepairStatePort {
     assertIdentity(workspaceId, runId, taskId, rejectInput);
     return Object.freeze({
-      loadState: async () => {
-        const stored = this.#latest("repair", workspaceId, runId, taskId);
-        if (stored === undefined) return undefined;
-        const row = validateRepairState(decode(stored.recordJson), rejectStored);
-        if (row["stage"] !== stored.stage) rejectStored("stored repair state does not match its stage");
-        return deepFreeze(row);
-      },
-      saveState: async (state: Parameters<GateRepairStatePort["saveState"]>[0]) => {
-        const row = validateRepairState(state, rejectInput);
-        this.#store.appendExecutionCheckpoint({
-          kind: "repair",
-          workspaceId,
-          runId,
-          taskId,
-          stage: row["stage"] as string,
-          recordJson: encode(row)
-        });
-      }
+      loadState: async () => this.inspectRepair(workspaceId, runId, taskId),
+      saveState: async (state: Parameters<GateRepairStatePort["saveState"]>[0]) =>
+        this.recordRepair(workspaceId, runId, taskId, state)
+    });
+  }
+
+  // why: the repair state without a promise, for a caller that cannot await.
+  // A driver's usage event is metered inside the driver's stream handling, and
+  // the ledger it moves must be stored before the next event is read.
+  // invariant: the same checks as the port: these two are what the port calls.
+  inspectRepair(workspaceId: string, runId: string, taskId: string): Readonly<Row> | undefined {
+    const stored = this.#latest("repair", workspaceId, runId, taskId);
+    if (stored === undefined) return undefined;
+    const row = validateRepairState(decode(stored.recordJson), rejectStored);
+    if (row["stage"] !== stored.stage) rejectStored("stored repair state does not match its stage");
+    return deepFreeze(row);
+  }
+
+  recordRepair(workspaceId: string, runId: string, taskId: string, state: unknown): void {
+    assertIdentity(workspaceId, runId, taskId, rejectInput);
+    const row = validateRepairState(state, rejectInput);
+    this.#store.appendExecutionCheckpoint({
+      kind: "repair",
+      workspaceId,
+      runId,
+      taskId,
+      stage: row["stage"] as string,
+      recordJson: encode(row)
     });
   }
 

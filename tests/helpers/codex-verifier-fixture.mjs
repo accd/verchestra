@@ -82,21 +82,22 @@ export function verifierFixtures(after) {
       { mode: 0o700 }
     );
     const sessionRoot = join(root, "sessions", "codex-run");
-    const run = () =>
-      runCodexVerifier({
-        workspaceId: "workspace_4b1c2d3e-5f60-4a7b-8c9d-0e1f2a3b4c5d",
-        runId: "run_018f0000-0000-7000-8000-000000001502",
-        manifestId: `sha256:${"a".repeat(64)}`,
-        request: { verifier: { driverId: "codex", model: VERIFIER_MODEL } },
-        executable: wrapper,
-        credential: "sk-openai-brokered-fixture",
-        env: { PATH: process.env.PATH ?? "", TMPDIR: root },
-        sessionRoot,
-        cwd: review,
-        prompt: `Requirements: VES-EXE-001${scenario === undefined ? "" : ` verifier-scenario:${scenario}`}`,
-        meter,
-        signal: signal ?? new AbortController().signal
-      });
+    // why: everything a session needs except its meter and its signal is plain
+    // data, so a child process can run the same session (the crash cases).
+    const options = {
+      workspaceId: "workspace_4b1c2d3e-5f60-4a7b-8c9d-0e1f2a3b4c5d",
+      runId: "run_018f0000-0000-7000-8000-000000001502",
+      manifestId: `sha256:${"a".repeat(64)}`,
+      request: { verifier: { driverId: "codex", model: VERIFIER_MODEL } },
+      executable: wrapper,
+      credential: "sk-openai-brokered-fixture",
+      env: { PATH: process.env.PATH ?? "", TMPDIR: root },
+      sessionRoot,
+      cwd: review,
+      prompt: `Requirements: VES-EXE-001${scenario === undefined ? "" : ` verifier-scenario:${scenario}`}`
+    };
+    const run = (using = meter) =>
+      runCodexVerifier({ ...options, meter: using, signal: signal ?? new AbortController().signal });
     const sessions = () => lines(join(log, "fake-codex.log"));
     // invariant: resolves once the fake has an open turn, with its process id.
     const turns = () => lines(turnLog(root));
@@ -105,6 +106,6 @@ export function verifierFixtures(after) {
       assert.ok(Number.isSafeInteger(entry?.pid), "the fake never opened a turn");
       return entry;
     };
-    return { root, run, sessions, sessionRoot, turn, turns };
+    return { root, options, run, sessions, sessionRoot, turn, turns };
   };
 }

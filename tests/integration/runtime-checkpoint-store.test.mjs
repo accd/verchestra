@@ -303,3 +303,42 @@ test("the repair loop persists its state and resumes attempt counts after a rest
   assert.equal(stored.attempts, 2);
   await assert.rejects(statePort.saveState({ ...stored, attempts: 1 }), { code: "VES_RUNTIME_CONSTRAINT" });
 });
+
+// invariant: the repair state is also reached without a promise, for a caller
+// that meters usage inside a driver's event stream. These two are what the
+// port calls, so every check of the port holds for them, and a state recorded
+// here is stored when the call returns.
+test("the repair state is inspected and recorded without a promise, under the port's checks", async () => {
+  const { dbPath, checkpoints } = await storeFixture();
+  const repair = ["workspace:repair", "run:repair", "T405.3"];
+  assert.equal(checkpoints.inspectRepair(...repair), undefined);
+  const ledger = { consumedCostUsd: 0, consumedTokens: 18, consumedDurationMs: 40, usageEvents: 1, stopReason: null };
+  const state = { stage: "converged", attempts: 1, attemptCapsuleDigests: [`sha256:${"1".repeat(64)}`] };
+
+  assert.equal(checkpoints.recordRepair(...repair, { ...state, budgetLedger: ledger }), undefined);
+  assert.deepEqual(checkpoints.inspectRepair(...repair), { ...state, budgetLedger: ledger });
+  assert.equal(Object.isFrozen(checkpoints.inspectRepair(...repair).budgetLedger), true);
+  assert.deepEqual(await checkpoints.repairState(...repair).loadState(), checkpoints.inspectRepair(...repair));
+
+  await checkpoints.repairState(...repair).saveState({ ...state, budgetLedger: { ...ledger, consumedTokens: 26 } });
+  assert.equal(checkpoints.inspectRepair(...repair).budgetLedger.consumedTokens, 26);
+
+  for (const refused of [
+    { ...state, budgetLedger: ledger, extra: true },
+    { ...state, stage: "verifying", budgetLedger: ledger },
+    { ...state, attempts: 2, budgetLedger: ledger },
+    { ...state, budgetLedger: [ledger] },
+    { ...state }
+  ])
+    assert.throws(() => checkpoints.recordRepair(...repair, refused), { code: "VES_RUNTIME_CONSTRAINT" });
+  assert.throws(() => checkpoints.recordRepair("workspace repair", "run:repair", "T405.3", state), {
+    code: "VES_RUNTIME_CONSTRAINT"
+  });
+  assert.equal(checkpoints.inspectRepair(...repair).budgetLedger.consumedTokens, 26, "a refused state was stored");
+
+  tamper(
+    dbPath,
+    "UPDATE execution_checkpoints SET record_json = replace(record_json, '26', '1') WHERE kind = 'repair'"
+  );
+  assert.throws(() => checkpoints.inspectRepair(...repair), { code: "VES_RUNTIME_CHECKPOINT_CORRUPT" });
+});

@@ -29,6 +29,7 @@ import {
 
 import { loadProviderAuth, type ProviderAuth, type ProviderAuthMode } from "../task-provider-auth.ts";
 import { TaskAuthority } from "./task-authority.ts";
+import { meterOnRunLedger } from "./task-budget.ts";
 import { requireCodexSubscription } from "./task-codex-identity.ts";
 import { IMPLEMENTER_CREDENTIALS, VERIFIER_CREDENTIAL, readCredentials } from "./task-credentials.ts";
 import { stateInvalid, taskError } from "./task-errors.ts";
@@ -485,23 +486,30 @@ class TaskRunComposition {
     });
   }
 
-  async verify(commit: TaskRunCommit, run: RunSnapshot, signal: AbortSignal) {
-    const ledger = (await this.#checkpoints.repair())?.budgetLedger;
-    return verifyTask(
-      {
-        workspace: this.#workspace,
-        plan: this.#plan,
-        runtime: this.#runtime,
-        runRecord: this.#runRecord,
-        gates: this.#prepared.gates,
-        verifier: this.#prepared.verifier,
-        env: this.#io.env,
-        meter: this.#meter(ledger),
-        providers: this.providers
-      },
-      commit,
-      run,
-      signal
+  // invariant: the verifier spends from the run's one ledger, and what it
+  // spends is recorded there as it is metered, so `status`, the Run Capsule and
+  // a resumed verification all count it, once.
+  verify(commit: TaskRunCommit, run: RunSnapshot, signal: AbortSignal) {
+    return meterOnRunLedger(
+      this.#checkpoints,
+      (resume) => this.#meter(resume),
+      (meter) =>
+        verifyTask(
+          {
+            workspace: this.#workspace,
+            plan: this.#plan,
+            runtime: this.#runtime,
+            runRecord: this.#runRecord,
+            gates: this.#prepared.gates,
+            verifier: this.#prepared.verifier,
+            env: this.#io.env,
+            meter,
+            providers: this.providers
+          },
+          commit,
+          run,
+          signal
+        )
     );
   }
 

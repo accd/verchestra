@@ -277,3 +277,133 @@ test("the projections add nothing to what the store's ports hold", async () => {
   const direct = await new RuntimeCheckpointStore(store).executorCheckpoints().load(...Object.values(IDENTITY));
   assert.deepEqual(direct, { ...row, checkpointRef });
 });
+
+// invariant: a Run has one account of usage, the ledger its latest repair
+// state carries. Usage metered after the repair loop ended is recorded there
+// through `recordBudgetLedger`: only the ledger moves, it is stored when the
+// call returns, and it never moves backwards.
+const SPENT_MORE = Object.freeze({
+  consumedCostUsd: 0.5,
+  consumedTokens: 1208,
+  consumedDurationMs: 3900,
+  usageEvents: 4,
+  stopReason: null
+});
+
+function mismatch(error) {
+  assert.equal(error.envelope.code, "VES_TASK_STATE_INVALID");
+  assert.equal(error.envelope.safeDetails.reason, "VES_TASK_STATE_MISMATCH");
+  return true;
+}
+
+test("usage recorded after the repair loop moves only the ledger of the latest repair state", async () => {
+  for (const stage of ["converged", "repair"]) {
+    const { checkpoints } = await run();
+    await checkpoints.repairPort().saveState(repairState(BILLED, stage));
+    assert.equal(checkpoints.recordBudgetLedger(SPENT_MORE), undefined, "the record is stored when the call returns");
+    assert.deepEqual(await checkpoints.repair(), { stage, budgetLedger: SPENT_MORE });
+    assert.deepEqual(await checkpoints.repairPort().loadState(), repairState(SPENT_MORE, stage));
+  }
+});
+
+test("a run whose repair loop saved no state gets its ledger under converged with no attempt", async () => {
+  const { checkpoints } = await run();
+  checkpoints.recordBudgetLedger(BILLED);
+  assert.deepEqual(await checkpoints.repairPort().loadState(), {
+    stage: "converged",
+    attempts: 0,
+    attemptCapsuleDigests: [],
+    budgetLedger: BILLED
+  });
+  assert.deepEqual(await checkpoints.repair(), { stage: "converged", budgetLedger: BILLED });
+});
+
+test("a state that carried no ledger takes the first one recorded", async () => {
+  const { checkpoints } = await run();
+  await checkpoints.repairPort().saveState(repairState(null, "converged"));
+  checkpoints.recordBudgetLedger(BILLED);
+  assert.deepEqual(await checkpoints.repairPort().loadState(), repairState(BILLED, "converged"));
+});
+
+test("the recorded ledger keeps its unbilled tokens, and status and the Run Capsule report the whole of it", async () => {
+  const { checkpoints } = await run();
+  const implementer = { ...BILLED, consumedCostUsd: 0, consumedTokens: 18, unbilledTokens: 18, usageEvents: 1 };
+  await checkpoints.repairPort().saveState(repairState(implementer, "converged"));
+
+  const subscription = { ...implementer, consumedTokens: 26, unbilledTokens: 26, usageEvents: 2 };
+  checkpoints.recordBudgetLedger(subscription);
+  const stored = (await checkpoints.repair()).budgetLedger;
+  assert.deepEqual(budgetStatus(stored), {
+    ...subscription,
+    consumedCostUsd: "not billed (subscription)",
+    billing: "subscription"
+  });
+  assert.deepEqual(capsuleBudgetConsumption(stored), {
+    consumed: { tokens: 26, durationMs: 3400, usageEvents: 2, unbilledTokens: 26 },
+    billing: "subscription"
+  });
+
+  // why: a billed verifier after an unbilled implementer is the mixed block:
+  // the cost of the billed part beside the tokens that were not billed.
+  const mixed = { ...subscription, consumedCostUsd: 0.00005075, consumedTokens: 34, usageEvents: 3 };
+  checkpoints.recordBudgetLedger(mixed);
+  const billedPart = (await checkpoints.repair()).budgetLedger;
+  assert.deepEqual(budgetStatus(billedPart), { ...mixed, billing: "mixed" });
+  assert.deepEqual(capsuleBudgetConsumption(billedPart), {
+    consumed: { costUsd: 0.00005075, tokens: 34, durationMs: 3400, usageEvents: 3, unbilledTokens: 26 },
+    billing: "mixed"
+  });
+});
+
+test("a ledger that does not continue the recorded one is refused and the recorded one stays", async () => {
+  const { checkpoints } = await run();
+  const recorded = { ...SPENT_MORE, unbilledTokens: 8 };
+  await checkpoints.repairPort().saveState(repairState(recorded, "converged"));
+  for (const backwards of [
+    { ...recorded, consumedTokens: recorded.consumedTokens - 1 },
+    { ...recorded, usageEvents: recorded.usageEvents - 1 },
+    { ...recorded, consumedCostUsd: recorded.consumedCostUsd - 0.01 },
+    { ...recorded, unbilledTokens: recorded.unbilledTokens - 1 },
+    { ...SPENT_MORE },
+    // why: a meter that was not resumed from the run's ledger starts at zero.
+    { consumedCostUsd: 0, consumedTokens: 8, consumedDurationMs: 9000, usageEvents: 1, stopReason: null }
+  ]) {
+    assert.throws(() => checkpoints.recordBudgetLedger(backwards), mismatch, JSON.stringify(backwards));
+    assert.deepEqual((await checkpoints.repair()).budgetLedger, recorded);
+  }
+  for (const ledger of [null, undefined])
+    assert.throws(() => checkpoints.recordBudgetLedger(ledger), mismatch, String(ledger));
+  for (const ledger of [{}, { ...recorded, consumedTokens: "many" }, { ...recorded, stopReason: "because" }])
+    assert.throws(() => checkpoints.recordBudgetLedger(ledger), malformed, JSON.stringify(ledger));
+  assert.deepEqual(await checkpoints.repairPort().loadState(), repairState(recorded, "converged"));
+
+  // why: the duration is a clock's, so an earlier one is still recorded, and
+  // the same ledger again is the same record.
+  const earlier = { ...recorded, consumedDurationMs: 1 };
+  checkpoints.recordBudgetLedger(earlier);
+  checkpoints.recordBudgetLedger(earlier);
+  assert.deepEqual((await checkpoints.repair()).budgetLedger, earlier);
+});
+
+test("a recorded ledger is read only by its own run and task", async () => {
+  const first = await run();
+  first.checkpoints.recordBudgetLedger(BILLED);
+  const workspace = { workspaceId: WORKSPACE_ID, tasksRoot: first.tasksRoot };
+  for (const checkpoints of [
+    openRunRecord(workspace, OTHER_RUN_ID).checkpoints(first.store, TASK_ID),
+    openRunRecord(workspace, RUN_ID).checkpoints(first.store, "T2")
+  ])
+    assert.equal(await checkpoints.repair(), undefined);
+});
+
+test("a repair state the store finds corrupt stops the record with the store's refusal", async () => {
+  const { dbPath, checkpoints } = await run();
+  await checkpoints.repairPort().saveState(repairState(BILLED, "converged"));
+  const database = new DatabaseSync(dbPath);
+  try {
+    database.prepare("UPDATE execution_checkpoints SET record_json = replace(record_json, '1200', '1')").run();
+  } finally {
+    database.close();
+  }
+  assert.throws(() => checkpoints.recordBudgetLedger(SPENT_MORE), { code: "VES_RUNTIME_CHECKPOINT_CORRUPT" });
+});
