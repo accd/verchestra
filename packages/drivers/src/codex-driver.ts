@@ -7,7 +7,12 @@ import {
   snapshotCodexProcessContext,
   type CodexProcessContext
 } from "./codex-process-context.ts";
-import { OWN_PROCESS_GROUP, processTreeTerminator, type ProcessTreeTerminator } from "./driver-process-tree.ts";
+import {
+  OWN_PROCESS_GROUP,
+  processTreeTerminator,
+  singleTermination,
+  type ProcessTreeTerminator
+} from "./driver-process-tree.ts";
 import { sensitiveValueRedactor } from "./driver-redaction.ts";
 import { DriverSessionLedger } from "./driver-session-ledger.ts";
 import { probeDriverVersion } from "./driver-version-probe.ts";
@@ -57,6 +62,7 @@ export interface CodexDriverDependencies {
 
 interface CodexSessionResources {
   child?: ChildProcessWithoutNullStreams;
+  stop?: () => Promise<void>;
 }
 
 function codexError(code: string, message: string): DriverProtocolError {
@@ -90,7 +96,7 @@ export class CodexDriver implements Driver {
   readonly #terminateTree: ProcessTreeTerminator;
   readonly #sessions = new DriverSessionLedger<CodexSessionResources>({
     noun: "Codex",
-    stop: ({ resources }) => (resources.child?.pid === undefined ? undefined : this.#terminateTree(resources.child.pid))
+    stop: ({ resources }) => resources.stop?.()
   });
 
   constructor(dependencies: CodexDriverDependencies) {
@@ -182,7 +188,10 @@ export class CodexDriver implements Driver {
       windowsHide: true
     });
     state.resources.child = child;
-    if (child.pid !== undefined) this.#dependencies.onSpawn?.(child.pid);
+    if (child.pid !== undefined) {
+      state.resources.stop = singleTermination(this.#terminateTree, child.pid);
+      this.#dependencies.onSpawn?.(child.pid);
+    }
 
     let nextId = 1;
     let outputBytes = 0;
@@ -332,8 +341,7 @@ export class CodexDriver implements Driver {
       aborted = true;
       interrupt();
       const timer = setTimeout(() => {
-        if (child.exitCode === null && child.signalCode === null && child.pid !== undefined)
-          void this.#terminateTree(child.pid);
+        if (child.exitCode === null && child.signalCode === null) void state.resources.stop?.();
       }, grace);
       timer.unref();
     };
@@ -382,6 +390,7 @@ export class CodexDriver implements Driver {
       });
     }
     delete state.resources.child;
+    delete state.resources.stop;
     return Object.freeze({ sessionId });
   }
 
