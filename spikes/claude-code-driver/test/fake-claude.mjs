@@ -10,6 +10,15 @@ const prompt = request?.message?.content?.[0]?.text ?? "";
 const mode = process.env.FAKE_CLAUDE_MODE ?? "success";
 
 const emit = (value) => process.stdout.write(`${JSON.stringify(value)}\n`);
+if (mode === "chatter") {
+  // why: a provider whose every line reaches its reader in one piece of output
+  // and that then never answers, so a reader that fails on the first line still
+  // has the others to read while the provider is alive.
+  const delta = JSON.stringify({ type: "stream_event", event: { delta: { type: "text_delta", text: "chatter" } } });
+  const init = JSON.stringify({ type: "system", subtype: "init", session_id: "private-session-id", model: "claude-opus-4-8", tools: [] });
+  process.stdout.write(`${[init, delta, delta, delta].join("\n")}\n`);
+  await new Promise(() => setInterval(() => {}, 1_000));
+}
 emit({ type: "system", subtype: "init", session_id: "private-session-id", model: process.env.FAKE_CLAUDE_MODEL ?? "claude-opus-4-8", tools: [] });
 
 if (mode === "malformed") {
