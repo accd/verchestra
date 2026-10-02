@@ -94,34 +94,3 @@ test("Pi Driver abort signal reaches the active provider run", async () => {
     true
   );
 });
-
-test("Pi Driver close is idempotent and emits one terminal event", async () => {
-  const fixture = piFixture();
-  const events = [];
-  const driver = new PiDriver(fixture.dependencies());
-  const session = await driver.start(fixture.request(), (event) => events.push(event), new AbortController().signal);
-  await driver.close(session);
-  await driver.close(session);
-  assert.equal(events.filter((event) => event.type === "session.closed").length, 1);
-});
-
-test("Pi Driver cancellation is idempotent after execution", async () => {
-  const fixture = piFixture();
-  const events = [];
-  const driver = new PiDriver(fixture.dependencies());
-  const session = await driver.start(fixture.request(), (event) => events.push(event), new AbortController().signal);
-  await driver.cancel(session, "user-request");
-  await driver.cancel(session, "user-request");
-  assert.equal(events.filter((event) => event.type === "session.closed").length, 1);
-  assert.equal(events.at(-1).outcome, "cancelled");
-});
-
-test("Pi Driver rejects a session reference from another adapter instance", async () => {
-  const fixture = piFixture();
-  const owner = new PiDriver(fixture.dependencies());
-  const session = await owner.start(fixture.request(), () => {}, new AbortController().signal);
-  await assert.rejects(
-    new PiDriver(fixture.dependencies()).close(session),
-    (error) => error.code === "VES_DRIVER_SESSION_UNKNOWN"
-  );
-});

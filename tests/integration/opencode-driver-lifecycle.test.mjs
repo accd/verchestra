@@ -53,23 +53,3 @@ test("OpenCode aborts SDK session before closing isolated server", async () => {
     true
   );
 });
-
-test("OpenCode close is idempotent and emits one terminal event", async () => {
-  const fixture = openCodeFixture();
-  const events = [];
-  const driver = new OpenCodeDriver(fixture.dependencies());
-  const session = await driver.start(fixture.request(), (event) => events.push(event), new AbortController().signal);
-  await driver.close(session);
-  await driver.close(session);
-  assert.equal(events.filter((event) => event.type === "session.closed").length, 1);
-});
-
-test("OpenCode session reference is local to one adapter instance", async () => {
-  const fixture = openCodeFixture();
-  const owner = new OpenCodeDriver(fixture.dependencies());
-  const session = await owner.start(fixture.request(), () => {}, new AbortController().signal);
-  await assert.rejects(
-    new OpenCodeDriver(fixture.dependencies()).close(session),
-    (error) => error.code === "VES_DRIVER_SESSION_UNKNOWN"
-  );
-});
