@@ -38,6 +38,16 @@ if (mode === "malformed") {
   emit({ type: "result", subtype: "success", is_error: false, result: `done:${process.env.TEST_SECRET}`, total_cost_usd: 0, usage: { input_tokens: 1, output_tokens: 1 }, session_id: "private-session-id" });
 } else if (mode === "hang") {
   setInterval(() => {}, 1_000);
+} else if (mode === "fork") {
+  // why: a provider that starts processes of its own and then never answers. One
+  // descendant stays in the provider's process group and holds its output
+  // open; the other leaves the group with setsid().
+  const { spawn } = await import("node:child_process");
+  const idle = ["-e", "setInterval(() => {}, 1000)"];
+  const sameGroup = spawn(process.execPath, idle, { stdio: ["ignore", "inherit", "ignore"] });
+  const escaped = spawn(process.execPath, idle, { stdio: "ignore", detached: true });
+  emit({ type: "stream_event", event: { delta: { type: "text_delta", text: `tree:${process.pid}:${sameGroup.pid}:${escaped.pid}` } } });
+  setInterval(() => {}, 1_000);
 } else {
   emit({ type: "stream_event", event: { delta: { type: "text_delta", text: `echo:${prompt}` } } });
   emit({ type: "result", subtype: "success", is_error: false, result: `echo:${prompt}`, total_cost_usd: 0.02, usage: { input_tokens: 5, output_tokens: 3 }, session_id: "private-session-id" });

@@ -162,3 +162,34 @@ test("a reached ceiling outranks a caller's cancel in the reason", async (t) => 
   await assert.rejects(session.run(), failedWith("VES_EXECUTOR_BUDGET_EXCEEDED"));
   assert.deepEqual(await session.sessions(), [], "Codex never opened a thread");
 });
+
+// invariant: the task composition injects the tree terminator (ADP-4, C4-4).
+// A verifier that started processes of its own is stopped with all of them:
+// the one in its process group, which holds its output open, and the one that
+// left the group with setsid().
+test(
+  "cancelling a running verifier kills everything it started, including a process that left its group",
+  { timeout: 60_000 },
+  async (t) => {
+    if (WIN32_HOST) return verifierRefusedOnWin32(t);
+    const controller = new AbortController();
+    t.after(() => controller.abort());
+    const session = await verifierSession({ scenario: "fork", signal: controller.signal });
+    const settled = session.run().then(
+      () => undefined,
+      (error) => error
+    );
+    const tree = await session.turn();
+    for (const name of ["pid", "sameGroup", "escaped"])
+      assert.equal(isAlive(tree[name]), true, `${name} was running when the verifier was cancelled`);
+    controller.abort();
+    // invariant: the run ends. With only the Codex process killed, the
+    // descendant that holds its output open would keep the session waiting.
+    const error = await settled;
+    assert.ok(error, "a cancelled verifier does not return a verdict");
+    assert.equal(failedWith("VES_EXECUTOR_CANCELLED")(error), true);
+    for (const name of ["pid", "sameGroup", "escaped"])
+      assert.equal(await eventuallyDead(tree[name]), true, `${name} is still running`);
+    await assert.rejects(stat(session.sessionRoot), { code: "ENOENT" });
+  }
+);

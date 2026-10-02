@@ -11,6 +11,7 @@ import { resolveMcpBridgeRelay } from "../release-layout.ts";
 import type { ProviderAuthMode } from "../task-provider-auth.ts";
 import { stableUuid } from "./task-context.ts";
 import { notConfigured } from "./task-errors.ts";
+import { terminateProviderTree } from "./task-process-tree.ts";
 
 const MAXIMUM_CONTEXT_CHARACTERS = 400_000;
 // invariant: the mode alone picks the qualified profile, and the profile
@@ -103,14 +104,6 @@ export interface ImplementerOptions {
   readonly onWorktree: (worktreeRef: string) => Promise<void>;
 }
 
-async function terminate(pid: number): Promise<void> {
-  try {
-    process.kill(pid, "SIGKILL");
-  } catch {
-    // why: the process may already have exited.
-  }
-}
-
 export function implementerAdapter(options: ImplementerOptions): DriverExecutionAdapter<DriverStartRequest> {
   const model = options.request.driver.model;
   const passportId = `passport_${stableUuid(`claude-code:${model}`)}`;
@@ -138,7 +131,7 @@ export function implementerAdapter(options: ImplementerOptions): DriverExecution
           environment: passThroughEnvironment(options.env),
           isolationRoot: options.isolationRoot
         },
-        terminateTree: terminate,
+        terminateTree: terminateProviderTree,
         resolveExecution: async () => ({
           passport: { passportId, revision: 1, provider: "anthropic", resolvedModel: model },
           prompt: implementerPrompt(options.request, options.manifest, options.feedback()),

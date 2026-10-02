@@ -11,6 +11,7 @@
 // test in place of the owner's one-time `codex login`. Like the CLI it stands
 // in for, it reports an API-key login as not logged in when `config.toml`
 // forces the ChatGPT method, and it refuses to verify without a credential.
+import { spawn } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import readline from "node:readline";
@@ -96,6 +97,13 @@ function verdict(prompt) {
   return `Reviewed.\nVERCHESTRA-VERDICT-BEGIN\n${JSON.stringify(body)}\nVERCHESTRA-VERDICT-END\n`;
 }
 
+function forked() {
+  const idle = ["-e", "setInterval(() => {}, 1000)"];
+  const sameGroup = spawn(process.execPath, idle, { stdio: ["ignore", "inherit", "ignore"] });
+  const escaped = spawn(process.execPath, idle, { stdio: "ignore", detached: true });
+  return { sameGroup: sameGroup.pid, escaped: escaped.pid };
+}
+
 const lines = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
 lines.on("line", (line) => {
   const message = JSON.parse(line);
@@ -127,10 +135,13 @@ lines.on("line", (line) => {
     const prompt = message.params.input?.[0]?.text ?? "";
     const scenario = /verifier-scenario:([a-z-]+)/u.exec(prompt)?.[1] ?? "verdict";
     emit({ id: message.id, result: { turn: { id: "private-turn-id" } } });
-    turnLog({ pid: process.pid, scenario });
-    // why: `verifier-scenario:hang` leaves the turn open until the process is
-    // stopped, the way a verifier that never answers would.
-    if (scenario === "hang") return;
+    // why: `verifier-scenario:fork` is a verifier that starts processes of its
+    // own: one stays in its process group and holds its output open, the
+    // other leaves the group with setsid(). The turn log names both.
+    turnLog({ pid: process.pid, scenario, ...(scenario === "fork" ? forked() : {}) });
+    // why: `hang` and `fork` leave the turn open until the process is stopped,
+    // the way a verifier that never answers would.
+    if (scenario === "hang" || scenario === "fork") return;
     emit({ method: "item/agentMessage/delta", params: { delta: verdict(prompt) } });
     emit({
       method: "turn/completed",

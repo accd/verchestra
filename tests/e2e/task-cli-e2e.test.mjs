@@ -710,3 +710,46 @@ test(
     }
   }
 );
+
+// invariant: stopping a provider stops everything it started (ADP-4). The
+// fake implementer forks one process that stays in its process group and holds
+// its output open, and one that leaves the group with setsid(); `vestra task
+// cancel` ends the run with all three gone. Signal 0 only asks whether a
+// process exists, and every process named here was started by this fixture.
+function running(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    if (error.code === "ESRCH" || error.code === "EPERM") return false;
+    throw error;
+  }
+}
+
+test("cancel kills everything the implementer started, including a process that left its group", TIMEOUT, async (t) => {
+  if (!DARWIN) return;
+  const fixture = await taskFixture({ request: { instructions: "Start helpers and never answer. scenario:fork" } });
+  const plan = await approved(fixture);
+  const child = fixture.launchAsync(startArguments(fixture, plan.runId));
+  const finished = exited(child);
+  const forked = () => logLines(fixture, "fake-claude.log").find((entry) => entry.tree !== undefined)?.tree;
+  // hazard: a case that fails before the cancel would leave the run and the
+  // fake's processes alive.
+  t.after(() => {
+    child.kill("SIGKILL");
+    for (const pid of Object.values(forked() ?? {})) if (running(pid)) process.kill(pid, "SIGKILL");
+  });
+  await waitFor(() => forked() !== undefined);
+  const tree = forked();
+  for (const [name, pid] of Object.entries(tree))
+    assert.equal(running(pid), true, `${name} was running before the cancel`);
+  const cancelled = ok(fixture.launch(["task", "cancel", "--run-id", plan.runId, "--output", "json"]), "cancel");
+  assert.equal(cancelled.stopped, true);
+  assert.equal((await finished).code, 1);
+  assert.equal(status(fixture, plan.runId).state, "ABORTED");
+  for (const [name, pid] of Object.entries(tree)) {
+    await waitFor(() => !running(pid), 10_000).catch(() => undefined);
+    assert.equal(running(pid), false, `${name} outlived the cancel`);
+  }
+  assert.equal(fixture.git(["worktree", "list", "--porcelain"]).split("\n\n").length, 1);
+});

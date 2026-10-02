@@ -130,7 +130,7 @@ async function call(name, args) {
 
 const implement = () => call("write_file", { path: "src/value.txt", content: "new\n" });
 
-if (scenario === "implement" || scenario === "slow") {
+if (scenario === "implement" || scenario === "slow" || scenario === "fork") {
   await call("read_file", { path: "src/value.txt" });
   await implement();
 } else if (scenario === "leak" || scenario === "leak-fail") {
@@ -185,7 +185,16 @@ if (scenario === "injection" || scenario === "leak-fail") {
     usage: { input_tokens: 900000, output_tokens: 900000 }
   });
 }
-if (scenario === "slow") {
+if (scenario === "fork") {
+  // why: a provider that starts processes of its own and then never answers.
+  // One descendant stays in the provider's process group and holds its output
+  // open; the other leaves the group with setsid(). The log names all three.
+  const idle = ["-e", "setInterval(() => {}, 1000)"];
+  const sameGroup = spawn(process.execPath, idle, { stdio: ["ignore", "inherit", "ignore"] });
+  const escaped = spawn(process.execPath, idle, { stdio: "ignore", detached: true });
+  log({ tree: { provider: process.pid, sameGroup: sameGroup.pid, escaped: escaped.pid } });
+}
+if (scenario === "slow" || scenario === "fork") {
   setInterval(() => {}, 1_000);
   await new Promise(() => {});
 }
