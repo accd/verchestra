@@ -22,6 +22,10 @@ const adapterSource = await readFile(
   new URL("../../packages/platform-node/src/activation-launcher-adapters.ts", import.meta.url),
   "utf8"
 );
+const terminatorSource = await readFile(
+  new URL("../../packages/platform-node/src/process-tree-terminator.ts", import.meta.url),
+  "utf8"
+);
 
 const runtimePathOf = (releaseRoot, bundle) =>
   join(releaseRoot, ...bundle.components.find((component) => component.kind === "node-runtime").logicalPath.split("/"));
@@ -36,10 +40,17 @@ test("the launcher adapters never open a shell and never build a command string"
   assert.equal(contains(/shell\s*:\s*true/u), false, "no adapter may spawn through a shell");
   assert.equal(contains(/shell:\s*false/u), true, "every spawn must declare shell: false");
   assert.equal(contains(/\bexecSync\b|\bspawnSync\b|[^F]\bexec\s*\(/u), false, "no adapter may run a command string");
-  // execFile is allowed only for the Windows process-tree termination call,
-  // which takes a fixed executable and a fixed argument array.
-  assert.equal([...adapterSource.matchAll(/execFileAsync\(/gu)].length, 1);
-  assert.equal(contains(/execFileAsync\(\s*"taskkill",\s*\["\/pid", String\(pid\), "\/T", "\/F"\]/u), true);
+  // invariant: the adapters run no executable but the release's own runtime.
+  // The Windows process-tree termination, the one execFile call they used to
+  // hold, lives in the shared group termination they call, where it takes a
+  // fixed executable and a fixed argument array.
+  assert.equal(contains(/\bexecFile/u), false, "no adapter may run another executable");
+  assert.equal(contains(/terminateProcessGroup\(pid,/u), true);
+  assert.equal([...terminatorSource.matchAll(/"taskkill"/gu)].length, 1);
+  assert.equal(
+    /execFileAsync\(\s*"taskkill",\s*\["\/pid", String\(pid\), "\/T", "\/F"\]/u.test(terminatorSource),
+    true
+  );
   // Every process argument list in this module is an array literal, never a
   // string built by concatenation or interpolation.
   assert.equal(contains(/spawn\([^)]*\+/u), false);
