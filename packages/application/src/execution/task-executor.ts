@@ -1,7 +1,8 @@
 import {
-  BudgetMeterError,
   createBudgetMeter,
+  recordUsageAndDecide,
   type BudgetMeter,
+  type BudgetMeterError,
   type DeclaredBudgets,
   type UsageEvent
 } from "./budget-meter.ts";
@@ -530,19 +531,13 @@ export class TaskExecutionCoordinator {
             checkpoint: saveCheckpoint,
             reportUsage: (event) => {
               if (meter === undefined) return;
-              try {
-                meter.recordUsage(event);
-              } catch (error) {
-                if (!(error instanceof BudgetMeterError)) throw error;
-                stopForBudget(error.code, error);
-                return;
-              }
-              const verdict = meter.shouldStop();
-              if (verdict.stop)
-                stopForBudget(
-                  verdict.reason ?? "budget",
-                  new TaskExecutorError("VES_EXECUTOR_BUDGET_EXCEEDED", `declared ${verdict.reason} was reached`)
-                );
+              const decision = recordUsageAndDecide(meter, event);
+              if (!decision.stop) return;
+              stopForBudget(
+                decision.reason,
+                decision.failure ??
+                  new TaskExecutorError("VES_EXECUTOR_BUDGET_EXCEEDED", `declared ${decision.reason} was reached`)
+              );
             },
             invokeTool: async (requestValue) => {
               const request = this.#normalizeToolRequest(requestValue, input);
