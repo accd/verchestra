@@ -3,6 +3,7 @@ import { mkdir, mkdtemp } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
+import { MemoryPromotionLifecycle } from "../../packages/memory/src/index.ts";
 import { createWritePlan } from "../../packages/workspace/src/index.ts";
 import { removeTemporaryDirectory } from "./temporary-directory.mjs";
 
@@ -118,7 +119,7 @@ const roots = [];
 // invariant: every suite that calls `lifecycleRoot` registers this with `after`,
 // so each root it created is removed when the suite ends, pass or fail.
 export async function disposeLifecycleRoots() {
-  await Promise.all(roots.splice(0).map(removeTemporaryDirectory));
+  await Promise.all(roots.splice(0).map((root) => removeTemporaryDirectory(root)));
 }
 
 export async function lifecycleRoot() {
@@ -136,6 +137,22 @@ export async function lifecycleRoot() {
     ownerRoots: { [controlOwnerId]: controlRoot },
     artifactPlanner
   };
+}
+
+// invariant: one opener for every suite, so each opens the lifecycle on a
+// root this module created and `disposeLifecycleRoots` removes.
+export async function openLifecycle(options = {}) {
+  const paths = await lifecycleRoot();
+  const lifecycle = new MemoryPromotionLifecycle({
+    dbPath: paths.dbPath,
+    objectRoot: paths.objectRoot,
+    ownerRoots: paths.ownerRoots,
+    artifactPlanner: paths.artifactPlanner,
+    now: () => now,
+    ...options
+  });
+  lifecycle.open();
+  return { ...paths, lifecycle };
 }
 
 export function objectInput(index, overrides = {}) {

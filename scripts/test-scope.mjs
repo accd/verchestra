@@ -13,7 +13,7 @@ const tests = [];
 async function collect(path) {
   if (!existsSync(path)) return;
   if (!(await stat(path)).isDirectory()) {
-    if (/\.test\.mjs$/.test(path)) tests.push(path);
+    if (path.endsWith(".test.mjs")) tests.push(path);
     return;
   }
   for (const entry of await readdir(path, { withFileTypes: true })) await collect(join(path, entry.name));
@@ -44,9 +44,11 @@ const leftovers = (await readdir(temporary))
 const removal = await rm(temporary, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }).catch(
   (error) => error
 );
-if (leftovers.length > 0)
+if (leftovers.length > 0) {
+  const listed = leftovers.map((entry) => "  " + entry + "\n").join("");
   process.stderr.write(
-    `${scope}: tests left ${leftovers.length} entries in their temporary directory; every test must remove what it creates:\n${leftovers.map((entry) => `  ${entry}\n`).join("")}`
+    `${scope}: tests left ${leftovers.length} entries in their temporary directory; every test must remove what it creates:\n${listed}`
   );
+}
 if (removal !== undefined) process.stderr.write(`${scope}: could not remove ${temporary}: ${removal.code}\n`);
 process.exit(leftovers.length > 0 || removal !== undefined ? 1 : (result.status ?? 1));

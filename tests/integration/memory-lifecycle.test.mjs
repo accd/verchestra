@@ -9,6 +9,7 @@ import {
   digest,
   disposeLifecycleRoots,
   lifecycleRoot,
+  openLifecycle,
   memoryHit,
   now,
   objectInput,
@@ -20,19 +21,7 @@ import {
 
 after(disposeLifecycleRoots);
 
-async function opened(options = {}) {
-  const paths = await lifecycleRoot();
-  const lifecycle = new MemoryPromotionLifecycle({
-    dbPath: paths.dbPath,
-    objectRoot: paths.objectRoot,
-    ownerRoots: paths.ownerRoots,
-    artifactPlanner: paths.artifactPlanner,
-    now: () => now,
-    ...options
-  });
-  lifecycle.open();
-  return { ...paths, lifecycle };
-}
+const opened = openLifecycle;
 
 test("promotion proposal is reviewable and performs zero filesystem writes", async () => {
   const { controlRoot, lifecycle } = await opened();
