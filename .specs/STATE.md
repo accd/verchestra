@@ -2272,6 +2272,100 @@ note. -->
   schema, migration or error code changes. Evidence is in
   `.specs/features/architecture-deepening-2/validation-t7.md`.
 
+### AD-063 — A Driver event is one closed type stated in the domain, and every driver reads usage through one rule (ADR2-6)
+
+- **Status:** proposed (ratified by reviewing the pull request that carries
+  the event type range of `refactor/typed-driver-event`).
+- **Context:** A Driver event was an open record
+  (`Readonly<Record<string, unknown>>` with a type and a sequence). Its fields
+  were stated nowhere; the mock alone listed the keys of five types. Claude
+  Code, Codex and OpenCode each wrote the same usage check, Pi had none and
+  emitted its runtime's counts as relayed, and the mock checked scripted
+  counts its own way and admitted a negative one. agent-runtime declared a
+  second, structural event, and the execution adapter and the Codex verifier
+  cast the counts to numbers. OpenCode emitted three counts and a list of
+  patterns, and Pi an `api`, that no product source reads.
+- **Decision:**
+  1. **One module states the event.**
+     `packages/domain/src/driver-event/driver-event.ts` holds the field table
+     (`DRIVER_EVENT_FIELDS`): the eight event types, every field each may
+     carry, and the kind of value it holds, a kind ending in `?` marking a
+     field some drivers set. `DriverEventOf<T>`, `DriverEventBody` and
+     `DriverEvent` are derived from the table, so the type is closed and
+     discriminated: a field written outside its row does not compile. The
+     session ledger, the mock and the provider child run emit the typed body,
+     and every emitter names its fields, because a spread is not checked
+     against the row.
+  2. **It lives in the domain.** Both sides of the Driver seam already depend
+     on `packages/domain`: the drivers emit the event, and agent-runtime,
+     which may not import a sibling adapter, reads it. No dependency edge is
+     added. `packages/drivers` re-exports the types for its interface, and
+     `DriverSessionPort` stays structural for the driver and types its sink
+     with the domain's event.
+  3. **One usage rule.** `usageCount` reads a count as a number, takes an
+     absent count as 0, and refuses one that is then not a non-negative safe
+     integer; `usageUpdated` builds the usage event from two counts or
+     refuses it. It is the rule Claude Code, Codex and OpenCode each wrote, so
+     their emitted bytes did not change. Each driver refuses with its own
+     code. OpenCode passes its reasoning and cache counts through the same
+     rule.
+  4. **Pi reads its counts through the rule.** A stop, which the agent
+     reports as the stop reason `aborted`, comes first, as the first end
+     decides for every driver (AD-053 item 4, AD-060 item 3). Otherwise a
+     refused count is `VES_PI_RUNTIME_FAILED`, the code a run with no
+     assistant message already reports, with no usage event, and a provider
+     error with such a count reports it too, as a refused count outranks the
+     provider's report for Claude Code and Codex. A count the rule reads is
+     emitted as the number it reads.
+  5. **The mock reads its scripted fields from the table and its counts
+     through the rule**: a scripted count must be one the rule reads as
+     itself, which refuses the negative count it admitted. The mock is no
+     qualified provider driver, so this is recorded here and pinned by its
+     contract suite, without a report.
+  6. **Fields only some drivers set are kept and typed as optional.**
+     OpenCode's reasoning and cache tokens are part of its qualified control
+     profile, which normalizes them, and no consumer prices them; removing
+     them changes every OpenCode usage event, needs a requalification, and
+     depends on whether those tokens are ever priced, which is the owner's
+     decision. OpenCode's `patterns` are the request its controller
+     authorizes, and Pi's `api` is part of the identity its Passport binds.
+  7. **Consumers read typed fields.** The session runner, the execution
+     adapter and the Codex verifier read the event's fields with no cast and
+     no open-record index; agent-runtime's `DriverSessionEvent` and the event
+     generic of the runner and its port are removed.
+- **Alternatives rejected:** the type in `packages/drivers` with a
+  structural copy in agent-runtime (the fields stated twice); the type in
+  `packages/application` (a dependency edge the drivers do not have, and the
+  event is not a port of a use case); a schema in `packages/contracts` (an
+  in-process value with no serialized form); validating every emitted event
+  at run time in the ledger (the type proves it at build time, and a check
+  per event would change what a test double may emit); removing OpenCode's
+  three counts, its patterns or Pi's `api` (item 6); a new
+  `VES_PI_STREAM_INVALID` (a code added for a run an existing code already
+  names); reporting a refused Pi count from the run's error handler (a
+  refused count would then turn a stop into a failure); keeping the mock's
+  own check (a fourth copy that admits a count no driver emits); a builder
+  for all five counts (the two every driver reports are the event's; the
+  three OpenCode adds go through the rule one by one).
+- **Consequence:** `tests/unit/driver-event.test.mjs` is the module's
+  contract, the usage axis of `tests/contract/driver-lifecycle-matrix.test.mjs`
+  proves each driver's wiring, and
+  `tests/architecture/driver-event-locality.test.mjs` fails when a source
+  declares a second event, a consumer reads a field by name or casts one, a
+  driver builds a usage event or checks a count outside the module, or an
+  event is spread from a record. 178 of 188 recorded scenarios of the four
+  drivers and the mock are byte-identical to `main`; the ten that differ are
+  nine Pi runs with counts the rule changes and the mock's negative scripted
+  count. A caller can notice two things, each in a run no qualification
+  sequence pinned: a Pi session whose runtime relays a count as text, `null`,
+  a boolean or a one-element array, or leaves it out, emits the number the
+  rule reads; and a Pi session whose runtime relays a negative, fractional or
+  unsafe count fails with `VES_PI_RUNTIME_FAILED` and emits no usage event,
+  unless it was stopped. No code or message was added. The Pi driver is
+  requalified in `docs/qualification/pi-driver-usage.md`. The change touches
+  the drivers and needs a platform matrix run on the branch before merge.
+  Evidence is in `.specs/features/architecture-deepening-2/validation-t6.md`.
+
 ## Handoff
 
 - **Feature:** `subscription-provider-auth` (ADP-A, tasks TA1 and TA2) on
