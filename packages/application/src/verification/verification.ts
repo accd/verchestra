@@ -1,4 +1,4 @@
-import type { RunSnapshot, WorkflowCommand, WorkflowDecision } from "@verchestra/domain";
+import { isTaskPath, type RunSnapshot, type WorkflowCommand, type WorkflowDecision } from "@verchestra/domain";
 
 type Row = Record<string, unknown>;
 type Digest = `sha256:${string}`;
@@ -7,7 +7,6 @@ const DIGEST = /^sha256:[a-f0-9]{64}$/u;
 const COMMIT = /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u;
 const SAFE = /^[A-Za-z0-9][A-Za-z0-9._:@/+-]{0,511}$/u;
 const REQUIREMENT = /^VES-[A-Z]{3}-[0-9]{3}$/u;
-const PATH = /^(?![A-Za-z]:)(?!\/)(?!.*\\)(?!.*(?:^|\/)\.\.(?:\/|$))[A-Za-z0-9._@+/-]+$/u;
 
 export type VerificationErrorCode =
   | "VES_VERIFIER_INPUT_INVALID"
@@ -302,7 +301,7 @@ function normalizeVerification(value: unknown): VerificationInput {
       code
     );
     const file = token(item.file, `evidenceClaims[${index}].file`, code);
-    if (!PATH.test(file)) fail(code, `evidenceClaims[${index}].file is invalid`);
+    if (!isTaskPath(file)) fail(code, `evidenceClaims[${index}].file is invalid`);
     const lineStart = integer(item.lineStart, `evidenceClaims[${index}].lineStart`, 1, 10_000_000, code);
     const lineEnd = integer(item.lineEnd, `evidenceClaims[${index}].lineEnd`, lineStart, 10_000_000, code);
     return freeze({

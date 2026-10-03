@@ -10,6 +10,7 @@ import {
   type BudgetMeterError,
   type NormalizedTaskRequest
 } from "@verchestra/application";
+import { isTaskPath } from "@verchestra/domain";
 import { CodexDriver, type DriverStartRequest } from "@verchestra/drivers";
 
 import { ensureCodexIdentity } from "./task-codex-identity.ts";
@@ -18,7 +19,9 @@ import { passThroughEnvironment } from "./task-implementer.ts";
 import { taskError } from "./task-errors.ts";
 import { ProviderProcesses } from "./task-process-tree.ts";
 
-const LOGICAL_PATH = /^(?![A-Za-z]:)(?!\/)(?!.*\\)(?!.*(?:^|\/)\.\.(?:\/|$))[A-Za-z0-9._@+/-]{1,1024}$/u;
+// why: a cited file comes from the verifier's untrusted answer; past this
+// length it cannot name a file in the worktree, so it is not read at all.
+const MAXIMUM_CITED_PATH_LENGTH = 1024;
 const BEGIN = "VERCHESTRA-VERDICT-BEGIN";
 const END = "VERCHESTRA-VERDICT-END";
 const MAXIMUM_DIFF_CHARACTERS = 200_000;
@@ -37,7 +40,7 @@ function objectOf(value: unknown): Readonly<Record<string, unknown>> | undefined
 }
 
 function logicalPath(value: unknown): string | undefined {
-  return typeof value === "string" && LOGICAL_PATH.test(value) ? value : undefined;
+  return isTaskPath(value) && value.length <= MAXIMUM_CITED_PATH_LENGTH ? value : undefined;
 }
 
 function lineRange(value: unknown): { readonly lineStart: number; readonly lineEnd: number } | undefined {

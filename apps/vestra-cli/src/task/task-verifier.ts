@@ -9,7 +9,13 @@ import {
   type TaskRunVerification,
   type VerificationPorts
 } from "@verchestra/application";
-import { WorkflowMachine, type RunSnapshot, type WorkflowCommand, type WorkflowDecision } from "@verchestra/domain";
+import {
+  isWithinTaskScope,
+  WorkflowMachine,
+  type RunSnapshot,
+  type WorkflowCommand,
+  type WorkflowDecision
+} from "@verchestra/domain";
 import {
   NodeGateProcessRunner,
   scratchWorktreeHandle,
@@ -114,7 +120,7 @@ class VerificationSensor {
   async #mutate(scratch: string, targetRef: string): Promise<void> {
     const path = targetRef.slice("path:".length);
     const scope = this.#context.plan.request.task.changeScope;
-    if (!scope.some((root) => path === root || path.startsWith(`${root}/`)))
+    if (!isWithinTaskScope(path, scope))
       throw Object.assign(new Error("mutation target outside scope"), { code: "VES_TASK_MUTATION_INVALID" });
     const base = this.#context.plan.request.sourceRevision;
     const existed = await git(scratch, ["cat-file", "-e", `${base}:${path}`]).then(

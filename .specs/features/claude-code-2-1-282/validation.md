@@ -12,7 +12,7 @@
 | CC-02 | `spikes/claude-code-driver/test/claude-driver.test.mjs:46` pins the live probe to `2.1.282` with the `2.1.168` floor; `:82`-`:96` discriminate drift; `:54` reads every T03 flag and `dontAsk` from `--help` | PASS locally |
 | CC-03 | `spikes/claude-code-driver/test/claude-driver-mediated.test.mjs:239` checks every mediated flag; `:265` asserts `VES_CLAUDE_VERSION_UNSUPPORTED` below the minimum; `:256` fails the fleet on a low pin; `:287` covers the version comparison. A simulated `2.1.168` on PATH takes the refusal branch and fails under `VES_REQUIRE_PINNED_PROVIDERS=1` | PASS locally |
 | CC-04 | `docs/qualification/claude-code-driver-2.1.282.md`; `claude-code-driver.md` unchanged | PASS |
-| CC-05 | `tests/unit/mcp-bridge-logical-path.test.mjs:43`-`:49` compares 299,593 inputs with the replaced pattern; `:52` pins segments and codes; `:64`-`:75` bound 100,000-separator inputs | PASS locally |
+| CC-05 | `tests/unit/task-path.test.mjs:210`-`:220` compares 299,593 inputs with the schema's path pattern, the reference this check was written against (moved there when the check became the domain's task-path rule); `tests/unit/mcp-bridge-logical-path.test.mjs:15` pins segments and codes; `:27`-`:39` bound 100,000-separator inputs | PASS locally |
 | CC-06 | `tests/contract/task-request.test.mjs:131`-`:140` compares 66,434 arguments with the schema pattern | PASS locally |
 | CC-07 | `spikes/claude-code-driver/test/fake-claude-mediated.mjs:25`, `:119`-`:129`, `:222`; `claude-driver-mediated.test.mjs:103` proves the brokered credential by exact redaction under an ambient credential | PASS locally |
 | CC-08 | `tests/helpers/system-git.mjs:6`-`:16`; `tests/helpers/worktree-tool-fixture.mjs:18` | PASS locally |

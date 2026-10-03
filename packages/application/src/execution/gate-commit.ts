@@ -1,6 +1,4 @@
-import { canonicalizeJsonV2 } from "@verchestra/domain";
-
-import { isProtectedTaskPath } from "./task-executor.ts";
+import { canonicalizeJsonV2, isProtectedTaskPath, isTaskPath, isWithinTaskScope } from "@verchestra/domain";
 
 type Digest = `sha256:${string}`;
 type Row = Record<string, unknown>;
@@ -9,7 +7,7 @@ const DIGEST = /^sha256:[a-f0-9]{64}$/u;
 const OBJECT_ID = /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u;
 const SAFE = /^[A-Za-z0-9][A-Za-z0-9._:@/+-]{0,511}$/u;
 const REQUIREMENT = /^VES-[A-Z]{3}-[0-9]{3}$/u;
-const LOGICAL_PATH = /^(?:\.|(?![A-Za-z]:)(?!\/)(?!.*\\)(?!.*(?:^|\/)\.\.(?:\/|$))[A-Za-z0-9._@+/-]+)$/u;
+const TASK_PATH = Object.freeze({ test: isTaskPath });
 const PRINTABLE = /^[\x20-\x7e]{1,512}$/u;
 
 export type TaskGateErrorCode =
@@ -79,7 +77,7 @@ function digest(value: unknown, label: string, code: TaskGateErrorCode = "VES_GA
 function list(
   value: unknown,
   label: string,
-  pattern: RegExp,
+  pattern: { test(value: string): boolean },
   code: TaskGateErrorCode,
   allowEmpty = false
 ): readonly string[] {
@@ -156,10 +154,7 @@ function normalizePlanMaterial(value: unknown): NormalizedGatePlanMaterial {
       declaredCommand: text(command["declaredCommand"], "declaredCommand", "VES_GATE_PLAN_INVALID"),
       commandRef: token(command["commandRef"], "commandRef", "VES_GATE_PLAN_INVALID"),
       args,
-      cwd:
-        typeof command["cwd"] === "string" && LOGICAL_PATH.test(command["cwd"])
-          ? command["cwd"]
-          : fail("VES_GATE_PLAN_INVALID", "gate cwd is invalid"),
+      cwd: isTaskPath(command["cwd"]) ? command["cwd"] : fail("VES_GATE_PLAN_INVALID", "gate cwd is invalid"),
       timeoutMs: integer(command["timeoutMs"], "timeoutMs", 1, 3_600_000, "VES_GATE_PLAN_INVALID"),
       outputLimitBytes: integer(
         command["outputLimitBytes"],
@@ -342,8 +337,8 @@ function normalizeInput(value: unknown, sha256: (value: string) => string): Task
       taskId: token(task["taskId"], "taskId", "VES_GATE_INPUT_INVALID"),
       requirementIds,
       verificationCommands,
-      changeScope: list(task["changeScope"], "changeScope", LOGICAL_PATH, "VES_GATE_INPUT_INVALID"),
-      protectedPaths: list(task["protectedPaths"], "protectedPaths", LOGICAL_PATH, "VES_GATE_INPUT_INVALID"),
+      changeScope: list(task["changeScope"], "changeScope", TASK_PATH, "VES_GATE_INPUT_INVALID"),
+      protectedPaths: list(task["protectedPaths"], "protectedPaths", TASK_PATH, "VES_GATE_INPUT_INVALID"),
       expectedCommitBoundary: text(task["expectedCommitBoundary"], "expectedCommitBoundary", "VES_GATE_INPUT_INVALID")
     },
     execution: {
@@ -352,17 +347,13 @@ function normalizeInput(value: unknown, sha256: (value: string) => string): Task
       coordinationRef: token(execution["coordinationRef"], "coordinationRef", "VES_GATE_INPUT_INVALID"),
       changeDigest: digest(execution["changeDigest"], "execution.changeDigest"),
       changedPaths: [
-        ...list(execution["changedPaths"], "changedPaths", LOGICAL_PATH, "VES_GATE_INPUT_INVALID", true)
+        ...list(execution["changedPaths"], "changedPaths", TASK_PATH, "VES_GATE_INPUT_INVALID", true)
       ].sort(),
       checkpointRef: token(execution["checkpointRef"], "checkpointRef", "VES_GATE_INPUT_INVALID")
     },
     authority: { approvalBindingDigest: digest(authority["approvalBindingDigest"], "approvalBindingDigest") },
     gatePlan: { ...plan, planDigest }
   });
-}
-
-function within(path: string, roots: readonly string[]): boolean {
-  return roots.some((root) => path === root || path.startsWith(`${root}/`));
 }
 
 function normalizeInspection(value: unknown) {
@@ -374,7 +365,7 @@ function normalizeInspection(value: unknown) {
   );
   return {
     changedPaths: [
-      ...list(row["changedPaths"], "inspection changedPaths", LOGICAL_PATH, "VES_GATE_DIFF_INVALID", true)
+      ...list(row["changedPaths"], "inspection changedPaths", TASK_PATH, "VES_GATE_DIFF_INVALID", true)
     ].sort(),
     changeDigest: digest(row["changeDigest"], "inspection changeDigest", "VES_GATE_DIFF_INVALID"),
     commitCountSinceBase: integer(
@@ -559,7 +550,8 @@ export class TaskGateCommitCoordinator {
     for (const path of inspection.changedPaths) {
       if (isProtectedTaskPath(path, input.task.protectedPaths))
         fail("VES_GATE_PROTECTED_PATH", "protected path changed");
-      if (!within(path, input.task.changeScope)) fail("VES_GATE_SCOPE_DENIED", "changed path is outside task scope");
+      if (!isWithinTaskScope(path, input.task.changeScope))
+        fail("VES_GATE_SCOPE_DENIED", "changed path is outside task scope");
     }
     if (
       inspection.changeDigest !== input.execution.changeDigest ||

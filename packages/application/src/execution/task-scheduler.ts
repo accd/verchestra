@@ -1,3 +1,5 @@
+import { taskPathsOverlap } from "@verchestra/domain";
+
 import { createBudgetMeter, type BudgetMeter, type BudgetSnapshot, type DeclaredBudgets } from "./budget-meter.ts";
 import { modelPriceTable } from "./model-price-table.ts";
 import {
@@ -260,15 +262,12 @@ type SettledTask =
     }
   | { readonly taskId: string; readonly ok: false; readonly error: unknown };
 
-// Scope conflict is path equality or containment in either direction, the same
-// rule the executor's within() applies to tool targets. Static analysis orders
-// conflicting tasks deterministically; the per-task claim stays the backstop.
-function pathsOverlap(left: string, right: string): boolean {
-  return left === right || left.startsWith(`${right}/`) || right.startsWith(`${left}/`);
-}
-
+// invariant: two tasks conflict when an entry of one scope contains an entry
+// of the other, either way round and in any letter case. Static analysis
+// orders conflicting tasks deterministically; the per-task claim stays the
+// backstop.
 function scopesOverlap(left: readonly string[], right: readonly string[]): boolean {
-  return left.some((a) => right.some((b) => pathsOverlap(a, b)));
+  return left.some((a) => right.some((b) => taskPathsOverlap(a, b)));
 }
 
 function byTaskId(left: string, right: string): number {

@@ -12,10 +12,9 @@ import {
   type ExecutionToolPort,
   type ExecutionToolRequest
 } from "@verchestra/application";
-import { canonicalizeJsonV2 } from "@verchestra/domain";
+import { canonicalizeJsonV2, isProtectedTaskPath, isTaskPath, namesGitMetadata } from "@verchestra/domain";
 
 const SAFE = /^[A-Za-z0-9][A-Za-z0-9._:@/+-]{0,511}$/u;
-const LOGICAL_PATH = /^(?![A-Za-z]:)(?!\/)(?!.*\\)(?!.*(?:^|\/)\.\.(?:\/|$))[A-Za-z0-9._@+/-]+$/u;
 const OPERATION_KIND = "worktree-tool/1";
 const ADAPTER_ID = "node-worktree-tool";
 
@@ -163,13 +162,13 @@ export class NodeWorktreeToolAdapter implements ExecutionToolPort {
   constructor(options: NodeWorktreeToolAdapterOptions) {
     if (!SAFE.test(options.workspaceId)) fail("VES_TOOL_REQUEST_INVALID", "Workspace identity is invalid");
     const protectedRoots = options.protectedRoots ?? [];
-    if (protectedRoots.some((root) => !LOGICAL_PATH.test(root)))
+    if (protectedRoots.some((root) => !isTaskPath(root)))
       fail("VES_TOOL_REQUEST_INVALID", "Protected roots must be logical paths");
     this.#workspaceId = options.workspaceId;
     this.#worktrees = options.worktrees;
     this.#receipts = options.receipts;
     this.#payloads = options.payloads;
-    this.#protectedRoots = Object.freeze(protectedRoots.map((root) => root.toLowerCase()));
+    this.#protectedRoots = Object.freeze([...protectedRoots]);
     this.#now = options.now ?? (() => new Date().toISOString());
   }
 
@@ -261,18 +260,13 @@ export class NodeWorktreeToolAdapter implements ExecutionToolPort {
   }
 
   #logicalTarget(value: string): string {
-    if (!LOGICAL_PATH.test(value)) fail("VES_TOOL_PATH_ESCAPE", "Tool target is not a logical path");
+    if (!isTaskPath(value)) fail("VES_TOOL_PATH_ESCAPE", "Tool target is not a logical path");
     const path = value.replaceAll(/\/{2,}/gu, "/").replace(/\/$/u, "");
     const segments = path.split("/");
     if (segments.some((segment) => segment === "." || segment === ""))
       fail("VES_TOOL_PATH_ESCAPE", "Tool target is not a normalized logical path");
-    if (segments.some((segment) => segment.toLowerCase() === ".git"))
-      fail("VES_TOOL_PROTECTED_PATH", "Tool target is inside Git metadata");
-    // hazard: the default macOS volume is case-insensitive, so a protected root
-    // is compared without case to stop `.Verchestra/policy` aliasing it.
-    const folded = path.toLowerCase();
-    if (this.#protectedRoots.some((root) => folded === root || folded.startsWith(`${root}/`)))
-      fail("VES_TOOL_PROTECTED_PATH", "Tool target is protected");
+    if (namesGitMetadata(path)) fail("VES_TOOL_PROTECTED_PATH", "Tool target is inside Git metadata");
+    if (isProtectedTaskPath(path, this.#protectedRoots)) fail("VES_TOOL_PROTECTED_PATH", "Tool target is protected");
     return path;
   }
 

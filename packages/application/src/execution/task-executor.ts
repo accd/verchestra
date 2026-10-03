@@ -1,3 +1,5 @@
+import { isProtectedTaskPath, isTaskPath, isWithinTaskScope } from "@verchestra/domain";
+
 import {
   createBudgetMeter,
   recordUsageAndDecide,
@@ -16,7 +18,6 @@ const GIT_OBJECT_ID = /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u;
 const SAFE = /^[A-Za-z0-9][A-Za-z0-9._:@/+-]{0,511}$/u;
 const PRINTABLE_TEXT = /^[\x20-\x7e]{1,512}$/u;
 const REQUIREMENT = /^VES-[A-Z]{3}-[0-9]{3}$/u;
-const LOGICAL_PATH = /^(?![A-Za-z]:)(?!\/)(?!.*\\)(?!.*(?:^|\/)\.\.(?:\/|$))[A-Za-z0-9._@+/-]+$/u;
 
 export type TaskExecutorErrorCode =
   | "VES_EXECUTOR_INPUT_INVALID"
@@ -71,15 +72,17 @@ function digest(value: unknown, label: string): Digest {
   return value as Digest;
 }
 
+const isSafe = (entry: string): boolean => SAFE.test(entry);
+
 function stringList(
   value: unknown,
   label: string,
-  pattern: RegExp = SAFE,
+  accepts: (entry: string) => boolean = isSafe,
   code: TaskExecutorErrorCode = "VES_EXECUTOR_TASK_INVALID"
 ): readonly string[] {
   if (!Array.isArray(value) || value.length === 0 || value.length > 100) fail(code, `${label} is invalid`);
   const result = value.map((entry) => {
-    if (typeof entry !== "string" || !pattern.test(entry)) fail(code, `${label} contains an invalid value`);
+    if (typeof entry !== "string" || !accepts(entry)) fail(code, `${label} contains an invalid value`);
     return entry;
   });
   if (new Set(result).size !== result.length) fail(code, `${label} contains duplicates`);
@@ -280,14 +283,14 @@ export function normalizeTask(value: unknown): AtomicExecutionTask {
     fail("VES_EXECUTOR_TASK_INVALID", "task risk is invalid");
   return deepFreeze({
     taskId: safe(task["taskId"], "taskId", "VES_EXECUTOR_TASK_INVALID"),
-    requirementIds: stringList(task["requirementIds"], "requirementIds", REQUIREMENT),
+    requirementIds: stringList(task["requirementIds"], "requirementIds", (entry) => REQUIREMENT.test(entry)),
     // Root tasks exist: a dependency graph has entry points, so the list is
     // allowed to be empty. The scheduler relies on this; single-task callers
     // are unaffected.
     dependencyTaskIds: optionalSafeList(task["dependencyTaskIds"], "dependencyTaskIds", "VES_EXECUTOR_TASK_INVALID"),
     component: safe(task["component"], "component", "VES_EXECUTOR_TASK_INVALID"),
-    changeScope: stringList(task["changeScope"], "changeScope", LOGICAL_PATH),
-    protectedPaths: stringList(task["protectedPaths"], "protectedPaths", LOGICAL_PATH),
+    changeScope: stringList(task["changeScope"], "changeScope", isTaskPath),
+    protectedPaths: stringList(task["protectedPaths"], "protectedPaths", isTaskPath),
     verificationCommands: textList(task["verificationCommands"], "verificationCommands"),
     doneCriteria: textList(task["doneCriteria"], "doneCriteria"),
     risk,
@@ -365,7 +368,7 @@ function normalizeInput(value: unknown): TaskExecutionInput {
       capabilityGrantRefs: stringList(
         authority["capabilityGrantRefs"],
         "capabilityGrantRefs",
-        SAFE,
+        isSafe,
         "VES_EXECUTOR_INPUT_INVALID"
       )
     }),
@@ -374,33 +377,15 @@ function normalizeInput(value: unknown): TaskExecutionInput {
 }
 
 function logicalPath(value: string): string {
-  if (!LOGICAL_PATH.test(value)) fail("VES_EXECUTOR_SCOPE_DENIED", "Tool target is not a logical path");
+  if (!isTaskPath(value)) fail("VES_EXECUTOR_SCOPE_DENIED", "Tool target is not a logical path");
   return value.replaceAll(/\/{2,}/gu, "/").replace(/\/$/u, "");
-}
-
-function within(path: string, roots: readonly string[]): boolean {
-  return roots.some((root) => path === root || path.startsWith(`${root}/`));
-}
-
-function named(path: string): readonly string[] {
-  return path
-    .toLowerCase()
-    .split("/")
-    .filter((segment) => segment !== "" && segment !== ".");
-}
-
-// hazard: a case-insensitive volume, the macOS default, gives `src/Generated`
-// and `src/generated` one file, and `src/vendor/` names what `src/vendor`
-// names; a protected path is compared by what it names, in any letter case.
-export function isProtectedTaskPath(path: string, protectedPaths: readonly string[]): boolean {
-  const target = named(path);
-  return protectedPaths.some((entry) => named(entry).every((segment, index) => target[index] === segment));
 }
 
 function assertTarget(task: AtomicExecutionTask, value: string): string {
   const path = logicalPath(value);
   if (isProtectedTaskPath(path, task.protectedPaths)) fail("VES_EXECUTOR_PROTECTED_PATH", "Tool target is protected");
-  if (!within(path, task.changeScope)) fail("VES_EXECUTOR_SCOPE_DENIED", "Tool target is outside task scope");
+  if (!isWithinTaskScope(path, task.changeScope))
+    fail("VES_EXECUTOR_SCOPE_DENIED", "Tool target is outside task scope");
   return path;
 }
 
@@ -677,7 +662,7 @@ export class TaskExecutionCoordinator {
       taskId,
       capabilityGrantRef,
       operation: request["operation"],
-      targetPaths: stringList(request["targetPaths"], "targetPaths", LOGICAL_PATH, "VES_EXECUTOR_SCOPE_DENIED").map(
+      targetPaths: stringList(request["targetPaths"], "targetPaths", isTaskPath, "VES_EXECUTOR_SCOPE_DENIED").map(
         (path) => assertTarget(input.task, path)
       ),
       payloadRef: safe(request["payloadRef"], "payloadRef", "VES_EXECUTOR_TOOL_INVALID")

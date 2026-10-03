@@ -7,13 +7,12 @@ import type {
   ContextSourcePort,
   ContextSourceQuery
 } from "@verchestra/application";
-import type { DataClassificationValue } from "@verchestra/domain";
+import { isTaskPath, isWithinTaskPath, type DataClassificationValue } from "@verchestra/domain";
 
 import { runGitBytes } from "./task-worktree.ts";
 
 const OBJECT_ID = /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u;
 const SAFE = /^[A-Za-z0-9][A-Za-z0-9._:@/+-]{0,511}$/u;
-const LOGICAL_PATH = /^(?![A-Za-z]:)(?!\/)(?!.*\\)(?!.*(?:^|\/)\.\.(?:\/|$))[A-Za-z0-9._@+/-]+$/u;
 const TREE_ENTRY = /^([0-7]{6}) (blob|tree|commit) ([a-f0-9]{40}|[a-f0-9]{64}) +(-|\d+)\t(.+)$/su;
 // invariant: only ordinary committed files are context; symlinks (120000) and
 // submodules (160000) would point outside the reviewed revision.
@@ -45,18 +44,10 @@ function positive(value: number | undefined, fallback: number, label: string): n
   return selected;
 }
 
-function within(path: string, scope: string): boolean {
-  return scope === "." || path === scope || path.startsWith(`${scope}/`);
-}
-
-function validScope(scope: unknown): scope is string {
-  return typeof scope === "string" && (scope === "." || LOGICAL_PATH.test(scope));
-}
-
 function validPaths(paths: unknown, scope: string, maximum: number): paths is readonly string[] {
   if (!Array.isArray(paths) || paths.length === 0 || paths.length > maximum) return false;
   if (new Set(paths).size !== paths.length) return false;
-  return paths.every((path) => typeof path === "string" && LOGICAL_PATH.test(path) && within(path, scope));
+  return paths.every((path) => isTaskPath(path) && isWithinTaskPath(path, scope));
 }
 
 function treeFile(entry: string, scope: string): GitTreeFile | undefined {
@@ -64,7 +55,7 @@ function treeFile(entry: string, scope: string): GitTreeFile | undefined {
   if (match === null) fail("VES_GIT_CONTEXT_COMMAND_FAILED", "Git returned an unreadable tree entry");
   const [, mode = "", type, objectId = "", size, path = ""] = match;
   if (type !== "blob" || !FILE_MODES.has(mode)) return undefined;
-  if (!LOGICAL_PATH.test(path) || !within(path, scope)) return undefined;
+  if (!isTaskPath(path) || !isWithinTaskPath(path, scope)) return undefined;
   return Object.freeze({ path, objectId, sizeBytes: Number(size) });
 }
 
@@ -154,7 +145,7 @@ export class NodeGitContextSource implements ContextSourcePort {
 
   // Ordinary files under `scope` at `revision`, bounded by the entry limit.
   async listTree(revision: string, scope: string): Promise<readonly GitTreeFile[]> {
-    if (!OBJECT_ID.test(revision) || !validScope(scope))
+    if (!OBJECT_ID.test(revision) || !isTaskPath(scope))
       fail("VES_GIT_CONTEXT_INPUT_INVALID", "Revision or scope is not exact");
     const resolved = (await this.#git(["rev-parse", "--verify", "--end-of-options", `${revision}^{commit}`], 4_096))
       .toString("utf8")
@@ -205,7 +196,7 @@ export class NodeGitContextSource implements ContextSourcePort {
     if (Object.keys(row).some((key) => key !== "scope" && key !== "paths"))
       fail("VES_GIT_CONTEXT_INPUT_INVALID", "Git context query contains unknown fields");
     const scope = row["scope"];
-    if (!validScope(scope)) fail("VES_GIT_CONTEXT_INPUT_INVALID", "Git context scope is not a logical path");
+    if (!isTaskPath(scope)) fail("VES_GIT_CONTEXT_INPUT_INVALID", "Git context scope is not a logical path");
     const paths = row["paths"];
     if (paths === undefined) return { scope, paths: undefined };
     if (!validPaths(paths, scope, this.#maximumFiles))
