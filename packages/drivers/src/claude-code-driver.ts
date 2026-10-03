@@ -393,8 +393,8 @@ function claudeProtocol(channel: ProviderChannel, conversation: ClaudeConversati
     } else if (event["type"] === "assistant") {
       requestTools(event);
     } else if (event["type"] === "result") {
-      // why: a result counts once the session was announced; before that the
-      // stream is incomplete, whatever the result says.
+      // why: a result counts once the session was announced; a result before
+      // that leaves the run without one.
       if (initialized) channel.result();
       const usage = event["usage"] as Record<string, unknown> | undefined;
       const inputTokens = Number(usage?.["input_tokens"] ?? 0);
