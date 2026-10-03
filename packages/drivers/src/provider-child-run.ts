@@ -127,6 +127,13 @@ function jsonObject(line: string): Readonly<Record<string, unknown>> | undefined
     : undefined;
 }
 
+// invariant: the action runs after at least one poll phase of the event loop,
+// whatever phase asks: the check phase follows the poll phase of its own turn,
+// so of two immediates in a row the second always comes after a poll.
+function afterPendingEvents(action: () => void): void {
+  setImmediate(() => setImmediate(action));
+}
+
 class ProviderChild {
   readonly #run: ProviderChildRun;
   readonly #limit: number;
@@ -165,7 +172,9 @@ class ProviderChild {
     this.#wireStop();
     this.#protocol = run.protocol(this.#channel());
     this.#child.stderr.on("data", (chunk: Buffer) => this.#withinLimit(chunk.length));
-    this.#child.stdin.on("error", () => this.#inputFailed());
+    // why: a failed write is weighed once the output and the exit that were
+    // already waiting have been read.
+    this.#child.stdin.on("error", () => afterPendingEvents(() => this.#inputFailed()));
     this.#lines = createInterface({ input: this.#child.stdout, crlfDelay: Infinity });
     this.#lines.on("line", (line) => this.#line(line));
     this.#exited = new Promise((resolve) =>
@@ -240,9 +249,12 @@ class ProviderChild {
   }
 
   // invariant: a provider whose input can no longer be written to cannot be
-  // given what it is asked, so it is ended like a stream that failed.
+  // given what it is asked, so it is ended like a stream that failed. A
+  // provider that delivered its result, or that has exited, asked for nothing
+  // more: a fast provider can finish and exit before the run's first write,
+  // and its output and exit decide its run, not the write that found it gone.
   #inputFailed(): void {
-    if (this.#end === undefined) this.#fail(this.#code("STDIN_FAILED"));
+    if (this.#end === undefined && !this.#result && this.#running()) this.#fail(this.#code("STDIN_FAILED"));
   }
 
   #fail(code: string): void {

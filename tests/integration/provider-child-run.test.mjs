@@ -116,7 +116,7 @@ const errors = (events) =>
     .map(({ code, message, retryable }) => ({ code, message, retryable }));
 
 async function ended(run) {
-  await run.ended;
+  await run.ended.then(() => delay(50));
   return { errors: errors(run.events), outcome: run.close().outcome, terminations: run.asked.length };
 }
 
@@ -676,4 +676,106 @@ for (const profile of [EXITS_BY_ITSELF, ENDED_BY_THE_DRIVER]) {
       assert.equal(run.session.resources.stop, undefined);
     }
   );
+}
+
+// why: imported here, with the cases that use them, so that the lines of the
+// cases above stay where they were.
+import { readFile } from "node:fs";
+
+import { blockUntilExited } from "../helpers/process-liveness.mjs";
+
+// why: `ended()` waits a moment after the run before it reads how often the
+// terminator was asked, so a termination asked for after the run has reported
+// is counted in every case of this file.
+// hazard: a host that deschedules the run right after the spawn lets a fast
+// provider write its result and exit before the run's first write, which then
+// finds the input gone. These cases make that order certain: the conversation
+// blocks the run until the provider has exited, and only then writes. Each
+// run starts from a callback of the poll phase, which reaches the next poll
+// only through the check phase of its own turn: a failed write weighed there
+// would be weighed before the output and the exit that were waiting.
+function startInPollPhase(t, options) {
+  return new Promise((resolve) => readFile(FAKE, () => resolve(start(t, options))));
+}
+
+// invariant: a provider that delivered its result and exited cleanly before
+// the run wrote to it ended as it should; the write that found its input gone
+// neither fails the run nor asks for its termination.
+// why: a provider the driver ends may still be found running when its run
+// settles, before its exit is read, so how often the terminator was asked is
+// asserted only for a provider that exits by itself (as at the case above
+// "a provider the driver ends that exits with a failure after its result").
+for (const profile of [EXITS_BY_ITSELF, ENDED_BY_THE_DRIVER]) {
+  test(
+    `${profile.afterResult}: a provider that delivers its result and exits before the first write completes`,
+    OPTIONS,
+    async (t) => {
+      const run = await startInPollPhase(t, {
+        profile,
+        steps: [RESULT, { exit: 0 }],
+        protocol: (channel, handle) => ({
+          converse: async () => {
+            blockUntilExited(handle.spawned[0]);
+            channel.end(JSON.stringify({ ask: "go" }));
+          }
+        })
+      });
+      const { terminations, ...reported } = await ended(run);
+      assert.deepEqual(reported, { errors: [], outcome: "completed" });
+      if (profile === EXITS_BY_ITSELF)
+        assert.equal(terminations, 0, "the provider that ended by itself was asked to end");
+    }
+  );
+}
+
+// invariant: a provider that died before the run wrote to it is reported by
+// its exit, as any provider that died, and not as an input that failed.
+for (const profile of [EXITS_BY_ITSELF, ENDED_BY_THE_DRIVER]) {
+  test(
+    `${profile.afterResult}: a provider that dies before the first write is reported by its exit`,
+    OPTIONS,
+    async (t) => {
+      const run = await startInPollPhase(t, {
+        profile,
+        steps: [{ exit: 3 }],
+        protocol: (channel, handle) => ({
+          converse: async () => {
+            blockUntilExited(handle.spawned[0]);
+            channel.end(JSON.stringify({ ask: "go" }));
+          }
+        })
+      });
+      assert.deepEqual(await ended(run), {
+        errors: [processFailure("VES_FAKE_PROCESS_FAILED")],
+        outcome: "failed",
+        terminations: 0
+      });
+    }
+  );
+}
+
+// invariant: an input that fails once the run has its result changes nothing.
+// The provider closes its input before it writes its result and stays a while;
+// the run writes again when the result arrives, and that write fails.
+// hazard: on win32 the fake cannot close its input, so the write is taken and
+// nothing fails there; the case asserts the same outcome on every host.
+for (const profile of [EXITS_BY_ITSELF, ENDED_BY_THE_DRIVER]) {
+  test(`${profile.afterResult}: an input that fails after the result changes nothing`, OPTIONS, async (t) => {
+    const run = start(t, {
+      profile,
+      steps: [{ closeInput: true }, RESULT, { sleep: 300 }, { exit: 0 }],
+      protocol: (channel, handle) => ({
+        receive: (message) => {
+          handle.received.push(message);
+          if (message.result !== true) return;
+          channel.result();
+          channel.write(JSON.stringify({ ask: "more" }));
+        },
+        converse: async () => channel.write(JSON.stringify({ ask: "go" }))
+      })
+    });
+    const { terminations, ...reported } = await ended(run);
+    assert.deepEqual(reported, { errors: [], outcome: "completed" });
+    assert.equal(terminations, profile === EXITS_BY_ITSELF ? 0 : 1, "only the driver's own end asks for a termination");
+  });
 }

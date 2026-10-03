@@ -18,6 +18,15 @@ async function forkTree() {
 // that has descendants.
 const forks = process.env.FAKE_CLAUDE_FORK === "1";
 
+if (process.env.FAKE_CLAUDE_MODE === "hasty") {
+  // why: a provider that announces itself, reports its result and exits
+  // cleanly without reading its input, as fast as it can.
+  const init = JSON.stringify({ type: "system", subtype: "init", session_id: "private-session-id", model: "claude-opus-4-8", tools: [] });
+  const result = JSON.stringify({ type: "result", subtype: "success", is_error: false, result: "done", total_cost_usd: 0, usage: { input_tokens: 1, output_tokens: 1 }, session_id: "private-session-id" });
+  process.stdout.write(`${init}\n${result}\n`, () => process.exit(0));
+  await new Promise(() => setInterval(() => {}, 1_000));
+}
+
 if (process.env.FAKE_CLAUDE_MODE === "deaf") {
   // why: a provider that announces itself, closes its input before it has read
   // its prompt, and never answers.
