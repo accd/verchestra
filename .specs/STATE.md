@@ -1923,7 +1923,7 @@ note. -->
   copy of the rule appears. Evidence is in
   `.specs/features/architecture-deepening-2/validation-t1.md`.
 
-### AD-059 — One module writes what a T76 candidate build seals; the workflow runs it from the candidate revision (ADR2-2)
+### AD-059 — One module writes what a T76 candidate build seals; the workflow runs it from the dispatched commit, not the candidate (ADR2-2)
 
 - **Status:** proposed (ratified by reviewing the pull request that carries
   `refactor/candidate-evidence-writers`).
@@ -1939,7 +1939,7 @@ note. -->
      the gate profiles, the members of every sealed record, the build-info,
      gate evidence and index digest rules, and the three sealing steps
      `seal-gate`, `seal-target` and `reconcile`. The workflow calls them with
-     the inputs the programs read, in the same steps and order, and embeds no
+     the inputs the programs read, in the same sealing steps, and embeds no
      program that serializes, hashes or writes. The publisher and the
      materializer take the members and the digest rules from it. The builder
      writes `build-info.json` from its record and admits its gate profiles.
@@ -1957,22 +1957,34 @@ note. -->
      The golden test runs its programs and the module on the same inputs. The
      fixture is never refreshed: it is the reference for the bytes the
      published candidates were sealed with.
-  4. **A run is checked by replay.**
+  4. **The sealing program is the dispatched commit's.** Each job checks out
+     the commit the workflow was dispatched from (`github.sha`, depth 1,
+     credentials not persisted), moves it out of the candidate tree to
+     `$RUNNER_TEMP/t76-evidence-tooling`, proves its `HEAD` is `$GITHUB_SHA`,
+     and runs the module, with its domain encoder, from there; the candidate
+     checkout is only its input. The reason is custody: the program that
+     seals a candidate's evidence is the reviewed one on the dispatched ref,
+     as the embedded programs were, never one the candidate carries.
+  5. **A run is checked by replay.**
      `node tests/helpers/t76-inline-evidence-writers.mjs replay` re-seals a
      downloaded candidate run with both the programs and the module and
      compares every sealed file. The candidate runs of `.3`, `.4` and `.5`
      replay with 33 of 33 files identical.
-- **Consequence:** the workflow runs the module from the checked-out
-  candidate revision, as it already runs the builder and the gates. A revision
-  without the module cannot be built by it: the first gate seal fails after
-  the quick gate has run. Rebuilding an earlier revision means dispatching the
-  workflow from a ref that still embeds the programs. The published `.3`, `.4`
-  and `.5` candidates are unchanged. Evidence is in
-  `.specs/features/architecture-deepening-2/validation-t2.md`.
+- **Consequence:** any revision can be built, one without the module
+  included, and a candidate cannot change how its own evidence is sealed.
+  Each job gains two steps (the tooling checkout and its move) before its
+  first seal. The builder and the gates still run from the candidate, as
+  before; the builder's own use of the module's build-info record is the
+  candidate's build, and `seal-target` holds its output to the dispatched
+  commit's shape. The published `.3`, `.4` and `.5` candidates are unchanged.
+  Evidence is in `.specs/features/architecture-deepening-2/validation-t2.md`.
 - **Alternatives rejected:** keeping the programs in the workflow and
   asserting on their text (the friction the review named); running the module
-  from the dispatch ref (a second checkout, and evidence sealed by code outside
-  the revision it seals); taking the Node version from the build output alone
+  from the candidate checkout (a candidate could change the program that seals
+  its own evidence, and no revision before the module could be built); leaving
+  the tooling checkout inside the candidate tree (the gates, and the replica
+  the build tests copy from the working tree, would see a nested repository);
+  taking the Node version from the build output alone
   (it would seal whatever the build recorded instead of refusing a stale
   input); checking release identity across targets in the reconciliation (the
   publisher already refuses it, and it would state that rule twice).
