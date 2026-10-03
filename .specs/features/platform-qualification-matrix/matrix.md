@@ -152,7 +152,7 @@ serialization target* set, not a driver registry.
 | Claude Code | T03 minimum `2.1.168`, mediated minimum `2.1.282`, installed `2.1.282` | `packages/drivers/src/claude-code-driver.ts:448`; CI install `platform-matrix.yml:194` | **Yes** — `spikes/claude-code-driver/test/claude-driver.test.mjs:39`, `--version` only; the mediated flags are read from `--help` |
 | Codex | `0.115.0` | `codex-driver.ts:254`; same CI line | **Yes** — `spikes/codex-driver/test/codex-driver.test.mjs:13` |
 | OpenCode | minimum `1.17.18`, installed `1.18.33` | `opencode-driver.ts:252`; root devDependency | **Yes** — `spikes/opencode-driver/test/opencode-driver.test.mjs:79` |
-| Pi | `0.87.1` | `packages/drivers/src/pi-driver.ts:19` | **Yes** — `PiDriver.probe()` resolves the installed `@earendil-works/pi-agent-core/package.json`, rejects drift, and reports the observed version |
+| Pi | `0.99.1` | `packages/drivers/src/pi-driver.ts:19` | **Yes** — `PiDriver.probe()` resolves the installed `@earendil-works/pi-agent-core/package.json`, rejects drift, and reports the observed version |
 
 Every other driver test in the repository is fake-backed (`fake-claude.mjs`,
 `fake-codex-app-server.mjs`, `fake-opencode.mjs`, `DeterministicMockDriver`,
@@ -173,8 +173,8 @@ persists portable completion evidence. The unit scenario at
 `tests/unit/verification-driver-isolation.test.mjs:142` remains a lower-level
 guard using mock drivers; it is not the sole cross-driver evidence anymore.
 
-**Remaining gap:** Pi's real probe is covered by the 0.87.1 requalification
-record in `docs/qualification/pi-runtime-0.87.1.md`; no live provider call is
+**Remaining gap:** Pi's real probe is covered by the 0.99.1 requalification
+record in `docs/qualification/pi-runtime-0.99.1.md`; no live provider call is
 implied by the deterministic verifier fixture.
 
 ## 5. Sandbox / isolation matrix
@@ -266,11 +266,11 @@ other engine, which is consistent with the finding above.
 > filed post-1.0. This supersedes the (c) recommendation below, which assumed
 > the choice was only about what Verchestra's own CI could run.
 >
-> **D2 → the Pi probe reads reality.** The 0.87.1 requalification makes
+> **D2 → the Pi probe reads reality.** The 0.99.1 requalification makes
 > `PiDriver.probe()` resolve the installed package manifest, report
 > `not configured` when absent, and reject any version other than the exact
 > qualified pin. Pi is an embedded SDK, so the version is genuinely there to
-> read and the probe can fail closed. Evidence: `docs/qualification/pi-runtime-0.87.1.md`.
+> read and the probe can fail closed. Evidence: `docs/qualification/pi-runtime-0.99.1.md`.
 
 The original decision briefs are kept below for provenance.
 
