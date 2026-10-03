@@ -262,12 +262,8 @@ export class CodexDriver implements Driver {
     lines.on("line", (line) => {
       outputBytes += Buffer.byteLength(line) + 1;
       if (outputBytes > maximum) return fail("VES_CODEX_OUTPUT_LIMIT");
-      let message: Record<string, unknown>;
-      try {
-        message = JSON.parse(line) as Record<string, unknown>;
-      } catch {
-        return fail("VES_CODEX_STREAM_INVALID");
-      }
+      const message = protocolMessage(line);
+      if (message === undefined) return fail("VES_CODEX_STREAM_INVALID");
       if (typeof message["id"] === "number" && (Object.hasOwn(message, "result") || Object.hasOwn(message, "error"))) {
         const waiter = pending.get(message["id"]);
         if (waiter !== undefined) {
@@ -453,4 +449,18 @@ export class CodexDriver implements Driver {
       if (!Number.isSafeInteger(value) || value < 0)
         throw codexError("VES_CODEX_LIMIT_INVALID", "Codex execution limit is invalid");
   }
+}
+
+// invariant: every App Server line is a JSON object. A line that parses to
+// anything else is a broken stream, and `null` must not reach a member read.
+function protocolMessage(line: string): Record<string, unknown> | undefined {
+  let message: unknown;
+  try {
+    message = JSON.parse(line);
+  } catch {
+    return undefined;
+  }
+  return message !== null && typeof message === "object" && !Array.isArray(message)
+    ? (message as Record<string, unknown>)
+    : undefined;
 }

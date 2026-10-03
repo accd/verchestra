@@ -498,3 +498,85 @@ for (const row of SESSION_MATRIX) {
     assert.deepEqual(await driver.close(session), { sessionId: session.sessionId, closed: true, alreadyClosed: true });
   });
 }
+
+// why: the child run axis. Claude Code and Codex each run a provider child,
+// and what can go wrong per driver is how that run is wired: the codes it
+// reports, and whether it ends its provider through the injected terminator.
+// Each end names the fake's mode, the error codes literally, the outcome the
+// close reports, and how often the terminator was asked. The rows are declared
+// here, after the axes above, so that the lines the validation evidence cites
+// stay where they are.
+import { reap } from "../helpers/process-tree-fixture.mjs";
+
+const CHILD_RUN_ROWS = [
+  {
+    driverId: "claude-code",
+    Driver: ClaudeCodeDriver,
+    fixtureOf: claudeFixture,
+    variable: "FAKE_CLAUDE_MODE",
+    ends: [
+      {
+        name: "writes lines that parse as JSON and are not objects",
+        mode: "not-an-object",
+        errors: ["VES_CLAUDE_STREAM_INVALID"],
+        outcome: "failed",
+        terminations: 1
+      }
+    ]
+  },
+  {
+    driverId: "codex",
+    Driver: CodexDriver,
+    fixtureOf: codexFixture,
+    variable: "FAKE_CODEX_MODE",
+    ends: [
+      {
+        name: "writes lines that parse as JSON and are not objects",
+        mode: "not-an-object",
+        errors: ["VES_CODEX_STREAM_INVALID"],
+        outcome: "failed",
+        terminations: 1
+      }
+    ]
+  }
+];
+
+// hazard: a driver that does not end its provider would leave the run, and
+// the fake, alive after the case fails; the provider is killed by id when the
+// case ends.
+async function childRunEnd(t, row, { mode, execution = {} }) {
+  const fixture = row.fixtureOf({ environment: { [row.variable]: mode }, ...execution });
+  const dependencies = fixture.dependencies();
+  const onSpawn = (pid) => {
+    dependencies.onSpawn(pid);
+    reap(t, () => [pid]);
+  };
+  const driver = new row.Driver({ ...dependencies, onSpawn });
+  const events = [];
+  const session = await driver.start(fixture.request(), (event) => events.push(event), new AbortController().signal);
+  return {
+    errors: events.filter((event) => event.type === "error").map((event) => event.code),
+    outcome: (await driver.close(session)).outcome,
+    terminations: fixture.calls.terminate
+  };
+}
+
+test("the child run axis covers exactly the drivers that run a provider child", () => {
+  assert.deepEqual(
+    CHILD_RUN_ROWS.map((row) => row.driverId),
+    ["claude-code", "codex"]
+  );
+});
+
+for (const row of CHILD_RUN_ROWS) {
+  for (const end of row.ends) {
+    test(
+      `${row.driverId}: a provider that ${end.name} ends as the driver reports it`,
+      { timeout: 30_000 },
+      async (t) => {
+        const { errors, outcome, terminations } = end;
+        assert.deepEqual(await childRunEnd(t, row, end), { errors, outcome, terminations });
+      }
+    );
+  }
+}
