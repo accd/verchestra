@@ -1923,6 +1923,60 @@ note. -->
   copy of the rule appears. Evidence is in
   `.specs/features/architecture-deepening-2/validation-t1.md`.
 
+### AD-059 — One module writes what a T76 candidate build seals; the workflow runs it from the candidate revision (ADR2-2)
+
+- **Status:** proposed (ratified by reviewing the pull request that carries
+  `refactor/candidate-evidence-writers`).
+- **Context:** `.github/workflows/t76-candidate-build.yml` wrote
+  `gate-evaluations.json`, `target-build-evidence.json` and
+  `t76-target-index.json` through three programs embedded in the workflow. No
+  test ran them. The publisher, the materializer, the builder and the
+  publication fixture each restated what they wrote, and a change to one was
+  proven only by a real five-target dispatch (architecture review of
+  2026-10-02, card 3).
+- **Decision:**
+  1. **One module.** `scripts/t76-candidate-evidence.mjs` states the fleet,
+     the gate profiles, the members of every sealed record, the build-info,
+     gate evidence and index digest rules, and the three sealing steps
+     `seal-gate`, `seal-target` and `reconcile`. The workflow calls them with
+     the inputs the programs read, in the same steps and order, and embeds no
+     program that serializes, hashes or writes. The publisher and the
+     materializer take the members and the digest rules from it. The builder
+     writes `build-info.json` from its record and admits its gate profiles.
+     `t76-signing-custody.mjs` re-exports its fleet, so the publisher and the
+     refresh keep one binding.
+  2. **The same bytes, or a refusal.** For every input the programs accepted,
+     the module writes the same bytes or refuses. It refuses what they sealed
+     without looking: a target or a release identity the build output does
+     not record (they took the target from the matrix and a typed Node
+     version, and the release from the dispatch), an unknown or repeated gate,
+     a status that is not a decimal exit status, and a record of the wrong
+     shape.
+  3. **The reference is frozen.** `tests/fixtures/t76-inline-evidence-writers/`
+     holds main's workflow at `23f29e1` byte for byte, pinned by its sha256.
+     The golden test runs its programs and the module on the same inputs. The
+     fixture is never refreshed: it is the reference for the bytes the
+     published candidates were sealed with.
+  4. **A run is checked by replay.**
+     `node tests/helpers/t76-inline-evidence-writers.mjs replay` re-seals a
+     downloaded candidate run with both the programs and the module and
+     compares every sealed file. The candidate runs of `.3`, `.4` and `.5`
+     replay with 33 of 33 files identical.
+- **Consequence:** the workflow runs the module from the checked-out
+  candidate revision, as it already runs the builder and the gates. A revision
+  without the module cannot be built by it: the first gate seal fails after
+  the quick gate has run. Rebuilding an earlier revision means dispatching the
+  workflow from a ref that still embeds the programs. The published `.3`, `.4`
+  and `.5` candidates are unchanged. Evidence is in
+  `.specs/features/architecture-deepening-2/validation-t2.md`.
+- **Alternatives rejected:** keeping the programs in the workflow and
+  asserting on their text (the friction the review named); running the module
+  from the dispatch ref (a second checkout, and evidence sealed by code outside
+  the revision it seals); taking the Node version from the build output alone
+  (it would seal whatever the build recorded instead of refusing a stale
+  input); checking release identity across targets in the reconciliation (the
+  publisher already refuses it, and it would state that rule twice).
+
 ## Handoff
 
 - **Feature:** `subscription-provider-auth` (ADP-A, tasks TA1 and TA2) on
