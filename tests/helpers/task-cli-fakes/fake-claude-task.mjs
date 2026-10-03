@@ -111,6 +111,9 @@ emit({
   session_id: "private-session-id",
   model,
   tools,
+  // why: 2.1.282 reports where an API key came from; an OAuth token is not
+  // one, so a subscription session reports none.
+  apiKeySource: bare ? "ANTHROPIC_API_KEY" : "none",
   mcp_servers: [{ name: "verchestra", status: "connected" }]
 });
 
