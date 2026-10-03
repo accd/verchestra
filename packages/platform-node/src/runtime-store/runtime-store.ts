@@ -306,12 +306,18 @@ export class RuntimeStore {
     return applied;
   }
 
+  // why: the ledger a backup manifest carries (backupTo), so a restore can be
+  // matched to a compatible release.
   migrationLedger(): readonly { readonly id: string; readonly checksum: string }[] {
     return (
       this.#database().prepare("SELECT id, checksum FROM ves_migrations ORDER BY id").all() as UnknownRecord[]
     ).map((row) => ({ id: String(row.id), checksum: String(row.checksum) }));
   }
 
+  // why: no product path calls this. The first round's plan keeps the
+  // downgrade refusal as a method, so VES_RUNTIME_DOWNGRADE_UNSUPPORTED has
+  // a thrower; a downgrade the product meets is refused by open() instead
+  // (VES_RUNTIME_MIGRATION_INCOMPATIBLE).
   downgradeTo(migrationId: string): never {
     throw runtimeError(
       "VES_RUNTIME_DOWNGRADE_UNSUPPORTED",
@@ -319,6 +325,10 @@ export class RuntimeStore {
     );
   }
 
+  // why: no product path reads this. It is the only observation of the
+  // per-connection settings open() applies: nothing outside this connection
+  // can read its busy timeout or writable_schema, and the T15 qualification
+  // proves them through it.
   safetySettings(): {
     readonly journalMode: string;
     readonly foreignKeys: number;
@@ -1083,10 +1093,19 @@ export class RuntimeStore {
     });
   }
 
+  // why: no product path reads this yet. It is the live side of the state
+  // digest a backup manifest binds, and the only whole-state observation the
+  // store offers: the fault suite proves through it that a refused or failed
+  // write changes nothing.
   stateDigest(): string {
     return runtimeStateDigest(this.#database());
   }
 
+  // why: no command composes this yet. It is the only producer of a verified
+  // backup (a staged copy that passes inspectRuntimeDatabase, bound to its
+  // byte digest, state digest and migration ledger), which is the recovery
+  // the catalog prescribes for VES_RUNTIME_CORRUPT and
+  // VES_RUNTIME_CHECKPOINT_CORRUPT, two codes the task commands raise.
   async backupTo(targetPath: string): Promise<{
     readonly code: "VES_RUNTIME_BACKUP_READY";
     readonly path: string;
