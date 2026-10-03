@@ -27,7 +27,7 @@ handoff's `lastGate`). No test, gate, or assertion was changed.
 
 | Blocker | Resolution | Date (UTC) | Recorded by |
 | --- | --- | --- | --- |
-| 1 Candidate published | `verchestra@0.0.0-qualification.5`, `latest` on npm since 2026-10-02, `dist.integrity` `sha512-1nO4…SfSQ==`, declared source revision `e17abb3c8970b72c837bbbd07f86b4676ca9adb3`; carries the subscription path (ADP-A); live update and rollback `.4` → `.5` passed on five targets (run 37047903756) | 2026-10-03 | owner `accd` (decision); coordinating agent session (record) |
+| 1 Candidate published | `verchestra@0.0.0-qualification.6`, `latest` on npm since 2026-10-03, `dist.integrity` `sha512-8Qutpu…ApNP7Q==`, declared source revision `7e274f237648251b972081471134623097122c16` (ledger sequence 6); carries the subscription path (ADP-A), the protected-path fix (#485) and the complete run usage account (AD-055, AD-056). It replaced `.5` (named the same day) before any run; live update and rollback `.5` → `.6` on five targets is run 37152404760, recorded in `.specs/features/live-activation-matrix/validation.md` | 2026-10-03 | owner `accd` (decision); coordinating agent session (record) |
 | 2 Usage and time approved | The ceilings of `spec.md` §6 approved as proposed: 3,000,000 tokens per task run, S1 1,000,000, S2 and S3 2,000,000 each, the per-run durations, and at most four hours of operator time | 2026-10-03 | owner `accd` |
 | 3 Provider access and model availability | The owner's Claude subscription and ChatGPT plan. Model availability is confirmed only by the first run; a refusal is a stop rule (§6). The owner binds `claude-code-oauth-token` and `evidence-signing-passphrase` and signs Codex in at T2 | 2026-10-03 | owner `accd` |
 | 4 Machine | The owner's own account on the owner's Mac (macOS arm64), not a fresh account; Node 24.14.0 first on `PATH` for the pilot session. Recorded as a deviation from §8 step 1 | 2026-10-03 | owner `accd` |
@@ -45,7 +45,7 @@ handoff's `lastGate`). No test, gate, or assertion was changed.
 | Claude Code | 2.1.282 (Claude Code), first `claude` on `PATH`; with `CLAUDE_CONFIG_DIR` and `HOME` pointing at two new empty directories, `claude auth status` reports `loggedIn: false` (§8 step 5) |
 | Codex CLI | codex-cli 0.159.3, first `codex` on `PATH` (meets the driver minimum 0.115.0 in major 0; differs from the 0.157.1 of the pre-registration machine, recorded under Deviations) |
 | Credential mode (`providerAuth` in the plan output) | recorded from the first plan output (P1) |
-| Candidate `--version` / `dist.integrity` / `gitHead` / declared source revision | `Verchestra 0.0.0-qualification.5 (source build, no verified release artifact)` as printed by the activated release / `sha512-1nO4…SfSQ==` / `unavailable` (the package carries none) / `e17abb3c8970b72c837bbbd07f86b4676ca9adb3` |
+| Candidate `--version` / `dist.integrity` / `gitHead` / declared source revision | recorded at the first run on `.6` / `sha512-8Qutpu…ApNP7Q==` / `unavailable` (the package carries none) / `7e274f237648251b972081471134623097122c16` |
 | Baseline `node --test test.js` counts | `tests 4, pass 4, fail 0, cancelled 0, skipped 0, todo 0` at `1fffec16713ca76c85dcda696abca9d011f9c51b`, environment `PATH`, `HOME`, `CI=1` |
 | First checkout fingerprint (digest) | `sha256:8d4e46e0d5d4b8a93f83d890825958c7404d75d2dea3284e049a0b7bb9359ef0`, taken after `init` (which adds `.verchestra/` and modifies `.gitignore`) and after the unrelated work |
 
@@ -79,6 +79,7 @@ value cannot be observed; nothing is estimated.
 | 2026-10-03, before any run | Machine: the owner's own account, not a fresh account (`spec.md` §8 step 1) | Owner decision; the pilot Workspace, its Codex identity directory and its credentials are still created for the pilot and deleted after it (§8 step 11) | all |
 | 2026-10-03, before any run | No independent reviewer; T8 not performed | No second person exists (owner statement) | all; the report says so |
 | 2026-10-03, before any run | Codex CLI 0.159.3 instead of 0.157.1 (`spec.md` §3) | The installed Codex updated itself after pre-registration; it meets the driver minimum, and the verifier model is unchanged | all |
+| 2026-10-03, before any run | Candidate `.5` → `.6` (`spec.md` §2), with §5 S2 and §7 usage rows restated | `.6` carries the protected-path fix (#485) and the complete usage account (AD-055, AD-056); in `.6` `checkpoints.budget` covers implementer and verifier | all |
 
 ## Independent review (T8)
 
