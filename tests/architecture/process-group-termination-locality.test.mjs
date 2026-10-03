@@ -57,10 +57,29 @@ test("no other product source signals a process group or runs the Windows tree k
   assert.deepEqual(copies, ["packages/drivers/src/driver-process-tree.ts"]);
 });
 
-test("the activation launcher ends a child through the shared routine", () => {
-  const launcher = code(
-    readFileSync(join(repositoryRoot, "packages/platform-node/src/activation-launcher-adapters.ts"), "utf8")
-  );
-  assert.match(launcher, /terminateProcessGroup\(pid,/u);
-  assert.match(launcher, /VES_LAUNCHER_TERMINATION_INCOMPLETE/u);
+// invariant: a child platform-node runs to a time and an output bound is run
+// by one routine (ADR2-5). It is the only caller of the group termination
+// outside the terminator itself; the gate runner and the activation health
+// gate keep only their verdicts and name their own termination refusal.
+const BOUNDED_RUN = "packages/platform-node/src/bounded-child-run.ts";
+const read = (path) => code(readFileSync(join(repositoryRoot, path), "utf8"));
+
+test("only the bounded child run ends a process group through the shared termination", () => {
+  const callers = productSources
+    .filter((path) => path !== OWNER)
+    .filter((path) => /\bterminateProcessGroup\(/u.test(read(path)));
+  assert.deepEqual(callers, [BOUNDED_RUN]);
+  assert.match(read(BOUNDED_RUN), /\bsetTimeout\(/u);
 });
+
+for (const [path, refusal] of [
+  ["packages/platform-node/src/gate-commit-adapters.ts", "VES_GATE_ADAPTER_TERMINATION_INCOMPLETE"],
+  ["packages/platform-node/src/activation-launcher-adapters.ts", "VES_LAUNCHER_TERMINATION_INCOMPLETE"]
+])
+  test(`${path} runs its child through the bounded child run and keeps only its verdict`, () => {
+    const source = read(path);
+    assert.match(source, /\brunBoundedChild\(/u);
+    assert.match(source, new RegExp(`incomplete: \\(\\) =>\\s+fail\\("${refusal}"`, "u"));
+    assert.doesNotMatch(source, /\bsetTimeout\(/u, "it runs a timer of its own");
+    assert.doesNotMatch(source, /\bdetached:/u, "it spawns a bounded child of its own");
+  });

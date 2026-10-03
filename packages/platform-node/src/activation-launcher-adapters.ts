@@ -5,7 +5,7 @@ import { isAbsolute, relative, resolve, sep } from "node:path";
 import { canonicalizeJsonV2 } from "@verchestra/domain";
 
 import { ActivationLauncherError, type ActivationLauncherErrorCode } from "./activation-launcher-errors.ts";
-import { terminateProcessGroup } from "./process-tree-terminator.ts";
+import { runBoundedChild, type BoundedChildExit } from "./bounded-child-run.ts";
 
 // NPX-05/NPX-06/NPX-07. `ActivationHealthGatePort` is declared by
 // packages/distribution, but a process-spawning implementation is a concrete
@@ -104,14 +104,6 @@ interface ObservedLauncherReport {
   readonly releaseDigest: string;
   readonly checks: readonly Readonly<Record<string, unknown>>[];
   readonly behavior: unknown;
-}
-
-interface ChildObservation {
-  readonly exitCode: number | null;
-  readonly signal: NodeJS.Signals | null;
-  readonly output: string;
-  readonly timedOut: boolean;
-  readonly outputLimitExceeded: boolean;
 }
 
 const fail = (code: ActivationLauncherErrorCode, message: string, cause?: unknown): never => {
@@ -220,16 +212,9 @@ function uniqueComponent(
   return matches[0]!;
 }
 
-// why: the launcher ends a child through the one qualified group termination
-// instead of a copy of it. The copy treated every error but ESRCH as fatal, so
-// on Darwin a fully killed group whose members were zombies awaiting their
-// reaper (EPERM) failed the activation it had just stopped correctly.
-function terminateTree(pid: number): Promise<void> {
-  return terminateProcessGroup(pid, () =>
-    fail("VES_LAUNCHER_TERMINATION_INCOMPLETE", "launcher process group remained alive after termination")
-  );
-}
-
+// why: the launcher runs each child through the one bounded child run of the
+// package, so a fix to how a child is stopped (the Darwin zombie rule, #480)
+// reaches the activation gate and the gate runner at once.
 async function observeChild(
   executable: string,
   args: readonly string[],
@@ -239,61 +224,20 @@ async function observeChild(
     readonly timeoutMs: number;
     readonly outputLimitBytes: number;
   }
-): Promise<ChildObservation> {
-  const captured: Buffer[] = [];
-  let capturedBytes = 0;
-  let totalBytes = 0;
-  let timedOut = false;
-  let outputLimitExceeded = false;
-  let termination: Promise<void> | undefined;
-  const child = spawn(executable, [...args], {
-    cwd: limits.cwd,
-    env: limits.env,
-    shell: false,
-    windowsHide: true,
-    detached: process.platform !== "win32",
-    stdio: ["ignore", "pipe", "pipe"]
+): Promise<BoundedChildExit> {
+  const observation = await runBoundedChild({
+    executable,
+    args,
+    ...limits,
+    incomplete: () =>
+      fail("VES_LAUNCHER_TERMINATION_INCOMPLETE", "launcher process group remained alive after termination")
   });
-  const collect = (chunk: Buffer): void => {
-    totalBytes += chunk.byteLength;
-    const remaining = Math.max(0, limits.outputLimitBytes - capturedBytes);
-    if (remaining > 0) {
-      const part = chunk.subarray(0, remaining);
-      captured.push(part);
-      capturedBytes += part.byteLength;
-    }
-    if (totalBytes > limits.outputLimitBytes && !outputLimitExceeded) {
-      outputLimitExceeded = true;
-      termination ??= terminateTree(child.pid!);
-    }
-  };
-  child.stdout.on("data", collect);
-  child.stderr.on("data", collect);
-  const timer = setTimeout(() => {
-    timedOut = true;
-    termination ??= terminateTree(child.pid!);
-  }, limits.timeoutMs);
-  const closed = await new Promise<{ readonly code: number | null; readonly signal: NodeJS.Signals | null }>(
-    (settle, reject) => {
-      child.once("error", reject);
-      child.once("close", (code, signal) => settle({ code, signal }));
-    }
-  )
-    .catch((error: unknown) =>
-      fail("VES_LAUNCHER_PROCESS_FAILED", "the activated launcher could not be started", error)
-    )
-    .finally(() => clearTimeout(timer));
-  await termination;
-  return Object.freeze({
-    exitCode: closed.code,
-    signal: closed.signal,
-    output: Buffer.concat(captured).toString("utf8"),
-    timedOut,
-    outputLimitExceeded
-  });
+  if (observation.ended === "spawn-failed")
+    return fail("VES_LAUNCHER_PROCESS_FAILED", "the activated launcher could not be started", observation.error);
+  return observation;
 }
 
-function assertNormalTermination(observation: ChildObservation, componentId: string): void {
+function assertNormalTermination(observation: BoundedChildExit, componentId: string): void {
   if (observation.timedOut) fail("VES_LAUNCHER_TIMEOUT", `${componentId} exceeded its activation health budget`);
   if (observation.outputLimitExceeded)
     fail("VES_LAUNCHER_OUTPUT_EXCEEDED", `${componentId} produced more output than the health bound allows`);
@@ -444,7 +388,7 @@ export class NodeActivationHealthGate {
         }
       );
       assertNormalTermination(observation, componentId);
-      reports.push(parseLauncherReport(observation.output, componentId, bundle));
+      reports.push(parseLauncherReport(observation.output.toString("utf8"), componentId, bundle));
     }
     return evidenceFrom(reports);
   }

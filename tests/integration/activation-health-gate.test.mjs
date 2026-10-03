@@ -94,6 +94,37 @@ test("the behavior digest is derived from launcher output, not from the manifest
   );
 });
 
+// invariant: the evidence is what it was before the launcher's child moved
+// into the bounded child run (ADR2-5); these digests were taken from the gate
+// on main before the change. The release digest is left out: it binds the
+// staged runtime, which is this host's Node.
+test("the observed health evidence of the fixture launchers is unchanged", async () => {
+  const { bundle, releaseRoot } = await executableReleaseRoot();
+  const evidence = await new NodeActivationHealthGate().evaluate({ releaseRoot, bundle });
+  assert.deepEqual(evidence.checks, [
+    {
+      name: "migration",
+      status: "pass",
+      evidenceDigest: "sha256:f3b6aee51037c736bdc24865736f3409f0defbfcd1a56e92f4f0258002e6cd7f"
+    },
+    {
+      name: "native",
+      status: "pass",
+      evidenceDigest: "sha256:31a87d143bb987f28d00cc7a312fbc0990fe9756efdc47f773f10637e1748a19"
+    },
+    {
+      name: "driver",
+      status: "pass",
+      evidenceDigest: "sha256:76350a521d2d4ca075513e1913aafbb478b5481e71c6cdc7f08804a628b20398"
+    }
+  ]);
+  for (const launcher of evidence.launchers)
+    assert.equal(
+      launcher.normalizedBehaviorDigest,
+      "sha256:491c226a09884e48a849dbb474e31337a91c72d3c12e10ac8834c16ab89b8b0c"
+    );
+});
+
 test("the same observed launcher output produces the same evidence twice", async () => {
   const { bundle, releaseRoot } = await executableReleaseRoot();
   const gate = new NodeActivationHealthGate();
