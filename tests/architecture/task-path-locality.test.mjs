@@ -102,7 +102,7 @@ const STAGES = Object.freeze({
   "packages/platform-node/src/git-worktree-adapter.ts": ["isTaskPath"],
   "packages/platform-node/src/git-context-source.ts": ["isTaskPath", "isWithinTaskPath"],
   "apps/vestra-cli/src/task/task-codex.ts": ["isTaskPath"],
-  "apps/vestra-cli/src/task/task-verifier.ts": ["isWithinTaskScope"]
+  "apps/vestra-cli/src/task/task-mutation-sensor.ts": ["isWithinTaskScope"]
 });
 
 for (const [path, names] of Object.entries(STAGES))

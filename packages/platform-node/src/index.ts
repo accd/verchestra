@@ -101,9 +101,9 @@ export { RuntimeAuthorityStore } from "./authority-store-adapter.ts";
 export {
   GitWorktreeError,
   NodeGitWorktreeAdapter,
-  scratchWorktreeHandle,
   type GitWorktreeErrorCode,
-  type NodeGitWorktreeAdapterOptions
+  type NodeGitWorktreeAdapterOptions,
+  type ScratchCheckout
 } from "./git-worktree-adapter.ts";
 export {
   isGitObjectId,

@@ -68,3 +68,14 @@ test("only the task worktree module spawns git on the task path", () => {
   assert.deepEqual(spawners, [], `git is also spawned in: ${spawners.join(", ")}`);
   assert.match(code(readFileSync(join(repoRoot, OWNER), "utf8")), spawn);
 });
+
+// invariant: a worktree, including verification's scratch checkout, is added
+// and removed only by the worktree adapter (ADR2-4), so every removal reports
+// what it left behind instead of a caller swallowing it.
+test("only the worktree adapter adds, removes, or prunes a worktree", () => {
+  const adapter = "packages/platform-node/src/git-worktree-adapter.ts";
+  const lifecycle = /["'`]worktree["'`]\s*,\s*["'`](?:add|remove|prune)["'`]/u;
+  const copies = files.filter(({ path, source }) => path !== adapter && lifecycle.test(source)).map(({ path }) => path);
+  assert.deepEqual(copies, [], `a worktree is also added or removed in: ${copies.join(", ")}`);
+  assert.match(code(readFileSync(join(repoRoot, adapter), "utf8")), lifecycle);
+});

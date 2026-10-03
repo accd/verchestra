@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { lstat, readFile, readlink } from "node:fs/promises";
+import { lstat, readFile, readlink, rm } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 
 import type { ExecutionWorktreePort } from "@verchestra/application";
@@ -100,11 +100,21 @@ function handleFor(id: string, baseCommit: string): string {
   );
 }
 
-// why: verification registers its own scratch checkout of a commit under a root
-// it owns and runs gates there. The gate runner accepts only a handle, so the
-// owner of the encoding issues one for the checkout directory named `id`.
-export function scratchWorktreeHandle(checkout: { readonly id: string; readonly commitId: string }): string {
-  return handleFor(checkout.id, checkout.commitId);
+export interface ScratchCheckout {
+  // invariant: a real directory directly below the adapter's canonical root.
+  readonly directory: string;
+  // why: the gate runner accepts only a handle; the owner of the encoding
+  // issues it for the checkout, so no caller knows how a handle names one.
+  readonly worktreeRef: string;
+}
+
+async function isLink(path: string): Promise<boolean> {
+  try {
+    return (await lstat(path)).isSymbolicLink();
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+    throw error;
+  }
 }
 
 export class NodeGitWorktreeAdapter implements ExecutionWorktreePort {
@@ -268,6 +278,55 @@ export class NodeGitWorktreeAdapter implements ExecutionWorktreePort {
   // that must confine their own effects to it.
   async resolvePath(worktreeRef: string): Promise<string> {
     return (await this.#resolve(worktreeRef)).directory;
+  }
+
+  // why: verification checks a commit out where the user's checkout cannot
+  // see it, changes it, and runs gates there. The name only has to be stable
+  // for one checkout: one a killed verification left under the same name is
+  // replaced, never reused.
+  // invariant: the checkout is removed whether `use` succeeds or fails, and a
+  // removal that leaves it behind is reported. When both fail, the removal is
+  // what is reported: a verification can be run again, while a checkout left
+  // registered in the user's repository needs a person.
+  async withScratchCheckout<T>(
+    checkout: { readonly name: string; readonly commitId: string },
+    use: (checkout: ScratchCheckout) => Promise<T>
+  ): Promise<T> {
+    if (!isGitObjectId(checkout.commitId))
+      fail("VES_GIT_WORKTREE_INPUT_INVALID", "Scratch commit must be a complete Git object ID");
+    const roots = await this.#qualifiedRoots();
+    const id = createHash("sha256").update(checkout.name).digest("hex").slice(0, 32);
+    const directory = await answered(() => worktreeDirectory(roots.worktreesRoot, id));
+    await this.#removeScratch(roots.repositoryRoot, directory);
+    try {
+      await this.#git(roots.repositoryRoot, ["worktree", "add", "--detach", "--", directory, checkout.commitId]);
+      await answered(() => assertWorktreeDirectory(directory, roots.worktreesRoot));
+      return await use(Object.freeze({ directory, worktreeRef: handleFor(id, checkout.commitId) }));
+    } finally {
+      await this.#removeScratch(roots.repositoryRoot, directory);
+    }
+  }
+
+  // invariant: when this returns, neither the scratch directory nor Git's
+  // registration of it remains; anything left behind is a refusal.
+  // hazard: a link in the checkout's place is refused before the recursive
+  // delete could follow it out of the scratch root.
+  async #removeScratch(repositoryRoot: string, directory: string): Promise<void> {
+    if (await isLink(directory)) fail("VES_GIT_WORKTREE_ESCAPE", "Worktree target is not a real directory");
+    let removal: unknown;
+    // why: Git refuses a directory it does not list, and on Windows a file a
+    // gate process still holds open; the delete below retries, so only what
+    // remains afterwards is a failure.
+    await this.#git(repositoryRoot, ["worktree", "remove", "--force", "--", directory]).catch((error: unknown) => {
+      removal = error;
+    });
+    await rm(directory, { recursive: true, force: true, maxRetries: 3 });
+    await this.#git(repositoryRoot, ["worktree", "prune"]);
+    const listed = registeredWorktrees((await this.#git(repositoryRoot, ["worktree", "list", "--porcelain"])).stdout);
+    if (listed.has(directory))
+      fail("VES_GIT_WORKTREE_COMMAND_FAILED", "Scratch checkout is still registered after its removal", {
+        cause: removal
+      });
   }
 
   async #assertAnchorable(runId: string, taskId: string): Promise<void> {

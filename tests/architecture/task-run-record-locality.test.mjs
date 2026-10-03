@@ -130,8 +130,8 @@ test("no task command reads the Execution Package without the plan digest check"
 
 // invariant: the refusal of a link below a task state root is defined once,
 // beside the roots themselves. The Run record reaches every path of the Run
-// directory through its two checked functions, and the verifier reaches its
-// scratch checkouts through one.
+// directory through its two checked functions, and verification reaches its
+// scratch checkouts through one, in the task Workspace module (ADR2-4).
 test("only the task Workspace module refuses a link below a task state root, and every path below one is checked", () => {
   const elsewhere = sources.filter(({ name }) => name !== "task-workspace.ts");
   assert.deepEqual(offenders(/VES_STATE_ROOT_ESCAPE/u, elsewhere), []);
@@ -142,13 +142,23 @@ test("only the task Workspace module refuses a link below a task state root, and
     "a Run path is built outside the checked functions"
   );
   assert.doesNotMatch(owner, /\btasksRoot,\s*id\b/u, "the Run directory is joined where the Run record is opened");
-  const verifier = sources.find(({ name }) => name === "task-verifier.ts")?.source ?? "";
-  assert.match(verifier, /requireRealDirectories\(context\.workspace\.verificationRoot,/u);
+  const workspace = sources.find(({ name }) => name === "task-workspace.ts")?.source ?? "";
+  assert.match(workspace, /requireRealDirectories\(workspace\.verificationRoot, \[runId, purpose\]\)/u);
   assert.equal(
-    verifier.match(/\bverificationRoot\b/gu)?.length,
-    2,
+    workspace.match(/\bjoin\(workspace\.verificationRoot\b/gu)?.length,
+    1,
     "a scratch path is built outside the checked function"
   );
+  assert.deepEqual(
+    offenders(
+      /\.verificationRoot\b/u,
+      sources.filter(({ name }) => name !== "task-workspace.ts")
+    ),
+    [],
+    "a scratch path is reached outside the task Workspace module"
+  );
+  for (const name of ["task-verifier.ts", "task-mutation-sensor.ts"])
+    assert.match(sources.find((entry) => entry.name === name)?.source ?? "", /\bscratchCheckouts\(/u, name);
 });
 
 // invariant: which form a Run's five markers take is one fact with one
