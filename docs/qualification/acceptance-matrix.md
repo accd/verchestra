@@ -19,6 +19,11 @@ independent verifier reviewed it, and none is claimed. Every counter below was
 produced by executing the named command in this checkout on `win32-x64`,
 Node `v24.14.0`, on 2026-08-26; anything not executed says so in its own row.
 
+**Evidence refresh (2026-10-03).** Notes marked as added after this matrix's
+recorded revision were re-checked against `origin/main` at `28ddc8d21a66`, the
+GitHub runs they name, and the issue states they cite. They add no suite
+counters, and they move no limitation between groups.
+
 ---
 
 ## 1. The acceptance denominator is 93, not 98
@@ -75,8 +80,25 @@ Preconditions 1 and 2 are met by evidence recorded elsewhere:
 `corepack pnpm agent:context` derives `T76 complete; T77 next` at this
 revision, and `docs/qualification/t76-validation.md` records the dispatched
 candidate build (run 32927839487) and its collected five-target closure.
-Preconditions 4 and 5 remain open — 4 because no 1.0 candidate revision has
-been named, and 5 for the reason recorded in section 4 as L1.
+At this revision, preconditions 4 and 5 remained open — 4 because no 1.0
+candidate revision had been named, and 5 for the reason recorded in section 4
+as L1.
+
+**Note added after this matrix's recorded revision.** A decision has since
+been recorded: `docs/qualification/release-decision-1.0.0.md` is a signed
+**reject**, a recorded hold, on candidate `3d363f782bad` (reviewed in
+[#397](https://github.com/accd/verchestra/pull/397)). For that candidate,
+precondition 4 is the five-leg `gate:release` record of candidate run
+32967293127 in `docs/qualification/t77-validation.md`, and the decision treats
+precondition 5 as met organisationally, by the reviews MiguelCorre and
+brunomjanuario posted on #18, not by any repository configuration (L1). None of
+this carries over to a future round. At `28ddc8d21a66`, precondition 1 holds
+(`agent:context` derives T77 complete) and precondition 3 holds (the tracer
+output above is unchanged).
+Preconditions 2, 4, and 5 were satisfied for `3d363f782bad` only: a new round
+names its own candidate, records `gate:release` at that revision, and obtains a
+fresh review. The 232-test record in section 2.14 binds `42f2f184`, so a new
+round must re-run it at its candidate.
 
 ---
 
@@ -93,7 +115,8 @@ from `tests/build/` and `tests/security/`. Nothing was invented: each journey
 names an executable that exists in this checkout. The reverse map in section
 2.13 proves the grouping is total — every one of the nineteen `tests/e2e/`
 suites is claimed by exactly one journey, so no suite was silently dropped to
-make the list come out at twelve.
+make the list come out at twelve. (Nineteen at the recorded revision; section
+2.13 maps the six added since.)
 
 Three consolidations are worth naming, because each merges what could
 defensibly have been two rows:
@@ -113,16 +136,16 @@ defensibly have been two rows:
 | Id | Outcome, in user terms | Status |
 | --- | --- | --- |
 | J01 | I install Verchestra on a clean machine with one command and get a verified, activated release. | Proven, deterministic and live on all 5 platforms |
-| J02 | I move an installed machine to a new release, back to the old one, and can remove it without losing my data. | Proven deterministically; live update and rollback recorded on all 5 (run 36997576112); no live uninstall |
+| J02 | I move an installed machine to a new release, back to the old one, and can remove it without losing my data. | Proven deterministically; live update and rollback recorded on all 5 (runs 36997576112, 37047903756, 37152404760); no live uninstall |
 | J03 | I turn my repository into a Workspace, previewing every change first, and bind the AI backends on this machine. | Proven |
 | J04 | I hand a task to a driver and it cannot reach "done" without passing a gate and a human review. | Proven |
 | J05 | I hand in-flight work to another machine without handing over my machine's authority. | Proven |
 | J06 | Work I started under one AI backend finishes under a different one, unchanged. | Proven |
 | J07 | A sealed Execution Package survives a move between machines with different local keys. | Proven |
-| J08 | I can prove my installation actually works, without a repository checkout. | Proven, with one recorded defect (#370) |
-| J09 | I ask what is wrong with this machine and get an actionable, path-free report. | Proven — secret presence observable on macOS, Linux, and Windows since #379 (AD-034, AD-041) |
-| J10 | I restore a machine from an encrypted bundle, and send diagnostics without leaking my paths. | Proven deterministically; live restore recorded on all 5 (run 33087399859) |
-| J11 | I turn a revision into a signed, reproducible release a stranger can verify from a public endpoint. | Proven deterministically; performed live once |
+| J08 | I can prove my installation actually works, without a repository checkout. | Proven; the recorded defect (#370) is fixed from `.3` on, but no live run has started from a default Windows home directory |
+| J09 | I ask what is wrong with this machine and get an actionable, path-free report. | Proven — secret presence observable on macOS, Linux, and Windows since #379 (AD-034, AD-041); no full `PASS` recorded |
+| J10 | I restore a machine from an encrypted bundle, and send diagnostics without leaking my paths. | Proven deterministically; live recovery from a wiped state root recorded on all 5 (runs 33087399859, 36997576112, 37047903756, 37152404760) |
+| J11 | I turn a revision into a signed, reproducible release a stranger can verify from a public endpoint. | Proven deterministically; performed live by T76, then by ledger sequences 3–6 |
 | J12 | A third party verifies the evidence behind a release without any access to this repository. | Proven; custody is single-operator |
 
 ### 2.1 J01 — Install and activate on a clean machine
@@ -143,7 +166,12 @@ ends up with a cryptographically verified, activated Verchestra release.
 The live-activation matrix (run 33087399859,
 `.specs/features/live-activation-matrix/validation.md`) activates the published
 release live on `win32-x64`, `linux-x64`, `linux-arm64`, `darwin-x64`, and
-`darwin-arm64`, alongside the deterministic five-profile gate coverage. See L7.
+`darwin-arm64`, alongside the deterministic five-profile gate coverage. Runs
+36997576112 (`.3` → `.4`, 2026-10-02), 37047903756 (`.4` → `.5`, 2026-10-02),
+and 37152404760 (`.5` → `.6`, 2026-10-03), recorded in the same file, repeat it
+from the published npm packages and the live endpoint. Their `activate` and
+`update` phases exit 0 on all five targets, so `0.0.0-qualification.3` through
+`.6` have each activated live on all five. See L7.
 
 ### 2.2 J02 — Update, roll back, and uninstall an installed release
 
@@ -164,7 +192,11 @@ uninstall (purge), per declared launcher host.
 `0.0.0-qualification.3`, updates in place to `0.0.0-qualification.4`, and rolls
 back to `.3`, against the published npm packages and the live endpoint. On
 every target the update moved the active pointer to `.4` and the rollback
-restored the `.3` pointer byte for byte. What is still deterministic only: the
+restored the `.3` pointer byte for byte. Runs 37047903756 (`.4` → `.5`,
+2026-10-02) and 37152404760 (`.5` → `.6`, 2026-10-03) repeat the lifecycle with
+the same result on every target, and each run's base digests are the ones the
+previous run recorded after its update, so consecutive runs agree on what `.4`
+and `.5` are. What is still deterministic only: the
 uninstall and purge half of this journey, and a source-side roll-forward
 publication. The pass at this matrix's recorded revision executed none of this;
 T76's rollback evidence at that time was the publication-side rollback index
@@ -182,7 +214,9 @@ against a fetch-counting source that records zero reads, and fails closed for a
 tampered retained release, a never-installed older release, and a different
 trust root. The published `0.0.0-qualification.3` and `.4` packages carry this
 path, and run 36997576112 exercised it live on all five targets: its `rollback`
-phase is the `.3` launcher re-activating `.3` after `.4` superseded it.
+phase is the `.3` launcher re-activating `.3` after `.4` superseded it. Runs
+37047903756 and 37152404760 exercised it again, with the `.4` and `.5`
+launchers re-activating their own releases after `.5` and `.6`.
 
 ### 2.3 J03 — Initialize a Workspace and bind this machine's backends
 
@@ -282,11 +316,26 @@ fixed by AD-032), then `workspace`, `drivers`, and `full`.
 | `tests/build/sealed-launcher-closure.test.mjs` — the real `NodeActivationHealthGate` drives both sealed launchers from a staged layout with no `src/` and no `node_modules/`, and holds a red case proving the development shims fail the same gate | 7 tests, 7 pass, 0 fail, 0 skipped, 0 todo |
 | Live, both platforms: `self-test --profile smoke` → `verdict: PASS`, `check_count: 6`, `failure_codes: []` | `.specs/features/npx-launcher/validation.md` "T4 evidence" |
 
-**Recorded defect.** `self-test` refuses when the working directory is an
+**Recorded defect.** `self-test` refused when the working directory was an
 ancestor of the OS temporary directory, which is the default Windows home
-directory ([#370](https://github.com/accd/verchestra/issues/370)). It is
-documented in `README.md`, `docs/install-and-run`, and the tarball README, and
-the published package still carries it. See section 4, L5.
+directory ([#370](https://github.com/accd/verchestra/issues/370)). At this
+matrix's recorded revision it was documented in `README.md`,
+`docs/install-and-run`, and the tarball README, and the published package still
+carried it. See section 4, L5.
+
+**Note added after this matrix's recorded revision.** The fix, `3965407`,
+closed #370 on 2026-08-26. It is an ancestor of the candidate revision of every
+release in ledger sequences 3–6: `.3` (`6725554`), `.4` (`d58a25f`), `.5`
+(`e17abb3`), and `.6` (`7e274f2`). Two cases in
+`tests/e2e/self-test-cli-e2e.test.mjs` hold it on every platform: a control root
+that contains the temporary directory runs to `PASS`, and a disposable root
+inside a real Workspace still fails closed. The live-activation runs
+33087399859, 36997576112, 37047903756, and 37152404760 each report
+`self-test --profile smoke` → `verdict: PASS` on all five targets for their base
+release, but they start it from the runner's working directory, where the #370
+path does not fire (`.specs/features/live-activation-matrix/validation.md:33-36`).
+No recorded live run has started `self-test` from a default Windows home
+directory.
 
 ### 2.9 J09 — Diagnose a machine with deep doctor
 
@@ -329,10 +378,14 @@ one remains:
   `tests/integration/doctor-secret-backend.test.mjs` asserts `pass` when bound,
   `blocked` when unbound, and `fail` when the store cannot answer, against a
   fake `security` runner. The real-binary journey against a disposable keychain
-  is the standalone `pnpm qualify:keychain` suite, which is **pending** an owner
-  run on an unlocked macOS session. Linux and Windows have no qualified credential
-  store, so the check stays `blocked` there. A full `PASS` verdict on a
-  provisioned macOS machine has not been observed end to end in this matrix.
+  is the standalone `pnpm qualify:keychain` suite. When this note was written it
+  was pending an owner run; that run is now recorded (2026-09-30, revision
+  `8422c9f`, 8 tests, 8 pass,
+  `docs/qualification/os-secret-backend-darwin.md:124-143`), and independent
+  review of that report is still pending. When this note was written, Linux and
+  Windows had no qualified credential store; the next note records the change. A
+  full `PASS` verdict on a provisioned macOS machine has not been observed end to
+  end in this matrix.
 
   **Note added by #379 (AD-041, after this matrix's recorded revision):**
   qualified Linux (Secret Service) and Windows (Credential Manager) credential
@@ -349,8 +402,13 @@ one remains:
 So, as of this matrix's recorded revision, on Linux and Windows `doctor` could
 not report `PASS` on a real machine, and the reason was the missing credential
 backend (#379), not the circular release digest. AD-041 removes that blocker
-for a Workspace with a bound credential on every supported platform. On macOS that blocker is removed for a Workspace with a bound
-credential. A sealed-mode doctor verdict is now asserted where before none was.
+for a Workspace with a bound credential on every supported platform, and #379
+is closed (2026-09-30). A sealed-mode doctor verdict is now asserted where
+before none was. What no tracked record shows is a full `doctor --deep` verdict
+of `PASS` on a provisioned machine: the evidence is per check (secret-presence
+reports `pass` for a bound credential), and
+`.specs/features/deep-doctor-live-probes/` T22, the per-leg doctor capture, is
+`blocked` because `platform-matrix.yml` has no doctor step. See L2.
 
 ### 2.10 J10 — Recover a machine, and send diagnostics safely
 
@@ -366,7 +424,10 @@ can open.
 **Honest qualification.** Live disaster recovery is now recorded on all five
 targets: the live-activation matrix (run 33087399859,
 `.specs/features/live-activation-matrix/validation.md`) wipes the managed state
-root and re-activates from nothing on every target. The support-bundle proof
+root and re-activates from nothing on every target. Runs 36997576112,
+37047903756, and 37152404760 repeat that `recover` phase, which exits 0 on all
+five targets for their base releases `.3`, `.4`, and `.5`. No live run restores
+from an encrypted recovery bundle: that restore, like the support-bundle proof,
 remains deterministic.
 
 ### 2.11 J11 — Build, promote, and publish a verified release
@@ -384,9 +445,14 @@ publication → upload → independent verification.
 | `tests/build/t76-release-publication.test.mjs` — per-target signed repositories, exactly one shared `release-inputs/`, every `remoteKey` mirroring the emitted tree, and the base-URL/rollback/key rejection sets leaving no output directory behind | 20 tests, 20 pass, 0 fail, 0 skipped, 0 todo |
 | `tests/build/tuf-publication.test.mjs` — signed root, top-level targets, terminating component delegation, snapshot, timestamp; unsafe target paths refused before any publication directory exists | 6 tests, 6 pass, 0 fail, 0 skipped, 0 todo |
 | Live: candidate run 32927839487, publication run 32929312169, 990 assets sha256-verified at the endpoint, `verchestra@0.0.0-qualification` on the public npm registry | `docs/qualification/t76-validation.md` "Live evidence" |
+| Live, after this matrix's recorded revision: ledger sequences 3–6 publish `0.0.0-qualification.3` to `.6` on one trust root (`sha256:949fbce3…`, metadata versions 2 to 5), from candidate runs 36781862073, 36928077854, 37017865729, and 37139943097 and publication runs 36785647398, 36930995598, 37039015199, and 37147832135 | `docs/qualification/tuf-publication-ledger.json`; `.specs/features/live-activation-matrix/validation.md` |
 
-**Honest qualification.** Performed live exactly once, by a single operator,
-against a single storage endpoint. See section 4, L1 and L8.
+**Honest qualification.** At this matrix's recorded revision, performed live
+exactly once, by a single operator, against a single storage endpoint. Ledger
+sequences 3–6 record four later publications. Each signing run ran from `main`
+and was approved in the `tuf-release-signing` environment by the same single
+operator, and every publication shares one storage endpoint. See section 4, L1
+and L8.
 
 ### 2.12 J12 — Verify the evidence behind a release from outside
 
@@ -406,9 +472,9 @@ single-operator custody. See section 4, L8.
 
 ### 2.13 Reverse map — every end-to-end suite is claimed
 
-Nineteen suites exist under `tests/e2e/`. Each is claimed by exactly one
-journey; no suite is unclaimed, and no journey cites a suite that does not
-exist.
+At this matrix's recorded revision, nineteen suites existed under
+`tests/e2e/`. Each is claimed by exactly one journey; no suite is unclaimed, and
+no journey cites a suite that does not exist.
 
 | Suite | Journey |
 | --- | --- |
@@ -431,6 +497,20 @@ exist.
 | `verification-human-review.test.mjs` | J04 |
 | `vestra-launcher-activation.test.mjs` | J01 |
 | `workspace-reconcile-e2e.test.mjs` | J03 |
+
+**Note added after this matrix's recorded revision.** At `28ddc8d21a66`,
+`tests/e2e/` holds **25** suites: the nineteen above, all still present, and six
+added since. Each of the six is mapped below by the outcome it drives; one
+serves no journey and says so. Their counters are not recorded in this matrix.
+
+| Suite | Journey |
+| --- | --- |
+| `init-probe-scaffold-e2e.test.mjs` | J03 — `init --dry-run` with a probe engine previews the scaffold and leaves the repository byte-identical (#234) |
+| `mediated-task-execution-e2e.test.mjs` | J04 — a mediated implementer changes the worktree only through the executor and reaches `AWAITING_GATE` (#405) |
+| `out-of-process-probe-host-e2e.test.mjs` | Not mapped — a workspace probe worker driven out of process (#235). No journey covers probes (see `VES-DBP` in section 3), and `apps/vestra-cli` does not compose this host yet |
+| `secret-cli-e2e.test.mjs` | J09 — the `vestra secret` refusals, before any credential store is consulted; a bound credential is what J09's secret-presence check observes (#379) |
+| `task-cli-e2e.test.mjs` | J04 — the #405 note in section 2.4 |
+| `task-path-case-variant-e2e.test.mjs` | J04 — a protected path in any letter case or spelling is refused before any effect and never committed |
 
 Plus six suites outside `tests/e2e/`, cited because they carry the sealed and
 operator evidence no e2e suite holds:
@@ -458,7 +538,11 @@ recovery (J10), and the key-lifecycle unit and security suites behind J07. The
 live rows in J01, J08, J11, and J12 were not re-executed either; they cite the
 T75/T76 reports and the npx-launcher validation, which recorded them. Later
 live runs closed the first two: J10 cites run 33087399859 and J02 cites run
-36997576112.
+36997576112, and runs 37047903756 and 37152404760 repeat both.
+
+This record binds `42f2f184` and does not cover the six `tests/e2e/` suites
+added since (section 2.13). A new decision round must re-run it at its own
+candidate.
 
 ---
 
@@ -688,12 +772,13 @@ record (`active.json` cross-checked against `releases/<digest>/release.json`)
 instead of the protocol-null `releaseDigest`, and a sealed-mode doctor verdict is
 now asserted (`tests/build/sealed-launcher-closure.test.mjs`,
 `tests/integration/doctor-native-asset-probe.test.mjs`) where the earlier version
-of this matrix noted none existed. The remaining blocker is
-`doctor.secret-presence`: no production `SecretAdapter`/OS keychain backend exists
-to observe (`secret-broker.ts`), so it stays `blocked`, and because `doctor.ts:195`
-reaches `PASS` only when nothing is `blocked`, `doctor` stays `BLOCKED`. Tracked
-as #379. A 1.0 decision that promises a working `doctor` must either accept a
-permanently `BLOCKED` verdict until #379 ships, or scope the promise accordingly.
+of this matrix noted none existed. At this matrix's recorded revision, the
+remaining blocker was `doctor.secret-presence`: no production
+`SecretAdapter`/OS keychain backend existed to observe (`secret-broker.ts`), so
+it stayed `blocked`, and because `doctor.ts:195` reaches `PASS` only when nothing
+is `blocked`, `doctor` stayed `BLOCKED`. Tracked as #379. A 1.0 decision that
+promises a working `doctor` must either accept a permanently `BLOCKED` verdict
+until #379 ships, or scope the promise accordingly.
 
 **Update from #379:** the macOS half has shipped as a qualified keychain
 credential backend (`docs/qualification/os-secret-backend-darwin.md`). On
@@ -706,6 +791,20 @@ real store in CI. A Workspace with `anthropic-api-key` bound no longer blocks
 this check on any supported platform. Other deep-doctor checks still need
 their own provisioning, and a full `PASS` on a provisioned machine has not been
 recorded in this matrix.
+
+**Update (evidence refresh, after this matrix's recorded revision):** #379 is
+closed (completed, 2026-09-30). The production `SecretAdapter` is
+`QualifiedOsCredentialAdapter` (`packages/platform-node/src/secret-broker.ts:310`).
+`createOsCredentialStore`
+(`packages/platform-node/src/os-secret-backends/credential-store.ts:121`) builds
+it for `darwin`, `linux`, and `win32` only, and `composeDoctorSecretProbe`
+(`apps/vestra-cli/src/secret-composition.ts:250`) hands deep doctor a
+presence-only view of it. Run 36682622312 observed the check report `pass` for a
+bound credential on all three platforms. No tracked record shows a full
+`doctor --deep` verdict of `PASS` on a provisioned machine, and
+`deep-doctor-live-probes` T22, which would capture a doctor report per fleet
+leg, is `blocked`. This entry stays in the Blocking group as written; the update
+adds evidence and decides nothing.
 
 **L3. `gate:release` was historically vacuous and its closure must be
 re-checked.** `docs/audits/2026-08-verchestra-product-repository-audit.md:47`
@@ -727,12 +826,27 @@ server". Only SQLite is live-qualified.
 AD-017. This is why `VES-DBP` maps to no journey.
 
 **L5. The published package carries a known `self-test` defect (#370).**
-`README.md:169` records that `self-test` refuses when the working directory is
-an ancestor of the OS temporary directory — which is the default Windows home
-directory, and therefore the default location for the one-command demo.
-`.specs/features/npx-launcher/handoff.md:9` says the launcher must be
-republished once the fix ships. Until republication, the artifact on the public
-registry is not the artifact a 1.0 decision would want to promote.
+At this matrix's recorded revision, `README.md:169` recorded that `self-test`
+refuses when the working directory is an ancestor of the OS temporary directory
+— which is the default Windows home directory, and therefore the default
+location for the one-command demo. `.specs/features/npx-launcher/handoff.md:9`
+says the launcher must be republished once the fix ships. Until republication,
+the artifact on the public registry is not the artifact a 1.0 decision would
+want to promote.
+
+**Update (evidence refresh, after this matrix's recorded revision):** the fix
+has been republished. `3965407` closed #370 on 2026-08-26 and is an ancestor of
+the candidate revision of every release in ledger sequences 3–6 (`.3` to `.6`;
+see J08), and npm `latest` was `0.0.0-qualification.6` on 2026-10-03. The fix
+is proven deterministically on every platform by the two #370 cases in
+`tests/e2e/self-test-cli-e2e.test.mjs`. No recorded live run has started
+`self-test` from a default Windows home directory: the live-activation runs
+start it from the runner's working directory, where the #370 path does not
+fire. The signed decision recorded both reviewers as still holding this defect
+and named the `.3` republication as the condition
+(`docs/qualification/release-decision-1.0.0.md`, "Corrections to the record").
+This update does not move L5 out of the Qualifying group; whether the
+republication clears it is for the reviewers who escalated it.
 
 **L6. Resolved: the source modes are proven by cross-adapter equivalence over
 the emitted tree.** `docs/qualification/t76-validation.md:102-135` recorded that
@@ -754,8 +868,11 @@ recover on all five targets with base `0.0.0-qualification.3` and update
 `0.0.0-qualification.4`, two releases on one trust root, each with a strictly
 greater `metadataVersion`, both built from a revision that carries AD-036
 (`.specs/features/live-activation-matrix/validation.md`;
-[#387](https://github.com/accd/verchestra/issues/387) is closed). The rest of
-this entry is the history of the gap. The
+[#387](https://github.com/accd/verchestra/issues/387) is closed). Runs
+37047903756 (`.4` → `.5`, 2026-10-02) and 37152404760 (`.5` → `.6`, 2026-10-03)
+repeat the lifecycle with every phase exiting 0 on all five targets (same
+file). None of the three runs exercises a live uninstall or purge, or a
+source-side roll-forward. The rest of this entry is the history of the gap. The
 original gap — live activation on `win32-x64` and `linux-x64` only
 (`docs/qualification/t76-validation.md:197,204`) — is closed: the live-activation
 matrix (run 33087399859,
@@ -813,6 +930,17 @@ work (#235). `.specs/features/sealed-holdout/handoff.md:97-98` records PROM-05
 as "the honest PARTIAL the T74 verification recorded, deliberately not
 promoted".
 
+**Update (evidence refresh, after this matrix's recorded revision):** #235 is
+closed (completed, 2026-09-30). What landed under it is an out-of-process host
+for workspace probe workers (`6429929`; `.specs/features/out-of-process-probe-host/`,
+status `verification`, T3 composition-root wiring not started), which
+`apps/vestra-cli` does not compose yet. No tracked record moves the
+sealed-holdout evaluator out of the candidate's process or adds an observed
+contamination detector, `.specs/features/sealed-holdout/handoff.md:96-98` is
+unchanged, and on 2026-10-03 no open issue matched a search for `holdout` or
+`contamination`. The limitation stands as written; only its pointer to #235 as
+the deferred work is out of date.
+
 **L12. Probabilistic regression campaigns use frozen sequences.**
 `docs/qualification/t73-validation.md:177-178` states the verdict "does not
 claim that the two probabilistic campaigns sampled a live provider".
@@ -839,13 +967,19 @@ it dequeued and passed on all five profiles, so no platform case is excused",
 and `matrix.json` now records `darwin-x64` as `qualified`, evidenced by the
 `macos-15-intel` runner passing all five exact-head profiles at the T75
 candidate. **There is no open macOS x64 coverage gap.** The remaining
-`darwin-x64` limitation is L7 — live *activation*, not gate coverage.
+`darwin-x64` limitation was L7 — live *activation*, not gate coverage — and L7
+is now resolved.
 
 **L16. T75 evidence signing is no longer blocked.**
 `.specs/features/t75-evidence-signing/handoff.md:5` still reads
 `status: blocked`, but `docs/qualification/t75-validation.md:66-73` records the
 index as `signed: true` and verified outside the producing run. The handoff is
 stale; the capability is evidenced. See L17.
+
+**Update (after this matrix's recorded revision):** the handoff now reads
+`status: complete`, set by `7a39a58`
+([#407](https://github.com/accd/verchestra/issues/407), closed 2026-09-30), so
+the drift this entry names is fixed.
 
 ### Traceability defects found while compiling this matrix
 
@@ -861,6 +995,15 @@ complete and T75 next". Only `t76-tuf-publication/handoff.md:5` reads
 handoffs uncritically will contradict itself. Recorded here so the T77 report
 names the drift rather than inheriting it.
 
+**Update (after this matrix's recorded revision):** `7a39a58` (#407)
+reconciled these handoffs. The four `t76-*` handoffs named above and
+`t75-evidence-signing` now read `status: complete`, and
+`milestone-2-completion/handoff.md` records T77 complete and marks the "T74
+complete and T75 next" state as historical. The reconciliation's own handoff,
+`handoff-reconciliation`, is in `verification`, pending independent review. One
+later drift of the same kind: the P7 row of `milestone-2-completion/handoff.md`
+still lists #234, #235, and #236 as open, and all three closed on 2026-09-30.
+
 **L18. The `#58` canonical-JSON record is internally inconsistent.**
 `.specs/features/canonical-json/handoff.md:17-20` and
 `canonical-json-t4-completion/handoff.md:26-27` describe T4j and T4k as not
@@ -868,11 +1011,28 @@ started, and `docs/canonical-json-compatibility.md:192` marks T4j "Deferred",
 while `.specs/STATE.md:410-421` records T4j implemented and submitted. Resolve
 before a decision cites #58 either way.
 
+**Update (after this matrix's recorded revision):** half of this is fixed.
+`7a39a58` (#407) reconciled both handoffs: `canonical-json/handoff.md` and
+`canonical-json-t4-completion/handoff.md` now record T4j (`b738b04`) and T4k
+(`44c7a85`) as merged, and the one open #58 item is T21 in
+`canonical-json-t4-completion` (`in_progress`). `docs/canonical-json-compatibility.md`
+is not reconciled: its T4 slice-ordering table still carries three T4j rows,
+one without a status (line 228), one marked **Deferred** (line 230), and one
+marked **Done** (line 231).
+
 **L19. The public homepage still declares `installable: false`.**
 `.specs/features/npx-launcher/handoff.md:296-303` records that
 `apps/site/src/data/product.ts` still reads as pre-installer while `README.md`
 and the documentation portal describe the published package, and that "That
 divergence is recorded for the owner rather than resolved unilaterally".
+
+**Update (after this matrix's recorded revision):** this entry was already
+stale when written. `apps/site/src/data/product.ts:13` reads
+`installable: true`, set by `42f2f18`, the revision this matrix was compiled
+at, and `apps/site/tests/unit/product-contract.test.mjs:33` asserts it.
+`docs/qualification/t77-validation.md:320-328` records the correction. The
+handoff passage cited above, now `.specs/features/npx-launcher/handoff.md:311-318`,
+still describes the old value.
 
 ### Not found in the repository
 
@@ -900,10 +1060,14 @@ tracked file, and are therefore not asserted here:
   procedure, not re-running a suite.
 - **It does not close T77.** `RELEASE-DECISION-CONTRACT.md:84-97` lists five
   preconditions. This file supplies the enumeration T77 was missing and
-  confirms precondition 3 (`T77 closure MET`). Preconditions 4 and 5 —
-  `gate:release` at the candidate revision, and two reviewers distinct from the
-  deciding human and the implementation author — remain open, and precondition
-  5 is L1.
+  confirms precondition 3 (`T77 closure MET`). At its recorded revision,
+  preconditions 4 and 5 — `gate:release` at the candidate revision, and two
+  reviewers distinct from the deciding human and the implementation author —
+  remained open, and precondition 5 is L1. Both were later satisfied for
+  candidate `3d363f782bad`, and a decision is recorded: a signed hold,
+  `docs/qualification/release-decision-1.0.0.md` (section 1). A future round
+  satisfies preconditions 2, 4, and 5 again for its own candidate and re-runs
+  the 232-test record, which binds `42f2f184`.
 - **The requirement-to-journey column is a reading, not a derivation.** Section
   3 says exactly how far the mechanical derivation goes and where the editorial
   step begins.
