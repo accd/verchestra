@@ -274,6 +274,10 @@ section.
 - [ ] Discrimination: removing scope narrowing, the writer mutex, a limit, or the destination check fails a test (SSI-80).
 - [ ] Sealed launchers bundle, pass the new check, and the activation health check stays silent; sizes and cold start recorded (SSI-82).
 
+**Progress** (branch `strands/t5-coordinated-driver`; evidence in `validation.md`, "T5 Evidence"):
+
+- [x] Commit 1: `coordinated-driver.ts`, `coordination-engine.ts` (native engine), `node-result.ts`, `coordination-ledger.ts`, `node-prompt.ts`; scope narrowing, single writer, limits, ledger transitions; 16 mutants killed.
+
 **Tests**: unit, integration, architecture, build, fault
 **Gate**: build
 
