@@ -1,3 +1,5 @@
+import { execFileSync } from "node:child_process";
+
 // invariant: these are liveness probes for processes a test started itself.
 // Nothing here signals a process: signal 0 only asks whether it exists.
 
@@ -27,4 +29,31 @@ export async function eventually(probe, timeoutMs = 10_000) {
 
 export function eventuallyDead(pid, timeoutMs) {
   return eventually(() => !isAlive(pid), timeoutMs);
+}
+
+// why: a host that deschedules a run right after its spawn lets a fast
+// provider finish and exit before the run's first write. This blocks the
+// caller, without turning its event loop, until the process has exited, which
+// makes that order certain: on POSIX the process is then a zombie its parent
+// has not reaped; win32 has no process table to read, so the wait is a fixed
+// two seconds there.
+// invariant: the process table is read through the system's own `ps` by its
+// absolute path.
+export function blockUntilExited(pid) {
+  const pause = new Int32Array(new SharedArrayBuffer(4));
+  if (process.platform === "win32") {
+    Atomics.wait(pause, 0, 0, 2_000);
+    return;
+  }
+  const deadline = Date.now() + 10_000;
+  while (Date.now() < deadline) {
+    let state;
+    try {
+      state = execFileSync("/bin/ps", ["-o", "stat=", "-p", String(pid)], { encoding: "utf8" }).trim();
+    } catch {
+      return;
+    }
+    if (state === "" || state.startsWith("Z")) return;
+    Atomics.wait(pause, 0, 0, 10);
+  }
 }
