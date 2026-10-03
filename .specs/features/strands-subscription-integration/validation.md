@@ -419,6 +419,54 @@ comparison also refuses a traversal; the case at `:117` now plants a sealed
 record where the traversal lands, so only the grammar check gives the
 expected `VES_TASK_STATE_MALFORMED`.
 
+### Commit 3 — the Strands SDK and Zod in agent-runtime (D1)
+
+`packages/agent-runtime/package.json` pins exactly `@strands-agents/sdk`
+1.19.0, `zod` 4.6.5, and the SDK's two required peers that D1 accepted,
+`@modelcontextprotocol/sdk` 1.32.0 and `@opentelemetry/api` 1.9.1. The
+lockfile was updated with `pnpm install` (Node 24.14.0, pnpm 10.34.5); a
+`pnpm install --frozen-lockfile` afterwards reports it up to date.
+
+Lockfile diff, reviewed entry by entry:
+
+- 36 package versions added, 0 removed. Every one is reachable from the four
+  pins and from nothing else (a reachability walk over the lockfile's
+  snapshots): the SDK and the MCP SDK; the MCP SDK's Express 5 and Hono tree
+  (`express`, `router`, `body-parser`, `raw-body`, `send`, `serve-static`,
+  `finalhandler`, `accepts`, `negotiator`, `type-is`, `media-typer`,
+  `mime-types`, `content-type`, `content-disposition`, `cookie-signature`,
+  `fresh`, `is-promise`, `merge-descriptors`, `object-assign`,
+  `path-to-regexp`, `iconv-lite`, `cors`, `hono`, `@hono/node-server`,
+  `express-rate-limit`, `eventsource`, `eventsource-parser`, `pkce-challenge`,
+  `ajv-formats`, `json-schema-typed`, `zod-to-json-schema`); and the two
+  version moves D1 named, `@aws-sdk/client-bedrock-runtime` 3.1146.0 (beside
+  Pi's 3.1127.0, with its `@aws-sdk/token-providers` 3.1146.0) and `yaml`
+  2.9.1 (beside 2.9.0 and 2.8.3). `zod` 4.6.5, `uuid` 14.0.2, and
+  `@opentelemetry/api` 1.9.1 were already locked.
+- No existing package changed version. Eleven existing snapshots changed only
+  in optional-peer resolution: `@google/genai` 2.21.0 (under Pi 0.99.1) now
+  resolves its optional peer `@modelcontextprotocol/sdk` to the approved
+  1.32.0, which renames the Pi snapshots; `vite`, `vitest`, `@vitest/mocker`,
+  `vitefu`, `astro`, `@astrojs/mdx`, `@astrojs/starlight`, and
+  `astro-expressive-code` resolve their optional peer `yaml` to 2.9.1, the
+  approved `yaml` move.
+- The SDK's optional peers already in the workspace (`@cedar-policy/cedar-wasm`
+  4.12.0, `@google/genai` 2.21.0, `@opentelemetry/resources` and
+  `sdk-trace-base` 2.10.0, `@smithy/types` 4.19.0) resolve to their locked
+  versions; no optional provider SDK is added. `@cfworker/json-schema`, the
+  MCP SDK's only optional peer, is not installed. No package of the new tree
+  declares an install script, and `allowBuilds` is unchanged.
+
+| Behaviour | Assertion (file:line) | Run |
+| --- | --- | --- |
+| SSI-01: agent-runtime declares exactly the four pins and its two workspace packages; no other manifest, the root included, declares any of the four | `tests/agent-readiness/dependency-policy.test.mjs:51` | `node --test tests/agent-readiness/dependency-policy.test.mjs`: 7 of 7 |
+| SSI-01: the importer resolves each pin to exactly its version; one SDK and one MCP SDK version are locked; the SDK snapshot resolves the pinned peers | `tests/agent-readiness/dependency-policy.test.mjs:73` | same |
+| The installed SDK is 1.19.0, Apache-2.0, with exactly the three required peers and no install hook | `tests/agent-readiness/dependency-policy.test.mjs:96` | same |
+
+Discrimination: P1 a range (`^1.19.0`) instead of the exact SDK pin, P2 an
+optional provider SDK (`@anthropic-ai/sdk`) added beside the pins — both
+killed.
+
 ## T7 Evidence (Windows bridge transport, commits 1 to 3)
 
 Author: the T7 implementer. Commit 4 (lifting the refusals) is not on this
