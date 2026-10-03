@@ -580,11 +580,14 @@ for (const [label, launch, steps, stop, error] of [
       const record = (reason) => unhandled.push(reason);
       process.on("unhandledRejection", record);
       t.after(() => process.off("unhandledRejection", record));
+      let askedFor;
+      const asked = new Promise((resolve) => (askedFor = resolve));
       const run = start(t, {
         launch,
         steps,
         terminateTree: (handle) => async (pid) => {
           handle.asked.push(pid);
+          askedFor();
           throw new Error("the provider could not be stopped");
         },
         onEvent: (event, handle) => {
@@ -593,6 +596,13 @@ for (const [label, launch, steps, stop, error] of [
       });
       let settled = false;
       void run.ended.then(() => (settled = true));
+      // why: a slow runner can take longer than any fixed wait to spawn the
+      // provider, so the window that must stay open starts at the termination.
+      let timer;
+      const late = new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error("the termination was never asked for")), 10_000);
+      });
+      await Promise.race([asked, late]).finally(() => clearTimeout(timer));
       await delay(300);
       assert.equal(settled, false, "the run ended without its provider ending");
       assert.ok(run.asked.length >= 1, "the termination was never asked for");
