@@ -44,7 +44,12 @@ import {
 import { NodeActivationHealthGate } from "../../packages/platform-node/src/activation-launcher-adapters.ts";
 import { DEFAULT_RUNTIME_MIGRATIONS } from "../../packages/platform-node/src/runtime-store/runtime-migrations.ts";
 import { resolveStateRoot } from "../../packages/platform-node/src/state-root.ts";
-import { SEALED_LAUNCHER_ENTRIES, bundleSealedLauncher } from "../../scripts/t76-build-candidate.mjs";
+import {
+  SEALED_LAUNCHER_ENTRIES,
+  bundleSealedLauncher,
+  bundleSealedLauncherWithMetafile,
+  sealedRuntimeImports
+} from "../../scripts/t76-build-candidate.mjs";
 import { createSealedRepositoryReplica } from "../helpers/sealed-repository-fixture.mjs";
 import { systemGit } from "../helpers/system-git.mjs";
 import { temporaryDirectory } from "../helpers/temporary-directory.mjs";
@@ -93,16 +98,19 @@ const REPOSITORY_SHIM = fileURLToPath(new URL("../../apps/vestra-cli/bin/vestra.
 let replica;
 const disposable = [];
 const sealedBins = {};
+const sealedRecords = {};
 
 before(async () => {
   replica = await createSealedRepositoryReplica();
   for (const componentId of SEALED_BIN_IDS) {
-    sealedBins[componentId] = await bundleSealedLauncher({
+    const sealed = await bundleSealedLauncherWithMetafile({
       repository: replica.repository,
       componentId,
       semanticVersion: SEALED_VERSION,
       nodeVersion: NODE_VERSION
     });
+    sealedBins[componentId] = sealed.bytes;
+    sealedRecords[componentId] = sealed.metafile;
   }
 });
 
@@ -458,17 +466,23 @@ test("sealed launcher bundling is deterministic", async () => {
   }
 });
 
+// why: decision D2. The bundler's record of every import the output makes,
+// static, dynamic, and `require`, replaces a text scan of the output, which
+// missed the last two and misread a bundled string shaped like an import.
 test("a sealed launcher bundle imports Node built-ins only", () => {
   for (const componentId of SEALED_BIN_IDS) {
     const text = sealedBins[componentId].toString("utf8");
-    const specifiers = [...text.matchAll(/(?:^|[\s;}])import\s*(?:[^"';]*?from\s*)?["']([^"']+)["']/gu)].map(
-      (match) => match[1]
-    );
-    assert.ok(specifiers.length > 0);
+    const imports = sealedRuntimeImports(sealedRecords[componentId], componentId);
+    assert.ok(imports.length > 0);
     assert.deepEqual(
-      specifiers.filter((specifier) => !specifier.startsWith("node:")),
+      imports.filter((entry) => !entry.path.startsWith("node:")),
       [],
       `${componentId} must not import outside node: built-ins`
+    );
+    assert.deepEqual(
+      imports.filter((entry) => entry.path === "node:sqlite" && entry.kind !== "dynamic-import"),
+      [],
+      "node:sqlite must stay lazy"
     );
     assert.doesNotMatch(text, /import\s*\{[^}]*\}\s*from\s*"node:sqlite"/u, "node:sqlite must stay lazy");
   }
