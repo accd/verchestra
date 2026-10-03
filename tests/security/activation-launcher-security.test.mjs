@@ -26,6 +26,13 @@ const terminatorSource = await readFile(
   new URL("../../packages/platform-node/src/process-tree-terminator.ts", import.meta.url),
   "utf8"
 );
+// why: the health gate's child is spawned and stopped by the package's one
+// bounded child run (ADR2-5), which the launcher bundles; the rules below hold
+// for both sources.
+const boundedRunSource = await readFile(
+  new URL("../../packages/platform-node/src/bounded-child-run.ts", import.meta.url),
+  "utf8"
+);
 
 const runtimePathOf = (releaseRoot, bundle) =>
   join(releaseRoot, ...bundle.components.find((component) => component.kind === "node-runtime").logicalPath.split("/"));
@@ -36,24 +43,34 @@ const launcherPair = (overrides, options) => ({
 });
 
 test("the launcher adapters never open a shell and never build a command string", () => {
-  const contains = (pattern) => pattern.test(adapterSource);
-  assert.equal(contains(/shell\s*:\s*true/u), false, "no adapter may spawn through a shell");
-  assert.equal(contains(/shell:\s*false/u), true, "every spawn must declare shell: false");
-  assert.equal(contains(/\bexecSync\b|\bspawnSync\b|[^F]\bexec\s*\(/u), false, "no adapter may run a command string");
-  // invariant: the adapters run no executable but the release's own runtime.
-  // The Windows process-tree termination, the one execFile call they used to
-  // hold, lives in the shared group termination they call, where it takes a
-  // fixed executable and a fixed argument array.
-  assert.equal(contains(/\bexecFile/u), false, "no adapter may run another executable");
-  assert.equal(contains(/terminateProcessGroup\(pid,/u), true);
+  for (const [label, source] of [
+    ["activation-launcher-adapters.ts", adapterSource],
+    ["bounded-child-run.ts", boundedRunSource]
+  ]) {
+    const contains = (pattern) => pattern.test(source);
+    assert.equal(contains(/shell\s*:\s*true/u), false, `${label}: no adapter may spawn through a shell`);
+    assert.equal(contains(/shell:\s*false/u), true, `${label}: every spawn must declare shell: false`);
+    assert.equal(
+      contains(/\bexecSync\b|\bspawnSync\b|[^F]\bexec\s*\(/u),
+      false,
+      `${label}: no adapter may run a command string`
+    );
+    // invariant: the adapters run no executable but the release's own runtime.
+    // The Windows process-tree termination, the one execFile call they used to
+    // hold, lives in the shared group termination they call, where it takes a
+    // fixed executable and a fixed argument array.
+    assert.equal(contains(/\bexecFile/u), false, `${label}: no adapter may run another executable`);
+    // Every process argument list in this module is an array literal, never a
+    // string built by concatenation or interpolation.
+    assert.equal(contains(/spawn\([^)]*\+/u), false, label);
+  }
+  assert.equal(/runBoundedChild\(\{/u.test(adapterSource), true);
+  assert.equal(/terminateProcessGroup\(child\.pid, run\.incomplete\)/u.test(boundedRunSource), true);
   assert.equal([...terminatorSource.matchAll(/"taskkill"/gu)].length, 1);
   assert.equal(
     /execFileAsync\(\s*"taskkill",\s*\["\/pid", String\(pid\), "\/T", "\/F"\]/u.test(terminatorSource),
     true
   );
-  // Every process argument list in this module is an array literal, never a
-  // string built by concatenation or interpolation.
-  assert.equal(contains(/spawn\([^)]*\+/u), false);
 });
 
 test("the observed behavior digest is computed over exactly what the launcher printed", async () => {
