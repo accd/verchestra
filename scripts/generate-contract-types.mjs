@@ -1,4 +1,5 @@
 import { readFile, readdir, writeFile } from "node:fs/promises";
+import { isDeepStrictEqual } from "node:util";
 import { compile } from "json-schema-to-typescript";
 import { format } from "prettier";
 
@@ -19,11 +20,17 @@ async function schemaVersions(name) {
 }
 
 const schemas = [];
+const previousVersion = new Map();
 for (const directory of (await readdir(root, { withFileTypes: true }))
   .filter((entry) => entry.isDirectory())
   .sort((a, b) => a.name.localeCompare(b.name))) {
-  for (const version of await schemaVersions(directory.name))
-    schemas.push(JSON.parse(await readFile(new URL(`${directory.name}/${version}.schema.json`, root), "utf8")));
+  let previous;
+  for (const version of await schemaVersions(directory.name)) {
+    const schema = JSON.parse(await readFile(new URL(`${directory.name}/${version}.schema.json`, root), "utf8"));
+    if (previous !== undefined) previousVersion.set(schema, previous);
+    schemas.push(schema);
+    previous = schema;
+  }
 }
 const byId = new Map(schemas.map((schema) => [schema.$id, schema]));
 function dereference(value) {
@@ -38,8 +45,23 @@ function dereference(value) {
   }
   return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, dereference(entry)]));
 }
+// invariant: a member whose schema is identical to the same member of the
+// previous version is typed as that version's member, so a later version
+// restates only what it changes and the two types cannot drift apart.
+function sharedWithPrevious(schema) {
+  const previous = previousVersion.get(schema);
+  if (previous === undefined) return schema;
+  const properties = Object.fromEntries(
+    Object.entries(schema.properties ?? {}).map(([key, member]) =>
+      isDeepStrictEqual(member, previous.properties?.[key])
+        ? [key, { tsType: `${previous.title}[${JSON.stringify(key)}]` }]
+        : [key, member]
+    )
+  );
+  return { ...schema, properties };
+}
 for (const schema of schemas) {
-  generated += await compile(dereference(schema), schema.title, {
+  generated += await compile(dereference(sharedWithPrevious(schema)), schema.title, {
     bannerComment: "",
     format: true,
     style: { singleQuote: false },

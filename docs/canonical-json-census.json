@@ -1170,7 +1170,7 @@
         "canonicalizer": 0,
         "digest": 0,
         "localeCompare": 1,
-        "serialization": 0
+        "serialization": 1
       },
       "reason": "Closed presentation, fixture, or repository-diagnostic ordering only; not a trust or persistent identity."
     },
