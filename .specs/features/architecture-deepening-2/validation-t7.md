@@ -239,11 +239,11 @@ three methods, so the store now has 30.
 | --- | --- | --- |
 | `getMachineProfile`, `listMachineProfiles` | **removed** | The product writes a Machine Profile and never reads it back: `MachineProfileStorePort` declares only `save`. They also returned records of no declared shape |
 | `integrityCheck` | **removed** | The product checks runtime integrity through `inspectRuntimeDatabase` (the doctor, and the backup's staged copy), which already proves the same case on an open store's database |
-| `downgradeTo` | **kept**, comment at `packages/platform-node/src/runtime-store/runtime-store.ts:317-320` | The first round's approved plan keeps the downgrade refusal as a method, and it is the only thrower of VES_RUNTIME_DOWNGRADE_UNSUPPORTED; removing it would leave that code catalogued with nothing that can raise it. A downgrade the product meets is refused by `open()` (VES_RUNTIME_MIGRATION_INCOMPATIBLE), which had no test and now has one |
-| `backupTo` | **kept**, comment at `runtime-store.ts:1104-1108` | The only producer of a verified backup, the recovery the catalog prescribes for VES_RUNTIME_CORRUPT and VES_RUNTIME_CHECKPOINT_CORRUPT, which the task commands raise. No command composes it yet |
-| `migrationLedger` | **kept**, comment at `runtime-store.ts:309-310` | What the backup manifest carries |
-| `stateDigest` | **kept**, comment at `runtime-store.ts:1096-1099` | The live side of the digest the backup manifest binds, and the only whole-state observation; the fault suite proves through it that a refused or failed write changes nothing |
-| `safetySettings` | **kept**, comment at `runtime-store.ts:328-331` | The only observation of the per-connection settings `open()` applies; nothing outside the connection can read its busy timeout or writable_schema. Removing it would delete the T15 proof of both, which is weakening a proof, not removing a behaviour |
+| `downgradeTo` | **kept**, comment at `packages/platform-node/src/runtime-store/runtime-store.ts:1098-1107`, shared with `backupTo` (it sits outside the block SonarCloud counts as duplicated with `memory-store.ts`) | The first round's approved plan keeps the downgrade refusal as a method, and it is the only thrower of VES_RUNTIME_DOWNGRADE_UNSUPPORTED; removing it would leave that code catalogued with nothing that can raise it. A downgrade the product meets is refused by `open()` (VES_RUNTIME_MIGRATION_INCOMPATIBLE), which had no test and now has one |
+| `backupTo` | **kept**, comment at `runtime-store.ts:1098-1107` | The only producer of a verified backup, the recovery the catalog prescribes for VES_RUNTIME_CORRUPT and VES_RUNTIME_CHECKPOINT_CORRUPT, which the task commands raise. No command composes it yet |
+| `migrationLedger` | **kept**, comment at `runtime-store.ts:1098-1107`, shared with `backupTo` | What the backup manifest carries |
+| `stateDigest` | **kept**, comment at `runtime-store.ts:1090-1093` | The live side of the digest the backup manifest binds, and the only whole-state observation; the fault suite proves through it that a refused or failed write changes nothing |
+| `safetySettings` | **kept**, comment at `runtime-store.ts:322-325` | The only observation of the per-connection settings `open()` applies; nothing outside the connection can read its busy timeout or writable_schema. Removing it would delete the T15 proof of both, which is weakening a proof, not removing a behaviour |
 
 None of the five kept methods has a production caller. Each comment says so
 and names what needs it.
@@ -298,7 +298,7 @@ No complexity key moved; 177 keys. No file gained or lost `JSON.stringify` or
   `runtime-store.test.mjs:293`, `:219-244` (`:231-235`, `:240-241`) and
   `:276-290` (`:280-285`, `:286-287`) are now `:287`, `:213-238`
   (`:225-229`, `:234-235`) and `:270-284` (`:274-279`, `:280-281`);
-  `runtime-store.ts:1096-1102` (after range 1) is now `:1088-1094`.
+  `runtime-store.ts:1096-1102` (after range 1) is now `:1082-1088` (`:1088-1094` until two comments moved out of the block SonarCloud counts as duplicated).
 - `.specs/features/governed-task-cli/validation.md:21`: `runtime-store.test.mjs:293` is now `:287`.
 - This file's range 1 citations of `runtime-store.ts` follow the code.
 

@@ -306,18 +306,12 @@ export class RuntimeStore {
     return applied;
   }
 
-  // why: the ledger a backup manifest carries (backupTo), so a restore can be
-  // matched to a compatible release.
   migrationLedger(): readonly { readonly id: string; readonly checksum: string }[] {
     return (
       this.#database().prepare("SELECT id, checksum FROM ves_migrations ORDER BY id").all() as UnknownRecord[]
     ).map((row) => ({ id: String(row.id), checksum: String(row.checksum) }));
   }
 
-  // why: no product path calls this. The first round's plan keeps the
-  // downgrade refusal as a method, so VES_RUNTIME_DOWNGRADE_UNSUPPORTED has
-  // a thrower; a downgrade the product meets is refused by open() instead
-  // (VES_RUNTIME_MIGRATION_INCOMPATIBLE).
   downgradeTo(migrationId: string): never {
     throw runtimeError(
       "VES_RUNTIME_DOWNGRADE_UNSUPPORTED",
@@ -1105,7 +1099,12 @@ export class RuntimeStore {
   // backup (a staged copy that passes inspectRuntimeDatabase, bound to its
   // byte digest, state digest and migration ledger), which is the recovery
   // the catalog prescribes for VES_RUNTIME_CORRUPT and
-  // VES_RUNTIME_CHECKPOINT_CORRUPT, two codes the task commands raise.
+  // VES_RUNTIME_CHECKPOINT_CORRUPT, two codes the task commands raise. Its
+  // family stays with it: migrationLedger is the ledger the backup manifest
+  // carries, so a restore can be matched to a compatible release, and
+  // downgradeTo keeps VES_RUNTIME_DOWNGRADE_UNSUPPORTED a thrower (the first
+  // round kept the downgrade refusal as a method; a downgrade the product
+  // meets is refused by open() as VES_RUNTIME_MIGRATION_INCOMPATIBLE).
   async backupTo(targetPath: string): Promise<{
     readonly code: "VES_RUNTIME_BACKUP_READY";
     readonly path: string;
