@@ -304,9 +304,9 @@ class ProviderChild {
   #report(exit: ProviderExit): void {
     const report = this.#endReport(exit);
     if (report === undefined) return;
-    const { outcome, ...error } = report;
-    this.#run.session.outcome = outcome;
-    this.#run.session.emit({ type: "error", ...error });
+    this.#run.session.outcome = report.outcome;
+    const { code, message, retryable } = report;
+    this.#run.session.emit({ type: "error", code, message, retryable });
   }
 
   // invariant: the one end-of-run rule. The first end decides when there is
