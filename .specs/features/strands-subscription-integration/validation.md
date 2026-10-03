@@ -295,17 +295,65 @@ Author: the T7 implementer. Commits 3 (managed-policy sources, SSI-74) and 4
 
 | Requirement | Evidence (file:line, assertion) | Result |
 | --- | --- | --- |
-| SSI-69 Unix channel and controls unchanged | The socket directory, `0700` mode, `lstat` checks, `VES_BRIDGE_CHANNEL_INSECURE`, `net.Server`, socket `0600`, and directory removal moved verbatim into `UnixSocketBridgeTransport.listen` (`packages/agent-runtime/src/execution/bridge-transport.ts:35-65`). Token, constant-time check, one authenticated connection, five-second timeout, frame bound, and dispatch stay in the controller (`mcp-tool-bridge.ts:141-203`). `git diff origin/main -- tests/integration/mcp-tool-bridge.test.mjs tests/security/mcp-tool-bridge-security.test.mjs tests/integration/driver-execution-adapter.test.mjs tests/e2e/mediated-task-execution-e2e.test.mjs tests/e2e/task-path-case-variant-e2e.test.mjs tests/contract/claude-code-driver-mediated.test.mjs tests/contract/claude-code-driver-subscription.test.mjs tests/helpers/mcp-bridge-fixture.mjs tests/helpers/mediation-platform.mjs` is empty; those suites pass unchanged (63 of 63 on the rebased base, which carries T4). | PASS (darwin) |
-| SSI-70 controller takes its channel through a transport interface | `BridgeTransport` and `BridgeChannel` (`bridge-transport.ts:8-23`); `McpToolBridgeControllerOptions.transport` defaults to the Unix transport (`mcp-tool-bridge.ts:113-115`); `DriverExecutionAdapterOptions.bridgeTransport` reaches it (`driver-execution-adapter.ts:38`, `:175`). Seam cases with an in-memory transport, `tests/integration/bridge-transport-seam.test.mjs`: endpoint announced and channel closed once (`:72-79`); served only after authentication (`:87-99`); wrong token, frame beyond 8 MiB, and a call before authentication refused with no tool reached (`:110-117`); silence refused at exactly 5 000 ms (`:126-129`); a second connection refused (`:141-142`); the adapter hands the transport to the bridge and closes it (`:192-195`). | PASS (darwin) |
+| SSI-69 Unix channel and controls unchanged | The socket directory, `0700` mode, `lstat` checks, `VES_BRIDGE_CHANNEL_INSECURE`, `net.Server`, socket `0600`, and directory removal moved verbatim into `UnixSocketBridgeTransport.listen` (`packages/agent-runtime/src/execution/bridge-transport.ts:35-65`). Token, constant-time check, one authenticated connection, five-second timeout, frame bound, and dispatch stay in the controller (`mcp-tool-bridge.ts:144-206`). `git diff origin/main -- tests/integration/mcp-tool-bridge.test.mjs tests/security/mcp-tool-bridge-security.test.mjs tests/integration/driver-execution-adapter.test.mjs tests/e2e/mediated-task-execution-e2e.test.mjs tests/e2e/task-path-case-variant-e2e.test.mjs tests/contract/claude-code-driver-mediated.test.mjs tests/contract/claude-code-driver-subscription.test.mjs tests/helpers/mcp-bridge-fixture.mjs tests/helpers/mediation-platform.mjs` is empty; those suites pass unchanged (63 of 63 on the rebased base, which carries T4). | PASS (darwin) |
+| SSI-70 controller takes its channel through a transport interface | `BridgeTransport` and `BridgeChannel` (`bridge-transport.ts:8-23`); `McpToolBridgeControllerOptions.transport` defaults to the Unix transport (`mcp-tool-bridge.ts:116-118`); `DriverExecutionAdapterOptions.bridgeTransport` reaches it (`driver-execution-adapter.ts:38`, `:175`). Seam cases with an in-memory transport, `tests/integration/bridge-transport-seam.test.mjs`: endpoint announced and channel closed once (`:74-81`); served only after authentication (`:88-100`); wrong token, frame beyond 8 MiB, and a call before authentication refused with no tool reached (`:111-117`); silence refused at exactly 5 000 ms (`:125-128`); a second connection refused (`:139-140`); the adapter hands the transport to the bridge and closes it (`:189-192`). Since commit 2 these cases run on every platform, Windows included. | PASS (darwin) |
 
 Ordering note: `close()` now removes the channel (server close and directory
 removal) before awaiting in-flight calls; before, the directory was removed
 after them. In-flight calls touch the worktree, not the socket directory, and
 every `close` result is unchanged.
 
-Gates for commit 1: `pnpm gate:quick` PASS (unit 2666/2666, agent-readiness
-331/331, census 13/13, 0 skipped, 0 todo); `pnpm test:architecture` PASS
-(122/122); `pnpm test:integration` PASS (1150/1150).
+Gates for commit 1, before the rebase onto T4: `pnpm gate:quick` PASS (unit
+2666/2666, agent-readiness 331/331, census 13/13, 0 skipped, 0 todo);
+`pnpm test:architecture` PASS (122/122); `pnpm test:integration` PASS
+(1150/1150). After the rebase: `pnpm typecheck` PASS and the bridge, adapter,
+seam, mediated e2e, and mediated contract suites 71/71.
+
+### Commit 2: `feat(platform-node): add a Windows named-pipe bridge transport`
+
+Modules: `packages/platform-node/src/windows-pipe-transport.ts` (the constant
+helper, its launch, the status mapping, the per-run lifecycle) and
+`packages/platform-node/src/windows-acl.ts` (owner-only proof). The composition
+root hands the transport to the driver adapter on `win32` only
+(`apps/vestra-cli/src/task/task-implementer.ts`, `implementerBridgeTransport`).
+
+| Requirement | Evidence (file:line, assertion) | Result |
+| --- | --- | --- |
+| SSI-70 second adapter | `WindowsNamedPipeBridgeTransport` satisfies `BridgeTransport` by shape (checked by `pnpm typecheck` at `task-implementer.ts`, which returns it as `BridgeTransport`); agent-runtime never imports platform-node (`pnpm test:architecture` 125/125). `tests/unit/task-implementer-bridge-transport.test.mjs:10`: the composition hands the bridge the pipe transport on `win32` and nothing on `darwin`, `linux`, `freebsd`. | PASS (darwin) |
+| SSI-71 fresh name, pinned PowerShell 7, `CurrentUserOnly`, first instance, one instance, byte relay | `tests/unit/windows-pipe-transport.test.mjs:34` (16 random bytes, 64 distinct names, endpoint `\\.\pipe\<name>`); `:121` (pinned `C:\Program Files\PowerShell\7\pwsh.exe`, exact argument vector); `:106` (`CurrentUserOnly`, `FirstPipeInstance`, `Asynchronous`, max instances `1`, stdin/stdout `CopyToAsync`, one `WaitForConnection`); `:258` (two listens, two endpoints); `:278` (bytes both ways). Windows only: `tests/security/windows-pipe-bridge-security.test.mjs:148` (relay end to end over the real pipe), `:218` (pre-created name refused with `VES_BRIDGE_CHANNEL_INSECURE`, directory removed), `:200` (second client never connects). | PASS (darwin); win32 cases pending the Windows leg |
+| SSI-72 constant script, name as only argument, nothing interpolated | `tests/unit/windows-pipe-transport.test.mjs:71` (digest pinned, one `param(`, name re-validated with `PIPE_NAME`, no `$input`, no `Invoke-Expression`, `iex`, `ScriptBlock]::Create`, `Add-Type`, `Start-Process`, `EncodedCommand`, `.Invoke(`); `:48-69` (13 invalid names refused before argument building or endpoint); `:121` (no `-Command`, `-c`, `-EncodedCommand`, `-ec`); `:258` (the file PowerShell runs equals `PIPE_HELPER_SCRIPT`); `:139` (environment allowlist: no token, no API key, fixed PATH). | PASS (darwin) |
+| SSI-73 PowerShell, logging, ACL parts | Missing PowerShell 7 → `VES_BRIDGE_NOT_CONFIGURED`/`powershell-7` before any directory (`tests/unit/windows-pipe-transport.test.mjs:200`); PowerShell older than 7.4 → `powershell-7` (`:218-233`); logging or transcription → `powershell-logging-off` (`:163-178`, `:218-233`); the guard is the credential manager's `LOGGING_POLICY_GUARD` verbatim plus a PowerShell 7 guard for the `PowerShellCore` policy keys and `powershell.config.json`, both before the pipe exists (`:90`); unprovable ACL → `owner-only-acl`, directory removed, nothing started (`:209`); the ACL is proven on the empty directory before the script is written (`:258`). ACL proof: `tests/unit/windows-acl.test.mjs:54` (System32 paths), `:63` (SID from `whoami`), `:70` (grant vector), `:81` (Unicode read-back), `:88` (3 accepted and 13 refused DACLs), `:109` (proof), `:121-136` (7 failure steps, no saved file left). Windows only: `tests/security/windows-pipe-bridge-security.test.mjs:134` (real tools prove a real directory), `:236` (the live per-run directory is owner-only). The managed-policy part of SSI-73 is SSI-74, commit 3. | PASS (darwin); win32 cases pending |
+| SSI-75 helper and Claude Code trees ended, directory removed | `tests/unit/windows-pipe-transport.test.mjs:310` (close terminates the tree once, closes the helper's input, removes the directory, twice-safe); `:295` (a refused connection ends the helper, the directory stays until close); `:224`, `:243` (refused or silent helpers terminated and cleaned). An exited helper's pid is never signalled (`:235`). Windows only: `tests/security/windows-pipe-bridge-security.test.mjs:236` (after close the directory is gone and nothing holds the pipe). The helper tree ends through `terminateProcessTree` (`taskkill /T /F` on Windows); Claude Code's tree, which holds the relay, already ends through the injected terminator (`apps/vestra-cli/src/task/task-process-tree.ts`, `tests/integration/process-tree-terminator.test.mjs`). | PASS (darwin); win32 cases pending |
+| SSI-76 Unix codes for second client, failed authentication, timeout, oversized frame | Over the real transport and controller with a fake helper, on every platform: `tests/security/windows-pipe-bridge-security.test.mjs:69` (served after `hello`), `:87-99` (wrong token, frame beyond 8 MiB, call before authentication: `rejectedConnections` 1, nothing sent, the helper ended), `:101` (silence refused at exactly 5 000 ms). Windows only: `:161` (wrong-token relay exits 1 with `VES_BRIDGE_AUTH_REJECTED`, as on Unix), `:171` (silent client closed after at least 4.5 s, count 1), `:184` (oversized frame after `ready`, count 1), `:200` (second client). | PASS (darwin); win32 cases pending |
+| SSI-77 refusals kept | `mcp-tool-bridge.ts:104-108` still throws `VES_BRIDGE_PLATFORM_UNSUPPORTED` on `win32` for every caller that brings no transport (the driver adapter, the e2e journey, `tests/helpers/mediation-platform.mjs`, all unchanged); `tests/integration/bridge-transport-seam.test.mjs:195` asserts it on `win32` and the Unix default elsewhere. `VES_CLAUDE_MEDIATION_UNSUPPORTED` (`packages/drivers/src/claude-code-driver.ts`) and the `vestra task` platform refusal (`apps/vestra-cli/src/task/task-command.ts`) are untouched, so the composition's pipe transport is unreachable until commit 4. | PASS |
+
+Deviation, SSI-76 second client: the pipe has one instance, so on Windows the
+kernel refuses a second client (`ERROR_PIPE_BUSY`) and it never reaches the
+controller. The Unix socket accepts it and the controller closes it
+(`rejectedConnections` 1, relay `VES_BRIDGE_AUTH_REJECTED`); on Windows the
+count stays 0 and a second relay would end on its own five-second
+`VES_BRIDGE_AUTH_TIMEOUT`. Both are refusals with Unix codes and neither client
+reaches a tool; the Windows case asserts exactly what it observes
+(`windows-pipe-bridge-security.test.mjs:200`).
+
+Relaxed refusal: commit 2 lets `McpToolBridgeController.open` accept an
+injected transport on `win32`; the default stays refused. Without that, the
+Windows runner could not qualify the controller over the pipe.
+
+Guardrails for commit 2: `pnpm complexity:check` PASS (no new hotspot; every
+new function at or below 10). Census unchanged: no product file gained or lost
+`JSON.stringify` or `createHash` (`pnpm test:census` 13/13).
+`windows-credential-manager.ts` only exports `systemRoot` (same line count);
+the digest-bound credential-store reports are untouched.
+
+Author's discrimination run (each mutant applied in place, the named suites
+run, then `git restore`): commit 1, the controller ignoring `transport`
+(seam suite 8 failures) and the adapter dropping `bridgeTransport` (1);
+commit 2, `FirstPipeInstance` dropped (2), the token passed to the helper (2),
+the ACL proof skipped (1), a refused connection leaving the helper running
+(5), a squatted name mapped to `VES_BRIDGE_CHANNEL_FAILED` (2), an unprotected
+DACL accepted (1), the PowerShell 7 guard dropped (2). All killed, on darwin;
+the independent verifier repeats the list at T9.
 
 ## Requirement Evidence
 
@@ -385,13 +433,13 @@ evidence is FAIL.
 | SSI-68 | — | — | — |
 | SSI-69 | T7 Evidence, commit 1 row SSI-69 | gate:quick, test:integration, test:security (bridge suites) | PASS on darwin; Linux and Windows legs pending the platform matrix |
 | SSI-70 | T7 Evidence, commit 1 row SSI-70 | test:integration | PASS on darwin; Windows implementation in commit 2 |
-| SSI-71 | — | — | — |
-| SSI-72 | — | — | — |
-| SSI-73 | — | — | — |
+| SSI-71 | T7 Evidence, commit 2 row SSI-71 | test:unit, test:security | PASS on darwin; win32 cases pending the Windows leg |
+| SSI-72 | T7 Evidence, commit 2 row SSI-72 | test:unit | PASS on darwin |
+| SSI-73 | T7 Evidence, commit 2 row SSI-73 (PowerShell, logging, ACL); managed policy with SSI-74 | test:unit, test:security | PASS on darwin; win32 cases pending |
 | SSI-74 | — | — | — |
-| SSI-75 | — | — | — |
-| SSI-76 | — | — | — |
-| SSI-77 | — | — | — |
+| SSI-75 | T7 Evidence, commit 2 row SSI-75 | test:unit, test:security | PASS on darwin; win32 cases pending |
+| SSI-76 | T7 Evidence, commit 2 row SSI-76 and its second-client deviation | test:security | PASS on darwin; win32 cases pending |
+| SSI-77 | T7 Evidence, commit 2 row SSI-77 | test:integration | PASS (refusals kept; lifting is commit 4) |
 | SSI-78 | — | — | — |
 | SSI-79 | — | — | — |
 | SSI-80 | — | — | — |

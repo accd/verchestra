@@ -254,7 +254,7 @@ only that, at that moment, the provider did not continue on paid usage.
 
 - **Today's refusals.** `McpToolBridgeController.open` throws
   `VES_BRIDGE_PLATFORM_UNSUPPORTED` on `win32` before creating anything
-  (`packages/agent-runtime/src/execution/mcp-tool-bridge.ts:101-105`); the
+  (`packages/agent-runtime/src/execution/mcp-tool-bridge.ts:104-108`, which since T7 commit 2 refuses only the default Unix transport); the
   Claude Code mediated profiles throw `VES_CLAUDE_MEDIATION_UNSUPPORTED`
   (`packages/drivers/src/claude-code-driver.ts:226-230`); `vestra task` is `not
   configured` with `requirement: "platform"` (`apps/vestra-cli/src/task/task-command.ts:98-99`).
@@ -266,7 +266,7 @@ only that, at that moment, the provider did not continue on paid usage.
   user), the socket `0600`; a 256-bit token compared in constant time; exactly
   one authenticated connection; five-second authentication timeout;
   newline-delimited JSON frames of at most 8 MiB; calls serialised; `close()`
-  removes the directory (`bridge-transport.ts:35-65`, `mcp-tool-bridge.ts:100-203`,
+  removes the directory (`bridge-transport.ts:35-65`, `mcp-tool-bridge.ts:100-206`,
   `mcp-bridge-protocol.ts:8-154`). No transport seam existed at `7e274f2`: the
   controller constructed its `net.Server` directly. T7 commit 1 moved it,
   unchanged, behind the transport interface (`bridge-transport.ts:49`).

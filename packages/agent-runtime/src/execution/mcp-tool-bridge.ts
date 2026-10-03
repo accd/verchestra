@@ -98,7 +98,10 @@ export class McpToolBridgeController {
   }
 
   static async open(options: McpToolBridgeControllerOptions): Promise<McpToolBridgeController> {
-    if (process.platform === "win32")
+    // why: Windows has no Unix socket. Until the named-pipe transport passes
+    // its Windows qualification (SSI-77), a bridge opens there only for a
+    // caller that brings its own transport; the default stays refused.
+    if (process.platform === "win32" && options.transport === undefined)
       throw new McpToolBridgeError(
         "VES_BRIDGE_PLATFORM_UNSUPPORTED",
         "The mediated bridge is not configured on Windows"

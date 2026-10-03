@@ -2,10 +2,15 @@ import { constants } from "node:fs";
 import { access, stat } from "node:fs/promises";
 import { delimiter, isAbsolute, join } from "node:path";
 
-import { DriverExecutionAdapter, InMemoryExecutionPayloadStore, type ContextManifest } from "@verchestra/agent-runtime";
+import {
+  DriverExecutionAdapter,
+  InMemoryExecutionPayloadStore,
+  type BridgeTransport,
+  type ContextManifest
+} from "@verchestra/agent-runtime";
 import type { ExecutionDriverPort, NormalizedTaskRequest } from "@verchestra/application";
 import { CLAUDE_PROFILE_CREDENTIAL_VARIABLES, ClaudeCodeDriver, type DriverStartRequest } from "@verchestra/drivers";
-import type { NodeGitWorktreeAdapter } from "@verchestra/platform-node";
+import { WindowsNamedPipeBridgeTransport, type NodeGitWorktreeAdapter } from "@verchestra/platform-node";
 
 import { resolveMcpBridgeRelay } from "../release-layout.ts";
 import type { ProviderAuthMode } from "../task-provider-auth.ts";
@@ -88,6 +93,14 @@ export function implementerPrompt(
   ].join("\n\n");
 }
 
+// why: agent-runtime may not import platform-node, so the composition hands
+// the bridge its Windows channel, as it hands the drivers the tree terminator;
+// elsewhere the bridge keeps its Unix socket. The task path stays refused on
+// Windows until that channel qualifies there (SSI-77), so nothing reaches it yet.
+export function implementerBridgeTransport(platform: NodeJS.Platform): BridgeTransport | undefined {
+  return platform === "win32" ? new WindowsNamedPipeBridgeTransport() : undefined;
+}
+
 export interface ImplementerOptions {
   readonly workspaceId: string;
   readonly runId: string;
@@ -114,7 +127,9 @@ export function implementerAdapter(options: ImplementerOptions): ExecutionDriver
   const passportId = `passport_${stableUuid(`claude-code:${model}`)}`;
   const kind = PROFILES[options.auth];
   const session = options.providers.session("Claude Code");
+  const bridgeTransport = implementerBridgeTransport(process.platform);
   const adapter = new DriverExecutionAdapter<DriverStartRequest>({
+    ...(bridgeTransport === undefined ? {} : { bridgeTransport }),
     resolveWorktree: async (worktreeRef) => {
       await options.onWorktree(worktreeRef);
       return options.worktrees.resolvePath(worktreeRef);

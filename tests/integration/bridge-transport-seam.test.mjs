@@ -2,18 +2,24 @@
 // every control it owns (authentication, one connection, the frame bound, the
 // authentication timeout) applies to a connection whatever transport delivered
 // it. An in-memory transport stands in for the Unix socket and the Windows
-// named pipe, so these cases observe the controller alone.
+// named pipe, so these cases observe the controller alone, on every platform:
+// an injected transport opens the bridge on Windows too, while the default
+// Unix socket stays refused there until the pipe qualifies (SSI-77).
 import assert from "node:assert/strict";
 import { once } from "node:events";
 import { duplexPair } from "node:stream";
 import { afterEach, test } from "node:test";
 
 import { DriverExecutionAdapter, InMemoryExecutionPayloadStore } from "../../packages/agent-runtime/src/index.ts";
-import { bridgeWorktree, cleanupBridges, openController, relayEntry } from "../helpers/mcp-bridge-fixture.mjs";
+import { cleanupBridges, openController, relayEntry } from "../helpers/mcp-bridge-fixture.mjs";
 import { WIN32_HOST, mediationRefusedOnWin32 } from "../helpers/mediation-platform.mjs";
+import { cleanupPlainWorktrees, frame, hello, plainWorktree } from "../helpers/pipe-bridge-fixture.mjs";
 import { executorInput } from "../helpers/task-executor-fixture.mjs";
 
-afterEach(cleanupBridges);
+afterEach(async () => {
+  await cleanupBridges();
+  await cleanupPlainWorktrees();
+});
 
 const ENDPOINT = "memory:bridge-under-test";
 const FRAME_BOUND = 8 * 1024 * 1024;
@@ -42,9 +48,6 @@ class MemoryTransport {
   }
 }
 
-const frame = (message) => `${JSON.stringify(message)}\n`;
-const hello = (token) => frame({ type: "hello", protocol: "verchestra-bridge/1", token });
-
 async function frames(connection, count) {
   while (connection.received().split("\n").length - 1 < count) await once(connection.client, "data");
   return connection
@@ -55,7 +58,7 @@ async function frames(connection, count) {
 }
 
 async function openOverMemory() {
-  const { worktree } = await bridgeWorktree();
+  const { worktree } = await plainWorktree();
   const transport = new MemoryTransport();
   const opened = await openController(worktree, { transport });
   return { ...opened, transport, token: opened.controller.environment.VERCHESTRA_BRIDGE_TOKEN };
@@ -66,8 +69,7 @@ async function refused(connection) {
   assert.equal(connection.received(), "", "a refused connection receives nothing");
 }
 
-test("the controller announces its transport's endpoint and closes that channel once", async (t) => {
-  if (WIN32_HOST) return mediationRefusedOnWin32(t);
+test("the controller announces its transport's endpoint and closes that channel once", async () => {
   const { controller, transport } = await openOverMemory();
   assert.equal(controller.socketPath, ENDPOINT);
   assert.equal(controller.environment.VERCHESTRA_BRIDGE_SOCKET, ENDPOINT);
@@ -79,8 +81,7 @@ test("the controller announces its transport's endpoint and closes that channel 
   assert.equal(open.server.destroyed, true, "closing the controller ends every connection it holds");
 });
 
-test("a connection from any transport is served only after it authenticates", async (t) => {
-  if (WIN32_HOST) return mediationRefusedOnWin32(t);
+test("a connection from any transport is served only after it authenticates", async () => {
   const { controller, invoked, token, transport } = await openOverMemory();
   const relay = transport.connect();
   relay.client.write(hello(token));
@@ -107,8 +108,7 @@ for (const [name, offend] of [
     (connection) => connection.client.write(frame({ type: "call", id: 1, name: "delete_file", arguments: {} }))
   ]
 ])
-  test(`${name} is refused on an injected transport and reaches no tool`, async (t) => {
-    if (WIN32_HOST) return mediationRefusedOnWin32(t);
+  test(`${name} is refused on an injected transport and reaches no tool`, async () => {
     const { controller, invoked, transport } = await openOverMemory();
     const connection = transport.connect();
     offend(connection);
@@ -118,7 +118,6 @@ for (const [name, offend] of [
   });
 
 test("a connection that stays silent is refused when the authentication timeout ends", async (t) => {
-  if (WIN32_HOST) return mediationRefusedOnWin32(t);
   const { controller, transport } = await openOverMemory();
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const connection = transport.connect();
@@ -129,8 +128,7 @@ test("a connection that stays silent is refused when the authentication timeout 
   assert.equal(controller.statistics().rejectedConnections, 1);
 });
 
-test("a second connection is refused once one has authenticated", async (t) => {
-  if (WIN32_HOST) return mediationRefusedOnWin32(t);
+test("a second connection is refused once one has authenticated", async () => {
   const { controller, token, transport } = await openOverMemory();
   const first = transport.connect();
   first.client.write(hello(token));
@@ -158,9 +156,8 @@ class SilentDriver {
   }
 }
 
-test("the driver adapter opens its bridge over the transport the composition hands it", async (t) => {
-  if (WIN32_HOST) return mediationRefusedOnWin32(t);
-  const { worktree } = await bridgeWorktree();
+test("the driver adapter opens its bridge over the transport the composition hands it", async () => {
+  const { worktree } = await plainWorktree();
   const transport = new MemoryTransport();
   const sessions = [];
   const driver = new SilentDriver();
@@ -193,4 +190,11 @@ test("the driver adapter opens its bridge over the transport the composition han
   assert.equal(sessions[0].bridge.environment.VERCHESTRA_BRIDGE_SOCKET, ENDPOINT);
   assert.equal(transport.closed, 1, "the run's channel is closed when the session ends");
   assert.equal(driver.closed, 1);
+});
+
+test("without a transport the controller keeps the Unix socket, which Windows still refuses", async (t) => {
+  if (WIN32_HOST) return mediationRefusedOnWin32(t);
+  const { worktree } = await plainWorktree();
+  const { controller } = await openController(worktree);
+  assert.match(controller.socketPath, /[\\/]vmcp-[^\\/]+[\\/]bridge\.sock$/u);
 });
