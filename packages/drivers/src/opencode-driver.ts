@@ -388,7 +388,8 @@ export class OpenCodeDriver implements Driver {
                 ? properties["patterns"].filter((entry): entry is string => typeof entry === "string")
                 : []
             };
-            state.emit({ type: "tool.requested", ...toolRequest });
+            const { toolCallId, name, input, patterns } = toolRequest;
+            state.emit({ type: "tool.requested", toolCallId, name, input, patterns });
             const allowed = await execution.authorizeTool(toolRequest);
             await client.permission.reply({ requestID: toolRequest.toolCallId, reply: allowed ? "once" : "reject" });
           } else if (event["type"] === "message.part.updated") {

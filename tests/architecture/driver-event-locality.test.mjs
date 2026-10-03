@@ -101,3 +101,15 @@ test("no other product source builds a usage event, and no driver checks a token
     .map(({ path }) => path);
   assert.deepEqual(copies, [], `the usage rule is also spelled out in: ${copies.join(", ")}`);
 });
+
+// why: the field table closes an event only where its fields are written out;
+// a record spread into an event is not checked against the row.
+test("no driver emits an event by spreading a record into it", () => {
+  const spreads = productSources
+    .filter(
+      ({ path, source }) =>
+        path.startsWith("packages/drivers/src/") && /\bemit\(\{\s*type:\s*"[^"]+",\s*\.\.\.[A-Za-z_$]/u.test(source)
+    )
+    .map(({ path }) => path);
+  assert.deepEqual(spreads, [], `an event is spread from a record in: ${spreads.join(", ")}`);
+});

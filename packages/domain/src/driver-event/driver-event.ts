@@ -14,8 +14,10 @@ export type DriverSessionOutcome = "completed" | "failed" | "cancelled";
 // field an event carries only sometimes: some drivers set it, or some
 // sessions do. Every other field is always set, and a scripted mock event
 // carries exactly those. The event types below are derived from this table,
-// so an event a driver emits with a field outside its row does not compile.
-// The ledger adds `sequence` to every event as it delivers it.
+// so a driver that writes a field outside its row does not compile. The
+// ledger adds `sequence` to every event as it delivers it.
+// hazard: a spread is not checked for fields outside the row, so an emitter
+// names each field it sets.
 export const DRIVER_EVENT_FIELDS = Object.freeze({
   "session.started": Object.freeze({ sessionId: "text" }),
   // why: the model a driver resolved, named by its provider; Pi alone also
