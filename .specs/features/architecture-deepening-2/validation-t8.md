@@ -168,7 +168,7 @@ Deleted case → replacement: none.
   `authority-runtime.test.mjs:41-69`, `:71-83`, `:112-120`, `:184-207`,
   `:201`, `:203-204` are now `:49-77`, `:79-91`, `:120-128`, `:192-215`,
   `:209`, `:211-212`.
-- **Comments naming the removed class.** `packages/platform-node/src/authority-store-adapter.ts:27`
+- **Comments naming the removed class.** `packages/platform-node/src/authority-store-adapter.ts:28`
   now names `ApprovalRecorder`, and `packages/platform-node/src/runtime-store/runtime-migrations.ts:264`
   names `ApprovalVerifier.verify()`. Comment-only; no migration changed.
 - **Not rewritten.** `docs/qualification/t25-validation.md` cites the

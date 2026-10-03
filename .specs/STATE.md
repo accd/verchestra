@@ -2233,6 +2233,45 @@ note. -->
   that the driver ends nothing at a normal end. Evidence is in
   `.specs/features/architecture-deepening-2/validation-t3-input.md`.
 
+### AD-062 — A runtime store read returns a declared record; the adapter that encodes a record decodes it
+
+- **Status:** proposed (ratified by reviewing the pull request that carries
+  the first range of `refactor/runtime-store-records`).
+- **Context:** Seven reads of `RuntimeStore` returned records of no declared
+  shape and six callers cast them. The policy view, the Workspace sync state
+  and the authority records are text an adapter encodes, but the store
+  parsed it on read, and for the policy view also verified a digest the
+  view's own encoding defines: the encoding sat in one module and its
+  inverse in another (ADR2-7).
+- **Decision:**
+  1. Every read of the store returns a declared type. A record the store
+     owns column by column is declared by the store (`RunEvent`,
+     `RunCapsuleSeal`).
+  2. A record an adapter encodes comes back as the stored text plus the
+     columns the store bound it to (`StoredAuthorityRecord`,
+     `StoredPolicyView`, `StoredSyncState`). The adapter that encodes it
+     decodes it, verifies what its encoding defines, and refuses a text
+     bound to another identity or digest with `VES_RUNTIME_CORRUPT`. The
+     store keeps the integrity it can prove without the encoding (the
+     authority record digest).
+  3. Writes are unchanged. The store still checks that the text it is
+     given binds to its columns, and the policy and sync writes still parse
+     it to do so. Moving those statements into the adapters is the split by
+     aggregate, which stays deferred: the casts go without it, the policy
+     and sync adapters have no production composition, and the store's
+     suites exercise its statements directly.
+- **Alternatives rejected:** declaring the adapters' types in the store
+  and casting there (the cast moves, the encoding stays split); a full
+  shape validator per adapter (it repeats checks the application already
+  makes: the approval's signature and binding, the sync state's content
+  digest); the split by aggregate.
+- **Consequence:** Three states that were accepted or escaped untyped are
+  now `VES_RUNTIME_CORRUPT`: an authority record filed under another
+  identity, a sync state rewritten with the digest of its own content, and
+  stored policy or sync text that is not JSON. No stored byte, sealed byte,
+  schema, migration or error code changes. Evidence is in
+  `.specs/features/architecture-deepening-2/validation-t7.md`.
+
 ## Handoff
 
 - **Feature:** `subscription-provider-auth` (ADP-A, tasks TA1 and TA2) on
