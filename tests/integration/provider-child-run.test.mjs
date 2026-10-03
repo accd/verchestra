@@ -656,3 +656,24 @@ test(
     assert.equal(run.asked.length, 0);
   }
 );
+
+// invariant: a provider that cannot be spawned ends its run as a provider
+// that died; the `error` event that reports it would otherwise end the host
+// process. Nothing was spawned, so nothing is observed or terminated.
+for (const profile of [EXITS_BY_ITSELF, ENDED_BY_THE_DRIVER]) {
+  test(
+    `${profile.afterResult}: a provider that cannot be spawned ends its run as a failed process`,
+    OPTIONS,
+    async (t) => {
+      const missing = join(tmpdir(), "verchestra-provider-child-missing", "provider");
+      const run = start(t, { profile, launch: { command: missing, arguments: [] } });
+      assert.deepEqual(await ended(run), {
+        errors: [processFailure("VES_FAKE_PROCESS_FAILED")],
+        outcome: "failed",
+        terminations: 0
+      });
+      assert.deepEqual(run.spawned, []);
+      assert.equal(run.session.resources.stop, undefined);
+    }
+  );
+}
