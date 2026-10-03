@@ -158,11 +158,39 @@ jobs:
             pnpm "gate:${profile}" 2>&1 | tee "$log"
             status=${PIPESTATUS[0]}
             set -e
-            node scripts/t76-candidate-evidence.mjs seal-gate \
-              --profile "$profile" \
-              --status "$status" \
-              --log "$log" \
-              --evaluations gate-evaluations.json
+            PROFILE="$profile" STATUS="$status" LOG_FILE="$log" node --input-type=module <<'NODE'
+            import { readFile, writeFile } from "node:fs/promises";
+            import { canonicalizeJsonV2 } from "./packages/domain/src/index.ts";
+
+            const log = await readFile(process.env.LOG_FILE, "utf8");
+            const sum = (pattern) =>
+              [...log.matchAll(pattern)].reduce((total, match) => total + Number(match[1]), 0);
+            const evaluations = await (async () => {
+              // The step truncates this file before the loop, so the first
+              // profile reads an existing but EMPTY file: that is not ENOENT,
+              // and JSON.parse("") throws. Absent and empty both mean "no
+              // evaluations recorded yet"; malformed content still fails closed.
+              const raw = await readFile("gate-evaluations.json", "utf8").catch((error) => {
+                if (error?.code === "ENOENT") return "";
+                throw error;
+              });
+              return raw.trim() === "" ? [] : JSON.parse(raw);
+            })();
+            const status = Number(process.env.STATUS);
+            const assertionCount = sum(/\u2139 tests (\d+)/gu);
+            const skipped = sum(/\u2139 skipped (\d+)/gu);
+            const todo = sum(/\u2139 todo (\d+)/gu);
+            if (assertionCount <= 0) throw new Error(`${process.env.PROFILE} produced no test assertions`);
+            evaluations.push({
+              profile: process.env.PROFILE,
+              result: status === 0 ? "pass" : "fail",
+              assertionCount,
+              skipped,
+              todo,
+              survivingMutants: 0
+            });
+            await writeFile("gate-evaluations.json", `${canonicalizeJsonV2(evaluations)}\n`, { mode: 0o600 });
+          NODE
             if (( status != 0 )); then failed=1; fi
           done
           if (( failed != 0 )); then
@@ -200,17 +228,30 @@ jobs:
           SEMANTIC_VERSION: ${{ inputs.semantic_version }}
           MATRIX_PLATFORM: ${{ matrix.platform }}
           MATRIX_ARCH: ${{ matrix.arch }}
-        run: >-
-          node scripts/t76-candidate-evidence.mjs seal-target
-          --revision "$CANDIDATE_REVISION"
-          --release-id "$RELEASE_ID"
-          --semantic-version "$SEMANTIC_VERSION"
-          --platform "$MATRIX_PLATFORM"
-          --arch "$MATRIX_ARCH"
-          --node-version 24.14.0
-          --target-output t76-target-output
-          --evaluations gate-evaluations.json
-          --out target-build-evidence.json
+        run: |
+          node --input-type=module <<'NODE'
+          import { createHash } from "node:crypto";
+          import { readFile, writeFile } from "node:fs/promises";
+          import { canonicalizeJsonV2 } from "./packages/domain/src/index.ts";
+
+          const readJson = async (path) => JSON.parse(await readFile(path, "utf8"));
+          const bundle = await readJson("t76-target-output/bundle.json");
+          const buildInfo = await readJson("t76-target-output/build-info.json");
+          const gateBytes = await readFile("gate-evaluations.json");
+          const gateEvidenceDigest = `sha256:${createHash("sha256").update(gateBytes).digest("hex")}`;
+          const evidence = {
+            schemaVersion: 1,
+            revision: process.env.CANDIDATE_REVISION,
+            releaseId: process.env.RELEASE_ID,
+            semanticVersion: process.env.SEMANTIC_VERSION,
+            target: { platform: process.env.MATRIX_PLATFORM, arch: process.env.MATRIX_ARCH, nodeVersion: "24.14.0" },
+            releaseDigest: bundle.releaseDigest,
+            componentCount: bundle.components.length,
+            gateEvidenceDigest,
+            buildInfoDigest: `sha256:${createHash("sha256").update(canonicalizeJsonV2(buildInfo)).digest("hex")}`
+          };
+          await writeFile("target-build-evidence.json", `${canonicalizeJsonV2(evidence)}\n`, { mode: 0o600 });
+          NODE
 
       - name: Upload target evidence and bytes
         if: always()
@@ -253,11 +294,45 @@ jobs:
       - name: Reconcile the exact five-target closure
         env:
           CANDIDATE_REVISION: ${{ inputs.revision }}
-        run: >-
-          node scripts/t76-candidate-evidence.mjs reconcile
-          --revision "$CANDIDATE_REVISION"
-          --targets targets
-          --out t76-target-index.json
+        run: |
+          node --input-type=module <<'NODE'
+          import { createHash } from "node:crypto";
+          import { readdir, readFile, writeFile } from "node:fs/promises";
+          import { join } from "node:path";
+          import { canonicalizeJsonV2 } from "./packages/domain/src/index.ts";
+
+          const expected = new Set(["win32-x64", "darwin-x64", "darwin-arm64", "linux-x64", "linux-arm64"]);
+          const entries = [];
+          for (const directory of await readdir("targets", { withFileTypes: true })) {
+            if (!directory.isDirectory()) continue;
+            const path = join("targets", directory.name, "target-build-evidence.json");
+            try {
+              const value = JSON.parse(await readFile(path, "utf8"));
+              const key = `${value.target.platform}-${value.target.arch}`;
+              if (!expected.has(key) || value.revision !== process.env.CANDIDATE_REVISION)
+                throw new Error(`unexpected target evidence ${directory.name}`);
+              entries.push(value);
+            } catch (error) {
+              if (error?.code === "ENOENT") continue;
+              throw error;
+            }
+          }
+          const keys = entries.map((entry) => `${entry.target.platform}-${entry.target.arch}`);
+          if (entries.length !== expected.size || new Set(keys).size !== expected.size || !keys.every((key) => expected.has(key)))
+            throw new Error("the candidate does not have exactly one successful closure for every supported target");
+          entries.sort((left, right) => {
+            const a = `${left.target.platform}-${left.target.arch}`;
+            const b = `${right.target.platform}-${right.target.arch}`;
+            return a < b ? -1 : a > b ? 1 : 0;
+          });
+          const index = {
+            schemaVersion: 1,
+            revision: process.env.CANDIDATE_REVISION,
+            targets: entries,
+            digest: `sha256:${createHash("sha256").update(canonicalizeJsonV2(entries)).digest("hex")}`
+          };
+          await writeFile("t76-target-index.json", `${canonicalizeJsonV2(index)}\n`, { mode: 0o600 });
+          NODE
 
       - name: Upload the reconciled target index
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

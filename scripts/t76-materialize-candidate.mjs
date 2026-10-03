@@ -9,20 +9,11 @@ import {
   verifyHermeticDistributionBundle,
   verifyReleaseCandidate
 } from "../packages/distribution/src/index.ts";
+import { CANDIDATE_RECORD_KEYS } from "./t76-candidate-evidence.mjs";
 
 const DIGEST = /^sha256:[a-f0-9]{64}$/u;
 const REVISION = /^[0-9a-f]{40}$/u;
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9:._@+/-]{0,255}$/u;
-const TARGET_KEYS = Object.freeze(["platform", "arch", "nodeVersion"]);
-const BUILD_INFO_KEYS = Object.freeze([
-  "schemaVersion",
-  "deterministic",
-  "revision",
-  "releaseId",
-  "semanticVersion",
-  "target",
-  "evidence"
-]);
 const COMPONENT_MANIFEST_KEYS = Object.freeze(["schemaVersion", "components"]);
 const COMPONENT_KEYS = Object.freeze(["componentId", "kind", "logicalPath", "contentDigest", "sizeBytes"]);
 
@@ -109,14 +100,14 @@ const sha256 = (bytes) => `sha256:${createHash("sha256").update(bytes).digest("h
 
 const validateTarget = (value, bundle) => {
   const target = record(value, "build target");
-  exactKeys(target, TARGET_KEYS, "build target");
+  exactKeys(target, CANDIDATE_RECORD_KEYS.target, "build target");
   if (canonicalizeJsonV2(target) !== canonicalizeJsonV2(bundle.target))
     fail("VES_T76_CANDIDATE_BUNDLE_MISMATCH", "build target differs from the verified bundle");
 };
 
 const validateBuildInfo = (value, bundle, revision) => {
   const info = record(value, "build-info");
-  exactKeys(info, BUILD_INFO_KEYS, "build-info");
+  exactKeys(info, CANDIDATE_RECORD_KEYS.buildInfo, "build-info");
   if (info.schemaVersion !== 1 || info.deterministic !== true)
     fail("VES_T76_CANDIDATE_INPUT_INVALID", "build-info is not a deterministic schema-v1 record");
   if (
@@ -221,7 +212,7 @@ export async function materializeT76Candidate(rawOptions) {
   const rollback = await canonicalJson(options.rollbackPath, "rollback proof");
   const evidence = buildInfo.evidence.map((item, index) => {
     const entry = record(item, `build-info evidence ${index}`);
-    exactKeys(entry, ["kind", "logicalPath", "contentDigest", "sizeBytes"], `build-info evidence ${index}`);
+    exactKeys(entry, CANDIDATE_RECORD_KEYS.buildInfoEvidence, `build-info evidence ${index}`);
     return {
       kind: entry.kind,
       digest: digest(entry.contentDigest, `build-info evidence ${index} digest`),

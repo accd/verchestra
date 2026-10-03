@@ -24,14 +24,9 @@ export const KEY_ENVIRONMENT_NAME = "VESTRA_RELEASE_SIGNING_KEY_PKCS8_BASE64";
 // the online key can neither swap the release nor rewrite the root.
 export const TIMESTAMP_KEY_ENVIRONMENT_NAME = "VESTRA_RELEASE_TIMESTAMP_SIGNING_KEY_PKCS8_BASE64";
 
-// invariant: the exact fleet a candidate closure must cover, in code-unit order.
-export const SUPPORTED_TARGET_KEYS = Object.freeze([
-  "darwin-arm64",
-  "darwin-x64",
-  "linux-arm64",
-  "linux-x64",
-  "win32-x64"
-]);
+// why: the fleet is a fact of the candidate, stated once in
+// t76-candidate-evidence.mjs; the publisher and the refresh keep its binding here.
+export { SUPPORTED_TARGET_KEYS } from "./t76-candidate-evidence.mjs";
 
 const BASE64 = /^[A-Za-z0-9+/]+={0,2}$/u;
 

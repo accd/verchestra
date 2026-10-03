@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 
+import { GATE_PROFILES, SUPPORTED_TARGET_KEYS } from "../../scripts/t76-candidate-evidence.mjs";
+
 const workflow = readFileSync(new URL("../../.github/workflows/t76-candidate-build.yml", import.meta.url), "utf8");
 
 const FLEET = Object.freeze([
@@ -11,6 +13,41 @@ const FLEET = Object.freeze([
   ["Linux glibc x64", "ubuntu-latest", "linux", "x64"],
   ["Linux glibc arm64", "ubuntu-24.04-arm", "linux", "arm64"]
 ]);
+
+const lines = workflow.split(/\r?\n/u);
+
+// why: no YAML dependency exists here. Jobs are two-space keys under `jobs:`,
+// and their steps are six-space `- name:` items.
+const jobLines = (job) => {
+  const start = lines.indexOf(`  ${job}:`);
+  assert.ok(start > 0, `${job} is a job`);
+  const end = lines.findIndex((line, index) => index > start && /^ {2}\S/u.test(line));
+  return lines.slice(start + 1, end < 0 ? lines.length : end);
+};
+
+const stepNames = (job) =>
+  jobLines(job)
+    .filter((line) => line.startsWith("      - name: "))
+    .map((line) => line.slice("      - name: ".length));
+
+const stepBody = (job, name) => {
+  const body = jobLines(job);
+  const start = body.indexOf(`      - name: ${name}`);
+  assert.ok(start >= 0, `${job} has the step ${name}`);
+  const end = body.findIndex((line, index) => index > start && line.startsWith("      - name: "));
+  return body.slice(start, end < 0 ? body.length : end).join("\n");
+};
+
+// invariant: the words of a folded `run: >-` command, one argument per line.
+const runCommand = (step) => {
+  const body = step.split("\n");
+  const start = body.findIndex((line) => line === "        run: >-");
+  assert.ok(start >= 0, "the step runs one folded command");
+  return body
+    .slice(start + 1)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+};
 
 test("T76 candidate workflow is manual, read-only, and fail-fast disabled", () => {
   assert.match(workflow, /^on:\r?\n {2}workflow_dispatch:/mu);
@@ -52,22 +89,39 @@ test("the runtime is installed before its version is verified", () => {
   assert.ok(setupNode < verifyRuntime, "runtime setup must precede the exact-version check");
 });
 
+// why: the counters are read and sealed by scripts/t76-candidate-evidence.mjs,
+// whose rules tests/build/t76-candidate-evidence.test.mjs runs. What this file
+// pins is that the workflow seals every gate it runs, with that gate's own exit
+// status and log, before the failure accounting can end the step.
 test("every closed gate is executed and its counters are sealed before building", () => {
   assert.match(workflow, /profiles=\(quick full build security release\)/u);
-  assert.match(workflow, /pnpm "gate:\$\{profile\}"/u);
-  assert.match(workflow, /assertionCount = sum\(\/\\u2139 tests/u);
-  assert.match(workflow, /skipped = sum\(\/\\u2139 skipped/u);
-  assert.match(workflow, /todo = sum\(\/\\u2139 todo/u);
-  assert.match(workflow, /survivingMutants: 0/u);
+  assert.deepEqual(/profiles=\(([a-z ]+)\)/u.exec(workflow)[1].split(" "), [...GATE_PROFILES]);
+  assert.match(
+    workflow,
+    /pnpm "gate:\$\{profile\}" 2>&1 \| tee "\$log"\n\s+status=\$\{PIPESTATUS\[0\]\}\n\s+set -e\n\s+node scripts\/t76-candidate-evidence\.mjs seal-gate \\\n\s+--profile "\$profile" \\\n\s+--status "\$status" \\\n\s+--log "\$log" \\\n\s+--evaluations gate-evaluations\.json\n\s+if \(\( status != 0 \)\); then failed=1; fi/u
+  );
   assert.match(workflow, /if: steps\.gates\.outcome == 'success'/u);
   assert.match(workflow, /--evaluations gate-evaluations\.json/u);
 });
 
 test("target bytes and evidence are portable, content-addressed artifacts", () => {
   assert.match(workflow, /--out t76-target-output/u);
-  assert.match(workflow, /releaseDigest: bundle\.releaseDigest/u);
-  assert.match(workflow, /gateEvidenceDigest/u);
-  assert.match(workflow, /canonicalizeJsonV2\(evidence\)/u);
+  // why: the record and its digests are written by the module; the step hands it
+  // the job's inputs and the build output, and nothing else.
+  const seal = stepBody("target", "Seal target build evidence");
+  assert.match(seal, /^ {8}if: steps\.gates\.outcome == 'success'$/mu);
+  assert.deepEqual(runCommand(seal), [
+    "node scripts/t76-candidate-evidence.mjs seal-target",
+    '--revision "$CANDIDATE_REVISION"',
+    '--release-id "$RELEASE_ID"',
+    '--semantic-version "$SEMANTIC_VERSION"',
+    '--platform "$MATRIX_PLATFORM"',
+    '--arch "$MATRIX_ARCH"',
+    "--node-version 24.14.0",
+    "--target-output t76-target-output",
+    "--evaluations gate-evaluations.json",
+    "--out target-build-evidence.json"
+  ]);
   assert.match(workflow, /if: always\(\)/u);
   assert.match(workflow, /actions\/upload-artifact@[0-9a-f]{40}/u);
   assert.match(workflow, /retention-days: 30/u);
@@ -76,13 +130,26 @@ test("target bytes and evidence are portable, content-addressed artifacts", () =
 test("collection requires exactly one successful closure for every target", () => {
   assert.match(workflow, /^  collect:/mu);
   assert.match(workflow, /needs: target\r?\n\s*if: always\(\)/u);
-  assert.match(
-    workflow,
-    /expected = new Set\(\["win32-x64", "darwin-x64", "darwin-arm64", "linux-x64", "linux-arm64"\]\)/u
-  );
-  assert.match(workflow, /entries\.length !== expected\.size/u);
-  assert.match(workflow, /value\.revision !== process\.env\.CANDIDATE_REVISION/u);
+  // why: the fleet, the revision binding and the exactly-once rule live in the
+  // module's reconciliation, which tests/build/t76-candidate-evidence.test.mjs
+  // and the golden comparison with the former inline program run.
+  assert.deepEqual(runCommand(stepBody("collect", "Reconcile the exact five-target closure")), [
+    "node scripts/t76-candidate-evidence.mjs reconcile",
+    '--revision "$CANDIDATE_REVISION"',
+    "--targets targets",
+    "--out t76-target-index.json"
+  ]);
   assert.match(workflow, /t76-target-index-\$\{\{ inputs\.revision \}\}/u);
+});
+
+test("the matrix builds exactly the fleet the reconciliation admits", () => {
+  const keys = [...workflow.matchAll(/^\s+platform: (\S+)\n\s+arch: (\S+)$/gmu)].map(
+    ([, platform, arch]) => `${platform}-${arch}`
+  );
+  assert.deepEqual(
+    keys.sort((left, right) => Number(left > right) - Number(left < right)),
+    [...SUPPORTED_TARGET_KEYS]
+  );
 });
 
 test("lifecycle scripts run only for the packages whose native binaries are required", () => {
@@ -141,13 +208,67 @@ test("every heredoc in the workflow terminates where the shell can find it", () 
   }
 });
 
-test("the gate evaluation reader treats an empty seal file as no evaluations", () => {
-  // The step truncates gate-evaluations.json before the loop, so the first
-  // profile reads an existing but empty file. That is not ENOENT, so the
-  // original ENOENT-only catch rethrew and every target died with
-  // "Unexpected end of JSON input" before recording a single gate.
-  assert.match(workflow, /readFile\("gate-evaluations\.json", "utf8"\)\.catch\(/u);
-  assert.match(workflow, /raw\.trim\(\) === "" \? \[\] : JSON\.parse\(raw\)/u);
-  // Malformed content must still fail closed rather than be swallowed.
-  assert.doesNotMatch(workflow, /JSON\.parse\(raw\)\s*\)?\s*\.catch/u);
+test("the seal file is truncated before the first gate, and the module seals into it", () => {
+  // why: the step truncates gate-evaluations.json before the loop, so the first
+  // profile reads an existing but empty file. That is not ENOENT, and an
+  // ENOENT-only reader once killed every target with "Unexpected end of JSON
+  // input" before a single gate was recorded. The reader is now the module's:
+  // tests/build/t76-candidate-evidence.test.mjs seals into an absent, an empty
+  // and a blank file, and refuses malformed content without touching it.
+  const truncate = workflow.indexOf(": > gate-evaluations.json");
+  const loop = workflow.indexOf('for profile in "${profiles[@]}"; do');
+  assert.ok(truncate > 0 && truncate < loop, "the seal file is truncated before the loop");
+  assert.equal(workflow.split(": > gate-evaluations.json").length, 2);
+});
+
+// why: the evidence the candidate build seals was once written by programs
+// embedded in this file, which no test ran (architecture review 2026-10-02,
+// card 3). The workflow now only calls the tested module; no step may carry
+// program text that serializes, hashes, or writes a record again.
+test("no step embeds an evidence writer", () => {
+  assert.doesNotMatch(workflow, /canonicalizeJsonV2|createHash|writeFile|JSON\.parse|packages\/domain/u);
+  const openers = [...workflow.matchAll(/<<'([A-Z]+)'/gu)];
+  assert.equal(openers.length, 1, "only the runner identity check runs inline");
+  assert.match(stepBody("target", "Verify revision, target, and runtime"), /<<'NODE'/u);
+  assert.equal([...workflow.matchAll(/node scripts\/t76-candidate-evidence\.mjs (\S+)/gu)].length, 3);
+});
+
+test("the steps of each job keep their order", () => {
+  assert.deepEqual(stepNames("target"), [
+    "Check out the exact candidate revision",
+    "Set up pnpm",
+    "Set up Node",
+    "Verify revision, target, and runtime",
+    "Install dependencies",
+    "Install qualified local driver probes",
+    "Run all five closed gates and seal their counters",
+    "Build the exact target bytes",
+    "Seal target build evidence",
+    "Upload target evidence and bytes"
+  ]);
+  assert.deepEqual(stepNames("collect"), [
+    "Check out the exact candidate revision",
+    "Set up Node",
+    "Download every target artifact",
+    "Reconcile the exact five-target closure",
+    "Upload the reconciled target index"
+  ]);
+});
+
+test("the candidate build reads no secret, binds no environment, and asks for no write", () => {
+  assert.doesNotMatch(workflow, /secrets\./u);
+  assert.doesNotMatch(workflow, /^\s+environment:/mu);
+  assert.doesNotMatch(workflow, /id-token/u);
+  assert.doesNotMatch(workflow, /^\s+[a-z-]+: write$/mu);
+  assert.equal([...workflow.matchAll(/^\s*permissions:/gmu)].length, 1, "one workflow-level grant, no job widens it");
+});
+
+test("every Node version the workflow states is the qualified runtime", () => {
+  const stated = [
+    ...[...workflow.matchAll(/node-version: (\S+)/gu)].map((match) => match[1]),
+    ...[...workflow.matchAll(/--node-version (\S+)/gu)].map((match) => match[1]),
+    ...[...workflow.matchAll(/node --version\)" == "v(\S+)"/gu)].map((match) => match[1])
+  ];
+  assert.equal(stated.length, 5, "two setups, the runtime check, the build, and the evidence seal");
+  assert.deepEqual(new Set(stated), new Set(["24.14.0"]));
 });
