@@ -462,8 +462,16 @@ test("a declared case with no evidence note is refused by name", () => {
 // is the enforcement surface: an index that records a contradiction inside a
 // file nobody checks enforces nothing.
 
-const runCli = (fleet, { out = true, separator = true, filesFirst = false } = {}) => {
+const runCli = (fleet, options) => {
   const dir = mkdtempSync(join(tmpdir(), "t75-index-"));
+  try {
+    return runCliIn(dir, fleet, options);
+  } finally {
+    rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+  }
+};
+
+const runCliIn = (dir, fleet, { out = true, separator = true, filesFirst = false } = {}) => {
   const files = fleet.map((index, position) => {
     const file = join(dir, `fleet-${position}.json`);
     writeFileSync(file, JSON.stringify(index));

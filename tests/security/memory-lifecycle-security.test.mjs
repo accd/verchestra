@@ -1,9 +1,8 @@
 import assert from "node:assert/strict";
-import { access, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { tmpdir } from "node:os";
 import { DatabaseSync } from "node:sqlite";
-import { test } from "node:test";
+import { after, test } from "node:test";
 
 import { MemoryPromotionLifecycle } from "../../packages/memory/src/index.ts";
 import {
@@ -11,6 +10,7 @@ import {
   artifactPlanner,
   controlOwnerId,
   digest,
+  disposeLifecycleRoots,
   lifecycleRoot,
   memoryHit,
   now,
@@ -20,6 +20,9 @@ import {
   promotionInput,
   workspaceId
 } from "../helpers/memory-lifecycle-fixture.mjs";
+import { temporaryDirectory } from "../helpers/temporary-directory.mjs";
+
+after(disposeLifecycleRoots);
 
 async function opened(options = {}) {
   const paths = await lifecycleRoot();
@@ -338,9 +341,9 @@ test("external-control placement never writes into an ignored project root", asy
 // reported "Target ancestry escapes its owner" for perfectly contained targets.
 // A directory link (junction on Windows, symlink on POSIX) reproduces the alias
 // on any platform; the full lifecycle must operate through it.
-test("lifecycle operates through roots reached by a canonicalizing directory link", async () => {
+test("lifecycle operates through roots reached by a canonicalizing directory link", async (t) => {
   const paths = await lifecycleRoot();
-  const aliasParent = await mkdtemp(join(tmpdir(), "verchestra-lifecycle-alias-"));
+  const aliasParent = await temporaryDirectory(t, "verchestra-lifecycle-alias-");
   const alias = join(aliasParent, "alias");
   await symlink(paths.root, alias, "junction");
   assert.notEqual(alias, await realpath(alias), "the alias must canonicalize to a different path");
@@ -367,7 +370,6 @@ test("lifecycle operates through roots reached by a canonicalizing directory lin
   const published = join(paths.controlRoot, ...promotion.writePlan.writes[0].logicalPath.split("/"));
   assert.equal((await readFile(published, "utf8")).length > 0, true);
   lifecycle.close();
-  await rm(aliasParent, { recursive: true, force: true });
 });
 
 // #58 (memory vertical): memory-lifecycle.ts ordered canonical-JSON object

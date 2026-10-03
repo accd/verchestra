@@ -1,18 +1,18 @@
 import assert from "node:assert/strict";
-import { mkdtemp, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
 
 import { FileRunCapsuleStore } from "../../packages/evidence/src/index.ts";
 import { RuntimeStore } from "../../packages/platform-node/src/index.ts";
 import { capsuleHarness, capsuleInput, capsuleNow, recoveryCoordinator } from "../helpers/run-capsule-fixture.mjs";
+import { temporaryDirectory } from "../helpers/temporary-directory.mjs";
 
 const statuses = ["COMPLETED", "FAILED", "ABORTED", "INTERRUPTED", "HANDED_OFF", "RECOVERED"];
 
 for (const status of statuses) {
-  test(`${status} publication acknowledgement loss converges to one file`, async () => {
-    const root = await mkdtemp(join(tmpdir(), "verchestra-capsule-ack-"));
+  test(`${status} publication acknowledgement loss converges to one file`, async (t) => {
+    const root = await temporaryDirectory(t, "verchestra-capsule-ack-");
     const { builder } = capsuleHarness();
     const sealed = await builder.build(capsuleInput(status));
     let failOnce = true;
@@ -32,8 +32,8 @@ for (const status of statuses) {
 }
 
 for (const status of statuses) {
-  test(`${status} crash after Capsule publication recovers without duplicate seal`, async () => {
-    const root = await mkdtemp(join(tmpdir(), "verchestra-capsule-recover-"));
+  test(`${status} crash after Capsule publication recovers without duplicate seal`, async (t) => {
+    const root = await temporaryDirectory(t, "verchestra-capsule-recover-");
     const runtime = new RuntimeStore({ dbPath: join(root, "runtime.sqlite"), now: () => capsuleNow });
     runtime.open();
     const input = capsuleInput(status);
@@ -70,8 +70,8 @@ for (const status of statuses) {
   });
 }
 
-test("journal acknowledgement loss converges because the seal commit is durable", async () => {
-  const root = await mkdtemp(join(tmpdir(), "verchestra-capsule-journal-ack-"));
+test("journal acknowledgement loss converges because the seal commit is durable", async (t) => {
+  const root = await temporaryDirectory(t, "verchestra-capsule-journal-ack-");
   let failOnce = true;
   const runtime = new RuntimeStore({
     dbPath: join(root, "runtime.sqlite"),
@@ -108,8 +108,8 @@ test("journal acknowledgement loss converges because the seal commit is durable"
   runtime.close();
 });
 
-test("stale terminal version fails before a Capsule seal record", async () => {
-  const root = await mkdtemp(join(tmpdir(), "verchestra-capsule-stale-"));
+test("stale terminal version fails before a Capsule seal record", async (t) => {
+  const root = await temporaryDirectory(t, "verchestra-capsule-stale-");
   const runtime = new RuntimeStore({ dbPath: join(root, "runtime.sqlite"), now: () => capsuleNow });
   runtime.open();
   const input = capsuleInput("ABORTED");
@@ -137,8 +137,8 @@ test("stale terminal version fails before a Capsule seal record", async () => {
   runtime.close();
 });
 
-test("resolved input drift fails before publication or journal mutation", async () => {
-  const root = await mkdtemp(join(tmpdir(), "verchestra-capsule-drift-"));
+test("resolved input drift fails before publication or journal mutation", async (t) => {
+  const root = await temporaryDirectory(t, "verchestra-capsule-drift-");
   const input = capsuleInput("FAILED");
   const journal = {
     listUnsealedTerminalRuns: () => [
@@ -156,8 +156,8 @@ test("resolved input drift fails before publication or journal mutation", async 
   await assert.rejects(coordinator.recoverUnsealed(), { code: "VES_RUN_CAPSULE_RECOVERY_INVALID" });
 });
 
-test("a competing target is preserved during retry", async () => {
-  const root = await mkdtemp(join(tmpdir(), "verchestra-capsule-conflict-"));
+test("a competing target is preserved during retry", async (t) => {
+  const root = await temporaryDirectory(t, "verchestra-capsule-conflict-");
   const { builder } = capsuleHarness();
   const sealed = await builder.build(capsuleInput());
   await writeFile(join(root, `${sealed.artifactId}.json`), "competing human bytes", "utf8");

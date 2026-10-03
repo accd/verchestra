@@ -18,6 +18,7 @@ import {
   parseHandoff,
   validateHandoffTransition
 } from "../../scripts/agent-readiness.mjs";
+import { temporaryDirectory } from "../helpers/temporary-directory.mjs";
 
 const SHA = "a".repeat(40);
 // Whether a revision exists is a repository fact the report author cannot write
@@ -77,8 +78,8 @@ test("JSON context exposes the exact safe clean-clone contract", () => {
   assert.doesNotMatch(output, /[A-Za-z]:\\|\/(?:Users|home)\//u);
 });
 
-test("context degrades deterministically when Git is unavailable", async () => {
-  const root = await mkdtemp(join(tmpdir(), "verchestra-context-"));
+test("context degrades deterministically when Git is unavailable", async (t) => {
+  const root = await temporaryDirectory(t, "verchestra-context-");
   await mkdir(join(root, "docs", "qualification"), { recursive: true });
   await mkdir(join(root, ".specs", "features"), { recursive: true });
   await writeFile(join(root, "package.json"), '{"version":"0.0.0-qualification"}\n');

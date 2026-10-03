@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 
 import { createWritePlan } from "../../packages/workspace/src/index.ts";
+import { removeTemporaryDirectory } from "./temporary-directory.mjs";
 
 export const artifactPlanner = Object.freeze({ createWritePlan });
 
@@ -112,8 +113,17 @@ export function approval(plan, overrides = {}) {
   };
 }
 
+const roots = [];
+
+// invariant: every suite that calls `lifecycleRoot` registers this with `after`,
+// so each root it created is removed when the suite ends, pass or fail.
+export async function disposeLifecycleRoots() {
+  await Promise.all(roots.splice(0).map(removeTemporaryDirectory));
+}
+
 export async function lifecycleRoot() {
   const root = await mkdtemp(join(tmpdir(), "verchestra-memory-lifecycle-"));
+  roots.push(root);
   const controlRoot = join(root, "control");
   const objectRoot = join(root, "objects");
   await mkdir(controlRoot, { recursive: true });

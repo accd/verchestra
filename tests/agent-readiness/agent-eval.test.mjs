@@ -3,6 +3,8 @@ import { spawnSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 
+import { temporaryDirectory } from "../helpers/temporary-directory.mjs";
+
 test("evaluation corpus covers six unique provider-neutral cases", async () => {
   const corpus = JSON.parse(await readFile(new URL("../agent-eval/corpus.json", import.meta.url), "utf8"));
   assert.equal(corpus.schemaVersion, 1);
@@ -34,13 +36,12 @@ test("generic runner qualifies the fake adapter in a disposable worktree", () =>
   assert.match(summary.digest, /^sha256:[0-9a-f]{64}$/u);
 });
 
-test("generic runner fails closed when an adapter returns a wrong result", async () => {
+test("generic runner fails closed when an adapter returns a wrong result", async (t) => {
   const profile = JSON.parse(await readFile(new URL("../agent-eval/profiles/fake.json", import.meta.url), "utf8"));
   profile.args.push("--invalid");
-  const { mkdtemp, writeFile } = await import("node:fs/promises");
-  const { tmpdir } = await import("node:os");
+  const { writeFile } = await import("node:fs/promises");
   const { join } = await import("node:path");
-  const directory = await mkdtemp(join(tmpdir(), "verchestra-eval-profile-"));
+  const directory = await temporaryDirectory(t, "verchestra-eval-profile-");
   const path = join(directory, "invalid.json");
   await writeFile(path, JSON.stringify(profile));
   const result = spawnSync(process.execPath, ["scripts/agent-eval.mjs", "--config", path], {

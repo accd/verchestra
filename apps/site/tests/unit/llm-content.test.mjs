@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -49,8 +49,9 @@ test("full context is stable, attributed, complete, bounded, and path-safe", asy
   assert.doesNotMatch(full, /[A-Za-z]:\\|\/(?:Users|home)\//u);
 });
 
-test("build writer emits text endpoints and a Markdown alternate for every public document route", async () => {
+test("build writer emits text endpoints and a Markdown alternate for every public document route", async (t) => {
   const output = await mkdtemp(join(tmpdir(), "verchestra-llm-output-"));
+  t.after(() => rm(output, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }));
   const result = await writeLlmBuildArtifacts(repositoryRoot, output);
   assert.equal(await readFile(join(output, "llms.txt"), "utf8"), result.concise);
   assert.equal(await readFile(join(output, "llms-full.txt"), "utf8"), result.full);

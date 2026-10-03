@@ -810,7 +810,7 @@ adds evidence and decides nothing.
 re-checked.** `docs/audits/2026-08-verchestra-product-repository-audit.md:47`
 records that `test:release` passed vacuously while `tests/public-regression/`
 and `tests/system/` did not exist, and that until filled, "gate:release passed"
-is weaker than it reads. T73 filled it, and `scripts/test-scope.mjs:20-23` now
+is weaker than it reads. T73 filled it, and `scripts/test-scope.mjs:22-25` now
 fails a scope with zero tests. Confirm the closure at the candidate revision
 rather than inheriting the claim.
 

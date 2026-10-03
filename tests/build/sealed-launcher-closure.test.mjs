@@ -32,7 +32,6 @@ import { copyFile, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node
 import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
-import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { after, before, test } from "node:test";
@@ -48,6 +47,7 @@ import { resolveStateRoot } from "../../packages/platform-node/src/state-root.ts
 import { SEALED_LAUNCHER_ENTRIES, bundleSealedLauncher } from "../../scripts/t76-build-candidate.mjs";
 import { createSealedRepositoryReplica } from "../helpers/sealed-repository-fixture.mjs";
 import { systemGit } from "../helpers/system-git.mjs";
+import { temporaryDirectory } from "../helpers/temporary-directory.mjs";
 
 const SEALED_VERSION = "9.9.9-sealed";
 const NODE_VERSION = process.version.slice(1);
@@ -143,9 +143,10 @@ async function stageSealedComponents(releaseRoot) {
 // The layout activation actually stages: the release's own runtime, the sealed
 // `bin/` artifacts, the native components, and the sealed component sources -
 // no repository checkout, no dependency store, no package manifests.
-async function stagedLayout(bins) {
-  const root = await mkdtemp(join(tmpdir(), "verchestra-sealed-layout-"));
-  disposable.push(root);
+// why: each layout holds a copy of the Node runtime, so it is removed when its
+// own test ends rather than accumulating until the file does.
+async function stagedLayout(t, bins) {
+  const root = await temporaryDirectory(t, "verchestra-sealed-layout-");
   const releaseRoot = join(root, "release");
   await mkdir(join(releaseRoot, "bin"), { recursive: true });
   await mkdir(join(releaseRoot, "native"), { recursive: true });
@@ -221,8 +222,8 @@ function spawnRepository(args, cwd) {
   });
 }
 
-test("both sealed launchers pass the real activation health gate from the staged layout", async () => {
-  const releaseRoot = await stagedLayout(sealedBins);
+test("both sealed launchers pass the real activation health gate from the staged layout", async (t) => {
+  const releaseRoot = await stagedLayout(t, sealedBins);
   const evidence = await new NodeActivationHealthGate().evaluate({ releaseRoot, bundle: bundleView() });
   assert.equal(evidence.schemaVersion, 1);
   assert.deepEqual(
@@ -244,8 +245,8 @@ test("both sealed launchers pass the real activation health gate from the staged
   assert.equal(evidence.launchers[0].normalizedBehaviorDigest, evidence.launchers[1].normalizedBehaviorDigest);
 });
 
-test("the health report carries only honest observations of the staged closure", async () => {
-  const releaseRoot = await stagedLayout(sealedBins);
+test("the health report carries only honest observations of the staged closure", async (t) => {
+  const releaseRoot = await stagedLayout(t, sealedBins);
   const result = spawnSealed(releaseRoot, "vestra.mjs", ["--activation-health"]);
   assert.equal(result.status, 0);
   assert.equal(result.stderr, "", "the health protocol allows no stderr output");
@@ -284,8 +285,8 @@ test("the health report carries only honest observations of the staged closure",
   );
 });
 
-test("a sealed launcher without its native components fails the health gate closed", async () => {
-  const releaseRoot = await stagedLayout(sealedBins);
+test("a sealed launcher without its native components fails the health gate closed", async (t) => {
+  const releaseRoot = await stagedLayout(t, sealedBins);
   await rm(join(releaseRoot, "native"), { recursive: true, force: true });
   await assert.rejects(new NodeActivationHealthGate().evaluate({ releaseRoot, bundle: bundleView() }), (error) => {
     assert.equal(error.code, "VES_LAUNCHER_EXIT_NONZERO");
@@ -297,8 +298,8 @@ test("a sealed launcher without its native components fails the health gate clos
   assert.equal(diagnostic.checks.find((check) => check.name === "native").status, "fail");
 });
 
-test("the sealed launcher is the real CLI for every other argument vector", async () => {
-  const releaseRoot = await stagedLayout(sealedBins);
+test("the sealed launcher is the real CLI for every other argument vector", async (t) => {
+  const releaseRoot = await stagedLayout(t, sealedBins);
   const version = spawnSealed(releaseRoot, "vestra.mjs", ["--version"]);
   assert.equal(version.status, 0);
   assert.equal(version.stderr, "");
@@ -329,8 +330,8 @@ test("the sealed launcher is the real CLI for every other argument vector", asyn
 // bound credential observable; tests/integration/doctor-secret-backend.test.mjs
 // proves it).
 // BLOCKED is the honest verdict for this unprovisioned, un-activated layout.
-test("doctor from the staged layout reports the machine, not the packaging", async () => {
-  const releaseRoot = await stagedLayout(sealedBins);
+test("doctor from the staged layout reports the machine, not the packaging", async (t) => {
+  const releaseRoot = await stagedLayout(t, sealedBins);
   const project = await invokingProject();
   const argv = ["doctor", "--deep", "--output", "json"];
 
@@ -353,11 +354,19 @@ test("doctor from the staged layout reports the machine, not the packaging", asy
   assert.ok(sealedReport["doctor.check_codes"].includes("doctor.native-asset:blocked"));
 });
 
-test("self-test --profile smoke passes from the staged layout", async () => {
-  const releaseRoot = await stagedLayout(sealedBins);
+// why: the CLI keeps its disposable Self-Test base under the OS temporary
+// directory between runs, so each Self-Test run gets one its test removes.
+async function ownedTemporaryEnvironment(t) {
+  const temporary = await temporaryDirectory(t, "verchestra-sealed-tmp-");
+  return { TMPDIR: temporary, TEMP: temporary, TMP: temporary };
+}
+
+test("self-test --profile smoke passes from the staged layout", async (t) => {
+  const releaseRoot = await stagedLayout(t, sealedBins);
   const project = await invokingProject();
   const result = spawnSealed(releaseRoot, "vestra.mjs", ["self-test", "--profile", "smoke", "--output", "json"], {
     cwd: project,
+    env: await ownedTemporaryEnvironment(t),
     timeoutMs: 180_000
   });
   assert.equal(result.status, 0, result.stderr);
@@ -375,11 +384,12 @@ test("self-test --profile smoke passes from the staged layout", async () => {
 // never emits. It is the slowest test here (the repository's own equivalent in
 // tests/e2e/self-test-cli-e2e.test.mjs costs about the same) and it is the
 // only thing that observes the spawn rather than the path.
-test("self-test --profile full runs its sealed crash child from the staged layout", async () => {
-  const releaseRoot = await stagedLayout(sealedBins);
+test("self-test --profile full runs its sealed crash child from the staged layout", async (t) => {
+  const releaseRoot = await stagedLayout(t, sealedBins);
   const project = await invokingProject();
   const result = spawnSealed(releaseRoot, "vestra.mjs", ["self-test", "--profile", "full", "--output", "json"], {
     cwd: project,
+    env: await ownedTemporaryEnvironment(t),
     timeoutMs: 600_000
   });
   assert.equal(result.status, 0, result.stderr);
@@ -389,8 +399,8 @@ test("self-test --profile full runs its sealed crash child from the staged layou
   assert.equal(report.data["self_test.check_count"], 10);
 });
 
-test("every spawned Self-Test sibling resolves to the layout it is running in", async () => {
-  const releaseRoot = await stagedLayout(sealedBins);
+test("every spawned Self-Test sibling resolves to the layout it is running in", async (t) => {
+  const releaseRoot = await stagedLayout(t, sealedBins);
   const stagedChild = join(releaseRoot, ...CRASH_CHILD_LOGICAL_PATH.split("/"));
   const stagedFake = join(releaseRoot, "components", ...SEALED_COMPONENT_FILE.split("/"));
   assert.ok(existsSync(stagedChild), "the candidate must emit the crash child as its own sealed artifact");
@@ -420,13 +430,13 @@ test("every spawned Self-Test sibling resolves to the layout it is running in", 
 // The red-to-green discriminator: the development shims the candidate used to
 // seal verbatim die in exactly the way the live install died, and this
 // harness - unlike the old synthetic fixtures - observes it.
-test("the development shim launchers fail this same gate from the staged layout", async () => {
+test("the development shim launchers fail this same gate from the staged layout", async (t) => {
   const shims = {};
   for (const [componentId, entry] of Object.entries(SEALED_LAUNCHER_ENTRIES)) {
     const shimPath = entry.replace("closure/", "bin/").replace("-entry.ts", ".mjs");
     shims[componentId] = await readFile(join(replica.repository, ...shimPath.split("/")));
   }
-  const releaseRoot = await stagedLayout(shims);
+  const releaseRoot = await stagedLayout(t, shims);
   await assert.rejects(new NodeActivationHealthGate().evaluate({ releaseRoot, bundle: bundleView() }), (error) => {
     assert.equal(error.code, "VES_LAUNCHER_EXIT_NONZERO");
     return true;
@@ -470,8 +480,8 @@ test("a sealed launcher bundle imports Node built-ins only", () => {
 // the release's `native/cedar-wasm.wasm` rather than from a dependency store
 // the staged layout does not have. A dry-run plan exercises all three without
 // a credential, a provider, or any write to the Workspace state.
-test("vestra task is reachable from the sealed bundle and its bridge relay is staged and runnable", async () => {
-  const releaseRoot = await stagedLayout(sealedBins);
+test("vestra task is reachable from the sealed bundle and its bridge relay is staged and runnable", async (t) => {
+  const releaseRoot = await stagedLayout(t, sealedBins);
   const stagedRelay = join(releaseRoot, ...RELAY_LOGICAL_PATH.split("/"));
   assert.ok(existsSync(stagedRelay), "the candidate must emit the bridge relay as its own sealed artifact");
   assert.equal(resolveMcpBridgeRelay(pathToFileURL(join(releaseRoot, "bin", "vestra.mjs")).href), stagedRelay);
