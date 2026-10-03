@@ -10,9 +10,12 @@ none of the sources cited or recorded here.
 
 The task is two pull requests, each a contiguous range of commits:
 
-1. **The event type** (section 1 to 9): `fe6ef6b`, `e9a8c43`, `342234c`,
-   `c2893ef` and the commit that adds this file.
-2. **The framed protocol in the package's entry** (section 10).
+1. **The event type** (sections 1 to 9): `fe6ef6b`, `e9a8c43`, `342234c`,
+   `c2893ef` and `087bc89`, which adds this file. Citations of the tip in
+   these sections are at `c2893ef`, the last commit of the range that
+   changes code.
+2. **The framed protocol in the package's entry** (section 10): `d7ea736`
+   and the commit that adds that section.
 
 ## 1. The friction on `main`
 
@@ -59,7 +62,7 @@ fields (`c2893ef`): the OpenCode tool request (`opencode-driver.ts:391-392`)
 and the provider child run's error report (`provider-child-run.ts:297`) were
 spread from records.
 
-Who sets each field and who reads it, at the tip of the range:
+Who sets each field and who reads it, at `c2893ef`:
 
 | Type | Field | Set by | Read by a product source |
 | --- | --- | --- | --- |
@@ -294,3 +297,112 @@ The range was rebased onto `2651fa0` (T9), which adds 8 unit, 2 architecture
 and 2 integration cases; the gates at the end of the range ran after the
 rebase. No test was skipped, and none is a todo. The change touches the
 drivers, so the platform matrix runs on the branch before merge.
+
+## 10. The framed protocol in the package's entry
+
+### What it is and who imports it
+
+At `6fae651`, `packages/drivers/src/index.ts` was 604 lines, and lines 44-346
+and 533-583 were the framed Driver protocol T33 qualified: the
+Content-Length envelope and its canonical payload digest
+(`encodeDriverFrame`, `validateEnvelope`), the frame decoder, the sequence
+guard, the handshake, the bounded event queue, the cancellation escalation,
+the framed host adapter and the supervisor.
+
+| Importer | Kind |
+| --- | --- |
+| `tests/contract/driver-protocol.test.mjs` (29 cases) | its suite: framing, envelope, replay, sequence, handshake, digest |
+| `tests/fault-injection/driver-supervisor-faults.test.mjs` (10 cases) | its suite: bounded flow, sequence fault, cancellation escalation |
+| any production source | none: no source of `packages/` or `apps/` names any of its exports, and `FramedDriverHostAdapter` has no importer at all |
+
+Every driver runs in process behind the Driver interface; no composition
+frames, decodes, sequences or supervises a driver's events over a transport.
+Nothing outside its tests needs it.
+
+### Decision
+
+Moved out of the entry, not deleted, to
+`packages/drivers/src/driver-framed-protocol.ts`, unchanged (`d7ea736`).
+
+| Option | Verdict |
+| --- | --- |
+| A module of the package, outside its entry | **Chosen.** The entry (`exports: "."`) neither holds nor exports it, so the package's interface is what runs. The module stays under the type check, the lint, the complexity ratchet and the census. It depends on nothing but the error class and the domain, so deleting it with its two suites stays one change. |
+| Deleted with its two suites | Not taken here. It is T33's qualified deliverable, and deleting it decides that no driver will run behind a framed transport; the review left that to the owner. `docs/qualification/t33-validation.md` stays immutable either way. |
+| Next to its suites, under `tests/` | Rejected: the type check covers `apps` and `packages` only, so the module would lose it, and the census and complexity ratchet would stop seeing it. |
+| A spike | Rejected: its suites are contract and fault suites of the product gates, not qualification of a dependency. |
+
+The module states the envelope's two patterns (a `sha256:` digest and a
+safe identifier) itself; the entry's start check states the same two for
+its fields. Sharing them would tie the start check to a module that may be
+deleted. The mock computed its session identifier with the protocol's digest
+helper; it now hashes the canonical request itself, to the same identifier
+(`index.ts:173`).
+
+### Evidence
+
+| Requirement | Evidence |
+| --- | --- |
+| The entry no longer holds or exports the protocol | `tests/architecture/driver-framed-protocol.test.mjs:56` |
+| No production source imports it | `tests/architecture/driver-framed-protocol.test.mjs:66` |
+| Its only importers are its two suites | `tests/architecture/driver-framed-protocol.test.mjs:73` |
+| Its behavior is unchanged | the two suites pass unmodified apart from their import lines: 29 and 10 cases |
+| Emitted bytes unchanged | the transcript recorder, three runs at `d7ea736` against the three of `c2893ef`: 188 of 188 identical, the mock's session identifiers included |
+
+Against `087bc89` the architecture test fails its first case: the entry
+still holds the protocol. No case was deleted.
+
+`index.ts` is 241 lines (597 at `c2893ef`), the module 374. `export
+interface Driver {`, which the lifecycle matrix reads from the entry, is at
+`index.ts:55`.
+
+### Guardrails
+
+- **Complexity:** the hotspots moved with their values:
+  `packages/drivers/src/index.ts :: Function 'validateEnvelope'` (33) is now
+  `packages/drivers/src/driver-framed-protocol.ts :: Function
+  'validateEnvelope'` (33), and `packages/drivers/src/index.ts :: Method
+  'push'` (14) is now `packages/drivers/src/driver-framed-protocol.ts ::
+  Method 'push'` (14). No value rose.
+- **Census:** `index.ts` lost `JSON.stringify` (1 → 0) and two canonicalizer
+  signals (4 → 2); the module carries what moved (canonicalizer 4, digest 2,
+  serialization 1). `pnpm census:refresh` added its row as a new candidate,
+  and it is classified as the entry was, `migrated-v2`, with the entry's
+  reason: the moved code imports `canonicalizeJsonV2`. `pnpm test:census`
+  passes (13).
+- **Citations moved:** `executable-matrices.md` (`index.ts:55`, and
+  `BoundedDriverEventQueue` at `driver-framed-protocol.ts:257`) and the
+  comment of `tests/contract/driver-lifecycle-matrix.test.mjs`
+  (`index.ts:55`).
+- No error code or message changed; the protocol's codes are the module's,
+  as they were the entry's. The digest-bound reports, the migration count
+  (12) and the runtime error catalog (19) are untouched.
+
+### Gates at the end of the range
+
+| Command | Result |
+| --- | --- |
+| `pnpm gate:quick` (each commit) | PASS: unit 2654, agent-readiness 331, census 13 |
+| `pnpm test:architecture` (each commit) | PASS: 122 |
+| `pnpm gate:build` | PASS: unit 2654, contract 806, integration 1096, e2e 275, architecture 122, build 172, qualification 346 |
+| `pnpm gate:security` | PASS: unit 2654, contract 806, e2e 275, architecture 122, qualification 346, security 1324, fault 310 |
+| `pnpm test:contract` | PASS: 806 |
+| `pnpm test:integration` | PASS: 1096 (a first run failed 1 case, see below) |
+| `pnpm test:qualification` | PASS: 346 |
+| `pnpm qualify:claude` | PASS: 71 |
+| `pnpm qualify:codex` | PASS: 34 |
+| `pnpm qualify:opencode` | PASS: 23 |
+| `pnpm qualify:pi` | PASS: 25 |
+| `pnpm agent:check` | PASS |
+
+A first standalone `pnpm test:integration` failed one case of
+`tests/integration/provider-child-run.test.mjs`, "a provider that exits by
+itself after its result ends the run with no error, and nothing ends it":
+the fake exited before its input was written, and the run reported
+`VES_FAKE_STDIN_FAILED`. It is a race in that suite, not in this change: run
+48 times, 12 at a time, it fails 4 to 6 times with the product sources and
+tests of `origin/main` (`2651fa0`), with `main`'s `provider-child-run.ts` on
+the branch, and on the branch alike, and 0 of 30 run one at a time. The
+rerun passed, and the same suite passed inside `pnpm gate:build`.
+
+No test was skipped, and none is a todo. The platform matrix runs on the
+branch before merge, as for the first range.

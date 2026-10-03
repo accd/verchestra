@@ -2366,6 +2366,46 @@ note. -->
   the drivers and needs a platform matrix run on the branch before merge.
   Evidence is in `.specs/features/architecture-deepening-2/validation-t6.md`.
 
+### AD-064 — The framed Driver protocol leaves the drivers package's entry, and deleting it stays the owner's decision (ADR2-6)
+
+- **Status:** proposed (ratified by reviewing the pull request that carries
+  the framed protocol range of `refactor/typed-driver-event`).
+- **Context:** More than half of `packages/drivers/src/index.ts` was the
+  framed Driver protocol T33 qualified: the Content-Length envelope and its
+  digest, the frame decoder, the sequence guard, the handshake, the bounded
+  event queue, the cancellation escalation, the framed host adapter and the
+  supervisor. No production source imports any of it; its two suites are
+  its only importers. The architecture review of `9eb2881` left keeping it,
+  with no production caller, to the owner.
+- **Decision:**
+  1. The protocol moves, unchanged, to
+     `packages/drivers/src/driver-framed-protocol.ts`. The package's entry
+     neither holds nor exports it, so the entry's interface is what runs:
+     the Driver interface, the start check, the error class, the mock and
+     the four drivers. Its two suites import the module by path.
+  2. **It is not deleted.** Deleting it decides that no driver will run
+     behind a framed transport, which is the owner's call. As a module of
+     the package it stays under the type check, the lint, the complexity
+     ratchet and the census, and it depends on nothing but the error class
+     and the domain, so deleting it with its two suites is one change.
+  3. The module states the envelope's two patterns itself; the entry's start
+     check keeps the same two for its own fields, so the start check does
+     not depend on a module that may go.
+- **Alternatives rejected:** deleting it now (item 2); moving it beside its
+  suites under `tests/` (the type check covers only `apps` and `packages`,
+  and the census and the complexity ratchet would stop seeing it); a spike
+  (its suites are contract and fault suites of the product gates); a
+  sharing module for the two patterns (it would tie the start check to the
+  protocol's fate).
+- **Consequence:** `tests/architecture/driver-framed-protocol.test.mjs`
+  fails when the entry holds or exports the protocol again, when a product
+  source imports it, or when anything but its two suites does; giving it a
+  production caller is therefore a decision, not a refactor. `index.ts`
+  went from 597 lines to 241. The two hotspots and the census row moved
+  with the code, with their values. No case, code or message changed, and
+  every recorded scenario is byte-identical. Evidence is in
+  `.specs/features/architecture-deepening-2/validation-t6.md`, section 10.
+
 ## Handoff
 
 - **Feature:** `subscription-provider-auth` (ADP-A, tasks TA1 and TA2) on
