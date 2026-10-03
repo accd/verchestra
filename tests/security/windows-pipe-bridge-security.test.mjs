@@ -9,7 +9,7 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { once } from "node:events";
-import { mkdtemp, readFile, readdir } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { join } from "node:path";
 import { afterEach, test } from "node:test";
@@ -19,7 +19,7 @@ import {
   currentUserSid,
   isOwnerOnlyDacl,
   nodeWindowsAclToolRunner,
-  ownerOnlyGrantArguments,
+  ownerOnlyRestore,
   proveOwnerOnlyDirectory,
   readDirectoryDacl,
   windowsAclToolExecutable
@@ -144,11 +144,21 @@ async function proofDiagnosis(directory, proof) {
   };
   const whoami = tool("whoami", WHOAMI_ARGUMENTS);
   const sid = currentUserSid(whoami.stdout ?? "");
+  let restore = null;
+  if (sid !== undefined) {
+    const { file, contents, args } = ownerOnlyRestore(directory, sid);
+    try {
+      await writeFile(file, contents, { flag: "wx" });
+      restore = tool("icacls", args);
+    } finally {
+      await rm(file, { force: true });
+    }
+  }
   return JSON.stringify({
     step: proof.step,
     whoami,
     sid: sid ?? null,
-    grant: sid === undefined ? null : tool("icacls", ownerOnlyGrantArguments(directory, sid)),
+    restore,
     listing: tool("icacls", [directory]),
     dacl: (await readDirectoryDacl(directory)) ?? null
   });

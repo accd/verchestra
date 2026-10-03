@@ -320,11 +320,11 @@ root hands the transport to the driver adapter on `win32` only
 | Requirement | Evidence (file:line, assertion) | Result |
 | --- | --- | --- |
 | SSI-70 second adapter | `WindowsNamedPipeBridgeTransport` satisfies `BridgeTransport` by shape (checked by `pnpm typecheck` at `task-implementer.ts`, which returns it as `BridgeTransport`); agent-runtime never imports platform-node (`pnpm test:architecture` 125/125). `tests/unit/task-implementer-bridge-transport.test.mjs:10`: the composition hands the bridge the pipe transport on `win32` and nothing on `darwin`, `linux`, `freebsd`. | PASS (darwin) |
-| SSI-71 fresh name, pinned PowerShell 7, `CurrentUserOnly`, first instance, one instance, byte relay | `tests/unit/windows-pipe-transport.test.mjs:34` (16 random bytes, 64 distinct names, endpoint `\\.\pipe\<name>`); `:121` (pinned `C:\Program Files\PowerShell\7\pwsh.exe`, exact argument vector); `:106` (`CurrentUserOnly`, `FirstPipeInstance`, `Asynchronous`, max instances `1`, stdin/stdout `CopyToAsync`, one `WaitForConnection`); `:258` (two listens, two endpoints); `:278` (bytes both ways). Windows only: `tests/security/windows-pipe-bridge-security.test.mjs:148` (relay end to end over the real pipe), `:218` (pre-created name refused with `VES_BRIDGE_CHANNEL_INSECURE`, directory removed), `:200` (second client never connects). | PASS (darwin); win32 cases pending the Windows leg |
+| SSI-71 fresh name, pinned PowerShell 7, `CurrentUserOnly`, first instance, one instance, byte relay | `tests/unit/windows-pipe-transport.test.mjs:34` (16 random bytes, 64 distinct names, endpoint `\\.\pipe\<name>`); `:121` (pinned `C:\Program Files\PowerShell\7\pwsh.exe`, exact argument vector); `:106` (`CurrentUserOnly`, `FirstPipeInstance`, `Asynchronous`, max instances `1`, stdin/stdout `CopyToAsync`, one `WaitForConnection`); `:258` (two listens, two endpoints); `:278` (bytes both ways). Windows only: `tests/security/windows-pipe-bridge-security.test.mjs:181` (relay end to end over the real pipe), `:251` (pre-created name refused with `VES_BRIDGE_CHANNEL_INSECURE`, directory removed), `:233` (second client never connects). | PASS (darwin); win32 cases pending the Windows leg |
 | SSI-72 constant script, name as only argument, nothing interpolated | `tests/unit/windows-pipe-transport.test.mjs:71` (digest pinned, one `param(`, name re-validated with `PIPE_NAME`, no `$input`, no `Invoke-Expression`, `iex`, `ScriptBlock]::Create`, `Add-Type`, `Start-Process`, `EncodedCommand`, `.Invoke(`); `:48-69` (13 invalid names refused before argument building or endpoint); `:121` (no `-Command`, `-c`, `-EncodedCommand`, `-ec`); `:258` (the file PowerShell runs equals `PIPE_HELPER_SCRIPT`); `:139` (environment allowlist: no token, no API key, fixed PATH). | PASS (darwin) |
-| SSI-73 PowerShell, logging, ACL parts | Missing PowerShell 7 → `VES_BRIDGE_NOT_CONFIGURED`/`powershell-7` before any directory (`tests/unit/windows-pipe-transport.test.mjs:200`); PowerShell older than 7.4 → `powershell-7` (`:218-233`); logging or transcription → `powershell-logging-off` (`:163-178`, `:218-233`); the guard is the credential manager's `LOGGING_POLICY_GUARD` verbatim plus a PowerShell 7 guard for the `PowerShellCore` policy keys and `powershell.config.json`, both before the pipe exists (`:90`); unprovable ACL → `owner-only-acl`, directory removed, nothing started (`:209`); the ACL is proven on the empty directory before the script is written (`:258`). ACL proof: `tests/unit/windows-acl.test.mjs:54` (System32 paths), `:63` (SID from `whoami`), `:70` (grant vector), `:81` (Unicode read-back), `:88` (3 accepted and 13 refused DACLs), `:109` (proof), `:121-136` (7 failure steps, no saved file left). Windows only: `tests/security/windows-pipe-bridge-security.test.mjs:134` (real tools prove a real directory), `:236` (the live per-run directory is owner-only). The managed-policy part of SSI-73 is SSI-74, commit 3. | PASS (darwin); win32 cases pending |
-| SSI-75 helper and Claude Code trees ended, directory removed | `tests/unit/windows-pipe-transport.test.mjs:310` (close terminates the tree once, closes the helper's input, removes the directory, twice-safe); `:295` (a refused connection ends the helper, the directory stays until close); `:224`, `:243` (refused or silent helpers terminated and cleaned). An exited helper's pid is never signalled (`:235`). Windows only: `tests/security/windows-pipe-bridge-security.test.mjs:236` (after close the directory is gone and nothing holds the pipe). The helper tree ends through `terminateProcessTree` (`taskkill /T /F` on Windows); Claude Code's tree, which holds the relay, already ends through the injected terminator (`apps/vestra-cli/src/task/task-process-tree.ts`, `tests/integration/process-tree-terminator.test.mjs`). | PASS (darwin); win32 cases pending |
-| SSI-76 Unix codes for second client, failed authentication, timeout, oversized frame | Over the real transport and controller with a fake helper, on every platform: `tests/security/windows-pipe-bridge-security.test.mjs:69` (served after `hello`), `:87-99` (wrong token, frame beyond 8 MiB, call before authentication: `rejectedConnections` 1, nothing sent, the helper ended), `:101` (silence refused at exactly 5 000 ms). Windows only: `:161` (wrong-token relay exits 1 with `VES_BRIDGE_AUTH_REJECTED`, as on Unix), `:171` (silent client closed after at least 4.5 s, count 1), `:184` (oversized frame after `ready`, count 1), `:200` (second client). | PASS (darwin); win32 cases pending |
+| SSI-73 PowerShell, logging, ACL parts | Missing PowerShell 7 → `VES_BRIDGE_NOT_CONFIGURED`/`powershell-7` before any directory (`tests/unit/windows-pipe-transport.test.mjs:200`); PowerShell older than 7.4 → `powershell-7` (`:218-233`); logging or transcription → `powershell-logging-off` (`:163-178`, `:218-233`); the guard is the credential manager's `LOGGING_POLICY_GUARD` verbatim plus a PowerShell 7 guard for the `PowerShellCore` policy keys and `powershell.config.json`, both before the pipe exists (`:90`); unprovable ACL → `owner-only-acl`, directory removed, nothing started (`:209`); the ACL is proven on the empty directory before the script is written (`:258`). ACL proof (as fixed after the first Windows leg, below): `tests/unit/windows-acl.test.mjs:96` (System32 paths), `:105` (SID from `whoami`, the runner's row included), `:113` (the BOM-less UTF-16LE restore file beside the directory and its `/restore` arguments), `:126` (Unicode read-back), `:133` (3 accepted and 13 refused DACLs), `:154-195` (SDDL aliases of the owner), `:226` (proof), `:238` (a planted restore file stops the proof), `:246-262` (8 failure steps, no file left). Windows only: `tests/security/windows-pipe-bridge-security.test.mjs:167` (real tools prove a real directory), `:269` (the live per-run directory is owner-only). The managed-policy part of SSI-73 is SSI-74, commit 3. | PASS (darwin); win32 cases pending |
+| SSI-75 helper and Claude Code trees ended, directory removed | `tests/unit/windows-pipe-transport.test.mjs:310` (close terminates the tree once, closes the helper's input, removes the directory, twice-safe); `:295` (a refused connection ends the helper, the directory stays until close); `:224`, `:243` (refused or silent helpers terminated and cleaned). An exited helper's pid is never signalled (`:235`). Windows only: `tests/security/windows-pipe-bridge-security.test.mjs:269` (after close the directory is gone and nothing holds the pipe). The helper tree ends through `terminateProcessTree` (`taskkill /T /F` on Windows); Claude Code's tree, which holds the relay, already ends through the injected terminator (`apps/vestra-cli/src/task/task-process-tree.ts`, `tests/integration/process-tree-terminator.test.mjs`). | PASS (darwin); win32 cases pending |
+| SSI-76 Unix codes for second client, failed authentication, timeout, oversized frame | Over the real transport and controller with a fake helper, on every platform: `tests/security/windows-pipe-bridge-security.test.mjs:72` (served after `hello`), `:90-102` (wrong token, frame beyond 8 MiB, call before authentication: `rejectedConnections` 1, nothing sent, the helper ended), `:104` (silence refused at exactly 5 000 ms). Windows only: `:194` (wrong-token relay exits 1 with `VES_BRIDGE_AUTH_REJECTED`, as on Unix), `:204` (silent client closed after at least 4.5 s, count 1), `:217` (oversized frame after `ready`, count 1), `:233` (second client). | PASS (darwin); win32 cases pending |
 | SSI-77 refusals kept | `mcp-tool-bridge.ts:104-108` still throws `VES_BRIDGE_PLATFORM_UNSUPPORTED` on `win32` for every caller that brings no transport (the driver adapter, the e2e journey, `tests/helpers/mediation-platform.mjs`, all unchanged); `tests/integration/bridge-transport-seam.test.mjs:195` asserts it on `win32` and the Unix default elsewhere. `VES_CLAUDE_MEDIATION_UNSUPPORTED` (`packages/drivers/src/claude-code-driver.ts`) and the `vestra task` platform refusal (`apps/vestra-cli/src/task/task-command.ts`) are untouched, so the composition's pipe transport is unreachable until commit 4. | PASS |
 
 Deviation, SSI-76 second client: the pipe has one instance, so on Windows the
@@ -334,7 +334,7 @@ controller. The Unix socket accepts it and the controller closes it
 count stays 0 and a second relay would end on its own five-second
 `VES_BRIDGE_AUTH_TIMEOUT`. Both are refusals with Unix codes and neither client
 reaches a tool; the Windows case asserts exactly what it observes
-(`windows-pipe-bridge-security.test.mjs:200`).
+(`windows-pipe-bridge-security.test.mjs:233`).
 
 Relaxed refusal: commit 2 lets `McpToolBridgeController.open` accept an
 injected transport on `win32`; the default stays refused. Without that, the
@@ -392,6 +392,39 @@ typecheck`, `pnpm test:architecture` (125/125), `pnpm agent:check`,
 `pnpm complexity:check`, `pnpm test:census` (13/13), and the format check
 PASS, and the same focused suites pass 101/101 and 141/141; `gate:quick` was
 not run a second time locally.
+
+### Fix after the first Windows leg: `fix(platform-node): replace the per-run DACL wholesale and read SDDL aliases of the owner (T7)`
+
+Platform matrix 37161526836 (`gate:security`), Windows leg: every real
+named-pipe case failed at `VES_BRIDGE_NOT_CONFIGURED` (`owner-only-acl`),
+step `verify`. On that runner `whoami` named the built-in local Administrator
+(RID 500); `icacls <dir> /inheritance:r /grant:r *<SID>:(OI)(CI)F` exited 0,
+yet the DACL read back as `D:PAI(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;FA;;;LA)`.
+Two defects: the grant edits the DACL and left SYSTEM and Administrators as
+explicit entries, and SDDL writes that RID-500 SID as the alias `LA`, which the
+verifier did not read as the owner. The verifier was right to refuse.
+
+| Change | Evidence (file:line, assertion) | Result |
+| --- | --- | --- |
+| The DACL is replaced whole: a BOM-less UTF-16LE file in the `/save` format (base name, then `D:PAI(A;OICI;FA;;;<SID>)`) is written beside the per-run directory with `wx` and applied with `icacls <parent> /restore <file>`, then removed in a `finally`; read-back and verification are unchanged | `tests/unit/windows-acl.test.mjs:113` (file name, place, contents, arguments, no byte-order mark, SID-shaped trustee only); `:207` (on the runner's exact outputs the proof passes with the single `LA` entry, the restore names `vpipe-1`, the file is gone, nothing is left in the directory); `:238` (a file already at that name stops the proof at `replace`; icacls never reads it); `:246-262` (`replace` failure step, no file left on any step) | PASS (darwin) |
+| The old path fails on the same outputs | `:196` (the runner's grant leaves three entries and is refused at `verify`); `:246-262` row `verify` with the runner's three-entry DACL | PASS (darwin) |
+| SDDL aliases of the owner | `:154-167` (`LA` for machine-relative RID 500, the runner's SID included; `LG` for RID 501; `SY`, `LS`, `NS` for S-1-5-18, -19, -20; each still refused unprotected or beside `BA`); `:169-195` (21 refused pairs: `LA` for RID 1001, 501, 5000, a four-sub-authority RID 500, and `S-1-5-32-500`; `LG` for RID 500; `SY`, `LS`, `NS` for the wrong SIDs; `BA`, `DA`, `DU`, `AU`, `BU`, `WD`, `CO`, `OW`, and a lower-case `la`) | PASS (darwin) |
+| Real-host diagnosis kept | `tests/security/windows-pipe-bridge-security.test.mjs:139-165` now re-runs the restore instead of the grant and still reports the step, the whoami row, the listing, and the saved DACL | win32 only |
+
+Author's discrimination run (in place, then `git restore`): dropping the alias
+acceptance (7 failures), going back to `/inheritance:r /grant:r` (3), and
+accepting `LA` for any SID ending in RID 500 (1). All killed, on darwin.
+
+Not verifiable without Windows: that `icacls /restore` on the hosted runner
+accepts the file as written (BOM-less UTF-16LE, CRLF lines, base name relative
+to the parent), and that it yields exactly `D:PAI(A;OICI;FA;;;LA)` there. If it
+does not, the diagnosis names the restore's own output. The fallback would be
+PowerShell 7 (already required by D6) setting the descriptor from SDDL, which
+costs a second PowerShell start per run.
+
+Checks for the fix (darwin): `pnpm typecheck` PASS, `pnpm test:architecture`
+125/125, `pnpm agent:check` PASS, `pnpm test:census` 13/13, `pnpm
+complexity:check` PASS (no new hotspot), and the seven T7 test files 132/132.
 
 ## Requirement Evidence
 
@@ -543,3 +576,11 @@ before and after the run:
 
 None yet. Every test deleted by T3–T8 is listed here with the test at the
 deepened interface that covers the same case.
+
+- T7: `tests/unit/windows-acl.test.mjs` "the grant removes inheritance and
+  gives the SID alone inheritable full control" (the grant arguments) →
+  "the DACL is replaced whole from a BOM-less UTF-16LE file beside the
+  directory" (`:113`), which pins the arguments and file that replaced the
+  grant; the grant itself is now the refused case "the hosted runner's grant
+  leaves SYSTEM and Administrators beside the owner, so that path is refused"
+  (`:196`).
