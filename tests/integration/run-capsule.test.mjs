@@ -1,6 +1,4 @@
 import assert from "node:assert/strict";
-import { mkdtemp } from "node:fs/promises";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 
@@ -15,6 +13,7 @@ import {
   capsuleRun,
   recoveryCoordinator
 } from "../helpers/run-capsule-fixture.mjs";
+import { temporaryDirectory } from "../helpers/temporary-directory.mjs";
 
 for (const status of ["COMPLETED", "FAILED", "ABORTED", "INTERRUPTED", "HANDED_OFF", "RECOVERED"]) {
   test(`${status} terminal fixture seals and verifies once`, async () => {
@@ -60,8 +59,8 @@ test("source and policy sets are canonical under permutation", async () => {
   assert.deepEqual(await builder.build(permuted), await builder.build(input));
 });
 
-test("file store publishes immutable canonical bytes idempotently", async () => {
-  const root = await mkdtemp(join(tmpdir(), "verchestra-capsule-"));
+test("file store publishes immutable canonical bytes idempotently", async (t) => {
+  const root = await temporaryDirectory(t, "verchestra-capsule-");
   const { builder } = capsuleHarness();
   const sealed = await builder.build(capsuleInput());
   const store = new FileRunCapsuleStore({ root });
@@ -72,8 +71,8 @@ test("file store publishes immutable canonical bytes idempotently", async () => 
   assert.equal(Object.isFrozen(loaded.payload.evidence), true);
 });
 
-test("concurrent stores converge to one Capsule", async () => {
-  const root = await mkdtemp(join(tmpdir(), "verchestra-capsule-"));
+test("concurrent stores converge to one Capsule", async (t) => {
+  const root = await temporaryDirectory(t, "verchestra-capsule-");
   const { builder } = capsuleHarness();
   const sealed = await builder.build(capsuleInput());
   const stores = [new FileRunCapsuleStore({ root }), new FileRunCapsuleStore({ root })];
@@ -83,8 +82,8 @@ test("concurrent stores converge to one Capsule", async () => {
   ]);
 });
 
-test("runtime journal lists and records one unsealed terminal intent", async () => {
-  const root = await mkdtemp(join(tmpdir(), "verchestra-capsule-runtime-"));
+test("runtime journal lists and records one unsealed terminal intent", async (t) => {
+  const root = await temporaryDirectory(t, "verchestra-capsule-runtime-");
   const store = new NodeRuntimeStore({ dbPath: join(root, "runtime.sqlite"), now: () => capsuleNow });
   store.open();
   store.createRun({
@@ -111,8 +110,8 @@ test("runtime journal lists and records one unsealed terminal intent", async () 
   store.close();
 });
 
-test("startup recovery publishes then journals an unsealed terminal run", async () => {
-  const root = await mkdtemp(join(tmpdir(), "verchestra-capsule-recovery-"));
+test("startup recovery publishes then journals an unsealed terminal run", async (t) => {
+  const root = await temporaryDirectory(t, "verchestra-capsule-recovery-");
   const runtime = new NodeRuntimeStore({ dbPath: join(root, "runtime.sqlite"), now: () => capsuleNow });
   runtime.open();
   const input = capsuleInput("FAILED");
@@ -138,8 +137,8 @@ test("startup recovery publishes then journals an unsealed terminal run", async 
   runtime.close();
 });
 
-test("runtime state digest includes Capsule seal authority", async () => {
-  const root = await mkdtemp(join(tmpdir(), "verchestra-capsule-digest-"));
+test("runtime state digest includes Capsule seal authority", async (t) => {
+  const root = await temporaryDirectory(t, "verchestra-capsule-digest-");
   const runtime = new NodeRuntimeStore({ dbPath: join(root, "runtime.sqlite"), now: () => capsuleNow });
   runtime.open();
   runtime.createRun({

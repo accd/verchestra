@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { after, test } from "node:test";
 
@@ -16,6 +15,7 @@ import {
   disposeLauncherReleaseFixtures,
   publishExecutableRelease
 } from "../helpers/vestra-launcher-release-fixture.mjs";
+import { temporaryDirectory } from "../helpers/temporary-directory.mjs";
 
 // The whole bootstrap, against a real signed TUF repository holding a release
 // that genuinely executes: resolve, stage, verify, activate transactionally
@@ -24,13 +24,10 @@ import {
 // repository rather than an HTTPS one — the published wiring pins HTTPS, and no
 // test may reach the public network.
 
-const roots = [];
-
-after(async () => {
-  await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
-  await disposeLauncherReleaseFixtures();
-  await disposeHealthFixtures();
-});
+// why: each machine home holds installed copies of a whole release, so it is
+// removed when its own test ends; the release repositories and the cached
+// runtime are shared by the file and go when it ends.
+after(() => Promise.all([disposeLauncherReleaseFixtures(), disposeHealthFixtures()]));
 
 const launchers = () =>
   Object.fromEntries(
@@ -40,10 +37,9 @@ const launchers = () =>
     ])
   );
 
-async function packagedLauncher() {
+async function packagedLauncher(t) {
   const published = await publishExecutableRelease({ launchers: launchers() });
-  const home = await mkdtemp(join(tmpdir(), "verchestra-launcher-home-"));
-  roots.push(home);
+  const home = await temporaryDirectory(t, "verchestra-launcher-home-");
   const packageRoot = join(home, "package");
   await mkdir(join(packageRoot, "config"), { recursive: true });
   await writeFile(join(packageRoot, "config", "root.json"), Buffer.from(published.trustedRoot));
@@ -79,8 +75,8 @@ const absent = async (path) => {
   }
 };
 
-test("the bootstrap resolves, activates, and runs the pinned release end to end", async () => {
-  const { closure, installRoot, packageRoot, published } = await packagedLauncher();
+test("the bootstrap resolves, activates, and runs the pinned release end to end", async (t) => {
+  const { closure, installRoot, packageRoot, published } = await packagedLauncher(t);
   const args = ["--exit=3", "--message", 'a b "c"', "$(echo pwned)", "; echo pwned", "%USERPROFILE%"];
   const lines = [];
 
@@ -103,8 +99,8 @@ test("the bootstrap resolves, activates, and runs the pinned release end to end"
   assert.deepEqual(observed, args, "user arguments crossed the process boundary verbatim, unexpanded by any shell");
 });
 
-test("a second run revalidates the active release and still executes it", async () => {
-  const { closure, installRoot, packageRoot, published } = await packagedLauncher();
+test("a second run revalidates the active release and still executes it", async (t) => {
+  const { closure, installRoot, packageRoot, published } = await packagedLauncher(t);
   assert.equal(await runBootstrap(["--exit=0"], context(packageRoot), () => undefined, closure), 0);
   const journal = join(installRoot, "activation-journal.json");
   assert.equal(await absent(journal), true, "a committed activation leaves no journal behind");
@@ -119,8 +115,8 @@ test("a second run revalidates the active release and still executes it", async 
   assert.deepEqual(observed, ["--exit=7"]);
 });
 
-test("a tampered component byte stops the bootstrap before anything is activated", async () => {
-  const { closure, installRoot, packageRoot, published } = await packagedLauncher();
+test("a tampered component byte stops the bootstrap before anything is activated", async (t) => {
+  const { closure, installRoot, packageRoot, published } = await packagedLauncher(t);
   const [first] = published.bundle.components;
   const digest = first.contentDigest.slice("sha256:".length);
   const slash = first.logicalPath.lastIndexOf("/");
@@ -140,10 +136,9 @@ test("a tampered component byte stops the bootstrap before anything is activated
   assert.equal(await absent(join(installRoot, "active.json")), true, "nothing was activated");
 });
 
-test("a release that is not the pinned release is refused before activation", async () => {
+test("a release that is not the pinned release is refused before activation", async (t) => {
   const published = await publishExecutableRelease({ launchers: launchers() });
-  const home = await mkdtemp(join(tmpdir(), "verchestra-launcher-pinned-"));
-  roots.push(home);
+  const home = await temporaryDirectory(t, "verchestra-launcher-pinned-");
   const packageRoot = join(home, "package");
   await mkdir(join(packageRoot, "config"), { recursive: true });
   await writeFile(join(packageRoot, "config", "root.json"), Buffer.from(published.trustedRoot));
@@ -174,9 +169,8 @@ test("a release that is not the pinned release is refused before activation", as
   assert.equal(await absent(join(installRoot, "active.json")), true);
 });
 
-test("the published wiring derives its roots from the home directory alone", async () => {
-  const home = await mkdtemp(join(tmpdir(), "verchestra-launcher-state-"));
-  roots.push(home);
+test("the published wiring derives its roots from the home directory alone", async (t) => {
+  const home = await temporaryDirectory(t, "verchestra-launcher-state-");
   const source = { sourceId: "source:online:primary", rootDigest: `sha256:${"a".repeat(64)}` };
   const restore = process.env["HOME"];
   const restoreProfile = process.env["USERPROFILE"];
@@ -231,9 +225,8 @@ const versionedLaunchers = (semanticVersion) =>
     ])
   );
 
-async function sharedMachine() {
-  const home = await mkdtemp(join(tmpdir(), "verchestra-launcher-rollback-"));
-  roots.push(home);
+async function sharedMachine(t) {
+  const home = await temporaryDirectory(t, "verchestra-launcher-rollback-");
   const installRoot = join(home, "state", "install");
   const sources = new Map();
   // why: this mirrors `machineLocalEnvironment`, which anchors each pinned root
@@ -302,17 +295,17 @@ async function releasePair() {
   return { keys, releaseA, releaseB };
 }
 
-async function updatedMachine() {
+async function updatedMachine(t) {
   const pair = await releasePair();
-  const machine = await sharedMachine();
+  const machine = await sharedMachine(t);
   assert.equal((await machine.launch(pair.releaseA)).status, 0, "A activates through TUF");
   assert.equal((await machine.launch(pair.releaseB)).status, 0, "B updates over A through TUF");
   assert.equal((await machine.active()).releaseDigest, pair.releaseB.bundle.releaseDigest);
   return { ...pair, machine };
 }
 
-test("A then B then A re-activates the retained A locally with zero source reads (#393)", async () => {
-  const { releaseA, releaseB, machine } = await updatedMachine();
+test("A then B then A re-activates the retained A locally with zero source reads (#393)", async (t) => {
+  const { releaseA, releaseB, machine } = await updatedMachine(t);
 
   const rolled = await machine.activate(releaseA);
   assert.equal(rolled.reads, 0, "the retained path must not read the distribution source at all");
@@ -335,10 +328,10 @@ test("A then B then A re-activates the retained A locally with zero source reads
   assert.deepEqual(steady.target.activation, { operation: "activate", releaseReused: true, network: true });
 });
 
-test("without a verified-release record, re-invoking A after B is still refused as a TUF rollback", async () => {
+test("without a verified-release record, re-invoking A after B is still refused as a TUF rollback", async (t) => {
   // The pre-#393 state: an install that recorded nothing (every published
   // package before this change) keeps today's behavior exactly.
-  const { releaseA, releaseB, machine } = await updatedMachine();
+  const { releaseA, releaseB, machine } = await updatedMachine(t);
   await rm(join(machine.installRoot, "verified"), { recursive: true, force: true });
 
   const result = await machine.launch(releaseA);
@@ -348,8 +341,8 @@ test("without a verified-release record, re-invoking A after B is still refused 
   assert.equal((await machine.active()).releaseDigest, releaseB.bundle.releaseDigest, "B stays active");
 });
 
-test("a tampered retained A fails closed, never falls back to the network, and leaves B active", async () => {
-  const { releaseA, releaseB, machine } = await updatedMachine();
+test("a tampered retained A fails closed, never falls back to the network, and leaves B active", async (t) => {
+  const { releaseA, releaseB, machine } = await updatedMachine(t);
   const component = releaseA.bundle.components.find((entry) => entry.componentId === "core:verchestra");
   await writeFile(
     join(releaseRootOf(machine.installRoot, releaseA.bundle), ...component.logicalPath.split("/")),
@@ -363,7 +356,7 @@ test("a tampered retained A fails closed, never falls back to the network, and l
   assert.equal((await machine.active()).releaseDigest, releaseB.bundle.releaseDigest);
 });
 
-test("an older release this machine never installed is still refused as a TUF rollback", async () => {
+test("an older release this machine never installed is still refused as a TUF rollback", async (t) => {
   const keys = createUpdateKeys(2);
   const neverInstalled = await publishExecutableRelease({
     keys,
@@ -377,7 +370,7 @@ test("an older release this machine never installed is still refused as a TUF ro
     semanticVersion: "2.0.0",
     launchers: versionedLaunchers("2.0.0")
   });
-  const machine = await sharedMachine();
+  const machine = await sharedMachine(t);
   assert.equal((await machine.launch(current)).status, 0);
 
   const result = await machine.launch(neverInstalled);
@@ -387,8 +380,8 @@ test("an older release this machine never installed is still refused as a TUF ro
   assert.equal((await machine.active()).releaseDigest, current.bundle.releaseDigest);
 });
 
-test("a retained release is never re-activated locally under a different trust root", async () => {
-  const { releaseA, machine } = await updatedMachine();
+test("a retained release is never re-activated locally under a different trust root", async (t) => {
+  const { releaseA, machine } = await updatedMachine(t);
   // The same release identity, pinned by a package that carries another root.
   const otherRoot = await publishExecutableRelease({
     metadataVersion: 1,

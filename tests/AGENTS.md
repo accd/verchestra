@@ -12,6 +12,9 @@ Apply the root `AGENTS.md` first.
   path. Cite exact assertions in validation evidence.
 - Mutation/discrimination tests must operate in disposable fixtures or copies
   and restore all state.
+- Remove every directory a test creates under the OS temporary directory when
+  that test ends, pass or fail (`tests/helpers/temporary-directory.mjs`). Each
+  scope runs under a private temporary directory and fails if anything is left.
 - Never delete, skip, loosen, or replace a failing assertion to make a gate
   pass.
 - Use `scripts/test-scope.mjs` through the matching declared test command, then

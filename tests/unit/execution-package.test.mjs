@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
 
@@ -17,6 +16,7 @@ import {
   packageInput,
   workspaceId
 } from "../helpers/execution-package-fixture.mjs";
+import { temporaryDirectory } from "../helpers/temporary-directory.mjs";
 
 test("builder emits a signed backend-neutral content-addressed package", async () => {
   const { builder } = executionHarness();
@@ -351,8 +351,8 @@ test("derivePendingTasks is pure and does not mutate caller arrays", () => {
   assert.equal(JSON.stringify(input), before);
 });
 
-test("file store publishes the canonical envelope and reads the package back", async () => {
-  const root = await mkdtemp(join(tmpdir(), "verchestra-execution-package-"));
+test("file store publishes the canonical envelope and reads the package back", async (t) => {
+  const root = await temporaryDirectory(t, "verchestra-execution-package-");
   const { builder } = executionHarness();
   const sealed = await builder.build(packageInput());
   const store = new FileExecutionPackageStore({ root });
@@ -369,8 +369,8 @@ test("file store publishes the canonical envelope and reads the package back", a
   );
 });
 
-test("file store repeat is idempotent", async () => {
-  const root = await mkdtemp(join(tmpdir(), "verchestra-execution-package-"));
+test("file store repeat is idempotent", async (t) => {
+  const root = await temporaryDirectory(t, "verchestra-execution-package-");
   const { builder } = executionHarness();
   const sealed = await builder.build(packageInput());
   const store = new FileExecutionPackageStore({ root });
@@ -378,8 +378,8 @@ test("file store repeat is idempotent", async () => {
   assert.equal((await store.put(sealed)).outcome, "already-published");
 });
 
-test("concurrent publication is atomic and idempotent", async () => {
-  const root = await mkdtemp(join(tmpdir(), "verchestra-execution-package-"));
+test("concurrent publication is atomic and idempotent", async (t) => {
+  const root = await temporaryDirectory(t, "verchestra-execution-package-");
   const { builder } = executionHarness();
   const sealed = await builder.build(packageInput());
   const stores = [new FileExecutionPackageStore({ root }), new FileExecutionPackageStore({ root })];
@@ -541,8 +541,8 @@ test("pendingTasks re-derivation is unaffected by locale collation for either sc
   }
 });
 
-test("file store never overwrites different bytes at a package identity", async () => {
-  const root = await mkdtemp(join(tmpdir(), "verchestra-execution-package-"));
+test("file store never overwrites different bytes at a package identity", async (t) => {
+  const root = await temporaryDirectory(t, "verchestra-execution-package-");
   const { builder } = executionHarness();
   const sealed = await builder.build(packageInput());
   await writeFile(join(root, `${sealed.artifactId}.json`), "human bytes", "utf8");

@@ -212,7 +212,10 @@ export function approveArguments(fixture, plan) {
 }
 
 export async function taskFixture(options = {}) {
-  const root = await mkdtemp(join(tmpdir(), "vestra-task-e2e-"));
+  // hazard: the CLI's TMPDIR is `<root>/t` and its MCP bridge listens on a Unix
+  // socket below it. macOS caps a socket path at 103 bytes and a test scope
+  // already nests its own temporary directory, so this prefix stays short.
+  const root = await mkdtemp(join(tmpdir(), "vte-"));
   roots.push(root);
   const repository = join(root, "repo");
   const home = join(root, "home");

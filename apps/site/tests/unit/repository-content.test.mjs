@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test from "node:test";
@@ -75,8 +75,9 @@ test("derives the exact public status from the canonical repository", async () =
   await assertProjectStatus(repositoryRoot, status);
 });
 
-test("rejects a missing report inside the completed qualification sequence", async () => {
+test("rejects a missing report inside the completed qualification sequence", async (t) => {
   const fixture = join(tmpdir(), `verchestra-status-gap-${crypto.randomUUID()}`);
+  t.after(() => rm(fixture, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }));
   await mkdir(join(fixture, "docs", "qualification"), { recursive: true });
   await writeFile(join(fixture, "package.json"), '{"version":"0.0.0-qualification"}');
   await writeFile(join(fixture, "README.md"), "`0.0.0-qualification`");

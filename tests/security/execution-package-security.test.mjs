@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, symlink, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { mkdir, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
 
 import { FileExecutionPackageStore, canonicalizeJson, sha256Digest } from "../../packages/evidence/src/index.ts";
 import { currentState, digest, executionHarness, packageInput } from "../helpers/execution-package-fixture.mjs";
+import { temporaryDirectory } from "../helpers/temporary-directory.mjs";
 
 const tamperSignature = (sealed) => {
   const sig = sealed.dsse.signatures[0].sig;
@@ -203,8 +203,8 @@ test("a V1 package cannot be reinterpreted as V2", async () => {
   assert.equal(result.code, "VES_ENVELOPE_UNSUPPORTED");
 });
 
-test("store refuses an unrecognized canonicalization version", async () => {
-  const root = await mkdtemp(join(tmpdir(), "verchestra-execution-package-security-"));
+test("store refuses an unrecognized canonicalization version", async (t) => {
+  const root = await temporaryDirectory(t, "verchestra-execution-package-security-");
   const { builder } = executionHarness();
   const sealed = await builder.build(packageInput());
   const substituted = { ...sealed, schema: { ...sealed.schema, version: 3 } };
@@ -242,14 +242,14 @@ test("untrusted extra current-state authority field is rejected", async () => {
   assert.equal(result.code, "VES_EXECUTION_PACKAGE_CURRENT_STATE_INVALID");
 });
 
-test("store rejects malformed package IDs before path construction", async () => {
-  const root = await mkdtemp(join(tmpdir(), "verchestra-execution-package-security-"));
+test("store rejects malformed package IDs before path construction", async (t) => {
+  const root = await temporaryDirectory(t, "verchestra-execution-package-security-");
   const store = new FileExecutionPackageStore({ root });
   await assert.rejects(store.get("../outside"), { code: "VES_EXECUTION_PACKAGE_STORAGE_INVALID" });
 });
 
-test("linked store root target cannot redirect publication", async () => {
-  const root = await mkdtemp(join(tmpdir(), "verchestra-execution-package-security-"));
+test("linked store root target cannot redirect publication", async (t) => {
+  const root = await temporaryDirectory(t, "verchestra-execution-package-security-");
   const outside = join(root, "outside");
   const packages = join(root, "packages");
   await mkdir(outside);
@@ -260,8 +260,8 @@ test("linked store root target cannot redirect publication", async () => {
   await assert.rejects(store.put(sealed), { code: "VES_EXECUTION_PACKAGE_STORAGE_INVALID" });
 });
 
-test("store detects content-address mismatch even for parseable JSON", async () => {
-  const root = await mkdtemp(join(tmpdir(), "verchestra-execution-package-security-"));
+test("store detects content-address mismatch even for parseable JSON", async (t) => {
+  const root = await temporaryDirectory(t, "verchestra-execution-package-security-");
   const { builder } = executionHarness();
   const sealed = await builder.build(packageInput());
   await writeFile(join(root, `${sealed.artifactId}.json`), canonicalizeJson({ ...sealed, keyId: "other" }), "utf8");

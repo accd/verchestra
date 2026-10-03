@@ -13,11 +13,20 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterEach, test } from "node:test";
+import { after, afterEach, test } from "node:test";
+
+import { removeTemporaryDirectory } from "../helpers/temporary-directory.mjs";
 
 const roots = [];
+
+// why: the CLI provisions its disposable base under the OS temporary directory
+// and keeps that base between runs, so each launch defaults to a suite-owned
+// temporary directory the suite then removes. The #370 cases still override it.
+const temporary = await mkdtemp(join(tmpdir(), "verchestra-selftest-cli-"));
+after(() => removeTemporaryDirectory(temporary));
 
 async function repositoryRoot() {
   const base = join(process.cwd(), ".tmp-selftest-cli-e2e");
@@ -47,7 +56,11 @@ function launch(args, cwd, environment = {}) {
   return spawnSync(
     process.execPath,
     [fileURLToPath(new URL("../../apps/vestra-cli/bin/vestra.mjs", import.meta.url)), ...args],
-    { cwd, encoding: "utf8", env: { ...process.env, NO_COLOR: "1", ...environment } }
+    {
+      cwd,
+      encoding: "utf8",
+      env: { ...process.env, NO_COLOR: "1", TMPDIR: temporary, TEMP: temporary, TMP: temporary, ...environment }
+    }
   );
 }
 
