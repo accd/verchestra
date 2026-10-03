@@ -430,18 +430,28 @@ function normalizeRunner(value: unknown, protocol: TaskGateCommand["resultProtoc
   });
 }
 
-function gatePassed(command: TaskGateCommand, result: TaskGateRunnerResult): boolean {
-  if (result.exitCode !== 0 || result.timedOut || result.outputLimitExceeded) return false;
-  if (command.resultProtocol === "exit-code") return true;
-  const tests = result.tests!;
+function testSummaryPassed(tests: NonNullable<TaskGateRunnerResult["tests"]>, minimumTests: number): boolean {
   return (
     tests.total === tests.passed + tests.failed + tests.skipped + tests.cancelled + tests.todo &&
-    tests.passed >= command.minimumTests &&
+    tests.passed >= minimumTests &&
     tests.failed === 0 &&
     tests.skipped === 0 &&
     tests.cancelled === 0 &&
     tests.todo === 0
   );
+}
+
+// invariant: the one verdict of a gate run. The gate decides with it whether a
+// task may be committed, and verification decides with it whether a mutant
+// was killed, so a run the gate would refuse to commit is a failed gate for
+// both. A test-summary gate that returned no summary fails.
+export function taskGateVerdict(
+  command: Pick<TaskGateCommand, "resultProtocol" | "minimumTests">,
+  result: Pick<TaskGateRunnerResult, "exitCode" | "timedOut" | "outputLimitExceeded" | "tests">
+): "PASS" | "FAIL" {
+  if (result.exitCode !== 0 || result.timedOut || result.outputLimitExceeded) return "FAIL";
+  if (command.resultProtocol === "exit-code") return "PASS";
+  return result.tests !== undefined && testSummaryPassed(result.tests, command.minimumTests) ? "PASS" : "FAIL";
 }
 
 export class TaskGateCommitCoordinator {
@@ -478,7 +488,7 @@ export class TaskGateCommitCoordinator {
         await this.#ports.gates.run({ ...command, worktreeRef: input.execution.worktreeRef }),
         command.resultProtocol
       );
-      const passed = gatePassed(command, result);
+      const verdict = taskGateVerdict(command, result);
       const entry = freeze({
         schemaVersion: 1,
         workspaceId: input.workspaceId,
@@ -494,7 +504,7 @@ export class TaskGateCommitCoordinator {
         outputLimitBytes: command.outputLimitBytes,
         resultProtocol: command.resultProtocol,
         minimumTests: command.minimumTests,
-        verdict: passed ? "PASS" : "FAIL",
+        verdict,
         exitCode: result.exitCode,
         timedOut: result.timedOut,
         outputLimitExceeded: result.outputLimitExceeded,
@@ -510,7 +520,7 @@ export class TaskGateCommitCoordinator {
       const evidenceDigest = digest(recorded.evidenceDigest, "gate evidenceDigest", "VES_GATE_EVIDENCE_INVALID");
       evidenceRefs.push(evidenceRef);
       evidenceDigests.push(evidenceDigest);
-      if (!passed) {
+      if (verdict === "FAIL") {
         await this.#save(input, "gate-failed", {
           gateId: command.gateId,
           requirementIds: command.requirementIds,
