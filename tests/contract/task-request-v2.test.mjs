@@ -427,13 +427,20 @@ for (const [name, mode, mutate, code] of shapeRejections) {
 
 const withProtected = (path) => (r) => (r.task.protectedPaths = [...r.task.protectedPaths, path]);
 
+// why: with no input anywhere, only the cycle rule can refuse the edge; an
+// input on a node of the cycle would be refused by the input rule instead.
+const withEdgeAndNoInputs = (edge) => (r) => {
+  r.execution.edges.push(edge);
+  for (const node of r.execution.nodes) node.inputs = [];
+};
+
 // Cross-field rules a JSON Schema cannot express (SSI-25, SSI-26, SSI-27).
 // The schema admits the shape; only the normalizer, which `task plan` always
 // runs before any process starts, refuses it.
 const crossFieldRejections = [
-  ["a cycle", "graph", (r) => r.execution.edges.push({ from: "review", to: "plan" })],
-  ["an edge from a node to itself", "graph", (r) => r.execution.edges.push({ from: "build", to: "build" })],
-  ["a node no source reaches", "graph", (r) => r.execution.edges.push({ from: "review", to: "build" })],
+  ["a cycle", "graph", withEdgeAndNoInputs({ from: "review", to: "plan" })],
+  ["an edge from a node to itself", "graph", withEdgeAndNoInputs({ from: "build", to: "build" })],
+  ["a node no source reaches", "graph", withEdgeAndNoInputs({ from: "review", to: "build" })],
   ["an edge naming an unknown node", "graph", (r) => r.execution.edges.push({ from: "plan", to: "deploy" })],
   ["an input naming an unknown node", "graph", (r) => (nodeOf(r, "build").inputs = ["deploy"])],
   ["an input that is a descendant, not an ancestor", "graph", (r) => (nodeOf(r, "build").inputs = ["review"])],

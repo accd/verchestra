@@ -795,6 +795,81 @@ test("a dry run prints the plan surface and leaves the Workspace state as it was
     assert.equal(existsSync(join(fixture.stateRoot, name)), false, `${name} was created by a dry run`);
 });
 
+// invariant: a Task Request v2 plans through the real binary. A dry run binds
+// one passport per node and the verifier, presents the whole descriptor with
+// every limit explicit in place of a single implementer, and writes nothing;
+// a descriptor the intake contract refuses is rejected before any process
+// starts, through the existing public code.
+function coordinatedOverrides(edges) {
+  const node = (nodeId, driver, writeScope, inputs) => ({
+    nodeId,
+    driver,
+    description: `The ${nodeId} step`,
+    instructions: `Do the ${nodeId} step.`,
+    readScope: ["src"],
+    writeScope,
+    inputs
+  });
+  return {
+    schemaVersion: 2,
+    driver: undefined,
+    execution: {
+      mode: "graph",
+      nodes: [
+        node("plan", { driverId: "codex", model: "gpt-5.2-codex" }, [], []),
+        node("build", { driverId: "claude-code", model: "claude-sonnet-5" }, ["src/value.txt"], ["plan"])
+      ],
+      edges
+    }
+  };
+}
+
+test("a v2 request plans in a dry run and presents its descriptor in place of an implementer", TIMEOUT, async (t) => {
+  if (process.platform === "win32") return t.diagnostic("the task path is refused on Windows");
+  const fixture = await taskFixture();
+  await fixture.writeRequest(coordinatedOverrides([{ from: "plan", to: "build" }]));
+  const before = stateListing(fixture);
+  const plan = ok(fixture.launch(dryRunArguments(fixture)), "v2 dry run");
+  assert.equal(plan.state, "NOT_PERSISTED");
+  assert.match(plan.bindingDigest, /^sha256:[a-f0-9]{64}$/u);
+  assert.deepEqual(plan.review.selectedPassports, [
+    "codex:gpt-5.2-codex",
+    "claude-code:claude-sonnet-5",
+    "codex:gpt-5.2-codex"
+  ]);
+  assert.equal(Object.hasOwn(plan, "implementer"), false);
+  assert.deepEqual(plan.execution.edges, [{ from: "plan", to: "build" }]);
+  assert.deepEqual(plan.execution.limits, {
+    concurrency: 1,
+    maxNodes: 64,
+    maxEdges: 128,
+    maxSwarmAgents: 8,
+    maxHandoffs: 32,
+    nodeResultBytes: 65_536,
+    runResultBytes: 262_144
+  });
+  assert.deepEqual(stateListing(fixture), before);
+});
+
+test("a v2 descriptor with a cycle is rejected at plan time and nothing is written", TIMEOUT, async (t) => {
+  if (process.platform === "win32") return t.diagnostic("the task path is refused on Windows");
+  const fixture = await taskFixture();
+  await fixture.writeRequest(
+    coordinatedOverrides([
+      { from: "plan", to: "build" },
+      { from: "build", to: "plan" }
+    ])
+  );
+  const before = stateListing(fixture);
+  const error = refused(
+    fixture.launch(["task", "plan", "--request", fixture.requestPath, ...fixture.keychainArgs, "--output", "json"]),
+    "VES_TASK_REQUEST_REJECTED",
+    "v2 plan"
+  );
+  assert.equal(error.safeDetails.reason, "VES_TASK_REQUEST_EXECUTION_INVALID");
+  assert.deepEqual(stateListing(fixture), before);
+});
+
 // invariant: a task state root that is a link out of the Workspace state root
 // stops every task command with a stable public code, and nothing is written
 // through the link.

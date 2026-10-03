@@ -52,7 +52,7 @@ and an approval port that is only `verify`. Its behaviour is unchanged.
 
 The composition roots:
 
-- `apps/vestra-cli/src/task/task-plan.ts:293-297`: planning supplies the
+- `apps/vestra-cli/src/task/task-plan.ts:317`: planning supplies the
   three request ports and nothing else.
 - `apps/vestra-cli/src/task/task-authority.ts:58` builds the requester,
   `:64` the verifier, `:76` the broker over the verifier. `record` takes the
@@ -124,7 +124,7 @@ through the new classes. `tests/mutation/*` is not in the diff.
 | Requirement | Evidence |
 | --- | --- |
 | ADR2-8: a request declares only digest, clock and id source | `ApprovalRequestPorts` `authority.ts:138-142`. `tests/unit/approval-ports.test.mjs:50-55`: given exactly those three ports, `request` reads exactly `clock.now`, `digest.sha256`, `uuid` (`:54`); a read of any other port would surface as its bare name. |
-| ADR2-8: planning builds no refusing stub | `task-plan.ts:293-297` supplies three ports; `pnpm typecheck` proves no other port is required. The eight stubs are deleted. |
+| ADR2-8: planning builds no refusing stub | `task-plan.ts:317` supplies three ports; `pnpm typecheck` proves no other port is required. The eight stubs are deleted. |
 | record, verify, revoke take the store and sealer only where they call them | `authority.ts:144-161`. `approval-ports.test.mjs:63` (`artifacts.seal`, `clock.now`, `digest.sha256`, `store.saveApproval`), `:71` (`artifacts.verify`, `clock.now`, `digest.sha256`, `store.loadApproval`), `:78` (`clock.now`, `store.revokeApproval`). |
 | The combined interface is removed, not forwarded | `approval-ports.test.mjs:81-97`: each class carries its own operation and none of the other three, and the package exports no `ApprovalService` (`:96`). `AuthorityDependencies` no longer exists. |
 | The throwing seal is deleted | `task-authority.ts:102-120`; `TaskAuthorityOptions` has no `signer`. |

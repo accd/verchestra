@@ -11,7 +11,7 @@ import { SIGNING_PASSPHRASE, readCredentials } from "./task-credentials.ts";
 import { stateInvalid, taskError } from "./task-errors.ts";
 import { canonicalDigest } from "./task-files.ts";
 import type { TaskCommandIo } from "./task-io.ts";
-import { HUMAN_ACTOR, type TaskPlanRecord } from "./task-plan-record.ts";
+import { HUMAN_ACTOR, singleSessionPlan, type SingleSessionPlan } from "./task-plan-record.ts";
 import { loadTaskPolicy } from "./task-policy.ts";
 import { openRunRecord, type RunCheckpoints, type RunRecord } from "./task-run-record.ts";
 import { workspaceSigner, workspaceTrustRoot } from "./task-signing.ts";
@@ -25,7 +25,7 @@ type Surface = Awaited<ReturnType<typeof reviewSurface>>;
 interface ReviewContext {
   readonly io: TaskCommandIo;
   readonly workspace: TaskWorkspace;
-  readonly plan: TaskPlanRecord;
+  readonly plan: SingleSessionPlan;
   readonly pkg: Awaited<ReturnType<RunRecord["approvedPackage"]>>;
   readonly grant: Awaited<ReturnType<RunRecord["loadGrant"]>>;
   readonly runtime: RuntimeStore;
@@ -230,7 +230,7 @@ export async function reviewTask(
   const runId = parseRunId(options.runId);
   const workspace = await openTaskWorkspace(io);
   const runRecord = openRunRecord(workspace, runId);
-  const plan = await runRecord.loadPlan();
+  const plan = singleSessionPlan(await runRecord.loadPlan());
   const runtime = openRuntime(workspace);
   try {
     const state = currentRun(runtime, runId).state;

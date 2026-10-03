@@ -3,7 +3,7 @@ import { join } from "node:path";
 
 import type { ContextManifest } from "@verchestra/agent-runtime";
 import {
-  normalizeTaskRequestV1,
+  normalizeTaskRequest,
   type BudgetLedger,
   type ExecutionCheckpointPort,
   type GateRepairStatePort,
@@ -128,7 +128,7 @@ function validatedPlan(identity: { readonly workspaceId: string; readonly runId:
     throw stateInvalid("VES_TASK_STATE_MISMATCH", "The plan record belongs to another run or Workspace");
   let request: TaskPlanRecord["request"];
   try {
-    request = normalizeTaskRequestV1(row["request"]);
+    request = normalizeTaskRequest(row["request"]);
   } catch (error) {
     throw stateInvalid("VES_TASK_STATE_MALFORMED", "The stored task request no longer validates", { cause: error });
   }

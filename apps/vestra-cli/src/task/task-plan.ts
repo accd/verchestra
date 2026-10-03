@@ -6,9 +6,8 @@ import type { ContextManifest } from "@verchestra/agent-runtime";
 import {
   ApprovalRequester,
   canonicalTaskGatePlan,
-  normalizeTaskRequestV1,
-  type ApprovalIntent,
-  type NormalizedTaskRequest
+  normalizeTaskRequest,
+  type ApprovalIntent
 } from "@verchestra/application";
 import {
   ArtifactSealer,
@@ -26,7 +25,7 @@ import { stableCode, taskError } from "./task-errors.ts";
 import { canonicalDigest, sha256 } from "./task-files.ts";
 import { loadGateAllowlist } from "./task-gates.ts";
 import { git } from "./task-git.ts";
-import { MARKER_SEAL, WRITE_CAPABILITY, type TaskPlanRecord } from "./task-plan-record.ts";
+import { MARKER_SEAL, WRITE_CAPABILITY, type PlannedTaskRequest, type TaskPlanRecord } from "./task-plan-record.ts";
 import { loadTaskPolicy } from "./task-policy.ts";
 import { openRunRecord } from "./task-run-record.ts";
 import { ephemeralSigner, workspaceSigner } from "./task-signing.ts";
@@ -37,13 +36,13 @@ type Digest = `sha256:${string}`;
 const MAXIMUM_REQUEST_BYTES = 256 * 1024;
 const APPROVAL_LIFETIME_MS = 7 * 24 * 60 * 60 * 1000;
 
-async function readRequest(io: TaskCommandIo, path: string): Promise<NormalizedTaskRequest> {
+async function readRequest(io: TaskCommandIo, path: string): Promise<PlannedTaskRequest> {
   const target = isAbsolute(path) ? path : resolve(io.controlRoot, path);
   const metadata = await lstat(target).catch(() => undefined);
   if (metadata?.isFile() !== true || metadata.size > MAXIMUM_REQUEST_BYTES)
     throw taskError("VES_TASK_REQUEST_REJECTED", { reason: "VES_TASK_REQUEST_UNREADABLE" }, "Request is unreadable");
   try {
-    return normalizeTaskRequestV1(JSON.parse(await readFile(target, "utf8")) as unknown);
+    return normalizeTaskRequest(JSON.parse(await readFile(target, "utf8")) as unknown);
   } catch (error) {
     const reason = error instanceof SyntaxError ? "VES_TASK_REQUEST_NOT_JSON" : stableCode(error);
     throw taskError("VES_TASK_REQUEST_REJECTED", { reason }, "The task request was rejected", { cause: error });
@@ -70,7 +69,7 @@ async function sourceState(repositoryRoot: string, revision: string): Promise<Di
   }
 }
 
-function requirements(request: NormalizedTaskRequest) {
+function requirements(request: PlannedTaskRequest) {
   return request.task.requirementIds.map((requirementId) => {
     const gates = request.gates.filter((gate) => gate.requirementIds.includes(requirementId));
     return {
@@ -160,11 +159,22 @@ function packageInput(context: PlanContext, manifest: ContextManifest) {
   };
 }
 
+// invariant: both providers are always reached. A v1 run's implementer is
+// Claude Code; a v2 plan always has a writer, and only a Claude Code node
+// writes. The verifier is Codex in both.
 const DESTINATIONS = Object.freeze(["provider:anthropic", "provider:openai"]);
+
+// invariant: one passport per provider session the approval admits, in plan
+// order: the implementer of a v1 run or each node of a v2 plan, then the
+// verifier.
+function selectedPassports(request: PlannedTaskRequest): string[] {
+  const sessions = request.schemaVersion === 1 ? [request.driver] : request.execution.nodes.map((node) => node.driver);
+  return [...sessions.map((driver) => `${driver.driverId}:${driver.model}`), `codex:${request.verifier.model}`];
+}
 
 interface PlanContext {
   readonly workspace: TaskWorkspace;
-  readonly request: NormalizedTaskRequest;
+  readonly request: PlannedTaskRequest;
   readonly runId: string;
   readonly createdAt: string;
   readonly sourceStateDigest: Digest;
@@ -194,7 +204,7 @@ function approvalIntent(context: PlanContext, manifest: ContextManifest, pkg: Si
       tasks: [request.task.taskId],
       dataAccess: ["repository:read-at-revision"],
       capabilities: [WRITE_CAPABILITY],
-      selectedPassports: [`claude-code:${request.driver.model}`, `codex:${request.verifier.model}`],
+      selectedPassports: selectedPassports(request),
       destinations: [...DESTINATIONS],
       budgets: [
         `cost-usd:${request.budgets.maximumCostUsd}`,
@@ -227,6 +237,20 @@ async function planSigner(io: TaskCommandIo, workspace: TaskWorkspace, dryRun: b
     [SIGNING_PASSPHRASE]
   );
   return workspaceSigner(workspace, credentials.get(SIGNING_PASSPHRASE) as string);
+}
+
+// invariant: what a human approves for a planned run: the sealed Execution
+// Package, whose execution contract is the whole normalized request, and the
+// approval request that binds it. Everything that varies is a parameter.
+export async function planApproval(
+  context: PlanContext,
+  manifest: ContextManifest,
+  sealer: ArtifactSealer,
+  requester: ApprovalRequester
+) {
+  const pkg = await new ExecutionPackageBuilder({ sealer }).build(packageInput(context, manifest));
+  const intent = approvalIntent(context, manifest, pkg);
+  return { pkg, intent, approvalRequest: requester.request(intent) };
 }
 
 async function persist(
@@ -286,15 +310,12 @@ export async function planTask(io: TaskCommandIo, requestPath: string, dryRun: b
     repositoryRoot: workspace.repositoryRoot,
     signer
   });
-  const pkg = await new ExecutionPackageBuilder({ sealer: new ArtifactSealer({ signer }) }).build(
-    packageInput(context, manifest)
+  const { pkg, intent, approvalRequest } = await planApproval(
+    context,
+    manifest,
+    new ArtifactSealer({ signer }),
+    new ApprovalRequester({ digest: new NodeContentDigest(), clock: new SystemClock(), uuid: randomUUID })
   );
-  const intent = approvalIntent(context, manifest, pkg);
-  const approvalRequest = new ApprovalRequester({
-    digest: new NodeContentDigest(),
-    clock: new SystemClock(),
-    uuid: randomUUID
-  }).request(intent);
   const record: TaskPlanRecord = {
     schemaVersion: 1,
     runId: context.runId,
@@ -332,7 +353,11 @@ export function planSurface(
     sourceRevision: record.request.sourceRevision,
     contextFragments: manifest.fragments.length,
     contextOmissions: manifest.omissions.length,
-    implementer: record.request.driver,
+    // invariant: a v1 plan presents its one implementer, exactly as before v2;
+    // a v2 plan presents the whole descriptor the approval binds instead.
+    ...(record.request.schemaVersion === 1
+      ? { implementer: record.request.driver }
+      : { execution: record.request.execution }),
     verifier: record.request.verifier,
     // invariant: informational and machine-local. The mode is read again at
     // start and is not part of the binding the human approves.
