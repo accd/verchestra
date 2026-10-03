@@ -1,5 +1,7 @@
 import { canonicalizeJsonV2 } from "@verchestra/domain";
 
+import { isProtectedTaskPath } from "./task-executor.ts";
+
 type Digest = `sha256:${string}`;
 type Row = Record<string, unknown>;
 
@@ -555,7 +557,8 @@ export class TaskGateCommitCoordinator {
     if (inspection.commitCountSinceBase !== 0)
       fail("VES_GATE_COMMIT_CONFLICT", "worktree already contains a task commit");
     for (const path of inspection.changedPaths) {
-      if (within(path, input.task.protectedPaths)) fail("VES_GATE_PROTECTED_PATH", "protected path changed");
+      if (isProtectedTaskPath(path, input.task.protectedPaths))
+        fail("VES_GATE_PROTECTED_PATH", "protected path changed");
       if (!within(path, input.task.changeScope)) fail("VES_GATE_SCOPE_DENIED", "changed path is outside task scope");
     }
     if (

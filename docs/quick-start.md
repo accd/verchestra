@@ -216,7 +216,10 @@ untracked.
 
 - `sourceRevision` is the exact commit to start from: `git rev-parse HEAD`.
 - `changeScope` lists the only paths the implementer may write;
-  `protectedPaths` are refused even inside the scope.
+  `protectedPaths` are refused even inside the scope. A protected path is
+  refused in any letter case and however it is spelled (`src/vendor/`
+  protects `src/vendor`), because the default macOS volume does not tell
+  `SRC/Vendor` from `src/vendor`.
 - The gates must cover every entry of `verificationCommands` exactly, and every
   requirement ID.
 - Models must be listed in the release's model price table; a model that is

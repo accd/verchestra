@@ -1820,6 +1820,43 @@ note. -->
   The Run Capsule is unchanged in shape and digest rules. Evidence is in
   `.specs/features/verifier-usage-recorded/validation.md`.
 
+### AD-057 — A protected path is compared by what it names, in any letter case
+
+- **Status:** proposed (ratified by reviewing the pull request that carries
+  the fix).
+- **Context:** The executor and the gate tested a target against the task's
+  protected paths by the strings as written. The macOS default volume is
+  case-insensitive, and the request grammar admits an entry spelled with a
+  trailing `/`, a doubled `/` or a `.` segment. A case variant of a protected
+  path absent at the base revision (`src/generated/out.js` against
+  `src/Generated`) and a target under `src/vendor/` were written and
+  committed; a case variant of an existing protected file was written before
+  the inspection caught it. The bridge's read view and the worktree tool
+  already folded case, each for its own list.
+- **Decision:** A target is protected when the segments a protected entry
+  names, letter case folded, are a prefix of the segments the target names.
+  A path names its segments with empty and `.` segments dropped, so
+  `src/vendor/`, `./src/vendor` and `src//vendor` name `src/vendor`, and `.`
+  names the worktree. The executor applies the test before every tool effect
+  and to every inspected change, and the gate to every inspected change,
+  with the codes each already uses (`VES_EXECUTOR_PROTECTED_PATH`,
+  `VES_GATE_PROTECTED_PATH`). Folding is for comparison only: the request,
+  the Execution Package, the review surface and the Run Capsule keep every
+  path as written.
+- **Alternatives rejected:** asking the volume whether it is case-sensitive
+  (a repository moves between volumes, and a commit made on one is checked
+  out on the other); folding only on macOS (the same commit reaches a
+  case-insensitive checkout from Linux); refusing a non-normal entry at
+  intake (the schema admits it, and a protected entry should protect what it
+  names rather than fail a request a human already reviewed); relying on the
+  inspection after the effect (the protected file has already been written).
+- **Consequence:** A case variant of a protected path is refused on a
+  case-sensitive volume too, where it is a different file; that refusal is
+  the price of one rule for every volume. `.VERCHESTRA/x` against protected
+  `.verchestra` is now refused as protected, `VES_EXECUTOR_PROTECTED_PATH`,
+  where it was refused for scope. Evidence is in
+  `.specs/features/architecture-deepening-2/validation-t1.md`.
+
 ## Handoff
 
 - **Feature:** `subscription-provider-auth` (ADP-A, tasks TA1 and TA2) on
