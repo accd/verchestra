@@ -23,7 +23,7 @@ test("a graph node's schema is the closed outcome and summary object", () => {
     additionalProperties: false,
     required: ["outcome", "summary"],
     properties: {
-      outcome: { enum: ["done", "blocked"] },
+      outcome: { type: "string", enum: ["done", "blocked"] },
       summary: { type: "string", maxLength: 8192 }
     }
   });
@@ -33,10 +33,13 @@ test("a swarm node's schema lists only its declared destinations and the complet
   const schema = nodeResultSchema(swarm, "writer");
   assert.deepEqual(schema.required, ["outcome", "summary", "next", "message"]);
   assert.equal(schema.additionalProperties, false);
-  assert.deepEqual(schema.properties.next, { enum: ["reviewer", COORDINATION_COMPLETE] });
+  assert.deepEqual(schema.properties.next, { type: "string", enum: ["reviewer", COORDINATION_COMPLETE] });
   assert.deepEqual(schema.properties.message, { type: "string", maxLength: 4096 });
   const alone = { ...swarm, handoffs: swarm.handoffs.filter((entry) => entry.from !== "reviewer") };
-  assert.deepEqual(nodeResultSchema(alone, "reviewer").properties.next, { enum: [COORDINATION_COMPLETE] });
+  assert.deepEqual(nodeResultSchema(alone, "reviewer").properties.next, {
+    type: "string",
+    enum: [COORDINATION_COMPLETE]
+  });
 });
 
 test("a valid result reads back exactly, and a swarm decision keeps its destination and message", () => {

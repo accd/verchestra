@@ -467,6 +467,66 @@ Discrimination: P1 a range (`^1.19.0`) instead of the exact SDK pin, P2 an
 optional provider SDK (`@anthropic-ai/sdk`) added beside the pins — both
 killed.
 
+### Commit 4 — the Strands Graph and Swarm engine
+
+`packages/agent-runtime/src/coordination/strands/` (`strands-engine.ts`,
+`structural-agent.ts`, `handoff-schema.ts`, `index.ts`), exported only as
+`@verchestra/agent-runtime/strands-coordination`. The engine builds a `Graph`
+or `Swarm` of structural agents from the approved plan; each structural agent
+asks the coordinated driver's runner to run its node. The application side
+gains `type: "string"` on the schema enums (so the Zod projection is exact)
+and a closed list of engine-reported codes in `coordinated-driver.ts`
+(`VES_COORDINATION_INTERRUPTED`, `_LIMIT`, `_HANDOFF_LIMIT`; anything else is
+`VES_COORDINATION_ENGINE_FAILED`).
+
+| Behaviour | Assertion (file:line) | Run |
+| --- | --- | --- |
+| Order: a graph runs in dependency order through structural agents | `tests/integration/strands-coordination-engine.test.mjs:53` | `node --test tests/integration/strands-coordination-engine.test.mjs`: 16 of 16 |
+| SSI-09 concurrency: independent nodes run together up to the limit and no further | `tests/integration/strands-coordination-engine.test.mjs:67` | same |
+| Dependency failure: the node's code ends the run; nothing downstream starts | `tests/integration/strands-coordination-engine.test.mjs:90` | same |
+| SDK logger: its line for a failed node names the node and the stable code only | `tests/integration/strands-coordination-engine.test.mjs:101` | same |
+| Malformed output: `VES_COORDINATION_RESULT_INVALID`, nothing persisted | `tests/integration/strands-coordination-engine.test.mjs:115` | same |
+| Valid handoff and explicit end; forbidden handoff fails the swarm with no repair cycle; handoff limit | `tests/integration/strands-coordination-engine.test.mjs:126`, `:141`, `:150` | same |
+| Write conflict: two writers an SDK makes ready at once never overlap | `tests/integration/strands-coordination-engine.test.mjs:163` | same |
+| SSI-34 cancellation: the SDK stops and every running node is cancelled | `tests/integration/strands-coordination-engine.test.mjs:184` | same |
+| Resume replay: a resumed graph and swarm replay completed nodes through the SDK without a session | `tests/integration/strands-coordination-engine.test.mjs:215` | same |
+| SSI-04, SSI-06, SSI-07: a structural agent has only `id`, `invoke`, `stream`, ignores the SDK's input, and answers with one text block naming the payload reference | `tests/integration/strands-coordination-engine.test.mjs:245` | same |
+| SSI-08, SSI-43: a failure reaches the SDK as a stable code with no cause; an undeclared destination is refused before the SDK sees it | `tests/integration/strands-coordination-engine.test.mjs:269` | same |
+| SSI-05, SSI-09: finite `maxConcurrency`, `maxSteps`, `timeout`, `nodeTimeout` from the plan and the remaining budget (plus a one-second grace so the executor's duration stop wins); repetitive-handoff detection off; `preserveContext` false on every node | `tests/integration/strands-coordination-engine.test.mjs:295` | same |
+| SSI-10: `INTERRUPTED`, a `CANCELLED` the run did not ask for, and any unknown engine code become coordination failures with stable codes | `tests/integration/strands-coordination-engine.test.mjs:320` | same |
+| D5: mode `agent` never reaches the SDK | `tests/integration/strands-coordination-engine.test.mjs:348` | same |
+| SSI-79: in a child process with an empty environment, a scripted Graph and Swarm complete with no Bedrock client constructed, no credential-shaped variable read, no network, DNS, or child-process call, and no console output; the reads are exactly the eleven AWS-flag, OTEL, Langfuse, and Node-loader names of `research.md` S6 | `tests/integration/strands-empty-environment.test.mjs:50` | `node --test tests/integration/strands-empty-environment.test.mjs`: 2 of 2 |
+| The probe's Bedrock counter is not vacuous: with one client constructed it reports 1 | `tests/integration/strands-empty-environment.test.mjs:69` | same |
+| SSI-43: for all 8 nodes of the four fixture plans, the Zod schema's draft-7 projection equals the application's schema (apart from `$schema`); both accept and refuse the same 9 answers; the runtime destination enum is exactly the declared targets and `<complete>` | `tests/contract/strands-node-result-parity.test.mjs:31`, `:41`, `:67` | `node --test tests/contract/strands-node-result-parity.test.mjs`: 3 of 3 |
+| SSI-02, SSI-12: only `packages/agent-runtime/src/coordination/strands/` imports the SDK or Zod, and the SDK only as `@strands-agents/sdk/multiagent`, in static, bare, dynamic, and `require` forms, across 264 product sources | `tests/architecture/strands-coordination-subpath.test.mjs:64`, `:69` | `node --test tests/architecture/strands-coordination-subpath.test.mjs`: 5 of 5 |
+| SSI-03, SSI-05, TM-017: the adapter names no `Agent`, model, router, MCP client, session manager, `preserveContext`, sandbox, vended tool, telemetry or logging setup, A2A client, environment, process, or network | `tests/architecture/strands-coordination-subpath.test.mjs:87` | same |
+| SSI-13: the package declares exactly the two entries; the main entry's import closure reaches neither the adapter nor the SDK nor Zod | `tests/architecture/strands-coordination-subpath.test.mjs:110`, `:136` | same |
+
+Spec-precision notes. (1) The SDK's own `INTERRUPTED` cannot be produced by
+structural agents, which never return interrupts; the mapping is tested on
+the outcome function and through the coordinated driver. (2) When the
+coordinated driver's first failure aborts the run, the SDK records the failing
+node as cancelled and prints nothing; its warning line appears only when a
+node fails without that abort, which `:101` drives directly. (3) The runtime
+destination check in Zod leaves the message to the application validator,
+which bounds it by characters as JSON Schema does; Zod would count UTF-16
+units.
+
+Gates at this commit: `pnpm gate:quick` PASS (unit 2737, agent-readiness 357,
+census 13); `pnpm test:architecture` 130/130; `pnpm agent:check` PASS;
+typecheck (which now checks the SDK's own declaration closure, since
+`skipLibCheck` is off), lint, format, and complexity PASS; 0 failed, 0
+skipped, 0 todo.
+
+Discrimination (author run, the four suites above): S1 hand the SDK provider
+text instead of the reference, S2 skip the adapter's destination check, S3
+leave the SDK limits unbounded, S4 raise provider text to the SDK, S5 read
+`INTERRUPTED` as completed, S6 construct a Strands `Agent` in the adapter, S7
+import the SDK root entry, S8 wrap nodes with `preserveContext`, S9 let the
+Zod schema drift from the application's, S10 open the swarm decision enum to
+every node — all killed. S6 is killed by the probe on its own as well (5
+Bedrock clients where 0 are allowed), not only by the architecture ban.
+
 ## T7 Evidence (Windows bridge transport, commits 1 to 3)
 
 Author: the T7 implementer. Commit 4 (lifting the refusals) is not on this

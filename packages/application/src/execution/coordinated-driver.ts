@@ -62,6 +62,13 @@ export interface CoordinatedDriverOptions {
 }
 
 const RESULT_TOKEN = "verchestra-result:";
+// invariant: SSI-10. The only codes an engine's own failure is reported with;
+// anything else it reports, an SDK status included, is an engine failure.
+const ENGINE_CODES: readonly CoordinationErrorCode[] = [
+  "VES_COORDINATION_HANDOFF_LIMIT",
+  "VES_COORDINATION_LIMIT",
+  "VES_COORDINATION_INTERRUPTED"
+];
 
 function isWriter(node: CoordinationNode): boolean {
   return node.driver.driverId === "claude-code" && node.writeScope.length > 0;
@@ -469,6 +476,10 @@ class CoordinationRound implements CoordinationNodeRunner {
   }
 }
 
+function engineCode(code: string): CoordinationErrorCode {
+  return ENGINE_CODES.find((known) => known === code) ?? "VES_COORDINATION_ENGINE_FAILED";
+}
+
 // invariant: AD-068. The executor's driver port over a coordination plan: one
 // worktree, one writer lease, one capability grant, one budget meter, and one
 // cancellation signal cover every node, and the gates, repair, verification,
@@ -523,7 +534,7 @@ export class CoordinatedDriver implements ExecutionDriverPort {
     }
     if (signal.aborted || outcome.status === "cancelled") return Object.freeze({ status: "cancelled", outputRefs: [] });
     try {
-      if (outcome.status === "failed") failure("VES_COORDINATION_ENGINE_FAILED", "The coordination engine failed");
+      if (outcome.status === "failed") failure(engineCode(outcome.code), "The coordination engine failed");
       round.assertEnded();
     } catch (error) {
       await round.close("failed");
