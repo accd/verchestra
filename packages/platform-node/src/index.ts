@@ -165,6 +165,13 @@ export {
   type VerifiedLauncherHandoffResult
 } from "./activation-launcher-adapters.ts";
 export { terminateProcessTree } from "./process-tree-terminator.ts";
+export { proveOwnerOnlyDirectory, type OwnerOnlyProof } from "./windows-acl.ts";
+export {
+  POWERSHELL_7_EXECUTABLE,
+  WindowsNamedPipeBridgeTransport,
+  WindowsPipeTransportError,
+  type WindowsNamedPipeTransportOptions
+} from "./windows-pipe-transport.ts";
 export {
   SpawnedProbeWorker,
   SpawnedProbeWorkerError,

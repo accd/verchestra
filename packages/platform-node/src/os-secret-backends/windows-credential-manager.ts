@@ -35,7 +35,7 @@ export const POWERSHELL_ARGUMENTS = Object.freeze([
 
 const WINDOWS_ROOT = /^[A-Za-z]:\\[A-Za-z0-9 ._()\\-]*$/u;
 
-function systemRoot(): string {
+export function systemRoot(): string {
   const root = process.env["SystemRoot"];
   return typeof root === "string" && WINDOWS_ROOT.test(root) ? root.replace(/\\+$/u, "") : "C:\\Windows";
 }
