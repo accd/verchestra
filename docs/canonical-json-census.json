@@ -166,7 +166,7 @@
       "path": "apps/vestra-cli/src/task/task-run-record.ts",
       "classification": "migrated-v2",
       "signals": {
-        "canonicalizer": 2,
+        "canonicalizer": 4,
         "digest": 0,
         "localeCompare": 0,
         "serialization": 1

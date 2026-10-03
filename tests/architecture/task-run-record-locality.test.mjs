@@ -21,9 +21,18 @@ const ARTIFACT_FILES = Object.freeze([
   "active.json",
   "worktree.json",
   "cancel.json",
-  "outcome.json"
+  "outcome.json",
+  "ledger.json"
 ]);
-const ARTIFACT_DIRECTORIES = Object.freeze(["packages", "capsules", "gate-evidence", "attempts", "lessons"]);
+const ARTIFACT_DIRECTORIES = Object.freeze([
+  "packages",
+  "capsules",
+  "gate-evidence",
+  "attempts",
+  "lessons",
+  "coordination",
+  "results"
+]);
 
 // why: a comment may name an artifact to explain a decision; only code that
 // would have to change with the layout counts as a second copy.

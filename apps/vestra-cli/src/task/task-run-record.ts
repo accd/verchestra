@@ -3,8 +3,11 @@ import { join } from "node:path";
 
 import type { ContextManifest } from "@verchestra/agent-runtime";
 import {
+  normalizeCoordinationLedger,
   normalizeTaskRequest,
   type BudgetLedger,
+  type CoordinationLedger,
+  type CoordinationRecordPort,
   type ExecutionCheckpointPort,
   type GateRepairStatePort,
   type TaskGateCheckpointPort,
@@ -63,6 +66,10 @@ const LAYOUT = Object.freeze({
   lessons: ["verification", "lessons"],
   review: ["review.json"],
   capsules: ["capsules"],
+  // invariant: a coordinated run's node ledger, sealed, and each node result
+  // it names, sealed in a file named by the digest of its canonical bytes.
+  coordinationLedger: ["coordination", "ledger.json"],
+  coordinationResults: ["coordination", "results"],
   // invariant: the five markers. A run whose plan record names the marker
   // seal writes and reads them sealed; a run planned before that keeps them as
   // plain canonical JSON. A reader returns the record in both forms, never the
@@ -673,6 +680,44 @@ export class RunRecord {
     return this.#sealed(LAYOUT.review, "review record", validatedReview);
   }
 
+  async saveCoordinationLedger(ledger: CoordinationLedger): Promise<void> {
+    const validated = validatedLedger(objectRow(ledger, "node ledger"), "node ledger");
+    await writeSealedRecord(await this.#file(LAYOUT.coordinationLedger), validated);
+  }
+
+  loadCoordinationLedger(): Promise<CoordinationLedger | undefined> {
+    return this.#sealed(LAYOUT.coordinationLedger, "node ledger", validatedLedger);
+  }
+
+  async saveCoordinationResult(bytes: Uint8Array): Promise<Digest> {
+    const value = resultValue(bytes);
+    const digest = canonicalDigest(value);
+    await writeSealedRecord(await this.#file(LAYOUT.coordinationResults, resultFile(digest)), value);
+    return digest;
+  }
+
+  // invariant: a result is returned only when it is the one its name and the
+  // ledger say: sealed, and the digest of its canonical bytes.
+  async loadCoordinationResult(digest: string): Promise<Uint8Array> {
+    const path = await this.#file(LAYOUT.coordinationResults, resultFile(digest));
+    const stored = await readSealedRecord(path, "node result");
+    if (stored === undefined)
+      throw stateInvalid("VES_TASK_STATE_MALFORMED", "A node result the ledger names is missing");
+    if (canonicalDigest(stored) !== digest)
+      throw stateInvalid("VES_TASK_STATE_TAMPERED", "A node result does not match the digest it is filed under");
+    return new TextEncoder().encode(canonicalizeJsonV2(stored));
+  }
+
+  // why: the coordinated driver's port onto this Run's coordination members.
+  coordination(): CoordinationRecordPort {
+    return {
+      loadLedger: () => this.loadCoordinationLedger(),
+      saveLedger: (ledger) => this.saveCoordinationLedger(ledger),
+      saveResult: (bytes) => this.saveCoordinationResult(bytes),
+      loadResult: (digest) => this.loadCoordinationResult(digest)
+    };
+  }
+
   async saveCapsule(capsule: SignedRunCapsule): Promise<void> {
     await new FileRunCapsuleStore({ root: await this.#directory(LAYOUT.capsules) }).put(capsule);
   }
@@ -682,6 +727,36 @@ export class RunRecord {
   checkpoints(runtime: RuntimeStore, taskId: string): RunCheckpoints {
     return new RunCheckpoints(runtime, { workspaceId: this.#workspaceId, runId: this.runId, taskId });
   }
+}
+
+// invariant: the node ledger is read through the application's own reader,
+// so a ledger of another shape is refused whole as a malformed Run record.
+function validatedLedger(row: Row, label: string): CoordinationLedger {
+  try {
+    return normalizeCoordinationLedger(row);
+  } catch (error) {
+    throw stateInvalid("VES_TASK_STATE_MALFORMED", `${label} is malformed`, { cause: error });
+  }
+}
+
+// invariant: a node result is stored as the canonical JSON it was validated
+// as; bytes that are not that text are refused rather than re-encoded, so the
+// digest the ledger names is the digest of what a node returned.
+function resultValue(bytes: Uint8Array): unknown {
+  let value: unknown;
+  try {
+    value = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+  } catch (error) {
+    throw stateInvalid("VES_TASK_STATE_MALFORMED", "A node result is not JSON", { cause: error });
+  }
+  if (new TextEncoder().encode(canonicalizeJsonV2(value)).byteLength !== bytes.byteLength)
+    throw stateInvalid("VES_TASK_STATE_MALFORMED", "A node result is not canonical JSON");
+  return value;
+}
+
+function resultFile(digest: string): string {
+  if (!DIGEST.test(digest)) throw stateInvalid("VES_TASK_STATE_MALFORMED", "A node result digest is malformed");
+  return `${digest.slice(7)}.json`;
 }
 
 // invariant: the run ID is parsed before it names a directory, so nothing a

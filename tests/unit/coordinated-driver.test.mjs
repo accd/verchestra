@@ -23,6 +23,7 @@ import {
   WORKTREE
 } from "../helpers/coordinated-driver-fixture.mjs";
 
+const byText = (left, right) => Number(left > right) - Number(left < right);
 const run = async (fixture, request, options = {}) =>
   fixture.driver.execute(driverRequest(request), control(options).control);
 const visits = (records) => records.ledger.visits.map((entry) => `${entry.nodeId}#${entry.visit}:${entry.state}`);
@@ -401,7 +402,7 @@ test("cancel reaches every running node: their signal aborts and each node drive
   await allStarted.promise;
   await fixture.driver.cancel(WORKTREE);
   assert.deepEqual(await pending, { status: "cancelled", outputRefs: [] });
-  assert.deepEqual(fixture.nodes.state.cancels.map((entry) => entry.nodeId).sort(), ["left", "right"]);
+  assert.deepEqual(fixture.nodes.state.cancels.map((entry) => entry.nodeId).sort(byText), ["left", "right"]);
 });
 
 test("the executor's own signal stops every node as well", async () => {
@@ -459,9 +460,9 @@ test("a quota signal from one node starts no further node and cancels the nodes 
   await assert.rejects(run(fixture, request), rejectsWith("VES_DRIVER_QUOTA_EXHAUSTED"));
   assert.equal(otherSignal.aborted, true);
   assert.equal(refusedLater, "VES_DRIVER_QUOTA_EXHAUSTED");
-  assert.deepEqual(fixture.nodes.state.sessions.map((entry) => entry.node.nodeId).sort(), ["left", "right"]);
+  assert.deepEqual(fixture.nodes.state.sessions.map((entry) => entry.node.nodeId).sort(byText), ["left", "right"]);
   assert.deepEqual(
-    fixture.records.ledger.visits.map((entry) => `${entry.nodeId}:${entry.state}:${entry.failureCode}`).sort(),
+    fixture.records.ledger.visits.map((entry) => `${entry.nodeId}:${entry.state}:${entry.failureCode}`).sort(byText),
     ["left:failed:VES_DRIVER_QUOTA_EXHAUSTED", "right:failed:VES_EXECUTOR_CANCELLED"]
   );
 });
@@ -501,7 +502,7 @@ test("the ledger records only identifiers, counts, instants, digests, and codes"
   const text = JSON.stringify(fixture.records.ledger);
   assert.doesNotMatch(text, /sk-ant|\/Users|summary|prompt|session/u);
   for (const entry of fixture.records.ledger.visits) {
-    assert.deepEqual(Object.keys(entry).sort(), [
+    assert.deepEqual(Object.keys(entry).sort(byText), [
       "changeDigestBefore",
       "endedAt",
       "nodeId",
