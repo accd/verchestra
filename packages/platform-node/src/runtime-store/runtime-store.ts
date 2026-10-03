@@ -1083,10 +1083,6 @@ export class RuntimeStore {
     });
   }
 
-  integrityCheck(): string {
-    return String((this.#database().prepare("PRAGMA integrity_check").get() as UnknownRecord).integrity_check);
-  }
-
   stateDigest(): string {
     return runtimeStateDigest(this.#database());
   }
