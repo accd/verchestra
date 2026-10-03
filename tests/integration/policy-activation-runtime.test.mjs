@@ -129,3 +129,35 @@ test("persisted Policy View text that is not JSON fails closed on load", async (
     await rm(context.root, { recursive: true, force: true });
   }
 });
+
+// why: the stored digest must be both the view's own member and the digest of
+// the rest of its content; each edit below keeps one of the two intact.
+const edits = Object.freeze({
+  "its content, keeping its digest member": (stored) => ({
+    ...stored,
+    layers: { ...stored.layers, project: { expand: lowerPermit } }
+  }),
+  "its digest member, keeping its content": (stored) => ({ ...stored, policyViewDigest: `sha256:${"f".repeat(64)}` })
+});
+
+for (const [edited, edit] of Object.entries(edits)) {
+  test(`a persisted Policy View with ${edited} fails closed on load`, async () => {
+    const context = await fixture();
+    try {
+      await context.service.activate(view());
+      context.runtime.close();
+      const database = new DatabaseSync(join(context.root, "runtime.sqlite"));
+      const stored = JSON.parse(database.prepare("SELECT view_json FROM active_policy_views").get().view_json);
+      database.prepare("UPDATE active_policy_views SET view_json=?").run(JSON.stringify(edit(stored)));
+      database.close();
+      context.runtime.open();
+      await assert.rejects(context.store.load(), {
+        code: "VES_RUNTIME_CORRUPT",
+        message: "Active Policy View digest does not match its content"
+      });
+    } finally {
+      context.runtime.close();
+      await rm(context.root, { recursive: true, force: true });
+    }
+  });
+}
