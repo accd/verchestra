@@ -37,7 +37,7 @@ import { loadGateAllowlist } from "./task-gates.ts";
 import { git } from "./task-git.ts";
 import { findExecutable, implementerAdapter } from "./task-implementer.ts";
 import type { TaskCommandIo } from "./task-io.ts";
-import { HUMAN_ACTOR, IMPLEMENTER_ACTOR, type TaskPlanRecord } from "./task-plan-record.ts";
+import { HUMAN_ACTOR, IMPLEMENTER_ACTOR, singleSessionPlan, type SingleSessionPlan } from "./task-plan-record.ts";
 import { loadTaskPolicy } from "./task-policy.ts";
 import { ProviderProcesses } from "./task-process-tree.ts";
 import { openRunRecord, type GateCheckpoint, type RunCheckpoints, type RunRecord } from "./task-run-record.ts";
@@ -111,7 +111,7 @@ export async function recoverCommittedTask(recovery: CommittedTaskRecovery): Pro
 
 // why: a model reached through a subscription is not billed per token, so the
 // run's meter counts its tokens and duration and never prices it.
-function unbilledModels(auth: ProviderAuth, request: TaskPlanRecord["request"]): readonly string[] {
+function unbilledModels(auth: ProviderAuth, request: SingleSessionPlan["request"]): readonly string[] {
   return [
     ...(auth.implementer === "subscription" ? [request.driver.model] : []),
     ...(auth.verifier === "subscription" ? [request.verifier.model] : [])
@@ -141,7 +141,7 @@ async function verifierAccess(
 async function prepare(
   io: TaskCommandIo,
   workspace: TaskWorkspace,
-  plan: TaskPlanRecord,
+  plan: SingleSessionPlan,
   runtime: RuntimeStore,
   runRecord: RunRecord
 ) {
@@ -180,7 +180,7 @@ async function prepare(
 class TaskRunComposition {
   readonly #io: TaskCommandIo;
   readonly #workspace: TaskWorkspace;
-  readonly #plan: TaskPlanRecord;
+  readonly #plan: SingleSessionPlan;
   readonly #runtime: RuntimeStore;
   readonly #prepared: Prepared;
   readonly #runRecord: RunRecord;
@@ -195,7 +195,7 @@ class TaskRunComposition {
   constructor(
     io: TaskCommandIo,
     workspace: TaskWorkspace,
-    plan: TaskPlanRecord,
+    plan: SingleSessionPlan,
     runtime: RuntimeStore,
     prepared: Prepared,
     runRecord: RunRecord
@@ -571,7 +571,7 @@ export function watchCancellation(
 
 async function present(
   repositoryRoot: string,
-  plan: TaskPlanRecord,
+  plan: SingleSessionPlan,
   runRecord: RunRecord,
   outcome: TaskRunOutcome,
   state: string
@@ -610,7 +610,7 @@ export async function runTask(io: TaskCommandIo, options: { readonly runId: unkn
   const runId = parseRunId(options.runId);
   const workspace = await openTaskWorkspace(io);
   const runRecord = openRunRecord(workspace, runId);
-  const plan = await runRecord.loadPlan();
+  const plan = singleSessionPlan(await runRecord.loadPlan());
   const runtime = openRuntime(workspace);
   try {
     assertStartable(currentRun(runtime, runId).state, options.resume);

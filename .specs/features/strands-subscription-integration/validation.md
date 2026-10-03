@@ -35,22 +35,22 @@ Two runs printed identical values.
 
 | Value | Golden | Asserted at |
 | --- | --- | --- |
-| `schemas/task-request/1.schema.json` bytes | `sha256:9bfc24cec02371649ef58c67370e9b631f6d8fbc563ab33363e505213d048d62` | `tests/contract/task-request-v1-golden.test.mjs:23` |
-| `packages/contracts/src/generated.ts` before v2 | `sha256:341983f6ffe969ccff397457284597d7a36e54732115291414326be77ba38512` | `tests/contract/task-request-v1-golden.test.mjs:34` |
-| Canonical normalized v1 request (with repair policy) | `sha256:e1040b2826bf1725293fa29b017a09694ae5c9919b08ababd25b58ea43496d68` | `tests/contract/task-request-v1-golden.test.mjs:41` |
-| Canonical normalized v1 request (without repair policy) | `sha256:cd24f69dc148d13e8d85e811f8968cb5708b065f00b4152032e3160f59673464` | `tests/contract/task-request-v1-golden.test.mjs:47` |
-| Execution-contract digest of the fixture request | `sha256:2b4dd994497595fb01d37ea747af6ca34bfe6dc85c01fc7b02c6da7ccdd1a196` | `tests/contract/task-request-v1-golden.test.mjs:53` |
-| Sealed `plan.json` bytes of the fixture plan record | `sha256:e6c97cd79c6eb7a6ea93d954e9c098cc8205a4cece0318615b51b7eabed0272f` | `tests/contract/task-request-v1-golden.test.mjs:62` |
-| Execution Package payload digest | `sha256:13f2bc46466cabfb74f678f3913e5838cd838ef20b1f2f5ceea1a06be93a11db` | commit 3 |
-| Approval binding digest | `sha256:9a6d82f4cc3fe2109fea2ef033b2334eef11d6f09c92eb3f3a5df616dc0f87a5` | commit 3 |
-| `task plan` surface of the fixture plan | `sha256:5056fc0cf5335975fbcda1a748b2aeeca4b4313f4418926cf87bbea0ad47ec83` | commit 3 |
+| `schemas/task-request/1.schema.json` bytes | `sha256:9bfc24cec02371649ef58c67370e9b631f6d8fbc563ab33363e505213d048d62` | `tests/contract/task-request-v1-golden.test.mjs:25` |
+| `packages/contracts/src/generated.ts` before v2 | `sha256:341983f6ffe969ccff397457284597d7a36e54732115291414326be77ba38512` | `tests/contract/task-request-v1-golden.test.mjs:36` |
+| Canonical normalized v1 request (with repair policy) | `sha256:e1040b2826bf1725293fa29b017a09694ae5c9919b08ababd25b58ea43496d68` | `tests/contract/task-request-v1-golden.test.mjs:43` |
+| Canonical normalized v1 request (without repair policy) | `sha256:cd24f69dc148d13e8d85e811f8968cb5708b065f00b4152032e3160f59673464` | `tests/contract/task-request-v1-golden.test.mjs:49` |
+| Execution-contract digest of the fixture request | `sha256:2b4dd994497595fb01d37ea747af6ca34bfe6dc85c01fc7b02c6da7ccdd1a196` | `tests/contract/task-request-v1-golden.test.mjs:55` |
+| Sealed `plan.json` bytes of the fixture plan record | `sha256:e6c97cd79c6eb7a6ea93d954e9c098cc8205a4cece0318615b51b7eabed0272f` | `tests/contract/task-request-v1-golden.test.mjs:64` |
+| Execution Package payload digest | `sha256:13f2bc46466cabfb74f678f3913e5838cd838ef20b1f2f5ceea1a06be93a11db` | `tests/contract/task-request-v1-golden.test.mjs:73` |
+| Approval binding digest | `sha256:9a6d82f4cc3fe2109fea2ef033b2334eef11d6f09c92eb3f3a5df616dc0f87a5` | `tests/contract/task-request-v1-golden.test.mjs:77` |
+| `task plan` surface of the fixture plan | `sha256:5056fc0cf5335975fbcda1a748b2aeeca4b4313f4418926cf87bbea0ad47ec83` | `tests/contract/task-request-v1-golden.test.mjs:85` |
 
 ### Commit 1 — schema, generator, generated type
 
 - `schemas/task-request/2.schema.json`: closed at every level; shares
   `sourceRevision`, `task`, `gates`, `budgets`, `onGateFailure`, `verifier`,
   and `instructions` with v1 byte for byte as JSON values
-  (`tests/contract/task-request-v2.test.mjs:34`); drops `driver` (`:35`); mode
+  (`tests/contract/task-request-v2.test.mjs:35`); drops `driver` (`:36`); mode
   members by `if`/`then`/`else` (agent: one node, no `edges`, `start`,
   `handoffs`; graph: `edges`; swarm: `start` and `handoffs`, 2–16 nodes, no
   inputs). Handoff lists are bounded by the node ceiling (256) rather than the
@@ -97,10 +97,10 @@ Two runs printed identical values.
 - Parity with the schema follows `tests/contract/task-request.test.mjs`: shape
   rules are refused by both (`tests/contract/task-request-v2.test.mjs:266-267`,
   `:423-424`, `:191-192`, `:227-228`); cross-field rules are admitted by the
-  schema and refused by the normalizer (`:490-491`, `:497-498`, `:203-204`).
+  schema and refused by the normalizer (`:497-498`, `:504-505`, `:203-204`).
 - Spec-precision notes. SSI-25's "a node unreachable from a source" can only
   happen behind a cycle in a finite directed graph, so one rule (Kahn's order)
-  refuses both; the case at `:436` is a cycle that no source reaches. A write
+  refuses both; the case at `:443` is a cycle that no source reaches. A write
   scope "covers" a protected path when either contains the other in any letter
   case (`taskPathsOverlap`), and Git metadata at any depth counts as protected
   (the task-path invariant). Handoff lists need at least one entry.
@@ -108,6 +108,113 @@ Two runs printed identical values.
   security); `pnpm gate:quick` PASS (unit 2666, agent-readiness 331, census
   13; 0 fail, 0 skipped, 0 todo); `pnpm test:architecture` 122/122;
   `pnpm test:contract` 906/906.
+
+### Commit 3 — plan-time binding, presentation, and plan record load path
+
+- `task plan` reads a request through the dispatching `normalizeTaskRequest`.
+  The review's `selectedPassports` names one `<driver>:<model>` per node, in
+  plan order, then the verifier; `destinations` stays both providers (a v2
+  plan always has a writer, only a Claude Code node writes, and the verifier
+  is Codex); `capabilities` stays `worktree-write`. The plan surface presents
+  `execution` (the whole normalized descriptor, every limit explicit) where a
+  v1 plan presents `implementer`; a v1 surface is byte-identical
+  (`tests/contract/task-request-v1-golden.test.mjs:85`).
+- `planApproval` (`apps/vestra-cli/src/task/task-plan.ts`) is the binding seam
+  `planTask` now calls: package, intent, and approval request from a context,
+  a manifest, a sealer, and a requester. The goldens and the per-element
+  binding tests drive it with a fixed seed, instant, and ID source
+  (`tests/helpers/task-plan-fixture.mjs`).
+- The plan record keeps `schemaVersion: 1`; its `request` is a v1 or v2
+  normalized request (`TaskPlanRecord<PlannedTaskRequest>`) and carries its own
+  version. The loader re-normalizes it through the same dispatch, so a stored
+  v2 descriptor the intake contract refuses fails closed
+  (`tests/integration/task-coordinated-plan.test.mjs:65`) and a mismatched
+  digest is tampered (`:75`). A build without v2 refuses a v2 record as
+  `VES_TASK_STATE_MALFORMED`, because its v1 normalizer rejects
+  `schemaVersion: 2`.
+- Interim refusal until T5 composes coordinated runs: `singleSessionPlan`
+  (`apps/vestra-cli/src/task/task-plan-record.ts`) refuses a v2 run at
+  `start`, `resume`, and `review` with the existing public
+  `VES_TASK_NOT_CONFIGURED` (`requirement: coordinated-run`) right after the
+  plan loads, before any credential read, transition, worktree, or provider
+  call (`tests/integration/task-coordinated-plan.test.mjs:98-101`, with the
+  fixture's credential deny guard). `plan`, `approve`, `status`, and `cancel`
+  accept a v2 run. T5 replaces this refusal with the coordinated composition.
+- Citations. `task-plan.ts:293-297` in
+  `.specs/features/architecture-deepening-2/validation-t8.md` now reads
+  `task-plan.ts:317` (the requester ports moved into the `planApproval` call).
+  The edits to `task-run.ts`, `task-review.ts`, `task-verifier.ts`, and
+  `task-run-record.ts` replace lines in place, so every cited line of those
+  files is unchanged (compared against `dc35c52`); `task-executor.ts` is
+  line-neutral (commit 2).
+- Gates at the tip: focused suites 337/337; `pnpm gate:quick` PASS (unit
+  2689, agent-readiness 331, census 13); `pnpm test:architecture` 122/122;
+  `pnpm gate:build` PASS (unit 2689, contract 907, integration 1149, e2e 277,
+  architecture 122, build 172, qualification 348); `pnpm gate:security` PASS
+  on its second run (unit 2689, contract 907, e2e 277, architecture 122,
+  qualification 348, security 1324, fault 309) — the first run lost 11 e2e
+  cases to `ENOSPC` from the shared temporary directory, with no failure of
+  another kind, and a 64 MiB temporary write succeeded before the rerun;
+  `node --test tests/e2e/task-cli-e2e.test.mjs` 45/45; `pnpm agent:check`
+  PASS. Every run: 0 fail, 0 skipped, 0 todo. `docs/` is unchanged, so
+  `pnpm site:check` does not apply.
+
+### T3 discrimination sensor (author run)
+
+Each mutant edited one source file in place, ran the five T3 suites
+(`tests/contract/task-request-v2.test.mjs`, `task-request-v1-golden`,
+`task-request`, `tests/unit/task-plan-binding.test.mjs`,
+`tests/integration/task-coordinated-plan.test.mjs`; 174 tests, all passing
+unmutated), and restored the file; a SHA-256 of the working tree matched
+before and after. The first run left V1 alive: every cycle fixture also had an
+input on a cycle node, so the input rule refused it first. The three cycle
+cases now clear all inputs (`tests/contract/task-request-v2.test.mjs`
+`withEdgeAndNoInputs`); the second run killed all 27.
+
+| Mutant | Killed by (failing tests) |
+| --- | --- |
+| V1 ignore Kahn's result (accept a cycle) | 3: a cycle, an edge to itself, a node no source reaches |
+| V2 accept an edge naming an unknown node | 1: an edge naming an unknown node |
+| V3 accept an input that is not an ancestor | 4: unknown, self, descendant input, input on an agent |
+| V4 accept unordered writers | 1: two writers not ordered by a path |
+| V5 let a scope leave the change scope | 3: read scope, write scope, letter-case variant |
+| V6 let a write scope cover a protected path | 3: contains, inside, case variant of a protected path |
+| V7 let a Codex node write | 2: graph and swarm Codex write scope |
+| V8 accept a plan in which no node writes | 3: agent, graph, swarm without a writer |
+| V9 accept an unknown swarm start | 1 |
+| V10 accept a forbidden handoff destination | 2: handoff to an unknown node, to itself |
+| V11 accept a handoff source listed twice | 1 |
+| V12 accept swarm node inputs | 1 |
+| V13 drop the graph node limit | 1: topology above a default limit |
+| V14 drop the graph edge limit | 1: topology above a default limit |
+| V15 drop the swarm agent limit | 2: above the default, beyond the ceiling |
+| V16 raise the maxNodes default by one | 7, including the descriptor, plan record, and presentation tests |
+| V17 drop the limit ceilings | 1: each limit above its ceiling |
+| V18 skip the closed shared sections (SSI-24) | 5: verifier, task, gate, budgets, repair policy members |
+| V19 let a member of another mode through | 6: members of another mode, missing mode members |
+| V20 skip every coordination rule | 33 |
+| V21 let start, resume, and review drive a v2 run | 3: start, resume, review refusals |
+| D1 drop node descriptions from the plan | 10, including the per-element binding test |
+| D2 drop node instructions from the plan | 4, including the per-element binding test |
+| D3 drop node inputs from the plan | 7, including the per-element binding test |
+| D4 drop declared limits from the plan | 12, including the seven per-limit binding tests |
+| D5+D6 digest only the task as the execution contract and as the package decision | 20: every descriptor element's binding test and the v1 binding golden |
+| D7 one passport for the first node instead of one per node | 2: v2 review passports, v2 plan surface |
+
+Digest coverage is redundant on purpose: the package binds the whole request
+as `executionContractDigest` and as the `decision:task-request` digest, so the
+per-element binding tests alone survive a mutant that narrows only one of the
+two. That single mutant is killed by
+`tests/unit/task-plan-binding.test.mjs:85` and the v1 binding golden (2
+failures, separate run).
+
+### Tests changed, none deleted
+
+- `tests/contract/schema-registry.test.mjs:54`: the exact registry list gains
+  `task-request@2`.
+- `tests/contract/task-request-v2.test.mjs`: the cycle cases were strengthened
+  after the sensor (above).
+- No test was deleted, skipped, or weakened.
 
 ## T4 Evidence (driver structured results and quota signals)
 
@@ -197,25 +304,25 @@ evidence is FAIL.
 | SSI-08 | — | — | — |
 | SSI-09 | — | — | — |
 | SSI-10 | — | — | — |
-| SSI-11 | — | — | — |
+| SSI-11 | T3 part: `tests/contract/task-request-v2.test.mjs:57-59` the v2 schema names no SDK, schema library, or provider SDK; the coordination plan and normalizer import only `@verchestra/domain`, and application sources cannot import a third-party package (`scripts/architecture.mjs` `VES_ARCH_THIRD_PARTY_IMPORT`, `tests/architecture/repository-boundaries.test.mjs`); node-result, handoff, and coordinated-driver modules are T5 | `pnpm test:contract` 907/907, `pnpm test:architecture` 122/122 (tip) | PASS (author, T3 part) |
 | SSI-12 | — | — | — |
 | SSI-13 | — | — | — |
 | SSI-14 | — | — | — |
 | SSI-15 | — | — | — |
 | SSI-16 | — | — | — |
 | SSI-17 | T4 share: a structured or quota session keeps `model.resolved` provider `anthropic` or `openai` and the Passport reference; no new event names another provider (`spikes/claude-code-driver/test/claude-driver-structured.test.mjs:40-50`, `spikes/codex-driver/test/codex-driver-structured.test.mjs:47-55`). T5 owns the node records. | `pnpm qualify:claude`, `pnpm qualify:codex` | PASS (T4 share); T5 pending |
-| SSI-18 | T3 part: `tests/contract/task-request-v2.test.mjs:453-454` a Codex node with a write scope is refused in a graph and in a swarm with `VES_TASK_REQUEST_EXECUTION_INVALID`; the runtime part (Codex node sessions are readers) is T5 | `pnpm test:contract` (906/906, commit 2) | PASS (author, T3 part) |
+| SSI-18 | T3 part: `tests/contract/task-request-v2.test.mjs:460-465` a Codex node with a write scope is refused in a graph and in a swarm with `VES_TASK_REQUEST_EXECUTION_INVALID`; the runtime part (Codex node sessions are readers) is T5; T3 part: `tests/contract/task-request-v2.test.mjs:453-454` a Codex node with a write scope is refused in a graph and in a swarm with `VES_TASK_REQUEST_EXECUTION_INVALID`; the runtime part (Codex node sessions are readers) is T5 | `pnpm test:contract` (906/906, commit 2) | PASS (author, T3 part) |
 | SSI-19 | — | — | — |
-| SSI-20 | `tests/contract/task-request-v2.test.mjs:25-26` registry holds `task-request@2` and accepts one example per mode; `:34` shared members equal v1's; `tests/contract/task-request-v1-golden.test.mjs:23` v1 schema bytes equal the `dc35c52` golden; `:34` generated v1 output byte-identical; `tests/contract/schema-registry.test.mjs` zero drift of the generator (`--check`) | `pnpm test:contract` (814/814, commit 1) | PASS (author) |
-| SSI-21 | — | — | — |
-| SSI-22 | — | — | — |
-| SSI-23 | `tests/contract/task-request-v2.test.mjs:145` each mode normalizes to its whole descriptor plus all seven limits at the SSI-37 defaults; `:156-163` a declared limit is kept and the rest default; `:527` the canonical encoding carries the whole descriptor | `pnpm test:contract` (906/906, commit 2) | PASS (author) |
+| SSI-20 | `tests/contract/task-request-v2.test.mjs:25-27` registry holds `task-request@2` and accepts one example per mode; `:35` shared members equal v1's; `tests/contract/task-request-v1-golden.test.mjs:25` v1 schema bytes equal the `dc35c52` golden; `:36` generated v1 output byte-identical; `tests/contract/schema-registry.test.mjs` zero drift of the generator (`--check`) | `pnpm test:contract` (814/814, commit 1) | PASS (author) |
+| SSI-21 | `tests/contract/task-request-v1-golden.test.mjs:43-57` normalized form and execution-contract digest; `:73-79` Execution Package payload digest and approval binding digest; `:85-87` plan surface; all equal the values recorded on `dc35c52` before any change | `pnpm gate:build` contract 907/907 (tip) | PASS (author) |
+| SSI-22 | `tests/contract/task-request-v1-golden.test.mjs:64-68` a v1 plan record is written with the recorded bytes and loads unchanged; existing Run record suites unchanged and passing; `tests/integration/task-coordinated-plan.test.mjs:49-76` a v2 record loads through the same validated reader and fails closed when invalid or tampered | `pnpm gate:build` contract 907, integration 1149 (tip) | PASS (author) |
+| SSI-23 | `tests/contract/task-request-v2.test.mjs:145` each mode normalizes to its whole descriptor plus all seven limits at the SSI-37 defaults; `:156-163` a declared limit is kept and the rest default; `:534` the canonical encoding carries the whole descriptor | `pnpm test:contract` (906/906, commit 2) | PASS (author) |
 | SSI-24 | `tests/contract/task-request-v2.test.mjs:234-268` 26 cases (API key, authentication mode, billing, endpoint, executable, credential, the v1 `driver`, unknown members on nodes, node drivers, edges, handoffs, limits, the verifier, the task, a gate, budgets, the repair policy, members of another mode, missing members) refused by the schema and by the normalizer with `VES_TASK_REQUEST_INVALID` | `pnpm test:contract` (906/906, commit 2) | PASS (author) |
-| SSI-25 | `tests/contract/task-request-v2.test.mjs:434-441` cycle, self-edge, node no source reaches, unknown edge node, unknown input, descendant input, self input, input on an agent; schema admits, normalizer refuses with `VES_TASK_REQUEST_EXECUTION_INVALID` (`:490-491`); shape cases (duplicate input or edge, malformed IDs) refused by both (`:423-424`) | `pnpm test:contract` (906/906, commit 2) | PASS (author) |
-| SSI-26 | `tests/contract/task-request-v2.test.mjs:442-473` read or write scope outside the change scope (and a letter-case variant), write scope containing, inside, or case-folding onto a protected path, Git metadata, Codex write scope (graph and swarm), unordered writers, no writer (agent, graph, swarm); `:501-523` ordered writers and several swarm writers are accepted | `pnpm test:contract` (906/906, commit 2) | PASS (author) |
-| SSI-27 | `tests/contract/task-request-v2.test.mjs:475-479` unknown start, handoff to or from an unknown node, handoff to itself, a source listed twice; `:395` a swarm node with inputs refused by both | `pnpm test:contract` (906/906, commit 2) | PASS (author) |
-| SSI-28 | — | — | — |
-| SSI-29 | — | — | — |
+| SSI-25 | `tests/contract/task-request-v2.test.mjs:441-448` cycle, self-edge, node no source reaches, unknown edge node, unknown input, descendant input, self input, input on an agent; schema admits, normalizer refuses with `VES_TASK_REQUEST_EXECUTION_INVALID` (`:497-498`); shape cases (duplicate input or edge, malformed IDs) refused by both (`:423-424`) | `pnpm test:contract` (906/906, commit 2) | PASS (author) |
+| SSI-26 | `tests/contract/task-request-v2.test.mjs:449-480` read or write scope outside the change scope (and a letter-case variant), write scope containing, inside, or case-folding onto a protected path, Git metadata, Codex write scope (graph and swarm), unordered writers, no writer (agent, graph, swarm); `:508-530` ordered writers and several swarm writers are accepted | `pnpm test:contract` (906/906, commit 2) | PASS (author) |
+| SSI-27 | `tests/contract/task-request-v2.test.mjs:482-490` unknown start, handoff to or from an unknown node, handoff to itself, a source listed twice; `:395` a swarm node with inputs refused by both | `pnpm test:contract` (906/906, commit 2) | PASS (author) |
+| SSI-28 | `tests/unit/task-plan-binding.test.mjs:68-72` one test per element (mode, node identifier, driver, model, instructions, description, read scope, write scope, input, edge, start, handoff target, and each of the seven limits) asserts a new binding digest; `:74-77` all 19 digests differ; sensor D1–D5 and D7 kill when a field leaves the binding | `pnpm gate:quick` unit 2689 (tip) | PASS (author) |
+| SSI-29 | T3 part: `tests/unit/task-plan-binding.test.mjs:82-91` the Execution Package seals the whole normalized v2 request as its execution contract and the approval binds that package; `tests/integration/task-coordinated-plan.test.mjs:49-59` the plan record seals the same request; executing it at `start` and `resume` is T5 and T8 (until then they refuse, `:94-102`) | `pnpm gate:build` (tip) | PASS (author, T3 part) |
 | SSI-30 | — | — | — |
 | SSI-31 | — | — | — |
 | SSI-32 | — | — | — |
@@ -269,7 +376,7 @@ evidence is FAIL.
 | SSI-80 | — | — | — |
 | SSI-81 | T4 share: events, checkpoints, payloads, and the quota refusal carry no token, session, account data, provider prose, or temporary path (`tests/security/driver-structured-results-security.test.mjs:58`, `:162`, `:173`); mutant M18 killed. T5 and T6 own their records. | `pnpm test:security` | PASS (T4 share); T5, T6 pending |
 | SSI-82 | — | — | — |
-| SSI-83 | — | — | — |
+| SSI-83 | T3 part: v1 is unchanged (SSI-20, SSI-21, SSI-22 rows); a v2 request is opt-in by `schemaVersion: 2` (`packages/application/src/execution/task-request.ts` `normalizeTaskRequest`); `tests/e2e/task-cli-e2e.test.mjs:827-852` a v2 dry run plans through the binary, `:854-871` an invalid descriptor is `VES_TASK_REQUEST_REJECTED` with reason `VES_TASK_REQUEST_EXECUTION_INVALID` and nothing written | `node --test tests/e2e/task-cli-e2e.test.mjs` 45/45 (tip) | PASS (author, T3 part) |
 | SSI-84 | — | — | — |
 | SSI-85 | — | — | — |
 

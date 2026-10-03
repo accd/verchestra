@@ -8,11 +8,13 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { after, test } from "node:test";
 
+import { planSurface } from "../../apps/vestra-cli/src/task/task-plan.ts";
 import { canonicalTaskRequest, normalizeTaskRequest } from "../../packages/application/src/index.ts";
 import { canonicalizeJsonV2 } from "../../packages/domain/src/index.ts";
 import { cleanupTaskCommandFixtures, taskCommandFixture } from "../helpers/task-command-fixture.mjs";
+import { boundPlan } from "../helpers/task-plan-fixture.mjs";
 import { validTaskRequest } from "../helpers/task-request-fixture.mjs";
-import { planRecord, taskRequest } from "../helpers/task-run-record-fixture.mjs";
+import { contextManifest, planRecord, taskRequest } from "../helpers/task-run-record-fixture.mjs";
 
 after(cleanupTaskCommandFixtures);
 
@@ -64,4 +66,24 @@ test("a v1 plan record is written with the same bytes and loads unchanged", asyn
     "sha256:e6c97cd79c6eb7a6ea93d954e9c098cc8205a4cece0318615b51b7eabed0272f"
   );
   assert.deepEqual(await runRecord.loadPlan(), planRecord());
+});
+
+test("a v1 plan seals the same Execution Package, binds the same approval, and presents the same surface", async () => {
+  const { pkg, intent, approvalRequest } = await boundPlan(taskRequest());
+  assert.equal(
+    `sha256:${pkg.payloadDigest}`,
+    "sha256:13f2bc46466cabfb74f678f3913e5838cd838ef20b1f2f5ceea1a06be93a11db"
+  );
+  assert.equal(
+    approvalRequest.bindingDigest,
+    "sha256:9a6d82f4cc3fe2109fea2ef033b2334eef11d6f09c92eb3f3a5df616dc0f87a5"
+  );
+  const surface = planSurface({ ...planRecord(), approvalIntent: intent, approvalRequest }, contextManifest(), false, {
+    implementer: "subscription",
+    verifier: "subscription"
+  });
+  assert.equal(
+    sha256(canonicalizeJsonV2(surface)),
+    "sha256:5056fc0cf5335975fbcda1a748b2aeeca4b4313f4418926cf87bbea0ad47ec83"
+  );
 });

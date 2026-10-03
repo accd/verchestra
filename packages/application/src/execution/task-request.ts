@@ -283,7 +283,7 @@ function normalizeSharedMembers(request: Row) {
   return { sourceRevision, task, gates, budgets, ...(onGateFailure === undefined ? {} : { onGateFailure }) };
 }
 
-export function normalizeTaskRequestV1(value: unknown): NormalizedTaskRequest {
+function normalizeTaskRequestV1(value: unknown): NormalizedTaskRequest {
   const request = exact(
     value,
     "task request",

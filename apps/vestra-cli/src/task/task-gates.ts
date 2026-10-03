@@ -2,11 +2,11 @@ import { constants } from "node:fs";
 import { access, stat } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 
-import type { NormalizedTaskRequest } from "@verchestra/application";
 import type { GateCommandProfile } from "@verchestra/platform-node";
 
 import { notConfigured } from "./task-errors.ts";
 import { objectRow, readJsonFile } from "./task-files.ts";
+import type { PlannedTaskRequest } from "./task-plan-record.ts";
 import type { TaskWorkspace } from "./task-workspace.ts";
 
 const COMMAND_REF = /^[A-Za-z0-9][A-Za-z0-9._:@/+-]{0,511}$/u;
@@ -58,7 +58,7 @@ async function profile(value: unknown): Promise<GateCommandProfile> {
 
 export async function loadGateAllowlist(
   workspace: TaskWorkspace,
-  request: NormalizedTaskRequest
+  request: Pick<PlannedTaskRequest, "gates">
 ): Promise<Readonly<Record<string, GateCommandProfile>>> {
   const stored = await readJsonFile(gateAllowlistPath(workspace), "gate allowlist");
   if (stored === undefined) throw notConfigured("gate-allowlist", "No machine-local gate allowlist exists");

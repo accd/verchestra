@@ -7,12 +7,13 @@ import {
   type ContextRecipe,
   type ContextSourceObservation
 } from "@verchestra/agent-runtime";
-import { DataEgressFirewall, type NormalizedTaskRequest } from "@verchestra/application";
+import { DataEgressFirewall } from "@verchestra/application";
 import { canonicalizeJsonV2 } from "@verchestra/domain";
 import type { EvidenceSigner } from "@verchestra/evidence";
 import { NodeContentDigest, NodeGitContextSource } from "@verchestra/platform-node";
 
 import { canonicalDigest } from "./task-files.ts";
+import type { PlannedTaskRequest } from "./task-plan-record.ts";
 
 export const REPOSITORY_SOURCE = "repository:workspace";
 const TASK_SOURCE = "task-request";
@@ -28,7 +29,7 @@ export function stableUuid(seed: string): string {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-${variant}${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
 }
 
-export function contextRecipe(runId: string, request: NormalizedTaskRequest): ContextRecipe {
+export function contextRecipe(runId: string, request: PlannedTaskRequest): ContextRecipe {
   return {
     schemaVersion: 1,
     recipeId: `recipe_${stableUuid(`${runId}:recipe`)}`,
@@ -64,7 +65,7 @@ export function contextRecipe(runId: string, request: NormalizedTaskRequest): Co
   };
 }
 
-function taskStatement(request: NormalizedTaskRequest): string {
+function taskStatement(request: PlannedTaskRequest): string {
   const task = request.task;
   return [
     `Task ${task.taskId} (${task.risk} risk): ${task.expectedCommitBoundary}`,
@@ -77,7 +78,7 @@ function taskStatement(request: NormalizedTaskRequest): string {
   ].join("\n\n");
 }
 
-function taskSource(request: NormalizedTaskRequest, now: string) {
+function taskSource(request: PlannedTaskRequest, now: string) {
   const revision = canonicalDigest(request).slice(7);
   return {
     resolve: async (): Promise<ContextSourceObservation> => ({
@@ -119,7 +120,7 @@ export async function compileTaskContext(input: {
   readonly workspaceId: string;
   readonly runId: string;
   readonly repositoryRoot: string;
-  readonly request: NormalizedTaskRequest;
+  readonly request: PlannedTaskRequest;
   readonly signer: EvidenceSigner;
 }): Promise<ContextManifest> {
   const digest = new NodeContentDigest();

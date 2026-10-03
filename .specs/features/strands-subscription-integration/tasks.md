@@ -167,11 +167,11 @@ T8 -> T9 -> T10
 
 **Done when**:
 
-- [ ] Golden v1 fixtures keep their normalized form, execution-contract digest, and binding digest (SSI-21).
-- [ ] A test mutates each descriptor field and observes a new binding digest (SSI-28).
+- [x] Golden v1 fixtures keep their normalized form, execution-contract digest, and binding digest (SSI-21).
+- [x] A test mutates each descriptor field and observes a new binding digest (SSI-28).
 - [x] Every rejection in SSI-24..27 has a contract case and a normalizer case with the same verdict (schema/normalizer parity, as `tests/contract/task-request.test.mjs` does for v1).
 - [x] Defaults and ceilings are tested at, below, and above each bound (SSI-37, SSI-38).
-- [ ] Gates pass with no skipped or deleted test.
+- [x] Gates pass with no skipped or deleted test.
 
 **Tests**: contract, unit, integration
 **Gate**: build
@@ -180,7 +180,8 @@ T8 -> T9 -> T10
 
 - [x] Commit 1: the v2 schema, the generator reading every `<n>.schema.json`, generated `TaskRequestV2`; v1 goldens recorded on `dc35c52` before any change.
 - [x] Commit 2: the v2 normalizer and coordination plan; `VES_TASK_REQUEST_EXECUTION_INVALID` travels as the `reason` of `VES_TASK_REQUEST_REJECTED`.
-- [ ] Commit 3: the plan-time binding, presentation, and plan record load path.
+- [x] Commit 3: the plan-time binding (`planApproval`), per-node passports, the v2 plan surface, and the plan record load path; `start`, `resume`, and `review` refuse a v2 run as `not configured` (`coordinated-run`) until T5 composes it.
+- [x] Discrimination: 27 mutants of the validators and the digest coverage, all killed (`validation.md`, "T3 discrimination sensor").
 
 ---
 

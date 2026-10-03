@@ -143,7 +143,6 @@ export {
 export {
   canonicalTaskRequest,
   normalizeTaskRequest,
-  normalizeTaskRequestV1,
   TaskRequestError,
   type NormalizedTaskRequest,
   type NormalizedTaskRequestV2,
