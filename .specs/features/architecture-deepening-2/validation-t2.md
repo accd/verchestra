@@ -91,7 +91,7 @@ hands over `${PIPESTATUS[0]}`.
 | The workflow keeps its permissions, its environment-free shape and the order of its steps | `t76-candidate-workflow.test.mjs:57` (`contents: read`), `:305` (no `secrets.`, no `environment:`, no write, one grant), `:279` (step names of both jobs, in order: the former steps in their former order, and the two tooling steps before each job's first seal) |
 | The sealing program is the dispatched commit's, run outside the candidate tree | `.github/workflows/t76-candidate-build.yml:116-135` and `:271-290`: `actions/checkout` at `github.sha`, depth 1, `persist-credentials: false`, moved to `$RUNNER_TEMP/t76-evidence-tooling`, `HEAD` proven equal to `$GITHUB_SHA`; `t76-candidate-workflow.test.mjs:245` pins all of it, that the tooling is in place before each job's first seal, and that every call resolves the module under the tooling checkout and none under the candidate's |
 | A bare tooling checkout can run it, with nothing installed | `t76-candidate-evidence.test.mjs:134` imports are Node built-ins and `packages/domain/src/index.ts` only; the module's `hazard:` comment at `:16` |
-| The publisher takes the shapes and digest rules from it | `scripts/t76-publish-release.mjs:69-74` import; `:279`, `:284`, `:301`, `:422`, `:510` members; `:288` index digest; `:427` build-info digest; error codes unchanged; `tests/build/t76-release-publication.test.mjs` passes unedited |
+| The publisher takes the shapes and digest rules from it | `scripts/t76-publish-release.mjs:69-75` import; `:280`, `:285`, `:302`, `:473`, `:561` members; `:289` index digest; `:478` build-info digest; error codes unchanged; `tests/build/t76-release-publication.test.mjs` passes unedited |
 | The materializer takes them from it | `scripts/t76-materialize-candidate.mjs:12` import; `:103`, `:110`, `:215`; `tests/build/t76-candidate-materializer.test.mjs` passes unedited |
 | The builder writes build-info from its record and admits its gates | `scripts/t76-build-candidate.mjs:14`, `:198-210`, `:534`; `tests/build/reproducible-target-build.test.mjs:169-192` builds the real target, proves build-info.json is the module's record byte for byte, and seals evidence over the real output with the module (build-info and release digests agree) |
 | The fleet has one binding | `scripts/t76-signing-custody.mjs:29` re-exports it; `t76-candidate-evidence.test.mjs:126` asserts custody and publisher hold the module's object; `tests/build/t76-signing-custody.test.mjs` passes unedited (its interface is still the same twelve names) |
@@ -158,8 +158,8 @@ Recorded, unchanged (a change would change bytes or is a reader's):
 - **O6.** The counters sum every `\u2139 tests N` line in the log; a test that
   printed such a line itself would be counted.
 
-O3 and O4 are publisher behaviour with their own error codes; they are
-candidates for a follow-up, not part of this change.
+O3 and O4 are publisher behaviour with their own error codes; the follow-up
+in section 9 closes both.
 
 ## 5. Discrimination
 
@@ -210,18 +210,23 @@ run, and the file was restored.
 
 ## 7. Gates
 
+At the tip of this pull request (`4fb35a3`), after the tooling change:
+`pnpm gate:quick` PASS (unit 2504, agent-readiness 329, census 13) and
+`pnpm agent:check` PASS. At the tip of the follow-up (section 9), which
+contains this pull request:
+
 | Command | Result | Tests |
 | --- | --- | --- |
-| `node --test` on the twelve focused suites (module, golden, publication, materializer, custody, refresh, three T76 workflows, signing environments, gate selection, census) | PASS | 204 |
-| `pnpm gate:quick` (format, lint, complexity, typecheck, unit 2504, agent-readiness 328, census 13) | PASS | 2845 |
+| `pnpm gate:quick` (format, lint, complexity, typecheck, unit 2504, agent-readiness 329, census 13) | PASS | 2846 |
 | `pnpm test:architecture` | PASS | 96 |
-| `pnpm test:build` | PASS | 169 |
-| `pnpm test:agent-readiness` | PASS | 328 |
-| `pnpm gate:release` (static checks, build, unit 2504, architecture 96, build 169, qualification 329, security 1339, fault 310, release 28) | PASS | 4775 |
-| `pnpm gate:security` (static checks, build, unit 2504, contract 782, e2e 261, architecture 96, qualification 329, security 1339, fault 310) | PASS | 5621 |
+| `pnpm test:build` | PASS | 172 |
+| `pnpm test:agent-readiness` | PASS | 329 |
+| `pnpm gate:release` (static checks, build, unit, architecture, build, qualification, security, fault, release) | PASS | 4778 |
+| `pnpm gate:security` (static checks, build, unit, contract, e2e, architecture, qualification, security, fault) | PASS | 5621 |
 | `pnpm agent:check` | PASS | - |
 
-Every suite reported 0 failed, 0 skipped and 0 todo.
+Every suite reported 0 failed, 0 skipped and 0 todo. Before the tooling
+change, at `3709464`, `gate:release` passed 4775 and `gate:security` 5621.
 
 ## 8. What the five-target dispatch must show
 
@@ -257,3 +262,39 @@ is the dispatch ref and the revision is any candidate.
    if it does not, the replay locates the file that differs.
 4. The platform matrix on the branch passes, so the golden tests have run on
    Windows, macOS and Linux hosts.
+
+## 9. Follow-up: the publisher's two gaps (O3, O4)
+
+A separate pull request on top of this one. It changes what the publisher
+refuses, never a byte it writes.
+
+| Claim | Evidence (file and assertion) |
+| --- | --- |
+| A reader verifies `gateEvidenceDigest` against the gate evaluations it covers | `scripts/t76-publish-release.mjs:419` `assertGateEvidence` hashes the `gate-evaluations.json` of each target's artifact with the module's rule and compares it with the evidence: `VES_T76_PUBLISH_DIGEST_MISMATCH`, or `VES_T76_PUBLISH_INPUT_MISSING` when the file is absent; `:306` holds the field to the digest form, `VES_T76_PUBLISH_INPUT_INVALID` |
+| The publisher refuses a target evidence whose target differs from its bundle's | `:435` `assertBundleTarget`: `VES_T76_PUBLISH_CLOSURE_INCONSISTENT` |
+| Both run before any output | `:446` `assertSealedTargets` runs for every target at `:812`, before the output directory is created at `:813` |
+| Each is proven by a test that failed before the change | `tests/build/t76-release-publication.test.mjs:595` (a tampered gate seal, a missing one, a malformed digest) and `:624` (two targets' evidence swapped, and a stale Node version); each asserts the code and that no output directory exists. Before the change both failed with "Missing expected rejection": the publisher signed both closures. `tests/helpers/t76-publication-fixture.mjs:293` `resealTargetEvidence` keeps a rewritten closure self-consistent |
+| No byte written changes | the emitted-tree, manifest, ledger-entry and pinned-input assertions of `t76-release-publication.test.mjs` pass unedited; the three codes already existed |
+
+The published candidates' evidence still passes. Each candidate run was
+downloaded again with the index of the release before it:
+
+| Candidate | Writers replay | Publisher replay (`tests/helpers/t76-publication-replay.mjs`) |
+| --- | --- | --- |
+| `.3`, run `36781862073`, rollback `.2` run `32980992904` | 11 of 11 identical | published all five targets |
+| `.4`, run `36928077854`, rollback `.3` run `36781862073` | 11 of 11 identical | published all five targets |
+| `.5`, run `37017865729`, rollback `.4` run `36928077854` | 11 of 11 identical | published all five targets |
+
+The publisher replay runs the real `publishT76Release` over the downloaded run,
+signs with throwaway keys bound to throwaway anchors in a scratch directory,
+and deletes what it wrote; `t76-release-publication.test.mjs:654` proves it on
+a fixture closure. The per-target release digests it reports are the ones each
+run sealed.
+
+Census: `scripts/t76-publish-release.mjs` goes from 11 to 13 canonicalizer
+signals; `pnpm test:census` passes. Complexity is unchanged. The publisher and
+publication-test line citations in
+`.specs/features/architecture-deepening/validation-c7.md`,
+`.specs/features/release-custody/validation.md` and
+`.specs/features/tuf-metadata-version-safety/validation.md` move with the
+code.
