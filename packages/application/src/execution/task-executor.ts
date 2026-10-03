@@ -260,24 +260,24 @@ interface TaskExecutorPorts {
   readonly driver: ExecutionDriverPort;
 }
 
+// invariant: the members an atomic execution task has, and the only ones.
+// Task Request v2 intake refuses any other task member as a member outside
+// its schema (SSI-24) through this same list.
+export const ATOMIC_EXECUTION_TASK_FIELDS = Object.freeze([
+  "taskId",
+  "requirementIds",
+  "dependencyTaskIds",
+  "component",
+  "changeScope",
+  "protectedPaths",
+  "verificationCommands",
+  "doneCriteria",
+  "risk",
+  "expectedCommitBoundary"
+] as const);
+
 export function normalizeTask(value: unknown): AtomicExecutionTask {
-  const task = exactRow(
-    value,
-    "task",
-    [
-      "taskId",
-      "requirementIds",
-      "dependencyTaskIds",
-      "component",
-      "changeScope",
-      "protectedPaths",
-      "verificationCommands",
-      "doneCriteria",
-      "risk",
-      "expectedCommitBoundary"
-    ],
-    "VES_EXECUTOR_TASK_INVALID"
-  );
+  const task = exactRow(value, "task", ATOMIC_EXECUTION_TASK_FIELDS, "VES_EXECUTOR_TASK_INVALID");
   const risk = task["risk"];
   if (!(risk === "low" || risk === "medium" || risk === "high" || risk === "critical"))
     fail("VES_EXECUTOR_TASK_INVALID", "task risk is invalid");

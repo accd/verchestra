@@ -143,11 +143,24 @@ export {
 export {
   canonicalTaskRequest,
   normalizeTaskRequest,
+  normalizeTaskRequestV1,
   TaskRequestError,
   type NormalizedTaskRequest,
+  type NormalizedTaskRequestV2,
   type TaskRequestErrorCode,
   type TaskRequestGate
 } from "./execution/task-request.ts";
+export {
+  COORDINATION_LIMIT_CEILINGS,
+  COORDINATION_LIMIT_DEFAULTS,
+  type CoordinationDriverId,
+  type CoordinationEdge,
+  type CoordinationHandoff,
+  type CoordinationLimits,
+  type CoordinationMode,
+  type CoordinationNode,
+  type CoordinationPlan
+} from "./execution/coordination-plan.ts";
 export {
   normalizeTaskSchedule,
   TaskScheduleCoordinator,

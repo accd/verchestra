@@ -65,6 +65,50 @@ Two runs printed identical values.
   agent-readiness 331, census 13; 0 fail, 0 skipped, 0 todo);
   `pnpm test:architecture` 122/122; `pnpm test:contract` 814/814.
 
+### Commit 2 — normalizer and coordination plan
+
+- `normalizeTaskRequest` dispatches on `schemaVersion`: only an object that
+  declares `2` is read as v2; every other value goes through the unchanged v1
+  path (`normalizeTaskRequestV1`, refactored only to share its five common
+  members in the order v1 always checked them). The CLI calls
+  `normalizeTaskRequestV1` explicitly in this commit, so `vestra task` behaves
+  as before until commit 3 adopts v2.
+- `packages/application/src/execution/coordination-plan.ts` holds the plan
+  types, the defaults and ceilings of SSI-37 and SSI-38, and the rules no JSON
+  Schema states (sizes against effective limits, scopes, writers, graph
+  topology, swarm handoffs). It imports only `@verchestra/domain`
+  (`isWithinTaskScope`, `taskPathsOverlap`, `namesGitMetadata`).
+- Codes. A member outside the schema at any depth, a missing member, or a
+  member of another mode is `VES_TASK_REQUEST_INVALID` (SSI-24), including
+  inside the sections v2 shares with v1, where v1 keeps its section codes. A
+  node driver other than `claude-code` or `codex`, or a model of the other
+  driver's grammar, is the existing `VES_TASK_REQUEST_DRIVER_UNSUPPORTED`; an
+  unpriced node model is the existing `VES_TASK_REQUEST_MODEL_UNPRICED`. Every
+  other descriptor refusal is `VES_TASK_REQUEST_EXECUTION_INVALID`, the code
+  SSI-25..27 name. It is an internal `TaskRequestErrorCode` that reaches the
+  owner as the `reason` of the existing public `VES_TASK_REQUEST_REJECTED`
+  (`apps/vestra-cli/src/task/task-plan.ts` `readRequest`), so no public code is
+  added and the runtime catalog keeps 19.
+- `task-executor.ts` exports `ATOMIC_EXECUTION_TASK_FIELDS`, the list
+  `normalizeTask` already used, so the v2 closed-member check and the task
+  normalizer share one list. The change is line-neutral: every line from 281 on
+  is unchanged, so the `task-executor.ts:<line>` citations in `docs` and
+  `.specs` still hold.
+- Parity with the schema follows `tests/contract/task-request.test.mjs`: shape
+  rules are refused by both (`tests/contract/task-request-v2.test.mjs:266-267`,
+  `:423-424`, `:191-192`, `:227-228`); cross-field rules are admitted by the
+  schema and refused by the normalizer (`:490-491`, `:497-498`, `:203-204`).
+- Spec-precision notes. SSI-25's "a node unreachable from a source" can only
+  happen behind a cycle in a finite directed graph, so one rule (Kahn's order)
+  refuses both; the case at `:436` is a cycle that no source reaches. A write
+  scope "covers" a protected path when either contains the other in any letter
+  case (`taskPathsOverlap`), and Git metadata at any depth counts as protected
+  (the task-path invariant). Handoff lists need at least one entry.
+- Gates: focused tests 149/149 (v2 contract 96, v1 contract, goldens, request
+  security); `pnpm gate:quick` PASS (unit 2666, agent-readiness 331, census
+  13; 0 fail, 0 skipped, 0 todo); `pnpm test:architecture` 122/122;
+  `pnpm test:contract` 906/906.
+
 ## T4 Evidence (driver structured results and quota signals)
 
 Author's evidence, commit by commit, on branch `strands/t4-driver-results`
@@ -160,16 +204,16 @@ evidence is FAIL.
 | SSI-15 | — | — | — |
 | SSI-16 | — | — | — |
 | SSI-17 | T4 share: a structured or quota session keeps `model.resolved` provider `anthropic` or `openai` and the Passport reference; no new event names another provider (`spikes/claude-code-driver/test/claude-driver-structured.test.mjs:40-50`, `spikes/codex-driver/test/codex-driver-structured.test.mjs:47-55`). T5 owns the node records. | `pnpm qualify:claude`, `pnpm qualify:codex` | PASS (T4 share); T5 pending |
-| SSI-18 | — | — | — |
+| SSI-18 | T3 part: `tests/contract/task-request-v2.test.mjs:453-454` a Codex node with a write scope is refused in a graph and in a swarm with `VES_TASK_REQUEST_EXECUTION_INVALID`; the runtime part (Codex node sessions are readers) is T5 | `pnpm test:contract` (906/906, commit 2) | PASS (author, T3 part) |
 | SSI-19 | — | — | — |
 | SSI-20 | `tests/contract/task-request-v2.test.mjs:25-26` registry holds `task-request@2` and accepts one example per mode; `:34` shared members equal v1's; `tests/contract/task-request-v1-golden.test.mjs:23` v1 schema bytes equal the `dc35c52` golden; `:34` generated v1 output byte-identical; `tests/contract/schema-registry.test.mjs` zero drift of the generator (`--check`) | `pnpm test:contract` (814/814, commit 1) | PASS (author) |
 | SSI-21 | — | — | — |
 | SSI-22 | — | — | — |
-| SSI-23 | — | — | — |
-| SSI-24 | — | — | — |
-| SSI-25 | — | — | — |
-| SSI-26 | — | — | — |
-| SSI-27 | — | — | — |
+| SSI-23 | `tests/contract/task-request-v2.test.mjs:145` each mode normalizes to its whole descriptor plus all seven limits at the SSI-37 defaults; `:156-163` a declared limit is kept and the rest default; `:527` the canonical encoding carries the whole descriptor | `pnpm test:contract` (906/906, commit 2) | PASS (author) |
+| SSI-24 | `tests/contract/task-request-v2.test.mjs:234-268` 26 cases (API key, authentication mode, billing, endpoint, executable, credential, the v1 `driver`, unknown members on nodes, node drivers, edges, handoffs, limits, the verifier, the task, a gate, budgets, the repair policy, members of another mode, missing members) refused by the schema and by the normalizer with `VES_TASK_REQUEST_INVALID` | `pnpm test:contract` (906/906, commit 2) | PASS (author) |
+| SSI-25 | `tests/contract/task-request-v2.test.mjs:434-441` cycle, self-edge, node no source reaches, unknown edge node, unknown input, descendant input, self input, input on an agent; schema admits, normalizer refuses with `VES_TASK_REQUEST_EXECUTION_INVALID` (`:490-491`); shape cases (duplicate input or edge, malformed IDs) refused by both (`:423-424`) | `pnpm test:contract` (906/906, commit 2) | PASS (author) |
+| SSI-26 | `tests/contract/task-request-v2.test.mjs:442-473` read or write scope outside the change scope (and a letter-case variant), write scope containing, inside, or case-folding onto a protected path, Git metadata, Codex write scope (graph and swarm), unordered writers, no writer (agent, graph, swarm); `:501-523` ordered writers and several swarm writers are accepted | `pnpm test:contract` (906/906, commit 2) | PASS (author) |
+| SSI-27 | `tests/contract/task-request-v2.test.mjs:475-479` unknown start, handoff to or from an unknown node, handoff to itself, a source listed twice; `:395` a swarm node with inputs refused by both | `pnpm test:contract` (906/906, commit 2) | PASS (author) |
 | SSI-28 | — | — | — |
 | SSI-29 | — | — | — |
 | SSI-30 | — | — | — |
@@ -179,8 +223,8 @@ evidence is FAIL.
 | SSI-34 | — | — | — |
 | SSI-35 | — | — | — |
 | SSI-36 | — | — | — |
-| SSI-37 | — | — | — |
-| SSI-38 | — | — | — |
+| SSI-37 | `tests/contract/task-request-v2.test.mjs:145` absent limits take 1, 64, 128, 8, 32, 64 KiB, 256 KiB; `:176-185` 1, default−1, default, default+1 accepted per limit; `:196-209` 65 graph nodes, 129 edges, and 9 swarm agents refused at the default and accepted when raised, 64 nodes, 128 edges, and 8 agents accepted at it | `pnpm test:contract` (906/906, commit 2) | PASS (author) |
+| SSI-38 | `tests/contract/task-request-v2.test.mjs:176-185` ceiling−1 and ceiling accepted per limit; `:187-194` ceiling+1, 0, 1.5, and a string refused by both; `:211-229` 256 nodes, 16 agents, and 512 edges plan at their ceilings, 257, 17, and 513 are refused by both | `pnpm test:contract` (906/906, commit 2) | PASS (author) |
 | SSI-39 | — | — | — |
 | SSI-40 | — | — | — |
 | SSI-41 | — | — | — |
