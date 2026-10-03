@@ -7,6 +7,7 @@
 // on the Windows runner; elsewhere each asserts that the transport refuses to
 // start, so no case passes without asserting.
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { once } from "node:events";
 import { mkdtemp, readFile, readdir } from "node:fs/promises";
 import { createServer } from "node:net";
@@ -18,8 +19,10 @@ import {
   currentUserSid,
   isOwnerOnlyDacl,
   nodeWindowsAclToolRunner,
+  ownerOnlyGrantArguments,
   proveOwnerOnlyDirectory,
-  readDirectoryDacl
+  readDirectoryDacl,
+  windowsAclToolExecutable
 } from "../../packages/platform-node/src/windows-acl.ts";
 import {
   PIPE_HELPER_SCRIPT,
@@ -131,6 +134,26 @@ async function namedPipeRefusedOffWin32(t) {
   assert.deepEqual(await readdir(channels), [], "nothing was created");
 }
 
+// why: a proof a real host refuses names its step and what the host's own
+// tools reported, so a runner's ACL format can be read from the log alone.
+async function proofDiagnosis(directory, proof) {
+  if (proof.proven) return "proven";
+  const tool = (name, args) => {
+    const result = spawnSync(windowsAclToolExecutable(name), args, { encoding: "utf8", timeout: 10_000 });
+    return { status: result.status, stdout: result.stdout?.trim(), stderr: result.stderr?.trim() };
+  };
+  const whoami = tool("whoami", WHOAMI_ARGUMENTS);
+  const sid = currentUserSid(whoami.stdout ?? "");
+  return JSON.stringify({
+    step: proof.step,
+    whoami,
+    sid: sid ?? null,
+    grant: sid === undefined ? null : tool("icacls", ownerOnlyGrantArguments(directory, sid)),
+    listing: tool("icacls", [directory]),
+    dacl: (await readDirectoryDacl(directory)) ?? null
+  });
+}
+
 test("win32: the system tools prove a real per-run directory owner-only", async () => {
   const { channels } = await plainWorktree();
   const directory = await mkdtemp(join(channels, "vpipe-"));
@@ -139,7 +162,7 @@ test("win32: the system tools prove a real per-run directory owner-only", async 
     assert.deepEqual(proof, { proven: false, step: "identity" }, "without whoami.exe there is no proof");
     return;
   }
-  assert.equal(proof.proven, true);
+  assert.equal(proof.proven, true, await proofDiagnosis(directory, proof));
   assert.equal(proof.sid, currentUserSid(await nodeWindowsAclToolRunner("whoami", WHOAMI_ARGUMENTS)));
   assert.equal(isOwnerOnlyDacl(proof.dacl, proof.sid), true);
   assert.equal(await readDirectoryDacl(directory), proof.dacl, "a second read-back agrees");
