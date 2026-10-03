@@ -370,3 +370,50 @@ The artifacts expire on 2026-11-01. What this run does not prove is unchanged
 from run 36997576112: no source-side roll-forward, no live uninstall, and
 single-operator custody (L8). It also says nothing about the governed task
 path: `self-test --profile smoke` does not start a provider.
+
+## TUF publication of `0.0.0-qualification.6` (2026-10-03)
+
+`.6` is the fourth release on the role-separated root. Over `.5` it carries the
+protected-path security fix (#485), process-tree termination of the providers
+(ADP-4), both architecture deepening rounds, the run's complete usage account,
+the driver fixes found along the way, and the dependency updates through
+#510 (Pi runtime 0.99.1).
+
+| Fact               | Value                                                                                  |
+| ------------------ | -------------------------------------------------------------------------------------- |
+| Candidate revision | `7e274f237648251b972081471134623097122c16` (`main`)                                    |
+| Candidate build    | run `37139943097`: five target legs and the reconciled closure passed                  |
+| Signing            | run `37147832135`, from `main`, approved in environment `tuf-release-signing`          |
+| Release id         | `release:verchestra:0.0.0-qualification.6:7e274f237648`                                |
+| Root digest        | `sha256:949fbce3c56f7a10729750d3d18dc54537eb32f2701aae7eb8370ff06e5dcff7` (unchanged)  |
+| Metadata version   | `5` for targets, snapshot and timestamp                                                |
+| Base URL           | `https://pub-0fa3e4c3f26540e793952fa2c187d536.r2.dev/v6/`                              |
+| Rollback proof     | binds the `.5` candidate `e17abb3c8970b72c837bbbd07f86b4676ca9adb3`, run `37017865729` |
+
+Custody, stated as it happened: the environment approval was submitted through
+the owner's GitHub credential by the agent session, at the owner's instruction
+in that session on 2026-10-03. The posture is single-operator custody
+(acceptance matrix L8, RR10).
+
+The ledger entry is the `ledger-entry.json` the publication run derived
+(`admitRelease`, AD-042), appended verbatim as sequence 6.
+
+Verification:
+
+- **Assembly.** All 1365 objects were hashed locally against
+  `publication-manifest.json` (digest and size) before upload: 1365 matched.
+- **Upload.** 1365 objects under `v6/`; `rclone check` reported 1365 matching
+  files and 0 differences.
+- **Live endpoint.** 1365 of 1365 objects answered as the manifest records.
+- **npm package.** A local `build:vestra-launcher --release-inputs` build at
+  the candidate revision was byte-identical to the workflow's verified
+  launcher package.
+- **Update and rollback, macOS arm64, against the live endpoint.** With one
+  empty home: `.5` activated `.5`; `.6` activated `.6`; `.5` re-activated `.5`
+  with exit `0` (the retained-release path, AD-036); `.6` activated `.6` again.
+  The active pointer named the manifest's `darwin-arm64` release digest
+  (`sha256:8601098a…cac8c8f03`). `self-test --profile smoke` returned
+  `verdict: PASS`.
+
+Not yet done: `npm publish` of the `.6` launcher (owner two-factor step), and
+the five-target `live-activation-matrix` run with base `.5` and update `.6`.
