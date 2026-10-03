@@ -9,6 +9,7 @@ import { test } from "node:test";
 import {
   DEFAULT_PUBLICATION_LEDGER_PATH,
   PUBLICATION_LEDGER_SCHEMA,
+  admitRefresh,
   admitRelease,
   assertLedgerPrefix,
   assertMonotonicMetadataVersion,
@@ -275,6 +276,57 @@ test("a refresh is admitted only for a recorded lineage, above every version, ov
     () => assertRefreshAdmitted(ledger, { rootDigest: recordedLineage, metadataVersion: 3, targetsVersion: 2 }),
     { code: "VES_T76_REFRESH_TARGETS_CHANGED" }
   );
+});
+
+// invariant: a refresh is admitted and its entry derived in one step, as a
+// release is (ADR2-11): the refresh script assembles no ledger entry itself.
+test("the refresh admission refuses what assertRefreshAdmitted refuses and derives the role-refresh entry", () => {
+  const ledger = committed();
+  const newest = ledger.entries.at(-1);
+  const refresh = {
+    releaseId: newest.releaseId,
+    semanticVersion: newest.semanticVersion,
+    baseUrl: `${newest.baseUrl}${newest.urlPrefix}`,
+    rootDigest: newest.rootDigest,
+    metadataVersion: newest.roles.timestamp + 1,
+    targetsVersion: newest.roles.targets,
+    publicationRunId: "123456789",
+    evidence: ["docs/qualification/tuf-publication-ledger.json"]
+  };
+  const entry = admitRefresh(ledger, refresh);
+  assert.deepEqual(entry, {
+    sequence: newest.sequence + 1,
+    previousEntryDigest: ledgerEntryDigest(newest),
+    kind: "role-refresh",
+    releaseId: refresh.releaseId,
+    semanticVersion: refresh.semanticVersion,
+    baseUrl: refresh.baseUrl,
+    urlPrefix: null,
+    rootDigest: refresh.rootDigest,
+    rootDigestPrefix: null,
+    roles: { snapshot: refresh.metadataVersion, timestamp: refresh.metadataVersion },
+    publicationRunId: "123456789",
+    evidence: ["docs/qualification/tuf-publication-ledger.json"]
+  });
+  assert.deepEqual(Object.keys(entry).slice(0, 2), ["sequence", "previousEntryDigest"]);
+  assert.notEqual(entry.evidence, refresh.evidence, "the entry never aliases the caller's list");
+  for (const [change, code] of [
+    [{ metadataVersion: newest.roles.timestamp }, "VES_T76_PUBLISH_METADATA_VERSION_NOT_MONOTONIC"],
+    [{ targetsVersion: newest.roles.targets - 1 }, "VES_T76_REFRESH_TARGETS_CHANGED"],
+    [{ rootDigest: `sha256:${"0".repeat(64)}` }, "VES_T76_REFRESH_LINEAGE_UNKNOWN"]
+  ]) {
+    assert.throws(() => assertRefreshAdmitted(ledger, { ...refresh, ...change }), { code });
+    assert.throws(() => admitRefresh(ledger, { ...refresh, ...change }), { code });
+  }
+  assert.throws(() => admitRefresh(ledger, { ...refresh, publicationRunId: "not a run" }), {
+    code: "VES_T76_PUBLISH_LEDGER_INVALID"
+  });
+});
+
+test("the timestamp refresh takes its ledger entry from the admission and builds none itself", () => {
+  const source = text("scripts/t76-refresh-timestamp.mjs");
+  assert.match(source, /admitRefresh\(ledger, \{/u);
+  assert.doesNotMatch(source, /\bnextLedgerEntry\b|\bassertRefreshAdmitted\b/u);
 });
 
 // why: everything below covers the release admission: the ledger module derives

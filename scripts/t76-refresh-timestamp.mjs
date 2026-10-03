@@ -53,7 +53,7 @@ import {
   releaseSignerFromEnvironment,
   writeExclusive
 } from "./t76-signing-custody.mjs";
-import { assertRefreshAdmitted, nextLedgerEntry, readPublicationLedger } from "./tuf-publication-ledger.mjs";
+import { admitRefresh, readPublicationLedger } from "./tuf-publication-ledger.mjs";
 
 export { RELEASE_ANCHOR_PURPOSE, TIMESTAMP_ANCHOR_PURPOSE };
 
@@ -334,20 +334,6 @@ const writeTarget = async (outputDirectory, key, refresh) => {
   for (const [name, bytes] of refresh.metadata) await writeExclusive(join(directory, name), bytes, `${key} ${name}`);
 };
 
-const ledgerEntryFor = (ledger, manifest, options) =>
-  nextLedgerEntry(ledger, {
-    kind: "role-refresh",
-    releaseId: manifest.releaseId,
-    semanticVersion: manifest.semanticVersion,
-    baseUrl: manifest.baseUrl,
-    urlPrefix: null,
-    rootDigest: manifest.rootDigest,
-    rootDigestPrefix: null,
-    roles: { snapshot: options.metadataVersion, timestamp: options.metadataVersion },
-    publicationRunId: options.publicationRunId,
-    evidence: [...REFRESH_EVIDENCE]
-  });
-
 const refreshManifestFor = (manifest, options, anchors, refreshed) => ({
   schemaVersion: 1,
   kind: "role-refresh",
@@ -383,10 +369,15 @@ export async function refreshT76Timestamp(rawOptions) {
   if (targetsVersions.size !== 1)
     fail("VES_T76_REFRESH_TARGETS_CHANGED", "the published targets do not share one targets version");
   const [targetsVersion] = targetsVersions;
-  assertRefreshAdmitted(ledger, {
+  const entry = admitRefresh(ledger, {
+    releaseId: manifest.releaseId,
+    semanticVersion: manifest.semanticVersion,
+    baseUrl: manifest.baseUrl,
     rootDigest: manifest.rootDigest,
     metadataVersion: options.metadataVersion,
-    targetsVersion
+    targetsVersion,
+    publicationRunId: options.publicationRunId,
+    evidence: REFRESH_EVIDENCE
   });
   if (published.some((item) => item.servedVersion >= options.metadataVersion))
     fail(
@@ -400,7 +391,6 @@ export async function refreshT76Timestamp(rawOptions) {
   for (const { refresh } of refreshed)
     if (refresh.versions.targets !== targetsVersion)
       fail("VES_T76_REFRESH_TARGETS_CHANGED", "a published targets file is not named by its own version");
-  const entry = ledgerEntryFor(ledger, manifest, options);
   const refreshManifest = refreshManifestFor(manifest, options, anchors, refreshed);
   await assertOutputAbsent(options.outputDirectory, "refresh");
   await mkdir(options.outputDirectory, { recursive: false, mode: 0o700 });
