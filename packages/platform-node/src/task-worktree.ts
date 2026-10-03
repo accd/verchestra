@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
-import { resolve } from "node:path";
+import { lstat, mkdir, realpath } from "node:fs/promises";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { promisify } from "node:util";
 
 import { safeEnvironment } from "./safe-environment.ts";
@@ -190,4 +191,116 @@ export async function refTarget(
     if (name === ref) return objectId;
   }
   return undefined;
+}
+
+// invariant: what a resolution refuses, named once. Each adapter answers a
+// refusal with its own public code, so one rule decides and every adapter
+// keeps the code its callers already read.
+export type WorktreeRefusal = "handle" | "repository" | "root" | "escape" | "unregistered" | "missing";
+
+export class WorktreeRefusalError extends Error {
+  readonly refusal: WorktreeRefusal;
+
+  constructor(refusal: WorktreeRefusal, message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = "WorktreeRefusalError";
+    this.refusal = refusal;
+  }
+}
+
+function refuse(refusal: WorktreeRefusal, message: string, options?: ErrorOptions): never {
+  throw new WorktreeRefusalError(refusal, message, options);
+}
+
+// invariant: `candidate` is `root` or a path below it, both resolved. Every
+// containment test of a worktree directory and of a directory inside one is
+// this one.
+export function isWithinDirectory(root: string, candidate: string): boolean {
+  const child = relative(root, candidate);
+  return child !== ".." && !child.startsWith(`..${sep}`) && !isAbsolute(child);
+}
+
+export interface WorktreeRoots {
+  readonly repositoryRoot: string;
+  readonly worktreesRoot: string;
+}
+
+// why: canonicalize rather than reject. A configured root legitimately reaches
+// its real location through platform path aliases: macOS temp directories
+// resolve /var -> /private/var, and Windows hands back 8.3 short names such as
+// RUNNER~1 -> runneradmin. Every containment test below runs against the
+// canonical roots, so a benign alias is safe, while a worktrees root whose own
+// entry is a link, or a repository root that is no non-bare repository, is
+// still refused.
+export async function qualifiedWorktreeRoots(roots: WorktreeRoots, git: GitRunner = runGit): Promise<WorktreeRoots> {
+  let repositoryRoot: string;
+  try {
+    repositoryRoot = await realpath(roots.repositoryRoot);
+  } catch (error) {
+    refuse("repository", "Repository root does not exist", { cause: error });
+  }
+  const bare = (await git(repositoryRoot, ["rev-parse", "--is-bare-repository"])).stdout.trim();
+  if (bare !== "false") refuse("repository", "Repository root is not a non-bare Git repository");
+  await mkdir(roots.worktreesRoot, { recursive: true });
+  const metadata = await lstat(roots.worktreesRoot);
+  if (metadata.isSymbolicLink() || !metadata.isDirectory()) refuse("root", "Worktree root is not a real directory");
+  const worktreesRoot = await realpath(roots.worktreesRoot);
+  if (worktreesRoot === repositoryRoot) refuse("root", "Worktree root cannot equal repository root");
+  return Object.freeze({ repositoryRoot, worktreesRoot });
+}
+
+// invariant: a worktree lives directly below its canonical root, in the
+// directory its handle ID names, and never is that root.
+export function worktreeDirectory(worktreesRoot: string, id: string): string {
+  const directory = join(worktreesRoot, id);
+  if (directory === worktreesRoot || !isWithinDirectory(worktreesRoot, directory))
+    refuse("escape", "Worktree directory escaped its protected root");
+  return directory;
+}
+
+// hazard: Git keeps listing a worktree whose directory was deleted by hand, so
+// a registered directory that is gone is its own refusal, not a bare ENOENT.
+export async function assertWorktreeDirectory(directory: string, worktreesRoot: string): Promise<void> {
+  let metadata;
+  try {
+    metadata = await lstat(directory);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    refuse("missing", "Registered worktree directory no longer exists", { cause: error });
+  }
+  if (metadata.isSymbolicLink() || !metadata.isDirectory()) refuse("escape", "Worktree target is not a real directory");
+  const actual = await realpath(directory);
+  if (relative(directory, actual) !== "" || actual === worktreesRoot || !isWithinDirectory(worktreesRoot, actual))
+    refuse("escape", "Worktree target escaped its protected root");
+}
+
+export interface ResolvedWorktree extends WorktreeRoots {
+  readonly handle: WorktreeHandle;
+  readonly directory: string;
+  // invariant: the HEAD Git lists for the directory, read in the same listing
+  // that proved it registered.
+  readonly head: string;
+}
+
+// invariant: the one resolution of a handle to a worktree directory. The
+// handle is read (and bound to `baseCommit` when one is given) before any
+// effect, the roots are qualified, the directory must be registered by Git,
+// and it must be a real directory contained in its root.
+export async function resolveWorktreeHandle(
+  roots: WorktreeRoots,
+  worktreeRef: string,
+  options: { readonly baseCommit?: string; readonly git?: GitRunner } = {}
+): Promise<ResolvedWorktree> {
+  const handle = parseWorktreeHandle(worktreeRef);
+  if (handle === undefined || (options.baseCommit !== undefined && handle.baseCommit !== options.baseCommit))
+    refuse("handle", "Worktree reference is invalid");
+  const git = options.git ?? runGit;
+  const qualified = await qualifiedWorktreeRoots(roots, git);
+  const directory = worktreeDirectory(qualified.worktreesRoot, handle.id);
+  const head = registeredWorktrees(
+    (await git(qualified.repositoryRoot, ["worktree", "list", "--porcelain"])).stdout
+  ).get(directory);
+  if (head === undefined) refuse("unregistered", "Worktree handle is not registered by Git");
+  await assertWorktreeDirectory(directory, qualified.worktreesRoot);
+  return Object.freeze({ ...qualified, handle, directory, head });
 }

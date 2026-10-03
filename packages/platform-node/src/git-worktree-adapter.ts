@@ -1,22 +1,30 @@
 import { createHash } from "node:crypto";
-import { lstat, mkdir, readFile, readlink, realpath } from "node:fs/promises";
-import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { lstat, readFile, readlink } from "node:fs/promises";
+import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 
 import type { ExecutionWorktreePort } from "@verchestra/application";
 import { isTaskPath } from "@verchestra/domain";
 
 import {
+  assertWorktreeDirectory,
   encodeWorktreeHandle,
   isGitObjectId,
   isTaskBranchComponent,
   parseTaskCommitTrailers,
   parseWorktreeHandle,
+  qualifiedWorktreeRoots,
   refTarget,
   registeredWorktrees,
+  resolveWorktreeHandle,
   runGit,
   taskBranchRef,
+  worktreeDirectory,
+  WorktreeRefusalError,
   type GitOutput,
-  type GitRunner
+  type GitRunner,
+  type ResolvedWorktree,
+  type WorktreeRefusal,
+  type WorktreeRoots
 } from "./task-worktree.ts";
 
 export type GitWorktreeErrorCode =
@@ -50,9 +58,28 @@ function fail(code: GitWorktreeErrorCode, message: string, options?: ErrorOption
   throw new GitWorktreeError(code, message, options);
 }
 
-function within(root: string, candidate: string): boolean {
-  const child = relative(root, candidate);
-  return child !== "" && child !== ".." && !child.startsWith(`..${sep}`) && !isAbsolute(child);
+// invariant: the worktree module decides; this adapter answers each refusal
+// with the code its callers have always read.
+const REFUSAL_CODES: Readonly<Record<WorktreeRefusal, GitWorktreeErrorCode>> = Object.freeze({
+  handle: "VES_GIT_WORKTREE_INPUT_INVALID",
+  repository: "VES_GIT_WORKTREE_INPUT_INVALID",
+  root: "VES_GIT_WORKTREE_ESCAPE",
+  escape: "VES_GIT_WORKTREE_ESCAPE",
+  unregistered: "VES_GIT_WORKTREE_NOT_FOUND",
+  missing: "VES_GIT_WORKTREE_NOT_FOUND"
+});
+
+function answer(error: unknown): never {
+  if (error instanceof WorktreeRefusalError) fail(REFUSAL_CODES[error.refusal], error.message, { cause: error });
+  throw error;
+}
+
+async function answered<T>(operation: () => T | Promise<T>): Promise<T> {
+  try {
+    return await operation();
+  } catch (error) {
+    answer(error);
+  }
 }
 
 function nulList(value: string): readonly string[] {
@@ -85,6 +112,7 @@ export class NodeGitWorktreeAdapter implements ExecutionWorktreePort {
   readonly #worktreesRoot: string;
   readonly #runGit: GitRunner;
   readonly #anchorTaskCommits: boolean;
+  readonly #gitRunner: GitRunner = (cwd, args) => this.#git(cwd, args);
 
   constructor(options: NodeGitWorktreeAdapterOptions) {
     if (!isAbsolute(options.repositoryRoot) || !isAbsolute(options.worktreesRoot))
@@ -107,8 +135,7 @@ export class NodeGitWorktreeAdapter implements ExecutionWorktreePort {
     if (!isGitObjectId(input.sourceRevision))
       fail("VES_GIT_WORKTREE_INPUT_INVALID", "Source revision must be a complete Git object ID");
     await this.#assertAnchorable(input.runId, input.taskId);
-    const repositoryRoot = await this.#qualifiedRepositoryRoot();
-    const worktreesRoot = await this.#qualifiedWorktreesRoot(repositoryRoot);
+    const { repositoryRoot, worktreesRoot } = await this.#qualifiedRoots();
     const baseCommit = (
       await this.#git(repositoryRoot, ["rev-parse", "--verify", `${input.sourceRevision}^{commit}`])
     ).stdout.trim();
@@ -130,12 +157,11 @@ export class NodeGitWorktreeAdapter implements ExecutionWorktreePort {
       .digest("hex")
       .slice(0, 32);
     const worktreeRef = handleFor(id, baseCommit);
-    const target = join(worktreesRoot, id);
-    if (!within(worktreesRoot, target)) fail("VES_GIT_WORKTREE_ESCAPE", "Derived worktree escaped its protected root");
+    const target = await answered(() => worktreeDirectory(worktreesRoot, id));
 
     const entries = registeredWorktrees((await this.#git(repositoryRoot, ["worktree", "list", "--porcelain"])).stdout);
     if (entries.has(target)) {
-      await this.#assertExistingTarget(target, worktreesRoot);
+      await answered(() => assertWorktreeDirectory(target, worktreesRoot));
       if (entries.get(target) !== baseCommit)
         fail("VES_GIT_WORKTREE_CONFLICT", "Existing worktree is bound to another revision");
       return Object.freeze({ worktreeRef, baseCommit });
@@ -148,7 +174,7 @@ export class NodeGitWorktreeAdapter implements ExecutionWorktreePort {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     }
     await this.#git(repositoryRoot, ["worktree", "add", "--detach", "--", target, baseCommit]);
-    await this.#assertExistingTarget(target, worktreesRoot);
+    await answered(() => assertWorktreeDirectory(target, worktreesRoot));
     return Object.freeze({ worktreeRef, baseCommit });
   }
 
@@ -157,7 +183,7 @@ export class NodeGitWorktreeAdapter implements ExecutionWorktreePort {
     readonly changeDigest: string;
     readonly commitCountSinceBase: number;
   }> {
-    const { target } = await this.#resolveHandle(handle);
+    const target = (await this.#resolve(handle.worktreeRef, handle.baseCommit)).directory;
     const tracked = nulList((await this.#git(target, ["diff", "--name-only", "-z", handle.baseCommit, "--"])).stdout);
     const untracked = nulList((await this.#git(target, ["ls-files", "--others", "--exclude-standard", "-z"])).stdout);
     const changedPaths = Object.freeze([...new Set([...tracked, ...untracked])].sort());
@@ -192,15 +218,22 @@ export class NodeGitWorktreeAdapter implements ExecutionWorktreePort {
     });
   }
 
+  // invariant: a handle Git no longer lists is already cleaned up; a listed
+  // worktree whose directory is gone is VES_GIT_WORKTREE_NOT_FOUND.
   async cleanup(handle: { readonly worktreeRef: string; readonly baseCommit: string }): Promise<void> {
-    const repositoryRoot = await this.#qualifiedRepositoryRoot();
-    const worktreesRoot = await this.#qualifiedWorktreesRoot(repositoryRoot);
-    const target = this.#targetFromRef(handle.worktreeRef, worktreesRoot, handle.baseCommit);
-    const entries = registeredWorktrees((await this.#git(repositoryRoot, ["worktree", "list", "--porcelain"])).stdout);
-    if (!entries.has(target)) return;
-    await this.#assertRegisteredTarget(target, worktreesRoot);
-    if (this.#anchorTaskCommits) await this.#anchorTaskCommit(repositoryRoot, target, handle.baseCommit);
-    await this.#git(repositoryRoot, ["worktree", "remove", "--force", "--", target]);
+    let resolved: ResolvedWorktree;
+    try {
+      resolved = await resolveWorktreeHandle(this.#roots(), handle.worktreeRef, {
+        baseCommit: handle.baseCommit,
+        git: this.#gitRunner
+      });
+    } catch (error) {
+      if (error instanceof WorktreeRefusalError && error.refusal === "unregistered") return;
+      answer(error);
+    }
+    const { repositoryRoot, directory } = resolved;
+    if (this.#anchorTaskCommits) await this.#anchorTaskCommit(repositoryRoot, directory, handle.baseCommit);
+    await this.#git(repositoryRoot, ["worktree", "remove", "--force", "--", directory]);
     await this.#git(repositoryRoot, ["worktree", "prune"]);
   }
 
@@ -220,8 +253,7 @@ export class NodeGitWorktreeAdapter implements ExecutionWorktreePort {
   async cleanupAtCommit(commit: { readonly commitId: string; readonly baseCommit: string }): Promise<boolean> {
     if (!isGitObjectId(commit.commitId) || !isGitObjectId(commit.baseCommit))
       fail("VES_GIT_WORKTREE_INPUT_INVALID", "Commit and base must be complete Git object IDs");
-    const repositoryRoot = await this.#qualifiedRepositoryRoot();
-    const worktreesRoot = await this.#qualifiedWorktreesRoot(repositoryRoot);
+    const { repositoryRoot, worktreesRoot } = await this.#qualifiedRoots();
     const entries = registeredWorktrees((await this.#git(repositoryRoot, ["worktree", "list", "--porcelain"])).stdout);
     for (const [path, head] of entries) {
       const worktreeRef = encodeWorktreeHandle({ id: basename(path), baseCommit: commit.baseCommit });
@@ -235,9 +267,7 @@ export class NodeGitWorktreeAdapter implements ExecutionWorktreePort {
   // The real, Git-registered directory behind a worktree handle, for adapters
   // that must confine their own effects to it.
   async resolvePath(worktreeRef: string): Promise<string> {
-    const baseCommit = parseWorktreeHandle(worktreeRef)?.baseCommit;
-    if (baseCommit === undefined) fail("VES_GIT_WORKTREE_INPUT_INVALID", "Worktree reference is invalid");
-    return (await this.#resolveHandle({ worktreeRef, baseCommit })).target;
+    return (await this.#resolve(worktreeRef)).directory;
   }
 
   async #assertAnchorable(runId: string, taskId: string): Promise<void> {
@@ -286,85 +316,24 @@ export class NodeGitWorktreeAdapter implements ExecutionWorktreePort {
   }
 
   #refTarget(repositoryRoot: string, ref: string): Promise<string | undefined> {
-    return refTarget(repositoryRoot, ref, (cwd, args) => this.#git(cwd, args));
+    return refTarget(repositoryRoot, ref, this.#gitRunner);
   }
 
-  async #resolveHandle(handle: {
-    readonly worktreeRef: string;
-    readonly baseCommit: string;
-  }): Promise<{ target: string }> {
-    if (!isGitObjectId(handle.baseCommit)) fail("VES_GIT_WORKTREE_INPUT_INVALID", "Worktree base commit is invalid");
-    const repositoryRoot = await this.#qualifiedRepositoryRoot();
-    const worktreesRoot = await this.#qualifiedWorktreesRoot(repositoryRoot);
-    const target = this.#targetFromRef(handle.worktreeRef, worktreesRoot, handle.baseCommit);
-    const entries = registeredWorktrees((await this.#git(repositoryRoot, ["worktree", "list", "--porcelain"])).stdout);
-    if (!entries.has(target)) fail("VES_GIT_WORKTREE_NOT_FOUND", "Worktree handle is not registered by Git");
-    await this.#assertExistingTarget(target, worktreesRoot);
-    return { target };
+  #roots(): WorktreeRoots {
+    return { repositoryRoot: this.#repositoryRoot, worktreesRoot: this.#worktreesRoot };
   }
 
-  #targetFromRef(worktreeRef: string, worktreesRoot: string, expectedBaseCommit: string): string {
-    const handle = parseWorktreeHandle(worktreeRef);
-    if (handle?.baseCommit !== expectedBaseCommit)
-      fail("VES_GIT_WORKTREE_INPUT_INVALID", "Worktree reference is invalid");
-    const target = join(worktreesRoot, handle.id);
-    if (!within(worktreesRoot, target))
-      fail("VES_GIT_WORKTREE_ESCAPE", "Worktree reference escaped its protected root");
-    return target;
+  #qualifiedRoots(): Promise<WorktreeRoots> {
+    return answered(() => qualifiedWorktreeRoots(this.#roots(), this.#gitRunner));
   }
 
-  async #qualifiedRepositoryRoot(): Promise<string> {
-    let root: string;
-    try {
-      root = await realpath(this.#repositoryRoot);
-    } catch (error) {
-      fail("VES_GIT_WORKTREE_INPUT_INVALID", "Repository root does not exist", { cause: error });
-    }
-    // Canonicalize rather than reject. A configured root legitimately reaches its
-    // real location through platform path aliases: macOS temp dirs resolve
-    // /var -> /private/var, and Windows hands back 8.3 short names such as
-    // RUNNER~1 -> runneradmin. realpath resolves those to the real directory, and
-    // every downstream guard (the non-bare check below, and worktree containment
-    // in #assertExistingTarget) runs against this canonical root, so a benign
-    // alias is safe while a symlink pointing at a non-repository is still caught.
-    const bare = (await this.#git(root, ["rev-parse", "--is-bare-repository"])).stdout.trim();
-    if (bare !== "false") fail("VES_GIT_WORKTREE_INPUT_INVALID", "Repository root is not a non-bare Git repository");
-    return root;
-  }
-
-  async #qualifiedWorktreesRoot(repositoryRoot: string): Promise<string> {
-    await mkdir(this.#worktreesRoot, { recursive: true });
-    const metadata = await lstat(this.#worktreesRoot);
-    if (metadata.isSymbolicLink() || !metadata.isDirectory())
-      fail("VES_GIT_WORKTREE_ESCAPE", "Worktree root is not a real directory");
-    // Same canonicalization as the repository root: the lstat above already
-    // refused a worktree root whose own final component is a link, so realpath
-    // here only collapses benign parent aliases (/private, RUNNER~1). All
-    // containment checks downstream use this canonical root.
-    const root = await realpath(this.#worktreesRoot);
-    if (root === repositoryRoot) fail("VES_GIT_WORKTREE_ESCAPE", "Worktree root cannot equal repository root");
-    return root;
-  }
-
-  // why: Git keeps listing a worktree whose directory was deleted by hand.
-  // Nothing is left there to anchor or remove, and a caller can tell that
-  // apart from a refusal by its code.
-  async #assertRegisteredTarget(target: string, root: string): Promise<void> {
-    try {
-      await this.#assertExistingTarget(target, root);
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-      fail("VES_GIT_WORKTREE_NOT_FOUND", "Registered worktree directory no longer exists", { cause: error });
-    }
-  }
-
-  async #assertExistingTarget(target: string, root: string): Promise<void> {
-    const metadata = await lstat(target);
-    if (metadata.isSymbolicLink() || !metadata.isDirectory())
-      fail("VES_GIT_WORKTREE_ESCAPE", "Worktree target is not a real directory");
-    const actual = await realpath(target);
-    if (relative(target, actual) !== "" || !within(root, actual))
-      fail("VES_GIT_WORKTREE_ESCAPE", "Worktree target escaped its protected root");
+  #resolve(worktreeRef: string, baseCommit?: string): Promise<ResolvedWorktree> {
+    return answered(() =>
+      resolveWorktreeHandle(this.#roots(), worktreeRef, {
+        ...(baseCommit === undefined ? {} : { baseCommit }),
+        git: this.#gitRunner
+      })
+    );
   }
 
   async #git(cwd: string, args: readonly string[]): Promise<GitOutput> {
