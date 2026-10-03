@@ -21,7 +21,6 @@ import {
   NodeGateProcessRunner,
   NodeGitWorktreeAdapter,
   NodeWorktreeToolAdapter,
-  RuntimeLocalLease,
   parseTaskCommitTrailers,
   type GateCommandProfile,
   type RuntimeStore
@@ -187,7 +186,6 @@ class TaskRunComposition {
   readonly #runRecord: RunRecord;
   readonly #checkpoints: RunCheckpoints;
   readonly #worktrees: NodeGitWorktreeAdapter;
-  readonly #lease: RuntimeLocalLease;
   readonly #payloads = new InMemoryExecutionPayloadStore();
   readonly providers: ProviderProcesses;
   readonly #feedback = new Map<string, string>();
@@ -214,7 +212,6 @@ class TaskRunComposition {
       worktreesRoot: workspace.layout.worktreesRoot,
       anchorTaskCommits: true
     });
-    this.#lease = new RuntimeLocalLease(runtime);
     this.providers = new ProviderProcesses({ stderr: io.stderr });
   }
 
@@ -230,7 +227,7 @@ class TaskRunComposition {
     return {
       acquire: async () => {
         const at = expiresAt();
-        const lease = this.#lease.acquire({
+        const lease = this.#runtime.acquireLease({
           leaseId: `lease_${randomUUID()}`,
           workspaceId,
           ownerId,
@@ -241,14 +238,14 @@ class TaskRunComposition {
       },
       release: async () => {
         try {
-          this.#lease.release(workspaceId, ownerId);
+          this.#runtime.releaseLease(workspaceId, ownerId);
         } catch {
           // why: a lease another owner holds is not ours to release.
         }
       },
       verify: async (coordinationRef: string) => {
         try {
-          this.#lease.acquire({
+          this.#runtime.acquireLease({
             leaseId: `lease_${randomUUID()}`,
             workspaceId,
             ownerId,

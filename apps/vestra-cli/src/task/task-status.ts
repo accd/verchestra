@@ -1,5 +1,5 @@
 import { TERMINAL_WORKFLOW_STATES, type RunState } from "@verchestra/domain";
-import { NodeGitWorktreeAdapter, RuntimeLocalLease, type RuntimeStore } from "@verchestra/platform-node";
+import { NodeGitWorktreeAdapter, type RuntimeStore } from "@verchestra/platform-node";
 
 import { budgetStatus } from "./task-budget.ts";
 import { taskError } from "./task-errors.ts";
@@ -136,7 +136,7 @@ async function abortIdle(workspace: TaskWorkspace, runtime: RuntimeStore, runRec
   const runId = runRecord.runId;
   await removeIdleWorktree(workspace, runRecord);
   try {
-    new RuntimeLocalLease(runtime).release(workspace.workspaceId, runId);
+    runtime.releaseLease(workspace.workspaceId, runId);
   } catch {
     // why: a lease another run holds is not this run's to release.
   }

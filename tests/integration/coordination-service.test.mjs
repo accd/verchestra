@@ -2,8 +2,14 @@ import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 
 import { WorkClaimService, normalizeChangeScope } from "../../packages/application/src/index.ts";
-import { RuntimeLocalLease } from "../../packages/platform-node/src/index.ts";
-import { coordinationFixture, projectId, runA, runB, workspaceId } from "../helpers/coordination-fixture.mjs";
+import {
+  coordinationFixture,
+  projectId,
+  runA,
+  runB,
+  sqliteLeasePort,
+  workspaceId
+} from "../helpers/coordination-fixture.mjs";
 import { cleanup, opened } from "../helpers/runtime-store-fixture.mjs";
 afterEach(cleanup);
 
@@ -196,7 +202,7 @@ test("release removes remote claim and local lease", async () => {
 test("personal mode enforces single writer through real SQLite restart", async () => {
   const fixture = coordinationFixture();
   const runtime = await opened();
-  const first = new WorkClaimService({ ...fixture, local: new RuntimeLocalLease(runtime.store) });
+  const first = new WorkClaimService({ ...fixture, local: sqliteLeasePort(runtime.store) });
   await first.acquire({
     mode: "personal",
     enforcement: "enforced",
@@ -208,7 +214,7 @@ test("personal mode enforces single writer through real SQLite restart", async (
   const { RuntimeStore } = await import("../../packages/platform-node/src/index.ts");
   const reopened = new RuntimeStore({ dbPath: runtime.dbPath, now: () => "2026-07-13T12:00:00.000Z" });
   reopened.open();
-  const second = new WorkClaimService({ ...fixture, local: new RuntimeLocalLease(reopened) });
+  const second = new WorkClaimService({ ...fixture, local: sqliteLeasePort(reopened) });
   await assert.rejects(
     second.acquire({
       mode: "personal",
