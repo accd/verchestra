@@ -286,10 +286,10 @@ as 2.1.282 does (`ANTHROPIC_API_KEY` under `--bare`, `none` otherwise); without
 it the new subscription check refuses the fake, as it would refuse a real
 session that hid its source.
 
-## T7 Evidence (Windows bridge transport, commits 1 and 2)
+## T7 Evidence (Windows bridge transport, commits 1 to 3)
 
-Author: the T7 implementer. Commits 3 (managed-policy sources, SSI-74) and 4
-(lifting the refusals) are not on this branch.
+Author: the T7 implementer. Commit 4 (lifting the refusals) is not on this
+branch; it waits for the Windows leg of the platform matrix.
 
 ### Commit 1: `refactor(agent-runtime): put the bridge channel behind a transport interface`
 
@@ -354,6 +354,44 @@ the ACL proof skipped (1), a refused connection leaving the helper running
 (5), a squatted name mapped to `VES_BRIDGE_CHANNEL_FAILED` (2), an unprotected
 DACL accepted (1), the PowerShell 7 guard dropped (2). All killed, on darwin;
 the independent verifier repeats the list at T9.
+
+### Commit 3: `feat(drivers): check Claude Code managed policy sources on Windows`
+
+| Requirement | Evidence (file:line, assertion) | Result |
+| --- | --- | --- |
+| SSI-74 directory, HKLM, HKCU | `documentedManagedPolicySources("win32")` is exactly `C:\Program Files\ClaudeCode` and the keys `HKLM\SOFTWARE\Policies\ClaudeCode`, `HKCU\SOFTWARE\Policies\ClaudeCode`, with `/etc/claude-code` no longer chosen for Windows; Linux and macOS sources unchanged (`tests/contract/claude-code-driver-managed-policy.test.mjs:60`). Presence: either key, both, or neither (`:76-90`); a reader that rejects, answers anything but `false`, or throws synchronously counts as present (`:92`); a populated directory is present before any key is read, an empty one is not (`:107`). Driver path (non-Windows hosts, where the mediated profile runs): a present key refuses with `VES_CLAUDE_MANAGED_POLICY_PRESENT` before any spawn (`:116`); without the composition's reader every key counts as present (`:133`); with the directory and both keys proven absent the session runs (`:144`); malformed keys and keys on the API-key profile are refused at construction, and the API-key profile never consults the reader (`:160`). Registry reader (`packages/platform-node/src/windows-registry.ts`): System32 `reg.exe`, `query <key> /reg:64` (`tests/unit/windows-registry.test.mjs:18`); seven malformed keys refused before anything runs (`:24-43`); exit 1 is absent, 0, 2, and no exit are present (`:45-59`); a query that cannot run is present (`:61`). Windows only: `:70` (an existing key present, a random missing key absent; elsewhere both present, since nothing can prove absence). The composition hands the driver the reader (`apps/vestra-cli/src/task/task-implementer.ts:159`). | PASS (darwin); win32 case pending the Windows leg |
+
+The policy check stays unreachable on Windows until commit 4, because the
+mediated profile still refuses `win32` at construction
+(`VES_CLAUDE_MEDIATION_UNSUPPORTED`, unchanged). A present source surfaces as
+the existing `VES_CLAUDE_MANAGED_POLICY_PRESENT`, as on macOS and Linux; mapping
+it, and the transport's `VES_BRIDGE_NOT_CONFIGURED` with its `requirement`, to
+the CLI's `VES_TASK_NOT_CONFIGURED` is left to commit 4, the first commit in
+which either is reachable from `vestra task`.
+
+Guardrails for commit 3: `pnpm complexity:check` PASS (the override check is
+split out so no function exceeds 10; no baseline key moves). Census unchanged
+(13/13). The registry reader runs through `runBoundedChild`; the driver still
+starts no process itself (`pnpm test:architecture`).
+
+Author's discrimination run for commit 3 (in place, then `git restore`):
+Windows falling back to `/etc/claude-code` (1 failure), an answer other than
+`false` read as absent (1), a missing reader proving absence (1), and only
+exit 0 of `reg query` counting as present (3). All killed, on darwin.
+
+Gates on the branch head (commits 1 to 3, darwin, Node 24.14.0): `pnpm
+gate:quick` PASS (unit 2742/2742, agent-readiness 354/354, census 13/13, 0
+skipped, 0 todo); `pnpm test:architecture` PASS (125/125); `pnpm typecheck`
+PASS; `pnpm agent:check` PASS. The seven new T7 test files 101/101; the
+unchanged bridge, adapter, mediated e2e, mediated and subscription contract,
+Claude spike, and task-platform suites 141/141. `gate:full`, `gate:build`, and
+`gate:security` run on the five-platform matrix, not locally (disk), and the
+`win32:` cases above are evidence only from its Windows leg.
+After a second rebase onto `a73650a` (T3 landed), on that head: `pnpm
+typecheck`, `pnpm test:architecture` (125/125), `pnpm agent:check`,
+`pnpm complexity:check`, `pnpm test:census` (13/13), and the format check
+PASS, and the same focused suites pass 101/101 and 141/141; `gate:quick` was
+not run a second time locally.
 
 ## Requirement Evidence
 
@@ -436,7 +474,7 @@ evidence is FAIL.
 | SSI-71 | T7 Evidence, commit 2 row SSI-71 | test:unit, test:security | PASS on darwin; win32 cases pending the Windows leg |
 | SSI-72 | T7 Evidence, commit 2 row SSI-72 | test:unit | PASS on darwin |
 | SSI-73 | T7 Evidence, commit 2 row SSI-73 (PowerShell, logging, ACL); managed policy with SSI-74 | test:unit, test:security | PASS on darwin; win32 cases pending |
-| SSI-74 | — | — | — |
+| SSI-74 | T7 Evidence, commit 3 row SSI-74 | test:contract, test:unit | PASS on darwin; win32 case pending the Windows leg |
 | SSI-75 | T7 Evidence, commit 2 row SSI-75 | test:unit, test:security | PASS on darwin; win32 cases pending |
 | SSI-76 | T7 Evidence, commit 2 row SSI-76 and its second-client deviation | test:security | PASS on darwin; win32 cases pending |
 | SSI-77 | T7 Evidence, commit 2 row SSI-77 | test:integration | PASS (refusals kept; lifting is commit 4) |

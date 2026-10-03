@@ -601,7 +601,11 @@ export {
   CLAUDE_PROFILE_CREDENTIAL_VARIABLES,
   CLAUDE_STRUCTURED_OUTPUT_TOOL,
   CLAUDE_SUBSCRIPTION_SETTINGS,
-  ClaudeCodeDriver
+  CLAUDE_WINDOWS_POLICY_DIRECTORY,
+  CLAUDE_WINDOWS_POLICY_KEYS,
+  ClaudeCodeDriver,
+  documentedManagedPolicySources,
+  managedPolicyPresent
 } from "./claude-code-driver.ts";
 export { MAXIMUM_OUTPUT_SCHEMA_BYTES, MAXIMUM_STRUCTURED_RESULT_BYTES } from "./driver-structured-output.ts";
 export type { DriverStructuredOutput } from "./driver-structured-output.ts";
@@ -609,7 +613,9 @@ export type {
   ClaudeCodeDriverDependencies,
   ClaudeCodeExecution,
   ClaudeCodeMediatedProfile,
-  ClaudeCodeMediation
+  ClaudeCodeMediation,
+  ClaudeManagedPolicyRegistry,
+  ClaudeManagedPolicySources
 } from "./claude-code-driver.ts";
 export { CODEX_CLIENT_METHODS, CODEX_STRUCTURED_MINIMUM_VERSION, CodexDriver } from "./codex-driver.ts";
 export type { CodexDriverDependencies, CodexExecution } from "./codex-driver.ts";
