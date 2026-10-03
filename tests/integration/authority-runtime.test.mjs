@@ -213,3 +213,56 @@ test("a persisted Capability Grant invokes only inside its validity window", asy
   assert.equal((await value.authorityStore.loadGrant(value.grant.grantId)).expiresAt, value.grant.expiresAt);
   value.store.close();
 });
+
+// why: the forged text carries a matching digest, so the store's integrity
+// check passes and the refusal can only come from the adapter's decoding.
+// The hash is imported here so the lines t25-validation.md cites above stay put.
+async function forgeStoredRecord(dbPath, table, idColumn, id, recordJson) {
+  const { createHash } = await import("node:crypto");
+  const database = new DatabaseSync(dbPath);
+  try {
+    const recordDigest = createHash("sha256").update(recordJson).digest("hex");
+    database
+      .prepare(`UPDATE ${table} SET record_json=?, record_digest=? WHERE ${idColumn}=?`)
+      .run(recordJson, recordDigest, id);
+  } finally {
+    database.close();
+  }
+}
+
+test("stored authority text that is not JSON fails closed even when its digest matches", async () => {
+  const value = await persisted();
+  value.store.close();
+  await forgeStoredRecord(value.dbPath, "authority_approvals", "approval_id", value.approval.approvalId, "{");
+  const runtime = new RuntimeStore({ dbPath: value.dbPath, now: () => now });
+  runtime.open();
+  await assert.rejects(new RuntimeAuthorityStore(runtime).loadApproval(value.approval.approvalId), {
+    code: "VES_RUNTIME_CORRUPT",
+    message: "Authority record JSON is invalid"
+  });
+  runtime.close();
+});
+
+test("an authority record filed under another identity fails closed even when its digest matches", async () => {
+  const value = await persisted();
+  value.store.close();
+  const otherApproval = { ...value.approval, approvalId: "approval_018f0b6d-7b1a-7abc-8def-9123456789ab" };
+  const otherGrant = { ...value.grant, grantId: "grant_018f0b6d-7b1a-7abc-8def-9123456789ab" };
+  const { approvalId } = value.approval;
+  const { grantId } = value.grant;
+  await forgeStoredRecord(
+    value.dbPath,
+    "authority_approvals",
+    "approval_id",
+    approvalId,
+    canonicalizeJsonV2(otherApproval)
+  );
+  await forgeStoredRecord(value.dbPath, "authority_grants", "grant_id", grantId, canonicalizeJsonV2(otherGrant));
+  const runtime = new RuntimeStore({ dbPath: value.dbPath, now: () => now });
+  runtime.open();
+  const store = new RuntimeAuthorityStore(runtime);
+  const refused = { code: "VES_RUNTIME_CORRUPT", message: "Authority record is filed under another identity" };
+  await assert.rejects(store.loadApproval(approvalId), refused);
+  await assert.rejects(store.loadGrant(grantId), refused);
+  runtime.close();
+});

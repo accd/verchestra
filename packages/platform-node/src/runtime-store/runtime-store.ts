@@ -194,6 +194,15 @@ export interface RunCapsuleSeal {
   readonly sealedAt: string;
 }
 
+// invariant: the store treats an authority record's text as opaque. It only
+// proves the text is the one whose digest it recorded on save; the adapter
+// that encoded the text decodes it.
+export interface StoredAuthorityRecord {
+  readonly recordJson: string;
+  readonly revokedAt?: string;
+  readonly revocationReason?: string;
+}
+
 export class RuntimeStore {
   readonly dbPath: string;
   readonly #timeoutMs: number;
@@ -783,7 +792,7 @@ export class RuntimeStore {
     return this.#saveAuthorityRecord("authority_approvals", "approval_id", value.approvalId, value);
   }
 
-  loadAuthorityApproval(approvalId: string): UnknownRecord | undefined {
+  loadAuthorityApproval(approvalId: string): StoredAuthorityRecord | undefined {
     return this.#loadAuthorityRecord("authority_approvals", "approval_id", approvalId);
   }
 
@@ -803,7 +812,7 @@ export class RuntimeStore {
     return this.#saveAuthorityRecord("authority_grants", "grant_id", value.grantId, value);
   }
 
-  loadAuthorityGrant(grantId: string): UnknownRecord | undefined {
+  loadAuthorityGrant(grantId: string): StoredAuthorityRecord | undefined {
     return this.#loadAuthorityRecord("authority_grants", "grant_id", grantId);
   }
 
@@ -859,7 +868,7 @@ export class RuntimeStore {
     table: "authority_approvals" | "authority_grants",
     idColumn: "approval_id" | "grant_id",
     id: string
-  ): UnknownRecord | undefined {
+  ): StoredAuthorityRecord | undefined {
     const row = this.#database()
       .prepare(
         `SELECT record_json AS recordJson, record_digest AS recordDigest, revoked_at AS revokedAt,
@@ -871,15 +880,11 @@ export class RuntimeStore {
     if (sha256(recordJson) !== String(row["recordDigest"])) {
       throw runtimeError("VES_RUNTIME_CORRUPT", "Authority record integrity failed");
     }
-    try {
-      return Object.freeze({
-        record: JSON.parse(recordJson) as unknown,
-        revokedAt: row["revokedAt"] === null ? undefined : String(row["revokedAt"]),
-        revocationReason: row["revocationReason"] === null ? undefined : String(row["revocationReason"])
-      });
-    } catch {
-      throw runtimeError("VES_RUNTIME_CORRUPT", "Authority record JSON is invalid");
-    }
+    return Object.freeze({
+      recordJson,
+      ...(row["revokedAt"] === null ? {} : { revokedAt: String(row["revokedAt"]) }),
+      ...(row["revocationReason"] === null ? {} : { revocationReason: String(row["revocationReason"]) })
+    });
   }
 
   #revokeAuthorityRecord(

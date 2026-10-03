@@ -52,3 +52,26 @@ test("a Run Capsule seal reads back as the declared record it was recorded from"
   assert.equal(store.recordRunCapsuleSeal(seal), "recorded");
   assert.deepStrictEqual({ ...store.getRunCapsuleSeal(runId) }, seal);
 });
+
+test("an authority record reads back as the text the store was given, with its revocation", async () => {
+  const { store } = await opened();
+  store.createRun(run());
+  const approvalId = "approval_018f0b6d-7b1a-7abc-8def-4123456789ab";
+  const recordJson = JSON.stringify({ approvalId, note: "opaque to the store" });
+  const row = {
+    approvalId,
+    workspaceId: "workspace_018f0b6d-7b1a-7abc-8def-7123456789ab",
+    runId,
+    action: "execution",
+    recordJson,
+    issuedAt: now,
+    expiresAt: "2026-07-13T13:00:00.000Z"
+  };
+  assert.equal(store.saveAuthorityApproval(row).created, true);
+  assert.deepStrictEqual({ ...store.loadAuthorityApproval(approvalId) }, { recordJson });
+  assert.equal(store.revokeAuthorityApproval(approvalId, now, "reviewer-withdrew"), true);
+  assert.deepStrictEqual(
+    { ...store.loadAuthorityApproval(approvalId) },
+    { recordJson, revokedAt: now, revocationReason: "reviewer-withdrew" }
+  );
+});
