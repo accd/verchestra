@@ -415,5 +415,61 @@ Verification:
   (`sha256:8601098a…cac8c8f03`). `self-test --profile smoke` returned
   `verdict: PASS`.
 
-Not yet done: `npm publish` of the `.6` launcher (owner two-factor step), and
-the five-target `live-activation-matrix` run with base `.5` and update `.6`.
+The owner published the `.6` launcher to npm on 2026-10-03 with two-factor
+authentication. The registry serves it as `latest`, with `dist.integrity`
+`sha512-8QutpuCS9om+z8hLqJgrayRB6pIqnvABooQfrxS8IUCG2IBG9Cut6tDZVK6xhYBKJ2/LxVJKTZw6W8FoIpNP7Q==`.
+The five-target run follows.
+
+## Live update and rollback `.5` to `.6` on all five targets — run 37152404760 (2026-10-03)
+
+- Workflow: `.github/workflows/live-activation-matrix.yml`
+- Run: <https://github.com/accd/verchestra/actions/runs/37152404760>
+- Dispatched revision: `dc35c52254a338e4f4f631d2abb748629ece6eb6` (`main`)
+- Inputs: `base_version=0.0.0-qualification.5`,
+  `update_version=0.0.0-qualification.6`
+- Started 2026-10-03T20:40:53Z, finished 2026-10-03T20:48:37Z
+
+Every phase exits `0` on every target:
+
+- activate;
+- update;
+- rollback;
+- self-test smoke, with `self_test.verdict: PASS` and 6 checks;
+- recover.
+
+| Target       | after activate and after rollback (`.5`) | after update (`.6`)        |
+| ------------ | ---------------------------------------- | -------------------------- |
+| win32-x64    | `sha256:ffccd4ca…6762a68f`               | `sha256:4862afca…12399689` |
+| linux-x64    | `sha256:a70fa90e…5328bc9e`               | `sha256:5dce9a4a…0a07209f` |
+| linux-arm64  | `sha256:a8165329…0e0fa45a`               | `sha256:d7276d40…2a179e7f` |
+| darwin-x64   | `sha256:70338b0b…f48a9e6b`               | `sha256:45410ada…b313951b` |
+| darwin-arm64 | `sha256:2f5606f9…a5ee1877`               | `sha256:8601098a…ac8c8f03` |
+
+The evidence was checked by content, after downloading the five artifacts:
+
+- On every target, `rollback.active.json` is byte-identical to
+  `activate.active.json`.
+- `update.active.json` names `release:verchestra:0.0.0-qualification.6:7e274f237648`.
+- Each `.6` digest is the `releaseDigest` that the `.6` `publication-manifest.json`
+  records for the same target.
+- The `.5` digests are the ones run 37047903756 recorded after its update to
+  `.5`, so the two runs agree on what `.5` is.
+
+| Target       | Artifact digest (sha256)                                           | `summary.txt` (sha256)                                             |
+| ------------ | ------------------------------------------------------------------ | ------------------------------------------------------------------ |
+| win32-x64    | `6521c22b3f579323ca968dbc8e15c3f99e609765a31aa777a2b01c16ba494a76` | `28182dbbe866a51c2b573b0e7e3e943ca8ec08a46bfec76f3122c75bfa28f9f6` |
+| linux-x64    | `df289978331cfb4e1064910154095167e165329eed139eb6cf63cb3c241a5668` | `d1ef15d595dc3795f3117f89c5ab845f05a632697ea24f9112817a4ef3960c9e` |
+| linux-arm64  | `a4f18ccb368a5305ea8516237d9384ce518eb7f56c29fdc4a364e4942bff521c` | `1b6da6d36be1500bf0da683a12ce437e6a8a56b56f89115852411d170fb8596f` |
+| darwin-x64   | `57e4ae0f699b6e7dcf73d5f1aeeba1c30f22d30946c398900ef7f02acf716a41` | `c0579c1c536fa217e6ca2ba1f767853e8ce1cdb679afe9a678d842e096a4e151` |
+| darwin-arm64 | `a1c465aa75aff4fde8d71b9938a907074c5f1a48bf2526c2e48be2a456306cac` | `a1c97d3d073d2b70967a0edbee80aa34a3835e5ced5ce5e8064b37e8c5897cdf` |
+
+The artifacts expire on 2026-11-02. What this run does not prove is unchanged
+from run 36997576112:
+
+- no source-side roll-forward;
+- no live uninstall;
+- single-operator custody (L8).
+
+It also says nothing about the governed task path, because
+`self-test --profile smoke` does not start a provider. The planned evidence
+for that path is the live task pilot (#406) on `.6`, which has not run yet.
