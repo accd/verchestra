@@ -11,6 +11,7 @@ import { build as esbuild } from "esbuild";
 import { canonicalizeJsonV2 } from "../packages/domain/src/index.ts";
 import { materializeHermeticReleaseFromFiles } from "../packages/distribution/src/release-materializer.ts";
 import { BUNDLE_REQUIRE_GUARD } from "./build-vestra-launcher.mjs";
+import { GATE_PROFILES, buildInfoRecord } from "./t76-candidate-evidence.mjs";
 
 const execute = promisify(execFile);
 const require = createRequire(import.meta.url);
@@ -22,7 +23,6 @@ const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9:._@+/-]{0,255}$/u;
 const NODE_VERSION = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/u;
 const PLATFORMS = new Set(["win32", "linux", "darwin"]);
 const ARCHES = new Set(["x64", "arm64"]);
-const REQUIRED_PROFILES = Object.freeze(["build", "full", "quick", "release", "security"]);
 const SOURCE_EXTENSIONS = new Set([".mjs", ".ts"]);
 
 export class T76BuildError extends Error {
@@ -195,7 +195,7 @@ const validateEvaluation = (evaluation, index, names) => {
   if (evaluation === null || typeof evaluation !== "object")
     fail("VES_T76_BUILD_EVALUATION_INVALID", `evaluation ${index} is invalid`);
   const profile = text(evaluation.profile, `evaluation ${index} profile`, /^[a-z]+$/u);
-  if (!REQUIRED_PROFILES.includes(profile) || names.has(profile))
+  if (!GATE_PROFILES.includes(profile) || names.has(profile))
     fail("VES_T76_BUILD_EVALUATION_INCOMPLETE", "evaluations must contain each gate exactly once");
   names.add(profile);
   if (evaluation.result !== "pass") fail("VES_T76_BUILD_EVALUATION_NOT_READY", `${profile} did not pass`);
@@ -203,12 +203,11 @@ const validateEvaluation = (evaluation, index, names) => {
 };
 
 const validateEvaluations = (evaluations) => {
-  if (!Array.isArray(evaluations) || evaluations.length !== REQUIRED_PROFILES.length)
+  if (!Array.isArray(evaluations) || evaluations.length !== GATE_PROFILES.length)
     fail("VES_T76_BUILD_EVALUATION_INCOMPLETE", "exactly five gate evaluations are required");
   const names = new Set();
   for (const [index, evaluation] of evaluations.entries()) validateEvaluation(evaluation, index, names);
-  if (names.size !== REQUIRED_PROFILES.length)
-    fail("VES_T76_BUILD_EVALUATION_INCOMPLETE", "a gate evaluation is missing");
+  if (names.size !== GATE_PROFILES.length) fail("VES_T76_BUILD_EVALUATION_INCOMPLETE", "a gate evaluation is missing");
 };
 
 const validateTarget = (target) => {
@@ -531,20 +530,15 @@ const writeMaterialization = async (output, materialized, options) => {
   await writeOutput(
     output,
     "build-info.json",
-    canonicalBytes({
-      schemaVersion: 1,
-      deterministic: true,
-      revision: options.revision,
-      releaseId: options.releaseId,
-      semanticVersion: options.semanticVersion,
-      target: options.target,
-      evidence: materialized.evidence.map(({ kind, logicalPath, contentDigest, sizeBytes }) => ({
-        kind,
-        logicalPath,
-        contentDigest,
-        sizeBytes
-      }))
-    })
+    canonicalBytes(
+      buildInfoRecord({
+        revision: options.revision,
+        releaseId: options.releaseId,
+        semanticVersion: options.semanticVersion,
+        target: options.target,
+        evidence: materialized.evidence
+      })
+    )
   );
 };
 

@@ -66,6 +66,12 @@ import {
   writeExclusive
 } from "./t76-signing-custody.mjs";
 import { admitRelease, readPublicationLedger } from "./tuf-publication-ledger.mjs";
+import {
+  CANDIDATE_FILES,
+  CANDIDATE_RECORD_KEYS,
+  buildInfoDigest,
+  targetIndexDigest
+} from "./t76-candidate-evidence.mjs";
 
 // why: the signer, the anchors, the exclusive writes and the error class are
 // shared with the online refresh (#382) and live in t76-signing-custody.mjs.
@@ -106,37 +112,12 @@ export const MANUAL_UPLOAD_STEPS = Object.freeze([
 ]);
 
 const VIEW_MODES = Object.freeze(["air-gapped", "mirror", "offline", "online"]);
-const TARGET_OUTPUT_DIRECTORY = "t76-target-output";
-const EVIDENCE_FILE = "target-build-evidence.json";
 const DIGEST = /^sha256:[a-f0-9]{64}$/u;
 const REVISION = /^[0-9a-f]{40}$/u;
 const INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u;
 const RUN_ID = /^[0-9]{1,20}$/u;
 const BASE_URL_MAX_LENGTH = 512;
-const INDEX_KEYS = Object.freeze(["schemaVersion", "revision", "targets", "digest"]);
-const TARGET_KEYS = Object.freeze(["platform", "arch", "nodeVersion"]);
-const EVIDENCE_KEYS = Object.freeze([
-  "schemaVersion",
-  "revision",
-  "releaseId",
-  "semanticVersion",
-  "target",
-  "releaseDigest",
-  "componentCount",
-  "gateEvidenceDigest",
-  "buildInfoDigest"
-]);
-const BUILD_INFO_KEYS = Object.freeze([
-  "schemaVersion",
-  "deterministic",
-  "revision",
-  "releaseId",
-  "semanticVersion",
-  "target",
-  "evidence"
-]);
 const COMPONENT_KEYS = Object.freeze(["componentId", "kind", "logicalPath", "contentDigest", "sizeBytes"]);
-const EVIDENCE_ENTRY_KEYS = Object.freeze(["kind", "logicalPath", "contentDigest", "sizeBytes"]);
 
 const fail = (code, message, cause) => {
   throw new T76PublishError(code, message, cause === undefined ? undefined : { cause });
@@ -295,16 +276,16 @@ const validateOptions = (value) => {
 // ---------------------------------------------------------------------------
 
 const targetKeyOf = (value) => {
-  const target = exactKeys(record(value, "target"), TARGET_KEYS, "target");
+  const target = exactKeys(record(value, "target"), CANDIDATE_RECORD_KEYS.target, "target");
   return `${target.platform}-${target.arch}`;
 };
 
 const validateIndexShape = (value, label) => {
-  const index = exactKeys(record(value, label), INDEX_KEYS, label);
+  const index = exactKeys(record(value, label), CANDIDATE_RECORD_KEYS.targetIndex, label);
   if (index.schemaVersion !== 1) fail("VES_T76_PUBLISH_INPUT_INVALID", `the ${label} schemaVersion must be 1`);
   if (!Array.isArray(index.targets)) fail("VES_T76_PUBLISH_INPUT_INVALID", `the ${label} targets are invalid`);
   text(index.revision, `${label} revision`, REVISION);
-  if (sha256(canonicalizeJsonV2(index.targets)) !== index.digest)
+  if (targetIndexDigest(index.targets) !== index.digest)
     fail("VES_T76_PUBLISH_DIGEST_MISMATCH", `the ${label} digest does not cover its own targets`);
   return index;
 };
@@ -317,7 +298,7 @@ const validateIndex = (value, revision) => {
 };
 
 const validateEvidenceRecord = (value, label) => {
-  const item = exactKeys(record(value, label), EVIDENCE_KEYS, label);
+  const item = exactKeys(record(value, label), CANDIDATE_RECORD_KEYS.targetEvidence, label);
   text(item.revision, `${label} revision`, REVISION);
   text(item.releaseDigest, `${label} releaseDigest`, DIGEST);
   text(item.buildInfoDigest, `${label} buildInfoDigest`, DIGEST);
@@ -392,11 +373,14 @@ const readTargetArtifacts = async (root) => {
   const found = new Map();
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
-    const evidence = await readCanonicalJsonIfPresent(join(root, entry.name, EVIDENCE_FILE), EVIDENCE_FILE);
+    const evidence = await readCanonicalJsonIfPresent(
+      join(root, entry.name, CANDIDATE_FILES.targetEvidence),
+      CANDIDATE_FILES.targetEvidence
+    );
     if (evidence === undefined) continue;
-    const key = targetKeyOf(validateEvidenceRecord(evidence, EVIDENCE_FILE).target);
+    const key = targetKeyOf(validateEvidenceRecord(evidence, CANDIDATE_FILES.targetEvidence).target);
     if (found.has(key)) fail("VES_T76_PUBLISH_CLOSURE_INCONSISTENT", `target ${key} is present more than once`);
-    found.set(key, Object.freeze({ evidence, buildDirectory: join(root, entry.name, TARGET_OUTPUT_DIRECTORY) }));
+    found.set(key, Object.freeze({ evidence, buildDirectory: join(root, entry.name, CANDIDATE_FILES.targetOutput) }));
   }
   return found;
 };
@@ -435,12 +419,12 @@ const loadBundle = async (buildDirectory, evidence) => {
 const loadBuildInfo = async (buildDirectory, evidence) => {
   const info = exactKeys(
     record(await readCanonicalJson(join(buildDirectory, "build-info.json"), "build-info.json"), "build-info.json"),
-    BUILD_INFO_KEYS,
+    CANDIDATE_RECORD_KEYS.buildInfo,
     "build-info.json"
   );
   if (info.schemaVersion !== 1 || info.deterministic !== true)
     fail("VES_T76_PUBLISH_INPUT_INVALID", "build-info.json is not a deterministic schema-v1 record");
-  if (sha256(canonicalizeJsonV2(info)) !== evidence.buildInfoDigest)
+  if (buildInfoDigest(info) !== evidence.buildInfoDigest)
     fail("VES_T76_PUBLISH_DIGEST_MISMATCH", "build-info.json does not match its sealed digest");
   if (info.releaseId !== evidence.releaseId || info.revision !== evidence.revision)
     fail("VES_T76_PUBLISH_CLOSURE_INCONSISTENT", "build-info.json does not match its sealed release identity");
@@ -521,7 +505,11 @@ const viewsFor = (bundle, manifestBytes) => {
 const candidateEvidence = (buildInfo) => {
   if (!Array.isArray(buildInfo.evidence)) fail("VES_T76_PUBLISH_INPUT_INVALID", "build-info evidence is invalid");
   return buildInfo.evidence.map((entry, index) => {
-    const item = exactKeys(record(entry, `build-info evidence ${index}`), EVIDENCE_ENTRY_KEYS, `evidence ${index}`);
+    const item = exactKeys(
+      record(entry, `build-info evidence ${index}`),
+      CANDIDATE_RECORD_KEYS.buildInfoEvidence,
+      `evidence ${index}`
+    );
     return {
       kind: item.kind,
       digest: text(item.contentDigest, `build-info evidence ${index} digest`, DIGEST),

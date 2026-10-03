@@ -3,6 +3,10 @@
 // target holding `target-build-evidence.json` and a `t76-target-output/` tree,
 // plus the reconciled `t76-target-index.json`.
 //
+// invariant: the gate evaluations, the build info, the target evidence and the
+// index are built by scripts/t76-candidate-evidence.mjs, the module the
+// candidate build writes them with, so they cannot drift from what it seals.
+//
 // Every byte here is ephemeral and lives under `mkdtemp(tmpdir())`. The signing
 // keys are generated per call and are test-only; no tracked file carries key
 // material, a real revision, or a machine-local path.
@@ -13,8 +17,17 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
-import { canonicalizeJsonV2 } from "../../packages/domain/src/index.ts";
 import { buildHermeticDistributionBundle } from "../../packages/distribution/src/index.ts";
+import {
+  CANDIDATE_FILES,
+  GATE_PROFILES,
+  SUPPORTED_TARGET_KEYS,
+  buildInfoRecord,
+  gateEvaluationRecord,
+  sealedJson,
+  targetBuildEvidenceRecord,
+  targetIndexRecord
+} from "../../scripts/t76-candidate-evidence.mjs";
 
 export const PUBLICATION_REVISION = "b3f1c0d9e8a72645130fbc9a8d7e6f5041b2c3d4";
 export const PRIOR_PUBLICATION_REVISION = "5a4b3c2d1e0f9a8b7c6d5e4f3a2b1c0d9e8f7a6b";
@@ -23,13 +36,12 @@ export const PUBLICATION_SEMANTIC_VERSION = "1.0.0";
 export const PUBLICATION_EXPIRES = "2035-01-01T00:00:00.000Z";
 export const PUBLICATION_BASE_URL = "https://releases.example.invalid/verchestra/";
 
-export const PUBLICATION_TARGETS = Object.freeze([
-  Object.freeze({ platform: "darwin", arch: "arm64", nodeVersion: "24.14.0" }),
-  Object.freeze({ platform: "darwin", arch: "x64", nodeVersion: "24.14.0" }),
-  Object.freeze({ platform: "linux", arch: "arm64", nodeVersion: "24.14.0" }),
-  Object.freeze({ platform: "linux", arch: "x64", nodeVersion: "24.14.0" }),
-  Object.freeze({ platform: "win32", arch: "x64", nodeVersion: "24.14.0" })
-]);
+export const PUBLICATION_TARGETS = Object.freeze(
+  SUPPORTED_TARGET_KEYS.map((key) => {
+    const [platform, arch] = key.split("-");
+    return Object.freeze({ platform, arch, nodeVersion: "24.14.0" });
+  })
+);
 
 // A real candidate's component paths run three to seven segments deep, and the
 // tuf-js delegation matcher requires equal segment counts, so the closure
@@ -62,7 +74,13 @@ const roots = [];
 
 export const targetKey = (target) => `${target.platform}-${target.arch}`;
 export const sha = (bytes) => `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
-const canonical = (value) => `${canonicalizeJsonV2(value)}\n`;
+const canonical = sealedJson;
+
+// why: the five closed gates as a passing candidate build seals them.
+const GATE_EVALUATION_BYTES = Buffer.from(
+  sealedJson(GATE_PROFILES.map((profile) => gateEvaluationRecord({ profile, status: 0, log: "\u2139 tests 1\n" }))),
+  "utf8"
+);
 
 /** A deterministic Ed25519 test key encoded exactly the way the secret is. */
 export function testSigningKeyBase64() {
@@ -144,29 +162,25 @@ export function bundleForTarget(target, options = {}) {
   });
 }
 
-const buildInfoFor = (bundle, revision) => ({
-  schemaVersion: 1,
-  deterministic: true,
-  revision,
-  releaseId: bundle.releaseId,
-  semanticVersion: bundle.semanticVersion,
-  target: bundle.target,
-  evidence: bundle.components
-    .filter((component) => EVIDENCE_KINDS.has(component.kind))
-    .map(({ kind, logicalPath, contentDigest, sizeBytes }) => ({ kind, logicalPath, contentDigest, sizeBytes }))
-});
+const buildInfoFor = (bundle, revision) =>
+  buildInfoRecord({
+    revision,
+    releaseId: bundle.releaseId,
+    semanticVersion: bundle.semanticVersion,
+    target: bundle.target,
+    evidence: bundle.components.filter((component) => EVIDENCE_KINDS.has(component.kind))
+  });
 
-const evidenceFor = (bundle, buildInfo, revision) => ({
-  schemaVersion: 1,
-  revision,
-  releaseId: bundle.releaseId,
-  semanticVersion: bundle.semanticVersion,
-  target: bundle.target,
-  releaseDigest: bundle.releaseDigest,
-  componentCount: bundle.components.length,
-  gateEvidenceDigest: sha(`gate-evaluations:${targetKey(bundle.target)}`),
-  buildInfoDigest: sha(canonicalizeJsonV2(buildInfo))
-});
+const evidenceFor = (bundle, buildInfo, revision) =>
+  targetBuildEvidenceRecord({
+    revision,
+    releaseId: bundle.releaseId,
+    semanticVersion: bundle.semanticVersion,
+    target: bundle.target,
+    bundle,
+    buildInfo,
+    gateEvaluationBytes: GATE_EVALUATION_BYTES
+  });
 
 const writeTargetOutput = async (directory, bundle, buildInfo, target, payloadSalt) => {
   await mkdir(directory, { recursive: true });
@@ -200,9 +214,9 @@ const writeTarget = async (root, target, options) => {
   const directory = join(root, `t76-target-${targetKey(target)}-11223344`);
   await mkdir(directory, { recursive: true });
   const evidence = evidenceFor(bundle, buildInfo, revision);
-  await writeFile(join(directory, "target-build-evidence.json"), canonical(evidence));
-  await writeFile(join(directory, "gate-evaluations.json"), canonical([]));
-  await writeTargetOutput(join(directory, "t76-target-output"), bundle, buildInfo, target, payloadSalt);
+  await writeFile(join(directory, CANDIDATE_FILES.targetEvidence), canonical(evidence));
+  await writeFile(join(directory, CANDIDATE_FILES.gateEvaluations), GATE_EVALUATION_BYTES);
+  await writeTargetOutput(join(directory, CANDIDATE_FILES.targetOutput), bundle, buildInfo, target, payloadSalt);
   return { bundle, evidence, directory };
 };
 
@@ -225,18 +239,13 @@ export async function candidateClosure(options = {}) {
   const selected = PUBLICATION_TARGETS.filter((target) => !omitted.has(targetKey(target)));
   const written = [];
   for (const target of selected) written.push(await writeTarget(targetsDirectory, target, { ...options, revision }));
-  const entries = written.map((item) => item.evidence);
-  const indexDigest = sha(canonicalizeJsonV2(entries));
-  const indexPath = join(root, "t76-target-index.json");
-  await writeFile(
-    indexPath,
-    canonical({
-      schemaVersion: 1,
-      revision,
-      targets: entries,
-      digest: indexDigest
-    })
+  const index = targetIndexRecord(
+    revision,
+    written.map((item) => item.evidence)
   );
+  const indexDigest = index.digest;
+  const indexPath = join(root, CANDIDATE_FILES.targetIndex);
+  await writeFile(indexPath, canonical(index));
   return {
     root,
     indexPath,

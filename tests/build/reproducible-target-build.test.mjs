@@ -18,6 +18,7 @@ import { after, before, test } from "node:test";
 
 import { canonicalizeJsonV2 } from "../../packages/domain/src/index.ts";
 import { buildReproducibleT76Target, bundleSealedLauncher } from "../../scripts/t76-build-candidate.mjs";
+import { buildInfoRecord, sealTargetEvidence, sealedJson } from "../../scripts/t76-candidate-evidence.mjs";
 import { createSealedRepositoryReplica } from "../helpers/sealed-repository-fixture.mjs";
 
 const target = Object.freeze({ platform: process.platform, arch: process.arch, nodeVersion: process.version.slice(1) });
@@ -160,10 +161,33 @@ test("the real target builder binds exact revision, host assets, and all supply-
     assert.equal(runtime.logicalPath, process.platform === "win32" ? "runtime/node.exe" : "runtime/node");
     const bundleBytes = await readFile(join(output, "bundle.json"), "utf8");
     assert.equal(bundleBytes, canonicalizeJsonV2(result.bundle));
-    const buildInfo = JSON.parse(await readFile(join(output, "build-info.json"), "utf8"));
+    const buildInfoBytes = await readFile(join(output, "build-info.json"));
+    const buildInfo = JSON.parse(buildInfoBytes.toString("utf8"));
     assert.equal(buildInfo.revision, replica.revision);
     assert.equal(Object.hasOwn(buildInfo, "repositoryRoot"), false);
     assert.equal(buildInfo.target.nodeVersion, process.version.slice(1));
+    // why: the builder writes build-info.json from the candidate evidence
+    // module's record, and the module seals evidence over this real output, so
+    // the record, its digest and the module's checks agree with what is built.
+    const identity = options(output);
+    assert.equal(
+      buildInfoBytes.toString("utf8"),
+      canonicalizeJsonV2(buildInfoRecord({ ...identity, revision: replica.revision, evidence: result.evidence }))
+    );
+    const evaluationsPath = join(parent, "gate-evaluations.json");
+    await writeFile(evaluationsPath, sealedJson(evaluations));
+    const sealed = await sealTargetEvidence({
+      revision: replica.revision,
+      releaseId: identity.releaseId,
+      semanticVersion: identity.semanticVersion,
+      ...target,
+      targetOutput: output,
+      evaluationsPath,
+      outputPath: join(parent, "target-build-evidence.json")
+    });
+    assert.equal(sealed.buildInfoDigest, `sha256:${createHash("sha256").update(buildInfoBytes).digest("hex")}`);
+    assert.equal(sealed.releaseDigest, result.bundle.releaseDigest);
+    assert.equal(sealed.componentCount, result.bundle.components.length);
   } finally {
     await rm(parent, { recursive: true, force: true });
   }

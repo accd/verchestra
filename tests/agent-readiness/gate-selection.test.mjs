@@ -383,6 +383,13 @@ test("every file the canonical-JSON census inventories selects the security gate
     selectGates(["scripts/t76-signing-custody.mjs"]).gates,
     selectGates(["scripts/t76-publish-release.mjs"]).gates
   );
+  // why: the module that seals the candidate's evidence defines the digests the
+  // publisher verifies (ADR2-2), so it is routed like the publisher too.
+  assert.ok(scripts.includes("scripts/t76-candidate-evidence.mjs"));
+  assert.deepEqual(
+    selectGates(["scripts/t76-candidate-evidence.mjs"]).gates,
+    selectGates(["scripts/t76-publish-release.mjs"]).gates
+  );
   for (const path of censusPaths) {
     const selection = selectGates([path]);
     assert.ok(selection.gates.includes(CENSUS_GATE), `${path} must select ${CENSUS_GATE}`);
