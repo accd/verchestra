@@ -2,7 +2,13 @@ import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, test } from "node:test";
 
-import { ApprovalService, CapabilityBroker } from "../../packages/application/src/index.ts";
+import {
+  ApprovalRecorder,
+  ApprovalRequester,
+  ApprovalRevoker,
+  ApprovalVerifier,
+  CapabilityBroker
+} from "../../packages/application/src/index.ts";
 import { canonicalizeJsonV2 } from "../../packages/domain/src/index.ts";
 import { RuntimeAuthorityStore, RuntimeStore } from "../../packages/platform-node/src/index.ts";
 import { authorityFixture, grantRequest, intent, now } from "../helpers/authority-fixture.mjs";
@@ -30,12 +36,14 @@ async function persisted() {
   const input = intent();
   openedRuntime.store.createRun(run(input.runId));
   const authorityStore = new RuntimeAuthorityStore(openedRuntime.store);
-  const approvals = new ApprovalService({ ...fixture, store: authorityStore });
-  const approval = await approvals.record(approvals.request(input), approver);
+  const ports = { ...fixture, store: authorityStore };
+  const approval = await new ApprovalRecorder(ports).record(new ApprovalRequester(ports).request(input), approver);
+  const approvals = new ApprovalVerifier(ports);
+  const revocations = new ApprovalRevoker(ports);
   const policy = { authorize: async () => ({ decision: "allow", policyViewDigest: approval.binding.policyDigest }) };
   const broker = new CapabilityBroker({ ...fixture, store: authorityStore, approvals, policy });
   const grant = await broker.grant(grantRequest(approval));
-  return { ...fixture, ...openedRuntime, approval, approvals, authorityStore, broker, grant, policy };
+  return { ...fixture, ...openedRuntime, approval, approvals, revocations, authorityStore, broker, grant, policy };
 }
 
 test("signed Approval and Capability Grant survive runtime restart", async () => {
@@ -44,7 +52,7 @@ test("signed Approval and Capability Grant survive runtime restart", async () =>
   const runtime = new RuntimeStore({ dbPath: value.dbPath, now: () => now });
   runtime.open();
   const store = new RuntimeAuthorityStore(runtime);
-  const approvals = new ApprovalService({ ...value, store });
+  const approvals = new ApprovalVerifier({ ...value, store });
   const broker = new CapabilityBroker({ ...value, store, approvals, policy: value.policy });
   assert.equal((await approvals.verify(value.approval.approvalId, value.approval.binding)).valid, true);
   assert.equal(
@@ -70,11 +78,11 @@ test("signed Approval and Capability Grant survive runtime restart", async () =>
 
 test("Approval revocation persists across restart", async () => {
   const value = await persisted();
-  await value.approvals.revoke(value.approval.approvalId, "reviewer-withdrew");
+  await value.revocations.revoke(value.approval.approvalId, "reviewer-withdrew");
   value.store.close();
   const runtime = new RuntimeStore({ dbPath: value.dbPath, now: () => now });
   runtime.open();
-  const approvals = new ApprovalService({ ...value, store: new RuntimeAuthorityStore(runtime) });
+  const approvals = new ApprovalVerifier({ ...value, store: new RuntimeAuthorityStore(runtime) });
   assert.equal(
     (await approvals.verify(value.approval.approvalId, value.approval.binding)).code,
     "VES_APPROVAL_REVOKED"

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 
-import { ApprovalService } from "../../packages/application/src/index.ts";
+import { ApprovalRecorder, ApprovalRequester } from "../../packages/application/src/index.ts";
 import {
   DEFAULT_RUNTIME_MIGRATIONS,
   RuntimeAuthorityStore,
@@ -47,8 +47,8 @@ test("an Approval and Capability Grant written before the re-encoding do not out
   const input = intent();
   older.store.createRun(run(input.runId));
   const authorityStore = new RuntimeAuthorityStore(older.store);
-  const approvals = new ApprovalService({ ...fixture, store: authorityStore });
-  const approval = await approvals.record(approvals.request(input), approver);
+  const ports = { ...fixture, store: authorityStore };
+  const approval = await new ApprovalRecorder(ports).record(new ApprovalRequester(ports).request(input), approver);
   await authorityStore.saveGrant({
     schemaVersion: 1,
     grantId: "grant_018f0b6d-7b1a-7abc-8def-000000000001",
@@ -86,8 +86,8 @@ test("the migration runs once, not on every open", async () => {
   const input = intent();
   first.store.createRun(run(input.runId));
   const authorityStore = new RuntimeAuthorityStore(first.store);
-  const approvals = new ApprovalService({ ...fixture, store: authorityStore });
-  const approval = await approvals.record(approvals.request(input), approver);
+  const ports = { ...fixture, store: authorityStore };
+  const approval = await new ApprovalRecorder(ports).record(new ApprovalRequester(ports).request(input), approver);
   first.store.close();
 
   const second = new RuntimeStore({ dbPath: first.dbPath, now: () => now });

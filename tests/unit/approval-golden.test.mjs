@@ -6,7 +6,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { ApprovalService } from "../../packages/application/src/index.ts";
+import { ApprovalRecorder, ApprovalRequester, ApprovalVerifier } from "../../packages/application/src/index.ts";
 import { FixedClock, IsoInstant, canonicalizeJsonV2 } from "../../packages/domain/src/index.ts";
 import { ArtifactSealer, NodeEd25519Signer, createTrustRoot } from "../../packages/evidence/src/index.ts";
 import { NodeContentDigest } from "../../packages/platform-node/src/index.ts";
@@ -75,7 +75,7 @@ function ports() {
 }
 
 test("a planned approval request is the recorded golden", () => {
-  const request = new ApprovalService(ports()).request(plannedIntent());
+  const request = new ApprovalRequester(ports()).request(plannedIntent());
   assert.equal(request.approvalId, "approval_018f0b6d-7b1a-7abc-8def-000000000001");
   assert.equal(request.requestedAt, now);
   assert.equal(request.bindingDigest, "sha256:24fa6956afd76eacc7e04f6fa1ffc584460e8c1033cd33775b53eb6a7dee500c");
@@ -83,15 +83,18 @@ test("a planned approval request is the recorded golden", () => {
 });
 
 test("the sealed approval of a planned request is the recorded golden", async () => {
-  const service = new ApprovalService(ports());
-  const record = await service.record(service.request(plannedIntent()), approver);
+  const fixture = ports();
+  const record = await new ApprovalRecorder(fixture).record(
+    new ApprovalRequester(fixture).request(plannedIntent()),
+    approver
+  );
   assert.equal(record.artifact.artifactId, "6d9adccd94da1e391ebfa57b3572108ac8d4cc313cc3246fd059ca89cc2a3c70");
   assert.equal(
     record.artifact.dsse.signatures[0].sig,
     "_D1PD48SYZCu_ll3mHo1VJg8hqLjkAnDrPpPt_rdHguAJoKESqKdaMtljevKhjNwS-Tg7pr9w6rDuBmLrMv9DQ"
   );
   assert.equal(digestOf(record), "sha256:0111d6f19e739b7f9969baeafc850818efc45aac4c02a365f95240a462df1661");
-  assert.deepEqual(await service.verify(record.approvalId, record.binding), {
+  assert.deepEqual(await new ApprovalVerifier(fixture).verify(record.approvalId, record.binding), {
     valid: true,
     approvalId: "approval_018f0b6d-7b1a-7abc-8def-000000000001",
     bindingDigest: "sha256:24fa6956afd76eacc7e04f6fa1ffc584460e8c1033cd33775b53eb6a7dee500c"

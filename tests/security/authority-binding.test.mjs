@@ -1,15 +1,23 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { ApprovalService, CapabilityBroker } from "../../packages/application/src/index.ts";
+import {
+  ApprovalRecorder,
+  ApprovalRequester,
+  ApprovalVerifier,
+  CapabilityBroker
+} from "../../packages/application/src/index.ts";
 import { authorityFixture, grantRequest, intent } from "../helpers/authority-fixture.mjs";
 
 const approver = { kind: "human", id: "reviewer@example.test" };
 
 async function context() {
   const fixture = authorityFixture();
-  const approvals = new ApprovalService(fixture);
-  const approval = await approvals.record(approvals.request(intent()), approver);
+  const approval = await new ApprovalRecorder(fixture).record(
+    new ApprovalRequester(fixture).request(intent()),
+    approver
+  );
+  const approvals = new ApprovalVerifier(fixture);
   const policy = { authorize: async () => ({ decision: "allow", policyViewDigest: approval.binding.policyDigest }) };
   const broker = new CapabilityBroker({ ...fixture, approvals, policy });
   return { ...fixture, approval, approvals, broker, policy };
@@ -54,11 +62,11 @@ for (const field of bindingFields) {
   });
 }
 
-// Issue #58: ApprovalService.request()'s bindingDigest must not depend on
+// Issue #58: ApprovalRequester.request()'s bindingDigest must not depend on
 // the machine's ambient locale.
 test("bindingDigest is byte-identical under two different ambient locales", async () => {
   const fixture = authorityFixture();
-  const approvals = new ApprovalService(fixture);
+  const approvals = new ApprovalRequester(fixture);
   const priorLang = process.env.LANG;
   const priorLcAll = process.env.LC_ALL;
   try {
@@ -167,9 +175,8 @@ test("capability absent from the signed review surface is rejected", async () =>
 
 test("Handoff Publication Approval cannot authorize code mutation", async () => {
   const fixture = authorityFixture();
-  const approvals = new ApprovalService(fixture);
-  const approval = await approvals.record(
-    approvals.request(
+  const approval = await new ApprovalRecorder(fixture).record(
+    new ApprovalRequester(fixture).request(
       intent({
         action: "handoff-publication",
         review: { ...intent().review, capabilities: ["handoff.publish:package"] }
@@ -177,6 +184,7 @@ test("Handoff Publication Approval cannot authorize code mutation", async () => 
     ),
     approver
   );
+  const approvals = new ApprovalVerifier(fixture);
   const policy = { authorize: async () => ({ decision: "allow", policyViewDigest: approval.binding.policyDigest }) };
   const broker = new CapabilityBroker({ ...fixture, approvals, policy });
   await assert.rejects(broker.grant(grantRequest(approval)), { code: "VES_CAPABILITY_APPROVAL_INVALID" });

@@ -261,7 +261,7 @@ const CLAIM_DIGEST_REENCODING = "DELETE FROM claims;";
 // the digest (unlike claims' UNIQUE (workspace_id, scope_digest)) — rows are
 // keyed by approval_id/grant_id, a StableId — so an orphaned row here cannot
 // silently break mutual exclusion the way an orphaned claim could. But
-// ApprovalService.verify() (packages/application/src/authority/authority.ts)
+// ApprovalVerifier.verify() (packages/application/src/authority/authority.ts)
 // recomputes bindingDigest fresh from the stored binding and compares it by
 // equality against the persisted value: a bindingDigest stored under the old
 // encoding would never match a fresh recomputation again, so every

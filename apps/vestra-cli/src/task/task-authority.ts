@@ -1,7 +1,9 @@
 import { randomUUID } from "node:crypto";
 
 import {
-  ApprovalService,
+  ApprovalRecorder,
+  ApprovalRequester,
+  ApprovalVerifier,
   CapabilityBroker,
   type ApprovalBinding,
   type ApprovalRecord,
@@ -33,8 +35,6 @@ export interface TaskAuthorityOptions {
   readonly plan: TaskPlanRecord;
   readonly policy: TaskPolicy;
   readonly trust: TrustRoot;
-  // why: present only for `approve`, the one command that seals an approval.
-  readonly signer?: EvidenceSigner;
 }
 
 // why: the Cedar glue between the durable approval, the capability grant, and
@@ -45,33 +45,27 @@ export class TaskAuthority {
   readonly #plan: TaskPlanRecord;
   readonly #policy: TaskPolicy;
   readonly #store: RuntimeAuthorityStore;
-  readonly #approvals: ApprovalService;
+  readonly #digest = new NodeContentDigest();
+  readonly #clock = new SystemClock();
+  readonly #requests: ApprovalRequester;
+  readonly #approvals: ApprovalVerifier;
   readonly #capabilities: CapabilityBroker;
 
   constructor(options: TaskAuthorityOptions) {
     this.#plan = options.plan;
     this.#policy = options.policy;
     this.#store = new RuntimeAuthorityStore(options.runtime);
-    const sealer = options.signer === undefined ? undefined : new ArtifactSealer({ signer: options.signer });
+    this.#requests = new ApprovalRequester({ digest: this.#digest, clock: this.#clock, uuid: randomUUID });
+    // why: `ArtifactSealer` takes a signer even to verify, and its `verify`
+    // never signs, so the one it gets here refuses.
     const verifier = new ArtifactSealer({
       signer: { publicKeyRef: options.trust.keys[0]!, sign: async () => Promise.reject(new Error("verify only")) }
     });
-    const dependencies = {
+    this.#approvals = new ApprovalVerifier({
       store: this.#store,
-      digest: new NodeContentDigest(),
-      clock: new SystemClock(),
-      uuid: randomUUID
-    };
-    this.#approvals = new ApprovalService({
-      ...dependencies,
+      digest: this.#digest,
+      clock: this.#clock,
       artifacts: {
-        seal: async (payload) => {
-          if (sealer === undefined) throw new Error("This command cannot seal approvals");
-          return (await sealer.seal(
-            payload as never,
-            approvalBinding(payload.approvalId, payload.binding.sourceStateDigest)
-          )) as unknown as SignedApprovalArtifact;
-        },
         verify: async (artifact) =>
           verifier.verify(artifact as never, options.trust, {
             ...approvalBinding(artifact.payload.approvalId, artifact.payload.binding.sourceStateDigest),
@@ -80,7 +74,10 @@ export class TaskAuthority {
       }
     });
     this.#capabilities = new CapabilityBroker({
-      ...dependencies,
+      store: this.#store,
+      digest: this.#digest,
+      clock: this.#clock,
+      uuid: randomUUID,
       approvals: this.#approvals,
       policy: {
         authorize: async (request) => {
@@ -95,17 +92,31 @@ export class TaskAuthority {
   // and the policy view in force now, so a changed Workspace policy makes the
   // approval stale instead of silently still valid.
   currentBinding(): ApprovalBinding {
-    return this.#approvals.request({ ...this.#plan.approvalIntent, policyDigest: this.#policy.digest }).binding;
+    return this.#requests.request({ ...this.#plan.approvalIntent, policyDigest: this.#policy.digest }).binding;
   }
 
   currentBindingDigest(): string {
     return new NodeContentDigest().sha256(canonicalizeJsonV2(this.currentBinding()));
   }
 
-  async record(): Promise<ApprovalRecord> {
+  // why: only `approve` seals an approval, so the signer is an argument of
+  // the one operation that signs rather than a member every command carries.
+  async record(signer: EvidenceSigner): Promise<ApprovalRecord> {
     const existing = await this.#store.loadApproval(this.#plan.approvalRequest.approvalId);
     if (existing !== undefined) return existing;
-    return this.#approvals.record(this.#plan.approvalRequest, { kind: "human", id: HUMAN_ACTOR });
+    const sealer = new ArtifactSealer({ signer });
+    return new ApprovalRecorder({
+      store: this.#store,
+      digest: this.#digest,
+      clock: this.#clock,
+      artifacts: {
+        seal: async (payload) =>
+          (await sealer.seal(
+            payload as never,
+            approvalBinding(payload.approvalId, payload.binding.sourceStateDigest)
+          )) as unknown as SignedApprovalArtifact
+      }
+    }).record(this.#plan.approvalRequest, { kind: "human", id: HUMAN_ACTOR });
   }
 
   async approval(): Promise<{ readonly valid: boolean; readonly bindingDigest?: string; readonly code?: string }> {

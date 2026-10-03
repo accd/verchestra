@@ -4,11 +4,10 @@ import { isAbsolute, join, resolve } from "node:path";
 
 import type { ContextManifest } from "@verchestra/agent-runtime";
 import {
-  ApprovalService,
+  ApprovalRequester,
   canonicalTaskGatePlan,
   normalizeTaskRequest,
   type ApprovalIntent,
-  type ApprovalRequest,
   type NormalizedTaskRequest
 } from "@verchestra/application";
 import {
@@ -212,24 +211,6 @@ function approvalIntent(context: PlanContext, manifest: ContextManifest, pkg: Si
   };
 }
 
-function requestApproval(intent: ApprovalIntent): ApprovalRequest {
-  const unused = async () => Promise.reject(new Error("planning never persists authority"));
-  return new ApprovalService({
-    store: {
-      saveApproval: unused,
-      loadApproval: unused,
-      revokeApproval: unused,
-      saveGrant: unused,
-      loadGrant: unused,
-      revokeGrant: unused
-    },
-    digest: new NodeContentDigest(),
-    clock: new SystemClock(),
-    uuid: randomUUID,
-    artifacts: { seal: unused, verify: unused }
-  }).request(intent);
-}
-
 async function skillLockDigest(controlRoot: string): Promise<Digest> {
   const text = await readFile(join(controlRoot, ".verchestra", "skills.lock.json")).catch(() => undefined);
   return text === undefined ? canonicalDigest({ skills: "none" }) : sha256(text);
@@ -309,7 +290,11 @@ export async function planTask(io: TaskCommandIo, requestPath: string, dryRun: b
     packageInput(context, manifest)
   );
   const intent = approvalIntent(context, manifest, pkg);
-  const approvalRequest = requestApproval(intent);
+  const approvalRequest = new ApprovalRequester({
+    digest: new NodeContentDigest(),
+    clock: new SystemClock(),
+    uuid: randomUUID
+  }).request(intent);
   const record: TaskPlanRecord = {
     schemaVersion: 1,
     runId: context.runId,

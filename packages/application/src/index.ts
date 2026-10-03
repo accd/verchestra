@@ -44,7 +44,10 @@ export {
 } from "./bootstrap/machine-bootstrap.ts";
 export { SyncError } from "./sync/sync-errors.ts";
 export {
-  ApprovalService,
+  ApprovalRecorder,
+  ApprovalRequester,
+  ApprovalRevoker,
+  ApprovalVerifier,
   AuthorityError,
   CapabilityBroker,
   type ApprovalAction,
@@ -53,10 +56,15 @@ export {
   type ApprovalGrantPayload,
   type ApprovalIntent,
   type ApprovalRecord,
+  type ApprovalRecordPorts,
   type ApprovalRequest,
+  type ApprovalRequestPorts,
   type ApprovalReviewSurface,
+  type ApprovalRevocationPorts,
+  type ApprovalVerificationPorts,
   type AuthorityStorePort,
   type AuthorizedIdentity,
+  type CapabilityBrokerPorts,
   type CapabilityGrant,
   type CapabilityRequest,
   type EntityRef,
