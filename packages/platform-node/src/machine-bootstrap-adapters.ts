@@ -29,8 +29,7 @@ export class RuntimeMachineProfileStore implements MachineProfileStorePort {
   //
   // Persistence note (checked, not assumed): a row written by an older build
   // is not invalidated. `machine_profiles` is a single latest-wins row per
-  // Workspace; nothing re-derives its digest on read (`getMachineProfile` and
-  // `listMachineProfiles` only parse the JSON and read members by name), and
+  // Workspace; nothing reads it back or re-derives its digest, and
   // the upsert overwrites whenever the digest differs. The one observable
   // cross-version effect is that the first bootstrap after this change reports
   // `profileChanged: true` and a different `profileDigest` string for an

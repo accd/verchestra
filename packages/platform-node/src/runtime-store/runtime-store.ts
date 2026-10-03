@@ -375,24 +375,6 @@ export class RuntimeStore {
     }
   }
 
-  getMachineProfile(workspaceId: string): Readonly<Record<string, unknown>> | undefined {
-    const row = this.#database()
-      .prepare("SELECT profile_json FROM machine_profiles WHERE workspace_id=?")
-      .get(workspaceId) as UnknownRecord | undefined;
-    if (row === undefined) return undefined;
-    return Object.freeze(JSON.parse(String(row["profile_json"])) as Record<string, unknown>);
-  }
-
-  listMachineProfiles(): readonly Readonly<Record<string, unknown>>[] {
-    return Object.freeze(
-      (
-        this.#database()
-          .prepare("SELECT profile_json FROM machine_profiles ORDER BY workspace_id")
-          .all() as UnknownRecord[]
-      ).map((row) => Object.freeze(JSON.parse(String(row["profile_json"])) as Record<string, unknown>))
-    );
-  }
-
   saveSyncState(
     workspaceId: string,
     stateJson: string,

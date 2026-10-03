@@ -1,6 +1,7 @@
 import { mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 
 import { RuntimeStore } from "../../packages/platform-node/src/index.ts";
 
@@ -65,4 +66,18 @@ export function event(eventId = "event_018f0b6d-7b1a-7abc-8def-2123456789ab") {
     actor: { kind: "system", id: "controller:local" },
     occurredAt: now
   };
+}
+
+// why: nothing in the product reads a Machine Profile back, so a case
+// observes the rows the runtime store wrote, as stored, keyed by Workspace.
+export function storedMachineProfiles(dbPath) {
+  const database = new DatabaseSync(dbPath, { readOnly: true });
+  try {
+    const rows = database
+      .prepare("SELECT workspace_id, profile_json FROM machine_profiles ORDER BY workspace_id")
+      .all();
+    return new Map(rows.map((row) => [row.workspace_id, JSON.parse(row.profile_json)]));
+  } finally {
+    database.close();
+  }
 }
