@@ -168,6 +168,32 @@ export function inspectRuntimeDatabase(
   }
 }
 
+// invariant: every member is a NOT NULL column of state_events in a STRICT
+// table, so each value is the column as stored; the Run Capsule digests the
+// terminal event exactly as this returns it.
+export interface RunEvent {
+  readonly eventId: string;
+  readonly runId: string;
+  readonly sequence: number;
+  readonly expectedStateVersion: number;
+  readonly previousState: string;
+  readonly nextState: string;
+  readonly eventType: string;
+  readonly payloadDigest: string;
+  readonly actorKind: string;
+  readonly actorId: string;
+  readonly occurredAt: string;
+}
+
+export interface RunCapsuleSeal {
+  readonly runId: string;
+  readonly stateVersion: number;
+  readonly status: string;
+  readonly capsuleId: string;
+  readonly payloadDigest: string;
+  readonly sealedAt: string;
+}
+
 export class RuntimeStore {
   readonly dbPath: string;
   readonly #timeoutMs: number;
@@ -619,7 +645,7 @@ export class RuntimeStore {
     }
   }
 
-  listEvents(runId: string): readonly UnknownRecord[] {
+  listEvents(runId: string): readonly RunEvent[] {
     return (
       this.#database()
         .prepare(
@@ -630,7 +656,19 @@ export class RuntimeStore {
         FROM state_events WHERE run_id=? ORDER BY sequence`
         )
         .all(runId) as UnknownRecord[]
-    ).map((row) => ({ ...row }));
+    ).map((row) => ({
+      eventId: String(row["eventId"]),
+      runId: String(row["runId"]),
+      sequence: Number(row["sequence"]),
+      expectedStateVersion: Number(row["expectedStateVersion"]),
+      previousState: String(row["previousState"]),
+      nextState: String(row["nextState"]),
+      eventType: String(row["eventType"]),
+      payloadDigest: String(row["payloadDigest"]),
+      actorKind: String(row["actorKind"]),
+      actorId: String(row["actorId"]),
+      occurredAt: String(row["occurredAt"])
+    }));
   }
 
   listUnsealedTerminalRuns(): readonly {
@@ -666,14 +704,7 @@ export class RuntimeStore {
     );
   }
 
-  recordRunCapsuleSeal(value: {
-    readonly runId: string;
-    readonly stateVersion: number;
-    readonly status: string;
-    readonly capsuleId: string;
-    readonly payloadDigest: string;
-    readonly sealedAt: string;
-  }): "recorded" | "already-recorded" {
+  recordRunCapsuleSeal(value: RunCapsuleSeal): "recorded" | "already-recorded" {
     if (
       !/^[a-f0-9]{64}$/u.test(value.capsuleId) ||
       !/^[a-f0-9]{64}$/u.test(value.payloadDigest) ||
@@ -726,7 +757,7 @@ export class RuntimeStore {
     }
   }
 
-  getRunCapsuleSeal(runId: string): Readonly<Record<string, unknown>> | undefined {
+  getRunCapsuleSeal(runId: string): RunCapsuleSeal | undefined {
     const row = this.#database().prepare("SELECT * FROM run_capsule_seals WHERE run_id=?").get(runId) as
       UnknownRecord | undefined;
     if (row === undefined) return undefined;

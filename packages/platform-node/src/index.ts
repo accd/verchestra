@@ -4,6 +4,8 @@ export {
   RuntimeStore,
   inspectRuntimeDatabase,
   type ExecutionCheckpointKind,
+  type RunCapsuleSeal,
+  type RunEvent,
   type RuntimeMigration,
   type StoredExecutionCheckpoint
 } from "./runtime-store/runtime-store.ts";
