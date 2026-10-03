@@ -145,3 +145,77 @@ after every line they cite.
 
 Local evidence is macOS only; the platform matrix run before merge is the
 coordinator's.
+
+## Range 2 — the lease adapter
+
+### The deletion test
+
+`RuntimeLocalLease` (`packages/platform-node/src/coordination-adapters.ts` at
+origin/main) forwarded `acquire` and `release` to the store's `acquireLease`
+and `releaseLease` with the same arguments, the same result and the same
+errors. It added no translation, no state and no error mapping.
+
+- **Not a seam where the product used it.** Both production callers
+  constructed it in place (`task run`, `apps/vestra-cli/src/task/task-run.ts`
+  constructor; the idle cancel in `apps/vestra-cli/src/task/task-status.ts`),
+  so nothing could substitute it.
+- **The real seam is `LocalLeasePort`**
+  (`packages/application/src/coordination/work-claims.ts:54`), read by
+  `WorkClaimService` (`:164`). It has two adapters, both in tests: the
+  in-memory `MemoryLeasePort` and the SQLite one. `WorkClaimService` has no
+  production composition.
+
+Verdict: the deletion test passes, so the class is deleted. The commands call
+the store's lease pair (`task-run.ts:230`, `:241`, `:248`;
+`task-status.ts:139`). The one case that composes `WorkClaimService` over the
+SQLite lease binds the store's lease pair to the port in the coordination
+fixture (`tests/helpers/coordination-fixture.mjs:39`), used at
+`tests/integration/coordination-service.test.mjs:205` and `:217`. The
+forwarding reappears in that one test helper only, which is what the deletion
+test calls a pass-through.
+
+### Behaviour
+
+| Outcome | Assertion |
+| --- | --- |
+| Personal mode still enforces one writer across a SQLite restart through `LocalLeasePort` | `tests/integration/coordination-service.test.mjs:202-231` (same case; it fails when the fixture's `acquire` stops reaching the store) |
+| **New coverage:** an idle cancel releases its run's writer lease and leaves another run's | `tests/integration/task-cancel-lease.test.mjs:39`, `:41`. Before this range no test reached that release: removing it left every suite green |
+| The task run's acquire, verify and release go through the store's lease pair | `tests/e2e/task-cli-e2e.test.mjs` (43 pass); the arguments are unchanged and `pnpm typecheck` binds them to `acquireLease` |
+
+No error code, message or stored byte changes. No test was deleted; the
+coordination case changed only how it builds the port.
+
+`tests/architecture/platform-node-readonly-subpath.test.mjs:26` still lists
+`RuntimeLocalLease` among the symbols the read-only subpath must not export.
+The list is a denylist, so a name that no longer exists weakens nothing and
+still refuses its return; it is left as it is.
+
+### Complexity and census
+
+No complexity key moved. `coordination-adapters.ts` carried no census signal;
+the census is unchanged.
+
+### Citations fixed
+
+- `.specs/features/architecture-deepening-2/validation-t1.md`: `task-run.ts:334` is now `:331`.
+- `.specs/features/architecture-deepening/validation-c6.md`: `task-run.ts:332` is now `:329`.
+- `.specs/features/live-task-pilot/validation.md`: `task-run.ts:52`, `:566-567`, `:355`, `:602-604` are now `:51`, `:563-564`, `:352`, `:599-601`.
+
+Not rewritten: `docs/qualification/t26-validation.md` cites
+`coordination-service.test.mjs` by line; the import of the fixture port moves
+its cases by five lines. It is a point-in-time qualification record.
+`.specs/features/architecture-deepening/validation-c6.md:20` names
+`RuntimeLocalLease` as it stood then.
+
+### Gates (range 2, last commit, on origin/main 6fae651)
+
+| Command | Result |
+| --- | --- |
+| `pnpm gate:quick` (every commit) | PASS — 2617 unit, 331 agent-readiness, 13 census; complexity PASS with 177 keys |
+| `pnpm test:architecture` (every commit) | PASS — 111 |
+| `pnpm gate:build` | PASS — 2617 unit, 797 contract, 1108 integration, 275 e2e, 111 architecture, 172 build, 337 qualification; 0 skipped |
+| `pnpm gate:security` | PASS — 1324 security, 310 fault, plus the shared stages; 0 skipped |
+| `pnpm test:fault` | PASS — 310 |
+| `node --test tests/integration/runtime-store.test.mjs tests/integration/runtime-checkpoint-store.test.mjs tests/fault-injection/runtime-store-faults.test.mjs` | PASS — 53 (unchanged files) |
+| `node --test tests/e2e/task-cli-e2e.test.mjs` | PASS — 43, 0 skipped |
+| `pnpm agent:check` | PASS |
