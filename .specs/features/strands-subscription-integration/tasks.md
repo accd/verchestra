@@ -191,7 +191,7 @@ T8 -> T9 -> T10
 
 1. `feat(domain): add structured-result and quota Driver events` — rows `result.structured` and `quota.exhausted`. **Done** (branch `strands/t4-driver-results`; evidence in `validation.md`, T4 section).
 2. `feat(drivers): structured output, auth source, and rate limits for Claude Code` — `--json-schema`, bounded `structured_output`, `apiKeySource === "none"`, `rate_limit_event` mapping, missing-output failure; fake CLI fixtures recorded from the documented message shapes. **Done** (the fake's `system/init`, `result`, and `rate_limit_event` shapes follow the schema the installed 2.1.282 declares; `StructuredOutput` is allowed beside the bridge tools in a structured session).
-3. `feat(drivers): structured output, account checks, and usage limits for Codex` — `outputSchema`, `account/read`, `account/rateLimits/read`, `usageLimitExceeded` and `rateLimitReachedType` mapping, JSON-RPC method allowlist, minimum version raised with `codex app-server generate-ts` evidence.
+3. `feat(drivers): structured output, account checks, and usage limits for Codex` — `outputSchema`, `account/read`, `account/rateLimits/read`, `usageLimitExceeded` and `rateLimitReachedType` mapping, JSON-RPC method allowlist, minimum version raised with `codex app-server generate-ts` evidence. **Done** (the floor 0.159.3 binds the sessions that use the new protocol; the T04 default stays 0.115.0 — see the decision in `.specs/STATE.md` and the deviation in `spec.md`).
 4. `feat(agent-runtime): carry a node's structured result as a payload reference` — `driver-execution-adapter.ts` returns `outputRefs`; `quota.exhausted` surfaced.
 5. `docs(qualification): record the structured-result driver profiles` — new reports beside the existing immutable ones.
 

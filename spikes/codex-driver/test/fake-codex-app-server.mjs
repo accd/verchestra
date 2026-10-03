@@ -6,10 +6,54 @@ if (process.argv.includes("--version")) {
   process.exit(0);
 }
 
+// DETERMINISTIC FAKE — not Codex. A labeled stand-in for `codex app-server`
+// over stdio. Its account, rate-limit, error, and item messages follow the
+// protocol `codex app-server generate-ts` produces for 0.159.3 (Account,
+// GetAccountRateLimitsResponse, RateLimitSnapshot, CodexErrorInfo,
+// ItemCompletedNotification). It never contacts a provider.
 const mode = process.env.FAKE_CODEX_MODE ?? "success";
+// why: the account the fake reports, and the rate limits it reads, as JSON the
+// test spells; the defaults are a ChatGPT Plus login with no credits. Each
+// carries the personal and promotional fields a driver must drop.
+const account = process.env.FAKE_CODEX_ACCOUNT
+  ? JSON.parse(process.env.FAKE_CODEX_ACCOUNT)
+  : { type: "chatgpt", email: "owner@example.invalid", planType: "plus" };
+const snapshot = (overrides = {}) => ({
+  limitId: "codex",
+  limitName: null,
+  normalModelSlug: null,
+  primary: { usedPercent: 12, windowDurationMins: 300, resetsAt: 1_790_000_000 },
+  secondary: { usedPercent: 40, windowDurationMins: 10_080, resetsAt: 1_790_500_000 },
+  credits: { hasCredits: false, unlimited: false, balance: "0" },
+  individualLimit: null,
+  spendControlReached: null,
+  planType: "plus",
+  rateLimitReachedType: null,
+  ...overrides
+});
+const rateLimits = {
+  ordinaryUsageAllowed: true,
+  rateLimits: snapshot(),
+  rateLimitsByLimitId: null,
+  rateLimitResetCredits: null,
+  accountId: "private-account-id",
+  rateLimitUpsell: { message: "upgrade-offer-text" },
+  ...(process.env.FAKE_CODEX_RATE_LIMITS ? JSON.parse(process.env.FAKE_CODEX_RATE_LIMITS) : {})
+};
+const ANSWER = { outcome: "done", summary: "structured by the fake" };
 const emit = (message) => process.stdout.write(`${JSON.stringify(message)}\n`);
 const lines = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
 let prompt = "";
+let outputSchema;
+const agentMessage = (text, phase = "final_answer") =>
+  emit({ method: "item/completed", params: { threadId: "private-thread-id", turnId: "private-turn-id", completedAtMs: 1, item: { type: "agentMessage", id: `msg-${text.length}`, text, phase, memoryCitation: null, delivery: null, questions: null } } });
+const completeTurn = () => {
+  emit({ method: "turn/completed", params: { threadId: "private-thread-id", turn: { id: "private-turn-id", status: "completed" }, usage: { inputTokens: 5, outputTokens: 3 } } });
+  process.exit(0);
+};
+// why: the App Server answers a schema in its final message; without one the
+// final message is prose, so a driver that did not send the schema gets prose.
+const finalAnswer = (answer) => (outputSchema === undefined ? "Here is what I found." : JSON.stringify(answer));
 
 // why: a provider that starts processes of its own. One descendant stays in the
 // provider's process group and holds its output open; the other leaves the
@@ -30,8 +74,13 @@ lines.on("line", (line) => {
   } else if (message.method === "thread/start") {
     emit({ id: message.id, result: { thread: { id: "private-thread-id", model: message.params.model ?? "gpt-5.5-codex", ephemeral: true } } });
     emit({ method: "thread/started", params: { thread: { id: "private-thread-id" } } });
+  } else if (message.method === "account/read") {
+    emit({ id: message.id, result: { account, requiresOpenaiAuth: true, workspaceRouting: null } });
+  } else if (message.method === "account/rateLimits/read") {
+    emit({ id: message.id, result: rateLimits });
   } else if (message.method === "turn/start") {
     prompt = message.params.input?.[0]?.text ?? "";
+    outputSchema = message.params.outputSchema;
     emit({ id: message.id, result: { turn: { id: "private-turn-id", status: "inProgress" } } });
     emit({ method: "turn/started", params: { threadId: "private-thread-id", turn: { id: "private-turn-id" } } });
     // invariant: FAKE_CODEX_FORK=1 makes any mode start that tree and name it
@@ -89,6 +138,37 @@ lines.on("line", (line) => {
       // seen that last thing is stopped after its stream had already failed.
       const delta = JSON.stringify({ method: "item/agentMessage/delta", params: { threadId: "private-thread-id", turnId: "private-turn-id", itemId: "msg-1", delta: "after-the-failure" } });
       process.stdout.write(`{not-json}\n${delta}\n`);
+    } else if (mode === "structured") {
+      emit({ method: "item/agentMessage/delta", params: { threadId: "private-thread-id", turnId: "private-turn-id", itemId: "msg-1", delta: "working" } });
+      agentMessage(finalAnswer(ANSWER));
+      completeTurn();
+    } else if (mode === "structured-commentary") {
+      // why: a turn whose last agent message is the answer and whose earlier
+      // one is commentary that is not JSON.
+      agentMessage("Reading the scope first.", "commentary");
+      agentMessage(finalAnswer(ANSWER));
+      completeTurn();
+    } else if (mode === "structured-missing") {
+      completeTurn();
+    } else if (mode === "structured-invalid") {
+      agentMessage("{\"outcome\": \"done\", ");
+      completeTurn();
+    } else if (mode === "structured-large") {
+      agentMessage(finalAnswer({ outcome: "done", summary: "x".repeat(8192) }));
+      completeTurn();
+    } else if (mode === "usage-limit") {
+      emit({ method: "error", params: { threadId: "private-thread-id", turnId: "private-turn-id", willRetry: false, error: { message: "You've hit your usage limit. Upgrade to Pro", codexErrorInfo: "usageLimitExceeded", additionalDetails: null, misalignment: null } } });
+      emit({ method: "turn/completed", params: { threadId: "private-thread-id", turn: { id: "private-turn-id", status: "failed" }, usage: { inputTokens: 1, outputTokens: 0 } } });
+      process.exit(0);
+    } else if (mode === "rate-limit-reached") {
+      // why: a transient rate limit first, which is not quota, then the
+      // allowance running out twice; the turn still completes, as the
+      // pricing page says an active turn may.
+      emit({ method: "account/rateLimits/updated", params: { rateLimits: snapshot({ rateLimitReachedType: "rate_limit_reached" }) } });
+      const exhausted = snapshot({ primary: { usedPercent: 100, windowDurationMins: 300, resetsAt: 1_790_000_000 }, rateLimitReachedType: "workspace_member_usage_limit_reached" });
+      emit({ method: "account/rateLimits/updated", params: { rateLimits: exhausted } });
+      emit({ method: "account/rateLimits/updated", params: { rateLimits: exhausted } });
+      completeTurn();
     } else if (mode !== "hang") {
       emit({ method: "item/agentMessage/delta", params: { threadId: "private-thread-id", turnId: "private-turn-id", itemId: "msg-1", delta: `echo:${prompt}` } });
       emit({ method: "turn/completed", params: { threadId: "private-thread-id", turn: { id: "private-turn-id", status: "completed" }, usage: { inputTokens: 7, outputTokens: 4 } } });
@@ -105,5 +185,8 @@ lines.on("line", (line) => {
   } else if (message.method === "turn/interrupt") {
     process.stderr.write("interrupt-received\n");
     emit({ id: message.id, result: {} });
+  } else if (typeof message.id === "number" && typeof message.method === "string") {
+    // why: the App Server refuses a method it does not serve.
+    emit({ id: message.id, error: { code: -32601, message: `Method not found: ${message.method}` } });
   }
 });
