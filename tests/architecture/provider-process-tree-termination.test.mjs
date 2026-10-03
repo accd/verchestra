@@ -1,9 +1,10 @@
 // invariant: stopping a Claude Code or Codex provider stops its whole process
 // tree (ADP-4). Three things must hold together for that, and each is a line a
 // later change could drop without a behaviour test on the pull request's own
-// platform noticing: the two drivers start the provider in a process group of
-// its own, the task composition hands every provider driver the tree
-// terminator, and nothing in the task composition signals one process alone.
+// platform noticing: the provider child run that both drivers use starts the
+// provider in a process group of its own, the task composition hands every
+// provider driver the tree terminator, and nothing in the task composition
+// signals one process alone.
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -24,15 +25,28 @@ const taskSources = readdirSync(join(repositoryRoot, TASK_ROOT))
   .filter((name) => name.endsWith(".ts"))
   .map((name) => ({ name, source: code(read(`${TASK_ROOT}/${name}`)) }));
 const PROVIDER_DRIVER = /\bnew\s+(?:ClaudeCodeDriver|CodexDriver)\s*\(/gu;
+const CHILD_RUN = "packages/drivers/src/provider-child-run.ts";
 
+// why: the spawn, the stop and every other end of the provider live in the
+// provider child run (ADR2-3); a driver hands it the terminator the
+// composition injected and starts no process of its own.
 for (const driver of ["claude-code-driver.ts", "codex-driver.ts"]) {
-  test(`${driver} starts its provider in a process group of its own and stops it through one terminator`, () => {
+  test(`${driver} runs its provider through the provider child run and hands it the injected terminator`, () => {
     const source = code(read(`packages/drivers/src/${driver}`));
-    assert.match(source, /\bspawn\([^;]*?\bdetached: OWN_PROCESS_GROUP\b/su);
+    assert.match(source, /\brunProviderChild\(\{/u);
+    assert.doesNotMatch(source, /\bspawn\b/u, "the driver starts a process itself");
     assert.match(source, /processTreeTerminator\(dependencies\.terminateTree\)/u);
+    assert.match(source, /\bterminateTree: this\.#terminateTree\b/u);
     assert.doesNotMatch(source, /process\.kill\(/u, "the driver signals a process itself");
   });
 }
+
+test("the provider child run starts its provider in a process group of its own and stops it through one terminator", () => {
+  const source = code(read(CHILD_RUN));
+  assert.match(source, /\bspawn\([^;]*?\bdetached: OWN_PROCESS_GROUP\b/su);
+  assert.match(source, /\bsingleTermination\(this\.#run\.terminateTree, pid\)/u);
+  assert.doesNotMatch(source, /process\.kill\(/u, "the child run signals a process itself");
+});
 
 test("a provider leads its own process group everywhere but on Windows, and the fallback signals that group", () => {
   const source = code(read("packages/drivers/src/driver-process-tree.ts"));
@@ -105,6 +119,16 @@ for (const driver of ["claude-code-driver.ts", "codex-driver.ts"]) {
   test(`${driver} never signals its provider process itself`, () => {
     const source = code(read(`packages/drivers/src/${driver}`));
     assert.doesNotMatch(source, /\.kill\(/u, "the driver signals one process instead of terminating its tree");
-    assert.match(source, /\bunawaitedTermination\(/u);
+    assert.doesNotMatch(
+      source,
+      /\b(?:singleTermination|unawaitedTermination)\b/u,
+      "the driver ends its provider outside the provider child run"
+    );
   });
 }
+
+test("the provider child run ends its provider only through the termination of its tree", () => {
+  const source = code(read(CHILD_RUN));
+  assert.doesNotMatch(source, /\.kill\(/u, "the child run signals one process instead of terminating its tree");
+  assert.match(source, /\bunawaitedTermination\(/u);
+});

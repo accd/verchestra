@@ -1,19 +1,12 @@
-import { execFile, spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { chmod, lstat, mkdir, mkdtemp, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir, userInfo } from "node:os";
 import { isAbsolute, join } from "node:path";
-import readline from "node:readline";
 import { promisify } from "node:util";
-import {
-  OWN_PROCESS_GROUP,
-  processTreeTerminator,
-  singleTermination,
-  unawaitedTermination,
-  type ProcessTreeTerminator
-} from "./driver-process-tree.ts";
+import { processTreeTerminator, type ProcessTreeTerminator } from "./driver-process-tree.ts";
 import { sensitiveValueRedactor } from "./driver-redaction.ts";
-import { DriverSessionLedger } from "./driver-session-ledger.ts";
+import { DriverSessionLedger, type DriverSession } from "./driver-session-ledger.ts";
 import { probeDriverVersion } from "./driver-version-probe.ts";
 import {
   DriverProtocolError,
@@ -23,6 +16,12 @@ import {
   type DriverSessionRef,
   type DriverStartRequest
 } from "./index.ts";
+import {
+  runProviderChild,
+  type ProviderChannel,
+  type ProviderChildResources,
+  type ProviderProtocol
+} from "./provider-child-run.ts";
 
 const execFileAsync = promisify(execFile);
 const SAFE_ENV_KEYS = ["PATH", "SystemRoot", "ComSpec", "TEMP", "TMP", "HOME", "USERPROFILE"] as const;
@@ -134,11 +133,6 @@ interface MediatedLaunch {
   readonly surface: StreamSurface;
 }
 
-interface ClaudeSessionResources {
-  child?: ChildProcessWithoutNullStreams;
-  stop?: () => Promise<void>;
-}
-
 function claudeError(code: string, message: string): DriverProtocolError {
   return new DriverProtocolError(code, message);
 }
@@ -152,6 +146,18 @@ const PROBE_PROFILE = Object.freeze({
   noun: "Claude Code",
   capabilities: Object.freeze(["stream", "tools", "usage", "abort", "no-session-persistence"])
 });
+// invariant: the child run reports VES_CLAUDE_ABORTED, VES_CLAUDE_OUTPUT_LIMIT,
+// VES_CLAUDE_STREAM_INVALID, VES_CLAUDE_STDIN_FAILED, VES_CLAUDE_STREAM_INCOMPLETE
+// and VES_CLAUDE_PROCESS_FAILED. Its conversation is one write, which cannot
+// reject, so VES_CLAUDE_PROTOCOL_FAILED is never reported.
+// why: in print mode Claude Code exits by itself after its result, and its
+// exit status is part of that result (AD-054).
+const CHILD_PROFILE = Object.freeze({
+  errorCodePrefix: "VES_CLAUDE",
+  noun: "Claude Code",
+  streamName: "stream",
+  afterResult: "exits-by-itself"
+} as const);
 
 function userMessage(prompt: string): string {
   return JSON.stringify({ type: "user", message: { role: "user", content: [{ type: "text", text: prompt }] } });
@@ -321,28 +327,102 @@ function surfaceOf(launch: MediatedLaunch | undefined): StreamSurface {
   return launch === undefined ? "open" : launch.surface;
 }
 
-function hookEvent(event: unknown): boolean {
-  const row = event as { readonly type?: unknown; readonly subtype?: unknown } | null;
-  return row?.type === "system" && typeof row.subtype === "string" && row.subtype.startsWith("hook_");
-}
-
 // invariant: with `--include-hook-events` every hook that runs is reported in
 // the stream, and the subscription profile disables all of them; one hook
 // event therefore means a managed or injected hook ran, and the session ends.
-function streamEvent(line: string, surface: StreamSurface): Record<string, unknown> | string {
-  let event: unknown;
-  try {
-    event = JSON.parse(line);
-  } catch {
-    return "VES_CLAUDE_STREAM_INVALID";
-  }
-  // invariant: every stream-json line is an object. A line that parses to
-  // anything else is a broken stream: `null` must not reach a member read, and
-  // a string must not be taken for a failure code the provider chose.
-  if (event === null || typeof event !== "object" || Array.isArray(event)) return "VES_CLAUDE_STREAM_INVALID";
-  return surface === "bridge-only" && hookEvent(event)
-    ? "VES_CLAUDE_HOOK_UNEXPECTED"
-    : (event as Record<string, unknown>);
+function unexpectedHook(event: Readonly<Record<string, unknown>>, surface: StreamSurface): boolean {
+  const subtype = event["subtype"];
+  return (
+    surface === "bridge-only" &&
+    event["type"] === "system" &&
+    typeof subtype === "string" &&
+    subtype.startsWith("hook_")
+  );
+}
+
+interface ClaudeConversation {
+  readonly request: DriverStartRequest;
+  readonly execution: ClaudeCodeExecution;
+  readonly session: DriverSession<ProviderChildResources>;
+  readonly sessionId: string;
+  readonly surface: StreamSurface;
+  readonly redact: (value: unknown) => string;
+}
+
+// invariant: the stream-json translation of one print session. The prompt is
+// the one message written; every event the provider writes back is checked
+// against the surface the session is held to and normalized.
+function claudeProtocol(channel: ProviderChannel, conversation: ClaudeConversation): ProviderProtocol {
+  const { request, execution, session: state, sessionId, surface, redact } = conversation;
+  let initialized = false;
+  // why: a tool the model asks for is normalized, never executed here.
+  const requestTools = (event: Readonly<Record<string, unknown>>): void => {
+    const message = event["message"] as { content?: unknown[] } | undefined;
+    for (const raw of message?.content ?? []) {
+      const content = raw as Record<string, unknown>;
+      if (content["type"] === "tool_use") {
+        if (typeof content["id"] !== "string" || typeof content["name"] !== "string")
+          return channel.fail("VES_CLAUDE_STREAM_INVALID");
+        state.emit({
+          type: "tool.requested",
+          toolCallId: content["id"],
+          name: content["name"],
+          input: content["input"]
+        });
+      }
+    }
+  };
+  const receive = (event: Readonly<Record<string, unknown>>): void => {
+    if (unexpectedHook(event, surface)) return channel.fail("VES_CLAUDE_HOOK_UNEXPECTED");
+    if (event["type"] === "system" && event["subtype"] === "init") {
+      const initFailure = initEventFailure(event, execution.model, surface);
+      if (initFailure !== undefined) return channel.fail(initFailure);
+      const model = execution.model;
+      initialized = true;
+      state.emit({ type: "session.started", sessionId });
+      state.emit({
+        type: "model.resolved",
+        passportRef: request.passportRef,
+        provider: "anthropic",
+        resolvedModel: model
+      });
+    } else if (event["type"] === "stream_event") {
+      const nested = event["event"] as { delta?: { type?: string; text?: unknown } } | undefined;
+      if (nested?.delta?.type === "text_delta")
+        state.emit({ type: "content.delta", text: redact(String(nested.delta.text ?? "")) });
+    } else if (event["type"] === "assistant") {
+      requestTools(event);
+    } else if (event["type"] === "result") {
+      // why: a result counts once the session was announced; before that the
+      // stream is incomplete, whatever the result says.
+      if (initialized) channel.result();
+      const usage = event["usage"] as Record<string, unknown> | undefined;
+      const inputTokens = Number(usage?.["input_tokens"] ?? 0);
+      const outputTokens = Number(usage?.["output_tokens"] ?? 0);
+      if (
+        !Number.isSafeInteger(inputTokens) ||
+        inputTokens < 0 ||
+        !Number.isSafeInteger(outputTokens) ||
+        outputTokens < 0
+      )
+        return channel.fail("VES_CLAUDE_STREAM_INVALID");
+      state.emit({
+        type: "usage.updated",
+        inputTokens,
+        outputTokens
+      });
+      if (event["is_error"] === true) {
+        state.outcome = "failed";
+        state.emit({
+          type: "error",
+          code: "VES_CLAUDE_EXECUTION_FAILED",
+          message: "Claude Code failed",
+          retryable: true
+        });
+      }
+    }
+  };
+  return { receive, converse: async () => channel.end(userMessage(execution.prompt)) };
 }
 
 // The per-run isolation directory holds the bridge token; it is removed as
@@ -356,7 +436,7 @@ export class ClaudeCodeDriver implements Driver {
   readonly #command: readonly string[];
   readonly #minimumVersion: string;
   readonly #terminateTree: ProcessTreeTerminator;
-  readonly #sessions = new DriverSessionLedger<ClaudeSessionResources>({
+  readonly #sessions = new DriverSessionLedger<ProviderChildResources>({
     noun: "Claude Code",
     stop: ({ resources }) => resources.stop?.()
   });
@@ -529,174 +609,27 @@ export class ClaudeCodeDriver implements Driver {
     const surface = surfaceOf(launch);
     const sessionId = `claude-session:${randomUUID()}`;
     const state = this.#sessions.open(sessionId, sink, {});
-    const runEnded = state.runStarted();
     try {
       const redact = sensitiveValueRedactor(execution.sensitiveValues ?? []);
       const plan = this.#spawnPlan(execution, launch);
-      const child = spawn(this.#command[0] as string, [...plan.arguments], {
-        cwd: plan.cwd,
-        env: plan.environment,
-        stdio: ["pipe", "pipe", "pipe"],
-        detached: OWN_PROCESS_GROUP,
-        windowsHide: true
+      await runProviderChild({
+        profile: CHILD_PROFILE,
+        launch: {
+          command: this.#command[0] as string,
+          arguments: plan.arguments,
+          cwd: plan.cwd,
+          environment: plan.environment,
+          maxOutputBytes: execution.maxOutputBytes
+        },
+        session: state,
+        signal,
+        terminateTree: this.#terminateTree,
+        onSpawn: this.#dependencies.onSpawn,
+        protocol: (channel) =>
+          claudeProtocol(channel, { request, execution, session: state, sessionId, surface, redact })
       });
-      state.resources.child = child;
-      let aborted = false;
-      let stopChild: (() => Promise<void>) | undefined;
-      // invariant: one termination per child. A stream that keeps failing asks
-      // again for every line still in the pipe, a tree terminator reads the
-      // process table each time it is asked, and a cancel asks once more.
-      // invariant: a cancel stops the run through this same request, so the
-      // run it interrupts ends as aborted and not as a process that died.
-      const terminate = async () => {
-        aborted = true;
-        await stopChild?.();
-      };
-      const endChild = unawaitedTermination(terminate);
-      if (child.pid !== undefined) {
-        stopChild = singleTermination(this.#terminateTree, child.pid);
-        state.resources.stop = terminate;
-        this.#dependencies.onSpawn?.(child.pid);
-      }
-      let outputBytes = 0;
-      const maximum = execution.maxOutputBytes ?? 1_048_576;
-      let streamFailure: string | undefined;
-      let initialized = false;
-      let resultSeen = false;
-      signal.addEventListener("abort", terminate, { once: true });
-      child.stderr.on("data", (chunk: Buffer) => {
-        outputBytes += chunk.length;
-        if (outputBytes > maximum) {
-          streamFailure = "VES_CLAUDE_OUTPUT_LIMIT";
-          endChild();
-        }
-      });
-      // invariant: a provider whose input can no longer be written to cannot
-      // be given its prompt, so it is ended like any stream that failed.
-      child.stdin.on("error", () => {
-        if (aborted) return;
-        streamFailure = "VES_CLAUDE_STDIN_FAILED";
-        endChild();
-      });
-      const lines = readline.createInterface({ input: child.stdout, crlfDelay: Infinity });
-      lines.on("line", (line) => {
-        outputBytes += Buffer.byteLength(line) + 1;
-        if (outputBytes > maximum) {
-          streamFailure = "VES_CLAUDE_OUTPUT_LIMIT";
-          endChild();
-          return;
-        }
-        const event = streamEvent(line, surface);
-        if (typeof event === "string") {
-          streamFailure = event;
-          endChild();
-          return;
-        }
-        if (event["type"] === "system" && event["subtype"] === "init") {
-          const initFailure = initEventFailure(event, execution.model, surface);
-          if (initFailure !== undefined) {
-            streamFailure = initFailure;
-            endChild();
-            return;
-          }
-          const model = execution.model;
-          initialized = true;
-          state.emit({ type: "session.started", sessionId });
-          state.emit({
-            type: "model.resolved",
-            passportRef: request.passportRef,
-            provider: "anthropic",
-            resolvedModel: model
-          });
-        } else if (event["type"] === "stream_event") {
-          const nested = event["event"] as { delta?: { type?: string; text?: unknown } } | undefined;
-          if (nested?.delta?.type === "text_delta")
-            state.emit({ type: "content.delta", text: redact(String(nested.delta.text ?? "")) });
-        } else if (event["type"] === "assistant") {
-          const message = event["message"] as { content?: unknown[] } | undefined;
-          for (const raw of message?.content ?? []) {
-            const content = raw as Record<string, unknown>;
-            if (content["type"] === "tool_use") {
-              if (typeof content["id"] !== "string" || typeof content["name"] !== "string") {
-                streamFailure = "VES_CLAUDE_STREAM_INVALID";
-                endChild();
-                return;
-              }
-              state.emit({
-                type: "tool.requested",
-                toolCallId: content["id"],
-                name: content["name"],
-                input: content["input"]
-              });
-            }
-          }
-        } else if (event["type"] === "result") {
-          resultSeen = true;
-          const usage = event["usage"] as Record<string, unknown> | undefined;
-          const inputTokens = Number(usage?.["input_tokens"] ?? 0);
-          const outputTokens = Number(usage?.["output_tokens"] ?? 0);
-          if (
-            !Number.isSafeInteger(inputTokens) ||
-            inputTokens < 0 ||
-            !Number.isSafeInteger(outputTokens) ||
-            outputTokens < 0
-          ) {
-            streamFailure = "VES_CLAUDE_STREAM_INVALID";
-            endChild();
-            return;
-          }
-          state.emit({
-            type: "usage.updated",
-            inputTokens,
-            outputTokens
-          });
-          if (event["is_error"] === true) {
-            state.outcome = "failed";
-            state.emit({
-              type: "error",
-              code: "VES_CLAUDE_EXECUTION_FAILED",
-              message: "Claude Code failed",
-              retryable: true
-            });
-          }
-        }
-      });
-      child.stdin.end(`${userMessage(execution.prompt)}\n`);
-      const exit = await new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolve) =>
-        child.once("close", (code, exitSignal) => resolve({ code, signal: exitSignal }))
-      );
-      signal.removeEventListener("abort", terminate);
-      lines.close();
-      if (aborted && streamFailure === undefined) {
-        state.outcome = "cancelled";
-        state.emit({
-          type: "error",
-          code: "VES_CLAUDE_ABORTED",
-          message: "Claude Code was aborted",
-          retryable: true
-        });
-      } else if (streamFailure !== undefined) {
-        state.outcome = "failed";
-        state.emit({
-          type: "error",
-          code: streamFailure,
-          message: "Claude Code stream failed",
-          retryable: false
-        });
-      } else if (!initialized || !resultSeen || exit.code !== 0) {
-        state.outcome = "failed";
-        state.emit({
-          type: "error",
-          code: !resultSeen ? "VES_CLAUDE_STREAM_INCOMPLETE" : "VES_CLAUDE_PROCESS_FAILED",
-          message: "Claude Code process failed",
-          retryable: false
-        });
-      }
-      delete state.resources.child;
-      delete state.resources.stop;
       return Object.freeze({ sessionId });
     } finally {
-      runEnded();
       await releaseLaunch(launch);
     }
   }

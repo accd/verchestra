@@ -1,21 +1,14 @@
-import { execFile, spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import readline from "node:readline";
 import { promisify } from "node:util";
 import {
   codexProcessEnvironment,
   snapshotCodexProcessContext,
   type CodexProcessContext
 } from "./codex-process-context.ts";
-import {
-  OWN_PROCESS_GROUP,
-  processTreeTerminator,
-  singleTermination,
-  unawaitedTermination,
-  type ProcessTreeTerminator
-} from "./driver-process-tree.ts";
+import { processTreeTerminator, type ProcessTreeTerminator } from "./driver-process-tree.ts";
 import { sensitiveValueRedactor } from "./driver-redaction.ts";
-import { DriverSessionLedger } from "./driver-session-ledger.ts";
+import { DriverSessionLedger, type DriverSession } from "./driver-session-ledger.ts";
 import { probeDriverVersion } from "./driver-version-probe.ts";
 import {
   DriverProtocolError,
@@ -25,6 +18,12 @@ import {
   type DriverSessionRef,
   type DriverStartRequest
 } from "./index.ts";
+import {
+  runProviderChild,
+  type ProviderChannel,
+  type ProviderChildResources,
+  type ProviderProtocol
+} from "./provider-child-run.ts";
 
 const execFileAsync = promisify(execFile);
 const SAFE_ENV_KEYS = ["PATH", "SystemRoot", "ComSpec", "TEMP", "TMP", "HOME", "USERPROFILE", "CODEX_HOME"] as const;
@@ -61,11 +60,6 @@ export interface CodexDriverDependencies {
   readonly onMessageSent?: (message: Readonly<Record<string, unknown>>) => void;
 }
 
-interface CodexSessionResources {
-  child?: ChildProcessWithoutNullStreams;
-  stop?: () => Promise<void>;
-}
-
 function codexError(code: string, message: string): DriverProtocolError {
   return new DriverProtocolError(code, message);
 }
@@ -88,6 +82,164 @@ const PROBE_PROFILE = Object.freeze({
     "read-only"
   ])
 });
+// invariant: the child run reports VES_CODEX_ABORTED, VES_CODEX_OUTPUT_LIMIT,
+// VES_CODEX_STREAM_INVALID, VES_CODEX_STDIN_FAILED, VES_CODEX_PROTOCOL_FAILED,
+// VES_CODEX_STREAM_INCOMPLETE and VES_CODEX_PROCESS_FAILED.
+// why: the App Server keeps serving after a completed turn, so the driver ends
+// it, and the exit status that follows is the driver's own doing (AD-054).
+const CHILD_PROFILE = Object.freeze({
+  errorCodePrefix: "VES_CODEX",
+  noun: "Codex",
+  streamName: "protocol",
+  afterResult: "ended-by-the-driver"
+} as const);
+
+interface CodexConversation {
+  readonly request: DriverStartRequest;
+  readonly execution: CodexExecution;
+  readonly session: DriverSession<ProviderChildResources>;
+  readonly sessionId: string;
+  readonly redact: (value: unknown) => string;
+  readonly threadParams: () => Readonly<Record<string, unknown>>;
+  readonly onMessageSent: ((message: Readonly<Record<string, unknown>>) => void) | undefined;
+}
+
+// invariant: the App Server translation of one ephemeral turn: the JSON-RPC
+// handshake, the model check, one thread and one turn, the dynamic tools and
+// approvals it is asked about, and the interrupt a stop sends.
+function codexProtocol(channel: ProviderChannel, conversation: CodexConversation): ProviderProtocol {
+  const { request, execution, session: state, sessionId, redact } = conversation;
+  let nextId = 1;
+  let threadId: string | undefined;
+  let turnId: string | undefined;
+  let interruptSent = false;
+  const pending = new Map<number, { resolve(value: unknown): void; reject(error: Error): void }>();
+
+  const write = (message: Readonly<Record<string, unknown>>) => {
+    conversation.onMessageSent?.(structuredClone(message));
+    channel.write(JSON.stringify(message));
+  };
+  const notify = (method: string, params: Readonly<Record<string, unknown>> = {}) => write({ method, params });
+  const rpc = (method: string, params: Readonly<Record<string, unknown>> = {}) => {
+    const id = nextId++;
+    write({ method, id, params });
+    return new Promise<unknown>((resolve, reject) => pending.set(id, { resolve, reject }));
+  };
+  const interrupt = () => {
+    if (!channel.stopped() || threadId === undefined || turnId === undefined || interruptSent || channel.ending())
+      return;
+    interruptSent = true;
+    void rpc("turn/interrupt", { threadId, turnId }).catch(() => undefined);
+  };
+  const receive = (message: Readonly<Record<string, unknown>>): void => {
+    if (typeof message["id"] === "number" && (Object.hasOwn(message, "result") || Object.hasOwn(message, "error"))) {
+      const waiter = pending.get(message["id"]);
+      if (waiter !== undefined) {
+        pending.delete(message["id"]);
+        if (message["error"] !== undefined) waiter.reject(codexError("VES_CODEX_RPC_FAILED", "Codex request failed"));
+        else waiter.resolve(message["result"]);
+      }
+      return;
+    }
+    const method = message["method"];
+    const params = (message["params"] ?? {}) as Record<string, unknown>;
+    if (method === "thread/started") {
+      state.emit({ type: "session.started", sessionId });
+      state.emit({
+        type: "model.resolved",
+        passportRef: request.passportRef,
+        provider: "openai",
+        resolvedModel: execution.model
+      });
+    } else if (method === "item/agentMessage/delta") {
+      state.emit({ type: "content.delta", text: redact(params["delta"] ?? "") });
+    } else if (method === "item/tool/call" && typeof message["id"] === "number") {
+      if (typeof params["callId"] !== "string" || typeof params["tool"] !== "string")
+        return channel.fail("VES_CODEX_STREAM_INVALID");
+      if (!execution.tools.some((tool) => tool.name === params["tool"]))
+        return channel.fail("VES_CODEX_TOOL_UNDECLARED");
+      state.emit({
+        type: "tool.requested",
+        toolCallId: params["callId"],
+        name: params["tool"],
+        input: params["arguments"]
+      });
+      write({
+        id: message["id"],
+        result: {
+          success: false,
+          contentItems: [{ type: "inputText", text: "Execution is controlled by Verchestra." }]
+        }
+      });
+    } else if (
+      (method === "item/commandExecution/requestApproval" || method === "item/fileChange/requestApproval") &&
+      typeof message["id"] === "number"
+    ) {
+      state.emit({
+        type: "warning",
+        code: "VES_CODEX_BUILTIN_TOOL_DENIED",
+        message: "Codex built-in effect was denied"
+      });
+      write({ id: message["id"], result: { decision: "decline" } });
+    } else if (method === "error") {
+      state.outcome = "failed";
+      state.emit({
+        type: "error",
+        code: "VES_CODEX_EXECUTION_FAILED",
+        message: "Codex failed",
+        retryable: true
+      });
+    } else if (method === "turn/completed") {
+      const turn = (params["turn"] ?? {}) as Record<string, unknown>;
+      const usage = (params["usage"] ?? turn["usage"] ?? {}) as Record<string, unknown>;
+      const inputTokens = Number(usage["inputTokens"] ?? 0);
+      const outputTokens = Number(usage["outputTokens"] ?? 0);
+      if (
+        !Number.isSafeInteger(inputTokens) ||
+        inputTokens < 0 ||
+        !Number.isSafeInteger(outputTokens) ||
+        outputTokens < 0
+      )
+        return channel.fail("VES_CODEX_STREAM_INVALID");
+      state.emit({ type: "usage.updated", inputTokens, outputTokens });
+      if (turn["status"] === "failed" && state.outcome !== "failed") {
+        state.outcome = "failed";
+        state.emit({
+          type: "error",
+          code: "VES_CODEX_EXECUTION_FAILED",
+          message: "Codex failed",
+          retryable: true
+        });
+      }
+      channel.result();
+    }
+  };
+  const converse = async () => {
+    await rpc("initialize", {
+      clientInfo: { name: "verchestra", title: "Verchestra", version: "1.0.0" },
+      capabilities: { experimentalApi: true }
+    });
+    notify("initialized");
+    const catalog = (await rpc("model/list")) as { data?: readonly { id?: string; model?: string }[] };
+    const selected = catalog.data?.find((entry) => entry.model === execution.model || entry.id === execution.model);
+    if (selected?.model !== execution.model)
+      throw codexError("VES_CODEX_IDENTITY_MISMATCH", "Codex model is unavailable");
+    const thread = (await rpc("thread/start", conversation.threadParams())) as { thread?: { id?: string } };
+    threadId = thread.thread?.id;
+    if (typeof threadId !== "string") throw codexError("VES_CODEX_PROTOCOL_FAILED", "Codex thread identity is invalid");
+    const turn = (await rpc("turn/start", { threadId, input: [{ type: "text", text: execution.prompt }] })) as {
+      turn?: { id?: string };
+    };
+    turnId = turn.turn?.id;
+    if (typeof turnId !== "string") throw codexError("VES_CODEX_PROTOCOL_FAILED", "Codex turn identity is invalid");
+    interrupt();
+  };
+  const closed = () => {
+    for (const waiter of pending.values()) waiter.reject(codexError("VES_CODEX_PROCESS_FAILED", "Codex process ended"));
+    pending.clear();
+  };
+  return { receive, converse, interrupt, closed };
+}
 
 export class CodexDriver implements Driver {
   readonly #dependencies: CodexDriverDependencies;
@@ -95,7 +247,7 @@ export class CodexDriver implements Driver {
   readonly #minimumVersion: string;
   readonly #processContext: CodexProcessContext | undefined;
   readonly #terminateTree: ProcessTreeTerminator;
-  readonly #sessions = new DriverSessionLedger<CodexSessionResources>({
+  readonly #sessions = new DriverSessionLedger<ProviderChildResources>({
     noun: "Codex",
     stop: ({ resources }) => resources.stop?.()
   });
@@ -181,239 +333,31 @@ export class CodexDriver implements Driver {
     const sessionId = `codex-session:${randomUUID()}`;
     const state = this.#sessions.open(sessionId, sink, {});
     const redact = sensitiveValueRedactor(execution.sensitiveValues ?? []);
-    const child = spawn(this.#command[0] as string, [...this.buildArguments()], {
-      cwd: this.#workingDirectory(),
-      env: this.buildEnvironment(execution.environment),
-      stdio: ["pipe", "pipe", "pipe"],
-      detached: OWN_PROCESS_GROUP,
-      windowsHide: true
+    await runProviderChild({
+      profile: CHILD_PROFILE,
+      launch: {
+        command: this.#command[0] as string,
+        arguments: this.buildArguments(),
+        cwd: this.#workingDirectory(),
+        environment: this.buildEnvironment(execution.environment),
+        maxOutputBytes: execution.maxOutputBytes,
+        abortGraceMs: execution.cancelGraceMs ?? 250
+      },
+      session: state,
+      signal,
+      terminateTree: this.#terminateTree,
+      onSpawn: this.#dependencies.onSpawn,
+      protocol: (channel) =>
+        codexProtocol(channel, {
+          request,
+          execution,
+          session: state,
+          sessionId,
+          redact,
+          threadParams: () => this.buildThreadParams(execution),
+          onMessageSent: this.#dependencies.onMessageSent
+        })
     });
-    const runEnded = state.runStarted();
-    state.resources.child = child;
-    let streamFailure: string | undefined;
-    let aborted = false;
-    // invariant: a stop marks the run as aborted before the provider is
-    // terminated, so the run ends as aborted and not as a process that failed.
-    // why: a stream that had already failed keeps its own report; the stop did
-    // not cause that failure.
-    const stopRequested = () => {
-      if (streamFailure === undefined) aborted = true;
-    };
-    let stopChild = async (): Promise<void> => undefined;
-    if (child.pid !== undefined) {
-      stopChild = singleTermination(this.#terminateTree, child.pid);
-      state.resources.stop = () => {
-        stopRequested();
-        return stopChild();
-      };
-      this.#dependencies.onSpawn?.(child.pid);
-    }
-    // invariant: a stream that failed and a run that ended with the provider
-    // still running end the provider through the termination of its tree, as a
-    // stop does. A signal to the one process would leave its descendants.
-    let ending = false;
-    const terminateUnawaited = unawaitedTermination(() => stopChild());
-    const endChild = () => {
-      ending = true;
-      terminateUnawaited();
-    };
-
-    let nextId = 1;
-    let outputBytes = 0;
-    const maximum = execution.maxOutputBytes ?? 1_048_576;
-    const grace = execution.cancelGraceMs ?? 250;
-    let threadId: string | undefined;
-    let turnId: string | undefined;
-    let interruptSent = false;
-    let resultSeen = false;
-    const pending = new Map<number, { resolve(value: unknown): void; reject(error: Error): void }>();
-    let finishRun!: () => void;
-    const finished = new Promise<void>((resolve) => (finishRun = resolve));
-
-    const write = (message: Readonly<Record<string, unknown>>) => {
-      this.#dependencies.onMessageSent?.(structuredClone(message));
-      child.stdin.write(`${JSON.stringify(message)}\n`);
-    };
-    const notify = (method: string, params: Readonly<Record<string, unknown>> = {}) => write({ method, params });
-    const rpc = (method: string, params: Readonly<Record<string, unknown>> = {}) => {
-      const id = nextId++;
-      write({ method, id, params });
-      return new Promise<unknown>((resolve, reject) => pending.set(id, { resolve, reject }));
-    };
-    const fail = (code: string) => {
-      if (streamFailure !== undefined) return;
-      streamFailure = code;
-      finishRun();
-      endChild();
-    };
-    const interrupt = () => {
-      if (!aborted || threadId === undefined || turnId === undefined || interruptSent || ending) return;
-      interruptSent = true;
-      void rpc("turn/interrupt", { threadId, turnId }).catch(() => undefined);
-    };
-    child.stderr.on("data", (chunk: Buffer) => {
-      outputBytes += chunk.length;
-      if (outputBytes > maximum) fail("VES_CODEX_OUTPUT_LIMIT");
-    });
-    child.stdin.on("error", () => {
-      if (!aborted) fail("VES_CODEX_STDIN_FAILED");
-    });
-    const lines = readline.createInterface({ input: child.stdout, crlfDelay: Infinity });
-    lines.on("line", (line) => {
-      outputBytes += Buffer.byteLength(line) + 1;
-      if (outputBytes > maximum) return fail("VES_CODEX_OUTPUT_LIMIT");
-      const message = protocolMessage(line);
-      if (message === undefined) return fail("VES_CODEX_STREAM_INVALID");
-      if (typeof message["id"] === "number" && (Object.hasOwn(message, "result") || Object.hasOwn(message, "error"))) {
-        const waiter = pending.get(message["id"]);
-        if (waiter !== undefined) {
-          pending.delete(message["id"]);
-          if (message["error"] !== undefined) waiter.reject(codexError("VES_CODEX_RPC_FAILED", "Codex request failed"));
-          else waiter.resolve(message["result"]);
-        }
-        return;
-      }
-      const method = message["method"];
-      const params = (message["params"] ?? {}) as Record<string, unknown>;
-      if (method === "thread/started") {
-        state.emit({ type: "session.started", sessionId });
-        state.emit({
-          type: "model.resolved",
-          passportRef: request.passportRef,
-          provider: "openai",
-          resolvedModel: execution.model
-        });
-      } else if (method === "item/agentMessage/delta") {
-        state.emit({ type: "content.delta", text: redact(params["delta"] ?? "") });
-      } else if (method === "item/tool/call" && typeof message["id"] === "number") {
-        if (typeof params["callId"] !== "string" || typeof params["tool"] !== "string")
-          return fail("VES_CODEX_STREAM_INVALID");
-        if (!execution.tools.some((tool) => tool.name === params["tool"])) return fail("VES_CODEX_TOOL_UNDECLARED");
-        state.emit({
-          type: "tool.requested",
-          toolCallId: params["callId"],
-          name: params["tool"],
-          input: params["arguments"]
-        });
-        write({
-          id: message["id"],
-          result: {
-            success: false,
-            contentItems: [{ type: "inputText", text: "Execution is controlled by Verchestra." }]
-          }
-        });
-      } else if (
-        (method === "item/commandExecution/requestApproval" || method === "item/fileChange/requestApproval") &&
-        typeof message["id"] === "number"
-      ) {
-        state.emit({
-          type: "warning",
-          code: "VES_CODEX_BUILTIN_TOOL_DENIED",
-          message: "Codex built-in effect was denied"
-        });
-        write({ id: message["id"], result: { decision: "decline" } });
-      } else if (method === "error") {
-        state.outcome = "failed";
-        state.emit({
-          type: "error",
-          code: "VES_CODEX_EXECUTION_FAILED",
-          message: "Codex failed",
-          retryable: true
-        });
-      } else if (method === "turn/completed") {
-        resultSeen = true;
-        const turn = (params["turn"] ?? {}) as Record<string, unknown>;
-        const usage = (params["usage"] ?? turn["usage"] ?? {}) as Record<string, unknown>;
-        const inputTokens = Number(usage["inputTokens"] ?? 0);
-        const outputTokens = Number(usage["outputTokens"] ?? 0);
-        if (
-          !Number.isSafeInteger(inputTokens) ||
-          inputTokens < 0 ||
-          !Number.isSafeInteger(outputTokens) ||
-          outputTokens < 0
-        )
-          return fail("VES_CODEX_STREAM_INVALID");
-        state.emit({ type: "usage.updated", inputTokens, outputTokens });
-        if (turn["status"] === "failed" && state.outcome !== "failed") {
-          state.outcome = "failed";
-          state.emit({
-            type: "error",
-            code: "VES_CODEX_EXECUTION_FAILED",
-            message: "Codex failed",
-            retryable: true
-          });
-        }
-        finishRun();
-      }
-    });
-    const closed = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolve) =>
-      child.once("close", (code, exitSignal) => {
-        for (const waiter of pending.values())
-          waiter.reject(codexError("VES_CODEX_PROCESS_FAILED", "Codex process ended"));
-        pending.clear();
-        finishRun();
-        resolve({ code, signal: exitSignal });
-      })
-    );
-    const abort = () => {
-      if (aborted) return;
-      stopRequested();
-      interrupt();
-      const timer = setTimeout(() => {
-        if (child.exitCode === null && child.signalCode === null) void state.resources.stop?.();
-      }, grace);
-      timer.unref();
-    };
-    signal.addEventListener("abort", abort, { once: true });
-    try {
-      await rpc("initialize", {
-        clientInfo: { name: "verchestra", title: "Verchestra", version: "1.0.0" },
-        capabilities: { experimentalApi: true }
-      });
-      notify("initialized");
-      const catalog = (await rpc("model/list")) as { data?: readonly { id?: string; model?: string }[] };
-      const selected = catalog.data?.find((entry) => entry.model === execution.model || entry.id === execution.model);
-      if (selected?.model !== execution.model)
-        throw codexError("VES_CODEX_IDENTITY_MISMATCH", "Codex model is unavailable");
-      const thread = (await rpc("thread/start", this.buildThreadParams(execution))) as { thread?: { id?: string } };
-      threadId = thread.thread?.id;
-      if (typeof threadId !== "string")
-        throw codexError("VES_CODEX_PROTOCOL_FAILED", "Codex thread identity is invalid");
-      const turn = (await rpc("turn/start", { threadId, input: [{ type: "text", text: execution.prompt }] })) as {
-        turn?: { id?: string };
-      };
-      turnId = turn.turn?.id;
-      if (typeof turnId !== "string") throw codexError("VES_CODEX_PROTOCOL_FAILED", "Codex turn identity is invalid");
-      interrupt();
-      await finished;
-    } catch {
-      if (!aborted && streamFailure === undefined) streamFailure = "VES_CODEX_PROTOCOL_FAILED";
-    }
-    if (child.exitCode === null && child.signalCode === null) endChild();
-    const exit = await closed;
-    signal.removeEventListener("abort", abort);
-    lines.close();
-    try {
-      if (aborted) {
-        state.outcome = "cancelled";
-        state.emit({ type: "error", code: "VES_CODEX_ABORTED", message: "Codex was aborted", retryable: true });
-      } else if (streamFailure !== undefined) {
-        state.outcome = "failed";
-        state.emit({ type: "error", code: streamFailure, message: "Codex protocol failed", retryable: false });
-      } else if (!resultSeen) {
-        state.outcome = "failed";
-        state.emit({
-          type: "error",
-          code: exit.code !== 0 || exit.signal !== null ? "VES_CODEX_PROCESS_FAILED" : "VES_CODEX_STREAM_INCOMPLETE",
-          message: "Codex process failed",
-          retryable: false
-        });
-      }
-    } finally {
-      runEnded();
-    }
-    delete state.resources.child;
-    delete state.resources.stop;
     return Object.freeze({ sessionId });
   }
 
@@ -449,18 +393,4 @@ export class CodexDriver implements Driver {
       if (!Number.isSafeInteger(value) || value < 0)
         throw codexError("VES_CODEX_LIMIT_INVALID", "Codex execution limit is invalid");
   }
-}
-
-// invariant: every App Server line is a JSON object. A line that parses to
-// anything else is a broken stream, and `null` must not reach a member read.
-function protocolMessage(line: string): Record<string, unknown> | undefined {
-  let message: unknown;
-  try {
-    message = JSON.parse(line);
-  } catch {
-    return undefined;
-  }
-  return message !== null && typeof message === "object" && !Array.isArray(message)
-    ? (message as Record<string, unknown>)
-    : undefined;
 }

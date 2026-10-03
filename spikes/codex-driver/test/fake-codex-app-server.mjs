@@ -55,6 +55,13 @@ lines.on("line", (line) => {
       emit({ method: "item/agentMessage/delta", params: { threadId: "private-thread-id", turnId: "private-turn-id", itemId: "msg-1", delta: `value:${process.env.TEST_SECRET}` } });
       emit({ method: "turn/completed", params: { threadId: "private-thread-id", turn: { id: "private-turn-id", status: "completed" }, usage: { inputTokens: 1, outputTokens: 1 } } });
       process.exit(0);
+    } else if (mode === "crash") {
+      // why: a provider that ends with a failure before its turn completes.
+      process.exit(3);
+    } else if (mode === "exit-after-result") {
+      // why: a provider that completes its turn and then exits with a failure.
+      emit({ method: "turn/completed", params: { threadId: "private-thread-id", turn: { id: "private-turn-id", status: "completed" }, usage: { inputTokens: 1, outputTokens: 1 } } });
+      process.exit(1);
     } else if (mode === "not-an-object") {
       // why: a provider whose lines parse as JSON and are not objects: null,
       // then a string that spells an error code. It then never answers.
