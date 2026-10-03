@@ -55,6 +55,11 @@ lines.on("line", (line) => {
       emit({ method: "item/agentMessage/delta", params: { threadId: "private-thread-id", turnId: "private-turn-id", itemId: "msg-1", delta: `value:${process.env.TEST_SECRET}` } });
       emit({ method: "turn/completed", params: { threadId: "private-thread-id", turn: { id: "private-turn-id", status: "completed" }, usage: { inputTokens: 1, outputTokens: 1 } } });
       process.exit(0);
+    } else if (mode === "usage") {
+      // why: a provider whose completed turn reports the usage FAKE_CODEX_USAGE
+      // spells as JSON, whatever its counts are.
+      emit({ method: "turn/completed", params: { threadId: "private-thread-id", turn: { id: "private-turn-id", status: "completed" }, usage: JSON.parse(process.env.FAKE_CODEX_USAGE) } });
+      process.exit(0);
     } else if (mode === "crash") {
       // why: a provider that ends with a failure before its turn completes.
       process.exit(3);

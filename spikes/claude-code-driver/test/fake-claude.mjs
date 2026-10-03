@@ -74,8 +74,10 @@ if (mode === "malformed") {
   emit({ type: "result", subtype: "success", is_error: false, result: "tool requested", total_cost_usd: 0.01, usage: { input_tokens: 4, output_tokens: 2 }, session_id: "private-session-id" });
 } else if (mode === "invalid-tool") {
   emit({ type: "assistant", message: { content: [{ type: "tool_use", id: 7, name: null, input: {} }] } });
-} else if (mode === "invalid-usage") {
-  emit({ type: "result", subtype: "success", is_error: false, result: "bad usage", usage: { input_tokens: -1, output_tokens: "many" }, session_id: "private-session-id" });
+} else if (mode === "usage") {
+  // why: a provider whose result reports the usage FAKE_CLAUDE_USAGE spells as
+  // JSON, whatever its counts are.
+  emit({ type: "result", subtype: "success", is_error: false, result: "usage", usage: JSON.parse(process.env.FAKE_CLAUDE_USAGE), session_id: "private-session-id" });
 } else if (mode === "error") {
   emit({ type: "result", subtype: "error_during_execution", is_error: true, result: "provider failed", total_cost_usd: 0, usage: { input_tokens: 1, output_tokens: 0 }, session_id: "private-session-id" });
 } else if (mode === "secret") {

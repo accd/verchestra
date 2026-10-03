@@ -1,7 +1,7 @@
 import { chmod, mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 
-import { runDriverSession, type DriverSessionEvent } from "@verchestra/agent-runtime";
+import { runDriverSession } from "@verchestra/agent-runtime";
 import {
   assertNoToolRequests,
   assertReadOnlyGrant,
@@ -10,7 +10,7 @@ import {
   type BudgetMeterError,
   type NormalizedTaskRequest
 } from "@verchestra/application";
-import { isTaskPath } from "@verchestra/domain";
+import { isTaskPath, type DriverEvent } from "@verchestra/domain";
 import { CodexDriver, type DriverStartRequest } from "@verchestra/drivers";
 
 import { ensureCodexIdentity } from "./task-codex-identity.ts";
@@ -164,12 +164,12 @@ interface VerifierStop {
 // hazard: an error that is not the meter's own refusal is rethrown; the
 // session runner then ends the session and raises it, so a defect in metering
 // can never pass as a verifier that merely failed.
-function meterUsage(meter: BudgetMeter | undefined, model: string, event: DriverSessionEvent, stop: VerifierStop) {
+function meterUsage(meter: BudgetMeter | undefined, model: string, event: DriverEvent, stop: VerifierStop) {
   if (meter === undefined || event.type !== "usage.updated") return;
   const decision = recordUsageAndDecide(meter, {
     model,
-    inputTokens: event["inputTokens"] as number,
-    outputTokens: event["outputTokens"] as number
+    inputTokens: event.inputTokens,
+    outputTokens: event.outputTokens
   });
   if (!decision.stop) return;
   stop.refusal ??= decision.failure;
@@ -243,7 +243,7 @@ export async function runCodexVerifier(options: CodexSessionOptions): Promise<st
           () => stop.controller.abort("verifier duration reached"),
           Math.max(1, Math.ceil(options.meter.remainingDurationMs()))
         );
-  const events: DriverSessionEvent[] = [];
+  const events: DriverEvent[] = [];
   let text = "";
   try {
     // invariant: the session runner owns the session: a caller that is already
@@ -255,7 +255,7 @@ export async function runCodexVerifier(options: CodexSessionOptions): Promise<st
       signal: AbortSignal.any([options.signal, stop.controller.signal]),
       observe: (event) => {
         events.push(event);
-        if (event.type === "content.delta" && typeof event["text"] === "string") text += event["text"];
+        if (event.type === "content.delta") text += event.text;
         meterUsage(options.meter, model, event, stop);
       }
     });

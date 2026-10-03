@@ -94,7 +94,6 @@ export {
 } from "./execution/driver-execution-adapter.ts";
 export {
   runDriverSession,
-  type DriverSessionEvent,
   type DriverSessionOutcome,
   type DriverSessionPort,
   type DriverSessionResult,

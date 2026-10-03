@@ -4,6 +4,9 @@ import { chmod, lstat, mkdir, mkdtemp, readdir, rm, stat, writeFile } from "node
 import { tmpdir, userInfo } from "node:os";
 import { isAbsolute, join } from "node:path";
 import { promisify } from "node:util";
+
+import { usageUpdated } from "@verchestra/domain";
+
 import { processTreeTerminator, type ProcessTreeTerminator } from "./driver-process-tree.ts";
 import { sensitiveValueRedactor } from "./driver-redaction.ts";
 import { DriverSessionLedger, type DriverSession } from "./driver-session-ledger.ts";
@@ -396,21 +399,13 @@ function claudeProtocol(channel: ProviderChannel, conversation: ClaudeConversati
       // why: a result counts once the session was announced; a result before
       // that leaves the run without one.
       if (initialized) channel.result();
-      const usage = event["usage"] as Record<string, unknown> | undefined;
-      const inputTokens = Number(usage?.["input_tokens"] ?? 0);
-      const outputTokens = Number(usage?.["output_tokens"] ?? 0);
-      if (
-        !Number.isSafeInteger(inputTokens) ||
-        inputTokens < 0 ||
-        !Number.isSafeInteger(outputTokens) ||
-        outputTokens < 0
-      )
-        return channel.fail("VES_CLAUDE_STREAM_INVALID");
-      state.emit({
-        type: "usage.updated",
-        inputTokens,
-        outputTokens
+      const reported = event["usage"] as Readonly<Record<string, unknown>> | undefined;
+      const usage = usageUpdated({
+        inputTokens: reported?.["input_tokens"],
+        outputTokens: reported?.["output_tokens"]
       });
+      if (usage === undefined) return channel.fail("VES_CLAUDE_STREAM_INVALID");
+      state.emit(usage);
       if (event["is_error"] === true) {
         state.outcome = "failed";
         state.emit({

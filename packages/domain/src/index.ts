@@ -4,6 +4,7 @@ export * from "./canonical/canonical-guard.ts";
 export * from "./canonical/canonical-sets.ts";
 export * from "./canonical/canonical-optional.ts";
 export * from "./canonical/canonical-digest.ts";
+export * from "./driver-event/driver-event.ts";
 export * from "./errors/core-errors.ts";
 export * from "./errors/public-error.ts";
 export * from "./primitives/actor.ts";

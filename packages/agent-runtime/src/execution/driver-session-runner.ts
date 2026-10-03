@@ -1,25 +1,26 @@
-type Row = Readonly<Record<string, unknown>>;
+import type { DriverEvent, DriverSessionOutcome } from "@verchestra/domain";
 
-export type DriverSessionEvent = Row & { readonly type: string };
-export type DriverSessionOutcome = "completed" | "failed" | "cancelled";
+export type { DriverSessionOutcome } from "@verchestra/domain";
+
+type Row = Readonly<Record<string, unknown>>;
 
 // The Driver protocol (packages/drivers) as seen from here. agent-runtime may
 // not import a sibling adapter, so the shape is declared structurally and the
 // composition root passes the concrete driver.
-// why: `TEvent` is the event type the driver itself declares, so an observer
-// reads a session's events as that driver types them.
-export interface DriverSessionPort<TStartRequest, TEvent extends DriverSessionEvent = DriverSessionEvent> {
+// why: the event is the one the domain declares, which every driver emits, so
+// an observer reads its fields as typed.
+export interface DriverSessionPort<TStartRequest> {
   start(
     request: TStartRequest,
-    sink: (event: TEvent) => void,
+    sink: (event: DriverEvent) => void,
     signal: AbortSignal
   ): Promise<{ readonly sessionId: string }>;
   cancel(session: { readonly sessionId: string }, reason: string): Promise<void>;
   close(session: { readonly sessionId: string }): Promise<Row>;
 }
 
-export interface DriverSessionRun<TStartRequest, TEvent extends DriverSessionEvent = DriverSessionEvent> {
-  readonly driver: DriverSessionPort<TStartRequest, TEvent>;
+export interface DriverSessionRun<TStartRequest> {
+  readonly driver: DriverSessionPort<TStartRequest>;
   readonly startRequest: TStartRequest;
   // invariant: the one way to stop the session. A caller that must stop it from
   // inside `observe`, or from a timer, aborts the controller it passed here.
@@ -27,7 +28,7 @@ export interface DriverSessionRun<TStartRequest, TEvent extends DriverSessionEve
   // invariant: sees every event the driver emits, in order, and nothing after
   // it has thrown. It runs inside the driver's stream handling, so an error it
   // throws is held and rethrown by the runner once the session is closed.
-  readonly observe?: (event: TEvent) => void;
+  readonly observe?: (event: DriverEvent) => void;
 }
 
 export interface DriverSessionResult {
@@ -47,16 +48,16 @@ function result(outcome: DriverSessionOutcome, errorCodes: readonly string[]): D
   return Object.freeze({ outcome, errorCodes: Object.freeze([...errorCodes]) });
 }
 
-class ObservedSession<TStartRequest, TEvent extends DriverSessionEvent> {
-  readonly #run: DriverSessionRun<TStartRequest, TEvent>;
+class ObservedSession<TStartRequest> {
+  readonly #run: DriverSessionRun<TStartRequest>;
   readonly #abort = new AbortController();
   readonly errorCodes: string[] = [];
   #sessionId: string | undefined;
-  #terminalOutcome: unknown;
+  #terminalOutcome: DriverSessionOutcome | undefined;
   #cancelling: Promise<void> | undefined;
   #observer: { readonly failure: unknown } | undefined;
 
-  constructor(run: DriverSessionRun<TStartRequest, TEvent>) {
+  constructor(run: DriverSessionRun<TStartRequest>) {
     this.#run = run;
   }
 
@@ -73,7 +74,7 @@ class ObservedSession<TStartRequest, TEvent extends DriverSessionEvent> {
     this.#cancel();
   };
 
-  readonly sink = (event: TEvent): void => {
+  readonly sink = (event: DriverEvent): void => {
     this.#track(event);
     this.#deliver(event);
     // why: a driver that had not announced its session when the stop arrived
@@ -114,14 +115,13 @@ class ObservedSession<TStartRequest, TEvent extends DriverSessionEvent> {
     return this.errorCodes.length === 0 && closed["outcome"] === "completed" ? "completed" : "failed";
   }
 
-  #track(event: DriverSessionEvent): void {
-    if (event.type === "session.started" && typeof event["sessionId"] === "string")
-      this.#sessionId ??= event["sessionId"];
-    else if (event.type === "session.closed") this.#terminalOutcome ??= event["outcome"];
-    else if (event.type === "error") this.errorCodes.push(safeCode(event["code"]));
+  #track(event: DriverEvent): void {
+    if (event.type === "session.started" && typeof event.sessionId === "string") this.#sessionId ??= event.sessionId;
+    else if (event.type === "session.closed") this.#terminalOutcome ??= event.outcome;
+    else if (event.type === "error") this.errorCodes.push(safeCode(event.code));
   }
 
-  #deliver(event: TEvent): void {
+  #deliver(event: DriverEvent): void {
     if (this.#observer !== undefined) return;
     try {
       this.#run.observe?.(event);
@@ -145,8 +145,8 @@ class ObservedSession<TStartRequest, TEvent extends DriverSessionEvent> {
 // invariant: it is bound to the Driver protocol and to nothing else; a role
 // (implementer, verifier, self-test) supplies its own observer and decides
 // what an outcome means for it (AD-012).
-export async function runDriverSession<TStartRequest, TEvent extends DriverSessionEvent = DriverSessionEvent>(
-  run: DriverSessionRun<TStartRequest, TEvent>
+export async function runDriverSession<TStartRequest>(
+  run: DriverSessionRun<TStartRequest>
 ): Promise<DriverSessionResult> {
   if (run.signal?.aborted === true) return result("cancelled", []);
   const session = new ObservedSession(run);
