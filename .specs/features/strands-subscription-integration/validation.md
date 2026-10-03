@@ -59,6 +59,12 @@ Author's evidence, commit by commit, on branch `strands/t4-driver-results`
 | 3 | The installed `codex-cli 0.159.3` generates `outputSchema` on `turn/start`, every allowlisted request, the two denied credit methods, `chatgpt` accounts, `usageLimitExceeded`, `ordinaryUsageAllowed`, the credits snapshot, the four quota kinds, `account/rateLimits/updated`, and `agentMessage` items (read-only generation, disposable HOME and CODEX_HOME, nothing written to HOME) | `spikes/codex-driver/test/codex-driver-structured.test.mjs:145` | same, against the installed 0.159.3 |
 | 3 | Existing Codex sequences unchanged: contract, lifecycle, integration, child-run, cancel-order, process-tree, provider-ends, identity, and T04 spike suites pass with no edit | unchanged files | 191 of 191 |
 
+| 4 | SSI-48: a completed session's `result.structured` becomes `outputRefs: ["payload:sha256:<digest of the canonical bytes>"]`; the store returns exactly those bytes; the `driver-finished` checkpoint keeps its six fields and no answer text | `tests/integration/driver-execution-adapter.test.mjs:305` | `node --test tests/integration/driver-execution-adapter.test.mjs`: 15 of 15 |
+| 4 | A structured result of a failed session is not handed on (`outputRefs: []`) | `tests/integration/driver-execution-adapter.test.mjs:323` | same |
+| 4 | A second structured result, or one whose size is not its canonical size, stops the session with `VES_DRIVER_ADAPTER_INPUT_INVALID` and no `driver-finished` checkpoint | `tests/integration/driver-execution-adapter.test.mjs:333` | same |
+| 4 | SSI-58/59 seam: the first `quota.exhausted` stops the session and surfaces as `VES_DRIVER_QUOTA_EXHAUSTED` with a frozen `{ scope, resetsAt? }`; later events are not handed on | `tests/integration/driver-execution-adapter.test.mjs:356` | same |
+| 4 | SSI-49, SSI-81: Codex events and closes in five account and quota modes carry no e-mail, account identifier, upsell, provider prose, or thread, turn, or session identity, and the client echoes no account field; a structured Claude session through the adapter hands on only its canonical answer, and its checkpoints, result, payload, and quota refusal carry no token, session, purchase field, or temporary path | `tests/security/driver-structured-results-security.test.mjs:58`, `:162`, `:173` | `node --test tests/security/driver-structured-results-security.test.mjs`: 3 of 3 |
+
 Changed assertions (no test deleted): `tests/unit/driver-event.test.mjs:18`
 "the field table names the eight event types" became "ten event types" with the
 two new rows inserted after `usage.updated`; the eight existing types keep
@@ -73,9 +79,16 @@ arrow function of the file is above 10; `Async method 'start'` keeps 14. It lost
 `packages/drivers/src/codex-driver.ts :: Arrow function` (26) the same way;
 `Private method #validateExecution` keeps 14.
 `docs/canonical-json-census.json` gained
-`packages/domain/src/driver-event/driver-event.ts` and
-`packages/drivers/src/driver-structured-output.ts` (both `migrated-v2`, two
-`canonicalizeJsonV2` signals each).
+`packages/domain/src/driver-event/driver-event.ts`,
+`packages/drivers/src/driver-structured-output.ts`, and
+`packages/agent-runtime/src/execution/driver-execution-adapter.ts` (all
+`migrated-v2`, two `canonicalizeJsonV2` signals each).
+
+Fixture fidelity: commit 2 also made the `vestra task` journey fake
+(`tests/helpers/task-cli-fakes/fake-claude-task.mjs`) report `apiKeySource`
+as 2.1.282 does (`ANTHROPIC_API_KEY` under `--bare`, `none` otherwise); without
+it the new subscription check refuses the fake, as it would refuse a real
+session that hid its source.
 
 ## Requirement Evidence
 

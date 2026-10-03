@@ -1,7 +1,7 @@
 import { isAbsolute } from "node:path";
 
 import type { ExecutionDriverPort, ExecutionPayloadStore } from "@verchestra/application";
-import type { DriverEvent, DriverEventOf } from "@verchestra/domain";
+import { canonicalizeJsonV2, type DriverEvent, type DriverEventOf } from "@verchestra/domain";
 
 import { runDriverSession, type DriverSessionPort, type DriverSessionResult } from "./driver-session-runner.ts";
 import { MCP_BRIDGE_QUALIFIED_TOOLS } from "./mcp-bridge-protocol.ts";
@@ -34,13 +34,23 @@ export interface DriverExecutionAdapterOptions<TStartRequest> {
   readonly socketRoot?: string;
 }
 
-export class DriverExecutionAdapterError extends Error {
-  readonly code: "VES_DRIVER_TOOL_OUTSIDE_BRIDGE" | "VES_DRIVER_ADAPTER_INPUT_INVALID";
+// invariant: what a quota signal hands on: the scope the provider named and
+// its reset time when it reported one, nothing else (SSI-61).
+export interface DriverQuotaSignal {
+  readonly scope: string;
+  readonly resetsAt?: string;
+}
 
-  constructor(code: DriverExecutionAdapterError["code"], message: string) {
+export class DriverExecutionAdapterError extends Error {
+  readonly code: "VES_DRIVER_TOOL_OUTSIDE_BRIDGE" | "VES_DRIVER_ADAPTER_INPUT_INVALID" | "VES_DRIVER_QUOTA_EXHAUSTED";
+  // invariant: set only with VES_DRIVER_QUOTA_EXHAUSTED.
+  readonly quota: DriverQuotaSignal | undefined;
+
+  constructor(code: DriverExecutionAdapterError["code"], message: string, quota?: DriverQuotaSignal) {
     super(message);
     this.name = "DriverExecutionAdapterError";
     this.code = code;
+    this.quota = quota;
   }
 }
 
@@ -51,6 +61,21 @@ interface RunState {
   usageFailure: unknown;
   toolRequests: number;
   readonly checkpoints: Promise<unknown>[];
+  structured: DriverEventOf<"result.structured"> | undefined;
+  invalidInput: DriverExecutionAdapterError | undefined;
+  quota: DriverQuotaSignal | undefined;
+}
+
+// why: a payload is the canonical text of the result, so the same answer is
+// the same reference, and its size is the size the driver bounded.
+function resultBytes(event: DriverEventOf<"result.structured">): Uint8Array {
+  const bytes = new TextEncoder().encode(canonicalizeJsonV2(event.value));
+  if (bytes.byteLength !== event.bytes)
+    throw new DriverExecutionAdapterError(
+      "VES_DRIVER_ADAPTER_INPUT_INVALID",
+      "Driver structured result size does not match its content"
+    );
+  return bytes;
 }
 
 // ExecutionDriverPort over a Driver session whose only tools are the mediated
@@ -82,7 +107,10 @@ export class DriverExecutionAdapter<TStartRequest> implements ExecutionDriverPor
       fatal: undefined,
       usageFailure: undefined,
       toolRequests: 0,
-      checkpoints: []
+      checkpoints: [],
+      structured: undefined,
+      invalidInput: undefined,
+      quota: undefined
     };
     let bridge: McpToolBridgeController | undefined;
     try {
@@ -97,6 +125,12 @@ export class DriverExecutionAdapter<TStartRequest> implements ExecutionDriverPor
         throw new DriverExecutionAdapterError("VES_DRIVER_ADAPTER_INPUT_INVALID", "Driver session has no model");
       state.model = session.model;
       const { outcome, errorCodes } = await this.#run(session, state, abort, control);
+      // invariant: only a completed session hands on its structured result,
+      // and only as a reference to bytes the store holds (SSI-48).
+      const outputRefs =
+        outcome === "completed" && state.structured !== undefined
+          ? [await this.#options.payloads.put(resultBytes(state.structured))]
+          : [];
       const statistics = bridge.statistics();
       await control.checkpoint("driver-finished", {
         outcome,
@@ -106,7 +140,7 @@ export class DriverExecutionAdapter<TStartRequest> implements ExecutionDriverPor
         denied: statistics.denied,
         errorCodes: [...errorCodes]
       });
-      return Object.freeze({ status: outcome, outputRefs: Object.freeze([]) });
+      return Object.freeze({ status: outcome, outputRefs: Object.freeze(outputRefs) });
     } finally {
       control.signal?.removeEventListener("abort", forward);
       this.#active.delete(request.worktreeRef);
@@ -164,6 +198,13 @@ export class DriverExecutionAdapter<TStartRequest> implements ExecutionDriverPor
       );
     if (state.fatal !== undefined) throw state.fatal;
     if (state.usageFailure !== undefined) throw state.usageFailure;
+    if (state.invalidInput !== undefined) throw state.invalidInput;
+    if (state.quota !== undefined)
+      throw new DriverExecutionAdapterError(
+        "VES_DRIVER_QUOTA_EXHAUSTED",
+        "The provider reported that its usage allowance is exhausted",
+        state.quota
+      );
     return finished;
   }
 
@@ -183,9 +224,43 @@ export class DriverExecutionAdapter<TStartRequest> implements ExecutionDriverPor
       case "tool.requested":
         this.#toolRequested(event, state, abort);
         break;
+      case "result.structured":
+        this.#structuredResult(event, state, abort);
+        break;
+      case "quota.exhausted":
+        this.#quotaExhausted(event, state, abort);
+        break;
       default:
         break;
     }
+  }
+
+  // invariant: a session reports at most one structured result, whose size
+  // is its canonical size; anything else is input the adapter does not trust.
+  #structuredResult(event: DriverEventOf<"result.structured">, state: RunState, abort: AbortController): void {
+    if (state.quota !== undefined || state.invalidInput !== undefined) return;
+    try {
+      if (state.structured !== undefined)
+        throw new DriverExecutionAdapterError(
+          "VES_DRIVER_ADAPTER_INPUT_INVALID",
+          "Driver reported more than one structured result"
+        );
+      resultBytes(event);
+      state.structured = event;
+    } catch (error) {
+      state.invalidInput = error as DriverExecutionAdapterError;
+      abort.abort("driver result is invalid");
+    }
+  }
+
+  // invariant: the first quota signal stops the session; it is kept with its
+  // scope and reset only.
+  #quotaExhausted(event: DriverEventOf<"quota.exhausted">, state: RunState, abort: AbortController): void {
+    if (state.quota !== undefined) return;
+    state.quota = Object.freeze(
+      event.resetsAt === undefined ? { scope: event.scope } : { scope: event.scope, resetsAt: event.resetsAt }
+    );
+    abort.abort("provider usage allowance exhausted");
   }
 
   // invariant: the bridge is the only tool surface; any other requested tool
