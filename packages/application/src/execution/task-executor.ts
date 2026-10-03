@@ -382,9 +382,24 @@ function within(path: string, roots: readonly string[]): boolean {
   return roots.some((root) => path === root || path.startsWith(`${root}/`));
 }
 
+function named(path: string): readonly string[] {
+  return path
+    .toLowerCase()
+    .split("/")
+    .filter((segment) => segment !== "" && segment !== ".");
+}
+
+// hazard: a case-insensitive volume, the macOS default, gives `src/Generated`
+// and `src/generated` one file, and `src/vendor/` names what `src/vendor`
+// names; a protected path is compared by what it names, in any letter case.
+export function isProtectedTaskPath(path: string, protectedPaths: readonly string[]): boolean {
+  const target = named(path);
+  return protectedPaths.some((entry) => named(entry).every((segment, index) => target[index] === segment));
+}
+
 function assertTarget(task: AtomicExecutionTask, value: string): string {
   const path = logicalPath(value);
-  if (within(path, task.protectedPaths)) fail("VES_EXECUTOR_PROTECTED_PATH", "Tool target is protected");
+  if (isProtectedTaskPath(path, task.protectedPaths)) fail("VES_EXECUTOR_PROTECTED_PATH", "Tool target is protected");
   if (!within(path, task.changeScope)) fail("VES_EXECUTOR_SCOPE_DENIED", "Tool target is outside task scope");
   return path;
 }

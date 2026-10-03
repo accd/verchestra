@@ -82,3 +82,52 @@ whole path had already stopped before it.
 Reproduce: the regression test that comes with the fix,
 `tests/e2e/task-path-case-variant-e2e.test.mjs`, fails 9 of its 14 cases
 against these sources; its assertion diffs are the outcomes in the table.
+
+## 2. The fix (its own commit, before the refactor)
+
+The executor and the gate test a protected path by what it names, letter
+case folded (decision entry "A protected path is compared by what it names,
+in any letter case" in `.specs/STATE.md`). The change is two call sites and
+one function:
+
+- `packages/application/src/execution/task-executor.ts:385-397`:
+  `isProtectedTaskPath` drops empty and `.` segments, folds case, and asks
+  whether a protected entry's segments are a prefix of the target's.
+  `assertTarget` (`:402`) uses it before every tool effect and for every
+  inspected change.
+- `packages/application/src/execution/gate-commit.ts:560`: the gate's
+  inspection check uses the same function.
+
+No error code or message changes. The scope test is untouched. Nothing that
+is stored or digested changes: the function compares, it never rewrites a
+path.
+
+### Regression evidence
+
+`tests/e2e/task-path-case-variant-e2e.test.mjs` drives each target through
+the real relay, MCP bridge, executor, worktree tool, Git inspection and gate,
+over a real repository in a temporary directory, one journey per target:
+
+| Case | Assertion | Before the fix | After |
+| --- | --- | --- | --- |
+| Case variant of a protected path absent at base (`src/generated/out.js`) | `:272-276` refused with `VES_EXECUTOR_PROTECTED_PATH`, the commit holds only `src/value.txt` | written and committed | refused before the effect |
+| Target under a protected entry with a trailing `/` (`src/vendor/lib.js`) | `:272-276` | written and committed | refused before the effect |
+| Case variant of an existing protected file (`src/LOCKED.json`) | `:272-276` | written over `src/locked.json`, run failed at inspection | refused before the effect, run commits |
+| Case variant of an existing protected directory (`src/Protected/config.json`) | `:272-276` | `VES_TOOL_PATH_ESCAPE` from the parent walk | `VES_EXECUTOR_PROTECTED_PATH` |
+| `.VERCHESTRA/x` against protected `.verchestra` | `:272-276` | `VES_EXECUTOR_SCOPE_DENIED` | `VES_EXECUTOR_PROTECTED_PATH` |
+| `.GIT/config`, `.Git/HEAD` | `:272-276` | `VES_BRIDGE_PATH_PROTECTED` | unchanged |
+| `CLI.js` against scope `cli.js` | `:272-276` | `VES_EXECUTOR_SCOPE_DENIED` | unchanged |
+| A change found by the executor's inspection | `:296` | admitted for `src/generated/out.js` and `src/vendor/lib.js` | `VES_EXECUTOR_PROTECTED_PATH` |
+| A change found by the gate's inspection | `:322` | committed for `src/generated/out.js` and `src/vendor/lib.js` | `VES_GATE_PROTECTED_PATH` |
+
+The user's checkout stays at its base and clean in every journey
+(`:277-279`). Before the fix 9 of the 14 cases fail; after it all 14 pass.
+The two `src/LOCKED.json` inspection cases pass before the fix on a
+case-insensitive volume, because Git reports the index name, and fail before
+it on a case-sensitive one, where the variant is a new file; they pin the
+rule on both.
+
+Not in this fix: the bridge's read view still compares a protected entry's
+spelling as written, so a protected `src/vendor/` does not hide
+`src/vendor/lib.js` from `read_file`. Reads change nothing and the fix stays
+on the write path; the refactor routes the read view through the same rule.
