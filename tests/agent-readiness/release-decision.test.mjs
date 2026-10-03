@@ -1,16 +1,18 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { createHash, generateKeyPairSync, sign as signBytes } from "node:crypto";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 
 import { canonicalizeJsonV2 } from "../../packages/domain/src/index.ts";
 import {
   RELEASE_DECISION_FILE,
   canonicalJson,
   readReleaseDecisions,
+  releaseDecisionFileName,
   validateReleaseDecision
 } from "../../scripts/agent-readiness.mjs";
 
@@ -62,7 +64,9 @@ const REPOSITORY = {
   validatedTasks: new Set(CHAIN)
 };
 
-const decision = (overrides = {}, signWith = KEY_PAIR) => {
+// why: `unsignedField` signs every claim but that one, which is what a verifier
+// that ignored the field would accept; it proves a field is in the signed bytes.
+const decision = (overrides = {}, signWith = KEY_PAIR, unsignedField = null) => {
   const fields = {
     schema: "verchestra-release-decision/v1",
     version: "1.0.0",
@@ -88,7 +92,11 @@ const decision = (overrides = {}, signWith = KEY_PAIR) => {
   };
   // A real signature over the final fields, unless the caller pins one (to test
   // a missing/placeholder/tampered signature) or signs with a different key.
-  if (!Object.prototype.hasOwnProperty.call(overrides, "signature")) fields.signature = signDecision(fields, signWith);
+  if (!Object.prototype.hasOwnProperty.call(overrides, "signature"))
+    fields.signature = signDecision(
+      Object.fromEntries(Object.entries(fields).filter(([key]) => key !== unsignedField)),
+      signWith
+    );
   const body = Object.entries(fields)
     .filter(([, value]) => value !== null)
     .map(([key, value]) => `${key}: ${value}`)
@@ -446,7 +454,10 @@ test("a candidate revision with no register at all is refused rather than assume
   );
 });
 
-test("a version may have at most one decision file", async (t) => {
+// why: renamed from "a version may have at most one decision file", which a
+// version with later rounds made false. The old name is a prefix of this one,
+// so the citation in docs/qualification/t77-validation.md still finds it.
+test("a version may have at most one decision file per round", async (t) => {
   const root = await mkdtemp(join(tmpdir(), "verchestra-decision-duplicate-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   const revision = await repositoryFixture(root);
@@ -481,3 +492,296 @@ test("no decision file is not a failure, because no decision has been made", asy
   assert.deepEqual([...decisions.keys()], []);
   assert.deepEqual(errors, []);
 });
+
+// Release decision rounds. A later round supersedes an earlier reject without
+// editing it: it binds to the earlier file's exact bytes, decides later, and
+// decides on a fresh candidate built on top of the earlier one.
+const VERSION = "1.0.0";
+const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
+const ROUND_DECIDED_AT = ["2026-08-26T00:00:00Z", "2026-10-01T00:00:00Z", "2026-11-01T00:00:00Z"];
+const roundFile = (round) => releaseDecisionFileName(VERSION, round);
+const roundFields = (round, superseded) => ({
+  decidedAt: ROUND_DECIDED_AT[round - 1],
+  round: String(round),
+  supersedes: roundFile(round - 1),
+  supersedesDigest: `sha256:${sha256(superseded)}`
+});
+const laterRound = (round, superseded, overrides = {}) => decision({ ...roundFields(round, superseded), ...overrides });
+const boundTo = (revision) => ({
+  candidateRevision: revision,
+  gateRevision: revision,
+  requirementsRegister: sha256(REGISTER_BYTES),
+  requirementsClosed: "4 of 4 requirements evidenced"
+});
+const readRounds = (root) => readReleaseDecisions(root, { validatedTasks: new Set(CHAIN) });
+const writeDecision = (root, file, source) => writeFile(join(root, "docs", "qualification", file), source);
+const effectiveOf = (round, verdict) => ({ file: roundFile(round), round, decision: verdict });
+const historyOf = (round, verdict, valid = true) => ({ ...effectiveOf(round, verdict), valid });
+const byCodeUnit = (left, right) => Number(left > right) - Number(left < right);
+
+// Three candidates in trusted history, each built on the one before.
+async function roundsFixture(t) {
+  const root = await mkdtemp(join(tmpdir(), "verchestra-decision-rounds-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const candidates = [await repositoryFixture(root)];
+  for (const name of ["second", "third"]) {
+    await writeFile(join(root, `${name}.txt`), `${name} candidate\n`);
+    git(root, "add", `${name}.txt`);
+    commit(root, `${name} candidate`);
+    candidates.push(git(root, "rev-parse", "HEAD"));
+  }
+  return { root, candidates };
+}
+
+test("a later round supersedes a hold without editing it and becomes the effective decision", async (t) => {
+  const { root, candidates } = await roundsFixture(t);
+  const hold = decision(boundTo(candidates[0]));
+  await writeDecision(root, roundFile(1), hold);
+  const alone = await readRounds(root);
+  assert.deepEqual(alone.errors, []);
+  assert.deepEqual(alone.decisions.get(VERSION), { ...effectiveOf(1, "reject"), rounds: [historyOf(1, "reject")] });
+
+  const secondHold = laterRound(2, hold, boundTo(candidates[1]));
+  await writeDecision(root, roundFile(2), secondHold);
+  await writeDecision(
+    root,
+    roundFile(3),
+    laterRound(3, secondHold, { ...boundTo(candidates[2]), decision: "promote" })
+  );
+  const { decisions, errors } = await readRounds(root);
+  assert.deepEqual(errors, []);
+  assert.deepEqual(decisions.get(VERSION), {
+    ...effectiveOf(3, "promote"),
+    rounds: [historyOf(1, "reject"), historyOf(2, "reject"), historyOf(3, "promote")]
+  });
+  assert.equal(await readFile(join(root, "docs", "qualification", roundFile(1)), "utf8"), hold);
+});
+
+test("the signature covers round, supersedes, and supersedesDigest", () => {
+  const options = {
+    ...REPOSITORY,
+    round: 2,
+    resolveKeyRef: (reference) => (reference === PUBLIC_KEY_REF ? anchorFor(KEY_PAIR) : null)
+  };
+  const fields = roundFields(2, decision());
+  assert.deepEqual(validateReleaseDecision(decision(fields), VERSION, options), []);
+  // A signature over every claim but one is what a verifier blind to that field
+  // would accept. It must not verify, so each round field is in the signed bytes.
+  for (const field of ["round", "supersedes", "supersedesDigest"])
+    assert.deepEqual(
+      validateReleaseDecision(decision(fields, KEY_PAIR, field), VERSION, options),
+      [`${roundFile(2)}: signature does not verify against publicKeyRef`],
+      `${field} must be covered by the signature`
+    );
+});
+
+test("the committed 1.0.0 hold stays round 1 and still verifies byte for byte", async () => {
+  const root = fileURLToPath(new URL("../../", import.meta.url));
+  const source = await readFile(join(root, "docs", "qualification", roundFile(1)), "utf8");
+  const reference = /^publicKeyRef: (.*)$/mu.exec(source)?.[1] ?? "";
+  assert.match(reference, /^docs\/qualification\/trust\/[\w.-]+\.json$/u);
+  const anchor = await readFile(join(root, reference), "utf8");
+  const resolveKeyRef = (candidate) => (candidate === reference ? anchor : null);
+
+  assert.equal(/^(?:round|supersedes|supersedesDigest):/mu.test(source), false, "round 1 carries no round fields");
+  assert.deepEqual(validateReleaseDecision(source, VERSION, { resolveKeyRef }), []);
+  // The same bytes under a round 2 name are refused: the name decides the round.
+  assert.ok(
+    validateReleaseDecision(source, VERSION, { round: 2, resolveKeyRef }).includes(
+      `${roundFile(2)}: frontmatter round nothing disagrees with the filename's round 2`
+    )
+  );
+});
+
+test("the decision filename pattern reads a later round's number and nothing else", () => {
+  for (const [name, version, round] of [
+    ["release-decision-1.0.0.round-2.md", "1.0.0", "2"],
+    ["release-decision-0.0.0-qualification.round-12.md", "0.0.0-qualification", "12"],
+    ["release-decision-1.0.0-rc.1.round-3.md", "1.0.0-rc.1", "3"]
+  ]) {
+    const named = RELEASE_DECISION_FILE.exec(name);
+    assert.deepEqual([named?.[1], named?.[2]], [version, round], `must read ${name}`);
+  }
+  for (const name of [
+    "release-decision-1.0.0.round2.md",
+    "release-decision-1.0.0-round-2.md",
+    "release-decision-1.0.0.round-.md",
+    "release-decision-1.0.0.round-2.txt"
+  ])
+    assert.equal(RELEASE_DECISION_FILE.test(name), false, `must reject ${name}`);
+});
+
+// One row per round field a single file must get right. Each fixture is
+// otherwise a valid decision, so the named rule is the only thing rejecting it.
+for (const [label, round, overrides, expected] of [
+  ["round 1 carrying round", 1, { round: "1" }, "round 1 must not carry round;"],
+  ["round 1 carrying supersedes", 1, { supersedes: "release-decision-0.9.0.md" }, "round 1 must not carry supersedes;"],
+  ["round 1 carrying supersedesDigest", 1, { supersedesDigest: RELEASE_DIGEST }, "must not carry supersedesDigest;"],
+  [
+    "a frontmatter round the filename does not name",
+    2,
+    { ...roundFields(2, decision()), round: "3" },
+    "frontmatter round 3 disagrees with the filename's round 2"
+  ],
+  [
+    "a later round with no round field",
+    2,
+    { ...roundFields(2, decision()), round: null },
+    "frontmatter round nothing disagrees with the filename's round 2"
+  ],
+  [
+    "round 2 superseding something other than round 1",
+    2,
+    { ...roundFields(2, decision()), supersedes: "release-decision-1.0.0.round-1.md" },
+    "supersedes must name release-decision-1.0.0.md, the immediately previous round"
+  ],
+  [
+    "round 3 superseding round 1 rather than round 2",
+    3,
+    { ...roundFields(3, decision()), supersedes: roundFile(1) },
+    "supersedes must name release-decision-1.0.0.round-2.md, the immediately previous round"
+  ],
+  [
+    "a later round with no supersedes",
+    2,
+    { ...roundFields(2, decision()), supersedes: null },
+    "the immediately previous round, found nothing"
+  ],
+  [
+    "a supersedes digest that is not sha256:<64 hex>",
+    2,
+    { ...roundFields(2, decision()), supersedesDigest: "sha256:deadbeef" },
+    "supersedesDigest must read sha256:<64 hex>"
+  ]
+]) {
+  test(`a release decision round is refused for ${label}`, () => {
+    const errors = validateReleaseDecision(decision(overrides), VERSION, { ...REPOSITORY, round });
+    assert.equal(errors.length, 1, `expected exactly one error, got ${JSON.stringify(errors)}`);
+    assert.ok(errors[0].startsWith(`${roundFile(round)}: `), `the error must name ${roundFile(round)}`);
+    assert.ok(errors[0].includes(expected), `expected an error naming "${expected}", got ${errors[0]}`);
+  });
+}
+
+test("a round suffix outside the convention is refused rather than skipped", async (t) => {
+  const { root, candidates } = await roundsFixture(t);
+  await writeDecision(root, roundFile(1), decision(boundTo(candidates[0])));
+  const promote = decision({ ...boundTo(candidates[1]), decision: "promote" });
+  for (const suffix of ["round-1", "round-02", "round2"])
+    await writeDecision(root, `release-decision-1.0.0.${suffix}.md`, promote);
+
+  const { decisions, errors } = await readRounds(root);
+  const misnumbered =
+    "a round suffix must be a number of 2 or more without leading zeros; round 1 is release-decision-1.0.0.md";
+  assert.deepEqual(errors.toSorted(byCodeUnit), [
+    `release-decision-1.0.0.round-02.md: ${misnumbered}`,
+    `release-decision-1.0.0.round-1.md: ${misnumbered}`,
+    "release-decision-1.0.0.round2.md: decision file is named outside the release-decision-<version>[.round-<n>].md convention"
+  ]);
+  assert.equal(decisions.get(VERSION).decision, "reject", "a misnamed promote never takes effect");
+});
+
+test("an earlier round edited after the next was signed breaks the next round, even unseen by its signature", async (t) => {
+  const { root, candidates } = await roundsFixture(t);
+  const hold = decision(boundTo(candidates[0]));
+  await writeDecision(root, roundFile(2), laterRound(2, hold, boundTo(candidates[1])));
+  // One byte: the space after `decision:` becomes a tab. The parsed claim is
+  // unchanged, so round 1's own signature still verifies; only the bytes moved.
+  const edited = hold.replace("\ndecision: reject\n", "\ndecision:\treject\n");
+  assert.equal(Buffer.byteLength(edited), Buffer.byteLength(hold));
+  await writeDecision(root, roundFile(1), edited);
+
+  const { decisions, errors } = await readRounds(root);
+  assert.deepEqual(errors, [
+    `${roundFile(2)}: supersedesDigest does not match the current bytes of ${roundFile(1)}; an earlier round is never edited`
+  ]);
+  assert.deepEqual(decisions.get(VERSION), {
+    ...effectiveOf(1, "reject"),
+    rounds: [historyOf(1, "reject"), historyOf(2, "reject", false)]
+  });
+});
+
+// One row per succession rule. Round 1 is valid in every row that has one, so
+// the rule named is what refuses the later round; `effective` is the round
+// still in effect. `hold` gives round 1's fields, or null for no round 1.
+const ON_FIRST = ([first]) => boundTo(first);
+for (const [label, holdFields, build, expected, effective] of [
+  [
+    "a gap between rounds",
+    ON_FIRST,
+    ([, , third], hold) => [[roundFile(3), laterRound(3, hold, boundTo(third))]],
+    `${roundFile(3)}: round 2 is missing; a version's rounds run 1, 2, 3 without a gap`,
+    1
+  ],
+  [
+    "a later round with no round 1",
+    () => null,
+    ([first, second]) => [[roundFile(2), laterRound(2, decision(boundTo(first)), boundTo(second))]],
+    `${roundFile(2)}: round 1 is missing; a version's rounds run 1, 2, 3 without a gap`,
+    null
+  ],
+  [
+    "two files claiming the same later round",
+    ON_FIRST,
+    ([, second, third], hold) => [
+      [roundFile(2), laterRound(2, hold, boundTo(second))],
+      [roundFile(3), laterRound(2, hold, boundTo(third))]
+    ],
+    `${roundFile(3)}: version 1.0.0 already has a decision file for round 2`,
+    2
+  ],
+  [
+    "a round that follows a promote",
+    ([first]) => ({ ...boundTo(first), decision: "promote" }),
+    ([, second], hold) => [[roundFile(2), laterRound(2, hold, boundTo(second))]],
+    `${roundFile(2)}: ${roundFile(1)} is a promote; a promote is final, so no round may follow it`,
+    1
+  ],
+  [
+    "a decision instant equal to the previous round's",
+    ON_FIRST,
+    ([, second], hold) => [[roundFile(2), laterRound(2, hold, { ...boundTo(second), decidedAt: ROUND_DECIDED_AT[0] })]],
+    `${roundFile(2)}: decidedAt ${ROUND_DECIDED_AT[0]} is not later than ${roundFile(1)}'s ${ROUND_DECIDED_AT[0]}`,
+    1
+  ],
+  [
+    "a decision instant earlier than the previous round's",
+    ON_FIRST,
+    ([, second], hold) => [
+      [roundFile(2), laterRound(2, hold, { ...boundTo(second), decidedAt: "2026-08-25T23:59:59Z" })]
+    ],
+    `${roundFile(2)}: decidedAt 2026-08-25T23:59:59Z is not later than ${roundFile(1)}'s ${ROUND_DECIDED_AT[0]}`,
+    1
+  ],
+  [
+    "the previous round's candidate decided again",
+    ON_FIRST,
+    ([first], hold) => [[roundFile(2), laterRound(2, hold, boundTo(first))]],
+    `${roundFile(2)}: candidateRevision is ${roundFile(1)}'s candidate; a later round decides on a fresh candidate`,
+    1
+  ],
+  [
+    "a candidate the previous round's candidate is not an ancestor of",
+    ([, second]) => boundTo(second),
+    ([first], hold) => [[roundFile(2), laterRound(2, hold, boundTo(first))]],
+    "does not descend from release-decision-1.0.0.md's candidate",
+    1
+  ]
+]) {
+  test(`a release decision round is refused for ${label}`, async (t) => {
+    const { root, candidates } = await roundsFixture(t);
+    const fields = holdFields(candidates);
+    const hold = fields === null ? null : decision(fields);
+    if (hold !== null) await writeDecision(root, roundFile(1), hold);
+    for (const [file, source] of build(candidates, hold)) await writeDecision(root, file, source);
+
+    const { decisions, errors } = await readRounds(root);
+    const refusal = errors.find((problem) => problem.includes(expected));
+    assert.ok(refusal !== undefined, `expected ${JSON.stringify(expected)}, got ${JSON.stringify(errors)}`);
+    assert.equal(
+      errors.some((problem) => problem.startsWith(`${roundFile(1)}: `)),
+      false,
+      `round 1 stays valid; only the later round is refused, got ${JSON.stringify(errors)}`
+    );
+    assert.equal(decisions.get(VERSION).round, effective, "a refused round never takes effect");
+  });
+}

@@ -244,19 +244,19 @@ function revisionTrust(root, trustedRevision) {
   // frontmatter.
   const trustedHead = trustedRevision ?? git(root, ["rev-parse", "HEAD^{commit}"]);
   const trusted = new Map();
+  // invariant: reachability from the trusted head and descent from an earlier
+  // round's candidate are one Git fact, read through one call.
+  const isAncestor = (ancestor, revision) => git(root, ["merge-base", "--is-ancestor", ancestor, revision]) !== null;
   return {
     isRepositoryCommit: (revision) => {
       if (!known.has(revision)) known.set(revision, git(root, ["cat-file", "-e", `${revision}^{commit}`]) !== null);
       return known.get(revision);
     },
     isTrustedRevision: (revision) => {
-      if (!trusted.has(revision))
-        trusted.set(
-          revision,
-          trustedHead !== null && git(root, ["merge-base", "--is-ancestor", revision, trustedHead]) !== null
-        );
+      if (!trusted.has(revision)) trusted.set(revision, trustedHead !== null && isAncestor(revision, trustedHead));
       return trusted.get(revision);
-    }
+    },
+    isAncestor
   };
 }
 
@@ -292,8 +292,20 @@ export const RELEASE_DECISION_SCHEMA = "verchestra-release-decision/v1";
 // The decision file is named for the version it decides, so the version is part
 // of the file's identity rather than a field the author can re-point at another
 // release after the fact.
-export const RELEASE_DECISION_FILE = /^release-decision-(\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?)\.md$/u;
+// invariant: a later round's number is part of that identity too. Round 1 keeps
+// the unsuffixed name, so a decision signed before rounds existed validates
+// byte for byte. The version's prerelease part excludes `-`, so `.round-<n>`
+// can never be read as part of a version.
+export const RELEASE_DECISION_FILE = /^release-decision-(\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?)(?:\.round-(\d+))?\.md$/u;
 export const RELEASE_DECISIONS = Object.freeze(["promote", "reject"]);
+const DECISION_ROUND_FIELDS = Object.freeze(["round", "supersedes", "supersedesDigest"]);
+// hazard: a leading zero would give one round two file names.
+const ROUND_NUMBER = /^[1-9]\d{0,5}$/u;
+const FULL_COMMIT = /^[0-9a-f]{40}$/u;
+
+export function releaseDecisionFileName(version, round = 1) {
+  return round === 1 ? `release-decision-${version}.md` : `release-decision-${version}.round-${round}.md`;
+}
 // `RELEASE-DECISION-CONTRACT.md`: "1.0 is the one decision where the narrowest
 // gate is not a choice." A broader set that merely includes `gate:release` still
 // names a gate other than `gate:release`, so it is refused too.
@@ -347,6 +359,24 @@ function checkDecisionIdentity(fields, version, report) {
   if (fields.version !== version) report(`decision claims version ${fields.version ?? "nothing"}`);
   if (!RELEASE_DECISIONS.includes(fields.decision ?? ""))
     report(`decision must be promote or reject, found ${fields.decision ?? "nothing"}`);
+}
+
+// why: the round fields are claims like any other, so the signature over every
+// field but `signature` covers them; these checks bind them to the file's name.
+// Whether `supersedesDigest` matches its predecessor's bytes needs the
+// predecessor, so `checkSupersession` decides that.
+function checkDecisionRound(fields, version, round, report) {
+  if (round === 1) {
+    for (const field of DECISION_ROUND_FIELDS)
+      if (Object.hasOwn(fields, field)) report(`round 1 must not carry ${field}; only a later round supersedes`);
+    return;
+  }
+  if (fields.round !== String(round))
+    report(`frontmatter round ${fields.round ?? "nothing"} disagrees with the filename's round ${round}`);
+  const previous = releaseDecisionFileName(version, round - 1);
+  if (fields.supersedes !== previous)
+    report(`supersedes must name ${previous}, the immediately previous round, found ${fields.supersedes ?? "nothing"}`);
+  if (!RELEASE_DIGEST.test(fields.supersedesDigest ?? "")) report("supersedesDigest must read sha256:<64 hex>");
 }
 
 // Returns the candidate revision only when it is a commit this repository
@@ -537,7 +567,8 @@ function checkDecisionAccountability(source, fields, report, options) {
 // accountable identities, or it does not count.
 export function validateReleaseDecision(source, version, options = {}) {
   const errors = [];
-  const report = (message) => errors.push(`release-decision-${version}.md: ${message}`);
+  const file = releaseDecisionFileName(version, options.round ?? 1);
+  const report = (message) => errors.push(`${file}: ${message}`);
   const { fields, error } = decisionFrontmatter(source);
   if (fields === null) {
     report(error);
@@ -548,6 +579,7 @@ export function validateReleaseDecision(source, version, options = {}) {
 
 function validateDecisionFields(source, fields, version, report, errors, options) {
   checkDecisionIdentity(fields, version, report);
+  checkDecisionRound(fields, version, options.round ?? 1, report);
   const revision = checkDecisionRevision(fields, report, options);
   checkDecisionBinding(fields, report);
   checkRegisterDigest(fields, revision, checkRequirementsClosure(fields, report), report, options.registerAt);
@@ -557,6 +589,147 @@ function validateDecisionFields(source, fields, version, report, errors, options
   return errors;
 }
 
+// invariant: a round is read once, as bytes. Those exact bytes decide the digest
+// a later round binds to, and the same bytes, decoded, are what is validated.
+// why: a file that announces itself as a decision but is named outside the
+// convention is reported rather than skipped, so a later round can never sit
+// on disk unread while an earlier one stays the version's decision.
+async function readDecisionRound(directory, entry, options, errors) {
+  const named = RELEASE_DECISION_FILE.exec(entry);
+  if (named === null) {
+    if (entry.startsWith("release-decision-") && entry.endsWith(".md"))
+      errors.push(`${entry}: decision file is named outside the release-decision-<version>[.round-<n>].md convention`);
+    return null;
+  }
+  const round = named[2] === undefined ? 1 : laterRound(named[2]);
+  if (round === null) {
+    errors.push(
+      `${entry}: a round suffix must be a number of 2 or more without leading zeros; round 1 is ${releaseDecisionFileName(named[1])}`
+    );
+    return null;
+  }
+  const bytes = await readFile(join(directory, entry));
+  const source = bytes.toString("utf8");
+  const problems = validateReleaseDecision(source, named[1], { ...options, round });
+  errors.push(...problems);
+  const fields = decisionFrontmatter(source).fields ?? {};
+  return {
+    file: entry,
+    version: fields.version ?? named[1],
+    round: declaredRound(fields) ?? round,
+    fields,
+    digest: `sha256:${createHash("sha256").update(bytes).digest("hex")}`,
+    problems
+  };
+}
+
+function laterRound(value) {
+  return ROUND_NUMBER.test(value) && Number(value) >= 2 ? Number(value) : null;
+}
+
+function declaredRound(fields) {
+  return ROUND_NUMBER.test(fields.round ?? "") ? Number(fields.round) : null;
+}
+
+// invariant: at most one file per version and round. Grouping by the version
+// and round the file declares, not by its name, keeps the rule meaningful even
+// for a file whose name and frontmatter disagree.
+function admitDecisionRound(versions, read, errors) {
+  if (!versions.has(read.version)) versions.set(read.version, new Map());
+  const rounds = versions.get(read.version);
+  if (rounds.has(read.round))
+    errors.push(`${read.file}: version ${read.version} already has a decision file for round ${read.round}`);
+  else rounds.set(read.round, read);
+}
+
+// why: a later round may replace a hold only by superseding it, never by
+// editing it. Every check here compares a round with the one before it, so an
+// earlier round's bytes, verdict, instant, and candidate stay what they were.
+function checkSupersession(previous, current, report, options) {
+  if (previous.fields.decision === "promote")
+    report(`${previous.file} is a promote; a promote is final, so no round may follow it`);
+  const digest = current.fields.supersedesDigest ?? "";
+  if (RELEASE_DIGEST.test(digest) && digest !== previous.digest)
+    report(`supersedesDigest does not match the current bytes of ${previous.file}; an earlier round is never edited`);
+  checkRoundInstant(previous, current, report);
+  checkFreshCandidate(previous, current, report, options);
+}
+
+const decisionInstant = (value) => (RFC3339_UTC.test(value ?? "") ? Date.parse(value) : Number.NaN);
+
+function checkRoundInstant(previous, current, report) {
+  const before = decisionInstant(previous.fields.decidedAt);
+  const after = decisionInstant(current.fields.decidedAt);
+  if (Number.isNaN(before) || Number.isNaN(after)) report(`decidedAt cannot be ordered after ${previous.file}'s`);
+  else if (after <= before)
+    report(`decidedAt ${current.fields.decidedAt} is not later than ${previous.file}'s ${previous.fields.decidedAt}`);
+}
+
+// why: a later round decides on a fresh candidate, one built on top of the
+// candidate it supersedes, through the same Git ancestry fact that binds every
+// candidate to the trusted head. A malformed revision is already refused by the
+// round's own checks, so it is not compared here.
+function checkFreshCandidate(previous, current, report, { isAncestor }) {
+  const before = previous.fields.candidateRevision ?? "";
+  const after = current.fields.candidateRevision ?? "";
+  if (!FULL_COMMIT.test(before) || !FULL_COMMIT.test(after)) return;
+  if (after === before)
+    report(`candidateRevision is ${previous.file}'s candidate; a later round decides on a fresh candidate`);
+  else if (isAncestor !== undefined && !isAncestor(before, after))
+    report(
+      `candidateRevision ${after.slice(0, 12)} does not descend from ${previous.file}'s candidate ${before.slice(0, 12)}`
+    );
+}
+
+function roundSummary(read) {
+  return {
+    file: read.file,
+    round: read.round,
+    decision: read.fields.decision ?? null,
+    valid: read.problems.length === 0
+  };
+}
+
+// invariant: the effective decision is the highest round whose every
+// predecessor is valid too. A round binds to its predecessor's bytes, so a round
+// above a gap or an invalid round stands on nothing and never takes effect.
+function settleDecisionRounds(rounds, options, errors) {
+  const ordered = [...rounds.values()].sort((left, right) => left.round - right.round);
+  for (const current of ordered) {
+    if (current.round === 1) continue;
+    const report = (message) => {
+      current.problems.push(`${current.file}: ${message}`);
+      errors.push(`${current.file}: ${message}`);
+    };
+    const previous = rounds.get(current.round - 1);
+    if (previous === undefined)
+      report(`round ${current.round - 1} is missing; a version's rounds run 1, 2, 3 without a gap`);
+    else checkSupersession(previous, current, report, options);
+  }
+  const history = ordered.map(roundSummary);
+  let effective = { file: null, round: null, decision: null };
+  for (const [index, { file, round, decision, valid }] of history.entries()) {
+    if (round !== index + 1 || !valid) break;
+    effective = { file, round, decision };
+  }
+  return { ...effective, rounds: history };
+}
+
+// The key reference is resolved from the repository, so a decision on disk is
+// verified, not merely present. A path outside docs/qualification/trust/ or a
+// missing file resolves to null and fails closed at the verification step.
+function decisionKeyResolver(root) {
+  return (reference) => {
+    if (typeof reference !== "string" || !/^docs\/qualification\/trust\/[A-Za-z0-9._-]+\.json$/u.test(reference))
+      return null;
+    const path = join(root, reference);
+    return existsSync(path) ? readFileSync(path, "utf8") : null;
+  };
+}
+
+// invariant: each version maps to its effective decision (`file`, `round`,
+// `decision`, all null when no round takes effect) and to `rounds`, the whole
+// history, so a superseded hold stays visible beside what replaced it.
 export async function readReleaseDecisions(root, { trustedRevision, validatedTasks: tasks } = {}) {
   const directory = join(root, "docs", "qualification");
   const decisions = new Map();
@@ -564,34 +737,18 @@ export async function readReleaseDecisions(root, { trustedRevision, validatedTas
   // Absence is not a failure. No decision has been made, and a repository that
   // has not decided must not read as one that decided badly.
   if (!existsSync(directory)) return { decisions, errors };
-  // The key reference is resolved from the repository, so a decision on disk is
-  // verified, not merely present. A path outside docs/qualification/trust/ or a
-  // missing file resolves to null and fails closed at the verification step.
-  const resolveKeyRef = (reference) => {
-    if (typeof reference !== "string" || !/^docs\/qualification\/trust\/[A-Za-z0-9._-]+\.json$/u.test(reference))
-      return null;
-    const path = join(root, reference);
-    return existsSync(path) ? readFileSync(path, "utf8") : null;
-  };
   const options = {
     ...revisionTrust(root, trustedRevision),
     registerAt: registerReader(root),
     validatedTasks: tasks,
-    resolveKeyRef
+    resolveKeyRef: decisionKeyResolver(root)
   };
+  const versions = new Map();
   for (const entry of (await readdir(directory)).sort()) {
-    const named = RELEASE_DECISION_FILE.exec(entry);
-    if (named === null) continue;
-    const source = await readFile(join(directory, entry), "utf8");
-    const problems = validateReleaseDecision(source, named[1], options);
-    // There is at most one decision per version. Grouping by the version the
-    // file declares, not by its name, keeps the rule meaningful even for a file
-    // whose name and frontmatter disagree.
-    const claimed = decisionFrontmatter(source).fields?.version ?? named[1];
-    if (decisions.has(claimed)) errors.push(`${entry}: version ${claimed} already has a decision file`);
-    else decisions.set(claimed, { file: entry, decision: decisionFrontmatter(source).fields?.decision ?? null });
-    errors.push(...problems);
+    const read = await readDecisionRound(directory, entry, options, errors);
+    if (read !== null) admitDecisionRound(versions, read, errors);
   }
+  for (const [version, rounds] of versions) decisions.set(version, settleDecisionRounds(rounds, options, errors));
   return { decisions, errors };
 }
 
