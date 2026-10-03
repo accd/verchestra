@@ -1113,7 +1113,7 @@
       "classification": "migrated-v2",
       "signals": {
         "canonicalizer": 5,
-        "digest": 3,
+        "digest": 4,
         "localeCompare": 1,
         "serialization": 2
       },
