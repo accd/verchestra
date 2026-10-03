@@ -305,3 +305,20 @@ function authorityRow(action) {
     expiresAt: "2026-07-13T13:00:00.000Z"
   };
 }
+
+// why: `downgradeTo` refuses an in-place downgrade; this is the refusal the
+// product meets. An older build that opens a database a newer build migrated
+// refuses it on open, before it applies or records anything.
+test("an older build refuses a database a newer build migrated, and changes nothing", async () => {
+  const { dbPath, store } = await opened();
+  store.close();
+  const older = new RuntimeStore({ dbPath, migrations: DEFAULT_RUNTIME_MIGRATIONS.slice(0, -1), now: () => now });
+  assert.throws(() => older.open(), { code: "VES_RUNTIME_MIGRATION_INCOMPATIBLE" });
+  const reopened = new RuntimeStore({ dbPath, now: () => now });
+  assert.equal(reopened.open().appliedMigrations, 0);
+  assert.deepEqual(
+    reopened.migrationLedger().map((entry) => entry.id),
+    DEFAULT_RUNTIME_MIGRATIONS.map((migration) => migration.id)
+  );
+  reopened.close();
+});
