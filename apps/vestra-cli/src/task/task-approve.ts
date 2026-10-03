@@ -31,8 +31,8 @@ export async function approveTask(
       );
     await runRecord.approvedPackage(plan);
     const policy = await loadTaskPolicy(io.controlRoot);
-    const probe = new TaskAuthority({ runtime, plan, policy, trust: await workspaceTrustRoot(workspace) });
-    if (probe.currentBindingDigest() !== plan.approvalRequest.bindingDigest)
+    const authority = new TaskAuthority({ runtime, plan, policy, trust: await workspaceTrustRoot(workspace) });
+    if (authority.currentBindingDigest() !== plan.approvalRequest.bindingDigest)
       throw taskError("VES_TASK_BINDING_MISMATCH", {}, "The Workspace policy changed since planning; plan again");
     await confirmDigest(io, plan.approvalRequest.bindingDigest, {
       confirmStdin: options.confirmStdin,
@@ -47,8 +47,7 @@ export async function approveTask(
       [SIGNING_PASSPHRASE]
     );
     const signer = await workspaceSigner(workspace, credentials.get(SIGNING_PASSPHRASE) as string);
-    const authority = new TaskAuthority({ runtime, plan, policy, signer, trust: await workspaceTrustRoot(workspace) });
-    const record = await authority.record();
+    const record = await authority.record(signer);
     const next = applyWorkflow(runtime, runId, {
       type: "GRANT_EXECUTION_APPROVAL",
       actorRole: "human",

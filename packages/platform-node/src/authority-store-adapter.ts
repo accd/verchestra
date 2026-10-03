@@ -24,7 +24,7 @@ import type { RuntimeStore } from "./runtime-store/runtime-store.ts";
 // a logically identical record whose row was written by an older build now
 // takes `#saveAuthorityRecord`'s digest-conflict branch (VES_RUNTIME_CONSTRAINT)
 // instead of returning `created: false`. Both outcomes are already failures at
-// the caller (`ApprovalService` turns `created: false` into
+// the caller (`ApprovalRecorder` turns `created: false` into
 // VES_APPROVAL_CONFLICT), so this fails closed with a different code rather
 // than accepting anything it previously rejected.
 function encodeAuthorityRecord(record: ApprovalRecord | CapabilityGrant): string {

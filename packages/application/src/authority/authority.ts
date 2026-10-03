@@ -133,12 +133,31 @@ export interface AuthorityStorePort {
   revokeGrant(grantId: string, revokedAt: string, reason: string): Promise<boolean>;
 }
 
-interface AuthorityDependencies {
-  readonly store: AuthorityStorePort;
+// invariant: each approval operation declares only the ports it reads, so a
+// composition root supplies no adapter the operation never calls.
+export interface ApprovalRequestPorts {
   readonly digest: ContentDigestPort;
   readonly clock: Clock;
   readonly uuid: UuidSource;
-  readonly artifacts: ApprovalArtifactPort;
+}
+
+export interface ApprovalRecordPorts {
+  readonly store: Pick<AuthorityStorePort, "saveApproval">;
+  readonly digest: ContentDigestPort;
+  readonly clock: Clock;
+  readonly artifacts: Pick<ApprovalArtifactPort, "seal">;
+}
+
+export interface ApprovalVerificationPorts {
+  readonly store: Pick<AuthorityStorePort, "loadApproval">;
+  readonly digest: ContentDigestPort;
+  readonly clock: Clock;
+  readonly artifacts: Pick<ApprovalArtifactPort, "verify">;
+}
+
+export interface ApprovalRevocationPorts {
+  readonly store: Pick<AuthorityStorePort, "revokeApproval">;
+  readonly clock: Clock;
 }
 
 function fail(code: string, message: string): never {
@@ -231,19 +250,15 @@ function expired(expiresAt: string, now: IsoInstant): boolean {
   return IsoInstant.parse(expiresAt).compare(now) <= 0;
 }
 
-export class ApprovalService {
-  readonly #store: AuthorityStorePort;
+export class ApprovalRequester {
   readonly #digest: ContentDigestPort;
   readonly #clock: Clock;
   readonly #uuid: UuidSource;
-  readonly #artifacts: ApprovalArtifactPort;
 
-  constructor(dependencies: AuthorityDependencies) {
-    this.#store = dependencies.store;
-    this.#digest = dependencies.digest;
-    this.#clock = dependencies.clock;
-    this.#uuid = dependencies.uuid;
-    this.#artifacts = dependencies.artifacts;
+  constructor(ports: ApprovalRequestPorts) {
+    this.#digest = ports.digest;
+    this.#clock = ports.clock;
+    this.#uuid = ports.uuid;
   }
 
   request(intent: ApprovalIntent): ApprovalRequest {
@@ -263,6 +278,20 @@ export class ApprovalService {
       requestedAt,
       expiresAt: intent.expiresAt
     });
+  }
+}
+
+export class ApprovalRecorder {
+  readonly #store: Pick<AuthorityStorePort, "saveApproval">;
+  readonly #digest: ContentDigestPort;
+  readonly #clock: Clock;
+  readonly #artifacts: Pick<ApprovalArtifactPort, "seal">;
+
+  constructor(ports: ApprovalRecordPorts) {
+    this.#store = ports.store;
+    this.#digest = ports.digest;
+    this.#clock = ports.clock;
+    this.#artifacts = ports.artifacts;
   }
 
   async record(request: ApprovalRequest, approver: AuthorizedIdentity): Promise<ApprovalRecord> {
@@ -290,6 +319,20 @@ export class ApprovalService {
       fail("VES_APPROVAL_CONFLICT", "Approval identity already exists");
     }
     return record;
+  }
+}
+
+export class ApprovalVerifier {
+  readonly #store: Pick<AuthorityStorePort, "loadApproval">;
+  readonly #digest: ContentDigestPort;
+  readonly #clock: Clock;
+  readonly #artifacts: Pick<ApprovalArtifactPort, "verify">;
+
+  constructor(ports: ApprovalVerificationPorts) {
+    this.#store = ports.store;
+    this.#digest = ports.digest;
+    this.#clock = ports.clock;
+    this.#artifacts = ports.artifacts;
   }
 
   async verify(
@@ -339,6 +382,16 @@ export class ApprovalService {
     )
       return { valid: false, code: "VES_APPROVAL_STALE" };
     return { valid: true, approvalId, bindingDigest: record.bindingDigest };
+  }
+}
+
+export class ApprovalRevoker {
+  readonly #store: Pick<AuthorityStorePort, "revokeApproval">;
+  readonly #clock: Clock;
+
+  constructor(ports: ApprovalRevocationPorts) {
+    this.#store = ports.store;
+    this.#clock = ports.clock;
   }
 
   async revoke(approvalId: string, reason: string): Promise<boolean> {
@@ -422,20 +475,24 @@ function grantMaterial(grant: Omit<CapabilityGrant, "bindingDigest" | "revokedAt
   };
 }
 
+export interface CapabilityBrokerPorts {
+  readonly store: Pick<AuthorityStorePort, "loadApproval" | "saveGrant" | "loadGrant" | "revokeGrant">;
+  readonly digest: ContentDigestPort;
+  readonly clock: Clock;
+  readonly uuid: UuidSource;
+  readonly approvals: Pick<ApprovalVerifier, "verify">;
+  readonly policy: PolicyAuthorizationPort;
+}
+
 export class CapabilityBroker {
-  readonly #store: AuthorityStorePort;
+  readonly #store: CapabilityBrokerPorts["store"];
   readonly #digest: ContentDigestPort;
   readonly #clock: Clock;
   readonly #uuid: UuidSource;
-  readonly #approvals: ApprovalService;
+  readonly #approvals: Pick<ApprovalVerifier, "verify">;
   readonly #policy: PolicyAuthorizationPort;
 
-  constructor(
-    dependencies: Omit<AuthorityDependencies, "artifacts"> & {
-      readonly approvals: ApprovalService;
-      readonly policy: PolicyAuthorizationPort;
-    }
-  ) {
+  constructor(dependencies: CapabilityBrokerPorts) {
     this.#store = dependencies.store;
     this.#digest = dependencies.digest;
     this.#clock = dependencies.clock;

@@ -2,7 +2,9 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import {
-  ApprovalService,
+  ApprovalRecorder,
+  ApprovalRequester,
+  ApprovalVerifier,
   assertNoToolRequests,
   assertReadOnlyGrant,
   assertFullWorkflowFacts,
@@ -461,14 +463,12 @@ async function approve(root: RootFacts, packageArtifact: SignedExecutionPackage,
   try {
     ensureRuntimeRun(runtime);
     const store = new RuntimeAuthorityStore(runtime);
-    const service = new ApprovalService({
-      store,
-      digest: new NodeContentDigest(),
+    const ports = { store, digest: new NodeContentDigest(), clock, artifacts };
+    const request = new ApprovalRequester({
+      digest: ports.digest,
       clock,
-      uuid: () => "018f0b6d-7b1a-7abc-8def-512345678901",
-      artifacts
-    });
-    const request = service.request({
+      uuid: () => "018f0b6d-7b1a-7abc-8def-512345678901"
+    }).request({
       action: "execution",
       workspaceId: WORKSPACE_ID,
       runId: SOURCE_RUN_ID,
@@ -497,10 +497,12 @@ async function approve(root: RootFacts, packageArtifact: SignedExecutionPackage,
       }
     });
     const existing = await store.loadApproval(request.approvalId);
-    const record = existing ?? (await service.record(request, { id: "human:self-test-reviewer", kind: "human" }));
+    const record =
+      existing ??
+      (await new ApprovalRecorder(ports).record(request, { id: "human:self-test-reviewer", kind: "human" }));
     const persisted = await store.loadApproval(record.approvalId);
     if (persisted === undefined) throw new Error("Approval was not persisted");
-    return { record, persisted, verified: await service.verify(record.approvalId, record.binding) };
+    return { record, persisted, verified: await new ApprovalVerifier(ports).verify(record.approvalId, record.binding) };
   } finally {
     runtime.close();
   }
