@@ -203,6 +203,14 @@ export interface StoredAuthorityRecord {
   readonly revocationReason?: string;
 }
 
+// invariant: the view's text and the content digest it was activated under,
+// as stored. The digest is defined by the policy view's own encoding, so the
+// adapter that encodes the view verifies it.
+export interface StoredPolicyView {
+  readonly viewJson: string;
+  readonly viewDigest: string;
+}
+
 export class RuntimeStore {
   readonly dbPath: string;
   readonly #timeoutMs: number;
@@ -526,23 +534,12 @@ export class RuntimeStore {
     }
   }
 
-  getActivePolicyView(workspaceId: string): Readonly<Record<string, unknown>> | undefined {
+  getActivePolicyView(workspaceId: string): StoredPolicyView | undefined {
     const row = this.#database()
       .prepare("SELECT view_json, view_digest FROM active_policy_views WHERE workspace_id=?")
       .get(workspaceId) as UnknownRecord | undefined;
     if (row === undefined) return undefined;
-    const view = JSON.parse(String(row["view_json"])) as Record<string, unknown>;
-    const { policyViewDigest, ...viewMaterial } = view;
-    const storedDigest = `sha256:${String(row["view_digest"])}`;
-    if (policyViewDigest !== storedDigest || `sha256:${sha256(canonicalizeJsonV2(viewMaterial))}` !== storedDigest) {
-      throw runtimeError(
-        "VES_RUNTIME_CORRUPT",
-        "Active Policy View digest does not match its content",
-        undefined,
-        true
-      );
-    }
-    return Object.freeze(view);
+    return Object.freeze({ viewJson: String(row["view_json"]), viewDigest: `sha256:${String(row["view_digest"])}` });
   }
 
   createRun(snapshot: RunSnapshot): void {

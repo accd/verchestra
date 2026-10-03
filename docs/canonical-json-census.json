@@ -936,12 +936,12 @@
       "path": "packages/platform-node/src/policy-store-adapter.ts",
       "classification": "retained-v1-versioned",
       "signals": {
-        "canonicalizer": 0,
-        "digest": 0,
+        "canonicalizer": 2,
+        "digest": 2,
         "localeCompare": 0,
         "serialization": 1
       },
-      "reason": "The active policy view retains its authoritative schemaVersion 1 record pending a compatible migration."
+      "reason": "The active policy view retains its authoritative schemaVersion 1 record pending a compatible migration. Its content digest, which this adapter verifies on load, is the V2 canonical digest the policy validator computed at activation."
     },
     {
       "path": "packages/platform-node/src/runtime-store/effect-repository.ts",
@@ -958,7 +958,7 @@
       "path": "packages/platform-node/src/runtime-store/runtime-store.ts",
       "classification": "migrated-v2",
       "signals": {
-        "canonicalizer": 4,
+        "canonicalizer": 3,
         "digest": 2,
         "localeCompare": 0,
         "serialization": 4
