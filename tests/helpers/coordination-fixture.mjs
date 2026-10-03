@@ -33,6 +33,16 @@ export class MemoryLeasePort {
   }
 }
 
+// why: WorkClaimService reaches the local lease only through LocalLeasePort.
+// The runtime store's lease pair is that port under the store's names, so a
+// case that needs the lease to survive a restart binds the pair in place.
+export function sqliteLeasePort(store) {
+  return {
+    acquire: (input) => store.acquireLease(input),
+    release: (leaseWorkspaceId, ownerId) => store.releaseLease(leaseWorkspaceId, ownerId)
+  };
+}
+
 export class MemoryRemoteClaims {
   claims = [];
   unavailable = false;
