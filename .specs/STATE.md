@@ -2529,6 +2529,189 @@ note. -->
   needs a platform matrix run on the branch before merge. Evidence is in
   `.specs/features/architecture-deepening-2/validation-t5.md`.
 
+### AD-0XX (to be numbered at merge) — Strands coordination runs behind the executor's driver port, through one SDK subpath, never as a model
+
+- **Status:** proposed (ratified by reviewing the pull request that carries
+  `.specs/features/strands-subscription-integration/`; the owner approved the
+  SDK and Zod, and decides D1 and D5 there).
+- **Context:** The owner wants single-agent, Graph, and Swarm coordination with
+  `@strands-agents/sdk` 1.19.0 while every governed control stays in force.
+  The SDK constructs a Bedrock model when an `Agent` has none, its root entry
+  cannot enter a sealed release, and its `./multiagent` subpath runs any object
+  shaped like an agent (`research.md` F1, F4).
+- **Decision:**
+  1. A task still makes one `TaskExecutionCoordinator.execute` call. Its driver
+     port is filled by a coordinated driver in `packages/application` that
+     runs a coordination plan and executes each node through a per-node driver
+     port built from the existing Claude Code and Codex drivers.
+  2. The SDK is imported only as `@strands-agents/sdk/multiagent`, only under
+     `packages/agent-runtime/src/coordination/strands/`, exported only as
+     `@verchestra/agent-runtime/strands-coordination`, and loaded only by a
+     literal dynamic import for `graph` and `swarm` plans. Mode `agent` runs on
+     a native engine.
+  3. Nodes are structural agents; the adapter never constructs a Strands
+     `Agent`, model, MCP client, session manager, sandbox, tool, or telemetry
+     exporter.
+- **Alternatives rejected:** one executor run per node (several worktrees,
+  leases, and gate checkpoints per task); Strands as the outer orchestrator (a
+  second authority path); the SDK root entry (unprefixed built-ins in the
+  sealed bundle); routing single-agent runs through the SDK (no coordination to
+  gain, and the SDK would load on every v2 run).
+- **Consequence:** Gates, repair, verification, and review are unchanged.
+  Architecture tests pin the subpath, the bans, and the main entry free of the
+  SDK; a child-process probe proves no Bedrock client, credential read, network
+  call, or process.
+
+### AD-0XX (to be numbered at merge) — Task Request v2 binds the whole normalized execution descriptor; v1 is frozen
+
+- **Status:** proposed (same pull request).
+- **Context:** A topology the owner did not approve must never run, and every
+  existing v1 request and Run record must keep its meaning.
+- **Decision:** `schemas/task-request/2.schema.json` adds a closed `execution`
+  member (mode, nodes with driver, model, description, instructions, read and
+  write scopes, inputs; edges or start and handoffs; limits). Normalization
+  rejects cycles, unknown references, unreachable nodes, scopes outside the
+  task, writes from Codex nodes, unordered writers, and plans without a writer,
+  then fills every limit at its effective value. The normalized request is the
+  execution contract sealed in the Execution Package, so its digest binds every
+  field. Authentication, credentials, billing, executables, and endpoints have
+  no member. The v1 schema, normalizer, digests, and records are unchanged; the
+  contract generator learns to read every `<n>.schema.json`.
+- **Alternatives rejected:** an optional member in v1 (changes v1's closed
+  shape and its digests); binding only a topology summary (fields outside the
+  summary could change unapproved); limits left implicit (a default change would
+  silently alter approved runs).
+- **Consequence:** Per-field discrimination tests show the binding digest moves
+  with every descriptor field; golden v1 fixtures keep their digests.
+
+### AD-0XX (to be numbered at merge) — Verchestra, not the SDK, enforces swarm destinations, node results, and limits
+
+- **Status:** proposed (same pull request).
+- **Context:** Swarm 1.19.0 offers every other node as a destination and trusts
+  a custom agent's `structuredOutput`; Graph accepts cycles and defaults every
+  limit to `Infinity` (`research.md` F5, F6).
+- **Decision:** Each node's structured result is a closed draft-07 object owned
+  by the application (`outcome`, bounded `summary`; for swarm nodes also a
+  required `next` enum of that node's declared targets plus `<complete>`, and a
+  bounded `message`). Both CLIs receive the same schema; the adapter checks the
+  same shape in Zod, with a parity test. Results are bounded per node and per
+  run before persistence, and an invalid result fails the node with no repair
+  cycle. The SDK receives only a payload-reference token, never provider text,
+  and always finite concurrency, steps, and timeouts.
+- **Alternatives rejected:** the SDK's open `context` record (not accepted by
+  strict structured output, and an injection channel); trusting the SDK's
+  schema (it lists every node); repair prompts (the plan forbids automatic
+  cycles).
+- **Consequence:** A forbidden destination ends the swarm FAILED; an endless
+  handoff loop ends with `VES_COORDINATION_HANDOFF_LIMIT`.
+
+### AD-0XX (to be numbered at merge) — Suspension is an executor checkpoint stage, not a workflow state
+
+- **Status:** proposed (same pull request; the reconciliation form is owner
+  decision D4).
+- **Context:** Quota exhaustion must stop a run without losing completed nodes,
+  and `INTERRUPTED` is terminal in the workflow machine.
+- **Decision:** On a trusted quota signal the coordinated driver stops
+  scheduling, cancels running nodes, and returns a `suspended` driver status.
+  The executor saves a `suspended` checkpoint with the change digest and the
+  node-ledger digest, keeps the worktree, and releases the writer lease; the run
+  coordinator records outcome `SUSPENDED` and applies no workflow command, so
+  the run stays `IMPLEMENTING`. `vestra task resume` revalidates approval,
+  policy, subscription preconditions, and the worktree digest, replays
+  completed nodes from the Run record, re-runs effect-free failed nodes, and
+  refuses an uncertain or partial node until the owner types back its
+  uncertainty digest.
+- **Alternatives rejected:** a new workflow state (changes the domain machine
+  and every consumer of it); reusing `INTERRUPTED` (terminal by design);
+  cleaning the worktree and replaying writers (repeats effects); automatic
+  resume at the reported reset time (resumption is the owner's decision).
+- **Consequence:** The workflow machine is unchanged; suspended time is not
+  charged to the duration budget because a resumed ledger already counts only
+  active time.
+
+### AD-0XX (to be numbered at merge) — A coordinated run uses subscriptions only, proven per session and confirmed by the owner for extra usage
+
+- **Status:** proposed (same pull request; the confirmation format is owner
+  decision D3).
+- **Context:** A subscription login alone does not prove that no paid usage
+  follows the allowance: Claude usage credits and Codex credits continue
+  consumption when enabled, and no local read of either setting exists
+  (`research.md`, subscription billing).
+- **Decision:** Every provider of a v2 run, verifier included, must be
+  `subscription` in `task-providers.json`, and a machine-local
+  `task-billing.json` must hold the owner's per-provider statement that extra
+  usage is disabled, naming the authentication method (and the Codex plan
+  type) and nothing personal. Each Claude Code session must report
+  `apiKeySource: "none"`; each Codex session must report a `chatgpt` account,
+  no credit balance, and no unlimited credits. Claude `rate_limit_event`
+  `rejected` and Codex `usageLimitExceeded` or a usage-limit
+  `rateLimitReachedType` suspend the run. The Codex client sends only an
+  allowlist of App Server methods, never one that buys, consumes, or advertises
+  credits.
+- **Alternatives rejected:** trusting the login mode alone; reading account
+  web settings (no local interface, and it would read personal data); treating
+  any rate limit as transient and retrying (spends allowance and can cross into
+  paid usage).
+- **Consequence:** The residual risk — a server-side setting changed after the
+  confirmation — is stated in the threat model; a billing-regime change at a
+  provider requires re-confirmation.
+
+### AD-0XX (to be numbered at merge) — Two Driver event types carry structured results and quota exhaustion
+
+- **Status:** proposed (same pull request). Extends AD-063.
+- **Context:** Node results must travel from the driver to the coordinated
+  driver as bounded data, and a quota stop must be a typed fact rather than an
+  error string.
+- **Decision:** `DRIVER_EVENT_FIELDS` gains `result.structured { value, bytes }`
+  and `quota.exhausted { scope, resetsAt? }`. A driver bounds the provider's
+  structured output before emitting it; the driver execution adapter turns it
+  into a payload reference in `outputRefs`. Only the Claude Code and Codex
+  drivers emit them.
+- **Alternatives rejected:** returning results through `close()` (outside the
+  numbered event order the ledger keeps); encoding quota in an `error` code
+  (loses the reset time and invites string matching).
+- **Consequence:** The closed table stays the single statement of driver
+  events; drivers that never emit the new types are unchanged.
+
+### AD-0XX (to be numbered at merge) — The Windows bridge runs over a named pipe owned by a pinned PowerShell 7 helper
+
+- **Status:** proposed (same pull request; owner decision D6). It supersedes the
+  Windows clause of AD-039 and item 7 of AD-040 only when the Windows transport
+  passes its qualification on a Windows runner.
+- **Context:** AD-039 scoped the bridge channel to Unix sockets. Node cannot
+  set a named pipe's DACL, first-instance, or remote-client options; .NET's
+  `NamedPipeServerStream` can.
+- **Decision:** The bridge controller takes its channel through a transport
+  interface. On Windows a PowerShell 7 helper, launched from a pinned path with
+  a constant script and only the validated pipe name, owns a
+  `CurrentUserOnly | FirstPipeInstance` single-instance pipe with a random
+  per-run name and relays bytes over its standard streams; authentication,
+  framing, and dispatch stay in the controller. The per-run directory's ACL is
+  set and read back as owner-only; the Claude Code policy directory, the HKLM
+  key, and the HKCU key are refused when present; transcription and script-block
+  logging are refused. The three Windows refusals are lifted in the last commit,
+  after qualification.
+- **Alternatives rejected:** loopback TCP (reachable by every local user); a
+  Node-only pipe server (no access control); a native addon (a build-time
+  dependency on every platform).
+- **Consequence:** PowerShell 7 becomes a prerequisite of the Windows profile;
+  without it the run is `not configured`.
+
+### AD-0XX (to be numbered at merge) — The sealed build asserts self-containment from the bundle metafile
+
+- **Status:** proposed; owner decision D2, because it changes a release gate.
+- **Context:** The sealed build's check scans the bundle text with a regular
+  expression; the SDK's MCP module carries a string literal that the scan reads
+  as an import of `@strands-agents/sdk` (`research.md` F2).
+- **Decision:** `bundleSealedLauncher` requests esbuild's metafile and fails on
+  any external import of the output that is not a `node:` built-in, whatever
+  its kind (static, dynamic, or `require`). The require-guard banner check stays.
+- **Alternatives rejected:** an exception list for the literal (a textual check
+  with holes); excluding the adapter from sealed releases (Graph and Swarm would
+  be unusable for npm users) — kept only as the fallback if the owner declines.
+- **Consequence:** The check becomes exact rather than textual; tests cover a
+  real external of each kind. Each launcher grows by about 1.45 MiB.
+
 ## Handoff
 
 - **Feature:** `subscription-provider-auth` (ADP-A, tasks TA1 and TA2) on
