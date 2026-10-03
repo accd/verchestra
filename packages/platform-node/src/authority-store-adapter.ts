@@ -1,7 +1,8 @@
 import type { ApprovalRecord, AuthorityStorePort, CapabilityGrant } from "@verchestra/application";
 import { canonicalizeJsonV2 } from "@verchestra/domain";
 
-import type { RuntimeStore } from "./runtime-store/runtime-store.ts";
+import { runtimeError } from "./runtime-store/runtime-sqlite.ts";
+import type { RuntimeStore, StoredAuthorityRecord } from "./runtime-store/runtime-store.ts";
 
 // Durable authority records are stored as the exact text this produces, and
 // `RuntimeStore` derives `record_digest` from that same text. Encoding with
@@ -31,15 +32,33 @@ function encodeAuthorityRecord(record: ApprovalRecord | CapabilityGrant): string
   return canonicalizeJsonV2(record);
 }
 
-interface StoredAuthorityRecord<T> {
-  readonly record: T;
-  readonly revokedAt?: string;
-  readonly revocationReason?: string;
+function filedUnder<T extends ApprovalRecord | CapabilityGrant>(
+  value: unknown,
+  member: "approvalId" | "grantId",
+  id: string
+): value is T {
+  return typeof value === "object" && value !== null && !Array.isArray(value) && Reflect.get(value, member) === id;
 }
 
-function withRevocation<T extends object>(stored: StoredAuthorityRecord<T>): T {
+// invariant: the inverse of encodeAuthorityRecord. The store has already
+// matched the text to the digest it recorded when this adapter saved it, so
+// what remains to refuse is text that is not JSON, or a record filed under an
+// identity other than the one it was read by.
+function decodeAuthorityRecord<T extends ApprovalRecord | CapabilityGrant>(
+  stored: StoredAuthorityRecord,
+  member: "approvalId" | "grantId",
+  id: string
+): T {
+  let record: unknown;
+  try {
+    record = JSON.parse(stored.recordJson);
+  } catch {
+    throw runtimeError("VES_RUNTIME_CORRUPT", "Authority record JSON is invalid");
+  }
+  if (!filedUnder<T>(record, member, id))
+    throw runtimeError("VES_RUNTIME_CORRUPT", "Authority record is filed under another identity");
   return {
-    ...stored.record,
+    ...record,
     ...(stored.revokedAt === undefined ? {} : { revokedAt: stored.revokedAt }),
     ...(stored.revocationReason === undefined ? {} : { revocationReason: stored.revocationReason })
   };
@@ -65,8 +84,8 @@ export class RuntimeAuthorityStore implements AuthorityStorePort {
   }
 
   async loadApproval(approvalId: string): Promise<ApprovalRecord | undefined> {
-    const stored = this.#runtime.loadAuthorityApproval(approvalId) as StoredAuthorityRecord<ApprovalRecord> | undefined;
-    return stored === undefined ? undefined : withRevocation(stored);
+    const stored = this.#runtime.loadAuthorityApproval(approvalId);
+    return stored === undefined ? undefined : decodeAuthorityRecord<ApprovalRecord>(stored, "approvalId", approvalId);
   }
 
   async revokeApproval(approvalId: string, revokedAt: string, reason: string): Promise<boolean> {
@@ -86,8 +105,8 @@ export class RuntimeAuthorityStore implements AuthorityStorePort {
   }
 
   async loadGrant(grantId: string): Promise<CapabilityGrant | undefined> {
-    const stored = this.#runtime.loadAuthorityGrant(grantId) as StoredAuthorityRecord<CapabilityGrant> | undefined;
-    return stored === undefined ? undefined : withRevocation(stored);
+    const stored = this.#runtime.loadAuthorityGrant(grantId);
+    return stored === undefined ? undefined : decodeAuthorityRecord<CapabilityGrant>(stored, "grantId", grantId);
   }
 
   async revokeGrant(grantId: string, revokedAt: string, reason: string): Promise<boolean> {

@@ -7,6 +7,7 @@ export {
   type RunCapsuleSeal,
   type RunEvent,
   type RuntimeMigration,
+  type StoredAuthorityRecord,
   type StoredExecutionCheckpoint
 } from "./runtime-store/runtime-store.ts";
 export { CheckpointStoreError, RuntimeCheckpointStore } from "./checkpoint-store-adapter.ts";
