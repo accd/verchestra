@@ -288,9 +288,6 @@
     "packages/domain/src/workflow/workflow-machine.ts :: Static method 'decide'": [
       28
     ],
-    "packages/drivers/src/claude-code-driver.ts :: Arrow function": [
-      17
-    ],
     "packages/drivers/src/claude-code-driver.ts :: Async method 'start'": [
       14
     ],

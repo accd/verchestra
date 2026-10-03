@@ -599,9 +599,12 @@ export {
   CLAUDE_MEDIATED_MINIMUM_VERSION,
   CLAUDE_MEDIATED_TOOLS,
   CLAUDE_PROFILE_CREDENTIAL_VARIABLES,
+  CLAUDE_STRUCTURED_OUTPUT_TOOL,
   CLAUDE_SUBSCRIPTION_SETTINGS,
   ClaudeCodeDriver
 } from "./claude-code-driver.ts";
+export { MAXIMUM_OUTPUT_SCHEMA_BYTES, MAXIMUM_STRUCTURED_RESULT_BYTES } from "./driver-structured-output.ts";
+export type { DriverStructuredOutput } from "./driver-structured-output.ts";
 export type {
   ClaudeCodeDriverDependencies,
   ClaudeCodeExecution,

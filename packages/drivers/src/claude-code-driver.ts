@@ -5,11 +5,17 @@ import { tmpdir, userInfo } from "node:os";
 import { isAbsolute, join } from "node:path";
 import { promisify } from "node:util";
 
-import { usageUpdated } from "@verchestra/domain";
+import { quotaExhausted, usageUpdated } from "@verchestra/domain";
 
 import { processTreeTerminator, type ProcessTreeTerminator } from "./driver-process-tree.ts";
 import { sensitiveValueRedactor } from "./driver-redaction.ts";
 import { DriverSessionLedger, type DriverSession } from "./driver-session-ledger.ts";
+import {
+  structuredAnswer,
+  structuredOutputPlan,
+  type DriverStructuredOutput,
+  type StructuredOutputPlan
+} from "./driver-structured-output.ts";
 import { probeDriverVersion } from "./driver-version-probe.ts";
 import {
   DriverProtocolError,
@@ -74,6 +80,19 @@ export const CLAUDE_MEDIATED_TOOLS: readonly string[] = Object.freeze([
 // The build whose `--help` was read to confirm every mediated flag
 // (docs/qualification/claude-code-driver-mediated.md).
 export const CLAUDE_MEDIATED_MINIMUM_VERSION = "2.1.282";
+// why: with `--json-schema` Claude Code answers through this tool, which
+// carries the answer and has no effect; a structured session allows it beside
+// the bridge tools so the permission mode never decides whether it may answer.
+export const CLAUDE_STRUCTURED_OUTPUT_TOOL = "StructuredOutput";
+// why: the limit windows a `rate_limit_event` names, as 2.1.282 declares them.
+const QUOTA_SCOPES: ReadonlySet<unknown> = new Set([
+  "five_hour",
+  "seven_day",
+  "seven_day_opus",
+  "seven_day_sonnet",
+  "seven_day_overage_included",
+  "overage"
+]);
 
 export interface ClaudeCodeMediatedProfile {
   readonly kind: keyof typeof CLAUDE_PROFILE_CREDENTIAL_VARIABLES;
@@ -108,6 +127,10 @@ export interface ClaudeCodeExecution {
   readonly maxOutputBytes?: number;
   // invariant: required by, and only accepted by, a mediated profile.
   readonly mediation?: ClaudeCodeMediation;
+  // invariant: only a mediated profile accepts it. The session then passes
+  // `--json-schema` and fails unless its result carries a structured answer
+  // within the bound (AD-073).
+  readonly structuredOutput?: DriverStructuredOutput;
 }
 
 export interface ClaudeCodeDriverDependencies {
@@ -134,6 +157,21 @@ interface MediatedLaunch {
   readonly environment: NodeJS.ProcessEnv;
   readonly cwd: string;
   readonly surface: StreamSurface;
+}
+
+const CLAUDE_NAMING = Object.freeze({ errorCodePrefix: "VES_CLAUDE", noun: "Claude Code" });
+
+// why: a structured invocation allows the structured-output tool beside the
+// bridge tools and passes its schema just before the model; any other
+// invocation is unchanged.
+function allowedTools(schemaText: string | undefined): string {
+  const tools =
+    schemaText === undefined ? CLAUDE_MEDIATED_TOOLS : [...CLAUDE_MEDIATED_TOOLS, CLAUDE_STRUCTURED_OUTPUT_TOOL];
+  return tools.join(",");
+}
+
+function schemaArguments(schemaText: string | undefined): readonly string[] {
+  return schemaText === undefined ? [] : ["--json-schema", schemaText];
 }
 
 function claudeError(code: string, message: string): DriverProtocolError {
@@ -292,13 +330,16 @@ async function validMediation(mediation: ClaudeCodeMediation | undefined): Promi
   return mediation;
 }
 
-// invariant: a mediated session may advertise only the bridge tools, and the
-// bridge must be connected; anything else means the tool surface is not the
-// one this profile was qualified with.
-function mediatedSurfaceFailure(event: Record<string, unknown>): string | undefined {
+// invariant: a mediated session may advertise only the bridge tools, and a
+// structured one also the structured-output tool; the bridge must be
+// connected. Anything else means the tool surface is not the one this profile
+// was qualified with.
+function mediatedSurfaceFailure(event: Record<string, unknown>, structured: boolean): string | undefined {
   const tools = event["tools"];
-  if (!Array.isArray(tools) || tools.some((tool) => typeof tool !== "string" || !CLAUDE_MEDIATED_TOOLS.includes(tool)))
-    return "VES_CLAUDE_TOOL_SURFACE_UNEXPECTED";
+  const permitted = (tool: unknown) =>
+    typeof tool === "string" &&
+    (CLAUDE_MEDIATED_TOOLS.includes(tool) || (structured && tool === CLAUDE_STRUCTURED_OUTPUT_TOOL));
+  if (!Array.isArray(tools) || !tools.every(permitted)) return "VES_CLAUDE_TOOL_SURFACE_UNEXPECTED";
   const servers = event["mcp_servers"];
   const connected =
     Array.isArray(servers) &&
@@ -319,10 +360,21 @@ function extraServerFailure(event: Record<string, unknown>): string | undefined 
   return (event["mcp_servers"] as readonly unknown[]).length === 1 ? undefined : "VES_CLAUDE_TOOL_SURFACE_UNEXPECTED";
 }
 
-function initEventFailure(event: Record<string, unknown>, model: string, surface: StreamSurface): string | undefined {
-  if (event["model"] !== model) return "VES_CLAUDE_IDENTITY_MISMATCH";
+// invariant: the subscription profile authenticates with an OAuth token, which
+// is not an API key, so the session must report no API-key source. Any other
+// source means a key or a key helper reached the session (SSI-54).
+function authSourceFailure(event: Record<string, unknown>, surface: StreamSurface): string | undefined {
+  return surface === "bridge-only" && event["apiKeySource"] !== "none" ? "VES_CLAUDE_AUTH_METHOD_MISMATCH" : undefined;
+}
+
+function initEventFailure(
+  event: Record<string, unknown>,
+  conversation: Pick<ClaudeConversation, "execution" | "surface" | "structured">
+): string | undefined {
+  const { execution, surface, structured } = conversation;
+  if (event["model"] !== execution.model) return "VES_CLAUDE_IDENTITY_MISMATCH";
   if (surface === "open") return undefined;
-  const failure = mediatedSurfaceFailure(event);
+  const failure = authSourceFailure(event, surface) ?? mediatedSurfaceFailure(event, structured !== undefined);
   return failure === undefined && surface === "bridge-only" ? extraServerFailure(event) : failure;
 }
 
@@ -350,72 +402,125 @@ interface ClaudeConversation {
   readonly sessionId: string;
   readonly surface: StreamSurface;
   readonly redact: (value: unknown) => string;
+  readonly structured: StructuredOutputPlan | undefined;
+}
+
+type Row = Readonly<Record<string, unknown>>;
+
+// invariant: what a result says beyond its usage, for a session that was
+// announced. An error result fails the session, a structured session whose
+// retries ran out has no answer, and a structured session's answer is bounded
+// before it is emitted; a session that asked for no schema adds nothing.
+function resultEvent(
+  event: Row,
+  structured: StructuredOutputPlan | undefined
+): ReturnType<typeof structuredAnswer> | undefined {
+  if (event["is_error"] === true)
+    return structured !== undefined && event["subtype"] === "error_max_structured_output_retries"
+      ? { code: "VES_CLAUDE_STRUCTURED_OUTPUT_MISSING" }
+      : { code: "VES_CLAUDE_EXECUTION_FAILED" };
+  return structured === undefined ? undefined : structuredAnswer(event["structured_output"], structured, "VES_CLAUDE");
+}
+
+// invariant: a rejected rate limit is the provider's typed statement that an
+// allowance ran out; its window is a scope only when 2.1.282 names it, and its
+// reset is carried only when given. Nothing else of the event is read.
+function rateLimitStatus(event: Row): { readonly status: unknown; readonly scope: string; readonly resetsAt: unknown } {
+  const info = (event["rate_limit_info"] ?? {}) as Row;
+  const window = info["rateLimitType"];
+  return {
+    status: info["status"],
+    scope: QUOTA_SCOPES.has(window) ? (window as string) : "unknown",
+    resetsAt: info["resetsAt"]
+  };
 }
 
 // invariant: the stream-json translation of one print session. The prompt is
 // the one message written; every event the provider writes back is checked
 // against the surface the session is held to and normalized.
 function claudeProtocol(channel: ProviderChannel, conversation: ClaudeConversation): ProviderProtocol {
-  const { request, execution, session: state, sessionId, surface, redact } = conversation;
+  const { request, execution, session: state, sessionId, surface, redact, structured } = conversation;
   let initialized = false;
-  // why: a tool the model asks for is normalized, never executed here.
-  const requestTools = (event: Readonly<Record<string, unknown>>): void => {
+  let quotaReported = false;
+  let warned = false;
+  // why: a tool the model asks for is normalized, never executed here. The
+  // structured-output call of a structured session carries its answer, which
+  // the result repeats, and has no effect, so it is no tool request.
+  const requestTools = (event: Row): void => {
     const message = event["message"] as { content?: unknown[] } | undefined;
     for (const raw of message?.content ?? []) {
       const content = raw as Record<string, unknown>;
-      if (content["type"] === "tool_use") {
-        if (typeof content["id"] !== "string" || typeof content["name"] !== "string")
-          return channel.fail("VES_CLAUDE_STREAM_INVALID");
-        state.emit({
-          type: "tool.requested",
-          toolCallId: content["id"],
-          name: content["name"],
-          input: content["input"]
-        });
-      }
+      if (content["type"] !== "tool_use") continue;
+      if (typeof content["id"] !== "string" || typeof content["name"] !== "string")
+        return channel.fail("VES_CLAUDE_STREAM_INVALID");
+      if (structured !== undefined && content["name"] === CLAUDE_STRUCTURED_OUTPUT_TOOL) continue;
+      state.emit({ type: "tool.requested", toolCallId: content["id"], name: content["name"], input: content["input"] });
     }
   };
-  const receive = (event: Readonly<Record<string, unknown>>): void => {
-    if (unexpectedHook(event, surface)) return channel.fail("VES_CLAUDE_HOOK_UNEXPECTED");
-    if (event["type"] === "system" && event["subtype"] === "init") {
-      const initFailure = initEventFailure(event, execution.model, surface);
-      if (initFailure !== undefined) return channel.fail(initFailure);
-      const model = execution.model;
-      initialized = true;
-      state.emit({ type: "session.started", sessionId });
+  const initialize = (event: Row): void => {
+    if (event["subtype"] !== "init") return;
+    const initFailure = initEventFailure(event, conversation);
+    if (initFailure !== undefined) return channel.fail(initFailure);
+    initialized = true;
+    state.emit({ type: "session.started", sessionId });
+    state.emit({
+      type: "model.resolved",
+      passportRef: request.passportRef,
+      provider: "anthropic",
+      resolvedModel: execution.model
+    });
+  };
+  const delta = (event: Row): void => {
+    const nested = event["event"] as { delta?: { type?: string; text?: unknown } } | undefined;
+    if (nested?.delta?.type === "text_delta")
+      state.emit({ type: "content.delta", text: redact(String(nested.delta.text ?? "")) });
+  };
+  // why: a result counts once the session was announced; a result before
+  // that leaves the run without one.
+  const finish = (event: Row): void => {
+    if (initialized) channel.result();
+    const reported = event["usage"] as Row | undefined;
+    const usage = usageUpdated({ inputTokens: reported?.["input_tokens"], outputTokens: reported?.["output_tokens"] });
+    if (usage === undefined) return channel.fail("VES_CLAUDE_STREAM_INVALID");
+    state.emit(usage);
+    const outcome = initialized ? resultEvent(event, structured) : resultEvent(event, undefined);
+    if (outcome === undefined) return;
+    if ("type" in outcome) return state.emit(outcome);
+    state.outcome = "failed";
+    const retryable = outcome.code === "VES_CLAUDE_EXECUTION_FAILED";
+    state.emit({
+      type: "error",
+      code: outcome.code,
+      message: retryable ? "Claude Code failed" : "Claude Code returned no usable structured result",
+      retryable
+    });
+  };
+  // invariant: each signal is reported once per session; a warning never stops
+  // the session (SSI-58).
+  const rateLimit = (event: Row): void => {
+    const { status, scope, resetsAt } = rateLimitStatus(event);
+    if (status === "rejected" && !quotaReported) {
+      quotaReported = true;
+      state.emit(quotaExhausted(scope, resetsAt));
+    } else if (status === "allowed_warning" && !warned) {
+      warned = true;
       state.emit({
-        type: "model.resolved",
-        passportRef: request.passportRef,
-        provider: "anthropic",
-        resolvedModel: model
+        type: "warning",
+        code: "VES_CLAUDE_QUOTA_WARNING",
+        message: "Claude Code reported that a usage limit is near"
       });
-    } else if (event["type"] === "stream_event") {
-      const nested = event["event"] as { delta?: { type?: string; text?: unknown } } | undefined;
-      if (nested?.delta?.type === "text_delta")
-        state.emit({ type: "content.delta", text: redact(String(nested.delta.text ?? "")) });
-    } else if (event["type"] === "assistant") {
-      requestTools(event);
-    } else if (event["type"] === "result") {
-      // why: a result counts once the session was announced; a result before
-      // that leaves the run without one.
-      if (initialized) channel.result();
-      const reported = event["usage"] as Readonly<Record<string, unknown>> | undefined;
-      const usage = usageUpdated({
-        inputTokens: reported?.["input_tokens"],
-        outputTokens: reported?.["output_tokens"]
-      });
-      if (usage === undefined) return channel.fail("VES_CLAUDE_STREAM_INVALID");
-      state.emit(usage);
-      if (event["is_error"] === true) {
-        state.outcome = "failed";
-        state.emit({
-          type: "error",
-          code: "VES_CLAUDE_EXECUTION_FAILED",
-          message: "Claude Code failed",
-          retryable: true
-        });
-      }
     }
+  };
+  const handlers = new Map<unknown, (event: Row) => void>([
+    ["system", initialize],
+    ["stream_event", delta],
+    ["assistant", requestTools],
+    ["result", finish],
+    ["rate_limit_event", rateLimit]
+  ]);
+  const receive = (event: Row): void => {
+    if (unexpectedHook(event, surface)) return channel.fail("VES_CLAUDE_HOOK_UNEXPECTED");
+    handlers.get(event["type"])?.(event);
   };
   return { receive, converse: async () => channel.end(userMessage(execution.prompt)) };
 }
@@ -459,7 +564,7 @@ export class ClaudeCodeDriver implements Driver {
 
   // The mediated profile: no built-in tool, only the five bridge tools, no
   // settings, no keychain or OAuth (`--bare`), and nothing that can prompt.
-  buildMediatedArguments(model: string, mcpConfigPath: string): readonly string[] {
+  buildMediatedArguments(model: string, mcpConfigPath: string, schemaText?: string): readonly string[] {
     return Object.freeze([
       ...this.#command.slice(1),
       "--print",
@@ -478,7 +583,7 @@ export class ClaudeCodeDriver implements Driver {
       "--tools",
       "",
       "--allowedTools",
-      CLAUDE_MEDIATED_TOOLS.join(","),
+      allowedTools(schemaText),
       "--permission-mode",
       "dontAsk",
       "--permission-prompts",
@@ -486,6 +591,7 @@ export class ClaudeCodeDriver implements Driver {
       "--no-chrome",
       "--setting-sources",
       "",
+      ...schemaArguments(schemaText),
       "--model",
       model
     ]);
@@ -494,7 +600,7 @@ export class ClaudeCodeDriver implements Driver {
   // why: the subscription profile is the mediated surface without `--bare`,
   // which would discard the subscription token. Hooks and auto memory are
   // switched off by `--settings`, and a hook that still ran is reported.
-  buildSubscriptionArguments(model: string, mcpConfigPath: string): readonly string[] {
+  buildSubscriptionArguments(model: string, mcpConfigPath: string, schemaText?: string): readonly string[] {
     return Object.freeze([
       ...this.#command.slice(1),
       "--print",
@@ -513,7 +619,7 @@ export class ClaudeCodeDriver implements Driver {
       "--tools",
       "",
       "--allowedTools",
-      CLAUDE_MEDIATED_TOOLS.join(","),
+      allowedTools(schemaText),
       "--permission-mode",
       "dontAsk",
       "--permission-prompts",
@@ -523,6 +629,7 @@ export class ClaudeCodeDriver implements Driver {
       "",
       "--settings",
       CLAUDE_SUBSCRIPTION_SETTINGS,
+      ...schemaArguments(schemaText),
       "--model",
       model
     ]);
@@ -600,7 +707,8 @@ export class ClaudeCodeDriver implements Driver {
     )
       throw claudeError("VES_CLAUDE_OUTPUT_LIMIT_INVALID", "Claude Code output limit is invalid");
 
-    const launch = await this.#mediatedLaunch(execution);
+    const structured = this.#structuredPlan(execution);
+    const launch = await this.#mediatedLaunch(execution, structured);
     const surface = surfaceOf(launch);
     const sessionId = `claude-session:${randomUUID()}`;
     const state = this.#sessions.open(sessionId, sink, {});
@@ -621,7 +729,7 @@ export class ClaudeCodeDriver implements Driver {
         terminateTree: this.#terminateTree,
         onSpawn: this.#dependencies.onSpawn,
         protocol: (channel) =>
-          claudeProtocol(channel, { request, execution, session: state, sessionId, surface, redact })
+          claudeProtocol(channel, { request, execution, session: state, sessionId, surface, redact, structured })
       });
       return Object.freeze({ sessionId });
     } finally {
@@ -641,7 +749,19 @@ export class ClaudeCodeDriver implements Driver {
     };
   }
 
-  async #mediatedLaunch(execution: ClaudeCodeExecution): Promise<MediatedLaunch | undefined> {
+  // invariant: a structured result is asked of a mediated profile only; the
+  // T03 profile is unchanged.
+  #structuredPlan(execution: ClaudeCodeExecution): StructuredOutputPlan | undefined {
+    const plan = structuredOutputPlan(execution.structuredOutput, CLAUDE_NAMING);
+    if (plan !== undefined && this.#profile === undefined)
+      throw claudeError("VES_CLAUDE_OUTPUT_SCHEMA_INVALID", "Structured output requires a mediated profile");
+    return plan;
+  }
+
+  async #mediatedLaunch(
+    execution: ClaudeCodeExecution,
+    structured: StructuredOutputPlan | undefined
+  ): Promise<MediatedLaunch | undefined> {
     if (this.#profile === undefined) {
       if (execution.mediation !== undefined)
         throw claudeError("VES_CLAUDE_MEDIATION_INVALID", "Mediation requires the mediated-mcp profile");
@@ -674,15 +794,16 @@ export class ClaudeCodeDriver implements Driver {
         { mode: 0o600, flag: "wx" }
       );
       if (this.#profile.kind === SUBSCRIPTION_PROFILE)
-        return await this.#subscriptionLaunch({ root, home, config, mcpConfigPath }, execution.model, {
-          ...this.#profile.environment,
-          [CLAUDE_PROFILE_CREDENTIAL_VARIABLES[SUBSCRIPTION_PROFILE]]: credential
-        });
+        return await this.#subscriptionLaunch(
+          { root, home, config, mcpConfigPath },
+          { model: execution.model, schemaText: structured?.schemaText },
+          { ...this.#profile.environment, [CLAUDE_PROFILE_CREDENTIAL_VARIABLES[SUBSCRIPTION_PROFILE]]: credential }
+        );
       return Object.freeze({
         root,
         cwd: mediation.cwd,
         surface: "bridge",
-        arguments: this.buildMediatedArguments(execution.model, mcpConfigPath),
+        arguments: this.buildMediatedArguments(execution.model, mcpConfigPath, structured?.schemaText),
         environment: {
           ...this.#profile.environment,
           HOME: home,
@@ -704,7 +825,7 @@ export class ClaudeCodeDriver implements Driver {
   // in its working directory to be discovered, whatever a switch covers.
   async #subscriptionLaunch(
     paths: { readonly root: string; readonly home: string; readonly config: string; readonly mcpConfigPath: string },
-    model: string,
+    invocation: { readonly model: string; readonly schemaText: string | undefined },
     environment: Readonly<Record<string, string>>
   ): Promise<MediatedLaunch> {
     const cwd = join(paths.root, "workspace");
@@ -713,7 +834,7 @@ export class ClaudeCodeDriver implements Driver {
       root: paths.root,
       cwd,
       surface: "bridge-only",
-      arguments: this.buildSubscriptionArguments(model, paths.mcpConfigPath),
+      arguments: this.buildSubscriptionArguments(invocation.model, paths.mcpConfigPath, invocation.schemaText),
       environment: { ...environment, HOME: paths.home, CLAUDE_CONFIG_DIR: paths.config, ...SUBSCRIPTION_SWITCHES }
     });
   }
