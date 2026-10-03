@@ -253,8 +253,8 @@ class ProviderChild {
     this.#endChild();
   }
 
-  // why: a conversation that failed has nothing more to ask; the provider is
-  // ended with the run, and only while it still runs.
+  // why: a failed conversation has nothing more to ask and ends nothing itself;
+  // a provider the driver ends is ended with the run, while it still runs.
   #conversationFailed(): void {
     if (this.#end !== undefined) return;
     this.#failed = true;
