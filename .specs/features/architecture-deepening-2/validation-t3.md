@@ -300,11 +300,24 @@ column was already the driver's.
 
 ## 6. Requalification
 
-None of the pinned qualification sequences changed. `pnpm qualify:claude`
-(65) and `pnpm qualify:codex` (32) pass with their suites unmodified: the
-T03 and T04 suites, the mediated and subscription suites, the process-tree,
-cancel order and provider-ends suites, whose fakes gained modes only. No
-report is added under `docs/qualification/`, and none is edited.
+None of the pinned qualification sequences changed: the T03 and T04 suites,
+the mediated and subscription suites, and the process-tree, cancel order and
+provider-ends suites pass unmodified, their fakes having gained modes only.
+
+The runs that did change were pinned by no suite, and both drivers are
+requalified for them in a commit of their own (the review decided a
+behaviour change in edge runs of a qualified driver gets a report):
+`docs/qualification/claude-code-driver-child-run.md` (D1, D2, H1, H2) and
+`docs/qualification/codex-driver-child-run.md` (H1, which turns a completed
+Codex session with a non-object line into a failure, and H2). Each is bound
+like the first round's reports, by a suite under its driver's `qualify:*`
+script that pins the changed sequences whole through the close:
+`spikes/claude-code-driver/test/claude-driver-child-run.test.mjs` (6 cases)
+and `spikes/codex-driver/test/codex-driver-child-run.test.mjs` (2), over the
+shared contract `tests/helpers/driver-child-run-fixture.mjs`. Against the
+drivers of `main` all eight fail, each with the "before" sequence its report
+gives. The fakes gain `broken-then-flood`, `late-garble`, `code-line` (Claude
+Code) and `primitive-lines` (Codex). No existing report is edited.
 
 ## 7. Tests
 
@@ -503,11 +516,8 @@ invoked; every provider was a labeled fake. `qualify:keychain` was not run.
 
 ## 12. Open points for the reviewer
 
-- **Requalification.** No pinned qualification sequence changed, so no
-  report was added, as this task's rule says. The Claude Code driver does
-  change in four runs no suite pinned (section 5), and the first round wrote
-  reports for changes that altered no sequence (the provider-ends reports).
-  Whether these four call for a report is the reviewer's decision.
+- **Requalification.** Decided in review: both drivers are requalified for
+  the runs that changed (section 6).
 - **H3** (a start signal that aborts during the probe or the resolution is not
   noticed by the run) is recorded and not changed; the session runner covers
   it for every composition.
