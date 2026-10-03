@@ -6,7 +6,7 @@ import type { ContextManifest } from "@verchestra/agent-runtime";
 import {
   ApprovalRequester,
   canonicalTaskGatePlan,
-  normalizeTaskRequest,
+  normalizeTaskRequestV1,
   type ApprovalIntent,
   type NormalizedTaskRequest
 } from "@verchestra/application";
@@ -43,7 +43,7 @@ async function readRequest(io: TaskCommandIo, path: string): Promise<NormalizedT
   if (metadata?.isFile() !== true || metadata.size > MAXIMUM_REQUEST_BYTES)
     throw taskError("VES_TASK_REQUEST_REJECTED", { reason: "VES_TASK_REQUEST_UNREADABLE" }, "Request is unreadable");
   try {
-    return normalizeTaskRequest(JSON.parse(await readFile(target, "utf8")) as unknown);
+    return normalizeTaskRequestV1(JSON.parse(await readFile(target, "utf8")) as unknown);
   } catch (error) {
     const reason = error instanceof SyntaxError ? "VES_TASK_REQUEST_NOT_JSON" : stableCode(error);
     throw taskError("VES_TASK_REQUEST_REJECTED", { reason }, "The task request was rejected", { cause: error });
