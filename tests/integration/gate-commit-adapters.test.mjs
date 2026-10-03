@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, test } from "node:test";
@@ -32,12 +32,6 @@ async function fixture() {
     join(repositoryRoot, "tests", "pass.test.mjs"),
     'import test from "node:test"; import assert from "node:assert/strict"; test("pass",()=>assert.equal(1,1));\n'
   );
-  await writeFile(join(repositoryRoot, "tests", "hang.mjs"), "setInterval(() => {}, 1000);\n");
-  await writeFile(
-    join(repositoryRoot, "tests", "tree-hang.mjs"),
-    'import { spawn } from "node:child_process"; import { writeFileSync } from "node:fs"; const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" }); writeFileSync("tests/tree-child.pid", String(child.pid)); setInterval(() => {}, 1000);\n'
-  );
-  await writeFile(join(repositoryRoot, "tests", "overflow.mjs"), 'console.log("x".repeat(1000000));\n');
   git(repositoryRoot, "init", "--quiet");
   git(repositoryRoot, "config", "user.email", "qualification@verchestra.invalid");
   git(repositoryRoot, "config", "user.name", "Verchestra Qualification");
@@ -95,99 +89,68 @@ test("real process runner parses a structured Node test summary", async () => {
   assert.match(result.outputRef, /^gate-output:[a-f0-9]{64}$/u);
 });
 
-test("real process runner terminates a timed-out process tree", async () => {
+// invariant: the gate's result is what it was before its child moved into the
+// bounded child run (ADR2-5). These digests were taken from the gate runner on
+// main before the change; the routine's own suite proves how the child is
+// stopped (tests/integration/bounded-child-run.test.mjs).
+test("the gate runner reports the same result as before for a child that exits, overflows, or times out", async () => {
   const { handle, repositoryRoot, worktreesRoot } = await fixture();
   const runner = new NodeGateProcessRunner({
     repositoryRoot,
     worktreesRoot,
     commands: { "command:node": { executable: process.execPath, protocols: ["exit-code"] } }
   });
-  const result = await runner.run(
-    gateCommand(handle, {
-      commandRef: "command:node",
-      args: ["tests/hang.mjs"],
-      resultProtocol: "exit-code",
-      minimumTests: 0,
-      timeoutMs: 100
-    })
-  );
-  assert.equal(result.timedOut, true);
-  assert.notEqual(result.exitCode, 0);
-});
-
-test("real process runner terminates a timed-out descendant process", async (t) => {
-  const { handle, repositoryRoot, target, worktreesRoot } = await fixture();
-  const runner = new NodeGateProcessRunner({
-    repositoryRoot,
-    worktreesRoot,
-    commands: { "command:node": { executable: process.execPath, protocols: ["exit-code"] } }
-  });
-  let descendantPid;
-  t.after(() => {
-    if (descendantPid === undefined) return;
-    try {
-      process.kill(descendantPid, "SIGKILL");
-    } catch (error) {
-      if (error.code !== "ESRCH") throw error;
+  const run = (source, overrides = {}) =>
+    runner.run(
+      gateCommand(handle, {
+        commandRef: "command:node",
+        args: ["-e", source],
+        resultProtocol: "exit-code",
+        minimumTests: 0,
+        ...overrides
+      })
+    );
+  // why: a child the gate stopped closes with a signal on POSIX, which the
+  // gate records as -1; TerminateProcess on Windows closes it with status 1.
+  const stopped = process.platform === "win32" ? 1 : -1;
+  const empty = "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+  assert.deepEqual(
+    await run('process.stdout.write("gate-out\\n"); process.stderr.write("gate-err\\n"); process.exitCode = 4;'),
+    {
+      exitCode: 4,
+      timedOut: false,
+      outputLimitExceeded: false,
+      stdoutDigest: "sha256:1d14f713a0cb77ddb22f305cbfb27516cd9b8c0688ab7a6bd6e8edc844fe7184",
+      stderrDigest: "sha256:02cc7b5a5fa54f7ddd7bdbdee8d7cb62701038cc8976333f0dcce9caa4708e90",
+      stdoutBytes: 9,
+      stderrBytes: 9,
+      outputRef: "gate-output:c591509a142a3b0d6342e26d498b2f1087476e1ff1afbf69cce66f3820ab8aef"
     }
-  });
-  const result = await runner.run(
-    gateCommand(handle, {
-      commandRef: "command:node",
-      args: ["tests/tree-hang.mjs"],
-      resultProtocol: "exit-code",
-      minimumTests: 0,
-      timeoutMs: 1_000
-    })
   );
-  descendantPid = await readPid(join(target, "tests", "tree-child.pid"));
-  assert.equal(result.timedOut, true);
-  assert.notEqual(result.exitCode, 0);
-  assert.equal(isAlive(descendantPid), false);
-});
-
-test("real process runner kills output overflow without retaining raw logs", async () => {
-  const { handle, repositoryRoot, worktreesRoot } = await fixture();
-  const runner = new NodeGateProcessRunner({
-    repositoryRoot,
-    worktreesRoot,
-    commands: { "command:node": { executable: process.execPath, protocols: ["exit-code"] } }
-  });
-  const result = await runner.run(
-    gateCommand(handle, {
-      commandRef: "command:node",
-      args: ["tests/overflow.mjs"],
-      resultProtocol: "exit-code",
-      minimumTests: 0,
-      outputLimitBytes: 64
-    })
-  );
-  assert.equal(result.outputLimitExceeded, true);
-  assert.equal("stdout" in result, false);
-});
-
-async function readPid(path) {
-  for (let attempt = 0; attempt < 50; attempt += 1) {
-    try {
-      const pid = Number.parseInt((await readFile(path, "utf8")).trim(), 10);
-      if (Number.isSafeInteger(pid) && pid > 0) return pid;
-    } catch (error) {
-      if (error.code !== "ENOENT") throw error;
+  assert.deepEqual(
+    await run('process.stdout.write("y".repeat(100)); setInterval(() => {}, 1000);', { outputLimitBytes: 10 }),
+    {
+      exitCode: stopped,
+      timedOut: false,
+      outputLimitExceeded: true,
+      stdoutDigest: "sha256:56846f2db153afa893bd18d0c0bf6e026d9cd3fa0bfa941976b17ff14d3e217a",
+      stderrDigest: empty,
+      stdoutBytes: 100,
+      stderrBytes: 0,
+      outputRef: "gate-output:5498b1ed7e9d9086f15a2c125805f721a2cc5428a30e99fa17e548e227810362"
     }
-    await new Promise((resolve) => setTimeout(resolve, 20));
-  }
-  throw new Error("Timed-out fixture did not report its descendant PID");
-}
-
-function isAlive(pid) {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    if (error.code === "ESRCH") return false;
-    throw error;
-  }
-}
+  );
+  assert.deepEqual(await run("setInterval(() => {}, 1000);", { timeoutMs: 300 }), {
+    exitCode: stopped,
+    timedOut: true,
+    outputLimitExceeded: false,
+    stdoutDigest: empty,
+    stderrDigest: empty,
+    stdoutBytes: 0,
+    stderrBytes: 0,
+    outputRef: "gate-output:5c54127e9934c2a7ce85724adfd3bd996e6af7c3df592396e6d6839106f1d04e"
+  });
+});
 
 test("real Git adapter creates one trailer-bound commit and reconciles retry", async () => {
   const { baseCommit, handle, repositoryRoot, target, worktrees, worktreesRoot } = await fixture();

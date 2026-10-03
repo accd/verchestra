@@ -1,12 +1,11 @@
 import { createHash } from "node:crypto";
 import { realpath } from "node:fs/promises";
 import { isAbsolute, join, resolve } from "node:path";
-import { spawn } from "node:child_process";
 
 import type { TaskGateCommand, TaskGateRunnerResult } from "@verchestra/application";
 
+import { runBoundedChild, type BoundedChildExit } from "./bounded-child-run.ts";
 import { NodeGitWorktreeAdapter } from "./git-worktree-adapter.ts";
-import { terminateProcessGroup } from "./process-tree-terminator.ts";
 import { safeEnvironment } from "./safe-environment.ts";
 import {
   isGitObjectId,
@@ -90,10 +89,27 @@ function parseNodeTestSummary(output: string) {
   };
 }
 
-async function terminate(pid: number): Promise<void> {
-  await terminateProcessGroup(pid, () =>
-    fail("VES_GATE_ADAPTER_TERMINATION_INCOMPLETE", "Gate process group remained alive after termination")
-  );
+// invariant: the gate's verdict material, read off how its child ended: every
+// byte of each stream is digested, a child the run stopped exits as -1 when it
+// reports no status, and only a test-summary gate reads the captured output.
+function gateResult(
+  command: TaskGateCommand,
+  observation: BoundedChildExit,
+  digests: { readonly stdout: string; readonly stderr: string }
+): TaskGateRunnerResult {
+  return Object.freeze({
+    exitCode: observation.exitCode ?? -1,
+    timedOut: observation.timedOut,
+    outputLimitExceeded: observation.outputLimitExceeded,
+    stdoutDigest: digests.stdout,
+    stderrDigest: digests.stderr,
+    stdoutBytes: observation.stdoutBytes,
+    stderrBytes: observation.stderrBytes,
+    outputRef: `gate-output:${createHash("sha256").update(`${digests.stdout}:${digests.stderr}`).digest("hex")}`,
+    ...(command.resultProtocol === "test-summary"
+      ? { tests: parseNodeTestSummary(observation.output.toString("utf8")) }
+      : {})
+  });
 }
 
 export class NodeGateProcessRunner {
@@ -126,7 +142,8 @@ export class NodeGateProcessRunner {
     const profile = this.#commands[command.commandRef];
     if (profile === undefined || !isAbsolute(profile.executable) || !profile.protocols.includes(command.resultProtocol))
       fail("VES_GATE_ADAPTER_COMMAND_DENIED", "Gate command is not locally allowlisted");
-    if ([...(profile.fixedArgs ?? []), ...command.args].some((argument) => argument.includes("\0")))
+    const args = [...(profile.fixedArgs ?? []), ...command.args];
+    if (args.some((argument) => argument.includes("\0")))
       fail("VES_GATE_ADAPTER_COMMAND_DENIED", "Gate argument contains a null byte");
     const worktree = await resolved(
       { repositoryRoot: this.#repositoryRoot, worktreesRoot: this.#worktreesRoot },
@@ -142,66 +159,24 @@ export class NodeGateProcessRunner {
     const cwd = await realpath(requestedCwd);
     if (!isWithinDirectory(target, cwd)) fail("VES_GATE_ADAPTER_PATH_ESCAPE", "Gate cwd escaped the worktree");
 
-    const stdoutHash = createHash("sha256");
-    const stderrHash = createHash("sha256");
-    const captured: Buffer[] = [];
-    let capturedBytes = 0;
-    let stdoutBytes = 0;
-    let stderrBytes = 0;
-    let timedOut = false;
-    let outputLimitExceeded = false;
-    let termination: Promise<void> | undefined;
-    const child = spawn(profile.executable, [...(profile.fixedArgs ?? []), ...command.args], {
+    const hashes = { stdout: createHash("sha256"), stderr: createHash("sha256") };
+    const observation = await runBoundedChild({
+      executable: profile.executable,
+      args,
       cwd,
       env: this.#environment,
-      shell: false,
-      windowsHide: true,
-      detached: process.platform !== "win32",
-      stdio: ["ignore", "pipe", "pipe"]
+      timeoutMs: command.timeoutMs,
+      outputLimitBytes: command.outputLimitBytes,
+      observe: (stream, chunk) => {
+        hashes[stream].update(chunk);
+      },
+      incomplete: () =>
+        fail("VES_GATE_ADAPTER_TERMINATION_INCOMPLETE", "Gate process group remained alive after termination")
     });
-    const collect = (chunk: Buffer, stream: "stdout" | "stderr") => {
-      if (stream === "stdout") {
-        stdoutBytes += chunk.byteLength;
-        stdoutHash.update(chunk);
-      } else {
-        stderrBytes += chunk.byteLength;
-        stderrHash.update(chunk);
-      }
-      const remaining = Math.max(0, command.outputLimitBytes - capturedBytes);
-      if (remaining > 0) {
-        const part = chunk.subarray(0, remaining);
-        captured.push(part);
-        capturedBytes += part.byteLength;
-      }
-      if (stdoutBytes + stderrBytes > command.outputLimitBytes && !outputLimitExceeded) {
-        outputLimitExceeded = true;
-        termination ??= terminate(child.pid!);
-      }
-    };
-    child.stdout.on("data", (chunk: Buffer) => collect(chunk, "stdout"));
-    child.stderr.on("data", (chunk: Buffer) => collect(chunk, "stderr"));
-    const timer = setTimeout(() => {
-      timedOut = true;
-      termination ??= terminate(child.pid!);
-    }, command.timeoutMs);
-    const exitCode = await new Promise<number>((resolveExit, reject) => {
-      child.once("error", reject);
-      child.once("close", (code) => resolveExit(code ?? -1));
-    }).finally(() => clearTimeout(timer));
-    await termination;
-    const combined = Buffer.concat(captured).toString("utf8");
-    const stdoutDigest = `sha256:${stdoutHash.digest("hex")}`;
-    const stderrDigest = `sha256:${stderrHash.digest("hex")}`;
-    return Object.freeze({
-      exitCode,
-      timedOut,
-      outputLimitExceeded,
-      stdoutDigest,
-      stderrDigest,
-      stdoutBytes,
-      stderrBytes,
-      outputRef: `gate-output:${createHash("sha256").update(`${stdoutDigest}:${stderrDigest}`).digest("hex")}`,
-      ...(command.resultProtocol === "test-summary" ? { tests: parseNodeTestSummary(combined) } : {})
+    if (observation.ended === "spawn-failed") throw observation.error;
+    return gateResult(command, observation, {
+      stdout: `sha256:${hashes.stdout.digest("hex")}`,
+      stderr: `sha256:${hashes.stderr.digest("hex")}`
     });
   }
 }

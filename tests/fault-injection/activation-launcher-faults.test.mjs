@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFile, rm } from "node:fs/promises";
+import { rm } from "node:fs/promises";
 import { join } from "node:path";
 import { after, test } from "node:test";
 
@@ -30,29 +30,6 @@ async function rejectsWith(options, code, gateOptions = {}) {
   return { bundle, releaseRoot };
 }
 
-function isAlive(pid) {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    if (error.code === "ESRCH") return false;
-    throw error;
-  }
-}
-
-async function readPid(path) {
-  for (let attempt = 0; attempt < 100; attempt += 1) {
-    try {
-      const pid = Number.parseInt((await readFile(path, "utf8")).trim(), 10);
-      if (Number.isSafeInteger(pid) && pid > 0) return pid;
-    } catch (error) {
-      if (error.code !== "ENOENT") throw error;
-    }
-    await new Promise((settle) => setTimeout(settle, 20));
-  }
-  throw new Error("the hanging launcher never reported its descendant PID");
-}
-
 test("a launcher that exits non-zero never becomes passing health evidence", async () => {
   await rejectsWith(
     { launchers: bothLaunchers('process.stdout.write("{}");\nprocess.exit(9);\n') },
@@ -72,35 +49,6 @@ test("a launcher that never returns is stopped at the health budget", async () =
   await rejectsWith({ launchers: bothLaunchers("setInterval(() => {}, 1000);\n") }, "VES_LAUNCHER_TIMEOUT", {
     timeoutMs: 500
   });
-});
-
-test("a timed-out launcher leaves no descendant process behind", async (t) => {
-  const hanging = [
-    `import { spawn } from "node:child_process";`,
-    `import { writeFileSync } from "node:fs";`,
-    `import { dirname, join } from "node:path";`,
-    `import { fileURLToPath } from "node:url";`,
-    `const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });`,
-    `writeFileSync(join(dirname(fileURLToPath(import.meta.url)), "descendant.pid"), String(child.pid));`,
-    `setInterval(() => {}, 1000);`,
-    ""
-  ].join("\n");
-  const { bundle, releaseRoot } = await executableReleaseRoot({ launchers: bothLaunchers(hanging) });
-  let descendantPid;
-  t.after(() => {
-    if (descendantPid === undefined) return;
-    try {
-      process.kill(descendantPid, "SIGKILL");
-    } catch (error) {
-      if (error.code !== "ESRCH") throw error;
-    }
-  });
-
-  const evaluation = new NodeActivationHealthGate({ timeoutMs: 2_000 }).evaluate({ releaseRoot, bundle });
-  descendantPid = await readPid(join(releaseRoot, "bin", "descendant.pid"));
-  await assert.rejects(evaluation, { code: "VES_LAUNCHER_TIMEOUT" });
-
-  assert.equal(isAlive(descendantPid), false, "the launcher's descendant must not outlive the health gate");
 });
 
 test("a launcher that floods its output is stopped at the output bound", async () => {
