@@ -1,9 +1,7 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
-import { chmod, lstat, mkdtemp, rm } from "node:fs/promises";
-import { createConnection, createServer, type Server, type Socket } from "node:net";
-import { tmpdir } from "node:os";
-import { isAbsolute, join } from "node:path";
-import type { Readable, Writable } from "node:stream";
+import { createConnection, type Socket } from "node:net";
+import { isAbsolute } from "node:path";
+import type { Duplex, Readable, Writable } from "node:stream";
 
 import {
   EXECUTION_PAYLOAD_TOMBSTONE,
@@ -12,6 +10,7 @@ import {
   type ExecutionToolRequest
 } from "@verchestra/application";
 
+import { UnixSocketBridgeTransport, type BridgeChannel, type BridgeTransport } from "./bridge-transport.ts";
 import {
   BRIDGE_TOKEN,
   MCP_BRIDGE_CHANNEL_PROTOCOL,
@@ -20,6 +19,7 @@ import {
   MCP_BRIDGE_TOKEN_ENV,
   MCP_BRIDGE_TOOL_DEFINITIONS,
   MCP_SUPPORTED_PROTOCOL_VERSIONS,
+  McpToolBridgeError,
   parseJsonObject,
   readBoundedLines,
   textResult,
@@ -36,16 +36,6 @@ const FATAL_CODES = new Set([
   "VES_EXECUTOR_CANCELLED",
   "VES_EXECUTOR_BUDGET_EXCEEDED"
 ]);
-
-export class McpToolBridgeError extends Error {
-  readonly code: string;
-
-  constructor(code: string, message: string, options?: ErrorOptions) {
-    super(message, options);
-    this.name = "McpToolBridgeError";
-    this.code = code;
-  }
-}
 
 function errorCode(error: unknown): string | undefined {
   const code = (error as { code?: unknown } | undefined)?.code;
@@ -81,18 +71,19 @@ export interface McpToolBridgeControllerOptions {
   readonly onFatal?: (error: unknown) => void;
   // Parent for the per-run 0700 socket directory; defaults to the OS temp dir.
   readonly socketRoot?: string;
+  // why: the channel is the one part that differs by platform; without one the
+  // controller keeps the Unix socket under `socketRoot`.
+  readonly transport?: BridgeTransport;
 }
 
-// The trusted half of the bridge. It owns the Unix socket, authenticates the
+// The trusted half of the bridge. It owns the channel, authenticates the
 // relay, confines reads, and turns writes into executor tool requests.
 export class McpToolBridgeController {
   readonly #options: McpToolBridgeControllerOptions;
   readonly #view: WorktreeReadView;
-  readonly #directory: string;
-  readonly #socketPath: string;
   readonly #token: string;
-  readonly #server: Server;
-  readonly #sockets = new Set<Socket>();
+  #channel: BridgeChannel | undefined;
+  readonly #sockets = new Set<Duplex>();
   readonly #requestPrefix = `bridge:${randomBytes(8).toString("hex")}`;
   #authenticated = false;
   #sequence = 0;
@@ -100,18 +91,10 @@ export class McpToolBridgeController {
   #closed = false;
   readonly #statistics = { calls: 0, writes: 0, deletes: 0, denied: 0, rejectedConnections: 0 };
 
-  private constructor(
-    options: McpToolBridgeControllerOptions,
-    view: WorktreeReadView,
-    directory: string,
-    token: string
-  ) {
+  private constructor(options: McpToolBridgeControllerOptions, view: WorktreeReadView, token: string) {
     this.#options = options;
     this.#view = view;
-    this.#directory = directory;
-    this.#socketPath = join(directory, "bridge.sock");
     this.#token = token;
-    this.#server = createServer((socket) => this.#accept(socket));
   }
 
   static async open(options: McpToolBridgeControllerOptions): Promise<McpToolBridgeController> {
@@ -127,31 +110,20 @@ export class McpToolBridgeController {
       readScope: options.readScope,
       protectedPaths: options.protectedPaths
     });
-    const directory = await mkdtemp(join(options.socketRoot ?? tmpdir(), "vmcp-"));
-    await chmod(directory, 0o700);
-    const metadata = await lstat(directory);
-    if (
-      !metadata.isDirectory() ||
-      metadata.isSymbolicLink() ||
-      (metadata.mode & 0o077) !== 0 ||
-      (process.getuid !== undefined && metadata.uid !== process.getuid())
-    ) {
-      await rm(directory, { recursive: true, force: true });
-      throw new McpToolBridgeError("VES_BRIDGE_CHANNEL_INSECURE", "Bridge socket directory is not private");
-    }
-    const controller = new McpToolBridgeController(options, view, directory, randomBytes(32).toString("hex"));
-    await controller.#listen();
+    const controller = new McpToolBridgeController(options, view, randomBytes(32).toString("hex"));
+    const transport = options.transport ?? new UnixSocketBridgeTransport(options.socketRoot);
+    controller.#channel = await transport.listen((connection) => controller.#accept(connection));
     return controller;
   }
 
   // The relay's MCP-config environment: where to connect and how to prove it
   // is the relay launched for this run.
   get environment(): Readonly<Record<string, string>> {
-    return Object.freeze({ [MCP_BRIDGE_SOCKET_ENV]: this.#socketPath, [MCP_BRIDGE_TOKEN_ENV]: this.#token });
+    return Object.freeze({ [MCP_BRIDGE_SOCKET_ENV]: this.socketPath, [MCP_BRIDGE_TOKEN_ENV]: this.#token });
   }
 
   get socketPath(): string {
-    return this.#socketPath;
+    return this.#channel?.endpoint ?? "";
   }
 
   statistics(): McpBridgeStatistics {
@@ -162,23 +134,11 @@ export class McpToolBridgeController {
     if (this.#closed) return;
     this.#closed = true;
     for (const socket of this.#sockets) socket.destroy();
-    await new Promise<void>((resolve) => this.#server.close(() => resolve()));
+    await this.#channel?.close();
     await this.#queue.catch(() => undefined);
-    await rm(this.#directory, { recursive: true, force: true });
   }
 
-  async #listen(): Promise<void> {
-    await new Promise<void>((resolve, reject) => {
-      this.#server.once("error", reject);
-      this.#server.listen(this.#socketPath, () => {
-        this.#server.off("error", reject);
-        resolve();
-      });
-    });
-    await chmod(this.#socketPath, 0o600);
-  }
-
-  #accept(socket: Socket): void {
+  #accept(socket: Duplex): void {
     if (this.#authenticated || this.#closed) {
       this.#statistics.rejectedConnections += 1;
       socket.destroy();
@@ -206,7 +166,7 @@ export class McpToolBridgeController {
     );
   }
 
-  #authenticate(socket: Socket, frame: Record<string, unknown> | undefined): boolean {
+  #authenticate(socket: Duplex, frame: Record<string, unknown> | undefined): boolean {
     if (frame === undefined || !this.#verifyHello(frame)) {
       this.#reject(socket);
       return false;
@@ -216,7 +176,7 @@ export class McpToolBridgeController {
     return true;
   }
 
-  #enqueueCall(socket: Socket, frame: Record<string, unknown> | undefined): void {
+  #enqueueCall(socket: Duplex, frame: Record<string, unknown> | undefined): void {
     if (frame?.["type"] !== "call" || !Number.isSafeInteger(frame["id"])) {
       this.#reject(socket);
       return;
@@ -228,7 +188,7 @@ export class McpToolBridgeController {
     });
   }
 
-  #reject(socket: Socket): void {
+  #reject(socket: Duplex): void {
     this.#statistics.rejectedConnections += 1;
     socket.destroy();
   }

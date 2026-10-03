@@ -3,6 +3,7 @@ import { isAbsolute } from "node:path";
 import type { ExecutionDriverPort, ExecutionPayloadStore } from "@verchestra/application";
 import { canonicalizeJsonV2, type DriverEvent, type DriverEventOf } from "@verchestra/domain";
 
+import type { BridgeTransport } from "./bridge-transport.ts";
 import { runDriverSession, type DriverSessionPort, type DriverSessionResult } from "./driver-session-runner.ts";
 import { MCP_BRIDGE_QUALIFIED_TOOLS } from "./mcp-bridge-protocol.ts";
 import { McpToolBridgeController } from "./mcp-tool-bridge.ts";
@@ -32,6 +33,9 @@ export interface DriverExecutionAdapterOptions<TStartRequest> {
   // change scope.
   readonly readScope?: (request: ExecuteRequest) => readonly string[];
   readonly socketRoot?: string;
+  // why: agent-runtime may not import the platform adapters, so the
+  // composition root hands the bridge any channel other than the Unix socket.
+  readonly bridgeTransport?: BridgeTransport;
 }
 
 // invariant: what a quota signal hands on: the scope the provider named and
@@ -167,7 +171,8 @@ export class DriverExecutionAdapter<TStartRequest> implements ExecutionDriverPor
         state.fatal ??= error;
         abort.abort("fatal tool denial");
       },
-      ...(this.#options.socketRoot === undefined ? {} : { socketRoot: this.#options.socketRoot })
+      ...(this.#options.socketRoot === undefined ? {} : { socketRoot: this.#options.socketRoot }),
+      ...(this.#options.bridgeTransport === undefined ? {} : { transport: this.#options.bridgeTransport })
     });
   }
 

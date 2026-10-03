@@ -15,6 +15,16 @@ export const MCP_SUPPORTED_PROTOCOL_VERSIONS = Object.freeze(["2024-11-05", "202
 export const MAXIMUM_BRIDGE_FRAME_BYTES = 8 * 1024 * 1024;
 export const BRIDGE_TOKEN = /^[a-f0-9]{64}$/u;
 
+export class McpToolBridgeError extends Error {
+  readonly code: string;
+
+  constructor(code: string, message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = "McpToolBridgeError";
+    this.code = code;
+  }
+}
+
 export const MCP_BRIDGE_TOOLS = Object.freeze([
   "read_file",
   "list_dir",
