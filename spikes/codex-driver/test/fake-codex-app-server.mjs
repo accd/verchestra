@@ -55,6 +55,10 @@ lines.on("line", (line) => {
       emit({ method: "item/agentMessage/delta", params: { threadId: "private-thread-id", turnId: "private-turn-id", itemId: "msg-1", delta: `value:${process.env.TEST_SECRET}` } });
       emit({ method: "turn/completed", params: { threadId: "private-thread-id", turn: { id: "private-turn-id", status: "completed" }, usage: { inputTokens: 1, outputTokens: 1 } } });
       process.exit(0);
+    } else if (mode === "not-an-object") {
+      // why: a provider whose lines parse as JSON and are not objects: null,
+      // then a string that spells an error code. It then never answers.
+      process.stdout.write(`null\n"VES_CODEX_ABORTED"\n`);
     } else if (mode === "fork") {
       // why: a provider that starts processes of its own and then never answers.
       forkTree();

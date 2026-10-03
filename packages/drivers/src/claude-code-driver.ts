@@ -330,13 +330,19 @@ function hookEvent(event: unknown): boolean {
 // the stream, and the subscription profile disables all of them; one hook
 // event therefore means a managed or injected hook ran, and the session ends.
 function streamEvent(line: string, surface: StreamSurface): Record<string, unknown> | string {
-  let event: Record<string, unknown>;
+  let event: unknown;
   try {
-    event = JSON.parse(line) as Record<string, unknown>;
+    event = JSON.parse(line);
   } catch {
     return "VES_CLAUDE_STREAM_INVALID";
   }
-  return surface === "bridge-only" && hookEvent(event) ? "VES_CLAUDE_HOOK_UNEXPECTED" : event;
+  // invariant: every stream-json line is an object. A line that parses to
+  // anything else is a broken stream: `null` must not reach a member read, and
+  // a string must not be taken for a failure code the provider chose.
+  if (event === null || typeof event !== "object" || Array.isArray(event)) return "VES_CLAUDE_STREAM_INVALID";
+  return surface === "bridge-only" && hookEvent(event)
+    ? "VES_CLAUDE_HOOK_UNEXPECTED"
+    : (event as Record<string, unknown>);
 }
 
 // The per-run isolation directory holds the bridge token; it is removed as

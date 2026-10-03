@@ -81,6 +81,11 @@ if (mode === "malformed") {
   // then never answers.
   for (let index = 0; index < 40; index += 1) emit({ type: "stream_event", event: { delta: { type: "text_delta", text: "x".repeat(100) } } });
   setInterval(() => {}, 1_000);
+} else if (mode === "not-an-object") {
+  // why: a provider whose lines parse as JSON and are not objects: null, then
+  // a string that spells an error code. It then never answers.
+  process.stdout.write(`null\n"VES_CLAUDE_ABORTED"\n`);
+  setInterval(() => {}, 1_000);
 } else if (mode === "fork") {
   // why: a provider that starts processes of its own and then never answers.
   process.stdout.write(`${await forkTree()}\n`);
