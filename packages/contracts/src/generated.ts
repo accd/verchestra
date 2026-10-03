@@ -252,104 +252,13 @@ export interface TaskRequest {
  */
 export interface TaskRequestV2 {
   schemaVersion: 2;
-  sourceRevision: string;
-  task: {
-    taskId: string;
-    /**
-     * @minItems 1
-     * @maxItems 100
-     */
-    requirementIds: [string, ...string[]];
-    /**
-     * @minItems 0
-     * @maxItems 100
-     */
-    dependencyTaskIds: string[];
-    component: string;
-    /**
-     * @minItems 1
-     * @maxItems 100
-     */
-    changeScope: [string, ...string[]];
-    /**
-     * @minItems 1
-     * @maxItems 100
-     */
-    protectedPaths: [string, ...string[]];
-    /**
-     * @minItems 1
-     * @maxItems 100
-     */
-    verificationCommands: [string, ...string[]];
-    /**
-     * @minItems 1
-     * @maxItems 100
-     */
-    doneCriteria: [string, ...string[]];
-    risk: "low" | "medium" | "high" | "critical";
-    expectedCommitBoundary: string;
-  };
-  /**
-   * @minItems 1
-   * @maxItems 50
-   */
-  gates: [
-    {
-      gateId: string;
-      /**
-       * @minItems 1
-       * @maxItems 100
-       */
-      requirementIds: [string, ...string[]];
-      declaredCommand: string;
-      commandRef: string;
-      /**
-       * @minItems 0
-       * @maxItems 100
-       */
-      args: string[];
-      cwd: string;
-      timeoutMs: number;
-      outputLimitBytes: number;
-      resultProtocol: "exit-code" | "test-summary";
-      minimumTests: number;
-    },
-    ...{
-      gateId: string;
-      /**
-       * @minItems 1
-       * @maxItems 100
-       */
-      requirementIds: [string, ...string[]];
-      declaredCommand: string;
-      commandRef: string;
-      /**
-       * @minItems 0
-       * @maxItems 100
-       */
-      args: string[];
-      cwd: string;
-      timeoutMs: number;
-      outputLimitBytes: number;
-      resultProtocol: "exit-code" | "test-summary";
-      minimumTests: number;
-    }[]
-  ];
-  budgets: {
-    maximumCostUsd: number;
-    maximumTokens: number;
-    maximumDurationMs: number;
-  };
-  onGateFailure?: {
-    maxAttempts: number;
-    feedbackToDriver: boolean;
-    escalateAfter: number;
-  };
-  verifier: {
-    driverId: "codex";
-    model: string;
-  };
-  instructions: string;
+  sourceRevision: TaskRequest["sourceRevision"];
+  task: TaskRequest["task"];
+  gates: TaskRequest["gates"];
+  budgets: TaskRequest["budgets"];
+  onGateFailure?: TaskRequest["onGateFailure"];
+  verifier: TaskRequest["verifier"];
+  instructions: TaskRequest["instructions"];
   execution: {
     mode: "agent" | "graph" | "swarm";
     /**

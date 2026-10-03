@@ -68,6 +68,28 @@ test("the generated contracts carry a TaskRequestV2 type named by the schema tit
   );
 });
 
+// why: a member version 2 shares with version 1 is typed as version 1's
+// member, so the generated types cannot drift apart where the schemas agree.
+test("the generated TaskRequestV2 types each shared member as the version 1 member", async () => {
+  const generated = await readFile(new URL("../../packages/contracts/src/generated.ts", import.meta.url), "utf8");
+  const v2 = generated.slice(generated.indexOf("export interface TaskRequestV2 {"));
+  for (const [member, optional] of [
+    ["sourceRevision", false],
+    ["task", false],
+    ["gates", false],
+    ["budgets", false],
+    ["onGateFailure", true],
+    ["verifier", false],
+    ["instructions", false]
+  ])
+    assert.match(
+      v2,
+      new RegExp(`^ {2}${member}${optional ? "\\?" : ""}: TaskRequest\\["${member}"\\];$`, "mu"),
+      member
+    );
+  assert.doesNotMatch(v2, /^ {2}execution: TaskRequest\[/mu);
+});
+
 // why: the defaults and hard ceilings SSI-37 and SSI-38 state, spelled out
 // here from the specification rather than read from the module under test.
 const DEFAULT_LIMITS = Object.freeze({
@@ -331,7 +353,7 @@ const shapeRejections = [
   [
     "a bidirectional override in node instructions",
     "agent",
-    (r) => (r.execution.nodes[0].instructions = "a ‮b"),
+    (r) => (r.execution.nodes[0].instructions = "a \u202Eb"),
     "VES_TASK_REQUEST_EXECUTION_INVALID"
   ],
   [
