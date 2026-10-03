@@ -19,7 +19,7 @@ import {
   serviceOptions,
   workspaceId
 } from "../helpers/machine-bootstrap-fixture.mjs";
-import { cleanup, opened } from "../helpers/runtime-store-fixture.mjs";
+import { cleanup, opened, storedMachineProfiles } from "../helpers/runtime-store-fixture.mjs";
 
 afterEach(cleanup);
 
@@ -64,7 +64,7 @@ test("Secret Broker inspector reports presence without exposing secret bytes", a
 });
 
 test("runtime profile store rejects a profile for another Workspace", async () => {
-  const { store: runtime } = await opened();
+  const { dbPath, store: runtime } = await opened();
   const profiles = new RuntimeMachineProfileStore({ runtimeStore: runtime, workspaceId });
   const profile = {
     schemaVersion: 1,
@@ -77,7 +77,7 @@ test("runtime profile store rejects a profile for another Workspace", async () =
     secretBindings: []
   };
   await assert.rejects(profiles.save(profile), { code: "VES_BOOTSTRAP_PROFILE_FAILED" });
-  assert.equal(runtime.getMachineProfile(workspaceId), undefined);
+  assert.equal(storedMachineProfiles(dbPath).size, 0);
   runtime.close();
 });
 
@@ -99,10 +99,10 @@ const profileFor = (overrides = {}) => ({
 });
 
 test("the durable machine profile row is written in canonical member order", async () => {
-  const { store: runtime } = await opened();
+  const { dbPath, store: runtime } = await opened();
   const profiles = new RuntimeMachineProfileStore({ runtimeStore: runtime, workspaceId });
   const receipt = await profiles.save(profileFor());
-  const members = Object.keys(runtime.getMachineProfile(workspaceId));
+  const members = Object.keys(storedMachineProfiles(dbPath).get(workspaceId));
   assert.deepEqual(members, [...members].sort());
   assert.equal(
     receipt.profileDigest,
@@ -143,7 +143,7 @@ test("the machine profile digest does not depend on the ambient locale collation
 });
 
 test("persisted machine profile contains no credential value, session, or local selection", async () => {
-  const { store: runtime } = await opened();
+  const { dbPath, store: runtime } = await opened();
   const profiles = new RuntimeMachineProfileStore({ runtimeStore: runtime, workspaceId });
   const adapter = new MockSecretAdapter();
   adapter.set(workspaceId, "jira.token", new TextEncoder().encode("never-persist-this"));
@@ -161,7 +161,7 @@ test("persisted machine profile contains no credential value, session, or local 
     requiredSecrets: [{ logicalName: "jira.token", purpose: "Jira", blockedCapability: "jira", required: true }]
   });
   await service.execute(executeInput(config));
-  const serialized = JSON.stringify(runtime.getMachineProfile(workspaceId));
+  const serialized = JSON.stringify(storedMachineProfiles(dbPath).get(workspaceId));
   for (const prohibited of ["never-persist-this", "sessionToken", "credentialValue", "selectedModel"]) {
     assert.equal(serialized.includes(prohibited), false);
   }
