@@ -1,0 +1,501 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ves://task-request/2",
+  "title": "TaskRequestV2",
+  "description": "Untrusted user request for one governed delivery task run as a single agent, a graph, or a swarm of governed provider sessions. Identity, digests, executables, credentials, authentication, billing and approvals are derived locally and never carried here.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "sourceRevision", "task", "gates", "budgets", "verifier", "instructions", "execution"],
+  "properties": {
+    "schemaVersion": {
+      "type": "integer",
+      "const": 2
+    },
+    "sourceRevision": {
+      "type": "string",
+      "pattern": "^(?:[a-f0-9]{40}|[a-f0-9]{64})$"
+    },
+    "task": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "taskId",
+        "requirementIds",
+        "dependencyTaskIds",
+        "component",
+        "changeScope",
+        "protectedPaths",
+        "verificationCommands",
+        "doneCriteria",
+        "risk",
+        "expectedCommitBoundary"
+      ],
+      "properties": {
+        "taskId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@/+-]{0,511}$"
+        },
+        "requirementIds": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 100,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^VES-[A-Z]{3}-[0-9]{3}$"
+          }
+        },
+        "dependencyTaskIds": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 100,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@/+-]{0,511}$"
+          }
+        },
+        "component": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@/+-]{0,511}$"
+        },
+        "changeScope": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 100,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^(?![A-Za-z]:)(?!/)(?!.*\\\\)(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9._@+/-]+$"
+          }
+        },
+        "protectedPaths": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 100,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^(?![A-Za-z]:)(?!/)(?!.*\\\\)(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9._@+/-]+$"
+          }
+        },
+        "verificationCommands": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 100,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[\\x20-\\x7e]{1,512}$"
+          }
+        },
+        "doneCriteria": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 100,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[\\x20-\\x7e]{1,512}$"
+          }
+        },
+        "risk": {
+          "type": "string",
+          "enum": ["low", "medium", "high", "critical"]
+        },
+        "expectedCommitBoundary": {
+          "type": "string",
+          "pattern": "^[\\x20-\\x7e]{1,512}$"
+        }
+      }
+    },
+    "gates": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 50,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "gateId",
+          "requirementIds",
+          "declaredCommand",
+          "commandRef",
+          "args",
+          "cwd",
+          "timeoutMs",
+          "outputLimitBytes",
+          "resultProtocol",
+          "minimumTests"
+        ],
+        "properties": {
+          "gateId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@/+-]{0,511}$"
+          },
+          "requirementIds": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 100,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "pattern": "^VES-[A-Z]{3}-[0-9]{3}$"
+            }
+          },
+          "declaredCommand": {
+            "type": "string",
+            "pattern": "^[\\x20-\\x7e]{1,512}$"
+          },
+          "commandRef": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@/+-]{0,511}$"
+          },
+          "args": {
+            "type": "array",
+            "minItems": 0,
+            "maxItems": 100,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "pattern": "^(?![\\\\/])(?![A-Za-z]:)(?!.*=[\\\\/])(?!.*=[A-Za-z]:)(?!.*(?:^|[\\\\/=])\\.\\.(?:[\\\\/]|$))[\\x20-\\x7e]{1,512}$"
+            }
+          },
+          "cwd": {
+            "type": "string",
+            "pattern": "^(?:\\.|(?![A-Za-z]:)(?!/)(?!.*\\\\)(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9._@+/-]+)$"
+          },
+          "timeoutMs": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 3600000
+          },
+          "outputLimitBytes": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 16000000
+          },
+          "resultProtocol": {
+            "type": "string",
+            "enum": ["exit-code", "test-summary"]
+          },
+          "minimumTests": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000000
+          }
+        }
+      }
+    },
+    "budgets": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["maximumCostUsd", "maximumTokens", "maximumDurationMs"],
+      "properties": {
+        "maximumCostUsd": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1000
+        },
+        "maximumTokens": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000000
+        },
+        "maximumDurationMs": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 86400000
+        }
+      }
+    },
+    "onGateFailure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["maxAttempts", "feedbackToDriver", "escalateAfter"],
+      "properties": {
+        "maxAttempts": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 5
+        },
+        "feedbackToDriver": {
+          "type": "boolean"
+        },
+        "escalateAfter": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 5
+        }
+      }
+    },
+    "verifier": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["driverId", "model"],
+      "properties": {
+        "driverId": {
+          "type": "string",
+          "const": "codex"
+        },
+        "model": {
+          "type": "string",
+          "pattern": "^gpt-[a-z0-9][a-z0-9.-]{0,63}$"
+        }
+      }
+    },
+    "instructions": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 8192,
+      "pattern": "^[^\\u0000-\\u0008\\u000B-\\u001F\\u007F\\u202A-\\u202E\\u2066-\\u2069]+$"
+    },
+    "execution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "nodes"],
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": ["agent", "graph", "swarm"]
+        },
+        "nodes": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 256,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["nodeId", "driver", "description", "instructions", "readScope", "writeScope", "inputs"],
+            "properties": {
+              "nodeId": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{0,31}$"
+              },
+              "driver": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["driverId", "model"],
+                    "properties": {
+                      "driverId": {
+                        "type": "string",
+                        "const": "claude-code"
+                      },
+                      "model": {
+                        "type": "string",
+                        "pattern": "^claude-[a-z0-9][a-z0-9.-]{0,63}$"
+                      }
+                    }
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["driverId", "model"],
+                    "properties": {
+                      "driverId": {
+                        "type": "string",
+                        "const": "codex"
+                      },
+                      "model": {
+                        "type": "string",
+                        "pattern": "^gpt-[a-z0-9][a-z0-9.-]{0,63}$"
+                      }
+                    }
+                  }
+                ]
+              },
+              "description": {
+                "type": "string",
+                "pattern": "^[\\x20-\\x7e]{1,256}$"
+              },
+              "instructions": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 8192,
+                "pattern": "^[^\\u0000-\\u0008\\u000B-\\u001F\\u007F\\u202A-\\u202E\\u2066-\\u2069]+$"
+              },
+              "readScope": {
+                "type": "array",
+                "minItems": 0,
+                "maxItems": 100,
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "pattern": "^(?![A-Za-z]:)(?!/)(?!.*\\\\)(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9._@+/-]+$"
+                }
+              },
+              "writeScope": {
+                "type": "array",
+                "minItems": 0,
+                "maxItems": 100,
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "pattern": "^(?![A-Za-z]:)(?!/)(?!.*\\\\)(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9._@+/-]+$"
+                }
+              },
+              "inputs": {
+                "type": "array",
+                "minItems": 0,
+                "maxItems": 256,
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9-]{0,31}$"
+                }
+              }
+            }
+          }
+        },
+        "edges": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 512,
+          "uniqueItems": true,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["from", "to"],
+            "properties": {
+              "from": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{0,31}$"
+              },
+              "to": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{0,31}$"
+              }
+            }
+          }
+        },
+        "start": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]{0,31}$"
+        },
+        "handoffs": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 256,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["from", "to"],
+            "properties": {
+              "from": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{0,31}$"
+              },
+              "to": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 256,
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9-]{0,31}$"
+                }
+              }
+            }
+          }
+        },
+        "limits": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "concurrency": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 4
+            },
+            "maxNodes": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 256
+            },
+            "maxEdges": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 512
+            },
+            "maxSwarmAgents": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 16
+            },
+            "maxHandoffs": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 128
+            },
+            "nodeResultBytes": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 262144
+            },
+            "runResultBytes": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1048576
+            }
+          }
+        }
+      },
+      "if": {
+        "properties": {
+          "mode": {
+            "const": "agent"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "nodes": {
+            "type": "array",
+            "maxItems": 1
+          },
+          "edges": false,
+          "start": false,
+          "handoffs": false
+        }
+      },
+      "else": {
+        "if": {
+          "properties": {
+            "mode": {
+              "const": "graph"
+            }
+          }
+        },
+        "then": {
+          "required": ["edges"],
+          "properties": {
+            "start": false,
+            "handoffs": false
+          }
+        },
+        "else": {
+          "required": ["start", "handoffs"],
+          "properties": {
+            "nodes": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 16,
+              "items": {
+                "type": "object",
+                "properties": {
+                  "inputs": {
+                    "type": "array",
+                    "maxItems": 0
+                  }
+                }
+              }
+            },
+            "edges": false
+          }
+        }
+      }
+    }
+  }
+}

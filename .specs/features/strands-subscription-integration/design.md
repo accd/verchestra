@@ -162,8 +162,9 @@ SDK import, and the ban on `Agent`, `models/*`, `McpClient`, `SessionManager`,
 - **Removed from v1.** The top-level `driver` member: in v2 every node names its
   own driver. Authentication, credentials, billing, executables, and endpoints
   have no member (`additionalProperties: false`, SSI-24).
-- **Generator.** `scripts/generate-contract-types.mjs:12` reads only
-  `1.schema.json` per directory. T3 extends it to every `<n>.schema.json`, with
+- **Generator.** Before T3, `scripts/generate-contract-types.mjs` read only
+  `1.schema.json` per directory. T3 extends it to every `<n>.schema.json`
+  (`schemaVersions`, in ascending order), with
   the schema `title` naming the type (`TaskRequestV2`), and the v1 output stays
   byte-identical.
 
@@ -468,7 +469,7 @@ catalog keeps its count of 19.
 | --- | --- | --- | --- |
 | The executor removes the worktree on every failure | `packages/application/src/execution/task-executor.ts:624` | A suspension would lose completed writer nodes' effects | Typed `suspended` status that skips cleanup (T6), with a test that a suspended worktree survives |
 | The driver adapter returns no output | `packages/agent-runtime/src/execution/driver-execution-adapter.ts:109` | Node results cannot travel | `result.structured` → payload reference (T4) |
-| The contract generator reads only version 1 | `scripts/generate-contract-types.mjs:12` | A v2 schema would get no generated type | Generator extension with a parity test (T3) |
+| The contract generator reads only version 1 (before T3) | `scripts/generate-contract-types.mjs` directory loop | A v2 schema would get no generated type | Generator extension with a parity test (T3) |
 | Textual self-containment check | `scripts/t76-build-candidate.mjs:318-326` | False positive on the SDK's string literal | Metafile-based check, owner decision D2 (T5) |
 | Windows policy locations | `packages/drivers/src/claude-code-driver.ts:199` | Lifting the refusal alone would check `/etc/claude-code` on Windows and pass | Windows sources first, refusal lifted last (T7) |
 | No bridge transport seam | `packages/agent-runtime/src/execution/mcp-tool-bridge.ts:113` | A second transport would duplicate the controller | Extract the seam with the Unix transport unchanged (T7) |

@@ -5,11 +5,25 @@ import { format } from "prettier";
 const root = new URL("../schemas/", import.meta.url);
 const output = new URL("../packages/contracts/src/generated.ts", import.meta.url);
 let generated = "// Generated from canonical JSON Schemas. Do not edit.\n\n";
+const SCHEMA_FILE = /^([1-9]\d{0,5})\.schema\.json$/u;
+
+// invariant: a contract's versions compile in ascending order after one
+// another, so adding version n+1 appends its type and leaves the output of
+// every earlier version byte for byte where it was.
+async function schemaVersions(name) {
+  return (await readdir(new URL(`${name}/`, root)))
+    .map((file) => SCHEMA_FILE.exec(file)?.[1])
+    .filter((version) => version !== undefined)
+    .map(Number)
+    .sort((left, right) => left - right);
+}
+
 const schemas = [];
 for (const directory of (await readdir(root, { withFileTypes: true }))
   .filter((entry) => entry.isDirectory())
   .sort((a, b) => a.name.localeCompare(b.name))) {
-  schemas.push(JSON.parse(await readFile(new URL(`${directory.name}/1.schema.json`, root), "utf8")));
+  for (const version of await schemaVersions(directory.name))
+    schemas.push(JSON.parse(await readFile(new URL(`${directory.name}/${version}.schema.json`, root), "utf8")));
 }
 const byId = new Map(schemas.map((schema) => [schema.$id, schema]));
 function dereference(value) {
