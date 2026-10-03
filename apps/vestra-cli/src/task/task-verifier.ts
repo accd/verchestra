@@ -1,39 +1,25 @@
-import { createHash } from "node:crypto";
-import { mkdir, realpath } from "node:fs/promises";
-import { dirname, join, relative, sep, isAbsolute } from "node:path";
+import { join } from "node:path";
 
 import {
   IndependentVerificationCoordinator,
-  taskGateVerdict,
   type BudgetMeter,
   type TaskRunCommit,
   type TaskRunVerification,
   type VerificationPorts
 } from "@verchestra/application";
-import {
-  isWithinTaskScope,
-  WorkflowMachine,
-  type RunSnapshot,
-  type WorkflowCommand,
-  type WorkflowDecision
-} from "@verchestra/domain";
-import {
-  NodeGateProcessRunner,
-  scratchWorktreeHandle,
-  type GateCommandProfile,
-  type RuntimeStore
-} from "@verchestra/platform-node";
+import { WorkflowMachine, type RunSnapshot, type WorkflowCommand, type WorkflowDecision } from "@verchestra/domain";
+import type { GateCommandProfile, RuntimeStore } from "@verchestra/platform-node";
 
 import { parseVerdict, runCodexVerifier, verifierPrompt, type VerifierClaim } from "./task-codex.ts";
 import { canonicalDigest, sha256 } from "./task-files.ts";
-import { addDetachedWorktree, git, gitBuffer, removeWorktree } from "./task-git.ts";
+import { git, gitBuffer } from "./task-git.ts";
+import { activeStateDigest, MutationSensor } from "./task-mutation-sensor.ts";
 import { IMPLEMENTER_ACTOR, VERIFIER_ACTOR, type TaskPlanRecord } from "./task-plan-record.ts";
 import type { ProviderProcesses } from "./task-process-tree.ts";
 import type { RunRecord } from "./task-run-record.ts";
 import { applyWorkflow, verificationRun } from "./task-workflow.ts";
-import { requireRealDirectories, type TaskWorkspace } from "./task-workspace.ts";
+import { scratchCheckouts, type TaskWorkspace } from "./task-workspace.ts";
 
-type Row = Readonly<Record<string, unknown>>;
 const MAXIMUM_EVIDENCE_FILE_BYTES = 1024 * 1024;
 
 export interface VerifierContext {
@@ -48,98 +34,6 @@ export interface VerifierContext {
   readonly env: Readonly<Record<string, string | undefined>>;
   readonly meter: BudgetMeter | undefined;
   readonly providers: ProviderProcesses;
-}
-
-// invariant: a scratch checkout is created, and deleted recursively, only
-// below real directories: the run's own scratch root and every directory from
-// it down to the checkout are checked before each use, so a link planted
-// under `verification/` never carries the delete somewhere else.
-async function scratchDirectory(context: VerifierContext, ...directories: readonly string[]): Promise<string> {
-  const path = [context.plan.runId, ...directories];
-  await requireRealDirectories(context.workspace.verificationRoot, path);
-  return join(context.workspace.verificationRoot, ...path);
-}
-
-// invariant: the verification sensor compares this digest before and after
-// every mutation run; the user's checkout (HEAD, index, and working tree
-// status) must not move while Verchestra verifies.
-async function activeStateDigest(repositoryRoot: string): Promise<`sha256:${string}`> {
-  const head = await git(repositoryRoot, ["rev-parse", "HEAD"]).catch(() => "unborn");
-  const status = await git(repositoryRoot, ["status", "--porcelain=v1", "-z", "--untracked-files=all"]);
-  return canonicalDigest({ head: head.trim(), status });
-}
-
-function within(root: string, candidate: string): boolean {
-  const child = relative(root, candidate);
-  return child !== "" && child !== ".." && !child.startsWith(`..${sep}`) && !isAbsolute(child);
-}
-
-class VerificationSensor {
-  readonly #context: VerifierContext;
-  #runs = 0;
-
-  constructor(context: VerifierContext) {
-    this.#context = context;
-  }
-
-  async run(request: Parameters<VerificationPorts["sensor"]["run"]>[0]): Promise<Row> {
-    const repositoryRoot = this.#context.workspace.repositoryRoot;
-    const before = await activeStateDigest(repositoryRoot);
-    const id = createHash("sha256")
-      .update(`${request.mutation.mutationId}:${(this.#runs += 1)}`)
-      .digest("hex")
-      .slice(0, 32);
-    const root = await scratchDirectory(this.#context, "mutations");
-    await mkdir(root, { recursive: true, mode: 0o700 });
-    const scratch = await scratchDirectory(this.#context, "mutations", id);
-    try {
-      await addDetachedWorktree(repositoryRoot, scratch, request.commitId);
-      const isolated = within(await realpath(root), await realpath(scratch));
-      await this.#mutate(scratch, request.mutation.targetRef);
-      const killed = await this.#gatesFail(root, id, request.commitId, request.criterion.requirementId);
-      return {
-        scratchIsolationVerified: isolated,
-        killed,
-        expectedFailureObserved: killed,
-        evidenceRef: `mutation:${sha256(`${request.mutation.mutationId}:${String(killed)}`).slice(7, 39)}`,
-        activeStateBeforeDigest: before,
-        activeStateAfterDigest: await activeStateDigest(repositoryRoot)
-      };
-    } finally {
-      await removeWorktree(repositoryRoot, scratch);
-    }
-  }
-
-  // why: the mutation is the reversal of the implementation file the verifier
-  // named: restore its base content, or remove it when the task created it.
-  async #mutate(scratch: string, targetRef: string): Promise<void> {
-    const path = targetRef.slice("path:".length);
-    const scope = this.#context.plan.request.task.changeScope;
-    if (!isWithinTaskScope(path, scope))
-      throw Object.assign(new Error("mutation target outside scope"), { code: "VES_TASK_MUTATION_INVALID" });
-    const base = this.#context.plan.request.sourceRevision;
-    const existed = await git(scratch, ["cat-file", "-e", `${base}:${path}`]).then(
-      () => true,
-      () => false
-    );
-    if (existed) await git(scratch, ["checkout", base, "--", path]);
-    else await git(scratch, ["rm", "-q", "--ignore-unmatch", "-f", "--", path]);
-  }
-
-  async #gatesFail(root: string, id: string, commitId: string, requirementId: string): Promise<boolean> {
-    const runner = new NodeGateProcessRunner({
-      repositoryRoot: this.#context.workspace.repositoryRoot,
-      worktreesRoot: root,
-      commands: this.#context.gates
-    });
-    for (const gate of this.#context.plan.request.gates.filter((entry) =>
-      entry.requirementIds.includes(requirementId)
-    )) {
-      const result = await runner.run({ ...gate, worktreeRef: scratchWorktreeHandle({ id, commitId }) });
-      if (taskGateVerdict(gate, result) === "FAIL") return true;
-    }
-    return false;
-  }
 }
 
 async function inspectEvidence(
@@ -201,7 +95,14 @@ function expectedOutcome(plan: TaskPlanRecord, commit: TaskRunCommit, criterionI
 function ports(context: VerifierContext, commit: TaskRunCommit): VerificationPorts {
   const expected = (criterion: { readonly criterionId: string; readonly requirementId: string }) =>
     expectedOutcome(context.plan, commit, criterion.criterionId, criterion.requirementId);
-  const sensor = new VerificationSensor(context);
+  const sensor = new MutationSensor({
+    workspace: context.workspace,
+    runId: context.plan.runId,
+    sourceRevision: context.plan.request.sourceRevision,
+    changeScope: context.plan.request.task.changeScope,
+    gates: context.plan.request.gates,
+    profiles: context.gates
+  });
   return {
     expectations: {
       derive: async (criterion) => ({
@@ -290,42 +191,43 @@ export async function verifyTask(
   run: RunSnapshot,
   signal: AbortSignal
 ): Promise<TaskRunVerification> {
-  const review = await scratchDirectory(context, "review");
-  await mkdir(dirname(review), { recursive: true, mode: 0o700 });
+  const review = await scratchCheckouts(context.workspace, context.plan.runId, "review");
   const repositoryRoot = context.workspace.repositoryRoot;
-  try {
-    await addDetachedWorktree(repositoryRoot, review, commit.commitId);
-    const diff = await git(repositoryRoot, [
-      "diff",
-      "--no-ext-diff",
-      "--no-textconv",
-      commit.baseCommit,
-      commit.commitId
-    ]);
-    const text = await runCodexVerifier({
-      workspaceId: context.plan.workspaceId,
-      runId: context.plan.runId,
-      manifestId: context.plan.contextManifestDigest,
-      request: context.plan.request,
-      ...context.verifier,
-      env: context.env,
-      sessionRoot: join(context.workspace.layout.sessionsRoot, `codex-${context.plan.runId}`),
-      cwd: await realpath(review),
-      prompt: verifierPrompt(context.plan.request, diff, commit.commitId),
-      meter: context.meter,
-      signal,
-      providers: context.providers
-    });
-    const claims = parseVerdict(text, context.plan.request.task.requirementIds);
-    const result = await new IndependentVerificationCoordinator(ports(context, commit)).verify(
-      verificationInput(context, commit, run, claims)
-    );
-    return {
-      verdict: result["verdict"] === "PASS" ? "PASS" : "FAIL",
-      nextState: String(result["nextState"]),
-      reportRef: String(result["reportRef"])
-    };
-  } finally {
-    await removeWorktree(repositoryRoot, review);
-  }
+  const diff = await git(repositoryRoot, [
+    "diff",
+    "--no-ext-diff",
+    "--no-textconv",
+    commit.baseCommit,
+    commit.commitId
+  ]);
+  // invariant: the verifier reads a checkout of the task commit that lives
+  // only as long as its session, so a checkout the worktree module could not
+  // remove stops the run before any verdict is recorded.
+  const text = await review.checkouts.withScratchCheckout(
+    { name: commit.commitId, commitId: commit.commitId },
+    (checkout) =>
+      runCodexVerifier({
+        workspaceId: context.plan.workspaceId,
+        runId: context.plan.runId,
+        manifestId: context.plan.contextManifestDigest,
+        request: context.plan.request,
+        ...context.verifier,
+        env: context.env,
+        sessionRoot: join(context.workspace.layout.sessionsRoot, `codex-${context.plan.runId}`),
+        cwd: checkout.directory,
+        prompt: verifierPrompt(context.plan.request, diff, commit.commitId),
+        meter: context.meter,
+        signal,
+        providers: context.providers
+      })
+  );
+  const claims = parseVerdict(text, context.plan.request.task.requirementIds);
+  const result = await new IndependentVerificationCoordinator(ports(context, commit)).verify(
+    verificationInput(context, commit, run, claims)
+  );
+  return {
+    verdict: result["verdict"] === "PASS" ? "PASS" : "FAIL",
+    nextState: String(result["nextState"]),
+    reportRef: String(result["reportRef"])
+  };
 }

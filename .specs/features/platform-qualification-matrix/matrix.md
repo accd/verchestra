@@ -108,7 +108,8 @@ Two things follow, and both matter more than the fix itself:
 2. **F3 was fixed as one adapter's bug when it was a repository-wide
    pattern.** Grepping the pattern now finds exactly three
    `relative(...) !== ""` comparisons left, and the two that remain
-   (`gate-commit-adapters.ts:65`, `git-worktree-adapter.ts:366`) are the
+   (`gate-commit-adapters.ts:65`, `git-worktree-adapter.ts:366`; one check
+   since ADR2-4, `task-worktree.ts:273`) are the
    target-level checks F3 deliberately kept, which cannot fire on a benign
    alias once the parent chain is canonical. A `gate=release` dispatch of the
    same revision (run 31320314440) passed on all four reporting legs, which

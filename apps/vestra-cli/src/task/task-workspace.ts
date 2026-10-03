@@ -1,8 +1,9 @@
-import { lstat, realpath } from "node:fs/promises";
+import { lstat, mkdir, realpath } from "node:fs/promises";
 import { isAbsolute, join, relative, sep } from "node:path";
 
 import { StableId } from "@verchestra/domain";
 import {
+  NodeGitWorktreeAdapter,
   PlatformSecurityError,
   RuntimeStore,
   ensureWorkspaceState,
@@ -126,6 +127,29 @@ export async function requireRealDirectories(root: string, directories: readonly
     if (metadata.isSymbolicLink())
       throw new PlatformSecurityError("VES_STATE_ROOT_ESCAPE", "A directory below a task state root is a link");
   }
+}
+
+export interface ScratchCheckouts {
+  readonly root: string;
+  readonly checkouts: NodeGitWorktreeAdapter;
+}
+
+// invariant: a scratch checkout is created, and deleted recursively, only
+// below real directories. Every directory from the Workspace's verification
+// root down to the run's scratch root is checked before each use, and the
+// worktree module refuses a link in a checkout's own place.
+export async function scratchCheckouts(
+  workspace: Pick<TaskWorkspace, "repositoryRoot" | "verificationRoot">,
+  runId: string,
+  purpose: "review" | "mutations"
+): Promise<ScratchCheckouts> {
+  await requireRealDirectories(workspace.verificationRoot, [runId, purpose]);
+  const root = join(workspace.verificationRoot, runId, purpose);
+  await mkdir(root, { recursive: true, mode: 0o700 });
+  return {
+    root,
+    checkouts: new NodeGitWorktreeAdapter({ repositoryRoot: workspace.repositoryRoot, worktreesRoot: root })
+  };
 }
 
 // why: `plan --dry-run` must write nothing, so it resolves the state layout
