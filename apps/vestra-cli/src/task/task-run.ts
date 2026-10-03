@@ -8,6 +8,8 @@ import {
   createBudgetMeter,
   modelPriceTable,
   type BudgetLedger,
+  type BudgetMeter,
+  type ExecutionDriverPort,
   type GateAttemptFeedback,
   type TaskExecutionInput,
   type TaskRunCommit,
@@ -30,6 +32,7 @@ import { loadProviderAuth, type ProviderAuth, type ProviderAuthMode } from "../t
 import { TaskAuthority } from "./task-authority.ts";
 import { meterOnRunLedger, recordingMeter } from "./task-budget.ts";
 import { requireCodexSubscription } from "./task-codex-identity.ts";
+import { coordinatedDriver, requireCoordinatedSubscription } from "./task-coordination.ts";
 import { IMPLEMENTER_CREDENTIALS, VERIFIER_CREDENTIAL, readCredentials } from "./task-credentials.ts";
 import { stateInvalid, taskError } from "./task-errors.ts";
 import { sha256 } from "./task-files.ts";
@@ -37,7 +40,13 @@ import { loadGateAllowlist } from "./task-gates.ts";
 import { git } from "./task-git.ts";
 import { findExecutable, implementerAdapter } from "./task-implementer.ts";
 import type { TaskCommandIo } from "./task-io.ts";
-import { HUMAN_ACTOR, IMPLEMENTER_ACTOR, singleSessionPlan, type SingleSessionPlan } from "./task-plan-record.ts";
+import {
+  HUMAN_ACTOR,
+  IMPLEMENTER_ACTOR,
+  isCoordinatedPlan,
+  type PlannedTaskRequest,
+  type TaskPlanRecord
+} from "./task-plan-record.ts";
 import { loadTaskPolicy } from "./task-policy.ts";
 import { ProviderProcesses } from "./task-process-tree.ts";
 import { openRunRecord, type GateCheckpoint, type RunCheckpoints, type RunRecord } from "./task-run-record.ts";
@@ -109,12 +118,24 @@ export async function recoverCommittedTask(recovery: CommittedTaskRecovery): Pro
   return commit;
 }
 
+// invariant: the models each provider runs: Claude Code the implementer, or
+// every Claude Code node; Codex the verifier and every Codex node.
+function providerModels(request: PlannedTaskRequest) {
+  if (request.schemaVersion === 1) return { claude: [request.driver.model], codex: [request.verifier.model] };
+  const models = (driverId: string) =>
+    request.execution.nodes.filter((node) => node.driver.driverId === driverId).map((node) => node.driver.model);
+  return { claude: models("claude-code"), codex: [...models("codex"), request.verifier.model] };
+}
+
 // why: a model reached through a subscription is not billed per token, so the
 // run's meter counts its tokens and duration and never prices it.
-function unbilledModels(auth: ProviderAuth, request: SingleSessionPlan["request"]): readonly string[] {
+function unbilledModels(auth: ProviderAuth, request: PlannedTaskRequest): readonly string[] {
+  const { claude, codex } = providerModels(request);
   return [
-    ...(auth.implementer === "subscription" ? [request.driver.model] : []),
-    ...(auth.verifier === "subscription" ? [request.verifier.model] : [])
+    ...new Set([
+      ...(auth.implementer === "subscription" ? claude : []),
+      ...(auth.verifier === "subscription" ? codex : [])
+    ])
   ];
 }
 
@@ -141,11 +162,12 @@ async function verifierAccess(
 async function prepare(
   io: TaskCommandIo,
   workspace: TaskWorkspace,
-  plan: SingleSessionPlan,
+  plan: TaskPlanRecord,
   runtime: RuntimeStore,
   runRecord: RunRecord
 ) {
   const auth = await loadProviderAuth(workspace.layout.workspaceRoot);
+  if (isCoordinatedPlan(plan)) requireCoordinatedSubscription(auth);
   const implementerCredential = IMPLEMENTER_CREDENTIALS[auth.implementer];
   // invariant: a run reads exactly the credentials its modes name. A verifier
   // on a subscription reads none here; its login is proven below instead.
@@ -180,7 +202,7 @@ async function prepare(
 class TaskRunComposition {
   readonly #io: TaskCommandIo;
   readonly #workspace: TaskWorkspace;
-  readonly #plan: SingleSessionPlan;
+  readonly #plan: TaskPlanRecord;
   readonly #runtime: RuntimeStore;
   readonly #prepared: Prepared;
   readonly #runRecord: RunRecord;
@@ -195,7 +217,7 @@ class TaskRunComposition {
   constructor(
     io: TaskCommandIo,
     workspace: TaskWorkspace,
-    plan: SingleSessionPlan,
+    plan: TaskPlanRecord,
     runtime: RuntimeStore,
     prepared: Prepared,
     runRecord: RunRecord
@@ -294,24 +316,49 @@ class TaskRunComposition {
     return grant.grantId;
   }
 
-  #executor(grantId: string): TaskExecutionCoordinator {
-    const coordination = this.#coordination();
-    const driver = implementerAdapter({
+  // invariant: a single-session run drives its implementer; a coordinated run
+  // drives its plan's nodes through the coordinated driver. Either is the one
+  // driver port of the run's one executor.
+  #driver(budgetMeter: BudgetMeter | undefined): ExecutionDriverPort {
+    const plan = this.#plan;
+    const onWorktree = (worktreeRef: string) => this.#runRecord.saveWorktreeRef(worktreeRef);
+    const shared = {
       workspaceId: this.#workspace.workspaceId,
-      runId: this.#plan.runId,
-      request: this.#plan.request,
+      runId: plan.runId,
       manifest: this.#prepared.manifest,
-      executable: this.#prepared.implementer.executable,
-      auth: this.#prepared.implementer.auth,
-      credential: this.#prepared.implementer.credential,
       env: this.#io.env,
-      isolationRoot: this.#workspace.layout.sessionsRoot,
       providers: this.providers,
       worktrees: this.#worktrees,
       payloads: this.#payloads,
-      feedback: () => this.#currentFeedback,
-      onWorktree: (worktreeRef) => this.#runRecord.saveWorktreeRef(worktreeRef)
+      onWorktree
+    };
+    const implementer = this.#prepared.implementer;
+    const request = plan.request;
+    if (request.schemaVersion === 1)
+      return implementerAdapter({
+        ...shared,
+        request,
+        executable: implementer.executable,
+        auth: implementer.auth,
+        credential: implementer.credential,
+        isolationRoot: this.#workspace.layout.sessionsRoot,
+        feedback: () => this.#currentFeedback
+      });
+    return coordinatedDriver({
+      ...shared,
+      request,
+      claude: implementer,
+      codex: this.#prepared.verifier,
+      sessionsRoot: this.#workspace.layout.sessionsRoot,
+      records: this.#runRecord.coordination(),
+      feedback: this.#currentFeedback,
+      remainingDurationMs: () => budgetMeter?.remainingDurationMs() ?? request.budgets.maximumDurationMs
     });
+  }
+
+  #executor(grantId: string, budgetMeter: BudgetMeter | undefined): TaskExecutionCoordinator {
+    const coordination = this.#coordination();
+    const driver = this.#driver(budgetMeter);
     return new TaskExecutionCoordinator({
       authority: this.#prepared.authority.executor(grantId),
       coordination: { acquire: coordination.acquire, release: coordination.release },
@@ -377,7 +424,7 @@ class TaskRunComposition {
     this.#currentFeedback =
       options.feedback === undefined ? undefined : this.#feedback.get(options.feedback.feedbackRef);
     const grantId = await this.#grant();
-    const result = await this.#executor(grantId).execute(this.#executorInput(grantId), {
+    const result = await this.#executor(grantId, options.budgetMeter).execute(this.#executorInput(grantId), {
       signal: options.signal,
       ...(options.budgetMeter === undefined ? {} : { budgetMeter: options.budgetMeter })
     });
@@ -571,7 +618,7 @@ export function watchCancellation(
 
 async function present(
   repositoryRoot: string,
-  plan: SingleSessionPlan,
+  plan: TaskPlanRecord,
   runRecord: RunRecord,
   outcome: TaskRunOutcome,
   state: string
@@ -610,7 +657,7 @@ export async function runTask(io: TaskCommandIo, options: { readonly runId: unkn
   const runId = parseRunId(options.runId);
   const workspace = await openTaskWorkspace(io);
   const runRecord = openRunRecord(workspace, runId);
-  const plan = singleSessionPlan(await runRecord.loadPlan());
+  const plan = await runRecord.loadPlan();
   const runtime = openRuntime(workspace);
   try {
     assertStartable(currentRun(runtime, runId).state, options.resume);

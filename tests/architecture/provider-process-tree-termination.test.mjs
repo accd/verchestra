@@ -62,7 +62,7 @@ test("the task composition hands every provider driver it builds the tree termin
   const builders = taskSources.filter(({ source }) => source.match(PROVIDER_DRIVER) !== null);
   assert.deepEqual(
     builders.map(({ name }) => name),
-    ["task-codex.ts", "task-implementer.ts"]
+    ["task-codex.ts", "task-coordination.ts", "task-implementer.ts"]
   );
   for (const { name, source } of builders) {
     const built = source.match(PROVIDER_DRIVER).length;

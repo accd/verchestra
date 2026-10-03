@@ -8,7 +8,8 @@ import {
   recordUsageAndDecide,
   type BudgetMeter,
   type BudgetMeterError,
-  type NormalizedTaskRequest
+  type NormalizedTaskRequest,
+  type NormalizedTaskRequestV2
 } from "@verchestra/application";
 import { isTaskPath, type DriverEvent } from "@verchestra/domain";
 import { CodexDriver, type DriverStartRequest } from "@verchestra/drivers";
@@ -90,7 +91,11 @@ export function parseVerdict(text: string, requirementIds: readonly string[]): r
   return requirementIds.flatMap((id) => claims.find((entry) => entry.requirementId === id) ?? []);
 }
 
-export function verifierPrompt(request: NormalizedTaskRequest, diff: string, commitId: string): string {
+export function verifierPrompt(
+  request: NormalizedTaskRequest | NormalizedTaskRequestV2,
+  diff: string,
+  commitId: string
+): string {
   const task = request.task;
   return [
     "You are the independent verifier for one governed Verchestra task. You are read-only.",
@@ -109,7 +114,7 @@ export interface CodexSessionOptions {
   readonly workspaceId: string;
   readonly runId: string;
   readonly manifestId: string;
-  readonly request: NormalizedTaskRequest;
+  readonly request: NormalizedTaskRequest | NormalizedTaskRequestV2;
   readonly executable: string;
   // invariant: exactly one of the two. An API key is injected into a
   // per-session CODEX_HOME; a subscription uses the Workspace identity
@@ -127,7 +132,10 @@ export interface CodexSessionOptions {
   readonly providers?: ProviderProcesses;
 }
 
-async function isolatedIdentity(root: string, identityDirectory: string | undefined) {
+// invariant: a Codex session's per-session HOME under `root`, and its
+// CODEX_HOME: the Workspace identity directory of a subscription, or an empty
+// per-session directory an API key is injected into.
+export async function isolatedIdentity(root: string, identityDirectory: string | undefined) {
   await rm(root, { recursive: true, force: true });
   const home = join(root, "home");
   const codexHome = identityDirectory ?? join(root, "codex-home");
@@ -138,9 +146,9 @@ async function isolatedIdentity(root: string, identityDirectory: string | undefi
   return { home, codexHome };
 }
 
-// invariant: a verifier session has exactly one way to authenticate; naming
+// invariant: a Codex session has exactly one way to authenticate; naming
 // both, or neither, is refused before Codex starts.
-function sessionCredential(options: CodexSessionOptions) {
+export function sessionCredential(options: { readonly credential?: string; readonly identityDirectory?: string }) {
   if ((options.credential === undefined) === (options.identityDirectory === undefined))
     throw taskError(
       "VES_TASK_FAILED",

@@ -270,9 +270,9 @@ section.
 
 - [x] The empty-environment child-process probe passes (SSI-79).
 - [x] Architecture tests pin the subpath-only import, the bans, and the main entry free of the SDK (SSI-02, SSI-03, SSI-12, SSI-13).
-- [ ] Integration covers order, dependency failure, cancellation, write conflict, valid and forbidden handoff, malformed output, handoff limit, explicit end, and resume replay.
-- [ ] Discrimination: removing scope narrowing, the writer mutex, a limit, or the destination check fails a test (SSI-80).
-- [ ] Sealed launchers bundle, pass the new check, and the activation health check stays silent; sizes and cold start recorded (SSI-82).
+- [x] Integration covers order, dependency failure, cancellation, write conflict, valid and forbidden handoff, malformed output, handoff limit, explicit end, and resume replay.
+- [x] Discrimination: removing scope narrowing, the writer mutex, a limit, or the destination check fails a test (SSI-80).
+- [x] Sealed launchers bundle, pass the new check, and the activation health check stays silent; sizes and cold start recorded (SSI-82). The real activation health gate over staged layouts (`tests/build/sealed-launcher-closure.test.mjs`) runs on the platform matrix.
 
 **Progress** (branch `strands/t5-coordinated-driver`; evidence in `validation.md`, "T5 Evidence"):
 
@@ -281,6 +281,9 @@ section.
 - [x] Commit 3: exact pins of the SDK 1.19.0, Zod 4.6.5, `@modelcontextprotocol/sdk` 1.32.0, and `@opentelemetry/api` 1.9.1 in agent-runtime; lockfile reviewed (36 versions added, 0 removed, no version of an existing package moved); pins tested in `tests/agent-readiness/dependency-policy.test.mjs`.
 - [x] Commit 4: `@verchestra/agent-runtime/strands-coordination` (Graph and Swarm of structural agents, Zod node-result and decision schemas with a parity test, stable error mapping); empty-environment probe; subpath and ban architecture test; 10 mutants killed.
 - [x] Commit 5: sealed self-containment judged from esbuild's metafile (static, dynamic, and `require` imports), the closure test's text scan replaced; 5 mutants killed; sizes and cold start before the adapter recorded. The full `sealed-launcher-closure` suite and `gate:build` run on the platform matrix (disk).
+- [x] Commit 6: `task-coordination.ts` composes coordinated runs (node driver factory, one literal dynamic import for `graph` and `swarm`, cancellation of every node, node ledger in the Run record); the interim refusal is lifted for subscriptions, an API-key provider stays `not configured` (`coordinated-run-subscription`); e2e journeys for agent, graph, swarm, and cancel; 7 mutants killed; sizes and cold start after the adapter recorded.
+
+**Status**: author-complete on `strands/t5-coordinated-driver`; pending `pnpm test:build` and `pnpm gate:build` (with the staged-layout closure suite), `pnpm gate:security`, and the Linux and Windows runs on the platform matrix, independent verification, and human review.
 
 **Tests**: unit, integration, architecture, build, fault
 **Gate**: build

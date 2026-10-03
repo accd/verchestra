@@ -18,6 +18,7 @@ const CONSUMERS = Object.freeze([
   "apps/vestra-cli/src/self-test-driver-scenario.ts",
   "apps/vestra-cli/src/self-test-full-scenario.ts",
   "apps/vestra-cli/src/task/task-codex.ts",
+  "apps/vestra-cli/src/task/task-coordination.ts",
   "packages/agent-runtime/src/execution/driver-execution-adapter.ts"
 ]);
 

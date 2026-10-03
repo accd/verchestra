@@ -14,7 +14,7 @@ import { parseVerdict, runCodexVerifier, verifierPrompt, type VerifierClaim } fr
 import { canonicalDigest, sha256 } from "./task-files.ts";
 import { git, gitBuffer } from "./task-git.ts";
 import { activeStateDigest, MutationSensor } from "./task-mutation-sensor.ts";
-import { IMPLEMENTER_ACTOR, VERIFIER_ACTOR, type SingleSessionPlan } from "./task-plan-record.ts";
+import { IMPLEMENTER_ACTOR, VERIFIER_ACTOR, implementerDriverId, type TaskPlanRecord } from "./task-plan-record.ts";
 import type { ProviderProcesses } from "./task-process-tree.ts";
 import type { RunRecord } from "./task-run-record.ts";
 import { applyWorkflow, verificationRun } from "./task-workflow.ts";
@@ -24,7 +24,7 @@ const MAXIMUM_EVIDENCE_FILE_BYTES = 1024 * 1024;
 
 export interface VerifierContext {
   readonly workspace: TaskWorkspace;
-  readonly plan: SingleSessionPlan;
+  readonly plan: TaskPlanRecord;
   readonly runtime: RuntimeStore;
   readonly runRecord: Pick<RunRecord, "saveReport" | "saveLesson">;
   readonly gates: Readonly<Record<string, GateCommandProfile>>;
@@ -83,7 +83,7 @@ function workflowPort(context: VerifierContext): VerificationPorts["workflow"] {
 // invariant: the expected outcome is derived from the approved task alone
 // (criterion, requirement, done criteria, and the commit under review), never
 // from anything the verifier model said.
-function expectedOutcome(plan: SingleSessionPlan, commit: TaskRunCommit, criterionId: string, requirementId: string) {
+function expectedOutcome(plan: TaskPlanRecord, commit: TaskRunCommit, criterionId: string, requirementId: string) {
   return canonicalDigest({
     criterionId,
     requirementId,
@@ -149,7 +149,7 @@ function verificationInput(
       actorKind: "model",
       passportRef: `passport:codex:${plan.request.verifier.model}`
     },
-    implementerDriverId: plan.request.driver.driverId,
+    implementerDriverId: implementerDriverId(plan.request),
     verifierDriverId: plan.request.verifier.driverId,
     packageDigest: plan.packageDigest,
     commit: {

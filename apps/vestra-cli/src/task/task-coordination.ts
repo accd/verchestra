@@ -1,0 +1,261 @@
+import { rm } from "node:fs/promises";
+import { join } from "node:path";
+
+import {
+  DriverExecutionAdapterError,
+  runDriverSession,
+  type ContextManifest,
+  type DriverQuotaSignal,
+  type InMemoryExecutionPayloadStore
+} from "@verchestra/agent-runtime";
+import {
+  CoordinatedDriver,
+  NativeAgentEngine,
+  type CoordinationEngine,
+  type CoordinationMode,
+  type CoordinationNodeSession,
+  type CoordinationRecordPort,
+  type ExecutionDriverPort,
+  type NormalizedTaskRequestV2
+} from "@verchestra/application";
+import { canonicalizeJsonV2, type DriverEvent, type DriverEventOf } from "@verchestra/domain";
+import { CodexDriver, type DriverStartRequest } from "@verchestra/drivers";
+import type { NodeGitWorktreeAdapter } from "@verchestra/platform-node";
+
+import type { ProviderAuthMode } from "../task-provider-auth.ts";
+import { isolatedIdentity, sessionCredential } from "./task-codex.ts";
+import { stableUuid } from "./task-context.ts";
+import { notConfigured } from "./task-errors.ts";
+import { claudeSessionAdapter, contextText, passThroughEnvironment } from "./task-implementer.ts";
+import type { ProviderProcesses, ProviderSession } from "./task-process-tree.ts";
+
+type ExecuteRequest = Parameters<ExecutionDriverPort["execute"]>[0];
+type ExecuteControl = Parameters<ExecutionDriverPort["execute"]>[1];
+
+export interface CoordinatedRunOptions {
+  readonly workspaceId: string;
+  readonly runId: string;
+  readonly request: NormalizedTaskRequestV2;
+  readonly manifest: ContextManifest;
+  readonly claude: { readonly executable: string; readonly auth: ProviderAuthMode; readonly credential: string };
+  readonly codex: { readonly executable: string; readonly credential?: string; readonly identityDirectory?: string };
+  readonly env: Readonly<Record<string, string | undefined>>;
+  readonly sessionsRoot: string;
+  readonly providers: ProviderProcesses;
+  readonly worktrees: NodeGitWorktreeAdapter;
+  readonly payloads: InMemoryExecutionPayloadStore;
+  readonly records: CoordinationRecordPort;
+  readonly feedback: string | undefined;
+  readonly remainingDurationMs: () => number;
+  readonly onWorktree: (worktreeRef: string) => Promise<void>;
+}
+
+// invariant: the owner's constraint (SSI-51's first half). A coordinated run
+// is composed only for subscriptions; a provider set to an API key leaves it
+// `not configured` before any credential is read or transition applied. The
+// extra-usage confirmation joins this at T6.
+export function requireCoordinatedSubscription(auth: { readonly implementer: string; readonly verifier: string }) {
+  if (auth.implementer !== "subscription" || auth.verifier !== "subscription")
+    throw notConfigured("coordinated-run-subscription", "A coordinated run uses subscription authentication only");
+}
+
+// why: decision D5 and SSI-14. Mode `agent` runs on the native engine; the
+// Strands SDK is loaded only for a graph or swarm run, through this one
+// literal dynamic import, so no other command and no agent run loads it.
+export async function coordinationEngine(mode: CoordinationMode): Promise<CoordinationEngine> {
+  if (mode === "agent") return new NativeAgentEngine();
+  const { StrandsCoordinationEngine } = await import("@verchestra/agent-runtime/strands-coordination");
+  return new StrandsCoordinationEngine();
+}
+
+// invariant: AD-068. The executor's driver port for a coordinated run: the
+// coordinated driver over the per-node driver factory built here from the
+// existing Claude Code and Codex drivers.
+export function coordinatedDriver(options: CoordinatedRunOptions): ExecutionDriverPort {
+  return new CoordinatedDriver({
+    request: options.request,
+    engine: coordinationEngine,
+    nodes: { driver: (session) => nodeDriver(options, session) },
+    payloads: options.payloads,
+    records: options.records,
+    context: contextText(options.manifest),
+    ...(options.feedback === undefined ? {} : { feedback: options.feedback }),
+    remainingDurationMs: options.remainingDurationMs,
+    changeDigest: async (worktreeRef) => {
+      const handle = { worktreeRef, baseCommit: options.request.sourceRevision };
+      return (await options.worktrees.inspect(handle)).changeDigest as `sha256:${string}`;
+    }
+  });
+}
+
+// invariant: SSI-17. A node keeps its concrete provider: a Claude Code node is
+// a mediated Claude Code session narrowed to the node's read scope; a Codex
+// node is a read-only Codex session. Both answer the node's closed schema.
+function nodeDriver(options: CoordinatedRunOptions, session: CoordinationNodeSession): ExecutionDriverPort {
+  if (session.node.driver.driverId === "codex") return codexNodeAdapter(options, session);
+  return claudeSessionAdapter({
+    workspaceId: options.workspaceId,
+    runId: options.runId,
+    manifestId: options.manifest.manifestId,
+    model: session.node.driver.model,
+    executable: options.claude.executable,
+    auth: options.claude.auth,
+    credential: options.claude.credential,
+    env: options.env,
+    isolationRoot: options.sessionsRoot,
+    providers: options.providers,
+    worktrees: options.worktrees,
+    payloads: options.payloads,
+    onWorktree: options.onWorktree,
+    prompt: () => session.prompt,
+    readScope: session.node.readScope,
+    structuredOutput: session.structuredOutput
+  });
+}
+
+interface CodexNodeState {
+  structured: DriverEventOf<"result.structured"> | undefined;
+  quota: DriverQuotaSignal | undefined;
+  failure: unknown;
+  toolRequests: number;
+}
+
+function invalidResult(message: string): DriverExecutionAdapterError {
+  return new DriverExecutionAdapterError("VES_DRIVER_ADAPTER_INPUT_INVALID", message);
+}
+
+// why: a payload is the canonical text of the result, so its size is the size
+// the driver bounded.
+function resultBytes(event: DriverEventOf<"result.structured">): Uint8Array {
+  const bytes = new TextEncoder().encode(canonicalizeJsonV2(event.value));
+  if (bytes.byteLength !== event.bytes) throw invalidResult("Codex structured result size does not match its content");
+  return bytes;
+}
+
+// invariant: the same rules the Claude Code adapter applies: usage reaches
+// the run's meter, one structured result at most, the first quota signal stops
+// the session, and a requested tool is a violation, because a Codex node is
+// granted none.
+function observeCodex(
+  event: DriverEvent,
+  state: CodexNodeState,
+  control: ExecuteControl,
+  model: string,
+  stop: AbortController
+) {
+  const halt = (failure: unknown, reason: string) => {
+    state.failure ??= failure;
+    stop.abort(reason);
+  };
+  if (event.type === "usage.updated") {
+    try {
+      control.reportUsage({ model, inputTokens: event.inputTokens, outputTokens: event.outputTokens });
+    } catch (error) {
+      halt(error, "usage could not be metered");
+    }
+  } else if (event.type === "result.structured") {
+    if (state.structured === undefined) state.structured = event;
+    else halt(invalidResult("Codex reported more than one structured result"), "driver result is invalid");
+  } else if (event.type === "quota.exhausted") {
+    state.quota ??=
+      event.resetsAt === undefined ? { scope: event.scope } : { scope: event.scope, resetsAt: event.resetsAt };
+    stop.abort("provider usage allowance exhausted");
+  } else if (event.type === "tool.requested") {
+    state.toolRequests += 1;
+    halt(new DriverExecutionAdapterError("VES_DRIVER_TOOL_OUTSIDE_BRIDGE", "A Codex node requested a tool"), "tool");
+  }
+}
+
+function settled(state: CodexNodeState): void {
+  if (state.failure !== undefined) throw state.failure;
+  if (state.quota !== undefined)
+    throw new DriverExecutionAdapterError(
+      "VES_DRIVER_QUOTA_EXHAUSTED",
+      "The provider reported that its usage allowance is exhausted",
+      state.quota
+    );
+}
+
+function codexDriver(
+  options: CoordinatedRunOptions,
+  session: CoordinationNodeSession,
+  provider: ProviderSession,
+  context: { readonly cwd: string; readonly home: string; readonly codexHome: string }
+): CodexDriver {
+  const model = session.node.driver.model;
+  const passportId = `passport_${stableUuid(`codex:${model}`)}`;
+  const credential = sessionCredential(options.codex);
+  return new CodexDriver({
+    command: [options.codex.executable],
+    processContext: {
+      cwd: context.cwd,
+      environment: {
+        ...passThroughEnvironment(options.env),
+        HOME: context.home,
+        USERPROFILE: context.home,
+        CODEX_HOME: context.codexHome
+      }
+    },
+    terminateTree: provider.terminateTree,
+    onSpawn: provider.onSpawn,
+    resolveExecution: async () => ({
+      passport: { passportId, revision: 1, provider: "openai", resolvedModel: model },
+      prompt: session.prompt,
+      model,
+      tools: [],
+      environment: credential.environment,
+      sensitiveValues: credential.sensitiveValues,
+      cancelGraceMs: 250,
+      structuredOutput: session.structuredOutput,
+      ...(options.codex.identityDirectory === undefined ? {} : { subscriptionOnly: true as const })
+    })
+  });
+}
+
+function startRequest(options: CoordinatedRunOptions, model: string): DriverStartRequest {
+  return {
+    workspaceId: options.workspaceId,
+    runId: options.runId,
+    passportRef: { passportId: `passport_${stableUuid(`codex:${model}`)}`, revision: 1 },
+    serializedContextRef: { manifestId: options.manifest.manifestId, target: "codex" },
+    tools: []
+  };
+}
+
+// invariant: a Codex node reads the run's worktree through Codex's read-only
+// sandbox with no tool granted, from its own HOME and the Workspace's Codex
+// identity, and hands on only its structured result, as a payload reference.
+function codexNodeAdapter(options: CoordinatedRunOptions, session: CoordinationNodeSession): ExecutionDriverPort {
+  const stop = new AbortController();
+  const execute = async (request: ExecuteRequest, control: ExecuteControl) => {
+    const provider = options.providers.session("Codex");
+    const root = join(options.sessionsRoot, `codex-node-${options.runId}-${session.node.nodeId}-${session.visit}`);
+    try {
+      const cwd = await options.worktrees.resolvePath(request.worktreeRef);
+      const identity = await isolatedIdentity(root, options.codex.identityDirectory);
+      const state: CodexNodeState = { structured: undefined, quota: undefined, failure: undefined, toolRequests: 0 };
+      const model = session.node.driver.model;
+      const finished = await runDriverSession({
+        driver: codexDriver(options, session, provider, { cwd, ...identity }),
+        startRequest: startRequest(options, model),
+        signal: control.signal === undefined ? stop.signal : AbortSignal.any([stop.signal, control.signal]),
+        observe: (event) => observeCodex(event, state, control, model, stop)
+      });
+      settled(state);
+      const completed = finished.outcome === "completed" && state.structured !== undefined;
+      const outputRefs = completed ? [await options.payloads.put(resultBytes(state.structured!))] : [];
+      await provider.unlessInterrupted(() =>
+        control.checkpoint("driver-finished", {
+          outcome: finished.outcome,
+          toolRequests: state.toolRequests,
+          errorCodes: [...finished.errorCodes]
+        })
+      );
+      return Object.freeze({ status: finished.outcome, outputRefs: Object.freeze(outputRefs) });
+    } finally {
+      await provider.end();
+      await rm(root, { recursive: true, force: true });
+    }
+  };
+  return { execute, cancel: async () => stop.abort("cancelled by the executor") };
+}

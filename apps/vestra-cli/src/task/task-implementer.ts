@@ -65,7 +65,7 @@ export function passThroughEnvironment(env: Readonly<Record<string, string | und
   return result;
 }
 
-function contextText(manifest: ContextManifest): string {
+export function contextText(manifest: ContextManifest): string {
   let text = "";
   for (const fragment of manifest.fragments) {
     if (text.length + fragment.content.length > MAXIMUM_CONTEXT_CHARACTERS) break;
@@ -105,11 +105,13 @@ export function implementerBridgeTransport(platform: NodeJS.Platform): BridgeTra
   return platform === "win32" ? new WindowsNamedPipeBridgeTransport() : undefined;
 }
 
-export interface ImplementerOptions {
+// invariant: one Claude Code session through the mediated bridge, as the
+// implementer and every Claude Code node run it.
+export interface ClaudeSessionOptions {
   readonly workspaceId: string;
   readonly runId: string;
-  readonly request: NormalizedTaskRequest;
-  readonly manifest: ContextManifest;
+  readonly manifestId: string;
+  readonly model: string;
   readonly executable: string;
   readonly auth: ProviderAuthMode;
   readonly credential: string;
@@ -118,16 +120,20 @@ export interface ImplementerOptions {
   readonly providers: ProviderProcesses;
   readonly worktrees: NodeGitWorktreeAdapter;
   readonly payloads: InMemoryExecutionPayloadStore;
-  readonly feedback: () => string | undefined;
   readonly onWorktree: (worktreeRef: string) => Promise<void>;
+  readonly prompt: () => string;
+  // why: a node reads only inside its own read scope (SSI-42); the implementer
+  // reads inside the task's change scope.
+  readonly readScope?: readonly string[];
+  readonly structuredOutput?: { readonly schema: Readonly<Record<string, unknown>>; readonly maxBytes: number };
 }
 
-// invariant: the implementer's port. Its session belongs to the command's
-// provider processes: Claude Code is stopped as a whole tree, and once the
-// command is being interrupted no checkpoint and no tool effect of the session
-// is made and the port never answers, so nothing is recorded after the signal.
-export function implementerAdapter(options: ImplementerOptions): ExecutionDriverPort {
-  const model = options.request.driver.model;
+// invariant: the session's port. It belongs to the command's provider
+// processes: Claude Code is stopped as a whole tree, and once the command is
+// being interrupted no checkpoint and no tool effect of the session is made and
+// the port never answers, so nothing is recorded after the signal.
+export function claudeSessionAdapter(options: ClaudeSessionOptions): ExecutionDriverPort {
+  const model = options.model;
   const passportId = `passport_${stableUuid(`claude-code:${model}`)}`;
   const kind = PROFILES[options.auth];
   const session = options.providers.session("Claude Code");
@@ -140,13 +146,14 @@ export function implementerAdapter(options: ImplementerOptions): ExecutionDriver
     },
     payloads: options.payloads,
     bridgeCommand: [process.execPath, resolveMcpBridgeRelay()],
+    ...(options.readScope === undefined ? {} : { readScope: () => options.readScope as readonly string[] }),
     createSession: async ({ worktreePath, bridge }) => ({
       model,
       startRequest: {
         workspaceId: options.workspaceId,
         runId: options.runId,
         passportRef: { passportId, revision: 1 },
-        serializedContextRef: { manifestId: options.manifest.manifestId, target: "claude-code" },
+        serializedContextRef: { manifestId: options.manifestId, target: "claude-code" },
         tools: []
       },
       driver: new ClaudeCodeDriver({
@@ -162,11 +169,12 @@ export function implementerAdapter(options: ImplementerOptions): ExecutionDriver
         onSpawn: session.onSpawn,
         resolveExecution: async () => ({
           passport: { passportId, revision: 1, provider: "anthropic", resolvedModel: model },
-          prompt: implementerPrompt(options.request, options.manifest, options.feedback()),
+          prompt: options.prompt(),
           model,
           environment: { [CLAUDE_PROFILE_CREDENTIAL_VARIABLES[kind]]: options.credential },
           sensitiveValues: [options.credential],
-          mediation: { cwd: worktreePath, bridge }
+          mediation: { cwd: worktreePath, bridge },
+          ...(options.structuredOutput === undefined ? {} : { structuredOutput: options.structuredOutput })
         })
       })
     })
@@ -186,4 +194,42 @@ export function implementerAdapter(options: ImplementerOptions): ExecutionDriver
       }
     }
   };
+}
+
+export interface ImplementerOptions {
+  readonly workspaceId: string;
+  readonly runId: string;
+  readonly request: NormalizedTaskRequest;
+  readonly manifest: ContextManifest;
+  readonly executable: string;
+  readonly auth: ProviderAuthMode;
+  readonly credential: string;
+  readonly env: Readonly<Record<string, string | undefined>>;
+  readonly isolationRoot: string;
+  readonly providers: ProviderProcesses;
+  readonly worktrees: NodeGitWorktreeAdapter;
+  readonly payloads: InMemoryExecutionPayloadStore;
+  readonly feedback: () => string | undefined;
+  readonly onWorktree: (worktreeRef: string) => Promise<void>;
+}
+
+// invariant: the implementer's port: the one Claude Code session of a single-
+// session (v1) run, prompted by implementerPrompt.
+export function implementerAdapter(options: ImplementerOptions): ExecutionDriverPort {
+  return claudeSessionAdapter({
+    workspaceId: options.workspaceId,
+    runId: options.runId,
+    manifestId: options.manifest.manifestId,
+    model: options.request.driver.model,
+    executable: options.executable,
+    auth: options.auth,
+    credential: options.credential,
+    env: options.env,
+    isolationRoot: options.isolationRoot,
+    providers: options.providers,
+    worktrees: options.worktrees,
+    payloads: options.payloads,
+    onWorktree: options.onWorktree,
+    prompt: () => implementerPrompt(options.request, options.manifest, options.feedback())
+  });
 }
