@@ -131,7 +131,7 @@ test("the fleet is stated once: the signing scripts hold the module's own bindin
   assert.deepEqual([...GATE_PROFILES], ["quick", "full", "build", "security", "release"]);
 });
 
-test("the module imports only Node built-ins and the domain encoder, so the dependency-free collect job can run it", async () => {
+test("the module imports only Node built-ins and the domain encoder, so a bare tooling checkout can run it", async () => {
   const source = await readFile(new URL("../../scripts/t76-candidate-evidence.mjs", import.meta.url), "utf8");
   const specifiers = [...source.matchAll(/\bfrom "([^"]+)";$/gmu)].map((match) => match[1]);
   assert.deepEqual(specifiers.sort(byCodeUnits), [

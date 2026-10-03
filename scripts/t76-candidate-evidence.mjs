@@ -13,8 +13,8 @@
 // tests/build/t76-candidate-evidence-golden.test.mjs runs the embedded programs
 // as main last carried them and this module on the same inputs, and compares.
 //
-// hazard: the workflow's collect job installs no dependency, so this module may
-// import only Node built-ins and the domain package's canonical encoder.
+// hazard: the workflow runs this module from a bare checkout of the dispatched
+// commit, so it may import only Node built-ins and the domain canonical encoder.
 
 import { createHash } from "node:crypto";
 import { readdir, readFile, writeFile } from "node:fs/promises";
