@@ -12,12 +12,12 @@ export {
 } from "./os-secret-backends/credential-store.ts";
 export {
   isValidCredentialValue,
+  MAX_CREDENTIAL_VALUE_BYTES,
   type CredentialToolInvocation,
   type CredentialToolResult,
   type CredentialToolRunner
 } from "./os-secret-backends/credential-tool.ts";
 export {
-  MAX_CREDENTIAL_VALUE_BYTES,
   SECURITY_INTERACTIVE_LINE_LIMIT,
   type SecurityInvocation,
   type SecurityResult,

@@ -176,15 +176,16 @@ export function assertLocator(locator: Readonly<OsSecretLocator>): void {
 }
 
 // why: one limit on every platform, so a credential that binds on one binds on
-// all. The number is macOS's `security -i` line budget, which
-// darwin-keychain.ts derives as MAX_CREDENTIAL_VALUE_BYTES;
-// tests/unit/os-secret-backend-policy.test.mjs holds the two equal.
-const VALUE_LIMIT_BYTES = 1416;
+// all. It is the largest value macOS's `security -i` line can carry, which
+// darwin-keychain.ts derives as KEYCHAIN_VALUE_BUDGET_BYTES;
+// tests/unit/os-secret-backend-policy.test.mjs holds the two equal. Every
+// reader of a credential sizes its input from this definition.
+export const MAX_CREDENTIAL_VALUE_BYTES = 1416;
 
 // why: printable ASCII without whitespace (0x21-0x7e) covers every provider
 // API key and makes stray whitespace from a paste an error, not a credential.
 export function isValidCredentialValue(value: Uint8Array): boolean {
-  if (!(value instanceof Uint8Array) || value.length === 0 || value.length > VALUE_LIMIT_BYTES) return false;
+  if (!(value instanceof Uint8Array) || value.length === 0 || value.length > MAX_CREDENTIAL_VALUE_BYTES) return false;
   for (const byte of value) if (byte < 0x21 || byte > 0x7e) return false;
   return true;
 }

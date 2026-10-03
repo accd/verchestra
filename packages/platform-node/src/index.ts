@@ -43,6 +43,7 @@ export {
   READ_TIMEOUT_MS,
   WRITE_TIMEOUT_MS,
   isValidCredentialValue,
+  MAX_CREDENTIAL_VALUE_BYTES,
   type CredentialProvisioner,
   type CredentialToolInvocation,
   type CredentialToolResult,
@@ -71,7 +72,7 @@ export {
 } from "./os-secret-backends/windows-credential-manager.ts";
 export {
   DarwinKeychainBackend,
-  MAX_CREDENTIAL_VALUE_BYTES,
+  KEYCHAIN_VALUE_BUDGET_BYTES,
   SECURITY_EXECUTABLE,
   SECURITY_INTERACTIVE_LINE_LIMIT,
   nodeSecurityRunner,
