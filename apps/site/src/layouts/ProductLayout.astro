@@ -67,7 +67,9 @@ const navigation = [
     </script>
   </head>
   <body class="product-shell" data-pagefind-ignore={search ? undefined : ""}>
-    <a class="skip-link" href="#main-content" tabindex="0">Skip to content</a>
+    <a class="skip-link" href="#main-content" tabindex="0">
+      Skip to content
+    </a>
     <header class="site-header">
       <div class="site-header__inner">
         <a class="wordmark" href={withBase("")} aria-label="Verchestra home">
@@ -75,29 +77,29 @@ const navigation = [
           <span>Verchestra</span>
         </a>
         <nav class="site-nav" aria-label="Primary navigation">
-          {
-            navigation.map((item) => (
-              <a href={item.href} aria-current={item.current ? "page" : undefined}>
-                {item.label}
-              </a>
-            ))
-          }
+          {navigation.map((item) => (
+            <a href={item.href} aria-current={item.current ? "page" : undefined}>
+              {item.label}
+            </a>
+          ))}
         </nav>
         <details class="mobile-nav">
           <summary>Menu</summary>
           <nav aria-label="Mobile navigation">
-            {
-              navigation.map((item) => (
-                <a href={item.href} aria-current={item.current ? "page" : undefined}>
-                  {item.label}
-                </a>
-              ))
-            }
+            {navigation.map((item) => (
+              <a href={item.href} aria-current={item.current ? "page" : undefined}>
+                {item.label}
+              </a>
+            ))}
           </nav>
         </details>
         <button class="theme-toggle" type="button" aria-label="Switch to light theme" aria-pressed="false">
-          <span class="theme-toggle__dark" aria-hidden="true">◐</span>
-          <span class="theme-toggle__light" aria-hidden="true">◑</span>
+          <span class="theme-toggle__dark" aria-hidden="true">
+            ◐
+          </span>
+          <span class="theme-toggle__light" aria-hidden="true">
+            ◑
+          </span>
         </button>
       </div>
     </header>
