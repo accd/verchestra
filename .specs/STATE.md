@@ -2366,6 +2366,103 @@ note. -->
   the drivers and needs a platform matrix run on the branch before merge.
   Evidence is in `.specs/features/architecture-deepening-2/validation-t6.md`.
 
+### AD-066 — One resolution of a worktree handle, the scratch checkout in the worktree module, and one gate verdict (ADR2-4)
+
+- **Status:** proposed (ratified by reviewing the pull request that carries
+  the T4 range of `refactor/worktree-resolution-and-child-run`).
+- **Context:** AD-043 gave `task-worktree.ts` the handle encoding, but turning
+  a handle into a contained directory was still written twice: in the
+  worktree adapter, and in the gate and commit adapters, whose copy admitted
+  the root itself as contained, never qualified the repository root, and (in
+  the commit adapter) never asked Git whether the directory was registered.
+  Verification registered and removed its scratch checkouts itself in the
+  composition root, swallowing every Git failure of the removal, and knew
+  that a handle's ID is the checkout's directory name (AD-043 item 3,
+  `scratchWorktreeHandle`). The verdict of a gate run was written twice, and
+  the verifier's copy ignored the summary's total, cancelled and todo tests,
+  and a test-summary gate that returned no summary (architecture review of
+  2026-10-02, card 5).
+- **Decision:**
+  1. **One resolution.** `resolveWorktreeHandle` in
+     `packages/platform-node/src/task-worktree.ts` reads the handle (bound to
+     a base commit when one is given) before any effect, qualifies both roots
+     (canonical, a non-bare repository, a worktrees root that is a real
+     directory and not the repository), requires Git to list the directory,
+     and requires it to be a real directory contained in its root. One
+     containment test (`isWithinDirectory`) serves the resolution and the
+     gate's working directory. The refusals are named once (handle,
+     repository, root, escape, unregistered, missing) and each adapter
+     answers them with public codes it already reported: the worktree
+     adapter with `VES_GIT_WORKTREE_*`, the gate runner and the commit
+     adapter with `VES_GATE_ADAPTER_*`. No code is added or retired. The gate
+     runner keeps one rule of its own on top: the worktree is still at its
+     handle's commit.
+  2. **The scratch checkout is the worktree module's.**
+     `NodeGitWorktreeAdapter#withScratchCheckout({ name, commitId }, use)`
+     checks the commit out below the adapter's root in a directory it derives
+     from the name, replaces one a killed verification left under the same
+     name, hands `use` the directory and a handle the gate runner accepts,
+     and removes the checkout whatever `use` did. The removal is judged by
+     its outcome: a checkout Git still lists afterwards is
+     `VES_GIT_WORKTREE_COMMAND_FAILED`, and a link in the checkout's place is
+     refused before a recursive delete could follow it. When `use` and the
+     removal both fail, the removal is reported: a verification can run
+     again, a checkout left registered in the user's repository needs a
+     person. This replaces item 3's `scratchWorktreeHandle`, which is gone;
+     the derived directory is the one the mutation sensor used to name
+     itself.
+  3. **The composition reaches scratch checkouts through one checked
+     function,** `scratchCheckouts` in `apps/vestra-cli/src/task/task-workspace.ts`,
+     which refuses a link from the verification root down to the run's
+     scratch root. The review checkout lives only as long as the verifier
+     session, so a removal failure stops the run before any verdict is
+     recorded. The mutation sensor is a module of its own
+     (`task-mutation-sensor.ts`) and runs in a temporary repository.
+  4. **One gate verdict.** `taskGateVerdict` in
+     `packages/application/src/execution/gate-commit.ts` is the rule: a zero
+     exit with no timeout or overflow, and for a test-summary gate a summary
+     whose parts add up to its total, that meets the minimum, and has no
+     failed, skipped, cancelled or todo test. The gate records it in its
+     evidence as before; the mutation sensor counts a mutant killed exactly
+     when it fails.
+- **Alternatives rejected:** answering the gate adapters' refusals with the
+  worktree adapter's codes (the run records an adapter's code as its failure
+  reason, and the codes callers read would change for no gain); a resolution
+  that returns an unregistered directory with no HEAD (a caller that ignores
+  the HEAD would act on a directory nothing checked); moving only the removal
+  and keeping `scratchWorktreeHandle` (the caller would still name the
+  directory a handle points at); a random scratch directory (a checkout a
+  killed verification left would never be replaced and would accumulate as a
+  registered worktree in the user's repository); failing on each Git command
+  of the removal (Git refuses a directory it does not list, and on Windows a
+  file a gate process still holds; the delete and prune that follow recover
+  both, so only what remains is a failure); naming a failed removal on stderr
+  instead (the composition root has no channel outside a provider session,
+  and the state needs a person); keeping the verifier's laxer verdict (it
+  counted as surviving a mutant the gate would have refused to commit).
+- **Consequence:** an operator can notice five things, all on paths a run
+  only meets after a hand edit or a Git failure: a scratch checkout Git
+  keeps registered after its removal now fails the run
+  (`VES_GIT_WORKTREE_COMMAND_FAILED`) where it was left behind in silence; a
+  link at a scratch checkout's own entry is `VES_GIT_WORKTREE_ESCAPE` where it
+  was `VES_STATE_ROOT_ESCAPE` (a link at or above the run's scratch root is
+  still `VES_STATE_ROOT_ESCAPE`); a registered worktree whose directory is
+  gone is `VES_GIT_WORKTREE_NOT_FOUND` from `inspect` and `resolvePath` and
+  `VES_GATE_ADAPTER_HANDLE_INVALID` from the gate and commit adapters, where
+  it was a bare `ENOENT`; the gate and commit adapters refuse a missing or
+  bare repository root (`VES_GATE_ADAPTER_INPUT_INVALID`) and the commit
+  adapter a directory Git does not list (`VES_GATE_ADAPTER_HANDLE_INVALID`);
+  and a mutant whose gates end with a cancelled or todo test, a summary that
+  does not add up, or no summary is killed. The review checkout moves below
+  `verification/<run>/review/`. Gate evidence bytes and digests are
+  unchanged (`tests/unit/task-gate-verdict.test.mjs` pins the coordinator's
+  digests taken on `main`); the runtime error catalog (19) and migrations
+  (12) are unchanged. `tests/architecture/task-worktree-locality.test.mjs`
+  fails when a source other than the worktree adapter adds, removes or prunes
+  a worktree. The change touches the task path and needs a platform matrix
+  run on the branch before merge. Evidence is in
+  `.specs/features/architecture-deepening-2/validation-t4.md`.
+
 ## Handoff
 
 - **Feature:** `subscription-provider-auth` (ADP-A, tasks TA1 and TA2) on
