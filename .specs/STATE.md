@@ -2115,6 +2115,77 @@ note. -->
   on the branch before merge. Evidence is in
   `.specs/features/architecture-deepening-2/validation-t3.md`.
 
+### AD-061 — The Run record's readers return declared records, validated as they are read; a grant or outcome marker of another shape is refused in both forms (ADR2-9)
+
+- **Status:** proposed (ratified by reviewing the pull request that carries
+  `refactor/typed-run-record-readers`).
+- **Context:** AD-047 gave the Run record module the layout, the seal and
+  the validation of a Run's durable record, but four of its readers still
+  returned untyped rows: the grant and outcome markers, the verification
+  report (also through `verifiedCommit`), and the review record. `status`,
+  `review`, the review surface and `start`/`resume` read their members by
+  name and decided for themselves what a missing or mistyped member meant:
+  `start` issued a new writer capability over a legacy grant marker whose
+  `grantId` was not text, `status` printed whatever a marker held, and
+  `review` bound it into the Run Capsule. A sealed Run's marker reader checked
+  one member as text; a legacy Run's checked none (architecture review of
+  2026-10-02, card 2).
+- **Decision:**
+  1. **One declared type per artifact a command reads a member of,** in
+     `apps/vestra-cli/src/task/task-run-record.ts`: `GrantMarker`
+     (`grantId`), `OutcomeMarker` (`TaskRunOutcome` by status, plus the time
+     `at` it was filed), `VerificationReportRecord` (`verdict` `PASS` or
+     `FAIL`, `commitId` an object ID) and `HumanReviewRecord` (`outcome`
+     `accepted` or `rejected`). The commit record and the plan record keep
+     the types they had.
+  2. **Validated, then returned whole.** Each reader validates its record as
+     it reads it and returns the record as the file holds it, every member
+     kept. The Run Capsule digests the grant marker and the review surface
+     digests the report as they are read, so a member the declared type does
+     not name is still bound (AD-047's rejected alternative stands). A record
+     of another shape is refused as `VES_TASK_STATE_MALFORMED`, the code the
+     module already raises for one; no code is added.
+  3. **Both marker forms are validated alike.** The form still comes from
+     the sealed plan record and the seal is checked first (AD-052); then the
+     same reader validates either form. A legacy Run's grant or outcome
+     marker of another shape is now refused instead of read as whatever the
+     file held. The one exception is the one the ADP-2 suite pins: a legacy
+     worktree marker that names no worktree reads as none, so an idle cancel
+     of that run still ends it. The active and cancel markers keep their
+     rules.
+  4. The report and review types name only the members the task path reads.
+     Their schemas belong to the verification module, which builds them from
+     inputs it has validated, and the ADP-2 and hardening suites pin records
+     that carry only these members.
+- **Alternatives rejected:** projecting each record to its declared members
+  (the capsule's grant digest and the surface's report digest would move for
+  a record with a member the type does not name); declaring the verifier's
+  report and the review record whole (a second statement of schemas the
+  verification module owns, refused by the pinned suites' fixtures); leaving
+  a legacy Run's markers unchecked (a reader would return a type it had not
+  checked, and a resume would mint a second writer capability over a damaged
+  marker); validating the legacy worktree marker too (the ADP-2 suite pins
+  that one naming nothing reads as none); a new error code (the existing
+  reason names the case and its recovery).
+- **Consequence:** no record Verchestra writes changes; bytes, paths, seals,
+  the marker-seal rule and every golden are unchanged, and the ADP-2 and
+  hardening suites pass unmodified. An operator can notice one thing: a
+  legacy Run whose grant or outcome marker was edited into another shape now
+  stops `start` and `resume` (grant), `status` (both) and `review` (grant)
+  with `VES_TASK_STATE_INVALID` (`VES_TASK_STATE_MALFORMED`), as a sealed
+  Run's already did for a missing member, and a sealed Run's outcome marker
+  is now checked member by member, not only its status. Out of scope, each
+  for a reason recorded in the evidence: the gate evidence store's `load`
+  (the gate coordinator's entry, digested whole), the review coordinator's
+  receipt in `task review`, and the runtime store's rows (ADR2-7).
+  `tests/unit/task-run-record-readers.test.mjs` is the readers' contract,
+  `tests/integration/task-status-records.test.mjs` the command's, and
+  `tests/architecture/task-run-record-readers.test.mjs` fails when a reader
+  returns a row or a command reads a member of one by name. The change
+  touches the task path and needs a platform matrix run on the branch before
+  merge. Evidence is in
+  `.specs/features/architecture-deepening-2/validation-t9.md`.
+
 ## Handoff
 
 - **Feature:** `subscription-provider-auth` (ADP-A, tasks TA1 and TA2) on
