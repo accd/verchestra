@@ -315,6 +315,28 @@ export function admitRelease(ledger, release) {
   });
 }
 
+// invariant: the one admission a timestamp refresh passes before it signs
+// anything, as admitRelease is for a release. It refuses exactly what
+// assertRefreshAdmitted refuses and returns the role-refresh entry a human
+// appends verbatim once the refresh is live; the chain fields and the kind are
+// derived here, so the refresh assembles no entry by hand (ADR2-11).
+export function admitRefresh(ledger, refresh) {
+  const { rootDigest, metadataVersion, targetsVersion } = refresh;
+  assertRefreshAdmitted(ledger, { rootDigest, metadataVersion, targetsVersion });
+  return nextLedgerEntry(ledger, {
+    kind: "role-refresh",
+    releaseId: refresh.releaseId,
+    semanticVersion: refresh.semanticVersion,
+    baseUrl: refresh.baseUrl,
+    urlPrefix: null,
+    rootDigest,
+    rootDigestPrefix: null,
+    roles: { snapshot: metadataVersion, timestamp: metadataVersion },
+    publicationRunId: refresh.publicationRunId,
+    evidence: Array.isArray(refresh.evidence) ? [...refresh.evidence] : refresh.evidence
+  });
+}
+
 // why: a workflow reads the ledger from origin/main's tip rather than from the
 // revision it checks out, so a publication recorded after that revision was cut
 // still bounds the next version. The checked-out copy must be an unedited prefix
