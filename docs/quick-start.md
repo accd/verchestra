@@ -219,7 +219,9 @@ untracked.
   `protectedPaths` are refused even inside the scope. A protected path is
   refused in any letter case and however it is spelled (`src/vendor/`
   protects `src/vendor`), because the default macOS volume does not tell
-  `SRC/Vendor` from `src/vendor`.
+  `SRC/Vendor` from `src/vendor`. A scope entry admits what it names in the
+  letter case it is written: `src/` names `src`, `.` names the whole
+  worktree, and `SRC/a` is outside a scope of `src`.
 - The gates must cover every entry of `verificationCommands` exactly, and every
   requirement ID.
 - Models must be listed in the release's model price table; a model that is

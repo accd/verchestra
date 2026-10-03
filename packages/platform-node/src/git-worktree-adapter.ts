@@ -3,6 +3,7 @@ import { lstat, mkdir, readFile, readlink, realpath } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 import type { ExecutionWorktreePort } from "@verchestra/application";
+import { isTaskPath } from "@verchestra/domain";
 
 import {
   encodeWorktreeHandle,
@@ -17,8 +18,6 @@ import {
   type GitOutput,
   type GitRunner
 } from "./task-worktree.ts";
-
-const LOGICAL_PATH = /^(?![A-Za-z]:)(?!\/)(?!.*\\)(?!.*(?:^|\/)\.\.(?:\/|$))[A-Za-z0-9._@+/-]+$/u;
 
 export type GitWorktreeErrorCode =
   | "VES_GIT_WORKTREE_INPUT_INVALID"
@@ -62,7 +61,7 @@ function nulList(value: string): readonly string[] {
     .filter(Boolean)
     .map((entry) => {
       const normalized = entry.replaceAll("\\", "/");
-      if (!LOGICAL_PATH.test(normalized)) fail("VES_GIT_WORKTREE_ESCAPE", "Git returned an unsafe logical path");
+      if (!isTaskPath(normalized)) fail("VES_GIT_WORKTREE_ESCAPE", "Git returned an unsafe logical path");
       return normalized;
     });
 }

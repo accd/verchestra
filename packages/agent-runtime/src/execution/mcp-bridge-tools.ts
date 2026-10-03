@@ -2,11 +2,16 @@ import type { Dirent } from "node:fs";
 import { lstat, open, readdir, realpath } from "node:fs/promises";
 import { join } from "node:path";
 
+import {
+  isProtectedTaskPath,
+  isTaskPath,
+  isWithinTaskPath,
+  isWithinTaskScope,
+  namesGitMetadata
+} from "@verchestra/domain";
+
 import { codeUnitCompare } from "../context/code-unit-compare.ts";
 
-// hazard: model-supplied paths are checked by linear scans, never by a regex
-// that can backtrack over a long run of separators.
-const LOGICAL_PATH_CHARACTERS = new Set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._@+/-");
 const MAXIMUM_READ_BYTES = 262_144;
 const MAXIMUM_LIST_ENTRIES = 1_000;
 const MAXIMUM_SEARCH_MATCHES = 100;
@@ -28,34 +33,23 @@ function deny(code: string, message: string): never {
   throw new BridgeToolError(code, message);
 }
 
-// invariant: non-empty, portable characters only, not rooted, and no `..`
-// segment; a backslash or a drive colon falls outside the character set.
-function isLogicalPath(value: unknown): value is string {
-  if (typeof value !== "string" || value.length === 0 || value.startsWith("/")) return false;
-  for (const character of value) if (!LOGICAL_PATH_CHARACTERS.has(character)) return false;
-  return !value.split("/").includes("..");
-}
-
+// hazard: a model-supplied path is trimmed by a linear scan, never by a regex
+// that can backtrack over a long run of separators.
 function withoutTrailingSeparators(value: string): string {
   let end = value.length;
   while (end > 0 && value[end - 1] === "/") end -= 1;
   return value.slice(0, end);
 }
 
-function under(path: string, root: string): boolean {
-  return root === "." || path === root || path.startsWith(`${root}/`);
-}
-
 // Splits and validates a model-supplied logical path. `.` names the worktree
 // root. Git metadata is refused at any depth and in any letter case.
 export function logicalSegments(value: unknown): readonly string[] {
   if (value === ".") return [];
-  if (!isLogicalPath(value)) deny("VES_BRIDGE_PATH_INVALID", "Path is not a repository-relative logical path");
+  if (!isTaskPath(value)) deny("VES_BRIDGE_PATH_INVALID", "Path is not a repository-relative logical path");
   const segments = withoutTrailingSeparators(value).split("/");
   if (segments.some((segment) => segment === "" || segment === "."))
     deny("VES_BRIDGE_PATH_INVALID", "Path is not normalized");
-  if (segments.some((segment) => segment.toLowerCase() === ".git"))
-    deny("VES_BRIDGE_PATH_PROTECTED", "Git metadata is not readable");
+  if (namesGitMetadata(value)) deny("VES_BRIDGE_PATH_PROTECTED", "Git metadata is not readable");
   return segments;
 }
 
@@ -93,8 +87,8 @@ export class WorktreeReadView {
     });
     if (scope.length === 0) deny("VES_BRIDGE_SCOPE_INVALID", "Read scope is empty");
     const protectedPaths = options.protectedPaths.map((entry) => {
-      if (!isLogicalPath(entry)) deny("VES_BRIDGE_SCOPE_INVALID", "Protected path is not a logical path");
-      return entry.toLowerCase();
+      if (!isTaskPath(entry)) deny("VES_BRIDGE_SCOPE_INVALID", "Protected path is not a logical path");
+      return entry;
     });
     return new WorktreeReadView(root, Object.freeze(scope), Object.freeze(protectedPaths));
   }
@@ -208,11 +202,9 @@ export class WorktreeReadView {
   // of a scope root, so the model can navigate to it, but listings still show
   // only scope roots' ancestors and scoped entries.
   #visible(logical: string, kind: "file" | "directory"): boolean {
-    const folded = logical.toLowerCase();
-    if (folded.split("/").includes(".git")) return false;
-    if (this.#protected.some((root) => under(folded, root))) return false;
-    if (this.#scope.some((root) => under(logical, root))) return true;
-    return kind === "directory" && this.#scope.some((root) => logical === "." || root.startsWith(`${logical}/`));
+    if (namesGitMetadata(logical) || isProtectedTaskPath(logical, this.#protected)) return false;
+    if (isWithinTaskScope(logical, this.#scope)) return true;
+    return kind === "directory" && this.#scope.some((root) => isWithinTaskPath(root, logical));
   }
 
   async #resolve(logical: string, kind: "file" | "directory"): Promise<string> {
