@@ -2738,6 +2738,42 @@ note. -->
   as `not configured`. The fleet's pinned 0.115.0 keeps qualifying the T04
   profile; moving that pin is a separate, owner-approved change.
 
+### AD-077 — A later release-decision round supersedes a reject by binding to its exact bytes, never by editing it
+
+- **Status:** proposed (ratified by reviewing the pull request that carries
+  `.specs/features/release-decision-rounds/`).
+- **Context:** `release-decision-1.0.0.md` is a signed reject (a recorded
+  hold) that says a future promote round decides on a fresh candidate with its
+  own decision file. The contract allowed at most one decision file per
+  version, and `readReleaseDecisions` refused a second one, so the only way to
+  record a later decision was to replace the signed hold and lose accountable
+  history.
+- **Decision:**
+  1. Round 1 stays `release-decision-<version>.md` with no round fields, so the
+     signed 1.0.0 hold validates byte for byte. Round *n* ≥ 2 is
+     `release-decision-<version>.round-<n>.md` and carries `round`,
+     `supersedes` (the immediately previous round's file), and
+     `supersedesDigest` (sha256 of that file's exact bytes). The existing
+     signature covers every field except `signature`, so the round fields are
+     signed.
+  2. A round fails closed on a name or `round` that disagree, round fields on
+     round 1, a gap or duplicate, a round after a promote, a `supersedes` that
+     skips a round, a `supersedesDigest` that no longer matches, a `decidedAt`
+     not strictly later, or a candidate equal to the previous one or not
+     descending from it (`git merge-base --is-ancestor`, the seam reachability
+     already uses). Every round also passes every existing per-file rule.
+  3. A version's effective decision is its highest round whose whole
+     predecessor chain is valid; the full round history is kept beside it.
+- **Alternatives rejected:** replacing the signed hold (erases accountable
+  history); a free-form `supersededBy` in the earlier file (edits a signed
+  file); taking the highest round that is valid on its own as effective (a
+  round above a broken chain would take effect); per-round directories (a
+  second naming convention for one artifact).
+- **Consequence:** Rounds do not make a promote easier: each round needs its
+  own reviewers, gate, and signature, and cannot rewrite why an earlier round
+  rejected. Editing an earlier round breaks the round after it. Deleting the
+  most recent round is visible only in Git history and review.
+
 ## Handoff
 
 - **Feature:** `subscription-provider-auth` (ADP-A, tasks TA1 and TA2) on
