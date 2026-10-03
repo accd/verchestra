@@ -453,11 +453,8 @@
     "packages/platform-node/src/encrypted-file-key-provider.ts :: Private async method #load": [
       16
     ],
-    "packages/platform-node/src/gate-commit-adapters.ts :: Async function 'targetFromRef'": [
-      11
-    ],
     "packages/platform-node/src/gate-commit-adapters.ts :: Async method 'run'": [
-      12
+      11
     ],
     "packages/platform-node/src/gate-commit-adapters.ts :: Private method #validateRequest": [
       13

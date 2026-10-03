@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
-import { lstat, mkdir, realpath } from "node:fs/promises";
-import { isAbsolute, join, relative, resolve, sep } from "node:path";
+import { realpath } from "node:fs/promises";
+import { isAbsolute, join, resolve } from "node:path";
 import { spawn } from "node:child_process";
 
 import type { TaskGateCommand, TaskGateRunnerResult } from "@verchestra/application";
@@ -10,11 +10,15 @@ import { terminateProcessGroup } from "./process-tree-terminator.ts";
 import { safeEnvironment } from "./safe-environment.ts";
 import {
   isGitObjectId,
-  parseWorktreeHandle,
-  registeredWorktrees,
+  isWithinDirectory,
+  resolveWorktreeHandle,
   runGit,
   taskCommitMessage,
-  type GitRunner
+  WorktreeRefusalError,
+  type GitRunner,
+  type ResolvedWorktree,
+  type WorktreeRefusal,
+  type WorktreeRoots
 } from "./task-worktree.ts";
 
 const DIGEST = /^sha256:[a-f0-9]{64}$/u;
@@ -33,38 +37,28 @@ function fail(code: string, message: string, options?: ErrorOptions): never {
   throw new GateAdapterError(code, message, options);
 }
 
-function within(root: string, candidate: string): boolean {
-  const child = relative(root, candidate);
-  return child !== ".." && !child.startsWith(`..${sep}`) && !isAbsolute(child);
-}
+// invariant: the worktree module resolves a handle for both adapters here;
+// each refusal keeps the code these adapters have always reported.
+const REFUSAL_CODES: Readonly<Record<WorktreeRefusal, string>> = Object.freeze({
+  handle: "VES_GATE_ADAPTER_HANDLE_INVALID",
+  unregistered: "VES_GATE_ADAPTER_HANDLE_INVALID",
+  missing: "VES_GATE_ADAPTER_HANDLE_INVALID",
+  repository: "VES_GATE_ADAPTER_INPUT_INVALID",
+  root: "VES_GATE_ADAPTER_PATH_ESCAPE",
+  escape: "VES_GATE_ADAPTER_PATH_ESCAPE"
+});
 
-async function targetFromRef(worktreesRootValue: string, worktreeRef: string, baseCommit?: string): Promise<string> {
-  const handle = parseWorktreeHandle(worktreeRef);
-  if (handle === undefined || (baseCommit !== undefined && handle.baseCommit !== baseCommit))
-    fail("VES_GATE_ADAPTER_HANDLE_INVALID", "Worktree handle is invalid");
-  await mkdir(worktreesRootValue, { recursive: true });
-  const metadata = await lstat(worktreesRootValue);
-  if (metadata.isSymbolicLink() || !metadata.isDirectory())
-    fail("VES_GATE_ADAPTER_PATH_ESCAPE", "Worktree root is not a real directory");
-  // Canonicalize rather than reject, the same correction F3 made in
-  // git-worktree-adapter.ts. A configured root legitimately reaches its real
-  // location through platform path aliases: macOS temp dirs resolve
-  // /var -> /private/var and Windows hands back 8.3 short names such as
-  // RUNNER~1 -> runneradmin, while Linux /tmp stays identical — which is why
-  // only Linux was ever green here. The lstat above already refused a root whose
-  // own final component is a link, and every containment check below runs
-  // against this canonical root, so a benign alias is safe while a real escape
-  // is still caught.
-  const root = await realpath(worktreesRootValue);
-  const candidate = join(root, handle.id);
-  if (!within(root, candidate)) fail("VES_GATE_ADAPTER_PATH_ESCAPE", "Worktree handle escaped its root");
-  const targetMetadata = await lstat(candidate);
-  if (targetMetadata.isSymbolicLink() || !targetMetadata.isDirectory())
-    fail("VES_GATE_ADAPTER_PATH_ESCAPE", "Worktree target is not a real directory");
-  const target = await realpath(candidate);
-  if (relative(candidate, target) !== "" || !within(root, target))
-    fail("VES_GATE_ADAPTER_PATH_ESCAPE", "Worktree target escaped its root");
-  return target;
+async function resolved(
+  roots: WorktreeRoots,
+  worktreeRef: string,
+  options: { readonly baseCommit?: string; readonly git: GitRunner }
+): Promise<ResolvedWorktree> {
+  try {
+    return await resolveWorktreeHandle(roots, worktreeRef, options);
+  } catch (error) {
+    if (error instanceof WorktreeRefusalError) fail(REFUSAL_CODES[error.refusal], error.message, { cause: error });
+    throw error;
+  }
 }
 
 export interface GateCommandProfile {
@@ -134,16 +128,19 @@ export class NodeGateProcessRunner {
       fail("VES_GATE_ADAPTER_COMMAND_DENIED", "Gate command is not locally allowlisted");
     if ([...(profile.fixedArgs ?? []), ...command.args].some((argument) => argument.includes("\0")))
       fail("VES_GATE_ADAPTER_COMMAND_DENIED", "Gate argument contains a null byte");
-    const target = await targetFromRef(this.#worktreesRoot, command.worktreeRef);
-    const expectedBase = parseWorktreeHandle(command.worktreeRef)?.baseCommit;
-    const registered = registeredWorktrees(
-      (await runGit(this.#repositoryRoot, ["worktree", "list", "--porcelain"])).stdout
+    const worktree = await resolved(
+      { repositoryRoot: this.#repositoryRoot, worktreesRoot: this.#worktreesRoot },
+      command.worktreeRef,
+      { git: runGit }
     );
-    if (registered.get(target) !== expectedBase)
+    // invariant: a gate judges the worktree as its handle names it: still at
+    // the handle's commit, with nothing committed on top.
+    if (worktree.head !== worktree.handle.baseCommit)
       fail("VES_GATE_ADAPTER_HANDLE_INVALID", "Gate target is not the expected registered worktree");
+    const target = worktree.directory;
     const requestedCwd = command.cwd === "." ? target : join(target, ...command.cwd.split("/"));
     const cwd = await realpath(requestedCwd);
-    if (!within(target, cwd)) fail("VES_GATE_ADAPTER_PATH_ESCAPE", "Gate cwd escaped the worktree");
+    if (!isWithinDirectory(target, cwd)) fail("VES_GATE_ADAPTER_PATH_ESCAPE", "Gate cwd escaped the worktree");
 
     const stdoutHash = createHash("sha256");
     const stderrHash = createHash("sha256");
@@ -258,7 +255,7 @@ export class NodeAtomicGitCommitAdapter {
 
   async reconcile(request: CommitRequest) {
     this.#validateRequest(request);
-    const target = await targetFromRef(this.#worktreesRoot, request.worktreeRef, request.baseCommit);
+    const target = await this.#target(request);
     const head = (await this.#git(target, ["rev-parse", "HEAD"])).stdout.trim();
     if (head === request.baseCommit) return undefined;
     const count = (await this.#git(target, ["rev-list", "--count", `${request.baseCommit}..HEAD`])).stdout.trim();
@@ -270,7 +267,7 @@ export class NodeAtomicGitCommitAdapter {
     this.#validateRequest(request);
     const existing = await this.reconcile(request);
     if (existing !== undefined) return existing;
-    const target = await targetFromRef(this.#worktreesRoot, request.worktreeRef, request.baseCommit);
+    const target = await this.#target(request);
     const before = await this.#worktrees.inspect({ worktreeRef: request.worktreeRef, baseCommit: request.baseCommit });
     if (
       before.changeDigest !== request.expectedChangeDigest ||
@@ -314,6 +311,19 @@ export class NodeAtomicGitCommitAdapter {
       gateEvidenceDigest: request.gateEvidenceDigest,
       idempotencyKey: request.idempotencyKey
     });
+  }
+
+  async #target(request: CommitRequest): Promise<string> {
+    return (
+      await resolved(
+        { repositoryRoot: this.#repositoryRoot, worktreesRoot: this.#worktreesRoot },
+        request.worktreeRef,
+        {
+          baseCommit: request.baseCommit,
+          git: (cwd, args) => this.#git(cwd, args)
+        }
+      )
+    ).directory;
   }
 
   #validateRequest(request: CommitRequest): void {
