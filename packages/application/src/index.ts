@@ -216,6 +216,7 @@ export {
   TaskGateCommitCoordinator,
   TaskGateError,
   canonicalTaskGatePlan,
+  taskGateVerdict,
   type TaskGateCommand,
   type TaskGateCheckpointPort,
   type TaskGateCommitInput,

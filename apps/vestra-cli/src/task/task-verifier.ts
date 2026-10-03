@@ -4,6 +4,7 @@ import { dirname, join, relative, sep, isAbsolute } from "node:path";
 
 import {
   IndependentVerificationCoordinator,
+  taskGateVerdict,
   type BudgetMeter,
   type TaskRunCommit,
   type TaskRunVerification,
@@ -66,12 +67,6 @@ async function activeStateDigest(repositoryRoot: string): Promise<`sha256:${stri
   const head = await git(repositoryRoot, ["rev-parse", "HEAD"]).catch(() => "unborn");
   const status = await git(repositoryRoot, ["status", "--porcelain=v1", "-z", "--untracked-files=all"]);
   return canonicalDigest({ head: head.trim(), status });
-}
-
-function gatePassed(result: Awaited<ReturnType<NodeGateProcessRunner["run"]>>, minimumTests: number): boolean {
-  if (result.exitCode !== 0 || result.timedOut || result.outputLimitExceeded) return false;
-  const tests = result.tests;
-  return tests === undefined || (tests.failed === 0 && tests.passed >= minimumTests && tests.skipped === 0);
 }
 
 function within(root: string, candidate: string): boolean {
@@ -141,7 +136,7 @@ class VerificationSensor {
       entry.requirementIds.includes(requirementId)
     )) {
       const result = await runner.run({ ...gate, worktreeRef: scratchWorktreeHandle({ id, commitId }) });
-      if (!gatePassed(result, gate.minimumTests)) return true;
+      if (taskGateVerdict(gate, result) === "FAIL") return true;
     }
     return false;
   }
