@@ -205,6 +205,17 @@ if (scenario === "slow" || forks) {
   await new Promise(() => {});
 }
 await client.close();
+// why: a session asked for a structured answer (`--json-schema`, a
+// coordinated node) answers one in its result, as 2.1.282 does. A swarm
+// node's destination is the prompt's `next:<node>` marker, or the end.
+function structuredAnswer() {
+  if (!argv.includes("--json-schema")) return {};
+  const schema = JSON.parse(option("--json-schema"));
+  const answer = { outcome: "done", summary: `fake claude ${scenario}: ${results.length} tool calls` };
+  if (schema.properties?.next === undefined) return { structured_output: answer };
+  const next = /\bnext:([a-z][a-z0-9-]*|<complete>)/u.exec(prompt)?.[1] ?? "<complete>";
+  return { structured_output: { ...answer, next, message: `handed on by fake claude to ${next}` } };
+}
 emit({
   type: "result",
   subtype: "success",
@@ -212,7 +223,8 @@ emit({
   result: "done",
   total_cost_usd: 0.01,
   usage: { input_tokens: 11, output_tokens: 7 },
-  session_id: "private-session-id"
+  session_id: "private-session-id",
+  ...structuredAnswer()
 });
 // why: the `linger-implementer` flag keeps this process open after it reported
 // its result, so a test can stop a run whose implementer's usage has arrived

@@ -14,9 +14,10 @@
 //
 // Module resolution inside the replica is self-contained: `node_modules/`
 // links point each workspace package name at the replica's own copy, and the
-// third-party names the CLI graph imports (ajv, jose, canonicalize, and the
-// cedar-wasm glue the task authority loads) at
-// the exact lockfile-installed store directories of the host repository.
+// third-party names the CLI graph imports (ajv, jose, canonicalize, the
+// cedar-wasm glue the task authority loads, and the Strands SDK and Zod the
+// coordination adapter imports) at the exact lockfile-installed store
+// directories of the host repository.
 // Directory junctions are used so no Windows privilege is required, and
 // `node_modules/` is git-ignored by the replica's own copied .gitignore, so
 // the links never dirty its status.
@@ -30,9 +31,11 @@ import { fileURLToPath } from "node:url";
 const REPOSITORY_ROOT = resolve(fileURLToPath(new URL("../../", import.meta.url)));
 const THIRD_PARTY_ANCHORS = Object.freeze({
   "@cedar-policy/cedar-wasm": "packages/policy",
+  "@strands-agents/sdk": "packages/agent-runtime",
   ajv: "packages/contracts",
   canonicalize: "packages/evidence",
-  jose: "packages/evidence"
+  jose: "packages/evidence",
+  zod: "packages/agent-runtime"
 });
 const FIXED_INSTANT = "2026-08-26T00:00:00Z";
 

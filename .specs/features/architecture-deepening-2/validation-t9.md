@@ -76,19 +76,19 @@ the lines `live-task-pilot/validation.md` cites (`:13`, `:160`) do not move.
 
 - **The gate evidence store's `load`** (`task-evidence.ts:46`) returns the
   gate entry as the gate coordinator emitted it. Its one caller outside the
-  store, `task-review.ts:42`, digests the entry whole into the Run Capsule and
+  store, `task-review.ts:52`, digests the entry whole into the Run Capsule and
   reads no member. The store reads members only inside itself (`recover`,
   `feedback`). The ADP-2 suites pin entries of three members
   (`{ gateId, verdict, exitCode }`), and `recover` skips an entry whose verdict
   is not `PASS` instead of refusing it; a declared type here would either be
   a partial one that no caller reads or a change of `recover`'s refusal. It is
   left as it is and named here for the coordinator.
-- **The review coordinator's receipt** (`task-review.ts:68`, `:268`, `:281`)
+- **The review coordinator's receipt** (`task-review.ts:78`, `:275`, `:288`)
   is the row `HumanReviewCoordinator.review` returns in
   `packages/application`, not a Run record artifact. Typing it is a change
   of the verification module's interface.
 - **The runtime store's rows**: the run journal's terminal event
-  (`task-review.ts:85`), the capsule seal (`task-status.ts:90`) and the
+  (`task-review.ts:95`), the capsule seal (`task-status.ts:90`) and the
   repair state `RunCheckpoints.recordBudgetLedger` carries forward
   (`task-run-record.ts:365-377`). They belong to ADR2-7 (T7), which declares
   the runtime store's records; this change does not touch those lines.

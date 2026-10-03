@@ -2774,6 +2774,36 @@ note. -->
   rejected. Editing an earlier round breaks the round after it. Deleting the
   most recent round is visible only in Git history and review.
 
+### AD-078 — A coordinated run's repair attempt is a new ledger round, and a node that reports itself blocked ends the run
+
+- **Status:** proposed (T5 of `.specs/features/strands-subscription-integration/`;
+  refines AD-068 and AD-070 where `spec.md` is silent).
+- **Context:** The gate repair loop runs the executor once per attempt, and a
+  coordinated run keeps a node ledger whose completed visits a resumed run
+  replays. Replaying a finished plan on a repair attempt would skip every node,
+  so the attempt could never act on the gate's feedback. The node-result schema
+  has an `outcome` of `done` or `blocked`, and the spec does not say what
+  `blocked` does.
+- **Decision:**
+  1. The node ledger is kept in rounds. A run's first execution is round 1; an
+     execution that finds a `running` round resumes it and replays its
+     completed visits; one that finds a finished round starts the next, which
+     is a repair attempt, and every node of it receives the gate feedback as
+     untrusted data. The per-run result limit counts the results of every
+     round.
+  2. A node that answers `outcome: "blocked"` has its result persisted as
+     evidence and ends the run with `VES_COORDINATION_NODE_BLOCKED` (as the
+     `reason` of `VES_TASK_FAILED`); no further node starts.
+  3. Until T6 adds reconciliation, a resumed round with any visit that is not
+     completed fails closed with `VES_TASK_NODE_UNCERTAIN` and runs nothing.
+- **Alternatives rejected:** one ledger for the whole run (a repair attempt
+  replays the finished plan and changes nothing); continuing after a blocked
+  node (it spends allowance on a plan its own node said cannot proceed);
+  re-running a started node on resume (repeats effects, AD-071).
+- **Consequence:** Repair attempts behave for a coordinated run as for a
+  single-session run; status and the Run Capsule can name the round of every
+  visit.
+
 ## Handoff
 
 - **Feature:** `subscription-provider-auth` (ADP-A, tasks TA1 and TA2) on

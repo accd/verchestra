@@ -70,7 +70,7 @@ The bridge's read view already folds case for protected paths
 `src/LOCKED.json` was hidden from reads, but it compares spelling as written:
 `src/vendor/lib.js` was readable under protected `src/vendor/`. The worktree
 tool folds case only for the roots the composition root gives it, which is
-`.verchestra` alone (`apps/vestra-cli/src/task/task-run.ts:331`).
+`.verchestra` alone (`apps/vestra-cli/src/task/task-run.ts:378`).
 
 Code on `origin/main`: the executor tests protected paths at
 `packages/application/src/execution/task-executor.ts:381-388`, the gate at
@@ -161,7 +161,7 @@ composition root. No package edge was added.
 | Worktree tool | pattern, folds its own roots (`worktree-tool-adapter.ts:18`, `:172`, `:269-275`) | `worktree-tool-adapter.ts:165`, `:263`, `:268-269` |
 | Git worktree adapter | pattern (`git-worktree-adapter.ts:21`) | `git-worktree-adapter.ts:64` |
 | Git context source | pattern and its own containment (`git-context-source.ts:16`, `:48-50`) | `git-context-source.ts:50`, `:58`, `:148`, `:199` |
-| Verifier claims | pattern bounded 1024 (`task-codex.ts:21`) | `task-codex.ts:43`; the 1024 bound stays the stage's own limit |
+| Verifier claims | pattern bounded 1024 (`task-codex.ts:21`) | `task-codex.ts:44`; the 1024 bound stays the stage's own limit |
 | Verifier mutation target | its own containment (`task-verifier.ts:117`) | `task-verifier.ts:123` |
 
 Each stage still validates its own untrusted input and keeps its own codes:

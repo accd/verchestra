@@ -5,8 +5,6 @@ import type {
   NormalizedTaskRequestV2
 } from "@verchestra/application";
 
-import { notConfigured } from "./task-errors.ts";
-
 type Digest = `sha256:${string}`;
 
 // invariant: a planned run holds a normalized Task Request of either version;
@@ -46,17 +44,16 @@ export interface TaskPlanRecord<Request extends PlannedTaskRequest = PlannedTask
 
 // invariant: a run of a v1 request: one implementer session, then the verifier.
 export type SingleSessionPlan = TaskPlanRecord<NormalizedTaskRequest>;
+// invariant: a run of a v2 request: a coordination plan of nodes inside the
+// one executor run, then the same independent verifier.
+export type CoordinatedPlan = TaskPlanRecord<NormalizedTaskRequestV2>;
 
-function isSingleSession(plan: TaskPlanRecord): plan is SingleSessionPlan {
-  return plan.request.schemaVersion === 1;
+export function isCoordinatedPlan(plan: TaskPlanRecord): plan is CoordinatedPlan {
+  return plan.request.schemaVersion === 2;
 }
 
-// why: a coordinated (v2) plan names no single implementer. Until the
-// coordinated driver composes its nodes, a command that would drive or review
-// an implementer refuses such a run here, before it reads a credential,
-// applies a transition, or creates a worktree, and leaves it as it was.
-export function singleSessionPlan(plan: TaskPlanRecord): SingleSessionPlan {
-  if (!isSingleSession(plan))
-    throw notConfigured("coordinated-run", "This build cannot run or review a coordinated task plan");
-  return plan;
+// invariant: the driver that wrote the change the verifier judges. Only a
+// Claude Code node writes in a coordinated run, so it is Claude Code either way.
+export function implementerDriverId(request: PlannedTaskRequest): "claude-code" {
+  return request.schemaVersion === 1 ? request.driver.driverId : "claude-code";
 }

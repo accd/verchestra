@@ -136,3 +136,35 @@ test("the package declares the subpath and its main entry never reaches the adap
 test("the adapter's entry names every export explicitly", () => {
   assert.doesNotMatch(readFileSync(join(root, ENTRY), "utf8"), /export\s*\*/u);
 });
+
+// invariant: SSI-14 and D5. The composition root loads the adapter in one
+// place, with one literal dynamic import, so no static closure of the CLI and
+// no command but a graph or swarm run reaches the SDK.
+test("the CLI loads the adapter only through one literal dynamic import in the coordination composition", () => {
+  const SUBPATH = "@verchestra/agent-runtime/strands-coordination";
+  const sites = [];
+  for (const path of productSources) {
+    const source = code(readFileSync(join(root, path), "utf8"));
+    const statics = [
+      ...source.matchAll(/\bfrom\s*["']([^"']+)["']/gu),
+      ...source.matchAll(/^\s*import\s*["']([^"']+)["']/gmu)
+    ]
+      .map((match) => match[1])
+      .filter((specifier) => specifier === SUBPATH);
+    const dynamics = [...source.matchAll(/\bimport\(\s*["']([^"']+)["']\s*\)/gu)]
+      .map((match) => match[1])
+      .filter((specifier) => specifier === SUBPATH);
+    assert.deepEqual(statics, [], `${path} imports the adapter statically`);
+    if (dynamics.length > 0) sites.push(`${path}:${dynamics.length}`);
+    // why: a computed specifier there could reach the adapter without the
+    // literal; the drivers' own SDK loaders elsewhere are out of this scope.
+    if (path.startsWith("apps/vestra-cli/src/task/") || path.startsWith("packages/agent-runtime/src/"))
+      assert.doesNotMatch(source, /\bimport\(\s*[^"'\s)]/u, `${path} imports a computed specifier`);
+  }
+  assert.deepEqual(sites, ["apps/vestra-cli/src/task/task-coordination.ts:1"]);
+  const composition = code(readFileSync(join(root, "apps/vestra-cli/src/task/task-coordination.ts"), "utf8"));
+  assert.match(
+    composition,
+    /if \(mode === "agent"\) return new NativeAgentEngine\(\);\s*const \{ StrandsCoordinationEngine \} = await import\("@verchestra\/agent-runtime\/strands-coordination"\);/u
+  );
+});

@@ -11,7 +11,7 @@ import { SIGNING_PASSPHRASE, readCredentials } from "./task-credentials.ts";
 import { stateInvalid, taskError } from "./task-errors.ts";
 import { canonicalDigest } from "./task-files.ts";
 import type { TaskCommandIo } from "./task-io.ts";
-import { HUMAN_ACTOR, singleSessionPlan, type SingleSessionPlan } from "./task-plan-record.ts";
+import { HUMAN_ACTOR, type TaskPlanRecord } from "./task-plan-record.ts";
 import { loadTaskPolicy } from "./task-policy.ts";
 import { openRunRecord, type RunCheckpoints, type RunRecord } from "./task-run-record.ts";
 import { workspaceSigner, workspaceTrustRoot } from "./task-signing.ts";
@@ -25,7 +25,7 @@ type Surface = Awaited<ReturnType<typeof reviewSurface>>;
 interface ReviewContext {
   readonly io: TaskCommandIo;
   readonly workspace: TaskWorkspace;
-  readonly plan: SingleSessionPlan;
+  readonly plan: TaskPlanRecord;
   readonly pkg: Awaited<ReturnType<RunRecord["approvedPackage"]>>;
   readonly grant: Awaited<ReturnType<RunRecord["loadGrant"]>>;
   readonly runtime: RuntimeStore;
@@ -35,6 +35,16 @@ interface ReviewContext {
 }
 
 const ref = (artifactId: string, value: unknown) => ({ artifactId, digest: canonicalDigest(value) });
+
+// invariant: what chose the sessions that wrote the change: the implementer of
+// a single-session run, or the whole approved coordination plan, every node's
+// driver and model with it.
+function modelSelection(plan: TaskPlanRecord) {
+  const request = plan.request;
+  return request.schemaVersion === 1
+    ? ref("selection:implementer", request.driver)
+    : ref("selection:coordination", request.execution);
+}
 
 async function gateRefs(context: ReviewContext, refs: readonly string[]) {
   const store = context.runRecord.gateEvidence;
@@ -101,10 +111,7 @@ async function capsuleInput(
     skillLockDigest: pkg.payload.bindings.skillLockDigest,
     evidence: {
       decisions: [ref("decision:human-review", review)],
-      modelSelections: [
-        ref("selection:implementer", plan.request.driver),
-        ref("selection:verifier", plan.request.verifier)
-      ],
+      modelSelections: [modelSelection(plan), ref("selection:verifier", plan.request.verifier)],
       contexts: [
         { artifactId: `context:${plan.contextManifestDigest.slice(7, 39)}`, digest: plan.contextManifestDigest }
       ],
@@ -230,7 +237,7 @@ export async function reviewTask(
   const runId = parseRunId(options.runId);
   const workspace = await openTaskWorkspace(io);
   const runRecord = openRunRecord(workspace, runId);
-  const plan = singleSessionPlan(await runRecord.loadPlan());
+  const plan = await runRecord.loadPlan();
   const runtime = openRuntime(workspace);
   try {
     const state = currentRun(runtime, runId).state;

@@ -1,6 +1,8 @@
 // DETERMINISTIC FAKE - not Codex. A labeled stand-in for `codex app-server`
 // that answers the JSON-RPC protocol the production CodexDriver speaks and
-// returns a verdict block, and for `codex login status`. It never contacts a
+// returns a verdict block, and for `codex login status`. A turn that carries
+// an `outputSchema` is a coordinated node's: it answers one structured result,
+// after the account and rate-limit reads a subscription-only session makes. It never contacts a
 // provider. It cites the gate script's own check as evidence and the
 // implementation file the task changed, reading both from its working
 // directory (the review checkout). `verifier-scenario:<name>` in the prompt
@@ -19,7 +21,7 @@ import readline from "node:readline";
 import { credentialMatchesStore, fixtureFlag, fixtureLog, providerArguments } from "./fixture-channel.mjs";
 
 if (process.argv.includes("--version")) {
-  process.stdout.write("codex-cli 0.130.0\n");
+  process.stdout.write("codex-cli 0.159.3\n");
   process.exit(0);
 }
 
@@ -108,11 +110,77 @@ function forked() {
   return { sameGroup: sameGroup.pid, escaped: escaped.pid };
 }
 
+// why: the protocol 0.159.3 generates for a ChatGPT login with no credits and
+// ordinary usage allowed; a fixture API-key login reads as an API-key account.
+function account() {
+  return fixtureLogin() === "chatgpt"
+    ? { type: "chatgpt", email: "owner@example.invalid", planType: "plus" }
+    : { type: "apiKey" };
+}
+const RATE_LIMITS = Object.freeze({
+  ordinaryUsageAllowed: true,
+  rateLimits: {
+    limitId: "codex",
+    limitName: null,
+    primary: { usedPercent: 1, windowDurationMins: 300, resetsAt: 1_790_000_000 },
+    secondary: null,
+    credits: { hasCredits: false, unlimited: false, balance: "0" },
+    planType: "plus",
+    rateLimitReachedType: null
+  },
+  rateLimitsByLimitId: null
+});
+
+// why: a node answers its schema: done, a summary, and for a swarm node the
+// prompt's `next:<node>` marker or the end.
+function nodeAnswer(prompt, schema) {
+  const answer = { outcome: "done", summary: "fake codex node read the scope" };
+  if (schema.properties?.next === undefined) return answer;
+  const next = /\bnext:([a-z][a-z0-9-]*|<complete>)/u.exec(prompt)?.[1] ?? "<complete>";
+  return { ...answer, next, message: `handed on by fake codex to ${next}` };
+}
+
+// why: a subscription-only session reads its account and its rate limits
+// before its turn; the node log says whether this one did.
+const accountReads = new Set();
+
+function nodeTurn(message, prompt) {
+  fixtureLog("fake-codex-node.log")({
+    pid: process.pid,
+    cwd: process.cwd(),
+    hang: prompt.includes("node-hang"),
+    accountChecked: accountReads.has("account/read") && accountReads.has("account/rateLimits/read")
+  });
+  emit({ id: message.id, result: { turn: { id: "private-turn-id" } } });
+  // why: `node-hang` leaves the turn open until the process is stopped.
+  if (prompt.includes("node-hang")) return;
+  const text = JSON.stringify(nodeAnswer(prompt, message.params.outputSchema));
+  emit({
+    method: "item/completed",
+    params: {
+      threadId: "private-thread-id",
+      turnId: "private-turn-id",
+      item: { type: "agentMessage", id: "msg-node", text, phase: "final_answer" }
+    }
+  });
+  emit({
+    method: "turn/completed",
+    params: { turn: { id: "private-turn-id", status: "completed" }, usage: { inputTokens: 5, outputTokens: 3 } }
+  });
+  process.stdout.write("", () => process.exit(0));
+}
+
 const lines = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
 lines.on("line", (line) => {
   const message = JSON.parse(line);
   if (message.method === "initialize") {
     emit({ id: message.id, result: { userAgent: "fake-codex-task" } });
+  } else if (message.method === "account/read") {
+    accountReads.add(message.method);
+    emit({ id: message.id, result: { account: account(), requiresOpenaiAuth: true } });
+  } else if (message.method === "account/rateLimits/read") {
+    accountReads.add(message.method);
+    emit({ id: message.id, result: RATE_LIMITS });
   } else if (message.method === "model/list") {
     emit({ id: message.id, result: { data: models.map((model) => ({ id: model, model })) } });
   } else if (message.method === "thread/start") {
@@ -135,6 +203,8 @@ lines.on("line", (line) => {
     }
     emit({ id: message.id, result: { thread: { id: "private-thread-id" } } });
     emit({ method: "thread/started", params: { thread: { id: "private-thread-id" } } });
+  } else if (message.method === "turn/start" && message.params.outputSchema !== undefined) {
+    nodeTurn(message, message.params.input?.[0]?.text ?? "");
   } else if (message.method === "turn/start") {
     const prompt = message.params.input?.[0]?.text ?? "";
     // why: the `fork-verifier` flag selects the forking turn without a word in
@@ -146,7 +216,10 @@ lines.on("line", (line) => {
     // why: `verifier-scenario:fork` is a verifier that starts processes of its
     // own: one stays in its process group and holds its output open, the
     // other leaves the group with setsid(). The turn log names both.
-    turnLog({ pid: process.pid, scenario, ...(scenario === "fork" ? forked() : {}) });
+    // why: SSI-19. A node's result is never part of what the verifier judges;
+    // the fake reports whether any node's answer reached its prompt.
+    const nodeResultInPrompt = /fake (?:claude|codex node)/u.test(prompt);
+    turnLog({ pid: process.pid, scenario, nodeResultInPrompt, ...(scenario === "fork" ? forked() : {}) });
     // why: `hang` and `fork` leave the turn open until the process is stopped,
     // the way a verifier that never answers would.
     if (scenario === "hang" || scenario === "fork") return;
