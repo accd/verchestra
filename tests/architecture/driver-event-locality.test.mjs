@@ -13,6 +13,16 @@ import { fileURLToPath } from "node:url";
 
 const repositoryRoot = fileURLToPath(new URL("../../", import.meta.url));
 const OWNER = "packages/domain/src/driver-event/driver-event.ts";
+// why: the drivers that report usage, each with the call through which it
+// reads a count: the four provider drivers build the usage event, and the mock
+// checks the counts it is scripted with.
+const USAGE_READERS = Object.freeze({
+  "packages/drivers/src/claude-code-driver.ts": /\busageUpdated\(/u,
+  "packages/drivers/src/codex-driver.ts": /\busageUpdated\(/u,
+  "packages/drivers/src/opencode-driver.ts": /\busageUpdated\(/u,
+  "packages/drivers/src/pi-driver.ts": /\busageUpdated\(/u,
+  "packages/drivers/src/index.ts": /\busageCount\(/u
+});
 const CONSUMERS = Object.freeze([
   "apps/vestra-cli/src/self-test-driver-scenario.ts",
   "apps/vestra-cli/src/self-test-full-scenario.ts",
@@ -73,4 +83,21 @@ test("no other product source declares a Driver event of its own", () => {
 test("no consumer reads a field of a Driver event by name or casts one", () => {
   const offenders = CONSUMERS.filter((path) => /\bevent\[|\bevent(?:\.\w+)?\s+as\s/u.test(sourceOf(path)));
   assert.deepEqual(offenders, [], `a Driver event field is read untyped in: ${offenders.join(", ")}`);
+});
+
+test("every driver that reports usage reads its counts through the usage rule", () => {
+  for (const [path, call] of Object.entries(USAGE_READERS))
+    assert.match(sourceOf(path), call, `${path} does not read its counts through the usage rule`);
+});
+
+test("no other product source builds a usage event, and no driver checks a token count itself", () => {
+  const copies = productSources
+    .filter(
+      ({ path, source }) =>
+        path !== OWNER &&
+        (/type:\s*"usage\.updated"/u.test(source) ||
+          (path.startsWith("packages/drivers/src/") && /isSafeInteger\([^)]*\b(?:input|output)Tokens\b/u.test(source)))
+    )
+    .map(({ path }) => path);
+  assert.deepEqual(copies, [], `the usage rule is also spelled out in: ${copies.join(", ")}`);
 });

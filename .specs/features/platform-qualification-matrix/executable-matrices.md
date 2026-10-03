@@ -61,7 +61,7 @@ relations at once and drives a real scan into a real write plan.
 
 ### Driver
 
-Conformance to `interface Driver` (`packages/drivers/src/index.ts:358`) was a
+Conformance to `interface Driver` (`packages/drivers/src/index.ts:359`) was a
 compile-time claim only: five `implements Driver` clauses and no runtime
 enumeration. The matrix derives the driver set from
 `backend-serializers.ts:6` and the lifecycle method list from the interface
@@ -156,7 +156,7 @@ Stated here rather than omitted. None of these is counted as a pass.
 
 4. **`matrix.md` carries three stale references.** `BoundedQueue` (section 5)
    exists nowhere — the real names are `BoundedDriverEventQueue`
-   (`packages/drivers/src/index.ts:279`) and `BoundedEventQueue`
+   (`packages/drivers/src/index.ts:280`) and `BoundedEventQueue`
    (`spikes/isolation/src/framed-protocol.mjs:149`). Section 5 cites
    `isolation-policy.mjs:17-23` for a three-grade union; those lines are
    `selectIsolationProfile` and name only `process-contained`. Section 6's

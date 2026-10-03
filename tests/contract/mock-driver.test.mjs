@@ -78,6 +78,15 @@ test("Mock Driver rejects unknown scenario event fields", () => {
   );
 });
 
+test("Mock Driver refuses a scripted count the usage rule does not read as that count", () => {
+  for (const inputTokens of [-1, 1.5, "12", null, Number.MAX_SAFE_INTEGER + 1])
+    assert.throws(
+      () => new DeterministicMockDriver({ scenario: [{ type: "usage.updated", inputTokens, outputTokens: 1 }] }),
+      { code: "VES_DRIVER_EVENT_INVALID", message: "Mock usage event is invalid" },
+      String(inputTokens)
+    );
+});
+
 for (const [name, overrides] of [
   ["Workspace identity", { workspaceId: "project_018f0000-0000-7000-8000-000000001501" }],
   ["Passport revision", { passportRef: { passportId: "passport_018f0000-0000-7000-8000-000000001504", revision: 0 } }],

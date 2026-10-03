@@ -82,3 +82,25 @@ export function piAbortableFixture(laterResponses = []) {
     dependencies: () => fixture.dependencies({ streamFn })
   };
 }
+
+// why: a provider whose run ends with one message that carries the given
+// usage and stop reason, so a test can observe how the driver reads counts
+// the runtime relays as its provider reported them. An aborted or failed
+// message ends the stream as an error, as Pi's own providers end it.
+export function piUsageFixture(usage, stopReason = "stop") {
+  const fixture = piFixture([]);
+  const message = { ...fauxAssistantMessage("usage", { stopReason }), usage };
+  const streamFn = () => {
+    const stream = new AssistantMessageEventStream();
+    queueMicrotask(() => {
+      stream.push({ type: "start", partial: { ...message, content: [] } });
+      stream.push(
+        stopReason === "stop"
+          ? { type: "done", reason: stopReason, message }
+          : { type: "error", reason: stopReason, error: message }
+      );
+    });
+    return stream;
+  };
+  return { ...fixture, dependencies: () => fixture.dependencies({ streamFn }) };
+}
