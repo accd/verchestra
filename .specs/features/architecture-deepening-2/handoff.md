@@ -2,13 +2,13 @@
 schema: verchestra-feature-handoff/v1
 feature: architecture-deepening-2
 issue: null
-status: in_progress
+status: complete
 branch: main
-baseRevision: 35b23b3b122be7f0d7a6831f3261a9163373cfd7
-lastCompletedTask: null
-nextTask: "Wave 1: T1 (scoped-path rule, branch refactor/scoped-path-rule) and T2 (candidate evidence writers, branch refactor/candidate-evidence-writers) are in progress. T1 first establishes whether a case variant of a protected path or scope entry gets through the task path on a case-insensitive filesystem."
-lastGate: pnpm agent:check
-updatedAt: 2026-10-03T09:00:00Z
+baseRevision: 86c2ab0de82068e92a8fcdb3dfc4e28c9c582581
+lastCompletedTask: T11
+nextTask: "No further action for this round. Every task merged except T6 part 2 (moving the framed Driver protocol out of the drivers package entry), closed as #505: the move makes SonarCloud treat its 375 lines as new code and fail on issues it already had. Deleting the protocol (it has no production caller) or cleaning it as part of the move is an owner decision."
+lastGate: "Platform matrix PASS on five targets before every task merged; required checks and SonarCloud PASS on #485-#507"
+updatedAt: 2026-10-03T17:00:00Z
 ---
 
 # Scope
@@ -19,14 +19,42 @@ and the residues of the first round. See `spec.md` and `tasks.md`.
 
 # Completed Evidence
 
-None yet. The review's two defects were fixed before this round: the run's
-usage account (#478, #479) and the launcher's process-group termination (#480).
+Every task's evidence is in its `validation-t<n>.md`. Merged, each after the
+platform matrix passed on all five targets where `spec.md` requires it:
+
+| Task                                                   | Pull requests             | Decisions      |
+| ------------------------------------------------------ | ------------------------- | -------------- |
+| T1 scoped-path rule                                    | #485 (security fix), #486 | AD-057, AD-058 |
+| T2 candidate evidence writers                          | #488, #489                | AD-059         |
+| T3 provider child run                                  | #498, #500 (input race)   | AD-060, AD-065 |
+| T4 worktree resolution, scratch checkout, gate verdict | #506                      | AD-066         |
+| T5 bounded child run                                   | #507                      | AD-067         |
+| T6 typed Driver event                                  | #504                      | AD-063         |
+| T7 runtime store records                               | #501, #502, #503          | AD-062         |
+| T8 approval request ports                              | #487                      | —              |
+| T9 typed Run record readers                            | #499                      | AD-061         |
+| T10 credential value limit                             | #496                      | —              |
+| T11 refresh ledger entry                               | #497                      | —              |
+
+Defects found and fixed along the way: a protected-path bypass through a case
+variant or a trailing separator (#485); two host-process crashes in the
+provider child run, a non-object line and a failed spawn (#498); a completed
+Claude Code session failed by an input that closed after its result (#500,
+present since before the round); and two publisher gaps, the gate evidence
+digest and a target its bundle does not carry (#489). A timing assumption in a
+test of the usage account was corrected (#491).
 
 # Next Exact Action
 
-Wave 1 is in progress. When a task reports: review it, number its decisions,
-run the platform matrix where `spec.md` requires it, merge, and start the next
-wave.
+None for this round. Owner decisions recorded, not started:
+
+- T6 part 2: delete the framed Driver protocol with its two suites (no
+  production caller), or clean it (three bare sorts, a cognitive complexity of
+  32, 24 duplicated lines) as part of moving it out of the package entry.
+- The runtime store's `backupTo` is qualified and unused while the catalog
+  tells a user to recover from a verified backup: compose a backup command, or
+  accept it as qualified but unused.
+- Whether to price OpenCode's reasoning and cache tokens.
 
 # Blockers
 
