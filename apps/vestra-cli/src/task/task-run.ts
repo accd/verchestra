@@ -289,7 +289,7 @@ class TaskRunComposition {
   // tool effect instead of being silently re-issued.
   async #grant(): Promise<string> {
     const stored = await this.#runRecord.loadGrant();
-    if (typeof stored?.["grantId"] === "string") return stored["grantId"];
+    if (stored !== undefined) return stored.grantId;
     const approvalExpiry = Date.parse(this.#plan.approvalRequest.expiresAt);
     const wanted = Date.now() + this.#plan.request.budgets.maximumDurationMs + LEASE_MARGIN_MS;
     const grant = await this.#prepared.authority.grant(new Date(Math.min(approvalExpiry, wanted)).toISOString());

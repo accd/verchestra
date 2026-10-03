@@ -39,7 +39,7 @@ export async function reviewSurface(
     changedPaths,
     diffDigest: sha256(diff),
     gateEvidenceDigest: commit.gateEvidenceDigest,
-    verification: { reportDigest: canonicalDigest(report), verdict: report["verdict"] }
+    verification: { reportDigest: canonicalDigest(report), verdict: report.verdict }
   };
   return { surface, digest: canonicalDigest(surface), commit, report };
 }

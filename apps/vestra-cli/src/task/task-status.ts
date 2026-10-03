@@ -54,12 +54,12 @@ async function evidence(plan: TaskPlanRecord, runRecord: RunRecord) {
     packageId: plan.packageId,
     contextManifestDigest: plan.contextManifestDigest,
     approvalId: plan.approvalRequest.approvalId,
-    grantId: orNull(grant?.["grantId"]),
+    grantId: orNull(grant?.grantId),
     commitId: orNull(commit?.commitId),
     branch: commit === undefined ? null : branchName(plan),
     gateEvidenceRefs: commit?.gateEvidenceRefs ?? [],
-    verificationVerdict: orNull(report?.["verdict"]),
-    reviewOutcome: orNull(review?.["outcome"])
+    verificationVerdict: orNull(report?.verdict),
+    reviewOutcome: orNull(review?.outcome)
   };
 }
 
@@ -83,8 +83,8 @@ export async function statusTask(io: TaskCommandIo, options: { readonly runId: u
       version: snapshot.version,
       activeProcess: driven,
       bindingDigest: plan.approvalRequest.bindingDigest,
-      lastOutcome: outcome?.["status"] ?? null,
-      lastReason: outcome?.["reason"] ?? null,
+      lastOutcome: outcome?.status ?? null,
+      lastReason: reasonOf(outcome),
       checkpoints: await checkpointStages(runRecord.checkpoints(runtime, plan.request.task.taskId)),
       evidence: await evidence(plan, runRecord),
       capsuleId: runtime.getRunCapsuleSeal(runId)?.["capsuleId"] ?? null,
@@ -176,4 +176,9 @@ export async function cancelTask(io: TaskCommandIo, options: { readonly runId: u
   } finally {
     runtime.close();
   }
+}
+
+// why: only a failed or an aborted run's outcome names a reason.
+function reasonOf(outcome: Awaited<ReturnType<RunRecord["loadOutcome"]>>): string | null {
+  return outcome?.status === "FAILED" || outcome?.status === "ABORTED" ? outcome.reason : null;
 }

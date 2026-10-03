@@ -106,7 +106,7 @@ async function capsuleInput(
       contexts: [
         { artifactId: `context:${plan.contextManifestDigest.slice(7, 39)}`, digest: plan.contextManifestDigest }
       ],
-      capabilityGrants: [ref(`grant:${String(grant?.["grantId"] ?? "none")}`, grant ?? {})],
+      capabilityGrants: [ref(`grant:${grant?.grantId ?? "none"}`, grant ?? {})],
       approvals: [
         { artifactId: plan.approvalRequest.approvalId, digest: plan.approvalRequest.bindingDigest as Digest }
       ],
@@ -164,8 +164,8 @@ async function verifyReport(runRecord: RunRecord, verification: Readonly<Record<
       reportDigest === verification["reportDigest"],
     reportRef: `verification:${reportDigest.slice(7, 39)}`,
     reportDigest,
-    verdict: report["verdict"],
-    commitId: report["commitId"]
+    verdict: report.verdict,
+    commitId: report.commitId
   };
 }
 
@@ -206,7 +206,7 @@ function reviewInput(context: ReviewContext, surface: Surface, outcome: string, 
     verification: {
       reportRef: `verification:${surface.surface.verification.reportDigest.slice(7, 39)}`,
       reportDigest: surface.surface.verification.reportDigest,
-      verdict: surface.report["verdict"],
+      verdict: surface.report.verdict,
       commitId: surface.commit.commitId
     },
     reviewSurfaceDigest: typed,
