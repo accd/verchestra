@@ -23,6 +23,17 @@ tasks, the requests and their digests, the probes, and the scenarios did not.
 The candidate must be one that carries the subscription path; see
 `handoff.md`.
 
+**Amended on 2026-10-03, before any run, to resolve the owner blockers.** The
+candidate is `verchestra@0.0.0-qualification.5`, which carries the
+subscription path (§2). The usage and time ceilings in §6 are approved as
+proposed. The machine is the owner's own account on the owner's Mac, not a
+fresh account (§8). No independent reviewer exists, so the §10 review is not
+performed and no independent review is claimed. The owner accepts the
+subscription profile's gaps G1–G3. The target, the revision, the tasks, the
+requests and their digests, the probes, the scenarios and the success
+definition did not change. `validation.md` records each resolution and each
+deviation.
+
 ## Requirements
 
 | ID | Requirement |
@@ -86,23 +97,30 @@ new live evidence into historical evidence.
 
 ## 2. Candidate (PLT-02)
 
-- **Candidate:** `verchestra@0.0.0-qualification.4` from the public npm registry,
-  invoked as `npx --yes verchestra@0.0.0-qualification.4 <command>`. It is **not
-  yet published**; at pre-registration the registry lists
-  `0.0.0-qualification` and `0.0.0-qualification.2`. `0.0.0-qualification.3` is
-  being built from `c57c15f`, the first `main` commit carrying the governed task
-  commands (#405).
+- **Candidate:** `verchestra@0.0.0-qualification.5` from the public npm registry,
+  invoked as `npx --yes verchestra@0.0.0-qualification.5 <command>`. It was
+  published on 2026-10-02 as `latest`, built from source revision
+  `e17abb3c8970b72c837bbbd07f86b4676ca9adb3`
+  (`docs/qualification/tuf-publication-ledger.json`, sequence 5). Its
+  `dist.integrity` at publication was
+  `sha512-1nO4cFa6NIm/WfiJIR/HeNZGC9FdrHwIczlqAd0zg1A7NfOJQujvwoJZWzaiKmb1dcBWObuQ63zz0CWNq1SfSQ==`.
+  The pre-registration named `.4`, which predates the subscription path.
+- **What `.5` does not carry.** Changes merged after `e17abb3` are not in the
+  candidate: process-tree termination of the providers (ADP-4), the sealed Run
+  markers, and the complete usage account (AD-055, AD-056). In `.5`,
+  `status.checkpoints.budget` is the implementer's usage only, as §7 says.
 - **Recorded at execution:** the output of
-  `npx --yes verchestra@0.0.0-qualification.4 --version`, the package's
+  `npx --yes verchestra@0.0.0-qualification.5 --version`, the package's
   `dist.integrity` and `gitHead` from
-  `npm view verchestra@0.0.0-qualification.4 dist.integrity gitHead`, and the
-  source revision the owner declares for the release.
+  `npm view verchestra@0.0.0-qualification.5 dist.integrity gitHead` (the
+  package carries no `gitHead`, which is recorded as `unavailable`), and the
+  declared source revision above.
 - **Invocation rule:** always the pinned `verchestra@<version>` form. Never a bare
-  `npx vestra`: `vestra` is also a separate npm package name (currently
-  unpublished), so outside a project that installs Verchestra it does not
+  `npx vestra`: `vestra` is a separate npm package name, a placeholder the
+  owner holds, so outside a project that installs Verchestra it does not
   resolve to the candidate.
 - In the steps below, `VES` stands for
-  `npx --yes verchestra@0.0.0-qualification.4`.
+  `npx --yes verchestra@0.0.0-qualification.5`.
 
 ## 3. Platform and provider identity (PLT-03)
 
@@ -391,8 +409,8 @@ requires it); the meter adds no cost to it and `status` reports the cost as
 
 | Ceiling | Value | Status |
 | --- | --- | --- |
-| Tokens per task run (P1, P2, P3) | **3,000,000** (`maximumTokens`) | proposed, pending owner approval |
-| Tokens per scenario run | S1 1,000,000; S2 and S3 2,000,000; S3b is refused at plan time and consumes none | proposed, pending owner approval |
+| Tokens per task run (P1, P2, P3) | **3,000,000** (`maximumTokens`) | approved by the owner, 2026-10-03 |
+| Tokens per scenario run | S1 1,000,000; S2 and S3 2,000,000; S3b is refused at plan time and consumes none | approved by the owner, 2026-10-03 |
 | Plan usage for the whole pilot | whatever the owner's Claude and ChatGPT plans allow; the pilot does not meter it | owner's own limit |
 
 Stop rule: **the pilot stops, and the owner decides, when a provider refuses a
@@ -497,7 +515,8 @@ diffs themselves are reproduced from the recorded commit IDs, not copied.
 
 ## 8. Clean-machine reproduction (PLT-08)
 
-On a macOS arm64 machine with a fresh user account:
+On a macOS arm64 machine with a fresh user account (this pilot runs in the
+owner's own account by the owner's decision; see `validation.md`, Deviations):
 
 1. Install Node 24.14.0 from nodejs.org (check the archive against the published
    `SHASUMS256.txt`) and put it first on `PATH`. Install Git, Claude Code 2.1.282,
