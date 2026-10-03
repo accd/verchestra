@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { promisify } from "node:util";
 
-import { usageUpdated } from "@verchestra/domain";
+import { quotaExhausted, usageUpdated, type DriverEventOf } from "@verchestra/domain";
 
 import {
   codexProcessEnvironment,
@@ -12,7 +12,13 @@ import {
 import { processTreeTerminator, type ProcessTreeTerminator } from "./driver-process-tree.ts";
 import { sensitiveValueRedactor } from "./driver-redaction.ts";
 import { DriverSessionLedger, type DriverSession } from "./driver-session-ledger.ts";
-import { probeDriverVersion } from "./driver-version-probe.ts";
+import {
+  structuredAnswer,
+  structuredOutputPlan,
+  type DriverStructuredOutput,
+  type StructuredOutputPlan
+} from "./driver-structured-output.ts";
+import { meetsMinimum, probeDriverVersion } from "./driver-version-probe.ts";
 import {
   DriverProtocolError,
   validateDriverStartRequest,
@@ -50,6 +56,13 @@ export interface CodexExecution {
   readonly sensitiveValues?: readonly string[];
   readonly maxOutputBytes?: number;
   readonly cancelGraceMs?: number;
+  // invariant: the turn carries `outputSchema`, and the session fails unless
+  // its final agent message is JSON within the bound (AD-073).
+  readonly structuredOutput?: DriverStructuredOutput;
+  // invariant: before its turn the session reads the account and its rate
+  // limits, and runs only on a ChatGPT login with no credits and ordinary
+  // usage allowed (SSI-55, SSI-56). Absent keeps the T04 conversation.
+  readonly subscriptionOnly?: true;
 }
 
 export interface CodexDriverDependencies {
@@ -70,6 +83,34 @@ function codexError(code: string, message: string): DriverProtocolError {
 // invariant: a version starts a digit run, so the match is tried once per run
 // and a long run of digits costs linear time.
 const VERSION_PATTERN = /(?:^|\D)(\d+)\.(\d+)\.(\d+)/u;
+// why: the build whose generated App Server protocol was read to confirm
+// `turn/start` `outputSchema`, `account/read`, and `account/rateLimits/read`
+// (docs/qualification/codex-driver-structured-results.md). A session that uses
+// them requires it; the T04 conversation keeps its own floor.
+export const CODEX_STRUCTURED_MINIMUM_VERSION = "0.159.3";
+// invariant: the only App Server methods this client sends (SSI-57). No
+// method that logs in or out, or buys, consumes, or advertises credits, is
+// listed, so none of them can be written.
+export const CODEX_CLIENT_METHODS: readonly string[] = Object.freeze([
+  "initialize",
+  "initialized",
+  "account/read",
+  "account/rateLimits/read",
+  "model/list",
+  "thread/start",
+  "turn/start",
+  "turn/interrupt"
+]);
+const CLIENT_METHODS: ReadonlySet<unknown> = new Set(CODEX_CLIENT_METHODS);
+// why: the rate-limit kinds 0.159.3 reports that mean an allowance or its
+// credits ran out; `rate_limit_reached` is a transient rate limit, not quota.
+const QUOTA_REACHED_TYPES: ReadonlySet<unknown> = new Set([
+  "workspace_owner_credits_depleted",
+  "workspace_member_credits_depleted",
+  "workspace_owner_usage_limit_reached",
+  "workspace_member_usage_limit_reached"
+]);
+const CODEX_NAMING = Object.freeze({ errorCodePrefix: "VES_CODEX", noun: "Codex" });
 // invariant: the probe refusals are VES_CODEX_NOT_AVAILABLE and
 // VES_CODEX_VERSION_UNSUPPORTED.
 const PROBE_PROFILE = Object.freeze({
@@ -105,28 +146,117 @@ interface CodexConversation {
   readonly redact: (value: unknown) => string;
   readonly threadParams: () => Readonly<Record<string, unknown>>;
   readonly onMessageSent: ((message: Readonly<Record<string, unknown>>) => void) | undefined;
+  readonly plan: CodexSessionPlan;
+}
+
+interface CodexSessionPlan {
+  readonly structured: StructuredOutputPlan | undefined;
+  readonly subscriptionOnly: boolean;
+}
+
+type Row = Readonly<Record<string, unknown>>;
+
+// invariant: every frame this client writes passes here. A request or a
+// notification names a method on the allowlist; a response names none.
+export function codexWireFrame(message: Row): string {
+  if (Object.hasOwn(message, "method") && !CLIENT_METHODS.has(message["method"]))
+    throw codexError("VES_CODEX_METHOD_DENIED", "Codex method is outside the client allowlist");
+  return JSON.stringify(message);
+}
+
+const row = (value: unknown): Row | undefined =>
+  value !== null && typeof value === "object" && !Array.isArray(value) ? (value as Row) : undefined;
+
+// why: a balance is a decimal text; only an absent or a zero balance is no
+// balance. Any other value, a malformed one included, counts as credits.
+const ZERO_BALANCE = /^0+(?:\.0+)?$/u;
+
+// invariant: a snapshot reports credits unless its credits are absent, or
+// say no credits, not unlimited, and no balance (SSI-56).
+function creditsReported(snapshot: unknown): boolean {
+  const credits = row(snapshot)?.["credits"];
+  if (credits === undefined || credits === null) return false;
+  const reported = row(credits);
+  if (reported === undefined) return true;
+  const balance = reported["balance"];
+  const noBalance = balance === null || (typeof balance === "string" && ZERO_BALANCE.test(balance));
+  return reported["hasCredits"] !== false || reported["unlimited"] !== false || !noBalance;
+}
+
+function anyCredits(limits: Row): boolean {
+  const byLimit = row(limits["rateLimitsByLimitId"]);
+  return [limits["rateLimits"], ...Object.values(byLimit ?? {})].some(creditsReported);
+}
+
+// invariant: the reset of an exhausted allowance is the latest reset among
+// the snapshot's windows that are fully used; with none, no reset is known.
+function exhaustedReset(snapshot: unknown): number | undefined {
+  const resets = ["primary", "secondary"]
+    .map((name) => row(row(snapshot)?.[name]))
+    .filter((window) => typeof window?.["usedPercent"] === "number" && window["usedPercent"] >= 100)
+    .map((window) => window?.["resetsAt"])
+    .filter((reset): reset is number => Number.isSafeInteger(reset));
+  return resets.length === 0 ? undefined : Math.max(...resets);
+}
+
+// invariant: the final agent message of a structured turn is its answer, read
+// as JSON and bounded; an absent or unreadable message is a stable code.
+function turnAnswer(text: string | undefined, plan: StructuredOutputPlan): ReturnType<typeof structuredAnswer> {
+  if (text === undefined) return { code: "VES_CODEX_STRUCTURED_OUTPUT_MISSING" };
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return { code: "VES_CODEX_STRUCTURED_OUTPUT_INVALID" };
+  }
+  return structuredAnswer(parsed, plan, "VES_CODEX");
 }
 
 // invariant: the App Server translation of one ephemeral turn: the JSON-RPC
-// handshake, the model check, one thread and one turn, the dynamic tools and
-// approvals it is asked about, and the interrupt a stop sends.
+// handshake, the account checks a subscription-only session makes, the model
+// check, one thread and one turn, the dynamic tools and approvals it is asked
+// about, the quota signals and structured answer it reports, and the
+// interrupt a stop sends.
 function codexProtocol(channel: ProviderChannel, conversation: CodexConversation): ProviderProtocol {
-  const { request, execution, session: state, sessionId, redact } = conversation;
+  const { request, execution, session: state, sessionId, redact, plan } = conversation;
   let nextId = 1;
   let threadId: string | undefined;
   let turnId: string | undefined;
   let interruptSent = false;
+  let quotaReported = false;
+  let finalMessage: string | undefined;
   const pending = new Map<number, { resolve(value: unknown): void; reject(error: Error): void }>();
 
-  const write = (message: Readonly<Record<string, unknown>>) => {
+  // invariant: a refused frame is never written; the stream fails with the
+  // refusal's code.
+  const write = (message: Row) => {
+    let frame: string;
+    try {
+      frame = codexWireFrame(message);
+    } catch (error) {
+      channel.fail("VES_CODEX_METHOD_DENIED");
+      throw error;
+    }
     conversation.onMessageSent?.(structuredClone(message));
-    channel.write(JSON.stringify(message));
+    channel.write(frame);
   };
-  const notify = (method: string, params: Readonly<Record<string, unknown>> = {}) => write({ method, params });
-  const rpc = (method: string, params: Readonly<Record<string, unknown>> = {}) => {
+  const notify = (method: string, params: Row = {}) => write({ method, params });
+  const rpc = (method: string, params: Row = {}) => {
     const id = nextId++;
     write({ method, id, params });
     return new Promise<unknown>((resolve, reject) => pending.set(id, { resolve, reject }));
+  };
+  // invariant: a refusal of the conversation ends the stream with its code
+  // before anything more is asked.
+  const refuse = (code: string, message: string): never => {
+    channel.fail(code);
+    throw codexError(code, message);
+  };
+  // invariant: one quota signal per session, the first (SSI-58).
+  const reportQuota = (event: DriverEventOf<"quota.exhausted">) => {
+    if (quotaReported) return;
+    quotaReported = true;
+    state.emit(event);
   };
   const interrupt = () => {
     if (!channel.stopped() || threadId === undefined || turnId === undefined || interruptSent || channel.ending())
@@ -134,80 +264,119 @@ function codexProtocol(channel: ProviderChannel, conversation: CodexConversation
     interruptSent = true;
     void rpc("turn/interrupt", { threadId, turnId }).catch(() => undefined);
   };
-  const receive = (message: Readonly<Record<string, unknown>>): void => {
-    if (typeof message["id"] === "number" && (Object.hasOwn(message, "result") || Object.hasOwn(message, "error"))) {
-      const waiter = pending.get(message["id"]);
-      if (waiter !== undefined) {
-        pending.delete(message["id"]);
-        if (message["error"] !== undefined) waiter.reject(codexError("VES_CODEX_RPC_FAILED", "Codex request failed"));
-        else waiter.resolve(message["result"]);
-      }
-      return;
-    }
-    const method = message["method"];
-    const params = (message["params"] ?? {}) as Record<string, unknown>;
-    if (method === "thread/started") {
-      state.emit({ type: "session.started", sessionId });
-      state.emit({
-        type: "model.resolved",
-        passportRef: request.passportRef,
-        provider: "openai",
-        resolvedModel: execution.model
-      });
-    } else if (method === "item/agentMessage/delta") {
-      state.emit({ type: "content.delta", text: redact(params["delta"] ?? "") });
-    } else if (method === "item/tool/call" && typeof message["id"] === "number") {
-      if (typeof params["callId"] !== "string" || typeof params["tool"] !== "string")
-        return channel.fail("VES_CODEX_STREAM_INVALID");
-      if (!execution.tools.some((tool) => tool.name === params["tool"]))
-        return channel.fail("VES_CODEX_TOOL_UNDECLARED");
-      state.emit({
-        type: "tool.requested",
-        toolCallId: params["callId"],
-        name: params["tool"],
-        input: params["arguments"]
-      });
-      write({
-        id: message["id"],
-        result: {
-          success: false,
-          contentItems: [{ type: "inputText", text: "Execution is controlled by Verchestra." }]
-        }
-      });
-    } else if (
-      (method === "item/commandExecution/requestApproval" || method === "item/fileChange/requestApproval") &&
-      typeof message["id"] === "number"
-    ) {
-      state.emit({
-        type: "warning",
-        code: "VES_CODEX_BUILTIN_TOOL_DENIED",
-        message: "Codex built-in effect was denied"
-      });
-      write({ id: message["id"], result: { decision: "decline" } });
-    } else if (method === "error") {
+  const respond = (message: Row): void => {
+    const waiter = pending.get(message["id"] as number);
+    if (waiter === undefined) return;
+    pending.delete(message["id"] as number);
+    if (message["error"] !== undefined) waiter.reject(codexError("VES_CODEX_RPC_FAILED", "Codex request failed"));
+    else waiter.resolve(message["result"]);
+  };
+  const started = (): void => {
+    state.emit({ type: "session.started", sessionId });
+    state.emit({
+      type: "model.resolved",
+      passportRef: request.passportRef,
+      provider: "openai",
+      resolvedModel: execution.model
+    });
+  };
+  const delta = (_message: Row, params: Row): void => {
+    state.emit({ type: "content.delta", text: redact(params["delta"] ?? "") });
+  };
+  const toolCall = (message: Row, params: Row): void => {
+    if (typeof message["id"] !== "number") return;
+    if (typeof params["callId"] !== "string" || typeof params["tool"] !== "string")
+      return channel.fail("VES_CODEX_STREAM_INVALID");
+    if (!execution.tools.some((tool) => tool.name === params["tool"])) return channel.fail("VES_CODEX_TOOL_UNDECLARED");
+    state.emit({
+      type: "tool.requested",
+      toolCallId: params["callId"],
+      name: params["tool"],
+      input: params["arguments"]
+    });
+    write({
+      id: message["id"],
+      result: { success: false, contentItems: [{ type: "inputText", text: "Execution is controlled by Verchestra." }] }
+    });
+  };
+  const approval = (message: Row): void => {
+    if (typeof message["id"] !== "number") return;
+    state.emit({ type: "warning", code: "VES_CODEX_BUILTIN_TOOL_DENIED", message: "Codex built-in effect was denied" });
+    write({ id: message["id"], result: { decision: "decline" } });
+  };
+  const failed = (_message: Row, params: Row): void => {
+    if (row(params["error"])?.["codexErrorInfo"] === "usageLimitExceeded")
+      reportQuota(quotaExhausted("usage_limit_exceeded"));
+    state.outcome = "failed";
+    state.emit({ type: "error", code: "VES_CODEX_EXECUTION_FAILED", message: "Codex failed", retryable: true });
+  };
+  // why: only a structured turn keeps its last agent message, and only the
+  // last, which a line already bounded by the output limit carried.
+  const itemCompleted = (_message: Row, params: Row): void => {
+    const item = row(params["item"]);
+    if (plan.structured !== undefined && item?.["type"] === "agentMessage" && typeof item["text"] === "string")
+      finalMessage = item["text"];
+  };
+  const rateLimitsUpdated = (_message: Row, params: Row): void => {
+    const snapshot = row(params["rateLimits"]);
+    const reached = snapshot?.["rateLimitReachedType"];
+    if (QUOTA_REACHED_TYPES.has(reached)) reportQuota(quotaExhausted(reached as string, exhaustedReset(snapshot)));
+  };
+  const answer = (turn: Row): void => {
+    if (plan.structured === undefined || turn["status"] !== "completed" || state.outcome === "failed") return;
+    const outcome = turnAnswer(finalMessage, plan.structured);
+    if ("type" in outcome) return state.emit(outcome);
+    state.outcome = "failed";
+    state.emit({
+      type: "error",
+      code: outcome.code,
+      message: "Codex returned no usable structured result",
+      retryable: false
+    });
+  };
+  const completed = (_message: Row, params: Row): void => {
+    const turn = (params["turn"] ?? {}) as Row;
+    const reported = (params["usage"] ?? turn["usage"] ?? {}) as Row;
+    const usage = usageUpdated({ inputTokens: reported["inputTokens"], outputTokens: reported["outputTokens"] });
+    if (usage === undefined) return channel.fail("VES_CODEX_STREAM_INVALID");
+    state.emit(usage);
+    if (turn["status"] === "failed" && state.outcome !== "failed") {
       state.outcome = "failed";
-      state.emit({
-        type: "error",
-        code: "VES_CODEX_EXECUTION_FAILED",
-        message: "Codex failed",
-        retryable: true
-      });
-    } else if (method === "turn/completed") {
-      const turn = (params["turn"] ?? {}) as Record<string, unknown>;
-      const reported = (params["usage"] ?? turn["usage"] ?? {}) as Readonly<Record<string, unknown>>;
-      const usage = usageUpdated({ inputTokens: reported["inputTokens"], outputTokens: reported["outputTokens"] });
-      if (usage === undefined) return channel.fail("VES_CODEX_STREAM_INVALID");
-      state.emit(usage);
-      if (turn["status"] === "failed" && state.outcome !== "failed") {
-        state.outcome = "failed";
-        state.emit({
-          type: "error",
-          code: "VES_CODEX_EXECUTION_FAILED",
-          message: "Codex failed",
-          retryable: true
-        });
-      }
-      channel.result();
+      state.emit({ type: "error", code: "VES_CODEX_EXECUTION_FAILED", message: "Codex failed", retryable: true });
+    }
+    answer(turn);
+    channel.result();
+  };
+  const handlers = new Map<unknown, (message: Row, params: Row) => void>([
+    ["thread/started", started],
+    ["item/agentMessage/delta", delta],
+    ["item/tool/call", toolCall],
+    ["item/commandExecution/requestApproval", approval],
+    ["item/fileChange/requestApproval", approval],
+    ["error", failed],
+    ["item/completed", itemCompleted],
+    ["account/rateLimits/updated", rateLimitsUpdated],
+    ["turn/completed", completed]
+  ]);
+  const receive = (message: Row): void => {
+    if (typeof message["id"] === "number" && (Object.hasOwn(message, "result") || Object.hasOwn(message, "error")))
+      return respond(message);
+    handlers.get(message["method"])?.(message, (message["params"] ?? {}) as Row);
+  };
+  // invariant: the account must be a ChatGPT login, its snapshots must report
+  // no credits, and ordinary usage must not be refused; the e-mail address and
+  // every other account field are read past and never kept.
+  const accountChecks = async (): Promise<void> => {
+    const account = row(row(await rpc("account/read", { refreshToken: false }))?.["account"]);
+    if (account?.["type"] !== "chatgpt")
+      return refuse("VES_CODEX_AUTH_METHOD_MISMATCH", "Codex is not signed in with a ChatGPT subscription");
+    const limits = row(await rpc("account/rateLimits/read"));
+    if (limits === undefined || row(limits["rateLimits"]) === undefined)
+      return refuse("VES_CODEX_PROTOCOL_FAILED", "Codex rate limits are invalid");
+    if (anyCredits(limits)) return refuse("VES_CODEX_CREDITS_PRESENT", "Codex reports credits on this account");
+    if (limits["ordinaryUsageAllowed"] === false) {
+      reportQuota(quotaExhausted("ordinary_usage_disallowed", exhaustedReset(limits["rateLimits"])));
+      return refuse("VES_CODEX_QUOTA_EXHAUSTED", "Codex reports that the usage allowance is exhausted");
     }
   };
   const converse = async () => {
@@ -216,6 +385,7 @@ function codexProtocol(channel: ProviderChannel, conversation: CodexConversation
       capabilities: { experimentalApi: true }
     });
     notify("initialized");
+    if (plan.subscriptionOnly) await accountChecks();
     const catalog = (await rpc("model/list")) as { data?: readonly { id?: string; model?: string }[] };
     const selected = catalog.data?.find((entry) => entry.model === execution.model || entry.id === execution.model);
     if (selected?.model !== execution.model)
@@ -223,7 +393,12 @@ function codexProtocol(channel: ProviderChannel, conversation: CodexConversation
     const thread = (await rpc("thread/start", conversation.threadParams())) as { thread?: { id?: string } };
     threadId = thread.thread?.id;
     if (typeof threadId !== "string") throw codexError("VES_CODEX_PROTOCOL_FAILED", "Codex thread identity is invalid");
-    const turn = (await rpc("turn/start", { threadId, input: [{ type: "text", text: execution.prompt }] })) as {
+    const outputSchema = plan.structured === undefined ? {} : { outputSchema: JSON.parse(plan.structured.schemaText) };
+    const turn = (await rpc("turn/start", {
+      threadId,
+      input: [{ type: "text", text: execution.prompt }],
+      ...outputSchema
+    })) as {
       turn?: { id?: string };
     };
     turnId = turn.turn?.id;
@@ -325,6 +500,7 @@ export class CodexDriver implements Driver {
       throw codexError("VES_CODEX_RESOLUTION_FAILED", "Codex execution resolution failed");
     }
     this.#validateExecution(request, execution);
+    const plan = this.#sessionPlan(execution, probe.version);
 
     const sessionId = `codex-session:${randomUUID()}`;
     const state = this.#sessions.open(sessionId, sink, {});
@@ -351,7 +527,8 @@ export class CodexDriver implements Driver {
           sessionId,
           redact,
           threadParams: () => this.buildThreadParams(execution),
-          onMessageSent: this.#dependencies.onMessageSent
+          onMessageSent: this.#dependencies.onMessageSent,
+          plan
         })
     });
     return Object.freeze({ sessionId });
@@ -369,6 +546,19 @@ export class CodexDriver implements Driver {
 
   async close(session: DriverSessionRef) {
     return this.#sessions.close(session);
+  }
+
+  // invariant: a session that asks for a structured answer or for the account
+  // checks is refused before spawn on a build below the floor that has them.
+  #sessionPlan(execution: CodexExecution, version: string): CodexSessionPlan {
+    const structured = structuredOutputPlan(execution.structuredOutput, CODEX_NAMING);
+    const { subscriptionOnly } = execution;
+    if (subscriptionOnly !== undefined && subscriptionOnly !== true)
+      throw codexError("VES_CODEX_SUBSCRIPTION_INVALID", "Codex subscription requirement is invalid");
+    const usesNewProtocol = structured !== undefined || subscriptionOnly === true;
+    if (usesNewProtocol && !meetsMinimum(version, CODEX_STRUCTURED_MINIMUM_VERSION, VERSION_PATTERN))
+      throw codexError("VES_CODEX_VERSION_UNSUPPORTED", "Codex version is unsupported");
+    return Object.freeze({ structured, subscriptionOnly: subscriptionOnly === true });
   }
 
   #validateExecution(request: DriverStartRequest, execution: CodexExecution): void {

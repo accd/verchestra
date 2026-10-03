@@ -611,7 +611,7 @@ export type {
   ClaudeCodeMediatedProfile,
   ClaudeCodeMediation
 } from "./claude-code-driver.ts";
-export { CodexDriver } from "./codex-driver.ts";
+export { CODEX_CLIENT_METHODS, CODEX_STRUCTURED_MINIMUM_VERSION, CodexDriver } from "./codex-driver.ts";
 export type { CodexDriverDependencies, CodexExecution } from "./codex-driver.ts";
 export type { CodexProcessContext } from "./codex-process-context.ts";
 export { OpenCodeDriver } from "./opencode-driver.ts";

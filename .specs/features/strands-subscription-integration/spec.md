@@ -475,6 +475,7 @@ the mutation list in `validation.md` is killed in full.
 | §3 subscription facts | The cited Claude page now says the Agent SDK billing change is paused and `claude -p` still draws from plan limits; typed quota and authentication signals exist and are used. | `research.md` F7, F8. |
 | §4 T1–T10 | Kept as the task units; each lists its atomic commits, since most deliver several modules. | Traceability to the plan the owner approved. |
 | `security-threat-model` workflow step 6 (check-in before the final report) | `threat-model.md` lists its assumptions for the owner to confirm. | The check-in could not run inside this task (D7). |
+| Assumption "Codex minimum version raised in T4" | The floor 0.159.3 applies to the Codex sessions that ask for a structured answer or the account checks; the T04 default stays 0.115.0. 0.159.3 is the lowest build observed with all three protocol elements, not a proven first version. | A raised default would fail v1 runs at verification on older builds (SSI-83); decision "The Codex floor rises only for the sessions that use the newer App Server protocol" in `.specs/STATE.md`. |
 
 ## Success Criteria
 

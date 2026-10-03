@@ -2712,6 +2712,32 @@ note. -->
 - **Consequence:** The check becomes exact rather than textual; tests cover a
   real external of each kind. Each launcher grows by about 1.45 MiB.
 
+### AD-076 — The Codex floor rises only for the sessions that use the newer App Server protocol
+
+- **Status:** proposed (T4 of `.specs/features/strands-subscription-integration/`;
+  refines the "Codex minimum version" default in its `spec.md`).
+- **Context:** Structured output (`turn/start` `outputSchema`) and the account
+  checks (`account/read`, `account/rateLimits/read`) are confirmed in the
+  protocol that the installed `codex-cli 0.159.3` generates
+  (`codex app-server generate-ts`); no older build was available to prove the
+  first version that has them. The v1 verifier uses the driver's default floor,
+  0.115.0, and `vestra task` probes no Codex version before a run, so raising
+  that default would fail every v1 run on a build from 0.115.0 to 0.159.2 only
+  at verification, after the implementer had already spent its allowance, and
+  would break SSI-83 (v1 behaves as before).
+- **Decision:** `CODEX_STRUCTURED_MINIMUM_VERSION` is `0.159.3`, the lowest
+  build observed to have all three. A Codex session whose execution asks for a
+  structured answer or for the subscription-only account checks is refused with
+  `VES_CODEX_VERSION_UNSUPPORTED` before any process starts on a build below it,
+  within the same major line. The T04 conversation keeps its default floor of
+  0.115.0, as the Claude Code driver keeps its T03 floor beside the mediated one.
+- **Alternatives rejected:** raising the default floor (the late v1 failure
+  above); guessing an earlier first version (unproven, so not a qualification).
+- **Consequence:** An owner with Codex below 0.159.3 sees v1 runs unchanged and
+  every coordinated Codex node refused before spawn; T6's preflight reports it
+  as `not configured`. The fleet's pinned 0.115.0 keeps qualifying the T04
+  profile; moving that pin is a separate, owner-approved change.
+
 ## Handoff
 
 - **Feature:** `subscription-provider-auth` (ADP-A, tasks TA1 and TA2) on

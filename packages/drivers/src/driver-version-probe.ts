@@ -40,7 +40,9 @@ function parseVersion(text: string, pattern: RegExp): readonly [number, number, 
   return match === null ? undefined : [Number(match[1]), Number(match[2]), Number(match[3])];
 }
 
-function meetsMinimum(actual: string, minimum: string, pattern: RegExp): boolean {
+// invariant: the floor rule. A version meets a minimum of its own major line
+// at or above it; another major, or text that is not a version, never does.
+export function meetsMinimum(actual: string, minimum: string, pattern: RegExp): boolean {
   const left = parseVersion(actual, pattern);
   const right = parseVersion(minimum, pattern);
   if (left === undefined || right === undefined || left[0] !== right[0]) return false;
