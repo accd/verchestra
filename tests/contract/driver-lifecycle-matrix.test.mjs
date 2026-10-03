@@ -18,7 +18,7 @@ import { piAbortableFixture, piFixture } from "../helpers/pi-driver-fixture.mjs"
 //
 // Before this file the four drivers were covered one file at a time, and
 // nothing enumerated them together: conformance to `interface Driver`
-// (packages/drivers/src/index.ts:366) was asserted only by the five
+// (packages/drivers/src/index.ts:358) was asserted only by the five
 // `implements Driver` clauses, which is a compile-time claim, and each suite
 // chose its own shape. A driver could therefore be added, or an existing one
 // could lose a lifecycle method's runtime behaviour, without any single test
@@ -675,4 +675,84 @@ for (const row of CHILD_RUN_ROWS) {
         assert.equal(asked, terminations, "the terminator was asked a different number of times");
     });
   }
+}
+
+// why: the usage axis. A token count a provider reports is read by one rule,
+// the Driver event module's (packages/domain/src/driver-event/driver-event.ts),
+// asserted at its interface by tests/unit/driver-event.test.mjs. What can still
+// go wrong per driver is the wiring: a driver that checks a count itself, or
+// not at all, or refuses one with another driver's code. Each row runs a
+// session whose provider reports the counts it is given, spelled as that
+// provider spells them; a count that is undefined is left out.
+import { fakeOpenCodeFactory } from "../helpers/opencode-driver-fixture.mjs";
+
+const USAGE_ROWS = [
+  {
+    driverId: "claude-code",
+    refusedCode: "VES_CLAUDE_STREAM_INVALID",
+    reporting: ({ input, output }) => {
+      const usage = JSON.stringify({ input_tokens: input, output_tokens: output });
+      const fixture = claudeFixture({ environment: { FAKE_CLAUDE_MODE: "usage", FAKE_CLAUDE_USAGE: usage } });
+      return { driver: new ClaudeCodeDriver(fixture.dependencies()), request: fixture.request() };
+    }
+  },
+  {
+    driverId: "codex",
+    refusedCode: "VES_CODEX_STREAM_INVALID",
+    reporting: ({ input, output }) => {
+      const usage = JSON.stringify({ inputTokens: input, outputTokens: output });
+      const fixture = codexFixture({ environment: { FAKE_CODEX_MODE: "usage", FAKE_CODEX_USAGE: usage } });
+      return { driver: new CodexDriver(fixture.dependencies()), request: fixture.request() };
+    }
+  },
+  {
+    driverId: "opencode",
+    refusedCode: "VES_OPENCODE_STREAM_INVALID",
+    reporting: ({ input, output }) => {
+      const fixture = openCodeFixture();
+      const tokens = { input, output, reasoning: 2, cache: { read: 4, write: 0 } };
+      const serverFactory = fakeOpenCodeFactory("success", [], undefined, tokens);
+      return { driver: new OpenCodeDriver(fixture.dependencies({ serverFactory })), request: fixture.request() };
+    }
+  }
+];
+
+async function reportedUsage(row, counts) {
+  const { driver, request } = row.reporting(counts);
+  const events = [];
+  const session = await driver.start(request, (event) => events.push(event), new AbortController().signal);
+  const { outcome } = await driver.close(session);
+  return {
+    usage: events
+      .filter((event) => event.type === "usage.updated")
+      .map(({ inputTokens, outputTokens }) => [inputTokens, outputTokens]),
+    errors: events.filter((event) => event.type === "error").map((event) => event.code),
+    outcome
+  };
+}
+
+test("the usage axis covers every driver that checked its provider's usage", () => {
+  assert.deepEqual(
+    USAGE_ROWS.map((row) => row.driverId),
+    ["claude-code", "codex", "opencode"]
+  );
+});
+
+for (const row of USAGE_ROWS) {
+  test(`${row.driverId} reads a usage count its provider reports as text as that count, and an absent one as 0`, async () => {
+    assert.deepEqual(await reportedUsage(row, { input: "12" }), { usage: [[12, 0]], errors: [], outcome: "completed" });
+  });
+
+  test(`${row.driverId} fails its run with its own code when a count fails the usage rule`, async () => {
+    for (const counts of [
+      { input: -1, output: 1 },
+      { input: 1, output: 1.5 },
+      { input: "many", output: 1 }
+    ])
+      assert.deepEqual(
+        await reportedUsage(row, counts),
+        { usage: [], errors: [row.refusedCode], outcome: "failed" },
+        JSON.stringify(counts)
+      );
+  });
 }

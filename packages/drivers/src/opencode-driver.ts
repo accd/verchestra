@@ -2,7 +2,7 @@ import { execFile, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { promisify } from "node:util";
 
-import { normalizeDeclaredSet } from "@verchestra/domain";
+import { normalizeDeclaredSet, usageCount, usageUpdated, type DriverEventOf } from "@verchestra/domain";
 
 import { sensitiveValueRedactor } from "./driver-redaction.ts";
 import { DriverSessionLedger } from "./driver-session-ledger.ts";
@@ -97,6 +97,26 @@ const PROBE_PROFILE = Object.freeze({
 function sanitize(value: unknown, redact: (value: unknown) => string): unknown {
   if (value === undefined) return undefined;
   return JSON.parse(redact(JSON.stringify(value))) as unknown;
+}
+
+// invariant: the usage of one finished step, every count through the usage
+// rule: the input and output counts, and the reasoning and cache counts that
+// OpenCode reports besides. A step with no count is a step that used none.
+function stepUsage(part: Readonly<Record<string, unknown>>): DriverEventOf<"usage.updated"> | undefined {
+  const tokens = (part["tokens"] ?? {}) as Readonly<Record<string, unknown>>;
+  const cache = (tokens["cache"] ?? {}) as Readonly<Record<string, unknown>>;
+  const usage = usageUpdated({ inputTokens: tokens["input"], outputTokens: tokens["output"] });
+  const reasoningTokens = usageCount(tokens["reasoning"]);
+  const cacheReadTokens = usageCount(cache["read"]);
+  const cacheWriteTokens = usageCount(cache["write"]);
+  if (
+    usage === undefined ||
+    reasoningTokens === undefined ||
+    cacheReadTokens === undefined ||
+    cacheWriteTokens === undefined
+  )
+    return undefined;
+  return { ...usage, reasoningTokens, cacheReadTokens, cacheWriteTokens };
 }
 
 function flattenCatalog(value: unknown): readonly CatalogModel[] {
@@ -376,25 +396,9 @@ export class OpenCodeDriver implements Driver {
             if (part["type"] === "text" && part["time"] !== undefined) {
               state.emit({ type: "content.delta", text: redact(part["text"] ?? "") });
             } else if (part["type"] === "step-finish") {
-              const tokens = (part["tokens"] ?? {}) as Record<string, unknown>;
-              const cache = (tokens["cache"] ?? {}) as Record<string, unknown>;
-              const values = [
-                tokens["input"] ?? 0,
-                tokens["output"] ?? 0,
-                tokens["reasoning"] ?? 0,
-                cache["read"] ?? 0,
-                cache["write"] ?? 0
-              ].map(Number);
-              if (values.some((value) => !Number.isSafeInteger(value) || value < 0))
-                throw openCodeError("VES_OPENCODE_STREAM_INVALID", "OpenCode usage is invalid");
-              state.emit({
-                type: "usage.updated",
-                inputTokens: values[0],
-                outputTokens: values[1],
-                reasoningTokens: values[2],
-                cacheReadTokens: values[3],
-                cacheWriteTokens: values[4]
-              });
+              const usage = stepUsage(part);
+              if (usage === undefined) throw openCodeError("VES_OPENCODE_STREAM_INVALID", "OpenCode usage is invalid");
+              state.emit(usage);
             }
           } else if (event["type"] === "session.error") {
             state.outcome = "failed";

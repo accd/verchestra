@@ -1,6 +1,9 @@
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { promisify } from "node:util";
+
+import { usageUpdated } from "@verchestra/domain";
+
 import {
   codexProcessEnvironment,
   snapshotCodexProcessContext,
@@ -191,17 +194,10 @@ function codexProtocol(channel: ProviderChannel, conversation: CodexConversation
       });
     } else if (method === "turn/completed") {
       const turn = (params["turn"] ?? {}) as Record<string, unknown>;
-      const usage = (params["usage"] ?? turn["usage"] ?? {}) as Record<string, unknown>;
-      const inputTokens = Number(usage["inputTokens"] ?? 0);
-      const outputTokens = Number(usage["outputTokens"] ?? 0);
-      if (
-        !Number.isSafeInteger(inputTokens) ||
-        inputTokens < 0 ||
-        !Number.isSafeInteger(outputTokens) ||
-        outputTokens < 0
-      )
-        return channel.fail("VES_CODEX_STREAM_INVALID");
-      state.emit({ type: "usage.updated", inputTokens, outputTokens });
+      const reported = (params["usage"] ?? turn["usage"] ?? {}) as Readonly<Record<string, unknown>>;
+      const usage = usageUpdated({ inputTokens: reported["inputTokens"], outputTokens: reported["outputTokens"] });
+      if (usage === undefined) return channel.fail("VES_CODEX_STREAM_INVALID");
+      state.emit(usage);
       if (turn["status"] === "failed" && state.outcome !== "failed") {
         state.outcome = "failed";
         state.emit({

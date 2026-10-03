@@ -1,19 +1,17 @@
 import { createHash } from "node:crypto";
 
-import { canonicalizeJsonV2 } from "@verchestra/domain";
+import {
+  DRIVER_EVENT_FIELDS,
+  canonicalizeJsonV2,
+  isDriverEventType,
+  type DriverEvent,
+  type DriverEventBody
+} from "@verchestra/domain";
+
+export type { DriverEvent, DriverEventBody, DriverEventOf, DriverEventType } from "@verchestra/domain";
 
 const DIGEST = /^sha256:[a-f0-9]{64}$/u;
 const SAFE = /^[A-Za-z0-9][A-Za-z0-9._:@/+\-]{0,511}$/u;
-const EVENT_TYPES = [
-  "session.started",
-  "model.resolved",
-  "content.delta",
-  "tool.requested",
-  "usage.updated",
-  "warning",
-  "error",
-  "session.closed"
-] as const;
 
 export const packageName = "@verchestra/drivers" as const;
 
@@ -345,12 +343,6 @@ export async function escalateDriverCancellation(ports: {
   return Object.freeze({ terminated: true, stage: "process-tree-kill", evidence: Object.freeze(evidence) });
 }
 
-type DriverEventType = (typeof EVENT_TYPES)[number];
-export type DriverEvent = Readonly<Record<string, unknown>> & {
-  readonly type: DriverEventType;
-  readonly sequence: number;
-};
-
 export interface DriverSessionRef {
   readonly sessionId: string;
 }
@@ -375,41 +367,39 @@ export interface Driver {
   close(session: DriverSessionRef): Promise<Readonly<Record<string, unknown>>>;
 }
 
-function validateScriptEvent(event: Readonly<Record<string, unknown>>): void {
-  if (
-    !EVENT_TYPES.includes(event["type"] as DriverEventType) ||
-    event["type"] === "session.started" ||
-    event["type"] === "model.resolved" ||
-    event["type"] === "session.closed"
-  )
+const byName = (left: string, right: string) => Number(left > right) - Number(left < right);
+
+// invariant: a scripted event carries exactly the fields its type always has
+// in the field table, and its type is one a driver emits during a session.
+function scriptedFields(event: Readonly<Record<string, unknown>>): DriverEventBody["type"] {
+  const type = event["type"];
+  if (!isDriverEventType(type) || type === "session.started" || type === "model.resolved" || type === "session.closed")
     throw new DriverProtocolError("VES_DRIVER_EVENT_INVALID", "Mock Driver scenario event is invalid");
-  const expectedKeys: Readonly<Record<string, readonly string[]>> = {
-    "content.delta": ["text", "type"],
-    "tool.requested": ["input", "name", "toolCallId", "type"],
-    "usage.updated": ["inputTokens", "outputTokens", "type"],
-    warning: ["code", "message", "type"],
-    error: ["code", "message", "retryable", "type"]
-  };
-  if (Object.keys(event).sort().join(",") !== expectedKeys[event["type"] as string]?.join(","))
+  const always = Object.entries(DRIVER_EVENT_FIELDS[type])
+    .filter(([, kind]) => !kind.endsWith("?"))
+    .map(([field]) => field);
+  if (Object.keys(event).sort(byName).join(",") !== [...always, "type"].sort(byName).join(","))
     throw new DriverProtocolError("VES_DRIVER_EVENT_INVALID", "Mock Driver scenario event fields are invalid");
-  if (event["type"] === "content.delta" && typeof event["text"] !== "string")
+  return type;
+}
+
+function validateScriptEvent(event: Readonly<Record<string, unknown>>): asserts event is DriverEventBody {
+  const type = scriptedFields(event);
+  if (type === "content.delta" && typeof event["text"] !== "string")
     throw new DriverProtocolError("VES_DRIVER_EVENT_INVALID", "Mock content event is invalid");
-  if (
-    event["type"] === "tool.requested" &&
-    (typeof event["toolCallId"] !== "string" || typeof event["name"] !== "string")
-  )
+  if (type === "tool.requested" && (typeof event["toolCallId"] !== "string" || typeof event["name"] !== "string"))
     throw new DriverProtocolError("VES_DRIVER_EVENT_INVALID", "Mock tool event is invalid");
   if (
-    event["type"] === "usage.updated" &&
+    type === "usage.updated" &&
     (!Number.isSafeInteger(event["inputTokens"]) || !Number.isSafeInteger(event["outputTokens"]))
   )
     throw new DriverProtocolError("VES_DRIVER_EVENT_INVALID", "Mock usage event is invalid");
   if (
-    (event["type"] === "warning" || event["type"] === "error") &&
+    (type === "warning" || type === "error") &&
     (typeof event["code"] !== "string" || typeof event["message"] !== "string")
   )
     throw new DriverProtocolError("VES_DRIVER_EVENT_INVALID", "Mock diagnostic event is invalid");
-  if (event["type"] === "error" && typeof event["retryable"] !== "boolean")
+  if (type === "error" && typeof event["retryable"] !== "boolean")
     throw new DriverProtocolError("VES_DRIVER_EVENT_INVALID", "Mock error event is invalid");
 }
 
@@ -459,12 +449,16 @@ export function validateDriverStartRequest(request: DriverStartRequest): void {
 }
 
 export class DeterministicMockDriver implements Driver {
-  readonly #scenario: readonly Readonly<Record<string, unknown>>[];
+  readonly #scenario: readonly DriverEventBody[];
   readonly #sessions = new Map<string, { sink: (event: DriverEvent) => void; sequence: number; closed: boolean }>();
 
   constructor(options: { readonly scenario: readonly Readonly<Record<string, unknown>>[] }) {
-    for (const event of options.scenario) validateScriptEvent(event);
-    this.#scenario = Object.freeze(options.scenario.map((entry) => Object.freeze({ ...entry })));
+    const scenario: DriverEventBody[] = [];
+    for (const event of options.scenario) {
+      validateScriptEvent(event);
+      scenario.push(event);
+    }
+    this.#scenario = Object.freeze(scenario.map((entry) => Object.freeze({ ...entry })));
   }
 
   async probe() {
@@ -520,11 +514,8 @@ export class DeterministicMockDriver implements Driver {
     return state;
   }
 
-  #emit(
-    state: { sink: (event: DriverEvent) => void; sequence: number },
-    event: Readonly<Record<string, unknown>>
-  ): void {
-    const emitted = Object.freeze({ ...event, sequence: state.sequence }) as DriverEvent;
+  #emit(state: { sink: (event: DriverEvent) => void; sequence: number }, event: DriverEventBody): void {
+    const emitted: DriverEvent = Object.freeze({ ...event, sequence: state.sequence });
     state.sequence += 1;
     state.sink(emitted);
   }
@@ -561,7 +552,7 @@ export class DriverSupervisor {
   }
 
   accept(event: DriverEvent) {
-    if (!EVENT_TYPES.includes(event.type) || !Number.isSafeInteger(event.sequence) || event.sequence < 0)
+    if (!isDriverEventType(event.type) || !Number.isSafeInteger(event.sequence) || event.sequence < 0)
       throw new DriverProtocolError("VES_DRIVER_EVENT_INVALID", "Driver event is invalid", {
         cancellationRequired: true
       });

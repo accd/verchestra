@@ -289,13 +289,13 @@
       28
     ],
     "packages/drivers/src/claude-code-driver.ts :: Arrow function": [
-      22
+      17
     ],
     "packages/drivers/src/claude-code-driver.ts :: Async method 'start'": [
       14
     ],
     "packages/drivers/src/codex-driver.ts :: Arrow function": [
-      31
+      26
     ],
     "packages/drivers/src/codex-driver.ts :: Private method #validateExecution": [
       14
@@ -307,13 +307,13 @@
       33
     ],
     "packages/drivers/src/index.ts :: Function 'validateScriptEvent'": [
-      21
+      15
     ],
     "packages/drivers/src/index.ts :: Method 'push'": [
       14
     ],
     "packages/drivers/src/opencode-driver.ts :: Async arrow function": [
-      34
+      27
     ],
     "packages/drivers/src/opencode-driver.ts :: Async function 'productionServerFactory'": [
       11

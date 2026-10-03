@@ -19,9 +19,12 @@ export function modelCatalog() {
   };
 }
 
+const STEP_TOKENS = Object.freeze({ input: 9, output: 5, reasoning: 2, cache: { read: 4, write: 0 } });
+
 // invariant: `prompted` is called once the provider has the prompt, which is
-// when a session of the fake is running.
-export function fakeOpenCodeFactory(mode = "success", calls = [], prompted = () => undefined) {
+// when a session of the fake is running. `tokens` is what its finished step
+// reports.
+export function fakeOpenCodeFactory(mode = "success", calls = [], prompted = () => undefined, tokens = STEP_TOKENS) {
   return async (options) => {
     calls.push(["server", options]);
     const events = async function* () {
@@ -78,10 +81,7 @@ export function fakeOpenCodeFactory(mode = "success", calls = [], prompted = () 
         type: "message.part.updated",
         properties: {
           sessionID: "private-session",
-          part: {
-            type: "step-finish",
-            tokens: { input: 9, output: 5, reasoning: 2, cache: { read: 4, write: 0 } }
-          }
+          part: { type: "step-finish", tokens }
         }
       };
       yield { type: "session.status", properties: { sessionID: "private-session", status: { type: "idle" } } };

@@ -1,19 +1,14 @@
 import { isAbsolute } from "node:path";
 
 import type { ExecutionDriverPort, ExecutionPayloadStore } from "@verchestra/application";
+import type { DriverEvent, DriverEventOf } from "@verchestra/domain";
 
-import {
-  runDriverSession,
-  type DriverSessionEvent,
-  type DriverSessionPort,
-  type DriverSessionResult
-} from "./driver-session-runner.ts";
+import { runDriverSession, type DriverSessionPort, type DriverSessionResult } from "./driver-session-runner.ts";
 import { MCP_BRIDGE_QUALIFIED_TOOLS } from "./mcp-bridge-protocol.ts";
 import { McpToolBridgeController } from "./mcp-tool-bridge.ts";
 
 type ExecuteRequest = Parameters<ExecutionDriverPort["execute"]>[0];
 type ExecuteControl = Parameters<ExecutionDriverPort["execute"]>[1];
-type Row = Readonly<Record<string, unknown>>;
 
 export interface DriverExecutionSession<TStartRequest> {
   readonly driver: DriverSessionPort<TStartRequest>;
@@ -172,7 +167,7 @@ export class DriverExecutionAdapter<TStartRequest> implements ExecutionDriverPor
     return finished;
   }
 
-  #observe(event: DriverSessionEvent, state: RunState, abort: AbortController, control: ExecuteControl) {
+  #observe(event: DriverEvent, state: RunState, abort: AbortController, control: ExecuteControl) {
     switch (event.type) {
       case "session.started":
         // invariant: checkpoints carry portable facts only; the provider
@@ -180,7 +175,7 @@ export class DriverExecutionAdapter<TStartRequest> implements ExecutionDriverPor
         state.checkpoints.push(control.checkpoint("driver-started", { model: state.model }));
         break;
       case "model.resolved":
-        if (typeof event["resolvedModel"] === "string") state.model = event["resolvedModel"];
+        if (typeof event.resolvedModel === "string") state.model = event.resolvedModel;
         break;
       case "usage.updated":
         this.#usage(event, state, abort, control);
@@ -195,9 +190,8 @@ export class DriverExecutionAdapter<TStartRequest> implements ExecutionDriverPor
 
   // invariant: the bridge is the only tool surface; any other requested tool
   // means the driver escaped mediation, so the session is stopped.
-  #toolRequested(event: Row, state: RunState, abort: AbortController): void {
-    const name = event["name"];
-    if (typeof name === "string" && MCP_BRIDGE_QUALIFIED_TOOLS.includes(name)) {
+  #toolRequested(event: DriverEventOf<"tool.requested">, state: RunState, abort: AbortController): void {
+    if (MCP_BRIDGE_QUALIFIED_TOOLS.includes(event.name)) {
       state.toolRequests += 1;
       return;
     }
@@ -205,13 +199,14 @@ export class DriverExecutionAdapter<TStartRequest> implements ExecutionDriverPor
     abort.abort("tool requested outside the bridge");
   }
 
-  #usage(event: Row, state: RunState, abort: AbortController, control: ExecuteControl): void {
+  #usage(
+    event: DriverEventOf<"usage.updated">,
+    state: RunState,
+    abort: AbortController,
+    control: ExecuteControl
+  ): void {
     try {
-      control.reportUsage({
-        model: state.model,
-        inputTokens: event["inputTokens"] as number,
-        outputTokens: event["outputTokens"] as number
-      });
+      control.reportUsage({ model: state.model, inputTokens: event.inputTokens, outputTokens: event.outputTokens });
     } catch (error) {
       state.usageFailure ??= error;
       abort.abort("usage could not be metered");

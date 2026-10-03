@@ -151,7 +151,6 @@ test("Claude Code Driver normalizes tool requests without executing tools", asyn
 for (const [mode, code] of [
   ["malformed", "VES_CLAUDE_STREAM_INVALID"],
   ["invalid-tool", "VES_CLAUDE_STREAM_INVALID"],
-  ["invalid-usage", "VES_CLAUDE_STREAM_INVALID"],
   ["error", "VES_CLAUDE_EXECUTION_FAILED"]
 ]) {
   test(`Claude Code Driver fails closed for ${mode} output`, async () => {

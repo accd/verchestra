@@ -1,6 +1,8 @@
-import { DriverProtocolError, type DriverEvent, type DriverSessionRef } from "./index.ts";
+import type { DriverEvent, DriverEventBody, DriverSessionOutcome } from "@verchestra/domain";
 
-export type DriverSessionOutcome = "completed" | "failed" | "cancelled";
+import { DriverProtocolError, type DriverSessionRef } from "./index.ts";
+
+export type { DriverSessionOutcome } from "@verchestra/domain";
 
 export interface DriverSession<Resources> {
   // why: what one driver keeps for a session (a child process, an SDK agent)
@@ -13,7 +15,7 @@ export interface DriverSession<Resources> {
   outcome: DriverSessionOutcome;
   // invariant: a terminal session accepts no further event. After the terminal
   // event nothing is delivered and nothing is numbered.
-  emit(event: Readonly<Record<string, unknown>>): void;
+  emit(event: DriverEventBody): void;
   // invariant: a driver brackets the run that reports how it ended. It calls
   // this before that run's provider can be stopped, and the function it gets
   // back once the run has reported, on every path out of it. A cancel that
@@ -80,7 +82,7 @@ class LedgerSession<Resources> implements DriverSession<Resources> {
     return ended;
   }
 
-  emit(event: Readonly<Record<string, unknown>>): void {
+  emit(event: DriverEventBody): void {
     // why: what arrives after the terminal event is dropped and not counted. A
     // cancel waits for the run's own report, so an error that explains how the
     // run ended is delivered before the terminal event and decides its outcome.
@@ -89,7 +91,7 @@ class LedgerSession<Resources> implements DriverSession<Resources> {
     if (this.#terminal) return;
     // invariant: the sink sees the event before its number is spent, so a sink
     // that throws leaves the sequence where it was.
-    this.#sink(Object.freeze({ ...event, sequence: this.#sequence }) as DriverEvent);
+    this.#sink(Object.freeze({ ...event, sequence: this.#sequence }));
     this.#sequence += 1;
   }
 
