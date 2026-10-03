@@ -105,7 +105,7 @@ the owner.
   `runtime-store.ts`. Without it the effect repository would have to import the
   store, which loads SQLite and would close an import cycle.
 - `RuntimeStore.createEffectRepository`
-  (`packages/platform-node/src/runtime-store/runtime-store.ts:1088-1094`)
+  (`packages/platform-node/src/runtime-store/runtime-store.ts:1082-1088`)
   delegates with the same three closures the inline version used: the database
   accessor (resolved on every use, so a closed store still fails with
   `VES_RUNTIME_CLOSED`), the clock, and the store's hooks object, from which
