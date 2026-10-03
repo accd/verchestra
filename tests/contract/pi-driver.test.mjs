@@ -17,7 +17,7 @@ test("Pi Driver probes the installed runtime version and common capabilities", a
     driverId: "pi",
     package: "@earendil-works/pi-agent-core",
     available: true,
-    version: "0.87.1",
+    version: "0.99.1",
     capabilities: ["stream", "tools", "usage", "abort"]
   });
 });
@@ -242,7 +242,7 @@ test("Pi Driver session references and close result contain no private context",
 
 // why: Pi qualifies one exact version, not a floor. A floor would admit each of
 // these, so each must be refused as drift and reported as the manifest spells it.
-for (const version of ["0.87.2", "0.88.0", "1.0.0", "0.87.1-beta.1"]) {
+for (const version of ["0.99.2", "0.100.0", "1.0.0", "0.99.1-beta.1"]) {
   test(`Pi Driver refuses runtime ${version} instead of reading its pin as a floor`, async (t) => {
     const root = await mkdtemp(join(tmpdir(), "verchestra-pi-drift-"));
     t.after(() => rm(root, { recursive: true, force: true }));

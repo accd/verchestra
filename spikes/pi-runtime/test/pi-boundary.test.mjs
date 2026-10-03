@@ -28,8 +28,8 @@ function textTool(execute) {
 
 test("pins the current Earendil Pi packages", () => {
   const pkg = JSON.parse(fs.readFileSync(new URL("../../../package.json", import.meta.url), "utf8"));
-  assert.equal(pkg.devDependencies["@earendil-works/pi-agent-core"], "0.87.1");
-  assert.equal(pkg.devDependencies["@earendil-works/pi-ai"], "0.87.1");
+  assert.equal(pkg.devDependencies["@earendil-works/pi-agent-core"], "0.99.1");
+  assert.equal(pkg.devDependencies["@earendil-works/pi-ai"], "0.99.1");
 });
 
 test("does not retain deprecated Mario Zechner package names", () => {
@@ -99,6 +99,34 @@ test("blocks a denied tool before its implementation executes", async () => {
   });
   assert.equal(executions, 0);
   assert.equal(result.events.some((event) => event.type === "tool.completed" && event.isError === true), true);
+});
+
+// why: since 0.99.0 Pi reads a tool result's own `isError`. Before, only a
+// thrown error failed a completion, so a failure the tool reported reached the
+// model and the boundary as a success.
+test("completes a tool that reports its own failure as an error", async () => {
+  let executions = 0;
+  const faux = fauxWith([
+    fauxAssistantMessage(fauxToolCall("echo", { value: "reported" }), { stopReason: "toolUse" }),
+    (context) => fauxAssistantMessage(`tool result isError:${context.messages.at(-1).isError}`)
+  ]);
+  const tool = textTool(async () => {
+    executions += 1;
+    return { content: [{ type: "text", text: "reported failure" }], details: {}, isError: true };
+  });
+  const result = await new PiRuntimeBoundary().run({
+    prompt: "use tool",
+    model: faux.getModel(),
+    streamFn: faux.streamSimple,
+    tools: [tool],
+    authorizeTool: async () => ({ allowed: true })
+  });
+  assert.equal(executions, 1);
+  assert.deepEqual(
+    result.events.filter((event) => event.type === "tool.completed").map((event) => event.isError),
+    [true]
+  );
+  assert.equal(result.outputText, "tool result isError:true");
 });
 
 test("returns a stable aborted result when the controller signal aborts", async () => {
