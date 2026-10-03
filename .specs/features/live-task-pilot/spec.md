@@ -24,13 +24,15 @@ The candidate must be one that carries the subscription path; see
 `handoff.md`.
 
 **Amended on 2026-10-03, before any run, to resolve the owner blockers.** The
-candidate is `verchestra@0.0.0-qualification.5`, which carries the
-subscription path (§2). The usage and time ceilings in §6 are approved as
-proposed. The machine is the owner's own account on the owner's Mac, not a
-fresh account (§8). No independent reviewer exists, so the §10 review is not
-performed and no independent review is claimed. The owner accepts the
-subscription profile's gaps G1–G3. The target, the revision, the tasks, the
-requests and their digests, the probes, the scenarios and the success
+candidate is `verchestra@0.0.0-qualification.6`, which carries the subscription
+path (§2); it replaced `.5`, still before any run, because `.6` also carries the
+protected-path fix (#485) and the run's complete usage account (AD-055, AD-056),
+which change two expectations below (§5 S2, §7). The usage and time ceilings in
+§6 are approved as proposed. The machine is the owner's own account on the
+owner's Mac, not a fresh account (§8). No independent reviewer exists, so the
+§10 review is not performed and no independent review is claimed. The owner
+accepts the subscription profile's gaps G1–G3. The target, the revision, the
+tasks, the requests and their digests, the probes, the scenarios and the success
 definition did not change. `validation.md` records each resolution and each
 deviation.
 
@@ -97,22 +99,22 @@ new live evidence into historical evidence.
 
 ## 2. Candidate (PLT-02)
 
-- **Candidate:** `verchestra@0.0.0-qualification.5` from the public npm registry,
-  invoked as `npx --yes verchestra@0.0.0-qualification.5 <command>`. It was
-  published on 2026-10-02 as `latest`, built from source revision
-  `e17abb3c8970b72c837bbbd07f86b4676ca9adb3`
-  (`docs/qualification/tuf-publication-ledger.json`, sequence 5). Its
+- **Candidate:** `verchestra@0.0.0-qualification.6` from the public npm registry,
+  invoked as `npx --yes verchestra@0.0.0-qualification.6 <command>`. It was
+  published on 2026-10-03 as `latest`, built from source revision
+  `7e274f237648251b972081471134623097122c16`
+  (`docs/qualification/tuf-publication-ledger.json`, sequence 6). Its
   `dist.integrity` at publication was
-  `sha512-1nO4cFa6NIm/WfiJIR/HeNZGC9FdrHwIczlqAd0zg1A7NfOJQujvwoJZWzaiKmb1dcBWObuQ63zz0CWNq1SfSQ==`.
-  The pre-registration named `.4`, which predates the subscription path.
-- **What `.5` does not carry.** Changes merged after `e17abb3` are not in the
-  candidate: process-tree termination of the providers (ADP-4), the sealed Run
-  markers, and the complete usage account (AD-055, AD-056). In `.5`,
-  `status.checkpoints.budget` is the implementer's usage only, as §7 says.
+  `sha512-8QutpuCS9om+z8hLqJgrayRB6pIqnvABooQfrxS8IUCG2IBG9Cut6tDZVK6xhYBKJ2/LxVJKTZw6W8FoIpNP7Q==`.
+  The pre-registration named `.4`, which predates the subscription path; `.5`
+  was named on 2026-10-03 and replaced by `.6` the same day, before any run.
+- **What `.6` changes for the pilot.** `status.checkpoints.budget` is the whole
+  run's usage, implementer and verifier together (AD-055, AD-056); in `.5` it was
+  the implementer's only. A protected path is refused in any letter case (#485).
 - **Recorded at execution:** the output of
-  `npx --yes verchestra@0.0.0-qualification.5 --version`, the package's
+  `npx --yes verchestra@0.0.0-qualification.6 --version`, the package's
   `dist.integrity` and `gitHead` from
-  `npm view verchestra@0.0.0-qualification.5 dist.integrity gitHead` (the
+  `npm view verchestra@0.0.0-qualification.6 dist.integrity gitHead` (the
   package carries no `gitHead`, which is recorded as `unavailable`), and the
   declared source revision above.
 - **Invocation rule:** always the pinned `verchestra@<version>` form. Never a bare
@@ -120,7 +122,7 @@ new live evidence into historical evidence.
   owner holds, so outside a project that installs Verchestra it does not
   resolve to the candidate.
 - In the steps below, `VES` stands for
-  `npx --yes verchestra@0.0.0-qualification.5`.
+  `npx --yes verchestra@0.0.0-qualification.6`.
 
 ## 3. Platform and provider identity (PLT-03)
 
@@ -345,9 +347,10 @@ Expected:
   implementer again (`TaskRunComposition.resumable` in
   `apps/vestra-cli/src/task/task-run.ts`); it ends in `HUMAN_REVIEW`, exit 0.
 - `checkpoints.toolReceipts` after resume equals the value recorded in step 2
-  (no duplicated tool effects); the implementer's usage in
-  `checkpoints.budget` did not grow across the resume; and, where the provider
-  console lists sessions, no second Claude Code session appears for the run.
+  (no duplicated tool effects); the usage recorded in `checkpoints.budget` at
+  step 2 is kept, and its only growth across the resume is the verification's
+  (no second implementer session runs); and, where the provider console lists
+  sessions, no second Claude Code session appears for the run.
 - The branch `vestra/<runId>/PILOT-S2` has exactly one commit whose parent is
   the pinned revision; the checkout fingerprint is unchanged.
 - A second `resume` is refused with `VES_TASK_TRANSITION_REFUSED`
@@ -490,8 +493,8 @@ per-run record carries these fields:
 | Final state, outcome status, reason code | `start`/`resume` output and `status` | — |
 | Gate results | the `gate:*` evidence refs in `status` plus the independent `node --test test.js` counts at the task commit | `unavailable` |
 | Verification verdict | `status.evidence.verificationVerdict` | `unavailable` |
-| Implementer usage | `status.checkpoints.budget` (`consumedTokens`, `unbilledTokens`, `usageEvents`, `billing`, and `consumedCostUsd`, which must read `not billed (subscription)`) as reported | `unavailable` |
-| Verifier usage | whatever a public surface reports for the Codex session | `unavailable` |
+| Run usage (implementer and verifier) | `status.checkpoints.budget` (`consumedTokens`, `unbilledTokens`, `usageEvents`, `billing`, and `consumedCostUsd`, which must read `not billed (subscription)`) as reported; in `.6` it covers both sessions | `unavailable` |
+| Verifier usage on its own | whatever a public surface reports for the Codex session separately from the run total | `unavailable` |
 | Plan usage | the providers' own usage pages, only when usage can be attributed to this run's time window | `unavailable` |
 | Tool receipts | `status.checkpoints.toolReceipts` | `unavailable` |
 | Denied tool calls (S3) | a public surface, if one exists | `unavailable` |
