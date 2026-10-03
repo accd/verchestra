@@ -2529,7 +2529,7 @@ note. -->
   needs a platform matrix run on the branch before merge. Evidence is in
   `.specs/features/architecture-deepening-2/validation-t5.md`.
 
-### AD-0XX (to be numbered at merge) — Strands coordination runs behind the executor's driver port, through one SDK subpath, never as a model
+### AD-068 — Strands coordination runs behind the executor's driver port, through one SDK subpath, never as a model
 
 - **Status:** proposed (ratified by reviewing the pull request that carries
   `.specs/features/strands-subscription-integration/`; the owner approved the
@@ -2562,7 +2562,7 @@ note. -->
   SDK; a child-process probe proves no Bedrock client, credential read, network
   call, or process.
 
-### AD-0XX (to be numbered at merge) — Task Request v2 binds the whole normalized execution descriptor; v1 is frozen
+### AD-069 — Task Request v2 binds the whole normalized execution descriptor; v1 is frozen
 
 - **Status:** proposed (same pull request).
 - **Context:** A topology the owner did not approve must never run, and every
@@ -2584,7 +2584,7 @@ note. -->
 - **Consequence:** Per-field discrimination tests show the binding digest moves
   with every descriptor field; golden v1 fixtures keep their digests.
 
-### AD-0XX (to be numbered at merge) — Verchestra, not the SDK, enforces swarm destinations, node results, and limits
+### AD-070 — Verchestra, not the SDK, enforces swarm destinations, node results, and limits
 
 - **Status:** proposed (same pull request).
 - **Context:** Swarm 1.19.0 offers every other node as a destination and trusts
@@ -2605,7 +2605,7 @@ note. -->
 - **Consequence:** A forbidden destination ends the swarm FAILED; an endless
   handoff loop ends with `VES_COORDINATION_HANDOFF_LIMIT`.
 
-### AD-0XX (to be numbered at merge) — Suspension is an executor checkpoint stage, not a workflow state
+### AD-071 — Suspension is an executor checkpoint stage, not a workflow state
 
 - **Status:** proposed (same pull request; the reconciliation form is owner
   decision D4).
@@ -2629,7 +2629,7 @@ note. -->
   charged to the duration budget because a resumed ledger already counts only
   active time.
 
-### AD-0XX (to be numbered at merge) — A coordinated run uses subscriptions only, proven per session and confirmed by the owner for extra usage
+### AD-072 — A coordinated run uses subscriptions only, proven per session and confirmed by the owner for extra usage
 
 - **Status:** proposed (same pull request; the confirmation format is owner
   decision D3).
@@ -2656,7 +2656,7 @@ note. -->
   confirmation — is stated in the threat model; a billing-regime change at a
   provider requires re-confirmation.
 
-### AD-0XX (to be numbered at merge) — Two Driver event types carry structured results and quota exhaustion
+### AD-073 — Two Driver event types carry structured results and quota exhaustion
 
 - **Status:** proposed (same pull request). Extends AD-063.
 - **Context:** Node results must travel from the driver to the coordinated
@@ -2673,7 +2673,7 @@ note. -->
 - **Consequence:** The closed table stays the single statement of driver
   events; drivers that never emit the new types are unchanged.
 
-### AD-0XX (to be numbered at merge) — The Windows bridge runs over a named pipe owned by a pinned PowerShell 7 helper
+### AD-074 — The Windows bridge runs over a named pipe owned by a pinned PowerShell 7 helper
 
 - **Status:** proposed (same pull request; owner decision D6). It supersedes the
   Windows clause of AD-039 and item 7 of AD-040 only when the Windows transport
@@ -2697,7 +2697,7 @@ note. -->
 - **Consequence:** PowerShell 7 becomes a prerequisite of the Windows profile;
   without it the run is `not configured`.
 
-### AD-0XX (to be numbered at merge) — The sealed build asserts self-containment from the bundle metafile
+### AD-075 — The sealed build asserts self-containment from the bundle metafile
 
 - **Status:** proposed; owner decision D2, because it changes a release gate.
 - **Context:** The sealed build's check scans the bundle text with a regular

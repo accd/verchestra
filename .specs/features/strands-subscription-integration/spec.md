@@ -98,21 +98,26 @@ From the owner's approved plan:
 
 ## Assumptions & Open Questions
 
-Every ambiguity is resolved or recorded with a default. The owner confirms or
-overrides D1–D9 before T3 starts; D2 and D6 can wait until T5 and T7.
+Every ambiguity is resolved or recorded with a default. On 2026-10-03 the owner
+delegated these decisions to the coordinating agent session ("faça tudo isso,
+confio mais em vc"). The coordinator accepted the chosen defaults of D1–D7 and
+D9 as written below. D8 stays pending: the `setup-matt-pocock-skills` skill
+requires the owner to see and edit the draft before anything is written, and a
+delegation does not satisfy that. The extra-usage confirmation of D3 is, by
+design, the owner's own act on the machine before the first run.
 
 | Assumption / decision | Chosen default | Rationale | Confirmed? |
 | --- | --- | --- | --- |
-| D1. The SDK's required peers `@modelcontextprotocol/sdk` (1.32.0 today, with an Express/Hono tree of about 30 new packages) and `@opentelemetry/api` (1.9.1, already locked), and the version moves of `@aws-sdk/client-bedrock-runtime` and `yaml` | T5 does not start until the owner approves them; once approved, the two peers are pinned exactly beside the SDK | They are non-optional peers and the MCP SDK is needed to bundle `./multiagent` (`research.md` F3); the owner approved only two packages | n |
-| D2. The sealed build's self-containment check fails on a string literal inside the SDK | Replace the text scan with an assertion over esbuild's metafile; accept about 1.45 MiB more per launcher | Exact rather than textual, so equal or stronger; the alternative leaves Graph and Swarm unusable in a sealed release (`research.md` F2) | n |
-| D3. Format and scope of the extra-usage confirmation | A machine-local `task-billing.json` beside `task-providers.json`, one entry per provider naming the authentication method and, for Codex, the plan type; no expiry; any change of method, plan type, or billing regime requires re-confirmation | Mirrors the existing machine-local provider setting; binds to what the run can verify | n |
-| D3b. A Codex account that reports a credit balance or unlimited credits | Block the run as `not configured` | Pre-purchased credits would be consumed after the allowance, which the owner forbids | n |
-| D4. Reconciling an uncertain or partial node | `vestra task resume --reconcile <digest>` re-runs that one node after the owner types back the digest of its uncertainty record; otherwise only `task cancel` | Never repeats an effect silently; matches the typed-back human decisions of AD-040 | n |
-| D5. Mode `agent` | Runs through Verchestra's native single-node engine without loading the SDK | Strands adds no coordination for one node, and the SDK is then loaded only for Graph and Swarm | n |
-| D6. Windows prerequisites | PowerShell 7 at a pinned absolute path is required on Windows; AD-039's Windows clause is superseded only when T7 qualifies | The plan names PowerShell 7; Node cannot set a pipe DACL itself | n |
-| D7. Threat-model assumptions (single owner machine, same-user processes out of scope, repository content and model output hostile) | As listed in `threat-model.md` | The skill's interactive check-in could not run inside this task | n |
-| D8. `setup-matt-pocock-skills` configuration | Nothing written; `setup-draft.md` holds the draft for the owner to edit | The skill requires review before writing | n |
-| D9. Anthropic resumes its paused Agent SDK billing change | Treat `claude -p` usage as plan usage per the page updated 2026-06-16; a regime change requires re-confirmation (D3) | The cited page says the change is paused (`research.md` F7) | n |
+| D1. The SDK's required peers `@modelcontextprotocol/sdk` (1.32.0 today, with an Express/Hono tree of about 30 new packages) and `@opentelemetry/api` (1.9.1, already locked), and the version moves of `@aws-sdk/client-bedrock-runtime` and `yaml` | T5 does not start until the owner approves them; once approved, the two peers are pinned exactly beside the SDK | They are non-optional peers and the MCP SDK is needed to bundle `./multiagent` (`research.md` F3); the owner approved only two packages | y (2026-10-03, delegated) |
+| D2. The sealed build's self-containment check fails on a string literal inside the SDK | Replace the text scan with an assertion over esbuild's metafile; accept about 1.45 MiB more per launcher | Exact rather than textual, so equal or stronger; the alternative leaves Graph and Swarm unusable in a sealed release (`research.md` F2) | y (2026-10-03, delegated) |
+| D3. Format and scope of the extra-usage confirmation | A machine-local `task-billing.json` beside `task-providers.json`, one entry per provider naming the authentication method and, for Codex, the plan type; no expiry; any change of method, plan type, or billing regime requires re-confirmation | Mirrors the existing machine-local provider setting; binds to what the run can verify | y (2026-10-03, delegated) |
+| D3b. A Codex account that reports a credit balance or unlimited credits | Block the run as `not configured` | Pre-purchased credits would be consumed after the allowance, which the owner forbids | y (2026-10-03, delegated) |
+| D4. Reconciling an uncertain or partial node | `vestra task resume --reconcile <digest>` re-runs that one node after the owner types back the digest of its uncertainty record; otherwise only `task cancel` | Never repeats an effect silently; matches the typed-back human decisions of AD-040 | y (2026-10-03, delegated) |
+| D5. Mode `agent` | Runs through Verchestra's native single-node engine without loading the SDK | Strands adds no coordination for one node, and the SDK is then loaded only for Graph and Swarm | y (2026-10-03, delegated) |
+| D6. Windows prerequisites | PowerShell 7 at a pinned absolute path is required on Windows; AD-039's Windows clause is superseded only when T7 qualifies | The plan names PowerShell 7; Node cannot set a pipe DACL itself | y (2026-10-03, delegated) |
+| D7. Threat-model assumptions (single owner machine, same-user processes out of scope, repository content and model output hostile) | As listed in `threat-model.md` | The skill's interactive check-in could not run inside this task | y (2026-10-03, delegated) |
+| D8. `setup-matt-pocock-skills` configuration | Nothing written; `setup-draft.md` holds the draft for the owner to edit | The skill requires review before writing | pending: owner review of `setup-draft.md` |
+| D9. Anthropic resumes its paused Agent SDK billing change | Treat `claude -p` usage as plan usage per the page updated 2026-06-16; a regime change requires re-confirmation (D3) | The cited page says the change is paused (`research.md` F7) | y (2026-10-03, delegated) |
 | Claude Code's `stream-json` result carries `structured_output` | Assumed from the SDK result type; T4 confirms it with a recorded fixture and an owner-run probe before relying on it | Documented for `--output-format json` and the SDK message type | n |
 | Codex minimum version | Raised in T4 to the first version whose generated App Server protocol has `outputSchema`, `account/read`, and `account/rateLimits/read` | Present in 0.159.3; the repository pins 0.115.0 | n |
 | Concurrency above 1 | Only reader nodes can run together, because writers are totally ordered | Single writer per worktree | y |
