@@ -28,8 +28,8 @@ the policy view also verified a digest defined by the view's own encoding.
 
 | Read | Declared record | Who decodes | Caller change |
 | --- | --- | --- | --- |
-| `listEvents` | `RunEvent` (`packages/platform-node/src/runtime-store/runtime-store.ts:174`), every member a NOT NULL column of a STRICT table | the store (`:664`) | `apps/vestra-cli/src/task/task-review.ts:84-87` reads members, no cast |
-| `getRunCapsuleSeal` | `RunCapsuleSeal` (`runtime-store.ts:188`), also the input of `recordRunCapsuleSeal` (`:723`) | the store (`:776`) | `apps/vestra-cli/src/task/task-status.ts:90` reads `.capsuleId`, no key access |
+| `listEvents` | `RunEvent` (`packages/platform-node/src/runtime-store/runtime-store.ts:174`), every member a NOT NULL column of a STRICT table | the store (`:656`) | `apps/vestra-cli/src/task/task-review.ts:84-87` reads members, no cast |
+| `getRunCapsuleSeal` | `RunCapsuleSeal` (`runtime-store.ts:188`), also the input of `recordRunCapsuleSeal` (`:715`) | the store (`:768`) | `apps/vestra-cli/src/task/task-status.ts:90` reads `.capsuleId`, no key access |
 | `loadAuthorityApproval`, `loadAuthorityGrant` | `StoredAuthorityRecord` (`runtime-store.ts:200`): the text and its revocation | `decodeAuthorityRecord` (`packages/platform-node/src/authority-store-adapter.ts:47`) | no cast (`:86`, `:107`) |
 | `getActivePolicyView` | `StoredPolicyView` (`runtime-store.ts:209`): the text and the digest it was activated under | `decodePolicyView` (`packages/platform-node/src/policy-store-adapter.ts:25`) | no cast (`:46`) |
 | `getSyncState` | `StoredSyncState` (`runtime-store.ts:216`): the text and the digest `saveSyncState` bound it to | `decodeSyncState` (`packages/platform-node/src/sync-adapters.ts:32`) | no cast (`:53`) |
@@ -42,7 +42,7 @@ returns a declared record…"): a record the store owns column by column is
 declared by the store; a record an adapter encodes comes back as the stored
 text plus the columns the store bound it to, and the adapter that encodes it
 decodes it. The store keeps the integrity it can prove without the encoding
-(the authority record digest, `runtime-store.ts:874-895`). Writes are
+(the authority record digest, `runtime-store.ts:866-887`). Writes are
 unchanged: the policy and sync writes still parse the text they are given to
 check it binds to its columns.
 
@@ -95,7 +95,7 @@ afterwards (SHA-256 compared):
 - the authority decoder without the identity check fails the identity case;
 - the policy decoder without the content digest, and separately without the
   member check, each fail one of the two edit cases (before
-  `2a5eb81`, both mutants passed: the only tamper case broke both halves);
+  the commit that added the two edit cases, both mutants passed: the only tamper case broke both halves);
 - the sync decoder without the digest binding fails the self-consistent
   forgery case.
 
@@ -219,3 +219,115 @@ its cases by five lines. It is a point-in-time qualification record.
 | `node --test tests/integration/runtime-store.test.mjs tests/integration/runtime-checkpoint-store.test.mjs tests/fault-injection/runtime-store-faults.test.mjs` | PASS — 53 (unchanged files) |
 | `node --test tests/e2e/task-cli-e2e.test.mjs` | PASS — 43, 0 skipped |
 | `pnpm agent:check` | PASS |
+
+## Range 3 — methods with only test callers
+
+### Callers
+
+The store had 33 public methods at origin/main, and ranges 1 and 2 removed
+none of them. Seven had no caller outside tests: the six the review listed
+(`downgradeTo`, `safetySettings`, `getMachineProfile`, `listMachineProfiles`,
+`integrityCheck`, `backupTo`) and `stateDigest`, which the review did not
+list. `RuntimeStore` is not a `SnapshotSource` (it has no `sourceId` or
+`snapshot`), and nothing in `apps` or `packages` calls its `stateDigest`.
+`migrationLedger` is called only by `backupTo` and by tests. Range 3 removes
+three methods, so the store now has 30.
+
+### Fate of each method
+
+| Method | Fate | Why |
+| --- | --- | --- |
+| `getMachineProfile`, `listMachineProfiles` | **removed** | The product writes a Machine Profile and never reads it back: `MachineProfileStorePort` declares only `save`. They also returned records of no declared shape |
+| `integrityCheck` | **removed** | The product checks runtime integrity through `inspectRuntimeDatabase` (the doctor, and the backup's staged copy), which already proves the same case on an open store's database |
+| `downgradeTo` | **kept**, comment at `packages/platform-node/src/runtime-store/runtime-store.ts:317-320` | The first round's approved plan keeps the downgrade refusal as a method, and it is the only thrower of VES_RUNTIME_DOWNGRADE_UNSUPPORTED; removing it would leave that code catalogued with nothing that can raise it. A downgrade the product meets is refused by `open()` (VES_RUNTIME_MIGRATION_INCOMPATIBLE), which had no test and now has one |
+| `backupTo` | **kept**, comment at `runtime-store.ts:1104-1108` | The only producer of a verified backup, the recovery the catalog prescribes for VES_RUNTIME_CORRUPT and VES_RUNTIME_CHECKPOINT_CORRUPT, which the task commands raise. No command composes it yet |
+| `migrationLedger` | **kept**, comment at `runtime-store.ts:309-310` | What the backup manifest carries |
+| `stateDigest` | **kept**, comment at `runtime-store.ts:1096-1099` | The live side of the digest the backup manifest binds, and the only whole-state observation; the fault suite proves through it that a refused or failed write changes nothing |
+| `safetySettings` | **kept**, comment at `runtime-store.ts:328-331` | The only observation of the per-connection settings `open()` applies; nothing outside the connection can read its busy timeout or writable_schema. Removing it would delete the T15 proof of both, which is weakening a proof, not removing a behaviour |
+
+None of the five kept methods has a production caller. Each comment says so
+and names what needs it.
+
+### Deleted case → replacement
+
+| Deleted or changed case (file at origin/main) | Property | Replacement |
+| --- | --- | --- |
+| `tests/integration/runtime-store.test.mjs:202` "integrity check reports ok on active database" (deleted with `integrityCheck`) | `PRAGMA integrity_check` reports ok on an open store's database | Already proven through the product's path: `runtime-store.test.mjs:260-268` (`inspectRuntimeDatabase` on the open store's file, integrity `ok`) and `:270-284` (integrity `ok` after refused writes). The corrupt case stays at `tests/fault-injection/runtime-store-faults.test.mjs:99-105` |
+| `tests/e2e/machine-bootstrap-e2e.test.mjs:59`, `:71`, `:82` (changed) | The stored profile holds the discovered Drivers; one row per Workspace | Same cases, reading the stored rows: `:60`, `:72-73`, `:84`, through `storedMachineProfiles` (`tests/helpers/runtime-store-fixture.mjs:73`) |
+| `tests/security/machine-bootstrap-security.test.mjs:80` (changed) | A rejected profile writes nothing | `:80`, strengthened: no row at all, not only none for the Workspace |
+| `machine-bootstrap-security.test.mjs:105`, `:164` (changed) | The stored profile is in canonical member order; it holds no credential, session or local selection | Same lines, reading the stored row |
+
+**New case:** "an older build refuses a database a newer build migrated, and
+changes nothing" (`runtime-store.test.mjs:309-324`), appended so the lines
+other records cite do not move. A build missing the last migration is refused
+with VES_RUNTIME_MIGRATION_INCOMPATIBLE (`:316`), and the database then opens
+with nothing pending (`:318`) and its full ledger (`:319-322`). The case for
+`downgradeTo` itself ("runtime store refuses automatic downgrade", `:62-66`)
+is unchanged.
+
+The fault, checkpoint, migration and qualification suites are not in the diff
+of any range. `runtime-store.test.mjs` changes only where a case exercised a
+removed method, and by the appended case.
+
+### Discrimination
+
+Applied to one file each and restored byte-for-byte (SHA-256 compared):
+
+- removing the incompatible-migration check from `#migrate` fails the new
+  case on open;
+- an adapter that stores a profile with a `sessionToken` member fails three
+  security cases through the stored rows;
+- an adapter that stores a profile without Drivers fails two e2e cases
+  through the stored rows.
+
+### Catalog and constraints
+
+- The catalog stays at 19 codes (`runtime-store.test.mjs:287`), and
+  `VES_RUNTIME_DOWNGRADE_UNSUPPORTED` keeps its thrower.
+- Migrations (12), their order and checksums, the schema, `STATE_TABLE_ORDER`,
+  the backup, the integrity checks and the downgrade behaviour are unchanged.
+
+### Complexity and census
+
+No complexity key moved; 177 keys. No file gained or lost `JSON.stringify` or
+`createHash`; `pnpm census:refresh` leaves the inventory unchanged.
+
+### Citations fixed
+
+- `.specs/features/architecture-deepening/validation-c6.md`:
+  `runtime-store.test.mjs:293`, `:219-244` (`:231-235`, `:240-241`) and
+  `:276-290` (`:280-285`, `:286-287`) are now `:287`, `:213-238`
+  (`:225-229`, `:234-235`) and `:270-284` (`:274-279`, `:280-281`);
+  `runtime-store.ts:1096-1102` (after range 1) is now `:1088-1094`.
+- `.specs/features/governed-task-cli/validation.md:21`: `runtime-store.test.mjs:293` is now `:287`.
+- This file's range 1 citations of `runtime-store.ts` follow the code.
+
+Not rewritten: `docs/qualification/t15-validation.md` and
+`t21-validation.md` (point-in-time qualification records; `t15` cites the
+deleted integrity case).
+
+### Gates (range 3, last commit, on origin/main 6fae651)
+
+| Command | Result |
+| --- | --- |
+| `pnpm gate:quick` | PASS — 2617 unit, 331 agent-readiness, 13 census; complexity PASS with 177 keys |
+| `pnpm test:architecture` | PASS — 111 |
+| `node --test tests/integration/runtime-store.test.mjs tests/integration/runtime-checkpoint-store.test.mjs tests/fault-injection/runtime-store-faults.test.mjs` | PASS — 53 (the integrity case deleted, the case on open added) |
+| `pnpm gate:security` | PASS — 1324 security, 310 fault, 797 contract, 275 e2e, 337 qualification, plus the shared stages; 0 skipped |
+| `pnpm agent:check` | PASS |
+
+`pnpm gate:build` (1107 integration, 172 build, 0 skipped), `pnpm test:fault`
+(310) and `node --test tests/e2e/task-cli-e2e.test.mjs` (43) passed on the
+earlier range 3, which also removed `downgradeTo`; restoring it adds back the
+method and its unchanged case.
+
+## Open decisions for the owner
+
+1. Five store methods stay without a production caller (`downgradeTo`,
+   `backupTo`, `migrationLedger`, `stateDigest`, `safetySettings`). The
+   product tells the operator to recover from a verified backup and offers no
+   command that makes one.
+2. `WorkClaimService` has no production composition, so `LocalLeasePort` is a
+   seam only tests cross.
+3. The policy and sync writes still parse the text they are given. Moving
+   their statements into the adapters is the deferred split by aggregate.
