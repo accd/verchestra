@@ -2186,6 +2186,53 @@ note. -->
   merge. Evidence is in
   `.specs/features/architecture-deepening-2/validation-t9.md`.
 
+### AD-065 — A failed write to a provider's input is weighed after what the provider had already done; a provider that delivered its result or exited is decided by them
+
+- **Status:** proposed (ratified by reviewing the pull request that carries
+  `fix/provider-input-after-result`).
+- **Context:** The platform matrix of a later branch failed a case of the
+  provider child run (AD-060) on macOS x64: a provider that writes its result
+  and exits by itself ended as `…_STDIN_FAILED`, `failed`, and its terminator
+  was asked to end it. On a loaded host the run can be descheduled between the
+  spawn and its first write long enough for a fast provider to finish and
+  exit; the write then fails with `EPIPE` before the run has read the result
+  and the exit already waiting for it, and any failed write ended the run at
+  once. Both drivers had this rule before AD-060 (a failed write always failed
+  the run, and AD-054 made it end the provider too), so a completed Claude
+  Code print session could be failed this way.
+- **Decision:**
+  1. An error of the provider's input is weighed after at least one poll of
+     the event loop, once the output and the exit that were waiting have been
+     read (two immediates in a row, because one runs before the next poll when
+     the run was spawned from a poll-phase callback).
+  2. It then fails the run, as `…_STDIN_FAILED`, and ends the provider, only
+     if no end came first, the result has not arrived, and the provider still
+     runs. A provider that delivered its result, or that exited, is decided by
+     its result and its exit: an input that fails after the result changes
+     nothing, and a provider that died before the first write is reported by
+     its exit.
+  3. AD-060's rules stand: the first end decides, and only a provider that
+     exits by itself has its exit read after its result.
+- **Alternatives rejected:** ignoring input failures after the result only
+  (the failure that was observed comes before the result is read); letting a
+  result that arrives later withdraw an input failure already decided (by
+  then the provider has been asked to end); a timer before weighing the
+  failure (it would bound nothing a poll does not, and delay every input
+  failure by a guess); dropping writes after the result (neither driver makes
+  one: Claude Code writes once at the start, and Codex writes nothing after
+  `turn/completed`).
+- **Consequence:** A completed print session whose provider finished before
+  the driver wrote its prompt closes as `completed`, and the terminator is not
+  asked to end it. A provider that closed its input and still runs is ended
+  one poll later than before. No Codex completion could meet the order: an App
+  Server answers nothing before it reads `initialize`, and every later write
+  is one it waits for; an App Server that dies before the first write is now
+  always `VES_CODEX_PROTOCOL_FAILED`. No pinned qualification sequence and no
+  recorded transcript changed. `docs/qualification/claude-code-driver-input-failure.md`
+  corrects, without editing them, the statement of two Claude Code reports
+  that the driver ends nothing at a normal end. Evidence is in
+  `.specs/features/architecture-deepening-2/validation-t3-input.md`.
+
 ## Handoff
 
 - **Feature:** `subscription-provider-auth` (ADP-A, tasks TA1 and TA2) on
