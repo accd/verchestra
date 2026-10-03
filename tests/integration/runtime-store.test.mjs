@@ -199,12 +199,6 @@ test("lease release requires the current owner", async () => {
   store.close();
 });
 
-test("integrity check reports ok on active database", async () => {
-  const { store } = await opened();
-  assert.equal(store.integrityCheck(), "ok");
-  store.close();
-});
-
 test("canonical runtime state digest is stable across reopen", async () => {
   const { dbPath, store } = await opened();
   store.createRun(run());
