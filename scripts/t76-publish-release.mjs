@@ -70,6 +70,7 @@ import {
   CANDIDATE_FILES,
   CANDIDATE_RECORD_KEYS,
   buildInfoDigest,
+  gateEvidenceDigest,
   targetIndexDigest
 } from "./t76-candidate-evidence.mjs";
 
@@ -302,6 +303,7 @@ const validateEvidenceRecord = (value, label) => {
   text(item.revision, `${label} revision`, REVISION);
   text(item.releaseDigest, `${label} releaseDigest`, DIGEST);
   text(item.buildInfoDigest, `${label} buildInfoDigest`, DIGEST);
+  text(item.gateEvidenceDigest, `${label} gateEvidenceDigest`, DIGEST);
   if (!Number.isSafeInteger(item.componentCount) || item.componentCount <= 0)
     fail("VES_T76_PUBLISH_INPUT_INVALID", `${label} componentCount is invalid`);
   return item;
@@ -380,7 +382,14 @@ const readTargetArtifacts = async (root) => {
     if (evidence === undefined) continue;
     const key = targetKeyOf(validateEvidenceRecord(evidence, CANDIDATE_FILES.targetEvidence).target);
     if (found.has(key)) fail("VES_T76_PUBLISH_CLOSURE_INCONSISTENT", `target ${key} is present more than once`);
-    found.set(key, Object.freeze({ evidence, buildDirectory: join(root, entry.name, CANDIDATE_FILES.targetOutput) }));
+    found.set(
+      key,
+      Object.freeze({
+        evidence,
+        artifactDirectory: join(root, entry.name),
+        buildDirectory: join(root, entry.name, CANDIDATE_FILES.targetOutput)
+      })
+    );
   }
   return found;
 };
@@ -392,11 +401,53 @@ const bindTargets = (entries, discovered) => {
     if (located === undefined) fail("VES_T76_PUBLISH_CLOSURE_INCOMPLETE", `target ${key} has no sealed build artifact`);
     if (canonicalizeJsonV2(located.evidence) !== canonicalizeJsonV2(entry))
       fail("VES_T76_PUBLISH_CLOSURE_INCONSISTENT", `target ${key} artifact contradicts the reconciled index`);
-    return { key, evidence: entry, buildDirectory: located.buildDirectory };
+    return {
+      key,
+      evidence: entry,
+      artifactDirectory: located.artifactDirectory,
+      buildDirectory: located.buildDirectory
+    };
   });
   if (discovered.size !== bound.length)
     fail("VES_T76_PUBLISH_CLOSURE_INCOMPLETE", "the target artifacts do not match the reconciled closure");
   return bound.sort((left, right) => compareCodeUnits(left.key, right.key));
+};
+
+// why: a target's evidence seals its gate evaluations only by digest, and the
+// sealed file travels in the same artifact. Until ADR2-2's follow-up no reader
+// checked one against the other.
+const assertGateEvidence = async (target) => {
+  let bytes;
+  try {
+    bytes = await readFile(join(target.artifactDirectory, CANDIDATE_FILES.gateEvaluations));
+  } catch (error) {
+    return fail("VES_T76_PUBLISH_INPUT_MISSING", `gate evaluations of target ${target.key} cannot be read`, error);
+  }
+  if (gateEvidenceDigest(bytes) !== target.evidence.gateEvidenceDigest)
+    fail(
+      "VES_T76_PUBLISH_DIGEST_MISMATCH",
+      `gate evaluations of target ${target.key} do not match their sealed digest`
+    );
+};
+
+// why: the evidence names the target a publication is written under. A bundle
+// for another target would be signed and served as this one's.
+const assertBundleTarget = async (target) => {
+  const bundle = record(
+    await readCanonicalJson(join(target.buildDirectory, "bundle.json"), "bundle.json"),
+    "bundle.json"
+  );
+  if (canonicalizeJsonV2(bundle.target ?? null) !== canonicalizeJsonV2(target.evidence.target))
+    fail("VES_T76_PUBLISH_CLOSURE_INCONSISTENT", `bundle.json does not carry target ${target.key}`);
+};
+
+// invariant: both checks run for every target before the output directory
+// exists, so a contradiction leaves nothing behind.
+const assertSealedTargets = async (bound) => {
+  for (const target of bound) {
+    await assertGateEvidence(target);
+    await assertBundleTarget(target);
+  }
 };
 
 // ---------------------------------------------------------------------------
@@ -758,6 +809,7 @@ export async function publishT76Release(rawOptions) {
     options.revision
   );
   const bound = bindTargets(entries, await readTargetArtifacts(options.targetsDirectory));
+  await assertSealedTargets(bound);
   await mkdir(options.outputDirectory, { recursive: false, mode: 0o700 });
   const published = [];
   for (const target of bound) published.push(await publishOneTarget(options, signing, target, rollbackProofs));

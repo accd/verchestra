@@ -1244,7 +1244,7 @@
       "path": "scripts/t76-publish-release.mjs",
       "classification": "migrated-v2",
       "signals": {
-        "canonicalizer": 11,
+        "canonicalizer": 13,
         "digest": 2,
         "localeCompare": 0,
         "serialization": 1

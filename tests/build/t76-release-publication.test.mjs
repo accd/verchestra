@@ -43,12 +43,14 @@ import {
   candidateClosure,
   disposePublicationFixtures,
   priorCandidateClosure,
+  resealTargetEvidence,
   sha,
   tamperPayload,
   testSigningKeyBase64,
   writeMatchingReleaseAnchor,
   writeRetiredAnchorCopy
 } from "../helpers/t76-publication-fixture.mjs";
+import { publishDownloadedRun } from "../helpers/t76-publication-replay.mjs";
 
 const execute = promisify(execFile);
 const SCRIPT = fileURLToPath(new URL("../../scripts/t76-publish-release.mjs", import.meta.url));
@@ -585,6 +587,85 @@ test("refuses a payload byte that contradicts its sealed component digest", asyn
   await assert.rejects(() => publishT76Release(optionsFor(closure, withKey(), rollback.indexPath)), {
     code: "VES_T76_PUBLISH_DIGEST_MISMATCH"
   });
+});
+
+// why: no reader checked a target's gate evidence digest (ADR2-2 follow-up). The
+// gate evaluations travel in the same artifact as the evidence that seals them,
+// so the publisher verifies the digest before anything is created.
+test("refuses gate evaluations its target evidence does not seal, before any output", async () => {
+  const rollback = await sharedPrior();
+  const tampered = await candidateClosure();
+  const win32 = tampered.targets.find((item) => item.bundle.target.platform === "win32");
+  const gatePath = join(win32.directory, "gate-evaluations.json");
+  await writeFile(gatePath, (await readFile(gatePath, "utf8")).replace('"result":"pass"', '"result":"fail"'));
+  await assert.rejects(() => publishT76Release(optionsFor(tampered, withKey(), rollback.indexPath)), {
+    code: "VES_T76_PUBLISH_DIGEST_MISMATCH"
+  });
+  await assert.rejects(() => readdir(tampered.outputDirectory), { code: "ENOENT" });
+  const missing = await candidateClosure();
+  await rm(join(missing.targets[0].directory, "gate-evaluations.json"));
+  await assert.rejects(() => publishT76Release(optionsFor(missing, withKey(), rollback.indexPath)), {
+    code: "VES_T76_PUBLISH_INPUT_MISSING"
+  });
+  await assert.rejects(() => readdir(missing.outputDirectory), { code: "ENOENT" });
+  const malformed = await candidateClosure();
+  await resealTargetEvidence(malformed, (entries) =>
+    entries.map((entry, index) => (index === 2 ? { ...entry, gateEvidenceDigest: "sha256:not-a-digest" } : entry))
+  );
+  await assert.rejects(() => publishT76Release(optionsFor(malformed, withKey(), rollback.indexPath)), {
+    code: "VES_T76_PUBLISH_INPUT_INVALID"
+  });
+  await assert.rejects(() => readdir(malformed.outputDirectory), { code: "ENOENT" });
+});
+
+// why: the evidence keys a target, and the publication is written under that
+// key. A bundle for another target would be signed and served as this one's
+// (ADR2-2 follow-up), so the two must name the same target before any output.
+test("refuses target evidence that names another target than its bundle, before any output", async () => {
+  const rollback = await sharedPrior();
+  const swapped = await candidateClosure();
+  const darwin = swapped.targets.findIndex((item) => item.bundle.target.platform === "darwin");
+  const win32 = swapped.targets.findIndex((item) => item.bundle.target.platform === "win32");
+  await resealTargetEvidence(swapped, (entries) =>
+    entries.map((entry, index) => {
+      if (index === darwin) return { ...entry, target: entries[win32].target };
+      if (index === win32) return { ...entry, target: entries[darwin].target };
+      return entry;
+    })
+  );
+  await assert.rejects(() => publishT76Release(optionsFor(swapped, withKey(), rollback.indexPath)), {
+    code: "VES_T76_PUBLISH_CLOSURE_INCONSISTENT"
+  });
+  await assert.rejects(() => readdir(swapped.outputDirectory), { code: "ENOENT" });
+  const staleRuntime = await candidateClosure();
+  await resealTargetEvidence(staleRuntime, (entries) =>
+    entries.map((entry, index) =>
+      index === 0 ? { ...entry, target: { ...entry.target, nodeVersion: "24.15.0" } } : entry
+    )
+  );
+  await assert.rejects(() => publishT76Release(optionsFor(staleRuntime, withKey(), rollback.indexPath)), {
+    code: "VES_T76_PUBLISH_CLOSURE_INCONSISTENT"
+  });
+  await assert.rejects(() => readdir(staleRuntime.outputDirectory), { code: "ENOENT" });
+});
+
+// why: the replay is how the published candidates' real evidence is put through
+// these checks; it must publish a closure laid out as a downloaded run.
+test("the publication replay publishes a downloaded run with throwaway keys and keeps nothing", async () => {
+  const rollback = await sharedPrior();
+  const closure = await candidateClosure();
+  const summary = await publishDownloadedRun({
+    runDirectory: closure.root,
+    revision: closure.revision,
+    rollbackIndexPath: rollback.indexPath
+  });
+  assert.deepEqual(
+    summary.targets.map((target) => [target.targetKey, target.releaseDigest]),
+    closure.targets
+      .map((item) => [`${item.bundle.target.platform}-${item.bundle.target.arch}`, item.bundle.releaseDigest])
+      .sort(([left], [right]) => Number(left > right) - Number(left < right))
+  );
+  await assert.rejects(() => readdir(closure.outputDirectory), { code: "ENOENT" });
 });
 
 test("refuses a reconciled index that is re-serialized or whose digest no longer covers its targets", async () => {
