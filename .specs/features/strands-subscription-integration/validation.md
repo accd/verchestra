@@ -286,6 +286,27 @@ as 2.1.282 does (`ANTHROPIC_API_KEY` under `--bare`, `none` otherwise); without
 it the new subscription check refuses the fake, as it would refuse a real
 session that hid its source.
 
+## T7 Evidence (Windows bridge transport, commits 1 and 2)
+
+Author: the T7 implementer. Commits 3 (managed-policy sources, SSI-74) and 4
+(lifting the refusals) are not on this branch.
+
+### Commit 1: `refactor(agent-runtime): put the bridge channel behind a transport interface`
+
+| Requirement | Evidence (file:line, assertion) | Result |
+| --- | --- | --- |
+| SSI-69 Unix channel and controls unchanged | The socket directory, `0700` mode, `lstat` checks, `VES_BRIDGE_CHANNEL_INSECURE`, `net.Server`, socket `0600`, and directory removal moved verbatim into `UnixSocketBridgeTransport.listen` (`packages/agent-runtime/src/execution/bridge-transport.ts:35-65`). Token, constant-time check, one authenticated connection, five-second timeout, frame bound, and dispatch stay in the controller (`mcp-tool-bridge.ts:141-203`). `git diff origin/main -- tests/integration/mcp-tool-bridge.test.mjs tests/security/mcp-tool-bridge-security.test.mjs tests/integration/driver-execution-adapter.test.mjs tests/e2e/mediated-task-execution-e2e.test.mjs tests/e2e/task-path-case-variant-e2e.test.mjs tests/contract/claude-code-driver-mediated.test.mjs tests/contract/claude-code-driver-subscription.test.mjs tests/helpers/mcp-bridge-fixture.mjs tests/helpers/mediation-platform.mjs` is empty; those suites pass unchanged (63 of 63 on the rebased base, which carries T4). | PASS (darwin) |
+| SSI-70 controller takes its channel through a transport interface | `BridgeTransport` and `BridgeChannel` (`bridge-transport.ts:8-23`); `McpToolBridgeControllerOptions.transport` defaults to the Unix transport (`mcp-tool-bridge.ts:113-115`); `DriverExecutionAdapterOptions.bridgeTransport` reaches it (`driver-execution-adapter.ts:38`, `:175`). Seam cases with an in-memory transport, `tests/integration/bridge-transport-seam.test.mjs`: endpoint announced and channel closed once (`:72-79`); served only after authentication (`:87-99`); wrong token, frame beyond 8 MiB, and a call before authentication refused with no tool reached (`:110-117`); silence refused at exactly 5 000 ms (`:126-129`); a second connection refused (`:141-142`); the adapter hands the transport to the bridge and closes it (`:192-195`). | PASS (darwin) |
+
+Ordering note: `close()` now removes the channel (server close and directory
+removal) before awaiting in-flight calls; before, the directory was removed
+after them. In-flight calls touch the worktree, not the socket directory, and
+every `close` result is unchanged.
+
+Gates for commit 1: `pnpm gate:quick` PASS (unit 2666/2666, agent-readiness
+331/331, census 13/13, 0 skipped, 0 todo); `pnpm test:architecture` PASS
+(122/122); `pnpm test:integration` PASS (1150/1150).
+
 ## Requirement Evidence
 
 Each row needs a file-and-assertion citation (`path:line` and what the assertion
@@ -362,8 +383,8 @@ evidence is FAIL.
 | SSI-66 | — | — | — |
 | SSI-67 | — | — | — |
 | SSI-68 | — | — | — |
-| SSI-69 | — | — | — |
-| SSI-70 | — | — | — |
+| SSI-69 | T7 Evidence, commit 1 row SSI-69 | gate:quick, test:integration, test:security (bridge suites) | PASS on darwin; Linux and Windows legs pending the platform matrix |
+| SSI-70 | T7 Evidence, commit 1 row SSI-70 | test:integration | PASS on darwin; Windows implementation in commit 2 |
 | SSI-71 | — | — | — |
 | SSI-72 | — | — | — |
 | SSI-73 | — | — | — |

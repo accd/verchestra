@@ -65,10 +65,10 @@ Who sets each field and who reads it, at the tip of the range:
 | --- | --- | --- | --- |
 | `session.started` | `sessionId` | every driver | the session runner, to cancel (`driver-session-runner.ts:119`) |
 | `model.resolved` | `passportRef` | every driver | none |
-| | `provider`, `resolvedModel` | Claude Code, Codex, OpenCode, Pi | `resolvedModel`: the execution adapter, to meter (`driver-execution-adapter.ts:178`) |
+| | `provider`, `resolvedModel` | Claude Code, Codex, OpenCode, Pi | `resolvedModel`: the execution adapter, to meter (`driver-execution-adapter.ts:224`) |
 | | `api` | Pi | none |
 | `content.delta` | `text` | every driver | the Codex verifier (`task-codex.ts:258`) |
-| `tool.requested` | `toolCallId`, `name`, `input` | every driver | `name`: the execution adapter (`driver-execution-adapter.ts:194`) |
+| `tool.requested` | `toolCallId`, `name`, `input` | every driver | `name`: the execution adapter (`driver-execution-adapter.ts:274`) |
 | | `patterns` | OpenCode | none |
 | `usage.updated` | `inputTokens`, `outputTokens` | every driver | the execution adapter (`:209`) and the Codex verifier (`task-codex.ts:171-172`) |
 | | `reasoningTokens`, `cacheReadTokens`, `cacheWriteTokens` | OpenCode | none |
@@ -117,7 +117,7 @@ rejected for that reason.
 | Consumer | Before (`6fae651`) | After |
 | --- | --- | --- |
 | Session runner | `event["sessionId"]`, `event["outcome"]`, `event["code"]` on `Row & { type: string }` | typed reads, `driver-session-runner.ts:119-121`; `DriverSessionEvent` and the event generic are removed |
-| Execution adapter | `event["resolvedModel"]`, `event["name"]`, two `as number` casts | `driver-execution-adapter.ts:178`, `:194`, `:209` |
+| Execution adapter | `event["resolvedModel"]`, `event["name"]`, two `as number` casts | `driver-execution-adapter.ts:224`, `:274`, `:289` |
 | Codex verifier | two `as number` casts, `event["text"]` | `task-codex.ts:171-172`, `:258` |
 | Self-Test scenarios | count event types only | unchanged |
 

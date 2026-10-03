@@ -75,13 +75,14 @@ export {
   MCP_BRIDGE_TOKEN_ENV,
   MCP_BRIDGE_TOOL_DEFINITIONS,
   MCP_BRIDGE_TOOLS,
+  McpToolBridgeError,
   type BridgeToolResult,
   type McpBridgeTool
 } from "./execution/mcp-bridge-protocol.ts";
 export { BridgeToolError, WorktreeReadView, type WorktreeReadViewOptions } from "./execution/mcp-bridge-tools.ts";
+export { UnixSocketBridgeTransport, type BridgeChannel, type BridgeTransport } from "./execution/bridge-transport.ts";
 export {
   McpToolBridgeController,
-  McpToolBridgeError,
   runMcpToolBridgeRelay,
   type McpBridgeStatistics,
   type McpToolBridgeControllerOptions
