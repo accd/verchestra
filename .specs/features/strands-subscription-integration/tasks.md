@@ -193,14 +193,19 @@ T8 -> T9 -> T10
 2. `feat(drivers): structured output, auth source, and rate limits for Claude Code` — `--json-schema`, bounded `structured_output`, `apiKeySource === "none"`, `rate_limit_event` mapping, missing-output failure; fake CLI fixtures recorded from the documented message shapes. **Done** (the fake's `system/init`, `result`, and `rate_limit_event` shapes follow the schema the installed 2.1.282 declares; `StructuredOutput` is allowed beside the bridge tools in a structured session).
 3. `feat(drivers): structured output, account checks, and usage limits for Codex` — `outputSchema`, `account/read`, `account/rateLimits/read`, `usageLimitExceeded` and `rateLimitReachedType` mapping, JSON-RPC method allowlist, minimum version raised with `codex app-server generate-ts` evidence. **Done** (the floor 0.159.3 binds the sessions that use the new protocol; the T04 default stays 0.115.0 — see the decision in `.specs/STATE.md` and the deviation in `spec.md`).
 4. `feat(agent-runtime): carry a node's structured result as a payload reference` — `driver-execution-adapter.ts` returns `outputRefs`; `quota.exhausted` surfaced. **Done** (a quota signal stops the session and surfaces as `VES_DRIVER_QUOTA_EXHAUSTED` carrying only its scope and reset, for T6 to turn into a suspension).
-5. `docs(qualification): record the structured-result driver profiles` — new reports beside the existing immutable ones.
+5. `docs(qualification): record the structured-result driver profiles` — new reports beside the existing immutable ones. **Done** (`docs/qualification/claude-code-driver-structured-results.md`, `docs/qualification/codex-driver-structured-results.md`; no existing report edited).
 
 **Done when**:
 
-- [ ] Each mapping has a fake-CLI case: success, success without output, retries exhausted, oversized output, wrong `apiKeySource`, `rejected` with and without `resetsAt`, `allowed_warning`, Codex `apiKey` account, credit balance, `ordinaryUsageAllowed: false`, `usageLimitExceeded`.
-- [ ] A test proves the Codex client cannot send any method outside its allowlist, including `account/rateLimitResetCredit/consume`.
-- [ ] Security tests show no e-mail address, token, or provider text in events, checkpoints, or payloads (SSI-81).
-- [ ] `pnpm qualify:claude` and `pnpm qualify:codex` pass.
+- [x] Each mapping has a fake-CLI case: success, success without output, retries exhausted, oversized output, wrong `apiKeySource`, `rejected` with and without `resetsAt`, `allowed_warning`, Codex `apiKey` account, credit balance, `ordinaryUsageAllowed: false`, `usageLimitExceeded`.
+- [x] A test proves the Codex client cannot send any method outside its allowlist, including `account/rateLimitResetCredit/consume`.
+- [x] Security tests show no e-mail address, token, or provider text in events, checkpoints, or payloads (SSI-81).
+- [x] `pnpm qualify:claude` and `pnpm qualify:codex` pass.
+
+**Status**: author-complete on `strands/t4-driver-results`; pending the
+platform matrix (Windows, macOS, Linux), the optional owner-run Claude probe,
+independent verification, and human review. Evidence: `validation.md`, T4
+section.
 
 **Tests**: unit, contract, integration, security
 **Gate**: security
