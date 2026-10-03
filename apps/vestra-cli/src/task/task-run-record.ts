@@ -159,6 +159,88 @@ function validatedCommit(row: Row): TaskRunCommit {
   return row as unknown as TaskRunCommit;
 }
 
+type Validated<T> = (row: Row, label: string) => T;
+
+// invariant: what a reader of the Run record returns for an artifact whose
+// members a command reads. Each is validated as it is read, a marker in either
+// form, and a record of another shape is refused, never read in part. The
+// record is returned as the file holds it, every member kept: the Run Capsule
+// and the review surface digest what a reader returns, so a member this build
+// does not name is still bound.
+export interface GrantMarker {
+  readonly grantId: string;
+}
+
+export type OutcomeMarker = TaskRunOutcome & { readonly at: string };
+
+// why: the verifier's report and the human review are larger records whose
+// schema their coordinators own; these are the members the task path reads.
+export interface VerificationReportRecord {
+  readonly verdict: "PASS" | "FAIL";
+  readonly commitId: string;
+}
+
+export interface HumanReviewRecord {
+  readonly outcome: "accepted" | "rejected";
+}
+
+function oneOf<T extends string>(row: Row, key: string, values: readonly T[], label: string): T {
+  const value = row[key];
+  if (typeof value !== "string" || !(values as readonly string[]).includes(value))
+    throw stateInvalid("VES_TASK_STATE_MALFORMED", `${label}.${key} is invalid`);
+  return value as T;
+}
+
+function validatedGrant(row: Row, label: string): GrantMarker {
+  textField(row, "grantId", label);
+  return row as unknown as GrantMarker;
+}
+
+// invariant: the text members each run outcome carries, by status, as
+// `TaskRunOutcome` declares them.
+const OUTCOME_TEXT: Readonly<Record<TaskRunOutcome["status"], readonly string[]>> = Object.freeze({
+  HUMAN_REVIEW: ["reportRef"],
+  VERIFICATION_FAILED: ["state", "reportRef"],
+  ESCALATED: [],
+  FAILED: ["reason"],
+  ABORTED: ["reason"],
+  APPROVAL_INVALIDATED: []
+});
+const OUTCOME_STATUSES = Object.freeze(Object.keys(OUTCOME_TEXT) as TaskRunOutcome["status"][]);
+
+function validatedOutcome(row: Row, label: string): OutcomeMarker {
+  const status = oneOf(row, "status", OUTCOME_STATUSES, label);
+  for (const key of [...OUTCOME_TEXT[status], "at"]) textField(row, key, label);
+  if (status === "HUMAN_REVIEW") validatedCommit(objectRow(row["commit"], `${label}.commit`));
+  if (status === "ESCALATED") {
+    const failure = objectRow(row["failure"], `${label}.failure`);
+    textField(failure, "failedGateId", `${label}.failure`);
+    textField(failure, "evidenceRef", `${label}.failure`);
+  }
+  return row as unknown as OutcomeMarker;
+}
+
+function validatedReport(row: Row, label: string): VerificationReportRecord {
+  oneOf(row, "verdict", ["PASS", "FAIL"], label);
+  const commitId = row["commitId"];
+  if (typeof commitId !== "string" || !isGitObjectId(commitId))
+    throw stateInvalid("VES_TASK_STATE_MALFORMED", `${label}.commitId is invalid`);
+  return row as unknown as VerificationReportRecord;
+}
+
+function validatedReview(row: Row, label: string): HumanReviewRecord {
+  oneOf(row, "outcome", ["accepted", "rejected"], label);
+  return row as unknown as HumanReviewRecord;
+}
+
+// why: a legacy Run's worktree marker that names no worktree reads as none,
+// as it did before the markers were sealed, so an idle cancel of that run
+// still ends it; the ADP-2 suite pins this.
+function plainWorktreeRef(row: Row): string | undefined {
+  const worktreeRef = row["worktreeRef"];
+  return typeof worktreeRef === "string" ? worktreeRef : undefined;
+}
+
 export interface ExecutorCheckpoint {
   readonly stage: string;
   readonly checkpointRef: string;
@@ -362,16 +444,29 @@ export class RunRecord {
   }
 
   // invariant: a sealed Run's marker is read through its seal: a plain marker
-  // in its place is outside the envelope and refused, an edited one does not
-  // match its digest and is refused, and the member a reader needs must be
-  // text. A legacy Run's marker is the plain object the file holds, as it was
-  // before the markers were sealed.
-  async #marker(segments: readonly string[], label: string, key: string): Promise<Row | undefined> {
+  // in its place is outside the envelope and refused, and an edited one does
+  // not match its digest and is refused. A legacy Run's marker is the plain
+  // object the file holds, as it was before the markers were sealed. Either
+  // form is then validated by its reader, the legacy one by `legacy` where a
+  // reader keeps a different rule for it.
+  async #marker<T>(
+    segments: readonly string[],
+    label: string,
+    validated: Validated<T>,
+    legacy: Validated<T | undefined> = validated
+  ): Promise<T | undefined> {
     const path = await this.#file(segments);
-    if (!(await this.#sealsMarkers())) return markerRow(path, label);
+    if (!(await this.#sealsMarkers())) {
+      const plain = await markerRow(path, label);
+      return plain === undefined ? undefined : legacy(plain, label);
+    }
     const record = await sealedRow(path, label);
-    if (record !== undefined) textField(record, key, label);
-    return record;
+    return record === undefined ? undefined : validated(record, label);
+  }
+
+  async #sealed<T>(segments: readonly string[], label: string, validated: Validated<T>): Promise<T | undefined> {
+    const record = await sealedRow(await this.#file(segments), label);
+    return record === undefined ? undefined : validated(record, label);
   }
 
   async saveContextManifest(manifest: ContextManifest): Promise<void> {
@@ -434,8 +529,8 @@ export class RunRecord {
     await this.#writeMarker(LAYOUT.grant, { grantId });
   }
 
-  loadGrant(): Promise<Row | undefined> {
-    return this.#marker(LAYOUT.grant, "capability grant marker", "grantId");
+  loadGrant(): Promise<GrantMarker | undefined> {
+    return this.#marker(LAYOUT.grant, "capability grant marker", validatedGrant);
   }
 
   // invariant: who drives the run: a live process, nobody, or, for a sealed
@@ -510,27 +605,29 @@ export class RunRecord {
     await this.#writeMarker(LAYOUT.worktree, { worktreeRef });
   }
 
-  async loadWorktreeRef(): Promise<string | undefined> {
-    const marker = await this.#marker(LAYOUT.worktree, "worktree marker", "worktreeRef");
-    const worktreeRef = marker?.["worktreeRef"];
-    return typeof worktreeRef === "string" ? worktreeRef : undefined;
+  loadWorktreeRef(): Promise<string | undefined> {
+    return this.#marker(
+      LAYOUT.worktree,
+      "worktree marker",
+      (row, label) => textField(row, "worktreeRef", label),
+      plainWorktreeRef
+    );
   }
 
   async saveOutcome(outcome: TaskRunOutcome): Promise<void> {
     await this.#writeMarker(LAYOUT.outcome, { ...outcome, at: new Date().toISOString() });
   }
 
-  loadOutcome(): Promise<Row | undefined> {
-    return this.#marker(LAYOUT.outcome, "run outcome", "status");
+  loadOutcome(): Promise<OutcomeMarker | undefined> {
+    return this.#marker(LAYOUT.outcome, "run outcome", validatedOutcome);
   }
 
   async saveCommit(commit: TaskRunCommit): Promise<void> {
     await writeSealedRecord(await this.#file(LAYOUT.commit), commit);
   }
 
-  async loadCommit(): Promise<TaskRunCommit | undefined> {
-    const row = await sealedRow(await this.#file(LAYOUT.commit), "task commit record");
-    return row === undefined ? undefined : validatedCommit(row);
+  loadCommit(): Promise<TaskRunCommit | undefined> {
+    return this.#sealed(LAYOUT.commit, "task commit record", validatedCommit);
   }
 
   // invariant: an attempt is sealed as JSON carries it, so a member that is
@@ -549,8 +646,8 @@ export class RunRecord {
     return writeSealedRecord(await this.#file(LAYOUT.report), report);
   }
 
-  async loadReport(): Promise<Row | undefined> {
-    return sealedRow(await this.#file(LAYOUT.report), "verification report");
+  loadReport(): Promise<VerificationReportRecord | undefined> {
+    return this.#sealed(LAYOUT.report, "verification report", validatedReport);
   }
 
   async saveLesson(lesson: unknown): Promise<Digest> {
@@ -560,7 +657,7 @@ export class RunRecord {
 
   // invariant: a run is reviewable only with both its task commit record and
   // the verification report that judged that commit.
-  async verifiedCommit(): Promise<{ readonly commit: TaskRunCommit; readonly report: Row }> {
+  async verifiedCommit(): Promise<{ readonly commit: TaskRunCommit; readonly report: VerificationReportRecord }> {
     const commit = await this.loadCommit();
     const report = await this.loadReport();
     if (commit === undefined || report === undefined)
@@ -572,8 +669,8 @@ export class RunRecord {
     return writeSealedRecord(await this.#file(LAYOUT.review), review);
   }
 
-  async loadReview(): Promise<Row | undefined> {
-    return sealedRow(await this.#file(LAYOUT.review), "review record");
+  loadReview(): Promise<HumanReviewRecord | undefined> {
+    return this.#sealed(LAYOUT.review, "review record", validatedReview);
   }
 
   async saveCapsule(capsule: SignedRunCapsule): Promise<void> {
