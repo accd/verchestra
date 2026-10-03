@@ -1416,6 +1416,15 @@ test(
 // reached. The duration ceiling passes while the implementation gate is held:
 // 90% of 12 s is 10.8 s. The gate then passes and the task is committed, and
 // the run fails as a budget stop before a Codex process is started.
+// hazard: the run's duration is measured by its own meter, which starts when
+// the repair loop builds it, after the command has started, read its
+// credentials and probed the Codex login: seconds after launch on a slow host.
+// The gate is therefore released by that clock, never by the time since
+// launch. The implementer's usage is recorded before the gate starts, with
+// the meter's duration at that moment; read once the gate is held, it bounds
+// the meter's start from below. The Codex login probe is made 2 s slow, so a
+// release timed from launch would come too early on every host.
+const DURATION_THRESHOLD_MS = 10_800;
 test("a run whose ceiling was reached before verification starts no verifier", TIMEOUT, async (t) => {
   if (!DARWIN) return notConfiguredOffMacOS(t);
   const fixture = await taskFixture({
@@ -1423,14 +1432,21 @@ test("a run whose ceiling was reached before verification starts no verifier", T
   });
   const plan = await approved(fixture);
   await writeFile(join(fixture.home, "pause-gate"), "");
-  const startedAt = Date.now();
+  await writeFile(join(fixture.scratch, "slow-login-status"), "");
   const child = fixture.launchAsync(startArguments(fixture, plan.runId));
   const finished = exited(child);
   let stdout = "";
   child.stdout.on("data", (chunk) => (stdout += chunk));
   t.after(() => child.kill("SIGKILL"));
   await waitFor(() => existsSync(join(fixture.home, "gate-paused")));
-  await new Promise((resolve) => setTimeout(resolve, Math.max(0, startedAt + 11_500 - Date.now())));
+  const observedAt = Date.now();
+  const recorded = status(fixture, plan.runId).checkpoints.budget;
+  assert.equal(recorded.consumedTokens, IMPLEMENTER_TOKENS, "the implementer's usage was not recorded before its gate");
+  // why: the record was made before `observedAt`, so the meter has run at
+  // least `recorded.consumedDurationMs + (now - observedAt)`; 700 ms past the
+  // threshold is the margin the release had before.
+  const releaseAt = observedAt + DURATION_THRESHOLD_MS + 700 - recorded.consumedDurationMs;
+  await new Promise((resolve) => setTimeout(resolve, Math.max(0, releaseAt - Date.now())));
   await rm(join(fixture.home, "pause-gate"));
   assert.deepEqual(await finished, { code: 1, signal: null });
   const outcome = JSON.parse(stdout).data;
@@ -1442,6 +1458,10 @@ test("a run whose ceiling was reached before verification starts no verifier", T
   assert.equal(after.checkpoints.repair, "converged", "the gate did not pass");
   assert.match(after.evidence.commitId, /^[a-f0-9]{40}$/u);
   assert.equal(after.checkpoints.budget.stopReason, "duration-threshold");
+  assert.ok(
+    after.checkpoints.budget.consumedDurationMs >= DURATION_THRESHOLD_MS,
+    "the run's own clock had not passed the threshold"
+  );
   assert.equal(after.checkpoints.budget.consumedTokens, IMPLEMENTER_TOKENS);
   assert.equal(after.checkpoints.budget.usageEvents, 1);
 });

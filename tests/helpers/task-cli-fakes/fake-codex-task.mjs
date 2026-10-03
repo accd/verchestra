@@ -74,6 +74,10 @@ if (providerArguments[0] === "login" && providerArguments[1] === "status") {
     environmentKeys: environmentKeys()
   });
   if (login === "hang") await new Promise(() => setInterval(() => {}, 1_000));
+  // why: the `slow-login-status` flag makes this probe answer 2 s late, as a
+  // slow host does. The probe runs before a run's first meter exists, so the
+  // flag delays when the run's own clock starts, not anything it measures.
+  if (fixtureFlag("slow-login-status")) await new Promise((resolve) => setTimeout(resolve, 2_000));
   const [line, exitCode] = STATUS[login] ?? ["Unexpected error retrieving API key", 1];
   process.stderr.write(`${line}\n`);
   process.exit(exitCode);
