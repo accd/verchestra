@@ -9,6 +9,7 @@ import { test } from "node:test";
 
 import {
   DarwinKeychainBackend,
+  KEYCHAIN_VALUE_BUDGET_BYTES,
   LinuxSecretServiceBackend,
   MAX_CREDENTIAL_VALUE_BYTES,
   PRESENCE_TIMEOUT_MS,
@@ -74,6 +75,11 @@ test("only non-empty printable ASCII without whitespace is a credential value", 
 
 test("the value policy admits exactly the byte budget the darwin backend derives", () => {
   assert.equal(MAX_CREDENTIAL_VALUE_BYTES, 1416, "the qualification reports name this number");
+  assert.equal(
+    KEYCHAIN_VALUE_BUDGET_BYTES,
+    MAX_CREDENTIAL_VALUE_BYTES,
+    "the keychain carries exactly the policy's limit"
+  );
   assert.equal(isValidCredentialValue(new Uint8Array(MAX_CREDENTIAL_VALUE_BYTES).fill(0x41)), true);
   assert.equal(isValidCredentialValue(new Uint8Array(MAX_CREDENTIAL_VALUE_BYTES + 1).fill(0x41)), false);
 });

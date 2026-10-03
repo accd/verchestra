@@ -79,10 +79,10 @@ const WORST_CASE_OVERHEAD =
     logicalName: "a".repeat(128)
   }).length + keychainSuffix(`/${"a".repeat(MAX_KEYCHAIN_PATH_LENGTH - 1)}`).length;
 
-// invariant: the value policy in credential-tool.ts admits exactly this many
-// bytes on every platform; it cannot import the number from this adapter, so
-// tests/unit/os-secret-backend-policy.test.mjs holds the two equal.
-export const MAX_CREDENTIAL_VALUE_BYTES = Math.floor((SECURITY_INTERACTIVE_LINE_LIMIT - WORST_CASE_OVERHEAD) / 2);
+// invariant: this is what the keychain can carry, not the limit: the limit is
+// MAX_CREDENTIAL_VALUE_BYTES in credential-tool.ts, the policy every platform
+// shares, and tests/unit/os-secret-backend-policy.test.mjs holds the two equal.
+export const KEYCHAIN_VALUE_BUDGET_BYTES = Math.floor((SECURITY_INTERACTIVE_LINE_LIMIT - WORST_CASE_OVERHEAD) / 2);
 
 const PASSWORD_LINE = /^password: (?:"([\x20\x21\x23-\x5b\x5d-\x7e]*)"|0x((?:[0-9A-F]{2})*)(?: {2}"[^\n]*")?)$/mu;
 
