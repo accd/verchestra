@@ -277,6 +277,7 @@ section.
 **Progress** (branch `strands/t5-coordinated-driver`; evidence in `validation.md`, "T5 Evidence"):
 
 - [x] Commit 1: `coordinated-driver.ts`, `coordination-engine.ts` (native engine), `node-result.ts`, `coordination-ledger.ts`, `node-prompt.ts`; scope narrowing, single writer, limits, ledger transitions; 16 mutants killed.
+- [x] Commit 2: sealed `coordination` members of the Run record (ledger and digest-named results), validated readers, `RunRecord.coordination()`; 5 mutants killed.
 
 **Tests**: unit, integration, architecture, build, fault
 **Gate**: build

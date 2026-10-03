@@ -377,6 +377,48 @@ settle-time refusal and the empty-scope rule, and were removed (equivalent
 mutants). The concurrency case was also made to fail rather than wait when
 the limit is removed.
 
+### Commit 2 — node ledger and node results in the Run record
+
+`apps/vestra-cli/src/task/task-run-record.ts` gains the sealed coordination
+members (`coordination/ledger.json` and `coordination/results/<sha256>.json`),
+their validated readers, and `RunRecord.coordination()`, the coordinated
+driver's record port. The ledger is read through the application's
+`normalizeCoordinationLedger`; a result is returned only as the canonical
+bytes of the digest it is filed under.
+
+| Behaviour | Assertion (file:line) | Run |
+| --- | --- | --- |
+| The ledger is sealed and reads back as it was | `tests/unit/task-run-coordination-record.test.mjs:72` | `node --test tests/unit/task-run-coordination-record.test.mjs`: 7 of 7 |
+| An edited ledger is `VES_TASK_STATE_TAMPERED`; six ledgers of another shape (extra member, a prompt member, unknown state, completed without a result, a path as node, unknown mode) are `VES_TASK_STATE_MALFORMED`; an invalid ledger is refused before it is written | `tests/unit/task-run-coordination-record.test.mjs:80`, `:99` | same |
+| A result is sealed in a file named by its digest and reads back byte for byte; one filed under another digest is tampered; a missing one, a traversal digest (checked before any read), and non-canonical bytes are malformed | `tests/unit/task-run-coordination-record.test.mjs:108`, `:117` | same |
+| Resume replay through the Run record on disk: a completed node is replayed from its persisted result, the rest run | `tests/unit/task-run-coordination-record.test.mjs:135` | same |
+| An agent run leaves exactly the ledger and one result | `tests/unit/task-run-coordination-record.test.mjs:159` | same |
+| SSI-49, SSI-81: the persisted ledger and results hold no token, session, prompt, repository context, or path; every ledger value is an identifier, count, instant, digest, or code; the results are the nodes' own answers | `tests/security/coordination-record-security.test.mjs:27` | `node --test tests/security/coordination-record-security.test.mjs`: 1 of 1 |
+| The Run record module still alone names the layout (`ledger.json`, `coordination`, `results` added to the pinned lists) and `loadCoordinationLedger` returns its declared record | `tests/architecture/task-run-record-locality.test.mjs:14-35`, `tests/architecture/task-run-record-readers.test.mjs:30` | `node --test` on both: 14 of 14 |
+
+Citations. The import and layout additions move every later line of
+`task-run-record.ts` by seven; the current-code citations in
+`.specs/features/architecture-deepening-2/validation-t9.md` (section 2's
+reader table and section 4's `recordBudgetLedger` range) are moved with them.
+Section 1 of that file cites the base `6fae651` and is unchanged.
+`docs/canonical-json-census.json`: `task-run-record.ts` has four
+`canonicalizeJsonV2` signals instead of two (still `migrated-v2`).
+
+Gates at this commit: typecheck, lint, format, and complexity PASS;
+`pnpm test:architecture` 125/125; `pnpm test:census` 13/13; `pnpm agent:check`
+PASS; the Run record suites (`tests/unit/task-run-record*.test.mjs`,
+`tests/unit/task-run-markers.test.mjs`, `tests/integration/task-coordinated-plan.test.mjs`)
+pass with the new ones, 111 of 111. The quick gate of this group ran at
+commit 1.
+
+Discrimination (author run): R1 return a result filed under another digest,
+R2 write a ledger without validating it, R3 read a ledger without validating
+it, R4 store bytes that are not canonical, R5 read a result outside the
+results directory — all killed. R5 first survived, because the digest
+comparison also refuses a traversal; the case at `:117` now plants a sealed
+record where the traversal lands, so only the grammar check gives the
+expected `VES_TASK_STATE_MALFORMED`.
+
 ## T7 Evidence (Windows bridge transport, commits 1 to 3)
 
 Author: the T7 implementer. Commit 4 (lifting the refusals) is not on this

@@ -35,12 +35,12 @@ account (#478, #479). At `6fae651`:
 
 | Reader | Returns | Validated as it is read | Refused as |
 | --- | --- | --- | --- |
-| `loadGrant` (`task-run-record.ts:532`) | `GrantMarker` (`:170`) | `grantId` is text (`validatedGrant`, `:194`), both forms | `VES_TASK_STATE_MALFORMED` |
-| `loadOutcome` (`:621`) | `OutcomeMarker` (`:174`), `TaskRunOutcome` plus `at` | `status` is one of the six `TaskRunOutcome` statuses; `at` and the text members that status carries (`OUTCOME_TEXT`, `:201`); a review outcome's `commit` is a commit record; an escalation's `failure` names a gate and its evidence (`validatedOutcome`, `:211`), both forms | `VES_TASK_STATE_MALFORMED` |
-| `loadReport` (`:649`), and `verifiedCommit` (`:660`) | `VerificationReportRecord` (`:178`) | `verdict` is `PASS` or `FAIL`; `commitId` is an object ID (`validatedReport`, `:223`) | `VES_TASK_STATE_MALFORMED` |
-| `loadReview` (`:672`) | `HumanReviewRecord` (`:183`) | `outcome` is `accepted` or `rejected` (`validatedReview`, `:231`) | `VES_TASK_STATE_MALFORMED` |
-| `loadCommit` (`:629`) | `TaskRunCommit`, as before | `validatedCommit`, as before | unchanged |
-| `loadWorktreeRef` (`:608`) | `string`, as before | sealed: text, as before; legacy: one that names nothing reads as none (`plainWorktreeRef`, `:239`), as before | unchanged |
+| `loadGrant` (`task-run-record.ts:539`) | `GrantMarker` (`:177`) | `grantId` is text (`validatedGrant`, `:201`), both forms | `VES_TASK_STATE_MALFORMED` |
+| `loadOutcome` (`:628`) | `OutcomeMarker` (`:181`), `TaskRunOutcome` plus `at` | `status` is one of the six `TaskRunOutcome` statuses; `at` and the text members that status carries (`OUTCOME_TEXT`, `:208`); a review outcome's `commit` is a commit record; an escalation's `failure` names a gate and its evidence (`validatedOutcome`, `:218`), both forms | `VES_TASK_STATE_MALFORMED` |
+| `loadReport` (`:656`), and `verifiedCommit` (`:667`) | `VerificationReportRecord` (`:185`) | `verdict` is `PASS` or `FAIL`; `commitId` is an object ID (`validatedReport`, `:230`) | `VES_TASK_STATE_MALFORMED` |
+| `loadReview` (`:679`) | `HumanReviewRecord` (`:190`) | `outcome` is `accepted` or `rejected` (`validatedReview`, `:238`) | `VES_TASK_STATE_MALFORMED` |
+| `loadCommit` (`:636`) | `TaskRunCommit`, as before | `validatedCommit`, as before | unchanged |
+| `loadWorktreeRef` (`:615`) | `string`, as before | sealed: text, as before; legacy: one that names nothing reads as none (`plainWorktreeRef`, `:246`), as before | unchanged |
 
 Each reader returns the record as the file holds it, every member kept. The
 declared type names the members the task path reads; the Run Capsule digests
@@ -90,7 +90,7 @@ the lines `live-task-pilot/validation.md` cites (`:13`, `:160`) do not move.
 - **The runtime store's rows**: the run journal's terminal event
   (`task-review.ts:85`), the capsule seal (`task-status.ts:90`) and the
   repair state `RunCheckpoints.recordBudgetLedger` carries forward
-  (`task-run-record.ts:358-370`). They belong to ADR2-7 (T7), which declares
+  (`task-run-record.ts:365-377`). They belong to ADR2-7 (T7), which declares
   the runtime store's records; this change does not touch those lines.
 - `loadPlan`, `loadContextManifest`, `approvedPackage`, `activeProcess` and
   `cancelRequested` already returned declared types and are unchanged.

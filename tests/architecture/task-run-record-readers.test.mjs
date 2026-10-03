@@ -26,7 +26,8 @@ test("each reader of the Run record returns its declared record, never a row", (
     ["loadOutcome", "OutcomeMarker"],
     ["loadReport", "VerificationReportRecord"],
     ["loadReview", "HumanReviewRecord"],
-    ["loadCommit", "TaskRunCommit"]
+    ["loadCommit", "TaskRunCommit"],
+    ["loadCoordinationLedger", "CoordinationLedger"]
   ])
     assert.match(owner, new RegExp(`\\b${reader}\\(\\): Promise<${type} \\| undefined>`, "u"), reader);
   assert.match(owner, /\bverifiedCommit\(\): Promise<\{[^}]*\breport: VerificationReportRecord \}>/u);
