@@ -4,7 +4,7 @@ import {
   BoundedDriverEventQueue,
   DriverSupervisor,
   escalateDriverCancellation
-} from "../../packages/drivers/src/index.ts";
+} from "../../packages/drivers/src/driver-framed-protocol.ts";
 
 test("bounded queue pauses at high water and resumes at low water", () => {
   const queue = new BoundedDriverEventQueue({ capacity: 4, highWater: 3, lowWater: 1 });

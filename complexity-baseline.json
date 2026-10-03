@@ -300,17 +300,17 @@
     "packages/drivers/src/codex-driver.ts :: Private method #validateExecution": [
       14
     ],
+    "packages/drivers/src/driver-framed-protocol.ts :: Function 'validateEnvelope'": [
+      33
+    ],
+    "packages/drivers/src/driver-framed-protocol.ts :: Method 'push'": [
+      14
+    ],
     "packages/drivers/src/index.ts :: Function 'validateDriverStartRequest'": [
       27
     ],
-    "packages/drivers/src/index.ts :: Function 'validateEnvelope'": [
-      33
-    ],
     "packages/drivers/src/index.ts :: Function 'validateScriptEvent'": [
       15
-    ],
-    "packages/drivers/src/index.ts :: Method 'push'": [
-      14
     ],
     "packages/drivers/src/opencode-driver.ts :: Async arrow function": [
       27

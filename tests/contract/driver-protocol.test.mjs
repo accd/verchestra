@@ -2,11 +2,11 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   DriverFrameDecoder,
-  DriverProtocolError,
   DriverSequenceGuard,
   encodeDriverFrame,
   negotiateDriverHandshake
-} from "../../packages/drivers/src/index.ts";
+} from "../../packages/drivers/src/driver-framed-protocol.ts";
+import { DriverProtocolError } from "../../packages/drivers/src/index.ts";
 import { envelope, handshake, workspaceId } from "../helpers/driver-protocol-fixture.mjs";
 
 for (const split of [1, 2, 7, 31, 127]) {

@@ -1,0 +1,374 @@
+// invariant: the framed Driver protocol of T33: a Content-Length framed
+// envelope with a canonical payload digest, its decoder, the sequence guard,
+// the handshake, the bounded event queue, the cancellation escalation, and the
+// supervisor over them. Its two suites are its only importers.
+// why: no composition runs a driver behind a framed transport; every driver
+// runs in process behind the Driver interface. The module is not part of the
+// package's entry, so deleting it with its suites is one change, and the
+// owner's decision.
+import { createHash } from "node:crypto";
+
+import { canonicalizeJsonV2, isDriverEventType, type DriverEvent } from "@verchestra/domain";
+
+import { DriverProtocolError } from "./index.ts";
+
+// why: the envelope's own grammar. The start request of the Driver interface
+// states the same two patterns for its fields in the package's entry.
+const DIGEST = /^sha256:[a-f0-9]{64}$/u;
+const SAFE = /^[A-Za-z0-9][A-Za-z0-9._:@/+\-]{0,511}$/u;
+
+export interface DriverProtocolEnvelope {
+  readonly protocol: "verchestra/1";
+  readonly messageId: string;
+  readonly correlationId: string;
+  readonly workspaceId: string;
+  readonly runId?: string;
+  readonly sequence: number;
+  readonly sentAt: string;
+  readonly payloadSchema: { readonly name: string; readonly version: number };
+  readonly payloadDigest: string;
+  readonly payload: unknown;
+}
+
+// The envelope payload digest is canonicalized by the repository's V2 contract
+// (RFC 8785) instead of a private recursive serializer whose object keys were
+// ordered by the ambient locale (issue #58). Direct swap, not a versioned
+// facade: this digest is never stored. It is written by `encodeDriverFrame`
+// and re-derived by `validateEnvelope` on the receiving side of a live frame,
+// so producer and consumer are always the same build -- there is no installed
+// base of V1 bytes for a migration to invalidate, and the `sha256:` prefix the
+// `DIGEST` guard and the wire schema pin stays as it is.
+//
+// The V2 guard is stricter than the serializer it replaces: it rejects
+// `undefined`, non-finite numbers, and non-plain prototypes rather than
+// silently dropping or coercing them. That is the intended direction for a
+// protocol boundary -- a frame whose payload cannot be faithfully canonicalized
+// is refused rather than given a digest that does not describe it.
+function canonicalJson(value: unknown): string {
+  return canonicalizeJsonV2(value);
+}
+
+function sha256(value: unknown): string {
+  return `sha256:${createHash("sha256")
+    .update(typeof value === "string" ? value : canonicalJson(value))
+    .digest("hex")}`;
+}
+
+function terminate(code: string, message: string): never {
+  throw new DriverProtocolError(code, message, { terminateHost: true, revokeGrants: true });
+}
+
+function completeEnvelope(
+  input: Omit<DriverProtocolEnvelope, "payloadDigest"> & { readonly payloadDigest?: string }
+): DriverProtocolEnvelope {
+  return Object.freeze({ ...input, payloadDigest: input.payloadDigest ?? sha256(input.payload) });
+}
+
+export function encodeDriverFrame(
+  input: Omit<DriverProtocolEnvelope, "payloadDigest"> & { readonly payloadDigest?: string }
+): Buffer {
+  const envelope = completeEnvelope(input);
+  const body = Buffer.from(JSON.stringify(envelope), "utf8");
+  return Buffer.concat([Buffer.from(`Content-Length: ${body.length}\r\n\r\n`, "ascii"), body]);
+}
+
+function validateEnvelope(value: unknown, workspaceId: string): DriverProtocolEnvelope {
+  if (value === null || typeof value !== "object" || Array.isArray(value))
+    terminate("VES_DRIVER_ENVELOPE_INVALID", "Driver envelope is invalid");
+  const envelope = value as DriverProtocolEnvelope;
+  const envelopeKeys = Object.keys(envelope).sort();
+  const requiredKeys = [
+    "correlationId",
+    "messageId",
+    "payload",
+    "payloadDigest",
+    "payloadSchema",
+    "protocol",
+    "sentAt",
+    "sequence",
+    "workspaceId"
+  ];
+  if ("runId" in envelope) requiredKeys.push("runId");
+  requiredKeys.sort();
+  const sentAt = typeof envelope.sentAt === "string" ? new Date(envelope.sentAt) : undefined;
+  if (
+    envelopeKeys.length !== requiredKeys.length ||
+    envelopeKeys.some((key, index) => key !== requiredKeys[index]) ||
+    envelope.protocol !== "verchestra/1" ||
+    typeof envelope.messageId !== "string" ||
+    !SAFE.test(envelope.messageId) ||
+    typeof envelope.correlationId !== "string" ||
+    !SAFE.test(envelope.correlationId) ||
+    !Number.isSafeInteger(envelope.sequence) ||
+    envelope.sequence < 0 ||
+    typeof envelope.sentAt !== "string" ||
+    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u.test(envelope.sentAt) ||
+    sentAt === undefined ||
+    Number.isNaN(sentAt.valueOf()) ||
+    sentAt.toISOString() !== envelope.sentAt ||
+    envelope.payloadSchema === null ||
+    typeof envelope.payloadSchema !== "object" ||
+    Array.isArray(envelope.payloadSchema) ||
+    Object.keys(envelope.payloadSchema).sort().join(",") !== "name,version" ||
+    !SAFE.test(envelope.payloadSchema.name) ||
+    !Number.isSafeInteger(envelope.payloadSchema.version) ||
+    envelope.payloadSchema.version < 1 ||
+    !DIGEST.test(envelope.payloadDigest)
+  )
+    terminate("VES_DRIVER_ENVELOPE_INVALID", "Driver envelope schema is invalid");
+  if ("runId" in envelope && (typeof envelope.runId !== "string" || !SAFE.test(envelope.runId)))
+    terminate("VES_DRIVER_ENVELOPE_INVALID", "Driver envelope Run identity is invalid");
+  if (envelope.workspaceId !== workspaceId)
+    terminate("VES_DRIVER_ENVELOPE_WORKSPACE", "Driver envelope belongs to another Workspace");
+  if (envelope.payloadDigest !== sha256(envelope.payload))
+    terminate("VES_DRIVER_ENVELOPE_DIGEST", "Driver envelope payload digest is invalid");
+  return Object.freeze(envelope);
+}
+
+export class DriverFrameDecoder {
+  readonly #workspaceId: string;
+  readonly #maximumHeaderBytes: number;
+  readonly #maximumMessageBytes: number;
+  #buffer = Buffer.alloc(0);
+  #pendingLength: number | undefined;
+  lastPayloadDigest = "";
+
+  constructor(options: {
+    readonly workspaceId: string;
+    readonly maximumHeaderBytes: number;
+    readonly maximumMessageBytes: number;
+  }) {
+    this.#workspaceId = options.workspaceId;
+    this.#maximumHeaderBytes = options.maximumHeaderBytes;
+    this.#maximumMessageBytes = options.maximumMessageBytes;
+  }
+
+  push(chunk: Uint8Array): readonly DriverProtocolEnvelope[] {
+    this.#buffer = Buffer.concat([this.#buffer, Buffer.from(chunk)]);
+    const messages: DriverProtocolEnvelope[] = [];
+    while (true) {
+      if (this.#pendingLength === undefined) {
+        const boundary = this.#buffer.indexOf("\r\n\r\n");
+        if (boundary < 0) {
+          if (this.#buffer.length > this.#maximumHeaderBytes)
+            terminate("VES_DRIVER_FRAME_HEADER_LIMIT", "Driver frame header exceeds its limit");
+          break;
+        }
+        if (boundary > this.#maximumHeaderBytes)
+          terminate("VES_DRIVER_FRAME_HEADER_LIMIT", "Driver frame header exceeds its limit");
+        const lines = this.#buffer.subarray(0, boundary).toString("ascii").split("\r\n");
+        const lengthLines = lines.filter((line) => line.toLowerCase().startsWith("content-length:"));
+        if (lengthLines.length === 0)
+          terminate("VES_DRIVER_FRAME_LENGTH_REQUIRED", "Driver frame requires Content-Length");
+        if (lines.length !== 1 || lengthLines.length !== 1)
+          terminate("VES_DRIVER_FRAME_HEADER_INVALID", "Driver frame headers are invalid");
+        const line = lengthLines[0] as string;
+        const raw = line.slice(line.indexOf(":") + 1).trim();
+        if (!/^(0|[1-9]\d*)$/u.test(raw))
+          terminate("VES_DRIVER_FRAME_LENGTH_INVALID", "Driver frame length is invalid");
+        const length = Number(raw);
+        if (!Number.isSafeInteger(length))
+          terminate("VES_DRIVER_FRAME_LENGTH_INVALID", "Driver frame length is not safe");
+        if (length > this.#maximumMessageBytes)
+          terminate("VES_DRIVER_FRAME_MESSAGE_LIMIT", "Driver frame body exceeds its limit");
+        this.#pendingLength = length;
+        this.#buffer = this.#buffer.subarray(boundary + 4);
+      }
+      if (this.#buffer.length < this.#pendingLength) break;
+      const body = this.#buffer.subarray(0, this.#pendingLength);
+      this.#buffer = this.#buffer.subarray(this.#pendingLength);
+      this.#pendingLength = undefined;
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(body.toString("utf8"));
+      } catch {
+        terminate("VES_DRIVER_FRAME_JSON_INVALID", "Driver frame body is invalid JSON");
+      }
+      const envelope = validateEnvelope(parsed, this.#workspaceId);
+      this.lastPayloadDigest = envelope.payloadDigest;
+      messages.push(envelope);
+    }
+    return Object.freeze(messages);
+  }
+}
+
+export class DriverSequenceGuard {
+  #nextSequence = 0;
+  readonly #messages = new Map<string, string>();
+
+  accept(envelope: Pick<DriverProtocolEnvelope, "messageId" | "sequence" | "payloadDigest">) {
+    const recorded = this.#messages.get(envelope.messageId);
+    if (recorded !== undefined) {
+      if (recorded !== envelope.payloadDigest)
+        terminate("VES_DRIVER_MESSAGE_CONFLICT", "Driver message identity was reused incompatibly");
+      return Object.freeze({ accepted: false, duplicate: true, nextSequence: this.#nextSequence });
+    }
+    if (envelope.sequence !== this.#nextSequence)
+      terminate("VES_DRIVER_SEQUENCE_GAP", "Driver message sequence is not contiguous");
+    this.#messages.set(envelope.messageId, envelope.payloadDigest);
+    this.#nextSequence += 1;
+    return Object.freeze({ accepted: true, duplicate: false, nextSequence: this.#nextSequence });
+  }
+}
+
+interface ControllerHandshake {
+  readonly protocol: "verchestra/1";
+  readonly requiredSchemas: readonly string[];
+  readonly supportedSchemas: readonly string[];
+  readonly expectedComponent: { readonly id: string; readonly digest: string };
+  readonly allowedCapabilities: readonly string[];
+  readonly maxMessageBytes: number;
+}
+
+interface WorkerHandshake {
+  readonly protocol: string;
+  readonly supportedSchemas: readonly string[];
+  readonly component: { readonly id: string; readonly digest: string };
+  readonly capabilities: readonly string[];
+  readonly maxMessageBytes: number;
+}
+
+function handshakeFailure(code: string, message: string): never {
+  throw new DriverProtocolError(code, message, { terminateHost: true, revokeGrants: true });
+}
+
+export function negotiateDriverHandshake(controller: ControllerHandshake, worker: WorkerHandshake) {
+  if (controller.protocol !== "verchestra/1" || worker.protocol !== controller.protocol)
+    handshakeFailure("VES_DRIVER_HANDSHAKE_PROTOCOL", "Driver protocol is incompatible");
+  const schemas = controller.supportedSchemas.filter((entry) => worker.supportedSchemas.includes(entry));
+  if (controller.requiredSchemas.some((entry) => !schemas.includes(entry)))
+    handshakeFailure("VES_DRIVER_HANDSHAKE_SCHEMA", "Driver required schemas are unavailable");
+  if (
+    worker.component.id !== controller.expectedComponent.id ||
+    worker.component.digest !== controller.expectedComponent.digest
+  )
+    handshakeFailure("VES_DRIVER_HANDSHAKE_IDENTITY", "Driver component identity is incompatible");
+  if (worker.capabilities.some((entry) => !controller.allowedCapabilities.includes(entry)))
+    handshakeFailure("VES_DRIVER_HANDSHAKE_CAPABILITY", "Driver capability exceeds its grant");
+  return Object.freeze({
+    protocol: controller.protocol,
+    schemas: Object.freeze(schemas),
+    component: Object.freeze({ ...worker.component }),
+    capabilities: Object.freeze([...worker.capabilities]),
+    maximumMessageBytes: Math.min(controller.maxMessageBytes, worker.maxMessageBytes)
+  });
+}
+
+export class BoundedDriverEventQueue<T = unknown> {
+  readonly #capacity: number;
+  readonly #highWater: number;
+  readonly #lowWater: number;
+  readonly #items: T[] = [];
+  #paused = false;
+
+  constructor(options: { readonly capacity: number; readonly highWater: number; readonly lowWater: number }) {
+    if (
+      !Number.isSafeInteger(options.capacity) ||
+      !Number.isSafeInteger(options.highWater) ||
+      !Number.isSafeInteger(options.lowWater) ||
+      options.capacity < options.highWater ||
+      options.highWater <= options.lowWater ||
+      options.lowWater < 0
+    )
+      throw new TypeError("Driver queue bounds are invalid");
+    this.#capacity = options.capacity;
+    this.#highWater = options.highWater;
+    this.#lowWater = options.lowWater;
+  }
+
+  push(value: T) {
+    if (this.#items.length === this.#capacity)
+      throw new DriverProtocolError("VES_DRIVER_BACKPRESSURE_LIMIT", "Driver event queue is full", {
+        cancellationRequired: true
+      });
+    this.#items.push(value);
+    if (this.#items.length >= this.#highWater) this.#paused = true;
+    return Object.freeze({ size: this.#items.length, pauseReads: this.#paused });
+  }
+
+  shift() {
+    const value = this.#items.shift();
+    const resumeReads = this.#paused && this.#items.length <= this.#lowWater;
+    if (resumeReads) this.#paused = false;
+    return Object.freeze({ value, size: this.#items.length, resumeReads });
+  }
+}
+
+export async function escalateDriverCancellation(ports: {
+  readonly protocolCancel: () => Promise<unknown>;
+  readonly waitForExit: () => Promise<boolean>;
+  readonly signalProcess: () => Promise<unknown>;
+  readonly killTree: () => Promise<unknown>;
+}) {
+  const evidence = ["protocol-cancel"];
+  await ports.protocolCancel();
+  if (await ports.waitForExit())
+    return Object.freeze({
+      terminated: true,
+      stage: "protocol-cancel",
+      evidence: Object.freeze([...evidence, "protocol-exit"])
+    });
+  evidence.push("grace-expired", "process-signal");
+  await ports.signalProcess();
+  if (await ports.waitForExit())
+    return Object.freeze({
+      terminated: true,
+      stage: "process-signal",
+      evidence: Object.freeze([...evidence, "signal-exit"])
+    });
+  evidence.push("signal-grace-expired", "process-tree-kill");
+  await ports.killTree();
+  return Object.freeze({ terminated: true, stage: "process-tree-kill", evidence: Object.freeze(evidence) });
+}
+
+export class FramedDriverHostAdapter {
+  readonly #decoder: DriverFrameDecoder;
+  readonly #sequence = new DriverSequenceGuard();
+
+  constructor(options: {
+    readonly workspaceId: string;
+    readonly maximumHeaderBytes: number;
+    readonly maximumMessageBytes: number;
+  }) {
+    this.#decoder = new DriverFrameDecoder(options);
+  }
+
+  push(chunk: Uint8Array): readonly DriverProtocolEnvelope[] {
+    return Object.freeze(this.#decoder.push(chunk).filter((entry) => this.#sequence.accept(entry).accepted));
+  }
+}
+
+export class DriverSupervisor {
+  readonly #queue: BoundedDriverEventQueue<DriverEvent>;
+  readonly #cancellation: Parameters<typeof escalateDriverCancellation>[0];
+  #nextSequence = 0;
+
+  constructor(options: {
+    readonly queue: { readonly capacity: number; readonly highWater: number; readonly lowWater: number };
+    readonly cancellation: Parameters<typeof escalateDriverCancellation>[0];
+  }) {
+    this.#queue = new BoundedDriverEventQueue(options.queue);
+    this.#cancellation = options.cancellation;
+  }
+
+  accept(event: DriverEvent) {
+    if (!isDriverEventType(event.type) || !Number.isSafeInteger(event.sequence) || event.sequence < 0)
+      throw new DriverProtocolError("VES_DRIVER_EVENT_INVALID", "Driver event is invalid", {
+        cancellationRequired: true
+      });
+    if (event.sequence !== this.#nextSequence)
+      throw new DriverProtocolError("VES_DRIVER_EVENT_SEQUENCE", "Driver event sequence is not contiguous", {
+        cancellationRequired: true
+      });
+    this.#nextSequence += 1;
+    return this.#queue.push(event);
+  }
+
+  next() {
+    return this.#queue.shift();
+  }
+
+  async cancel() {
+    return escalateDriverCancellation(this.#cancellation);
+  }
+}

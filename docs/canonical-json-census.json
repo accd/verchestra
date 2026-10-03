@@ -669,13 +669,24 @@
       "reason": "The reviewed source uses the declared V2 canonical contract."
     },
     {
-      "path": "packages/drivers/src/index.ts",
+      "path": "packages/drivers/src/driver-framed-protocol.ts",
       "classification": "migrated-v2",
       "signals": {
         "canonicalizer": 4,
         "digest": 2,
         "localeCompare": 0,
         "serialization": 1
+      },
+      "reason": "Structured material already uses the V2 contract or is a V2 support primitive."
+    },
+    {
+      "path": "packages/drivers/src/index.ts",
+      "classification": "migrated-v2",
+      "signals": {
+        "canonicalizer": 2,
+        "digest": 2,
+        "localeCompare": 0,
+        "serialization": 0
       },
       "reason": "Structured material already uses the V2 contract or is a V2 support primitive."
     },

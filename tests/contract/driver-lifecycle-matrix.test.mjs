@@ -18,7 +18,7 @@ import { piAbortableFixture, piFixture } from "../helpers/pi-driver-fixture.mjs"
 //
 // Before this file the four drivers were covered one file at a time, and
 // nothing enumerated them together: conformance to `interface Driver`
-// (packages/drivers/src/index.ts:359) was asserted only by the five
+// (packages/drivers/src/index.ts:55) was asserted only by the five
 // `implements Driver` clauses, which is a compile-time claim, and each suite
 // chose its own shape. A driver could therefore be added, or an existing one
 // could lose a lifecycle method's runtime behaviour, without any single test
