@@ -71,21 +71,27 @@ test("a single test file is a scope root of its own", async (t) => {
 // own private directory, and that the leak never reached the caller's.
 const ownedTemporary = (temporary) => ({ TMPDIR: temporary, TEMP: temporary, TMP: temporary });
 
-test("a scope whose tests leave anything in the temporary directory fails and names it", async (t) => {
+// why: every guard case writes one test file, run alone under a fresh root,
+// against a temporary directory the case owns.
+async function guardedScope(t, file, fsImport, body) {
   const root = await temporaryDirectory(t, "verchestra-scope-");
   const temporary = await temporaryDirectory(t, "verchestra-scope-tmp-");
-  await writeFile(
-    join(root, "leaking.test.mjs"),
-    [
-      'import { mkdtempSync } from "node:fs";',
-      'import { tmpdir } from "node:os";',
-      'import { join } from "node:path";',
-      'import test from "node:test";',
-      'test("leaks", () => { mkdtempSync(join(tmpdir(), "leaked-fixture-")); });',
-      ""
-    ].join("\n")
-  );
-  const result = runScope("unit", [root], ownedTemporary(temporary));
+  const source = [
+    `import { ${fsImport} } from "node:fs";`,
+    'import { tmpdir } from "node:os";',
+    'import { join } from "node:path";',
+    'import test from "node:test";',
+    ...body,
+    ""
+  ];
+  await writeFile(join(root, file), source.join("\n"));
+  return { result: runScope("unit", [root], ownedTemporary(temporary)), temporary };
+}
+
+test("a scope whose tests leave anything in the temporary directory fails and names it", async (t) => {
+  const { result, temporary } = await guardedScope(t, "leaking.test.mjs", "mkdtempSync", [
+    'test("leaks", () => { mkdtempSync(join(tmpdir(), "leaked-fixture-")); });'
+  ]);
   assert.equal(result.status, 1, "a passing test that leaks still fails the scope");
   assert.match(
     result.stderr,
@@ -95,43 +101,21 @@ test("a scope whose tests leave anything in the temporary directory fails and na
 });
 
 test("a scope whose tests remove what they create passes and leaves nothing behind", async (t) => {
-  const root = await temporaryDirectory(t, "verchestra-scope-");
-  const temporary = await temporaryDirectory(t, "verchestra-scope-tmp-");
-  await writeFile(
-    join(root, "owning.test.mjs"),
-    [
-      'import { mkdtempSync, rmSync } from "node:fs";',
-      'import { tmpdir } from "node:os";',
-      'import { join } from "node:path";',
-      'import test from "node:test";',
-      'test("owns", (t) => {',
-      '  const path = mkdtempSync(join(tmpdir(), "owned-fixture-"));',
-      "  t.after(() => rmSync(path, { recursive: true, force: true }));",
-      "});",
-      ""
-    ].join("\n")
-  );
-  const result = runScope("unit", [root], ownedTemporary(temporary));
+  const { result, temporary } = await guardedScope(t, "owning.test.mjs", "mkdtempSync, rmSync", [
+    'test("owns", (t) => {',
+    '  const path = mkdtempSync(join(tmpdir(), "owned-fixture-"));',
+    "  t.after(() => rmSync(path, { recursive: true, force: true }));",
+    "});"
+  ]);
   assert.equal(result.status, 0, result.stderr);
   assert.doesNotMatch(result.stderr, /tests left/u);
   assert.deepEqual(await readdir(temporary), []);
 });
 
 test("Node's shared compile cache is the one entry a scope may leave, and it is still removed", async (t) => {
-  const root = await temporaryDirectory(t, "verchestra-scope-");
-  const temporary = await temporaryDirectory(t, "verchestra-scope-tmp-");
-  await writeFile(
-    join(root, "caching.test.mjs"),
-    [
-      'import { mkdirSync } from "node:fs";',
-      'import { tmpdir } from "node:os";',
-      'import { join } from "node:path";',
-      'import test from "node:test";',
-      'test("caches", () => { mkdirSync(join(tmpdir(), "node-compile-cache")); });',
-      ""
-    ].join("\n")
-  );
-  const result = runScope("unit", [root], ownedTemporary(temporary));
+  const { result, temporary } = await guardedScope(t, "caching.test.mjs", "mkdirSync", [
+    'test("caches", () => { mkdirSync(join(tmpdir(), "node-compile-cache")); });'
+  ]);
   assert.equal(result.status, 0, result.stderr);
   assert.deepEqual(await readdir(temporary), []);
 });

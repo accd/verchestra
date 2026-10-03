@@ -12,6 +12,7 @@ import {
   digest,
   disposeLifecycleRoots,
   lifecycleRoot,
+  openLifecycle,
   memoryHit,
   now,
   objectInput,
@@ -24,19 +25,7 @@ import { temporaryDirectory } from "../helpers/temporary-directory.mjs";
 
 after(disposeLifecycleRoots);
 
-async function opened(options = {}) {
-  const paths = await lifecycleRoot();
-  const lifecycle = new MemoryPromotionLifecycle({
-    dbPath: paths.dbPath,
-    objectRoot: paths.objectRoot,
-    ownerRoots: paths.ownerRoots,
-    artifactPlanner: paths.artifactPlanner,
-    now: () => now,
-    ...options
-  });
-  lifecycle.open();
-  return { ...paths, lifecycle };
-}
+const opened = openLifecycle;
 
 test("promotion cannot publish without a review", async () => {
   const { controlRoot, lifecycle } = await opened();
