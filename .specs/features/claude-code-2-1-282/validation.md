@@ -8,7 +8,7 @@
 
 | Requirement | Evidence | Result |
 | --- | --- | --- |
-| CC-01 | `.github/workflows/ci.yml:50`, `full-validation.yml:121`, `platform-matrix.yml:194`, `t76-candidate-build.yml:133` install `2.1.282` and verify the exact version; `apps/site/tests/unit/pages-workflow.test.mjs:15`, `:17` assert it; `.specs/features/platform-qualification-matrix/matrix.md` section 4 lists it | PASS locally |
+| CC-01 | `.github/workflows/ci.yml:50`, `full-validation.yml:121`, `platform-matrix.yml:194`, `t76-candidate-build.yml:158` install `2.1.282` and verify the exact version; `apps/site/tests/unit/pages-workflow.test.mjs:15`, `:17` assert it; `.specs/features/platform-qualification-matrix/matrix.md` section 4 lists it | PASS locally |
 | CC-02 | `spikes/claude-code-driver/test/claude-driver.test.mjs:46` pins the live probe to `2.1.282` with the `2.1.168` floor; `:82`-`:96` discriminate drift; `:54` reads every T03 flag and `dontAsk` from `--help` | PASS locally |
 | CC-03 | `spikes/claude-code-driver/test/claude-driver-mediated.test.mjs:239` checks every mediated flag; `:265` asserts `VES_CLAUDE_VERSION_UNSUPPORTED` below the minimum; `:256` fails the fleet on a low pin; `:287` covers the version comparison. A simulated `2.1.168` on PATH takes the refusal branch and fails under `VES_REQUIRE_PINNED_PROVIDERS=1` | PASS locally |
 | CC-04 | `docs/qualification/claude-code-driver-2.1.282.md`; `claude-code-driver.md` unchanged | PASS |

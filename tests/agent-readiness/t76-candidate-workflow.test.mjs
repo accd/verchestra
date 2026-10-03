@@ -16,6 +16,11 @@ const FLEET = Object.freeze([
 
 const lines = workflow.split(/\r?\n/u);
 
+// invariant: the one place the sealing module may be run from: the tooling
+// checkout of the dispatched commit, moved out of the candidate tree.
+const TOOLING = "$RUNNER_TEMP/t76-evidence-tooling";
+const EVIDENCE_MODULE = `${TOOLING}/scripts/t76-candidate-evidence.mjs`;
+
 // why: no YAML dependency exists here. Jobs are two-space keys under `jobs:`,
 // and their steps are six-space `- name:` items.
 const jobLines = (job) => {
@@ -98,7 +103,7 @@ test("every closed gate is executed and its counters are sealed before building"
   assert.deepEqual(/profiles=\(([a-z ]+)\)/u.exec(workflow)[1].split(" "), [...GATE_PROFILES]);
   assert.match(
     workflow,
-    /pnpm "gate:\$\{profile\}" 2>&1 \| tee "\$log"\n\s+status=\$\{PIPESTATUS\[0\]\}\n\s+set -e\n\s+node scripts\/t76-candidate-evidence\.mjs seal-gate \\\n\s+--profile "\$profile" \\\n\s+--status "\$status" \\\n\s+--log "\$log" \\\n\s+--evaluations gate-evaluations\.json\n\s+if \(\( status != 0 \)\); then failed=1; fi/u
+    /pnpm "gate:\$\{profile\}" 2>&1 \| tee "\$log"\n\s+status=\$\{PIPESTATUS\[0\]\}\n\s+set -e\n\s+node "\$RUNNER_TEMP\/t76-evidence-tooling\/scripts\/t76-candidate-evidence\.mjs" seal-gate \\\n\s+--profile "\$profile" \\\n\s+--status "\$status" \\\n\s+--log "\$log" \\\n\s+--evaluations gate-evaluations\.json\n\s+if \(\( status != 0 \)\); then failed=1; fi/u
   );
   assert.match(workflow, /if: steps\.gates\.outcome == 'success'/u);
   assert.match(workflow, /--evaluations gate-evaluations\.json/u);
@@ -111,7 +116,7 @@ test("target bytes and evidence are portable, content-addressed artifacts", () =
   const seal = stepBody("target", "Seal target build evidence");
   assert.match(seal, /^ {8}if: steps\.gates\.outcome == 'success'$/mu);
   assert.deepEqual(runCommand(seal), [
-    "node scripts/t76-candidate-evidence.mjs seal-target",
+    `node "${EVIDENCE_MODULE}" seal-target`,
     '--revision "$CANDIDATE_REVISION"',
     '--release-id "$RELEASE_ID"',
     '--semantic-version "$SEMANTIC_VERSION"',
@@ -134,7 +139,7 @@ test("collection requires exactly one successful closure for every target", () =
   // module's reconciliation, which tests/build/t76-candidate-evidence.test.mjs
   // and the golden comparison with the former inline program run.
   assert.deepEqual(runCommand(stepBody("collect", "Reconcile the exact five-target closure")), [
-    "node scripts/t76-candidate-evidence.mjs reconcile",
+    `node "${EVIDENCE_MODULE}" reconcile`,
     '--revision "$CANDIDATE_REVISION"',
     "--targets targets",
     "--out t76-target-index.json"
@@ -230,7 +235,45 @@ test("no step embeds an evidence writer", () => {
   const openers = [...workflow.matchAll(/<<'([A-Z]+)'/gu)];
   assert.equal(openers.length, 1, "only the runner identity check runs inline");
   assert.match(stepBody("target", "Verify revision, target, and runtime"), /<<'NODE'/u);
-  assert.equal([...workflow.matchAll(/node scripts\/t76-candidate-evidence\.mjs (\S+)/gu)].length, 3);
+  assert.equal(workflow.split(`node "${EVIDENCE_MODULE}" `).length, 4, "three sealing steps call the module");
+});
+
+// why: the inline programs ran from the workflow definition, so a candidate
+// could not change how its own evidence is sealed and any revision could be
+// built. The module keeps that custody: it is checked out at the dispatched
+// commit, apart from the candidate, and never resolved from the candidate tree.
+test("the evidence is sealed by the dispatched commit's module, outside the candidate tree", () => {
+  const candidatePin = /uses: (actions\/checkout@[0-9a-f]{40}) # (\S+)/u.exec(
+    stepBody("target", "Check out the exact candidate revision")
+  );
+  for (const job of ["target", "collect"]) {
+    const checkout = stepBody(job, "Check out the evidence tooling at the dispatched commit");
+    assert.match(checkout, new RegExp(`uses: ${candidatePin[1].replace("/", "\\/")} # ${candidatePin[2]}`, "u"));
+    assert.match(checkout, /^ {10}ref: \$\{\{ github\.sha \}\}$/mu);
+    assert.match(checkout, /^ {10}path: \.t76-evidence-tooling$/mu);
+    assert.match(checkout, /^ {10}fetch-depth: 1$/mu);
+    assert.match(checkout, /^ {10}persist-credentials: false$/mu);
+    const move = stepBody(job, "Move the evidence tooling out of the candidate tree");
+    assert.ok(
+      move.includes(`"$GITHUB_WORKSPACE/.t76-evidence-tooling" "${TOOLING}"`),
+      `${job} moves the tooling out of the candidate tree`
+    );
+    assert.ok(
+      move.includes(`[[ "$(git -C "${TOOLING}" rev-parse HEAD)" == "$GITHUB_SHA" ]]`),
+      `${job} proves the tooling is the dispatched commit`
+    );
+    const names = stepNames(job);
+    assert.ok(
+      names.indexOf("Move the evidence tooling out of the candidate tree") <
+        names.findIndex((name) => stepBody(job, name).includes(EVIDENCE_MODULE)),
+      `${job} has the tooling in place before its first seal`
+    );
+  }
+  // invariant: every reference to the module is the tooling checkout's copy.
+  const references = [...workflow.matchAll(/(\S*)t76-candidate-evidence\.mjs/gu)].map((match) => match[1]);
+  assert.equal(references.length, 4, "the header comment and three sealing calls");
+  for (const prefix of references.slice(1)) assert.equal(prefix, `"${TOOLING}/scripts/`);
+  assert.doesNotMatch(workflow, /node (?:\.\/)?scripts\/t76-candidate-evidence/u);
 });
 
 test("the steps of each job keep their order", () => {
@@ -239,6 +282,8 @@ test("the steps of each job keep their order", () => {
     "Set up pnpm",
     "Set up Node",
     "Verify revision, target, and runtime",
+    "Check out the evidence tooling at the dispatched commit",
+    "Move the evidence tooling out of the candidate tree",
     "Install dependencies",
     "Install qualified local driver probes",
     "Run all five closed gates and seal their counters",
@@ -249,6 +294,8 @@ test("the steps of each job keep their order", () => {
   assert.deepEqual(stepNames("collect"), [
     "Check out the exact candidate revision",
     "Set up Node",
+    "Check out the evidence tooling at the dispatched commit",
+    "Move the evidence tooling out of the candidate tree",
     "Download every target artifact",
     "Reconcile the exact five-target closure",
     "Upload the reconciled target index"

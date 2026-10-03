@@ -6,6 +6,10 @@ name: T76 reproducible candidate build
 # workflow does not sign a release and does not promote a qualification state.
 # The definition is kept on the default branch so GitHub exposes its manual
 # dispatch; every product byte is still checked out from the requested SHA.
+# why: the program that seals the evidence is not a product byte. It is
+# scripts/t76-candidate-evidence.mjs at the commit this workflow was dispatched
+# from, checked out apart from the candidate, so a candidate cannot change how
+# its own evidence is sealed and any revision can be built.
 
 on:
   workflow_dispatch:
@@ -109,6 +113,27 @@ jobs:
             throw new Error(`runner arch ${process.arch} does not match ${process.env.MATRIX_ARCH}`);
           NODE
 
+      - name: Check out the evidence tooling at the dispatched commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.0
+        with:
+          ref: ${{ github.sha }}
+          path: .t76-evidence-tooling
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Move the evidence tooling out of the candidate tree
+        run: |
+          set -euo pipefail
+          # why: the gates and the builder must see the candidate tree as it was
+          # checked out, so the tooling lives under the runner's temporary
+          # directory, where actions/checkout cannot place it directly.
+          node -e "require('node:fs').renameSync(process.argv[1], process.argv[2])" \
+            "$GITHUB_WORKSPACE/.t76-evidence-tooling" "$RUNNER_TEMP/t76-evidence-tooling"
+          [[ "$(git -C "$RUNNER_TEMP/t76-evidence-tooling" rev-parse HEAD)" == "$GITHUB_SHA" ]] || {
+            echo "the evidence tooling is not at the dispatched commit" >&2
+            exit 1
+          }
+
       - name: Install dependencies
         run: |
           set -euo pipefail
@@ -158,7 +183,7 @@ jobs:
             pnpm "gate:${profile}" 2>&1 | tee "$log"
             status=${PIPESTATUS[0]}
             set -e
-            node scripts/t76-candidate-evidence.mjs seal-gate \
+            node "$RUNNER_TEMP/t76-evidence-tooling/scripts/t76-candidate-evidence.mjs" seal-gate \
               --profile "$profile" \
               --status "$status" \
               --log "$log" \
@@ -201,7 +226,7 @@ jobs:
           MATRIX_PLATFORM: ${{ matrix.platform }}
           MATRIX_ARCH: ${{ matrix.arch }}
         run: >-
-          node scripts/t76-candidate-evidence.mjs seal-target
+          node "$RUNNER_TEMP/t76-evidence-tooling/scripts/t76-candidate-evidence.mjs" seal-target
           --revision "$CANDIDATE_REVISION"
           --release-id "$RELEASE_ID"
           --semantic-version "$SEMANTIC_VERSION"
@@ -243,6 +268,27 @@ jobs:
         with:
           node-version: 24.14.0
 
+      - name: Check out the evidence tooling at the dispatched commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.0
+        with:
+          ref: ${{ github.sha }}
+          path: .t76-evidence-tooling
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Move the evidence tooling out of the candidate tree
+        run: |
+          set -euo pipefail
+          # why: the gates and the builder must see the candidate tree as it was
+          # checked out, so the tooling lives under the runner's temporary
+          # directory, where actions/checkout cannot place it directly.
+          node -e "require('node:fs').renameSync(process.argv[1], process.argv[2])" \
+            "$GITHUB_WORKSPACE/.t76-evidence-tooling" "$RUNNER_TEMP/t76-evidence-tooling"
+          [[ "$(git -C "$RUNNER_TEMP/t76-evidence-tooling" rev-parse HEAD)" == "$GITHUB_SHA" ]] || {
+            echo "the evidence tooling is not at the dispatched commit" >&2
+            exit 1
+          }
+
       - name: Download every target artifact
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
@@ -254,7 +300,7 @@ jobs:
         env:
           CANDIDATE_REVISION: ${{ inputs.revision }}
         run: >-
-          node scripts/t76-candidate-evidence.mjs reconcile
+          node "$RUNNER_TEMP/t76-evidence-tooling/scripts/t76-candidate-evidence.mjs" reconcile
           --revision "$CANDIDATE_REVISION"
           --targets targets
           --out t76-target-index.json
