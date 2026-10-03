@@ -166,12 +166,14 @@ machine resolved and verified a signed release, activated it, and ran the
 packaged Self-Test profile inside a disposable, isolated trust domain — with no
 repository checkout anywhere in the journey.
 
-> **Known limitation.** `self-test` currently refuses when the working directory
-> is an ancestor of the operating system's temporary directory. On Windows the
-> default home directory is such an ancestor, so a shell opened at its default
-> location fails with `VES_CLI_COMMAND_FAILED`. Run the command from a project
-> directory until the fix ships. Tracked as
-> [issue #370](https://github.com/accd/verchestra/issues/370).
+> **Fixed limitation ([issue #370](https://github.com/accd/verchestra/issues/370)).**
+> The first published release, `0.0.0-qualification`, refused `self-test` when
+> the working directory was an ancestor of the operating system's temporary
+> directory. On Windows the default home directory is such an ancestor, so a
+> shell opened at its default location failed with `VES_CLI_COMMAND_FAILED`.
+> Every published release from `0.0.0-qualification.3` on carries the fix. A
+> deterministic test reproduces that layout on every platform; no recorded live
+> run has yet started from a default Windows home directory.
 
 ### Bind a provider credential
 
