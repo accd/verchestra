@@ -286,6 +286,97 @@ as 2.1.282 does (`ANTHROPIC_API_KEY` under `--bare`, `none` otherwise); without
 it the new subscription check refuses the fake, as it would refuse a real
 session that hid its source.
 
+## T5 Evidence (coordinated driver, Strands engine, sealed build, composition)
+
+Author's evidence, commit by commit, on branch `strands/t5-coordinated-driver`
+(base `origin/main` at `a73650a`). The independent verifier re-derives it.
+
+### Commit 1 — coordinated driver, native engine, node results
+
+Modules (all in `packages/application/src/execution/`, importing only
+`@verchestra/domain`): `node-result.ts` (closed draft-07 node-result and
+handoff schemas and their validator), `coordination-engine.ts` (the engine
+port and `NativeAgentEngine`, D5), `coordination-ledger.ts` (the node ledger
+and its validated reader), `node-prompt.ts` (the node prompt), and
+`coordinated-driver.ts` (`CoordinatedDriver`, the executor's driver port over a
+coordination plan).
+
+| Behaviour | Assertion (file:line) | Run |
+| --- | --- | --- |
+| SSI-43: a graph node's schema is the closed `outcome`/`summary` object; a swarm node's `next` enum lists only its declared targets and `<complete>` | `tests/unit/node-result.test.mjs:20`, `:32` | `node --test tests/unit/node-result.test.mjs`: 9 of 9 |
+| SSI-44, SSI-46: 13 malformed results (extra or missing member, unknown outcome, unbounded summary or message, not JSON, not UTF-8, not canonical, missing destination) are `VES_COORDINATION_RESULT_INVALID`; an undeclared destination is `VES_COORDINATION_HANDOFF_UNDECLARED`; strings are bounded by characters as JSON Schema counts them | `tests/unit/node-result.test.mjs:53`, `:77`, `:86` | same |
+| SSI-47: at the node and run limits a result passes, one byte over either is `VES_COORDINATION_RESULT_TOO_LARGE` | `tests/unit/node-result.test.mjs:93` | same |
+| SSI-06, SSI-50: a node prompt is built from the approved node and task, its declared inputs' results, and the handoff, each delimited as untrusted data after the rules; a reader is told it never writes | `tests/unit/node-result.test.mjs:100`, `:128` | same |
+| D5: mode `agent` runs on the native engine; the result is persisted by digest and the visit completed | `tests/unit/coordinated-driver.test.mjs:31` | `node --test tests/unit/coordinated-driver.test.mjs`: 24 of 24 |
+| Order: a graph runs in dependency order and each node gets only its declared inputs' results | `tests/unit/coordinated-driver.test.mjs:54` | same |
+| Dependency failure: a failed node fails the run with its code and nothing downstream starts | `tests/unit/coordinated-driver.test.mjs:71` | same |
+| An engine that starts a node before its parent, twice, or outside the plan fails the run before any session | `tests/unit/coordinated-driver.test.mjs:83` | same |
+| SSI-37/38 at run time: more nodes at once than the concurrency limit is `VES_COORDINATION_LIMIT` | `tests/unit/coordinated-driver.test.mjs:115` | same |
+| SSI-40: two writers made ready at once by an engine never overlap | `tests/unit/coordinated-driver.test.mjs:129` | same |
+| SSI-41: a write outside the node's write scope, and any write from a reader, is `VES_COORDINATION_SCOPE_DENIED` before the executor sees it | `tests/unit/coordinated-driver.test.mjs:148` | same |
+| SSI-47: an oversized result and one past the run limit are refused before persistence | `tests/unit/coordinated-driver.test.mjs:194` | same |
+| SSI-46: a malformed or missing result fails the node and persists nothing | `tests/unit/coordinated-driver.test.mjs:215` | same |
+| A `blocked` outcome ends the run with `VES_COORDINATION_NODE_BLOCKED` (spec-precision note below) | `tests/unit/coordinated-driver.test.mjs:228` | same |
+| Valid handoff: a swarm follows each declared handoff and hands on the message | `tests/unit/coordinated-driver.test.mjs:238` | same |
+| SSI-43/44: a forbidden destination fails the swarm and persists nothing; an engine that routes elsewhere fails the run | `tests/unit/coordinated-driver.test.mjs:255`, `:263` | same |
+| SSI-45: an endless handoff loop stops with `VES_COORDINATION_HANDOFF_LIMIT`; no visit past the limit starts | `tests/unit/coordinated-driver.test.mjs:276` | same |
+| Explicit end: an engine that claims completion before the plan's end is `VES_COORDINATION_INCOMPLETE` | `tests/unit/coordinated-driver.test.mjs:288` | same |
+| Resume replay (SSI-65 seam): a resumed round replays completed visits without a session, a resumed swarm continues from the pending destination | `tests/unit/coordinated-driver.test.mjs:301`, `:327` | same |
+| SSI-66 seam: a visit that started and never ended is marked `uncertain` and nothing runs (`VES_TASK_NODE_UNCERTAIN`) | `tests/unit/coordinated-driver.test.mjs:351` | same |
+| A finished round is followed by a new round for the next repair attempt, with the gate feedback | `tests/unit/coordinated-driver.test.mjs:369` | same |
+| SSI-34: cancel reaches every running node, through its signal and its driver's `cancel`; the executor's signal does too | `tests/unit/coordinated-driver.test.mjs:386`, `:407` | same |
+| SSI-59 seam: a quota failure starts no further node, even for an engine that keeps scheduling, and cancels the running ones | `tests/unit/coordinated-driver.test.mjs:424` | same |
+| SSI-39: every node's usage reaches the executor's meter; checkpoints are filed under the node | `tests/unit/coordinated-driver.test.mjs:469` | same |
+| SSI-49: the ledger holds identifiers, counts, instants, digests, and codes only | `tests/unit/coordinated-driver.test.mjs:493` | same |
+| SSI-15: inside the real `TaskExecutionCoordinator`, a write outside the node scope is refused before the executor, a protected path inside it is refused by the executor, and the usage of both nodes is metered once (330 tokens) on the run's meter; one authority start, one worktree | `tests/integration/coordinated-executor.test.mjs:60` | `node --test tests/integration/coordinated-executor.test.mjs`: 2 of 2 |
+| A node failure fails the executor run with the node's code and the worktree is cleaned up | `tests/integration/coordinated-executor.test.mjs:127` | same |
+
+Spec-precision notes. (1) The spec defines the `outcome` enum but not what
+`blocked` does; the driver persists the result as evidence and ends the run
+with `VES_COORDINATION_NODE_BLOCKED`, so a node that says it cannot proceed
+spends no further allowance. (2) Until T6 adds reconciliation, a resumed round
+with any visit that is not completed fails closed with `VES_TASK_NODE_UNCERTAIN`
+inside the executor; T6 moves the refusal before any transition. (3) A gate
+repair attempt runs the plan again as a new ledger round; the per-run result
+limit counts the results of every round.
+
+Gates at this commit: `pnpm gate:quick` PASS (unit 2730, agent-readiness 354,
+census 13); `pnpm test:architecture` 125/125; `pnpm agent:check` PASS; 0
+failed, 0 skipped, 0 todo. `docs/canonical-json-census.json` gained
+`packages/application/src/execution/node-result.ts` (`migrated-v2`, two
+`canonicalizeJsonV2` signals). `complexity-baseline.json` is unchanged: no new
+function is above 10.
+
+Discrimination (author run, one source edit per mutant, restored after the
+run; the three suites above, 35 tests, pass unmutated):
+
+| Mutant | Result |
+| --- | --- |
+| C1 skip node write-scope narrowing | Killed |
+| C2 remove the writer mutex | Killed |
+| C3 drop the concurrency limit | Killed |
+| C4 drop the handoff limit | Killed |
+| C5 accept an undeclared destination in the validator | Killed |
+| C6 follow any route the engine takes | Killed |
+| C7 persist before the size check | Killed |
+| C8 raise the node result limit by one byte | Killed |
+| C9 drop the run result limit | Killed |
+| C10 drop the explicit-end check | Killed |
+| C11 drop the graph order check | Killed |
+| C12 run a graph node twice | Killed |
+| C13 never replay a completed visit | Killed |
+| C14 re-run an uncertain visit | Killed |
+| C15 let a `blocked` outcome pass | Killed |
+| C16 treat any path as inside a node write scope | Killed |
+
+The first run left three alive, each fixed before the commit: the order
+check survived because every fixture node also declared its parent as an
+input (the case at `:83` now declares only `plan`); the runtime handoff-limit
+check and the reader clause of the scope check were redundant with the
+settle-time refusal and the empty-scope rule, and were removed (equivalent
+mutants). The concurrency case was also made to fail rather than wait when
+the limit is removed.
+
 ## T7 Evidence (Windows bridge transport, commits 1 to 3)
 
 Author: the T7 implementer. Commit 4 (lifting the refusals) is not on this

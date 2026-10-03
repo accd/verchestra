@@ -161,6 +161,44 @@ export {
   type CoordinationPlan
 } from "./execution/coordination-plan.ts";
 export {
+  coordinationErrorCode,
+  NativeAgentEngine,
+  stableErrorCode,
+  type CoordinationEngine,
+  type CoordinationEngineInput,
+  type CoordinationEngineOutcome,
+  type CoordinationNodeAnswer,
+  type CoordinationNodeCall,
+  type CoordinationNodeRunner
+} from "./execution/coordination-engine.ts";
+export {
+  normalizeCoordinationLedger,
+  type CoordinationLedger,
+  type CoordinationRecordPort,
+  type NodeVisit,
+  type NodeVisitState
+} from "./execution/coordination-ledger.ts";
+export {
+  assertNodeWriteScope,
+  CoordinatedDriver,
+  type CoordinatedDriverOptions,
+  type CoordinationNodeDrivers,
+  type CoordinationNodeSession
+} from "./execution/coordinated-driver.ts";
+export { coordinationNodePrompt, type NodePromptInput } from "./execution/node-prompt.ts";
+export {
+  assertResultBounds,
+  COORDINATION_COMPLETE,
+  CoordinationRunError,
+  HANDOFF_MESSAGE_CHARACTERS,
+  handoffTargets,
+  NODE_RESULT_SUMMARY_CHARACTERS,
+  nodeResultSchema,
+  readNodeResult,
+  type CoordinationErrorCode,
+  type NodeResult
+} from "./execution/node-result.ts";
+export {
   normalizeTaskSchedule,
   TaskScheduleCoordinator,
   TaskSchedulerError,
