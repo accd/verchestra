@@ -20,6 +20,30 @@ independent verifier (author ≠ verifier) fills the verdict after T8, against
 | Quick gate | `pnpm gate:quick` | Recorded in `handoff.md` `lastGate` |
 | Probes | Scratch install, import, run, and bundle probes in the ignored `.tmp/` (`research.md` S5–S9) | No file outside `.tmp/` changed; `git status` clean apart from this feature's files |
 
+## T4 Evidence (driver structured results and quota signals)
+
+Author's evidence, commit by commit, on branch `strands/t4-driver-results`
+(base `origin/main` at `dc35c52`). The independent verifier re-derives it.
+
+| Commit | Behaviour | Assertion (file:line) | Gate run |
+| --- | --- | --- | --- |
+| 1 | The closed table names ten types; `result.structured { value, bytes }` and `quota.exhausted { scope, resetsAt? }` have exactly these kinds | `tests/unit/driver-event.test.mjs:18` (type list), `:63-64` (rows) | `node --test tests/unit/driver-event.test.mjs`: 37 of 37 |
+| 1 | The structured-result rule: canonical value and UTF-8 size; a copy, so the provider's object cannot change it; exactly at the bound passes, one byte over is `too-large`; bytes, not characters; a bound that is not a positive count refuses; non-canonical values (cycle, depth 1000, non-finite, function, lone surrogate) are `invalid` | `tests/unit/driver-event.test.mjs:128`, `:136`, `:143`, `:153`, `:158` | same |
+| 1 | The quota rule: epoch seconds become a canonical UTC instant; an unspellable reset is dropped, never guessed; a scope outside `^[a-z][a-z0-9_]{0,63}$` is `unknown`, so no free provider text reaches the event | `tests/unit/driver-event.test.mjs:171`, `:186`, `:196` | same |
+| 1 | The mock scripts the new types and refuses a structured result whose size is not its canonical size, a quota scope the rule would not keep, and a scripted optional field | `tests/contract/mock-driver.test.mjs:30-31`, `:95`, `:109` | `node --test tests/contract/mock-driver.test.mjs`: 20 of 20 |
+
+Changed assertions (no test deleted): `tests/unit/driver-event.test.mjs:18`
+"the field table names the eight event types" became "ten event types" with the
+two new rows inserted after `usage.updated`; the eight existing types keep
+their order.
+
+Guardrails: `complexity-baseline.json` lost the key
+`packages/drivers/src/index.ts :: Function 'validateScriptEvent'` (15): the
+scripted checks moved into a table, so the function fell below the target of
+10. `docs/canonical-json-census.json` gained
+`packages/domain/src/driver-event/driver-event.ts` (`migrated-v2`, two
+`canonicalizeJsonV2` signals).
+
 ## Requirement Evidence
 
 Each row needs a file-and-assertion citation (`path:line` and what the assertion

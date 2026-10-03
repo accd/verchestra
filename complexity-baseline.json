@@ -306,9 +306,6 @@
     "packages/drivers/src/index.ts :: Function 'validateEnvelope'": [
       33
     ],
-    "packages/drivers/src/index.ts :: Function 'validateScriptEvent'": [
-      15
-    ],
     "packages/drivers/src/index.ts :: Method 'push'": [
       14
     ],
