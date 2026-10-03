@@ -6,9 +6,9 @@ status: in_progress
 branch: main
 baseRevision: 35b23b3b122be7f0d7a6831f3261a9163373cfd7
 lastCompletedTask: T1
-nextTask: "T2: the owner prepares the machine (spec.md section 8, steps 1-8): Node 24.14.0 first on PATH, the disposable clone and its baseline, VES init, the three credentials, the gate allowlist, the unrelated work and the first fingerprint; then T3 (P1). VES is npx --yes verchestra@0.0.0-qualification.5."
+nextTask: "T2 remainder: the owner binds the three credentials (spec.md section 8 step 5). Then T3: P1 with VES = npx --yes verchestra@0.0.0-qualification.5. The configuration identity, the baseline and the first fingerprint are recorded in validation.md."
 lastGate: "agent:check PASS; no provider called"
-updatedAt: 2026-10-03T08:40:00Z
+updatedAt: 2026-10-03T09:10:00Z
 ---
 
 # Scope

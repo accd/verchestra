@@ -39,15 +39,15 @@ handoff's `lastGate`). No test, gate, or assertion was changed.
 
 | Item | Recorded value |
 | --- | --- |
-| macOS product version / arch | |
-| Node | |
-| Git | |
-| Claude Code | |
-| Codex CLI | |
-| Credential mode (`providerAuth` in the plan output) | |
-| Candidate `--version` / `dist.integrity` / `gitHead` / declared source revision | |
-| Baseline `node --test test.js` counts | |
-| First checkout fingerprint (digest) | |
+| macOS product version / arch | 26.6.2 / arm64 |
+| Node | v24.14.0, first `node` on `PATH` for the pilot session |
+| Git | 2.50.1 (Apple Git-155) |
+| Claude Code | 2.1.282 (Claude Code), first `claude` on `PATH`; with `CLAUDE_CONFIG_DIR` and `HOME` pointing at two new empty directories, `claude auth status` reports `loggedIn: false` (§8 step 5) |
+| Codex CLI | codex-cli 0.159.3, first `codex` on `PATH` (meets the driver minimum 0.115.0 in major 0; differs from the 0.157.1 of the pre-registration machine, recorded under Deviations) |
+| Credential mode (`providerAuth` in the plan output) | recorded from the first plan output (P1) |
+| Candidate `--version` / `dist.integrity` / `gitHead` / declared source revision | `Verchestra 0.0.0-qualification.5 (source build, no verified release artifact)` as printed by the activated release / `sha512-1nO4…SfSQ==` / `unavailable` (the package carries none) / `e17abb3c8970b72c837bbbd07f86b4676ca9adb3` |
+| Baseline `node --test test.js` counts | `tests 4, pass 4, fail 0, cancelled 0, skipped 0, todo 0` at `1fffec16713ca76c85dcda696abca9d011f9c51b`, environment `PATH`, `HOME`, `CI=1` |
+| First checkout fingerprint (digest) | `sha256:8d4e46e0d5d4b8a93f83d890825958c7404d75d2dea3284e049a0b7bb9359ef0`, taken after `init` (which adds `.verchestra/` and modifies `.gitignore`) and after the unrelated work |
 
 ## Pilot results (T3–T6)
 
@@ -78,6 +78,7 @@ value cannot be observed; nothing is estimated.
 | 2026-10-03, before any run | Candidate `.4` → `.5` (`spec.md` §2) | `.4` predates the subscription path the owner needs; `.5` is the first published release that carries it | all |
 | 2026-10-03, before any run | Machine: the owner's own account, not a fresh account (`spec.md` §8 step 1) | Owner decision; the pilot Workspace, its Codex identity directory and its credentials are still created for the pilot and deleted after it (§8 step 11) | all |
 | 2026-10-03, before any run | No independent reviewer; T8 not performed | No second person exists (owner statement) | all; the report says so |
+| 2026-10-03, before any run | Codex CLI 0.159.3 instead of 0.157.1 (`spec.md` §3) | The installed Codex updated itself after pre-registration; it meets the driver minimum, and the verifier model is unchanged | all |
 
 ## Independent review (T8)
 
