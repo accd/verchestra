@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { chmod, lstat, mkdir, mkdtemp, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir, userInfo } from "node:os";
-import { isAbsolute, join } from "node:path";
+import { isAbsolute, join, posix } from "node:path";
 import { promisify } from "node:util";
 
 import { quotaExhausted, usageUpdated } from "@verchestra/domain";
@@ -102,7 +102,34 @@ export interface ClaudeCodeMediatedProfile {
   // why: subscription profile only. The machine-wide Claude Code policy
   // locations whose presence refuses the launch; defaults to the documented ones.
   readonly managedPolicyPaths?: readonly string[];
+  // why: subscription profile only. The policy registry keys whose presence
+  // refuses the launch; defaults to the documented ones, which exist only on
+  // Windows.
+  readonly managedPolicyRegistryKeys?: readonly string[];
+  // why: a driver can read no registry and may not import platform-node, so
+  // the composition root injects the reader, as it injects the tree
+  // terminator. Without one every documented key counts as present.
+  readonly managedPolicyRegistry?: ClaudeManagedPolicyRegistry;
 }
+
+// invariant: resolves false only when the key is proven absent; anything else,
+// a rejection included, counts as present.
+export type ClaudeManagedPolicyRegistry = (key: string) => Promise<boolean>;
+
+export interface ClaudeManagedPolicySources {
+  readonly paths: readonly string[];
+  readonly registryKeys: readonly string[];
+}
+
+// why: the Windows sources Claude Code reads (SSI-74): the managed settings
+// directory under Program Files, the machine policy key, and the user policy
+// key, each with a `Settings` value; the legacy ProgramData path is not read.
+export const CLAUDE_WINDOWS_POLICY_DIRECTORY = "C:\\Program Files\\ClaudeCode";
+export const CLAUDE_WINDOWS_POLICY_KEYS: readonly string[] = Object.freeze([
+  "HKLM\\SOFTWARE\\Policies\\ClaudeCode",
+  "HKCU\\SOFTWARE\\Policies\\ClaudeCode"
+]);
+const POLICY_KEY = /^HK(?:LM|CU)\\SOFTWARE\\Policies\\[A-Za-z0-9._-]{1,64}$/u;
 
 export interface ClaudeCodeMediation {
   // The run worktree's real path; Claude Code runs there.
@@ -208,7 +235,11 @@ interface NormalizedMediatedProfile {
   readonly kind: ProfileKind;
   readonly environment: Readonly<Record<string, string>>;
   readonly isolationRoot?: string;
-  readonly managedPolicyPaths: readonly string[];
+  readonly managedPolicy: ManagedPolicyCheck;
+}
+
+interface ManagedPolicyCheck extends ClaudeManagedPolicySources {
+  readonly registry: ClaudeManagedPolicyRegistry;
 }
 
 function safeValue(value: unknown): value is string {
@@ -233,14 +264,28 @@ function allowlistedEnvironment(environment: Readonly<Record<string, string>>): 
 // why: managed settings outrank `--settings` and are the one source of hooks,
 // instructions, and credential helpers the subscription profile cannot switch
 // off, so their documented machine-wide locations are refused, never ignored.
-function documentedManagedPolicyPaths(): readonly string[] {
-  if (process.platform !== "darwin") return ["/etc/claude-code"];
+export function documentedManagedPolicySources(platform: NodeJS.Platform): ClaudeManagedPolicySources {
+  if (platform === "win32")
+    return Object.freeze({
+      paths: Object.freeze([CLAUDE_WINDOWS_POLICY_DIRECTORY]),
+      registryKeys: CLAUDE_WINDOWS_POLICY_KEYS
+    });
+  return Object.freeze({
+    paths: Object.freeze(documentedManagedPolicyPaths(platform)),
+    registryKeys: Object.freeze([])
+  });
+}
+
+function documentedManagedPolicyPaths(platform: NodeJS.Platform): string[] {
+  if (platform !== "darwin") return ["/etc/claude-code"];
   const preferences = "/Library/Managed Preferences";
   const domain = "com.anthropic.claudecode.plist";
+  // why: these are macOS paths whatever the host, so a host's separator must
+  // not reach them when another platform's sources are described.
   return [
     "/Library/Application Support/ClaudeCode",
-    join(preferences, domain),
-    join(preferences, accountName(), domain)
+    posix.join(preferences, domain),
+    posix.join(preferences, accountName(), domain)
   ];
 }
 
@@ -252,12 +297,28 @@ function accountName(): string {
   }
 }
 
-function managedPolicyPaths(profile: ClaudeCodeMediatedProfile): readonly string[] {
-  if (profile.managedPolicyPaths === undefined)
-    return profile.kind === SUBSCRIPTION_PROFILE ? documentedManagedPolicyPaths() : [];
-  if (profile.kind !== SUBSCRIPTION_PROFILE || !profile.managedPolicyPaths.every(absolutePath))
+// hazard: without the composition's reader no key can be proven absent.
+const unreadableRegistry: ClaudeManagedPolicyRegistry = async () => true;
+
+function validPolicyOverrides(profile: ClaudeCodeMediatedProfile): boolean {
+  return (
+    profile.managedPolicyPaths?.every(absolutePath) !== false &&
+    profile.managedPolicyRegistryKeys?.every((key) => POLICY_KEY.test(key)) !== false
+  );
+}
+
+function managedPolicyCheck(profile: ClaudeCodeMediatedProfile): ManagedPolicyCheck {
+  const registry = profile.managedPolicyRegistry ?? unreadableRegistry;
+  const overridden = profile.managedPolicyPaths !== undefined || profile.managedPolicyRegistryKeys !== undefined;
+  if (profile.kind === SUBSCRIPTION_PROFILE ? !validPolicyOverrides(profile) : overridden)
     throw mediationError("Managed policy paths must be absolute and belong to the subscription profile");
-  return [...profile.managedPolicyPaths];
+  if (profile.kind !== SUBSCRIPTION_PROFILE) return Object.freeze({ paths: [], registryKeys: [], registry });
+  const documented = documentedManagedPolicySources(process.platform);
+  return Object.freeze({
+    paths: Object.freeze([...(profile.managedPolicyPaths ?? documented.paths)]),
+    registryKeys: Object.freeze([...(profile.managedPolicyRegistryKeys ?? documented.registryKeys)]),
+    registry
+  });
 }
 
 function mediatedProfile(profile: ClaudeCodeMediatedProfile, command: readonly string[]): NormalizedMediatedProfile {
@@ -272,10 +333,10 @@ function mediatedProfile(profile: ClaudeCodeMediatedProfile, command: readonly s
     throw mediationError("The mediated profile requires an absolute Claude Code executable");
   const kind = profile.kind;
   const environment = allowlistedEnvironment(profile.environment ?? {});
-  const managed = managedPolicyPaths(profile);
-  if (profile.isolationRoot === undefined) return Object.freeze({ kind, environment, managedPolicyPaths: managed });
+  const managedPolicy = managedPolicyCheck(profile);
+  if (profile.isolationRoot === undefined) return Object.freeze({ kind, environment, managedPolicy });
   if (!absolutePath(profile.isolationRoot)) throw mediationError("The isolation root must be absolute");
-  return Object.freeze({ kind, environment, isolationRoot: profile.isolationRoot, managedPolicyPaths: managed });
+  return Object.freeze({ kind, environment, isolationRoot: profile.isolationRoot, managedPolicy });
 }
 
 // The only credential the mediated child sees, and it must be redactable.
@@ -305,13 +366,29 @@ async function policyPresent(path: string): Promise<boolean> {
   }
 }
 
-async function refuseManagedPolicy(paths: readonly string[]): Promise<void> {
-  for (const path of paths)
-    if (await policyPresent(path))
-      throw claudeError(
-        "VES_CLAUDE_MANAGED_POLICY_PRESENT",
-        "A machine-wide Claude Code policy is present, so the subscription profile cannot prove its isolation"
-      );
+async function registryKeyPresent(registry: ClaudeManagedPolicyRegistry, key: string): Promise<boolean> {
+  try {
+    return (await registry(key)) !== false;
+  } catch {
+    return true;
+  }
+}
+
+export async function managedPolicyPresent(
+  sources: ClaudeManagedPolicySources,
+  registry: ClaudeManagedPolicyRegistry
+): Promise<boolean> {
+  for (const path of sources.paths) if (await policyPresent(path)) return true;
+  for (const key of sources.registryKeys) if (await registryKeyPresent(registry, key)) return true;
+  return false;
+}
+
+async function refuseManagedPolicy(check: ManagedPolicyCheck): Promise<void> {
+  if (await managedPolicyPresent(check, check.registry))
+    throw claudeError(
+      "VES_CLAUDE_MANAGED_POLICY_PRESENT",
+      "A machine-wide Claude Code policy is present, so the subscription profile cannot prove its isolation"
+    );
 }
 
 function validBridge(bridge: ClaudeCodeMediation["bridge"] | undefined): boolean {
@@ -769,7 +846,7 @@ export class ClaudeCodeDriver implements Driver {
     }
     const credential = mediatedCredential(execution, this.#profile.kind);
     const mediation = await validMediation(execution.mediation);
-    await refuseManagedPolicy(this.#profile.managedPolicyPaths);
+    await refuseManagedPolicy(this.#profile.managedPolicy);
     const root = await mkdtemp(join(this.#profile.isolationRoot ?? tmpdir(), "verchestra-claude-"));
     try {
       await chmod(root, 0o700);

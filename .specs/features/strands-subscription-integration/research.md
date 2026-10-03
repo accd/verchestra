@@ -177,7 +177,7 @@ at the base revision at that exact version.
   inside its own session; a result with subtype `success` and no
   `structured_output` must be treated as a failure. The repository's mediated
   profiles already use `--output-format stream-json`
-  (`packages/drivers/src/claude-code-driver.ts:461-541`); that `stream-json`
+  (`packages/drivers/src/claude-code-driver.ts:642-711`); that `stream-json`
   carries `structured_output` on its final `result` event is documented through
   the SDK message type, and T4 confirms it with a recorded fixture before
   relying on it.
@@ -256,7 +256,7 @@ only that, at that moment, the provider did not continue on paid usage.
   `VES_BRIDGE_PLATFORM_UNSUPPORTED` on `win32` before creating anything
   (`packages/agent-runtime/src/execution/mcp-tool-bridge.ts:104-108`, which since T7 commit 2 refuses only the default Unix transport); the
   Claude Code mediated profiles throw `VES_CLAUDE_MEDIATION_UNSUPPORTED`
-  (`packages/drivers/src/claude-code-driver.ts:226-230`); `vestra task` is `not
+  (`packages/drivers/src/claude-code-driver.ts:324-328`); `vestra task` is `not
   configured` with `requirement: "platform"` (`apps/vestra-cli/src/task/task-command.ts:98-99`).
   Reason: AD-039 scoped the channel to Unix sockets, rejecting loopback TCP
   (reachable by every local user) and an inherited descriptor (Claude Code's MCP
@@ -295,10 +295,11 @@ only that, at that moment, the provider did not continue on paid usage.
   legacy `C:\ProgramData\ClaudeCode` path is not read); OS policy:
   `HKLM\SOFTWARE\Policies\ClaudeCode` value `Settings`; user-writable fallback:
   `HKCU\SOFTWARE\Policies\ClaudeCode` value `Settings`; server-managed settings
-  are not detectable before a session (gap G1 of AD-044). Today's driver returns
-  `/etc/claude-code` for every platform but macOS, Windows included
-  (`claude-code-driver.ts:198-207`), so lifting the Windows refusal alone would
-  check the wrong location and pass.
+  are not detectable before a session (gap G1 of AD-044). At `7e274f2` the
+  driver returned `/etc/claude-code` for every platform but macOS, Windows
+  included, so lifting the Windows refusal alone would have checked the wrong
+  location and passed; T7 commit 3 adds the Windows directory and both keys
+  (`claude-code-driver.ts:124-132`, `:264-277`).
 - **Tests pinning the refusal.** `tests/helpers/mediation-platform.mjs:26-50`
   and its callers in `tests/integration/mcp-tool-bridge.test.mjs`,
   `tests/security/mcp-tool-bridge-security.test.mjs`,

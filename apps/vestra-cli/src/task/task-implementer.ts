@@ -10,7 +10,11 @@ import {
 } from "@verchestra/agent-runtime";
 import type { ExecutionDriverPort, NormalizedTaskRequest } from "@verchestra/application";
 import { CLAUDE_PROFILE_CREDENTIAL_VARIABLES, ClaudeCodeDriver, type DriverStartRequest } from "@verchestra/drivers";
-import { WindowsNamedPipeBridgeTransport, type NodeGitWorktreeAdapter } from "@verchestra/platform-node";
+import {
+  WindowsNamedPipeBridgeTransport,
+  registryKeyPresent,
+  type NodeGitWorktreeAdapter
+} from "@verchestra/platform-node";
 
 import { resolveMcpBridgeRelay } from "../release-layout.ts";
 import type { ProviderAuthMode } from "../task-provider-auth.ts";
@@ -150,7 +154,9 @@ export function implementerAdapter(options: ImplementerOptions): ExecutionDriver
         profile: {
           kind,
           environment: passThroughEnvironment(options.env),
-          isolationRoot: options.isolationRoot
+          isolationRoot: options.isolationRoot,
+          // why: the driver can read no registry; only Windows has policy keys to read.
+          managedPolicyRegistry: registryKeyPresent
         },
         terminateTree: session.terminateTree,
         onSpawn: session.onSpawn,

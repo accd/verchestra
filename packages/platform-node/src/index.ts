@@ -166,6 +166,7 @@ export {
 } from "./activation-launcher-adapters.ts";
 export { terminateProcessTree } from "./process-tree-terminator.ts";
 export { proveOwnerOnlyDirectory, type OwnerOnlyProof } from "./windows-acl.ts";
+export { registryKeyPresent } from "./windows-registry.ts";
 export {
   POWERSHELL_7_EXECUTABLE,
   WindowsNamedPipeBridgeTransport,
