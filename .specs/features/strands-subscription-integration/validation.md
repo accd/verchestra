@@ -114,7 +114,7 @@ evidence is FAIL.
 | SSI-14 | — | — | — |
 | SSI-15 | — | — | — |
 | SSI-16 | — | — | — |
-| SSI-17 | — | — | — |
+| SSI-17 | T4 share: a structured or quota session keeps `model.resolved` provider `anthropic` or `openai` and the Passport reference; no new event names another provider (`spikes/claude-code-driver/test/claude-driver-structured.test.mjs:40-50`, `spikes/codex-driver/test/codex-driver-structured.test.mjs:47-55`). T5 owns the node records. | `pnpm qualify:claude`, `pnpm qualify:codex` | PASS (T4 share); T5 pending |
 | SSI-18 | — | — | — |
 | SSI-19 | — | — | — |
 | SSI-20 | — | — | — |
@@ -143,19 +143,19 @@ evidence is FAIL.
 | SSI-43 | — | — | — |
 | SSI-44 | — | — | — |
 | SSI-45 | — | — | — |
-| SSI-46 | — | — | — |
+| SSI-46 | T4 share: a structured session without an answer, with exhausted retries, or with an unreadable answer fails with a stable driver code and hands nothing on (`tests/contract/claude-code-driver-structured.test.mjs:88`, `tests/contract/codex-driver-structured.test.mjs:157`); mutants M12, M13 killed. T5 maps it to `VES_COORDINATION_RESULT_INVALID`. | `pnpm test:contract` | PASS (T4 share); T5 pending |
 | SSI-47 | — | — | — |
-| SSI-48 | — | — | — |
-| SSI-49 | — | — | — |
+| SSI-48 | The bound is applied before emission (`tests/unit/driver-event.test.mjs:143`; driver boundaries `tests/contract/claude-code-driver-structured.test.mjs:119`, `tests/contract/codex-driver-structured.test.mjs:157`) and the port carries only `payload:sha256:<digest>` of the canonical bytes (`tests/integration/driver-execution-adapter.test.mjs:305`); mutants M10, M11 killed. | `pnpm test:unit`, `pnpm test:contract`, `pnpm test:integration` | PASS |
+| SSI-49 | T4 share: the new events carry only the canonical answer, a closed-vocabulary scope, and an ISO reset; checkpoints gain nothing (`tests/security/driver-structured-results-security.test.mjs:58`, `:162`, `:173`). T5 owns the persisted node results and ledger. | `pnpm test:security` | PASS (T4 share); T5 pending |
 | SSI-50 | — | — | — |
 | SSI-51 | — | — | — |
 | SSI-52 | — | — | — |
 | SSI-53 | — | — | — |
-| SSI-54 | — | — | — |
-| SSI-55 | — | — | — |
-| SSI-56 | — | — | — |
-| SSI-57 | — | — | — |
-| SSI-58 | — | — | — |
+| SSI-54 | `apiKeySource` other than `none` fails a subscription session with `VES_CLAUDE_AUTH_METHOD_MISMATCH` before `session.started` and any tool effect (`tests/contract/claude-code-driver-structured.test.mjs:172`, `spikes/claude-code-driver/test/claude-driver-structured.test.mjs:108`); mutant M1 killed. | `pnpm test:contract`, `pnpm qualify:claude` | PASS |
+| SSI-55 | A subscription-only Codex session reads `account/read` before `model/list` and refuses `apiKey`, `amazonBedrock`, and no account with `VES_CODEX_AUTH_METHOD_MISMATCH` before `thread/start` (`tests/contract/codex-driver-structured.test.mjs:217`, `:232`; `spikes/codex-driver/test/codex-driver-structured.test.mjs:68`); mutant M2 killed. | `pnpm test:contract`, `pnpm qualify:codex` | PASS |
+| SSI-56 | T4 share: credits on any snapshot stop the session before its turn with `VES_CODEX_CREDITS_PRESENT` (`tests/contract/codex-driver-structured.test.mjs:249`); mutant M5 killed. T6 maps it to `not configured`. | `pnpm test:contract` | PASS (T4 share); T6 pending |
+| SSI-57 | The client sends only its allowlist, refuses every other method at the single write path, and no product source names a credit or login method (`tests/contract/codex-driver-structured.test.mjs:73`, `:92`, `:107`; `tests/architecture/codex-client-methods.test.mjs:42`, `:49`, `:60`); no fallback model, budget, key, or key helper flag is in any pinned invocation (`tests/contract/claude-code-driver-structured.test.mjs:47`); mutants M3, M4 killed. | `pnpm test:contract`, `pnpm test:architecture` | PASS |
+| SSI-58 | Claude `rejected` (with and without reset), Codex `usageLimitExceeded`, a usage-limit or credits-depleted `rateLimitReachedType`, and `ordinaryUsageAllowed: false` each emit one `quota.exhausted` with a reset only when reported; `allowed_warning` is one warning; `rate_limit_reached` is none (`tests/contract/claude-code-driver-structured.test.mjs:187`, `:214`; `tests/contract/codex-driver-structured.test.mjs:283`, `:313`, `:329`); mutants M6–M9, M16 killed. | `pnpm test:contract`, `pnpm test:integration` | PASS |
 | SSI-59 | — | — | — |
 | SSI-60 | — | — | — |
 | SSI-61 | — | — | — |
@@ -178,7 +178,7 @@ evidence is FAIL.
 | SSI-78 | — | — | — |
 | SSI-79 | — | — | — |
 | SSI-80 | — | — | — |
-| SSI-81 | — | — | — |
+| SSI-81 | T4 share: events, checkpoints, payloads, and the quota refusal carry no token, session, account data, provider prose, or temporary path (`tests/security/driver-structured-results-security.test.mjs:58`, `:162`, `:173`); mutant M18 killed. T5 and T6 own their records. | `pnpm test:security` | PASS (T4 share); T5, T6 pending |
 | SSI-82 | — | — | — |
 | SSI-83 | — | — | — |
 | SSI-84 | — | — | — |
@@ -199,16 +199,42 @@ mutant must be killed (a test fails). A surviving mutant becomes a fix task.
 | Raise a default limit by one | SSI-37 | Limit boundary cases | — |
 | Accept an undeclared handoff target | SSI-43 | Forbidden-destination swarm case | — |
 | Persist a result before checking its size | SSI-47 | Oversized result leaves nothing persisted | — |
-| Skip the `apiKeySource` check | SSI-54 | Fake init with `ANTHROPIC_API_KEY` | — |
-| Skip the Codex `account/read` check | SSI-55 | Fake `apiKey` account | — |
-| Allow `account/rateLimitResetCredit/consume` | SSI-57 | Method allowlist test | — |
+| Skip the `apiKeySource` check | SSI-54 | Fake init with `ANTHROPIC_API_KEY` | Killed (T4 M1) |
+| Skip the Codex `account/read` check | SSI-55 | Fake `apiKey` account | Killed (T4 M2) |
+| Allow `account/rateLimitResetCredit/consume` | SSI-57 | Method allowlist test | Killed (T4 M3) |
 | Skip the billing confirmation at resume | SSI-52 | Resume without confirmation is `not configured` | — |
 | Clean up the worktree on `suspended` | SSI-60 | Suspended worktree survives | — |
 | Re-run a partial node silently | SSI-66 | Uncertain-node refusal | — |
 | Construct a Strands `Agent` in the adapter | SSI-03, SSI-79 | Architecture ban and empty-environment probe | — |
 | Import the SDK root entry | SSI-02 | Architecture test and sealed build | — |
 
-**Sensor result**: not run.
+**Sensor result**: T4's author-run share below (18 of 18 killed); the rest is
+not run. The independent verifier re-runs the full list after T8.
+
+T4 mutants, each applied to a copy of one source file in place, run against the
+named killer suite, and restored; `git status --porcelain` matched the baseline
+before and after the run:
+
+| Mutant | Requirement | Killer | Result |
+| --- | --- | --- | --- |
+| M1 the `apiKeySource` check returns nothing | SSI-54 | `tests/contract/claude-code-driver-structured.test.mjs` | Killed |
+| M2 the Codex account type check accepts any account | SSI-55 | `tests/contract/codex-driver-structured.test.mjs` | Killed |
+| M3 `account/rateLimitResetCredit/consume` joins the allowlist | SSI-57 | same, and `tests/architecture/codex-client-methods.test.mjs` | Killed (3 tests) |
+| M4 the frame guard admits every method | SSI-57 | `tests/contract/codex-driver-structured.test.mjs` | Killed |
+| M5 reported credits are ignored | SSI-56 | same | Killed |
+| M6 Claude `rejected` is not mapped | SSI-58 | `tests/contract/claude-code-driver-structured.test.mjs` | Killed |
+| M7 Codex `usageLimitExceeded` is not mapped | SSI-58 | `tests/contract/codex-driver-structured.test.mjs` | Killed |
+| M8 a transient `rate_limit_reached` counts as quota | SSI-58 | same | Killed |
+| M9 every quota signal is reported, not the first | SSI-58 | same | Killed |
+| M10 the byte bound admits one byte more | SSI-48 | `tests/unit/driver-event.test.mjs:143` (multi-byte case); with the length pre-check also raised, `tests/contract/claude-code-driver-structured.test.mjs:119` and `tests/contract/codex-driver-structured.test.mjs:157` | Killed |
+| M11 the adapter hands on no payload reference | SSI-48 | `tests/integration/driver-execution-adapter.test.mjs` | Killed |
+| M12 exhausted retries become a plain failure | SSI-46 | `tests/contract/claude-code-driver-structured.test.mjs` | Killed |
+| M13 a success without an answer is accepted | SSI-46 | Claude and Codex structured contract suites | Killed |
+| M14 the structured floor is skipped | floor decision | `tests/contract/codex-driver-structured.test.mjs` | Killed |
+| M15 `StructuredOutput` is allowed without a schema | SSI-57 | `tests/contract/claude-code-driver-structured.test.mjs` | Killed |
+| M16 the adapter swallows the quota signal | SSI-58, SSI-59 seam | `tests/integration/driver-execution-adapter.test.mjs` | Killed |
+| M17 Codex sends no `outputSchema` | SSI-48 | `tests/contract/codex-driver-structured.test.mjs` | Killed (2 tests) |
+| M18 a quota scope carries the provider's overage reason | SSI-81 | `tests/contract/claude-code-driver-structured.test.mjs` | Killed |
 
 ## Deleted Case → Replacement
 
