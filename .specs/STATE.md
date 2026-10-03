@@ -1989,6 +1989,129 @@ note. -->
   input); checking release identity across targets in the reconciliation (the
   publisher already refuses it, and it would state that rule twice).
 
+### AD-060 — One provider child run for Claude Code and Codex: the first end of a run decides its report, and only a provider that exits by itself has its exit read after its result
+
+- **Status:** proposed (ratified by reviewing the pull request that carries
+  `refactor/provider-child-run`).
+- **Context:** The Claude Code and Codex drivers each wrote the spawn of
+  their provider in its own process group, the output limit, the line and
+  JSON framing, the stop through the one termination per child (AD-049,
+  AD-054) and the end-of-run rule. AD-045 and AD-046 kept child-process
+  handling per driver, for two reasons: the drivers share bookkeeping and not
+  a run protocol, and the child-process handling must stay in the two files
+  the census excludes by path. Reading the two copies again on `main`, after
+  #476 and #477, found that they no longer agreed on three rules and were
+  wrong together on two more. Claude Code reported the last of several stream
+  failures where Codex reports the first, and let a failure that followed a
+  stop replace the stop's report, which AD-053 item 4 rules out. A provider
+  that died before its result was `VES_CLAUDE_STREAM_INCOMPLETE` whatever its
+  exit and `VES_CODEX_PROCESS_FAILED` for the same exit, although both
+  qualified spikes read the exit first. Neither driver contained a
+  termination that failed on the start signal's stop, which every other end
+  no caller awaits does (AD-054 item 2). And both ended the host process with
+  an uncaught exception when a provider wrote the line `null`, and Claude Code
+  took a line that parsed to a string for its run's error code.
+- **Decision:**
+  1. **One module runs a provider child to its end.**
+     `packages/drivers/src/provider-child-run.ts` (`runProviderChild`) spawns
+     the provider in a process group of its own, holds its output and error
+     streams to one limit (1 MiB unless the execution states one), reads one
+     JSON object per line, writes one frame per line, stops it through one
+     termination of its tree whoever asks, brackets the run in the session,
+     and reports how it ended. Each driver keeps its protocol translation as
+     a function (`claudeProtocol`, `codexProtocol`) that receives every
+     object line, converses with the provider through a channel (write a
+     frame, write the last frame and close the input, fail the stream, say the
+     result arrived), and may interrupt it. It is composition: there is no
+     base class, and AD-045's objection to one stands.
+  2. **A profile carries what differs.** The error-code prefix and the noun
+     (the scheme of AD-046), the name of what failed in the stream-failure
+     message ("Claude Code stream failed", "Codex protocol failed"), and how a
+     provider ends after its result. Each driver names the codes its run
+     reports beside its profile, and the lifecycle matrix asserts them
+     literally. The start signal's grace period, during which Codex is asked
+     to interrupt its turn, is a parameter of the launch.
+  3. **The first end of a run decides its report.** A stop or a stream failure,
+     whichever came first. Every later failure still asks for the one
+     termination and changes nothing in the report; an input failure after the
+     first end is ignored. Codex already followed this rule; Claude Code now
+     does.
+  4. **One end-of-run rule.** With no end before it: a run whose result never
+     arrived failed, as `…_PROCESS_FAILED` when the provider ended with a
+     non-zero code or a signal and as `…_STREAM_INCOMPLETE` when it exited
+     cleanly. What counts as the result is the protocol's: a Codex
+     `turn/completed`, and a Claude Code `result` event once the session was
+     announced by its `init` event.
+  5. **The exit after a result stays a parameter, and is not unified.** A
+     print-mode Claude Code provider exits by itself, and its exit status is
+     part of its result. The App Server keeps serving after its turn, so the
+     driver ends it once its run has settled (AD-054 kills it, with
+     `SIGKILL` under `vestra task`); the status that follows says how the
+     driver ended it, and on Windows a terminated process exits with code 1.
+     Reading it would turn every completed verification into a failure, as
+     the discrimination in the evidence shows. The parameter, `afterResult`, decides
+     both whether the driver ends the provider after its run and whether the
+     exit after a result is read.
+  6. **Every line is a JSON object.** A line that parses to `null`, a string,
+     a number, a boolean or an array is the driver's `…_STREAM_INVALID`, as a
+     line that does not parse already was.
+  7. **An end no caller awaits is contained, the start signal's stop
+     included.** A cancel still awaits its stop, and still rejects when the
+     termination fails.
+  8. **A spawn that fails ends the run as a failed process.** The child's
+     `error` event is listened for, and the close that follows ends the run
+     as any provider that died.
+  9. **The census scans the module.** It serializes nothing: each protocol
+     serializes its own frames, in the two driver files the census still
+     excludes by path for exactly that. The module carries no census signal
+     and is not excluded, so a serialization or digest added there later is
+     caught.
+  10. Not changed, and recorded: environment construction (Claude Code
+      removes its session variables by their exact spelling, Codex in any
+      letter case), the floor of the output limit (Claude Code refuses 0,
+      Codex admits it), the `--version` probe spawn (AD-046), and a start
+      signal that aborts while the probe or the resolution is awaited, which
+      the run does not notice and the session runner covers by cancelling the
+      session once it is announced.
+- **Why the evidence now outweighs AD-045 and AD-046:** their reasons were a
+  shared run protocol that did not exist and the census exclusion. The first
+  is answered by composition: the module owns how a child runs, and the
+  protocol stays with each driver. The second does not apply, because what
+  the census excludes (frame serialization) stayed in the excluded files. Two
+  copies of one run had meanwhile become five differences, two of them
+  defects that ended the host process, and only review had kept them close.
+- **Alternatives rejected:** a base class (AD-045); one end rule that reads
+  the exit after a result for both providers (item 5); keeping both rules for
+  a run that died before its result, or for several failures, as parameters
+  (no protocol asks for either; each is a copy that drifted); moving the frame
+  serialization into the module (the module would then need a census
+  exclusion of its own); noticing a start signal that aborted before the run
+  (it stops a provider before its session is announced, which changes the
+  cancel order sequences of AD-053); moving environment construction into the
+  module (each list is the provider's own).
+- **Consequence:** A caller of the Claude Code driver can notice four things,
+  each in a run that no qualification sequence pins: a provider that dies
+  before its result is `VES_CLAUDE_PROCESS_FAILED` where it was
+  `VES_CLAUDE_STREAM_INCOMPLETE`, unless it exited cleanly; a result that
+  came before the `init` event, with a clean exit, is
+  `VES_CLAUDE_STREAM_INCOMPLETE` where it was `VES_CLAUDE_PROCESS_FAILED`; of
+  several stream failures the first is reported; and a stop is reported as
+  `VES_CLAUDE_ABORTED` and closes as `cancelled` even when a broken line
+  follows it. For both drivers: a line that is not a JSON object fails the
+  stream where it ended the host process, was taken for an error code, or was
+  ignored; a spawn that fails ends the run where it ended the host process;
+  and a terminator that rejects on the start signal's stop no longer leaves
+  an unhandled rejection. No message changed and no code was added. The
+  pinned qualification sequences of both drivers pass unmodified, so no
+  report is added. `tests/integration/provider-child-run.test.mjs` is the
+  module's contract, the child run axis of
+  `tests/contract/driver-lifecycle-matrix.test.mjs` proves each driver's
+  wiring, and `tests/architecture/provider-process-tree-termination.test.mjs`
+  fails when a driver spawns or ends its provider outside the module. The
+  change is platform-specific in what it runs and needs a platform matrix run
+  on the branch before merge. Evidence is in
+  `.specs/features/architecture-deepening-2/validation-t3.md`.
+
 ## Handoff
 
 - **Feature:** `subscription-provider-auth` (ADP-A, tasks TA1 and TA2) on
