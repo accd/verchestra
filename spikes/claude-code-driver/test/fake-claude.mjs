@@ -49,6 +49,12 @@ if (mode === "chatter") {
   process.stdout.write(`${[init, delta, delta, delta].join("\n")}\n`);
   await new Promise(() => setInterval(() => {}, 1_000));
 }
+if (mode === "unannounced") {
+  // why: a provider that reports a result without first announcing its
+  // session, and exits cleanly.
+  emit({ type: "result", subtype: "success", is_error: false, result: "done", total_cost_usd: 0, usage: { input_tokens: 1, output_tokens: 1 }, session_id: "private-session-id" });
+  process.exit(0);
+}
 emit({ type: "system", subtype: "init", session_id: "private-session-id", model: process.env.FAKE_CLAUDE_MODEL ?? "claude-opus-4-8", tools: [] });
 if (forks) process.stdout.write(`${await forkTree()}\n`);
 
@@ -81,6 +87,13 @@ if (mode === "malformed") {
   // then never answers.
   for (let index = 0; index < 40; index += 1) emit({ type: "stream_event", event: { delta: { type: "text_delta", text: "x".repeat(100) } } });
   setInterval(() => {}, 1_000);
+} else if (mode === "crash") {
+  // why: a provider that ends with a failure before its result.
+  process.exit(3);
+} else if (mode === "exit-after-result") {
+  // why: a provider that reports its result and then exits with a failure.
+  emit({ type: "result", subtype: "success", is_error: false, result: "done", total_cost_usd: 0, usage: { input_tokens: 1, output_tokens: 1 }, session_id: "private-session-id" });
+  process.exit(1);
 } else if (mode === "not-an-object") {
   // why: a provider whose lines parse as JSON and are not objects: null, then
   // a string that spells an error code. It then never answers.

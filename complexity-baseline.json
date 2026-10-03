@@ -289,16 +289,13 @@
       28
     ],
     "packages/drivers/src/claude-code-driver.ts :: Arrow function": [
-      28
+      22
     ],
     "packages/drivers/src/claude-code-driver.ts :: Async method 'start'": [
-      24
+      14
     ],
     "packages/drivers/src/codex-driver.ts :: Arrow function": [
-      33
-    ],
-    "packages/drivers/src/codex-driver.ts :: Async method 'start'": [
-      26
+      31
     ],
     "packages/drivers/src/codex-driver.ts :: Private method #validateExecution": [
       14

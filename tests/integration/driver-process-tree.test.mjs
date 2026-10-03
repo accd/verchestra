@@ -14,13 +14,15 @@ import {
 import { claudeFixture } from "../helpers/claude-driver-fixture.mjs";
 import { codexFixture } from "../helpers/codex-driver-fixture.mjs";
 import { eventuallyDead, isAlive } from "../helpers/process-liveness.mjs";
-import { reap, stoppedWithInputPending, WIN32_HOST } from "../helpers/process-tree-fixture.mjs";
+import { reap } from "../helpers/process-tree-fixture.mjs";
 
 // invariant: what the Claude Code and Codex drivers share for stopping a
 // provider (ADP-4, C4-4): which terminator a driver uses, what its fallback
-// does when the composition injects none, and that the Claude Code driver
-// starts one termination per child. Every process started here is an idle
-// Node process or the labeled fake `claude`, and each is killed by id when its
+// does when the composition injects none, and that a stop asks for one
+// termination per child. How the provider child run ends a provider on every
+// other path is asserted at its own interface
+// (tests/integration/provider-child-run.test.mjs). Every process started here
+// is an idle Node process or a labeled fake, and each is killed by id when its
 // case ends.
 
 const IDLE = ["-e", "setInterval(() => {}, 1000)"];
@@ -56,22 +58,6 @@ test("the fallback finds nothing left to stop and still resolves", async (t) => 
   child.kill("SIGKILL");
   await exited;
   assert.equal(await processTreeTerminator(undefined)(child.pid), undefined);
-});
-
-// invariant: every line still in the pipe asks to stop the child again once a
-// stream has failed. A tree terminator reads the process table each time it is
-// asked, so the driver starts one termination per child and awaits that one.
-test("a Claude Code stream that keeps failing starts one termination of its child", { timeout: 30_000 }, async () => {
-  const fixture = claudeFixture({ environment: { FAKE_CLAUDE_MODE: "chatter" }, maxOutputBytes: 1 });
-  const driver = new ClaudeCodeDriver(fixture.dependencies());
-  const events = [];
-  const session = await driver.start(fixture.request(), (event) => events.push(event), new AbortController().signal);
-  assert.equal(fixture.calls.terminate, 1);
-  assert.deepEqual(
-    events.filter((event) => event.type === "error").map((event) => event.code),
-    ["VES_CLAUDE_OUTPUT_LIMIT"]
-  );
-  assert.equal((await driver.close(session)).outcome, "failed");
 });
 
 test("a child is terminated once however often it is asked, and a termination that failed is tried again", async () => {
@@ -141,89 +127,9 @@ for (const [label, Driver, fixtureOf, hang] of [
   );
 }
 
-// invariant: a provider is ended in more ways than by a stop, and each of them
-// goes through the injected terminator once: a stream that failed, an output
-// limit, an input the provider closed, and a run that ended with the
-// provider still running. A signal to the one process would not be counted
-// here, and would leave the provider's descendants behind; the qualification
-// suites prove the tree, these cases prove the wiring on every platform.
-// why: the unawaited helper is imported here, with the cases that read it, so
-// that the lines of the cases above, which the validation evidence cites, stay.
+// why: imported here, with the case that reads it, so that the lines of the
+// cases above stay where they were.
 import { unawaitedTermination } from "../../packages/drivers/src/driver-process-tree.ts";
-
-// hazard: a driver that does not end its provider would leave the run, and the
-// fake, alive after the case fails; the provider is killed by id when it ends.
-async function endedByItself(t, Driver, fixture) {
-  const events = [];
-  const counted = fixture.dependencies();
-  const onSpawn = (pid) => {
-    counted.onSpawn(pid);
-    reap(t, () => [pid]);
-  };
-  const driver = new Driver({ ...counted, onSpawn });
-  const session = await driver.start(fixture.request(), (event) => events.push(event), new AbortController().signal);
-  const errors = events.filter((event) => event.type === "error").map((event) => event.code);
-  return { errors, outcome: (await driver.close(session)).outcome, terminations: fixture.calls.terminate };
-}
-
-for (const [label, Driver, fixtureOf, ended] of [
-  [
-    "a Codex stream that fails",
-    CodexDriver,
-    () => codexFixture({ environment: { FAKE_CODEX_MODE: "garbled" } }),
-    { by: endedByItself, errors: ["VES_CODEX_STREAM_INVALID"], outcome: "failed", terminations: 1 }
-  ],
-  [
-    "a Codex provider that exceeds its output limit",
-    CodexDriver,
-    () => codexFixture({ environment: { FAKE_CODEX_MODE: "large" }, maxOutputBytes: 2048 }),
-    { by: endedByItself, errors: ["VES_CODEX_OUTPUT_LIMIT"], outcome: "failed", terminations: 1 }
-  ],
-  [
-    "a Codex run that ends with its provider still running",
-    CodexDriver,
-    () => codexFixture({ environment: { FAKE_CODEX_MODE: "linger" } }),
-    { by: endedByItself, errors: [], outcome: "completed", terminations: 1 }
-  ],
-  inputRow()
-]) {
-  test(`${label} ends that provider through one termination of its child`, { timeout: 30_000 }, async (t) => {
-    const { by, ...expected } = ended;
-    assert.deepEqual(await by(t, Driver, fixtureOf()), expected);
-  });
-}
-
-// hazard: on win32 the fake cannot close its input, so no write fails there
-// and nothing ends the session but a stop. The row asserts there what holds:
-// nothing ends the session by itself, and a stop ends it through one
-// termination, with the prompt still unread.
-function inputRow() {
-  const fixtureOf = () =>
-    claudeFixture({ environment: { FAKE_CLAUDE_MODE: "deaf" }, prompt: "x".repeat(2 * 1024 * 1024) });
-  if (!WIN32_HOST)
-    return [
-      "a Claude Code provider that closes its input",
-      ClaudeCodeDriver,
-      fixtureOf,
-      { by: endedByItself, errors: ["VES_CLAUDE_STDIN_FAILED"], outcome: "failed", terminations: 1 }
-    ];
-  return [
-    "a stop of a Claude Code provider that does not read its input",
-    ClaudeCodeDriver,
-    fixtureOf,
-    { by: stoppedUnread, errors: ["VES_CLAUDE_ABORTED"], outcome: "cancelled", terminations: 1 }
-  ];
-}
-
-async function stoppedUnread(t, Driver, fixture) {
-  const counted = fixture.dependencies();
-  const onSpawn = (pid) => {
-    counted.onSpawn(pid);
-    reap(t, () => [pid]);
-  };
-  const stopped = await stoppedWithInputPending(new Driver({ ...counted, onSpawn }), fixture.request());
-  return { ...stopped, terminations: fixture.calls.terminate };
-}
 
 test("an end no caller awaits asks for the termination and contains its failure", async (t) => {
   const unhandled = [];

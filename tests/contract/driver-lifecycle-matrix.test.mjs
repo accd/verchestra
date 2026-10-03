@@ -499,14 +499,21 @@ for (const row of SESSION_MATRIX) {
   });
 }
 
-// why: the child run axis. Claude Code and Codex each run a provider child,
-// and what can go wrong per driver is how that run is wired: the codes it
-// reports, and whether it ends its provider through the injected terminator.
-// Each end names the fake's mode, the error codes literally, the outcome the
-// close reports, and how often the terminator was asked. The rows are declared
-// here, after the axes above, so that the lines the validation evidence cites
-// stay where they are.
-import { reap } from "../helpers/process-tree-fixture.mjs";
+// why: the child run axis. Claude Code and Codex run their provider child
+// through one module, whose rules tests/integration/provider-child-run.test.mjs
+// asserts at its interface. What can go wrong per driver is the wiring: the
+// codes its profile names, whether its provider exits by itself or is ended
+// by the driver after its result, and whether every end goes through the
+// injected terminator. Each end names the fake's mode, the error codes
+// literally, the outcome the close reports, and how often the terminator was
+// asked; `terminations` is left out where whether the provider was still
+// running when its run settled is a race. The rows are declared here, after
+// the axes above, so that the lines the validation evidence cites stay where
+// they are.
+import { reap, stoppedWithInputPending, WIN32_HOST } from "../helpers/process-tree-fixture.mjs";
+
+const TWO_MIB_PROMPT = "x".repeat(2 * 1024 * 1024);
+const NOT_AN_OBJECT = "writes lines that parse as JSON and are not objects";
 
 const CHILD_RUN_ROWS = [
   {
@@ -516,11 +523,60 @@ const CHILD_RUN_ROWS = [
     variable: "FAKE_CLAUDE_MODE",
     ends: [
       {
-        name: "writes lines that parse as JSON and are not objects",
+        name: NOT_AN_OBJECT,
         mode: "not-an-object",
         errors: ["VES_CLAUDE_STREAM_INVALID"],
         outcome: "failed",
         terminations: 1
+      },
+      {
+        name: "writes a line that is not JSON",
+        mode: "garbled",
+        errors: ["VES_CLAUDE_STREAM_INVALID"],
+        outcome: "failed",
+        terminations: 1
+      },
+      {
+        name: "exceeds its output limit",
+        mode: "flood",
+        execution: { maxOutputBytes: 1024 },
+        errors: ["VES_CLAUDE_OUTPUT_LIMIT"],
+        outcome: "failed",
+        terminations: 1
+      },
+      // hazard: on win32 the fake cannot close its input, so no write fails
+      // there and nothing ends the session but a stop (AD-054).
+      {
+        name: "closes its input before it has read its prompt",
+        mode: "deaf",
+        execution: { prompt: TWO_MIB_PROMPT },
+        errors: ["VES_CLAUDE_STDIN_FAILED"],
+        outcome: "failed",
+        terminations: 1,
+        win32Name: "does not read its input and is stopped",
+        win32: { errors: ["VES_CLAUDE_ABORTED"], outcome: "cancelled", terminations: 1 }
+      },
+      { name: "exits by itself after its result", mode: "success", errors: [], outcome: "completed", terminations: 0 },
+      {
+        name: "exits with a failure after its result",
+        mode: "exit-after-result",
+        errors: ["VES_CLAUDE_PROCESS_FAILED"],
+        outcome: "failed",
+        terminations: 0
+      },
+      {
+        name: "ends with a failure before its result",
+        mode: "crash",
+        errors: ["VES_CLAUDE_PROCESS_FAILED"],
+        outcome: "failed",
+        terminations: 0
+      },
+      {
+        name: "reports a result before it announced its session",
+        mode: "unannounced",
+        errors: ["VES_CLAUDE_STREAM_INCOMPLETE"],
+        outcome: "failed",
+        terminations: 0
       }
     ]
   },
@@ -531,11 +587,46 @@ const CHILD_RUN_ROWS = [
     variable: "FAKE_CODEX_MODE",
     ends: [
       {
-        name: "writes lines that parse as JSON and are not objects",
+        name: NOT_AN_OBJECT,
         mode: "not-an-object",
         errors: ["VES_CODEX_STREAM_INVALID"],
         outcome: "failed",
         terminations: 1
+      },
+      {
+        name: "writes a line that is not JSON",
+        mode: "garbled",
+        errors: ["VES_CODEX_STREAM_INVALID"],
+        outcome: "failed",
+        terminations: 1
+      },
+      {
+        name: "exceeds its output limit",
+        mode: "large",
+        execution: { maxOutputBytes: 2048 },
+        errors: ["VES_CODEX_OUTPUT_LIMIT"],
+        outcome: "failed",
+        terminations: 1
+      },
+      {
+        name: "completes its turn and keeps running",
+        mode: "linger",
+        errors: [],
+        outcome: "completed",
+        terminations: 1
+      },
+      {
+        name: "completes its turn and exits with a failure",
+        mode: "exit-after-result",
+        errors: [],
+        outcome: "completed"
+      },
+      {
+        name: "ends with a failure before its turn completes",
+        mode: "crash",
+        errors: ["VES_CODEX_PROCESS_FAILED"],
+        outcome: "failed",
+        terminations: 0
       }
     ]
   }
@@ -544,14 +635,18 @@ const CHILD_RUN_ROWS = [
 // hazard: a driver that does not end its provider would leave the run, and
 // the fake, alive after the case fails; the provider is killed by id when the
 // case ends.
-async function childRunEnd(t, row, { mode, execution = {} }) {
-  const fixture = row.fixtureOf({ environment: { [row.variable]: mode }, ...execution });
+async function childRunEnd(t, row, end) {
+  const fixture = row.fixtureOf({ environment: { [row.variable]: end.mode }, ...end.execution });
   const dependencies = fixture.dependencies();
   const onSpawn = (pid) => {
     dependencies.onSpawn(pid);
     reap(t, () => [pid]);
   };
   const driver = new row.Driver({ ...dependencies, onSpawn });
+  if (WIN32_HOST && end.win32 !== undefined) {
+    const stopped = await stoppedWithInputPending(driver, fixture.request());
+    return { ...stopped, terminations: fixture.calls.terminate };
+  }
   const events = [];
   const session = await driver.start(fixture.request(), (event) => events.push(event), new AbortController().signal);
   return {
@@ -570,13 +665,14 @@ test("the child run axis covers exactly the drivers that run a provider child", 
 
 for (const row of CHILD_RUN_ROWS) {
   for (const end of row.ends) {
-    test(
-      `${row.driverId}: a provider that ${end.name} ends as the driver reports it`,
-      { timeout: 30_000 },
-      async (t) => {
-        const { errors, outcome, terminations } = end;
-        assert.deepEqual(await childRunEnd(t, row, end), { errors, outcome, terminations });
-      }
-    );
+    const expected = WIN32_HOST && end.win32 !== undefined ? end.win32 : end;
+    const name = WIN32_HOST && end.win32Name !== undefined ? end.win32Name : end.name;
+    test(`${row.driverId}: a provider that ${name} ends as the driver reports it`, { timeout: 30_000 }, async (t) => {
+      const { errors, outcome, terminations } = expected;
+      const { terminations: asked, ...ended } = await childRunEnd(t, row, end);
+      assert.deepEqual(ended, { errors, outcome });
+      if (terminations !== undefined)
+        assert.equal(asked, terminations, "the terminator was asked a different number of times");
+    });
   }
 }
