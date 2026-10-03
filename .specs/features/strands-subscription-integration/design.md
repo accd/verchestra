@@ -471,7 +471,7 @@ catalog keeps its count of 19.
 | The driver adapter returns no output | `packages/agent-runtime/src/execution/driver-execution-adapter.ts:109` | Node results cannot travel | `result.structured` → payload reference (T4) |
 | The contract generator reads only version 1 (before T3) | `scripts/generate-contract-types.mjs` directory loop | A v2 schema would get no generated type | Generator extension with a parity test (T3) |
 | Textual self-containment check | `scripts/t76-build-candidate.mjs:318-326` | False positive on the SDK's string literal | Metafile-based check, owner decision D2 (T5) |
-| Windows policy locations | `packages/drivers/src/claude-code-driver.ts:199` | Lifting the refusal alone would check `/etc/claude-code` on Windows and pass | Windows sources first, refusal lifted last (T7) |
+| Windows policy locations (before T7) | `packages/drivers/src/claude-code-driver.ts` managed-policy paths, which off macOS named only `/etc/claude-code` | Lifting the refusal alone would check `/etc/claude-code` on Windows and pass | Windows sources first, refusal lifted last (T7) |
 | No bridge transport seam | `packages/agent-runtime/src/execution/mcp-tool-bridge.ts:113` | A second transport would duplicate the controller | Extract the seam with the Unix transport unchanged (T7) |
 | Codex minimum version 0.115.0 | `packages/drivers/src/codex-driver.ts:254` | `outputSchema` and account reads may be absent | Raise and requalify (T4) |
 | SDK logger prints to stderr | `@strands-agents/sdk` `dist/src/multiagent/nodes.js:72` | Diagnostics escape the CLI's JSON | Structural errors carry codes only; a test asserts the stderr line's content (T5) |
