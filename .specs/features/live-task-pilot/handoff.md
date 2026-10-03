@@ -2,13 +2,13 @@
 schema: verchestra-feature-handoff/v1
 feature: live-task-pilot
 issue: 406
-status: blocked
-branch: docs/406-pilot-preregistration
-baseRevision: c57c15f1a952573ef98f0d2eba8f557ac136fc1d
-lastCompletedTask: T0
-nextTask: "T1: the owner resolves every item under Blockers; only then T2 (prepare the clean machine) and the runs, in the order fixed in spec.md section 6."
-lastGate: "Node 24.14.0 macOS arm64: agent:check PASS; gate:quick PASS (2330 + 305 + 13 tests, 0 failed, 0 skipped, 0 todo); no provider called, no cost incurred"
-updatedAt: 2026-10-02T00:00:00Z
+status: in_progress
+branch: main
+baseRevision: 35b23b3b122be7f0d7a6831f3261a9163373cfd7
+lastCompletedTask: T1
+nextTask: "T2: the owner prepares the machine (spec.md section 8, steps 1-8): Node 24.14.0 first on PATH, the disposable clone and its baseline, VES init, the three credentials, the gate allowlist, the unrelated work and the first fingerprint; then T3 (P1). VES is npx --yes verchestra@0.0.0-qualification.5."
+lastGate: "agent:check PASS; no provider called"
+updatedAt: 2026-10-03T08:40:00Z
 ---
 
 # Scope
@@ -32,50 +32,17 @@ clones of the pinned revision (see `validation.md`).
 
 # Blockers
 
-The owner must provide each of these before T2 starts:
-
-1. **The candidate.** Publish `verchestra@0.0.0-qualification.4` to npm and
-   state its source revision. At pre-registration it is not published (the
-   registry lists `0.0.0-qualification` and `0.0.0-qualification.2`;
-   `0.0.0-qualification.3` is being built from `c57c15f`). If the owner prefers
-   another candidate, that is a change to `spec.md` §2 made before T2, in a
-   reviewed change. Since the 2026-10-02 amendment the candidate must be built
-   from a revision that carries the subscription path (ADP-A); a publication
-   that predates it has only the API-key path and cannot run this pilot.
-2. **Usage and time approval.** Approve, or replace, the proposed ceilings:
-   3,000,000 tokens per task run (P1–P3), 1,000,000 for S1, 2,000,000 each for
-   S2 and S3, the usage stop rule, the per-run duration ceilings, and the
-   four-hour session limit (`spec.md` §6). Nothing is billed per token; the
-   pilot draws on the owner's Claude and ChatGPT plans.
-3. **Provider access.** A Claude subscription that can use `claude-sonnet-5`
-   through Claude Code 2.1.282, and a ChatGPT plan that can use
-   `gpt-5.2-codex` through Codex CLI 0.157.1. Model availability cannot be
-   confirmed without a model call, so it was not checked. The owner mints the
-   Claude Code token with `claude setup-token` and binds it as
-   `claude-code-oauth-token`, binds a new `evidence-signing-passphrase`, and
-   signs Codex in once into the pilot Workspace's identity directory
-   (`docs/quick-start.md`, step 3; names only in any record). No API key is
-   needed.
-4. **The machine.** A macOS arm64 machine or fresh user account matching
-   `spec.md` §3, where Node 24.14.0, Claude Code 2.1.282, and Codex CLI 0.157.1
-   are the first `node`, `claude`, and `codex` on `PATH`.
-5. **People.** The accountable human who accepts or rejects each task (GitHub
-   handle recorded per run), and an independent reviewer who is not the
-   operator and did not choose the tasks (`spec.md` §10).
-6. **Sign-off on the pre-registration.** Approval of the target, the pinned
-   revision, the tasks, their assertions, and the scenarios, given by reviewing
-   and merging this change before the first run.
-7. **The subscription profile's open decisions.** The owner accepts or rejects
-   the gaps G1–G3 of the subscription profile (`.specs/STATE.md`, the
-   subscription provider authentication decision; managed policy, the Keychain
-   lookup, and startup requests) before T2. The pilot's first run is also the
-   first live observation of that profile.
+None. The owner resolved every blocker on 2026-10-03, before any run
+(`validation.md`, Blocker resolution): candidate `.5`, ceilings as proposed,
+the owner's own account on the owner's Mac, accountable human `accd`, no
+independent reviewer (T8 not performed), G1–G3 accepted. The three deviations
+from the pre-registration are recorded in `validation.md` before the first run.
 
 # Next Action
 
-T1. When every blocker is resolved, record the resolution in `validation.md`
-(Blocker resolution) in a reviewed change, set this handoff to `in_progress`,
-and follow `spec.md` §8.
+T2, following `spec.md` §8 steps 1–8 with `VES` as defined in §2. Record the
+configuration identity and the first fingerprint in `validation.md` before
+the first run.
 
 # Files Intentionally Left Unchanged
 
