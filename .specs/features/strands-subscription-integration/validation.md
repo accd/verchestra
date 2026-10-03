@@ -20,6 +20,51 @@ independent verifier (author ≠ verifier) fills the verdict after T8, against
 | Quick gate | `pnpm gate:quick` | Recorded in `handoff.md` `lastGate` |
 | Probes | Scratch install, import, run, and bundle probes in the ignored `.tmp/` (`research.md` S5–S9) | No file outside `.tmp/` changed; `git status` clean apart from this feature's files |
 
+## T3 Evidence
+
+Author evidence for T3 (Task Request v2 contracts). The independent verifier
+re-derives it after T8.
+
+### v1 goldens, recorded before any T3 change
+
+Recorded on `dc35c52` (the T3 base, `origin/main`) with a disposable probe: a
+copy of `apps/vestra-cli/src/task/task-plan.ts` that only added `export` to
+`packageInput` and `approvalIntent`, run against the fixed inputs of
+`tests/helpers/task-run-record-fixture.mjs`, then deleted (`git status` clean).
+Two runs printed identical values.
+
+| Value | Golden | Asserted at |
+| --- | --- | --- |
+| `schemas/task-request/1.schema.json` bytes | `sha256:9bfc24cec02371649ef58c67370e9b631f6d8fbc563ab33363e505213d048d62` | `tests/contract/task-request-v1-golden.test.mjs:23` |
+| `packages/contracts/src/generated.ts` before v2 | `sha256:341983f6ffe969ccff397457284597d7a36e54732115291414326be77ba38512` | `tests/contract/task-request-v1-golden.test.mjs:34` |
+| Canonical normalized v1 request (with repair policy) | `sha256:e1040b2826bf1725293fa29b017a09694ae5c9919b08ababd25b58ea43496d68` | `tests/contract/task-request-v1-golden.test.mjs:41` |
+| Canonical normalized v1 request (without repair policy) | `sha256:cd24f69dc148d13e8d85e811f8968cb5708b065f00b4152032e3160f59673464` | `tests/contract/task-request-v1-golden.test.mjs:47` |
+| Execution-contract digest of the fixture request | `sha256:2b4dd994497595fb01d37ea747af6ca34bfe6dc85c01fc7b02c6da7ccdd1a196` | `tests/contract/task-request-v1-golden.test.mjs:53` |
+| Sealed `plan.json` bytes of the fixture plan record | `sha256:e6c97cd79c6eb7a6ea93d954e9c098cc8205a4cece0318615b51b7eabed0272f` | `tests/contract/task-request-v1-golden.test.mjs:62` |
+| Execution Package payload digest | `sha256:13f2bc46466cabfb74f678f3913e5838cd838ef20b1f2f5ceea1a06be93a11db` | commit 3 |
+| Approval binding digest | `sha256:9a6d82f4cc3fe2109fea2ef033b2334eef11d6f09c92eb3f3a5df616dc0f87a5` | commit 3 |
+| `task plan` surface of the fixture plan | `sha256:5056fc0cf5335975fbcda1a748b2aeeca4b4313f4418926cf87bbea0ad47ec83` | commit 3 |
+
+### Commit 1 — schema, generator, generated type
+
+- `schemas/task-request/2.schema.json`: closed at every level; shares
+  `sourceRevision`, `task`, `gates`, `budgets`, `onGateFailure`, `verifier`,
+  and `instructions` with v1 byte for byte as JSON values
+  (`tests/contract/task-request-v2.test.mjs:34`); drops `driver` (`:35`); mode
+  members by `if`/`then`/`else` (agent: one node, no `edges`, `start`,
+  `handoffs`; graph: `edges`; swarm: `start` and `handoffs`, 2–16 nodes, no
+  inputs). Handoff lists are bounded by the node ceiling (256) rather than the
+  swarm ceiling, because json-schema-to-typescript expands an array bounded at
+  20 or fewer into a union of tuples; the normalizer enforces the swarm limits.
+- `scripts/generate-contract-types.mjs` reads every `<n>.schema.json` in
+  ascending order (`schemaVersions`); the regenerated file only appends
+  `TaskRequestV2` (212 added lines, 0 removed).
+- `tests/contract/schema-registry.test.mjs:54` now lists `task-request@2`: the
+  exact list assertion is kept and gains the declared version.
+- Gates: focused contract tests 101/101; `pnpm gate:quick` PASS (unit 2666,
+  agent-readiness 331, census 13; 0 fail, 0 skipped, 0 todo);
+  `pnpm test:architecture` 122/122; `pnpm test:contract` 814/814.
+
 ## T4 Evidence (driver structured results and quota signals)
 
 Author's evidence, commit by commit, on branch `strands/t4-driver-results`
@@ -117,7 +162,7 @@ evidence is FAIL.
 | SSI-17 | T4 share: a structured or quota session keeps `model.resolved` provider `anthropic` or `openai` and the Passport reference; no new event names another provider (`spikes/claude-code-driver/test/claude-driver-structured.test.mjs:40-50`, `spikes/codex-driver/test/codex-driver-structured.test.mjs:47-55`). T5 owns the node records. | `pnpm qualify:claude`, `pnpm qualify:codex` | PASS (T4 share); T5 pending |
 | SSI-18 | — | — | — |
 | SSI-19 | — | — | — |
-| SSI-20 | — | — | — |
+| SSI-20 | `tests/contract/task-request-v2.test.mjs:25-26` registry holds `task-request@2` and accepts one example per mode; `:34` shared members equal v1's; `tests/contract/task-request-v1-golden.test.mjs:23` v1 schema bytes equal the `dc35c52` golden; `:34` generated v1 output byte-identical; `tests/contract/schema-registry.test.mjs` zero drift of the generator (`--check`) | `pnpm test:contract` (814/814, commit 1) | PASS (author) |
 | SSI-21 | — | — | — |
 | SSI-22 | — | — | — |
 | SSI-23 | — | — | — |

@@ -246,3 +246,215 @@ export interface TaskRequest {
   };
   instructions: string;
 }
+
+/**
+ * Untrusted user request for one governed delivery task run as a single agent, a graph, or a swarm of governed provider sessions. Identity, digests, executables, credentials, authentication, billing and approvals are derived locally and never carried here.
+ */
+export interface TaskRequestV2 {
+  schemaVersion: 2;
+  sourceRevision: string;
+  task: {
+    taskId: string;
+    /**
+     * @minItems 1
+     * @maxItems 100
+     */
+    requirementIds: [string, ...string[]];
+    /**
+     * @minItems 0
+     * @maxItems 100
+     */
+    dependencyTaskIds: string[];
+    component: string;
+    /**
+     * @minItems 1
+     * @maxItems 100
+     */
+    changeScope: [string, ...string[]];
+    /**
+     * @minItems 1
+     * @maxItems 100
+     */
+    protectedPaths: [string, ...string[]];
+    /**
+     * @minItems 1
+     * @maxItems 100
+     */
+    verificationCommands: [string, ...string[]];
+    /**
+     * @minItems 1
+     * @maxItems 100
+     */
+    doneCriteria: [string, ...string[]];
+    risk: "low" | "medium" | "high" | "critical";
+    expectedCommitBoundary: string;
+  };
+  /**
+   * @minItems 1
+   * @maxItems 50
+   */
+  gates: [
+    {
+      gateId: string;
+      /**
+       * @minItems 1
+       * @maxItems 100
+       */
+      requirementIds: [string, ...string[]];
+      declaredCommand: string;
+      commandRef: string;
+      /**
+       * @minItems 0
+       * @maxItems 100
+       */
+      args: string[];
+      cwd: string;
+      timeoutMs: number;
+      outputLimitBytes: number;
+      resultProtocol: "exit-code" | "test-summary";
+      minimumTests: number;
+    },
+    ...{
+      gateId: string;
+      /**
+       * @minItems 1
+       * @maxItems 100
+       */
+      requirementIds: [string, ...string[]];
+      declaredCommand: string;
+      commandRef: string;
+      /**
+       * @minItems 0
+       * @maxItems 100
+       */
+      args: string[];
+      cwd: string;
+      timeoutMs: number;
+      outputLimitBytes: number;
+      resultProtocol: "exit-code" | "test-summary";
+      minimumTests: number;
+    }[]
+  ];
+  budgets: {
+    maximumCostUsd: number;
+    maximumTokens: number;
+    maximumDurationMs: number;
+  };
+  onGateFailure?: {
+    maxAttempts: number;
+    feedbackToDriver: boolean;
+    escalateAfter: number;
+  };
+  verifier: {
+    driverId: "codex";
+    model: string;
+  };
+  instructions: string;
+  execution: {
+    mode: "agent" | "graph" | "swarm";
+    /**
+     * @minItems 1
+     * @maxItems 256
+     */
+    nodes: [
+      {
+        nodeId: string;
+        driver:
+          | {
+              driverId: "claude-code";
+              model: string;
+            }
+          | {
+              driverId: "codex";
+              model: string;
+            };
+        description: string;
+        instructions: string;
+        /**
+         * @minItems 0
+         * @maxItems 100
+         */
+        readScope: string[];
+        /**
+         * @minItems 0
+         * @maxItems 100
+         */
+        writeScope: string[];
+        /**
+         * @minItems 0
+         * @maxItems 256
+         */
+        inputs: string[];
+      },
+      ...{
+        nodeId: string;
+        driver:
+          | {
+              driverId: "claude-code";
+              model: string;
+            }
+          | {
+              driverId: "codex";
+              model: string;
+            };
+        description: string;
+        instructions: string;
+        /**
+         * @minItems 0
+         * @maxItems 100
+         */
+        readScope: string[];
+        /**
+         * @minItems 0
+         * @maxItems 100
+         */
+        writeScope: string[];
+        /**
+         * @minItems 0
+         * @maxItems 256
+         */
+        inputs: string[];
+      }[]
+    ];
+    /**
+     * @minItems 0
+     * @maxItems 512
+     */
+    edges?: {
+      from: string;
+      to: string;
+    }[];
+    start?: string;
+    /**
+     * @minItems 1
+     * @maxItems 256
+     */
+    handoffs?: [
+      {
+        from: string;
+        /**
+         * @minItems 1
+         * @maxItems 256
+         */
+        to: [string, ...string[]];
+      },
+      ...{
+        from: string;
+        /**
+         * @minItems 1
+         * @maxItems 256
+         */
+        to: [string, ...string[]];
+      }[]
+    ];
+    limits?: {
+      concurrency?: number;
+      maxNodes?: number;
+      maxEdges?: number;
+      maxSwarmAgents?: number;
+      maxHandoffs?: number;
+      nodeResultBytes?: number;
+      runResultBytes?: number;
+    };
+  };
+}

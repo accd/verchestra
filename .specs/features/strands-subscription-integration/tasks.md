@@ -176,6 +176,12 @@ T8 -> T9 -> T10
 **Tests**: contract, unit, integration
 **Gate**: build
 
+**Progress** (branch `strands/t3-task-request-v2`; evidence in `validation.md`, "T3 Evidence"):
+
+- [x] Commit 1: the v2 schema, the generator reading every `<n>.schema.json`, generated `TaskRequestV2`; v1 goldens recorded on `dc35c52` before any change.
+- [ ] Commit 2: the v2 normalizer and coordination plan.
+- [ ] Commit 3: the plan-time binding, presentation, and plan record load path.
+
 ---
 
 #### T4: Driver structured results and quota signals
