@@ -284,6 +284,19 @@ export async function tamperPayload(closure, key, componentId) {
   await writeFile(join(directory, ...component.logicalPath.split("/")), "tampered");
 }
 
+/**
+ * Rewrites the sealed target evidence of a closure through `rewrite(entries)`,
+ * then writes each entry back to the artifact it came from and reseals the
+ * index over them, so the closure stays self-consistent and only what the
+ * rewrite changed contradicts the build output.
+ */
+export async function resealTargetEvidence(closure, rewrite) {
+  const entries = rewrite(closure.targets.map((item) => structuredClone(item.evidence)));
+  for (const [position, item] of closure.targets.entries())
+    await writeFile(join(item.directory, CANDIDATE_FILES.targetEvidence), canonical(entries[position]));
+  await writeFile(closure.indexPath, canonical(targetIndexRecord(closure.revision, entries)));
+}
+
 export async function disposePublicationFixtures() {
   await Promise.all(
     roots.splice(0).map((root) => rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }))
