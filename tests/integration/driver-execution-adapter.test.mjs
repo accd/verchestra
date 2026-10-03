@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { afterEach, test } from "node:test";
 
 import { DriverExecutionAdapter, InMemoryExecutionPayloadStore } from "../../packages/agent-runtime/src/index.ts";
@@ -69,16 +70,17 @@ async function adapterFixture(driver, options = {}) {
       })
   };
   const sessions = [];
+  const payloads = options.payloads ?? new InMemoryExecutionPayloadStore();
   const adapter = new DriverExecutionAdapter({
     resolveWorktree: async () => worktree,
-    payloads: new InMemoryExecutionPayloadStore(),
+    payloads,
     bridgeCommand: [process.execPath, relayEntry],
     createSession: async (session) => {
       sessions.push(session);
       return { driver, startRequest: { fake: true }, model: options.model ?? "claude-sonnet-5" };
     }
   });
-  return { adapter, calls, control, request, sessions };
+  return { adapter, calls, control, request, sessions, payloads };
 }
 
 // invariant: on win32 the adapter refuses the mediated path when it opens the
@@ -290,4 +292,93 @@ test("the adapter refuses a relative bridge command and a session without a mode
     model: ""
   });
   await assert.rejects(adapter.execute(request, control), { code: "VES_DRIVER_ADAPTER_INPUT_INVALID" });
+});
+
+// invariant: a node's structured result travels only as a payload reference to
+// bytes the controller bounded and digested (SSI-48, AD-073): the canonical
+// JSON of the driver's result, put in the run's payload store, named by its
+// SHA-256, and absent from every checkpoint.
+const ANSWER = { summary: "s", outcome: "done" };
+// {"outcome":"done","summary":"s"} is 32 bytes, members in canonical order.
+const CANONICAL_ANSWER = '{"outcome":"done","summary":"s"}';
+
+test("a completed session's structured result becomes one payload reference to its canonical bytes", async (t) => {
+  if (WIN32_HOST) return adapterRefusedOnWin32(t);
+  const driver = new ScriptedFakeDriver(async ({ emit }) => {
+    emit({ type: "usage.updated", inputTokens: 3, outputTokens: 2 });
+    emit({ type: "result.structured", value: ANSWER, bytes: 32 });
+  });
+  const { adapter, calls, control, request, payloads } = await adapterFixture(driver);
+  const result = await adapter.execute(request, control);
+  const digest = createHash("sha256").update(CANONICAL_ANSWER).digest("hex");
+  assert.deepEqual(result, { status: "completed", outputRefs: [`payload:sha256:${digest}`] });
+  assert.equal(Buffer.from(await payloads.get(result.outputRefs[0])).toString("utf8"), CANONICAL_ANSWER);
+  assert.deepEqual(calls.checkpoints.at(-1), {
+    stage: "driver-finished",
+    data: { outcome: "completed", toolRequests: 0, writes: 0, deletes: 0, denied: 0, errorCodes: [] }
+  });
+  assert.equal(JSON.stringify(calls.checkpoints).includes("summary"), false);
+});
+
+test("a structured result of a session that did not complete is not handed on", async (t) => {
+  if (WIN32_HOST) return adapterRefusedOnWin32(t);
+  const driver = new ScriptedFakeDriver(async ({ emit }) => {
+    emit({ type: "result.structured", value: ANSWER, bytes: 32 });
+    emit({ type: "error", code: "VES_CLAUDE_EXECUTION_FAILED", message: "failed", retryable: true });
+  }, "failed");
+  const { adapter, control, request } = await adapterFixture(driver);
+  assert.deepEqual(await adapter.execute(request, control), { status: "failed", outputRefs: [] });
+});
+
+test("a second structured result, or one whose size is not its canonical size, stops the session as invalid input", async (t) => {
+  if (WIN32_HOST) return adapterRefusedOnWin32(t);
+  for (const script of [
+    ({ emit }) => {
+      emit({ type: "result.structured", value: ANSWER, bytes: 32 });
+      emit({ type: "result.structured", value: { outcome: "blocked", summary: "s" }, bytes: 35 });
+    },
+    ({ emit }) => emit({ type: "result.structured", value: ANSWER, bytes: 31 })
+  ]) {
+    const driver = new ScriptedFakeDriver(async (session) => script(session));
+    const { adapter, calls, control, request } = await adapterFixture(driver);
+    await assert.rejects(adapter.execute(request, control), { code: "VES_DRIVER_ADAPTER_INPUT_INVALID" });
+    assert.equal(driver.cancelled.length, 1);
+    assert.equal(
+      calls.checkpoints.some((entry) => entry.stage === "driver-finished"),
+      false
+    );
+  }
+});
+
+// invariant: a quota signal stops the session and surfaces as a typed refusal
+// carrying only its scope and reset, so a caller can suspend instead of fail
+// (SSI-58, SSI-59); nothing the session reported after it is handed on.
+test("a quota signal stops the session and surfaces with its scope and reset only", async (t) => {
+  if (WIN32_HOST) return adapterRefusedOnWin32(t);
+  const driver = new ScriptedFakeDriver(async ({ emit }) => {
+    emit({ type: "quota.exhausted", scope: "five_hour", resetsAt: "2026-09-21T14:13:20.000Z" });
+    emit({ type: "quota.exhausted", scope: "seven_day" });
+    emit({ type: "result.structured", value: ANSWER, bytes: 32 });
+  });
+  const { adapter, calls, control, request } = await adapterFixture(driver);
+  const refusal = await adapter.execute(request, control).then(
+    () => assert.fail("a quota signal is never a completed run"),
+    (error) => error
+  );
+  assert.equal(refusal.code, "VES_DRIVER_QUOTA_EXHAUSTED");
+  assert.deepEqual(refusal.quota, { scope: "five_hour", resetsAt: "2026-09-21T14:13:20.000Z" });
+  assert.equal(Object.isFrozen(refusal.quota), true);
+  assert.equal(driver.cancelled.length, 1);
+  assert.equal(
+    calls.checkpoints.some((entry) => entry.stage === "driver-finished"),
+    false
+  );
+  const unreset = new ScriptedFakeDriver(async ({ emit }) =>
+    emit({ type: "quota.exhausted", scope: "usage_limit_exceeded" })
+  );
+  const second = await adapterFixture(unreset);
+  await assert.rejects(second.adapter.execute(second.request, second.control), (error) => {
+    assert.deepEqual(error.quota, { scope: "usage_limit_exceeded" });
+    return error.code === "VES_DRIVER_QUOTA_EXHAUSTED";
+  });
 });

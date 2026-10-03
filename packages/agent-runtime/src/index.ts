@@ -90,7 +90,8 @@ export {
   DriverExecutionAdapter,
   DriverExecutionAdapterError,
   type DriverExecutionAdapterOptions,
-  type DriverExecutionSession
+  type DriverExecutionSession,
+  type DriverQuotaSignal
 } from "./execution/driver-execution-adapter.ts";
 export {
   runDriverSession,
