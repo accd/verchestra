@@ -8,7 +8,7 @@ import { TaskAuthority } from "./task-authority.ts";
 import { capsuleBudgetConsumption } from "./task-budget.ts";
 import { confirmDigest } from "./task-confirm.ts";
 import { SIGNING_PASSPHRASE, readCredentials } from "./task-credentials.ts";
-import { taskError } from "./task-errors.ts";
+import { stateInvalid, taskError } from "./task-errors.ts";
 import { canonicalDigest } from "./task-files.ts";
 import type { TaskCommandIo } from "./task-io.ts";
 import { HUMAN_ACTOR, type TaskPlanRecord } from "./task-plan-record.ts";
@@ -81,8 +81,10 @@ async function capsuleInput(
   review: Readonly<Record<string, unknown>>
 ) {
   const { plan, pkg, grant } = context;
-  const events = context.runtime.listEvents(plan.runId);
-  const terminal = events.at(-1) as Readonly<Record<string, unknown>>;
+  const terminal = context.runtime.listEvents(plan.runId).at(-1);
+  // invariant: the review seals after its own terminal transition, which the
+  // store journals in the same transaction as the run's new state.
+  if (terminal === undefined) throw stateInvalid("VES_TASK_STATE_MALFORMED", "The run journal holds no transition");
   return {
     workspaceId: plan.workspaceId,
     runId: plan.runId,
@@ -115,16 +117,16 @@ async function capsuleInput(
       gates: await gateRefs(context, surface.commit.gateEvidenceRefs),
       operationReceipts: await toolReceipts(context),
       outputs: [ref(`commit:${surface.commit.commitId}`, surface.surface)],
-      terminal: [ref(`event:${String(terminal["eventId"])}`, terminal)]
+      terminal: [ref(`event:${terminal.eventId}`, terminal)]
     },
     ...closingRefs(snapshot, surface, review),
     ...(await budgetEvidence(context)),
     terminalTransition: {
-      eventId: String(terminal["eventId"]),
+      eventId: terminal.eventId,
       eventDigest: canonicalDigest(terminal),
-      fromState: String(terminal["previousState"]),
+      fromState: terminal.previousState,
       toState: snapshot.state,
-      occurredAt: String(terminal["occurredAt"])
+      occurredAt: terminal.occurredAt
     },
     sealedAt: new Date().toISOString()
   };

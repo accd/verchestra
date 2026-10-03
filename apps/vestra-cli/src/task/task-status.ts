@@ -87,7 +87,7 @@ export async function statusTask(io: TaskCommandIo, options: { readonly runId: u
       lastReason: reasonOf(outcome),
       checkpoints: await checkpointStages(runRecord.checkpoints(runtime, plan.request.task.taskId)),
       evidence: await evidence(plan, runRecord),
-      capsuleId: runtime.getRunCapsuleSeal(runId)?.["capsuleId"] ?? null,
+      capsuleId: runtime.getRunCapsuleSeal(runId)?.capsuleId ?? null,
       surfaceDigest: surface,
       next: nextActions(snapshot.state, runId, driven)
     };
