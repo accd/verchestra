@@ -157,6 +157,11 @@ class ProviderChild {
       detached: OWN_PROCESS_GROUP,
       windowsHide: true
     });
+    // why: a spawn that fails (the executable went after its probe, or the
+    // system refused the process) is reported by an `error` event and then a
+    // close with a negative code. Unheard, that event ends the host process;
+    // heard, the close ends the run as a provider that died.
+    this.#child.on("error", () => undefined);
     this.#wireStop();
     this.#protocol = run.protocol(this.#channel());
     this.#child.stderr.on("data", (chunk: Buffer) => this.#withinLimit(chunk.length));
