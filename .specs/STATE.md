@@ -2102,8 +2102,11 @@ note. -->
   ignored; a spawn that fails ends the run where it ended the host process;
   and a terminator that rejects on the start signal's stop no longer leaves
   an unhandled rejection. No message changed and no code was added. The
-  pinned qualification sequences of both drivers pass unmodified, so no
-  report is added. `tests/integration/provider-child-run.test.mjs` is the
+  pinned qualification sequences of both drivers pass unmodified; the runs
+  that changed are pinned by new suites and requalified in
+  `docs/qualification/claude-code-driver-child-run.md` and
+  `docs/qualification/codex-driver-child-run.md`.
+  `tests/integration/provider-child-run.test.mjs` is the
   module's contract, the child run axis of
   `tests/contract/driver-lifecycle-matrix.test.mjs` proves each driver's
   wiring, and `tests/architecture/provider-process-tree-termination.test.mjs`

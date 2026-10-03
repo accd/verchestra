@@ -94,6 +94,23 @@ if (mode === "malformed") {
   // why: a provider that reports its result and then exits with a failure.
   emit({ type: "result", subtype: "success", is_error: false, result: "done", total_cost_usd: 0, usage: { input_tokens: 1, output_tokens: 1 }, session_id: "private-session-id" });
   process.exit(1);
+} else if (mode === "code-line") {
+  // why: a provider whose line parses to a string that spells an error code,
+  // and that then never answers.
+  process.stdout.write(`"VES_CLAUDE_ABORTED"\n`);
+  setInterval(() => {}, 1_000);
+} else if (mode === "broken-then-flood") {
+  // why: a provider whose stream breaks and that then writes past any output
+  // limit a test sets, in one write, and never answers.
+  const delta = JSON.stringify({ type: "stream_event", event: { delta: { type: "text_delta", text: "x".repeat(2048) } } });
+  process.stdout.write(`{not-json}\n${delta}\n`);
+  setInterval(() => {}, 1_000);
+} else if (mode === "late-garble") {
+  // why: a provider that says it is ready, breaks its stream a moment later,
+  // and never answers; a stop asked for when it is ready comes first.
+  emit({ type: "stream_event", event: { delta: { type: "text_delta", text: "ready" } } });
+  setTimeout(() => process.stdout.write("{not-json}\n"), 200);
+  setInterval(() => {}, 1_000);
 } else if (mode === "not-an-object") {
   // why: a provider whose lines parse as JSON and are not objects: null, then
   // a string that spells an error code. It then never answers.

@@ -62,6 +62,11 @@ lines.on("line", (line) => {
       // why: a provider that completes its turn and then exits with a failure.
       emit({ method: "turn/completed", params: { threadId: "private-thread-id", turn: { id: "private-turn-id", status: "completed" }, usage: { inputTokens: 1, outputTokens: 1 } } });
       process.exit(1);
+    } else if (mode === "primitive-lines") {
+      // why: a provider that writes a number, a boolean and an array, then
+      // completes its turn, all in one write, and does not exit.
+      const completed = JSON.stringify({ method: "turn/completed", params: { threadId: "private-thread-id", turn: { id: "private-turn-id", status: "completed" }, usage: { inputTokens: 1, outputTokens: 1 } } });
+      process.stdout.write(`5\ntrue\n[1]\n${completed}\n`);
     } else if (mode === "not-an-object") {
       // why: a provider whose lines parse as JSON and are not objects: null,
       // then a string that spells an error code. It then never answers.
