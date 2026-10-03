@@ -527,6 +527,64 @@ Zod schema drift from the application's, S10 open the swarm decision enum to
 every node — all killed. S6 is killed by the probe on its own as well (5
 Bedrock clients where 0 are allowed), not only by the architecture ban.
 
+### Commit 5 — sealed self-containment from the bundle metafile (D2)
+
+`scripts/t76-build-candidate.mjs`: `bundleSealedLauncherWithMetafile` runs the
+unchanged option vector with `metafile: true` (the output bytes do not change)
+and judges self-containment with `assertSelfContainedMetafile` over the
+bundler's record of every import the output makes; `bundleSealedLauncher`
+returns the same bytes as before. The fail-closed `require` guard is still
+required at the head of every artifact.
+
+Equal or stronger. The text scan it replaces read only static `import`
+statements from the output text. Over four esbuild bundles of the same option
+vector, the old scan flagged `fs` for a static import, nothing for a dynamic
+`import("fs")` or a `require("fs")`, and `@strands-agents/sdk` for a string
+literal shaped like an import; the metafile check flags all three real imports,
+each with its kind, and nothing for the literal.
+
+| Behaviour | Assertion (file:line) | Run |
+| --- | --- | --- |
+| `node:` built-ins pass in all three import kinds | `tests/build/sealed-self-containment.test.mjs:60` | `node --test tests/build/sealed-self-containment.test.mjs`: 7 of 7 |
+| A static, dynamic, or `require` import of anything else, an unprefixed built-in included, fails with its path and kind | `tests/build/sealed-self-containment.test.mjs:73` | same |
+| A record that does not describe exactly one output fails closed | `tests/build/sealed-self-containment.test.mjs:87` | same |
+| Real esbuild bundles: each external kind is caught from the bundler's own record | `tests/build/sealed-self-containment.test.mjs:92` | same |
+| F2: a bundled string shaped like an import is not an import | `tests/build/sealed-self-containment.test.mjs:105` | same |
+| All four sealed artifacts of this tree bundle and import `node:` built-ins only | `tests/build/sealed-self-containment.test.mjs:115` | same |
+| The bundler itself refuses an entry importing `fs` statically, dynamically, or by `require` | `tests/build/sealed-self-containment.test.mjs:137` | same |
+
+Deleted case → replacement. `tests/build/sealed-launcher-closure.test.mjs:462`
+("a sealed launcher bundle imports Node built-ins only") no longer scans the
+bundle text with the old regular expression; the same case now asserts the
+bundler's metafile record of each staged artifact (no import outside `node:`,
+and `node:sqlite` never other than dynamic), and keeps its text check that no
+static named import of `node:sqlite` exists. The static-import case the regex
+covered is covered by `tests/build/sealed-self-containment.test.mjs:73`, `:92`,
+and `:137`.
+
+Sizes and cold start before the adapter enters the closure (this commit's
+tree, Node 24.14.0, macOS arm64, a minimal staged layout with the native
+placeholders, median of 11 runs): `launcher:vestra` 864,955 bytes and
+`launcher:verchestra` 864,963 bytes (845 KiB each; 297 inputs, 168 `node:`
+imports); `vestra --version` 65 ms; `vestra --activation-health` 64 ms and
+`verchestra --activation-health` 61 ms, both exit 0 with empty stderr.
+
+Not run here: `tests/build/sealed-launcher-closure.test.mjs` stages eleven
+release layouts that each copy the 119 MB Node runtime, which this machine's
+free disk (2.1 GB) cannot hold with a margin; it, `pnpm test:build`, and
+`pnpm gate:build` are left to the platform matrix.
+
+Citations. `scripts/t76-build-candidate.mjs:534` in
+`.specs/features/architecture-deepening-2/validation-t2.md` now reads `:556`;
+`:14` and `:198-210` did not move. The `:318-326` and `:333-379` citations in
+this feature's `research.md`, `design.md`, and `threat-model.md` describe the
+base revision the research was gathered at and are left as written.
+
+Discrimination (author run, `tests/build/sealed-self-containment.test.mjs`):
+B1 ignore dynamic imports, B2 ignore `require` calls, B3 accept unprefixed
+built-ins, B4 the bundler skips the record check, B5 accept a record of
+several outputs — all killed.
+
 ## T7 Evidence (Windows bridge transport, commits 1 to 3)
 
 Author: the T7 implementer. Commit 4 (lifting the refusals) is not on this

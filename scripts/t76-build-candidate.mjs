@@ -315,15 +315,29 @@ const NODE_SQLITE_LAZY_ALIAS = "./apps/vestra-cli/closure/node-sqlite-lazy.ts";
 // A sealed `bin/` artifact may import Node built-ins and nothing else: the
 // same artifact-level statement scripts/build-vestra-launcher.mjs makes for
 // the published bootstrap, applied to the release's own `bin/*.mjs`.
-const assertSelfContainedLauncher = (text, componentId) => {
+// Decision D2: the evidence is the bundler's own record of every import the
+// output makes - static, dynamic, and `require` alike - rather than a text
+// scan of the output, which both missed dynamic and `require` imports and
+// misread a bundled string literal shaped like an import as one.
+export const sealedRuntimeImports = (metafile, componentId) => {
+  const outputs = Object.values(metafile?.outputs ?? {});
+  if (outputs.length !== 1 || !Array.isArray(outputs[0].imports))
+    fail("VES_T76_BUILD_LAUNCHER_NOT_SELF_CONTAINED", `${componentId} bundle record does not describe one output`);
+  return outputs[0].imports.map(({ path, kind, external }) => ({ path, kind, external: external === true }));
+};
+
+export const assertSelfContainedMetafile = (metafile, componentId) => {
+  const outside = sealedRuntimeImports(metafile, componentId).filter((entry) => !entry.path.startsWith("node:"));
+  if (outside.length > 0)
+    fail(
+      "VES_T76_BUILD_LAUNCHER_NOT_SELF_CONTAINED",
+      `${componentId} imports ${outside.map((entry) => `${entry.path} (${entry.kind})`).join(", ")} at run time`
+    );
+};
+
+const assertRequireGuard = (text, componentId) => {
   if (!text.startsWith(BUNDLE_REQUIRE_GUARD))
     fail("VES_T76_BUILD_LAUNCHER_NOT_SELF_CONTAINED", `${componentId} does not carry the fail-closed require guard`);
-  const specifiers = [...text.matchAll(/(?:^|[\s;}])import\s*(?:[^"';]*?from\s*)?["']([^"']+)["']/gu)].map(
-    (match) => match[1]
-  );
-  const external = specifiers.filter((specifier) => !specifier.startsWith("node:"));
-  if (external.length > 0)
-    fail("VES_T76_BUILD_LAUNCHER_NOT_SELF_CONTAINED", `${componentId} imports ${external.join(", ")} at run time`);
 };
 
 /**
@@ -337,9 +351,10 @@ const assertSelfContainedLauncher = (text, componentId) => {
  * output. Two additions carry the sealed identity and the release layout:
  * `define` compiles the candidate's semantic version into the launcher, and
  * `alias` substitutes the lazy node:sqlite shim. Identical inputs produce
- * byte-identical output.
+ * byte-identical output. The bundler's metafile, which does not change the
+ * output, is returned beside it as the record self-containment is judged on.
  */
-export async function bundleSealedLauncher(options) {
+export async function bundleSealedLauncherWithMetafile(options) {
   const repository = resolve(options.repository);
   const entry = SEALED_BUNDLE_ENTRIES[options.componentId];
   if (entry === undefined)
@@ -363,6 +378,7 @@ export async function bundleSealedLauncher(options) {
       banner: { js: BUNDLE_REQUIRE_GUARD },
       alias: { "node:sqlite": NODE_SQLITE_LAZY_ALIAS },
       define: { __VERCHESTRA_SEALED_SEMANTIC_VERSION__: JSON.stringify(semanticVersion) },
+      metafile: true,
       logLevel: "silent"
     });
   } catch (error) {
@@ -374,8 +390,14 @@ export async function bundleSealedLauncher(options) {
       `${options.componentId} bundle reported diagnostics: ${JSON.stringify([...result.errors, ...result.warnings])}`
     );
   const bytes = Buffer.from(result.outputFiles[0].contents);
-  assertSelfContainedLauncher(bytes.toString("utf8"), options.componentId);
-  return bytes;
+  assertRequireGuard(bytes.toString("utf8"), options.componentId);
+  assertSelfContainedMetafile(result.metafile, options.componentId);
+  return { bytes, metafile: result.metafile };
+}
+
+/** The sealed bytes of one `bin/` artifact; see bundleSealedLauncherWithMetafile. */
+export async function bundleSealedLauncher(options) {
+  return (await bundleSealedLauncherWithMetafile(options)).bytes;
 }
 
 const sourceDescriptors = async (options, inputRoot, paths) => {

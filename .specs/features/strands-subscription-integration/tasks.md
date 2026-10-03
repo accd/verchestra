@@ -280,6 +280,7 @@ section.
 - [x] Commit 2: sealed `coordination` members of the Run record (ledger and digest-named results), validated readers, `RunRecord.coordination()`; 5 mutants killed.
 - [x] Commit 3: exact pins of the SDK 1.19.0, Zod 4.6.5, `@modelcontextprotocol/sdk` 1.32.0, and `@opentelemetry/api` 1.9.1 in agent-runtime; lockfile reviewed (36 versions added, 0 removed, no version of an existing package moved); pins tested in `tests/agent-readiness/dependency-policy.test.mjs`.
 - [x] Commit 4: `@verchestra/agent-runtime/strands-coordination` (Graph and Swarm of structural agents, Zod node-result and decision schemas with a parity test, stable error mapping); empty-environment probe; subpath and ban architecture test; 10 mutants killed.
+- [x] Commit 5: sealed self-containment judged from esbuild's metafile (static, dynamic, and `require` imports), the closure test's text scan replaced; 5 mutants killed; sizes and cold start before the adapter recorded. The full `sealed-launcher-closure` suite and `gate:build` run on the platform matrix (disk).
 
 **Tests**: unit, integration, architecture, build, fault
 **Gate**: build
