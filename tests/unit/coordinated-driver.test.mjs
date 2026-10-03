@@ -41,7 +41,10 @@ test("mode agent runs its one node on the native engine and persists its result 
       type: "object",
       additionalProperties: false,
       required: ["outcome", "summary"],
-      properties: { outcome: { enum: ["done", "blocked"] }, summary: { type: "string", maxLength: 8192 } }
+      properties: {
+        outcome: { type: "string", enum: ["done", "blocked"] },
+        summary: { type: "string", maxLength: 8192 }
+      }
     },
     maxBytes: 65536
   });

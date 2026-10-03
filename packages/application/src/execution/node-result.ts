@@ -24,6 +24,7 @@ export type CoordinationErrorCode =
   | "VES_COORDINATION_NODE_BLOCKED"
   | "VES_COORDINATION_INCOMPLETE"
   | "VES_COORDINATION_ENGINE_FAILED"
+  | "VES_COORDINATION_INTERRUPTED"
   | "VES_COORDINATION_LEDGER_INVALID"
   | "VES_TASK_NODE_UNCERTAIN";
 
@@ -59,7 +60,7 @@ export function handoffTargets(plan: CoordinationPlan, nodeId: string): readonly
 // value, so the provider is held to the approved destinations.
 export function nodeResultSchema(plan: CoordinationPlan, nodeId: string): Row {
   const base = {
-    outcome: { enum: ["done", "blocked"] },
+    outcome: { type: "string", enum: ["done", "blocked"] },
     summary: { type: "string", maxLength: NODE_RESULT_SUMMARY_CHARACTERS }
   };
   if (plan.mode !== "swarm")
@@ -70,7 +71,7 @@ export function nodeResultSchema(plan: CoordinationPlan, nodeId: string): Row {
     required: ["outcome", "summary", "next", "message"],
     properties: {
       ...base,
-      next: { enum: [...handoffTargets(plan, nodeId), COORDINATION_COMPLETE] },
+      next: { type: "string", enum: [...handoffTargets(plan, nodeId), COORDINATION_COMPLETE] },
       message: { type: "string", maxLength: HANDOFF_MESSAGE_CHARACTERS }
     }
   };
