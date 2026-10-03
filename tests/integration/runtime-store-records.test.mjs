@@ -75,3 +75,16 @@ test("an authority record reads back as the text the store was given, with its r
     { recordJson, revokedAt: now, revocationReason: "reviewer-withdrew" }
   );
 });
+
+test("an active policy view reads back as the stored text and the digest it was activated under", async () => {
+  const { store } = await opened();
+  const workspaceId = "workspace_018f0b6d-7b1a-7abc-8def-7123456789ab";
+  const viewDigest = `sha256:${"e".repeat(64)}`;
+  const viewJson = JSON.stringify({ generation: 1, policyViewDigest: viewDigest });
+  assert.equal(store.getActivePolicyView(workspaceId), undefined);
+  assert.deepEqual(store.saveActivePolicyView(workspaceId, viewJson, viewDigest, 0), {
+    activated: true,
+    conflict: false
+  });
+  assert.deepStrictEqual({ ...store.getActivePolicyView(workspaceId) }, { viewJson, viewDigest });
+});

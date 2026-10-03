@@ -91,7 +91,7 @@ test("stale generation CAS cannot replace the runtime winner", async () => {
     assert.equal(first.status, "activated");
     assert.deepEqual(winner, { activated: true, conflict: false });
     assert.deepEqual(stale, { activated: false, conflict: true });
-    assert.equal(context.runtime.getActivePolicyView(workspaceId).generation, 2);
+    assert.equal((await context.store.load()).generation, 2);
   } finally {
     context.runtime.close();
     await rm(context.root, { recursive: true, force: true });
@@ -107,7 +107,23 @@ test("tampered persisted Policy View digest fails closed on load", async () => {
     database.prepare("UPDATE active_policy_views SET view_json=?").run(JSON.stringify({ generation: 99 }));
     database.close();
     context.runtime.open();
-    assert.throws(() => context.runtime.getActivePolicyView(workspaceId), { code: "VES_RUNTIME_CORRUPT" });
+    await assert.rejects(context.store.load(), { code: "VES_RUNTIME_CORRUPT" });
+  } finally {
+    context.runtime.close();
+    await rm(context.root, { recursive: true, force: true });
+  }
+});
+
+test("persisted Policy View text that is not JSON fails closed on load", async () => {
+  const context = await fixture();
+  try {
+    await context.service.activate(view());
+    context.runtime.close();
+    const database = new DatabaseSync(join(context.root, "runtime.sqlite"));
+    database.prepare("UPDATE active_policy_views SET view_json=?").run("{");
+    database.close();
+    context.runtime.open();
+    await assert.rejects(context.store.load(), { code: "VES_RUNTIME_CORRUPT", recoverable: true });
   } finally {
     context.runtime.close();
     await rm(context.root, { recursive: true, force: true });
