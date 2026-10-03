@@ -2463,6 +2463,72 @@ note. -->
   run on the branch before merge. Evidence is in
   `.specs/features/architecture-deepening-2/validation-t4.md`.
 
+### AD-067 — One bounded child run in platform-node; the gate runner and the activation health gate keep only their verdicts (ADR2-5)
+
+- **Status:** proposed (ratified by reviewing the pull request that carries
+  the T5 range of `refactor/worktree-resolution-and-child-run`).
+- **Context:** the gate runner and the activation health gate each wrote the
+  same loop: spawn the child in a process group of its own off Windows,
+  capture both streams to a limit, run a timer, end the group once on a
+  timeout or an overflow, and settle after the close and the termination.
+  The launcher's copy of the termination had already drifted once and was
+  fixed on its own (#480); after that fix the two loops agreed rule for rule,
+  so what remained was the second copy (architecture review of 2026-10-02,
+  card 6).
+- **Decision:**
+  1. **One routine.** `runBoundedChild` in
+     `packages/platform-node/src/bounded-child-run.ts` runs a child to a
+     time and an output bound: no shell, a hidden window, its input ignored,
+     a process group of its own off Windows, both streams captured in arrival
+     order up to the limit, every chunk handed to an optional observer, one
+     termination through `terminateProcessGroup` on the timeout or the first
+     overflow, and a result only after the child closed and the termination
+     finished. The caller names the refusal for a group that outlives its
+     termination, so each keeps its public code.
+  2. **An observation of how the child ended.** A child that started reports
+     its exit status and signal, whether the run stopped it at its timeout or
+     its output limit, what it printed up to the limit, and how many bytes
+     each stream carried. A child that could not be started is reported as
+     `spawn-failed`, not thrown, so a caller tells it apart from a
+     termination that failed.
+  3. **Each caller keeps only its verdict.** The gate runner digests each
+     stream through the observer, records a child that reports no status as
+     -1, reads its test summary from the captured output, and rethrows a
+     spawn failure as before. The activation health gate maps the
+     observation to its `VES_LAUNCHER_*` refusals and its health report, and a
+     spawn failure to `VES_LAUNCHER_PROCESS_FAILED`.
+  4. **Not folded in, each for a reason.** The probe host
+     (`SpawnedProbeWorker`) is a long-lived duplex transport: it writes frames
+     to the child's input, streams its output to a listener with separate
+     limits that raise faults, has no timeout, and ends the tree with the
+     escapee sweep; it is a different loop. The verified launcher handoff
+     inherits the terminal and has no bound. The OS credential tool runner
+     (`os-secret-backends/credential-tool.ts`) has a timeout and a capture
+     cap, but it writes a credential to the child's input, zeroes what it
+     captured, keeps reading past its cap instead of stopping the child, and
+     stops one process rather than a group; its spawn is the one the
+     qualified credential reports observed on three stores (AD-034, AD-041),
+     and moving it would need those requalified on real stores. It is left as
+     it is and named as an open decision for the owner.
+- **Alternatives rejected:** a routine that throws on a spawn failure (the
+  launcher could tell it apart from a failed termination only by the error's
+  class); per-stream captures (neither caller reads a stream on its own
+  except to digest it, which the observer does without a second buffer); a
+  routine that also builds the child's environment (each caller's
+  environment is its own contract); folding the probe host in (a transport,
+  not a run to a bound).
+- **Consequence:** no behaviour, error code or message changes. The gate's
+  results and the launcher's health evidence are pinned by digests taken on
+  `main` before the change (`tests/integration/gate-commit-adapters.test.mjs`,
+  `tests/integration/activation-health-gate.test.mjs`).
+  `tests/architecture/process-group-termination-locality.test.mjs` fails when
+  a source other than the routine calls the group termination, or when either
+  caller runs a timer or a detached spawn of its own. The published launcher
+  bundle stays self-contained (the routine imports only Node built-ins and the
+  terminator). The gate runner and the launcher run on Windows, so the change
+  needs a platform matrix run on the branch before merge. Evidence is in
+  `.specs/features/architecture-deepening-2/validation-t5.md`.
+
 ## Handoff
 
 - **Feature:** `subscription-provider-auth` (ADP-A, tasks TA1 and TA2) on
