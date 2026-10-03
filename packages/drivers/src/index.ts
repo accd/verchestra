@@ -4,6 +4,7 @@ import {
   DRIVER_EVENT_FIELDS,
   canonicalizeJsonV2,
   isDriverEventType,
+  usageCount,
   type DriverEvent,
   type DriverEventBody
 } from "@verchestra/domain";
@@ -383,16 +384,17 @@ function scriptedFields(event: Readonly<Record<string, unknown>>): DriverEventBo
   return type;
 }
 
+// why: a scripted count is one the usage rule reads as itself, so the mock
+// emits no usage that a driver could not.
+const isCount = (value: unknown) => usageCount(value) === value;
+
 function validateScriptEvent(event: Readonly<Record<string, unknown>>): asserts event is DriverEventBody {
   const type = scriptedFields(event);
   if (type === "content.delta" && typeof event["text"] !== "string")
     throw new DriverProtocolError("VES_DRIVER_EVENT_INVALID", "Mock content event is invalid");
   if (type === "tool.requested" && (typeof event["toolCallId"] !== "string" || typeof event["name"] !== "string"))
     throw new DriverProtocolError("VES_DRIVER_EVENT_INVALID", "Mock tool event is invalid");
-  if (
-    type === "usage.updated" &&
-    (!Number.isSafeInteger(event["inputTokens"]) || !Number.isSafeInteger(event["outputTokens"]))
-  )
+  if (type === "usage.updated" && (!isCount(event["inputTokens"]) || !isCount(event["outputTokens"])))
     throw new DriverProtocolError("VES_DRIVER_EVENT_INVALID", "Mock usage event is invalid");
   if (
     (type === "warning" || type === "error") &&

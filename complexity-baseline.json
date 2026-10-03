@@ -324,9 +324,6 @@
     "packages/drivers/src/opencode-driver.ts :: Function 'flattenCatalog'": [
       16
     ],
-    "packages/drivers/src/pi-driver.ts :: Async method 'start'": [
-      12
-    ],
     "packages/drivers/src/pi-driver.ts :: Private method #validateExecution": [
       15
     ],

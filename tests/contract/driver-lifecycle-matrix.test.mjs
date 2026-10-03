@@ -18,7 +18,7 @@ import { piAbortableFixture, piFixture } from "../helpers/pi-driver-fixture.mjs"
 //
 // Before this file the four drivers were covered one file at a time, and
 // nothing enumerated them together: conformance to `interface Driver`
-// (packages/drivers/src/index.ts:358) was asserted only by the five
+// (packages/drivers/src/index.ts:359) was asserted only by the five
 // `implements Driver` clauses, which is a compile-time claim, and each suite
 // chose its own shape. A driver could therefore be added, or an existing one
 // could lose a lifecycle method's runtime behaviour, without any single test
@@ -685,6 +685,7 @@ for (const row of CHILD_RUN_ROWS) {
 // session whose provider reports the counts it is given, spelled as that
 // provider spells them; a count that is undefined is left out.
 import { fakeOpenCodeFactory } from "../helpers/opencode-driver-fixture.mjs";
+import { piUsageFixture } from "../helpers/pi-driver-fixture.mjs";
 
 const USAGE_ROWS = [
   {
@@ -714,6 +715,14 @@ const USAGE_ROWS = [
       const serverFactory = fakeOpenCodeFactory("success", [], undefined, tokens);
       return { driver: new OpenCodeDriver(fixture.dependencies({ serverFactory })), request: fixture.request() };
     }
+  },
+  {
+    driverId: "pi",
+    refusedCode: "VES_PI_RUNTIME_FAILED",
+    reporting: ({ input, output }) => {
+      const fixture = piUsageFixture(JSON.parse(JSON.stringify({ input, output })));
+      return { driver: new PiDriver(fixture.dependencies()), request: fixture.request() };
+    }
   }
 ];
 
@@ -731,10 +740,10 @@ async function reportedUsage(row, counts) {
   };
 }
 
-test("the usage axis covers every driver that checked its provider's usage", () => {
+test("the usage axis covers exactly the drivers of the session axis", () => {
   assert.deepEqual(
     USAGE_ROWS.map((row) => row.driverId),
-    ["claude-code", "codex", "opencode"]
+    SESSION_MATRIX.map((row) => row.driverId)
   );
 });
 

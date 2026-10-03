@@ -1,7 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
-import { DriverSessionLedger } from "./driver-session-ledger.ts";
+
+import { usageUpdated } from "@verchestra/domain";
+
+import { DriverSessionLedger, type DriverSession } from "./driver-session-ledger.ts";
 import { probeDriverVersion } from "./driver-version-probe.ts";
 import {
   DriverProtocolError,
@@ -146,6 +149,36 @@ function textDelta(event: PiAgentEvent): string | undefined {
   return event.assistantMessageEvent.delta;
 }
 
+// invariant: how a run that returned reports its end, read from the agent's
+// last assistant message, whose usage goes through the usage rule. A stop,
+// which the agent reports as the stop reason `aborted`, comes first: a usage
+// that is not a count does not turn it into a failure. Otherwise that usage is
+// a runtime failure, as a run with no assistant message is.
+function reportRunEnd(state: DriverSession<PiSessionResources>, messages: PiAgentState["messages"]): void {
+  const finalMessage = [...messages]
+    .reverse()
+    .find((message): message is PiAssistantMessage => message.role === "assistant");
+  const usage =
+    finalMessage === undefined
+      ? undefined
+      : usageUpdated({ inputTokens: finalMessage.usage.input, outputTokens: finalMessage.usage.output });
+  if (usage !== undefined) state.emit(usage);
+  const stopReason = finalMessage?.stopReason;
+  if (stopReason === "aborted") {
+    state.outcome = "cancelled";
+    state.emit({ type: "error", code: "VES_PI_ABORTED", message: "Pi run was aborted", retryable: true });
+  } else if (usage === undefined) {
+    state.outcome = "failed";
+    state.emit({ type: "error", code: "VES_PI_RUNTIME_FAILED", message: "Pi runtime failed", retryable: false });
+  } else if (stopReason === "error") {
+    state.outcome = "failed";
+    state.emit({ type: "error", code: "VES_PI_PROVIDER_ERROR", message: "Pi provider failed", retryable: true });
+  } else if (stopReason === "length") {
+    state.outcome = "failed";
+    state.emit({ type: "warning", code: "VES_PI_OUTPUT_LIMIT", message: "Pi output reached its verified limit" });
+  }
+}
+
 export class PiDriver implements Driver {
   readonly #dependencies: PiDriverDependencies;
   readonly #sessions = new DriverSessionLedger<PiSessionResources>({
@@ -244,43 +277,7 @@ export class PiDriver implements Driver {
     const runEnded = state.runStarted();
     try {
       await agent.prompt(execution.prompt);
-      const finalMessage = [...agent.state.messages]
-        .reverse()
-        .find((message): message is PiAssistantMessage => message.role === "assistant");
-      if (finalMessage === undefined) {
-        state.outcome = "failed";
-        state.emit({
-          type: "error",
-          code: "VES_PI_RUNTIME_FAILED",
-          message: "Pi runtime failed",
-          retryable: false
-        });
-      } else {
-        state.emit({
-          type: "usage.updated",
-          inputTokens: finalMessage.usage.input,
-          outputTokens: finalMessage.usage.output
-        });
-        if (finalMessage.stopReason === "aborted") {
-          state.outcome = "cancelled";
-          state.emit({ type: "error", code: "VES_PI_ABORTED", message: "Pi run was aborted", retryable: true });
-        } else if (finalMessage.stopReason === "error") {
-          state.outcome = "failed";
-          state.emit({
-            type: "error",
-            code: "VES_PI_PROVIDER_ERROR",
-            message: "Pi provider failed",
-            retryable: true
-          });
-        } else if (finalMessage.stopReason === "length") {
-          state.outcome = "failed";
-          state.emit({
-            type: "warning",
-            code: "VES_PI_OUTPUT_LIMIT",
-            message: "Pi output reached its verified limit"
-          });
-        }
-      }
+      reportRunEnd(state, agent.state.messages);
     } catch {
       state.outcome = signal.aborted ? "cancelled" : "failed";
       state.emit({
