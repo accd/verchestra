@@ -4,9 +4,12 @@ import {
   DRIVER_EVENT_FIELDS,
   canonicalizeJsonV2,
   isDriverEventType,
+  quotaExhausted,
+  resultStructured,
   usageCount,
   type DriverEvent,
-  type DriverEventBody
+  type DriverEventBody,
+  type DriverEventType
 } from "@verchestra/domain";
 
 export type { DriverEvent, DriverEventBody, DriverEventOf, DriverEventType } from "@verchestra/domain";
@@ -387,22 +390,37 @@ function scriptedFields(event: Readonly<Record<string, unknown>>): DriverEventBo
 // why: a scripted count is one the usage rule reads as itself, so the mock
 // emits no usage that a driver could not.
 const isCount = (value: unknown) => usageCount(value) === value;
+const isText = (value: unknown) => typeof value === "string";
+// why: a scripted structured result is one the structured-result rule emits
+// with exactly that size, and a scripted scope is one the quota rule keeps, so
+// the mock emits no result or quota event that a driver could not.
+const isStructured = (event: Readonly<Record<string, unknown>>) => {
+  const read = resultStructured(event["value"], Number.MAX_SAFE_INTEGER);
+  return typeof read !== "string" && read.bytes === event["bytes"];
+};
+const isQuotaScope = (value: unknown) => isText(value) && quotaExhausted(value as string).scope === value;
+
+type ScriptCheck = readonly [(event: Readonly<Record<string, unknown>>) => boolean, string];
+const diagnostic: ScriptCheck = [
+  (event) => isText(event["code"]) && isText(event["message"]),
+  "Mock diagnostic event is invalid"
+];
+// invariant: what each scripted type holds beyond its fields, checked in order.
+const SCRIPT_CHECKS: Partial<Record<DriverEventType, readonly ScriptCheck[]>> = {
+  "content.delta": [[(event) => isText(event["text"]), "Mock content event is invalid"]],
+  "tool.requested": [[(event) => isText(event["toolCallId"]) && isText(event["name"]), "Mock tool event is invalid"]],
+  "usage.updated": [
+    [(event) => isCount(event["inputTokens"]) && isCount(event["outputTokens"]), "Mock usage event is invalid"]
+  ],
+  "result.structured": [[isStructured, "Mock structured result is invalid"]],
+  "quota.exhausted": [[(event) => isQuotaScope(event["scope"]), "Mock quota event is invalid"]],
+  warning: [diagnostic],
+  error: [diagnostic, [(event) => typeof event["retryable"] === "boolean", "Mock error event is invalid"]]
+};
 
 function validateScriptEvent(event: Readonly<Record<string, unknown>>): asserts event is DriverEventBody {
-  const type = scriptedFields(event);
-  if (type === "content.delta" && typeof event["text"] !== "string")
-    throw new DriverProtocolError("VES_DRIVER_EVENT_INVALID", "Mock content event is invalid");
-  if (type === "tool.requested" && (typeof event["toolCallId"] !== "string" || typeof event["name"] !== "string"))
-    throw new DriverProtocolError("VES_DRIVER_EVENT_INVALID", "Mock tool event is invalid");
-  if (type === "usage.updated" && (!isCount(event["inputTokens"]) || !isCount(event["outputTokens"])))
-    throw new DriverProtocolError("VES_DRIVER_EVENT_INVALID", "Mock usage event is invalid");
-  if (
-    (type === "warning" || type === "error") &&
-    (typeof event["code"] !== "string" || typeof event["message"] !== "string")
-  )
-    throw new DriverProtocolError("VES_DRIVER_EVENT_INVALID", "Mock diagnostic event is invalid");
-  if (type === "error" && typeof event["retryable"] !== "boolean")
-    throw new DriverProtocolError("VES_DRIVER_EVENT_INVALID", "Mock error event is invalid");
+  for (const [valid, message] of SCRIPT_CHECKS[scriptedFields(event)] ?? [])
+    if (!valid(event)) throw new DriverProtocolError("VES_DRIVER_EVENT_INVALID", message);
 }
 
 export function validateDriverStartRequest(request: DriverStartRequest): void {

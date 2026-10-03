@@ -7,6 +7,8 @@
 // already depend on the domain: the drivers emit the event, and agent-runtime,
 // which may not import a sibling adapter, reads it.
 
+import { canonicalizeJsonV2 } from "../canonical/canonical-json.ts";
+
 export type DriverSessionOutcome = "completed" | "failed" | "cancelled";
 
 // invariant: the field table. Each event type names every field it may carry,
@@ -36,6 +38,14 @@ export const DRIVER_EVENT_FIELDS = Object.freeze({
     cacheReadTokens: "count?",
     cacheWriteTokens: "count?"
   }),
+  // why: a session asked for a structured result reports it once, at its
+  // result: the canonical value and the size of its canonical text, which the
+  // driver held to the bound it was given before emitting it (AD-073).
+  "result.structured": Object.freeze({ value: "value", bytes: "count" }),
+  // why: the provider refused more work because an allowance ran out. The
+  // scope names which; the reset time is carried only when the provider
+  // reported one (AD-073).
+  "quota.exhausted": Object.freeze({ scope: "text", resetsAt: "text?" }),
   warning: Object.freeze({ code: "text", message: "text" }),
   error: Object.freeze({ code: "text", message: "text", retryable: "flag" }),
   // why: a cancel names its reason; a close does not.
@@ -94,4 +104,50 @@ export function usageUpdated(reported: {
   const outputTokens = usageCount(reported.outputTokens);
   if (inputTokens === undefined || outputTokens === undefined) return undefined;
   return { type: "usage.updated", inputTokens, outputTokens };
+}
+
+// invariant: the structured-result rule, the one bound on a provider's
+// structured output. The value is read as RFC 8785 canonical JSON and measured
+// in UTF-8 bytes; the event carries a copy parsed back from that text, so its
+// value is exactly what was measured. A value canonical JSON cannot spell is
+// "invalid"; one larger than the bound, or any value when the bound is not a
+// positive count, is "too-large". The driver fails its run with its own code.
+export function resultStructured(
+  reported: unknown,
+  maxBytes: number
+): DriverEventOf<"result.structured"> | "invalid" | "too-large" {
+  if (!Number.isSafeInteger(maxBytes) || maxBytes < 1) return "too-large";
+  let text: string;
+  try {
+    text = canonicalizeJsonV2(reported);
+  } catch {
+    return "invalid";
+  }
+  // why: a UTF-8 text is never shorter in bytes than in UTF-16 code units, so
+  // a text longer than the bound is refused before it is encoded.
+  if (text.length > maxBytes) return "too-large";
+  const bytes = new TextEncoder().encode(text).byteLength;
+  if (bytes > maxBytes) return "too-large";
+  return { type: "result.structured", value: JSON.parse(text) as unknown, bytes };
+}
+
+const QUOTA_SCOPE = /^[a-z][a-z0-9_]{0,63}$/u;
+// why: the last second a canonical instant (four-digit year) can spell.
+const LAST_RESET_SECOND = 253_402_300_799;
+
+// invariant: the quota rule. A scope is a short provider term; any other text
+// is "unknown", so nothing the provider wrote freely reaches the event. A
+// reset time is carried only when the provider reported it as whole Unix
+// epoch seconds that a canonical UTC instant can spell; any other is dropped,
+// never guessed.
+export function quotaExhausted(scope: string, resetsAtSeconds?: unknown): DriverEventOf<"quota.exhausted"> {
+  const named = QUOTA_SCOPE.test(scope) ? scope : "unknown";
+  if (
+    typeof resetsAtSeconds !== "number" ||
+    !Number.isSafeInteger(resetsAtSeconds) ||
+    resetsAtSeconds < 0 ||
+    resetsAtSeconds > LAST_RESET_SECOND
+  )
+    return { type: "quota.exhausted", scope: named };
+  return { type: "quota.exhausted", scope: named, resetsAt: new Date(resetsAtSeconds * 1000).toISOString() };
 }

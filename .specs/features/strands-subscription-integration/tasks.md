@@ -189,7 +189,7 @@ T8 -> T9 -> T10
 
 **Commits**:
 
-1. `feat(domain): add structured-result and quota Driver events` — rows `result.structured` and `quota.exhausted`.
+1. `feat(domain): add structured-result and quota Driver events` — rows `result.structured` and `quota.exhausted`. **Done** (branch `strands/t4-driver-results`; evidence in `validation.md`, T4 section).
 2. `feat(drivers): structured output, auth source, and rate limits for Claude Code` — `--json-schema`, bounded `structured_output`, `apiKeySource === "none"`, `rate_limit_event` mapping, missing-output failure; fake CLI fixtures recorded from the documented message shapes.
 3. `feat(drivers): structured output, account checks, and usage limits for Codex` — `outputSchema`, `account/read`, `account/rateLimits/read`, `usageLimitExceeded` and `rateLimitReachedType` mapping, JSON-RPC method allowlist, minimum version raised with `codex app-server generate-ts` evidence.
 4. `feat(agent-runtime): carry a node's structured result as a payload reference` — `driver-execution-adapter.ts` returns `outputRefs`; `quota.exhausted` surfaced.

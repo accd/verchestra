@@ -27,6 +27,8 @@ for (const event of [
   { type: "content.delta", text: "x" },
   { type: "tool.requested", toolCallId: "call:1", name: "vestra_read", input: { path: "README.md" } },
   { type: "usage.updated", inputTokens: 1, outputTokens: 2 },
+  { type: "result.structured", value: { outcome: "done", summary: "s" }, bytes: 32 },
+  { type: "quota.exhausted", scope: "five_hour" },
   { type: "warning", code: "MOCK_WARNING", message: "bounded warning" },
   { type: "error", code: "MOCK_ERROR", message: "bounded error", retryable: false }
 ]) {
@@ -85,6 +87,36 @@ test("Mock Driver refuses a scripted count the usage rule does not read as that 
       { code: "VES_DRIVER_EVENT_INVALID", message: "Mock usage event is invalid" },
       String(inputTokens)
     );
+});
+
+// invariant: a scripted structured result is one the structured-result rule
+// emits as itself, and a scripted quota scope is one the quota rule keeps, so
+// the mock emits no result or quota event a driver could not.
+test("Mock Driver refuses a scripted structured result whose size is not its canonical size", () => {
+  for (const [value, bytes] of [
+    [{ outcome: "done", summary: "s" }, 31],
+    [{ outcome: "done", summary: "s" }, "32"],
+    [{ summary: "s", outcome: "done" }, 33],
+    [Number.NaN, 3]
+  ])
+    assert.throws(
+      () => new DeterministicMockDriver({ scenario: [{ type: "result.structured", value, bytes }] }),
+      { code: "VES_DRIVER_EVENT_INVALID", message: "Mock structured result is invalid" },
+      JSON.stringify([value, bytes])
+    );
+});
+
+test("Mock Driver refuses a scripted quota scope the quota rule would not keep", () => {
+  for (const scope of ["", "Five Hour", "unknown!", 5])
+    assert.throws(
+      () => new DeterministicMockDriver({ scenario: [{ type: "quota.exhausted", scope }] }),
+      { code: "VES_DRIVER_EVENT_INVALID", message: "Mock quota event is invalid" },
+      String(scope)
+    );
+  assert.throws(
+    () => new DeterministicMockDriver({ scenario: [{ type: "quota.exhausted", scope: "five_hour", resetsAt: "x" }] }),
+    { code: "VES_DRIVER_EVENT_INVALID", message: "Mock Driver scenario event fields are invalid" }
+  );
 });
 
 for (const [name, overrides] of [
