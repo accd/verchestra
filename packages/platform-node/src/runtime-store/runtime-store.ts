@@ -211,6 +211,13 @@ export interface StoredPolicyView {
   readonly viewDigest: string;
 }
 
+// invariant: the state's text and the digest saveSyncState bound it to, as
+// stored. The adapter that encodes the state decodes it.
+export interface StoredSyncState {
+  readonly stateJson: string;
+  readonly stateDigest: string;
+}
+
 export class RuntimeStore {
   readonly dbPath: string;
   readonly #timeoutMs: number;
@@ -478,12 +485,15 @@ export class RuntimeStore {
     }
   }
 
-  getSyncState(workspaceId: string): Readonly<Record<string, unknown>> | undefined {
+  getSyncState(workspaceId: string): StoredSyncState | undefined {
     const row = this.#database()
-      .prepare("SELECT state_json FROM workspace_sync_states WHERE workspace_id=?")
+      .prepare("SELECT state_json, state_digest FROM workspace_sync_states WHERE workspace_id=?")
       .get(workspaceId) as UnknownRecord | undefined;
     if (row === undefined) return undefined;
-    return Object.freeze(JSON.parse(String(row["state_json"])) as Record<string, unknown>);
+    return Object.freeze({
+      stateJson: String(row["state_json"]),
+      stateDigest: `sha256:${String(row["state_digest"])}`
+    });
   }
 
   saveActivePolicyView(

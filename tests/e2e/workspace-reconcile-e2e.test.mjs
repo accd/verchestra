@@ -16,7 +16,7 @@ async function runtimeFixture() {
     store: new RuntimeSyncStateStore({ runtimeStore: runtime, workspaceId }),
     digest: new NodeContentDigest()
   });
-  return { root, runtime, service };
+  return { root, runtime, service, store: new RuntimeSyncStateStore({ runtimeStore: runtime, workspaceId }) };
 }
 
 test("SQLite-backed sync survives restart and repeats with no mutation", async () => {
@@ -52,7 +52,7 @@ test("SQLite-backed authorized monorepo topology reconciliation is atomic", asyn
     );
     assert.equal(result.status, "reconciled");
     assert.deepEqual(
-      fixture.runtime.getSyncState(workspaceId).projects.map((entry) => entry.state),
+      (await fixture.store.load(workspaceId)).projects.map((entry) => entry.state),
       ["active", "retired"]
     );
   } finally {
@@ -87,7 +87,7 @@ test("projection drift and uncertain acknowledgement remain explicit across SQLi
     );
     fixture.runtime.close();
     fixture.runtime.open();
-    assert.equal(fixture.runtime.getSyncState(workspaceId).projections[0].observedRemoteVersion, "9");
+    assert.equal((await fixture.store.load(workspaceId)).projections[0].observedRemoteVersion, "9");
   } finally {
     fixture.runtime.close();
     await rm(fixture.root, { recursive: true, force: true });

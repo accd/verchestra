@@ -9,7 +9,8 @@ export {
   type RuntimeMigration,
   type StoredAuthorityRecord,
   type StoredExecutionCheckpoint,
-  type StoredPolicyView
+  type StoredPolicyView,
+  type StoredSyncState
 } from "./runtime-store/runtime-store.ts";
 export { CheckpointStoreError, RuntimeCheckpointStore } from "./checkpoint-store-adapter.ts";
 export { RUNTIME_PUBLIC_ERROR_DEFINITIONS, runtimePublicErrorRegistry } from "./runtime-store/runtime-errors.ts";
