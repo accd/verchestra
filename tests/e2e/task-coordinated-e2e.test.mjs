@@ -88,16 +88,18 @@ test(
     assert.equal(run.state, "HUMAN_REVIEW");
     assert.deepEqual(visits(fixture, plan.runId), ["plan#1:completed", "build#1:completed", "review#1:completed"]);
     // invariant: each Codex node ran read-only with no tool, from the Workspace
-    // login, in the run's worktree, which is not the user's checkout.
+    // login, in a read-only copy of its own read scope (SSI-42), never in the
+    // run's worktree or the user's checkout.
     const nodes = logLines(fixture, "fake-codex-node.log");
     assert.equal(nodes.length, 2);
-    assert.equal(nodes[0].cwd, nodes[1].cwd);
+    assert.notEqual(nodes[0].cwd, nodes[1].cwd);
+    for (const node of nodes) assert.match(node.cwd, /[\\/]sessions[\\/]codex-node-[^\\/]+[\\/]scope$/u);
     assert.deepEqual(
       nodes.map((entry) => entry.accountChecked),
       [true, true],
       "each Codex node read its account and rate limits before its turn"
     );
-    assert.notEqual(nodes[0].cwd, fixture.repository);
+    for (const node of nodes) assert.notEqual(node.cwd, fixture.repository);
     const sessions = logLines(fixture, "fake-codex.log");
     assert.equal(sessions.length, 3, "two nodes and the verifier");
     for (const session of sessions) {
