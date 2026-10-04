@@ -1,5 +1,5 @@
 import type { Dirent } from "node:fs";
-import { lstat, open, readdir, realpath } from "node:fs/promises";
+import { chmod, lstat, mkdir, open, readdir, realpath, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import {
@@ -18,6 +18,8 @@ const MAXIMUM_SEARCH_MATCHES = 100;
 const MAXIMUM_SEARCH_FILES = 5_000;
 const MAXIMUM_SEARCH_FILE_BYTES = 1_048_576;
 const MAXIMUM_MATCH_TEXT = 240;
+const READ_ONLY_FILE = 0o400;
+const READ_ONLY_DIRECTORY = 0o500;
 
 export class BridgeToolError extends Error {
   readonly code: string;
@@ -110,6 +112,59 @@ export class WorktreeReadView {
     } finally {
       await handle.close();
     }
+  }
+
+  // invariant: SSI-42 and TM-004 for a reader the bridge cannot hold (a Codex
+  // node): this view written out under `target`, an empty directory the
+  // caller owns. It holds exactly the text files a read through the bridge
+  // reaches, each resolved as a read is (every component lstat-checked, a link
+  // never followed), and leaves them and their directories read-only. It is
+  // bounded as the bridge's search is: a listing the bridge would truncate,
+  // more than MAXIMUM_SEARCH_FILES files, or a file over
+  // MAXIMUM_SEARCH_FILE_BYTES refuses the whole view, never copies a part.
+  async materialize(target: string): Promise<void> {
+    const directories = [target];
+    await this.#materializeDirectory(".", target, { files: 0, directories });
+    for (const directory of directories) await chmod(directory, READ_ONLY_DIRECTORY);
+  }
+
+  async #materializeDirectory(
+    logical: string,
+    target: string,
+    state: { files: number; readonly directories: string[] }
+  ): Promise<void> {
+    const listing = await this.listDir(logical);
+    if (listing.truncated) deny("VES_BRIDGE_VIEW_LIMIT", "A directory of the read scope exceeds the listing bound");
+    for (const entry of listing.entries) {
+      const child = logical === "." ? entry.name : `${logical}/${entry.name}`;
+      const destination = join(target, entry.name);
+      if (entry.type === "directory") {
+        await mkdir(destination, { mode: 0o700 });
+        state.directories.push(destination);
+        await this.#materializeDirectory(child, destination, state);
+        continue;
+      }
+      state.files += 1;
+      if (state.files > MAXIMUM_SEARCH_FILES) deny("VES_BRIDGE_VIEW_LIMIT", "The read scope exceeds the file bound");
+      await this.#materializeFile(child, destination);
+    }
+  }
+
+  // why: a binary file is not readable through the bridge, so it is not in
+  // the view either.
+  async #materializeFile(logical: string, destination: string): Promise<void> {
+    const handle = await open(await this.#resolve(logical, "file"), "r");
+    let bytes: Buffer;
+    try {
+      if ((await handle.stat()).size > MAXIMUM_SEARCH_FILE_BYTES)
+        deny("VES_BRIDGE_VIEW_LIMIT", "A file of the read scope exceeds the file size bound");
+      bytes = await handle.readFile();
+    } finally {
+      await handle.close();
+    }
+    if (bytes.byteLength > MAXIMUM_SEARCH_FILE_BYTES)
+      deny("VES_BRIDGE_VIEW_LIMIT", "A file of the read scope exceeds the file size bound");
+    if (!bytes.includes(0)) await writeFile(destination, bytes, { mode: READ_ONLY_FILE, flag: "wx" });
   }
 
   async listDir(path: unknown) {
@@ -219,4 +274,14 @@ export class WorktreeReadView {
       deny("VES_BRIDGE_PATH_INVALID", `Path is not a ${kind}`);
     return current;
   }
+}
+
+// invariant: a materialized view is removed whole: its read-only entries are
+// made writable for their owner first, which a removal needs on every
+// platform. A view that was never written leaves nothing to do.
+export async function removeMaterializedView(target: string): Promise<void> {
+  const entries = await readdir(target, { recursive: true, withFileTypes: true }).catch(() => []);
+  await chmod(target, 0o700).catch(() => undefined);
+  for (const entry of entries) await chmod(join(entry.parentPath, entry.name), entry.isDirectory() ? 0o700 : 0o600);
+  await rm(target, { recursive: true, force: true, maxRetries: 3 });
 }
