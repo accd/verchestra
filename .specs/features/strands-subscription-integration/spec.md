@@ -106,9 +106,19 @@ requires the owner to see and edit the draft before anything is written, and a
 delegation does not satisfy that. The extra-usage confirmation of D3 is, by
 design, the owner's own act on the machine before the first run.
 
+On 2026-10-04, under the same delegation, the coordinating agent session
+accepted two more items that the independent verification asked the owner to
+decide: D1b (the exact set of packages D1 brought into the lockfile) and D10
+(the v1 behaviour change of AD-080 item 5). The owner has not seen either.
+Like D1–D7 and D9, they are approvals by delegation, not by the owner in
+person, and each awaits the owner's own confirmation at human review, before
+merge of anything that depends on it. D11 is the one question the
+verification left open; it keeps its default until the owner decides it.
+
 | Assumption / decision | Chosen default | Rationale | Confirmed? |
 | --- | --- | --- | --- |
 | D1. The SDK's required peers `@modelcontextprotocol/sdk` (1.32.0 today, with an Express/Hono tree of about 30 new packages) and `@opentelemetry/api` (1.9.1, already locked), and the version moves of `@aws-sdk/client-bedrock-runtime` and `yaml` | T5 does not start until the owner approves them; once approved, the two peers are pinned exactly beside the SDK | They are non-optional peers and the MCP SDK is needed to bundle `./multiagent` (`research.md` F3); the owner approved only two packages | y (2026-10-03, delegated) |
+| D1b. The packages D1 actually brought into `pnpm-lock.yaml` (T5 commit 3): 36 package versions added, 0 removed, no existing version moved; the MCP SDK's Express 5 and Hono tree, `@aws-sdk/client-bedrock-runtime` 3.1146.0 with `@aws-sdk/token-providers` 3.1146.0 beside the versions already locked, and `yaml` 2.9.1; none declares an install script | Accept the set as locked, each reachable only from the four exact pins | Reviewed entry by entry in `validation.md` "T5 Evidence", commit 3; pinned by `tests/agent-readiness/dependency-policy.test.mjs`; the verifications found D1's acceptance delegated, not the owner's (`validation.md` "Independent Verification (T9)", finding 17) | y (2026-10-04, delegated; awaits the owner's confirmation at human review) |
 | D2. The sealed build's self-containment check fails on a string literal inside the SDK | Replace the text scan with an assertion over esbuild's metafile; accept about 1.45 MiB more per launcher | Exact rather than textual, so equal or stronger; the alternative leaves Graph and Swarm unusable in a sealed release (`research.md` F2) | y (2026-10-03, delegated) |
 | D3. Format and scope of the extra-usage confirmation | A machine-local `task-billing.json` beside `task-providers.json`, one entry per provider naming the authentication method and, for Codex, the plan type; no expiry; any change of method, plan type, or billing regime requires re-confirmation | Mirrors the existing machine-local provider setting; binds to what the run can verify | y (2026-10-03, delegated) |
 | D3b. A Codex account that reports a credit balance or unlimited credits | Block the run as `not configured` | Pre-purchased credits would be consumed after the allowance, which the owner forbids | y (2026-10-03, delegated) |
@@ -118,14 +128,21 @@ design, the owner's own act on the machine before the first run.
 | D7. Threat-model assumptions (single owner machine, same-user processes out of scope, repository content and model output hostile) | As listed in `threat-model.md` | The skill's interactive check-in could not run inside this task | y (2026-10-03, delegated) |
 | D8. `setup-matt-pocock-skills` configuration | Nothing written; `setup-draft.md` holds the draft for the owner to edit | The skill requires review before writing | pending: owner review of `setup-draft.md` |
 | D9. Anthropic resumes its paused Agent SDK billing change | Treat `claude -p` usage as plan usage per the page updated 2026-06-16; a regime change requires re-confirmation (D3) | The cited page says the change is paused (`research.md` F7) | y (2026-10-03, delegated) |
+| D10. AD-080 item 5, a change to every v1 run on every platform: `task start` and `task resume` refuse a state root too deep for Git's path limit as `not configured` (`state-path-length`) before the run is read, and the verification scratch checkouts move from `verification/<run ID>/review` and `/mutations` to `verification/<16 hex of the run ID's digest>/r` and `/m` | Accept both on every platform, as an exception to SSI-83 | Git refuses a worktree whose `.git` path passes PATH_MAX − 40 bytes (215 bytes for the directory on Windows); the shorter layout keeps verification within it, one layout on every platform keeps the macOS and Linux journeys exercising it, and the refusal comes before any effect instead of inside Git after the run's first transition (AD-080 item 5); documented in `docs/quick-start.md` | y (2026-10-04, delegated; awaits the owner's confirmation at human review) |
+| D11. A v1 verifier on a subscription and Codex credits | Unchanged: a v1 verifier keeps the T04 conversation, reads no Codex account, and can spend Codex credits at verification | SSI-83 keeps every v1 run as before, and the check needs the 0.159.3 floor a v1 verifier does not require (AD-076, AD-082 item 1) | pending: owner decision (`validation.md` "Remediation R1") |
 | Claude Code's `stream-json` result carries `structured_output` | Assumed from the SDK result type; T4 confirms it with a recorded fixture and an owner-run probe before relying on it | Documented for `--output-format json` and the SDK message type | n |
 | Codex minimum version | Raised in T4 to the first version whose generated App Server protocol has `outputSchema`, `account/read`, and `account/rateLimits/read` | Present in 0.159.3; the repository pins 0.115.0 | n |
 | Concurrency above 1 | Only reader nodes can run together, because writers are totally ordered | Single writer per worktree | y |
 | Graph node identifiers | `^[a-z][a-z0-9-]{0,31}$`; the token `<complete>` is reserved for the swarm completion value and cannot collide | Short, stable, safe in tokens and logs | y |
 | New failure codes | Travel as the `reason` of existing public codes (`VES_TASK_FAILED`, `VES_TASK_NOT_CONFIGURED`, `VES_TASK_REQUEST_REJECTED`), so the public error catalogs keep their counts | The catalogs are counted; any new public code needs explicit approval | y |
 
-**Open questions:** none — every item above has a chosen default; D1–D9 await
-the owner's confirmation.
+**Open questions:** none without a chosen default. Status on 2026-10-04: D1–D7,
+D9, D1b, and D10 are accepted by delegation and await the owner's own
+confirmation at human review; D8 waits for the owner's review of
+`setup-draft.md`; D11 waits for the owner's decision and keeps its default
+until then. The two "n" rows stand as recorded: the live `structured_output`
+shape waits for the owner-run probe, and the Codex floor is 0.159.3 for the
+sessions that use the newer protocol only (AD-076).
 
 ---
 
@@ -249,7 +266,7 @@ or escalate a run.
 3. The task's declared duration and token budgets SHALL bound all nodes together, with usage accumulated across nodes and across resumes. (SSI-39)
 4. WHILE a writer node runs, no other writer node of the run SHALL run. (SSI-40)
 5. WHEN a node requests a write or delete THEN the coordinated driver SHALL refuse a target outside the node's write scope before the request reaches the executor. (SSI-41)
-6. WHEN a node reads through the bridge THEN its read tools SHALL be confined to the node's read scope. (SSI-42)
+6. WHEN a node reads through the bridge THEN its read tools SHALL be confined to the node's read scope; WHEN a Codex node reads through its own sandbox THEN its working directory SHALL be a read-only copy of its read scope alone, bounded by the bridge's read limits and removed when the node ends, and any read outside that copy, by an absolute path, by a relative path through `..`, or by a path built from the session's `HOME` or `CODEX_HOME`, is an accepted residual risk (TM-004). (SSI-42) (amended 2026-10-04: a Codex node reads through its own sandbox, not the bridge, and the copy changes where it starts reading, not what it can read, see validation.md "Remediation R2", "Remediation R4", and "Delta verification of R4")
 7. WHEN a swarm node finishes THEN its handoff decision SHALL be validated against a closed schema whose target enum lists only that node's declared destinations and the reserved completion value. (SSI-43)
 8. IF a swarm node's decision names an undeclared destination, is malformed, or is missing THEN the node SHALL fail and the swarm SHALL end failed with no repair cycle. (SSI-44)
 9. WHEN a swarm reaches its handoff limit with a handoff pending THEN the run SHALL fail with `VES_COORDINATION_HANDOFF_LIMIT`. (SSI-45)
@@ -276,16 +293,16 @@ billed beyond my plan and lose nothing.
 **Acceptance Criteria**:
 
 1. WHEN a v2 run starts or resumes THEN every provider it uses, nodes and verifier, SHALL be configured as `subscription` in `task-providers.json`, and IF any is `api-key` THEN the run SHALL be `not configured` with no workflow change. (SSI-51)
-2. WHEN a v2 run starts or resumes THEN an extra-usage confirmation SHALL exist for every provider the run uses, naming that provider and its effective authentication method, and IF it is absent, malformed, or names another method or plan type THEN the run SHALL be `not configured`. (SSI-52)
+2. WHEN a v2 run starts or resumes THEN an extra-usage confirmation SHALL exist for every provider the run uses, naming that provider and its effective authentication method, and IF it is absent, malformed, or names another method or plan type THEN the run SHALL be `not configured`. The plan type SHALL be one of the plan types the Codex App Server protocol names, other than `unknown`, and WHEN a v2 run starts or resumes THEN the plan type the Codex account reports SHALL equal it. (SSI-52) (amended 2026-10-04: the plan type is a closed value compared with the account at `start` and `resume`, see validation.md "Remediation R1", finding 2)
 3. The extra-usage confirmation SHALL contain no token, account identifier, e-mail address, personal name, or path. (SSI-53)
 4. WHEN a Claude Code session initializes THEN its reported `apiKeySource` SHALL be `none`, and IF it is not THEN the session SHALL fail with `VES_CLAUDE_AUTH_METHOD_MISMATCH` before any tool effect. (SSI-54)
-5. WHEN a Codex node session starts THEN the driver SHALL require `account/read` to report an account of type `chatgpt`, and IF it does not THEN the session SHALL fail with `VES_CODEX_AUTH_METHOD_MISMATCH` before the turn starts. (SSI-55)
-6. IF a Codex rate-limit snapshot reports a credit balance or unlimited credits THEN the node SHALL not start its turn and the run SHALL be `not configured` with `VES_CODEX_CREDITS_PRESENT`. (SSI-56)
+5. WHEN a Codex node session, or the verifier session of a v2 run, starts THEN the driver SHALL require `account/read` to report an account of type `chatgpt`, and IF it does not THEN the session SHALL fail with `VES_CODEX_AUTH_METHOD_MISMATCH` before the turn starts. (SSI-55) (amended 2026-10-04: the v2 verifier is checked as a node is, decision D3b, see validation.md "Remediation R1", finding 1)
+6. IF a Codex rate-limit snapshot of a node or of the verifier of a v2 run reports a credit balance or unlimited credits THEN that session SHALL not start its turn and the run SHALL be `not configured` with `VES_CODEX_CREDITS_PRESENT`. (SSI-56) (amended 2026-10-04: the v2 verifier's credits block the run as a node's do, decision D3b, see validation.md "Remediation R1", finding 1)
 7. The drivers SHALL never call a provider method that buys, consumes, or advertises credits, and SHALL never pass an API key, an API-key helper, or a fallback model. (SSI-57)
 8. WHEN Claude Code reports a `rate_limit_event` with status `rejected`, or Codex reports `usageLimitExceeded`, a usage-limit or credits-depleted `rateLimitReachedType`, or `ordinaryUsageAllowed: false`, THEN the driver SHALL emit `quota.exhausted` carrying a reset time only if the provider reported one. (SSI-58)
 9. WHEN a node reports `quota.exhausted` THEN the coordinated driver SHALL start no new node, cancel every running node, and suspend the run. (SSI-59)
-10. WHEN a run suspends THEN completed node results, receipts, the budget ledger, and the node ledger SHALL be persisted, the worktree SHALL be preserved, the writer lease and the active-process claim SHALL be released, and the workflow state SHALL stay `IMPLEMENTING`. (SSI-60)
-11. The suspension record SHALL hold only a reason code, the provider, the time of suspension, and the provider-reported reset time if any. (SSI-61)
+10. WHEN a run suspends THEN completed node results, receipts, the budget ledger, and the node ledger SHALL be persisted, the worktree SHALL be preserved, the writer lease and the active-process claim SHALL be released, and the workflow state SHALL stay `IMPLEMENTING`, or `VERIFYING` when the verifier's session raised the signal. (SSI-60) (amended 2026-10-04: a v2 verifier's quota signal or credits suspend the run at `VERIFYING`, see validation.md "Remediation R1", finding 1)
+11. The suspension record SHALL hold only a reason code, the provider, the time of suspension, and, when the provider reported them, its limit window in a closed grammar and its reset time. (SSI-61) (amended 2026-10-04: the record also keeps the provider's limit-window `scope`, see validation.md "Delta verification of R4")
 12. WHILE a run is suspended, Verchestra SHALL NOT switch account, provider, model, or authentication mode, and SHALL NOT retry on its own. (SSI-62)
 13. The system SHALL continue a suspended run only through `vestra task resume`. (SSI-63)
 14. The workflow state `INTERRUPTED` SHALL stay terminal, and suspension SHALL NOT add or reuse a workflow state. (SSI-64)
@@ -343,7 +360,7 @@ integration without trusting its author.
 3. For the approval binding, each limit, the destination check, the scope narrowing, the single-writer rule, the authentication-method checks, and the billing block, a discrimination test SHALL show the suite fails when that check is removed. (SSI-80)
 4. Logs, payloads, checkpoints, Run records, and tracked artifacts SHALL contain no token, session, personal data, or private path, and a security test SHALL assert it for every new record. (SSI-81)
 5. The sealed candidate build SHALL stay self-contained with the adapter in its closure, and the activation health check SHALL stay silent and within its timeout. (SSI-82)
-6. The integration SHALL be opt-in, so a v1 request and every command other than a v2 `graph` or `swarm` run SHALL behave as before. (SSI-83)
+6. The integration SHALL be opt-in, so a v1 request and every command other than a v2 `graph` or `swarm` run SHALL behave as before; a v1 verifier SHALL read no Codex account, and a usage limit it meets SHALL fail the run, never suspend it. (SSI-83) (amended 2026-10-04: a v1 verifier's usage limit fails the run as before, see validation.md "Remediation R4"; the `state-path-length` refusal and the verification scratch layout of AD-080 item 5 are the one change every v1 run gets, accepted by delegation as decision D10)
 7. Qualification SHALL record agent, Graph, and Swarm pilots on Windows, macOS, and Linux with subscription authentication only, and a missing platform or account SHALL be recorded as `not configured` or pending, never as passed. (SSI-84)
 8. Quota suspension SHALL be qualified with deterministic fakes, and no pilot SHALL exhaust a subscription on purpose. (SSI-85)
 
