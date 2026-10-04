@@ -3949,3 +3949,113 @@ PASS and SSI-84 PENDING from the delta verification above; no verdict in this
 file was changed. The verdict line at the top of this file is the first
 pass's, kept as written; the latest verdict is the delta verification's.
 Next: `handoff.md`.
+
+## Remediation R6 (the named pipe's close)
+
+**Author**: an implementation session (the author of R4), not a verifier.
+**Base**: `d574e29` (`origin/main`). **Branch**: `strands/t9r6-pipe-close`.
+No verdict above is changed; no real provider was called.
+
+**What failed.** The `.7` candidate build (run 37211970828, `d574e29`, which
+holds R4's bounded end of the helper) failed `win32: a frame beyond its bound
+on the named pipe is refused` on Windows x64 in both gates that run it
+(security and release), at 45.6 s each: "the pipe client's close did not
+settle within 45000 ms; connected: true; 50 bytes received". The same case
+passed in 382 ms on run 37206575734. The 50 bytes are the `ready` line
+(`{"type":"ready","protocol":"verchestra-bridge/1"}` and a newline), so the
+client had authenticated; the frame came after.
+
+**What the code shows.**
+
+- A client's pending write cannot hold the close after a refusal. The
+  controller refuses only once the pending line passes 8 MiB
+  (`packages/agent-runtime/src/execution/mcp-bridge-protocol.ts:122`), that
+  is, with the frame's last byte, so every byte of the client's single write
+  (libuv 1.51.0, Node 24.14's, answers `uv_try_write` on a named pipe with
+  `EAGAIN`, so the frame is one overlapped `WriteFile`) had been taken from
+  the pipe by then. And a client whose write is pending sees `EPIPE` then
+  `close` when its server stops reading and closes (reproduced below).
+- A server end outliving the helper needs another process to hold it. The
+  helper starts no process and its `NamedPipeServerStream` constructor
+  creates a handle that is not inheritable; the tree terminator would end
+  any child it had (reproduced below, and now pinned by
+  `tests/unit/windows-pipe-transport.test.mjs:91`).
+- After a refusal R4's end of the helper kills it through its own handle
+  within about 15 s at most (`windows-pipe-transport.ts:454`), which closes
+  its server end, yet the client stayed connected for 45 s. So the likeliest
+  link that broke is the first: the frame never wholly reached the
+  controller, there was no refusal, and the end of the helper never began.
+  On Node's side it does not reproduce: fake helpers fed the frame in 64 KiB
+  to 8 MiB chunks, before and after the `connected` line, and a real child
+  process relaying a local socket over its stdio (25 rounds, scratch, not
+  tracked), all reached the refusal. What is left is Windows-only (the
+  PowerShell relay, the pipe driver, or libuv's Windows pipes), which no
+  host here can run. This is an inference; the trace below settles it.
+
+**Change.** `d665b36`: the transport takes an optional observer and reports
+each step of a channel's life in a closed vocabulary (`PipeChannelEvent`,
+`windows-pipe-transport.ts:217`, option `:487`): the helper's start and pid,
+`listening`, `connected`, the connection's close, the start of the
+helper's end with its trigger (`connection-closed` or `channel-closed`) and
+whether the helper still ran (`:438`), how the tree terminator returned
+(`returned`, `failed`, `timed-out`, `:461`), a kill through the handle
+(`:463`), the helper's exit code or signal, and the channel's close; never a
+byte or a line of the helper's, and an observer that throws changes nothing
+(`:407`). `a68cebc`: the real-pipe case asserts the refusal link by link
+(`tests/helpers/pipe-bridge-fixture.mjs:270`, used at
+`tests/security/windows-pipe-bridge-security.test.mjs:284`), each link
+bounded and its failure carrying the trace (`:139`): the controller's
+refusal, the helper's exit, the pipe's server end gone from the Windows pipe
+namespace (`\\.\pipe\`, read without connecting, `:127`), and the client's
+disconnect, which a write it makes then reports even while an earlier write
+of its own is pending. The diagnosis holds the transport's steps with their
+milliseconds, the bytes that reached the controller, the refusal count,
+whether the pipe name is listed, and the client's state (`:102`): connected,
+closed, first error code, bytes received, `writableLength`, and libuv's
+`writeQueueSize`. The case's bound is unchanged (45 s per link, 120 s per
+case) and no assertion was removed: the client's close is still required.
+
+**How to read the next failure.** No `end` step, `rejected: 0`, `reached`
+below 8388609, and `writeQueueSize` above 0: the frame never reached the
+controller (link 1). `end` and `tree-terminated` but no `helper-exited`: the
+helper was not ended. `helper-exited` with `listed: true`: another process
+holds the server end. `listed: false` with the client not closed: the client
+did not see it.
+
+**Reproduction on every platform** (`tests/integration/windows-pipe-transport-relay.test.mjs`,
+real processes: the stand-in `tests/helpers/pipe-relay-stand-in.mjs` relays a
+named pipe on Windows and a Unix socket elsewhere over its stdio, ended by
+the real tree terminator, `pipe-bridge-fixture.mjs:295`):
+
+| Case | Shows |
+| --- | --- |
+| `:63` a frame refused on a faithful relay, three rounds | every link holds; the trace begins `helper-started`, `listening`, `connected`, `connection-closed`, `end` (`connection-closed`) |
+| `:84` a helper that stops taking a pending frame | the trace tells link 1 apart (no refusal, at least 64 KiB reached, the client's write waiting); the channel's close still ends the helper (`end`: `channel-closed`, running) and the client is disconnected with its write pending |
+| `:107` a refused channel whose helper's child holds the connection | ending the whole tree disconnects the client; the tree terminator returned |
+
+Unit (`tests/unit/windows-pipe-transport.test.mjs:375`, `:389`, `:402`): the
+exact trace when the tree termination ends, misses, or hangs, for a channel
+closed before any client, and an observer that throws.
+
+**Discrimination** (each applied, the unit transport suite and the stand-in
+suite run, then restored):
+
+| Mutant | Killer (failed of 52) |
+| --- | --- |
+| R6-M1 the tree terminator never called | 10, the child-holds-connection stand-in case among them (the client stays connected) |
+| R6-M2 no end of the helper when the connection closes | 9, the faithful-relay and child stand-in cases among them |
+| R6-M3 no end of the helper when the channel closes | 10, the stalled stand-in case among them |
+| R6-M4 the trace not reported | 7, all three stand-in cases among them |
+
+**Gates** (darwin arm64, Node 24.14.0, at `a68cebc`): `pnpm gate:quick` PASS
+(unit 2992/2992, agent-readiness 357/357, census 13/13, complexity
+unchanged); `pnpm test:architecture` 132/132; `pnpm agent:check` PASS; the
+pipe suites (unit, both security, three integration) 111/111; 0 failed, 0
+skipped, 0 todo, no temporary entry left. Not verified here: the real pipe on
+Windows.
+
+**Next action**: push the branch and run the Windows `gate:security` leg. If
+the case fails, its message now names the link and carries the trace; a
+failure at link 1 puts the fault in the relay between the client and the
+controller (PowerShell's copy tasks or the pipe driver), which a fix must
+then address there.
