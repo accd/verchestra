@@ -3459,3 +3459,166 @@ bound the named-pipe cases; fix tasks for findings 1, 2, and 6 (an
 implementer who is not this verifier); the amendment texts of findings 4 and
 5 for T10; the owner's decisions on SSI-83 (finding 1 and AD-080 item 5) and
 D1; then a fresh verification of SSI-49, SSI-81, SSI-83, and the survivors.
+
+### Remediation R4 (second-pass findings)
+
+**Author**: an implementation session that wrote neither verification.
+**Base**: `91a7916` (`origin/main`). **Branch**: `strands/t9r4-final-fixes`.
+The second pass's findings and citations above are left as written; this
+section records the fixes, their evidence, and the amendment texts T10 applies.
+No real provider was called and no real Codex login was read: every login,
+token, and key below is a fixture value.
+
+| Commit | Finding | Change |
+| --- | --- | --- |
+| `0f46028` | 1 (SSI-83) | A v1 verifier does not observe a usage limit, so it fails the run as before; only a v2 verifier suspends (`apps/vestra-cli/src/task/task-codex.ts:355`, under the `subscriptionOnly` of `:312`) |
+| `6af0598` | 2 (SSI-49, SSI-81, TM-015) | `codexLoginSecrets` (`apps/vestra-cli/src/task/task-codex-identity.ts:72`) reads the identity directory's `auth.json` only to withhold its `access_token`, `refresh_token`, `id_token`, and every field named like an API key (`:33`, `:34`); `nodeResultWithheld` adds them (`task-coordination.ts:122`); a file that is not a login is `not configured` (`codex-login`) with no cause (`task-codex-identity.ts:38`); the coordinated driver resolves the withheld text for every result it screens (`packages/application/src/execution/coordinated-driver.ts:593`), so a token Codex renews mid-round is withheld |
+| `56a041d` | 3 (gate) | Every case of `tests/security/windows-pipe-bridge-security.test.mjs` has `PIPE_CASE` (120 s); every wait in it is `settlesWithin` 45 s with a diagnostic (`tests/helpers/pipe-bridge-fixture.mjs:17`, `:20`, `:33`); a relay request is rejected when the relay exits before answering (`tests/helpers/mcp-bridge-fixture.mjs:96`); the cleanup is bounded and destroys every raw client (`pipe-bridge-fixture.mjs:61`) |
+| `01c317d` | 4 (SSI-42, TM-004) | AD-081 in `.specs/STATE.md`: the residual is any read outside the copy; the "confines every read relative to the working directory" reason is corrected; moving the copy out of the state tree is a rejected alternative |
+| `eb5b5fd` | 6 (O12, O13, O15) | Killer cases in the verifier-resume and grant-renewal journeys |
+
+**Evidence by finding.**
+
+1. SSI-83: `tests/integration/codex-verifier-session.test.mjs:266` — a v1
+   verifier under the fake's `usage-limit` scenario, on a subscription and on
+   an API key, is refused `VES_TASK_FAILED` `{reason: VES_TASK_VERIFIER_FAILED}`
+   (`:270`), the outcome of `c3223c6` (no quota handling: a failed session
+   is `VES_TASK_VERIFIER_FAILED` when there is no meter refusal, ceiling, or
+   cancel), opens one turn with no account read, and leaves no session root.
+   The v2 cases (`:280`, `:288`) and the agent-run journeys
+   (`tests/e2e/task-codex-account-e2e.test.mjs:78`, `:111`) still suspend.
+2. SSI-49: `tests/unit/task-coordination-withheld.test.mjs:76` asserts the
+   values are the Claude Code credential then the access, refresh, and ID
+   tokens and the API key (`:78`), a ChatGPT-only login without its null key
+   (`:87`), and a directory with no login file only the Claude Code credential
+   (`:93`); `:98` refuses a file that is not JSON, an array, and `null` as
+   `codex-login` with no cause and none of the file's text (`:104`).
+   `tests/security/coordination-record-security.test.mjs:148`: a swarm whose
+   reviewer's summary carries each of the four login secrets, and one carrying
+   an access token the writer node renews in `auth.json` after the round
+   opened, is refused `VES_COORDINATION_RESULT_INVALID`; only the writer's
+   result is persisted (`:213`) and no persisted file holds the secret; the
+   same run naming no secret completes (`:206`, the control).
+3. Gate: the cause the code shows is the relay fixture. `request` waited
+   only for an answer, and the relay exits 1 when its own five-second
+   authentication wait ends (`packages/agent-runtime/src/execution/mcp-tool-bridge.ts:321-327`),
+   which on Windows spans the relay, the pipe, two .NET copy tasks in the
+   PowerShell helper, and the controller; a relay that exited first left
+   `relay.initialize()` or a call (4 cases) waiting for ever, and no case had
+   a timeout. No transport defect could be shown from the code: every
+   transport wait is bounded (startup 30 s, exit 5 s, the controller's
+   five-second authentication timeout). `windows-pipe-bridge-security.test.mjs:146`
+   proves the bounds on every platform: a relay with no channel fails its
+   waiting `initialize` with `the relay exited with 1 … VES_BRIDGE_NOT_CONFIGURED`,
+   and a wait that never settles fails with its label. Not verified: the
+   win32 cases on Windows (no local Windows host; the leg runs on the matrix).
+4. AD-081: no code change. Moving the copy under the temporary directory was
+   considered and rejected: a Codex node's `CODEX_HOME` must stay the
+   Workspace identity directory, which Codex reads and rewrites to
+   authenticate, and `HOME` and `CODEX_HOME` are in the environment Codex's
+   commands inherit (by Codex's documented shell environment policy, which
+   drops only names with KEY, SECRET, or TOKEN; not observed against a real
+   Codex), so `$CODEX_HOME/auth.json` and `$CODEX_HOME/../worktrees/` reach
+   what `../../../` does. The move would change the spelling of the reach,
+   not the reach, and would need a fixed path under a shared temporary
+   directory or a marker to clear a killed session's view. The e2e assertion
+   on the view's place (`tests/e2e/task-coordinated-e2e.test.mjs:96`) stands.
+5. Survivors: `tests/e2e/task-codex-account-e2e.test.mjs:201` rewrites the
+   sealed commit record to a commit on top of the task commit with the branch
+   anchoring it, recorded on the plan's revision (its parent is not that
+   base), and `:202` recorded on the task commit (a base that is not the
+   plan's revision); each is refused `VES_TASK_COMMIT_DRIFT` (`:207`) and the
+   run stays suspended with no verifier turn.
+   `tests/e2e/task-grant-renewal-e2e.test.mjs:135` revokes a suspended run's
+   grant in the runtime store (`:147`); the resume at the time the renewal
+   case renews keeps it (`:158`) and its first effect is refused
+   `VES_EXECUTOR_APPROVAL_INVALID` (`:157`).
+
+**Can a Codex node's identity be narrowed so `auth.json` is out of its
+reach?** No, within this design. Codex authenticates from
+`$CODEX_HOME/auth.json` and writes renewed tokens back to it, from the same
+process whose sandboxed commands the model drives, and the read-only sandbox
+withholds writes and network, not reads (AD-081). A per-node copy of the login
+would hold the same tokens, and a renewal inside it would, with rotating
+refresh tokens, leave the Workspace's own login stale. The OS credential
+store is refused for the Codex login (`task-codex-identity.ts:20-24`), and
+no readable-root policy is verified at 0.159.3 without a provider call.
+Withholding the values is what this design can enforce.
+
+**Discrimination.** Each mutant applied in place, its suites run through
+`scripts/test-scope.mjs`, then restored; `git status --porcelain` was clean
+of it after every run.
+
+| Mutant | Target | Killer (failed of total) |
+| --- | --- | --- |
+| R4-M1 the v2 condition on the verifier's quota observation removed | SSI-83 | integration `codex-verifier-session` 1/18 (with e2e `task-codex-account` 0/4 in the same run) |
+| R4-M2a the composition withholds no login secret | SSI-49 | unit `task-coordination-withheld` 2/3; security `coordination-record-security` 1/3 |
+| R4-M2b the withheld text resolved once at round open (the previous `coordinated-driver.ts`) | SSI-49 | security `coordination-record-security` 1/3 (unit `coordinated-driver` 0/26, `task-coordination-withheld` 0/3) |
+| R4-M3 a relay's exit leaves a waiting request unsettled | gate | security `windows-pipe-bridge-security` 1/16, failed by its 45 s bound, not a hang |
+| O12 the commit's parent not checked (`task-run.ts:462` returns true) | SSI-33, TM-011 | e2e `task-codex-account` 1/4 |
+| O13 the recorded base not compared with the plan's revision (`:457`) | SSI-33, TM-011 | e2e `task-codex-account` 1/4 |
+| O15 the stored grant handed to the decision without its revocation (`:443`) | AD-082 item 5 | e2e `task-grant-renewal` 1/3 |
+
+**Deleted case → replacement.** `tests/unit/task-coordination-withheld.test.mjs:52`
+"a Codex session on the Workspace login has no value to withhold beside the
+Claude Code credential" → `:76` "…withholds the login's tokens and API key
+beside the Claude Code credential", whose `:93` keeps the old case's assertion
+for a directory with no login file.
+
+**Proposed text for T10, not applied.**
+
+- `spec.md` SSI-42: "WHEN a node reads through the bridge THEN its read tools
+  SHALL be confined to the node's read scope; WHEN a Codex node reads through
+  its own sandbox THEN its working directory SHALL be a read-only copy of its
+  read scope alone, bounded by the bridge's read limits and removed when the
+  node ends, and any read outside that copy, by an absolute path, by a
+  relative path through `..`, or by a path built from the session's `HOME` or
+  `CODEX_HOME`, is an accepted residual risk (TM-004). (SSI-42)"
+- `threat-model.md` TM-004, columns from "Threat action" on: "A writer node
+  asks for out-of-scope or protected writes; a reader node reads beyond its
+  read scope | Repository integrity, disclosure | Repository, protected
+  paths, files outside a node's read scope, the Workspace's Codex login |
+  Executor scope, protected-path, grant, authority checks
+  (`task-executor.ts:640-671`); mediated tools only (AD-039) | A Codex node's
+  sandbox permits any read outside its working directory, by an absolute
+  path, a relative path through `..`, or a path built from `HOME` or
+  `CODEX_HOME`, the run's worktree and the Codex login's `auth.json` included
+  (accepted residual) | Node write-scope narrowing before the executor
+  (SSI-41); node read scope through the bridge, and for a Codex node a
+  read-only copy of its read scope as its working directory (SSI-42,
+  AD-081); node results screened before they persist for the run's
+  credentials, the Codex login's tokens and API key, and its machine-local
+  roots (SSI-49); untrusted labelling (SSI-50) | Denied tool counts in the
+  node ledger; `VES_BRIDGE_VIEW_LIMIT`; `VES_COORDINATION_RESULT_INVALID` |
+  medium | high | high"
+- `spec.md` SSI-83: "The integration SHALL be opt-in, so a v1 request and
+  every command other than a v2 `graph` or `swarm` run SHALL behave as
+  before; a v1 verifier SHALL read no Codex account, and a usage limit it
+  meets SHALL fail the run, never suspend it. (SSI-83)" R1's open v1 credits
+  decision is unchanged.
+
+**Residual risks.** The screen matches exact values: a secret the model
+encodes, splits, or transforms passes, as for the Claude Code credential.
+The login file is read again for every screened result; if a parallel Codex
+node is rewriting it at that instant (Codex writes it in place) the read is
+not JSON and the run fails closed as `codex-login`, never open. The real
+named-pipe cases are bounded but were not run here.
+
+**Gates** (darwin arm64, Node 24.14.0, at `eb5b5fd`): `pnpm gate:quick` PASS
+(format, lint, complexity with 171 baselined keys and none above 10
+unaccounted, typecheck; unit 2983/2983, agent-readiness 357/357, census
+13/13); `pnpm test:architecture` 132/132; `pnpm agent:check` PASS; the
+touched suites together (14 files across unit, integration, security, e2e)
+145/145; 0 failed, 0 skipped, 0 todo, no temporary entry left. No file gained
+or lost `JSON.stringify` or `createHash`; no complexity key changed.
+
+**Citations that moved** (for the fresh verifier): `task-codex.ts:311` →
+`:312`, `:354` → `:355`, `:359` → `:360`; `task-coordination.ts:113` →
+`:115`, `:116` → `:119-123`, `:252` → `:259`, `:316` → `:323`, `:325` →
+`:332`, `:357` → `:364`; `coordinated-driver.ts:307`'s round-open resolution
+is gone, the screen resolves at `:593`. `task-run.ts:443`, `:457`, `:462` are
+unchanged.
+
+**Next action**: push the branch and run the platform matrix, with the
+Windows `gate:security` leg first; T10 applies the three texts above; then a
+fresh verification of SSI-49, SSI-81, SSI-83, and O12, O13, O15.
