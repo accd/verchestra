@@ -346,7 +346,7 @@ section.
 
 - [x] Each example plans with `--dry-run` in a test (SSI-36).
 - [x] JSON and text results agree for plan and status.
-- [ ] `pnpm site:check` passes.
+- [x] `pnpm site:check` passes.
 
 **Tests**: e2e
 **Gate**: full
@@ -355,6 +355,9 @@ section.
 
 - [x] Commit 1: `task-coordination-surface.ts` presents the topology (passport, role, destinations, a swarm's start) at `plan` beside the bound descriptor, with the subscription preconditions and the requirement `start` would refuse; `status`, `start`, and `resume` show each node with its state and the same next action, which offers no resume that would be refused (one reconcile command for one uncertain node, none for several); the text form agrees with the JSON form in the journeys; 14 mutants killed.
 - [x] Commit 2: `docs/examples/task-request-{agent,graph,swarm}.json`, one small change per mode on Claude Code and Codex only, every limit at or below its default; `tests/e2e/task-request-examples-e2e.test.mjs` plans each with `--dry-run` through the binary and compares its text and JSON forms; 5 mutants killed.
+- [x] Commit 3: `docs/quick-start.md` documents coordinated runs (modes, the writer rule, the examples, the limits and their ceilings, subscriptions only with extra usage off and the hand-written `task-billing.json`, what plan and status show, suspension and resume with `--reconcile`, mode `agent` without the SDK, Windows still refused); `README.md` summarizes it.
+
+**Status**: author-complete on `strands/t8-surface`; pending `pnpm gate:full` (the journeys on Linux), `pnpm site:test` (its Playwright browsers and preview server could not run on the authoring machine), the Windows run on the platform matrix, independent verification (T9), and human review.
 
 ---
 

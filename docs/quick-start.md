@@ -26,7 +26,8 @@ Verchestra never merges: the result is a branch you inspect and merge yourself.
   your home directory or `XDG_CONFIG_HOME`, and `GIT_AUTHOR_*` and
   `GIT_COMMITTER_*` name and email variables still set the commit identity.
 - **Claude Code** (`claude`, version 2.1.282 or later in the 2.x line) and the
-  **Codex CLI** (`codex`, version 0.115.0 or later) on `PATH`.
+  **Codex CLI** (`codex`, version 0.115.0 or later; 0.159.3 or later for a
+  [coordinated run](#coordinated-runs-agent-graph-and-swarm)) on `PATH`.
 - A **Claude subscription** (Pro, Max, Team, or Enterprise) and a **ChatGPT
   plan that includes Codex**. This is the default. An Anthropic API key and an
   OpenAI API key work instead; see
@@ -244,7 +245,9 @@ Execution Package, creates the run, and prints the approval surface: scope,
 protected paths, destinations, models, budgets, gates, risk, and the
 `bindingDigest` your approval will bind. It also prints `providerAuth`, the
 credential mode each provider will use. Add `--dry-run` to print the same
-surface while writing nothing and reading no credential.
+surface while writing nothing and reading no credential. A coordinated request
+prints its topology and subscription preconditions as well; see
+[Coordinated runs](#coordinated-runs-agent-graph-and-swarm).
 
 ## 7. Approve
 
@@ -303,7 +306,9 @@ npx verchestra task resume --run-id <runId>
   the cancel.
 - `resume` continues an interrupted run. A run interrupted after the
   implementer finished resumes at its gates without starting the implementer
-  again.
+  again. A coordinated run that was suspended, or that stopped while a node
+  was running, has its own rules; see
+  [Suspension and resume](#suspension-and-resume).
 
 ## 10. Review
 
@@ -331,6 +336,222 @@ git branch -d vestra/<runId>/<taskId>          # when you are done with it
 
 Verchestra never merges, pushes, or opens a pull request.
 
+## Coordinated runs: agent, graph, and swarm
+
+A coordinated run replaces the single implementer with several Claude Code and
+Codex sessions, called nodes, inside the same governed task. You still approve
+one sealed plan, the executor still checks every write against the scope,
+protected paths, the capability grant, and Cedar authority, your gates still
+run, Codex still verifies the commit independently, and you still review it.
+No node's answer counts as verification.
+
+> **Status:** coordinated runs are qualified with deterministic stand-ins for
+> Claude Code and Codex on macOS only; no run with a real subscription has
+> been recorded yet. They are not in a published release yet: until a release
+> that includes them is published, run these commands from a source checkout
+> (`node <checkout>/apps/vestra-cli/bin/vestra.mjs` in place of
+> `npx verchestra`). On Windows the task path, coordinated runs included, is
+> still refused (requirement `platform`); the Windows bridge transport it
+> needs is pending qualification on a Windows runner.
+
+### Three modes
+
+- **`agent`** runs one node. It runs on Verchestra's own single-node engine
+  and never loads the Strands Agents SDK.
+- **`graph`** runs nodes in the order of their edges, with no cycle. A node can
+  take earlier nodes' results as `inputs`.
+- **`swarm`** starts at one node, and each node hands the work to one of the
+  nodes it declares in `handoffs`, or ends the swarm.
+
+`graph` and `swarm` are ordered by the Strands Agents SDK, at the version
+Verchestra pins and loaded only for those runs; there is nothing to install
+separately. The SDK only orders the nodes: it never calls a model, reads a
+credential, or runs a tool. Every node is a Claude Code or Codex session that
+Verchestra starts and governs.
+
+A **writer** is a Claude Code node with a non-empty `writeScope`; every other
+node only reads, and a Codex node never writes. Two writers never run at the
+same time, and a graph must order every two writers by a path.
+
+### Write a coordinated request
+
+A coordinated request is a Task Request with `"schemaVersion": 2`. It has the
+same `task`, `gates`, `budgets`, `verifier`, and `instructions` as a
+single-session request, no top-level `driver`, and an `execution` member that
+describes the nodes. The repository ships one complete example per mode, all
+for the change the request in step 5 makes:
+
+- [`docs/examples/task-request-agent.json`](examples/task-request-agent.json):
+  one Claude Code writer.
+- [`docs/examples/task-request-graph.json`](examples/task-request-graph.json):
+  a Codex node plans, a Claude Code node writes the change with the plan as
+  input, and a Codex node reviews it.
+- [`docs/examples/task-request-swarm.json`](examples/task-request-swarm.json):
+  a Claude Code writer and a Codex reviewer hand the work to each other until
+  the reviewer ends it.
+
+Replace `sourceRevision` with `git rev-parse HEAD` before you plan. Each node
+names its `nodeId` (lowercase, up to 32 characters), its `driver` and model,
+a `description`, its `instructions`, a `readScope` and a `writeScope` inside
+the task's `changeScope` (a write scope may not cover a protected path), and
+its `inputs`. The request cannot name an authentication method, a credential,
+a billing mode, an executable, or an endpoint. The canonical contract is
+[`schemas/task-request/2.schema.json`](../schemas/task-request/2.schema.json).
+
+### Limits
+
+`execution.limits` bounds the run. A limit you leave out takes its default; a
+limit you declare may be lower, or higher up to its ceiling, and is part of
+what you approve. A value above its ceiling is refused at planning with
+`VES_TASK_REQUEST_REJECTED` (reason `VES_TASK_REQUEST_EXECUTION_INVALID`).
+
+| Limit | Default | Ceiling | Bounds |
+| --- | --- | --- | --- |
+| `concurrency` | 1 | 4 | Nodes that run at once; only readers ever run together |
+| `maxNodes` | 64 | 256 | Nodes of a graph |
+| `maxEdges` | 128 | 512 | Edges of a graph |
+| `maxSwarmAgents` | 8 | 16 | Nodes of a swarm |
+| `maxHandoffs` | 32 | 128 | Handoffs in a swarm; one more pending fails the run (`VES_COORDINATION_HANDOFF_LIMIT`) |
+| `nodeResultBytes` | 65536 (64 KiB) | 262144 (256 KiB) | One node's structured result |
+| `runResultBytes` | 262144 (256 KiB) | 1048576 (1 MiB) | All node results of the run, every visit counted |
+
+A result over its bound is refused before it is stored and fails its node
+(`VES_COORDINATION_RESULT_TOO_LARGE`). The task's `budgets` bound all nodes
+and the verifier together: tokens and active time add up across nodes and
+across resumes, and time spent suspended is not counted.
+
+### Subscriptions only, with extra usage off
+
+A coordinated run uses your subscriptions and nothing else. Both providers
+must authenticate by subscription, as set up in step 3: a run with either
+provider on an API key is refused with `VES_TASK_NOT_CONFIGURED` (requirement
+`coordinated-run-subscription`). Each session proves its method again when it
+starts: Claude Code must report no API key source, and Codex must report a
+ChatGPT login.
+
+Verchestra cannot read whether a provider account may spend beyond the plan,
+so it asks you to state it, after you have turned that spending off:
+
+1. **In your Claude account**, open the usage settings (Settings > Usage) and
+   turn off usage credits and any auto-reload, so Claude Code stops when the
+   plan's allowance is used instead of continuing on paid usage.
+2. **In your ChatGPT account**, do not keep purchased Codex credits. A Codex
+   node whose account reports a credit balance, or unlimited credits, does not
+   start its turn: the run is suspended and `start` reports
+   `VES_TASK_NOT_CONFIGURED` (requirement `codex-credits`). Remove the credits,
+   then resume.
+3. **Write your statement** by hand, beside `task-providers.json`:
+
+```text
+~/Library/Application Support/Verchestra/state/workspaces/<workspaceId>/task-billing.json
+```
+
+```json
+{
+  "schemaVersion": 1,
+  "providers": {
+    "claude-code": { "auth": "subscription", "extraUsage": "disabled", "confirmedAt": "2026-10-04T09:00:00Z" },
+    "codex": { "auth": "chatgpt", "planType": "plus", "extraUsage": "disabled", "confirmedAt": "2026-10-04T09:00:00Z" }
+  }
+}
+```
+
+The file holds exactly these members and nothing else: no token, account ID,
+e-mail address, name, or path.
+
+- `auth` is the method the provider's sessions prove: `subscription` for
+  Claude Code and `chatgpt` for Codex.
+- `extraUsage` is `disabled`, your statement that the account cannot spend
+  beyond its plan.
+- `confirmedAt` is the UTC time you checked the account, written as
+  `YYYY-MM-DDTHH:MM:SSZ`. It cannot be in the future or before the start of
+  the provider's current billing terms as this build records them
+  (2026-06-16 for Claude Code, 2026-10-03 for Codex). A build that records new
+  terms asks you to check and confirm again.
+- `planType`, for Codex only, is your ChatGPT plan in lowercase, such as
+  `plus` or `pro`. Verchestra does not compare it with the account; write the
+  statement again when your plan changes.
+
+Verchestra never writes this file, and a request can never supply it. It has
+no expiry. Both providers need an entry, because every coordinated run has a
+Claude Code writer and the Codex verifier. `start` and `resume` read it before
+any credential, transition, or worktree; a missing, unreadable, or
+non-matching statement is `VES_TASK_NOT_CONFIGURED` (requirement
+`extra-usage-confirmation`), and the terminal shows the file's exact path and
+the entries it needs.
+
+### Plan, start, and status
+
+The commands are the same as for a single-session run. For a coordinated
+request:
+
+- `plan` prints, beside `execution` (the whole descriptor your approval binds,
+  every limit explicit), a `coordination` member: the mode, a swarm's start,
+  and each node with its passport (`<driver>:<model>`), its role (`writer` or
+  `reader`), and the nodes its work goes to next. It also prints
+  `subscription`: the method each provider must prove, the statement file, and
+  `preflight`, which is `ready` or the requirement `start` would refuse now.
+  Planning refuses nothing for it; `start` and `resume` check again.
+- `start` runs the nodes inside one executor run, then your gates, the
+  verifier, and review, as in steps 8 to 10. Its result also carries the run's
+  `coordination`, as `status` shows it.
+- `status` prints `coordination`: each node's state (`pending`, `started`,
+  `completed`, `failed`, `partial`, or `uncertain`), its number of visits, and
+  the digest of its latest result, and `uncertain`, the nodes a resume cannot
+  run again on its own. A suspended run also shows `suspension`.
+
+The text output and `--output json` print the same members with the same
+values; the text form shows a nested member as compact JSON.
+
+### Suspension and resume
+
+When a provider reports that your plan's allowance is used up, the run is
+suspended instead of failing. No further node starts, the nodes still running
+are stopped, and their provider processes end. Completed node results, tool
+receipts, the node record, the usage so far, and the worktree are all kept.
+The run stays `IMPLEMENTING` and releases the Workspace writer lease. `start`
+exits 1 with `status: SUSPENDED` and a `suspension` that names the reason
+(`VES_DRIVER_QUOTA_EXHAUSTED`), the provider, the time, and, when the provider
+reported them, its limit window (`scope`, for example `five_hour`) and the
+time it resets (`resetsAt`). Its `next` is the command that continues the run.
+
+Verchestra never continues a suspended run on its own. It does not retry at
+the reset time and never switches account, provider, model, or authentication
+method. When your allowance is back, resume it yourself:
+
+```bash
+npx verchestra task resume --run-id <runId>
+```
+
+Before any node starts, `resume` checks the subscription preconditions and
+your statement again, that the approval is still valid under the Workspace
+policy in force, and that the worktree is exactly as the run left it. An
+approval lasts seven days; one that expired while the run was suspended is
+refused, and you plan the task again. A worktree that changed is refused with
+reason `VES_EXECUTOR_WORKTREE_DRIFT`. A refusal changes nothing, so you can
+put things right and resume again, or cancel. The resumed run reuses every
+completed node's result without starting it again, and runs again a node that
+stopped before it changed anything.
+
+**A node that may have changed the worktree.** A node that had started and
+has no recorded end (for example, the process driving the run was killed), or
+a writer stopped after one of its writes landed (`partial`), may have left
+effects. `resume` refuses it with `VES_TASK_FAILED` (reason
+`VES_TASK_NODE_UNCERTAIN`) and prints the node and the command that runs it
+again. `status` shows the same node under `coordination.uncertain` with the
+digest of its record, and that command as the next action. Inspect the run's
+worktree first (`git worktree list` names it). To run that node again on the
+worktree as it is now, type its digest back:
+
+```bash
+npx verchestra task resume --run-id <runId> --reconcile <sha256:…>
+```
+
+A digest that names no such node is refused with reason
+`VES_TASK_RECONCILE_UNMATCHED`. A resume reconciles one node; if two nodes are
+uncertain, no resume can pass, and `status` offers only `vestra task cancel`.
+`cancel` of a suspended run removes its worktree and ends it `ABORTED`.
+
 ## Narrow authority for a Workspace (optional)
 
 `.verchestra/policy/task-authority.json` adds Cedar `forbid` policies on top of
@@ -354,7 +575,9 @@ approval makes the approval stale, and the run is refused until you plan again.
   mediated profile). Windows is refused as a platform before any effect.
 - **One implementer and one verifier.** Claude Code implements through the
   mediated MCP bridge; Codex verifies. They must differ, and they cannot be
-  swapped.
+  swapped. A coordinated request runs several Claude Code and Codex nodes in
+  the implementer's place, on subscriptions only, with the same single
+  verifier; see [Coordinated runs](#coordinated-runs-agent-graph-and-swarm).
 - **Budgets.** Token and cost ceilings are checked when a provider reports
   usage, and Claude Code reports at the end of its session, so a single
   session can overshoot them. The duration ceiling is enforced by a timer and
