@@ -171,7 +171,7 @@ test("a driver error event yields a failed status with its stable code", async (
 // as the generic one. Its message is never recorded.
 test("a warning is recorded by its code in the session's end and the session goes on", async (t) => {
   if (WIN32_HOST) return adapterRefusedOnWin32(t);
-  const driver = new ScriptedFakeDriver(async ({ emit }) => {
+  const driver = new ScriptedFakeDriver(({ emit }) => {
     const warning = { type: "warning", code: "VES_CLAUDE_QUOTA_WARNING", message: "usage limit near for owner" };
     emit(warning);
     emit({ type: "usage.updated", inputTokens: 4, outputTokens: 1 });

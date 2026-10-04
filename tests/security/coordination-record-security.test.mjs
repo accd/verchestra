@@ -109,7 +109,7 @@ test("a node result holding a model-written credential or local path is refused,
     codex: { executable: "/fixture/codex", credential: codexKey },
     env: { HOME: homedir() },
     sessionsRoot: layout.sessionsRoot,
-    worktrees: { resolvePath: async () => worktree }
+    worktrees: { resolvePath: () => Promise.resolve(worktree) }
   };
   const written = [
     `the token is ${TOKEN}`,
@@ -125,7 +125,7 @@ test("a node result holding a model-written credential or local path is refused,
     const fixture = coordinatedDriver(request, {
       records: runRecord.coordination(),
       withheld: (worktreeRef) => nodeResultWithheld(composed, worktreeRef),
-      script: { build: async () => ({ result: { outcome: "done", summary } }) }
+      script: { build: () => ({ result: { outcome: "done", summary } }) }
     });
     await assert.rejects(
       fixture.driver.execute(driverRequest(request), control().control),

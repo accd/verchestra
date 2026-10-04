@@ -86,14 +86,14 @@ export async function compositionFixture(t, request, options = {}) {
     sessionsRoot,
     providers: new ProviderProcesses({ stderr: (line) => stderr.push(line) }),
     worktrees: {
-      resolvePath: async () => worktree,
-      inspect: async () => ({ changeDigest: `sha256:${"4".repeat(64)}` })
+      resolvePath: () => Promise.resolve(worktree),
+      inspect: () => Promise.resolve({ changeDigest: `sha256:${"4".repeat(64)}` })
     },
     payloads: new InMemoryExecutionPayloadStore(),
     records,
     feedback: undefined,
     remainingDurationMs: () => 60_000,
-    onWorktree: async () => undefined,
+    onWorktree: () => Promise.resolve(),
     reconcile: undefined
   });
   return {
