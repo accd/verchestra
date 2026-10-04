@@ -68,10 +68,14 @@ for (const invalid of [
     }
   });
 
+// why: the pin moved once, deliberately, when the relay toward the controller
+// became a read-write-flush loop on the helper's own thread (R7): the
+// `CopyToAsync` relay before it held one whole 128 KiB read back from the
+// controller on a Windows runner (run 37219409058).
 test("the helper is one constant script, pinned by digest", () => {
   assert.equal(
     createHash("sha256").update(PIPE_HELPER_SCRIPT).digest("hex"),
-    "e3e3667820411e8d8c6d423069c349396156b2bf2c6d88937d3d45b35c6b98b9"
+    "933d83309af9cdd790adc07328db4f42de33214271639cf9aaa689a206456b93"
   );
   assert.equal(LINES[0], "param([string] $verchestraPipeName = '')", "its one parameter is the pipe name");
   assert.equal(PIPE_HELPER_SCRIPT.match(/\bparam\(/gu).length, 1);
@@ -118,9 +122,33 @@ test("the helper owns a current-user, first-instance pipe with one instance and 
     ),
     "one server instance at most"
   );
-  assert.ok(PIPE_HELPER_SCRIPT.includes("[Console]::OpenStandardInput().CopyToAsync($verchestraServer)"));
-  assert.ok(PIPE_HELPER_SCRIPT.includes("$verchestraServer.CopyToAsync([Console]::OpenStandardOutput())"));
   assert.equal(PIPE_HELPER_SCRIPT.match(/WaitForConnection\(\)/gu).length, 1, "it serves one client and ends");
+});
+
+// invariant: the relay toward the controller forwards each read before the
+// next: on the helper's own thread it reads at most 64 KiB from the pipe,
+// writes exactly the bytes read to standard output, and flushes them. No
+// `CopyToAsync` carries the client's bytes, and the controller's replies are
+// copied from standard input with an explicit 64 KiB buffer. The helper ends
+// when the client leaves (a read of 0 bytes) or its input ends.
+test("the helper forwards every read toward the controller, written and flushed before it reads again", () => {
+  const relay = LINES.slice(LINES.indexOf("[Console]::Error.WriteLine('verchestra-pipe:connected')") + 1);
+  assert.deepEqual(relay, [
+    "$verchestraToClient = [Console]::OpenStandardInput().CopyToAsync($verchestraServer, 65536)",
+    "$verchestraOut = [Console]::OpenStandardOutput()",
+    "$verchestraBlock = [byte[]]::new(65536)",
+    "while ($true) {",
+    "$verchestraRead = $verchestraServer.ReadAsync($verchestraBlock, 0, $verchestraBlock.Length)",
+    "while (-not $verchestraRead.Wait(250)) { if ($verchestraToClient.IsCompleted) { $verchestraServer.Dispose(); exit 0 } }",
+    "if ($verchestraRead.Result -eq 0) { break }",
+    "$verchestraOut.Write($verchestraBlock, 0, $verchestraRead.Result)",
+    "$verchestraOut.Flush()",
+    "}",
+    "$verchestraServer.Dispose()",
+    "exit 0",
+    ""
+  ]);
+  assert.doesNotMatch(PIPE_HELPER_SCRIPT, /\$verchestraServer\.CopyTo/u, "no copy task carries the client's bytes");
 });
 
 test("PowerShell 7 is launched from its pinned path with the constant script and the name alone", () => {
