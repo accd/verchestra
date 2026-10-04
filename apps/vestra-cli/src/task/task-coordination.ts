@@ -9,6 +9,7 @@ import {
   type InMemoryExecutionPayloadStore
 } from "@verchestra/agent-runtime";
 import {
+  assertStructuredAnswer,
   CoordinatedDriver,
   NativeAgentEngine,
   type CoordinationEngine,
@@ -262,6 +263,7 @@ function codexNodeAdapter(options: CoordinatedRunOptions, session: CoordinationN
           errorCodes: [...finished.errorCodes]
         })
       );
+      assertStructuredAnswer(finished.outcome, finished.errorCodes);
       return Object.freeze({ status: finished.outcome, outputRefs: Object.freeze(outputRefs) });
     } finally {
       await provider.end();

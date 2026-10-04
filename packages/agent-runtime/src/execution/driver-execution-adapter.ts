@@ -1,6 +1,6 @@
 import { isAbsolute } from "node:path";
 
-import type { ExecutionDriverPort, ExecutionPayloadStore } from "@verchestra/application";
+import { assertStructuredAnswer, type ExecutionDriverPort, type ExecutionPayloadStore } from "@verchestra/application";
 import { canonicalizeJsonV2, type DriverEvent, type DriverEventOf } from "@verchestra/domain";
 
 import type { BridgeTransport } from "./bridge-transport.ts";
@@ -144,6 +144,7 @@ export class DriverExecutionAdapter<TStartRequest> implements ExecutionDriverPor
         denied: statistics.denied,
         errorCodes: [...errorCodes]
       });
+      assertStructuredAnswer(outcome, errorCodes);
       return Object.freeze({ status: outcome, outputRefs: Object.freeze(outputRefs) });
     } finally {
       control.signal?.removeEventListener("abort", forward);
