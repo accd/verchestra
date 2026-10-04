@@ -188,7 +188,7 @@ function observeQuota(event: DriverEvent, stop: VerifierStop): void {
   stop.controller.abort("provider usage allowance exhausted");
 }
 
-// invariant: D3b and SSI-61 for the verifier. A usage limit the provider
+// invariant: D3b and SSI-61 for the v2 verifier. A usage limit the provider
 // reported, or credits on the account, suspend the run instead of failing it.
 // The record holds the code, the provider, the instant, and only the window
 // and reset the provider reported; a cancel of the command wins over both.
@@ -306,8 +306,9 @@ export async function runCodexVerifier(options: CodexSessionOptions): Promise<st
   // invariant: D3b. The verifier of a coordinated run is a subscription
   // session like its Codex nodes: before its turn the driver proves a ChatGPT
   // login and reads the account's rate limits, so credits on the account or an
-  // exhausted allowance stop it before a token is spent. A v1 run keeps the
-  // T04 conversation and its version floor (SSI-83).
+  // exhausted allowance stop it before a token is spent, and a usage limit
+  // suspends the run. A v1 run keeps the T04 conversation, its version floor,
+  // and its failure on a usage limit (SSI-83).
   const subscriptionOnly = options.request.schemaVersion === 2;
   const providers = options.providers ?? new ProviderProcesses({ stderr: (text) => void process.stderr.write(text) });
   const provider = providers.session("Codex");
@@ -351,7 +352,7 @@ export async function runCodexVerifier(options: CodexSessionOptions): Promise<st
         events.push(event);
         if (event.type === "content.delta") text += event.text;
         meterUsage(options.meter, model, event, stop);
-        observeQuota(event, stop);
+        if (subscriptionOnly) observeQuota(event, stop);
       }
     });
     assertNoToolRequests(events);

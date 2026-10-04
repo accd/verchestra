@@ -259,6 +259,24 @@ test("a v1 verifier on a subscription reads no account and is not stopped by cre
   );
 });
 
+// invariant: SSI-83. A v1 verifier whose allowance runs out mid-turn fails
+// the run as it did before the v2 verifier could suspend one, whether it
+// authenticates from the Workspace login or from an API key; it never raises
+// a suspension.
+test("a v1 verifier that meets a usage limit fails the run, on a subscription and on an API key", async (t) => {
+  if (WIN32_HOST) return verifierRefusedOnWin32(t);
+  for (const subscription of [true, false]) {
+    const session = await verifierSession({ schemaVersion: 1, subscription, scenario: "usage-limit" });
+    await assert.rejects(session.run(), failedWith("VES_TASK_VERIFIER_FAILED"), `subscription: ${subscription}`);
+    assert.deepEqual(
+      (await session.turns()).map((entry) => entry.accountChecked),
+      [false],
+      `subscription: ${subscription}`
+    );
+    await assert.rejects(stat(session.sessionRoot), { code: "ENOENT" });
+  }
+});
+
 test("credits on the account suspend a coordinated run's verifier before its turn", async (t) => {
   if (WIN32_HOST) return verifierRefusedOnWin32(t);
   const session = await verifierSession({ schemaVersion: 2, subscription: true, flags: ["codex-credits"] });
