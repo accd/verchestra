@@ -33,15 +33,30 @@ after(cleanupTaskFixtures);
 
 const TIMEOUT = { timeout: 600_000 };
 
-function ok(result, label) {
-  assert.equal(result.status, 0, `${label}: ${result.stderr}\n${result.stdout}`);
-  return result.json.data;
-}
-
 // why: each fake writes one JSON line per observation in the fixture's log
 // directory; a log a fake never wrote reads as no observation.
 const jsonLines = (path) => (existsSync(path) ? readFileSync(path, "utf8").split("\n").filter(Boolean) : []);
 const logLines = (fixture, name) => jsonLines(join(fixture.scratch, name)).map((line) => JSON.parse(line));
+const FAKE_LOGS = [
+  "claude.exe.witness.log",
+  "codex.exe.witness.log",
+  "fake-claude.log",
+  "fake-codex-status.log",
+  "fake-codex.log"
+];
+
+// why: a step that fails on the Windows runner names, in the assertion itself,
+// how each fake ended (the provider witness: exit code, standard error tail,
+// arguments, working directory, environment names) and what each observed.
+function diagnosis(fixture) {
+  const tail = (name) => jsonLines(join(fixture.scratch, name)).join("\n").slice(-4096);
+  return JSON.stringify(Object.fromEntries(FAKE_LOGS.map((name) => [name, tail(name)])));
+}
+
+function ok(result, label, fixture) {
+  assert.equal(result.status, 0, `${label}: ${result.stderr}\n${result.stdout}\n${diagnosis(fixture)}`);
+  return result.json.data;
+}
 
 function checkout(fixture) {
   return {
@@ -76,6 +91,7 @@ async function unixPathHere(t) {
 function assertImplementerOverThePipe(fixture) {
   const sessions = logLines(fixture, "fake-claude.log");
   const [session] = sessions;
+  assert.ok(session !== undefined, diagnosis(fixture));
   assert.equal(session.bridgeChannel, "named-pipe");
   assert.deepEqual(session.relayEnvironmentKeys, ["SYSTEMROOT", "VERCHESTRA_BRIDGE_SOCKET", "VERCHESTRA_BRIDGE_TOKEN"]);
   assert.equal(session.bare, false);
@@ -114,19 +130,20 @@ test(
     const before = checkout(fixture);
     const plan = ok(
       fixture.launch(["task", "plan", "--request", fixture.requestPath, ...fixture.keychainArgs, "--output", "json"]),
-      "plan"
+      "plan",
+      fixture
     );
     assert.equal(plan.state, "AWAITING_EXECUTION_APPROVAL");
     assert.deepEqual(plan.providerAuth, { "claude-code": "subscription", codex: "subscription" });
-    const approval = ok(fixture.launch(approveArguments(fixture, plan), `${plan.bindingDigest}\n`), "approve");
+    const approval = ok(fixture.launch(approveArguments(fixture, plan), `${plan.bindingDigest}\n`), "approve", fixture);
     assert.equal(approval.state, "EXECUTION_AUTHORIZED");
 
-    const run = ok(fixture.launch(command(fixture, "start", plan.runId)), "start");
-    assert.equal(run.state, "HUMAN_REVIEW");
+    const run = ok(fixture.launch(command(fixture, "start", plan.runId)), "start", fixture);
+    assert.equal(run.state, "HUMAN_REVIEW", diagnosis(fixture));
     assert.equal(run.branch, `vestra/${plan.runId}/T1`);
-    const inReview = ok(fixture.launch(command(fixture, "status", plan.runId)), "status");
+    const inReview = ok(fixture.launch(command(fixture, "status", plan.runId)), "status", fixture);
     assert.equal(inReview.surfaceDigest, run.surfaceDigest);
-    assert.equal(inReview.evidence.verificationVerdict, "PASS");
+    assert.equal(inReview.evidence.verificationVerdict, "PASS", diagnosis(fixture));
     assert.equal(inReview.checkpoints.toolReceipts, 1);
     assertImplementerOverThePipe(fixture);
     const [codex] = logLines(fixture, "fake-codex.log");
@@ -146,7 +163,8 @@ test(
         ]),
         `${run.surfaceDigest}\n`
       ),
-      "review"
+      "review",
+      fixture
     );
     assert.equal(accepted.state, "COMPLETED");
     const branch = `vestra/${plan.runId}/T1`;

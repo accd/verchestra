@@ -26,6 +26,7 @@ const STORE = process.env.VERCHESTRA_TEST_FAKE_KEYCHAIN_STORE;
 const PROVIDERS = process.env.VERCHESTRA_TEST_FAKE_PROVIDERS;
 const PROVIDER_LOG = process.env.VERCHESTRA_TEST_FAKE_PROVIDER_LOG;
 const FAKES = fileURLToPath(new URL("./task-cli-fakes/", import.meta.url));
+const WITNESS = fileURLToPath(new URL("./provider-witness.mjs", import.meta.url));
 const SCRIPTS = Object.freeze({ "claude.exe": "fake-claude-task.mjs", "codex.exe": "fake-codex-task.mjs" });
 
 // why: the absolute paths the Windows backend starts, derived as it derives
@@ -97,13 +98,17 @@ function fakeChild(answer) {
 
 // invariant: a placeholder starts its fake with this Node executable, the
 // fixture's private log directory, and its store ahead of the provider
-// arguments, exactly as the POSIX wrapper scripts do.
+// arguments, exactly as the POSIX wrapper scripts do, under the provider
+// witness, which writes `<placeholder>.witness.log` in that log directory.
 function providerCommand(file, args) {
   if (PROVIDERS === undefined || typeof file !== "string" || !samePath(dirname(file), PROVIDERS)) return undefined;
-  const script = SCRIPTS[basename(file).toLowerCase()];
+  const placeholder = basename(file).toLowerCase();
+  const script = SCRIPTS[placeholder];
   if (script === undefined) return undefined;
-  const prefix = [join(FAKES, script), "--fixture-log", PROVIDER_LOG ?? "", "--fixture-store", STORE ?? ""];
-  return [process.execPath, [...prefix, ...(Array.isArray(args) ? args : [])]];
+  const log = PROVIDER_LOG ?? "";
+  const witness = [WITNESS, "--witness", join(log, `${placeholder}.witness.log`), "--as", file];
+  const prefix = [join(FAKES, script), "--fixture-log", log, "--fixture-store", STORE ?? ""];
+  return [process.execPath, [...witness, ...prefix, ...(Array.isArray(args) ? args : [])]];
 }
 
 const guardedSpawn = childProcess.spawn;

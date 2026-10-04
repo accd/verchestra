@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 import { execFile, spawn, spawnSync } from "node:child_process";
 import { once } from "node:events";
 import { readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { test } from "node:test";
 import { promisify } from "node:util";
 
@@ -61,6 +61,27 @@ test("the preload answers the Windows Credential Manager backend from the store,
   codex.stdout.on("data", (chunk) => (version += chunk));
   assert.deepEqual(await once(codex, "close"), [0, null]);
   assert.equal(version, "codex-cli 0.159.3\n");
+
+  // invariant: each placeholder ran its fake under the provider witness, which
+  // names the placeholder asked for, the fake that ran, and how it ended.
+  for (const [placeholder, fake] of [
+    ["claude.exe", "fake-claude-task.mjs"],
+    ["codex.exe", "fake-codex-task.mjs"]
+  ]) {
+    const [witness, ...more] = (await readFile(join(root, `${placeholder}.witness.log`), "utf8"))
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    assert.deepEqual(more, [], placeholder);
+    assert.equal(witness.requested, join(root, placeholder));
+    assert.equal(basename(witness.script), fake);
+    assert.deepEqual(witness.args.slice(-1), ["--version"]);
+    assert.equal(witness.code, 0);
+    assert.equal(witness.signal, null);
+    assert.equal(witness.stderrTail, "");
+    assert.ok(witness.environmentKeys.length > 0);
+    assert.equal(witness.environmentKeys.includes("VERCHESTRA_TEST_FAKE_KEYCHAIN_STORE"), true);
+  }
 });
 
 test("with the preload installed, the deny guard still refuses every other credential program", async (t) => {
