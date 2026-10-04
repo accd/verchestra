@@ -205,8 +205,26 @@ export interface PipeHelperProcess {
   // invariant: ends this one process through the handle its parent holds, so
   // it never reaches another process that reused the pid.
   kill(signal: NodeJS.Signals): boolean;
-  on(event: "exit" | "close", listener: () => void): unknown;
+  on(event: "exit", listener: (code: number | null, signal: NodeJS.Signals | null) => void): unknown;
+  on(event: "close", listener: () => void): unknown;
   on(event: "error", listener: (error: Error) => void): unknown;
+}
+
+// invariant: what the transport reports of one channel's life, for a
+// diagnosis of a channel that did not end: closed values, the helper's
+// process id, and its exit code or signal, never a byte or a line of the
+// helper's. The trigger names what began the helper's end.
+export type PipeChannelEvent =
+  | { readonly step: "helper-started"; readonly pid: number | undefined }
+  | { readonly step: "listening" | "connected" | "connection-closed" | "channel-closed" }
+  | { readonly step: "end"; readonly trigger: "connection-closed" | "channel-closed"; readonly running: boolean }
+  | { readonly step: "tree-terminated"; readonly outcome: "returned" | "failed" | "timed-out" }
+  | { readonly step: "helper-exited"; readonly code: number | null; readonly signal: string | null }
+  | { readonly step: "helper-killed"; readonly sent: boolean };
+
+interface PipeHelperRunOptions {
+  readonly exitWaitMs: number;
+  readonly observe: ((event: PipeChannelEvent) => void) | undefined;
 }
 
 // invariant: everything the transport needs from the machine. The node host
@@ -246,16 +264,17 @@ export const nodeWindowsPipeHost: WindowsPipeHost = Object.freeze({
     })
 });
 
-// why: resolves whether the promise settled before the bound, never rejects.
-function settlesWithin(promise: Promise<unknown>, timeoutMs: number): Promise<boolean> {
+// why: resolves to the promise's value, or to `late` once the bound passes;
+// never rejects.
+function settleWithin<T>(promise: Promise<T>, timeoutMs: number, late: T): Promise<T> {
   return new Promise((resolve) => {
-    const timer = setTimeout(() => resolve(false), timeoutMs);
+    const timer = setTimeout(() => resolve(late), timeoutMs);
     timer.unref();
-    const settled = () => {
+    const settled = (value: T) => {
       clearTimeout(timer);
-      resolve(true);
+      resolve(value);
     };
-    promise.then(settled, settled);
+    promise.then(settled, () => settled(late));
   });
 }
 
@@ -317,9 +336,10 @@ class PipeHelperRun {
   readonly #directory: string;
   readonly #accept: (connection: Duplex) => void;
   readonly #helper: PipeHelperProcess;
-  readonly #exited: Promise<void>;
+  readonly #exited: Promise<boolean>;
   readonly #ended: Promise<void>;
   readonly #exitWaitMs: number;
+  readonly #observe: ((event: PipeChannelEvent) => void) | undefined;
   #gone = false;
   #starting: ((refusal?: WindowsPipeTransportError) => void) | undefined;
   #connection: HelperConnection | undefined;
@@ -331,20 +351,23 @@ class PipeHelperRun {
     directory: string,
     accept: (connection: Duplex) => void,
     helper: PipeHelperProcess,
-    exitWaitMs: number
+    options: PipeHelperRunOptions
   ) {
     this.#host = host;
     this.#directory = directory;
     this.#accept = accept;
     this.#helper = helper;
-    this.#exitWaitMs = exitWaitMs;
+    this.#exitWaitMs = options.exitWaitMs;
+    this.#observe = options.observe;
+    this.#note({ step: "helper-started", pid: helper.pid });
     for (const stream of [helper.stdin, helper.stdout, helper.stderr]) stream.on("error", () => undefined);
     this.#exited = new Promise((resolve) => {
-      helper.on("exit", () => {
+      helper.on("exit", (code, signal) => {
         this.#gone = true;
-        resolve();
+        this.#note({ step: "helper-exited", code, signal });
+        resolve(true);
       });
-      helper.on("error", () => resolve());
+      helper.on("error", () => resolve(true));
     });
     this.#ended = new Promise((resolve) => {
       helper.on("close", () => resolve());
@@ -379,10 +402,24 @@ class PipeHelperRun {
     return (this.#closing ??= this.#shutdown());
   }
 
+  // why: a diagnosis never changes the channel, so an observer that throws is
+  // ignored.
+  #note(event: PipeChannelEvent): void {
+    try {
+      this.#observe?.(event);
+    } catch {
+      // why: see above.
+    }
+  }
+
   #status(line: string): void {
-    if (line === LISTENING) this.#starting?.();
-    else if (line === CONNECTED) this.#connect();
-    else if (isHelperRefusal(line)) this.#starting?.(helperRefusal(line));
+    if (line === LISTENING) {
+      this.#note({ step: "listening" });
+      this.#starting?.();
+    } else if (line === CONNECTED) {
+      this.#note({ step: "connected" });
+      this.#connect();
+    } else if (isHelperRefusal(line)) this.#starting?.(helperRefusal(line));
   }
 
   // why: the controller refuses a connection by destroying it, and the pipe
@@ -391,12 +428,18 @@ class PipeHelperRun {
     if (this.#connection !== undefined || this.#closing !== undefined) return;
     const connection = new HelperConnection(this.#helper);
     this.#connection = connection;
-    connection.once("close", () => void this.#terminate());
+    connection.once("close", () => {
+      this.#note({ step: "connection-closed" });
+      void this.#terminate("connection-closed");
+    });
     this.#accept(connection);
   }
 
-  #terminate(): Promise<void> {
-    this.#termination ??= this.#endHelper();
+  #terminate(trigger: "connection-closed" | "channel-closed"): Promise<void> {
+    if (this.#termination === undefined) {
+      this.#note({ step: "end", trigger, running: !this.#gone });
+      this.#termination = this.#endHelper();
+    }
     return this.#termination;
   }
 
@@ -411,20 +454,22 @@ class PipeHelperRun {
   async #endHelper(): Promise<void> {
     const pid = this.#helper.pid;
     if (pid === undefined || this.#gone) return;
-    await settlesWithin(
-      this.#host.terminateTree(pid).catch(() => undefined),
-      this.#exitWaitMs
+    const termination = this.#host.terminateTree(pid).then(
+      () => "returned" as const,
+      () => "failed" as const
     );
-    if (await settlesWithin(this.#exited, this.#exitWaitMs)) return;
-    this.#helper.kill("SIGKILL");
-    await settlesWithin(this.#exited, this.#exitWaitMs);
+    this.#note({ step: "tree-terminated", outcome: await settleWithin(termination, this.#exitWaitMs, "timed-out") });
+    if (await settleWithin(this.#exited, this.#exitWaitMs, false)) return;
+    this.#note({ step: "helper-killed", sent: this.#helper.kill("SIGKILL") });
+    await settleWithin(this.#exited, this.#exitWaitMs, false);
   }
 
   async #shutdown(): Promise<void> {
+    this.#note({ step: "channel-closed" });
     this.#connection?.destroy();
     this.#helper.stdin.destroy();
-    await this.#terminate();
-    await settlesWithin(this.#ended, this.#exitWaitMs);
+    await this.#terminate("channel-closed");
+    await settleWithin(this.#ended, this.#exitWaitMs, undefined);
     await rm(this.#directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   }
 }
@@ -437,6 +482,9 @@ export interface WindowsNamedPipeTransportOptions {
   readonly environment?: Readonly<Record<string, string | undefined>>;
   readonly startupTimeoutMs?: number;
   readonly exitWaitMs?: number;
+  // invariant: told each step of every channel's life (PipeChannelEvent); for
+  // a diagnosis only.
+  readonly observe?: (event: PipeChannelEvent) => void;
 }
 
 // invariant: satisfies agent-runtime's BridgeTransport by shape; the
@@ -448,6 +496,7 @@ export class WindowsNamedPipeBridgeTransport {
   readonly #environment: Readonly<Record<string, string | undefined>>;
   readonly #startupTimeoutMs: number;
   readonly #exitWaitMs: number;
+  readonly #observe: ((event: PipeChannelEvent) => void) | undefined;
 
   constructor(options: WindowsNamedPipeTransportOptions = {}) {
     this.#root = options.root;
@@ -456,6 +505,7 @@ export class WindowsNamedPipeBridgeTransport {
     this.#environment = options.environment ?? process.env;
     this.#startupTimeoutMs = options.startupTimeoutMs ?? STARTUP_TIMEOUT_MS;
     this.#exitWaitMs = options.exitWaitMs ?? EXIT_WAIT_MS;
+    this.#observe = options.observe;
   }
 
   async listen(accept: (connection: Duplex) => void): Promise<{ readonly endpoint: string; close(): Promise<void> }> {
@@ -479,7 +529,10 @@ export class WindowsNamedPipeBridgeTransport {
         cwd: directory,
         env: helperEnvironment(this.#environment)
       });
-      const started = new PipeHelperRun(this.#host, directory, accept, helper, this.#exitWaitMs);
+      const started = new PipeHelperRun(this.#host, directory, accept, helper, {
+        exitWaitMs: this.#exitWaitMs,
+        observe: this.#observe
+      });
       run = started;
       await started.started(this.#startupTimeoutMs);
       return Object.freeze({ endpoint: pipeEndpoint(name), close: () => started.close() });
