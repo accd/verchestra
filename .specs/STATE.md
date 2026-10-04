@@ -2997,6 +2997,89 @@ note. -->
   killed session left behind stays under the sessions root, read-only, until
   the node runs again or its owner makes it writable and removes it.
 
+### AD-082 — The v2 verifier is a subscription session, the Codex plan type is read at start and resume, a run proves its request against the approved package, and a lapsing grant is renewed on resume
+
+- **Status:** proposed (T9 remediation R1 of
+  `.specs/features/strands-subscription-integration/`, findings 1, 2, 6, 10,
+  and 15). It supersedes AD-079 item 1 where it says nothing compares the
+  plan type with the account, AD-079 item 3 where it renews only a grant that
+  expired, and AD-080 item 2 where the managed policy is read for the
+  subscription profile only.
+- **Context:** The independent verification found that the Codex verifier of
+  a v2 run never read its account (D3b), that the statement's plan type was
+  checked for shape only (SSI-52), that a consistent rewrite of the plan
+  record would run under the old approval (SSI-29), that the Windows
+  managed-policy prerequisite skipped the API-key profile and had no pinned
+  place in a run (SSI-73), and that the bounds of the grant renewal were
+  untested.
+- **Decision:**
+  1. The Codex verifier of a v2 run asks the driver for a subscription-only
+     session, as a Codex node does: a ChatGPT login, no credits, and ordinary
+     usage allowed before its turn, at the 0.159.3 floor. Credits, or a usage
+     limit before or during its turn, suspend the run with a record of closed
+     values: no workflow command is applied, the run stays `VERIFYING` with
+     its task commit, the writer coordination is released, and `vestra task
+     resume` verifies again. Credits are reported `not configured`
+     (`codex-credits`). A v1 verifier keeps the T04 conversation even on a
+     subscription, because SSI-83 keeps every v1 run as it was and the spec's
+     floor assumption forbids raising v1's floor; extending the check to v1
+     is an owner decision.
+  2. A plan type is one of `CODEX_PLAN_TYPES`, the values of the `PlanType`
+     of the Codex 0.159.3 App Server protocol without its catch-all
+     `unknown`, in the owner's statement and in what the driver reports. At
+     `start` and `resume` of a v2 run, after the Codex login is proven and
+     before the first transition, an account-only session reads
+     `account/read` and nothing else (no rate limit, model list, thread, or
+     turn) and the driver reports the plan type through `onAccount`, keeping
+     no other account field. A plan type the statement does not name, or
+     `unknown`, is `not configured` (`extra-usage-confirmation`) and the owner
+     is shown the two closed values. A build below the floor is
+     `codex-version`; any other failure to read the account is
+     `codex-account`. Credits stay checked in each session, as AD-079 item 2
+     says.
+  3. `start` and `resume` prove, after the workflow state and before the
+     billing preflight, any credential, or any transition, that the plan
+     record's package digest is the one its approval intent binds and that
+     the package's execution contract is the plan's request digest, and
+     refuse otherwise with `VES_TASK_STATE_INVALID`
+     (`VES_TASK_PACKAGE_INVALID`).
+  4. On Windows a managed Claude Code policy refuses either mediated profile
+     (`claude-managed-policy`), since SSI-73 makes no exception and a policy
+     outranks every setting a profile passes. The machine's prerequisites
+     run after the run's own settings and billing statement and before any
+     credential is read; `runTask` takes the machine they are proven on, its
+     own by default, so a test observes their place on any platform.
+  5. A resume of a suspended run that passed its revalidation renews the
+     writer grant when its remaining life is shorter than the run's remaining
+     duration and a new grant would outlive it, never a revoked or unknown
+     grant and never on any other resume. Every grant ends at the earlier of
+     the approval's expiry and the run's longest duration plus the lease
+     margin. The grant marker names the grants a renewal replaced
+     (`replaced`, oldest first); a first grant's marker is unchanged.
+- **Alternatives rejected:** comparing the plan type inside every Codex
+  session (a node's refusal would need the node adapters to suspend on it,
+  and a mismatch first seen by the verifier comes after every node has
+  spent; SSI-52 asks at `start` and `resume`); reading credits in the same
+  account-only session (it would refuse before the first node what AD-079
+  item 2 suspends where a session sees it); keeping the plan-type grammar (it
+  cannot tell a plan from a personal handle); exempting the API-key profile
+  because it runs `--bare` (bare mode reads no OAuth or keychain, but a
+  managed policy outranks every source); renewing only an expired grant (a
+  grant with minutes left lapses mid-run); recording the replaced grant only
+  in the runtime store (the Run Capsule binds the Run record's marker, not
+  the store).
+- **Consequence:** Every v2 `start` and `resume` starts one more Codex process,
+  which asks only for the account. An owner whose statement names a plan type
+  outside the 0.159.3 vocabulary, or whose Codex reports `unknown`, is `not
+  configured` until both name the same known plan, and the v2 verifier needs
+  Codex 0.159.3 or later. A v1 run on a subscription can still spend Codex
+  credits at verification. A Windows run on the API-key profile under a
+  managed policy is `not configured`. A run suspended at its verifier resumes
+  without the approval and drift checks a run suspended in a node gets, since
+  the verifier holds no writer authority and its worktree is already
+  committed. A run interrupted, not suspended, after its grant expired still
+  fails at its first effect (`VES_EXECUTOR_APPROVAL_INVALID`).
+
 ## Handoff
 
 - **Feature:** `subscription-provider-auth` (ADP-A, tasks TA1 and TA2) on
