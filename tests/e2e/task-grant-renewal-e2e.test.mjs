@@ -5,14 +5,15 @@
 // grant it had: once that grant expired, the resumed run's first effect is
 // refused and no new grant is issued. A suspended run whose grant would lapse
 // before its remaining duration is spent is given a new grant on resume, and
-// the grant marker names the one it replaced. Both cases run on macOS, Linux,
-// and Windows.
+// the grant marker names the one it replaced, unless that grant was revoked.
+// Every case runs on macOS, Linux, and Windows.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { after, test } from "node:test";
 
+import { RuntimeStore } from "../../packages/platform-node/src/index.ts";
 import { cleanupTaskFixtures } from "../helpers/task-cli-fixture.mjs";
 import {
   EXECUTIONS,
@@ -123,5 +124,38 @@ test(
     assert.notEqual(marker.grantId, before, "the grant was not renewed");
     assert.deepEqual(marker, { grantId: marker.grantId, replaced: [before] });
     assert.equal(status(fixture, plan.runId).evidence.grantId, marker.grantId);
+  }
+);
+
+// invariant: AD-082 item 5 at the composition. The stored grant the renewal
+// decision is handed carries its revocation: a suspended run whose grant was
+// revoked while it waited is not given a new one on resume, even when that
+// grant would lapse first, so its first effect is refused.
+test(
+  "a suspended run whose grant was revoked while it waited is not renewed, and its first effect is refused",
+  TIMEOUT,
+  async () => {
+    const fixture = await coordinatedFixture(EXECUTIONS.agent);
+    const plan = await approved(fixture);
+    await flag(fixture, "claude-quota");
+    assert.equal(fixture.launch(startArguments(fixture, plan.runId)).json?.data?.status, "SUSPENDED");
+    await unlink(join(fixture.scratch, "claude-quota"));
+    const before = status(fixture, plan.runId).evidence.grantId;
+    const store = new RuntimeStore({ dbPath: join(fixture.stateRoot, "runtime", "runtime.sqlite"), timeoutMs: 5_000 });
+    store.open();
+    try {
+      assert.equal(store.revokeAuthorityGrant(before, new Date().toISOString(), "owner-withdrew"), true);
+    } finally {
+      store.close();
+    }
+    // why: as in the renewal case above, the grant has five of its seventy
+    // minutes left, fewer than the ten the run may still take, so only its
+    // revocation keeps it from being renewed.
+    const resumed = fixture.launch(resumeArguments(fixture, plan.runId), "", { clockOffsetMs: HOUR + 5 * MINUTE });
+    assert.equal(resumed.status, 1, resumed.stderr);
+    assert.equal(resumed.json.data.status, "FAILED");
+    assert.equal(resumed.json.data.reason, "VES_EXECUTOR_APPROVAL_INVALID");
+    assert.deepEqual(grantMarker(fixture, plan.runId), { grantId: before }, "a new grant was issued");
+    assert.equal(status(fixture, plan.runId).evidence.grantId, before);
   }
 );
