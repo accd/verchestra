@@ -77,6 +77,15 @@ export const POWERSHELL_7_LOGGING_GUARD = [
 // hazard: the script must never name `$input`. PowerShell then reads all of
 // standard input as pipeline input before the script runs, and the relay
 // would wait for ever.
+// invariant: the client's bytes reach the controller read by read. The
+// helper's own thread reads at most 64 KiB from the pipe, writes exactly what
+// it read to standard output, and flushes it before it reads again, so no read
+// waits on the thread pool to be written. A `CopyToAsync` here read 128 KiB
+// (its 81,920-byte buffer as the array pool rents it) and wrote each read
+// through a console stream's queued task, and on a Windows runner one whole
+// read never reached the controller. The controller's replies, which are
+// small, are copied from standard input by a task; the helper ends when
+// either side ends.
 export const PIPE_HELPER_SCRIPT = [
   "param([string] $verchestraPipeName = '')",
   "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue'",
@@ -92,8 +101,16 @@ export const PIPE_HELPER_SCRIPT = [
   `[Console]::Error.WriteLine('${LISTENING}')`,
   "$verchestraServer.WaitForConnection()",
   `[Console]::Error.WriteLine('${CONNECTED}')`,
-  "$verchestraRelays = [System.Threading.Tasks.Task[]]@([Console]::OpenStandardInput().CopyToAsync($verchestraServer), $verchestraServer.CopyToAsync([Console]::OpenStandardOutput()))",
-  "$null = [System.Threading.Tasks.Task]::WaitAny($verchestraRelays)",
+  "$verchestraToClient = [Console]::OpenStandardInput().CopyToAsync($verchestraServer, 65536)",
+  "$verchestraOut = [Console]::OpenStandardOutput()",
+  "$verchestraBlock = [byte[]]::new(65536)",
+  "while ($true) {",
+  "$verchestraRead = $verchestraServer.ReadAsync($verchestraBlock, 0, $verchestraBlock.Length)",
+  "while (-not $verchestraRead.Wait(250)) { if ($verchestraToClient.IsCompleted) { $verchestraServer.Dispose(); exit 0 } }",
+  "if ($verchestraRead.Result -eq 0) { break }",
+  "$verchestraOut.Write($verchestraBlock, 0, $verchestraRead.Result)",
+  "$verchestraOut.Flush()",
+  "}",
   "$verchestraServer.Dispose()",
   "exit 0",
   ""
