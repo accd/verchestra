@@ -344,7 +344,7 @@ section.
 
 **Done when**:
 
-- [ ] Each example plans with `--dry-run` in a test (SSI-36).
+- [x] Each example plans with `--dry-run` in a test (SSI-36).
 - [x] JSON and text results agree for plan and status.
 - [ ] `pnpm site:check` passes.
 
@@ -354,6 +354,7 @@ section.
 **Progress** (branch `strands/t8-surface`; evidence in `validation.md`, "T8 Evidence"):
 
 - [x] Commit 1: `task-coordination-surface.ts` presents the topology (passport, role, destinations, a swarm's start) at `plan` beside the bound descriptor, with the subscription preconditions and the requirement `start` would refuse; `status`, `start`, and `resume` show each node with its state and the same next action, which offers no resume that would be refused (one reconcile command for one uncertain node, none for several); the text form agrees with the JSON form in the journeys; 14 mutants killed.
+- [x] Commit 2: `docs/examples/task-request-{agent,graph,swarm}.json`, one small change per mode on Claude Code and Codex only, every limit at or below its default; `tests/e2e/task-request-examples-e2e.test.mjs` plans each with `--dry-run` through the binary and compares its text and JSON forms; 5 mutants killed.
 
 ---
 

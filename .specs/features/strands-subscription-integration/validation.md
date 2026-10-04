@@ -1276,6 +1276,38 @@ and `tests/e2e/task-cli-e2e.test.mjs` in this file's SSI-83 row (`:827-852`,
 of `validation-t7.md`, `validation-t8.md`'s `:215-231` (the friction at its
 own base), and `coordination-plan.ts`, whose lines did not move.
 
+### Commit 2 — one example Task Request per mode
+
+`docs/examples/task-request-agent.json`, `task-request-graph.json`, and
+`task-request-swarm.json` are complete Task Requests v2 for one small change
+(`parseDuration` accepts `1h30m`), the change the quick start's v1 example
+makes, so a reader can compare the two. The agent runs one Claude Code writer;
+the graph plans with a Codex reader, writes with a Claude Code node that takes
+the plan as input, and reviews with a Codex reader that takes both; the swarm
+hands work between a Claude Code writer and a Codex reviewer, starting at the
+writer. Every provider is Claude Code or Codex, which authenticate by
+subscription by default; a request cannot name an authentication method. Each
+declares only limits at or below their defaults, sized to the run (the graph
+`maxNodes` 3 and `maxEdges` 2; the swarm `maxSwarmAgents` 2 and `maxHandoffs`
+4, with a run result bound of five visits of 32 KiB). `sourceRevision` is the
+quick start's placeholder, which the reader replaces with `git rev-parse HEAD`.
+
+| Behaviour | Assertion (file:line) | Run |
+| --- | --- | --- |
+| SSI-36: each example plans through the real binary with `--dry-run` against a repository holding the files it names, after its placeholder revision is replaced: its declared topology (passport, role, destinations per node), both providers on subscriptions, the preflight `ready` with the owner's confirmation, every declared limit as written and every effective limit at or below its default; its text form agrees with its JSON form | `tests/e2e/task-request-examples-e2e.test.mjs:62` | `node scripts/test-scope.mjs e2e tests/e2e/task-request-examples-e2e.test.mjs`: 3 of 3 (macOS; Linux on the platform matrix; Windows reports the task path refused with a diagnostic) |
+
+Discrimination (author run, one edit per mutant to an example, restored after
+the run): X1 the swarm raises `maxHandoffs` above its default, X2 a graph edge
+names an unknown node, X3 a Codex node declares a write scope, X4 the verifier
+names an authentication method, X5 the example names a revision other than the
+placeholder — all killed.
+
+Gates at this commit: `pnpm gate:quick` PASS (format, lint, complexity,
+typecheck; unit 2925, agent-readiness 357, census 13); `pnpm agent:check`
+PASS; the examples journey 3/3; 0 failed, 0 skipped, 0 todo. No product source
+changed. Not run here, for the platform matrix: `pnpm gate:full` (which runs
+the journey on Linux) and the Windows run.
+
 ## Requirement Evidence
 
 Each row needs a file-and-assertion citation (`path:line` and what the assertion
@@ -1319,7 +1351,7 @@ evidence is FAIL.
 | SSI-33 | `task resume` revalidates the workflow state, the subscription preconditions and the extra-usage confirmation (commit 1), the approval against the Workspace policy in force, and the worktree change digest before any node starts, and a refusal changes nothing: `tests/unit/task-resumption.test.mjs:70`, `:82`, `:92`; journeys `tests/e2e/task-subscription-e2e.test.mjs:230` (confirmation), `:341` (drift, expired approval); mutants R1, R3, R4 killed | T6 commit 3 (see T6 Evidence) | PASS (author) |
 | SSI-34 | `tests/e2e/task-coordinated-e2e.test.mjs:252` cancel stops the running node's provider and ends ABORTED; `tests/unit/coordinated-driver.test.mjs:386`, `tests/integration/strands-coordination-engine.test.mjs:184` every running node cancelled; mutant K6 killed | T5 gates (see T5 Evidence) | PASS (author) |
 | SSI-35 | — | — | — |
-| SSI-36 | — | — | — |
+| SSI-36 | One example per mode under `docs/examples/`, each planned with `--dry-run` through the binary: `tests/e2e/task-request-examples-e2e.test.mjs:62`; mutants X1–X5 killed | T8 commit 2 (see T8 Evidence) | PASS (author; macOS) |
 | SSI-37 | `tests/contract/task-request-v2.test.mjs:145` absent limits take 1, 64, 128, 8, 32, 64 KiB, 256 KiB; `:176-185` 1, default−1, default, default+1 accepted per limit; `:196-209` 65 graph nodes, 129 edges, and 9 swarm agents refused at the default and accepted when raised, 64 nodes, 128 edges, and 8 agents accepted at it | `pnpm test:contract` (906/906, commit 2) | PASS (author) |
 | SSI-38 | `tests/contract/task-request-v2.test.mjs:176-185` ceiling−1 and ceiling accepted per limit; `:187-194` ceiling+1, 0, 1.5, and a string refused by both; `:211-229` 256 nodes, 16 agents, and 512 edges plan at their ceilings, 257, 17, and 513 are refused by both | `pnpm test:contract` (906/906, commit 2) | PASS (author) |
 | SSI-39 | T5 part: `tests/integration/coordinated-executor.test.mjs:60` and `tests/e2e/task-coordinated-e2e.test.mjs:189` usage of every node accumulates on the run's one ledger (330 tokens; 42 tokens in 4 events); across resumes is T6; T6 part: the spend at a suspension is saved and the resumed meter continues from it (`tests/unit/task-run-coordinator.test.mjs:312`, controllable clock), and a graph suspended mid-run then resumed holds the same 42 tokens in 4 events as one uninterrupted (`tests/e2e/task-subscription-e2e.test.mjs:230`); mutant S12 killed | T5 gates (see T5 Evidence); T6 commits 2 and 3 | PASS (author, T5 part); PASS (author, T6 part) |
