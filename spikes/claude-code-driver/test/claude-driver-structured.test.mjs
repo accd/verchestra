@@ -15,7 +15,7 @@ import {
   cleanupMediatedFixtures, mediatedFixture
 } from "../../../tests/helpers/claude-mediated-fixture.mjs";
 import { installedProviderPath } from "../../../tests/helpers/installed-provider.mjs";
-import { WIN32_HOST, mediationRefusedOnWin32 } from "../../../tests/helpers/mediation-platform.mjs";
+import { WIN32_HOST, windowsMediationPath } from "../../../tests/helpers/mediation-platform.mjs";
 import { resolveClaudeCommand } from "../src/claude-code-driver.mjs";
 
 const execFileAsync = promisify(execFile);
@@ -49,7 +49,7 @@ const STARTED = [
 ];
 
 test("a structured subscription session reports exactly its bounded result", async (t) => {
-  if (WIN32_HOST) return mediationRefusedOnWin32(t);
+  if (WIN32_HOST) return windowsMediationPath(t);
   const fixture = await mediatedFixture({ kind: SUBSCRIPTION, scenario: "structured", execution: { structuredOutput } });
   const { events, closed } = await fixture.run();
   assert.deepEqual(pinned(events), [
@@ -63,7 +63,7 @@ test("a structured subscription session reports exactly its bounded result", asy
 });
 
 test("a structured session without an answer, or with one beyond its bound, ends failed with a stable code", async (t) => {
-  if (WIN32_HOST) return mediationRefusedOnWin32(t);
+  if (WIN32_HOST) return windowsMediationPath(t);
   for (const [scenario, maxBytes, code] of [
     ["structured-missing", 4096, "VES_CLAUDE_STRUCTURED_OUTPUT_MISSING"],
     ["structured-retries", 4096, "VES_CLAUDE_STRUCTURED_OUTPUT_MISSING"],
@@ -90,7 +90,7 @@ test("a structured session without an answer, or with one beyond its bound, ends
 });
 
 test("a rejected rate limit is one quota event with only a scope and the reported reset", async (t) => {
-  if (WIN32_HOST) return mediationRefusedOnWin32(t);
+  if (WIN32_HOST) return windowsMediationPath(t);
   const fixture = await mediatedFixture({ kind: SUBSCRIPTION, scenario: "rate-rejected" });
   const { events } = await fixture.run();
   assert.deepEqual(pinned(events), [
@@ -106,7 +106,7 @@ test("a rejected rate limit is one quota event with only a scope and the reporte
 });
 
 test("an API-key source in a subscription session ends it before it is announced", async (t) => {
-  if (WIN32_HOST) return mediationRefusedOnWin32(t);
+  if (WIN32_HOST) return windowsMediationPath(t);
   const fixture = await mediatedFixture({ kind: SUBSCRIPTION, scenario: "api-key-source" });
   const { events } = await fixture.run();
   assert.deepEqual(pinned(events), [

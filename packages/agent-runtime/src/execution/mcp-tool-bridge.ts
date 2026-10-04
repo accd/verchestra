@@ -72,7 +72,7 @@ export interface McpToolBridgeControllerOptions {
   // Parent for the per-run 0700 socket directory; defaults to the OS temp dir.
   readonly socketRoot?: string;
   // why: the channel is the one part that differs by platform; without one the
-  // controller keeps the Unix socket under `socketRoot`.
+  // controller keeps the Unix socket under `socketRoot`, which Windows lacks.
   readonly transport?: BridgeTransport;
 }
 
@@ -98,13 +98,13 @@ export class McpToolBridgeController {
   }
 
   static async open(options: McpToolBridgeControllerOptions): Promise<McpToolBridgeController> {
-    // why: Windows has no Unix socket. Until the named-pipe transport passes
-    // its Windows qualification (SSI-77), a bridge opens there only for a
-    // caller that brings its own transport; the default stays refused.
+    // invariant: Windows has no Unix socket, so there a bridge opens only over
+    // the channel the composition hands it (the named pipe, AD-074); a caller
+    // that brings none is refused before anything is created.
     if (process.platform === "win32" && options.transport === undefined)
       throw new McpToolBridgeError(
-        "VES_BRIDGE_PLATFORM_UNSUPPORTED",
-        "The mediated bridge is not configured on Windows"
+        "VES_BRIDGE_TRANSPORT_REQUIRED",
+        "The mediated bridge needs the composition's transport on Windows"
       );
     if (!isAbsolute(options.worktreePath))
       throw new McpToolBridgeError("VES_BRIDGE_ROOT_INVALID", "Worktree path must be absolute");

@@ -23,7 +23,7 @@ import {
   mediatedErrors,
   mediatedFixture
 } from "../helpers/claude-mediated-fixture.mjs";
-import { WIN32_HOST, mediationRefusedOnWin32 } from "../helpers/mediation-platform.mjs";
+import { WIN32_HOST, windowsMediationPath } from "../helpers/mediation-platform.mjs";
 
 const SUBSCRIPTION = "mediated-mcp-subscription";
 const HKLM = "HKLM\\SOFTWARE\\Policies\\ClaudeCode";
@@ -114,7 +114,7 @@ test("a populated policy directory is present before any key is read, and an emp
 });
 
 test("the subscription profile refuses a present policy key before any spawn", async (t) => {
-  if (WIN32_HOST) return mediationRefusedOnWin32(t);
+  if (WIN32_HOST) return windowsMediationPath(t);
   const { absent } = await policyRoot();
   const { registry, asked } = fakeRegistry([HKCU]);
   const fixture = await mediatedFixture({
@@ -131,7 +131,7 @@ test("the subscription profile refuses a present policy key before any spawn", a
 });
 
 test("without the composition's registry reader every policy key counts as present", async (t) => {
-  if (WIN32_HOST) return mediationRefusedOnWin32(t);
+  if (WIN32_HOST) return windowsMediationPath(t);
   const { absent } = await policyRoot();
   const fixture = await mediatedFixture({
     kind: SUBSCRIPTION,
@@ -142,7 +142,7 @@ test("without the composition's registry reader every policy key counts as prese
 });
 
 test("the subscription profile runs when the directory and both keys are proven absent", async (t) => {
-  if (WIN32_HOST) return mediationRefusedOnWin32(t);
+  if (WIN32_HOST) return windowsMediationPath(t);
   const { absent } = await policyRoot();
   const { registry, asked } = fakeRegistry();
   const fixture = await mediatedFixture({
@@ -158,7 +158,7 @@ test("the subscription profile runs when the directory and both keys are proven 
 });
 
 test("policy keys are validated, belong to the subscription profile, and the reader is never consulted without keys", async (t) => {
-  if (WIN32_HOST) return mediationRefusedOnWin32(t);
+  if (WIN32_HOST) return windowsMediationPath(t);
   const resolveExecution = async () => assert.fail("not reached");
   const command = [process.execPath, fakeMediatedClaude];
   for (const key of [

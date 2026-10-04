@@ -520,7 +520,9 @@ test("vestra task is reachable from the sealed bundle and its bridge relay is st
   const home = await mkdtemp(join(SCRATCH_BASE, "home-"));
   disposable.push(home);
   const workspaceId = "workspace_7c1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f";
-  const env = { HOME: home };
+  // why: Node reads the home from USERPROFILE on Windows, and a child spawned
+  // there without it inherits the invoking user's own.
+  const env = process.platform === "win32" ? { HOME: home, USERPROFILE: home } : { HOME: home };
   const init = spawnSealed(
     releaseRoot,
     "vestra.mjs",
@@ -586,16 +588,6 @@ test("vestra task is reachable from the sealed bundle and its bridge relay is st
     ["task", "plan", "--request", request, "--dry-run", "--output", "json"],
     { cwd: project, env, timeoutMs: 120_000 }
   );
-  if (process.platform === "win32") {
-    // invariant: the mediated implementer is not configured on Windows, so the
-    // sealed CLI refuses the plan as not configured and records nothing.
-    assert.equal(plan.status, 5, plan.stderr);
-    const refusal = JSON.parse(plan.stdout).error;
-    assert.equal(refusal.code, "VES_TASK_NOT_CONFIGURED");
-    assert.equal(refusal.safeDetails.requirement, "platform");
-    assert.equal(existsSync(join(state, "tasks")), false);
-    return;
-  }
   assert.equal(plan.status, 0, plan.stderr);
   const surface = JSON.parse(plan.stdout).data;
   assert.equal(surface.dryRun, true);

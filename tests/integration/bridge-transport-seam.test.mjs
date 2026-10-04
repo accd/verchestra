@@ -3,8 +3,8 @@
 // authentication timeout) applies to a connection whatever transport delivered
 // it. An in-memory transport stands in for the Unix socket and the Windows
 // named pipe, so these cases observe the controller alone, on every platform:
-// an injected transport opens the bridge on Windows too, while the default
-// Unix socket stays refused there until the pipe qualifies (SSI-77).
+// an injected transport opens the bridge on Windows too, while a caller there
+// that brings none is refused, since Windows has no Unix socket.
 import assert from "node:assert/strict";
 import { once } from "node:events";
 import { duplexPair } from "node:stream";
@@ -12,7 +12,7 @@ import { afterEach, test } from "node:test";
 
 import { DriverExecutionAdapter, InMemoryExecutionPayloadStore } from "../../packages/agent-runtime/src/index.ts";
 import { cleanupBridges, openController, relayEntry } from "../helpers/mcp-bridge-fixture.mjs";
-import { WIN32_HOST, mediationRefusedOnWin32 } from "../helpers/mediation-platform.mjs";
+import { WIN32_HOST, windowsMediationPath } from "../helpers/mediation-platform.mjs";
 import { cleanupPlainWorktrees, frame, hello, plainWorktree } from "../helpers/pipe-bridge-fixture.mjs";
 import { executorInput } from "../helpers/task-executor-fixture.mjs";
 
@@ -192,8 +192,8 @@ test("the driver adapter opens its bridge over the transport the composition han
   assert.equal(driver.closed, 1);
 });
 
-test("without a transport the controller keeps the Unix socket, which Windows still refuses", async (t) => {
-  if (WIN32_HOST) return mediationRefusedOnWin32(t);
+test("without a transport the controller keeps the Unix socket, and Windows requires one", async (t) => {
+  if (WIN32_HOST) return windowsMediationPath(t);
   const { worktree } = await plainWorktree();
   const { controller } = await openController(worktree);
   assert.match(controller.socketPath, /[\\/]vmcp-[^\\/]+[\\/]bridge\.sock$/u);

@@ -38,6 +38,11 @@ const SAFE_ENV_KEYS = ["PATH", "SystemRoot", "ComSpec", "TEMP", "TMP", "HOME", "
 // through; identity directories are created per run and the credential comes
 // from resolveExecution alone.
 const MEDIATED_ENV_KEYS: ReadonlySet<string> = new Set(["PATH", "LANG", "LC_ALL", "LC_CTYPE", "TZ", "TMPDIR"]);
+// why: the Windows equivalents. A child there cannot start Winsock without
+// SystemRoot, so it could reach neither the provider nor the bridge, and it
+// finds its temporary directory in TEMP and TMP; Windows reads no locale from
+// the environment.
+const WINDOWS_MEDIATED_ENV_KEYS: ReadonlySet<string> = new Set(["PATH", "SystemRoot", "TEMP", "TMP", "TZ"]);
 const SUBSCRIPTION_PROFILE = "mediated-mcp-subscription";
 // invariant: each mediated profile accepts exactly one credential variable; the
 // composition names it from here instead of spelling it a second time.
@@ -110,11 +115,21 @@ export interface ClaudeCodeMediatedProfile {
   // the composition root injects the reader, as it injects the tree
   // terminator. Without one every documented key counts as present.
   readonly managedPolicyRegistry?: ClaudeManagedPolicyRegistry;
+  // why: Windows ignores the 0700 mode that keeps the bridge token in
+  // `config/mcp.json` private elsewhere, so there the per-run isolation
+  // directory is made owner-only through its ACL. The composition injects the
+  // proof, as it injects the registry reader; Windows refuses a profile
+  // without one, and any other host uses one only when it is given.
+  readonly ownerOnlyProof?: ClaudeOwnerOnlyProof;
 }
 
 // invariant: resolves false only when the key is proven absent; anything else,
 // a rejection included, counts as present.
 export type ClaudeManagedPolicyRegistry = (key: string) => Promise<boolean>;
+
+// invariant: resolves true only when the directory was made owner-only and
+// read back so; anything else, a rejection included, is no proof.
+export type ClaudeOwnerOnlyProof = (directory: string) => Promise<boolean>;
 
 export interface ClaudeManagedPolicySources {
   readonly paths: readonly string[];
@@ -236,6 +251,7 @@ interface NormalizedMediatedProfile {
   readonly environment: Readonly<Record<string, string>>;
   readonly isolationRoot?: string;
   readonly managedPolicy: ManagedPolicyCheck;
+  readonly ownerOnlyProof?: ClaudeOwnerOnlyProof;
 }
 
 interface ManagedPolicyCheck extends ClaudeManagedPolicySources {
@@ -255,8 +271,9 @@ function mediationError(message: string): DriverProtocolError {
 }
 
 function allowlistedEnvironment(environment: Readonly<Record<string, string>>): Readonly<Record<string, string>> {
+  const allowed = process.platform === "win32" ? WINDOWS_MEDIATED_ENV_KEYS : MEDIATED_ENV_KEYS;
   for (const [key, value] of Object.entries(environment))
-    if (!MEDIATED_ENV_KEYS.has(key) || !safeValue(value))
+    if (!allowed.has(key) || !safeValue(value))
       throw claudeError("VES_CLAUDE_ENVIRONMENT_DENIED", "The mediated profile environment is not allowlisted");
   return Object.freeze({ ...environment });
 }
@@ -321,12 +338,17 @@ function managedPolicyCheck(profile: ClaudeCodeMediatedProfile): ManagedPolicyCh
   });
 }
 
-function mediatedProfile(profile: ClaudeCodeMediatedProfile, command: readonly string[]): NormalizedMediatedProfile {
+// why: the mediated profile is qualified on Windows over the named pipe the
+// composition hands the bridge (AD-074), and only with an owner-only proof of
+// the directory that holds the bridge token.
+function ownerOnlyProof(profile: ClaudeCodeMediatedProfile): { readonly ownerOnlyProof?: ClaudeOwnerOnlyProof } {
+  if (profile.ownerOnlyProof !== undefined) return { ownerOnlyProof: profile.ownerOnlyProof };
   if (process.platform === "win32")
-    throw claudeError(
-      "VES_CLAUDE_MEDIATION_UNSUPPORTED",
-      "The mediated Claude Code profile is not configured on Windows"
-    );
+    throw mediationError("On Windows the mediated profile needs an owner-only proof of its isolation directory");
+  return {};
+}
+
+function mediatedProfile(profile: ClaudeCodeMediatedProfile, command: readonly string[]): NormalizedMediatedProfile {
   if (!Object.hasOwn(CLAUDE_PROFILE_CREDENTIAL_VARIABLES, profile.kind))
     throw mediationError("Claude Code profile is unknown");
   if (!absolutePath(command[0]))
@@ -334,9 +356,28 @@ function mediatedProfile(profile: ClaudeCodeMediatedProfile, command: readonly s
   const kind = profile.kind;
   const environment = allowlistedEnvironment(profile.environment ?? {});
   const managedPolicy = managedPolicyCheck(profile);
-  if (profile.isolationRoot === undefined) return Object.freeze({ kind, environment, managedPolicy });
+  const proof = ownerOnlyProof(profile);
+  if (profile.isolationRoot === undefined) return Object.freeze({ kind, environment, managedPolicy, ...proof });
   if (!absolutePath(profile.isolationRoot)) throw mediationError("The isolation root must be absolute");
-  return Object.freeze({ kind, environment, isolationRoot: profile.isolationRoot, managedPolicy });
+  return Object.freeze({ kind, environment, isolationRoot: profile.isolationRoot, managedPolicy, ...proof });
+}
+
+// invariant: the isolation directory is proven owner-only while it is still
+// empty, so the bridge token is written only where no other account can read
+// it; what is created inside inherits that one entry.
+async function requireOwnerOnly(root: string, proof: ClaudeOwnerOnlyProof | undefined): Promise<void> {
+  if (proof === undefined) return;
+  if ((await proof(root).catch(() => false)) !== true)
+    throw claudeError(
+      "VES_CLAUDE_ISOLATION_INSECURE",
+      "The per-run isolation directory could not be proven owner-only"
+    );
+}
+
+// why: Node and Claude Code find the user's home in USERPROFILE on Windows and
+// in HOME elsewhere, so the per-run home is named where the host reads it.
+function homeVariables(home: string): Readonly<Record<string, string>> {
+  return process.platform === "win32" ? { HOME: home, USERPROFILE: home } : { HOME: home };
 }
 
 // The only credential the mediated child sees, and it must be redactable.
@@ -850,6 +891,7 @@ export class ClaudeCodeDriver implements Driver {
     const root = await mkdtemp(join(this.#profile.isolationRoot ?? tmpdir(), "verchestra-claude-"));
     try {
       await chmod(root, 0o700);
+      await requireOwnerOnly(root, this.#profile.ownerOnlyProof);
       const home = join(root, "home");
       const config = join(root, "config");
       await mkdir(home, { mode: 0o700 });
@@ -883,7 +925,7 @@ export class ClaudeCodeDriver implements Driver {
         arguments: this.buildMediatedArguments(execution.model, mcpConfigPath, structured?.schemaText),
         environment: {
           ...this.#profile.environment,
-          HOME: home,
+          ...homeVariables(home),
           CLAUDE_CONFIG_DIR: config,
           DISABLE_AUTOUPDATER: "1",
           CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
@@ -912,7 +954,12 @@ export class ClaudeCodeDriver implements Driver {
       cwd,
       surface: "bridge-only",
       arguments: this.buildSubscriptionArguments(invocation.model, paths.mcpConfigPath, invocation.schemaText),
-      environment: { ...environment, HOME: paths.home, CLAUDE_CONFIG_DIR: paths.config, ...SUBSCRIPTION_SWITCHES }
+      environment: {
+        ...environment,
+        ...homeVariables(paths.home),
+        CLAUDE_CONFIG_DIR: paths.config,
+        ...SUBSCRIPTION_SWITCHES
+      }
     });
   }
 

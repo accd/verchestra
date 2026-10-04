@@ -83,14 +83,16 @@ async function adapterFixture(driver, options = {}) {
   return { adapter, calls, control, request, sessions, payloads };
 }
 
-// invariant: on win32 the adapter refuses the mediated path when it opens the
-// bridge, before any session exists, any driver starts, or any checkpoint,
-// usage, or tool call is recorded.
+// invariant: these cases open the bridge over its default Unix socket. On
+// win32 the adapter is handed the named pipe by the composition; without it
+// the adapter refuses the mediated path when it opens the bridge, before any
+// session exists, any driver starts, or any checkpoint, usage, or tool call is
+// recorded. The pipe itself is exercised in windows-pipe-bridge-security.
 async function adapterRefusedOnWin32(t) {
-  t.diagnostic("win32: asserting the adapter refuses the mediated bridge instead");
+  t.diagnostic("win32: asserting the adapter refuses the bridge without a transport instead");
   const driver = new ScriptedFakeDriver(async () => assert.fail("the driver never starts"));
   const { adapter, calls, control, request, sessions } = await adapterFixture(driver);
-  await assert.rejects(adapter.execute(request, control), { code: "VES_BRIDGE_PLATFORM_UNSUPPORTED" });
+  await assert.rejects(adapter.execute(request, control), { code: "VES_BRIDGE_TRANSPORT_REQUIRED" });
   assert.deepEqual(sessions, []);
   assert.deepEqual(calls, { checkpoints: [], usage: [], tools: [] });
   assert.equal(driver.closed, 0);

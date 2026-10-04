@@ -255,10 +255,10 @@ Author's evidence, commit by commit, on branch `strands/t4-driver-results`
 | 3 | The installed `codex-cli 0.159.3` generates `outputSchema` on `turn/start`, every allowlisted request, the two denied credit methods, `chatgpt` accounts, `usageLimitExceeded`, `ordinaryUsageAllowed`, the credits snapshot, the four quota kinds, `account/rateLimits/updated`, and `agentMessage` items (read-only generation, disposable HOME and CODEX_HOME, nothing written to HOME) | `spikes/codex-driver/test/codex-driver-structured.test.mjs:145` | same, against the installed 0.159.3 |
 | 3 | Existing Codex sequences unchanged: contract, lifecycle, integration, child-run, cancel-order, process-tree, provider-ends, identity, and T04 spike suites pass with no edit | unchanged files | 191 of 191 |
 
-| 4 | SSI-48: a completed session's `result.structured` becomes `outputRefs: ["payload:sha256:<digest of the canonical bytes>"]`; the store returns exactly those bytes; the `driver-finished` checkpoint keeps its six fields and no answer text | `tests/integration/driver-execution-adapter.test.mjs:305` | `node --test tests/integration/driver-execution-adapter.test.mjs`: 15 of 15 |
-| 4 | A structured result of a failed session is not handed on (`outputRefs: []`) | `tests/integration/driver-execution-adapter.test.mjs:323` | same |
-| 4 | A second structured result, or one whose size is not its canonical size, stops the session with `VES_DRIVER_ADAPTER_INPUT_INVALID` and no `driver-finished` checkpoint | `tests/integration/driver-execution-adapter.test.mjs:333` | same |
-| 4 | SSI-58/59 seam: the first `quota.exhausted` stops the session and surfaces as `VES_DRIVER_QUOTA_EXHAUSTED` with a frozen `{ scope, resetsAt? }`; later events are not handed on | `tests/integration/driver-execution-adapter.test.mjs:356` | same |
+| 4 | SSI-48: a completed session's `result.structured` becomes `outputRefs: ["payload:sha256:<digest of the canonical bytes>"]`; the store returns exactly those bytes; the `driver-finished` checkpoint keeps its six fields and no answer text | `tests/integration/driver-execution-adapter.test.mjs:307` | `node --test tests/integration/driver-execution-adapter.test.mjs`: 15 of 15 |
+| 4 | A structured result of a failed session is not handed on (`outputRefs: []`) | `tests/integration/driver-execution-adapter.test.mjs:325` | same |
+| 4 | A second structured result, or one whose size is not its canonical size, stops the session with `VES_DRIVER_ADAPTER_INPUT_INVALID` and no `driver-finished` checkpoint | `tests/integration/driver-execution-adapter.test.mjs:335` | same |
+| 4 | SSI-58/59 seam: the first `quota.exhausted` stops the session and surfaces as `VES_DRIVER_QUOTA_EXHAUSTED` with a frozen `{ scope, resetsAt? }`; later events are not handed on | `tests/integration/driver-execution-adapter.test.mjs:358` | same |
 | 4 | SSI-49, SSI-81: Codex events and closes in five account and quota modes carry no e-mail, account identifier, upsell, provider prose, or thread, turn, or session identity, and the client echoes no account field; a structured Claude session through the adapter hands on only its canonical answer, and its checkpoints, result, payload, and quota refusal carry no token, session, purchase field, or temporary path | `tests/security/driver-structured-results-security.test.mjs:58`, `:162`, `:173` | `node --test tests/security/driver-structured-results-security.test.mjs`: 3 of 3 |
 
 Changed assertions (no test deleted): `tests/unit/driver-event.test.mjs:18`
@@ -1022,10 +1022,11 @@ uncertain run, R16 a Codex node leaves no worktree marker — all killed. R8
 first had no killer; `tests/unit/coordinated-suspension.test.mjs:478` was
 added for it.
 
-## T7 Evidence (Windows bridge transport, commits 1 to 3)
+## T7 Evidence (Windows bridge transport, commits 1 to 4)
 
-Author: the T7 implementer. Commit 4 (lifting the refusals) is not on this
-branch; it waits for the Windows leg of the platform matrix.
+Author: the T7 implementer. Commits 1 to 3 and their fix landed in #521; the
+Windows leg of the platform matrix (run 37162941507) then passed the eight real
+named-pipe cases, and commit 4 lifts the refusals (below).
 
 ### Commit 1: `refactor(agent-runtime): put the bridge channel behind a transport interface`
 
@@ -1095,7 +1096,7 @@ the independent verifier repeats the list at T9.
 
 | Requirement | Evidence (file:line, assertion) | Result |
 | --- | --- | --- |
-| SSI-74 directory, HKLM, HKCU | `documentedManagedPolicySources("win32")` is exactly `C:\Program Files\ClaudeCode` and the keys `HKLM\SOFTWARE\Policies\ClaudeCode`, `HKCU\SOFTWARE\Policies\ClaudeCode`, with `/etc/claude-code` no longer chosen for Windows; Linux and macOS sources unchanged (`tests/contract/claude-code-driver-managed-policy.test.mjs:60`). Presence: either key, both, or neither (`:76-90`); a reader that rejects, answers anything but `false`, or throws synchronously counts as present (`:92`); a populated directory is present before any key is read, an empty one is not (`:107`). Driver path (non-Windows hosts, where the mediated profile runs): a present key refuses with `VES_CLAUDE_MANAGED_POLICY_PRESENT` before any spawn (`:116`); without the composition's reader every key counts as present (`:133`); with the directory and both keys proven absent the session runs (`:144`); malformed keys and keys on the API-key profile are refused at construction, and the API-key profile never consults the reader (`:160`). Registry reader (`packages/platform-node/src/windows-registry.ts`): System32 `reg.exe`, `query <key> /reg:64` (`tests/unit/windows-registry.test.mjs:18`); seven malformed keys refused before anything runs (`:24-43`); exit 1 is absent, 0, 2, and no exit are present (`:45-59`); a query that cannot run is present (`:61`). Windows only: `:70` (an existing key present, a random missing key absent; elsewhere both present, since nothing can prove absence). The composition hands the driver the reader (`apps/vestra-cli/src/task/task-implementer.ts:159`). | PASS (darwin); win32 case pending the Windows leg |
+| SSI-74 directory, HKLM, HKCU | `documentedManagedPolicySources("win32")` is exactly `C:\Program Files\ClaudeCode` and the keys `HKLM\SOFTWARE\Policies\ClaudeCode`, `HKCU\SOFTWARE\Policies\ClaudeCode`, with `/etc/claude-code` no longer chosen for Windows; Linux and macOS sources unchanged (`tests/contract/claude-code-driver-managed-policy.test.mjs:60`). Presence: either key, both, or neither (`:76-90`); a reader that rejects, answers anything but `false`, or throws synchronously counts as present (`:92`); a populated directory is present before any key is read, an empty one is not (`:107`). Driver path (non-Windows hosts, where the mediated profile runs): a present key refuses with `VES_CLAUDE_MANAGED_POLICY_PRESENT` before any spawn (`:116`); without the composition's reader every key counts as present (`:133`); with the directory and both keys proven absent the session runs (`:144`); malformed keys and keys on the API-key profile are refused at construction, and the API-key profile never consults the reader (`:160`). Registry reader (`packages/platform-node/src/windows-registry.ts`): System32 `reg.exe`, `query <key> /reg:64` (`tests/unit/windows-registry.test.mjs:18`); seven malformed keys refused before anything runs (`:24-43`); exit 1 is absent, 0, 2, and no exit are present (`:45-59`); a query that cannot run is present (`:61`). Windows only: `:70` (an existing key present, a random missing key absent; elsewhere both present, since nothing can prove absence). The composition hands the driver the reader (`apps/vestra-cli/src/task/task-implementer.ts:200`). | PASS (darwin); win32 case pending the Windows leg |
 
 The policy check stays unreachable on Windows until commit 4, because the
 mediated profile still refuses `win32` at construction
@@ -1161,6 +1162,81 @@ costs a second PowerShell start per run.
 Checks for the fix (darwin): `pnpm typecheck` PASS, `pnpm test:architecture`
 125/125, `pnpm agent:check` PASS, `pnpm test:census` 13/13, `pnpm
 complexity:check` PASS (no new hotspot), and the seven T7 test files 132/132.
+
+### Commit 4: `feat(cli): enable the governed task path on Windows`
+
+Branch `strands/t7b-windows-task-path`. AD-0XX in `.specs/STATE.md` (to be
+numbered at merge) records the decision and supersedes AD-039's Windows clause
+(D6). macOS and Linux keep every list, lookup, and assertion they had: each
+Unix branch of a changed test is unchanged, and every new rule is selected by
+`process.platform` or an explicit platform argument.
+
+| Requirement | Evidence (file:line, assertion) | Result |
+| --- | --- | --- |
+| SSI-77 the three refusals lifted | `vestra task`: the `win32` refusal is gone from `apps/vestra-cli/src/task/task-command.ts:96-99`; `tests/contract/task-command-platform.test.mjs:56` runs every task command with `win32` and `darwin` and gets the same first check (request unreadable, Workspace missing), never `platform`, nothing written. Mediated profile: `VES_CLAUDE_MEDIATION_UNSUPPORTED` is gone; on Windows a profile is constructed only with an owner-only proof (`packages/drivers/src/claude-code-driver.ts:344-350`), `tests/contract/claude-code-driver-windows.test.mjs:47` (both kinds, every platform). Bridge: a caller without a transport is refused on Windows with `VES_BRIDGE_TRANSPORT_REQUIRED` before anything is created (`packages/agent-runtime/src/execution/mcp-tool-bridge.ts:101-108`); the adapter case `tests/integration/driver-execution-adapter.test.mjs:91`, the journey case `tests/e2e/mediated-task-execution-e2e.test.mjs:139`, and the shared helper `tests/helpers/mediation-platform.mjs:28` assert it on win32. | PASS (darwin; win32 branches also run with the platform forced to win32, see below) |
+| Open question 1: `not configured` with the prerequisite named, before any state change or worktree | `prepare()` runs `requireWindowsPrerequisites` after the credentials and executables and before `claimActive` and the first transition (`apps/vestra-cli/src/task/task-run.ts:195-199`, `:721`). `apps/vestra-cli/src/task/task-windows.ts:46-56` opens and closes one pipe channel, proves a probe directory under the sessions root, and reads the policy sources for the subscription profile. `tests/unit/task-windows.test.mjs:94-95`: a transport's `VES_BRIDGE_NOT_CONFIGURED` with `powershell-7`, `powershell-logging-off`, or `owner-only-acl` becomes `VES_TASK_NOT_CONFIGURED` with that requirement, nothing else asked, no directory; `:159-168` the same through the real `WindowsNamedPipeBridgeTransport` over a fake helper host (PowerShell missing, older than 7.4, logging on, ACL unproven), its directory removed; `:107` any other transport refusal, or a requirement that is not an identifier, is reported as the transport's own; `:123-127` an unproven or failing sessions-root proof is `owner-only-acl`, the probe removed; `:139` a present policy source is `claude-managed-policy` for the subscription profile and is never read for the API-key profile; `:79` a machine with every prerequisite passes, the probe channel closed once and a connection to it refused; `:192` the probe helper is started once and ended; `:64` off Windows, or with no Claude Code session, nothing is asked. | PASS (darwin) |
+| Open question 2: `SystemRoot` for the relay and the pass-through list | `apps/vestra-cli/src/task/task-implementer.ts:45` the Windows list is `PATH`, `SystemRoot`, `TEMP`, `TMP`, `TZ` (the Unix list unchanged at `:40`), chosen at `:79`; the relay's MCP-config environment gains `SYSTEMROOT` on Windows (`:129-135`, used at `:220`); the driver's allowlist is the host's own (`claude-code-driver.ts:45`, `:274`); the per-run home is named in `HOME` and, on Windows, `USERPROFILE` (`:379-381`). `tests/unit/task-implementer-windows.test.mjs:41` (exact Windows list, unsafe values dropped), `:52` (Unix list unchanged), `:61` (relay gets `SYSTEMROOT` on Windows only, upper-case names only), `tests/contract/claude-code-driver-windows.test.mjs:55` (Windows accepts `SystemRoot`, `TEMP`, `TMP` and refuses `TMPDIR` and the locale; elsewhere the reverse). Only a native `<name>.exe` is taken on Windows: `task-implementer.ts:52-57`, `tests/unit/task-implementer-windows.test.mjs:94` (`claude.exe` found, `codex.cmd`, `codex.ps1`, and a bare `codex` refused as `executable:codex`), `:101` (elsewhere the bare name, unchanged). | PASS (darwin) |
+| Open question 3: the Claude config directory owner-only | Decision: yes. `config/mcp.json` holds the 256-bit bridge token (AD-039), and on Unix its directory is private by `0700`, which Windows ignores. The per-run isolation directory is proven owner-only by the same `proveOwnerOnlyDirectory` routine while it is still empty, before `home`, `config`, and `mcp.json` exist, so all three inherit the one owner entry (`claude-code-driver.ts:368-376`, called at `:894`; injected by the composition through `isolationProof`, `task-implementer.ts:141-147`, `:208`). `tests/contract/claude-code-driver-windows.test.mjs:70` (both kinds: one proof, on the empty isolation directory, before the token is written); `:94-99` (a refused, failing, or truthy-but-not-`true` proof is `VES_CLAUDE_ISOLATION_INSECURE`, nothing spawned, the directory removed); `tests/unit/task-implementer-windows.test.mjs:72` (only Windows hands the proof); `tests/unit/task-windows.test.mjs:212` (the node host's real proof: true on Windows, false elsewhere, nothing left). | PASS (darwin) |
+| Windows-only cases (run on the Windows leg; elsewhere each asserts the platform path) | `tests/contract/claude-code-driver-windows.test.mjs:203` a mediated session through the production driver over the real pipe: read and write over the bridge, one executor request, the isolation directory proven owner-only and empty before the token, `HOME`/`USERPROFILE` the per-run home, `SystemRoot` present, the directory removed after (elsewhere: the pipe refuses to start, nothing created). `tests/e2e/task-windows-e2e.test.mjs:108` the journey through the real `vestra` binary: plan, approve, start, gate, verify, and accepted review; the implementer's relay aimed at the named pipe with `SYSTEMROOT` beside the bridge variables, its read and write over the pipe, its environment the Windows list and its subscription token alone; the verifier read-only from the Workspace identity; the branch holds only the change; the user's checkout unmoved; every credential read through `cmdkey` and the `Read` program only; the sessions root empty (elsewhere, `:59`: no pipe handed to the bridge, the pipe refuses to start, no prerequisite checked). `tests/unit/task-windows.test.mjs:212` the real ACL proof on Windows. | pending the Windows leg |
+| The journey's fakes on Windows | `tests/helpers/fake-windows-spawn.mjs` answers `cmdkey /list:` and the Windows PowerShell `Read` program from the fixture store and starts the labeled fakes for `claude.exe` and `codex.exe` placeholders, through `spawn` and `promisify(execFile)`; `tests/unit/fake-windows-spawn.test.mjs:34` proves it against the production Windows backend and the fakes, on every platform; `:66` the guard still refuses every other credential program. The deny guard lets exactly one PowerShell start through, the pipe helper with the pinned path, flags, constant script read back from its file, and a pipe name (`tests/helpers/deny-keychain-spawn.mjs:42`); `tests/architecture/no-keychain-spawn-in-tests.test.mjs:105` pins the exact invocation and refuses nine near misses before spawning. The fixture gives Windows its own home, local application data, and temporary directory, `core.autocrlf false` and `core.longpaths true` (`tests/helpers/task-cli-fixture.mjs:97`, `:236`); the fake logs only the relay's channel kind and variable names (`tests/helpers/task-cli-fakes/fake-claude-task.mjs:54-55`). | PASS (darwin); journey pending the Windows leg |
+
+Pinned refusal tests updated (each win32 branch asserts the Windows path
+instead of the old refusal; every Unix branch unchanged): the shared helper
+`windowsMediationPath` (`tests/helpers/mediation-platform.mjs:28`: no transport
+→ `VES_BRIDGE_TRANSPORT_REQUIRED`, no directory; each mediated kind refused
+without a proof and constructed with one) replaces `mediationRefusedOnWin32` at
+every call site (four contract suites, three Claude spike suites, the bridge,
+bridge security, structured-results security, seam, and case-variant suites);
+`adapterRefusedOnWin32` and `journeyRefusedOnWin32` expect
+`VES_BRIDGE_TRANSPORT_REQUIRED`; `verifierRefusedOnWin32`
+(`tests/helpers/codex-verifier-fixture.mjs:22`, also used by
+`tests/integration/codex-identity.test.mjs:123`) now asserts that the fake's
+POSIX wrapper is no provider the Windows task path starts
+(`executable:codex`); `tests/e2e/task-cli-e2e.test.mjs:937` reports, on
+Windows, the unbound signing credential of an empty Credential Manager
+(`evidence-signing-passphrase`) instead of `platform`, and `:1154` expects the
+Unix `VES_STATE_ROOT_ESCAPE` for a junction on Windows too; the four dry-run
+journeys (`:778`, `:819`, `:845`, `:867`), which read no credential, now run
+on Windows as well; `tests/build/sealed-launcher-closure.test.mjs:525`, `:591`
+plans the sealed dry run on Windows like everywhere else, with the fixture's
+home in `USERPROFILE`.
+
+Forced-platform check (darwin, not committed): with `process.platform`
+replaced by `win32` before any module loads, the shared helper, the verifier
+helper, the driver adapter, seam, and bridge suites (29/29), and the four
+platform rules of `claude-code-driver-windows.test.mjs` (6/6) pass.
+
+Author's discrimination run (each mutant applied in place, the named suite
+run, then the file restored; `[w]` marks a run with the platform forced to
+win32): the transport's requirement not mapped (7 failures), the sessions ACL
+probe skipped (4), the policy read for the API-key profile (1), the probe
+channel never closed (4), a present policy reported as `owner-only-acl` (1),
+the isolation proof skipped (4), a truthy proof accepted (1), a Windows
+profile accepted without a proof [w] (6), the Unix allowlist on Windows [w]
+(2), the Windows pass-through keeping `TMPDIR` and dropping `SystemRoot` (2),
+the relay without `SYSTEMROOT` (1), the bare name taken on Windows (1), the
+guard ignoring the helper script's content (1), the bridge opening without a
+transport on Windows [w] (15), and `vestra task` refusing Windows again (1).
+All killed.
+
+Gates for commit 4 (darwin, Node 24.14.0): `pnpm typecheck` PASS;
+`pnpm test:architecture` 132/132; `pnpm complexity:check` PASS (no new
+hotspot, every new function at or below 10; no baseline key moved);
+`pnpm test:census` 13/13 (no product file gained or lost `JSON.stringify` or
+`createHash`); `pnpm agent:check` PASS; Prettier and ESLint clean on every
+changed file. Focused suites: the bridge, adapter, seam, driver contract,
+Claude spike, Codex identity and verifier, mediated and Windows e2e, pipe
+security, and new unit suites 381/381; `tests/e2e/task-cli-e2e.test.mjs`
+45/45 and `tests/security/task-cli-security.test.mjs` 9/9 with the fixture
+changes; 0 skipped, 0 todo. `gate:quick`, `gate:full`, `gate:security`, and
+the build and sealed suites run on the platform matrix, not locally (disk);
+its Windows leg is the evidence for the `win32:` cases.
+
+Not verifiable without Windows: the real journey's path lengths, PowerShell 7
+start with the fixture's own local application data, and `cmdkey` and the
+Credential Manager fake's answers as the backend parses them on that host. The
+citations of `docs/quick-start.md` and `docs/qualification/claude-code-driver-*.md`
+that describe the Windows refusal are left to the T8 documentation pass.
 
 ## T8 Evidence (CLI surface, examples, and user documentation)
 
@@ -1404,7 +1480,7 @@ evidence is FAIL.
 | SSI-45 | `tests/unit/coordinated-driver.test.mjs:276`, `tests/integration/strands-coordination-engine.test.mjs:150` `VES_COORDINATION_HANDOFF_LIMIT`; mutant C4 killed | T5 gates (see T5 Evidence) | PASS (author) |
 | SSI-46 | T4 share: a structured session without an answer, with exhausted retries, or with an unreadable answer fails with a stable driver code and hands nothing on (`tests/contract/claude-code-driver-structured.test.mjs:88`, `tests/contract/codex-driver-structured.test.mjs:157`); mutants M12, M13 killed. T5 maps it to `VES_COORDINATION_RESULT_INVALID`.; T5 part: `tests/unit/node-result.test.mjs:53`, `tests/unit/coordinated-driver.test.mjs:215`, `tests/integration/strands-coordination-engine.test.mjs:115` `VES_COORDINATION_RESULT_INVALID`, no repair cycle | `pnpm test:contract`; T5 gates | PASS (T4 share); PASS (author, T5 part) |
 | SSI-47 | `tests/unit/node-result.test.mjs:93`, `tests/unit/coordinated-driver.test.mjs:194` refused before persistence; mutants C7, C8, C9 killed | T5 gates (see T5 Evidence) | PASS (author) |
-| SSI-48 | The bound is applied before emission (`tests/unit/driver-event.test.mjs:143`; driver boundaries `tests/contract/claude-code-driver-structured.test.mjs:119`, `tests/contract/codex-driver-structured.test.mjs:157`) and the port carries only `payload:sha256:<digest>` of the canonical bytes (`tests/integration/driver-execution-adapter.test.mjs:305`); mutants M10, M11 killed. | `pnpm test:unit`, `pnpm test:contract`, `pnpm test:integration` | PASS |
+| SSI-48 | The bound is applied before emission (`tests/unit/driver-event.test.mjs:143`; driver boundaries `tests/contract/claude-code-driver-structured.test.mjs:119`, `tests/contract/codex-driver-structured.test.mjs:157`) and the port carries only `payload:sha256:<digest>` of the canonical bytes (`tests/integration/driver-execution-adapter.test.mjs:307`); mutants M10, M11 killed. | `pnpm test:unit`, `pnpm test:contract`, `pnpm test:integration` | PASS |
 | SSI-49 | T4 share: the new events carry only the canonical answer, a closed-vocabulary scope, and an ISO reset; checkpoints gain nothing (`tests/security/driver-structured-results-security.test.mjs:58`, `:162`, `:173`). T5 owns the persisted node results and ledger.; T5 part: `tests/security/coordination-record-security.test.mjs:27`, `tests/unit/coordinated-driver.test.mjs:493` the ledger and results hold no session, credential, prompt, or path | `pnpm test:security`; T5 gates | PASS (T4 share); PASS (author, T5 part) |
 | SSI-50 | `tests/unit/node-result.test.mjs:100` earlier results, the handoff, and the context are delimited untrusted data after the rules; tools and scopes come from the plan (`tests/unit/coordinated-driver.test.mjs:148`) | T5 gates (see T5 Evidence) | PASS (author) |
 | SSI-51 | Every provider, verifier included, must be `subscription` or the run is `not configured` (`coordinated-run-subscription`) before any credential, transition, or worktree: `tests/unit/task-billing.test.mjs:164`, `tests/integration/task-coordinated-plan.test.mjs:110`, journey `tests/e2e/task-subscription-e2e.test.mjs:76`; mutants B1, B10 killed | T6 commit 1 (see T6 Evidence) | PASS (author) |
@@ -1427,13 +1503,13 @@ evidence is FAIL.
 | SSI-68 | With a controllable clock, five suspended hours are not counted: the resumed meter starts at the 2 s active before the suspension and ends at 2.5 s; tokens accumulate; usage on subscriptions stays unbilled (`tests/unit/task-run-coordinator.test.mjs:312`; `tests/e2e/task-subscription-e2e.test.mjs:230` reports `not billed (subscription)`); mutant S12 killed | T6 commits 2 and 3 (see T6 Evidence) | PASS (author) |
 | SSI-69 | T7 Evidence, commit 1 row SSI-69 | gate:quick, test:integration, test:security (bridge suites) | PASS on darwin; Linux and Windows legs pending the platform matrix |
 | SSI-70 | T7 Evidence, commit 1 row SSI-70 | test:integration | PASS on darwin; Windows implementation in commit 2 |
-| SSI-71 | T7 Evidence, commit 2 row SSI-71 | test:unit, test:security | PASS on darwin; win32 cases pending the Windows leg |
+| SSI-71 | T7 Evidence, commit 2 row SSI-71 | test:unit, test:security | PASS on darwin; Windows leg of platform matrix run 37162941507 (gate:security) passed the eight real named-pipe cases |
 | SSI-72 | T7 Evidence, commit 2 row SSI-72 | test:unit | PASS on darwin |
-| SSI-73 | T7 Evidence, commit 2 row SSI-73 (PowerShell, logging, ACL); managed policy with SSI-74 | test:unit, test:security | PASS on darwin; win32 cases pending |
-| SSI-74 | T7 Evidence, commit 3 row SSI-74 | test:contract, test:unit | PASS on darwin; win32 case pending the Windows leg |
-| SSI-75 | T7 Evidence, commit 2 row SSI-75 | test:unit, test:security | PASS on darwin; win32 cases pending |
-| SSI-76 | T7 Evidence, commit 2 row SSI-76 and its second-client deviation | test:security | PASS on darwin; win32 cases pending |
-| SSI-77 | T7 Evidence, commit 2 row SSI-77 | test:integration | PASS (refusals kept; lifting is commit 4) |
+| SSI-73 | T7 Evidence, commit 2 row SSI-73 (PowerShell, logging, ACL); managed policy with SSI-74; commit 4 open question 1 (each prerequisite `not configured`, named, before the first transition) and open question 3 (the Claude Code isolation directory owner-only) | test:unit, test:contract, test:security | PASS on darwin; win32 cases pending the Windows leg |
+| SSI-74 | T7 Evidence, commit 3 row SSI-74; commit 4 open question 1 (`claude-managed-policy` before the first transition) | test:contract, test:unit | PASS on darwin; win32 case pending the Windows leg |
+| SSI-75 | T7 Evidence, commit 2 row SSI-75 | test:unit, test:security | PASS on darwin; Windows leg of platform matrix run 37162941507 (gate:security) passed the eight real named-pipe cases |
+| SSI-76 | T7 Evidence, commit 2 row SSI-76 and its second-client deviation | test:security | PASS on darwin; Windows leg of platform matrix run 37162941507 (gate:security) passed the eight real named-pipe cases |
+| SSI-77 | T7 Evidence, commit 2 row SSI-77 (refusals kept until qualified); commit 4 row SSI-77 (lifted after the Windows leg passed) | test:contract, test:integration, test:e2e | PASS on darwin; the Windows journey pending the Windows leg |
 | SSI-78 | — | — | — |
 | SSI-79 | `tests/integration/strands-empty-environment.test.mjs:50` with a positive control at `:69`; mutant S6 killed by the probe alone | T5 gates (see T5 Evidence) | PASS (author) |
 | SSI-80 | T5 share: 43 mutants killed (validation.md, "T5 discrimination summary"); scope narrowing C1/C16, writer mutex C2, limits C3/C4/C8/C9/S3, destination check C5/C6/S2/S10; T6 share: 42 mutants killed (T6 Evidence, commits 1 to 3), the billing block B1–B11 and the uncertain refusal R2, R6 among them | T5 gates (see T5 Evidence); T6 gates | PASS (author) |
@@ -1522,3 +1598,10 @@ interface that covers the same case.
   grant; the grant itself is now the refused case "the hosted runner's grant
   leaves SYSTEM and Administrators beside the owner, so that path is refused"
   (`:197`).
+- T7 commit 4: `tests/contract/claude-code-driver-mediated.test.mjs` "the
+  mediated profile refuses Windows before anything is spawned" and
+  `tests/contract/claude-code-driver-subscription.test.mjs` "the subscription
+  profile refuses Windows before anything is spawned" (the lifted refusal) →
+  `tests/contract/claude-code-driver-windows.test.mjs:47`, which constructs
+  both kinds on every platform and, on Windows, refuses each without an
+  owner-only proof.

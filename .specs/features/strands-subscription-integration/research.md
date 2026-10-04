@@ -177,7 +177,7 @@ at the base revision at that exact version.
   inside its own session; a result with subtype `success` and no
   `structured_output` must be treated as a failure. The repository's mediated
   profiles already use `--output-format stream-json`
-  (`packages/drivers/src/claude-code-driver.ts:642-711`); that `stream-json`
+  (`packages/drivers/src/claude-code-driver.ts:683-752`); that `stream-json`
   carries `structured_output` on its final `result` event is documented through
   the SDK message type, and T4 confirms it with a recorded fixture before
   relying on it.
@@ -299,7 +299,7 @@ only that, at that moment, the provider did not continue on paid usage.
   driver returned `/etc/claude-code` for every platform but macOS, Windows
   included, so lifting the Windows refusal alone would have checked the wrong
   location and passed; T7 commit 3 adds the Windows directory and both keys
-  (`claude-code-driver.ts:124-132`, `:264-277`).
+  (`claude-code-driver.ts:139-147`, `:281-294`).
 - **Tests pinning the refusal.** `tests/helpers/mediation-platform.mjs:26-50`
   and its callers in `tests/integration/mcp-tool-bridge.test.mjs`,
   `tests/security/mcp-tool-bridge-security.test.mjs`,

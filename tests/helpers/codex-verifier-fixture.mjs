@@ -8,29 +8,30 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { runCodexVerifier } from "../../apps/vestra-cli/src/task/task-codex.ts";
-import { executeTaskCommand } from "../../apps/vestra-cli/src/task/task-command.ts";
+import { findExecutable } from "../../apps/vestra-cli/src/task/task-implementer.ts";
 import { eventually } from "./process-liveness.mjs";
 
 const fakeCodex = fileURLToPath(new URL("./task-cli-fakes/fake-codex-task.mjs", import.meta.url));
 export const VERIFIER_MODEL = "gpt-5.2-codex";
 export const WIN32_HOST = process.platform === "win32";
 
-// invariant: on Windows every `vestra task` command is refused before a
-// verifier session is reachable, and the fake's wrapper is a POSIX script. A
-// case that needs the fake asserts that refusal on win32 instead of skipping.
+// invariant: the fake's wrapper is a POSIX shell script, which the Windows
+// task path never starts: there it takes only a native `codex.exe` from PATH,
+// and the Windows verifier runs in tests/e2e/task-windows-e2e.test.mjs. A case
+// that needs the wrapper asserts that refusal on win32 instead of skipping.
 export async function verifierRefusedOnWin32(t) {
-  t.diagnostic("win32: asserting the governed task path is refused instead");
-  await assert.rejects(
-    executeTaskCommand(
-      { name: "task start", options: { "run-id": "run_018f0000-0000-7000-8000-000000001502" } },
-      { controlRoot: tmpdir(), platform: "win32", env: {}, stdin: process.stdin, stderr: () => undefined, pid: 1 }
-    ),
-    (error) => {
+  t.diagnostic("win32: asserting the task path refuses the fake's POSIX wrapper instead");
+  const root = await mkdtemp(join(tmpdir(), "vestra-codex-windows-"));
+  try {
+    await writeFile(join(root, "codex"), "#!/bin/sh\n# DETERMINISTIC FAKE - not Codex.\n", { mode: 0o700 });
+    await assert.rejects(findExecutable("codex", { PATH: root }, "win32"), (error) => {
       assert.equal(error.envelope.code, "VES_TASK_NOT_CONFIGURED");
-      assert.equal(error.envelope.safeDetails.requirement, "platform");
+      assert.equal(error.envelope.safeDetails.requirement, "executable:codex");
       return true;
-    }
-  );
+    });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 }
 
 async function lines(path) {

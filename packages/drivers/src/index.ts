@@ -615,7 +615,8 @@ export type {
   ClaudeCodeMediatedProfile,
   ClaudeCodeMediation,
   ClaudeManagedPolicyRegistry,
-  ClaudeManagedPolicySources
+  ClaudeManagedPolicySources,
+  ClaudeOwnerOnlyProof
 } from "./claude-code-driver.ts";
 export { CODEX_CLIENT_METHODS, CODEX_STRUCTURED_MINIMUM_VERSION, CodexDriver } from "./codex-driver.ts";
 export type { CodexDriverDependencies, CodexExecution } from "./codex-driver.ts";

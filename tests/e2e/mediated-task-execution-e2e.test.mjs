@@ -131,12 +131,15 @@ async function journey(scenario) {
   return { coordinator, fixture, input, stages, usage, worktree: () => worktreePaths.at(-1) };
 }
 
-// invariant: on win32 the journey fails closed at the bridge: the implementer
-// is never spawned, the worktree is removed, and the run records a failure.
+// invariant: this journey hands the bridge no transport, so it runs over the
+// Unix socket. On win32, which has none, it fails closed at the bridge: the
+// implementer is never spawned, the worktree is removed, and the run records
+// a failure. The Windows journey over the named pipe is
+// tests/e2e/task-windows-e2e.test.mjs.
 async function journeyRefusedOnWin32(t) {
-  t.diagnostic("win32: asserting the mediated journey is refused at the bridge instead");
+  t.diagnostic("win32: asserting the journey without a transport is refused at the bridge instead");
   const { coordinator, input, stages, usage, worktree } = await journey("read-write");
-  await assert.rejects(coordinator.execute(input), { code: "VES_BRIDGE_PLATFORM_UNSUPPORTED" });
+  await assert.rejects(coordinator.execute(input), { code: "VES_BRIDGE_TRANSPORT_REQUIRED" });
   await assert.rejects(access(worktree()), { code: "ENOENT" });
   assert.deepEqual(usage, []);
   assert.equal((await stages()).stage, "failed");

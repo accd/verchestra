@@ -9,6 +9,11 @@
 // and the Codex identity directory holds a fixture login in place of the
 // owner's one-time `codex login`. `mode: "api-key"` writes the machine-local
 // setting and binds the two API keys instead of the token.
+//
+// On Windows the same journeys run with the Windows equivalents: placeholder
+// `claude.exe` and `codex.exe` that fake-windows-spawn.mjs starts as the same
+// fakes, the Credential Manager answered from the same store, and a home,
+// local application data, and temporary directory of the fixture's own.
 import { spawn, spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
@@ -28,6 +33,8 @@ const SHIFTED_CLOCK = new URL("./shifted-clock.mjs", import.meta.url);
 export const FAKES = fileURLToPath(new URL("./task-cli-fakes/", import.meta.url));
 export const WORKSPACE_ID = "workspace_4b1c2d3e-5f60-4a7b-8c9d-0e1f2a3b4c5d";
 export const DARWIN = process.platform === "darwin";
+export const WIN32 = process.platform === "win32";
+const FAKE_WINDOWS_SPAWN = new URL("./fake-windows-spawn.mjs", import.meta.url);
 export const CREDENTIALS = Object.freeze({
   "claude-code-oauth-token": "sk-ant-oat01-fake-e2e-subscription-token-6b7c",
   "anthropic-api-key": "sk-ant-fake-e2e-credential-4f1a",
@@ -73,12 +80,24 @@ function git(cwd, args) {
 function initializeRepository(root, repository, objectFormat) {
   if (objectFormat === undefined) {
     git(root, ["init", "--quiet", "-b", "main", repository]);
+    windowsCheckouts(repository);
     return;
   }
   git(root, ["init", "--quiet", `--object-format=${objectFormat}`, "-b", "main", repository]);
   const actual = git(repository, ["rev-parse", "--show-object-format"]);
   if (actual !== objectFormat)
     throw new Error(`the installed git created a ${actual} repository where ${objectFormat} was required`);
+  windowsCheckouts(repository);
+}
+
+// why: Git for Windows converts line endings on checkout by default, so a
+// worktree would hold `new\r\n` where the gate and the verifier read `new\n`;
+// and the run's worktrees sit below the fixture's nested temporary
+// directories, past the 260-character path limit git keeps unless told not to.
+function windowsCheckouts(repository) {
+  if (!WIN32) return;
+  git(repository, ["config", "core.autocrlf", "false"]);
+  git(repository, ["config", "core.longpaths", "true"]);
 }
 
 const CHECK_VALUE = `import { existsSync, readFileSync, writeFileSync } from "node:fs";
@@ -155,6 +174,16 @@ const shellQuoted = (value) => `'${value.replaceAll("'", "'\\''")}'`;
 async function fakeProviders(root, { log, store }) {
   const directory = join(root, "fake-providers");
   await mkdir(directory, { mode: 0o700 });
+  // why: Windows starts no script without a shell, and the task path takes
+  // only `<name>.exe` there; fake-windows-spawn.mjs starts the fake in its place.
+  if (WIN32) {
+    for (const name of ["claude.exe", "codex.exe"])
+      await writeFile(
+        join(directory, name),
+        "DETERMINISTIC FAKE - not a provider CLI. A placeholder that tests/helpers/fake-windows-spawn.mjs starts as the labeled fake.\n"
+      );
+    return directory;
+  }
   for (const [name, entry] of [
     ["claude", "fake-claude-task.mjs"],
     ["codex", "fake-codex-task.mjs"]
@@ -192,6 +221,27 @@ async function ambientSessions(root, home) {
     OPENAI_API_KEY: `${AMBIENT_MARKER}-openai-key`,
     CLAUDE_CONFIG_DIR: claudeConfig,
     CODEX_HOME: codexHome
+  };
+}
+
+function stateHome({ home, localAppData }) {
+  if (DARWIN) return join(home, "Library", "Application Support", "Verchestra", "state");
+  if (WIN32) return join(localAppData, "Verchestra", "state");
+  return join(home, ".local", "state", "verchestra");
+}
+
+// invariant: what a Windows session carries that the CLI reads: the home it
+// resolves the state root from, the system root a Node child needs, and a
+// temporary directory of the fixture's own, which the fakes may write in.
+function windowsEnvironment({ home, localAppData, scratch, fakes }) {
+  return {
+    USERPROFILE: home,
+    LOCALAPPDATA: localAppData,
+    TEMP: scratch,
+    TMP: scratch,
+    SystemRoot: process.env.SystemRoot ?? "C:\\Windows",
+    VERCHESTRA_TEST_FAKE_PROVIDERS: fakes,
+    VERCHESTRA_TEST_FAKE_PROVIDER_LOG: scratch
   };
 }
 
@@ -259,6 +309,9 @@ export async function taskFixture(options = {}) {
     })
   );
   const fakes = await fakeProviders(root, { log: scratch, store });
+  // why: a short name keeps the deepest scratch checkout below the Windows
+  // path limit; the state root of the run is `<local>\Verchestra\state`.
+  const localAppData = join(root, "l");
   const env = {
     PATH: [fakes, ...(process.env.PATH ?? "").split(delimiter)].join(delimiter),
     HOME: home,
@@ -266,6 +319,7 @@ export async function taskFixture(options = {}) {
     LANG: "C",
     NO_COLOR: "1",
     VERCHESTRA_TEST_FAKE_KEYCHAIN_STORE: store,
+    ...(WIN32 ? windowsEnvironment({ home, localAppData, scratch, fakes }) : {}),
     ...(options.ambient === true ? await ambientSessions(root, home) : {})
   };
   // why: a journey that lets time pass while a run waits starts the child with
@@ -274,7 +328,7 @@ export async function taskFixture(options = {}) {
     clockOffsetMs === undefined ? [] : ["--import", `${SHIFTED_CLOCK.href}?offset=${clockOffsetMs}`];
   const args = (argv, clockOffsetMs) => [
     "--import",
-    FAKE_KEYCHAIN_SPAWN.href,
+    (WIN32 ? FAKE_WINDOWS_SPAWN : FAKE_KEYCHAIN_SPAWN).href,
     ...clock(clockOffsetMs),
     VESTRA,
     ...argv
@@ -299,9 +353,7 @@ export async function taskFixture(options = {}) {
   const launchAsync = (argv) => spawn(process.execPath, args(argv), { cwd: repository, env, stdio: "pipe" });
   const init = launch(["init", "--workspace-id", WORKSPACE_ID, "--name", "Task E2E", "--placement", "colocated"]);
   if (init.status !== 0) throw new Error(`init failed: ${init.stderr}`);
-  const stateRoot = DARWIN
-    ? join(home, "Library", "Application Support", "Verchestra", "state", "workspaces", WORKSPACE_ID)
-    : join(home, ".local", "state", "verchestra", "workspaces", WORKSPACE_ID);
+  const stateRoot = join(stateHome({ home, localAppData }), "workspaces", WORKSPACE_ID);
   await mkdir(stateRoot, { recursive: true });
   if (options.allowlist !== false)
     await writeFile(
@@ -359,6 +411,7 @@ export async function taskFixture(options = {}) {
     launch,
     launchAsync,
     git: (argv) => git(repository, argv),
-    keychainArgs: ["--keychain", keychain]
+    // why: a keychain file is a macOS concept, refused elsewhere.
+    keychainArgs: WIN32 ? [] : ["--keychain", keychain]
   };
 }

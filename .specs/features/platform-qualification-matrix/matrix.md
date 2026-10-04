@@ -149,7 +149,7 @@ serialization target* set, not a driver registry.
 
 | Driver | Qualified version | Pin location | Real probe? |
 | ------ | ----------------- | ------------ | ----------- |
-| Claude Code | T03 minimum `2.1.168`, mediated minimum `2.1.282`, installed `2.1.282` | `packages/drivers/src/claude-code-driver.ts:82`, `:628`; CI install `platform-matrix.yml:194` | **Yes** — `spikes/claude-code-driver/test/claude-driver.test.mjs:39`, `--version` only; the mediated flags are read from `--help` |
+| Claude Code | T03 minimum `2.1.168`, mediated minimum `2.1.282`, installed `2.1.282` | `packages/drivers/src/claude-code-driver.ts:87`, `:628`; CI install `platform-matrix.yml:194` | **Yes** — `spikes/claude-code-driver/test/claude-driver.test.mjs:39`, `--version` only; the mediated flags are read from `--help` |
 | Codex | `0.115.0` | `codex-driver.ts:254`; same CI line | **Yes** — `spikes/codex-driver/test/codex-driver.test.mjs:13` |
 | OpenCode | minimum `1.17.18`, installed `1.18.33` | `opencode-driver.ts:252`; root devDependency | **Yes** — `spikes/opencode-driver/test/opencode-driver.test.mjs:79` |
 | Pi | `0.99.1` | `packages/drivers/src/pi-driver.ts:19` | **Yes** — `PiDriver.probe()` resolves the installed `@earendil-works/pi-agent-core/package.json`, rejects drift, and reports the observed version |

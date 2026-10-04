@@ -49,6 +49,10 @@ log({
   credentialMatchesStore: credentialMatchesStore(profile.logicalName, credential),
   ambientValueSeen: Object.values(process.env).some((value) => value.includes("ambient-session-marker")),
   environmentKeys: Object.keys(process.env).sort((left, right) => Number(left > right) - Number(left < right)),
+  // why: which channel the relay is aimed at and which variables it is handed,
+  // never their values.
+  bridgeChannel: /^\\\\\.\\pipe\\/u.test(server.env.VERCHESTRA_BRIDGE_SOCKET ?? "") ? "named-pipe" : "socket",
+  relayEnvironmentKeys: Object.keys(server.env).sort((left, right) => Number(left > right) - Number(left < right)),
   promptHasInjectionText: prompt.includes("IGNORE ALL RULES")
 });
 if (!authenticated) {
