@@ -2349,3 +2349,151 @@ Checks for this record: `pnpm agent:check` PASS; `pnpm site:check` PASS (135
 pages built, internal links and metadata valid). The record is not a
 `tNN-validation.md` report, so it enters neither the qualification chain nor
 the site's navigation.
+
+### Remediation R3 (journeys on every platform, documentation, standards)
+
+**Author**: an implementation session that wrote none of T1–T9. **Branch**:
+`strands/t9r3-journeys-docs` from `origin/main` `867a784`. **Scope**: finding
+11, the documentation part of finding 13, and finding 17 except
+`task-windows.ts:38` (R1) and `isWriter` (R2). The findings and requirement
+rows above are left as the verifier wrote them; the line map under item 1
+gives their citations at this branch.
+
+#### Item 1 — finding 11: the coordinated journeys on Linux and Windows
+
+**Why each case returned early.** Fourteen cases: the four of
+`tests/e2e/task-coordinated-e2e.test.mjs` (`if (!DARWIN) return;`, no
+diagnostic), the nine of `tests/e2e/task-subscription-e2e.test.mjs`, and the
+crash fault (`if (!DARWIN) return t.diagnostic(...)`). No product code is
+macOS-only on this path: below the credential store, the task path branches
+only on `win32`.
+
+- **Linux.** The fixture had no stand-in for the Secret Service. Its
+  environment carries no session bus, so the backend reports the store
+  unavailable before it runs anything
+  (`packages/platform-node/src/os-secret-backends/linux-secret-service.ts:137`,
+  `VES_TASK_NOT_CONFIGURED`, requirement `credential-store`); and the fixture
+  passed `--keychain` everywhere but Windows, which the store refuses off
+  macOS (`credential-store.ts:103`, `VES_SECRET_KEYCHAIN_INVALID`).
+- **Windows.** Nothing blocked them. T7 made `taskFixture` run on Windows
+  (placeholder `claude.exe` and `codex.exe`, the Credential Manager answered by
+  `tests/helpers/fake-windows-spawn.mjs`), and a coordinated node uses the same
+  resolved executables and the same Claude Code session adapter, with the
+  named-pipe transport (`apps/vestra-cli/src/task/task-coordination.ts:96`,
+  `task-implementer.ts:181`). The guards date from T5 and T6, before T7, and
+  were never lifted.
+- **Correction to the brief.** `task-cli-e2e` does not run its journeys on
+  Linux or Windows: off macOS each asserts `not configured`
+  (`notConfiguredOffMacOS`, `tests/e2e/task-cli-e2e.test.mjs:959`). The one
+  single-session journey on Windows is `tests/e2e/task-windows-e2e.test.mjs:139`.
+  Linux has no single-session journey; this change leaves it so (out of
+  scope).
+
+**Change** (commit `test(e2e): run the coordinated journeys on Linux and Windows (T9 R3)`):
+
+- `tests/helpers/fake-keychain-spawn.mjs:45`, `:56`, `:69` answer the Linux
+  backend's two programs at their fixed paths from the fixture's store: a piped
+  `secret-tool lookup` (the value and exit 0, or exit 1 and nothing) and the
+  `dbus-send` SearchItems reply (unlocked paths, then locked), with the
+  conventions `docs/qualification/os-secret-backend-linux.md` measured; a
+  store or a clear is refused. The macOS `security` answers are unchanged.
+- `tests/helpers/task-cli-fixture.mjs:275`: a fixture asked for
+  `secretService: true` gets, on Linux only, a session bus address that names
+  a socket that does not exist, so only the fake answers; `:450` passes
+  `--keychain` on macOS only. A fixture without the option keeps its Linux
+  behaviour (`notConfiguredOffMacOS` still asserts `credential-store`).
+- `tests/helpers/task-coordinated-fixture.mjs:85`: every coordinated fixture
+  asks for the stand-in. `ok()` (`:72`) puts the Windows witnesses' tails in a
+  failing step's assertion message (`:64`).
+- The fourteen guards are removed; no case is left that cannot run on a
+  platform, so none needs an asserting branch or a diagnostic.
+- New platform-path assertion, `tests/e2e/task-coordinated-e2e.test.mjs:37`
+  (agent journey, `:50`): every credential came from the platform's own store
+  programs (`find-generic-password`; SearchItems and `lookup`; `cmdkey` and
+  `Read`), the read among them, and only names of the subscription mode.
+- Strengthened: `tests/e2e/task-subscription-e2e.test.mjs:37` looks for each
+  machine path also as JSON escapes it (`:68`, `:112-113`). Before, the check
+  for `fixture.home`, `fixture.root`, and the state root could not fail on
+  Windows, where every record spells the separators `\\`.
+- Hardened, no assertion changed:
+  `tests/fault-injection/task-coordinated-crash-faults.test.mjs:51-58`. The
+  orphaned node ends by itself once the killed driver's pipe closes: with a
+  3 s wait inserted before the kill (local experiment, reverted), the orphan
+  was already gone on macOS. The case passed only by winning that race, and a
+  lost race threw `ESRCH`; the kill now tolerates `ESRCH`, and the next line
+  still waits for the process to be gone.
+
+**Evidence.**
+
+| Platform | Run | Result |
+| --- | --- | --- |
+| macOS arm64 (local) | `node scripts/test-scope.mjs e2e` on the three files | 14/14 pass, 0 skipped, 49.6 s |
+| Linux arm64 (local container, not the matrix) | Ubuntu 22.04, Git 2.34.1, Node 24.14.0, non-root user, `docker run --init`, worktree mounted read-only | 14/14 pass, 41 s; no temporary directory left |
+| Windows x64 | not run locally | the platform matrix proves it |
+
+Without `--init` the container's crash fault timed out at its 10 s wait: no
+init reaped the orphan, and a zombie still answers signal 0. Hosted runners
+have one; the run with `--init` is the faithful one. v1 regression, the
+fixture and the fake keychain being shared: `task-cli-e2e`,
+`task-windows-e2e`, `task-request-examples-e2e`, and `task-cli-security`
+58/58 on macOS and 58/58 in the Linux container, where their cases still
+assert `not configured` or the Unix socket path as before.
+
+**Cases that must now execute on the Linux x64, Linux arm64, and Windows x64
+legs** (seconds each, as on macOS, not the under-4 ms early returns), in
+every gate that runs e2e (`gate:full`, `gate:build`, `gate:security`) and, for
+the last, every gate that runs fault (`gate:full`, `gate:security`):
+
+- `task-coordinated-e2e`: "an agent run is planned, approved, run on the
+  native engine, verified, and accepted"; "a graph runs its Codex readers and
+  Claude Code writer in order through the SDK, one run, one verifier"; "a
+  swarm hands work from the writer to the reviewer and ends where the reviewer
+  ends it"; "cancel reaches a running node: its provider stops and the
+  coordinated run is aborted".
+- `task-subscription-e2e`: "a coordinated run without the extra-usage
+  confirmation is not configured before anything starts"; "a coordinated run
+  with a provider on an API key is not configured, confirmation or not"; "a
+  quota signal mid-graph suspends the run in IMPLEMENTING with its worktree
+  and first node kept"; "Codex credits on a node's account are not
+  configured, and the run is suspended, not lost"; "resume of a
+  quota-suspended graph needs the confirmation, then skips the completed node
+  and re-runs the stopped one"; "a node suspended after its write is refused
+  at resume until its digest is typed back, then it runs again"; "resume
+  refuses drift and an approval that expired while suspended, and renews a
+  writer grant that lapsed"; "Codex credits that are gone at resume let the
+  suspended run continue from the node they stopped"; "cancel of a suspended
+  run removes its worktree and ends it aborted".
+- `task-coordinated-crash-faults`: "a run killed while a node runs leaves it
+  uncertain until the owner reconciles it".
+
+The test counts do not change (e2e 294, fault 310); only the durations do. The
+stand-in column of `docs/qualification/coordinated-run-pilots.md` is bound to
+`c3223c6` and stays as recorded; the matrix run of this branch is its
+successor evidence.
+
+**The Codex protocol spike's limit.** Every fleet workflow installs Codex
+0.115.0 (`.github/workflows/platform-matrix.yml:194`, `ci.yml:50`,
+`full-validation.yml:121`, `t76-candidate-build.yml:158`), below the 0.159.3
+structured floor, so on every leg "the installed Codex at or above the floor
+generates every protocol element the driver relies on" proves only that
+structured and subscription-only sessions are refused below the floor. The pin
+is not moved here: that is a dependency upgrade and needs the owner. The case
+now carries a pin guard
+(`spikes/codex-driver/test/codex-driver-structured.test.mjs:145-155`): under
+`VES_REQUIRE_PINNED_PROVIDERS=1`, as on the fleet, the installed Codex must be
+exactly 0.115.0, and every run states the version it ran against
+(`t.diagnostic`, `:157`). Local runs (darwin arm64, Codex 0.159.3): without
+the variable, 5/5 pass and the protocol is asserted ("ran against Codex
+0.159.3; the structured floor is 0.159.3"); with it, the case fails "the
+fleet's Codex is not its pin 0.115.0". **Recorded limit**: the protocol
+evidence at the floor is local only (T4's author run and this one), never a
+fleet run, until the owner moves the pin.
+
+**Line map.** Citations in the sections above, at `867a784` → at this branch:
+`tests/e2e/task-coordinated-e2e.test.mjs` `:32` → `:50`, `:57` → `:75`,
+`:109` → `:126`, `:120` → `:136`; `tests/e2e/task-subscription-e2e.test.mjs`
+`:56` → `:59`, `:76` → `:79`, `:116` → `:118`, `:163` → `:164`, `:230` →
+`:230`, `:281` → `:280`, `:341` → `:339`, `:368` → `:365`, `:392` → `:388`;
+`tests/fault-injection/task-coordinated-crash-faults.test.mjs` `:34` → `:35`;
+`spikes/codex-driver/test/codex-driver-structured.test.mjs` `:145` (the floor
+case, cited as `:147-151`) → `:153`, its lines above `:139` unchanged.

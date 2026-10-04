@@ -6,6 +6,7 @@
 // key, is `not configured` before any credential, transition, worktree, or
 // provider. A provider's quota signal, or credits on the Codex account,
 // suspends the run in IMPLEMENTING with its worktree and completed nodes kept.
+// Every case runs on macOS, Linux, and Windows.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { rename, unlink, writeFile } from "node:fs/promises";
@@ -14,7 +15,7 @@ import { after, test } from "node:test";
 
 import { assertTextAgrees } from "../helpers/cli-text-fixture.mjs";
 import { confirmExtraUsage, extraUsageConfirmation } from "../helpers/task-billing-fixture.mjs";
-import { DARWIN, cleanupTaskFixtures } from "../helpers/task-cli-fixture.mjs";
+import { cleanupTaskFixtures } from "../helpers/task-cli-fixture.mjs";
 import {
   EXECUTIONS,
   TIMEOUT,
@@ -31,7 +32,9 @@ import {
 
 after(cleanupTaskFixtures);
 
-const PLATFORM = "the governed task path runs these journeys on macOS";
+// why: a record and a JSON output spell a Windows path with its separators
+// escaped, so a path is looked for as written and as JSON writes it.
+const spellings = (path) => [path, JSON.stringify(path).slice(1, -1)];
 
 function refused(result, code, label) {
   assert.notEqual(result.status, 0, `${label} unexpectedly succeeded`);
@@ -56,14 +59,14 @@ function assertNothingStarted(fixture, runId) {
 test(
   "a coordinated run without the extra-usage confirmation is not configured before anything starts",
   TIMEOUT,
-  async (t) => {
-    if (!DARWIN) return t.diagnostic(PLATFORM);
+  async () => {
     const fixture = await coordinatedFixture(EXECUTIONS.graph, { confirmed: false });
     const plan = await approved(fixture);
     const start = fixture.launch(startArguments(fixture, plan.runId));
     notConfigured(start, "extra-usage-confirmation", "start without a confirmation");
     assert.match(start.stderr, /paid usage beyond your plan is turned off/u);
-    assert.equal(start.stdout.includes(fixture.stateRoot), false, "no machine path in the public error");
+    for (const path of spellings(fixture.stateRoot))
+      assert.equal(start.stdout.includes(path), false, "no machine path in the public error");
     assertNothingStarted(fixture, plan.runId);
     // why: a statement for another method is no statement for this one.
     const codex = { ...extraUsageConfirmation().providers.codex, auth: "apiKey" };
@@ -73,8 +76,7 @@ test(
   }
 );
 
-test("a coordinated run with a provider on an API key is not configured, confirmation or not", TIMEOUT, async (t) => {
-  if (!DARWIN) return t.diagnostic(PLATFORM);
+test("a coordinated run with a provider on an API key is not configured, confirmation or not", TIMEOUT, async () => {
   const fixture = await coordinatedFixture(EXECUTIONS.agent, {
     providers: { schemaVersion: 1, providers: { codex: { auth: "api-key" } } }
   });
@@ -107,8 +109,8 @@ function assertNothingPrivate(fixture, runId, texts) {
       "out_of_credits",
       "owner@example.invalid",
       "sk-ant-oat01",
-      fixture.home,
-      fixture.root
+      ...spellings(fixture.home),
+      ...spellings(fixture.root)
     ])
       assert.equal(text.includes(secret), false, `a suspended run's record holds ${secret}`);
 }
@@ -116,8 +118,7 @@ function assertNothingPrivate(fixture, runId, texts) {
 test(
   "a quota signal mid-graph suspends the run in IMPLEMENTING with its worktree and first node kept",
   TIMEOUT,
-  async (t) => {
-    if (!DARWIN) return t.diagnostic(PLATFORM);
+  async () => {
     const fixture = await coordinatedFixture(EXECUTIONS.graph);
     const plan = await approved(fixture);
     await flag(fixture, "claude-quota");
@@ -160,8 +161,7 @@ test(
   }
 );
 
-test("Codex credits on a node's account are not configured, and the run is suspended, not lost", TIMEOUT, async (t) => {
-  if (!DARWIN) return t.diagnostic(PLATFORM);
+test("Codex credits on a node's account are not configured, and the run is suspended, not lost", TIMEOUT, async () => {
   const fixture = await coordinatedFixture(EXECUTIONS.graph);
   const plan = await approved(fixture);
   await flag(fixture, "codex-credits");
@@ -230,8 +230,7 @@ function runWorktree(fixture) {
 test(
   "resume of a quota-suspended graph needs the confirmation, then skips the completed node and re-runs the stopped one",
   TIMEOUT,
-  async (t) => {
-    if (!DARWIN) return t.diagnostic(PLATFORM);
+  async () => {
     const { fixture, plan } = await suspendedRun(EXECUTIONS.graph);
     const billing = join(fixture.stateRoot, "task-billing.json");
     await rename(billing, `${billing}.away`);
@@ -281,8 +280,7 @@ test(
 test(
   "a node suspended after its write is refused at resume until its digest is typed back, then it runs again",
   TIMEOUT,
-  async (t) => {
-    if (!DARWIN) return t.diagnostic(PLATFORM);
+  async () => {
     const { fixture, plan, start } = await suspendedRun(EXECUTIONS.graph, "claude-quota-after-write");
     assert.deepEqual(visits(fixture, plan.runId), ["plan#1:completed", "build#1:partial"]);
     const ledgerBefore = ledgerText(fixture, plan.runId);
@@ -341,8 +339,7 @@ test(
 test(
   "resume refuses drift and an approval that expired while suspended, and renews a writer grant that lapsed",
   TIMEOUT,
-  async (t) => {
-    if (!DARWIN) return t.diagnostic(PLATFORM);
+  async () => {
     const { fixture, plan } = await suspendedRun(EXECUTIONS.agent);
     const grantBefore = status(fixture, plan.runId).evidence.grantId;
     const value = join(runWorktree(fixture), "src", "value.txt");
@@ -368,8 +365,7 @@ test(
 test(
   "Codex credits that are gone at resume let the suspended run continue from the node they stopped",
   TIMEOUT,
-  async (t) => {
-    if (!DARWIN) return t.diagnostic(PLATFORM);
+  async () => {
     const fixture = await coordinatedFixture(EXECUTIONS.graph);
     const plan = await approved(fixture);
     await flag(fixture, "codex-credits");
@@ -389,8 +385,7 @@ test(
   }
 );
 
-test("cancel of a suspended run removes its worktree and ends it aborted", TIMEOUT, async (t) => {
-  if (!DARWIN) return t.diagnostic(PLATFORM);
+test("cancel of a suspended run removes its worktree and ends it aborted", TIMEOUT, async () => {
   const { fixture, plan } = await suspendedRun(EXECUTIONS.graph);
   assert.equal(worktrees(fixture), 2);
   const cancelled = fixture.launch(["task", "cancel", "--run-id", plan.runId, "--output", "json"]);

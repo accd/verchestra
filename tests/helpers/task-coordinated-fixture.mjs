@@ -1,7 +1,9 @@
 // DETERMINISTIC FIXTURE support for the coordinated-run journeys (Task Request
 // v2) through the real `vestra` binary: one execution per mode over the labelled
 // fake `claude` and `codex` executables (tests/helpers/task-cli-fakes), and the
-// readers of what a run leaves behind (fake logs, the sealed node ledger).
+// readers of what a run leaves behind (fake logs, the sealed node ledger). The
+// journeys run on macOS, Linux, and Windows, each with its own credential
+// store answered from the fixture's store (tests/helpers/task-cli-fixture.mjs).
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
@@ -54,16 +56,33 @@ export const EXECUTIONS = Object.freeze({
   }
 });
 
-export function ok(result, label) {
-  assert.equal(result.status, 0, `${label}: ${result.stderr}\n${result.stdout}`);
+// why: a step that fails on a host it cannot be debugged on says, in the
+// assertion itself, how each Windows provider placeholder ended and which Git
+// command failed (the witnesses of tests/helpers/fake-windows-spawn.mjs).
+const WITNESSES = ["claude.exe.witness.log", "codex.exe.witness.log", "git-witness.log"];
+
+function witnessed(fixture) {
+  const tail = (name) => {
+    const path = join(fixture.scratch, name);
+    return existsSync(path) ? readFileSync(path, "utf8").slice(-4096) : "none";
+  };
+  return WITNESSES.map((name) => `${name}: ${tail(name)}`).join("\n");
+}
+
+export function ok(result, label, fixture) {
+  if (result.status !== 0)
+    assert.fail(
+      `${label} exited ${result.status}: ${result.stderr}\n${result.stdout}\n${fixture === undefined ? "" : witnessed(fixture)}`
+    );
   return result.json.data;
 }
 
 // why: a coordinated run needs the owner's extra-usage confirmation (D3); a
-// journey that tests its absence passes `confirmed: false`.
+// journey that tests its absence passes `confirmed: false`. On Linux the
+// credentials come from the Secret Service stand-in.
 export async function coordinatedFixture(execution, options = {}) {
   const { confirmed = true, ...fixtureOptions } = options;
-  const fixture = await taskFixture(fixtureOptions);
+  const fixture = await taskFixture({ secretService: true, ...fixtureOptions });
   const { driver, ...request } = taskRequest(fixture.revision);
   assert.equal(driver.driverId, "claude-code");
   await writeFile(fixture.requestPath, JSON.stringify({ ...request, schemaVersion: 2, execution }));
@@ -74,9 +93,10 @@ export async function coordinatedFixture(execution, options = {}) {
 export async function approved(fixture) {
   const plan = ok(
     fixture.launch(["task", "plan", "--request", fixture.requestPath, ...fixture.keychainArgs, "--output", "json"]),
-    "plan"
+    "plan",
+    fixture
   );
-  ok(fixture.launch(approveArguments(fixture, plan), `${plan.bindingDigest}\n`), "approve");
+  ok(fixture.launch(approveArguments(fixture, plan), `${plan.bindingDigest}\n`), "approve", fixture);
   return plan;
 }
 
@@ -90,17 +110,27 @@ export const startArguments = (fixture, runId) => [
   "json"
 ];
 export const status = (fixture, runId) =>
-  ok(fixture.launch(["task", "status", "--run-id", runId, "--output", "json"]), "status");
+  ok(fixture.launch(["task", "status", "--run-id", runId, "--output", "json"]), "status", fixture);
 
-export function logLines(fixture, name) {
-  const path = join(fixture.scratch, name);
-  return existsSync(path)
+const jsonLines = (path) =>
+  existsSync(path)
     ? readFileSync(path, "utf8")
         .split("\n")
         .filter(Boolean)
         .map((line) => JSON.parse(line))
     : [];
-}
+
+export const logLines = (fixture, name) => jsonLines(join(fixture.scratch, name));
+
+// invariant: what each platform's credential backend ran, as the fake keychain
+// preload and fake-windows-spawn.mjs record it: the program or command and the
+// logical name, never a value. The last entry of each list is the read.
+export const CREDENTIAL_PROGRAMS = Object.freeze({
+  darwin: Object.freeze(["find-generic-password"]),
+  linux: Object.freeze(["SearchItems", "lookup"]),
+  win32: Object.freeze(["cmdkey", "Read"])
+});
+export const credentialReads = (fixture) => jsonLines(`${fixture.store}.log`);
 
 export function ledger(fixture, runId) {
   const sealed = JSON.parse(
