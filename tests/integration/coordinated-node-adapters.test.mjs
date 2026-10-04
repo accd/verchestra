@@ -97,6 +97,12 @@ test("nodes that answer within their bound complete, each result persisted by di
       ["completed", []]
     ]
   );
+  // invariant: SSI-17. Each node's usage names its own provider and no
+  // other.
+  assert.deepEqual(
+    fixture.executor.state.usage.map((event) => event.provider),
+    ["openai", "anthropic", "openai"]
+  );
 });
 
 // invariant: SSI-42 and TM-004. Where the task's change scope is wider than a

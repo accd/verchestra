@@ -32,6 +32,10 @@ export interface DeclaredBudgets {
 
 export interface UsageEvent {
   readonly model: string;
+  // invariant: SSI-17. The provider whose model the usage was spent on, when
+  // the caller reports it; a coordinated node's always names its own. The
+  // meter prices by model alone.
+  readonly provider?: string;
   readonly inputTokens: number;
   readonly outputTokens: number;
 }

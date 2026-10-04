@@ -497,6 +497,47 @@ test("usage and checkpoints of every node reach the executor's control, filed un
   );
 });
 
+// invariant: SSI-17. A node's usage reaches the meter naming its own driver's
+// provider, Anthropic or OpenAI, never Strands; usage a session reports for
+// any other provider fails the node and never reaches the meter.
+test("a node's usage names its own provider, and usage for another provider fails the node", async () => {
+  const request = coordinatedRequest("graph");
+  const usage =
+    (provider) =>
+    async ({ session, control: nodeControl }) => {
+      const named = provider === undefined ? {} : { provider };
+      nodeControl.reportUsage({ model: session.node.driver.model, ...named, inputTokens: 1, outputTokens: 1 });
+      return { result: DONE };
+    };
+  const fixture = coordinatedDriver(request, { script: { plan: usage(), build: usage("anthropic"), review: usage() } });
+  const executor = control();
+  await fixture.driver.execute(driverRequest(request), executor.control);
+  assert.deepEqual(
+    executor.state.usage.map((event) => [event.model, event.provider]),
+    [
+      ["gpt-5.2-codex", "openai"],
+      ["claude-sonnet-5", "anthropic"],
+      ["gpt-5.2-codex", "openai"]
+    ]
+  );
+  for (const [nodeId, provider] of [
+    ["plan", "strands"],
+    ["plan", "anthropic"],
+    ["build", "openai"],
+    ["build", "bedrock"]
+  ]) {
+    const refused = coordinatedDriver(request, { script: { [nodeId]: usage(provider) } });
+    const meter = control();
+    await assert.rejects(
+      refused.driver.execute(driverRequest(request), meter.control),
+      rejectsWith("VES_COORDINATION_NODE_FAILED"),
+      `${nodeId} reporting ${provider}`
+    );
+    assert.deepEqual(meter.state.usage, [], `${nodeId} reporting ${provider} reached the meter`);
+    assert.equal(refused.records.ledger.visits.at(-1).state, "failed");
+  }
+});
+
 test("the ledger records only identifiers, counts, instants, digests, and codes", async () => {
   const request = coordinatedRequest("graph");
   const digest = `sha256:${"7".repeat(64)}`;
