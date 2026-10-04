@@ -247,6 +247,40 @@ implementer and one verifier, token and cost ceilings checked when usage is
 reported, subscription isolation not yet observed live, local human authority,
 live pilot pending in #406) are in [docs/quick-start.md](docs/quick-start.md).
 
+### Coordinated runs: agent, graph, and swarm
+
+A Task Request with `"schemaVersion": 2` can replace the single implementer
+with several Claude Code and Codex sessions, called nodes, inside the same
+governed task: one node (`agent`), nodes ordered by edges (`graph`), or nodes
+that hand the work to each other (`swarm`). Your approval, the executor's
+checks on every write, your gates, the independent Codex verifier, and your
+review are unchanged. Mode `agent` runs on Verchestra's own engine and never
+loads the Strands Agents SDK; `graph` and `swarm` load the pinned SDK only to
+order the nodes, and every node stays a governed Claude Code or Codex session.
+Only Claude Code nodes write, never two at once.
+
+Coordinated runs use your subscriptions and nothing else. Before the first
+one, turn off paid usage beyond your plan in each provider account, then state
+that you did in a machine-local `task-billing.json` you write by hand beside
+`task-providers.json`. Per provider it holds the authentication method,
+`"extraUsage": "disabled"`, the time you checked, and, for Codex, your plan
+type; nothing else, so no token, account, e-mail address, or path. When a
+provider reports that your allowance is used up, the run is suspended with its
+completed work and its worktree kept, and it continues only when you run
+`vestra task resume`; a node that may already have changed the worktree runs
+again only when you type back its digest with `--reconcile`. Seven limits,
+each with a default and a hard ceiling, bound a run (for example at most 4
+nodes at once and 128 swarm handoffs), and the task's token and duration
+budgets bound all nodes together.
+
+One example request per mode is in [docs/examples/](docs/examples/). The
+statement's exact format, the limits, and suspension and resume are in
+[docs/quick-start.md](docs/quick-start.md#coordinated-runs-agent-graph-and-swarm).
+Coordinated runs are qualified with deterministic stand-ins on macOS only, no
+run with a real subscription has been recorded, and no published release
+includes them yet. On Windows the task path stays refused until its bridge
+transport is qualified there.
+
 ### Managed state, recovery, and cleanup
 
 The launcher keeps its staged releases, its activated install, its trust anchor,

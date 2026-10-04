@@ -1308,6 +1308,47 @@ PASS; the examples journey 3/3; 0 failed, 0 skipped, 0 todo. No product source
 changed. Not run here, for the platform matrix: `pnpm gate:full` (which runs
 the journey on Linux) and the Windows run.
 
+### Commit 3 — user documentation
+
+`docs/quick-start.md` gains "Coordinated runs: agent, graph, and swarm"
+(modes, the writer rule, how to write a v2 request with the three examples,
+the limits, subscriptions only with extra usage off and the hand-written
+statement, what `plan`, `start`, and `status` show, and suspension and resume
+with `--reconcile`), plus pointers from "What you need", steps 6 and 9, and
+the qualification limits. `README.md` gains a short section with the same
+facts and a link to it. Every documented fact is enforced or observed where
+the table says; nothing is documented that the code does not do.
+
+| Documented fact | Where it holds (file:line) |
+| --- | --- |
+| The statement's file, its exact members, `auth` per provider (`subscription`, `chatgpt`), `extraUsage: "disabled"`, a Codex `planType` in lowercase, and the regime instants 2026-06-16 and 2026-10-03 | `apps/vestra-cli/src/task/task-billing.ts:17`, `:27-30`, `:38-41`, `:46-51`; `tests/unit/task-billing.test.mjs:43`, `:75` (19 refusals) |
+| No token, account ID, e-mail address, name, or path can be stored | `tests/unit/task-billing.test.mjs:117` |
+| Both providers need an entry, in every mode | `tests/unit/task-billing.test.mjs:67` |
+| A missing or non-matching statement is `not configured` (`extra-usage-confirmation`) and the terminal names the file and the entries; an API-key provider is `coordinated-run-subscription` | `tests/unit/task-billing.test.mjs:164`, `:174`; journeys `tests/e2e/task-subscription-e2e.test.mjs:56`, `:76` |
+| Codex credits: `not configured` (`codex-credits`), the run suspended, and resumed once they are gone | `tests/e2e/task-subscription-e2e.test.mjs:163`, `:368` |
+| Plan-time `coordination` and `subscription`; status nodes and states; text and JSON agree | Commit 1 rows above |
+| The seven limits, their defaults and ceilings, and the refusal above a ceiling | `packages/application/src/execution/coordination-plan.ts:58-78`; `packages/application/src/execution/task-request.ts:398-399` |
+| Mode `agent` never loads the Strands Agents SDK; `graph` and `swarm` load it | `tests/integration/task-coordination-loading.test.mjs:46`, `:52` |
+| Codex 0.159.3 or later for a coordinated run | `packages/drivers/src/codex-driver.ts:90`, `:559` |
+| Suspension keeps the work and the worktree, releases the lease, stays `IMPLEMENTING`, and names reason, provider, time, window, and reset | `tests/e2e/task-subscription-e2e.test.mjs:116`, `:281` |
+| Resume rechecks the statement, the approval (seven days, `apps/vestra-cli/src/task/task-plan.ts:39`), and the worktree; replays completed nodes; runs again a node with no effect | `tests/e2e/task-subscription-e2e.test.mjs:230`, `:341` |
+| An uncertain node needs `--reconcile <digest>`; a digest naming nothing is refused; two uncertain nodes leave only cancel; cancel of a suspended run removes its worktree | `tests/e2e/task-subscription-e2e.test.mjs:281`, `:392`; `tests/integration/task-coordinated-plan.test.mjs:294` |
+| Windows: the task path is still refused | `apps/vestra-cli/src/task/task-command.ts:102-103`; T7 commit 4 is not on `origin/main` (checked at `d641415` before writing) |
+| No published release includes coordinated runs | `docs/qualification/tuf-publication-ledger.json:120`: the latest recorded publication, `0.0.0-qualification.6`, was built from `7e274f2`, this feature's base |
+| Qualified with deterministic stand-ins on macOS only | the coordinated journeys return with a diagnostic off macOS (`tests/e2e/task-subscription-e2e.test.mjs:34`); pilots are T9 |
+
+Gates at this commit: `pnpm gate:quick` PASS (unit 2925, agent-readiness
+357, census 13); `pnpm agent:check` PASS; `pnpm site:check` PASS (site unit
+50/50, `astro check` 0 errors, 135 pages built, internal links and metadata
+valid). `pnpm site:test` could not complete on the authoring machine for
+reasons outside this change: Astro 7's `preview` returns at once and leaves
+its server running in the background, so Playwright's `webServer` reports
+"exited early", and with that server reused, the Playwright 1.62.1 browsers
+(Chromium headless shell 1234, Firefox, WebKit) are not installed there; no
+assertion ran, none failed. It runs in CI, which installs the browsers. The
+README and the quick start are not site pages; the README reaches the site
+only through `llms-full.txt`, which `site:check` builds and checks.
+
 ## Requirement Evidence
 
 Each row needs a file-and-assertion citation (`path:line` and what the assertion
@@ -1344,13 +1385,13 @@ evidence is FAIL.
 | SSI-26 | `tests/contract/task-request-v2.test.mjs:449-480` read or write scope outside the change scope (and a letter-case variant), write scope containing, inside, or case-folding onto a protected path, Git metadata, Codex write scope (graph and swarm), unordered writers, no writer (agent, graph, swarm); `:508-530` ordered writers and several swarm writers are accepted | `pnpm test:contract` (906/906, commit 2) | PASS (author) |
 | SSI-27 | `tests/contract/task-request-v2.test.mjs:482-490` unknown start, handoff to or from an unknown node, handoff to itself, a source listed twice; `:395` a swarm node with inputs refused by both | `pnpm test:contract` (906/906, commit 2) | PASS (author) |
 | SSI-28 | `tests/unit/task-plan-binding.test.mjs:68-72` one test per element (mode, node identifier, driver, model, instructions, description, read scope, write scope, input, edge, start, handoff target, and each of the seven limits) asserts a new binding digest; `:74-77` all 19 digests differ; sensor D1–D5 and D7 kill when a field leaves the binding | `pnpm gate:quick` unit 2689 (tip) | PASS (author) |
-| SSI-29 | T3 part: `tests/unit/task-plan-binding.test.mjs:82-91` the Execution Package seals the whole normalized v2 request as its execution contract and the approval binds that package; `tests/integration/task-coordinated-plan.test.mjs:49-59` the plan record seals the same request; executing it at `start` and `resume` is T5 and T8 (until then they refuse, `:94-102`) | `pnpm gate:build` (tip) | PASS (author, T3 part) |
+| SSI-29 | T3 part: `tests/unit/task-plan-binding.test.mjs:82-91` the Execution Package seals the whole normalized v2 request as its execution contract and the approval binds that package; `tests/integration/task-coordinated-plan.test.mjs:49-59` the plan record seals the same request; T8 part: `start` and `resume` take a run ID and no request path (`tests/contract/cli-surface.test.mjs:167`, `:175`), execute the request sealed in the plan record, which is refused as tampered when it no longer matches its digest (`tests/integration/task-coordinated-plan.test.mjs:80`), and run its descriptor in the journeys (`tests/e2e/task-coordinated-e2e.test.mjs:32`, `:57`, `:109`) | `pnpm gate:build` (tip, T3); T8 gates | PASS (author) |
 | SSI-30 | `plan` of a v2 request presents the mode, every node with its passport (driver and model), role, read and write scope (in `execution`), and destinations (in `coordination`), the edges or handoff targets, the effective limits, and the subscription preconditions with the requirement `start` would refuse: `tests/unit/task-coordination-surface.test.mjs:22`, `:33`, `:44`, `:53`; `tests/unit/task-billing.test.mjs:212`, `:236`; `tests/unit/task-plan-binding.test.mjs:114`; through the binary `tests/e2e/task-cli-e2e.test.mjs:830`; mutants V1, V2, V5–V10 killed | T8 commit 1 (see T8 Evidence) | PASS (author) |
-| SSI-31 | — | — | — |
+| SSI-31 | The installed command list is unchanged, `--reconcile` is an option of `task resume`, and no `workflow` command exists: `tests/contract/cli-surface.test.mjs:72`, `:175`; plan, approve, start, status, cancel, and review drive v2 runs in `tests/e2e/task-coordinated-e2e.test.mjs:32`, `:57`, `:120`, and resume in `tests/e2e/task-subscription-e2e.test.mjs:230`; the v1 journeys pass unchanged (`tests/e2e/task-cli-e2e.test.mjs`) | T5, T6, T8 gates | PASS (author) |
 | SSI-32 | T6 part: status of a v2 run shows each node's state, visit count, and result digest, the suspension (reason, provider, window, reset when reported), and every uncertain node with its digest and reconcile command: `tests/integration/task-coordinated-plan.test.mjs:232`; journeys `tests/e2e/task-subscription-e2e.test.mjs:116`, `:281`; mutant R15 killed. T8 part: each node also shows its passport, role, and destinations (`tests/integration/task-coordinated-plan.test.mjs:232`); two uncertain nodes offer no resume that would be refused (`:294`); the result of `start` and `resume` shows the same nodes and the same next action (`tests/e2e/task-subscription-e2e.test.mjs:116`, `:281`); the text form of status agrees with its JSON form (`:281`); mutants V3, V4, V11–V14 killed | T6 commit 3; T8 commit 1 (see T8 Evidence) | PASS (author) |
 | SSI-33 | `task resume` revalidates the workflow state, the subscription preconditions and the extra-usage confirmation (commit 1), the approval against the Workspace policy in force, and the worktree change digest before any node starts, and a refusal changes nothing: `tests/unit/task-resumption.test.mjs:70`, `:82`, `:92`; journeys `tests/e2e/task-subscription-e2e.test.mjs:230` (confirmation), `:341` (drift, expired approval); mutants R1, R3, R4 killed | T6 commit 3 (see T6 Evidence) | PASS (author) |
 | SSI-34 | `tests/e2e/task-coordinated-e2e.test.mjs:252` cancel stops the running node's provider and ends ABORTED; `tests/unit/coordinated-driver.test.mjs:386`, `tests/integration/strands-coordination-engine.test.mjs:184` every running node cancelled; mutant K6 killed | T5 gates (see T5 Evidence) | PASS (author) |
-| SSI-35 | — | — | — |
+| SSI-35 | A v2 run is reviewed by the same typed-back decision over the same review surface: `tests/e2e/task-coordinated-e2e.test.mjs:51`, `:105` accept with the surface digest typed back on standard input; `apps/vestra-cli/src/task/task-review.ts` is unchanged by T8 | T5 gates; T8 gates | PASS (author) |
 | SSI-36 | One example per mode under `docs/examples/`, each planned with `--dry-run` through the binary: `tests/e2e/task-request-examples-e2e.test.mjs:62`; mutants X1–X5 killed | T8 commit 2 (see T8 Evidence) | PASS (author; macOS) |
 | SSI-37 | `tests/contract/task-request-v2.test.mjs:145` absent limits take 1, 64, 128, 8, 32, 64 KiB, 256 KiB; `:176-185` 1, default−1, default, default+1 accepted per limit; `:196-209` 65 graph nodes, 129 edges, and 9 swarm agents refused at the default and accepted when raised, 64 nodes, 128 edges, and 8 agents accepted at it | `pnpm test:contract` (906/906, commit 2) | PASS (author) |
 | SSI-38 | `tests/contract/task-request-v2.test.mjs:176-185` ceiling−1 and ceiling accepted per limit; `:187-194` ceiling+1, 0, 1.5, and a string refused by both; `:211-229` 256 nodes, 16 agents, and 512 edges plan at their ceilings, 257, 17, and 513 are refused by both | `pnpm test:contract` (906/906, commit 2) | PASS (author) |
