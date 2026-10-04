@@ -63,7 +63,7 @@ import { openRunRecord, type GateCheckpoint, type RunCheckpoints, type RunRecord
 import { workspaceTrustRoot } from "./task-signing.ts";
 import { branchName, reviewSurface } from "./task-surface.ts";
 import { verifyTask } from "./task-verifier.ts";
-import { requireWindowsPrerequisites } from "./task-windows.ts";
+import { requireWindowsPrerequisites, type WindowsTaskHost } from "./task-windows.ts";
 import { applyWorkflow, currentRun } from "./task-workflow.ts";
 import {
   openRuntime,
@@ -199,15 +199,27 @@ async function requireStatedCodexPlan(
   requireStatedPlanType(stated, reported, io.stderr);
 }
 
+// why: the machine the Windows prerequisites are proven on. A command proves
+// its own platform on the node host; a test hands another platform and a fake
+// host, so the place of the proof in a run is observed on every platform.
+export interface WindowsMachine {
+  readonly platform: string;
+  readonly host?: WindowsTaskHost;
+}
+
 // why: every requirement a run needs is proven before its first transition,
 // so a missing credential, executable, or allowlist entry is `not
 // configured` with no workflow change, worktree, or provider call behind it.
+// invariant: SSI-73. The machine's prerequisites come after the run's own
+// settings and before any credential is read, so a machine that cannot run
+// the task is told so without a secret being touched.
 async function prepare(
   io: TaskCommandIo,
   workspace: TaskWorkspace,
   plan: TaskPlanRecord,
   runtime: RuntimeStore,
-  runRecord: RunRecord
+  runRecord: RunRecord,
+  machine: WindowsMachine
 ) {
   const auth = await loadProviderAuth(workspace.layout.workspaceRoot);
   const confirmations = isCoordinatedPlan(plan)
@@ -218,6 +230,11 @@ async function prepare(
         stderr: io.stderr
       })
     : [];
+  await requireWindowsPrerequisites({
+    ...machine,
+    sessionsRoot: workspace.layout.sessionsRoot,
+    claude: providerModels(plan.request).claude.length === 0 ? "none" : auth.implementer
+  });
   const implementerCredential = IMPLEMENTER_CREDENTIALS[auth.implementer];
   // invariant: a run reads exactly the credentials its modes name. A verifier
   // on a subscription reads none here; its login is proven below instead.
@@ -233,11 +250,6 @@ async function prepare(
     findExecutable("claude", io.env, io.platform),
     findExecutable("codex", io.env, io.platform)
   ]);
-  await requireWindowsPrerequisites({
-    platform: io.platform,
-    sessionsRoot: workspace.layout.sessionsRoot,
-    claude: providerModels(plan.request).claude.length === 0 ? "none" : auth.implementer
-  });
   const verifier = await verifierAccess(io, workspace, codex, credentials.get(VERIFIER_CREDENTIAL));
   await requireStatedCodexPlan(io, workspace, plan, verifier, confirmations);
   const gates = await loadGateAllowlist(workspace, plan.request);
@@ -781,7 +793,8 @@ function assertStartable(state: string, resume: boolean): void {
 
 export async function runTask(
   io: TaskCommandIo,
-  options: { readonly runId: unknown; readonly resume: boolean; readonly reconcile?: unknown }
+  options: { readonly runId: unknown; readonly resume: boolean; readonly reconcile?: unknown },
+  machine: WindowsMachine = { platform: io.platform }
 ) {
   const runId = parseRunId(options.runId);
   const reconcile = parseReconcile(options.reconcile);
@@ -797,7 +810,7 @@ export async function runTask(
   try {
     assertStartable(currentRun(runtime, runId).state, options.resume);
     await requireApprovedRequest(plan, runRecord);
-    const prepared = await prepare(io, workspace, plan, runtime, runRecord);
+    const prepared = await prepare(io, workspace, plan, runtime, runRecord, machine);
     await runRecord.claimActive(io.pid);
     const composition = new TaskRunComposition(io, workspace, plan, runtime, prepared, runRecord, reconcile);
     const controller = new AbortController();

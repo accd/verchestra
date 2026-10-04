@@ -136,22 +136,23 @@ for (const [name, ownerOnly] of [
     assert.deepEqual(await readdir(root), [], "the probe directory is removed");
   });
 
-test("a managed Claude Code policy refuses the subscription profile only", async (t) => {
+// invariant: SSI-73 is unconditional: a managed policy refuses either mediated
+// profile, and a machine without one lets either through.
+test("a managed Claude Code policy refuses the subscription and the API-key profile alike", async (t) => {
   const root = await sessionsRoot(t);
-  const subscription = fakeHost({ policy: true });
-  await assert.rejects(
-    requireWindowsPrerequisites({
-      platform: "win32",
-      sessionsRoot: root,
-      claude: "subscription",
-      host: subscription.host
-    }),
-    notConfigured("claude-managed-policy")
-  );
-  assert.equal(subscription.seen.policyReads, 1);
-  const apiKey = fakeHost({ policy: true });
-  await requireWindowsPrerequisites({ platform: "win32", sessionsRoot: root, claude: "api-key", host: apiKey.host });
-  assert.equal(apiKey.seen.policyReads, 0, "the API-key profile never reads the policy sources");
+  for (const claude of ["subscription", "api-key"]) {
+    const managed = fakeHost({ policy: true });
+    await assert.rejects(
+      requireWindowsPrerequisites({ platform: "win32", sessionsRoot: root, claude, host: managed.host }),
+      notConfigured("claude-managed-policy"),
+      claude
+    );
+    assert.equal(managed.seen.policyReads, 1, claude);
+    const unmanaged = fakeHost({ policy: false });
+    await requireWindowsPrerequisites({ platform: "win32", sessionsRoot: root, claude, host: unmanaged.host });
+    assert.equal(unmanaged.seen.policyReads, 1, `${claude} never read the policy sources`);
+  }
+  assert.deepEqual(await readdir(root), [], "a probe directory was left");
 });
 
 // why: the named-pipe transport's own refusals, through the real transport over
