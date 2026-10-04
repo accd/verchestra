@@ -188,7 +188,11 @@ test(
     assert.equal(fixture.git(["show", `${branch}:src/value.txt`]), "new");
     // why: the run's worktree and both scratch checkouts held this file past
     // 260 characters, which Git for Windows writes only with core.longpaths.
-    assert.equal(fixture.git(["show", `${branch}:${WINDOWS_DEEP_FILE}`]), "deep");
+    // `git show <rev>:<path>` first stats its whole argument as a working-tree
+    // file, to tell a revision from a path, and that argument passes 260
+    // characters in the user's checkout; `cat-file blob` names the object and
+    // never looks at the working tree.
+    assert.equal(fixture.git(["cat-file", "blob", `${branch}:${WINDOWS_DEEP_FILE}`]), "deep");
     assert.equal(fixture.git(["rev-parse", `${branch}^`]), fixture.revision);
     assert.deepEqual(fixture.git(["diff", "--name-only", fixture.revision, branch]).split("\n"), ["src/value.txt"]);
     assert.deepEqual(checkout(fixture), before, "the user's checkout does not move");

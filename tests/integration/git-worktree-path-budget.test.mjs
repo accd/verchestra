@@ -9,27 +9,12 @@ import { join, sep } from "node:path";
 import { test } from "node:test";
 
 import { NodeGitWorktreeAdapter } from "../../packages/platform-node/src/index.ts";
+import { directoryOfLength } from "../helpers/deep-directory.mjs";
 import { temporaryDirectory } from "../helpers/temporary-directory.mjs";
 
 const PATH_MAX = Object.freeze({ win32: 260, darwin: 1024, linux: 4096 });
 const LIMIT = (PATH_MAX[process.platform] ?? PATH_MAX.linux) - 40 - "/.git".length;
 const REVISION = "a".repeat(40);
-
-// why: a real directory below `root` whose path is exactly `length`
-// characters, built from names of about 100 characters, which every
-// filesystem here accepts.
-async function directoryOfLength(root, length) {
-  const need = length - root.length;
-  const count = Math.ceil(need / (100 + sep.length));
-  const characters = need - count * sep.length;
-  const segments = Array.from({ length: count }, (_, index) =>
-    "d".repeat(Math.floor(characters / count) + (index < characters % count ? 1 : 0))
-  );
-  const path = join(root, ...segments);
-  assert.equal(path.length, length);
-  await mkdir(path, { recursive: true });
-  return path;
-}
 
 // invariant: a DETERMINISTIC FAKE Git that answers what the adapter asks
 // before an add, records every command, and makes the directory an add names.
