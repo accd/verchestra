@@ -2720,3 +2720,229 @@ log, the fourteen cases named under item 1 at second-scale durations and the
 spike's "ran against Codex 0.115.0" diagnostic; a failing Windows case is
 fixed here before merge, with the quick start's claim in the same change.
 Then a fresh verification of findings 11, 13 (documentation part), and 17.
+
+### Remediation R1 (billing, verifier, approval proof)
+
+**Implementer**: an agent session that wrote none of T1–T9 and verifies
+nothing here; a fresh verifier re-derives every verdict above. **Branch**:
+`strands/t9r1-billing-verifier` from `867a784`, rebased onto `f561274` (R3).
+**Scope**: findings 1, 2, 6,
+10, and 15, and finding 17's comment prefix at `task-windows.ts:38` only. The
+findings and requirement rows above are unchanged. Decision record:
+`.specs/STATE.md`, "AD-0XX (to be numbered at merge)".
+
+Commits: `ca97f3d` (finding 1), `dfcd551` and `e5ff886` (finding 2),
+`2b6ae15` (finding 6), `052e9a6` (finding 10), `551c22b` (finding 15), and
+`528db10` (the five journeys added here run on macOS, Linux, and Windows, as
+R3's coordinated journeys do).
+
+#### Finding 1 (D3b): the verifier of a v2 run
+
+The verifier of a v2 request asks for a subscription-only session
+(`apps/vestra-cli/src/task/task-codex.ts:311`), through the same session seam
+as the account read (`codexSession`, `:250`). Its first quota signal stops
+the session (`observeQuota`, `:185`); a quota or a credits refusal leaves as
+`TaskExecutionSuspended` with a closed record (`verifierSuspension`, `:195`);
+the run coordinator ends the run SUSPENDED in VERIFYING, releases the writer
+coordination, and applies no workflow command
+(`packages/application/src/execution/task-run.ts:255`); `runTask`'s existing
+mapping reports credits as `not configured` (`codex-credits`).
+
+**v1 is not changed.** D3b is a decision of this feature, whose billing
+checks (SSI-51, SSI-52) apply "WHEN a v2 run starts or resumes"; SSI-83 and
+the Goals keep every v1 request "exactly as before", and the spec's
+assumption row for the Codex floor says a raised floor "would fail v1 runs at
+verification on older builds (SSI-83)". The rate-limit read needs 0.159.3, so
+checking v1 credits means raising v1's floor. A v1 run on a subscription can
+therefore still spend Codex credits at verification; extending the check is
+an owner decision (proposed amendment below).
+
+| Requirement | Evidence (`file:line`, what it asserts) |
+| --- | --- |
+| D3b, SSI-55 for the verifier | `tests/integration/codex-verifier-session.test.mjs:242` a v2 verifier reads its account and rate limits before its turn; `:252` a v1 verifier on a subscription reads none and is not stopped by credits |
+| D3b, SSI-56 | `:262` credits suspend the verifier before its turn, record exactly `{reason: VES_CODEX_CREDITS_PRESENT, provider: codex, at}`, no turn, session root removed |
+| SSI-58, SSI-59 for the verifier | `:270` `ordinaryUsageAllowed: false` and a mid-turn `usageLimitExceeded` each suspend with scope and reset as reported |
+| SSI-60 for the verifier | `tests/unit/task-run-coordinator.test.mjs:382` SUSPENDED in VERIFYING, commands only `START_IMPLEMENTATION`, `START_VERIFICATION`, released once; `:399` a non-suspension error fails and a cancel aborts |
+| Journeys (every platform) | `tests/e2e/task-codex-account-e2e.test.mjs:70` agent run, `codex-credits`: `not configured` (`codex-credits`), VERIFYING, commit kept, no verifier turn, record holds no e-mail, balance, or path; resumed once clear, reaches review with the account checked; `:104` agent run, `codex-quota`: SUSPENDED in VERIFYING, `next` is resume |
+
+Mutants (in place, killer suites through `scripts/test-scope.mjs`, then
+`git restore`, `git status --porcelain` unchanged every time): M1a verifier
+not subscription-only, killed (integration 3 of 15; journeys 2 of 2); M1b
+suspension dropped, killed (2 of 15); M1c coordinator rethrows a verifier
+suspension, killed (unit 1 of 19); M1d no release on it, killed (1 of 19);
+M1e v1 verifier subscription-only too, killed (1 of 15); M1f a cancel no
+longer wins, killed (1 of 19).
+
+#### Finding 2 (SSI-52): the plan type
+
+`CODEX_PLAN_TYPES` (`packages/drivers/src/codex-driver.ts:75`) is the 0.159.3
+`PlanType` without `unknown`, read from `codex app-server generate-ts
+--experimental` of the installed 0.159.3 into a disposable directory with a
+disposable `HOME` and `CODEX_HOME` (no login read, no model invoked). The
+account read reports the plan type as one of them or `unknown` and keeps
+nothing else (`accountRead`, `:410`); an account-only session reads the
+account and ends (`accountSteps`, `:432`; plan validation `:623`). The
+statement's plan type must be one of them (`task-billing.ts:95`);
+`requireStatedPlanType` (`:205`) refuses another as `not configured`
+(`extra-usage-confirmation`). `prepare` reads it after the login is proven
+and before the first transition (`task-run.ts:254`, `codexAccountPlanType`
+in `task-codex.ts:408`).
+
+| Requirement | Evidence |
+| --- | --- |
+| SSI-52 (plan type compared) | `tests/unit/task-billing.test.mjs:260` the reported type must equal the stated one, `pro` and `unknown` refused, both values told; `tests/e2e/task-codex-account-e2e.test.mjs:128` a statement naming `pro` against a `plus` login is `not configured` at `start` with no transition, grant, worktree, thread, or turn, then runs once confirmed |
+| SSI-49, SSI-53 (closed value, nothing else kept) | `tests/contract/codex-driver-structured.test.mjs:254` free text, wrong case, a number, and an absent type all report `unknown`; `tests/security/codex-account-security.test.mjs:36` the report is exactly `planType` and no report or event keeps the e-mail address or account identifier; `tests/unit/task-billing.test.mjs` rows "a plan type Codex does not name", "a handle in the shape of a plan type", "the catch-all plan type unknown"; `:250` every vocabulary value is accepted |
+| The account-only session | `tests/contract/codex-driver-structured.test.mjs:242` methods exactly `initialize`, `initialized`, `account/read`, completed, no session events; `:282` a non-ChatGPT account is refused and reports nothing; `:181` refused below 0.159.3 before spawn; `:200` asking it for a turn is refused before spawn; `tests/integration/codex-verifier-session.test.mjs:319` over the task fake it opens no thread or turn; `:328` an API-key login is `codex-account`, a 0.159.2 build `codex-version` |
+
+Mutants: M2a any reported type accepted, killed (unit 1 of 46); M2b
+free-text statement accepted, killed (4 of 46); M2c account text reported,
+killed (contract 1 of 17; security 1 of 2); M2d account-only session goes on
+to its turn, killed (1 of 17); M2e the run never reads the plan type, killed
+(journeys 1 of 3); M2f the version refusal not told apart, killed
+(integration 1 of 17); M2g the report carries the whole account, killed
+(security 1 of 2).
+
+#### Finding 6 (SSI-29): the request proven against the approved package
+
+`requireApprovedRequest` (`apps/vestra-cli/src/task/task-run.ts:309`, called
+at `:848`, after the workflow state and before `prepare`) loads the package
+through the Run record's checked reader and requires the plan's package
+digest to be the one its approval intent binds and the package's
+`executionContractDigest` to be the plan's request digest, else
+`VES_TASK_STATE_INVALID` (`VES_TASK_PACKAGE_INVALID`).
+
+| Requirement | Evidence |
+| --- | --- |
+| SSI-29 (v1 and v2, start and resume) | `tests/integration/task-coordinated-plan.test.mjs:205` the approved record reaches its credential read; the same record rewritten consistently (another request, its digest, and the seal recomputed by `savePlan`) loads, and is refused before the billing preflight (statement removed), a transition, a claim, or a file; `:228` a package that is not the one the approval intent binds is refused |
+
+Mutants: M6a no proof, killed (5 of 26); M6b execution contract not
+compared, killed (4 of 26); M6c approval intent not compared, killed (1 of
+26); M6d proof moved after `prepare`, killed (5 of 26).
+
+#### Finding 10 (SSI-73): every mediated profile, and the order
+
+`requireWindowsPrerequisites` refuses a managed policy for either mediated
+profile (`apps/vestra-cli/src/task/task-windows.ts:58`); `:41` now carries
+its `invariant:` prefix. In `prepare` the prerequisites run after the
+provider modes and the billing statement and before the credential read
+(`task-run.ts:233` against `:241`); `runTask` takes the machine they are
+proven on (`WindowsMachine`).
+
+The API-key profile is not exempt: it runs `--bare`, which reads no OAuth or
+keychain and skips hooks, but a managed policy outranks every settings
+source a profile passes and can add instructions or a credential helper to
+the session that holds the bridge token, and SSI-73 makes no exception;
+`docs/quick-start.md` already says the task path does not run under a
+managed policy. No spec change is needed.
+
+| Requirement | Evidence |
+| --- | --- |
+| SSI-73 (both profiles) | `tests/unit/task-windows.test.mjs:141` a policy refuses the subscription and the API-key profile, and neither is refused without one |
+| SSI-73 (order, observed on darwin) | `tests/integration/task-run-prerequisites.test.mjs:140` `start` and `resume`, both profiles: at each of the fake host's three questions no credential was read, no active claim, no writer lease, the workflow state unchanged, no worktree; refused `claude-managed-policy`; `:154` with every prerequisite the run goes on to its first credential read; `:162` a v2 run asks the machine only after its billing statement |
+
+Mutants: M10a policy for the subscription profile only, killed (unit 1 of
+15; integration 2 of 7); M10b prerequisites after the credential read,
+killed (7 of 7); M10c after the active claim, killed (7 of 7); M10d before
+the billing statement, killed (1 of 7); M10e injected machine ignored,
+killed (7 of 7).
+
+#### Finding 15 (AD-079): the renewal bounds
+
+`grantExpiry` (`apps/vestra-cli/src/task/task-run.ts:276`) caps every grant
+at the earlier of the approval's expiry and the run's duration plus the
+margin; `renewsGrant` (`:298`) renews only when armed (`:465`, a resume from
+a suspension), never a revoked or unknown grant, when the remaining life is
+shorter than the run's remaining duration read from its meter, and only if
+the new grant outlives the old. `#grant` (`:433`) writes the replaced grants
+into the marker (`task-run-record.ts:572`, validated at `:206`).
+
+| Requirement | Evidence |
+| --- | --- |
+| Lifetime cap | `tests/unit/task-grant-renewal.test.mjs:28`; `:56` a cap that would not extend the grant renews nothing |
+| X06, revoked | `:41` a revoked grant is never renewed, expired or not |
+| X07, armed only from a suspension | `:37` unit; `tests/e2e/task-grant-renewal-e2e.test.mjs:80` a graph run killed while its reader hangs, reconciled and resumed three hours later, keeps its expired grant, and the writer's first effect is refused (`VES_EXECUTOR_APPROVAL_INVALID`) |
+| Near expiry | `tests/unit/task-grant-renewal.test.mjs:50` five minutes left of eight renewed, exactly eight reused; `tests/e2e/task-grant-renewal-e2e.test.mjs:106` a suspended run resumed with five of seventy minutes left gets a new grant and reaches review |
+| Replaced grant recorded | `tests/e2e/task-grant-renewal-e2e.test.mjs:106` the marker is `{grantId, replaced: [previous]}`; `tests/unit/task-run-record-readers.test.mjs:136` both marker forms, a first grant unchanged, malformed lists refused |
+
+Mutants: X06 killed (unit 1 of 7); X07 killed (journeys 1 of 2), X07b (the
+decision ignores the arming) killed (unit 1 of 7); X10 lifetime cap dropped,
+killed (2 of 7); X11 the old expired-only rule, killed (journeys 1 of 2);
+X12 replaced grant not recorded, killed (1 of 2); X13 renewal that does not
+extend, killed (1 of 7).
+
+#### Deleted case → replacement
+
+- `tests/unit/task-windows.test.mjs` "a managed Claude Code policy refuses
+  the subscription profile only" (it asserted the API-key profile never read
+  the policy, the behaviour finding 10 removes) → `:141`, both profiles
+  refused under a policy and passed without one, and
+  `tests/integration/task-run-prerequisites.test.mjs:140` for both profiles
+  through `start` and `resume`.
+
+#### Spec amendments proposed (owner)
+
+Not applied here; `spec.md` is unchanged.
+
+- SSI-55: "WHEN a Codex node session, or the verifier session of a v2 run,
+  starts THEN the driver SHALL require `account/read` to report an account of
+  type `chatgpt`, and IF it does not THEN the session SHALL fail with
+  `VES_CODEX_AUTH_METHOD_MISMATCH` before the turn starts."
+- SSI-56: "IF a Codex rate-limit snapshot of a node or of the verifier of a
+  v2 run reports a credit balance or unlimited credits THEN that session
+  SHALL not start its turn and the run SHALL be `not configured` with
+  `VES_CODEX_CREDITS_PRESENT`."
+- SSI-60, last clause: "…and the workflow state SHALL stay `IMPLEMENTING`, or
+  `VERIFYING` when the verifier's session raised the signal."
+- SSI-52, appended: "The plan type SHALL be one of the plan types the Codex
+  App Server protocol names, other than `unknown`, and WHEN a v2 run starts or
+  resumes THEN the plan type the Codex account reports SHALL equal it."
+- Open owner decision, if v1 should be covered: amend SSI-83 to "…SHALL behave
+  as before, except that a v1 verifier on a subscription is subscription-only
+  and requires Codex 0.159.3", and the floor assumption row accordingly.
+
+#### Citations above that moved
+
+For the fresh verifier; the findings keep their `c3223c6` lines.
+`task-codex.ts:236` → `:278` (`resolveExecution` in `codexSession`) and
+`:311`; `codex-driver.ts:370-372` → `:410-416`, `:388` → `:432`;
+`task-billing.ts:93` → `:95`; `task-run.ts:190` → `:241`, `:202` → `:233`,
+`:752` → `:850`, `:343-345` → `:276-282`, `:353` → `:298-303`, `:371` →
+`:465`; `task-windows.ts:51` → `:58`, `:38` → `:41`. Line citations of these
+files in other features' validation records name the lines at their own
+commits and are left as written.
+
+#### Gates (darwin arm64, Node 24.14.0)
+
+`pnpm gate:quick` PASS after commits 2 to 5 and again on the rebased head
+(format, lint, complexity, typecheck; unit 2972, agent-readiness 357, census
+13); `pnpm test:architecture` 132/132; `pnpm test:contract` 957/957;
+`pnpm agent:check` PASS; complexity no new hotspot (171 keys, none raised);
+the census unchanged (no file gained or lost `JSON.stringify` or
+`createHash`). Focused runs on the rebased head: integration 158/158 over
+the nine task and Codex suites; security 17/17 (`codex-account-security`,
+`task-suspension-security`, `driver-structured-results-security`,
+`coordination-record-security`, `task-cli-security`); fault
+`task-coordinated-crash-faults` 1/1; e2e 70/70 over the eight task journey
+files (Codex account, grant renewal, coordinated, subscription, task CLI,
+mediated, examples, Windows); `spikes/codex-driver` 39/39. 0 failed, 0
+skipped, 0 todo; every scope left its temporary directory empty. No real
+provider was called. The five journeys added here ran on macOS only; their
+Linux and Windows legs, and the full, build, and security gates, are the
+coordinator's matrix.
+
+#### Not done here, and residual risks
+
+- Documentation, outside R1's files: `docs/quick-start.md` should name the
+  `codex-account` and `codex-version` requirements, the verifier's credit
+  check, the plan-type comparison, and the managed-policy refusal for both
+  profiles; `docs/qualification/coordinated-run-pilots.md` still says the
+  verifier does not check credits.
+- The node adapters do not compare the plan type themselves; the comparison
+  is at `start` and `resume` (SSI-52), so a plan changed mid-run is seen at
+  the next resume.
+- A run suspended at its verifier resumes without the approval check of a
+  run suspended in a node (the spec's edge case names suspended runs
+  generally).
+- By reading, a resume at VERIFYING claims the writer lease and, reaching
+  review, does not release it; it lapses with the lease (pre-existing,
+  unchanged here).
