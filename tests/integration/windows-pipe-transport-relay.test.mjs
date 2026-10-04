@@ -44,7 +44,7 @@ const FRAME_BOUND = 8 * 1024 * 1024;
 async function oversizedFrame(mode, controllerOptions = {}) {
   const trace = pipeTrace();
   const { root, worktree, channels } = await plainWorktree();
-  const host = standInHost(mode, root);
+  const host = standInHost(mode, root, trace.observe);
   const transport = trace.counting(
     new WindowsNamedPipeBridgeTransport({ root: channels, host, observe: trace.observe, exitWaitMs: 2_000 })
   );

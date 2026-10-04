@@ -8,13 +8,13 @@
 // `shares` relays but also hands the connection to a child process that keeps
 // it open, and ignores the end of its input, so the connection outlives the
 // stand-in unless its whole tree is ended; `blocks` relays as the earlier
-// PowerShell helper did, each read of up to 128 KiB written to standard
-// output synchronously, a short read as soon as nothing more is waiting;
+// PowerShell helper read, each block of up to 128 KiB written to standard
+// output as one write, a short one as soon as nothing more is waiting;
 // `holds-tail` writes whole lines and whole 128 KiB blocks but never flushes
 // the rest of an unfinished line, as an unflushed relay would hold a frame's
-// tail.
+// tail. A failure of its own is written on stderr as
+// `verchestra-stand-in:error:<code>` before it exits 1, so a case can name it.
 import { spawn } from "node:child_process";
-import { writeSync } from "node:fs";
 import { createServer } from "node:net";
 
 const [endpoint, mode] = process.argv.slice(2);
@@ -24,6 +24,10 @@ const BLOCK_BYTES = 128 * 1024;
 const CHILD_LIFETIME_MS = 60_000;
 
 process.stdout.on("error", () => undefined);
+process.on("uncaughtException", (error) => {
+  process.stderr.write(`verchestra-stand-in:error:${error.code ?? error.name}\r\n`);
+  process.exit(1);
+});
 
 function stall(socket) {
   let relayed = 0;
@@ -40,8 +44,13 @@ function stall(socket) {
 function relayInBlocks(socket) {
   let held = Buffer.alloc(0);
   let flushing = false;
+  // hazard: standard output is a pipe the parent may not have drained, and on
+  // Linux a synchronous write to it fails with EAGAIN once it is full; a block
+  // waits for the drain instead, the client's bytes held back meanwhile.
   const write = (bytes) => {
-    if (bytes.length > 0) writeSync(1, bytes);
+    if (bytes.length === 0 || process.stdout.write(bytes)) return;
+    socket.pause();
+    process.stdout.once("drain", () => socket.resume());
   };
   const flush = () => {
     flushing = false;
