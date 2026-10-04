@@ -2729,7 +2729,7 @@ nothing here; a fresh verifier re-derives every verdict above. **Branch**:
 **Scope**: findings 1, 2, 6,
 10, and 15, and finding 17's comment prefix at `task-windows.ts:38` only. The
 findings and requirement rows above are unchanged. Decision record:
-`.specs/STATE.md`, "AD-0XX (to be numbered at merge)".
+`.specs/STATE.md`, AD-082.
 
 Commits: `ca97f3d` (finding 1), `dfcd551` and `e5ff886` (finding 2),
 `2b6ae15` (finding 6), `052e9a6` (finding 10), `551c22b` (finding 15), and
