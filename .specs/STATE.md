@@ -2953,6 +2953,46 @@ note. -->
   the earlier build left registered is no longer replaced and needs
   `git worktree remove`. The live Windows pilot (D6) stays owner-run.
 
+### AD-081 — A Codex node reads a read-only copy of its read scope, never the worktree
+
+- **Status:** proposed (T9 remediation R2 of
+  `.specs/features/strands-subscription-integration/`; finding 4, SSI-42,
+  TM-004).
+- **Context:** A Claude Code node reads through the bridge's read view
+  (`WorktreeReadView`), held to its read scope. A Codex node reads through
+  Codex's own read-only sandbox, which the bridge cannot hold, and ran with
+  the run's worktree as its working directory, so its read scope was a prompt
+  line. The driver's thread parameters name `sandbox: "read-only"` and no
+  readable root; by Codex's documented modes that sandbox withholds writes and
+  network, not reads.
+- **Decision:**
+  1. The bridge's read view gains `materialize(target)`: it writes the view
+     out under a directory the caller owns, exactly the text files a bridge
+     read reaches (the read scope minus protected paths and Git metadata,
+     every path component lstat-checked, links never followed, binary files
+     left out), files `0400` and directories `0500`.
+  2. It is bounded as the bridge's search is: a listing the bridge would
+     truncate (over 1,000 entries), more than 5,000 files, or a file over
+     1 MiB refuses the whole view with `VES_BRIDGE_VIEW_LIMIT` before the
+     session starts; nothing is copied in part.
+  3. A Codex node's session runs in its own view,
+     `<sessions root>/codex-node-<run ID>-<node ID>-<visit>/scope`, never in
+     the worktree; `removeMaterializedView` makes the view writable for its
+     owner and removes it, with the node's HOME, when the node ends.
+- **Alternatives rejected:** recording the unconfined read as an accepted
+  risk alone (the view confines every read relative to the working
+  directory); hard links into the worktree (a mode change would reach the
+  worktree's own files, and a link across volumes fails); copying part of an
+  oversized scope (the node would read a scope other than the approved one
+  without knowing it); a readable-root policy in the Codex driver (not
+  verified against 0.159.3 without a provider call).
+- **Consequence:** A Codex node no longer works in the worktree, and two Codex
+  nodes of one run no longer share a working directory. Codex's sandbox still
+  permits a read by absolute path outside the view: an accepted residual,
+  recorded for TM-004, whose reach into the Run record is limited by the node
+  result screen (SSI-49). Each Codex node holds one copy of its read scope on
+  disk for its lifetime, at most 5,000 files of at most 1 MiB.
+
 ## Handoff
 
 - **Feature:** `subscription-provider-auth` (ADP-A, tasks TA1 and TA2) on
