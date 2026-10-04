@@ -6,7 +6,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { COORDINATION_COMPLETE, NativeAgentEngine } from "../../packages/application/src/index.ts";
+import {
+  assertStructuredAnswer,
+  COORDINATION_COMPLETE,
+  NativeAgentEngine
+} from "../../packages/application/src/index.ts";
 import {
   aborted,
   control,
@@ -216,6 +220,24 @@ test("a malformed result fails its node with VES_COORDINATION_RESULT_INVALID and
     script: { plan: async () => ({ status: "completed", outputRefs: [] }) }
   });
   await assert.rejects(run(missing, request), rejectsWith("VES_COORDINATION_RESULT_INVALID"));
+});
+
+// invariant: SSI-46 and SSI-47 at the node adapters' seam. A failed session
+// whose driver could not hand on a structured result fails its node with the
+// coordination code; any other ending is left to the adapter.
+test("a failed session's structured-output code becomes the coordination refusal, and nothing else does", () => {
+  for (const [codes, expected] of [
+    [["VES_CLAUDE_STRUCTURED_OUTPUT_MISSING"], "VES_COORDINATION_RESULT_INVALID"],
+    [["VES_CODEX_STRUCTURED_OUTPUT_MISSING"], "VES_COORDINATION_RESULT_INVALID"],
+    [["VES_CODEX_STRUCTURED_OUTPUT_INVALID"], "VES_COORDINATION_RESULT_INVALID"],
+    [["VES_CLAUDE_STRUCTURED_OUTPUT_LIMIT"], "VES_COORDINATION_RESULT_TOO_LARGE"],
+    [["VES_CLAUDE_STREAM_INCOMPLETE", "VES_CODEX_STRUCTURED_OUTPUT_LIMIT"], "VES_COORDINATION_RESULT_TOO_LARGE"]
+  ])
+    assert.throws(() => assertStructuredAnswer("failed", codes), { code: expected }, codes.join(","));
+  assert.doesNotThrow(() => assertStructuredAnswer("failed", ["VES_CLAUDE_EXECUTION_FAILED"]));
+  assert.doesNotThrow(() => assertStructuredAnswer("failed", ["VES_CLAUDE_OUTPUT_SCHEMA_INVALID"]));
+  assert.doesNotThrow(() => assertStructuredAnswer("cancelled", ["VES_CLAUDE_STRUCTURED_OUTPUT_MISSING"]));
+  assert.doesNotThrow(() => assertStructuredAnswer("completed", []));
 });
 
 test("a node that reports itself blocked ends the run with VES_COORDINATION_NODE_BLOCKED", async () => {

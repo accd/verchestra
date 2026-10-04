@@ -116,6 +116,28 @@ function suspensionOf(error: unknown, node: CoordinationNode, at: string): Execu
   });
 }
 
+// invariant: SSI-46 and SSI-47. A driver asked for a structured result names
+// why it has none it may hand on: `<prefix>_STRUCTURED_OUTPUT_MISSING` or
+// `_INVALID` for no answer or one that is not JSON, `_LIMIT` for one over the
+// node's bound (driver-structured-output.ts).
+const STRUCTURED_REFUSALS: readonly (readonly [suffix: string, code: CoordinationErrorCode, message: string])[] = [
+  ["_STRUCTURED_OUTPUT_MISSING", "VES_COORDINATION_RESULT_INVALID", "The node gave no structured result"],
+  ["_STRUCTURED_OUTPUT_INVALID", "VES_COORDINATION_RESULT_INVALID", "The node's structured result is unreadable"],
+  ["_STRUCTURED_OUTPUT_LIMIT", "VES_COORDINATION_RESULT_TOO_LARGE", "The node's structured result exceeds its bound"]
+];
+
+// invariant: what both node adapters apply once a node's session has ended
+// and its end is recorded: a session that failed for its structured answer
+// fails the node with the coordination code for that refusal, never as a node
+// that merely failed. Any other ending is the adapter's to report.
+export function assertStructuredAnswer(outcome: string, errorCodes: readonly string[]): void {
+  if (outcome !== "failed") return;
+  for (const code of errorCodes) {
+    const refusal = STRUCTURED_REFUSALS.find(([suffix]) => code.endsWith(suffix));
+    if (refusal !== undefined) throw new CoordinationRunError(refusal[1], refusal[2]);
+  }
+}
+
 function visitKey(entry: { readonly nodeId: string; readonly visit: number }): string {
   return `${entry.nodeId}#${entry.visit}`;
 }

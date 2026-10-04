@@ -188,6 +188,7 @@ export {
 } from "./execution/coordination-ledger.ts";
 export {
   assertNodeWriteScope,
+  assertStructuredAnswer,
   CoordinatedDriver,
   type CoordinatedDriverOptions,
   type CoordinationNodeDrivers,
