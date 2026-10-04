@@ -3815,3 +3815,121 @@ hung leg at `93b38c5` never reached, passed 310/310.
 texts; the owner decides AD-080 item 5, D1, D8, and v1 Codex credits, and
 runs the pilots (SSI-84); the two minor findings above are fix tasks for an
 implementer who is not this verifier.
+
+### Remediation R5 (delta findings)
+
+**Author**: an implementation session that wrote neither R4 nor its delta
+verification. **Base**: `8a1ab11` (`origin/main`). **Branch**:
+`strands/t9r5-account-id`. The delta verification above is left as written;
+this section records the fixes for its two minor findings. No real provider
+was called and no real Codex login was read: every login, token, claim, and
+key below is a fixture value.
+
+| Commit | Delta finding | Change |
+| --- | --- | --- |
+| `381779c` | 2 (SSI-49, SSI-81, SSI-53) | `codexLoginSecrets` (`apps/vestra-cli/src/task/task-codex-identity.ts:113`) also withholds `tokens.account_id` (`:33`) and the account identifiers the ID token's JWT payload carries decoded (`idTokenClaims`, `:96`): the `sub`, `sid`, and `email` claims and every claim named `id` or ending in `_id`, at any depth, walked without recursion (`:38`, `:71`, `:77`), each value once (`:124`). The payload is read only to be withheld; a parser's message, which quotes it, is dropped, so a token whose payload is not JSON names nothing decoded and is withheld whole (`:102`) |
+| `a7fa8af` | 1 (D6) | The security case's reviewer, the round's second node, renews the access token after the writer's result is screened and carries it in its own result |
+
+**Which claims, and why.** An ID token is a JWT whose payload anyone can
+decode, so a model that reads `auth.json` can copy the account's identifiers
+out of it in plain text, where the token's exact value no longer matches.
+The fixtures mirror an OpenAI ID token's shape: top-level `sub`, `sid`, and
+`email`, and an `https://api.openai.com/auth` claim with
+`chatgpt_account_id`, `chatgpt_user_id`, `user_id`, and `organizations[].id`.
+That shape was not checked against a real login. The rule is the claim's
+name, not a fixed path, so an identifier claim moved or added under another
+`*_id` name is still withheld. Not withheld: issuer, audience, plan type,
+flags, times, and organization titles and roles. They name no one, and a
+common word such as `plus` or `owner` would refuse ordinary results.
+
+**Evidence.**
+
+1. Unit `tests/unit/task-coordination-withheld.test.mjs:111` asserts the
+   values in order (`:113`): the Claude Code credential, the access, refresh,
+   and ID tokens, the account id, the API key, then the six identifiers
+   decoded from the fixture ID token (`:102`: subject, e-mail address,
+   sign-in session, ChatGPT user id, user id, organization id). The payload's
+   `chatgpt_account_id` equals the account id and appears once; the issuer,
+   audience, plan, flags, times, and title are absent. A ChatGPT-only login
+   gives the same values without the key (`:124`). An ID token that is not a
+   JWT, and one whose payload is not JSON, are withheld whole beside the
+   other secrets without refusing the run (`:133`, `:136`). A directory with
+   no login file withholds only the Claude Code credential (`:144`).
+2. Security `tests/security/coordination-record-security.test.mjs:150`: a
+   swarm whose reviewer's summary carries the account id (`:178`), the
+   e-mail address or user id decoded from the ID token's payload (`:162`),
+   the ID token, or any earlier login secret is refused
+   `VES_COORDINATION_RESULT_INVALID` (`:227`). Only the writer's result is
+   persisted (`:230`), and no persisted file holds the value. Here the
+   payload carries no `chatgpt_account_id`, so the account id is refused by
+   its own value and the decoded identifiers by the decoding. The same run
+   naming no secret completes (`:223`, the control).
+3. D6: the reviewer renews the access token in `auth.json` (`:212`, `:213`)
+   after the writer's result is screened, and its own result carries it. A
+   screen that resolved what it withholds once per round, at its opening
+   (R4-M2b) or at its first result (D6), misses the renewal: the case fails
+   with "Missing expected rejection:
+   fixture-security-renewed-access-token-d4f6". At `381779c`, before this
+   change, D6 still survived (security 0/3).
+
+**Changed case (no deletion).** `coordination-record-security.test.mjs:150`
+renews in the reviewer instead of the writer. It fails every resolution the
+writer case failed (R4-M2b) and D6 as well, so the writer case is not kept
+beside it. Its title gained "or an account identifier".
+`task-coordination-withheld.test.mjs:111` gained "account identifiers" in its
+title, and its fixture ID token is now a JWT.
+
+**Discrimination.** Each mutant applied in place, run through
+`scripts/test-scope.mjs`, then removed with `git restore`; `git status
+--porcelain` was empty before and after each. Unit is
+`task-coordination-withheld` with `coordinated-driver` (29 tests); security
+is `coordination-record-security` (3 tests).
+
+| Mutant | Unit (failed of 29) | Security (failed of 3) | Result |
+| --- | --- | --- | --- |
+| D6 the withheld text resolved once, at the round's first result | 0 | 1 | Killed (survived before) |
+| R4-M2b the withheld text resolved once, when the round is constructed | 0 | 1 | Killed |
+| R5-M1 `account_id` not withheld | 1 | 1 | Killed |
+| R5-M2 no ID-token claim withheld | 1 | 1 | Killed |
+| R5-M3 only the payload's top level walked | 1 | 1 | Killed |
+| R5-M4 claims ending in `_id` not withheld | 1 | 1 | Killed |
+| R5-M5 a payload that is not JSON rethrown instead of naming nothing | 1 | 0 | Killed |
+| R5-M6 the `email` claim not withheld | 1 | 1 | Killed |
+
+8 mutants; 8 killed.
+
+**Rows.** No row is re-judged here; that is the next verifier's. The change
+narrows the residual R4 recorded for transformed secrets to the cases below.
+
+**Proposed text for T10, not applied.** In R4's TM-004 text, "the Codex
+login's tokens and API key" becomes "the Codex login's tokens, account id,
+the account identifiers its ID token carries, and API key".
+
+**Residual risks.** The screen still matches exact values, so a value the
+model transforms passes: an e-mail address in another case, or a split or
+encoded id. A `name` claim, and any personal data the payload carries under
+another name, is not withheld. The access token is not decoded. In the shape
+the fixtures mirror, its identifiers repeat the ID token's, but that was not
+verified against a real login.
+
+**Gates** (darwin arm64, Node 24.14.0, at `a7fa8af`): `pnpm gate:quick` PASS
+(format, lint, complexity with 171 baselined keys and none above 10
+unaccounted, typecheck; unit 2987/2987, agent-readiness 357/357, census
+13/13); `pnpm typecheck` PASS; `pnpm test:architecture` 132/132; `pnpm
+agent:check` PASS; `pnpm census:refresh` left the census
+unchanged and `pnpm test:census` 13/13; the touched suites with
+`coordinated-driver` and `coordinated-node-adapters` 42/42; 0 failed, 0
+skipped, 0 todo, no temporary entry left. No file gained or lost
+`JSON.stringify` or `createHash` outside the tests; no complexity key changed.
+
+**Citations that moved** (for the next verifier): `task-codex-identity.ts:72`
+→ `:113`, `:38` → `:42`; `:33` now lists `account_id`; `:34` is unchanged.
+`task-coordination-withheld.test.mjs:71` → `:95`, `:76` → `:111`, `:78` →
+`:113`, `:87` → `:124`, `:93` → `:144`, `:98` → `:149`, `:104` → `:155`.
+`coordination-record-security.test.mjs:148` → `:150`, `:206` → `:223`,
+`:213` → `:230`.
+
+**Next action**: push the branch for the platform matrix and human review;
+then a delta verification of R5 (SSI-49, SSI-81, D6, and the R5 mutants) by
+a verifier who wrote none of it. T10 applies the texts, with the TM-004
+wording above; the owner items of the delta verification are unchanged.
