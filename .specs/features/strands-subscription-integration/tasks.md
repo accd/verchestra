@@ -377,13 +377,17 @@ section.
 
 **Done when**:
 
-- [ ] `pnpm agent:check`, `pnpm gate:quick`, `pnpm gate:full`, `pnpm gate:build`, and `pnpm gate:security` pass with zero skipped and zero todo.
+- [x] `pnpm agent:check`, `pnpm gate:quick`, `pnpm gate:full`, `pnpm gate:build`, and `pnpm gate:security` pass with zero skipped and zero todo.
 - [ ] Every SSI row in `validation.md` has file-and-assertion evidence.
-- [ ] The discrimination list is killed in full.
+- [x] The discrimination list is killed in full.
 - [ ] Pilot results recorded without exhausting any allowance; missing platforms or accounts marked `not configured`.
 
 **Tests**: e2e, security
 **Gate**: full
+
+**Progress** (branch `strands/t9-verification`; evidence in `validation.md`, "Independent Verification (T9)"):
+
+- [x] Commit 1: independent verification at `c3223c6`. Verdict FAIL: SSI-29, SSI-42, SSI-46, SSI-47, SSI-49, and SSI-52 fail, 10 requirements are partial, SSI-84 is pending, and D3b is not met for the Codex verifier. The planned discrimination list is killed in full (16 of 16 rows); 3 of the verifier's 9 additional mutants survived (X04, X06, X07). Every gate passes on all five platforms (runs 37190404353, 37190406187, 37190408045), 0 skipped and 0 todo; off macOS the coordinated journeys return early and count as passes. The SSI-row item stays open: SSI-42 has no evidence and SSI-84 waits for the owner.
 
 ---
 
