@@ -2545,3 +2545,20 @@ Commit `style: translate the owner's quote and prefix five comments (T9 R3)`:
   (`invariant:`, in the `/** invariant: ... */` form of
   `scripts/build-vestra-binary.mjs:60`). Left to their owners:
   `apps/vestra-cli/src/task/task-windows.ts:38` (R1) and `isWriter` (R2).
+
+#### R3 gates and next action
+
+Local, darwin arm64, Node 24.14.0, at the item 3 commit: `pnpm gate:quick`
+PASS (format, lint, complexity: 171 baselined keys and nothing above 10
+unaccounted, typecheck, unit 2957, agent-readiness 357, census 13);
+`pnpm typecheck` PASS; `pnpm test:architecture` 132/132; `pnpm agent:check`
+PASS; `pnpm site:check` PASS (135 pages, internal links and metadata valid);
+the focused runs above. 0 failed, 0 skipped, 0 todo. No complexity key, census
+entry, migration, or error catalog changed.
+
+**Next action**: run the platform matrix (`gate:full`, `gate:build`,
+`gate:security`) on this branch and confirm, in each Linux and Windows job
+log, the fourteen cases named under item 1 at second-scale durations and the
+spike's "ran against Codex 0.115.0" diagnostic; a failing Windows case is
+fixed here before merge, with the quick start's claim in the same change.
+Then a fresh verification of findings 11, 13 (documentation part), and 17.
