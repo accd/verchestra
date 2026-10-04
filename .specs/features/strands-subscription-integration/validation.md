@@ -3679,3 +3679,139 @@ real pipe on Windows; the next Windows `gate:security` leg must pass
 **Next action**: push the branch and run the platform matrix, with the
 Windows `gate:security` leg first; T10 applies the three texts above; then a
 fresh verification of SSI-49, SSI-81, SSI-83, SSI-75, and O12, O13, O15.
+
+### Delta verification of R4
+
+**Verifier**: the second-pass verifier, who wrote none of R4. **Head**:
+`d2c9341` on `strands/t9-delta-verification` (`origin/main`); R4's matrix ran
+on `f58afa1`, whose tree is the same (`git rev-parse` of both trees:
+`e8c1371`). Each R4 claim was re-derived from the code; mutants were applied
+in place, run through `scripts/test-scope.mjs`, and removed with
+`git restore`, `git status --porcelain` empty before and after each. No real
+provider was called.
+
+**Verdict: PASS**, with no row FAIL. It holds on these open items, none of
+which is a failing check:
+
+- PENDING: SSI-84, the owner's agent, graph, and swarm pilots on every
+  platform.
+- PARTIAL until T10 or the owner: SSI-60 (R1's amendment text), SSI-61 (no
+  text proposed yet; this one would do: "The suspension record SHALL hold
+  only a reason code, the provider, the time of suspension, and, when the
+  provider reported them, its limit window in a closed grammar and its reset
+  time."), and SSI-83 (R4's amendment text, and the owner's approval of
+  AD-080 item 5, the `state-path-length` refusal and scratch layout every v1
+  run now gets).
+- PASS on the current text, amendment wording settled by R4: SSI-42, and
+  TM-004 in the threat model.
+- Owner decisions outside the rows: D1, D8, and whether a v1 verifier on a
+  subscription should be refused Codex credits (R1).
+
+**Counts**: PASS 81, PARTIAL 3 (SSI-60, SSI-61, SSI-83), FAIL 0, PENDING 1
+(SSI-84).
+
+**The claims, re-derived.**
+
+| Second-pass finding | R4 claim | Verdict | Evidence at `d2c9341` |
+| --- | --- | --- | --- |
+| 1, SSI-83 | A v1 verifier fails on a usage limit as before | Holds | The quota is observed only under `subscriptionOnly` (`apps/vestra-cli/src/task/task-codex.ts:355`, `:312`); `tests/integration/codex-verifier-session.test.mjs:266` refuses v1 with `VES_TASK_FAILED` `{reason: VES_TASK_VERIFIER_FAILED}` on a subscription and an API key, and `:280`, `:288` still suspend v2. My scratch probe of the second pass, re-run here, now gets `VES_TASK_FAILED` `{reason: VES_TASK_VERIFIER_FAILED}` with no suspension, 2 of 2. R4-M1 and D5 killed |
+| 2, SSI-49, SSI-81 | The Codex login's secrets are withheld | Holds | `codexLoginSecrets` (`apps/vestra-cli/src/task/task-codex-identity.ts:72`) reads the access, refresh, and ID tokens and every API-key-named field (`:33`, `:34`), and refuses a file that is no login as `codex-login` with no cause; `nodeResultWithheld` adds them (`task-coordination.ts:122`); the screen resolves them for every result (`packages/application/src/execution/coordinated-driver.ts:593`). `tests/unit/task-coordination-withheld.test.mjs:76`, `:98`; `tests/security/coordination-record-security.test.mjs:148` refuses each secret and a renewed token, persisting only the writer's result. R4-M2a, R4-M2b (round open), D1, D2, D3 killed; D6 survived (new finding 2) |
+| 3, gate | The pipe cases are bounded and the helper ends within a bound | Holds | Every end of the channel goes through `#endHelper` (`packages/platform-node/src/windows-pipe-transport.ts:394`, `:411`): the tree termination and each exit wait bounded, then a kill through the helper's own handle (`:419`). `tests/unit/windows-pipe-transport.test.mjs:317`, `:333` (on every platform) kill a helper whose tree termination misses or hangs, once; `tests/security/windows-pipe-bridge-security.test.mjs:146` fails an unanswered relay and an endless wait by their bounds. The stall R4 names is in the log of run 37204692414 at `070be02` ("the pipe client's close did not settle within 45000 ms; connected: true; 50 bytes received"). R4-M3, R4-M4a, R4-M4b, R4-M4c, D4 killed |
+| 4, SSI-42, TM-004 | AD-081's residual is every read outside the copy | Holds | `.specs/STATE.md` AD-081 now names absolute paths, `..`, and paths from `HOME` or `CODEX_HOME`, and drops the "confines every read relative to the working directory" reason; R4's SSI-42 and TM-004 texts say the same. Documentation only |
+| 6, O12, O13, O15 | The three survivors are killed | Holds | `tests/e2e/task-codex-account-e2e.test.mjs:142` (a recorded commit off the plan's base, and one whose parent is not that base, each `VES_TASK_COMMIT_DRIFT`, `:207`); `tests/e2e/task-grant-renewal-e2e.test.mjs:134` (a revoked grant is kept, its first effect refused). O12, O13, O15 killed |
+
+**Rows re-judged.** SSI-49 PASS (was FAIL). SSI-81 PASS (was PARTIAL; it
+followed SSI-49). SSI-83 PARTIAL (was FAIL): only the amendment and AD-080
+item 5 remain. SSI-75 PASS, re-observed: the helper's bounded end is new code
+under the requirement, killed by four mutants, and the real case passed on
+Windows. SSI-71 and SSI-76 PASS, re-observed on Windows at this tree. SSI-33
+PASS, its O12 and O13 note closed. SSI-42 unchanged (PASS); TM-004 and TM-015
+are now accepted residuals, worded as R4 proposes.
+
+**Discrimination (delta).**
+
+| Mutant | Suites (failed of total) | Result |
+| --- | --- | --- |
+| R4-M1 the v2 condition on the verifier's quota removed | integration `codex-verifier-session` 1/18 | Killed |
+| R4-M2a no login secret withheld | unit `task-coordination-withheld` 2/3; security `coordination-record-security` 1/3 | Killed |
+| R4-M2b the withheld text resolved once at round open | security 1/3 (unit `coordinated-driver` and `task-coordination-withheld` 0/29) | Killed |
+| R4-M3 a relay's exit leaves a waiting request unsettled (fixture) | security `windows-pipe-bridge-security` 1/16, by its bound | Killed |
+| R4-M4a no termination when the connection closes | unit `windows-pipe-transport` 3/44; security 4/16 | Killed |
+| R4-M4b no kill through the helper's handle | unit 4/44 | Killed |
+| R4-M4c the tree termination awaited without its bound | unit 2/44 | Killed |
+| O12 the commit's parent not checked | e2e `task-codex-account-e2e` 1/4 | Killed |
+| O13 the recorded base not compared | same 1/4 | Killed |
+| O15 the revocation dropped before the renewal decision | e2e `task-grant-renewal-e2e` 1/3 | Killed |
+| D1 the refresh token not withheld | unit 1/3; security 1/3 | Killed |
+| D2 only a field named exactly `api_key` withheld | unit 1/3; security 1/3 | Killed |
+| D3 an unreadable login file withholds nothing instead of refusing | unit 1/3 | Killed |
+| D4 a helper already gone terminated again (the pid-reuse guard dropped) | unit 1/44 | Killed |
+| D5 the v1/v2 quota condition inverted | integration 2/18 | Killed |
+| D6 the withheld text resolved once, at the round's first result | security 0/3 | **Survived** |
+
+16 mutants; 15 killed, 1 survived. Off Windows the win32 cases of
+`windows-pipe-bridge-security` do not run, so R4-M4b and D4 are killed by the
+unit suite alone.
+
+**New findings (minor; no row FAIL).**
+
+1. **SSI-49 screen: a renewal after the round's first result is untested
+   (D6).** The security case renews the token in the writer, the round's
+   first node, so a screen resolved once at the first settled result still
+   withholds it. The code resolves per result (`coordinated-driver.ts:593`),
+   so this is a test gap. Fix: renew the token in a later node (the
+   reviewer, whose own result carries it) after the writer's result is
+   settled.
+2. **SSI-81: the login's `account_id` is not withheld.** `codexLoginSecrets`
+   withholds tokens and keys; `tokens.account_id`
+   (`tests/unit/task-coordination-withheld.test.mjs:71` holds one) is an
+   account identifier, which the project treats as sensitive (SSI-53), and a
+   Codex node can read it as it reads the tokens. Exact-value matching also
+   leaves the e-mail address inside the ID token's payload to a model that
+   decodes it, as R4 records for any transformed secret. Fix: withhold
+   `account_id`, or record both in TM-015's residual.
+3. **Windows `gate:security` stability.** The leg failed intermittently on
+   unchanged code (a hang at `93b38c5`, a 45-second stall at `070be02`) and
+   has passed once since the fix, at `f58afa1`. A recurrence now fails a
+   named case within its bound instead of hanging the leg; that one green run
+   does not by itself show the cause gone.
+
+**Gates.** Local, darwin arm64, Node 24.14.0, at `d2c9341`: `pnpm gate:quick`
+PASS (unit 2987, agent-readiness 357, census 13); the touched suites: unit
+73/73 (`task-coordination-withheld`, `windows-pipe-transport`,
+`coordinated-driver`), integration 28/28 (`codex-verifier-session`,
+`coordinated-node-adapters`), security 33/33 (`coordination-record-security`,
+`windows-pipe-bridge-security`, `mcp-tool-bridge-security`), e2e 11/11
+(`task-codex-account-e2e`, `task-grant-renewal-e2e`, `task-coordinated-e2e`);
+0 failed, 0 skipped, 0 todo. Platform matrix at `f58afa1`, read from each
+job's log: runs 37206571680 (`gate:full`: unit 2987, contract 957,
+integration 1242, e2e 301, fault 310, mutation 8), 37206573582
+(`gate:build`: also architecture 132, build 179, qualification 358), and
+37206575734 (`gate:security`: unit 2987, contract 957, e2e 301,
+architecture 132, qualification 358, security 1353, fault 310). All five
+legs of each passed, every stage with 0 failed, 0 cancelled, 0 skipped, and 0
+todo. The 20 coordinated journeys ran on every leg (19 in `gate:build`) at
+4.9 to 52.8 s on Windows. On the Windows `gate:security` leg every named-pipe
+case ran:
+
+| Case (`tests/security/windows-pipe-bridge-security.test.mjs`) | Duration |
+| --- | --- |
+| win32: the system tools prove a real per-run directory owner-only | 78 ms |
+| win32: the relay reaches the controller over the named pipe and its writes become executor requests | 545 ms |
+| win32: a relay presenting the wrong token is refused with the Unix code | 516 ms |
+| win32: a pipe client that never authenticates is refused when the authentication timeout ends | 5,386 ms |
+| win32: a frame beyond its bound on the named pipe is refused | 382 ms |
+| win32: a second same-user client cannot reach the controller while the relay holds the pipe | 2,039 ms |
+| win32: a pipe name that already exists makes the transport refuse | 383 ms |
+| win32: the per-run directory is owner-only while the channel is open, and the helper and directory are gone at close | 387 ms |
+| win32: the relay's read, list, and search tools serve the read scope over the named pipe | 581 ms |
+| win32: the read tools refuse over the named pipe what they refuse over the socket, and every Windows spelling | 548 ms |
+
+The same leg also ran the mediated session over the named pipe (2,545 ms) and
+the governed task journey over it (12,083 ms), and its fault stage, which the
+hung leg at `93b38c5` never reached, passed 310/310.
+
+**Next action**: T10 applies the SSI-42, TM-004, SSI-60, SSI-61, and SSI-83
+texts; the owner decides AD-080 item 5, D1, D8, and v1 Codex credits, and
+runs the pilots (SSI-84); the two minor findings above are fix tasks for an
+implementer who is not this verifier.
