@@ -3,11 +3,13 @@ import { join } from "node:path";
 
 import { runDriverSession } from "@verchestra/agent-runtime";
 import {
+  TaskExecutionSuspended,
   assertNoToolRequests,
   assertReadOnlyGrant,
   recordUsageAndDecide,
   type BudgetMeter,
   type BudgetMeterError,
+  type ExecutionSuspension,
   type NormalizedTaskRequest,
   type NormalizedTaskRequestV2
 } from "@verchestra/application";
@@ -162,9 +164,40 @@ export function sessionCredential(options: { readonly credential?: string; reado
 
 // invariant: what stopped a verifier session early. A refusal is the meter's
 // own failure to meter an event; the stop is then a budget stop like any other.
+// A quota is the first usage limit the provider reported, as the window and
+// reset it named.
 interface VerifierStop {
   readonly controller: AbortController;
   refusal: BudgetMeterError | undefined;
+  quota: Pick<ExecutionSuspension, "scope" | "resetsAt"> | undefined;
+}
+
+const QUOTA_EXHAUSTED = "VES_DRIVER_QUOTA_EXHAUSTED";
+const CREDITS_PRESENT = "VES_CODEX_CREDITS_PRESENT";
+
+// why: the first usage limit stops the session at once, as it stops a node, so
+// no more of an exhausted allowance is asked for.
+function observeQuota(event: DriverEvent, stop: VerifierStop): void {
+  if (event.type !== "quota.exhausted" || stop.quota !== undefined) return;
+  stop.quota = event.resetsAt === undefined ? { scope: event.scope } : { scope: event.scope, resetsAt: event.resetsAt };
+  stop.controller.abort("provider usage allowance exhausted");
+}
+
+// invariant: D3b and SSI-61 for the verifier. A usage limit the provider
+// reported, or credits on the account, suspend the run instead of failing it.
+// The record holds the code, the provider, the instant, and only the window
+// and reset the provider reported; a cancel of the command wins over both.
+function verifierSuspension(
+  options: CodexSessionOptions,
+  stop: VerifierStop,
+  errorCodes: readonly string[]
+): ExecutionSuspension | undefined {
+  if (options.signal.aborted) return undefined;
+  const at = new Date().toISOString();
+  if (stop.quota !== undefined) return Object.freeze({ reason: QUOTA_EXHAUSTED, provider: "codex", at, ...stop.quota });
+  return errorCodes.includes(CREDITS_PRESENT)
+    ? Object.freeze({ reason: CREDITS_PRESENT, provider: "codex", at })
+    : undefined;
 }
 
 // why: every usage event spends from the run's remaining budget through the
@@ -210,6 +243,12 @@ export async function runCodexVerifier(options: CodexSessionOptions): Promise<st
   const identity = await isolatedIdentity(options.sessionRoot, options.identityDirectory);
   const model = options.request.verifier.model;
   const passportId = `passport_${stableUuid(`codex:${model}`)}`;
+  // invariant: D3b. The verifier of a coordinated run is a subscription
+  // session like its Codex nodes: before its turn the driver proves a ChatGPT
+  // login and reads the account's rate limits, so credits on the account or an
+  // exhausted allowance stop it before a token is spent. A v1 run keeps the
+  // T04 conversation and its version floor (SSI-83).
+  const subscriptionOnly = options.request.schemaVersion === 2;
   const request: DriverStartRequest = {
     workspaceId: options.workspaceId,
     runId: options.runId,
@@ -240,10 +279,11 @@ export async function runCodexVerifier(options: CodexSessionOptions): Promise<st
       tools: [],
       environment: credential.environment,
       sensitiveValues: credential.sensitiveValues,
-      cancelGraceMs: 250
+      cancelGraceMs: 250,
+      ...(subscriptionOnly ? { subscriptionOnly } : {})
     })
   });
-  const stop: VerifierStop = { controller: new AbortController(), refusal: undefined };
+  const stop: VerifierStop = { controller: new AbortController(), refusal: undefined, quota: undefined };
   const timer =
     options.meter === undefined
       ? undefined
@@ -265,9 +305,12 @@ export async function runCodexVerifier(options: CodexSessionOptions): Promise<st
         events.push(event);
         if (event.type === "content.delta") text += event.text;
         meterUsage(options.meter, model, event, stop);
+        observeQuota(event, stop);
       }
     });
     assertNoToolRequests(events);
+    const suspension = verifierSuspension(options, stop, finished.errorCodes);
+    if (suspension !== undefined) throw new TaskExecutionSuspended(suspension);
     if (finished.outcome !== "completed")
       throw taskError(
         "VES_TASK_FAILED",
