@@ -3114,8 +3114,8 @@ note. -->
   (SSI-84, `docs/qualification/coordinated-run-pilots.md`), confirms or
   overturns the approvals made by delegation (D1–D7, D9, D1b, D10) and the
   amended requirements at human review, decides D11, and reviews
-  `setup-draft.md` (D8). Remediation R5 (`account_id` withheld, mutant D6) is
-  in flight on its own branch.
+  `setup-draft.md` (D8). Remediation R5 (`account_id` withheld, mutant D6)
+  landed in #534.
 
 - **Feature:** `subscription-provider-auth` (ADP-A, tasks TA1 and TA2) on
   `feat/subscription-provider-auth`.
