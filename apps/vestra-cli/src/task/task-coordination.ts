@@ -153,6 +153,9 @@ function nodeDriver(options: CoordinatedRunOptions, session: CoordinationNodeSes
   });
 }
 
+// invariant: SSI-17. The provider a Codex node's passport and usage name.
+const CODEX_PROVIDER = "openai";
+
 interface CodexNodeState {
   structured: DriverEventOf<"result.structured"> | undefined;
   quota: DriverQuotaSignal | undefined;
@@ -190,7 +193,12 @@ function observeCodex(
   };
   if (event.type === "usage.updated") {
     try {
-      control.reportUsage({ model, inputTokens: event.inputTokens, outputTokens: event.outputTokens });
+      control.reportUsage({
+        model,
+        provider: CODEX_PROVIDER,
+        inputTokens: event.inputTokens,
+        outputTokens: event.outputTokens
+      });
     } catch (error) {
       halt(error, "usage could not be metered");
     }
@@ -248,7 +256,7 @@ function codexDriver(
     onSpawn: provider.onSpawn,
     resolveExecution: () =>
       Promise.resolve({
-        passport: { passportId, revision: 1, provider: "openai", resolvedModel: model },
+        passport: { passportId, revision: 1, provider: CODEX_PROVIDER, resolvedModel: model },
         prompt: session.prompt,
         model,
         tools: [],

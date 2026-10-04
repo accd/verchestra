@@ -15,7 +15,13 @@ import {
   type CoordinationRecordPort,
   type NodeVisit
 } from "./coordination-ledger.ts";
-import type { CoordinationMode, CoordinationNode, CoordinationPlan } from "./coordination-plan.ts";
+import type { UsageEvent } from "./budget-meter.ts";
+import type {
+  CoordinationDriverId,
+  CoordinationMode,
+  CoordinationNode,
+  CoordinationPlan
+} from "./coordination-plan.ts";
 import { executionPayloadDigest, type ExecutionPayloadPort } from "./execution-payload.ts";
 import { coordinationNodePrompt } from "./node-prompt.ts";
 import {
@@ -178,6 +184,23 @@ function assertWithheld(result: NodeResult, withheld: WithheldText | undefined):
     )
       failure("VES_COORDINATION_RESULT_INVALID", "The node result names a sensitive value or a machine-local path");
   }
+}
+
+// invariant: SSI-17. A node's usage names the provider of its own driver as
+// the approved plan names it, Anthropic for a Claude Code node and OpenAI for
+// a Codex node, and never Strands, which is no provider. A node session that
+// reports another provider is not the session its passport admits, and its
+// usage is refused, which fails the node.
+const NODE_PROVIDERS: Readonly<Record<CoordinationDriverId, string>> = Object.freeze({
+  "claude-code": "anthropic",
+  codex: "openai"
+});
+
+function nodeUsage(node: CoordinationNode, event: UsageEvent): UsageEvent {
+  const provider = NODE_PROVIDERS[node.driver.driverId];
+  if (event.provider !== undefined && event.provider !== provider)
+    failure("VES_COORDINATION_NODE_FAILED", "A node reported usage for a provider other than its own");
+  return Object.freeze({ ...event, provider });
 }
 
 function visitKey(entry: { readonly nodeId: string; readonly visit: number }): string {
@@ -530,13 +553,13 @@ class CoordinationRound implements CoordinationNodeRunner {
 
   // invariant: SSI-15. A node acts only through the executor's own control:
   // its writes are narrowed to the node first, its usage reaches the run's
-  // meter, its checkpoints are filed under the node, and its signal is the
-  // run's, so a cancel or a failure elsewhere stops it.
+  // meter under its own provider, its checkpoints are filed under the node,
+  // and its signal is the run's, so a cancel or a failure elsewhere stops it.
   #narrowed(node: CoordinationNode, entry: Visit): ExecuteControl {
     const control = this.#control;
     return {
       signal: this.#abort.signal,
-      reportUsage: (event) => control.reportUsage(event),
+      reportUsage: (event) => control.reportUsage(nodeUsage(node, event)),
       checkpoint: (stage, data) => control.checkpoint(`node:${node.nodeId}:${entry.visit}:${stage}`, data),
       invokeTool: async (request) => {
         assertNodeWriteScope(node, request);
