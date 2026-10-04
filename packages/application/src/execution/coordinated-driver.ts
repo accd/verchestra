@@ -16,11 +16,12 @@ import {
   type NodeVisit
 } from "./coordination-ledger.ts";
 import type { UsageEvent } from "./budget-meter.ts";
-import type {
-  CoordinationDriverId,
-  CoordinationMode,
-  CoordinationNode,
-  CoordinationPlan
+import {
+  isWriterNode,
+  type CoordinationDriverId,
+  type CoordinationMode,
+  type CoordinationNode,
+  type CoordinationPlan
 } from "./coordination-plan.ts";
 import { executionPayloadDigest, type ExecutionPayloadPort } from "./execution-payload.ts";
 import { coordinationNodePrompt } from "./node-prompt.ts";
@@ -205,10 +206,6 @@ function nodeUsage(node: CoordinationNode, event: UsageEvent): UsageEvent {
 
 function visitKey(entry: { readonly nodeId: string; readonly visit: number }): string {
   return `${entry.nodeId}#${entry.visit}`;
-}
-
-function isWriter(node: CoordinationNode): boolean {
-  return node.driver.driverId === "claude-code" && node.writeScope.length > 0;
 }
 
 function logicalPath(path: string): string {
@@ -462,7 +459,7 @@ class CoordinationRound implements CoordinationNodeRunner {
     try {
       if (this.#live > this.#plan.limits.concurrency)
         failure("VES_COORDINATION_LIMIT", "More nodes ran at once than the concurrency limit");
-      const release = isWriter(node) ? await this.#writer.acquire() : () => undefined;
+      const release = isWriterNode(node) ? await this.#writer.acquire() : () => undefined;
       try {
         this.#assertOpen();
         return await this.#visit(node, visit);
