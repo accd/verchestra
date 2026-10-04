@@ -10,7 +10,7 @@
 // macOS, Linux, and Windows.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { rename, unlink, writeFile } from "node:fs/promises";
+import { readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { after, test } from "node:test";
 
@@ -26,6 +26,7 @@ import {
   status,
   visits
 } from "../helpers/task-coordinated-fixture.mjs";
+import { sealedText } from "../helpers/task-run-record-fixture.mjs";
 
 after(cleanupTaskFixtures);
 
@@ -134,9 +135,10 @@ test("an exhausted Codex allowance suspends an agent run at its verifier instead
 // invariant: SSI-33 for a run suspended at its verifier. Its resume proves what
 // a node suspension's does before the verifier starts: the owner's billing
 // statement, the approval against the policy in force, and what the run left,
-// here its task commit on its base under its anchored branch. Each refusal
-// leaves the run in VERIFYING with its suspension, and once all hold it
-// verifies and reaches review.
+// here its task commit under its anchored branch, recorded on the plan's
+// revision and with that revision as its only parent. Each refusal leaves the
+// run in VERIFYING with its suspension, and once all hold it verifies and
+// reaches review.
 test(
   "a run suspended at its verifier resumes only on its statement, a valid approval, and the commit it left",
   TIMEOUT,
@@ -180,6 +182,33 @@ test(
       });
       stillSuspended(label);
       fixture.git(restore);
+    }
+
+    // why: the branch anchors the commit the record names in both cases, so
+    // only the record's base and the commit's parent can refuse them.
+    const commitRecord = join(fixture.stateRoot, "tasks", plan.runId, "commit.json");
+    const recorded = await readFile(commitRecord, "utf8");
+    const child = fixture.git([
+      "commit-tree",
+      fixture.git(["rev-parse", `${evidence.commitId}^{tree}`]),
+      "-p",
+      evidence.commitId,
+      "-m",
+      "a commit on top of the task commit"
+    ]);
+    const { record } = JSON.parse(recorded);
+    for (const [label, rewritten] of [
+      ["a recorded commit whose parent is not the base", { ...record, commitId: child }],
+      ["a recorded commit on another base", { ...record, commitId: child, baseCommit: evidence.commitId }]
+    ]) {
+      await writeFile(commitRecord, sealedText(rewritten));
+      fixture.git(["update-ref", ref, child]);
+      refusedAs(fixture.launch(resumeArguments(fixture, plan.runId)), "VES_TASK_FAILED", {
+        reason: "VES_TASK_COMMIT_DRIFT"
+      });
+      stillSuspended(label);
+      await writeFile(commitRecord, recorded);
+      fixture.git(["update-ref", ref, evidence.commitId]);
     }
 
     const resumed = fixture.launch(resumeArguments(fixture, plan.runId));
