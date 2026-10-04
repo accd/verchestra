@@ -17,8 +17,10 @@ Verchestra never merges: the result is a branch you inspect and merge yourself.
   Linux has a qualified credential store (Secret Service) and the mediated
   profile, but its full journey is not yet qualified; without a running
   Secret Service session a `task` command reports `VES_TASK_NOT_CONFIGURED`
-  (requirement `credential-store`). On Windows every `task` command reports
-  `VES_TASK_NOT_CONFIGURED` (requirement `platform`) before any effect.
+  (requirement `credential-store`). On Windows the journey runs on the
+  hosted Windows runner with deterministic stand-ins (the bridge uses a
+  named pipe there); no run with a real Claude Code or Codex on Windows has
+  been recorded yet. See [Windows prerequisites](#windows-prerequisites).
 - **`git`** on `PATH`, and a Git repository whose root you work from. `vestra
   task` runs git with a scrubbed environment: your shell's `GIT_DIR`,
   `GIT_CONFIG_*`, `GIT_EXEC_PATH`, and other `GIT_*` variables are not passed
@@ -350,9 +352,9 @@ No node's answer counts as verification.
 > been recorded yet. They are not in a published release yet: until a release
 > that includes them is published, run these commands from a source checkout
 > (`node <checkout>/apps/vestra-cli/bin/vestra.mjs` in place of
-> `npx verchestra`). On Windows the task path, coordinated runs included, is
-> still refused (requirement `platform`); the Windows bridge transport it
-> needs is pending qualification on a Windows runner.
+> `npx verchestra`). On Windows the task path, coordinated runs included,
+> runs with stand-ins on the hosted Windows runner; see
+> [Windows prerequisites](#windows-prerequisites).
 
 ### Three modes
 
@@ -569,10 +571,31 @@ the built-in task policy. It can only narrow authority; a `permit` is refused.
 The policy view digest is part of what you approve: changing this file after
 approval makes the approval stale, and the run is refused until you plan again.
 
+## Windows prerequisites
+
+On Windows the bridge between Claude Code and Verchestra is a named pipe that
+only your user can open, owned by a fixed PowerShell 7 helper. Before a run
+takes its first step, `vestra task` checks each prerequisite and, if one is
+missing, stops with `VES_TASK_NOT_CONFIGURED` and names it:
+
+| Requirement | What to do |
+| --- | --- |
+| `powershell-7` | Install PowerShell 7 at its default location, `C:\Program Files\PowerShell\7\pwsh.exe`. Verchestra never looks it up on `PATH`. |
+| `powershell-logging-off` | Turn off PowerShell 7 script-block logging and transcription for your account; they would record the helper's traffic. |
+| `owner-only-acl` | Verchestra could not prove that its per-run directory is readable by your user alone. Run from a local, NTFS-formatted profile. |
+| `claude-managed-policy` | A Claude Code managed policy is present (`C:\Program Files\ClaudeCode\`, or `HKLM` or `HKCU` `SOFTWARE\Policies\ClaudeCode`). The governed task path does not run under a managed policy. |
+| `state-path-length` | Your Verchestra state directory (`%LOCALAPPDATA%\Verchestra\state`) is too deep for the worktree paths Git accepts on Windows. With the default location this happens only for user names longer than about 50 characters. There is no setting to move the state directory yet, so this stops the run. |
+
+Claude Code and Codex must be their native `claude.exe` and `codex.exe`
+builds on `PATH`; the `.cmd` shims an npm install creates are refused as not
+configured. Inside its own worktrees Verchestra runs Git with
+`core.longpaths=true`; your own Git configuration is not changed.
+
 ## Limits of this qualification build
 
 - **macOS end to end.** Linux is partially qualified (credential store and
-  mediated profile). Windows is refused as a platform before any effect.
+  mediated profile). Windows runs the journey with stand-ins on the hosted
+  runner; a real-provider run on Windows is still to be recorded.
 - **One implementer and one verifier.** Claude Code implements through the
   mediated MCP bridge; Codex verifies. They must differ, and they cannot be
   swapped. A coordinated request runs several Claude Code and Codex nodes in
