@@ -13,14 +13,17 @@ Verchestra never merges: the result is a branch you inspect and merge yourself.
 
 ## What you need
 
-- **macOS.** The full `task` journey is qualified end to end only there.
-  Linux has a qualified credential store (Secret Service) and the mediated
-  profile, but its full journey is not yet qualified; without a running
-  Secret Service session a `task` command reports `VES_TASK_NOT_CONFIGURED`
-  (requirement `credential-store`). On Windows the journey runs on the
-  hosted Windows runner with deterministic stand-ins (the bridge uses a
-  named pipe there); no run with a real Claude Code or Codex on Windows has
-  been recorded yet. See [Windows prerequisites](#windows-prerequisites).
+- **macOS.** The full single-session `task` journey is qualified end to end
+  only there. Linux has a qualified credential store (Secret Service) and the
+  mediated profile, but its single-session journey is not yet qualified;
+  without a running Secret Service session a `task` command reports
+  `VES_TASK_NOT_CONFIGURED` (requirement `credential-store`). On Windows one
+  single-session journey, from plan to accepted review, runs on the hosted
+  Windows runner with deterministic stand-ins (the bridge uses a named pipe
+  there); no run with a real Claude Code or Codex on Windows has been
+  recorded yet. See [Windows prerequisites](#windows-prerequisites). The
+  [coordinated](#coordinated-runs-agent-graph-and-swarm) journeys run with
+  stand-ins on all three platforms.
 - **`git`** on `PATH`, and a Git repository whose root you work from. `vestra
   task` runs git with a scrubbed environment: your shell's `GIT_DIR`,
   `GIT_CONFIG_*`, `GIT_EXEC_PATH`, and other `GIT_*` variables are not passed
@@ -269,8 +272,18 @@ instead; it never happens by accident.
 npx verchestra task start --run-id <runId>
 ```
 
-`start` proves the credential of each provider's mode, both executables, and
-the gate allowlist before it changes anything. It then:
+`start` first checks that the Git worktrees the run needs fit the path length
+Git accepts on this platform: the run's own worktree and its verification
+checkouts, measured on the real path of your Workspace state directory. A
+state directory too deep for them stops `start`, and `resume`, with
+`VES_TASK_NOT_CONFIGURED` (requirement `state-path-length`) before the run is
+read or changed. The check runs on every platform; Git's limit for a worktree
+directory is 215 bytes on Windows, 979 on macOS, and 4051 on Linux, so in
+practice only Windows reaches it (see
+[Windows prerequisites](#windows-prerequisites)).
+
+`start` then proves the credential of each provider's mode, both executables,
+and the gate allowlist before it changes anything. It then:
 
 1. creates an isolated Git worktree at `sourceRevision`;
 2. runs Claude Code with no built-in tools; every read and write of that
@@ -348,12 +361,14 @@ run, Codex still verifies the commit independently, and you still review it.
 No node's answer counts as verification.
 
 > **Status:** coordinated runs are qualified with deterministic stand-ins for
-> Claude Code and Codex on macOS only; no run with a real subscription has
-> been recorded yet. They are not in a published release yet: until a release
-> that includes them is published, run these commands from a source checkout
+> Claude Code, Codex, and each platform's credential store on macOS, Linux,
+> and Windows: on each platform's hosted runner every mode runs from a plan to
+> `HUMAN_REVIEW`, and cancel, suspension, resume, and a killed run are
+> exercised. No run with a real subscription has been recorded yet on any
+> platform. They are not in a published release yet: until a release that
+> includes them is published, run these commands from a source checkout
 > (`node <checkout>/apps/vestra-cli/bin/vestra.mjs` in place of
-> `npx verchestra`). On Windows the task path, coordinated runs included,
-> runs with stand-ins on the hosted Windows runner; see
+> `npx verchestra`). On Windows a run also needs the
 > [Windows prerequisites](#windows-prerequisites).
 
 ### Three modes
@@ -593,9 +608,12 @@ configured. Inside its own worktrees Verchestra runs Git with
 
 ## Limits of this qualification build
 
-- **macOS end to end.** Linux is partially qualified (credential store and
-  mediated profile). Windows runs the journey with stand-ins on the hosted
-  runner; a real-provider run on Windows is still to be recorded.
+- **macOS end to end.** The single-session journeys run end to end with
+  stand-ins on macOS, and one of them, from plan to accepted review over the
+  named pipe, on the hosted Windows runner; on Linux the single-session path
+  is qualified in parts only (credential store and mediated profile). The
+  coordinated journeys run with stand-ins on macOS, Linux, and Windows. A
+  real-provider run on Windows or Linux is still to be recorded.
 - **One implementer and one verifier.** Claude Code implements through the
   mediated MCP bridge; Codex verifies. They must differ, and they cannot be
   swapped. A coordinated request runs several Claude Code and Codex nodes in
@@ -674,7 +692,13 @@ configured. Inside its own worktrees Verchestra runs Git with
   directory under `tasks` or `verification`, or a directory inside it, is a
   link, wherever the link leads: nothing is read, written, or deleted through
   it. A link in the place of a single state file is refused as unreadable
-  state (`VES_TASK_STATE_INVALID`) and is never replaced.
+  state (`VES_TASK_STATE_INVALID`) and is never replaced. A verification
+  checks the task commit out below `verification/<id>/r` (the review
+  checkout) and `verification/<id>/m` (the mutation checkouts), where `<id>` is
+  the first 16 hex digits of the SHA-256 digest of the run ID, and removes
+  them when it ends. Earlier builds used `verification/<runId>/review` and
+  `verification/<runId>/mutations`; the shorter paths keep the checkouts
+  within Git's path limit on Windows, and they apply on every platform.
 - **Run state is sealed.** Every record in a run's directory carries a digest
   of its content, and a command that finds an edited one stops with
   `VES_TASK_STATE_INVALID`. From this build on that includes the five small

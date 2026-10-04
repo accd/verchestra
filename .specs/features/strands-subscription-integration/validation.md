@@ -2497,3 +2497,31 @@ fleet run, until the owner moves the pin.
 `tests/fault-injection/task-coordinated-crash-faults.test.mjs` `:34` → `:35`;
 `spikes/codex-driver/test/codex-driver-structured.test.mjs` `:145` (the floor
 case, cited as `:147-151`) → `:153`, its lines above `:139` unchanged.
+
+#### Item 2 — documentation (findings 13 and 17)
+
+Commit `docs(quick-start): state where the coordinated journeys run and the v1 path-length changes (T9 R3)`:
+
+- **The overclaim.** `docs/quick-start.md:355-356` said the task path,
+  coordinated runs included, runs with stand-ins on the hosted Windows runner,
+  while no coordinated journey ran there. The status note (now `:363-372`)
+  says what runs: each mode from a plan to `HUMAN_REVIEW`, and cancel,
+  suspension, resume, and a killed run, with stand-ins for both providers and
+  each platform's credential store, on macOS, Linux, and Windows (item 1).
+  "What you need" (`:16-26`) and the first limit (`:611-616`) separate the
+  single-session journeys (end to end on macOS; one journey, plan to accepted
+  review over the named pipe, on Windows; Linux in parts) from the
+  coordinated ones (all three). `README.md:279-283` said "macOS only" and now
+  says the same as the quick start.
+- **AD-080 item 5, for every run, v1 included.** `start` (`:275-283`) now
+  says that `start` and `resume` first measure the run's worktree and both
+  verification checkout roots against Git's limit on the platform (215, 979,
+  and 4051 bytes) and stop with `state-path-length` before the run is read
+  or changed, on every platform; the Windows prerequisites table keeps its
+  row. The state bullet (`:695-701`) gives the verification layout,
+  `verification/<16 hex digits of the run ID's SHA-256>/r` and `/m`, and
+  the one it replaces, `verification/<runId>/review` and `/mutations`, on
+  every platform. The owner's approval of AD-080 item 5 (finding 13's fix) is
+  still the owner's; this change only documents it.
+- Not changed: `docs/qualification/coordinated-run-pilots.md`, a record bound
+  to `c3223c6` (see item 1).

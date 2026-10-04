@@ -276,12 +276,11 @@ budgets bound all nodes together.
 One example request per mode is in [docs/examples/](docs/examples/). The
 statement's exact format, the limits, and suspension and resume are in
 [docs/quick-start.md](docs/quick-start.md#coordinated-runs-agent-graph-and-swarm).
-Coordinated runs are qualified with deterministic stand-ins on macOS only, no
-run with a real subscription has been recorded, and no published release
-includes them yet. On Windows the task path runs with stand-ins on the hosted
-runner; its prerequisites (PowerShell 7, native `claude.exe` and `codex.exe`,
-and a state directory short enough for Git) are in
-[docs/quick-start.md](docs/quick-start.md#windows-prerequisites).
+Coordinated runs are qualified with deterministic stand-ins on macOS, Linux,
+and Windows, no run with a real subscription has been recorded, and no
+published release includes them yet. The Windows prerequisites (PowerShell
+7, native `claude.exe` and `codex.exe`, and a state directory short enough for
+Git) are in [docs/quick-start.md](docs/quick-start.md#windows-prerequisites).
 
 ### Managed state, recovery, and cleanup
 
