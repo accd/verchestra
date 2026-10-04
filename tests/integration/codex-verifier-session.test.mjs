@@ -221,3 +221,69 @@ test(
     await assert.rejects(stat(session.sessionRoot), { code: "ENOENT" });
   }
 );
+
+// invariant: D3b for the verifier. The verifier of a coordinated (v2) run is a
+// subscription-only session: it proves its account and reads its rate limits
+// before its turn, and credits on the account or a usage limit, before the
+// turn or during it, raise a suspension record instead of a failure. A v1
+// verifier on a subscription keeps the T04 conversation (SSI-83).
+function suspendedWith(expected) {
+  return (error) => {
+    assert.equal(error.code, "VES_EXECUTOR_SUSPENDED", String(error.stack));
+    const { at, ...record } = error.suspension;
+    assert.match(at, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u);
+    assert.deepEqual(record, expected);
+    return true;
+  };
+}
+
+test("the verifier of a coordinated run proves its account before its turn and returns its verdict", async (t) => {
+  if (WIN32_HOST) return verifierRefusedOnWin32(t);
+  const session = await verifierSession({ schemaVersion: 2, subscription: true });
+  assert.match(await session.run(), /VERCHESTRA-VERDICT-BEGIN/u);
+  assert.deepEqual(
+    (await session.turns()).map((entry) => entry.accountChecked),
+    [true]
+  );
+});
+
+test("a v1 verifier on a subscription reads no account and is not stopped by credits", async (t) => {
+  if (WIN32_HOST) return verifierRefusedOnWin32(t);
+  const session = await verifierSession({ schemaVersion: 1, subscription: true, flags: ["codex-credits"] });
+  assert.match(await session.run(), /VERCHESTRA-VERDICT-BEGIN/u);
+  assert.deepEqual(
+    (await session.turns()).map((entry) => entry.accountChecked),
+    [false]
+  );
+});
+
+test("credits on the account suspend a coordinated run's verifier before its turn", async (t) => {
+  if (WIN32_HOST) return verifierRefusedOnWin32(t);
+  const session = await verifierSession({ schemaVersion: 2, subscription: true, flags: ["codex-credits"] });
+  await assert.rejects(session.run(), suspendedWith({ reason: "VES_CODEX_CREDITS_PRESENT", provider: "codex" }));
+  assert.deepEqual(await session.turns(), [], "Codex opened a turn");
+  await assert.rejects(stat(session.sessionRoot), { code: "ENOENT" });
+});
+
+test("an exhausted allowance suspends a coordinated run's verifier, before its turn or during it", async (t) => {
+  if (WIN32_HOST) return verifierRefusedOnWin32(t);
+  const before = await verifierSession({ schemaVersion: 2, subscription: true, flags: ["codex-quota"] });
+  // why: the fake's five-hour window is used up and resets at 1_790_000_000 s.
+  await assert.rejects(
+    before.run(),
+    suspendedWith({
+      reason: "VES_DRIVER_QUOTA_EXHAUSTED",
+      provider: "codex",
+      scope: "ordinary_usage_disallowed",
+      resetsAt: "2026-09-21T14:13:20.000Z"
+    })
+  );
+  assert.deepEqual(await before.turns(), [], "Codex opened a turn");
+  const during = await verifierSession({ schemaVersion: 2, subscription: true, scenario: "usage-limit" });
+  await assert.rejects(
+    during.run(),
+    suspendedWith({ reason: "VES_DRIVER_QUOTA_EXHAUSTED", provider: "codex", scope: "usage_limit_exceeded" })
+  );
+  assert.equal((await during.turns()).length, 1);
+  await assert.rejects(stat(during.sessionRoot), { code: "ENOENT" });
+});

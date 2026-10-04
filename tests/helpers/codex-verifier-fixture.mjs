@@ -66,7 +66,11 @@ export function verifierFixtures(after) {
     await Promise.all(roots.map((root) => rm(root, { recursive: true, force: true })));
   });
 
-  return async function verifierSession({ scenario, meter, signal } = {}) {
+  // why: `schemaVersion` names the request the verifier belongs to; with
+  // `subscription` it authenticates from a Workspace identity directory whose
+  // fixture login stands in for the owner's one-time `codex login`, in place of
+  // an API key; each of `flags` is left for the fake to read.
+  return async function verifierSession({ scenario, meter, signal, schemaVersion, subscription, flags = [] } = {}) {
     const root = await realpath(await mkdtemp(join(tmpdir(), "vestra-codex-verifier-")));
     roots.push(root);
     const review = join(root, "review");
@@ -74,6 +78,12 @@ export function verifierFixtures(after) {
     await mkdir(join(review, "src"), { recursive: true });
     await mkdir(join(review, "scripts"));
     await mkdir(log);
+    for (const flag of flags) await writeFile(join(log, flag), "");
+    const identity = join(root, "codex-identity");
+    if (subscription === true) {
+      await mkdir(identity);
+      await writeFile(join(identity, "auth.json"), JSON.stringify({ fixtureLogin: "chatgpt" }));
+    }
     await writeFile(join(review, "src", "value.txt"), "new\n");
     await writeFile(join(review, "scripts", "check-value.mjs"), 'if (value !== "new\\n") process.exit(1);\n');
     const wrapper = join(root, "codex");
@@ -89,9 +99,12 @@ export function verifierFixtures(after) {
       workspaceId: "workspace_4b1c2d3e-5f60-4a7b-8c9d-0e1f2a3b4c5d",
       runId: "run_018f0000-0000-7000-8000-000000001502",
       manifestId: `sha256:${"a".repeat(64)}`,
-      request: { verifier: { driverId: "codex", model: VERIFIER_MODEL } },
+      request: {
+        ...(schemaVersion === undefined ? {} : { schemaVersion }),
+        verifier: { driverId: "codex", model: VERIFIER_MODEL }
+      },
       executable: wrapper,
-      credential: "sk-openai-brokered-fixture",
+      ...(subscription === true ? { identityDirectory: identity } : { credential: "sk-openai-brokered-fixture" }),
       env: { PATH: process.env.PATH ?? "", TMPDIR: root },
       sessionRoot,
       cwd: review,

@@ -363,3 +363,54 @@ test("budget continuity across a suspension: tokens accumulate and suspended tim
   });
   assert.equal(persisted.state.attempts, 1, "the suspended attempt and its resumption are one attempt");
 });
+
+// invariant: D3b and SSI-60 for the verifier. A suspension the verifier's
+// provider raised ends the run SUSPENDED in VERIFYING: no workflow command
+// after verification started, the task commit kept, and the writer
+// coordination released, so a resume verifies again. A verifier error that is
+// no suspension, or a suspension after the command was cancelled, ends the run
+// as before.
+function verifierRaising(error) {
+  const run = harness();
+  run.ports.verification.verify = async () => {
+    run.calls.verified += 1;
+    throw error;
+  };
+  return run;
+}
+
+test("a suspension raised by the verifier ends the run SUSPENDED in VERIFYING, released", async () => {
+  const suspension = Object.freeze({
+    reason: "VES_CODEX_CREDITS_PRESENT",
+    provider: "codex",
+    at: "2026-10-04T12:00:00.000Z"
+  });
+  const { calls, ports, state } = verifierRaising(
+    Object.assign(new Error("suspended"), { code: "VES_EXECUTOR_SUSPENDED", suspension })
+  );
+  const outcome = await new TaskRunCoordinator(ports).run(input());
+  assert.deepEqual(outcome, { status: "SUSPENDED", suspension });
+  assert.equal(Object.isFrozen(outcome), true);
+  assert.equal(state().state, "VERIFYING");
+  assert.deepEqual(calls.commands, ["START_IMPLEMENTATION", "START_VERIFICATION"]);
+  assert.deepEqual([calls.committed, calls.verified, calls.released], [1, 1, 1]);
+});
+
+test("a verifier error that is no suspension, or a suspension after a cancel, does not suspend the run", async () => {
+  const failing = verifierRaising(Object.assign(new Error("failed"), { code: "VES_TASK_VERIFIER_FAILED" }));
+  assert.deepEqual(await new TaskRunCoordinator(failing.ports).run(input()), {
+    status: "FAILED",
+    reason: "VES_TASK_VERIFIER_FAILED"
+  });
+  assert.equal(failing.state().state, "FAILED");
+  const controller = new AbortController();
+  const suspension = { reason: "VES_DRIVER_QUOTA_EXHAUSTED", provider: "codex", at: "2026-10-04T12:00:00.000Z" };
+  const cancelled = harness();
+  cancelled.ports.verification.verify = async () => {
+    controller.abort();
+    throw Object.assign(new Error("suspended"), { code: "VES_EXECUTOR_SUSPENDED", suspension });
+  };
+  const outcome = await new TaskRunCoordinator(cancelled.ports).run(input({ signal: controller.signal }));
+  assert.deepEqual(outcome, { status: "ABORTED", reason: "VES_EXECUTOR_CANCELLED" });
+  assert.equal(cancelled.state().state, "ABORTED");
+});

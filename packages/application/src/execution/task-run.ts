@@ -113,9 +113,10 @@ export type TaskRunOutcome =
   | { readonly status: "FAILED"; readonly reason: string }
   | { readonly status: "ABORTED"; readonly reason: string }
   | { readonly status: "APPROVAL_INVALIDATED" }
-  // invariant: SSI-60 and SSI-64. A suspended run applied no workflow command
-  // and released nothing: it stays IMPLEMENTING, its worktree kept, until
-  // `vestra task resume` or `vestra task cancel`.
+  // invariant: SSI-60 and SSI-64. A suspended run applied no workflow command:
+  // it stays IMPLEMENTING, its worktree kept, or VERIFYING with its task commit
+  // when the verifier's provider raised the signal, until `vestra task resume`
+  // or `vestra task cancel`.
   | { readonly status: "SUSPENDED"; readonly suspension: ExecutionSuspension };
 
 const BUDGET_FAILURE = "VES_EXECUTOR_BUDGET_EXCEEDED";
@@ -243,7 +244,19 @@ export class TaskRunCoordinator {
     const commit = await this.#ports.gates.committed();
     if (commit === undefined)
       throw new TaskRunError("VES_TASK_RUN_STATE_INVALID", "a verifying run has no recorded task commit");
-    const verification = await this.#ports.verification.verify(commit, snapshot, input.signal);
+    let verification: TaskRunVerification;
+    try {
+      verification = await this.#ports.verification.verify(commit, snapshot, input.signal);
+    } catch (error) {
+      // invariant: D3b and SSI-60 for the verifier. A usage limit or credits
+      // its provider reported suspend the run as a node's do: no workflow
+      // command, the run stays VERIFYING with its task commit, and the writer
+      // coordination is released, so `vestra task resume` verifies again.
+      const suspension = suspensionOf(error);
+      if (suspension === undefined || input.signal.aborted) throw error;
+      await this.#ports.release();
+      return Object.freeze({ status: "SUSPENDED", suspension });
+    }
     if (verification.verdict === "PASS" && verification.nextState === "HUMAN_REVIEW")
       return Object.freeze({ status: "HUMAN_REVIEW", commit, reportRef: verification.reportRef });
     return Object.freeze({

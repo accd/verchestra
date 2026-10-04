@@ -132,8 +132,16 @@ const RATE_LIMITS = Object.freeze({
 });
 
 // why: the `codex-credits` flag makes the account report a credit balance, as
-// a Plus account with purchased credits does (decision D3b).
+// a Plus account with purchased credits does (decision D3b); the `codex-quota`
+// flag makes it report ordinary usage refused, with its five-hour window used
+// up, as an account whose allowance is exhausted does.
 function rateLimits() {
+  if (fixtureFlag("codex-quota"))
+    return {
+      ...RATE_LIMITS,
+      ordinaryUsageAllowed: false,
+      rateLimits: { ...RATE_LIMITS.rateLimits, primary: { ...RATE_LIMITS.rateLimits.primary, usedPercent: 100 } }
+    };
   if (!fixtureFlag("codex-credits")) return RATE_LIMITS;
   const credits = { hasCredits: true, unlimited: false, balance: "25.00" };
   return { ...RATE_LIMITS, rateLimits: { ...RATE_LIMITS.rateLimits, credits } };
@@ -234,10 +242,28 @@ lines.on("line", (line) => {
     // why: SSI-19. A node's result is never part of what the verifier judges;
     // the fake reports whether any node's answer reached its prompt.
     const nodeResultInPrompt = /fake (?:claude|codex node)/u.test(prompt);
-    turnLog({ pid: process.pid, scenario, nodeResultInPrompt, ...(scenario === "fork" ? forked() : {}) });
+    const accountChecked = accountReads.has("account/read") && accountReads.has("account/rateLimits/read");
+    turnLog({
+      pid: process.pid,
+      scenario,
+      nodeResultInPrompt,
+      accountChecked,
+      ...(scenario === "fork" ? forked() : {})
+    });
     // why: `hang` and `fork` leave the turn open until the process is stopped,
     // the way a verifier that never answers would.
     if (scenario === "hang" || scenario === "fork") return;
+    // why: `usage-limit` is a verifier whose allowance runs out mid-turn: the
+    // App Server reports `usageLimitExceeded` and fails the turn.
+    if (scenario === "usage-limit") {
+      emit({ method: "error", params: { error: { message: "limit", codexErrorInfo: "usageLimitExceeded" } } });
+      emit({
+        method: "turn/completed",
+        params: { turn: { id: "private-turn-id", status: "failed" }, usage: { inputTokens: 5, outputTokens: 0 } }
+      });
+      process.stdout.write("", () => process.exit(0));
+      return;
+    }
     emit({ method: "item/agentMessage/delta", params: { delta: verdict(prompt) } });
     emit({
       method: "turn/completed",
