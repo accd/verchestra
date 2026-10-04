@@ -3019,7 +3019,8 @@ note. -->
      limit before or during its turn, suspend the run with a record of closed
      values: no workflow command is applied, the run stays `VERIFYING` with
      its task commit, the writer coordination is released, and `vestra task
-     resume` verifies again. Credits are reported `not configured`
+     resume` verifies again once the approval is valid and the task commit
+     and its branch are as the run left them. Credits are reported `not configured`
      (`codex-credits`). A v1 verifier keeps the T04 conversation even on a
      subscription, because SSI-83 keeps every v1 run as it was and the spec's
      floor assumption forbids raising v1's floor; extending the check to v1
@@ -3075,9 +3076,10 @@ note. -->
   Codex 0.159.3 or later. A v1 run on a subscription can still spend Codex
   credits at verification. A Windows run on the API-key profile under a
   managed policy is `not configured`. A run suspended at its verifier resumes
-  without the approval and drift checks a run suspended in a node gets, since
-  the verifier holds no writer authority and its worktree is already
-  committed. A run interrupted, not suspended, after its grant expired still
+  on the checks a run suspended in a node gets: the preflight, the statement,
+  and the plan type, then the approval against the policy in force, then,
+  its worktree being committed, the task commit on its base under its
+  anchored branch (`VES_TASK_COMMIT_DRIFT` otherwise). A run interrupted, not suspended, after its grant expired still
   fails at its first effect (`VES_EXECUTOR_APPROVAL_INVALID`).
 
 ## Handoff

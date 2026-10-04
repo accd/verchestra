@@ -2763,7 +2763,7 @@ an owner decision (proposed amendment below).
 | D3b, SSI-56 | `:262` credits suspend the verifier before its turn, record exactly `{reason: VES_CODEX_CREDITS_PRESENT, provider: codex, at}`, no turn, session root removed |
 | SSI-58, SSI-59 for the verifier | `:270` `ordinaryUsageAllowed: false` and a mid-turn `usageLimitExceeded` each suspend with scope and reset as reported |
 | SSI-60 for the verifier | `tests/unit/task-run-coordinator.test.mjs:382` SUSPENDED in VERIFYING, commands only `START_IMPLEMENTATION`, `START_VERIFICATION`, released once; `:399` a non-suspension error fails and a cancel aborts |
-| Journeys (every platform) | `tests/e2e/task-codex-account-e2e.test.mjs:70` agent run, `codex-credits`: `not configured` (`codex-credits`), VERIFYING, commit kept, no verifier turn, record holds no e-mail, balance, or path; resumed once clear, reaches review with the account checked; `:104` agent run, `codex-quota`: SUSPENDED in VERIFYING, `next` is resume |
+| Journeys (every platform) | `tests/e2e/task-codex-account-e2e.test.mjs:77` agent run, `codex-credits`: `not configured` (`codex-credits`), VERIFYING, commit kept, no verifier turn, record holds no e-mail, balance, or path; resumed once clear, reaches review with the account checked; `:110` agent run, `codex-quota`: SUSPENDED in VERIFYING, `next` is resume |
 
 Mutants (in place, killer suites through `scripts/test-scope.mjs`, then
 `git restore`, `git status --porcelain` unchanged every time): M1a verifier
@@ -2790,7 +2790,7 @@ in `task-codex.ts:408`).
 
 | Requirement | Evidence |
 | --- | --- |
-| SSI-52 (plan type compared) | `tests/unit/task-billing.test.mjs:260` the reported type must equal the stated one, `pro` and `unknown` refused, both values told; `tests/e2e/task-codex-account-e2e.test.mjs:128` a statement naming `pro` against a `plus` login is `not configured` at `start` with no transition, grant, worktree, thread, or turn, then runs once confirmed |
+| SSI-52 (plan type compared) | `tests/unit/task-billing.test.mjs:260` the reported type must equal the stated one, `pro` and `unknown` refused, both values told; `tests/e2e/task-codex-account-e2e.test.mjs:192` a statement naming `pro` against a `plus` login is `not configured` at `start` with no transition, grant, worktree, thread, or turn, then runs once confirmed |
 | SSI-49, SSI-53 (closed value, nothing else kept) | `tests/contract/codex-driver-structured.test.mjs:254` free text, wrong case, a number, and an absent type all report `unknown`; `tests/security/codex-account-security.test.mjs:36` the report is exactly `planType` and no report or event keeps the e-mail address or account identifier; `tests/unit/task-billing.test.mjs` rows "a plan type Codex does not name", "a handle in the shape of a plan type", "the catch-all plan type unknown"; `:250` every vocabulary value is accepted |
 | The account-only session | `tests/contract/codex-driver-structured.test.mjs:242` methods exactly `initialize`, `initialized`, `account/read`, completed, no session events; `:282` a non-ChatGPT account is refused and reports nothing; `:181` refused below 0.159.3 before spawn; `:200` asking it for a turn is refused before spawn; `tests/integration/codex-verifier-session.test.mjs:319` over the task fake it opens no thread or turn; `:328` an API-key login is `codex-account`, a 0.159.2 build `codex-version` |
 
@@ -2930,19 +2930,50 @@ provider was called. The five journeys added here ran on macOS only; their
 Linux and Windows legs, and the full, build, and security gates, are the
 coordinator's matrix.
 
+#### Follow-up: a run suspended at its verifier, and the documentation
+
+`0a81297`: a run in VERIFYING whose last outcome is a suspension
+(`apps/vestra-cli/src/task/task-run.ts:468`) resumes on the checks a node
+suspension gets. `prepare` has already run the preflight, the statement, and
+the plan type; the resume then requires the approval valid against the policy
+in force and the task commit as the run left it
+(`apps/vestra-cli/src/task/task-resumption.ts:134`, `:155`): the recorded
+commit, whose only parent is the plan's source revision, under the task
+branch that anchors it (`task-run.ts:455`), else `VES_TASK_FAILED`
+(`VES_TASK_COMMIT_DRIFT`). Each refusal leaves the run in VERIFYING with its
+suspension.
+
+| Requirement | Evidence |
+| --- | --- |
+| SSI-33 at the verifier (interface) | `tests/unit/task-resumption.test.mjs:118` a valid approval and a standing commit resume, no grant renewal armed, no worktree asked; `:125` an expired, stale, or revoked approval refused before the commit is read; `:131` a moved commit or branch refused as drift |
+| SSI-33 at the verifier (journey) | `tests/e2e/task-codex-account-e2e.test.mjs:140` a run suspended at its verifier is refused without its statement (`extra-usage-confirmation`), eight days later on an expired approval (`VES_APPROVAL_EXPIRED`), with its branch moved to the base and with its branch deleted (`VES_TASK_COMMIT_DRIFT`), each time still VERIFYING and SUSPENDED with no verifier turn, then resumed to review with the branch on the commit |
+
+Mutants: M11a the check removed where the composition asks it, killed
+(journeys 1 of 4); M11b the check removed from the resume interface, killed
+(unit 5 of 21); M11c no approval check at the verifier, killed (5 of 21);
+M11d the anchored branch not compared, killed (journeys 1 of 4); M11e the
+suspension at the verifier never recognised, killed (1 of 4).
+
+`ac043bd`: `docs/quick-start.md` lists what `start` and `resume` of a
+coordinated run may refuse with the owner's action for each
+(`coordinated-run-subscription`, `extra-usage-confirmation`, `codex-login`,
+`codex-version`, `codex-account`, `codex-credits`), states the extra Codex
+process that reads only the account, the closed `planType` vocabulary and its
+comparison, the verifier's credit check and suspension, and
+`VES_TASK_COMMIT_DRIFT`; `docs/qualification/coordinated-run-pilots.md` no
+longer says the verifier does not check credits. `pnpm site:check` PASS (135
+pages, internal links and metadata valid); `pnpm gate:quick` PASS (unit
+2977, agent-readiness 357, census 13); `pnpm agent:check` PASS. Journeys after
+the follow-up: 64/64 over the Codex account, subscription, grant renewal,
+task CLI, and coordinated files; fault `task-coordinated-crash-faults` 1/1;
+integration 49/49 over `task-coordinated-plan`, `task-run-prerequisites`, and
+`task-commit-recovery`.
+
 #### Not done here, and residual risks
 
-- Documentation, outside R1's files: `docs/quick-start.md` should name the
-  `codex-account` and `codex-version` requirements, the verifier's credit
-  check, the plan-type comparison, and the managed-policy refusal for both
-  profiles; `docs/qualification/coordinated-run-pilots.md` still says the
-  verifier does not check credits.
 - The node adapters do not compare the plan type themselves; the comparison
   is at `start` and `resume` (SSI-52), so a plan changed mid-run is seen at
   the next resume.
-- A run suspended at its verifier resumes without the approval check of a
-  run suspended in a node (the spec's edge case names suspended runs
-  generally).
 - By reading, a resume at VERIFYING claims the writer lease and, reaching
   review, does not release it; it lapses with the lease (pre-existing,
   unchanged here).
