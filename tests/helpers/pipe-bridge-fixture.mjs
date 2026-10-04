@@ -1,4 +1,4 @@
-import { EventEmitter } from "node:events";
+import { EventEmitter, once } from "node:events";
 import { readFileSync, readdirSync } from "node:fs";
 import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { createConnection } from "node:net";
@@ -7,6 +7,40 @@ import { join } from "node:path";
 import { PassThrough } from "node:stream";
 
 const roots = [];
+const clients = [];
+
+// invariant: no wait on a real pipe, its helper, or its relay is unbounded. A
+// case on the real pipe has this long in all; each wait inside it has the
+// shorter bound, longer than the helper's 30-second start and the 30 seconds
+// libuv waits for a busy pipe, so a wait that never ends fails with what it
+// waited for instead of stalling the stage.
+export const PIPE_CASE = Object.freeze({ timeout: 120_000 });
+export const PIPE_WAIT_MS = 45_000;
+
+export function settlesWithin(promise, label, diagnosis = () => "", timeoutMs = PIPE_WAIT_MS) {
+  let timer;
+  const expired = new Promise((_resolve, reject) => {
+    timer = setTimeout(
+      () => reject(new Error(`${label} did not settle within ${timeoutMs} ms${diagnosis()}`)),
+      timeoutMs
+    );
+  });
+  return Promise.race([promise, expired]).finally(() => clearTimeout(timer));
+}
+
+// invariant: the relay of a case on the real pipe, each wait on it bounded and
+// named, with the relay's own refusal line as the diagnostic.
+export function boundedRelay(relay) {
+  const diagnosis = () => `; relay stderr: ${JSON.stringify(relay.stderr().slice(-512))}`;
+  const bounded = (promise, label) => settlesWithin(promise, `the relay's ${label}`, diagnosis);
+  return {
+    stderr: () => relay.stderr(),
+    initialize: () => bounded(relay.initialize(), "initialize"),
+    call: (name, args) => bounded(relay.call(name, args), `${name} call`),
+    exited: () => bounded(relay.exited, "exit"),
+    close: () => bounded(relay.close(), "close")
+  };
+}
 
 // invariant: a worktree without links, so the controller can be opened on a
 // host that cannot create them; the link cases live in mcp-bridge-fixture.mjs.
@@ -21,7 +55,10 @@ export async function plainWorktree() {
   return { root, worktree: await realpath(worktree), channels: await realpath(channels) };
 }
 
+// why: a raw client a case left open would keep the suite's process alive
+// after a bounded wait failed, so every one is destroyed here.
 export async function cleanupPlainWorktrees() {
+  for (const socket of clients.splice(0)) socket.destroy();
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true, maxRetries: 5 })));
 }
 
@@ -39,13 +76,26 @@ export const hello = (token) => frame({ type: "hello", protocol: "verchestra-bri
 // other than the relay launched for the run.
 export function rawChannelClient(endpoint) {
   const socket = createConnection(endpoint);
+  clients.push(socket);
   let data = "";
   let connected = false;
   socket.on("connect", () => (connected = true));
   socket.on("data", (chunk) => (data += chunk));
   socket.on("error", () => undefined);
   const closed = new Promise((resolve) => socket.once("close", resolve));
-  return { socket, closed, data: () => data, connected: () => connected };
+  // why: observed from the start, so a connect that comes before a case asks
+  // is not missed; a client the pipe refuses is not an unhandled rejection.
+  const connecting = once(socket, "connect");
+  connecting.catch(() => undefined);
+  const diagnosis = () => `; connected: ${connected}; ${data.length} bytes received`;
+  return {
+    socket,
+    closed,
+    connectedWithin: () => settlesWithin(connecting, "the pipe client's connect", diagnosis),
+    closedWithin: () => settlesWithin(closed, "the pipe client's close", diagnosis),
+    data: () => data,
+    connected: () => connected
+  };
 }
 
 // invariant: a DETERMINISTIC FAKE of the PowerShell 7 helper. Its status lines

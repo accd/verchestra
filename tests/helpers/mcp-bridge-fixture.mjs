@@ -79,16 +79,26 @@ export function startRelay(environment) {
     while (index >= 0) {
       const message = JSON.parse(buffer.slice(0, index));
       buffer = buffer.slice(index + 1);
-      const resolve = waiting.get(message.id);
-      if (resolve === undefined) unmatched.push(message);
+      const settle = waiting.get(message.id);
+      if (settle === undefined) unmatched.push(message);
       else {
         waiting.delete(message.id);
-        resolve(message);
+        settle.resolve(message);
       }
       index = buffer.indexOf("\n");
     }
   });
   const exited = new Promise((resolve) => child.once("close", (code) => resolve(code)));
+  // hazard: a relay that exits, for one when it is refused or its own
+  // five-second authentication wait ends, answers nothing more, so a request
+  // still waiting then is rejected with its exit code and refusal line
+  // instead of waiting for ever.
+  void exited.then((code) => {
+    for (const [id, settle] of waiting) {
+      waiting.delete(id);
+      settle.reject(new Error(`the relay exited with ${code} before answering request ${id}: ${stderr.trim()}`));
+    }
+  });
   let nextId = 0;
   return {
     child,
@@ -99,7 +109,9 @@ export function startRelay(environment) {
     request(method, params) {
       nextId += 1;
       const id = nextId;
-      const response = new Promise((resolve) => waiting.set(id, resolve));
+      const response = new Promise((resolve, reject) => waiting.set(id, { resolve, reject }));
+      // why: a caller that never awaits its request is not failed by the exit.
+      response.catch(() => undefined);
       child.stdin.write(
         `${JSON.stringify({ jsonrpc: "2.0", id, method, ...(params === undefined ? {} : { params }) })}\n`
       );
