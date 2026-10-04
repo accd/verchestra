@@ -189,6 +189,7 @@ export const installedReleaseManifest: InstalledCliManifest = Object.freeze({
       mutating: true,
       options: Object.freeze([
         Object.freeze({ name: "run-id", kind: "string" as const }),
+        Object.freeze({ name: "reconcile", kind: "string" as const }),
         Object.freeze({ name: "keychain", kind: "string" as const })
       ])
     }),

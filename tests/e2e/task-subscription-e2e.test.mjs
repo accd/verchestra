@@ -8,7 +8,7 @@
 // suspends the run in IMPLEMENTING with its worktree and completed nodes kept.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { writeFile } from "node:fs/promises";
+import { rename, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { after, test } from "node:test";
 
@@ -167,4 +167,216 @@ test("Codex credits on a node's account are not configured, and the run is suspe
     { reason: "VES_CODEX_CREDITS_PRESENT", provider: "codex", at: undefined }
   );
   assertNothingPrivate(fixture, plan.runId, [start.stdout, JSON.stringify(after)]);
+});
+
+const resumeArguments = (fixture, runId, ...extra) => [
+  "task",
+  "resume",
+  "--run-id",
+  runId,
+  ...extra,
+  ...fixture.keychainArgs,
+  "--output",
+  "json"
+];
+const HOUR = 60 * 60 * 1000;
+const unflag = (fixture, name) => unlink(join(fixture.scratch, name));
+const ledgerText = (fixture, runId) =>
+  readFileSync(join(fixture.stateRoot, "tasks", runId, "coordination", "ledger.json"), "utf8");
+
+function refusedFor(result, reason, label) {
+  assert.equal(refused(result, "VES_TASK_FAILED", label).safeDetails.reason, reason, label);
+}
+
+// why: a run suspended by the fake Claude Code's quota signal, with the flag
+// lifted again so the node it stopped can run to its end when resumed.
+async function suspendedRun(execution, quotaFlag = "claude-quota") {
+  const fixture = await coordinatedFixture(execution);
+  const plan = await approved(fixture);
+  await flag(fixture, quotaFlag);
+  const start = fixture.launch(startArguments(fixture, plan.runId));
+  assert.equal(start.json?.data?.status, "SUSPENDED", start.stderr);
+  await unflag(fixture, quotaFlag);
+  return { fixture, plan };
+}
+
+function runWorktree(fixture) {
+  const listed = fixture
+    .git(["worktree", "list", "--porcelain"])
+    .split("\n")
+    .filter((line) => line.startsWith("worktree "))
+    .map((line) => line.slice("worktree ".length));
+  assert.equal(listed.length, 2);
+  return listed[1];
+}
+
+// invariant: the spec's independent test for this story, and SSI-65, SSI-67,
+// SSI-39, SSI-68. Resume without the confirmation is `not configured` and
+// changes nothing; with it the completed planner is replayed with no session,
+// the writer the quota stopped (no effect landed) runs again and is recorded
+// so, and the run reaches review on the one ledger of the whole run.
+test(
+  "resume of a quota-suspended graph needs the confirmation, then skips the completed node and re-runs the stopped one",
+  TIMEOUT,
+  async (t) => {
+    if (!DARWIN) return t.diagnostic(PLATFORM);
+    const { fixture, plan } = await suspendedRun(EXECUTIONS.graph);
+    const billing = join(fixture.stateRoot, "task-billing.json");
+    await rename(billing, `${billing}.away`);
+    const ledgerBefore = ledgerText(fixture, plan.runId);
+    notConfigured(
+      fixture.launch(resumeArguments(fixture, plan.runId)),
+      "extra-usage-confirmation",
+      "resume without a confirmation"
+    );
+    assert.equal(status(fixture, plan.runId).state, "IMPLEMENTING");
+    assert.equal(ledgerText(fixture, plan.runId), ledgerBefore);
+    await rename(`${billing}.away`, billing);
+    const resumed = fixture.launch(resumeArguments(fixture, plan.runId));
+    assert.equal(resumed.status, 0, resumed.stderr);
+    assert.equal(resumed.json.data.state, "HUMAN_REVIEW");
+    assert.deepEqual(visits(fixture, plan.runId), [
+      "plan#1:completed",
+      "build#1:failed",
+      "build#1:completed",
+      "review#1:completed"
+    ]);
+    const rerun = ledger(fixture, plan.runId).visits[2];
+    assert.match(rerun.rerunOf, /^sha256:[a-f0-9]{64}$/u);
+    assert.equal(
+      logLines(fixture, "fake-codex-node.log").length,
+      2,
+      "the completed planner started a provider session again"
+    );
+    assert.equal(logLines(fixture, "fake-claude.log").filter((entry) => entry.argv !== undefined).length, 2);
+    const after = status(fixture, plan.runId);
+    assert.equal(after.suspension, null);
+    assert.equal(after.lastOutcome, "HUMAN_REVIEW");
+    // why: the planner's 8 tokens before the suspension, then 18 for the
+    // writer, 8 for the reviewer, and 8 for the verifier: one ledger, counted once.
+    assert.equal(after.checkpoints.budget.consumedTokens, 42);
+    assert.equal(after.checkpoints.budget.usageEvents, 4);
+    assert.equal(after.checkpoints.budget.consumedCostUsd, "not billed (subscription)");
+  }
+);
+
+// invariant: SSI-66, SSI-32, and D4. A writer stopped after its write landed
+// is uncertain: resume refuses it and changes nothing, status names it with
+// the digest of its uncertainty record and the one command that reconciles
+// it, a digest that names nothing is refused, and the typed-back digest runs
+// that one node again on the current worktree.
+test(
+  "a node suspended after its write is refused at resume until its digest is typed back, then it runs again",
+  TIMEOUT,
+  async (t) => {
+    if (!DARWIN) return t.diagnostic(PLATFORM);
+    const { fixture, plan } = await suspendedRun(EXECUTIONS.graph, "claude-quota-after-write");
+    assert.deepEqual(visits(fixture, plan.runId), ["plan#1:completed", "build#1:partial"]);
+    const ledgerBefore = ledgerText(fixture, plan.runId);
+    const refusedResume = fixture.launch(resumeArguments(fixture, plan.runId));
+    refusedFor(refusedResume, "VES_TASK_NODE_UNCERTAIN", "resume of an uncertain node");
+    assert.equal(ledgerText(fixture, plan.runId), ledgerBefore);
+    assert.equal(worktrees(fixture), 2);
+    const suspended = status(fixture, plan.runId);
+    assert.equal(suspended.state, "IMPLEMENTING");
+    assert.equal(suspended.suspension.reason, "VES_DRIVER_QUOTA_EXHAUSTED");
+    const [uncertain] = suspended.coordination.uncertain;
+    assert.deepEqual(
+      { ...uncertain, digest: undefined },
+      {
+        nodeId: "build",
+        visit: 1,
+        state: "partial",
+        receiptCount: 1,
+        digest: undefined
+      }
+    );
+    const reconcile = `vestra task resume --run-id ${plan.runId} --reconcile ${uncertain.digest}`;
+    assert.deepEqual(suspended.next, [reconcile, `vestra task cancel --run-id ${plan.runId}`]);
+    assert.ok(refusedResume.stderr.includes(reconcile), "the refusal names the command that reconciles the node");
+    refusedFor(
+      fixture.launch(resumeArguments(fixture, plan.runId, "--reconcile", `sha256:${"0".repeat(64)}`)),
+      "VES_TASK_RECONCILE_UNMATCHED",
+      "a digest that names no node"
+    );
+    const reconciled = fixture.launch(resumeArguments(fixture, plan.runId, "--reconcile", uncertain.digest));
+    assert.equal(reconciled.status, 0, reconciled.stderr);
+    assert.equal(reconciled.json.data.state, "HUMAN_REVIEW");
+    assert.deepEqual(visits(fixture, plan.runId), [
+      "plan#1:completed",
+      "build#1:partial",
+      "build#1:completed",
+      "review#1:completed"
+    ]);
+    assert.equal(ledger(fixture, plan.runId).visits[2].rerunOf, uncertain.digest);
+    assert.equal(logLines(fixture, "fake-codex-node.log").length, 2);
+  }
+);
+
+// invariant: SSI-33 and the design's resume rules, with the child's clock
+// moved ahead while the run waits. A worktree changed while suspended is
+// refused as drift and kept as it is; an approval that expired while suspended
+// is refused; after three hours, past the writer grant but within the
+// approval, the resume renews the grant against the approval it proved valid
+// and the stopped writer's effect lands.
+test(
+  "resume refuses drift and an approval that expired while suspended, and renews a writer grant that lapsed",
+  TIMEOUT,
+  async (t) => {
+    if (!DARWIN) return t.diagnostic(PLATFORM);
+    const { fixture, plan } = await suspendedRun(EXECUTIONS.agent);
+    const grantBefore = status(fixture, plan.runId).evidence.grantId;
+    const value = join(runWorktree(fixture), "src", "value.txt");
+    await writeFile(value, "drifted\n");
+    refusedFor(fixture.launch(resumeArguments(fixture, plan.runId)), "VES_EXECUTOR_WORKTREE_DRIFT", "drift");
+    assert.equal(readFileSync(value, "utf8"), "drifted\n", "the drifted worktree was not kept as it was");
+    assert.equal(status(fixture, plan.runId).state, "IMPLEMENTING");
+    await writeFile(value, "old\n");
+    refusedFor(
+      fixture.launch(resumeArguments(fixture, plan.runId), "", { clockOffsetMs: 8 * 24 * HOUR }),
+      "VES_APPROVAL_EXPIRED",
+      "an approval that expired while suspended"
+    );
+    assert.equal(status(fixture, plan.runId).state, "IMPLEMENTING");
+    const resumed = fixture.launch(resumeArguments(fixture, plan.runId), "", { clockOffsetMs: 3 * HOUR });
+    assert.equal(resumed.status, 0, resumed.stderr);
+    assert.equal(resumed.json.data.state, "HUMAN_REVIEW");
+    assert.equal(fixture.git(["show", `vestra/${plan.runId}/T1:src/value.txt`]), "new");
+    assert.notEqual(status(fixture, plan.runId).evidence.grantId, grantBefore, "the lapsed grant was not renewed");
+  }
+);
+
+test(
+  "Codex credits that are gone at resume let the suspended run continue from the node they stopped",
+  TIMEOUT,
+  async (t) => {
+    if (!DARWIN) return t.diagnostic(PLATFORM);
+    const fixture = await coordinatedFixture(EXECUTIONS.graph);
+    const plan = await approved(fixture);
+    await flag(fixture, "codex-credits");
+    notConfigured(fixture.launch(startArguments(fixture, plan.runId)), "codex-credits", "credits present");
+    notConfigured(fixture.launch(resumeArguments(fixture, plan.runId)), "codex-credits", "credits still present");
+    await unflag(fixture, "codex-credits");
+    const resumed = fixture.launch(resumeArguments(fixture, plan.runId));
+    assert.equal(resumed.status, 0, resumed.stderr);
+    assert.equal(resumed.json.data.state, "HUMAN_REVIEW");
+    assert.deepEqual(visits(fixture, plan.runId), [
+      "plan#1:failed",
+      "plan#1:failed",
+      "plan#1:completed",
+      "build#1:completed",
+      "review#1:completed"
+    ]);
+  }
+);
+
+test("cancel of a suspended run removes its worktree and ends it aborted", TIMEOUT, async (t) => {
+  if (!DARWIN) return t.diagnostic(PLATFORM);
+  const { fixture, plan } = await suspendedRun(EXECUTIONS.graph);
+  assert.equal(worktrees(fixture), 2);
+  const cancelled = fixture.launch(["task", "cancel", "--run-id", plan.runId, "--output", "json"]);
+  assert.equal(cancelled.status, 0, cancelled.stderr);
+  assert.equal(status(fixture, plan.runId).state, "ABORTED");
+  assert.equal(status(fixture, plan.runId).suspension, null);
+  assert.equal(worktrees(fixture), 1);
 });

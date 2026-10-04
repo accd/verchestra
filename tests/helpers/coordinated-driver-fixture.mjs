@@ -40,6 +40,10 @@ export const resultBytes = (value) => new TextEncoder().encode(canonicalizeJsonV
 
 const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
 
+// why: the composition root hands the driver the canonical digest of a record;
+// this is the same function over the domain's canonical JSON.
+export const canonicalRecordDigest = (record) => `sha256:${sha256(canonicalizeJsonV2(record))}`;
+
 export class MemoryPayloads {
   #entries = new Map();
 
@@ -228,7 +232,10 @@ export function coordinatedDriver(request, overrides = {}) {
     remainingDurationMs: () => 60_000,
     now: () => new Date("2026-10-03T12:00:00.000Z"),
     ...(overrides.feedback === undefined ? {} : { feedback: overrides.feedback }),
-    ...(overrides.changeDigest === undefined ? {} : { changeDigest: overrides.changeDigest })
+    ...(overrides.changeDigest === undefined ? {} : { changeDigest: overrides.changeDigest }),
+    ...(overrides.reconcile === undefined ? {} : { reconcile: overrides.reconcile }),
+    // why: `digest: null` stands for a composition that gives no digest port.
+    ...(overrides.digest === null ? {} : { digest: overrides.digest ?? canonicalRecordDigest })
   });
   return { driver, payloads, records, nodes, engine };
 }

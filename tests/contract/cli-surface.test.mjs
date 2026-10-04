@@ -174,6 +174,7 @@ test("the task slice takes no positional argument, a run ID, and the keychain wh
     ],
     "task resume": [
       ["run-id", "string"],
+      ["reconcile", "string"],
       ["keychain", "string"]
     ],
     "task cancel": [

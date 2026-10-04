@@ -8,7 +8,13 @@ import {
   type CoordinationNodeCall,
   type CoordinationNodeRunner
 } from "./coordination-engine.ts";
-import type { CoordinationLedger, CoordinationRecordPort, NodeVisit } from "./coordination-ledger.ts";
+import {
+  uncertaintyRecord,
+  unsettledVisits,
+  type CoordinationLedger,
+  type CoordinationRecordPort,
+  type NodeVisit
+} from "./coordination-ledger.ts";
 import type { CoordinationMode, CoordinationNode, CoordinationPlan } from "./coordination-plan.ts";
 import { executionPayloadDigest, type ExecutionPayloadPort } from "./execution-payload.ts";
 import { coordinationNodePrompt } from "./node-prompt.ts";
@@ -64,6 +70,11 @@ export interface CoordinatedDriverOptions {
   readonly feedback?: string;
   readonly remainingDurationMs: () => number;
   readonly changeDigest?: (worktreeRef: string) => Promise<Digest>;
+  // invariant: D4. The canonical digest of a record, which names a visit's
+  // uncertainty record, and the one digest the owner typed back to reconcile
+  // the visit it names. Without the digest no unsettled visit is run again.
+  readonly digest?: (record: Readonly<Record<string, unknown>>) => Digest;
+  readonly reconcile?: Digest;
   readonly now?: () => Date;
 }
 
@@ -103,6 +114,10 @@ function suspensionOf(error: unknown, node: CoordinationNode, at: string): Execu
     ...(scope === undefined ? {} : { scope }),
     ...(resetsAt === undefined ? {} : { resetsAt })
   });
+}
+
+function visitKey(entry: { readonly nodeId: string; readonly visit: number }): string {
+  return `${entry.nodeId}#${entry.visit}`;
 }
 
 function isWriter(node: CoordinationNode): boolean {
@@ -164,6 +179,7 @@ class CoordinationRound implements CoordinationNodeRunner {
   readonly #running = new Set<ExecutionDriverPort>();
   readonly #results = new Map<Visit, NodeResult>();
   readonly #calls = new Set<Promise<unknown>>();
+  readonly #reruns = new Map<string, Digest>();
   readonly #walk: Visit[] = [];
   #earlier: readonly NodeVisit[] = [];
   #entries: Visit[] = [];
@@ -199,9 +215,9 @@ class CoordinationRound implements CoordinationNodeRunner {
   }
 
   // invariant: a running round is resumed and its completed visits are
-  // replayed; any other started visit is uncertain and nothing is run again
-  // (SSI-66, refused here until reconciliation exists). A finished round is
-  // followed by the next, which is a gate repair attempt.
+  // replayed; a visit that never completed runs again only when it left no
+  // effect or the owner reconciled it, and otherwise nothing runs (SSI-65..67).
+  // A finished round is followed by the next, which is a gate repair attempt.
   async open(): Promise<void> {
     const stored = await this.#options.records.loadLedger();
     if (stored !== undefined && stored.mode !== this.#plan.mode)
@@ -210,7 +226,7 @@ class CoordinationRound implements CoordinationNodeRunner {
       this.#round = stored.round;
       this.#earlier = stored.visits.filter((entry) => entry.round !== stored.round);
       this.#entries = stored.visits.filter((entry) => entry.round === stored.round).map((entry) => ({ ...entry }));
-      await this.#refuseUncertain();
+      await this.#admitReruns();
       return;
     }
     this.#round = stored === undefined ? 1 : stored.round + 1;
@@ -218,12 +234,26 @@ class CoordinationRound implements CoordinationNodeRunner {
     await this.#save("running");
   }
 
-  async #refuseUncertain(): Promise<void> {
-    const unsettled = this.#entries.filter((entry) => entry.state !== "completed");
-    if (unsettled.length === 0) return;
-    for (const entry of unsettled) if (entry.state === "started") entry.state = "uncertain";
-    await this.#save("failed");
-    failure("VES_TASK_NODE_UNCERTAIN", "A node of the interrupted run started and has no recorded end");
+  // invariant: SSI-66 and D4. Each unsettled visit is named by the digest of
+  // its uncertainty record. One that left no effect runs again on its own
+  // (SSI-67); one that may have is run again only when the owner typed back
+  // that digest. Any other refuses the resume: a visit with no recorded end is
+  // marked uncertain, the round stays open, and nothing runs.
+  async #admitReruns(): Promise<void> {
+    const ledger = { schemaVersion: 1, mode: this.#plan.mode, round: this.#round, roundState: "running" } as const;
+    const current = await this.#changeDigest();
+    const unsettled = unsettledVisits({ ...ledger, visits: this.#entries }, current.changeDigestBefore);
+    const refused: Visit[] = [];
+    for (const { visit, effect } of unsettled) {
+      const digest = this.#options.digest?.(uncertaintyRecord(this.#request.runId, visit));
+      if (digest !== undefined && (effect === "none" || digest === this.#options.reconcile))
+        this.#reruns.set(visitKey(visit), digest);
+      else refused.push(visit as Visit);
+    }
+    if (refused.length === 0) return;
+    for (const entry of refused) if (entry.state === "started") entry.state = "uncertain";
+    await this.#save("running");
+    failure("VES_TASK_NODE_UNCERTAIN", "A node of the interrupted run may have landed effects and is not reconciled");
   }
 
   async run(call: CoordinationNodeCall): Promise<CoordinationNodeAnswer> {
@@ -313,11 +343,12 @@ class CoordinationRound implements CoordinationNodeRunner {
     return next === COORDINATION_COMPLETE ? undefined : next;
   }
 
+  // invariant: SSI-65. A visit is replayed from its persisted result when its
+  // latest entry completed; an entry a re-run replaced is never replayed.
   async #replay(node: CoordinationNode, visit: number): Promise<CoordinationNodeAnswer | undefined> {
-    const entry = this.#entries.find(
-      (stored) => stored.nodeId === node.nodeId && stored.visit === visit && !this.#walk.includes(stored)
-    );
-    if (entry?.resultDigest === undefined) return undefined;
+    const entry = this.#entries.findLast((stored) => visitKey(stored) === visitKey({ nodeId: node.nodeId, visit }));
+    if (entry?.state !== "completed" || entry.resultDigest === undefined || this.#walk.includes(entry))
+      return undefined;
     const bytes = await this.#options.records.loadResult(entry.resultDigest);
     if (bytes.byteLength !== entry.resultBytes)
       failure("VES_COORDINATION_LEDGER_INVALID", "A persisted node result does not match its ledger entry");
@@ -355,6 +386,7 @@ class CoordinationRound implements CoordinationNodeRunner {
   }
 
   async #visit(node: CoordinationNode, visit: number): Promise<CoordinationNodeAnswer> {
+    const rerunOf = this.#reruns.get(visitKey({ nodeId: node.nodeId, visit }));
     const entry: Visit = {
       round: this.#round,
       nodeId: node.nodeId,
@@ -362,7 +394,8 @@ class CoordinationRound implements CoordinationNodeRunner {
       state: "started",
       startedAt: this.#now(),
       receiptCount: 0,
-      ...(await this.#changeDigest())
+      ...(await this.#changeDigest()),
+      ...(rerunOf === undefined ? {} : { rerunOf })
     };
     const prompt = this.#prompt(node);
     this.#walk.push(entry);

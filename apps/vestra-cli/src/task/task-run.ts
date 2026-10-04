@@ -50,6 +50,7 @@ import {
 } from "./task-plan-record.ts";
 import { loadTaskPolicy } from "./task-policy.ts";
 import { ProviderProcesses } from "./task-process-tree.ts";
+import { inspectMarkedWorktree, parseReconcile, revalidateResume } from "./task-resumption.ts";
 import { openRunRecord, type GateCheckpoint, type RunCheckpoints, type RunRecord } from "./task-run-record.ts";
 import { workspaceTrustRoot } from "./task-signing.ts";
 import { branchName, reviewSurface } from "./task-surface.ts";
@@ -218,8 +219,10 @@ class TaskRunComposition {
   readonly #payloads = new InMemoryExecutionPayloadStore();
   readonly providers: ProviderProcesses;
   readonly #feedback = new Map<string, string>();
+  readonly #reconcile: `sha256:${string}` | undefined;
   #currentFeedback: string | undefined;
   #lastHandle: { readonly worktreeRef: string; readonly baseCommit: string } | undefined;
+  #renewLapsedGrant = false;
 
   constructor(
     io: TaskCommandIo,
@@ -227,9 +230,11 @@ class TaskRunComposition {
     plan: TaskPlanRecord,
     runtime: RuntimeStore,
     prepared: Prepared,
-    runRecord: RunRecord
+    runRecord: RunRecord,
+    reconcile: `sha256:${string}` | undefined
   ) {
     this.#io = io;
+    this.#reconcile = reconcile;
     this.#workspace = workspace;
     this.#plan = plan;
     this.#runtime = runtime;
@@ -312,15 +317,42 @@ class TaskRunComposition {
 
   // invariant: one writer capability per run, created against the approval
   // in force and reused on resume; a revoked or expired grant fails the next
-  // tool effect instead of being silently re-issued.
+  // tool effect instead of being silently re-issued. The one exception is a
+  // suspension, which can outlast the grant (the run's duration plus an hour):
+  // a resume of a suspended run that passed its revalidation renews a grant
+  // that only expired, against the approval it just proved valid.
   async #grant(): Promise<string> {
     const stored = await this.#runRecord.loadGrant();
-    if (stored !== undefined) return stored.grantId;
+    if (stored !== undefined && !(await this.#lapsedOnResume(stored.grantId))) return stored.grantId;
     const approvalExpiry = Date.parse(this.#plan.approvalRequest.expiresAt);
     const wanted = Date.now() + this.#plan.request.budgets.maximumDurationMs + LEASE_MARGIN_MS;
     const grant = await this.#prepared.authority.grant(new Date(Math.min(approvalExpiry, wanted)).toISOString());
     await this.#runRecord.saveGrant(grant.grantId);
     return grant.grantId;
+  }
+
+  async #lapsedOnResume(grantId: string): Promise<boolean> {
+    if (!this.#renewLapsedGrant) return false;
+    const grant = await this.#prepared.authority.loadGrant(grantId);
+    return grant !== undefined && grant.revokedAt === undefined && Date.parse(grant.expiresAt) <= Date.now();
+  }
+
+  // invariant: SSI-33. What a resume proves before any node starts; a refusal
+  // leaves the run exactly as it was.
+  async revalidate(): Promise<void> {
+    const executor = await this.#checkpoints.executor();
+    const coordinated = isCoordinatedPlan(this.#plan);
+    const { fromSuspension } = await revalidateResume({
+      runId: this.#plan.runId,
+      coordinated,
+      suspended: executor?.stage === "suspended" ? { changeDigest: executor.changeDigest } : undefined,
+      ledger: coordinated ? await this.#runRecord.loadCoordinationLedger() : undefined,
+      approval: () => this.#prepared.authority.approval(),
+      worktree: () => inspectMarkedWorktree(this.#runRecord, this.#worktrees, this.#plan.request.sourceRevision),
+      reconcile: this.#reconcile,
+      stderr: this.#io.stderr
+    });
+    this.#renewLapsedGrant = fromSuspension;
   }
 
   // invariant: a single-session run drives its implementer; a coordinated run
@@ -359,7 +391,8 @@ class TaskRunComposition {
       sessionsRoot: this.#workspace.layout.sessionsRoot,
       records: this.#runRecord.coordination(),
       feedback: this.#currentFeedback,
-      remainingDurationMs: () => budgetMeter?.remainingDurationMs() ?? request.budgets.maximumDurationMs
+      remainingDurationMs: () => budgetMeter?.remainingDurationMs() ?? request.budgets.maximumDurationMs,
+      reconcile: this.#reconcile
     });
   }
 
@@ -663,8 +696,12 @@ function assertStartable(state: string, resume: boolean): void {
     );
 }
 
-export async function runTask(io: TaskCommandIo, options: { readonly runId: unknown; readonly resume: boolean }) {
+export async function runTask(
+  io: TaskCommandIo,
+  options: { readonly runId: unknown; readonly resume: boolean; readonly reconcile?: unknown }
+) {
   const runId = parseRunId(options.runId);
+  const reconcile = parseReconcile(options.reconcile);
   const workspace = await openTaskWorkspace(io);
   const runRecord = openRunRecord(workspace, runId);
   const plan = await runRecord.loadPlan();
@@ -673,10 +710,11 @@ export async function runTask(io: TaskCommandIo, options: { readonly runId: unkn
     assertStartable(currentRun(runtime, runId).state, options.resume);
     const prepared = await prepare(io, workspace, plan, runtime, runRecord);
     await runRecord.claimActive(io.pid);
-    const composition = new TaskRunComposition(io, workspace, plan, runtime, prepared, runRecord);
+    const composition = new TaskRunComposition(io, workspace, plan, runtime, prepared, runRecord, reconcile);
     const controller = new AbortController();
     const stop = watchCancellation(runRecord, controller, composition.providers);
     try {
+      if (options.resume) await composition.revalidate();
       await composition.claimWriterLease();
       const outcome = await new TaskRunCoordinator(composition.ports()).run({
         bindingDigest: prepared.authority.currentBindingDigest(),

@@ -16,7 +16,9 @@ import { afterEach, test } from "node:test";
 
 import { runTask } from "../../apps/vestra-cli/src/task/task-run.ts";
 import { statusTask } from "../../apps/vestra-cli/src/task/task-status.ts";
+import { openRuntime } from "../../apps/vestra-cli/src/task/task-workspace.ts";
 import { normalizeTaskRequest } from "../../packages/application/src/index.ts";
+import { canonicalizeJsonV2 } from "../../packages/domain/src/index.ts";
 import { confirmExtraUsage, extraUsageConfirmation } from "../helpers/task-billing-fixture.mjs";
 import {
   cleanupTaskCommandFixtures,
@@ -25,7 +27,13 @@ import {
   taskCommandFixture
 } from "../helpers/task-command-fixture.mjs";
 import { validTaskRequestV2 } from "../helpers/task-request-fixture.mjs";
-import { RUN_ID, TASK_ID, canonicalDigestOf, planRecord } from "../helpers/task-run-record-fixture.mjs";
+import { RUN_ID, TASK_ID, WORKSPACE_ID, canonicalDigestOf, planRecord } from "../helpers/task-run-record-fixture.mjs";
+
+function without(record, key) {
+  const copy = { ...record };
+  delete copy[key];
+  return copy;
+}
 
 afterEach(cleanupTaskCommandFixtures);
 
@@ -150,3 +158,113 @@ for (const [command, state, invoke] of COMMANDS)
     });
     assert.equal(run.fixture.state(), state);
   });
+
+// invariant: SSI-32. Status of a suspended coordinated run names the
+// suspension, the state, visit count, and result digest of each node, and
+// every node a resume could not run again on its own, with the digest the
+// owner types back and the one command that does; the plain resume, which
+// would be refused, is not offered.
+test("status of a suspended run shows its suspension, each node, and each uncertain node with its digest", async () => {
+  const run = await plannedCoordinated("IMPLEMENTING");
+  const suspension = {
+    reason: "VES_DRIVER_QUOTA_EXHAUSTED",
+    provider: "claude-code",
+    at: "2026-10-03T12:00:00.000Z",
+    scope: "five_hour",
+    resetsAt: "2026-10-03T17:00:00.000Z"
+  };
+  const left = `sha256:${"a".repeat(64)}`;
+  const runtime = openRuntime(run.fixture.workspace);
+  try {
+    await run.runRecord
+      .checkpoints(runtime, TASK_ID)
+      .executorPort()
+      .save({
+        workspaceId: WORKSPACE_ID,
+        runId: RUN_ID,
+        taskId: TASK_ID,
+        stage: "suspended",
+        sequence: 1,
+        data: { changeDigest: left, changedPaths: ["src/value.txt"], toolReceiptRefs: ["receipt:1"], suspension }
+      });
+  } finally {
+    runtime.close();
+  }
+  const bytes = new TextEncoder().encode(canonicalizeJsonV2({ outcome: "done", summary: "the plan" }));
+  const planned = await run.runRecord.saveCoordinationResult(bytes);
+  const partial = {
+    round: 1,
+    nodeId: "build",
+    visit: 1,
+    state: "partial",
+    startedAt: "2026-10-03T11:00:02.000Z",
+    endedAt: "2026-10-03T11:00:03.000Z",
+    changeDigestBefore: left,
+    receiptCount: 1,
+    failureCode: "VES_DRIVER_QUOTA_EXHAUSTED"
+  };
+  await run.runRecord.saveCoordinationLedger({
+    schemaVersion: 1,
+    mode: "graph",
+    round: 1,
+    roundState: "running",
+    visits: [
+      {
+        round: 1,
+        nodeId: "plan",
+        visit: 1,
+        state: "completed",
+        startedAt: "2026-10-03T11:00:00.000Z",
+        endedAt: "2026-10-03T11:00:01.000Z",
+        changeDigestBefore: left,
+        receiptCount: 0,
+        resultDigest: planned,
+        resultBytes: bytes.byteLength
+      },
+      partial
+    ]
+  });
+  await run.runRecord.saveOutcome({ status: "SUSPENDED", suspension });
+  const status = await statusTask(run.fixture.io, RUN);
+  assert.equal(status.state, "IMPLEMENTING");
+  assert.equal(status.lastOutcome, "SUSPENDED");
+  assert.equal(status.lastReason, "VES_DRIVER_QUOTA_EXHAUSTED");
+  assert.deepEqual(status.suspension, suspension);
+  assert.equal(status.checkpoints.executor, "suspended");
+  const digest = canonicalDigestOf({ schemaVersion: 1, runId: RUN_ID, ...without(partial, "state") });
+  assert.deepEqual(status.coordination, {
+    mode: "graph",
+    round: 1,
+    roundState: "running",
+    nodes: [
+      { nodeId: "plan", state: "completed", visits: 1, resultDigest: planned },
+      { nodeId: "build", state: "partial", visits: 1, resultDigest: null },
+      { nodeId: "review", state: "pending", visits: 0, resultDigest: null }
+    ],
+    uncertain: [{ nodeId: "build", visit: 1, state: "partial", receiptCount: 1, digest }]
+  });
+  assert.deepEqual(status.next, [
+    `vestra task resume --run-id ${RUN_ID} --reconcile ${digest}`,
+    `vestra task cancel --run-id ${RUN_ID}`
+  ]);
+});
+
+test("a single-session run's status names no coordination and no suspension", async () => {
+  const fixture = await taskCommandFixture();
+  await fixture.planned("IMPLEMENTING", planRecord());
+  const status = await statusTask(fixture.io, RUN);
+  assert.equal(status.coordination, null);
+  assert.equal(status.suspension, null);
+  assert.deepEqual(status.next, [`vestra task resume --run-id ${RUN_ID}`, `vestra task cancel --run-id ${RUN_ID}`]);
+});
+
+test("resume refuses a reconcile value that is not a digest before it reads anything", async () => {
+  const run = await plannedCoordinated("IMPLEMENTING");
+  const before = await listing(run.directory);
+  await assert.rejects(runTask(run.fixture.io, { ...RUN, resume: true, reconcile: "build" }), (error) => {
+    assert.equal(error.envelope.code, "VES_CLI_ARGUMENT_INVALID");
+    assert.deepEqual(error.envelope.safeDetails, { argument: "--reconcile" });
+    return true;
+  });
+  assert.deepEqual(await listing(run.directory), before);
+});

@@ -25,6 +25,7 @@ import type { NodeGitWorktreeAdapter } from "@verchestra/platform-node";
 import type { ProviderAuthMode } from "../task-provider-auth.ts";
 import { isolatedIdentity, sessionCredential } from "./task-codex.ts";
 import { stableUuid } from "./task-context.ts";
+import { canonicalDigest } from "./task-files.ts";
 import { claudeSessionAdapter, contextText, passThroughEnvironment } from "./task-implementer.ts";
 import type { ProviderProcesses, ProviderSession } from "./task-process-tree.ts";
 
@@ -47,6 +48,8 @@ export interface CoordinatedRunOptions {
   readonly feedback: string | undefined;
   readonly remainingDurationMs: () => number;
   readonly onWorktree: (worktreeRef: string) => Promise<void>;
+  // invariant: D4. The uncertainty digest the owner typed back at `resume`.
+  readonly reconcile: `sha256:${string}` | undefined;
 }
 
 // why: decision D5 and SSI-14. Mode `agent` runs on the native engine; the
@@ -71,6 +74,8 @@ export function coordinatedDriver(options: CoordinatedRunOptions): ExecutionDriv
     context: contextText(options.manifest),
     ...(options.feedback === undefined ? {} : { feedback: options.feedback }),
     remainingDurationMs: options.remainingDurationMs,
+    digest: canonicalDigest,
+    ...(options.reconcile === undefined ? {} : { reconcile: options.reconcile }),
     changeDigest: async (worktreeRef) => {
       const handle = { worktreeRef, baseCommit: options.request.sourceRevision };
       return (await options.worktrees.inspect(handle)).changeDigest as `sha256:${string}`;
@@ -233,6 +238,10 @@ function codexNodeAdapter(options: CoordinatedRunOptions, session: CoordinationN
     const provider = options.providers.session("Codex");
     const root = join(options.sessionsRoot, `codex-node-${options.runId}-${session.node.nodeId}-${session.visit}`);
     try {
+      // invariant: the worktree marker is written before any node uses the
+      // worktree, as the Claude Code node does, so a run suspended or
+      // cancelled at its first Codex node still names the worktree it keeps.
+      await options.onWorktree(request.worktreeRef);
       const cwd = await options.worktrees.resolvePath(request.worktreeRef);
       const identity = await isolatedIdentity(root, options.codex.identityDirectory);
       const state: CodexNodeState = { structured: undefined, quota: undefined, failure: undefined, toolRequests: 0 };

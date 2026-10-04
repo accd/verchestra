@@ -153,15 +153,18 @@ function nodeAnswer(prompt, schema) {
 const accountReads = new Set();
 
 function nodeTurn(message, prompt) {
+  // why: `node-hang` in the prompt, or the `codex-node-hang` flag, leaves the
+  // turn open until the process is stopped; the flag lets a test lift it
+  // before the same node is run again.
+  const hang = prompt.includes("node-hang") || fixtureFlag("codex-node-hang");
   fixtureLog("fake-codex-node.log")({
     pid: process.pid,
     cwd: process.cwd(),
-    hang: prompt.includes("node-hang"),
+    hang,
     accountChecked: accountReads.has("account/read") && accountReads.has("account/rateLimits/read")
   });
   emit({ id: message.id, result: { turn: { id: "private-turn-id" } } });
-  // why: `node-hang` leaves the turn open until the process is stopped.
-  if (prompt.includes("node-hang")) return;
+  if (hang) return;
   const text = JSON.stringify(nodeAnswer(prompt, message.params.outputSchema));
   emit({
     method: "item/completed",

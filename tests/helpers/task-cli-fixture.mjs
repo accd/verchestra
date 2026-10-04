@@ -24,6 +24,7 @@ import { systemGit } from "./system-git.mjs";
 import { canonicalDigestOf, sealedText } from "./task-run-record-fixture.mjs";
 
 export const VESTRA = fileURLToPath(new URL("../../apps/vestra-cli/bin/vestra.mjs", import.meta.url));
+const SHIFTED_CLOCK = new URL("./shifted-clock.mjs", import.meta.url);
 export const FAKES = fileURLToPath(new URL("./task-cli-fakes/", import.meta.url));
 export const WORKSPACE_ID = "workspace_4b1c2d3e-5f60-4a7b-8c9d-0e1f2a3b4c5d";
 export const DARWIN = process.platform === "darwin";
@@ -267,9 +268,19 @@ export async function taskFixture(options = {}) {
     VERCHESTRA_TEST_FAKE_KEYCHAIN_STORE: store,
     ...(options.ambient === true ? await ambientSessions(root, home) : {})
   };
-  const args = (argv) => ["--import", FAKE_KEYCHAIN_SPAWN.href, VESTRA, ...argv];
-  const launch = (argv, input = "") => {
-    const result = spawnSync(process.execPath, args(argv), {
+  // why: a journey that lets time pass while a run waits starts the child with
+  // its wall clock moved ahead (tests/helpers/shifted-clock.mjs).
+  const clock = (clockOffsetMs) =>
+    clockOffsetMs === undefined ? [] : ["--import", `${SHIFTED_CLOCK.href}?offset=${clockOffsetMs}`];
+  const args = (argv, clockOffsetMs) => [
+    "--import",
+    FAKE_KEYCHAIN_SPAWN.href,
+    ...clock(clockOffsetMs),
+    VESTRA,
+    ...argv
+  ];
+  const launch = (argv, input = "", { clockOffsetMs } = {}) => {
+    const result = spawnSync(process.execPath, args(argv, clockOffsetMs), {
       cwd: repository,
       env,
       input,
