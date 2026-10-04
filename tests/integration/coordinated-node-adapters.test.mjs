@@ -7,7 +7,7 @@
 // inside its own read scope (SSI-42). The providers are the labeled
 // deterministic fakes of the driver spikes.
 import assert from "node:assert/strict";
-import { mkdir, readdir, symlink, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readdir, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
 
@@ -187,6 +187,24 @@ test("a Codex node works in a read-only view of its read scope alone, never the 
     assert.ok(view.cwd.startsWith(join(fixture.sessionsRoot, "codex-node-")), view.cwd);
   }
   assert.deepEqual(await readdir(fixture.sessionsRoot), [], "every node's view and home were removed");
+});
+
+// why: a node killed mid-session (a crash) leaves its read-only view behind,
+// and a resume runs the same visit at the same path.
+test("a Codex node runs again over the read-only view a killed session left behind", async (t) => {
+  if (WIN32_HOST) return verifierRefusedOnWin32(t);
+  const fixture = await compositionFixture(t, codexReaders(), { files: SCOPED_FILES, codex: { observeView: true } });
+  const stale = join(fixture.sessionsRoot, "codex-node-run_018f0b6d-7b1a-7abc-8def-612345678901-plan-1", "scope");
+  await mkdir(join(stale, "lib"), { recursive: true });
+  await writeFile(join(stale, "lib", "stale.txt"), "left by a killed session\n", { mode: 0o400 });
+  for (const directory of [join(stale, "lib"), stale]) await chmod(directory, 0o500);
+  assert.deepEqual(await fixture.run(), { status: "completed", outputRefs: [] });
+  assert.equal(
+    viewOf(await fixture.codexViews(), "plan").entries.some((entry) => entry.path === "lib/stale.txt"),
+    false,
+    "the new view holds nothing of the old one"
+  );
+  assert.deepEqual(await readdir(fixture.sessionsRoot), []);
 });
 
 test("a Codex node whose read scope is beyond the view's bound fails before its session, and leaves nothing", async (t) => {

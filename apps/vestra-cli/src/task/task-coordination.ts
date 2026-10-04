@@ -320,6 +320,9 @@ function codexNodeAdapter(options: CoordinatedRunOptions, session: CoordinationN
       // cancelled at its first Codex node still names the worktree it keeps.
       await options.onWorktree(request.worktreeRef);
       const worktree = await options.worktrees.resolvePath(request.worktreeRef);
+      // why: a session killed mid-node left its read-only view at this path,
+      // which a resume reaches again and which no plain removal can take.
+      await removeMaterializedView(join(root, "scope"));
       const identity = await isolatedIdentity(root, options.codex.identityDirectory);
       const cwd = await readScopeView(root, worktree, session.node, request);
       const state: CodexNodeState = {
