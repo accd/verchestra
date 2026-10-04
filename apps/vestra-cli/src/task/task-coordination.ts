@@ -25,7 +25,6 @@ import type { NodeGitWorktreeAdapter } from "@verchestra/platform-node";
 import type { ProviderAuthMode } from "../task-provider-auth.ts";
 import { isolatedIdentity, sessionCredential } from "./task-codex.ts";
 import { stableUuid } from "./task-context.ts";
-import { notConfigured } from "./task-errors.ts";
 import { claudeSessionAdapter, contextText, passThroughEnvironment } from "./task-implementer.ts";
 import type { ProviderProcesses, ProviderSession } from "./task-process-tree.ts";
 
@@ -48,15 +47,6 @@ export interface CoordinatedRunOptions {
   readonly feedback: string | undefined;
   readonly remainingDurationMs: () => number;
   readonly onWorktree: (worktreeRef: string) => Promise<void>;
-}
-
-// invariant: the owner's constraint (SSI-51's first half). A coordinated run
-// is composed only for subscriptions; a provider set to an API key leaves it
-// `not configured` before any credential is read or transition applied. The
-// extra-usage confirmation joins this at T6.
-export function requireCoordinatedSubscription(auth: { readonly implementer: string; readonly verifier: string }) {
-  if (auth.implementer !== "subscription" || auth.verifier !== "subscription")
-    throw notConfigured("coordinated-run-subscription", "A coordinated run uses subscription authentication only");
 }
 
 // why: decision D5 and SSI-14. Mode `agent` runs on the native engine; the

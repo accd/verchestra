@@ -65,30 +65,36 @@ export function normalizeProviderAuth(value: unknown): ProviderAuth {
   return Object.freeze(selected as unknown as ProviderAuth);
 }
 
-async function settingText(path: string): Promise<string | undefined> {
+// invariant: the one reader of an owner-written machine-local setting (this
+// one and the extra-usage confirmation). An absent file is `undefined`; one
+// that cannot be read, is not a bounded regular file, or is not JSON is `not
+// configured` with the setting's own requirement.
+export async function readMachineSetting(path: string, requirement: string, label: string): Promise<unknown> {
   let metadata;
   try {
     metadata = await lstat(path);
   } catch (error) {
     if ((error as { readonly code?: unknown }).code === "ENOENT") return undefined;
-    throw notConfigured("provider-auth", "The provider setting is unreadable", { cause: error });
+    throw notConfigured(requirement, `${label} is unreadable`, { cause: error });
   }
   // hazard: a link or an oversized file is never followed or parsed.
   if (!metadata.isFile() || metadata.size > MAXIMUM_BYTES)
-    invalid("The provider setting is not a bounded regular file");
-  return readFile(path, "utf8");
+    throw notConfigured(requirement, `${label} is not a bounded regular file`);
+  const text = await readFile(path, "utf8");
+  try {
+    return JSON.parse(text) as unknown;
+  } catch (error) {
+    throw notConfigured(requirement, `${label} is not valid JSON`, { cause: error });
+  }
 }
 
 export async function loadProviderAuth(workspaceRoot: string): Promise<ProviderAuth> {
-  const text = await settingText(join(workspaceRoot, PROVIDER_AUTH_FILE));
-  if (text === undefined) return DEFAULT_PROVIDER_AUTH;
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(text);
-  } catch (error) {
-    throw notConfigured("provider-auth", "The provider setting is not valid JSON", { cause: error });
-  }
-  return normalizeProviderAuth(parsed);
+  const parsed = await readMachineSetting(
+    join(workspaceRoot, PROVIDER_AUTH_FILE),
+    "provider-auth",
+    "The provider setting"
+  );
+  return parsed === undefined ? DEFAULT_PROVIDER_AUTH : normalizeProviderAuth(parsed);
 }
 
 export interface ProviderAuthLocation {

@@ -1,11 +1,13 @@
 // invariant: a planned v2 run's record seals its whole normalized descriptor
 // and loads through the same validated reader as a v1 run (SSI-22, SSI-29).
-// Coordinated runs are composed for subscriptions only: `start` and `resume`
-// of a v2 run whose providers are not both on a subscription are refused
-// before a credential, a transition, or a worktree, and leave the run as it
-// was; on subscriptions they go on to read their credentials, as a v1 run
-// does. The commands run in this process on a real Workspace; the deny guard
-// of the fixture stops any case at its first credential read.
+// Coordinated runs are composed for subscriptions only, with the owner's
+// extra-usage confirmation (SSI-51, SSI-52): `start` and `resume` of a v2 run
+// whose providers are not both on a subscription, or that has no such
+// confirmation, are refused before a credential, a transition, or a worktree,
+// and leave the run as it was; with both they go on to read their
+// credentials, as a v1 run does. The commands run in this process on a real
+// Workspace; the deny guard of the fixture stops any case at its first
+// credential read.
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -15,6 +17,7 @@ import { afterEach, test } from "node:test";
 import { runTask } from "../../apps/vestra-cli/src/task/task-run.ts";
 import { statusTask } from "../../apps/vestra-cli/src/task/task-status.ts";
 import { normalizeTaskRequest } from "../../packages/application/src/index.ts";
+import { confirmExtraUsage, extraUsageConfirmation } from "../helpers/task-billing-fixture.mjs";
 import {
   cleanupTaskCommandFixtures,
   listing,
@@ -107,8 +110,33 @@ for (const [command, state, invoke] of COMMANDS)
     });
 
 for (const [command, state, invoke] of COMMANDS)
-  test(`${command} of a v2 run on subscriptions is composed: it goes on to its credential read`, async () => {
+  for (const [label, confirmation] of [
+    ["no extra-usage confirmation", undefined],
+    [
+      "a confirmation that does not name Claude Code",
+      { schemaVersion: 1, providers: { codex: extraUsageConfirmation().providers.codex } }
+    ],
+    [
+      "a confirmation of another Codex method",
+      extraUsageConfirmation({ codex: { ...extraUsageConfirmation().providers.codex, auth: "apiKey" } })
+    ]
+  ])
+    test(`${command} refuses a v2 run on subscriptions with ${label}, and leaves it as it was`, async () => {
+      const run = await plannedCoordinated(state);
+      if (confirmation !== undefined) await confirmExtraUsage(run.fixture.workspace.layout.workspaceRoot, confirmation);
+      else await mkdir(run.fixture.workspace.layout.workspaceRoot, { recursive: true });
+      const before = await listing(run.fixture.workspace.layout.workspaceRoot);
+      await assert.rejects(invoke(run.fixture.io), notConfigured("extra-usage-confirmation"));
+      assert.equal(run.fixture.state(), state);
+      assert.deepEqual(await listing(run.fixture.workspace.layout.workspaceRoot), before);
+      assert.equal(existsSync(join(run.directory, "active.json")), false);
+      assert.match(run.fixture.stderr.join(""), /task-billing\.json/u);
+    });
+
+for (const [command, state, invoke] of COMMANDS)
+  test(`${command} of a v2 run on subscriptions with the confirmation is composed: it goes on to its credential read`, async () => {
     const run = await plannedCoordinated(state);
+    await confirmExtraUsage(run.fixture.workspace.layout.workspaceRoot);
     // why: the deny guard stops the first credential read; reaching it proves
     // the plan loaded and the run was composed rather than refused.
     await assert.rejects(invoke(run.fixture.io), (error) => {

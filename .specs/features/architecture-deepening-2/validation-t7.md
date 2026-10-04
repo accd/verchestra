@@ -166,7 +166,7 @@ errors. It added no translation, no state and no error mapping.
   production composition.
 
 Verdict: the deletion test passes, so the class is deleted. The commands call
-the store's lease pair (`task-run.ts:252`, `:263`, `:270`;
+the store's lease pair (`task-run.ts:259`, `:270`, `:277`;
 `task-status.ts:139`). The one case that composes `WorkClaimService` over the
 SQLite lease binds the store's lease pair to the port in the coordination
 fixture (`tests/helpers/coordination-fixture.mjs:39`), used at
