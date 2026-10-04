@@ -51,17 +51,21 @@ record is also pending (owner).
    `docs/quick-start.md` ("Windows prerequisites").
 2. **Turn extra usage off.** In the Claude account (Settings > Usage), turn off
    usage credits and any auto-reload. In the ChatGPT account, keep no
-   purchased Codex credits: a Codex node that sees credits does not start its
-   turn and the run is suspended as `not configured` (`codex-credits`).
-   Note for this revision: the final Codex verifier does not check credits
-   (finding 1 of the T9 verification), so an `agent` pilot, whose only Codex
-   session is the verifier, relies on this step alone.
+   purchased Codex credits: a Codex session that sees credits, a node or the
+   final verifier, does not start its turn and the run is suspended as `not
+   configured` (`codex-credits`). The verifier checks them since remediation
+   R1 of the T9 verification (finding 1); at earlier revisions it did not, and
+   an `agent` pilot, whose only Codex session is the verifier, relied on this
+   step alone.
 3. **Write `task-billing.json` by hand**, beside `task-providers.json` in the
    Workspace state directory, in the format of `docs/quick-start.md`
    ("Subscriptions only, with extra usage off"): one entry per provider with
    `auth` (`subscription` for Claude Code, `chatgpt` for Codex),
    `extraUsage: "disabled"`, `confirmedAt` (the UTC time the account was
-   checked), and, for Codex, `planType` in lowercase.
+   checked), and, for Codex, `planType`: one of the plan types the Codex
+   protocol names (the list is in `docs/quick-start.md`), which every `start`
+   and `resume` compares with the plan the Codex sign-in reports, through one
+   extra Codex process that reads only the account.
 4. **Prepare the run.** Coordinated runs are in no published release yet, so
    run the CLI from a source checkout at the recorded revision, as
    `node <checkout>/apps/vestra-cli/bin/vestra.mjs` in place of
