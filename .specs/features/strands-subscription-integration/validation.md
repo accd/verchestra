@@ -2977,3 +2977,485 @@ integration 49/49 over `task-coordinated-plan`, `task-run-prerequisites`, and
 - By reading, a resume at VERIFYING claims the writer lease and, reaching
   review, does not release it; it lapses with the lease (pre-existing,
   unchanged here).
+
+## Independent Re-verification (T9, second pass)
+
+**Verifier**: a fresh agent session that wrote none of T1–T8, none of
+remediations R1–R3, and not the first verification (author ≠ verifier).
+**Date**: 2026-10-04. **Head**: `93b38c5` on `strands/t9-reverification`,
+equal to `origin/main`. **Diff range**: `7e274f2..93b38c5` (80 commits, 239
+files); the remediation range is `c3223c6..93b38c5` (31 commits).
+
+**Method.** The pinned `code-review` skill against this `.specs` path with
+the diff base `7e274f2`, its Standards and Spec axes run as two separate
+read-only reviews whose findings were then checked here by reading and, where
+practical, by running code; and the `tlc-spec-driven` validate procedure. Every
+SSI row was re-derived from the code and tests at this head; the first
+verifier's findings and the R1, R2, and R3 evidence were treated as claims.
+Each mutant was applied in place, its killer suites run through
+`scripts/test-scope.mjs`, then `git restore`, with `git status --porcelain`
+empty before and after every run. One finding was reproduced by a scratch
+test outside the repository, never tracked. No real provider was called. No
+gate beyond `gate:quick` ran locally (disk); the full, build, and security
+gates ran on the platform matrix at this head.
+
+**Result: FAIL.** Two requirements fail (SSI-49, SSI-83), three are partial
+(SSI-60 and SSI-61, which wait for spec amendments, and SSI-81, which follows
+SSI-49), SSI-84 is pending (owner), and 79 pass; and the Windows leg of
+`gate:security` hung at this head (finding 3). Every first-pass finding
+that R1, R2, or R3 addressed is closed at this head, except that R1's verifier
+change introduced finding 1 below and R2's screen leaves finding 2 open;
+first-pass finding 13 (the owner's approval of AD-080 item 5) and finding 16
+(the pilots) still wait for the owner. The discrimination list is killed in
+full, the three survivors of the first pass (X04, X06, X07) are killed, and 19
+sampled remediation mutants are killed; 3 of my 12 mutants survive (O12, O13,
+O15), none of them on a check SSI-80 names.
+
+### Findings, ranked (second pass)
+
+1. **FAIL — SSI-83: a v1 verifier that meets a Codex usage limit now
+   suspends the run instead of failing it.** R1 made the verifier stop on
+   its first quota signal and raise `TaskExecutionSuspended`
+   (`apps/vestra-cli/src/task/task-codex.ts:185`, `:195`, `:354`, `:359`)
+   without regard to the request's version; only `subscriptionOnly` is
+   limited to v2 (`:311`). The Codex driver reports a usage limit for every
+   session, the T04 conversation included
+   (`packages/drivers/src/codex-driver.ts:350`, `:364`), and the run
+   coordinator turns any verifier suspension into `SUSPENDED` in `VERIFYING`
+   (`packages/application/src/execution/task-run.ts:255`). At `c3223c6` the
+   verifier had no quota handling (by reading), so the same session failed
+   the run (`VES_TASK_FAILED`). Reproduced at this head: the fake Codex's
+   `usage-limit` scenario under the verifier fixture of
+   `tests/integration/codex-verifier-session.test.mjs`, with
+   `schemaVersion: 1`, raised `VES_EXECUTOR_SUSPENDED` with
+   `{reason: VES_DRIVER_QUOTA_EXHAUSTED, provider: codex, scope:
+   usage_limit_exceeded}`, on a subscription and on an API key alike (2 of 2
+   cases). This contradicts SSI-83 ("a v1 request … SHALL behave as before")
+   and AD-082 item 1 ("A v1 verifier keeps the T04 conversation even on a
+   subscription, because SSI-83 keeps every v1 run as it was"); no test
+   covers a v1 verifier with a quota signal
+   (`tests/integration/codex-verifier-session.test.mjs:252` covers credits
+   only). The change may be the better behaviour, but it is unrecorded and
+   unapproved. Fix: observe the quota and raise the suspension only when the
+   request is v2 (as `subscriptionOnly` is), and add a v1 `usage-limit` case
+   that asserts `VES_TASK_FAILED`; or have the owner extend the open SSI-83
+   amendment of R1 to "a v1 verifier that meets a usage limit suspends the
+   run in `VERIFYING`", record it in AD-082, and test it.
+2. **FAIL — SSI-49 (and SSI-81, TM-004, TM-015): the Codex subscription
+   login, which every Codex node can read, is not withheld from node
+   results.** The screen refuses a result naming a value of
+   `nodeResultWithheld` (`apps/vestra-cli/src/task/task-coordination.ts:113`),
+   whose values are the Claude Code credential and the Codex session's
+   `sensitiveValues` (`:116`), and those are empty for a subscription login
+   (`apps/vestra-cli/src/task/task-codex.ts:158-168`);
+   `tests/unit/task-coordination-withheld.test.mjs:52` asserts exactly that.
+   Yet a Codex node runs with `CODEX_HOME` set to the Workspace's identity
+   directory (`task-coordination.ts:252`, `task-codex.ts:148`), whose
+   `auth.json` holds the ChatGPT tokens (`task-codex-identity.ts:20`), and
+   its read-only sandbox withholds writes, not reads (AD-081). A
+   prompt-injected Codex node can copy those tokens into its summary or
+   handoff message; the result passes the screen, is persisted in the Run
+   record, and is handed to later nodes. SSI-49 says a persisted node result
+   SHALL contain no credential. By reading; not exercised against a real
+   Codex. Fix: add the token values of the Codex login (read from
+   `auth.json` by the composition, never persisted or printed) to the
+   withheld values, with a composition case whose fake identity holds a token
+   the fake answers with; or give a Codex node a credential source it cannot
+   read back; or have the owner narrow SSI-49 to what Verchestra hands a
+   session.
+3. **The Windows leg of `gate:security` did not pass at this head: its
+   security stage hung.** Run 37199001702, job Windows x64: unit, contract,
+   e2e, architecture, and qualification passed (2982, 957, 300, 132, 358);
+   the security stage reported its last result at 11:41:31 UTC, 1317 of 1351
+   tests, then nothing until the job's 60-minute limit cancelled it at
+   12:31:36 UTC, so the fault stage never ran there. The three files that
+   never reported are the last three in order:
+   `tests/security/windows-pipe-bridge-security.test.mjs` (12 cases, the
+   win32 named-pipe cases among them), `workspace-scanner-security`, and
+   `worktree-tool-security`; the runner reports files in order, so the first
+   of them most likely hung. The same leg passed in 11 minutes on
+   `f285f2b` (run 37197307202), whose tree differs from this head in two
+   Markdown files only, every win32 named-pipe case included. A hang that
+   comes and goes on the same code is a defect of the pipe suite or the
+   transport, not of the change since; a hung pipe case must fail, not
+   hang. Fix: re-run the leg (`gh run rerun 37199001702 --failed`), and give
+   the named-pipe cases a bounded timeout so a hang names its case; if the
+   case is in the transport, a fix there.
+4. **The residual AD-081 accepts is wider than its text and the proposed
+   SSI-42 amendment say.** The view is
+   `<Workspace>/sessions/codex-node-<run>-<node>-<visit>/scope`, so a
+   relative path through `..` reaches the run's worktree
+   (`../../../worktrees/…`) and the Codex identity directory
+   (`../../../codex-identity/auth.json`) as an absolute path does. AD-081's
+   "the view confines every read relative to the working directory" is not
+   so for `..`; the copy changes where a node starts reading, not what it can
+   read. Fix (T10): word the SSI-42 amendment's and TM-004's residual as "any
+   read outside that copy, by an absolute path or one through `..`", and
+   correct AD-081's rejected-alternative sentence.
+5. **PARTIAL — SSI-60 and SSI-61 wait for amendments.** A run suspended at
+   its verifier stays `VERIFYING` (`tests/unit/task-run-coordinator.test.mjs:382`),
+   not `IMPLEMENTING` as SSI-60 reads; R1's amendment text covers it. The
+   suspension record keeps the provider's window `scope` beside the four
+   members SSI-61 allows (`packages/application/src/execution/coordinated-driver.ts:122-135`);
+   no remediation proposed text for SSI-61.
+6. **Survivors (fix tasks, none on an SSI-80 check).** O12 and O13: the two
+   halves of "the recorded commit stands on its base"
+   (`apps/vestra-cli/src/task/task-run.ts:457`, `:462`) are untested; only
+   the branch half is (`tests/e2e/task-codex-account-e2e.test.mjs:140`).
+   O15: the composition's hand-off of a stored grant's revocation to the
+   renewal decision (`task-run.ts:443`) is untested; X06 is killed only at the
+   decision function (`tests/unit/task-grant-renewal.test.mjs:41`). No task
+   command revokes a writer grant today, so O15 is reachable only by a
+   same-user edit of the runtime store (out of scope, D7). Fix: a verifier
+   resume whose recorded commit names another base, and one whose commit
+   has another parent, each refused `VES_TASK_COMMIT_DRIFT`; a suspended run
+   whose stored grant is revoked in the runtime store resumes without a new
+   grant and its first effect is refused.
+7. **Residual risks and minor defects (no SSI row changes).**
+   - A Codex node's view is removed when the node ends, but not when the
+     command is interrupted: `provider.end()` parks forever on SIGINT,
+     SIGTERM, or SIGHUP (`apps/vestra-cli/src/task/task-process-tree.ts:72`),
+     so the `finally` at `task-coordination.ts:357` never runs. A resume
+     clears it (`:325`, R-M4r killed); `task cancel` does not, and a plain
+     removal fails on its `0500` directories. AD-081 records this; a cancel
+     that clears `sessions/codex-node-<runId>-*` would close it.
+   - On Windows the view's directories stay writable (only files are
+     read-only); `tests/integration/read-scope-view.test.mjs:64` skips that
+     assertion there. Writes stay blocked by Codex's own sandbox.
+   - The grant marker refuses a `replaced` list over 100
+     (`apps/vestra-cli/src/task/task-run-record.ts:211`) that `saveGrant`
+     (`:572`) never caps, so a run renewed a 101st time fails closed.
+   - `#renewalArmed` is never cleared within a command, so each gate-repair
+     attempt of a resumed run asks `renewsGrant` again; its bounds still hold.
+   - A Codex node now works in a directory that is not a Git checkout.
+     Whether a real Codex App Server at 0.159.3 accepts that is unverified
+     (no provider may be called); the owner's graph and swarm pilots will
+     show it.
+   - Standards axis: the Codex driver construction is still repeated
+     (`task-coordination.ts:235-284` against `task-codex.ts:250-287`), with
+     the provider literal, the `subscriptionOnly` rule, and the codes declared
+     twice; the remaining unprefixed comments are lines added before
+     `c3223c6` (for example `tests/contract/task-request-v2.test.mjs:254`,
+     `tests/helpers/coordinated-driver-fixture.mjs:154`) and the
+     `DETERMINISTIC FAKE` headers of two new helpers, which follow house
+     style. No test was weakened, skipped, or deleted without a recorded
+     replacement in the remediation range; no secret or machine-local path
+     was added to a tracked file.
+
+### Requirement evidence (second pass)
+
+Runs at `93b38c5` (darwin arm64, Node 24.14.0): **Q** `pnpm gate:quick` PASS
+(unit 2982/2982, agent-readiness 357/357, census 13/13); **A**
+`pnpm test:architecture` 132/132; **C** 13 contract files 276/276; **I** 16
+integration files 239/239; **S** 8 security files 83/83; **U** 17 feature
+unit files 345/345; **E** 9 e2e files 85/85 (Codex account, coordinated,
+grant renewal, examples, subscription, Windows, task CLI, mediated, path
+case); **F** `task-coordinated-crash-faults` 1/1; **B**
+`sealed-self-containment` 7/7. Every run 0 failed, 0 skipped, 0 todo, no
+temporary entry left. **M** the platform matrix at this head (Gates below).
+
+| ID | Verdict | Evidence at `93b38c5` (`file:line` — what it asserts) | Run | Note |
+| --- | --- | --- | --- | --- |
+| SSI-01 | PASS | `tests/agent-readiness/dependency-policy.test.mjs:51` exact pins in agent-runtime only, `:73` lockfile resolution, `:96` installed 1.19.0 with exactly its required peers | Q | D1 still awaits the owner's own confirmation |
+| SSI-02 | PASS | `tests/architecture/strands-coordination-subpath.test.mjs:69` only `./multiagent`; P16a, P16b killed | A, B | — |
+| SSI-03 | PASS | `strands-coordination-subpath.test.mjs:87` bans; `tests/integration/strands-empty-environment.test.mjs:50` no Bedrock client, control `:69`; P15a, P15b killed | A, I | — |
+| SSI-04 | PASS | `tests/integration/strands-coordination-engine.test.mjs:245` exactly `id`, `invoke`, `stream`, calls the runner; `:53`, `:126` | I | — |
+| SSI-05 | PASS | `strands-coordination-engine.test.mjs:326` `preserveContext` false; resume replays the ledger, `:215` | I | Graph nodes' `preserveContext` not asserted |
+| SSI-06 | PASS | `strands-coordination-engine.test.mjs:245` the SDK's input ignored; `tests/unit/node-result.test.mjs:103` | I, U | — |
+| SSI-07 | PASS | `strands-coordination-engine.test.mjs:245` graph node; `:272` swarm node hands `{agentId, message: token}` or `{message: token}`, no provider text; R-M7 killed | I | First-pass finding 7 closed |
+| SSI-08 | PASS | `strands-coordination-engine.test.mjs:300` code only, no cause; `:101` | I | — |
+| SSI-09 | PASS | `strands-coordination-engine.test.mjs:326` exact finite limits; `:67` | I | — |
+| SSI-10 | PASS | `strands-coordination-engine.test.mjs:351`; `:150` | I | — |
+| SSI-11 | PASS | `tests/contract/task-request-v2.test.mjs:56`; the application's third-party import ban | C, A | — |
+| SSI-12 | PASS | `strands-coordination-subpath.test.mjs:69`, `:110` | A | — |
+| SSI-13 | PASS | `strands-coordination-subpath.test.mjs:110`; `tests/integration/task-coordination-loading.test.mjs:40`, `:46`, control `:52` | A, I | — |
+| SSI-14 | PASS | `strands-coordination-subpath.test.mjs:143`; `task-coordination-loading.test.mjs:52`; the node driver factory runs in the graph and swarm journeys on all five legs | A, I, M | — |
+| SSI-15 | PASS | `tests/integration/coordinated-executor.test.mjs:65`; P04 killed | I | — |
+| SSI-16 | PASS | `git diff 7e274f2 93b38c5 -- packages/application/src/execution/task-scheduler.ts` empty; one `execute` per run (`coordinated-executor.test.mjs:65`) | I | — |
+| SSI-17 | PASS | `tests/unit/coordinated-driver.test.mjs:506` node usage names its own provider, another fails the node; `tests/integration/coordinated-node-adapters.test.mjs:83` real sessions name `openai`, `anthropic`, `openai`; R-M14a killed | U, I | First-pass finding 14 closed |
+| SSI-18 | PASS | `task-request-v2.test.mjs:482-487` a Codex write scope refused; `coordinated-driver.test.mjs:145`; `tests/e2e/task-coordinated-e2e.test.mjs:75` read-only, no tool | C, U, E | — |
+| SSI-19 | PASS | `task-coordinated-e2e.test.mjs:75` the verifier's prompt holds no node result, three Codex sessions | E, M | — |
+| SSI-20 | PASS | `git diff 7e274f2 93b38c5 -- schemas/task-request/1.schema.json` empty; `tests/contract/task-request-v1-golden.test.mjs:24`, `:31` | C | — |
+| SSI-21 | PASS | `task-request-v1-golden.test.mjs:42`, `:71` | C | Goldens recorded by the authors; not re-recorded |
+| SSI-22 | PASS | `task-request-v1-golden.test.mjs:61`; `tests/integration/task-coordinated-plan.test.mjs:78`, `:90`, `:97` | C, I | — |
+| SSI-23 | PASS | `task-request-v2.test.mjs:162` | C | — |
+| SSI-24 | PASS | `task-request-v2.test.mjs:256-291` | C | — |
+| SSI-25 | PASS | `task-request-v2.test.mjs:463-470`, `:517`; P02 killed | C | — |
+| SSI-26 | PASS | `task-request-v2.test.mjs:471-502`; P03 killed | C | — |
+| SSI-27 | PASS | `task-request-v2.test.mjs:504-512`, `:417` | C | — |
+| SSI-28 | PASS | `tests/unit/task-plan-binding.test.mjs:69` one case per element, `:74` all distinct; P01 killed | U | — |
+| SSI-29 | PASS | `task-coordinated-plan.test.mjs:205` start and resume, v1 and v2: a consistent rewrite is refused `VES_TASK_PACKAGE_INVALID` before the billing preflight, a transition, a claim, or a file; `:228` a package the approval intent does not bind; R-M6b, O7 killed | I | First-pass finding 6 closed |
+| SSI-30 | PASS | `tests/unit/task-coordination-surface.test.mjs:22-53`; `tests/unit/task-billing.test.mjs:220`, `:244`; `task-plan-binding.test.mjs:114`; `tests/e2e/task-cli-e2e.test.mjs:823` | U, E | — |
+| SSI-31 | PASS | `tests/contract/cli-surface.test.mjs:72`, `:149`; v2 journeys drive every command on all five legs | C, M | — |
+| SSI-32 | PASS | `task-coordinated-plan.test.mjs:348`, `:410`; `tests/e2e/task-subscription-e2e.test.mjs:118`, `:280` | I, E | — |
+| SSI-33 | PASS | `tests/unit/task-resumption.test.mjs:70`, `:82`, `:92` at a node; `:118`, `:125`, `:131` at the verifier; `task-coordinated-plan.test.mjs:127`, `:149` resume refusals change nothing; `tests/e2e/task-codex-account-e2e.test.mjs:140`; P12, R-M11d, O14 killed | U, I, E | O12, O13 survive (finding 6) |
+| SSI-34 | PASS | `task-coordinated-e2e.test.mjs:138` the running node's provider ends, run `ABORTED`, on all five legs; `strands-coordination-engine.test.mjs:184`; `coordinated-driver.test.mjs:441` | E, I, U, M | — |
+| SSI-35 | PASS | `task-coordinated-e2e.test.mjs:50`, `:75` the typed-back surface digest | E | — |
+| SSI-36 | PASS | `tests/e2e/task-request-examples-e2e.test.mjs:62` | E, M | — |
+| SSI-37 | PASS | `task-request-v2.test.mjs:162`, `:198-207`; P06a, P06b killed | C | — |
+| SSI-38 | PASS | `task-request-v2.test.mjs:198-216`, `:233-254`; `task-plan-binding.test.mjs:69` (limits bound) | C, U | — |
+| SSI-39 | PASS | `coordinated-executor.test.mjs:65`; `tests/unit/task-run-coordinator.test.mjs:312` | I, U | — |
+| SSI-40 | PASS | `coordinated-driver.test.mjs:126`; `strands-coordination-engine.test.mjs:163`; P05 killed | U, I | — |
+| SSI-41 | PASS | `coordinated-driver.test.mjs:145`; `coordinated-executor.test.mjs:65`; P04 killed | U, I | — |
+| SSI-42 | PASS | `coordinated-node-adapters.test.mjs:135` a Claude Code node whose read scope is narrower than the change scope is answered `denied: VES_BRIDGE_SCOPE_DENIED`, positive control in the same case; X04 killed (1 of 10). Codex nodes, outside the current text: `:164`, `:194`, `:210`, `tests/integration/read-scope-view.test.mjs:46`, `:71`; R-V1, R-V6, R-M4r, O1, O2, O3 killed | I | First-pass finding 4 closed for the text as written; see finding 4 for the amendment |
+| SSI-43 | PASS | `node-result.test.mjs:32`; `tests/contract/strands-node-result-parity.test.mjs:31`, `:67`; P07 killed | U, C | — |
+| SSI-44 | PASS | `node-result.test.mjs:56`, `:89`; `coordinated-driver.test.mjs:310`, `:318`; `strands-coordination-engine.test.mjs:141` | U, I | — |
+| SSI-45 | PASS | `coordinated-driver.test.mjs:331`; `strands-coordination-engine.test.mjs:150` | U, I | — |
+| SSI-46 | PASS | `coordinated-node-adapters.test.mjs:55` Claude Code missing and retries, `:71` Codex missing and unreadable, each `VES_COORDINATION_RESULT_INVALID`, nothing persisted, the driver's code in `driver-finished`; `coordinated-driver.test.mjs:228`; R-M3a, R-M3b killed | I, U | First-pass finding 3 closed |
+| SSI-47 | PASS | `coordinated-node-adapters.test.mjs:63`, `:71` over the node bound `VES_COORDINATION_RESULT_TOO_LARGE`; `node-result.test.mjs:96`; `coordinated-driver.test.mjs:191`; P08 killed | I, U | First-pass finding 3 closed |
+| SSI-48 | PASS | `tests/integration/driver-execution-adapter.test.mjs:337` | I | — |
+| SSI-49 | FAIL | Ledger: `tests/security/coordination-record-security.test.mjs:31`; results screened: `coordinated-driver.test.mjs:247`, `coordination-record-security.test.mjs:97`, `coordinated-node-adapters.test.mjs:222`; R-M5a, R-M5b, O4, O5 killed | U, S, I | Finding 2: the Codex login is not withheld (`tests/unit/task-coordination-withheld.test.mjs:52`) |
+| SSI-50 | PASS | `node-result.test.mjs:103` | U | — |
+| SSI-51 | PASS | `task-billing.test.mjs:162`, `:172`; `task-coordinated-plan.test.mjs:127`; `task-subscription-e2e.test.mjs:79` | U, I, E | — |
+| SSI-52 | PASS | `task-billing.test.mjs:260` the reported plan type must equal the stated one, `unknown` refused; `task-codex-account-e2e.test.mjs:192` a statement naming `pro` against a `plus` login is `not configured` at `start` before anything; `task-coordinated-plan.test.mjs:149`; P12, R-M2a, R-M2e, O9 killed | U, I, E | First-pass finding 2 closed on the current text |
+| SSI-53 | PASS | `task-billing.test.mjs:119`, `:126`; `tests/security/codex-account-security.test.mjs:36`, `:51` | U, S | — |
+| SSI-54 | PASS | `tests/contract/claude-code-driver-structured.test.mjs:172`; P09 killed | C | Live value unobserved (owner probe) |
+| SSI-55 | PASS | `tests/contract/codex-driver-structured.test.mjs:282`, `:295`; P10, O10 killed; the v2 verifier too, `tests/integration/codex-verifier-session.test.mjs:242`, R-M1a killed | C, I | Text names node sessions; the amendment matches the code |
+| SSI-56 | PASS | `codex-driver-structured.test.mjs:312`; `tests/unit/coordinated-suspension.test.mjs:196`; `task-subscription-e2e.test.mjs:164`; the v2 verifier, `codex-verifier-session.test.mjs:262`, `task-codex-account-e2e.test.mjs:77` | C, U, I, E | First-pass finding 1 closed for v2; v1 credits are an open owner decision |
+| SSI-57 | PASS | `codex-driver-structured.test.mjs:77`, `:96`, `:111`; `tests/architecture/codex-client-methods.test.mjs:42`, `:49`, `:60`; P11 killed | C, A | — |
+| SSI-58 | PASS | `claude-code-driver-structured.test.mjs:187`, `:214`; `codex-driver-structured.test.mjs:346`, `:376`, `:392`; the warning recorded in the run, `coordinated-node-adapters.test.mjs:241`, `driver-execution-adapter.test.mjs:172`; R-M8b killed | C, I | First-pass finding 8 closed |
+| SSI-59 | PASS | `coordinated-suspension.test.mjs:48`, `:107`, `:140`; `coordinated-executor.test.mjs:162` | U, I | — |
+| SSI-60 | PARTIAL | At a node: `coordinated-executor.test.mjs:162`, `task-run-coordinator.test.mjs:274`; P13 killed. At the verifier the run stays `VERIFYING`: `task-run-coordinator.test.mjs:382` | I, U | Finding 5; R1's amendment makes it PASS |
+| SSI-61 | PARTIAL | `coordinated-suspension.test.mjs:228`; `tests/security/task-suspension-security.test.mjs:61`; the window `scope` is a fifth member | U, S | Finding 5; no amendment text yet |
+| SSI-62 | PASS | No path acts on `resetsAt`, retries, or switches (read across `task-run.ts`, `task-codex.ts`, `coordinated-driver.ts`, `task-resumption.ts`); `task-subscription-e2e.test.mjs:118` | E | Absence, by reading |
+| SSI-63 | PASS | `task-subscription-e2e.test.mjs:118`; `task-coordinated-plan.test.mjs:348` | E, I | — |
+| SSI-64 | PASS | `git diff 7e274f2 93b38c5 -- packages/domain/src/workflow/` empty; `task-run-coordinator.test.mjs:274`, `:382` | U | — |
+| SSI-65 | PASS | `coordinated-suspension.test.mjs:362`, `:478` | U | — |
+| SSI-66 | PASS | `task-resumption.test.mjs:146`, `:154`; `coordinated-suspension.test.mjs:379`, `:387`, `:406`; `tests/fault-injection/task-coordinated-crash-faults.test.mjs:35` on all five legs; P14 killed | U, F, M | — |
+| SSI-67 | PASS | `coordinated-suspension.test.mjs:362`; `task-resumption.test.mjs:137` | U | — |
+| SSI-68 | PASS | `task-run-coordinator.test.mjs:312` | U | — |
+| SSI-69 | PASS | `tests/integration/bridge-transport-seam.test.mjs:195`; Unix legs green | I, M | — |
+| SSI-70 | PASS | `bridge-transport-seam.test.mjs:72-159` | I | — |
+| SSI-71 | PASS | `tests/unit/windows-pipe-transport.test.mjs:34`, `:106`, `:121`, `:258`; the win32 cases of `tests/security/windows-pipe-bridge-security.test.mjs:167-336` passed on the Windows `gate:security` leg of run 37197307202 at `f285f2b` (the same code); at this head that leg hung before reporting them (finding 3) | U, M | Another user's access untested |
+| SSI-72 | PASS | `windows-pipe-transport.test.mjs:63`, `:71`, `:121` | U | — |
+| SSI-73 | PASS | `tests/unit/task-windows.test.mjs:95`, `:127`, `:141` both mediated profiles; `tests/integration/task-run-prerequisites.test.mjs:140`, `:154`, `:162` before any credential, claim, lease, transition, or worktree, after the statement; R-M10a, R-M10b killed | U, I, M | First-pass finding 10 closed |
+| SSI-74 | PASS | `tests/contract/claude-code-driver-managed-policy.test.mjs:60`, `:82-107`; `tests/unit/windows-registry.test.mjs:70` on win32 | C, M | — |
+| SSI-75 | PASS | `windows-pipe-transport.test.mjs:310`; `windows-pipe-bridge-security.test.mjs:269` on win32 at `f285f2b` (run 37197307202) | U, M | Not re-observed at this head (finding 3) |
+| SSI-76 | PASS | `windows-pipe-bridge-security.test.mjs:95`, `:104` on every leg that finished; win32 `:194`, `:204`, `:217`, `:233` at `f285f2b` (run 37197307202) | S, M | Second client refused by the kernel (recorded deviation); the win32 cases not re-observed at this head (finding 3) |
+| SSI-77 | PASS | Lifted after the transport qualified; `tests/e2e/task-windows-e2e.test.mjs:139`, `tests/contract/claude-code-driver-windows.test.mjs:239`, and now every coordinated journey, on the Windows legs | M | — |
+| SSI-78 | PASS | Fakes and fixtures only; the coordinated journeys execute on all five legs at second scale (Gates); the Codex protocol spike states the version it ran against and, on the fleet, asserts the refusal below the floor (`spikes/codex-driver/test/codex-driver-structured.test.mjs:153`, log "ran against Codex 0.115.0") | E, M | First-pass finding 11 closed; the floor protocol evidence stays local (recorded limit) |
+| SSI-79 | PASS | `strands-empty-environment.test.mjs:50`, control `:69`; P15b killed | I | — |
+| SSI-80 | PASS | Every check SSI-80 names has a killer: binding P01; limits P06a, P06b, X01–X03 (first pass); destination P07, R-M7; scope narrowing P03, P04, X04; single writer P05; authentication P09, P10, O10, R-M1a; billing block P12, R-M2a, R-M2e, O9 | — | First-pass finding 12 closed |
+| SSI-81 | PARTIAL | `coordination-record-security.test.mjs:31`, `:97`; `task-suspension-security.test.mjs:39`, `:61`, `:112`; `tests/security/coordinated-surface-security.test.mjs:52`, `:80`; `codex-account-security.test.mjs:36` | S | Follows SSI-49 (finding 2) |
+| SSI-82 | PASS | `tests/build/sealed-self-containment.test.mjs:115`; `test:build` 179/179 on every build leg | B, M | — |
+| SSI-83 | FAIL | `task-request-v1-golden.test.mjs`; `task-coordination-loading.test.mjs:40`, `:46`; `codex-verifier-session.test.mjs:252` | C, I | Finding 1; AD-080 item 5 (`state-path-length`, scratch layout) still awaits the owner's approval |
+| SSI-84 | PENDING | `docs/qualification/coordinated-run-pilots.md`: every platform and mode pending (owner) | M | — |
+| SSI-85 | PASS | Quota suspension qualified with the labelled fakes only, now on all five legs (`coordinated-executor.test.mjs:162`; `task-subscription-e2e.test.mjs:118`, `:164`; `task-codex-account-e2e.test.mjs:77`, `:110`) | I, E, M | — |
+
+**Counts**: PASS 79, PARTIAL 3 (SSI-60, SSI-61, SSI-81), FAIL 2 (SSI-49,
+SSI-83), PENDING 1 (SSI-84).
+
+**Rows that hinge on the spec amendments T10 applies.**
+
+| Row | On the current text | With the proposed amendment |
+| --- | --- | --- |
+| SSI-42 | PASS (the bridge confines a Claude Code node) | PASS for the copy, once its residual clause names any read outside the copy (finding 4); the copy is not removed on an interrupted command (finding 7) |
+| SSI-52 | PASS (the plan type is compared at `start` and `resume`) | PASS; the amendment adds the closed vocabulary the code already enforces |
+| SSI-55 | PASS (node sessions) | PASS; the v2 verifier reads its account (`codex-verifier-session.test.mjs:242`) |
+| SSI-56 | PASS (node sessions) | PASS; the v2 verifier's credits suspend the run (`:262`, `task-codex-account-e2e.test.mjs:77`) |
+| SSI-60 | PARTIAL (`VERIFYING` at the verifier) | PASS (R1's text) |
+| SSI-61 | PARTIAL (`scope` kept) | PASS once a text adds the window `scope` in its closed grammar; none is proposed yet |
+| TM-004 | Open in part | Accepted residual, once worded as in finding 4 |
+| SSI-83 | FAIL (finding 1) | R1's open v1 amendment covers v1 credits only; it does not cover finding 1 |
+
+**Decisions.** D1 PASS in code, owner confirmation still due; D2 PASS (P16b);
+D3 PASS (plan type compared, `task-billing.test.mjs:260`); D3b PASS for v2
+(nodes and verifier), v1 credits an open owner decision (AD-082); D4 PASS
+(P14, `task-resumption.test.mjs:154`); D5 PASS
+(`task-coordination-loading.test.mjs:46`); D6 PASS; D7 assumptions; D8
+pending the owner; D9 PASS.
+
+**Edge cases.** Writer dies after a write → partial, reconcile: PASS
+(`coordinated-suspension.test.mjs:166`, `:387`). Drift on resume: PASS
+(`task-resumption.test.mjs:92`). Approval expires while suspended: PASS
+(`task-resumption.test.mjs:82`, `:125`; journey `task-subscription-e2e.test.mjs:339`).
+`allowed_warning` recorded: PASS (`coordinated-node-adapters.test.mjs:241`).
+Two quota signals → one suspension: PASS (`coordinated-suspension.test.mjs:140`).
+A swarm revisit has its own entry and result: PASS (`coordinated-driver.test.mjs:331`);
+counted against the run's limit: by reading (`coordinated-driver.ts:580`, `:591`).
+`success` without `structured_output` or retries exhausted →
+`VES_COORDINATION_RESULT_INVALID`: PASS (`coordinated-node-adapters.test.mjs:55`).
+
+### Discrimination sensor (second pass)
+
+Each mutant applied in place, its suites run through `scripts/test-scope.mjs`,
+then `git restore`; `git status --porcelain` was empty before and after every
+run.
+
+**Planned list, re-run in full** (16 rows, 19 runs, all killed):
+
+| Mutant | Row | Killer (failed of total) |
+| --- | --- | --- |
+| P01 node `instructions` out of both package digests | SSI-28 | unit `task-plan-binding` 2/23 |
+| P02 Kahn's result ignored | SSI-25 | contract `task-request-v2` 3/97 |
+| P03 only read scopes checked against the change scope | SSI-26 | same 2/97 |
+| P04 node write-scope narrowing removed | SSI-41 | unit `coordinated-driver` 1/26; integration `coordinated-executor` 1/9 |
+| P05 writer mutex removed | SSI-40 | unit 1/26; integration `strands-coordination-engine` 1/17 |
+| P06a default `maxEdges` 129; P06b default `runResultBytes` + 1 | SSI-37 | contract 4/97; 2/97 |
+| P07 the application validator accepts an undeclared target | SSI-43 | unit `node-result` + `coordinated-driver` 2/35; integration 1/17 |
+| P08 result persisted before its bounds and checks | SSI-47 | unit `coordinated-driver` 4/26 |
+| P09 `apiKeySource` check removed | SSI-54 | contract `claude-code-driver-structured` 1/9 |
+| P10 Codex account type check removed | SSI-55 | contract `codex-driver-structured` 2/17 |
+| P11 `account/rateLimitResetCredit/consume` allowed | SSI-57 | contract 2/17; architecture `codex-client-methods` 1/3 |
+| P12 billing preflight skipped at resume | SSI-52 | integration `task-coordinated-plan` 5/26; e2e `task-subscription-e2e` 1/9 |
+| P13 worktree cleaned up on a suspension | SSI-60 | integration `coordinated-executor` 1/9 |
+| P14 an unsettled node re-run without its digest | SSI-66 | unit `coordinated-suspension` 3/19 |
+| P15a, P15b a Strands `Agent` constructed in the engine | SSI-03, SSI-79 | architecture 2/6; probe alone 2/2 |
+| P16a, P16b the SDK root entry imported | SSI-02 | architecture 1/6; build `sealed-self-containment` 1/7 |
+
+**Survivors of the first pass**: X04 (a Claude Code node gets the change
+scope) killed, integration `coordinated-node-adapters` 1/10; X06 (renew a
+revoked grant, in `renewsGrant`) killed, unit `task-grant-renewal` 1/7; X07
+(renewal armed on every resume) killed, e2e `task-grant-renewal-e2e` 1/2.
+
+**Remediation mutants, sampled (19, all killed)**: R2 — R-M3a Claude Code
+adapter skips the structured mapping (`coordinated-node-adapters` 4/10),
+R-M3b Codex adapter likewise (2/10), R-V1 a Codex node in the worktree
+(2/10), R-V6 the view ignores protected paths (1/10), R-M4r no clearing of a
+stale view (1/10), R-M5a no screen (unit 1/26, security 1/2), R-M5b no
+withheld list from the composition (1/10), R-M7 the provider's message to the
+SDK (`strands-coordination-engine` 1/17), R-M8b the Codex adapter drops
+warnings (1/10), R-M14a no provider on node usage (unit 1/26). R1 — R-M1a the
+v2 verifier not subscription-only (`codex-verifier-session` 3/17), R-M2a any
+reported plan type accepted (`task-billing` 1/46), R-M2e the plan type never
+read (`task-codex-account-e2e` 1/4), R-M6b the execution contract not
+compared (`task-coordinated-plan` 4/26), R-M10a the policy for the
+subscription profile only (unit 1/15, integration 2/7), R-M10b the
+prerequisites after the credential read (`task-run-prerequisites` 7/7), R-X10
+no lifetime cap (unit 1/7), R-X12 the replaced grant not recorded (e2e 1/2),
+R-M11d the anchored branch not compared at a verifier resume (e2e 1/4).
+
+**My mutants** (12; 9 killed, 3 survived):
+
+| Mutant | Target | Suites run | Result |
+| --- | --- | --- | --- |
+| O1 a binary file copied into a Codex node's view | read-scope copy | `read-scope-view`, `coordinated-node-adapters` | Killed (1/3, 1/10) |
+| O2 the view's removal at node end dropped, the root's removal error swallowed | read-scope copy | `coordinated-node-adapters` | Killed (2/10) |
+| O3 the view's root directory left writable | read-scope copy | `read-scope-view`, `coordinated-node-adapters` | Killed (1/3, 1/10) |
+| O4 a swarm handoff message not screened | result screening | unit `coordinated-driver` | Killed (1/26) |
+| O5 the Claude Code credential not withheld | result screening | unit `task-coordination-withheld`, security `coordination-record-security` | Killed (2/2, 1/2) |
+| O7 the approved-package proof at `start` only | approved-package check | `task-coordinated-plan` | Killed (2/26) |
+| O9 an account reporting `unknown` accepted | plan-type comparison | unit `task-billing`, security `codex-account-security` | Killed (1/46, 1/2) |
+| O10 an account-only session reports the plan of a login that is not ChatGPT | plan-type comparison | contract `codex-driver-structured`, integration `codex-verifier-session` | Killed (1/17, 1/17) |
+| O12 the task commit's parent not checked at a verifier resume | verifier-suspension resume | e2e `task-codex-account-e2e`; then integration `task-commit-recovery`, `task-branch-anchoring`, `task-coordinated-plan`, unit `task-resumption`, `task-run-coordinator`, e2e `task-subscription-e2e`, `task-cli-e2e` | **Survived** (finding 6) |
+| O13 the recorded commit's base not compared with the plan's revision | verifier-suspension resume | same | **Survived** (finding 6) |
+| O14 a resume at the verifier arms the grant renewal | verifier-suspension resume | unit `task-resumption` | Killed (1/21) |
+| O15 the composition drops a stored grant's revocation before the renewal decision | grant renewal | e2e `task-grant-renewal-e2e`; then integration `task-coordinated-plan`, `task-run-containment`, unit `task-grant-renewal`, `task-run-record-readers`, e2e `task-subscription-e2e`, `task-codex-account-e2e` | **Survived** (finding 6) |
+
+Sensor depth: P0 (billing, authority, records). 53 mutants in 56 runs (the
+three survivors were run again against the wider suites named above): 50
+killed, 3 survived.
+
+### Threat model (second pass)
+
+| Item | Verdict at `93b38c5` | Evidence |
+| --- | --- | --- |
+| TM-001 Bedrock through the SDK | Closed | P15a, P15b, P16a, P16b |
+| TM-002 paid usage after the allowance | Closed for v2, residual as designed | Statement and typed quota signals for nodes and the v2 verifier; credits refused for both (R-M1a); plan type compared at `start` and `resume` (R-M2a, R-M2e, O9). Residual: the server-side setting is unverifiable; a v1 run on a subscription can still spend Codex credits at verification (owner decision, AD-082); a plan changed mid-run is seen at the next resume |
+| TM-003 API-key overlay | Closed for v2 | Preflight (P12); `apiKeySource` (P09); `account/read` for nodes, the v2 verifier, and the account-only session (P10, R-M1a, O10) |
+| TM-004 injected escalation | Open in part | Writes narrowed (P04); Claude Code reads narrowed (X04); a Codex node starts in its read-only copy (R-V1, R-V6), but its sandbox reads anything by an absolute path or through `..`, the Codex identity included (findings 2, 4) |
+| TM-005 handoff hijack | Closed | P07, R-M7 |
+| TM-006 credit-consuming RPC | Closed | P11 |
+| TM-007 request edited after approval | Closed | `requireApprovedRequest` (R-M6b, O7) |
+| TM-008 runaway output or loop | Closed | P06a, P06b, P08; first-pass X01–X03 |
+| TM-009 duplicate effects on resume | Closed | P14 |
+| TM-010 forged ledger or result | Closed (same-user out of scope) | Sealed by digest; the seal is unkeyed |
+| TM-011 drift while suspended | Closed in part | Worktree drift (`task-resumption.test.mjs:92`); at the verifier the branch half is tested (R-M11d), the base and parent halves are not (O12, O13) |
+| TM-012 pipe squatting | Closed on the runner, at `f285f2b` | win32 security cases on the Windows leg of run 37197307202 (same code); at this head that leg hung before reporting them (finding 3); another user's access untested |
+| TM-013 logging, injection in the helper | Closed | `windows-pipe-transport.test.mjs:63`, `:71`, `:90` |
+| TM-014 managed policy on Windows | Closed for both profiles | R-M10a, R-M10b |
+| TM-015 personal data in records | Open in part | Plan type a closed value (`codex-account-security.test.mjs:36`); the Codex login is not withheld from node results (finding 2) |
+| TM-016 supply chain | Closed as designed | Exact pins; D1 awaits the owner |
+| TM-017 telemetry export | Closed | Ban test; no tracer provider |
+| TM-018 node output as verification | Closed | `task-coordinated-e2e.test.mjs:75` on all five legs |
+| TM-019 a node survives cancel | Closed | `task-coordinated-e2e.test.mjs:138` on all five legs |
+| TM-020 a looser self-containment check | Closed | P16b |
+
+The owner's focus points. **AD-081's residual**: confirmed by reading
+(Codex's documented read-only mode, no readable root in the thread
+parameters, `packages/drivers/src/codex-driver.ts:523-534`), and wider than
+recorded (finding 4); what it can carry into the Run record is limited by the
+screen except for the Codex login itself (finding 2). **Grant renewal bounds
+(AD-079, AD-082)**: renewal only when a resume from a suspension armed it
+(X07, O14), never a revoked or unknown grant at the decision (X06,
+`task-grant-renewal.test.mjs:46`), only when the grant would lapse first and
+the new one outlives it (`:50`, `:56`), capped at the earlier of the
+approval's expiry and the longest duration plus the margin (R-X10), and the
+replaced grant recorded (R-X12); the composition's hand-off of a revocation
+is untested (O15). **No paid path**: no Strands model, no API-key fallback in
+a v2 run, no credit method reachable, nodes and the v2 verifier refuse
+credits before their turn; v1 verification on a subscription can still spend
+credits (owner decision). **Records**: finding 2. **Windows**: the
+prerequisites hold for both mediated profiles before any credential (R-M10a,
+R-M10b), the pipe cases passed on the same code at `f285f2b` but hung this
+head's Windows security leg (finding 3), and Git's path budget is
+exact (first-pass X05); the `state-path-length` refusal and scratch layout of
+AD-080 item 5 still await the owner (SSI-83 note).
+
+### Gates (second pass)
+
+Local (darwin arm64, Node 24.14.0, at `93b38c5`): `pnpm gate:quick` PASS
+(format, lint, complexity, typecheck; unit 2982, agent-readiness 357, census
+13); `pnpm test:architecture` 132/132; `pnpm agent:check` PASS; the focused
+runs above; 0 failed, 0 skipped, 0 todo.
+
+Platform matrix at `93b38c5`, read from each job's log. Every stage that
+finished has 0 failed, 0 cancelled, 0 skipped, 0 todo; one leg did not
+finish (finding 3):
+
+| Run | Gate (per-stage counts) | Windows x64 | macOS x64 | macOS arm64 | Linux glibc x64 | Linux glibc arm64 |
+| --- | --- | --- | --- | --- | --- | --- |
+| 37198997592 | `gate:full` (unit 2982, contract 957, integration 1241, e2e 300, fault 310, mutation 8) | success | success | success | success | success |
+| 37198999663 | `gate:build` (unit 2982, contract 957, integration 1241, e2e 300, architecture 132, build 179, qualification 358) | success | success | success | success | success |
+| 37199001702 | `gate:security` (unit 2982, contract 957, e2e 300, architecture 132, qualification 358, security 1351, fault 310) | **cancelled**: unit, contract, e2e, architecture, and qualification passed; security hung after 1317 of 1351 and hit the 60-minute limit; fault not run | success | success | success | success |
+
+The coordinated journeys now execute everywhere. In every leg's log the 14
+journeys R3 named (four in `task-coordinated-e2e`, nine in
+`task-subscription-e2e`, the crash fault where the gate runs fault, except on
+the Windows `gate:security` leg, whose fault stage never ran) and the six
+R1 added (`task-codex-account-e2e`, `task-grant-renewal-e2e`) pass at second
+scale: agent, graph, swarm, and cancel take 5.0–7.6 s on Linux, 5.2–8.6 s
+on macOS arm64, 12.9–16.1 s on macOS x64, and 13.1–34.2 s on Windows in
+`gate:full`, and across every leg the journeys take 2.5 to 42.1 s. None
+returns early. The Codex protocol
+spike states "ran against Codex 0.115.0; the structured floor is 0.159.3" on
+the fleet. The `tlc-spec-driven` completion gate (`validate_state.py`) exits
+1 on this file: it reads the result lines of every section together and
+reports them as an unfilled verdict. This pass is FAIL either way, so the
+feature is not done.
+
+### Coordinated-run pilots (second pass)
+
+`docs/qualification/coordinated-run-pilots.md` now records the stand-in
+qualification at `93b38c5`; the owner's pilots are unchanged and never
+inferred:
+
+| Platform | Real-subscription pilots (agent, graph, swarm) | Deterministic stand-ins at `93b38c5` |
+| --- | --- | --- |
+| Windows x64 | pending (owner) | Every coordinated journey executed and passed in `gate:full` and `gate:build`, and every e2e journey in `gate:security`, whose fault stage never ran (finding 3) |
+| macOS arm64 | pending (owner) | Executed and passed in all three gates |
+| macOS x64 | pending (owner) | Executed and passed in all three gates |
+| Linux glibc x64 | pending (owner) | Executed and passed in all three gates |
+| Linux glibc arm64 | pending (owner) | Executed and passed in all three gates |
+
+### Not verified, and why
+
+- Anything that needs a real subscription: the live `apiKeySource`, the live
+  `structured_output`, real quota, credit, and plan-type signals, whether a
+  real Codex App Server reads outside its working directory (findings 2 and 4
+  rest on Codex's documented modes) and accepts a working directory that is
+  not a Git checkout, and every pilot.
+- The win32 behaviour of the read-scope copy outside the journeys: the
+  integration cases of `coordinated-node-adapters` assert the Windows refusal
+  of the fake's POSIX launcher there instead; the graph journey exercises the
+  copy on Windows.
+- `tests/build/sealed-launcher-closure.test.mjs` locally (disk); its matrix
+  result is above.
+- Lessons distillation (`lessons.py`) was not run: it writes outside the
+  files this verification may change.
+
+**Next action**: re-run the Windows leg of `gate:security` (finding 3) and
+bound the named-pipe cases; fix tasks for findings 1, 2, and 6 (an
+implementer who is not this verifier); the amendment texts of findings 4 and
+5 for T10; the owner's decisions on SSI-83 (finding 1 and AD-080 item 5) and
+D1; then a fresh verification of SSI-49, SSI-81, SSI-83, and the survivors.
