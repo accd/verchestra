@@ -1,9 +1,11 @@
-import { rm } from "node:fs/promises";
+import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 
 import {
   DriverExecutionAdapterError,
+  removeMaterializedView,
   runDriverSession,
+  WorktreeReadView,
   type ContextManifest,
   type DriverQuotaSignal,
   type InMemoryExecutionPayloadStore
@@ -14,6 +16,7 @@ import {
   NativeAgentEngine,
   type CoordinationEngine,
   type CoordinationMode,
+  type CoordinationNode,
   type CoordinationNodeSession,
   type CoordinationRecordPort,
   type ExecutionDriverPort,
@@ -230,9 +233,32 @@ function startRequest(options: CoordinatedRunOptions, model: string): DriverStar
   };
 }
 
-// invariant: a Codex node reads the run's worktree through Codex's read-only
-// sandbox with no tool granted, from its own HOME and the Workspace's Codex
-// identity, and hands on only its structured result, as a payload reference.
+// invariant: SSI-42 and TM-004. A Codex node reads through Codex's own
+// sandbox, which the bridge cannot hold, so its working directory is its read
+// scope written out read-only by the bridge's own read view, never the
+// worktree: no file outside that scope, no protected path, no Git metadata,
+// and no link is in it.
+async function readScopeView(
+  root: string,
+  worktree: string,
+  node: CoordinationNode,
+  request: ExecuteRequest
+): Promise<string> {
+  const view = join(root, "scope");
+  await mkdir(view, { mode: 0o700 });
+  const scope = await WorktreeReadView.open({
+    root: worktree,
+    readScope: node.readScope,
+    protectedPaths: request.task.protectedPaths
+  });
+  await scope.materialize(view);
+  return view;
+}
+
+// invariant: a Codex node reads its read scope's view through Codex's
+// read-only sandbox with no tool granted, from its own HOME and the
+// Workspace's Codex identity, and hands on only its structured result, as a
+// payload reference. Its view and HOME are removed when it ends.
 function codexNodeAdapter(options: CoordinatedRunOptions, session: CoordinationNodeSession): ExecutionDriverPort {
   const stop = new AbortController();
   const execute = async (request: ExecuteRequest, control: ExecuteControl) => {
@@ -243,8 +269,9 @@ function codexNodeAdapter(options: CoordinatedRunOptions, session: CoordinationN
       // worktree, as the Claude Code node does, so a run suspended or
       // cancelled at its first Codex node still names the worktree it keeps.
       await options.onWorktree(request.worktreeRef);
-      const cwd = await options.worktrees.resolvePath(request.worktreeRef);
+      const worktree = await options.worktrees.resolvePath(request.worktreeRef);
       const identity = await isolatedIdentity(root, options.codex.identityDirectory);
+      const cwd = await readScopeView(root, worktree, session.node, request);
       const state: CodexNodeState = { structured: undefined, quota: undefined, failure: undefined, toolRequests: 0 };
       const model = session.node.driver.model;
       const finished = await runDriverSession({
@@ -267,6 +294,7 @@ function codexNodeAdapter(options: CoordinatedRunOptions, session: CoordinationN
       return Object.freeze({ status: finished.outcome, outputRefs: Object.freeze(outputRefs) });
     } finally {
       await provider.end();
+      await removeMaterializedView(join(root, "scope"));
       await rm(root, { recursive: true, force: true });
     }
   };

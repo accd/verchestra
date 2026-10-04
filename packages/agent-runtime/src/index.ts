@@ -79,7 +79,12 @@ export {
   type BridgeToolResult,
   type McpBridgeTool
 } from "./execution/mcp-bridge-protocol.ts";
-export { BridgeToolError, WorktreeReadView, type WorktreeReadViewOptions } from "./execution/mcp-bridge-tools.ts";
+export {
+  BridgeToolError,
+  removeMaterializedView,
+  WorktreeReadView,
+  type WorktreeReadViewOptions
+} from "./execution/mcp-bridge-tools.ts";
 export { UnixSocketBridgeTransport, type BridgeChannel, type BridgeTransport } from "./execution/bridge-transport.ts";
 export {
   McpToolBridgeController,

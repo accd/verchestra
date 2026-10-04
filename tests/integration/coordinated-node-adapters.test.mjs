@@ -3,9 +3,12 @@
 // by the coordination rules: a provider that gave no structured result, or
 // one the driver could not read or bound, fails its node with
 // VES_COORDINATION_RESULT_INVALID or VES_COORDINATION_RESULT_TOO_LARGE
-// (SSI-46, SSI-47), and nothing of it is persisted. The providers are the
-// labeled deterministic fakes of the driver spikes.
+// (SSI-46, SSI-47), and nothing of it is persisted; and a node reads only
+// inside its own read scope (SSI-42). The providers are the labeled
+// deterministic fakes of the driver spikes.
 import assert from "node:assert/strict";
+import { mkdir, readdir, symlink, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { test } from "node:test";
 
 import { verifierRefusedOnWin32 } from "../helpers/codex-verifier-fixture.mjs";
@@ -44,8 +47,8 @@ async function refusedNode(fixture, nodeId, code, driverCode) {
   assert.equal(fixture.records.ledger.roundState, "failed");
   assert.deepEqual(
     finished(fixture.executor).map((data) => [data.outcome, data.errorCodes]),
-    [["failed", [driverCode]]],
-    "the node's end is recorded with the driver's own code"
+    driverCode === undefined ? [] : [["failed", [driverCode]]],
+    "a session's end is recorded with the driver's own code"
   );
 }
 
@@ -94,4 +97,97 @@ test("nodes that answer within their bound complete, each result persisted by di
       ["completed", []]
     ]
   );
+});
+
+// invariant: SSI-42 and TM-004. Where the task's change scope is wider than a
+// node's read scope, the node still reads only inside its own: a Claude Code
+// node's bridge refuses the read, and a Codex node's working directory is a
+// read-only view of that scope alone, removed when the node ends.
+const SCOPED_FILES = Object.freeze({
+  "src/a.txt": "alpha\n",
+  "lib/b.txt": "beta\n",
+  "lib/nested/c.txt": "gamma\n",
+  "lib/secret/key.txt": "protected\n",
+  "lib/image.bin": "\u0000binary"
+});
+
+function changeScopeWiderThanNodes(raw) {
+  raw.task.changeScope = ["src", "lib"];
+  raw.task.protectedPaths = [".git", ".verchestra/policy", "lib/secret"];
+}
+
+// why: the fake's read-write scenario reads src/a.txt, writes it, and gives
+// no structured result, so each run below ends as RESULT_INVALID after its
+// tool calls are observed.
+function claudeReader(readScope, writeScope) {
+  return coordinatedRequest("agent", (raw) => {
+    changeScopeWiderThanNodes(raw);
+    Object.assign(raw.execution.nodes[0], { readScope, writeScope, instructions: "scenario:read-write" });
+  });
+}
+
+test("a Claude Code node is refused a read inside the change scope but outside its own read scope", async (t) => {
+  if (WIN32_HOST) return windowsMediationPath(t);
+  const narrow = await compositionFixture(t, claudeReader(["lib"], ["lib/nested"]), { files: SCOPED_FILES });
+  await assert.rejects(narrow.run(), rejectsWith("VES_COORDINATION_RESULT_INVALID"));
+  const [read, write] = (await narrow.claudeObservation()).toolResults;
+  assert.deepEqual(read, { name: "read_file", isError: true, text: "denied: VES_BRIDGE_SCOPE_DENIED" });
+  assert.deepEqual(write, { name: "write_file", isError: true, text: "denied: VES_COORDINATION_SCOPE_DENIED" });
+  assert.deepEqual(narrow.executor.state.tools, [], "no effect reached the executor");
+  const wide = await compositionFixture(t, claudeReader(["src", "lib"], ["src"]), { files: SCOPED_FILES });
+  await assert.rejects(wide.run(), rejectsWith("VES_COORDINATION_RESULT_INVALID"));
+  const [allowed] = (await wide.claudeObservation()).toolResults;
+  assert.equal(allowed.text, "alpha\n", "the same read inside the node's read scope is answered");
+  assert.notEqual(allowed.isError, true);
+});
+
+function codexReaders(planScope = ["lib"]) {
+  return withFakeCodexModel(
+    coordinatedRequest("graph", (raw) => {
+      changeScopeWiderThanNodes(raw);
+      const [plan, build, review] = raw.execution.nodes;
+      plan.readScope = planScope;
+      Object.assign(build, { readScope: ["src", "lib"], writeScope: ["src"], instructions: "scenario:structured" });
+      review.readScope = ["src"];
+    })
+  );
+}
+
+const viewOf = (views, nodeId) => views.find((view) => view.cwd.includes(`-${nodeId}-1`));
+
+test("a Codex node works in a read-only view of its read scope alone, never the worktree, removed when it ends", async (t) => {
+  if (WIN32_HOST) return verifierRefusedOnWin32(t);
+  const fixture = await compositionFixture(t, codexReaders(), { files: SCOPED_FILES, codex: { observeView: true } });
+  await mkdir(join(fixture.root, "outside"));
+  await writeFile(join(fixture.root, "outside", "victim.txt"), "outside the worktree\n");
+  await symlink(join(fixture.root, "outside"), join(fixture.worktree, "lib", "link"), "junction");
+  await symlink(join(fixture.worktree, "src", "a.txt"), join(fixture.worktree, "lib", "a-link.txt"));
+  assert.deepEqual(await fixture.run(), { status: "completed", outputRefs: [] });
+  const views = await fixture.codexViews();
+  assert.equal(views.length, 2, "one view for each Codex node");
+  assert.deepEqual(viewOf(views, "plan").entries, [
+    { path: ".", kind: "directory", writable: false },
+    { path: "lib", kind: "directory", writable: false },
+    { path: "lib/b.txt", kind: "file", writable: false, text: "beta\n" },
+    { path: "lib/nested", kind: "directory", writable: false },
+    { path: "lib/nested/c.txt", kind: "file", writable: false, text: "gamma\n" }
+  ]);
+  assert.deepEqual(
+    viewOf(views, "review").entries.map((entry) => entry.path),
+    [".", "src", "src/a.txt"]
+  );
+  for (const view of views) {
+    assert.notEqual(view.cwd, fixture.worktree);
+    assert.ok(view.cwd.startsWith(join(fixture.sessionsRoot, "codex-node-")), view.cwd);
+  }
+  assert.deepEqual(await readdir(fixture.sessionsRoot), [], "every node's view and home were removed");
+});
+
+test("a Codex node whose read scope is beyond the view's bound fails before its session, and leaves nothing", async (t) => {
+  if (WIN32_HOST) return verifierRefusedOnWin32(t);
+  const files = { ...SCOPED_FILES, "lib/large.txt": "x".repeat(1_048_577) };
+  const fixture = await compositionFixture(t, codexReaders(), { files, codex: { observeView: true } });
+  await refusedNode(fixture, "plan", "VES_BRIDGE_VIEW_LIMIT", undefined);
+  assert.deepEqual(await fixture.codexViews(), [], "no Codex session started");
+  assert.deepEqual(await readdir(fixture.sessionsRoot), []);
 });

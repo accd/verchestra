@@ -5,7 +5,7 @@
 // POSIX wrappers. No provider is contacted and every credential is a fixture
 // value. The Windows task path takes only a native executable from PATH, so a
 // case that needs a wrapper asserts the Windows path instead (WIN32_HOST).
-import { mkdir, readFile, realpath, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, realpath, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -26,6 +26,7 @@ const FAKE_CLAUDE = fileURLToPath(
   new URL("../../spikes/claude-code-driver/test/fake-claude-mediated.mjs", import.meta.url)
 );
 const FAKE_CODEX = fileURLToPath(new URL("../../spikes/codex-driver/test/fake-codex-app-server.mjs", import.meta.url));
+const VIEW_OBSERVER = fileURLToPath(new URL("./codex-view-observer.mjs", import.meta.url));
 const quoted = (value) => `'${value}'`;
 
 async function wrapper(path, name, command, environment = {}) {
@@ -49,7 +50,8 @@ export function withFakeCodexModel(request) {
 
 // invariant: one coordinated run of `request` through the composition, in a
 // worktree holding `files` (logical path to content), with each Codex session
-// started by `codex.command` (the fake by default) in `codex.mode`.
+// started as the fake in `codex.mode`, behind the view observer when
+// `codex.observeView` is set.
 export async function compositionFixture(t, request, options = {}) {
   const root = await realpath(await temporaryDirectory(t, "vestra-composition-"));
   const worktree = join(root, "worktree");
@@ -65,10 +67,10 @@ export async function compositionFixture(t, request, options = {}) {
     "--fixture-observations",
     observations
   ]);
-  const codex = await wrapper(join(root, "codex"), "Codex", options.codex?.command ?? [FAKE_CODEX], {
+  const codex = await wrapper(join(root, "codex"), "Codex", [options.codex?.observeView ? VIEW_OBSERVER : FAKE_CODEX], {
     FAKE_CODEX_VERSION: "0.159.3",
     FAKE_CODEX_MODE: options.codex?.mode ?? "structured",
-    ...options.codex?.environment
+    FAKE_CODEX_OBSERVATIONS: observations
   });
   const records = new MemoryRecords();
   const executor = control();
@@ -103,6 +105,10 @@ export async function compositionFixture(t, request, options = {}) {
     stderr,
     run: () => driver.execute(driverRequest(request), executor.control),
     claudeObservation: async () =>
-      JSON.parse(await readFile(join(observations, "fake-claude-observation.json"), "utf8"))
+      JSON.parse(await readFile(join(observations, "fake-claude-observation.json"), "utf8")),
+    codexViews: async () => {
+      const names = (await readdir(observations)).filter((name) => name.startsWith("codex-view-"));
+      return Promise.all(names.map(async (name) => JSON.parse(await readFile(join(observations, name), "utf8"))));
+    }
   };
 }
