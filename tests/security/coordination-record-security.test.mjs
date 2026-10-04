@@ -145,7 +145,8 @@ test("a node result holding a model-written credential or local path is refused,
 // the Workspace login from its CODEX_HOME, so a result that carries one of its
 // tokens, its API key, its account id, or an account identifier its ID token
 // carries decoded is refused before it is persisted, and so is one that
-// carries a token Codex renewed after the round opened.
+// carries a token Codex renewed after an earlier result of the round was
+// screened.
 test("a node result carrying a secret or an account identifier of the Workspace's Codex login is refused, and nothing of it is persisted", async () => {
   const root = await temporaryRoot();
   const layout = resolveWorkspaceState({
@@ -202,15 +203,18 @@ test("a node result carrying a secret or an account identifier of the Workspace'
       records: openRunRecord({ workspaceId: WORKSPACE_ID, tasksRoot }, RUN_ID).coordination(),
       withheld: (worktreeRef) => nodeResultWithheld(composed, worktreeRef),
       script: {
-        writer: async () => {
+        writer: () => ({
+          result: { outcome: "done", summary: "the writer changed the greeting", next: "reviewer", message: "review" }
+        }),
+        // why: the renewal happens in the round's second node, after the
+        // writer's result was screened, so a screen that resolved what it
+        // withholds once per round would let the renewed token through.
+        reviewer: async () => {
           if (secret === renewed) await login(renewed);
           return {
-            result: { outcome: "done", summary: "the writer changed the greeting", next: "reviewer", message: "review" }
+            result: { outcome: "done", summary: `the login holds ${secret}`, next: "<complete>", message: "done" }
           };
-        },
-        reviewer: () => ({
-          result: { outcome: "done", summary: `the login holds ${secret}`, next: "<complete>", message: "done" }
-        })
+        }
       }
     }).driver.execute(driverRequest(request), control().control);
   // why: the control: the same run whose reviewer names no secret completes,
