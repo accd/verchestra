@@ -6,7 +6,8 @@
 // verifier of an `agent` run, whose only Codex session it is, proves its
 // account before its turn: credits on the account are `not configured` and an
 // exhausted allowance suspends the run, in VERIFYING with its task commit
-// kept, and a resume once the account is clear verifies it.
+// kept, and a resume once the account is clear verifies it. Every case runs on
+// macOS, Linux, and Windows.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { unlink, writeFile } from "node:fs/promises";
@@ -14,7 +15,7 @@ import { join } from "node:path";
 import { after, test } from "node:test";
 
 import { confirmExtraUsage, extraUsageConfirmation } from "../helpers/task-billing-fixture.mjs";
-import { DARWIN, cleanupTaskFixtures } from "../helpers/task-cli-fixture.mjs";
+import { cleanupTaskFixtures } from "../helpers/task-cli-fixture.mjs";
 import {
   EXECUTIONS,
   TIMEOUT,
@@ -28,9 +29,11 @@ import {
 
 after(cleanupTaskFixtures);
 
-const PLATFORM = "the governed task path runs these journeys on macOS";
 const INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u;
 
+// why: a record spells a Windows path with its separators escaped, so a path
+// is looked for as written and as JSON writes it.
+const spellings = (path) => [path, JSON.stringify(path).slice(1, -1)];
 // why: the fakes read their flags from the fixture's private log directory.
 const flag = (fixture, name) => writeFile(join(fixture.scratch, name), "");
 const unflag = (fixture, name) => unlink(join(fixture.scratch, name));
@@ -67,8 +70,7 @@ function assertStoppedAtVerification(fixture, runId) {
 test(
   "Codex credits seen by the verifier of an agent run are not configured, and the run waits in VERIFYING",
   TIMEOUT,
-  async (t) => {
-    if (!DARWIN) return t.diagnostic(PLATFORM);
+  async () => {
     const fixture = await coordinatedFixture(EXECUTIONS.agent);
     const plan = await approved(fixture);
     await flag(fixture, "codex-credits");
@@ -83,7 +85,7 @@ test(
     );
     assert.match(after.suspension.at, INSTANT);
     assert.deepEqual(outcomeRecord(fixture, plan.runId).suspension, after.suspension);
-    for (const secret of ["owner@example.invalid", "25.00", fixture.home, fixture.root])
+    for (const secret of ["owner@example.invalid", "25.00", ...spellings(fixture.home), ...spellings(fixture.root)])
       assert.equal(JSON.stringify(outcomeRecord(fixture, plan.runId)).includes(secret), false, secret);
 
     await unflag(fixture, "codex-credits");
@@ -99,8 +101,7 @@ test(
   }
 );
 
-test("an exhausted Codex allowance suspends an agent run at its verifier instead of failing it", TIMEOUT, async (t) => {
-  if (!DARWIN) return t.diagnostic(PLATFORM);
+test("an exhausted Codex allowance suspends an agent run at its verifier instead of failing it", TIMEOUT, async () => {
   const fixture = await coordinatedFixture(EXECUTIONS.agent);
   const plan = await approved(fixture);
   await flag(fixture, "codex-quota");
@@ -127,8 +128,7 @@ test("an exhausted Codex allowance suspends an agent run at its verifier instead
 test(
   "a statement naming another plan type than the Codex login's is not configured before anything starts",
   TIMEOUT,
-  async (t) => {
-    if (!DARWIN) return t.diagnostic(PLATFORM);
+  async () => {
     const fixture = await coordinatedFixture(EXECUTIONS.agent);
     const plan = await approved(fixture);
     const codex = { ...extraUsageConfirmation().providers.codex, planType: "pro" };
