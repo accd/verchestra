@@ -2978,7 +2978,9 @@ note. -->
   3. A Codex node's session runs in its own view,
      `<sessions root>/codex-node-<run ID>-<node ID>-<visit>/scope`, never in
      the worktree; `removeMaterializedView` makes the view writable for its
-     owner and removes it, with the node's HOME, when the node ends.
+     owner and removes it, with the node's HOME, when the node ends, and
+     clears one a killed session left at that path before the node runs
+     again.
 - **Alternatives rejected:** recording the unconfined read as an accepted
   risk alone (the view confines every read relative to the working
   directory); hard links into the worktree (a mode change would reach the
@@ -2991,7 +2993,9 @@ note. -->
   permits a read by absolute path outside the view: an accepted residual,
   recorded for TM-004, whose reach into the Run record is limited by the node
   result screen (SSI-49). Each Codex node holds one copy of its read scope on
-  disk for its lifetime, at most 5,000 files of at most 1 MiB.
+  disk for its lifetime, at most 5,000 files of at most 1 MiB. A view a
+  killed session left behind stays under the sessions root, read-only, until
+  the node runs again or its owner makes it writable and removes it.
 
 ## Handoff
 
