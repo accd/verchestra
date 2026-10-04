@@ -4059,3 +4059,125 @@ the case fails, its message now names the link and carries the trace; a
 failure at link 1 puts the fault in the relay between the client and the
 controller (PowerShell's copy tasks or the pipe driver), which a fix must
 then address there.
+
+## Remediation R7 (the relay's held block)
+
+**Author**: an implementation session (the author of R4 and R6), not a
+verifier. **Base**: `537752c` (`origin/main`). **Branch**:
+`strands/t9r7-relay-flush`. No verdict above is changed; no real provider was
+called.
+
+**What the trace showed.** Run 37219409058 (`537752c`), Windows x64, the frame
+case failed at its first link: "the controller's refusal was not reached
+within 45000 ms", with `rejected: 0`, the client `writableLength: 0` and
+`writeQueueSize: 0` (every byte handed to the pipe), the pipe still listed,
+`reached: 8257662`, and no `end` step. The hello line is 125 bytes and the
+frame 8,388,609 = 64 × 131,072 + 1, so the controller held 8,257,537 =
+63 × 131,072 + 1 frame bytes, and exactly 131,072 were missing. The refusal
+needs the frame's last byte (`packages/agent-runtime/src/execution/mcp-bridge-protocol.ts:122`).
+
+**Cause the code shows.** 131,072 is the helper's read size.
+The relay was `$verchestraServer.CopyToAsync([Console]::OpenStandardOutput())`
+(`packages/platform-node/src/windows-pipe-transport.ts:95` at `537752c`):
+`Stream.CopyToAsync` asks for 81,920 bytes, the array pool rents 131,072, and
+it reads into the whole array, so every read was one 128 KiB block (the
+failure's accounting is whole blocks). Each read reached standard output only
+through the console stream's queued write task (`Stream.WriteAsync` over a
+stream with no asynchronous write of its own) and the copy's continuation,
+both on the thread pool, one of whose threads the stdin copy holds in a
+blocking read for the channel's life. The client's write completed, so the
+helper had read the last block; none of it reached the controller. On the
+Node side the reader does not stop: the connection pauses the helper's stdout
+only when `push()` returns false and resumes it in `_read`
+(`windows-pipe-transport.ts:324`, `:329`), and in flowing mode the controller's
+synchronous readers take each chunk as it comes; a stand-in that writes as
+that helper wrote (synchronous 128 KiB blocks, a short read once nothing more
+waits) delivers every byte, 125 + 8,388,609, to the controller (below), and
+so did 15 scratch rounds and the 25 rounds of R6. The helper's stdout was the
+unbuffered raw console stream (no `StreamWriter`, nothing to flush), and the
+pipe was created with no buffer sizes (0). Which thread-pool step lost the
+block on the runner cannot be shown without a Windows host; that one whole
+read never reached the controller is what the trace proves.
+
+**Change.**
+
+1. `d07a1a3`, the helper (`windows-pipe-transport.ts:80`, the relay at
+   `:104` to `:112`). Toward the controller it relays on its own thread: it
+   reads at most 64 KiB from the pipe (`ReadAsync` awaited by `Wait`), writes
+   exactly the bytes read to standard output, and flushes them before it
+   reads again. The controller's replies are copied from standard input by a
+   task with an explicit 64 KiB buffer. It ends when the client leaves (a
+   read of 0 bytes) or its input ends. Diff of the relay (the lines after
+   `verchestra-pipe:connected`):
+
+   ```diff
+   -$verchestraRelays = [System.Threading.Tasks.Task[]]@([Console]::OpenStandardInput().CopyToAsync($verchestraServer), $verchestraServer.CopyToAsync([Console]::OpenStandardOutput()))
+   -$null = [System.Threading.Tasks.Task]::WaitAny($verchestraRelays)
+   +$verchestraToClient = [Console]::OpenStandardInput().CopyToAsync($verchestraServer, 65536)
+   +$verchestraOut = [Console]::OpenStandardOutput()
+   +$verchestraBlock = [byte[]]::new(65536)
+   +while ($true) {
+   +$verchestraRead = $verchestraServer.ReadAsync($verchestraBlock, 0, $verchestraBlock.Length)
+   +while (-not $verchestraRead.Wait(250)) { if ($verchestraToClient.IsCompleted) { $verchestraServer.Dispose(); exit 0 } }
+   +if ($verchestraRead.Result -eq 0) { break }
+   +$verchestraOut.Write($verchestraBlock, 0, $verchestraRead.Result)
+   +$verchestraOut.Flush()
+   +}
+    $verchestraServer.Dispose()
+    exit 0
+   ```
+
+   The pinned digest moved deliberately, `e3e36678…` to `933d8330…`
+   (`tests/unit/windows-pipe-transport.test.mjs:75`, with its reason in a
+   comment), because the script changed for this cause and no other line did.
+2. `2996c05`, the controller (`mcp-tool-bridge.ts:34`, `:164`, `:206`). A
+   line that stops arriving part way, with no byte for 10 s, refuses its
+   connection as an oversized frame is refused, so the channel, its helper,
+   and its client end within a bound however the bytes stopped; a line's end
+   or the connection's close ends the wait. These refusals are counted apart
+   (`stalledFrames`, `:64`). The real-pipe frame case also requires its
+   refusal to be for the frame's size (`tests/security/windows-pipe-bridge-security.test.mjs:316`),
+   so a relay that still held a tail fails it with the trace rather than
+   passing through the deadline.
+3. `9646b00`, the reproduction on every platform
+   (`tests/integration/windows-pipe-transport-relay.test.mjs`, stand-in modes
+   in `tests/helpers/pipe-relay-stand-in.mjs`).
+
+**Tests.**
+
+| Case | Asserts |
+| --- | --- |
+| `windows-pipe-transport.test.mjs:134` | the relay toward the controller, line by line: read at most 64 KiB, write exactly what was read, flush, before the next read; no `CopyToAsync` carries the client's bytes |
+| `windows-pipe-bridge-security.test.mjs:147` (every platform, fake helper) | a frame that arrives in two parts 100 ms apart is served; a frame that stops part way is refused at the 300 ms bound, counted as stalled, and the helper is ended |
+| `windows-pipe-transport-relay.test.mjs:125` (real stand-in, `blocks`) | a frame relayed in synchronous 128 KiB blocks reaches the controller whole (125 + 8,388,609 bytes) and is refused for its size; every link of the refusal holds |
+| `windows-pipe-transport-relay.test.mjs:140` (real stand-in, `holds-tail`) | a relay that never flushes a frame's tail has its channel refused at the stall bound, its helper ended, and its client disconnected |
+| `windows-pipe-bridge-security.test.mjs:316` (Windows) | the real pipe's refusal is for the frame's size, no stalled frame |
+
+**Discrimination** (each applied, the suites run, then restored):
+
+| Mutant | Killer (failed of total) |
+| --- | --- |
+| R7-M1 no frame-stall watch | 2/22: the fake stalled-frame case and the `holds-tail` stand-in case |
+| R7-M2 a stalled refusal not counted | 2/22: the same two |
+| R7-M3 the stall wait not reset by a frame's progress | 1/22: the fake case (a frame arriving in parts is refused) |
+| R7-M4 the helper's relay back to the two `CopyToAsync` | 2/50 unit: the pinned digest and the relay's lines (text only; no PowerShell runs here) |
+
+**Gates** (darwin arm64, Node 24.14.0, at `9646b00`): `pnpm gate:quick` PASS
+(unit 2993/2993, agent-readiness 357/357, census 13/13, complexity
+unchanged); `pnpm test:architecture` 132/132; `pnpm agent:check` PASS; the
+bridge and pipe suites 116/116; the stand-in suite 5/5 in three runs; the
+mediated, path-case, coordinated, and node-adapter suites 31/31; 0 failed,
+0 skipped, 0 todo, no temporary entry left. Not verified here: the new helper
+script on Windows (no PowerShell host); the next Windows `gate:security` leg
+is its proof, and its frame case must be refused for its size.
+
+**Proposed text for T10, not applied.** `spec.md` SSI-76: "IF a second
+client connects, a client fails authentication, authentication times out, a
+frame exceeds its bound, or a frame stops arriving part way for 10 s THEN the
+Windows transport SHALL refuse with the codes the Unix transport uses.
+(SSI-76)"
+
+**Next action**: push the branch and run the Windows `gate:security` leg. A
+pass with no stalled frame shows the relay fixed; a failure carries the
+trace and the statistics, and a stalled-frame refusal there would mean the
+new relay still holds a tail.
