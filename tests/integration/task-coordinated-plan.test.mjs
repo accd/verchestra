@@ -10,7 +10,7 @@
 // credential read.
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
-import { mkdir, realpath, writeFile } from "node:fs/promises";
+import { mkdir, realpath, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, test } from "node:test";
 
@@ -22,6 +22,7 @@ import { normalizeTaskRequest } from "../../packages/application/src/index.ts";
 import { canonicalizeJsonV2 } from "../../packages/domain/src/index.ts";
 import { resolveStateRoot, resolveWorkspaceState } from "../../packages/platform-node/src/index.ts";
 import { directoryOfLength } from "../helpers/deep-directory.mjs";
+import { boundPlanRecord } from "../helpers/task-plan-fixture.mjs";
 import { confirmExtraUsage, extraUsageConfirmation } from "../helpers/task-billing-fixture.mjs";
 import {
   cleanupTaskCommandFixtures,
@@ -29,9 +30,17 @@ import {
   refusedState,
   taskCommandFixture
 } from "../helpers/task-command-fixture.mjs";
-import { validTaskRequestV2 } from "../helpers/task-request-fixture.mjs";
+import { validTaskRequest, validTaskRequestV2 } from "../helpers/task-request-fixture.mjs";
 import { temporaryDirectory } from "../helpers/temporary-directory.mjs";
-import { RUN_ID, TASK_ID, WORKSPACE_ID, canonicalDigestOf, planRecord } from "../helpers/task-run-record-fixture.mjs";
+import {
+  RUN_ID,
+  TASK_ID,
+  WORKSPACE_ID,
+  canonicalDigestOf,
+  filled,
+  planRecord,
+  taskRequest
+} from "../helpers/task-run-record-fixture.mjs";
 
 function without(record, key) {
   const copy = { ...record };
@@ -48,9 +57,13 @@ function coordinatedRequest(mode = "graph") {
   return normalizeTaskRequest({ ...request, task: { ...request.task, taskId: TASK_ID } });
 }
 
+// why: a run as `task plan` and `task approve` leave it: its plan record bound
+// to its Execution Package, which is stored beside it (SSI-29).
 async function plannedCoordinated(state, request = coordinatedRequest()) {
   const fixture = await taskCommandFixture();
-  const run = await fixture.planned(state, planRecord({ request }));
+  const { record, pkg } = await boundPlanRecord(request);
+  const run = await fixture.planned(state, record);
+  await run.runRecord.savePackage(pkg);
   return { fixture, ...run };
 }
 
@@ -67,7 +80,7 @@ test("a v2 plan record seals its whole descriptor and loads unchanged", async ()
     const request = coordinatedRequest(mode);
     const run = await plannedCoordinated("AWAITING_EXECUTION_APPROVAL", request);
     const loaded = await run.runRecord.loadPlan();
-    assert.deepEqual(loaded, planRecord({ request }), mode);
+    assert.deepEqual(loaded, run.plan, mode);
     assert.equal(loaded.request.schemaVersion, 2, mode);
     assert.equal(loaded.requestDigest, canonicalDigestOf(request), mode);
     assert.equal(loaded.request.execution.limits.maxNodes, 64, mode);
@@ -149,19 +162,83 @@ for (const [command, state, invoke] of COMMANDS)
   test(`${command} of a v2 run on subscriptions with the confirmation is composed: it goes on to its credential read`, async () => {
     const run = await plannedCoordinated(state);
     await confirmExtraUsage(run.fixture.workspace.layout.workspaceRoot);
-    // why: the deny guard stops the first credential read; reaching it proves
-    // the plan loaded and the run was composed rather than refused.
-    await assert.rejects(invoke(run.fixture.io), (error) => {
-      const causes = [];
-      for (let cause = error; cause !== undefined; cause = cause.cause) causes.push(String(cause.message));
-      assert.ok(
-        causes.some((message) => message.includes("attempted to run")),
-        causes.join(" <- ")
-      );
-      return true;
-    });
+    // why: reaching the credential read proves the plan loaded and the run
+    // was composed rather than refused.
+    await assert.rejects(invoke(run.fixture.io), reachedCredentialRead);
     assert.equal(run.fixture.state(), state);
   });
+
+// why: the deny guard stops the first credential read; reaching it proves the
+// run got past every check before it.
+function reachedCredentialRead(error) {
+  const causes = [];
+  for (let cause = error; cause !== undefined; cause = cause.cause) causes.push(String(cause.message));
+  assert.ok(
+    causes.some((message) => message.includes("attempted to run")),
+    causes.join(" <- ")
+  );
+  return true;
+}
+
+// why: another request than the approved one, in the normalized form a load
+// re-derives, so that its digest matches and the rewrite loads.
+function rewrittenRequest(request) {
+  const { task } = request;
+  const raw = request.schemaVersion === 1 ? validTaskRequest() : validTaskRequestV2("swarm");
+  return normalizeTaskRequest({
+    ...raw,
+    task: { ...raw.task, taskId: task.taskId, doneCriteria: ["Another outcome."] }
+  });
+}
+
+// invariant: SSI-29. `start` and `resume` run only the request the approved
+// Execution Package binds. A plan record rewritten consistently after approval
+// (another descriptor, its digest, and the record's seal recomputed by the Run
+// record's own writer) loads, and is refused before the billing preflight, a
+// credential, a transition, or a worktree, for a v1 and a v2 run alike; the
+// record as approved goes on to its credential read.
+for (const [command, state, invoke] of COMMANDS)
+  for (const [label, approvedRequest] of [
+    ["v1", taskRequest()],
+    ["v2", coordinatedRequest()]
+  ])
+    test(`${command} refuses a ${label} plan record rewritten consistently after its approval`, async () => {
+      const fixture = await taskCommandFixture();
+      const { record, pkg } = await boundPlanRecord(approvedRequest);
+      const run = await fixture.planned(state, record);
+      await run.runRecord.savePackage(pkg);
+      await confirmExtraUsage(fixture.workspace.layout.workspaceRoot);
+      await assert.rejects(invoke(fixture.io), reachedCredentialRead, "the run as approved");
+      const request = rewrittenRequest(approvedRequest);
+      await run.runRecord.savePlan({ ...record, request, requestDigest: canonicalDigestOf(request) });
+      assert.deepEqual((await run.runRecord.loadPlan()).request, request, "the rewrite loads");
+      // why: without its statement a v2 run is refused by the billing
+      // preflight, so the refusal below shows the proof comes first.
+      await unlink(join(fixture.workspace.layout.workspaceRoot, "task-billing.json"));
+      const before = await listing(fixture.workspace.layout.workspaceRoot);
+      await assert.rejects(invoke(fixture.io), refusedState("VES_TASK_PACKAGE_INVALID"));
+      assert.equal(fixture.state(), state);
+      assert.deepEqual(await listing(fixture.workspace.layout.workspaceRoot), before);
+      assert.equal(existsSync(join(run.directory, "active.json")), false);
+    });
+
+// invariant: SSI-29. The package the plan record names must be the one its
+// approval intent binds; a record whose package and intent part ways is
+// refused the same way, even with the request unchanged.
+test("start refuses a plan record whose package is not the one its approval binds", async () => {
+  const fixture = await taskCommandFixture();
+  const { record, pkg } = await boundPlanRecord(taskRequest());
+  const run = await fixture.planned("EXECUTION_AUTHORIZED", {
+    ...record,
+    approvalIntent: {
+      ...record.approvalIntent,
+      review: { ...record.approvalIntent.review, packageDigest: filled("9") }
+    }
+  });
+  await run.runRecord.savePackage(pkg);
+  await assert.rejects(runTask(fixture.io, { ...RUN, resume: false }), refusedState("VES_TASK_PACKAGE_INVALID"));
+  assert.equal(fixture.state(), "EXECUTION_AUTHORIZED");
+});
 
 // why: Git refuses a worktree whose `.git` path passes PATH_MAX - 40 bytes,
 // and a run's deepest worktrees, its scratch checkouts, lie 65 bytes below the

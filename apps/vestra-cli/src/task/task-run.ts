@@ -258,6 +258,19 @@ async function prepare(
   } satisfies Prepared;
 }
 
+// invariant: SSI-29. A run executes only the request its human approved: the
+// plan record names the package the approval binds, and that package's
+// execution contract is the plan's request digest. A plan record rewritten
+// consistently after approval, request, digest, and seal alike, runs nothing.
+async function requireApprovedRequest(plan: TaskPlanRecord, runRecord: RunRecord): Promise<void> {
+  const pkg = await runRecord.approvedPackage(plan);
+  // why: the intent is checked as an object only when the record loads, and a
+  // record without its review surface binds no package at all.
+  const review = (plan.approvalIntent as { readonly review?: { readonly packageDigest?: unknown } }).review;
+  if (review?.packageDigest !== plan.packageDigest || pkg.payload.executionContractDigest !== plan.requestDigest)
+    throw stateInvalid("VES_TASK_PACKAGE_INVALID", "The sealed request is not the one the approved package binds");
+}
+
 class TaskRunComposition {
   readonly #io: TaskCommandIo;
   readonly #workspace: TaskWorkspace;
@@ -783,6 +796,7 @@ export async function runTask(
   const runtime = openRuntime(workspace);
   try {
     assertStartable(currentRun(runtime, runId).state, options.resume);
+    await requireApprovedRequest(plan, runRecord);
     const prepared = await prepare(io, workspace, plan, runtime, runRecord);
     await runRecord.claimActive(io.pid);
     const composition = new TaskRunComposition(io, workspace, plan, runtime, prepared, runRecord, reconcile);
