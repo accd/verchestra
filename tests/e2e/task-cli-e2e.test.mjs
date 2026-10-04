@@ -16,6 +16,7 @@ import { rm, writeFile, mkdir, symlink, rename } from "node:fs/promises";
 import { join } from "node:path";
 import { after, test } from "node:test";
 
+import { scratchSegments } from "../../apps/vestra-cli/src/task/task-workspace.ts";
 import { assertTextAgrees } from "../helpers/cli-text-fixture.mjs";
 import {
   CREDENTIALS,
@@ -1217,15 +1218,16 @@ test("a linked verification scratch root fails the run before anything is delete
   const fixture = await taskFixture();
   const plan = await approved(fixture);
   const outside = join(fixture.root, "outside-scratch");
-  await mkdir(join(outside, "review"), { recursive: true });
-  await writeFile(join(outside, "review", "keep.txt"), "not a scratch checkout\n");
+  const [runSegment, review] = scratchSegments(plan.runId, "review");
+  await mkdir(join(outside, review), { recursive: true });
+  await writeFile(join(outside, review, "keep.txt"), "not a scratch checkout\n");
   await mkdir(join(fixture.stateRoot, "verification"), { recursive: true });
-  await symlink(outside, join(fixture.stateRoot, "verification", plan.runId));
+  await symlink(outside, join(fixture.stateRoot, "verification", runSegment));
   const run = start(fixture, plan.runId);
   assert.equal(run.status, 1, run.stderr);
   assert.equal(run.json.data.state, "FAILED");
   assert.equal(run.json.data.reason, "VES_STATE_ROOT_ESCAPE");
-  assert.deepEqual(linkListing(outside), ["review", "review/keep.txt"]);
+  assert.deepEqual(linkListing(outside), [review, join(review, "keep.txt")]);
   assert.deepEqual(logLines(fixture, "fake-codex.log"), [], "the verifier was started");
   assert.equal(fixture.git(["worktree", "list", "--porcelain"]).split("\n\n").length, 1);
 });

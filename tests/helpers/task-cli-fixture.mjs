@@ -91,13 +91,32 @@ function initializeRepository(root, repository, objectFormat) {
 }
 
 // why: Git for Windows converts line endings on checkout by default, so a
-// worktree would hold `new\r\n` where the gate and the verifier read `new\n`;
-// and the run's worktrees sit below the fixture's nested temporary
-// directories, past the 260-character path limit git keeps unless told not to.
+// worktree would hold `new\r\n` where the gate and the verifier read `new\n`.
+// core.longpaths is deliberately left to the task path, which sets it on its
+// own Git commands.
 function windowsCheckouts(repository) {
   if (!WIN32) return;
   git(repository, ["config", "core.autocrlf", "false"]);
-  git(repository, ["config", "core.longpaths", "true"]);
+}
+
+// invariant: on Windows the repository carries one file whose path is short
+// in the fixture's own checkout but passes 260 characters inside every
+// worktree and scratch checkout of a run, as a deep file of a real repository
+// does once Verchestra checks it out below the state root.
+export const WINDOWS_DEEP_FILE = [
+  "src",
+  "long-paths",
+  "a-directory-name-of-thirty-chars",
+  "another-directory-of-thirty-ch",
+  "and-a-third-directory-of-thirty",
+  "deep-file-of-a-real-repository.txt"
+].join("/");
+
+async function windowsDeepFile(repository) {
+  if (!WIN32) return;
+  const path = join(repository, ...WINDOWS_DEEP_FILE.split("/"));
+  await mkdir(join(path, ".."), { recursive: true });
+  await writeFile(path, "deep\n");
 }
 
 const CHECK_VALUE = `import { existsSync, readFileSync, writeFileSync } from "node:fs";
@@ -291,6 +310,7 @@ export async function taskFixture(options = {}) {
   await symlink(join(root, "outside-secret.txt"), join(repository, "src", "outside-link.txt")).catch(() => undefined);
   await mkdir(join(root, "outside-dir"));
   await symlink(join(root, "outside-dir"), join(repository, "src", "link")).catch(() => undefined);
+  await windowsDeepFile(repository);
   git(repository, ["add", "-A"]);
   git(repository, ["commit", "--quiet", "-m", "base"]);
   const revision = git(repository, ["rev-parse", "HEAD"]);

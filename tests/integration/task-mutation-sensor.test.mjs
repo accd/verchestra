@@ -9,6 +9,7 @@ import { join } from "node:path";
 import { afterEach, test } from "node:test";
 
 import { activeStateDigest, MutationSensor } from "../../apps/vestra-cli/src/task/task-mutation-sensor.ts";
+import { scratchSegments } from "../../apps/vestra-cli/src/task/task-workspace.ts";
 import {
   OBJECT_FORMATS,
   cleanupObjectFormatRepositories,
@@ -131,7 +132,7 @@ for (const [label, requirementId, path, killed] of [
     assert.equal(result.activeStateAfterDigest, before);
     assert.equal(git(fixture.repositoryRoot, "rev-parse", "HEAD"), fixture.commitId);
     assert.equal(registeredWorktreeCount(fixture.repositoryRoot), 1);
-    assert.deepEqual(await readdir(join(fixture.verificationRoot, "run_sensor", "mutations")), []);
+    assert.deepEqual(await readdir(join(fixture.verificationRoot, ...scratchSegments("run_sensor", "mutations"))), []);
   });
 }
 
@@ -141,5 +142,5 @@ test("a mutation target outside the change scope is refused and its checkout is 
     code: "VES_TASK_MUTATION_INVALID"
   });
   assert.equal(registeredWorktreeCount(fixture.repositoryRoot), 1);
-  assert.deepEqual(await readdir(join(fixture.verificationRoot, "run_sensor", "mutations")), []);
+  assert.deepEqual(await readdir(join(fixture.verificationRoot, ...scratchSegments("run_sensor", "mutations"))), []);
 });
