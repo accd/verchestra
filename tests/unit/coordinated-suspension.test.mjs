@@ -1,18 +1,28 @@
-// invariant: SSI-59..61 (AD-071). A provider's usage signal from any node
-// suspends a coordinated run instead of failing it: no further node starts,
-// every running node is stopped and recorded, the round stays open for a
-// resume, and the suspension names only the signal's code, the provider, the
-// time, and the window and reset the provider reported. Node sessions and
-// engines are labelled in-memory fakes.
+// invariant: SSI-59..61 and SSI-65..67 (AD-071, D4). A provider's usage
+// signal from any node suspends a coordinated run instead of failing it: no
+// further node starts, every running node is stopped and recorded, the round
+// stays open for a resume, and the suspension names only the signal's code,
+// the provider, the time, and the window and reset the provider reported. A
+// resume replays completed visits, runs again on its own a visit that left no
+// effect, and runs again a visit that may have left one only when the owner
+// typed back the digest of its uncertainty record. Node sessions and engines
+// are labelled in-memory fakes.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
+import { uncertaintyRecord, unsettledVisits } from "../../packages/application/src/index.ts";
 import {
   aborted,
+  canonicalRecordDigest,
   control,
   coordinatedDriver,
   coordinatedRequest,
+  DONE,
   driverRequest,
+  MemoryPayloads,
+  MemoryRecords,
+  rejectsWith,
+  resultBytes,
   twoIndependent,
   withExecution
 } from "../helpers/coordinated-driver-fixture.mjs";
@@ -252,4 +262,240 @@ test("a cancel that comes first is a cancel: a later quota signal suspends nothi
   });
   const result = await run(fixture, request, { signal: caller.signal });
   assert.equal(result.status, "cancelled");
+});
+
+const BEFORE = `sha256:${"a".repeat(64)}`;
+const AFTER = `sha256:${"b".repeat(64)}`;
+const RUN = driverRequest(coordinatedRequest("graph")).runId;
+const at = (seconds) => `2026-10-03T11:00:${String(seconds).padStart(2, "0")}.000Z`;
+
+function entry(nodeId, state, change = {}) {
+  return {
+    round: 1,
+    nodeId,
+    visit: 1,
+    state,
+    startedAt: at(0),
+    receiptCount: 0,
+    changeDigestBefore: BEFORE,
+    ...change
+  };
+}
+
+function running(visits, mode = "graph") {
+  return { schemaVersion: 1, mode, round: 1, roundState: "running", visits };
+}
+
+const digestOf = (visit) => canonicalRecordDigest(uncertaintyRecord(RUN, visit));
+const sessions = (fixture) => fixture.nodes.state.sessions.map((session) => session.node.nodeId);
+const ledgerOf = (records) =>
+  records.ledger.visits.map((visit) => `${visit.nodeId}#${visit.visit}:${visit.state}${visit.rerunOf ? "+rerun" : ""}`);
+
+test("a visit settles by its effect: only a failed one with no receipt on an unchanged worktree left none", () => {
+  const completed = entry("plan", "completed", { resultDigest: AFTER, resultBytes: 10, endedAt: at(1) });
+  const cases = [
+    [entry("build", "failed", { endedAt: at(2), failureCode: "VES_DRIVER_QUOTA_EXHAUSTED" }), BEFORE, "none"],
+    [entry("build", "failed", { endedAt: at(2) }), AFTER, "possible"],
+    [entry("build", "failed", { endedAt: at(2) }), undefined, "possible"],
+    [entry("build", "failed", { endedAt: at(2), changeDigestBefore: undefined }), BEFORE, "possible"],
+    [entry("build", "partial", { endedAt: at(2), receiptCount: 1 }), BEFORE, "possible"],
+    [entry("build", "failed", { endedAt: at(2), receiptCount: 1 }), BEFORE, "possible"],
+    [entry("build", "started"), BEFORE, "possible"],
+    [entry("build", "uncertain"), BEFORE, "possible"]
+  ];
+  for (const [visit, current, effect] of cases) {
+    const unsettled = unsettledVisits(running([completed, visit]), current);
+    assert.deepEqual(
+      unsettled.map((item) => [item.visit.nodeId, item.effect]),
+      [["build", effect]],
+      `${visit.state} r${visit.receiptCount} ${String(current)}`
+    );
+  }
+  assert.deepEqual(unsettledVisits({ ...running([entry("build", "failed")]), roundState: "failed" }, BEFORE), []);
+  assert.deepEqual(unsettledVisits(undefined, BEFORE), []);
+});
+
+test("a visit a re-run replaced is history: only the latest entry of a node and visit is settled", () => {
+  const replaced = entry("build", "partial", { receiptCount: 1, endedAt: at(2) });
+  const rerun = entry("build", "failed", { startedAt: at(3), endedAt: at(4), rerunOf: digestOf(replaced) });
+  const unsettled = unsettledVisits(running([replaced, rerun]), BEFORE);
+  assert.deepEqual(
+    unsettled.map((item) => item.visit),
+    [rerun]
+  );
+  const completed = { ...rerun, state: "completed", resultDigest: AFTER, resultBytes: 10 };
+  assert.deepEqual(unsettledVisits(running([replaced, completed]), BEFORE), []);
+});
+
+test("an uncertainty record names the run and every fact of the visit except its state", () => {
+  const visit = entry("build", "started");
+  const record = uncertaintyRecord(RUN, visit);
+  assert.deepEqual(record, {
+    schemaVersion: 1,
+    runId: RUN,
+    round: 1,
+    nodeId: "build",
+    visit: 1,
+    startedAt: at(0),
+    receiptCount: 0,
+    changeDigestBefore: BEFORE
+  });
+  assert.equal(digestOf(visit), digestOf({ ...visit, state: "uncertain" }));
+  assert.notEqual(digestOf(visit), canonicalRecordDigest(uncertaintyRecord("run_other", visit)));
+});
+
+// why: a suspended graph as commit 2 leaves it: the planner completed with a
+// persisted result, the builder stopped by a quota signal.
+async function suspendedGraph(build) {
+  const request = coordinatedRequest("graph");
+  const records = new MemoryRecords();
+  const payloads = new MemoryPayloads();
+  const bytes = resultBytes({ outcome: "done", summary: "the plan" });
+  const plan = await records.saveResult(bytes);
+  records.ledger = running([
+    entry("plan", "completed", { endedAt: at(1), resultDigest: plan, resultBytes: bytes.byteLength }),
+    entry("build", build.state, { startedAt: at(2), ...build })
+  ]);
+  return { request, records, payloads };
+}
+
+test("SSI-65, SSI-67: a resume replays the completed node and runs again, recorded, a node that left no effect", async () => {
+  const graph = await suspendedGraph({ state: "failed", endedAt: at(3), failureCode: "VES_DRIVER_QUOTA_EXHAUSTED" });
+  const [, failed] = graph.records.ledger.visits;
+  const fixture = coordinatedDriver(graph.request, { ...graph, changeDigest: async () => BEFORE });
+  assert.equal((await run(fixture, graph.request)).status, "completed");
+  assert.deepEqual(sessions(fixture), ["build", "review"], "the completed planner started a session again");
+  assert.deepEqual(ledgerOf(fixture.records), [
+    "plan#1:completed",
+    "build#1:failed",
+    "build#1:completed+rerun",
+    "review#1:completed"
+  ]);
+  assert.equal(fixture.records.ledger.visits[2].rerunOf, digestOf(failed));
+  assert.equal(fixture.records.ledger.roundState, "completed");
+  assert.match(fixture.nodes.state.sessions[0].prompt, /the plan/u, "the replayed result was not handed on");
+});
+
+test("SSI-66: a node whose worktree moved since it started is uncertain, and nothing runs", async () => {
+  const graph = await suspendedGraph({ state: "failed", endedAt: at(3) });
+  const fixture = coordinatedDriver(graph.request, { ...graph, changeDigest: async () => AFTER });
+  await assert.rejects(run(fixture, graph.request), rejectsWith("VES_TASK_NODE_UNCERTAIN"));
+  assert.deepEqual(sessions(fixture), []);
+  assert.equal(fixture.records.ledger.roundState, "running");
+});
+
+test("SSI-66, D4: a partial node is refused until its digest is typed back, then that one node runs again", async () => {
+  const graph = await suspendedGraph({ state: "partial", endedAt: at(3), receiptCount: 1 });
+  const [, partial] = graph.records.ledger.visits;
+  const refusedFixture = coordinatedDriver(graph.request, { ...graph, changeDigest: async () => AFTER });
+  await assert.rejects(run(refusedFixture, graph.request), rejectsWith("VES_TASK_NODE_UNCERTAIN"));
+  assert.deepEqual(sessions(refusedFixture), []);
+  assert.deepEqual(ledgerOf(graph.records), ["plan#1:completed", "build#1:partial"]);
+  const wrong = coordinatedDriver(graph.request, { ...graph, changeDigest: async () => AFTER, reconcile: AFTER });
+  await assert.rejects(run(wrong, graph.request), rejectsWith("VES_TASK_NODE_UNCERTAIN"));
+  const reconciled = coordinatedDriver(graph.request, {
+    ...graph,
+    changeDigest: async () => AFTER,
+    reconcile: digestOf(partial)
+  });
+  assert.equal((await run(reconciled, graph.request)).status, "completed");
+  assert.deepEqual(sessions(reconciled), ["build", "review"]);
+  assert.equal(graph.records.ledger.visits[2].rerunOf, digestOf(partial));
+});
+
+test("a node with no recorded end is marked uncertain, keeps its digest, and runs again once reconciled", async () => {
+  const graph = await suspendedGraph({ state: "started" });
+  const [, started] = graph.records.ledger.visits;
+  const refused = coordinatedDriver(graph.request, { ...graph, changeDigest: async () => BEFORE });
+  await assert.rejects(run(refused, graph.request), rejectsWith("VES_TASK_NODE_UNCERTAIN"));
+  assert.deepEqual(ledgerOf(graph.records), ["plan#1:completed", "build#1:uncertain"]);
+  assert.equal(graph.records.ledger.roundState, "running");
+  const reconciled = coordinatedDriver(graph.request, {
+    ...graph,
+    changeDigest: async () => BEFORE,
+    reconcile: digestOf(started)
+  });
+  assert.equal((await run(reconciled, graph.request)).status, "completed");
+  assert.deepEqual(sessions(reconciled), ["build", "review"]);
+});
+
+test("without a digest port no unsettled node runs again, not even one that left no effect", async () => {
+  const graph = await suspendedGraph({ state: "failed", endedAt: at(3) });
+  const fixture = coordinatedDriver(graph.request, { ...graph, changeDigest: async () => BEFORE, digest: null });
+  await assert.rejects(run(fixture, graph.request), rejectsWith("VES_TASK_NODE_UNCERTAIN"));
+  assert.deepEqual(sessions(fixture), []);
+});
+
+test("a run suspended twice settles only its latest visit: a re-run that failed again runs again", async () => {
+  const graph = await suspendedGraph({ state: "failed", endedAt: at(3) });
+  const first = coordinatedDriver(graph.request, {
+    ...graph,
+    changeDigest: async () => BEFORE,
+    script: {
+      build: async () => {
+        throw Object.assign(new Error("quota"), { code: "VES_DRIVER_QUOTA_EXHAUSTED", quota: { scope: "five_hour" } });
+      }
+    }
+  });
+  assert.equal((await run(first, graph.request)).status, "suspended");
+  const second = coordinatedDriver(graph.request, { ...graph, changeDigest: async () => BEFORE });
+  assert.equal((await run(second, graph.request)).status, "completed");
+  assert.deepEqual(ledgerOf(graph.records), [
+    "plan#1:completed",
+    "build#1:failed",
+    "build#1:failed+rerun",
+    "build#1:completed+rerun",
+    "review#1:completed"
+  ]);
+  assert.equal(graph.records.ledger.visits[3].rerunOf, digestOf(graph.records.ledger.visits[2]));
+});
+
+test("a resumed swarm runs again the reviewer the quota stopped, after replaying the writer's handoff", async () => {
+  const request = coordinatedRequest("swarm");
+  const records = new MemoryRecords();
+  const payloads = new MemoryPayloads();
+  const handoff = { ...DONE, next: "reviewer", message: "review it" };
+  const bytes = resultBytes(handoff);
+  const written = await records.saveResult(bytes);
+  records.ledger = running(
+    [
+      entry("writer", "completed", { endedAt: at(1), resultDigest: written, resultBytes: bytes.byteLength }),
+      entry("reviewer", "failed", { startedAt: at(2), endedAt: at(3), failureCode: "VES_DRIVER_QUOTA_EXHAUSTED" })
+    ],
+    "swarm"
+  );
+  const fixture = coordinatedDriver(request, {
+    records,
+    payloads,
+    changeDigest: async () => BEFORE,
+    script: { reviewer: async () => ({ result: { ...DONE, next: "<complete>", message: "done" } }) }
+  });
+  assert.equal((await run(fixture, request)).status, "completed");
+  assert.deepEqual(sessions(fixture), ["reviewer"]);
+  assert.match(fixture.nodes.state.sessions[0].prompt, /review it/u);
+});
+
+test("a node already run again and completed is replayed from that completion, never from the visit it replaced", async () => {
+  const graph = await suspendedGraph({ state: "failed", endedAt: at(3) });
+  const [plan, replaced] = graph.records.ledger.visits;
+  const bytes = resultBytes({ outcome: "done", summary: "the build" });
+  const built = await graph.records.saveResult(bytes);
+  graph.records.ledger = running([
+    plan,
+    replaced,
+    {
+      ...replaced,
+      state: "completed",
+      startedAt: at(4),
+      endedAt: at(5),
+      resultDigest: built,
+      resultBytes: bytes.byteLength,
+      rerunOf: digestOf(replaced)
+    },
+    entry("review", "failed", { startedAt: at(6), endedAt: at(7), failureCode: "VES_DRIVER_QUOTA_EXHAUSTED" })
+  ]);
+  const fixture = coordinatedDriver(graph.request, { ...graph, changeDigest: async () => BEFORE });
+  assert.equal((await run(fixture, graph.request)).status, "completed");
+  assert.deepEqual(sessions(fixture), ["review"], "a node that completed on its re-run started again");
+  assert.match(fixture.nodes.state.sessions[0].prompt, /the build/u);
 });

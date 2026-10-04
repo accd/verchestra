@@ -176,10 +176,14 @@ export {
 } from "./execution/coordination-engine.ts";
 export {
   normalizeCoordinationLedger,
+  uncertaintyRecord,
+  unsettledVisits,
   type CoordinationLedger,
   type CoordinationRecordPort,
   type NodeVisit,
-  type NodeVisitState
+  type NodeVisitState,
+  type UnsettledVisit,
+  type VisitEffect
 } from "./execution/coordination-ledger.ts";
 export {
   assertNodeWriteScope,

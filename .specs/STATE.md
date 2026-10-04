@@ -2804,10 +2804,11 @@ note. -->
   single-session run; status and the Run Capsule can name the round of every
   visit.
 
-### AD-079 — The owner's billing statement is hand-written and pinned to each provider's billing regime, and Codex credits suspend a run
+### AD-079 — The owner's billing statement is hand-written and pinned to each provider's billing regime, Codex credits suspend a run, and a resume refuses before it changes anything
 
 - **Status:** proposed (T6 of `.specs/features/strands-subscription-integration/`;
-  refines AD-072 where `spec.md` and `design.md` leave the form open).
+  refines AD-071, AD-072, and AD-078's third item where `spec.md` and
+  `design.md` leave the form open).
 - **Context:** D3 makes the extra-usage confirmation the owner's own
   machine-local statement, and D9 asks for it again when a provider's billing
   regime changes; no local read can tell a regime apart.
@@ -2830,16 +2831,34 @@ note. -->
      window (`scope`, a closed vocabulary) beside its code, provider, instant,
      and reset, and the executor's `suspended` checkpoint holds the change
      digest but no node-ledger digest: the ledger is sealed in the Run record.
+  3. `vestra task resume` revalidates before any node starts and a refusal
+     changes nothing: a suspended run needs its approval valid against the
+     policy in force and its worktree as it left it (`VES_EXECUTOR_WORKTREE_DRIFT`
+     otherwise), and every unsettled node of a coordinated run is settled. The
+     run stays `IMPLEMENTING` for a corrected resume or `vestra task cancel`
+     rather than failing. A visit settles on its own only when it ended
+     failed with no receipt on an unchanged change digest; any other is run
+     again only when `--reconcile` names the digest of its uncertainty record
+     (its run and facts, without its state), one per resume. A re-run visit
+     records `rerunOf`, that digest, and replaces the visit for replay and
+     settlement; this supersedes AD-078's third item. A resume of a suspended
+     run renews a writer grant that only expired, against the approval it
+     just proved valid; a revoked grant is never renewed.
 - **Alternatives rejected:** a `vestra task` subcommand that writes the
   statement (a new command, and a statement Verchestra writes is not the
   owner's); an expiry (D3 says none); a regime name the owner copies into the
   file (a member the design does not list, and one an owner would copy without
   reading); a preflight Codex account probe for credits (an account-only Codex
   session the driver does not have); failing the run on credits (the owner
-  could not resume it once they are gone).
+  could not resume it once they are gone); failing the run on drift or an
+  expired approval (it removes the worktree the owner may want to restore or
+  inspect); a reconcile list in one resume (the parser refuses a repeated
+  option, and each digest is one owner decision).
 - **Consequence:** A Workspace confirmed before a regime change stops at
   `not configured` (`extra-usage-confirmation`) on its next `start` or
-  `resume`, before anything is read or changed.
+  `resume`, before anything is read or changed. Two nodes that may both have
+  landed effects (a crash under concurrency above 1) refuse each other's
+  reconciliation and leave only `task cancel`.
 
 ## Handoff
 
