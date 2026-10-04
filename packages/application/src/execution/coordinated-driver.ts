@@ -22,7 +22,13 @@ import {
   type CoordinationErrorCode,
   type NodeResult
 } from "./node-result.ts";
-import { TaskExecutorError, type ExecutionDriverPort, type ExecutionToolRequest } from "./task-executor.ts";
+import {
+  TaskExecutorError,
+  type ExecutionDriverPort,
+  type ExecutionDriverResult,
+  type ExecutionSuspension,
+  type ExecutionToolRequest
+} from "./task-executor.ts";
 import type { NormalizedTaskRequestV2 } from "./task-request.ts";
 
 type Digest = `sha256:${string}`;
@@ -69,6 +75,35 @@ const ENGINE_CODES: readonly CoordinationErrorCode[] = [
   "VES_COORDINATION_LIMIT",
   "VES_COORDINATION_INTERRUPTED"
 ];
+
+// invariant: SSI-58, SSI-59, and D3b. The provider signals that suspend a run
+// instead of failing it: a usage allowance reported exhausted, and a Codex
+// account that reports credits, which would be spent after the allowance.
+const SUSPENDING_CODES: ReadonlySet<string> = new Set(["VES_DRIVER_QUOTA_EXHAUSTED", "VES_CODEX_CREDITS_PRESENT"]);
+const QUOTA_SCOPE = /^[a-z][a-z0-9_]{0,63}$/u;
+const INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u;
+
+function reported(value: unknown, pattern: RegExp): string | undefined {
+  return typeof value === "string" && pattern.test(value) ? value : undefined;
+}
+
+// invariant: SSI-61. The suspension a node's signal stands for: its code, the
+// node's provider, when the run stopped, and only the limit window and reset
+// the provider reported, each kept only in its grammar.
+function suspensionOf(error: unknown, node: CoordinationNode, at: string): ExecutionSuspension | undefined {
+  const reason = stableErrorCode(error);
+  if (reason === undefined || !SUSPENDING_CODES.has(reason)) return undefined;
+  const quota = (error as { readonly quota?: { readonly scope?: unknown; readonly resetsAt?: unknown } }).quota;
+  const scope = reported(quota?.scope, QUOTA_SCOPE);
+  const resetsAt = reported(quota?.resetsAt, INSTANT);
+  return Object.freeze({
+    reason,
+    provider: node.driver.driverId,
+    at,
+    ...(scope === undefined ? {} : { scope }),
+    ...(resetsAt === undefined ? {} : { resetsAt })
+  });
+}
 
 function isWriter(node: CoordinationNode): boolean {
   return node.driver.driverId === "claude-code" && node.writeScope.length > 0;
@@ -128,6 +163,7 @@ class CoordinationRound implements CoordinationNodeRunner {
   readonly #writer = new WriterMutex();
   readonly #running = new Set<ExecutionDriverPort>();
   readonly #results = new Map<Visit, NodeResult>();
+  readonly #calls = new Set<Promise<unknown>>();
   readonly #walk: Visit[] = [];
   #earlier: readonly NodeVisit[] = [];
   #entries: Visit[] = [];
@@ -135,6 +171,7 @@ class CoordinationRound implements CoordinationNodeRunner {
   #live = 0;
   #saving: Promise<void> = Promise.resolve();
   #failure: Error | undefined;
+  #suspension: ExecutionSuspension | undefined;
 
   constructor(
     options: CoordinatedDriverOptions,
@@ -151,6 +188,10 @@ class CoordinationRound implements CoordinationNodeRunner {
 
   get failed(): Error | undefined {
     return this.#failure;
+  }
+
+  get suspension(): ExecutionSuspension | undefined {
+    return this.#suspension;
   }
 
   cancelRunning(worktreeRef: string): Promise<unknown> {
@@ -186,27 +227,50 @@ class CoordinationRound implements CoordinationNodeRunner {
   }
 
   async run(call: CoordinationNodeCall): Promise<CoordinationNodeAnswer> {
+    const pending = this.#call(call);
+    this.#calls.add(pending);
+    try {
+      return await pending;
+    } finally {
+      this.#calls.delete(pending);
+    }
+  }
+
+  async #call(call: CoordinationNodeCall): Promise<CoordinationNodeAnswer> {
+    let node: CoordinationNode | undefined;
     try {
       this.#assertOpen();
-      const node = this.#node(call.nodeId);
-      const visit = this.#walk.filter((entry) => entry.nodeId === node.nodeId).length + 1;
-      this.#assertOrder(node, visit);
-      return (await this.#replay(node, visit)) ?? (await this.#runLive(node, visit));
+      const named = this.#node(call.nodeId);
+      node = named;
+      const visit = this.#walk.filter((entry) => entry.nodeId === named.nodeId).length + 1;
+      this.#assertOrder(named, visit);
+      return (await this.#replay(named, visit)) ?? (await this.#runLive(named, visit));
     } catch (error) {
-      this.#fail(error);
+      this.#fail(error, node);
       throw error;
     }
   }
 
   // invariant: SSI-59 seam. The first failure stops scheduling and cancels
-  // every running node; it stays the run's reason whatever follows it.
-  #fail(error: unknown): void {
+  // every running node; it stays the run's reason whatever follows it. When
+  // it is a provider's usage signal, the run suspends instead of failing, and
+  // the first signal is the one recorded.
+  #fail(error: unknown, node: CoordinationNode | undefined): void {
     if (this.#abort.signal.aborted) return;
     this.#failure =
       error instanceof Error && stableErrorCode(error) !== undefined
         ? error
         : new CoordinationRunError("VES_COORDINATION_NODE_FAILED", "A node failed", { cause: error });
+    this.#suspension = node === undefined ? undefined : suspensionOf(error, node, this.#now());
     this.#abort.abort("coordination failed");
+  }
+
+  // invariant: SSI-60. A suspended round ends only once every node it started
+  // has ended and been recorded failed or partial, so no session runs on and
+  // the ledger is durable; the round stays `running`, so a resume continues it.
+  async drain(): Promise<void> {
+    await Promise.allSettled([...this.#calls]);
+    await this.#saving;
   }
 
   #assertOpen(): void {
@@ -526,7 +590,12 @@ export class CoordinatedDriver implements ExecutionDriverPort {
     round: CoordinationRound,
     outcome: Awaited<ReturnType<CoordinationEngine["run"]>>,
     signal: AbortSignal
-  ): Promise<{ readonly status: "completed" | "cancelled"; readonly outputRefs: readonly string[] }> {
+  ): Promise<ExecutionDriverResult> {
+    const suspension = round.suspension;
+    if (suspension !== undefined) {
+      await round.drain();
+      return Object.freeze({ status: "suspended", outputRefs: Object.freeze([]), suspension });
+    }
     const failed = round.failed;
     if (failed !== undefined) {
       await round.close("failed");

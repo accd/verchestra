@@ -2804,7 +2804,7 @@ note. -->
   single-session run; status and the Run Capsule can name the round of every
   visit.
 
-### AD-079 — The owner's billing statement is hand-written and pinned to each provider's billing regime
+### AD-079 — The owner's billing statement is hand-written and pinned to each provider's billing regime, and Codex credits suspend a run
 
 - **Status:** proposed (T6 of `.specs/features/strands-subscription-integration/`;
   refines AD-072 where `spec.md` and `design.md` leave the form open).
@@ -2822,11 +2822,21 @@ note. -->
      asks every owner to confirm again. The plan type is the owner's record:
      nothing compares it with the account, because the Codex driver keeps no
      account field beyond the type it checks.
+  2. Credits on a Codex account (D3b) are seen where the driver checks them,
+     at each Codex session's start before its turn, and stop the run the way a
+     quota signal does: it is suspended, not failed, and the command reports
+     `not configured` (`codex-credits`), so the owner loses nothing and resumes
+     once the credits are gone. A suspension record keeps the provider's limit
+     window (`scope`, a closed vocabulary) beside its code, provider, instant,
+     and reset, and the executor's `suspended` checkpoint holds the change
+     digest but no node-ledger digest: the ledger is sealed in the Run record.
 - **Alternatives rejected:** a `vestra task` subcommand that writes the
   statement (a new command, and a statement Verchestra writes is not the
   owner's); an expiry (D3 says none); a regime name the owner copies into the
   file (a member the design does not list, and one an owner would copy without
-  reading).
+  reading); a preflight Codex account probe for credits (an account-only Codex
+  session the driver does not have); failing the run on credits (the owner
+  could not resume it once they are gone).
 - **Consequence:** A Workspace confirmed before a regime change stops at
   `not configured` (`extra-usage-confirmation`) on its next `start` or
   `resume`, before anything is read or changed.

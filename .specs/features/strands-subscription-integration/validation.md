@@ -776,6 +776,122 @@ Citations moved with `task-run.ts` (one line more above `prepare`, seven below i
 (`:60`, `:610-611`, `:399`, `:646-648` → `:61`, `:617-618`, `:406`,
 `:653-655`). `task-provider-auth.ts:29-32` did not move.
 
+### Commit 2 — suspension on a quota signal, worktree kept
+
+The executor's driver port gains a `suspended` result carrying the suspension
+record (`ExecutionSuspension`: `reason`, `provider`, `at`, and `scope` and
+`resetsAt` only when the provider reported them). On it the executor saves the
+`suspended` checkpoint (`changeDigest`, `changedPaths`, `toolReceiptRefs`,
+`suspension`), releases the writer coordination, skips its failure cleanup so
+the worktree and every completed writer node's effects stay, and throws
+`TaskExecutionSuspended` (`VES_EXECUTOR_SUSPENDED`). The repair loop ends with
+`SUSPENDED`: the attempt is neither counted nor sealed, and the run's ledger is
+saved with the repair state as it stands. `TaskRunCoordinator` reports outcome
+`SUSPENDED`, applies no workflow command and calls no `release()`, so the run
+stays `IMPLEMENTING`; the workflow machine is unchanged and `INTERRUPTED` stays
+terminal (SSI-64: no file under `packages/domain/src/workflow/` changed). The
+coordinated driver suspends on `VES_DRIVER_QUOTA_EXHAUSTED` and on
+`VES_CODEX_CREDITS_PRESENT` (D3b), records the first signal, starts no further
+node, waits for every node it started to end and be recorded `failed` or
+`partial`, and keeps the round `running`. The CLI prints the suspension and
+`vestra task resume` as the next action, exits 1, and reports Codex credits as
+`not configured` (`codex-credits`); the Codex node raises the driver's
+`VES_CODEX_CREDITS_PRESENT` instead of answering nothing.
+
+Spec-precision notes. (1) Credits are seen where T4's driver checks them, at
+each Codex session's start before its turn; a preflight probe would need an
+account-only Codex session, a driver change outside T6 (open question). The run
+is therefore suspended, not failed, so `not configured` loses nothing: the
+owner removes the credits and resumes. (2) The suspension record also keeps the
+provider's limit window (`scope`, a closed vocabulary from T4), which the task
+asks status to show. (3) The executor checkpoint holds no node-ledger digest
+(the design's `suspended` row): the ledger is sealed in the Run record and read
+through its validated reader, and the application has no digest port.
+
+| Behaviour | Assertion (file:line) | Run |
+| --- | --- | --- |
+| SSI-59: a quota signal suspends the run; an engine that keeps scheduling is refused; the node still running is aborted and recorded; the record is exactly the closed members; the round stays `running` | `tests/unit/coordinated-suspension.test.mjs:38` | `node --test tests/unit/coordinated-suspension.test.mjs tests/unit/coordinated-driver.test.mjs`: 31 of 31 |
+| SSI-60: the driver returns only once every node it started has ended and been recorded, even under an engine that returns at once | `tests/unit/coordinated-suspension.test.mjs:97` | same |
+| Edge case: two quota signals from concurrent readers suspend once, recording the first | `tests/unit/coordinated-suspension.test.mjs:130` | same |
+| Edge case: a writer stopped after its write is `partial` with its receipt count; a reset the provider did not report is absent | `tests/unit/coordinated-suspension.test.mjs:156` | same |
+| D3b, SSI-56: Codex credits suspend with `VES_CODEX_CREDITS_PRESENT`, the Codex provider, no window or reset; no later node starts | `tests/unit/coordinated-suspension.test.mjs:186` | same |
+| Any other node failure still fails the run and closes its round | `tests/unit/coordinated-suspension.test.mjs:203` | same |
+| SSI-61, SSI-81: provider text in the window, a reset that is not an instant, an e-mail address, a session, and purchase fields never reach the record or the ledger | `tests/unit/coordinated-suspension.test.mjs:218` | same |
+| A cancel that comes first wins over a later quota signal | `tests/unit/coordinated-suspension.test.mjs:241` | same |
+| SSI-59, SSI-60 inside the real executor: the second of three graph nodes signals quota; the error is `TaskExecutionSuspended` with the record; the worktree is not cleaned, the coordination is released, no driver cancel; the `suspended` checkpoint holds the change, paths, receipts, and record; the first node's result is persisted; the round stays `running` | `tests/integration/coordinated-executor.test.mjs:162` | `node --test tests/integration/coordinated-executor.test.mjs`: 9 of 9 |
+| The executor refuses a record with provider text, with an account member, with a reason that is not a code, a suspended status without a record, and a record on a completed run, and cleans up as for any driver failure | `tests/integration/coordinated-executor.test.mjs:228`, `:273` | same |
+| A caller's cancel wins over a driver's suspension | `tests/integration/coordinated-executor.test.mjs:286` | same |
+| SSI-60, SSI-64: outcome `SUSPENDED`, state `IMPLEMENTING`, only `START_IMPLEMENTATION` applied, nothing released, committed, verified, or sealed; the repair state saved with its attempt count unchanged | `tests/unit/task-run-coordinator.test.mjs:274` | `node --test tests/unit/task-run-coordinator.test.mjs`: 17 of 17 |
+| The suspension code without its record is a failure, not a suspension | `tests/unit/task-run-coordinator.test.mjs:297` | same |
+| SSI-39, SSI-68 with a controllable clock: 2 s and 40 tokens before the suspension are saved; five hours pass; the resumed meter starts at 2 s, ends at 2.5 s and 65 tokens, all unbilled; the suspended attempt and its resumption are one attempt | `tests/unit/task-run-coordinator.test.mjs:312` | same |
+| The `SUSPENDED` outcome marker round-trips in both forms; a marker without its record, a record that is not an object, without its provider, a reason that is not a code, a window of provider text, a reset that is not an instant, or an account member is refused | `tests/unit/task-run-record-readers.test.mjs:43`, `:133`, `:170`, `:194` | `node --test tests/unit/task-run-record-readers.test.mjs`: 8 of 8 |
+| Journey, quota mid-graph: `start` exits 1 with `SUSPENDED` and the record (`five_hour`, reset `2026-09-21T14:13:20.000Z`), next `vestra task resume`; status `IMPLEMENTING`, executor checkpoint `suspended`, no active process; `plan` completed, `build` failed, `review` never started; the worktree kept; the signalling session's process gone; budget still `subscription`; no session, event identifier, purchase field, e-mail address, token, or machine path in the outcome marker, the ledger, the command output, or status | `tests/e2e/task-subscription-e2e.test.mjs:115` | `node scripts/test-scope.mjs e2e tests/e2e/task-subscription-e2e.test.mjs`: 4 of 4 |
+| Journey, Codex credits present: `start` is `not configured` (`codex-credits`); the run is `IMPLEMENTING` with a `suspended` checkpoint and outcome; `plan` failed; Claude Code never started; the marker records `VES_CODEX_CREDITS_PRESENT` and `codex` only | `tests/e2e/task-subscription-e2e.test.mjs:151` | same |
+
+Deleted case → replacement. `tests/unit/coordinated-driver.test.mjs` "a quota
+signal from one node starts no further node and cancels the nodes still
+running" (T5's SSI-59 seam, cited at `:424`, which expected the run to fail
+with the quota code) → `tests/unit/coordinated-suspension.test.mjs:38`, the
+same scenario and assertions with the run suspended instead of failed. Its
+helper `twoIndependent` moved unchanged to
+`tests/helpers/coordinated-driver-fixture.mjs`. Numbered at the base, the cases
+of that file below the helper move up by 10 lines and those below the removed
+case by 55 (usage and checkpoints `:473` → `:418`, the ledger's values `:497`
+→ `:442`); T5's own citations into it were already four lines early at the base
+and are left as written.
+
+Gates at this commit: `pnpm gate:quick` PASS (unit 2886, agent-readiness 357,
+census 13); `pnpm test:architecture` 131/131; `pnpm agent:check` PASS;
+typecheck, lint, format, and complexity PASS; the executor, run, repair, and
+coordination integration suites 175/175, `task-executor-faults` and
+`budget-enforcement-faults` 23/23, `task-executor-security`,
+`coordination-record-security`, and `task-cli-security` 28/28; the e2e suites
+`task-cli-e2e`, `mediated-task-execution-e2e`, `task-coordinated-e2e`, and
+`task-subscription-e2e` 56/56 (the single-session journeys pass unchanged
+through the reshaped executor); 0 failed, 0 skipped, 0 todo. SSI-64: no file
+under `packages/domain/src/workflow/` changed. `complexity-baseline.json`
+ratchets down: `task-executor.ts :: Async method 'execute'` 53 → 40 (the
+driver-result and inspection checks moved into `driverOutcome` and
+`#inspected`, both below 10) and `gate-repair.ts :: Async function
+'runGateRepairLoop'` 33 → 29 (the feedback check moved into
+`assertFeedback`). The census is unchanged.
+
+Discrimination (author run): S1 the executor cleans up a suspended worktree,
+S2 the executor fails a suspended driver, S3 the executor keeps the writer
+coordination, S4 the executor trusts the driver's record, S5 the coordinated
+driver fails instead of suspending, S6 it suspends without waiting for the
+running nodes, S7 a later signal overwrites the first, S8 provider text kept in
+the window, S9 Codex credits fail the run, S10 the run coordinator fails a
+suspended run, S11 it releases a suspended run, S12 the repair loop does not
+save the spend at suspension, S13 the outcome marker accepts any suspension
+member, S14 the Codex node hides credits, S15 credits reported as a plain
+suspension — all killed. S7 first survived as `??=` in place of `=`, an
+equivalent mutant (the early return on an aborted round already makes the first
+failure final); the mutant that removes that early return is killed.
+
+Citations moved with the reshaped files, for the lines that were current at
+the base: `task-executor.ts` in `.specs/features/architecture-deepening-2/validation-t1.md`
+(the "Now asks the module" column `:292-293`, `:380`, `:386-388`, `:665` →
+`:324-325`, `:412`, `:418-420`, `:765`; separators `:381` → `:413`) and in
+`.specs/features/live-task-pilot/validation.md` (`:386-388` → `:418-420`); the
+application's `task-run.ts` in `validation-t4.md` (`:119-122` → `:125-128`) and
+in the pilot's validation (`:117`, `:249` → `:122`, `:267`); the CLI's
+`task-run.ts` in the pilot's validation (`:653-655` → `:656-658`);
+`task-run-record.ts` in `validation-t9.md` section 2's reader table and section
+4's `recordBudgetLedger` range (`:365-377` → `:392-404`). Left as written:
+sections pinned to an earlier `origin/main` (validation-t1's "Before" column
+and `:381-388`, `:385-397`), records of an earlier move ("is now", validation-t1
+`:285`, validation-c4), and citations already stale at the base
+(external-review-triage `:392`, gate-repair-loop `:377`, `:475`,
+validation-t9's `#marker` `:452`). The design's citations describe the base the
+research was gathered at.
+
+Fixture fidelity. The fake Claude Code reports, under the `claude-quota` and
+`claude-quota-after-write` flags, the `rate_limit_event` 2.1.282 declares
+(`rejected`, `five_hour`, a reset in epoch seconds, with the overage and session
+fields the driver must drop) and waits to be stopped; the fake Codex reports,
+under `codex-credits`, a 25.00 credit balance on its rate-limit snapshot.
+
 ## T7 Evidence (Windows bridge transport, commits 1 to 3)
 
 Author: the T7 implementer. Commit 4 (lifting the refusals) is not on this
@@ -979,15 +1095,15 @@ evidence is FAIL.
 | SSI-53 | The statement is a closed shape of closed values and bounded grammars; a token, account identifier, e-mail address, name, path, or key member is refused at either level, and a free-text plan type is refused: `tests/unit/task-billing.test.mjs:74`, `:116`; mutant B8 killed | T6 commit 1 (see T6 Evidence) | PASS (author) |
 | SSI-54 | `apiKeySource` other than `none` fails a subscription session with `VES_CLAUDE_AUTH_METHOD_MISMATCH` before `session.started` and any tool effect (`tests/contract/claude-code-driver-structured.test.mjs:172`, `spikes/claude-code-driver/test/claude-driver-structured.test.mjs:108`); mutant M1 killed. | `pnpm test:contract`, `pnpm qualify:claude` | PASS |
 | SSI-55 | A subscription-only Codex session reads `account/read` before `model/list` and refuses `apiKey`, `amazonBedrock`, and no account with `VES_CODEX_AUTH_METHOD_MISMATCH` before `thread/start` (`tests/contract/codex-driver-structured.test.mjs:217`, `:232`; `spikes/codex-driver/test/codex-driver-structured.test.mjs:68`); mutant M2 killed. | `pnpm test:contract`, `pnpm qualify:codex` | PASS |
-| SSI-56 | T4 share: credits on any snapshot stop the session before its turn with `VES_CODEX_CREDITS_PRESENT` (`tests/contract/codex-driver-structured.test.mjs:249`); mutant M5 killed. T6 maps it to `not configured`. | `pnpm test:contract` | PASS (T4 share); T6 pending |
+| SSI-56 | T4 share: credits on any snapshot stop the session before its turn with `VES_CODEX_CREDITS_PRESENT` (`tests/contract/codex-driver-structured.test.mjs:249`); mutant M5 killed. T6 maps it to `not configured`. | `pnpm test:contract`; T6 commit 2 | PASS (T4 share); PASS (author, T6 part: credits on the account of a Codex node suspend the run and the command is `not configured` (`codex-credits`), `tests/unit/coordinated-suspension.test.mjs:186`, journey `tests/e2e/task-subscription-e2e.test.mjs:151`; mutants S9, S14, S15 killed) |
 | SSI-57 | The client sends only its allowlist, refuses every other method at the single write path, and no product source names a credit or login method (`tests/contract/codex-driver-structured.test.mjs:73`, `:92`, `:107`; `tests/architecture/codex-client-methods.test.mjs:42`, `:49`, `:60`); no fallback model, budget, key, or key helper flag is in any pinned invocation (`tests/contract/claude-code-driver-structured.test.mjs:47`); mutants M3, M4 killed. | `pnpm test:contract`, `pnpm test:architecture` | PASS |
 | SSI-58 | Claude `rejected` (with and without reset), Codex `usageLimitExceeded`, a usage-limit or credits-depleted `rateLimitReachedType`, and `ordinaryUsageAllowed: false` each emit one `quota.exhausted` with a reset only when reported; `allowed_warning` is one warning; `rate_limit_reached` is none (`tests/contract/claude-code-driver-structured.test.mjs:187`, `:214`; `tests/contract/codex-driver-structured.test.mjs:283`, `:313`, `:329`); mutants M6–M9, M16 killed. | `pnpm test:contract`, `pnpm test:integration` | PASS |
-| SSI-59 | — | — | — |
-| SSI-60 | — | — | — |
-| SSI-61 | — | — | — |
+| SSI-59 | A quota signal from any node starts no further node (an engine that keeps scheduling is refused), cancels and waits for every running node, and suspends the run: `tests/unit/coordinated-suspension.test.mjs:38`, `:97`; inside the executor `tests/integration/coordinated-executor.test.mjs:162`; journey `tests/e2e/task-subscription-e2e.test.mjs:115`; mutants S5, S6 killed | T6 commit 2 (see T6 Evidence) | PASS (author) |
+| SSI-60 | Completed node results, receipts, the ledger, and the budget ledger persist; the worktree is kept; the writer coordination and the active marker are released; the state stays `IMPLEMENTING`: `tests/integration/coordinated-executor.test.mjs:162`, `tests/unit/task-run-coordinator.test.mjs:274`, journey `tests/e2e/task-subscription-e2e.test.mjs:115`; mutants S1, S3, S10, S11, S12 killed | T6 commit 2 (see T6 Evidence) | PASS (author) |
+| SSI-61 | The record is the code of the signal, the provider, the instant, and only the reported window and reset, each in its grammar, at every layer: `tests/unit/coordinated-suspension.test.mjs:38`, `:130`, `:218`; `tests/integration/coordinated-executor.test.mjs:228`; `tests/unit/task-run-record-readers.test.mjs:170`; mutants S4, S7, S8, S13 killed (the window `scope` is kept beside the four members: spec-precision note in T6 commit 2) | T6 commit 2 (see T6 Evidence) | PASS (author) |
 | SSI-62 | — | — | — |
 | SSI-63 | — | — | — |
-| SSI-64 | — | — | — |
+| SSI-64 | Suspension is an executor checkpoint stage and a run outcome, never a workflow state: only `START_IMPLEMENTATION` is applied (`tests/unit/task-run-coordinator.test.mjs:274`); no file under `packages/domain/src/workflow/` changed, and the workflow machine suites pass unchanged | T6 commit 2 (see T6 Evidence) | PASS (author) |
 | SSI-65 | — | — | — |
 | SSI-66 | — | — | — |
 | SSI-67 | — | — | — |
@@ -1029,7 +1145,7 @@ mutant must be killed (a test fails). A surviving mutant becomes a fix task.
 | Skip the Codex `account/read` check | SSI-55 | Fake `apiKey` account | Killed (T4 M2) |
 | Allow `account/rateLimitResetCredit/consume` | SSI-57 | Method allowlist test | Killed (T4 M3) |
 | Skip the billing confirmation at resume | SSI-52 | Resume without confirmation is `not configured` | Killed (T6 B1, B2, B3) |
-| Clean up the worktree on `suspended` | SSI-60 | Suspended worktree survives | — |
+| Clean up the worktree on `suspended` | SSI-60 | Suspended worktree survives | Killed (T6 S1) |
 | Re-run a partial node silently | SSI-66 | Uncertain-node refusal | — |
 | Construct a Strands `Agent` in the adapter | SSI-03, SSI-79 | Architecture ban and empty-environment probe | Killed (T5 S6, by each on its own) |
 | Import the SDK root entry | SSI-02 | Architecture test and sealed build | Killed (T5 S7) |

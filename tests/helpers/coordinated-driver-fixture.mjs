@@ -23,6 +23,19 @@ export function withExecution(request, execution) {
   return { ...request, execution: { ...request.execution, ...execution } };
 }
 
+// why: two nodes with no edge between them, readers cloned from the graph's
+// planner or writers cloned from its builder, so an engine may start both.
+export function twoIndependent(request, writers, concurrency) {
+  const [plan, build] = request.execution.nodes;
+  const first = writers ? { ...build, nodeId: "left", inputs: [] } : { ...plan, nodeId: "left" };
+  const second = writers ? { ...build, nodeId: "right", inputs: [] } : { ...plan, nodeId: "right" };
+  return withExecution(request, {
+    nodes: [first, second],
+    edges: [],
+    limits: { ...request.execution.limits, concurrency }
+  });
+}
+
 export const resultBytes = (value) => new TextEncoder().encode(canonicalizeJsonV2(value));
 
 const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");

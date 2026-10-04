@@ -156,7 +156,12 @@ function observeCodex(
   }
 }
 
-function settled(state: CodexNodeState): void {
+// invariant: D3b and SSI-56. A Codex account that reports credits is refused
+// by the driver before its turn; the node raises that code, so the run stops
+// as for a usage signal instead of failing as a node that answered nothing.
+export const CODEX_CREDITS_PRESENT = "VES_CODEX_CREDITS_PRESENT";
+
+function settled(state: CodexNodeState, errorCodes: readonly string[]): void {
   if (state.failure !== undefined) throw state.failure;
   if (state.quota !== undefined)
     throw new DriverExecutionAdapterError(
@@ -164,6 +169,8 @@ function settled(state: CodexNodeState): void {
       "The provider reported that its usage allowance is exhausted",
       state.quota
     );
+  if (errorCodes.includes(CODEX_CREDITS_PRESENT))
+    throw Object.assign(new Error("Codex reports credits on this account"), { code: CODEX_CREDITS_PRESENT });
 }
 
 function codexDriver(
@@ -236,7 +243,7 @@ function codexNodeAdapter(options: CoordinatedRunOptions, session: CoordinationN
         signal: control.signal === undefined ? stop.signal : AbortSignal.any([stop.signal, control.signal]),
         observe: (event) => observeCodex(event, state, control, model, stop)
       });
-      settled(state);
+      settled(state, finished.errorCodes);
       const completed = finished.outcome === "completed" && state.structured !== undefined;
       const outputRefs = completed ? [await options.payloads.put(resultBytes(state.structured!))] : [];
       await provider.unlessInterrupted(() =>

@@ -131,6 +131,14 @@ const RATE_LIMITS = Object.freeze({
   rateLimitsByLimitId: null
 });
 
+// why: the `codex-credits` flag makes the account report a credit balance, as
+// a Plus account with purchased credits does (decision D3b).
+function rateLimits() {
+  if (!fixtureFlag("codex-credits")) return RATE_LIMITS;
+  const credits = { hasCredits: true, unlimited: false, balance: "25.00" };
+  return { ...RATE_LIMITS, rateLimits: { ...RATE_LIMITS.rateLimits, credits } };
+}
+
 // why: a node answers its schema: done, a summary, and for a swarm node the
 // prompt's `next:<node>` marker or the end.
 function nodeAnswer(prompt, schema) {
@@ -202,7 +210,7 @@ lines.on("line", (line) => {
     emit({ id: message.id, result: { account: account(), requiresOpenaiAuth: true } });
   } else if (message.method === "account/rateLimits/read") {
     accountReads.add(message.method);
-    emit({ id: message.id, result: RATE_LIMITS });
+    emit({ id: message.id, result: rateLimits() });
   } else if (message.method === "model/list") {
     emit({ id: message.id, result: { data: models.map((model) => ({ id: model, model })) } });
   } else if (message.method === "thread/start") {

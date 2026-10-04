@@ -34,7 +34,8 @@ export type TaskExecutorErrorCode =
   | "VES_EXECUTOR_COMMIT_FORBIDDEN"
   | "VES_EXECUTOR_DRIVER_FAILED"
   | "VES_EXECUTOR_CANCELLED"
-  | "VES_EXECUTOR_BUDGET_EXCEEDED";
+  | "VES_EXECUTOR_BUDGET_EXCEEDED"
+  | "VES_EXECUTOR_SUSPENDED";
 
 export class TaskExecutorError extends Error {
   readonly code: TaskExecutorErrorCode;
@@ -48,6 +49,30 @@ export class TaskExecutorError extends Error {
 
 function fail(code: TaskExecutorErrorCode, message: string, options?: ErrorOptions): never {
   throw new TaskExecutorError(code, message, options);
+}
+
+// invariant: SSI-61. A suspension record holds the stable code of the signal,
+// the provider that raised it, when the run stopped, and the limit window and
+// reset time the provider reported, if it reported them; nothing else.
+export interface ExecutionSuspension {
+  readonly reason: string;
+  readonly provider: string;
+  readonly at: string;
+  readonly scope?: string;
+  readonly resetsAt?: string;
+}
+
+// invariant: AD-071. A suspended execution kept its worktree, saved its
+// `suspended` checkpoint, and released its writer coordination; the record
+// travels with the error so the run coordinator can report it.
+export class TaskExecutionSuspended extends TaskExecutorError {
+  readonly suspension: ExecutionSuspension;
+
+  constructor(suspension: ExecutionSuspension) {
+    super("VES_EXECUTOR_SUSPENDED", "Task execution was suspended on a provider signal");
+    this.name = "TaskExecutionSuspended";
+    this.suspension = suspension;
+  }
 }
 
 function exactRow(value: unknown, label: string, allowed: readonly string[], code: TaskExecutorErrorCode): Row {
@@ -246,9 +271,16 @@ export interface ExecutionDriverPort {
       // ceiling, because the duration ceiling still fires without events.
       reportUsage(event: UsageEvent): void;
     }
-  ): Promise<{ readonly status: "completed" | "failed" | "cancelled"; readonly outputRefs: readonly string[] }>;
+  ): Promise<ExecutionDriverResult>;
   cancel(worktreeRef: string): Promise<void>;
 }
+
+// invariant: a driver either ends its work or suspends it. `suspended` is
+// reported only by a driver that stopped on a provider's usage signal with no
+// session left running; it carries the suspension record.
+export type ExecutionDriverResult =
+  | { readonly status: "completed" | "failed" | "cancelled"; readonly outputRefs: readonly string[] }
+  | { readonly status: "suspended"; readonly outputRefs: readonly string[]; readonly suspension: ExecutionSuspension };
 
 interface TaskExecutorPorts {
   readonly authority: ExecutionAuthorityPort;
@@ -389,6 +421,60 @@ function assertTarget(task: AtomicExecutionTask, value: string): string {
   return path;
 }
 
+const DRIVER_STATUSES: ReadonlySet<unknown> = new Set(["completed", "failed", "cancelled", "suspended"]);
+const STABLE_CODE = /^VES_[A-Z0-9_]{1,96}$/u;
+const PROVIDER = /^[a-z][a-z0-9-]{0,31}$/u;
+const QUOTA_SCOPE = /^[a-z][a-z0-9_]{0,63}$/u;
+const INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u;
+
+function matching(row: Row, key: string, pattern: RegExp): string {
+  const value = row[key];
+  if (typeof value !== "string" || !pattern.test(value))
+    fail("VES_EXECUTOR_DRIVER_FAILED", `Driver suspension ${key} is invalid`);
+  return value;
+}
+
+function optionalMatching(row: Row, key: string, pattern: RegExp): Partial<Record<string, string>> {
+  return row[key] === undefined ? {} : { [key]: matching(row, key, pattern) };
+}
+
+// invariant: SSI-61 and SSI-81. A suspension record is read member by member
+// against closed grammars, so no provider text, account field, or path can
+// reach the checkpoint it is saved in.
+function normalizeSuspension(value: unknown): ExecutionSuspension {
+  const row = exactRow(
+    value,
+    "Driver suspension",
+    ["reason", "provider", "at", "scope", "resetsAt"],
+    "VES_EXECUTOR_DRIVER_FAILED"
+  );
+  return deepFreeze({
+    reason: matching(row, "reason", STABLE_CODE),
+    provider: matching(row, "provider", PROVIDER),
+    at: matching(row, "at", INSTANT),
+    ...optionalMatching(row, "scope", QUOTA_SCOPE),
+    ...optionalMatching(row, "resetsAt", INSTANT)
+  }) as ExecutionSuspension;
+}
+
+// invariant: what a driver's result decides. A cancel, the driver's or the
+// caller's, wins over everything; a suspension is a stop with a record; any
+// other status than `completed`, or a record without a suspension, fails.
+function driverOutcome(
+  value: unknown,
+  signal: AbortSignal | undefined
+): { readonly outputRefs: readonly string[]; readonly suspension?: ExecutionSuspension } {
+  const row = exactRow(value, "Driver result", ["status", "outputRefs", "suspension"], "VES_EXECUTOR_DRIVER_FAILED");
+  const status = row["status"];
+  if (!DRIVER_STATUSES.has(status)) fail("VES_EXECUTOR_DRIVER_FAILED", "Task Driver returned an invalid status");
+  const outputRefs = optionalSafeList(row["outputRefs"], "Driver outputRefs", "VES_EXECUTOR_DRIVER_FAILED");
+  if (status === "cancelled" || Boolean(signal?.aborted)) fail("VES_EXECUTOR_CANCELLED", "Task Driver was cancelled");
+  if (status === "suspended") return { outputRefs, suspension: normalizeSuspension(row["suspension"]) };
+  if (status !== "completed" || row["suspension"] !== undefined)
+    fail("VES_EXECUTOR_DRIVER_FAILED", "Task Driver did not complete");
+  return { outputRefs };
+}
+
 export class TaskExecutionCoordinator {
   readonly #ports: TaskExecutorPorts;
 
@@ -409,6 +495,7 @@ export class TaskExecutionCoordinator {
     let coordinationRef: string | undefined;
     let worktree: { readonly worktreeRef: string; readonly baseCommit: string } | undefined;
     let driverStarted = false;
+    let suspended: TaskExecutionSuspended | undefined;
     let sequence = 0;
     let lastCheckpoint = await this.#ports.checkpoints.load(input.workspaceId, input.runId, input.task.taskId);
     if (lastCheckpoint !== undefined) {
@@ -555,38 +642,22 @@ export class TaskExecutionCoordinator {
         if (durationTimer !== undefined) clearTimeout(durationTimer);
       }
       if (budgetStop !== undefined) throw budgetStop.failure;
-      const driverRow = exactRow(driverResult, "Driver result", ["status", "outputRefs"], "VES_EXECUTOR_DRIVER_FAILED");
-      const driverStatus = driverRow["status"];
-      if (!(driverStatus === "completed" || driverStatus === "failed" || driverStatus === "cancelled"))
-        fail("VES_EXECUTOR_DRIVER_FAILED", "Task Driver returned an invalid status");
-      const driverOutputRefs = optionalSafeList(
-        driverRow["outputRefs"],
-        "Driver outputRefs",
-        "VES_EXECUTOR_DRIVER_FAILED"
-      );
-      if (driverStatus === "cancelled" || Boolean(options.signal?.aborted))
-        fail("VES_EXECUTOR_CANCELLED", "Task Driver was cancelled");
-      if (driverStatus !== "completed") fail("VES_EXECUTOR_DRIVER_FAILED", "Task Driver did not complete");
-      const inspection = await this.#ports.worktrees.inspect(worktree);
-      if (
-        !DIGEST.test(inspection.changeDigest) ||
-        !Number.isSafeInteger(inspection.commitCountSinceBase) ||
-        inspection.commitCountSinceBase < 0 ||
-        !Array.isArray(inspection.changedPaths) ||
-        inspection.changedPaths.length > 10_000
-      )
-        fail("VES_EXECUTOR_WORKTREE_INVALID", "worktree inspection is invalid");
-      if (inspection.commitCountSinceBase !== 0)
-        fail("VES_EXECUTOR_COMMIT_FORBIDDEN", "Task Driver created a commit before its gate");
-      const changedPaths = inspection.changedPaths.map((path) => {
-        if (typeof path !== "string") fail("VES_EXECUTOR_WORKTREE_INVALID", "worktree path is invalid");
-        return assertTarget(input.task, path);
-      });
-      const checkpointRef = await saveCheckpoint("awaiting-gate", {
-        changeDigest: inspection.changeDigest,
-        changedPaths,
-        toolReceiptRefs
-      });
+      const driven = driverOutcome(driverResult, options.signal);
+      const { changeDigest, changedPaths } = await this.#inspected(worktree, input.task);
+      // invariant: SSI-60. A suspension keeps the worktree and what every
+      // completed node wrote in it: its checkpoint names the change, and the
+      // failure cleanup below is skipped.
+      if (driven.suspension !== undefined) {
+        await saveCheckpoint("suspended", {
+          changeDigest,
+          changedPaths,
+          toolReceiptRefs,
+          suspension: driven.suspension
+        });
+        suspended = new TaskExecutionSuspended(driven.suspension);
+        throw suspended;
+      }
+      const checkpointRef = await saveCheckpoint("awaiting-gate", { changeDigest, changedPaths, toolReceiptRefs });
       return deepFreeze({
         status: "AWAITING_GATE" as const,
         workspaceId: input.workspaceId,
@@ -596,13 +667,17 @@ export class TaskExecutionCoordinator {
         worktreeRef: worktree.worktreeRef,
         baseCommit: worktree.baseCommit,
         coordinationRef,
-        changeDigest: inspection.changeDigest,
+        changeDigest,
         changedPaths,
         checkpointRef,
         toolReceiptRefs,
-        outputRefs: [...driverOutputRefs, ...toolOutputRefs]
+        outputRefs: [...driven.outputRefs, ...toolOutputRefs]
       });
     } catch (error) {
+      if (error === suspended) {
+        await this.#release(coordinationRef);
+        throw error;
+      }
       const cancelled = error instanceof TaskExecutorError && error.code === "VES_EXECUTOR_CANCELLED";
       if (driverStarted && worktree !== undefined) {
         try {
@@ -626,15 +701,40 @@ export class TaskExecutionCoordinator {
           // Cleanup is reconciled later; preserve the primary failure.
         }
       }
-      if (coordinationRef !== undefined) {
-        try {
-          await this.#ports.coordination.release(coordinationRef);
-        } catch {
-          // Release is reconciled later; preserve the primary failure.
-        }
-      }
+      await this.#release(coordinationRef);
       throw error;
     }
+  }
+
+  async #release(coordinationRef: string | undefined): Promise<void> {
+    if (coordinationRef === undefined) return;
+    try {
+      await this.#ports.coordination.release(coordinationRef);
+    } catch {
+      // Release is reconciled later; preserve the primary failure.
+    }
+  }
+
+  async #inspected(
+    worktree: { readonly worktreeRef: string; readonly baseCommit: string },
+    task: AtomicExecutionTask
+  ): Promise<{ readonly changeDigest: string; readonly changedPaths: readonly string[] }> {
+    const inspection = await this.#ports.worktrees.inspect(worktree);
+    if (
+      !DIGEST.test(inspection.changeDigest) ||
+      !Number.isSafeInteger(inspection.commitCountSinceBase) ||
+      inspection.commitCountSinceBase < 0 ||
+      !Array.isArray(inspection.changedPaths) ||
+      inspection.changedPaths.length > 10_000
+    )
+      fail("VES_EXECUTOR_WORKTREE_INVALID", "worktree inspection is invalid");
+    if (inspection.commitCountSinceBase !== 0)
+      fail("VES_EXECUTOR_COMMIT_FORBIDDEN", "Task Driver created a commit before its gate");
+    const changedPaths = inspection.changedPaths.map((path) => {
+      if (typeof path !== "string") fail("VES_EXECUTOR_WORKTREE_INVALID", "worktree path is invalid");
+      return assertTarget(task, path);
+    });
+    return { changeDigest: inspection.changeDigest, changedPaths };
   }
 
   async #assertAuthority(input: TaskExecutionInput, phase: "start" | "tool-effect"): Promise<void> {
