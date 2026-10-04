@@ -14,6 +14,7 @@ import { test } from "node:test";
 import { promisify } from "node:util";
 
 import { createOsCredentialStore } from "../../packages/platform-node/src/index.ts";
+import { systemGit } from "../helpers/system-git.mjs";
 import { temporaryDirectory } from "../helpers/temporary-directory.mjs";
 
 const WORKSPACE_ID = "workspace_4b1c2d3e-5f60-4a7b-8c9d-0e1f2a3b4c5d";
@@ -82,6 +83,24 @@ test("the preload answers the Windows Credential Manager backend from the store,
     assert.ok(witness.environmentKeys.length > 0);
     assert.equal(witness.environmentKeys.includes("VERCHESTRA_TEST_FAKE_KEYCHAIN_STORE"), true);
   }
+
+  // invariant: a Git command run through promisify(execFile) that fails is
+  // named with its arguments, exit code, and standard error, and its failure
+  // still reaches the caller; one that succeeds leaves nothing.
+  const git = promisify(execFile);
+  assert.match((await git(systemGit(), ["--version"], { cwd: root, encoding: "utf8" })).stdout, /^git version /u);
+  await assert.rejects(git(systemGit(), ["definitely-not-a-git-command"], { cwd: root, encoding: "utf8" }), {
+    code: 1
+  });
+  const failures = (await readFile(join(root, "git-witness.log"), "utf8"))
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line));
+  assert.equal(failures.length, 1);
+  assert.deepEqual(failures[0].args, ["definitely-not-a-git-command"]);
+  assert.equal(failures[0].cwd, root);
+  assert.equal(failures[0].code, 1);
+  assert.match(failures[0].stderrTail, /not a git command/u);
 });
 
 test("with the preload installed, the deny guard still refuses every other credential program", async (t) => {

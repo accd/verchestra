@@ -42,7 +42,8 @@ const FAKE_LOGS = [
   "codex.exe.witness.log",
   "fake-claude.log",
   "fake-codex-status.log",
-  "fake-codex.log"
+  "fake-codex.log",
+  "git-witness.log"
 ];
 
 // why: a step that fails on the Windows runner names, in the assertion itself,
@@ -53,9 +54,22 @@ function diagnosis(fixture) {
   return JSON.stringify(Object.fromEntries(FAKE_LOGS.map((name) => [name, tail(name)])));
 }
 
-function ok(result, label, fixture) {
-  assert.equal(result.status, 0, `${label}: ${result.stderr}\n${result.stdout}\n${diagnosis(fixture)}`);
+// invariant: a step must exit 0. One that does not fails with its own output,
+// the fakes' and Git's witnesses, and whatever `more` adds.
+function ok(result, label, fixture, more = () => "") {
+  if (result.status !== 0)
+    assert.fail(
+      `${label} exited ${result.status}: ${result.stderr}\n${result.stdout}\n${diagnosis(fixture)}\n${more()}`
+    );
   return result.json.data;
+}
+
+// why: a run that failed records its reason and its checkpoints, never a path
+// or a command's output; `status` shows them, so the stage the run stopped at
+// is in the log beside the Git witness.
+function statusAfterFailure(fixture, runId) {
+  const status = fixture.launch(command(fixture, "status", runId));
+  return `status after the failure: ${status.stdout.slice(-8192)}\n${status.stderr.slice(-2048)}`;
 }
 
 function checkout(fixture) {
@@ -138,7 +152,9 @@ test(
     const approval = ok(fixture.launch(approveArguments(fixture, plan), `${plan.bindingDigest}\n`), "approve", fixture);
     assert.equal(approval.state, "EXECUTION_AUTHORIZED");
 
-    const run = ok(fixture.launch(command(fixture, "start", plan.runId)), "start", fixture);
+    const run = ok(fixture.launch(command(fixture, "start", plan.runId)), "start", fixture, () =>
+      statusAfterFailure(fixture, plan.runId)
+    );
     assert.equal(run.state, "HUMAN_REVIEW", diagnosis(fixture));
     assert.equal(run.branch, `vestra/${plan.runId}/T1`);
     const inReview = ok(fixture.launch(command(fixture, "status", plan.runId)), "status", fixture);

@@ -9,8 +9,9 @@
 // starts the labeled DETERMINISTIC FAKE `claude` and `codex` of
 // tests/helpers/task-cli-fakes for the `claude.exe` and `codex.exe`
 // placeholders in VERCHESTRA_TEST_FAKE_PROVIDERS, as the POSIX wrappers of
-// task-cli-fixture.mjs do. Every other spawn passes through the deny guard
-// unchanged; the bridge's pipe helper is the one PowerShell the guard lets by.
+// task-cli-fixture.mjs do, and names every Git command of the task path that
+// fails. Every other spawn passes through the deny guard unchanged; the
+// bridge's pipe helper is the one PowerShell the guard lets by.
 import "./deny-keychain-spawn.mjs";
 
 import childProcess from "node:child_process";
@@ -120,6 +121,35 @@ childProcess.spawn = function spawn(file, args, ...rest) {
   return guardedSpawn.call(this, provider[0], provider[1], ...rest);
 };
 
+const GIT = new Set(["git", "git.exe"]);
+const GIT_STDERR_TAIL = 2048;
+
+// why: the task path runs Git through promisify(execFile) and keeps none of
+// its output in a record. A Git command that fails is named here, in the
+// fixture's log directory, with its arguments, working directory, exit code,
+// and standard error tail, so a run that ends VES_GIT_WORKTREE_COMMAND_FAILED on the Windows
+// runner says which command failed and why. The promise is returned as it is.
+function witnessGit(file, args, options, promise) {
+  if (PROVIDER_LOG === undefined || typeof file !== "string" || !GIT.has(basename(file).toLowerCase())) return promise;
+  promise.then(undefined, (error) => {
+    const line = {
+      args: Array.isArray(args) ? args : [],
+      cwd: options?.cwd ?? null,
+      code: error?.code ?? null,
+      signal: error?.signal ?? null,
+      stderrTail: String(error?.stderr ?? "").slice(-GIT_STDERR_TAIL)
+    };
+    // hazard: a witness that cannot write must not turn into an unhandled
+    // rejection of its own; the caller still sees the command's failure.
+    try {
+      appendFileSync(join(PROVIDER_LOG, "git-witness.log"), `${JSON.stringify(line)}\n`);
+    } catch {
+      // why: nothing to report to; the run reports the failure itself.
+    }
+  });
+  return promise;
+}
+
 const guardedExecFile = childProcess.execFile;
 const redirected = (target) =>
   function execFile(file, args, ...rest) {
@@ -127,10 +157,17 @@ const redirected = (target) =>
     if (provider === undefined) return target.call(this, file, args, ...rest);
     return target.call(this, provider[0], provider[1], ...rest);
   };
+const witnessed = (target) =>
+  function execFile(file, args, ...rest) {
+    const provider = providerCommand(file, args);
+    if (provider !== undefined) return target.call(this, provider[0], provider[1], ...rest);
+    return witnessGit(file, args, rest[0], target.call(this, file, args, ...rest));
+  };
 const execFile = redirected(guardedExecFile);
-// why: the drivers and the Codex status check call promisify(execFile), which
-// takes this custom form; without it they would bypass the placeholders.
-Object.defineProperty(execFile, promisify.custom, { value: redirected(guardedExecFile[promisify.custom]) });
+// why: the drivers, the Codex status check, and the Git runner call
+// promisify(execFile), which takes this custom form; without it they would
+// bypass the placeholders and the Git witness.
+Object.defineProperty(execFile, promisify.custom, { value: witnessed(guardedExecFile[promisify.custom]) });
 childProcess.execFile = execFile;
 syncBuiltinESMExports();
 
