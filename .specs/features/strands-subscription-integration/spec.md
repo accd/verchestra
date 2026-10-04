@@ -99,9 +99,9 @@ From the owner's approved plan:
 ## Assumptions & Open Questions
 
 Every ambiguity is resolved or recorded with a default. On 2026-10-03 the owner
-delegated these decisions to the coordinating agent session ("faça tudo isso,
-confio mais em vc"). The coordinator accepted the chosen defaults of D1–D7 and
-D9 as written below. D8 stays pending: the `setup-matt-pocock-skills` skill
+delegated these decisions to the coordinating agent session (the owner's words,
+translated from Portuguese: "do all of this, I trust you more"). The coordinator
+accepted the chosen defaults of D1–D7 and D9 as written below. D8 stays pending: the `setup-matt-pocock-skills` skill
 requires the owner to see and edit the draft before anything is written, and a
 delegation does not satisfy that. The extra-usage confirmation of D3 is, by
 design, the owner's own act on the machine before the first run.
