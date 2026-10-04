@@ -61,7 +61,11 @@ export async function taskCommandFixture() {
     controlRoot: repository.repositoryRoot,
     platform: process.platform,
     homeDirectory: join(repository.root, "home"),
-    env: {},
+    // why: Windows keeps the state root below LOCALAPPDATA, by default
+    // `<home>\AppData\Local`; a short one keeps the Workspace state root on
+    // the hosted runner at 142 of the 150 bytes Git's limit allows. Other
+    // platforms do not read it.
+    env: { LOCALAPPDATA: join(repository.root, "l") },
     stdin: NO_INPUT,
     stderr: (value) => stderr.push(value),
     pid: process.pid

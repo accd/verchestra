@@ -2907,9 +2907,11 @@ note. -->
      at most 215 bytes on Windows (979 on macOS, 4051 on Linux). The worktree
      module owns that rule and refuses a directory past it with
      `VES_GIT_WORKTREE_PATH_TOO_LONG` before it asks Git to add or remove
-     anything; `prepare()` measures the run's worktree and both scratch roots
-     on the real path first and refuses a state root too deep for them as
-     `not configured` (`state-path-length`). The verification scratch
+     anything; `task start` and `task resume` measure the run's worktree and
+     both scratch roots on the real path before they read the run, ahead of
+     every other check, and refuse a state root too deep for them as `not
+     configured` (`state-path-length`): its location is what an owner fixes
+     first, since every Workspace file moves with it. The verification scratch
      checkouts move from `verification/<run ID>/<purpose>/` to
      `verification/<16 hex of the run ID's digest>/<r or m>/`, 22 characters
      below the run's own worktree instead of 51 to 54, on every platform; this

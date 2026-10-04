@@ -6,11 +6,12 @@
 // one letter per purpose. Real directories, measured on the real path.
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { mkdir, readdir, realpath } from "node:fs/promises";
+import { readdir, realpath } from "node:fs/promises";
 import { join, sep } from "node:path";
 import { test } from "node:test";
 
 import { requireWorktreePathBudget, scratchSegments } from "../../apps/vestra-cli/src/task/task-workspace.ts";
+import { directoryOfLength } from "../helpers/deep-directory.mjs";
 import { temporaryDirectory } from "../helpers/temporary-directory.mjs";
 
 const RUN_ID = `run_${randomUUID()}`;
@@ -33,15 +34,7 @@ test("the scratch segments are a 16-digit digest of the run and one letter per p
 
 async function workspaceRootOfLength(t, length) {
   const base = await realpath(await temporaryDirectory(t, "vsl-"));
-  const need = length - base.length;
-  const count = Math.ceil(need / (100 + sep.length));
-  const characters = need - count * sep.length;
-  const segments = Array.from({ length: count }, (_, index) =>
-    "w".repeat(Math.floor(characters / count) + (index < characters % count ? 1 : 0))
-  );
-  const workspaceRoot = join(base, ...segments);
-  assert.equal(workspaceRoot.length, length);
-  await mkdir(workspaceRoot, { recursive: true });
+  const workspaceRoot = await directoryOfLength(base, length);
   return {
     layout: { workspaceRoot, worktreesRoot: join(workspaceRoot, "worktrees") },
     verificationRoot: join(workspaceRoot, "verification")

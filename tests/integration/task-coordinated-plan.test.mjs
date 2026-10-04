@@ -10,15 +10,18 @@
 // credential read.
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, realpath, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, test } from "node:test";
 
+import { openRunRecord } from "../../apps/vestra-cli/src/task/task-run-record.ts";
 import { runTask } from "../../apps/vestra-cli/src/task/task-run.ts";
 import { statusTask } from "../../apps/vestra-cli/src/task/task-status.ts";
-import { openRuntime } from "../../apps/vestra-cli/src/task/task-workspace.ts";
+import { openRuntime, openTaskWorkspace } from "../../apps/vestra-cli/src/task/task-workspace.ts";
 import { normalizeTaskRequest } from "../../packages/application/src/index.ts";
 import { canonicalizeJsonV2 } from "../../packages/domain/src/index.ts";
+import { resolveStateRoot, resolveWorkspaceState } from "../../packages/platform-node/src/index.ts";
+import { directoryOfLength } from "../helpers/deep-directory.mjs";
 import { confirmExtraUsage, extraUsageConfirmation } from "../helpers/task-billing-fixture.mjs";
 import {
   cleanupTaskCommandFixtures,
@@ -27,6 +30,7 @@ import {
   taskCommandFixture
 } from "../helpers/task-command-fixture.mjs";
 import { validTaskRequestV2 } from "../helpers/task-request-fixture.mjs";
+import { temporaryDirectory } from "../helpers/temporary-directory.mjs";
 import { RUN_ID, TASK_ID, WORKSPACE_ID, canonicalDigestOf, planRecord } from "../helpers/task-run-record-fixture.mjs";
 
 function without(record, key) {
@@ -158,6 +162,41 @@ for (const [command, state, invoke] of COMMANDS)
     });
     assert.equal(run.fixture.state(), state);
   });
+
+// why: Git refuses a worktree whose `.git` path passes PATH_MAX - 40 bytes,
+// and a run's deepest worktrees, its scratch checkouts, lie 65 bytes below the
+// Workspace state root, so that root fits up to PATH_MAX - 110 bytes.
+const PATH_MAX = Object.freeze({ win32: 260, darwin: 1024, linux: 4096 });
+const DEEPEST_WORKSPACE_ROOT = (PATH_MAX[process.platform] ?? PATH_MAX.linux) - 110;
+
+// invariant: a Workspace of the fixture's repository whose state root lies
+// below a home made deep on purpose, just past that limit on this platform.
+async function deepWorkspace(t, fixture) {
+  const base = await realpath(await temporaryDirectory(t, "vdr-"));
+  const stateRoot = resolveStateRoot({ platform: process.platform, env: {}, homeDirectory: base });
+  const suffix =
+    resolveWorkspaceState({ stateRoot, workspaceId: WORKSPACE_ID, platform: process.platform }).workspaceRoot.length -
+    base.length;
+  const home = await directoryOfLength(base, Math.max(base.length + 2, DEEPEST_WORKSPACE_ROOT + 1 - suffix));
+  const io = { ...fixture.io, homeDirectory: home, env: {} };
+  return { io, workspace: await openTaskWorkspace(io) };
+}
+
+// invariant: the depth of the state root is judged before anything of the run
+// is read. A v2 run whose Codex provider is on an API key, which the billing
+// preflight refuses from any state root that fits, is refused for the path
+// first from one that does not, on every platform, and nothing is written.
+test("start and resume refuse a state root too deep for the run's worktrees before the run or its billing is read", async (t) => {
+  const fixture = await taskCommandFixture();
+  const { io, workspace } = await deepWorkspace(t, fixture);
+  assert.ok((await realpath(workspace.layout.workspaceRoot)).length > DEEPEST_WORKSPACE_ROOT);
+  await providers({ workspace }, { schemaVersion: 1, providers: { codex: { auth: "api-key" } } });
+  await openRunRecord(workspace, RUN_ID).savePlan(planRecord({ request: coordinatedRequest() }));
+  const before = await listing(workspace.layout.workspaceRoot);
+  for (const [command, , invoke] of COMMANDS)
+    await assert.rejects(invoke(io), notConfigured("state-path-length"), command);
+  assert.deepEqual(await listing(workspace.layout.workspaceRoot), before);
+});
 
 // invariant: SSI-32. Status of a suspended coordinated run names the
 // suspension, each node of the topology (its passport, role, and where its

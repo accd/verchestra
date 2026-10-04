@@ -176,7 +176,6 @@ async function prepare(
   runtime: RuntimeStore,
   runRecord: RunRecord
 ) {
-  await requireWorktreePathBudget(workspace, plan.runId, io.platform);
   const auth = await loadProviderAuth(workspace.layout.workspaceRoot);
   if (isCoordinatedPlan(plan))
     await requireSubscriptionPreflight({
@@ -739,6 +738,11 @@ export async function runTask(
   const runId = parseRunId(options.runId);
   const reconcile = parseReconcile(options.reconcile);
   const workspace = await openTaskWorkspace(io);
+  // why: the state root's location is the first thing an owner fixes, since
+  // every Workspace file (provider settings, the billing statement, the gate
+  // allowlist, the Codex login, the runs) lives below it and moves with it;
+  // the check reads only the real path, so it comes before the run is read.
+  await requireWorktreePathBudget(workspace, runId, io.platform);
   const runRecord = openRunRecord(workspace, runId);
   const plan = await runRecord.loadPlan();
   const runtime = openRuntime(workspace);

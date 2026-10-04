@@ -38,7 +38,10 @@ function initialize(repositoryRoot, objectFormat) {
 }
 
 export async function objectFormatRepository({ objectFormat, objectIdLength }) {
-  const root = await mkdtemp(join(tmpdir(), `verchestra-git-${objectFormat}-`));
+  // why: a task Workspace below this root must fit Git's GIT_DIR limit on
+  // the hosted Windows runner (a state root of at most 150 bytes), so the
+  // prefix is short.
+  const root = await mkdtemp(join(tmpdir(), `vg-${objectFormat}-`));
   roots.push(root);
   const repositoryRoot = join(root, "repository");
   await mkdir(join(repositoryRoot, "src"), { recursive: true });
