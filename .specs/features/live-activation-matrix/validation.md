@@ -441,7 +441,7 @@ Every phase exits `0` on every target:
 | ------------ | ---------------------------------------- | -------------------------- |
 | win32-x64    | `sha256:ffccd4ca…6762a68f`               | `sha256:4862afca…12399689` |
 | linux-x64    | `sha256:a70fa90e…5328bc9e`               | `sha256:5dce9a4a…0a07209f` |
-| linux-arm64  | `sha256:a8165329…0e0fa45a`               | `sha256:d7276d40…2a179e7f` |
+| linux-arm64  | `sha256:a8165329…0e0fa45a`               | `sha256:d7276d40…8a179e7f` |
 | darwin-x64   | `sha256:70338b0b…f48a9e6b`               | `sha256:45410ada…b313951b` |
 | darwin-arm64 | `sha256:2f5606f9…a5ee1877`               | `sha256:8601098a…ac8c8f03` |
 
@@ -534,7 +534,69 @@ Verification:
   (`sha256:411f7441…5d3bbdd8`). `self-test --profile smoke` returned
   `verdict: PASS`.
 
-Not yet done:
+The owner published the `.7` launcher to npm on 2026-10-04 with two-factor
+authentication. The registry serves it as `latest`, with `dist.integrity`
+`sha512-B9971sBeQuwprW1BMTK5PHHDQiU1kbaGA176yf2OqoTFvWfmvuHuxN9Vum3KaeW53/c2/UzFrhjEWsetcRXIag==`,
+equal to the local `npm pack` of the verified package. The five-target run
+follows.
 
-- `npm publish` of the `.7` launcher, the owner's two-factor step;
-- the five-target `live-activation-matrix` run with base `.6` and update `.7`.
+## Live update and rollback `.6` to `.7` on all five targets — run 37235055911 (2026-10-04)
+
+- Workflow: `.github/workflows/live-activation-matrix.yml`
+- Run: <https://github.com/accd/verchestra/actions/runs/37235055911>
+- Dispatched revision: `c2c150786c869dbd3bf2d0865dbea36de7a4d4cc` (`main`)
+- Inputs: `base_version=0.0.0-qualification.6`,
+  `update_version=0.0.0-qualification.7`
+- Started 2026-10-04T21:11:08Z, finished 2026-10-04T21:19:45Z
+
+Every phase exited `0` on every target:
+
+- activate;
+- update;
+- rollback;
+- self-test smoke, with `self_test.verdict: PASS`;
+- recover.
+
+| Target       | after activate and after rollback (`.6`) | after update (`.7`)        |
+| ------------ | ---------------------------------------- | -------------------------- |
+| win32-x64    | `sha256:4862afca…12399689`               | `sha256:10551627…8f1a181e` |
+| linux-x64    | `sha256:5dce9a4a…0a07209f`               | `sha256:f3a00a20…65507e84` |
+| linux-arm64  | `sha256:d7276d40…8a179e7f`               | `sha256:e6c6fc05…4489fc94` |
+| darwin-x64   | `sha256:45410ada…b313951b`               | `sha256:85d05fe5…45664da1` |
+| darwin-arm64 | `sha256:8601098a…ac8c8f03`               | `sha256:411f7441…5d3bbdd8` |
+
+The evidence was checked by content after downloading the five artifacts:
+
+- On every target, `rollback.active.json` is byte-identical to
+  `activate.active.json`.
+- `update.active.json` names `release:verchestra:0.0.0-qualification.7:2e97443ea601`.
+- Each `.7` digest is the `releaseDigest` that the `.7`
+  `publication-manifest.json` records for the same target.
+- The `.6` digests are the ones run 37152404760 recorded after its update to
+  `.6`.
+
+| Target       | Artifact digest (sha256)                                           | `summary.txt` (sha256)                                             |
+| ------------ | ------------------------------------------------------------------ | ------------------------------------------------------------------ |
+| win32-x64    | `c069b6bf9b214ef7550a0c6bb24f297d00c26f09f5ccf0788eef10a1dd75517c` | `c36bf036951996499950eabb9db9a48f7a11ced8eb4a72ff8e4db5df69da250b` |
+| linux-x64    | `963fa471d11174e9a6e46d1ebb1a51c072ec6191f0d53a9bf015ed44347f88b0` | `1f69471711647526dc52c828d95c01ba8cc752453fcdd5f7aeaf7049da44d7c8` |
+| linux-arm64  | `508effd31b20987a8a7cb9780e3a21ef7a1baca96d6ae089984d8d33a89e1709` | `12dcd5cb5d1e7e55a109d6818135bae3c70a46c0214cc1238888343dcf53a462` |
+| darwin-x64   | `e0994df2b2698be2cc19c52bbb8c5da21c9fefeb124157e6ed301e1d67888545` | `68eebbc818274187618632d8013449a56905f8b5871ed138d3913ce597433970` |
+| darwin-arm64 | `438ff425b31f3360d94a214e53800377cf9ff863fd8c19fbb278634ce77f66f2` | `b9de17783485acf56bedf2a4a6ec9af00e2c9b67e3cebefc594d6f881e7f2fb5` |
+
+The artifacts expire on 2026-11-03.
+
+Correction: the `.5` to `.6` run's table above named the `.6` linux-arm64
+digest's tail as `2a179e7f`; the full digest
+`sha256:d7276d40e501f4fdcf1e52def4988f683a2301b6e708abe8a49f2b578a179e7f`
+ends in `8a179e7f`, which both tables now show.
+
+What this run does not prove is unchanged from run 36997576112:
+
+- no source-side roll-forward;
+- no live uninstall;
+- single-operator custody (L8).
+
+It also says nothing about the governed or coordinated task paths, because
+`self-test --profile smoke` does not start a provider. Their real-provider
+evidence is the owner's pilots (#406 and
+`docs/qualification/coordinated-run-pilots.md`), which have not run yet.
