@@ -1165,8 +1165,7 @@ complexity:check` PASS (no new hotspot), and the seven T7 test files 132/132.
 
 ### Commit 4: `feat(cli): enable the governed task path on Windows`
 
-Branch `strands/t7b-windows-task-path`. AD-0XX in `.specs/STATE.md` (to be
-numbered at merge) records the decision and supersedes AD-039's Windows clause
+Branch `strands/t7b-windows-task-path`. AD-080 in `.specs/STATE.md` records the decision and supersedes AD-039's Windows clause
 (D6). macOS and Linux keep every list, lookup, and assertion they had: each
 Unix branch of a changed test is unchanged, and every new rule is selected by
 `process.platform` or an explicit platform argument.
