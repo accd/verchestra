@@ -68,10 +68,11 @@ record is also pending (owner).
    protocol names (the list is in `docs/quick-start.md`), which every `start`
    and `resume` compares with the plan the Codex sign-in reports, through one
    extra Codex process that reads only the account.
-4. **Prepare the run.** Coordinated runs are in no published release yet, so
-   run the CLI from a source checkout at the recorded revision, as
-   `node <checkout>/apps/vestra-cli/bin/vestra.mjs` in place of
-   `npx verchestra`. Use a disposable repository holding the files the
+4. **Prepare the run.** Coordinated runs are in the published
+   `0.0.0-qualification.7`: run the CLI as
+   `npx --yes verchestra@0.0.0-qualification.7`, and record its `--version`
+   and the package's `dist.integrity` with each result. Use a disposable
+   repository holding the files the
    examples name, and replace each example's `sourceRevision` with that
    repository's `git rev-parse HEAD`.
 5. **Run each mode** with `docs/examples/task-request-agent.json`,

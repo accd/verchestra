@@ -6,9 +6,9 @@ status: in_progress
 branch: main
 baseRevision: 35b23b3b122be7f0d7a6831f3261a9163373cfd7
 lastCompletedTask: T1
-nextTask: "T2 remainder: the owner binds the three credentials (spec.md section 8 step 5). Then T3: P1 with VES = npx --yes verchestra@0.0.0-qualification.6. The configuration identity, the baseline and the first fingerprint are recorded in validation.md."
+nextTask: "T2 remainder: the owner binds the three credentials (spec.md section 8 step 5). Then T3: P1 with VES = npx --yes verchestra@0.0.0-qualification.7. The configuration identity, the baseline and the first fingerprint are recorded in validation.md."
 lastGate: "agent:check PASS; no provider called"
-updatedAt: 2026-10-03T20:40:00Z
+updatedAt: 2026-10-04T21:40:00Z
 ---
 
 # Scope

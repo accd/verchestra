@@ -277,8 +277,8 @@ One example request per mode is in [docs/examples/](docs/examples/). The
 statement's exact format, the limits, and suspension and resume are in
 [docs/quick-start.md](docs/quick-start.md#coordinated-runs-agent-graph-and-swarm).
 Coordinated runs are qualified with deterministic stand-ins on macOS, Linux,
-and Windows, no run with a real subscription has been recorded, and no
-published release includes them yet. The Windows prerequisites (PowerShell
+and Windows, and they ship in the published `0.0.0-qualification.7`; no run
+with a real subscription has been recorded yet. The Windows prerequisites (PowerShell
 7, native `claude.exe` and `codex.exe`, and a state directory short enough for
 Git) are in [docs/quick-start.md](docs/quick-start.md#windows-prerequisites).
 

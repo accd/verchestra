@@ -365,10 +365,9 @@ No node's answer counts as verification.
 > and Windows: on each platform's hosted runner every mode runs from a plan to
 > `HUMAN_REVIEW`, and cancel, suspension, resume, and a killed run are
 > exercised. No run with a real subscription has been recorded yet on any
-> platform. They are not in a published release yet: until a release that
-> includes them is published, run these commands from a source checkout
-> (`node <checkout>/apps/vestra-cli/bin/vestra.mjs` in place of
-> `npx verchestra`). On Windows a run also needs the
+> platform. They are in the published `0.0.0-qualification.7` and later, so
+> `npx --yes verchestra@0.0.0-qualification.7` runs them; an earlier release
+> refuses a v2 request. On Windows a run also needs the
 > [Windows prerequisites](#windows-prerequisites).
 
 ### Three modes
