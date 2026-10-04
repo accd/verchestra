@@ -2360,11 +2360,12 @@ was called. Commits, one concern each:
 
 | Commit | Finding | Change |
 | --- | --- | --- |
-| `d4b41fc` | 3 (SSI-46, SSI-47) | `assertStructuredAnswer` (`coordinated-driver.ts:151`) maps `*_STRUCTURED_OUTPUT_MISSING`/`_INVALID` to `VES_COORDINATION_RESULT_INVALID` and `_LIMIT` to `VES_COORDINATION_RESULT_TOO_LARGE`; both node adapters apply it after the node's end is recorded (`driver-execution-adapter.ts:165`, `task-coordination.ts:350`) |
-| `25db8d4` | 4 (SSI-42, TM-004) | `WorktreeReadView.materialize` (`mcp-bridge-tools.ts:125`) and `removeMaterializedView` (`:282`); a Codex node runs in its own read-only view of its read scope, never the worktree (`task-coordination.ts:291`, `:324`, `:354`) |
+| `d4b41fc` | 3 (SSI-46, SSI-47) | `assertStructuredAnswer` (`coordinated-driver.ts:151`) maps `*_STRUCTURED_OUTPUT_MISSING`/`_INVALID` to `VES_COORDINATION_RESULT_INVALID` and `_LIMIT` to `VES_COORDINATION_RESULT_TOO_LARGE`; both node adapters apply it after the node's end is recorded (`driver-execution-adapter.ts:165`, `task-coordination.ts:353`) |
+| `25db8d4` | 4 (SSI-42, TM-004) | `WorktreeReadView.materialize` (`mcp-bridge-tools.ts:125`) and `removeMaterializedView` (`:282`); a Codex node runs in its own read-only view of its read scope, never the worktree (`task-coordination.ts:291`, `:327`, `:357`) |
+| `858ca4a` | 4 | a view a killed session left at the node's path is cleared before the node runs again (`task-coordination.ts:325`) |
 | `c24a740` | 5 (SSI-49, SSI-81) | a validated result is screened before it is persisted (`coordinated-driver.ts:177`, `:593`) against the composition's `nodeResultWithheld` (`task-coordination.ts:113`, wired at `:91`) |
 | `b404ca6` | 7 (SSI-07) | a swarm structural agent hands the SDK the result token as `message` (`structural-agent.ts:35`) |
-| `d60a41c` | 8 (SSI-58) | both adapters keep each warning's stable code once and record `warningCodes` in `driver-finished` (`driver-execution-adapter.ts:163`, `:258`; `task-coordination.ts:215`, `:347`) |
+| `d60a41c` | 8 (SSI-58) | both adapters keep each warning's stable code once and record `warningCodes` in `driver-finished` (`driver-execution-adapter.ts:163`, `:258`; `task-coordination.ts:215`, `:350`) |
 | `f32f49f` | 14 (SSI-17) | `UsageEvent.provider` (`budget-meter.ts:38`); the coordinated driver puts node usage under the node driver's provider and refuses another (`coordinated-driver.ts:200`, `:559`); the Codex adapter reports its passport's provider (`task-coordination.ts:198`) |
 | `9e2cf68` | 17 (smell) | the private `isWriter` is replaced by the exported `isWriterNode` (`coordinated-driver.ts:462`) |
 | `7903efe` | hygiene | the new cases' fixture ports return plain promises; no assertion changes |
@@ -2387,8 +2388,9 @@ was called. Commits, one concern each:
   positive control (`:146`). A Codex node's working directory holds exactly
   its read scope's text files, all non-writable, without the protected
   `lib/secret`, the binary, the directory link, or the file link, is not the
-  worktree, and is gone after the run (`:164`, `:179`, `:189`); a scope over
-  a bound fails `VES_BRIDGE_VIEW_LIMIT` before the session (`:192`). View
+  worktree, and is gone after the run (`:164`, `:179`, `:189`); a node runs
+  again over the read-only view a killed session left (`:194`); a scope over
+  a bound fails `VES_BRIDGE_VIEW_LIMIT` before the session (`:210`). View
   bounds: a file over 1 MiB, a listing over 1,000 entries, and 5,001 files
   are each refused whole, a file of exactly 1 MiB is copied
   (`tests/integration/read-scope-view.test.mjs:71`); content, modes, and
@@ -2399,7 +2401,7 @@ was called. Commits, one concern each:
   (`coordinated-driver.test.mjs:247`, `:265`, `:280`). Composition list:
   credentials, home, the layout's state root, the worktree, the temporary
   root, never a filesystem root (`tests/unit/task-coordination-withheld.test.mjs:37`,
-  `:44`, `:48`). Through the composition: `coordinated-node-adapters.test.mjs:204`.
+  `:44`, `:48`). Through the composition: `coordinated-node-adapters.test.mjs:222`.
   Security cases: a model-written Claude token, Codex key, home, state,
   worktree, or temporary path is refused and leaves no result file
   (`tests/security/coordination-record-security.test.mjs:97`, `:136`); the
@@ -2414,7 +2416,7 @@ was called. Commits, one concern each:
   ending (`{ message: token }`), with no provider text (`:296`).
 - **8.** `tests/integration/driver-execution-adapter.test.mjs:172`, `:193`;
   through both adapters, the fake Claude Code's `rate-warning` and the fake
-  Codex's denied built-in effect (`coordinated-node-adapters.test.mjs:223`).
+  Codex's denied built-in effect (`coordinated-node-adapters.test.mjs:241`).
 - **14.** `coordinated-driver.test.mjs:506`: node usage names `openai` or
   `anthropic` (`:521`); a node reporting `strands`, `bedrock`, or the other
   kind's provider fails and the meter receives nothing (`:536`, `:539`);
@@ -2437,6 +2439,7 @@ before and after each):
 | V2 no listing bound; V3 file bound doubled; V4 size bound + 1 | `read-scope-view` (1 of 3 each; V4 also composition) |
 | V5 view files writable | `read-scope-view`, `coordinated-node-adapters` (2 of 10) |
 | V6 the view ignores protected paths | `coordinated-node-adapters` (1 of 7) |
+| M4r no clearing of a stale view | `coordinated-node-adapters` (1 of 10) |
 | M5a no screen | unit (1 of 25), `coordination-record-security` (1 of 2) |
 | M5b the composition passes no list | `coordinated-node-adapters` (1 of 8) |
 | M5c no worktree root; M5d state root one level short | unit `task-coordination-withheld` (1 of 2 each); the security case survives both, as its temporary root covers the fixture |
@@ -2448,7 +2451,7 @@ before and after each):
 | M14b another provider accepted; M14c Codex named `strands` | unit (1 of 26 each) |
 | M17 no writer mutex (sanity for `isWriterNode`) | unit (1 of 26) |
 
-Sensor depth: 25 mutant runs; every one killed, M5c and M5d by the unit suite
+Sensor depth: 26 mutant runs; every one killed, M5c and M5d by the unit suite
 alone.
 
 **Residual and proposals for the owner.** Codex's sandbox (`sandbox:
@@ -2498,8 +2501,8 @@ move with these commits; the lines above are current.
 **Gates** (darwin arm64, Node 24.14.0, at `9e2cf68`): `pnpm gate:quick` PASS
 (format, lint, complexity, typecheck; unit 2962, agent-readiness 357, census
 13); `pnpm test:architecture` 132/132; `pnpm agent:check` PASS. At
-`7903efe` (test-only): the touched unit, integration, and security files
-re-run green. Focused: integration 83/83 over the eight touched or adjacent
+`7903efe` (test-only) and `858ca4a`: the touched unit, integration, and
+security files re-run green; typecheck, lint, and complexity PASS. Focused: integration 84/84 over the eight touched or adjacent
 suites; security 10/10 over the four coordination record suites. 0 failed,
 0 skipped, 0 todo. No test was deleted; the hostile-signal security case was
 extended with the outcome marker, and `coordinated-driver-fixture.mjs` passes
