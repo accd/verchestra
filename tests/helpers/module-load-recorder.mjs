@@ -19,5 +19,9 @@ registerHooks({
 });
 
 process.on("exit", () => {
-  if (record !== undefined) writeFileSync(record, JSON.stringify([...loaded].sort()));
+  if (record !== undefined)
+    writeFileSync(
+      record,
+      JSON.stringify([...loaded].sort((left, right) => Number(left > right) - Number(left < right)))
+    );
 });

@@ -170,6 +170,28 @@ function nodeTurn(message, prompt) {
   process.stdout.write("", () => process.exit(0));
 }
 
+function startThread(message) {
+  const login = fixtureLogin();
+  log({
+    cwd: process.cwd(),
+    sandbox: message.params.sandbox,
+    tools: message.params.dynamicTools.length,
+    codexHome: process.env.CODEX_HOME,
+    home: process.env.HOME,
+    login,
+    config: readOptional(join(codexHome(), "config.toml")),
+    ambientValueSeen: ambientSeen(),
+    credentialMatchesStore: credentialMatchesStore("openai-api-key", process.env.OPENAI_API_KEY),
+    environmentKeys: environmentKeys()
+  });
+  if (process.env.OPENAI_API_KEY === undefined && login !== "chatgpt") {
+    emit({ id: message.id, error: { code: -32000, message: "not authenticated" } });
+    return;
+  }
+  emit({ id: message.id, result: { thread: { id: "private-thread-id" } } });
+  emit({ method: "thread/started", params: { thread: { id: "private-thread-id" } } });
+}
+
 const lines = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
 lines.on("line", (line) => {
   const message = JSON.parse(line);
@@ -184,25 +206,7 @@ lines.on("line", (line) => {
   } else if (message.method === "model/list") {
     emit({ id: message.id, result: { data: models.map((model) => ({ id: model, model })) } });
   } else if (message.method === "thread/start") {
-    const login = fixtureLogin();
-    log({
-      cwd: process.cwd(),
-      sandbox: message.params.sandbox,
-      tools: message.params.dynamicTools.length,
-      codexHome: process.env.CODEX_HOME,
-      home: process.env.HOME,
-      login,
-      config: readOptional(join(codexHome(), "config.toml")),
-      ambientValueSeen: ambientSeen(),
-      credentialMatchesStore: credentialMatchesStore("openai-api-key", process.env.OPENAI_API_KEY),
-      environmentKeys: environmentKeys()
-    });
-    if (process.env.OPENAI_API_KEY === undefined && login !== "chatgpt") {
-      emit({ id: message.id, error: { code: -32000, message: "not authenticated" } });
-      return;
-    }
-    emit({ id: message.id, result: { thread: { id: "private-thread-id" } } });
-    emit({ method: "thread/started", params: { thread: { id: "private-thread-id" } } });
+    startThread(message);
   } else if (message.method === "turn/start" && message.params.outputSchema !== undefined) {
     nodeTurn(message, message.params.input?.[0]?.text ?? "");
   } else if (message.method === "turn/start") {
