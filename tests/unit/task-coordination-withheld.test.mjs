@@ -1,12 +1,14 @@
 // invariant: SSI-49 and SSI-81 at the composition. What a coordinated run
 // withholds from every node result is the credentials its sessions are given
-// to redact and its machine-local roots: the home directory, the Workspace
-// layout's state root, the run's worktree, and the temporary root. A relative
-// path or a filesystem root names no machine-local place.
+// to redact, the secrets of the Workspace's Codex login, and its
+// machine-local roots: the home directory, the Workspace layout's state root,
+// the run's worktree, and the temporary root. A relative path or a filesystem
+// root names no machine-local place.
 import assert from "node:assert/strict";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join, parse, resolve } from "node:path";
-import { test } from "node:test";
+import { after, test } from "node:test";
 
 import { nodeResultWithheld } from "../../apps/vestra-cli/src/task/task-coordination.ts";
 import { resolveWorkspaceState } from "../../packages/platform-node/src/index.ts";
@@ -49,7 +51,59 @@ test("a run withholds its sessions' credentials and its home, state, worktree, a
   assert.equal(withheld.roots.includes(parse(home).root), false, "a filesystem root is never withheld");
 });
 
-test("a Codex session on the Workspace login has no value to withhold beside the Claude Code credential", async () => {
-  const { options: composed } = options({ identityDirectory: "/fixture/codex-identity" }, {});
-  assert.deepEqual((await nodeResultWithheld(composed, "worktree:run-1")).values, ["sk-ant-oat01-fixture-claude"]);
+const identities = [];
+after(() => Promise.all(identities.map((directory) => rm(directory, { recursive: true, force: true }))));
+
+// why: stands in for the file `codex login` writes; every value is a fixture.
+async function identityWith(login) {
+  const directory = await mkdtemp(join(tmpdir(), "vestra-codex-login-"));
+  identities.push(directory);
+  if (login !== undefined) await writeFile(join(directory, "auth.json"), login);
+  return directory;
+}
+
+const LOGIN = Object.freeze({
+  OPENAI_API_KEY: "sk-fixture-login-api-key",
+  tokens: {
+    id_token: "fixture-login-id-token",
+    access_token: "fixture-login-access-token",
+    refresh_token: "fixture-login-refresh-token",
+    account_id: "fixture-account"
+  },
+  last_refresh: "2026-10-01T00:00:00.000000Z"
+});
+
+test("a Codex session on the Workspace login withholds the login's tokens and API key beside the Claude Code credential", async () => {
+  const { options: composed } = options({ identityDirectory: await identityWith(JSON.stringify(LOGIN)) }, {});
+  assert.deepEqual((await nodeResultWithheld(composed, "worktree:run-1")).values, [
+    "sk-ant-oat01-fixture-claude",
+    "fixture-login-access-token",
+    "fixture-login-refresh-token",
+    "fixture-login-id-token",
+    "sk-fixture-login-api-key"
+  ]);
+  const chatgptOnly = JSON.stringify({ ...LOGIN, OPENAI_API_KEY: null });
+  const { options: unkeyed } = options({ identityDirectory: await identityWith(chatgptOnly) }, {});
+  assert.deepEqual((await nodeResultWithheld(unkeyed, "worktree:run-1")).values.slice(1), [
+    "fixture-login-access-token",
+    "fixture-login-refresh-token",
+    "fixture-login-id-token"
+  ]);
+  const { options: signedOut } = options({ identityDirectory: await identityWith(undefined) }, {});
+  assert.deepEqual((await nodeResultWithheld(signedOut, "worktree:run-1")).values, ["sk-ant-oat01-fixture-claude"]);
+});
+
+// invariant: a login file that cannot be read as a login withholds nothing it
+// could name, so the run is refused, and the refusal quotes none of the file.
+test("an unreadable Codex login file refuses the run without naming its content", async () => {
+  for (const login of ['{"tokens": fixture-broken-login-secret}', "[]", "null"]) {
+    const { options: composed } = options({ identityDirectory: await identityWith(login) }, {});
+    await assert.rejects(nodeResultWithheld(composed, "worktree:run-1"), (error) => {
+      assert.equal(error.envelope.code, "VES_TASK_NOT_CONFIGURED", login);
+      assert.deepEqual(error.envelope.safeDetails, { requirement: "codex-login" }, login);
+      assert.equal(error.cause, undefined, login);
+      assert.equal(`${error.message}${error.stack}`.includes("fixture-broken-login-secret"), false, login);
+      return true;
+    });
+  }
 });

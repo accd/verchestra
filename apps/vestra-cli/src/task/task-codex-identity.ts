@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { chmod, lstat, mkdir, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
+import { chmod, lstat, mkdir, mkdtemp, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
 
@@ -25,6 +25,63 @@ export const CODEX_IDENTITY_CONFIG = 'cli_auth_credentials_store = "file"\nforce
 
 export function codexIdentityDirectory(workspaceRoot: string): string {
   return join(workspaceRoot, CODEX_IDENTITY_DIRECTORY);
+}
+
+const LOGIN_FILE = "auth.json";
+// why: a Codex login file holds a few tokens; one past this size is no login.
+const MAXIMUM_LOGIN_BYTES = 1024 * 1024;
+const LOGIN_TOKENS = Object.freeze(["access_token", "refresh_token", "id_token"]);
+const API_KEY_FIELD = /api[_-]?key/iu;
+
+// hazard: neither the file's text nor a parser's message, which quotes it,
+// may reach the error, so the refusal carries no cause.
+function unreadableLogin() {
+  return notConfigured("codex-login", "The Codex login file of the Workspace identity directory is not readable");
+}
+
+async function loginText(path: string): Promise<string | undefined> {
+  let size: number;
+  try {
+    size = (await stat(path)).size;
+  } catch (error) {
+    if ((error as { readonly code?: unknown }).code === "ENOENT") return undefined;
+    throw unreadableLogin();
+  }
+  if (size > MAXIMUM_LOGIN_BYTES) throw unreadableLogin();
+  return readFile(path, "utf8").catch(() => {
+    throw unreadableLogin();
+  });
+}
+
+function loginRecord(text: string): Readonly<Record<string, unknown>> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw unreadableLogin();
+  }
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) throw unreadableLogin();
+  return parsed as Readonly<Record<string, unknown>>;
+}
+
+// invariant: SSI-49. The secret values of the Workspace's Codex login, which
+// every Codex session of a run can read from its CODEX_HOME: the access,
+// refresh, and ID tokens of a ChatGPT login and any API key field. They are
+// read only to be withheld from node results, never logged, persisted, or
+// placed in an error; a directory with no login file has none.
+export async function codexLoginSecrets(directory: string): Promise<readonly string[]> {
+  const text = await loginText(join(directory, LOGIN_FILE));
+  if (text === undefined) return [];
+  const login = loginRecord(text);
+  const tokens = login["tokens"];
+  const tokenValues =
+    tokens !== null && typeof tokens === "object"
+      ? LOGIN_TOKENS.map((name) => (tokens as Readonly<Record<string, unknown>>)[name])
+      : [];
+  const keyValues = Object.entries(login)
+    .filter(([name]) => API_KEY_FIELD.test(name))
+    .map(([, value]) => value);
+  return [...tokenValues, ...keyValues].filter((value): value is string => typeof value === "string" && value !== "");
 }
 
 function shellQuoted(value: string): string {

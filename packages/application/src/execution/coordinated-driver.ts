@@ -91,7 +91,9 @@ export interface CoordinatedDriverOptions {
   // the visit it names. Without the digest no unsettled visit is run again.
   readonly digest?: (record: Readonly<Record<string, unknown>>) => Digest;
   readonly reconcile?: Digest;
-  // invariant: SSI-49. Resolved once a round opens, for the worktree it runs in.
+  // invariant: SSI-49. Resolved for every result the round screens, for the
+  // worktree it runs in, so a credential a session renewed during the round
+  // is withheld as well as the one it started with.
   readonly withheld?: (worktreeRef: string) => Promise<WithheldText>;
   readonly now?: () => Date;
 }
@@ -272,7 +274,6 @@ class CoordinationRound implements CoordinationNodeRunner {
   #saving: Promise<void> = Promise.resolve();
   #failure: Error | undefined;
   #suspension: ExecutionSuspension | undefined;
-  #withheld: WithheldText | undefined;
 
   constructor(
     options: CoordinatedDriverOptions,
@@ -304,7 +305,6 @@ class CoordinationRound implements CoordinationNodeRunner {
   // effect or the owner reconciled it, and otherwise nothing runs (SSI-65..67).
   // A finished round is followed by the next, which is a gate repair attempt.
   async open(): Promise<void> {
-    this.#withheld = await this.#options.withheld?.(this.#request.worktreeRef);
     const stored = await this.#options.records.loadLedger();
     if (stored !== undefined && stored.mode !== this.#plan.mode)
       failure("VES_COORDINATION_LEDGER_INVALID", "The node ledger belongs to another plan");
@@ -590,7 +590,7 @@ class CoordinationRound implements CoordinationNodeRunner {
     try {
       assertResultBounds(bytes.byteLength, this.#persistedBytes(), this.#plan.limits);
       result = readNodeResult(bytes, this.#plan, node.nodeId);
-      assertWithheld(result, this.#withheld);
+      assertWithheld(result, await this.#options.withheld?.(this.#request.worktreeRef));
       digest = await this.#options.records.saveResult(bytes);
     } catch (error) {
       await this.#end(entry, coordinationErrorCode(error));

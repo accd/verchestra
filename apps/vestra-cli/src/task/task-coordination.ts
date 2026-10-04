@@ -32,6 +32,7 @@ import type { NodeGitWorktreeAdapter } from "@verchestra/platform-node";
 
 import type { ProviderAuthMode } from "../task-provider-auth.ts";
 import { isolatedIdentity, sessionCredential } from "./task-codex.ts";
+import { codexLoginSecrets } from "./task-codex-identity.ts";
 import { stableUuid } from "./task-context.ts";
 import { canonicalDigest } from "./task-files.ts";
 import { claudeSessionAdapter, contextText, passThroughEnvironment } from "./task-implementer.ts";
@@ -103,17 +104,23 @@ function localRoots(candidates: readonly (string | undefined)[]): readonly strin
 }
 
 // invariant: SSI-49 and SSI-81. What no node result of this run may name: the
-// credentials its Claude Code and Codex sessions are given to redact, and its
-// machine-local roots: the home directory, the state root, the run's
-// worktree, and the temporary root, as this process and the run's
+// credentials its Claude Code and Codex sessions are given to redact, the
+// secrets of the Workspace's Codex login, which a Codex node can read from its
+// CODEX_HOME, and its machine-local roots: the home directory, the state root,
+// the run's worktree, and the temporary root, as this process and the run's
 // environment name them.
 // why: the sessions root is `<state root>/workspaces/<id>/sessions` in the
 // Workspace layout (resolveWorkspaceState), so the state root is three levels
 // above it.
 export async function nodeResultWithheld(options: CoordinatedRunOptions, worktreeRef: string): Promise<WithheldText> {
   const env = options.env;
+  const identity = options.codex.identityDirectory;
   return {
-    values: [options.claude.credential, ...sessionCredential(options.codex).sensitiveValues],
+    values: [
+      options.claude.credential,
+      ...sessionCredential(options.codex).sensitiveValues,
+      ...(identity === undefined ? [] : await codexLoginSecrets(identity))
+    ],
     roots: localRoots([
       homedir(),
       env["HOME"],
