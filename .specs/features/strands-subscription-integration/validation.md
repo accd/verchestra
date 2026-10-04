@@ -2476,7 +2476,7 @@ not by content. Proposed text, not applied:
   its working directory (accepted residual) | Node write-scope narrowing
   before the executor (SSI-41); node read scope through the bridge, and for a
   Codex node a read-only copy of its read scope as its working directory
-  (SSI-42, AD-0XX); node results screened for the run's credentials and
+  (SSI-42, AD-081); node results screened for the run's credentials and
   machine-local roots before they persist (SSI-49); untrusted labelling
   (SSI-50) | Denied tool counts in the node ledger; `VES_BRIDGE_VIEW_LIMIT`;
   `VES_COORDINATION_RESULT_INVALID` | medium | high | high"
