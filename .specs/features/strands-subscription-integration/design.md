@@ -2,7 +2,11 @@
 
 **Spec**: `.specs/features/strands-subscription-integration/spec.md`
 **Research**: `.specs/features/strands-subscription-integration/research.md`
-**Status**: Draft — awaiting the owner decisions D1–D9 in `spec.md`.
+**Status**: Implemented and independently verified (2026-10-04). T3–T9 are on
+`main`; the delta verification of remediation R4 (`validation.md`) has no FAIL
+row, and SSI-84 waits for the owner's pilots. The decisions in `spec.md` are
+accepted by delegation and await the owner's confirmation at human review,
+except D8 and D11, which wait for the owner.
 
 ---
 
@@ -508,5 +512,6 @@ catalog keeps its count of 19.
 | Billing proof | Owner confirmation plus per-session effective-method checks plus typed quota signals | No local read of the server-side setting exists |
 | Windows server | PowerShell 7 .NET helper over parent stdio | Node cannot set `CurrentUserOnly` or first-instance on a pipe |
 
-Project-level decisions are recorded in `.specs/STATE.md` as the AD entries
-"to be numbered at merge" that follow AD-067.
+Project-level decisions are recorded in `.specs/STATE.md` as AD-068 to AD-076
+and AD-078 to AD-082 (AD-077 belongs to another feature), each proposed and
+ratified by the human review of this feature.

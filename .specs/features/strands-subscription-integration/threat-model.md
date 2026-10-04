@@ -2,9 +2,12 @@
 
 Produced with the `security-threat-model` skill (commit `120b676`). The skill's
 step 6 asks the owner to confirm the assumptions before the report is final;
-that check-in could not run inside this task, so the assumptions below are
-open decision D7 in `spec.md` and every recommendation that depends on them is
-marked conditional. Requirement IDs (SSI-nn) refer to `spec.md`.
+that check-in could not run inside this task. The assumptions below are
+decision D7 in `spec.md`, accepted by delegation on 2026-10-03 and awaiting
+the owner's own confirmation at human review, and every recommendation that
+depends on them is marked conditional. Requirement IDs (SSI-nn) refer to
+`spec.md`. The verdict on each threat at the end of the verification is in
+`validation.md` ("Threat model (second pass)" and "Delta verification of R4").
 
 ## Executive summary
 
@@ -34,7 +37,8 @@ setting itself remains unverifiable and is the main residual risk.
 - **Out of scope:** the SDK's own model providers, MCP client, tools, and
   servers (never constructed); the release, TUF, and activation chain beyond the
   bundle content; CI infrastructure; the providers' servers.
-- **Assumptions (to confirm, D7):**
+- **Assumptions (D7, accepted by delegation; awaiting the owner's confirmation
+  at human review):**
   - One owner operates one machine; Verchestra runs as that user.
   - Other local users are hostile; other processes of the same user are out of
     scope, as in `.specs/features/governed-task-cli/threat-model.md`.

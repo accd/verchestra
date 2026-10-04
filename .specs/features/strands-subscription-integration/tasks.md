@@ -18,8 +18,12 @@ its commits are on the branch and its gate passes.
 ---
 
 **Design**: `.specs/features/strands-subscription-integration/design.md`
-**Status**: In Progress (T1 done; T2 awaiting the owner's review of
-`setup-draft.md`, the threat-model check-in, and decisions D1–D9)
+**Status**: Verification (2026-10-04). T1 and T3–T8 are done and on `main`;
+T9's independent verification ended with no FAIL row after remediations R1–R4
+("Delta verification of R4" in `validation.md`); T10 hands off. Open, all the
+owner's: the real-subscription pilots (SSI-84, T9), D8 (`setup-draft.md`,
+T2), D11, confirmation of the decisions accepted by delegation (D1–D7, D9,
+D1b, D10) and of the amended requirements, and human review.
 
 ---
 
@@ -143,6 +147,12 @@ T8 -> T9 -> T10
 - [ ] The owner has edited or accepted `setup-draft.md`; only then is any configuration written, in a separate commit.
 - [ ] The owner has confirmed or corrected the threat-model assumptions (D7) and decided D1–D9.
 
+**Status** (2026-10-04): the two open items are the owner's own. D1–D7 and D9
+were accepted by delegation on 2026-10-03, and D1b and D10 on 2026-10-04 (see
+`spec.md`, "Assumptions & Open Questions"), which lets the work proceed but is
+not the owner's decision; D8 waits for the owner's review of `setup-draft.md`,
+and nothing of it has been written.
+
 **Tests**: agent-readiness (`pnpm agent:check`)
 **Gate**: quick
 
@@ -209,10 +219,10 @@ T8 -> T9 -> T10
 - [x] Security tests show no e-mail address, token, or provider text in events, checkpoints, or payloads (SSI-81).
 - [x] `pnpm qualify:claude` and `pnpm qualify:codex` pass.
 
-**Status**: author-complete on `strands/t4-driver-results`; pending the
-platform matrix (Windows, macOS, Linux), the optional owner-run Claude probe,
-independent verification, and human review. Evidence: `validation.md`, T4
-section.
+**Status**: done; on `main` through #516 (2026-10-04). The platform matrix
+passed on all five legs and the independent verification passed its rows (T9).
+Pending: the optional owner-run Claude probe (with the pilots) and human
+review. Evidence: `validation.md`, T4 section and T9 sections.
 
 **Tests**: unit, contract, integration, security
 **Gate**: security
@@ -283,7 +293,7 @@ section.
 - [x] Commit 5: sealed self-containment judged from esbuild's metafile (static, dynamic, and `require` imports), the closure test's text scan replaced; 5 mutants killed; sizes and cold start before the adapter recorded. The full `sealed-launcher-closure` suite and `gate:build` run on the platform matrix (disk).
 - [x] Commit 6: `task-coordination.ts` composes coordinated runs (node driver factory, one literal dynamic import for `graph` and `swarm`, cancellation of every node, node ledger in the Run record); the interim refusal is lifted for subscriptions, an API-key provider stays `not configured` (`coordinated-run-subscription`); e2e journeys for agent, graph, swarm, and cancel; 7 mutants killed; sizes and cold start after the adapter recorded.
 
-**Status**: author-complete on `strands/t5-coordinated-driver`; pending `pnpm test:build` and `pnpm gate:build` (with the staged-layout closure suite), `pnpm gate:security`, and the Linux and Windows runs on the platform matrix, independent verification, and human review.
+**Status**: done; on `main` through #522 (2026-10-04). `gate:build` (the staged-layout closure suite included) and `gate:security` passed on all five legs of the platform matrix, and the independent verification passed its rows (T9). Pending: human review.
 
 **Tests**: unit, integration, architecture, build, fault
 **Gate**: build
@@ -321,7 +331,7 @@ section.
 - [x] Commit 2: the executor's `suspended` driver result, checkpoint, and `TaskExecutionSuspended`; the repair loop's `SUSPENDED` (spend saved, attempt not counted); outcome `SUSPENDED` with no workflow command and nothing released; the coordinated driver suspends on a quota signal or Codex credits (reported `not configured`), keeps the round open, and waits for every node; journeys for a quota signal mid-graph and Codex credits present; 15 mutants killed.
 - [x] Commit 3: `task-resumption.ts` revalidates a resume before any node starts (the approval against the policy in force, the worktree's change digest, every unsettled node) and refuses without changing anything; `task resume --reconcile <digest>` (D4); the ledger's `unsettledVisits`, `uncertaintyRecord`, and `rerunOf`; the driver replays completed nodes, runs again a node that left no effect, and runs again an uncertain or partial node only when reconciled; a resumed suspended run renews a writer grant that only expired; status shows the suspension, each node, and each uncertain node with its digest; journeys for resume, reconciliation, drift, an expired approval, credits gone, and cancel, and a crash fault; 16 mutants killed.
 
-**Status**: author-complete on `strands/t6-suspension`; pending `pnpm gate:full`, `pnpm gate:build`, and `pnpm gate:security` on the platform matrix (the e2e and fault journeys run on macOS, as the existing task journeys do, and report their platform with a diagnostic elsewhere), independent verification, and human review.
+**Status**: done; on `main` through #524 (2026-10-04). Since remediation R3 (#528) its e2e and fault journeys execute on all five legs, and `gate:full`, `gate:build`, and `gate:security` pass there; the independent verification passed its rows (T9). Pending: human review.
 
 ---
 
@@ -357,7 +367,7 @@ section.
 - [x] Commit 2: `docs/examples/task-request-{agent,graph,swarm}.json`, one small change per mode on Claude Code and Codex only, every limit at or below its default; `tests/e2e/task-request-examples-e2e.test.mjs` plans each with `--dry-run` through the binary and compares its text and JSON forms; 5 mutants killed.
 - [x] Commit 3: `docs/quick-start.md` documents coordinated runs (modes, the writer rule, the examples, the limits and their ceilings, subscriptions only with extra usage off and the hand-written `task-billing.json`, what plan and status show, suspension and resume with `--reconcile`, mode `agent` without the SDK, Windows still refused); `README.md` summarizes it.
 
-**Status**: author-complete on `strands/t8-surface`; pending `pnpm gate:full` (the journeys on Linux), `pnpm site:test` (its Playwright browsers and preview server could not run on the authoring machine), the Windows run on the platform matrix, independent verification (T9), and human review.
+**Status**: done; on `main` through #525 (2026-10-04). `gate:full` passes on all five legs with the journeys executing (since #528); CI's "Site quality" job, which runs `pnpm site:test`, passed on #525 and on every feature PR since; the independent verification passed its rows (T9). Pending: human review.
 
 ---
 
@@ -378,9 +388,9 @@ section.
 **Done when**:
 
 - [x] `pnpm agent:check`, `pnpm gate:quick`, `pnpm gate:full`, `pnpm gate:build`, and `pnpm gate:security` pass with zero skipped and zero todo.
-- [ ] Every SSI row in `validation.md` has file-and-assertion evidence.
+- [ ] Every SSI row in `validation.md` has file-and-assertion evidence. (84 of 85 at the delta verification of R4; SSI-84's evidence is the owner's pilots, the next item.)
 - [x] The discrimination list is killed in full.
-- [ ] Pilot results recorded without exhausting any allowance; missing platforms or accounts marked `not configured`.
+- [ ] Pilot results recorded without exhausting any allowance; missing platforms or accounts marked `not configured`. (Every platform and mode is recorded as pending (owner) in `docs/qualification/coordinated-run-pilots.md`; no pilot has run.)
 
 **Tests**: e2e, security
 **Gate**: full
@@ -389,6 +399,10 @@ section.
 
 - [x] Commit 1: independent verification at `c3223c6`. Verdict FAIL: SSI-29, SSI-42, SSI-46, SSI-47, SSI-49, and SSI-52 fail, 10 requirements are partial, SSI-84 is pending, and D3b is not met for the Codex verifier. The planned discrimination list is killed in full (16 of 16 rows); 3 of the verifier's 9 additional mutants survived (X04, X06, X07). Every gate passes on all five platforms (runs 37190404353, 37190406187, 37190408045), 0 skipped and 0 todo; off macOS the coordinated journeys return early and count as passes. The SSI-row item stays open: SSI-42 has no evidence and SSI-84 waits for the owner.
 - [x] Commit 2: `docs/qualification/coordinated-run-pilots.md` records the agent, graph, and swarm pilots as pending (owner) on Windows, macOS, and Linux, with the owner's steps and the fields to record, and the stand-in qualification per platform (coordinated journeys executed on macOS only). The pilot item stays open until the owner's runs are recorded.
+- [x] Remediations of the first pass, each by a session that wrote none of T1–T9: R3 (#528, findings 11, 13 documentation, 17: the coordinated journeys on Linux and Windows, documentation, standards), R2 (#529, findings 3, 4, 5, 7, 8, 14: node results, read scope, providers), R1 (#530, findings 1, 2, 6, 10, 15: the v2 verifier's billing, the plan type, the approved-package proof, the Windows policy order, the grant renewal; AD-082).
+- [x] Second independent verification at `93b38c5` (#531): verdict FAIL, 79 PASS, SSI-49 and SSI-83 FAIL, SSI-60, SSI-61, SSI-81 PARTIAL, SSI-84 pending; the Windows `gate:security` leg hung. The planned list and the first pass's three survivors killed.
+- [x] Remediation R4 (#532, the second pass's findings 1, 2, 3, 4, 6): a v1 verifier fails on a usage limit as before, the Codex login's secrets are withheld from node results, every named-pipe case is bounded and the pipe helper ends within a bound, AD-081's residual is every read outside the copy, O12, O13, and O15 killed.
+- [x] Delta verification of R4 at `d2c9341` (#533): verdict PASS, no FAIL row (81 PASS, SSI-60, SSI-61, SSI-83 PARTIAL until T10's amendments, SSI-84 pending); 15 of 16 mutants killed, D6 survived as a test gap; matrix runs 37206571680, 37206573582, 37206575734 green on all five legs. Its two minor findings (D6, `account_id`) are remediation R5's.
 
 ---
 
@@ -407,11 +421,16 @@ section.
 
 **Done when**:
 
-- [ ] A clean clone can continue from `handoff.md` without repeating completed work.
-- [ ] `pnpm agent:check` passes.
+- [x] A clean clone can continue from `handoff.md` without repeating completed work.
+- [x] `pnpm agent:check` passes.
 
 **Tests**: agent-readiness (`pnpm agent:check`)
 **Gate**: quick
+
+**Progress** (branch `strands/t10-handoff`):
+
+- [x] `docs(specs): apply the Strands spec amendments the verifications judged`: SSI-42, SSI-52, SSI-55, SSI-56, SSI-60, SSI-61, SSI-83, and TM-004 amended with the texts R1, R4, and the delta verification wrote, the stale `design.md` passages corrected, and D1b and D10 recorded as approvals by delegation, D11 as pending.
+- [x] Commit 1: `handoff.md` to `verification`; the traceability table at its verified status; the status lines of `spec.md`, `design.md`, `tasks.md`, and `threat-model.md`; the `.specs/STATE.md` handoff entry; the decisions were already numbered at merge (AD-068 to AD-076, AD-078 to AD-082).
 
 ---
 
