@@ -59,8 +59,7 @@ async function projectRevision(fixture) {
 }
 
 for (const mode of Object.keys(TOPOLOGIES))
-  test(`the ${mode} example plans in a dry run on subscriptions within its default limits`, TIMEOUT, async (t) => {
-    if (process.platform === "win32") return t.diagnostic("the task path is refused on Windows");
+  test(`the ${mode} example plans in a dry run on subscriptions within its default limits`, TIMEOUT, async () => {
     const request = example(mode);
     assert.equal(request.schemaVersion, 2);
     assert.equal(request.sourceRevision, PLACEHOLDER_REVISION, "the example names the documented placeholder");
