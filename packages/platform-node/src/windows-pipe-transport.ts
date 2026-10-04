@@ -36,6 +36,9 @@ const CONNECTED = "verchestra-pipe:connected";
 // why: a cold PowerShell start measured over 4 s on a hosted runner (AD-041);
 // the bound stops a helper that never listens, not a slow one.
 const STARTUP_TIMEOUT_MS = 30_000;
+// why: each step that ends the helper (its tree's termination, then each wait
+// for its exit) has this long, so a channel that closed never waits without
+// end on a helper that holds the pipe.
 const EXIT_WAIT_MS = 5_000;
 const MAXIMUM_STATUS_BYTES = 64 * 1024;
 const PASSED_VARIABLES = Object.freeze([
@@ -199,6 +202,9 @@ export interface PipeHelperProcess {
   readonly stdin: Writable;
   readonly stdout: Readable;
   readonly stderr: Readable;
+  // invariant: ends this one process through the handle its parent holds, so
+  // it never reaches another process that reused the pid.
+  kill(signal: NodeJS.Signals): boolean;
   on(event: "exit" | "close", listener: () => void): unknown;
   on(event: "error", listener: (error: Error) => void): unknown;
 }
@@ -239,6 +245,19 @@ export const nodeWindowsPipeHost: WindowsPipeHost = Object.freeze({
       throw new WindowsPipeTransportError("VES_BRIDGE_CHANNEL_FAILED", "The pipe helper outlived its termination");
     })
 });
+
+// why: resolves whether the promise settled before the bound, never rejects.
+function settlesWithin(promise: Promise<unknown>, timeoutMs: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(false), timeoutMs);
+    timer.unref();
+    const settled = () => {
+      clearTimeout(timer);
+      resolve(true);
+    };
+    promise.then(settled, settled);
+  });
+}
 
 function readStatusLines(stream: Readable, onLine: (line: string) => void): void {
   let pending = "";
@@ -298,7 +317,9 @@ class PipeHelperRun {
   readonly #directory: string;
   readonly #accept: (connection: Duplex) => void;
   readonly #helper: PipeHelperProcess;
+  readonly #exited: Promise<void>;
   readonly #ended: Promise<void>;
+  readonly #exitWaitMs: number;
   #gone = false;
   #starting: ((refusal?: WindowsPipeTransportError) => void) | undefined;
   #connection: HelperConnection | undefined;
@@ -309,15 +330,21 @@ class PipeHelperRun {
     host: WindowsPipeHost,
     directory: string,
     accept: (connection: Duplex) => void,
-    helper: PipeHelperProcess
+    helper: PipeHelperProcess,
+    exitWaitMs: number
   ) {
     this.#host = host;
     this.#directory = directory;
     this.#accept = accept;
     this.#helper = helper;
+    this.#exitWaitMs = exitWaitMs;
     for (const stream of [helper.stdin, helper.stdout, helper.stderr]) stream.on("error", () => undefined);
-    helper.on("exit", () => {
-      this.#gone = true;
+    this.#exited = new Promise((resolve) => {
+      helper.on("exit", () => {
+        this.#gone = true;
+        resolve();
+      });
+      helper.on("error", () => resolve());
     });
     this.#ended = new Promise((resolve) => {
       helper.on("close", () => resolve());
@@ -368,21 +395,36 @@ class PipeHelperRun {
     this.#accept(connection);
   }
 
-  // hazard: a helper that has exited may have its pid reused, so a tree is
-  // terminated only while the helper is known to be running.
   #terminate(): Promise<void> {
-    const pid = this.#helper.pid;
-    if (this.#termination !== undefined || pid === undefined || this.#gone)
-      return this.#termination ?? Promise.resolve();
-    this.#termination = this.#host.terminateTree(pid).catch(() => undefined);
+    this.#termination ??= this.#endHelper();
     return this.#termination;
+  }
+
+  // invariant: SSI-75. However the channel ends (a refused client, a client
+  // that left, or the channel's close), the helper that holds the pipe ends
+  // within a bound, so the pipe's server end closes and its client sees it.
+  // Its tree is terminated, and a helper still running once that is done or
+  // its bound has passed is killed through its own handle: the tree
+  // terminator's outcome is not trusted alone.
+  // hazard: a helper that has exited may have its pid reused, so its tree is
+  // terminated only while it is known to be running.
+  async #endHelper(): Promise<void> {
+    const pid = this.#helper.pid;
+    if (pid === undefined || this.#gone) return;
+    await settlesWithin(
+      this.#host.terminateTree(pid).catch(() => undefined),
+      this.#exitWaitMs
+    );
+    if (await settlesWithin(this.#exited, this.#exitWaitMs)) return;
+    this.#helper.kill("SIGKILL");
+    await settlesWithin(this.#exited, this.#exitWaitMs);
   }
 
   async #shutdown(): Promise<void> {
     this.#connection?.destroy();
     this.#helper.stdin.destroy();
     await this.#terminate();
-    await Promise.race([this.#ended, new Promise((resolve) => setTimeout(resolve, EXIT_WAIT_MS).unref())]);
+    await settlesWithin(this.#ended, this.#exitWaitMs);
     await rm(this.#directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   }
 }
@@ -394,6 +436,7 @@ export interface WindowsNamedPipeTransportOptions {
   readonly pipeName?: () => string;
   readonly environment?: Readonly<Record<string, string | undefined>>;
   readonly startupTimeoutMs?: number;
+  readonly exitWaitMs?: number;
 }
 
 // invariant: satisfies agent-runtime's BridgeTransport by shape; the
@@ -404,6 +447,7 @@ export class WindowsNamedPipeBridgeTransport {
   readonly #pipeName: () => string;
   readonly #environment: Readonly<Record<string, string | undefined>>;
   readonly #startupTimeoutMs: number;
+  readonly #exitWaitMs: number;
 
   constructor(options: WindowsNamedPipeTransportOptions = {}) {
     this.#root = options.root;
@@ -411,6 +455,7 @@ export class WindowsNamedPipeBridgeTransport {
     this.#pipeName = options.pipeName ?? (() => freshPipeName());
     this.#environment = options.environment ?? process.env;
     this.#startupTimeoutMs = options.startupTimeoutMs ?? STARTUP_TIMEOUT_MS;
+    this.#exitWaitMs = options.exitWaitMs ?? EXIT_WAIT_MS;
   }
 
   async listen(accept: (connection: Duplex) => void): Promise<{ readonly endpoint: string; close(): Promise<void> }> {
@@ -434,7 +479,7 @@ export class WindowsNamedPipeBridgeTransport {
         cwd: directory,
         env: helperEnvironment(this.#environment)
       });
-      const started = new PipeHelperRun(this.#host, directory, accept, helper);
+      const started = new PipeHelperRun(this.#host, directory, accept, helper, this.#exitWaitMs);
       run = started;
       await started.started(this.#startupTimeoutMs);
       return Object.freeze({ endpoint: pipeEndpoint(name), close: () => started.close() });

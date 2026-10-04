@@ -304,8 +304,48 @@ test("a connection the controller refuses ends the helper that holds the pipe", 
   assert.equal((await runs()).length, 1, "the run's directory stays until the channel closes");
   await channel.close();
   assert.deepEqual(host.terminated, [4242], "the tree is terminated once");
+  assert.deepEqual(host.helper.kills, [], "a helper its tree termination ended is not killed again");
   assert.deepEqual(await runs(), []);
 });
+
+// invariant: SSI-75 when the tree terminator does not end the helper. A
+// helper that ignores the end of its streams, whose tree termination misses
+// it or never returns, is killed through its own handle within the bound,
+// whether the controller refused its client or the channel closed, so the
+// pipe's server end closes; it is killed once and the run's directory goes.
+for (const tree of ["misses", "hangs"]) {
+  test(`a refused client's helper is killed by its handle when the tree termination ${tree}`, async () => {
+    const host = new FakePipeHost();
+    host.tree = tree;
+    const { listen, accepted, runs } = await transportOver(host, { exitWaitMs: 50 });
+    const channel = await listen();
+    host.helper.status("verchestra-pipe:connected");
+    assert.ok(await eventually(() => accepted.length > 0), "the controller is handed the connection");
+    accepted[0].destroy();
+    assert.ok(await eventually(() => host.helper.exited === true, 2_000), "the helper is ended within the bound");
+    assert.deepEqual(host.terminated, [4242]);
+    assert.deepEqual(host.helper.kills, ["SIGKILL"]);
+    await channel.close();
+    assert.deepEqual([host.terminated, host.helper.kills], [[4242], ["SIGKILL"]], "it is ended once");
+    assert.deepEqual(await runs(), []);
+  });
+
+  test(`closing the channel kills its helper by its handle when the tree termination ${tree}`, async () => {
+    const host = new FakePipeHost();
+    host.tree = tree;
+    const { listen, runs } = await transportOver(host, { exitWaitMs: 50 });
+    const channel = await listen();
+    const closing = channel.close();
+    assert.equal(
+      await eventually(() => host.helper.exited === true, 2_000),
+      true,
+      "the helper is ended within the bound"
+    );
+    await closing;
+    assert.deepEqual([host.terminated, host.helper.kills], [[4242], ["SIGKILL"]]);
+    assert.deepEqual(await runs(), []);
+  });
+}
 
 test("closing the channel terminates the helper tree once and removes the per-run directory", async () => {
   const host = new FakePipeHost();

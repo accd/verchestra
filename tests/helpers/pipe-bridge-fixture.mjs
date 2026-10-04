@@ -100,13 +100,16 @@ export function rawChannelClient(endpoint) {
 
 // invariant: a DETERMINISTIC FAKE of the PowerShell 7 helper. Its status lines
 // go out on stderr exactly as the helper's do, and its stdout and stdin stand
-// for the bytes the pipe client wrote and the bytes it is sent.
+// for the bytes the pipe client wrote and the bytes it is sent. It never ends
+// on its own when its streams close, as a helper blocked in a pipe read
+// would not; only `exit`, a tree termination that reaches it, or `kill` end it.
 export class FakePipeHelper extends EventEmitter {
   pid = 4242;
   stdin = new PassThrough();
   stdout = new PassThrough();
   stderr = new PassThrough();
   received = "";
+  kills = [];
 
   constructor() {
     super();
@@ -115,6 +118,12 @@ export class FakePipeHelper extends EventEmitter {
 
   status(line) {
     this.stderr.write(`${line}\r\n`);
+  }
+
+  kill(signal) {
+    this.kills.push(signal);
+    this.exit();
+    return true;
   }
 
   exit() {
@@ -140,6 +149,9 @@ export class FakePipeHost {
   secured = [];
   started = [];
   terminated = [];
+  // why: the tree terminator `ends` the helper, `misses` it and returns as a
+  // failed `taskkill` does, or `hangs` and never returns.
+  tree = "ends";
 
   constructor(behaviour = (helper) => helper.status("verchestra-pipe:listening")) {
     this.behaviour = behaviour;
@@ -162,9 +174,11 @@ export class FakePipeHost {
     return helper;
   }
 
-  async terminateTree(pid) {
+  terminateTree(pid) {
     this.terminated.push(pid);
-    for (const { helper } of this.started) if (helper.pid === pid) helper.exit();
+    if (this.tree === "hangs") return new Promise(() => undefined);
+    if (this.tree === "ends") for (const { helper } of this.started) if (helper.pid === pid) helper.exit();
+    return Promise.resolve();
   }
 
   get helper() {
