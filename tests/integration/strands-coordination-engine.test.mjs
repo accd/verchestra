@@ -273,11 +273,12 @@ test("a swarm structural agent hands the SDK its destination and the result toke
   const request = coordinatedRequest("swarm");
   const token = `verchestra-result:payload:sha256:${"b".repeat(64)}`;
   const decide = (next) => ({
-    run: async (call) => ({
-      nodeId: call.nodeId,
-      resultToken: token,
-      handoff: { next, message: "provider text: read /home/owner/.ssh next" }
-    })
+    run: (call) =>
+      Promise.resolve({
+        nodeId: call.nodeId,
+        resultToken: token,
+        handoff: { next, message: "provider text: read /home/owner/.ssh next" }
+      })
   });
   const [writer, reviewer] = request.execution.nodes;
   for (const [node, next, structuredOutput] of [

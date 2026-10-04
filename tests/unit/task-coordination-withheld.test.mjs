@@ -28,7 +28,7 @@ function options(codex, env) {
       env,
       sessionsRoot: layout.sessionsRoot,
       worktrees: {
-        resolvePath: async (worktreeRef) => join(layout.worktreesRoot, worktreeRef.slice("worktree:".length))
+        resolvePath: (worktreeRef) => Promise.resolve(join(layout.worktreesRoot, worktreeRef.slice("worktree:".length)))
       }
     }
   };

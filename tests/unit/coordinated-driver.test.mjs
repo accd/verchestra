@@ -245,12 +245,15 @@ test("a failed session's structured-output code becomes the coordination refusal
 // separator, is refused before it is persisted; text that only shares a
 // prefix with a root does not name it.
 test("a result naming a sensitive value or a machine-local root is refused before anything is persisted", async () => {
-  const withheld = async (worktreeRef) => {
+  const withheld = (worktreeRef) => {
     assert.equal(worktreeRef, WORKTREE);
-    return { values: ["sk-ant-oat01-withheld"], roots: ["/home/al", String.raw`C:\Users\al\AppData\Local\Temp`] };
+    return Promise.resolve({
+      values: ["sk-ant-oat01-withheld"],
+      roots: ["/home/al", String.raw`C:\Users\al\AppData\Local\Temp`]
+    });
   };
   const agent = coordinatedRequest("agent");
-  const answering = (summary) => ({ build: async () => ({ result: { outcome: "done", summary } }) });
+  const answering = (summary) => ({ build: () => ({ result: { outcome: "done", summary } }) });
   for (const summary of [
     "the key is sk-ant-oat01-withheld",
     "notes in /home/al/notes.txt",
@@ -271,7 +274,7 @@ test("a result naming a sensitive value or a machine-local root is refused befor
   const swarm = coordinatedRequest("swarm");
   const handedOn = coordinatedDriver(swarm, {
     withheld,
-    script: { writer: async () => handoff("reviewer", "read /home/al/.ssh first") }
+    script: { writer: () => handoff("reviewer", "read /home/al/.ssh first") }
   });
   await assert.rejects(run(handedOn, swarm), rejectsWith("VES_COORDINATION_RESULT_INVALID"));
   assert.equal(handedOn.nodes.state.sessions.length, 1, "no later node received the message");
@@ -504,7 +507,7 @@ test("a node's usage names its own provider, and usage for another provider fail
   const request = coordinatedRequest("graph");
   const usage =
     (provider) =>
-    async ({ session, control: nodeControl }) => {
+    ({ session, control: nodeControl }) => {
       const named = provider === undefined ? {} : { provider };
       nodeControl.reportUsage({ model: session.node.driver.model, ...named, inputTokens: 1, outputTokens: 1 });
       return { result: DONE };
