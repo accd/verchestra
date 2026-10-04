@@ -7,7 +7,7 @@ import { ApprovalRequester } from "../../packages/application/src/index.ts";
 import { FixedClock, IsoInstant } from "../../packages/domain/src/index.ts";
 import { ArtifactSealer, NodeEd25519Signer } from "../../packages/evidence/src/index.ts";
 import { NodeContentDigest } from "../../packages/platform-node/src/index.ts";
-import { CREATED_AT, RUN_ID, WORKSPACE_ID, contextManifest, filled } from "./task-run-record-fixture.mjs";
+import { CREATED_AT, RUN_ID, WORKSPACE_ID, contextManifest, filled, planRecord } from "./task-run-record-fixture.mjs";
 
 // why: an Execution Package's artifact ID covers its issue time and an
 // approval request its clock and ID source; a fixed signing seed, instant, and
@@ -43,4 +43,19 @@ export async function boundPlan(request) {
       uuid: () => `018f0b6d-7b1a-7abc-8def-${String(++sequence).padStart(12, "0")}`
     })
   );
+}
+
+// invariant: a plan record as `task plan` writes it for `request`: bound to its
+// Execution Package and its approval intent, with the package to store beside
+// it.
+export async function boundPlanRecord(request) {
+  const { pkg, intent, approvalRequest } = await boundPlan(request);
+  const record = planRecord({
+    request,
+    packageId: pkg.artifactId,
+    packageDigest: `sha256:${pkg.payloadDigest}`,
+    approvalIntent: intent,
+    approvalRequest
+  });
+  return { record, pkg };
 }
