@@ -24,10 +24,12 @@ The candidate must be one that carries the subscription path; see
 `handoff.md`.
 
 **Amended on 2026-10-03, before any run, to resolve the owner blockers.** The
-candidate is `verchestra@0.0.0-qualification.6`, which carries the subscription
-path (§2); it replaced `.5`, still before any run, because `.6` also carries the
+candidate is `verchestra@0.0.0-qualification.7`, which carries the subscription
+path (§2); it replaced `.5` and then `.6`, still before any run. `.6` added the
 protected-path fix (#485) and the run's complete usage account (AD-055, AD-056),
-which change two expectations below (§5 S2, §7). The usage and time ceilings in
+which change two expectations below (§5 S2, §7); `.7` is the published release
+of 2026-10-04 and adds the state-path check and the shorter verification
+scratch layout (AD-080), which change no step or expectation of this pilot. The usage and time ceilings in
 §6 are approved as proposed. The machine is the owner's own account on the
 owner's Mac, not a fresh account (§8). No independent reviewer exists, so the
 §10 review is not performed and no independent review is claimed. The owner
@@ -99,22 +101,26 @@ new live evidence into historical evidence.
 
 ## 2. Candidate (PLT-02)
 
-- **Candidate:** `verchestra@0.0.0-qualification.6` from the public npm registry,
-  invoked as `npx --yes verchestra@0.0.0-qualification.6 <command>`. It was
-  published on 2026-10-03 as `latest`, built from source revision
-  `7e274f237648251b972081471134623097122c16`
-  (`docs/qualification/tuf-publication-ledger.json`, sequence 6). Its
+- **Candidate:** `verchestra@0.0.0-qualification.7` from the public npm registry,
+  invoked as `npx --yes verchestra@0.0.0-qualification.7 <command>`. It was
+  published on 2026-10-04 as `latest`, built from source revision
+  `2e97443ea60192464cddfefe2c55dc9c625a975e`
+  (`docs/qualification/tuf-publication-ledger.json`, sequence 7). Its
   `dist.integrity` at publication was
-  `sha512-8QutpuCS9om+z8hLqJgrayRB6pIqnvABooQfrxS8IUCG2IBG9Cut6tDZVK6xhYBKJ2/LxVJKTZw6W8FoIpNP7Q==`.
+  `sha512-B9971sBeQuwprW1BMTK5PHHDQiU1kbaGA176yf2OqoTFvWfmvuHuxN9Vum3KaeW53/c2/UzFrhjEWsetcRXIag==`.
   The pre-registration named `.4`, which predates the subscription path; `.5`
-  was named on 2026-10-03 and replaced by `.6` the same day, before any run.
-- **What `.6` changes for the pilot.** `status.checkpoints.budget` is the whole
-  run's usage, implementer and verifier together (AD-055, AD-056); in `.5` it was
-  the implementer's only. A protected path is refused in any letter case (#485).
+  and `.6` were named on 2026-10-03 and `.7` replaced them on 2026-10-04, before
+  any run.
+- **What `.6` and `.7` change for the pilot.** `status.checkpoints.budget` is the
+  whole run's usage, implementer and verifier together (AD-055, AD-056); in `.5`
+  it was the implementer's only. A protected path is refused in any letter case
+  (#485). `.7` refuses a state directory too deep for Git's worktree paths
+  (`state-path-length`, before any effect) and moves the verification scratch
+  checkouts to a shorter layout (AD-080); neither changes a step below.
 - **Recorded at execution:** the output of
-  `npx --yes verchestra@0.0.0-qualification.6 --version`, the package's
+  `npx --yes verchestra@0.0.0-qualification.7 --version`, the package's
   `dist.integrity` and `gitHead` from
-  `npm view verchestra@0.0.0-qualification.6 dist.integrity gitHead` (the
+  `npm view verchestra@0.0.0-qualification.7 dist.integrity gitHead` (the
   package carries no `gitHead`, which is recorded as `unavailable`), and the
   declared source revision above.
 - **Invocation rule:** always the pinned `verchestra@<version>` form. Never a bare
@@ -122,7 +128,7 @@ new live evidence into historical evidence.
   owner holds, so outside a project that installs Verchestra it does not
   resolve to the candidate.
 - In the steps below, `VES` stands for
-  `npx --yes verchestra@0.0.0-qualification.6`.
+  `npx --yes verchestra@0.0.0-qualification.7`.
 
 ## 3. Platform and provider identity (PLT-03)
 
