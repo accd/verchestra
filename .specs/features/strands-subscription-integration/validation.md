@@ -1775,7 +1775,7 @@ evidence is FAIL.
 | SSI-81 | T4 share: events, checkpoints, payloads, and the quota refusal carry no token, session, account data, provider prose, or temporary path (`tests/security/driver-structured-results-security.test.mjs:58`, `:162`, `:173`); mutant M18 killed. T5 and T6 own their records.; T5 part: the node ledger and node results carry no token, session, prompt, repository context, or path (`tests/security/coordination-record-security.test.mjs:27`); T6 part: the extra-usage statement holds no secret and a refusal echoes none (`tests/unit/task-billing.test.mjs:117`, `tests/security/task-suspension-security.test.mjs:35`); the suspension record, the `suspended` checkpoint, the ledger with `rerunOf`, the outcome marker, and status hold no session, account data, purchase field, credential, or path (`tests/security/task-suspension-security.test.mjs:57`, `tests/unit/coordinated-suspension.test.mjs:228`, journeys `tests/e2e/task-subscription-e2e.test.mjs:116`, `:163`) | `pnpm test:security`; T5 gates; T6 gates | PASS (T4 share); PASS (author, T5 part); PASS (author, T6 part) |
 | SSI-82 | `tests/build/sealed-self-containment.test.mjs:115` every sealed artifact, the adapter included, imports `node:` built-ins only; sizes, cold start, and a silent `--activation-health` recorded in T5 commits 5 and 6; the staged-layout gate suite runs on the platform matrix | T5 gates (see T5 Evidence) | PASS (author) |
 | SSI-83 | T3 part: v1 is unchanged (SSI-20, SSI-21, SSI-22 rows); a v2 request is opt-in by `schemaVersion: 2` (`packages/application/src/execution/task-request.ts` `normalizeTaskRequest`); `tests/e2e/task-cli-e2e.test.mjs:823-865` a v2 dry run plans through the binary, `:867-883` an invalid descriptor is `VES_TASK_REQUEST_REJECTED` with reason `VES_TASK_REQUEST_EXECUTION_INVALID` and nothing written; T5 part: `tests/integration/task-coordination-loading.test.mjs:40` other commands load no SDK; the v1 journeys pass unchanged (`tests/e2e/task-cli-e2e.test.mjs`, `mediated-task-execution-e2e.test.mjs`, 48/48) | `node --test tests/e2e/task-cli-e2e.test.mjs` 45/45 (tip); T5 gates | PASS (author, T3 and T5 parts) |
-| SSI-84 | — | — | — |
+| SSI-84 | `docs/qualification/coordinated-run-pilots.md`: agent, graph, and swarm pilots pending (owner) on Windows, macOS, and Linux; stand-in qualification per platform recorded there | T9 commit 2 | PENDING (owner) |
 | SSI-85 | T6 part: quota suspension is qualified with deterministic fakes only (the labelled fake Claude Code's `rate_limit_event` and the fake Codex's credits, under fixture flags; `tests/e2e/task-subscription-e2e.test.mjs:116`, `:163`); no allowance is touched. The pilots are T9 | T6 commits 2 and 3 | PASS (author, T6 part); T9 pending |
 
 ## Discrimination Sensor (planned)
@@ -2185,7 +2185,7 @@ Windows.
 | SSI-81 | PARTIAL | `tests/security/coordination-record-security.test.mjs:27`, `tests/security/task-suspension-security.test.mjs:35`, `:57`, `tests/security/driver-structured-results-security.test.mjs:58`, `:162`, `:173` | S | Finding 5 |
 | SSI-82 | PASS | `tests/build/sealed-self-containment.test.mjs:115` every sealed artifact imports `node:` only (here and on every build leg); the sealed `vestra task` and activation-health cases of `tests/build/sealed-launcher-closure.test.mjs` pass on the matrix (`test:build` 179/179) | B, M | No assertion that the adapter is inside the closure |
 | SSI-83 | PARTIAL | `tests/contract/task-request-v1-golden.test.mjs`; `tests/integration/task-coordination-loading.test.mjs:40`, `:46` | C, I | Finding 13 |
-| SSI-84 | PENDING | No real-subscription pilot recorded | — | Finding 16 |
+| SSI-84 | PENDING | `docs/qualification/coordinated-run-pilots.md` records every platform and mode as pending (owner) | M | Finding 16 |
 | SSI-85 | PASS | Quota suspension qualified with the labelled fakes only (`tests/integration/coordinated-executor.test.mjs:162`; `tests/e2e/task-subscription-e2e.test.mjs:116`, `:163`, macOS only); no allowance touched | I, E | — |
 
 **Decisions.** D1 PASS (exact pins, `dependency-policy.test.mjs:51`), owner
@@ -2321,3 +2321,31 @@ everywhere.
   result is recorded above.
 - Lessons distillation (`lessons.py`) was not run: it writes outside the two
   files this verification may change; the coordinator owns it.
+
+### Coordinated-run pilots
+
+Recorded in `docs/qualification/coordinated-run-pilots.md` (T9 commit 2),
+never inferred:
+
+| Platform | Real-subscription pilots (agent, graph, swarm) | Deterministic stand-ins at `c3223c6` |
+| --- | --- | --- |
+| Windows x64 | pending (owner) | Coordinated journeys not exercised (they return before running); example dry runs and the single-session named-pipe journey passed |
+| macOS (arm64, x64) | pending (owner) | Every coordinated journey executed and passed, suspension, credits, resume, and crash included |
+| Linux glibc (x64, arm64) | pending (owner) | Coordinated journeys not exercised; example dry runs passed |
+
+No coordinated run with a real subscription has been recorded. What the owner
+must do per platform is in the record: install Claude Code 2.1.282 or later
+and Codex 0.159.3 or later (on Windows, PowerShell 7 at its pinned path and
+native `claude.exe` and `codex.exe`); set both providers to `subscription`;
+turn extra usage off in both accounts and keep no Codex credits (the verifier
+does not check them at this revision, finding 1); write `task-billing.json` by
+hand; then plan, approve, start, check `status`, and review each example from
+a source checkout, never exhausting an allowance, and record the fields the
+record lists. The optional Claude Code probe of
+`docs/qualification/claude-code-driver-structured-results.md` is pending with
+them.
+
+Checks for this record: `pnpm agent:check` PASS; `pnpm site:check` PASS (135
+pages built, internal links and metadata valid). The record is not a
+`tNN-validation.md` report, so it enters neither the qualification chain nor
+the site's navigation.
