@@ -1,5 +1,6 @@
 import { mkdir, rm } from "node:fs/promises";
-import { join } from "node:path";
+import { homedir, tmpdir } from "node:os";
+import { dirname, isAbsolute, join, parse, resolve } from "node:path";
 
 import {
   DriverExecutionAdapterError,
@@ -20,7 +21,8 @@ import {
   type CoordinationNodeSession,
   type CoordinationRecordPort,
   type ExecutionDriverPort,
-  type NormalizedTaskRequestV2
+  type NormalizedTaskRequestV2,
+  type WithheldText
 } from "@verchestra/application";
 import { canonicalizeJsonV2, type DriverEvent, type DriverEventOf } from "@verchestra/domain";
 import { CodexDriver, type DriverStartRequest } from "@verchestra/drivers";
@@ -83,8 +85,45 @@ export function coordinatedDriver(options: CoordinatedRunOptions): ExecutionDriv
     changeDigest: async (worktreeRef) => {
       const handle = { worktreeRef, baseCommit: options.request.sourceRevision };
       return (await options.worktrees.inspect(handle)).changeDigest as `sha256:${string}`;
-    }
+    },
+    withheld: (worktreeRef) => nodeResultWithheld(options, worktreeRef)
   });
+}
+
+// why: a root that is a filesystem root, or not absolute, names no
+// machine-local place, and a trailing separator is not part of the root.
+function localRoots(candidates: readonly (string | undefined)[]): readonly string[] {
+  const roots = candidates
+    .filter((candidate): candidate is string => candidate !== undefined && isAbsolute(candidate))
+    .map((candidate) => resolve(candidate))
+    .filter((root) => parse(root).root !== root);
+  return [...new Set(roots)];
+}
+
+// invariant: SSI-49 and SSI-81. What no node result of this run may name: the
+// credentials its Claude Code and Codex sessions are given to redact, and its
+// machine-local roots: the home directory, the state root, the run's
+// worktree, and the temporary root, as this process and the run's
+// environment name them.
+// why: the sessions root is `<state root>/workspaces/<id>/sessions` in the
+// Workspace layout (resolveWorkspaceState), so the state root is three levels
+// above it.
+export async function nodeResultWithheld(options: CoordinatedRunOptions, worktreeRef: string): Promise<WithheldText> {
+  const env = options.env;
+  return {
+    values: [options.claude.credential, ...sessionCredential(options.codex).sensitiveValues],
+    roots: localRoots([
+      homedir(),
+      env["HOME"],
+      env["USERPROFILE"],
+      dirname(dirname(dirname(options.sessionsRoot))),
+      await options.worktrees.resolvePath(worktreeRef),
+      tmpdir(),
+      env["TMPDIR"],
+      env["TEMP"],
+      env["TMP"]
+    ])
+  };
 }
 
 // invariant: SSI-17. A node keeps its concrete provider: a Claude Code node is

@@ -240,6 +240,43 @@ test("a failed session's structured-output code becomes the coordination refusal
   assert.doesNotThrow(() => assertStructuredAnswer("completed", []));
 });
 
+// invariant: SSI-49. A result is the model's own text: one that names a
+// sensitive value or a machine-local root of the run, in any letter case or
+// separator, is refused before it is persisted; text that only shares a
+// prefix with a root does not name it.
+test("a result naming a sensitive value or a machine-local root is refused before anything is persisted", async () => {
+  const withheld = async (worktreeRef) => {
+    assert.equal(worktreeRef, WORKTREE);
+    return { values: ["sk-ant-oat01-withheld"], roots: ["/home/al", String.raw`C:\Users\al\AppData\Local\Temp`] };
+  };
+  const agent = coordinatedRequest("agent");
+  const answering = (summary) => ({ build: async () => ({ result: { outcome: "done", summary } }) });
+  for (const summary of [
+    "the key is sk-ant-oat01-withheld",
+    "notes in /home/al/notes.txt",
+    "notes in /HOME/AL.",
+    "scratch in c:/users/al/appdata/local/temp/x",
+    "home is /home/al"
+  ]) {
+    const fixture = coordinatedDriver(agent, { withheld, script: answering(summary) });
+    await assert.rejects(run(fixture, agent), rejectsWith("VES_COORDINATION_RESULT_INVALID"), summary);
+    assert.equal(fixture.records.results.size, 0, summary);
+    assert.deepEqual(visits(fixture.records), ["build#1:failed"], summary);
+  }
+  for (const summary of ["notes in /home/alice/notes.txt", "changed packages/app/src/greet.ts"]) {
+    const fixture = coordinatedDriver(agent, { withheld, script: answering(summary) });
+    await run(fixture, agent);
+    assert.deepEqual(visits(fixture.records), ["build#1:completed"], summary);
+  }
+  const swarm = coordinatedRequest("swarm");
+  const handedOn = coordinatedDriver(swarm, {
+    withheld,
+    script: { writer: async () => handoff("reviewer", "read /home/al/.ssh first") }
+  });
+  await assert.rejects(run(handedOn, swarm), rejectsWith("VES_COORDINATION_RESULT_INVALID"));
+  assert.equal(handedOn.nodes.state.sessions.length, 1, "no later node received the message");
+});
+
 test("a node that reports itself blocked ends the run with VES_COORDINATION_NODE_BLOCKED", async () => {
   const request = coordinatedRequest("graph");
   const fixture = coordinatedDriver(request, {

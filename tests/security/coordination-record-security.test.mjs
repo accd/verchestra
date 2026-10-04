@@ -2,13 +2,17 @@
 // record. The node ledger and the node results a coordinated run persists
 // hold no token, prompt, repository context, provider session, environment
 // value, or machine-local path: only identifiers, counts, instants, digests,
-// codes, and each node's own bounded, validated answer.
+// codes, and each node's own bounded, validated answer, which is refused
+// before it is persisted when the model wrote a credential or a local path.
 import assert from "node:assert/strict";
 import { readFile, readdir } from "node:fs/promises";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
 
+import { nodeResultWithheld } from "../../apps/vestra-cli/src/task/task-coordination.ts";
 import { openRunRecord } from "../../apps/vestra-cli/src/task/task-run-record.ts";
+import { resolveWorkspaceState } from "../../packages/platform-node/src/index.ts";
 import {
   coordinatedDriver,
   coordinatedRequest,
@@ -84,4 +88,55 @@ test("the persisted ledger and results of a coordinated run carry no secret, pro
     "the reviewer approves",
     "the writer changed the greeting"
   ]);
+});
+
+// invariant: the composition's own list of what a run withholds (the
+// credentials its sessions redact and its home, state, worktree, and
+// temporary roots) refuses a result whose model wrote any of them, so the Run
+// record never holds one and no later node is handed it.
+test("a node result holding a model-written credential or local path is refused, and nothing of it is persisted", async () => {
+  const codexKey = "sk-proj-fake-coordination-security-91d0";
+  const request = coordinatedRequest("agent");
+  const root = await temporaryRoot();
+  const layout = resolveWorkspaceState({
+    stateRoot: join(root, "state"),
+    workspaceId: WORKSPACE_ID,
+    platform: process.platform
+  });
+  const worktree = join(layout.worktreesRoot, "run-1");
+  const composed = {
+    claude: { executable: "/fixture/claude", auth: "subscription", credential: TOKEN },
+    codex: { executable: "/fixture/codex", credential: codexKey },
+    env: { HOME: homedir() },
+    sessionsRoot: layout.sessionsRoot,
+    worktrees: { resolvePath: async () => worktree }
+  };
+  const written = [
+    `the token is ${TOKEN}`,
+    `the Codex key is ${codexKey}`,
+    `notes in ${join(homedir(), "notes.txt")}`,
+    `state in ${join(layout.stateRoot, "workspaces")}`,
+    `the change is in ${join(worktree, "packages", "app")}`,
+    `scratch in ${join(tmpdir(), "scratch")}`
+  ];
+  for (const [index, summary] of written.entries()) {
+    const tasksRoot = join(root, `tasks-${index}`);
+    const runRecord = openRunRecord({ workspaceId: WORKSPACE_ID, tasksRoot }, RUN_ID);
+    const fixture = coordinatedDriver(request, {
+      records: runRecord.coordination(),
+      withheld: (worktreeRef) => nodeResultWithheld(composed, worktreeRef),
+      script: { build: async () => ({ result: { outcome: "done", summary } }) }
+    });
+    await assert.rejects(
+      fixture.driver.execute(driverRequest(request), control().control),
+      (error) => error.code === "VES_COORDINATION_RESULT_INVALID",
+      summary
+    );
+    const directory = join(tasksRoot, RUN_ID, "coordination");
+    assert.deepEqual(await readdir(join(directory, "results")).catch(() => []), [], `${summary} was persisted`);
+    const ledger = await readFile(join(directory, "ledger.json"), "utf8");
+    for (const forbidden of [TOKEN, codexKey, homedir(), layout.stateRoot, worktree, tmpdir()])
+      assert.equal(ledger.includes(forbidden), false, `the ledger holds ${forbidden}`);
+    assert.match(ledger, /"failureCode":"VES_COORDINATION_RESULT_INVALID"/u);
+  }
 });

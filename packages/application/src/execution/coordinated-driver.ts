@@ -58,6 +58,15 @@ export interface CoordinationNodeDrivers {
   driver(session: CoordinationNodeSession): ExecutionDriverPort;
 }
 
+// invariant: SSI-49. What no persisted node result may name: the run's
+// sensitive values (the credentials its sessions are given to redact), and its
+// machine-local roots (absolute paths, each the root of a tree, never a
+// filesystem root).
+export interface WithheldText {
+  readonly values: readonly string[];
+  readonly roots: readonly string[];
+}
+
 export interface CoordinatedDriverOptions {
   readonly request: NormalizedTaskRequestV2;
   readonly engine: (mode: CoordinationMode) => Promise<CoordinationEngine>;
@@ -75,6 +84,8 @@ export interface CoordinatedDriverOptions {
   // the visit it names. Without the digest no unsettled visit is run again.
   readonly digest?: (record: Readonly<Record<string, unknown>>) => Digest;
   readonly reconcile?: Digest;
+  // invariant: SSI-49. Resolved once a round opens, for the worktree it runs in.
+  readonly withheld?: (worktreeRef: string) => Promise<WithheldText>;
   readonly now?: () => Date;
 }
 
@@ -135,6 +146,37 @@ export function assertStructuredAnswer(outcome: string, errorCodes: readonly str
   for (const code of errorCodes) {
     const refusal = STRUCTURED_REFUSALS.find(([suffix]) => code.endsWith(suffix));
     if (refusal !== undefined) throw new CoordinationRunError(refusal[1], refusal[2]);
+  }
+}
+
+// why: a path is compared without regard to letter case or separator, and a
+// root is named only where the text does not go on with a name character, so
+// `/home/al` is not read in `/home/alice`.
+const NAME_CHARACTER = /^[\p{L}\p{N}_-]$/u;
+
+function foldedPath(text: string): string {
+  return text.replaceAll("\\", "/").toLowerCase();
+}
+
+function namesRoot(text: string, root: string): boolean {
+  for (let at = text.indexOf(root); at >= 0; at = text.indexOf(root, at + 1))
+    if (!NAME_CHARACTER.test(text.charAt(at + root.length))) return true;
+  return false;
+}
+
+// invariant: SSI-49 and SSI-81. A node result is the model's own text, and it
+// is persisted and handed to later nodes, so one that names a sensitive value
+// or a machine-local root of the run is refused before it is persisted.
+function assertWithheld(result: NodeResult, withheld: WithheldText | undefined): void {
+  if (withheld === undefined) return;
+  const roots = withheld.roots.map(foldedPath);
+  for (const text of [result.summary, result.message ?? ""]) {
+    const folded = foldedPath(text);
+    if (
+      withheld.values.some((value) => value.length > 0 && text.includes(value)) ||
+      roots.some((root) => namesRoot(folded, root))
+    )
+      failure("VES_COORDINATION_RESULT_INVALID", "The node result names a sensitive value or a machine-local path");
   }
 }
 
@@ -210,6 +252,7 @@ class CoordinationRound implements CoordinationNodeRunner {
   #saving: Promise<void> = Promise.resolve();
   #failure: Error | undefined;
   #suspension: ExecutionSuspension | undefined;
+  #withheld: WithheldText | undefined;
 
   constructor(
     options: CoordinatedDriverOptions,
@@ -241,6 +284,7 @@ class CoordinationRound implements CoordinationNodeRunner {
   // effect or the owner reconciled it, and otherwise nothing runs (SSI-65..67).
   // A finished round is followed by the next, which is a gate repair attempt.
   async open(): Promise<void> {
+    this.#withheld = await this.#options.withheld?.(this.#request.worktreeRef);
     const stored = await this.#options.records.loadLedger();
     if (stored !== undefined && stored.mode !== this.#plan.mode)
       failure("VES_COORDINATION_LEDGER_INVALID", "The node ledger belongs to another plan");
@@ -517,15 +561,16 @@ class CoordinationRound implements CoordinationNodeRunner {
     return [...this.#earlier, ...this.#entries].reduce((total, entry) => total + (entry.resultBytes ?? 0), 0);
   }
 
-  // invariant: SSI-46 and SSI-47. A result is bounded, then validated, then
-  // persisted by digest, and only then is the visit completed; a refused
-  // result leaves nothing persisted.
+  // invariant: SSI-46, SSI-47, and SSI-49. A result is bounded, then
+  // validated, then screened, then persisted by digest, and only then is the
+  // visit completed; a refused result leaves nothing persisted.
   async #settle(node: CoordinationNode, entry: Visit, bytes: Uint8Array): Promise<CoordinationNodeAnswer> {
     let result: NodeResult;
     let digest: Digest;
     try {
       assertResultBounds(bytes.byteLength, this.#persistedBytes(), this.#plan.limits);
       result = readNodeResult(bytes, this.#plan, node.nodeId);
+      assertWithheld(result, this.#withheld);
       digest = await this.#options.records.saveResult(bytes);
     } catch (error) {
       await this.#end(entry, coordinationErrorCode(error));

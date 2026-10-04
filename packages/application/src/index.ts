@@ -192,7 +192,8 @@ export {
   CoordinatedDriver,
   type CoordinatedDriverOptions,
   type CoordinationNodeDrivers,
-  type CoordinationNodeSession
+  type CoordinationNodeSession,
+  type WithheldText
 } from "./execution/coordinated-driver.ts";
 export { coordinationNodePrompt, type NodePromptInput } from "./execution/node-prompt.ts";
 export {
