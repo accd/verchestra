@@ -177,6 +177,8 @@ type Validated<T> = (row: Row, label: string) => T;
 // does not name is still bound.
 export interface GrantMarker {
   readonly grantId: string;
+  // invariant: every grant this one replaced on a resume, oldest first.
+  readonly replaced?: readonly string[];
 }
 
 export type OutcomeMarker = TaskRunOutcome & { readonly at: string };
@@ -199,8 +201,15 @@ function oneOf<T extends string>(row: Row, key: string, values: readonly T[], la
   return value as T;
 }
 
+// invariant: AD-079. The grants a renewal replaced are named by their
+// identifiers only, a bounded list.
 function validatedGrant(row: Row, label: string): GrantMarker {
   textField(row, "grantId", label);
+  const replaced: unknown = row["replaced"];
+  if (replaced === undefined) return row as unknown as GrantMarker;
+  const named = (entry: unknown) => typeof entry === "string" && entry.length > 0 && entry.length <= 4096;
+  if (!Array.isArray(replaced) || replaced.length === 0 || replaced.length > 100 || !replaced.every(named))
+    throw stateInvalid("VES_TASK_STATE_MALFORMED", `${label}.replaced is invalid`);
   return row as unknown as GrantMarker;
 }
 
@@ -559,8 +568,9 @@ export class RunRecord {
     return pkg;
   }
 
-  async saveGrant(grantId: string): Promise<void> {
-    await this.#writeMarker(LAYOUT.grant, { grantId });
+  // why: a first grant's marker keeps the one member it always had.
+  async saveGrant(grantId: string, replaced: readonly string[] = []): Promise<void> {
+    await this.#writeMarker(LAYOUT.grant, replaced.length === 0 ? { grantId } : { grantId, replaced });
   }
 
   loadGrant(): Promise<GrantMarker | undefined> {
