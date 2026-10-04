@@ -58,7 +58,13 @@ import { branchName, reviewSurface } from "./task-surface.ts";
 import { verifyTask } from "./task-verifier.ts";
 import { requireWindowsPrerequisites } from "./task-windows.ts";
 import { applyWorkflow, currentRun } from "./task-workflow.ts";
-import { openRuntime, openTaskWorkspace, parseRunId, type TaskWorkspace } from "./task-workspace.ts";
+import {
+  openRuntime,
+  openTaskWorkspace,
+  parseRunId,
+  requireWorktreePathBudget,
+  type TaskWorkspace
+} from "./task-workspace.ts";
 
 const LEASE_MARGIN_MS = 60 * 60 * 1000;
 const CANCEL_POLL_MS = 200;
@@ -170,6 +176,7 @@ async function prepare(
   runtime: RuntimeStore,
   runRecord: RunRecord
 ) {
+  await requireWorktreePathBudget(workspace, plan.runId, io.platform);
   const auth = await loadProviderAuth(workspace.layout.workspaceRoot);
   if (isCoordinatedPlan(plan))
     await requireSubscriptionPreflight({

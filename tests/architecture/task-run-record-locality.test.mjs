@@ -152,7 +152,7 @@ test("only the task Workspace module refuses a link below a task state root, and
   );
   assert.doesNotMatch(owner, /\btasksRoot,\s*id\b/u, "the Run directory is joined where the Run record is opened");
   const workspace = sources.find(({ name }) => name === "task-workspace.ts")?.source ?? "";
-  assert.match(workspace, /requireRealDirectories\(workspace\.verificationRoot, \[runId, purpose\]\)/u);
+  assert.match(workspace, /requireRealDirectories\(workspace\.verificationRoot, scratchSegments\(runId, purpose\)\)/u);
   assert.equal(
     workspace.match(/\bjoin\(workspace\.verificationRoot\b/gu)?.length,
     1,

@@ -19,7 +19,7 @@ import { openRunRecord } from "../../apps/vestra-cli/src/task/task-run-record.ts
 import { runTask, watchCancellation } from "../../apps/vestra-cli/src/task/task-run.ts";
 import { cancelTask, statusTask } from "../../apps/vestra-cli/src/task/task-status.ts";
 import { verifyTask } from "../../apps/vestra-cli/src/task/task-verifier.ts";
-import { requireRealDirectories } from "../../apps/vestra-cli/src/task/task-workspace.ts";
+import { requireRealDirectories, scratchSegments } from "../../apps/vestra-cli/src/task/task-workspace.ts";
 import { executionHarness, packageInput } from "../helpers/execution-package-fixture.mjs";
 import { capsuleHarness, capsuleInput } from "../helpers/run-capsule-fixture.mjs";
 import { cleanupTaskCommandFixtures, taskCommandFixture } from "../helpers/task-command-fixture.mjs";
@@ -373,15 +373,16 @@ test("the link check refuses a link at any depth, also one whose target is gone,
 // at the run's scratch root, or at the checkout, stops verification before it
 // creates or deletes anything.
 test("verification refuses a linked scratch root before it deletes or creates a checkout", async () => {
-  for (const linked of [[RUN_ID], [RUN_ID, "review"]]) {
+  const [runSegment, review] = scratchSegments(RUN_ID, "review");
+  for (const linked of [[runSegment], [runSegment, review]]) {
     const other = await temporaryRoot("verchestra-scratch-elsewhere-");
-    await mkdir(join(other, "review"));
-    await writeFile(join(other, "review", "keep.txt"), "not a scratch checkout\n");
+    await mkdir(join(other, review));
+    await writeFile(join(other, review, "keep.txt"), "not a scratch checkout\n");
     await writeFile(join(other, "keep.txt"), "not a scratch checkout\n");
     const root = await temporaryRoot();
     const verificationRoot = join(root, "verification");
     await mkdir(join(verificationRoot, ...linked.slice(0, -1)), { recursive: true });
-    await link(linked.length === 1 ? other : join(other, "review"), join(verificationRoot, ...linked));
+    await link(linked.length === 1 ? other : join(other, review), join(verificationRoot, ...linked));
     const before = await snapshot(other);
     const context = { workspace: { verificationRoot, repositoryRoot: root }, plan: { runId: RUN_ID } };
     await assert.rejects(

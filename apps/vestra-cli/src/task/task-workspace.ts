@@ -9,6 +9,7 @@ import {
   ensureWorkspaceState,
   resolveStateRoot,
   resolveWorkspaceState,
+  worktreeRootFits,
   type WorkspaceStateLayout
 } from "@verchestra/platform-node";
 import { initPublicErrorRegistry, readWorkspaceIdentity } from "@verchestra/workspace";
@@ -16,6 +17,7 @@ import { PublicErrorException } from "@verchestra/domain";
 
 import { cliError } from "../cli-errors.ts";
 import { notConfigured } from "./task-errors.ts";
+import { sha256 } from "./task-files.ts";
 import { git } from "./task-git.ts";
 
 export interface TaskWorkspace {
@@ -134,6 +136,47 @@ export interface ScratchCheckouts {
   readonly checkouts: NodeGitWorktreeAdapter;
 }
 
+type ScratchPurpose = "review" | "mutations";
+const SCRATCH_PURPOSES: Readonly<Record<ScratchPurpose, string>> = Object.freeze({ review: "r", mutations: "m" });
+const RUN_SEGMENT_LENGTH = 16;
+
+// why: Git refuses a worktree whose `.git` path passes PATH_MAX - 40, 220
+// bytes on Windows, so a scratch checkout lies only 22 characters deeper than
+// the run's own worktree: below 16 hex digits of the run ID's digest and one
+// letter per purpose, not below the run ID and the purpose's name. The
+// segments are derived, so a checkout a killed verification left is found
+// and replaced; review and mutation checkouts live only inside one
+// verification, and no record names them.
+export function scratchSegments(runId: string, purpose: ScratchPurpose): readonly [string, string] {
+  return [sha256(runId).slice(7, 7 + RUN_SEGMENT_LENGTH), SCRATCH_PURPOSES[purpose]];
+}
+
+function scratchRoot(workspace: Pick<TaskWorkspace, "verificationRoot">, runId: string, purpose: ScratchPurpose) {
+  return join(workspace.verificationRoot, ...scratchSegments(runId, purpose));
+}
+
+// invariant: before a run's first transition, every worktree directory it will
+// ask Git to add (its own worktree, its review checkout, and its mutation
+// checkouts) fits Git's limit on this platform, measured on the real path Git
+// will be given. A state root too deep for one is `not configured`, never a
+// Git failure in the middle of the run.
+export async function requireWorktreePathBudget(
+  workspace: Pick<TaskWorkspace, "layout" | "verificationRoot">,
+  runId: string,
+  platform: string = process.platform
+): Promise<void> {
+  const workspaceRoot = workspace.layout.workspaceRoot;
+  const real = await realpath(workspaceRoot);
+  const roots = [workspace.layout.worktreesRoot, scratchRoot(workspace, runId, "review")];
+  roots.push(scratchRoot(workspace, runId, "mutations"));
+  for (const root of roots)
+    if (!worktreeRootFits(join(real, relative(workspaceRoot, root)), platform))
+      throw notConfigured(
+        "state-path-length",
+        "The Workspace state root is too deep for Git to add the run's worktrees on this platform"
+      );
+}
+
 // invariant: a scratch checkout is created, and deleted recursively, only
 // below real directories. Every directory from the Workspace's verification
 // root down to the run's scratch root is checked before each use, and the
@@ -141,10 +184,10 @@ export interface ScratchCheckouts {
 export async function scratchCheckouts(
   workspace: Pick<TaskWorkspace, "repositoryRoot" | "verificationRoot">,
   runId: string,
-  purpose: "review" | "mutations"
+  purpose: ScratchPurpose
 ): Promise<ScratchCheckouts> {
-  await requireRealDirectories(workspace.verificationRoot, [runId, purpose]);
-  const root = join(workspace.verificationRoot, runId, purpose);
+  await requireRealDirectories(workspace.verificationRoot, scratchSegments(runId, purpose));
+  const root = scratchRoot(workspace, runId, purpose);
   await mkdir(root, { recursive: true, mode: 0o700 });
   return {
     root,

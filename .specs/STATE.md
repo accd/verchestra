@@ -2901,6 +2901,25 @@ note. -->
      beside the bridge variables. Only a native `<name>.exe` on `PATH` is
      taken as a provider, never a `.cmd` or `.ps1` shim. macOS and Linux keep
      every list and lookup as they were.
+  5. Every worktree the task path asks Git to add fits Git's own limit: Git
+     refuses an explicit `GIT_DIR` longer than PATH_MAX - 40 bytes, and
+     `git worktree add` passes `<directory>/.git`, so a worktree directory is
+     at most 215 bytes on Windows (979 on macOS, 4051 on Linux). The worktree
+     module owns that rule and refuses a directory past it with
+     `VES_GIT_WORKTREE_PATH_TOO_LONG` before it asks Git to add or remove
+     anything; `prepare()` measures the run's worktree and both scratch roots
+     on the real path first and refuses a state root too deep for them as
+     `not configured` (`state-path-length`). The verification scratch
+     checkouts move from `verification/<run ID>/<purpose>/` to
+     `verification/<16 hex of the run ID's digest>/<r or m>/`, 22 characters
+     below the run's own worktree instead of 51 to 54, on every platform; this
+     supersedes the scratch path AD-066 names. The run's worktree keeps its
+     layout, since its ID is in the handle the Run record keeps.
+  6. On Windows every Git command of the task path runs with
+     `-c core.longpaths=true`, so a repository that checks out in place also
+     checks out in a worktree below the state root; the paths past 260
+     characters exist only inside Verchestra's worktrees and scratch
+     checkouts. The user's Git configuration is never changed.
 - **Alternatives rejected:** keeping `VES_BRIDGE_PLATFORM_UNSUPPORTED` for a
   caller without a transport (Windows is supported; what such a caller lacks is
   the transport); a default pipe transport inside agent-runtime (it may not
@@ -2912,14 +2931,25 @@ note. -->
   arguments); relying on libuv, which adds `SYSTEMROOT`, `TEMP`, and the other
   variables Windows needs to a child spawned from Node when they are absent
   (the relay is started by Claude Code, not by Node, and the list stays
-  explicit).
+  explicit); a shorter worktree handle ID (the Run record keeps handles of
+  32 digits); a scratch layout on Windows only (two layouts, one of them
+  never exercised by the macOS and Linux journeys); leaving `core.longpaths`
+  to the user (a repository the user checks out fine would fail inside
+  Verchestra's deeper worktrees, mid-run); writing it into the user's
+  configuration (a change outside Verchestra's state the user did not ask
+  for).
 - **Consequence:** PowerShell 7 at its pinned path, an ACL-capable volume, and
   native `claude.exe` and `codex.exe` on `PATH` are prerequisites of a Windows
   run. A Windows run pays one PowerShell 7 start for the check and one per
   Claude Code session. On Windows libuv adds the variables Windows needs
   (among them `USERNAME`, `USERDOMAIN`, `HOMEDRIVE`, `HOMEPATH`) to a child
-  started from Node when they are absent; none is a credential. The live Windows pilot (D6) stays
-  owner-run.
+  started from Node when they are absent; none is a credential. A Windows
+  Workspace state root (`<state root>/workspaces/<workspace ID>`) longer than
+  150 bytes (`LOCALAPPDATA` longer than 75 bytes, a user name past 52 bytes in
+  the default location) is `not configured` before any effect. On an upgraded
+  macOS or Linux Workspace, a scratch checkout a verification killed under
+  the earlier build left registered is no longer replaced and needs
+  `git worktree remove`. The live Windows pilot (D6) stays owner-run.
 
 ## Handoff
 

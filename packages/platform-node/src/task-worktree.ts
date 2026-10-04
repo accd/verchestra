@@ -7,6 +7,14 @@ import { safeEnvironment } from "./safe-environment.ts";
 
 const execFileAsync = promisify(execFile);
 const MAXIMUM_GIT_OUTPUT_BYTES = 16 * 1024 * 1024;
+// why: `git worktree add` starts its checkout with GIT_DIR=<directory>/.git,
+// and Git refuses an explicit GIT_DIR longer than PATH_MAX - 40 bytes
+// (setup.c, "'$GIT_DIR' too big"). PATH_MAX is the platform's own: 260 for Git
+// for Windows (MinGW), 1024 on macOS, 4096 on Linux. core.longpaths does not
+// lift it. A worktree directory is its root and one handle ID.
+const GIT_PATH_MAX: Readonly<Record<string, number>> = Object.freeze({ win32: 260, darwin: 1024, linux: 4096 });
+const GIT_DIR_SUFFIX = "/.git";
+const HANDLE_ID_LENGTH = 32;
 
 // invariant: a Git object ID is a complete SHA-1 (40 hex) or SHA-256 (64 hex)
 // name; every task worktree fact below accepts both and nothing shorter.
@@ -141,6 +149,31 @@ function spawnOptions(cwd: string, maxBuffer: number) {
   return { cwd, env: gitEnvironment(), maxBuffer, windowsHide: true } as const;
 }
 
+// why: a worktree sits deeper than the user's own checkout, so a file that
+// checks out in place can pass Windows' 260 characters inside one, and Git for
+// Windows writes, reads, and deletes such a path only with core.longpaths. It
+// is set on each command the task path runs, never in the user's
+// configuration, and it does not lift the GIT_DIR limit above. The longer
+// paths exist only inside Verchestra's worktrees and scratch checkouts; Node
+// reaches them through namespaced paths, and a gate whose tool cannot open one
+// fails as a gate.
+export function gitArguments(args: readonly string[], platform: string = process.platform): readonly string[] {
+  return platform === "win32" ? ["-c", "core.longpaths=true", ...args] : [...args];
+}
+
+// invariant: true only when Git can add `directory` as a worktree on this
+// platform: its UTF-8 bytes and `/.git` stay within PATH_MAX - 40.
+export function worktreeDirectoryFits(directory: string, platform: string = process.platform): boolean {
+  const maximum = (GIT_PATH_MAX[platform] ?? GIT_PATH_MAX["linux"] ?? 4096) - 40;
+  return Buffer.byteLength(directory, "utf8") + GIT_DIR_SUFFIX.length <= maximum;
+}
+
+// invariant: whether every worktree directory below a root fits, known before
+// any of them exists, since each is the root and one handle ID.
+export function worktreeRootFits(worktreesRoot: string, platform: string = process.platform): boolean {
+  return worktreeDirectoryFits(join(worktreesRoot, "0".repeat(HANDLE_ID_LENGTH)), platform);
+}
+
 // invariant: every git process the task path starts goes through runGit or
 // runGitBytes: an argument vector (never a shell), a bounded buffer, an
 // explicit working directory, and the scrubbed environment above.
@@ -149,7 +182,7 @@ export async function runGit(
   args: readonly string[],
   maximumOutputBytes = MAXIMUM_GIT_OUTPUT_BYTES
 ): Promise<GitOutput> {
-  const { stdout, stderr } = await execFileAsync("git", [...args], {
+  const { stdout, stderr } = await execFileAsync("git", [...gitArguments(args)], {
     ...spawnOptions(cwd, maximumOutputBytes),
     encoding: "utf8"
   });
@@ -158,7 +191,7 @@ export async function runGit(
 
 export async function runGitBytes(cwd: string, args: readonly string[], maximumOutputBytes: number): Promise<Buffer> {
   return (
-    await execFileAsync("git", [...args], {
+    await execFileAsync("git", [...gitArguments(args)], {
       ...spawnOptions(cwd, maximumOutputBytes),
       encoding: "buffer"
     })

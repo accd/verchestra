@@ -24,7 +24,8 @@ import {
   type GitRunner,
   type ResolvedWorktree,
   type WorktreeRefusal,
-  type WorktreeRoots
+  type WorktreeRoots,
+  worktreeDirectoryFits
 } from "./task-worktree.ts";
 
 export type GitWorktreeErrorCode =
@@ -32,7 +33,8 @@ export type GitWorktreeErrorCode =
   | "VES_GIT_WORKTREE_COMMAND_FAILED"
   | "VES_GIT_WORKTREE_CONFLICT"
   | "VES_GIT_WORKTREE_ESCAPE"
-  | "VES_GIT_WORKTREE_NOT_FOUND";
+  | "VES_GIT_WORKTREE_NOT_FOUND"
+  | "VES_GIT_WORKTREE_PATH_TOO_LONG";
 
 export class GitWorktreeError extends Error {
   readonly code: GitWorktreeErrorCode;
@@ -91,6 +93,13 @@ function nulList(value: string): readonly string[] {
       if (!isTaskPath(normalized)) fail("VES_GIT_WORKTREE_ESCAPE", "Git returned an unsafe logical path");
       return normalized;
     });
+}
+
+// why: Git would die mid-checkout on a directory past its GIT_DIR limit;
+// refusing first names the cause and leaves nothing half-added.
+function requireFits(directory: string): void {
+  if (!worktreeDirectoryFits(directory))
+    fail("VES_GIT_WORKTREE_PATH_TOO_LONG", "Worktree directory is too long for Git on this platform");
 }
 
 function handleFor(id: string, baseCommit: string): string {
@@ -183,6 +192,7 @@ export class NodeGitWorktreeAdapter implements ExecutionWorktreePort {
       if (error instanceof GitWorktreeError) throw error;
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     }
+    requireFits(target);
     await this.#git(repositoryRoot, ["worktree", "add", "--detach", "--", target, baseCommit]);
     await answered(() => assertWorktreeDirectory(target, worktreesRoot));
     return Object.freeze({ worktreeRef, baseCommit });
@@ -297,6 +307,7 @@ export class NodeGitWorktreeAdapter implements ExecutionWorktreePort {
     const roots = await this.#qualifiedRoots();
     const id = createHash("sha256").update(checkout.name).digest("hex").slice(0, 32);
     const directory = await answered(() => worktreeDirectory(roots.worktreesRoot, id));
+    requireFits(directory);
     await this.#removeScratch(roots.repositoryRoot, directory);
     try {
       await this.#git(roots.repositoryRoot, ["worktree", "add", "--detach", "--", directory, checkout.commitId]);

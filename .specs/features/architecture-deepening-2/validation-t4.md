@@ -16,11 +16,11 @@ The card predates #486 (the task-path rule moved to
 these lines. At `2651fa0`:
 
 - **Two resolutions.** The worktree adapter resolved a handle in
-  `git-worktree-adapter.ts:292-314` (`#resolveHandle`, `#targetFromRef`) on
+  `git-worktree-adapter.ts:302-325` (`#resolveHandle`, `#targetFromRef`) on
   roots qualified at `:316-347` and a target checked at `:361-368`. The gate
   and commit adapters resolved it again in `gate-commit-adapters.ts:41-68`
   (`targetFromRef`, called at `:137`, `:261`, `:273`).
-- **Containment that differed.** `git-worktree-adapter.ts:53-56` refused the
+- **Containment that differed.** `git-worktree-adapter.ts:55-58` refused the
   root itself; `gate-commit-adapters.ts:36-39` admitted it. The gate copy
   never qualified the repository root (realpath, non-bare) or compared the
   worktrees root with it, and only the gate runner asked Git whether the
@@ -30,7 +30,7 @@ these lines. At `2651fa0`:
   added and removed verification's checkouts, with the Git removal and the
   prune swallowed (`:22`, `:24`). The mutation sensor derived the checkout's
   directory name itself (`task-verifier.ts:93-96`) and passed that name as a
-  handle ID (`:143`, `scratchWorktreeHandle`, `git-worktree-adapter.ts:79`).
+  handle ID (`:143`, `scratchWorktreeHandle`, `git-worktree-adapter.ts:81`).
   The sensor was a private class (`:82-148`) that only an end-to-end journey
   could exercise.
 - **Two verdicts.** `gate-commit.ts:433-445` (the gate) required a summary
@@ -42,8 +42,8 @@ these lines. At `2651fa0`:
 
 | Caller | Before | Now |
 | --- | --- | --- |
-| Worktree adapter `inspect`, `resolvePath`, `cleanup` | its own `#resolveHandle`/`#targetFromRef` and root qualification | `resolveWorktreeHandle` (`task-worktree.ts:289`); refusals answered with its codes (`git-worktree-adapter.ts:63`, `:72`); `cleanup` treats `unregistered` as already clean (`:233-248`) |
-| Worktree adapter `create`, `cleanupAtCommit` | its own root qualification and target check | `qualifiedWorktreeRoots` (`task-worktree.ts:235`), `worktreeDirectory` (`:254`), `assertWorktreeDirectory` (`:263`) |
+| Worktree adapter `inspect`, `resolvePath`, `cleanup` | its own `#resolveHandle`/`#targetFromRef` and root qualification | `resolveWorktreeHandle` (`task-worktree.ts:322`); refusals answered with its codes (`git-worktree-adapter.ts:65`, `:72`); `cleanup` treats `unregistered` as already clean (`:233-248`) |
+| Worktree adapter `create`, `cleanupAtCommit` | its own root qualification and target check | `qualifiedWorktreeRoots` (`task-worktree.ts:268`), `worktreeDirectory` (`:254`), `assertWorktreeDirectory` (`:263`) |
 | Gate runner `run` | `targetFromRef`, then its own registration listing | `resolveWorktreeHandle`; refusals answered with `VES_GATE_ADAPTER_*` (`gate-commit-adapters.ts:42`, `:51`); keeps one rule of its own: HEAD at the handle's commit (`:138`); the working-directory check uses the module's `isWithinDirectory` (`:143`) |
 | Commit adapter `reconcile`, `commitAtomic` | `targetFromRef`, no registration check | `resolveWorktreeHandle` bound to the request's base (`:316`), through its own Git runner so a Git failure keeps `VES_GATE_GIT_COMMAND_FAILED` |
 | Mutation sensor | `addDetachedWorktree`/`removeWorktree`, its own directory name, `scratchWorktreeHandle`, its own verdict | `task-mutation-sensor.ts:33`: `scratchCheckouts` (`:44`), `withScratchCheckout` with a stable name (`:47-54`), the checkout's handle, `taskGateVerdict` (`:90`) |
@@ -51,7 +51,7 @@ these lines. At `2651fa0`:
 | Gate coordinator | private `gatePassed` | `taskGateVerdict` (`gate-commit.ts:448`, used at `:491`) |
 
 The worktree module's one resolution, in order: the handle is read and bound
-to a base before any effect (`task-worktree.ts:294-296`); the roots are
+to a base before any effect (`task-worktree.ts:327-329`); the roots are
 qualified (`:235-250`); the directory is joined below the canonical root and
 is never the root (`:254-259`); Git must list it (`:300-303`); it must be a
 real directory contained in its root (`:263-275`). The refusals are named
@@ -78,14 +78,14 @@ root"). No message is public: the run records the code only
 
 | Clause | Where it holds | Assertion evidence |
 | --- | --- | --- |
-| The handle is resolved in one place | `task-worktree.ts:289-306`, called by all three adapters | `tests/integration/task-worktree-resolution.test.mjs:58` (both object formats: canonical directory, HEAD, bound base), `:72` (not a handle or another base, refused before the worktrees root exists), `:84` (missing or bare repository), `:97` (linked root, root equal to the repository, with the message), `:117` (roots through a canonicalizing link), `:129` (unregistered, missing), `:140` (a registered directory replaced by a link) |
-| One containment test | `isWithinDirectory`, `task-worktree.ts:218` | the gate adapters define none of their own (`gate-commit-adapters.ts` has no `relative`); the resolution cases above and the gate cwd check (`gate-commit-adapters.ts:143`) |
-| Each adapter keeps its public code by mapping the refusal | `git-worktree-adapter.ts:63-83`, `gate-commit-adapters.ts:42-62` | `task-worktree-resolution.test.mjs:247` (six rows, each asking the worktree adapter, the gate runner and the commit adapter); `:253` (the gate runner's own rule) |
-| The scratch checkout is owned by the worktree module | `git-worktree-adapter.ts:291-308` | `tests/integration/task-worktree-operations.test.mjs:141` (both formats: below the root, at the commit, registered during use, accepted by the gate runner, gone after), `:192` (a failing use: its error is reported and the checkout removed), `:207` (a leftover under the same name is replaced, not reused), `:252` (a commit that is not a complete object ID is refused before any effect) |
-| A removal failure is reported, not swallowed | `git-worktree-adapter.ts:314-330` | `task-worktree-operations.test.mjs:223` (a locked checkout Git keeps registered: `VES_GIT_WORKTREE_COMMAND_FAILED`, "Scratch checkout is still registered after its removal"); `:235` (a link in the checkout's place: `VES_GIT_WORKTREE_ESCAPE`, nothing behind it deleted) |
-| The mutation sensor is testable in a temporary repository | `task-mutation-sensor.ts` | `tests/integration/task-mutation-sensor.test.mjs:122` (four mutants: a reverted file its gate reads, a removed created file, a file no gate of its requirement reads, a todo test; killed or not, user checkout unmoved, no checkout or registration left), `:138` (a target outside the scope is refused and its checkout removed) |
+| The handle is resolved in one place | `task-worktree.ts:322-339`, called by all three adapters | `tests/integration/task-worktree-resolution.test.mjs:58` (both object formats: canonical directory, HEAD, bound base), `:72` (not a handle or another base, refused before the worktrees root exists), `:84` (missing or bare repository), `:97` (linked root, root equal to the repository, with the message), `:117` (roots through a canonicalizing link), `:129` (unregistered, missing), `:140` (a registered directory replaced by a link) |
+| One containment test | `isWithinDirectory`, `task-worktree.ts:251` | the gate adapters define none of their own (`gate-commit-adapters.ts` has no `relative`); the resolution cases above and the gate cwd check (`gate-commit-adapters.ts:143`) |
+| Each adapter keeps its public code by mapping the refusal | `git-worktree-adapter.ts:65-85`, `gate-commit-adapters.ts:42-62` | `task-worktree-resolution.test.mjs:247` (six rows, each asking the worktree adapter, the gate runner and the commit adapter); `:253` (the gate runner's own rule) |
+| The scratch checkout is owned by the worktree module | `git-worktree-adapter.ts:301-319` | `tests/integration/task-worktree-operations.test.mjs:141` (both formats: below the root, at the commit, registered during use, accepted by the gate runner, gone after), `:192` (a failing use: its error is reported and the checkout removed), `:207` (a leftover under the same name is replaced, not reused), `:252` (a commit that is not a complete object ID is refused before any effect) |
+| A removal failure is reported, not swallowed | `git-worktree-adapter.ts:325-341` | `task-worktree-operations.test.mjs:223` (a locked checkout Git keeps registered: `VES_GIT_WORKTREE_COMMAND_FAILED`, "Scratch checkout is still registered after its removal"); `:235` (a link in the checkout's place: `VES_GIT_WORKTREE_ESCAPE`, nothing behind it deleted) |
+| The mutation sensor is testable in a temporary repository | `task-mutation-sensor.ts` | `tests/integration/task-mutation-sensor.test.mjs:123` (four mutants: a reverted file its gate reads, a removed created file, a file no gate of its requirement reads, a todo test; killed or not, user checkout unmoved, no checkout or registration left), `:138` (a target outside the scope is refused and its checkout removed) |
 | Nothing but the worktree adapter adds or removes a worktree | — | `tests/architecture/task-worktree-locality.test.mjs:75` |
-| The gate verdict is decided once | `gate-commit.ts:433-455` | `tests/unit/task-gate-verdict.test.mjs:16`, `:27`, `:31`, `:48` (seven failing summaries), `:53`; the sensor uses it: `task-mutation-sensor.test.mjs:122` (the todo row) |
+| The gate verdict is decided once | `gate-commit.ts:433-455` | `tests/unit/task-gate-verdict.test.mjs:16`, `:27`, `:31`, `:48` (seven failing summaries), `:53`; the sensor uses it: `task-mutation-sensor.test.mjs:123` (the todo row) |
 | Gate evidence digests unchanged | the coordinator's entry | `task-gate-verdict.test.mjs:77`: the passing run's gate evidence digest and idempotency key and four recorded entry digests, taken from the coordinator on `main` at `2651fa0` (script in the ignored `.tmp/`, run against the base files and the changed ones: identical) |
 
 ## 4. Behaviour changes, recorded
@@ -128,7 +128,7 @@ All are on paths a run meets only after a hand edit or a Git failure:
   gains one digest signal (5 to 6, the scratch name). `pnpm census:refresh`
   and `pnpm test:census` pass.
 - Citations fixed: `.specs/features/platform-qualification-matrix/matrix.md`
-  (the two target-level checks are one, `task-worktree.ts:273`) and
+  (the two target-level checks are one, `task-worktree.ts:306`) and
   `.specs/features/architecture-deepening/validation-c1.md` (the 64-digit
   case moved to `:271-276`; the scratch handle row points at its
   replacement). Not rewritten: `docs/qualification/t59-validation.md`, a

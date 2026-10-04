@@ -159,7 +159,7 @@ composition root. No package edge was added.
 | Verification | pattern (`verification.ts:10`) | `verification.ts:304` |
 | MCP bridge | linear scan, folds case (`mcp-bridge-tools.ts:9`, `:33-37`, `:45-47`, `:57`, `:97`, `:211-215`) | `mcp-bridge-tools.ts:48`, `:52` (target), `:90` (protected entries), `:205-207` (read view) |
 | Worktree tool | pattern, folds its own roots (`worktree-tool-adapter.ts:18`, `:172`, `:269-275`) | `worktree-tool-adapter.ts:165`, `:263`, `:268-269` |
-| Git worktree adapter | pattern (`git-worktree-adapter.ts:21`) | `git-worktree-adapter.ts:64` |
+| Git worktree adapter | pattern (`git-worktree-adapter.ts:21`) | `git-worktree-adapter.ts:66` |
 | Git context source | pattern and its own containment (`git-context-source.ts:16`, `:48-50`) | `git-context-source.ts:50`, `:58`, `:148`, `:199` |
 | Verifier claims | pattern bounded 1024 (`task-codex.ts:21`) | `task-codex.ts:44`; the 1024 bound stays the stage's own limit |
 | Verifier mutation target | its own containment (`task-verifier.ts:117`) | `task-verifier.ts:123` |
@@ -286,7 +286,7 @@ module.
   is now `:386-388`, `mcp-bridge-tools.ts:203` is now `:197`,
   `task-verifier.ts:66` is now `:72`.
 - `.specs/features/platform-qualification-matrix/matrix.md`:
-  `git-worktree-adapter.ts:367` is now `:366`.
+  `git-worktree-adapter.ts:378` is now `:366`.
 - `.specs/features/governed-task-cli/validation.md` (GTC-12, 13, 14, 16, 17,
   18, 19) and `.specs/features/claude-code-2-1-282/validation.md` (CC-05):
   the bridge and worktree tool security cases at their new lines, and the

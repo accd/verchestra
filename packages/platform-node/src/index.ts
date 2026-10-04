@@ -106,6 +106,7 @@ export {
   type ScratchCheckout
 } from "./git-worktree-adapter.ts";
 export {
+  gitArguments,
   isGitObjectId,
   parseTaskCommitTrailers,
   refTarget,
@@ -113,6 +114,8 @@ export {
   runGitBytes,
   taskBranchName,
   taskBranchRef,
+  worktreeDirectoryFits,
+  worktreeRootFits,
   type GitOutput,
   type GitRunner,
   type TaskCommitTrailers

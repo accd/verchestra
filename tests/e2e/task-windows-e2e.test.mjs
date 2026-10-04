@@ -23,6 +23,7 @@ import { WindowsNamedPipeBridgeTransport } from "../../packages/platform-node/sr
 import {
   MODE_CREDENTIALS,
   WIN32,
+  WINDOWS_DEEP_FILE,
   approveArguments,
   cleanupTaskFixtures,
   taskFixture
@@ -185,6 +186,9 @@ test(
     assert.equal(accepted.state, "COMPLETED");
     const branch = `vestra/${plan.runId}/T1`;
     assert.equal(fixture.git(["show", `${branch}:src/value.txt`]), "new");
+    // why: the run's worktree and both scratch checkouts held this file past
+    // 260 characters, which Git for Windows writes only with core.longpaths.
+    assert.equal(fixture.git(["show", `${branch}:${WINDOWS_DEEP_FILE}`]), "deep");
     assert.equal(fixture.git(["rev-parse", `${branch}^`]), fixture.revision);
     assert.deepEqual(fixture.git(["diff", "--name-only", fixture.revision, branch]).split("\n"), ["src/value.txt"]);
     assert.deepEqual(checkout(fixture), before, "the user's checkout does not move");
