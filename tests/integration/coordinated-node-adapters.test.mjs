@@ -119,10 +119,10 @@ function changeScopeWiderThanNodes(raw) {
 // why: the fake's read-write scenario reads src/a.txt, writes it, and gives
 // no structured result, so each run below ends as RESULT_INVALID after its
 // tool calls are observed.
-function claudeReader(readScope, writeScope) {
+function claudeReader(readScope, writeScope, scenario = "read-write") {
   return coordinatedRequest("agent", (raw) => {
     changeScopeWiderThanNodes(raw);
-    Object.assign(raw.execution.nodes[0], { readScope, writeScope, instructions: "scenario:read-write" });
+    Object.assign(raw.execution.nodes[0], { readScope, writeScope, instructions: `scenario:${scenario}` });
   });
 }
 
@@ -208,4 +208,36 @@ test("the composition refuses a node result that holds a credential of the run",
     ["completed"],
     "the session answered; its answer was refused"
   );
+});
+
+// invariant: SSI-58. A provider's warning is recorded by its code in the
+// node's `driver-finished` checkpoint, for a Claude Code node (a usage limit
+// near, `allowed_warning`) and a Codex node (a built-in effect denied), and
+// the session went on after it.
+test("each node adapter records a provider's warning code in the node's end", async (t) => {
+  if (WIN32_HOST) return windowsMediationPath(t);
+  const claude = await compositionFixture(t, claudeReader(["src"], ["src"], "rate-warning"), { files: SCOPED_FILES });
+  await assert.rejects(claude.run(), rejectsWith("VES_COORDINATION_RESULT_INVALID"));
+  assert.deepEqual(finished(claude.executor), [
+    {
+      outcome: "failed",
+      toolRequests: 1,
+      writes: 1,
+      deletes: 0,
+      denied: 0,
+      errorCodes: ["VES_CLAUDE_STRUCTURED_OUTPUT_MISSING"],
+      warningCodes: ["VES_CLAUDE_QUOTA_WARNING"]
+    }
+  ]);
+  assert.equal(claude.executor.state.tools.length, 1, "the write after the warning reached the executor");
+  const codex = await compositionFixture(t, codexGraph(), { codex: { mode: "command-approval" } });
+  await assert.rejects(codex.run(), rejectsWith("VES_COORDINATION_RESULT_INVALID"));
+  assert.deepEqual(finished(codex.executor), [
+    {
+      outcome: "failed",
+      toolRequests: 0,
+      errorCodes: ["VES_CODEX_STRUCTURED_OUTPUT_MISSING"],
+      warningCodes: ["VES_CODEX_BUILTIN_TOOL_DENIED"]
+    }
+  ]);
 });

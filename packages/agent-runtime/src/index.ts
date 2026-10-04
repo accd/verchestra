@@ -95,6 +95,8 @@ export {
 export {
   DriverExecutionAdapter,
   DriverExecutionAdapterError,
+  recordedWarnings,
+  warningCode,
   type DriverExecutionAdapterOptions,
   type DriverExecutionSession,
   type DriverQuotaSignal

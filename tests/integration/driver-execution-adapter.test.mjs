@@ -166,6 +166,36 @@ test("a driver error event yields a failed status with its stable code", async (
   assert.equal(JSON.stringify(calls.checkpoints).includes("/private/path"), false);
 });
 
+// invariant: SSI-58. A warning never stops the session; its stable code alone
+// is kept, once, in the session's end, and a code that is not stable is kept
+// as the generic one. Its message is never recorded.
+test("a warning is recorded by its code in the session's end and the session goes on", async (t) => {
+  if (WIN32_HOST) return adapterRefusedOnWin32(t);
+  const driver = new ScriptedFakeDriver(async ({ emit }) => {
+    const warning = { type: "warning", code: "VES_CLAUDE_QUOTA_WARNING", message: "usage limit near for owner" };
+    emit(warning);
+    emit({ type: "usage.updated", inputTokens: 4, outputTokens: 1 });
+    emit(warning);
+    emit({ type: "warning", code: "a usage limit is near", message: "not a stable code" });
+  });
+  const { adapter, calls, control, request } = await adapterFixture(driver);
+  assert.deepEqual(await adapter.execute(request, control), { status: "completed", outputRefs: [] });
+  assert.equal(calls.usage.length, 1, "the session went on after its warning");
+  assert.deepEqual(calls.checkpoints.at(-1), {
+    stage: "driver-finished",
+    data: {
+      outcome: "completed",
+      toolRequests: 0,
+      writes: 0,
+      deletes: 0,
+      denied: 0,
+      errorCodes: [],
+      warningCodes: ["VES_CLAUDE_QUOTA_WARNING", "VES_DRIVER_WARNING"]
+    }
+  });
+  assert.equal(JSON.stringify(calls.checkpoints).includes("owner"), false);
+});
+
 test("a tool requested outside the bridge cancels the session and fails closed", async (t) => {
   if (WIN32_HOST) return adapterRefusedOnWin32(t);
   const driver = new ScriptedFakeDriver(async ({ emit }) => {

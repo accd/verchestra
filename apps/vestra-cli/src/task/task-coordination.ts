@@ -4,8 +4,10 @@ import { dirname, isAbsolute, join, parse, resolve } from "node:path";
 
 import {
   DriverExecutionAdapterError,
+  recordedWarnings,
   removeMaterializedView,
   runDriverSession,
+  warningCode,
   WorktreeReadView,
   type ContextManifest,
   type DriverQuotaSignal,
@@ -156,6 +158,7 @@ interface CodexNodeState {
   quota: DriverQuotaSignal | undefined;
   failure: unknown;
   toolRequests: number;
+  readonly warnings: Set<string>;
 }
 
 function invalidResult(message: string): DriverExecutionAdapterError {
@@ -172,8 +175,8 @@ function resultBytes(event: DriverEventOf<"result.structured">): Uint8Array {
 
 // invariant: the same rules the Claude Code adapter applies: usage reaches
 // the run's meter, one structured result at most, the first quota signal stops
-// the session, and a requested tool is a violation, because a Codex node is
-// granted none.
+// the session, a warning is kept by its code, and a requested tool is a
+// violation, because a Codex node is granted none.
 function observeCodex(
   event: DriverEvent,
   state: CodexNodeState,
@@ -201,7 +204,7 @@ function observeCodex(
   } else if (event.type === "tool.requested") {
     state.toolRequests += 1;
     halt(new DriverExecutionAdapterError("VES_DRIVER_TOOL_OUTSIDE_BRIDGE", "A Codex node requested a tool"), "tool");
-  }
+  } else if (event.type === "warning") state.warnings.add(warningCode(event));
 }
 
 // invariant: D3b and SSI-56. A Codex account that reports credits is refused
@@ -311,7 +314,13 @@ function codexNodeAdapter(options: CoordinatedRunOptions, session: CoordinationN
       const worktree = await options.worktrees.resolvePath(request.worktreeRef);
       const identity = await isolatedIdentity(root, options.codex.identityDirectory);
       const cwd = await readScopeView(root, worktree, session.node, request);
-      const state: CodexNodeState = { structured: undefined, quota: undefined, failure: undefined, toolRequests: 0 };
+      const state: CodexNodeState = {
+        structured: undefined,
+        quota: undefined,
+        failure: undefined,
+        toolRequests: 0,
+        warnings: new Set()
+      };
       const model = session.node.driver.model;
       const finished = await runDriverSession({
         driver: codexDriver(options, session, provider, { cwd, ...identity }),
@@ -326,7 +335,8 @@ function codexNodeAdapter(options: CoordinatedRunOptions, session: CoordinationN
         control.checkpoint("driver-finished", {
           outcome: finished.outcome,
           toolRequests: state.toolRequests,
-          errorCodes: [...finished.errorCodes]
+          errorCodes: [...finished.errorCodes],
+          ...recordedWarnings(state.warnings)
         })
       );
       assertStructuredAnswer(finished.outcome, finished.errorCodes);

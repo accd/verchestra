@@ -58,6 +58,21 @@ export class DriverExecutionAdapterError extends Error {
   }
 }
 
+// invariant: SSI-58. A warning a driver reports (a Claude Code usage limit
+// near, `allowed_warning`; a Codex built-in effect denied) does not stop its
+// session; it is kept by its stable code alone, each code once, in the
+// session's `driver-finished` checkpoint. A session that reported none keeps
+// the checkpoint it had before.
+const WARNING_CODE = /^VES_[A-Z0-9_]{1,96}$/u;
+
+export function warningCode(event: DriverEventOf<"warning">): string {
+  return WARNING_CODE.test(event.code) ? event.code : "VES_DRIVER_WARNING";
+}
+
+export function recordedWarnings(codes: ReadonlySet<string>): { readonly warningCodes?: readonly string[] } {
+  return codes.size === 0 ? {} : { warningCodes: [...codes] };
+}
+
 interface RunState {
   model: string;
   violation: string | undefined;
@@ -68,6 +83,7 @@ interface RunState {
   structured: DriverEventOf<"result.structured"> | undefined;
   invalidInput: DriverExecutionAdapterError | undefined;
   quota: DriverQuotaSignal | undefined;
+  readonly warnings: Set<string>;
 }
 
 // why: a payload is the canonical text of the result, so the same answer is
@@ -114,7 +130,8 @@ export class DriverExecutionAdapter<TStartRequest> implements ExecutionDriverPor
       checkpoints: [],
       structured: undefined,
       invalidInput: undefined,
-      quota: undefined
+      quota: undefined,
+      warnings: new Set()
     };
     let bridge: McpToolBridgeController | undefined;
     try {
@@ -142,7 +159,8 @@ export class DriverExecutionAdapter<TStartRequest> implements ExecutionDriverPor
         writes: statistics.writes,
         deletes: statistics.deletes,
         denied: statistics.denied,
-        errorCodes: [...errorCodes]
+        errorCodes: [...errorCodes],
+        ...recordedWarnings(state.warnings)
       });
       assertStructuredAnswer(outcome, errorCodes);
       return Object.freeze({ status: outcome, outputRefs: Object.freeze(outputRefs) });
@@ -235,6 +253,9 @@ export class DriverExecutionAdapter<TStartRequest> implements ExecutionDriverPor
         break;
       case "quota.exhausted":
         this.#quotaExhausted(event, state, abort);
+        break;
+      case "warning":
+        state.warnings.add(warningCode(event));
         break;
       default:
         break;
