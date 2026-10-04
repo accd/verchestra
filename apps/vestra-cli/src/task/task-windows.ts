@@ -1,9 +1,11 @@
 // invariant: SSI-73 and SSI-74 on the task path. What a Windows run needs
-// from the machine is proven before its first transition, so a missing
-// prerequisite is `not configured`, named, with no workflow change, worktree,
-// or provider process behind it. The run then proves each again where it is
-// used: the transport per channel, the driver per isolation directory and per
-// launch, so a change made in between still refuses.
+// from the machine is proven before any credential is read and before its
+// first transition, so a missing prerequisite is `not configured`, named, with
+// no secret read and no workflow change, worktree, or provider process behind
+// it. The run then proves each again where it is used: the transport per
+// channel, the driver per isolation directory and, for the subscription
+// profile, its managed policy per launch, so a change made in between still
+// refuses.
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -35,23 +37,28 @@ export const nodeWindowsTaskHost: WindowsTaskHost = Object.freeze({
 
 export interface WindowsTaskPrerequisites {
   readonly platform: string;
-  // The parent of every Claude Code isolation directory of the run.
+  // invariant: the parent of every Claude Code isolation directory of the run.
   readonly sessionsRoot: string;
-  // why: only a Claude Code session reaches the bridge, and only its
-  // subscription profile refuses a managed policy (SSI-74).
+  // why: only a Claude Code session reaches the bridge, so a run without one
+  // asks nothing of the machine; either mediated profile asks all of it.
   readonly claude: "none" | "api-key" | "subscription";
   readonly host?: WindowsTaskHost;
 }
 
+// invariant: SSI-73 is unconditional. A managed policy outranks every setting
+// a mediated profile passes and can add hooks, instructions, or a credential
+// helper to the session that holds the bridge token, whichever credential the
+// profile carries, so it refuses the API-key profile as it refuses the
+// subscription one.
 export async function requireWindowsPrerequisites(options: WindowsTaskPrerequisites): Promise<void> {
   if (options.platform !== "win32" || options.claude === "none") return;
   const host = options.host ?? nodeWindowsTaskHost;
   await requireBridgeChannel(host.bridgeTransport());
   await requireOwnerOnlySessions(options.sessionsRoot, host.ownerOnly);
-  if (options.claude === "subscription" && (await host.managedPolicyPresent()))
+  if (await host.managedPolicyPresent())
     throw notConfigured(
       "claude-managed-policy",
-      "A machine-wide Claude Code policy is present, so the subscription profile cannot prove its isolation"
+      "A machine-wide Claude Code policy is present, so a mediated Claude Code session cannot prove its isolation"
     );
 }
 
