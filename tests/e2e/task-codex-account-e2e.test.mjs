@@ -1,6 +1,8 @@
-// invariant: the Codex account of a coordinated run (D3b), end to end through
-// the real `vestra` binary with the DETERMINISTIC FAKE `claude` and `codex`
-// executables (tests/helpers/task-cli-fakes), steered by fixture flags. The
+// invariant: the Codex account of a coordinated run (D3b, SSI-52), end to end
+// through the real `vestra` binary with the DETERMINISTIC FAKE `claude` and
+// `codex` executables (tests/helpers/task-cli-fakes), steered by fixture
+// flags. Before the first transition the run reads its Codex login's plan
+// type, and one the owner's statement does not name is `not configured`. The
 // verifier of an `agent` run, whose only Codex session it is, proves its
 // account before its turn: credits on the account are `not configured` and an
 // exhausted allowance suspends the run, in VERIFYING with its task commit
@@ -11,6 +13,7 @@ import { unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { after, test } from "node:test";
 
+import { confirmExtraUsage, extraUsageConfirmation } from "../helpers/task-billing-fixture.mjs";
 import { DARWIN, cleanupTaskFixtures } from "../helpers/task-cli-fixture.mjs";
 import {
   EXECUTIONS,
@@ -120,3 +123,34 @@ test("an exhausted Codex allowance suspends an agent run at its verifier instead
   );
   assert.deepEqual(assertStoppedAtVerification(fixture, plan.runId).suspension, suspended.suspension);
 });
+
+test(
+  "a statement naming another plan type than the Codex login's is not configured before anything starts",
+  TIMEOUT,
+  async (t) => {
+    if (!DARWIN) return t.diagnostic(PLATFORM);
+    const fixture = await coordinatedFixture(EXECUTIONS.agent);
+    const plan = await approved(fixture);
+    const codex = { ...extraUsageConfirmation().providers.codex, planType: "pro" };
+    await confirmExtraUsage(fixture.stateRoot, extraUsageConfirmation({ codex }));
+    const start = fixture.launch(startArguments(fixture, plan.runId));
+    assert.notEqual(start.status, 0, start.stdout);
+    assert.equal(start.json?.error?.code, "VES_TASK_NOT_CONFIGURED", `${start.stdout}${start.stderr}`);
+    assert.deepEqual(start.json.error.safeDetails, { requirement: "extra-usage-confirmation" });
+    assert.match(start.stderr, /Codex reports the plan type plus .* names pro/u);
+    assert.equal(start.stderr.includes("owner@example.invalid"), false, "the account's e-mail address was shown");
+    const after = status(fixture, plan.runId);
+    assert.equal(after.state, "EXECUTION_AUTHORIZED");
+    assert.equal(after.checkpoints.executor, "none");
+    assert.equal(after.evidence.grantId, null);
+    assert.equal(after.activeProcess, false);
+    for (const log of ["fake-claude.log", "fake-codex.log", "fake-codex-turn.log"])
+      assert.deepEqual(logLines(fixture, log), [], `${log} shows a provider session was started`);
+    assert.equal(fixture.git(["worktree", "list", "--porcelain"]).split("\n\n").length, 1);
+
+    await confirmExtraUsage(fixture.stateRoot);
+    const confirmed = fixture.launch(startArguments(fixture, plan.runId));
+    assert.equal(confirmed.status, 0, confirmed.stderr);
+    assert.equal(confirmed.json.data.state, "HUMAN_REVIEW");
+  }
+);

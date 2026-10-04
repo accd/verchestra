@@ -20,8 +20,10 @@ import readline from "node:readline";
 
 import { credentialMatchesStore, fixtureFlag, fixtureLog, providerArguments } from "./fixture-channel.mjs";
 
+// why: the `codex-0.159.2` flag reports the build just below the floor of the
+// account reads, as an owner who has not updated Codex has.
 if (process.argv.includes("--version")) {
-  process.stdout.write("codex-cli 0.159.3\n");
+  process.stdout.write(`codex-cli ${fixtureFlag("codex-0.159.2") ? "0.159.2" : "0.159.3"}\n`);
   process.exit(0);
 }
 

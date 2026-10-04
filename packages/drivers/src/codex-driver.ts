@@ -63,6 +63,41 @@ export interface CodexExecution {
   // limits, and runs only on a ChatGPT login with no credits and ordinary
   // usage allowed (SSI-55, SSI-56). Absent keeps the T04 conversation.
   readonly subscriptionOnly?: true;
+  // invariant: the session reads the account (`account/read`) and ends there:
+  // no rate limit is read, no model is listed, and no thread or turn starts,
+  // so nothing of an allowance is spent. It is how a run learns its plan type.
+  readonly accountOnly?: true;
+}
+
+// invariant: the plan types `PlanType` names in the App Server protocol of
+// 0.159.3, without its catch-all `unknown`. A plan type is only ever one of
+// these or `unknown`, never the account's own text (SSI-49, SSI-53).
+export const CODEX_PLAN_TYPES = Object.freeze([
+  "free",
+  "go",
+  "plus",
+  "pro",
+  "prolite",
+  "promax",
+  "team",
+  "self_serve_business_prolite",
+  "self_serve_business_usage_based",
+  "business",
+  "ent26",
+  "enterprise_cbp_automation",
+  "enterprise_cbp_usage_based",
+  "enterprise",
+  "edu",
+  "edu_plus",
+  "edu_pro"
+] as const);
+export type CodexPlanType = (typeof CODEX_PLAN_TYPES)[number];
+const PLAN_TYPES: ReadonlySet<unknown> = new Set(CODEX_PLAN_TYPES);
+
+// invariant: all that is kept of an account: its plan type as a closed value.
+// The e-mail address and every other field are read past.
+export interface CodexAccountReport {
+  readonly planType: CodexPlanType | "unknown";
 }
 
 export interface CodexDriverDependencies {
@@ -74,6 +109,10 @@ export interface CodexDriverDependencies {
   readonly terminateTree?: ProcessTreeTerminator;
   readonly onSpawn?: (pid: number) => void;
   readonly onMessageSent?: (message: Readonly<Record<string, unknown>>) => void;
+  // why: SSI-52. A session that reads the account reports its plan type here
+  // once the account is proven a ChatGPT login, for the caller to compare with
+  // the owner's statement.
+  readonly onAccount?: (account: CodexAccountReport) => void;
 }
 
 function codexError(code: string, message: string): DriverProtocolError {
@@ -146,12 +185,14 @@ interface CodexConversation {
   readonly redact: (value: unknown) => string;
   readonly threadParams: () => Readonly<Record<string, unknown>>;
   readonly onMessageSent: ((message: Readonly<Record<string, unknown>>) => void) | undefined;
+  readonly onAccount: ((account: CodexAccountReport) => void) | undefined;
   readonly plan: CodexSessionPlan;
 }
 
 interface CodexSessionPlan {
   readonly structured: StructuredOutputPlan | undefined;
   readonly subscriptionOnly: boolean;
+  readonly accountOnly: boolean;
 }
 
 type Row = Readonly<Record<string, unknown>>;
@@ -363,13 +404,19 @@ function codexProtocol(channel: ProviderChannel, conversation: CodexConversation
       return respond(message);
     handlers.get(message["method"])?.(message, (message["params"] ?? {}) as Row);
   };
-  // invariant: the account must be a ChatGPT login, its snapshots must report
-  // no credits, and ordinary usage must not be refused; the e-mail address and
-  // every other account field are read past and never kept.
-  const accountChecks = async (): Promise<void> => {
+  // invariant: the account must be a ChatGPT login; its plan type is reported
+  // as a closed value, and the e-mail address and every other account field
+  // are read past and never kept.
+  const accountRead = async (): Promise<void> => {
     const account = row(row(await rpc("account/read", { refreshToken: false }))?.["account"]);
     if (account?.["type"] !== "chatgpt")
       return refuse("VES_CODEX_AUTH_METHOD_MISMATCH", "Codex is not signed in with a ChatGPT subscription");
+    const planType = PLAN_TYPES.has(account["planType"]) ? (account["planType"] as CodexPlanType) : "unknown";
+    conversation.onAccount?.(Object.freeze({ planType }));
+  };
+  // invariant: the snapshots must report no credits, and ordinary usage must
+  // not be refused.
+  const rateLimitChecks = async (): Promise<void> => {
     const limits = row(await rpc("account/rateLimits/read"));
     if (limits === undefined || row(limits["rateLimits"]) === undefined)
       return refuse("VES_CODEX_PROTOCOL_FAILED", "Codex rate limits are invalid");
@@ -379,13 +426,21 @@ function codexProtocol(channel: ProviderChannel, conversation: CodexConversation
       return refuse("VES_CODEX_QUOTA_EXHAUSTED", "Codex reports that the usage allowance is exhausted");
     }
   };
+  // invariant: what a session asks of the account after `initialized`: an
+  // account-only session reads the account and is done; a subscription-only
+  // one reads the account and its rate limits before anything else.
+  const accountSteps = async (): Promise<boolean> => {
+    if (plan.subscriptionOnly || plan.accountOnly) await accountRead();
+    if (plan.subscriptionOnly) await rateLimitChecks();
+    return plan.accountOnly;
+  };
   const converse = async () => {
     await rpc("initialize", {
       clientInfo: { name: "verchestra", title: "Verchestra", version: "1.0.0" },
       capabilities: { experimentalApi: true }
     });
     notify("initialized");
-    if (plan.subscriptionOnly) await accountChecks();
+    if (await accountSteps()) return channel.result();
     const catalog = (await rpc("model/list")) as { data?: readonly { id?: string; model?: string }[] };
     const selected = catalog.data?.find((entry) => entry.model === execution.model || entry.id === execution.model);
     if (selected?.model !== execution.model)
@@ -410,6 +465,14 @@ function codexProtocol(channel: ProviderChannel, conversation: CodexConversation
     pending.clear();
   };
   return { receive, converse, interrupt, closed };
+}
+
+// invariant: an account requirement is `true` or absent; anything else is
+// refused before spawn.
+function accountFlag(value: unknown): boolean {
+  if (value !== undefined && value !== true)
+    throw codexError("VES_CODEX_SUBSCRIPTION_INVALID", "Codex subscription requirement is invalid");
+  return value === true;
 }
 
 export class CodexDriver implements Driver {
@@ -528,6 +591,7 @@ export class CodexDriver implements Driver {
           redact,
           threadParams: () => this.buildThreadParams(execution),
           onMessageSent: this.#dependencies.onMessageSent,
+          onAccount: this.#dependencies.onAccount,
           plan
         })
     });
@@ -552,13 +616,16 @@ export class CodexDriver implements Driver {
   // checks is refused before spawn on a build below the floor that has them.
   #sessionPlan(execution: CodexExecution, version: string): CodexSessionPlan {
     const structured = structuredOutputPlan(execution.structuredOutput, CODEX_NAMING);
-    const { subscriptionOnly } = execution;
-    if (subscriptionOnly !== undefined && subscriptionOnly !== true)
-      throw codexError("VES_CODEX_SUBSCRIPTION_INVALID", "Codex subscription requirement is invalid");
-    const usesNewProtocol = structured !== undefined || subscriptionOnly === true;
+    const subscriptionOnly = accountFlag(execution.subscriptionOnly);
+    const accountOnly = accountFlag(execution.accountOnly);
+    // why: a session that only reads the account has no turn to answer for
+    // and no rate limit to read, so neither may be asked of it.
+    if (accountOnly && (subscriptionOnly || structured !== undefined))
+      throw codexError("VES_CODEX_SUBSCRIPTION_INVALID", "Codex account-only session asks for a turn");
+    const usesNewProtocol = structured !== undefined || subscriptionOnly || accountOnly;
     if (usesNewProtocol && !meetsMinimum(version, CODEX_STRUCTURED_MINIMUM_VERSION, VERSION_PATTERN))
       throw codexError("VES_CODEX_VERSION_UNSUPPORTED", "Codex version is unsupported");
-    return Object.freeze({ structured, subscriptionOnly: subscriptionOnly === true });
+    return Object.freeze({ structured, subscriptionOnly, accountOnly });
   }
 
   #validateExecution(request: DriverStartRequest, execution: CodexExecution): void {

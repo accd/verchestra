@@ -16,9 +16,12 @@ import {
   BILLING_REGIMES,
   billingProviders,
   normalizeExtraUsageConfirmations,
+  requireStatedPlanType,
   requireSubscriptionPreflight,
+  statedCodexPlanType,
   subscriptionPreconditions
 } from "../../apps/vestra-cli/src/task/task-billing.ts";
+import { CODEX_PLAN_TYPES } from "../../packages/drivers/src/index.ts";
 import { normalizeTaskRequest } from "../../packages/application/src/index.ts";
 import { CONFIRMED_AT, extraUsageConfirmation } from "../helpers/task-billing-fixture.mjs";
 import { validTaskRequestV2 } from "../helpers/task-request-fixture.mjs";
@@ -95,6 +98,11 @@ for (const [label, value] of [
     "a plan type that is free text",
     confirmation({ codex: { ...CODEX, planType: "Plus plan for owner@example.invalid" } })
   ],
+  // why: SSI-49 and SSI-53. A word of the old grammar that names no plan Codex
+  // knows, a personal handle among them, is refused; so is Codex's catch-all.
+  ["a plan type Codex does not name", confirmation({ codex: { ...CODEX, planType: "chatgpt_plus" } })],
+  ["a handle in the shape of a plan type", confirmation({ codex: { ...CODEX, planType: "jsmith" } })],
+  ["the catch-all plan type unknown", confirmation({ codex: { ...CODEX, planType: "unknown" } })],
   ["a plan type on Claude Code", confirmation({ "claude-code": { ...CLAUDE, planType: "max" } })],
   ["a local time", confirmation({ codex: { ...CODEX, confirmedAt: "2026-10-04 09:00" } })],
   ["an impossible time", confirmation({ codex: { ...CODEX, confirmedAt: "2026-13-45T09:00:00Z" } })],
@@ -238,3 +246,27 @@ for (const [label, setting, requirement, auth] of [
     assert.equal(shown.preflight, requirement);
     assert.deepEqual(shown.auth, { "claude-code": "subscription", codex: "chatgpt" });
   });
+
+test("every plan type Codex names is a plan type a statement may name", () => {
+  for (const planType of CODEX_PLAN_TYPES) {
+    const [, codex] = normalizeExtraUsageConfirmations(confirmation({ codex: { ...CODEX, planType } }), PROVIDERS, NOW);
+    assert.equal(codex.planType, planType);
+  }
+});
+
+// invariant: SSI-52 and D3. The plan type the Codex account reports must be the
+// one the statement names; another one, or `unknown`, is not configured, and
+// the owner is told the two closed values.
+test("the plan type the account reports is compared with the one the statement names", async () => {
+  const read = normalizeExtraUsageConfirmations(confirmation(), PROVIDERS, NOW);
+  assert.equal(statedCodexPlanType(read), "plus");
+  assert.equal(statedCodexPlanType(read.filter((entry) => entry.provider !== "codex")), undefined);
+  const told = [];
+  requireStatedPlanType("plus", "plus", (value) => told.push(value));
+  assert.deepEqual(told, []);
+  for (const reported of ["pro", "unknown"]) {
+    const lines = [];
+    assert.throws(() => requireStatedPlanType("plus", reported, (value) => lines.push(value)), refused);
+    assert.match(lines.join(""), new RegExp(`plan type ${reported} .*task-billing\\.json names plus`, "u"));
+  }
+});

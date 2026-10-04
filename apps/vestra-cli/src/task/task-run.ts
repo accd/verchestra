@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { join } from "node:path";
 
 import { InMemoryExecutionPayloadStore, type ContextManifest } from "@verchestra/agent-runtime";
 import {
@@ -30,8 +31,14 @@ import {
 
 import { loadProviderAuth, type ProviderAuth, type ProviderAuthMode } from "../task-provider-auth.ts";
 import { TaskAuthority } from "./task-authority.ts";
-import { requireSubscriptionPreflight } from "./task-billing.ts";
+import {
+  requireStatedPlanType,
+  requireSubscriptionPreflight,
+  statedCodexPlanType,
+  type ExtraUsageConfirmation
+} from "./task-billing.ts";
 import { meterOnRunLedger, recordingMeter } from "./task-budget.ts";
+import { codexAccountPlanType } from "./task-codex.ts";
 import { requireCodexSubscription } from "./task-codex-identity.ts";
 import { continuation, coordinationStatus, type CoordinationStatus } from "./task-coordination-surface.ts";
 import { CODEX_CREDITS_PRESENT, coordinatedDriver } from "./task-coordination.ts";
@@ -166,6 +173,32 @@ async function verifierAccess(
   return { executable, identityDirectory };
 }
 
+// invariant: SSI-52. The plan type a coordinated run's Codex login reports is
+// read before the run's first transition and must be the one the owner's
+// statement names; a run whose statement names no Codex plan reads nothing.
+async function requireStatedCodexPlan(
+  io: TaskCommandIo,
+  workspace: TaskWorkspace,
+  plan: TaskPlanRecord,
+  verifier: VerifierAccess,
+  confirmations: readonly ExtraUsageConfirmation[]
+): Promise<void> {
+  const stated = statedCodexPlanType(confirmations);
+  if (stated === undefined || !("identityDirectory" in verifier)) return;
+  const reported = await codexAccountPlanType({
+    workspaceId: workspace.workspaceId,
+    runId: plan.runId,
+    manifestId: plan.contextManifestDigest,
+    model: plan.request.verifier.model,
+    executable: verifier.executable,
+    identityDirectory: verifier.identityDirectory,
+    env: io.env,
+    sessionRoot: join(workspace.layout.sessionsRoot, `codex-account-${plan.runId}`),
+    stderr: io.stderr
+  });
+  requireStatedPlanType(stated, reported, io.stderr);
+}
+
 // why: every requirement a run needs is proven before its first transition,
 // so a missing credential, executable, or allowlist entry is `not
 // configured` with no workflow change, worktree, or provider call behind it.
@@ -177,13 +210,14 @@ async function prepare(
   runRecord: RunRecord
 ) {
   const auth = await loadProviderAuth(workspace.layout.workspaceRoot);
-  if (isCoordinatedPlan(plan))
-    await requireSubscriptionPreflight({
-      workspaceRoot: workspace.layout.workspaceRoot,
-      auth,
-      request: plan.request,
-      stderr: io.stderr
-    });
+  const confirmations = isCoordinatedPlan(plan)
+    ? await requireSubscriptionPreflight({
+        workspaceRoot: workspace.layout.workspaceRoot,
+        auth,
+        request: plan.request,
+        stderr: io.stderr
+      })
+    : [];
   const implementerCredential = IMPLEMENTER_CREDENTIALS[auth.implementer];
   // invariant: a run reads exactly the credentials its modes name. A verifier
   // on a subscription reads none here; its login is proven below instead.
@@ -205,6 +239,7 @@ async function prepare(
     claude: providerModels(plan.request).claude.length === 0 ? "none" : auth.implementer
   });
   const verifier = await verifierAccess(io, workspace, codex, credentials.get(VERIFIER_CREDENTIAL));
+  await requireStatedCodexPlan(io, workspace, plan, verifier, confirmations);
   const gates = await loadGateAllowlist(workspace, plan.request);
   const policy = await loadTaskPolicy(io.controlRoot);
   const authority = new TaskAuthority({ runtime, plan, policy, trust: await workspaceTrustRoot(workspace) });
