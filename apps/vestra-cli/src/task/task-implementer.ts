@@ -9,9 +9,15 @@ import {
   type ContextManifest
 } from "@verchestra/agent-runtime";
 import type { ExecutionDriverPort, NormalizedTaskRequest } from "@verchestra/application";
-import { CLAUDE_PROFILE_CREDENTIAL_VARIABLES, ClaudeCodeDriver, type DriverStartRequest } from "@verchestra/drivers";
+import {
+  CLAUDE_PROFILE_CREDENTIAL_VARIABLES,
+  ClaudeCodeDriver,
+  type ClaudeOwnerOnlyProof,
+  type DriverStartRequest
+} from "@verchestra/drivers";
 import {
   WindowsNamedPipeBridgeTransport,
+  proveOwnerOnlyDirectory,
   registryKeyPresent,
   type NodeGitWorktreeAdapter
 } from "@verchestra/platform-node";
@@ -32,17 +38,26 @@ const PROFILES = Object.freeze({
 // why: the mediated profile passes through only these locale and search
 // variables; identity directories are created per run by the driver.
 const PASS_THROUGH = ["PATH", "LANG", "LC_ALL", "LC_CTYPE", "TZ", "TMPDIR"] as const;
+// why: the Windows equivalents. A child there cannot start Winsock without
+// SystemRoot, so a provider could not reach its service nor the relay its
+// channel, and it finds its temporary directory in TEMP and TMP; Windows reads
+// no locale from the environment.
+const WINDOWS_PASS_THROUGH = ["PATH", "SystemRoot", "TEMP", "TMP", "TZ"] as const;
 
 // invariant: provider executables are found on the invoking user's PATH and
 // pinned as absolute paths before any effect; a missing one is `not
 // configured`, never a fallback to something else.
+// why: on Windows only a native `<name>.exe` is taken. A `.cmd` or `.ps1`
+// shim on PATH would need a shell to start, and no provider runs through one.
 export async function findExecutable(
   name: "claude" | "codex",
-  env: Readonly<Record<string, string | undefined>>
+  env: Readonly<Record<string, string | undefined>>,
+  platform: string = process.platform
 ): Promise<string> {
+  const file = platform === "win32" ? `${name}.exe` : name;
   for (const directory of (env["PATH"] ?? "").split(delimiter)) {
     if (!isAbsolute(directory)) continue;
-    const candidate = join(directory, name);
+    const candidate = join(directory, file);
     const metadata = await stat(candidate).catch(() => undefined);
     if (
       metadata?.isFile() === true &&
@@ -56,9 +71,12 @@ export async function findExecutable(
   throw notConfigured(`executable:${name}`, `${name} is not installed on PATH`);
 }
 
-export function passThroughEnvironment(env: Readonly<Record<string, string | undefined>>): Record<string, string> {
+export function passThroughEnvironment(
+  env: Readonly<Record<string, string | undefined>>,
+  platform: string = process.platform
+): Record<string, string> {
   const result: Record<string, string> = {};
-  for (const key of PASS_THROUGH) {
+  for (const key of platform === "win32" ? WINDOWS_PASS_THROUGH : PASS_THROUGH) {
     const value = env[key];
     if (value !== undefined && !/[\0\r\n]/u.test(value)) result[key] = value;
   }
@@ -99,10 +117,33 @@ export function implementerPrompt(
 
 // why: agent-runtime may not import platform-node, so the composition hands
 // the bridge its Windows channel, as it hands the drivers the tree terminator;
-// elsewhere the bridge keeps its Unix socket. The task path stays refused on
-// Windows until that channel qualifies there (SSI-77), so nothing reaches it yet.
+// elsewhere the bridge keeps its Unix socket.
 export function implementerBridgeTransport(platform: NodeJS.Platform): BridgeTransport | undefined {
   return platform === "win32" ? new WindowsNamedPipeBridgeTransport() : undefined;
+}
+
+// why: Claude Code may start its MCP server with the server's own environment
+// alone, and the relay, a Node child, cannot start Winsock on Windows without
+// SystemRoot. Windows reads variable names without regard to case, and the
+// driver takes only upper-case names for the relay.
+export function relayEnvironment(
+  bridgeEnvironment: Readonly<Record<string, string>>,
+  env: Readonly<Record<string, string | undefined>>,
+  platform: string = process.platform
+): Readonly<Record<string, string>> {
+  const root = platform === "win32" ? passThroughEnvironment(env, platform)["SystemRoot"] : undefined;
+  return root === undefined ? bridgeEnvironment : { ...bridgeEnvironment, SYSTEMROOT: root };
+}
+
+// why: Windows ignores the 0700 mode of the directory that holds the bridge
+// token, so there the driver proves it owner-only with the same ACL routine
+// the pipe's directory uses; elsewhere the mode is the control.
+export function isolationProof(platform: string): { readonly ownerOnlyProof?: ClaudeOwnerOnlyProof } {
+  return platform === "win32" ? { ownerOnlyProof: provenOwnerOnly } : {};
+}
+
+export async function provenOwnerOnly(directory: string): Promise<boolean> {
+  return (await proveOwnerOnlyDirectory(directory)).proven;
 }
 
 // invariant: one Claude Code session through the mediated bridge, as the
@@ -163,7 +204,8 @@ export function claudeSessionAdapter(options: ClaudeSessionOptions): ExecutionDr
           environment: passThroughEnvironment(options.env),
           isolationRoot: options.isolationRoot,
           // why: the driver can read no registry; only Windows has policy keys to read.
-          managedPolicyRegistry: registryKeyPresent
+          managedPolicyRegistry: registryKeyPresent,
+          ...isolationProof(process.platform)
         },
         terminateTree: session.terminateTree,
         onSpawn: session.onSpawn,
@@ -173,7 +215,10 @@ export function claudeSessionAdapter(options: ClaudeSessionOptions): ExecutionDr
           model,
           environment: { [CLAUDE_PROFILE_CREDENTIAL_VARIABLES[kind]]: options.credential },
           sensitiveValues: [options.credential],
-          mediation: { cwd: worktreePath, bridge },
+          mediation: {
+            cwd: worktreePath,
+            bridge: { command: bridge.command, environment: relayEnvironment(bridge.environment, options.env) }
+          },
           ...(options.structuredOutput === undefined ? {} : { structuredOutput: options.structuredOutput })
         })
       })

@@ -9,11 +9,19 @@
 import assert from "node:assert/strict";
 import { execSync, spawnSync } from "node:child_process";
 import { readFileSync, readdirSync } from "node:fs";
+import { mkdir, writeFile } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
-import "../helpers/deny-keychain-spawn.mjs";
+import { pipeHelperInvocation } from "../helpers/deny-keychain-spawn.mjs";
+import {
+  PIPE_HELPER_SCRIPT,
+  POWERSHELL_7_EXECUTABLE,
+  POWERSHELL_HELPER_FLAGS,
+  freshPipeName
+} from "../../packages/platform-node/src/windows-pipe-transport.ts";
+import { temporaryDirectory } from "../helpers/temporary-directory.mjs";
 
 const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
 const testsRoot = join(repoRoot, "tests");
@@ -89,6 +97,37 @@ test("the spawn guard refuses every credential tool in process", () => {
   for (const command of ["secret-tool lookup a b", '"C:\\x\\powershell.exe" -Command -', "/usr/bin/security help"])
     assert.throws(() => execSync(command), /use a fake or spy runner/u, command);
   assert.equal(spawnSync(process.execPath, ["--version"], { encoding: "utf8" }).status, 0);
+});
+
+// invariant: the guard lets one PowerShell start through, the bridge's pipe
+// helper exactly as the named-pipe transport starts it, and refuses every
+// near miss before anything is spawned.
+test("the spawn guard lets through only the bridge's exact pipe helper", async (t) => {
+  const directory = await temporaryDirectory(t, "verchestra-guard-");
+  const script = join(directory, "pipe-helper.ps1");
+  await writeFile(script, PIPE_HELPER_SCRIPT);
+  await mkdir(join(directory, "edited"));
+  const edited = join(directory, "edited", "pipe-helper.ps1");
+  await writeFile(edited, `${PIPE_HELPER_SCRIPT}Get-Credential\n`);
+  const renamed = join(directory, "helper.ps1");
+  await writeFile(renamed, PIPE_HELPER_SCRIPT);
+  const name = freshPipeName();
+  const flags = [...POWERSHELL_HELPER_FLAGS];
+  assert.equal(pipeHelperInvocation(POWERSHELL_7_EXECUTABLE, [...flags, script, name]), true);
+  for (const [file, args] of [
+    ["C:\\Program Files\\PowerShell\\7-preview\\pwsh.exe", [...flags, script, name]],
+    ["C:\\Users\\owner\\pwsh.exe", [...flags, script, name]],
+    [POWERSHELL_7_EXECUTABLE, [...flags.slice(0, -1), "-Command", script, name]],
+    [POWERSHELL_7_EXECUTABLE, [...flags, edited, name]],
+    [POWERSHELL_7_EXECUTABLE, [...flags, renamed, name]],
+    [POWERSHELL_7_EXECUTABLE, [...flags, join(directory, "missing", "pipe-helper.ps1"), name]],
+    [POWERSHELL_7_EXECUTABLE, [...flags, script, "verchestra-not-a-name"]],
+    [POWERSHELL_7_EXECUTABLE, [...flags, script, name, "-EncodedCommand"]],
+    [POWERSHELL_7_EXECUTABLE, [...flags, script]]
+  ]) {
+    assert.equal(pipeHelperInvocation(file, args), false, `${file} ${args.join(" ")}`);
+    assert.throws(() => spawnSync(file, args), /use a fake or spy runner/u, `${file} ${args.join(" ")}`);
+  }
 });
 
 test("the real-keychain suite is standalone and outside every gate", () => {

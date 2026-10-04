@@ -8,7 +8,7 @@ import {
   ClaudeCodeDriver
 } from "../../packages/drivers/src/index.ts";
 import { claudeFixture, fakeClaudePath } from "../helpers/claude-driver-fixture.mjs";
-import { WIN32_HOST, mediationRefusedOnWin32 } from "../helpers/mediation-platform.mjs";
+import { WIN32_HOST, windowsMediationPath } from "../helpers/mediation-platform.mjs";
 
 test("the driver allowlist and the bridge advertise the same five qualified tools", () => {
   assert.deepEqual([...CLAUDE_MEDIATED_TOOLS], [...MCP_BRIDGE_QUALIFIED_TOOLS]);
@@ -43,24 +43,8 @@ test("the T03 profile keeps its exact invocation for existing callers", () => {
   ]);
 });
 
-// invariant: the bridge reaches its controller over a Unix socket, so Windows
-// refuses the mediated profile at construction, before any spawn; the exact
-// invocation is asserted wherever the profile is supported.
-test("the mediated profile refuses Windows before anything is spawned", () => {
-  if (process.platform !== "win32") return;
-  assert.throws(
-    () =>
-      new ClaudeCodeDriver({
-        command: [process.execPath, fakeClaudePath],
-        profile: { kind: "mediated-mcp" },
-        resolveExecution: async () => assert.fail("not reached")
-      }),
-    { code: "VES_CLAUDE_MEDIATION_UNSUPPORTED" }
-  );
-});
-
 test("the mediated profile builds its exact qualified invocation", (t) => {
-  if (WIN32_HOST) return mediationRefusedOnWin32(t);
+  if (WIN32_HOST) return windowsMediationPath(t);
   const driver = new ClaudeCodeDriver({
     command: [process.execPath, fakeClaudePath],
     profile: { kind: "mediated-mcp" },

@@ -25,7 +25,7 @@ import {
   RuntimeStore
 } from "../../packages/platform-node/src/index.ts";
 import { cleanupBridges, startRelay } from "../helpers/mcp-bridge-fixture.mjs";
-import { WIN32_HOST, mediationRefusedOnWin32 } from "../helpers/mediation-platform.mjs";
+import { WIN32_HOST, windowsMediationPath } from "../helpers/mediation-platform.mjs";
 import { systemGit } from "../helpers/system-git.mjs";
 
 const roots = [];
@@ -267,7 +267,7 @@ for (const [target, refusal] of [
   ["CLI.js", "denied: VES_EXECUTOR_SCOPE_DENIED"]
 ]) {
   test(`a write to ${JSON.stringify(target)} is refused before any effect and never committed`, async (t) => {
-    if (WIN32_HOST) return mediationRefusedOnWin32(t);
+    if (WIN32_HOST) return windowsMediationPath(t);
     const { answer, committed, failed, fixture } = await bridgeJourney(target);
     assert.deepEqual(
       { answer, committed, failed },

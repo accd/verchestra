@@ -20,7 +20,7 @@ import {
   mediatedFixture
 } from "../helpers/claude-mediated-fixture.mjs";
 import { claudeFixture } from "../helpers/claude-driver-fixture.mjs";
-import { WIN32_HOST, mediationRefusedOnWin32 } from "../helpers/mediation-platform.mjs";
+import { WIN32_HOST, windowsMediationPath } from "../helpers/mediation-platform.mjs";
 
 afterEach(cleanupMediatedFixtures);
 
@@ -45,7 +45,7 @@ const builder = (kind) =>
   });
 
 test("a structured session adds the schema and names the structured-output tool, and nothing else", (t) => {
-  if (WIN32_HOST) return mediationRefusedOnWin32(t);
+  if (WIN32_HOST) return windowsMediationPath(t);
   assert.equal(CLAUDE_STRUCTURED_OUTPUT_TOOL, "StructuredOutput");
   for (const [kind, build] of [
     ["mediated-mcp", (driver, ...rest) => driver.buildMediatedArguments(...rest)],
@@ -66,7 +66,7 @@ test("a structured session adds the schema and names the structured-output tool,
 });
 
 test("a structured success becomes one bounded structured result and the structured-output call is no tool request", async (t) => {
-  if (WIN32_HOST) return mediationRefusedOnWin32(t);
+  if (WIN32_HOST) return windowsMediationPath(t);
   for (const scenario of ["structured", "structured-unlisted"]) {
     const fixture = await mediatedFixture({ kind: SUBSCRIPTION, scenario, execution: structured() });
     const { events, closed } = await fixture.run();
@@ -86,7 +86,7 @@ test("a structured success becomes one bounded structured result and the structu
 });
 
 test("a structured session fails when the provider gives no structured result", async (t) => {
-  if (WIN32_HOST) return mediationRefusedOnWin32(t);
+  if (WIN32_HOST) return windowsMediationPath(t);
   for (const [scenario, expected] of [
     [
       "structured-missing",
@@ -117,7 +117,7 @@ test("a structured session fails when the provider gives no structured result", 
 });
 
 test("a structured result beyond its bound is refused before it is emitted", async (t) => {
-  if (WIN32_HOST) return mediationRefusedOnWin32(t);
+  if (WIN32_HOST) return windowsMediationPath(t);
   const fixture = await mediatedFixture({ kind: SUBSCRIPTION, scenario: "structured", execution: structured(52) });
   const { events, closed } = await fixture.run();
   assert.deepEqual(types(events), [
@@ -134,7 +134,7 @@ test("a structured result beyond its bound is refused before it is emitted", asy
 });
 
 test("a session that did not ask for a structured result refuses the structured-output tool", async (t) => {
-  if (WIN32_HOST) return mediationRefusedOnWin32(t);
+  if (WIN32_HOST) return windowsMediationPath(t);
   const listed = await mediatedFixture({ kind: SUBSCRIPTION, scenario: "structured-tool-unasked" });
   assert.deepEqual(mediatedErrors((await listed.run()).events), ["VES_CLAUDE_TOOL_SURFACE_UNEXPECTED"]);
   const called = await mediatedFixture({ kind: SUBSCRIPTION, scenario: "structured-call-unasked" });
@@ -147,7 +147,7 @@ test("a session that did not ask for a structured result refuses the structured-
 });
 
 test("a structured output request is refused before spawn unless it is a bounded schema on a mediated profile", async (t) => {
-  if (WIN32_HOST) return mediationRefusedOnWin32(t);
+  if (WIN32_HOST) return windowsMediationPath(t);
   for (const structuredOutput of [
     { schema: SCHEMA },
     { schema: SCHEMA, maxBytes: 0 },
@@ -170,7 +170,7 @@ test("a structured output request is refused before spawn unless it is a bounded
 });
 
 test("the subscription profile fails a session whose effective credential is not the subscription", async (t) => {
-  if (WIN32_HOST) return mediationRefusedOnWin32(t);
+  if (WIN32_HOST) return windowsMediationPath(t);
   const fixture = await mediatedFixture({ kind: SUBSCRIPTION, scenario: "api-key-source" });
   const { events, closed } = await fixture.run();
   assert.deepEqual(types(events), ["error:VES_CLAUDE_AUTH_METHOD_MISMATCH", "session.closed"]);
@@ -185,7 +185,7 @@ test("the subscription profile fails a session whose effective credential is not
 });
 
 test("a rejected rate limit reports quota exhaustion with the reset the provider gave", async (t) => {
-  if (WIN32_HOST) return mediationRefusedOnWin32(t);
+  if (WIN32_HOST) return windowsMediationPath(t);
   for (const [scenario, quota] of [
     ["rate-rejected", { type: "quota.exhausted", scope: "five_hour", resetsAt: "2026-09-21T14:13:20.000Z" }],
     ["rate-rejected-no-reset", { type: "quota.exhausted", scope: "seven_day" }]
@@ -212,7 +212,7 @@ test("a rejected rate limit reports quota exhaustion with the reset the provider
 });
 
 test("a usage warning is recorded once and the session continues", async (t) => {
-  if (WIN32_HOST) return mediationRefusedOnWin32(t);
+  if (WIN32_HOST) return windowsMediationPath(t);
   const fixture = await mediatedFixture({ kind: SUBSCRIPTION, scenario: "rate-warning" });
   const { events, closed } = await fixture.run();
   const warnings = events.filter((event) => event.type === "warning");

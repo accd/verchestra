@@ -21,6 +21,7 @@ import {
   CREDENTIALS,
   DARWIN,
   MODE_CREDENTIALS,
+  WIN32,
   approveArguments,
   cleanupTaskFixtures,
   taskFixture
@@ -170,20 +171,12 @@ function exited(child) {
   return new Promise((resolve) => child.once("close", (code, signal) => resolve({ code, signal })));
 }
 
-// invariant: the fixture's environment carries no session bus, so on Linux the
-// Secret Service is unreachable and must be reported as a store that is not
-// configured; on Windows the credential is simply unbound. Either way the
-// refusal comes before any task state exists.
 test(
-  "off macOS the task path reports its missing platform or credential store as not configured before any effect",
+  "off macOS the task path reports its missing credential store or credential as not configured before any effect",
   TIMEOUT,
   async (t) => {
     if (DARWIN) return t.diagnostic("macOS runs the full journeys below");
-    const fixture = await taskFixture();
-    const plan = fixture.launch(["task", "plan", "--request", fixture.requestPath, "--output", "json"]);
-    const error = refused(plan, "VES_TASK_NOT_CONFIGURED", "plan");
-    assert.equal(error.safeDetails.requirement, process.platform === "win32" ? "platform" : "credential-store");
-    assert.equal(existsSync(join(fixture.stateRoot, "tasks")), false);
+    return notConfiguredOffMacOS(t);
   }
 );
 
@@ -782,9 +775,8 @@ function dryRunArguments(fixture) {
 
 // invariant: a dry run prints the surface a real plan would bind and writes
 // nothing: no Run record, no runtime store, no evidence key. It reads no
-// credential, so it runs wherever the task path is not refused outright.
-test("a dry run prints the plan surface and leaves the Workspace state as it was", TIMEOUT, async (t) => {
-  if (process.platform === "win32") return t.diagnostic("the task path is refused on Windows");
+// credential, so it runs on every platform, Windows included.
+test("a dry run prints the plan surface and leaves the Workspace state as it was", TIMEOUT, async () => {
   const fixture = await taskFixture();
   const before = stateListing(fixture);
   const plan = ok(fixture.launch(dryRunArguments(fixture)), "dry run");
@@ -827,8 +819,7 @@ function coordinatedOverrides(edges) {
   };
 }
 
-test("a v2 request plans in a dry run and presents its descriptor in place of an implementer", TIMEOUT, async (t) => {
-  if (process.platform === "win32") return t.diagnostic("the task path is refused on Windows");
+test("a v2 request plans in a dry run and presents its descriptor in place of an implementer", TIMEOUT, async () => {
   const fixture = await taskFixture();
   await fixture.writeRequest(coordinatedOverrides([{ from: "plan", to: "build" }]));
   const before = stateListing(fixture);
@@ -872,8 +863,7 @@ test("a v2 request plans in a dry run and presents its descriptor in place of an
   assert.deepEqual(stateListing(fixture), before);
 });
 
-test("a v2 descriptor with a cycle is rejected at plan time and nothing is written", TIMEOUT, async (t) => {
-  if (process.platform === "win32") return t.diagnostic("the task path is refused on Windows");
+test("a v2 descriptor with a cycle is rejected at plan time and nothing is written", TIMEOUT, async () => {
   const fixture = await taskFixture();
   await fixture.writeRequest(
     coordinatedOverrides([
@@ -897,8 +887,7 @@ test("a v2 descriptor with a cycle is rejected at plan time and nothing is writt
 test(
   "a task state root that links out of the Workspace is refused with nothing written through it",
   TIMEOUT,
-  async (t) => {
-    if (process.platform === "win32") return t.diagnostic("the task path is refused on Windows");
+  async () => {
     for (const name of ["tasks", "keys", "verification"]) {
       const fixture = await taskFixture();
       const outside = join(fixture.root, "outside-state");
@@ -960,14 +949,18 @@ test("cancel kills everything the implementer started, including a process that 
 });
 
 // invariant: off macOS these journeys cannot run, and each of them asserts why
-// instead of passing without an assertion: on Windows every task command is
-// refused for the platform, and on Linux the fixture has no credential store.
+// instead of passing without an assertion, before any task state exists. On
+// Linux the fixture's environment carries no session bus, so the Secret
+// Service is unreachable and reported as a store that is not configured. On
+// Windows, whose journey over the named pipe is task-windows-e2e.test.mjs,
+// the fixture's Credential Manager holds nothing, so the signing credential
+// the plan reads first is unbound.
 function notConfiguredOffMacOS(t) {
   t.diagnostic("off macOS: asserting that the task path reports not configured before any effect");
-  return taskFixture().then((fixture) => {
+  return taskFixture(WIN32 ? { credentials: {} } : {}).then((fixture) => {
     const plan = fixture.launch(["task", "plan", "--request", fixture.requestPath, "--output", "json"]);
     const error = refused(plan, "VES_TASK_NOT_CONFIGURED", "plan");
-    assert.equal(error.safeDetails.requirement, process.platform === "win32" ? "platform" : "credential-store");
+    assert.equal(error.safeDetails.requirement, WIN32 ? "evidence-signing-passphrase" : "credential-store");
     assert.equal(existsSync(join(fixture.stateRoot, "tasks")), false);
   });
 }
@@ -1192,10 +1185,7 @@ test(
     const before = linkListing(outside);
     for (const [name, argv] of runCommands(fixture, runId)) {
       const result = fixture.launch(argv);
-      if (process.platform === "win32") {
-        const error = refused(result, "VES_TASK_NOT_CONFIGURED", name);
-        assert.equal(error.safeDetails.requirement, "platform");
-      } else assert.deepEqual(refused(result, "VES_STATE_ROOT_ESCAPE", name).safeDetails, {});
+      assert.deepEqual(refused(result, "VES_STATE_ROOT_ESCAPE", name).safeDetails, {});
       assert.deepEqual(linkListing(outside), before, `task ${name} changed something behind the link`);
     }
   }

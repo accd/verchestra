@@ -16,7 +16,7 @@ import { fakeMediatedClaude } from "../helpers/claude-mediated-fixture.mjs";
 import { codexFixture } from "../helpers/codex-driver-fixture.mjs";
 import { mockRequest } from "../helpers/driver-protocol-fixture.mjs";
 import { cleanupBridges, relayEntry } from "../helpers/mcp-bridge-fixture.mjs";
-import { WIN32_HOST, mediationRefusedOnWin32 } from "../helpers/mediation-platform.mjs";
+import { WIN32_HOST, windowsMediationPath } from "../helpers/mediation-platform.mjs";
 import { executorInput } from "../helpers/task-executor-fixture.mjs";
 
 const TOKEN = "subscription-token-security-value";
@@ -160,7 +160,7 @@ async function claudeThroughAdapter(scenario) {
 }
 
 test("a structured Claude session hands on only its canonical answer, with no token, session, or path", async (t) => {
-  if (WIN32_HOST) return mediationRefusedOnWin32(t);
+  if (WIN32_HOST) return windowsMediationPath(t);
   const { result, checkpoints, payloads, root } = await claudeThroughAdapter("structured");
   assert.equal(result.status, "completed");
   assert.equal(result.outputRefs.length, 1);
@@ -171,7 +171,7 @@ test("a structured Claude session hands on only its canonical answer, with no to
 });
 
 test("a Claude quota refusal carries only its code, scope, and reset", async (t) => {
-  if (WIN32_HOST) return mediationRefusedOnWin32(t);
+  if (WIN32_HOST) return windowsMediationPath(t);
   const { error, checkpoints, root } = await claudeThroughAdapter("rate-rejected");
   assert.equal(error.code, "VES_DRIVER_QUOTA_EXHAUSTED");
   assert.deepEqual(error.quota, { scope: "five_hour", resetsAt: "2026-09-21T14:13:20.000Z" });

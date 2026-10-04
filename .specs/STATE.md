@@ -2860,6 +2860,67 @@ note. -->
   landed effects (a crash under concurrency above 1) refuse each other's
   reconciliation and leave only `task cancel`.
 
+### AD-080 — The governed task path runs on Windows over the qualified named pipe, with every Windows prerequisite proven before the run
+
+- **Status:** proposed (T7 commit 4 of
+  `.specs/features/strands-subscription-integration/`; owner decision D6). The
+  Windows leg of the platform matrix passed the eight real named-pipe cases of
+  T7 commits 1 to 3 (run 37162941507), so this commit, and only this commit,
+  supersedes the Windows clause of AD-039 ("Windows reports not configured")
+  and the Windows limit AD-040 records in its consequence (AD-074 calls it item
+  7), as AD-074 provides.
+- **Context:** Three refusals kept the Windows path closed (SSI-77): the
+  bridge without a transport, the mediated Claude Code profile, and every
+  `vestra task` command. The transport's own `not configured` and the
+  driver's managed-policy refusal surfaced only inside the run, after its
+  first transition and its worktree.
+- **Decision:**
+  1. `vestra task` no longer refuses Windows, and the mediated profiles no
+     longer refuse it at construction. The bridge still opens on Windows only
+     over the transport the composition hands it; a caller that brings none is
+     refused with `VES_BRIDGE_TRANSPORT_REQUIRED`, since Windows has no Unix
+     socket.
+  2. Before a Windows run's first transition, and only when the plan runs a
+     Claude Code session, the CLI opens and closes one pipe channel (PowerShell
+     7, its logging policy, and its directory's ACL), proves a probe directory
+     under the sessions root owner-only, and, for the subscription profile,
+     reads the managed-policy directory and both policy keys. Each missing
+     prerequisite is `VES_TASK_NOT_CONFIGURED` naming it (`powershell-7`,
+     `powershell-logging-off`, `owner-only-acl`, `claude-managed-policy`).
+     The transport, the driver, and the policy check still refuse at their own
+     place, so a change made after the check is still refused.
+  3. The per-run Claude Code isolation directory, which holds the bridge token
+     in `config/mcp.json`, is made owner-only through its ACL by the same
+     `windows-acl.ts` routine as the pipe's directory, while it is still empty;
+     on Windows a mediated profile without that proof is refused at
+     construction, and a failed proof is `VES_CLAUDE_ISOLATION_INSECURE` before
+     Claude Code starts.
+  4. A provider child on Windows gets `PATH`, `SystemRoot`, `TEMP`, `TMP`, and
+     `TZ`, its per-run home in both `HOME` and `USERPROFILE`, and nothing of
+     the Unix list; the relay's MCP-config environment carries `SYSTEMROOT`
+     beside the bridge variables. Only a native `<name>.exe` on `PATH` is
+     taken as a provider, never a `.cmd` or `.ps1` shim. macOS and Linux keep
+     every list and lookup as they were.
+- **Alternatives rejected:** keeping `VES_BRIDGE_PLATFORM_UNSUPPORTED` for a
+  caller without a transport (Windows is supported; what such a caller lacks is
+  the transport); a default pipe transport inside agent-runtime (it may not
+  import platform-node); checking the prerequisites only inside the run (a
+  missing prerequisite would cost a transition and a worktree); trusting the
+  inherited ACL of the sessions root (a user's profile ACL also admits SYSTEM
+  and Administrators, and a relocated state root may admit more); starting a
+  `.cmd` shim through `cmd.exe` (a shell between Verchestra and the provider's
+  arguments); relying on libuv, which adds `SYSTEMROOT`, `TEMP`, and the other
+  variables Windows needs to a child spawned from Node when they are absent
+  (the relay is started by Claude Code, not by Node, and the list stays
+  explicit).
+- **Consequence:** PowerShell 7 at its pinned path, an ACL-capable volume, and
+  native `claude.exe` and `codex.exe` on `PATH` are prerequisites of a Windows
+  run. A Windows run pays one PowerShell 7 start for the check and one per
+  Claude Code session. On Windows libuv adds the variables Windows needs
+  (among them `USERNAME`, `USERDOMAIN`, `HOMEDRIVE`, `HOMEPATH`) to a child
+  started from Node when they are absent; none is a credential. The live Windows pilot (D6) stays
+  owner-run.
+
 ## Handoff
 
 - **Feature:** `subscription-provider-auth` (ADP-A, tasks TA1 and TA2) on

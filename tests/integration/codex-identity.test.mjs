@@ -7,10 +7,11 @@
 // invariant: every case that starts the fake asserts, on POSIX, that the fake
 // really answered (its own observation names the login it reported), so a fake
 // that died before answering can never pass as "not logged in". On Windows the
-// governed task path is refused before any Codex check, and the fake's fixture
-// channel is not qualified there, so each of those cases asserts that refusal
-// instead: no case is skipped and none passes without asserting. The cases that
-// start no process run and assert on every platform.
+// fake's POSIX wrapper is no provider the task path starts, and the fake's
+// fixture channel is not qualified there, so each of those cases asserts that
+// refusal instead: no case is skipped and none passes without asserting. The
+// Windows Codex check runs in tests/e2e/task-windows-e2e.test.mjs. The cases
+// that start no process run and assert on every platform.
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, readFile, readdir, realpath, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
@@ -27,7 +28,7 @@ import {
   requireCodexSubscription
 } from "../../apps/vestra-cli/src/task/task-codex-identity.ts";
 import { runCodexVerifier } from "../../apps/vestra-cli/src/task/task-codex.ts";
-import { executeTaskCommand } from "../../apps/vestra-cli/src/task/task-command.ts";
+import { verifierRefusedOnWin32 } from "../helpers/codex-verifier-fixture.mjs";
 
 const fakeCodex = fileURLToPath(new URL("../helpers/task-cli-fakes/fake-codex-task.mjs", import.meta.url));
 const POSIX = process.platform !== "win32";
@@ -118,26 +119,8 @@ test("a link in place of the identity directory is refused", async (t) => {
   assert.deepEqual(await readdir(elsewhere), []);
 });
 
-// invariant: on Windows every `vestra task` command is refused with requirement
-// `platform` before it reads a request, opens state, or touches a credential,
-// so neither the Codex login check nor a verifier session is reachable there.
-// A case that needs the fake asserts exactly that refusal on win32, following
-// tests/helpers/mediation-platform.mjs, instead of skipping.
-async function taskPathRefusedOnWindows(t) {
-  t.diagnostic("win32: asserting the governed task path is refused instead");
-  for (const name of ["task start", "task resume", "task status"])
-    await assert.rejects(
-      executeTaskCommand(
-        { name, options: { "run-id": "run_018f0000-0000-7000-8000-000000001502" } },
-        { controlRoot: tmpdir(), platform: "win32", env: {}, stdin: process.stdin, stderr: () => undefined, pid: 1 }
-      ),
-      (error) => {
-        assert.equal(error.envelope.code, "VES_TASK_NOT_CONFIGURED");
-        assert.equal(error.envelope.safeDetails.requirement, "platform");
-        return true;
-      }
-    );
-}
+// why: the cases that start the fake follow tests/helpers/codex-verifier-fixture.mjs on win32.
+const taskPathRefusedOnWindows = verifierRefusedOnWin32;
 
 test("a ChatGPT login is accepted and its check never sees the invoking home or an ambient key", async (t) => {
   if (!POSIX) return taskPathRefusedOnWindows(t);

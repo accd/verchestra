@@ -56,6 +56,7 @@ import { openRunRecord, type GateCheckpoint, type RunCheckpoints, type RunRecord
 import { workspaceTrustRoot } from "./task-signing.ts";
 import { branchName, reviewSurface } from "./task-surface.ts";
 import { verifyTask } from "./task-verifier.ts";
+import { requireWindowsPrerequisites } from "./task-windows.ts";
 import { applyWorkflow, currentRun } from "./task-workflow.ts";
 import { openRuntime, openTaskWorkspace, parseRunId, type TaskWorkspace } from "./task-workspace.ts";
 
@@ -188,7 +189,15 @@ async function prepare(
     },
     auth.verifier === "api-key" ? [implementerCredential, VERIFIER_CREDENTIAL] : [implementerCredential]
   );
-  const [claude, codex] = await Promise.all([findExecutable("claude", io.env), findExecutable("codex", io.env)]);
+  const [claude, codex] = await Promise.all([
+    findExecutable("claude", io.env, io.platform),
+    findExecutable("codex", io.env, io.platform)
+  ]);
+  await requireWindowsPrerequisites({
+    platform: io.platform,
+    sessionsRoot: workspace.layout.sessionsRoot,
+    claude: providerModels(plan.request).claude.length === 0 ? "none" : auth.implementer
+  });
   const verifier = await verifierAccess(io, workspace, codex, credentials.get(VERIFIER_CREDENTIAL));
   const gates = await loadGateAllowlist(workspace, plan.request);
   const policy = await loadTaskPolicy(io.controlRoot);

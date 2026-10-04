@@ -20,7 +20,7 @@ import {
   mediatedErrors,
   mediatedFixture
 } from "../helpers/claude-mediated-fixture.mjs";
-import { WIN32_HOST, mediationRefusedOnWin32 } from "../helpers/mediation-platform.mjs";
+import { WIN32_HOST, windowsMediationPath } from "../helpers/mediation-platform.mjs";
 
 afterEach(cleanupMediatedFixtures);
 
@@ -46,7 +46,7 @@ test("the subscription settings switch off hooks and auto memory and nothing els
 });
 
 test("the subscription profile builds its exact qualified invocation", (t) => {
-  if (WIN32_HOST) return mediationRefusedOnWin32(t);
+  if (WIN32_HOST) return windowsMediationPath(t);
   assert.deepEqual(
     driver(SUBSCRIPTION).buildSubscriptionArguments("claude-sonnet-5", "/run/config/mcp.json").slice(1),
     [
@@ -84,7 +84,7 @@ test("the subscription profile builds its exact qualified invocation", (t) => {
 });
 
 test("the two mediated invocations differ only by --bare and the flags that replace it", (t) => {
-  if (WIN32_HOST) return mediationRefusedOnWin32(t);
+  if (WIN32_HOST) return windowsMediationPath(t);
   const bare = driver("mediated-mcp").buildMediatedArguments("claude-sonnet-5", "/run/config/mcp.json");
   const subscription = driver(SUBSCRIPTION).buildSubscriptionArguments("claude-sonnet-5", "/run/config/mcp.json");
   assert.deepEqual(
@@ -100,7 +100,7 @@ test("the two mediated invocations differ only by --bare and the flags that repl
 });
 
 test("the subscription profile refuses to start without its token", async (t) => {
-  if (WIN32_HOST) return mediationRefusedOnWin32(t);
+  if (WIN32_HOST) return windowsMediationPath(t);
   for (const [environment, code] of [
     [{}, "VES_CLAUDE_CREDENTIAL_MISSING"],
     [{ ANTHROPIC_API_KEY: "sk-ant-not-a-subscription-token" }, "VES_CLAUDE_ENVIRONMENT_DENIED"]
@@ -112,17 +112,10 @@ test("the subscription profile refuses to start without its token", async (t) =>
 });
 
 test("the subscription profile refuses a session that advertises a non-bridge tool", async (t) => {
-  if (WIN32_HOST) return mediationRefusedOnWin32(t);
+  if (WIN32_HOST) return windowsMediationPath(t);
   const fixture = await mediatedFixture({ kind: SUBSCRIPTION, scenario: "extra-tool" });
   const { events, closed } = await fixture.run();
   assert.deepEqual(mediatedErrors(events), ["VES_CLAUDE_TOOL_SURFACE_UNEXPECTED"]);
   assert.equal(closed.outcome, "failed");
   assert.deepEqual(fixture.invoked, []);
-});
-
-// invariant: the subscription profile uses the same Unix-socket bridge, so
-// Windows refuses it at construction, before any spawn.
-test("the subscription profile refuses Windows before anything is spawned", () => {
-  if (process.platform !== "win32") return;
-  assert.throws(() => driver(SUBSCRIPTION), { code: "VES_CLAUDE_MEDIATION_UNSUPPORTED" });
 });

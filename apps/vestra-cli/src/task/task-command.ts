@@ -10,7 +10,7 @@ import { initPublicErrorRegistry } from "@verchestra/workspace";
 
 import { cliError } from "../cli-errors.ts";
 import { approveTask } from "./task-approve.ts";
-import { notConfigured, stableCode, taskError } from "./task-errors.ts";
+import { stableCode, taskError } from "./task-errors.ts";
 import type { TaskCommandIo, TaskConfirmationInput } from "./task-io.ts";
 import { planTask } from "./task-plan.ts";
 import { reviewTask } from "./task-review.ts";
@@ -96,11 +96,6 @@ export async function executeTaskCommand(
   const handler = HANDLERS[command.name];
   if (handler === undefined)
     throw cliError("VES_CLI_ARGUMENT_INVALID", { argument: command.name }, "Task command is not installed");
-  // invariant: the mediated implementer reaches its controller over a Unix
-  // socket and is refused on Windows, so no task command reads a request,
-  // opens state, or touches a credential there.
-  if (process_.platform === "win32")
-    throw notConfigured("platform", "The governed task path is not qualified on Windows");
   const keychain = command.options["keychain"];
   const io: TaskCommandIo = {
     ...process_,

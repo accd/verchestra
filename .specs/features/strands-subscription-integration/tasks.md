@@ -237,8 +237,8 @@ section.
 
 **Done when**:
 
-- [ ] On the Windows runner: a second same-user client, an unauthenticated client, an oversized frame, and an authentication timeout are refused with the Unix codes; a pre-created pipe name makes the transport refuse.
-- [ ] Missing PowerShell 7, enforced transcription, an unprovable ACL, and each policy source give `not configured` with the prerequisite named.
+- [x] On the Windows runner: a second same-user client, an unauthenticated client, an oversized frame, and an authentication timeout are refused with the Unix codes; a pre-created pipe name makes the transport refuse.
+- [x] Missing PowerShell 7, enforced transcription, an unprovable ACL, and each policy source give `not configured` with the prerequisite named.
 - [x] macOS and Linux bridge tests are byte-for-byte unchanged in their assertions (SSI-69).
 
 **Tests**: unit, integration, security, e2e

@@ -5,7 +5,7 @@ import { dirname } from "node:path";
 import { afterEach, test } from "node:test";
 
 import { bridgeWorktree, cleanupBridges, openController, startRelay } from "../helpers/mcp-bridge-fixture.mjs";
-import { WIN32_HOST, mediationRefusedOnWin32 } from "../helpers/mediation-platform.mjs";
+import { WIN32_HOST, windowsMediationPath } from "../helpers/mediation-platform.mjs";
 
 afterEach(cleanupBridges);
 
@@ -21,7 +21,7 @@ function rawClient(socketPath) {
 }
 
 test("the channel lives in a private directory and disappears with the controller", async (t) => {
-  if (WIN32_HOST) return mediationRefusedOnWin32(t);
+  if (WIN32_HOST) return windowsMediationPath(t);
   const { worktree } = await bridgeWorktree();
   const { controller } = await openController(worktree);
   const directory = dirname(controller.socketPath);
@@ -33,7 +33,7 @@ test("the channel lives in a private directory and disappears with the controlle
 });
 
 test("a relay presenting the wrong token is refused and serves no tool", async (t) => {
-  if (WIN32_HOST) return mediationRefusedOnWin32(t);
+  if (WIN32_HOST) return windowsMediationPath(t);
   const { worktree } = await bridgeWorktree();
   const { controller, invoked } = await openController(worktree);
   const relay = startRelay({ ...controller.environment, VERCHESTRA_BRIDGE_TOKEN: "0".repeat(64) });
@@ -50,7 +50,7 @@ test("a relay without a configured channel exits as not configured", async () =>
 });
 
 test("a call before authentication is refused without reaching the executor", async (t) => {
-  if (WIN32_HOST) return mediationRefusedOnWin32(t);
+  if (WIN32_HOST) return windowsMediationPath(t);
   const { worktree } = await bridgeWorktree();
   const { controller, invoked } = await openController(worktree);
   const client = rawClient(controller.socketPath);
@@ -63,7 +63,7 @@ test("a call before authentication is refused without reaching the executor", as
 });
 
 test("only one authenticated connection is ever accepted", async (t) => {
-  if (WIN32_HOST) return mediationRefusedOnWin32(t);
+  if (WIN32_HOST) return windowsMediationPath(t);
   const { worktree } = await bridgeWorktree();
   const { controller } = await openController(worktree);
   const relay = startRelay(controller.environment);
@@ -87,7 +87,7 @@ for (const [path, code] of [
   ["src/linkfile.txt", "VES_BRIDGE_SYMLINK_DENIED"]
 ]) {
   test(`read_file refuses ${path}`, async (t) => {
-    if (WIN32_HOST) return mediationRefusedOnWin32(t);
+    if (WIN32_HOST) return windowsMediationPath(t);
     const { worktree } = await bridgeWorktree();
     const { controller } = await openController(worktree);
     const relay = startRelay(controller.environment);
@@ -101,7 +101,7 @@ for (const [path, code] of [
 }
 
 test("listing and search never cross links, protected paths, or the read scope", async (t) => {
-  if (WIN32_HOST) return mediationRefusedOnWin32(t);
+  if (WIN32_HOST) return windowsMediationPath(t);
   const { worktree } = await bridgeWorktree();
   const { controller } = await openController(worktree);
   const relay = startRelay(controller.environment);
@@ -117,7 +117,7 @@ test("listing and search never cross links, protected paths, or the read scope",
 });
 
 test("an oversized MCP frame is refused instead of buffered", async (t) => {
-  if (WIN32_HOST) return mediationRefusedOnWin32(t);
+  if (WIN32_HOST) return windowsMediationPath(t);
   const { worktree } = await bridgeWorktree();
   const { controller, invoked } = await openController(worktree);
   const relay = startRelay(controller.environment);
@@ -129,7 +129,7 @@ test("an oversized MCP frame is refused instead of buffered", async (t) => {
 });
 
 test("oversized write content is refused before it reaches the payload store", async (t) => {
-  if (WIN32_HOST) return mediationRefusedOnWin32(t);
+  if (WIN32_HOST) return windowsMediationPath(t);
   const { worktree } = await bridgeWorktree();
   const { controller, invoked } = await openController(worktree);
   const relay = startRelay(controller.environment);

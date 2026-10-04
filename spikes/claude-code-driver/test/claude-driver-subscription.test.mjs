@@ -21,7 +21,7 @@ import {
   mediatedErrors as errors,
   mediatedFixture
 } from "../../../tests/helpers/claude-mediated-fixture.mjs";
-import { WIN32_HOST, mediationRefusedOnWin32 } from "../../../tests/helpers/mediation-platform.mjs";
+import { WIN32_HOST, windowsMediationPath } from "../../../tests/helpers/mediation-platform.mjs";
 
 const SUBSCRIPTION = "mediated-mcp-subscription";
 const subscriptionFixture = (options = {}) => mediatedFixture({ kind: SUBSCRIPTION, ...options });
@@ -29,7 +29,7 @@ const subscriptionFixture = (options = {}) => mediatedFixture({ kind: SUBSCRIPTI
 afterEach(cleanupMediatedFixtures);
 
 test("the subscription profile completes the MCP handshake and reaches the controller through the bridge", async (t) => {
-  if (WIN32_HOST) return mediationRefusedOnWin32(t);
+  if (WIN32_HOST) return windowsMediationPath(t);
   const fixture = await subscriptionFixture();
   const { events, closed } = await fixture.run();
   assert.deepEqual(errors(events), []);
@@ -50,7 +50,7 @@ test("the subscription profile completes the MCP handshake and reaches the contr
 });
 
 test("the subscription invocation is exact, never bare, and never bypasses permissions", async (t) => {
-  if (WIN32_HOST) return mediationRefusedOnWin32(t);
+  if (WIN32_HOST) return windowsMediationPath(t);
   const fixture = await subscriptionFixture();
   await fixture.run();
   const { argv, mcpServers, mcpConfigMode } = await fixture.observation();
@@ -102,7 +102,7 @@ test("the subscription invocation is exact, never bare, and never bypasses permi
 });
 
 test("the child runs in an empty per-run directory with only the brokered token, never an ambient session", async (t) => {
-  if (WIN32_HOST) return mediationRefusedOnWin32(t);
+  if (WIN32_HOST) return windowsMediationPath(t);
   const ambient = {
     ANTHROPIC_API_KEY: "ambient-api-key",
     ANTHROPIC_AUTH_TOKEN: "ambient-bearer",
@@ -163,7 +163,7 @@ for (const [scenario, code] of [
   ["hook", "VES_CLAUDE_HOOK_UNEXPECTED"]
 ]) {
   test(`a subscription session in the ${scenario} state fails closed`, async (t) => {
-    if (WIN32_HOST) return mediationRefusedOnWin32(t);
+    if (WIN32_HOST) return windowsMediationPath(t);
     const fixture = await subscriptionFixture({ scenario });
     const { events, closed } = await fixture.run();
     assert.deepEqual(errors(events), [code]);
@@ -174,7 +174,7 @@ for (const [scenario, code] of [
 }
 
 test("a hook event or a second MCP server does not fail the API-key profile, which runs bare", async (t) => {
-  if (WIN32_HOST) return mediationRefusedOnWin32(t);
+  if (WIN32_HOST) return windowsMediationPath(t);
   for (const scenario of ["hook", "extra-server"]) {
     const { events, closed } = await (await mediatedFixture({ scenario })).run();
     assert.deepEqual(errors(events), [], scenario);
@@ -183,7 +183,7 @@ test("a hook event or a second MCP server does not fail the API-key profile, whi
 });
 
 test("the subscription token is redacted from model output", async (t) => {
-  if (WIN32_HOST) return mediationRefusedOnWin32(t);
+  if (WIN32_HOST) return windowsMediationPath(t);
   const fixture = await subscriptionFixture({ scenario: "secret" });
   const { events } = await fixture.run();
   assert.equal(JSON.stringify(events).includes(token), false);
@@ -208,7 +208,7 @@ for (const [name, execution, code] of [
   ["a missing mediation block", { mediation: undefined }, "VES_CLAUDE_MEDIATION_INVALID"]
 ]) {
   test(`${name} is refused before the subscription profile spawns Claude Code`, async (t) => {
-    if (WIN32_HOST) return mediationRefusedOnWin32(t);
+    if (WIN32_HOST) return windowsMediationPath(t);
     const fixture = await subscriptionFixture({ execution });
     await assert.rejects(fixture.run(), { code });
     assert.deepEqual(fixture.spawned, []);
@@ -216,14 +216,14 @@ for (const [name, execution, code] of [
 }
 
 test("the API-key profile refuses the subscription token before spawning", async (t) => {
-  if (WIN32_HOST) return mediationRefusedOnWin32(t);
+  if (WIN32_HOST) return windowsMediationPath(t);
   const fixture = await mediatedFixture({ execution: { environment: { CLAUDE_CODE_OAUTH_TOKEN: token } } });
   await assert.rejects(fixture.run(), { code: "VES_CLAUDE_ENVIRONMENT_DENIED" });
   assert.deepEqual(fixture.spawned, []);
 });
 
 test("a machine-wide managed policy refuses the subscription profile before any spawn", async (t) => {
-  if (WIN32_HOST) return mediationRefusedOnWin32(t);
+  if (WIN32_HOST) return windowsMediationPath(t);
   const probe = await subscriptionFixture();
   const file = join(probe.root, "managed-settings.json");
   const populated = join(probe.root, "policy-directory");
@@ -254,7 +254,7 @@ test("a machine-wide managed policy refuses the subscription profile before any 
 });
 
 test("the subscription profile is validated at construction", (t) => {
-  if (WIN32_HOST) return mediationRefusedOnWin32(t);
+  if (WIN32_HOST) return windowsMediationPath(t);
   const resolveExecution = async () => assert.fail("not reached");
   const command = [process.execPath, fakeClaude];
   assert.throws(() => new ClaudeCodeDriver({ command: ["claude"], profile: { kind: SUBSCRIPTION }, resolveExecution }), {
@@ -279,7 +279,7 @@ test("the subscription profile is validated at construction", (t) => {
 });
 
 test("the subscription profile requires at least the qualified Claude Code build", async (t) => {
-  if (WIN32_HOST) return mediationRefusedOnWin32(t);
+  if (WIN32_HOST) return windowsMediationPath(t);
   const fixture = await subscriptionFixture({ dependencies: { minimumVersion: "2.1.300" } });
   const probe = await fixture.driver.probe();
   assert.equal(probe.available, false);
@@ -289,7 +289,7 @@ test("the subscription profile requires at least the qualified Claude Code build
 });
 
 test("cancellation terminates the subscription session and still removes its isolation directory", async (t) => {
-  if (WIN32_HOST) return mediationRefusedOnWin32(t);
+  if (WIN32_HOST) return windowsMediationPath(t);
   const fixture = await subscriptionFixture({ scenario: "hang" });
   const { events, closed, spawned } = await abortOnceObserved(fixture);
   assert.equal(spawned, 1);
