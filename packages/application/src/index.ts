@@ -155,6 +155,7 @@ export {
 export {
   COORDINATION_LIMIT_CEILINGS,
   COORDINATION_LIMIT_DEFAULTS,
+  isWriterNode,
   type CoordinationDriverId,
   type CoordinationEdge,
   type CoordinationHandoff,

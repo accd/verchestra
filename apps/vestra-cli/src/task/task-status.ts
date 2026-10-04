@@ -1,12 +1,12 @@
-import type { CoordinationLedger, NodeVisit } from "@verchestra/application";
 import { TERMINAL_WORKFLOW_STATES, type RunState } from "@verchestra/domain";
 import { NodeGitWorktreeAdapter, type RuntimeStore } from "@verchestra/platform-node";
 
 import { budgetStatus } from "./task-budget.ts";
+import { continuation, coordinationStatus } from "./task-coordination-surface.ts";
 import { taskError } from "./task-errors.ts";
 import type { TaskCommandIo } from "./task-io.ts";
-import { HUMAN_ACTOR, isCoordinatedPlan, type CoordinatedPlan, type TaskPlanRecord } from "./task-plan-record.ts";
-import { inspectMarkedWorktree, nodeUncertainties, type NodeUncertainty } from "./task-resumption.ts";
+import { HUMAN_ACTOR, isCoordinatedPlan, type TaskPlanRecord } from "./task-plan-record.ts";
+import type { NodeUncertainty } from "./task-resumption.ts";
 import {
   UNVERIFIED_DRIVER,
   openRunRecord,
@@ -20,14 +20,6 @@ import { openRuntime, openTaskWorkspace, parseRunId, type TaskWorkspace } from "
 
 const CANCEL_WAIT_MS = 60_000;
 
-// why: D4. A run with an unsettled node that may have landed effects resumes
-// only with that node's digest typed back, so each such node is its own next
-// action and the plain resume, which would be refused, is not offered.
-function resumeActions(runId: string, uncertain: readonly Pick<NodeUncertainty, "digest">[]): readonly string[] {
-  if (uncertain.length === 0) return [`vestra task resume --run-id ${runId}`];
-  return uncertain.map((node) => `vestra task resume --run-id ${runId} --reconcile ${node.digest}`);
-}
-
 function nextActions(
   state: RunState,
   runId: string,
@@ -40,7 +32,7 @@ function nextActions(
   const byState: Partial<Record<RunState, readonly string[]>> = {
     AWAITING_EXECUTION_APPROVAL: [`vestra task approve --run-id ${runId} --binding-digest <sha256:…>`, cancel],
     EXECUTION_AUTHORIZED: [`vestra task start --run-id ${runId}`, cancel],
-    IMPLEMENTING: [...resumeActions(runId, uncertain), cancel],
+    IMPLEMENTING: [...continuation(runId, uncertain), cancel],
     VERIFYING: [`vestra task resume --run-id ${runId}`, cancel],
     HUMAN_REVIEW: [
       `vestra task review --run-id ${runId} --outcome accepted|rejected --surface-digest <sha256:…>`,
@@ -83,63 +75,6 @@ async function evidence(plan: TaskPlanRecord, runRecord: RunRecord) {
   };
 }
 
-// invariant: SSI-32. A node's state in the current round is that of its
-// latest visit, `pending` before its first; its visit count counts visit
-// numbers, so a node run again in place of an unsettled visit is not counted
-// twice; its result is the latest it completed with.
-function nodeStatus(nodeId: string, round: readonly NodeVisit[]) {
-  const visits = round.filter((visit) => visit.nodeId === nodeId);
-  return {
-    nodeId,
-    state: visits.at(-1)?.state ?? "pending",
-    visits: new Set(visits.map((visit) => visit.visit)).size,
-    resultDigest: visits.findLast((visit) => visit.state === "completed")?.resultDigest ?? null
-  };
-}
-
-// why: what a resume would settle is computed against the worktree it would
-// resume on: the suspended checkpoint's change, or the marked worktree of an
-// interrupted run. Read only; nothing is created.
-async function resumeChange(
-  workspace: TaskWorkspace,
-  plan: CoordinatedPlan,
-  runRecord: RunRecord,
-  executor: ExecutorCheckpoint | undefined,
-  ledger: CoordinationLedger | undefined
-): Promise<string | undefined> {
-  if (executor?.stage === "suspended" || ledger?.roundState !== "running") return executor?.changeDigest;
-  const inspected = await inspectMarkedWorktree(runRecord, worktreeAdapter(workspace), plan.request.sourceRevision);
-  return inspected?.changeDigest;
-}
-
-function currentRound(ledger: CoordinationLedger | undefined): readonly NodeVisit[] {
-  return ledger === undefined ? [] : ledger.visits.filter((visit) => visit.round === ledger.round);
-}
-
-async function coordinationStatus(
-  workspace: TaskWorkspace,
-  plan: CoordinatedPlan,
-  runRecord: RunRecord,
-  executor: ExecutorCheckpoint | undefined
-) {
-  const ledger = await runRecord.loadCoordinationLedger();
-  const change = await resumeChange(workspace, plan, runRecord, executor, ledger);
-  const uncertain = nodeUncertainties(plan.runId, ledger, change)
-    .filter((node) => node.effect === "possible")
-    .map(({ effect, ...node }) => {
-      void effect;
-      return node;
-    });
-  const round = currentRound(ledger);
-  return {
-    mode: plan.request.execution.mode,
-    round: ledger?.round ?? 0,
-    roundState: ledger?.roundState ?? "none",
-    nodes: plan.request.execution.nodes.map((node) => nodeStatus(node.nodeId, round)),
-    uncertain
-  };
-}
-
 // why: SSI-32. A suspended run shows its suspension, the provider's window,
 // and the reset time the provider reported, until it is resumed or ended.
 function suspensionOf(state: RunState, outcome: Awaited<ReturnType<RunRecord["loadOutcome"]>>) {
@@ -164,7 +99,7 @@ export async function statusTask(io: TaskCommandIo, options: { readonly runId: u
     const checkpoints = runRecord.checkpoints(runtime, plan.request.task.taskId);
     const executor = await checkpoints.executor();
     const coordination = isCoordinatedPlan(plan)
-      ? await coordinationStatus(workspace, plan, runRecord, executor)
+      ? await coordinationStatus(plan, runRecord, executor, worktreeAdapter(workspace))
       : null;
     return {
       runId,

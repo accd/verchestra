@@ -16,7 +16,8 @@ import {
   BILLING_REGIMES,
   billingProviders,
   normalizeExtraUsageConfirmations,
-  requireSubscriptionPreflight
+  requireSubscriptionPreflight,
+  subscriptionPreconditions
 } from "../../apps/vestra-cli/src/task/task-billing.ts";
 import { normalizeTaskRequest } from "../../packages/application/src/index.ts";
 import { CONFIRMED_AT, extraUsageConfirmation } from "../helpers/task-billing-fixture.mjs";
@@ -190,3 +191,50 @@ test("the preflight never follows a link or reads a directory in the statement's
   await mkdir(join(directory.root, BILLING_FILE));
   await assert.rejects(directory.run(), refused);
 });
+
+// invariant: SSI-30. What `plan` shows of the preconditions: the method each
+// provider of the run must prove and its statement must name, the file that
+// holds the statement, and the requirement the preflight of `start` would
+// refuse now, or `ready`. It reports and refuses nothing, and says nothing on
+// the terminal: `start` and `resume` run the preflight again.
+async function preconditions(t, setting, options = {}) {
+  const { root, lines } = await preflight(t, setting, options);
+  const shown = await subscriptionPreconditions({
+    workspaceRoot: root,
+    auth: options.auth ?? SUBSCRIPTIONS,
+    request: normalizeTaskRequest(validTaskRequestV2(options.mode ?? "graph")),
+    now: () => NOW
+  });
+  assert.deepEqual(lines, [], "plan explained the preflight on the terminal");
+  return shown;
+}
+
+test("plan shows each provider's method, the statement file, and a preflight that is ready", async (t) => {
+  assert.deepEqual(await preconditions(t, confirmation()), {
+    auth: { "claude-code": "subscription", codex: "chatgpt" },
+    extraUsage: "disabled",
+    statement: "task-billing.json",
+    preflight: "ready"
+  });
+});
+
+for (const [label, setting, requirement, auth] of [
+  ["no statement", undefined, "extra-usage-confirmation"],
+  ["text that is not JSON", "{not json", "extra-usage-confirmation"],
+  [
+    "a statement made before Codex's regime",
+    confirmation({ codex: { ...CODEX, confirmedAt: "2026-10-02T12:00:00Z" } }),
+    "extra-usage-confirmation"
+  ],
+  [
+    "a provider on an API key",
+    confirmation(),
+    "coordinated-run-subscription",
+    { implementer: "subscription", verifier: "api-key" }
+  ]
+])
+  test(`plan shows the requirement start would refuse with ${label}, without refusing itself`, async (t) => {
+    const shown = await preconditions(t, setting, { auth });
+    assert.equal(shown.preflight, requirement);
+    assert.deepEqual(shown.auth, { "claude-code": "subscription", codex: "chatgpt" });
+  });

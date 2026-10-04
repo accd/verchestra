@@ -9,6 +9,7 @@
 import { join } from "node:path";
 
 import type { NormalizedTaskRequestV2 } from "@verchestra/application";
+import { PublicErrorException } from "@verchestra/domain";
 
 import { readMachineSetting, type ProviderAuth } from "../task-provider-auth.ts";
 import { notConfigured } from "./task-errors.ts";
@@ -146,25 +147,61 @@ export interface SubscriptionPreflight {
   readonly now?: () => Date;
 }
 
+function requireSubscriptionAuth(auth: ProviderAuth): void {
+  if (auth.implementer !== "subscription" || auth.verifier !== "subscription")
+    throw notConfigured("coordinated-run-subscription", "A coordinated run uses subscription authentication only");
+}
+
+async function requireConfirmations(
+  preflight: Omit<SubscriptionPreflight, "stderr">,
+  providers: readonly BillingProvider[]
+): Promise<void> {
+  const stored = await readMachineSetting(
+    join(preflight.workspaceRoot, BILLING_FILE),
+    REQUIREMENT,
+    "The extra-usage confirmation"
+  );
+  if (stored === undefined) refused("No extra-usage confirmation exists for this Workspace");
+  normalizeExtraUsageConfirmations(stored, providers, preflight.now?.() ?? new Date());
+}
+
 // invariant: SSI-51 and SSI-52, at `start` and at `resume`, before any
 // credential is read, any transition is applied, or any worktree exists. Every
 // provider of a coordinated run authenticates by subscription, and each has
 // the owner's extra-usage confirmation for that method under the current
 // regime; otherwise the run is `not configured` and nothing changed.
 export async function requireSubscriptionPreflight(preflight: SubscriptionPreflight): Promise<void> {
-  if (preflight.auth.implementer !== "subscription" || preflight.auth.verifier !== "subscription")
-    throw notConfigured("coordinated-run-subscription", "A coordinated run uses subscription authentication only");
+  requireSubscriptionAuth(preflight.auth);
   const providers = billingProviders(preflight.request);
   try {
-    const stored = await readMachineSetting(
-      join(preflight.workspaceRoot, BILLING_FILE),
-      REQUIREMENT,
-      "The extra-usage confirmation"
-    );
-    if (stored === undefined) refused("No extra-usage confirmation exists for this Workspace");
-    normalizeExtraUsageConfirmations(stored, providers, preflight.now?.() ?? new Date());
+    await requireConfirmations(preflight, providers);
   } catch (error) {
     explain(preflight.workspaceRoot, providers, preflight.stderr);
     throw error;
   }
 }
+
+// invariant: SSI-30. What `plan` shows of the subscription preconditions: the
+// method each provider of the run must prove and its statement must name, the
+// file that holds the statement, and the requirement the preflight of `start`
+// would refuse now, or `ready`. Informational and machine-local, as the
+// provider modes are: `start` and `resume` run the preflight again.
+export async function subscriptionPreconditions(preflight: Omit<SubscriptionPreflight, "stderr">) {
+  const providers = billingProviders(preflight.request);
+  let state = "ready";
+  try {
+    requireSubscriptionAuth(preflight.auth);
+    await requireConfirmations(preflight, providers);
+  } catch (error) {
+    if (!(error instanceof PublicErrorException) || error.envelope.code !== "VES_TASK_NOT_CONFIGURED") throw error;
+    state = String(error.envelope.safeDetails["requirement"]);
+  }
+  return {
+    auth: Object.fromEntries(providers.map((provider) => [provider, BILLING_METHODS[provider]])),
+    extraUsage: "disabled",
+    statement: BILLING_FILE,
+    preflight: state
+  };
+}
+
+export type SubscriptionPreconditions = Awaited<ReturnType<typeof subscriptionPreconditions>>;

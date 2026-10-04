@@ -16,6 +16,7 @@ import { rm, writeFile, mkdir, symlink, rename } from "node:fs/promises";
 import { join } from "node:path";
 import { after, test } from "node:test";
 
+import { assertTextAgrees } from "../helpers/cli-text-fixture.mjs";
 import {
   CREDENTIALS,
   DARWIN,
@@ -797,9 +798,11 @@ test("a dry run prints the plan surface and leaves the Workspace state as it was
 
 // invariant: a Task Request v2 plans through the real binary. A dry run binds
 // one passport per node and the verifier, presents the whole descriptor with
-// every limit explicit in place of a single implementer, and writes nothing;
-// a descriptor the intake contract refuses is rejected before any process
-// starts, through the existing public code.
+// every limit explicit in place of a single implementer, its topology, and the
+// subscription preconditions `start` will check (SSI-30), prints the same
+// members and values as text and as JSON, and writes nothing; a descriptor the
+// intake contract refuses is rejected before any process starts, through the
+// existing public code.
 function coordinatedOverrides(edges) {
   const node = (nodeId, driver, writeScope, inputs) => ({
     nodeId,
@@ -848,6 +851,24 @@ test("a v2 request plans in a dry run and presents its descriptor in place of an
     nodeResultBytes: 65_536,
     runResultBytes: 262_144
   });
+  assert.deepEqual(plan.coordination, {
+    mode: "graph",
+    nodes: [
+      { nodeId: "plan", passport: "codex:gpt-5.2-codex", role: "reader", to: ["build"] },
+      { nodeId: "build", passport: "claude-code:claude-sonnet-5", role: "writer", to: [] }
+    ]
+  });
+  // why: the fixture holds no extra-usage confirmation, so the plan names the
+  // requirement `start` would refuse; planning itself refuses nothing.
+  assert.deepEqual(plan.subscription, {
+    auth: { "claude-code": "subscription", codex: "chatgpt" },
+    extraUsage: "disabled",
+    statement: "task-billing.json",
+    preflight: "extra-usage-confirmation"
+  });
+  const text = fixture.launch(["task", "plan", "--request", fixture.requestPath, "--dry-run"]);
+  assert.equal(text.status, 0, text.stderr);
+  assertTextAgrees(text.stdout, plan, ["runId", "bindingDigest", "approvalExpiresAt", "review"]);
   assert.deepEqual(stateListing(fixture), before);
 });
 

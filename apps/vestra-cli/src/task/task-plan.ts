@@ -19,8 +19,10 @@ import { NodeContentDigest, SystemClock } from "@verchestra/platform-node";
 
 import { loadProviderAuth, type ProviderAuth } from "../task-provider-auth.ts";
 import type { TaskCommandIo } from "./task-io.ts";
+import { subscriptionPreconditions, type SubscriptionPreconditions } from "./task-billing.ts";
 import { SIGNING_PASSPHRASE, readCredentials } from "./task-credentials.ts";
 import { compileTaskContext, REPOSITORY_SOURCE } from "./task-context.ts";
+import { coordinationTopology } from "./task-coordination-surface.ts";
 import { stableCode, taskError } from "./task-errors.ts";
 import { canonicalDigest, sha256 } from "./task-files.ts";
 import { loadGateAllowlist } from "./task-gates.ts";
@@ -292,6 +294,10 @@ export async function planTask(io: TaskCommandIo, requestPath: string, dryRun: b
   // why: a malformed credential mode is reported at plan time, before an
   // approval is spent on a run that could never start. No credential is read.
   const providerAuth = await loadProviderAuth(workspace.layout.workspaceRoot);
+  const subscription =
+    request.schemaVersion === 2
+      ? await subscriptionPreconditions({ workspaceRoot: workspace.layout.workspaceRoot, auth: providerAuth, request })
+      : undefined;
   const policy = await loadTaskPolicy(io.controlRoot);
   const context: PlanContext = {
     workspace,
@@ -334,14 +340,28 @@ export async function planTask(io: TaskCommandIo, requestPath: string, dryRun: b
     markerSeal: MARKER_SEAL
   };
   if (!dryRun) await persist(context, manifest, pkg, record);
-  return planSurface(record, manifest, dryRun, providerAuth);
+  return planSurface(record, manifest, dryRun, providerAuth, subscription);
+}
+
+// why: a v1 plan presents its one implementer, exactly as before v2. A v2
+// plan presents the whole descriptor the approval binds instead, the topology
+// it describes, and the subscription preconditions `start` will check.
+function sessions(record: TaskPlanRecord, subscription: SubscriptionPreconditions | undefined) {
+  const request = record.request;
+  if (request.schemaVersion === 1) return { implementer: request.driver };
+  return {
+    execution: request.execution,
+    coordination: coordinationTopology(request),
+    ...(subscription === undefined ? {} : { subscription })
+  };
 }
 
 export function planSurface(
   record: TaskPlanRecord,
   manifest: Pick<ContextManifest, "fragments" | "omissions">,
   dryRun: boolean,
-  providerAuth: ProviderAuth
+  providerAuth: ProviderAuth,
+  subscription?: SubscriptionPreconditions
 ) {
   return {
     runId: record.runId,
@@ -353,11 +373,7 @@ export function planSurface(
     sourceRevision: record.request.sourceRevision,
     contextFragments: manifest.fragments.length,
     contextOmissions: manifest.omissions.length,
-    // invariant: a v1 plan presents its one implementer, exactly as before v2;
-    // a v2 plan presents the whole descriptor the approval binds instead.
-    ...(record.request.schemaVersion === 1
-      ? { implementer: record.request.driver }
-      : { execution: record.request.execution }),
+    ...sessions(record, subscription),
     verifier: record.request.verifier,
     // invariant: informational and machine-local. The mode is read again at
     // start and is not part of the binding the human approves.

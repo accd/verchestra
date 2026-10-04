@@ -102,6 +102,15 @@ test("a v2 review names one passport per node and the verifier, both providers, 
   assert.deepEqual(approvalRequest.review.capabilities, ["worktree-write"]);
 });
 
+// why: SSI-30. Beside the descriptor the approval binds, a v2 plan presents
+// its topology and the subscription preconditions `start` will check.
+const PRECONDITIONS = Object.freeze({
+  auth: { "claude-code": "subscription", codex: "chatgpt" },
+  extraUsage: "disabled",
+  statement: "task-billing.json",
+  preflight: "ready"
+});
+
 test("a v2 plan presents its whole descriptor, every limit explicit, in place of a single implementer", async () => {
   const request = normalizeTaskRequest(validTaskRequestV2("swarm"));
   const { intent, approvalRequest } = await boundPlan(request);
@@ -109,8 +118,18 @@ test("a v2 plan presents its whole descriptor, every limit explicit, in place of
     { ...planRecord({ request }), approvalIntent: intent, approvalRequest },
     contextManifest(),
     true,
-    { implementer: "subscription", verifier: "subscription" }
+    { implementer: "subscription", verifier: "subscription" },
+    PRECONDITIONS
   );
+  assert.deepEqual(surface.coordination, {
+    mode: "swarm",
+    start: "writer",
+    nodes: [
+      { nodeId: "writer", passport: "claude-code:claude-sonnet-5", role: "writer", to: ["reviewer"] },
+      { nodeId: "reviewer", passport: "codex:gpt-5.2-codex", role: "reader", to: ["writer"] }
+    ]
+  });
+  assert.deepEqual(surface.subscription, PRECONDITIONS);
   assert.equal(Object.hasOwn(surface, "implementer"), false);
   assert.deepEqual(surface.execution, {
     ...validTaskRequestV2("swarm").execution,
