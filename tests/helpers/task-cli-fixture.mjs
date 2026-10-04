@@ -13,7 +13,10 @@
 // On Windows the same journeys run with the Windows equivalents: placeholder
 // `claude.exe` and `codex.exe` that fake-windows-spawn.mjs starts as the same
 // fakes, the Credential Manager answered from the same store, and a home,
-// local application data, and temporary directory of the fixture's own.
+// local application data, and temporary directory of the fixture's own. On
+// Linux a fixture asked for `secretService: true` has the Secret Service
+// answered from the same store by the fake keychain preload; without it the
+// fixture has no session bus, and the task path finds no credential store.
 import { spawn, spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
@@ -34,6 +37,7 @@ export const FAKES = fileURLToPath(new URL("./task-cli-fakes/", import.meta.url)
 export const WORKSPACE_ID = "workspace_4b1c2d3e-5f60-4a7b-8c9d-0e1f2a3b4c5d";
 export const DARWIN = process.platform === "darwin";
 export const WIN32 = process.platform === "win32";
+export const LINUX = process.platform === "linux";
 const FAKE_WINDOWS_SPAWN = new URL("./fake-windows-spawn.mjs", import.meta.url);
 export const CREDENTIALS = Object.freeze({
   "claude-code-oauth-token": "sk-ant-oat01-fake-e2e-subscription-token-6b7c",
@@ -264,6 +268,16 @@ function windowsEnvironment({ home, localAppData, scratch, fakes }) {
   };
 }
 
+// why: the Secret Service backend asks only whether a session bus address is
+// set before it runs `dbus-send` and `secret-tool`, which the fake keychain
+// preload answers. The address names a socket that does not exist, so nothing
+// could reach a real bus.
+function secretServiceEnvironment(scratch, options) {
+  return LINUX && options.secretService === true
+    ? { DBUS_SESSION_BUS_ADDRESS: `unix:path=${join(scratch, "no-session-bus")}` }
+    : {};
+}
+
 // why: every journey starts from the same committed repository; the returned
 // launcher runs `vestra` there with the fixture's environment.
 export function approveArguments(fixture, plan) {
@@ -340,6 +354,7 @@ export async function taskFixture(options = {}) {
     NO_COLOR: "1",
     VERCHESTRA_TEST_FAKE_KEYCHAIN_STORE: store,
     ...(WIN32 ? windowsEnvironment({ home, localAppData, scratch, fakes }) : {}),
+    ...secretServiceEnvironment(scratch, options),
     ...(options.ambient === true ? await ambientSessions(root, home) : {})
   };
   // why: a journey that lets time pass while a run waits starts the child with
@@ -432,6 +447,6 @@ export async function taskFixture(options = {}) {
     launchAsync,
     git: (argv) => git(repository, argv),
     // why: a keychain file is a macOS concept, refused elsewhere.
-    keychainArgs: WIN32 ? [] : ["--keychain", keychain]
+    keychainArgs: DARWIN ? ["--keychain", keychain] : []
   };
 }

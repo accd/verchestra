@@ -137,6 +137,14 @@ test("the structured floor compares every component and holds one major line", (
   assert.equal(atLeast("1.0.0", "0.159.3"), false);
 });
 
+// invariant: the fleet's exact pin (VES_REQUIRE_PINNED_PROVIDERS=1, #18 F4).
+// The platform matrix installs Codex 0.115.0, below the structured floor, so a
+// fleet run proves only the refusal below the floor, never the protocol at it.
+// A fleet whose Codex is not this pin fails here, so the version a run proves
+// is never a guess, and moving the pin means moving this constant with it.
+const FLEET_CODEX = "0.115.0";
+const PIN_REQUIRED = process.env.VES_REQUIRE_PINNED_PROVIDERS === "1";
+
 // why: the evidence that the floor holds what the driver uses. A build at or
 // above it generates a protocol with `outputSchema` on `turn/start`, the two
 // account reads, the account kinds and quota signals the driver maps, and the
@@ -144,11 +152,15 @@ test("the structured floor compares every component and holds one major line", (
 // refused before spawn. Without Codex, not configured, never a pass.
 test("the installed Codex at or above the floor generates every protocol element the driver relies on", async (t) => {
   const codex = await installedCodex();
+  if (PIN_REQUIRED) assert.equal(codex?.version, FLEET_CODEX, `the fleet's Codex is not its pin ${FLEET_CODEX}`);
   if (codex === undefined) return t.diagnostic("Codex is not configured on this machine");
+  t.diagnostic(`ran against Codex ${codex.version}; the structured floor is ${CODEX_STRUCTURED_MINIMUM_VERSION}`);
   if (!atLeast(codex.version, CODEX_STRUCTURED_MINIMUM_VERSION)) {
     const probe = await new CodexDriver({ command: [codex.command, ...codex.prefix], resolveExecution: async () => assert.fail("not reached") }).probe();
     assert.equal(probe.version, codex.version);
-    return t.diagnostic(`Codex ${codex.version} is below ${CODEX_STRUCTURED_MINIMUM_VERSION}; its structured and subscription-only sessions are refused`);
+    return t.diagnostic(
+      `Codex ${codex.version} is below ${CODEX_STRUCTURED_MINIMUM_VERSION}: this run proves only that its structured and subscription-only sessions are refused, not the protocol at the floor`
+    );
   }
   const root = await mkdtemp(join(tmpdir(), "verchestra-codex-protocol-"));
   roots.push(root);

@@ -4,18 +4,21 @@
 // executables (tests/helpers/task-cli-fakes) on subscriptions, inside one
 // governed executor run, to the same gates, verifier, and human review as a
 // single-session run. Graph and swarm runs go through the pinned Strands SDK;
-// no provider is contacted and no product code carries a test hook.
+// no provider is contacted and no product code carries a test hook. Every case
+// runs on macOS, Linux, and Windows, each on its own credential store's stand-in.
 import assert from "node:assert/strict";
 import { readdirSync } from "node:fs";
 import { join } from "node:path";
 import { after, test } from "node:test";
 
-import { DARWIN, cleanupTaskFixtures } from "../helpers/task-cli-fixture.mjs";
+import { MODE_CREDENTIALS, cleanupTaskFixtures } from "../helpers/task-cli-fixture.mjs";
 import {
+  CREDENTIAL_PROGRAMS,
   EXECUTIONS,
   TIMEOUT,
   approved,
   coordinatedFixture,
+  credentialReads,
   ledger,
   logLines,
   ok,
@@ -29,11 +32,25 @@ import {
 
 after(cleanupTaskFixtures);
 
+// invariant: the credentials came from this platform's own credential store
+// programs, the read among them, and only the ones the subscription mode names.
+function assertPlatformCredentialStore(fixture) {
+  const programs = CREDENTIAL_PROGRAMS[process.platform];
+  const reads = credentialReads(fixture);
+  assert.ok(
+    reads.some((read) => read.command === programs.at(-1)),
+    `${process.platform}: no credential was read through ${programs.at(-1)}`
+  );
+  for (const { command, account } of reads) {
+    assert.ok(programs.includes(command), `${process.platform}: the credential store ran ${command}`);
+    assert.ok(Object.hasOwn(MODE_CREDENTIALS.subscription, account), account);
+  }
+}
+
 test("an agent run is planned, approved, run on the native engine, verified, and accepted", TIMEOUT, async () => {
-  if (!DARWIN) return;
   const fixture = await coordinatedFixture(EXECUTIONS.agent);
   const plan = await approved(fixture);
-  const run = ok(fixture.launch(startArguments(fixture, plan.runId)), "start");
+  const run = ok(fixture.launch(startArguments(fixture, plan.runId)), "start", fixture);
   assert.equal(run.state, "HUMAN_REVIEW");
   assert.deepEqual(visits(fixture, plan.runId), ["build#1:completed"]);
   const [visit] = ledger(fixture, plan.runId).visits;
@@ -52,13 +69,13 @@ test("an agent run is planned, approved, run on the native engine, verified, and
   assert.equal(accepted.state, "COMPLETED");
   assert.match(accepted.capsuleId, /^[a-f0-9]{64}$/u);
   assert.equal(fixture.git(["show", `vestra/${plan.runId}/T1:src/value.txt`]), "new");
+  assertPlatformCredentialStore(fixture);
 });
 
 test(
   "a graph runs its Codex readers and Claude Code writer in order through the SDK, one run, one verifier",
   TIMEOUT,
   async () => {
-    if (!DARWIN) return;
     const fixture = await coordinatedFixture(EXECUTIONS.graph);
     const plan = await approved(fixture);
     assert.deepEqual(plan.review.selectedPassports, [
@@ -67,7 +84,7 @@ test(
       "codex:gpt-5.2-codex",
       "codex:gpt-5.2-codex"
     ]);
-    const run = ok(fixture.launch(startArguments(fixture, plan.runId)), "start");
+    const run = ok(fixture.launch(startArguments(fixture, plan.runId)), "start", fixture);
     assert.equal(run.state, "HUMAN_REVIEW");
     assert.deepEqual(visits(fixture, plan.runId), ["plan#1:completed", "build#1:completed", "review#1:completed"]);
     // invariant: each Codex node ran read-only with no tool, from the Workspace
@@ -107,10 +124,9 @@ test(
 );
 
 test("a swarm hands work from the writer to the reviewer and ends where the reviewer ends it", TIMEOUT, async () => {
-  if (!DARWIN) return;
   const fixture = await coordinatedFixture(EXECUTIONS.swarm);
   const plan = await approved(fixture);
-  const run = ok(fixture.launch(startArguments(fixture, plan.runId)), "start");
+  const run = ok(fixture.launch(startArguments(fixture, plan.runId)), "start", fixture);
   assert.equal(run.state, "HUMAN_REVIEW");
   assert.deepEqual(visits(fixture, plan.runId), ["writer#1:completed", "reviewer#1:completed"]);
   assert.equal(ledger(fixture, plan.runId).roundState, "completed");
@@ -118,7 +134,6 @@ test("a swarm hands work from the writer to the reviewer and ends where the revi
 });
 
 test("cancel reaches a running node: its provider stops and the coordinated run is aborted", TIMEOUT, async (t) => {
-  if (!DARWIN) return;
   const execution = structuredClone(EXECUTIONS.graph);
   execution.nodes[0].instructions = "Read the scope and never answer. node-hang";
   const fixture = await coordinatedFixture(execution);
