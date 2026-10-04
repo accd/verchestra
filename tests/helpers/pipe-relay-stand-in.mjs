@@ -7,12 +7,19 @@
 // ignores the end of its input, as a helper blocked in a pipe read would;
 // `shares` relays but also hands the connection to a child process that keeps
 // it open, and ignores the end of its input, so the connection outlives the
-// stand-in unless its whole tree is ended.
+// stand-in unless its whole tree is ended; `blocks` relays as the earlier
+// PowerShell helper did, each read of up to 128 KiB written to standard
+// output synchronously, a short read as soon as nothing more is waiting;
+// `holds-tail` writes whole lines and whole 128 KiB blocks but never flushes
+// the rest of an unfinished line, as an unflushed relay would hold a frame's
+// tail.
 import { spawn } from "node:child_process";
+import { writeSync } from "node:fs";
 import { createServer } from "node:net";
 
 const [endpoint, mode] = process.argv.slice(2);
 const STALL_AFTER_BYTES = 64 * 1024;
+const BLOCK_BYTES = 128 * 1024;
 // why: a child left behind by a failed case ends on its own.
 const CHILD_LIFETIME_MS = 60_000;
 
@@ -27,12 +34,41 @@ function stall(socket) {
   });
 }
 
+// why: what a relay of whole blocks has read but not yet written. `blocks`
+// writes the rest once nothing more is waiting; `holds-tail` writes the rest
+// only up to the last line's end.
+function relayInBlocks(socket) {
+  let held = Buffer.alloc(0);
+  let flushing = false;
+  const write = (bytes) => {
+    if (bytes.length > 0) writeSync(1, bytes);
+  };
+  const flush = () => {
+    flushing = false;
+    const end = mode === "blocks" ? held.length : held.lastIndexOf(0x0a) + 1;
+    write(held.subarray(0, end));
+    held = held.subarray(end);
+  };
+  socket.on("data", (chunk) => {
+    held = Buffer.concat([held, chunk]);
+    while (held.length >= BLOCK_BYTES) {
+      write(held.subarray(0, BLOCK_BYTES));
+      held = held.subarray(BLOCK_BYTES);
+    }
+    if (!flushing) {
+      flushing = true;
+      setImmediate(flush);
+    }
+  });
+}
+
 const server = createServer({ allowHalfOpen: true }, (socket) => {
   server.close();
   socket.on("error", () => undefined);
   process.stderr.write("verchestra-pipe:connected\r\n");
   process.stdin.pipe(socket, { end: mode === "relay" });
   if (mode === "stalls") return stall(socket);
+  if (mode === "blocks" || mode === "holds-tail") return relayInBlocks(socket);
   if (mode === "shares")
     spawn(process.execPath, ["-e", `setTimeout(() => {}, ${CHILD_LIFETIME_MS})`], {
       stdio: ["ignore", "ignore", "ignore", socket],

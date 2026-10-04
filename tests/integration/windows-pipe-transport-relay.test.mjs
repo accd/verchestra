@@ -41,7 +41,7 @@ const FRAME_BOUND = 8 * 1024 * 1024;
 
 // why: a channel over the stand-in in `mode`, authenticated by its client,
 // which then writes a frame beyond its bound.
-async function oversizedFrame(mode) {
+async function oversizedFrame(mode, controllerOptions = {}) {
   const trace = pipeTrace();
   const { root, worktree, channels } = await plainWorktree();
   const host = standInHost(mode, root);
@@ -49,7 +49,7 @@ async function oversizedFrame(mode) {
     new WindowsNamedPipeBridgeTransport({ root: channels, host, observe: trace.observe, exitWaitMs: 2_000 })
   );
   const { controller, invoked } = await settlesWithin(
-    openController(worktree, { transport }),
+    openController(worktree, { transport, ...controllerOptions }),
     "the controller's open over the stand-in"
   );
   const client = rawChannelClient(host.endpoint);
@@ -117,3 +117,32 @@ test("a refused channel whose helper's child holds the connection ends the whole
   const outcome = trace.events().find((event) => event.step === "tree-terminated").outcome;
   assert.equal(outcome, "returned", trace.describe({}));
 });
+
+// why: the Windows runner's failure, reproduced: a relay that writes in whole
+// 128 KiB blocks, as the earlier PowerShell helper read, is kept up with, and
+// its frame is refused for its size.
+test(
+  "a frame relayed in whole 128 KiB blocks reaches the controller and is refused for its size",
+  PIPE_CASE,
+  async () => {
+    const channel = await oversizedFrame("blocks");
+    await assertRefusalEnds(channel);
+    assert.equal(channel.controller.statistics().stalledFrames, 0, channel.trace.describe({}));
+    assert.equal(channel.trace.reached(), 125 + FRAME_BOUND + 1);
+  }
+);
+
+// why: a relay that holds a frame's tail, as an unflushed one would: the
+// frame never completes at the controller, which refuses it at the stall
+// bound, so the channel still ends, the helper with it, and the client is
+// disconnected.
+test(
+  "a relay that holds a frame's tail still has its channel refused, ended, and disconnected",
+  PIPE_CASE,
+  async () => {
+    const channel = await oversizedFrame("holds-tail", { frameStallTimeoutMs: 1_000 });
+    await assertRefusalEnds(channel);
+    assert.equal(channel.controller.statistics().stalledFrames, 1, channel.trace.describe({}));
+    assert.ok(channel.trace.reached() <= 125 + FRAME_BOUND, channel.trace.describe({}));
+  }
+);
