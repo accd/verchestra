@@ -270,7 +270,7 @@ export class FakePipeHost {
 export async function assertRefusalEnds({ controller, trace, client, endpoint }) {
   const diagnosis = async () =>
     trace.describe({
-      rejected: controller.statistics().rejectedConnections,
+      statistics: controller.statistics(),
       client: client.state(),
       listed: await pipeListed(endpoint)
     });
