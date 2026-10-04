@@ -2350,6 +2350,161 @@ pages built, internal links and metadata valid). The record is not a
 `tNN-validation.md` report, so it enters neither the qualification chain nor
 the site's navigation.
 
+### Remediation R2 (node results, read scope, provider)
+
+**Implementer**: a session that wrote none of T1–T9. **Branch**:
+`strands/t9r2-node-results` from `origin/main` `867a784`. Findings 3, 4, 5,
+7, 8, 14, and the `isWriter` smell of finding 17. The verifier's findings and
+rows above are unchanged; a fresh verifier re-derives them. No real provider
+was called. Commits, one concern each:
+
+| Commit | Finding | Change |
+| --- | --- | --- |
+| `d4b41fc` | 3 (SSI-46, SSI-47) | `assertStructuredAnswer` (`coordinated-driver.ts:151`) maps `*_STRUCTURED_OUTPUT_MISSING`/`_INVALID` to `VES_COORDINATION_RESULT_INVALID` and `_LIMIT` to `VES_COORDINATION_RESULT_TOO_LARGE`; both node adapters apply it after the node's end is recorded (`driver-execution-adapter.ts:165`, `task-coordination.ts:350`) |
+| `25db8d4` | 4 (SSI-42, TM-004) | `WorktreeReadView.materialize` (`mcp-bridge-tools.ts:125`) and `removeMaterializedView` (`:282`); a Codex node runs in its own read-only view of its read scope, never the worktree (`task-coordination.ts:291`, `:324`, `:354`) |
+| `c24a740` | 5 (SSI-49, SSI-81) | a validated result is screened before it is persisted (`coordinated-driver.ts:177`, `:593`) against the composition's `nodeResultWithheld` (`task-coordination.ts:113`, wired at `:91`) |
+| `b404ca6` | 7 (SSI-07) | a swarm structural agent hands the SDK the result token as `message` (`structural-agent.ts:35`) |
+| `d60a41c` | 8 (SSI-58) | both adapters keep each warning's stable code once and record `warningCodes` in `driver-finished` (`driver-execution-adapter.ts:163`, `:258`; `task-coordination.ts:215`, `:347`) |
+| `f32f49f` | 14 (SSI-17) | `UsageEvent.provider` (`budget-meter.ts:38`); the coordinated driver puts node usage under the node driver's provider and refuses another (`coordinated-driver.ts:200`, `:559`); the Codex adapter reports its passport's provider (`task-coordination.ts:198`) |
+| `9e2cf68` | 17 (smell) | the private `isWriter` is replaced by the exported `isWriterNode` (`coordinated-driver.ts:462`) |
+| `7903efe` | hygiene | the new cases' fixture ports return plain promises; no assertion changes |
+
+**Evidence, finding by finding.**
+
+- **3.** Through the composition (`task-coordination.ts`) over the production
+  drivers and the spike fakes: the fake Claude Code's `structured-missing`
+  and `structured-retries` end as `VES_COORDINATION_RESULT_INVALID` and
+  `structured-large` as `VES_COORDINATION_RESULT_TOO_LARGE`
+  (`tests/integration/coordinated-node-adapters.test.mjs:55`, `:63`); the
+  fake Codex's `structured-missing`, `structured-invalid` (unreadable), and
+  `structured-large` likewise (`:71`). Each asserts the visit failed with the
+  coordination code, nothing persisted, and the driver's own code in
+  `driver-finished` (`:45`, `:46`). Mapping table:
+  `tests/unit/coordinated-driver.test.mjs:236`.
+- **4.** A Claude Code node whose read scope (`lib`) is narrower than the
+  change scope (`src`, `lib`) is answered `denied: VES_BRIDGE_SCOPE_DENIED`
+  for `src/a.txt` (`coordinated-node-adapters.test.mjs:140`), with the
+  positive control (`:146`). A Codex node's working directory holds exactly
+  its read scope's text files, all non-writable, without the protected
+  `lib/secret`, the binary, the directory link, or the file link, is not the
+  worktree, and is gone after the run (`:164`, `:179`, `:189`); a scope over
+  a bound fails `VES_BRIDGE_VIEW_LIMIT` before the session (`:192`). View
+  bounds: a file over 1 MiB, a listing over 1,000 entries, and 5,001 files
+  are each refused whole, a file of exactly 1 MiB is copied
+  (`tests/integration/read-scope-view.test.mjs:71`); content, modes, and
+  removal (`:46`).
+- **5.** Unit: a value, a root in another letter case or separator, and a
+  root at the end of the text are refused before anything is persisted; a
+  path that only shares a prefix is not; a swarm message is screened too
+  (`coordinated-driver.test.mjs:247`, `:265`, `:280`). Composition list:
+  credentials, home, the layout's state root, the worktree, the temporary
+  root, never a filesystem root (`tests/unit/task-coordination-withheld.test.mjs:37`,
+  `:44`, `:48`). Through the composition: `coordinated-node-adapters.test.mjs:204`.
+  Security cases: a model-written Claude token, Codex key, home, state,
+  worktree, or temporary path is refused and leaves no result file
+  (`tests/security/coordination-record-security.test.mjs:97`, `:136`); the
+  SUSPENDED outcome marker holds nothing of a hostile signal
+  (`tests/security/task-suspension-security.test.mjs:106`) and a marker
+  carrying an address, a session, a path, or a token is refused on read
+  (`:112`, `:133`); the v2 plan record and plan surface of each mode, and the
+  status of a suspended graph, hold no credential, address, or local root
+  (`tests/security/coordinated-surface-security.test.mjs:52`, `:80`).
+- **7.** `tests/integration/strands-coordination-engine.test.mjs:272`: a
+  swarm node's return shape, handing off (`{ agentId, message: token }`) and
+  ending (`{ message: token }`), with no provider text (`:296`).
+- **8.** `tests/integration/driver-execution-adapter.test.mjs:172`, `:193`;
+  through both adapters, the fake Claude Code's `rate-warning` and the fake
+  Codex's denied built-in effect (`coordinated-node-adapters.test.mjs:223`).
+- **14.** `coordinated-driver.test.mjs:506`: node usage names `openai` or
+  `anthropic` (`:521`); a node reporting `strands`, `bedrock`, or the other
+  kind's provider fails and the meter receives nothing (`:536`, `:539`);
+  real node sessions name `openai`, `anthropic`, `openai`
+  (`coordinated-node-adapters.test.mjs:104`). The single-session
+  implementer's usage is unchanged (`mediated-task-execution-e2e` 3/3).
+
+**Mutants** (each applied in place, its killer suites run through
+`scripts/test-scope.mjs`, then `git restore`; `git status --porcelain` empty
+before and after each):
+
+| Mutant | Killed by |
+| --- | --- |
+| M3a the Claude Code adapter skips the mapping | `coordinated-node-adapters` (2 of 4) |
+| M3b the Codex adapter skips the mapping | `coordinated-node-adapters` (1 of 4) |
+| M3c `_LIMIT` maps to RESULT_INVALID | `coordinated-node-adapters` (2 of 4), unit mapping case |
+| X04 a Claude Code node gets the change scope (`task-coordination.ts`) | `coordinated-node-adapters` (1 of 7) |
+| X04b the adapter ignores the node's read scope | `coordinated-node-adapters` (1 of 7) |
+| V1 a Codex node runs in the worktree | `coordinated-node-adapters` (1 of 7) |
+| V2 no listing bound; V3 file bound doubled; V4 size bound + 1 | `read-scope-view` (1 of 3 each; V4 also composition) |
+| V5 view files writable | `read-scope-view`, `coordinated-node-adapters` (2 of 10) |
+| V6 the view ignores protected paths | `coordinated-node-adapters` (1 of 7) |
+| M5a no screen | unit (1 of 25), `coordination-record-security` (1 of 2) |
+| M5b the composition passes no list | `coordinated-node-adapters` (1 of 8) |
+| M5c no worktree root; M5d state root one level short | unit `task-coordination-withheld` (1 of 2 each); the security case survives both, as its temporary root covers the fixture |
+| M5e no name boundary; M5f no folding | unit (1 of 25 each) |
+| M5g a filesystem root kept | unit `task-coordination-withheld` (1 of 2) |
+| M7 the provider's message to the SDK | `strands-coordination-engine` (1 of 17) |
+| M8a, M8b an adapter drops warnings | `driver-execution-adapter` + composition (2 of 25); composition (1 of 9) |
+| M14a no provider on node usage | unit (1 of 26), composition (1 of 9) |
+| M14b another provider accepted; M14c Codex named `strands` | unit (1 of 26 each) |
+| M17 no writer mutex (sanity for `isWriterNode`) | unit (1 of 26) |
+
+Sensor depth: 25 mutant runs; every one killed, M5c and M5d by the unit suite
+alone.
+
+**Residual and proposals for the owner.** Codex's sandbox (`sandbox:
+"read-only"`, `codex-driver.ts:465`, no readable root) withholds writes and
+network, not reads, by Codex's documented modes (not observed against a real
+Codex here): a prompt-injected Codex node can still read a file by absolute
+path outside its view. What it can persist is limited by the result screen,
+not by content. Proposed text, not applied:
+
+- `spec.md` SSI-42: "WHEN a node reads through the bridge THEN its read tools
+  SHALL be confined to the node's read scope; WHEN a Codex node reads through
+  its own sandbox THEN its working directory SHALL be a read-only copy of its
+  read scope alone, bounded by the bridge's read limits and removed when the
+  node ends, and a read by absolute path outside that copy is an accepted
+  residual risk (TM-004). (SSI-42)"
+- `threat-model.md` TM-004, columns from "Threat action" on: "A writer node
+  asks for out-of-scope or protected writes; a reader node reads beyond its
+  read scope | Repository integrity, disclosure | Repository, protected
+  paths, files outside a node's read scope | Executor scope, protected-path,
+  grant, authority checks (`task-executor.ts:640-671`); mediated tools only
+  (AD-039) | A Codex node's sandbox permits a read by absolute path outside
+  its working directory (accepted residual) | Node write-scope narrowing
+  before the executor (SSI-41); node read scope through the bridge, and for a
+  Codex node a read-only copy of its read scope as its working directory
+  (SSI-42, AD-0XX); node results screened for the run's credentials and
+  machine-local roots before they persist (SSI-49); untrusted labelling
+  (SSI-50) | Denied tool counts in the node ledger; `VES_BRIDGE_VIEW_LIMIT`;
+  `VES_COORDINATION_RESULT_INVALID` | medium | high | high"
+- `design.md:287-288`: "The adapter maps `next` to the SDK's `{ agentId?,
+  message }`, omitting `agentId` for `<complete>`, with `message` the node
+  result's token, never the provider's handoff text (SSI-07); the
+  coordinated driver keeps the validated message and hands it to the next
+  node itself."
+- SSI-17 needs no narrowing: node usage now names the provider.
+
+**Outside this remediation's files.** `tests/e2e/task-coordinated-e2e.test.mjs:77`
+(R3's) asserts the two Codex nodes of a graph share one working directory;
+each now has its own view, so the macOS leg fails there until it reads
+`assert.notEqual(nodes[0].cwd, nodes[1].cwd);` followed by
+`for (const node of nodes) assert.match(node.cwd, /[\\/]sessions[\\/]codex-node-[^\\/]+[\\/]scope$/u);`.
+With that change applied locally and restored, the file passed 4/4; without
+it, 3/4. `task-subscription-e2e` passed 9/9 and `mediated-task-execution-e2e`
+3/3 unchanged. Citations of `coordinated-driver.ts`, `task-coordination.ts`,
+and `driver-execution-adapter.ts` lines in the author and verifier sections
+move with these commits; the lines above are current.
+
+**Gates** (darwin arm64, Node 24.14.0, at `9e2cf68`): `pnpm gate:quick` PASS
+(format, lint, complexity, typecheck; unit 2962, agent-readiness 357, census
+13); `pnpm test:architecture` 132/132; `pnpm agent:check` PASS. At
+`7903efe` (test-only): the touched unit, integration, and security files
+re-run green. Focused: integration 83/83 over the eight touched or adjacent
+suites; security 10/10 over the four coordination record suites. 0 failed,
+0 skipped, 0 todo. No test was deleted; the hostile-signal security case was
+extended with the outcome marker, and `coordinated-driver-fixture.mjs` passes
+`withheld` through.
+
 ### Remediation R3 (journeys on every platform, documentation, standards)
 
 **Author**: an implementation session that wrote none of T1–T9. **Branch**:
