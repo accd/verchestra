@@ -230,8 +230,11 @@ sequenceDiagram
   ignored (SSI-06, SSI-50).
 - **Per-node driver factory.** Built in the composition root: a Claude Code node
   is a `DriverExecutionAdapter` with the subscription profile, the node's read
-  scope, and the node's output schema; a Codex node is a reader session over the
-  same worktree with read-only dynamic tools and `outputSchema`.
+  scope, and the node's output schema; a Codex node is a reader session with no
+  tool and Codex's read-only sandbox, whose working directory is a read-only
+  copy of its read scope, never the worktree, and with `outputSchema` (SSI-42
+  amended 2026-10-04, see `validation.md` "Remediation R2", finding 4, and
+  AD-081).
 
 ---
 
@@ -284,9 +287,13 @@ A swarm node's schema adds two required members:
 these schemas and their validator. The Strands adapter builds the same shape in
 Zod, and a contract test asserts `z.toJSONSchema(zodSchema, { target: "draft-7" })`
 equals the application's schema for every node, so the CLI, the application,
-and the SDK check one shape. The adapter maps `next` to the SDK's
-`{ agentId?, message }`, omitting `agentId` for `<complete>`, and also checks
-the result with the `structuredOutputSchema` the SDK passed (SSI-43, SSI-44).
+and the SDK check one shape. The adapter maps `next` to the SDK's `{ agentId?,
+message }`, omitting `agentId` for `<complete>`, with `message` the node
+result's token, never the provider's handoff text (SSI-07); the coordinated
+driver keeps the validated message and hands it to the next node itself. The
+adapter also checks the result with the `structuredOutputSchema` the SDK passed
+(SSI-43, SSI-44). (amended 2026-10-04: the SDK receives the result token as
+`message`, see `validation.md` "Remediation R2", finding 7)
 
 ---
 
@@ -324,7 +331,10 @@ the result with the `structuredOutputSchema` the SDK passed (SSI-43, SSI-44).
 `INTERRUPTED` is terminal (`packages/domain/src/workflow/workflow-machine.ts:34-41`)
 and stays so (SSI-64). Suspension is an executor checkpoint stage; the
 workflow state stays `IMPLEMENTING`, which `task resume` already accepts
-(`packages/application/src/execution/task-run.ts:126`).
+(`packages/application/src/execution/task-run.ts:126`), or `VERIFYING` when
+the Codex verifier of a v2 run raised the signal (SSI-60). (amended
+2026-10-04: a v2 verifier suspends at `VERIFYING`, see `validation.md`
+"Remediation R1", finding 1, and AD-082 item 1)
 
 ```mermaid
 stateDiagram-v2
@@ -342,8 +352,8 @@ stateDiagram-v2
 
 | Concern | Rule |
 | --- | --- |
-| Entering | The coordinated driver stops scheduling, aborts running nodes, waits for their sessions to close, records each as failed (no effect) or partial (effects landed), and returns `suspended` with `{ reason, provider, at, resetsAt? }` (SSI-59, SSI-61). |
-| Executor | On `suspended` it saves checkpoint `suspended` with the change digest and the node-ledger digest, keeps the worktree, releases the writer lease, and throws `VES_EXECUTOR_SUSPENDED`; it does not run its failure cleanup (`task-executor.ts:605-637`). |
+| Entering | The coordinated driver stops scheduling, aborts running nodes, waits for their sessions to close, records each as failed (no effect) or partial (effects landed), and returns `suspended` with `{ reason, provider, at, scope?, resetsAt? }`, `scope` and `resetsAt` only when the provider reported them, each in its closed grammar (SSI-59, SSI-61). (amended 2026-10-04: the record keeps the provider's limit window, see `validation.md` "Delta verification of R4" and AD-079 item 2) |
+| Executor | On `suspended` it saves checkpoint `suspended` with the change digest (the node ledger is sealed in the Run record, AD-079 item 2), keeps the worktree, releases the writer lease, and throws `VES_EXECUTOR_SUSPENDED`; it does not run its failure cleanup (`task-executor.ts:605-637`). |
 | Run coordinator | Maps `VES_EXECUTOR_SUSPENDED` to outcome `SUSPENDED`, applies no workflow command, and does not call `release()`; the command exits non-zero with the suspension surface; `releaseActive` frees the run (SSI-60). |
 | Budget | The ledger snapshot is saved; a resumed meter backdates its start by consumed active time only (SSI-68). |
 | Resume | Preflight (SSI-51, SSI-52), approval and policy revalidation, worktree reopened through the idempotent `create` and its change digest compared with the checkpoint (`VES_EXECUTOR_WORKTREE_DRIFT` on mismatch), ledger reconciliation, then the engine restarts with completed visits replayed (SSI-33, SSI-65). |
@@ -375,7 +385,9 @@ Per session (SSI-54, SSI-55, SSI-57, SSI-58):
   `rejected` emits `quota.exhausted` with `resetsAt` if given; `allowed_warning`
   emits a `warning`. No `--fallback-model`, `--max-budget-usd`, or API-key
   helper is ever passed.
-- **Codex.** Before `turn/start`: `account/read` must return `type: "chatgpt"`;
+- **Codex** (each node session and the verifier of a v2 run; SSI-55, SSI-56
+  amended 2026-10-04, see `validation.md` "Remediation R1", finding 1). Before
+  `turn/start`: `account/read` must return `type: "chatgpt"`;
   `account/rateLimits/read` must report no credit balance and no unlimited
   credits (`VES_CODEX_CREDITS_PRESENT`), and `ordinaryUsageAllowed !== false`
   (otherwise `quota.exhausted` before the turn). During the turn:
@@ -384,8 +396,11 @@ Per session (SSI-54, SSI-55, SSI-57, SSI-58):
   `quota.exhausted`. The driver's JSON-RPC client sends only an allowlist of
   methods; `account/rateLimitResetCredit/consume`,
   `account/sendAddCreditsNudgeEmail`, and every `account/login*` method are
-  absent from it. The plan type may be compared with the confirmation; the
-  e-mail address is discarded on receipt.
+  absent from it. At `start` and `resume` of a v2 run an account-only session
+  reads `account/read` and nothing else, and its plan type, a closed value,
+  must equal the confirmation's; no other account field is kept, so the
+  e-mail address is discarded on receipt (SSI-52 amended 2026-10-04, see
+  `validation.md` "Remediation R1", finding 2, and AD-082 item 2).
 
 ---
 
