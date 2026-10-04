@@ -1198,7 +1198,7 @@ Windows, the unbound signing credential of an empty Credential Manager
 (`evidence-signing-passphrase`) instead of `platform`, and `:1176` expects the
 Unix `VES_STATE_ROOT_ESCAPE` for a junction on Windows too; the four dry-run
 journeys (`:780`, `:823`, `:867`, `:888`), which read no credential, now run
-on Windows as well; `tests/build/sealed-launcher-closure.test.mjs:525`, `:591`
+on Windows as well; `tests/build/sealed-launcher-closure.test.mjs:529`, `:596`
 plans the sealed dry run on Windows like everywhere else, with the fixture's
 home in `USERPROFILE`.
 
@@ -1451,6 +1451,48 @@ the path budget and the Windows journey's platform path, 376/376; `typecheck`, `
 
 Not provable without the next Windows leg: the journey to the accepted review,
 and the twelve coordinated cases with the shortened roots.
+
+### Fifth Windows leg of commit 4: the sealed dry run's state root
+
+Platform matrix runs 37179380827 (`gate:security`, Windows SUCCESS, the
+Windows journey end to end) and 37179379351 (`gate:build`, head `4dfdd96`):
+on Windows unit 2957, contract 954, integration 1208, e2e 294, architecture
+132, and build 177 of 178. The one failure was the sealed launcher's
+`task plan --dry-run` (`tests/build/sealed-launcher-closure.test.mjs:497`),
+which before commit 4 only asserted the platform refusal on Windows: exit 5,
+`not configured`.
+
+Cause: the case starts the sealed CLI with `{ ...process.env, HOME, USERPROFILE }`,
+so on Windows the child inherited the runner's own `LOCALAPPDATA` and put the
+state root in the runner's profile, while the case wrote the gate allowlist
+where `resolveStateRoot` puts it without one (`<home>\AppData\Local`); the
+dry run found no allowlist (`gate-allowlist`). The CLI does not need
+`LOCALAPPDATA`: without one it falls back to `<home>\AppData\Local`, pinned by
+`tests/unit/state-root.test.mjs:21` and `:28`. The case now gives the child a
+`LOCALAPPDATA` below the fixture's home, as every Windows session has one, and
+computes the state root from the same environment, so `init` no longer writes
+into the runner's profile either. A short one keeps the Workspace state root
+at 142 of the 150 bytes on the runner (`D:\a\verchestra\verchestra\.tmp-sealed-command-layout\home-XXXXXX\l\...`),
+which a dry run does not need but a started run would. Its assertions now
+carry the command's bounded standard output, where the JSON error names the
+code and the requirement (`tests/build/sealed-launcher-closure.test.mjs:523-530`,
+`:537`, `:596`).
+
+Sibling sweep: every other test that runs the task path through a child
+`vestra` uses the task CLI fixture, whose environment is explicit, not
+inherited, and names its own `HOME`, `USERPROFILE`, `LOCALAPPDATA`, `TEMP`, and
+`TMP` on Windows; the in-process suites pass `env` and `homeDirectory` in the
+command's IO. One sibling still skipped Windows with the stale "the task path
+is refused on Windows": the example Task Requests' dry runs
+(`tests/e2e/task-request-examples-e2e.test.mjs:62`), which read no credential
+and now run there too. On Linux, `XDG_STATE_HOME` in the invoking
+environment would be inherited the same way by the sealed case; the hosted
+runners do not set it.
+
+Checks (darwin): the sealed task case 1/1, the example dry runs 3/3,
+`format:check`, `lint`, `typecheck`, and `agent:check` PASS. Not provable
+without the next Windows leg: the sealed dry run and the example dry runs
+on the runner.
 
 ## T8 Evidence (CLI surface, examples, and user documentation)
 

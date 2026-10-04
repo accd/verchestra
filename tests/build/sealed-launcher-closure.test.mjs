@@ -521,15 +521,20 @@ test("vestra task is reachable from the sealed bundle and its bridge relay is st
   disposable.push(home);
   const workspaceId = "workspace_7c1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f";
   // why: Node reads the home from USERPROFILE on Windows, and a child spawned
-  // there without it inherits the invoking user's own.
-  const env = process.platform === "win32" ? { HOME: home, USERPROFILE: home } : { HOME: home };
+  // there without it inherits the invoking user's own. Windows keeps the state
+  // root below LOCALAPPDATA, which every Windows session has and which the
+  // child would otherwise inherit from the invoking user; a short one below
+  // the fixture's home keeps the Workspace state root within the 150 bytes
+  // Git's GIT_DIR limit leaves it there.
+  const env =
+    process.platform === "win32" ? { HOME: home, USERPROFILE: home, LOCALAPPDATA: join(home, "l") } : { HOME: home };
   const init = spawnSealed(
     releaseRoot,
     "vestra.mjs",
     ["init", "--workspace-id", workspaceId, "--name", "Sealed task", "--placement", "colocated"],
     { cwd: project, env }
   );
-  assert.equal(init.status, 0, init.stderr);
+  assert.equal(init.status, 0, `${init.stderr}\n${init.stdout.slice(-4096)}`);
   // why: the sealed CLI resolves its state root per platform, so the gate
   // allowlist must be written where that platform's layout puts it.
   const state = join(
@@ -588,7 +593,7 @@ test("vestra task is reachable from the sealed bundle and its bridge relay is st
     ["task", "plan", "--request", request, "--dry-run", "--output", "json"],
     { cwd: project, env, timeoutMs: 120_000 }
   );
-  assert.equal(plan.status, 0, plan.stderr);
+  assert.equal(plan.status, 0, `${plan.stderr}\n${plan.stdout.slice(-4096)}`);
   const surface = JSON.parse(plan.stdout).data;
   assert.equal(surface.dryRun, true);
   assert.equal(surface.state, "NOT_PERSISTED");
