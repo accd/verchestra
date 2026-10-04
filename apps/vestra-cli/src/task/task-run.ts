@@ -30,9 +30,10 @@ import {
 
 import { loadProviderAuth, type ProviderAuth, type ProviderAuthMode } from "../task-provider-auth.ts";
 import { TaskAuthority } from "./task-authority.ts";
+import { requireSubscriptionPreflight } from "./task-billing.ts";
 import { meterOnRunLedger, recordingMeter } from "./task-budget.ts";
 import { requireCodexSubscription } from "./task-codex-identity.ts";
-import { coordinatedDriver, requireCoordinatedSubscription } from "./task-coordination.ts";
+import { coordinatedDriver } from "./task-coordination.ts";
 import { IMPLEMENTER_CREDENTIALS, VERIFIER_CREDENTIAL, readCredentials } from "./task-credentials.ts";
 import { stateInvalid, taskError } from "./task-errors.ts";
 import { sha256 } from "./task-files.ts";
@@ -167,7 +168,13 @@ async function prepare(
   runRecord: RunRecord
 ) {
   const auth = await loadProviderAuth(workspace.layout.workspaceRoot);
-  if (isCoordinatedPlan(plan)) requireCoordinatedSubscription(auth);
+  if (isCoordinatedPlan(plan))
+    await requireSubscriptionPreflight({
+      workspaceRoot: workspace.layout.workspaceRoot,
+      auth,
+      request: plan.request,
+      stderr: io.stderr
+    });
   const implementerCredential = IMPLEMENTER_CREDENTIALS[auth.implementer];
   // invariant: a run reads exactly the credentials its modes name. A verifier
   // on a subscription reads none here; its login is proven below instead.

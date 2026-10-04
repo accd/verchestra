@@ -315,6 +315,10 @@ section.
 **Tests**: unit, integration, e2e, fault, security
 **Gate**: security
 
+**Progress** (branch `strands/t6-suspension`; evidence in `validation.md`, "T6 Evidence"):
+
+- [x] Commit 1: `task-billing.ts` reads the owner's extra-usage confirmation (D3) under a pinned billing regime per provider (D9); the preflight at `start` and `resume` folds in T5's `coordinated-run-subscription` refusal and runs before any credential read, transition, or worktree; journeys for a missing confirmation and an `api-key` provider; 11 mutants killed.
+
 ---
 
 ### Phase 4: Surface, verification, and the portable record

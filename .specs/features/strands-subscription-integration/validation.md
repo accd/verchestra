@@ -704,6 +704,78 @@ scope narrowing (C1, C16), the writer mutex (C2), a limit (C3 concurrency, C4
 handoff, C8 node result, C9 run result, S3 the SDK's limits), and the
 destination check (C5 the validator, C6 the runner, S2 and S10 the adapter).
 
+## T6 Evidence (subscription preflight, suspension, resume, reconciliation)
+
+Author's evidence, commit by commit, on branch `strands/t6-suspension` (base
+`origin/main` at `cf387fe`). The independent verifier re-derives it.
+
+### Commit 1 — subscription authentication and the extra-usage confirmation
+
+`apps/vestra-cli/src/task/task-billing.ts` reads the owner's statement (D3)
+from `task-billing.json` beside `task-providers.json` and holds the preflight
+of a coordinated run, which folds in T5's interim `coordinated-run-subscription`
+refusal (moved out of `task-coordination.ts`). `task-run.ts` runs it at `start`
+and `resume` before any credential read, transition, or worktree.
+`task-provider-auth.ts` gains `readMachineSetting`, the one bounded reader of
+an owner-written machine-local setting, shared by both files.
+
+How the owner provisions it: an explicit documented step, not a command
+(SSI-31 adds no command; D3 mirrors the hand-written provider setting). The
+refusal prints, on the terminal only, the file's path and the entry each
+provider needs, and asks the owner to write it only after checking each
+account. The user documentation of the step is T8's commit 3.
+
+What the statement holds, per provider, and nothing else:
+`{ "auth", "extraUsage": "disabled", "confirmedAt" }`, plus `"planType"` for
+Codex. `auth` must be the method the run's sessions prove: `subscription` for
+Claude Code (`apiKeySource: "none"`), `chatgpt` for Codex (`account/read`).
+`confirmedAt` is a UTC instant, not in the future, and not before the
+provider's pinned billing regime (`BILLING_REGIMES`: Claude Code
+2026-06-16, Codex 2026-10-03), which is how D9 asks for re-confirmation: a
+build that follows a regime change moves the instant. No expiry otherwise.
+
+| Behaviour | Assertion (file:line) | Run |
+| --- | --- | --- |
+| The file name, the method per provider, and the pinned regimes | `tests/unit/task-billing.test.mjs:42` | `node --test tests/unit/task-billing.test.mjs`: 36 of 36 |
+| A complete statement reads as exactly what it states, frozen | `tests/unit/task-billing.test.mjs:51` | same |
+| A run uses every node's provider and the Codex verifier, in each mode | `tests/unit/task-billing.test.mjs:66` | same |
+| SSI-52: 19 statements are `not configured` (`extra-usage-confirmation`): not an object, another version, extra member, unknown provider, a provider missing, Claude Code on an API key, Codex on `subscription` or `apiKey`, extra usage enabled or unstated, Codex without a plan type, a free-text plan type, a plan type on Claude Code, a local or impossible time, a future date, and each provider's statement made before its regime | `tests/unit/task-billing.test.mjs:74`, `:110` | same |
+| SSI-53: a `token`, `accountId`, `email`, `name`, `path`, or `apiKey` member is refused inside an entry and beside the providers | `tests/unit/task-billing.test.mjs:116` | same |
+| A statement at its regime's start is accepted | `tests/unit/task-billing.test.mjs:129` | same |
+| The preflight passes silently with a complete statement; refuses an API-key provider as `coordinated-run-subscription` whatever the statement says; refuses no statement, non-JSON, or another method and prints the one step with the file's path; never follows a link or reads a directory | `tests/unit/task-billing.test.mjs:153`, `:163`, `:173`, `:183` | same |
+| SSI-51, SSI-52 at the command: `start` and `resume` of a v2 run with no confirmation, one missing Claude Code, or one of another Codex method are `not configured` and leave the state, the state root, and the active marker as they were; with the confirmation they reach their credential read | `tests/integration/task-coordinated-plan.test.mjs:124`, `:137` | `node --test tests/integration/task-coordinated-plan.test.mjs`: 16 of 16 |
+| Journey, missing confirmation: `start` is `not configured` with nothing started (no grant, no worktree, no provider, not even `codex login status`), the terminal names the step and no machine path reaches the public error; a statement for another method is refused the same way | `tests/e2e/task-subscription-e2e.test.mjs:45` | `node scripts/test-scope.mjs e2e tests/e2e/task-subscription-e2e.test.mjs tests/e2e/task-coordinated-e2e.test.mjs`: 6 of 6 |
+| Journey, `api-key` provider: `start` is `not configured` (`coordinated-run-subscription`) with a confirmation present, nothing started | `tests/e2e/task-subscription-e2e.test.mjs:65` | same |
+
+Tests changed, none deleted. `tests/integration/task-coordinated-plan.test.mjs`
+"start/resume of a v2 run on subscriptions is composed" now writes the
+confirmation first (it is the composed case); T5's citation `:110` of that
+case is now `:137`. The coordinated e2e journeys of T5 write the confirmation
+through the shared `tests/helpers/task-coordinated-fixture.mjs`, into which
+their helpers moved unchanged, so the new journeys reuse them.
+
+Discrimination (author run, one source edit per mutant, restored after the
+run): B1 drop the preflight from `start` and `resume`, B2 skip the confirmation
+read and keep the API-key check, B3 accept an absent statement, B4 accept any
+method, B5 accept extra usage not disabled, B6 skip the regime check (D9), B7
+accept a future date, B8 accept members outside the closed shape, B9 accept a
+Codex statement without its plan type, B10 drop the API-key refusal, B11 forget
+the verifier's provider — all killed.
+
+Gates at this commit: `pnpm gate:quick` PASS (unit 2876, agent-readiness 357,
+census 13); `pnpm test:architecture` 131/131; `pnpm agent:check` PASS;
+typecheck, lint, format, and complexity PASS; 0 failed, 0 skipped, 0 todo.
+`complexity-baseline.json` and the census are unchanged (no new function above
+10; no file gained or lost `JSON.stringify` or `createHash`).
+
+Citations moved with `task-run.ts` (one line more above `prepare`, seven below it):
+`.specs/features/architecture-deepening-2/validation-t1.md` (`:378` → `:385`),
+`.specs/features/architecture-deepening/validation-c6.md` (`:376` → `:383`),
+`.specs/features/architecture-deepening-2/validation-t7.md` (`:252`, `:263`,
+`:270` → `:259`, `:270`, `:277`), `.specs/features/live-task-pilot/validation.md`
+(`:60`, `:610-611`, `:399`, `:646-648` → `:61`, `:617-618`, `:406`,
+`:653-655`). `task-provider-auth.ts:29-32` did not move.
+
 ## T7 Evidence (Windows bridge transport, commits 1 to 3)
 
 Author: the T7 implementer. Commit 4 (lifting the refusals) is not on this
@@ -902,9 +974,9 @@ evidence is FAIL.
 | SSI-48 | The bound is applied before emission (`tests/unit/driver-event.test.mjs:143`; driver boundaries `tests/contract/claude-code-driver-structured.test.mjs:119`, `tests/contract/codex-driver-structured.test.mjs:157`) and the port carries only `payload:sha256:<digest>` of the canonical bytes (`tests/integration/driver-execution-adapter.test.mjs:305`); mutants M10, M11 killed. | `pnpm test:unit`, `pnpm test:contract`, `pnpm test:integration` | PASS |
 | SSI-49 | T4 share: the new events carry only the canonical answer, a closed-vocabulary scope, and an ISO reset; checkpoints gain nothing (`tests/security/driver-structured-results-security.test.mjs:58`, `:162`, `:173`). T5 owns the persisted node results and ledger.; T5 part: `tests/security/coordination-record-security.test.mjs:27`, `tests/unit/coordinated-driver.test.mjs:493` the ledger and results hold no session, credential, prompt, or path | `pnpm test:security`; T5 gates | PASS (T4 share); PASS (author, T5 part) |
 | SSI-50 | `tests/unit/node-result.test.mjs:100` earlier results, the handoff, and the context are delimited untrusted data after the rules; tools and scopes come from the plan (`tests/unit/coordinated-driver.test.mjs:148`) | T5 gates (see T5 Evidence) | PASS (author) |
-| SSI-51 | — | — | — |
-| SSI-52 | — | — | — |
-| SSI-53 | — | — | — |
+| SSI-51 | Every provider, verifier included, must be `subscription` or the run is `not configured` (`coordinated-run-subscription`) before any credential, transition, or worktree: `tests/unit/task-billing.test.mjs:163`, `tests/integration/task-coordinated-plan.test.mjs:102`, journey `tests/e2e/task-subscription-e2e.test.mjs:65`; mutants B1, B10 killed | T6 commit 1 (see T6 Evidence) | PASS (author) |
+| SSI-52 | A confirmation naming each provider and its effective method under the current regime is required at `start` and `resume`; absent, malformed, or mismatched is `not configured` (`extra-usage-confirmation`): `tests/unit/task-billing.test.mjs:74`, `:173`, `tests/integration/task-coordinated-plan.test.mjs:124`, journey `tests/e2e/task-subscription-e2e.test.mjs:45`; mutants B1–B9, B11 killed | T6 commit 1 (see T6 Evidence) | PASS (author) |
+| SSI-53 | The statement is a closed shape of closed values and bounded grammars; a token, account identifier, e-mail address, name, path, or key member is refused at either level, and a free-text plan type is refused: `tests/unit/task-billing.test.mjs:74`, `:116`; mutant B8 killed | T6 commit 1 (see T6 Evidence) | PASS (author) |
 | SSI-54 | `apiKeySource` other than `none` fails a subscription session with `VES_CLAUDE_AUTH_METHOD_MISMATCH` before `session.started` and any tool effect (`tests/contract/claude-code-driver-structured.test.mjs:172`, `spikes/claude-code-driver/test/claude-driver-structured.test.mjs:108`); mutant M1 killed. | `pnpm test:contract`, `pnpm qualify:claude` | PASS |
 | SSI-55 | A subscription-only Codex session reads `account/read` before `model/list` and refuses `apiKey`, `amazonBedrock`, and no account with `VES_CODEX_AUTH_METHOD_MISMATCH` before `thread/start` (`tests/contract/codex-driver-structured.test.mjs:217`, `:232`; `spikes/codex-driver/test/codex-driver-structured.test.mjs:68`); mutant M2 killed. | `pnpm test:contract`, `pnpm qualify:codex` | PASS |
 | SSI-56 | T4 share: credits on any snapshot stop the session before its turn with `VES_CODEX_CREDITS_PRESENT` (`tests/contract/codex-driver-structured.test.mjs:249`); mutant M5 killed. T6 maps it to `not configured`. | `pnpm test:contract` | PASS (T4 share); T6 pending |
@@ -956,7 +1028,7 @@ mutant must be killed (a test fails). A surviving mutant becomes a fix task.
 | Skip the `apiKeySource` check | SSI-54 | Fake init with `ANTHROPIC_API_KEY` | Killed (T4 M1) |
 | Skip the Codex `account/read` check | SSI-55 | Fake `apiKey` account | Killed (T4 M2) |
 | Allow `account/rateLimitResetCredit/consume` | SSI-57 | Method allowlist test | Killed (T4 M3) |
-| Skip the billing confirmation at resume | SSI-52 | Resume without confirmation is `not configured` | — |
+| Skip the billing confirmation at resume | SSI-52 | Resume without confirmation is `not configured` | Killed (T6 B1, B2, B3) |
 | Clean up the worktree on `suspended` | SSI-60 | Suspended worktree survives | — |
 | Re-run a partial node silently | SSI-66 | Uncertain-node refusal | — |
 | Construct a Strands `Agent` in the adapter | SSI-03, SSI-79 | Architecture ban and empty-environment probe | Killed (T5 S6, by each on its own) |

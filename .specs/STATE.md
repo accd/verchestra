@@ -2804,6 +2804,33 @@ note. -->
   single-session run; status and the Run Capsule can name the round of every
   visit.
 
+### AD-079 — The owner's billing statement is hand-written and pinned to each provider's billing regime
+
+- **Status:** proposed (T6 of `.specs/features/strands-subscription-integration/`;
+  refines AD-072 where `spec.md` and `design.md` leave the form open).
+- **Context:** D3 makes the extra-usage confirmation the owner's own
+  machine-local statement, and D9 asks for it again when a provider's billing
+  regime changes; no local read can tell a regime apart.
+- **Decision:**
+  1. The statement is a hand-written `task-billing.json`, not a command
+     (SSI-31 adds none): per provider exactly `auth` (the method the session
+     proves: `subscription` for Claude Code, `chatgpt` for Codex),
+     `extraUsage: "disabled"`, `confirmedAt`, and for Codex `planType`. Each
+     provider's current regime is a start instant pinned in the build; a
+     statement dated before it, or after the clock that reads it, is `not
+     configured`. A regime change is a build that moves the instant, which
+     asks every owner to confirm again. The plan type is the owner's record:
+     nothing compares it with the account, because the Codex driver keeps no
+     account field beyond the type it checks.
+- **Alternatives rejected:** a `vestra task` subcommand that writes the
+  statement (a new command, and a statement Verchestra writes is not the
+  owner's); an expiry (D3 says none); a regime name the owner copies into the
+  file (a member the design does not list, and one an owner would copy without
+  reading).
+- **Consequence:** A Workspace confirmed before a regime change stops at
+  `not configured` (`extra-usage-confirmation`) on its next `start` or
+  `resume`, before anything is read or changed.
+
 ## Handoff
 
 - **Feature:** `subscription-provider-auth` (ADP-A, tasks TA1 and TA2) on
