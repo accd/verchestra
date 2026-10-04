@@ -85,6 +85,10 @@ export interface ResumeFacts {
   >;
   readonly reconcile: Digest | undefined;
   readonly stderr: (value: string) => void;
+  // invariant: present only for a run suspended at its verifier. Its worktree
+  // is gone into its task commit, so what it left is that commit: whether the
+  // recorded commit still stands on its base under its anchored task branch.
+  readonly suspendedAtVerification?: { readonly taskCommitHolds: () => Promise<boolean> };
 }
 
 function explain(runId: string, open: readonly NodeUncertainty[]): string {
@@ -114,19 +118,28 @@ function requireSettled(facts: ResumeFacts, changeDigest: string | undefined): v
 }
 
 // invariant: SSI-33. A suspended run resumes only on an approval that is
-// still valid against the Workspace policy in force and on the worktree it
-// left: the same change digest and no commit since its base. An interrupted
-// coordinated run resumes only with every unsettled node settled. The
-// subscription preconditions, the extra-usage confirmation, and the workflow
-// state were proven before this is asked.
+// still valid against the Workspace policy in force and on what it left: a
+// run suspended in a node, its worktree with the same change digest and no
+// commit since its base; a run suspended at its verifier, its task commit
+// on its base under its anchored branch. An interrupted coordinated run
+// resumes only with every unsettled node settled. The subscription
+// preconditions, the extra-usage confirmation, and the workflow state were
+// proven before this is asked.
 export async function revalidateResume(facts: ResumeFacts): Promise<{ readonly fromSuspension: boolean }> {
   if (facts.reconcile !== undefined && !facts.coordinated)
     refused("VES_TASK_RECONCILE_UNMATCHED", "Only a coordinated run has nodes to reconcile");
   const inspects = facts.suspended !== undefined || facts.ledger?.roundState === "running";
   const current = inspects ? await facts.worktree() : undefined;
   if (facts.suspended !== undefined) await assertSuspensionHolds(facts, facts.suspended, current);
+  if (facts.suspendedAtVerification !== undefined) await assertVerificationHolds(facts, facts.suspendedAtVerification);
   if (facts.coordinated) requireSettled(facts, current?.changeDigest);
   return { fromSuspension: facts.suspended !== undefined };
+}
+
+async function requireValidApproval(facts: ResumeFacts): Promise<void> {
+  const approval = await facts.approval();
+  if (!approval.valid)
+    refused(approval.code ?? "VES_APPROVAL_STALE", "The approval is no longer valid; plan the task again");
 }
 
 async function assertSuspensionHolds(
@@ -134,9 +147,16 @@ async function assertSuspensionHolds(
   suspended: NonNullable<ResumeFacts["suspended"]>,
   current: Awaited<ReturnType<ResumeFacts["worktree"]>>
 ): Promise<void> {
-  const approval = await facts.approval();
-  if (!approval.valid)
-    refused(approval.code ?? "VES_APPROVAL_STALE", "The approval is no longer valid; plan the task again");
+  await requireValidApproval(facts);
   if (current?.changeDigest !== suspended.changeDigest || current?.commitCountSinceBase !== 0)
     refused("VES_EXECUTOR_WORKTREE_DRIFT", "The worktree changed while the run was suspended");
+}
+
+async function assertVerificationHolds(
+  facts: ResumeFacts,
+  verification: NonNullable<ResumeFacts["suspendedAtVerification"]>
+): Promise<void> {
+  await requireValidApproval(facts);
+  if (!(await verification.taskCommitHolds()))
+    refused("VES_TASK_COMMIT_DRIFT", "The task commit or its branch changed while the run was suspended");
 }

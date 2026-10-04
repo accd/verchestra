@@ -25,6 +25,8 @@ import {
   NodeGitWorktreeAdapter,
   NodeWorktreeToolAdapter,
   parseTaskCommitTrailers,
+  refTarget,
+  taskBranchRef,
   type GateCommandProfile,
   type RuntimeStore
 } from "@verchestra/platform-node";
@@ -447,11 +449,33 @@ class TaskRunComposition {
     return grant.grantId;
   }
 
-  // invariant: SSI-33. What a resume proves before any node starts; a refusal
-  // leaves the run exactly as it was.
+  // invariant: the task commit a run suspended at its verifier left: the one
+  // recorded, whose only parent is the plan's source revision, and the one its
+  // task branch anchors. A commit or branch that cannot be read does not hold.
+  async #taskCommitHolds(): Promise<boolean> {
+    const commit = await this.#runRecord.loadCommit();
+    if (commit === undefined || commit.baseCommit !== this.#plan.request.sourceRevision) return false;
+    const root = this.#workspace.repositoryRoot;
+    const ref = taskBranchRef(this.#plan.runId, this.#task.taskId);
+    if ((await refTarget(root, ref).catch(() => undefined)) !== commit.commitId) return false;
+    const lineage = await git(root, ["rev-list", "--parents", "-n", "1", commit.commitId]).catch(() => "");
+    return lineage.trim() === `${commit.commitId} ${commit.baseCommit}`;
+  }
+
+  // why: a run that its verifier's provider suspended waits in VERIFYING with
+  // its suspension as its last outcome; any other VERIFYING run was
+  // interrupted, not suspended.
+  async #suspendedAtVerification(): Promise<boolean> {
+    if (currentRun(this.#runtime, this.#plan.runId).state !== "VERIFYING") return false;
+    return (await this.#runRecord.loadOutcome())?.status === "SUSPENDED";
+  }
+
+  // invariant: SSI-33. What a resume proves before any node or verifier
+  // starts; a refusal leaves the run exactly as it was.
   async revalidate(): Promise<void> {
     const executor = await this.#checkpoints.executor();
     const coordinated = isCoordinatedPlan(this.#plan);
+    const atVerifier = await this.#suspendedAtVerification();
     const { fromSuspension } = await revalidateResume({
       runId: this.#plan.runId,
       coordinated,
@@ -460,7 +484,8 @@ class TaskRunComposition {
       approval: () => this.#prepared.authority.approval(),
       worktree: () => inspectMarkedWorktree(this.#runRecord, this.#worktrees, this.#plan.request.sourceRevision),
       reconcile: this.#reconcile,
-      stderr: this.#io.stderr
+      stderr: this.#io.stderr,
+      ...(atVerifier ? { suspendedAtVerification: { taskCommitHolds: () => this.#taskCommitHolds() } } : {})
     });
     this.#renewalArmed = fromSuspension;
   }
