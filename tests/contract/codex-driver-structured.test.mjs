@@ -8,6 +8,7 @@ import { test } from "node:test";
 
 import {
   CODEX_CLIENT_METHODS,
+  CODEX_PLAN_TYPES,
   CODEX_STRUCTURED_MINIMUM_VERSION,
   CodexDriver,
   codexWireFrame
@@ -50,11 +51,13 @@ async function run({
   const fixture = codexFixture({ environment: { FAKE_CODEX_MODE: mode, ...environment }, ...execution });
   const sent = [];
   const events = [];
+  const accounts = [];
   const driver = new CodexDriver(
     fixture.dependencies({
       minimumVersion: undefined,
       probeEnvironment: { FAKE_CODEX_VERSION: version },
-      onMessageSent: (message) => sent.push(message)
+      onMessageSent: (message) => sent.push(message),
+      onAccount: (account) => accounts.push(account)
     })
   );
   const session = await driver.start(fixture.request(), (event) => events.push(event), new AbortController().signal);
@@ -64,6 +67,7 @@ async function run({
     closed,
     sent,
     methods: sent.filter((message) => message.method).map((message) => message.method),
+    accounts,
     fixture
   };
 }
@@ -175,7 +179,7 @@ test("a structured turn without a readable answer, or with one beyond its bound,
 });
 
 test("a session that uses the new protocol is refused before spawn below its floor, and the T04 floor is unchanged", async () => {
-  for (const execution of [structured(), { subscriptionOnly: true }]) {
+  for (const execution of [structured(), { subscriptionOnly: true }, { accountOnly: true }]) {
     const fixture = codexFixture({ ...execution });
     const driver = new CodexDriver(
       fixture.dependencies({ minimumVersion: undefined, probeEnvironment: { FAKE_CODEX_VERSION: "0.159.2" } })
@@ -199,7 +203,10 @@ test("a malformed structured or subscription request is refused before spawn", a
     [{ structuredOutput: { schema: SCHEMA, maxBytes: 0 } }, "VES_CODEX_OUTPUT_SCHEMA_INVALID"],
     [{ structuredOutput: { schema: "{}", maxBytes: 64 } }, "VES_CODEX_OUTPUT_SCHEMA_INVALID"],
     [{ subscriptionOnly: false }, "VES_CODEX_SUBSCRIPTION_INVALID"],
-    [{ subscriptionOnly: "yes" }, "VES_CODEX_SUBSCRIPTION_INVALID"]
+    [{ subscriptionOnly: "yes" }, "VES_CODEX_SUBSCRIPTION_INVALID"],
+    [{ accountOnly: false }, "VES_CODEX_SUBSCRIPTION_INVALID"],
+    [{ accountOnly: true, subscriptionOnly: true }, "VES_CODEX_SUBSCRIPTION_INVALID"],
+    [{ accountOnly: true, structuredOutput: { schema: SCHEMA, maxBytes: 64 } }, "VES_CODEX_SUBSCRIPTION_INVALID"]
   ]) {
     const fixture = codexFixture({ ...execution });
     const driver = new CodexDriver(
@@ -227,6 +234,62 @@ test("a subscription-only session reads its account and rate limits before anyth
   ]);
   assert.deepEqual(sent.find((message) => message.method === "account/read").params, { refreshToken: false });
   assert.equal(closed.outcome, "completed");
+});
+
+// invariant: SSI-52. A session that reads the account reports its plan type as
+// one value of the 0.159.3 vocabulary, or `unknown`, and nothing else of the
+// account; an account-only session reads the account and ends there.
+test("an account-only session reads the account, reports its plan type, and asks for nothing more", async () => {
+  const { methods, events, closed, accounts } = await run({ execution: { accountOnly: true } });
+  assert.deepEqual(methods, ["initialize", "initialized", "account/read"]);
+  assert.deepEqual(accounts, [{ planType: "plus" }]);
+  assert.equal(Object.isFrozen(accounts[0]), true);
+  assert.deepEqual(types(events), ["session.closed"]);
+  assert.equal(closed.outcome, "completed");
+  const subscription = await run({ execution: { subscriptionOnly: true } });
+  assert.deepEqual(subscription.accounts, [{ planType: "plus" }], "a subscription-only session reports it too");
+  assert.deepEqual((await run()).accounts, [], "the T04 conversation reads no account");
+});
+
+test("the plan type is reported as a closed value, and a value outside the vocabulary as unknown", async () => {
+  const account = (planType) =>
+    JSON.stringify({
+      type: "chatgpt",
+      email: "owner@example.invalid",
+      ...(planType === undefined ? {} : { planType })
+    });
+  for (const [planType, reported] of [
+    ["pro", "pro"],
+    ["self_serve_business_usage_based", "self_serve_business_usage_based"],
+    ["unknown", "unknown"],
+    ["Plus plan for owner@example.invalid", "unknown"],
+    ["PLUS", "unknown"],
+    [7, "unknown"],
+    [undefined, "unknown"]
+  ]) {
+    const { accounts, closed } = await run({
+      execution: { accountOnly: true },
+      environment: { FAKE_CODEX_ACCOUNT: account(planType) }
+    });
+    assert.deepEqual(accounts, [{ planType: reported }], String(planType));
+    assert.equal(closed.outcome, "completed", String(planType));
+  }
+  assert.equal(Object.isFrozen(CODEX_PLAN_TYPES), true);
+  assert.equal(CODEX_PLAN_TYPES.includes("unknown"), false);
+  assert.equal(CODEX_PLAN_TYPES.length, 17);
+});
+
+test("an account-only session refuses an account that is not a ChatGPT login and reports no plan type", async () => {
+  for (const account of [{ type: "apiKey" }, null]) {
+    const { events, methods, closed, accounts } = await run({
+      execution: { accountOnly: true },
+      environment: { FAKE_CODEX_ACCOUNT: JSON.stringify(account) }
+    });
+    assert.deepEqual(types(events), ["error:VES_CODEX_AUTH_METHOD_MISMATCH", "session.closed"]);
+    assert.deepEqual(methods, ["initialize", "initialized", "account/read"]);
+    assert.deepEqual(accounts, []);
+    assert.equal(closed.outcome, "failed");
+  }
 });
 
 test("a subscription-only session refuses an account that is not a ChatGPT login before its thread", async () => {

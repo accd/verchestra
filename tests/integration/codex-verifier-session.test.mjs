@@ -8,9 +8,11 @@
 // the CLI. On Windows the governed task path is refused before a verifier
 // session is reachable, so each case asserts that refusal there instead.
 import assert from "node:assert/strict";
-import { stat } from "node:fs/promises";
+import { stat, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { after, test } from "node:test";
 
+import { codexAccountPlanType } from "../../apps/vestra-cli/src/task/task-codex.ts";
 import { createBudgetMeter } from "../../packages/application/src/execution/budget-meter.ts";
 import {
   VERIFIER_MODEL,
@@ -286,4 +288,49 @@ test("an exhausted allowance suspends a coordinated run's verifier, before its t
   );
   assert.equal((await during.turns()).length, 1);
   await assert.rejects(stat(during.sessionRoot), { code: "ENOENT" });
+});
+
+// invariant: SSI-52. The plan type of a coordinated run's Codex login is read
+// by an account-only session that opens no thread and no turn; a login that
+// is not a ChatGPT one, or a Codex below the floor of the account read, is not
+// configured, each with its own requirement.
+async function accountPlanType(session) {
+  return codexAccountPlanType({
+    workspaceId: session.options.workspaceId,
+    runId: session.options.runId,
+    manifestId: session.options.manifestId,
+    model: VERIFIER_MODEL,
+    executable: session.options.executable,
+    identityDirectory: session.options.identityDirectory,
+    env: session.options.env,
+    sessionRoot: join(session.root, "sessions", "codex-account"),
+    stderr: () => undefined
+  });
+}
+
+function notConfiguredAs(requirement) {
+  return (error) => {
+    assert.equal(error.envelope.code, "VES_TASK_NOT_CONFIGURED");
+    assert.deepEqual(error.envelope.safeDetails, { requirement });
+    return true;
+  };
+}
+
+test("the plan type of a Codex login is read by a session that opens no thread", async (t) => {
+  if (WIN32_HOST) return verifierRefusedOnWin32(t);
+  const session = await verifierSession({ subscription: true });
+  assert.equal(await accountPlanType(session), "plus");
+  assert.deepEqual(await session.sessions(), [], "Codex opened a thread");
+  assert.deepEqual(await session.turns(), [], "Codex opened a turn");
+  await assert.rejects(stat(join(session.root, "sessions", "codex-account")), { code: "ENOENT" });
+});
+
+test("a login that is no ChatGPT one, or a Codex below the account floor, is not configured", async (t) => {
+  if (WIN32_HOST) return verifierRefusedOnWin32(t);
+  const apiKey = await verifierSession({ subscription: true });
+  await writeFile(join(apiKey.options.identityDirectory, "auth.json"), JSON.stringify({ fixtureLogin: "api-key" }));
+  await assert.rejects(accountPlanType(apiKey), notConfiguredAs("codex-account"));
+  const older = await verifierSession({ subscription: true, flags: ["codex-0.159.2"] });
+  await assert.rejects(accountPlanType(older), notConfiguredAs("codex-version"));
+  assert.deepEqual(await older.sessions(), []);
 });

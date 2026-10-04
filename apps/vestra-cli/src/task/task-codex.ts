@@ -13,14 +13,19 @@ import {
   type NormalizedTaskRequest,
   type NormalizedTaskRequestV2
 } from "@verchestra/application";
-import { isTaskPath, type DriverEvent } from "@verchestra/domain";
-import { CodexDriver, type DriverStartRequest } from "@verchestra/drivers";
+import { PublicErrorException, isTaskPath, type DriverEvent } from "@verchestra/domain";
+import {
+  CodexDriver,
+  type CodexAccountReport,
+  type CodexExecution,
+  type DriverStartRequest
+} from "@verchestra/drivers";
 
 import { ensureCodexIdentity } from "./task-codex-identity.ts";
 import { stableUuid } from "./task-context.ts";
 import { passThroughEnvironment } from "./task-implementer.ts";
-import { taskError } from "./task-errors.ts";
-import { ProviderProcesses } from "./task-process-tree.ts";
+import { notConfigured, stableCode, taskError } from "./task-errors.ts";
+import { ProviderProcesses, type ProviderSession } from "./task-process-tree.ts";
 
 // why: a cited file comes from the verifier's untrusted answer; past this
 // length it cannot name a file in the worktree, so it is not read at all.
@@ -225,6 +230,62 @@ function failureReason(options: CodexSessionOptions, stop: VerifierStop): string
   return options.signal.aborted ? "VES_EXECUTOR_CANCELLED" : "VES_TASK_VERIFIER_FAILED";
 }
 
+interface CodexSessionShape {
+  readonly workspaceId: string;
+  readonly runId: string;
+  readonly manifestId: string;
+  readonly model: string;
+  readonly executable: string;
+  readonly env: Readonly<Record<string, string | undefined>>;
+  readonly cwd: string;
+  readonly identity: { readonly home: string; readonly codexHome: string };
+  readonly provider: ProviderSession;
+  readonly execution: Omit<CodexExecution, "passport" | "model" | "tools">;
+  readonly onAccount?: (account: CodexAccountReport) => void;
+}
+
+// invariant: a Codex session on the verifier's side of a run: the passport of
+// its model, no tool, the per-session HOME and CODEX_HOME of its identity, and
+// the provider processes of the command it belongs to.
+function codexSession(shape: CodexSessionShape): {
+  readonly driver: CodexDriver;
+  readonly request: DriverStartRequest;
+} {
+  const passportId = `passport_${stableUuid(`codex:${shape.model}`)}`;
+  const { provider } = shape;
+  const request: DriverStartRequest = {
+    workspaceId: shape.workspaceId,
+    runId: shape.runId,
+    passportRef: { passportId, revision: 1 },
+    serializedContextRef: { manifestId: shape.manifestId, target: "codex" },
+    tools: []
+  };
+  assertReadOnlyGrant(request.tools);
+  const driver = new CodexDriver({
+    command: [shape.executable],
+    processContext: {
+      cwd: shape.cwd,
+      environment: {
+        ...passThroughEnvironment(shape.env),
+        HOME: shape.identity.home,
+        USERPROFILE: shape.identity.home,
+        CODEX_HOME: shape.identity.codexHome
+      }
+    },
+    terminateTree: provider.terminateTree,
+    onSpawn: provider.onSpawn,
+    ...(shape.onAccount === undefined ? {} : { onAccount: shape.onAccount }),
+    resolveExecution: () =>
+      Promise.resolve({
+        passport: { passportId, revision: 1, provider: "openai", resolvedModel: shape.model },
+        model: shape.model,
+        tools: [],
+        ...shape.execution
+      })
+  });
+  return { driver, request };
+}
+
 // why: Codex verifies from an isolated CODEX_HOME and HOME, in a read-only
 // sandbox over a checkout of the task commit, with only the brokered OpenAI
 // credential and a zero-tool grant; every usage event spends from the run's
@@ -242,46 +303,31 @@ export async function runCodexVerifier(options: CodexSessionOptions): Promise<st
     );
   const identity = await isolatedIdentity(options.sessionRoot, options.identityDirectory);
   const model = options.request.verifier.model;
-  const passportId = `passport_${stableUuid(`codex:${model}`)}`;
   // invariant: D3b. The verifier of a coordinated run is a subscription
   // session like its Codex nodes: before its turn the driver proves a ChatGPT
   // login and reads the account's rate limits, so credits on the account or an
   // exhausted allowance stop it before a token is spent. A v1 run keeps the
   // T04 conversation and its version floor (SSI-83).
   const subscriptionOnly = options.request.schemaVersion === 2;
-  const request: DriverStartRequest = {
-    workspaceId: options.workspaceId,
-    runId: options.runId,
-    passportRef: { passportId, revision: 1 },
-    serializedContextRef: { manifestId: options.manifestId, target: "codex" },
-    tools: []
-  };
-  assertReadOnlyGrant(request.tools);
   const providers = options.providers ?? new ProviderProcesses({ stderr: (text) => void process.stderr.write(text) });
   const provider = providers.session("Codex");
-  const driver = new CodexDriver({
-    command: [options.executable],
-    processContext: {
-      cwd: options.cwd,
-      environment: {
-        ...passThroughEnvironment(options.env),
-        HOME: identity.home,
-        USERPROFILE: identity.home,
-        CODEX_HOME: identity.codexHome
-      }
-    },
-    terminateTree: provider.terminateTree,
-    onSpawn: provider.onSpawn,
-    resolveExecution: async () => ({
-      passport: { passportId, revision: 1, provider: "openai", resolvedModel: model },
+  const { driver, request } = codexSession({
+    workspaceId: options.workspaceId,
+    runId: options.runId,
+    manifestId: options.manifestId,
+    model,
+    executable: options.executable,
+    env: options.env,
+    cwd: options.cwd,
+    identity,
+    provider,
+    execution: {
       prompt: options.prompt,
-      model,
-      tools: [],
       environment: credential.environment,
       sensitiveValues: credential.sensitiveValues,
       cancelGraceMs: 250,
       ...(subscriptionOnly ? { subscriptionOnly } : {})
-    })
+    }
   });
   const stop: VerifierStop = { controller: new AbortController(), refusal: undefined, quota: undefined };
   const timer =
@@ -323,6 +369,69 @@ export async function runCodexVerifier(options: CodexSessionOptions): Promise<st
     // a verifier stopped by the signal is not reported as one that failed.
     await provider.end();
     if (timer !== undefined) clearTimeout(timer);
+    await rm(options.sessionRoot, { recursive: true, force: true });
+  }
+}
+
+// why: a session that asks for no turn has no prompt to send; the driver
+// requires one, and this text never leaves the process.
+const ACCOUNT_PROMPT = "Read the account only.";
+// hazard: every spawn is bounded; an App Server that never reports its
+// account has reported no plan type.
+const ACCOUNT_TIMEOUT_MS = 30_000;
+
+export interface CodexAccountOptions {
+  readonly workspaceId: string;
+  readonly runId: string;
+  readonly manifestId: string;
+  readonly model: string;
+  readonly executable: string;
+  readonly identityDirectory: string;
+  readonly env: Readonly<Record<string, string | undefined>>;
+  readonly sessionRoot: string;
+  readonly stderr: (text: string) => void;
+}
+
+// invariant: a refusal that is already the task's own keeps its requirement;
+// a build below the floor that has `account/read` is `codex-version`, and any
+// other failure to read the account is `codex-account`.
+function accountRefusal(error: unknown): unknown {
+  if (error instanceof PublicErrorException) return error;
+  const requirement = stableCode(error) === "VES_CODEX_VERSION_UNSUPPORTED" ? "codex-version" : "codex-account";
+  return notConfigured(requirement, "Codex could not report the account of its login", { cause: error });
+}
+
+// invariant: SSI-52. The plan type of the Workspace's Codex login, read by an
+// account-only session over the identity directory from its own HOME: the App
+// Server is asked for the account and nothing more, so nothing is spent and
+// nothing of the account but its plan type, a closed value, is kept.
+export async function codexAccountPlanType(options: CodexAccountOptions): Promise<CodexAccountReport["planType"]> {
+  const provider = new ProviderProcesses({ stderr: options.stderr }).session("Codex");
+  const account: { report?: CodexAccountReport } = {};
+  try {
+    const identity = await isolatedIdentity(options.sessionRoot, options.identityDirectory);
+    const { driver, request } = codexSession({
+      ...options,
+      cwd: identity.home,
+      identity,
+      provider,
+      onAccount: (report) => {
+        account.report = report;
+      },
+      execution: { prompt: ACCOUNT_PROMPT, cancelGraceMs: 250, accountOnly: true }
+    });
+    const finished = await runDriverSession({
+      driver,
+      startRequest: request,
+      signal: AbortSignal.timeout(ACCOUNT_TIMEOUT_MS)
+    }).catch((error: unknown) => {
+      throw accountRefusal(error);
+    });
+    if (finished.outcome !== "completed" || account.report === undefined)
+      throw notConfigured("codex-account", "Codex did not report the account of its login");
+    return account.report.planType;
+  } finally {
+    await provider.end();
     await rm(options.sessionRoot, { recursive: true, force: true });
   }
 }

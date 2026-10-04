@@ -618,8 +618,13 @@ export type {
   ClaudeManagedPolicySources,
   ClaudeOwnerOnlyProof
 } from "./claude-code-driver.ts";
-export { CODEX_CLIENT_METHODS, CODEX_STRUCTURED_MINIMUM_VERSION, CodexDriver } from "./codex-driver.ts";
-export type { CodexDriverDependencies, CodexExecution } from "./codex-driver.ts";
+export {
+  CODEX_CLIENT_METHODS,
+  CODEX_PLAN_TYPES,
+  CODEX_STRUCTURED_MINIMUM_VERSION,
+  CodexDriver
+} from "./codex-driver.ts";
+export type { CodexAccountReport, CodexDriverDependencies, CodexExecution, CodexPlanType } from "./codex-driver.ts";
 export type { CodexProcessContext } from "./codex-process-context.ts";
 export { OpenCodeDriver } from "./opencode-driver.ts";
 export type { OpenCodeDriverDependencies, OpenCodeExecution } from "./opencode-driver.ts";

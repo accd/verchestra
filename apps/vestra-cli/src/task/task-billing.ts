@@ -10,6 +10,7 @@ import { join } from "node:path";
 
 import type { NormalizedTaskRequestV2 } from "@verchestra/application";
 import { PublicErrorException } from "@verchestra/domain";
+import { CODEX_PLAN_TYPES, type CodexAccountReport, type CodexPlanType } from "@verchestra/drivers";
 
 import { readMachineSetting, type ProviderAuth } from "../task-provider-auth.ts";
 import { notConfigured } from "./task-errors.ts";
@@ -42,9 +43,10 @@ export const BILLING_REGIMES: Readonly<Record<BillingProvider, string>> = Object
 
 // invariant: SSI-53. Every member is a closed value or a bounded grammar, so no
 // token, account identifier, e-mail address, personal name, or path can be
-// stored in a statement this reader accepts.
+// stored in a statement this reader accepts; the plan type is one of the plan
+// types Codex names (SSI-49).
 const INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/u;
-const PLAN_TYPE = /^[a-z][a-z0-9_]{0,31}$/u;
+const PLAN_TYPES: ReadonlySet<unknown> = new Set(CODEX_PLAN_TYPES);
 const MEMBERS: Readonly<Record<BillingProvider, readonly string[]>> = Object.freeze({
   "claude-code": Object.freeze(["auth", "extraUsage", "confirmedAt"]),
   codex: Object.freeze(["auth", "planType", "extraUsage", "confirmedAt"])
@@ -53,7 +55,7 @@ const MEMBERS: Readonly<Record<BillingProvider, readonly string[]>> = Object.fre
 export interface ExtraUsageConfirmation {
   readonly provider: BillingProvider;
   readonly auth: string;
-  readonly planType?: string;
+  readonly planType?: CodexPlanType;
   readonly confirmedAt: string;
 }
 
@@ -90,8 +92,13 @@ function confirmation(value: unknown, provider: BillingProvider, now: Date): Ext
   const at = confirmedAt(row["confirmedAt"], provider, now);
   if (provider === "claude-code") return Object.freeze({ provider, auth: BILLING_METHODS[provider], confirmedAt: at });
   const planType = row["planType"];
-  if (typeof planType !== "string" || !PLAN_TYPE.test(planType)) refused(`${label} names no plan type`);
-  return Object.freeze({ provider, auth: BILLING_METHODS[provider], planType, confirmedAt: at });
+  if (!PLAN_TYPES.has(planType)) refused(`${label} names no plan type Codex knows`);
+  return Object.freeze({
+    provider,
+    auth: BILLING_METHODS[provider],
+    planType: planType as CodexPlanType,
+    confirmedAt: at
+  });
 }
 
 // invariant: the one reader of the statement. A provider the run uses must
@@ -155,30 +162,57 @@ function requireSubscriptionAuth(auth: ProviderAuth): void {
 async function requireConfirmations(
   preflight: Omit<SubscriptionPreflight, "stderr">,
   providers: readonly BillingProvider[]
-): Promise<void> {
+): Promise<readonly ExtraUsageConfirmation[]> {
   const stored = await readMachineSetting(
     join(preflight.workspaceRoot, BILLING_FILE),
     REQUIREMENT,
     "The extra-usage confirmation"
   );
   if (stored === undefined) refused("No extra-usage confirmation exists for this Workspace");
-  normalizeExtraUsageConfirmations(stored, providers, preflight.now?.() ?? new Date());
+  return normalizeExtraUsageConfirmations(stored, providers, preflight.now?.() ?? new Date());
 }
 
 // invariant: SSI-51 and SSI-52, at `start` and at `resume`, before any
 // credential is read, any transition is applied, or any worktree exists. Every
 // provider of a coordinated run authenticates by subscription, and each has
 // the owner's extra-usage confirmation for that method under the current
-// regime; otherwise the run is `not configured` and nothing changed.
-export async function requireSubscriptionPreflight(preflight: SubscriptionPreflight): Promise<void> {
+// regime; otherwise the run is `not configured` and nothing changed. The
+// confirmations are returned for the checks that need the account.
+export async function requireSubscriptionPreflight(
+  preflight: SubscriptionPreflight
+): Promise<readonly ExtraUsageConfirmation[]> {
   requireSubscriptionAuth(preflight.auth);
   const providers = billingProviders(preflight.request);
   try {
-    await requireConfirmations(preflight, providers);
+    return await requireConfirmations(preflight, providers);
   } catch (error) {
     explain(preflight.workspaceRoot, providers, preflight.stderr);
     throw error;
   }
+}
+
+// invariant: the plan type the owner's statement names for Codex, if the
+// statement names Codex at all.
+export function statedCodexPlanType(confirmations: readonly ExtraUsageConfirmation[]): CodexPlanType | undefined {
+  return confirmations.find((entry) => entry.provider === "codex")?.planType;
+}
+
+// invariant: SSI-52 and D3. The plan type the Codex account reports at `start`
+// and at `resume` is the one the owner's statement names; another one, or one
+// this build does not know, is `not configured` before the run's first
+// transition. The owner is told the two closed values and nothing else of the
+// account.
+export function requireStatedPlanType(
+  stated: CodexPlanType,
+  reported: CodexAccountReport["planType"],
+  stderr: (value: string) => void
+): void {
+  if (reported === stated) return;
+  stderr(
+    `Codex reports the plan type ${reported} for this Workspace's login, and ${BILLING_FILE} names ${stated}.\n` +
+      "A statement about one plan says nothing about another: check that account's usage settings, then confirm again.\n"
+  );
+  refused("The Codex plan type is not the one the extra-usage confirmation names");
 }
 
 // invariant: SSI-30. What `plan` shows of the subscription preconditions: the
