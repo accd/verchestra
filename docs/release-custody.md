@@ -25,7 +25,8 @@ consequences are recorded here so that nothing is relabeled:
   approval rehearsal G1-G6 (O9), and ratification (O10).
 - The condition in `docs/qualification/release-decision-1.0.0.md` for a promote
   round is not met. The signed hold stands, and no promote round can open while
-  L8 stands.
+  L8 stands, except through the narrower path in section 6a, which keeps L8 as
+  written and declares it instead of resolving it.
 - [#408](https://github.com/accd/verchestra/issues/408) is closed as not
   planned, not as completed. Naming a custodian later reopens the work from O1
   with this document as the starting point.
@@ -358,6 +359,54 @@ model must accept each one consciously, not inherit it.
 - `docs/qualification/acceptance-matrix.md` L1 and L8 stay as written until the
   controls are verified by the evidence in section 9. Then they are updated in a
   separate reviewed change that cites that evidence.
+
+## 6a. Promoting with single-operator custody declared (proposed)
+
+**Status: proposed, not in force.** The owner asked on 2026-10-03 for a path
+to `1.0.0` that does not wait for a second custodian: a signed and reviewed
+decision that promotes with single-operator custody as a declared limitation.
+This section is that path. It comes into force only when the pull request that
+adds it is approved, under their own GitHub identities, by the operational and
+the security reviewer who would review such a round; until then the header's
+rule applies unchanged.
+
+This path does not ratify this custody model, does not relabel the posture,
+and does not change L1 or L8 in `docs/qualification/acceptance-matrix.md`.
+Single-operator custody stays exactly what section 2 and RR1-RR13 describe. What
+changes is only whether that posture, disclosed, can coexist with a `promote`.
+
+A release decision may promote while L8 stands only if every one of these
+holds:
+
+1. **A later round.** The decision is a round of its version under
+   `docs/qualification/RELEASE-DECISION-CONTRACT.md` (round 2 or later for
+   `1.0.0`), on a fresh candidate, meeting every rule of that contract. It
+   names the earlier round's reasons and says, for each, whether it is
+   resolved, declared, or still blocking; none may be still blocking.
+2. **Both reviewers accept the declaration in their own words.** The
+   operational and the security reviewer of that round each state, on the
+   decision's pull request and under their own GitHub identity, that they
+   accept single-operator custody (L8) and the permanent administrator bypass
+   (RR1, the earlier F5) as declared limitations for this version. A review
+   that endorses the candidate but is silent on custody does not count. Either
+   reviewer can withhold it, and then the round cannot promote.
+3. **The declaration is in the signed body.** The decision has a "Declared
+   limitations" section that names L8, RR1, RR2, RR3 and RR10, states what a
+   user must assume because of each (one person can publish, approve, and
+   change the controls; no second approver exists), and cites the compensating
+   controls in place: role-separated TUF keys in protected environments, the
+   rotation of September 2026, the publication ledger, and the live update and
+   rollback runs.
+4. **Users are told before they install.** The `1.0.0` release notes and the
+   README's install section state single-operator custody in their first
+   paragraph, linking to that section of the decision.
+5. **The owner signs** the decision as `decidedBy`, as the contract requires.
+
+What this path cannot do: it cannot make a reviewer out of the owner, cannot
+be used by a round whose reviewers did not both accept the declaration, and
+does not survive a change of custody. Naming a second custodian later returns
+to O1-O10, and a ratified model then replaces the declaration in the next
+release's decision.
 
 ## 7. Revocation, rotation, and emergency procedure
 
