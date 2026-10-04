@@ -58,12 +58,12 @@ by delegation. Both full passes killed the planned discrimination list in
 full, and every survivor of a pass was killed by the next, except the delta
 verification's D6 (a test gap, below).
 
-Remediation R5 (branch `strands/t9r5-account-id`, no pull request yet) is in
-flight: it withholds the Codex login's `account_id` and the ID token's
-identifiers from node results and adds the test that kills D6, the delta
-verification's two minor findings. It changes code, tests, and the end of
-`validation.md` only; it needs its own verification, and no row of this
-handoff depends on it.
+Remediation R5 (#534) landed: it withholds the Codex login's `account_id`
+and the ID token's identifiers from node results and adds the test that kills
+D6, the delta verification's two minor findings (8 of 8 mutants killed; full
+and security matrices green on all five targets). Its author is not a
+verifier; an independent check of R5 is part of the next verification pass,
+and no row of this handoff depends on it.
 
 # Accepted Residual Risks
 
@@ -73,8 +73,8 @@ handoff depends on it.
   `CODEX_HOME`, the run's worktree and the Codex login's `auth.json` included.
   What it can carry into the Run record is limited by the result screen.
 - The screen matches exact values: a secret a model encodes, splits, or
-  transforms passes (R4); until R5 lands the login's `account_id` is not
-  withheld (delta finding 2).
+  transforms passes (R4). Since R5 the login's `account_id` and the ID
+  token's identifier claims are withheld; a `name` claim is not.
 - The server-side extra-usage setting cannot be read locally; the owner's
   statement stands for it (TM-002). A v1 verifier on a subscription can still
   spend Codex credits at verification (D11, pending).
