@@ -383,95 +383,103 @@ the mutation list in `validation.md` is killed in full.
 
 ## Requirement Traceability
 
-| Requirement ID | Story | Phase | Status |
+| Requirement ID | Story | Phase | Verified status (2026-10-04) |
 | --- | --- | --- | --- |
-| SSI-01 | P1: SDK runs only as a coordinator | T5 | Pending |
-| SSI-02 | P1: SDK runs only as a coordinator | T5 | Pending |
-| SSI-03 | P1: SDK runs only as a coordinator | T5 | Pending |
-| SSI-04 | P1: SDK runs only as a coordinator | T5 | Pending |
-| SSI-05 | P1: SDK runs only as a coordinator | T5 | Pending |
-| SSI-06 | P1: SDK runs only as a coordinator | T5 | Pending |
-| SSI-07 | P1: SDK runs only as a coordinator | T5 | Pending |
-| SSI-08 | P1: SDK runs only as a coordinator | T5 | Pending |
-| SSI-09 | P1: SDK runs only as a coordinator | T5 | Pending |
-| SSI-10 | P1: SDK runs only as a coordinator | T5 | Pending |
-| SSI-11 | P1: Coordination inside the executor | T3, T5 | Pending |
-| SSI-12 | P1: Coordination inside the executor | T5 | Pending |
-| SSI-13 | P1: Coordination inside the executor | T5 | Pending |
-| SSI-14 | P1: Coordination inside the executor | T5 | Pending |
-| SSI-15 | P1: Coordination inside the executor | T5 | Pending |
-| SSI-16 | P1: Coordination inside the executor | T5 | Pending |
-| SSI-17 | P1: Coordination inside the executor | T4, T5 | Pending |
-| SSI-18 | P1: Coordination inside the executor | T3, T5 | Pending |
-| SSI-19 | P1: Coordination inside the executor | T5, T9 | Pending |
-| SSI-20 | P1: Task Request v2 | T3 | Pending |
-| SSI-21 | P1: Task Request v2 | T3 | Pending |
-| SSI-22 | P1: Task Request v2 | T3 | Pending |
-| SSI-23 | P1: Task Request v2 | T3 | Pending |
-| SSI-24 | P1: Task Request v2 | T3 | Pending |
-| SSI-25 | P1: Task Request v2 | T3 | Pending |
-| SSI-26 | P1: Task Request v2 | T3 | Pending |
-| SSI-27 | P1: Task Request v2 | T3 | Pending |
-| SSI-28 | P1: Task Request v2 | T3 | Pending |
-| SSI-29 | P1: Task Request v2 | T3, T8 | Pending |
-| SSI-30 | P1: Task commands | T8 | Pending |
-| SSI-31 | P1: Task commands | T8 | Pending |
-| SSI-32 | P1: Task commands | T6, T8 | Pending |
-| SSI-33 | P1: Task commands | T6 | Pending |
-| SSI-34 | P1: Task commands | T5, T8 | Pending |
-| SSI-35 | P1: Task commands | T8 | Pending |
-| SSI-36 | P1: Task commands | T8 | Pending |
-| SSI-37 | P1: Limits and results | T3 | Pending |
-| SSI-38 | P1: Limits and results | T3 | Pending |
-| SSI-39 | P1: Limits and results | T5, T6 | Pending |
-| SSI-40 | P1: Limits and results | T5 | Pending |
-| SSI-41 | P1: Limits and results | T5 | Pending |
-| SSI-42 | P1: Limits and results | T5 | Pending |
-| SSI-43 | P1: Limits and results | T5 | Pending |
-| SSI-44 | P1: Limits and results | T5 | Pending |
-| SSI-45 | P1: Limits and results | T5 | Pending |
-| SSI-46 | P1: Limits and results | T4, T5 | Pending |
-| SSI-47 | P1: Limits and results | T5 | Pending |
-| SSI-48 | P1: Limits and results | T4 | Pending |
-| SSI-49 | P1: Limits and results | T4, T5 | Pending |
-| SSI-50 | P1: Limits and results | T5 | Pending |
-| SSI-51 | P1: Subscriptions and suspension | T6 | Pending |
-| SSI-52 | P1: Subscriptions and suspension | T6 | Pending |
-| SSI-53 | P1: Subscriptions and suspension | T6 | Pending |
-| SSI-54 | P1: Subscriptions and suspension | T4 | Pending |
-| SSI-55 | P1: Subscriptions and suspension | T4 | Pending |
-| SSI-56 | P1: Subscriptions and suspension | T4, T6 | Pending |
-| SSI-57 | P1: Subscriptions and suspension | T4 | Pending |
-| SSI-58 | P1: Subscriptions and suspension | T4 | Pending |
-| SSI-59 | P1: Subscriptions and suspension | T6 | Pending |
-| SSI-60 | P1: Subscriptions and suspension | T6 | Pending |
-| SSI-61 | P1: Subscriptions and suspension | T6 | Pending |
-| SSI-62 | P1: Subscriptions and suspension | T6 | Pending |
-| SSI-63 | P1: Subscriptions and suspension | T6 | Pending |
-| SSI-64 | P1: Subscriptions and suspension | T6 | Pending |
-| SSI-65 | P1: Subscriptions and suspension | T6 | Pending |
-| SSI-66 | P1: Subscriptions and suspension | T6 | Pending |
-| SSI-67 | P1: Subscriptions and suspension | T6 | Pending |
-| SSI-68 | P1: Subscriptions and suspension | T6 | Pending |
-| SSI-69 | P2: Windows named pipe | T7 | Pending |
-| SSI-70 | P2: Windows named pipe | T7 | Pending |
-| SSI-71 | P2: Windows named pipe | T7 | Pending |
-| SSI-72 | P2: Windows named pipe | T7 | Pending |
-| SSI-73 | P2: Windows named pipe | T7 | Pending |
-| SSI-74 | P2: Windows named pipe | T7 | Pending |
-| SSI-75 | P2: Windows named pipe | T7 | Pending |
-| SSI-76 | P2: Windows named pipe | T7 | Pending |
-| SSI-77 | P2: Windows named pipe | T7, T9 | Pending |
-| SSI-78 | P1: Tests and qualification | T3–T9 | Pending |
-| SSI-79 | P1: Tests and qualification | T5 | Pending |
-| SSI-80 | P1: Tests and qualification | T3–T7 | Pending |
-| SSI-81 | P1: Tests and qualification | T4–T6 | Pending |
-| SSI-82 | P1: Tests and qualification | T5 | Pending |
-| SSI-83 | P1: Tests and qualification | T3, T5, T9 | Pending |
-| SSI-84 | P1: Tests and qualification | T9 | Pending |
-| SSI-85 | P1: Tests and qualification | T6, T9 | Pending |
+| SSI-01 | P1: SDK runs only as a coordinator | T5 | PASS |
+| SSI-02 | P1: SDK runs only as a coordinator | T5 | PASS |
+| SSI-03 | P1: SDK runs only as a coordinator | T5 | PASS |
+| SSI-04 | P1: SDK runs only as a coordinator | T5 | PASS |
+| SSI-05 | P1: SDK runs only as a coordinator | T5 | PASS |
+| SSI-06 | P1: SDK runs only as a coordinator | T5 | PASS |
+| SSI-07 | P1: SDK runs only as a coordinator | T5 | PASS |
+| SSI-08 | P1: SDK runs only as a coordinator | T5 | PASS |
+| SSI-09 | P1: SDK runs only as a coordinator | T5 | PASS |
+| SSI-10 | P1: SDK runs only as a coordinator | T5 | PASS |
+| SSI-11 | P1: Coordination inside the executor | T3, T5 | PASS |
+| SSI-12 | P1: Coordination inside the executor | T5 | PASS |
+| SSI-13 | P1: Coordination inside the executor | T5 | PASS |
+| SSI-14 | P1: Coordination inside the executor | T5 | PASS |
+| SSI-15 | P1: Coordination inside the executor | T5 | PASS |
+| SSI-16 | P1: Coordination inside the executor | T5 | PASS |
+| SSI-17 | P1: Coordination inside the executor | T4, T5 | PASS |
+| SSI-18 | P1: Coordination inside the executor | T3, T5 | PASS |
+| SSI-19 | P1: Coordination inside the executor | T5, T9 | PASS |
+| SSI-20 | P1: Task Request v2 | T3 | PASS |
+| SSI-21 | P1: Task Request v2 | T3 | PASS |
+| SSI-22 | P1: Task Request v2 | T3 | PASS |
+| SSI-23 | P1: Task Request v2 | T3 | PASS |
+| SSI-24 | P1: Task Request v2 | T3 | PASS |
+| SSI-25 | P1: Task Request v2 | T3 | PASS |
+| SSI-26 | P1: Task Request v2 | T3 | PASS |
+| SSI-27 | P1: Task Request v2 | T3 | PASS |
+| SSI-28 | P1: Task Request v2 | T3 | PASS |
+| SSI-29 | P1: Task Request v2 | T3, T8 | PASS |
+| SSI-30 | P1: Task commands | T8 | PASS |
+| SSI-31 | P1: Task commands | T8 | PASS |
+| SSI-32 | P1: Task commands | T6, T8 | PASS |
+| SSI-33 | P1: Task commands | T6 | PASS |
+| SSI-34 | P1: Task commands | T5, T8 | PASS |
+| SSI-35 | P1: Task commands | T8 | PASS |
+| SSI-36 | P1: Task commands | T8 | PASS |
+| SSI-37 | P1: Limits and results | T3 | PASS |
+| SSI-38 | P1: Limits and results | T3 | PASS |
+| SSI-39 | P1: Limits and results | T5, T6 | PASS |
+| SSI-40 | P1: Limits and results | T5 | PASS |
+| SSI-41 | P1: Limits and results | T5 | PASS |
+| SSI-42 | P1: Limits and results | T5 | PASS |
+| SSI-43 | P1: Limits and results | T5 | PASS |
+| SSI-44 | P1: Limits and results | T5 | PASS |
+| SSI-45 | P1: Limits and results | T5 | PASS |
+| SSI-46 | P1: Limits and results | T4, T5 | PASS |
+| SSI-47 | P1: Limits and results | T5 | PASS |
+| SSI-48 | P1: Limits and results | T4 | PASS |
+| SSI-49 | P1: Limits and results | T4, T5 | PASS |
+| SSI-50 | P1: Limits and results | T5 | PASS |
+| SSI-51 | P1: Subscriptions and suspension | T6 | PASS |
+| SSI-52 | P1: Subscriptions and suspension | T6 | PASS |
+| SSI-53 | P1: Subscriptions and suspension | T6 | PASS |
+| SSI-54 | P1: Subscriptions and suspension | T4 | PASS |
+| SSI-55 | P1: Subscriptions and suspension | T4 | PASS |
+| SSI-56 | P1: Subscriptions and suspension | T4, T6 | PASS |
+| SSI-57 | P1: Subscriptions and suspension | T4 | PASS |
+| SSI-58 | P1: Subscriptions and suspension | T4 | PASS |
+| SSI-59 | P1: Subscriptions and suspension | T6 | PASS |
+| SSI-60 | P1: Subscriptions and suspension | T6 | PASS (amended text) |
+| SSI-61 | P1: Subscriptions and suspension | T6 | PASS (amended text) |
+| SSI-62 | P1: Subscriptions and suspension | T6 | PASS |
+| SSI-63 | P1: Subscriptions and suspension | T6 | PASS |
+| SSI-64 | P1: Subscriptions and suspension | T6 | PASS |
+| SSI-65 | P1: Subscriptions and suspension | T6 | PASS |
+| SSI-66 | P1: Subscriptions and suspension | T6 | PASS |
+| SSI-67 | P1: Subscriptions and suspension | T6 | PASS |
+| SSI-68 | P1: Subscriptions and suspension | T6 | PASS |
+| SSI-69 | P2: Windows named pipe | T7 | PASS |
+| SSI-70 | P2: Windows named pipe | T7 | PASS |
+| SSI-71 | P2: Windows named pipe | T7 | PASS |
+| SSI-72 | P2: Windows named pipe | T7 | PASS |
+| SSI-73 | P2: Windows named pipe | T7 | PASS |
+| SSI-74 | P2: Windows named pipe | T7 | PASS |
+| SSI-75 | P2: Windows named pipe | T7 | PASS |
+| SSI-76 | P2: Windows named pipe | T7 | PASS |
+| SSI-77 | P2: Windows named pipe | T7, T9 | PASS |
+| SSI-78 | P1: Tests and qualification | T3–T9 | PASS |
+| SSI-79 | P1: Tests and qualification | T5 | PASS |
+| SSI-80 | P1: Tests and qualification | T3–T7 | PASS |
+| SSI-81 | P1: Tests and qualification | T4–T6 | PASS |
+| SSI-82 | P1: Tests and qualification | T5 | PASS |
+| SSI-83 | P1: Tests and qualification | T3, T5, T9 | PASS (amended text; rests on D10, delegated) |
+| SSI-84 | P1: Tests and qualification | T9 | PENDING (owner pilots) |
+| SSI-85 | P1: Tests and qualification | T6, T9 | PASS |
 
 **Coverage:** 85 total, 85 mapped to tasks, 0 unmapped.
+
+**Verified status:** 84 PASS, 0 FAIL, 1 PENDING (SSI-84), from
+`validation.md` "Delta verification of R4" at `d2c9341`. 81 rows passed on the
+text that verification read; SSI-60 and SSI-61 pass on their amended text, as
+the second pass ("Rows that hinge on the spec amendments T10 applies") and the
+delta verification judged; SSI-83 passes on its amended text and rests on D10,
+an approval by delegation that awaits the owner's confirmation. SSI-84 waits
+for the owner's pilots (`docs/qualification/coordinated-run-pilots.md`).
 
 ---
 

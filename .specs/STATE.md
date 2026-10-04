@@ -3101,6 +3101,22 @@ note. -->
 
 ## Handoff
 
+- **Feature:** `strands-subscription-integration` (T1–T10) on `main` through
+  #512, #516, #519, #521, #522, #524–#533, and `strands/t10-handoff`; handoff
+  status `verification`.
+- **Completed:** Task Request v2 and coordinated `agent`, `graph`, and `swarm`
+  runs on subscriptions only, with suspension, resume, and reconciliation, and
+  the governed task path on Windows (AD-068 to AD-076, AD-078 to AD-082). The
+  independent verification failed twice and passed after remediations R1–R4,
+  with no FAIL row; T10 applied the spec amendments it judged. See
+  `.specs/features/strands-subscription-integration/handoff.md`.
+- **Next:** the owner runs the real-subscription pilots per platform
+  (SSI-84, `docs/qualification/coordinated-run-pilots.md`), confirms or
+  overturns the approvals made by delegation (D1–D7, D9, D1b, D10) and the
+  amended requirements at human review, decides D11, and reviews
+  `setup-draft.md` (D8). Remediation R5 (`account_id` withheld, mutant D6) is
+  in flight on its own branch.
+
 - **Feature:** `subscription-provider-auth` (ADP-A, tasks TA1 and TA2) on
   `feat/subscription-provider-auth`.
 - **Completed:** see `.specs/features/subscription-provider-auth/handoff.md`.

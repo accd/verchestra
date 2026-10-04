@@ -3933,3 +3933,19 @@ skipped, 0 todo, no temporary entry left. No file gained or lost
 then a delta verification of R5 (SSI-49, SSI-81, D6, and the R5 mutants) by
 a verifier who wrote none of it. T10 applies the texts, with the TM-004
 wording above; the owner items of the delta verification are unchanged.
+
+## T10 handoff
+
+T10 (branch `strands/t10-handoff`, an implementation session that verified
+nothing above) applied the amendment texts this file proposes, unchanged and
+marked "amended 2026-10-04" with their section: SSI-42 and TM-004 (R4),
+SSI-52, SSI-55, SSI-56, and SSI-60 (R1), SSI-61 ("Delta verification of R4"),
+SSI-83 (R4), and `design.md`'s handoff mapping (R2) with the passages the
+verifications named stale. It recorded D1b (the lockfile set of D1) and D10
+(AD-080 item 5) in `spec.md` as approvals by delegation dated 2026-10-04,
+awaiting the owner's confirmation at human review, and the open v1
+Codex-credits question as D11. The traceability table in `spec.md` reads 84
+PASS and SSI-84 PENDING from the delta verification above; no verdict in this
+file was changed. The verdict line at the top of this file is the first
+pass's, kept as written; the latest verdict is the delta verification's.
+Next: `handoff.md`.
