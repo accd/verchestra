@@ -81,7 +81,7 @@ export async function compositionFixture(t, request, options = {}) {
     request,
     manifest: { manifestId: `sha256:${"a".repeat(64)}`, fragments: [], omissions: [] },
     claude: { executable: claude, auth: "api-key", credential: CLAUDE_CREDENTIAL },
-    codex: { executable: codex, credential: CODEX_CREDENTIAL },
+    codex: { executable: codex, credential: options.codex?.credential ?? CODEX_CREDENTIAL },
     env: { PATH: process.env.PATH ?? "", TMPDIR: root },
     sessionsRoot,
     providers: new ProviderProcesses({ stderr: (line) => stderr.push(line) }),

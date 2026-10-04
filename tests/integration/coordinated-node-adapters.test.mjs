@@ -191,3 +191,21 @@ test("a Codex node whose read scope is beyond the view's bound fails before its 
   assert.deepEqual(await fixture.codexViews(), [], "no Codex session started");
   assert.deepEqual(await readdir(fixture.sessionsRoot), []);
 });
+
+// invariant: SSI-49 at the composition. A node result that names what the
+// run withholds (here a credential its Codex sessions are given to redact)
+// is refused before it is persisted or handed to a later node.
+test("the composition refuses a node result that holds a credential of the run", async (t) => {
+  if (WIN32_HOST) return verifierRefusedOnWin32(t);
+  // why: the fakes answer a fixed text; a Codex credential that is part of it
+  // stands for a model that wrote its credential into its answer.
+  const fixture = await compositionFixture(t, codexGraph(), { codex: { credential: "structured by the fake" } });
+  await assert.rejects(fixture.run(), rejectsWith("VES_COORDINATION_RESULT_INVALID"));
+  assert.deepEqual(visits(fixture.records), ["plan#1:failed"]);
+  assert.equal(fixture.records.results.size, 0);
+  assert.deepEqual(
+    finished(fixture.executor).map((data) => data.outcome),
+    ["completed"],
+    "the session answered; its answer was refused"
+  );
+});

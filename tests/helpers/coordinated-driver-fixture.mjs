@@ -234,6 +234,7 @@ export function coordinatedDriver(request, overrides = {}) {
     ...(overrides.feedback === undefined ? {} : { feedback: overrides.feedback }),
     ...(overrides.changeDigest === undefined ? {} : { changeDigest: overrides.changeDigest }),
     ...(overrides.reconcile === undefined ? {} : { reconcile: overrides.reconcile }),
+    ...(overrides.withheld === undefined ? {} : { withheld: overrides.withheld }),
     // why: `digest: null` stands for a composition that gives no digest port.
     ...(overrides.digest === null ? {} : { digest: overrides.digest ?? canonicalRecordDigest })
   });
