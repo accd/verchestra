@@ -94,6 +94,46 @@ for (const [label, worktree] of [
     await assert.rejects(revalidateResume(given), refusedFor("VES_EXECUTOR_WORKTREE_DRIFT"));
   });
 
+// invariant: SSI-33 for a run suspended at its verifier. Its worktree is gone
+// into its task commit, so it resumes only on a still valid approval and on
+// that commit standing on its base under its anchored branch; it renews no
+// writer grant and asks nothing of a worktree.
+function atVerifier(holds, change = {}) {
+  const completed = { ...ledger(PLANNED, visit("build", "completed", { endedAt: START })), roundState: "completed" };
+  const built = facts({
+    suspended: undefined,
+    ledger: completed,
+    suspendedAtVerification: {
+      taskCommitHolds: async () => {
+        built.asked.taskCommit += 1;
+        return holds;
+      }
+    },
+    ...change
+  });
+  built.asked.taskCommit = 0;
+  return built;
+}
+
+test("a run suspended at its verifier resumes on a valid approval and the task commit it left", async () => {
+  const { asked, facts: given } = atVerifier(true);
+  assert.deepEqual(await revalidateResume(given), { fromSuspension: false });
+  assert.deepEqual(asked, { approval: 1, worktree: 0, taskCommit: 1 });
+});
+
+for (const code of ["VES_APPROVAL_EXPIRED", "VES_APPROVAL_STALE", "VES_APPROVAL_REVOKED"])
+  test(`a run suspended at its verifier whose approval is no longer valid (${code}) is refused first`, async () => {
+    const { asked, facts: given } = atVerifier(true, { approval: async () => ({ valid: false, code }) });
+    await assert.rejects(revalidateResume(given), refusedFor(code));
+    assert.equal(asked.taskCommit, 0, "the task commit was read after the approval refused");
+  });
+
+test("a run suspended at its verifier whose task commit or branch moved is refused as drift", async () => {
+  const { asked, facts: given } = atVerifier(false);
+  await assert.rejects(revalidateResume(given), refusedFor("VES_TASK_COMMIT_DRIFT"));
+  assert.deepEqual(asked, { approval: 1, worktree: 0, taskCommit: 1 });
+});
+
 test("SSI-67: a node that left no effect needs no reconciliation", async () => {
   const uncertain = nodeUncertainties(RUN, ledger(PLANNED, QUOTA), LEFT);
   assert.deepEqual(

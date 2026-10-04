@@ -10,7 +10,7 @@
 // macOS, Linux, and Windows.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { unlink, writeFile } from "node:fs/promises";
+import { rename, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { after, test } from "node:test";
 
@@ -30,6 +30,13 @@ import {
 after(cleanupTaskFixtures);
 
 const INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u;
+const HOUR = 60 * 60 * 1000;
+
+function refusedAs(result, code, safeDetails) {
+  assert.notEqual(result.status, 0, result.stdout);
+  assert.equal(result.json?.error?.code, code, `${result.stdout}${result.stderr}`);
+  assert.deepEqual(result.json.error.safeDetails, safeDetails);
+}
 
 // why: a record spells a Windows path with its separators escaped, so a path
 // is looked for as written and as JSON writes it.
@@ -74,10 +81,9 @@ test(
     const fixture = await coordinatedFixture(EXECUTIONS.agent);
     const plan = await approved(fixture);
     await flag(fixture, "codex-credits");
-    const start = fixture.launch(startArguments(fixture, plan.runId));
-    assert.notEqual(start.status, 0, start.stdout);
-    assert.equal(start.json?.error?.code, "VES_TASK_NOT_CONFIGURED", `${start.stdout}${start.stderr}`);
-    assert.deepEqual(start.json.error.safeDetails, { requirement: "codex-credits" });
+    refusedAs(fixture.launch(startArguments(fixture, plan.runId)), "VES_TASK_NOT_CONFIGURED", {
+      requirement: "codex-credits"
+    });
     const after = assertStoppedAtVerification(fixture, plan.runId);
     assert.deepEqual(
       { ...after.suspension, at: undefined },
@@ -125,6 +131,64 @@ test("an exhausted Codex allowance suspends an agent run at its verifier instead
   assert.deepEqual(assertStoppedAtVerification(fixture, plan.runId).suspension, suspended.suspension);
 });
 
+// invariant: SSI-33 for a run suspended at its verifier. Its resume proves what
+// a node suspension's does before the verifier starts: the owner's billing
+// statement, the approval against the policy in force, and what the run left,
+// here its task commit on its base under its anchored branch. Each refusal
+// leaves the run in VERIFYING with its suspension, and once all hold it
+// verifies and reaches review.
+test(
+  "a run suspended at its verifier resumes only on its statement, a valid approval, and the commit it left",
+  TIMEOUT,
+  async () => {
+    const fixture = await coordinatedFixture(EXECUTIONS.agent);
+    const plan = await approved(fixture);
+    await flag(fixture, "codex-quota");
+    assert.equal(fixture.launch(startArguments(fixture, plan.runId)).json?.data?.state, "VERIFYING");
+    await unflag(fixture, "codex-quota");
+    const { evidence } = assertStoppedAtVerification(fixture, plan.runId);
+    const ref = `refs/heads/${evidence.branch}`;
+    const base = fixture.git(["rev-parse", `${evidence.commitId}^`]);
+    const stillSuspended = (label) => {
+      const after = status(fixture, plan.runId);
+      assert.deepEqual([after.state, after.lastOutcome], ["VERIFYING", "SUSPENDED"], label);
+      assert.deepEqual(logLines(fixture, "fake-codex-turn.log"), [], `${label}: the verifier opened a turn`);
+    };
+
+    const billing = join(fixture.stateRoot, "task-billing.json");
+    await rename(billing, `${billing}.away`);
+    refusedAs(fixture.launch(resumeArguments(fixture, plan.runId)), "VES_TASK_NOT_CONFIGURED", {
+      requirement: "extra-usage-confirmation"
+    });
+    stillSuspended("no statement");
+    await rename(`${billing}.away`, billing);
+
+    refusedAs(
+      fixture.launch(resumeArguments(fixture, plan.runId), "", { clockOffsetMs: 8 * 24 * HOUR }),
+      "VES_TASK_FAILED",
+      { reason: "VES_APPROVAL_EXPIRED" }
+    );
+    stillSuspended("an approval that expired while suspended");
+
+    for (const [label, move, restore] of [
+      ["a branch moved to the base", ["update-ref", ref, base], ["update-ref", ref, evidence.commitId]],
+      ["a branch deleted", ["update-ref", "-d", ref], ["update-ref", ref, evidence.commitId]]
+    ]) {
+      fixture.git(move);
+      refusedAs(fixture.launch(resumeArguments(fixture, plan.runId)), "VES_TASK_FAILED", {
+        reason: "VES_TASK_COMMIT_DRIFT"
+      });
+      stillSuspended(label);
+      fixture.git(restore);
+    }
+
+    const resumed = fixture.launch(resumeArguments(fixture, plan.runId));
+    assert.equal(resumed.status, 0, resumed.stderr);
+    assert.equal(resumed.json.data.state, "HUMAN_REVIEW");
+    assert.equal(fixture.git(["rev-parse", ref]), evidence.commitId);
+  }
+);
+
 test(
   "a statement naming another plan type than the Codex login's is not configured before anything starts",
   TIMEOUT,
@@ -134,9 +198,7 @@ test(
     const codex = { ...extraUsageConfirmation().providers.codex, planType: "pro" };
     await confirmExtraUsage(fixture.stateRoot, extraUsageConfirmation({ codex }));
     const start = fixture.launch(startArguments(fixture, plan.runId));
-    assert.notEqual(start.status, 0, start.stdout);
-    assert.equal(start.json?.error?.code, "VES_TASK_NOT_CONFIGURED", `${start.stdout}${start.stderr}`);
-    assert.deepEqual(start.json.error.safeDetails, { requirement: "extra-usage-confirmation" });
+    refusedAs(start, "VES_TASK_NOT_CONFIGURED", { requirement: "extra-usage-confirmation" });
     assert.match(start.stderr, /Codex reports the plan type plus .* names pro/u);
     assert.equal(start.stderr.includes("owner@example.invalid"), false, "the account's e-mail address was shown");
     const after = status(fixture, plan.runId);
