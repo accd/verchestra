@@ -14,7 +14,14 @@ const MAXIMUM_VISITS = 4096;
 // identifiers, counts, instants, digests, and stable codes only: no provider
 // session, credential, provider output, environment value, or path.
 export type NodeVisitState = "pending" | "started" | "completed" | "failed" | "partial" | "uncertain";
-const VISIT_STATES: readonly NodeVisitState[] = ["pending", "started", "completed", "failed", "partial", "uncertain"];
+const VISIT_STATES: ReadonlySet<string> = new Set<NodeVisitState>([
+  "pending",
+  "started",
+  "completed",
+  "failed",
+  "partial",
+  "uncertain"
+]);
 const ROUND_STATES = ["running", "completed", "failed"] as const;
 
 export interface NodeVisit {
@@ -83,7 +90,7 @@ const VISIT_OPTIONAL = ["endedAt", "changeDigestBefore", "resultDigest", "result
 function visit(value: unknown): NodeVisit {
   const record = row(value, "node visit", VISIT_REQUIRED, VISIT_OPTIONAL);
   const state = record["state"];
-  if (!VISIT_STATES.includes(state as NodeVisitState)) malformed("node visit state is unknown");
+  if (typeof state !== "string" || !VISIT_STATES.has(state)) malformed("node visit state is unknown");
   return Object.freeze({
     round: count(record["round"], 1, "round"),
     nodeId: matching(record["nodeId"], NODE_ID, "nodeId"),

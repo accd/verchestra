@@ -46,6 +46,13 @@ function agentResult(token: string, structuredOutput: SdkHandoff | undefined, op
   } as unknown as AgentResult;
 }
 
+// why: a structural agent streams no events of its own; its stream ends at
+// once with the node's result.
+async function* withoutEvents(result: Promise<AgentResult>): AsyncGenerator<never, AgentResult> {
+  yield* [];
+  return await result;
+}
+
 // invariant: SSI-03, SSI-04, SSI-05. A structural agent satisfies the SDK's
 // invokable-agent shape and is never a Strands `Agent`: it has no model, no
 // tools, no session, and no context to preserve. It ignores the input the SDK
@@ -69,8 +76,6 @@ export function structuralAgent(
   return {
     id: node.nodeId,
     invoke,
-    stream: async function* (assembled: unknown, options?: InvokeOptions) {
-      return await invoke(assembled, options);
-    }
+    stream: (assembled: unknown, options?: InvokeOptions) => withoutEvents(invoke(assembled, options))
   };
 }

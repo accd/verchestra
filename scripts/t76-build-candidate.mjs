@@ -331,7 +331,7 @@ export const assertSelfContainedMetafile = (metafile, componentId) => {
   if (outside.length > 0)
     fail(
       "VES_T76_BUILD_LAUNCHER_NOT_SELF_CONTAINED",
-      `${componentId} imports ${outside.map((entry) => `${entry.path} (${entry.kind})`).join(", ")} at run time`
+      `${componentId} imports ${outside.map((entry) => entry.path + " (" + entry.kind + ")").join(", ")} at run time`
     );
 };
 

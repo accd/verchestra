@@ -183,7 +183,7 @@ function codexDriver(
   context: { readonly cwd: string; readonly home: string; readonly codexHome: string }
 ): CodexDriver {
   const model = session.node.driver.model;
-  const passportId = `passport_${stableUuid(`codex:${model}`)}`;
+  const passportId = codexPassportId(model);
   const credential = sessionCredential(options.codex);
   return new CodexDriver({
     command: [options.codex.executable],
@@ -198,25 +198,30 @@ function codexDriver(
     },
     terminateTree: provider.terminateTree,
     onSpawn: provider.onSpawn,
-    resolveExecution: async () => ({
-      passport: { passportId, revision: 1, provider: "openai", resolvedModel: model },
-      prompt: session.prompt,
-      model,
-      tools: [],
-      environment: credential.environment,
-      sensitiveValues: credential.sensitiveValues,
-      cancelGraceMs: 250,
-      structuredOutput: session.structuredOutput,
-      ...(options.codex.identityDirectory === undefined ? {} : { subscriptionOnly: true as const })
-    })
+    resolveExecution: () =>
+      Promise.resolve({
+        passport: { passportId, revision: 1, provider: "openai", resolvedModel: model },
+        prompt: session.prompt,
+        model,
+        tools: [],
+        environment: credential.environment,
+        sensitiveValues: credential.sensitiveValues,
+        cancelGraceMs: 250,
+        structuredOutput: session.structuredOutput,
+        ...(options.codex.identityDirectory === undefined ? {} : { subscriptionOnly: true as const })
+      })
   });
+}
+
+function codexPassportId(model: string): string {
+  return `passport_${stableUuid("codex:" + model)}`;
 }
 
 function startRequest(options: CoordinatedRunOptions, model: string): DriverStartRequest {
   return {
     workspaceId: options.workspaceId,
     runId: options.runId,
-    passportRef: { passportId: `passport_${stableUuid(`codex:${model}`)}`, revision: 1 },
+    passportRef: { passportId: codexPassportId(model), revision: 1 },
     serializedContextRef: { manifestId: options.manifest.manifestId, target: "codex" },
     tools: []
   };
@@ -257,5 +262,11 @@ function codexNodeAdapter(options: CoordinatedRunOptions, session: CoordinationN
       await rm(root, { recursive: true, force: true });
     }
   };
-  return { execute, cancel: async () => stop.abort("cancelled by the executor") };
+  return {
+    execute,
+    cancel: () => {
+      stop.abort("cancelled by the executor");
+      return Promise.resolve();
+    }
+  };
 }
