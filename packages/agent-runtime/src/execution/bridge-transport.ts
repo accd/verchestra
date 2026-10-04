@@ -27,7 +27,7 @@ export interface BridgeTransport {
 export class UnixSocketBridgeTransport implements BridgeTransport {
   readonly #socketRoot: string | undefined;
 
-  // Parent for the per-run 0700 socket directory; defaults to the OS temp dir.
+  // invariant: the parent of the per-run 0700 socket directory; the OS temp dir by default.
   constructor(socketRoot?: string) {
     this.#socketRoot = socketRoot;
   }

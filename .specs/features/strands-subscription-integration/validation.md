@@ -2525,3 +2525,23 @@ Commit `docs(quick-start): state where the coordinated journeys run and the v1 p
   still the owner's; this change only documents it.
 - Not changed: `docs/qualification/coordinated-run-pilots.md`, a record bound
   to `c3223c6` (see item 1).
+
+#### Item 3 — standards (finding 17)
+
+Commit `style: translate the owner's quote and prefix five comments (T9 R3)`:
+
+- **The quote.** `spec.md:102-103` quoted the owner in Portuguese. It now
+  reads, marked as the owner's words translated from Portuguese, "do all of
+  this, I trust you more" (`spec.md:102-104`, the same meaning: the owner
+  delegates all of it and trusts the session to do it). The paragraph keeps
+  its line count, so no later citation of `spec.md` moves.
+- **Comment prefixes**, the meaning unchanged and the line count of each
+  comment kept, so no citation moves:
+  `packages/application/src/execution/gate-repair.ts:79` (`invariant:`),
+  `packages/agent-runtime/src/execution/bridge-transport.ts:30`
+  (`invariant:`), `packages/platform-node/src/windows-pipe-transport.ts:391`
+  (`invariant:`), `scripts/t76-build-candidate.mjs:318` (`why:`, the
+  decision D2 sentences the range added to an older comment) and `:398`
+  (`invariant:`, in the `/** invariant: ... */` form of
+  `scripts/build-vestra-binary.mjs:60`). Left to their owners:
+  `apps/vestra-cli/src/task/task-windows.ts:38` (R1) and `isWriter` (R2).

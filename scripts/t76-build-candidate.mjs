@@ -315,10 +315,10 @@ const NODE_SQLITE_LAZY_ALIAS = "./apps/vestra-cli/closure/node-sqlite-lazy.ts";
 // A sealed `bin/` artifact may import Node built-ins and nothing else: the
 // same artifact-level statement scripts/build-vestra-launcher.mjs makes for
 // the published bootstrap, applied to the release's own `bin/*.mjs`.
-// Decision D2: the evidence is the bundler's own record of every import the
-// output makes - static, dynamic, and `require` alike - rather than a text
-// scan of the output, which both missed dynamic and `require` imports and
-// misread a bundled string literal shaped like an import as one.
+// why: under decision D2 the evidence is the bundler's own record of every
+// import the output makes - static, dynamic, and `require` alike - rather than
+// a text scan of the output, which both missed dynamic and `require` imports
+// and misread a bundled string literal shaped like an import as one.
 export const sealedRuntimeImports = (metafile, componentId) => {
   const outputs = Object.values(metafile?.outputs ?? {});
   if (outputs.length !== 1 || !Array.isArray(outputs[0].imports))
@@ -395,7 +395,7 @@ export async function bundleSealedLauncherWithMetafile(options) {
   return { bytes, metafile: result.metafile };
 }
 
-/** The sealed bytes of one `bin/` artifact; see bundleSealedLauncherWithMetafile. */
+/** invariant: the sealed bytes of one `bin/` artifact; see bundleSealedLauncherWithMetafile. */
 export async function bundleSealedLauncher(options) {
   return (await bundleSealedLauncherWithMetafile(options)).bytes;
 }

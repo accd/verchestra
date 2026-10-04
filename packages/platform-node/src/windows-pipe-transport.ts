@@ -388,7 +388,7 @@ class PipeHelperRun {
 }
 
 export interface WindowsNamedPipeTransportOptions {
-  // Parent for the per-run directory; defaults to the OS temp dir.
+  // invariant: the parent of the per-run directory; the OS temp dir by default.
   readonly root?: string;
   readonly host?: WindowsPipeHost;
   readonly pipeName?: () => string;

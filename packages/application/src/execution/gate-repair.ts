@@ -76,8 +76,8 @@ export type GateRepairOutcome =
       readonly attemptCapsuleDigests: readonly Digest[];
     }
   | {
-      // An attempt stopped on a provider's usage signal has not ended: it is
-      // neither counted nor sealed, and the run resumes it.
+      // invariant: an attempt stopped on a provider's usage signal has not
+      // ended: it is neither counted nor sealed, and the run resumes it.
       readonly status: "SUSPENDED";
       readonly attempts: number;
       readonly suspension: ExecutionSuspension;
