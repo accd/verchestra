@@ -36,11 +36,13 @@ import { WIN32_HOST } from "../helpers/mediation-platform.mjs";
 import {
   FakePipeHost,
   PIPE_CASE,
+  assertRefusalEnds,
   boundedRelay,
   cleanupPlainWorktrees,
   frame,
   hello,
   plainWorktree,
+  pipeTrace,
   rawChannelClient,
   relayEnvironment,
   settlesWithin
@@ -261,15 +263,25 @@ test(
   }
 );
 
+// invariant: a frame beyond its bound refused over the real pipe ends the
+// channel link by link (assertRefusalEnds), each link bounded and diagnosed
+// with the channel's trace.
 test("win32: a frame beyond its bound on the named pipe is refused", PIPE_CASE, async (t) => {
   if (!WIN32_HOST) return namedPipeRefusedOffWin32(t);
-  const { controller, invoked, token } = await openOverPipe();
-  const client = rawChannelClient(controller.socketPath);
+  const trace = pipeTrace();
+  const { worktree, channels } = await plainWorktree();
+  const transport = trace.counting(new WindowsNamedPipeBridgeTransport({ root: channels, observe: trace.observe }));
+  const { controller, invoked } = await settlesWithin(
+    openController(worktree, { transport }),
+    "the controller's open over the pipe"
+  );
+  const endpoint = controller.socketPath;
+  const client = rawChannelClient(endpoint);
   await client.connectedWithin();
-  client.socket.write(hello(token));
+  client.socket.write(hello(controller.environment.VERCHESTRA_BRIDGE_TOKEN));
   assert.ok(await eventually(() => client.data().endsWith("\n")), "the client authenticates first");
   client.socket.write(Buffer.alloc(FRAME_BOUND + 1, 0x78));
-  await client.closedWithin();
+  await assertRefusalEnds({ controller, trace, client, endpoint });
   assert.deepEqual(JSON.parse(client.data()), { type: "ready", protocol: "verchestra-bridge/1" });
   assert.equal(controller.statistics().rejectedConnections, 1);
   assert.equal(invoked.length, 0);

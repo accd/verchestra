@@ -1,10 +1,15 @@
+import { spawn } from "node:child_process";
 import { EventEmitter, once } from "node:events";
 import { readFileSync, readdirSync } from "node:fs";
-import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, realpath, rm, writeFile } from "node:fs/promises";
 import { createConnection } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PassThrough } from "node:stream";
+import { fileURLToPath } from "node:url";
+
+import { terminateProcessTree } from "../../packages/platform-node/src/process-tree-terminator.ts";
+import { pipeEndpoint } from "../../packages/platform-node/src/windows-pipe-transport.ts";
 
 const roots = [];
 const clients = [];
@@ -79,23 +84,92 @@ export function rawChannelClient(endpoint) {
   clients.push(socket);
   let data = "";
   let connected = false;
+  let isClosed = false;
+  let error = null;
   socket.on("connect", () => (connected = true));
   socket.on("data", (chunk) => (data += chunk));
-  socket.on("error", () => undefined);
+  socket.on("error", (cause) => (error ??= cause.code ?? "error"));
   const closed = new Promise((resolve) => socket.once("close", resolve));
+  void closed.then(() => (isClosed = true));
   // why: observed from the start, so a connect that comes before a case asks
   // is not missed; a client the pipe refuses is not an unhandled rejection.
   const connecting = once(socket, "connect");
   connecting.catch(() => undefined);
-  const diagnosis = () => `; connected: ${connected}; ${data.length} bytes received`;
+  // invariant: the client's side of a diagnosis: whether it connected and
+  // closed, the code of its first error, what it received, and what of its
+  // writes is still waiting, in Node (`writableLength`) and in libuv, which
+  // holds a write the pipe has not taken (`writeQueueSize`).
+  const state = () => ({
+    connected,
+    closed: isClosed,
+    error,
+    received: data.length,
+    writableLength: socket.writableLength,
+    writeQueueSize: socket._handle?.writeQueueSize ?? null
+  });
+  const diagnosis = () => `; client ${JSON.stringify(state())}`;
   return {
     socket,
     closed,
     connectedWithin: () => settlesWithin(connecting, "the pipe client's connect", diagnosis),
     closedWithin: () => settlesWithin(closed, "the pipe client's close", diagnosis),
     data: () => data,
-    connected: () => connected
+    connected: () => connected,
+    isClosed: () => isClosed,
+    state
   };
+}
+
+// why: a named pipe exists while any process holds a server end of it, and
+// Windows lists the pipe namespace as a directory, so whether the server end
+// is gone is read without connecting to it. Off Windows there is no such
+// namespace: undefined.
+export async function pipeListed(endpoint) {
+  if (process.platform !== "win32") return undefined;
+  const name = endpoint.slice(endpoint.lastIndexOf("\\") + 1);
+  return readdir("\\\\.\\pipe\\").then(
+    (names) => names.includes(name),
+    () => null
+  );
+}
+
+// invariant: a bounded trace of one channel for a diagnosis: the transport's
+// own steps (PipeChannelEvent), each at its milliseconds since the trace
+// began, and how many bytes of the connection reached the controller.
+export function pipeTrace() {
+  const began = Date.now();
+  const events = [];
+  let reached = 0;
+  const observe = (event) => {
+    if (events.length < 64) events.push({ at: Date.now() - began, ...event });
+  };
+  return {
+    observe,
+    saw: (step) => events.some((event) => event.step === step),
+    reached: () => reached,
+    events: () => [...events],
+    // why: the transport the controller listens on, counting what of the
+    // connection reaches the controller beside it.
+    counting: (transport) => ({
+      listen: (accept) =>
+        transport.listen((connection) => {
+          connection.on("data", (chunk) => (reached += chunk.length));
+          accept(connection);
+        })
+    }),
+    describe: (extra) => JSON.stringify({ ...extra, reached, events })
+  };
+}
+
+// invariant: one link of a guarantee, waited for within the bound and named,
+// with the trace that tells which link broke.
+export async function reaches(probe, label, diagnosis) {
+  const deadline = Date.now() + PIPE_WAIT_MS;
+  while (Date.now() < deadline) {
+    if (await probe()) return;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  throw new Error(`${label} was not reached within ${PIPE_WAIT_MS} ms; ${await diagnosis()}`);
 }
 
 // invariant: a DETERMINISTIC FAKE of the PowerShell 7 helper. Its status lines
@@ -184,4 +258,59 @@ export class FakePipeHost {
   get helper() {
     return this.started.at(-1)?.helper;
   }
+}
+
+// invariant: what a refused channel guarantees, link by link, each bounded and
+// diagnosed with its trace: the controller refuses the client, the helper
+// ends, the pipe's server end is gone (on Windows, where the pipe namespace
+// shows it), and the client is disconnected. A failure names the link that
+// broke: no refusal (the frame never reached the controller), a helper that
+// did not end, a server end that outlived its helper, or a client that did
+// not see it.
+export async function assertRefusalEnds({ controller, trace, client, endpoint }) {
+  const diagnosis = async () =>
+    trace.describe({
+      rejected: controller.statistics().rejectedConnections,
+      client: client.state(),
+      listed: await pipeListed(endpoint)
+    });
+  await reaches(() => controller.statistics().rejectedConnections === 1, "the controller's refusal", diagnosis);
+  await reaches(() => trace.saw("helper-exited"), "the helper's end", diagnosis);
+  if (process.platform === "win32")
+    await reaches(async () => (await pipeListed(endpoint)) === false, "the pipe's server end gone", diagnosis);
+  // why: the client's own view of the disconnect. A write it makes now fails
+  // at once where no server end is left, whether or not an earlier write of
+  // its own is still waiting to be taken.
+  if (!client.isClosed()) client.socket.write("\n");
+  await reaches(() => client.isClosed(), "the client's disconnect", diagnosis);
+}
+
+const STAND_IN = fileURLToPath(new URL("./pipe-relay-stand-in.mjs", import.meta.url));
+
+// invariant: a host for the named-pipe transport whose helper is the real
+// stand-in process (pipe-relay-stand-in.mjs) in the given mode, on any
+// platform, ended through the real tree terminator. On Windows it serves the
+// transport's own pipe name; elsewhere a Unix socket under `socketRoot`, the
+// endpoint a client then connects to.
+export function standInHost(mode, socketRoot) {
+  const host = {
+    platform: "win32",
+    endpoint: undefined,
+    powershellInstalled: () => Promise.resolve(true),
+    secureDirectory: () => Promise.resolve({ proven: true, sid: SID, dacl: `D:PAI(A;OICI;FA;;;${SID})` }),
+    startHelper: (_executable, args) => {
+      host.endpoint = process.platform === "win32" ? pipeEndpoint(args.at(-1)) : join(socketRoot, "s.sock");
+      return spawn(process.execPath, [STAND_IN, host.endpoint, mode], {
+        stdio: "pipe",
+        // why: as every provider tree is started on POSIX, so its group can be ended whole.
+        detached: process.platform !== "win32",
+        windowsHide: true
+      });
+    },
+    terminateTree: (pid) =>
+      terminateProcessTree(pid, () => {
+        throw new Error("the stand-in's tree outlived its termination");
+      })
+  };
+  return host;
 }
