@@ -85,6 +85,11 @@ test("the helper is one constant script, pinned by digest", () => {
     /Invoke-Expression|\biex\b|ScriptBlock\]::Create|Add-Type|Start-Process|EncodedCommand|\.Invoke\(/iu,
     "the helper evaluates no text"
   );
+  assert.doesNotMatch(
+    PIPE_HELPER_SCRIPT,
+    /Diagnostics\.Process|Start-(?:Process|Job|ThreadJob)|Invoke-Item|HandleInheritability/iu,
+    "the helper starts no process and makes no handle inheritable, so only it holds the pipe's server end"
+  );
 });
 
 test("the helper refuses logged PowerShell before it creates the pipe", () => {
@@ -346,6 +351,69 @@ for (const tree of ["misses", "hangs"]) {
     assert.deepEqual(await runs(), []);
   });
 }
+
+// invariant: the channel's trace (PipeChannelEvent) names each step of its
+// life: the helper's start and status, the connection's close, what began
+// the helper's end and whether the helper still ran, how the tree terminator
+// returned, a kill through the handle, the helper's exit, and the channel's
+// close. The fake helper exits as soon as it is ended, so its exit is traced
+// inside the step that ended it.
+const STARTED = [
+  { step: "helper-started", pid: 4242 },
+  { step: "listening" },
+  { step: "connected" },
+  { step: "connection-closed" },
+  { step: "end", trigger: "connection-closed", running: true }
+];
+const EXITED = { step: "helper-exited", code: 0, signal: null };
+const KILLED = { step: "helper-killed", sent: true };
+for (const [tree, ending] of [
+  ["ends", [EXITED, { step: "tree-terminated", outcome: "returned" }]],
+  ["misses", [{ step: "tree-terminated", outcome: "returned" }, EXITED, KILLED]],
+  ["hangs", [{ step: "tree-terminated", outcome: "timed-out" }, EXITED, KILLED]]
+])
+  test(`a refused channel's trace names every step when the tree termination ${tree}`, async () => {
+    const host = new FakePipeHost();
+    host.tree = tree;
+    const events = [];
+    const { listen, accepted } = await transportOver(host, { exitWaitMs: 50, observe: (event) => events.push(event) });
+    const channel = await listen();
+    host.helper.status("verchestra-pipe:connected");
+    assert.ok(await eventually(() => accepted.length > 0), "the controller is handed the connection");
+    accepted[0].destroy();
+    assert.ok(await eventually(() => events.length === STARTED.length + ending.length, 2_000), JSON.stringify(events));
+    await channel.close();
+    assert.deepEqual(events, [...STARTED, ...ending, { step: "channel-closed" }]);
+  });
+
+test("a channel closed before any client traces its close as what began the helper's end", async () => {
+  const host = new FakePipeHost();
+  const events = [];
+  const { listen } = await transportOver(host, { observe: (event) => events.push(event) });
+  await (await listen()).close();
+  assert.deepEqual(events.slice(2), [
+    { step: "channel-closed" },
+    { step: "end", trigger: "channel-closed", running: true },
+    EXITED,
+    { step: "tree-terminated", outcome: "returned" }
+  ]);
+});
+
+test("an observer that throws changes nothing of the channel", async () => {
+  const host = new FakePipeHost();
+  const { listen, accepted, runs } = await transportOver(host, {
+    observe: () => {
+      throw new Error("the observer failed");
+    }
+  });
+  const channel = await listen();
+  host.helper.status("verchestra-pipe:connected");
+  assert.ok(await eventually(() => accepted.length > 0), "the controller is handed the connection");
+  accepted[0].destroy();
+  assert.ok(await eventually(() => host.terminated.length > 0), "the helper is terminated");
+  await channel.close();
+  assert.deepEqual([host.terminated, await runs()], [[4242], []]);
+});
 
 test("closing the channel terminates the helper tree once and removes the per-run directory", async () => {
   const host = new FakePipeHost();
