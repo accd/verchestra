@@ -473,3 +473,68 @@ from run 36997576112:
 It also says nothing about the governed task path, because
 `self-test --profile smoke` does not start a provider. The planned evidence
 for that path is the live task pilot (#406) on `.6`, which has not run yet.
+
+## TUF publication of `0.0.0-qualification.7` (2026-10-04)
+
+`.7` is the fifth release on the role-separated root. Over `.6` it carries:
+
+- the Strands subscription integration (T1–T10): coordinated `agent`, `graph`
+  and `swarm` runs on subscriptions only, with suspension on a quota signal,
+  resume and reconciliation;
+- the governed task path on Windows over the named-pipe bridge;
+- every remediation of the two independent verifications (R1–R7);
+- the test suites' temporary-directory guard.
+
+| Fact               | Value                                                                                  |
+| ------------------ | -------------------------------------------------------------------------------------- |
+| Candidate revision | `2e97443ea60192464cddfefe2c55dc9c625a975e` (`main`)                                    |
+| Candidate build    | run `37227328549`: five target legs and the reconciled closure passed                  |
+| Signing            | run `37233733016`, from `main`, approved in environment `tuf-release-signing`          |
+| Release id         | `release:verchestra:0.0.0-qualification.7:2e97443ea601`                                |
+| Root digest        | `sha256:949fbce3c56f7a10729750d3d18dc54537eb32f2701aae7eb8370ff06e5dcff7` (unchanged)  |
+| Metadata version   | `6` for targets, snapshot and timestamp                                                |
+| Base URL           | `https://pub-0fa3e4c3f26540e793952fa2c187d536.r2.dev/v7/`                              |
+| Rollback proof     | binds the `.6` candidate `7e274f237648251b972081471134623097122c16`, run `37139943097` |
+
+Two earlier candidate builds of this release, runs `37211970828` and
+`37219409058`, failed on Windows x64 in one named-pipe security case. The
+case was `win32: a frame beyond its bound on the named pipe is refused`, and
+it failed intermittently. The PowerShell relay read a 131,072-byte block and
+did not forward it, so the controller's refusal never fired. Remediation R6
+traced it and R7 fixed it in the strands-subscription-integration
+validation. No candidate was published from those runs.
+
+Custody, stated as it happened: the agent session submitted the environment
+approval through the owner's GitHub credential, at the owner's instruction in
+that session on 2026-10-04. The instruction was "ok, prosseguir", to publish
+`.7`. The posture is single-operator custody (acceptance matrix L8, RR10).
+
+The ledger entry is the `ledger-entry.json` the publication run derived
+(`admitRelease`, AD-042), appended verbatim as sequence 7.
+
+Verification:
+
+- **Assembly.** All 1470 objects (25 metadata, 1445 targets) were hashed
+  locally against `publication-manifest.json`, by digest and size, before
+  upload. All 1470 matched.
+- **Upload.** 1470 objects were uploaded under `v7/`. `rclone check` reported
+  1470 matching files and 0 differences.
+- **Live endpoint.** All 1470 objects answered as the manifest records.
+- **npm package.** A local `build:vestra-launcher --release-inputs` build at
+  the candidate revision was byte-identical to the workflow's verified
+  launcher package, version `0.0.0-qualification.7`.
+- **Update and rollback, macOS arm64, against the live endpoint.** With one
+  empty home, in order:
+  - `.6` activated `.6`;
+  - the `.7` launcher activated `.7`;
+  - `.6` re-activated `.6` (the retained-release path, AD-036);
+  - `.7` activated `.7` again.
+
+  The active pointer named the manifest's `darwin-arm64` release digest
+  (`sha256:411f7441…5d3bbdd8`). `self-test --profile smoke` returned
+  `verdict: PASS`.
+
+Not yet done:
+
+- `npm publish` of the `.7` launcher, the owner's two-factor step;
+- the five-target `live-activation-matrix` run with base `.6` and update `.7`.
