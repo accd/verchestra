@@ -292,7 +292,9 @@ const STAND_IN = fileURLToPath(new URL("./pipe-relay-stand-in.mjs", import.meta.
 // platform, ended through the real tree terminator. On Windows it serves the
 // transport's own pipe name; elsewhere a Unix socket under `socketRoot`, the
 // endpoint a client then connects to.
-export function standInHost(mode, socketRoot) {
+// why: `note` is told a failure the stand-in reports of itself
+// (`{ step: "stand-in-error", code }`), so a case's trace names it.
+export function standInHost(mode, socketRoot, note = () => undefined) {
   const host = {
     platform: "win32",
     endpoint: undefined,
@@ -300,12 +302,17 @@ export function standInHost(mode, socketRoot) {
     secureDirectory: () => Promise.resolve({ proven: true, sid: SID, dacl: `D:PAI(A;OICI;FA;;;${SID})` }),
     startHelper: (_executable, args) => {
       host.endpoint = process.platform === "win32" ? pipeEndpoint(args.at(-1)) : join(socketRoot, "s.sock");
-      return spawn(process.execPath, [STAND_IN, host.endpoint, mode], {
+      const child = spawn(process.execPath, [STAND_IN, host.endpoint, mode], {
         stdio: "pipe",
         // why: as every provider tree is started on POSIX, so its group can be ended whole.
         detached: process.platform !== "win32",
         windowsHide: true
       });
+      child.stderr.on("data", (chunk) => {
+        for (const [, code] of String(chunk).matchAll(/verchestra-stand-in:error:([\w-]{1,64})/gu))
+          note({ step: "stand-in-error", code });
+      });
+      return child;
     },
     terminateTree: (pid) =>
       terminateProcessTree(pid, () => {
