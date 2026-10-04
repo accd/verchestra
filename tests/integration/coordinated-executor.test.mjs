@@ -6,7 +6,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { CoordinatedDriver, createBudgetMeter, modelPriceTable } from "../../packages/application/src/index.ts";
+import {
+  CoordinatedDriver,
+  TaskExecutionSuspended,
+  createBudgetMeter,
+  modelPriceTable
+} from "../../packages/application/src/index.ts";
 import {
   DONE,
   MemoryPayloads,
@@ -146,4 +151,155 @@ test("a node failure fails the executor run with the node's code and the worktre
   await assert.rejects(executor(ports).execute(input), (error) => error.code === "VES_COORDINATION_RESULT_TOO_LARGE");
   assert.equal(state.cleaned, true);
   assert.equal(state.released, true);
+});
+
+// invariant: SSI-59, SSI-60 (AD-071). The independent test's first half inside
+// the real executor: a quota signal in the second of three graph nodes
+// suspends the run. The first node's result is persisted and replayable, the
+// worktree it shares with every node is kept (never cleaned), the suspended
+// checkpoint names the change and the suspension, the writer coordination is
+// released, and no later node starts.
+test("a quota signal mid-graph suspends the executor run and keeps its worktree and the first node's result", async () => {
+  const input = executorInput();
+  const request = coordinatedFor(input);
+  const payloads = new MemoryPayloads();
+  const records = new MemoryRecords();
+  const nodes = scriptedNodes(payloads, {
+    build: async () => {
+      throw Object.assign(new Error("quota"), {
+        code: "VES_DRIVER_QUOTA_EXHAUSTED",
+        quota: { scope: "five_hour", resetsAt: "2026-10-03T17:00:00.000Z" }
+      });
+    }
+  });
+  const { state, ports } = executorPorts({
+    driver: port(
+      new CoordinatedDriver({
+        request,
+        engine: async () => sequentialEngine,
+        nodes,
+        payloads,
+        records,
+        context: "",
+        remainingDurationMs: () => 60_000,
+        now: () => new Date("2026-10-03T12:00:00.000Z")
+      })
+    )
+  });
+  const suspension = {
+    reason: "VES_DRIVER_QUOTA_EXHAUSTED",
+    provider: "claude-code",
+    at: "2026-10-03T12:00:00.000Z",
+    scope: "five_hour",
+    resetsAt: "2026-10-03T17:00:00.000Z"
+  };
+  await assert.rejects(executor(ports).execute(input), (error) => {
+    assert.ok(error instanceof TaskExecutionSuspended);
+    assert.equal(error.code, "VES_EXECUTOR_SUSPENDED");
+    assert.deepEqual(error.suspension, suspension);
+    return true;
+  });
+  assert.equal(state.cleaned, false, "the suspended worktree was removed");
+  assert.equal(state.released, true, "the writer coordination is still held");
+  assert.equal(state.calls.includes("driver:cancel"), false);
+  assert.deepEqual(
+    nodes.state.sessions.map((entry) => entry.node.nodeId),
+    ["plan", "build"]
+  );
+  const suspended = state.checkpoints.at(-1);
+  assert.equal(suspended.stage, "suspended");
+  assert.deepEqual(suspended.data, {
+    changeDigest: `sha256:${"5".repeat(64)}`,
+    changedPaths: ["packages/application/src/execution/task-executor.ts"],
+    toolReceiptRefs: [],
+    suspension
+  });
+  assert.equal(records.ledger.roundState, "running");
+  const [plan, build] = records.ledger.visits;
+  assert.equal(plan.state, "completed");
+  assert.deepEqual(await records.loadResult(plan.resultDigest), await payloads.get(`payload:${plan.resultDigest}`));
+  assert.equal(build.state, "failed");
+});
+
+// invariant: the executor trusts no driver's suspension: a record outside its
+// grammar or with a member it may not hold, a suspension on another status,
+// and a suspended status without a record all fail the driver, and the
+// failure cleans up as any failure does.
+for (const [label, result] of [
+  [
+    "a record with provider text",
+    {
+      status: "suspended",
+      outputRefs: [],
+      suspension: {
+        reason: "VES_DRIVER_QUOTA_EXHAUSTED",
+        provider: "claude-code",
+        at: "2026-10-03T12:00:00.000Z",
+        scope: "Five hours, buy more at claude.ai"
+      }
+    }
+  ],
+  [
+    "a record with an account member",
+    {
+      status: "suspended",
+      outputRefs: [],
+      suspension: {
+        reason: "VES_DRIVER_QUOTA_EXHAUSTED",
+        provider: "codex",
+        at: "2026-10-03T12:00:00.000Z",
+        email: "owner@example.invalid"
+      }
+    }
+  ],
+  [
+    "a record whose reason is not a code",
+    {
+      status: "suspended",
+      outputRefs: [],
+      suspension: { reason: "quota", provider: "codex", at: "2026-10-03T12:00:00.000Z" }
+    }
+  ],
+  ["a suspended status without a record", { status: "suspended", outputRefs: [] }],
+  [
+    "a record on a completed run",
+    {
+      status: "completed",
+      outputRefs: [],
+      suspension: { reason: "VES_DRIVER_QUOTA_EXHAUSTED", provider: "codex", at: "2026-10-03T12:00:00.000Z" }
+    }
+  ]
+])
+  test(`the executor refuses ${label} and cleans up as for any driver failure`, async () => {
+    const { state, ports } = executorPorts({ driver: { execute: async () => result } });
+    await assert.rejects(
+      executor(ports).execute(executorInput()),
+      (error) => error.code === "VES_EXECUTOR_DRIVER_FAILED"
+    );
+    assert.equal(state.cleaned, true);
+    assert.deepEqual(
+      state.checkpoints.map((entry) => entry.stage),
+      ["failed"]
+    );
+  });
+
+test("a cancel of the caller wins over a driver's suspension", async () => {
+  const caller = new AbortController();
+  const { state, ports } = executorPorts({
+    driver: {
+      execute: async () => {
+        caller.abort("cancelled by the owner");
+        return {
+          status: "suspended",
+          outputRefs: [],
+          suspension: { reason: "VES_DRIVER_QUOTA_EXHAUSTED", provider: "codex", at: "2026-10-03T12:00:00.000Z" }
+        };
+      }
+    }
+  });
+  await assert.rejects(
+    executor(ports).execute(executorInput(), { signal: caller.signal }),
+    (error) => error.code === "VES_EXECUTOR_CANCELLED"
+  );
+  assert.equal(state.cleaned, true);
 });

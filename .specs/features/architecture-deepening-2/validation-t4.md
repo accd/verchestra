@@ -72,7 +72,7 @@ Each adapter keeps its existing codes; none is added or retired. The
 messages are the module's; three gate-adapter messages read as the worktree
 adapter's did ("Worktree reference is invalid", "... escaped its protected
 root"). No message is public: the run records the code only
-(`packages/application/src/execution/task-run.ts:119-122`).
+(`packages/application/src/execution/task-run.ts:125-128`).
 
 ## 3. ADR2-4, clause by clause
 

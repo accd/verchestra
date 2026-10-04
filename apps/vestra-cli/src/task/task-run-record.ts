@@ -42,6 +42,7 @@ type Digest = `sha256:${string}`;
 type Row = Readonly<Record<string, unknown>>;
 
 const DIGEST = /^sha256:[a-f0-9]{64}$/u;
+const INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u;
 const PLAN_DIGESTS = [
   "requestDigest",
   "sourceStateDigest",
@@ -211,14 +212,40 @@ const OUTCOME_TEXT: Readonly<Record<TaskRunOutcome["status"], readonly string[]>
   ESCALATED: [],
   FAILED: ["reason"],
   ABORTED: ["reason"],
-  APPROVAL_INVALIDATED: []
+  APPROVAL_INVALIDATED: [],
+  SUSPENDED: []
 });
 const OUTCOME_STATUSES = Object.freeze(Object.keys(OUTCOME_TEXT) as TaskRunOutcome["status"][]);
+
+// invariant: SSI-61 and SSI-81. A suspension is read against the grammars the
+// executor wrote it with: a code, a provider, instants, and a limit window,
+// and no other member, so a marker cannot carry provider text or a path.
+const SUSPENSION_MEMBERS: Readonly<Record<string, { readonly pattern: RegExp; readonly required: boolean }>> =
+  Object.freeze({
+    reason: { pattern: /^VES_[A-Z0-9_]{1,96}$/u, required: true },
+    provider: { pattern: /^[a-z][a-z0-9-]{0,31}$/u, required: true },
+    at: { pattern: INSTANT, required: true },
+    scope: { pattern: /^[a-z][a-z0-9_]{0,63}$/u, required: false },
+    resetsAt: { pattern: INSTANT, required: false }
+  });
+
+function validatedSuspension(row: Row, label: string): void {
+  for (const key of Object.keys(row))
+    if (!Object.hasOwn(SUSPENSION_MEMBERS, key))
+      throw stateInvalid("VES_TASK_STATE_MALFORMED", `${label} has an unknown member`);
+  for (const [key, { pattern, required }] of Object.entries(SUSPENSION_MEMBERS)) {
+    const value = row[key];
+    if (value === undefined ? required : typeof value !== "string" || !pattern.test(value))
+      throw stateInvalid("VES_TASK_STATE_MALFORMED", `${label}.${key} is invalid`);
+  }
+}
 
 function validatedOutcome(row: Row, label: string): OutcomeMarker {
   const status = oneOf(row, "status", OUTCOME_STATUSES, label);
   for (const key of [...OUTCOME_TEXT[status], "at"]) textField(row, key, label);
   if (status === "HUMAN_REVIEW") validatedCommit(objectRow(row["commit"], `${label}.commit`));
+  if (status === "SUSPENDED")
+    validatedSuspension(objectRow(row["suspension"], `${label}.suspension`), `${label}.suspension`);
   if (status === "ESCALATED") {
     const failure = objectRow(row["failure"], `${label}.failure`);
     textField(failure, "failedGateId", `${label}.failure`);

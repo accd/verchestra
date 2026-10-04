@@ -318,6 +318,7 @@ section.
 **Progress** (branch `strands/t6-suspension`; evidence in `validation.md`, "T6 Evidence"):
 
 - [x] Commit 1: `task-billing.ts` reads the owner's extra-usage confirmation (D3) under a pinned billing regime per provider (D9); the preflight at `start` and `resume` folds in T5's `coordinated-run-subscription` refusal and runs before any credential read, transition, or worktree; journeys for a missing confirmation and an `api-key` provider; 11 mutants killed.
+- [x] Commit 2: the executor's `suspended` driver result, checkpoint, and `TaskExecutionSuspended`; the repair loop's `SUSPENDED` (spend saved, attempt not counted); outcome `SUSPENDED` with no workflow command and nothing released; the coordinated driver suspends on a quota signal or Codex credits (reported `not configured`), keeps the round open, and waits for every node; journeys for a quota signal mid-graph and Codex credits present; 15 mutants killed.
 
 ---
 

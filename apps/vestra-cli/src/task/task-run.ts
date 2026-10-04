@@ -33,9 +33,9 @@ import { TaskAuthority } from "./task-authority.ts";
 import { requireSubscriptionPreflight } from "./task-billing.ts";
 import { meterOnRunLedger, recordingMeter } from "./task-budget.ts";
 import { requireCodexSubscription } from "./task-codex-identity.ts";
-import { coordinatedDriver } from "./task-coordination.ts";
+import { CODEX_CREDITS_PRESENT, coordinatedDriver } from "./task-coordination.ts";
 import { IMPLEMENTER_CREDENTIALS, VERIFIER_CREDENTIAL, readCredentials } from "./task-credentials.ts";
-import { stateInvalid, taskError } from "./task-errors.ts";
+import { notConfigured, stateInvalid, taskError } from "./task-errors.ts";
 import { sha256 } from "./task-files.ts";
 import { loadGateAllowlist } from "./task-gates.ts";
 import { git } from "./task-git.ts";
@@ -643,6 +643,9 @@ async function present(
     };
   }
   if (outcome.status === "FAILED" || outcome.status === "ABORTED") return { ...base, reason: outcome.reason };
+  // why: SSI-63. A suspended run continues only when its owner resumes it.
+  if (outcome.status === "SUSPENDED")
+    return { ...base, suspension: outcome.suspension, next: `vestra task resume --run-id ${plan.runId}` };
   if (outcome.status === "VERIFICATION_FAILED")
     return { ...base, verificationReport: outcome.reportRef, next: `vestra task cancel --run-id ${plan.runId}` };
   if (outcome.status === "ESCALATED")
@@ -683,6 +686,11 @@ export async function runTask(io: TaskCommandIo, options: { readonly runId: unkn
         signal: controller.signal
       });
       await runRecord.saveOutcome(outcome);
+      // why: D3b. Credits on the Codex account are a configuration the owner
+      // must change before the run may continue, so the stop is reported as
+      // `not configured`; the run itself is suspended and nothing is lost.
+      if (outcome.status === "SUSPENDED" && outcome.suspension.reason === CODEX_CREDITS_PRESENT)
+        throw notConfigured("codex-credits", "Codex reports credits on its account; the run is suspended");
       const data = await present(workspace.repositoryRoot, plan, runRecord, outcome, currentRun(runtime, runId).state);
       return { data, exitCode: outcome.status === "HUMAN_REVIEW" ? 0 : 1 };
     } finally {

@@ -45,7 +45,9 @@ function harness(options = {}) {
   let current = options.snapshot ?? snapshot("EXECUTION_AUTHORIZED");
   let committed = options.committed;
   const gateResults = [...(options.gateResults ?? ["pass"])];
-  const persisted = {};
+  // why: a test that resumes a run hands the next harness the state the
+  // previous one persisted, as the runtime store would.
+  const persisted = options.persisted ?? {};
   const ports = {
     workflow: {
       current: async () => current,
@@ -84,7 +86,10 @@ function harness(options = {}) {
         feedbackDigest: digestOf(7),
         bytes: 32
       }),
-      sealAttempt: async (input) => ({ capsuleDigest: digestOf(input.attempt) }),
+      sealAttempt: async (input) => {
+        calls.sealed = (calls.sealed ?? 0) + 1;
+        return { capsuleDigest: digestOf(input.attempt) };
+      },
       loadState: async () => persisted.state,
       saveState: async (state) => {
         persisted.state = { ...state };
@@ -260,4 +265,101 @@ test("resuming an escalated run never buys the attempts the escalation point wit
   assert.equal(resumed.status, "ESCALATED");
   assert.equal(calls.executed, 1);
   assert.equal(calls.committed, 1);
+});
+
+// invariant: SSI-60 and SSI-64 (AD-071). A suspended execution ends the run
+// SUSPENDED with no workflow command after the start of implementation: the
+// run stays IMPLEMENTING, nothing is released, no gate runs, and the attempt
+// is neither counted nor sealed, so a resume runs the same attempt again.
+test("a suspended execution ends the run SUSPENDED in IMPLEMENTING with nothing released", async () => {
+  const suspension = Object.freeze({
+    reason: "VES_DRIVER_QUOTA_EXHAUSTED",
+    provider: "claude-code",
+    at: "2026-10-03T12:00:00.000Z",
+    scope: "five_hour"
+  });
+  const persisted = {};
+  const { calls, ports, state } = harness({
+    persisted,
+    execute: async () => {
+      throw Object.assign(new Error("suspended"), { code: "VES_EXECUTOR_SUSPENDED", suspension });
+    }
+  });
+  const outcome = await new TaskRunCoordinator(ports).run(input());
+  assert.deepEqual(outcome, { status: "SUSPENDED", suspension });
+  assert.equal(Object.isFrozen(outcome), true);
+  assert.equal(state().state, "IMPLEMENTING");
+  assert.deepEqual(calls.commands, ["START_IMPLEMENTATION"]);
+  assert.deepEqual([calls.released, calls.committed, calls.verified, calls.sealed ?? 0], [0, 0, 0, 0]);
+  assert.deepEqual(persisted.state, { stage: "repair", attempts: 0, attemptCapsuleDigests: [], budgetLedger: null });
+});
+
+test("an error that names the suspension code without its record is a failure, not a suspension", async () => {
+  const { ports, state } = harness({
+    execute: async () => {
+      throw Object.assign(new Error("suspended"), { code: "VES_EXECUTOR_SUSPENDED" });
+    }
+  });
+  const outcome = await new TaskRunCoordinator(ports).run(input());
+  assert.deepEqual(outcome, { status: "FAILED", reason: "VES_EXECUTOR_SUSPENDED" });
+  assert.equal(state().state, "FAILED");
+});
+
+// invariant: SSI-39 and SSI-68, with a clock the test controls. The run's one
+// ledger carries usage and active time across a suspension: the spend at the
+// moment of suspension is saved, and the meter of the resumed run continues
+// from it, so the hours the run spent suspended are never counted.
+test("budget continuity across a suspension: tokens accumulate and suspended time is not counted", async () => {
+  let now = 1_000_000;
+  const budgets = { maximumCostUsd: 1, maximumTokens: 10_000, maximumDurationMs: 600_000 };
+  const priceTable = { version: "test", models: {} };
+  const budget = {
+    create: (resume) =>
+      createBudgetMeter({ budgets, priceTable, unbilledModels: ["claude-sonnet-5"], now: () => now, resume })
+  };
+  const suspension = { reason: "VES_DRIVER_QUOTA_EXHAUSTED", provider: "claude-code", at: "2026-10-03T12:00:00.000Z" };
+  const persisted = {};
+  const first = harness({
+    persisted,
+    budget,
+    execute: async ({ budgetMeter }) => {
+      now += 2_000;
+      budgetMeter.recordUsage({ model: "claude-sonnet-5", inputTokens: 30, outputTokens: 10 });
+      throw Object.assign(new Error("suspended"), { code: "VES_EXECUTOR_SUSPENDED", suspension });
+    }
+  });
+  assert.equal((await new TaskRunCoordinator(first.ports).run(input())).status, "SUSPENDED");
+  assert.deepEqual(persisted.state.budgetLedger, {
+    consumedCostUsd: 0,
+    consumedTokens: 40,
+    consumedDurationMs: 2_000,
+    usageEvents: 1,
+    stopReason: null,
+    unbilledTokens: 40
+  });
+  // why: five hours pass while the run waits for its owner.
+  now += 5 * 60 * 60 * 1000;
+  let resumedAt;
+  const second = harness({
+    persisted,
+    snapshot: snapshot("IMPLEMENTING"),
+    budget,
+    execute: async ({ budgetMeter }) => {
+      resumedAt = budgetMeter.consumedDurationMs();
+      now += 500;
+      budgetMeter.recordUsage({ model: "claude-sonnet-5", inputTokens: 20, outputTokens: 5 });
+      return execution;
+    }
+  });
+  assert.equal((await new TaskRunCoordinator(second.ports).run(input())).status, "HUMAN_REVIEW");
+  assert.equal(resumedAt, 2_000, "the resumed meter counted the time the run was suspended");
+  assert.deepEqual(persisted.state.budgetLedger, {
+    consumedCostUsd: 0,
+    consumedTokens: 65,
+    consumedDurationMs: 2_500,
+    usageEvents: 2,
+    stopReason: null,
+    unbilledTokens: 65
+  });
+  assert.equal(persisted.state.attempts, 1, "the suspended attempt and its resumption are one attempt");
 });

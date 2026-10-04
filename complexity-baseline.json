@@ -99,7 +99,7 @@
       23
     ],
     "packages/application/src/execution/gate-repair.ts :: Async function 'runGateRepairLoop'": [
-      33
+      29
     ],
     "packages/application/src/execution/gate-repair.ts :: Function 'normalizePolicy'": [
       12
@@ -111,7 +111,7 @@
       13
     ],
     "packages/application/src/execution/task-executor.ts :: Async method 'execute'": [
-      53
+      40
     ],
     "packages/application/src/execution/task-scheduler.ts :: Async method 'execute'": [
       26

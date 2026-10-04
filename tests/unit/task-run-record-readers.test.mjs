@@ -39,7 +39,17 @@ const OUTCOMES = Object.freeze({
   },
   FAILED: { status: "FAILED", reason: "VES_TASK_GATE_FAILED" },
   ABORTED: { status: "ABORTED", reason: "VES_EXECUTOR_CANCELLED" },
-  APPROVAL_INVALIDATED: { status: "APPROVAL_INVALIDATED" }
+  APPROVAL_INVALIDATED: { status: "APPROVAL_INVALIDATED" },
+  SUSPENDED: {
+    status: "SUSPENDED",
+    suspension: {
+      reason: "VES_DRIVER_QUOTA_EXHAUSTED",
+      provider: "claude-code",
+      at: "2026-10-03T12:00:00.000Z",
+      scope: "five_hour",
+      resetsAt: "2026-10-03T17:00:00.000Z"
+    }
+  }
 });
 const REVIEW = Object.freeze({
   schemaVersion: 1,
@@ -154,6 +164,30 @@ const MALFORMED_OUTCOMES = Object.freeze([
   [
     "an escalation whose evidence is not text",
     outcome("ESCALATED", { failure: { ...OUTCOMES.ESCALATED.failure, evidenceRef: 7 } })
+  ],
+  // invariant: SSI-61 and SSI-81. A suspension holds a code, a provider,
+  // instants, and a limit window, and no other member.
+  ["a suspension without its record", without(outcome("SUSPENDED"), "suspension")],
+  ["a suspension whose record is not an object", outcome("SUSPENDED", { suspension: "quota" })],
+  [
+    "a suspension without its provider",
+    outcome("SUSPENDED", { suspension: without(OUTCOMES.SUSPENDED.suspension, "provider") })
+  ],
+  [
+    "a suspension whose reason is not a code",
+    outcome("SUSPENDED", { suspension: { ...OUTCOMES.SUSPENDED.suspension, reason: "quota exhausted" } })
+  ],
+  [
+    "a suspension whose window is provider text",
+    outcome("SUSPENDED", { suspension: { ...OUTCOMES.SUSPENDED.suspension, scope: "Five hours, buy more" } })
+  ],
+  [
+    "a suspension whose reset is not an instant",
+    outcome("SUSPENDED", { suspension: { ...OUTCOMES.SUSPENDED.suspension, resetsAt: "tomorrow" } })
+  ],
+  [
+    "a suspension holding an account member",
+    outcome("SUSPENDED", { suspension: { ...OUTCOMES.SUSPENDED.suspension, email: "owner@example.invalid" } })
   ]
 ]);
 

@@ -133,9 +133,36 @@ async function call(name, args) {
 
 const implement = () => call("write_file", { path: "src/value.txt", content: "new\n" });
 
+// why: the `claude-quota` flag makes a session report what 2.1.282 reports
+// when the plan's five-hour window is spent, a rejected rate limit, before it
+// writes; `claude-quota-after-write` reports it after its write landed. The
+// event carries the purchase and session fields the driver must drop. The
+// session then waits to be stopped, as one the provider will not continue.
+async function rejectedRateLimit() {
+  log({ results, quota: true, pid: process.pid });
+  emit({
+    type: "rate_limit_event",
+    rate_limit_info: {
+      status: "rejected",
+      rateLimitType: "five_hour",
+      resetsAt: 1_790_000_000,
+      overageStatus: "rejected",
+      overageDisabledReason: "out_of_credits",
+      isUsingOverage: false
+    },
+    uuid: "private-event-id",
+    session_id: "private-session-id"
+  });
+  setInterval(() => {}, 1_000);
+  await new Promise(() => {});
+}
+
+if (fixtureFlag("claude-quota")) await rejectedRateLimit();
+
 if (scenario === "implement" || scenario === "slow" || scenario === "fork") {
   await call("read_file", { path: "src/value.txt" });
   await implement();
+  if (fixtureFlag("claude-quota-after-write")) await rejectedRateLimit();
 } else if (scenario === "leak" || scenario === "leak-fail") {
   // why: a session that repeats its own credential in its answer; the driver
   // must redact it before anything is recorded, whether the run then succeeds

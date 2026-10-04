@@ -19,7 +19,7 @@ import {
   rejectsWith,
   resultBytes,
   scriptedEngine,
-  withExecution,
+  twoIndependent,
   WORKTREE
 } from "../helpers/coordinated-driver-fixture.mjs";
 
@@ -104,17 +104,6 @@ test("an engine that starts a node before its dependencies, or twice, fails the 
   await assert.rejects(run(outside, request), rejectsWith("VES_COORDINATION_ORDER_INVALID"));
   assert.equal(outside.nodes.state.sessions.length, 0);
 });
-
-function twoIndependent(request, writers, concurrency) {
-  const [plan, build] = request.execution.nodes;
-  const first = writers ? { ...build, nodeId: "left", inputs: [] } : { ...plan, nodeId: "left" };
-  const second = writers ? { ...build, nodeId: "right", inputs: [] } : { ...plan, nodeId: "right" };
-  return withExecution(request, {
-    nodes: [first, second],
-    edges: [],
-    limits: { ...request.execution.limits, concurrency }
-  });
-}
 
 test("more nodes at once than the concurrency limit fail the run with VES_COORDINATION_LIMIT", async () => {
   const request = twoIndependent(coordinatedRequest("graph"), false, 1);
@@ -423,51 +412,6 @@ test("the executor's own signal stops every node as well", async () => {
   });
   const result = await fixture.driver.execute(driverRequest(request), control({ signal: caller.signal }).control);
   assert.equal(result.status, "cancelled");
-});
-
-test("a quota signal from one node starts no further node and cancels the nodes still running", async () => {
-  const base = twoIndependent(coordinatedRequest("graph"), false, 2);
-  const request = withExecution(base, {
-    nodes: [...base.execution.nodes, { ...base.execution.nodes[0], nodeId: "after" }]
-  });
-  const otherStarted = Promise.withResolvers();
-  let otherSignal;
-  let refusedLater;
-  // why: an engine that keeps scheduling after a node failed, as a careless
-  // one might; the runner must refuse it.
-  const persistent = {
-    async run({ runner }) {
-      await Promise.allSettled([runner.run({ nodeId: "left" }), runner.run({ nodeId: "right" })]);
-      refusedLater = await runner.run({ nodeId: "after" }).then(
-        () => "ran",
-        (error) => error.code
-      );
-      return { status: "failed", code: "VES_TEST_ENGINE" };
-    }
-  };
-  const fixture = coordinatedDriver(request, {
-    engine: persistent,
-    script: {
-      left: async () => {
-        await otherStarted.promise;
-        throw Object.assign(new Error("quota"), { code: "VES_DRIVER_QUOTA_EXHAUSTED" });
-      },
-      right: async ({ control: nodeControl }) => {
-        otherSignal = nodeControl.signal;
-        otherStarted.resolve();
-        await aborted(nodeControl.signal);
-        return { status: "cancelled", outputRefs: [] };
-      }
-    }
-  });
-  await assert.rejects(run(fixture, request), rejectsWith("VES_DRIVER_QUOTA_EXHAUSTED"));
-  assert.equal(otherSignal.aborted, true);
-  assert.equal(refusedLater, "VES_DRIVER_QUOTA_EXHAUSTED");
-  assert.deepEqual(fixture.nodes.state.sessions.map((entry) => entry.node.nodeId).sort(byText), ["left", "right"]);
-  assert.deepEqual(
-    fixture.records.ledger.visits.map((entry) => `${entry.nodeId}:${entry.state}:${entry.failureCode}`).sort(byText),
-    ["left:failed:VES_DRIVER_QUOTA_EXHAUSTED", "right:failed:VES_EXECUTOR_CANCELLED"]
-  );
 });
 
 test("usage and checkpoints of every node reach the executor's control, filed under the node", async () => {

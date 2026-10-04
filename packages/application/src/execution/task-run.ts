@@ -16,6 +16,7 @@ import {
   type GateRepairOutcome,
   type GateRepairPorts
 } from "./gate-repair.ts";
+import type { ExecutionSuspension } from "./task-executor.ts";
 
 type Digest = `sha256:${string}`;
 
@@ -111,14 +112,27 @@ export type TaskRunOutcome =
   | { readonly status: "ESCALATED"; readonly failure: GateFailure }
   | { readonly status: "FAILED"; readonly reason: string }
   | { readonly status: "ABORTED"; readonly reason: string }
-  | { readonly status: "APPROVAL_INVALIDATED" };
+  | { readonly status: "APPROVAL_INVALIDATED" }
+  // invariant: SSI-60 and SSI-64. A suspended run applied no workflow command
+  // and released nothing: it stays IMPLEMENTING, its worktree kept, until
+  // `vestra task resume` or `vestra task cancel`.
+  | { readonly status: "SUSPENDED"; readonly suspension: ExecutionSuspension };
 
 const BUDGET_FAILURE = "VES_EXECUTOR_BUDGET_EXCEEDED";
 const CANCELLED = "VES_EXECUTOR_CANCELLED";
+const SUSPENDED = "VES_EXECUTOR_SUSPENDED";
 
 function errorCode(error: unknown): string {
   const code = (error as { readonly code?: unknown } | undefined)?.code;
   return typeof code === "string" && /^VES_[A-Z0-9_]{1,96}$/u.test(code) ? code : "VES_TASK_RUN_FAILED";
+}
+
+// why: the executor validated the record it suspended with; an error that
+// names the code without a record is a defect, not a suspension.
+function suspensionOf(error: unknown): ExecutionSuspension | undefined {
+  if (errorCode(error) !== SUSPENDED) return undefined;
+  const suspension = (error as { readonly suspension?: unknown }).suspension;
+  return suspension !== null && typeof suspension === "object" ? (suspension as ExecutionSuspension) : undefined;
 }
 
 // invariant: a run is started or resumed only from a state this coordinator
@@ -187,13 +201,15 @@ export class TaskRunCoordinator {
       { ...this.#ports.repair, attempt: (attempt) => this.#attempt(input, attempt) }
     );
     if (outcome.status === "CONVERGED") return { status: "COMMITTED" };
+    if (outcome.status === "SUSPENDED")
+      return { status: "STOPPED", outcome: Object.freeze({ status: "SUSPENDED", suspension: outcome.suspension }) };
     return { status: "STOPPED", outcome: await this.#stopped(input, outcome) };
   }
 
   async #attempt(
     input: TaskRunInput,
     attempt: { readonly feedback: GateAttemptFeedback | undefined; readonly budgetMeter: BudgetMeter | undefined }
-  ): Promise<{ readonly passed: boolean; readonly failure?: GateFailure }> {
+  ): Promise<{ readonly passed: boolean; readonly failure?: GateFailure; readonly suspension?: ExecutionSuspension }> {
     let execution: TaskRunExecution;
     try {
       execution =
@@ -204,6 +220,8 @@ export class TaskRunCoordinator {
           feedback: attempt.feedback
         }));
     } catch (error) {
+      const suspension = suspensionOf(error);
+      if (suspension !== undefined) return { passed: false, suspension };
       // invariant: an exhausted ceiling is a budget outcome the repair loop
       // reports as BUDGET_EXCEEDED, never a gate failure a human could retry.
       if (errorCode(error) !== BUDGET_FAILURE) throw error;
@@ -214,7 +232,7 @@ export class TaskRunCoordinator {
     return result.passed ? { passed: true } : { passed: false, failure: result.failure };
   }
 
-  async #stopped(input: TaskRunInput, outcome: Exclude<GateRepairOutcome, { status: "CONVERGED" }>) {
+  async #stopped(input: TaskRunInput, outcome: Exclude<GateRepairOutcome, { status: "CONVERGED" | "SUSPENDED" }>) {
     if (outcome.status === "ESCALATED")
       return Object.freeze({ status: "ESCALATED" as const, failure: outcome.failure });
     const reason = outcome.status === "BUDGET_EXCEEDED" ? BUDGET_FAILURE : "VES_TASK_GATE_FAILED";

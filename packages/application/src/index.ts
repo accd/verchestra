@@ -118,6 +118,7 @@ export {
 } from "./sync/workspace-reconcile.ts";
 export {
   TaskExecutionCoordinator,
+  TaskExecutionSuspended,
   TaskExecutorError,
   type AtomicExecutionTask,
   type ExecutionAuthorityPort,
@@ -126,6 +127,8 @@ export {
   type ExecutionContextPort,
   type ExecutionCoordinationPort,
   type ExecutionDriverPort,
+  type ExecutionDriverResult,
+  type ExecutionSuspension,
   type ExecutionToolPort,
   type ExecutionToolRequest,
   type ExecutionWorktreePort,
