@@ -9,7 +9,7 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { once } from "node:events";
-import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { join } from "node:path";
 import { afterEach, test } from "node:test";
@@ -282,4 +282,88 @@ test("win32: the per-run directory is owner-only while the channel is open, and 
   const probe = rawChannelClient(endpoint);
   await probe.closed;
   assert.equal(probe.connected(), false, "no helper holds the pipe after close");
+});
+
+// why: the read tools had run only over the Unix socket. Over the pipe they
+// serve the read scope and keep every refusal, including the spellings only
+// Windows would resolve: a backslash, a drive, an alternate data stream, a
+// trailing dot, and a letter-case variant of a protected path.
+async function readableOverPipe() {
+  const { root, worktree, channels } = await plainWorktree();
+  const files = [
+    [join(worktree, "src", "nested", "b.txt"), "beta needle\n"],
+    [join(worktree, "src", "protected", "key.txt"), "protected needle\n"],
+    [join(worktree, "docs", "secret.txt"), "out of scope needle\n"],
+    [join(worktree, ".git", "config"), "[core]\n"],
+    [join(root, "outside", "victim.txt"), "outside needle\n"]
+  ];
+  for (const [path, content] of files) {
+    await mkdir(join(path, ".."), { recursive: true });
+    await writeFile(path, content);
+  }
+  const transport = new WindowsNamedPipeBridgeTransport({ root: channels });
+  const opened = await openController(worktree, { transport });
+  const relay = startRelay(relayEnvironment(opened.controller));
+  await relay.initialize();
+  return { ...opened, relay };
+}
+
+test("win32: the relay's read, list, and search tools serve the read scope over the named pipe", async (t) => {
+  if (!WIN32_HOST) return namedPipeRefusedOffWin32(t);
+  const { controller, invoked, relay } = await readableOverPipe();
+  const read = await relay.call("read_file", { path: "src/a.txt" });
+  assert.equal(read.isError, false);
+  assert.equal(text(read), "alpha needle\n");
+  const partial = await relay.call("read_file", { path: "src/a.txt", offset: 6, length: 6 });
+  assert.match(text(partial), /^needle\n\[verchestra: truncated; continue at offset 12 of 13 bytes\]$/u);
+  assert.deepEqual(JSON.parse(text(await relay.call("list_dir", { path: "." }))).entries, [
+    { name: "src", type: "directory" }
+  ]);
+  assert.deepEqual(JSON.parse(text(await relay.call("list_dir", { path: "src" }))).entries, [
+    { name: "a.txt", type: "file" },
+    { name: "nested", type: "directory" }
+  ]);
+  const found = JSON.parse(text(await relay.call("search", { query: "needle" })));
+  assert.deepEqual(
+    found.matches.map((match) => `${match.path}:${match.line}`),
+    ["src/a.txt:1", "src/nested/b.txt:1"]
+  );
+  assert.equal(invoked.length, 0, "reading reaches no executor tool");
+  assert.deepEqual(controller.statistics(), { calls: 5, writes: 0, deletes: 0, denied: 0, rejectedConnections: 0 });
+  assert.equal(await relay.close(), 0);
+});
+
+test("win32: the read tools refuse over the named pipe what they refuse over the socket, and every Windows spelling", async (t) => {
+  if (!WIN32_HOST) return namedPipeRefusedOffWin32(t);
+  const { controller, invoked, relay } = await readableOverPipe();
+  const refusals = [
+    ["read_file", { path: "../outside/victim.txt" }, "VES_BRIDGE_PATH_INVALID"],
+    ["read_file", { path: ".git/config" }, "VES_BRIDGE_PATH_PROTECTED"],
+    ["read_file", { path: ".GIT/config" }, "VES_BRIDGE_PATH_PROTECTED"],
+    ["read_file", { path: "docs/secret.txt" }, "VES_BRIDGE_SCOPE_DENIED"],
+    ["read_file", { path: "src/protected/key.txt" }, "VES_BRIDGE_SCOPE_DENIED"],
+    ["read_file", { path: "src/PROTECTED/key.txt" }, "VES_BRIDGE_SCOPE_DENIED"],
+    ["read_file", { path: "SRC/a.txt" }, "VES_BRIDGE_SCOPE_DENIED"],
+    ["read_file", { path: "src\\protected\\key.txt" }, "VES_BRIDGE_PATH_INVALID"],
+    ["read_file", { path: "C:/Windows/win.ini" }, "VES_BRIDGE_PATH_INVALID"],
+    ["read_file", { path: "src/a.txt::$DATA" }, "VES_BRIDGE_PATH_INVALID"],
+    ["read_file", { path: "src/protected./key.txt" }, undefined],
+    ["list_dir", { path: "docs" }, "VES_BRIDGE_SCOPE_DENIED"],
+    ["list_dir", { path: "src/PROTECTED" }, "VES_BRIDGE_SCOPE_DENIED"],
+    ["list_dir", { path: "src\\protected" }, "VES_BRIDGE_PATH_INVALID"],
+    ["search", { query: "needle", path: "src/Protected" }, "VES_BRIDGE_SCOPE_DENIED"],
+    ["search", { query: "needle", path: "src/protected." }, undefined]
+  ];
+  for (const [tool, input, code] of refusals) {
+    const label = `${tool} ${JSON.stringify(input)}`;
+    const result = await relay.call(tool, input);
+    assert.equal(result.isError, true, label);
+    if (code === undefined) assert.match(text(result), /^denied: VES_BRIDGE_[A-Z_]+$/u, label);
+    else assert.equal(text(result), `denied: ${code}`, label);
+    assert.doesNotMatch(text(result), /needle|\[core\]/u, label);
+  }
+  assert.equal(invoked.length, 0);
+  assert.equal(controller.statistics().denied, refusals.length);
+  assert.equal(controller.statistics().rejectedConnections, 0);
+  assert.equal(await relay.close(), 0);
 });
