@@ -2,8 +2,10 @@
 
 **Task:** T9 of `.specs/features/strands-subscription-integration/` (SSI-84,
 SSI-85)
-**Revision:** `c3223c6d3d8585a35f577136ce7f7d61ddb378cc`
-**Recorded by:** the independent verifier of T9, on 2026-10-04
+**Revision:** `93b38c5df1943117482171866b4bea0a8320bbac`
+**Recorded by:** the independent verifier of T9, on 2026-10-04, at
+`c3223c6`; brought to the revision above by the second independent
+verifier, on 2026-10-04
 **Status:** pending (owner) on every platform. No coordinated run with a real
 subscription has been recorded on Windows, macOS, or Linux. Nothing below is
 inferred: a pilot counts as passed only when its run is recorded here.
@@ -111,21 +113,37 @@ record is also pending (owner).
 ## Deterministic stand-in qualification by platform
 
 From the platform qualification matrix at the recorded revision: runs
-37190404353 (`gate:full`), 37190406187 (`gate:build`), and 37190408045
-(`gate:security`), every leg green with 0 skipped and 0 todo. The coordinated
+37198997592 (`gate:full`), 37198999663 (`gate:build`), and 37199001702
+(`gate:security`). Every leg is green with 0 skipped and 0 todo except the
+Windows leg of `gate:security`, which passed its unit, contract, e2e,
+architecture, and qualification stages and was then cancelled at its
+60-minute limit while its security stage hung, so its fault stage never ran;
+the same leg passed on run 37197307202 at `f285f2b`, whose tree differs from
+the recorded revision in two Markdown files only. The coordinated
 journeys use labelled fakes of Claude Code and Codex
 (`tests/e2e/task-coordinated-e2e.test.mjs`,
 `tests/e2e/task-subscription-e2e.test.mjs`,
+`tests/e2e/task-codex-account-e2e.test.mjs`,
+`tests/e2e/task-grant-renewal-e2e.test.mjs`,
 `tests/fault-injection/task-coordinated-crash-faults.test.mjs`); durations are
-from the `gate:full` job logs.
+from the `gate:full` job logs, and every one of the 20 journeys also passed in
+the `gate:build` and `gate:security` legs of the same platform (the crash
+journey only where the gate runs fault, and not on the Windows
+`gate:security` leg above).
 
-| Platform | Agent, graph, swarm, cancel journeys | Suspension, credits, resume, and crash journeys | Example dry runs (three modes) | Verdict |
-| --- | --- | --- | --- | --- |
-| macOS arm64 | Executed and passed (5.0 s, 5.1 s, 4.0 s, 3.4 s) | Executed and passed (credits 2.9 s, resume 6.4 s, crash 7.2 s) | Passed | Qualified with stand-ins |
-| macOS x64 | Executed and passed (14.2 s, 15.5 s, 11.2 s, 10.6 s) | Executed and passed (credits 7.4 s, resume 18.0 s, crash 19.1 s) | Passed | Qualified with stand-ins |
-| Linux glibc x64 | Not exercised: each journey returns before it runs (under 2 ms) | Not exercised (under 2 ms) | Passed | Not qualified for coordinated runs |
-| Linux glibc arm64 | Not exercised (under 3 ms) | Not exercised (under 1 ms) | Passed | Not qualified for coordinated runs |
-| Windows x64 | Not exercised (under 3 ms) | Not exercised (under 4 ms) | Passed | Not qualified for coordinated runs; the single-session task journey over the named pipe passed (`tests/e2e/task-windows-e2e.test.mjs:139`, 15.7 to 19.9 s across the three gates) |
+| Platform | Agent, graph, swarm, cancel journeys | Suspension, credits, resume, and crash journeys | Verifier account, plan type, and grant renewal journeys | Example dry runs (three modes) | Verdict |
+| --- | --- | --- | --- | --- | --- |
+| macOS arm64 | Executed and passed (7.3 s, 8.6 s, 6.3 s, 5.2 s) | Executed and passed (credits 5.0 s, resume 10.1 s, crash 8.8 s) | Executed and passed (verifier credits 8.3 s, verifier resume 12.3 s, plan type 7.6 s, renewal 8.6 s) | Passed | Qualified with stand-ins |
+| macOS x64 | Executed and passed (14.1 s, 16.1 s, 12.9 s, 12.9 s) | Executed and passed (credits 9.7 s, resume 21.1 s, crash 31.3 s) | Executed and passed (17.4 s, 27.5 s, 14.6 s, 18.7 s) | Passed | Qualified with stand-ins |
+| Linux glibc x64 | Executed and passed (6.9 s, 7.6 s, 5.8 s, 6.1 s) | Executed and passed (credits 3.6 s, resume 7.1 s, crash 8.8 s) | Executed and passed (8.1 s, 14.0 s, 6.9 s, 8.2 s) | Passed | Qualified with stand-ins |
+| Linux glibc arm64 | Executed and passed (6.6 s, 6.9 s, 5.0 s, 5.6 s) | Executed and passed (credits 3.3 s, resume 6.6 s, crash 8.0 s) | Executed and passed (7.5 s, 13.4 s, 6.3 s, 7.4 s) | Passed | Qualified with stand-ins |
+| Windows x64 | Executed and passed (19.1 s, 34.2 s, 29.6 s, 13.1 s) | Executed and passed (credits 10.3 s, resume 24.1 s, crash 26.9 s) | Executed and passed (23.6 s, 35.7 s, 25.9 s, 24.4 s) | Passed | Qualified with stand-ins, over the named pipe |
 
-Quota suspension is therefore qualified with deterministic fakes on macOS only
-(SSI-85), and no subscription was touched to produce any of this evidence.
+Quota suspension is therefore qualified with deterministic fakes on all five
+legs (SSI-85), and no subscription was touched to produce any of this
+evidence. The stand-ins prove the code paths, not the providers: whether a
+real Codex reads outside a node's read-scope copy, and whether it accepts a
+working directory that is not a Git checkout, is for the pilots above to
+show. At the revision first recorded here (`c3223c6`, runs 37190404353,
+37190406187, 37190408045) the coordinated journeys executed on macOS only and
+returned before running on Linux and Windows.
