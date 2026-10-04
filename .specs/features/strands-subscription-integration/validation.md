@@ -4181,3 +4181,46 @@ Windows transport SHALL refuse with the codes the Unix transport uses.
 pass with no stalled frame shows the relay fixed; a failure carries the
 trace and the statistics, and a stalled-frame refusal there would mean the
 new relay still holds a tail.
+
+#### R7 follow-up: the stand-in's writes on Linux
+
+The two R7 stand-in cases failed on Linux x64 and arm64 in the full and
+build gates (runs 37223972972, 37223978709): the stand-in exited with code 1
+about 30 ms after connecting, and the client saw `ECONNRESET`. Its block
+relay wrote with `fs.writeSync(1, …)` and ignored the count it returns; on
+Linux that write fails with `EAGAIN` once the pipe to the parent is full.
+Reproduced in a Linux arm64 container (`eclipse-temurin:8-jre-jammy`, the
+official Node 24.14.0 linux-arm64 build, checksum verified, the worktree
+mounted read-only): the committed stand-in failed both cases, and with the
+error report in place its trace reads
+`{"step":"stand-in-error","code":"EAGAIN"}` then `helper-exited` code 1.
+
+**Change** (test-only): each block is one `process.stdout.write`, and a full
+pipe pauses the client's socket until stdout drains
+(`tests/helpers/pipe-relay-stand-in.mjs`); a failure of the stand-in's own
+goes to stderr as `verchestra-stand-in:error:<code>` before it exits 1, and
+the host adds it to the case's trace (`tests/helpers/pipe-bridge-fixture.mjs`,
+`standInHost`).
+
+**Product code not implicated.** A scratch stand-in that exits 1 mid-frame
+(not tracked) showed the transport's trace `helper-exited` (code 1),
+`connection-closed`, then `end` (`connection-closed`, the helper no longer
+running), the client disconnected, and no refusal, since no frame completed:
+what the code says (`HelperConnection` ends with the helper's stdout and its
+close begins the end, `windows-pipe-transport.ts:448`).
+
+**Linux run of the relay suite** (container, `--init` so orphans are reaped
+as on a host): 5/5, twice. Without `--init` the child-holds-connection case's
+tree terminator reports `failed`: the container's PID 1 is the test runner,
+which never reaps the orphaned child, so its group still answers a signal;
+the client is disconnected either way. The CI legs run under an init.
+
+**Still discriminating** (macOS, the relay suite, each applied then
+restored): `blocks` holding its tail fails the block case (1/5, refused as
+stalled); `holds-tail` flushing everything fails the held-tail case (1/5,
+refused for its size); no stall watch fails the held-tail case (1/5, no
+refusal within 45 s).
+
+Gates at the fix: `pnpm gate:quick` PASS (unit 2993/2993, agent-readiness
+357/357, census 13/13); `pnpm test:architecture` 132/132; `pnpm agent:check`
+PASS; the pipe suites 72/72.
