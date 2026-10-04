@@ -21,6 +21,9 @@ const UNDECLARED = "VES_COORDINATION_HANDOFF_UNDECLARED";
 
 // invariant: SSI-43, SSI-44. A swarm decision reaches the SDK only after the
 // node's own destination check and the check of the schema the SDK passed.
+// SSI-07: its message is the node result's token, never the provider's
+// handoff text, which the coordinated driver keeps and hands the next node
+// itself.
 function sdkHandoff(
   answer: CoordinationNodeAnswer,
   decision: ReturnType<typeof handoffDecisionSchema>,
@@ -28,7 +31,8 @@ function sdkHandoff(
 ): SdkHandoff {
   const checked = decision.safeParse(answer.handoff);
   if (!checked.success) throw new Error(UNDECLARED);
-  const { next, message } = checked.data;
+  const { next } = checked.data;
+  const message = answer.resultToken;
   const handoff: SdkHandoff = next === COORDINATION_COMPLETE ? { message } : { agentId: next, message };
   if (options?.structuredOutputSchema?.safeParse(handoff).success === false) throw new Error(UNDECLARED);
   return handoff;
