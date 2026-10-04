@@ -270,6 +270,38 @@ async function prepare(
   } satisfies Prepared;
 }
 
+// invariant: AD-079. A writer grant ends at the earlier of the approval's
+// expiry and the run's longest duration plus the lease margin, whether it is
+// the run's first grant or a renewal.
+export function grantExpiry(lifetime: {
+  readonly now: number;
+  readonly approvalExpiresAt: string;
+  readonly maximumDurationMs: number;
+}): number {
+  return Math.min(Date.parse(lifetime.approvalExpiresAt), lifetime.now + lifetime.maximumDurationMs + LEASE_MARGIN_MS);
+}
+
+export interface GrantRenewalFacts {
+  // invariant: armed only by a resume of a suspended run that passed its
+  // revalidation, never by a start or by another resume.
+  readonly armed: boolean;
+  readonly grant: { readonly expiresAt: string; readonly revokedAt?: string } | undefined;
+  readonly now: number;
+  readonly remainingDurationMs: number;
+  readonly approvalExpiresAt: string;
+  readonly maximumDurationMs: number;
+}
+
+// invariant: AD-079. A grant is renewed only when renewal is armed, only if it
+// exists and was never revoked, only when its remaining life is shorter than
+// the run's remaining duration, and only when the new grant would outlive it.
+export function renewsGrant(facts: GrantRenewalFacts): boolean {
+  const { grant } = facts;
+  if (!facts.armed || grant === undefined || grant.revokedAt !== undefined) return false;
+  const expiresAt = Date.parse(grant.expiresAt);
+  return expiresAt - facts.now < facts.remainingDurationMs && grantExpiry(facts) > expiresAt;
+}
+
 // invariant: SSI-29. A run executes only the request its human approved: the
 // plan record names the package the approval binds, and that package's
 // execution contract is the plan's request digest. A plan record rewritten
@@ -298,7 +330,7 @@ class TaskRunComposition {
   readonly #reconcile: `sha256:${string}` | undefined;
   #currentFeedback: string | undefined;
   #lastHandle: { readonly worktreeRef: string; readonly baseCommit: string } | undefined;
-  #renewLapsedGrant = false;
+  #renewalArmed = false;
 
   constructor(
     io: TaskCommandIo,
@@ -394,23 +426,25 @@ class TaskRunComposition {
   // invariant: one writer capability per run, created against the approval
   // in force and reused on resume; a revoked or expired grant fails the next
   // tool effect instead of being silently re-issued. The one exception is a
-  // suspension, which can outlast the grant (the run's duration plus an hour):
-  // a resume of a suspended run that passed its revalidation renews a grant
-  // that only expired, against the approval it just proved valid.
-  async #grant(): Promise<string> {
+  // suspension, which can outlast the grant: a resume of a suspended run that
+  // passed its revalidation renews a grant that would lapse before the run's
+  // remaining duration is spent, against the approval it just proved valid,
+  // and the grant marker records the grant it replaced (AD-079).
+  async #grant(remainingDurationMs: number): Promise<string> {
     const stored = await this.#runRecord.loadGrant();
-    if (stored !== undefined && !(await this.#lapsedOnResume(stored.grantId))) return stored.grantId;
-    const approvalExpiry = Date.parse(this.#plan.approvalRequest.expiresAt);
-    const wanted = Date.now() + this.#plan.request.budgets.maximumDurationMs + LEASE_MARGIN_MS;
-    const grant = await this.#prepared.authority.grant(new Date(Math.min(approvalExpiry, wanted)).toISOString());
-    await this.#runRecord.saveGrant(grant.grantId);
+    const lifetime = {
+      now: Date.now(),
+      approvalExpiresAt: this.#plan.approvalRequest.expiresAt,
+      maximumDurationMs: this.#plan.request.budgets.maximumDurationMs
+    };
+    if (stored !== undefined) {
+      const grant = this.#renewalArmed ? await this.#prepared.authority.loadGrant(stored.grantId) : undefined;
+      if (!renewsGrant({ ...lifetime, armed: this.#renewalArmed, grant, remainingDurationMs })) return stored.grantId;
+    }
+    const grant = await this.#prepared.authority.grant(new Date(grantExpiry(lifetime)).toISOString());
+    const replaced = stored === undefined ? [] : [...(stored.replaced ?? []), stored.grantId];
+    await this.#runRecord.saveGrant(grant.grantId, replaced);
     return grant.grantId;
-  }
-
-  async #lapsedOnResume(grantId: string): Promise<boolean> {
-    if (!this.#renewLapsedGrant) return false;
-    const grant = await this.#prepared.authority.loadGrant(grantId);
-    return grant !== undefined && grant.revokedAt === undefined && Date.parse(grant.expiresAt) <= Date.now();
   }
 
   // invariant: SSI-33. What a resume proves before any node starts; a refusal
@@ -428,7 +462,7 @@ class TaskRunComposition {
       reconcile: this.#reconcile,
       stderr: this.#io.stderr
     });
-    this.#renewLapsedGrant = fromSuspension;
+    this.#renewalArmed = fromSuspension;
   }
 
   // invariant: SSI-32. The result of a coordinated run shows its nodes as
@@ -546,7 +580,9 @@ class TaskRunComposition {
   }): Promise<TaskRunExecution> {
     this.#currentFeedback =
       options.feedback === undefined ? undefined : this.#feedback.get(options.feedback.feedbackRef);
-    const grantId = await this.#grant();
+    const grantId = await this.#grant(
+      options.budgetMeter?.remainingDurationMs() ?? this.#plan.request.budgets.maximumDurationMs
+    );
     const result = await this.#executor(grantId, options.budgetMeter).execute(this.#executorInput(grantId), {
       signal: options.signal,
       ...(options.budgetMeter === undefined ? {} : { budgetMeter: options.budgetMeter })

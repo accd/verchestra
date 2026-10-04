@@ -130,6 +130,24 @@ test("a grant marker without a text grantId is refused in both forms", async () 
     }
 });
 
+// invariant: AD-079. A renewed grant's marker names every grant it replaced,
+// oldest first; a first grant's marker keeps its one member, and a list of
+// another shape is refused.
+test("a renewed grant's marker names the grants it replaced, and a malformed list is refused", async () => {
+  const replaced = ["grant_018f0b6d-7b1a-7abc-8def-000000000001", "grant_018f0b6d-7b1a-7abc-8def-000000000002"];
+  for (const form of Object.keys(FORMS)) {
+    const run = await opened(form);
+    await run.runRecord.saveGrant(GRANT_ID, []);
+    assert.deepEqual(await run.fresh().loadGrant(), { grantId: GRANT_ID }, form);
+    await run.runRecord.saveGrant(GRANT_ID, replaced);
+    assert.deepEqual(await run.fresh().loadGrant(), { grantId: GRANT_ID, replaced }, form);
+    for (const list of [[], "grant", [""], [7], Array.from({ length: 101 }, () => GRANT_ID)]) {
+      await run.plant(["grant.json"], stored(form, { grantId: GRANT_ID, replaced: list }));
+      await assert.rejects(run.runRecord.loadGrant(), refused("VES_TASK_STATE_MALFORMED"), `${form} ${list}`);
+    }
+  }
+});
+
 test("every run outcome round-trips in both forms with the time it was filed", async () => {
   for (const form of Object.keys(FORMS))
     for (const [status, written] of Object.entries(OUTCOMES)) {
