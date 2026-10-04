@@ -111,7 +111,7 @@ the owner.
   `VES_RUNTIME_CLOSED`), the clock, and the store's hooks object, from which
   `afterEffectStart`, `beforeEffectComplete` and `afterEffectComplete` are read
   at call time as before.
-- The public surface is unchanged: `apps/vestra-cli/src/task/task-run.ts:376`,
+- The public surface is unchanged: `apps/vestra-cli/src/task/task-run.ts:416`,
   the Self-Test scenario and every test still call
   `RuntimeStore.createEffectRepository()`. Nothing new is exported from
   `packages/platform-node/src/index.ts`.

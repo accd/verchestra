@@ -70,7 +70,7 @@ The bridge's read view already folds case for protected paths
 `src/LOCKED.json` was hidden from reads, but it compares spelling as written:
 `src/vendor/lib.js` was readable under protected `src/vendor/`. The worktree
 tool folds case only for the roots the composition root gives it, which is
-`.verchestra` alone (`apps/vestra-cli/src/task/task-run.ts:378`).
+`.verchestra` alone (`apps/vestra-cli/src/task/task-run.ts:418`).
 
 Code on `origin/main`: the executor tests protected paths at
 `packages/application/src/execution/task-executor.ts:381-388`, the gate at
@@ -153,7 +153,7 @@ composition root. No package edge was added.
 
 | Stage | Before (`origin/main`) | Now asks the module |
 | --- | --- | --- |
-| Executor | pattern, case-sensitive (`task-executor.ts:19`); containment `:381-383`; protected as written `:387` | `task-executor.ts:292-293` (scope and protected entries), `:380` (target grammar), `:386-388` (protected, scope), `:665` (tool targets) |
+| Executor | pattern, case-sensitive (`task-executor.ts:19`); containment `:381-383`; protected as written `:387` | `task-executor.ts:324-325` (scope and protected entries), `:412` (target grammar), `:418-420` (protected, scope), `:765` (tool targets) |
 | Gate | pattern that also names `.` (`gate-commit.ts:10`); containment `:362-364`; protected as written `:558` | `gate-commit.ts:10` (list grammar), `:157` (gate `cwd`), `:551-554` (protected, scope) |
 | Scheduler | its own overlap (`task-scheduler.ts:266-268`) | `task-scheduler.ts:270` (`taskPathsOverlap`) |
 | Verification | pattern (`verification.ts:10`) | `verification.ts:304` |
@@ -168,7 +168,7 @@ Each stage still validates its own untrusted input and keeps its own codes:
 the bridge refuses a doubled separator or a `.` segment
 (`mcp-bridge-tools.ts:50-51`), the worktree tool collapses separators and
 refuses `.` (`worktree-tool-adapter.ts:264-267`), the executor collapses
-separators (`task-executor.ts:381`). The regular expressions left on the
+separators (`task-executor.ts:413`). The regular expressions left on the
 path (`/\/{2,}/gu`, `/\/$/u`) have a single quantified character and no
 alternation, so they cannot backtrack polynomially.
 

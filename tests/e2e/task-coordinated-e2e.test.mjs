@@ -6,160 +6,28 @@
 // single-session run. Graph and swarm runs go through the pinned Strands SDK;
 // no provider is contacted and no product code carries a test hook.
 import assert from "node:assert/strict";
-import { existsSync, readFileSync, readdirSync } from "node:fs";
-import { writeFile } from "node:fs/promises";
+import { readdirSync } from "node:fs";
 import { join } from "node:path";
 import { after, test } from "node:test";
 
+import { DARWIN, cleanupTaskFixtures } from "../helpers/task-cli-fixture.mjs";
 import {
-  DARWIN,
-  approveArguments,
-  cleanupTaskFixtures,
-  taskFixture,
-  taskRequest
-} from "../helpers/task-cli-fixture.mjs";
+  EXECUTIONS,
+  TIMEOUT,
+  approved,
+  coordinatedFixture,
+  ledger,
+  logLines,
+  ok,
+  reviewed,
+  running,
+  startArguments,
+  status,
+  visits,
+  waitFor
+} from "../helpers/task-coordinated-fixture.mjs";
 
 after(cleanupTaskFixtures);
-
-const TIMEOUT = { timeout: 300_000 };
-const CLAUDE = Object.freeze({ driverId: "claude-code", model: "claude-sonnet-5" });
-const CODEX = Object.freeze({ driverId: "codex", model: "gpt-5.2-codex" });
-
-function node(nodeId, driver, writeScope, inputs, instructions) {
-  return {
-    nodeId,
-    driver: { ...driver },
-    description: `The ${nodeId} step of the value change`,
-    instructions,
-    readScope: ["src"],
-    writeScope,
-    inputs
-  };
-}
-
-const EXECUTIONS = Object.freeze({
-  agent: { mode: "agent", nodes: [node("build", CLAUDE, ["src/value.txt"], [], "Set the value.")] },
-  graph: {
-    mode: "graph",
-    nodes: [
-      node("plan", CODEX, [], [], "Read the scope and plan the change."),
-      node("build", CLAUDE, ["src/value.txt"], ["plan"], "Set the value as planned."),
-      node("review", CODEX, [], ["plan", "build"], "Review the change.")
-    ],
-    edges: [
-      { from: "plan", to: "build" },
-      { from: "build", to: "review" }
-    ]
-  },
-  swarm: {
-    mode: "swarm",
-    nodes: [
-      node("writer", CLAUDE, ["src/value.txt"], [], "Set the value, then hand it on. next:reviewer"),
-      node("reviewer", CODEX, [], [], "Review the value and end the work. next:<complete>")
-    ],
-    start: "writer",
-    handoffs: [
-      { from: "writer", to: ["reviewer"] },
-      { from: "reviewer", to: ["writer"] }
-    ]
-  }
-});
-
-function ok(result, label) {
-  assert.equal(result.status, 0, `${label}: ${result.stderr}\n${result.stdout}`);
-  return result.json.data;
-}
-
-async function coordinatedFixture(execution) {
-  const fixture = await taskFixture();
-  const { driver, ...request } = taskRequest(fixture.revision);
-  assert.equal(driver.driverId, "claude-code");
-  await writeFile(fixture.requestPath, JSON.stringify({ ...request, schemaVersion: 2, execution }));
-  return fixture;
-}
-
-async function approved(fixture) {
-  const plan = ok(
-    fixture.launch(["task", "plan", "--request", fixture.requestPath, ...fixture.keychainArgs, "--output", "json"]),
-    "plan"
-  );
-  ok(fixture.launch(approveArguments(fixture, plan), `${plan.bindingDigest}\n`), "approve");
-  return plan;
-}
-
-const startArguments = (fixture, runId) => [
-  "task",
-  "start",
-  "--run-id",
-  runId,
-  ...fixture.keychainArgs,
-  "--output",
-  "json"
-];
-const status = (fixture, runId) =>
-  ok(fixture.launch(["task", "status", "--run-id", runId, "--output", "json"]), "status");
-
-function logLines(fixture, name) {
-  const path = join(fixture.scratch, name);
-  return existsSync(path)
-    ? readFileSync(path, "utf8")
-        .split("\n")
-        .filter(Boolean)
-        .map((line) => JSON.parse(line))
-    : [];
-}
-
-function ledger(fixture, runId) {
-  const sealed = JSON.parse(
-    readFileSync(join(fixture.stateRoot, "tasks", runId, "coordination", "ledger.json"), "utf8")
-  );
-  return sealed.record;
-}
-
-function visits(fixture, runId) {
-  return ledger(fixture, runId).visits.map((entry) => `${entry.nodeId}#${entry.visit}:${entry.state}`);
-}
-
-function running(pid) {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    return error.code === "EPERM";
-  }
-}
-
-async function waitFor(predicate, timeoutMs = 60_000) {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    if (predicate()) return;
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
-  throw new Error("condition was not reached in time");
-}
-
-function reviewed(fixture, runId, digest) {
-  return ok(
-    fixture.launch(
-      [
-        "task",
-        "review",
-        "--run-id",
-        runId,
-        "--outcome",
-        "accepted",
-        "--surface-digest",
-        digest,
-        "--confirm-stdin",
-        ...fixture.keychainArgs,
-        "--output",
-        "json"
-      ],
-      `${digest}\n`
-    ),
-    "review"
-  );
-}
 
 test("an agent run is planned, approved, run on the native engine, verified, and accepted", TIMEOUT, async () => {
   if (!DARWIN) return;

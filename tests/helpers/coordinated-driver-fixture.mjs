@@ -23,9 +23,26 @@ export function withExecution(request, execution) {
   return { ...request, execution: { ...request.execution, ...execution } };
 }
 
+// why: two nodes with no edge between them, readers cloned from the graph's
+// planner or writers cloned from its builder, so an engine may start both.
+export function twoIndependent(request, writers, concurrency) {
+  const [plan, build] = request.execution.nodes;
+  const first = writers ? { ...build, nodeId: "left", inputs: [] } : { ...plan, nodeId: "left" };
+  const second = writers ? { ...build, nodeId: "right", inputs: [] } : { ...plan, nodeId: "right" };
+  return withExecution(request, {
+    nodes: [first, second],
+    edges: [],
+    limits: { ...request.execution.limits, concurrency }
+  });
+}
+
 export const resultBytes = (value) => new TextEncoder().encode(canonicalizeJsonV2(value));
 
 const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
+
+// why: the composition root hands the driver the canonical digest of a record;
+// this is the same function over the domain's canonical JSON.
+export const canonicalRecordDigest = (record) => `sha256:${sha256(canonicalizeJsonV2(record))}`;
 
 export class MemoryPayloads {
   #entries = new Map();
@@ -215,7 +232,10 @@ export function coordinatedDriver(request, overrides = {}) {
     remainingDurationMs: () => 60_000,
     now: () => new Date("2026-10-03T12:00:00.000Z"),
     ...(overrides.feedback === undefined ? {} : { feedback: overrides.feedback }),
-    ...(overrides.changeDigest === undefined ? {} : { changeDigest: overrides.changeDigest })
+    ...(overrides.changeDigest === undefined ? {} : { changeDigest: overrides.changeDigest }),
+    ...(overrides.reconcile === undefined ? {} : { reconcile: overrides.reconcile }),
+    // why: `digest: null` stands for a composition that gives no digest port.
+    ...(overrides.digest === null ? {} : { digest: overrides.digest ?? canonicalRecordDigest })
   });
   return { driver, payloads, records, nodes, engine };
 }

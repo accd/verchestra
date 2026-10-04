@@ -25,7 +25,7 @@ import type { NodeGitWorktreeAdapter } from "@verchestra/platform-node";
 import type { ProviderAuthMode } from "../task-provider-auth.ts";
 import { isolatedIdentity, sessionCredential } from "./task-codex.ts";
 import { stableUuid } from "./task-context.ts";
-import { notConfigured } from "./task-errors.ts";
+import { canonicalDigest } from "./task-files.ts";
 import { claudeSessionAdapter, contextText, passThroughEnvironment } from "./task-implementer.ts";
 import type { ProviderProcesses, ProviderSession } from "./task-process-tree.ts";
 
@@ -48,15 +48,8 @@ export interface CoordinatedRunOptions {
   readonly feedback: string | undefined;
   readonly remainingDurationMs: () => number;
   readonly onWorktree: (worktreeRef: string) => Promise<void>;
-}
-
-// invariant: the owner's constraint (SSI-51's first half). A coordinated run
-// is composed only for subscriptions; a provider set to an API key leaves it
-// `not configured` before any credential is read or transition applied. The
-// extra-usage confirmation joins this at T6.
-export function requireCoordinatedSubscription(auth: { readonly implementer: string; readonly verifier: string }) {
-  if (auth.implementer !== "subscription" || auth.verifier !== "subscription")
-    throw notConfigured("coordinated-run-subscription", "A coordinated run uses subscription authentication only");
+  // invariant: D4. The uncertainty digest the owner typed back at `resume`.
+  readonly reconcile: `sha256:${string}` | undefined;
 }
 
 // why: decision D5 and SSI-14. Mode `agent` runs on the native engine; the
@@ -81,6 +74,8 @@ export function coordinatedDriver(options: CoordinatedRunOptions): ExecutionDriv
     context: contextText(options.manifest),
     ...(options.feedback === undefined ? {} : { feedback: options.feedback }),
     remainingDurationMs: options.remainingDurationMs,
+    digest: canonicalDigest,
+    ...(options.reconcile === undefined ? {} : { reconcile: options.reconcile }),
     changeDigest: async (worktreeRef) => {
       const handle = { worktreeRef, baseCommit: options.request.sourceRevision };
       return (await options.worktrees.inspect(handle)).changeDigest as `sha256:${string}`;
@@ -166,7 +161,12 @@ function observeCodex(
   }
 }
 
-function settled(state: CodexNodeState): void {
+// invariant: D3b and SSI-56. A Codex account that reports credits is refused
+// by the driver before its turn; the node raises that code, so the run stops
+// as for a usage signal instead of failing as a node that answered nothing.
+export const CODEX_CREDITS_PRESENT = "VES_CODEX_CREDITS_PRESENT";
+
+function settled(state: CodexNodeState, errorCodes: readonly string[]): void {
   if (state.failure !== undefined) throw state.failure;
   if (state.quota !== undefined)
     throw new DriverExecutionAdapterError(
@@ -174,6 +174,8 @@ function settled(state: CodexNodeState): void {
       "The provider reported that its usage allowance is exhausted",
       state.quota
     );
+  if (errorCodes.includes(CODEX_CREDITS_PRESENT))
+    throw Object.assign(new Error("Codex reports credits on this account"), { code: CODEX_CREDITS_PRESENT });
 }
 
 function codexDriver(
@@ -236,6 +238,10 @@ function codexNodeAdapter(options: CoordinatedRunOptions, session: CoordinationN
     const provider = options.providers.session("Codex");
     const root = join(options.sessionsRoot, `codex-node-${options.runId}-${session.node.nodeId}-${session.visit}`);
     try {
+      // invariant: the worktree marker is written before any node uses the
+      // worktree, as the Claude Code node does, so a run suspended or
+      // cancelled at its first Codex node still names the worktree it keeps.
+      await options.onWorktree(request.worktreeRef);
       const cwd = await options.worktrees.resolvePath(request.worktreeRef);
       const identity = await isolatedIdentity(root, options.codex.identityDirectory);
       const state: CodexNodeState = { structured: undefined, quota: undefined, failure: undefined, toolRequests: 0 };
@@ -246,7 +252,7 @@ function codexNodeAdapter(options: CoordinatedRunOptions, session: CoordinationN
         signal: control.signal === undefined ? stop.signal : AbortSignal.any([stop.signal, control.signal]),
         observe: (event) => observeCodex(event, state, control, model, stop)
       });
-      settled(state);
+      settled(state, finished.errorCodes);
       const completed = finished.outcome === "completed" && state.structured !== undefined;
       const outputRefs = completed ? [await options.payloads.put(resultBytes(state.structured!))] : [];
       await provider.unlessInterrupted(() =>

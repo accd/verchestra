@@ -8,7 +8,13 @@ import {
   type CoordinationNodeCall,
   type CoordinationNodeRunner
 } from "./coordination-engine.ts";
-import type { CoordinationLedger, CoordinationRecordPort, NodeVisit } from "./coordination-ledger.ts";
+import {
+  uncertaintyRecord,
+  unsettledVisits,
+  type CoordinationLedger,
+  type CoordinationRecordPort,
+  type NodeVisit
+} from "./coordination-ledger.ts";
 import type { CoordinationMode, CoordinationNode, CoordinationPlan } from "./coordination-plan.ts";
 import { executionPayloadDigest, type ExecutionPayloadPort } from "./execution-payload.ts";
 import { coordinationNodePrompt } from "./node-prompt.ts";
@@ -22,7 +28,13 @@ import {
   type CoordinationErrorCode,
   type NodeResult
 } from "./node-result.ts";
-import { TaskExecutorError, type ExecutionDriverPort, type ExecutionToolRequest } from "./task-executor.ts";
+import {
+  TaskExecutorError,
+  type ExecutionDriverPort,
+  type ExecutionDriverResult,
+  type ExecutionSuspension,
+  type ExecutionToolRequest
+} from "./task-executor.ts";
 import type { NormalizedTaskRequestV2 } from "./task-request.ts";
 
 type Digest = `sha256:${string}`;
@@ -58,6 +70,11 @@ export interface CoordinatedDriverOptions {
   readonly feedback?: string;
   readonly remainingDurationMs: () => number;
   readonly changeDigest?: (worktreeRef: string) => Promise<Digest>;
+  // invariant: D4. The canonical digest of a record, which names a visit's
+  // uncertainty record, and the one digest the owner typed back to reconcile
+  // the visit it names. Without the digest no unsettled visit is run again.
+  readonly digest?: (record: Readonly<Record<string, unknown>>) => Digest;
+  readonly reconcile?: Digest;
   readonly now?: () => Date;
 }
 
@@ -69,6 +86,39 @@ const ENGINE_CODES: readonly CoordinationErrorCode[] = [
   "VES_COORDINATION_LIMIT",
   "VES_COORDINATION_INTERRUPTED"
 ];
+
+// invariant: SSI-58, SSI-59, and D3b. The provider signals that suspend a run
+// instead of failing it: a usage allowance reported exhausted, and a Codex
+// account that reports credits, which would be spent after the allowance.
+const SUSPENDING_CODES: ReadonlySet<string> = new Set(["VES_DRIVER_QUOTA_EXHAUSTED", "VES_CODEX_CREDITS_PRESENT"]);
+const QUOTA_SCOPE = /^[a-z][a-z0-9_]{0,63}$/u;
+const INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u;
+
+function reported(value: unknown, pattern: RegExp): string | undefined {
+  return typeof value === "string" && pattern.test(value) ? value : undefined;
+}
+
+// invariant: SSI-61. The suspension a node's signal stands for: its code, the
+// node's provider, when the run stopped, and only the limit window and reset
+// the provider reported, each kept only in its grammar.
+function suspensionOf(error: unknown, node: CoordinationNode, at: string): ExecutionSuspension | undefined {
+  const reason = stableErrorCode(error);
+  if (reason === undefined || !SUSPENDING_CODES.has(reason)) return undefined;
+  const quota = (error as { readonly quota?: { readonly scope?: unknown; readonly resetsAt?: unknown } }).quota;
+  const scope = reported(quota?.scope, QUOTA_SCOPE);
+  const resetsAt = reported(quota?.resetsAt, INSTANT);
+  return Object.freeze({
+    reason,
+    provider: node.driver.driverId,
+    at,
+    ...(scope === undefined ? {} : { scope }),
+    ...(resetsAt === undefined ? {} : { resetsAt })
+  });
+}
+
+function visitKey(entry: { readonly nodeId: string; readonly visit: number }): string {
+  return `${entry.nodeId}#${entry.visit}`;
+}
 
 function isWriter(node: CoordinationNode): boolean {
   return node.driver.driverId === "claude-code" && node.writeScope.length > 0;
@@ -128,6 +178,8 @@ class CoordinationRound implements CoordinationNodeRunner {
   readonly #writer = new WriterMutex();
   readonly #running = new Set<ExecutionDriverPort>();
   readonly #results = new Map<Visit, NodeResult>();
+  readonly #calls = new Set<Promise<unknown>>();
+  readonly #reruns = new Map<string, Digest>();
   readonly #walk: Visit[] = [];
   #earlier: readonly NodeVisit[] = [];
   #entries: Visit[] = [];
@@ -135,6 +187,7 @@ class CoordinationRound implements CoordinationNodeRunner {
   #live = 0;
   #saving: Promise<void> = Promise.resolve();
   #failure: Error | undefined;
+  #suspension: ExecutionSuspension | undefined;
 
   constructor(
     options: CoordinatedDriverOptions,
@@ -153,14 +206,18 @@ class CoordinationRound implements CoordinationNodeRunner {
     return this.#failure;
   }
 
+  get suspension(): ExecutionSuspension | undefined {
+    return this.#suspension;
+  }
+
   cancelRunning(worktreeRef: string): Promise<unknown> {
     return Promise.allSettled([...this.#running].map((driver) => driver.cancel(worktreeRef)));
   }
 
   // invariant: a running round is resumed and its completed visits are
-  // replayed; any other started visit is uncertain and nothing is run again
-  // (SSI-66, refused here until reconciliation exists). A finished round is
-  // followed by the next, which is a gate repair attempt.
+  // replayed; a visit that never completed runs again only when it left no
+  // effect or the owner reconciled it, and otherwise nothing runs (SSI-65..67).
+  // A finished round is followed by the next, which is a gate repair attempt.
   async open(): Promise<void> {
     const stored = await this.#options.records.loadLedger();
     if (stored !== undefined && stored.mode !== this.#plan.mode)
@@ -169,7 +226,7 @@ class CoordinationRound implements CoordinationNodeRunner {
       this.#round = stored.round;
       this.#earlier = stored.visits.filter((entry) => entry.round !== stored.round);
       this.#entries = stored.visits.filter((entry) => entry.round === stored.round).map((entry) => ({ ...entry }));
-      await this.#refuseUncertain();
+      await this.#admitReruns();
       return;
     }
     this.#round = stored === undefined ? 1 : stored.round + 1;
@@ -177,36 +234,73 @@ class CoordinationRound implements CoordinationNodeRunner {
     await this.#save("running");
   }
 
-  async #refuseUncertain(): Promise<void> {
-    const unsettled = this.#entries.filter((entry) => entry.state !== "completed");
-    if (unsettled.length === 0) return;
-    for (const entry of unsettled) if (entry.state === "started") entry.state = "uncertain";
-    await this.#save("failed");
-    failure("VES_TASK_NODE_UNCERTAIN", "A node of the interrupted run started and has no recorded end");
+  // invariant: SSI-66 and D4. Each unsettled visit is named by the digest of
+  // its uncertainty record. One that left no effect runs again on its own
+  // (SSI-67); one that may have is run again only when the owner typed back
+  // that digest. Any other refuses the resume: a visit with no recorded end is
+  // marked uncertain, the round stays open, and nothing runs.
+  async #admitReruns(): Promise<void> {
+    const ledger = { schemaVersion: 1, mode: this.#plan.mode, round: this.#round, roundState: "running" } as const;
+    const current = await this.#changeDigest();
+    const unsettled = unsettledVisits({ ...ledger, visits: this.#entries }, current.changeDigestBefore);
+    const refused: Visit[] = [];
+    for (const { visit, effect } of unsettled) {
+      const digest = this.#options.digest?.(uncertaintyRecord(this.#request.runId, visit));
+      if (digest !== undefined && (effect === "none" || digest === this.#options.reconcile))
+        this.#reruns.set(visitKey(visit), digest);
+      else refused.push(visit as Visit);
+    }
+    if (refused.length === 0) return;
+    for (const entry of refused) if (entry.state === "started") entry.state = "uncertain";
+    await this.#save("running");
+    failure("VES_TASK_NODE_UNCERTAIN", "A node of the interrupted run may have landed effects and is not reconciled");
   }
 
   async run(call: CoordinationNodeCall): Promise<CoordinationNodeAnswer> {
+    const pending = this.#call(call);
+    this.#calls.add(pending);
+    try {
+      return await pending;
+    } finally {
+      this.#calls.delete(pending);
+    }
+  }
+
+  async #call(call: CoordinationNodeCall): Promise<CoordinationNodeAnswer> {
+    let node: CoordinationNode | undefined;
     try {
       this.#assertOpen();
-      const node = this.#node(call.nodeId);
-      const visit = this.#walk.filter((entry) => entry.nodeId === node.nodeId).length + 1;
-      this.#assertOrder(node, visit);
-      return (await this.#replay(node, visit)) ?? (await this.#runLive(node, visit));
+      const named = this.#node(call.nodeId);
+      node = named;
+      const visit = this.#walk.filter((entry) => entry.nodeId === named.nodeId).length + 1;
+      this.#assertOrder(named, visit);
+      return (await this.#replay(named, visit)) ?? (await this.#runLive(named, visit));
     } catch (error) {
-      this.#fail(error);
+      this.#fail(error, node);
       throw error;
     }
   }
 
   // invariant: SSI-59 seam. The first failure stops scheduling and cancels
-  // every running node; it stays the run's reason whatever follows it.
-  #fail(error: unknown): void {
+  // every running node; it stays the run's reason whatever follows it. When
+  // it is a provider's usage signal, the run suspends instead of failing, and
+  // the first signal is the one recorded.
+  #fail(error: unknown, node: CoordinationNode | undefined): void {
     if (this.#abort.signal.aborted) return;
     this.#failure =
       error instanceof Error && stableErrorCode(error) !== undefined
         ? error
         : new CoordinationRunError("VES_COORDINATION_NODE_FAILED", "A node failed", { cause: error });
+    this.#suspension = node === undefined ? undefined : suspensionOf(error, node, this.#now());
     this.#abort.abort("coordination failed");
+  }
+
+  // invariant: SSI-60. A suspended round ends only once every node it started
+  // has ended and been recorded failed or partial, so no session runs on and
+  // the ledger is durable; the round stays `running`, so a resume continues it.
+  async drain(): Promise<void> {
+    await Promise.allSettled([...this.#calls]);
+    await this.#saving;
   }
 
   #assertOpen(): void {
@@ -249,11 +343,12 @@ class CoordinationRound implements CoordinationNodeRunner {
     return next === COORDINATION_COMPLETE ? undefined : next;
   }
 
+  // invariant: SSI-65. A visit is replayed from its persisted result when its
+  // latest entry completed; an entry a re-run replaced is never replayed.
   async #replay(node: CoordinationNode, visit: number): Promise<CoordinationNodeAnswer | undefined> {
-    const entry = this.#entries.find(
-      (stored) => stored.nodeId === node.nodeId && stored.visit === visit && !this.#walk.includes(stored)
-    );
-    if (entry?.resultDigest === undefined) return undefined;
+    const entry = this.#entries.findLast((stored) => visitKey(stored) === visitKey({ nodeId: node.nodeId, visit }));
+    if (entry?.state !== "completed" || entry.resultDigest === undefined || this.#walk.includes(entry))
+      return undefined;
     const bytes = await this.#options.records.loadResult(entry.resultDigest);
     if (bytes.byteLength !== entry.resultBytes)
       failure("VES_COORDINATION_LEDGER_INVALID", "A persisted node result does not match its ledger entry");
@@ -291,6 +386,7 @@ class CoordinationRound implements CoordinationNodeRunner {
   }
 
   async #visit(node: CoordinationNode, visit: number): Promise<CoordinationNodeAnswer> {
+    const rerunOf = this.#reruns.get(visitKey({ nodeId: node.nodeId, visit }));
     const entry: Visit = {
       round: this.#round,
       nodeId: node.nodeId,
@@ -298,7 +394,8 @@ class CoordinationRound implements CoordinationNodeRunner {
       state: "started",
       startedAt: this.#now(),
       receiptCount: 0,
-      ...(await this.#changeDigest())
+      ...(await this.#changeDigest()),
+      ...(rerunOf === undefined ? {} : { rerunOf })
     };
     const prompt = this.#prompt(node);
     this.#walk.push(entry);
@@ -526,7 +623,12 @@ export class CoordinatedDriver implements ExecutionDriverPort {
     round: CoordinationRound,
     outcome: Awaited<ReturnType<CoordinationEngine["run"]>>,
     signal: AbortSignal
-  ): Promise<{ readonly status: "completed" | "cancelled"; readonly outputRefs: readonly string[] }> {
+  ): Promise<ExecutionDriverResult> {
+    const suspension = round.suspension;
+    if (suspension !== undefined) {
+      await round.drain();
+      return Object.freeze({ status: "suspended", outputRefs: Object.freeze([]), suspension });
+    }
     const failed = round.failed;
     if (failed !== undefined) {
       await round.close("failed");

@@ -2804,6 +2804,62 @@ note. -->
   single-session run; status and the Run Capsule can name the round of every
   visit.
 
+### AD-079 — The owner's billing statement is hand-written and pinned to each provider's billing regime, Codex credits suspend a run, and a resume refuses before it changes anything
+
+- **Status:** proposed (T6 of `.specs/features/strands-subscription-integration/`;
+  refines AD-071, AD-072, and AD-078's third item where `spec.md` and
+  `design.md` leave the form open).
+- **Context:** D3 makes the extra-usage confirmation the owner's own
+  machine-local statement, and D9 asks for it again when a provider's billing
+  regime changes; no local read can tell a regime apart.
+- **Decision:**
+  1. The statement is a hand-written `task-billing.json`, not a command
+     (SSI-31 adds none): per provider exactly `auth` (the method the session
+     proves: `subscription` for Claude Code, `chatgpt` for Codex),
+     `extraUsage: "disabled"`, `confirmedAt`, and for Codex `planType`. Each
+     provider's current regime is a start instant pinned in the build; a
+     statement dated before it, or after the clock that reads it, is `not
+     configured`. A regime change is a build that moves the instant, which
+     asks every owner to confirm again. The plan type is the owner's record:
+     nothing compares it with the account, because the Codex driver keeps no
+     account field beyond the type it checks.
+  2. Credits on a Codex account (D3b) are seen where the driver checks them,
+     at each Codex session's start before its turn, and stop the run the way a
+     quota signal does: it is suspended, not failed, and the command reports
+     `not configured` (`codex-credits`), so the owner loses nothing and resumes
+     once the credits are gone. A suspension record keeps the provider's limit
+     window (`scope`, a closed vocabulary) beside its code, provider, instant,
+     and reset, and the executor's `suspended` checkpoint holds the change
+     digest but no node-ledger digest: the ledger is sealed in the Run record.
+  3. `vestra task resume` revalidates before any node starts and a refusal
+     changes nothing: a suspended run needs its approval valid against the
+     policy in force and its worktree as it left it (`VES_EXECUTOR_WORKTREE_DRIFT`
+     otherwise), and every unsettled node of a coordinated run is settled. The
+     run stays `IMPLEMENTING` for a corrected resume or `vestra task cancel`
+     rather than failing. A visit settles on its own only when it ended
+     failed with no receipt on an unchanged change digest; any other is run
+     again only when `--reconcile` names the digest of its uncertainty record
+     (its run and facts, without its state), one per resume. A re-run visit
+     records `rerunOf`, that digest, and replaces the visit for replay and
+     settlement; this supersedes AD-078's third item. A resume of a suspended
+     run renews a writer grant that only expired, against the approval it
+     just proved valid; a revoked grant is never renewed.
+- **Alternatives rejected:** a `vestra task` subcommand that writes the
+  statement (a new command, and a statement Verchestra writes is not the
+  owner's); an expiry (D3 says none); a regime name the owner copies into the
+  file (a member the design does not list, and one an owner would copy without
+  reading); a preflight Codex account probe for credits (an account-only Codex
+  session the driver does not have); failing the run on credits (the owner
+  could not resume it once they are gone); failing the run on drift or an
+  expired approval (it removes the worktree the owner may want to restore or
+  inspect); a reconcile list in one resume (the parser refuses a repeated
+  option, and each digest is one owner decision).
+- **Consequence:** A Workspace confirmed before a regime change stops at
+  `not configured` (`extra-usage-confirmation`) on its next `start` or
+  `resume`, before anything is read or changed. Two nodes that may both have
+  landed effects (a crash under concurrency above 1) refuse each other's
+  reconciliation and leave only `task cancel`.
+
 ## Handoff
 
 - **Feature:** `subscription-provider-auth` (ADP-A, tasks TA1 and TA2) on

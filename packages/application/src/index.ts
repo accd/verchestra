@@ -118,6 +118,7 @@ export {
 } from "./sync/workspace-reconcile.ts";
 export {
   TaskExecutionCoordinator,
+  TaskExecutionSuspended,
   TaskExecutorError,
   type AtomicExecutionTask,
   type ExecutionAuthorityPort,
@@ -126,6 +127,8 @@ export {
   type ExecutionContextPort,
   type ExecutionCoordinationPort,
   type ExecutionDriverPort,
+  type ExecutionDriverResult,
+  type ExecutionSuspension,
   type ExecutionToolPort,
   type ExecutionToolRequest,
   type ExecutionWorktreePort,
@@ -173,10 +176,14 @@ export {
 } from "./execution/coordination-engine.ts";
 export {
   normalizeCoordinationLedger,
+  uncertaintyRecord,
+  unsettledVisits,
   type CoordinationLedger,
   type CoordinationRecordPort,
   type NodeVisit,
-  type NodeVisitState
+  type NodeVisitState,
+  type UnsettledVisit,
+  type VisitEffect
 } from "./execution/coordination-ledger.ts";
 export {
   assertNodeWriteScope,

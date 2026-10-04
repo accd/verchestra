@@ -30,11 +30,12 @@ import {
 
 import { loadProviderAuth, type ProviderAuth, type ProviderAuthMode } from "../task-provider-auth.ts";
 import { TaskAuthority } from "./task-authority.ts";
+import { requireSubscriptionPreflight } from "./task-billing.ts";
 import { meterOnRunLedger, recordingMeter } from "./task-budget.ts";
 import { requireCodexSubscription } from "./task-codex-identity.ts";
-import { coordinatedDriver, requireCoordinatedSubscription } from "./task-coordination.ts";
+import { CODEX_CREDITS_PRESENT, coordinatedDriver } from "./task-coordination.ts";
 import { IMPLEMENTER_CREDENTIALS, VERIFIER_CREDENTIAL, readCredentials } from "./task-credentials.ts";
-import { stateInvalid, taskError } from "./task-errors.ts";
+import { notConfigured, stateInvalid, taskError } from "./task-errors.ts";
 import { sha256 } from "./task-files.ts";
 import { loadGateAllowlist } from "./task-gates.ts";
 import { git } from "./task-git.ts";
@@ -49,6 +50,7 @@ import {
 } from "./task-plan-record.ts";
 import { loadTaskPolicy } from "./task-policy.ts";
 import { ProviderProcesses } from "./task-process-tree.ts";
+import { inspectMarkedWorktree, parseReconcile, revalidateResume } from "./task-resumption.ts";
 import { openRunRecord, type GateCheckpoint, type RunCheckpoints, type RunRecord } from "./task-run-record.ts";
 import { workspaceTrustRoot } from "./task-signing.ts";
 import { branchName, reviewSurface } from "./task-surface.ts";
@@ -167,7 +169,13 @@ async function prepare(
   runRecord: RunRecord
 ) {
   const auth = await loadProviderAuth(workspace.layout.workspaceRoot);
-  if (isCoordinatedPlan(plan)) requireCoordinatedSubscription(auth);
+  if (isCoordinatedPlan(plan))
+    await requireSubscriptionPreflight({
+      workspaceRoot: workspace.layout.workspaceRoot,
+      auth,
+      request: plan.request,
+      stderr: io.stderr
+    });
   const implementerCredential = IMPLEMENTER_CREDENTIALS[auth.implementer];
   // invariant: a run reads exactly the credentials its modes name. A verifier
   // on a subscription reads none here; its login is proven below instead.
@@ -211,8 +219,10 @@ class TaskRunComposition {
   readonly #payloads = new InMemoryExecutionPayloadStore();
   readonly providers: ProviderProcesses;
   readonly #feedback = new Map<string, string>();
+  readonly #reconcile: `sha256:${string}` | undefined;
   #currentFeedback: string | undefined;
   #lastHandle: { readonly worktreeRef: string; readonly baseCommit: string } | undefined;
+  #renewLapsedGrant = false;
 
   constructor(
     io: TaskCommandIo,
@@ -220,9 +230,11 @@ class TaskRunComposition {
     plan: TaskPlanRecord,
     runtime: RuntimeStore,
     prepared: Prepared,
-    runRecord: RunRecord
+    runRecord: RunRecord,
+    reconcile: `sha256:${string}` | undefined
   ) {
     this.#io = io;
+    this.#reconcile = reconcile;
     this.#workspace = workspace;
     this.#plan = plan;
     this.#runtime = runtime;
@@ -305,15 +317,42 @@ class TaskRunComposition {
 
   // invariant: one writer capability per run, created against the approval
   // in force and reused on resume; a revoked or expired grant fails the next
-  // tool effect instead of being silently re-issued.
+  // tool effect instead of being silently re-issued. The one exception is a
+  // suspension, which can outlast the grant (the run's duration plus an hour):
+  // a resume of a suspended run that passed its revalidation renews a grant
+  // that only expired, against the approval it just proved valid.
   async #grant(): Promise<string> {
     const stored = await this.#runRecord.loadGrant();
-    if (stored !== undefined) return stored.grantId;
+    if (stored !== undefined && !(await this.#lapsedOnResume(stored.grantId))) return stored.grantId;
     const approvalExpiry = Date.parse(this.#plan.approvalRequest.expiresAt);
     const wanted = Date.now() + this.#plan.request.budgets.maximumDurationMs + LEASE_MARGIN_MS;
     const grant = await this.#prepared.authority.grant(new Date(Math.min(approvalExpiry, wanted)).toISOString());
     await this.#runRecord.saveGrant(grant.grantId);
     return grant.grantId;
+  }
+
+  async #lapsedOnResume(grantId: string): Promise<boolean> {
+    if (!this.#renewLapsedGrant) return false;
+    const grant = await this.#prepared.authority.loadGrant(grantId);
+    return grant !== undefined && grant.revokedAt === undefined && Date.parse(grant.expiresAt) <= Date.now();
+  }
+
+  // invariant: SSI-33. What a resume proves before any node starts; a refusal
+  // leaves the run exactly as it was.
+  async revalidate(): Promise<void> {
+    const executor = await this.#checkpoints.executor();
+    const coordinated = isCoordinatedPlan(this.#plan);
+    const { fromSuspension } = await revalidateResume({
+      runId: this.#plan.runId,
+      coordinated,
+      suspended: executor?.stage === "suspended" ? { changeDigest: executor.changeDigest } : undefined,
+      ledger: coordinated ? await this.#runRecord.loadCoordinationLedger() : undefined,
+      approval: () => this.#prepared.authority.approval(),
+      worktree: () => inspectMarkedWorktree(this.#runRecord, this.#worktrees, this.#plan.request.sourceRevision),
+      reconcile: this.#reconcile,
+      stderr: this.#io.stderr
+    });
+    this.#renewLapsedGrant = fromSuspension;
   }
 
   // invariant: a single-session run drives its implementer; a coordinated run
@@ -352,7 +391,8 @@ class TaskRunComposition {
       sessionsRoot: this.#workspace.layout.sessionsRoot,
       records: this.#runRecord.coordination(),
       feedback: this.#currentFeedback,
-      remainingDurationMs: () => budgetMeter?.remainingDurationMs() ?? request.budgets.maximumDurationMs
+      remainingDurationMs: () => budgetMeter?.remainingDurationMs() ?? request.budgets.maximumDurationMs,
+      reconcile: this.#reconcile
     });
   }
 
@@ -636,6 +676,9 @@ async function present(
     };
   }
   if (outcome.status === "FAILED" || outcome.status === "ABORTED") return { ...base, reason: outcome.reason };
+  // why: SSI-63. A suspended run continues only when its owner resumes it.
+  if (outcome.status === "SUSPENDED")
+    return { ...base, suspension: outcome.suspension, next: `vestra task resume --run-id ${plan.runId}` };
   if (outcome.status === "VERIFICATION_FAILED")
     return { ...base, verificationReport: outcome.reportRef, next: `vestra task cancel --run-id ${plan.runId}` };
   if (outcome.status === "ESCALATED")
@@ -653,8 +696,12 @@ function assertStartable(state: string, resume: boolean): void {
     );
 }
 
-export async function runTask(io: TaskCommandIo, options: { readonly runId: unknown; readonly resume: boolean }) {
+export async function runTask(
+  io: TaskCommandIo,
+  options: { readonly runId: unknown; readonly resume: boolean; readonly reconcile?: unknown }
+) {
   const runId = parseRunId(options.runId);
+  const reconcile = parseReconcile(options.reconcile);
   const workspace = await openTaskWorkspace(io);
   const runRecord = openRunRecord(workspace, runId);
   const plan = await runRecord.loadPlan();
@@ -663,10 +710,11 @@ export async function runTask(io: TaskCommandIo, options: { readonly runId: unkn
     assertStartable(currentRun(runtime, runId).state, options.resume);
     const prepared = await prepare(io, workspace, plan, runtime, runRecord);
     await runRecord.claimActive(io.pid);
-    const composition = new TaskRunComposition(io, workspace, plan, runtime, prepared, runRecord);
+    const composition = new TaskRunComposition(io, workspace, plan, runtime, prepared, runRecord, reconcile);
     const controller = new AbortController();
     const stop = watchCancellation(runRecord, controller, composition.providers);
     try {
+      if (options.resume) await composition.revalidate();
       await composition.claimWriterLease();
       const outcome = await new TaskRunCoordinator(composition.ports()).run({
         bindingDigest: prepared.authority.currentBindingDigest(),
@@ -676,6 +724,11 @@ export async function runTask(io: TaskCommandIo, options: { readonly runId: unkn
         signal: controller.signal
       });
       await runRecord.saveOutcome(outcome);
+      // why: D3b. Credits on the Codex account are a configuration the owner
+      // must change before the run may continue, so the stop is reported as
+      // `not configured`; the run itself is suspended and nothing is lost.
+      if (outcome.status === "SUSPENDED" && outcome.suspension.reason === CODEX_CREDITS_PRESENT)
+        throw notConfigured("codex-credits", "Codex reports credits on its account; the run is suspended");
       const data = await present(workspace.repositoryRoot, plan, runRecord, outcome, currentRun(runtime, runId).state);
       return { data, exitCode: outcome.status === "HUMAN_REVIEW" ? 0 : 1 };
     } finally {

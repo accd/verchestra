@@ -29,7 +29,7 @@ the policy view also verified a digest defined by the view's own encoding.
 | Read | Declared record | Who decodes | Caller change |
 | --- | --- | --- | --- |
 | `listEvents` | `RunEvent` (`packages/platform-node/src/runtime-store/runtime-store.ts:174`), every member a NOT NULL column of a STRICT table | the store (`:656`) | `apps/vestra-cli/src/task/task-review.ts:94-97` reads members, no cast |
-| `getRunCapsuleSeal` | `RunCapsuleSeal` (`runtime-store.ts:188`), also the input of `recordRunCapsuleSeal` (`:715`) | the store (`:768`) | `apps/vestra-cli/src/task/task-status.ts:90` reads `.capsuleId`, no key access |
+| `getRunCapsuleSeal` | `RunCapsuleSeal` (`runtime-store.ts:188`), also the input of `recordRunCapsuleSeal` (`:715`) | the store (`:768`) | `apps/vestra-cli/src/task/task-status.ts:181` reads `.capsuleId`, no key access |
 | `loadAuthorityApproval`, `loadAuthorityGrant` | `StoredAuthorityRecord` (`runtime-store.ts:200`): the text and its revocation | `decodeAuthorityRecord` (`packages/platform-node/src/authority-store-adapter.ts:47`) | no cast (`:86`, `:107`) |
 | `getActivePolicyView` | `StoredPolicyView` (`runtime-store.ts:209`): the text and the digest it was activated under | `decodePolicyView` (`packages/platform-node/src/policy-store-adapter.ts:25`) | no cast (`:46`) |
 | `getSyncState` | `StoredSyncState` (`runtime-store.ts:216`): the text and the digest `saveSyncState` bound it to | `decodeSyncState` (`packages/platform-node/src/sync-adapters.ts:32`) | no cast (`:53`) |
@@ -166,8 +166,8 @@ errors. It added no translation, no state and no error mapping.
   production composition.
 
 Verdict: the deletion test passes, so the class is deleted. The commands call
-the store's lease pair (`task-run.ts:252`, `:263`, `:270`;
-`task-status.ts:139`). The one case that composes `WorkClaimService` over the
+the store's lease pair (`task-run.ts:264`, `:275`, `:282`;
+`task-status.ts:236`). The one case that composes `WorkClaimService` over the
 SQLite lease binds the store's lease pair to the port in the coordination
 fixture (`tests/helpers/coordination-fixture.mjs:39`), used at
 `tests/integration/coordination-service.test.mjs:205` and `:217`. The

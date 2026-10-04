@@ -307,13 +307,21 @@ section.
 
 **Done when**:
 
-- [ ] Journeys: missing confirmation, `api-key` provider, Codex credits present, quota mid-graph, resume skipping completed nodes, uncertain node refused then reconciled, drift refused, approval expired while suspended.
-- [ ] Budget continuity across suspension proven with a controllable clock (SSI-68).
-- [ ] Discrimination: removing the billing block or the uncertain refusal fails a test.
-- [ ] `INTERRUPTED` remains terminal; the workflow machine is unchanged (SSI-64).
+- [x] Journeys: missing confirmation, `api-key` provider, Codex credits present, quota mid-graph, resume skipping completed nodes, uncertain node refused then reconciled, drift refused, approval expired while suspended.
+- [x] Budget continuity across suspension proven with a controllable clock (SSI-68).
+- [x] Discrimination: removing the billing block or the uncertain refusal fails a test.
+- [x] `INTERRUPTED` remains terminal; the workflow machine is unchanged (SSI-64).
 
 **Tests**: unit, integration, e2e, fault, security
 **Gate**: security
+
+**Progress** (branch `strands/t6-suspension`; evidence in `validation.md`, "T6 Evidence"):
+
+- [x] Commit 1: `task-billing.ts` reads the owner's extra-usage confirmation (D3) under a pinned billing regime per provider (D9); the preflight at `start` and `resume` folds in T5's `coordinated-run-subscription` refusal and runs before any credential read, transition, or worktree; journeys for a missing confirmation and an `api-key` provider; 11 mutants killed.
+- [x] Commit 2: the executor's `suspended` driver result, checkpoint, and `TaskExecutionSuspended`; the repair loop's `SUSPENDED` (spend saved, attempt not counted); outcome `SUSPENDED` with no workflow command and nothing released; the coordinated driver suspends on a quota signal or Codex credits (reported `not configured`), keeps the round open, and waits for every node; journeys for a quota signal mid-graph and Codex credits present; 15 mutants killed.
+- [x] Commit 3: `task-resumption.ts` revalidates a resume before any node starts (the approval against the policy in force, the worktree's change digest, every unsettled node) and refuses without changing anything; `task resume --reconcile <digest>` (D4); the ledger's `unsettledVisits`, `uncertaintyRecord`, and `rerunOf`; the driver replays completed nodes, runs again a node that left no effect, and runs again an uncertain or partial node only when reconciled; a resumed suspended run renews a writer grant that only expired; status shows the suspension, each node, and each uncertain node with its digest; journeys for resume, reconciliation, drift, an expired approval, credits gone, and cancel, and a crash fault; 16 mutants killed.
+
+**Status**: author-complete on `strands/t6-suspension`; pending `pnpm gate:full`, `pnpm gate:build`, and `pnpm gate:security` on the platform matrix (the e2e and fault journeys run on macOS, as the existing task journeys do, and report their platform with a diagnostic elsewhere), independent verification, and human review.
 
 ---
 

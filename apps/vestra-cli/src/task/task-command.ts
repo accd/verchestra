@@ -62,7 +62,11 @@ const HANDLERS: Readonly<Record<string, Handler>> = Object.freeze({
     return { data: result.data, diagnostics: [], exitCode: result.exitCode };
   },
   "task resume": async (command, io) => {
-    const result = await runTask(io, { runId: required(command, "run-id"), resume: true });
+    const result = await runTask(io, {
+      runId: required(command, "run-id"),
+      resume: true,
+      reconcile: command.options["reconcile"]
+    });
     return { data: result.data, diagnostics: [], exitCode: result.exitCode };
   },
   "task status": async (command, io) => data(await statusTask(io, { runId: required(command, "run-id") })),

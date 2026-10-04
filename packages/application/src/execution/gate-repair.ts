@@ -6,6 +6,7 @@
 // gate-failed, no escalation.
 
 import type { BudgetLedger, BudgetMeter } from "./budget-meter.ts";
+import type { ExecutionSuspension } from "./task-executor.ts";
 
 type Digest = `sha256:${string}`;
 
@@ -73,6 +74,14 @@ export type GateRepairOutcome =
       readonly attempts: number;
       readonly failure: GateFailure;
       readonly attemptCapsuleDigests: readonly Digest[];
+    }
+  | {
+      // An attempt stopped on a provider's usage signal has not ended: it is
+      // neither counted nor sealed, and the run resumes it.
+      readonly status: "SUSPENDED";
+      readonly attempts: number;
+      readonly suspension: ExecutionSuspension;
+      readonly attemptCapsuleDigests: readonly Digest[];
     };
 
 export interface GateRepairPorts {
@@ -84,7 +93,7 @@ export interface GateRepairPorts {
     readonly attempt: number;
     readonly feedback: GateAttemptFeedback | undefined;
     readonly budgetMeter: BudgetMeter | undefined;
-  }): Promise<{ readonly passed: boolean; readonly failure?: GateFailure }>;
+  }): Promise<{ readonly passed: boolean; readonly failure?: GateFailure; readonly suspension?: ExecutionSuspension }>;
   // Builds the run's single meter, resuming from persisted consumption. The
   // caller closes over the declared budgets and price table, so this
   // coordinator owns the meter's lifetime without knowing what anything costs.
@@ -172,6 +181,17 @@ function normalizeState(value: unknown): {
   };
 }
 
+function assertFeedback(feedback: GateAttemptFeedback): void {
+  if (
+    !SAFE.test(feedback.feedbackRef) ||
+    !DIGEST.test(feedback.feedbackDigest) ||
+    !Number.isSafeInteger(feedback.bytes) ||
+    feedback.bytes < 0 ||
+    feedback.bytes > FEEDBACK_BYTE_BUDGET
+  )
+    fail("VES_REPAIR_FEEDBACK_INVALID", "driver feedback is unbounded or malformed");
+}
+
 export async function runGateRepairLoop(
   input: { readonly onGateFailure?: unknown },
   ports: GateRepairPorts
@@ -205,6 +225,24 @@ export async function runGateRepairLoop(
     });
   };
 
+  // invariant: SSI-60 and SSI-68. A suspended attempt saves the run's spend
+  // with the repair state as it stands, so the resumed meter continues from
+  // it and counts no time the run spent suspended.
+  const suspended = async (suspension: ExecutionSuspension): Promise<GateRepairOutcome> => {
+    await ports.saveState({
+      stage: "repair",
+      attempts: state.attempts,
+      attemptCapsuleDigests: state.attemptCapsuleDigests,
+      budgetLedger: ledger()
+    });
+    return Object.freeze({
+      status: "SUSPENDED",
+      attempts: state.attempts,
+      suspension,
+      attemptCapsuleDigests: Object.freeze([...state.attemptCapsuleDigests])
+    });
+  };
+
   while (state.attempts < policy.maxAttempts) {
     // The declared ceiling covers the run, so an exhausted budget ends the loop
     // rather than buying each remaining attempt its own allowance.
@@ -215,14 +253,7 @@ export async function runGateRepairLoop(
     if (lastFailure !== undefined || state.attempts > 0) {
       if (policy.feedbackToDriver && lastFailure !== undefined) {
         feedback = await ports.buildFeedback(lastFailure);
-        if (
-          !SAFE.test(feedback.feedbackRef) ||
-          !DIGEST.test(feedback.feedbackDigest) ||
-          !Number.isSafeInteger(feedback.bytes) ||
-          feedback.bytes < 0 ||
-          feedback.bytes > FEEDBACK_BYTE_BUDGET
-        )
-          fail("VES_REPAIR_FEEDBACK_INVALID", "driver feedback is unbounded or malformed");
+        assertFeedback(feedback);
       } else {
         feedback = undefined;
         // Withholding is a policy decision the evidence must show, not an
@@ -232,6 +263,7 @@ export async function runGateRepairLoop(
     }
 
     const result = await ports.attempt({ attempt, feedback, budgetMeter: meter });
+    if (result.suspension !== undefined) return suspended(result.suspension);
     const previousAttemptDigest = state.attemptCapsuleDigests.at(-1) ?? null;
     const sealed = await ports.sealAttempt({
       attempt,
