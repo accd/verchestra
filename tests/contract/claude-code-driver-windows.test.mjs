@@ -37,6 +37,7 @@ const proven = () => Promise.resolve(true);
 const relayEntry = fileURLToPath(
   new URL("../../packages/agent-runtime/src/execution/mcp-tool-bridge-main.ts", import.meta.url)
 );
+const providerWitness = fileURLToPath(new URL("../helpers/provider-witness.mjs", import.meta.url));
 const construct = (profile) =>
   new ClaudeCodeDriver({
     command: [process.execPath, fakeMediatedClaude],
@@ -118,7 +119,8 @@ async function windowsLayout(t) {
     worktree: join(root, "worktree"),
     observations: join(root, "observations"),
     isolationRoot: join(root, "isolation"),
-    channels: join(root, "channels")
+    channels: join(root, "channels"),
+    witness: join(root, "provider-witness.log")
   };
   await mkdir(join(layout.worktree, "src"), { recursive: true });
   await mkdir(join(layout.worktree, ".git"));
@@ -177,14 +179,35 @@ function pipeController(layout, invoked) {
 
 // invariant: the production driver as the composition builds it on Windows:
 // the Windows pass-through list, the composition's owner-only proof (recorded
-// here as it answers), and the relay environment with SYSTEMROOT.
+// here as it answers), and the relay environment with SYSTEMROOT. The fake
+// runs under the provider witness, which records how it ended.
+// hazard: the fake writes its observation only inside its own temporary
+// directory, compared through `realpathSync`, which keeps an 8.3 short name
+// such as the hosted runner's `RUNNER~1` while `fs.promises.realpath` expands
+// it. The layout is spelled the second way, so TEMP and TMP name the
+// observation directory in that same spelling, as TMPDIR does in the Unix
+// fixture; the keys are the Windows pass-through list's own.
 async function sessionOverPipe(layout, controller) {
   const proofs = [];
   const driver = new ClaudeCodeDriver({
-    command: [process.execPath, fakeMediatedClaude, "--fixture-observations", layout.observations],
+    command: [
+      process.execPath,
+      providerWitness,
+      "--witness",
+      layout.witness,
+      "--as",
+      fakeMediatedClaude,
+      fakeMediatedClaude,
+      "--fixture-observations",
+      layout.observations
+    ],
     profile: {
       kind: "mediated-mcp",
-      environment: passThroughEnvironment(process.env, "win32"),
+      environment: {
+        ...passThroughEnvironment(process.env, "win32"),
+        TEMP: layout.observations,
+        TMP: layout.observations
+      },
       isolationRoot: layout.isolationRoot,
       ownerOnlyProof: async (directory) => {
         const proven = await provenOwnerOnly(directory);
@@ -198,6 +221,19 @@ async function sessionOverPipe(layout, controller) {
   const events = [];
   const session = await driver.start(mockRequest(), (event) => events.push(event), new AbortController().signal);
   return { events, closed: await driver.close(session), proofs };
+}
+
+// why: a session that fails on the Windows runner names, in the assertion
+// itself, how the fake ended (the witness), what it observed, what the driver
+// reported, and what the proof answered; none of it is a secret.
+async function sessionDiagnosis(layout, events, proofs) {
+  const read = (path) => readFile(path, "utf8").catch(() => "(none)");
+  return JSON.stringify({
+    witness: (await read(layout.witness)).slice(-8192),
+    observation: (await read(join(layout.observations, "fake-claude-observation.json"))).slice(-4096),
+    events: events.filter((event) => ["error", "tool.requested", "session.started"].includes(event.type)),
+    proofs
+  });
 }
 
 test("win32: a mediated session reaches the controller over the named pipe from an owner-only isolation directory", async (t) => {
@@ -215,14 +251,19 @@ test("win32: a mediated session reaches the controller over the named pipe from 
     await controller.close();
   }
   const { events, closed, proofs } = run;
-  assert.deepEqual(mediatedErrors(events), []);
-  assert.equal(closed.outcome, "completed");
+  const diagnosis = await sessionDiagnosis(layout, events, proofs);
+  assert.deepEqual(mediatedErrors(events), [], diagnosis);
+  assert.equal(closed.outcome, "completed", diagnosis);
   assert.match(endpoint, /^\\\\\.\\pipe\\verchestra-[0-9a-f]{32}$/u);
   assert.deepEqual(
     events.filter((event) => event.type === "tool.requested").map((event) => event.name),
-    ["mcp__verchestra__read_file", "mcp__verchestra__write_file"]
+    ["mcp__verchestra__read_file", "mcp__verchestra__write_file"],
+    diagnosis
   );
-  assert.ok(events.some((event) => event.type === "content.delta" && event.text === "read:alpha\n"));
+  assert.ok(
+    events.some((event) => event.type === "content.delta" && event.text === "read:alpha\n"),
+    diagnosis
+  );
   assert.equal(invoked.length, 1);
   assert.deepEqual(invoked[0].targetPaths, ["src/a.txt"]);
   assert.equal(proofs.length, 1);
