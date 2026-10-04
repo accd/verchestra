@@ -443,8 +443,8 @@ A coordinated run uses your subscriptions and nothing else. Both providers
 must authenticate by subscription, as set up in step 3: a run with either
 provider on an API key is refused with `VES_TASK_NOT_CONFIGURED` (requirement
 `coordinated-run-subscription`). Each session proves its method again when it
-starts: Claude Code must report no API key source, and Codex must report a
-ChatGPT login.
+starts: Claude Code must report no API key source, and Codex, in a node and in
+the final verifier alike, must report a ChatGPT login.
 
 Verchestra cannot read whether a provider account may spend beyond the plan,
 so it asks you to state it, after you have turned that spending off:
@@ -453,10 +453,11 @@ so it asks you to state it, after you have turned that spending off:
    turn off usage credits and any auto-reload, so Claude Code stops when the
    plan's allowance is used instead of continuing on paid usage.
 2. **In your ChatGPT account**, do not keep purchased Codex credits. A Codex
-   node whose account reports a credit balance, or unlimited credits, does not
-   start its turn: the run is suspended and `start` reports
-   `VES_TASK_NOT_CONFIGURED` (requirement `codex-credits`). Remove the credits,
-   then resume.
+   session whose account reports a credit balance, or unlimited credits, does
+   not start its turn, whether it is a node or the final verifier: the run is
+   suspended (in `IMPLEMENTING` at a node, in `VERIFYING` at the verifier) and
+   `start` reports `VES_TASK_NOT_CONFIGURED` (requirement `codex-credits`).
+   Remove the credits, then resume.
 3. **Write your statement** by hand, beside `task-providers.json`:
 
 ```text
@@ -485,9 +486,14 @@ e-mail address, name, or path.
   the provider's current billing terms as this build records them
   (2026-06-16 for Claude Code, 2026-10-03 for Codex). A build that records new
   terms asks you to check and confirm again.
-- `planType`, for Codex only, is your ChatGPT plan in lowercase, such as
-  `plus` or `pro`. Verchestra does not compare it with the account; write the
-  statement again when your plan changes.
+- `planType`, for Codex only, is your ChatGPT plan as the Codex protocol
+  names it, one of `free`, `go`, `plus`, `pro`, `prolite`, `promax`, `team`,
+  `self_serve_business_prolite`, `self_serve_business_usage_based`,
+  `business`, `ent26`, `enterprise_cbp_automation`,
+  `enterprise_cbp_usage_based`, `enterprise`, `edu`, `edu_plus`, or `edu_pro`.
+  Any other value is refused. At every `start` and `resume` Verchestra
+  compares it with the plan type your Codex login reports; write the statement
+  again when your plan changes.
 
 Verchestra never writes this file, and a request can never supply it. It has
 no expiry. Both providers need an entry, because every coordinated run has a
@@ -496,6 +502,24 @@ any credential, transition, or worktree; a missing, unreadable, or
 non-matching statement is `VES_TASK_NOT_CONFIGURED` (requirement
 `extra-usage-confirmation`), and the terminal shows the file's exact path and
 the entries it needs.
+
+To compare the plan type, every `start` and `resume` of a coordinated run
+launches one extra Codex process, from the Workspace's Codex sign-in, after
+that sign-in is checked and before the run's first step. It asks only for the
+account: it lists no model and starts no thread or turn, so it spends nothing
+of your allowance, and nothing of the account but its plan type is kept.
+
+What `start` and `resume` of a coordinated run may refuse, before the run's
+first step, and what you do about it:
+
+| Requirement | What to do |
+| --- | --- |
+| `coordinated-run-subscription` | Set both providers to `subscription` in `task-providers.json`, or remove the file (step 3). |
+| `extra-usage-confirmation` | Turn extra usage off in both accounts, then write or correct `task-billing.json` as above. The terminal names what is missing or wrong; for a plan type, it names the plan your Codex login reports and the one the file names. |
+| `codex-login` | Sign Codex in with ChatGPT for this Workspace, with the command the terminal prints (step 3). |
+| `codex-version` | Update the Codex CLI to 0.159.3 or later, the first build whose protocol reports the account. |
+| `codex-account` | Codex did not report the account of its sign-in, in time or at all, or reported one that is not a ChatGPT login. Check `codex login status` with the Workspace's `CODEX_HOME`, sign in again if needed, and retry. |
+| `codex-credits` | Remove the purchased credits from the ChatGPT account, then resume. This one is reported after the run is suspended, by the session that saw the credits. |
 
 ### Plan, start, and status
 
@@ -526,7 +550,10 @@ When a provider reports that your plan's allowance is used up, the run is
 suspended instead of failing. No further node starts, the nodes still running
 are stopped, and their provider processes end. Completed node results, tool
 receipts, the node record, the usage so far, and the worktree are all kept.
-The run stays `IMPLEMENTING` and releases the Workspace writer lease. `start`
+The run stays `IMPLEMENTING` and releases the Workspace writer lease. When it
+is the final verifier's Codex allowance that is used up, the run is suspended
+the same way after its task commit: it stays `VERIFYING`, keeps the commit on
+its branch `vestra/<runId>/<taskId>`, and a resume runs the verifier again. `start`
 exits 1 with `status: SUSPENDED` and a `suspension` that names the reason
 (`VES_DRIVER_QUOTA_EXHAUSTED`), the provider, the time, and, when the provider
 reported them, its limit window (`scope`, for example `five_hour`) and the
@@ -540,12 +567,15 @@ method. When your allowance is back, resume it yourself:
 npx verchestra task resume --run-id <runId>
 ```
 
-Before any node starts, `resume` checks the subscription preconditions and
-your statement again, that the approval is still valid under the Workspace
-policy in force, and that the worktree is exactly as the run left it. An
+Before any node or verifier starts, `resume` checks the subscription
+preconditions, your statement, and your Codex plan type again, that the
+approval is still valid under the Workspace policy in force, and that what the
+run left is exactly as it left it: the worktree for a run suspended at a node,
+the task commit and its branch for a run suspended at the verifier. An
 approval lasts seven days; one that expired while the run was suspended is
 refused, and you plan the task again. A worktree that changed is refused with
-reason `VES_EXECUTOR_WORKTREE_DRIFT`. A refusal changes nothing, so you can
+reason `VES_EXECUTOR_WORKTREE_DRIFT`, and a task commit or branch that moved
+with reason `VES_TASK_COMMIT_DRIFT`. A refusal changes nothing, so you can
 put things right and resume again, or cancel. The resumed run reuses every
 completed node's result without starting it again, and runs again a node that
 stopped before it changed anything.
@@ -590,15 +620,16 @@ approval makes the approval stale, and the run is refused until you plan again.
 
 On Windows the bridge between Claude Code and Verchestra is a named pipe that
 only your user can open, owned by a fixed PowerShell 7 helper. Before a run
-takes its first step, `vestra task` checks each prerequisite and, if one is
-missing, stops with `VES_TASK_NOT_CONFIGURED` and names it:
+takes its first step, and before it reads any credential, `vestra task` checks
+each prerequisite and, if one is missing, stops with `VES_TASK_NOT_CONFIGURED`
+and names it:
 
 | Requirement | What to do |
 | --- | --- |
 | `powershell-7` | Install PowerShell 7 at its default location, `C:\Program Files\PowerShell\7\pwsh.exe`. Verchestra never looks it up on `PATH`. |
 | `powershell-logging-off` | Turn off PowerShell 7 script-block logging and transcription for your account; they would record the helper's traffic. |
 | `owner-only-acl` | Verchestra could not prove that its per-run directory is readable by your user alone. Run from a local, NTFS-formatted profile. |
-| `claude-managed-policy` | A Claude Code managed policy is present (`C:\Program Files\ClaudeCode\`, or `HKLM` or `HKCU` `SOFTWARE\Policies\ClaudeCode`). The governed task path does not run under a managed policy. |
+| `claude-managed-policy` | A Claude Code managed policy is present (`C:\Program Files\ClaudeCode\`, or `HKLM` or `HKCU` `SOFTWARE\Policies\ClaudeCode`). The governed task path does not run under a managed policy, whether Claude Code signs in with your subscription or an API key. |
 | `state-path-length` | Your Verchestra state directory (`%LOCALAPPDATA%\Verchestra\state`) is too deep for the worktree paths Git accepts on Windows. With the default location this happens only for user names longer than about 50 characters. There is no setting to move the state directory yet, so this stops the run. |
 
 Claude Code and Codex must be their native `claude.exe` and `codex.exe`
