@@ -28,6 +28,10 @@ import {
 import { BridgeToolError, logicalSegments, WorktreeReadView } from "./mcp-bridge-tools.ts";
 
 const AUTHENTICATION_TIMEOUT_MS = 5_000;
+// why: a relay writes each frame whole, so a line that stops arriving part
+// way, with no byte for this long, is a channel whose bytes no longer reach
+// the controller; it is refused instead of held open.
+const FRAME_STALL_TIMEOUT_MS = 10_000;
 // why: these executor outcomes end the run; the model is told, and the driver
 // adapter is signalled so it stops the session instead of letting it retry.
 const FATAL_CODES = new Set([
@@ -56,6 +60,8 @@ export interface McpBridgeStatistics {
   readonly deletes: number;
   readonly denied: number;
   readonly rejectedConnections: number;
+  // invariant: the refused connections whose frame stopped arriving part way.
+  readonly stalledFrames: number;
 }
 
 export interface McpToolBridgeControllerOptions {
@@ -74,6 +80,7 @@ export interface McpToolBridgeControllerOptions {
   // why: the channel is the one part that differs by platform; without one the
   // controller keeps the Unix socket under `socketRoot`, which Windows lacks.
   readonly transport?: BridgeTransport;
+  readonly frameStallTimeoutMs?: number;
 }
 
 // The trusted half of the bridge. It owns the channel, authenticates the
@@ -89,7 +96,7 @@ export class McpToolBridgeController {
   #sequence = 0;
   #queue: Promise<void> = Promise.resolve();
   #closed = false;
-  readonly #statistics = { calls: 0, writes: 0, deletes: 0, denied: 0, rejectedConnections: 0 };
+  readonly #statistics = { calls: 0, writes: 0, deletes: 0, denied: 0, rejectedConnections: 0, stalledFrames: 0 };
 
   private constructor(options: McpToolBridgeControllerOptions, view: WorktreeReadView, token: string) {
     this.#options = options;
@@ -154,6 +161,7 @@ export class McpToolBridgeController {
     const timer = setTimeout(() => {
       if (!authenticated) this.#reject(socket);
     }, AUTHENTICATION_TIMEOUT_MS);
+    this.#watchFrames(socket);
     readBoundedLines(
       socket,
       (line) => {
@@ -189,6 +197,28 @@ export class McpToolBridgeController {
       const result = await this.#call(frame["name"], frame["arguments"]);
       if (!socket.destroyed) send(socket, { type: "result", id, ...result });
     });
+  }
+
+  // invariant: a frame that stops arriving part way through, with no byte for
+  // the stall bound, refuses its connection, so a channel whose bytes stop
+  // between its client and the controller ends within a bound however they
+  // stop. A line's end, or the connection's close, ends the wait.
+  #watchFrames(socket: Duplex): void {
+    const limit = this.#options.frameStallTimeoutMs ?? FRAME_STALL_TIMEOUT_MS;
+    let stall: NodeJS.Timeout | undefined;
+    socket.on("data", (chunk: Buffer | string) => {
+      clearTimeout(stall);
+      const lastByte = typeof chunk === "string" ? chunk.charCodeAt(chunk.length - 1) : chunk[chunk.length - 1];
+      stall =
+        lastByte === 0x0a
+          ? undefined
+          : setTimeout(() => {
+              if (socket.destroyed) return;
+              this.#statistics.stalledFrames += 1;
+              this.#reject(socket);
+            }, limit);
+    });
+    socket.on("close", () => clearTimeout(stall));
   }
 
   #reject(socket: Duplex): void {

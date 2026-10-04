@@ -85,7 +85,14 @@ test("write_file and delete_file become executor tool requests addressed by cont
   assert.equal(invoked[1].operation, "delete");
   assert.equal(invoked[1].payloadRef, "payload:none");
   assert.notEqual(invoked[1].requestId, invoked[0].requestId);
-  assert.deepEqual(controller.statistics(), { calls: 2, writes: 1, deletes: 1, denied: 0, rejectedConnections: 0 });
+  assert.deepEqual(controller.statistics(), {
+    calls: 2,
+    writes: 1,
+    deletes: 1,
+    denied: 0,
+    rejectedConnections: 0,
+    stalledFrames: 0
+  });
   await relay.close();
 });
 

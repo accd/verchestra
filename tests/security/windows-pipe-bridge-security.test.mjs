@@ -140,6 +140,33 @@ test(
   }
 );
 
+// invariant: a frame that stops arriving part way through refuses its
+// connection at the stall bound, counted as stalled, and ends the helper that
+// holds the pipe, so a relay that holds a frame's tail cannot keep the channel;
+// a frame that keeps arriving in parts is served.
+test("a frame that stops arriving part way is refused at the stall bound and ends the helper", PIPE_CASE, async () => {
+  const host = new FakePipeHost();
+  const { worktree, channels } = await plainWorktree();
+  const transport = new WindowsNamedPipeBridgeTransport({ root: channels, host });
+  const { controller, invoked } = await openController(worktree, { transport, frameStallTimeoutMs: 300 });
+  host.helper.status("verchestra-pipe:connected");
+  await settle();
+  const { helper } = host;
+  helper.stdout.write(hello(controller.environment.VERCHESTRA_BRIDGE_TOKEN));
+  assert.ok(await eventually(() => helper.received.endsWith("\n")), "the client authenticates first");
+  const call = frame({ type: "call", id: 1, name: "write_file", arguments: { path: "src/a.txt", content: "x" } });
+  helper.stdout.write(call.slice(0, 20));
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  helper.stdout.write(call.slice(20));
+  assert.ok(await eventually(() => invoked.length === 1), "a frame that keeps arriving is served");
+  const stalledAt = Date.now();
+  helper.stdout.write(call.slice(0, 20));
+  assert.ok(await eventually(() => host.terminated.length === 1), "the stalled channel's helper is ended");
+  assert.ok(Date.now() - stalledAt >= 250, "the stalled frame was refused before its bound");
+  assert.deepEqual([controller.statistics().rejectedConnections, controller.statistics().stalledFrames], [1, 1]);
+  assert.equal(invoked.length, 1);
+});
+
 // invariant: the bounds themselves, on every platform. A relay that exits
 // before it answers fails the request still waiting with its exit code and
 // refusal line, and a wait that never ends fails with what it waited for, so
@@ -284,6 +311,9 @@ test("win32: a frame beyond its bound on the named pipe is refused", PIPE_CASE, 
   await assertRefusalEnds({ controller, trace, client, endpoint });
   assert.deepEqual(JSON.parse(client.data()), { type: "ready", protocol: "verchestra-bridge/1" });
   assert.equal(controller.statistics().rejectedConnections, 1);
+  // why: refused for its size, so the whole frame crossed the helper; a
+  // refusal for a stalled frame would mean the relay held its tail.
+  assert.equal(controller.statistics().stalledFrames, 0, trace.describe({ statistics: controller.statistics() }));
   assert.equal(invoked.length, 0);
 });
 
@@ -404,7 +434,14 @@ test(
       ["src/a.txt:1", "src/nested/b.txt:1"]
     );
     assert.equal(invoked.length, 0, "reading reaches no executor tool");
-    assert.deepEqual(controller.statistics(), { calls: 5, writes: 0, deletes: 0, denied: 0, rejectedConnections: 0 });
+    assert.deepEqual(controller.statistics(), {
+      calls: 5,
+      writes: 0,
+      deletes: 0,
+      denied: 0,
+      rejectedConnections: 0,
+      stalledFrames: 0
+    });
     assert.equal(await relay.close(), 0);
   }
 );
