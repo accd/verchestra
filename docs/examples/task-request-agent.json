@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 2,
+  "sourceRevision": "0123456789abcdef0123456789abcdef01234567",
+  "task": {
+    "taskId": "T1",
+    "requirementIds": ["VES-EXE-001"],
+    "dependencyTaskIds": [],
+    "component": "src",
+    "changeScope": ["src", "test"],
+    "protectedPaths": [".git", ".verchestra"],
+    "verificationCommands": ["node --test test"],
+    "doneCriteria": ["parseDuration accepts 1h30m and rejects negative values"],
+    "risk": "medium",
+    "expectedCommitBoundary": "feat(src): parse hour-minute durations"
+  },
+  "gates": [
+    {
+      "gateId": "gate:unit",
+      "requirementIds": ["VES-EXE-001"],
+      "declaredCommand": "node --test test",
+      "commandRef": "node",
+      "args": ["--test", "test"],
+      "cwd": ".",
+      "timeoutMs": 300000,
+      "outputLimitBytes": 1000000,
+      "resultProtocol": "test-summary",
+      "minimumTests": 1
+    }
+  ],
+  "budgets": { "maximumCostUsd": 5, "maximumTokens": 1000000, "maximumDurationMs": 1800000 },
+  "verifier": { "driverId": "codex", "model": "gpt-5.2-codex" },
+  "instructions": "Extend parseDuration in src/duration.js to accept hour-minute strings such as 1h30m, and add tests in test/duration.test.js. Keep the existing API.",
+  "execution": {
+    "mode": "agent",
+    "nodes": [
+      {
+        "nodeId": "build",
+        "driver": { "driverId": "claude-code", "model": "claude-sonnet-5" },
+        "description": "Implements the change and its tests",
+        "instructions": "Change parseDuration in src/duration.js so it accepts hour-minute strings such as 1h30m and rejects negative values, and add tests for both in test/duration.test.js. Keep the existing API and the existing tests.",
+        "readScope": ["src", "test"],
+        "writeScope": ["src/duration.js", "test/duration.test.js"],
+        "inputs": []
+      }
+    ],
+    "limits": { "nodeResultBytes": 16384, "runResultBytes": 16384 }
+  }
+}
