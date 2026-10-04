@@ -141,11 +141,12 @@ test("a node result holding a model-written credential or local path is refused,
   }
 });
 
-// invariant: SSI-49 for the Codex login. Every Codex node can read the
-// Workspace login from its CODEX_HOME, so a result that carries one of its
-// tokens or its API key is refused before it is persisted, and so is one that
+// invariant: SSI-49 and SSI-53 for the Codex login. Every Codex node can read
+// the Workspace login from its CODEX_HOME, so a result that carries one of its
+// tokens, its API key, its account id, or an account identifier its ID token
+// carries decoded is refused before it is persisted, and so is one that
 // carries a token Codex renewed after the round opened.
-test("a node result carrying a secret of the Workspace's Codex login is refused, and nothing of it is persisted", async () => {
+test("a node result carrying a secret or an account identifier of the Workspace's Codex login is refused, and nothing of it is persisted", async () => {
   const root = await temporaryRoot();
   const layout = resolveWorkspaceState({
     stateRoot: join(root, "state"),
@@ -154,6 +155,14 @@ test("a node result carrying a secret of the Workspace's Codex login is refused,
   });
   const identity = join(layout.workspaceRoot, "codex-identity");
   await mkdir(identity, { recursive: true });
+  const email = "owner-security@fixture.test";
+  const userId = "user-fixture-security-2c8d";
+  const segment = (value) => Buffer.from(JSON.stringify(value)).toString("base64url");
+  const idToken = [
+    segment({ alg: "RS256", typ: "JWT" }),
+    segment({ email, "https://api.openai.com/auth": { chatgpt_plan_type: "plus", user_id: userId } }),
+    "fixture-security-signature-81c2"
+  ].join(".");
   // why: stands in for the file `codex login` writes and Codex rewrites when
   // it renews its tokens; every value is a fixture.
   const login = (accessToken) =>
@@ -162,9 +171,10 @@ test("a node result carrying a secret of the Workspace's Codex login is refused,
       JSON.stringify({
         OPENAI_API_KEY: "sk-fixture-security-login-key-4e0a",
         tokens: {
-          id_token: "fixture-security-id-token-81c2",
+          id_token: idToken,
           access_token: accessToken,
-          refresh_token: "fixture-security-refresh-token-0b97"
+          refresh_token: "fixture-security-refresh-token-0b97",
+          account_id: "fixture-security-account-6b21"
         }
       })
     );
@@ -179,8 +189,11 @@ test("a node result carrying a secret of the Workspace's Codex login is refused,
   const secrets = [
     "fixture-security-access-token-3a5e",
     "fixture-security-refresh-token-0b97",
-    "fixture-security-id-token-81c2",
+    idToken,
     "sk-fixture-security-login-key-4e0a",
+    "fixture-security-account-6b21",
+    email,
+    userId,
     renewed
   ];
   const request = coordinatedRequest("swarm");

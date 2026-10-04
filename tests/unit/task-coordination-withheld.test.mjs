@@ -62,10 +62,34 @@ async function identityWith(login) {
   return directory;
 }
 
+const segment = (value) => Buffer.from(JSON.stringify(value)).toString("base64url");
+// why: stands in for the ID token `codex login` stores, a JWT whose payload
+// names the account; the claims mirror the real token's shape.
+const ID_TOKEN = [
+  segment({ alg: "RS256", typ: "JWT" }),
+  segment({
+    iss: "https://auth.fixture.test",
+    aud: ["app_fixture-client"],
+    sub: "fixture-provider|fixture-subject",
+    email: "owner@fixture.test",
+    email_verified: true,
+    exp: 1_790_000_000,
+    sid: "fixture-sign-in-session",
+    "https://api.openai.com/auth": {
+      chatgpt_account_id: "fixture-account",
+      chatgpt_plan_type: "plus",
+      chatgpt_user_id: "user-fixture-chatgpt",
+      user_id: "user-fixture",
+      organizations: [{ id: "org-fixture", is_default: true, role: "owner", title: "Personal" }]
+    }
+  }),
+  "fixture-signature"
+].join(".");
+
 const LOGIN = Object.freeze({
   OPENAI_API_KEY: "sk-fixture-login-api-key",
   tokens: {
-    id_token: "fixture-login-id-token",
+    id_token: ID_TOKEN,
     access_token: "fixture-login-access-token",
     refresh_token: "fixture-login-refresh-token",
     account_id: "fixture-account"
@@ -73,22 +97,49 @@ const LOGIN = Object.freeze({
   last_refresh: "2026-10-01T00:00:00.000000Z"
 });
 
-test("a Codex session on the Workspace login withholds the login's tokens and API key beside the Claude Code credential", async () => {
+// invariant: SSI-53. The account identifiers the ID token's payload carries
+// decoded; its issuer, audience, plan, flags, times, and titles name no one.
+const ID_TOKEN_IDENTIFIERS = Object.freeze([
+  "fixture-provider|fixture-subject",
+  "owner@fixture.test",
+  "fixture-sign-in-session",
+  "user-fixture-chatgpt",
+  "user-fixture",
+  "org-fixture"
+]);
+
+test("a Codex session on the Workspace login withholds the login's tokens, account identifiers, and API key beside the Claude Code credential", async () => {
   const { options: composed } = options({ identityDirectory: await identityWith(JSON.stringify(LOGIN)) }, {});
   assert.deepEqual((await nodeResultWithheld(composed, "worktree:run-1")).values, [
     "sk-ant-oat01-fixture-claude",
     "fixture-login-access-token",
     "fixture-login-refresh-token",
-    "fixture-login-id-token",
-    "sk-fixture-login-api-key"
+    ID_TOKEN,
+    "fixture-account",
+    "sk-fixture-login-api-key",
+    ...ID_TOKEN_IDENTIFIERS
   ]);
   const chatgptOnly = JSON.stringify({ ...LOGIN, OPENAI_API_KEY: null });
   const { options: unkeyed } = options({ identityDirectory: await identityWith(chatgptOnly) }, {});
   assert.deepEqual((await nodeResultWithheld(unkeyed, "worktree:run-1")).values.slice(1), [
     "fixture-login-access-token",
     "fixture-login-refresh-token",
-    "fixture-login-id-token"
+    ID_TOKEN,
+    "fixture-account",
+    ...ID_TOKEN_IDENTIFIERS
   ]);
+  // why: an ID token whose payload is not JSON names nothing decoded; it is
+  // withheld whole and the run is not refused.
+  for (const opaque of ["fixture-opaque-id-token", `${segment({ alg: "none" })}.not-json.fixture-signature`]) {
+    const login = JSON.stringify({ tokens: { ...LOGIN.tokens, id_token: opaque } });
+    const { options: undecoded } = options({ identityDirectory: await identityWith(login) }, {});
+    assert.deepEqual((await nodeResultWithheld(undecoded, "worktree:run-1")).values.slice(1), [
+      "fixture-login-access-token",
+      "fixture-login-refresh-token",
+      opaque,
+      "fixture-account"
+    ]);
+  }
   const { options: signedOut } = options({ identityDirectory: await identityWith(undefined) }, {});
   assert.deepEqual((await nodeResultWithheld(signedOut, "worktree:run-1")).values, ["sk-ant-oat01-fixture-claude"]);
 });

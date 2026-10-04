@@ -30,8 +30,12 @@ export function codexIdentityDirectory(workspaceRoot: string): string {
 const LOGIN_FILE = "auth.json";
 // why: a Codex login file holds a few tokens; one past this size is no login.
 const MAXIMUM_LOGIN_BYTES = 1024 * 1024;
-const LOGIN_TOKENS = Object.freeze(["access_token", "refresh_token", "id_token"]);
+const LOGIN_SECRETS = Object.freeze(["access_token", "refresh_token", "id_token", "account_id"]);
 const API_KEY_FIELD = /api[_-]?key/iu;
+// why: the claims of an ID token that name the account, its user, its
+// organizations, or its sign-in session; plan, issuer, audience, and times
+// name no one, and withholding a common word would refuse ordinary results.
+const IDENTITY_CLAIMS = new Set(["sub", "sid", "email", "id"]);
 
 // hazard: neither the file's text nor a parser's message, which quotes it,
 // may reach the error, so the refusal carries no cause.
@@ -64,24 +68,60 @@ function loginRecord(text: string): Readonly<Record<string, unknown>> {
   return parsed as Readonly<Record<string, unknown>>;
 }
 
+function isIdentityClaim(name: string): boolean {
+  return IDENTITY_CLAIMS.has(name) || name.endsWith("_id");
+}
+
+// why: walked breadth-first without recursion, so no nesting depth in the
+// payload can exhaust the stack.
+function identityClaims(payload: unknown): readonly unknown[] {
+  const claims: unknown[] = [];
+  const pending: unknown[] = [payload];
+  for (let index = 0; index < pending.length; index += 1) {
+    const value = pending[index];
+    if (value === null || typeof value !== "object") continue;
+    for (const [name, member] of Object.entries(value)) {
+      if (typeof member !== "string") pending.push(member);
+      else if (isIdentityClaim(name)) claims.push(member);
+    }
+  }
+  return claims;
+}
+
+// invariant: SSI-49 and SSI-53. An ID token is a JWT whose payload anyone can
+// decode, so a model can copy the account's identifiers out of it decoded;
+// they are withheld as values of their own.
+// hazard: a parser's message quotes the payload, so it is dropped; a token
+// whose payload is not JSON names nothing decoded and is withheld whole.
+function idTokenClaims(idToken: unknown): readonly unknown[] {
+  if (typeof idToken !== "string") return [];
+  const payload = idToken.split(".")[1];
+  if (payload === undefined) return [];
+  try {
+    return identityClaims(JSON.parse(Buffer.from(payload, "base64url").toString("utf8")));
+  } catch {
+    return [];
+  }
+}
+
 // invariant: SSI-49. The secret values of the Workspace's Codex login, which
 // every Codex session of a run can read from its CODEX_HOME: the access,
-// refresh, and ID tokens of a ChatGPT login and any API key field. They are
-// read only to be withheld from node results, never logged, persisted, or
-// placed in an error; a directory with no login file has none.
+// refresh, and ID tokens and the account id of a ChatGPT login, the account
+// identifiers its ID token carries, and any API key field. They are read only
+// to be withheld from node results, never logged, persisted, or placed in an
+// error; a directory with no login file has none.
 export async function codexLoginSecrets(directory: string): Promise<readonly string[]> {
   const text = await loginText(join(directory, LOGIN_FILE));
   if (text === undefined) return [];
   const login = loginRecord(text);
-  const tokens = login["tokens"];
-  const tokenValues =
-    tokens !== null && typeof tokens === "object"
-      ? LOGIN_TOKENS.map((name) => (tokens as Readonly<Record<string, unknown>>)[name])
-      : [];
+  const field = login["tokens"];
+  const tokens: Readonly<Record<string, unknown>> =
+    field !== null && typeof field === "object" ? (field as Readonly<Record<string, unknown>>) : {};
   const keyValues = Object.entries(login)
     .filter(([name]) => API_KEY_FIELD.test(name))
     .map(([, value]) => value);
-  return [...tokenValues, ...keyValues].filter((value): value is string => typeof value === "string" && value !== "");
+  const secrets = [...LOGIN_SECRETS.map((name) => tokens[name]), ...keyValues, ...idTokenClaims(tokens["id_token"])];
+  return [...new Set(secrets.filter((value): value is string => typeof value === "string" && value !== ""))];
 }
 
 function shellQuoted(value: string): string {
