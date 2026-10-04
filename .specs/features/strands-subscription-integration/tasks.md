@@ -345,11 +345,15 @@ section.
 **Done when**:
 
 - [ ] Each example plans with `--dry-run` in a test (SSI-36).
-- [ ] JSON and text results agree for plan and status.
+- [x] JSON and text results agree for plan and status.
 - [ ] `pnpm site:check` passes.
 
 **Tests**: e2e
 **Gate**: full
+
+**Progress** (branch `strands/t8-surface`; evidence in `validation.md`, "T8 Evidence"):
+
+- [x] Commit 1: `task-coordination-surface.ts` presents the topology (passport, role, destinations, a swarm's start) at `plan` beside the bound descriptor, with the subscription preconditions and the requirement `start` would refuse; `status`, `start`, and `resume` show each node with its state and the same next action, which offers no resume that would be refused (one reconcile command for one uncertain node, none for several); the text form agrees with the JSON form in the journeys; 14 mutants killed.
 
 ---
 

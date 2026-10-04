@@ -52,10 +52,10 @@ validator; a reader may give the legacy form its own rule, which only the
 worktree marker does. `#sealed` (`:467`) reads a sealed record and validates
 it. `loadCommit`, `loadReport` and `loadReview` go through it.
 
-The callers read typed members: `task-status.ts:77`, `:81`, `:82`, `:175`;
+The callers read typed members: `task-status.ts:69`, `:73`, `:74`, `:110`;
 `task-review.ts:109`, `:167-168`, `:209`; `task-surface.ts:42`;
 `task-run.ts:292` (`if (stored !== undefined) return stored.grantId`).
-`status` names a reason through `reasonOf` (`task-status.ts:280-283`): only a
+`status` names a reason through `reasonOf` (`task-status.ts:215-218`): only a
 failed or an aborted outcome carries one, which is what it printed for every
 outcome the writer produces. The helper sits at the end of the file so that
 the lines `live-task-pilot/validation.md` cites (`:13`, `:160`) do not move.
@@ -70,7 +70,7 @@ the lines `live-task-pilot/validation.md` cites (`:13`, `:160`) do not move.
 | Each required member missing or of the wrong type is refused | each validator | `:110` (grant: absent, a number, empty, null, a list; both forms); `:160` with `MALFORMED_OUTCOMES` (`:134`, seventeen shapes, both forms); `:178` (report: verdict absent, lower case, boolean; commit ID absent, short, upper case, a number; also through `verifiedCommit`); `:205` (review: absent, upper case, boolean) |
 | Legacy and sealed forms both read where both exist | grant and outcome markers | the round trips and refusals above run in both forms; `tests/integration/task-status-records.test.mjs:48` refuses a malformed grant and outcome marker through `task status` in both forms |
 | Refused with the module's existing codes, never coerced | `VES_TASK_STATE_MALFORMED` | every refusal above asserts `VES_TASK_STATE_INVALID` with reason `VES_TASK_STATE_MALFORMED`; no code is added |
-| Callers read the typed members | `task-status.ts:280-283` | `tests/integration/task-status-records.test.mjs:28`: a reason for `FAILED` and `ABORTED`, none for `ESCALATED`, `APPROVAL_INVALIDATED` or no outcome |
+| Callers read the typed members | `task-status.ts:215-218` | `tests/integration/task-status-records.test.mjs:28`: a reason for `FAILED` and `ABORTED`, none for `ESCALATED`, `APPROVAL_INVALIDATED` or no outcome |
 
 ## 4. Not changed, and why
 
@@ -88,7 +88,7 @@ the lines `live-task-pilot/validation.md` cites (`:13`, `:160`) do not move.
   `packages/application`, not a Run record artifact. Typing it is a change
   of the verification module's interface.
 - **The runtime store's rows**: the run journal's terminal event
-  (`task-review.ts:95`), the capsule seal (`task-status.ts:181`) and the
+  (`task-review.ts:95`), the capsule seal (`task-status.ts:116`) and the
   repair state `RunCheckpoints.recordBudgetLedger` carries forward
   (`task-run-record.ts:392-404`). They belong to ADR2-7 (T7), which declares
   the runtime store's records; this change does not touch those lines.

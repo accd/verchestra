@@ -160,20 +160,42 @@ for (const [command, state, invoke] of COMMANDS)
   });
 
 // invariant: SSI-32. Status of a suspended coordinated run names the
-// suspension, the state, visit count, and result digest of each node, and
-// every node a resume could not run again on its own, with the digest the
-// owner types back and the one command that does; the plain resume, which
-// would be refused, is not offered.
-test("status of a suspended run shows its suspension, each node, and each uncertain node with its digest", async () => {
-  const run = await plannedCoordinated("IMPLEMENTING");
-  const suspension = {
-    reason: "VES_DRIVER_QUOTA_EXHAUSTED",
-    provider: "claude-code",
-    at: "2026-10-03T12:00:00.000Z",
-    scope: "five_hour",
-    resetsAt: "2026-10-03T17:00:00.000Z"
+// suspension, each node of the topology (its passport, role, and where its
+// work goes next) with its state, visit count, and result digest, and every
+// node a resume could not run again on its own, with the digest the owner
+// types back and the one command that does; the plain resume, which would be
+// refused, is not offered.
+const SUSPENSION = Object.freeze({
+  reason: "VES_DRIVER_QUOTA_EXHAUSTED",
+  provider: "claude-code",
+  at: "2026-10-03T12:00:00.000Z",
+  scope: "five_hour",
+  resetsAt: "2026-10-03T17:00:00.000Z"
+});
+const LEFT = `sha256:${"a".repeat(64)}`;
+
+function stoppedVisit(nodeId, state, change = {}) {
+  return {
+    round: 1,
+    nodeId,
+    visit: 1,
+    state,
+    startedAt: "2026-10-03T11:00:02.000Z",
+    changeDigestBefore: LEFT,
+    receiptCount: 0,
+    ...change
   };
-  const left = `sha256:${"a".repeat(64)}`;
+}
+
+const PARTIAL_BUILD = stoppedVisit("build", "partial", {
+  endedAt: "2026-10-03T11:00:03.000Z",
+  receiptCount: 1,
+  failureCode: "VES_DRIVER_QUOTA_EXHAUSTED"
+});
+
+// why: what a run suspended by a quota signal leaves: the `suspended`
+// executor checkpoint with its change digest, the node ledger, and the outcome.
+async function suspended(run, visits) {
   const runtime = openRuntime(run.fixture.workspace);
   try {
     await run.runRecord
@@ -185,61 +207,78 @@ test("status of a suspended run shows its suspension, each node, and each uncert
         taskId: TASK_ID,
         stage: "suspended",
         sequence: 1,
-        data: { changeDigest: left, changedPaths: ["src/value.txt"], toolReceiptRefs: ["receipt:1"], suspension }
+        data: {
+          changeDigest: LEFT,
+          changedPaths: ["src/value.txt"],
+          toolReceiptRefs: ["receipt:1"],
+          suspension: SUSPENSION
+        }
       });
   } finally {
     runtime.close();
   }
-  const bytes = new TextEncoder().encode(canonicalizeJsonV2({ outcome: "done", summary: "the plan" }));
-  const planned = await run.runRecord.saveCoordinationResult(bytes);
-  const partial = {
-    round: 1,
-    nodeId: "build",
-    visit: 1,
-    state: "partial",
-    startedAt: "2026-10-03T11:00:02.000Z",
-    endedAt: "2026-10-03T11:00:03.000Z",
-    changeDigestBefore: left,
-    receiptCount: 1,
-    failureCode: "VES_DRIVER_QUOTA_EXHAUSTED"
-  };
   await run.runRecord.saveCoordinationLedger({
     schemaVersion: 1,
     mode: "graph",
     round: 1,
     roundState: "running",
-    visits: [
-      {
-        round: 1,
-        nodeId: "plan",
-        visit: 1,
-        state: "completed",
-        startedAt: "2026-10-03T11:00:00.000Z",
-        endedAt: "2026-10-03T11:00:01.000Z",
-        changeDigestBefore: left,
-        receiptCount: 0,
-        resultDigest: planned,
-        resultBytes: bytes.byteLength
-      },
-      partial
-    ]
+    visits
   });
-  await run.runRecord.saveOutcome({ status: "SUSPENDED", suspension });
+  await run.runRecord.saveOutcome({ status: "SUSPENDED", suspension: SUSPENSION });
+}
+
+const uncertaintyDigest = (visit) => canonicalDigestOf({ schemaVersion: 1, runId: RUN_ID, ...without(visit, "state") });
+
+test("status of a suspended run shows its suspension, each node, and each uncertain node with its digest", async () => {
+  const run = await plannedCoordinated("IMPLEMENTING");
+  const bytes = new TextEncoder().encode(canonicalizeJsonV2({ outcome: "done", summary: "the plan" }));
+  const planned = await run.runRecord.saveCoordinationResult(bytes);
+  const completed = stoppedVisit("plan", "completed", {
+    startedAt: "2026-10-03T11:00:00.000Z",
+    endedAt: "2026-10-03T11:00:01.000Z",
+    resultDigest: planned,
+    resultBytes: bytes.byteLength
+  });
+  await suspended(run, [completed, PARTIAL_BUILD]);
   const status = await statusTask(run.fixture.io, RUN);
   assert.equal(status.state, "IMPLEMENTING");
   assert.equal(status.lastOutcome, "SUSPENDED");
   assert.equal(status.lastReason, "VES_DRIVER_QUOTA_EXHAUSTED");
-  assert.deepEqual(status.suspension, suspension);
+  assert.deepEqual(status.suspension, SUSPENSION);
   assert.equal(status.checkpoints.executor, "suspended");
-  const digest = canonicalDigestOf({ schemaVersion: 1, runId: RUN_ID, ...without(partial, "state") });
+  const digest = uncertaintyDigest(PARTIAL_BUILD);
   assert.deepEqual(status.coordination, {
     mode: "graph",
     round: 1,
     roundState: "running",
     nodes: [
-      { nodeId: "plan", state: "completed", visits: 1, resultDigest: planned },
-      { nodeId: "build", state: "partial", visits: 1, resultDigest: null },
-      { nodeId: "review", state: "pending", visits: 0, resultDigest: null }
+      {
+        nodeId: "plan",
+        passport: "codex:gpt-5.2-codex",
+        role: "reader",
+        to: ["build"],
+        state: "completed",
+        visits: 1,
+        resultDigest: planned
+      },
+      {
+        nodeId: "build",
+        passport: "claude-code:claude-sonnet-5",
+        role: "writer",
+        to: ["review"],
+        state: "partial",
+        visits: 1,
+        resultDigest: null
+      },
+      {
+        nodeId: "review",
+        passport: "codex:gpt-5.2-codex",
+        role: "reader",
+        to: [],
+        state: "pending",
+        visits: 0,
+        resultDigest: null
+      }
     ],
     uncertain: [{ nodeId: "build", visit: 1, state: "partial", receiptCount: 1, digest }]
   });
@@ -247,6 +286,24 @@ test("status of a suspended run shows its suspension, each node, and each uncert
     `vestra task resume --run-id ${RUN_ID} --reconcile ${digest}`,
     `vestra task cancel --run-id ${RUN_ID}`
   ]);
+});
+
+// why: D4 and the one reconcile a resume takes. With two nodes that may both
+// have landed effects, a resume that reconciles either is refused for the
+// other, so status names both digests and offers only the cancel.
+test("status of a run with two uncertain nodes names both and offers no resume it would refuse", async () => {
+  const run = await plannedCoordinated("IMPLEMENTING");
+  const unended = stoppedVisit("plan", "started");
+  await suspended(run, [unended, PARTIAL_BUILD]);
+  const status = await statusTask(run.fixture.io, RUN);
+  assert.deepEqual(
+    status.coordination.uncertain.map((node) => [node.nodeId, node.state, node.digest]),
+    [
+      ["plan", "started", uncertaintyDigest(unended)],
+      ["build", "partial", uncertaintyDigest(PARTIAL_BUILD)]
+    ]
+  );
+  assert.deepEqual(status.next, [`vestra task cancel --run-id ${RUN_ID}`]);
 });
 
 test("a single-session run's status names no coordination and no suspension", async () => {

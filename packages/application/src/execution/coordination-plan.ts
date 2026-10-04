@@ -79,7 +79,7 @@ export const COORDINATION_LIMIT_CEILINGS: CoordinationLimits = Object.freeze({
 
 // invariant: a writer node is a Claude Code node with a non-empty write
 // scope; every other node only reads.
-function isWriter(node: CoordinationNode): boolean {
+export function isWriterNode(node: CoordinationNode): boolean {
   return node.driver.driverId === "claude-code" && node.writeScope.length > 0;
 }
 
@@ -160,7 +160,7 @@ function graphFault(nodes: readonly CoordinationNode[], edges: readonly Coordina
   if (ancestors === undefined) return "the graph has a cycle or a node no source reaches";
   if (nodes.some((node) => node.inputs.some((input) => ancestors.get(node.nodeId)?.has(input) !== true)))
     return "an input is not an ancestor of its node";
-  const writers = nodes.filter(isWriter).map((node) => node.nodeId);
+  const writers = nodes.filter(isWriterNode).map((node) => node.nodeId);
   if (writers.some((writer, index) => writers.slice(index + 1).some((other) => !ordered(ancestors, writer, other))))
     return "two writer nodes are not ordered by a path";
   return undefined;
@@ -198,7 +198,7 @@ export function coordinationPlanFault(plan: CoordinationPlan, task: AtomicExecut
   return (
     sizeFault(plan) ??
     scopeFault(plan.nodes, task) ??
-    (plan.nodes.some(isWriter) ? undefined : "no node writes") ??
+    (plan.nodes.some(isWriterNode) ? undefined : "no node writes") ??
     topologyFault(plan)
   );
 }

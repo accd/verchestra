@@ -12,6 +12,7 @@ import { rename, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { after, test } from "node:test";
 
+import { assertTextAgrees } from "../helpers/cli-text-fixture.mjs";
 import { confirmExtraUsage, extraUsageConfirmation } from "../helpers/task-billing-fixture.mjs";
 import { DARWIN, cleanupTaskFixtures } from "../helpers/task-cli-fixture.mjs";
 import {
@@ -128,6 +129,17 @@ test(
     assert.match(suspended.suspension.at, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u);
     assert.deepEqual({ ...suspended.suspension, at: undefined }, { ...QUOTA, at: undefined });
     assert.equal(suspended.next, `vestra task resume --run-id ${plan.runId}`);
+    // invariant: SSI-32 in the run's own result: each node's state, and no
+    // node a resume could not run again on its own.
+    assert.deepEqual(
+      suspended.coordination.nodes.map((node) => [node.nodeId, node.state]),
+      [
+        ["plan", "completed"],
+        ["build", "failed"],
+        ["review", "pending"]
+      ]
+    );
+    assert.deepEqual(suspended.coordination.uncertain, []);
     const after = status(fixture, plan.runId);
     assert.equal(after.state, "IMPLEMENTING");
     assert.equal(after.lastOutcome, "SUSPENDED");
@@ -197,7 +209,7 @@ async function suspendedRun(execution, quotaFlag = "claude-quota") {
   const start = fixture.launch(startArguments(fixture, plan.runId));
   assert.equal(start.json?.data?.status, "SUSPENDED", start.stderr);
   await unflag(fixture, quotaFlag);
-  return { fixture, plan };
+  return { fixture, plan, start: start.json.data };
 }
 
 function runWorktree(fixture) {
@@ -261,16 +273,17 @@ test(
 );
 
 // invariant: SSI-66, SSI-32, and D4. A writer stopped after its write landed
-// is uncertain: resume refuses it and changes nothing, status names it with
-// the digest of its uncertainty record and the one command that reconciles
-// it, a digest that names nothing is refused, and the typed-back digest runs
+// is uncertain: the start it stopped already names it and the one command
+// that reconciles it, resume refuses it and changes nothing, status names it
+// with the digest of its uncertainty record and that command, in text as in
+// JSON, a digest that names nothing is refused, and the typed-back digest runs
 // that one node again on the current worktree.
 test(
   "a node suspended after its write is refused at resume until its digest is typed back, then it runs again",
   TIMEOUT,
   async (t) => {
     if (!DARWIN) return t.diagnostic(PLATFORM);
-    const { fixture, plan } = await suspendedRun(EXECUTIONS.graph, "claude-quota-after-write");
+    const { fixture, plan, start } = await suspendedRun(EXECUTIONS.graph, "claude-quota-after-write");
     assert.deepEqual(visits(fixture, plan.runId), ["plan#1:completed", "build#1:partial"]);
     const ledgerBefore = ledgerText(fixture, plan.runId);
     const refusedResume = fixture.launch(resumeArguments(fixture, plan.runId));
@@ -294,6 +307,12 @@ test(
     const reconcile = `vestra task resume --run-id ${plan.runId} --reconcile ${uncertain.digest}`;
     assert.deepEqual(suspended.next, [reconcile, `vestra task cancel --run-id ${plan.runId}`]);
     assert.ok(refusedResume.stderr.includes(reconcile), "the refusal names the command that reconciles the node");
+    assert.deepEqual({ ...suspended.suspension, at: undefined }, { ...QUOTA, at: undefined });
+    assert.equal(start.next, reconcile, "the suspended start offered a resume that would be refused");
+    assert.deepEqual(start.coordination, suspended.coordination);
+    const text = fixture.launch(["task", "status", "--run-id", plan.runId]);
+    assert.equal(text.status, 0, text.stderr);
+    assertTextAgrees(text.stdout, suspended);
     refusedFor(
       fixture.launch(resumeArguments(fixture, plan.runId, "--reconcile", `sha256:${"0".repeat(64)}`)),
       "VES_TASK_RECONCILE_UNMATCHED",

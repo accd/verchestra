@@ -1162,6 +1162,120 @@ Checks for the fix (darwin): `pnpm typecheck` PASS, `pnpm test:architecture`
 125/125, `pnpm agent:check` PASS, `pnpm test:census` 13/13, `pnpm
 complexity:check` PASS (no new hotspot), and the seven T7 test files 132/132.
 
+## T8 Evidence (CLI surface, examples, and user documentation)
+
+Author's evidence, commit by commit, on branch `strands/t8-surface` (base
+`origin/main` at `d641415`, which carries T3 to T6 and T7 commits 1 to 3). The
+independent verifier re-derives it.
+
+### Commit 1 — coordinated runs presented in plan and status
+
+`apps/vestra-cli/src/task/task-coordination-surface.ts` computes, once, what
+the task commands show of a coordinated run. `plan` presents, beside the
+descriptor the approval binds (`execution`, unchanged), its `coordination`
+topology: the mode, a swarm's start, and one entry per node in plan order with
+its passport (`<driver>:<model>`), its role under the coordination plan's own
+writer rule (`isWriterNode`, now exported by `coordination-plan.ts`, so the
+CLI holds no second copy of the rule), and where its work goes next (`to`: a
+graph node's edge targets, a swarm node's declared handoff destinations). It
+also presents `subscription`, the preconditions `start` will check (SSI-30):
+the method each provider of the run must prove and its statement must name,
+`extraUsage: "disabled"`, the statement's file name (never its path), and
+`preflight`, which is `ready` or the requirement `start` would refuse now
+(`coordinated-run-subscription` or `extra-usage-confirmation`). It is
+informational and machine-local, as `providerAuth` already is: `plan` refuses
+nothing and prints nothing on the terminal for it, and `start` and `resume`
+run the preflight again. `task-billing.ts` splits its preflight into the two
+checks both paths share; `requireSubscriptionPreflight` behaves as before
+(the API-key refusal still explains nothing, a confirmation refusal still
+prints the one step).
+
+`status` shows the same topology entry for each node with its state, visit
+count, and result digest (SSI-32); the suspension (reason, provider, instant,
+the provider's window and reset when it reported them) and the uncertain nodes
+were already shown by T6. `start` and `resume` of a coordinated run now carry
+the same `coordination` member as `status`, from the same records, so the
+result of a run that just stopped names each node's state and every uncertain
+node. Their `next` for a suspended run is the one `status` offers instead of a
+plain resume that would be refused.
+
+Spec-precision note (D4, T6's open question 2). A resume takes one
+`--reconcile` and refuses while another node that may have landed effects
+stays unsettled, so with two or more such nodes no resume can pass. The next
+actions now say so: one uncertain node gives its reconcile command; several
+give none, and `vestra task cancel` is the only action (`status` still lists
+each node with its digest). Before this commit `status` offered one reconcile
+command per node, each of which the resume would refuse. Allowing several
+digests in one resume stays an open owner question.
+
+Text and JSON. The CLI prints a result as text by rendering the same data the
+`--output json` envelope carries (one `member: value` line per member, a nested
+value as compact JSON). The journeys read the text form back and compare it
+member by member, by value, with the JSON form of the same command
+(`tests/helpers/cli-text-fixture.mjs`).
+
+| Behaviour | Assertion (file:line) | Run |
+| --- | --- | --- |
+| SSI-30: a graph's topology names each node's passport, role, and edge targets in plan order; a swarm names its start and each node's handoff destinations; an agent is its one node; a Claude Code node with no write scope is a reader | `tests/unit/task-coordination-surface.test.mjs:22`, `:33`, `:44`, `:53` | `node --test tests/unit/task-coordination-surface.test.mjs`: 7 of 7 |
+| D4: no uncertain node gives a plain resume, one gives its reconcile command, several give none | `tests/unit/task-coordination-surface.test.mjs:62`, `:66`, `:72` | same |
+| SSI-30: `plan` shows each provider's method, the statement file, and `ready` with a complete statement; with no statement, text that is not JSON, a statement older than its regime, or an API-key provider it shows the requirement `start` would refuse, and says nothing on the terminal | `tests/unit/task-billing.test.mjs:212`, `:236` | `node --test tests/unit/task-billing.test.mjs`: 41 of 41 |
+| SSI-30: the plan surface of a v2 request carries the descriptor, the topology, and the preconditions it is given | `tests/unit/task-plan-binding.test.mjs:114` | `node --test tests/unit/task-plan-binding.test.mjs`: 23 of 23 |
+| SSI-32: status of a suspended run shows the suspension, each node with its passport, role, destinations, state, visit count, and result digest, the uncertain node with its digest, and its reconcile command | `tests/integration/task-coordinated-plan.test.mjs:232` | `node --test tests/integration/task-coordinated-plan.test.mjs`: 20 of 20 |
+| D4: status of a run with two uncertain nodes names both digests and offers only the cancel | `tests/integration/task-coordinated-plan.test.mjs:294` | same |
+| SSI-30 through the binary, macOS and Linux: a v2 dry run shows the topology and the preconditions (`extra-usage-confirmation` with no statement), and its text form agrees with its JSON form on every member, the four that each invocation creates anew (`runId`, `bindingDigest`, `approvalExpiresAt`, `review`) only present | `tests/e2e/task-cli-e2e.test.mjs:830` | `node scripts/test-scope.mjs e2e tests/e2e/task-cli-e2e.test.mjs`: 45 of 45 |
+| SSI-32 in the run's result: a quota signal mid-graph shows each node's state (`plan` completed, `build` failed, `review` pending) and no uncertain node, next a plain resume | `tests/e2e/task-subscription-e2e.test.mjs:116` | `node scripts/test-scope.mjs e2e tests/e2e/task-subscription-e2e.test.mjs tests/e2e/task-coordinated-e2e.test.mjs`: 13 of 13 |
+| SSI-32, D4: the start that a writer's quota signal stopped after its write offers the reconcile command and shows the same nodes as status; status shows the window and reset the provider reported; its text form agrees with its JSON form on every member | `tests/e2e/task-subscription-e2e.test.mjs:281` | same |
+
+Tests changed, none deleted. `tests/integration/task-coordinated-plan.test.mjs`
+"status of a suspended run…" keeps every assertion; its expected nodes gain
+the topology members, and its setup moved into the file's `suspended` helper,
+shared with the new two-node case. T6's citations of that file move from
+`:167`, `:252`, `:261` to `:232`, `:309`, `:318`. The T6 journeys in
+`tests/e2e/task-subscription-e2e.test.mjs` gain assertions only; their
+citations move from `:55`, `:75`, `:115`, `:151`, `:218`, `:268`, `:322`,
+`:349`, `:373` to `:56`, `:76`, `:116`, `:163`, `:230`, `:281`, `:341`, `:368`,
+`:392`. `tests/unit/task-billing.test.mjs` citations at or after `:20` move by
+one line (one more import). The Requirement Evidence table below cites the
+current lines; the T5 and T6 sections stay as written at their commits.
+
+Discrimination (author run, one source edit per mutant, restored after the
+run): V1 the role ignores the writer rule (any Claude Code node writes), V2 a
+swarm node lists no destinations, V3 several uncertain nodes offer the first
+one's reconcile, V4 status nodes lose the topology, V5 a swarm's start is not
+shown, V6 the preconditions always read `ready`, V7 the preconditions skip the
+API-key check, V8 the plan surface drops the topology, V9 the plan surface
+drops the preconditions, V10 `task plan` passes no preconditions (journey),
+V11 a suspended start offers the plain resume (journey), V12 the run result
+drops the nodes (journey), V13 the text form leaves a member out (journey), V14
+the text form prints a nested value otherwise than JSON (journey) — all
+killed.
+
+Gates at this commit: `pnpm gate:quick` PASS (format, lint, complexity,
+typecheck; unit 2925, agent-readiness 357, census 13); `pnpm test:architecture`
+131/131; `pnpm agent:check` PASS; the e2e suites `task-cli-e2e` 45/45 and
+`task-subscription-e2e` with `task-coordinated-e2e` 13/13; the integration
+suite `task-coordinated-plan` 20/20; 0 failed, 0 skipped, 0 todo.
+`complexity-baseline.json` is unchanged (no function above 10) and so is the
+census (no file gained or lost `JSON.stringify` or `createHash`). Not run here,
+for the platform matrix: `pnpm gate:full`, `pnpm gate:build`, `pnpm
+gate:security`, and the Linux and Windows runs.
+
+Citations moved with the reshaped files, for the lines that were current at
+the base: `task-status.ts` in `.specs/features/architecture-deepening-2/validation-t9.md`
+sections 2 to 4 (`:77`, `:81`, `:82`, `:175` → `:69`, `:73`, `:74`, `:110`;
+`reasonOf` `:280-283` → `:215-218`; `:181` → `:116`), in `validation-t7.md`
+(`:181` → `:116`, `:236` → `:171`), and in the pilot's validation (`:257` →
+`:192`; `:21` did not move); the CLI's `task-run.ts` in `validation-t7.md`
+(`:264`, `:275`, `:282` → `:265`, `:276`, `:283`), `validation-t1.md` (`:418`
+→ `:426`), `validation-c6.md` (`:416` → `:424`), and the pilot's validation
+(`:62`, `:650-651`, `:439`, `:689-691` → `:63`, `:658-659`, `:447`,
+`:709-711`); `task-plan.ts` in `validation-t8.md` (`:317` → `:323`, twice);
+and `tests/e2e/task-cli-e2e.test.mjs` in this file's SSI-83 row (`:827-852`,
+`:854-871` → `:830-873`, `:875-892`). Left as written: validation-t9's section
+1 and its `task-run.ts:292` (already stale at the base), the "is now" records
+of `validation-t7.md`, `validation-t8.md`'s `:215-231` (the friction at its
+own base), and `coordination-plan.ts`, whose lines did not move.
+
 ## Requirement Evidence
 
 Each row needs a file-and-assertion citation (`path:line` and what the assertion
@@ -1199,16 +1313,16 @@ evidence is FAIL.
 | SSI-27 | `tests/contract/task-request-v2.test.mjs:482-490` unknown start, handoff to or from an unknown node, handoff to itself, a source listed twice; `:395` a swarm node with inputs refused by both | `pnpm test:contract` (906/906, commit 2) | PASS (author) |
 | SSI-28 | `tests/unit/task-plan-binding.test.mjs:68-72` one test per element (mode, node identifier, driver, model, instructions, description, read scope, write scope, input, edge, start, handoff target, and each of the seven limits) asserts a new binding digest; `:74-77` all 19 digests differ; sensor D1–D5 and D7 kill when a field leaves the binding | `pnpm gate:quick` unit 2689 (tip) | PASS (author) |
 | SSI-29 | T3 part: `tests/unit/task-plan-binding.test.mjs:82-91` the Execution Package seals the whole normalized v2 request as its execution contract and the approval binds that package; `tests/integration/task-coordinated-plan.test.mjs:49-59` the plan record seals the same request; executing it at `start` and `resume` is T5 and T8 (until then they refuse, `:94-102`) | `pnpm gate:build` (tip) | PASS (author, T3 part) |
-| SSI-30 | — | — | — |
+| SSI-30 | `plan` of a v2 request presents the mode, every node with its passport (driver and model), role, read and write scope (in `execution`), and destinations (in `coordination`), the edges or handoff targets, the effective limits, and the subscription preconditions with the requirement `start` would refuse: `tests/unit/task-coordination-surface.test.mjs:22`, `:33`, `:44`, `:53`; `tests/unit/task-billing.test.mjs:212`, `:236`; `tests/unit/task-plan-binding.test.mjs:114`; through the binary `tests/e2e/task-cli-e2e.test.mjs:830`; mutants V1, V2, V5–V10 killed | T8 commit 1 (see T8 Evidence) | PASS (author) |
 | SSI-31 | — | — | — |
-| SSI-32 | T6 part: status of a v2 run shows each node's state, visit count, and result digest, the suspension (reason, provider, window, reset when reported), and every uncertain node with its digest and reconcile command: `tests/integration/task-coordinated-plan.test.mjs:167`; journeys `tests/e2e/task-subscription-e2e.test.mjs:115`, `:268`; mutant R15 killed. The text presentation is T8 | T6 commit 3 (see T6 Evidence) | PASS (author, T6 part); T8 pending |
-| SSI-33 | `task resume` revalidates the workflow state, the subscription preconditions and the extra-usage confirmation (commit 1), the approval against the Workspace policy in force, and the worktree change digest before any node starts, and a refusal changes nothing: `tests/unit/task-resumption.test.mjs:70`, `:82`, `:92`; journeys `tests/e2e/task-subscription-e2e.test.mjs:218` (confirmation), `:322` (drift, expired approval); mutants R1, R3, R4 killed | T6 commit 3 (see T6 Evidence) | PASS (author) |
+| SSI-32 | T6 part: status of a v2 run shows each node's state, visit count, and result digest, the suspension (reason, provider, window, reset when reported), and every uncertain node with its digest and reconcile command: `tests/integration/task-coordinated-plan.test.mjs:232`; journeys `tests/e2e/task-subscription-e2e.test.mjs:116`, `:281`; mutant R15 killed. T8 part: each node also shows its passport, role, and destinations (`tests/integration/task-coordinated-plan.test.mjs:232`); two uncertain nodes offer no resume that would be refused (`:294`); the result of `start` and `resume` shows the same nodes and the same next action (`tests/e2e/task-subscription-e2e.test.mjs:116`, `:281`); the text form of status agrees with its JSON form (`:281`); mutants V3, V4, V11–V14 killed | T6 commit 3; T8 commit 1 (see T8 Evidence) | PASS (author) |
+| SSI-33 | `task resume` revalidates the workflow state, the subscription preconditions and the extra-usage confirmation (commit 1), the approval against the Workspace policy in force, and the worktree change digest before any node starts, and a refusal changes nothing: `tests/unit/task-resumption.test.mjs:70`, `:82`, `:92`; journeys `tests/e2e/task-subscription-e2e.test.mjs:230` (confirmation), `:341` (drift, expired approval); mutants R1, R3, R4 killed | T6 commit 3 (see T6 Evidence) | PASS (author) |
 | SSI-34 | `tests/e2e/task-coordinated-e2e.test.mjs:252` cancel stops the running node's provider and ends ABORTED; `tests/unit/coordinated-driver.test.mjs:386`, `tests/integration/strands-coordination-engine.test.mjs:184` every running node cancelled; mutant K6 killed | T5 gates (see T5 Evidence) | PASS (author) |
 | SSI-35 | — | — | — |
 | SSI-36 | — | — | — |
 | SSI-37 | `tests/contract/task-request-v2.test.mjs:145` absent limits take 1, 64, 128, 8, 32, 64 KiB, 256 KiB; `:176-185` 1, default−1, default, default+1 accepted per limit; `:196-209` 65 graph nodes, 129 edges, and 9 swarm agents refused at the default and accepted when raised, 64 nodes, 128 edges, and 8 agents accepted at it | `pnpm test:contract` (906/906, commit 2) | PASS (author) |
 | SSI-38 | `tests/contract/task-request-v2.test.mjs:176-185` ceiling−1 and ceiling accepted per limit; `:187-194` ceiling+1, 0, 1.5, and a string refused by both; `:211-229` 256 nodes, 16 agents, and 512 edges plan at their ceilings, 257, 17, and 513 are refused by both | `pnpm test:contract` (906/906, commit 2) | PASS (author) |
-| SSI-39 | T5 part: `tests/integration/coordinated-executor.test.mjs:60` and `tests/e2e/task-coordinated-e2e.test.mjs:189` usage of every node accumulates on the run's one ledger (330 tokens; 42 tokens in 4 events); across resumes is T6; T6 part: the spend at a suspension is saved and the resumed meter continues from it (`tests/unit/task-run-coordinator.test.mjs:312`, controllable clock), and a graph suspended mid-run then resumed holds the same 42 tokens in 4 events as one uninterrupted (`tests/e2e/task-subscription-e2e.test.mjs:218`); mutant S12 killed | T5 gates (see T5 Evidence); T6 commits 2 and 3 | PASS (author, T5 part); PASS (author, T6 part) |
+| SSI-39 | T5 part: `tests/integration/coordinated-executor.test.mjs:60` and `tests/e2e/task-coordinated-e2e.test.mjs:189` usage of every node accumulates on the run's one ledger (330 tokens; 42 tokens in 4 events); across resumes is T6; T6 part: the spend at a suspension is saved and the resumed meter continues from it (`tests/unit/task-run-coordinator.test.mjs:312`, controllable clock), and a graph suspended mid-run then resumed holds the same 42 tokens in 4 events as one uninterrupted (`tests/e2e/task-subscription-e2e.test.mjs:230`); mutant S12 killed | T5 gates (see T5 Evidence); T6 commits 2 and 3 | PASS (author, T5 part); PASS (author, T6 part) |
 | SSI-40 | `tests/unit/coordinated-driver.test.mjs:129`, `tests/integration/strands-coordination-engine.test.mjs:163` writers never overlap; mutant C2 killed | T5 gates (see T5 Evidence) | PASS (author) |
 | SSI-41 | `tests/unit/coordinated-driver.test.mjs:148`, `tests/integration/coordinated-executor.test.mjs:60` writes outside the node's write scope refused before the executor; mutants C1, C16 killed | T5 gates (see T5 Evidence) | PASS (author) |
 | SSI-42 | A Claude Code node's bridge read scope is the node's read scope (`apps/vestra-cli/src/task/task-coordination.ts` `nodeDriver`, `readScope: session.node.readScope`; the bridge confinement itself is `tests/integration/mcp-tool-bridge.test.mjs`, unchanged); a Codex node does not read through the bridge (open question in the T5 report) | T5 gates (see T5 Evidence) | PASS (author) |
@@ -1220,24 +1334,24 @@ evidence is FAIL.
 | SSI-48 | The bound is applied before emission (`tests/unit/driver-event.test.mjs:143`; driver boundaries `tests/contract/claude-code-driver-structured.test.mjs:119`, `tests/contract/codex-driver-structured.test.mjs:157`) and the port carries only `payload:sha256:<digest>` of the canonical bytes (`tests/integration/driver-execution-adapter.test.mjs:305`); mutants M10, M11 killed. | `pnpm test:unit`, `pnpm test:contract`, `pnpm test:integration` | PASS |
 | SSI-49 | T4 share: the new events carry only the canonical answer, a closed-vocabulary scope, and an ISO reset; checkpoints gain nothing (`tests/security/driver-structured-results-security.test.mjs:58`, `:162`, `:173`). T5 owns the persisted node results and ledger.; T5 part: `tests/security/coordination-record-security.test.mjs:27`, `tests/unit/coordinated-driver.test.mjs:493` the ledger and results hold no session, credential, prompt, or path | `pnpm test:security`; T5 gates | PASS (T4 share); PASS (author, T5 part) |
 | SSI-50 | `tests/unit/node-result.test.mjs:100` earlier results, the handoff, and the context are delimited untrusted data after the rules; tools and scopes come from the plan (`tests/unit/coordinated-driver.test.mjs:148`) | T5 gates (see T5 Evidence) | PASS (author) |
-| SSI-51 | Every provider, verifier included, must be `subscription` or the run is `not configured` (`coordinated-run-subscription`) before any credential, transition, or worktree: `tests/unit/task-billing.test.mjs:163`, `tests/integration/task-coordinated-plan.test.mjs:110`, journey `tests/e2e/task-subscription-e2e.test.mjs:75`; mutants B1, B10 killed | T6 commit 1 (see T6 Evidence) | PASS (author) |
-| SSI-52 | A confirmation naming each provider and its effective method under the current regime is required at `start` and `resume`; absent, malformed, or mismatched is `not configured` (`extra-usage-confirmation`): `tests/unit/task-billing.test.mjs:74`, `:173`, `tests/integration/task-coordinated-plan.test.mjs:132`, journey `tests/e2e/task-subscription-e2e.test.mjs:55`; mutants B1–B9, B11 killed | T6 commit 1 (see T6 Evidence) | PASS (author) |
-| SSI-53 | The statement is a closed shape of closed values and bounded grammars; a token, account identifier, e-mail address, name, path, or key member is refused at either level, and a free-text plan type is refused: `tests/unit/task-billing.test.mjs:74`, `:116`; mutant B8 killed | T6 commit 1 (see T6 Evidence) | PASS (author) |
+| SSI-51 | Every provider, verifier included, must be `subscription` or the run is `not configured` (`coordinated-run-subscription`) before any credential, transition, or worktree: `tests/unit/task-billing.test.mjs:164`, `tests/integration/task-coordinated-plan.test.mjs:110`, journey `tests/e2e/task-subscription-e2e.test.mjs:76`; mutants B1, B10 killed | T6 commit 1 (see T6 Evidence) | PASS (author) |
+| SSI-52 | A confirmation naming each provider and its effective method under the current regime is required at `start` and `resume`; absent, malformed, or mismatched is `not configured` (`extra-usage-confirmation`): `tests/unit/task-billing.test.mjs:75`, `:174`, `tests/integration/task-coordinated-plan.test.mjs:132`, journey `tests/e2e/task-subscription-e2e.test.mjs:56`; mutants B1–B9, B11 killed | T6 commit 1 (see T6 Evidence) | PASS (author) |
+| SSI-53 | The statement is a closed shape of closed values and bounded grammars; a token, account identifier, e-mail address, name, path, or key member is refused at either level, and a free-text plan type is refused: `tests/unit/task-billing.test.mjs:75`, `:117`; mutant B8 killed | T6 commit 1 (see T6 Evidence) | PASS (author) |
 | SSI-54 | `apiKeySource` other than `none` fails a subscription session with `VES_CLAUDE_AUTH_METHOD_MISMATCH` before `session.started` and any tool effect (`tests/contract/claude-code-driver-structured.test.mjs:172`, `spikes/claude-code-driver/test/claude-driver-structured.test.mjs:108`); mutant M1 killed. | `pnpm test:contract`, `pnpm qualify:claude` | PASS |
 | SSI-55 | A subscription-only Codex session reads `account/read` before `model/list` and refuses `apiKey`, `amazonBedrock`, and no account with `VES_CODEX_AUTH_METHOD_MISMATCH` before `thread/start` (`tests/contract/codex-driver-structured.test.mjs:217`, `:232`; `spikes/codex-driver/test/codex-driver-structured.test.mjs:68`); mutant M2 killed. | `pnpm test:contract`, `pnpm qualify:codex` | PASS |
-| SSI-56 | T4 share: credits on any snapshot stop the session before its turn with `VES_CODEX_CREDITS_PRESENT` (`tests/contract/codex-driver-structured.test.mjs:249`); mutant M5 killed. T6 maps it to `not configured`. | `pnpm test:contract`; T6 commit 2 | PASS (T4 share); PASS (author, T6 part: credits on the account of a Codex node suspend the run and the command is `not configured` (`codex-credits`), `tests/unit/coordinated-suspension.test.mjs:196`, journey `tests/e2e/task-subscription-e2e.test.mjs:151`; mutants S9, S14, S15 killed) |
+| SSI-56 | T4 share: credits on any snapshot stop the session before its turn with `VES_CODEX_CREDITS_PRESENT` (`tests/contract/codex-driver-structured.test.mjs:249`); mutant M5 killed. T6 maps it to `not configured`. | `pnpm test:contract`; T6 commit 2 | PASS (T4 share); PASS (author, T6 part: credits on the account of a Codex node suspend the run and the command is `not configured` (`codex-credits`), `tests/unit/coordinated-suspension.test.mjs:196`, journey `tests/e2e/task-subscription-e2e.test.mjs:163`; mutants S9, S14, S15 killed) |
 | SSI-57 | The client sends only its allowlist, refuses every other method at the single write path, and no product source names a credit or login method (`tests/contract/codex-driver-structured.test.mjs:73`, `:92`, `:107`; `tests/architecture/codex-client-methods.test.mjs:42`, `:49`, `:60`); no fallback model, budget, key, or key helper flag is in any pinned invocation (`tests/contract/claude-code-driver-structured.test.mjs:47`); mutants M3, M4 killed. | `pnpm test:contract`, `pnpm test:architecture` | PASS |
 | SSI-58 | Claude `rejected` (with and without reset), Codex `usageLimitExceeded`, a usage-limit or credits-depleted `rateLimitReachedType`, and `ordinaryUsageAllowed: false` each emit one `quota.exhausted` with a reset only when reported; `allowed_warning` is one warning; `rate_limit_reached` is none (`tests/contract/claude-code-driver-structured.test.mjs:187`, `:214`; `tests/contract/codex-driver-structured.test.mjs:283`, `:313`, `:329`); mutants M6–M9, M16 killed. | `pnpm test:contract`, `pnpm test:integration` | PASS |
-| SSI-59 | A quota signal from any node starts no further node (an engine that keeps scheduling is refused), cancels and waits for every running node, and suspends the run: `tests/unit/coordinated-suspension.test.mjs:48`, `:107`; inside the executor `tests/integration/coordinated-executor.test.mjs:162`; journey `tests/e2e/task-subscription-e2e.test.mjs:115`; mutants S5, S6 killed | T6 commit 2 (see T6 Evidence) | PASS (author) |
-| SSI-60 | Completed node results, receipts, the ledger, and the budget ledger persist; the worktree is kept; the writer coordination and the active marker are released; the state stays `IMPLEMENTING`: `tests/integration/coordinated-executor.test.mjs:162`, `tests/unit/task-run-coordinator.test.mjs:274`, journey `tests/e2e/task-subscription-e2e.test.mjs:115`; mutants S1, S3, S10, S11, S12 killed | T6 commit 2 (see T6 Evidence) | PASS (author) |
+| SSI-59 | A quota signal from any node starts no further node (an engine that keeps scheduling is refused), cancels and waits for every running node, and suspends the run: `tests/unit/coordinated-suspension.test.mjs:48`, `:107`; inside the executor `tests/integration/coordinated-executor.test.mjs:162`; journey `tests/e2e/task-subscription-e2e.test.mjs:116`; mutants S5, S6 killed | T6 commit 2 (see T6 Evidence) | PASS (author) |
+| SSI-60 | Completed node results, receipts, the ledger, and the budget ledger persist; the worktree is kept; the writer coordination and the active marker are released; the state stays `IMPLEMENTING`: `tests/integration/coordinated-executor.test.mjs:162`, `tests/unit/task-run-coordinator.test.mjs:274`, journey `tests/e2e/task-subscription-e2e.test.mjs:116`; mutants S1, S3, S10, S11, S12 killed | T6 commit 2 (see T6 Evidence) | PASS (author) |
 | SSI-61 | The record is the code of the signal, the provider, the instant, and only the reported window and reset, each in its grammar, at every layer: `tests/unit/coordinated-suspension.test.mjs:48`, `:140`, `:228`; `tests/integration/coordinated-executor.test.mjs:228`; `tests/unit/task-run-record-readers.test.mjs:170`; mutants S4, S7, S8, S13 killed (the window `scope` is kept beside the four members: spec-precision note in T6 commit 2) | T6 commit 2 (see T6 Evidence) | PASS (author) |
-| SSI-62 | No code path resumes, retries, or switches anything on its own: a suspended command exits with no active process (`tests/e2e/task-subscription-e2e.test.mjs:115`), the reset time is shown and never acted on, and a resumed node runs the sealed descriptor's driver and model under the same preflight (`:218`); spec-precision note (4) of T6 commit 3 | T6 commits 2 and 3 (see T6 Evidence) | PASS (author) |
-| SSI-63 | A suspended run continues only through `vestra task resume`; the suspension surface names it as the one next step and status keeps it with `cancel` (`tests/e2e/task-subscription-e2e.test.mjs:115`, `tests/integration/task-coordinated-plan.test.mjs:252`) | T6 commits 2 and 3 (see T6 Evidence) | PASS (author) |
+| SSI-62 | No code path resumes, retries, or switches anything on its own: a suspended command exits with no active process (`tests/e2e/task-subscription-e2e.test.mjs:116`), the reset time is shown and never acted on, and a resumed node runs the sealed descriptor's driver and model under the same preflight (`:230`); spec-precision note (4) of T6 commit 3 | T6 commits 2 and 3 (see T6 Evidence) | PASS (author) |
+| SSI-63 | A suspended run continues only through `vestra task resume`; the suspension surface names it as the one next step and status keeps it with `cancel` (`tests/e2e/task-subscription-e2e.test.mjs:116`, `tests/integration/task-coordinated-plan.test.mjs:309`) | T6 commits 2 and 3 (see T6 Evidence) | PASS (author) |
 | SSI-64 | Suspension is an executor checkpoint stage and a run outcome, never a workflow state: only `START_IMPLEMENTATION` is applied (`tests/unit/task-run-coordinator.test.mjs:274`); no file under `packages/domain/src/workflow/` changed, and the workflow machine suites pass unchanged | T6 commit 2 (see T6 Evidence) | PASS (author) |
-| SSI-65 | A completed node starts no session again and its persisted result is replayed: `tests/unit/coordinated-suspension.test.mjs:362`, `:453`, `:478`; journey `tests/e2e/task-subscription-e2e.test.mjs:218` (one planner session); mutants R7, R8 killed | T6 commit 3 (see T6 Evidence) | PASS (author) |
-| SSI-66 | A node with no recorded end, or one that ended without a result after an effect landed, refuses the resume with `VES_TASK_NODE_UNCERTAIN` until its uncertainty digest is typed back, at the CLI before any change and again in the driver: `tests/unit/task-resumption.test.mjs:106`, `:114`, `:130`; `tests/unit/coordinated-suspension.test.mjs:379`, `:387`, `:406`; journey `tests/e2e/task-subscription-e2e.test.mjs:268`; fault `tests/fault-injection/task-coordinated-crash-faults.test.mjs:34`; mutants R2, R5, R6, R10, R11, R13 killed | T6 commit 3 (see T6 Evidence) | PASS (author) |
-| SSI-67 | A node that ended failed with no receipt and an unchanged change digest runs again on resume, recorded with `rerunOf`: `tests/unit/coordinated-suspension.test.mjs:362`, `:429`; `tests/unit/task-resumption.test.mjs:97`; journeys `tests/e2e/task-subscription-e2e.test.mjs:218`, `:349`; mutants R9, R12 killed | T6 commit 3 (see T6 Evidence) | PASS (author) |
-| SSI-68 | With a controllable clock, five suspended hours are not counted: the resumed meter starts at the 2 s active before the suspension and ends at 2.5 s; tokens accumulate; usage on subscriptions stays unbilled (`tests/unit/task-run-coordinator.test.mjs:312`; `tests/e2e/task-subscription-e2e.test.mjs:218` reports `not billed (subscription)`); mutant S12 killed | T6 commits 2 and 3 (see T6 Evidence) | PASS (author) |
+| SSI-65 | A completed node starts no session again and its persisted result is replayed: `tests/unit/coordinated-suspension.test.mjs:362`, `:453`, `:478`; journey `tests/e2e/task-subscription-e2e.test.mjs:230` (one planner session); mutants R7, R8 killed | T6 commit 3 (see T6 Evidence) | PASS (author) |
+| SSI-66 | A node with no recorded end, or one that ended without a result after an effect landed, refuses the resume with `VES_TASK_NODE_UNCERTAIN` until its uncertainty digest is typed back, at the CLI before any change and again in the driver: `tests/unit/task-resumption.test.mjs:106`, `:114`, `:130`; `tests/unit/coordinated-suspension.test.mjs:379`, `:387`, `:406`; journey `tests/e2e/task-subscription-e2e.test.mjs:281`; fault `tests/fault-injection/task-coordinated-crash-faults.test.mjs:34`; mutants R2, R5, R6, R10, R11, R13 killed | T6 commit 3 (see T6 Evidence) | PASS (author) |
+| SSI-67 | A node that ended failed with no receipt and an unchanged change digest runs again on resume, recorded with `rerunOf`: `tests/unit/coordinated-suspension.test.mjs:362`, `:429`; `tests/unit/task-resumption.test.mjs:97`; journeys `tests/e2e/task-subscription-e2e.test.mjs:230`, `:368`; mutants R9, R12 killed | T6 commit 3 (see T6 Evidence) | PASS (author) |
+| SSI-68 | With a controllable clock, five suspended hours are not counted: the resumed meter starts at the 2 s active before the suspension and ends at 2.5 s; tokens accumulate; usage on subscriptions stays unbilled (`tests/unit/task-run-coordinator.test.mjs:312`; `tests/e2e/task-subscription-e2e.test.mjs:230` reports `not billed (subscription)`); mutant S12 killed | T6 commits 2 and 3 (see T6 Evidence) | PASS (author) |
 | SSI-69 | T7 Evidence, commit 1 row SSI-69 | gate:quick, test:integration, test:security (bridge suites) | PASS on darwin; Linux and Windows legs pending the platform matrix |
 | SSI-70 | T7 Evidence, commit 1 row SSI-70 | test:integration | PASS on darwin; Windows implementation in commit 2 |
 | SSI-71 | T7 Evidence, commit 2 row SSI-71 | test:unit, test:security | PASS on darwin; win32 cases pending the Windows leg |
@@ -1250,11 +1364,11 @@ evidence is FAIL.
 | SSI-78 | — | — | — |
 | SSI-79 | `tests/integration/strands-empty-environment.test.mjs:50` with a positive control at `:69`; mutant S6 killed by the probe alone | T5 gates (see T5 Evidence) | PASS (author) |
 | SSI-80 | T5 share: 43 mutants killed (validation.md, "T5 discrimination summary"); scope narrowing C1/C16, writer mutex C2, limits C3/C4/C8/C9/S3, destination check C5/C6/S2/S10; T6 share: 42 mutants killed (T6 Evidence, commits 1 to 3), the billing block B1–B11 and the uncertain refusal R2, R6 among them | T5 gates (see T5 Evidence); T6 gates | PASS (author) |
-| SSI-81 | T4 share: events, checkpoints, payloads, and the quota refusal carry no token, session, account data, provider prose, or temporary path (`tests/security/driver-structured-results-security.test.mjs:58`, `:162`, `:173`); mutant M18 killed. T5 and T6 own their records.; T5 part: the node ledger and node results carry no token, session, prompt, repository context, or path (`tests/security/coordination-record-security.test.mjs:27`); T6 part: the extra-usage statement holds no secret and a refusal echoes none (`tests/unit/task-billing.test.mjs:116`, `tests/security/task-suspension-security.test.mjs:35`); the suspension record, the `suspended` checkpoint, the ledger with `rerunOf`, the outcome marker, and status hold no session, account data, purchase field, credential, or path (`tests/security/task-suspension-security.test.mjs:57`, `tests/unit/coordinated-suspension.test.mjs:228`, journeys `tests/e2e/task-subscription-e2e.test.mjs:115`, `:151`) | `pnpm test:security`; T5 gates; T6 gates | PASS (T4 share); PASS (author, T5 part); PASS (author, T6 part) |
+| SSI-81 | T4 share: events, checkpoints, payloads, and the quota refusal carry no token, session, account data, provider prose, or temporary path (`tests/security/driver-structured-results-security.test.mjs:58`, `:162`, `:173`); mutant M18 killed. T5 and T6 own their records.; T5 part: the node ledger and node results carry no token, session, prompt, repository context, or path (`tests/security/coordination-record-security.test.mjs:27`); T6 part: the extra-usage statement holds no secret and a refusal echoes none (`tests/unit/task-billing.test.mjs:117`, `tests/security/task-suspension-security.test.mjs:35`); the suspension record, the `suspended` checkpoint, the ledger with `rerunOf`, the outcome marker, and status hold no session, account data, purchase field, credential, or path (`tests/security/task-suspension-security.test.mjs:57`, `tests/unit/coordinated-suspension.test.mjs:228`, journeys `tests/e2e/task-subscription-e2e.test.mjs:116`, `:163`) | `pnpm test:security`; T5 gates; T6 gates | PASS (T4 share); PASS (author, T5 part); PASS (author, T6 part) |
 | SSI-82 | `tests/build/sealed-self-containment.test.mjs:115` every sealed artifact, the adapter included, imports `node:` built-ins only; sizes, cold start, and a silent `--activation-health` recorded in T5 commits 5 and 6; the staged-layout gate suite runs on the platform matrix | T5 gates (see T5 Evidence) | PASS (author) |
-| SSI-83 | T3 part: v1 is unchanged (SSI-20, SSI-21, SSI-22 rows); a v2 request is opt-in by `schemaVersion: 2` (`packages/application/src/execution/task-request.ts` `normalizeTaskRequest`); `tests/e2e/task-cli-e2e.test.mjs:827-852` a v2 dry run plans through the binary, `:854-871` an invalid descriptor is `VES_TASK_REQUEST_REJECTED` with reason `VES_TASK_REQUEST_EXECUTION_INVALID` and nothing written; T5 part: `tests/integration/task-coordination-loading.test.mjs:40` other commands load no SDK; the v1 journeys pass unchanged (`tests/e2e/task-cli-e2e.test.mjs`, `mediated-task-execution-e2e.test.mjs`, 48/48) | `node --test tests/e2e/task-cli-e2e.test.mjs` 45/45 (tip); T5 gates | PASS (author, T3 and T5 parts) |
+| SSI-83 | T3 part: v1 is unchanged (SSI-20, SSI-21, SSI-22 rows); a v2 request is opt-in by `schemaVersion: 2` (`packages/application/src/execution/task-request.ts` `normalizeTaskRequest`); `tests/e2e/task-cli-e2e.test.mjs:830-873` a v2 dry run plans through the binary, `:875-892` an invalid descriptor is `VES_TASK_REQUEST_REJECTED` with reason `VES_TASK_REQUEST_EXECUTION_INVALID` and nothing written; T5 part: `tests/integration/task-coordination-loading.test.mjs:40` other commands load no SDK; the v1 journeys pass unchanged (`tests/e2e/task-cli-e2e.test.mjs`, `mediated-task-execution-e2e.test.mjs`, 48/48) | `node --test tests/e2e/task-cli-e2e.test.mjs` 45/45 (tip); T5 gates | PASS (author, T3 and T5 parts) |
 | SSI-84 | — | — | — |
-| SSI-85 | T6 part: quota suspension is qualified with deterministic fakes only (the labelled fake Claude Code's `rate_limit_event` and the fake Codex's credits, under fixture flags; `tests/e2e/task-subscription-e2e.test.mjs:115`, `:151`); no allowance is touched. The pilots are T9 | T6 commits 2 and 3 | PASS (author, T6 part); T9 pending |
+| SSI-85 | T6 part: quota suspension is qualified with deterministic fakes only (the labelled fake Claude Code's `rate_limit_event` and the fake Codex's credits, under fixture flags; `tests/e2e/task-subscription-e2e.test.mjs:116`, `:163`); no allowance is touched. The pilots are T9 | T6 commits 2 and 3 | PASS (author, T6 part); T9 pending |
 
 ## Discrimination Sensor (planned)
 

@@ -70,7 +70,7 @@ The bridge's read view already folds case for protected paths
 `src/LOCKED.json` was hidden from reads, but it compares spelling as written:
 `src/vendor/lib.js` was readable under protected `src/vendor/`. The worktree
 tool folds case only for the roots the composition root gives it, which is
-`.verchestra` alone (`apps/vestra-cli/src/task/task-run.ts:418`).
+`.verchestra` alone (`apps/vestra-cli/src/task/task-run.ts:426`).
 
 Code on `origin/main`: the executor tests protected paths at
 `packages/application/src/execution/task-executor.ts:381-388`, the gate at

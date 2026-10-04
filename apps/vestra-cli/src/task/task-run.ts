@@ -33,6 +33,7 @@ import { TaskAuthority } from "./task-authority.ts";
 import { requireSubscriptionPreflight } from "./task-billing.ts";
 import { meterOnRunLedger, recordingMeter } from "./task-budget.ts";
 import { requireCodexSubscription } from "./task-codex-identity.ts";
+import { continuation, coordinationStatus, type CoordinationStatus } from "./task-coordination-surface.ts";
 import { CODEX_CREDITS_PRESENT, coordinatedDriver } from "./task-coordination.ts";
 import { IMPLEMENTER_CREDENTIALS, VERIFIER_CREDENTIAL, readCredentials } from "./task-credentials.ts";
 import { notConfigured, stateInvalid, taskError } from "./task-errors.ts";
@@ -355,6 +356,13 @@ class TaskRunComposition {
     this.#renewLapsedGrant = fromSuspension;
   }
 
+  // invariant: SSI-32. The result of a coordinated run shows its nodes as
+  // `status` does, from the same records, once the run has stopped.
+  async coordinationStatus(): Promise<CoordinationStatus | undefined> {
+    if (!isCoordinatedPlan(this.#plan)) return undefined;
+    return coordinationStatus(this.#plan, this.#runRecord, await this.#checkpoints.executor(), this.#worktrees);
+  }
+
   // invariant: a single-session run drives its implementer; a coordinated run
   // drives its plan's nodes through the coordinated driver. Either is the one
   // driver port of the run's one executor.
@@ -656,14 +664,27 @@ export function watchCancellation(
   };
 }
 
+// why: SSI-63 and D4. A suspended run continues only when its owner resumes
+// it, by the same next action `status` offers: the reconcile command when a
+// node may have landed effects, and `vestra task cancel` when no resume can.
+function resumeAction(runId: string, coordination: CoordinationStatus | undefined): string {
+  return continuation(runId, coordination?.uncertain ?? [])[0] ?? `vestra task cancel --run-id ${runId}`;
+}
+
 async function present(
   repositoryRoot: string,
   plan: TaskPlanRecord,
   runRecord: RunRecord,
   outcome: TaskRunOutcome,
-  state: string
+  state: string,
+  coordination: CoordinationStatus | undefined
 ) {
-  const base = { runId: plan.runId, status: outcome.status, state };
+  const base = {
+    runId: plan.runId,
+    status: outcome.status,
+    state,
+    ...(coordination === undefined ? {} : { coordination })
+  };
   if (outcome.status === "HUMAN_REVIEW") {
     const review = await reviewSurface(repositoryRoot, plan, runRecord);
     return {
@@ -676,9 +697,8 @@ async function present(
     };
   }
   if (outcome.status === "FAILED" || outcome.status === "ABORTED") return { ...base, reason: outcome.reason };
-  // why: SSI-63. A suspended run continues only when its owner resumes it.
   if (outcome.status === "SUSPENDED")
-    return { ...base, suspension: outcome.suspension, next: `vestra task resume --run-id ${plan.runId}` };
+    return { ...base, suspension: outcome.suspension, next: resumeAction(plan.runId, coordination) };
   if (outcome.status === "VERIFICATION_FAILED")
     return { ...base, verificationReport: outcome.reportRef, next: `vestra task cancel --run-id ${plan.runId}` };
   if (outcome.status === "ESCALATED")
@@ -729,7 +749,14 @@ export async function runTask(
       // `not configured`; the run itself is suspended and nothing is lost.
       if (outcome.status === "SUSPENDED" && outcome.suspension.reason === CODEX_CREDITS_PRESENT)
         throw notConfigured("codex-credits", "Codex reports credits on its account; the run is suspended");
-      const data = await present(workspace.repositoryRoot, plan, runRecord, outcome, currentRun(runtime, runId).state);
+      const data = await present(
+        workspace.repositoryRoot,
+        plan,
+        runRecord,
+        outcome,
+        currentRun(runtime, runId).state,
+        await composition.coordinationStatus()
+      );
       return { data, exitCode: outcome.status === "HUMAN_REVIEW" ? 0 : 1 };
     } finally {
       stop();
