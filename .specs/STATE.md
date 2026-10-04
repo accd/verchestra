@@ -2957,7 +2957,8 @@ note. -->
 
 - **Status:** proposed (T9 remediation R2 of
   `.specs/features/strands-subscription-integration/`; finding 4, SSI-42,
-  TM-004).
+  TM-004). Its residual and rejected alternatives were corrected by
+  remediation R4 (finding 4 of the second verification).
 - **Context:** A Claude Code node reads through the bridge's read view
   (`WorktreeReadView`), held to its read scope. A Codex node reads through
   Codex's own read-only sandbox, which the bridge cannot hold, and ran with
@@ -2982,17 +2983,33 @@ note. -->
      clears one a killed session left at that path before the node runs
      again.
 - **Alternatives rejected:** recording the unconfined read as an accepted
-  risk alone (the view confines every read relative to the working
-  directory); hard links into the worktree (a mode change would reach the
+  risk alone (without the copy a node starts in the worktree, where every
+  file outside its read scope and every protected path is a plain relative
+  path away; the copy removes that, not a read that leaves the copy); moving
+  the copy out of the Workspace state tree, to a root under the operating
+  system's temporary directory (the session's `CODEX_HOME` must be the
+  Workspace's Codex identity directory, which Codex reads and rewrites to
+  authenticate, and `HOME` and `CODEX_HOME` are in the environment Codex's
+  commands inherit, so `$CODEX_HOME/auth.json` and `$CODEX_HOME/../worktrees/`
+  reach what `../../../` reaches from the copy; the move would change how
+  the reach is spelled, not the reach, and would need a fixed path under a
+  shared temporary directory, or a marker, to clear a view a killed session
+  left); hard links into the worktree (a mode change would reach the
   worktree's own files, and a link across volumes fails); copying part of an
   oversized scope (the node would read a scope other than the approved one
   without knowing it); a readable-root policy in the Codex driver (not
   verified against 0.159.3 without a provider call).
 - **Consequence:** A Codex node no longer works in the worktree, and two Codex
-  nodes of one run no longer share a working directory. Codex's sandbox still
-  permits a read by absolute path outside the view: an accepted residual,
+  nodes of one run no longer share a working directory. The copy changes
+  where a node starts reading, not what it can read: Codex's sandbox still
+  permits any read outside the copy, by an absolute path, by a relative path
+  through `..` (from `<sessions root>/codex-node-<run ID>-<node ID>-<visit>/scope`,
+  `../../../worktrees/` reaches the run's worktree and
+  `../../../codex-identity/auth.json` the Workspace's Codex login), or by a
+  path built from `HOME` or `CODEX_HOME`. That is an accepted residual,
   recorded for TM-004, whose reach into the Run record is limited by the node
-  result screen (SSI-49). Each Codex node holds one copy of its read scope on
+  result screen (SSI-49), which withholds the Codex login's tokens and API
+  key as well as the run's credentials and machine-local roots. Each Codex node holds one copy of its read scope on
   disk for its lifetime, at most 5,000 files of at most 1 MiB. A view a
   killed session left behind stays under the sessions root, read-only, until
   the node runs again or its owner makes it writable and removes it.
