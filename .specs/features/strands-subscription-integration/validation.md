@@ -3619,6 +3619,63 @@ or lost `JSON.stringify` or `createHash`; no complexity key changed.
 is gone, the screen resolves at `:593`. `task-run.ts:443`, `:457`, `:462` are
 unchanged.
 
+**Next action**: superseded by the follow-up below.
+
+#### R4 follow-up: the named-pipe helper outlived a refusal (SSI-75)
+
+On `070be02` the bounds of `56a041d` named the stall: the Windows leg of
+`gate:security` (run 37204692414) failed `win32: a frame beyond its bound on
+the named pipe is refused` with "the pipe client's close did not settle within
+45000 ms; connected: true; 50 bytes received". The client had its `ready`
+line (50 bytes) and stayed connected, so the PowerShell helper still held the
+pipe's server end. The same case took 578 ms at `f285f2b` (run 37197307202):
+an intermittent stall, most likely the one that hung `93b38c5`. The full and
+build gates passed on Windows at `070be02`.
+
+**Cause in the code.** A scratch run with the fake host (not tracked)
+delivered the 8 MiB + 1 frame in 64 KiB chunks under backpressure and
+reached the refusal and the tree termination, so the Node side of the
+refusal holds. What followed it was one unverified attempt: on a closed
+connection, or the channel's close, the transport called the tree terminator
+once (`taskkill` from PATH on Windows, no timeout), swallowed its failure,
+never checked that the helper exited, and had no other means; the helper's
+own exit depends on PowerShell noticing the end of its standard streams.
+Which of the two failed on the runner cannot be shown without a Windows
+host; either leaves the helper holding the pipe.
+
+**Change** (`2aadcc2`, `packages/platform-node/src/windows-pipe-transport.ts`):
+every end of the channel (a refused client and a client that left through
+the connection's close, `:394`; the channel's close through `#shutdown`) goes
+through one memoized `#endHelper` (`:411`): the tree termination is awaited
+under the exit bound (`settlesWithin`, `:250`), then the helper's exit under
+the same bound, and a helper still running is killed through its own handle
+(`:419`; `PipeHelperProcess.kill`, `:207`, which cannot reach a process that
+reused the pid), then its exit is awaited once more. The bound is 5 s per
+step (`exitWaitMs`). The helper script is unchanged (its digest is pinned):
+it already ends when its standard input ends. The security case is
+unchanged.
+
+**Tests** (every platform, fakes only): the fake helper ignores the end of
+its streams, and the fake host's tree terminator can miss it or never return
+(`tests/helpers/pipe-bridge-fixture.mjs:123`, `:154`).
+`tests/unit/windows-pipe-transport.test.mjs:317`: a refused client's helper is
+killed by its handle within the bound when the tree termination misses or
+hangs, ended once, and the run's directory removed; `:333`: the same for the
+channel's close; `:307`: a helper its tree termination ended is not killed
+again.
+
+| Mutant | Killer (failed of total, unit `windows-pipe-transport` + security `windows-pipe-bridge-security`) |
+| --- | --- |
+| R4-M4a no termination when the connection closes (`:394` removed) | 7/60: both new refusal cases and five existing ones |
+| R4-M4b no kill through the handle (`:419` removed) | 4/60: all four new cases |
+| R4-M4c the tree termination awaited without its bound | 2/60: both `hangs` cases |
+
+Gates at `2aadcc2` (darwin arm64): `pnpm gate:quick` PASS (unit 2987/2987,
+agent-readiness 357/357, census 13/13, complexity unchanged); `pnpm
+test:architecture` 132/132; `pnpm agent:check` PASS. Not verified here: the
+real pipe on Windows; the next Windows `gate:security` leg must pass
+`windows-pipe-bridge-security.test.mjs` as it stands.
+
 **Next action**: push the branch and run the platform matrix, with the
 Windows `gate:security` leg first; T10 applies the three texts above; then a
-fresh verification of SSI-49, SSI-81, SSI-83, and O12, O13, O15.
+fresh verification of SSI-49, SSI-81, SSI-83, SSI-75, and O12, O13, O15.
