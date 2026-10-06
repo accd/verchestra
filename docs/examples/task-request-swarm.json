@@ -28,7 +28,7 @@
     }
   ],
   "budgets": { "maximumCostUsd": 5, "maximumTokens": 2000000, "maximumDurationMs": 3600000 },
-  "verifier": { "driverId": "codex", "model": "gpt-5.2-codex" },
+  "verifier": { "driverId": "codex", "model": "gpt-5.5" },
   "instructions": "Extend parseDuration in src/duration.js to accept hour-minute strings such as 1h30m, and add tests in test/duration.test.js. Keep the existing API.",
   "execution": {
     "mode": "swarm",
@@ -44,7 +44,7 @@
       },
       {
         "nodeId": "reviewer",
-        "driver": { "driverId": "codex", "model": "gpt-5.2-codex" },
+        "driver": { "driverId": "codex", "model": "gpt-5.5" },
         "description": "Reviews the change and hands it back or ends the work",
         "instructions": "Review the change in src/duration.js and test/duration.test.js against the done criteria. Hand back to writer with each problem you found, or end the work when there is none. Do not write code.",
         "readScope": ["src", "test"],
