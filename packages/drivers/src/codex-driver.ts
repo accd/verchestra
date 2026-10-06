@@ -63,10 +63,16 @@ export interface CodexExecution {
   // limits, and runs only on a ChatGPT login with no credits and ordinary
   // usage allowed (SSI-55, SSI-56). Absent keeps the T04 conversation.
   readonly subscriptionOnly?: true;
-  // invariant: the session reads the account (`account/read`) and ends there:
-  // no rate limit is read, no model is listed, and no thread or turn starts,
-  // so nothing of an allowance is spent. It is how a run learns its plan type.
+  // invariant: the session reads the account (`account/read`) and ends there, so
+  // nothing of an allowance is spent: no rate limit is read, no thread or turn
+  // starts, and no model is listed unless `modelsToCheck` asks for it. It is how
+  // a run learns its plan type.
   readonly accountOnly?: true;
+  // why: learning inside the session that runs a turn that the account lacks a
+  // model is too late, since the implementer has spent its allowance (AD-085).
+  // hazard: alone this check must stay on the T04 protocol, whose floor is lower
+  // than the account read's; adding `accountOnly` raises it to 0.159.3.
+  readonly modelsToCheck?: readonly string[];
 }
 
 // invariant: the plan types `PlanType` names in the App Server protocol of
@@ -100,6 +106,12 @@ export interface CodexAccountReport {
   readonly planType: CodexPlanType | "unknown";
 }
 
+// invariant: all that is kept of the account's model list: which of the names
+// the session was asked about it does not offer.
+export interface CodexModelReport {
+  readonly unavailable: readonly string[];
+}
+
 export interface CodexDriverDependencies {
   readonly resolveExecution: (request: DriverStartRequest) => Promise<CodexExecution>;
   readonly command?: readonly string[];
@@ -113,6 +125,9 @@ export interface CodexDriverDependencies {
   // once the account is proven a ChatGPT login, for the caller to compare with
   // the owner's statement.
   readonly onAccount?: (account: CodexAccountReport) => void;
+  // why: a session asked to check models reports here, once, which of them
+  // the account does not offer, for the caller to refuse before it spends.
+  readonly onModels?: (models: CodexModelReport) => void;
 }
 
 function codexError(code: string, message: string): DriverProtocolError {
@@ -186,6 +201,7 @@ interface CodexConversation {
   readonly threadParams: () => Readonly<Record<string, unknown>>;
   readonly onMessageSent: ((message: Readonly<Record<string, unknown>>) => void) | undefined;
   readonly onAccount: ((account: CodexAccountReport) => void) | undefined;
+  readonly onModels: ((models: CodexModelReport) => void) | undefined;
   readonly plan: CodexSessionPlan;
 }
 
@@ -193,6 +209,16 @@ interface CodexSessionPlan {
   readonly structured: StructuredOutputPlan | undefined;
   readonly subscriptionOnly: boolean;
   readonly accountOnly: boolean;
+  readonly checkedModels: readonly string[] | undefined;
+}
+
+type ModelCatalog = { readonly data?: readonly { readonly id?: string; readonly model?: string }[] };
+
+// invariant: one rule says whether the account offers a model, for the check
+// before a run and for the session's own, so what the first lets through the
+// second does not refuse.
+function offersModel(catalog: ModelCatalog, model: string): boolean {
+  return catalog.data?.find((entry) => entry.model === model || entry.id === model)?.model === model;
 }
 
 type Row = Readonly<Record<string, unknown>>;
@@ -426,6 +452,17 @@ function codexProtocol(channel: ProviderChannel, conversation: CodexConversation
       return refuse("VES_CODEX_QUOTA_EXHAUSTED", "Codex reports that the usage allowance is exhausted");
     }
   };
+  // invariant: a model check ends the session with its answer: the asked
+  // names the list lacks, and nothing else of the list.
+  const reportModels = (names: readonly string[], list: unknown): void => {
+    const catalog = row(list);
+    if (catalog === undefined || !Array.isArray(catalog["data"]))
+      return refuse("VES_CODEX_PROTOCOL_FAILED", "Codex model list is invalid");
+    conversation.onModels?.(
+      Object.freeze({ unavailable: Object.freeze(names.filter((name) => !offersModel(catalog as ModelCatalog, name))) })
+    );
+    channel.result();
+  };
   // invariant: what a session asks of the account after `initialized`: an
   // account-only session reads the account and is done; a subscription-only
   // one reads the account and its rate limits before anything else.
@@ -440,10 +477,11 @@ function codexProtocol(channel: ProviderChannel, conversation: CodexConversation
       capabilities: { experimentalApi: true }
     });
     notify("initialized");
-    if (await accountSteps()) return channel.result();
-    const catalog = (await rpc("model/list")) as { data?: readonly { id?: string; model?: string }[] };
-    const selected = catalog.data?.find((entry) => entry.model === execution.model || entry.id === execution.model);
-    if (selected?.model !== execution.model)
+    const endsAfterAccount = await accountSteps();
+    if (plan.checkedModels !== undefined) return reportModels(plan.checkedModels, await rpc("model/list"));
+    if (endsAfterAccount) return channel.result();
+    const catalog = (await rpc("model/list")) as ModelCatalog;
+    if (!offersModel(catalog, execution.model))
       throw codexError("VES_CODEX_MODEL_UNAVAILABLE", "Codex model is unavailable");
     const thread = (await rpc("thread/start", conversation.threadParams())) as { thread?: { id?: string } };
     threadId = thread.thread?.id;
@@ -477,6 +515,26 @@ function accountFlag(value: unknown): boolean {
   if (value !== undefined && value !== true)
     throw codexError("VES_CODEX_SUBSCRIPTION_INVALID", "Codex subscription requirement is invalid");
   return value === true;
+}
+
+const MAXIMUM_CHECKED_MODELS = 16;
+const MODEL_NAME = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$/u;
+
+// invariant: a model check names between one and sixteen distinct models, each
+// a bounded name, so the session asks the account for nothing but those.
+function modelsToCheck(value: unknown, asksForTurn: boolean): readonly string[] | undefined {
+  if (value === undefined) return undefined;
+  // why: a model check ends before any turn, so no turn's answer, no rate
+  // limit, and no other check may be asked of it.
+  if (asksForTurn) throw codexError("VES_CODEX_MODEL_CHECK_INVALID", "Codex model check asks for a turn");
+  const valid =
+    Array.isArray(value) &&
+    value.length >= 1 &&
+    value.length <= MAXIMUM_CHECKED_MODELS &&
+    value.every((name) => typeof name === "string" && MODEL_NAME.test(name)) &&
+    new Set(value).size === value.length;
+  if (!valid) throw codexError("VES_CODEX_MODEL_CHECK_INVALID", "Codex model check is invalid");
+  return Object.freeze([...(value as readonly string[])]);
 }
 
 export class CodexDriver implements Driver {
@@ -596,6 +654,7 @@ export class CodexDriver implements Driver {
           threadParams: () => this.buildThreadParams(execution),
           onMessageSent: this.#dependencies.onMessageSent,
           onAccount: this.#dependencies.onAccount,
+          onModels: this.#dependencies.onModels,
           plan
         })
     });
@@ -626,10 +685,11 @@ export class CodexDriver implements Driver {
     // and no rate limit to read, so neither may be asked of it.
     if (accountOnly && (subscriptionOnly || structured !== undefined))
       throw codexError("VES_CODEX_SUBSCRIPTION_INVALID", "Codex account-only session asks for a turn");
+    const checkedModels = modelsToCheck(execution.modelsToCheck, subscriptionOnly || structured !== undefined);
     const usesNewProtocol = structured !== undefined || subscriptionOnly || accountOnly;
     if (usesNewProtocol && !meetsMinimum(version, CODEX_STRUCTURED_MINIMUM_VERSION, VERSION_PATTERN))
       throw codexError("VES_CODEX_VERSION_UNSUPPORTED", "Codex version is unsupported");
-    return Object.freeze({ structured, subscriptionOnly, accountOnly });
+    return Object.freeze({ structured, subscriptionOnly, accountOnly, checkedModels });
   }
 
   #validateExecution(request: DriverStartRequest, execution: CodexExecution): void {
