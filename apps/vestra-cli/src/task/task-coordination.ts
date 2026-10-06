@@ -17,6 +17,7 @@ import {
   assertStructuredAnswer,
   CoordinatedDriver,
   NativeAgentEngine,
+  sessionResult,
   type CoordinationEngine,
   type CoordinationMode,
   type CoordinationNode,
@@ -358,7 +359,7 @@ function codexNodeAdapter(options: CoordinatedRunOptions, session: CoordinationN
         })
       );
       assertStructuredAnswer(finished.outcome, finished.errorCodes);
-      return Object.freeze({ status: finished.outcome, outputRefs: Object.freeze(outputRefs) });
+      return sessionResult(finished.outcome, Object.freeze(outputRefs), finished.errorCodes);
     } finally {
       await provider.end();
       await removeMaterializedView(join(root, "scope"));

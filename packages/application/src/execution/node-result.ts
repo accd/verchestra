@@ -30,11 +30,15 @@ export type CoordinationErrorCode =
 
 export class CoordinationRunError extends Error {
   readonly code: CoordinationErrorCode;
+  // invariant: the stable code of what ended a node's session, when its driver
+  // reported one; the run records it as the cause of the failure.
+  readonly reason?: string;
 
-  constructor(code: CoordinationErrorCode, message: string, options?: ErrorOptions) {
+  constructor(code: CoordinationErrorCode, message: string, options?: ErrorOptions & { readonly reason?: string }) {
     super(message, options);
     this.name = "CoordinationRunError";
     this.code = code;
+    if (options?.reason !== undefined) this.reason = options.reason;
   }
 }
 

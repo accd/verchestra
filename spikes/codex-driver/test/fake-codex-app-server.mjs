@@ -67,10 +67,17 @@ function forkTree() {
 
 lines.on("line", (line) => {
   const message = JSON.parse(line);
-  if (message.method === "initialize") {
+  if (message.method === "initialize" && mode === "exit-on-initialize") {
+    // why: an App Server that ends before it answers its first request.
+    process.exit(3);
+  } else if (message.method === "initialize") {
     emit({ id: message.id, result: { userAgent: "fake-codex", codexHome: "private", platformFamily: "windows", platformOs: "windows" } });
   } else if (message.method === "model/list") {
     emit({ id: message.id, result: { data: [{ id: "gpt-5.5-codex", model: "gpt-5.5-codex", isDefault: true }] } });
+  } else if (message.method === "thread/start" && mode === "thread-refused") {
+    // why: an App Server that answers `thread/start` with a JSON-RPC error, as
+    // one that is not signed in does.
+    emit({ id: message.id, error: { code: -32000, message: "not authenticated" } });
   } else if (message.method === "thread/start") {
     emit({ id: message.id, result: { thread: { id: "private-thread-id", model: message.params.model ?? "gpt-5.5-codex", ephemeral: true } } });
     emit({ method: "thread/started", params: { thread: { id: "private-thread-id" } } });

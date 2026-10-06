@@ -1500,6 +1500,26 @@ test(
   }
 );
 
+// invariant: a run whose implementer's session failed says why: the driver's
+// stable code is the run's recorded reason, in the start's data and in
+// `status.lastReason`, and the public executor code stays out of it. The
+// fake `claude` ends its turn with an error result under the `claude-error`
+// flag, and the repair loop does not retry a failure that is no gate failure.
+test("a run whose implementer's session failed records the driver's code as the reason", TIMEOUT, async (t) => {
+  if (!DARWIN) return notConfiguredOffMacOS(t);
+  const fixture = await taskFixture();
+  const plan = await approved(fixture);
+  await writeFile(join(fixture.scratch, "claude-error"), "");
+  const run = start(fixture, plan.runId);
+  assert.equal(run.status, 1, run.stderr);
+  assert.equal(run.json.data.state, "FAILED");
+  assert.equal(run.json.data.reason, "VES_CLAUDE_EXECUTION_FAILED");
+  const after = status(fixture, plan.runId);
+  assert.equal(after.state, "FAILED");
+  assert.equal(after.lastReason, "VES_CLAUDE_EXECUTION_FAILED");
+  assert.equal(logLines(fixture, "fake-codex.log").length, 0, "the verifier was never asked");
+});
+
 // invariant: a verifier does not start when the run's ceiling was already
 // reached. The duration ceiling passes while the implementation gate is held:
 // 90% of 12 s is 10.8 s. The gate then passes and the task is committed, and

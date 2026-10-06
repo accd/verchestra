@@ -130,15 +130,40 @@ test("Codex Driver blocks a model absent from the app-server catalog", async () 
     (event) => events.push(event),
     new AbortController().signal
   );
-  assert.equal(
-    events.some((event) => event.type === "error" && event.code === "VES_CODEX_PROTOCOL_FAILED"),
-    true
+  assert.deepEqual(
+    events.filter((event) => event.type === "error").map((event) => event.code),
+    ["VES_CODEX_MODEL_UNAVAILABLE"]
   );
   assert.equal(
     events.some((event) => event.type === "model.resolved"),
     false
   );
 });
+
+// invariant: the code a session ends with names the cause when the driver has
+// one, and a provider that ends before it answers is a protocol failure.
+for (const [mode, code] of [
+  ["thread-refused", "VES_CODEX_RPC_FAILED"],
+  ["exit-on-initialize", "VES_CODEX_PROTOCOL_FAILED"]
+]) {
+  test(`Codex Driver reports ${code} for an App Server that is in mode ${mode}`, async () => {
+    const fixture = codexFixture({ environment: { FAKE_CODEX_MODE: mode } });
+    const events = [];
+    await new CodexDriver(fixture.dependencies()).start(
+      fixture.request(),
+      (event) => events.push(event),
+      new AbortController().signal
+    );
+    assert.deepEqual(
+      events.filter((event) => event.type === "error").map((event) => event.code),
+      [code]
+    );
+    assert.equal(
+      events.some((event) => event.type === "model.resolved"),
+      false
+    );
+  });
+}
 
 test("Codex Driver normalizes a declared dynamic tool and denies inline execution", async () => {
   const tool = {

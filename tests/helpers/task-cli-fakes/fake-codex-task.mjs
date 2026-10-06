@@ -32,7 +32,9 @@ const log = fixtureLog("fake-codex.log");
 // why: a turn names its process in a log of its own, so a test can tell that a
 // verifier it stopped was really running, and that the process is gone.
 const turnLog = fixtureLog("fake-codex-turn.log");
-const models = ["gpt-5.2-codex"];
+// why: the `codex-model-missing` flag is an account that does not offer the
+// model the verifier asked for, as a ChatGPT plan that lists other models.
+const models = [fixtureFlag("codex-model-missing") ? "gpt-6-sol" : "gpt-5.2-codex"];
 const environmentKeys = () =>
   Object.keys(process.env).sort((left, right) => Number(left > right) - Number(left < right));
 

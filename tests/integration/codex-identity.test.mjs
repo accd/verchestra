@@ -280,7 +280,7 @@ test("a subscription verifier without a ChatGPT login fails closed instead of us
   const session = await verifierSession(undefined, (base) => ({ identityDirectory: base.directory }));
   await assert.rejects(session.run(), (error) => {
     assert.equal(error.envelope.code, "VES_TASK_FAILED");
-    assert.equal(error.envelope.safeDetails.reason, "VES_TASK_VERIFIER_FAILED");
+    assert.equal(error.envelope.safeDetails.reason, "VES_CODEX_RPC_FAILED");
     return true;
   });
   assert.equal((await session.sessions())[0].environmentKeys.includes("OPENAI_API_KEY"), false);

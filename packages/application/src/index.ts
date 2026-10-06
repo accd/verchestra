@@ -117,6 +117,8 @@ export {
   type WorkspaceReconcileResult
 } from "./sync/workspace-reconcile.ts";
 export {
+  firstStableCode,
+  sessionResult,
   TaskExecutionCoordinator,
   TaskExecutionSuspended,
   TaskExecutorError,
