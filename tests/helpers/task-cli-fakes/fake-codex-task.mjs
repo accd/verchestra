@@ -207,6 +207,13 @@ function startThread(message) {
     credentialMatchesStore: credentialMatchesStore("openai-api-key", process.env.OPENAI_API_KEY),
     environmentKeys: environmentKeys()
   });
+  // why: the `codex-thread-refused` flag is an App Server that refuses
+  // `thread/start` after the account and the model list were read, as one
+  // whose login lapsed in between does: a failure only the session reveals.
+  if (fixtureFlag("codex-thread-refused")) {
+    emit({ id: message.id, error: { code: -32000, message: "refused" } });
+    return;
+  }
   if (process.env.OPENAI_API_KEY === undefined && login !== "chatgpt") {
     emit({ id: message.id, error: { code: -32000, message: "not authenticated" } });
     return;
@@ -226,6 +233,9 @@ lines.on("line", (line) => {
   } else if (message.method === "account/rateLimits/read") {
     accountReads.add(message.method);
     emit({ id: message.id, result: rateLimits() });
+  } else if (message.method === "model/list" && fixtureFlag("codex-model-list-error")) {
+    // why: an App Server that answers `model/list` with a JSON-RPC error.
+    emit({ id: message.id, error: { code: -32000, message: "unavailable" } });
   } else if (message.method === "model/list") {
     emit({ id: message.id, result: { data: models.map((model) => ({ id: model, model })) } });
   } else if (message.method === "thread/start") {

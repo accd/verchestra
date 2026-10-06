@@ -3196,6 +3196,59 @@ note. -->
   `claude-fable-5`); no provider was called to confirm that an account accepts
   them.
 
+### AD-085 — A run proves that its Codex account offers its models before it spends anything
+
+- **Status:** proposed, **human review required**
+  (`.specs/features/p1-pilot-remediation/`, Frente B, PPR-08). It adds a short
+  Codex process to `start` and `resume` of a v1 run, which the plan asked to be
+  recorded here.
+- **Context:** the pilot P1 (#406) learned that the account does not offer the
+  verifier's model only when the verifier's own session listed the models, after
+  the implementer had spent its allowance and made its commit. Nothing checked
+  the model before the first effect.
+- **Decision:**
+  1. The Codex driver offers a session that checks models: `modelsToCheck`, one
+     to sixteen distinct, bounded names. It lists the models, reports which of the
+     asked names the list lacks, and ends: no thread, no turn, no rate limit, and
+     of the list nothing else is kept (SSI-49). One rule says whether the account
+     offers a model, for this check and for the session's own, so what the check
+     lets through the session does not refuse. Alone it speaks only the T04
+     protocol, so it keeps that conversation's floor (0.115.0); with
+     `accountOnly` it reads the account first and needs 0.159.3.
+  2. `prepare`, which `start` and `resume` share, runs one such session on the
+     verifier's subscription login, after the credentials and the login are
+     proven and before the writer lease, a transition, or a worktree. For a v2 run
+     the plan type is compared with the owner's statement in the same session. A v2 run asks it for the account and for every Codex model
+     of the run, the verifier's and each node's. A v1 run asks only for the
+     models: its verifier keeps the T04 conversation, and raising its floor is
+     not this decision's to make (AD-082, SSI-83).
+  3. A model the account does not offer is `VES_TASK_NOT_CONFIGURED`, requirement
+     `codex-model-unavailable`. The terminal names the models, as it names the
+     plan type; the public error carries the requirement alone, because the
+     envelope's one safe detail for this code is `requirement`, and naming a model
+     there would extend its schema. A session that cannot list the models is
+     `codex-model-list` (`codex-account` when it also read the account), and a v2
+     build below 0.159.3 is `codex-version`, as before.
+  4. A verifier on an API key is not checked: it has no ChatGPT login to ask, and
+     handing its key to a pre-check would widen where the key goes. Its session
+     reveals a missing model, now with its cause (AD-083).
+  5. Claude Code is not checked. Its stream's `init` event names the one model the
+     session runs and lists none the account offers
+     (`packages/drivers/src/claude-code-driver.ts`, the identity check), and the
+     session that emits it is the implementer's. `docs/quick-start.md` says so.
+- **Alternatives rejected:** checking only inside the verifier's session (that is
+  P1); a second process for the plan type and for the models (one answers both);
+  raising the v1 floor to 0.159.3 (AD-082); the model's name in the public
+  error's safe details (a schema change for a bounded request value the terminal
+  already shows); skipping the check when it cannot list (a guard that fails open
+  is no guard).
+- **Consequence:** every `start` and `resume` on a Codex subscription launches one
+  more short Codex process, a v1 run included, which spends nothing of the
+  allowance. A model the account loses between the check and the run is still
+  reported by the session, with its cause. A request that names a model the
+  account does not offer is refused at `start`, not at `plan`, since `plan` makes
+  no provider call.
+
 ## Handoff
 
 - **Feature:** `strands-subscription-integration` (T1–T10) on `main` through
@@ -3214,14 +3267,15 @@ note. -->
   `setup-draft.md` (D8). Remediation R5 (`account_id` withheld, mutant D6)
   landed in #534.
 
-- **Feature:** `p1-pilot-remediation` (T1, T2, T4) on `fix/task-failure-cause`
-  and `feat/subscription-only-models`; handoff status `in_progress`.
+- **Feature:** `p1-pilot-remediation` (T1 to T4) on `fix/task-failure-cause`,
+  `feat/subscription-only-models`, and `feat/codex-model-availability`; handoff
+  status `in_progress`.
 - **Completed:** AD-083: a failed run records the cause its driver reported, and
   `status.lastReason` shows it. AD-084: a model can be subscription-only, with
-  no price. See `.specs/features/p1-pilot-remediation/handoff.md`.
-- **Next:** T3, the model's availability checked before the allowance is spent;
-  then the pilot's record and the `.8` candidate, which need the owner
-  (`npm publish` with 2FA).
+  no price. AD-085: a run proves its Codex account offers its models before it
+  spends anything. See `.specs/features/p1-pilot-remediation/handoff.md`.
+- **Next:** T5, the pilot's record and requests; then the `.8` candidate, which
+  needs the owner (`npm publish` with 2FA).
 
 - **Feature:** `subscription-provider-auth` (ADP-A, tasks TA1 and TA2) on
   `feat/subscription-provider-auth`.

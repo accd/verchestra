@@ -41,7 +41,7 @@ import {
   type ExtraUsageConfirmation
 } from "./task-billing.ts";
 import { meterOnRunLedger, recordingMeter } from "./task-budget.ts";
-import { codexAccountPlanType } from "./task-codex.ts";
+import { codexAccountFacts, codexUnavailableModels } from "./task-codex.ts";
 import { requireCodexSubscription } from "./task-codex-identity.ts";
 import { continuation, coordinationStatus, type CoordinationStatus } from "./task-coordination-surface.ts";
 import { CODEX_CREDITS_PRESENT, coordinatedDriver } from "./task-coordination.ts";
@@ -193,19 +193,20 @@ async function verifierAccess(
   return { executable, identityDirectory };
 }
 
-// invariant: SSI-52. The plan type a coordinated run's Codex login reports is
-// read before the run's first transition and must be the one the owner's
-// statement names; a run whose statement names no Codex plan reads nothing.
-async function requireStatedCodexPlan(
+// why: a model the account lacks must be found before the implementer spends its
+// allowance, so the check runs here, beside the plan type a coordinated run
+// already reads; a v1 run keeps the T04 floor and only lists models (SSI-83).
+async function requireCodexAccount(
   io: TaskCommandIo,
   workspace: TaskWorkspace,
   plan: TaskPlanRecord,
   verifier: VerifierAccess,
   confirmations: readonly ExtraUsageConfirmation[]
 ): Promise<void> {
+  if (!("identityDirectory" in verifier)) return;
   const stated = statedCodexPlanType(confirmations);
-  if (stated === undefined || !("identityDirectory" in verifier)) return;
-  const reported = await codexAccountPlanType({
+  const models = [...new Set(providerModels(plan.request).codex)];
+  const options = {
     workspaceId: workspace.workspaceId,
     runId: plan.runId,
     manifestId: plan.contextManifestDigest,
@@ -215,8 +216,26 @@ async function requireStatedCodexPlan(
     env: io.env,
     sessionRoot: join(workspace.layout.sessionsRoot, `codex-account-${plan.runId}`),
     stderr: io.stderr
-  });
-  requireStatedPlanType(stated, reported, io.stderr);
+  };
+  if (plan.request.schemaVersion === 1) {
+    requireModelsOffered(await codexUnavailableModels(options, models), io.stderr);
+    return;
+  }
+  const facts = await codexAccountFacts(options, models);
+  if (stated !== undefined && facts.planType !== undefined) requireStatedPlanType(stated, facts.planType, io.stderr);
+  requireModelsOffered(facts.unavailableModels, io.stderr);
+}
+
+// invariant: the owner is told which models the account does not offer, by name,
+// on the terminal, and the public error carries the requirement alone, as it
+// does for the plan type: a name is a bounded request value, never account text.
+function requireModelsOffered(unavailable: readonly string[], stderr: (value: string) => void): void {
+  if (unavailable.length === 0) return;
+  stderr(
+    `This Workspace's Codex login does not offer: ${unavailable.join(", ")}.\n` +
+      "Name a model your account offers in the task request (the list is in docs/quick-start.md), then plan again.\n"
+  );
+  throw notConfigured("codex-model-unavailable", "The Codex account does not offer a model the run asks for");
 }
 
 // why: the machine the Windows prerequisites are proven on. A command proves
@@ -272,7 +291,7 @@ async function prepare(
     findExecutable("codex", io.env, io.platform)
   ]);
   const verifier = await verifierAccess(io, workspace, codex, credentials.get(VERIFIER_CREDENTIAL));
-  await requireStatedCodexPlan(io, workspace, plan, verifier, confirmations);
+  await requireCodexAccount(io, workspace, plan, verifier, confirmations);
   const gates = await loadGateAllowlist(workspace, plan.request);
   const policy = await loadTaskPolicy(io.controlRoot);
   const authority = new TaskAuthority({ runtime, plan, policy, trust: await workspaceTrustRoot(workspace) });
