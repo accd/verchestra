@@ -3267,15 +3267,17 @@ note. -->
   `setup-draft.md` (D8). Remediation R5 (`account_id` withheld, mutant D6)
   landed in #534.
 
-- **Feature:** `p1-pilot-remediation` (T1 to T4) on `fix/task-failure-cause`,
-  `feat/subscription-only-models`, and `feat/codex-model-availability`; handoff
-  status `in_progress`.
+- **Feature:** `p1-pilot-remediation` (T1 to T5) on `fix/task-failure-cause`,
+  `feat/subscription-only-models`, `feat/codex-model-availability`, and
+  `docs/pilot-p1-record`; handoff status `in_progress`.
 - **Completed:** AD-083: a failed run records the cause its driver reported, and
   `status.lastReason` shows it. AD-084: a model can be subscription-only, with
   no price. AD-085: a run proves its Codex account offers its models before it
   spends anything. See `.specs/features/p1-pilot-remediation/handoff.md`.
-- **Next:** T5, the pilot's record and requests; then the `.8` candidate, which
-  needs the owner (`npm publish` with 2FA).
+  The pilot's record states P1's stop, and its requests name the `gpt-5.5`
+  verifier.
+- **Next:** T6, the `.8` candidate and the pilot round, which need the owner
+  (`npm publish` with 2FA, extra usage off).
 
 - **Feature:** `subscription-provider-auth` (ADP-A, tasks TA1 and TA2) on
   `feat/subscription-provider-auth`.
