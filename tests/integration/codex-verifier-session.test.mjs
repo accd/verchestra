@@ -12,7 +12,7 @@ import { stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { after, test } from "node:test";
 
-import { codexAccountPlanType } from "../../apps/vestra-cli/src/task/task-codex.ts";
+import { codexAccountFacts, codexUnavailableModels } from "../../apps/vestra-cli/src/task/task-codex.ts";
 import { createBudgetMeter } from "../../packages/application/src/execution/budget-meter.ts";
 import {
   VERIFIER_MODEL,
@@ -332,8 +332,8 @@ test("an exhausted allowance suspends a coordinated run's verifier, before its t
 // by an account-only session that opens no thread and no turn; a login that
 // is not a ChatGPT one, or a Codex below the floor of the account read, is not
 // configured, each with its own requirement.
-async function accountPlanType(session) {
-  return codexAccountPlanType({
+function accountOptions(session) {
+  return {
     workspaceId: session.options.workspaceId,
     runId: session.options.runId,
     manifestId: session.options.manifestId,
@@ -343,7 +343,11 @@ async function accountPlanType(session) {
     env: session.options.env,
     sessionRoot: join(session.root, "sessions", "codex-account"),
     stderr: () => undefined
-  });
+  };
+}
+
+async function accountPlanType(session) {
+  return (await codexAccountFacts(accountOptions(session), [])).planType;
 }
 
 function notConfiguredAs(requirement) {
@@ -371,4 +375,45 @@ test("a login that is no ChatGPT one, or a Codex below the account floor, is not
   const older = await verifierSession({ subscription: true, flags: ["codex-0.159.2"] });
   await assert.rejects(accountPlanType(older), notConfiguredAs("codex-version"));
   assert.deepEqual(await older.sessions(), []);
+});
+
+// invariant: PPR-08. The same session says which of the asked models the
+// account does not offer, by name and nothing else of its list, before any
+// thread or turn: with the account for a coordinated run, and alone, at the T04
+// floor, for a run that keeps the T04 conversation (SSI-83).
+test("a session that reads the account says which asked models it does not offer, opening no thread", async (t) => {
+  if (WIN32_HOST) return verifierRefusedOnWin32(t);
+  const session = await verifierSession({ subscription: true });
+  const facts = await codexAccountFacts(accountOptions(session), [VERIFIER_MODEL, "gpt-6-sol", "gpt-5.5"]);
+  assert.deepEqual(facts, { planType: "plus", unavailableModels: ["gpt-6-sol", "gpt-5.5"] });
+  assert.deepEqual(await session.sessions(), [], "Codex opened a thread");
+  assert.deepEqual(await session.turns(), [], "Codex opened a turn");
+  await assert.rejects(stat(join(session.root, "sessions", "codex-account")), { code: "ENOENT" });
+  const offered = await codexAccountFacts(accountOptions(session), [VERIFIER_MODEL]);
+  assert.deepEqual(offered.unavailableModels, []);
+  const missing = await verifierSession({ subscription: true, flags: ["codex-model-missing"] });
+  assert.deepEqual((await codexAccountFacts(accountOptions(missing), [VERIFIER_MODEL])).unavailableModels, [
+    VERIFIER_MODEL
+  ]);
+});
+
+test("a session that only lists models reads no account and keeps the T04 floor", async (t) => {
+  if (WIN32_HOST) return verifierRefusedOnWin32(t);
+  const old = await verifierSession({ subscription: true, flags: ["codex-0.159.2"] });
+  assert.deepEqual(await codexUnavailableModels(accountOptions(old), [VERIFIER_MODEL, "gpt-6-sol"]), ["gpt-6-sol"]);
+  assert.deepEqual(await old.sessions(), [], "Codex opened a thread");
+  await assert.rejects(codexAccountFacts(accountOptions(old), [VERIFIER_MODEL]), notConfiguredAs("codex-version"));
+  const apiKey = await verifierSession({ subscription: true });
+  await writeFile(join(apiKey.options.identityDirectory, "auth.json"), JSON.stringify({ fixtureLogin: "api-key" }));
+  assert.deepEqual(await codexUnavailableModels(accountOptions(apiKey), [VERIFIER_MODEL]), []);
+});
+
+test("a model list Codex cannot give is not configured, as the list for the session that read the account too", async (t) => {
+  if (WIN32_HOST) return verifierRefusedOnWin32(t);
+  const listing = await verifierSession({ subscription: true, flags: ["codex-model-list-error"] });
+  await assert.rejects(
+    codexUnavailableModels(accountOptions(listing), [VERIFIER_MODEL]),
+    notConfiguredAs("codex-model-list")
+  );
+  await assert.rejects(codexAccountFacts(accountOptions(listing), [VERIFIER_MODEL]), notConfiguredAs("codex-account"));
 });

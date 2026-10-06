@@ -52,12 +52,14 @@ async function run({
   const sent = [];
   const events = [];
   const accounts = [];
+  const models = [];
   const driver = new CodexDriver(
     fixture.dependencies({
       minimumVersion: undefined,
       probeEnvironment: { FAKE_CODEX_VERSION: version },
       onMessageSent: (message) => sent.push(message),
-      onAccount: (account) => accounts.push(account)
+      onAccount: (account) => accounts.push(account),
+      onModels: (report) => models.push(report)
     })
   );
   const session = await driver.start(fixture.request(), (event) => events.push(event), new AbortController().signal);
@@ -68,6 +70,7 @@ async function run({
     sent,
     methods: sent.filter((message) => message.method).map((message) => message.method),
     accounts,
+    models,
     fixture
   };
 }
@@ -250,6 +253,80 @@ test("an account-only session reads the account, reports its plan type, and asks
   assert.deepEqual(subscription.accounts, [{ planType: "plus" }], "a subscription-only session reports it too");
   assert.deepEqual((await run()).accounts, [], "the T04 conversation reads no account");
 });
+
+// invariant: PPR-08. A session asked to check models lists them and reports
+// which of the asked names the account does not offer, as names, and ends: no
+// thread, no turn, no rate limit, and of the list nothing else is kept. The fake
+// offers `gpt-5.5-codex` alone.
+test("a model check reports the asked names the account does not offer, and nothing else of the list", async () => {
+  const { methods, models, events, closed } = await run({
+    version: "0.115.0",
+    execution: { modelsToCheck: ["gpt-5.5-codex", "gpt-6-sol", "gpt-5.5"] }
+  });
+  assert.deepEqual(methods, ["initialize", "initialized", "model/list"]);
+  assert.deepEqual(models, [{ unavailable: ["gpt-6-sol", "gpt-5.5"] }]);
+  assert.equal(Object.isFrozen(models[0]) && Object.isFrozen(models[0].unavailable), true);
+  assert.deepEqual(types(events), ["session.closed"]);
+  assert.equal(closed.outcome, "completed");
+  const offered = await run({ execution: { modelsToCheck: ["gpt-5.5-codex"] } });
+  assert.deepEqual(offered.models, [{ unavailable: [] }]);
+  assert.deepEqual((await run()).models, [], "the T04 conversation checks no model for its caller");
+});
+
+test("a model check alone reads no account and keeps the T04 floor; with the account it reads it first", async () => {
+  const alone = await run({ version: "0.115.0", execution: { modelsToCheck: ["gpt-6-sol"] } });
+  assert.equal(alone.closed.outcome, "completed");
+  assert.deepEqual(alone.accounts, []);
+  const both = await run({ execution: { accountOnly: true, modelsToCheck: ["gpt-6-sol"] } });
+  assert.deepEqual(both.methods, ["initialize", "initialized", "account/read", "model/list"]);
+  assert.deepEqual(both.accounts, [{ planType: "plus" }]);
+  assert.deepEqual(both.models, [{ unavailable: ["gpt-6-sol"] }]);
+  const fixture = codexFixture({ accountOnly: true, modelsToCheck: ["gpt-6-sol"] });
+  const driver = new CodexDriver(
+    fixture.dependencies({ minimumVersion: undefined, probeEnvironment: { FAKE_CODEX_VERSION: "0.159.2" } })
+  );
+  await assert.rejects(
+    driver.start(fixture.request(), () => {}, new AbortController().signal),
+    { code: "VES_CODEX_VERSION_UNSUPPORTED" }
+  );
+  assert.equal(fixture.calls.spawn, 0);
+});
+
+test("a model check is refused before spawn when it is malformed or asks for a turn", async () => {
+  const names = (count) => Array.from({ length: count }, (_, index) => `gpt-${index}`);
+  for (const [execution, label] of [
+    [{ modelsToCheck: [] }, "no model"],
+    [{ modelsToCheck: names(17) }, "seventeen models"],
+    [{ modelsToCheck: ["gpt-5.5", "gpt-5.5"] }, "a repeated model"],
+    [{ modelsToCheck: ["gpt 5.5"] }, "a name with a space"],
+    [{ modelsToCheck: ["-gpt"] }, "a name that starts with a dash"],
+    [{ modelsToCheck: [`g${"p".repeat(64)}`] }, "a name of 65 characters"],
+    [{ modelsToCheck: [5] }, "a number"],
+    [{ modelsToCheck: "gpt-5.5" }, "a string"],
+    [{ modelsToCheck: null }, "null"],
+    [{ modelsToCheck: ["gpt-5.5"], subscriptionOnly: true }, "a subscription-only turn"],
+    [{ modelsToCheck: ["gpt-5.5"], structuredOutput: { schema: SCHEMA, maxBytes: 64 } }, "a structured answer"]
+  ]) {
+    const fixture = codexFixture({ ...execution });
+    const driver = new CodexDriver(
+      fixture.dependencies({ minimumVersion: undefined, probeEnvironment: { FAKE_CODEX_VERSION: "0.159.3" } })
+    );
+    await assert.rejects(
+      driver.start(fixture.request(), () => {}, new AbortController().signal),
+      { code: "VES_CODEX_MODEL_CHECK_INVALID" },
+      label
+    );
+    assert.equal(fixture.calls.spawn, 0, label);
+  }
+});
+
+for (const mode of ["model-list-invalid", "model-list-missing"])
+  test(`a model list that is not a list (${mode}) fails the check as a protocol failure, never as models the account lacks`, async () => {
+    const { events, models, closed } = await run({ mode, execution: { modelsToCheck: ["gpt-5.5-codex"] } });
+    assert.deepEqual(types(events), ["error:VES_CODEX_PROTOCOL_FAILED", "session.closed"]);
+    assert.deepEqual(models, []);
+    assert.equal(closed.outcome, "failed");
+  });
 
 test("the plan type is reported as a closed value, and a value outside the vocabulary as unknown", async () => {
   const account = (planType) =>

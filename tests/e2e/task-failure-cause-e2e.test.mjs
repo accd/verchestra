@@ -38,21 +38,21 @@ async function failedRun(execution, flagName) {
   return { fixture, plan, run };
 }
 
-test("a verifier whose model the account does not offer fails the run with that cause", TIMEOUT, async () => {
-  const { fixture, plan, run } = await failedRun(EXECUTIONS.agent, "codex-model-missing");
-  assert.equal(run.json.data.reason, "VES_CODEX_MODEL_UNAVAILABLE");
+test("a verifier whose thread Codex refuses fails the run with that cause", TIMEOUT, async () => {
+  const { fixture, plan, run } = await failedRun(EXECUTIONS.agent, "codex-thread-refused");
+  assert.equal(run.json.data.reason, "VES_CODEX_RPC_FAILED");
   const after = status(fixture, plan.runId);
   assert.equal(after.state, "FAILED");
   assert.equal(after.lastOutcome, "FAILED");
-  assert.equal(after.lastReason, "VES_CODEX_MODEL_UNAVAILABLE");
+  assert.equal(after.lastReason, "VES_CODEX_RPC_FAILED");
   assert.equal(after.evidence.verificationVerdict, null);
   assert.deepEqual(logLines(fixture, "fake-codex-turn.log"), [], "the verifier opened a turn");
 });
 
-test("a Codex node whose model the account does not offer fails the run with that cause", TIMEOUT, async () => {
-  const { fixture, plan, run } = await failedRun(EXECUTIONS.graph, "codex-model-missing");
-  assert.equal(run.json.data.reason, "VES_CODEX_MODEL_UNAVAILABLE");
-  assert.equal(status(fixture, plan.runId).lastReason, "VES_CODEX_MODEL_UNAVAILABLE");
+test("a Codex node whose thread Codex refuses fails the run with that cause", TIMEOUT, async () => {
+  const { fixture, plan, run } = await failedRun(EXECUTIONS.graph, "codex-thread-refused");
+  assert.equal(run.json.data.reason, "VES_CODEX_RPC_FAILED");
+  assert.equal(status(fixture, plan.runId).lastReason, "VES_CODEX_RPC_FAILED");
   assert.deepEqual(visits(fixture, plan.runId), ["plan#1:failed"], "no node that follows it started");
 });
 

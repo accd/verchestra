@@ -18,6 +18,7 @@ import { PublicErrorException, isTaskPath, type DriverEvent } from "@verchestra/
 import {
   CodexDriver,
   type CodexAccountReport,
+  type CodexModelReport,
   type CodexExecution,
   type DriverStartRequest
 } from "@verchestra/drivers";
@@ -246,6 +247,7 @@ interface CodexSessionShape {
   readonly provider: ProviderSession;
   readonly execution: Omit<CodexExecution, "passport" | "model" | "tools">;
   readonly onAccount?: (account: CodexAccountReport) => void;
+  readonly onModels?: (models: CodexModelReport) => void;
 }
 
 // invariant: a Codex session on the verifier's side of a run: the passport of
@@ -279,6 +281,7 @@ function codexSession(shape: CodexSessionShape): {
     terminateTree: provider.terminateTree,
     onSpawn: provider.onSpawn,
     ...(shape.onAccount === undefined ? {} : { onAccount: shape.onAccount }),
+    ...(shape.onModels === undefined ? {} : { onModels: shape.onModels }),
     resolveExecution: () =>
       Promise.resolve({
         passport: { passportId, revision: 1, provider: "openai", resolvedModel: shape.model },
@@ -397,22 +400,63 @@ export interface CodexAccountOptions {
   readonly stderr: (text: string) => void;
 }
 
-// invariant: a refusal that is already the task's own keeps its requirement;
-// a build below the floor that has `account/read` is `codex-version`, and any
-// other failure to read the account is `codex-account`.
-function accountRefusal(error: unknown): unknown {
+// invariant: a refusal that is already the task's own keeps its own requirement.
+// A build below the floor of what the session asked for is `codex-version`; any
+// other failure names what the session was asking about: `codex-account` when it
+// read the account, `codex-model-list` when it only listed models.
+function accountRefusal(error: unknown, requirement: string): unknown {
   if (error instanceof PublicErrorException) return error;
-  const requirement = stableCode(error) === "VES_CODEX_VERSION_UNSUPPORTED" ? "codex-version" : "codex-account";
-  return notConfigured(requirement, "Codex could not report the account of its login", { cause: error });
+  return notConfigured(
+    stableCode(error) === "VES_CODEX_VERSION_UNSUPPORTED" ? "codex-version" : requirement,
+    "Codex could not answer the session that reads the Workspace's login",
+    { cause: error }
+  );
 }
 
-// invariant: SSI-52. The plan type of the Workspace's Codex login, read by an
-// account-only session over the identity directory from its own HOME: the App
-// Server is asked for the account and nothing more, so nothing is spent and
-// nothing of the account but its plan type, a closed value, is kept.
-export async function codexAccountPlanType(options: CodexAccountOptions): Promise<CodexAccountReport["planType"]> {
+// invariant: all that a session of this kind keeps: the account's plan type, a
+// closed value, when it read the account, and the names among the asked models
+// the account does not offer, when it checked models. Nothing else of the
+// account or of its model list is kept (SSI-49).
+export interface CodexAccountFacts {
+  readonly planType: CodexAccountReport["planType"] | undefined;
+  readonly unavailableModels: readonly string[];
+}
+
+interface CodexAccountQuestion {
+  readonly account: boolean;
+  readonly models: readonly string[];
+}
+
+// invariant: the session asks the account for what the question names and for
+// nothing else, so a question with no model sends no model check.
+function accountExecution(question: CodexAccountQuestion): CodexSessionShape["execution"] {
+  return {
+    prompt: ACCOUNT_PROMPT,
+    cancelGraceMs: 250,
+    ...(question.account ? { accountOnly: true as const } : {}),
+    ...(question.models.length > 0 ? { modelsToCheck: question.models } : {})
+  };
+}
+
+// why: a session that ended `completed` without reporting what it was asked
+// for has answered nothing, so its silence is not read as an account that
+// offers every model.
+function answered(
+  question: CodexAccountQuestion,
+  kept: { readonly account?: CodexAccountReport; readonly models?: CodexModelReport }
+): boolean {
+  return (
+    (!question.account || kept.account !== undefined) && (question.models.length === 0 || kept.models !== undefined)
+  );
+}
+
+async function codexAccountSession(
+  options: CodexAccountOptions,
+  question: CodexAccountQuestion
+): Promise<CodexAccountFacts> {
+  const failed = question.account ? "codex-account" : "codex-model-list";
   const provider = new ProviderProcesses({ stderr: options.stderr }).session("Codex");
-  const account: { report?: CodexAccountReport } = {};
+  const kept: { account?: CodexAccountReport; models?: CodexModelReport } = {};
   try {
     const identity = await isolatedIdentity(options.sessionRoot, options.identityDirectory);
     const { driver, request } = codexSession({
@@ -421,22 +465,41 @@ export async function codexAccountPlanType(options: CodexAccountOptions): Promis
       identity,
       provider,
       onAccount: (report) => {
-        account.report = report;
+        kept.account = report;
       },
-      execution: { prompt: ACCOUNT_PROMPT, cancelGraceMs: 250, accountOnly: true }
+      onModels: (report) => {
+        kept.models = report;
+      },
+      execution: accountExecution(question)
     });
     const finished = await runDriverSession({
       driver,
       startRequest: request,
       signal: AbortSignal.timeout(ACCOUNT_TIMEOUT_MS)
     }).catch((error: unknown) => {
-      throw accountRefusal(error);
+      throw accountRefusal(error, failed);
     });
-    if (finished.outcome !== "completed" || account.report === undefined)
-      throw notConfigured("codex-account", "Codex did not report the account of its login");
-    return account.report.planType;
+    if (finished.outcome !== "completed" || !answered(question, kept))
+      throw notConfigured(failed, "Codex did not answer the session that reads the Workspace's login");
+    return Object.freeze({ planType: kept.account?.planType, unavailableModels: kept.models?.unavailable ?? [] });
   } finally {
     await provider.end();
     await rm(options.sessionRoot, { recursive: true, force: true });
   }
+}
+
+// why: one session answers both what a run may keep of the login (its plan type
+// and the asked models the account lacks) and whether its models exist, so no
+// second process is needed before the run spends (SSI-49, SSI-52, PPR-08).
+export function codexAccountFacts(options: CodexAccountOptions, models: readonly string[]): Promise<CodexAccountFacts> {
+  return codexAccountSession(options, { account: true, models });
+}
+
+// invariant: PPR-08. A session that only lists models and reads no account,
+// for a run whose verifier keeps the T04 conversation and its floor (SSI-83).
+export async function codexUnavailableModels(
+  options: CodexAccountOptions,
+  models: readonly string[]
+): Promise<readonly string[]> {
+  return (await codexAccountSession(options, { account: false, models })).unavailableModels;
 }
