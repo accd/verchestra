@@ -56,6 +56,8 @@ value cannot be observed; nothing is estimated.
 
 | Run | Attempt | runId | Request SHA-256 | Start (UTC) | Duration | Final state / status / reason | Gate results | Verification | Implementer usage (tokens / billing, ledger) | Verifier usage | Plan usage | Tool receipts | Interventions | Human review (outcome, handle, capsuleId) | Fingerprint unchanged | Assertions (pass/fail per item) | Evidence record |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| P1 | 1 | none (no run created) | `cc74d9d68094890cd526aaf1ac38a36fc10f6ff52c7a6a6a53da79d5c4afa5fd` | 2026-10-06T20:46:04Z | 2 s | `plan` exit 5, `VES_TASK_NOT_CONFIGURED`, requirement `evidence-signing-passphrase`; `approve`, `start`, and `status` then ran with no run ID and were refused `VES_CLI_ARGUMENT_INVALID` (`--run-id`) | not reached | not reached | none | none | none | none | none | not reached | not applicable (no run) | not evaluated | operator's pilot records, not tracked |
+| P1 | 2 | `run_194aff18-a2b6-4ad1-a5ca-77aa0143e113` | `cc74d9d68094890cd526aaf1ac38a36fc10f6ff52c7a6a6a53da79d5c4afa5fd` | 2026-10-06T20:52:03Z | 77 s wall clock; the run's meter 73,862 ms | `FAILED`, `FAILED`, `VES_TASK_FAILED`; stop rule of §6 (below) | `gate:target-tests` passed, evidence `gate-evidence:5f079c69c72daded5dbc92b338521aa5`; repair `converged`; task commit `4c4f6f626691a09986040c06542e536254f6b2a6` on `vestra/run_194aff18-a2b6-4ad1-a5ca-77aa0143e113/PILOT-P1` | not completed: no verdict (the verifier asked for `gpt-5.2-codex`, which the account does not offer) | 6,088 tokens, `not billed (subscription)` (`unbilledTokens` 6,088, 1 usage event, ledger of the run) | none recorded (no usage event) | `unavailable` | 2 | approval by the agent with `--confirm-stdin`, at the owner's request (Deviations) | not reached | yes, but for the task branch ref `refs/heads/vestra/<runId>/PILOT-P1` that §8 allows | not evaluated (the run did not reach `HUMAN_REVIEW`) | operator's pilot records, not tracked |
 
 ## Scenario outcomes (T6)
 
@@ -71,6 +73,58 @@ value cannot be observed; nothing is estimated.
 | After run | Recorded spend this run (US$, source) | Cumulative (US$) | Next run's ceiling (US$) | Stop rule satisfied |
 | --- | --- | --- | --- | --- |
 
+## Stop rule triggered: P1-2 (2026-10-06)
+
+P1 attempt 2 stopped at the verifier. The pilot stopped, and the owner decided
+(`spec.md` §6, amended on 2026-10-06 to name this case).
+
+**What worked.** Through the installed candidate `verchestra@0.0.0-qualification.7`
+with real subscription logins: `plan` and `approve` succeeded; the implementer,
+Claude Code with `claude-sonnet-5`, made its change through the mediated tools
+(2 tool receipts); the gate `gate:target-tests` passed and the repair loop
+`converged`; the task commit `4c4f6f626691a09986040c06542e536254f6b2a6` was
+made on the isolated branch `vestra/run_194aff18-a2b6-4ad1-a5ca-77aa0143e113/PILOT-P1`.
+The run's usage was 6,088 tokens in 1 usage event, 73,862 ms on its meter,
+`not billed (subscription)`. The checkout fingerprint changed only by that
+branch ref.
+
+**What stopped it.** The verifier asked the account for `gpt-5.2-codex`. The
+owner's ChatGPT account does not offer it; the coordinating session read the
+models the account does offer as `gpt-6.1-sol`, `gpt-6-astra`, `gpt-6-sol`,
+`gpt-6-luna`, `gpt-reserve`, `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`,
+`gpt-5.5`, and `codex-auto-review` (the run itself recorded none of this). The
+run ended `FAILED` and `status` showed `lastReason: VES_TASK_FAILED`.
+
+**The diagnostic gap it revealed.** Nothing said why. The cause was lost in
+four places (the driver's refusal read as a generic protocol failure, the
+verifier ignoring the codes its session reported, the run recording the public
+code and dropping its `reason`, and the executor and the nodes dropping the
+driver's code), and nothing checked the model before the implementer's
+allowance was spent. The remediation is
+`.specs/features/p1-pilot-remediation/` (AD-083 to AD-085); the run's own
+record cannot be repaired, and it stays `VES_TASK_FAILED` as it was.
+
+**Next action.** Run P1 again on the candidate that carries the remediation,
+with the amended request (`gpt-5.5`), as attempt 3. P1-2 is not counted as a
+success or as a retry of the same request.
+
+## Request digests after the amendment of 2026-10-06
+
+The verifier model of each request changed from `gpt-5.2-codex` to `gpt-5.5`.
+Each file still passes `normalizeTaskRequest` (S3b is still refused
+`VES_TASK_REQUEST_TASK_INVALID`) and the Task Request v1 schema. The operator
+plans with a copy whose SHA-256 equals the tracked file's.
+
+| Request | SHA-256 before | SHA-256 after |
+| --- | --- | --- |
+| `P1-bug-fix.json` | `cc74d9d68094890cd526aaf1ac38a36fc10f6ff52c7a6a6a53da79d5c4afa5fd` (the digest of P1-1 and P1-2) | `b6a18a5a5d69cd82378666f5dee3e9929a7d3be7f6481a9764e7c90d4dbcd2b5` |
+| `P2-feature.json` | `e9658eded7b1dd0ae9d8fcdbf32a036487f3f6a65ef1a3e216006f04a61b68a9` | `7e4b6d2a5ec80050434146dca01b8d93c3d69b1400af776edecf56fbe0154ccf` |
+| `P3-refactor.json` | `a31a8189e334776a29719f8758cb818d49691753f67e7aceedfaaf9d2e83370e` | `4978d89bf4854a907d709ee76e8c7876d44d72b85c97333351ef40b3c63a086a` |
+| `S1-cancellation.json` | `2664a2b7fe299f06027d17c694a548c41773a307c9b10db848fcbeea05bed44a` | `e66d81936ca9c9b6964921a3a75b361e6cf434e40b45e6fd5d73f68009dae8e7` |
+| `S2-interrupt-resume.json` | `54d6ff1aa73fa7293cdb3dec62f3239811d8b20cedcc50c30269872f1d5865b3` | `3d7b28134f65a5ae896cb049d25365d264a9948266856838882d3f011c75ef80` |
+| `S3-out-of-scope.json` | `6689e8adafd29c4d3d091bf9df7a7c41c7965ede2a9f5ce918eab4f1610c99be` | `42fa866b4b2321f991dde3a60a6f2af419d12df2d4da35c9eee997600c2a4bd7` |
+| `S3b-plan-refusal.json` | `942fd3308f115d0455ba1c3a3596b3d8358f22082a1a04a43db1f7eba2e29824` | `051cd0b31e1028c0dc22e2a723c58b288e8a3a6114b70530a7fe39e0e8d1dbec` |
+
 ## Deviations
 
 | Time (UTC) | What changed | Why | Runs affected |
@@ -81,6 +135,10 @@ value cannot be observed; nothing is estimated.
 | 2026-10-03, before any run | Codex CLI 0.159.3 instead of 0.157.1 (`spec.md` §3) | The installed Codex updated itself after pre-registration; it meets the driver minimum, and the verifier model is unchanged | all |
 | 2026-10-03, before any run | Candidate `.5` → `.6` (`spec.md` §2), with §5 S2 and §7 usage rows restated | `.6` carries the protected-path fix (#485) and the complete usage account (AD-055, AD-056); in `.6` `checkpoints.budget` covers implementer and verifier | all |
 | 2026-10-04, before any run | Candidate `.6` → `.7` (`spec.md` §2) | `.7` is the published `latest` and carries the state-path check and the shorter verification scratch layout (AD-080); no step or expectation of the pilot changes | all |
+| 2026-10-06, after P1-1 and before P1-2 | The `evidence-signing-passphrase` requirement was satisfied for the pilot Workspace | P1-1 stopped at `plan` with `VES_TASK_NOT_CONFIGURED` (`evidence-signing-passphrase`); nothing had run | P1-1 |
+| 2026-10-06, P1-2 | The approval was made by the agent through `--confirm-stdin`, piping the binding digest, at the owner's request, and not typed by the owner at an interactive prompt (`spec.md` §8 step 9) | The owner asked the agent to approve. The agent's shell is no interactive terminal: its first approval attempt was refused `VES_TASK_CONFIRMATION_REQUIRED`, so the digest was piped with `--confirm-stdin` | P1-2; every later run, until the owner types the digest again |
+| 2026-10-06, after P1-2 | The verifier model of all seven requests is `gpt-5.5`, not `gpt-5.2-codex` (`spec.md` §3, §4, §6 and the digest table above) | The first run stopped because the account does not offer `gpt-5.2-codex`; the owner chose `gpt-5.5` the same day | every run after P1-2 |
+| 2026-10-06, after P1-2 | The stop rule of `spec.md` §6 names a model the account does not offer | P1-2 hit it | every run after P1-2 |
 
 ## Independent review (T8)
 

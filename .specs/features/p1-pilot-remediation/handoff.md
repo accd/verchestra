@@ -3,12 +3,12 @@ schema: verchestra-feature-handoff/v1
 feature: p1-pilot-remediation
 issue: 406
 status: in_progress
-branch: feat/codex-model-availability
+branch: docs/pilot-p1-record
 baseRevision: 8056d41b5ab615ce7dc536db400e09f136565c61
-lastCompletedTask: T3
-nextTask: "T5, Frente D: record the P1 stop, the deviation, and the diagnostic gap in live-task-pilot/validation.md, amend spec.md section 6 and the seven requests to the gpt-5.5 verifier with their new digests, and move the coordinated examples to models the account offers."
-lastGate: "T3: gate:quick, contract, integration, security, architecture, e2e, fault, mutation, and agent:check PASS under Node 24.14.0; eight mutants killed (validation.md)"
-updatedAt: 2026-10-07T00:00:00Z
+lastCompletedTask: T5
+nextTask: "T6, Frente E, which needs the owner: build the .8 candidate, sign it (TUF metadata version 7, rollback bound to .7), upload it, and run the usual checks; then the owner publishes it with npm publish and 2FA, and the live matrix from .7 to .8 runs. Then P1 attempt 3, P2, P3, S1 to S3, and the coordinated pilots, on .8."
+lastGate: "T5: gate:quick, contract, integration, security, architecture, e2e, fault, mutation, and agent:check PASS under Node 24.14.0 (validation.md)"
+updatedAt: 2026-10-07T01:30:00Z
 ---
 
 # Scope
@@ -40,6 +40,12 @@ the lease, a transition, or the worktree: account and models for a v2 run,
 models alone for a v1 run. AD-085 (`.specs/STATE.md`), `docs/quick-start.md`,
 `validation.md`.
 
+T5 (Frente D, stacked on T3): P1 attempts 1 and 2 recorded in
+`live-task-pilot/validation.md` with the stop rule, the deviations, and the
+diagnostic gap; `spec.md` amended (§3, §4, §6) and the seven requests moved to
+the `gpt-5.5` verifier with their new digests; the three coordinated examples
+and `coordinated-run-pilots.md` name `gpt-5.5`.
+
 # Blockers
 
 None for T5. T6 needs the owner: the `npm publish --tag latest --access
@@ -49,13 +55,16 @@ delegated approvals (D1, D1b, D10, the amendments, D11, and D8).
 
 # Next Action
 
-T5, Frente D, as the `nextTask` states it. The models it names are the ones the
-table lists (T4) and the account offers (T3 refuses the others at `start`).
+T6, Frente E, as the `nextTask` states it. It is the owner's: the publication
+needs a 2FA code and the coordinated pilots need the extra usage of both
+accounts switched off. The pilot's `spec.md` §2 names `.7`; it is amended to the
+`.8` candidate when that is published.
 
 # Files Intentionally Left Unchanged
 
-The pilot's pre-registration (`live-task-pilot/`) is not changed until T5,
-which records the P1 stop and amends the requests as a dated amendment.
+The pilot's `spec.md` §2 (the candidate) and §8 (the steps): the candidate they
+name changes with the publication, and the steps do not. The pilot's probes, its
+target, its revision, its tasks, and its limits.
 
 # Known Risks Declared in Advance
 

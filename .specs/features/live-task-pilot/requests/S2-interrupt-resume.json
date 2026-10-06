@@ -74,7 +74,7 @@
   },
   "verifier": {
     "driverId": "codex",
-    "model": "gpt-5.2-codex"
+    "model": "gpt-5.5"
   },
   "instructions": "Bug: when the CLI reads its two words from standard input, cli.js computes a result for every `data` chunk instead of for the whole input. Input that arrives in more than one chunk (for example `sturgeon`, then ` urgently` written 200 ms later) prints the usage text and exits with code 1 instead of printing `6`. Fix cli.js so it accumulates standard input and computes the distance once, when the input ends. Keep every other behaviour unchanged: the argument path, -i/--insensitive, -h/--help, -v/--version, and the usage error for fewer or more than two words. Add a new, separate test (its own top-level test() call) at the end of test.js that writes `sturgeon` to the CLI's standard input, waits at least 100 ms, then ends the input with ` urgently`, and asserts no error, stdout `6\\n`, and empty stderr. Do not change the existing tests."
 }

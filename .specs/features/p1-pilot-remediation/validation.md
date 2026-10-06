@@ -214,3 +214,49 @@ test.
    implementer's. Both are reported by their session with its cause (AD-083).
 4. **Two requirements are new**: `codex-model-unavailable` and
    `codex-model-list`, both in the quick-start's table.
+
+## T5: the pilot's record and requests (PPR-09)
+
+### Gates
+
+Node 24.14.0, macOS arm64, on `docs/pilot-p1-record` stacked on T3.
+
+| Gate | Result |
+| --- | --- |
+| `gate:quick` | PASS: unit 3009, agent-readiness 357, census 13 |
+| `test:contract` | PASS: 968 |
+| `test:integration` | PASS: 1267 |
+| `test:security` | PASS: 1355 |
+| `test:architecture` | PASS: 132 |
+| `test:e2e` | PASS: 310 (the three examples included) |
+| `test:fault` | PASS: 310 |
+| `test:mutation` | PASS: 8 |
+| `agent:check` | PASS |
+| `platform-matrix`, SonarCloud | recorded on the pull request |
+
+### Evidence
+
+| Item | Evidence |
+| --- | --- |
+| The P1 attempts | the operator's records of 2026-10-06: attempt 1 `plan` exit 5 (`evidence-signing-passphrase` not configured); attempt 2 run `run_194aff18-a2b6-4ad1-a5ca-77aa0143e113`, `FAILED` with `VES_TASK_FAILED`, 6,088 tokens `not billed (subscription)`, 2 tool receipts, gate passed, task commit `4c4f6f626691a09986040c06542e536254f6b2a6`, no verifier verdict. Their request digest `cc74d9d6…` equals `git show` of `P1-bug-fix.json` before the amendment. |
+| The amendment | `live-task-pilot/spec.md` (status, §3 verifier and model-listing rows, §4, §6 stop rule and order) and `live-task-pilot/validation.md` (rows, stop rule section, digests, four deviations). Each digest in the table was compared by script with the file and with its `HEAD` version: 14 of 14 equal. |
+| The requests | `normalizeTaskRequest` accepts the six and refuses S3b with `VES_TASK_REQUEST_TASK_INVALID`; the schema's verifier pattern admits `gpt-5.5`. The requests need the table of T4: `.7` refuses `gpt-5.5` at `plan`. |
+| The examples | `tests/e2e/task-request-examples-e2e.test.mjs` (3 cases): `docs/examples/task-request-{agent,graph,swarm}.json` name `codex:gpt-5.5` and still plan with their declared topology. |
+
+### Decisions the reviewer confirms
+
+1. **The deviations are recorded as deviations**, not as silent edits: the
+   verifier model, the stop rule, the agent's approval by `--confirm-stdin`, and
+   the passphrase. The runs' own records are not repaired.
+2. **The account's model list** is recorded as the coordinating session read it
+   (the run kept none of it). It is public model names, no account field.
+3. **The local script `2-run.sh`** (untracked, under the operator's pilot
+   directory, so not part of this change) now pipes the digest with
+   `--confirm-stdin` after a printed notice and a ten-second pause, quotes every
+   path, and refuses a request copy that differs from the tracked file. The
+   operator's copies of the requests are the pre-amendment ones and are not
+   refreshed here: the script stops on them until the tracked files are copied.
+
+### Not run
+
+Nothing was run against a provider. P1 attempt 3 waits for T6.

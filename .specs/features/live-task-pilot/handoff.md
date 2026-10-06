@@ -5,10 +5,10 @@ issue: 406
 status: in_progress
 branch: main
 baseRevision: 35b23b3b122be7f0d7a6831f3261a9163373cfd7
-lastCompletedTask: T1
-nextTask: "T2 remainder: the owner binds the three credentials (spec.md section 8 step 5). Then T3: P1 with VES = npx --yes verchestra@0.0.0-qualification.7. The configuration identity, the baseline and the first fingerprint are recorded in validation.md."
-lastGate: "agent:check PASS; no provider called"
-updatedAt: 2026-10-04T21:40:00Z
+lastCompletedTask: T2
+nextTask: "T3, attempt 3 of P1 with the amended request (verifier gpt-5.5) on the candidate that carries .specs/features/p1-pilot-remediation/ (its T6); then P2, P3, S3b, S1, S3, S2 as spec.md orders them. VES then names that candidate; spec.md section 2 is amended when it is published."
+lastGate: "agent:check PASS; P1 attempts 1 and 2 are recorded in validation.md (attempt 2 stopped on the section 6 stop rule); this change called no provider"
+updatedAt: 2026-10-07T01:00:00Z
 ---
 
 # Scope
@@ -40,9 +40,12 @@ from the pre-registration are recorded in `validation.md` before the first run.
 
 # Next Action
 
-T2, following `spec.md` §8 steps 1–8 with `VES` as defined in §2. Record the
-configuration identity and the first fingerprint in `validation.md` before
-the first run.
+P1 was attempted twice on `verchestra@0.0.0-qualification.7` (`validation.md`).
+The second attempt stopped at the verifier on the stop rule of `spec.md` §6,
+amended on 2026-10-06 to name a model the account does not offer. The requests
+now name the verifier `gpt-5.5`. The next run is attempt 3 of P1, on the
+candidate that carries `.specs/features/p1-pilot-remediation/`; until it is
+published nothing in the pilot runs.
 
 # Files Intentionally Left Unchanged
 
