@@ -3152,6 +3152,50 @@ note. -->
   `VES_EXECUTOR_DRIVER_FAILED`. Five pinned expectations moved for this and
   are listed in the feature's `validation.md`.
 
+### AD-084 — A model can be subscription-only, with no price
+
+- **Status:** proposed, **human review required**
+  (`.specs/features/p1-pilot-remediation/`, Frente A, PPR-06 and PPR-07). The
+  model table's header ("HUMAN REVIEW REQUIRED") applies: its entries are
+  externally verified data and change like code.
+- **Context:** the pilot P1 (#406) asked the Codex verifier for `gpt-5.2-codex`,
+  the only Codex model the table knew, and the ChatGPT account offers other
+  ones (`gpt-5.5`, `gpt-5.6-*`, `gpt-6-*`, `gpt-6.1-sol`). Intake required a
+  price for every model, even where nothing is billed per token, and no price
+  is documented for the models the account offers.
+- **Decision:**
+  1. The table lists `subscriptionModels` by driver, beside the priced
+     `models`, with no price: Claude Code `claude-fable-5-1`, `claude-opus-5-5`,
+     `claude-sonnet-5-5`; Codex `gpt-5.5`, `gpt-5.6-sol`, `gpt-5.6-terra`,
+     `gpt-5.6-luna`, `gpt-6-sol`, `gpt-6-astra`, `gpt-6-luna`, `gpt-6.1-sol`.
+     A model is listed once, by one driver, and never when it is priced. The
+     version is `2026.10.0`; the Run Capsule seals it.
+  2. A Task Request admits a priced model or a subscription-only one for its
+     driver. Any other name is `VES_TASK_REQUEST_MODEL_UNPRICED`, as before.
+  3. `start` and `resume` refuse a subscription-only model on a provider set to
+     an API key as `VES_TASK_NOT_CONFIGURED` (requirement
+     `model-unpriced-for-api-key`), after the provider modes are read and before
+     any credential, transition, or worktree.
+  4. The meter is unchanged. A subscription's usage is counted unpriced
+     (`unbilledModels`), and a model that is in neither list still fails closed
+     as `VES_BUDGET_MODEL_UNKNOWN`.
+- **Alternatives rejected:** an invented price for each model (none is
+  documented, and a guess would corrupt the cost ceiling and the capsule's
+  evidence); a prefix or wildcard entry (it fails open, which the table's header
+  forbids); a model list in the request (a request is untrusted and names no
+  credential mode, and the table is reviewed like code); checking only at
+  `plan` (the credential mode is a machine-local setting that can change
+  between `plan` and `start`).
+- **Consequence:** the usage of a subscription-only model counts toward the
+  token and duration ceilings and never the cost one, and `status` shows its
+  cost as not billed. The table does not know which models an account offers:
+  a listed model the account lacks is Frente B's check for Codex, and for Claude
+  Code the session reveals it, with its cause now recorded (AD-083). The Claude
+  Code names were taken from the model identifiers of the Claude Code
+  environment and `claude --help` (aliases `fable`, `opus`, `sonnet`; full name
+  `claude-fable-5`); no provider was called to confirm that an account accepts
+  them.
+
 ## Handoff
 
 - **Feature:** `strands-subscription-integration` (T1–T10) on `main` through
@@ -3170,14 +3214,14 @@ note. -->
   `setup-draft.md` (D8). Remediation R5 (`account_id` withheld, mutant D6)
   landed in #534.
 
-- **Feature:** `p1-pilot-remediation` (T1, T2) on `fix/task-failure-cause`;
-  handoff status `in_progress`.
+- **Feature:** `p1-pilot-remediation` (T1, T2, T4) on `fix/task-failure-cause`
+  and `feat/subscription-only-models`; handoff status `in_progress`.
 - **Completed:** AD-083: a failed run records the cause its driver reported, and
-  `status.lastReason` shows it. See
-  `.specs/features/p1-pilot-remediation/handoff.md`.
+  `status.lastReason` shows it. AD-084: a model can be subscription-only, with
+  no price. See `.specs/features/p1-pilot-remediation/handoff.md`.
 - **Next:** T3, the model's availability checked before the allowance is spent;
-  T4, subscription-only models in the price table; then the pilot's record and
-  the `.8` candidate, which need the owner (`npm publish` with 2FA).
+  then the pilot's record and the `.8` candidate, which need the owner
+  (`npm publish` with 2FA).
 
 - **Feature:** `subscription-provider-auth` (ADP-A, tasks TA1 and TA2) on
   `feat/subscription-provider-auth`.

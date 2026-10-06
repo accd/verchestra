@@ -527,6 +527,24 @@ test("the normalizer rejects an unpriced node model that the schema shape admits
   rejectedWith(request, "VES_TASK_REQUEST_MODEL_UNPRICED");
 });
 
+// invariant: AD-084. A node may name a model that is offered on a subscription
+// and has no price; a name that is neither priced nor offered is refused, for a
+// Codex node as for a Claude Code one.
+test("a node may name a subscription-only model, and an unlisted one is refused", () => {
+  const request = mutated("graph", (r) => {
+    nodeOf(r, "build").driver.model = "claude-sonnet-5-5";
+    nodeOf(r, "plan").driver.model = "gpt-6.1-sol";
+  });
+  assert.equal(schemaAccepts(request), true);
+  const normalized = normalizeTaskRequest(request);
+  const models = Object.fromEntries(normalized.execution.nodes.map((node) => [node.nodeId, node.driver.model]));
+  assert.equal(models.build, "claude-sonnet-5-5");
+  assert.equal(models.plan, "gpt-6.1-sol");
+  const unlisted = mutated("graph", (r) => (nodeOf(r, "plan").driver.model = "gpt-unlisted-9"));
+  assert.equal(schemaAccepts(unlisted), true);
+  rejectedWith(unlisted, "VES_TASK_REQUEST_MODEL_UNPRICED");
+});
+
 test("two writers ordered by a path plan, and a swarm may hold several writers", () => {
   const ordered = mutated("graph", (r) => {
     r.execution.nodes.push({

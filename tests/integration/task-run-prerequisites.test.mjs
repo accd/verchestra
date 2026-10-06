@@ -19,7 +19,7 @@ import { normalizeTaskRequest } from "../../packages/application/src/index.ts";
 import { confirmExtraUsage } from "../helpers/task-billing-fixture.mjs";
 import { cleanupTaskCommandFixtures, taskCommandFixture } from "../helpers/task-command-fixture.mjs";
 import { boundPlanRecord } from "../helpers/task-plan-fixture.mjs";
-import { validTaskRequestV2 } from "../helpers/task-request-fixture.mjs";
+import { validTaskRequest, validTaskRequestV2 } from "../helpers/task-request-fixture.mjs";
 import { RUN_ID, TASK_ID, WORKSPACE_ID, taskRequest } from "../helpers/task-run-record-fixture.mjs";
 
 afterEach(cleanupTaskCommandFixtures);
@@ -158,6 +158,82 @@ for (const [command, state, resume] of COMMANDS)
     assertNothingDone(seen, state);
     assert.equal(fixture.state(), state);
   });
+
+// invariant: AD-084. A model with no price runs on a subscription only. A
+// provider on an API key that is asked for one is `not configured`, before the
+// machine is asked, a credential is read, a transition is made, or a worktree
+// is made; the same models on a subscription go on to the first credential
+// read, and a priced model on an API key is not refused.
+async function providerModes(fixture, modes) {
+  await mkdir(fixture.workspace.layout.workspaceRoot, { recursive: true });
+  await writeFile(
+    join(fixture.workspace.layout.workspaceRoot, "task-providers.json"),
+    JSON.stringify({
+      schemaVersion: 1,
+      providers: { "claude-code": { auth: modes.implementer }, codex: { auth: modes.verifier } }
+    })
+  );
+}
+
+function requestOn(models) {
+  const request = validTaskRequest();
+  return normalizeTaskRequest({
+    ...request,
+    sourceRevision: "a".repeat(40),
+    task: { ...request.task, taskId: TASK_ID },
+    driver: { ...request.driver, model: models.implementer },
+    verifier: { ...request.verifier, model: models.verifier }
+  });
+}
+
+for (const [command, state, resume] of COMMANDS)
+  for (const [label, models, modes, refused] of [
+    [
+      "a subscription-only verifier model on an API key",
+      { implementer: "claude-sonnet-5", verifier: "gpt-5.5" },
+      { implementer: "subscription", verifier: "api-key" },
+      true
+    ],
+    [
+      "a subscription-only implementer model on an API key",
+      { implementer: "claude-sonnet-5-5", verifier: "gpt-5.2-codex" },
+      { implementer: "api-key", verifier: "api-key" },
+      true
+    ],
+    [
+      "subscription-only models on subscriptions",
+      { implementer: "claude-sonnet-5-5", verifier: "gpt-5.5" },
+      { implementer: "subscription", verifier: "subscription" },
+      false
+    ],
+    [
+      "a subscription-only model on the provider that is on a subscription",
+      { implementer: "claude-sonnet-5-5", verifier: "gpt-5.2-codex" },
+      { implementer: "subscription", verifier: "api-key" },
+      false
+    ],
+    [
+      "priced models on API keys",
+      { implementer: "claude-sonnet-5", verifier: "gpt-5.2-codex" },
+      { implementer: "api-key", verifier: "api-key" },
+      false
+    ]
+  ])
+    test(`${command} with ${label} is ${refused ? "refused before anything is done" : "not refused for its models"}`, async () => {
+      const { fixture, run } = await boundRun(state, requestOn(models));
+      await providerModes(fixture, modes);
+      const { machine, seen } = observingHost(fixture, run, false);
+      const started = runTask(fixture.io, { runId: RUN_ID, resume }, machine);
+      if (refused) {
+        await assert.rejects(started, notConfigured("model-unpriced-for-api-key"));
+        assert.deepEqual(seen, [], "the machine was asked before the models were checked");
+        assert.equal(worktreeCount(fixture.workspace.layout.worktreesRoot), 0);
+        assert.equal(existsSync(join(run.directory, "active.json")), false);
+      } else {
+        await assert.rejects(started, reachedCredentialRead);
+      }
+      assert.equal(fixture.state(), state);
+    });
 
 test("a coordinated run proves the machine after the owner's billing statement", async () => {
   const { fixture, run } = await boundRun("EXECUTION_AUTHORIZED", coordinatedRequest());

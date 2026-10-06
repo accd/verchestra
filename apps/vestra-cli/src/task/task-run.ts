@@ -7,6 +7,7 @@ import {
   TaskGateCommitCoordinator,
   TaskRunCoordinator,
   createBudgetMeter,
+  isPricedModel,
   modelPriceTable,
   type BudgetLedger,
   type BudgetMeter,
@@ -146,6 +147,23 @@ function providerModels(request: PlannedTaskRequest) {
   return { claude: models("claude-code"), codex: [...models("codex"), request.verifier.model] };
 }
 
+// invariant: AD-084. A model with no price is reachable only on a subscription,
+// where nothing is billed per token. On an API key it would stop the run at its
+// first usage event with `VES_BUDGET_MODEL_UNKNOWN`, after the implementer's
+// allowance was spent, so it is refused before any effect.
+function requireModelsPricedForApiKey(auth: ProviderAuth, request: PlannedTaskRequest): void {
+  const { claude, codex } = providerModels(request);
+  const unpriced = [
+    ...(auth.implementer === "api-key" ? claude : []),
+    ...(auth.verifier === "api-key" ? codex : [])
+  ].filter((model) => !isPricedModel(model));
+  if (unpriced.length > 0)
+    throw notConfigured(
+      "model-unpriced-for-api-key",
+      `${[...new Set(unpriced)].join(", ")} has no price, so it runs on a subscription only`
+    );
+}
+
 // why: a model reached through a subscription is not billed per token, so the
 // run's meter counts its tokens and duration and never prices it.
 function unbilledModels(auth: ProviderAuth, request: PlannedTaskRequest): readonly string[] {
@@ -224,6 +242,7 @@ async function prepare(
   machine: WindowsMachine
 ) {
   const auth = await loadProviderAuth(workspace.layout.workspaceRoot);
+  requireModelsPricedForApiKey(auth, plan.request);
   const confirmations = isCoordinatedPlan(plan)
     ? await requireSubscriptionPreflight({
         workspaceRoot: workspace.layout.workspaceRoot,

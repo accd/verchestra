@@ -94,3 +94,56 @@ graph, swarm, and Strands tests fail with `ERR_MODULE_NOT_FOUND`, and Node 26
 made the activation launcher and the runtime store tests fail. Neither is
 related to this change: with `pnpm install --frozen-lockfile` and Node 24.14.0
 every scope above passes.
+
+## T4: subscription-only models in the price table (PPR-06, PPR-07)
+
+### Gates
+
+Node 24.14.0, macOS arm64, on `feat/subscription-only-models` stacked on T2.
+
+| Gate | Result |
+| --- | --- |
+| `gate:quick` | PASS: unit 3009, agent-readiness 357, census 13 |
+| `test:contract` | PASS: 963 |
+| `test:integration` | PASS: 1264 |
+| `test:security` | PASS: 1355 |
+| `test:architecture` | PASS: 132 |
+| `test:e2e` | PASS: 305 |
+| `test:fault` | PASS: 310 |
+| `test:mutation` | PASS: 8 |
+| `agent:check` | PASS |
+| `platform-matrix`, SonarCloud | recorded on the pull request |
+
+### Acceptance evidence
+
+| Requirement | Evidence |
+| --- | --- |
+| PPR-06 | `tests/unit/model-price-table.test.mjs` (6 cases): the table is `2026.10.0`; the eight Codex models are subscription-only and have no price, and `gpt-reserve` and `codex-auto-review` are no task's model; a model is listed once, by one driver, and is never priced; every listed name passes a request's binding; a Claude name is refused as a verifier and a Codex name as an implementer. `tests/contract/task-request.test.mjs` and `task-request-v2.test.mjs`: the implementer, the verifier, and a node may name one; an unlisted name is still `VES_TASK_REQUEST_MODEL_UNPRICED`. |
+| PPR-07 | `tests/integration/task-run-prerequisites.test.mjs`, ten cases over `start` and `resume`: a subscription-only verifier or implementer model on an API key is `VES_TASK_NOT_CONFIGURED` (`model-unpriced-for-api-key`) with the machine never asked, no worktree, and no active file; the same models on subscriptions, a subscription-only model on the provider that is on a subscription, and priced models on API keys reach the first credential read. |
+
+### Mutations
+
+| Mutant | File | Killed by |
+| --- | --- | --- |
+| MA1: intake admits only priced models | `packages/application/src/execution/task-request.ts` | 4 tests: the three admit cases and the node case |
+| MA2: `start` and `resume` do not check the models | `apps/vestra-cli/src/task/task-run.ts` | 4 tests: the four refusal cases |
+| MA3: the check ignores the provider's mode | `apps/vestra-cli/src/task/task-run.ts` | 4 tests: the cases on subscriptions |
+| MA4: a subscription-only model is read for any driver | `packages/application/src/execution/model-price-table.ts` | 1 test: the listing rules |
+| MA5: a priced model is listed as subscription-only too | `packages/application/src/execution/model-price-table.ts` | 1 test: the listing rules |
+
+### Pinned expectations that moved
+
+Two fixture strings in `tests/integration/run-capsule-budget-evidence.test.mjs`
+named the table's version `2026.7.0`. They are fixtures of what a capsule
+seals, not the table itself; they now name `2026.10.0`, the version the table
+seals. No assertion changed.
+
+### Decisions the reviewer confirms
+
+1. **AD-084**: a model can be subscription-only, with no price. The table's
+   "HUMAN REVIEW REQUIRED" header applies.
+2. **The Claude Code names** are listed without a call to the owner's account
+   (`handoff.md`, known risks). A name the account refuses is now reported with
+   its cause (AD-083).
+3. **The refusal is at `start` and `resume`, not at `plan`**, as the plan says;
+   the credential mode is a machine-local setting that can change in between.

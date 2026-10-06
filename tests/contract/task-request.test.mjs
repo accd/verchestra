@@ -170,6 +170,20 @@ const crossFieldRejections = [
   ["instructions above 16384 UTF-8 bytes", (r) => (r.instructions = "\u20ac".repeat(8192)), "VES_TASK_REQUEST_INVALID"]
 ];
 
+// invariant: AD-084. A model offered on a subscription is admitted without a
+// price; only a name that is neither priced nor offered is refused as unpriced.
+for (const [name, mutate, field, model] of [
+  ["a subscription-only implementer model", (r) => (r.driver.model = "claude-opus-5-5"), "driver", "claude-opus-5-5"],
+  ["a subscription-only verifier model", (r) => (r.verifier.model = "gpt-5.5"), "verifier", "gpt-5.5"],
+  ["the newest Codex verifier model", (r) => (r.verifier.model = "gpt-6.1-sol"), "verifier", "gpt-6.1-sol"]
+]) {
+  test(`the normalizer admits ${name} that has no price`, () => {
+    const request = mutated(mutate);
+    assert.equal(schemaAccepts(request), true);
+    assert.equal(normalizeTaskRequest(request)[field].model, model);
+  });
+}
+
 for (const [name, mutate, code] of crossFieldRejections) {
   test(`the normalizer rejects ${name} that the schema shape admits`, () => {
     const request = mutated(mutate);
