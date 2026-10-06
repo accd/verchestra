@@ -147,3 +147,70 @@ seals. No assertion changed.
    its cause (AD-083).
 3. **The refusal is at `start` and `resume`, not at `plan`**, as the plan says;
    the credential mode is a machine-local setting that can change in between.
+
+## T3: the model's availability is checked before the allowance is spent (PPR-08)
+
+### Gates
+
+Node 24.14.0, macOS arm64, on `feat/codex-model-availability` stacked on T4.
+
+| Gate | Result |
+| --- | --- |
+| `gate:quick` | PASS: unit 3009, agent-readiness 357, census 13 (complexity within the target after two helpers were extracted) |
+| `test:contract` | PASS: 968 |
+| `test:integration` | PASS: 1267 |
+| `test:security` | PASS: 1355 |
+| `test:architecture` | PASS: 132 |
+| `test:e2e` | PASS: 310 |
+| `test:fault` | PASS: 310 |
+| `test:mutation` | PASS: 8 |
+| `agent:check` | PASS |
+| `platform-matrix`, SonarCloud | recorded on the pull request |
+
+### Acceptance evidence
+
+| Requirement | Evidence |
+| --- | --- |
+| PPR-08, the driver | `tests/contract/codex-driver-structured.test.mjs`: the check sends `initialize`, `initialized`, `model/list` and nothing else, reports `["gpt-6-sol", "gpt-5.5"]` for a list that holds neither and only `gpt-5.5-codex`, frozen, with the session closing `completed` and no event but its close; with `accountOnly` it sends `account/read` first; alone it runs on 0.115.0 and with the account it is refused before spawn on 0.159.2; eleven malformed requests (none, seventeen, a repeat, a space, a leading dash, 65 characters, a number, a string, `null`, with a subscription-only turn, with a structured answer) are refused as `VES_CODEX_MODEL_CHECK_INVALID` with no spawn; a list that is no list, or has none, is `VES_CODEX_PROTOCOL_FAILED`, never every model unavailable. |
+| PPR-08, the session | `tests/integration/codex-verifier-session.test.mjs`: the combined session returns `{planType: "plus", unavailableModels: ["gpt-6-sol", "gpt-5.5"]}` with no thread, no turn, and no session root left; the models-only session answers on `codex-0.159.2` and on an API-key login while the combined one is `codex-version`; a failing `model/list` is `codex-model-list` alone and `codex-account` with the account. |
+| PPR-08, the run | `tests/e2e/task-model-availability-e2e.test.mjs`: through the real binary, a verifier model, a Codex node model alone (the offered verifier's name is not on the terminal), and a resumed run's verifier model are each `VES_TASK_NOT_CONFIGURED` with requirement `codex-model-unavailable`, the models named on the terminal, the run still `EXECUTION_AUTHORIZED` (or `VERIFYING` and `SUSPENDED` for the resume), no implementer started, no verifier turn, and no worktree beside the repository's own; the same run starts once the account offers the model. `tests/e2e/task-cli-e2e.test.mjs`: a v1 run is refused before the implementer, and a v1 run on a Codex below 0.159.3 still reaches `HUMAN_REVIEW`. |
+
+### Mutations
+
+| Mutant | File | Killed by |
+| --- | --- | --- |
+| MB1: the unavailable models do not refuse the run | `apps/vestra-cli/src/task/task-run.ts` | 3 e2e tests: the verifier, the node, the resume |
+| MB2: a v1 run reads the account too, raising its floor | `apps/vestra-cli/src/task/task-run.ts` | 1 e2e test: the v1 run on a Codex below the floor |
+| MB3: only the verifier's model is checked | `apps/vestra-cli/src/task/task-run.ts` | 1 e2e test: the node's model |
+| MB4: the check reports no model as unavailable | `packages/drivers/src/codex-driver.ts` | 4 tests: the driver and the session cases |
+| MB5: a list that is no list counts as an empty one | `packages/drivers/src/codex-driver.ts` | 1 test: the list with no `data` (the first mutant version survived on `data: "not-a-list"`, which a string's missing `find` already failed, so the case was added) |
+| MB6: a check that asks for a turn is not refused | `packages/drivers/src/codex-driver.ts` | 1 test: the malformed requests |
+| MB7: the terminal does not name the models | `apps/vestra-cli/src/task/task-run.ts` | 2 e2e tests: the verifier and the node |
+| MB8: the session sends no model check | `apps/vestra-cli/src/task/task-codex.ts` | 2 tests: the session cases |
+
+### Changes to what C's tests expect
+
+The two end-to-end cases of `tests/e2e/task-failure-cause-e2e.test.mjs` that
+used a model the account does not offer now use a thread the App Server
+refuses (`codex-thread-refused`, `VES_CODEX_RPC_FAILED`), because the missing
+model is refused at `start` before the run can fail. The cause still reaches
+`status.lastReason` for a verifier and for a Codex node. The missing model at
+run time stays covered where it can still happen, by
+`tests/integration/codex-verifier-session.test.mjs` and the driver's contract
+test.
+
+### Decisions the reviewer confirms
+
+1. **AD-085**: every `start` and `resume` on a Codex subscription launches one
+   more short Codex process, a v1 run included. It spends nothing of the
+   allowance and a v1 run keeps its T04 floor.
+2. **The model's name is on the terminal, not in the public error**, which
+   carries `requirement: codex-model-unavailable` alone. The plan asked for it in
+   the safe details; `VES_TASK_NOT_CONFIGURED` declares one detail, so that
+   would extend a public schema.
+3. **A verifier on an API key and Claude Code are not checked.** The first has
+   no ChatGPT login to ask; for the second, the `init` event names the one model
+   a session runs and lists none, and the session that emits it is the
+   implementer's. Both are reported by their session with its cause (AD-083).
+4. **Two requirements are new**: `codex-model-unavailable` and
+   `codex-model-list`, both in the quick-start's table.

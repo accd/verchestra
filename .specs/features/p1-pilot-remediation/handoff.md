@@ -3,12 +3,12 @@ schema: verchestra-feature-handoff/v1
 feature: p1-pilot-remediation
 issue: 406
 status: in_progress
-branch: feat/subscription-only-models
+branch: feat/codex-model-availability
 baseRevision: 8056d41b5ab615ce7dc536db400e09f136565c61
-lastCompletedTask: T4
-nextTask: "T3, Frente B: check the account's model list for the verifier and every Codex node in prepare, before the worktree and before the implementer's allowance."
-lastGate: "T4: gate:quick, contract, integration, security, architecture, e2e, fault, mutation, and agent:check PASS under Node 24.14.0; five mutants killed (validation.md)"
-updatedAt: 2026-10-06T23:00:00Z
+lastCompletedTask: T3
+nextTask: "T5, Frente D: record the P1 stop, the deviation, and the diagnostic gap in live-task-pilot/validation.md, amend spec.md section 6 and the seven requests to the gpt-5.5 verifier with their new digests, and move the coordinated examples to models the account offers."
+lastGate: "T3: gate:quick, contract, integration, security, architecture, e2e, fault, mutation, and agent:check PASS under Node 24.14.0; eight mutants killed (validation.md)"
+updatedAt: 2026-10-07T00:00:00Z
 ---
 
 # Scope
@@ -34,28 +34,35 @@ subscription-only model; `start` and `resume` refuse a subscription-only model
 on a provider set to an API key. AD-084 (`.specs/STATE.md`), `docs/quick-start.md`,
 `validation.md`.
 
+T3 (Frente B, stacked on T4): the Codex driver checks models (`modelsToCheck`),
+and `prepare` runs one such session on the verifier's subscription login before
+the lease, a transition, or the worktree: account and models for a v2 run,
+models alone for a v1 run. AD-085 (`.specs/STATE.md`), `docs/quick-start.md`,
+`validation.md`.
+
 # Blockers
 
-None for T3 to T5. T6 needs the owner: the `npm publish --tag latest --access
+None for T5. T6 needs the owner: the `npm publish --tag latest --access
 public` of the `.8` candidate with a 2FA code, the extra usage of the Claude and
 ChatGPT accounts switched off before the coordinated pilots, and the earlier
 delegated approvals (D1, D1b, D10, the amendments, D11, and D8).
 
 # Next Action
 
-T3, Frente B, as `tasks.md` states it. The driver's code
-`VES_CODEX_MODEL_UNAVAILABLE` and the verifier's reason it produces are in
-place; B moves the check before the worktree and turns the end-to-end case of
-`tests/e2e/task-failure-cause-e2e.test.mjs` for the verifier and the Codex node
-into a refusal at `start`.
+T5, Frente D, as the `nextTask` states it. The models it names are the ones the
+table lists (T4) and the account offers (T3 refuses the others at `start`).
 
 # Files Intentionally Left Unchanged
 
 The pilot's pre-registration (`live-task-pilot/`) is not changed until T5,
-which records the P1 stop and amends the requests as a dated amendment. The
-runtime check of a model's availability (the account-only session) is T3's.
+which records the P1 stop and amends the requests as a dated amendment.
 
 # Known Risks Declared in Advance
+
+- The public error of `codex-model-unavailable` carries the requirement alone;
+  the model's name is on the terminal, as the plan type's is. The plan asked
+  for it in the safe details, and `VES_TASK_NOT_CONFIGURED` declares one detail,
+  `requirement`, so naming a model there extends a public schema (AD-085).
 
 - The Claude Code subscription-only names (`claude-fable-5-1`, `claude-opus-5-5`,
   `claude-sonnet-5-5`) come from the model identifiers of the Claude Code
