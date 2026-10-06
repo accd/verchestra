@@ -262,11 +262,17 @@ test("a verifier's usage the meter refuses fails the run with the meter's code, 
   assert.deepEqual(await refused.run(), { status: "FAILED", reason: "VES_BUDGET_MODEL_UNKNOWN" });
 });
 
-test("a verification failure that is not a budget stop keeps the code it had", async () => {
+// invariant: a task failure records the stable reason it names (the cause), as
+// the run's reason; every other verification failure keeps the code it had.
+test("a verification failure that is not a budget stop records its reason, or keeps the code it had", async () => {
   for (const [failure, reason] of [
     [
       taskError("VES_TASK_FAILED", { reason: "VES_TASK_VERIFIER_FAILED" }, "The verifier did not complete"),
-      "VES_TASK_FAILED"
+      "VES_TASK_VERIFIER_FAILED"
+    ],
+    [
+      taskError("VES_TASK_FAILED", { reason: "VES_CODEX_MODEL_UNAVAILABLE" }, "The verifier did not complete"),
+      "VES_CODEX_MODEL_UNAVAILABLE"
     ],
     [taskError("VES_TASK_STATE_INVALID", { reason: BUDGET_EXCEEDED }, "not a task failure"), "VES_TASK_STATE_INVALID"],
     [Object.assign(new Error("git failed"), { code: "VES_GIT_FAILED" }), "VES_GIT_FAILED"],

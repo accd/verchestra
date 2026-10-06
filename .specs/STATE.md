@@ -3099,6 +3099,59 @@ note. -->
   anchored branch (`VES_TASK_COMMIT_DRIFT` otherwise). A run interrupted, not suspended, after its grant expired still
   fails at its first effect (`VES_EXECUTOR_APPROVAL_INVALID`).
 
+### AD-083 — A failed run records the cause its driver reported
+
+- **Status:** proposed, **human review required**
+  (`.specs/features/p1-pilot-remediation/`, Frente C, PPR-01 to PPR-05). It
+  supersedes the last sentence of AD-056 item 5 ("every other verification
+  failure keeps the code it had") for a task failure that names a stable
+  reason, and it keeps the public code unpromoted as AD-056 did.
+- **Context:** the live pilot P1 (#406) ended with `VES_TASK_FAILED` and no
+  cause. Its verifier asked for a model the ChatGPT account does not offer.
+  The cause was lost at four points: the provider child run read a rejected
+  conversation as `<prefix>_PROTOCOL_FAILED` whatever it was rejected with;
+  `runCodexVerifier` ignored the codes its session reported; the run's
+  terminal outcome recorded the public code `VES_TASK_FAILED` and dropped its
+  `reason`; and the executor and the coordinated driver reported a failed
+  session as `VES_EXECUTOR_DRIVER_FAILED` and `VES_COORDINATION_NODE_FAILED`
+  without the driver's code.
+- **Decision:**
+  1. A conversation a provider's protocol rejects with one of that provider's
+     own stable codes (`<prefix>_`, then `[A-Z0-9_]`) ends its run with that
+     code. Any other rejection is still `<prefix>_PROTOCOL_FAILED`, so no text,
+     class, or runtime code reaches the report.
+  2. The Codex driver names a model its App Server does not list
+     `VES_CODEX_MODEL_UNAVAILABLE`, as the OpenCode driver does, where it named
+     it `VES_CODEX_IDENTITY_MISMATCH`.
+  3. The reason of a verifier that did not complete is, most specific first,
+     the meter's refusal, a reached ceiling, the caller's cancel, the first
+     stable code its session reported, then `VES_TASK_VERIFIER_FAILED`.
+  4. A failed driver result carries `reason`, the first stable code the session
+     reported (not the placeholder `VES_DRIVER_ERROR`). The executor and the
+     coordinated driver raise their own code with that `reason`.
+  5. A failed run records, as its reason, the `reason` an executor or node
+     error carries, or the `reason` safe detail of `VES_TASK_FAILED`, when it is
+     a stable code; any other error records its own code. `status` shows it in
+     `lastReason`. The public code stays `VES_TASK_FAILED`, the catalog stays
+     as it is, and only the recorded reason is precise.
+- **Alternatives rejected:** promoting the cause to the public code (an earlier
+  decision declined to publish a new outcome reason as a code, and the catalog
+  would grow); a free-text cause (it could
+  carry a path or a secret); carrying every code a session reported (one
+  bounded code names the cause, and the driver's checkpoint already keeps the
+  list); leaving the generic `VES_CODEX_EXECUTION_FAILED` out of decision 3
+  (it names the provider's failed turn, which `VES_TASK_VERIFIER_FAILED` does
+  not, and a list of exceptions would be a rule nobody could derive).
+- **Consequence:** `VES_TASK_VERIFIER_FAILED` can now be a run's recorded
+  reason, which AD-056 declined to publish, and a v1 verifier that meets a
+  usage limit records `VES_CODEX_EXECUTION_FAILED` (SSI-83 holds: it fails the
+  run and never suspends). A Codex login the App Server rejects records
+  `VES_CODEX_RPC_FAILED`. A run that fails in a node records the code of the
+  node's driver where it recorded `VES_COORDINATION_NODE_FAILED`, and an
+  implementer failure records the driver's code where it recorded
+  `VES_EXECUTOR_DRIVER_FAILED`. Five pinned expectations moved for this and
+  are listed in the feature's `validation.md`.
+
 ## Handoff
 
 - **Feature:** `strands-subscription-integration` (T1–T10) on `main` through
@@ -3116,6 +3169,15 @@ note. -->
   amended requirements at human review, decides D11, and reviews
   `setup-draft.md` (D8). Remediation R5 (`account_id` withheld, mutant D6)
   landed in #534.
+
+- **Feature:** `p1-pilot-remediation` (T1, T2) on `fix/task-failure-cause`;
+  handoff status `in_progress`.
+- **Completed:** AD-083: a failed run records the cause its driver reported, and
+  `status.lastReason` shows it. See
+  `.specs/features/p1-pilot-remediation/handoff.md`.
+- **Next:** T3, the model's availability checked before the allowance is spent;
+  T4, subscription-only models in the price table; then the pilot's record and
+  the `.8` candidate, which need the owner (`npm publish` with 2FA).
 
 - **Feature:** `subscription-provider-auth` (ADP-A, tasks TA1 and TA2) on
   `feat/subscription-provider-auth`.

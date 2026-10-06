@@ -6,6 +6,7 @@ import {
   TaskExecutionSuspended,
   assertNoToolRequests,
   assertReadOnlyGrant,
+  firstStableCode,
   recordUsageAndDecide,
   type BudgetMeter,
   type BudgetMeterError,
@@ -222,12 +223,15 @@ function meterUsage(meter: BudgetMeter | undefined, model: string, event: Driver
   stop.controller.abort("verifier budget reached");
 }
 
-// invariant: the reason names what ended the session, most specific first: the
-// meter's refusal, a reached ceiling, the caller's cancel, then the verifier.
-function failureReason(options: CodexSessionOptions, stop: VerifierStop): string {
+// invariant: what stopped the session outranks what the session reported, since
+// the stop is why it ended: the meter's refusal, a reached ceiling, then the
+// caller's cancel. A failure nothing else explains is named by the first stable
+// code the session reported (an unavailable model, a failed turn).
+function failureReason(options: CodexSessionOptions, stop: VerifierStop, errorCodes: readonly string[]): string {
   if (stop.refusal !== undefined) return stop.refusal.code;
   if (options.meter?.shouldStop().stop === true) return "VES_EXECUTOR_BUDGET_EXCEEDED";
-  return options.signal.aborted ? "VES_EXECUTOR_CANCELLED" : "VES_TASK_VERIFIER_FAILED";
+  if (options.signal.aborted) return "VES_EXECUTOR_CANCELLED";
+  return firstStableCode(errorCodes) ?? "VES_TASK_VERIFIER_FAILED";
 }
 
 interface CodexSessionShape {
@@ -361,7 +365,7 @@ export async function runCodexVerifier(options: CodexSessionOptions): Promise<st
     if (finished.outcome !== "completed")
       throw taskError(
         "VES_TASK_FAILED",
-        { reason: failureReason(options, stop) },
+        { reason: failureReason(options, stop, finished.errorCodes) },
         "The independent verifier did not complete"
       );
     return text;

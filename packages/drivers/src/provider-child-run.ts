@@ -13,6 +13,8 @@ import type { DriverSession, DriverSessionOutcome } from "./driver-session-ledge
 // when its execution states no limit.
 const DEFAULT_OUTPUT_LIMIT = 1_048_576;
 
+const STABLE_CODE = /^VES_[A-Z0-9_]{1,96}$/u;
+
 // invariant: what differs between the providers this module runs. A run
 // reports `<prefix>_ABORTED`, `<prefix>_OUTPUT_LIMIT`, `<prefix>_STREAM_INVALID`,
 // `<prefix>_STDIN_FAILED`, `<prefix>_PROTOCOL_FAILED`, `<prefix>_STREAM_INCOMPLETE`
@@ -191,8 +193,8 @@ class ProviderChild {
     try {
       await this.#protocol.converse();
       await this.#settled;
-    } catch {
-      this.#conversationFailed();
+    } catch (error) {
+      this.#conversationFailed(error);
     }
     if (this.#run.profile.afterResult === "ended-by-the-driver" && this.#running()) this.#endChild();
     const exit = await this.#exited;
@@ -267,10 +269,22 @@ class ProviderChild {
 
   // why: a failed conversation has nothing more to ask and ends nothing itself;
   // a provider the driver ends is ended with the run, while it still runs.
-  #conversationFailed(): void {
+  // invariant: the run reports the stable code its conversation was refused
+  // with, so the cause (an unavailable model, a request the provider rejected)
+  // reaches the owner. A rejection that names none is a protocol failure.
+  #conversationFailed(error: unknown): void {
     if (this.#end !== undefined) return;
     this.#failed = true;
-    this.#end = { kind: "failure", code: this.#code("PROTOCOL_FAILED") };
+    this.#end = { kind: "failure", code: this.#refusalCode(error) ?? this.#code("PROTOCOL_FAILED") };
+  }
+
+  // hazard: the code is read from an error a protocol raised, so it is kept
+  // only when it is one of this provider's own stable codes, never an error
+  // class's text or a runtime's `ERR_` code.
+  #refusalCode(error: unknown): string | undefined {
+    const code = (error as { readonly code?: unknown } | null | undefined)?.code;
+    const own = `${this.#run.profile.errorCodePrefix}_`;
+    return typeof code === "string" && code.startsWith(own) && STABLE_CODE.test(code) ? code : undefined;
   }
 
   #stopRequested(): void {

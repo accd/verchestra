@@ -239,6 +239,60 @@ test("an executor failure fails the run with the executor's stable code", async 
   assert.equal(state().state, "FAILED");
 });
 
+// invariant: the reason a failed run records names the cause. The public code
+// `VES_TASK_FAILED` is not promoted: its `reason` safe detail is what the run
+// records, and only for that code. An executor or node error records the
+// stable code its driver reported, and any other error records its own.
+const publicFailure = (code, safeDetails) =>
+  Object.assign(new Error("private message"), { code, envelope: { code, safeDetails } });
+
+for (const [label, error, reason] of [
+  [
+    "an executor error that carries its driver's code",
+    Object.assign(new Error("driver"), { code: "VES_EXECUTOR_DRIVER_FAILED", reason: "VES_CODEX_MODEL_UNAVAILABLE" }),
+    "VES_CODEX_MODEL_UNAVAILABLE"
+  ],
+  [
+    "a node error that carries its driver's code",
+    Object.assign(new Error("node"), { code: "VES_COORDINATION_NODE_FAILED", reason: "VES_CLAUDE_PROCESS_FAILED" }),
+    "VES_CLAUDE_PROCESS_FAILED"
+  ],
+  [
+    "an executor error whose carried reason is no stable code",
+    Object.assign(new Error("driver"), { code: "VES_EXECUTOR_DRIVER_FAILED", reason: "model is gone" }),
+    "VES_EXECUTOR_DRIVER_FAILED"
+  ],
+  [
+    "a public task failure that names its reason",
+    publicFailure("VES_TASK_FAILED", { reason: "VES_CODEX_MODEL_UNAVAILABLE" }),
+    "VES_CODEX_MODEL_UNAVAILABLE"
+  ],
+  [
+    "a public task failure whose reason is no stable code",
+    publicFailure("VES_TASK_FAILED", { reason: "model is gone" }),
+    "VES_TASK_FAILED"
+  ],
+  ["a public task failure with no reason", publicFailure("VES_TASK_FAILED", {}), "VES_TASK_FAILED"],
+  [
+    "another public error whose detail is named reason",
+    publicFailure("VES_TASK_STATE_INVALID", { reason: "VES_CODEX_MODEL_UNAVAILABLE" }),
+    "VES_TASK_STATE_INVALID"
+  ]
+]) {
+  test(`${label} fails the run with ${reason}, from the implementer and from the verifier`, async () => {
+    const implementing = harness({
+      execute: async () => {
+        throw error;
+      }
+    });
+    assert.deepEqual(await new TaskRunCoordinator(implementing.ports).run(input()), { status: "FAILED", reason });
+    assert.equal(implementing.state().state, "FAILED");
+    const verifying = verifierRaising(error);
+    assert.deepEqual(await new TaskRunCoordinator(verifying.ports).run(input()), { status: "FAILED", reason });
+    assert.equal(verifying.state().state, "FAILED");
+  });
+}
+
 test("a failed verification requests repair and never reaches human review", async () => {
   const { ports, state } = harness({ verdict: "FAIL" });
   const outcome = await new TaskRunCoordinator(ports).run(input());

@@ -1,6 +1,11 @@
 import { isAbsolute } from "node:path";
 
-import { assertStructuredAnswer, type ExecutionDriverPort, type ExecutionPayloadStore } from "@verchestra/application";
+import {
+  assertStructuredAnswer,
+  sessionResult,
+  type ExecutionDriverPort,
+  type ExecutionPayloadStore
+} from "@verchestra/application";
 import { canonicalizeJsonV2, type DriverEvent, type DriverEventOf } from "@verchestra/domain";
 
 import type { BridgeTransport } from "./bridge-transport.ts";
@@ -163,7 +168,7 @@ export class DriverExecutionAdapter<TStartRequest> implements ExecutionDriverPor
         ...recordedWarnings(state.warnings)
       });
       assertStructuredAnswer(outcome, errorCodes);
-      return Object.freeze({ status: outcome, outputRefs: Object.freeze(outputRefs) });
+      return sessionResult(outcome, Object.freeze(outputRefs), errorCodes);
     } finally {
       control.signal?.removeEventListener("abort", forward);
       this.#active.delete(request.worktreeRef);

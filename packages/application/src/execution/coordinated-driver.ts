@@ -36,6 +36,7 @@ import {
   type NodeResult
 } from "./node-result.ts";
 import {
+  firstStableCode,
   TaskExecutorError,
   type ExecutionDriverPort,
   type ExecutionDriverResult,
@@ -541,7 +542,12 @@ class CoordinationRound implements CoordinationNodeRunner {
       const result = await driver.execute(this.#request, this.#narrowed(node, entry));
       if (result.status === "cancelled" || this.#abort.signal.aborted)
         throw new TaskExecutorError("VES_EXECUTOR_CANCELLED", "The node was cancelled");
-      if (result.status !== "completed") failure("VES_COORDINATION_NODE_FAILED", "The node's session failed");
+      if (result.status !== "completed") {
+        const reason = result.status === "failed" ? firstStableCode([result.reason]) : undefined;
+        throw new CoordinationRunError("VES_COORDINATION_NODE_FAILED", "The node's session failed", {
+          ...(reason === undefined ? {} : { reason })
+        });
+      }
       return await this.#resultBytes(result.outputRefs);
     } finally {
       this.#running.delete(driver);
