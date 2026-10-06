@@ -3,12 +3,12 @@ schema: verchestra-feature-handoff/v1
 feature: p1-pilot-remediation
 issue: 406
 status: in_progress
-branch: fix/task-failure-cause
+branch: feat/subscription-only-models
 baseRevision: 8056d41b5ab615ce7dc536db400e09f136565c61
-lastCompletedTask: T2
-nextTask: "T3, Frente B: check the account's model list for the verifier and every Codex node in prepare, before the worktree and before the implementer's allowance; T4, Frente A, can proceed in parallel."
-lastGate: "T2: gate:quick, contract, integration, security, architecture, e2e, fault, mutation, and agent:check PASS under Node 24.14.0; seven mutants killed (validation.md)"
-updatedAt: 2026-10-06T22:00:00Z
+lastCompletedTask: T4
+nextTask: "T3, Frente B: check the account's model list for the verifier and every Codex node in prepare, before the worktree and before the implementer's allowance."
+lastGate: "T4: gate:quick, contract, integration, security, architecture, e2e, fault, mutation, and agent:check PASS under Node 24.14.0; five mutants killed (validation.md)"
+updatedAt: 2026-10-06T23:00:00Z
 ---
 
 # Scope
@@ -27,6 +27,12 @@ model `VES_CODEX_MODEL_UNAVAILABLE`; the verifier, the executor, and the
 coordinated nodes hand on the first stable code the driver reported; a failed
 run records it as its reason, and `status.lastReason` shows it. AD-083
 (`.specs/STATE.md`). Evidence and mutations: `validation.md`.
+
+T4 (Frente A, stacked on T2): the price table lists subscription-only models by
+driver with no price (version `2026.10.0`); a request admits a priced or a
+subscription-only model; `start` and `resume` refuse a subscription-only model
+on a provider set to an API key. AD-084 (`.specs/STATE.md`), `docs/quick-start.md`,
+`validation.md`.
 
 # Blockers
 
@@ -47,10 +53,15 @@ into a refusal at `start`.
 
 The pilot's pre-registration (`live-task-pilot/`) is not changed until T5,
 which records the P1 stop and amends the requests as a dated amendment. The
-price table, the request intake, and `docs/quick-start.md`'s model list change
-in T4.
+runtime check of a model's availability (the account-only session) is T3's.
 
 # Known Risks Declared in Advance
+
+- The Claude Code subscription-only names (`claude-fable-5-1`, `claude-opus-5-5`,
+  `claude-sonnet-5-5`) come from the model identifiers of the Claude Code
+  environment; `claude --help` confirms only the aliases and the name
+  `claude-fable-5`. No provider was called to confirm that the owner's account
+  accepts them. The Codex names are the account's own `model/list` of the pilot.
 
 - A v1 verifier whose session fails on a usage limit now records
   `VES_CODEX_EXECUTION_FAILED`, where it recorded `VES_TASK_VERIFIER_FAILED`.

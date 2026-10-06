@@ -42,3 +42,10 @@ extra usage of both accounts switched off, which the owner confirms.
 | PPR-03 | `tests/integration/codex-verifier-session.test.mjs`: the model the account does not offer, in v1 and v2, on a subscription and on an API key; the usage limit; `tests/integration/codex-identity.test.mjs`: a login that is no ChatGPT one | integration |
 | PPR-04 | `tests/integration/driver-execution-adapter.test.mjs`; `tests/security/task-executor-security.test.mjs`; `tests/unit/coordinated-driver.test.mjs` | integration, security, unit |
 | PPR-05 | `tests/unit/task-run-coordinator.test.mjs`; `tests/integration/task-run-usage.test.mjs`; `tests/e2e/task-failure-cause-e2e.test.mjs`; `tests/e2e/task-cli-e2e.test.mjs` | unit, integration, e2e |
+
+## Test coverage matrix (T4)
+
+| Requirement | Test | Layer |
+| --- | --- | --- |
+| PPR-06 | `tests/unit/model-price-table.test.mjs`: the version, the eight Codex models, the listing rules (once, by one driver, never priced), every listed name admitted by a request; `tests/contract/task-request.test.mjs` and `tests/contract/task-request-v2.test.mjs`: a subscription-only model admitted for the implementer, the verifier, and a node, an unlisted name refused | unit, contract |
+| PPR-07 | `tests/integration/task-run-prerequisites.test.mjs`: `start` and `resume` refuse a subscription-only model on an API key before the machine is asked, a credential is read, or a worktree is made, and go on for the same models on subscriptions and for priced models on API keys | integration |

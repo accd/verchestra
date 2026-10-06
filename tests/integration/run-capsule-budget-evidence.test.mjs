@@ -6,7 +6,7 @@ import { capsuleExpectation, capsuleHarness, capsuleInput } from "../helpers/run
 const budgetEvidence = (overrides = {}) => ({
   declared: { maximumCostUsd: 25, maximumTokens: 2_000_000, maximumDurationMs: 3_600_000, ...overrides.declared },
   consumed: { costUsd: 22.5, tokens: 1_400_000, durationMs: 1_812_000, usageEvents: 41, ...overrides.consumed },
-  priceTableVersion: overrides.priceTableVersion ?? "2026.7.0",
+  priceTableVersion: overrides.priceTableVersion ?? "2026.10.0",
   stopReason: overrides.stopReason === undefined ? "cost-threshold" : overrides.stopReason
 });
 
@@ -38,7 +38,10 @@ for (const [label, corrupt] of [
   ["an infinite consumed duration", budgetEvidence({ consumed: { durationMs: Number.POSITIVE_INFINITY } })],
   ["a non-string stop reason", budgetEvidence({ stopReason: 42 })],
   ["an unknown field", { ...budgetEvidence(), currency: "USD" }],
-  ["a missing consumed block", { declared: budgetEvidence().declared, priceTableVersion: "2026.7.0", stopReason: null }]
+  [
+    "a missing consumed block",
+    { declared: budgetEvidence().declared, priceTableVersion: "2026.10.0", stopReason: null }
+  ]
 ]) {
   test(`budget evidence with ${label} is rejected`, async () => {
     const input = { ...capsuleInput("FAILED"), budgetEvidence: corrupt };

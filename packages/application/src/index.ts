@@ -261,7 +261,14 @@ export {
   type ModelPriceTable,
   type UsageEvent
 } from "./execution/budget-meter.ts";
-export { modelPriceTable } from "./execution/model-price-table.ts";
+export {
+  isKnownModel,
+  isPricedModel,
+  isSubscriptionOnlyModel,
+  modelPriceTable,
+  type ModelCatalog,
+  type SubscriptionDriverId
+} from "./execution/model-price-table.ts";
 export {
   ProbeEvidenceError,
   verifyProbeEvidence,
