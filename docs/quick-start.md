@@ -233,6 +233,18 @@ untracked.
 - Models must be listed in the release's model price table; a model that is
   not is refused at planning, before any cost. On a subscription the table is
   only the list of supported models: nothing is priced.
+  The table (version `2026.10.0`) lists two kinds. A *priced* model
+  (`claude-sonnet-5`, `claude-opus-5`, `claude-fable-5`,
+  `claude-haiku-4-5-20251001`, `gpt-5.2-codex`) also runs on an API key. A
+  *subscription-only* model has no price and runs on a subscription only:
+  Claude Code `claude-fable-5-1`, `claude-opus-5-5`, `claude-sonnet-5-5`, and
+  Codex `gpt-5.5`, `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`, `gpt-6-sol`,
+  `gpt-6-astra`, `gpt-6-luna`, `gpt-6.1-sol`. A provider you set to an API key in
+  `task-providers.json` that is asked for a subscription-only model is
+  `VES_TASK_NOT_CONFIGURED` at `start` and `resume` (requirement
+  `model-unpriced-for-api-key`), before anything is changed; use a priced model
+  or a subscription for it. Your account offers only some of these models: which
+  ones depends on your plan.
 - An optional `onGateFailure` (`maxAttempts`, `feedbackToDriver`,
   `escalateAfter`) declares a bounded repair loop.
 

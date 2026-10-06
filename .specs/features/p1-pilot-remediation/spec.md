@@ -45,7 +45,7 @@ Each requirement is verified by the tests named in `validation.md`.
 
 ## Decisions
 
-- **Subscription-only entries carry no price** (owner, 2026-10-06). The table
+- **Subscription-only entries carry no price** (owner, 2026-10-06; AD-084). The table
   lists the models an account offers beside the priced ones. No price is
   invented for a model whose price is not documented.
 - **The verifier is `gpt-5.5`** (owner, 2026-10-06), the implementer stays
