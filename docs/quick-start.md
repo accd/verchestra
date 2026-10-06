@@ -519,11 +519,14 @@ non-matching statement is `VES_TASK_NOT_CONFIGURED` (requirement
 `extra-usage-confirmation`), and the terminal shows the file's exact path and
 the entries it needs.
 
-To compare the plan type, every `start` and `resume` of a coordinated run
-launches one extra Codex process, from the Workspace's Codex sign-in, after
-that sign-in is checked and before the run's first step. It asks only for the
-account: it lists no model and starts no thread or turn, so it spends nothing
-of your allowance, and nothing of the account but its plan type is kept.
+Every `start` and `resume` on a Codex subscription launches one extra Codex
+process, from the Workspace's Codex sign-in, after that sign-in is checked and
+before the run's first step. A coordinated run asks it for the account, to
+compare the plan type, and for which of the run's Codex models the account
+offers; a v1 run asks it only for the models. It starts no thread or turn, so
+it spends nothing of your allowance, and of the account it keeps nothing but the
+plan type and the names, among the run's models, that the account does not
+offer. A verifier on an API key has no sign-in to ask and is not checked.
 
 What `start` and `resume` of a coordinated run may refuse, before the run's
 first step, and what you do about it:
@@ -535,6 +538,8 @@ first step, and what you do about it:
 | `codex-login` | Sign Codex in with ChatGPT for this Workspace, with the command the terminal prints (step 3). |
 | `codex-version` | Update the Codex CLI to 0.159.3 or later, the first build whose protocol reports the account. |
 | `codex-account` | Codex did not report the account of its sign-in, in time or at all, or reported one that is not a ChatGPT login. Check `codex login status` with the Workspace's `CODEX_HOME`, sign in again if needed, and retry. |
+| `codex-model-unavailable` | The Codex sign-in does not offer a model the run asks for, the verifier's or a node's. The terminal names it. Name a model your account offers in the task request (see the models in step 5), plan again, and approve. |
+| `codex-model-list` | Codex did not list its models, in time or at all. Check `codex login status` with the Workspace's `CODEX_HOME`, and retry. |
 | `codex-credits` | Remove the purchased credits from the ChatGPT account, then resume. This one is reported after the run is suspended, by the session that saw the credits. |
 
 ### Plan, start, and status

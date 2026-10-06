@@ -72,6 +72,12 @@ lines.on("line", (line) => {
     process.exit(3);
   } else if (message.method === "initialize") {
     emit({ id: message.id, result: { userAgent: "fake-codex", codexHome: "private", platformFamily: "windows", platformOs: "windows" } });
+  } else if (message.method === "model/list" && mode === "model-list-invalid") {
+    // why: an App Server whose model list is not a list.
+    emit({ id: message.id, result: { data: "not-a-list" } });
+  } else if (message.method === "model/list" && mode === "model-list-missing") {
+    // why: an App Server whose answer has no list at all.
+    emit({ id: message.id, result: {} });
   } else if (message.method === "model/list") {
     emit({ id: message.id, result: { data: [{ id: "gpt-5.5-codex", model: "gpt-5.5-codex", isDefault: true }] } });
   } else if (message.method === "thread/start" && mode === "thread-refused") {
