@@ -38,6 +38,19 @@ tasks, the requests and their digests, the probes, the scenarios and the success
 definition did not change. `validation.md` records each resolution and each
 deviation.
 
+**Amended on 2026-10-06, after the first run (P1-2), to record its stop and
+change the verifier.** P1 was attempted twice (`validation.md`, Pilot results).
+The second attempt ran the implementer and the gate, then stopped at the
+verifier, which asked for a model the owner's ChatGPT account does not offer
+(the stop rule of §6). A run had begun, so this is a deviation and not a silent
+edit: the verifier model of all seven requests is now `gpt-5.5` (the owner's
+decision of 2026-10-06), §3, §4, and §6 say so, and `validation.md` records each
+request's new SHA-256. The implementer, the target, the revision, the tasks, the
+probes, the scenarios, the limits, and the success definition did not change.
+The runs that follow use the candidate that carries the model entries and the
+checks that name this failure (`.specs/features/p1-pilot-remediation/`); §2 is
+amended when that candidate is published.
+
 ## Requirements
 
 | ID | Requirement |
@@ -138,8 +151,8 @@ new live evidence into historical evidence.
 | Node | 24.14.0, first `node` on `PATH` (the target's CLI tests start `./cli.js` through `#!/usr/bin/env node`, so the gate's `PATH` must resolve to it) |
 | Git | Recorded at execution (`git --version`) |
 | Implementer | Claude Code **2.1.282**, `mediated-mcp-subscription` profile, model `claude-sonnet-5`. The driver requires at least `2.1.282` in the same major line (`CLAUDE_MEDIATED_MINIMUM_VERSION`, `packages/drivers/src/claude-code-driver.ts`); 2.1.282 meets it exactly. |
-| Verifier | Codex CLI, model `gpt-5.2-codex`. The driver requires at least **`0.115.0`** in the same major line (`packages/drivers/src/codex-driver.ts`, default `minimumVersion`). The installed **`codex-cli 0.157.1`** has the same major (0) and a higher minor (157 > 115), so it **meets** the minimum. |
-| Model listing | Both models are listed in the release's model price table (`packages/application/src/execution/model-price-table.ts`, version `2026.7.0`). Planning refuses a model that is not listed. On a subscription the table is only the list of supported models: no usage is priced. |
+| Verifier | Codex CLI, model `gpt-5.5` (amended 2026-10-06; P1-2 asked for `gpt-5.2-codex`, which the account does not offer). The driver requires at least **`0.115.0`** in the same major line (`packages/drivers/src/codex-driver.ts`, default `minimumVersion`). The installed **`codex-cli 0.157.1`** has the same major (0) and a higher minor (157 > 115), so it **meets** the minimum. |
+| Model listing | `claude-sonnet-5` is priced in the release's model table (`packages/application/src/execution/model-price-table.ts`). `gpt-5.5` is a subscription-only entry with no price, in table version `2026.10.0` (amended 2026-10-06); the `.7` table, version `2026.7.0`, knows only the priced `gpt-5.2-codex` and refuses `gpt-5.5` at planning, so the amended requests run on the candidate that carries the new table. Planning refuses a model that is not listed. On a subscription the table is only the list of supported models: no usage is priced. |
 | Credential mode | `subscription` for both providers, the default of a Workspace with no `task-providers.json`. No API key is bound or used. |
 | Credentials | Names only. `claude-code-oauth-token`: the token `claude setup-token` prints, bound with `VES secret set --name claude-code-oauth-token` into the macOS keychain (#379). `evidence-signing-passphrase`: bound the same way. Codex: one `codex login` with `CODEX_HOME` set to the pilot Workspace's `codex-identity` directory; its credential stays in that directory and never enters the keychain. Values are typed or pasted by the owner, never written to a tracked artifact, a shell history, or a shell profile. |
 | Gate allowlist | The machine-local `task-gates.json` for the pilot Workspace, instantiated from [`task-gates.example.json`](task-gates.example.json) (PLT-10) |
@@ -174,7 +187,7 @@ timeout 120,000 ms, output limit 1,000,000 bytes, protocol `test-summary`,
 if no new test was added); budgets US$8, 3,000,000 tokens, 1,800,000 ms;
 `onGateFailure` two attempts with feedback to the implementer, escalating after
 the second; driver `claude-code`/`claude-sonnet-5`; verifier
-`codex`/`gpt-5.2-codex`. The request files are the canonical text; the operator
+`codex`/`gpt-5.5` (amended 2026-10-06; it was `gpt-5.2-codex`). The request files are the canonical text; the operator
 copies them outside the clone (a request is untrusted input and is not written
 into the repository) and records the SHA-256 of the copy it plans with, which
 must equal the tracked file's.
@@ -423,8 +436,14 @@ requires it); the meter adds no cost to it and `status` reports the cost as
 | Plan usage for the whole pilot | whatever the owner's Claude and ChatGPT plans allow; the pilot does not meter it | owner's own limit |
 
 Stop rule: **the pilot stops, and the owner decides, when a provider refuses a
-session for a plan usage or rate limit.** The run is recorded with its outcome
-and reason; it is not retried in the same session.
+session for a plan usage or rate limit, or because the account does not offer
+the model the request names** (amended 2026-10-06: P1-2 stopped here, at the
+verifier, with `gpt-5.2-codex`). The run is recorded with its outcome and
+reason; it is not retried in the same session, and not with another model.
+From the candidate that carries the checks of
+`.specs/features/p1-pilot-remediation/`, `start` refuses such a model before any
+effect (`codex-model-unavailable`), so the stop is reached without spending an
+implementer's allowance.
 
 A per-run token ceiling is not a hard stop: it is checked when a provider
 reports usage, and Claude Code reports at the end of its session, so a single
@@ -444,7 +463,7 @@ the hard guard. An overshoot is recorded, not hidden.
 ### Order and stop rules
 
 Order: P1, P2, P3, S3b, S1, S3, S2. The pilot stops, records, and escalates to
-the owner on: the usage stop rule; any change to the checkout fingerprint; any
+the owner on: the usage stop rule, or a model the account does not offer; any change to the checkout fingerprint; any
 file changed outside a run's scope; any credential value appearing in output;
 a `VES_TASK_STATE_INVALID` result; or a run that ends with
 `VES_CLAUDE_TOOL_SURFACE_UNEXPECTED`, `VES_CLAUDE_BRIDGE_UNAVAILABLE`,

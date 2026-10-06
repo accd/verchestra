@@ -28,14 +28,14 @@
     }
   ],
   "budgets": { "maximumCostUsd": 5, "maximumTokens": 2000000, "maximumDurationMs": 3600000 },
-  "verifier": { "driverId": "codex", "model": "gpt-5.2-codex" },
+  "verifier": { "driverId": "codex", "model": "gpt-5.5" },
   "instructions": "Extend parseDuration in src/duration.js to accept hour-minute strings such as 1h30m, and add tests in test/duration.test.js. Keep the existing API.",
   "execution": {
     "mode": "graph",
     "nodes": [
       {
         "nodeId": "plan",
-        "driver": { "driverId": "codex", "model": "gpt-5.2-codex" },
+        "driver": { "driverId": "codex", "model": "gpt-5.5" },
         "description": "Reads the code and tests and proposes the change",
         "instructions": "Read src/duration.js and test/duration.test.js. Propose the smallest change that makes parseDuration accept hour-minute strings such as 1h30m and reject negative values, and list the tests to add. Do not write code.",
         "readScope": ["src", "test"],
@@ -53,7 +53,7 @@
       },
       {
         "nodeId": "review",
-        "driver": { "driverId": "codex", "model": "gpt-5.2-codex" },
+        "driver": { "driverId": "codex", "model": "gpt-5.5" },
         "description": "Reviews the change against the plan and the done criteria",
         "instructions": "Review the change in src/duration.js and test/duration.test.js against the done criteria and the plan. Report each missing test and each change of existing behaviour. Do not write code.",
         "readScope": ["src", "test"],
