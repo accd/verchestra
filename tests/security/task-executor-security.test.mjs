@@ -124,6 +124,35 @@ test("malformed Driver output references fail closed and trigger rollback", asyn
   assert.equal(state.released, true);
 });
 
+// invariant: a failed driver session hands on the stable code it reported, and
+// only that: the executor's own code stays, and the run records the driver's.
+test("a failed Driver result carries its stable cause, and refuses one that is no stable code", async () => {
+  const named = executorPorts({
+    driver: { execute: async () => ({ status: "failed", outputRefs: [], reason: "VES_CODEX_MODEL_UNAVAILABLE" }) }
+  });
+  await assert.rejects(executor(named.ports).execute(executorInput()), (error) => {
+    assert.equal(error.code, "VES_EXECUTOR_DRIVER_FAILED");
+    assert.equal(error.reason, "VES_CODEX_MODEL_UNAVAILABLE");
+    return true;
+  });
+  assert.equal(named.state.cleaned, true);
+  const unnamed = executorPorts({ driver: { execute: async () => ({ status: "failed", outputRefs: [] }) } });
+  await assert.rejects(executor(unnamed.ports).execute(executorInput()), (error) => {
+    assert.equal(error.code, "VES_EXECUTOR_DRIVER_FAILED");
+    assert.equal(error.reason, undefined);
+    return true;
+  });
+  for (const reason of ["model /private/path is gone", "VES_lower", "", 7]) {
+    const refused = executorPorts({ driver: { execute: async () => ({ status: "failed", outputRefs: [], reason }) } });
+    await assert.rejects(executor(refused.ports).execute(executorInput()), (error) => {
+      assert.equal(error.code, "VES_EXECUTOR_DRIVER_FAILED");
+      assert.equal(error.reason, undefined, `reason ${JSON.stringify(reason)}`);
+      return true;
+    });
+    assert.equal(refused.state.cleaned, true);
+  }
+});
+
 test("invalid negative Git commit count fails closed and triggers rollback", async () => {
   const { state, ports } = executorPorts({
     worktrees: {

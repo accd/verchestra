@@ -88,6 +88,27 @@ test("a failed node fails the run with its code, and no node that depends on it 
   );
 });
 
+// invariant: the node's error carries the stable code its driver reported as
+// the run's recorded reason; text, or a code that is not stable, is dropped.
+for (const [label, result, reason] of [
+  [
+    "a failed node that names its cause",
+    { status: "failed", outputRefs: [], reason: "VES_CODEX_MODEL_UNAVAILABLE" },
+    "VES_CODEX_MODEL_UNAVAILABLE"
+  ],
+  ["a failed node that names none", { status: "failed", outputRefs: [] }, undefined],
+  ["a failed node whose cause is no code", { status: "failed", outputRefs: [], reason: "model is gone" }, undefined]
+])
+  test(`${label} fails the run with ${reason ?? "no reason"}`, async () => {
+    const request = coordinatedRequest("graph");
+    const fixture = coordinatedDriver(request, { script: { build: async () => result } });
+    await assert.rejects(run(fixture, request), (error) => {
+      assert.equal(error.code, "VES_COORDINATION_NODE_FAILED");
+      assert.equal(error.reason, reason);
+      return true;
+    });
+  });
+
 test("an engine that starts a node before its dependencies, or twice, fails the run before any session", async () => {
   const request = coordinatedRequest("graph");
   // why: review declares only plan as its input, so only the edge from build

@@ -267,12 +267,32 @@ test("a v1 verifier that meets a usage limit fails the run, on a subscription an
   if (WIN32_HOST) return verifierRefusedOnWin32(t);
   for (const subscription of [true, false]) {
     const session = await verifierSession({ schemaVersion: 1, subscription, scenario: "usage-limit" });
-    await assert.rejects(session.run(), failedWith("VES_TASK_VERIFIER_FAILED"), `subscription: ${subscription}`);
+    await assert.rejects(session.run(), failedWith("VES_CODEX_EXECUTION_FAILED"), `subscription: ${subscription}`);
     assert.deepEqual(
       (await session.turns()).map((entry) => entry.accountChecked),
       [false],
       `subscription: ${subscription}`
     );
+    await assert.rejects(stat(session.sessionRoot), { code: "ENOENT" });
+  }
+});
+
+// invariant: the cause of a verifier that did not complete is the stable code
+// its session reported. A model the account does not offer fails the verifier
+// as `VES_CODEX_MODEL_UNAVAILABLE`, before a thread or a turn is opened, in a v1
+// and in a v2 run, on a subscription and on an API key.
+test("a verifier whose model the account does not offer fails with that cause, opening no thread", async (t) => {
+  if (WIN32_HOST) return verifierRefusedOnWin32(t);
+  for (const [schemaVersion, subscription] of [
+    [1, false],
+    [1, true],
+    [2, true]
+  ]) {
+    const session = await verifierSession({ schemaVersion, subscription, flags: ["codex-model-missing"] });
+    const label = `schema ${schemaVersion}, subscription: ${subscription}`;
+    await assert.rejects(session.run(), failedWith("VES_CODEX_MODEL_UNAVAILABLE"), label);
+    assert.deepEqual(await session.sessions(), [], `${label}: Codex opened a thread`);
+    assert.deepEqual(await session.turns(), [], `${label}: Codex opened a turn`);
     await assert.rejects(stat(session.sessionRoot), { code: "ENOENT" });
   }
 });

@@ -39,15 +39,23 @@ export type TaskExecutorErrorCode =
 
 export class TaskExecutorError extends Error {
   readonly code: TaskExecutorErrorCode;
+  // invariant: the stable code of what the driver reported when its session
+  // failed, if it reported one; the run records it as the cause of the failure.
+  readonly reason?: string;
 
-  constructor(code: TaskExecutorErrorCode, message: string, options?: ErrorOptions) {
+  constructor(code: TaskExecutorErrorCode, message: string, options?: ErrorOptions & { readonly reason?: string }) {
     super(message, options);
     this.name = "TaskExecutorError";
     this.code = code;
+    if (options?.reason !== undefined) this.reason = options.reason;
   }
 }
 
-function fail(code: TaskExecutorErrorCode, message: string, options?: ErrorOptions): never {
+function fail(
+  code: TaskExecutorErrorCode,
+  message: string,
+  options?: ErrorOptions & { readonly reason?: string }
+): never {
   throw new TaskExecutorError(code, message, options);
 }
 
@@ -279,7 +287,12 @@ export interface ExecutionDriverPort {
 // reported only by a driver that stopped on a provider's usage signal with no
 // session left running; it carries the suspension record.
 export type ExecutionDriverResult =
-  | { readonly status: "completed" | "failed" | "cancelled"; readonly outputRefs: readonly string[] }
+  | {
+      readonly status: "completed" | "failed" | "cancelled";
+      readonly outputRefs: readonly string[];
+      // invariant: present only on a failed session that reported a stable code.
+      readonly reason?: string;
+    }
   | { readonly status: "suspended"; readonly outputRefs: readonly string[]; readonly suspension: ExecutionSuspension };
 
 interface TaskExecutorPorts {
@@ -427,15 +440,39 @@ const PROVIDER = /^[a-z][a-z0-9-]{0,31}$/u;
 const QUOTA_SCOPE = /^[a-z][a-z0-9_]{0,63}$/u;
 const INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u;
 
-function matching(row: Row, key: string, pattern: RegExp): string {
+function matching(row: Row, key: string, pattern: RegExp, label = "Driver suspension"): string {
   const value = row[key];
   if (typeof value !== "string" || !pattern.test(value))
-    fail("VES_EXECUTOR_DRIVER_FAILED", `Driver suspension ${key} is invalid`);
+    fail("VES_EXECUTOR_DRIVER_FAILED", `${label} ${key} is invalid`);
   return value;
 }
 
 function optionalMatching(row: Row, key: string, pattern: RegExp): Partial<Record<string, string>> {
   return row[key] === undefined ? {} : { [key]: matching(row, key, pattern) };
+}
+
+// why: a driver adapter that reports no stable code for an error event is
+// given this one by the session runner; it names no cause, so it is not one.
+const UNNAMED_DRIVER_ERROR = "VES_DRIVER_ERROR";
+
+// invariant: the cause of a failed driver session is the first stable code its
+// session reported, and nothing else: no message, class, or provider text.
+export function firstStableCode(codes: readonly unknown[]): string | undefined {
+  return codes.find(
+    (code): code is string => typeof code === "string" && STABLE_CODE.test(code) && code !== UNNAMED_DRIVER_ERROR
+  );
+}
+
+// invariant: the result an adapter hands the executor for an ended session: a
+// failed session names its cause (the first stable code it reported), any
+// other ends with no reason.
+export function sessionResult(
+  status: "completed" | "failed" | "cancelled",
+  outputRefs: readonly string[],
+  errorCodes: readonly string[]
+): ExecutionDriverResult {
+  const reason = status === "failed" ? firstStableCode(errorCodes) : undefined;
+  return Object.freeze({ status, outputRefs, ...(reason === undefined ? {} : { reason }) });
 }
 
 // invariant: SSI-61 and SSI-81. A suspension record is read member by member
@@ -464,14 +501,21 @@ function driverOutcome(
   value: unknown,
   signal: AbortSignal | undefined
 ): { readonly outputRefs: readonly string[]; readonly suspension?: ExecutionSuspension } {
-  const row = exactRow(value, "Driver result", ["status", "outputRefs", "suspension"], "VES_EXECUTOR_DRIVER_FAILED");
+  const row = exactRow(
+    value,
+    "Driver result",
+    ["status", "outputRefs", "suspension", "reason"],
+    "VES_EXECUTOR_DRIVER_FAILED"
+  );
   const status = row["status"];
   if (!DRIVER_STATUSES.has(status)) fail("VES_EXECUTOR_DRIVER_FAILED", "Task Driver returned an invalid status");
   const outputRefs = optionalSafeList(row["outputRefs"], "Driver outputRefs", "VES_EXECUTOR_DRIVER_FAILED");
   if (status === "cancelled" || Boolean(signal?.aborted)) fail("VES_EXECUTOR_CANCELLED", "Task Driver was cancelled");
   if (status === "suspended") return { outputRefs, suspension: normalizeSuspension(row["suspension"]) };
-  if (status !== "completed" || row["suspension"] !== undefined)
-    fail("VES_EXECUTOR_DRIVER_FAILED", "Task Driver did not complete");
+  if (status !== "completed" || row["suspension"] !== undefined) {
+    const reason = row["reason"] === undefined ? undefined : matching(row, "reason", STABLE_CODE, "Driver result");
+    fail("VES_EXECUTOR_DRIVER_FAILED", "Task Driver did not complete", reason === undefined ? undefined : { reason });
+  }
   return { outputRefs };
 }
 

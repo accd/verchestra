@@ -311,6 +311,11 @@ npx verchestra task resume --run-id <runId>
 
 - `status` prints the durable state, the checkpoints, the evidence
   references, and the next allowed actions.
+- A run that failed shows why in `lastReason`: the stable code the provider's
+  session reported (`VES_CODEX_MODEL_UNAVAILABLE` when the account does not
+  offer a model, `VES_CLAUDE_EXECUTION_FAILED` when Claude Code's turn failed),
+  or the code of the stop (`VES_TASK_GATE_FAILED`,
+  `VES_EXECUTOR_BUDGET_EXCEEDED`). `start` prints the same code as `reason`.
 - `cancel` stops a running `start` from another terminal (Ctrl-C in the
   running terminal does the same) and aborts the run. An uncommitted worktree
   is removed; an anchored task branch is kept. When no process is driving the

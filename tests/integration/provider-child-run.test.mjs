@@ -396,6 +396,51 @@ test(
   }
 );
 
+// invariant: the code a conversation is refused with is the run's report, so
+// a provider that cannot serve the request names why. A rejection that carries
+// no code of the provider's own is still a protocol failure, and nothing of
+// its text or class reaches the report.
+for (const [name, rejection, code] of [
+  [
+    "its own stable code",
+    () => Object.assign(new Error("no such model"), { code: "VES_FAKE_MODEL_UNAVAILABLE" }),
+    "VES_FAKE_MODEL_UNAVAILABLE"
+  ],
+  [
+    "another provider's code",
+    () => Object.assign(new Error("other"), { code: "VES_OTHER_MODEL_UNAVAILABLE" }),
+    "VES_FAKE_PROTOCOL_FAILED"
+  ],
+  [
+    "a code that is not a stable one",
+    () => Object.assign(new Error("other"), { code: "VES_FAKE_lower case" }),
+    "VES_FAKE_PROTOCOL_FAILED"
+  ],
+  [
+    "a runtime's code",
+    () => Object.assign(new Error("write"), { code: "ERR_STREAM_WRITE_AFTER_END" }),
+    "VES_FAKE_PROTOCOL_FAILED"
+  ],
+  ["a value that is no error", () => "VES_FAKE_MODEL_UNAVAILABLE", "VES_FAKE_PROTOCOL_FAILED"]
+]) {
+  test(`a conversation that rejects with ${name} is reported as ${code}`, OPTIONS, async (t) => {
+    const run = start(t, {
+      profile: ENDED_BY_THE_DRIVER,
+      steps: [HANG],
+      protocol: () => ({
+        converse: async () => {
+          throw rejection();
+        }
+      })
+    });
+    assert.deepEqual(await ended(run), {
+      errors: [streamFailure(code, "protocol")],
+      outcome: "failed",
+      terminations: 1
+    });
+  });
+}
+
 // why: a conversation waiting for an answer that the provider's end turns
 // into a rejection, as a pending request is rejected when its provider is gone.
 function answeredOnlyByTheEnd() {

@@ -161,9 +161,38 @@ test("a driver error event yields a failed status with its stable code", async (
     });
   }, "failed");
   const { adapter, calls, control, request } = await adapterFixture(driver);
-  assert.equal((await adapter.execute(request, control)).status, "failed");
+  const result = await adapter.execute(request, control);
+  assert.equal(result.status, "failed");
+  assert.equal(result.reason, "VES_CLAUDE_EXECUTION_FAILED", "the failed result names the driver's code");
   assert.deepEqual(calls.checkpoints.at(-1).data.errorCodes, ["VES_CLAUDE_EXECUTION_FAILED"]);
   assert.equal(JSON.stringify(calls.checkpoints).includes("/private/path"), false);
+  assert.equal(JSON.stringify(result).includes("/private/path"), false);
+});
+
+// invariant: the cause a failed result hands on is the first stable code the
+// session reported; a code that was not stable names no cause, and a session
+// that ended without any error event hands on none.
+test("a failed result names the first stable code, and none when the session named none", async (t) => {
+  if (WIN32_HOST) return adapterRefusedOnWin32(t);
+  const named = await adapterFixture(
+    new ScriptedFakeDriver(async ({ emit }) => {
+      emit({ type: "error", code: "not a stable code", message: "x", retryable: false });
+      emit({ type: "error", code: "VES_CLAUDE_MODEL_UNAVAILABLE", message: "x", retryable: false });
+      emit({ type: "error", code: "VES_CLAUDE_EXECUTION_FAILED", message: "x", retryable: true });
+    }, "failed")
+  );
+  assert.equal((await named.adapter.execute(named.request, named.control)).reason, "VES_CLAUDE_MODEL_UNAVAILABLE");
+  const unnamed = await adapterFixture(
+    new ScriptedFakeDriver(async ({ emit }) => {
+      emit({ type: "error", code: "not a stable code", message: "x", retryable: false });
+    }, "failed")
+  );
+  assert.deepEqual(await unnamed.adapter.execute(unnamed.request, unnamed.control), {
+    status: "failed",
+    outputRefs: []
+  });
+  const silent = await adapterFixture(new ScriptedFakeDriver(async () => undefined, null));
+  assert.deepEqual(await silent.adapter.execute(silent.request, silent.control), { status: "failed", outputRefs: [] });
 });
 
 // invariant: SSI-58. A warning never stops the session; its stable code alone
@@ -359,7 +388,11 @@ test("a structured result of a session that did not complete is not handed on", 
     emit({ type: "error", code: "VES_CLAUDE_EXECUTION_FAILED", message: "failed", retryable: true });
   }, "failed");
   const { adapter, control, request } = await adapterFixture(driver);
-  assert.deepEqual(await adapter.execute(request, control), { status: "failed", outputRefs: [] });
+  assert.deepEqual(await adapter.execute(request, control), {
+    status: "failed",
+    outputRefs: [],
+    reason: "VES_CLAUDE_EXECUTION_FAILED"
+  });
 });
 
 test("a second structured result, or one whose size is not its canonical size, stops the session as invalid input", async (t) => {
