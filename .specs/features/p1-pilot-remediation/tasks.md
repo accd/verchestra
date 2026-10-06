@@ -58,3 +58,11 @@ extra usage of both accounts switched off, which the owner confirms.
 | PPR-08, the session | `tests/integration/codex-verifier-session.test.mjs`: the combined session answers plan type and models with no thread; the models-only session reads no account and starts on a Codex below the account floor, on a login that is no ChatGPT one; a list Codex cannot give is `codex-model-list`, or `codex-account` with the account | integration |
 | PPR-08, the run | `tests/e2e/task-model-availability-e2e.test.mjs`: a verifier's model, a Codex node's model alone, and a resumed run's verifier model are refused with the run as it was; `tests/e2e/task-cli-e2e.test.mjs`: a v1 run is refused before the implementer, and a v1 run on a Codex below the account floor still starts | e2e |
 | PPR-05 (carried) | `tests/e2e/task-failure-cause-e2e.test.mjs`: the verifier and the Codex node cases now fail at a thread the App Server refuses, since a missing model is refused earlier | e2e |
+
+## Test coverage matrix (T5)
+
+| Requirement | Evidence | Layer |
+| --- | --- | --- |
+| PPR-09, the record | `.specs/features/live-task-pilot/validation.md`: the two P1 attempts in the results table, the stop rule section (what worked, what stopped it, the diagnostic gap), the deviations, and the seven requests' digests, each checked by a script against the file's own SHA-256 and, before, against `git show HEAD` | documentation |
+| PPR-09, the requests | the seven requests normalize with `normalizeTaskRequest` (S3b refused `VES_TASK_REQUEST_TASK_INVALID`, as intended) and match the Task Request v1 schema's verifier pattern | check run for this change |
+| PPR-09, the examples | `tests/e2e/task-request-examples-e2e.test.mjs`: each of the three examples still plans in a dry run with its declared topology, now on `codex:gpt-5.5` | e2e |

@@ -65,7 +65,7 @@
   },
   "verifier": {
     "driverId": "codex",
-    "model": "gpt-5.2-codex"
+    "model": "gpt-5.5"
   },
   "instructions": "Refactor without changing behaviour. Move the CLI's input parsing out of cli.js into a new module lib/cli-input.js that exports `parseInput(value)`. parseInput takes the raw input string that getDistance receives today and applies exactly today's rule, `value.split(',').join(' ').split(/\\s+/)`: it returns the resulting array when it has exactly two entries and `undefined` otherwise. Behaviour must stay identical, including today's rejection of leading or trailing separators (for example ` sitting kitten` and `sitting kitten,` are still rejected). In cli.js, import parseInput from './lib/cli-input.js' and use it in getDistance; the usage error path is unchanged. Add `lib/` to the `files` array in package.json so the published CLI keeps working, and change nothing else in package.json. Use JSDoc types in the style of the repository. In test.js, import parseInput from './lib/cli-input.js' and add a new, separate top-level test named `parseInput` that covers: spaces, commas, a comma followed by a space, one word (undefined), three words (undefined), and a leading separator (undefined). Do not change the existing tests."
 }
