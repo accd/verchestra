@@ -169,7 +169,7 @@ jobs:
           node scripts/t75-evidence-attestation.mjs sign --index unsigned-evidence-index.json --public-key-ref "$PUBLIC_KEY_REF_PATH" --revision "$CANDIDATE_REVISION" --issued-at "$issued_at" --out qualification-evidence-index.dsse.json --signed-index-out signed-evidence-index.json
           node scripts/t75-evidence-attestation.mjs verify --index signed-evidence-index.json --public-key-ref "$PUBLIC_KEY_REF_PATH" --revision "$CANDIDATE_REVISION" --envelope qualification-evidence-index.dsse.json
       - name: Publish public qualification evidence
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: qualification-evidence-${{ inputs.revision }}
           path: |
