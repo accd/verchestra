@@ -49,3 +49,12 @@ extra usage of both accounts switched off, which the owner confirms.
 | --- | --- | --- |
 | PPR-06 | `tests/unit/model-price-table.test.mjs`: the version, the eight Codex models, the listing rules (once, by one driver, never priced), every listed name admitted by a request; `tests/contract/task-request.test.mjs` and `tests/contract/task-request-v2.test.mjs`: a subscription-only model admitted for the implementer, the verifier, and a node, an unlisted name refused | unit, contract |
 | PPR-07 | `tests/integration/task-run-prerequisites.test.mjs`: `start` and `resume` refuse a subscription-only model on an API key before the machine is asked, a credential is read, or a worktree is made, and go on for the same models on subscriptions and for priced models on API keys | integration |
+
+## Test coverage matrix (T3)
+
+| Requirement | Test | Layer |
+| --- | --- | --- |
+| PPR-08, the driver | `tests/contract/codex-driver-structured.test.mjs`: the check reports the asked names the list lacks and nothing else, sends no account, thread, or turn method, keeps the T04 floor alone and the 0.159.3 floor with the account, refuses eleven malformed requests before spawn, and fails as a protocol failure on a list that is no list | contract |
+| PPR-08, the session | `tests/integration/codex-verifier-session.test.mjs`: the combined session answers plan type and models with no thread; the models-only session reads no account and starts on a Codex below the account floor, on a login that is no ChatGPT one; a list Codex cannot give is `codex-model-list`, or `codex-account` with the account | integration |
+| PPR-08, the run | `tests/e2e/task-model-availability-e2e.test.mjs`: a verifier's model, a Codex node's model alone, and a resumed run's verifier model are refused with the run as it was; `tests/e2e/task-cli-e2e.test.mjs`: a v1 run is refused before the implementer, and a v1 run on a Codex below the account floor still starts | e2e |
+| PPR-05 (carried) | `tests/e2e/task-failure-cause-e2e.test.mjs`: the verifier and the Codex node cases now fail at a thread the App Server refuses, since a missing model is refused earlier | e2e |

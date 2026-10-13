@@ -1500,6 +1500,72 @@ test(
   }
 );
 
+// invariant: PPR-08 for a v1 run. Its verifier keeps the T04 conversation, so
+// before the worktree and the implementer's allowance `start` only lists the
+// models its Codex login offers, and one it does not is `not configured`
+// (`codex-model-unavailable`), named on the terminal, with the run as it was.
+test(
+  "a v1 run whose verifier's model the account does not offer is refused before the implementer",
+  TIMEOUT,
+  async (t) => {
+    if (!DARWIN) return notConfiguredOffMacOS(t);
+    const fixture = await taskFixture();
+    const plan = await approved(fixture);
+    await writeFile(join(fixture.scratch, "codex-model-missing"), "");
+    const run = start(fixture, plan.runId);
+    const error = refused(run, "VES_TASK_NOT_CONFIGURED", "start");
+    assert.deepEqual(error.safeDetails, { requirement: "codex-model-unavailable" });
+    assert.match(run.stderr, /does not offer: gpt-5\.2-codex/u);
+    assert.equal(status(fixture, plan.runId).state, "EXECUTION_AUTHORIZED");
+    assert.equal(logLines(fixture, "fake-claude.log").length, 0, "the implementer was started");
+    assert.equal(
+      fixture
+        .git(["worktree", "list", "--porcelain"])
+        .split("\n")
+        .filter((l) => l.startsWith("worktree ")).length,
+      1
+    );
+  }
+);
+
+// invariant: AD-085. A verifier on an API key has no ChatGPT login to ask, so
+// its model is not checked before the run; the implementer runs, and the
+// verifier's own session reveals the missing model, with its cause recorded.
+// This is the sensor that `VES_CODEX_MODEL_UNAVAILABLE` still reaches
+// `status.lastReason` through the binary.
+test(
+  "a v1 verifier on an API key whose model the account does not offer fails the run with that cause",
+  TIMEOUT,
+  async () => {
+    if (!DARWIN) return;
+    const fixture = await taskFixture({ mode: "api-key" });
+    const plan = await approved(fixture);
+    await writeFile(join(fixture.scratch, "codex-model-missing"), "");
+    const run = start(fixture, plan.runId);
+    assert.equal(run.status, 1, `${run.stderr}\n${run.stdout}`);
+    assert.equal(run.json.data.state, "FAILED");
+    assert.equal(run.json.data.reason, "VES_CODEX_MODEL_UNAVAILABLE");
+    const after = status(fixture, plan.runId);
+    assert.equal(after.lastReason, "VES_CODEX_MODEL_UNAVAILABLE");
+    assert.ok(logLines(fixture, "fake-claude.log").length > 0, "the implementer did not run");
+    assert.match(after.evidence.commitId, /^[a-f0-9]{40}$/u);
+    assert.equal(after.evidence.verificationVerdict, null);
+  }
+);
+
+// invariant: SSI-83 and AD-082 for the check of a v1 run's models: it speaks only
+// the T04 protocol, so a Codex below the account floor (0.159.3) still starts a
+// v1 run, as it did before the check existed.
+test("a v1 run on a Codex below the account floor is still started, its models checked", TIMEOUT, async (t) => {
+  if (!DARWIN) return notConfiguredOffMacOS(t);
+  const fixture = await taskFixture();
+  const plan = await approved(fixture);
+  await writeFile(join(fixture.scratch, "codex-0.159.2"), "");
+  const run = start(fixture, plan.runId);
+  assert.equal(run.status, 0, `${run.stderr}\n${run.stdout}`);
+  assert.equal(run.json.data.state, "HUMAN_REVIEW");
+});
+
 // invariant: a run whose implementer's session failed says why: the driver's
 // stable code is the run's recorded reason, in the start's data and in
 // `status.lastReason`, and the public executor code stays out of it. The
