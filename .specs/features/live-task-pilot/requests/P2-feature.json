@@ -64,7 +64,7 @@
   },
   "verifier": {
     "driverId": "codex",
-    "model": "gpt-5.2-codex"
+    "model": "gpt-5.5"
   },
   "instructions": "Add a small feature: export a new function `levenshteinSimilarity(value, other, insensitive)` from index.js. It returns `1 - levenshteinEditDistance(value, other, insensitive) / Math.max(value.length, other.length)` and returns `1` when both strings are empty. Lengths are JavaScript string lengths (UTF-16 code units), the same unit the distance uses, and `insensitive` means exactly what it means for levenshteinEditDistance. Give it a JSDoc comment in the style of the existing function. Do not change levenshteinEditDistance or its behaviour. In test.js, import it next to the existing import and add a new, separate top-level test named `levenshteinSimilarity` that asserts: two empty strings give 1; `abc` and `abc` give 1; `a` and the empty string give 0; `sitting` and `kitten` give `1 - 3 / 7` in both argument orders; `A` and `a` give 0 by default and 1 with `insensitive` true. Do not change the existing tests. In readme.md: change the sentence `This package exports the identifier levenshteinEditDistance.` so it names both identifiers, add a `levenshteinSimilarity(value, other[, insensitive])` section after the existing function's API section using the same heading levels and parameter layout, and add that section to the Contents list."
 }

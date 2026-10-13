@@ -20,7 +20,7 @@ after(cleanupTaskFixtures);
 const TIMEOUT = { timeout: 300_000 };
 const PLACEHOLDER_REVISION = "0123456789abcdef0123456789abcdef01234567";
 const CLAUDE = "claude-code:claude-sonnet-5";
-const CODEX = "codex:gpt-5.2-codex";
+const CODEX = "codex:gpt-5.5";
 const PER_INVOCATION = Object.freeze(["runId", "bindingDigest", "approvalExpiresAt", "review"]);
 
 // invariant: the topology each example declares, node by node in plan order.
