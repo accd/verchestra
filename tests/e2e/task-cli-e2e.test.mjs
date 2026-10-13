@@ -1528,6 +1528,31 @@ test(
   }
 );
 
+// invariant: AD-085. A verifier on an API key has no ChatGPT login to ask, so
+// its model is not checked before the run; the implementer runs, and the
+// verifier's own session reveals the missing model, with its cause recorded.
+// This is the sensor that `VES_CODEX_MODEL_UNAVAILABLE` still reaches
+// `status.lastReason` through the binary.
+test(
+  "a v1 verifier on an API key whose model the account does not offer fails the run with that cause",
+  TIMEOUT,
+  async () => {
+    if (!DARWIN) return;
+    const fixture = await taskFixture({ mode: "api-key" });
+    const plan = await approved(fixture);
+    await writeFile(join(fixture.scratch, "codex-model-missing"), "");
+    const run = start(fixture, plan.runId);
+    assert.equal(run.status, 1, `${run.stderr}\n${run.stdout}`);
+    assert.equal(run.json.data.state, "FAILED");
+    assert.equal(run.json.data.reason, "VES_CODEX_MODEL_UNAVAILABLE");
+    const after = status(fixture, plan.runId);
+    assert.equal(after.lastReason, "VES_CODEX_MODEL_UNAVAILABLE");
+    assert.ok(logLines(fixture, "fake-claude.log").length > 0, "the implementer did not run");
+    assert.match(after.evidence.commitId, /^[a-f0-9]{40}$/u);
+    assert.equal(after.evidence.verificationVerdict, null);
+  }
+);
+
 // invariant: SSI-83 and AD-082 for the check of a v1 run's models: it speaks only
 // the T04 protocol, so a Codex below the account floor (0.159.3) still starts a
 // v1 run, as it did before the check existed.

@@ -63,13 +63,11 @@ which records the P1 stop and amends the requests as a dated amendment.
   the model's name is on the terminal, as the plan type's is. The plan asked
   for it in the safe details, and `VES_TASK_NOT_CONFIGURED` declares one detail,
   `requirement`, so naming a model there extends a public schema (AD-085).
-
 - The Claude Code subscription-only names (`claude-fable-5-1`, `claude-opus-5-5`,
   `claude-sonnet-5-5`) come from the model identifiers of the Claude Code
   environment; `claude --help` confirms only the aliases and the name
   `claude-fable-5`. No provider was called to confirm that the owner's account
   accepts them. The Codex names are the account's own `model/list` of the pilot.
-
 - A v1 verifier whose session fails on a usage limit now records
   `VES_CODEX_EXECUTION_FAILED`, where it recorded `VES_TASK_VERIFIER_FAILED`.
   SSI-83 still holds (the run fails, it does not suspend); only the recorded

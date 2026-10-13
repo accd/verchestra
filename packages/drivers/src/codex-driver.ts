@@ -212,12 +212,12 @@ interface CodexSessionPlan {
   readonly checkedModels: readonly string[] | undefined;
 }
 
-type ModelCatalog = { readonly data?: readonly { readonly id?: string; readonly model?: string }[] };
+type ModelListPayload = { readonly data?: readonly { readonly id?: string; readonly model?: string }[] };
 
 // invariant: one rule says whether the account offers a model, for the check
 // before a run and for the session's own, so what the first lets through the
 // second does not refuse.
-function offersModel(catalog: ModelCatalog, model: string): boolean {
+function offersModel(catalog: ModelListPayload, model: string): boolean {
   return catalog.data?.find((entry) => entry.model === model || entry.id === model)?.model === model;
 }
 
@@ -459,7 +459,9 @@ function codexProtocol(channel: ProviderChannel, conversation: CodexConversation
     if (catalog === undefined || !Array.isArray(catalog["data"]))
       return refuse("VES_CODEX_PROTOCOL_FAILED", "Codex model list is invalid");
     conversation.onModels?.(
-      Object.freeze({ unavailable: Object.freeze(names.filter((name) => !offersModel(catalog as ModelCatalog, name))) })
+      Object.freeze({
+        unavailable: Object.freeze(names.filter((name) => !offersModel(catalog as ModelListPayload, name)))
+      })
     );
     channel.result();
   };
@@ -480,7 +482,7 @@ function codexProtocol(channel: ProviderChannel, conversation: CodexConversation
     const endsAfterAccount = await accountSteps();
     if (plan.checkedModels !== undefined) return reportModels(plan.checkedModels, await rpc("model/list"));
     if (endsAfterAccount) return channel.result();
-    const catalog = (await rpc("model/list")) as ModelCatalog;
+    const catalog = (await rpc("model/list")) as ModelListPayload;
     if (!offersModel(catalog, execution.model))
       throw codexError("VES_CODEX_MODEL_UNAVAILABLE", "Codex model is unavailable");
     const thread = (await rpc("thread/start", conversation.threadParams())) as { thread?: { id?: string } };
