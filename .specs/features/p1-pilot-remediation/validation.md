@@ -301,6 +301,15 @@ Node 24.14.0, macOS arm64, on `docs/pilot-p1-record` stacked on T3.
 | The requests | `normalizeTaskRequest` accepts the six and refuses S3b with `VES_TASK_REQUEST_TASK_INVALID`; the schema's verifier pattern admits `gpt-5.5`. The requests need the table of T4: `.7` refuses `gpt-5.5` at `plan`. |
 | The examples | `tests/e2e/task-request-examples-e2e.test.mjs` (3 cases): `docs/examples/task-request-{agent,graph,swarm}.json` name `codex:gpt-5.5` and still plan with their declared topology. |
 
+### Review follow-up (2026-10-13)
+
+The independent review approved this change. Its one wording point is taken: the
+amended stop rule said a stopped run is "not retried in the same session, and not
+with another model", while the next action is attempt 3 on `gpt-5.5`. The rule
+now separates the two: an attempt after a dated amendment of the pre-registration
+is a new attempt at the same task, not a retry of the stopped run. The workstream
+label is English (`Front`).
+
 ### Decisions the reviewer confirms
 
 1. **The deviations are recorded as deviations**, not as silent edits: the
