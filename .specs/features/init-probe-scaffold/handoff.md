@@ -6,9 +6,9 @@ status: verification
 branch: feat/234-init-probe-scaffold
 baseRevision: e281ba9026d14b26f5d19cb8cde99612fb67178d
 lastCompletedTask: T5
-nextTask: "T6 — independent review of AD-035 (vendored contract copy, .verchestra/probes/ confinement, .mts format); then rebase onto main after #379 merges"
+nextTask: "Merged without independent review on 2026-09-30 (#427); post-merge review pending (#553). That review covers AD-035 (vendored contract copy, .verchestra/probes/ confinement, .mts format)."
 lastGate: "pnpm gate:quick PASS; pnpm gate:build PASS; pnpm gate:security PASS; pnpm test:e2e PASS; pnpm agent:check PASS"
-updatedAt: 2026-09-29T00:00:00Z
+updatedAt: 2026-10-13T19:50:00Z
 ---
 
 # Scope
@@ -38,3 +38,8 @@ ratifies or amends AD-035. After #379 merges, rebase onto `main` and rerun
 # Blockers
 
 - None in the repository. The branch depends on the unmerged #379 branch.
+
+# Post-merge review status (2026-10-13)
+
+Merged without independent review on 2026-09-30 (#427); post-merge review
+pending (#553).

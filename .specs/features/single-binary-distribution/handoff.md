@@ -6,9 +6,9 @@ status: verification
 branch: fix/236-windows-sea-pe
 baseRevision: 8422c9ff064cb47a6239a12cf577c0b4f7f79cbb
 lastCompletedTask: T8
-nextTask: "T6: after merge, dispatch .github/workflows/single-binary-build.yml at the merge revision (first with no release inputs, then with a t76-publish-release run), record the five per-leg transcripts in validation.md, then hand the owner the macOS Developer ID/notarization and Windows Authenticode signing steps."
+nextTask: "Post-merge independent review of #425 and #432 on 2026-10-13: no findings (https://github.com/accd/verchestra/pull/425#issuecomment-6153569019, https://github.com/accd/verchestra/pull/432#issuecomment-6153569538). T6 stays pending: dispatch .github/workflows/single-binary-build.yml at the merge revision (first with no release inputs, then with a t76-publish-release run), record the five per-leg transcripts in validation.md, then hand the owner the macOS Developer ID/notarization and Windows Authenticode signing steps."
 lastGate: "T8 on a local darwin-arm64 host: focused single-binary suites 59/59; gate:quick, gate:build, gate:release, and agent:check PASS with 0 skipped. single-binary-build.yml run 36677942597 (tests only) PASS on all five legs, 50/50 each with 0 skipped. See validation.md."
-updatedAt: 2026-09-30T00:00:00Z
+updatedAt: 2026-10-13T19:50:00Z
 ---
 
 # Scope
@@ -72,3 +72,12 @@ automation must not provision.
   unchanged.
 - `.github/workflows/t76-candidate-build.yml` and `t76-publish-release.yml`:
   the single binary consumes their outputs and changes neither.
+
+# Post-merge review status (2026-10-13)
+
+Post-merge independent review on 2026-10-13 of #425
+(https://github.com/accd/verchestra/pull/425#issuecomment-6153569019) and #432
+(https://github.com/accd/verchestra/pull/432#issuecomment-6153569538), both no
+findings; the five pinned runtime archive digests were compared with the
+official SHASUMS256.txt. T6 (the merge-revision dispatch and the owner's signing
+steps) is still pending; tracked in #553.
