@@ -5,6 +5,7 @@ import {
   COORDINATION_LIMIT_CEILINGS,
   COORDINATION_LIMIT_DEFAULTS,
   coordinationPlanFault,
+  type CoordinationDriverId,
   type CoordinationEdge,
   type CoordinationHandoff,
   type CoordinationLimits,
@@ -13,7 +14,7 @@ import {
 } from "./coordination-plan.ts";
 import { canonicalTaskGatePlan, TASK_GATE_COMMAND_FIELDS, TaskGateError, type TaskGateCommand } from "./gate-commit.ts";
 import type { GateRepairPolicy } from "./gate-repair.ts";
-import { modelPriceTable } from "./model-price-table.ts";
+import { isKnownModel } from "./model-price-table.ts";
 import {
   ATOMIC_EXECUTION_TASK_FIELDS,
   normalizeTask,
@@ -229,7 +230,7 @@ function normalizeRepairPolicy(value: unknown): GateRepairPolicy {
   };
 }
 
-function normalizeModelBinding<T extends string>(
+function normalizeModelBinding<T extends CoordinationDriverId>(
   value: unknown,
   label: string,
   driverId: T,
@@ -240,10 +241,12 @@ function normalizeModelBinding<T extends string>(
   const selected = row["model"];
   if (typeof selected !== "string" || !model.test(selected))
     fail("VES_TASK_REQUEST_DRIVER_UNSUPPORTED", `${label} model is not supported by ${driverId}`);
-  // why: an unpriced model would stop the run at its first usage event with
-  // VES_BUDGET_MODEL_UNKNOWN; refusing it at intake avoids a spent approval.
-  if (!Object.hasOwn(modelPriceTable.models, selected))
-    fail("VES_TASK_REQUEST_MODEL_UNPRICED", `${label} model has no priced entry`);
+  // why: a model neither priced nor offered on a subscription would stop the
+  // run at its first usage event with VES_BUDGET_MODEL_UNKNOWN; refusing it at
+  // intake avoids a spent approval. A subscription-only model passes: the run
+  // refuses it on an API key before any effect.
+  if (!isKnownModel(driverId, selected))
+    fail("VES_TASK_REQUEST_MODEL_UNPRICED", `${label} model has no priced or subscription entry`);
   return { driverId, model: selected };
 }
 
