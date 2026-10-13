@@ -6,9 +6,9 @@ status: verification
 branch: requal/opencode-1.18.23
 baseRevision: e0beb57dc72f7a125184ce46130415b74d7c6fa2
 lastCompletedTask: T3
-nextTask: Push the exact qualification surface to PR #400, wait for Quality/Site/CodeQL, then merge with rebase only if all pass
+nextTask: "Merged without independent review on 2026-09-30 (#400); post-merge review pending (#553). OpenCode 1.18.33 is the version in package.json on 2026-10-13; Dependabot #549 (opencode-driver group) is open and follows the qualification-successor pattern."
 lastGate: pnpm gate:full
-updatedAt: 2026-09-29T14:00:00Z
+updatedAt: 2026-10-13T19:50:00Z
 ---
 
 # Evidence
@@ -25,3 +25,8 @@ full gates pass; GitHub Linux checks remain authoritative.
 
 Push this qualification surface to the PR #400 branch, re-approve the exact
 head, and merge only after the required checks pass.
+
+# Post-merge review status (2026-10-13)
+
+Merged without independent review on 2026-09-30 (#400); post-merge review
+pending (#553).

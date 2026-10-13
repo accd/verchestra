@@ -6,9 +6,9 @@ status: verification
 branch: feat/235-out-of-process-probe-host
 baseRevision: cb563611da8b1ff80aa204536138f9440a0bff91
 lastCompletedTask: T2
-nextTask: Independent review of AD-037 and the threat model; on ratification, start T3 (composition root wiring and grant issuance).
+nextTask: "Merged without independent review on 2026-09-30 (#424); post-merge review pending (#553). Proposed for the security reviewer; it covers AD-037 and the threat model. T3 (composition root wiring and grant issuance) follows ratification."
 lastGate: pnpm gate:security PASS (2026-09-29)
-updatedAt: 2026-09-29T01:00:00Z
+updatedAt: 2026-10-13T19:50:00Z
 ---
 
 # Handoff: out-of-process probe host
@@ -49,3 +49,8 @@ See `validation.md` for assertion-level evidence. Gate results on darwin-arm64, 
 
 No test was skipped on this host; on win32 the spawned-process cases skip
 with an explicit reason and the refusal case still runs.
+
+# Post-merge review status (2026-10-13)
+
+Merged without independent review on 2026-09-30 (#424); post-merge review
+pending (#553). Proposed for the security reviewer.

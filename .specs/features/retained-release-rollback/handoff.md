@@ -2,13 +2,13 @@
 schema: verchestra-feature-handoff/v1
 feature: retained-release-rollback
 issue: 393
-status: verification
+status: complete
 branch: feat/393-retained-release-rollback
 baseRevision: ac7021bd8b45a29ea636d30cd020196675eef7f4
 lastCompletedTask: T5
-nextTask: "Human review of AD-036 and this change. After merge, the owner publishes two same-root releases built from a revision carrying it (each with a strictly greater metadataVersion) and runs the live-activation matrix (T6)."
+nextTask: "None. Post-merge independent review of #423 on 2026-10-13: no findings (https://github.com/accd/verchestra/pull/423#issuecomment-6152962388). T6's live update and rollback ran on all five targets (runs 36997576112, 37047903756, 37152404760; acceptance matrix J02). Tracked in #553."
 lastGate: "pnpm gate:quick, gate:build, gate:security, gate:release, test:e2e, test:fault, agent:check"
-updatedAt: 2026-09-29T00:00:00Z
+updatedAt: 2026-10-13T19:50:00Z
 ---
 
 # Scope
@@ -61,3 +61,11 @@ publication, and npm 2FA.
 - `docs/qualification/t76-validation.md` and the live-matrix `validation.md`:
   dated records of runs that did not exercise this path.
 - The TUF client's refresh, caching, and version comparison: unchanged by design.
+
+# Post-merge review status (2026-10-13)
+
+Post-merge independent review of #423 on 2026-10-13, verdict no findings:
+https://github.com/accd/verchestra/pull/423#issuecomment-6152962388. T6, the
+live update and rollback on all five targets, is recorded in the acceptance
+matrix J02 row (runs 36997576112, 37047903756, 37152404760). No feature task
+remains; tracked in #553.

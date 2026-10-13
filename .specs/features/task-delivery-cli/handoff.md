@@ -6,9 +6,9 @@ status: verification
 branch: feat/405-codex-execution-context
 baseRevision: 951e25fd8f0887a2fb9e2d959d9b2d0ca4210114
 lastCompletedTask: T4
-nextTask: "T5 — obtain independent evidence verification and human PR review of this prerequisite slice before merge; then continue T6 under #405."
+nextTask: "Merged without independent review on 2026-09-30 (#409); post-merge review pending (#553). By the security reviewer or a third reviewer, since the operational reviewer authored two of its commits. T6 continued under #405 (governed-task-cli)."
 lastGate: "55 focused tests PASS; gate:quick PASS; gate:build PASS; gate:security PASS on pinned Node 24.14.0; agent:check PASS."
-updatedAt: 2026-09-05T00:00:00Z
+updatedAt: 2026-10-13T19:50:00Z
 ---
 
 # Scope
@@ -36,3 +36,9 @@ and lifecycle tests pass. No new dependency or public CLI command.
 
 Existing review artifacts and unrelated untracked work, signed decisions,
 qualification reports, schemas and dependency versions.
+
+# Post-merge review status (2026-10-13)
+
+Merged without independent review on 2026-09-30 (#409); post-merge review
+pending (#553). The operational reviewer is excluded (author of two of its
+commits).
