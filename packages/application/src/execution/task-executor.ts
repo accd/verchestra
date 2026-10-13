@@ -1,4 +1,4 @@
-import { isProtectedTaskPath, isTaskPath, isWithinTaskScope } from "@verchestra/domain";
+import { UNNAMED_DRIVER_ERROR, isProtectedTaskPath, isTaskPath, isWithinTaskScope } from "@verchestra/domain";
 
 import {
   createBudgetMeter,
@@ -450,10 +450,6 @@ function matching(row: Row, key: string, pattern: RegExp, label = "Driver suspen
 function optionalMatching(row: Row, key: string, pattern: RegExp): Partial<Record<string, string>> {
   return row[key] === undefined ? {} : { [key]: matching(row, key, pattern) };
 }
-
-// why: a driver adapter that reports no stable code for an error event is
-// given this one by the session runner; it names no cause, so it is not one.
-const UNNAMED_DRIVER_ERROR = "VES_DRIVER_ERROR";
 
 // invariant: the cause of a failed driver session is the first stable code its
 // session reported, and nothing else: no message, class, or provider text.

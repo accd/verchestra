@@ -6,7 +6,7 @@ status: in_progress
 branch: fix/task-failure-cause
 baseRevision: 8056d41b5ab615ce7dc536db400e09f136565c61
 lastCompletedTask: T2
-nextTask: "T3, Frente B: check the account's model list for the verifier and every Codex node in prepare, before the worktree and before the implementer's allowance; T4, Frente A, can proceed in parallel."
+nextTask: "T3, Front B: check the account's model list for the verifier and every Codex node in prepare, before the worktree and before the implementer's allowance; T4, Front A, can proceed in parallel."
 lastGate: "T2: gate:quick, contract, integration, security, architecture, e2e, fault, mutation, and agent:check PASS under Node 24.14.0; seven mutants killed (validation.md)"
 updatedAt: 2026-10-06T22:00:00Z
 ---
@@ -21,7 +21,7 @@ cause of a failure, and the pilot's own record. See `spec.md`.
 
 T1: `spec.md`, `tasks.md`, this handoff, and `validation.md`.
 
-T2 (Frente C): a conversation refused with a provider's own stable code ends
+T2 (Front C): a conversation refused with a provider's own stable code ends
 the run with it (`provider-child-run.ts`); the Codex driver names a missing
 model `VES_CODEX_MODEL_UNAVAILABLE`; the verifier, the executor, and the
 coordinated nodes hand on the first stable code the driver reported; a failed
@@ -37,7 +37,7 @@ delegated approvals (D1, D1b, D10, the amendments, D11, and D8).
 
 # Next Action
 
-T3, Frente B, as `tasks.md` states it. The driver's code
+T3, Front B, as `tasks.md` states it. The driver's code
 `VES_CODEX_MODEL_UNAVAILABLE` and the verifier's reason it produces are in
 place; B moves the check before the worktree and turns the end-to-end case of
 `tests/e2e/task-failure-cause-e2e.test.mjs` for the verifier and the Codex node

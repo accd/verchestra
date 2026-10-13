@@ -7,8 +7,7 @@ gate that was not run is listed as not run.
 
 ### Environment
 
-Node 24.14.0 (`engines`), at `~/.cache/node-dist/node-v24.14.0-darwin-arm64`,
-macOS arm64, dependencies from `pnpm install --frozen-lockfile` (no lockfile
+Node 24.14.0 (`engines`), macOS arm64, dependencies from `pnpm install --frozen-lockfile` (no lockfile
 change). The platform matrix and SonarCloud run on the pull request and are
 recorded below once they have run.
 
@@ -81,6 +80,26 @@ specific one; none was weakened, deleted, or skipped.
    `VES_CODEX_PROCESS_FAILED`, a code no report ever showed; carrying it would
    have changed what `docs/qualification/codex-driver-child-run.md` records, so
    the rejection now carries the code the record states.
+
+### Review follow-up (2026-10-13)
+
+An independent review by a repository collaborator asked for two changes, both
+made: the workstream label is English (`Front`, not the Portuguese word it
+was), and a home-directory path is out of this record. Three smaller points were
+also taken: the placeholder code `VES_DRIVER_ERROR` is defined once, in
+`@verchestra/domain`, and read by the session runner that assigns it and by the
+executor that refuses it as a cause; the application's stable-code pattern is one
+constant; and PPR-01 states its exception, a provider that ends before it
+answers. Not changed: the same pattern in `provider-child-run.ts` (a driver
+package may not import the application) and the identical `reason` option of the
+two error classes, which would need a shared base class for two lines.
+
+The gates were run again after these changes: `gate:quick`, contract,
+integration, security, architecture, e2e, mutation, and `agent:check` pass. The
+fault scope passed 309 of 310 on its first run: `activation-launcher-faults`
+"a launcher that never returns is stopped at the health budget" failed with
+`VES_LAUNCHER_TERMINATION_INCOMPLETE` while the machine was loaded, in a file
+this change does not touch, and passes 6 of 6 in isolation.
 
 ### Not run
 

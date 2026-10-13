@@ -84,6 +84,11 @@ export type DriverEventBody = { [T in DriverEventType]: DriverEventOf<T> }[Drive
 // order its session emitted it.
 export type DriverEvent = DriverEventBody & { readonly sequence: number };
 
+// why: a session runner gives an error event whose code is not a stable one
+// this code, and a reader of the codes a session reported must not take it for
+// a cause. One definition keeps the two from drifting apart.
+export const UNNAMED_DRIVER_ERROR = "VES_DRIVER_ERROR";
+
 // invariant: the usage rule, the one check of a token count a provider
 // reports. The count is read as a number, an absent count (undefined or null)
 // is 0, and a count that is then not a non-negative safe integer is refused:
