@@ -408,7 +408,7 @@ function accountRefusal(error: unknown, requirement: string): unknown {
   if (error instanceof PublicErrorException) return error;
   return notConfigured(
     stableCode(error) === "VES_CODEX_VERSION_UNSUPPORTED" ? "codex-version" : requirement,
-    "Codex could not answer the session that reads the Workspace's login",
+    "Codex could not answer the session that checks its account or its models",
     { cause: error }
   );
 }
@@ -454,7 +454,7 @@ async function codexAccountSession(
   options: CodexAccountOptions,
   question: CodexAccountQuestion
 ): Promise<CodexAccountFacts> {
-  const failed = question.account ? "codex-account" : "codex-model-list";
+  const requirement = question.account ? "codex-account" : "codex-model-list";
   const provider = new ProviderProcesses({ stderr: options.stderr }).session("Codex");
   const kept: { account?: CodexAccountReport; models?: CodexModelReport } = {};
   try {
@@ -477,10 +477,10 @@ async function codexAccountSession(
       startRequest: request,
       signal: AbortSignal.timeout(ACCOUNT_TIMEOUT_MS)
     }).catch((error: unknown) => {
-      throw accountRefusal(error, failed);
+      throw accountRefusal(error, requirement);
     });
     if (finished.outcome !== "completed" || !answered(question, kept))
-      throw notConfigured(failed, "Codex did not answer the session that reads the Workspace's login");
+      throw notConfigured(requirement, "Codex did not answer the session that checks its account or its models");
     return Object.freeze({ planType: kept.account?.planType, unavailableModels: kept.models?.unavailable ?? [] });
   } finally {
     await provider.end();

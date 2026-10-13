@@ -204,7 +204,6 @@ async function requireCodexAccount(
   confirmations: readonly ExtraUsageConfirmation[]
 ): Promise<void> {
   if (!("identityDirectory" in verifier)) return;
-  const stated = statedCodexPlanType(confirmations);
   const models = [...new Set(providerModels(plan.request).codex)];
   const options = {
     workspaceId: workspace.workspaceId,
@@ -222,7 +221,8 @@ async function requireCodexAccount(
     return;
   }
   const facts = await codexAccountFacts(options, models);
-  if (stated !== undefined && facts.planType !== undefined) requireStatedPlanType(stated, facts.planType, io.stderr);
+  const stated = statedCodexPlanType(confirmations);
+  if (stated !== undefined) requireStatedPlanType(stated, facts.planType ?? "unknown", io.stderr);
   requireModelsOffered(facts.unavailableModels, io.stderr);
 }
 

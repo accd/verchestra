@@ -3244,7 +3244,10 @@ note. -->
   is no guard).
 - **Consequence:** every `start` and `resume` on a Codex subscription launches one
   more short Codex process, a v1 run included, which spends nothing of the
-  allowance. A model the account loses between the check and the run is still
+  allowance. For a coordinated run whose statement names no Codex plan the
+  process still reads the account, to check the models, and compares nothing:
+  SSI-52's "a run whose statement names no Codex plan reads nothing" no longer
+  holds, and the AD says so here. A model the account loses between the check and the run is still
   reported by the session, with its cause. A request that names a model the
   account does not offer is refused at `start`, not at `plan`, since `plan` makes
   no provider call.
