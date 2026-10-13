@@ -2,13 +2,13 @@
 schema: verchestra-feature-handoff/v1
 feature: candidate-cross-platform-gates
 issue: 405
-status: verification
+status: complete
 branch: fix/candidate-cross-platform-gates
 baseRevision: 27eced58a714e846576f6a5754a6afba863ddcf8
 lastCompletedTask: T6
-nextTask: "Independent review and maintainer merge. After merge, dispatch the T76 candidate build on main to confirm the five legs on the merged revision."
+nextTask: "None. Post-merge independent review of #439 on 2026-10-13: no findings (https://github.com/accd/verchestra/pull/439#issuecomment-6153567250). The five legs were confirmed on every later candidate build, .4 to .7. Tracked in #553."
 lastGate: "gate:quick, gate:build, gate:security, agent:check PASS locally; T76 candidate build 36763826241 green on all five legs"
-updatedAt: 2026-09-30T00:00:00Z
+updatedAt: 2026-10-13T19:50:00Z
 ---
 
 # Scope
@@ -30,3 +30,10 @@ Review and merge. No code task remains on this branch.
   separately. Converting them is left to the task CLI owners.
 - On win32 the mediated and probe host cases each assert the same refusal, so
   their counts match POSIX. A named-pipe bridge would replace those refusals.
+
+# Post-merge review status (2026-10-13)
+
+Post-merge independent review of #439 on 2026-10-13, verdict no findings:
+https://github.com/accd/verchestra/pull/439#issuecomment-6153567250. The five
+legs were confirmed on every later candidate build (.4 to .7). No feature task
+remains; tracked in #553.

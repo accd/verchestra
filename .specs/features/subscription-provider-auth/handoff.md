@@ -2,13 +2,13 @@
 schema: verchestra-feature-handoff/v1
 feature: subscription-provider-auth
 issue: null
-status: verification
+status: complete
 branch: feat/subscription-provider-auth
 baseRevision: a6df70a2347d34d0ddec00b99bb5bccef73284dc
 lastCompletedTask: T6
-nextTask: "Independent verification and human review; the platform matrix on this branch; then the owner's one-time setup, the decisions G1-G3, and the first supervised live run."
+nextTask: "None for this feature. Post-merge independent review of #458 on 2026-10-13: findings (non-blocking) (https://github.com/accd/verchestra/pull/458#issuecomment-6153565832). The platform matrix passed (37005485083), G1-G3 were decided on 2026-10-03, and the first supervised live run is the #406 pilot's P1, recorded in #544. Tracked in #553."
 lastGate: "Node 24.14.0 macOS arm64 on the tree of b4e7a8b, rebased on main a6df70a: gate:quick PASS (unit 2395, agent-readiness 323, census 13); gate:build PASS (contract 673, integration 861, e2e 236, architecture 69, build 146, qualification 296); gate:security PASS (security 1339, fault 310); qualify:claude 53/53; qualify:codex 20/20; site:check PASS; agent:check PASS; 0 failed, 0 skipped, 0 todo; no provider called"
-updatedAt: 2026-10-02T18:00:00Z
+updatedAt: 2026-10-13T19:50:00Z
 ---
 
 # Scope
@@ -86,3 +86,12 @@ and `claude-code-driver-2.1.282.md` (immutable evidence for their revisions).
 feature's documents state what the subscription path adds). The live pilot's
 requests and probes (they name no credential). `complexity-baseline.json`.
 `CHANGELOG.md` (it has not tracked task-path changes since #405).
+
+# Post-merge review status (2026-10-13)
+
+Post-merge independent review of #458 on 2026-10-13, verdict findings
+(non-blocking):
+https://github.com/accd/verchestra/pull/458#issuecomment-6153565832. The
+platform matrix passed (run 37005485083); G1-G3 were decided by the owner on
+2026-10-03; the first supervised live run is the #406 pilot's P1, whose record
+is #544. No feature task remains; tracked in #553.

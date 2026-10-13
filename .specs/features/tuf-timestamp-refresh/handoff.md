@@ -6,9 +6,9 @@ status: verification
 branch: feat/382-tuf-timestamp-refresh
 baseRevision: 43916540bc9e3b86328808887fa2a8c5ce82084c
 lastCompletedTask: T5
-nextTask: "Independent review, then maintainer merge after fix/tuf-metadata-version-safety (this branch is stacked on it). After merge, the owner provisions the online key and its anchor (tuf-role-separation handoff) before any short timestamp_expires is used, then runs the monthly procedure in republish-v3-runbook.md."
+nextTask: "Merged without independent review on 2026-09-30 (#428); post-merge review pending (#553). Proposed for the security reviewer. The online key was provisioned under custody on 2026-09-30 (#440); the monthly refresh procedure in republish-v3-runbook.md stays the owner's."
 lastGate: "gate:quick, gate:build, gate:security, gate:release, agent:check PASS"
-updatedAt: 2026-09-29T00:00:00Z
+updatedAt: 2026-10-13T19:50:00Z
 ---
 
 # Scope
@@ -50,3 +50,8 @@ Review and merge. No code task remains on this branch. The branch is stacked on
 - A refresh ledger entry is chained against `main`'s ledger at refresh time. If
   another entry lands first, the operator reruns the refresh rather than
   editing the entry.
+
+# Post-merge review status (2026-10-13)
+
+Merged without independent review on 2026-09-30 (#428); post-merge review
+pending (#553). Proposed for the security reviewer.

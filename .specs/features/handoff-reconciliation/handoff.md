@@ -6,9 +6,9 @@ status: verification
 branch: fix/gate-census-and-handoff-drift
 baseRevision: 20071a78eb5b96b9de63e5e9c863b6997643c767
 lastCompletedTask: T5
-nextTask: "Independent review of the reconciliation table in validation.md against each cited commit and report (#407); on merge, mark this handoff complete."
+nextTask: "Merged without independent review on 2026-09-30 (#420); post-merge review pending (#553). That review checks the reconciliation table in validation.md against each cited commit and report (#407); on it, mark this handoff complete."
 lastGate: pnpm agent:check PASS; pnpm gate:quick PASS; pnpm gate:security PASS
-updatedAt: 2026-09-29T00:00:00Z
+updatedAt: 2026-10-13T19:50:00Z
 ---
 
 # Handoff
@@ -54,3 +54,8 @@ Six handoffs stay visible as open work, each naming its owner:
 
 Independent review, then merge. File issues for T21 and T22 if the
 maintainer wants them tracked.
+
+# Post-merge review status (2026-10-13)
+
+Merged without independent review on 2026-09-30 (#420); post-merge review
+pending (#553).

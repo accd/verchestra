@@ -6,9 +6,9 @@ status: verification
 branch: fix/tuf-metadata-version-safety
 baseRevision: 20071a78eb5b96b9de63e5e9c863b6997643c767
 lastCompletedTask: T3
-nextTask: "Independent review of both commits, then maintainer merge. After merge, every future publication appends its ledger entry to docs/qualification/tuf-publication-ledger.json before the next candidate is built."
+nextTask: "Merged without independent review on 2026-09-30 (#421); post-merge review pending (#553). Proposed for the security reviewer. Every publication since appends its ledger entry to docs/qualification/tuf-publication-ledger.json; sequence 7 is 0.0.0-qualification.7."
 lastGate: "gate:quick, gate:build, gate:security, gate:release, agent:check PASS"
-updatedAt: 2026-09-29T00:00:00Z
+updatedAt: 2026-10-13T19:50:00Z
 ---
 
 # Scope
@@ -34,3 +34,8 @@ Review and merge. No code task remains on this branch.
 - The only signature made before the ledger check is the in-memory signature on
   the root envelope, which is needed to derive the pinned root digest. No
   timestamp, snapshot, or targets metadata is signed, and nothing is written.
+
+# Post-merge review status (2026-10-13)
+
+Merged without independent review on 2026-09-30 (#421); post-merge review
+pending (#553). Proposed for the security reviewer.

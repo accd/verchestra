@@ -6,9 +6,9 @@ status: verification
 branch: feat/379-linux-windows-credential-stores
 baseRevision: 0f4f29cdc414d7486ccb41e9e5ea733c63a2e1a0
 lastCompletedTask: T8
-nextTask: "T9 — independent review of AD-041, in particular the Windows value channel (a base64 literal line guarded by the PowerShell logging-policy check) versus the alternative of a script via -EncodedCommand with the value as stdin data"
+nextTask: "Merged without independent review on 2026-09-30 (#434); post-merge review pending (#553). Proposed for the security reviewer; it covers AD-041, in particular the Windows value channel (a base64 literal line guarded by the PowerShell logging-policy check) versus the alternative of a script via -EncodedCommand with the value as stdin data."
 lastGate: "pnpm gate:quick PASS; pnpm gate:build PASS; pnpm gate:security PASS; pnpm test:e2e PASS (215); pnpm agent:check PASS; pnpm site:check PASS; 0 skipped, 0 todo; pnpm qualify:keychain green on ubuntu-latest, windows-latest, macos-latest (run 36682622312)"
-updatedAt: 2026-09-30T00:00:00Z
+updatedAt: 2026-10-13T19:50:00Z
 ---
 
 # Scope
@@ -54,3 +54,8 @@ reviewer ratifies or amends AD-041, and in particular:
 2. PR #430's macOS owner run is merged. The darwin report now points to the
    Linux and Windows reports and records the CI macOS leg, and
    `DARWIN_KEYCHAIN_CREDENTIAL_QUALIFICATION.digest` is rebound.
+
+# Post-merge review status (2026-10-13)
+
+Merged without independent review on 2026-09-30 (#434); post-merge review
+pending (#553). Proposed for the security reviewer.
