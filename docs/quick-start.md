@@ -528,8 +528,10 @@ it spends nothing of your allowance, and of the account it keeps nothing but the
 plan type and the names, among the run's models, that the account does not
 offer. A verifier on an API key has no sign-in to ask and is not checked.
 
-What `start` and `resume` of a coordinated run may refuse, before the run's
-first step, and what you do about it:
+What `start` and `resume` may refuse, before the run's first step, and what you
+do about it. Every row applies to a coordinated run; `codex-login`,
+`codex-model-unavailable`, and `codex-model-list` apply to a v1 run on a Codex
+subscription too:
 
 | Requirement | What to do |
 | --- | --- |

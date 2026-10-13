@@ -228,6 +228,35 @@ run time stays covered where it can still happen, by
 `tests/integration/codex-verifier-session.test.mjs` and the driver's contract
 test.
 
+### Review follow-up (2026-10-13)
+
+The independent review approved this change and asked the owner to confirm two
+things; both are answered here.
+
+- **A v2 run now always reads the account**, even when the statement names no
+  Codex plan, so SSI-52's "a run whose statement names no Codex plan reads
+  nothing" no longer holds. This is intended, and AD-085's consequence now says
+  so.
+- **The check runs after the billing preflight**, so an owner confirms extra
+  usage before learning a model is missing. Not changed: the session needs the
+  Codex login proven first, which follows the credential read, and moving it
+  ahead of the statement would reorder the refusals that SSI-73 pins. The
+  statement is a file written once, not a prompt.
+
+Taken from the review: the English workstream label; the heading of the
+requirements table says which rows a v1 run can meet; the message of the
+models-only session no longer says it reads the login; a variable that held a
+requirement is named for it; the v1 path no longer computes the statement it
+does not use and the v2 path drops a check that could not fail; the driver's
+file-local model-list type is `ModelListPayload`, so `ModelCatalog` has one
+meaning; and an end-to-end case restores the sensor that
+`VES_CODEX_MODEL_UNAVAILABLE` reaches `status.lastReason` through the binary,
+for a v1 verifier on an API key, whose model is not checked before the run.
+
+Not changed: `CodexExecution` carries four mode flags with pairwise exclusions
+where a discriminated session kind would make the matrix exhaustive (a judgement
+call that touches every caller of the driver).
+
 ### Decisions the reviewer confirms
 
 1. **AD-085**: every `start` and `resume` on a Codex subscription launches one
