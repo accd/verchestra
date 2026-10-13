@@ -30,9 +30,9 @@ cause. Two defects:
 
 Each requirement is verified by the tests named in `validation.md`.
 
-| Id | Frente | Requirement |
+| Id | Front | Requirement |
 | --- | --- | --- |
-| PPR-01 | C | A provider conversation refused with one of the provider's own stable codes ends its run with that code. A rejection with no such code is a protocol failure, and no text or class of the error reaches the report. |
+| PPR-01 | C | A provider conversation refused with one of the provider's own stable codes ends its run with that code. A rejection with no such code is a protocol failure, and no text or class of the error reaches the report. A provider that ends before it answers a request stays a protocol failure, as `docs/qualification/codex-driver-child-run.md` records, although its rejection is a stable code of the provider's own. |
 | PPR-02 | C | The Codex driver reports a model its App Server does not list as `VES_CODEX_MODEL_UNAVAILABLE`, not as an identity mismatch. |
 | PPR-03 | C | The reason of a verifier that did not complete is, most specific first: the meter's refusal, a reached ceiling, the caller's cancel, the first stable code its session reported, then `VES_TASK_VERIFIER_FAILED`. |
 | PPR-04 | C | A failed driver session hands on the first stable code it reported, for an implementer and for a coordinated node, and nothing else of it: no message, class, or unstable code. |

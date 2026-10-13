@@ -10,11 +10,11 @@ the owner are marked.
 | Task | Deliverable | Requirements | Depends on | Owner needed |
 | --- | --- | --- | --- | --- |
 | T1 | This specification, the task list, the handoff, the validation record | all | none | no |
-| T2 | Frente C: the cause of a failure reaches `status` (AD-083) | PPR-01..05 | T1 | review |
-| T3 | Frente B: the model's availability is checked before the allowance is spent | PPR-08 | T2 | review |
-| T4 | Frente A: subscription-only models in the price table | PPR-06, PPR-07 | T1 | confirm the new AD |
-| T5 | Frente D: the pilot's record and requests, the coordinated examples | PPR-09 | T2, T3, T4 | review |
-| T6 | Frente E: the `.8` candidate, its TUF publication, and the pilot round | PPR-10 | T2..T5 | `npm publish` with 2FA; extra usage off |
+| T2 | Front C: the cause of a failure reaches `status` (AD-083) | PPR-01..05 | T1 | review |
+| T3 | Front B: the model's availability is checked before the allowance is spent | PPR-08 | T2 | review |
+| T4 | Front A: subscription-only models in the price table | PPR-06, PPR-07 | T1 | confirm the new AD |
+| T5 | Front D: the pilot's record and requests, the coordinated examples | PPR-09 | T2, T3, T4 | review |
+| T6 | Front E: the `.8` candidate, its TUF publication, and the pilot round | PPR-10 | T2..T5 | `npm publish` with 2FA; extra usage off |
 
 ## Order
 

@@ -122,11 +122,11 @@ export type TaskRunOutcome =
 const BUDGET_FAILURE = "VES_EXECUTOR_BUDGET_EXCEEDED";
 const CANCELLED = "VES_EXECUTOR_CANCELLED";
 const SUSPENDED = "VES_EXECUTOR_SUSPENDED";
-const STABLE_REASON = /^VES_[A-Z0-9_]{1,96}$/u;
+const STABLE_CODE = /^VES_[A-Z0-9_]{1,96}$/u;
 
 function errorCode(error: unknown): string {
   const code = (error as { readonly code?: unknown } | undefined)?.code;
-  return typeof code === "string" && /^VES_[A-Z0-9_]{1,96}$/u.test(code) ? code : "VES_TASK_RUN_FAILED";
+  return typeof code === "string" && STABLE_CODE.test(code) ? code : "VES_TASK_RUN_FAILED";
 }
 
 // why: the public code stays `VES_TASK_FAILED` and the catalog is not extended
@@ -135,11 +135,11 @@ function errorCode(error: unknown): string {
 // stable code may be recorded, never text a provider or a path put there.
 function failureReason(error: unknown, code: string): string {
   const carried = (error as { readonly reason?: unknown } | undefined)?.reason;
-  if (typeof carried === "string" && STABLE_REASON.test(carried)) return carried;
+  if (typeof carried === "string" && STABLE_CODE.test(carried)) return carried;
   if (code !== "VES_TASK_FAILED") return code;
   const detail = (error as { readonly envelope?: { readonly safeDetails?: { readonly reason?: unknown } } } | undefined)
     ?.envelope?.safeDetails?.reason;
-  return typeof detail === "string" && STABLE_REASON.test(detail) ? detail : code;
+  return typeof detail === "string" && STABLE_CODE.test(detail) ? detail : code;
 }
 
 // why: the executor validated the record it suspended with; an error that

@@ -3102,7 +3102,7 @@ note. -->
 ### AD-083 — A failed run records the cause its driver reported
 
 - **Status:** proposed, **human review required**
-  (`.specs/features/p1-pilot-remediation/`, Frente C, PPR-01 to PPR-05). It
+  (`.specs/features/p1-pilot-remediation/`, Front C, PPR-01 to PPR-05). It
   supersedes the last sentence of AD-056 item 5 ("every other verification
   failure keeps the code it had") for a task failure that names a stable
   reason, and it keeps the public code unpromoted as AD-056 did.

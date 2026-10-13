@@ -1,4 +1,4 @@
-import type { DriverEvent, DriverSessionOutcome } from "@verchestra/domain";
+import { UNNAMED_DRIVER_ERROR, type DriverEvent, type DriverSessionOutcome } from "@verchestra/domain";
 
 export type { DriverSessionOutcome } from "@verchestra/domain";
 
@@ -41,7 +41,7 @@ export interface DriverSessionResult {
 const CANCEL_REASON = "stopped by Verchestra";
 
 function safeCode(value: unknown): string {
-  return typeof value === "string" && /^VES_[A-Z0-9_]{1,96}$/u.test(value) ? value : "VES_DRIVER_ERROR";
+  return typeof value === "string" && /^VES_[A-Z0-9_]{1,96}$/u.test(value) ? value : UNNAMED_DRIVER_ERROR;
 }
 
 function result(outcome: DriverSessionOutcome, errorCodes: readonly string[]): DriverSessionResult {
