@@ -6,9 +6,9 @@ status: verification
 branch: docs/379-real-keychain-evidence
 baseRevision: 8422c9ff064cb47a6239a12cf577c0b4f7f79cbb
 lastCompletedTask: T8
-nextTask: "Linux Secret Service and Windows Credential Manager backends, each with its own platform qualification; the owner binds anthropic-api-key on the working machine (vestra secret set --name anthropic-api-key) for doctor --deep"
+nextTask: "Merged without independent review on 2026-09-30 (#430); post-merge review pending (#553). Proposed for the security reviewer. The Linux and Windows backends landed in #434 (os-secret-backend-cross-platform)."
 lastGate: "corepack pnpm qualify:keychain 8/8 PASS on 8422c9f (macOS 26.6.2 arm64); tests/security/os-secret-backend-security.test.mjs 18/18"
-updatedAt: 2026-09-30T07:00:00Z
+updatedAt: 2026-10-13T19:50:00Z
 ---
 
 # Scope
@@ -70,3 +70,8 @@ environment variable, and the 1416-byte value limit.
   session; no automation may run it.
 - Linux and Windows credential backends are out of scope and report
   `VES_SECRET_STORE_UNQUALIFIED` until each has its own qualification.
+
+# Post-merge review status (2026-10-13)
+
+Merged without independent review on 2026-09-30 (#430); post-merge review
+pending (#553). Proposed for the security reviewer.

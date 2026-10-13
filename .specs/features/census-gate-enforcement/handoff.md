@@ -6,9 +6,9 @@ status: verification
 branch: fix/gate-census-and-handoff-drift
 baseRevision: 20071a78eb5b96b9de63e5e9c863b6997643c767
 lastCompletedTask: T3
-nextTask: Human review and merge of the census gate enforcement change; then the owner either follows the spec.md #395 break-glass steps to require a Security gate check or records in #395 that the Quality gate coverage suffices (#395).
+nextTask: "Merged without independent review on 2026-09-30 (#420); post-merge review pending (#553). Then the owner either follows the spec.md #395 break-glass steps to require a Security gate check or records in #395 that the Quality gate coverage suffices (#395)."
 lastGate: pnpm gate:security PASS; pnpm gate:quick PASS; pnpm agent:check PASS
-updatedAt: 2026-09-29T00:00:00Z
+updatedAt: 2026-10-13T19:50:00Z
 ---
 
 # Handoff
@@ -37,3 +37,8 @@ that does not exist yet and a ruleset edit.
 
 Independent review of the diff and the owner decision in `spec.md`
 ("#395: required-check decision").
+
+# Post-merge review status (2026-10-13)
+
+Merged without independent review on 2026-09-30 (#420); post-merge review
+pending (#553).
