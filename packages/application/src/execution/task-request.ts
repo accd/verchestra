@@ -5,6 +5,7 @@ import {
   COORDINATION_LIMIT_CEILINGS,
   COORDINATION_LIMIT_DEFAULTS,
   coordinationPlanFault,
+  type CoordinationDriverId,
   type CoordinationEdge,
   type CoordinationHandoff,
   type CoordinationLimits,
@@ -13,7 +14,7 @@ import {
 } from "./coordination-plan.ts";
 import { canonicalTaskGatePlan, TASK_GATE_COMMAND_FIELDS, TaskGateError, type TaskGateCommand } from "./gate-commit.ts";
 import type { GateRepairPolicy } from "./gate-repair.ts";
-import { isKnownModel, type SubscriptionDriverId } from "./model-price-table.ts";
+import { isKnownModel } from "./model-price-table.ts";
 import {
   ATOMIC_EXECUTION_TASK_FIELDS,
   normalizeTask,
@@ -229,7 +230,7 @@ function normalizeRepairPolicy(value: unknown): GateRepairPolicy {
   };
 }
 
-function normalizeModelBinding<T extends SubscriptionDriverId>(
+function normalizeModelBinding<T extends CoordinationDriverId>(
   value: unknown,
   label: string,
   driverId: T,
