@@ -266,8 +266,7 @@ export {
   isPricedModel,
   isSubscriptionOnlyModel,
   modelPriceTable,
-  type ModelCatalog,
-  type SubscriptionDriverId
+  type ModelCatalog
 } from "./execution/model-price-table.ts";
 export {
   ProbeEvidenceError,

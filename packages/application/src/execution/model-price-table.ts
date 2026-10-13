@@ -1,13 +1,12 @@
 import type { ModelPriceTable } from "./budget-meter.ts";
-
-export type SubscriptionDriverId = "claude-code" | "codex";
+import type { CoordinationDriverId } from "./coordination-plan.ts";
 
 // invariant: a model an account offers on a subscription is listed here by the
 // driver that runs it, with no price: nothing is billed per token for it, so
 // nothing is priced. It is never a priced model's alias, and it never stands
 // in for one on an API key (the run refuses that before any effect).
 export interface ModelCatalog extends ModelPriceTable {
-  readonly subscriptionModels: Readonly<Record<SubscriptionDriverId, readonly string[]>>;
+  readonly subscriptionModels: Readonly<Record<CoordinationDriverId, readonly string[]>>;
 }
 
 // why: the subscription-only lists were read from the accounts of the
@@ -51,10 +50,10 @@ export function isPricedModel(model: string): boolean {
 
 // invariant: only a model with no price is subscription-only; a priced model
 // is billed per token on an API key and is not listed twice.
-export function isSubscriptionOnlyModel(driverId: SubscriptionDriverId, model: string): boolean {
+export function isSubscriptionOnlyModel(driverId: CoordinationDriverId, model: string): boolean {
   return !isPricedModel(model) && modelPriceTable.subscriptionModels[driverId].includes(model);
 }
 
-export function isKnownModel(driverId: SubscriptionDriverId, model: string): boolean {
+export function isKnownModel(driverId: CoordinationDriverId, model: string): boolean {
   return isPricedModel(model) || isSubscriptionOnlyModel(driverId, model);
 }

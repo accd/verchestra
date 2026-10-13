@@ -157,6 +157,16 @@ named the table's version `2026.7.0`. They are fixtures of what a capsule
 seals, not the table itself; they now name `2026.10.0`, the version the table
 seals. No assertion changed.
 
+### Review follow-up (2026-10-13)
+
+The independent review approved this change. The workstream label it inherited
+is English (`Front`), and the driver-id type of the catalog is the existing
+`CoordinationDriverId` instead of a second declaration of the same two values.
+Not changed: one helper for the two places that pick a provider's models by
+credential mode (a judgement call, two short functions), and the clash of the
+name `ModelCatalog` with a file-local type of the driver, which the next change
+in the stack renames.
+
 ### Decisions the reviewer confirms
 
 1. **AD-084**: a model can be subscription-only, with no price. The table's
