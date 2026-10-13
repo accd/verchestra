@@ -444,7 +444,7 @@ function codexProtocol(channel: ProviderChannel, conversation: CodexConversation
     const catalog = (await rpc("model/list")) as { data?: readonly { id?: string; model?: string }[] };
     const selected = catalog.data?.find((entry) => entry.model === execution.model || entry.id === execution.model);
     if (selected?.model !== execution.model)
-      throw codexError("VES_CODEX_IDENTITY_MISMATCH", "Codex model is unavailable");
+      throw codexError("VES_CODEX_MODEL_UNAVAILABLE", "Codex model is unavailable");
     const thread = (await rpc("thread/start", conversation.threadParams())) as { thread?: { id?: string } };
     threadId = thread.thread?.id;
     if (typeof threadId !== "string") throw codexError("VES_CODEX_PROTOCOL_FAILED", "Codex thread identity is invalid");
@@ -460,8 +460,12 @@ function codexProtocol(channel: ProviderChannel, conversation: CodexConversation
     if (typeof turnId !== "string") throw codexError("VES_CODEX_PROTOCOL_FAILED", "Codex turn identity is invalid");
     interrupt();
   };
+  // why: a provider that ends before it answers a request is a protocol
+  // failure, as the child run reports it; `VES_CODEX_PROCESS_FAILED` is the
+  // end of a process that died after its conversation had finished.
   const closed = () => {
-    for (const waiter of pending.values()) waiter.reject(codexError("VES_CODEX_PROCESS_FAILED", "Codex process ended"));
+    for (const waiter of pending.values())
+      waiter.reject(codexError("VES_CODEX_PROTOCOL_FAILED", "Codex process ended"));
     pending.clear();
   };
   return { receive, converse, interrupt, closed };

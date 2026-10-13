@@ -247,10 +247,13 @@ function structuredAnswer() {
   const next = /\bnext:([a-z][a-z0-9-]*|<complete>)/u.exec(prompt)?.[1] ?? "<complete>";
   return { structured_output: { ...answer, next, message: `handed on by fake claude to ${next}` } };
 }
+// why: the `claude-error` flag ends the session with an error result, as a
+// provider whose turn failed does, so the driver reports its failure code.
+const turnFailed = fixtureFlag("claude-error");
 emit({
   type: "result",
-  subtype: "success",
-  is_error: false,
+  subtype: turnFailed ? "error_during_execution" : "success",
+  is_error: turnFailed,
   result: "done",
   total_cost_usd: 0.01,
   usage: { input_tokens: 11, output_tokens: 7 },
