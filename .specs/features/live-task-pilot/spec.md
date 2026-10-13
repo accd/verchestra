@@ -439,7 +439,10 @@ Stop rule: **the pilot stops, and the owner decides, when a provider refuses a
 session for a plan usage or rate limit, or because the account does not offer
 the model the request names** (amended 2026-10-06: P1-2 stopped here, at the
 verifier, with `gpt-5.2-codex`). The run is recorded with its outcome and
-reason; it is not retried in the same session, and not with another model.
+reason; it is not retried in the same session, and not with another model in
+its place. An attempt that follows an amendment of this pre-registration (a new
+request digest, recorded under Deviations) is a new attempt at the same task,
+not a retry of the stopped run, and the stopped run stays as it was recorded.
 From the candidate that carries the checks of
 `.specs/features/p1-pilot-remediation/`, `start` refuses such a model before any
 effect (`codex-model-unavailable`), so the stop is reached without spending an
