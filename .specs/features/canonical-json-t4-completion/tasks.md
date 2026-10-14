@@ -242,9 +242,9 @@ ceiling and records the open question.
 **Where**: `tests/security/canonical-json-locale-allowlist.test.mjs`
 **Depends on**: T6, T12, T20 · **Requirement**: CJ5-11 · **AC**: 10
 **Done when**:
-- [ ] `gate-commit.ts` and `cedar-policy.ts` carry their intended tighter ceilings, not the later loose duplicates
-- [ ] A duplicate key introduced anywhere fails the test
-- [ ] `pnpm gate:security` passes
+- [x] `gate-commit.ts` and `cedar-policy.ts` carry their intended tighter ceilings, not the later loose duplicates (issue #558: both at 0; every one of the 14 duplicates resolved by `git log -L` and the matrix, none to the larger value)
+- [x] A duplicate key introduced anywhere fails the test (`ceilingLiteralKeys` reads the file's own source; one test per group, one for an owner in both groups, two mutation cases)
+- [ ] `pnpm gate:security` passes (the pull request's CI run; on Windows the security scope fails only on the named-pipe, ACL-proof, symbolic-link and home-directory cases that #555 and the platform matrix already record)
 **Tests**: security · **Gate**: security
 
 #### T22: Record acceptance evidence

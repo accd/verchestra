@@ -2,13 +2,13 @@
 schema: verchestra-feature-handoff/v1
 feature: canonical-json-t4-completion
 issue: 58
-status: in_progress
-branch: fix/gate-census-and-handoff-drift
-baseRevision: 20071a78eb5b96b9de63e5e9c863b6997643c767
-lastCompletedTask: T20
-nextTask: "T21 — de-duplicate MATRIX_CEILINGS (9 duplicate keys) and UNCLASSIFIED_CEILINGS (5) in tests/security/canonical-json-locale-allowlist.test.mjs and add a duplicate-key assertion; no open issue tracks it (#58 is closed), so the maintainer first files one or takes it as a focused security change."
-lastGate: "T4j b738b04 and T4k 44c7a85 merged; census has no pending-versioned-migration entry; T21 not started"
-updatedAt: 2026-09-29T00:00:00Z
+status: verification
+branch: test/558-locale-allowlist-dedupe
+baseRevision: 8056d41b5ab615ce7dc536db400e09f136565c61
+lastCompletedTask: T21
+nextTask: "Owner review and merge of the T21 change (issue #558); its pull-request CI run is the close-out gate, since T22 and T23 stay superseded by #58's closure."
+lastGate: "T21 branch on Windows 11, Node 24.18.0: gate:quick static stages pass, test:unit 2991/2993 and test:security 1346/1359, every failure an environment case already recorded (#555 named-pipe helper and elevated ACL proof, symbolic-link privilege, tmpdir under the home directory); the pull request's CI run is the clean gate"
+updatedAt: 2026-10-14T07:41:00Z
 ---
 
 # Scope
@@ -53,19 +53,25 @@ is acceptance-matrix L18.
 - **T4i (T13 to T20), signed evidence, merged.** `190e06f` (PR #307) covers the
   Execution Package. `e469dbd` covers Run Capsule, Recovery Bundle, and Support
   Bundle. AD-029 and AD-031 record the decisions.
-- **Still open: T21, the ratchet repair.**
-  `tests/security/canonical-json-locale-allowlist.test.mjs` still declares
-  duplicate object keys, and the later value wins:
+- **T21, the ratchet repair, done on 2026-10-14 (issue #558).**
+  `tests/security/canonical-json-locale-allowlist.test.mjs` declared
+  duplicate object keys, and the later value won:
   - 9 in `MATRIX_CEILINGS`, including `gate-commit.ts` 0 then 1 and
     `cedar-policy.ts` 0 then 2.
   - 5 in `UNCLASSIFIED_CEILINGS`.
 
-  Nothing fails today, because the real counts are at or below the intended
-  ceilings. A regression up to the looser duplicate would still pass. This is
-  the defect "Open Follow-Up" names. No open issue tracks it.
+  Nothing failed, because the real counts were at or below the intended
+  ceilings, but a regression up to the looser duplicate would have passed.
+  Each duplicate is now resolved to the value its migration commit and the
+  compatibility matrix give. For 12 the surviving line was already the
+  tightened 0. For `gate-commit.ts` (tightened in `ddd0282`, re-added at 1 by
+  `4038dbb`) and `cedar-policy.ts` (tightened in `f63471c`, re-added at 2 by
+  `a7f6122`) the stale re-added line is removed and 0 holds. The test now
+  reads its own source: a repeated key in either group, or an owner present in
+  both groups, fails it, and two mutation cases prove the sensor.
 - **Superseded by #58's closure: T22 and T23.** T22 would record acceptance
   evidence on #58, and T23 would run the close-out gates. Neither was recorded
-  for this feature. Once T21 lands, T23's gates rerun on that change.
+  for this feature. The T21 change's CI run stands in for T23's gates.
 
 # Next Exact Action (historical, 2026-08-23 — superseded, see Reconciliation)
 
@@ -112,8 +118,7 @@ becomes mandatory and permanent.
 
 # Open Follow-Up
 
-A defect found while planning, fixed by T21: `MATRIX_CEILINGS` in
-`tests/security/canonical-json-locale-allowlist.test.mjs` contains seven
-duplicate keys. Later values win, so `gate-commit.ts` is effectively ratcheted
-at 1 and `cedar-policy.ts` at 2, though the matrix records both as "tightened
-to 0". Both pass today only because the real counts are zero.
+None. The defect found while planning (duplicate keys in `MATRIX_CEILINGS`,
+later values winning, `gate-commit.ts` effectively ratcheted at 1 and
+`cedar-policy.ts` at 2 while the matrix records both as "tightened to 0") is
+fixed by T21 under issue #558; see the Reconciliation section.
