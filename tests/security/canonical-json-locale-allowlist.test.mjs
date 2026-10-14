@@ -33,25 +33,18 @@ const MATRIX_CEILINGS = Object.freeze({
   "packages/application/src/coordination/work-claims.ts": 0,
   // T4c owner: migrated (issue #58), ceiling tightened to 0.
   "packages/application/src/execution/gate-commit.ts": 0,
-  "packages/application/src/egress/trust-egress.ts": 1,
-  "packages/application/src/handoff/validation.ts": 1,
-  "packages/application/src/execution/gate-commit.ts": 1,
   // T4f owners: migrated (issue #58), ceilings tightened to 0.
   "packages/application/src/egress/trust-egress.ts": 0,
   "packages/application/src/handoff/validation.ts": 0,
-  "packages/application/src/sync/workspace-reconcile.ts": 7,
   // T4g owner: migrated (issue #58), ceiling tightened to 0.
   "packages/application/src/sync/workspace-reconcile.ts": 0,
   "packages/application/src/effects/effect-contract.ts": 0,
-  "packages/agent-runtime/src/context/context-compiler.ts": 10,
-  "packages/agent-runtime/src/context/source-snapshots.ts": 9,
   // T4d owners: migrated (issue #58), ceilings tightened to 0.
   "packages/policy/src/cedar-policy.ts": 0,
   // T4e owners: migrated (issue #58), ceilings tightened to 0.
   "packages/agent-runtime/src/context/context-compiler.ts": 0,
   "packages/agent-runtime/src/context/source-snapshots.ts": 0,
   "packages/agent-runtime/src/context/backend-serializers.ts": 0,
-  "packages/policy/src/cedar-policy.ts": 2,
   // T4h owners: migrated (issue #58), ceilings tightened to 0.
   "packages/data-probe/src/database-knowledge.ts": 0,
   "packages/data-probe/src/sqlserver-adapter.ts": 0,
@@ -62,8 +55,6 @@ const MATRIX_CEILINGS = Object.freeze({
   "packages/data-probe/src/mysql-family-adapter.ts": 0,
   "packages/data-probe/src/mongodb-adapter.ts": 0,
   "packages/data-probe/src/index.ts": 0,
-  "packages/distribution/src/hermetic-bundle.ts": 2,
-  "packages/distribution/src/transactional-activation.ts": 1,
   // T4j owners: migrated (issue #58), ceilings tightened to 0.
   "packages/distribution/src/hermetic-bundle.ts": 0,
   "packages/distribution/src/transactional-activation.ts": 0,
@@ -121,13 +112,9 @@ const UNCLASSIFIED_CEILINGS = Object.freeze({
   "packages/connectors/src/confluence/delivery-projection.ts": 1,
   "packages/connectors/src/jira/jira.ts": 1,
   "packages/distribution/src/tuf-update-client.ts": 0,
-  "packages/drivers/src/index.ts": 1,
-  "packages/drivers/src/opencode-driver.ts": 1,
-  "packages/effects/src/effect-kernel.ts": 2,
   // The three signed-evidence owners moved to MATRIX_CEILINGS above when the
   // signed-evidence vertical migrated them; leaving stale copies here would
   // win the `{...MATRIX, ...UNCLASSIFIED}` merge and silently loosen them.
-  "packages/extension-host/src/index.ts": 1,
   // Memory owners: migrated (issue #58), ceilings tightened to 0. Every
   // private canonical-JSON serializer is now `canonicalizeJsonV2`, and every
   // ordering that reaches a digest, a stored identity or persisted bytes uses
@@ -136,15 +123,13 @@ const UNCLASSIFIED_CEILINGS = Object.freeze({
   "packages/memory/src/memory-retriever.ts": 0,
   "packages/memory/src/memory-store.ts": 0,
   "packages/memory/src/memory-vector-index.ts": 0,
-  "packages/policy/src/policy-bundle.ts": 2,
   "packages/platform-node/src/git-worktree-adapter.ts": 0,
   // Migrated (issue #58): the effect kernel, the driver and probe-worker
   // protocol envelopes, the OpenCode model catalog, and the signed policy
   // bundle now canonicalize with `canonicalizeJsonV2` and order their declared
   // sets by UTF-16 code unit. Ceilings tightened to 0 so a reintroduced
   // ambient-locale sort in any of them fails this gate rather than sitting
-  // under a stale ratchet. Later keys win, matching how every prior T4 slice
-  // recorded its tightening above.
+  // under a stale ratchet.
   "packages/drivers/src/index.ts": 0,
   "packages/drivers/src/opencode-driver.ts": 0,
   "packages/effects/src/effect-kernel.ts": 0,
@@ -153,6 +138,45 @@ const UNCLASSIFIED_CEILINGS = Object.freeze({
 });
 
 const CEILINGS = Object.freeze({ ...MATRIX_CEILINGS, ...UNCLASSIFIED_CEILINGS });
+
+// CJ5-11: an object literal keeps the last of two equal keys and drops the
+// first without a word, and `Object.freeze` sees only the survivor. Both
+// groups above once carried re-added stale keys after rebases of the T4
+// slices (`gate-commit.ts` 0 then 1, `cedar-policy.ts` 0 then 2), so the
+// effective ratchet was looser than the comment beside it said. The sensor
+// therefore reads its own source: every key of each group literal must appear
+// once, and no owner may sit in both groups, where the spread merge would let
+// the unclassified copy win.
+const CEILING_GROUPS = Object.freeze({ MATRIX_CEILINGS, UNCLASSIFIED_CEILINGS });
+
+export function ceilingLiteralKeys(source, name) {
+  const header = `const ${name} = Object.freeze({\n`;
+  const start = source.indexOf(header);
+  if (start < 0) throw new Error(`${name}: literal not found`);
+  const end = source.indexOf("\n});", start);
+  if (end < 0) throw new Error(`${name}: literal is not closed`);
+  const keys = [];
+  for (const line of source.slice(start + header.length, end).split("\n")) {
+    const trimmed = line.trim();
+    if (trimmed === "" || trimmed.startsWith("//")) continue;
+    const entry = /^"([^"]+)": \d+,?$/u.exec(trimmed);
+    if (!entry) throw new Error(`${name}: line this sensor cannot read: ${trimmed}`);
+    keys.push(entry[1]);
+  }
+  return keys;
+}
+
+export function duplicateKeys(keys) {
+  const seen = new Set();
+  const duplicates = new Set();
+  for (const key of keys) {
+    if (seen.has(key)) duplicates.add(key);
+    seen.add(key);
+  }
+  return [...duplicates];
+}
+
+const ownSource = () => readFile(fileURLToPath(import.meta.url), "utf8");
 
 // Other discrimination sensors (e.g. canonical-json-sensor.test.mjs) write
 // disposable `*.mutant-<uuid>.ts` fixtures beside their source under test
@@ -228,6 +252,42 @@ test("every tracked owner file still exists (no silent removal desyncing the all
   for (const relativePath of Object.keys(CEILINGS)) {
     await assert.doesNotReject(readFile(join(repoRoot, relativePath), "utf8"));
   }
+});
+
+for (const [name, group] of Object.entries(CEILING_GROUPS)) {
+  test(`${name} declares every owner once (a later duplicate would silently win)`, async () => {
+    const keys = ceilingLiteralKeys(await ownSource(), name);
+    assert.deepEqual(duplicateKeys(keys), []);
+    assert.equal(keys.length, Object.keys(group).length);
+  });
+}
+
+test("no owner is declared in both groups (the spread merge would let the unclassified copy win)", () => {
+  assert.deepEqual(duplicateKeys([...Object.keys(MATRIX_CEILINGS), ...Object.keys(UNCLASSIFIED_CEILINGS)]), []);
+});
+
+test("mutation: a key repeated inside a group literal is caught", () => {
+  const source = [
+    "const SAMPLE_CEILINGS = Object.freeze({",
+    '  "packages/application/src/execution/gate-commit.ts": 0,',
+    "  // a rebase re-added the pre-migration line below",
+    '  "packages/application/src/egress/trust-egress.ts": 1,',
+    '  "packages/application/src/execution/gate-commit.ts": 1',
+    "});",
+    ""
+  ].join("\n");
+  const keys = ceilingLiteralKeys(source, "SAMPLE_CEILINGS");
+  assert.deepEqual(keys, [
+    "packages/application/src/execution/gate-commit.ts",
+    "packages/application/src/egress/trust-egress.ts",
+    "packages/application/src/execution/gate-commit.ts"
+  ]);
+  assert.deepEqual(duplicateKeys(keys), ["packages/application/src/execution/gate-commit.ts"]);
+});
+
+test("mutation: a group entry the sensor cannot read fails instead of being skipped", () => {
+  const source = "const SAMPLE_CEILINGS = Object.freeze({\n  [owner]: 0\n});\n";
+  assert.throws(() => ceilingLiteralKeys(source, "SAMPLE_CEILINGS"), /cannot read/u);
 });
 
 const disposableDirs = [];
