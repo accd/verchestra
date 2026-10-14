@@ -35,7 +35,14 @@ const VESTRA = fileURLToPath(new URL("../../../apps/vestra-cli/bin/vestra.mjs", 
 const SENTINEL = "sk-ant-e2e-sentinel-4c1d";
 const SENTINEL_HEX = Buffer.from(SENTINEL).toString("hex");
 const SENTINEL_BASE64 = Buffer.from(SENTINEL).toString("base64");
-const NAMES = ["anthropic-api-key"];
+// invariant: the journey binds the credential deep doctor observes, which is
+// the implementer credential of the Workspace's provider-auth mode
+// (apps/vestra-cli/src/task-provider-auth.ts, IMPLEMENTER_CREDENTIALS). No
+// task-providers.json is written here, so the mode is the default,
+// subscription, and the credential is the Claude Code OAuth token; binding
+// anthropic-api-key instead left the doctor blocked after #458 (#560).
+const CREDENTIAL = "claude-code-oauth-token";
+const NAMES = [CREDENTIAL];
 const roots = [];
 after(() => Promise.all(roots.map((root) => rm(root, { recursive: true, force: true }))));
 
@@ -144,7 +151,7 @@ test(
     const root = await workspace(workspaceId);
     if (!QUALIFIED) {
       t.diagnostic(`${PLATFORM}: asserting the store is not configured instead`);
-      const status = launch(["secret", "status", "--name", "anthropic-api-key", "--output", "json"], root);
+      const status = launch(["secret", "status", "--name", CREDENTIAL, "--output", "json"], root);
       assert.equal(status.status, 5);
       assert.equal(json(status).error.code, "VES_SECRET_STORE_UNQUALIFIED");
       assert.equal(secretPresence(root, []), "doctor.secret-presence:blocked");
@@ -152,37 +159,37 @@ test(
     }
     await withPlatformStore(workspaceId, async ({ storeArgs, items }) => {
       assert.equal(secretPresence(root, storeArgs), "doctor.secret-presence:blocked");
-      const set = launch(["secret", "set", "--name", "anthropic-api-key", ...storeArgs], root, `${SENTINEL}\n`);
+      const set = launch(["secret", "set", "--name", CREDENTIAL, ...storeArgs], root, `${SENTINEL}\n`);
       assert.equal(set.status, 0, set.stderr);
       assertNoValue(set.stdout, "stdout");
       assertNoValue(set.stderr, "stderr");
       assert.match(set.stdout, /stored: true/u);
       assert.match(set.stdout, PLATFORM === "darwin" ? /keychain: explicit/u : /keychain: default/u);
       const status = json(
-        launch(["secret", "status", "--name", "anthropic-api-key", "--output", "json", ...storeArgs], root)
+        launch(["secret", "status", "--name", CREDENTIAL, "--output", "json", ...storeArgs], root)
       );
       assert.deepEqual(status.data, {
         workspaceId,
-        logicalName: "anthropic-api-key",
+        logicalName: CREDENTIAL,
         store: STORE_IDS[PLATFORM],
         keychain: PLATFORM === "darwin" ? "explicit" : "default",
         present: true
       });
       assert.equal(secretPresence(root, storeArgs), "doctor.secret-presence:pass");
-      assert.deepEqual(items(), ["anthropic-api-key"]);
-      const rotate = launch(["secret", "set", "--name", "anthropic-api-key", ...storeArgs], root, "sk-ant-rotated");
+      assert.deepEqual(items(), [CREDENTIAL]);
+      const rotate = launch(["secret", "set", "--name", CREDENTIAL, ...storeArgs], root, "sk-ant-rotated");
       assert.equal(rotate.status, 0, rotate.stderr);
-      assert.deepEqual(items(), ["anthropic-api-key"]);
+      assert.deepEqual(items(), [CREDENTIAL]);
       const removed = json(
-        launch(["secret", "delete", "--name", "anthropic-api-key", "--output", "json", ...storeArgs], root)
+        launch(["secret", "delete", "--name", CREDENTIAL, "--output", "json", ...storeArgs], root)
       );
       assert.equal(removed.data.deleted, true);
       const again = json(
-        launch(["secret", "delete", "--name", "anthropic-api-key", "--output", "json", ...storeArgs], root)
+        launch(["secret", "delete", "--name", CREDENTIAL, "--output", "json", ...storeArgs], root)
       );
       assert.equal(again.data.deleted, false);
       const gone = json(
-        launch(["secret", "status", "--name", "anthropic-api-key", "--output", "json", ...storeArgs], root)
+        launch(["secret", "status", "--name", CREDENTIAL, "--output", "json", ...storeArgs], root)
       );
       assert.equal(gone.data.present, false);
       assert.equal(secretPresence(root, storeArgs), "doctor.secret-presence:blocked");
@@ -196,21 +203,21 @@ test(`${PLATFORM}: an oversize or empty value is refused and never echoed`, { ti
   const root = await workspace(workspaceId);
   if (!QUALIFIED) {
     t.diagnostic(`${PLATFORM}: asserting the store is not configured instead`);
-    const set = launch(["secret", "set", "--name", "anthropic-api-key"], root, SENTINEL);
+    const set = launch(["secret", "set", "--name", CREDENTIAL], root, SENTINEL);
     assert.equal(set.status, 5);
     assert.match(set.stderr, /^VES_SECRET_STORE_UNQUALIFIED:/u);
     return;
   }
   await withPlatformStore(workspaceId, async ({ storeArgs, items }) => {
     for (const input of [`${SENTINEL}${"A".repeat(4096)}`, "", "\n", "has space"]) {
-      const set = launch(["secret", "set", "--name", "anthropic-api-key", ...storeArgs], root, input);
+      const set = launch(["secret", "set", "--name", CREDENTIAL, ...storeArgs], root, input);
       assert.equal(set.status, 5);
       assert.match(set.stderr, /^VES_SECRET_VALUE_INVALID:/u);
       assertNoValue(set.stdout, "stdout");
       assertNoValue(set.stderr, "stderr");
     }
     const status = json(
-      launch(["secret", "status", "--name", "anthropic-api-key", "--output", "json", ...storeArgs], root)
+      launch(["secret", "status", "--name", CREDENTIAL, "--output", "json", ...storeArgs], root)
     );
     assert.equal(status.data.present, false);
     assert.deepEqual(items(), []);
@@ -224,7 +231,7 @@ test(`${PLATFORM}: an unusable --keychain path is refused before any store comma
   await confined(workspaceId, async () => {
     for (const path of [join(root, "missing.keychain-db"), "relative.keychain-db", join(root, ".verchestra")]) {
       const set = launch(
-        ["secret", "set", "--name", "anthropic-api-key", "--keychain", path, "--output", "json"],
+        ["secret", "set", "--name", CREDENTIAL, "--keychain", path, "--output", "json"],
         root,
         SENTINEL
       );
@@ -243,7 +250,7 @@ test("secret commands refuse an uninitialized directory and an invalid name", { 
   // before a store is consulted, and still runs confined in case it is not.
   const never = ["--keychain", join(bare, "never-created.keychain-db")];
   await confined(workspaceId, async () => {
-    const outside = launch(["secret", "status", "--name", "anthropic-api-key", "--output", "json", ...never], bare);
+    const outside = launch(["secret", "status", "--name", CREDENTIAL, "--output", "json", ...never], bare);
     assert.equal(outside.status, 5);
     assert.equal(json(outside).error.code, "VES_INIT_WORKSPACE_MISSING");
     for (const name of ["UPPER", "../escape", "x"]) {
