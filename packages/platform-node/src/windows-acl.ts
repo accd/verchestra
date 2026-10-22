@@ -2,9 +2,12 @@
 // bridge material is made owner-only through its ACL and then proven so by
 // reading the ACL back (SSI-73, AD-074). Both programs are native System32
 // tools reached by absolute path, never through PATH: `whoami` names the
-// current user's SID, and `icacls` restores the directory's whole DACL from a
-// file that holds one protected, inheritable full-control entry for that SID,
-// then saves the result as SDDL. Anything short of exactly that DACL is no proof.
+// current user's SID, and `icacls` makes that SID the directory's one
+// protected, inheritable full-control entry, then saves the result as SDDL.
+// It first removes inheritance and grants the SID, which any owner may do; only
+// when other explicit entries survive does it restore the whole DACL from a
+// file, which needs an elevated token (#555). Anything short of exactly that
+// DACL is no proof.
 import { readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
@@ -77,12 +80,19 @@ export function currentUserSid(whoamiOutput: string): string | undefined {
   return sid !== undefined && SID.test(sid) ? sid : undefined;
 }
 
-// why: measured on a hosted Windows runner, `/inheritance:r /grant:r` added the
-// owner but left SYSTEM and Administrators as explicit entries, so the DACL
-// is replaced whole instead of edited.
 export function ownerOnlyDacl(sid: string): string {
   if (!SID.test(sid)) throw new TypeError("not a SID");
   return `D:PAI(A;OICI;FA;;;${sid})`;
+}
+
+// why: `/inheritance:r /grant:r` needs no privilege beyond owning the
+// directory, so it works for a standard or UAC-filtered user, whose new
+// directory carries inherited entries only (#555). Measured on a hosted
+// Windows runner, it left SYSTEM and Administrators as explicit entries, so
+// its result is accepted only when the read-back is owner-only.
+export function ownerOnlyGrant(directory: string, sid: string): readonly string[] {
+  if (!SID.test(sid)) throw new TypeError("not a SID");
+  return Object.freeze([directory, "/inheritance:r", "/grant:r", `*${sid}:(OI)(CI)F`]);
 }
 
 export interface OwnerOnlyRestore {
@@ -197,6 +207,13 @@ export async function proveOwnerOnlyDirectory(
   const identity = await attempt(() => runner("whoami", WHOAMI_ARGUMENTS));
   const sid = identity === undefined ? undefined : currentUserSid(identity);
   if (sid === undefined) return Object.freeze({ proven: false, step: "identity" });
+  if ((await attempt(() => runner("icacls", ownerOnlyGrant(directory, sid)))) !== undefined) {
+    const granted = await readDirectoryDacl(directory, runner);
+    if (granted !== undefined && isOwnerOnlyDacl(granted, sid))
+      return Object.freeze({ proven: true, sid, dacl: granted });
+  }
+  // why: `/restore` replaces the DACL whole but needs SeRestorePrivilege, which
+  // only an elevated token holds; without it the proof stops here, as before.
   if (!(await replaceDacl(directory, sid, runner))) return Object.freeze({ proven: false, step: "replace" });
   const dacl = await readDirectoryDacl(directory, runner);
   if (dacl === undefined) return Object.freeze({ proven: false, step: "read-back" });

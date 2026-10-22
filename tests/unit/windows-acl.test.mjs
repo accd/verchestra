@@ -1,9 +1,9 @@
 // invariant: the owner-only proof of a Windows per-run directory (SSI-73) is
 // decided here on every platform with a fake tool runner: which SID, how the
-// DACL is replaced, how the saved DACL is read, and which DACLs count as
-// owner-only, including the SDDL aliases a SID can read back as. The real
-// tools run in tests/security/windows-pipe-bridge-security.test.mjs on the
-// Windows runner.
+// DACL is granted or replaced, how the saved DACL is read, and which DACLs
+// count as owner-only, including the SDDL aliases a SID can read back as. The
+// real tools run in tests/security/windows-pipe-bridge-security.test.mjs on
+// the Windows runner and on a standard user's machine.
 import assert from "node:assert/strict";
 import { access, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -15,6 +15,7 @@ import {
   currentUserSid,
   isOwnerOnlyDacl,
   ownerOnlyDacl,
+  ownerOnlyGrant,
   ownerOnlyRestore,
   proveOwnerOnlyDirectory,
   readDirectoryDacl,
@@ -28,6 +29,17 @@ const OWNER_ONLY = `D:PAI(A;OICI;FA;;;${SID})`;
 const RUNNER_ROW = '"runnervmfi6oq\\runneradmin","S-1-5-21-1643835476-1616584234-1346609752-500"';
 const RUNNER_SID = "S-1-5-21-1643835476-1616584234-1346609752-500";
 const RUNNER_AFTER_GRANT = "D:PAI(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;FA;;;LA)";
+// why: what `icacls <parent> /restore <file>` did for a standard user on
+// Windows 11 (#555): exit 1300, ERROR_NOT_ALL_ASSIGNED, because the token holds
+// neither SeRestorePrivilege nor SeBackupPrivilege, which only elevation grants.
+const RESTORE_WITHOUT_PRIVILEGE = Object.freeze({
+  exitCode: 1300,
+  stdout: "Successfully processed 0 files; Failed processing 0 files"
+});
+// why: a directory a standard user creates under their profile inherits its
+// parent's entries; the grant's read-back on the same machine was the owner
+// entry alone (#555).
+const INHERITED = `D:AI(A;OICIID;FA;;;SY)(A;OICIID;FA;;;BA)(A;OICIID;FA;;;${SID})`;
 const roots = [];
 
 afterEach(async () => {
@@ -70,10 +82,12 @@ function fakeRunner({ whoami = `"HOST\\owner","${SID}"\r\n`, dacl = OWNER_ONLY, 
 function runnerHost() {
   const dacls = new Map();
   const restored = [];
+  const verbs = [];
   const render = (dacl) => dacl.replaceAll(RUNNER_SID, "LA");
   const runner = async (tool, args) => {
     if (tool === "whoami") return `${RUNNER_ROW}\r\n`;
     const [target, verb] = args;
+    verbs.push(verb);
     if (verb === "/inheritance:r") dacls.set(target, RUNNER_AFTER_GRANT);
     else if (verb === "/restore") {
       const bytes = await readFile(args[2]);
@@ -90,7 +104,27 @@ function runnerHost() {
       await writeFile(args[2], utf16(`${basename(target)}\r\n${dacls.get(target) ?? "D:AI(A;OICIID;FA;;;SY)"}\r\n`));
     return "processed file: x\r\nSuccessfully processed 1 files; Failed processing 0 files\r\n";
   };
-  return { runner, restored };
+  return { runner, restored, verbs };
+}
+
+// invariant: a DETERMINISTIC FAKE of a standard user's whoami and icacls on a
+// default Windows 11 install, replaying #555: the grant removes the inherited
+// entries and leaves the owner's one; `/restore` exits 1300, which the real
+// runner turns into a rejection; `/save` writes the stored DACL.
+function standardUserHost() {
+  const dacls = new Map();
+  const calls = [];
+  const runner = async (tool, args) => {
+    calls.push([tool, ...args]);
+    if (tool === "whoami") return `"HOST\\owner","${SID}"\r\n`;
+    const [target, verb] = args;
+    if (verb === "/inheritance:r") dacls.set(target, OWNER_ONLY);
+    else if (verb === "/restore") throw new Error(`icacls exited ${RESTORE_WITHOUT_PRIVILEGE.exitCode}`);
+    else if (verb === "/save")
+      await writeFile(args[2], utf16(`${basename(target)}\r\n${dacls.get(target) ?? INHERITED}\r\n`));
+    return "processed file: x\r\nSuccessfully processed 1 files; Failed processing 0 files\r\n";
+  };
+  return { runner, calls };
 }
 
 test("the ACL tools are the System32 programs, never a PATH lookup", () => {
@@ -122,6 +156,13 @@ test("the DACL is replaced whole from a BOM-less UTF-16LE file beside the direct
   assert.equal(ownerOnlyDacl(SID), OWNER_ONLY);
   for (const trustee of ["Everyone", "*S-1-1-0", `${SID})(A;OICI;FA;;;WD`, "S-1-5-21-1 /grant Everyone:F"])
     assert.throws(() => ownerOnlyRestore(directory, trustee), TypeError, trustee);
+});
+
+test("the grant removes inheritance and gives the SID alone full control, in one argument list", () => {
+  const directory = join(sep, "runs", "vpipe-1");
+  assert.deepEqual(ownerOnlyGrant(directory, SID), [directory, "/inheritance:r", "/grant:r", `*${SID}:(OI)(CI)F`]);
+  for (const trustee of ["Everyone", "*S-1-1-0", `${SID}:F /grant Everyone`, "S-1-5-21-1 /grant Everyone:F"])
+    assert.throws(() => ownerOnlyGrant(directory, trustee), TypeError, trustee);
 });
 
 test("the saved DACL is read from icacls' Unicode file with or without a byte-order mark", () => {
@@ -194,25 +235,26 @@ for (const [alias, sid] of [
     assert.equal(isOwnerOnlyDacl(`D:PAI(A;OICI;FA;;;${alias})`, sid), false);
   });
 
-test("the hosted runner's grant leaves SYSTEM and Administrators beside the owner, so that path is refused", async () => {
+test("the hosted runner's grant leaves SYSTEM and Administrators beside the owner, so the grant alone is no proof there", async () => {
   const directory = await runDirectory();
   const { runner } = runnerHost();
   const sid = currentUserSid(await runner("whoami", WHOAMI_ARGUMENTS));
-  await runner("icacls", [directory, "/inheritance:r", "/grant:r", `*${sid}:(OI)(CI)F`]);
+  await runner("icacls", ownerOnlyGrant(directory, sid));
   const dacl = await readDirectoryDacl(directory, runner);
   assert.equal(dacl, RUNNER_AFTER_GRANT);
   assert.equal(dacl.match(/\(A;/gu).length, 3, "three entries survive the grant");
   assert.equal(isOwnerOnlyDacl(dacl, sid), false, "the edited DACL is refused at verify");
 });
 
-test("on the hosted runner's outputs the whole-DACL restore is proven owner-only with the single LA entry", async () => {
+test("on the hosted runner's outputs the grant is not enough, so the whole-DACL restore runs and is proven with the single LA entry", async () => {
   const directory = await runDirectory();
-  const { runner, restored } = runnerHost();
+  const { runner, restored, verbs } = runnerHost();
   assert.deepEqual(await proveOwnerOnlyDirectory(directory, runner), {
     proven: true,
     sid: RUNNER_SID,
     dacl: "D:PAI(A;OICI;FA;;;LA)"
   });
+  assert.deepEqual(verbs, ["/inheritance:r", "/save", "/restore", "/save"], "grant, read-back, restore, read-back");
   assert.deepEqual(restored, [
     {
       file: join(dirname(directory), "vpipe-1.owner-only-restore.acl"),
@@ -224,30 +266,61 @@ test("on the hosted runner's outputs the whole-DACL restore is proven owner-only
   assert.deepEqual(await readdir(directory), [], "nothing is left inside the per-run directory");
 });
 
-test("a directory is proven owner-only only after the restore and its read-back agree", async () => {
+test("a directory is proven owner-only only after the grant and its read-back agree", async () => {
   const directory = await runDirectory();
   const { runner, calls } = fakeRunner();
   assert.deepEqual(await proveOwnerOnlyDirectory(directory, runner), { proven: true, sid: SID, dacl: OWNER_ONLY });
   assert.deepEqual(calls, [
     ["whoami", ...WHOAMI_ARGUMENTS],
-    ["icacls", ...ownerOnlyRestore(directory, SID).args],
+    ["icacls", ...ownerOnlyGrant(directory, SID)],
     ["icacls", directory, "/save", join(directory, "owner-only.acl")]
   ]);
   await assert.rejects(access(join(directory, "owner-only.acl")), { code: "ENOENT" }, "no saved file is left");
 });
 
+test("a standard user's directory is proven owner-only by the grant, and the privileged restore is never attempted (#555)", async () => {
+  const directory = await runDirectory();
+  const { runner, calls } = standardUserHost();
+  assert.equal(await readDirectoryDacl(directory, runner), INHERITED, "inherited entries before the proof");
+  calls.length = 0;
+  assert.deepEqual(await proveOwnerOnlyDirectory(directory, runner), { proven: true, sid: SID, dacl: OWNER_ONLY });
+  assert.deepEqual(calls, [
+    ["whoami", ...WHOAMI_ARGUMENTS],
+    ["icacls", ...ownerOnlyGrant(directory, SID)],
+    ["icacls", directory, "/save", join(directory, "owner-only.acl")]
+  ]);
+  assert.deepEqual(await readdir(dirname(directory)), ["vpipe-1"], "no restore file was written");
+});
+
+test("a standard user whose grant leaves other entries is refused, because the restore needs elevation (#555)", async () => {
+  const directory = await runDirectory();
+  const { runner, calls } = fakeRunner({ dacl: RUNNER_AFTER_GRANT, fail: ["/restore"] });
+  assert.deepEqual(await proveOwnerOnlyDirectory(directory, runner), { proven: false, step: "replace" });
+  assert.deepEqual(
+    calls.map(([tool, , verb]) => (tool === "whoami" ? tool : verb)),
+    ["whoami", "/inheritance:r", "/save", "/restore"],
+    "the edited DACL is never accepted; the restore is tried and refused"
+  );
+  assert.deepEqual(await readdir(dirname(directory)), ["vpipe-1"], "no restore file is left");
+});
+
 test("a restore file already beside the directory is not reused, and the proof stops", async () => {
   const directory = await runDirectory();
   await writeFile(ownerOnlyRestore(directory, SID).file, "planted");
-  const { runner, calls } = fakeRunner();
+  const { runner, calls } = fakeRunner({ dacl: RUNNER_AFTER_GRANT });
   assert.deepEqual(await proveOwnerOnlyDirectory(directory, runner), { proven: false, step: "replace" });
-  assert.deepEqual(calls, [["whoami", ...WHOAMI_ARGUMENTS]], "icacls never reads a file it did not get from the proof");
+  assert.equal(
+    calls.some(([, , verb]) => verb === "/restore"),
+    false,
+    "icacls never reads a file it did not get from the proof"
+  );
 });
 
 for (const [step, options] of [
   ["identity", { fail: ["whoami"] }],
   ["identity", { whoami: "INFO: no user\r\n" }],
-  ["replace", { fail: ["/restore"] }],
+  ["replace", { fail: ["/inheritance:r", "/restore"] }],
+  ["replace", { dacl: RUNNER_AFTER_GRANT, fail: ["/restore"] }],
   ["read-back", { fail: ["/save"] }],
   ["read-back", { dacl: null }],
   ["verify", { dacl: `D:PAI(A;OICI;FA;;;${SID})(A;OICI;FA;;;BU)` }],
