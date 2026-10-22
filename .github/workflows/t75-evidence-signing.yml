@@ -86,35 +86,35 @@ jobs:
         # native binary, so nothing here needs a postinstall.
         run: pnpm install --frozen-lockfile --ignore-scripts
       - name: Download gate quick evidence
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           github-token: ${{ github.token }}
           run-id: ${{ inputs.quick_run_id }}
           name: platform-evidence-index-${{ inputs.quick_run_id }}
           path: evidence/quick
       - name: Download gate full evidence
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           github-token: ${{ github.token }}
           run-id: ${{ inputs.full_run_id }}
           name: platform-evidence-index-${{ inputs.full_run_id }}
           path: evidence/full
       - name: Download gate build evidence
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           github-token: ${{ github.token }}
           run-id: ${{ inputs.build_run_id }}
           name: platform-evidence-index-${{ inputs.build_run_id }}
           path: evidence/build
       - name: Download gate security evidence
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           github-token: ${{ github.token }}
           run-id: ${{ inputs.security_run_id }}
           name: platform-evidence-index-${{ inputs.security_run_id }}
           path: evidence/security
       - name: Download gate release evidence
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           github-token: ${{ github.token }}
           run-id: ${{ inputs.release_run_id }}
