@@ -651,7 +651,7 @@ and names it:
 | --- | --- |
 | `powershell-7` | Install PowerShell 7 at its default location, `C:\Program Files\PowerShell\7\pwsh.exe`. Verchestra never looks it up on `PATH`. |
 | `powershell-logging-off` | Turn off PowerShell 7 script-block logging and transcription for your account; they would record the helper's traffic. |
-| `owner-only-acl` | Verchestra could not prove that its per-run directory is readable by your user alone. Run from a local, NTFS-formatted profile. |
+| `owner-only-acl` | Verchestra could not prove that its per-run directory is readable by your user alone. Run from a local, NTFS-formatted profile. No administrator rights or elevated ("Run as administrator") session are needed. |
 | `claude-managed-policy` | A Claude Code managed policy is present (`C:\Program Files\ClaudeCode\`, or `HKLM` or `HKCU` `SOFTWARE\Policies\ClaudeCode`). The governed task path does not run under a managed policy, whether Claude Code signs in with your subscription or an API key. |
 | `state-path-length` | Your Verchestra state directory (`%LOCALAPPDATA%\Verchestra\state`) is too deep for the worktree paths Git accepts on Windows. With the default location this happens only for user names longer than about 50 characters. There is no setting to move the state directory yet, so this stops the run. |
 
