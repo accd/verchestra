@@ -18,8 +18,9 @@ preceding paragraph.
 
 That requirement is not satisfiable for the maintainer's own pull requests, and
 this document says so rather than implying a control that does not operate.
-`.github/CODEOWNERS` names one owner, the repository has one collaborator, and
-GitHub does not permit approving your own pull request. For a pull request the
+`.github/CODEOWNERS` names one owner, the repository's two other collaborators
+hold `write` and are not code owners, and GitHub does not permit approving your
+own pull request. For a pull request the
 maintainer authored there is therefore no independent code owner to ask, and no
 configuration produces one. Independent review remains required, and remains
 achievable, for every pull request the maintainer did not author — including
