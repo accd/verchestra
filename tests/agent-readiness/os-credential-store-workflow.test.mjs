@@ -18,9 +18,16 @@ const LEGS = Object.freeze([
   ["macOS", "macos-latest", "darwin"]
 ]);
 
-test("it runs on demand and on pull requests that touch the credential stores, never on push", () => {
+test("it runs on demand, weekly on main, and on pull requests that touch the credential stores, never on push", () => {
   assert.match(workflow, /^on:\r?\n {2}workflow_dispatch:\r?\n {2}pull_request:\r?\n {4}paths:\r?\n/mu);
-  assert.doesNotMatch(workflow, /^ {2}(push|schedule|workflow_run|pull_request_target):/mu);
+  // why: the owner's call on #560: one weekly run on the default branch catches
+  // a change outside the path filter that breaks the suite; exactly one cron.
+  assert.match(workflow, /^ {2}schedule:\r?\n {4}- cron: "17 6 \* \* 1"\r?\n/mu);
+  assert.deepEqual(
+    [...workflow.matchAll(/^\s*- cron: "([^"]+)"/gmu)].map((match) => match[1]),
+    ["17 6 * * 1"]
+  );
+  assert.doesNotMatch(workflow, /^ {2}(push|workflow_run|pull_request_target):/mu);
   const paths = [...workflow.matchAll(/^ {6}- "([^"]+)"$/gmu)].map((match) => match[1]);
   for (const required of [
     ".github/workflows/os-credential-store.yml",
