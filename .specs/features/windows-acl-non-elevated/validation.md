@@ -26,7 +26,7 @@ for the same reason.
 | WAN-02 | "on the hosted runner's outputs the grant is not enough, so the whole-DACL restore runs and is proven with the single LA entry": grant, read-back, restore, read-back. "a standard user whose grant leaves other entries is refused, because the restore needs elevation (#555)" and the failure table's `replace` rows: the edited DACL is never accepted, and a refused restore stops at `replace`. | PASS |
 | WAN-03 | `isOwnerOnlyDacl` is unchanged in the diff; its tests are unchanged and pass. The grant's result is accepted only through it. | PASS |
 | WAN-04 | `docs/quick-start.md`, Windows prerequisites, `owner-only-acl` row: no administrator rights or elevated session are needed. `pnpm site:check` PASS. | PASS |
-| WAN-05 | The non-elevated real-host run above. The Windows leg of the platform matrix and a second non-elevated machine are T5. | PASS locally; T5 pending |
+| WAN-05 | The non-elevated real-host run above. Platform matrix run 39816518151 (`gate: security`) on `ce8b982`: Windows x64, macOS x64 and arm64, Linux glibc x64 and arm64, and the evidence index all green; the Windows leg is the elevated runner path (grant, then restore). A second non-elevated machine is still T5. | PASS; second machine pending |
 
 ## Discrimination sensor
 
