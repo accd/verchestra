@@ -26,7 +26,8 @@ From the owner's approved plan:
   Graph, and Swarm. Verchestra keeps authorization, tools, budgets, isolation,
   evidence, gates, and independent verification.
 - Dependencies `@strands-agents/sdk` exactly 1.19.0 and `zod` exactly 4.6.5 are
-  approved. Optional provider SDKs are not added.
+  approved. Optional provider SDKs are not added. (`zod` moved to exactly 4.6.6
+  on 2026-10-23 for GHSA-mrhx-c7xc-m3w5, owner-approved, #577.)
 - No native Strands model is instantiated; every node delegates to the existing
   Claude Code or Codex driver.
 - Task Request v2 adds a declarative execution descriptor; v1 keeps its reading
@@ -158,7 +159,7 @@ a model, read a credential, or run a tool on its own.
 
 **Acceptance Criteria**:
 
-1. The coordination adapter SHALL depend on `@strands-agents/sdk` at exactly 1.19.0 and `zod` at exactly 4.6.5, with every transitive package pinned in `pnpm-lock.yaml`. (SSI-01)
+1. The coordination adapter SHALL depend on `@strands-agents/sdk` at exactly 1.19.0 and `zod` at exactly 4.6.6 (4.6.5 until the 2026-10-23 security update, #577), with every transitive package pinned in `pnpm-lock.yaml`. (SSI-01)
 2. The coordination adapter SHALL import the SDK only through the `@strands-agents/sdk/multiagent` subpath. (SSI-02)
 3. The coordination adapter SHALL never construct a Strands `Agent`, a Strands model, a model router, a session manager, an MCP client, a sandbox, a vended tool, or a telemetry exporter. (SSI-03)
 4. WHEN a Graph or Swarm runs THEN every node SHALL be a structural agent that delegates its work to Verchestra's node runner. (SSI-04)

@@ -41,11 +41,13 @@ test("keeps the qualified OpenCode driver on one exact package version", () => {
 // invariant: decision D1. The Strands SDK, Zod, and the SDK's two required
 // peers are dependencies of packages/agent-runtime alone, at exact versions,
 // and the lockfile resolves exactly those; no optional provider SDK is added.
+// why: Zod moved from 4.6.5 to 4.6.6 for GHSA-mrhx-c7xc-m3w5 (high), inside
+// the SDK's `^4.1.12` peer range; the owner approved it on 2026-10-23 (#577).
 const STRANDS_PINS = Object.freeze({
   "@modelcontextprotocol/sdk": "1.32.0",
   "@opentelemetry/api": "1.9.1",
   "@strands-agents/sdk": "1.19.0",
-  zod: "4.6.5"
+  zod: "4.6.6"
 });
 
 test("pins the Strands SDK, Zod, and the SDK's required peers exactly, in agent-runtime only", () => {
@@ -86,10 +88,14 @@ test("locks the Strands SDK and its required peers at exactly the pinned version
     );
   assert.deepEqual([...locked("@strands-agents/sdk")], ["1.19.0"]);
   assert.deepEqual([...locked("@modelcontextprotocol/sdk")], ["1.32.0"]);
-  assert.ok(locked("zod").has("4.6.5"));
+  assert.ok(locked("zod").has(STRANDS_PINS.zod));
   const snapshot = lockfile.slice(lockfile.indexOf("\n  '@strands-agents/sdk@1.19.0("));
   const resolved = snapshot.slice(0, snapshot.indexOf("\n\n", 1));
-  for (const entry of ["'@modelcontextprotocol/sdk': 1.32.0(zod@4.6.5)", "'@opentelemetry/api': 1.9.1", "zod: 4.6.5"])
+  for (const entry of [
+    `'@modelcontextprotocol/sdk': 1.32.0(zod@${STRANDS_PINS.zod})`,
+    "'@opentelemetry/api': 1.9.1",
+    `zod: ${STRANDS_PINS.zod}`
+  ])
     assert.ok(resolved.includes(`\n      ${entry}\n`), entry);
 });
 
