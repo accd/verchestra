@@ -172,19 +172,33 @@ const PREAMBLE = [
 // record what it runs or prints: Script Block Logging would store the write's
 // payload line in the PowerShell Operational event log, and transcription
 // would copy input and output to a transcript file. The check runs, and
-// exits, before the payload line is ever executed.
+// exits, before the payload line is ever executed. A restricted language
+// mode (WDAC or AppLocker), where the registry read cannot run, is refused
+// first, and the guard marks itself passed only as its last statement (#565).
 export const LOGGING_POLICY_GUARD = [
+  "if ($ExecutionContext.SessionState.LanguageMode -ne 'FullLanguage') { exit 3 };",
   "$verchestraLogged = $false;",
   "foreach ($verchestraHive in 'HKEY_LOCAL_MACHINE', 'HKEY_CURRENT_USER') {",
   "foreach ($verchestraPolicy in @(@('ScriptBlockLogging', 'EnableScriptBlockLogging'), @('Transcription', 'EnableTranscripting'))) {",
   '$verchestraSetting = [Microsoft.Win32.Registry]::GetValue("$verchestraHive\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell\\$($verchestraPolicy[0])", $verchestraPolicy[1], $null);',
   "if ($verchestraSetting -eq 1) { $verchestraLogged = $true } } };",
-  "if ($verchestraLogged) { [Console]::Out.WriteLine('verchestra-credential:error:logging'); exit 0 }"
+  "if ($verchestraLogged) { [Console]::Out.WriteLine('verchestra-credential:error:logging'); exit 0 };",
+  "$verchestraGuardPassed = $true"
 ].join(" ");
+
+// hazard: measured on Windows PowerShell 5.1 — under `-Command -` a line that
+// throws does not end the program, even with `$ErrorActionPreference = 'Stop'`:
+// the host reports the error and runs the next line. So the guard's own exit
+// cannot be the control. This line, written in the subset every language mode
+// allows, ends the program unless the guard ran to its last statement (#565).
+export const LOGGING_POLICY_GATE = "if ($verchestraGuardPassed -ne $true) { exit 3 }";
+// why: the gate exits with no output, since output may itself be what a
+// restricted mode refuses; the exit code alone says the policy is unproven.
+const GUARD_UNPROVEN_EXIT = 3;
 
 export function credentialProgram(operation: Exclude<Operation, "Write">, locator: Readonly<OsSecretLocator>): string {
   const target = credentialTarget(locator);
-  const guard = operation === "Read" ? [LOGGING_POLICY_GUARD] : [];
+  const guard = operation === "Read" ? [LOGGING_POLICY_GUARD, LOGGING_POLICY_GATE] : [];
   return [
     ...PREAMBLE,
     ...guard,
@@ -202,7 +216,10 @@ export function credentialProgram(operation: Exclude<Operation, "Write">, locato
 // logging (docs/qualification/os-secret-backend-windows.md).
 function writeInput(locator: Readonly<OsSecretLocator>, value: Uint8Array): Buffer {
   const target = credentialTarget(locator);
-  const head = Buffer.from(`${[...PREAMBLE, LOGGING_POLICY_GUARD].join("\n")}\n$verchestraPayload = '`, "latin1");
+  const head = Buffer.from(
+    `${[...PREAMBLE, LOGGING_POLICY_GUARD, LOGGING_POLICY_GATE].join("\n")}\n$verchestraPayload = '`,
+    "latin1"
+  );
   const encoded = Buffer.from(Buffer.from(value).toString("base64"), "latin1");
   const tail = Buffer.from(
     [
@@ -231,6 +248,11 @@ interface Outcome {
 }
 
 function outcome(result: CredentialToolResult, operation: Operation): Outcome {
+  if (result.exitCode === GUARD_UNPROVEN_EXIT)
+    throw new PlatformSecurityError(
+      "VES_SECRET_STORE_LOGGED",
+      "PowerShell could not prove that this machine's logging policy would not record the credential"
+    );
   const match = result.exitCode === 0 ? RESULT.exec(result.stdout) : null;
   if (match === null) throw backendFailure(`Credential Manager ${operation.toLowerCase()} failed`, result.exitCode);
   const [, status = "", encoded, error] = match;

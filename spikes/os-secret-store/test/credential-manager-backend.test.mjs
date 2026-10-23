@@ -9,6 +9,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
+  LOGGING_POLICY_GUARD,
   MAX_CREDENTIAL_VALUE_BYTES,
   PRESENCE_TIMEOUT_MS,
   WindowsCredentialManagerBackend,
@@ -150,6 +151,73 @@ test("win32: the real runner kills a child at its timeout, and the backend repor
   await assert.rejects(
     backend.has({ namespace: "verchestra/workspace_6e2f1a0b-3c4d-4e5f-8a9b-0c1d2e3f4a5b", logicalName: "anthropic-api-key" }),
     { code: "VES_SECRET_BACKEND_FAILURE" }
+  );
+});
+
+// invariant: #565. On a machine in Constrained Language Mode (WDAC or
+// AppLocker) the guard's registry read throws, and under `-Command -` a
+// throwing line does not end the program. The real write program, run in that
+// mode with a marker after its payload line, must end before the marker: the
+// write is refused as logged and the payload line never runs.
+test("win32: in Constrained Language Mode a write ends before its payload line and is refused as logged", { timeout: 120_000 }, async (t) => {
+  if (!WIN32) return refusedElsewhere(t);
+  const MARKER = "verchestra-payload-line-reached";
+  const results = [];
+  const constrained = async (invocation) => {
+    const program = invocation.stdin.toString("latin1").split("\n");
+    const payload = program.findIndex((line) => line.startsWith("$verchestraPayload = '"));
+    assert.ok(payload > 0, "the write program has its payload line");
+    program.splice(payload + 1, 0, `Write-Output '${MARKER}'`);
+    program.unshift("$ExecutionContext.SessionState.LanguageMode = 'ConstrainedLanguage'");
+    const result = await nodeCredentialManagerRunner({ ...invocation, stdin: Buffer.from(program.join("\n"), "latin1") });
+    results.push(result);
+    return result;
+  };
+  await withRandomTargets(
+    NAMES,
+    async ({ workspaceId, store, target }) => {
+      await assert.rejects(store.store(workspaceId, "anthropic-api-key", encode("sk-ant-constrained-sentinel")), {
+        code: "VES_SECRET_STORE_LOGGED"
+      });
+      assert.equal(results.length, 1);
+      t.diagnostic(`exit ${results[0].exitCode}`);
+      assert.equal(results[0].exitCode, 3, "the gate ended the program");
+      assert.equal(results[0].stdout.includes(MARKER), false, "the payload line was never reached");
+      assert.equal(isListed(target("anthropic-api-key")), false);
+    },
+    { runner: constrained }
+  );
+});
+
+// invariant: #565, the gate on its own. In full language mode the C# compiles,
+// so a payload line that ran would really write; a guard that throws for any
+// reason must still end the program at the gate, before the payload line.
+test("win32: a guard that throws in full language mode still ends the write before its payload line", { timeout: 120_000 }, async (t) => {
+  if (!WIN32) return refusedElsewhere(t);
+  const MARKER = "verchestra-payload-line-reached";
+  const results = [];
+  const throwing = async (invocation) => {
+    const program = invocation.stdin.toString("latin1").split("\n");
+    const guard = program.indexOf(LOGGING_POLICY_GUARD);
+    const payload = program.findIndex((line) => line.startsWith("$verchestraPayload = '"));
+    assert.ok(guard > 0 && payload > guard, "the write program has its guard and payload lines");
+    program.splice(payload + 1, 0, `Write-Output '${MARKER}'`);
+    program[guard] = "throw 'verchestra-simulated-guard-failure'";
+    const result = await nodeCredentialManagerRunner({ ...invocation, stdin: Buffer.from(program.join("\n"), "latin1") });
+    results.push(result);
+    return result;
+  };
+  await withRandomTargets(
+    NAMES,
+    async ({ workspaceId, store, target }) => {
+      await assert.rejects(store.store(workspaceId, "anthropic-api-key", encode("sk-ant-throwing-guard-sentinel")), {
+        code: "VES_SECRET_STORE_LOGGED"
+      });
+      assert.equal(results[0].exitCode, 3, "the gate ended the program");
+      assert.equal(results[0].stdout.includes(MARKER), false, "the payload line was never reached");
+      assert.equal(isListed(target("anthropic-api-key")), false, "nothing was written");
+    },
+    { runner: throwing }
   );
 });
 
