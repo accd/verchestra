@@ -71,11 +71,14 @@ for (const invalid of [
 // why: the pin moved once, deliberately, when the relay toward the controller
 // became a read-write-flush loop on the helper's own thread (R7): the
 // `CopyToAsync` relay before it held one whole 128 KiB read back from the
-// controller on a Windows runner (run 37219409058).
+// controller on a Windows runner (run 37219409058). It moved again, as
+// deliberately, when the shared credential guard it embeds gained its
+// language-mode refusal and passed marker (#565); a helper that exits 3 there
+// ends before it listens, which the transport already refuses.
 test("the helper is one constant script, pinned by digest", () => {
   assert.equal(
     createHash("sha256").update(PIPE_HELPER_SCRIPT).digest("hex"),
-    "933d83309af9cdd790adc07328db4f42de33214271639cf9aaa689a206456b93"
+    "7f48f1b727d64b9da39b6c4336305cbd1b927d940f3c304fddda492765ff2416"
   );
   assert.equal(LINES[0], "param([string] $verchestraPipeName = '')", "its one parameter is the pipe name");
   assert.equal(PIPE_HELPER_SCRIPT.match(/\bparam\(/gu).length, 1);

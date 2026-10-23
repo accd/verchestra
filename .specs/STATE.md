@@ -616,7 +616,10 @@ note. -->
     so `[Console]::In.ReadLine()` gets nothing. The value therefore travels as
     the base64 literal of one program line. A read or write first checks the
     Script Block Logging and transcription policies, and stops with a new
-    `VES_SECRET_STORE_LOGGED` if either is enforced.
+    `VES_SECRET_STORE_LOGGED` if either is enforced. Because a throwing line
+    does not end a `-Command -` program, a gate line ends it before the value
+    line unless the guard ran to its end, and a restricted language mode is
+    refused outright (exit 3, the same code; #565, 2026-10-23).
   - The `Add-Type` cmdlet took 23 to 33 s in the allowlisted child environment,
     because command discovery ran against a cold module-analysis cache. The
     program therefore calls `CSharpCodeProvider` directly and uses no cmdlet.
