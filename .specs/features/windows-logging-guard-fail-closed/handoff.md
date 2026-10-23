@@ -5,10 +5,10 @@ issue: 565
 status: verification
 branch: fix/565-logging-guard-fail-closed
 baseRevision: a31b94175808aec856612d03f1aed69a1428b122
-lastCompletedTask: T4
-nextTask: "T5: read the three credential-store legs of os-credential-store.yml on the pull request head and record the run id in validation.md; then review and maintainer merge."
+lastCompletedTask: T5
+nextTask: "Review and maintainer merge (#573); after merge, move this handoff to complete."
 lastGate: "Windows 11, PowerShell 5.1, non-elevated: os-secret-backend-windows unit 15/15; the two new real cases in spikes/os-secret-store green; see validation.md"
-updatedAt: 2026-10-23T12:40:00Z
+updatedAt: 2026-10-23T13:20:00Z
 ---
 
 # Evidence
