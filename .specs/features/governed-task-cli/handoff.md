@@ -6,9 +6,9 @@ status: verification
 branch: feat/405-governed-task-cli
 baseRevision: d21340801c2b9de73c0f0b82c49d525fb8ff4344
 lastCompletedTask: T9
-nextTask: "Independent verification and human review of the E0-E9 stack (the foundations and composition PRs; #409 and #379 are on main); then the supervised live pilot (#406) with real Claude Code and Codex."
+nextTask: "Merged without independent review on 2026-09-30 (#435); post-merge review pending (#553). By the security reviewer or a third reviewer, since the operational reviewer authored commits in #405. The supervised live pilot is #406."
 lastGate: "Restacked on main, Node 24.14.0 macOS arm64: gate:quick PASS; gate:build PASS; gate:security PASS; gate:release PASS; test:e2e 229/229; agent:check PASS; 0 skipped"
-updatedAt: 2026-09-30T00:00:00Z
+updatedAt: 2026-10-13T19:50:00Z
 ---
 
 # Scope
@@ -102,3 +102,9 @@ checked when usage is reported (the duration timer is the hard guard); local
 human authority is not cryptographic identity; a failed verification leaves
 the run in `REPAIRING` (no automated repair); the live pilot (#406) is
 pending.
+
+# Post-merge review status (2026-10-13)
+
+Merged without independent review on 2026-09-30 (#435); post-merge review
+pending (#553). The operational reviewer is excluded (author of commits in
+#405).

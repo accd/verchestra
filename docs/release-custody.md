@@ -83,10 +83,10 @@ section 9. The signing-secret and environment rows reflect the O2/O3 change of
 | Surface | Observed state |
 | --- | --- |
 | Repository administrators | One: the owner (`accd`). The repository is user-owned, not organization-owned. |
-| Other collaborators | Two, both `write`: `MiguelCorre` and `brunomjanuario`, the #18 reviewers. `docs/merge-governance.md` still says "one collaborator"; that sentence is stale. |
+| Other collaborators | Two, both `write`: `MiguelCorre` and `brunomjanuario`, the #18 reviewers. |
 | `.github/CODEOWNERS` | One owner (`@accd`) on every path. |
 | `Protect main` bypass | One actor, `Repository admin`, `bypass_mode: always`. |
-| Release signing secrets | Rotated on 2026-09-30 (O3). The new keys exist only as **environment** secrets: `VESTRA_TUF_OFFLINE_KEY_PKCS8_BASE64` (offline root/targets) and `VESTRA_TUF_ONLINE_KEY_PKCS8_BASE64` (online timestamp/snapshot) in `tuf-release-signing`, and `VESTRA_T75_EVIDENCE_KEY_PKCS8_BASE64` in `t75-evidence-signing`. The three retired keys are still **repository-level** secrets under their old names (`VESTRA_RELEASE_SIGNING_KEY_PKCS8_BASE64`, `VESTRA_RELEASE_TIMESTAMP_SIGNING_KEY_PKCS8_BASE64`, `VESTRA_T75_EVIDENCE_SIGNING_KEY_PKCS8_BASE64`) until the owner deletes them. No workflow names them (`tests/agent-readiness/signing-environments.test.mjs`). |
+| Release signing secrets | Rotated on 2026-09-30 (O3). The new keys exist only as **environment** secrets: `VESTRA_TUF_OFFLINE_KEY_PKCS8_BASE64` (offline root/targets) and `VESTRA_TUF_ONLINE_KEY_PKCS8_BASE64` (online timestamp/snapshot) in `tuf-release-signing`, and `VESTRA_T75_EVIDENCE_KEY_PKCS8_BASE64` in `t75-evidence-signing`. The three retired keys were **repository-level** secrets under their old names (`VESTRA_RELEASE_SIGNING_KEY_PKCS8_BASE64`, `VESTRA_RELEASE_TIMESTAMP_SIGNING_KEY_PKCS8_BASE64`, `VESTRA_T75_EVIDENCE_SIGNING_KEY_PKCS8_BASE64`) until the owner deleted them on 2026-10-01 (O2 step 4); the repository-level secret list is empty. No workflow names them (`tests/agent-readiness/signing-environments.test.mjs`). |
 | GitHub environments | `tuf-release-signing` (id `23152805342`) and `t75-evidence-signing` (id `23152805929`): required reviewer `accd`, `prevent_self_review: false`, `can_admins_bypass: false`, deployment branch policy `main` only. `github-pages` (branch policy only) and `copilot` (no rules) are unchanged and report `can_admins_bypass: true`. |
 | Release-decision key | Owner-provisioned and owner-held outside GitHub. Its public half is `docs/qualification/trust/release-decision-public-key.json`. |
 | npm package `verchestra` | One maintainer (`accd`). The published versions carry no provenance attestation. Publication is a manual `npm publish` under the owner's 2FA (`t76-validation.md`, "Registry publication"). |
@@ -100,8 +100,8 @@ evidence key were **held** by one operator but **reachable** by three GitHub
 identities. Nothing suggests they were ever reached. The exposure was a
 capability. O2 removes it for the new keys: an environment secret reaches only a
 job that runs from `main` after the environment's reviewer approves it. The
-retired keys stay reachable until their repository copies are deleted (RR4,
-RR11). Adding a second custodian as a write collaborator does not create
+retired keys stayed reachable until their repository copies were deleted on
+2026-10-01 (RR4, RR11). Adding a second custodian as a write collaborator does not create
 separation by itself.
 
 **"Offline" is a role name, not a storage property.** The root/targets key is
@@ -166,6 +166,15 @@ choose them.
   sign only timestamp and snapshot. It cannot change targets or root. The short
   online expiry bounds how long misuse lasts. As a detective control, custodian #2
   reviews each refresh run's summary.
+- **Status (2026-10-23, #567): implemented, not operating.** The refresh path
+  (#382, #428) exists, but no refresh has run: the publication ledger records
+  seven `release` entries and no `role-refresh`, and the only refresh run
+  (36779932633, 2026-09-30) failed. The live `.7` timestamp, snapshot, targets
+  and root all expire with the publication horizon, `2027-09-30T00:00:00Z`. Until
+  refreshes run on a cadence with ledger entries, there is no short online
+  expiry and no refresh run to review, so a frozen client stays frozen until that
+  date. The signed `1.0.0` decision counts F2 closed on its code; a later round
+  must not cite short online expiry as an operating control before then.
 - **Does not constrain.** A holder of the online key can still freeze clients on
   current metadata or re-sign current snapshots until the key is rotated. This is
   accepted and bounded by expiry, not prevented.
@@ -272,7 +281,7 @@ choose them.
 | --- | --- | --- | --- |
 | A new trust root reaches new installs | Owner (npm publish) | Trusted-publishing environment approved by custodian #2; provenance checked by custodian #2 | Interactive `npm publish` by any npm maintainer |
 | Existing installs accept new release content | Owner (self-approved environment run). For v1/`.2` installs only, also anyone holding the retired offline key who can serve their base URL (RR11) | Environment approval by custodian #2; later a detached 2-of-2 targets/root threshold | Admin re-enables bypass or edits reviewers (until the threshold exists) |
-| Clients see fresh or frozen metadata | Owner (online key, self-approved environment run) | Role-separated online key; short expiry; detective review of refresh runs | Online-key holder can freeze clients until expiry |
+| Clients see fresh or frozen metadata | Owner (online key, self-approved environment run) | Role-separated online key; short expiry; detective review of refresh runs (not operating: no refresh has run, section 3.2) | Online-key holder can freeze clients until expiry, today `2027-09-30` |
 | Served bytes change or disappear | Owner (R2 account) | Scoped short-lived token; bucket locks; TUF rejects unsigned bytes | Account owner removes locks or deletes the bucket (availability only) |
 | A release decision is recorded | Owner (sign + bypass merge) | Independent reviews + approval of the `reviewedIn` pull request | `Repository admin` bypass while it exists |
 | Code or governance reaches `main` | Owner (bypass) | Custodian #2 as second code owner; bypass removed or narrowed | Admin edits the ruleset or CODEOWNERS |
@@ -296,11 +305,12 @@ model must accept each one consciously, not inherit it.
 - **RR3. npm has no two-person publish.** Every npm maintainer can publish alone
   with 2FA (3.3). Because npm delivers the bootstrap root, this path sits above
   every TUF control. Mitigation is provenance plus independent monitoring.
-- **RR4. The retired keys are still reachable by write collaborators** (section
-  2). O2 moved the signing keys into protected environments, and O3 rotated
-  them, so the reachable values are retired: no signing path admits their
-  anchors. The repository-level copies stay readable through a branch workflow
-  until the owner deletes them (section 9, O2 step 4).
+- **RR4. The retired keys were reachable by write collaborators until
+  2026-10-01** (section 2). O2 moved the signing keys into protected
+  environments, and O3 rotated them, so the reachable values were retired: no
+  signing path admits their anchors. The repository-level copies were readable
+  through a branch workflow until the owner deleted them on 2026-10-01
+  (section 9, O2 step 4); the repository-level secret list is empty.
 - **RR5. The threshold is in-process.** Until detached signing exists (tasks
   T6), a `k`-of-`n` role threshold does not separate people. Do not describe a
   threshold root as a two-person control before then.
@@ -330,13 +340,17 @@ model must accept each one consciously, not inherit it.
   launchers pin a single-key root that names it, and a pinned root is never
   replaced in place (RR6). Anyone holding that key who can also serve the v1 or
   `.2` base URL could offer those installs new signed metadata. Serving needs
-  the R2 account (3.4). Mitigations: delete the repository copy, move users to
-  the `.3` lineage, and let the owner decide on `npm deprecate` for v1 and `.2`
-  once `.3` is live.
+  the R2 account (3.4). The window in which a write collaborator could read the
+  key closed on 2026-10-01, when its repository copy was deleted; a holder
+  exists only if a copy left GitHub before then. Mitigations: the repository
+  copy is deleted; move users to the `.3` lineage, and let the owner decide on
+  `npm deprecate` for v1 and `.2` once `.3` is live.
 - **RR12. The retired evidence key can still produce backdated evidence.** A
   retired anchor verifies any envelope whose asserted `issuedAt` precedes its
   `validUntil`. `issuedAt` is chosen by the signer, so a holder of the exposed
-  key could forge an envelope dated before the retirement. The committed T75
+  key could forge an envelope dated before the retirement. The exposure window
+  closed on 2026-10-01, when the repository copy was deleted, so such a holder
+  exists only if a copy left GitHub before then. The committed T75
   evidence is pinned by `tests/security/t75-evidence-attestation.test.mjs`,
   which verifies those exact bytes. Treat any other envelope under
   `t75-evidence-20260825` as untrusted.

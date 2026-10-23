@@ -8,6 +8,7 @@ import { test } from "node:test";
 import {
   CREDENTIAL_PERSISTENCE,
   CredentialToolUnavailableError,
+  LOGGING_POLICY_GATE,
   LOGGING_POLICY_GUARD,
   POWERSHELL_ARGUMENTS,
   PRESENCE_TIMEOUT_MS,
@@ -88,10 +89,14 @@ test("the program is one complete statement per line and names the operation and
       /Add-Type|Import-Module|New-Object/u,
       "no cmdlet, so no module is discovered or loaded"
     );
-    const call = operation === "Read" ? 3 : 2;
-    if (operation === "Read")
+    const call = operation === "Read" ? 4 : 2;
+    if (operation === "Read") {
       assert.equal(lines[2], LOGGING_POLICY_GUARD, "a read, which prints the value, is guarded");
-    else assert.equal(program.includes(LOGGING_POLICY_GUARD), false, "presence and delete carry no value");
+      assert.equal(lines[3], LOGGING_POLICY_GATE, "and gated: the call runs only if the guard ran to its end");
+    } else {
+      assert.equal(program.includes(LOGGING_POLICY_GUARD), false, "presence and delete carry no value");
+      assert.equal(program.includes(LOGGING_POLICY_GATE), false);
+    }
     assert.equal(lines[call], `[Console]::Out.WriteLine($verchestraType::${operation}('${target}'))`);
     assert.equal(lines[call + 1], "exit 0");
     assert.equal(lines.length, call + 3);
@@ -105,9 +110,23 @@ test("the logging-policy guard checks script block logging and transcription in 
   assert.ok(LOGGING_POLICY_GUARD.includes("\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell\\"));
   assert.match(
     LOGGING_POLICY_GUARD,
-    /\[Console\]::Out\.WriteLine\('verchestra-credential:error:logging'\); exit 0 \}$/u
+    /\[Console\]::Out\.WriteLine\('verchestra-credential:error:logging'\); exit 0 \}; \$verchestraGuardPassed = \$true$/u,
+    "the guard marks itself passed only as its last statement"
+  );
+  assert.ok(
+    LOGGING_POLICY_GUARD.startsWith("if ($ExecutionContext.SessionState.LanguageMode -ne 'FullLanguage') { exit 3 };"),
+    "a restricted language mode, where the registry read would throw, is refused first"
   );
   assert.doesNotMatch(LOGGING_POLICY_GUARD, /\n/u, "one statement line");
+});
+
+// invariant: #565. Under `-Command -` a line that throws does not end the
+// program, so the guard's exit alone cannot stop the payload; the gate line,
+// written in the language subset every mode allows, ends the program unless
+// the guard ran to its last statement.
+test("the gate ends the program unless the guard ran to its end", () => {
+  assert.equal(LOGGING_POLICY_GATE, "if ($verchestraGuardPassed -ne $true) { exit 3 }");
+  assert.doesNotMatch(LOGGING_POLICY_GATE, /\[|::|\n/u, "no type, no method call, one line");
 });
 
 test("a machine that records PowerShell input or output refuses reads and writes before the value moves", async () => {
@@ -118,8 +137,15 @@ test("a machine that records PowerShell input or output refuses reads and writes
   await new WindowsCredentialManagerBackend({ runner: fake.runner }).store(locator, value());
   const lines = fake.invocations[0].stdin.split("\n");
   const guard = lines.indexOf(LOGGING_POLICY_GUARD);
+  const gate = lines.indexOf(LOGGING_POLICY_GATE);
   const payload = lines.findIndex((line) => line.startsWith("$verchestraPayload = '"));
-  assert.ok(guard > 0 && guard < payload, "the guard runs, and can exit, before the payload line");
+  assert.ok(guard > 0 && gate === guard + 1 && payload === gate + 1, "guard, gate, then the payload line");
+});
+
+test("a guard that could not run to its end (exit 3) refuses as logged, never as a generic failure (#565)", async () => {
+  const unproven = new WindowsCredentialManagerBackend({ runner: answer("", 3) });
+  await assert.rejects(unproven.read(locator), { code: "VES_SECRET_STORE_LOGGED" });
+  await assert.rejects(unproven.store(locator, value()), { code: "VES_SECRET_STORE_LOGGED" });
 });
 
 test("the inline P/Invoke is advapi32 CredReadW, CredWriteW, and CredDeleteW on generic, machine-local credentials", () => {
@@ -141,7 +167,7 @@ test("a write carries the value only as the base64 literal of one assignment lin
   const encoded = Buffer.from(VALUE).toString("base64");
   const lines = stdin.split("\n");
   const payload = lines.indexOf(`$verchestraPayload = '${encoded}'`);
-  assert.equal(payload, 3, "the payload follows the preamble and the logging-policy guard");
+  assert.equal(payload, 4, "the payload follows the preamble, the logging-policy guard, and its gate");
   assert.equal(
     lines[payload + 1],
     `[Console]::Out.WriteLine($verchestraType::Write('${target}', 'anthropic-api-key', $verchestraPayload))`

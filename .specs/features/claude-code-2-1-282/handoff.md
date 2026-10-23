@@ -6,9 +6,9 @@ status: verification
 branch: feat/405-governed-task-foundations
 baseRevision: be032b24442d244f6d1f7798a8b0a2fbbf51566c
 lastCompletedTask: T4
-nextTask: Push the foundations branch to PR #433 and wait for Quality, Site, CodeQL, and the SonarCloud gate on the exact head
+nextTask: "Merged without independent review on 2026-09-30 (#433); post-merge review pending (#553). The operational reviewer is excluded from it, as the author of the #405 commits it builds on; it goes to the security reviewer or a third reviewer."
 lastGate: VES_REQUIRE_PINNED_PROVIDERS=1 corepack pnpm qualify:claude
-updatedAt: 2026-09-30T00:00:00Z
+updatedAt: 2026-10-13T19:50:00Z
 ---
 
 # Evidence
@@ -31,3 +31,9 @@ SonarCloud quality gate pass on the exact head before human review.
 `docs/qualification/claude-code-driver.md` and every other merged qualification
 report, the T03 floor `2.1.168`, the Codex pin `0.115.0`, and dependency
 versions.
+
+# Post-merge review status (2026-10-13)
+
+Merged without independent review on 2026-09-30 (#433); post-merge review
+pending (#553). The operational reviewer is excluded (author of the #405 commits
+this builds on).

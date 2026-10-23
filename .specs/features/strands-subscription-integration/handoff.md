@@ -6,9 +6,9 @@ status: verification
 branch: strands/t10-handoff
 baseRevision: 8a1ab11d2584fa4f5c37fc0a86edd45366beff79
 lastCompletedTask: T10
-nextTask: "Owner: (1) run the agent, graph, and swarm pilots with real subscriptions on Windows, macOS, and Linux exactly as docs/qualification/coordinated-run-pilots.md describes, from a source checkout of main at or after this handoff, recording every run there as passed, suspended, failed, or not configured, never inferred; (2) at human review, confirm or overturn the approvals made by delegation (D1 and D1b, the lockfile set; D10, AD-080 item 5; D2-D7 and D9) and the requirements amended on 2026-10-04 (SSI-42, SSI-52, SSI-55, SSI-56, SSI-60, SSI-61, SSI-83, TM-004), and decide D11; (3) review setup-draft.md (D8) and edit, accept, or decline it. Then tick the pilot item of T9 in tasks.md, set the SSI-84 row, and move this handoff to complete."
+nextTask: "Post-merge independent review on 2026-10-13 of #521 (findings, blocking for a promote that claims the governed task path on Windows: #555, https://github.com/accd/verchestra/pull/521#issuecomment-6153579081), #532 (https://github.com/accd/verchestra/pull/532#issuecomment-6153566508), #536 (https://github.com/accd/verchestra/pull/536#issuecomment-6153567994) and #537 (https://github.com/accd/verchestra/pull/537#issuecomment-6153568558), the last three no findings; #535 pending (#553). The Windows pilot below needs #555 fixed or an elevated session. Owner: (1) run the agent, graph, and swarm pilots with real subscriptions on Windows, macOS, and Linux exactly as docs/qualification/coordinated-run-pilots.md describes, from a source checkout of main at or after this handoff, recording every run there as passed, suspended, failed, or not configured, never inferred; (2) at human review, confirm or overturn the approvals made by delegation (D1 and D1b, the lockfile set; D10, AD-080 item 5; D2-D7 and D9) and the requirements amended on 2026-10-04 (SSI-42, SSI-52, SSI-55, SSI-56, SSI-60, SSI-61, SSI-83, TM-004), and decide D11; (3) review setup-draft.md (D8) and edit, accept, or decline it. Then tick the pilot item of T9 in tasks.md, set the SSI-84 row, and move this handoff to complete."
 lastGate: "Platform matrix at f58afa1 (tree equal to d2c9341, the delta-verified code): gate:full 37206571680, gate:build 37206573582, gate:security 37206575734, all five legs green, every stage 0 failed, 0 cancelled, 0 skipped, 0 todo. This branch (specs only), Node 24.14.0 darwin arm64: agent:check PASS; site:check PASS (135 pages, internal links and metadata valid); gate:quick PASS (unit 2987, agent-readiness 357, census 13; 0 failed, 0 skipped, 0 todo); no provider called"
-updatedAt: 2026-10-04T14:40:00Z
+updatedAt: 2026-10-13T19:50:00Z
 ---
 
 # Scope
@@ -127,3 +127,16 @@ verification is recorded in `validation.md`; `coordinated-run-pilots.md` waits
 for the owner's runs. `README.md` and `docs/quick-start.md`, whose status
 claims are current. Product code, tests, schemas, and the lockfile. The
 `setup-draft.md` configuration (D8). `.specs/features/architecture-deepening/`.
+
+# Post-merge review status (2026-10-13)
+
+Post-merge independent review on 2026-10-13: #521 findings
+(https://github.com/accd/verchestra/pull/521#issuecomment-6153579081), one of
+them #555 (the owner-only ACL proof needs an elevated token, so the Windows task
+path is not configured for ordinary users; the Windows pilot needs the fix or an
+elevated session); #532
+(https://github.com/accd/verchestra/pull/532#issuecomment-6153566508), #536
+(https://github.com/accd/verchestra/pull/536#issuecomment-6153567994) and #537
+(https://github.com/accd/verchestra/pull/537#issuecomment-6153568558) no
+findings; #535 (this handoff's own PR, merged 2026-10-04 without independent
+review) pending. Tracked in #553.

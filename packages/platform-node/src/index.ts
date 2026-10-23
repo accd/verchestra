@@ -65,6 +65,7 @@ export {
 } from "./os-secret-backends/linux-secret-service.ts";
 export {
   CREDENTIAL_PERSISTENCE,
+  LOGGING_POLICY_GATE,
   LOGGING_POLICY_GUARD,
   POWERSHELL_ARGUMENTS,
   WindowsCredentialManagerBackend,

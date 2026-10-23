@@ -6,9 +6,9 @@ status: verification
 branch: deps/pi-runtime-0-99-1
 baseRevision: 9448f139f51780ae39bb08aafe023c5217128f94
 lastCompletedTask: T4
-nextTask: Push the branch as the qualification successor of Dependabot #490 and wait for exact-head Linux CI and human review.
+nextTask: "Merged without independent review on 2026-10-03 (#510); post-merge review pending (#553). Dependabot #546 (pi-runtime group) is open on 2026-10-13 and follows the qualification-successor pattern."
 lastGate: corepack pnpm gate:build && corepack pnpm gate:security && corepack pnpm agent:check
-updatedAt: 2026-10-03T16:50:00Z
+updatedAt: 2026-10-13T19:50:00Z
 ---
 
 # Evidence
@@ -25,3 +25,8 @@ discrimination sensor are in `validation.md`.
 Push this branch and wait for Linux CI on the exact head, including the Site job
 that renders the new report. Close #490 with a link to the qualified replacement
 once it merges.
+
+# Post-merge review status (2026-10-13)
+
+Merged without independent review on 2026-10-03 (#510); post-merge review
+pending (#553).
