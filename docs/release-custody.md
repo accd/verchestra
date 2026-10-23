@@ -166,6 +166,15 @@ choose them.
   sign only timestamp and snapshot. It cannot change targets or root. The short
   online expiry bounds how long misuse lasts. As a detective control, custodian #2
   reviews each refresh run's summary.
+- **Status (2026-10-23, #567): implemented, not operating.** The refresh path
+  (#382, #428) exists, but no refresh has run: the publication ledger records
+  seven `release` entries and no `role-refresh`, and the only refresh run
+  (36779932633, 2026-09-30) failed. The live `.7` timestamp, snapshot, targets
+  and root all expire with the publication horizon, `2027-09-30T00:00:00Z`. Until
+  refreshes run on a cadence with ledger entries, there is no short online
+  expiry and no refresh run to review, so a frozen client stays frozen until that
+  date. The signed `1.0.0` decision counts F2 closed on its code; a later round
+  must not cite short online expiry as an operating control before then.
 - **Does not constrain.** A holder of the online key can still freeze clients on
   current metadata or re-sign current snapshots until the key is rotated. This is
   accepted and bounded by expiry, not prevented.
@@ -272,7 +281,7 @@ choose them.
 | --- | --- | --- | --- |
 | A new trust root reaches new installs | Owner (npm publish) | Trusted-publishing environment approved by custodian #2; provenance checked by custodian #2 | Interactive `npm publish` by any npm maintainer |
 | Existing installs accept new release content | Owner (self-approved environment run). For v1/`.2` installs only, also anyone holding the retired offline key who can serve their base URL (RR11) | Environment approval by custodian #2; later a detached 2-of-2 targets/root threshold | Admin re-enables bypass or edits reviewers (until the threshold exists) |
-| Clients see fresh or frozen metadata | Owner (online key, self-approved environment run) | Role-separated online key; short expiry; detective review of refresh runs | Online-key holder can freeze clients until expiry |
+| Clients see fresh or frozen metadata | Owner (online key, self-approved environment run) | Role-separated online key; short expiry; detective review of refresh runs (not operating: no refresh has run, section 3.2) | Online-key holder can freeze clients until expiry, today `2027-09-30` |
 | Served bytes change or disappear | Owner (R2 account) | Scoped short-lived token; bucket locks; TUF rejects unsigned bytes | Account owner removes locks or deletes the bucket (availability only) |
 | A release decision is recorded | Owner (sign + bypass merge) | Independent reviews + approval of the `reviewedIn` pull request | `Repository admin` bypass while it exists |
 | Code or governance reaches `main` | Owner (bypass) | Custodian #2 as second code owner; bypass removed or narrowed | Admin edits the ruleset or CODEOWNERS |
