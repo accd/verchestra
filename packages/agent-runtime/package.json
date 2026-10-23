@@ -13,6 +13,6 @@
     "@strands-agents/sdk": "1.19.0",
     "@verchestra/application": "workspace:0.0.0",
     "@verchestra/domain": "workspace:0.0.0",
-    "zod": "4.6.5"
+    "zod": "4.6.6"
   }
 }
