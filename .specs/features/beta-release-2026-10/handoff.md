@@ -6,9 +6,9 @@ status: verification
 branch: feat/beta-release-2026-10
 baseRevision: a5a9b105b5d92d5de652b54082aa3b5e30ecf01f
 lastCompletedTask: T10
-nextTask: "Owner review of feat/beta-release-2026-10, then push and a pull request whose CI (Quality gate, Site quality, CodeQL) runs the POSIX legs; move this handoff to complete after merge."
+nextTask: "Owner review of PR #590; merge after its required checks (Quality gate, Site quality, CodeQL) pass on the exact head, then move this handoff to complete."
 lastGate: "independent verification round 3 PASS at 85e6c1b (57/57 checks, every coverage member proven, every injected fault killed; validate_verification.py exit 0); gate:quick PASS"
-updatedAt: 2026-10-24T19:30:00Z
+updatedAt: 2026-10-24T19:45:00Z
 ---
 
 # Scope
@@ -45,4 +45,4 @@ outside criterion 45 and named here under the driver-runtime rule (DSB-05).
 
 # Next exact action
 
-Owner review; on approval, push `feat/beta-release-2026-10` and open the pull request.
+Owner review of PR #590; merge after its required checks pass on the exact head.
