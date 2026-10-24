@@ -600,3 +600,79 @@ It also says nothing about the governed or coordinated task paths, because
 `self-test --profile smoke` does not start a provider. Their real-provider
 evidence is the owner's pilots (#406 and
 `docs/qualification/coordinated-run-pilots.md`), which have not run yet.
+
+## TUF publication of `0.0.0-qualification.8` (2026-10-24)
+
+`.8` is the sixth release on the role-separated root. Over `.7` it carries:
+
+- the P1 pilot remediation, fronts A to D (#406): the cause of a failure
+  reaches `status` (AD-083), subscription-only models in the price table
+  (AD-084), the Codex account's models checked before a run spends (AD-085),
+  and the pilot's record and requests on the `gpt-5.5` verifier;
+- two Windows credential-store fixes: a per-run directory proven owner-only
+  without elevation (#555), and a Credential Manager program ended before its
+  value line unless the logging guard ran to its end (#565);
+- `zod` 4.6.6 in `agent-runtime` for GHSA-mrhx-c7xc-m3w5, with the Strands
+  peer pin (#577).
+
+| Fact               | Value                                                                                  |
+| ------------------ | -------------------------------------------------------------------------------------- |
+| Candidate revision | `d83fc139a84604de18e8acee416e4b48c237e539` (`main`)                                    |
+| Candidate build    | run `40022535213`: five target legs and the five-closure collection passed             |
+| Signing            | run `40075964146`, from `main`, approved in environment `tuf-release-signing`          |
+| Release id         | `release:verchestra:0.0.0-qualification.8:d83fc139a846`                                |
+| Root digest        | `sha256:949fbce3c56f7a10729750d3d18dc54537eb32f2701aae7eb8370ff06e5dcff7` (unchanged)  |
+| Metadata version   | `7` for targets, snapshot and timestamp                                                |
+| Base URL           | `https://pub-0fa3e4c3f26540e793952fa2c187d536.r2.dev/v8/`                              |
+| Rollback proof     | binds the `.7` candidate `2e97443ea60192464cddfefe2c55dc9c625a975e`, run `37227328549` |
+
+Custody, stated as it happened: GitHub records the approval of environment
+`tuf-release-signing` for run `40075964146` under the owner's account, `accd`.
+The posture is single-operator custody (acceptance matrix L8, RR10).
+
+The ledger entry is the `ledger-entry.json` the publication run derived
+(`admitRelease`, AD-042), appended verbatim as sequence 8.
+
+Verification:
+
+- **Assembly.** All 1470 objects (25 metadata, 1445 targets) were hashed
+  locally against `publication-manifest.json`, by digest and size, before
+  upload and again after it. All 1470 matched, and the tree holds no other
+  file.
+- **Upload.** 1470 objects were uploaded under `v8/` with
+  `rclone copy --checksum`. `rclone check` reported 1470 matching files and 0
+  differences, and `v8/` holds exactly 1470 objects. The `.ts` sources were
+  uploaded with `Content-Type: video/mp2t`, the type `v7/` serves them with;
+  rclone on Windows would otherwise have taken another type from the
+  registry.
+- **Live endpoint.** All 1470 objects, fetched through the public base URL,
+  answered `200` with no redirect and no `content-encoding`, and with the
+  manifest's sha256 and size. Each of the 1445 targets (289 per platform)
+  answered a mid-file `Range` request with `206`, the exact `Content-Range`,
+  and the same bytes as the local file. The managed `r2.dev` endpoint
+  answered `429` to 655 of the first 1470 fetches at 16 in parallel; the same
+  655 passed at 4 in parallel with backoff, so a verifier of this endpoint
+  must pace itself.
+- **npm package.** A local `build:vestra-launcher --release-inputs` build at
+  the candidate revision was byte-identical to the workflow's verified
+  launcher package, version `0.0.0-qualification.8`, eight files.
+- **Activation, Windows x64, against the live endpoint.** The verification
+  launcher run with `--version` resolved, staged and activated `.8` in a
+  state root that had never trusted this root (cold, 91 seconds). The active
+  pointer named the manifest's `win32-x64` release digest
+  (`sha256:890e1404…3d14623c`).
+
+The owner published the `.8` launcher to npm on 2026-10-24 with two-factor
+authentication. The registry serves it as `latest`, with `dist.shasum`
+`3f505daec9ceaf7e1aaefa1933c36fe9933a7eef` and `dist.integrity`
+`sha512-UunyDyQFjaNaVhc9zA5FPoc8lRbYQj1jK74guK+pbITAeLbC5z+8FUcnKli+hRCxqQpPtb2js7moSroAAFgjXQ==`,
+equal to the local `npm pack` of the verified package. With an empty npm
+cache, `npx verchestra@0.0.0-qualification.8 --version` and
+`npx verchestra --version` both ran `.8` and exited `0`.
+
+Not yet done:
+
+- the update from `.7` and the rollback to it: no run here shows them for
+  `.8`; the five-target `live-activation-matrix` run with base `.7` and
+  update `.8` does;
+- the pilots on `.8` (#406, PPR-10).
