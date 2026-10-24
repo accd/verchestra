@@ -27,15 +27,15 @@ test("does not retain the vulnerable extract-zip package in the lockfile", () =>
 
 test("keeps the qualified OpenCode driver on one exact package version", () => {
   const manifest = JSON.parse(read("package.json"));
-  assert.equal(manifest.devDependencies["opencode-ai"], "1.18.33");
-  assert.equal(manifest.devDependencies["@opencode-ai/sdk"], "1.18.33");
+  assert.equal(manifest.devDependencies["opencode-ai"], "1.19.4");
+  assert.equal(manifest.devDependencies["@opencode-ai/sdk"], "1.19.4");
 
   const packageVersions = new Set(
     [...read("pnpm-lock.yaml").matchAll(/^\s{2}'?(opencode-ai|@opencode-ai\/sdk)@(\d+\.\d+\.\d+)/gmu)].map(
       (match) => `${match[1]}@${match[2]}`
     )
   );
-  assert.deepEqual([...packageVersions].sort(), ["@opencode-ai/sdk@1.18.33", "opencode-ai@1.18.33"]);
+  assert.deepEqual([...packageVersions].sort(), ["@opencode-ai/sdk@1.19.4", "opencode-ai@1.19.4"]);
 });
 
 // invariant: decision D1. The Strands SDK, Zod, and the SDK's two required
