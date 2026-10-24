@@ -58,7 +58,9 @@ async function profile(value: unknown): Promise<GateCommandProfile> {
 
 // why: the owner is told the one file that provisions the requirement, with an
 // entry per command the request names. The path is machine-local, so it is
-// shown on the terminal only, never in a public error or a record.
+// shown on the terminal only, never in a public error or a record. A
+// commandRef matches COMMAND_REF and a protocol is one of two names, so both
+// are written into the template as they are.
 function explainMissing(path: string, request: Pick<PlannedTaskRequest, "gates">, stderr: (value: string) => void) {
   const protocols = new Map<string, Set<string>>();
   for (const gate of request.gates) {
@@ -66,16 +68,17 @@ function explainMissing(path: string, request: Pick<PlannedTaskRequest, "gates">
     known.add(gate.resultProtocol);
     protocols.set(gate.commandRef, known);
   }
-  const commands = Object.fromEntries(
-    [...protocols].map(([commandRef, admitted]) => [
-      commandRef,
-      { executable: "<absolute path of the program>", fixedArgs: [], protocols: [...admitted].sort() }
-    ])
-  );
+  const entries = [...protocols].map(([commandRef, admitted]) => {
+    const names = [...admitted]
+      .sort()
+      .map((name) => `"${name}"`)
+      .join(", ");
+    return `    "${commandRef}": { "executable": "<absolute path of the program>", "fixedArgs": [], "protocols": [${names}] }`;
+  });
   stderr(
     "A task runs its gates only through programs you allow on this machine. Write this file:\n" +
       `  ${path}\n` +
-      `${JSON.stringify({ schemaVersion: 1, commands }, null, 2)}\n`
+      `{\n  "schemaVersion": 1,\n  "commands": {\n${entries.join(",\n")}\n  }\n}\n`
   );
 }
 
