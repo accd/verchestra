@@ -30,9 +30,35 @@ export async function bridgeWorktree() {
   await writeFile(join(worktree, "docs", "secret.txt"), "out of scope needle\n");
   await writeFile(join(worktree, ".git", "config"), "[core]\n");
   await writeFile(join(outside, "victim.txt"), "outside needle\n");
-  await symlink(outside, join(worktree, "src", "linkdir"), "dir");
-  await symlink(join(outside, "victim.txt"), join(worktree, "src", "linkfile.txt"));
+  await linkDirectory(outside, join(worktree, "src", "linkdir"));
+  await linkFile(join(outside, "victim.txt"), join(worktree, "src", "linkfile.txt"));
   return { root, worktree: await realpath(worktree), outside };
+}
+
+// why: Windows lets a user without elevation create symbolic links only in
+// Developer Mode. A directory link falls back to a junction, which needs no
+// privilege and which Node and the bridge both see as a link; a file link has
+// no such fallback, so the fixture names the setting instead of every test
+// that uses it failing with a bare EPERM.
+export async function linkDirectory(target, path, link = symlink) {
+  try {
+    await link(target, path, "dir");
+  } catch (error) {
+    if (error?.code !== "EPERM") throw error;
+    await link(target, path, "junction");
+  }
+}
+
+export async function linkFile(target, path, link = symlink) {
+  try {
+    await link(target, path);
+  } catch (error) {
+    if (error?.code !== "EPERM") throw error;
+    throw new Error(
+      "creating a file symbolic link was refused (EPERM): turn on Windows Developer Mode, or run the suite from an elevated session",
+      { cause: error }
+    );
+  }
 }
 
 export async function openController(worktree, overrides = {}) {
