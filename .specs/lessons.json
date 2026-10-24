@@ -3,7 +3,7 @@
   "promote_threshold": 2,
   "window_days": 45,
   "quarantine_threshold": 2,
-  "next_id": 14,
+  "next_id": 19,
   "lessons": [
     {
       "id": "L-001",
@@ -26,220 +26,94 @@
       "last_seen": "2026-08-12T18:41:09Z"
     },
     {
-      "id": "L-002",
-      "key": "spec_precision_gap::when multiple pre existing test assertions are updated across a slice to track a format change enumerate every changed file in the handoff s decisions section as each change lands not just a running count fixed at the end an implementer can lose track of one across multiple tasks t7 t8 t9",
-      "text": "When multiple pre-existing test assertions are updated across a slice to track a format change, enumerate every changed file in the handoff's Decisions section as each change lands, not just a running count fixed at the end — an implementer can lose track of one across multiple tasks (T7/T8/T9).",
-      "signal": "spec_precision_gap",
-      "scope": ".specs/features",
-      "status": "candidate",
-      "features": [
-        "canonical-json"
-      ],
-      "recurrence": 1,
-      "harmful": 0,
-      "evidence": [
-        "handoff.md Decisions section / spec.md CJ-12 evidence (.specs/features)"
-      ],
-      "created": "2026-08-01T11:30:50Z",
-      "last_seen": "2026-08-01T11:30:50Z"
-    },
-    {
-      "id": "L-003",
-      "key": "surviving_mutant::when a requirement reads when the candidate is given x a test that exercises x in isolation satisfies nothing assert that the production path actually issues it or the requirement is vacuously true while the mechanism sits unwired",
-      "text": "When a requirement reads 'WHEN the candidate is given X', a test that exercises X in isolation satisfies nothing: assert that the production path actually issues it, or the requirement is vacuously true while the mechanism sits unwired.",
+      "id": "L-014",
+      "key": "surviving_mutant::prove a task command s refusal by running the command itself never by calling the shared helper and matching its call site in the source",
+      "text": "Prove a task command's refusal by running the command itself, never by calling the shared helper and matching its call site in the source",
       "signal": "surviving_mutant",
-      "scope": "apps/vestra-cli/src",
+      "scope": "apps/vestra-cli/task",
       "status": "candidate",
       "features": [
-        "sealed-holdout"
+        "beta-release-2026-10"
       ],
       "recurrence": 1,
       "harmful": 0,
       "evidence": [
-        "apps/vestra-cli/src/promotion-composition.ts (verifier mutation V10) (apps/vestra-cli/src)"
+        "verification round 1 F5, apps/vestra-cli/src/task/task-run.ts:296 (C4) (apps/vestra-cli/task)"
       ],
-      "created": "2026-08-12T18:39:51Z",
-      "last_seen": "2026-08-12T18:39:51Z"
+      "created": "2026-10-24T17:02:52Z",
+      "last_seen": "2026-10-24T17:02:52Z"
     },
     {
-      "id": "L-004",
-      "key": "surviving_mutant::forge exactly one field per negative test a blunt forgery that breaks several things at once trips whichever guard fires first so every other guard survives its own deletion undetected",
-      "text": "Forge exactly one field per negative test: a blunt forgery that breaks several things at once trips whichever guard fires first, so every other guard survives its own deletion undetected.",
-      "signal": "surviving_mutant",
-      "scope": "tests/security",
-      "status": "candidate",
-      "features": [
-        "dsse-attestation"
-      ],
-      "recurrence": 1,
-      "harmful": 0,
-      "evidence": [
-        "tests/security/dsse-interoperability.test.mjs (tests/security)"
-      ],
-      "created": "2026-08-12T18:39:51Z",
-      "last_seen": "2026-08-12T18:39:51Z"
-    },
-    {
-      "id": "L-005",
-      "key": "surviving_mutant::when a sensor shows a guard is unkillable decide which it is subsumed by a later check delete it or enforced by the type checker say so in place an unkillable guard left unexplained reads as defence and is decoration",
-      "text": "When a sensor shows a guard is unkillable, decide which it is: subsumed by a later check (delete it) or enforced by the type checker (say so in place) -- an unkillable guard left unexplained reads as defence and is decoration.",
-      "signal": "surviving_mutant",
-      "scope": "packages/evidence/src/integrity",
-      "status": "candidate",
-      "features": [
-        "dsse-attestation"
-      ],
-      "recurrence": 1,
-      "harmful": 0,
-      "evidence": [
-        "packages/evidence/src/integrity/artifact-sealer.ts openEnvelope (packages/evidence/src/integrity)"
-      ],
-      "created": "2026-08-12T18:39:51Z",
-      "last_seen": "2026-08-12T18:39:51Z"
-    },
-    {
-      "id": "L-006",
-      "key": "surviving_mutant::prove a denied write through the same state it would have written to a second instance built from the same inputs has its own copy and cannot see the write so denied and changed nothing passes even when the write happened",
-      "text": "Prove a denied write through the same state it would have written to; a second instance built from the same inputs has its own copy and cannot see the write, so 'denied and changed nothing' passes even when the write happened.",
-      "signal": "surviving_mutant",
-      "scope": "packages/application/src/promotion",
-      "status": "candidate",
-      "features": [
-        "sealed-holdout"
-      ],
-      "recurrence": 1,
-      "harmful": 0,
-      "evidence": [
-        "packages/application/src/promotion/promotion-gate.ts createCandidateGrant (packages/application/src/promotion)"
-      ],
-      "created": "2026-08-12T18:39:52Z",
-      "last_seen": "2026-08-12T18:39:52Z"
-    },
-    {
-      "id": "L-007",
-      "key": "spec_precision_gap::a decision record must not assert a change it did not make ad 018 claimed issue 15 is corrected when only a comment had been added so the tracked scope and the decision log disagreed until a verifier checked the issue body itself",
-      "text": "A decision record must not assert a change it did not make: AD-018 claimed 'issue #15 is corrected' when only a comment had been added, so the tracked scope and the decision log disagreed until a verifier checked the issue body itself.",
-      "signal": "spec_precision_gap",
-      "scope": ".specs",
-      "status": "candidate",
-      "features": [
-        "sealed-holdout"
-      ],
-      "recurrence": 1,
-      "harmful": 0,
-      "evidence": [
-        ".specs/STATE.md AD-018 (.specs)"
-      ],
-      "created": "2026-08-12T18:39:52Z",
-      "last_seen": "2026-08-12T18:39:52Z"
-    },
-    {
-      "id": "L-008",
-      "key": "ac_gap::when an artifact merges a reviewed declaration with observed evidence reconciling the two is the product copying declared statuses through and appending observations alongside let an all red fleet publish a green verdict call it a join only if an observation can downgrade a declared status",
-      "text": "When an artifact merges a reviewed declaration with observed evidence, reconciling the two IS the product: copying declared statuses through and appending observations alongside let an all-red fleet publish a green verdict. Call it a join only if an observation can downgrade a declared status.",
+      "id": "L-015",
+      "key": "ac_gap::when a check names a script s exit status run the script as a child process and assert the exit code not only the exported function s error",
+      "text": "When a check names a script's exit status, run the script as a child process and assert the exit code, not only the exported function's error",
       "signal": "ac_gap",
-      "scope": "evidence-artifacts",
-      "status": "candidate",
-      "features": [
-        "platform-qualification-matrix"
-      ],
-      "recurrence": 1,
-      "harmful": 0,
-      "evidence": [
-        "scripts/t75-evidence-index.mjs:31 (evidence-artifacts)"
-      ],
-      "created": "2026-08-12T20:29:20Z",
-      "last_seen": "2026-08-12T20:29:20Z"
-    },
-    {
-      "id": "L-009",
-      "key": "surviving_mutant::a rule applied to one dimension is not applied after reconciling the platform dimension the same fleet evidence answered gate profile and stayed concatenated so the headline run asserted a profile qualified with nothing observing it enumerate every input the rule s own justification covers",
-      "text": "A rule applied to one dimension is not applied. After reconciling the platform dimension, the same fleet evidence answered gate-profile and stayed concatenated, so the headline run asserted a profile qualified with nothing observing it. Enumerate every input the rule's own justification covers.",
-      "signal": "surviving_mutant",
-      "scope": "evidence-artifacts",
-      "status": "candidate",
-      "features": [
-        "platform-qualification-matrix"
-      ],
-      "recurrence": 1,
-      "harmful": 0,
-      "evidence": [
-        "V9 gate-profile not reconciled (evidence-artifacts)"
-      ],
-      "created": "2026-08-12T20:29:20Z",
-      "last_seen": "2026-08-12T20:29:20Z"
-    },
-    {
-      "id": "L-010",
-      "key": "surviving_mutant::never let the artifact under verification decide how strictly it is verified excusing a case because its declaration said environmental let a leg run and fail in every dispatch with zero contradictions each non qualified status must declare which observations it predicts anything outside that set is a contradiction",
-      "text": "Never let the artifact under verification decide how strictly it is verified. Excusing a case because its declaration said environmental let a leg run and fail in every dispatch with zero contradictions. Each non-qualified status must declare which observations it predicts; anything outside that set is a contradiction.",
-      "signal": "surviving_mutant",
-      "scope": "evidence-artifacts",
-      "status": "candidate",
-      "features": [
-        "platform-qualification-matrix"
-      ],
-      "recurrence": 1,
-      "harmful": 0,
-      "evidence": [
-        "P1 environmental+failed silent (evidence-artifacts)"
-      ],
-      "created": "2026-08-12T20:29:20Z",
-      "last_seen": "2026-08-12T20:29:20Z"
-    },
-    {
-      "id": "L-011",
-      "key": "surviving_mutant::when a check becomes per item in one direction make the opposite direction per item too a per observation inconsistency rule beside a unanimity only staleness rule silently ignored a partial change of state and partial is the shape real state changes have",
-      "text": "When a check becomes per-item in one direction, make the opposite direction per-item too. A per-observation inconsistency rule beside a unanimity-only staleness rule silently ignored a partial change of state, and partial is the shape real state changes have.",
-      "signal": "surviving_mutant",
-      "scope": "evidence-artifacts",
-      "status": "candidate",
-      "features": [
-        "platform-qualification-matrix"
-      ],
-      "recurrence": 1,
-      "harmful": 0,
-      "evidence": [
-        "V1 stale needs unanimity (evidence-artifacts)"
-      ],
-      "created": "2026-08-12T20:29:21Z",
-      "last_seen": "2026-08-12T20:29:21Z"
-    },
-    {
-      "id": "L-012",
-      "key": "surviving_mutant::a fixture that cannot express the failing case cannot detect it fleet fixtures holding only qualified and missing left six mutants alive against a producer emitting four statuses and an absent item yields no observation so a test meant to prove non unanimous detection was still unanimous",
-      "text": "A fixture that cannot express the failing case cannot detect it. Fleet fixtures holding only qualified and missing left six mutants alive against a producer emitting four statuses; and an absent item yields no observation, so a test meant to prove non-unanimous detection was still unanimous.",
-      "signal": "surviving_mutant",
-      "scope": "tests",
-      "status": "candidate",
-      "features": [
-        "platform-qualification-matrix"
-      ],
-      "recurrence": 1,
-      "harmful": 0,
-      "evidence": [
-        "S3/S4 unpinned round-3 and round-4 fixes (tests)"
-      ],
-      "created": "2026-08-12T20:29:21Z",
-      "last_seen": "2026-08-12T20:29:21Z"
-    },
-    {
-      "id": "L-013",
-      "key": "gate_fail::test the cli not only the exported function pinning exit codes immediately exposed an out flag parsed then ignored and an indexof 1 whose 1 consumed argument zero the second masked whenever the pnpm separator was passed",
-      "text": "Test the CLI, not only the exported function. Pinning exit codes immediately exposed an --out flag parsed then ignored, and an indexOf -1 whose +1 consumed argument zero -- the second masked whenever the pnpm -- separator was passed.",
-      "signal": "gate_fail",
       "scope": "scripts",
       "status": "candidate",
       "features": [
-        "platform-qualification-matrix"
+        "beta-release-2026-10"
       ],
       "recurrence": 1,
       "harmful": 0,
       "evidence": [
-        "scripts/t75-evidence-index.mjs CLI (scripts)"
+        "verification round 1 C33/C34, tests/build/t76-timestamp-refresh.test.mjs (scripts)"
       ],
-      "created": "2026-08-12T20:29:21Z",
-      "last_seen": "2026-08-12T20:29:21Z"
+      "created": "2026-10-24T17:02:53Z",
+      "last_seen": "2026-10-24T17:02:53Z"
+    },
+    {
+      "id": "L-016",
+      "key": "ac_gap::assert each enumerated documentation member with text no other member contains or the member passes vacuously",
+      "text": "Assert each enumerated documentation member with text no other member contains, or the member passes vacuously",
+      "signal": "ac_gap",
+      "scope": "docs",
+      "status": "candidate",
+      "features": [
+        "beta-release-2026-10"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "verification round 1 C47, tests/agent-readiness/beta-tester-docs.test.mjs:188 (docs)"
+      ],
+      "created": "2026-10-24T17:02:53Z",
+      "last_seen": "2026-10-24T17:02:53Z"
+    },
+    {
+      "id": "L-017",
+      "key": "ac_gap::create every test link through tests helpers windows links mjs so a windows host without symlink rights fails with the developer mode message never a bare eperm",
+      "text": "Create every test link through tests/helpers/windows-links.mjs so a Windows host without symlink rights fails with the Developer Mode message, never a bare EPERM",
+      "signal": "ac_gap",
+      "scope": "tests/helpers",
+      "status": "candidate",
+      "features": [
+        "beta-release-2026-10"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "verification rounds 1-2 criterion 50, tests/integration/git-context-source.test.mjs:29, tests/security/worktree-tool-security.test.mjs:44 (tests/helpers)"
+      ],
+      "created": "2026-10-24T17:02:53Z",
+      "last_seen": "2026-10-24T17:02:53Z"
+    },
+    {
+      "id": "L-018",
+      "key": "ac_gap::assert an mcp bridge refusal also at the worktree read view or over the named pipe since the unix socket relay tests return early on windows",
+      "text": "Assert an MCP bridge refusal also at the worktree read view or over the named pipe, since the Unix-socket relay tests return early on Windows",
+      "signal": "ac_gap",
+      "scope": "packages/agent-runtime/bridge",
+      "status": "candidate",
+      "features": [
+        "beta-release-2026-10"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "verification round 1 C25, tests/security/mcp-tool-bridge-security.test.mjs:144 (packages/agent-runtime/bridge)"
+      ],
+      "created": "2026-10-24T17:02:53Z",
+      "last_seen": "2026-10-24T17:02:53Z"
     }
   ]
 }
