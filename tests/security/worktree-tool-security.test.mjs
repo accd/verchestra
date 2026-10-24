@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
-import { access, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, test } from "node:test";
 
 import { NodeWorktreeToolAdapter } from "../../packages/platform-node/src/index.ts";
+import { linkDirectory, linkFile } from "../helpers/windows-links.mjs";
 import { cleanupWorktreeTools, git, worktreeToolFixture } from "../helpers/worktree-tool-fixture.mjs";
 
 const outsideRoots = [];
@@ -31,7 +32,7 @@ for (const target of ["../escape.txt", "src/./x"]) {
 test("a symbolic-link parent directory pointing outside the worktree is refused", async () => {
   const { adapter, request, worktreePath } = await worktreeToolFixture();
   const target = await outside();
-  await symlink(target, join(worktreePath, "src", "linked"), "dir");
+  await linkDirectory(target, join(worktreePath, "src", "linked"));
   await assert.rejects(adapter.invoke(request({ targetPaths: ["src/linked/victim.txt"] })), {
     code: "VES_TOOL_SYMLINK_DENIED"
   });
@@ -41,7 +42,7 @@ test("a symbolic-link parent directory pointing outside the worktree is refused"
 test("a symbolic-link final component is refused for write and delete", async () => {
   const { adapter, request, worktreePath } = await worktreeToolFixture();
   const target = await outside();
-  await symlink(join(target, "victim.txt"), join(worktreePath, "src", "victim.txt"));
+  await linkFile(join(target, "victim.txt"), join(worktreePath, "src", "victim.txt"));
   await assert.rejects(adapter.invoke(request({ targetPaths: ["src/victim.txt"] })), {
     code: "VES_TOOL_SYMLINK_DENIED"
   });
