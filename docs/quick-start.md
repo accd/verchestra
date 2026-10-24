@@ -173,8 +173,16 @@ executables live in one machine-local file that only you write:
 ```
 
 Use absolute paths (`command -v node` prints one). `fixedArgs` is optional and
-is prepended to every invocation. A gate runs in the isolated task worktree
-with a minimal environment (`PATH`, `HOME`, temporary directories, `CI=1`).
+is prepended to every invocation. A gate runs in the task worktree, a separate
+Git checkout, with a minimal environment (`PATH`, `HOME`, temporary
+directories, `CI=1`).
+
+**A gate is not a sandbox.** It runs code the model wrote with your own user
+privileges, network access and home directory, before any human has reviewed
+that code; the task worktree separates Git history, not processes. Run tasks
+on a repository whose content you do not trust in a disposable VM or
+container, or under a dedicated OS user that holds no credentials you care
+about.
 
 ## 5. Write a task request
 

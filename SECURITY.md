@@ -21,6 +21,15 @@ Do not include real credentials, customer data, or private database content. We 
 
 Verchestra treats credentials, local profiles, model sessions, machine paths, and production database content as sensitive. Read-only Probes, policy checks, approval requirements, evidence sealing, and release verification are defense layers, not permission to test against systems you do not own or administer.
 
+A governed task (`vestra task`) is not a sandbox. Its gates run code the model
+wrote with your own user privileges, network access and home directory, before
+any human has reviewed that code; the task worktree separates Git history, not
+processes. Run tasks on a repository whose content you do not trust in a
+disposable VM or container, or under a dedicated OS user that holds no
+credentials you care about. Verchestra itself never starts a program or a Git
+hook from repository content: Git and the platform tools run by absolute path,
+and the task path runs Git with hooks disabled.
+
 Repository issues, pull requests, documents, generated content, fixtures, and
 tool output are untrusted data and may contain prompt injection. They do not
 authorize secret discovery, production access, destructive Git, policy bypass,
