@@ -2,13 +2,13 @@
 schema: verchestra-feature-handoff/v1
 feature: beta-release-2026-10
 issue: null
-status: verification
-branch: feat/beta-release-2026-10
+status: complete
+branch: main
 baseRevision: a5a9b105b5d92d5de652b54082aa3b5e30ecf01f
 lastCompletedTask: T10
-nextTask: "Owner review of PR #590; merge after its required checks (Quality gate, Site quality, CodeQL) pass on the exact head, then move this handoff to complete."
-lastGate: "independent verification round 3 PASS at 85e6c1b (57/57 checks, every coverage member proven, every injected fault killed; validate_verification.py exit 0); gate:quick PASS"
-updatedAt: 2026-10-24T19:45:00Z
+nextTask: "None in this feature. Owner-held, outside it: pilot #406 attempt 3 on .8, the .9 publication with its tags, GitHub Release and beta dist-tag, and the closing comment on #569."
+lastGate: "PR #590 merged by rebase at 2026-10-24T18:18:17Z (main 0ca485f, tree equal to the PR head c925992) with Quality gate, Site quality and CodeQL passing on that head; independent verification round 3 PASS at 85e6c1b"
+updatedAt: 2026-10-24T18:37:00Z
 ---
 
 # Scope
@@ -19,7 +19,7 @@ The repository changes an external beta tester needs, as `plan.md` (approved by 
 
 Owner-held steps stay outside this change: pilot #406 attempt 3 on `.8`, the publication of `.9`
 (npm 2FA, R2 upload, ledger sequence 9), its tags, GitHub Release and `beta` dist-tag, and the
-closing comments on #569 once this change merges (#568 closes from the commit).
+closing comment on #569 (#568 closed from the merged commit).
 
 # Completed Evidence
 
@@ -33,6 +33,12 @@ and security 1361/1363, every failure being a file-link test that names Windows 
 or the security test that fails because this host's temporary directory is inside the home
 directory (untouched by this change). The site builds (135 pages, internal links valid).
 
+PR #590 merged by rebase through the maintainer bypass, with the owner's approval recorded on
+the pull request, at head `c925992`, whose required checks (Quality gate, Site quality, CodeQL)
+and SonarCloud passed. SonarCloud first failed on duplicated new code and one reliability bug;
+`c925992` states the absolute-PATH rule once in `@verchestra/application` and sorts the gate
+template by code unit, with behaviour unchanged. `main` is `0ca485f`, verified by content.
+
 # Context
 
 `main` at `5a77a87` carried #583 (Cedar 4.14.0 as Dependabot generated it), which failed the
@@ -45,4 +51,4 @@ outside criterion 45 and named here under the driver-runtime rule (DSB-05).
 
 # Next exact action
 
-Owner review of PR #590; merge after its required checks pass on the exact head.
+None in this feature.
