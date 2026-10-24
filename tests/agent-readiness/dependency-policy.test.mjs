@@ -160,3 +160,42 @@ test("new versions wait three days before install and before a Dependabot propos
   );
   assert.match(npm, /cooldown:\s*\n\s+default-days: 3/u);
 });
+
+// invariant: the lockfile resolves no version an open advisory names. fast-uri
+// reaches agent-runtime through the Strands and MCP SDKs and ajv; body-parser
+// 1.x reaches the site's Lighthouse CI through express 4.
+function lockedVersions(lockfile, name) {
+  return [...lockfile.matchAll(new RegExp(`^ {2}'?${name}@(\\d+)\\.(\\d+)\\.(\\d+)'?:`, "gmu"))].map((match) =>
+    match.slice(1, 4).map(Number)
+  );
+}
+
+function below(version, floor) {
+  for (let index = 0; index < 3; index += 1) if (version[index] !== floor[index]) return version[index] < floor[index];
+  return false;
+}
+
+test("the lockfile resolves the patched fast-uri and body-parser 1.x", () => {
+  const lockfile = read("pnpm-lock.yaml");
+  const fastUri = lockedVersions(lockfile, "fast-uri");
+  assert.ok(fastUri.length > 0, "fast-uri is no longer resolved; update this test");
+  for (const version of fastUri)
+    assert.equal(
+      below(version, [3, 1, 9]),
+      false,
+      `fast-uri@${version.join(".")} is below 3.1.9 (GHSA-w74x-v6f9-j3xg)`
+    );
+  const bodyParser = lockedVersions(lockfile, "body-parser").filter((version) => version[0] === 1);
+  for (const version of bodyParser)
+    assert.equal(
+      below(version, [1, 20, 9]),
+      false,
+      `body-parser@${version.join(".")} is below 1.20.9 (GHSA-27r3-jxmh-p828)`
+    );
+});
+
+test("only a named security fix skips the three-day release age", () => {
+  const workspace = read("pnpm-workspace.yaml");
+  assert.match(workspace, /^minimumReleaseAge: 4320$/mu);
+  assert.match(workspace, /^minimumReleaseAgeExclude:\r?\n {2}- body-parser\r?$/mu);
+});
