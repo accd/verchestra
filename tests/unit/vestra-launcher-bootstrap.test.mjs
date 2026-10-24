@@ -134,3 +134,18 @@ test("the argument vector reaches the closure exactly as it was given", async ()
   assert.equal(status, 0);
   assert.deepEqual(observed, args);
 });
+
+test("a source timeout surfaces in the launcher line with exit 70", async () => {
+  const failure = Object.assign(new Error("release source did not answer"), { code: "VES_TUF_SOURCE_TIMEOUT" });
+  const { status, lines } = await run(
+    ["--help"],
+    closureThat({
+      activate: async () => {
+        throw failure;
+      }
+    })
+  );
+  assert.equal(status, 70);
+  assert.equal(lines.length, 1);
+  assert.match(lines[0], /^VES_VESTRA_ACTIVATION_UNAVAILABLE: .*\(VES_TUF_SOURCE_TIMEOUT\)\./u);
+});

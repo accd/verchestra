@@ -106,7 +106,9 @@ test("every tracked bin shim resolves only compiled sibling JavaScript", async (
   // resolves; `vestra` stays as the short everyday command after install.
   for (const name of ["verchestra", "vestra"]) {
     const shim = await readFile(new URL(`bin/${name}.mjs`, packageRoot), "utf8");
-    const specifiers = [...shim.matchAll(/from\s+["']([^"']+)["']/gu)].map((match) => match[1]);
+    // A static `from` and a dynamic `import()` both resolve a module; the shim
+    // loads the bundle dynamically, after it has checked the ambient Node.
+    const specifiers = [...shim.matchAll(/(?:from\s+|import\(\s*)["']([^"']+)["']/gu)].map((match) => match[1]);
     assert.deepEqual(specifiers, ["../lib/bootstrap.js"], name);
     assert.ok(PUBLISHED_FILE_ALLOWLIST.includes(`bin/${name}.mjs`), name);
   }

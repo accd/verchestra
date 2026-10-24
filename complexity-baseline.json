@@ -264,9 +264,6 @@
     "packages/distribution/src/tuf-update-client.ts :: Arrow function": [
       16
     ],
-    "packages/distribution/src/tuf-update-client.ts :: Async method 'readTarget'": [
-      20
-    ],
     "packages/distribution/src/tuf-update-client.ts :: Async method 'resolveAndStage'": [
       14
     ],
