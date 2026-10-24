@@ -1,7 +1,21 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { PublicErrorException } from "../../packages/domain/src/index.ts";
+import {
+  CORE_PUBLIC_ERROR_DEFINITIONS,
+  PublicErrorException,
+  PublicErrorRegistry,
+  WORKFLOW_PUBLIC_ERROR_DEFINITIONS
+} from "../../packages/domain/src/index.ts";
+import { TASK_PUBLIC_ERROR_DEFINITIONS } from "../../apps/vestra-cli/src/task/task-errors.ts";
+import { BOOTSTRAP_PUBLIC_ERROR_DEFINITIONS } from "../../packages/application/src/bootstrap/bootstrap-errors.ts";
+import { EFFECT_PUBLIC_ERROR_DEFINITIONS } from "../../packages/effects/src/effect-errors.ts";
+import { ACTIVATION_LAUNCHER_PUBLIC_ERROR_DEFINITIONS } from "../../packages/platform-node/src/activation-launcher-errors.ts";
+import { PLATFORM_SECURITY_PUBLIC_ERROR_DEFINITIONS } from "../../packages/platform-node/src/platform-security-errors.ts";
+import { RUNTIME_PUBLIC_ERROR_DEFINITIONS } from "../../packages/platform-node/src/runtime-store/runtime-errors.ts";
+import { INIT_PUBLIC_ERROR_DEFINITIONS } from "../../packages/workspace/src/init/init-errors.ts";
+import { PLACEMENT_PUBLIC_ERROR_DEFINITIONS } from "../../packages/workspace/src/placement/placement-errors.ts";
+import { WORKSPACE_PUBLIC_ERROR_DEFINITIONS } from "../../packages/workspace/src/scanner/workspace-errors.ts";
 import {
   CLI_PUBLIC_ERROR_DEFINITIONS,
   cliPublicErrorRegistry,
@@ -299,7 +313,7 @@ for (const [name, argv] of [
   ["invalid enum value", ["init", "--placement", "sideways"]],
   ["duplicate option", ["init", "--dry-run", "--dry-run"]],
   ["unexpected positional", ["sync", "extra"]],
-  ["mixed help and command", ["sync", "--help"]],
+  ["help for an uninstalled command", ["destroy", "--help"]],
   ["mixed version and command", ["sync", "--version"]]
 ]) {
   test(`${name} fails with stable validation exit before dispatch`, async () => {
@@ -408,4 +422,154 @@ test("CLI public error catalog is exact and safe", async () => {
     );
     assert.equal(schemas.validate("public-error", "1", cliPublicErrorRegistry.create(code, details)).code, code);
   }
+});
+
+// invariant: the human refusal line names what the envelope already makes
+// safe to show, so a tester reads the requirement without --output json.
+const DETAILED = new PublicErrorRegistry([
+  {
+    code: "VES_TEST_DETAILED",
+    category: "external",
+    component: "test",
+    retryability: "after-change",
+    recovery: "Provision it and retry.",
+    documentationVersion: "1",
+    safeDetails: { zeta: "string", alpha: "string", count: "number" }
+  }
+]);
+
+test("human refusal line carries the safe details in key order", async () => {
+  const bus = new RecordingBus();
+  bus.error = new PublicErrorException(
+    DETAILED.create("VES_TEST_DETAILED", { zeta: "z", alpha: "gate-allowlist", count: 2 }),
+    "private"
+  );
+  const result = await execute(["sync"], { bus });
+  assert.deepEqual(result.streams.stderr, [
+    "VES_TEST_DETAILED (alpha=gate-allowlist, count=2, zeta=z): Provision it and retry.\n"
+  ]);
+  assert.equal(result.streams.stdout.length, 0);
+});
+
+test("json refusal envelope is unchanged by the human detail line", async () => {
+  const bus = new RecordingBus();
+  const envelope = DETAILED.create("VES_TEST_DETAILED", { zeta: "z", alpha: "a", count: 1 });
+  bus.error = new PublicErrorException(envelope, "private");
+  const result = await execute(["sync", "--output", "json"], { bus });
+  assert.deepEqual(JSON.parse(result.streams.stdout[0]).error, JSON.parse(JSON.stringify(envelope)));
+  assert.equal(result.streams.stderr.length, 0);
+});
+
+test("an internal failure names the VES code of its cause", async () => {
+  const coded = new RecordingBus();
+  coded.error = Object.assign(new Error("C:\private token=sentinel"), { code: "VES_TUF_SOURCE_HTTP" });
+  const human = await execute(["sync"], { bus: coded });
+  assert.deepEqual(human.streams.stderr, [
+    "VES_CLI_INTERNAL (cause=VES_TUF_SOURCE_HTTP, incident=cli-unexpected-failure): " +
+      "Record the incident reference and run a safe diagnostic.\n"
+  ]);
+  assert.equal(human.exitCode, 70);
+  const json = await execute(["sync", "--output", "json"], { bus: coded });
+  assert.deepEqual(
+    JSON.parse(json.streams.stdout[0]).error,
+    JSON.parse(
+      JSON.stringify(cliPublicErrorRegistry.create("VES_CLI_INTERNAL", { incident: "cli-unexpected-failure" }))
+    )
+  );
+  for (const code of [undefined, "ENOENT", "VES_lowercase", 7]) {
+    const bus = new RecordingBus();
+    bus.error = Object.assign(new Error("private"), code === undefined ? {} : { code });
+    const result = await execute(["sync"], { bus });
+    assert.deepEqual(result.streams.stderr, [
+      "VES_CLI_INTERNAL (incident=cli-unexpected-failure): Record the incident reference and run a safe diagnostic.\n"
+    ]);
+  }
+});
+
+const COMPOSED_ERROR_DEFINITIONS = Object.freeze({
+  cli: CLI_PUBLIC_ERROR_DEFINITIONS,
+  task: TASK_PUBLIC_ERROR_DEFINITIONS,
+  bootstrap: BOOTSTRAP_PUBLIC_ERROR_DEFINITIONS,
+  core: CORE_PUBLIC_ERROR_DEFINITIONS,
+  workflow: WORKFLOW_PUBLIC_ERROR_DEFINITIONS,
+  effects: EFFECT_PUBLIC_ERROR_DEFINITIONS,
+  activation: ACTIVATION_LAUNCHER_PUBLIC_ERROR_DEFINITIONS,
+  platformSecurity: PLATFORM_SECURITY_PUBLIC_ERROR_DEFINITIONS,
+  runtime: RUNTIME_PUBLIC_ERROR_DEFINITIONS,
+  init: INIT_PUBLIC_ERROR_DEFINITIONS,
+  placement: PLACEMENT_PUBLIC_ERROR_DEFINITIONS,
+  workspace: WORKSPACE_PUBLIC_ERROR_DEFINITIONS
+});
+
+test("no recovery text names a repository-relative docs path", () => {
+  let checked = 0;
+  for (const [registry, definitions] of Object.entries(COMPOSED_ERROR_DEFINITIONS)) {
+    for (const definition of definitions) {
+      checked += 1;
+      const withoutUrls = definition.recovery.replaceAll(/https:\/\/\S+/gu, "");
+      assert.doesNotMatch(withoutUrls, /docs\/|\.md\b/u, `${registry} ${definition.code}`);
+      for (const url of definition.recovery.match(/https:\/\/\S+/gu) ?? [])
+        assert.ok(url.startsWith("https://github.com/accd/verchestra/blob/main/docs/"), `${definition.code} ${url}`);
+    }
+  }
+  assert.ok(checked > 50, `only ${checked} definitions were read`);
+  const notConfigured = TASK_PUBLIC_ERROR_DEFINITIONS.find((entry) => entry.code === "VES_TASK_NOT_CONFIGURED");
+  assert.match(notConfigured.recovery, /https:\/\/github\.com\/accd\/verchestra\/blob\/main\/docs\/quick-start\.md/u);
+});
+
+// invariant: `--help` after a command answers with that command's own options,
+// read from the installed manifest, so no option list is maintained twice.
+async function commandHelp(command, output) {
+  const argv = [...command.name.split(" "), "--help", ...(output === "json" ? ["--output", "json"] : [])];
+  return execute(argv, {
+    installedManifest: installedReleaseManifest,
+    installedCliVersion: installedReleaseManifest.semanticVersion
+  });
+}
+
+function optionLine(option) {
+  if (option.kind === "boolean") return `  --${option.name}`;
+  return `  --${option.name} <${option.values === undefined ? "value" : option.values.join("|")}>`;
+}
+
+test("every command answers --help with its declared options", async () => {
+  assert.equal(installedReleaseManifest.commands.length, 13);
+  for (const command of installedReleaseManifest.commands) {
+    const result = await commandHelp(command, "human");
+    assert.equal(result.exitCode, 0, command.name);
+    assert.equal(result.bus.calls.length, 0, command.name);
+    assert.equal(result.streams.stderr.length, 0, command.name);
+    const lines = result.streams.stdout.join("").split("\n");
+    assert.equal(lines[0], `Usage: vestra ${command.name} [options]`, command.name);
+    assert.deepEqual(
+      lines.filter((line) => line.startsWith("  --")),
+      command.options.map(optionLine),
+      command.name
+    );
+  }
+});
+
+test("command help in json lists the declared options", async () => {
+  const schemas = await SchemaRegistry.load(new URL("../../schemas/", import.meta.url));
+  for (const command of installedReleaseManifest.commands.filter((entry) => entry.supportsJson)) {
+    const result = await commandHelp(command, "json");
+    assert.equal(result.exitCode, 0, command.name);
+    const output = schemas.validate("cli-output", "1", JSON.parse(result.streams.stdout[0]));
+    assert.deepEqual(output.data, {
+      command: command.name,
+      options: command.options.map((option) => ({
+        name: option.name,
+        kind: option.kind,
+        ...(option.values === undefined ? {} : { values: [...option.values] })
+      }))
+    });
+  }
+});
+
+test("help for an uninstalled command is an argument error", async () => {
+  const result = await execute(["no-such-command", "--help"]);
+  assert.equal(result.exitCode, 2);
+  assert.equal(result.streams.stdout.length, 0);
+  assert.match(result.streams.stderr[0], /^VES_CLI_ARGUMENT_INVALID /u);
+  assert.equal(result.bus.calls.length, 0);
 });

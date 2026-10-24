@@ -28,9 +28,10 @@ export interface InstalledCliManifest {
 }
 
 export interface ParsedCliArguments {
-  readonly mode: "help" | "version" | "command";
+  readonly mode: "help" | "version" | "command" | "command-help";
   readonly output: "human" | "json";
   readonly command?: CliCommand;
+  readonly help?: CliCommandManifest;
 }
 
 interface CliRunOptions {
@@ -131,12 +132,7 @@ export function parseCliArguments(argv: readonly string[], manifest: InstalledCl
   const { output, rest } = extractOutput(argv);
   if (rest.length === 0 || (rest.length === 1 && rest[0] === "--help")) return { mode: "help", output };
   if (rest.length === 1 && rest[0] === "--version") return { mode: "version", output };
-  if (rest.includes("--help") || rest.includes("--version")) {
-    throw argumentError(
-      rest.find((entry) => entry === "--help" || entry === "--version") ?? "argument",
-      "Global flag cannot be mixed with a command"
-    );
-  }
+  if (rest.includes("--version")) throw argumentError("--version", "Global flag cannot be mixed with a command");
   const commandManifest = [...manifest.commands]
     .sort((left, right) => right.name.split(" ").length - left.name.split(" ").length)
     .find((candidate) => {
@@ -144,6 +140,9 @@ export function parseCliArguments(argv: readonly string[], manifest: InstalledCl
       return words.every((word, index) => rest[index] === word);
     });
   if (commandManifest === undefined) throw argumentError(rest[0] ?? "command", "Command is not installed");
+  // why: help names the command's options from the manifest it parses with,
+  // so the listed options are exactly the accepted ones.
+  if (rest.includes("--help")) return { mode: "command-help", output, help: commandManifest };
   if (output === "json" && !commandManifest.supportsJson) {
     throw argumentError("--output", "Command does not support JSON output");
   }
@@ -181,6 +180,31 @@ function renderHelp(manifest: InstalledCliManifest): string {
   return `Verchestra ${manifest.semanticVersion}\nCanonical CLI: vestra\n\nUsage: vestra <command> [options]\n\nCommands:\n${commands}\n`;
 }
 
+function renderCommandHelp(command: CliCommandManifest): string {
+  const options = command.options.map((option) =>
+    option.kind === "boolean"
+      ? `  --${option.name}`
+      : `  --${option.name} <${option.values === undefined ? "value" : option.values.join("|")}>`
+  );
+  const json = command.supportsJson ? "\nAdd --output json for a JSON result.\n" : "";
+  return (
+    `Usage: vestra ${command.name} [options]\n\n${command.summary}\n\n` +
+    (options.length === 0 ? "This command takes no options.\n" : `Options:\n${options.join("\n")}\n`) +
+    json
+  );
+}
+
+function commandHelpData(command: CliCommandManifest) {
+  return {
+    command: command.name,
+    options: command.options.map((option) => ({
+      name: option.name,
+      kind: option.kind,
+      ...(option.values === undefined ? {} : { values: [...option.values] })
+    }))
+  };
+}
+
 function humanData(data: unknown): string {
   if (data === null || typeof data !== "object" || Array.isArray(data)) return `${String(data)}\n`;
   return `${Object.entries(data as Readonly<Record<string, unknown>>)
@@ -203,6 +227,27 @@ function jsonOutput(command: string, ok: boolean, data: unknown, error?: PublicE
     ...(error === undefined ? {} : { error })
   };
   return `${JSON.stringify(output)}\n`;
+}
+
+const DIAGNOSTIC_CODE = /^VES_[A-Z0-9_]+$/u;
+
+// invariant: only a bare `VES_` code is read from an unexpected failure, so no
+// upstream message, path, or stack reaches the terminal through it.
+function causeCode(error: unknown): string | undefined {
+  if (error instanceof PublicErrorException) return undefined;
+  const code = (error as { readonly code?: unknown } | null | undefined)?.code;
+  return typeof code === "string" && DIAGNOSTIC_CODE.test(code) ? code : undefined;
+}
+
+// why: the safe details are the named requirement a tester has to provision;
+// the human line shows them, in a stable order, and the JSON envelope keeps
+// its own shape. An unexpected failure's cause code is shown here only.
+function humanError(envelope: PublicErrorEnvelope, cause: string | undefined): string {
+  const details: Record<string, unknown> = { ...envelope.safeDetails };
+  if (cause !== undefined) details["cause"] = cause;
+  const keys = Object.keys(details).sort((left, right) => Number(left > right) - Number(left < right));
+  const named = keys.length === 0 ? "" : ` (${keys.map((key) => `${key}=${String(details[key])}`).join(", ")})`;
+  return `${envelope.code}${named}: ${envelope.recovery}\n`;
 }
 
 function exitCode(error: PublicErrorEnvelope): number {
@@ -240,30 +285,10 @@ export async function runCli(options: CliRunOptions): Promise<number> {
     }
     const parsed = parseCliArguments(options.argv, options.installedManifest);
     output = parsed.output;
-    commandName = parsed.mode;
-    if (parsed.mode === "version") {
-      const data = {
-        product: "Verchestra",
-        semanticVersion: options.installedManifest.semanticVersion,
-        releaseDigest: options.installedManifest.releaseDigest
-      };
-      options.stdout(
-        output === "json"
-          ? jsonOutput("version", true, data)
-          : `Verchestra ${data.semanticVersion} (${data.releaseDigest ?? SOURCE_BUILD})\n`
-      );
-      return 0;
-    }
-    if (parsed.mode === "help") {
-      options.stdout(
-        output === "json"
-          ? jsonOutput("help", true, {
-              product: "Verchestra",
-              canonicalExecutable: "vestra",
-              commands: options.installedManifest.commands.map((entry) => entry.name)
-            })
-          : renderHelp(options.installedManifest)
-      );
+    commandName = parsed.help?.name ?? parsed.mode;
+    const shown = informationalOutput(parsed, options.installedManifest);
+    if (shown !== undefined) {
+      options.stdout(shown);
       return 0;
     }
     const command = parsed.command as CliCommand;
@@ -283,7 +308,34 @@ export async function runCli(options: CliRunOptions): Promise<number> {
         ? error.envelope
         : cliPublicErrorRegistry.create("VES_CLI_INTERNAL", { incident: "cli-unexpected-failure" });
     if (output === "json") options.stdout(jsonOutput(commandName, false, null, envelope));
-    else options.stderr(`${envelope.code}: ${envelope.recovery}\n`);
+    else options.stderr(humanError(envelope, causeCode(error)));
     return exitCode(envelope);
   }
+}
+
+// invariant: the global flags and per-command help answer from the installed
+// manifest alone and never reach the command bus.
+function informationalOutput(parsed: ParsedCliArguments, manifest: InstalledCliManifest): string | undefined {
+  const json = parsed.output === "json";
+  if (parsed.mode === "version") {
+    const data = {
+      product: "Verchestra",
+      semanticVersion: manifest.semanticVersion,
+      releaseDigest: manifest.releaseDigest
+    };
+    return json
+      ? jsonOutput("version", true, data)
+      : `Verchestra ${data.semanticVersion} (${data.releaseDigest ?? SOURCE_BUILD})\n`;
+  }
+  if (parsed.mode === "help") {
+    const data = {
+      product: "Verchestra",
+      canonicalExecutable: "vestra",
+      commands: manifest.commands.map((entry) => entry.name)
+    };
+    return json ? jsonOutput("help", true, data) : renderHelp(manifest);
+  }
+  if (parsed.mode !== "command-help") return undefined;
+  const help = parsed.help as CliCommandManifest;
+  return json ? jsonOutput(help.name, true, commandHelpData(help)) : renderCommandHelp(help);
 }
