@@ -262,6 +262,7 @@ export {
   type UsageEvent
 } from "./execution/budget-meter.ts";
 export {
+  acceptedModels,
   isKnownModel,
   isPricedModel,
   isSubscriptionOnlyModel,
