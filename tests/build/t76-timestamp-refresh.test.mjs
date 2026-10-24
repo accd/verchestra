@@ -591,6 +591,50 @@ const liveServing = (version) => async (url) => {
   return new Response(JSON.stringify({ signatures: [], signed: { _type: "timestamp", version } }), { status: 200 });
 };
 
+// why: the workflow runs the command line, so its exit status is observed in
+// a child process whose global fetch is replaced before the script loads.
+const fetchPreload = (body) =>
+  `data:text/javascript,${encodeURIComponent(`globalThis.fetch = async () => { ${body} };`)}`;
+
+const refreshCommand = async (value, preload, metadataVersion) => {
+  const outputDirectory = join(await scratch("cli-live"), "refresh");
+  const ledgerPath = await writeLedger(value.closure.root, [value.release]);
+  const inherited = Object.fromEntries(
+    Object.entries(process.env).filter(([name]) => name !== OFFLINE && name !== ONLINE)
+  );
+  const args = [
+    "--import",
+    preload,
+    SCRIPT,
+    "--current",
+    value.closure.outputDirectory,
+    "--out",
+    outputDirectory,
+    "--metadata-version",
+    String(metadataVersion),
+    "--timestamp-expires",
+    iso(Date.now() + 30 * DAY),
+    "--ledger",
+    ledgerPath,
+    "--run-id",
+    "78",
+    "--release-anchor",
+    value.releaseAnchorPath,
+    "--timestamp-anchor",
+    value.timestampAnchorPath
+  ];
+  const result = await execute(process.execPath, args, {
+    encoding: "utf8",
+    windowsHide: true,
+    maxBuffer: 16 * 1024 * 1024,
+    env: { ...inherited, [ONLINE]: value.online }
+  }).then(
+    (done) => ({ exitCode: 0, stdout: done.stdout, stderr: done.stderr }),
+    (error) => ({ exitCode: error.code, stdout: error.stdout ?? "", stderr: error.stderr ?? "" })
+  );
+  return { ...result, outputDirectory };
+};
+
 test("a refresh at or below the live timestamp version refuses before signing", async () => {
   const value = await sharedLineage();
   // why: the ledger records version 1, so 2 and 3 pass it; the endpoint
@@ -601,6 +645,16 @@ test("a refresh at or below the live timestamp version refuses before signing", 
       "VES_T76_REFRESH_LIVE_VERSION_COLLISION",
       /live \S+ timestamp version 3/u
     );
+  const command = await refreshCommand(
+    value,
+    fetchPreload(
+      'return new Response(JSON.stringify({ signatures: [], signed: { _type: "timestamp", version: 3 } }), { status: 200 });'
+    ),
+    3
+  );
+  assert.equal(command.exitCode, 1, command.stderr);
+  assert.match(command.stderr, /VES_T76_REFRESH_LIVE_VERSION_COLLISION/u);
+  await assert.rejects(readdir(command.outputDirectory), { code: "ENOENT" });
 });
 
 test("an unreadable live timestamp refuses before signing", async () => {
@@ -614,4 +668,8 @@ test("an unreadable live timestamp refuses before signing", async () => {
   ];
   for (const fetch of unreadable)
     await refused(await refreshOptions(value, { fetch }), "VES_T76_REFRESH_LIVE_UNREADABLE", /live \S+ timestamp/u);
+  const command = await refreshCommand(value, fetchPreload('return new Response("not found", { status: 404 });'), 2);
+  assert.equal(command.exitCode, 1, command.stderr);
+  assert.match(command.stderr, /VES_T76_REFRESH_LIVE_UNREADABLE/u);
+  await assert.rejects(readdir(command.outputDirectory), { code: "ENOENT" });
 });

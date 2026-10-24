@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
-import { access, lstat } from "node:fs/promises";
+import { access, lstat, mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { createConnection } from "node:net";
-import { dirname } from "node:path";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
 import { afterEach, test } from "node:test";
 
+import { WorktreeReadView } from "../../packages/agent-runtime/src/index.ts";
 import { bridgeWorktree, cleanupBridges, openController, startRelay } from "../helpers/mcp-bridge-fixture.mjs";
 import { WIN32_HOST, windowsMediationPath } from "../helpers/mediation-platform.mjs";
 
@@ -140,7 +142,24 @@ test("oversized write content is refused before it reaches the payload store", a
   await relay.close();
 });
 
+// why: read_file answers from the controller's worktree read view on every
+// transport, so the view is asserted on every host; the relay round trip runs
+// where the Unix-socket bridge does.
 test("a trailing-dot alias of .git is not readable", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "verchestra-bridge-alias-"));
+  try {
+    await mkdir(join(root, ".git"));
+    await writeFile(join(root, ".git", "config"), "[core]\n");
+    const view = await WorktreeReadView.open({
+      root: await realpath(root),
+      readScope: ["."],
+      protectedPaths: [".git"]
+    });
+    for (const path of [".git./config", ".git."])
+      await assert.rejects(view.readFile(path), { code: "VES_BRIDGE_PATH_PROTECTED" }, path);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
   if (WIN32_HOST) return windowsMediationPath(t);
   const { worktree } = await bridgeWorktree();
   const { controller } = await openController(worktree);
