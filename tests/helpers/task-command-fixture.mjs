@@ -12,6 +12,7 @@ import { join } from "node:path";
 // before the OS credential tool is started, so such a case fails without ever
 // touching the user's credential store.
 import "./deny-keychain-spawn.mjs";
+import { gateAllowlistPath } from "../../apps/vestra-cli/src/task/task-gates.ts";
 import { openRunRecord } from "../../apps/vestra-cli/src/task/task-run-record.ts";
 import { openRuntime, openTaskWorkspace } from "../../apps/vestra-cli/src/task/task-workspace.ts";
 import {
@@ -71,6 +72,20 @@ export async function taskCommandFixture() {
     pid: process.pid
   };
   const workspace = await openTaskWorkspace(io);
+  // why: a configured Workspace allowlists the gate command of every request
+  // fixture, so a run gets past its own settings to the step a case observes;
+  // a case about the missing allowlist removes the file.
+  await mkdir(workspace.layout.workspaceRoot, { recursive: true });
+  const allowed = { executable: process.execPath, protocols: ["exit-code", "test-summary"] };
+  await writeFile(
+    gateAllowlistPath(workspace),
+    JSON.stringify({
+      schemaVersion: 1,
+      commands: Object.fromEntries(
+        ["command:node", "command:node-test", "command:pnpm", "node"].map((ref) => [ref, allowed])
+      )
+    })
+  );
   const state = (runId = RUN_ID) => {
     const runtime = openRuntime(workspace);
     try {
