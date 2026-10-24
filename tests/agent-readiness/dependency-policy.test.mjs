@@ -154,6 +154,9 @@ test("Dependabot ignores the exact-pinned cedar and json-schema-to-typescript up
 test("new versions wait three days before install and before a Dependabot proposal", () => {
   assert.match(read("pnpm-workspace.yaml"), /^minimumReleaseAge: 4320$/mu);
   const policy = read(".github/dependabot.yml");
-  const npm = policy.slice(policy.indexOf("package-ecosystem: npm"), policy.indexOf("package-ecosystem: github-actions"));
+  const npm = policy.slice(
+    policy.indexOf("package-ecosystem: npm"),
+    policy.indexOf("package-ecosystem: github-actions")
+  );
   assert.match(npm, /cooldown:\s*\n\s+default-days: 3/u);
 });
