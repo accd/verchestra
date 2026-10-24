@@ -133,6 +133,25 @@ const sharedLineage = async () => {
   return await lineage;
 };
 
+// why: the endpoint serves what the publication emitted until a refresh is
+// uploaded; no case here reaches a network.
+const servedPublication = (value) => async (url) => {
+  const [, key] = /\/([^/]+)\/metadata\/timestamp\.json$/u.exec(String(url)) ?? [];
+  const path = join(value.closure.outputDirectory, "publication", key, "metadata", "timestamp.json");
+  return new Response(await readFile(path), { status: 200 });
+};
+
+// why: the command line has no seam for a fake endpoint, so its child process
+// preloads one in place of the global fetch, serving the same files.
+const servedPublicationPreload = (value) => {
+  const root = JSON.stringify(join(value.closure.outputDirectory, "publication"));
+  const source =
+    'import { readFileSync } from "node:fs"; import { join } from "node:path";' +
+    "globalThis.fetch = async (url) => { const key = /\\/([^/]+)\\/metadata\\/timestamp\\.json$/u.exec(String(url))[1];" +
+    ` return new Response(readFileSync(join(${root}, key, "metadata", "timestamp.json")), { status: 200 }); };`;
+  return `data:text/javascript,${encodeURIComponent(source)}`;
+};
+
 const refreshOptions = async (value, overrides = {}) => ({
   currentDirectory: value.closure.outputDirectory,
   outputDirectory: join(await scratch("out"), "refresh"),
@@ -143,6 +162,7 @@ const refreshOptions = async (value, overrides = {}) => ({
   protectedEnvironment: { [ONLINE]: value.online },
   releaseAnchorPath: value.releaseAnchorPath,
   timestampAnchorPath: value.timestampAnchorPath,
+  fetch: servedPublication(value),
   ...overrides
 });
 
@@ -512,7 +532,7 @@ test("the command line never emits key material on success or on failure", async
     Object.entries(process.env).filter(([name]) => name !== OFFLINE && name !== ONLINE)
   );
   const run = async (environment) =>
-    await execute(process.execPath, args, {
+    await execute(process.execPath, ["--import", servedPublicationPreload(value), ...args], {
       encoding: "utf8",
       windowsHide: true,
       maxBuffer: 16 * 1024 * 1024,
@@ -560,4 +580,38 @@ test("the refresh is admitted over the ledger entry the publication itself emitt
   assert.equal(ledgerEntry.sequence, 2);
   assert.equal(ledgerEntry.previousEntryDigest, ledgerEntryDigest(published));
   assert.doesNotThrow(() => validatePublicationLedger({ ...ledger, entries: [published, ledgerEntry] }));
+});
+
+// invariant (#568): the ledger records a refresh only once its pull request
+// merges, so a second run started before then could sign a version that is
+// already live. The served timestamp is the witness: a refresh signs only a
+// version above it, and refuses when it cannot read it.
+const liveServing = (version) => async (url) => {
+  assert.match(String(url), /\/metadata\/timestamp\.json$/u);
+  return new Response(JSON.stringify({ signatures: [], signed: { _type: "timestamp", version } }), { status: 200 });
+};
+
+test("a refresh at or below the live timestamp version refuses before signing", async () => {
+  const value = await sharedLineage();
+  // why: the ledger records version 1, so 2 and 3 pass it; the endpoint
+  // already serves 3, which only the live check can see.
+  for (const metadataVersion of [3, 2])
+    await refused(
+      await refreshOptions(value, { metadataVersion, fetch: liveServing(3) }),
+      "VES_T76_REFRESH_LIVE_VERSION_COLLISION",
+      /live \S+ timestamp version 3/u
+    );
+});
+
+test("an unreadable live timestamp refuses before signing", async () => {
+  const value = await sharedLineage();
+  const unreadable = [
+    async () => {
+      throw Object.assign(new TypeError("fetch failed"), { cause: { code: "ECONNREFUSED" } });
+    },
+    async () => new Response("not found", { status: 404 }),
+    async () => new Response("{not json", { status: 200 })
+  ];
+  for (const fetch of unreadable)
+    await refused(await refreshOptions(value, { fetch }), "VES_T76_REFRESH_LIVE_UNREADABLE", /live \S+ timestamp/u);
 });

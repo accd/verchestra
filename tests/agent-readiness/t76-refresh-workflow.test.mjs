@@ -217,3 +217,20 @@ test("the run uploads the re-signed metadata, the upload manifest, and the ledge
     "t76-timestamp-refresh/publication/*/metadata"
   ]);
 });
+
+// invariant (#568): a publish and a refresh never sign at the same time. They
+// share one queue, and a queued run waits instead of cancelling the one that
+// is signing.
+test("publish and refresh share one non-cancelling concurrency group", () => {
+  const concurrencyOf = (text, name) => {
+    const match = /^concurrency:\r?\n {2}group: (\S+)\r?\n {2}cancel-in-progress: (true|false)\r?$/mu.exec(text);
+    assert.ok(match, `${name} declares no top-level concurrency group`);
+    return { group: match[1], cancelInProgress: match[2] };
+  };
+  const refresh = concurrencyOf(workflow, "t76-refresh-timestamp.yml");
+  const publication = concurrencyOf(publish, "t76-publish-release.yml");
+  assert.equal(refresh.group, publication.group);
+  assert.equal(refresh.cancelInProgress, "false");
+  assert.equal(publication.cancelInProgress, "false");
+  assert.doesNotMatch(refresh.group, /\$\{\{/u, "one fixed group, never one per run or ref");
+});
