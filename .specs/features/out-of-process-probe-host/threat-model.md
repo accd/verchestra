@@ -61,9 +61,25 @@ to the test that proves it (see `validation.md` for file and line).
 - **Immutable strings.** The base64 parameter string and the decoded leak-check
   string cannot be zeroized by JavaScript; they become unreachable when the
   call returns. The same limitation exists on the in-process path.
-- **Descendant escape races.** A descendant that double-forks and `setsid`s
-  after the snapshot and before the group kill can escape; `ps` unavailability
-  degrades to the group kill only. Pid reuse between snapshot and sweep is
-  tolerated (`EPERM`/`ESRCH` ignored).
+- **Descendant escape (#569, 2026-10-24).** A detached descendant can outlive
+  its worker, deterministically, not only in a race: the sweep finds only
+  descendants still parented to the worker, so a worker that starts a `setsid`
+  child and exits after `probe.result.end` returns `complete` with the child
+  alive, and a double fork escapes on the timeout path too. T19's control does
+  not hold against it. `ps` unavailability degrades to the group kill only;
+  pid reuse between snapshot and sweep is tolerated (`EPERM`/`ESRCH` ignored).
+- **Unbound launch (#569).** The grant binds the entry file only. The
+  executable, the arguments and the environment extras are not bound, so
+  `NODE_OPTIONS=--require`, `LD_PRELOAD`, `DYLD_INSERT_LIBRARIES`,
+  `PYTHONPATH`, `NODE_PATH` or extra arguments can run code no approval named.
+  T7's control measures the entry file, not what runs it.
+- **Admission without authenticity (#569).** T1's control checks consistency,
+  not authenticity: `admitWorkspaceProbeWorker` accepts any object as the
+  extension, nothing ties it to `resolveExecutableExtension` or a verified
+  lock, and `approvalRef` is never looked up. "Registry-resolved" and
+  "signature-verified" in T1 describe the intended design, not the code.
+- **No composition until fixed.** Nothing composes the host while the three
+  limits above stand; `tests/architecture/extension-host-composition.test.mjs`
+  fails on any import of it reachable from the CLI or the launcher.
 - **Resource limits.** CPU and memory are not bounded beyond wall-clock time.
 - **Windows.** Not supported; refused explicitly.

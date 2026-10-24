@@ -54,7 +54,26 @@
 
 - Protocol-level containment is qualified: a worker cannot smuggle data past
   the frame, sequence, digest, Workspace, row, byte, leak, and time controls,
-  cannot outlive its probe, and cannot flood the host.
+  is torn down with its process group on every exit path, and cannot flood
+  the host.
+- Three limits stand, stated after the post-merge review (#569, 2026-10-24)
+  and not claimed away:
+  1. A detached descendant can outlive its worker. The terminator sweeps only
+     descendants still parented to the worker, so a worker that starts a
+     `setsid` child and exits after its result leaves that child running, and
+     a double fork escapes on the timeout path too.
+  2. The approved digest binds the entry file only. The executable, the
+     arguments and the environment extras are not part of the grant, so
+     `NODE_OPTIONS=--require`, `LD_PRELOAD` or extra arguments can run code
+     the approval never named.
+  3. Admission checks consistency, not authenticity. `admitWorkspaceProbeWorker`
+     checks that the grant matches the extension it is given; nothing ties that
+     extension to `resolveExecutableExtension` or to a verified lock, and
+     `approvalRef` is never looked up.
+  Until each has a fix with a test, nothing composes the host:
+  `tests/architecture/extension-host-composition.test.mjs` fails on any import
+  of `@verchestra/extension-host` reachable from the CLI or the launcher, and
+  T3 waits for #569.
 - OS-level containment is not: an admitted worker runs with the host user's
   filesystem and network authority. That is acceptable only because admission
   requires a human-approved digest in a signed lock and a bound controller

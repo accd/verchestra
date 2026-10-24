@@ -526,6 +526,15 @@ note. -->
   not, so an admitted worker keeps the host user's filesystem and network
   authority until a stronger isolation grade is qualified. Post-1.0; the signed
   1.0.0 hold is unchanged.
+- **Amended (2026-10-24, #569):** the post-merge review found three places
+  where the claims above exceed the code, and they are stated as limits, not
+  claimed away: a detached descendant can outlive its worker; the grant binds
+  the entry file only, not the executable, arguments or environment; and
+  admission checks consistency, not authenticity. Nothing composes the host
+  until each has a fix with a test (T3 waits for #569);
+  `tests/architecture/extension-host-composition.test.mjs` enforces it. Full
+  statement: the `Consequences` of `adr.md` and the residual risks of
+  `threat-model.md`.
 
 ### AD-038 — The single binary is a Node 24.14.0 SEA injected by a repository-owned injector (#236)
 
