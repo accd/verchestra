@@ -2,18 +2,24 @@
 // decide authority and trust: the task Cedar policy view, the verifier verdict
 // parser, and the typed-back human confirmation.
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { EventEmitter } from "node:events";
-import { after, test } from "node:test";
+import { after, afterEach, test } from "node:test";
 
 import { confirmDigest } from "../../apps/vestra-cli/src/task/task-confirm.ts";
 import { parseVerdict } from "../../apps/vestra-cli/src/task/task-codex.ts";
 import { WORKSPACE_POLICY_PATH, loadTaskPolicy } from "../../apps/vestra-cli/src/task/task-policy.ts";
+import { gateAllowlistPath, loadGateAllowlist } from "../../apps/vestra-cli/src/task/task-gates.ts";
+import { planTask } from "../../apps/vestra-cli/src/task/task-plan.ts";
+import { modelPriceTable, normalizeTaskRequest } from "../../packages/application/src/index.ts";
+import { cleanupTaskCommandFixtures, taskCommandFixture } from "../helpers/task-command-fixture.mjs";
+import { validTaskRequest } from "../helpers/task-request-fixture.mjs";
 
 const roots = [];
 after(() => Promise.all(roots.map((root) => rm(root, { recursive: true, force: true }))));
+afterEach(cleanupTaskCommandFixtures);
 
 async function controlRoot(policy) {
   const root = await mkdtemp(join(tmpdir(), "vestra-task-policy-"));
@@ -158,4 +164,68 @@ test("a human decision needs the exact digest typed back from a terminal or --co
   const terminal = io(input(`${digest}\n`, true));
   await confirmDigest(terminal.io, digest, { confirmStdin: false, label: "binding" });
   assert.deepEqual(terminal.prompts, ["Type the binding digest to confirm: "]);
+});
+
+// invariant: a refusal a tester can fix alone says where the missing file goes
+// and what it holds. The path is machine-local, so it reaches the terminal
+// only, never the public error.
+async function plannedRequest(fixture, request) {
+  const path = join(fixture.repositoryRoot, "task-request.json");
+  await writeFile(path, JSON.stringify(request));
+  return path;
+}
+
+async function refusal(promise) {
+  try {
+    await promise;
+  } catch (error) {
+    return error;
+  }
+  assert.fail("the command was not refused");
+}
+
+function assertGateAllowlistExplained(fixture, error) {
+  assert.equal(error.envelope.code, "VES_TASK_NOT_CONFIGURED");
+  assert.deepEqual(error.envelope.safeDetails, { requirement: "gate-allowlist" });
+  const text = fixture.stderr.join("");
+  assert.ok(text.includes(gateAllowlistPath(fixture.workspace)), text);
+  const template = JSON.parse(text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1));
+  assert.equal(template.schemaVersion, 1);
+  assert.equal(typeof template.commands, "object");
+  assert.deepEqual(Object.keys(template.commands).sort(), ["command:node", "command:node-test"]);
+}
+
+test("a missing gate allowlist is explained with its path and template on plan", async () => {
+  const fixture = await taskCommandFixture();
+  const path = await plannedRequest(fixture, validTaskRequest());
+  assertGateAllowlistExplained(fixture, await refusal(planTask(fixture.io, path, false)));
+});
+
+test("a missing gate allowlist is explained with its path and template on start", async () => {
+  const fixture = await taskCommandFixture();
+  const request = normalizeTaskRequest(validTaskRequest());
+  assertGateAllowlistExplained(
+    fixture,
+    await refusal(loadGateAllowlist(fixture.workspace, request, fixture.io.stderr))
+  );
+  // why: `start` reaches the allowlist only after it reads a credential, which
+  // no fixture on this host may do; the call site is asserted to hand the
+  // command's stderr to the same loader the plan case proves.
+  const source = await readFile(new URL("../../apps/vestra-cli/src/task/task-run.ts", import.meta.url), "utf8");
+  assert.match(source, /loadGateAllowlist\(workspace, plan\.request, io\.stderr\)/u);
+});
+
+test("an unpriced model refusal lists the accepted models", async () => {
+  const fixture = await taskCommandFixture();
+  const request = validTaskRequest();
+  const path = await plannedRequest(fixture, { ...request, verifier: { driverId: "codex", model: "gpt-unpriced-9" } });
+  const error = await refusal(planTask(fixture.io, path, false));
+  assert.equal(error.envelope.code, "VES_TASK_REQUEST_REJECTED");
+  assert.deepEqual(error.envelope.safeDetails, { reason: "VES_TASK_REQUEST_MODEL_UNPRICED" });
+  const text = fixture.stderr.join("");
+  const line = (driver) => text.split("\n").find((entry) => entry.startsWith(`${driver} accepts: `)) ?? "";
+  const listed = (driver) => line(driver).slice(`${driver} accepts: `.length).split(", ");
+  assert.ok(listed("codex").includes("gpt-5.5"), text);
+  for (const model of Object.keys(modelPriceTable.models).filter((entry) => entry.startsWith("claude-")))
+    assert.ok(listed("claude-code").includes(model), `${model} in ${text}`);
 });

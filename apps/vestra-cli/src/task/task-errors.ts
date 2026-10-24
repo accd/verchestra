@@ -9,7 +9,8 @@ export const TASK_PUBLIC_ERROR_DEFINITIONS = Object.freeze([
     category: "external",
     component: "task",
     retryability: "after-change",
-    recovery: "Provision the named requirement (see docs/quick-start.md) and retry; nothing was changed.",
+    recovery:
+      "Provision the named requirement (see https://github.com/accd/verchestra/blob/main/docs/quick-start.md) and retry; nothing was changed.",
     documentationVersion: "1",
     safeDetails: { requirement: "string" }
   },

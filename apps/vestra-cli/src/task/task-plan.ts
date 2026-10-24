@@ -4,6 +4,7 @@ import { isAbsolute, join, resolve } from "node:path";
 
 import type { ContextManifest } from "@verchestra/agent-runtime";
 import {
+  acceptedModels,
   ApprovalRequester,
   canonicalTaskGatePlan,
   normalizeTaskRequest,
@@ -38,6 +39,19 @@ type Digest = `sha256:${string}`;
 const MAXIMUM_REQUEST_BYTES = 256 * 1024;
 const APPROVAL_LIFETIME_MS = 7 * 24 * 60 * 60 * 1000;
 
+const MODEL_REFUSALS = new Set(["VES_TASK_REQUEST_MODEL_UNPRICED", "VES_TASK_REQUEST_DRIVER_UNSUPPORTED"]);
+
+// why: a model a driver does not take is the commonest first refusal, and the
+// accepted names are public catalog data, so the terminal lists them.
+function explainModels(stderr: (value: string) => void): void {
+  stderr(
+    "A task request names each model exactly as one of these:\n" +
+      (["claude-code", "codex"] as const)
+        .map((driver) => `${driver} accepts: ${acceptedModels(driver).join(", ")}\n`)
+        .join("")
+  );
+}
+
 async function readRequest(io: TaskCommandIo, path: string): Promise<PlannedTaskRequest> {
   const target = isAbsolute(path) ? path : resolve(io.controlRoot, path);
   const metadata = await lstat(target).catch(() => undefined);
@@ -47,6 +61,7 @@ async function readRequest(io: TaskCommandIo, path: string): Promise<PlannedTask
     return normalizeTaskRequest(JSON.parse(await readFile(target, "utf8")) as unknown);
   } catch (error) {
     const reason = error instanceof SyntaxError ? "VES_TASK_REQUEST_NOT_JSON" : stableCode(error);
+    if (MODEL_REFUSALS.has(reason)) explainModels(io.stderr);
     throw taskError("VES_TASK_REQUEST_REJECTED", { reason }, "The task request was rejected", { cause: error });
   }
 }
@@ -290,7 +305,7 @@ async function persist(
 export async function planTask(io: TaskCommandIo, requestPath: string, dryRun: boolean) {
   const request = await readRequest(io, requestPath);
   const workspace = await openTaskWorkspace(io, { ensure: !dryRun });
-  await loadGateAllowlist(workspace, request);
+  await loadGateAllowlist(workspace, request, io.stderr);
   // why: a malformed credential mode is reported at plan time, before an
   // approval is spent on a run that could never start. No credential is read.
   const providerAuth = await loadProviderAuth(workspace.layout.workspaceRoot);

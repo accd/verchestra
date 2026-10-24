@@ -57,3 +57,15 @@ export function isSubscriptionOnlyModel(driverId: CoordinationDriverId, model: s
 export function isKnownModel(driverId: CoordinationDriverId, model: string): boolean {
   return isPricedModel(model) || isSubscriptionOnlyModel(driverId, model);
 }
+
+const DRIVER_MODEL_PREFIX: Readonly<Record<CoordinationDriverId, string>> = Object.freeze({
+  "claude-code": "claude-",
+  codex: "gpt-"
+});
+
+// invariant: exactly the models a task request may name for a driver: the
+// priced ones of its model family, then the ones only its subscriptions offer.
+export function acceptedModels(driverId: CoordinationDriverId): readonly string[] {
+  const priced = Object.keys(modelPriceTable.models).filter((model) => model.startsWith(DRIVER_MODEL_PREFIX[driverId]));
+  return [...priced, ...modelPriceTable.subscriptionModels[driverId].filter((model) => !isPricedModel(model))];
+}

@@ -233,7 +233,8 @@ function requireModelsOffered(unavailable: readonly string[], stderr: (value: st
   if (unavailable.length === 0) return;
   stderr(
     `This Workspace's Codex login does not offer: ${unavailable.join(", ")}.\n` +
-      "Name a model your account offers in the task request (the list is in docs/quick-start.md), then plan again.\n"
+      "Name a model your account offers in the task request (the list is in " +
+      "https://github.com/accd/verchestra/blob/main/docs/quick-start.md), then plan again.\n"
   );
   throw notConfigured("codex-model-unavailable", "The Codex account does not offer a model the run asks for");
 }
@@ -292,7 +293,7 @@ async function prepare(
   ]);
   const verifier = await verifierAccess(io, workspace, codex, credentials.get(VERIFIER_CREDENTIAL));
   await requireCodexAccount(io, workspace, plan, verifier, confirmations);
-  const gates = await loadGateAllowlist(workspace, plan.request);
+  const gates = await loadGateAllowlist(workspace, plan.request, io.stderr);
   const policy = await loadTaskPolicy(io.controlRoot);
   const authority = new TaskAuthority({ runtime, plan, policy, trust: await workspaceTrustRoot(workspace) });
   const manifest = await runRecord.loadContextManifest(plan.contextManifestDigest);

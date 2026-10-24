@@ -56,12 +56,40 @@ async function profile(value: unknown): Promise<GateCommandProfile> {
   });
 }
 
+// why: the owner is told the one file that provisions the requirement, with an
+// entry per command the request names. The path is machine-local, so it is
+// shown on the terminal only, never in a public error or a record.
+function explainMissing(path: string, request: Pick<PlannedTaskRequest, "gates">, stderr: (value: string) => void) {
+  const protocols = new Map<string, Set<string>>();
+  for (const gate of request.gates) {
+    const known = protocols.get(gate.commandRef) ?? new Set<string>();
+    known.add(gate.resultProtocol);
+    protocols.set(gate.commandRef, known);
+  }
+  const commands = Object.fromEntries(
+    [...protocols].map(([commandRef, admitted]) => [
+      commandRef,
+      { executable: "<absolute path of the program>", fixedArgs: [], protocols: [...admitted].sort() }
+    ])
+  );
+  stderr(
+    "A task runs its gates only through programs you allow on this machine. Write this file:\n" +
+      `  ${path}\n` +
+      `${JSON.stringify({ schemaVersion: 1, commands }, null, 2)}\n`
+  );
+}
+
 export async function loadGateAllowlist(
   workspace: TaskWorkspace,
-  request: Pick<PlannedTaskRequest, "gates">
+  request: Pick<PlannedTaskRequest, "gates">,
+  stderr: (value: string) => void
 ): Promise<Readonly<Record<string, GateCommandProfile>>> {
-  const stored = await readJsonFile(gateAllowlistPath(workspace), "gate allowlist");
-  if (stored === undefined) throw notConfigured("gate-allowlist", "No machine-local gate allowlist exists");
+  const path = gateAllowlistPath(workspace);
+  const stored = await readJsonFile(path, "gate allowlist");
+  if (stored === undefined) {
+    explainMissing(path, request, stderr);
+    throw notConfigured("gate-allowlist", "No machine-local gate allowlist exists");
+  }
   const row = objectRow(stored, "gate allowlist");
   if (row["schemaVersion"] !== 1) invalid("The gate allowlist schemaVersion must be 1");
   const commands = objectRow(row["commands"], "gate allowlist commands");
