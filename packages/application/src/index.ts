@@ -270,6 +270,11 @@ export {
   type ModelCatalog
 } from "./execution/model-price-table.ts";
 export {
+  absoluteExecutableOnPath,
+  type ExecutableFileSystem,
+  type ExecutablePathApi
+} from "./execution/executable-path.ts";
+export {
   ProbeEvidenceError,
   verifyProbeEvidence,
   type ProbeClassification,
