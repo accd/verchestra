@@ -66,6 +66,13 @@ permissions:
   actions: read
   contents: read
 
+# invariant (#568): a publication and a timestamp refresh sign in one queue,
+# never at the same time; a queued run waits and is never cancelled by a newer
+# one. The same group is declared in t76-publish-release.yml.
+concurrency:
+  group: t76-tuf-signing
+  cancel-in-progress: false
+
 defaults:
   run:
     shell: bash

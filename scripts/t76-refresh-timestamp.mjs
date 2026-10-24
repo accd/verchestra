@@ -125,8 +125,47 @@ const validateOptions = (value) => {
     ledgerPath: optionalPath(value.ledgerPath, "ledgerPath"),
     protectedEnvironment: protectedEnvironmentOf(value.protectedEnvironment),
     releaseAnchorPath: optionalPath(value.releaseAnchorPath, "releaseAnchorPath"),
-    timestampAnchorPath: optionalPath(value.timestampAnchorPath, "timestampAnchorPath")
+    timestampAnchorPath: optionalPath(value.timestampAnchorPath, "timestampAnchorPath"),
+    // why: tests only; the workflow reads the live endpoint itself.
+    fetch: value.fetch === undefined ? globalThis.fetch : functionOption(value.fetch, "fetch")
   });
+};
+
+const functionOption = (value, label) =>
+  typeof value === "function" ? value : fail("VES_T76_PUBLISH_INPUT_INVALID", `${label} must be a function`);
+
+const LIVE_READ_TIMEOUT_MS = 30_000;
+
+// invariant (#568): the ledger records a refresh only once its pull request
+// merges, so a run started before then could sign a version that is already
+// live. The timestamp the endpoint serves is the witness: it must be readable,
+// and the refresh signs only a version above it.
+const liveTimestampVersion = async (fetchLive, baseUrl, key) => {
+  let version;
+  try {
+    const response = await fetchLive(`${baseUrl}${key}/metadata/timestamp.json`, {
+      redirect: "error",
+      signal: AbortSignal.timeout(LIVE_READ_TIMEOUT_MS)
+    });
+    if (response.status !== 200) throw new Error(`the endpoint answered HTTP ${response.status}`);
+    version = JSON.parse(await response.text())?.signed?.version;
+  } catch (error) {
+    return fail("VES_T76_REFRESH_LIVE_UNREADABLE", `the live ${key} timestamp cannot be read`, error);
+  }
+  if (!Number.isSafeInteger(version) || version <= 0)
+    fail("VES_T76_REFRESH_LIVE_UNREADABLE", `the live ${key} timestamp names no version`);
+  return version;
+};
+
+const assertAboveLive = async (options, baseUrl) => {
+  for (const key of SUPPORTED_TARGET_KEYS) {
+    const live = await liveTimestampVersion(options.fetch, baseUrl, key);
+    if (live >= options.metadataVersion)
+      fail(
+        "VES_T76_REFRESH_LIVE_VERSION_COLLISION",
+        `metadataVersion ${options.metadataVersion} does not exceed the live ${key} timestamp version ${live}`
+      );
+  }
 };
 
 // invariant: the refresh process never sees the offline key. Its presence means
@@ -384,6 +423,7 @@ export async function refreshT76Timestamp(rawOptions) {
       "VES_T76_PUBLISH_METADATA_VERSION_NOT_MONOTONIC",
       `metadataVersion ${options.metadataVersion} does not exceed a timestamp or snapshot version already in the published input`
     );
+  await assertAboveLive(options, manifest.baseUrl);
   const refreshed = published.map((item) => ({
     key: item.key,
     refresh: refreshOneTarget(item, options, anchors, manifest)

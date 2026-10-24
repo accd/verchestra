@@ -9,7 +9,10 @@ import {
   NodeFilesystemDistributionSource,
   TufUpdateClient
 } from "../../packages/distribution/src/tuf-update-client.ts";
+import { canonicalize } from "@tufjs/canonical-json";
+
 import {
+  buildTufOnlineRoleRefresh,
   buildTufReleasePublication,
   writeTufReleasePublication
 } from "../../packages/distribution/src/tuf-publication.ts";
@@ -239,4 +242,68 @@ test("per-role versions (#382) leave every existing publication byte unchanged",
     "targets.json": "5e12ce66a8f02eda68476efde9201b1c7cf5a4cd015d1dd8104ff23f30bb8181",
     "timestamp.json": "9e470aba815026edce748c8e7334c687212ca76971cccb3f38d10a251a23c327"
   });
+});
+
+// invariant (#568, TR-02): a refresh signs online metadata only while every
+// offline component is unexpired, and never past the earliest of them. Each
+// case re-signs the published components with the delegation's own keys, so
+// only the expiry differs from a refresh that succeeds.
+const refreshBody = (bytes) => JSON.parse(Buffer.from(bytes).toString("utf8"));
+
+function resignedComponents(value, expires) {
+  const published = refreshBody(value.publication.metadata.get("1.components.json"));
+  const signed = { ...published.signed, expires };
+  const payload = Buffer.from(canonicalize(signed), "utf8");
+  const signatures = value.offline.map((signer) => ({
+    keyid: signer.keyId,
+    sig: Buffer.from(signer.sign(payload)).toString("hex")
+  }));
+  return Buffer.from(JSON.stringify({ signatures, signed }), "utf8");
+}
+
+function refreshOf(value, components, expires) {
+  return buildTufOnlineRoleRefresh({
+    schemaVersion: 1,
+    trustedRoot: value.publication.trustedRoot,
+    targets: value.publication.metadata.get("1.targets.json"),
+    components,
+    versions: { snapshot: 2, timestamp: 2 },
+    expires,
+    roles: {
+      timestamp: { threshold: value.online.length, signers: value.online },
+      snapshot: { threshold: value.online.length, signers: value.online }
+    }
+  });
+}
+
+test("a refresh refuses an expired component", () => {
+  const value = fixture();
+  const expires = { snapshot: value.expires.snapshot, timestamp: value.expires.timestamp };
+  assert.doesNotThrow(() => refreshOf(value, value.publication.metadata.get("1.components.json"), expires));
+  assert.throws(() => refreshOf(value, resignedComponents(value, "2020-01-01T00:00:00.000Z"), expires), {
+    code: "VES_TUF_PUBLICATION_REFRESH_UNVERIFIED",
+    message: /published components has expired/u
+  });
+});
+
+test("the refreshed timestamp expires no later than the earliest component", () => {
+  const value = fixture();
+  const earliest = "2031-01-01T00:00:00.000Z";
+  assert.ok(Date.parse(earliest) < Date.parse(value.expires.targets), "the components must expire first");
+  const components = resignedComponents(value, earliest);
+  const refresh = refreshOf(value, components, {
+    snapshot: "2030-06-01T00:00:00.000Z",
+    timestamp: "2030-06-01T00:00:00.000Z"
+  });
+  assert.equal(refresh.expires.targets, earliest);
+  assert.ok(Date.parse(refresh.expires.timestamp) <= Date.parse(earliest));
+  assert.equal(refreshBody(refresh.metadata.get("timestamp.json")).signed.expires, "2030-06-01T00:00:00.000Z");
+  // why: 2033 falls after the components (2031) and before the targets (2035);
+  // only the earliest expiry refuses it.
+  assert.throws(
+    () => refreshOf(value, components, { snapshot: "2033-01-01T00:00:00.000Z", timestamp: "2033-01-01T00:00:00.000Z" }),
+    {
+      code: "VES_TUF_PUBLICATION_EXPIRY_ORDER_INVALID"
+    }
+  );
 });
