@@ -190,14 +190,20 @@ for (const [label, setting] of [
   });
 
 test("the preflight never follows a link or reads a directory in the statement's place", async (t) => {
-  const elsewhere = await temporaryDirectory(t, "vestra-billing-target-");
-  await writeFile(join(elsewhere, "real.json"), JSON.stringify(confirmation()));
-  const linked = await preflight(t, undefined);
-  await symlink(join(elsewhere, "real.json"), join(linked.root, BILLING_FILE));
-  await assert.rejects(linked.run(), refused);
   const directory = await preflight(t, undefined);
   await mkdir(join(directory.root, BILLING_FILE));
   await assert.rejects(directory.run(), refused);
+  const elsewhere = await temporaryDirectory(t, "vestra-billing-target-");
+  await writeFile(join(elsewhere, "real.json"), JSON.stringify(confirmation()));
+  const linked = await preflight(t, undefined);
+  try {
+    await symlink(join(elsewhere, "real.json"), join(linked.root, BILLING_FILE));
+  } catch (error) {
+    // why: an unprivileged Windows account cannot create a link at all.
+    assert.equal(error.code, "EPERM");
+    return t.diagnostic("this account cannot create a file link");
+  }
+  await assert.rejects(linked.run(), refused);
 });
 
 // invariant: SSI-30. What `plan` shows of the preconditions: the method each
