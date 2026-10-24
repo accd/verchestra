@@ -12,13 +12,13 @@
       17
     ],
     "apps/vestra-cli/src/cli.ts :: Async function 'runCli'": [
-      14
+      12
     ],
     "apps/vestra-cli/src/cli.ts :: Function 'assertManifest'": [
       19
     ],
     "apps/vestra-cli/src/cli.ts :: Function 'parseCliArguments'": [
-      22
+      21
     ],
     "packages/agent-runtime/src/context/backend-serializers.ts :: Function 'exactText'": [
       35
