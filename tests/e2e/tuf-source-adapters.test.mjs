@@ -255,3 +255,79 @@ test("HTTPS metadata adapter rejects declared length above its bound before cons
   });
   await assert.rejects(source.readMetadata("timestamp.json", 1_000_000), { code: "VES_TUF_SOURCE_LIMIT" });
 });
+
+// invariant: a release source that stops answering ends the read with a named
+// code instead of leaving `npx verchestra` waiting on the runtime's own timers.
+const BASE = "https://releases.invalid/";
+
+function httpsSource(fetch, readTimeoutMs) {
+  return new HttpsDistributionSource({
+    mode: "online",
+    sourceId: "https:test",
+    metadataBaseUrl: `${BASE}metadata/`,
+    targetBaseUrl: `${BASE}targets/`,
+    fetch,
+    ...(readTimeoutMs === undefined ? {} : { readTimeoutMs })
+  });
+}
+
+// why: a real fetch rejects with the signal's reason once it aborts; this one
+// never answers otherwise.
+const neverAnswers = async (_input, init) =>
+  new Promise((_resolve, reject) => {
+    init.signal.addEventListener("abort", () => reject(init.signal.reason), { once: true });
+  });
+
+test("a stalled read fails with VES_TUF_SOURCE_TIMEOUT", async () => {
+  const source = httpsSource(neverAnswers, 50);
+  await assert.rejects(source.readMetadata("1.root.json", 1024), { code: "VES_TUF_SOURCE_TIMEOUT" });
+  await assert.rejects(source.readTarget("bundle.tar", 0, 1024), { code: "VES_TUF_SOURCE_TIMEOUT" });
+  const stalledBody = async () => new Response(new ReadableStream({ start: () => undefined }), { status: 200 });
+  await assert.rejects(httpsSource(stalledBody, 50).readMetadata("1.root.json", 1024), {
+    code: "VES_TUF_SOURCE_TIMEOUT"
+  });
+});
+
+test("reads carry a 30000 ms abort signal and succeed within it", async (t) => {
+  const bounds = [];
+  const original = AbortSignal.timeout.bind(AbortSignal);
+  t.mock.method(AbortSignal, "timeout", (milliseconds) => {
+    bounds.push(milliseconds);
+    return original(milliseconds);
+  });
+  const signals = [];
+  const metadata = Buffer.from('{"signed":{}}');
+  const target = Buffer.from("0123456789");
+  const source = httpsSource(async (input, init) => {
+    signals.push(init.signal);
+    if (new URL(input).pathname.startsWith("/metadata/"))
+      return new Response(metadata, { status: 200, headers: { "content-length": String(metadata.length) } });
+    return new Response(target.subarray(0, 4), {
+      status: 206,
+      headers: { "content-length": "4", "content-range": `bytes 0-3/${target.length}` }
+    });
+  });
+  assert.deepEqual(await source.readMetadata("1.root.json", 1024), metadata);
+  const range = await source.readTarget("bundle.tar", 0, 4);
+  assert.deepEqual(range.bytes, target.subarray(0, 4));
+  assert.equal(range.totalLength, target.length);
+  assert.deepEqual(bounds, [30_000, 30_000]);
+  assert.equal(signals.length, 2);
+  for (const signal of signals) assert.ok(signal instanceof AbortSignal && !signal.aborted);
+});
+
+test("an unbounded metadata body fails before it ends", async () => {
+  let pulls = 0;
+  const endless = async () =>
+    new Response(
+      new ReadableStream({
+        pull(controller) {
+          pulls += 1;
+          controller.enqueue(new Uint8Array(256));
+        }
+      }),
+      { status: 200 }
+    );
+  await assert.rejects(httpsSource(endless).readMetadata("1.root.json", 1024), { code: "VES_TUF_SOURCE_LIMIT" });
+  assert.ok(pulls < 64, `the body was read ${pulls} times past its 1024-byte bound`);
+});

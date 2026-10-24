@@ -449,7 +449,56 @@ export interface HttpsDistributionSourceOptions {
   readonly metadataBaseUrl: string;
   readonly targetBaseUrl: string;
   readonly fetch?: FetchLike;
+  // why: tests only; every published source keeps the default bound.
+  readonly readTimeoutMs?: number;
 }
+
+// invariant: one metadata read or one target range (1 MiB by default) either
+// completes inside this bound or ends with VES_TUF_SOURCE_TIMEOUT. 30 s for a
+// 1 MiB range still admits any link above about 35 KB/s.
+const SOURCE_READ_TIMEOUT_MS = 30_000;
+
+const timeBound = async <T>(signal: AbortSignal, work: () => Promise<T>): Promise<T> => {
+  try {
+    return await work();
+  } catch (error) {
+    if (signal.aborted && !(error instanceof TufUpdateError))
+      return fail("VES_TUF_SOURCE_TIMEOUT", "release source did not answer within its time bound", error);
+    throw error;
+  }
+};
+
+// invariant: a body is never held past `maximumBytes`: the read stops at the
+// first chunk beyond it, so an endless or oversized body fails while it is
+// still open instead of being buffered whole.
+const boundedBody = async (
+  response: Response,
+  maximumBytes: number,
+  signal: AbortSignal,
+  overflow: () => never
+): Promise<Buffer> => {
+  if (response.body === null) return Buffer.alloc(0);
+  const reader = response.body.getReader();
+  const aborted = new Promise<never>((_resolve, reject) => {
+    const abort = () => reject(signal.reason as Error);
+    if (signal.aborted) abort();
+    else signal.addEventListener("abort", abort, { once: true });
+  });
+  aborted.catch(() => undefined);
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    for (;;) {
+      const next = await Promise.race([reader.read(), aborted]);
+      if (next.done) return Buffer.concat(chunks, total);
+      total += next.value.byteLength;
+      if (total > maximumBytes) overflow();
+      chunks.push(next.value);
+    }
+  } finally {
+    reader.cancel().catch(() => undefined);
+  }
+};
 
 const verifiedBaseUrl = (value: string): URL => {
   const url = new URL(value);
@@ -471,12 +520,25 @@ const contentLength = (response: Response): number | undefined => {
   return value;
 };
 
+// invariant: a range answer starts at the requested offset, ends inside the
+// request, and lies inside the total length it declares.
+const exactRange = (header: string | null, offset: number, last: number) => {
+  const invalid = (): never => fail("VES_TUF_SOURCE_HTTP_INVALID", "target source returned an invalid content range");
+  const match = /^bytes (\d+)-(\d+)\/(\d+)$/u.exec(header ?? "");
+  if (match === null) return invalid();
+  const [start, end, totalLength] = [match[1], match[2], match[3]].map(Number) as [number, number, number];
+  if (![start, end, totalLength].every(Number.isSafeInteger)) invalid();
+  if (start !== offset || end < start || end > last || totalLength <= end) invalid();
+  return { start, end, totalLength };
+};
+
 export class HttpsDistributionSource implements DistributionSourcePort {
   readonly mode: "online" | "mirror";
   readonly sourceId: string;
   readonly #metadataBaseUrl: URL;
   readonly #targetBaseUrl: URL;
   readonly #fetch: FetchLike;
+  readonly #readTimeoutMs: number;
 
   constructor(options: HttpsDistributionSourceOptions) {
     validateSourceConfiguration(options.mode, options.sourceId);
@@ -485,53 +547,60 @@ export class HttpsDistributionSource implements DistributionSourcePort {
     this.#metadataBaseUrl = verifiedBaseUrl(options.metadataBaseUrl);
     this.#targetBaseUrl = verifiedBaseUrl(options.targetBaseUrl);
     this.#fetch = options.fetch ?? fetch;
+    const readTimeoutMs = options.readTimeoutMs ?? SOURCE_READ_TIMEOUT_MS;
+    if (!Number.isSafeInteger(readTimeoutMs) || readTimeoutMs <= 0)
+      fail("VES_TUF_SOURCE_INVALID", "distribution source read bound is invalid");
+    this.#readTimeoutMs = readTimeoutMs;
   }
 
   async readMetadata(path: string, maximumBytes: number): Promise<Uint8Array> {
     if (!Number.isSafeInteger(maximumBytes) || maximumBytes <= 0)
       fail("VES_TUF_SOURCE_READ_INVALID", "metadata bound is invalid");
-    const response = await this.#fetch(sourceUrl(this.#metadataBaseUrl, path), {
-      method: "GET",
-      redirect: "error"
+    const signal = AbortSignal.timeout(this.#readTimeoutMs);
+    return timeBound(signal, async () => {
+      const response = await this.#fetch(sourceUrl(this.#metadataBaseUrl, path), {
+        method: "GET",
+        redirect: "error",
+        signal
+      });
+      if (response.status !== 200) fail("VES_TUF_SOURCE_HTTP", "metadata source did not return HTTP 200");
+      const declared = contentLength(response);
+      if (declared !== undefined && declared > maximumBytes)
+        fail("VES_TUF_SOURCE_LIMIT", "remote metadata exceeds its verified bound");
+      const bytes = await boundedBody(response, maximumBytes, signal, () =>
+        fail("VES_TUF_SOURCE_LIMIT", "remote metadata length is invalid")
+      );
+      if (declared !== undefined && declared !== bytes.length)
+        fail("VES_TUF_SOURCE_LIMIT", "remote metadata length is invalid");
+      return bytes;
     });
-    if (response.status !== 200) fail("VES_TUF_SOURCE_HTTP", "metadata source did not return HTTP 200");
-    const declared = contentLength(response);
-    if (declared !== undefined && declared > maximumBytes)
-      fail("VES_TUF_SOURCE_LIMIT", "remote metadata exceeds its verified bound");
-    const bytes = Buffer.from(await response.arrayBuffer());
-    if (bytes.length > maximumBytes || (declared !== undefined && declared !== bytes.length))
-      fail("VES_TUF_SOURCE_LIMIT", "remote metadata length is invalid");
-    return bytes;
   }
 
   async readTarget(path: string, offset: number, maximumBytes: number): Promise<DistributionSourceRead> {
     if (!Number.isSafeInteger(offset) || offset < 0 || !Number.isSafeInteger(maximumBytes) || maximumBytes <= 0)
       fail("VES_TUF_SOURCE_READ_INVALID", "target range is invalid");
+    const signal = AbortSignal.timeout(this.#readTimeoutMs);
+    return timeBound(signal, () => this.#readRange(path, offset, maximumBytes, signal));
+  }
+
+  async #readRange(
+    path: string,
+    offset: number,
+    maximumBytes: number,
+    signal: AbortSignal
+  ): Promise<DistributionSourceRead> {
     const last = offset + maximumBytes - 1;
     const response = await this.#fetch(sourceUrl(this.#targetBaseUrl, path), {
       method: "GET",
       redirect: "error",
-      headers: { range: `bytes=${offset}-${last}` }
+      headers: { range: `bytes=${offset}-${last}` },
+      signal
     });
     if (response.status !== 206) fail("VES_TUF_SOURCE_HTTP", "target source must honor an exact byte range");
-    const match = /^bytes (\d+)-(\d+)\/(\d+)$/u.exec(response.headers.get("content-range") ?? "");
-    const start = Number(match?.[1]);
-    const end = Number(match?.[2]);
-    const totalLength = Number(match?.[3]);
-    if (
-      match === null ||
-      !Number.isSafeInteger(start) ||
-      !Number.isSafeInteger(end) ||
-      !Number.isSafeInteger(totalLength) ||
-      start !== offset ||
-      end < start ||
-      end > last ||
-      totalLength <= end
-    )
-      fail("VES_TUF_SOURCE_HTTP_INVALID", "target source returned an invalid content range");
-    const bytes = Buffer.from(await response.arrayBuffer());
-    if (bytes.length !== end - start + 1 || bytes.length > maximumBytes)
-      fail("VES_TUF_SOURCE_HTTP_INVALID", "target response bytes contradict its range");
+    const { start, end, totalLength } = exactRange(response.headers.get("content-range"), offset, last);
+    const contradicts = (): never => fail("VES_TUF_SOURCE_HTTP_INVALID", "target response bytes contradict its range");
+    const bytes = await boundedBody(response, maximumBytes, signal, contradicts);
+    if (bytes.length !== end - start + 1) contradicts();
     return { bytes, totalLength };
   }
 }

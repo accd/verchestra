@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
+import { fileURLToPath } from "node:url";
 
 import {
   machineLocalEnvironment,
@@ -83,5 +85,41 @@ test("the machine-local source factory refuses an absent host key and creates no
     else process.env["HOME"] = restoreHome;
     if (restoreProfile === undefined) delete process.env["USERPROFILE"];
     else process.env["USERPROFILE"] = restoreProfile;
+  }
+});
+
+// invariant: the published bins refuse an ambient Node below the engine the
+// package declares with one public line and the host-unsupported status, and
+// hand every other version to the bootstrap. The version is overridden in a
+// real process; this source tree holds no built bundle, so an admitted version
+// is observed failing to load it.
+const BIN_DIRECTORY = new URL("../../apps/vestra-launcher/bin/", import.meta.url);
+
+function runBin(bin, version) {
+  const override = `Object.defineProperty(process.versions, "node", { value: ${JSON.stringify(version)} });`;
+  return spawnSync(
+    process.execPath,
+    ["--import", `data:text/javascript,${encodeURIComponent(override)}`, fileURLToPath(new URL(bin, BIN_DIRECTORY))],
+    { encoding: "utf8", windowsHide: true }
+  );
+}
+
+test("the Node guard refuses below 24.14.0 with exit 64", () => {
+  for (const bin of ["vestra.mjs", "verchestra.mjs"]) {
+    for (const version of ["20.0.0", "22.12.0", "24.13.9"]) {
+      const result = runBin(bin, version);
+      assert.equal(result.status, 64, `${bin} ${version}: ${result.stderr}`);
+      assert.equal(result.stdout, "");
+      const lines = result.stderr.split("\n").filter((line) => line.length > 0);
+      assert.equal(lines.length, 1, result.stderr);
+      assert.match(lines[0], /^VES_VESTRA_HOST_UNSUPPORTED: /u);
+      assert.ok(lines[0].includes("24.14.0"), lines[0]);
+    }
+    for (const version of ["24.14.0", "24.15.1", "25.0.0"]) {
+      const result = runBin(bin, version);
+      assert.notEqual(result.status, 64, `${bin} ${version}`);
+      assert.doesNotMatch(result.stderr, /VES_VESTRA_HOST_UNSUPPORTED/u);
+      assert.match(result.stderr, /bootstrap\.js/u, `${bin} ${version} did not reach the bootstrap`);
+    }
   }
 });

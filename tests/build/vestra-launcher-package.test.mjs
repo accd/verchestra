@@ -175,3 +175,20 @@ test("the build refuses to overwrite an existing output tree", async () => {
     { code: "VES_VESTRA_BUILD_OUTPUT_EXISTS" }
   );
 });
+
+// invariant: an ambient Node below the declared engine is refused by the bin
+// itself, before the bundle is loaded, so a host that cannot parse the bundle
+// still gets the public line instead of a syntax error.
+test("the bin checks Node before importing the bootstrap", async () => {
+  const receipt = await sharedPackage();
+  const engines = JSON.parse(await readFile(join(receipt.outputDirectory, "package.json"), "utf8")).engines.node;
+  assert.equal(engines, ">=24.14.0");
+  for (const bin of ["vestra.mjs", "verchestra.mjs"]) {
+    const source = await readFile(join(receipt.outputDirectory, "bin", bin), "utf8");
+    assert.doesNotMatch(source, /^\s*import\s[^(]*["']\.\.\/lib\/bootstrap\.js["']/mu, bin);
+    const guard = source.indexOf("VES_VESTRA_HOST_UNSUPPORTED");
+    const load = source.indexOf('import("../lib/bootstrap.js")');
+    assert.ok(guard > 0 && load > guard, `${bin} must refuse an old Node before it loads the bootstrap`);
+    assert.match(source, /24\.14\.0/u, bin);
+  }
+});
