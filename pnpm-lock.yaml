@@ -24,8 +24,8 @@ importers:
   .:
     devDependencies:
       '@cedar-policy/cedar-wasm':
-        specifier: 4.12.0
-        version: 4.12.0
+        specifier: 4.14.0
+        version: 4.14.0
       '@earendil-works/pi-agent-core':
         specifier: 0.99.1
         version: 0.99.1(@aws-sdk/credential-provider-node@3.972.84)(@modelcontextprotocol/sdk@1.32.0(zod@4.6.7))(@smithy/signature-v4@5.7.4)(undici@8.12.3)(ws@8.21.3)(zod@4.6.7)
@@ -163,7 +163,7 @@ importers:
         version: 1.9.1
       '@strands-agents/sdk':
         specifier: 1.19.0
-        version: 1.19.0(@cedar-policy/cedar-wasm@4.12.0)(@google/genai@2.21.0(@modelcontextprotocol/sdk@1.32.0(zod@4.6.6)))(@modelcontextprotocol/sdk@1.32.0(zod@4.6.6))(@opentelemetry/api@1.9.1)(@opentelemetry/resources@2.10.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.10.0(@opentelemetry/api@1.9.1))(@smithy/types@4.19.0)(express@5.2.1)(zod@4.6.6)
+        version: 1.19.0(@cedar-policy/cedar-wasm@4.14.0)(@google/genai@2.21.0(@modelcontextprotocol/sdk@1.32.0(zod@4.6.6)))(@modelcontextprotocol/sdk@1.32.0(zod@4.6.6))(@opentelemetry/api@1.9.1)(@opentelemetry/resources@2.10.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.10.0(@opentelemetry/api@1.9.1))(@smithy/types@4.19.0)(express@5.2.1)(zod@4.6.6)
       '@verchestra/application':
         specifier: workspace:0.0.0
         version: link:../application
@@ -269,8 +269,8 @@ importers:
   packages/policy:
     dependencies:
       '@cedar-policy/cedar-wasm':
-        specifier: 4.12.0
-        version: 4.12.0
+        specifier: 4.14.0
+        version: 4.14.0
       '@verchestra/domain':
         specifier: workspace:0.0.0
         version: link:../domain
@@ -696,8 +696,8 @@ packages:
     resolution: {integrity: sha512-CuNiSqg7+e1cO/GjffyMOm5Tt2jUF9CWHHnvQ/UkqvtkGfHdgwEC0wpmq7fkN3gxwpRnrAN0WzO3vREKmNolMQ==}
     engines: {node: '>=18'}
 
-  '@cedar-policy/cedar-wasm@4.12.0':
-    resolution: {integrity: sha512-tCSj92hh4fnmas4ojO4tjx8wAAW3mKVgQ7M388NsSpXp64FVeYY6xwhKtJRaaYGK0qLiN2jnq8/SNIU2r5fdPw==}
+  '@cedar-policy/cedar-wasm@4.14.0':
+    resolution: {integrity: sha512-TPyz3zMl5r7W5iSHq51IgG+NTILGoXB0VPrEcXnzCEpPUqL/7b+AtMPVVHB/UoJWuXA8YORjLuWxKHUW33ePAA==}
 
   '@chevrotain/cst-dts-gen@11.1.2':
     resolution: {integrity: sha512-XTsjvDVB5nDZBQB8o0o/0ozNelQtn2KrUVteIHSlPd2VAV2utEb6JzyCJaJ8tGxACR4RiBNWy5uYUHX2eji88Q==}
@@ -5597,7 +5597,7 @@ snapshots:
     dependencies:
       fontkitten: 1.0.3
 
-  '@cedar-policy/cedar-wasm@4.12.0': {}
+  '@cedar-policy/cedar-wasm@4.14.0': {}
 
   '@chevrotain/cst-dts-gen@11.1.2':
     dependencies:
@@ -6510,7 +6510,7 @@ snapshots:
 
   '@stablelib/base64@1.0.1': {}
 
-  '@strands-agents/sdk@1.19.0(@cedar-policy/cedar-wasm@4.12.0)(@google/genai@2.21.0(@modelcontextprotocol/sdk@1.32.0(zod@4.6.6)))(@modelcontextprotocol/sdk@1.32.0(zod@4.6.6))(@opentelemetry/api@1.9.1)(@opentelemetry/resources@2.10.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.10.0(@opentelemetry/api@1.9.1))(@smithy/types@4.19.0)(express@5.2.1)(zod@4.6.6)':
+  '@strands-agents/sdk@1.19.0(@cedar-policy/cedar-wasm@4.14.0)(@google/genai@2.21.0(@modelcontextprotocol/sdk@1.32.0(zod@4.6.6)))(@modelcontextprotocol/sdk@1.32.0(zod@4.6.6))(@opentelemetry/api@1.9.1)(@opentelemetry/resources@2.10.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.10.0(@opentelemetry/api@1.9.1))(@smithy/types@4.19.0)(express@5.2.1)(zod@4.6.6)':
     dependencies:
       '@aws-sdk/client-bedrock-runtime': 3.1146.0
       '@modelcontextprotocol/sdk': 1.32.0(zod@4.6.6)
@@ -6521,7 +6521,7 @@ snapshots:
       yaml: 2.9.1
       zod: 4.6.6
     optionalDependencies:
-      '@cedar-policy/cedar-wasm': 4.12.0
+      '@cedar-policy/cedar-wasm': 4.14.0
       '@google/genai': 2.21.0(@modelcontextprotocol/sdk@1.32.0(zod@4.6.6))
       '@opentelemetry/resources': 2.10.0(@opentelemetry/api@1.9.1)
       '@opentelemetry/sdk-trace-base': 2.10.0(@opentelemetry/api@1.9.1)
