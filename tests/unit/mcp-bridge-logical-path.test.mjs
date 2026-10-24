@@ -37,3 +37,8 @@ test("long separator runs are validated in bounded time", () => {
   for (const [value, expected] of adversarial) assert.deepEqual(outcome(value), expected);
   assert.ok(performance.now() - started < 1_000, "logical-path validation must stay linear");
 });
+
+test("a trailing-dot alias of .git is refused as Git metadata on every host", () => {
+  for (const value of [".git.", ".git./config", "src/.GIT../x"])
+    assert.deepEqual(outcome(value), { code: "VES_BRIDGE_PATH_PROTECTED" }, value);
+});

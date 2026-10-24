@@ -13,7 +13,7 @@ import { join } from "node:path";
 import { afterEach, test } from "node:test";
 
 import { NodeGateProcessRunner } from "../../packages/platform-node/src/index.ts";
-import { gitEnvironment, runGit, runGitBytes } from "../../packages/platform-node/src/task-worktree.ts";
+import { gitArguments, gitEnvironment, runGit, runGitBytes } from "../../packages/platform-node/src/task-worktree.ts";
 import {
   OBJECT_FORMATS,
   cleanupObjectFormatRepositories,
@@ -273,3 +273,15 @@ for (const [source, prepare] of Object.entries(IDENTITY_SOURCES)) {
     assert.equal(git(fixture.repositoryRoot, "show", "-s", "--format=%cn <%ce>", commitId), expected);
   });
 }
+
+test("every task-path git command disables hooks and fsmonitor", () => {
+  for (const platform of ["linux", "darwin", "win32"]) {
+    const args = gitArguments(["commit", "-m", "subject"], platform);
+    const settings = [];
+    for (let index = 0; index + 1 < args.length && args[index] === "-c"; index += 2) settings.push(args[index + 1]);
+    assert.ok(settings.includes("core.hooksPath=/dev/null"), `${platform}: ${args.join(" ")}`);
+    assert.ok(settings.includes("core.fsmonitor=false"), `${platform}: ${args.join(" ")}`);
+    assert.equal(settings.includes("core.longpaths=true"), platform === "win32", platform);
+    assert.deepEqual(args.slice(settings.length * 2), ["commit", "-m", "subject"], platform);
+  }
+});

@@ -66,9 +66,11 @@ test("the launcher adapters never open a shell and never build a command string"
   }
   assert.equal(/runBoundedChild\(\{/u.test(adapterSource), true);
   assert.equal(/terminateProcessGroup\(child\.pid, run\.incomplete\)/u.test(boundedRunSource), true);
-  assert.equal([...terminatorSource.matchAll(/"taskkill"/gu)].length, 1);
+  // why: the fixed executable is the System32 taskkill, named once by its
+  // absolute path, and the argument array stays a literal.
+  assert.equal([...terminatorSource.matchAll(/\\\\System32\\\\taskkill\.exe/gu)].length, 1);
   assert.equal(
-    /execFileAsync\(\s*"taskkill",\s*\["\/pid", String\(pid\), "\/T", "\/F"\]/u.test(terminatorSource),
+    /execFileAsync\(\s*taskkillExecutable\(\),\s*\["\/pid", String\(pid\), "\/T", "\/F"\]/u.test(terminatorSource),
     true
   );
 });

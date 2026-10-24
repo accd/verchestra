@@ -17,6 +17,10 @@
 
 export { ProtectedPathBroker, type ProtectedPathHandle } from "./protected-path.ts";
 
+// Locating git reads PATH and stats candidate files; it writes nothing and
+// starts nothing, so the doctor's git probe can start git by absolute path.
+export { resolveGitExecutable } from "./git-executable.ts";
+
 // The compiled-in migration registry is frozen data, not a writer: the sealed
 // launcher's `--activation-health` migration observation projects it, and it
 // must be importable without loading node:sqlite (see runtime-migrations.ts

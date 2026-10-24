@@ -11,7 +11,9 @@ import { fileURLToPath } from "node:url";
 const repositoryRoot = fileURLToPath(new URL("../../", import.meta.url));
 const OWNER = "packages/platform-node/src/process-tree-terminator.ts";
 const GROUP_SIGNAL = /process\.kill\([^)]*-\s*pid\b/u;
-const WINDOWS_TREE_KILL = /["']taskkill["']/u;
+// why: taskkill is named by its System32 path, never by a bare name
+// (tests/architecture/absolute-child-executables.test.mjs); any spelling in code counts.
+const WINDOWS_TREE_KILL = /\btaskkill(?:\.exe)?\b/u;
 
 // why: a comment may name a signal to explain a decision; only code counts.
 const code = (source) =>

@@ -34,6 +34,7 @@ import {
   ProtectedPathBroker,
   type SecretAdapter,
   inspectRuntimeDatabase,
+  resolveGitExecutable,
   secretPresence
 } from "@verchestra/platform-node/readonly";
 import { type PolicyBundleCrypto, verifyPolicyBundle } from "@verchestra/policy/readonly";
@@ -156,7 +157,13 @@ function nativeAssetProbe(installRoot: string | undefined): DoctorObservation {
 }
 
 function gitProbe(): DoctorObservation {
-  const result = spawnSync("git", ["--version"], { encoding: "utf8", timeout: 5000 });
+  let git: string;
+  try {
+    git = resolveGitExecutable();
+  } catch {
+    return absent;
+  }
+  const result = spawnSync(git, ["--version"], { encoding: "utf8", timeout: 5000 });
   if (result.error || result.status !== 0 || typeof result.stdout !== "string") return absent;
   return present(/git version/u.test(result.stdout));
 }

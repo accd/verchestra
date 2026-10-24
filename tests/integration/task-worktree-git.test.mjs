@@ -1,8 +1,11 @@
 // invariant: the one git runner and the ref and registration readers of the
 // task worktree module, against real repositories in both object formats.
 import assert from "node:assert/strict";
+import { mkdir, rm } from "node:fs/promises";
+import { join } from "node:path";
 import { afterEach, test } from "node:test";
 
+import { NodeGitWorktreeAdapter } from "../../packages/platform-node/src/index.ts";
 import {
   refTarget,
   registeredWorktrees,
@@ -16,6 +19,7 @@ import {
   git,
   objectFormatRepository
 } from "../helpers/git-object-format-fixture.mjs";
+import { ranHooks, versionHooks } from "../helpers/versioned-hooks-fixture.mjs";
 
 afterEach(cleanupObjectFormatRepositories);
 
@@ -69,4 +73,31 @@ test("the runner passes each argument as one argument and never through a shell"
   const hostile = "HEAD; echo injected";
   await assert.rejects(runGit(repositoryRoot, ["rev-parse", "--verify", "--end-of-options", hostile]));
   assert.equal((await runGit(repositoryRoot, ["rev-parse", "--verify", "HEAD"])).stdout.trim(), baseCommit);
+});
+
+// invariant: a repository's own hooks never run on the task path. `--no-verify`
+// skips pre-commit and commit-msg only, and a versioned `core.hooksPath` would
+// otherwise run model-written hooks during checkout, commit and removal.
+test("a versioned hooks path runs no hook on worktree create and remove", async () => {
+  const { root, repositoryRoot, worktreesRoot } = await objectFormatRepository(OBJECT_FORMATS[0]);
+  const sentinels = join(root, "sentinels");
+  const baseCommit = await versionHooks(repositoryRoot, sentinels, git);
+  // why: the control proves the versioned hooks are live for a plain git
+  // command, so the empty sentinel set below is the runner's doing.
+  git(repositoryRoot, "commit", "--allow-empty", "--quiet", "-m", "control");
+  assert.deepEqual(await ranHooks(sentinels), ["post-commit", "reference-transaction"]);
+  await rm(sentinels, { recursive: true, force: true });
+  await mkdir(sentinels);
+  const worktrees = new NodeGitWorktreeAdapter({ repositoryRoot, worktreesRoot });
+  const handle = await worktrees.create({
+    workspaceId: "workspace_hooks",
+    runId: "run_hooks",
+    taskId: "T1.1",
+    sourceStateDigest: `sha256:${"2".repeat(64)}`,
+    sourceRevision: baseCommit,
+    changeScope: ["src"],
+    protectedPaths: [".git"]
+  });
+  await worktrees.cleanup(handle);
+  assert.deepEqual(await ranHooks(sentinels), []);
 });

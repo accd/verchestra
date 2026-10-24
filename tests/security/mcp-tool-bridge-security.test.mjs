@@ -139,3 +139,17 @@ test("oversized write content is refused before it reaches the payload store", a
   assert.equal(invoked.length, 0);
   await relay.close();
 });
+
+test("a trailing-dot alias of .git is not readable", async (t) => {
+  if (WIN32_HOST) return windowsMediationPath(t);
+  const { worktree } = await bridgeWorktree();
+  const { controller } = await openController(worktree);
+  const relay = startRelay(controller.environment);
+  await relay.initialize();
+  for (const path of [".git./config", ".git."]) {
+    const result = await relay.call("read_file", { path });
+    assert.equal(result.isError, true, path);
+    assert.equal(text(result), "denied: VES_BRIDGE_PATH_PROTECTED", path);
+  }
+  await relay.close();
+});

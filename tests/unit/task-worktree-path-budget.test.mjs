@@ -46,8 +46,10 @@ test("a worktree root fits when the root and one 32-digit handle ID fit", () => 
   assert.equal(worktreeRootFits(directory(183), "darwin"), true);
 });
 
-test("Git runs with core.longpaths on Windows and with its arguments unchanged elsewhere", () => {
+test("Git runs with core.longpaths on Windows only and with hooks and fsmonitor off everywhere", () => {
   const args = ["worktree", "add", "--detach", "--", "C:\\w", "a".repeat(40)];
-  assert.deepEqual(gitArguments(args, "win32"), ["-c", "core.longpaths=true", ...args]);
-  for (const platform of ["darwin", "linux"]) assert.deepEqual(gitArguments(args, platform), args, platform);
+  const everywhere = ["-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false"];
+  assert.deepEqual(gitArguments(args, "win32"), [...everywhere, "-c", "core.longpaths=true", ...args]);
+  for (const platform of ["darwin", "linux"])
+    assert.deepEqual(gitArguments(args, platform), [...everywhere, ...args], platform);
 });

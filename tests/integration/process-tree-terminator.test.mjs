@@ -3,7 +3,7 @@ import { execFileSync, spawn } from "node:child_process";
 import { once } from "node:events";
 import { test } from "node:test";
 
-import { terminateProcessGroup } from "../../packages/platform-node/src/process-tree-terminator.ts";
+import { taskkillExecutable, terminateProcessGroup } from "../../packages/platform-node/src/process-tree-terminator.ts";
 
 const INCOMPLETE = () => assert.fail("the terminator reported a live group");
 
@@ -71,4 +71,15 @@ test("a live process group is killed and verified gone", async () => {
   await terminateProcessGroup(leader.pid, INCOMPLETE);
   await exited;
   if (process.platform !== "win32") assert.deepEqual(liveMembers(leader.pid), []);
+});
+
+test("taskkill resolves under SystemRoot", () => {
+  const saved = process.env["SystemRoot"];
+  try {
+    process.env["SystemRoot"] = "D:\\Windows";
+    assert.equal(taskkillExecutable(), "D:\\Windows\\System32\\taskkill.exe");
+  } finally {
+    if (saved === undefined) delete process.env["SystemRoot"];
+    else process.env["SystemRoot"] = saved;
+  }
 });
