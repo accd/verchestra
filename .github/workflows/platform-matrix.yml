@@ -8,8 +8,9 @@ name: Platform qualification matrix
 # arm64) and uploads one evidence file per leg binding platform, architecture,
 # runtime, candidate revision, and its own digest (acceptance criterion 3).
 #
-# It is workflow_dispatch only, never push or pull_request: the fleet is the
-# owner's on-demand release-candidate check, not a per-commit tax. Standard
+# It runs on dispatch and nightly on main, never on push or pull_request: the
+# fleet is the owner's release-candidate check and a nightly regression signal
+# for macOS and Windows, not a per-commit tax. Standard
 # GitHub-hosted runners — including macOS and ubuntu-*-arm — are free minutes on
 # this public repository, so the fleet costs no billed time.
 #
@@ -37,6 +38,11 @@ on:
           - build
           - security
           - release
+  # why: a macOS or Windows regression surfaces overnight without a dispatch.
+  # A schedule carries no inputs, so the gate falls back to full and the empty
+  # revision selects this workflow's revision, which a schedule takes from main.
+  schedule:
+    - cron: "23 3 * * *"
 
 permissions:
   contents: read
@@ -92,7 +98,7 @@ jobs:
         id: candidate
         env:
           REQUESTED_REVISION: ${{ inputs.revision }}
-          REQUESTED_GATE: ${{ inputs.gate }}
+          REQUESTED_GATE: ${{ inputs.gate || 'full' }}
         run: |
           set -euo pipefail
           revision="${REQUESTED_REVISION:-$GITHUB_SHA}"
@@ -273,7 +279,7 @@ jobs:
           # tests/agent-readiness/platform-matrix-workflow.test.mjs, so a leg can
           # never be added to the fleet without the index expecting it.
           EXPECTED_LEGS: win32-x64,darwin-x64,darwin-arm64,linux-x64,linux-arm64
-          REQUESTED_GATE: ${{ inputs.gate }}
+          REQUESTED_GATE: ${{ inputs.gate || 'full' }}
           RUN_ID: ${{ github.run_id }}
         run: |
           node --input-type=module <<'NODE'

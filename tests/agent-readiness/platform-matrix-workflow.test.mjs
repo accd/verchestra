@@ -46,7 +46,7 @@ test("a failing platform leg surfaces rather than cancelling the fleet", () => {
   assert.match(workflow, /fail-fast: false/u);
 });
 
-test("the fleet runs on demand only, never as a per-commit tax", () => {
+test("the fleet runs on demand and nightly, never as a per-commit tax", () => {
   assert.match(workflow, /^on:\r?\n {2}workflow_dispatch:/mu);
   assert.doesNotMatch(workflow, /^ {2}push:/mu);
   assert.doesNotMatch(workflow, /^ {2}pull_request:/mu);
@@ -183,4 +183,17 @@ test("the index reports absent and self-inconsistent legs instead of dropping th
   // evidence about the same thing.
   assert.match(workflow, /legs report more than one candidate revision/u);
   assert.match(workflow, /complete: legs\.every\(\(leg\) => leg\.status === "qualified"\)/u);
+});
+
+// invariant: the fleet also runs nightly on main, so a macOS or Windows
+// regression surfaces without anyone dispatching it. A schedule carries no
+// inputs: the gate falls back to full, and the empty revision selects the
+// workflow's own revision, which a schedule takes from main.
+test("the fleet runs nightly on main with the full gate", () => {
+  assert.match(workflow, /^on:\r?\n {2}workflow_dispatch:/mu);
+  assert.match(workflow, /^ {2}schedule:\r?\n {4}- cron: "\d{1,2} \d{1,2} \* \* \*"\r?$/mu);
+  const gates = [...workflow.matchAll(/REQUESTED_GATE: (.+)$/gmu)].map((match) => match[1].trim());
+  assert.ok(gates.length >= 2, "the gate is read in the leg and in the evidence index");
+  for (const gate of gates) assert.equal(gate, "${{ inputs.gate || 'full' }}");
+  assert.match(workflow, /REQUESTED_REVISION: \$\{\{ inputs\.revision \}\}/u);
 });
