@@ -8,6 +8,8 @@ import type { InstalledCliManifest } from "./cli.ts";
 // "undefined" and dev mode is untouched; in a sealed bundle it is a string
 // literal and the filesystem is never consulted.
 declare const __VERCHESTRA_SEALED_SEMANTIC_VERSION__: string;
+// The same builder compiles in the 40-hex revision the candidate is sealed at.
+declare const __VERCHESTRA_SEALED_REVISION__: string;
 
 // The single source of truth for "is this module running inside a T76 sealed
 // bundle rather than a repository checkout". Only the builder's esbuild
@@ -32,15 +34,20 @@ export function isSealedRelease(): boolean {
 export function resolveReleaseIdentity(root = new URL("../../../", import.meta.url)): {
   semanticVersion: string;
   releaseDigest: string | null;
+  revision: string | null;
 } {
   if (isSealedRelease()) {
-    return { semanticVersion: __VERCHESTRA_SEALED_SEMANTIC_VERSION__, releaseDigest: null };
+    return {
+      semanticVersion: __VERCHESTRA_SEALED_SEMANTIC_VERSION__,
+      releaseDigest: null,
+      revision: typeof __VERCHESTRA_SEALED_REVISION__ === "string" ? __VERCHESTRA_SEALED_REVISION__ : null
+    };
   }
   const manifest = JSON.parse(readFileSync(new URL("package.json", root), "utf8")) as { version?: unknown };
   if (typeof manifest.version !== "string" || manifest.version.length === 0) {
     throw new Error("repository package.json does not declare a version");
   }
-  return { semanticVersion: manifest.version, releaseDigest: null };
+  return { semanticVersion: manifest.version, releaseDigest: null, revision: null };
 }
 
 const identity = resolveReleaseIdentity();
@@ -49,6 +56,7 @@ export const installedReleaseManifest: InstalledCliManifest = Object.freeze({
   schemaVersion: 1,
   semanticVersion: identity.semanticVersion,
   releaseDigest: identity.releaseDigest,
+  revision: identity.revision,
   minimumCliVersion: identity.semanticVersion,
   commands: Object.freeze([
     Object.freeze({

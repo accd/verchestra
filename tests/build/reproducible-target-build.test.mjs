@@ -110,6 +110,7 @@ test("the real target builder binds exact revision, host assets, and all supply-
       repository: replica.repository,
       componentId: "launcher:vestra",
       semanticVersion: "0.0.0-qualification",
+      revision: replica.revision,
       nodeVersion: target.nodeVersion
     });
     const launcher = result.bundle.components.find((component) => component.componentId === "launcher:vestra");
@@ -141,6 +142,7 @@ test("the real target builder binds exact revision, host assets, and all supply-
       repository: replica.repository,
       componentId: "self-test:full-crash-child",
       semanticVersion: "0.0.0-qualification",
+      revision: replica.revision,
       nodeVersion: target.nodeVersion
     });
     assert.equal(crashChild.contentDigest, `sha256:${createHash("sha256").update(bundledChild).digest("hex")}`);

@@ -118,6 +118,7 @@ test("every sealed artifact of this tree bundles and imports node: built-ins onl
       repository: ROOT,
       componentId,
       semanticVersion: "9.9.9-sealed",
+      revision: "a".repeat(40),
       nodeVersion: process.version.slice(1)
     });
     assert.ok(bytes.byteLength > 0);
@@ -151,6 +152,7 @@ test("the sealed bundler refuses an entry that imports outside node:, in every i
           repository,
           componentId: "launcher:vestra",
           semanticVersion: "9.9.9-sealed",
+          revision: "a".repeat(40),
           nodeVersion: process.version.slice(1)
         }),
         refused(new RegExp(`launcher:vestra imports fs \\(${kind}\\) at run time`, "u")),

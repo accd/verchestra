@@ -55,6 +55,8 @@ import { systemGit } from "../helpers/system-git.mjs";
 import { temporaryDirectory } from "../helpers/temporary-directory.mjs";
 
 const SEALED_VERSION = "9.9.9-sealed";
+// why: any 40-hex revision; the bundle reports the one it was sealed at.
+const SEALED_REVISION = "0123456789abcdef0123456789abcdef01234567";
 const NODE_VERSION = process.version.slice(1);
 // Same platform naming as tests/helpers/activation-health-fixture.mjs: on
 // Windows an extensionless executable cannot be spawned (the platform appends
@@ -107,6 +109,7 @@ before(async () => {
       repository: replica.repository,
       componentId,
       semanticVersion: SEALED_VERSION,
+      revision: SEALED_REVISION,
       nodeVersion: NODE_VERSION
     });
     sealedBins[componentId] = sealed.bytes;
@@ -460,6 +463,7 @@ test("sealed launcher bundling is deterministic", async () => {
       repository: replica.repository,
       componentId,
       semanticVersion: SEALED_VERSION,
+      revision: SEALED_REVISION,
       nodeVersion: NODE_VERSION
     });
     assert.deepEqual(again, sealedBins[componentId], `${componentId} must rebuild byte-identically`);
@@ -600,4 +604,26 @@ test("vestra task is reachable from the sealed bundle and its bridge relay is st
   assert.match(surface.bindingDigest, /^sha256:[a-f0-9]{64}$/u);
   assert.equal(existsSync(join(state, "tasks")), false, "a dry run writes no task state");
   assert.equal(existsSync(join(state, "runtime")), false, "a dry run opens no runtime store");
+});
+
+// invariant: a sealed build names the revision it was sealed at, so a bug
+// report can name the exact build, and never claims to be a source build.
+test("a sealed build names its revision in --version", async (t) => {
+  const releaseRoot = await stagedLayout(t, sealedBins);
+  for (const launcher of ["vestra.mjs", "verchestra.mjs"]) {
+    const version = spawnSealed(releaseRoot, launcher, ["--version"]);
+    assert.equal(version.status, 0, version.stderr);
+    assert.equal(version.stdout, `Verchestra ${SEALED_VERSION} (revision ${SEALED_REVISION.slice(0, 12)})\n`);
+    assert.doesNotMatch(version.stdout, /source build/u);
+  }
+});
+
+test("a sealed build reports its revision in version JSON", async (t) => {
+  const releaseRoot = await stagedLayout(t, sealedBins);
+  const version = spawnSealed(releaseRoot, "vestra.mjs", ["--version", "--output", "json"]);
+  assert.equal(version.status, 0, version.stderr);
+  const output = JSON.parse(version.stdout);
+  assert.equal(output.data.revision, SEALED_REVISION);
+  assert.match(output.data.revision, /^[0-9a-f]{40}$/u);
+  assert.equal(output.data.semanticVersion, SEALED_VERSION);
 });
