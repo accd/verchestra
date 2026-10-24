@@ -256,3 +256,21 @@ test("the task-path grammar and LogicalPath are different rules, neither contain
     assert.equal(logicalPath(value), true, value);
   }
 });
+
+// invariant: Win32 drops a segment's trailing dots when it opens a path, so
+// `.git.` names `.git` there. Comparison answers for the worse, as it does for
+// letter case; admission (the schema grammar) is unchanged.
+test("a trailing-dot alias of .git is Git metadata", () => {
+  for (const path of [".git.", ".git..", "src/.git.", ".GIT.", "src/.git./config"])
+    assert.equal(namesGitMetadata(path), true, path);
+  for (const path of [".github", "git.", ".gitignore", "src/git.", ".github."])
+    assert.equal(namesGitMetadata(path), false, path);
+});
+
+test("a trailing-dot alias of a protected path is protected", () => {
+  assert.equal(isProtectedTaskPath("config.json.", ["config.json"]), true);
+  assert.equal(isProtectedTaskPath("secrets./key", ["secrets"]), true);
+  assert.equal(isProtectedTaskPath("secrets.../key", ["secrets"]), true);
+  assert.equal(isProtectedTaskPath("config.jsonx", ["config.json"]), false);
+  assert.equal(isProtectedTaskPath("src/config.json.", ["config.json"]), false);
+});

@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { afterEach, test } from "node:test";
 
 import { NodeWorktreeToolAdapter } from "../../packages/platform-node/src/index.ts";
-import { cleanupWorktreeTools, worktreeToolFixture } from "../helpers/worktree-tool-fixture.mjs";
+import { cleanupWorktreeTools, git, worktreeToolFixture } from "../helpers/worktree-tool-fixture.mjs";
 
 const outsideRoots = [];
 afterEach(async () => {
@@ -140,4 +140,30 @@ test("a handle for an unregistered worktree performs no effect", async () => {
   await assert.rejects(adapter.invoke(request({ worktreeRef: `worktree:${"e".repeat(32)}:${baseCommit}` })), {
     code: "VES_GIT_WORKTREE_NOT_FOUND"
   });
+});
+
+test("a trailing-dot alias of .git is refused", async () => {
+  const { adapter, request, worktreePath } = await worktreeToolFixture();
+  for (const [index, target] of [".git.", "src/.git./config"].entries()) {
+    await assert.rejects(
+      adapter.invoke(request({ requestId: `bridge:request:dot-${index}`, targetPaths: [target] })),
+      { code: "VES_TOOL_PROTECTED_PATH" },
+      target
+    );
+  }
+  assert.equal(git(worktreePath, "status", "--porcelain", "--ignored"), "");
+});
+
+test("a trailing-dot alias of a protected path is refused", async () => {
+  const { adapter, request, worktreePath } = await worktreeToolFixture({
+    adapter: { protectedRoots: ["config.json", "secrets"] }
+  });
+  for (const [index, target] of ["config.json.", "secrets./key"].entries()) {
+    await assert.rejects(
+      adapter.invoke(request({ requestId: `bridge:request:alias-${index}`, targetPaths: [target] })),
+      { code: "VES_TOOL_PROTECTED_PATH" },
+      target
+    );
+  }
+  assert.equal(git(worktreePath, "status", "--porcelain", "--ignored"), "");
 });

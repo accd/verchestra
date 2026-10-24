@@ -34,8 +34,20 @@ export function taskPathSegments(path: string): readonly string[] {
   return path.split("/").filter((segment) => segment !== "" && segment !== ".");
 }
 
+// invariant: Win32 drops the trailing dots of a segment when it opens a path,
+// so `.git.` and `config.json.` name `.git` and `config.json` there; on POSIX
+// they name other files. Like letter case, comparison folds them and answers
+// for the worse. A segment of dots only folds to nothing, as `.` does.
+function withoutTrailingDots(segment: string): string {
+  let end = segment.length;
+  while (end > 0 && segment[end - 1] === ".") end -= 1;
+  return segment.slice(0, end);
+}
+
 function folded(path: string): readonly string[] {
-  return taskPathSegments(path.toLowerCase());
+  return taskPathSegments(path.toLowerCase())
+    .map(withoutTrailingDots)
+    .filter((segment) => segment !== "");
 }
 
 function isPrefix(prefix: readonly string[], path: readonly string[]): boolean {

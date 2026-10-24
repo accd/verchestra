@@ -7,6 +7,8 @@
 import { execFileSync } from "node:child_process";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
+
+import { resolveGitExecutable } from "./git-executable.ts";
 import type { RootFacts, WorkspaceShape } from "@verchestra/application";
 import { normalizeFactPath } from "./disposable-roots.ts";
 import type { BoundedFixtureFactory } from "./sentinels-and-fixtures.ts";
@@ -38,7 +40,12 @@ function hermeticGitEnv(homeDirectory: string): NodeJS.ProcessEnv {
 }
 
 function git(cwd: string, env: NodeJS.ProcessEnv, ...args: readonly string[]): string {
-  return execFileSync("git", args, { cwd, env, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+  return execFileSync(resolveGitExecutable(), args, {
+    cwd,
+    env,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"]
+  }).trim();
 }
 
 export class GitFixtureFactory {

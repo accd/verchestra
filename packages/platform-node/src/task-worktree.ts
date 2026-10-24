@@ -3,6 +3,7 @@ import { lstat, mkdir, realpath } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { promisify } from "node:util";
 
+import { resolveGitExecutable } from "./git-executable.ts";
 import { safeEnvironment } from "./safe-environment.ts";
 
 const execFileAsync = promisify(execFile);
@@ -157,8 +158,20 @@ function spawnOptions(cwd: string, maxBuffer: number) {
 // paths exist only inside Verchestra's worktrees and scratch checkouts; Node
 // reaches them through namespaced paths, and a gate whose tool cannot open one
 // fails as a gate.
+//
+// hazard: `--no-verify` skips pre-commit and commit-msg only. A repository
+// whose core.hooksPath names versioned content (husky's `.husky`) would run
+// model-written post-checkout, post-commit and reference-transaction hooks
+// during worktree creation, the gate commit and removal, outside the gate
+// allowlist. Every task-path command points core.hooksPath where no hook can
+// exist and turns the filesystem monitor off, so git runs no program of the
+// repository's.
+const TASK_GIT_SETTINGS = Object.freeze(["-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false"]);
+
 export function gitArguments(args: readonly string[], platform: string = process.platform): readonly string[] {
-  return platform === "win32" ? ["-c", "core.longpaths=true", ...args] : [...args];
+  return platform === "win32"
+    ? [...TASK_GIT_SETTINGS, "-c", "core.longpaths=true", ...args]
+    : [...TASK_GIT_SETTINGS, ...args];
 }
 
 // invariant: true only when Git can add `directory` as a worktree on this
@@ -182,7 +195,7 @@ export async function runGit(
   args: readonly string[],
   maximumOutputBytes = MAXIMUM_GIT_OUTPUT_BYTES
 ): Promise<GitOutput> {
-  const { stdout, stderr } = await execFileAsync("git", [...gitArguments(args)], {
+  const { stdout, stderr } = await execFileAsync(resolveGitExecutable(), [...gitArguments(args)], {
     ...spawnOptions(cwd, maximumOutputBytes),
     encoding: "utf8"
   });
@@ -191,7 +204,7 @@ export async function runGit(
 
 export async function runGitBytes(cwd: string, args: readonly string[], maximumOutputBytes: number): Promise<Buffer> {
   return (
-    await execFileAsync("git", [...gitArguments(args)], {
+    await execFileAsync(resolveGitExecutable(), [...gitArguments(args)], {
       ...spawnOptions(cwd, maximumOutputBytes),
       encoding: "buffer"
     })

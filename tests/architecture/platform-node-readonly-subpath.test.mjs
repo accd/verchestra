@@ -62,6 +62,7 @@ test("the readonly subpath's export surface is exactly the approved read-only sy
       "RuntimeMigration",
       "SecretAdapter",
       "inspectRuntimeDatabase",
+      "resolveGitExecutable",
       "secretPresence"
     ].sort()
   );

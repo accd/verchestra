@@ -1,7 +1,15 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
+import { systemRoot } from "./os-secret-backends/windows-credential-manager.ts";
+
 const execFileAsync = promisify(execFile);
+
+// why: the System32 program by absolute path, never a PATH lookup, so no
+// entry on PATH can substitute the program that ends a process tree.
+export function taskkillExecutable(): string {
+  return `${systemRoot()}\\System32\\taskkill.exe`;
+}
 
 // invariant: `pid` was spawned with `detached: true` on POSIX, so it is also the
 // id of a process group the child owns. Signalling `-pid` reaches every member
@@ -12,7 +20,7 @@ const execFileAsync = promisify(execFile);
 export async function terminateProcessGroup(pid: number, incomplete: () => never): Promise<void> {
   if (process.platform === "win32") {
     try {
-      await execFileAsync("taskkill", ["/pid", String(pid), "/T", "/F"], { windowsHide: true });
+      await execFileAsync(taskkillExecutable(), ["/pid", String(pid), "/T", "/F"], { windowsHide: true });
     } catch {
       // why: the process may already have exited.
     }

@@ -59,7 +59,11 @@ for (const [knowledge, pattern] of Object.entries(KNOWLEDGE)) {
 // invariant: the task path starts git in one place, so one environment policy
 // and one output bound cover every git process it runs.
 test("only the task worktree module spawns git on the task path", () => {
-  const spawn = /\b(?:execFile|execFileSync|execFileAsync|spawn|spawnSync)\(\s*["'`]git["'`]/u;
+  // why: git is started by the absolute path resolveGitExecutable() returns
+  // (tests/architecture/absolute-child-executables.test.mjs); either spelling
+  // of a git start outside the owner is a second runner.
+  const spawn =
+    /\b(?:execFile|execFileSync|execFileAsync|spawn|spawnSync)\(\s*(?:["'`]git["'`]|resolveGitExecutable\(\))/u;
   const taskPath = files.filter(({ path }) =>
     /^(?:packages\/platform-node\/src|apps\/vestra-cli\/src\/task)\//u.test(path)
   );

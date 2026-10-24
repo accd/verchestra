@@ -87,9 +87,12 @@ test("deep doctor reaches no writing filesystem call", () => {
 });
 
 test("deep doctor spawns only a read-only git version probe", () => {
-  const spawns = [...source.matchAll(/spawnSync\(\s*"([^"]+)"\s*,\s*\[([^\]]*)\]/gu)];
+  // git is started by the absolute path resolveGitExecutable() returns, never
+  // by its bare name (tests/architecture/absolute-child-executables.test.mjs).
+  const spawns = [...source.matchAll(/spawnSync\(\s*([^,]+?)\s*,\s*\[([^\]]*)\]/gu)];
   assert.equal(spawns.length, 1, "exactly one child process is expected, the git probe");
   assert.equal(spawns[0][1], "git", "the only spawned process is git");
+  assert.match(source, /\bgit = resolveGitExecutable\(\);/u, "the probe starts git by its resolved absolute path");
   assert.match(spawns[0][2], /"--version"/u, "git is invoked read-only, for its version");
 });
 

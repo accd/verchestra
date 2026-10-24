@@ -12,6 +12,7 @@ import {
   NodeGateProcessRunner,
   NodeGitWorktreeAdapter
 } from "../../packages/platform-node/src/index.ts";
+import { ranHooks, versionHooks } from "../helpers/versioned-hooks-fixture.mjs";
 
 const roots = [];
 const sha = (value) => `sha256:${createHash("sha256").update(value).digest("hex")}`;
@@ -20,7 +21,7 @@ function git(cwd, ...args) {
   return execFileSync("git", args, { cwd, encoding: "utf8", windowsHide: true }).trim();
 }
 
-async function fixture() {
+async function fixture(options = {}) {
   const root = await mkdtemp(join(tmpdir(), "verchestra-gate-git-"));
   roots.push(root);
   const repositoryRoot = join(root, "repository");
@@ -37,7 +38,10 @@ async function fixture() {
   git(repositoryRoot, "config", "user.name", "Verchestra Qualification");
   git(repositoryRoot, "add", ".");
   git(repositoryRoot, "commit", "--quiet", "-m", "base");
-  const baseCommit = git(repositoryRoot, "rev-parse", "HEAD");
+  const sentinels = join(root, "sentinels");
+  const baseCommit = options.hooks
+    ? await versionHooks(repositoryRoot, sentinels, git)
+    : git(repositoryRoot, "rev-parse", "HEAD");
   const worktrees = new NodeGitWorktreeAdapter({ repositoryRoot, worktreesRoot });
   const createInput = {
     workspaceId: "workspace:gate",
@@ -50,7 +54,7 @@ async function fixture() {
   };
   const handle = await worktrees.create(createInput);
   const target = join(worktreesRoot, handle.worktreeRef.split(":")[1]);
-  return { baseCommit, handle, repositoryRoot, root, target, worktrees, worktreesRoot };
+  return { baseCommit, handle, repositoryRoot, root, sentinels, target, worktrees, worktreesRoot };
 }
 
 function gateCommand(handle, overrides = {}) {
@@ -270,4 +274,30 @@ test("full coordinator runs real test gate and creates exactly one real commit",
   assert.equal(released, true);
   assert.equal(checkpoints.at(-1).stage, "committed");
   assert.equal(git(repositoryRoot, "cat-file", "-t", result.commitId), "commit");
+});
+
+test("a versioned hooks path runs no hook on the gate commit", async () => {
+  const { baseCommit, handle, repositoryRoot, sentinels, target, worktrees, worktreesRoot } = await fixture({
+    hooks: true
+  });
+  await writeFile(join(target, "src", "value.txt"), "implemented\n");
+  const inspection = await worktrees.inspect(handle);
+  const adapter = new NodeAtomicGitCommitAdapter({ repositoryRoot, worktreesRoot });
+  const committed = await adapter.commitAtomic({
+    workspaceId: "workspace:gate",
+    runId: "run:gate",
+    taskId: "T59.1",
+    requirementIds: ["VES-VFY-001"],
+    worktreeRef: handle.worktreeRef,
+    baseCommit,
+    subject: "feat(execution): hooked commit",
+    expectedChangedPaths: inspection.changedPaths,
+    expectedChangeDigest: inspection.changeDigest,
+    gatePlanDigest: sha("plan"),
+    gateEvidenceDigest: sha("evidence"),
+    gateEvidenceRefs: ["evidence:gate"],
+    idempotencyKey: sha("hooked")
+  });
+  assert.equal(committed.status, "committed");
+  assert.deepEqual(await ranHooks(sentinels), []);
 });
