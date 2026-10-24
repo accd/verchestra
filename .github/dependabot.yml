@@ -39,6 +39,21 @@ updates:
       - dependency-name: "@opencode-ai/*"
         update-types:
           - version-update:semver-major
+      # why: CedarPolicy pins its engine version exactly, so a minor or a patch
+      # fails closed until a qualification successor moves the pin; #583 was
+      # merged as generated and turned main red (#589, #563).
+      - dependency-name: "@cedar-policy/cedar-wasm"
+        update-types:
+          - version-update:semver-minor
+          - version-update:semver-patch
+      # why: json-schema-to-typescript 16 breaks the contract generator (#563).
+      - dependency-name: json-schema-to-typescript
+        update-types:
+          - version-update:semver-major
+    # why: a version published minutes ago is not proposed; three days lets a
+    # compromised release be withdrawn first. Security updates are not delayed.
+    cooldown:
+      default-days: 3
   - package-ecosystem: github-actions
     directory: /
     schedule:
