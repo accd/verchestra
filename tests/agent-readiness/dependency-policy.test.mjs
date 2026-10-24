@@ -118,4 +118,14 @@ test("groups Pi and OpenCode updates and suppresses runtime-incompatible major p
   assert.match(policy, /security-fixes:\s*\n\s+applies-to: security-updates\s*\n\s+patterns:\s*\n\s+- "\*"/u);
   assert.match(policy, /dependency-name: tuf-js\s*\n\s+update-types:\s*\n\s+- version-update:semver-major/u);
   assert.match(policy, /dependency-name: "@types\/node"\s*\n\s+update-types:\s*\n\s+- version-update:semver-major/u);
+  // why: a driver runtime major moves only as a qualification successor
+  // (DSB-05); #580 merged Pi 1.3.0 as generated and turned main red.
+  for (const driverPattern of [/"@earendil-works\/pi-\*"/u, /opencode-ai/u, /"@opencode-ai\/\*"/u])
+    assert.match(
+      policy,
+      new RegExp(
+        `dependency-name: ${driverPattern.source}\\s*\\n\\s+update-types:\\s*\\n\\s+- version-update:semver-major`,
+        "u"
+      )
+    );
 });
