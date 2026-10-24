@@ -69,8 +69,9 @@ function explainMissing(path: string, request: Pick<PlannedTaskRequest, "gates">
     protocols.set(gate.commandRef, known);
   }
   const entries = [...protocols].map(([commandRef, admitted]) => {
+    // why: code-unit order, the same on every machine; no locale decides it.
     const names = [...admitted]
-      .sort()
+      .sort((left, right) => Number(left > right) - Number(left < right))
       .map((name) => `"${name}"`)
       .join(", ");
     return `    "${commandRef}": { "executable": "<absolute path of the program>", "fixedArgs": [], "protocols": [${names}] }`;

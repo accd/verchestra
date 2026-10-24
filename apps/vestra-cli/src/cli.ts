@@ -189,12 +189,14 @@ function renderHelp(manifest: InstalledCliManifest): string {
   return `Verchestra ${manifest.semanticVersion}\nCanonical CLI: vestra\n\nUsage: vestra <command> [options]\n\nCommands:\n${commands}\n`;
 }
 
+function optionLine(option: CliOptionManifest): string {
+  if (option.kind === "boolean") return `  --${option.name}`;
+  const value = option.values === undefined ? "value" : option.values.join("|");
+  return `  --${option.name} <${value}>`;
+}
+
 function renderCommandHelp(command: CliCommandManifest): string {
-  const options = command.options.map((option) =>
-    option.kind === "boolean"
-      ? `  --${option.name}`
-      : `  --${option.name} <${option.values === undefined ? "value" : option.values.join("|")}>`
-  );
+  const options = command.options.map(optionLine);
   const json = command.supportsJson ? "\nAdd --output json for a JSON result.\n" : "";
   return (
     `Usage: vestra ${command.name} [options]\n\n${command.summary}\n\n` +
@@ -255,7 +257,8 @@ function humanError(envelope: PublicErrorEnvelope, cause: string | undefined): s
   const details: Record<string, unknown> = { ...envelope.safeDetails };
   if (cause !== undefined) details["cause"] = cause;
   const keys = Object.keys(details).sort((left, right) => Number(left > right) - Number(left < right));
-  const named = keys.length === 0 ? "" : ` (${keys.map((key) => `${key}=${String(details[key])}`).join(", ")})`;
+  const pairs = keys.map((key) => `${key}=${String(details[key])}`).join(", ");
+  const named = keys.length === 0 ? "" : ` (${pairs})`;
   return `${envelope.code}${named}: ${envelope.recovery}\n`;
 }
 
