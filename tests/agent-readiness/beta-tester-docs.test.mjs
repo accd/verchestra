@@ -185,7 +185,9 @@ test("SUPPORT lists what to attach", () => {
   const attach = section(read("SUPPORT.md"), "What to attach");
   for (const command of [
     "vestra --version --output json",
-    "--output json",
+    // why: the failing command itself, rerun; a bare "--output json" would be
+    // satisfied by any of the other three lines.
+    "The command that failed, run again with `--output json`",
     "vestra task status --output json",
     "vestra doctor --output json"
   ])

@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, test } from "node:test";
 
 import { StableId } from "../../packages/domain/src/index.ts";
 import { NodeGitContextSource } from "../../packages/platform-node/src/index.ts";
+import { linkFile } from "../helpers/windows-links.mjs";
 
 const roots = [];
 afterEach(async () => {
@@ -26,7 +27,7 @@ async function repository() {
   await writeFile(join(root, "src", "nested", "b.txt"), "beta\n");
   await writeFile(join(root, "src", "binary.bin"), Buffer.from([0, 1, 2, 3]));
   await writeFile(join(root, "docs", "readme.md"), "outside the scope\n");
-  await symlink("a.txt", join(root, "src", "link.txt"));
+  await linkFile("a.txt", join(root, "src", "link.txt"));
   git(root, "init", "--quiet");
   git(root, "config", "user.email", "qualification@verchestra.invalid");
   git(root, "config", "user.name", "Verchestra Qualification");
