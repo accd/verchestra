@@ -28,6 +28,17 @@ updates:
       - dependency-name: "@types/node"
         update-types:
           - version-update:semver-major
+      # why: Pi and OpenCode are qualified driver runtimes. A major moves only as
+      # a qualification successor (DSB-05, #563), never as generated; #580 did.
+      - dependency-name: "@earendil-works/pi-*"
+        update-types:
+          - version-update:semver-major
+      - dependency-name: opencode-ai
+        update-types:
+          - version-update:semver-major
+      - dependency-name: "@opencode-ai/*"
+        update-types:
+          - version-update:semver-major
   - package-ecosystem: github-actions
     directory: /
     schedule:
