@@ -18,6 +18,7 @@ import { after, test } from "node:test";
 
 import { scratchSegments } from "../../apps/vestra-cli/src/task/task-workspace.ts";
 import { assertTextAgrees } from "../helpers/cli-text-fixture.mjs";
+import { linkDirectory } from "../helpers/windows-links.mjs";
 import {
   CREDENTIALS,
   DARWIN,
@@ -893,7 +894,7 @@ test(
       const fixture = await taskFixture();
       const outside = join(fixture.root, "outside-state");
       await mkdir(outside);
-      await symlink(outside, join(fixture.stateRoot, name));
+      await linkDirectory(outside, join(fixture.stateRoot, name));
       const error = refused(fixture.launch(dryRunArguments(fixture)), "VES_STATE_ROOT_ESCAPE", `dry run with ${name}`);
       assert.deepEqual(error.safeDetails, {});
       refused(

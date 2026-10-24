@@ -456,6 +456,8 @@ test(
       ["read_file", { path: "../outside/victim.txt" }, "VES_BRIDGE_PATH_INVALID"],
       ["read_file", { path: ".git/config" }, "VES_BRIDGE_PATH_PROTECTED"],
       ["read_file", { path: ".GIT/config" }, "VES_BRIDGE_PATH_PROTECTED"],
+      ["read_file", { path: ".git./config" }, "VES_BRIDGE_PATH_PROTECTED"],
+      ["read_file", { path: ".git." }, "VES_BRIDGE_PATH_PROTECTED"],
       ["read_file", { path: "docs/secret.txt" }, "VES_BRIDGE_SCOPE_DENIED"],
       ["read_file", { path: "src/protected/key.txt" }, "VES_BRIDGE_SCOPE_DENIED"],
       ["read_file", { path: "src/PROTECTED/key.txt" }, "VES_BRIDGE_SCOPE_DENIED"],
