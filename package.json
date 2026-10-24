@@ -63,7 +63,7 @@
     "site:preview": "pnpm --filter @verchestra/site preview"
   },
   "devDependencies": {
-    "@cedar-policy/cedar-wasm": "4.12.0",
+    "@cedar-policy/cedar-wasm": "4.14.0",
     "@earendil-works/pi-agent-core": "0.99.1",
     "@earendil-works/pi-ai": "0.99.1",
     "@opencode-ai/sdk": "1.18.33",
