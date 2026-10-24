@@ -50,7 +50,7 @@ const exactReleaseOutputs = Object.freeze([
       schemaVersion: "1",
       command: "version",
       ok: true,
-      data: { product: "Verchestra", semanticVersion: canonicalVersion, releaseDigest: null }
+      data: { product: "Verchestra", semanticVersion: canonicalVersion, releaseDigest: null, revision: null }
     })}\n`
   ]
 ]);
@@ -146,3 +146,26 @@ for (const name of ["vestra", "verchestra"]) {
     }
   });
 }
+
+// invariant: a build from source has no revision to report, and says so.
+test("a source build reports a null revision", () => {
+  const json = spawnSync(
+    process.execPath,
+    [fileURLToPath(new URL("../../apps/vestra-cli/bin/vestra.mjs", import.meta.url)), "--version", "--output", "json"],
+    {
+      encoding: "utf8",
+      windowsHide: true
+    }
+  );
+  assert.equal(json.status, 0, json.stderr);
+  assert.equal(JSON.parse(json.stdout).data.revision, null);
+  const human = spawnSync(
+    process.execPath,
+    [fileURLToPath(new URL("../../apps/vestra-cli/bin/vestra.mjs", import.meta.url)), "--version"],
+    {
+      encoding: "utf8",
+      windowsHide: true
+    }
+  );
+  assert.match(human.stdout, /\(source build, no verified release artifact\)\n$/u);
+});

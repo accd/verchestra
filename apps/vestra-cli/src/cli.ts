@@ -23,6 +23,8 @@ export interface InstalledCliManifest {
   readonly semanticVersion: string;
   // null in source mode: no verified release artifact exists to bind a digest to.
   readonly releaseDigest: string | null;
+  // The 40-hex revision a sealed build was sealed at; null or absent from source.
+  readonly revision?: string | null;
   readonly minimumCliVersion: string;
   readonly commands: readonly CliCommandManifest[];
 }
@@ -65,15 +67,22 @@ function compareVersions(left: string, right: string): number {
   return 0;
 }
 
+const REVISION = /^[0-9a-f]{40}$/u;
+
+function validIdentity(manifest: InstalledCliManifest): boolean {
+  const revision = manifest.revision ?? null;
+  return (
+    manifest.schemaVersion === 1 &&
+    SEMVER.test(manifest.semanticVersion) &&
+    SEMVER.test(manifest.minimumCliVersion) &&
+    (manifest.releaseDigest === null || DIGEST.test(manifest.releaseDigest)) &&
+    (revision === null || REVISION.test(revision))
+  );
+}
+
 function assertManifest(manifest: InstalledCliManifest): void {
   const names = new Set<string>();
-  if (
-    manifest.schemaVersion !== 1 ||
-    !SEMVER.test(manifest.semanticVersion) ||
-    !SEMVER.test(manifest.minimumCliVersion) ||
-    (manifest.releaseDigest !== null && !DIGEST.test(manifest.releaseDigest)) ||
-    manifest.commands.length === 0
-  ) {
+  if (!validIdentity(manifest) || manifest.commands.length === 0) {
     throw cliError(
       "VES_CLI_RELEASE_INCOMPATIBLE",
       { minimumRelease: manifest.minimumCliVersion || "unknown" },
@@ -313,20 +322,26 @@ export async function runCli(options: CliRunOptions): Promise<number> {
   }
 }
 
+// invariant: a sealed build names the revision it was sealed at and never
+// calls itself a source build; a source build has no revision to name.
+function versionOutput(manifest: InstalledCliManifest, json: boolean): string {
+  const revision = manifest.revision ?? null;
+  const data = {
+    product: "Verchestra",
+    semanticVersion: manifest.semanticVersion,
+    releaseDigest: manifest.releaseDigest,
+    revision
+  };
+  if (json) return jsonOutput("version", true, data);
+  const build = manifest.releaseDigest ?? (revision === null ? SOURCE_BUILD : `revision ${revision.slice(0, 12)}`);
+  return `Verchestra ${data.semanticVersion} (${build})\n`;
+}
+
 // invariant: the global flags and per-command help answer from the installed
 // manifest alone and never reach the command bus.
 function informationalOutput(parsed: ParsedCliArguments, manifest: InstalledCliManifest): string | undefined {
   const json = parsed.output === "json";
-  if (parsed.mode === "version") {
-    const data = {
-      product: "Verchestra",
-      semanticVersion: manifest.semanticVersion,
-      releaseDigest: manifest.releaseDigest
-    };
-    return json
-      ? jsonOutput("version", true, data)
-      : `Verchestra ${data.semanticVersion} (${data.releaseDigest ?? SOURCE_BUILD})\n`;
-  }
+  if (parsed.mode === "version") return versionOutput(manifest, json);
   if (parsed.mode === "help") {
     const data = {
       product: "Verchestra",

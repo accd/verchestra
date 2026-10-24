@@ -349,7 +349,7 @@ const assertRequireGuard = (text, componentId) => {
  * source map, no timestamp, the fail-closed require banner, and the build
  * repository as the working directory so no absolute path can reach the
  * output. Two additions carry the sealed identity and the release layout:
- * `define` compiles the candidate's semantic version into the launcher, and
+ * `define` compiles the candidate's semantic version and revision into the launcher, and
  * `alias` substitutes the lazy node:sqlite shim. Identical inputs produce
  * byte-identical output. The bundler's metafile, which does not change the
  * output, is returned beside it as the record self-containment is judged on.
@@ -360,6 +360,7 @@ export async function bundleSealedLauncherWithMetafile(options) {
   if (entry === undefined)
     fail("VES_T76_BUILD_INPUT_INVALID", `${String(options.componentId)} is not a sealed bundle component`);
   const semanticVersion = text(options.semanticVersion, "semanticVersion", SEMVER);
+  const revision = text(options.revision, "revision", REVISION);
   const nodeVersion = text(options.nodeVersion, "nodeVersion", NODE_VERSION);
   let result;
   try {
@@ -377,7 +378,10 @@ export async function bundleSealedLauncherWithMetafile(options) {
       legalComments: "none",
       banner: { js: BUNDLE_REQUIRE_GUARD },
       alias: { "node:sqlite": NODE_SQLITE_LAZY_ALIAS },
-      define: { __VERCHESTRA_SEALED_SEMANTIC_VERSION__: JSON.stringify(semanticVersion) },
+      define: {
+        __VERCHESTRA_SEALED_SEMANTIC_VERSION__: JSON.stringify(semanticVersion),
+        __VERCHESTRA_SEALED_REVISION__: JSON.stringify(revision)
+      },
       metafile: true,
       logLevel: "silent"
     });
@@ -513,6 +517,7 @@ const hostDescriptors = async (inputRoot, options) => {
             repository: options.repository,
             componentId: entry.componentId,
             semanticVersion: options.semanticVersion,
+            revision: options.revision,
             nodeVersion: options.target.nodeVersion
           })
         : await readFile(entry.path).catch((error) =>
