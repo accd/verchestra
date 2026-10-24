@@ -251,8 +251,9 @@ export interface WindowsMachine {
 // so a missing credential, executable, or allowlist entry is `not
 // configured` with no workflow change, worktree, or provider call behind it.
 // invariant: SSI-73. The machine's prerequisites come after the run's own
-// settings and before any credential is read, so a machine that cannot run
-// the task is told so without a secret being touched.
+// settings (provider modes, the billing statement, the gate allowlist) and
+// before any credential is read, so a machine that cannot run the task is told
+// so without a secret being touched.
 async function prepare(
   io: TaskCommandIo,
   workspace: TaskWorkspace,
@@ -271,6 +272,10 @@ async function prepare(
         stderr: io.stderr
       })
     : [];
+  // why: the allowlist is the run's own setting, so a missing one is
+  // explained, as `task plan` explains it, before the machine is probed or a
+  // credential is read.
+  const gates = await loadGateAllowlist(workspace, plan.request, io.stderr);
   await requireWindowsPrerequisites({
     ...machine,
     sessionsRoot: workspace.layout.sessionsRoot,
@@ -293,7 +298,6 @@ async function prepare(
   ]);
   const verifier = await verifierAccess(io, workspace, codex, credentials.get(VERIFIER_CREDENTIAL));
   await requireCodexAccount(io, workspace, plan, verifier, confirmations);
-  const gates = await loadGateAllowlist(workspace, plan.request, io.stderr);
   const policy = await loadTaskPolicy(io.controlRoot);
   const authority = new TaskAuthority({ runtime, plan, policy, trust: await workspaceTrustRoot(workspace) });
   const manifest = await runRecord.loadContextManifest(plan.contextManifestDigest);

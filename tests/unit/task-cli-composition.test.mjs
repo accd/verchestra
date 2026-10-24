@@ -2,7 +2,7 @@
 // decide authority and trust: the task Cedar policy view, the verifier verdict
 // parser, and the typed-back human confirmation.
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { EventEmitter } from "node:events";
@@ -11,11 +11,14 @@ import { after, afterEach, test } from "node:test";
 import { confirmDigest } from "../../apps/vestra-cli/src/task/task-confirm.ts";
 import { parseVerdict } from "../../apps/vestra-cli/src/task/task-codex.ts";
 import { WORKSPACE_POLICY_PATH, loadTaskPolicy } from "../../apps/vestra-cli/src/task/task-policy.ts";
-import { gateAllowlistPath, loadGateAllowlist } from "../../apps/vestra-cli/src/task/task-gates.ts";
+import { gateAllowlistPath } from "../../apps/vestra-cli/src/task/task-gates.ts";
 import { planTask } from "../../apps/vestra-cli/src/task/task-plan.ts";
-import { modelPriceTable, normalizeTaskRequest } from "../../packages/application/src/index.ts";
+import { runTask } from "../../apps/vestra-cli/src/task/task-run.ts";
+import { modelPriceTable } from "../../packages/application/src/index.ts";
 import { cleanupTaskCommandFixtures, taskCommandFixture } from "../helpers/task-command-fixture.mjs";
+import { boundPlanRecord } from "../helpers/task-plan-fixture.mjs";
 import { validTaskRequest } from "../helpers/task-request-fixture.mjs";
+import { RUN_ID, taskRequest } from "../helpers/task-run-record-fixture.mjs";
 
 const roots = [];
 after(() => Promise.all(roots.map((root) => rm(root, { recursive: true, force: true }))));
@@ -197,22 +200,25 @@ function assertGateAllowlistExplained(fixture, error) {
 
 test("a missing gate allowlist is explained with its path and template on plan", async () => {
   const fixture = await taskCommandFixture();
+  await rm(gateAllowlistPath(fixture.workspace));
   const path = await plannedRequest(fixture, validTaskRequest());
   assertGateAllowlistExplained(fixture, await refusal(planTask(fixture.io, path, false)));
 });
 
 test("a missing gate allowlist is explained with its path and template on start", async () => {
   const fixture = await taskCommandFixture();
-  const request = normalizeTaskRequest(validTaskRequest());
+  await rm(gateAllowlistPath(fixture.workspace));
+  const { record, pkg } = await boundPlanRecord(taskRequest());
+  const run = await fixture.planned("EXECUTION_AUTHORIZED", record);
+  await run.runRecord.savePackage(pkg);
+  // why: the allowlist is read with the run's own settings, before the
+  // machine is probed or a credential is read, so `start` refuses here and
+  // the deny guard of the fixture is never reached.
   assertGateAllowlistExplained(
     fixture,
-    await refusal(loadGateAllowlist(fixture.workspace, request, fixture.io.stderr))
+    await refusal(runTask(fixture.io, { runId: RUN_ID, resume: false }, { platform: "linux" }))
   );
-  // why: `start` reaches the allowlist only after it reads a credential, which
-  // no fixture on this host may do; the call site is asserted to hand the
-  // command's stderr to the same loader the plan case proves.
-  const source = await readFile(new URL("../../apps/vestra-cli/src/task/task-run.ts", import.meta.url), "utf8");
-  assert.match(source, /loadGateAllowlist\(workspace, plan\.request, io\.stderr\)/u);
+  assert.equal(fixture.state(), "EXECUTION_AUTHORIZED");
 });
 
 test("an unpriced model refusal lists the accepted models", async () => {
