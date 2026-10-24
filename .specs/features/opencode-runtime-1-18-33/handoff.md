@@ -6,9 +6,9 @@ status: verification
 branch: requal/opencode-1.18.23
 baseRevision: e0beb57dc72f7a125184ce46130415b74d7c6fa2
 lastCompletedTask: T3
-nextTask: "Merged without independent review on 2026-09-30 (#400); post-merge review pending (#553). OpenCode 1.18.33 is the version in package.json on 2026-10-13; Dependabot #549 (opencode-driver group) is open and follows the qualification-successor pattern."
+nextTask: "Merged without independent review on 2026-09-30 (#400); post-merge review pending (#553). Superseded as the qualified version by opencode-runtime-1-19-4 (#581, OpenCode 1.19.4), the successor that #549 deferred to #563."
 lastGate: pnpm gate:full
-updatedAt: 2026-10-13T19:50:00Z
+updatedAt: 2026-10-24T13:00:00Z
 ---
 
 # Evidence
@@ -30,3 +30,10 @@ head, and merge only after the required checks pass.
 
 Merged without independent review on 2026-09-30 (#400); post-merge review
 pending (#553).
+
+# Successor (2026-10-24)
+
+`.specs/features/opencode-runtime-1-19-4/` and
+`docs/qualification/opencode-driver-1.19.4.md` qualify OpenCode `1.19.4` and
+supersede this feature as the record of the qualified version. The 1.18.33
+report stays the immutable evidence for its own range.
