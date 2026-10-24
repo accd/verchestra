@@ -1,6 +1,9 @@
 packages:
   - apps/*
   - packages/*
+# why: an install resolves no version published less than three days (4320
+# minutes) ago, so a compromised release has time to be withdrawn first.
+minimumReleaseAge: 4320
 overrides:
   basic-ftp: 6.2.1
   lodash-es: 4.18.1
@@ -11,7 +14,7 @@ overrides:
   "@lhci/cli>tmp": 0.2.7
   external-editor>tmp: 0.2.7
   "@lhci/cli>uuid": 11.1.1
-  lighthouse: 13.4.1
+  lighthouse: 13.5.0
   proxy-addr: 2.0.8
   compression: 1.8.2
   "@astrojs/sitemap>zod": 4.6.6

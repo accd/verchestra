@@ -129,3 +129,31 @@ test("groups Pi and OpenCode updates and suppresses runtime-incompatible major p
       )
     );
 });
+
+test("the lockfile resolves none of the three alerted site versions", () => {
+  const lockfile = read("pnpm-lock.yaml");
+  for (const alerted of ["zod@3.25.76", "postcss-selector-parser@6.1.5", "katex@0.16.47"])
+    assert.equal(lockfile.includes(`${alerted}:`), false, `the lockfile still resolves ${alerted}`);
+});
+
+test("Dependabot ignores the exact-pinned cedar and json-schema-to-typescript updates", () => {
+  const policy = read(".github/dependabot.yml");
+  // why: CedarPolicy pins its engine version exactly, so a minor or a patch
+  // fails closed until a qualification successor moves the pin (#583, #563).
+  assert.match(
+    policy,
+    /dependency-name: "@cedar-policy\/cedar-wasm"\s*\n\s+update-types:\s*\n\s+- version-update:semver-minor\s*\n\s+- version-update:semver-patch/u
+  );
+  // why: json-schema-to-typescript 16 breaks the contract generator (#563).
+  assert.match(
+    policy,
+    /dependency-name: json-schema-to-typescript\s*\n\s+update-types:\s*\n\s+- version-update:semver-major/u
+  );
+});
+
+test("new versions wait three days before install and before a Dependabot proposal", () => {
+  assert.match(read("pnpm-workspace.yaml"), /^minimumReleaseAge: 4320$/mu);
+  const policy = read(".github/dependabot.yml");
+  const npm = policy.slice(policy.indexOf("package-ecosystem: npm"), policy.indexOf("package-ecosystem: github-actions"));
+  assert.match(npm, /cooldown:\s*\n\s+default-days: 3/u);
+});
