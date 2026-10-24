@@ -48,8 +48,8 @@ importers:
         specifier: 10.11.0
         version: 10.11.0
       jose:
-        specifier: 6.2.12
-        version: 6.2.12
+        specifier: 6.2.13
+        version: 6.2.13
       json-schema-to-typescript:
         specifier: 15.0.4
         version: 15.0.4
@@ -236,8 +236,8 @@ importers:
         specifier: 3.0.0
         version: 3.0.0
       jose:
-        specifier: 6.2.12
-        version: 6.2.12
+        specifier: 6.2.13
+        version: 6.2.13
 
   packages/extension-host:
     dependencies:
@@ -3250,6 +3250,9 @@ packages:
   jose@6.2.12:
     resolution: {integrity: sha512-9NiFmJEex0sy2Dk58j2UGBSHgUs2ypF9eZSu4L6vjOX3Dp96Sw1F3uL+H+D1sx02jZZdzUT0HgvCy59CuvXcWw==}
 
+  jose@6.2.13:
+    resolution: {integrity: sha512-7TIg10ZE1x82YediN+lcrPNvGMKge9yFHQD+Qho/b8y2adfugU3AsvvHfxV0fzyFllT6l9xCjf4RWY9g/Z9PJQ==}
+
   jpeg-js@0.4.4:
     resolution: {integrity: sha512-WZzeDOEtTOBK4Mdsar0IqEU5sMr3vSV2RqkAIzUEV2BHnUfKGyswWFPFwK5EeDo93K3FohSHbLAjj0s1Wzd+dg==}
 
@@ -3321,8 +3324,8 @@ packages:
   layout-base@2.0.1:
     resolution: {integrity: sha512-dp3s92+uNI1hWIpPGH3jK2kxE2lMjdXdr+DH8ynZHpd6PUlH6x6cbuXnoMmiNumznqaNO31xu9e79F0uuZ0JFg==}
 
-  legacy-javascript@0.0.4:
-    resolution: {integrity: sha512-UTmeKBVxnfJcpmpOvzzNnLsQT99BXHpPlc/ZKddIRmWmrR0fw6335I3lq4+sJoP60UTbBNaYsGYVPc65YB1x3A==}
+  legacy-javascript@0.0.3:
+    resolution: {integrity: sha512-1r6MT4dVaJyXt4G07Cm2cQ0AUaLJdefiEp4SmIAylA++gnEQ82YvmzE58RkM5EP0fk5hROLCslUPGnwIYdZQVA==}
 
   levn@0.4.1:
     resolution: {integrity: sha512-+bT2uH4E5LGE7h/n3evcS/sQlJXCpIp6ym8OWJ5eV6+67Dsql/LaaT7qJBAt2rzfoa/5QBGBhxDix1dMt2kQKQ==}
@@ -6306,7 +6309,7 @@ snapshots:
 
   '@paulirish/trace_engine@0.0.65':
     dependencies:
-      legacy-javascript: 0.0.4
+      legacy-javascript: 0.0.3
       third-party-web: 0.30.0
 
   '@playwright/test@1.64.1':
@@ -8415,6 +8418,8 @@ snapshots:
 
   jose@6.2.12: {}
 
+  jose@6.2.13: {}
+
   jpeg-js@0.4.4: {}
 
   js-library-detector@6.7.0: {}
@@ -8485,7 +8490,7 @@ snapshots:
 
   layout-base@2.0.1: {}
 
-  legacy-javascript@0.0.4: {}
+  legacy-javascript@0.0.3: {}
 
   levn@0.4.1:
     dependencies:
