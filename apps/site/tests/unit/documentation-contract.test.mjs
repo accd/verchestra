@@ -80,3 +80,9 @@ test("the public database matrix leads with the live-qualified engine and states
   assert.match(matrix, /qualifies \*\*at the edge\*\*/u, "the matrix must state the edge-qualification model");
   assert.doesNotMatch(matrix, /\*\*SAP ASE \/ Sybase\*\*/u, "no engine keeps bold primacy in the table");
 });
+
+test("the install page links the governed-task quick-start", async () => {
+  const page = await readFile(resolve(docsRoot, "install-and-run.md"), "utf8");
+  assert.match(page, /https:\/\/github\.com\/accd\/verchestra\/blob\/main\/docs\/quick-start\.md/u);
+  assert.match(page, /governed task/iu);
+});

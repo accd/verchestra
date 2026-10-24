@@ -207,8 +207,13 @@ test("a status check whose executable cannot start is not a login", async () => 
     assert.deepEqual(error.envelope.safeDetails, { requirement: "codex-login" });
     return true;
   });
+  // why: the hint is a command for the host's own shell, PowerShell on Windows.
+  const login =
+    process.platform === "win32"
+      ? `$env:CODEX_HOME='${missing.directory}'; codex login`
+      : `CODEX_HOME='${missing.directory}' codex login`;
   assert.deepEqual(missing.stderr, [
-    `Codex is not signed in with a ChatGPT plan for this Workspace. Run once:\n  CODEX_HOME='${missing.directory}' codex login\n`
+    `Codex is not signed in with a ChatGPT plan for this Workspace. Run once:\n  ${login}\n`
   ]);
   assert.equal(await readFile(join(missing.directory, "config.toml"), "utf8"), CODEX_IDENTITY_CONFIG);
   assert.deepEqual(await readdir(missing.sessionsRoot), []);
@@ -217,10 +222,10 @@ test("a status check whose executable cannot start is not a login", async () => 
 
 test("the one-time command quotes the directory for a shell", () => {
   assert.equal(
-    codexLoginCommand("/state/Application Support/x"),
+    codexLoginCommand("/state/Application Support/x", "linux"),
     "CODEX_HOME='/state/Application Support/x' codex login"
   );
-  assert.equal(codexLoginCommand("/state/it's"), "CODEX_HOME='/state/it'\\''s' codex login");
+  assert.equal(codexLoginCommand("/state/it's", "darwin"), "CODEX_HOME='/state/it'\\''s' codex login");
 });
 
 async function verifierSession(login, source) {
@@ -310,4 +315,17 @@ test("a verifier session with both credential sources, or neither, is refused be
     });
     await assert.rejects(readFile(join(session.root, "log", "fake-codex.log")), { code: "ENOENT" });
   }
+});
+
+test("the Codex login hint uses PowerShell syntax on win32", () => {
+  assert.equal(
+    codexLoginCommand("C:\\Users\\it's\\codex-identity", "win32"),
+    "$env:CODEX_HOME='C:\\Users\\it''s\\codex-identity'; codex login"
+  );
+  for (const platform of ["darwin", "linux"])
+    assert.equal(
+      codexLoginCommand("/home/it's/codex-identity", platform),
+      "CODEX_HOME='/home/it'\\''s/codex-identity' codex login",
+      platform
+    );
 });

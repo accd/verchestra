@@ -98,3 +98,16 @@ test("the exclusion list keeps its strongest present-tense facts", () => {
   assert.ok(notToday.some((line) => line.includes("not configured")));
   for (const line of notToday) assert.match(line, /^It (is not|does not) /u);
 });
+
+test("the capability matrix shows T75-T77 done and the governed task experimental", () => {
+  const row = (reference) => capabilityMatrix.find((entry) => entry.reference === reference);
+  assert.equal(row("T75-T76")?.maturity, "qualified");
+  assert.match(row("T77")?.capability ?? "", /signed hold/u);
+  assert.equal(row("T77")?.maturity, "qualified");
+  assert.equal(row("#405, #406")?.maturity, "experimental");
+  assert.match(row("#405, #406")?.capability ?? "", /governed task/iu);
+  assert.equal(
+    capabilityMatrix.some((entry) => entry.maturity === "planned" && /T7[5-7]/u.test(entry.reference)),
+    false
+  );
+});

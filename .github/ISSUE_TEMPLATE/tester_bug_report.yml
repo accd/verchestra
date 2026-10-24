@@ -1,0 +1,51 @@
+name: Beta tester bug report
+description: Something in the published verchestra package did not work for you.
+title: "bug: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        Thank you for testing. Five fields are enough; a maintainer triages the
+        report. Remove credentials, tokens, account e-mail addresses, private
+        repository content and private URLs before you submit. The JSON
+        envelopes below are designed to carry none of them.
+  - type: textarea
+    id: version
+    attributes:
+      label: Version
+      description: >-
+        Paste the output of `npx verchestra --version --output json`, or of
+        `vestra --version --output json` after an install.
+      render: json
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: Operating system and architecture
+      description: For example macOS 15 arm64, Ubuntu 24.04 x64, or Windows 11 x64.
+    validations:
+      required: true
+  - type: input
+    id: node
+    attributes:
+      label: Node version
+      description: The output of `node --version`.
+    validations:
+      required: true
+  - type: textarea
+    id: command
+    attributes:
+      label: Command you ran
+      description: The exact command, and what you expected it to do.
+    validations:
+      required: true
+  - type: textarea
+    id: envelope
+    attributes:
+      label: Output with --output json
+      description: Run the same command again with `--output json` and paste what it printed.
+      render: json
+    validations:
+      required: true

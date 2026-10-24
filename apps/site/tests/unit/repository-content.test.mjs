@@ -194,3 +194,18 @@ test("every published qualification report has a navigation entry", async () => 
   );
   assert.equal(items.find((item) => item.slug.endsWith("t68a-validation")).label, "T68A validation");
 });
+
+test("the README status matrix agrees with the capability matrix", async () => {
+  const readme = await readFile(resolve(import.meta.dirname, "../../../../README.md"), "utf8");
+  for (const [capability, maturity, reference] of [
+    [/Platform matrix and release candidate/u, "qualified", "T75-T76"],
+    [/1\.0 release decision: a signed hold/u, "qualified", "T77"],
+    [/Governed task delivery/u, "experimental", "#405, #406"]
+  ]) {
+    const line = readme.split("\n").find((entry) => capability.test(entry) && entry.trim().startsWith("|"));
+    assert.ok(line, `${capability} is not a README row`);
+    const cells = line.split("|").map((cell) => cell.trim());
+    assert.equal(cells[2], maturity, line);
+    assert.equal(cells[3], reference, line);
+  }
+});

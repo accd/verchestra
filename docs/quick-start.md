@@ -37,12 +37,16 @@ Verchestra never merges: the result is a branch you inspect and merge yourself.
   plan that includes Codex**. This is the default. An Anthropic API key and an
   OpenAI API key work instead; see
   [Use API keys instead](#use-api-keys-instead-optional).
-- **Node** only as far as `npx` needs it. The activated release carries its own
-  Node runtime.
+- **Node 24.14.0 or later** for `npx`. The activated release carries its own
+  Node runtime; an older Node is refused with `VES_VESTRA_HOST_UNSUPPORTED`.
 
 ## 1. Install
 
 ```bash
+npx verchestra --version
+```
+
+```powershell
 npx verchestra --version
 ```
 
@@ -55,6 +59,11 @@ Always invoke it through the `verchestra` package name, as this guide does.
 install asks the registry for an unrelated package named `vestra`, which
 Verchestra does not own.
 
+`vestra doctor` is not a setup check. It reports the health of the activated
+release and of this machine, read-only, and on a machine set up only for
+`task`, `BLOCKED` is its expected verdict. Each `task` command names a missing
+requirement itself.
+
 ## 2. Initialize the Workspace
 
 Run this from the root of your repository. A Workspace ID is `workspace_`
@@ -66,8 +75,28 @@ npx verchestra init --workspace-id "workspace_$(node -e 'console.log(crypto.rand
   --name "My repository" --placement colocated
 ```
 
+```powershell
+cd ~\src\my-repo
+npx verchestra init --workspace-id "workspace_$(node -e 'console.log(crypto.randomUUID())')" `
+  --name "My repository" --placement colocated
+```
+
 `init` writes `.verchestra/` metadata into the repository. It changes nothing
-else.
+else. The Workspace ID you chose is in `.verchestra/workspace.yaml`; the steps
+below write it as `<workspaceId>`.
+
+### Where the Workspace state lives
+
+The machine-local files of a Workspace (provider modes, the gate allowlist,
+the Codex identity, task records) live under a state root that depends on your
+operating system. The steps below write that root as `<state>`, so a
+Workspace's own directory is `<state>/workspaces/<workspaceId>`.
+
+| OS | State root |
+| --- | --- |
+| macOS | `~/Library/Application Support/Verchestra/state` |
+| Linux | `$XDG_STATE_HOME/verchestra` when `XDG_STATE_HOME` is set, else `~/.local/state/verchestra` |
+| Windows | `%LOCALAPPDATA%\Verchestra\state` |
 
 ## 3. Sign in the two providers and bind the signing passphrase
 
@@ -84,24 +113,42 @@ claude setup-token
 npx verchestra secret set --name claude-code-oauth-token
 ```
 
+```powershell
+claude setup-token
+npx verchestra secret set --name claude-code-oauth-token
+```
+
 `claude setup-token` opens the browser sign-in and prints a token that is valid
 for about a year. It does not save it. Paste the token at the hidden prompt of
 `secret set`, or pipe it in (for example `pbpaste | npx verchestra secret set
---name claude-code-oauth-token`); one trailing newline is stripped. Do not put
-the token in a file or a shell profile. It is stored in your macOS keychain
-under the service `verchestra/<workspaceId>`, is never printed, and is injected
+--name claude-code-oauth-token`, or `Get-Clipboard | npx verchestra secret set
+--name claude-code-oauth-token` in PowerShell); one trailing newline is stripped. Do not put
+the token in a file or a shell profile. It is stored in your OS credential store
+(the macOS keychain, the Secret Service on Linux, the Credential Manager on
+Windows) under the service `verchestra/<workspaceId>`, is never printed, and is injected
 only into the Claude Code child process, as `CLAUDE_CODE_OAUTH_TOKEN`.
 
 **Codex.** Sign in once into the Workspace's own Codex identity directory:
 
 ```bash
-CODEX_IDENTITY="$HOME/Library/Application Support/Verchestra/state/workspaces/<workspaceId>/codex-identity"
+CODEX_IDENTITY="<state>/workspaces/<workspaceId>/codex-identity"
 mkdir -p "$CODEX_IDENTITY" && chmod 700 "$CODEX_IDENTITY"
 CODEX_HOME="$CODEX_IDENTITY" codex login -c 'cli_auth_credentials_store="file"'
 CODEX_HOME="$CODEX_IDENTITY" codex login status   # Logged in using ChatGPT
 ```
 
-This is a separate login from the one in `~/.codex`, which is never read. The
+```powershell
+$CodexIdentity = "<state>\workspaces\<workspaceId>\codex-identity"
+New-Item -ItemType Directory -Force -Path $CodexIdentity | Out-Null
+$env:CODEX_HOME = $CodexIdentity
+codex login -c 'cli_auth_credentials_store="file"'
+codex login status   # Logged in using ChatGPT
+Remove-Item Env:CODEX_HOME
+```
+
+Replace `<state>` with your state root from the table above (PowerShell 7
+passes the quoted `-c` value as written). This is a separate login from the
+one in `~/.codex`, which is never read. The
 Codex credential stays in that directory as a file and never enters the
 keychain. Verchestra pins the directory's `config.toml` to the file store and
 to the ChatGPT login, so an API-key login there counts as not signed in. If you
@@ -112,6 +159,10 @@ the exact path.
 **Evidence signing passphrase.**
 
 ```bash
+npx verchestra secret set --name evidence-signing-passphrase
+```
+
+```powershell
 npx verchestra secret set --name evidence-signing-passphrase
 ```
 
@@ -129,7 +180,7 @@ The credential of each provider is a machine-local setting beside the gate
 allowlist. A task request cannot select it.
 
 ```text
-~/Library/Application Support/Verchestra/state/workspaces/<workspaceId>/task-providers.json
+<state>/workspaces/<workspaceId>/task-providers.json
 ```
 
 ```json
@@ -150,6 +201,11 @@ npx verchestra secret set --name anthropic-api-key
 npx verchestra secret set --name openai-api-key
 ```
 
+```powershell
+npx verchestra secret set --name anthropic-api-key
+npx verchestra secret set --name openai-api-key
+```
+
 `anthropic-api-key` is injected only into the Claude Code child process and
 `openai-api-key` only into the Codex child process. A run reads only the
 credentials its modes name.
@@ -160,7 +216,7 @@ A task request names its gates by a `commandRef`, never by an executable. The
 executables live in one machine-local file that only you write:
 
 ```text
-~/Library/Application Support/Verchestra/state/workspaces/<workspaceId>/task-gates.json
+<state>/workspaces/<workspaceId>/task-gates.json
 ```
 
 ```json
@@ -172,7 +228,8 @@ executables live in one machine-local file that only you write:
 }
 ```
 
-Use absolute paths (`command -v node` prints one). `fixedArgs` is optional and
+Use absolute paths (`command -v node` prints one; in PowerShell,
+`(Get-Command node).Source`). `fixedArgs` is optional and
 is prepended to every invocation. A gate runs in the task worktree, a separate
 Git checkout, with a minimal environment (`PATH`, `HOME`, temporary
 directories, `CI=1`).
@@ -391,7 +448,7 @@ No node's answer counts as verification.
 > `HUMAN_REVIEW`, and cancel, suspension, resume, and a killed run are
 > exercised. No run with a real subscription has been recorded yet on any
 > platform. They are in the published `0.0.0-qualification.7` and later, so
-> `npx --yes verchestra@0.0.0-qualification.7` runs them; an earlier release
+> `npx --yes verchestra@0.0.0-qualification.8` runs them; an earlier release
 > refuses a v2 request. On Windows a run also needs the
 > [Windows prerequisites](#windows-prerequisites).
 
@@ -485,7 +542,7 @@ so it asks you to state it, after you have turned that spending off:
 3. **Write your statement** by hand, beside `task-providers.json`:
 
 ```text
-~/Library/Application Support/Verchestra/state/workspaces/<workspaceId>/task-billing.json
+<state>/workspaces/<workspaceId>/task-billing.json
 ```
 
 ```json
@@ -665,7 +722,12 @@ and names it:
 
 Claude Code and Codex must be their native `claude.exe` and `codex.exe`
 builds on `PATH`; the `.cmd` shims an npm install creates are refused as not
-configured. Inside its own worktrees Verchestra runs Git with
+configured. Claude Code's native Windows installer,
+`irm https://claude.ai/install.ps1 | iex` in PowerShell, installs `claude.exe`
+and prints the folder it used; make sure that folder is on your `PATH`. Codex
+publishes native Windows builds of `codex.exe`, one per architecture, as assets
+of its releases at <https://github.com/openai/codex/releases>; extract the one
+for your machine into a folder on your `PATH`. Inside its own worktrees Verchestra runs Git with
 `core.longpaths=true`; your own Git configuration is not changed.
 
 ## Limits of this qualification build
