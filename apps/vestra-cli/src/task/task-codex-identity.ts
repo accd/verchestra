@@ -128,10 +128,20 @@ function shellQuoted(value: string): string {
   return `'${value.replaceAll("'", "'\\''")}'`;
 }
 
+// why: PowerShell takes a single-quoted string literally except for a quote,
+// which it doubles.
+function powershellQuoted(value: string): string {
+  return `'${value.replaceAll("'", "''")}'`;
+}
+
 // why: the one command the owner runs once; the path is machine-local, so it
-// is shown on the terminal and never placed in a public error or a record.
-export function codexLoginCommand(directory: string): string {
-  return `CODEX_HOME=${shellQuoted(directory)} codex login`;
+// is shown on the terminal and never placed in a public error or a record. On
+// Windows the owner's shell is PowerShell, where `NAME=value command` is not a
+// command at all.
+export function codexLoginCommand(directory: string, platform: string = process.platform): string {
+  return platform === "win32"
+    ? `$env:CODEX_HOME=${powershellQuoted(directory)}; codex login`
+    : `CODEX_HOME=${shellQuoted(directory)} codex login`;
 }
 
 // invariant: `config.toml` is rewritten whole before every use, so nothing a

@@ -29,12 +29,19 @@ The first run does the real work:
 5. it hands control to the activated release's own launcher.
 
 Your ambient Node runs the bootstrap and nothing else. The activated release
-carries its own Node runtime, so Node is not a prerequisite beyond what `npx`
-itself needs. Expect a couple of minutes on a cold first run, and a few seconds
+carries its own Node runtime; `npx` needs Node 24.14.0 or later to run the
+bootstrap. Expect a couple of minutes on a cold first run, and a few seconds
 once a release is activated.
 
 One prerequisite is not bundled: a `git` binary must be on `PATH`, because the
 Self-Test profiles provision their fixtures by invoking `git`.
+
+## Next: deliver a governed task
+
+To take one change from a request file to a reviewed commit on a task branch,
+with Claude Code implementing and Codex verifying, follow the
+[quick start for a governed task](https://github.com/accd/verchestra/blob/main/docs/quick-start.md).
+The governed task path is experimental in this build.
 
 ## Prove portability on your own machine
 

@@ -11,6 +11,8 @@ import { join } from "node:path";
 import { after, test } from "node:test";
 
 import { COORDINATION_LIMIT_DEFAULTS } from "../../packages/application/src/index.ts";
+import { normalizeTaskRequest } from "../../packages/application/src/index.ts";
+import { SchemaRegistry } from "../../packages/contracts/src/index.ts";
 import { assertTextAgrees } from "../helpers/cli-text-fixture.mjs";
 import { confirmExtraUsage } from "../helpers/task-billing-fixture.mjs";
 import { cleanupTaskFixtures, taskFixture } from "../helpers/task-cli-fixture.mjs";
@@ -87,3 +89,11 @@ for (const mode of Object.keys(TOPOLOGIES))
     assert.equal(text.status, 0, text.stderr);
     assertTextAgrees(text.stdout, plan, PER_INVOCATION);
   });
+
+test("the v1 example request validates", async () => {
+  const example = JSON.parse(readFileSync(new URL("../../docs/examples/task-request.json", import.meta.url), "utf8"));
+  assert.equal(example.schemaVersion, 1);
+  const schemas = await SchemaRegistry.load(new URL("../../schemas/", import.meta.url));
+  assert.equal(schemas.validate("task-request", "1", example).schemaVersion, 1);
+  assert.equal(normalizeTaskRequest(example).schemaVersion, 1);
+});

@@ -18,6 +18,36 @@
 
 Explore the [product website and searchable documentation](https://accd.github.io/verchestra/), or continue below for the repository overview.
 
+## Beta testers
+
+`0.0.0-qualification` is open to external beta testers. It is still not a
+production release and not 1.0: the signed 1.0.0 decision is a hold. Install the
+exact build this section names, so every report refers to the same one:
+
+```bash
+npx verchestra@0.0.0-qualification.8 --version
+```
+
+You need Node 24.14.0 or later for `npx`, and `git` on `PATH`.
+
+| Command family | Label        | What to try                                                                   |
+| -------------- | ------------ | ----------------------------------------------------------------------------- |
+| `init`         | beta         | Initialize a Workspace in a repository of yours                               |
+| `self-test`    | beta         | `self-test --profile smoke` proves the release on your machine                |
+| `doctor`       | beta         | A read-only health report; it is not a setup check                            |
+| `secret`       | beta         | Store and inspect Workspace credentials in your OS credential store           |
+| `task`         | experimental | One governed task, macOS first: follow the [quick start](docs/quick-start.md) |
+
+`task` stays experimental until the supervised live pilot
+([#406](https://github.com/accd/verchestra/issues/406)) reaches human review
+with real providers; on Linux and Windows it has run only with stand-ins.
+Before you run one, read why
+[a governed task is not a sandbox](SECURITY.md#a-governed-task-is-not-a-sandbox).
+
+Report a problem with the
+[beta tester bug form](https://github.com/accd/verchestra/issues/new?template=tester_bug_report.yml)
+and attach what [SUPPORT.md lists](SUPPORT.md#what-to-attach).
+
 ## Agent-ready contribution and AI-readable docs
 
 A clean clone is self-describing through the root and scoped `AGENTS.md` files.
@@ -62,19 +92,21 @@ Rather than take the matrix's word for it, inspect
 [a real, signed, fixture-generated Execution Package](docs/proof/execution-package.md) -
 regenerable byte-for-byte from any clean clone with `corepack pnpm proof:generate`.
 
-| Capability                                               | Status    | Reference            |
-| -------------------------------------------------------- | --------- | -------------------- |
-| Workspace initialization (init preview and apply)        | available | issue #64 slice A/B  |
-| Evidence signing-key lifecycle (persist, rotate, revoke) | qualified | T68a                 |
-| Cost and duration budget enforcement                     | qualified | T68b                 |
-| Declared gate repair loop with human escalation          | qualified | T68c                 |
-| Policy boundary: declarative tests and signed bundles    | qualified | T68d                 |
-| AI driver adapters (Claude Code, Codex, OpenCode/Qwen)   | qualified | driver qualification |
-| Read-only database probes (7 engines, fixture-qualified) | qualified | database matrix      |
-| Signed distribution, activation, and rollback (TUF)      | qualified | T66-T68              |
-| Self-Test trust domain and doctor --deep                 | qualified | T69-T72              |
-| Public regression campaigns and sealed-holdout promotion | qualified | T73-T74              |
-| Platform matrix, release candidate, and the 1.0 decision | planned   | T75-T77              |
+| Capability                                               | Status       | Reference            |
+| -------------------------------------------------------- | ------------ | -------------------- |
+| Workspace initialization (init preview and apply)        | available    | issue #64 slice A/B  |
+| Evidence signing-key lifecycle (persist, rotate, revoke) | qualified    | T68a                 |
+| Cost and duration budget enforcement                     | qualified    | T68b                 |
+| Declared gate repair loop with human escalation          | qualified    | T68c                 |
+| Policy boundary: declarative tests and signed bundles    | qualified    | T68d                 |
+| AI driver adapters (Claude Code, Codex, OpenCode/Qwen)   | qualified    | driver qualification |
+| Read-only database probes (7 engines, fixture-qualified) | qualified    | database matrix      |
+| Signed distribution, activation, and rollback (TUF)      | qualified    | T66-T68              |
+| Self-Test trust domain and doctor --deep                 | qualified    | T69-T72              |
+| Public regression campaigns and sealed-holdout promotion | qualified    | T73-T74              |
+| Platform matrix and release candidate                    | qualified    | T75-T76              |
+| 1.0 release decision: a signed hold, not promoted        | qualified    | T77                  |
+| Governed task delivery (plan, approve, start, review)    | experimental | #405, #406           |
 
 Full reports live under [docs/qualification/](docs/qualification/) and on the
 [public evidence pages](https://accd.github.io/verchestra/docs/qualification/).
@@ -147,9 +179,10 @@ The first run does the real work: it reads the trust root pinned inside the
 package, resolves the pinned release through TUF, verifies every component byte,
 activates the release transactionally behind a health gate, and hands control to
 the activated release's own launcher. Your ambient Node runs the bootstrap and
-nothing else — the activated release carries its own Node runtime, so Node is
-not a prerequisite beyond what `npx` itself needs. Expect a couple of minutes on
-a cold first run and a few seconds once a release is activated.
+nothing else — the activated release carries its own Node runtime — and `npx`
+needs Node 24.14.0 or later to run that bootstrap; an older Node is refused with
+`VES_VESTRA_HOST_UNSUPPORTED`. Expect a couple of minutes on a cold first run
+and a few seconds once a release is activated.
 
 One prerequisite is not bundled: a `git` binary must be on `PATH`, because the
 Self-Test profiles provision their fixtures by invoking `git`

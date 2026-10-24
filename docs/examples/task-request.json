@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "sourceRevision": "0123456789abcdef0123456789abcdef01234567",
+  "task": {
+    "taskId": "EXAMPLE-1",
+    "requirementIds": ["VES-EXE-001"],
+    "dependencyTaskIds": [],
+    "component": "greeting",
+    "changeScope": ["src", "test"],
+    "protectedPaths": [".git", ".verchestra"],
+    "verificationCommands": ["node --test test"],
+    "doneCriteria": [
+      "greet() returns Hello, followed by the caller's name and an exclamation mark",
+      "A new test in test/greet.test.js asserts greet('Ada') returns Hello, Ada!",
+      "All existing tests still pass unchanged"
+    ],
+    "risk": "medium",
+    "expectedCommitBoundary": "feat(greeting): greet the caller by name"
+  },
+  "gates": [
+    {
+      "gateId": "gate:unit",
+      "requirementIds": ["VES-EXE-001"],
+      "declaredCommand": "node --test test",
+      "commandRef": "node",
+      "args": ["--test", "test"],
+      "cwd": ".",
+      "timeoutMs": 120000,
+      "outputLimitBytes": 1000000,
+      "resultProtocol": "test-summary",
+      "minimumTests": 1
+    }
+  ],
+  "budgets": {
+    "maximumCostUsd": 5,
+    "maximumTokens": 2000000,
+    "maximumDurationMs": 1800000
+  },
+  "onGateFailure": {
+    "maxAttempts": 2,
+    "feedbackToDriver": true,
+    "escalateAfter": 2
+  },
+  "driver": {
+    "driverId": "claude-code",
+    "model": "claude-sonnet-5-5"
+  },
+  "verifier": {
+    "driverId": "codex",
+    "model": "gpt-5.5"
+  },
+  "instructions": "Change greet() in src/greet.js so it names the caller: greet('Ada') returns 'Hello, Ada!'. Add a new test for it in test/greet.test.js. Keep the module's other exports unchanged."
+}

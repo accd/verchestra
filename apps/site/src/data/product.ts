@@ -172,10 +172,22 @@ export const capabilityMatrix: readonly CapabilityEntry[] = [
     evidenceRoute: "docs/qualification/t74-validation"
   },
   {
-    capability: "Platform matrix, release candidate, and the 1.0 decision",
-    maturity: "planned",
-    reference: "T75-T77",
-    evidenceRoute: "roadmap"
+    capability: "Platform matrix and release candidate",
+    maturity: "qualified",
+    reference: "T75-T76",
+    evidenceRoute: "docs/qualification/t76-validation"
+  },
+  {
+    capability: "1.0 release decision: a signed hold, not promoted",
+    maturity: "qualified",
+    reference: "T77",
+    evidenceRoute: "docs/qualification/t77-validation"
+  },
+  {
+    capability: "Governed task delivery (plan, approve, start, review)",
+    maturity: "experimental",
+    reference: "#405, #406",
+    evidenceRoute: "docs/install-and-run"
   }
 ] as const;
 
