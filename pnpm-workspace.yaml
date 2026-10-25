@@ -4,11 +4,6 @@ packages:
 # why: an install resolves no version published less than three days (4320
 # minutes) ago, so a compromised release has time to be withdrawn first.
 minimumReleaseAge: 4320
-# why: a security fix may be younger than the release age. body-parser 1.20.9
-# fixes GHSA-27r3-jxmh-p828 and was published on 2026-10-22; once it is older
-# than three days this entry can go.
-minimumReleaseAgeExclude:
-  - body-parser
 overrides:
   basic-ftp: 6.2.1
   lodash-es: 4.18.1
