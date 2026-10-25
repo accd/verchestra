@@ -8,6 +8,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ### Added
 
+- `vestra <command> --help` prints the command's usage and the options it
+  takes.
+- A refusal in human mode names its safe details, so `VES_TASK_NOT_CONFIGURED`
+  says which requirement is missing without `--output json`.
+- A missing gate allowlist (`task-gates.json`) prints the path that was read
+  and a template with an entry per gate the request names. `task start` and
+  `task resume` refuse it before any credential is read.
+- When a request names a model no driver accepts, `task plan` lists the models
+  each driver takes.
+- `vestra --version` from a published release names the source revision it was
+  sealed at, and the version JSON gains `revision`.
 - Public repository foundation, community documentation, issue forms, CI, and dependency update policy.
 - Static product website and searchable documentation portal with canonical content projection, cross-browser accessibility qualification, and verified GitHub Pages delivery.
 - Provider-neutral root and scoped agent instructions, deterministic repository
@@ -15,6 +26,27 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   evaluation corpus.
 - Root and published `llms.txt`, attributed `llms-full.txt`, and deterministic
   Markdown alternates for public documentation.
+
+### Changed
+
+- Both published commands refuse a Node older than 24.14.0 with
+  `VES_VESTRA_HOST_UNSUPPORTED` (exit 64) instead of failing inside the bundle.
+- Every read from the release source gives up after 30 seconds: a stalled read
+  fails with `VES_TUF_SOURCE_TIMEOUT` (exit 70) instead of hanging.
+- On Windows, the Codex login hint is a PowerShell command.
+- Recovery text names the quick start by its GitHub URL.
+- `jose` 6.2.13.
+
+### Security
+
+- `git` starts only from an absolute `PATH` entry, and `taskkill` only from
+  `System32`, so a `git.exe` planted in a repository never runs.
+- The task path's `git` commands disable repository hooks and `fsmonitor`, so a
+  versioned `core.hooksPath` never runs during a task.
+- A task path's trailing dots are folded as Windows folds them, so `.git.` and
+  `config.json.` are refused like `.git` and `config.json`.
+- `fast-uri` 3.1.9 in the agent runtime (GHSA-w74x-v6f9-j3xg,
+  GHSA-xhq7-xmqj-769h, GHSA-wjr9-j795-jxcr, GHSA-333x-w4r6-6crp).
 
 ## [0.0.0-qualification.8] - 2026-10-23
 
