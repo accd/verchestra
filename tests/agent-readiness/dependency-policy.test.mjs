@@ -194,8 +194,11 @@ test("the lockfile resolves the patched fast-uri and body-parser 1.x", () => {
     );
 });
 
-test("only a named security fix skips the three-day release age", () => {
+// invariant: an exclusion exists only while a security fix is younger than the
+// release age. Adding one means naming the fix here and removing both once the
+// fix is three days old, as body-parser 1.20.9 was on 2026-10-25.
+test("no package skips the three-day release age", () => {
   const workspace = read("pnpm-workspace.yaml");
   assert.match(workspace, /^minimumReleaseAge: 4320$/mu);
-  assert.match(workspace, /^minimumReleaseAgeExclude:\r?\n {2}- body-parser\r?$/mu);
+  assert.doesNotMatch(workspace, /minimumReleaseAgeExclude/u);
 });
