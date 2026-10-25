@@ -280,7 +280,7 @@ untracked.
   ],
   "budgets": { "maximumCostUsd": 5, "maximumTokens": 2000000, "maximumDurationMs": 1800000 },
   "driver": { "driverId": "claude-code", "model": "claude-sonnet-5" },
-  "verifier": { "driverId": "codex", "model": "gpt-5.2-codex" },
+  "verifier": { "driverId": "codex", "model": "gpt-5.5" },
   "instructions": "Extend parseDuration in src/duration.js to accept hour-minute strings such as 1h30m, and add tests in test/duration.test.js. Keep the existing API."
 }
 ```
