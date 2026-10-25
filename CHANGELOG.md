@@ -47,6 +47,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   versioned `core.hooksPath` never runs during a task.
 - A task path's trailing dots are folded as Windows folds them, so `.git.` and
   `config.json.` are refused like `.git` and `config.json`.
+- `vestra init` and the workspace scanner start `git` with the same scrubbed
+  environment as a task, so an inherited `GIT_DIR` or `GIT_CONFIG_*` cannot
+  point them at another repository.
+- `self-test` refuses a base folder that is a link or that another user owns,
+  and keeps its own base folder at mode 0700.
+- On Windows, a task path that names a device (`con`, `nul`, `aux`, `prn`,
+  `com1`-`com9`, `lpt1`-`lpt9`, with any extension) is refused.
 - `fast-uri` 3.1.9 in the agent runtime (GHSA-w74x-v6f9-j3xg,
   GHSA-xhq7-xmqj-769h, GHSA-wjr9-j795-jxcr, GHSA-333x-w4r6-6crp).
 
