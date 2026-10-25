@@ -3,9 +3,9 @@
 // mechanics. Every verdict about these facts lives in
 // packages/application/src/self-test; this adapter only measures and acts.
 import { createHash } from "node:crypto";
-import { lstat, mkdir, mkdtemp, readdir, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, lstat, mkdir, mkdtemp, readdir, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join, resolve, sep } from "node:path";
-import type { RootFacts, SelfTestProfileId } from "@verchestra/application";
+import { SelfTestError, type RootFacts, type SelfTestProfileId } from "@verchestra/application";
 
 // The rules compare paths as opaque forward-slash strings, so every path this
 // adapter reports goes through one normalizer.
@@ -56,15 +56,37 @@ async function listResidue(root: string): Promise<readonly string[]> {
 
 export class DisposableRootProvider {
   readonly #baseDirectory: string;
+  readonly #ownerId: number | undefined;
 
-  constructor(options: { readonly baseDirectory: string }) {
+  // why: `ownerId` is the user the base folder must belong to. It defaults to
+  // this process's user on POSIX; Windows has no such id, and there each user
+  // has their own temporary directory.
+  constructor(options: { readonly baseDirectory: string; readonly ownerId?: number }) {
     this.#baseDirectory = options.baseDirectory;
+    this.#ownerId = options.ownerId ?? process.getuid?.();
   }
 
   async provision(profileId: SelfTestProfileId): Promise<RootFacts> {
-    await mkdir(this.#baseDirectory, { recursive: true });
+    await this.#ownedBase();
     const root = await mkdtemp(join(this.#baseDirectory, `selftest-${profileId}-`));
     return probeRootFacts(root);
+  }
+
+  // hazard: the base folder sits in the temporary directory, which the users
+  // of a POSIX machine share. Another user could create it first, or replace
+  // it with a link to a folder of theirs, and every disposable root would then
+  // be made inside it, so a link, a non-directory, or another owner is refused
+  // before anything is made. A base this user owns is narrowed to 0700.
+  async #ownedBase(): Promise<void> {
+    const made = await mkdir(this.#baseDirectory, { recursive: true, mode: 0o700 }).catch((error: unknown) => error);
+    const facts = await lstat(this.#baseDirectory).catch(() => null);
+    if (facts === null) throw made;
+    if (facts.isSymbolicLink() || !facts.isDirectory())
+      throw new SelfTestError("VES_SELFTEST_ROOT_BASE_UNSAFE", "the self-test base folder is a link or not a folder");
+    if (this.#ownerId === undefined) return;
+    if (facts.uid !== this.#ownerId)
+      throw new SelfTestError("VES_SELFTEST_ROOT_BASE_UNSAFE", "the self-test base folder belongs to another user");
+    if ((facts.mode & 0o077) !== 0) await chmod(this.#baseDirectory, 0o700);
   }
 
   // Cleanup reports facts: removal is proven only when the root demonstrably
