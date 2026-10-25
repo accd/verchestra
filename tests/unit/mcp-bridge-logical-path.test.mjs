@@ -4,9 +4,9 @@ import { test } from "node:test";
 
 import { logicalSegments } from "../../packages/agent-runtime/src/execution/mcp-bridge-tools.ts";
 
-function outcome(value) {
+function outcome(value, platform) {
   try {
-    return { segments: [...logicalSegments(value)] };
+    return { segments: [...logicalSegments(value, platform)] };
   } catch (error) {
     return { code: error.code };
   }
@@ -41,4 +41,12 @@ test("long separator runs are validated in bounded time", () => {
 test("a trailing-dot alias of .git is refused as Git metadata on every host", () => {
   for (const value of [".git.", ".git./config", "src/.GIT../x"])
     assert.deepEqual(outcome(value), { code: "VES_BRIDGE_PATH_PROTECTED" }, value);
+});
+
+test("on a Windows host a path naming a device is refused, elsewhere it is a file", () => {
+  for (const value of ["con", "src/nul.txt", "src/AUX.c", "lpt1"])
+    assert.deepEqual(outcome(value, "win32"), { code: "VES_BRIDGE_PATH_INVALID" }, value);
+  assert.deepEqual(outcome("src/aux.c", "linux"), { segments: ["src", "aux.c"] });
+  assert.deepEqual(outcome("src/aux.c", "darwin"), { segments: ["src", "aux.c"] });
+  assert.deepEqual(outcome("src/console.c", "win32"), { segments: ["src", "console.c"] });
 });

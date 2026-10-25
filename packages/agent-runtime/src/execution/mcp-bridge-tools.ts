@@ -7,7 +7,8 @@ import {
   isTaskPath,
   isWithinTaskPath,
   isWithinTaskScope,
-  namesGitMetadata
+  namesGitMetadata,
+  namesWindowsDevice
 } from "@verchestra/domain";
 
 import { codeUnitCompare } from "../context/code-unit-compare.ts";
@@ -44,14 +45,16 @@ function withoutTrailingSeparators(value: string): string {
 }
 
 // Splits and validates a model-supplied logical path. `.` names the worktree
-// root. Git metadata is refused at any depth and in any letter case.
-export function logicalSegments(value: unknown): readonly string[] {
+// root. Git metadata is refused at any depth and in any letter case, and on a
+// Windows host so is a segment that names a device.
+export function logicalSegments(value: unknown, platform: string = process.platform): readonly string[] {
   if (value === ".") return [];
   if (!isTaskPath(value)) deny("VES_BRIDGE_PATH_INVALID", "Path is not a repository-relative logical path");
   const segments = withoutTrailingSeparators(value).split("/");
   if (segments.some((segment) => segment === "" || segment === "."))
     deny("VES_BRIDGE_PATH_INVALID", "Path is not normalized");
   if (namesGitMetadata(value)) deny("VES_BRIDGE_PATH_PROTECTED", "Git metadata is not readable");
+  if (platform === "win32" && namesWindowsDevice(value)) deny("VES_BRIDGE_PATH_INVALID", "Path names a Windows device");
   return segments;
 }
 

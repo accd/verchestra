@@ -74,6 +74,24 @@ export function namesGitMetadata(path: string): boolean {
   return folded(path).includes(".git");
 }
 
+// invariant: Win32 opens a segment whose name before its first dot is a device
+// (`con`, `prn`, `aux`, `nul`, `com1`-`com9`, `lpt1`-`lpt9`, in any letter
+// case and with any extension) as that device, the rule `LogicalPath` already
+// applies: a write to `nul.txt` is discarded and one to `con` reaches the
+// console. On POSIX the same segment names an ordinary file, so a stage asks
+// this only when its host is Windows.
+const WINDOWS_DEVICES = new Set([
+  "con",
+  "prn",
+  "aux",
+  "nul",
+  ..."123456789".split("").flatMap((digit) => [`com${digit}`, `lpt${digit}`])
+]);
+
+export function namesWindowsDevice(path: string): boolean {
+  return taskPathSegments(path.toLowerCase()).some((segment) => WINDOWS_DEVICES.has(segment.split(".")[0] ?? ""));
+}
+
 // invariant: two scope entries overlap when either contains the other in any
 // letter case.
 export function taskPathsOverlap(left: string, right: string): boolean {

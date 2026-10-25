@@ -12,7 +12,13 @@ import {
   type ExecutionToolPort,
   type ExecutionToolRequest
 } from "@verchestra/application";
-import { canonicalizeJsonV2, isProtectedTaskPath, isTaskPath, namesGitMetadata } from "@verchestra/domain";
+import {
+  canonicalizeJsonV2,
+  isProtectedTaskPath,
+  isTaskPath,
+  namesGitMetadata,
+  namesWindowsDevice
+} from "@verchestra/domain";
 
 const SAFE = /^[A-Za-z0-9][A-Za-z0-9._:@/+-]{0,511}$/u;
 const OPERATION_KIND = "worktree-tool/1";
@@ -145,6 +151,8 @@ export interface NodeWorktreeToolAdapterOptions {
   // refused, at any depth.
   readonly protectedRoots?: readonly string[];
   readonly now?: () => string;
+  // The host platform; on win32 a target naming a device is refused.
+  readonly platform?: string;
 }
 
 // ExecutionToolPort for an isolated Git worktree. The executor has already
@@ -158,6 +166,7 @@ export class NodeWorktreeToolAdapter implements ExecutionToolPort {
   readonly #payloads: ExecutionPayloadPort;
   readonly #protectedRoots: readonly string[];
   readonly #now: () => string;
+  readonly #platform: string;
 
   constructor(options: NodeWorktreeToolAdapterOptions) {
     if (!SAFE.test(options.workspaceId)) fail("VES_TOOL_REQUEST_INVALID", "Workspace identity is invalid");
@@ -170,6 +179,7 @@ export class NodeWorktreeToolAdapter implements ExecutionToolPort {
     this.#payloads = options.payloads;
     this.#protectedRoots = Object.freeze([...protectedRoots]);
     this.#now = options.now ?? (() => new Date().toISOString());
+    this.#platform = options.platform ?? process.platform;
   }
 
   async invoke(value: ExecutionToolRequest & { readonly worktreeRef: string }) {
@@ -266,6 +276,8 @@ export class NodeWorktreeToolAdapter implements ExecutionToolPort {
     if (segments.some((segment) => segment === "." || segment === ""))
       fail("VES_TOOL_PATH_ESCAPE", "Tool target is not a normalized logical path");
     if (namesGitMetadata(path)) fail("VES_TOOL_PROTECTED_PATH", "Tool target is inside Git metadata");
+    if (this.#platform === "win32" && namesWindowsDevice(path))
+      fail("VES_TOOL_PATH_ESCAPE", "Tool target names a Windows device");
     if (isProtectedTaskPath(path, this.#protectedRoots)) fail("VES_TOOL_PROTECTED_PATH", "Tool target is protected");
     return path;
   }

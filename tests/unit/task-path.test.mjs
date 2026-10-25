@@ -13,6 +13,7 @@ import {
   isWithinTaskScope,
   LogicalPath,
   namesGitMetadata,
+  namesWindowsDevice,
   taskPathSegments,
   taskPathsOverlap
 } from "../../packages/domain/src/index.ts";
@@ -273,4 +274,24 @@ test("a trailing-dot alias of a protected path is protected", () => {
   assert.equal(isProtectedTaskPath("secrets.../key", ["secrets"]), true);
   assert.equal(isProtectedTaskPath("config.jsonx", ["config.json"]), false);
   assert.equal(isProtectedTaskPath("src/config.json.", ["config.json"]), false);
+});
+
+// invariant: Win32 opens a segment whose name before its first dot is a device
+// as that device, the rule LogicalPath applies (#595); a stage asks this only
+// on a Windows host, since on POSIX the same segment names an ordinary file.
+test("a segment named for a Windows device is a device in any case and with any extension", () => {
+  for (const path of [
+    "con",
+    "NUL",
+    "nul.txt",
+    "src/aux.c",
+    "src/Com1",
+    "lpt9.log",
+    "prn/notes",
+    "src/con.",
+    "aux.tar.gz"
+  ])
+    assert.equal(namesWindowsDevice(path), true, path);
+  for (const path of ["console", "src/conx", "com0", "lpt10", "nul_", ".con", "src/aux-x.c", "connection.js", "."])
+    assert.equal(namesWindowsDevice(path), false, path);
 });
