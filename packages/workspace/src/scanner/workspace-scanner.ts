@@ -5,7 +5,7 @@ import { promisify } from "node:util";
 
 import { normalizeDeclaredSet } from "@verchestra/domain";
 
-import { resolveGitExecutable } from "../git-executable.ts";
+import { gitInspectionEnvironment, resolveGitExecutable } from "../git-executable.ts";
 
 import {
   WorkspaceScanError,
@@ -63,7 +63,7 @@ async function git(cwd: string, args: readonly string[]): Promise<GitResult> {
     const result = await execute(resolveGitExecutable(), ["-c", "core.fsmonitor=false", ...args], {
       cwd,
       encoding: "utf8",
-      env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" },
+      env: gitInspectionEnvironment(),
       windowsHide: true,
       maxBuffer: 1024 * 1024
     });

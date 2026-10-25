@@ -4,7 +4,7 @@ import { mkdir, readFile, readdir, realpath, rename, rm, rmdir, writeFile } from
 import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 import { LogicalPath, StableId, WORKSPACE_ROOT_DIRNAME, normalizeDeclaredSet } from "@verchestra/domain";
-import { resolveGitExecutable } from "../git-executable.ts";
+import { gitInspectionEnvironment, resolveGitExecutable } from "../git-executable.ts";
 import { editManagedGitignore } from "./managed-gitignore.ts";
 import {
   WorkspaceScanError,
@@ -209,7 +209,7 @@ async function gitIgnores(root: string, logicalPath: string): Promise<boolean> {
       ["-c", "core.fsmonitor=false", "check-ignore", "-q", "--no-index", "--", logicalPath],
       {
         cwd: root,
-        env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" },
+        env: gitInspectionEnvironment(),
         windowsHide: true
       }
     );
