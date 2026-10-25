@@ -14,6 +14,12 @@
 // bundled as an ordinary internal module, its body only executes when a module
 // that genuinely uses SQLite first executes, and it resolves nothing but the
 // built-in - so SQLite loads at exactly the moment it loads in development.
+//
+// Loading the built-in still makes Node print its SQLite experimental-feature
+// warning once, on the first `task` command that opens the runtime store. The
+// warning tells a user nothing they can act on, so the load passes through a
+// filter that drops that one warning and restores `process.emitWarning` at
+// once; every other warning, experimental or not, is untouched.
 import { createRequire } from "node:module";
 
 interface NodeSqliteModule {
@@ -22,7 +28,23 @@ interface NodeSqliteModule {
   readonly constants: unknown;
 }
 
-const sqlite = createRequire(import.meta.url)("node:sqlite") as NodeSqliteModule;
+const SQLITE_WARNING = /^SQLite is an experimental feature/u;
+
+function loadWithoutSqliteWarning(): NodeSqliteModule {
+  const emitWarning = process.emitWarning;
+  process.emitWarning = ((warning: string | Error, ...rest: unknown[]) => {
+    const text = typeof warning === "string" ? warning : warning.message;
+    if (rest[0] === "ExperimentalWarning" && SQLITE_WARNING.test(text)) return;
+    Reflect.apply(emitWarning, process, [warning, ...rest]);
+  }) as typeof process.emitWarning;
+  try {
+    return createRequire(import.meta.url)("node:sqlite") as NodeSqliteModule;
+  } finally {
+    process.emitWarning = emitWarning;
+  }
+}
+
+const sqlite = loadWithoutSqliteWarning();
 
 export const DatabaseSync = sqlite.DatabaseSync;
 export const backup = sqlite.backup;

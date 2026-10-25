@@ -34,6 +34,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 - Every read from the release source gives up after 30 seconds: a stalled read
   fails with `VES_TUF_SOURCE_TIMEOUT` (exit 70) instead of hanging.
 - On Windows, the Codex login hint is a PowerShell command.
+- A published `task` command no longer prints Node's SQLite
+  experimental-feature warning.
 - Recovery text names the quick start by its GitHub URL.
 - `jose` 6.2.13.
 
