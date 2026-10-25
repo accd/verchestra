@@ -69,19 +69,18 @@ record is also pending (owner).
    and `resume` compares with the plan the Codex sign-in reports, through one
    extra Codex process that reads only the account and which of the run's
    Codex models it offers.
-4. **Prepare the run.** Coordinated runs are in the published
-   `0.0.0-qualification.7`: run the CLI as
-   `npx --yes verchestra@0.0.0-qualification.7`, and record its `--version`
+4. **Prepare the run.** Run the published `0.0.0-qualification.8` as
+   `npx --yes verchestra@0.0.0-qualification.8`, and record its `--version`
    and the package's `dist.integrity` with each result. Use a disposable
    repository holding the files the
    examples name, and replace each example's `sourceRevision` with that
    repository's `git rev-parse HEAD`. The examples name `gpt-5.5` for every Codex
    session; if your account offers another Codex model, name that one instead.
-   A build that carries the model check (AD-085) refuses a model the account
-   does not offer at `start`, before any effect, as `not configured`
-   (`codex-model-unavailable`). `0.0.0-qualification.7` has neither the check
-   nor the subscription-only model entries (AD-084): it refuses `gpt-5.5` at
-   `plan`, so these examples need a build that carries both.
+   `.8` carries the model check (AD-085): it refuses a model the account does
+   not offer at `start`, before any effect, as `not configured`
+   (`codex-model-unavailable`). It also carries the subscription-only model
+   entries (AD-084). `0.0.0-qualification.7` and earlier have neither, and
+   refuse `gpt-5.5` at `plan`.
 5. **Run each mode** with `docs/examples/task-request-agent.json`,
    `task-request-graph.json`, and `task-request-swarm.json`:
 

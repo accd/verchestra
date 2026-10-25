@@ -6,9 +6,9 @@ status: in_progress
 branch: docs/publish-qualification-8
 baseRevision: d83fc139a84604de18e8acee416e4b48c237e539
 lastCompletedTask: T5
-nextTask: "T6, Front E, continues: .8 is built, signed, uploaded, verified live, published to npm as latest, and recorded as ledger sequence 8. Next the owner dispatches live-activation-matrix with base 0.0.0-qualification.7 and update 0.0.0-qualification.8 on five targets; then the pilot's spec.md §2 moves to .8, and P1 attempt 3, P2, P3, S1 to S3, and the coordinated pilots run on .8."
+nextTask: "T6, Front E, continues: .8 is built, signed, uploaded, verified live, published to npm as latest, recorded as ledger sequence 8, and updated live from .7 and rolled back on five targets (live-activation-matrix run 40210962039). The pilot spec.md section 2 and the coordinated pilot guide name .8 since 2026-10-25. Next, on .8: P1 attempt 3, P2, P3, S1 to S3, and the coordinated pilots, run by the owner."
 lastGate: "T6 publication record, on Windows x64 without symlink privilege under Node 24.14.0: tuf-publication-ledger 21 of 21 and agent:check PASS; gate:quick stages format, lint, complexity, typecheck, agent-readiness (357 of 357) and census PASS, and test:unit fails one case this change does not touch, task-billing.test.mjs:192, because the host refuses to create a symlink (EPERM). T5: gate:quick, contract, integration, security, architecture, e2e, fault, mutation, and agent:check PASS (validation.md)"
-updatedAt: 2026-10-24T12:00:00Z
+updatedAt: 2026-10-25T17:00:00Z
 ---
 
 # Scope
@@ -51,30 +51,27 @@ T6 (Front E), the publication only: the `.8` candidate (run `40022535213` at
 7, rollback bound to `.7`), uploaded under `v8/`, verified live, published to
 npm as `latest` on 2026-10-24, and recorded as ledger sequence 8. Evidence:
 `live-activation-matrix/validation.md`, "TUF publication of
-`0.0.0-qualification.8`". The live update from `.7` and the pilot round remain,
-so PPR-10 is not met yet.
+`0.0.0-qualification.8`". The live update from `.7` and the rollback to it
+passed on all five targets on 2026-10-25 (run `40210962039`, same file), and
+the pilot's `spec.md` §2 and `docs/qualification/coordinated-run-pilots.md` name
+`.8` since then. The pilot round remains, so PPR-10 is not met yet.
 
 # Blockers
 
-None for the publication. The rest of T6 needs the owner: the dispatch of
-`live-activation-matrix` from `.7` to `.8`, the extra usage of the Claude and
-ChatGPT accounts switched off before the coordinated pilots, and the earlier
-delegated approvals (D1, D1b, D10, the amendments, D11, and D8).
+None for the publication. The rest of T6 needs the owner: the extra usage of
+the Claude and ChatGPT accounts switched off before the coordinated pilots, and
+the earlier delegated approvals (D1, D1b, D10, the amendments, D11, and D8).
 
 # Next Action
 
-The owner dispatches `.github/workflows/live-activation-matrix.yml` from `main`
-with `base_version=0.0.0-qualification.7` and
-`update_version=0.0.0-qualification.8`, and its five-target result is recorded
-in `live-activation-matrix/validation.md`, as for `.6` to `.7`. Then the
-pilot's `spec.md` §2, which names `.7`, is amended to `.8`, and the pilots run
-on `.8` as the `nextTask` states it.
+The owner runs the pilots on `.8` as the `nextTask` states it: P1 attempt 3
+first, as the pilot's `spec.md` §8 orders it.
 
 # Files Intentionally Left Unchanged
 
-The pilot's `spec.md` §2 (the candidate) and §8 (the steps): the candidate they
-name changes with the publication, and the steps do not. The pilot's probes, its
-target, its revision, its tasks, and its limits.
+The pilot's §8 (the steps), its probes, its target, its revision, its tasks, and
+its limits. Its §2 (the candidate) changed with the publication, on 2026-10-25,
+as a deviation recorded in the pilot's `validation.md`.
 
 # Known Risks Declared in Advance
 

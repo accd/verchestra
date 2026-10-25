@@ -6,9 +6,9 @@ status: in_progress
 branch: main
 baseRevision: 35b23b3b122be7f0d7a6831f3261a9163373cfd7
 lastCompletedTask: T2
-nextTask: "T3, attempt 3 of P1 with the amended request (verifier gpt-5.5) on the candidate that carries .specs/features/p1-pilot-remediation/ (its T6); then P2, P3, S3b, S1, S3, S2 as spec.md orders them. VES then names that candidate; spec.md section 2 is amended when it is published."
-lastGate: "agent:check PASS; P1 attempts 1 and 2 are recorded in validation.md (attempt 2 stopped on the section 6 stop rule); this change called no provider"
-updatedAt: 2026-10-07T01:00:00Z
+nextTask: "T3, attempt 3 of P1 with the amended request (verifier gpt-5.5) on verchestra@0.0.0-qualification.8, which spec.md section 2 names since 2026-10-25; then P2, P3, S3b, S1, S3, S2 as spec.md orders them."
+lastGate: "agent:check PASS; spec.md section 2 names .8 and validation.md records the deviation, after live-activation-matrix run 40210962039 updated .7 to .8 and rolled back on five targets; this change called no provider"
+updatedAt: 2026-10-25T17:00:00Z
 ---
 
 # Scope
@@ -43,9 +43,11 @@ from the pre-registration are recorded in `validation.md` before the first run.
 P1 was attempted twice on `verchestra@0.0.0-qualification.7` (`validation.md`).
 The second attempt stopped at the verifier on the stop rule of `spec.md` §6,
 amended on 2026-10-06 to name a model the account does not offer. The requests
-now name the verifier `gpt-5.5`. The next run is attempt 3 of P1, on the
-candidate that carries `.specs/features/p1-pilot-remediation/`; until it is
-published nothing in the pilot runs.
+now name the verifier `gpt-5.5`. The candidate that carries
+`.specs/features/p1-pilot-remediation/` is `verchestra@0.0.0-qualification.8`;
+`spec.md` §2 names it since 2026-10-25 (a deviation recorded in `validation.md`),
+after run 40210962039 updated `.7` to `.8` live on five targets. The next run is
+attempt 3 of P1 on `.8`, on the owner's Mac, as `spec.md` §8 orders it.
 
 # Files Intentionally Left Unchanged
 
