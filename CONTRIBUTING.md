@@ -11,7 +11,10 @@ Thank you for contributing. Verchestra values small, reviewable changes with evi
 ## Claim the work before you start
 
 This is the canonical ownership policy; other documents reference it rather
-than restating it. For anything beyond a trivial fix:
+than restating it. A trivial fix is a typo, a broken link, or a correction to
+one file that changes no public behavior, security boundary, or release scope.
+It needs only a pull request that says what it fixes. For anything beyond a
+trivial fix:
 
 1. Find the existing issue, or open a scoped one if none exists.
 2. Confirm the acceptance criteria say what you intend to build.
@@ -39,6 +42,19 @@ pnpm gate:quick
 ```
 
 Use Node `24.14.0` and pnpm `10.34.5`.
+
+### On Windows
+
+- If `corepack enable` is refused because Node is installed under
+  `Program Files`, run it once from an elevated shell, or call pnpm through
+  corepack instead: `corepack pnpm install --frozen-lockfile`.
+- Turn on Windows Developer Mode before running the integration, e2e, or
+  security suites. Some of their fixtures create symbolic links, which Windows
+  allows without elevation only in Developer Mode. Without it, those tests
+  fail with a message that names Developer Mode
+  (`tests/helpers/windows-links.mjs`).
+- You do not need `core.longpaths`. The repository's own paths are short, and
+  the task path passes `core.longpaths=true` to the git commands it runs.
 
 Coding agents follow the same evidence and review standard as human
 contributors. See [Contributing with Coding Agents](docs/contributing-with-agents.md)
