@@ -86,8 +86,11 @@ jobs:
     steps:
       - name: Check out the dispatched revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.0
+        # why: no Git credential stays in .git/config where a signing key is in
+        # reach (#596); the repository is public, so the ledger fetch needs none.
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Set up pnpm
         uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
@@ -97,9 +100,10 @@ jobs:
 
       - name: Set up Node
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        # why: no cache. A pnpm cache can be written by a less-privileged job, and
+        # this job holds a signing key (#596).
         with:
           node-version: 24.14.0
-          cache: pnpm
 
       - name: Verify runtime and every dispatch input
         env:
