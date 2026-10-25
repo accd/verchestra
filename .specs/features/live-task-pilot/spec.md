@@ -51,6 +51,14 @@ The runs that follow use the candidate that carries the model entries and the
 checks that name this failure (`.specs/features/p1-pilot-remediation/`); §2 is
 amended when that candidate is published.
 
+**Amended on 2026-10-25, after P1-2 and before P1 attempt 3: the candidate is
+`.8`.** `verchestra@0.0.0-qualification.8`, published on 2026-10-24, is the
+candidate the amendment of 2026-10-06 waited for (§2). It was updated live from
+`.7` and rolled back on all five targets (run 40210962039). A run had begun on
+`.7`, so this is recorded as a deviation in `validation.md`. The target, the
+revision, the tasks, the requests and their digests, the probes, the scenarios,
+the limits, the steps of §8, and the success definition did not change.
+
 ## Requirements
 
 | ID | Requirement |
@@ -114,16 +122,27 @@ new live evidence into historical evidence.
 
 ## 2. Candidate (PLT-02)
 
-- **Candidate:** `verchestra@0.0.0-qualification.7` from the public npm registry,
-  invoked as `npx --yes verchestra@0.0.0-qualification.7 <command>`. It was
-  published on 2026-10-04 as `latest`, built from source revision
-  `2e97443ea60192464cddfefe2c55dc9c625a975e`
-  (`docs/qualification/tuf-publication-ledger.json`, sequence 7). Its
+- **Candidate:** `verchestra@0.0.0-qualification.8` from the public npm registry,
+  invoked as `npx --yes verchestra@0.0.0-qualification.8 <command>`. It was
+  published on 2026-10-24 as `latest`, built from source revision
+  `d83fc139a84604de18e8acee416e4b48c237e539`
+  (`docs/qualification/tuf-publication-ledger.json`, sequence 8). Its
   `dist.integrity` at publication was
-  `sha512-B9971sBeQuwprW1BMTK5PHHDQiU1kbaGA176yf2OqoTFvWfmvuHuxN9Vum3KaeW53/c2/UzFrhjEWsetcRXIag==`.
+  `sha512-UunyDyQFjaNaVhc9zA5FPoc8lRbYQj1jK74guK+pbITAeLbC5z+8FUcnKli+hRCxqQpPtb2js7moSroAAFgjXQ==`.
   The pre-registration named `.4`, which predates the subscription path; `.5`
   and `.6` were named on 2026-10-03 and `.7` replaced them on 2026-10-04, before
-  any run.
+  any run. P1 attempts 1 and 2 ran on `.7`; `.8` replaced it on 2026-10-25,
+  before attempt 3.
+- **What `.8` changes for the pilot.** Its model table, version `2026.10.0`,
+  lists `gpt-5.5` as a subscription-only model (AD-084), so the amended
+  requests plan. `start` and `resume` first prove that the Codex account offers
+  the verifier's model, before the lease, a transition, or the worktree, and
+  refuse one it does not offer as `VES_TASK_NOT_CONFIGURED`
+  (`codex-model-unavailable`) (AD-085); this is how the stop rule of §6 is
+  reached now. A failed run records its driver's stable code as its reason,
+  and `status` shows it as `lastReason` (AD-083). The other changes of `.8`
+  are two Windows credential-store fixes (#555, #565) and `zod` 4.6.6 (#577),
+  none of which touches this macOS pilot.
 - **What `.6` and `.7` change for the pilot.** `status.checkpoints.budget` is the
   whole run's usage, implementer and verifier together (AD-055, AD-056); in `.5`
   it was the implementer's only. A protected path is refused in any letter case
@@ -131,9 +150,9 @@ new live evidence into historical evidence.
   (`state-path-length`, before any effect) and moves the verification scratch
   checkouts to a shorter layout (AD-080); neither changes a step below.
 - **Recorded at execution:** the output of
-  `npx --yes verchestra@0.0.0-qualification.7 --version`, the package's
+  `npx --yes verchestra@0.0.0-qualification.8 --version`, the package's
   `dist.integrity` and `gitHead` from
-  `npm view verchestra@0.0.0-qualification.7 dist.integrity gitHead` (the
+  `npm view verchestra@0.0.0-qualification.8 dist.integrity gitHead` (the
   package carries no `gitHead`, which is recorded as `unavailable`), and the
   declared source revision above.
 - **Invocation rule:** always the pinned `verchestra@<version>` form. Never a bare
@@ -141,7 +160,7 @@ new live evidence into historical evidence.
   owner holds, so outside a project that installs Verchestra it does not
   resolve to the candidate.
 - In the steps below, `VES` stands for
-  `npx --yes verchestra@0.0.0-qualification.7`.
+  `npx --yes verchestra@0.0.0-qualification.8`.
 
 ## 3. Platform and provider identity (PLT-03)
 
@@ -152,7 +171,7 @@ new live evidence into historical evidence.
 | Git | Recorded at execution (`git --version`) |
 | Implementer | Claude Code **2.1.282**, `mediated-mcp-subscription` profile, model `claude-sonnet-5`. The driver requires at least `2.1.282` in the same major line (`CLAUDE_MEDIATED_MINIMUM_VERSION`, `packages/drivers/src/claude-code-driver.ts`); 2.1.282 meets it exactly. |
 | Verifier | Codex CLI, model `gpt-5.5` (amended 2026-10-06; P1-2 asked for `gpt-5.2-codex`, which the account does not offer). The driver requires at least **`0.115.0`** in the same major line (`packages/drivers/src/codex-driver.ts`, default `minimumVersion`). The installed **`codex-cli 0.157.1`** has the same major (0) and a higher minor (157 > 115), so it **meets** the minimum. |
-| Model listing | `claude-sonnet-5` is priced in the release's model table (`packages/application/src/execution/model-price-table.ts`). `gpt-5.5` is a subscription-only entry with no price, in table version `2026.10.0` (amended 2026-10-06); the `.7` table, version `2026.7.0`, knows only the priced `gpt-5.2-codex` and refuses `gpt-5.5` at planning, so the amended requests run on the candidate that carries the new table. Planning refuses a model that is not listed. On a subscription the table is only the list of supported models: no usage is priced. |
+| Model listing | `claude-sonnet-5` is priced in the release's model table (`packages/application/src/execution/model-price-table.ts`). `gpt-5.5` is a subscription-only entry with no price, in table version `2026.10.0` (amended 2026-10-06); the `.7` table, version `2026.7.0`, knows only the priced `gpt-5.2-codex` and refuses `gpt-5.5` at planning, so the amended requests run on `.8`, which carries the new table (§2). Planning refuses a model that is not listed. On a subscription the table is only the list of supported models: no usage is priced. |
 | Credential mode | `subscription` for both providers, the default of a Workspace with no `task-providers.json`. No API key is bound or used. |
 | Credentials | Names only. `claude-code-oauth-token`: the token `claude setup-token` prints, bound with `VES secret set --name claude-code-oauth-token` into the macOS keychain (#379). `evidence-signing-passphrase`: bound the same way. Codex: one `codex login` with `CODEX_HOME` set to the pilot Workspace's `codex-identity` directory; its credential stays in that directory and never enters the keychain. Values are typed or pasted by the owner, never written to a tracked artifact, a shell history, or a shell profile. |
 | Gate allowlist | The machine-local `task-gates.json` for the pilot Workspace, instantiated from [`task-gates.example.json`](task-gates.example.json) (PLT-10) |
@@ -443,7 +462,7 @@ reason; it is not retried in the same session, and not with another model in
 its place. An attempt that follows an amendment of this pre-registration (a new
 request digest, recorded under Deviations) is a new attempt at the same task,
 not a retry of the stopped run, and the stopped run stays as it was recorded.
-From the candidate that carries the checks of
+From `.8`, which carries the checks of
 `.specs/features/p1-pilot-remediation/`, `start` refuses such a model before any
 effect (`codex-model-unavailable`), so the stop is reached without spending an
 implementer's allowance.
