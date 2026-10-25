@@ -6,9 +6,9 @@ status: complete
 branch: docs/387-live-update-rollback-evidence
 baseRevision: d0748dc43ab02799e862f620aa4599b8ca303fda
 lastCompletedTask: null
-nextTask: "No further action for this feature. The latest live run, 37235055911, passed activate, update, rollback, self-test and recover on all five targets with base 0.0.0-qualification.6 and update 0.0.0-qualification.7 (validation.md). The earlier runs 36997576112 (.3 to .4), 37047903756 (.4 to .5) and 37152404760 (.5 to .6) remain recorded. Acceptance-matrix J02 and L7 are updated in a separate reviewed change."
-lastGate: "live-activation-matrix run 37235055911: five of five legs exit 0; rollback restored the .6 active pointer byte for byte on every target, and each .7 pointer names the manifest digest for its target"
-updatedAt: 2026-10-04T21:30:00Z
+nextTask: "No further action for this feature. The latest live run, 40210962039, passed activate, update, rollback, self-test and recover on all five targets with base 0.0.0-qualification.7 and update 0.0.0-qualification.8 (validation.md). The earlier runs 36997576112 (.3 to .4), 37047903756 (.4 to .5), 37152404760 (.5 to .6) and 37235055911 (.6 to .7) remain recorded. Acceptance-matrix J02 and L7 are updated in a separate reviewed change."
+lastGate: "live-activation-matrix run 40210962039: five of five legs exit 0; rollback restored the .7 active pointer byte for byte on every target, and each .8 pointer names the manifest digest for its target"
+updatedAt: 2026-10-25T16:45:00Z
 ---
 
 # Live activation matrix (#18, L7)

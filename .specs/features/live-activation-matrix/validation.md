@@ -670,9 +670,63 @@ equal to the local `npm pack` of the verified package. With an empty npm
 cache, `npx verchestra@0.0.0-qualification.8 --version` and
 `npx verchestra --version` both ran `.8` and exited `0`.
 
-Not yet done:
+Not yet done: the pilots on `.8` (#406, PPR-10). The five-target run with
+base `.7` and update `.8` follows.
 
-- the update from `.7` and the rollback to it: no run here shows them for
-  `.8`; the five-target `live-activation-matrix` run with base `.7` and
-  update `.8` does;
-- the pilots on `.8` (#406, PPR-10).
+## Live update and rollback `.7` to `.8` on all five targets — run 40210962039 (2026-10-25)
+
+- Workflow: `.github/workflows/live-activation-matrix.yml`
+- Run: <https://github.com/accd/verchestra/actions/runs/40210962039>
+- Dispatched revision: `1861e5e636f52539bd092c79ff4baa62039b3a33` (`main`)
+- Inputs: `base_version=0.0.0-qualification.7`,
+  `update_version=0.0.0-qualification.8`
+- Started 2026-10-25T16:17:23Z, finished 2026-10-25T16:26:25Z
+
+Every phase exited `0` on every target:
+
+- activate;
+- update;
+- rollback;
+- self-test smoke, with `self_test.verdict: PASS`;
+- recover.
+
+| Target       | after activate and after rollback (`.7`) | after update (`.8`)        |
+| ------------ | ---------------------------------------- | -------------------------- |
+| win32-x64    | `sha256:10551627…8f1a181e`               | `sha256:890e1404…3d14623c` |
+| linux-x64    | `sha256:f3a00a20…65507e84`               | `sha256:5cffcb68…9dc261b3` |
+| linux-arm64  | `sha256:e6c6fc05…4489fc94`               | `sha256:07bd0698…b32a0b89` |
+| darwin-x64   | `sha256:85d05fe5…45664da1`               | `sha256:2067bade…ee04ce59` |
+| darwin-arm64 | `sha256:411f7441…5d3bbdd8`               | `sha256:6a53f238…a6b365fe` |
+
+The evidence was checked by content after downloading the five artifacts:
+
+- On every target, `rollback.active.json` is byte-identical to
+  `activate.active.json`, which names
+  `release:verchestra:0.0.0-qualification.7:2e97443ea601`.
+- `update.active.json` names `release:verchestra:0.0.0-qualification.8:d83fc139a846`.
+- Each `.8` digest is the `releaseDigest` that the `.8`
+  `publication-manifest.json` records for the same target. The manifest was
+  taken from the `t76-release-metadata` artifact of signing run `40075964146`.
+- The `.7` digests are the ones run 37235055911 recorded after its update to
+  `.7`.
+
+| Target       | Artifact digest (sha256)                                           | `summary.txt` (sha256)                                             |
+| ------------ | ------------------------------------------------------------------ | ------------------------------------------------------------------ |
+| win32-x64    | `b9cee93b7a84e50c0d4d5b037d7b5343b92c0650da93ffc190c06eb20080630a` | `1cb8769767e4cf7ca4692df46adf05c651a9bd59817365112d5fc2f32d738faa` |
+| linux-x64    | `796c9cc5542ca96a0d5f76ddab1dcac0bc38317ebf2442801557ed1540f26c97` | `e419160c5b8f67103175baf982de05ec4739383f74ec6488f7e507e1f966a0b6` |
+| linux-arm64  | `a77c39e8c13083e639f8dc25996e714599060c84b5275cc613bff382e51863b7` | `56b01bf7e5d19a4d8ca6c9a247aadf00e0def57a5a39970c97de6a0fc36be72a` |
+| darwin-x64   | `a7590f26b79995b586fd747742a869a74dbb6f5af601b0501c40046e8a77d3f0` | `33322fee0b48d64d9bd03fdaa758d55a452a8a9c321fcd08db7ae630e340022f` |
+| darwin-arm64 | `5d5e75eccc255fc0eb732737a4a779592f92f561a43aba72b3c6b194b1904b3a` | `00e0fb6a98d4d9ae42ac6609768b3ac416feba966d6e80fff02f3f1d679039cf` |
+
+The artifacts expire on 2026-11-24.
+
+What this run does not prove is unchanged from run 36997576112:
+
+- no source-side roll-forward;
+- no live uninstall;
+- single-operator custody (L8).
+
+It also says nothing about the governed or coordinated task paths, because
+`self-test --profile smoke` does not start a provider. Their real-provider
+evidence is the owner's pilots on `.8` (#406 and
+`docs/qualification/coordinated-run-pilots.md`), which have not run yet.
