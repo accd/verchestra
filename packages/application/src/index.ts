@@ -274,6 +274,7 @@ export {
   type ExecutableFileSystem,
   type ExecutablePathApi
 } from "./execution/executable-path.ts";
+export { childEnvironment, gitChildEnvironment, type EnvironmentSource } from "./execution/child-environment.ts";
 export {
   ProbeEvidenceError,
   verifyProbeEvidence,
