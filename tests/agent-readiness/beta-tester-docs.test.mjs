@@ -5,6 +5,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 
+import { LAUNCHER_EXIT_CODES } from "../../apps/vestra-launcher/src/public-errors.ts";
+import { doctorExitCode } from "../../packages/application/src/doctor/doctor.ts";
 import { resolveStateRoot } from "../../packages/platform-node/src/state-root.ts";
 
 const read = (path) => readFileSync(new URL(`../../${path}`, import.meta.url), "utf8");
@@ -161,6 +163,38 @@ test("the docs state the Node 24.14.0 floor for npx", () => {
     assert.ok(text.includes("node 24.14.0 or later"), `${path} does not state the Node floor`);
     assert.doesNotMatch(text, /not a prerequisite/u, path);
     assert.doesNotMatch(text, /node\*\* only as far as/u, path);
+  }
+});
+
+test("the quick-start request names the example request's verifier model", () => {
+  // why: P1-2 of the live pilot stopped on gpt-5.2-codex, which the owner's
+  // ChatGPT account does not offer; both examples name the model it does.
+  const example = JSON.parse(read("docs/examples/task-request.json"));
+  const inline = /"verifier": \{ "driverId": "codex", "model": "([^"]+)" \}/u.exec(read("docs/quick-start.md"));
+  assert.ok(inline, "the quick-start request names no Codex verifier");
+  assert.equal(inline[1], example.verifier.model);
+});
+
+test("the README lists every exit code with what produces it", () => {
+  const readme = read("README.md");
+  const start = readme.indexOf("### Exit codes");
+  assert.ok(start >= 0, "the README has no exit-code table");
+  const section = readme.slice(start, readme.indexOf("\n## ", start));
+  const rows = new Map([...section.matchAll(/^\| (\d+) +\| (.+?) +\|\r?$/gmu)].map((m) => [Number(m[1]), m[2]]));
+  assert.deepEqual([...rows.keys()], [0, 1, 2, 3, 4, 5, 64, 70, 78]);
+  // why: the CLI's own mapping (2, 3, 5, 70) is pinned by
+  // tests/contract/cli-surface.test.mjs; doctor and the launcher are read here.
+  for (const verdict of ["FAIL", "BLOCKED"]) {
+    const row = rows.get(doctorExitCode(verdict)) ?? "";
+    assert.ok(row.includes("`doctor`") && row.includes(`\`${verdict}\``), `doctor ${verdict} is not at its exit`);
+  }
+  for (const [code, exit] of Object.entries(LAUNCHER_EXIT_CODES)) {
+    const row = rows.get(exit) ?? "";
+    const prefixes = [...row.matchAll(/`([A-Z_]+)\*`/gu)].map((m) => m[1]);
+    assert.ok(
+      row.includes(`\`${code}\``) || prefixes.some((prefix) => code.startsWith(prefix)),
+      `${code} is not documented at exit ${exit}`
+    );
   }
 });
 

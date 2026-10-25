@@ -258,7 +258,7 @@ qualification and its limits are in
 [docs/qualification/os-secret-backend-linux.md](docs/qualification/os-secret-backend-linux.md), and
 [docs/qualification/os-secret-backend-windows.md](docs/qualification/os-secret-backend-windows.md).
 
-### Deliver a governed task (macOS)
+### Deliver a governed task
 
 `vestra task` takes one change from a request file to a reviewed commit on a
 task branch: you approve the sealed plan, Claude Code implements it through a
@@ -275,10 +275,14 @@ npx verchestra task review  --run-id <runId> --outcome accepted --surface-digest
 ```
 
 The full walkthrough, the one-time subscription setup, a complete request
-example, and the limits of this qualification build (macOS only, one
-implementer and one verifier, token and cost ceilings checked when usage is
-reported, subscription isolation not yet observed live, local human authority,
-live pilot pending in #406) are in [docs/quick-start.md](docs/quick-start.md).
+example, and the limits of this qualification build are in
+[docs/quick-start.md](docs/quick-start.md). The single-session journey is
+qualified end to end on macOS only. On Windows one journey, from plan to
+accepted review, runs on the hosted runner with deterministic stand-ins, and
+on Linux the journey is not qualified yet. Other limits: one implementer and
+one verifier, token and cost ceilings checked when usage is reported,
+subscription isolation not yet observed live, local human authority, and the
+live pilot still pending in #406.
 
 ### Coordinated runs: agent, graph, and swarm
 
@@ -339,6 +343,23 @@ the command again — the next run resolves and activates from scratch.
 To remove Verchestra completely, delete the managed state root and clear the
 downloaded package with `npm cache clean --force`. The two are independent, and
 neither touches your own workspace data.
+
+### Exit codes
+
+Every refusal prints its code and a recovery line; `--output json` returns the
+same code in its envelope.
+
+| Exit | Meaning                                                                                                                                                               |
+| ---- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0    | Success. For `task start` and `task resume`, the run reached human review.                                                                                            |
+| 1    | `doctor` found a failure (`FAIL`), or a `task start` or `task resume` run ended without reaching human review                                                         |
+| 2    | An argument is invalid (`VES_CLI_ARGUMENT_INVALID`)                                                                                                                   |
+| 3    | The installed release's command manifest is invalid or needs a newer release (`VES_CLI_RELEASE_INCOMPATIBLE`)                                                         |
+| 4    | `doctor` is `BLOCKED`: something it checks is not set up                                                                                                              |
+| 5    | Any other refusal, such as `VES_TASK_NOT_CONFIGURED` or a self-test whose verdict is not `PASS`                                                                       |
+| 64   | The launcher does not run on this Node, platform, or architecture (`VES_VESTRA_HOST_UNSUPPORTED`)                                                                     |
+| 70   | An unexpected failure (`VES_CLI_INTERNAL`), or the launcher could not activate or start the release (`VES_VESTRA_ACTIVATION_UNAVAILABLE`, `VES_VESTRA_LAUNCH_FAILED`) |
+| 78   | The launcher's pinned release configuration or trust root is missing or invalid (`VES_VESTRA_INPUTS_*`, `VES_VESTRA_TRUST_ROOT_INVALID`)                              |
 
 ## Developer quick start
 
