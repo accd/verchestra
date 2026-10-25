@@ -168,3 +168,34 @@ test("a trailing-dot alias of a protected path is refused", async () => {
   }
   assert.equal(git(worktreePath, "status", "--porcelain", "--ignored"), "");
 });
+
+// invariant: on a Windows host a target naming a device is refused before any
+// effect (#595): a write to nul.txt would be discarded and one to con would
+// reach the console. The adapter's platform option stands in for the host.
+test("on a Windows host a target naming a device is refused", async () => {
+  const { adapter, request, worktreePath } = await worktreeToolFixture({ adapter: { platform: "win32" } });
+  for (const [index, target] of ["src/nul.txt", "src/CON", "src/com1.log"].entries()) {
+    await assert.rejects(
+      adapter.invoke(request({ requestId: `bridge:request:device-${index}`, targetPaths: [target] })),
+      { code: "VES_TOOL_PATH_ESCAPE" },
+      target
+    );
+  }
+  assert.equal(git(worktreePath, "status", "--porcelain", "--ignored"), "");
+});
+
+// why: a device's name is an ordinary file on POSIX. The target is also
+// protected, so the request stops at the later protected-path check on every
+// host and nothing is written: only which check refuses it differs.
+test("only a Windows host refuses a target for naming a device", async () => {
+  for (const [platform, code] of [
+    ["win32", "VES_TOOL_PATH_ESCAPE"],
+    ["linux", "VES_TOOL_PROTECTED_PATH"],
+    ["darwin", "VES_TOOL_PROTECTED_PATH"]
+  ]) {
+    const { adapter, request } = await worktreeToolFixture({
+      adapter: { platform, protectedRoots: ["src/aux.c"] }
+    });
+    await assert.rejects(adapter.invoke(request({ targetPaths: ["src/aux.c"] })), { code }, platform);
+  }
+});
