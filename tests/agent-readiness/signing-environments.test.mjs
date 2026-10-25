@@ -113,6 +113,23 @@ test("only the declared signing jobs may bind a signing environment", () => {
       assert.ok(Object.hasOwn(SIGNING_JOBS, job.id), `${job.id} binds ${job.environment} but is not a signing job`);
 });
 
+test("a signing job keeps no Git credential and restores no shared cache", () => {
+  // why: #596 (SEC-010). A checkout that persists the job token leaves it in
+  // .git/config for every later step, and a pnpm cache restored here may have
+  // been written by a less-privileged job; neither belongs where a signing key
+  // is in reach. The repository is public, so the ledger fetch needs no token.
+  const jobs = new Map(allJobs().map((job) => [job.id, job]));
+  for (const id of Object.keys(SIGNING_JOBS)) {
+    const { text } = jobs.get(id);
+    const checkouts = text.split(/^ {6}- /mu).filter((step) => /uses: actions\/checkout@/u.test(step));
+    assert.ok(checkouts.length > 0, `${id} checks out`);
+    for (const step of checkouts)
+      assert.match(step, /^ {10}persist-credentials: false$/mu, `${id} persists no Git credential`);
+    assert.doesNotMatch(text, /^\s+cache:/mu, `${id} restores no setup cache`);
+    assert.doesNotMatch(text, /actions\/cache@/u, `${id} restores no cache`);
+  }
+});
+
 test("no workflow names a retired repository-level signing secret", () => {
   for (const { name, text } of workflowFiles()) {
     for (const secret of RETIRED_REPOSITORY_SECRETS)
