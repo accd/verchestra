@@ -30,8 +30,7 @@ function typeOnly(keyword, typeKeyword, clause) {
 
 export function runtimeSpecifiers(code) {
   const specifiers = [];
-  for (const match of code.matchAll(STATEMENT))
-    if (!typeOnly(match[1], match[2], match[3])) specifiers.push(match[4]);
+  for (const match of code.matchAll(STATEMENT)) if (!typeOnly(match[1], match[2], match[3])) specifiers.push(match[4]);
   for (const match of code.matchAll(BARE)) specifiers.push(match[1]);
   return specifiers;
 }
@@ -46,7 +45,10 @@ function packageEntries() {
       const exports = typeof manifest.exports === "string" ? { ".": manifest.exports } : (manifest.exports ?? {});
       for (const [subpath, target] of Object.entries(exports))
         if (typeof target === "string")
-          entries.set(`${manifest.name}${subpath === "." ? "" : subpath.slice(1)}`, join(ROOT, parent, entry.name, target));
+          entries.set(
+            `${manifest.name}${subpath === "." ? "" : subpath.slice(1)}`,
+            join(ROOT, parent, entry.name, target)
+          );
     }
   return entries;
 }
