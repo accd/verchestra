@@ -17,7 +17,25 @@ export function renderUnixLauncher() {
   return '#!/bin/sh\nset -eu\ncase "$0" in\n  */*) SELF_DIR=${0%/*} ;;\n  *) SELF_DIR=. ;;\nesac\ncd "$SELF_DIR"\nSELF_DIR=$PWD\nexec "$SELF_DIR/runtime/node" "$SELF_DIR/app/bootstrap.cjs" "$@"\n';
 }
 
+// invariant: the build replaces only what it owns. An existing output root is
+// cleared only when it is empty or holds a bundle this script wrote, so a wrong
+// path is refused instead of being deleted recursively.
+async function assertReplaceable(outputRoot) {
+  const entries = await fs.readdir(outputRoot).catch((error) => {
+    if (error.code === "ENOENT") return [];
+    throw error;
+  });
+  if (entries.length === 0) return;
+  const manifest = await fs
+    .readFile(path.join(outputRoot, "release.json"), "utf8")
+    .then(JSON.parse)
+    .catch(() => undefined);
+  if (manifest?.product !== "Verchestra" || manifest?.schemaVersion !== 1)
+    throw new Error(`refusing to replace ${outputRoot}: it is not empty and holds no Verchestra bundle`);
+}
+
 export async function buildBundle(outputRoot) {
+  await assertReplaceable(outputRoot);
   await fs.rm(outputRoot, { recursive: true, force: true });
   await fs.mkdir(path.join(outputRoot, "runtime"), { recursive: true });
   await fs.mkdir(path.join(outputRoot, "app"), { recursive: true });
@@ -56,8 +74,16 @@ export async function buildBundle(outputRoot) {
   return { outputRoot, manifest };
 }
 
+// why: the command line names no path. The bundle always lands in the ignored
+// `.bundle` beside this spike, so no caller-supplied text reaches a recursive
+// removal; tests and other callers pass their own root to buildBundle.
+export const DEFAULT_BUNDLE_ROOT = path.join(sourceRoot, "..", ".bundle");
+
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const outputRoot = path.resolve(process.argv[2] ?? path.join(sourceRoot, "..", ".bundle"));
-  await buildBundle(outputRoot);
-  process.stdout.write(`${outputRoot}\n`);
+  if (process.argv.length > 2) {
+    process.stderr.write(`build-bundle takes no arguments; it writes ${DEFAULT_BUNDLE_ROOT}\n`);
+    process.exit(2);
+  }
+  await buildBundle(DEFAULT_BUNDLE_ROOT);
+  process.stdout.write(`${DEFAULT_BUNDLE_ROOT}\n`);
 }

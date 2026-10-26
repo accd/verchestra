@@ -3,12 +3,12 @@ schema: verchestra-feature-handoff/v1
 feature: sonarcloud-quality
 issue: null
 status: in_progress
-branch: ci/sonarcloud-coverage
-baseRevision: d5c7c6227a7932371bc6dbf4acb6534f5e3e3201
-lastCompletedTask: T1
-nextTask: T2
-lastGate: pnpm gate:quick plus pnpm test:architecture
-updatedAt: 2026-10-26T20:00:00Z
+branch: fix/sonar-s8707-build-bundle
+baseRevision: 7377f163e061edcd6843994a806f5f3a8744f4d7
+lastCompletedTask: T3
+nextTask: T4
+lastGate: pnpm gate:quick plus pnpm test:qualification
+updatedAt: 2026-10-26T20:44:40Z
 ---
 
 # Scope
@@ -19,6 +19,33 @@ sources. Phases B (bugs, vulnerabilities) and C (code smells) follow in their
 own changes, one rule family each, as listed in `tasks.md`.
 
 # Completed Evidence
+
+T3 complete on `fix/sonar-s8707-build-bundle`. Under the corrected test scope
+the open S8707 (path injection) issues were 14, all in
+`spikes/node-runtime/src/build-bundle.mjs`, all one taint flow: the command
+line's `argv[2]` became `outputRoot`, which `buildBundle` removed recursively
+with `force: true` before writing — `node build-bundle.mjs <any directory>`
+deleted that directory. Fixed at the source, not suppressed:
+
+- The command takes no path: it always writes the ignored
+  `spikes/node-runtime/.bundle` (`DEFAULT_BUNDLE_ROOT`) and exits 2 on any
+  argument. No caller passed one.
+- `buildBundle` clears an existing root only when it is empty or its
+  `release.json` is a Verchestra bundle (`schemaVersion: 1`); anything else is
+  refused and left intact.
+- `spikes/node-runtime/test/bundle.test.mjs` gains three cases (foreign
+  directory refused and intact; rebuild over its own bundle and into an empty
+  directory; command with a path exits 2 and deletes nothing). The first and
+  third fail against the previous source (discrimination run, 17 pass / 2 fail);
+  all 19 pass with the fix.
+
+T2 complete. PR #610 rebase-merged to `main` at `73670f54` (verified by
+content: the merged tree equals the locally tested rebase). First `main`
+analysis with coverage, 2026-10-26T20:37Z (run 40397018517): coverage 69.3 %
+(line 67.7 %, branch 80.4 %, 67,811 lines to cover); open issues 1,135 → 998
+(178 bugs, 22 vulnerabilities, 798 code smells) once test code is analysed as
+tests; quality gate still ERROR on new reliability, new security and new
+coverage.
 
 T1 complete on `ci/sonarcloud-coverage`:
 
@@ -51,15 +78,17 @@ issues; 179 bugs, 32 vulnerabilities, 924 code smells; quality gate ERROR.
 
 # Next Exact Action
 
-After the owner actions in `spec.md` (secret `SONAR_TOKEN`, Automatic Analysis
-off) and merge, confirm the first `SonarCloud` workflow run on `main` uploaded
-coverage: `curl "https://sonarcloud.io/api/measures/component?component=accd_verchestra&metricKeys=coverage"`.
-Then re-read the issue counts under the corrected test scope and start T3.
+After this change merges, confirm S8707 reads 0 open:
+`curl "https://sonarcloud.io/api/issues/search?componentKeys=accd_verchestra&rules=jssecurity:S8707,tssecurity:S8707&resolved=false&ps=1"`.
+Then start T4 on a new branch off `main`: S6505 (three workflow `npm install`
+steps without `--ignore-scripts`), S4036 (PATH lookups in
+`scripts/agent-readiness.mjs` and `scripts/select-gates.mjs`), S2612
+(`chmod 0o755` in `spikes/node-runtime/src/build-bundle.mjs`) and S5443
+(`apps/site/scripts/run-lighthouse.mjs`).
 
 # Blockers
 
-The scan step is skipped until the `SONAR_TOKEN` secret exists, and fails while
-Automatic Analysis is still enabled. Both are owner actions.
+None. `SONAR_TOKEN` is set and Automatic Analysis is off (owner, 2026-10-26).
 
 # Decisions
 
@@ -80,4 +109,6 @@ Automatic Analysis is still enabled. Both are owner actions.
 
 - `.github/workflows/ci.yml` — the quality gate keeps running without coverage.
 - `scripts/gate-stages.mjs` — no gate gains or loses a stage.
-- Every file SonarCloud reports issues against — Phases B and C.
+- Every file SonarCloud reports issues against except
+  `spikes/node-runtime/src/build-bundle.mjs` — the rest of Phases B and C. The
+  `chmod` on that file (S2612) is T4's, not T3's.

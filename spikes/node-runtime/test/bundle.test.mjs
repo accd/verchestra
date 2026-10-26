@@ -6,6 +6,7 @@ import fsp from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { after, before, test } from "node:test";
+import { fileURLToPath } from "node:url";
 import { buildBundle, renderUnixLauncher, renderWindowsLauncher } from "../src/build-bundle.mjs";
 
 let tempRoot;
@@ -138,6 +139,36 @@ test("records the exact bundled runtime digest", () => {
   const manifest = JSON.parse(fs.readFileSync(path.join(bundleRoot, "release.json"), "utf8"));
   const runtime = path.join(bundleRoot, "runtime", process.platform === "win32" ? "node.exe" : "node");
   assert.equal(manifest.runtimeSha256, hash(runtime));
+});
+
+test("refuses to replace a directory that holds no Verchestra bundle, and leaves it intact", async () => {
+  const foreign = path.join(tempRoot, "foreign");
+  await fsp.mkdir(foreign);
+  await fsp.writeFile(path.join(foreign, "keep.txt"), "user data");
+  await fsp.writeFile(path.join(foreign, "release.json"), JSON.stringify({ schemaVersion: 1, product: "Other" }));
+  await assert.rejects(buildBundle(foreign), /refusing to replace .*foreign: it is not empty and holds no Verchestra bundle/);
+  assert.equal(await fsp.readFile(path.join(foreign, "keep.txt"), "utf8"), "user data");
+});
+
+test("rebuilds over a bundle it wrote, and into an empty directory", async () => {
+  const rebuilt = path.join(tempRoot, "rebuilt");
+  await fsp.mkdir(rebuilt);
+  await buildBundle(rebuilt);
+  await fsp.writeFile(path.join(rebuilt, "stale.txt"), "left by an earlier build");
+  const { manifest } = await buildBundle(rebuilt);
+  assert.equal(manifest.product, "Verchestra");
+  assert.equal(fs.existsSync(path.join(rebuilt, "stale.txt")), false, "the previous bundle was replaced whole");
+});
+
+test("the build command takes no output path, so none can reach a recursive removal", async () => {
+  const target = path.join(tempRoot, "named-on-the-command-line");
+  await fsp.mkdir(target);
+  await fsp.writeFile(path.join(target, "keep.txt"), "user data");
+  const script = new URL("../src/build-bundle.mjs", import.meta.url);
+  const result = spawnSync(process.execPath, [fileURLToPath(script), target], { encoding: "utf8" });
+  assert.equal(result.status, 2);
+  assert.match(result.stderr, /build-bundle takes no arguments; it writes .*\.bundle/);
+  assert.equal(await fsp.readFile(path.join(target, "keep.txt"), "utf8"), "user data");
 });
 
 test("contains no node_modules or ambient package dependency", () => {
