@@ -1,6 +1,6 @@
 import type { DriverEvent, DriverEventBody, DriverSessionOutcome } from "@verchestra/domain";
 
-import { DriverProtocolError, type DriverSessionRef } from "./index.ts";
+import { DriverProtocolError, type DriverSessionRef } from "./driver-contract.ts";
 
 export type { DriverSessionOutcome } from "@verchestra/domain";
 

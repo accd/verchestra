@@ -9,7 +9,8 @@ export {
   type ParsedCliArguments
 } from "./cli.ts";
 export { installedReleaseManifest } from "./release-manifest.ts";
-export { createCommandBus, main } from "./main.ts";
+export { createCommandBus } from "./command-bus.ts";
+export { main } from "./main.ts";
 export {
   SELF_TEST_FAILURE_CODES,
   SelfTestComposition,
