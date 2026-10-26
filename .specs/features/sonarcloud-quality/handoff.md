@@ -3,12 +3,12 @@ schema: verchestra-feature-handoff/v1
 feature: sonarcloud-quality
 issue: null
 status: in_progress
-branch: fix/sonar-s8707-build-bundle
-baseRevision: 7377f163e061edcd6843994a806f5f3a8744f4d7
-lastCompletedTask: T3
-nextTask: T4
-lastGate: pnpm gate:quick plus pnpm test:qualification
-updatedAt: 2026-10-26T20:44:40Z
+branch: fix/sonar-t4-hotspots
+baseRevision: b8802cee49a03b7f7e9190561a34acc680a2a47b
+lastCompletedTask: T4
+nextTask: T5
+lastGate: pnpm gate:quick plus pnpm test:architecture and pnpm site:test unit
+updatedAt: 2026-10-26T21:29:25Z
 ---
 
 # Scope
@@ -19,6 +19,40 @@ sources. Phases B (bugs, vulnerabilities) and C (code smells) follow in their
 own changes, one rule family each, as listed in `tasks.md`.
 
 # Completed Evidence
+
+T4 complete on `fix/sonar-t4-hotspots` — the 9 vulnerabilities left after T3:
+
+- S6505 ×3 — `ci.yml`, `full-validation.yml`, `platform-matrix.yml` installed
+  the pinned provider CLIs with every lifecycle script on. They now follow
+  `t76-candidate-build.yml`: `npm install --global --ignore-scripts …` then
+  `npm rebuild --global @anthropic-ai/claude-code @openai/codex`, so only the
+  two reviewed postinstalls run (Claude Code's `install.cjs` places its native
+  binary; read before relying on it). The existing `claude --version` /
+  `codex --version` pins prove the binaries still run. New
+  `tests/agent-readiness/workflow-install-scripts.test.mjs` holds every
+  workflow install to `--ignore-scripts` (pnpm's frozen install is exempt: pnpm
+  10 runs only `allowBuilds` scripts) and every global provider install to the
+  by-name rebuild; `gate-selection` and `platform-matrix-workflow` shape tests
+  now require the same line.
+- S4036 ×4 — `scripts/agent-readiness.mjs` and `scripts/select-gates.mjs`
+  started `git` by bare name. New `scripts/git-executable.mjs` resolves it with
+  the product rule `absoluteExecutableOnPath` (imported by path; it imports
+  nothing, so `agent:context` still runs before install). The resolver joins
+  the shared table in `tests/unit/git-executable.test.mjs` (planted relative
+  entry ignored), and `tests/architecture/absolute-child-executables.test.mjs`
+  guards both scripts. Follow-up, not flagged by SonarCloud:
+  `scripts/agent-eval.mjs` and `scripts/t76-build-candidate.mjs` still start
+  `git` by bare name.
+- S2612 ×1 — the node-runtime bundle's runtime and launchers are owner-only
+  (`0o700`) instead of world-executable; asserted on POSIX by
+  `spikes/node-runtime/test/bundle.test.mjs` (skipped on Windows, so proven by
+  Linux/macOS runs only).
+- S5443 ×1 — a false positive on a regex: `run-lighthouse.mjs` used no
+  directory, it matched Windows' `…\Temp\lighthouse.` cleanup error to retry
+  once. The matcher moved to `apps/site/scripts/lighthouse-retry.mjs`, which
+  recognises Lighthouse's own `lighthouse.*` directory name instead of the
+  temporary-directory location; `apps/site/tests/unit/lighthouse-retry.test.mjs`
+  covers the retried case and four final ones.
 
 T3 complete on `fix/sonar-s8707-build-bundle`. Under the corrected test scope
 the open S8707 (path injection) issues were 14, all in
@@ -78,13 +112,11 @@ issues; 179 bugs, 32 vulnerabilities, 924 code smells; quality gate ERROR.
 
 # Next Exact Action
 
-After this change merges, confirm S8707 reads 0 open:
-`curl "https://sonarcloud.io/api/issues/search?componentKeys=accd_verchestra&rules=jssecurity:S8707,tssecurity:S8707&resolved=false&ps=1"`.
-Then start T4 on a new branch off `main`: S6505 (three workflow `npm install`
-steps without `--ignore-scripts`), S4036 (PATH lookups in
-`scripts/agent-readiness.mjs` and `scripts/select-gates.mjs`), S2612
-(`chmod 0o755` in `spikes/node-runtime/src/build-bundle.mjs`) and S5443
-(`apps/site/scripts/run-lighthouse.mjs`).
+After this change merges, confirm open vulnerabilities read 0:
+`curl "https://sonarcloud.io/api/issues/search?componentKeys=accd_verchestra&types=VULNERABILITY&resolved=false&ps=1"`.
+Then start T5 on a new branch off `main`: S2871 (`sort()` without a
+comparator) using one shared code-unit comparator — never `localeCompare` —
+with `pnpm test:census` and `pnpm gate:security` green.
 
 # Blockers
 

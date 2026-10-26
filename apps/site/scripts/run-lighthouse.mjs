@@ -1,5 +1,7 @@
 import { spawnSync } from "node:child_process";
 
+import { isTransientWindowsCleanupFailure } from "./lighthouse-retry.mjs";
+
 const pnpmCli = process.env.npm_execpath;
 if (!pnpmCli) throw new Error("pnpm lifecycle executable is unavailable.");
 
@@ -21,11 +23,7 @@ print(first);
 if (first.status === 0) process.exit(0);
 
 const output = `${first.stdout ?? ""}\n${first.stderr ?? ""}`;
-const transientWindowsCleanupFailure =
-  process.platform === "win32" &&
-  /Runtime error encountered: EPERM, Permission denied: .*\\Temp\\lighthouse\./u.test(output);
-
-if (!transientWindowsCleanupFailure) process.exit(first.status ?? 1);
+if (!isTransientWindowsCleanupFailure(output)) process.exit(first.status ?? 1);
 
 process.stderr.write("Lighthouse temporary-directory cleanup was locked by Windows; retrying once.\n");
 await new Promise((resolve) => setTimeout(resolve, 1_000));

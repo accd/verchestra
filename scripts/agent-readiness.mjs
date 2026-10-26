@@ -5,6 +5,8 @@ import { readFile, readdir, stat } from "node:fs/promises";
 import { dirname, join, posix, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { gitExecutable } from "./git-executable.mjs";
+
 export const REPOSITORY = "accd/verchestra";
 export const ROOT = fileURLToPath(new URL("..", import.meta.url));
 export const REQUIRED_READS = Object.freeze([
@@ -754,7 +756,7 @@ export async function readReleaseDecisions(root, { trustedRevision, validatedTas
 
 function git(root, args) {
   try {
-    return execFileSync("git", ["-C", root, ...args], {
+    return execFileSync(gitExecutable(), ["-C", root, ...args], {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"]
     }).trim();
@@ -768,7 +770,7 @@ function git(root, args) {
 // matches nothing an operator can reproduce with `sha256sum`.
 function gitBytes(root, args) {
   try {
-    return execFileSync("git", ["-C", root, ...args], {
+    return execFileSync(gitExecutable(), ["-C", root, ...args], {
       stdio: ["ignore", "pipe", "ignore"],
       maxBuffer: 64 * 1024 * 1024
     });

@@ -171,6 +171,11 @@ test("the build command takes no output path, so none can reach a recursive remo
   assert.equal(await fsp.readFile(path.join(target, "keep.txt"), "utf8"), "user data");
 });
 
+test("bundle executables are owner-only", { skip: process.platform === "win32" && "POSIX modes" }, () => {
+  for (const file of [path.join("runtime", "node"), "vestra", "verchestra"])
+    assert.equal(fs.statSync(path.join(bundleRoot, file)).mode & 0o777, 0o700, file);
+});
+
 test("contains no node_modules or ambient package dependency", () => {
   const entries = execFileSync(process.execPath, ["-e", "const fs=require('fs');console.log(JSON.stringify(fs.readdirSync(process.argv[1],{recursive:true})))", bundleRoot], { encoding: "utf8" });
   const paths = JSON.parse(entries);

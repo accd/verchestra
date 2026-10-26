@@ -10,11 +10,12 @@ import { after, test } from "node:test";
 import { resolveGitExecutable as platformNode } from "../../packages/platform-node/src/git-executable.ts";
 import { resolveGitExecutable as selfTest } from "../../packages/self-test/src/git-executable.ts";
 import { resolveGitExecutable as workspace } from "../../packages/workspace/src/git-executable.ts";
+import { gitExecutable as scripts } from "../../scripts/git-executable.mjs";
 
 const roots = [];
 after(() => Promise.all(roots.map((root) => rm(root, { recursive: true, force: true }))));
 
-const RESOLVERS = Object.freeze({ platformNode, selfTest, workspace });
+const RESOLVERS = Object.freeze({ platformNode, selfTest, workspace, scripts });
 
 test("the git resolver takes only absolute PATH entries", async () => {
   const root = await mkdtemp(join(tmpdir(), "verchestra-git-resolver-"));

@@ -4,6 +4,7 @@ import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 import { CONSERVATIVE_GATES, selectGates } from "./gate-selection.mjs";
+import { gitExecutable } from "./git-executable.mjs";
 import { stagesForGates } from "./gate-stages.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
@@ -14,7 +15,7 @@ export function selectChangedPaths({ base, candidate = "HEAD", repository = root
     return { paths: [], mode: "conservative-fallback", fallbackReason: "base SHA is unavailable" };
   }
   try {
-    const paths = execFileSync("git", ["-C", repository, "diff", "--name-only", `${base}...${candidate}`], {
+    const paths = execFileSync(gitExecutable(), ["-C", repository, "diff", "--name-only", `${base}...${candidate}`], {
       encoding: "utf8"
     })
       .split(/\r?\n/u)
@@ -32,7 +33,7 @@ function option(name) {
 
 function candidateSha(repository) {
   try {
-    return execFileSync("git", ["-C", repository, "rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+    return execFileSync(gitExecutable(), ["-C", repository, "rev-parse", "HEAD"], { encoding: "utf8" }).trim();
   } catch {
     return "unavailable";
   }

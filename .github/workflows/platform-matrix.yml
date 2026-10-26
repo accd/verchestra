@@ -197,7 +197,11 @@ jobs:
       - name: Install the qualified local driver probes
         if: steps.probes.outputs.needed == 'yes'
         run: |
-          npm install --global --no-audit --no-fund @anthropic-ai/claude-code@2.1.282 @openai/codex@0.115.0
+          # Install without lifecycle scripts, then run them only for these two
+          # exact-pinned packages, whose postinstall places the native binary
+          # the probes execute (same restriction as t76-candidate-build.yml).
+          npm install --global --ignore-scripts --no-audit --no-fund @anthropic-ai/claude-code@2.1.282 @openai/codex@0.115.0
+          npm rebuild --global @anthropic-ai/claude-code @openai/codex
           claude_version="$(claude --version)"
           codex_version="$(codex --version)"
           printf 'Claude Code version: %s\n' "$claude_version"
