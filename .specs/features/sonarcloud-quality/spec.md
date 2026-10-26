@@ -19,12 +19,12 @@ rules and test-only rules do not apply.
 
 ## Out of scope for Phase A
 
-| Exclusion                                          | Reason                                                                       |
-| -------------------------------------------------- | ---------------------------------------------------------------------------- |
-| Fixing any reported issue                          | Phases B and C; counts must first be measured under the corrected scope.     |
-| A coverage instrumenting dependency (c8, istanbul) | Tests import `.ts` sources directly, so Node's own coverage maps to source.  |
-| Coverage of end-to-end and mutation scopes         | They run the product in child processes that in-process coverage cannot see. |
-| SonarCloud UI settings                             | Owner actions: token, secret, disabling Automatic Analysis, gate conditions. |
+| Exclusion                                                      | Reason                                                                                                                                           |
+| -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Fixing any reported issue                                      | Phases B and C; counts must first be measured under the corrected scope.                                                                         |
+| A coverage instrumenting dependency (c8, istanbul)             | Tests import `.ts` sources directly, so Node's own coverage maps to source.                                                                      |
+| Coverage of integration, fault, end-to-end and mutation scopes | They kill Node children by design; a child killed mid-write leaves a truncated V8 profile that fails Node's coverage report for the whole scope. |
+| SonarCloud UI settings                                         | Owner actions: token, secret, disabling Automatic Analysis, gate conditions.                                                                     |
 
 ## Requirements
 
@@ -34,7 +34,7 @@ rules and test-only rules do not apply.
 | SQC-02 | Coverage counts only `packages/**/src/**`, `apps/vestra-cli/src/**`, `apps/vestra-launcher/src/**`.                                                                                    |
 | SQC-03 | Per-scope reports merge into one `lcov.info`: hits summed per file, `/` separators, deterministic order; an empty merge fails closed.                                                  |
 | SQC-04 | `sonar-project.properties` analyses test code as tests and excludes generated contracts.                                                                                               |
-| SQC-05 | `.github/workflows/sonarcloud.yml` runs on pull requests and `main`, measures coverage with the in-process `gate:full` scopes, and scans with the official action pinned by commit.    |
+| SQC-05 | `.github/workflows/sonarcloud.yml` runs on pull requests and `main`, measures coverage with the unit and contract scopes, and scans with the official action pinned by commit.         |
 | SQC-06 | `SONAR_TOKEN` is visible only to the token-presence check and the scan step; a run without the secret (fork pull request) skips the scan.                                              |
 
 ## Owner actions (not automatable here)

@@ -41,13 +41,11 @@ const SHARED_CACHE = "node-compile-cache";
 // never from the command line, so no caller-supplied text reaches a path.
 // why: the tests import `.ts` sources directly, so Node's own coverage maps
 // straight to the files SonarCloud analyses, with no instrumenting dependency.
+// Only scopes that never kill a Node child are covered: Node hands every child
+// NODE_V8_COVERAGE, a child killed mid-write leaves a truncated profile, and the
+// runner then fails the whole scope reading it (integration and fault do this).
 const COVERED_SOURCES = ["packages/**/src/**", "apps/vestra-cli/src/**", "apps/vestra-launcher/src/**"];
-const COVERAGE_REPORTS = Object.freeze({
-  unit: "unit.lcov",
-  contract: "contract.lcov",
-  integration: "integration.lcov",
-  fault: "fault.lcov"
-});
+const COVERAGE_REPORTS = Object.freeze({ unit: "unit.lcov", contract: "contract.lcov" });
 const coverage = [];
 if (process.env.VES_COVERAGE === "1") {
   if (!Object.hasOwn(COVERAGE_REPORTS, scope)) {

@@ -25,7 +25,7 @@ T1 complete on `ci/sonarcloud-coverage`:
 - `scripts/test-scope.mjs` adds Node's built-in coverage with an LCOV reporter
   only when `VES_COVERAGE=1`, restricted to `COVERED_SOURCES`, writing
   `coverage/<name>` where the name comes from the fixed `COVERAGE_REPORTS`
-  table (unit, contract, integration, fault) — no argv or environment text
+  table (unit, contract) — no argv or environment text
   reaches a path or a spawn argument (the first PR scan flagged S8705/S8707
   when it did).
 - `scripts/coverage-lcov.mjs` (`mergeLcov`) and `scripts/merge-coverage.mjs`
@@ -68,8 +68,13 @@ Automatic Analysis is still enabled. Both are owner actions.
 - `SonarSource/sonarqube-scan-action` added with owner approval, 2026-10-26.
 - The token is scoped to the presence check and the scan step only, never to
   the test steps that execute the change under review.
-- Coverage scopes are the in-process scopes of `gate:full`: unit, contract,
-  integration, fault.
+- Coverage scopes are unit and contract only. The second CI run passed every
+  integration test (1,278) yet failed the scope with "Could not report code
+  coverage. SyntaxError: Unexpected end of JSON input": Node hands every child
+  NODE_V8_COVERAGE, integration and fault kill Node children by design, and a
+  child killed mid-write leaves a truncated profile the runner cannot parse.
+  Covering those scopes needs a collector that tolerates partial profiles
+  (a dependency decision for the owner), not a weaker test.
 
 # Files Intentionally Left Unchanged
 
