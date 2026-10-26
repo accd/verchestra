@@ -7,7 +7,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { cp, mkdir, readFile, readdir, realpath, rm, stat, writeFile } from "node:fs/promises";
-import { join, relative, sep } from "node:path";
+import { dirname, join, relative, sep } from "node:path";
 import { afterEach, test } from "node:test";
 
 import { EXECUTIONS, coordinatedFixture } from "../helpers/task-coordinated-fixture.mjs";
@@ -345,4 +345,84 @@ test("with a rejected request Codex is judged at the v1 floor", TIMEOUT, async (
   const result = check(fixture);
   assert.equal(row(result.data, "request").status, "missing");
   assert.equal(row(result.data, "executable:codex").status, "ready");
+});
+
+test("a file in place of the Codex identity directory is missing as codex-identity", TIMEOUT, async () => {
+  const fixture = await fixtureFor();
+  await rm(fixture.codexIdentity, { recursive: true, force: true });
+  await writeFile(fixture.codexIdentity, "not a directory\n");
+  const result = check(fixture);
+  assert.equal(result.status, 4, result.stderr);
+  assert.equal(row(result.data, "codex-login").details.requirement, "codex-identity");
+});
+
+// invariant: TCK-05 agrees with `task plan`. ensureWorkspaceState admits a
+// state directory that resolves to its own owner, so the read-only proof does.
+test("a Workspace state directory linked to its own owner is admitted, as `task plan` admits it", TIMEOUT, async () => {
+  const fixture = await fixtureFor();
+  await linkDirectory(fixture.stateRoot, join(fixture.stateRoot, "sessions"));
+  const result = check(fixture);
+  assert.equal(row(result.data, "workspace").status, "ready", result.stderr);
+});
+
+test("a Workspaces root that is a link out of the state root is refused", TIMEOUT, async () => {
+  const fixture = await fixtureFor();
+  const workspaces = dirname(fixture.stateRoot);
+  const elsewhere = join(fixture.root, "elsewhere-workspaces");
+  await cp(workspaces, elsewhere, { recursive: true });
+  await rm(workspaces, { recursive: true, force: true });
+  await linkDirectory(elsewhere, workspaces);
+  const result = check(fixture);
+  assert.equal(result.status, 4, result.stderr);
+  assert.equal(row(result.data, "workspace").code, "VES_STATE_ROOT_ESCAPE");
+});
+
+test("a v2 request is checked in TCK-04's order, billing before the credentials", TIMEOUT, async () => {
+  const coordinated = await coordinatedFixture(EXECUTIONS.agent, { secretService: LINUX });
+  const result = check(coordinated);
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(names(result.data), [
+    "workspace",
+    "request",
+    "source-revision",
+    "task-policy",
+    "provider-modes",
+    "gate-allowlist",
+    "api-key-models",
+    "billing",
+    "credential:claude-code-oauth-token",
+    "credential:evidence-signing-passphrase",
+    "executable:claude",
+    "executable:codex",
+    "codex-login",
+    ...(WIN32 ? ["windows"] : [])
+  ]);
+});
+
+// invariant: TCK-05. The only provider children are the two `--version`
+// probes and `codex login status`: no Claude Code or Codex session starts.
+test("no provider session starts", TIMEOUT, async () => {
+  const fixture = await fixtureFor();
+  assert.equal(check(fixture).status, 0);
+  for (const log of ["fake-claude.log", "fake-codex.log", "fake-codex-turn.log"])
+    await assert.rejects(stat(join(fixture.scratch, log)), { code: "ENOENT" }, log);
+  const status = await readFile(join(fixture.scratch, "fake-codex-status.log"), "utf8");
+  assert.equal(status.split("\n").filter((entry) => entry !== "").length, 1);
+  // why: on Windows every provider start is witnessed with its arguments, so
+  // a child that fails before it writes a fake log is still seen there.
+  if (!WIN32) return;
+  const starts = async (name) =>
+    (await readFile(join(fixture.scratch, `${name}.witness.log`), "utf8"))
+      .split("\n")
+      .filter((entry) => entry !== "")
+      .map((entry) => JSON.parse(entry).args.slice(4).join(" "));
+  assert.deepEqual(await starts("claude.exe"), ["--version"]);
+  assert.deepEqual((await starts("codex.exe")).sort(), ["--version", "login status"]);
+});
+
+test("task check without --request is an argument error, exit 2", TIMEOUT, async () => {
+  const fixture = await fixtureFor();
+  const result = fixture.launch(["task", "check", ...fixture.keychainArgs, "--output", "json"]);
+  assert.equal(result.status, 2, result.stderr);
+  assert.match(result.stdout, /VES_CLI_ARGUMENT_INVALID/u);
 });

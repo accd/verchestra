@@ -152,17 +152,36 @@ export function codexFileLoginCommand(directory: string, platform: string = proc
   const store = `-c 'cli_auth_credentials_store="file"'`;
   if (platform === "win32") {
     const path = powershellQuoted(directory);
-    return `New-Item -ItemType Directory -Force -Path ${path} | Out-Null; $env:CODEX_HOME=${path}; codex login ${store}`;
+    return `New-Item -ItemType Directory -Force -Path ${path} | Out-Null; $env:CODEX_HOME=${path}; codex login ${store}; Remove-Item Env:CODEX_HOME`;
   }
   const path = shellQuoted(directory);
   return `mkdir -p ${path} && chmod 700 ${path} && CODEX_HOME=${path} codex login ${store}`;
 }
 
+// invariant: an identity directory that exists is a real directory, never a
+// link or a file, or it is refused as `codex-identity` before anything is
+// created in it or run through it. `task start` (ensureCodexIdentity) and
+// `task check` apply this one rule.
+export async function codexIdentityPresent(directory: string): Promise<boolean> {
+  let facts;
+  try {
+    facts = await lstat(directory);
+  } catch (error) {
+    const code = (error as { readonly code?: unknown }).code;
+    if (code === "ENOENT" || code === "ENOTDIR") return false;
+    throw error;
+  }
+  if (facts.isSymbolicLink() || !facts.isDirectory())
+    throw notConfigured("codex-identity", "The Codex identity directory is not a real directory");
+  return true;
+}
+
 // invariant: `config.toml` is rewritten whole before every use, so nothing a
 // previous session or another process left there steers the next one, and the
-// directory is a real directory private to the user, never a link.
+// directory is a real directory private to the user, never a link. The
+// lstat after mkdir catches a link made between the check and the creation.
 export async function ensureCodexIdentity(directory: string): Promise<void> {
-  await mkdir(directory, { recursive: true, mode: 0o700 });
+  if (!(await codexIdentityPresent(directory))) await mkdir(directory, { recursive: true, mode: 0o700 });
   if (!(await lstat(directory)).isDirectory())
     throw notConfigured("codex-identity", "The Codex identity directory is not a real directory");
   await chmod(directory, 0o700);

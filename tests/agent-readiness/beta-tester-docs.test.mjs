@@ -242,3 +242,25 @@ test("the CHANGELOG has a section per published sequence", () => {
       assert.ok(body.includes(entry.releaseId), `${entry.semanticVersion} names no releaseId`);
   }
 });
+
+// invariant: TCK-07. A tester meets `task check` before `task plan` in the
+// README and the quick start, the exit-code table names its exit, and the
+// CHANGELOG lists it.
+test("the docs name task check where a tester first plans", () => {
+  const readme = read("README.md");
+  const guide = read("docs/quick-start.md");
+  for (const [path, text] of [
+    ["README.md", readme],
+    ["docs/quick-start.md", guide]
+  ]) {
+    const check = text.indexOf("npx verchestra task check");
+    assert.ok(check >= 0, `${path} does not run task check`);
+    assert.ok(check < text.indexOf("npx verchestra task plan"), `${path} runs task check after task plan`);
+  }
+  assert.match(readme, /^\| 4 +\| .*`task check`.*\|$/mu);
+  const unreleased = read("CHANGELOG.md").split("\n## [")[1] ?? "";
+  assert.ok(
+    unreleased.startsWith("Unreleased]") && unreleased.includes("`vestra task check"),
+    "the CHANGELOG lists task check"
+  );
+});

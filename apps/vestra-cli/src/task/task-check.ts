@@ -3,7 +3,7 @@
 // `task start` applies, and a missing one is recorded, not thrown, so the next
 // check still runs. Presence only: no credential value is read, no provider
 // session starts, and nothing is written to the repository.
-import { lstat, mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -17,7 +17,12 @@ import {
 
 import { IMPLEMENTER_CREDENTIALS, loadProviderAuth, type ProviderAuth } from "../task-provider-auth.ts";
 import { requireSubscriptionPreflight } from "./task-billing.ts";
-import { codexFileLoginCommand, codexIdentityDirectory, codexSubscriptionLoggedIn } from "./task-codex-identity.ts";
+import {
+  codexFileLoginCommand,
+  codexIdentityDirectory,
+  codexIdentityPresent,
+  codexSubscriptionLoggedIn
+} from "./task-codex-identity.ts";
 import { SIGNING_PASSPHRASE, VERIFIER_CREDENTIAL, requireCredentialBound } from "./task-credentials.ts";
 import { notConfigured } from "./task-errors.ts";
 import { loadGateAllowlist } from "./task-gates.ts";
@@ -116,24 +121,14 @@ async function requireCodex(io: TaskCommandIo, request: PlannedTaskRequest | und
   return executable;
 }
 
-// why: the status check runs from a temporary home outside the Workspace, so
-// `task check` creates no Workspace state, and a missing identity directory is
-// a missing login, explained with the one-time command, not set up here.
-// invariant: the read-only half of ensureCodexIdentity, which `task start`
-// applies: an identity directory that exists is a real directory, never a
-// link, or it is refused with the same requirement. A real directory directly
-// below the proven Workspace root is inside it.
-async function identityDirectoryPresent(directory: string): Promise<boolean> {
-  const facts = await lstat(directory).catch(() => undefined);
-  if (facts === undefined) return false;
-  if (facts.isSymbolicLink() || !facts.isDirectory())
-    throw notConfigured("codex-identity", "The Codex identity directory is not a real directory");
-  return true;
-}
-
+// why: TCK-05. The status check runs from a temporary home outside the
+// Workspace, so `task check` creates no Workspace state; a missing identity
+// directory is a missing login, explained with the one-time command, not set
+// up here; and an identity directory that is not a real one is refused by
+// codexIdentityPresent, the rule `task start` applies before it creates it.
 async function requireCodexLogin(io: TaskCommandIo, workspace: TaskWorkspace, codex: string): Promise<void> {
   const directory = codexIdentityDirectory(workspace.layout.workspaceRoot);
-  const present = await identityDirectoryPresent(directory);
+  const present = await codexIdentityPresent(directory);
   const home = await mkdtemp(join(tmpdir(), "verchestra-task-check-"));
   try {
     if (present && (await codexSubscriptionLoggedIn({ command: [codex], directory, home, env: io.env }))) return;
