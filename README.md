@@ -267,6 +267,7 @@ Codex verifies read-only, and you review the result. Verchestra never merges;
 you inspect and merge the branch yourself.
 
 ```bash
+npx verchestra task check   --request task-request.json
 npx verchestra task plan    --request task-request.json
 npx verchestra task approve --run-id <runId> --binding-digest <sha256:…>
 npx verchestra task start   --run-id <runId>
@@ -355,7 +356,7 @@ same code in its envelope.
 | 1    | `doctor` found a failure (`FAIL`), or a `task start` or `task resume` run ended without reaching human review                                                         |
 | 2    | An argument is invalid (`VES_CLI_ARGUMENT_INVALID`)                                                                                                                   |
 | 3    | The installed release's command manifest is invalid or needs a newer release (`VES_CLI_RELEASE_INCOMPATIBLE`)                                                         |
-| 4    | `doctor` is `BLOCKED`: something it checks is not set up                                                                                                              |
+| 4    | `doctor` is `BLOCKED`, or `task check` found a prerequisite missing: something is not set up                                                                          |
 | 5    | Any other refusal, such as `VES_TASK_NOT_CONFIGURED` or a self-test whose verdict is not `PASS`                                                                       |
 | 64   | The launcher does not run on this Node, platform, or architecture (`VES_VESTRA_HOST_UNSUPPORTED`)                                                                     |
 | 70   | An unexpected failure (`VES_CLI_INTERNAL`), or the launcher could not activate or start the release (`VES_VESTRA_ACTIVATION_UNAVAILABLE`, `VES_VESTRA_LAUNCH_FAILED`) |
