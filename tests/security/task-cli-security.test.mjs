@@ -4,6 +4,9 @@
 // paths, and obeying a prompt injection it reads from the repository. Every
 // attempt must be refused by the mediated bridge and the executor, never by
 // the fake's good behavior, and the user's checkout must not move.
+//
+// The cases run on macOS (the fake keychain) and on Linux (the fake Secret
+// Service, #599); Windows skips each by name, as the e2e journeys do.
 import assert from "node:assert/strict";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
@@ -13,15 +16,26 @@ import {
   AMBIENT_MARKER,
   CREDENTIALS,
   DARWIN,
+  LINUX,
   MODE_CREDENTIALS,
   approveArguments,
   cleanupTaskFixtures,
-  taskFixture
+  taskFixture as cliFixture
 } from "../helpers/task-cli-fixture.mjs";
 
 after(cleanupTaskFixtures);
 
+// why: on Linux the task path finds its credentials in the Secret Service, which
+// the fixture stands in for only when asked; every case asks.
+const taskFixture = (options = {}) => cliFixture({ secretService: LINUX, ...options });
+
 const TIMEOUT = { timeout: 300_000 };
+// invariant: #599 (TST-002). The single-session journeys run wherever the task
+// path's credential store can be stood in for: the macOS keychain fake, and on
+// Linux the Secret Service fake. Windows runs its own journey over the named
+// pipe, so a journey here is skipped there by name, never passed silently.
+const JOURNEYS = DARWIN || LINUX;
+const WINDOWS_JOURNEY = "Windows runs the single-session journey in tests/e2e/task-windows-e2e.test.mjs";
 
 function data(result, label) {
   assert.ok(result.json !== undefined, `${label}: ${result.stderr}`);
@@ -74,8 +88,8 @@ function committedPaths(fixture, branch) {
   return fixture.git(["diff", "--name-only", fixture.revision, branch]).split("\n");
 }
 
-test("traversal out of the worktree is refused for reads and writes", TIMEOUT, async () => {
-  if (!DARWIN) return;
+test("traversal out of the worktree is refused for reads and writes", TIMEOUT, async (t) => {
+  if (!JOURNEYS) return t.skip(WINDOWS_JOURNEY);
   const { fixture, started, results } = await run("traversal");
   // The bridge refuses a non-logical path itself; the executor would too.
   denied(results, "../escape.txt", /VES_BRIDGE_PATH_INVALID|VES_EXECUTOR_SCOPE_DENIED/u);
@@ -88,8 +102,8 @@ test("traversal out of the worktree is refused for reads and writes", TIMEOUT, a
   assert.deepEqual(committedPaths(fixture, started.branch), ["src/value.txt"]);
 });
 
-test("a symlink planted in the repository cannot carry a read or write outside it", TIMEOUT, async () => {
-  if (!DARWIN) return;
+test("a symlink planted in the repository cannot carry a read or write outside it", TIMEOUT, async (t) => {
+  if (!JOURNEYS) return t.skip(WINDOWS_JOURNEY);
   const { fixture, started, results } = await run("symlink");
   denied(results, "src/link/planted.txt");
   denied(results, "src/link/secret.txt");
@@ -98,8 +112,8 @@ test("a symlink planted in the repository cannot carry a read or write outside i
   assert.deepEqual(committedPaths(fixture, started.branch), ["src/value.txt"]);
 });
 
-test("protected paths stay untouched even inside the change scope", TIMEOUT, async () => {
-  if (!DARWIN) return;
+test("protected paths stay untouched even inside the change scope", TIMEOUT, async (t) => {
+  if (!JOURNEYS) return t.skip(WINDOWS_JOURNEY);
   const { fixture, started, results } = await run("protected");
   denied(results, "src/protected/config.json", /VES_EXECUTOR_PROTECTED_PATH|VES_BRIDGE/u);
   denied(results, ".verchestra/policy/task-authority.json");
@@ -110,23 +124,27 @@ test("protected paths stay untouched even inside the change scope", TIMEOUT, asy
   assert.equal(existsSync(join(fixture.repository, ".verchestra", "policy")), false);
 });
 
-test("a prompt injection read from the repository cannot widen scope or reach a non-bridge tool", TIMEOUT, async () => {
-  if (!DARWIN) return;
-  const { fixture, plan, started, results, log } = await run("injection");
-  // The injected text reached the model only as labeled, untrusted data...
-  assert.equal(log[0].promptHasInjectionText, true);
-  // ...and obeying it bought nothing: the write it asked for is out of scope,
-  // and the tool it asked for is outside the bridge, which ends the run.
-  denied(results, "docs/owned.txt", /VES_EXECUTOR_SCOPE_DENIED/u);
-  assert.equal(started.state, "FAILED");
-  assert.equal(started.reason, "VES_DRIVER_TOOL_OUTSIDE_BRIDGE");
-  assert.equal(existsSync(join(fixture.repository, "docs")), false);
-  assert.equal(fixture.git(["branch", "--list", "vestra/*"]), "");
-  assert.equal(fixture.git(["worktree", "list", "--porcelain"]).split("\n\n").length, 1);
-  const status = data(fixture.launch(["task", "status", "--run-id", plan.runId, "--output", "json"]), "status");
-  assert.equal(status.state, "FAILED");
-  assert.deepEqual(status.next, []);
-});
+test(
+  "a prompt injection read from the repository cannot widen scope or reach a non-bridge tool",
+  TIMEOUT,
+  async (t) => {
+    if (!JOURNEYS) return t.skip(WINDOWS_JOURNEY);
+    const { fixture, plan, started, results, log } = await run("injection");
+    // The injected text reached the model only as labeled, untrusted data...
+    assert.equal(log[0].promptHasInjectionText, true);
+    // ...and obeying it bought nothing: the write it asked for is out of scope,
+    // and the tool it asked for is outside the bridge, which ends the run.
+    denied(results, "docs/owned.txt", /VES_EXECUTOR_SCOPE_DENIED/u);
+    assert.equal(started.state, "FAILED");
+    assert.equal(started.reason, "VES_DRIVER_TOOL_OUTSIDE_BRIDGE");
+    assert.equal(existsSync(join(fixture.repository, "docs")), false);
+    assert.equal(fixture.git(["branch", "--list", "vestra/*"]), "");
+    assert.equal(fixture.git(["worktree", "list", "--porcelain"]).split("\n\n").length, 1);
+    const status = data(fixture.launch(["task", "status", "--run-id", plan.runId, "--output", "json"]), "status");
+    assert.equal(status.state, "FAILED");
+    assert.deepEqual(status.next, []);
+  }
+);
 
 // invariant: the credential boundary of the subscription path (SPA-20). The
 // Claude Code token is long-lived, so it may exist in exactly one place
@@ -172,8 +190,8 @@ for (const [scenario, state] of [
   test(
     `the subscription token stays out of argv, logs, output, evidence, and errors when a run is ${state}`,
     TIMEOUT,
-    async () => {
-      if (!DARWIN) return;
+    async (t) => {
+      if (!JOURNEYS) return t.skip(WINDOWS_JOURNEY);
       const fixture = await taskFixture({ request: { instructions: `Set the value. scenario:${scenario}` } });
       const outputs = [];
       const launch = (argv, input) => {
@@ -238,8 +256,8 @@ for (const [scenario, state] of [
   );
 }
 
-test("an owner's ambient sessions never reach a provider child", TIMEOUT, async () => {
-  if (!DARWIN) return;
+test("an owner's ambient sessions never reach a provider child", TIMEOUT, async (t) => {
+  if (!JOURNEYS) return t.skip(WINDOWS_JOURNEY);
   const fixture = await taskFixture({ ambient: true });
   const plan = data(
     fixture.launch(["task", "plan", "--request", fixture.requestPath, ...fixture.keychainArgs, "--output", "json"]),
@@ -272,8 +290,8 @@ test("an owner's ambient sessions never reach a provider child", TIMEOUT, async 
   }
 });
 
-test("an ambient Claude Code session cannot stand in for a token that is not bound", TIMEOUT, async () => {
-  if (!DARWIN) return;
+test("an ambient Claude Code session cannot stand in for a token that is not bound", TIMEOUT, async (t) => {
+  if (!JOURNEYS) return t.skip(WINDOWS_JOURNEY);
   const { "claude-code-oauth-token": omitted, ...withoutToken } = MODE_CREDENTIALS.subscription;
   assert.equal(omitted, TOKEN);
   const fixture = await taskFixture({ ambient: true, credentials: withoutToken });
@@ -289,8 +307,8 @@ test("an ambient Claude Code session cannot stand in for a token that is not bou
   assert.equal(`${start.stdout}${start.stderr}`.includes(AMBIENT_MARKER), false);
 });
 
-test("an ambient Codex login cannot stand in for the Workspace identity", TIMEOUT, async () => {
-  if (!DARWIN) return;
+test("an ambient Codex login cannot stand in for the Workspace identity", TIMEOUT, async (t) => {
+  if (!JOURNEYS) return t.skip(WINDOWS_JOURNEY);
   const fixture = await taskFixture({ ambient: true, codexLogin: null });
   const plan = data(
     fixture.launch(["task", "plan", "--request", fixture.requestPath, ...fixture.keychainArgs, "--output", "json"]),
