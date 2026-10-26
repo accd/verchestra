@@ -9,7 +9,7 @@ import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 
 import { resolveGitExecutable } from "./git-executable.ts";
-import type { RootFacts, WorkspaceShape } from "@verchestra/application";
+import { INSPECTION_CHILD_BOUND, type RootFacts, type WorkspaceShape } from "@verchestra/application";
 import { normalizeFactPath } from "./disposable-roots.ts";
 import type { BoundedFixtureFactory } from "./sentinels-and-fixtures.ts";
 
@@ -44,7 +44,8 @@ function git(cwd: string, env: NodeJS.ProcessEnv, ...args: readonly string[]): s
     cwd,
     env,
     encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"]
+    stdio: ["ignore", "pipe", "pipe"],
+    ...INSPECTION_CHILD_BOUND
   }).trim();
 }
 

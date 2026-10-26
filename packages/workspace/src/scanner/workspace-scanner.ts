@@ -3,6 +3,7 @@ import { readFile, readdir, realpath, stat } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { promisify } from "node:util";
 
+import { INSPECTION_CHILD_BOUND } from "@verchestra/application";
 import { normalizeDeclaredSet } from "@verchestra/domain";
 
 import { gitInspectionEnvironment, resolveGitExecutable } from "../git-executable.ts";
@@ -65,10 +66,13 @@ async function git(cwd: string, args: readonly string[]): Promise<GitResult> {
       encoding: "utf8",
       env: gitInspectionEnvironment(),
       windowsHide: true,
-      maxBuffer: 1024 * 1024
+      maxBuffer: 1024 * 1024,
+      ...INSPECTION_CHILD_BOUND
     });
     return { status: 0, stdout: result.stdout.trim() };
   } catch (error) {
+    // why: a child killed at its bound has no exit status, so a timeout is
+    // never read as status 1; it fails the scan like any other Git failure.
     const failure = error as { readonly code?: unknown; readonly stdout?: unknown };
     const status = typeof failure.code === "number" ? failure.code : -1;
     if (status === 1) return { status, stdout: typeof failure.stdout === "string" ? failure.stdout.trim() : "" };

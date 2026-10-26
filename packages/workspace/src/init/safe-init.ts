@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, readdir, realpath, rename, rm, rmdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { promisify } from "node:util";
+import { INSPECTION_CHILD_BOUND } from "@verchestra/application";
 import { LogicalPath, StableId, WORKSPACE_ROOT_DIRNAME, normalizeDeclaredSet } from "@verchestra/domain";
 import { gitInspectionEnvironment, resolveGitExecutable } from "../git-executable.ts";
 import { editManagedGitignore } from "./managed-gitignore.ts";
@@ -210,7 +211,8 @@ async function gitIgnores(root: string, logicalPath: string): Promise<boolean> {
       {
         cwd: root,
         env: gitInspectionEnvironment(),
-        windowsHide: true
+        windowsHide: true,
+        ...INSPECTION_CHILD_BOUND
       }
     );
     return true;

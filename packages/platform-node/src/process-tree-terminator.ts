@@ -1,6 +1,8 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
+import { INSPECTION_CHILD_BOUND, childTimedOut } from "@verchestra/application";
+
 import { systemRoot } from "./os-secret-backends/windows-credential-manager.ts";
 
 const execFileAsync = promisify(execFile);
@@ -20,9 +22,14 @@ export function taskkillExecutable(): string {
 export async function terminateProcessGroup(pid: number, incomplete: () => never): Promise<void> {
   if (process.platform === "win32") {
     try {
-      await execFileAsync(taskkillExecutable(), ["/pid", String(pid), "/T", "/F"], { windowsHide: true });
-    } catch {
-      // why: the process may already have exited.
+      await execFileAsync(taskkillExecutable(), ["/pid", String(pid), "/T", "/F"], {
+        windowsHide: true,
+        ...INSPECTION_CHILD_BOUND
+      });
+    } catch (error) {
+      // why: the process may already have exited, and taskkill then fails. A
+      // taskkill that outlived its bound ended nothing, so that is incomplete.
+      if (childTimedOut(error)) incomplete();
     }
     return;
   }
@@ -55,7 +62,11 @@ async function groupGone(pgid: number, error: unknown): Promise<boolean> {
   if (code !== "EPERM") return false;
   let stdout: string;
   try {
-    ({ stdout } = await execFileAsync("ps", ["-A", "-o", "pgid=,stat="], { encoding: "utf8", windowsHide: true }));
+    ({ stdout } = await execFileAsync("ps", ["-A", "-o", "pgid=,stat="], {
+      encoding: "utf8",
+      windowsHide: true,
+      ...INSPECTION_CHILD_BOUND
+    }));
   } catch {
     return false;
   }
@@ -82,7 +93,11 @@ export async function snapshotDescendants(rootPid: number): Promise<readonly num
   if (process.platform === "win32") return [];
   let stdout: string;
   try {
-    ({ stdout } = await execFileAsync("ps", ["-A", "-o", "pid=,ppid="], { encoding: "utf8", windowsHide: true }));
+    ({ stdout } = await execFileAsync("ps", ["-A", "-o", "pid=,ppid="], {
+      encoding: "utf8",
+      windowsHide: true,
+      ...INSPECTION_CHILD_BOUND
+    }));
   } catch {
     // hazard: without a process table only the group signal applies; a setsid()
     // escapee then survives. That residual is documented in the probe host

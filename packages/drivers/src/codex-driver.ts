@@ -1,6 +1,4 @@
-import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { promisify } from "node:util";
 
 import { quotaExhausted, usageUpdated, type DriverEventOf } from "@verchestra/domain";
 
@@ -18,7 +16,7 @@ import {
   type DriverStructuredOutput,
   type StructuredOutputPlan
 } from "./driver-structured-output.ts";
-import { meetsMinimum, probeDriverVersion } from "./driver-version-probe.ts";
+import { meetsMinimum, probeDriverVersion, providerVersion } from "./driver-version-probe.ts";
 import {
   DriverProtocolError,
   validateDriverStartRequest,
@@ -34,7 +32,6 @@ import {
   type ProviderProtocol
 } from "./provider-child-run.ts";
 
-const execFileAsync = promisify(execFile);
 const SAFE_ENV_KEYS = ["PATH", "SystemRoot", "ComSpec", "TEMP", "TMP", "HOME", "USERPROFILE", "CODEX_HOME"] as const;
 
 export interface CodexExecution {
@@ -600,15 +597,12 @@ export class CodexDriver implements Driver {
 
   async probe() {
     const requirement = { minimum: this.#minimumVersion, pattern: VERSION_PATTERN };
-    return probeDriverVersion(PROBE_PROFILE, requirement, async () => {
-      const { stdout } = await execFileAsync(this.#command[0] as string, [...this.#command.slice(1), "--version"], {
-        encoding: "utf8",
+    return probeDriverVersion(PROBE_PROFILE, requirement, () =>
+      providerVersion(this.#command, {
         cwd: this.#workingDirectory(),
-        env: this.buildEnvironment(this.#dependencies.probeEnvironment),
-        windowsHide: true
-      });
-      return stdout;
-    });
+        env: this.buildEnvironment(this.#dependencies.probeEnvironment)
+      })
+    );
   }
 
   async start(

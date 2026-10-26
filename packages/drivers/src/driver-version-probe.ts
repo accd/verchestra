@@ -1,3 +1,8 @@
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+
+const execFileAsync = promisify(execFile);
+
 export interface DriverProbeProfile<Identity extends { readonly driverId: string }> {
   // invariant: the identity fields lead every report, in the order given here.
   readonly identity: Identity;
@@ -68,6 +73,36 @@ async function observed(observe: () => Promise<string | undefined>): Promise<str
     // path; a probe is portable evidence, so only the absence is reported.
     return undefined;
   }
+}
+
+// invariant: ARQ-003 (#597). A version probe is a child outside a provider
+// session, so it runs to a bound: past it the provider is killed with SIGKILL,
+// and the probe reports `<prefix>_NOT_AVAILABLE` like any other failure to
+// answer.
+// why: the drivers depend on the domain alone, so this bound sits here instead
+// of beside the application's child bounds; it equals their inspection bound.
+export const DRIVER_PROBE_BOUND = Object.freeze({ timeout: 60_000, killSignal: "SIGKILL" as const });
+
+export interface ProviderVersionOptions {
+  readonly env: NodeJS.ProcessEnv;
+  readonly cwd?: string | undefined;
+}
+
+// invariant: the one start of a provider's `--version`, for every driver.
+export async function providerVersion(
+  command: readonly string[],
+  options: ProviderVersionOptions,
+  bound: { readonly timeout: number; readonly killSignal: "SIGKILL" } = DRIVER_PROBE_BOUND
+): Promise<string> {
+  const [executable, ...prefix] = command;
+  const { stdout } = await execFileAsync(executable as string, [...prefix, "--version"], {
+    encoding: "utf8",
+    env: options.env,
+    cwd: options.cwd,
+    windowsHide: true,
+    ...bound
+  });
+  return stdout;
 }
 
 // invariant: `observe` returns what the provider reports as its version;
