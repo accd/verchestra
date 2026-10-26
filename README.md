@@ -278,9 +278,10 @@ npx verchestra task review  --run-id <runId> --outcome accepted --surface-digest
 The full walkthrough, the one-time subscription setup, a complete request
 example, and the limits of this qualification build are in
 [docs/quick-start.md](docs/quick-start.md). The single-session journey is
-qualified end to end on macOS only. On Windows one journey, from plan to
-accepted review, runs on the hosted runner with deterministic stand-ins, and
-on Linux the journey is not qualified yet. Other limits: one implementer and
+qualified end to end on macOS only. On Linux every single-session journey runs
+in pull-request CI with deterministic stand-ins, the Secret Service included.
+On Windows one journey, from plan to accepted review, runs on the hosted
+runner with deterministic stand-ins. Other limits: one implementer and
 one verifier, token and cost ceilings checked when usage is reported,
 subscription isolation not yet observed live, local human authority, and the
 live pilot still pending in #406.
