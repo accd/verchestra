@@ -419,3 +419,258 @@ only read: `git rev-parse` and the policy file.
 
 Not ready for merge on this evidence: the round-2 result is FAIL. Only a human
 decides merge, release, or deployment.
+
+## Round 3
+
+**Result:** FAIL
+
+**Validator:** an independent validator sub-agent, not the author of the
+feature (round 3). **Date:** 2026-10-26.
+
+**Commit validated:** `7e19779500c6d35f8f04ce592e9145a0ce7c8d3c` (HEAD of
+`feat/593-task-check`, the T5 fix commit); range
+`4a33c0c8fa22b5f8d2baf831cf614919a96dee26..7e19779500c6d35f8f04ce592e9145a0ce7c8d3c`
+(seven commits).
+
+**Host:** Windows x64, Node 24.14.0. The e2e journeys, the probes, and the
+sensor ran on Windows only; the Linux and macOS branches were judged by
+reading the code.
+
+**Verdict rule:** round 2's. A requirement passes when each of its clauses has
+behavior evidence and a test assertion that discriminates it. A clause shown
+only by a probe, with no test that catches a change to it, fails as "proof".
+
+T5 closes N1, N2, and N4, and the four round-2 survivors that still exist (R5,
+R6, R7, R9) are killed. The round-3 verdict is still FAIL:
+
+- Two behavior divergences from the refusals `task plan` and `task start` give
+  (N5, N6), both in corner cases.
+- Eight of fifteen mutants survived (NM1, NM4, NM5, R6a, MT3, MT4, MT5, MT7).
+  Each one changes observable behavior, which a probe confirmed, and no test
+  catches it.
+
+### Round-2 findings and survivors
+
+| Item | Status | Evidence (path:line) |
+| --- | --- | --- |
+| N1 (printed login command fails without the directory) | RESOLVED | `apps/vestra-cli/src/task/task-codex-identity.ts:151-159` creates the directory first (`New-Item -ItemType Directory -Force` on Windows; `mkdir -p` and `chmod 700` on POSIX); `task-check.ts:143-145` prints it. Test `tests/e2e/task-check-e2e.test.mjs:129` (Windows branch on this host, POSIX branch on POSIX hosts); NM3 is killed. Probe Q5: the printed Windows command, run in PowerShell 7 with a stub `codex`, created the directory, set `CODEX_HOME`, and passed `login -c cli_auth_credentials_store="file"`, and a second `task check` exited 0. The POSIX form, run in Git Bash with a stub and a quote in the path, created the directory. The command's `CODEX_HOME` and its POSIX branch have no discriminating test on this host (N7) |
+| N2 (linked identity directory) | RESOLVED | `task-check.ts:126-132` (`lstat`; a link or a non-directory is `codex-identity`), `:136`. Test `task-check-e2e.test.mjs:299-312` (a link to a directory inside `<ws>`: `codex-identity`, and no status check ran); the N2 mutant and NM2 are killed. Probes Q1 and Q2 re-ran round 2's P4 and P3 through `tests/helpers/task-cli-fixture.mjs`. For a link inside `<ws>` and for a link that escapes, `task check` and `task start` now give the same code (`VES_TASK_NOT_CONFIGURED`), the same safe details (`requirement: codex-identity`), and the same recovery. A file or a dangling link at that path still diverges (N5) |
+| N3 (five survivors) | PARTLY | R5, R6, R7, and R9 are killed (see the sensor). R2 is not applicable: `requireWorkspaceDirectoryContained`, its target, was removed by `7e19779`, and `identityDirectoryPresent` took its role, which the N2 mutant exercises (killed). R6 removed both containment lines and is killed only through `task-workspace.ts:117`; its half for `task-workspace.ts:116` (R6a) survives (N10). The macOS value read stays unasserted; this validator judges it out of reach on this host (see Residual gaps) |
+| N4 (stale handoff and task list) | RESOLVED | `.specs/features/task-check/handoff.md` frontmatter: `lastCompletedTask: T5`, `nextTask` names round 3, `lastGate` cites 15 of 15, `updatedAt: 2026-10-26T11:30:00Z`; Completed Evidence names fifteen journeys. `tasks.md:6` no longer counts journeys; `tasks.md:8-9` add T4 and T5 |
+| R2 (round 2: drop the identity containment proof) | NOT APPLICABLE | Target function removed; see N3 |
+| R5 (status check home under `<ws>/sessions`) | RESOLVED | Killed by `task-check-e2e.test.mjs:279-294` (`:288-292`, the home and working directory lie outside the state root; `:293`, the home is removed) |
+| R6 (drop the Workspaces-root and Workspace-root containment) | RESOLVED | Killed by `task-check-e2e.test.mjs:316-325` (a `<ws>` link out of the state root) |
+| R7 (`task-policy` always succeeds) | RESOLVED | Killed by `task-check-e2e.test.mjs:327-337` |
+| R9 (unreadable request at the v2 Codex floor) | RESOLVED | Killed by `task-check-e2e.test.mjs:341-348` |
+
+### Requirement evidence at HEAD
+
+| Requirement | Verdict | Implementation evidence (path:line) | Test evidence (path:line) |
+| --- | --- | --- | --- |
+| TCK-01 | PASS | `apps/vestra-cli/src/task/task-check.ts:57-66` (a refusal becomes a row and is never rethrown); `:274-283` (the sequence) | `task-check-e2e.test.mjs:95`, `:108`, `:152-170` (full order, with and without a Workspace); `:115-123` (four missing checks at once, every other check ready) |
+| TCK-02 | FAIL (behavior: N5) | Statuses: `task-check.ts:34`. A missing row is built from the public envelope (`:49-52`, `task-public-error.ts:17-27`). `skip` always names `dependsOn` (`:68-70`). Presence refusal: `task-credentials.ts:83-91`. Identity: `task-check.ts:126-132`. Exception: for a file or a dangling link at the identity path, `task start` answers `VES_TASK_FAILED` (reason `VES_TASK_INTERNAL`), not the `codex-identity` refusal `task check` reports (N5) | `task-check-e2e.test.mjs:115-121`, `:171-174`, `:189-190`, `:200-204`, `:213-215`, `:222-225`, `:256-257`, `:270-273`, `:308-309`, `:333-335` |
+| TCK-03 | FAIL (proof: MT3) | `task-check.ts:284-288` (`ready`, one diagnostic per row that is not ready, exit 0 or 4); `:265-272` (line formats); `task-command.ts:18-23`, `:30` (`--request` required, `VES_CLI_ARGUMENT_INVALID`) | `task-check-e2e.test.mjs:93-97`, `:106-107`, `:124-125`, `:136`, `:174`. The exit 2 of an argument error is shown only by probe Q8. MT3 makes a missing `--request` exit 4, and it passes this suite, `tests/contract/cli-surface.test.mjs`, and `tests/e2e/cli-launchers-e2e.test.mjs` (N11). Round 2 recorded PASS on the same evidence |
+| TCK-04 | FAIL (proof: MT4) | `task-check.ts:189-203`, `:207-224` (order); `:153-167` (credentials); `:179-184` (`billing` for v2 only); `:226-241` (executables, `codex-login` unless the verifier is on an API key); `:243-261` (`windows`); `release-manifest.ts:150-159` | `task-check-e2e.test.mjs:40-54`, `:95`, `:108`, `:152-170` (v1 order); `:232-246` (API-key rows, no `codex-login`); `:272` (`billing` ready). No test pins the v2 order: MT4 moves `billing` after the credential rows and passes every journey (N9). Probe Q9 observed the order TCK-04 states |
+| TCK-05 | FAIL (behavior: N6; proof: NM1, NM4, NM5, R6a, MT5) | Presence only: `task-credentials.ts:86` (`adapter.has`). Probe-only drivers: `task-check.ts:73-75`, `:90-94`, `:106-110`. Temporary status home: `:137-142`. No state is created: `:81` (`ensure: false`). Containment: `:82`, `task-workspace.ts:114-129`. Real identity directory: `task-check.ts:126-132`. Login command: `task-codex-identity.ts:151-159`. Exception: `task-workspace.ts:106` refuses a directory that resolves to its owner, which `ensureWorkspaceState` accepts (`packages/platform-node/src/state-root.ts:111`) (N6) | Repository, state tree, and identity directory unchanged: `task-check-e2e.test.mjs:88-101`. No value read on Windows and Linux: `:100`. Status home: `:279-294`. Sessions link: `:177-193`. Workspace root link: `:316-325`. Linked identity directory: `:299-312`. Directory creation in the printed command: `:129`. Not discriminated: a file at the identity path (NM1); the printed command's `CODEX_HOME` (NM5) and its POSIX branch on this host (NM4); a `<state>/workspaces` link (R6a); which provider children start (MT5) |
+| TCK-06 | PASS | `task-check.ts:88-100` (Claude Code at `CLAUDE_MEDIATED_MINIMUM_VERSION`); `:104-117` (Codex at the driver default, or `CODEX_STRUCTURED_MINIMUM_VERSION` for v2; an unreadable request at the v1 floor) | `task-check-e2e.test.mjs:250-258` (2.1.281 missing as `claude-version`); `:260-274` (0.159.2 ready for v1, missing as `codex-version` for v2); `:341-348` (a rejected request at the v1 floor; R9 is killed) |
+| TCK-07 | PASS (by inspection, as in rounds 1 and 2) | `README.md:270` (task section); `README.md:359` (exit row 4); `docs/quick-start.md:319-341` (step 6, `task check` at `:324`); `CHANGELOG.md:11-13` | None asserts the mentions. MT7 removes `task check` from README exit row 4 and passes this suite and `tests/agent-readiness/beta-tester-docs.test.mjs` (N12). This validator keeps the inspection verdict, because the requirement is about the tracked documents themselves. The verdict rule still counts MT7 as a survivor |
+
+### Gate results
+
+| Command | Exit | Test count | Result |
+| --- | --- | --- | --- |
+| `node --test tests/e2e/task-check-e2e.test.mjs` (HEAD, before the sensor) | 0 | 15 tests: 15 pass, 0 fail, 0 skipped, 0 cancelled, 0 todo | PASS |
+| `node --test tests/e2e/task-check-e2e.test.mjs` (after the sensor, restored tree) | 0 | 15 tests: 15 pass, 0 fail, 0 skipped, 0 cancelled, 0 todo | PASS |
+| `corepack pnpm gate:quick` (HEAD, clean tree) | 0 | `format:check`, `lint`, `complexity:check` (PASS, 170 baselined hotspot keys), and `typecheck`. `test:unit` 3029, `test:agent-readiness` 378, and `test:census` 13 tests pass, with 0 failed, skipped, cancelled, or todo | PASS |
+
+### Probes
+
+Each probe ran outside the repository, through the repository's own fixture
+(`tests/helpers/task-cli-fixture.mjs`, and `tests/helpers/task-coordinated-fixture.mjs`
+for v2) and the real `vestra` binary. They left no repository file changed.
+`<ws>` is `<state>/workspaces/<workspaceId>`.
+
+- **Q1 (round 2's P4):** the identity directory is a link to a real directory
+  below `<ws>/cache` that holds a ChatGPT login. `task check` exits 4.
+  `codex-login` is missing with `VES_TASK_NOT_CONFIGURED`, requirement
+  `codex-identity`, and the not-configured recovery. No `codex login status`
+  ran. After `task plan` and `task approve`, `task start` exits 5 with the same
+  code, safe details, and recovery.
+- **Q2 (round 2's P3):** the identity directory is a link to a directory
+  outside the state root that holds a ChatGPT login. The result is the same as
+  Q1, for both commands. No status check ran, and the target still holds only
+  its `auth.json`.
+- **Q3:** a regular file stands at the identity path. `task check`:
+  `codex-login` is missing, requirement `codex-identity`. `task start` exits 5
+  with `VES_TASK_FAILED`, reason `VES_TASK_INTERNAL`, and the recovery
+  "Inspect `vestra task status` for the recorded reason, remediate, and retry
+  or plan a new run.".
+- **Q4:** a link whose target was deleted stands at the identity path. Both
+  commands answer as in Q3.
+- **Q5:** a missing login (fixture `codexLogin: null`). The printed command
+  reads
+  `New-Item -ItemType Directory -Force -Path '<ws>\codex-identity' | Out-Null; $env:CODEX_HOME='<ws>\codex-identity'; codex login -c 'cli_auth_credentials_store="file"'`.
+  PowerShell 7 ran it as printed, with a `codex` function standing in for the
+  CLI that fails when `CODEX_HOME` does not exist. It exited 0 and received
+  `login`, `-c`, `cli_auth_credentials_store="file"`. A second `task check`
+  exited 0 with `codex-login` ready. The POSIX form
+  (`codexFileLoginCommand(<dir>, "linux")`) ran in Git Bash with a stub and a
+  quote in the path. It created the directory, and the stub saw `CODEX_HOME`
+  naming it.
+- **Q6:** `<state>/workspaces` is a link to a directory outside. `workspace`
+  is missing with `VES_STATE_ROOT_ESCAPE` and the recovery "Remove the link
+  crossing the isolated Workspace state root.".
+- **Q7:** `<ws>/sessions` is a link to `<ws>` itself. `task check` exits 4:
+  `workspace` is missing with `VES_STATE_ROOT_ESCAPE`. `task plan` exits 0,
+  then `task approve` exits 0, then `task start` exits 0 at `HUMAN_REVIEW`.
+- **Q8:** `task check` without `--request` exits 2 with
+  `VES_CLI_ARGUMENT_INVALID` (argument `--request`).
+- **Q9:** a v2 `agent` request (`EXECUTIONS.agent`). The rows come in this
+  order: `workspace`, `request`, `source-revision`, `task-policy`,
+  `provider-modes`, `gate-allowlist`, `api-key-models`, `billing`, the two
+  credential rows, `executable:claude`, `executable:codex`, `codex-login`, and
+  `windows`, all ready.
+- **Q10:** two Codex-only v2 requests: one with a Codex writer, one with a
+  Codex reader and no writer. `task check` and `task plan --dry-run` both
+  reject each as `VES_TASK_REQUEST_REJECTED` (reason
+  `VES_TASK_REQUEST_EXECUTION_INVALID`).
+- **Q11:** the ready fixture. The Windows provider witness logs hold exactly
+  `claude --version`, `codex --version`, and `codex login status`.
+
+### Discrimination sensor
+
+Each mutant was applied to the working tree. Then the whole
+`tests/e2e/task-check-e2e.test.mjs` suite ran (15 journeys), plus any extra
+suite named in the table. The file was restored with `git checkout --`, and
+`git status --short` was confirmed empty before the next mutant (this
+`validation.md` change was written after the sensor). For every survivor, a
+probe against the mutant confirmed that observable behavior changes. Line
+numbers are at HEAD.
+
+| Mutation | Test that should catch it | Result |
+| --- | --- | --- |
+| R5: run `codex login status` from a `codex-status-*` home under `<ws>/sessions`, as `task start` does (`task-check.ts:137`) | `task-check-e2e.test.mjs:279` | killed (1 of 15 failed) |
+| R6: drop the Workspaces-root and Workspace-root containment (`task-workspace.ts:116-117`) | `:316` | killed (1 of 15 failed) |
+| R7: the `task-policy` probe always succeeds (`task-check.ts:197`) | `:327` | killed (1 of 15 failed) |
+| R9: an unreadable request is judged at the v2 Codex floor (`task-check.ts:108`, `=== 2` changed to `!== 1`) | `:341` | killed (1 of 15 failed) |
+| N2: accept a linked identity directory (`task-check.ts:127`, `lstat` changed to `stat`, which follows the link) | `:299` | killed (1 of 15 failed) |
+| NM1 (new): refuse only a link, not every non-directory (`task-check.ts:129`, `\|\| !facts.isDirectory()` dropped). A file at the identity path then reads as requirement `codex-login` | a file at the identity path (none exists) | **survived** |
+| NM2 (new): treat a linked identity directory as absent, not refused (`task-check.ts:129-130`, `return false` in place of the throw) | `:299` (`:309`) | killed (1 of 15 failed) |
+| NM3 (new): the Windows login command no longer creates the directory (`task-codex-identity.ts:155`, `New-Item ... \| Out-Null;` dropped) | `:103` (`:129`) | killed (1 of 15 failed) |
+| NM4 (new): the POSIX login command no longer creates the directory (`task-codex-identity.ts:158`, `mkdir -p` and `chmod 700` dropped) | `:129` on a POSIX host; no unit test of `codexFileLoginCommand` | **survived** (on this host) |
+| NM5 (new): the Windows login command no longer names the identity directory (`task-codex-identity.ts:155`, `$env:CODEX_HOME=...;` dropped). Probe: run as printed, it signs nothing into the Workspace, and a second check stays missing | an assertion on the command's `CODEX_HOME` (none exists; `:126` and `:129` match fragments) | **survived** |
+| R6a (new): drop only the Workspaces-root containment (`task-workspace.ts:116`). Probe: a `<state>/workspaces` link outside makes `workspace` ready | a linked `<state>/workspaces` (none exists) | **survived** |
+| MT3 (new): `task check` takes a missing `--request` as an empty path (`task-command.ts:30`, `required` dropped). Probe: it then exits 4 | an exit-2 journey; also run: `tests/contract/cli-surface.test.mjs` (53 pass) and `tests/e2e/cli-launchers-e2e.test.mjs` (17 pass) | **survived** |
+| MT4 (new): run `billing` after the credential rows (`task-check.ts:179`, `:201`). Probe: the v2 rows then put `billing` after `credential:evidence-signing-passphrase` | a v2 order assertion (none exists; `:272` checks the status only) | **survived** |
+| MT5 (new): start one more provider child, `claude --print`, after the version probe (`task-check.ts:94`). Probe: the Windows witness log records it | an assertion on the provider children (none exists) | **survived** |
+| MT7 (new): README exit-code row 4 no longer names `task check` (`README.md:359`); also run: `tests/agent-readiness/beta-tester-docs.test.mjs` (13 pass) | a documentation assertion (none exists) | **survived** |
+
+Seven of fifteen were killed, including every round-2 survivor that still
+exists. Eight survived: NM1, NM4, NM5, R6a, MT3, MT4, MT5, and MT7. NM1 to NM5
+target the code changed since round 2.
+
+### New findings
+
+- **N5 (low; TCK-02 against TCK-05): a file or a dangling link at the identity
+  path is refused differently by `task check` and `task start`.**
+  `ensureCodexIdentity` calls `mkdir(..., { recursive: true })`
+  (`task-codex-identity.ts:165`) before its `lstat` check (`:166`). That
+  `mkdir` fails on a file or on a link whose target is gone, and the error is
+  not a public one. `task check` refuses both cases as requirement
+  `codex-identity` (`task-check.ts:129-130`), which TCK-05 requires. TCK-02,
+  however, asks for the refusal `task start` gives.
+  - Failure scenario (Q3 and Q4, observed): a tester's identity path is a stray
+    file, or a link to a deleted directory. `task check` reports
+    `codex-identity` with the not-configured recovery. `task start` then
+    refuses `VES_TASK_FAILED`, reason `VES_TASK_INTERNAL`, and tells the tester
+    to inspect `task status`, which names nothing.
+  - No journey puts a file there (NM1 survived).
+  - Fix: make `ensureCodexIdentity` `lstat` before it creates anything, so
+    `task start` refuses `codex-identity` as `task check` does, and add a
+    journey with a file at the identity path.
+- **N6 (low; TCK-05, "as `ensureWorkspaceState` proves"): `task check` refuses
+  a state directory that resolves to its own owner, and `task plan` and
+  `task start` accept it.** `requireContained` refuses `child === ""`
+  (`task-workspace.ts:106`). `ensureWorkspaceState` accepts `value === ""`
+  (`packages/platform-node/src/state-root.ts:111`).
+  - Failure scenario (Q7, observed): `<ws>/sessions` is a link to `<ws>`.
+    `task check` exits 4 with `workspace` missing and the recovery "Remove the
+    link crossing the isolated Workspace state root.". `task plan`,
+    `task approve`, and `task start` all succeed, and the run reaches
+    `HUMAN_REVIEW`.
+  - Fix: decide which rule is intended and apply it in both places, or state
+    the difference in the spec.
+- **N7 (low, proof; TCK-05, the printed login command): the command is
+  asserted only by fragments.** `task-check-e2e.test.mjs:126` and `:129` match
+  the `-c` flag and the directory creation.
+  - Failure scenario (NM5, observed): a change that drops
+    `$env:CODEX_HOME=...` passes every journey. Run as printed, the command
+    signs Codex into the default Codex home, not the Workspace identity
+    directory, and `task check` stays missing.
+  - The POSIX branch is asserted only on POSIX hosts (NM4).
+  - `codexFileLoginCommand` takes its platform as a parameter, but it has no
+    unit test. `codexLoginCommand` has one for both branches
+    (`tests/integration/codex-identity.test.mjs:225-228`, `:322-327`).
+  - Fix: assert the whole command for both platforms in a unit test.
+- **N8 (low, proof; TCK-05, "the only children"): no test names the children
+  `task check` starts.**
+  - Failure scenario (MT5, observed): an extra `claude --print` child passes
+    all fifteen journeys. The Windows provider witness log
+    (`claude.exe.witness.log`) records it.
+  - At HEAD the witness logs hold exactly the three permitted children (Q11).
+  - Fix: assert the witness logs on Windows, and an equivalent child log on
+    POSIX.
+- **N9 (low, proof; TCK-04): the v2 order is not pinned.**
+  - Failure scenario (MT4, observed): `billing` moved after the credential
+    rows passes every journey. `task-check-e2e.test.mjs:272` checks only its
+    status.
+  - Fix: assert the full row names of the v2 journey (Q9 gives the order).
+- **N10 (low, proof; TCK-05 containment): the containment of
+  `<state>/workspaces` (`task-workspace.ts:116`) has no test.** The new journey
+  (`task-check-e2e.test.mjs:316-325`) links `<ws>` and so reaches only `:117`.
+  - Failure scenario (R6a, observed): without `:116`, a `<state>/workspaces`
+    link outside the state root makes `workspace` ready (Q6 shows the refusal
+    at HEAD).
+  - Fix: add a journey with a linked `<state>/workspaces`.
+- **N11 (low, proof; TCK-03): the exit 2 of an argument error has no test.**
+  - Failure scenario (MT3, observed): a handler that does not require
+    `--request` turns a missing `--request` into exit 4 (Q8 shows exit 2 at
+    HEAD). The task check suite, the CLI surface contract, and the launcher e2e
+    all still pass.
+  - Fix: add a journey without `--request`.
+- **N12 (low, proof; TCK-07): no test asserts the documentation mentions.**
+  - Failure scenario (MT7, observed): README exit row 4 without `task check`
+    passes `tests/agent-readiness/beta-tester-docs.test.mjs`.
+  - Fix: assert the mentions there.
+
+Observation, not a requirement defect: the printed Windows command leaves
+`CODEX_HOME` set in the tester's PowerShell session. The quick start's block
+ends with `Remove-Item Env:CODEX_HOME` (`docs/quick-start.md:146`), and
+`task start`'s own command (`codexLoginCommand`) behaves the same way.
+
+`mutating: false` (`release-manifest.ts:154`) stays honest. The T5 change only
+replaced a read (`access`) with another read (`lstat`), and the printed
+command is shown, never run.
+
+### Residual gaps judged out of reach on this host
+
+- **The macOS value read.** The darwin backend runs only on darwin. Its fake
+  records only the subcommand and the account (`tests/helpers/fake-keychain-spawn.mjs:28-36`),
+  so a discriminating test needs a macOS host and a fake that records `-g`.
+- **The omission of `executable:claude` and `windows` for a request that runs
+  no Claude Code.** No valid request without a Claude Code node was found
+  (Q10). For a rejected request, `task-check.ts:233` and `:250` judge Claude
+  Code as needed, so the negative branch has no reachable case for a test.
+- The Linux Secret Service and macOS branches were not exercised by this
+  validation.
+
+### Gaps and follow-up
+
+- Fix N5 and N6, or record the chosen rule in the spec.
+- Add the tests of N7 to N12. Together they kill NM1, NM4, NM5, R6a, MT3, MT4,
+  MT5, and MT7.
+
+### Human review
+
+Not ready for merge on this evidence: the round-3 result is FAIL. Only a human
+decides merge, release, or deployment.
