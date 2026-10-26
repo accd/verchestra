@@ -10,6 +10,7 @@ import { initPublicErrorRegistry } from "@verchestra/workspace";
 
 import { cliError } from "../cli-errors.ts";
 import { approveTask } from "./task-approve.ts";
+import { checkTask } from "./task-check.ts";
 import { stableCode, taskError } from "./task-errors.ts";
 import type { TaskCommandIo, TaskConfirmationInput } from "./task-io.ts";
 import { planTask } from "./task-plan.ts";
@@ -47,6 +48,7 @@ type Handler = (command: CliCommand, io: TaskCommandIo) => Promise<CommandResult
 const data = (value: unknown): CommandResult => ({ data: value, diagnostics: [] });
 
 const HANDLERS: Readonly<Record<string, Handler>> = Object.freeze({
+  "task check": async (command, io) => checkTask(io, required(command, "request")),
   "task plan": async (command, io) =>
     data(await planTask(io, required(command, "request"), command.options["dry-run"] === true)),
   "task approve": async (command, io) =>

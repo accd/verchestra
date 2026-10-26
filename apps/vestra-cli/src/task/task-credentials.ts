@@ -61,17 +61,33 @@ function mapped(error: unknown, logicalName: string): PublicErrorException {
   return notConfigured(logicalName, `Credential ${logicalName} could not be read`, { cause: error });
 }
 
+function osStore(source: TaskCredentialSource) {
+  return createOsCredentialStore({
+    platform: source.platform,
+    ...(source.keychainPath === undefined ? {} : { keychainPath: source.keychainPath }),
+    ...(source.runner === undefined ? {} : { runner: source.runner })
+  });
+}
+
 function broker(source: TaskCredentialSource, logicalName: string): SecretBroker {
   try {
-    const store = createOsCredentialStore({
-      platform: source.platform,
-      ...(source.keychainPath === undefined ? {} : { keychainPath: source.keychainPath }),
-      ...(source.runner === undefined ? {} : { runner: source.runner })
-    });
-    return new SecretBroker({ adapter: store.adapter, workspaceId: source.workspaceId });
+    return new SecretBroker({ adapter: osStore(source).adapter, workspaceId: source.workspaceId });
   } catch (error) {
     throw mapped(error, logicalName);
   }
+}
+
+// invariant: presence only (TCK-05). The store is asked whether the Workspace
+// binds the name and no value is read, so `task check` can report every
+// credential at once; a missing one is refused as readCredentials refuses it.
+export async function requireCredentialBound(source: TaskCredentialSource, logicalName: string): Promise<void> {
+  let bound: boolean;
+  try {
+    bound = await osStore(source).adapter.has(source.workspaceId, logicalName);
+  } catch (error) {
+    throw mapped(error, logicalName);
+  }
+  if (!bound) throw notConfigured(logicalName, `Credential ${logicalName} is not bound`);
 }
 
 // why: every credential a command needs is proven present before any of them

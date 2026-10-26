@@ -52,7 +52,7 @@ function explainModels(stderr: (value: string) => void): void {
   );
 }
 
-async function readRequest(io: TaskCommandIo, path: string): Promise<PlannedTaskRequest> {
+export async function readRequest(io: TaskCommandIo, path: string): Promise<PlannedTaskRequest> {
   const target = isAbsolute(path) ? path : resolve(io.controlRoot, path);
   const metadata = await lstat(target).catch(() => undefined);
   if (metadata?.isFile() !== true || metadata.size > MAXIMUM_REQUEST_BYTES)

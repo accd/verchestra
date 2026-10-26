@@ -83,6 +83,7 @@ const SEALED_COMMANDS = Object.freeze([
   "secret set",
   "secret status",
   "secret delete",
+  "task check",
   "task plan",
   "task approve",
   "task start",

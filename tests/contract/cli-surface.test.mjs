@@ -93,6 +93,7 @@ test("the source manifest advertises the composed init, self-test, doctor, secre
       "secret set",
       "secret status",
       "secret delete",
+      "task check",
       "task plan",
       "task approve",
       "task start",
@@ -167,6 +168,10 @@ test("the task slice takes no positional argument, a run ID, and the keychain wh
       .map((command) => [command.name, command.options.map((option) => [option.name, option.kind])])
   );
   assert.deepEqual(task, {
+    "task check": [
+      ["request", "string"],
+      ["keychain", "string"]
+    ],
     "task plan": [
       ["request", "string"],
       ["dry-run", "boolean"],
@@ -208,6 +213,7 @@ test("the task slice takes no positional argument, a run ID, and the keychain wh
   assert.deepEqual(
     installedReleaseManifest.commands.slice(6).map((command) => [command.name, command.mutating]),
     [
+      ["task check", false],
       ["task plan", true],
       ["task approve", true],
       ["task start", true],
@@ -533,7 +539,7 @@ function optionLine(option) {
 }
 
 test("every command answers --help with its declared options", async () => {
-  assert.equal(installedReleaseManifest.commands.length, 13);
+  assert.equal(installedReleaseManifest.commands.length, 14);
   for (const command of installedReleaseManifest.commands) {
     const result = await commandHelp(command, "human");
     assert.equal(result.exitCode, 0, command.name);

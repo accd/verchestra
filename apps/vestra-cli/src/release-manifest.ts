@@ -148,6 +148,16 @@ export const installedReleaseManifest: InstalledCliManifest = Object.freeze({
       ])
     }),
     Object.freeze({
+      name: "task check",
+      summary: "Check every prerequisite of a governed task at once, before planning it",
+      supportsJson: true,
+      mutating: false,
+      options: Object.freeze([
+        Object.freeze({ name: "request", kind: "string" as const }),
+        Object.freeze({ name: "keychain", kind: "string" as const })
+      ])
+    }),
+    Object.freeze({
       name: "task plan",
       summary: "Plan a governed task from a request file and print its approval surface",
       supportsJson: true,
