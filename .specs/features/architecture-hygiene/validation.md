@@ -3,9 +3,11 @@
 **Date:** 2026-10-26
 **Diff:** `refactor/597-architecture-hygiene` from `d5c7c62`
 **Host:** Windows 11 Pro x64, Node 24.14.0, pnpm 10.34.5.
-**Verifier:** the implementing agent's local pass; review and the required
-checks on the pull request head remain required (T6). The Linux branches run
-in the pull request's Quality gate.
+**Verifier:** the implementing agent's local pass. No independent review took
+place: #611 merged through the maintainer bypass. The required checks passed on
+its exact head `c83a60c` (run 40391210865): Quality gate (the Linux branches,
+the build stage and `tests/build/sealed-launcher-closure.test.mjs` included),
+Site quality and CodeQL (T6).
 
 ## Acceptance evidence
 
