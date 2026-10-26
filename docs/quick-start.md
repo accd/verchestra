@@ -788,6 +788,11 @@ for your machine into a folder on your `PATH`. Inside its own worktrees Verchest
   beside the count of tokens that were not billed. Your plan's own usage
   limits are not metered; a run that hits one fails closed and can be resumed
   or planned again.
+- **Written content.** Each file write the implementer makes through the bridge
+  carries at most 1 MiB, and one run keeps at most 64 MiB of written content in
+  all. Nothing kept is dropped to make room. A write past either bound is
+  denied to the implementer as a tool error (`VES_BRIDGE_PAYLOAD_TOO_LARGE`, or
+  `VES_PAYLOAD_STORE_FULL`), and the files already written stay as they are.
 - **Subscription isolation.** The subscription path cannot use Claude Code's
   `--bare` mode, which reads only an API key. It rebuilds that isolation from
   named switches and adds fail-closed checks, described in

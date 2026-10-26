@@ -67,7 +67,11 @@ export {
   type ResolvedContextFragment,
   type ResolvedContextSource
 } from "./context/source-snapshots.ts";
-export { ExecutionPayloadStoreError, InMemoryExecutionPayloadStore } from "./execution/execution-payload-store.ts";
+export {
+  ExecutionPayloadStoreError,
+  InMemoryExecutionPayloadStore,
+  MAXIMUM_RUN_PAYLOAD_BYTES
+} from "./execution/execution-payload-store.ts";
 export {
   MCP_BRIDGE_QUALIFIED_TOOLS,
   MCP_BRIDGE_SERVER_NAME,
