@@ -291,7 +291,7 @@
     "packages/drivers/src/codex-driver.ts :: Private method #validateExecution": [
       14
     ],
-    "packages/drivers/src/index.ts :: Function 'validateDriverStartRequest'": [
+    "packages/drivers/src/driver-contract.ts :: Function 'validateDriverStartRequest'": [
       27
     ],
     "packages/drivers/src/index.ts :: Function 'validateEnvelope'": [
@@ -363,17 +363,17 @@
     "packages/evidence/src/support-bundle/support-bundle.ts :: Private method #assertPlan": [
       36
     ],
-    "packages/extension-host/src/index.ts :: Async generator method 'execute'": [
-      11
-    ],
     "packages/extension-host/src/index.ts :: Async method 'execute'": [
       23
     ],
-    "packages/extension-host/src/index.ts :: Function 'validateEnvelope'": [
+    "packages/extension-host/src/probe-protocol.ts :: Function 'validateEnvelope'": [
       26
     ],
-    "packages/extension-host/src/index.ts :: Method 'push'": [
+    "packages/extension-host/src/probe-protocol.ts :: Method 'push'": [
       14
+    ],
+    "packages/extension-host/src/testing.ts :: Async generator method 'execute'": [
+      11
     ],
     "packages/memory/src/memory-lifecycle.ts :: Async function 'assertSafeTarget'": [
       14
