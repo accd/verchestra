@@ -1,5 +1,5 @@
 import { lstat, mkdir, realpath } from "node:fs/promises";
-import { isAbsolute, join, relative, sep } from "node:path";
+import { dirname, isAbsolute, join, relative, sep } from "node:path";
 
 import { StableId } from "@verchestra/domain";
 import {
@@ -105,6 +105,33 @@ async function requireContained(workspaceRoot: string, directory: string): Promi
   }
   if (child === "" || child === ".." || child.startsWith(`..${sep}`) || isAbsolute(child))
     throw new PlatformSecurityError("VES_STATE_ROOT_ESCAPE", "Workspace state path resolves outside its owner");
+}
+
+// invariant: the read-only half of ensureWorkspaceState. Every Workspace state
+// directory that exists resolves inside its owner, so a command that only
+// reads or probes them, `task check`, cannot be carried elsewhere by a link,
+// and it creates none of them.
+export async function requireWorkspaceStateContained(layout: WorkspaceStateLayout): Promise<void> {
+  const workspacesRoot = dirname(layout.workspaceRoot);
+  await requireContained(layout.stateRoot, workspacesRoot);
+  await requireContained(workspacesRoot, layout.workspaceRoot);
+  for (const directory of [
+    layout.runtimeRoot,
+    layout.memoryRoot,
+    layout.backupsRoot,
+    layout.locksRoot,
+    layout.cacheRoot,
+    layout.sessionsRoot,
+    layout.worktreesRoot,
+    layout.logsRoot
+  ])
+    await requireContained(layout.workspaceRoot, directory);
+}
+
+// invariant: a directory a command reads below the Workspace state root, such
+// as the Codex identity directory, resolves inside it.
+export async function requireWorkspaceDirectoryContained(workspaceRoot: string, directory: string): Promise<void> {
+  await requireContained(workspaceRoot, directory);
 }
 
 // invariant: below a task state root nothing is reached through a link. The

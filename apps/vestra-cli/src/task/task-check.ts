@@ -14,21 +14,27 @@ import {
   ClaudeCodeDriver,
   CodexDriver
 } from "@verchestra/drivers";
-import { PublicErrorException } from "@verchestra/domain";
 
 import { IMPLEMENTER_CREDENTIALS, loadProviderAuth, type ProviderAuth } from "../task-provider-auth.ts";
 import { requireSubscriptionPreflight } from "./task-billing.ts";
-import { codexIdentityDirectory, codexSubscriptionLoggedIn } from "./task-codex-identity.ts";
+import { codexFileLoginCommand, codexIdentityDirectory, codexSubscriptionLoggedIn } from "./task-codex-identity.ts";
 import { SIGNING_PASSPHRASE, VERIFIER_CREDENTIAL, requireCredentialBound } from "./task-credentials.ts";
-import { notConfigured, stableCode } from "./task-errors.ts";
+import { notConfigured } from "./task-errors.ts";
 import { loadGateAllowlist } from "./task-gates.ts";
 import { findExecutable } from "./task-implementer.ts";
 import type { TaskCommandIo } from "./task-io.ts";
 import type { PlannedTaskRequest } from "./task-plan-record.ts";
-import { readRequest } from "./task-plan.ts";
+import { readRequest, sourceState } from "./task-plan.ts";
+import { loadTaskPolicy } from "./task-policy.ts";
 import { providerModels, requireModelsPricedForApiKey } from "./task-provider-models.ts";
+import { publicError } from "./task-public-error.ts";
 import { requireWindowsPrerequisites } from "./task-windows.ts";
-import { openTaskWorkspace, type TaskWorkspace } from "./task-workspace.ts";
+import {
+  openTaskWorkspace,
+  requireWorkspaceDirectoryContained,
+  requireWorkspaceStateContained,
+  type TaskWorkspace
+} from "./task-workspace.ts";
 
 export type TaskCheckStatus = "ready" | "missing" | "not-checked";
 
@@ -42,12 +48,11 @@ export interface TaskCheckRow {
   readonly dependsOn?: string;
 }
 
-// invariant: a missing check carries what the refusal of `task plan` or
-// `task start` carries for the same piece: its code, its safe details, and its
-// recovery. Anything that is not a public refusal keeps only a stable code.
+// invariant: a missing check carries exactly what the same task command would
+// show for the error: the code, the safe details, and the recovery of its
+// public envelope (publicError, shared with every task command).
 function missing(check: string, error: unknown): TaskCheckRow {
-  if (!(error instanceof PublicErrorException)) return { check, status: "missing", code: stableCode(error) };
-  const { code, safeDetails, recovery } = error.envelope;
+  const { code, safeDetails, recovery } = publicError(error).envelope;
   return { check, status: "missing", code, details: { ...safeDetails }, recovery };
 }
 
@@ -74,6 +79,15 @@ const probeOnly = async () => {
   throw new Error("task check starts no provider session");
 };
 
+// invariant: TCK-05. The Workspace is opened without creating its state, and
+// every state directory that exists is proven inside its owner, as
+// ensureWorkspaceState proves it for `task plan`.
+async function openWorkspace(io: TaskCommandIo): Promise<TaskWorkspace> {
+  const workspace = await openTaskWorkspace(io, { ensure: false });
+  await requireWorkspaceStateContained(workspace.layout);
+  return workspace;
+}
+
 // invariant: TCK-06. The driver's own probe judges the version against the
 // minimum the run applies; only `--version` is started.
 async function requireClaude(io: TaskCommandIo): Promise<void> {
@@ -90,6 +104,8 @@ async function requireClaude(io: TaskCommandIo): Promise<void> {
     );
 }
 
+// why: a request that could not be read names no schema version, so Codex is
+// judged at the v1 floor; the v2 floor applies once the request is readable.
 async function requireCodex(io: TaskCommandIo, request: PlannedTaskRequest | undefined): Promise<string> {
   const executable = await findExecutable("codex", io.env, io.platform);
   const report = await new CodexDriver({
@@ -107,9 +123,10 @@ async function requireCodex(io: TaskCommandIo, request: PlannedTaskRequest | und
 
 // why: the status check runs from a temporary home outside the Workspace, so
 // `task check` creates no Workspace state, and a missing identity directory is
-// a missing login rather than something to set up here.
+// a missing login, explained with the one-time command, not set up here.
 async function requireCodexLogin(io: TaskCommandIo, workspace: TaskWorkspace, codex: string): Promise<void> {
   const directory = codexIdentityDirectory(workspace.layout.workspaceRoot);
+  await requireWorkspaceDirectoryContained(workspace.layout.workspaceRoot, directory);
   const present = await access(directory).then(
     () => true,
     () => false
@@ -120,15 +137,14 @@ async function requireCodexLogin(io: TaskCommandIo, workspace: TaskWorkspace, co
   } finally {
     await rm(home, { recursive: true, force: true });
   }
+  io.stderr(
+    `Codex is not signed in with a ChatGPT plan for this Workspace. Run once:\n  ${codexFileLoginCommand(directory, io.platform)}\n`
+  );
   throw notConfigured("codex-login", "Codex is not signed in with a ChatGPT plan in the Workspace identity directory");
 }
 
 function credentialNames(auth: ProviderAuth): readonly string[] {
-  return [
-    IMPLEMENTER_CREDENTIALS[auth.implementer],
-    ...(auth.verifier === "api-key" ? [VERIFIER_CREDENTIAL] : []),
-    SIGNING_PASSPHRASE
-  ];
+  return [IMPLEMENTER_CREDENTIALS[auth.implementer], ...(auth.verifier === "api-key" ? [VERIFIER_CREDENTIAL] : [])];
 }
 
 async function checkCredentials(
@@ -137,13 +153,13 @@ async function checkCredentials(
   workspace: TaskWorkspace,
   auth: ProviderAuth | undefined
 ): Promise<void> {
-  if (auth === undefined) rows.skip("credential:providers", "provider-modes");
   const source = {
     workspaceId: workspace.workspaceId,
     platform: io.platform,
     ...(io.keychainPath === undefined ? {} : { keychainPath: io.keychainPath })
   };
-  for (const name of auth === undefined ? [SIGNING_PASSPHRASE] : credentialNames(auth))
+  if (auth === undefined) rows.skip("credential:providers", "provider-modes");
+  for (const name of [...(auth === undefined ? [] : credentialNames(auth)), SIGNING_PASSPHRASE])
     await rows.run(`credential:${name}`, () => requireCredentialBound(source, name));
 }
 
@@ -151,13 +167,9 @@ async function checkRequestSettings(
   rows: TaskCheckRows,
   io: TaskCommandIo,
   workspace: TaskWorkspace,
-  request: PlannedTaskRequest | undefined,
+  request: PlannedTaskRequest,
   auth: ProviderAuth | undefined
 ): Promise<void> {
-  if (request === undefined) {
-    for (const check of ["gate-allowlist", "api-key-models"]) rows.skip(check, "request");
-    return;
-  }
   await rows.run("gate-allowlist", () => loadGateAllowlist(workspace, request, io.stderr));
   if (auth === undefined) rows.skip("api-key-models", "provider-modes");
   else await rows.run("api-key-models", async () => requireModelsPricedForApiKey(auth, request));
@@ -167,6 +179,45 @@ async function checkRequestSettings(
     await rows.run("billing", () =>
       requireSubscriptionPreflight({ workspaceRoot: workspace.layout.workspaceRoot, auth, request, stderr: io.stderr })
     );
+}
+
+// invariant: TCK-04's order, with a Workspace. Each check that reads the
+// request waits for it; the policy reads only the control root.
+async function checkWorkspaceSettings(
+  rows: TaskCheckRows,
+  io: TaskCommandIo,
+  workspace: TaskWorkspace,
+  request: PlannedTaskRequest | undefined
+): Promise<ProviderAuth | undefined> {
+  if (request === undefined) rows.skip("source-revision", "request");
+  else await rows.run("source-revision", () => sourceState(workspace.repositoryRoot, request.sourceRevision));
+  await rows.run("task-policy", () => loadTaskPolicy(io.controlRoot));
+  const auth = await rows.run("provider-modes", () => loadProviderAuth(workspace.layout.workspaceRoot));
+  if (request === undefined) for (const check of ["gate-allowlist", "api-key-models"]) rows.skip(check, "request");
+  else await checkRequestSettings(rows, io, workspace, request, auth);
+  await checkCredentials(rows, io, workspace, auth);
+  return auth;
+}
+
+// invariant: TCK-04's order, without a Workspace: what needs its state, its
+// settings, or its ID waits for it; the policy reads only the control root.
+async function checkWithoutWorkspace(
+  rows: TaskCheckRows,
+  io: TaskCommandIo,
+  request: PlannedTaskRequest | undefined
+): Promise<undefined> {
+  rows.skip("source-revision", "workspace");
+  await rows.run("task-policy", () => loadTaskPolicy(io.controlRoot));
+  for (const check of [
+    "provider-modes",
+    "gate-allowlist",
+    "api-key-models",
+    ...(request?.schemaVersion === 2 ? ["billing"] : []),
+    "credential:providers",
+    `credential:${SIGNING_PASSPHRASE}`
+  ])
+    rows.skip(check, "workspace");
+  return undefined;
 }
 
 async function checkProviders(
@@ -206,18 +257,6 @@ async function checkWindows(
     );
 }
 
-// why: without a Workspace there is no state directory to read settings or a
-// login from, and no Workspace ID to look a credential up under.
-function workspaceChecks(request: PlannedTaskRequest | undefined): readonly string[] {
-  return [
-    "gate-allowlist",
-    "provider-modes",
-    "api-key-models",
-    ...(request?.schemaVersion === 2 ? ["billing"] : []),
-    `credential:${SIGNING_PASSPHRASE}`
-  ];
-}
-
 // why: the human line reads like a refusal, `CODE (k=v): recovery`, with the
 // check it belongs to in front.
 function line(row: TaskCheckRow): string {
@@ -231,15 +270,12 @@ function line(row: TaskCheckRow): string {
 
 export async function checkTask(io: TaskCommandIo, requestPath: string): Promise<CommandResult> {
   const rows = new TaskCheckRows();
-  const workspace = await rows.run("workspace", () => openTaskWorkspace(io, { ensure: false }));
+  const workspace = await rows.run("workspace", () => openWorkspace(io));
   const request = await rows.run("request", () => readRequest(io, requestPath));
-  let auth: ProviderAuth | undefined;
-  if (workspace === undefined) for (const check of workspaceChecks(request)) rows.skip(check, "workspace");
-  else {
-    auth = await rows.run("provider-modes", () => loadProviderAuth(workspace.layout.workspaceRoot));
-    await checkRequestSettings(rows, io, workspace, request, auth);
-    await checkCredentials(rows, io, workspace, auth);
-  }
+  const auth =
+    workspace === undefined
+      ? await checkWithoutWorkspace(rows, io, request)
+      : await checkWorkspaceSettings(rows, io, workspace, request);
   await checkProviders(rows, io, workspace, request, auth);
   await checkWindows(rows, io, workspace, request, auth);
   const ready = rows.rows.every((row) => row.status === "ready");

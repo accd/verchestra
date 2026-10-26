@@ -13,7 +13,9 @@ import { readFileSync, readdirSync } from "node:fs";
 
 import { credentialMatchesStore, fixtureFlag, fixtureLog, providerArguments } from "./fixture-channel.mjs";
 
-const VERSION = "2.1.282";
+// why: the `claude-2.1.281` flag reports the build just below the mediated
+// floor, as an owner who has not updated Claude Code has.
+const VERSION = fixtureFlag("claude-2.1.281") ? "2.1.281" : "2.1.282";
 if (process.argv.includes("--version")) {
   process.stdout.write(`${VERSION} (Claude Code)\n`);
   process.exit(0);

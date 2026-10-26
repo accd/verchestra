@@ -327,9 +327,15 @@ npx verchestra task check --request task-request.json
 It reports each check as `ready`, `missing`, or `not-checked`, the last when a
 check it depends on is missing. It exits 0 only when every check is ready, and
 4 otherwise. A missing check prints the code and recovery that `task plan` or
-`task start` would give for it. It reads no credential value and starts no
-provider session, so it cannot tell whether the Codex account offers your
-models or whether a token is still valid; `task start` checks those.
+`task start` would give for it. A provider that is not on `PATH` is
+`executable:claude` or `executable:codex`. One older than the run needs is
+`claude-version` (install Claude Code 2.1.282 or later in the 2.x line) or
+`codex-version` (install the Codex CLI 0.115.0 or later, or 0.159.3 or later for a
+coordinated run). A missing Codex login also prints the one-time `codex login`
+command. It reads no credential value and starts no provider session, so it
+cannot tell whether the Codex account offers your models or whether a token is
+still valid; `task start` checks those. Nor does it compile the task context:
+`task plan --dry-run` does that.
 
 Then plan:
 
