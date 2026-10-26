@@ -2,13 +2,13 @@
 schema: verchestra-feature-handoff/v1
 feature: task-check
 issue: 593
-status: in_progress
-branch: feat/593-task-check
+status: complete
+branch: main
 baseRevision: 4a33c0c8fa22b5f8d2baf831cf614919a96dee26
 lastCompletedTask: T7
-nextTask: "Owner decision: a fifth independent validation round, or review of the pull request with round 4 and T7 as the record."
-lastGate: "gate:quick PASS (unit 3029, agent-readiness 379, census 13); tests/e2e/task-check-e2e.test.mjs 23 of 23 on Windows x64; codex identity, beta-tester docs, Windows spawn shim, Windows task e2e and Windows Claude Code driver suites 44 of 44; every mutant of rounds 1 to 4 that still applies killed (22 after T6, the 4 round-4 survivors after T7)"
-updatedAt: 2026-10-26T18:30:00Z
+nextTask: "None in this feature. #593 is closed with the owner decision recorded."
+lastGate: "PR #606 merged by rebase at 2026-10-26T12:47:51Z (main 1802236, tree equal to the PR head d3e2e23) with Quality gate (the full release-gate selection on Linux), Site quality and CodeQL passing on that head; independent validation round 4 and T7 as the record, by the owner decision"
+updatedAt: 2026-10-26T13:05:00Z
 ---
 
 # Scope
@@ -42,8 +42,10 @@ None.
 
 # Next exact action
 
-The owner decides between a fifth independent validation round and reviewing
-the pull request, with round 4 and T7 as the record.
+None in this feature. The owner merged PR #606 with round 4 and T7 as the
+record. The Linux CI ran every release-gate stage on the merged head,
+including the POSIX branches this Windows host could not run. #593 is closed,
+and its closing comment records why `task check` replaced the `doctor` probes.
 
 # Files Intentionally Left Unchanged
 
