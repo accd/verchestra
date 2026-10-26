@@ -1,5 +1,5 @@
 import { isAbsolute } from "node:path";
-import { DriverProtocolError } from "./index.ts";
+import { DriverProtocolError } from "./driver-contract.ts";
 
 /** Machine-local composition input, never a portable driver request or event. */
 export interface CodexProcessContext {

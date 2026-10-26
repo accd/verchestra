@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { quotaExhausted, usageUpdated, type DriverEventOf } from "@verchestra/domain";
+import { quotaExhausted, usageUpdated, type DriverEvent, type DriverEventOf } from "@verchestra/domain";
 
 import {
   codexProcessEnvironment,
@@ -21,10 +21,9 @@ import {
   DriverProtocolError,
   validateDriverStartRequest,
   type Driver,
-  type DriverEvent,
   type DriverSessionRef,
   type DriverStartRequest
-} from "./index.ts";
+} from "./driver-contract.ts";
 import {
   runProviderChild,
   type ProviderChannel,

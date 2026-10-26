@@ -1,7 +1,13 @@
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 
-import { normalizeDeclaredSet, usageCount, usageUpdated, type DriverEventOf } from "@verchestra/domain";
+import {
+  normalizeDeclaredSet,
+  usageCount,
+  usageUpdated,
+  type DriverEventOf,
+  type DriverEvent
+} from "@verchestra/domain";
 
 import { sensitiveValueRedactor } from "./driver-redaction.ts";
 import { DriverSessionLedger } from "./driver-session-ledger.ts";
@@ -10,10 +16,9 @@ import {
   DriverProtocolError,
   validateDriverStartRequest,
   type Driver,
-  type DriverEvent,
   type DriverSessionRef,
   type DriverStartRequest
-} from "./index.ts";
+} from "./driver-contract.ts";
 
 const SAFE_ENV_KEYS = ["PATH", "SystemRoot", "ComSpec", "TEMP", "TMP"] as const;
 

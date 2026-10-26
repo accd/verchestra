@@ -1,6 +1,6 @@
 import { canonicalizeJsonV2, resultStructured, type DriverEventOf } from "@verchestra/domain";
 
-import { DriverProtocolError } from "./index.ts";
+import { DriverProtocolError } from "./driver-contract.ts";
 
 // invariant: what a session asks of its provider when its result is
 // structured: the JSON Schema the provider holds its final answer to, and the

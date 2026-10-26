@@ -46,7 +46,7 @@ import {
 } from "@verchestra/self-test";
 import { scanWorkspace } from "@verchestra/workspace";
 import { runCli } from "./cli.ts";
-import { createCommandBus } from "./main.ts";
+import { createCommandBus } from "./command-bus.ts";
 import { resolveDurableCrashChild } from "./release-layout.ts";
 import { installedReleaseManifest } from "./release-manifest.ts";
 

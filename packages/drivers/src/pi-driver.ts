@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 
-import { usageUpdated } from "@verchestra/domain";
+import { usageUpdated, type DriverEvent } from "@verchestra/domain";
 
 import { DriverSessionLedger, type DriverSession } from "./driver-session-ledger.ts";
 import { probeDriverVersion } from "./driver-version-probe.ts";
@@ -10,10 +10,9 @@ import {
   DriverProtocolError,
   validateDriverStartRequest,
   type Driver,
-  type DriverEvent,
   type DriverSessionRef,
   type DriverStartRequest
-} from "./index.ts";
+} from "./driver-contract.ts";
 
 const PI_PACKAGE = "@earendil-works/pi-agent-core";
 const QUALIFIED_PI_VERSION = "0.99.1";

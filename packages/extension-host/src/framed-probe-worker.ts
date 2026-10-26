@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
-import { ProbeFrameDecoder, ProbeProtocolError, ProbeSequenceGuard, encodeProbeFrame } from "./index.ts";
-import type { ProbeProtocolEnvelope } from "./index.ts";
+import { ProbeFrameDecoder, ProbeProtocolError, ProbeSequenceGuard, encodeProbeFrame } from "./probe-protocol.ts";
+import type { ProbeProtocolEnvelope } from "./probe-protocol.ts";
 
 type UnknownRecord = Readonly<Record<string, unknown>>;
 

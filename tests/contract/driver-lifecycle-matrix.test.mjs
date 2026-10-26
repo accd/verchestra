@@ -18,7 +18,7 @@ import { piAbortableFixture, piFixture } from "../helpers/pi-driver-fixture.mjs"
 //
 // Before this file the four drivers were covered one file at a time, and
 // nothing enumerated them together: conformance to `interface Driver`
-// (packages/drivers/src/index.ts:359) was asserted only by the five
+// (packages/drivers/src/driver-contract.ts) was asserted only by the five
 // `implements Driver` clauses, which is a compile-time claim, and each suite
 // chose its own shape. A driver could therefore be added, or an existing one
 // could lose a lifecycle method's runtime behaviour, without any single test
@@ -36,11 +36,11 @@ import { piAbortableFixture, piFixture } from "../helpers/pi-driver-fixture.mjs"
 
 // The lifecycle contract, read from its canonical declaration so a method
 // added to `interface Driver` cannot be left unexercised by this matrix.
-const DRIVERS_INDEX = readFileSync(new URL("../../packages/drivers/src/index.ts", import.meta.url), "utf8");
+const DRIVER_CONTRACT = readFileSync(new URL("../../packages/drivers/src/driver-contract.ts", import.meta.url), "utf8");
 const LIFECYCLE_METHODS = (() => {
-  const opening = DRIVERS_INDEX.indexOf("export interface Driver {");
-  assert.notEqual(opening, -1, "the Driver interface must be readable from packages/drivers/src/index.ts");
-  const body = DRIVERS_INDEX.slice(opening, DRIVERS_INDEX.indexOf("\n}", opening));
+  const opening = DRIVER_CONTRACT.indexOf("export interface Driver {");
+  assert.notEqual(opening, -1, "the Driver interface must be readable from packages/drivers/src/driver-contract.ts");
+  const body = DRIVER_CONTRACT.slice(opening, DRIVER_CONTRACT.indexOf("\n}", opening));
   return [...body.matchAll(/^ {2}([a-z][A-Za-z]*)\(/gmu)].map((match) => match[1]);
 })();
 

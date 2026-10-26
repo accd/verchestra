@@ -1,4 +1,4 @@
-import { ProbeProtocolError } from "./index.ts";
+import { ProbeProtocolError } from "./probe-protocol.ts";
 
 const DIGEST = /^sha256:[a-f0-9]{64}$/u;
 const SAFE = /^[A-Za-z0-9][A-Za-z0-9._:@/+-]{0,511}$/u;

@@ -3,7 +3,7 @@ import { chmod, lstat, mkdir, mkdtemp, readdir, rm, stat, writeFile } from "node
 import { tmpdir, userInfo } from "node:os";
 import { isAbsolute, join, posix } from "node:path";
 
-import { quotaExhausted, usageUpdated } from "@verchestra/domain";
+import { quotaExhausted, usageUpdated, type DriverEvent } from "@verchestra/domain";
 
 import { processTreeTerminator, type ProcessTreeTerminator } from "./driver-process-tree.ts";
 import { sensitiveValueRedactor } from "./driver-redaction.ts";
@@ -19,10 +19,9 @@ import {
   DriverProtocolError,
   validateDriverStartRequest,
   type Driver,
-  type DriverEvent,
   type DriverSessionRef,
   type DriverStartRequest
-} from "./index.ts";
+} from "./driver-contract.ts";
 import {
   runProviderChild,
   type ProviderChannel,
