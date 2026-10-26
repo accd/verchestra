@@ -36,8 +36,15 @@ test("test code is analysed as tests, never as product sources", () => {
   assert.ok(excluded.includes("packages/contracts/src/generated.ts"), "generated contracts are not hand-written code");
 });
 
-test("coverage is measured by the in-process scopes of gate:full", () => {
-  assert.match(workflow, /for stage in test:unit test:contract test:integration test:fault; do/u);
+test("coverage is measured by exactly the scopes test-scope declares a report for", () => {
+  const scopes = /for stage in ((?:test:\S+ ?)+); do/u.exec(workflow);
+  assert.ok(scopes, "the workflow must list its coverage stages in one loop");
+  const reports = /COVERAGE_REPORTS = Object\.freeze\(\{([^}]+)\}\)/u.exec(read("scripts/test-scope.mjs"));
+  assert.ok(reports, "test-scope.mjs must declare its coverage reports in one table");
+  assert.deepEqual(
+    scopes[1].trim().split(" "),
+    [...reports[1].matchAll(/(\w+):/gu)].map((match) => `test:${match[1]}`)
+  );
 });
 
 test("runs for pull requests and main, with read-only defaults", () => {

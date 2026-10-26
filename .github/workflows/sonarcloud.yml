@@ -45,11 +45,12 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Measure coverage
-        # The in-process scopes of gate:full. End-to-end and mutation scopes run
-        # the product in child processes, which in-process coverage cannot see.
+        # The scopes that never kill a Node child. Integration and fault kill
+        # children by design; a child killed mid-write leaves a truncated V8
+        # profile that fails the runner's coverage report (scripts/test-scope.mjs).
         run: |
           set -euo pipefail
-          for stage in test:unit test:contract test:integration test:fault; do
+          for stage in test:unit test:contract; do
             echo "::group::pnpm run $stage"
             pnpm run "$stage"
             echo "::endgroup::"
