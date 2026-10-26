@@ -6,7 +6,7 @@
 // platform the task fixture serves.
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, readFile, readdir, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { join, relative, sep } from "node:path";
 import { afterEach, test } from "node:test";
 
@@ -124,6 +124,9 @@ test("every missing prerequisite is reported at once, with its refusal, and the 
   assert.match(result.stderr, /^missing gate-allowlist: VES_TASK_NOT_CONFIGURED \(requirement=gate-allowlist\): /mu);
   assert.match(result.stderr, /^missing codex-login: VES_TASK_NOT_CONFIGURED \(requirement=codex-login\): /mu);
   assert.match(result.stderr, /codex login -c 'cli_auth_credentials_store="file"'/u);
+  // why: the identity directory does not exist yet, and `task check` creates
+  // none, so the printed command creates it first, as the quick start does.
+  assert.match(result.stderr, WIN32 ? /New-Item -ItemType Directory -Force -Path '/u : /mkdir -p '.+' && chmod 700 /u);
 });
 
 test("without a Workspace the checks that need one wait for it, in order", TIMEOUT, async () => {
@@ -268,4 +271,78 @@ test("a Codex below the coordinated floor is missing for a v2 request only", TIM
   assert.equal(codex.details.requirement, "codex-version");
   assert.equal(row(result.data, "billing").status, "ready");
   assert.equal(row(result.data, "codex-login").dependsOn, "executable:codex");
+});
+
+// invariant: TCK-05. `codex login status` runs from a temporary home outside
+// the Workspace state, never from its sessions directory as `task start` does,
+// and the home is gone afterwards.
+test("the Codex status check runs from a temporary home outside the Workspace state", TIMEOUT, async () => {
+  const fixture = await fixtureFor();
+  assert.equal(check(fixture).status, 0);
+  const text = await readFile(join(fixture.scratch, "fake-codex-status.log"), "utf8");
+  const entries = text
+    .split("\n")
+    .filter((entry) => entry !== "")
+    .map((entry) => JSON.parse(entry));
+  assert.equal(entries.length, 1);
+  const state = (await realpath(fixture.stateRoot)).toLowerCase();
+  for (const path of [entries[0].home, entries[0].cwd]) {
+    const resolved = path.toLowerCase();
+    assert.ok(!resolved.startsWith(state), `${path} is inside the Workspace state`);
+  }
+  await assert.rejects(stat(entries[0].home), { code: "ENOENT" });
+});
+
+// invariant: a Codex identity directory that is a link is refused as `task
+// start` refuses it (ensureCodexIdentity), even when its target lies inside
+// the Workspace, and the status check never runs through it.
+test("a Codex identity directory that is a link is missing as codex-identity", TIMEOUT, async () => {
+  const fixture = await fixtureFor();
+  const target = join(fixture.stateRoot, "identity-target");
+  await cp(fixture.codexIdentity, target, { recursive: true });
+  await rm(fixture.codexIdentity, { recursive: true, force: true });
+  await linkDirectory(target, fixture.codexIdentity);
+  const result = check(fixture);
+  assert.equal(result.status, 4, result.stderr);
+  const login = row(result.data, "codex-login");
+  assert.equal(login.status, "missing");
+  assert.equal(login.details.requirement, "codex-identity");
+  const log = await readFile(join(fixture.scratch, "fake-codex-status.log"), "utf8").catch(() => "");
+  assert.equal(log, "", "no status check ran through the link");
+});
+
+// invariant: the Workspace root itself, not only a directory below it, must
+// resolve inside the state root.
+test("a Workspace root that is a link out of the state root is refused", TIMEOUT, async () => {
+  const fixture = await fixtureFor();
+  const elsewhere = join(fixture.root, "elsewhere-workspace");
+  await cp(fixture.stateRoot, elsewhere, { recursive: true });
+  await rm(fixture.stateRoot, { recursive: true, force: true });
+  await linkDirectory(elsewhere, fixture.stateRoot);
+  const result = check(fixture);
+  assert.equal(result.status, 4, result.stderr);
+  assert.equal(row(result.data, "workspace").code, "VES_STATE_ROOT_ESCAPE");
+});
+
+test("a malformed task authority policy is missing as `task plan` refuses it", TIMEOUT, async () => {
+  const fixture = await fixtureFor();
+  await mkdir(join(fixture.repository, ".verchestra", "policy"), { recursive: true });
+  await writeFile(join(fixture.repository, ".verchestra", "policy", "task-authority.json"), "{ not json");
+  const result = check(fixture);
+  assert.equal(result.status, 4, result.stderr);
+  const policy = row(result.data, "task-policy");
+  assert.equal(policy.status, "missing");
+  assert.ok(policy.code.startsWith("VES_"), policy.code);
+  assert.equal(row(result.data, "workspace").status, "ready");
+});
+
+// invariant: TCK-06. A request that could not be read names no schema
+// version, so Codex is judged at the v1 floor, which 0.159.2 meets.
+test("with a rejected request Codex is judged at the v1 floor", TIMEOUT, async () => {
+  const fixture = await fixtureFor();
+  await fixture.writeRequest({ verifier: { driverId: "codex", model: "not-a-listed-model" } });
+  await writeFile(join(fixture.scratch, "codex-0.159.2"), "");
+  const result = check(fixture);
+  assert.equal(row(result.data, "request").status, "missing");
+  assert.equal(row(result.data, "executable:codex").status, "ready");
 });
