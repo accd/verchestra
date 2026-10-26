@@ -105,6 +105,46 @@ jobs:
           cache: pnpm
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+      - name: Resolve the qualified Playwright version
+        id: playwright
+        run: |
+          set -euo pipefail
+          version="$(node --print "require('./apps/site/package.json').devDependencies['@playwright/test']")"
+          # The whole key design rests on that dependency being pinned exactly. If
+          # it moves or loosens to a range, node prints "undefined" or "^1.62.0"
+          # and still exits 0, so every later run would share one cache entry
+          # across versions - the stale-cache case this key exists to prevent.
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Could not resolve an exact @playwright/test version; refusing to cache browsers under an ambiguous key."
+            exit 1
+          fi
+          printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"
+      - name: Name the runner image
+        id: image
+        run: |
+          printf 'os=%s\n' "${ImageOS:-unknown}" >> "$GITHUB_OUTPUT"
+          printf 'version=%s\n' "${ImageVersion:-unknown}" >> "$GITHUB_OUTPUT"
+      # A slow Ubuntu mirror turned the 119 MB the browser dependencies need into
+      # a 21-minute install. The archives are kept between runs instead. The key
+      # names the runner image, so a new image starts a new entry while
+      # restore-keys hand it the last one, and apt downloads only what changed.
+      # install-deps runs apt-get as root against /var/cache/apt/archives, which
+      # the cache action cannot write, so the cached archives live in the
+      # runner's home and are copied in before the install and out after it. apt
+      # reuses an archive whose name and checksum match its index.
+      - name: Cache the browser dependency apt archives
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/apt-archives
+          key: ${{ runner.os }}-${{ steps.image.outputs.os }}-apt-archives-${{ steps.playwright.outputs.version }}-${{ steps.image.outputs.version }}
+          restore-keys: |
+            ${{ runner.os }}-${{ steps.image.outputs.os }}-apt-archives-${{ steps.playwright.outputs.version }}-
+            ${{ runner.os }}-${{ steps.image.outputs.os }}-apt-archives-
+      - name: Restore the cached apt archives
+        run: |
+          mkdir -p "$HOME/.cache/apt-archives"
+          find "$HOME/.cache/apt-archives" -maxdepth 1 -name '*.deb' -exec sudo cp -t /var/cache/apt/archives/ {} +
+          echo "Restored $(find "$HOME/.cache/apt-archives" -maxdepth 1 -name '*.deb' | wc -l) cached apt archives."
       # Split from the browser download because it is the part that fetches
       # webkit's multimedia dependencies over apt, and a slow Ubuntu mirror used
       # to consume the whole job budget and cancel the run mid-test. A cancelled
@@ -135,20 +175,15 @@ jobs:
           done
           echo "::error::Could not install browser system dependencies. This is a runner environment failure, not a site qualification failure: no test has run yet."
           exit 1
-      - name: Resolve the qualified Playwright version
-        id: playwright
+      # why: autoclean drops archives that no current index offers, so the
+      # cache holds the versions this image installs and does not grow with
+      # every image that inherits it.
+      - name: Keep the apt archives for the cache
         run: |
-          set -euo pipefail
-          version="$(node --print "require('./apps/site/package.json').devDependencies['@playwright/test']")"
-          # The whole key design rests on that dependency being pinned exactly. If
-          # it moves or loosens to a range, node prints "undefined" or "^1.62.0"
-          # and still exits 0, so every later run would share one cache entry
-          # across versions - the stale-cache case this key exists to prevent.
-          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "::error::Could not resolve an exact @playwright/test version; refusing to cache browsers under an ambiguous key."
-            exit 1
-          fi
-          printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"
+          sudo apt-get autoclean -qq
+          rm -f "$HOME"/.cache/apt-archives/*.deb
+          find /var/cache/apt/archives -maxdepth 1 -name '*.deb' -exec cp -t "$HOME/.cache/apt-archives/" {} +
+          echo "Kept $(find "$HOME/.cache/apt-archives" -maxdepth 1 -name '*.deb' | wc -l) apt archives."
       # Each Playwright version requires exact browser revisions, so the key
       # carries the resolved version and a stale cache is never restored. A warm
       # cache turns the install below into a verification pass instead of a
