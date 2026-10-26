@@ -3,7 +3,7 @@
 // `task start` applies, and a missing one is recorded, not thrown, so the next
 // check still runs. Presence only: no credential value is read, no provider
 // session starts, and nothing is written to the repository.
-import { access, mkdtemp, rm } from "node:fs/promises";
+import { lstat, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -29,12 +29,7 @@ import { loadTaskPolicy } from "./task-policy.ts";
 import { providerModels, requireModelsPricedForApiKey } from "./task-provider-models.ts";
 import { publicError } from "./task-public-error.ts";
 import { requireWindowsPrerequisites } from "./task-windows.ts";
-import {
-  openTaskWorkspace,
-  requireWorkspaceDirectoryContained,
-  requireWorkspaceStateContained,
-  type TaskWorkspace
-} from "./task-workspace.ts";
+import { openTaskWorkspace, requireWorkspaceStateContained, type TaskWorkspace } from "./task-workspace.ts";
 
 export type TaskCheckStatus = "ready" | "missing" | "not-checked";
 
@@ -124,13 +119,21 @@ async function requireCodex(io: TaskCommandIo, request: PlannedTaskRequest | und
 // why: the status check runs from a temporary home outside the Workspace, so
 // `task check` creates no Workspace state, and a missing identity directory is
 // a missing login, explained with the one-time command, not set up here.
+// invariant: the read-only half of ensureCodexIdentity, which `task start`
+// applies: an identity directory that exists is a real directory, never a
+// link, or it is refused with the same requirement. A real directory directly
+// below the proven Workspace root is inside it.
+async function identityDirectoryPresent(directory: string): Promise<boolean> {
+  const facts = await lstat(directory).catch(() => undefined);
+  if (facts === undefined) return false;
+  if (facts.isSymbolicLink() || !facts.isDirectory())
+    throw notConfigured("codex-identity", "The Codex identity directory is not a real directory");
+  return true;
+}
+
 async function requireCodexLogin(io: TaskCommandIo, workspace: TaskWorkspace, codex: string): Promise<void> {
   const directory = codexIdentityDirectory(workspace.layout.workspaceRoot);
-  await requireWorkspaceDirectoryContained(workspace.layout.workspaceRoot, directory);
-  const present = await access(directory).then(
-    () => true,
-    () => false
-  );
+  const present = await identityDirectoryPresent(directory);
   const home = await mkdtemp(join(tmpdir(), "verchestra-task-check-"));
   try {
     if (present && (await codexSubscriptionLoggedIn({ command: [codex], directory, home, env: io.env }))) return;

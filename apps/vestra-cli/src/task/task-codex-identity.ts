@@ -145,10 +145,17 @@ export function codexLoginCommand(directory: string, platform: string = process.
 }
 
 // why: `task check` creates no identity directory, so the command it prints
-// names the file credential store itself, as the quick start's login does;
-// `task start` writes that setting to `config.toml` before it prints its own.
+// creates it, private to the user, and names the file credential store
+// itself, as the quick start's login does; `task start` creates the directory
+// and writes that setting to `config.toml` before it prints its own.
 export function codexFileLoginCommand(directory: string, platform: string = process.platform): string {
-  return `${codexLoginCommand(directory, platform)} -c 'cli_auth_credentials_store="file"'`;
+  const store = `-c 'cli_auth_credentials_store="file"'`;
+  if (platform === "win32") {
+    const path = powershellQuoted(directory);
+    return `New-Item -ItemType Directory -Force -Path ${path} | Out-Null; $env:CODEX_HOME=${path}; codex login ${store}`;
+  }
+  const path = shellQuoted(directory);
+  return `mkdir -p ${path} && chmod 700 ${path} && CODEX_HOME=${path} codex login ${store}`;
 }
 
 // invariant: `config.toml` is rewritten whole before every use, so nothing a

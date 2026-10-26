@@ -128,12 +128,6 @@ export async function requireWorkspaceStateContained(layout: WorkspaceStateLayou
     await requireContained(layout.workspaceRoot, directory);
 }
 
-// invariant: a directory a command reads below the Workspace state root, such
-// as the Codex identity directory, resolves inside it.
-export async function requireWorkspaceDirectoryContained(workspaceRoot: string, directory: string): Promise<void> {
-  await requireContained(workspaceRoot, directory);
-}
-
 // invariant: below a task state root nothing is reached through a link. The
 // directories named here, from a per-Run root down, are created by the task
 // path itself and are real. A link at one of them would carry every read,
