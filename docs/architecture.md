@@ -54,5 +54,6 @@ Shared project artifacts live in `.verchestra/` and are designed to be committed
 - Bind evidence to exact source and policy state.
 - Fail closed when identity, integrity, scope, or authority is unclear.
 - Prefer idempotent reconciliation over blind retry.
+- Bound every helper process outside a provider session in time, and kill it when the bound passes.
 - Keep independent verification separate from implementation.
 - Require human acceptance for the workflow states that change accountability.
