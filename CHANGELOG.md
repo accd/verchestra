@@ -40,6 +40,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 - A published `task` command no longer prints Node's SQLite
   experimental-feature warning.
 - Recovery text names the quick start by its GitHub URL.
+- Every helper process outside a provider session is killed when it outlives
+  its bound: a task's `git` after ten minutes, failing with reason
+  `VES_GIT_TIMEOUT`, and a provider `--version` probe, the workspace scanner's
+  `git`, the process table, and `taskkill` after one minute (#597).
+- A resumed budget ledger with no stop reason is refused with
+  `VES_BUDGET_INVALID`, the rule a task command already applied to a stored
+  one (#597).
 - `jose` 6.2.13.
 
 ### Security

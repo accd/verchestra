@@ -17,6 +17,12 @@ declares no dependency edge and the closure is resolved by the bundler at
 build time rather than by the published tarball at run time. `apps/site` is an
 independent build-time documentation projection.
 
+No production module reaches itself through its runtime imports, its own
+package index included (`tests/architecture/no-import-cycles.test.mjs`). A
+package's test doubles live in its `src/testing.ts`, never in an entry point;
+production source imports one only from the self-test composition
+(`tests/architecture/no-test-doubles-in-entry-points.test.mjs`).
+
 ## Workspace packages
 
 | Package | Responsibility | Allowed internal dependencies | Relevant tests | Canonical documentation |
