@@ -302,7 +302,7 @@ test("a manually selectable gate that probes drivers installs them", () => {
   assert.match(workflow, /if: steps\.probes\.outputs\.needed == 'yes'/u);
   assert.match(
     workflow,
-    /npm install --global --no-audit --no-fund @anthropic-ai\/claude-code@[\d.]+ @openai\/codex@[\d.]+/u
+    /npm install --global --ignore-scripts --no-audit --no-fund @anthropic-ai\/claude-code@[\d.]+ @openai\/codex@[\d.]+\s+npm rebuild --global @anthropic-ai\/claude-code @openai\/codex/u
   );
   // The same pinned versions CI verifies, verified the same way.
   assert.match(workflow, /case "\$claude_version" in/u);

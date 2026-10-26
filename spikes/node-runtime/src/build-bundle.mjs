@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const sourceRoot = path.dirname(fileURLToPath(import.meta.url));
+const OWNER_EXECUTABLE = 0o700;
 
 async function sha256(file) {
   return crypto.createHash("sha256").update(await fs.readFile(file)).digest("hex");
@@ -48,7 +49,9 @@ export async function buildBundle(outputRoot) {
   await fs.copyFile(process.execPath, runtimePath);
   await fs.copyFile(path.join(sourceRoot, "cli.mjs"), appPath);
   await fs.copyFile(path.join(sourceRoot, "bootstrap.cjs"), bootstrapPath);
-  if (process.platform !== "win32") await fs.chmod(runtimePath, 0o755);
+  // why: the bundle is built by and for the current user, so its executables
+  // are owner-only; nothing grants other users read or execute.
+  if (process.platform !== "win32") await fs.chmod(runtimePath, OWNER_EXECUTABLE);
 
   const manifest = {
     schemaVersion: 1,
@@ -68,8 +71,8 @@ export async function buildBundle(outputRoot) {
   const unix = renderUnixLauncher();
   await fs.writeFile(path.join(outputRoot, "vestra.cmd"), windows);
   await fs.writeFile(path.join(outputRoot, "verchestra.cmd"), windows);
-  await fs.writeFile(path.join(outputRoot, "vestra"), unix, { mode: 0o755 });
-  await fs.writeFile(path.join(outputRoot, "verchestra"), unix, { mode: 0o755 });
+  await fs.writeFile(path.join(outputRoot, "vestra"), unix, { mode: OWNER_EXECUTABLE });
+  await fs.writeFile(path.join(outputRoot, "verchestra"), unix, { mode: OWNER_EXECUTABLE });
 
   return { outputRoot, manifest };
 }
