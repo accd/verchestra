@@ -30,9 +30,11 @@ test("pins every delivery action and isolates elevated Pages permissions", () =>
   // The exact count is a tripwire: adding an action must be a reviewed decision,
   // never an unnoticed one. It rose to 10 when the quality job began retaining
   // gate-selection evidence, to 11 when the site job began caching the
-  // qualified browsers, and to 12 when the site job began retaining the
-  // Lighthouse report set (issue #110 / PR #139 review point 3).
-  assert.equal(actionUses.length, 12);
+  // qualified browsers, to 12 when the site job began retaining the
+  // Lighthouse report set (issue #110 / PR #139 review point 3), and to 13 when
+  // the site job began keeping the apt archives of the browser dependencies,
+  // after a slow mirror made that install take 21 minutes (#613).
+  assert.equal(actionUses.length, 13);
   assert.match(
     workflow,
     /uses: actions\/upload-artifact@[a-f0-9]{40} # v\d+\.\d+\.\d+\n {8}with:\n.*\n.*gate-selection/su
@@ -64,6 +66,50 @@ test("caches the qualified browsers keyed on the resolved Playwright version", (
   assert.match(workflow, /uses: actions\/cache@[a-f0-9]{40} # v\d+\.\d+\.\d+/u);
   assert.match(workflow, /path: ~\/\.cache\/ms-playwright/u);
   assert.match(workflow, /key: \$\{\{ runner\.os \}\}-ms-playwright-\$\{\{ steps\.playwright\.outputs\.version \}\}/u);
+});
+
+// invariant: the browser dependencies' apt archives are restored before the
+// install and kept after it, under a key that names the runner image and the
+// Playwright version, so a new image or version starts a new entry from the
+// closest one. The kept set is pruned to what the current indexes offer.
+test("keeps the apt archives of the browser dependencies between runs", () => {
+  const site = /\n {2}site:\n([\s\S]*?)\n {2}deploy:/u.exec(workflow)?.[1];
+  assert.ok(site, "the site job must be present");
+  const stepAt = (name) => {
+    const index = site.indexOf(`- name: ${name}\n`);
+    assert.ok(index > 0, `the site job must have the step "${name}"`);
+    return index;
+  };
+  const resolve = stepAt("Resolve the qualified Playwright version");
+  const image = stepAt("Name the runner image");
+  const cache = stepAt("Cache the browser dependency apt archives");
+  const restore = stepAt("Restore the cached apt archives");
+  const install = stepAt("Install browser system dependencies");
+  const keep = stepAt("Keep the apt archives for the cache");
+  const browsers = stepAt("Cache qualified browsers");
+  assert.ok(resolve < cache && image < cache, "the key's inputs are resolved before the cache step");
+  assert.ok(cache < restore && restore < install && install < keep && keep < browsers, "restore, install, keep");
+  const cacheStep = site.slice(cache, restore);
+  assert.match(cacheStep, /uses: actions\/cache@[a-f0-9]{40} # v\d+\.\d+\.\d+/u);
+  assert.match(cacheStep, /path: ~\/\.cache\/apt-archives\n/u);
+  const prefix = String.raw`\$\{\{ runner\.os \}\}-\$\{\{ steps\.image\.outputs\.os \}\}-apt-archives-`;
+  const version = String.raw`\$\{\{ steps\.playwright\.outputs\.version \}\}`;
+  assert.match(
+    cacheStep,
+    new RegExp(`key: ${prefix}${version}-\\$\\{\\{ steps\\.image\\.outputs\\.version \\}\\}\\n`, "u")
+  );
+  assert.match(cacheStep, new RegExp(`restore-keys: \\|\\n {12}${prefix}${version}-\\n {12}${prefix}\\n`, "u"));
+  assert.match(site.slice(image, cache), /\$\{ImageOS:-unknown\}[\s\S]*\$\{ImageVersion:-unknown\}/u);
+  assert.match(
+    site.slice(restore, install),
+    /-name '\*\.deb' -exec sudo cp -t \/var\/cache\/apt\/archives\/ \{\} \+/u,
+    "the cached archives are copied where apt-get looks for them"
+  );
+  const keepStep = site.slice(keep, browsers);
+  const autoclean = keepStep.indexOf("sudo apt-get autoclean -qq");
+  const copied = keepStep.indexOf(`-exec cp -t "$HOME/.cache/apt-archives/" {} +`);
+  assert.ok(autoclean > 0 && copied > autoclean, "the kept set is pruned before it is copied out");
+  assert.ok(keepStep.indexOf('rm -f "$HOME"/.cache/apt-archives/*.deb') < copied, "a stale copy is replaced");
 });
 
 test("an unresolvable Playwright version refuses to cache instead of sharing one key", () => {
