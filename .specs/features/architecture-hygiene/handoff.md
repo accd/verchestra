@@ -7,7 +7,7 @@ branch: refactor/597-architecture-hygiene
 baseRevision: d5c7c6227a7932371bc6dbf4acb6534f5e3e3201
 lastCompletedTask: T5
 nextTask: "Review and maintainer merge once every required check is green on the exact head; after merge, move this handoff to complete and record in #597 that ARQ-004 stays an audit note."
-lastGate: "gate:quick PASS; tests/architecture 143 of 143; see validation.md"
+lastGate: "gate:quick PASS at 46c9f00; tests/architecture 143 of 143; see validation.md"
 updatedAt: 2026-10-26T12:00:00Z
 ---
 
