@@ -1,15 +1,18 @@
 // invariant: TCK-01..TCK-06 (.specs/features/task-check/spec.md). `vestra task
 // check` judges every task prerequisite in one pass with the checks `task
 // plan` and `task start` apply, reports each as ready, missing, or not
-// checked, reads no credential value, and starts no provider session. The
-// journeys run on every platform the task fixture serves.
+// checked, reads no credential value, starts no provider session, and writes
+// nothing to the repository or the Workspace state. The journeys run on every
+// platform the task fixture serves.
 import assert from "node:assert/strict";
-import { readFile, rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { createHash } from "node:crypto";
+import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { join, relative, sep } from "node:path";
 import { afterEach, test } from "node:test";
 
 import { EXECUTIONS, coordinatedFixture } from "../helpers/task-coordinated-fixture.mjs";
 import { LINUX, WIN32, cleanupTaskFixtures, taskFixture } from "../helpers/task-cli-fixture.mjs";
+import { linkDirectory } from "../helpers/windows-links.mjs";
 
 const TIMEOUT = { timeout: 300_000 };
 afterEach(cleanupTaskFixtures);
@@ -30,12 +33,15 @@ function check(fixture) {
   return { status: result.status, stderr: result.stderr, data: result.json.data };
 }
 
-const statuses = (data) => Object.fromEntries(data.checks.map((row) => [row.check, row.status]));
+const names = (data) => data.checks.map((entry) => entry.check);
+const statuses = (data) => Object.fromEntries(data.checks.map((entry) => [entry.check, entry.status]));
 const row = (data, name) => data.checks.find((entry) => entry.check === name);
 
 const SUBSCRIPTION_CHECKS = [
   "workspace",
   "request",
+  "source-revision",
+  "task-policy",
   "provider-modes",
   "gate-allowlist",
   "api-key-models",
@@ -60,19 +66,37 @@ async function storeCommands(fixture) {
     .map((entry) => JSON.parse(entry).command);
 }
 
-test("a configured Workspace is ready on every check, and no credential value is read", TIMEOUT, async () => {
+// why: every file under the Workspace state with its content digest. The
+// Windows check creates the empty sessions directory, as `task start` does
+// (TCK-05), so that one directory is left out.
+async function stateSnapshot(root) {
+  const entries = await readdir(root, { recursive: true, withFileTypes: true }).catch(() => []);
+  const files = [];
+  for (const entry of entries) {
+    const path = relative(root, join(entry.parentPath, entry.name)).split(sep).join("/");
+    if (path === "sessions" || path.startsWith("sessions/")) continue;
+    const digest = entry.isFile()
+      ? createHash("sha256")
+          .update(await readFile(join(entry.parentPath, entry.name)))
+          .digest("hex")
+      : "directory";
+    files.push(`${path} ${digest}`);
+  }
+  return files.sort();
+}
+
+test("a configured Workspace is ready on every check, and nothing is read or written", TIMEOUT, async () => {
   const fixture = await fixtureFor();
-  const before = fixture.git(["status", "--porcelain", "--untracked-files=all"]);
+  const repository = () => fixture.git(["status", "--porcelain", "--untracked-files=all", "--ignored"]);
+  const before = { repository: repository(), state: await stateSnapshot(fixture.stateRoot) };
   const result = check(fixture);
   assert.equal(result.status, 0, result.stderr);
   assert.equal(result.data.ready, true);
-  assert.deepEqual(
-    result.data.checks.map((entry) => entry.check),
-    SUBSCRIPTION_CHECKS
-  );
+  assert.deepEqual(names(result.data), SUBSCRIPTION_CHECKS);
   for (const entry of result.data.checks) assert.equal(entry.status, "ready", entry.check);
   assert.doesNotMatch(result.stderr, /^(missing|not-checked) /mu);
-  assert.equal(fixture.git(["status", "--porcelain", "--untracked-files=all"]), before);
+  assert.equal(repository(), before.repository);
+  assert.deepEqual(await stateSnapshot(fixture.stateRoot), before.state);
   if (VALUE_READ !== undefined) assert.equal((await storeCommands(fixture)).includes(VALUE_READ), false);
 });
 
@@ -81,6 +105,7 @@ test("every missing prerequisite is reported at once, with its refusal, and the 
   const result = check(fixture);
   assert.equal(result.status, 4, result.stderr);
   assert.equal(result.data.ready, false);
+  assert.deepEqual(names(result.data), SUBSCRIPTION_CHECKS);
   const missing = [
     "gate-allowlist",
     "credential:claude-code-oauth-token",
@@ -98,22 +123,71 @@ test("every missing prerequisite is reported at once, with its refusal, and the 
     assert.equal(row(result.data, name).status, "ready", name);
   assert.match(result.stderr, /^missing gate-allowlist: VES_TASK_NOT_CONFIGURED \(requirement=gate-allowlist\): /mu);
   assert.match(result.stderr, /^missing codex-login: VES_TASK_NOT_CONFIGURED \(requirement=codex-login\): /mu);
+  assert.match(result.stderr, /codex login -c 'cli_auth_credentials_store="file"'/u);
 });
 
-test("without a Workspace the checks that need one wait for it", TIMEOUT, async () => {
+test("without a Workspace the checks that need one wait for it, in order", TIMEOUT, async () => {
   const fixture = await fixtureFor();
   await rm(join(fixture.repository, ".verchestra", "workspace.yaml"));
   const result = check(fixture);
   assert.equal(result.status, 4, result.stderr);
-  assert.equal(row(result.data, "workspace").status, "missing");
+  assert.deepEqual(statuses(result.data), {
+    workspace: "missing",
+    request: "ready",
+    "source-revision": "not-checked",
+    "task-policy": "ready",
+    "provider-modes": "not-checked",
+    "gate-allowlist": "not-checked",
+    "api-key-models": "not-checked",
+    "credential:providers": "not-checked",
+    "credential:evidence-signing-passphrase": "not-checked",
+    "executable:claude": "ready",
+    "executable:codex": "ready",
+    "codex-login": "not-checked",
+    ...(WIN32 ? { windows: "not-checked" } : {})
+  });
+  assert.deepEqual(
+    names(result.data),
+    [
+      "workspace",
+      "request",
+      "source-revision",
+      "task-policy",
+      "provider-modes",
+      "gate-allowlist",
+      "api-key-models",
+      "credential:providers",
+      "credential:evidence-signing-passphrase",
+      "executable:claude",
+      "executable:codex",
+      "codex-login",
+      ...(WIN32 ? ["windows"] : [])
+    ],
+    "the rows come in the order TCK-04 states"
+  );
   assert.equal(row(result.data, "workspace").code, "VES_INIT_WORKSPACE_MISSING");
-  for (const name of ["gate-allowlist", "provider-modes", "api-key-models", "credential:evidence-signing-passphrase"])
-    assert.deepEqual(row(result.data, name), { check: name, status: "not-checked", dependsOn: "workspace" }, name);
-  assert.equal(row(result.data, "codex-login").dependsOn, "workspace");
-  assert.equal(row(result.data, "request").status, "ready");
-  assert.equal(row(result.data, "executable:codex").status, "ready");
+  for (const entry of result.data.checks.filter((candidate) => candidate.status === "not-checked"))
+    assert.equal(entry.dependsOn, "workspace", entry.check);
   assert.match(result.stderr, /^not-checked gate-allowlist: waits for workspace$/mu);
 });
+
+test(
+  "a Workspace state directory that is a link is refused with its recovery, and nothing is made through it",
+  TIMEOUT,
+  async () => {
+    const fixture = await fixtureFor();
+    const elsewhere = join(fixture.root, "elsewhere");
+    await mkdir(elsewhere);
+    await linkDirectory(elsewhere, join(fixture.stateRoot, "sessions"));
+    const result = check(fixture);
+    assert.equal(result.status, 4, result.stderr);
+    const workspace = row(result.data, "workspace");
+    assert.equal(workspace.status, "missing");
+    assert.equal(workspace.code, "VES_STATE_ROOT_ESCAPE");
+    assert.ok(workspace.recovery.length > 0, "the escape keeps the recovery its public envelope carries");
+    assert.deepEqual(await readdir(elsewhere), []);
+  }
+);
 
 test("a rejected request leaves the checks that read it unjudged", TIMEOUT, async () => {
   const fixture = await fixtureFor();
@@ -122,9 +196,30 @@ test("a rejected request leaves the checks that read it unjudged", TIMEOUT, asyn
   assert.equal(result.status, 4, result.stderr);
   assert.equal(row(result.data, "request").status, "missing");
   assert.equal(row(result.data, "request").code, "VES_TASK_REQUEST_REJECTED");
-  for (const name of ["gate-allowlist", "api-key-models"])
+  for (const name of ["source-revision", "gate-allowlist", "api-key-models"])
     assert.equal(row(result.data, name).dependsOn, "request", name);
   assert.equal(row(result.data, "provider-modes").status, "ready");
+});
+
+test("a request whose source revision the repository lacks is missing as `task plan` refuses it", TIMEOUT, async () => {
+  const fixture = await fixtureFor();
+  await fixture.writeRequest({ sourceRevision: "0".repeat(40) });
+  const result = check(fixture);
+  assert.equal(result.status, 4, result.stderr);
+  const revision = row(result.data, "source-revision");
+  assert.equal(revision.status, "missing");
+  assert.equal(revision.code, "VES_TASK_REQUEST_REJECTED");
+  assert.equal(revision.details.reason, "VES_TASK_SOURCE_REVISION_UNKNOWN");
+});
+
+test("a malformed provider-modes file leaves the checks that read it unjudged", TIMEOUT, async () => {
+  const fixture = await fixtureFor({ providers: "{ not json" });
+  const result = check(fixture);
+  assert.equal(result.status, 4, result.stderr);
+  assert.equal(row(result.data, "provider-modes").status, "missing");
+  for (const name of ["api-key-models", "credential:providers", "codex-login"])
+    assert.equal(row(result.data, name).dependsOn, "provider-modes", name);
+  assert.equal(row(result.data, "credential:evidence-signing-passphrase").status, "ready");
 });
 
 test("on API keys both keys are checked and no Codex login is asked for", TIMEOUT, async () => {
@@ -134,6 +229,8 @@ test("on API keys both keys are checked and no Codex login is asked for", TIMEOU
   assert.deepEqual(statuses(result.data), {
     workspace: "ready",
     request: "ready",
+    "source-revision": "ready",
+    "task-policy": "ready",
     "provider-modes": "ready",
     "gate-allowlist": "ready",
     "api-key-models": "ready",
@@ -146,8 +243,17 @@ test("on API keys both keys are checked and no Codex login is asked for", TIMEOU
   });
 });
 
-// invariant: TCK-06. The Codex floor is the one the run applies: the default
-// for a v1 request, the structured minimum (0.159.3) for a v2 one.
+// invariant: TCK-06. Each driver is judged at the floor the run applies.
+test("a Claude Code below the mediated floor is missing as claude-version", TIMEOUT, async () => {
+  const fixture = await fixtureFor();
+  await writeFile(join(fixture.scratch, "claude-2.1.281"), "");
+  const result = check(fixture);
+  assert.equal(result.status, 4, result.stderr);
+  const claude = row(result.data, "executable:claude");
+  assert.equal(claude.status, "missing");
+  assert.equal(claude.details.requirement, "claude-version");
+});
+
 test("a Codex below the coordinated floor is missing for a v2 request only", TIMEOUT, async () => {
   const single = await fixtureFor();
   await writeFile(join(single.scratch, "codex-0.159.2"), "");

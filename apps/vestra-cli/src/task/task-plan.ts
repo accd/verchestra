@@ -69,7 +69,7 @@ export async function readRequest(io: TaskCommandIo, path: string): Promise<Plan
 // why: the source state is the exact committed tree the task starts from; a
 // revision is immutable, so its digest binds the approval to content rather
 // than to a moving branch.
-async function sourceState(repositoryRoot: string, revision: string): Promise<Digest> {
+export async function sourceState(repositoryRoot: string, revision: string): Promise<Digest> {
   const resolved = async (spec: string) =>
     (await git(repositoryRoot, ["rev-parse", "--verify", "--end-of-options", spec])).trim();
   try {

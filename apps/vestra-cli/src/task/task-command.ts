@@ -4,37 +4,16 @@
 import { homedir } from "node:os";
 
 import type { CliCommand, CommandResult } from "@verchestra/application";
-import { PublicErrorException, type PublicErrorRegistry } from "@verchestra/domain";
-import { platformSecurityPublicErrorRegistry, runtimePublicErrorRegistry } from "@verchestra/platform-node";
-import { initPublicErrorRegistry } from "@verchestra/workspace";
 
 import { cliError } from "../cli-errors.ts";
 import { approveTask } from "./task-approve.ts";
 import { checkTask } from "./task-check.ts";
-import { stableCode, taskError } from "./task-errors.ts";
 import type { TaskCommandIo, TaskConfirmationInput } from "./task-io.ts";
 import { planTask } from "./task-plan.ts";
+import { publicError } from "./task-public-error.ts";
 import { reviewTask } from "./task-review.ts";
 import { runTask } from "./task-run.ts";
 import { cancelTask, statusTask } from "./task-status.ts";
-
-const REGISTRIES: readonly PublicErrorRegistry[] = [
-  platformSecurityPublicErrorRegistry,
-  runtimePublicErrorRegistry,
-  initPublicErrorRegistry
-];
-
-function publicError(error: unknown): PublicErrorException {
-  if (error instanceof PublicErrorException) return error;
-  const code = stableCode(error);
-  for (const registry of REGISTRIES)
-    if (registry.codes.includes(code)) {
-      const definition = registry.definitions.find((entry) => entry.code === code);
-      if (definition !== undefined && Object.keys(definition.safeDetails).length === 0)
-        return new PublicErrorException(registry.create(code, {}), "Task command failed", { cause: error });
-    }
-  return taskError("VES_TASK_FAILED", { reason: code }, "Task command failed", { cause: error });
-}
 
 function required(command: CliCommand, option: string): string {
   const value = command.options[option];
