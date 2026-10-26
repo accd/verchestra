@@ -28,14 +28,14 @@ rules and test-only rules do not apply.
 
 ## Requirements
 
-| ID     | Requirement                                                                                                                                                                         |
-| ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| SQC-01 | `scripts/test-scope.mjs` writes `<scope>.lcov` to `VES_COVERAGE_DIR` when set, and nothing otherwise.                                                                               |
-| SQC-02 | Coverage counts only `packages/**/src/**`, `apps/vestra-cli/src/**`, `apps/vestra-launcher/src/**`.                                                                                 |
-| SQC-03 | Per-scope reports merge into one `lcov.info`: hits summed per file, `/` separators, deterministic order; an empty merge fails closed.                                               |
-| SQC-04 | `sonar-project.properties` analyses test code as tests and excludes generated contracts.                                                                                            |
-| SQC-05 | `.github/workflows/sonarcloud.yml` runs on pull requests and `main`, measures coverage with the in-process `gate:full` scopes, and scans with the official action pinned by commit. |
-| SQC-06 | `SONAR_TOKEN` is visible only to the token-presence check and the scan step; a run without the secret (fork pull request) skips the scan.                                           |
+| ID     | Requirement                                                                                                                                                                            |
+| ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| SQC-01 | With `VES_COVERAGE=1`, `scripts/test-scope.mjs` writes a covered scope's report to `coverage/<scope>.lcov`, and nothing otherwise; the name comes from a fixed table, never from argv. |
+| SQC-02 | Coverage counts only `packages/**/src/**`, `apps/vestra-cli/src/**`, `apps/vestra-launcher/src/**`.                                                                                    |
+| SQC-03 | Per-scope reports merge into one `lcov.info`: hits summed per file, `/` separators, deterministic order; an empty merge fails closed.                                                  |
+| SQC-04 | `sonar-project.properties` analyses test code as tests and excludes generated contracts.                                                                                               |
+| SQC-05 | `.github/workflows/sonarcloud.yml` runs on pull requests and `main`, measures coverage with the in-process `gate:full` scopes, and scans with the official action pinned by commit.    |
+| SQC-06 | `SONAR_TOKEN` is visible only to the token-presence check and the scan step; a run without the secret (fork pull request) skips the scan.                                              |
 
 ## Owner actions (not automatable here)
 

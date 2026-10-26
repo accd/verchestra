@@ -13,9 +13,10 @@ const SCRIPT = fileURLToPath(new URL("../../scripts/test-scope.mjs", import.meta
 
 // The spawned script itself spawns `node --test`; the test-runner context
 // variables must not leak into it or the grandchild skips running files, and
-// neither may a coverage run's VES_COVERAGE_DIR, which would overwrite its report.
+// neither may a coverage run's switches, which would measure into its report.
+const OUTER_COVERAGE = new Set(["VES_COVERAGE", "NODE_V8_COVERAGE"]);
 const cleanEnv = Object.fromEntries(
-  Object.entries(process.env).filter(([key]) => !key.startsWith("NODE_TEST") && key !== "VES_COVERAGE_DIR")
+  Object.entries(process.env).filter(([key]) => !key.startsWith("NODE_TEST") && !OUTER_COVERAGE.has(key))
 );
 
 function runScope(scope, roots, environment = {}) {

@@ -34,22 +34,33 @@ if (tests.length === 0) {
 // machine, not a per-run artifact, so it is the one entry a test need not own.
 const SHARED_CACHE = "node-compile-cache";
 
-// invariant: coverage is opt-in. Without VES_COVERAGE_DIR the scope runs exactly
-// as the gates always have; with it, the scope also writes `<scope>.lcov` there,
-// restricted to product source so tests, scripts and spikes never count.
+// invariant: coverage is opt-in. Without VES_COVERAGE=1 the scope runs exactly
+// as the gates always have; with it, a covered scope also writes its report to
+// `coverage/` under the working directory, restricted to product source so
+// tests, scripts and spikes never count. The report name comes from this table,
+// never from the command line, so no caller-supplied text reaches a path.
 // why: the tests import `.ts` sources directly, so Node's own coverage maps
 // straight to the files SonarCloud analyses, with no instrumenting dependency.
 const COVERED_SOURCES = ["packages/**/src/**", "apps/vestra-cli/src/**", "apps/vestra-launcher/src/**"];
-const coverageDirectory = process.env.VES_COVERAGE_DIR;
+const COVERAGE_REPORTS = Object.freeze({
+  unit: "unit.lcov",
+  contract: "contract.lcov",
+  integration: "integration.lcov",
+  fault: "fault.lcov"
+});
 const coverage = [];
-if (coverageDirectory) {
-  const directory = resolve(coverageDirectory);
+if (process.env.VES_COVERAGE === "1") {
+  if (!Object.hasOwn(COVERAGE_REPORTS, scope)) {
+    process.stderr.write(`${scope}: no coverage report is declared for this scope\n`);
+    process.exit(2);
+  }
+  const directory = resolve("coverage");
   await mkdir(directory, { recursive: true });
   coverage.push(
     "--experimental-test-coverage",
-    ...COVERED_SOURCES.map((glob) => `--test-coverage-include=${glob}`),
+    ...COVERED_SOURCES.map((glob) => "--test-coverage-include=" + glob),
     "--test-reporter=lcov",
-    `--test-reporter-destination=${join(directory, `${scope}.lcov`)}`,
+    "--test-reporter-destination=" + join(directory, COVERAGE_REPORTS[scope]),
     "--test-reporter=spec",
     "--test-reporter-destination=stdout"
   );

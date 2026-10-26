@@ -22,8 +22,8 @@ test("the analysis targets the project and imports the merged coverage report", 
   assert.equal(property("sonar.projectKey"), "accd_verchestra");
   assert.equal(property("sonar.organization"), "verchestra");
   assert.equal(property("sonar.javascript.lcov.reportPaths"), "coverage/lcov.info");
-  assert.match(workflow, /^ {6}VES_COVERAGE_DIR: coverage$/mu);
-  assert.match(workflow, /node scripts\/merge-coverage\.mjs coverage$/mu);
+  assert.match(workflow, /^ {6}VES_COVERAGE: "1"$/mu);
+  assert.match(workflow, /node scripts\/merge-coverage\.mjs$/mu);
 });
 
 test("test code is analysed as tests, never as product sources", () => {

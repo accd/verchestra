@@ -57,7 +57,10 @@ export async function runBoundedChild(run: BoundedChildRun): Promise<BoundedChil
   let termination: Promise<void> | undefined;
   const child = spawn(run.executable, [...run.args], {
     cwd: run.cwd,
-    env: run.env,
+    // why: spawn writes into the env object it is handed (it adds
+    // NODE_V8_COVERAGE whenever the parent carries it), so a frozen caller
+    // record must reach it as a copy or the spawn throws before it starts.
+    env: { ...run.env },
     shell: false,
     windowsHide: true,
     detached: process.platform !== "win32",
