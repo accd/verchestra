@@ -50,7 +50,7 @@ const CASES = Object.freeze([
   ["a valid ledger", VALID, undefined],
   ["a stopped ledger", { ...VALID, stopReason: "token-threshold" }, undefined],
   ["unbilled tokens within the total", { ...VALID, unbilledTokens: 100 }, undefined],
-  ["no stop reason", (({ stopReason, ...rest }) => rest)(VALID), "stopReason"],
+  ["no stop reason", Object.fromEntries(Object.entries(VALID).filter(([key]) => key !== "stopReason")), "stopReason"],
   ["an unknown stop reason", { ...VALID, stopReason: "mood" }, "stopReason"],
   ["negative cost", { ...VALID, consumedCostUsd: -1 }, "consumedCostUsd"],
   ["fractional tokens", { ...VALID, consumedTokens: 1.5 }, "consumedTokens"],
