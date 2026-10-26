@@ -21,7 +21,9 @@ import { after, test } from "node:test";
 
 import {
   CODEX_IDENTITY_CONFIG,
+  codexFileLoginCommand,
   codexIdentityDirectory,
+  codexIdentityPresent,
   codexLoginCommand,
   codexSubscriptionLoggedIn,
   ensureCodexIdentity,
@@ -326,6 +328,49 @@ test("the Codex login hint uses PowerShell syntax on win32", () => {
     assert.equal(
       codexLoginCommand("/home/it's/codex-identity", platform),
       "CODEX_HOME='/home/it'\\''s/codex-identity' codex login",
+      platform
+    );
+});
+
+// invariant: a file where the identity directory belongs is refused as
+// codex-identity before anything is created, by `task start` and `task check`
+// alike, instead of failing on the creation as an internal error.
+test("a file in place of the identity directory is refused before anything is created", async () => {
+  const { directory, workspaceRoot } = await fixture();
+  await mkdir(workspaceRoot, { recursive: true });
+  await rm(directory, { recursive: true, force: true });
+  await writeFile(directory, "not a directory\n");
+  for (const attempt of [() => ensureCodexIdentity(directory), () => codexIdentityPresent(directory)])
+    await assert.rejects(attempt(), (error) => {
+      assert.equal(error.envelope.code, "VES_TASK_NOT_CONFIGURED");
+      assert.equal(error.envelope.safeDetails.requirement, "codex-identity");
+      return true;
+    });
+  assert.equal(await readFile(directory, "utf8"), "not a directory\n");
+});
+
+test("an absent identity directory is not present, and nothing is created by asking", async () => {
+  const { directory } = await fixture();
+  await rm(directory, { recursive: true, force: true });
+  assert.equal(await codexIdentityPresent(directory), false);
+  await assert.rejects(stat(directory), { code: "ENOENT" });
+});
+
+// invariant: `task check` creates no identity directory, so the command it
+// prints creates it, private to the user, signs in with the file credential
+// store, and, in PowerShell, leaves CODEX_HOME as it found it.
+test("the file-store login command creates the directory and quotes it for each shell", () => {
+  assert.equal(
+    codexFileLoginCommand("C:\\Users\\it's\\codex-identity", "win32"),
+    "New-Item -ItemType Directory -Force -Path 'C:\\Users\\it''s\\codex-identity' | Out-Null; " +
+      "$env:CODEX_HOME='C:\\Users\\it''s\\codex-identity'; codex login -c 'cli_auth_credentials_store=\"file\"'; " +
+      "Remove-Item Env:CODEX_HOME"
+  );
+  for (const platform of ["darwin", "linux"])
+    assert.equal(
+      codexFileLoginCommand("/home/it's/codex-identity", platform),
+      "mkdir -p '/home/it'\\''s/codex-identity' && chmod 700 '/home/it'\\''s/codex-identity' && " +
+        "CODEX_HOME='/home/it'\\''s/codex-identity' codex login -c 'cli_auth_credentials_store=\"file\"'",
       platform
     );
 });

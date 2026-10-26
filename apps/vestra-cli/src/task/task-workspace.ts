@@ -87,7 +87,7 @@ async function present(path: string): Promise<boolean> {
 // a link points to.
 // hazard: this only reads. `ensureWorkspaceState` creates every directory it
 // checks, so these roots are not part of it: a dry run must create nothing.
-async function requireContained(workspaceRoot: string, directory: string): Promise<void> {
+async function requireContained(workspaceRoot: string, directory: string, sameAllowed = false): Promise<void> {
   if (!(await present(directory))) return;
   const comparable = (path: string): string => (process.platform === "win32" ? path.toLowerCase() : path);
   let child: string;
@@ -103,7 +103,7 @@ async function requireContained(workspaceRoot: string, directory: string): Promi
       { cause: error }
     );
   }
-  if (child === "" || child === ".." || child.startsWith(`..${sep}`) || isAbsolute(child))
+  if ((child === "" && !sameAllowed) || child === ".." || child.startsWith(`..${sep}`) || isAbsolute(child))
     throw new PlatformSecurityError("VES_STATE_ROOT_ESCAPE", "Workspace state path resolves outside its owner");
 }
 
@@ -113,8 +113,10 @@ async function requireContained(workspaceRoot: string, directory: string): Promi
 // and it creates none of them.
 export async function requireWorkspaceStateContained(layout: WorkspaceStateLayout): Promise<void> {
   const workspacesRoot = dirname(layout.workspaceRoot);
-  await requireContained(layout.stateRoot, workspacesRoot);
-  await requireContained(workspacesRoot, layout.workspaceRoot);
+  // why: ensureWorkspaceState admits a directory that resolves to its owner,
+  // so the read-only proof admits it too and agrees with `task plan`.
+  await requireContained(layout.stateRoot, workspacesRoot, true);
+  await requireContained(workspacesRoot, layout.workspaceRoot, true);
   for (const directory of [
     layout.runtimeRoot,
     layout.memoryRoot,
@@ -125,7 +127,7 @@ export async function requireWorkspaceStateContained(layout: WorkspaceStateLayou
     layout.worktreesRoot,
     layout.logsRoot
   ])
-    await requireContained(layout.workspaceRoot, directory);
+    await requireContained(layout.workspaceRoot, directory, true);
 }
 
 // invariant: below a task state root nothing is reached through a link. The
