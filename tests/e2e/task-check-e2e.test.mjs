@@ -7,7 +7,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { cp, mkdir, readFile, readdir, realpath, rm, stat, writeFile } from "node:fs/promises";
-import { dirname, join, relative, sep } from "node:path";
+import { basename, dirname, join, relative, sep } from "node:path";
 import { afterEach, test } from "node:test";
 
 import { EXECUTIONS, coordinatedFixture } from "../helpers/task-coordinated-fixture.mjs";
@@ -127,6 +127,7 @@ test("every missing prerequisite is reported at once, with its refusal, and the 
   // why: the identity directory does not exist yet, and `task check` creates
   // none, so the printed command creates it first, as the quick start does.
   assert.match(result.stderr, WIN32 ? /New-Item -ItemType Directory -Force -Path '/u : /mkdir -p '.+' && chmod 700 /u);
+  await assert.rejects(stat(fixture.codexIdentity), { code: "ENOENT" }, "task check created the identity directory");
 });
 
 test("without a Workspace the checks that need one wait for it, in order", TIMEOUT, async () => {
@@ -408,14 +409,16 @@ test("no provider session starts", TIMEOUT, async () => {
     await assert.rejects(stat(join(fixture.scratch, log)), { code: "ENOENT" }, log);
   const status = await readFile(join(fixture.scratch, "fake-codex-status.log"), "utf8");
   assert.equal(status.split("\n").filter((entry) => entry !== "").length, 1);
-  // why: on Windows every provider start is witnessed with its arguments, so
-  // a child that fails before it writes a fake log is still seen there.
+  // why: on Windows the spawn shim records every provider start, with its
+  // arguments, before the child runs (`<placeholder>.starts.log`), so a child
+  // that fails, or hangs until it is killed, before it writes a fake log is
+  // still seen there.
   if (!WIN32) return;
   const starts = async (name) =>
-    (await readFile(join(fixture.scratch, `${name}.witness.log`), "utf8"))
+    (await readFile(join(fixture.scratch, `${name}.starts.log`), "utf8"))
       .split("\n")
       .filter((entry) => entry !== "")
-      .map((entry) => JSON.parse(entry).args.slice(4).join(" "));
+      .map((entry) => JSON.parse(entry).args.join(" "));
   assert.deepEqual(await starts("claude.exe"), ["--version"]);
   assert.deepEqual((await starts("codex.exe")).sort(), ["--version", "login status"]);
 });
@@ -425,4 +428,30 @@ test("task check without --request is an argument error, exit 2", TIMEOUT, async
   const result = fixture.launch(["task", "check", ...fixture.keychainArgs, "--output", "json"]);
   assert.equal(result.status, 2, result.stderr);
   assert.match(result.stdout, /VES_CLI_ARGUMENT_INVALID/u);
+});
+
+// invariant: TCK-05 agrees with `task plan` above the Workspace too:
+// ensureWorkspaceState admits a Workspaces root that resolves to the state
+// root, and a Workspace root that resolves to the Workspaces root.
+test("a Workspaces root linked to the state root is admitted, as `task plan` admits it", TIMEOUT, async () => {
+  const fixture = await fixtureFor();
+  const workspaces = dirname(fixture.stateRoot);
+  const state = dirname(workspaces);
+  await cp(fixture.stateRoot, join(state, basename(fixture.stateRoot)), { recursive: true });
+  await rm(workspaces, { recursive: true, force: true });
+  await linkDirectory(state, workspaces);
+  const result = check(fixture);
+  assert.equal(row(result.data, "workspace").status, "ready", result.stderr);
+});
+
+test("a Workspace root linked to the Workspaces root is admitted, as `task plan` admits it", TIMEOUT, async () => {
+  const fixture = await fixtureFor();
+  const workspaces = dirname(fixture.stateRoot);
+  const moved = join(fixture.root, "moved-workspace");
+  await cp(fixture.stateRoot, moved, { recursive: true });
+  await rm(fixture.stateRoot, { recursive: true, force: true });
+  await cp(moved, workspaces, { recursive: true });
+  await linkDirectory(workspaces, fixture.stateRoot);
+  const result = check(fixture);
+  assert.equal(row(result.data, "workspace").status, "ready", result.stderr);
 });

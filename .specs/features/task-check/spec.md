@@ -40,6 +40,7 @@ appears only after the first is fixed.
 
 | Excluded | Why |
 | --- | --- |
+| Workspace state tampered with beyond the containment proof: a file or a dangling link where one of Verchestra's own state directories belongs (`logs`), or a link at the Workspace root or at `keys` that stays inside the state root | `task plan` itself fails on these with an internal error (`VES_TASK_FAILED`, reason `VES_TASK_INTERNAL`) or `VES_KEYSTORE_INTEGRITY`, which names no prerequisite a tester could set; `task check` reports what its containment proof sees, ready or a named `VES_STATE_ROOT_ESCAPE` (round 4, N13 to N15) |
 | What only planning proves: the compiled task context and the sealed Execution Package | `task plan --dry-run` proves them; `ready` means every prerequisite above, not that planning succeeds |
 | Whether the Codex account offers the request's models | it needs a Codex session; `task start` keeps that check (AD-085) |
 | Whether the Claude Code token is still valid | it needs a provider call |
