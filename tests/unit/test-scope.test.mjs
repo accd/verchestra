@@ -12,8 +12,11 @@ import { temporaryDirectory } from "../helpers/temporary-directory.mjs";
 const SCRIPT = fileURLToPath(new URL("../../scripts/test-scope.mjs", import.meta.url));
 
 // The spawned script itself spawns `node --test`; the test-runner context
-// variables must not leak into it or the grandchild skips running files.
-const cleanEnv = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("NODE_TEST")));
+// variables must not leak into it or the grandchild skips running files, and
+// neither may a coverage run's VES_COVERAGE_DIR, which would overwrite its report.
+const cleanEnv = Object.fromEntries(
+  Object.entries(process.env).filter(([key]) => !key.startsWith("NODE_TEST") && key !== "VES_COVERAGE_DIR")
+);
 
 function runScope(scope, roots, environment = {}) {
   try {

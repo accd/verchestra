@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
-import { mkdtemp, readdir, rm, stat } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 
 // A scope with zero tests fails closed: a green stage that executed nothing is
@@ -33,8 +33,30 @@ if (tests.length === 0) {
 // the temporary directory. It is a cache shared with every Node tool on the
 // machine, not a per-run artifact, so it is the one entry a test need not own.
 const SHARED_CACHE = "node-compile-cache";
+
+// invariant: coverage is opt-in. Without VES_COVERAGE_DIR the scope runs exactly
+// as the gates always have; with it, the scope also writes `<scope>.lcov` there,
+// restricted to product source so tests, scripts and spikes never count.
+// why: the tests import `.ts` sources directly, so Node's own coverage maps
+// straight to the files SonarCloud analyses, with no instrumenting dependency.
+const COVERED_SOURCES = ["packages/**/src/**", "apps/vestra-cli/src/**", "apps/vestra-launcher/src/**"];
+const coverageDirectory = process.env.VES_COVERAGE_DIR;
+const coverage = [];
+if (coverageDirectory) {
+  const directory = resolve(coverageDirectory);
+  await mkdir(directory, { recursive: true });
+  coverage.push(
+    "--experimental-test-coverage",
+    ...COVERED_SOURCES.map((glob) => `--test-coverage-include=${glob}`),
+    "--test-reporter=lcov",
+    `--test-reporter-destination=${join(directory, `${scope}.lcov`)}`,
+    "--test-reporter=spec",
+    "--test-reporter-destination=stdout"
+  );
+}
+
 const temporary = await mkdtemp(join(tmpdir(), "vts-"));
-const result = spawnSync(process.execPath, ["--test", ...tests], {
+const result = spawnSync(process.execPath, ["--test", ...coverage, ...tests], {
   stdio: "inherit",
   env: { ...process.env, TMPDIR: temporary, TEMP: temporary, TMP: temporary }
 });

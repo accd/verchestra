@@ -1,0 +1,33 @@
+# SonarCloud Quality Tasks
+
+## Execution plan
+
+| Task | Deliverable                                                                                     | Depends on        | Verification                                     |
+| ---- | ----------------------------------------------------------------------------------------------- | ----------------- | ------------------------------------------------ |
+| T1   | Opt-in coverage in `test-scope.mjs`, LCOV merge, `sonar-project.properties`, `sonarcloud.yml`   | None              | `pnpm gate:quick`, focused tests, local LCOV run |
+| T2   | First CI analysis with coverage on `main`                                                       | T1, owner actions | SonarCloud `coverage` measure present            |
+| T3   | S8707 path injection (21)                                                                       | T2                | `pnpm gate:security`                             |
+| T4   | S6505, S4036, S2612, S5443 (11)                                                                 | T2                | `pnpm gate:security`                             |
+| T5   | S2871 `sort()` without comparator (152): one shared code-unit comparator, never `localeCompare` | T2                | `pnpm gate:security`, `pnpm test:census`         |
+| T6   | S6324, S1534, S7739, S1764 (27)                                                                 | T2                | `pnpm gate:quick`                                |
+| T7   | S8786, S5843 regular-expression complexity (26), with linearity assertions                      | T2                | `pnpm gate:security`                             |
+| T8   | Maintainability rules, one rule family per change; accepted issues recorded in `validation.md`  | T3–T7             | `pnpm gate:quick`, `pnpm test:architecture`      |
+
+## Gate commands
+
+| Level    | Command                                                                                                                           |
+| -------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| Focused  | `node --test tests/unit/coverage-lcov.test.mjs tests/unit/test-scope.test.mjs tests/agent-readiness/sonarcloud-workflow.test.mjs` |
+| Coverage | `VES_COVERAGE_DIR=coverage pnpm test:unit && node scripts/merge-coverage.mjs coverage`                                            |
+| Quick    | `pnpm gate:quick`                                                                                                                 |
+
+## Requirement traceability
+
+| Requirement | Evidence                                                                                           |
+| ----------- | -------------------------------------------------------------------------------------------------- |
+| SQC-01      | `tests/unit/coverage-lcov.test.mjs` — "a scope writes LCOV only when VES_COVERAGE_DIR asks for it" |
+| SQC-02      | `scripts/test-scope.mjs` `COVERED_SOURCES`; local run lists only product files                     |
+| SQC-03      | `tests/unit/coverage-lcov.test.mjs` — merge, normalisation, fail-closed cases                      |
+| SQC-04      | `tests/agent-readiness/sonarcloud-workflow.test.mjs` — "test code is analysed as tests"            |
+| SQC-05      | `tests/agent-readiness/sonarcloud-workflow.test.mjs` — trigger, scopes, pinning                    |
+| SQC-06      | `tests/agent-readiness/sonarcloud-workflow.test.mjs` — "the token reaches only…"                   |
