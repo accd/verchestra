@@ -16,6 +16,12 @@ export class ExecutionPayloadStoreError extends Error {
   }
 }
 
+// invariant: the most written content one run keeps, all writes together. Each
+// write is bounded on its own by MAXIMUM_EXECUTION_PAYLOAD_BYTES (1 MiB). The
+// store never evicts: a write past the total is refused, and the bridge
+// returns that refusal to the implementer as a denied tool call.
+export const MAXIMUM_RUN_PAYLOAD_BYTES = 64 * 1024 * 1024;
+
 // Process-local, content-addressed payloads for one run. The bridge controller
 // puts tool content here; the worktree tool adapter resolves and re-hashes it.
 // Bounded so a model cannot grow controller memory without limit.
@@ -25,7 +31,7 @@ export class InMemoryExecutionPayloadStore implements ExecutionPayloadStore {
   #totalBytes = 0;
 
   constructor(options: { readonly maximumTotalBytes?: number } = {}) {
-    this.#maximumTotalBytes = options.maximumTotalBytes ?? 64 * 1024 * 1024;
+    this.#maximumTotalBytes = options.maximumTotalBytes ?? MAXIMUM_RUN_PAYLOAD_BYTES;
   }
 
   async put(content: Uint8Array): Promise<string> {
