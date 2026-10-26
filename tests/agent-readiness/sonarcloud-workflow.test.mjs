@@ -37,7 +37,7 @@ test("test code is analysed as tests, never as product sources", () => {
 });
 
 test("coverage is measured by exactly the scopes test-scope declares a report for", () => {
-  const scopes = /for stage in ((?:test:\S+ ?)+); do/u.exec(workflow);
+  const scopes = /for stage in ([^;\n]+); do/u.exec(workflow);
   assert.ok(scopes, "the workflow must list its coverage stages in one loop");
   const reports = /COVERAGE_REPORTS = Object\.freeze\(\{([^}]+)\}\)/u.exec(read("scripts/test-scope.mjs"));
   assert.ok(reports, "test-scope.mjs must declare its coverage reports in one table");
