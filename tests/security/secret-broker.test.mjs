@@ -2,11 +2,11 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
-  MockSecretAdapter,
   QualifiedOsSecretAdapter,
   SecretBroker,
   platformSecurityPublicErrorRegistry
 } from "../../packages/platform-node/src/index.ts";
+import { MockSecretAdapter } from "../../packages/platform-node/src/testing.ts";
 import { SchemaRegistry } from "../../packages/contracts/src/index.ts";
 
 const workspaceId = "workspace_018f0b6d-7b1a-7abc-8def-0123456789ab";

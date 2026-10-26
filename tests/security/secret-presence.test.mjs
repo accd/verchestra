@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { mock, test } from "node:test";
 
-import { MockSecretAdapter, SecretBroker } from "../../packages/platform-node/src/index.ts";
+import { SecretBroker } from "../../packages/platform-node/src/index.ts";
+import { MockSecretAdapter } from "../../packages/platform-node/src/testing.ts";
 import { secretPresence } from "../../packages/platform-node/src/readonly.ts";
 
 // DDL-09 (#207): a live secret-presence doctor probe (T15) observes only

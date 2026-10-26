@@ -5,11 +5,11 @@ import { afterEach, test } from "node:test";
 import { MachineBootstrapService } from "../../packages/application/src/index.ts";
 import { canonicalizeJsonV2 } from "../../packages/domain/src/index.ts";
 import {
-  MockSecretAdapter,
   RuntimeMachineProfileStore,
   SecretBroker,
   SecretBrokerBindingInspector
 } from "../../packages/platform-node/src/index.ts";
+import { MockSecretAdapter } from "../../packages/platform-node/src/testing.ts";
 import {
   canonicalConfig,
   claude,

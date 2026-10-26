@@ -3,7 +3,8 @@ import { join } from "node:path";
 import { afterEach, test } from "node:test";
 import { DatabaseSync } from "node:sqlite";
 
-import { EffectBroker, MockEffectAdapter, buildIdempotencyKey } from "../../packages/effects/src/index.ts";
+import { EffectBroker, buildIdempotencyKey } from "../../packages/effects/src/index.ts";
+import { MockEffectAdapter } from "../../packages/effects/src/testing.ts";
 import { DEFAULT_RUNTIME_MIGRATIONS, RuntimeStore } from "../../packages/platform-node/src/index.ts";
 import { effectBase, effectIntent } from "../helpers/effect-fixture.mjs";
 import { cleanup, now, opened, run } from "../helpers/runtime-store-fixture.mjs";

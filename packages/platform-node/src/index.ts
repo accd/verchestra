@@ -21,7 +21,6 @@ export {
 } from "./platform-security-errors.ts";
 export { ProtectedPathBroker, type ProtectedPathHandle } from "./protected-path.ts";
 export {
-  MockSecretAdapter,
   OS_CREDENTIAL_CONTROLS,
   QualifiedOsCredentialAdapter,
   QualifiedOsSecretAdapter,
