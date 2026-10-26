@@ -40,6 +40,8 @@ export const TERMINAL_WORKFLOW_STATES = [
   "RECOVERED"
 ] as const satisfies readonly RunState[];
 
+export type TerminalWorkflowState = (typeof TERMINAL_WORKFLOW_STATES)[number];
+
 export const WORKFLOW_COMMANDS = [
   "REQUIRE_INTAKE",
   "READY_WITHOUT_INTAKE",

@@ -1,4 +1,10 @@
-import { budgetBilling, type BudgetLedger, type BudgetMeter, type UsageEvent } from "@verchestra/application";
+import {
+  budgetBilling,
+  budgetLedgerProblem,
+  type BudgetLedger,
+  type BudgetMeter,
+  type UsageEvent
+} from "@verchestra/application";
 import { PublicErrorException } from "@verchestra/domain";
 
 import { stateInvalid } from "./task-errors.ts";
@@ -8,34 +14,12 @@ import { objectRow } from "./task-files.ts";
 // text where the cost would be, and the Run Capsule carries no cost at all.
 export const NOT_BILLED = "not billed (subscription)";
 
-const STOP_REASONS: readonly unknown[] = Object.freeze(["cost-threshold", "token-threshold", "duration-threshold"]);
-
-function amount(value: unknown): value is number {
-  return typeof value === "number" && Number.isFinite(value) && value >= 0;
-}
-
-function count(value: unknown): value is number {
-  return Number.isSafeInteger(value) && amount(value);
-}
-
-// hazard: unbilled tokens above the consumed total would report billed usage
-// as not billed.
-function unbilledWithin(value: unknown, consumedTokens: number): boolean {
-  return value === undefined || (count(value) && value <= consumedTokens);
-}
-
+// why: the rule is budgetLedgerProblem in @verchestra/application, the one the
+// meter applies when it resumes the same ledger (ARQ-007).
 function isBudgetLedger(
   row: Readonly<Record<string, unknown>>
 ): row is Readonly<Record<string, unknown>> & BudgetLedger {
-  const consumedTokens = row["consumedTokens"];
-  return (
-    amount(row["consumedCostUsd"]) &&
-    count(consumedTokens) &&
-    amount(row["consumedDurationMs"]) &&
-    count(row["usageEvents"]) &&
-    (row["stopReason"] === null || STOP_REASONS.includes(row["stopReason"])) &&
-    unbilledWithin(row["unbilledTokens"], consumedTokens)
-  );
+  return budgetLedgerProblem(row) === undefined;
 }
 
 // invariant: the ledger a repair checkpoint carries is read here and nowhere
