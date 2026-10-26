@@ -109,6 +109,7 @@ function providerCommand(file, args) {
   const log = PROVIDER_LOG ?? "";
   const witness = [WITNESS, "--witness", join(log, `${placeholder}.witness.log`), "--as", file];
   const prefix = [join(FAKES, script), "--fixture-log", log, "--fixture-store", STORE ?? ""];
+  recordStart(file, args);
   return [process.execPath, [...witness, ...prefix, ...(Array.isArray(args) ? args : [])]];
 }
 
@@ -120,6 +121,17 @@ childProcess.spawn = function spawn(file, args, ...rest) {
   if (provider === undefined) return guardedSpawn.call(this, file, args, ...rest);
   return guardedSpawn.call(this, provider[0], provider[1], ...rest);
 };
+
+// why: the witness writes its line only when its child ends, so a provider
+// start that hangs until it is killed would leave nothing behind. Every start
+// is recorded here, with its arguments, before the child runs.
+function recordStart(file, args) {
+  if (PROVIDER_LOG === undefined) return;
+  appendFileSync(
+    join(PROVIDER_LOG, `${basename(file).toLowerCase()}.starts.log`),
+    `${JSON.stringify({ args: Array.isArray(args) ? args : [] })}\n`
+  );
+}
 
 const GIT = new Set(["git", "git.exe"]);
 const GIT_STDERR_TAIL = 2048;
