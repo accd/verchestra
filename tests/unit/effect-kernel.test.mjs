@@ -5,11 +5,11 @@ import { test } from "node:test";
 import {
   EffectBroker,
   InMemoryEffectRepository,
-  MockEffectAdapter,
   buildIdempotencyKey,
   createEffectIntent,
   effectPublicErrorRegistry
 } from "../../packages/effects/src/index.ts";
+import { MockEffectAdapter } from "../../packages/effects/src/testing.ts";
 import { SchemaRegistry } from "../../packages/contracts/src/index.ts";
 
 const digest = `sha256:${"a".repeat(64)}`;

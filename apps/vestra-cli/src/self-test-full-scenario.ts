@@ -39,7 +39,8 @@ import {
   type DriverStartRequest
 } from "@verchestra/drivers";
 import { FixedClock, IsoInstant, WorkflowMachine, canonicalizeJsonV2 } from "@verchestra/domain";
-import { EffectBroker, MockEffectAdapter, buildIdempotencyKey } from "@verchestra/effects";
+import { EffectBroker, buildIdempotencyKey } from "@verchestra/effects";
+import { MockEffectAdapter } from "@verchestra/effects/testing";
 import {
   ArtifactSealer,
   ExecutionPackageBuilder,

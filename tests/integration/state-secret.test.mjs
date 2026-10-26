@@ -4,12 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, test } from "node:test";
 
-import {
-  MockSecretAdapter,
-  SecretBroker,
-  ensureWorkspaceState,
-  resolveWorkspaceState
-} from "../../packages/platform-node/src/index.ts";
+import { SecretBroker, ensureWorkspaceState, resolveWorkspaceState } from "../../packages/platform-node/src/index.ts";
+import { MockSecretAdapter } from "../../packages/platform-node/src/testing.ts";
 
 const roots = [];
 const workspaceId = "workspace_018f0b6d-7b1a-7abc-8def-0123456789ab";

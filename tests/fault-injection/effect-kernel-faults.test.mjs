@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 
-import { EffectBroker, MockEffectAdapter } from "../../packages/effects/src/index.ts";
+import { EffectBroker } from "../../packages/effects/src/index.ts";
+import { MockEffectAdapter } from "../../packages/effects/src/testing.ts";
 import { RuntimeStore } from "../../packages/platform-node/src/index.ts";
 import { effectIntent } from "../helpers/effect-fixture.mjs";
 import { cleanup, now, opened, run } from "../helpers/runtime-store-fixture.mjs";

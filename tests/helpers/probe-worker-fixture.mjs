@@ -6,9 +6,9 @@ import {
 import {
   MemoryProbeResultSink,
   MemoryProtectedParameterBroker,
-  MockProbeWorker,
   ProbeWorkerSupervisor
 } from "../../packages/extension-host/src/index.ts";
+import { MockProbeWorker } from "../../packages/extension-host/src/testing.ts";
 import { adapter, policy, registration, request, workspaceId } from "./database-probe-fixture.mjs";
 
 export async function probePlan(overrides = {}) {

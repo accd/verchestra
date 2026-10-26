@@ -6,7 +6,6 @@ import { afterEach, test } from "node:test";
 
 import { MachineBootstrapService } from "../../packages/application/src/index.ts";
 import {
-  MockSecretAdapter,
   RuntimeMachineProfileStore,
   RuntimeStore,
   SecretBroker,
@@ -14,6 +13,7 @@ import {
   ensureWorkspaceState,
   resolveWorkspaceState
 } from "../../packages/platform-node/src/index.ts";
+import { MockSecretAdapter } from "../../packages/platform-node/src/testing.ts";
 import { claude, codex, executeInput, qwen, workspaceId } from "../helpers/machine-bootstrap-fixture.mjs";
 import { storedMachineProfiles } from "../helpers/runtime-store-fixture.mjs";
 import {
