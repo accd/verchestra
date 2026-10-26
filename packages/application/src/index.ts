@@ -248,6 +248,7 @@ export {
 export {
   BudgetMeterError,
   budgetBilling,
+  budgetLedgerProblem,
   createBudgetMeter,
   recordUsageAndDecide,
   type BudgetBilling,

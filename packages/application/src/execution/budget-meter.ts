@@ -97,27 +97,41 @@ function tokenCount(value: unknown, label: string): number {
   return value as number;
 }
 
-function ledgerAmount(value: unknown, label: string): number {
-  // A resumed ledger is untrusted input like any other persisted state. Winding
-  // consumption backwards on resume would buy a fresh ceiling, which is the
-  // same bypass as a negative usage count.
-  if (typeof value !== "number" || !Number.isFinite(value) || value < 0)
-    fail("VES_BUDGET_INVALID", `resumed ${label} is invalid`);
-  return value;
+const LEDGER_STOP_REASONS: readonly unknown[] = Object.freeze([
+  "cost-threshold",
+  "token-threshold",
+  "duration-threshold"
+]);
+
+const ledgerAmount = (value: unknown): boolean => typeof value === "number" && Number.isFinite(value) && value >= 0;
+const ledgerCount = (value: unknown): boolean => Number.isSafeInteger(value) && (value as number) >= 0;
+
+// invariant: ARQ-007 (#597). The one rule for a budget ledger, whether the
+// meter resumes it or a task command reads it from a stored repair checkpoint.
+// A ledger is untrusted persisted state: winding consumption backwards on
+// resume would buy a fresh ceiling. Cost and duration are finite and not
+// negative; tokens and events are non-negative integers; the stop reason is
+// null or a known threshold, and it is present; unbilled tokens, when
+// present, do not exceed the consumed tokens, or billed usage would read as
+// not billed. Names the first member that breaks the rule, or undefined.
+const LEDGER_MEMBERS: readonly (readonly [string, (value: unknown) => boolean])[] = Object.freeze([
+  ["consumedCostUsd", ledgerAmount],
+  ["consumedTokens", ledgerCount],
+  ["consumedDurationMs", ledgerAmount],
+  ["usageEvents", ledgerCount],
+  ["stopReason", (value: unknown) => value === null || LEDGER_STOP_REASONS.includes(value)]
+]);
+
+function unbilledWithin(value: unknown, consumedTokens: unknown): boolean {
+  return value === undefined || (ledgerCount(value) && (value as number) <= (consumedTokens as number));
 }
 
-function ledgerCount(value: unknown, label: string): number {
-  if (!Number.isSafeInteger(value) || (value as number) < 0) fail("VES_BUDGET_INVALID", `resumed ${label} is invalid`);
-  return value as number;
-}
-
-// hazard: unbilled tokens above the consumed total would let a resumed ledger
-// report billed usage as not billed.
-function resumedUnbilledTokens(value: unknown, consumedTokens: number): { readonly unbilledTokens?: number } {
-  if (value === undefined) return {};
-  const unbilledTokens = ledgerCount(value, "unbilledTokens");
-  if (unbilledTokens > consumedTokens) fail("VES_BUDGET_INVALID", "resumed unbilledTokens is invalid");
-  return { unbilledTokens };
+export function budgetLedgerProblem(value: unknown): string | undefined {
+  if (value === null || typeof value !== "object") return "ledger";
+  const ledger = value as Record<string, unknown>;
+  const broken = LEDGER_MEMBERS.find(([member, valid]) => !valid(ledger[member]));
+  if (broken !== undefined) return broken[0];
+  return unbilledWithin(ledger["unbilledTokens"], ledger["consumedTokens"]) ? undefined : "unbilledTokens";
 }
 
 function unbilledField(reported: boolean, unbilledTokens: number): { readonly unbilledTokens?: number } {
@@ -125,22 +139,20 @@ function unbilledField(reported: boolean, unbilledTokens: number): { readonly un
 }
 
 function normalizeLedger(value: unknown): BudgetLedger {
-  if (value === null || typeof value !== "object") fail("VES_BUDGET_INVALID", "resumed ledger is invalid");
+  const problem = budgetLedgerProblem(value);
+  if (problem !== undefined)
+    fail(
+      "VES_BUDGET_INVALID",
+      problem === "stopReason" ? "resumed stop reason is invalid" : `resumed ${problem} is invalid`
+    );
   const ledger = value as Record<string, unknown>;
-  const stopReason = ledger["stopReason"] ?? null;
-  if (
-    stopReason !== null &&
-    !["cost-threshold", "token-threshold", "duration-threshold"].includes(stopReason as string)
-  )
-    fail("VES_BUDGET_INVALID", "resumed stop reason is invalid");
-  const consumedTokens = ledgerCount(ledger["consumedTokens"], "consumedTokens");
   return Object.freeze({
-    consumedCostUsd: ledgerAmount(ledger["consumedCostUsd"], "consumedCostUsd"),
-    consumedTokens,
-    consumedDurationMs: ledgerAmount(ledger["consumedDurationMs"], "consumedDurationMs"),
-    usageEvents: ledgerCount(ledger["usageEvents"], "usageEvents"),
-    stopReason: stopReason as BudgetStopReason | null,
-    ...resumedUnbilledTokens(ledger["unbilledTokens"], consumedTokens)
+    consumedCostUsd: ledger["consumedCostUsd"] as number,
+    consumedTokens: ledger["consumedTokens"] as number,
+    consumedDurationMs: ledger["consumedDurationMs"] as number,
+    usageEvents: ledger["usageEvents"] as number,
+    stopReason: ledger["stopReason"] as BudgetStopReason | null,
+    ...(ledger["unbilledTokens"] === undefined ? {} : { unbilledTokens: ledger["unbilledTokens"] as number })
   });
 }
 

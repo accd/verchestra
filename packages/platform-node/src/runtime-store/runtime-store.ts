@@ -4,7 +4,13 @@ import { readFile, rename, rm } from "node:fs/promises";
 import { dirname } from "node:path";
 import { DatabaseSync, backup } from "node:sqlite";
 
-import { canonicalizeJsonV2, type RunSnapshot, type WorkflowDecision } from "@verchestra/domain";
+import {
+  TERMINAL_WORKFLOW_STATES,
+  canonicalizeJsonV2,
+  type RunSnapshot,
+  type TerminalWorkflowState,
+  type WorkflowDecision
+} from "@verchestra/domain";
 
 import { createSqliteEffectRepository, type EffectRepositoryHooks } from "./effect-repository.ts";
 // The migration registry lives in runtime-migrations.ts (which imports
@@ -676,7 +682,7 @@ export class RuntimeStore {
   listUnsealedTerminalRuns(): readonly {
     readonly runId: string;
     readonly runKind: "feature" | "recovery";
-    readonly status: "COMPLETED" | "HANDED_OFF" | "FAILED" | "ABORTED" | "INTERRUPTED" | "RECOVERED";
+    readonly status: TerminalWorkflowState;
     readonly stateVersion: number;
     readonly predecessorRunId?: string;
     readonly successorRunId?: string;
@@ -689,16 +695,15 @@ export class RuntimeStore {
             r.successor_run_id AS successorRunId
            FROM runs r LEFT JOIN run_capsule_seals c ON c.run_id=r.run_id
            WHERE r.terminal_capsule_required=1 AND c.run_id IS NULL
-             AND r.state IN ('COMPLETED','HANDED_OFF','FAILED','ABORTED','INTERRUPTED','RECOVERED')
+             AND r.state IN (${TERMINAL_WORKFLOW_STATES.map(() => "?").join(",")})
            ORDER BY r.run_id`
         )
-        .all() as UnknownRecord[]
+        .all(...TERMINAL_WORKFLOW_STATES) as UnknownRecord[]
     ).map((row) =>
       Object.freeze({
         runId: String(row["runId"]),
         runKind: String(row["runKind"]) as "feature" | "recovery",
-        status: String(row["status"]) as
-          "COMPLETED" | "HANDED_OFF" | "FAILED" | "ABORTED" | "INTERRUPTED" | "RECOVERED",
+        status: String(row["status"]) as TerminalWorkflowState,
         stateVersion: Number(row["stateVersion"]),
         ...(row["predecessorRunId"] === null ? {} : { predecessorRunId: String(row["predecessorRunId"]) }),
         ...(row["successorRunId"] === null ? {} : { successorRunId: String(row["successorRunId"]) })
@@ -712,7 +717,7 @@ export class RuntimeStore {
       !/^[a-f0-9]{64}$/u.test(value.payloadDigest) ||
       !Number.isSafeInteger(value.stateVersion) ||
       value.stateVersion < 1 ||
-      !["COMPLETED", "HANDED_OFF", "FAILED", "ABORTED", "INTERRUPTED", "RECOVERED"].includes(value.status) ||
+      !(TERMINAL_WORKFLOW_STATES as readonly string[]).includes(value.status) ||
       !Number.isFinite(Date.parse(value.sealedAt)) ||
       new Date(value.sealedAt).toISOString() !== value.sealedAt
     ) {
