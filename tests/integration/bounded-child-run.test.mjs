@@ -118,3 +118,20 @@ test("a child ended by a signal of its own reports how it ended, and the run did
   assert.equal(observation.timedOut, false);
   assert.equal(observation.outputLimitExceeded, false);
 });
+
+// why: spawn writes NODE_V8_COVERAGE into the env object it is handed whenever
+// the parent carries it (a coverage run, c8), so a frozen caller record made
+// every run throw before the child started.
+test("a frozen environment still starts the child when the parent carries NODE_V8_COVERAGE", async (t) => {
+  const previous = process.env.NODE_V8_COVERAGE;
+  process.env.NODE_V8_COVERAGE = join(workDirectory, "v8-coverage");
+  t.after(() => {
+    if (previous === undefined) delete process.env.NODE_V8_COVERAGE;
+    else process.env.NODE_V8_COVERAGE = previous;
+  });
+  assert.ok(Object.isFrozen(ENVIRONMENT));
+  const observation = await bounded('process.stdout.write("started");');
+  assert.equal(observation.ended, "exited");
+  assert.equal(observation.output.toString("utf8"), "started");
+  assert.equal(Object.hasOwn(ENVIRONMENT, "NODE_V8_COVERAGE"), false, "the caller's record is not written to");
+});

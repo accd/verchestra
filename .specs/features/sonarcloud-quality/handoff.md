@@ -23,16 +23,25 @@ own changes, one rule family each, as listed in `tasks.md`.
 T1 complete on `ci/sonarcloud-coverage`:
 
 - `scripts/test-scope.mjs` adds Node's built-in coverage with an LCOV reporter
-  only when `VES_COVERAGE_DIR` is set, restricted to `COVERED_SOURCES`.
+  only when `VES_COVERAGE=1`, restricted to `COVERED_SOURCES`, writing
+  `coverage/<name>` where the name comes from the fixed `COVERAGE_REPORTS`
+  table (unit, contract, integration, fault) — no argv or environment text
+  reaches a path or a spawn argument (the first PR scan flagged S8705/S8707
+  when it did).
 - `scripts/coverage-lcov.mjs` (`mergeLcov`) and `scripts/merge-coverage.mjs`
-  merge per-scope reports into `coverage/lcov.info`, failing closed on none.
+  merge `coverage/*.lcov` into `coverage/lcov.info`, failing closed on none.
 - `sonar-project.properties` and `.github/workflows/sonarcloud.yml`; the scan
   action is pinned to `d209202bc7d53ff1cc128f7f907dac145c9d6ae9` (v8.3.0).
-- Tests: `tests/unit/coverage-lcov.test.mjs` (6),
+- `packages/platform-node/src/bounded-child-run.ts` hands `spawn` a copy of the
+  caller's environment: `spawn` writes `NODE_V8_COVERAGE` into the env object it
+  receives whenever the parent carries it, so every frozen record threw under
+  coverage (5 integration failures in the first CI run). Regression test in
+  `tests/integration/bounded-child-run.test.mjs`, shown to fail on the old code.
+- Tests: `tests/unit/coverage-lcov.test.mjs` (7),
   `tests/agent-readiness/sonarcloud-workflow.test.mjs` (6);
-  `tests/unit/test-scope.test.mjs` now strips `VES_COVERAGE_DIR` from nested
-  scopes so a coverage run cannot overwrite its own report.
-- Local run on Windows, Node 24.14.0: `VES_COVERAGE_DIR=coverage pnpm test:unit`
+  `tests/unit/test-scope.test.mjs` now strips the outer run's coverage switches
+  from nested scopes so a coverage run cannot measure into its own report.
+- Local run on Windows, Node 24.14.0: `VES_COVERAGE=1 pnpm test:unit`
   exited 0 at 61.47 % lines, 83.35 % branches, 54.26 % functions for the unit
   scope alone; the merged report lists 238 product files under `apps/` and
   `packages/` only, with forward-slash paths.

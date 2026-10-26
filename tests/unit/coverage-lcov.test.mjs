@@ -13,15 +13,17 @@ import { temporaryDirectory } from "../helpers/temporary-directory.mjs";
 
 const MERGE = fileURLToPath(new URL("../../scripts/merge-coverage.mjs", import.meta.url));
 const SCOPE = fileURLToPath(new URL("../../scripts/test-scope.mjs", import.meta.url));
-// A coverage run of this suite sets VES_COVERAGE_DIR; the nested scopes must not
-// inherit it or they would write into the outer run's report directory.
+// A coverage run of this suite sets VES_COVERAGE and NODE_V8_COVERAGE; the
+// nested scopes must not inherit them or they would measure into the outer run.
+const OUTER_COVERAGE = new Set(["VES_COVERAGE", "NODE_V8_COVERAGE"]);
 const cleanEnv = Object.fromEntries(
-  Object.entries(process.env).filter(([key]) => !key.startsWith("NODE_TEST") && key !== "VES_COVERAGE_DIR")
+  Object.entries(process.env).filter(([key]) => !key.startsWith("NODE_TEST") && !OUTER_COVERAGE.has(key))
 );
 
-function run(script, args, environment = {}) {
+function run(script, args, { cwd, environment = {} }) {
   try {
     const stdout = execFileSync(process.execPath, [script, ...args], {
+      cwd,
       encoding: "utf8",
       env: { ...cleanEnv, ...environment },
       stdio: ["ignore", "pipe", "pipe"]
@@ -83,33 +85,48 @@ test("no reports merge to nothing", () => {
   assert.equal(mergeLcov(["TN:\n"]), "");
 });
 
-test("the merge command fails closed on a directory with no records", async (t) => {
-  const directory = await temporaryDirectory(t, "verchestra-coverage-");
-  const result = run(MERGE, [directory]);
-  assert.equal(result.status, 1);
-  assert.match(result.stderr, /merge-coverage: no LCOV records under /u);
-  assert.deepEqual(await readdir(directory), []);
+test("the merge command fails closed when coverage/ holds no records", async (t) => {
+  const root = await temporaryDirectory(t, "verchestra-coverage-");
+  const absent = run(MERGE, [], { cwd: root });
+  assert.equal(absent.status, 1);
+  assert.match(absent.stderr, /merge-coverage: no LCOV records under .*coverage/u);
+  await mkdir(join(root, "coverage"));
+  assert.equal(run(MERGE, [], { cwd: root }).status, 1);
+  assert.deepEqual(await readdir(join(root, "coverage")), []);
 });
 
-test("the merge command writes lcov.info from every scope report", async (t) => {
-  const directory = await temporaryDirectory(t, "verchestra-coverage-");
+test("the merge command writes coverage/lcov.info from every scope report", async (t) => {
+  const root = await temporaryDirectory(t, "verchestra-coverage-");
+  const directory = join(root, "coverage");
+  await mkdir(directory);
   await writeFile(join(directory, "unit.lcov"), unitReport);
   await writeFile(join(directory, "integration.lcov"), integrationReport);
-  assert.equal(run(MERGE, [directory]).status, 0);
+  assert.equal(run(MERGE, [], { cwd: root }).status, 0);
   assert.equal(await readFile(join(directory, "lcov.info"), "utf8"), mergeLcov([integrationReport, unitReport]));
 });
 
-test("a scope writes LCOV only when VES_COVERAGE_DIR asks for it", async (t) => {
+const PASSING = 'import test from "node:test"; test("passes", () => {});\n';
+
+test("a scope writes LCOV to coverage/ only when VES_COVERAGE=1 asks for it", async (t) => {
   const root = await temporaryDirectory(t, "verchestra-coverage-scope-");
   await mkdir(join(root, "cases"));
-  await writeFile(join(root, "cases", "passing.test.mjs"), 'import test from "node:test"; test("passes", () => {});\n');
-  const output = join(root, "out");
+  await writeFile(join(root, "cases", "passing.test.mjs"), PASSING);
 
-  assert.equal(run(SCOPE, ["unit", join(root, "cases")]).status, 0);
-  assert.deepEqual(await readdir(root), ["cases"], "without the variable nothing is written");
+  assert.equal(run(SCOPE, ["unit", "cases"], { cwd: root }).status, 0);
+  assert.deepEqual(await readdir(root), ["cases"], "without the switch nothing is written");
 
-  const result = run(SCOPE, ["unit", join(root, "cases")], { VES_COVERAGE_DIR: output });
+  const result = run(SCOPE, ["unit", "cases"], { cwd: root, environment: { VES_COVERAGE: "1" } });
   assert.equal(result.status, 0, result.stderr);
-  assert.deepEqual(await readdir(output), ["unit.lcov"]);
+  assert.deepEqual(await readdir(join(root, "coverage")), ["unit.lcov"]);
   assert.match(result.stdout, /passes/u, "the scope still reports its tests on stdout");
+});
+
+test("a scope with no declared coverage report refuses to measure rather than invent a name", async (t) => {
+  const root = await temporaryDirectory(t, "verchestra-coverage-scope-");
+  await mkdir(join(root, "cases"));
+  await writeFile(join(root, "cases", "passing.test.mjs"), PASSING);
+  const result = run(SCOPE, ["e2e", "cases"], { cwd: root, environment: { VES_COVERAGE: "1" } });
+  assert.equal(result.status, 2);
+  assert.match(result.stderr, /e2e: no coverage report is declared for this scope/u);
+  assert.deepEqual(await readdir(root), ["cases"]);
 });

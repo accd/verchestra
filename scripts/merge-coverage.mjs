@@ -1,18 +1,16 @@
-// Usage: node scripts/merge-coverage.mjs <coverage-directory>
-// Merges every `<scope>.lcov` in the directory into `<directory>/lcov.info`.
+// Usage: node scripts/merge-coverage.mjs
+// Merges every `<scope>.lcov` that `VES_COVERAGE=1` scopes wrote under
+// `coverage/` in the working directory into `coverage/lcov.info`. The directory
+// is fixed rather than an argument, so no caller-supplied text becomes a path.
 // A directory with no report fails closed: an empty coverage upload would read
 // as 0 % rather than as a run that measured nothing.
 import { readdir, readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
 import { mergeLcov } from "./coverage-lcov.mjs";
 
-const directory = process.argv[2];
-if (!directory) {
-  process.stderr.write("usage: node scripts/merge-coverage.mjs <coverage-directory>\n");
-  process.exit(2);
-}
-const names = (await readdir(directory))
+const directory = resolve("coverage");
+const names = (await readdir(directory).catch(() => []))
   .filter((name) => name.endsWith(".lcov"))
   .sort((left, right) => Number(left > right) - Number(left < right));
 const merged = mergeLcov(await Promise.all(names.map((name) => readFile(join(directory, name), "utf8"))));

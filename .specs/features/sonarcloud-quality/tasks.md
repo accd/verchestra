@@ -18,16 +18,16 @@
 | Level    | Command                                                                                                                           |
 | -------- | --------------------------------------------------------------------------------------------------------------------------------- |
 | Focused  | `node --test tests/unit/coverage-lcov.test.mjs tests/unit/test-scope.test.mjs tests/agent-readiness/sonarcloud-workflow.test.mjs` |
-| Coverage | `VES_COVERAGE_DIR=coverage pnpm test:unit && node scripts/merge-coverage.mjs coverage`                                            |
+| Coverage | `VES_COVERAGE=1 pnpm test:unit && node scripts/merge-coverage.mjs`                                                                |
 | Quick    | `pnpm gate:quick`                                                                                                                 |
 
 ## Requirement traceability
 
-| Requirement | Evidence                                                                                           |
-| ----------- | -------------------------------------------------------------------------------------------------- |
-| SQC-01      | `tests/unit/coverage-lcov.test.mjs` — "a scope writes LCOV only when VES_COVERAGE_DIR asks for it" |
-| SQC-02      | `scripts/test-scope.mjs` `COVERED_SOURCES`; local run lists only product files                     |
-| SQC-03      | `tests/unit/coverage-lcov.test.mjs` — merge, normalisation, fail-closed cases                      |
-| SQC-04      | `tests/agent-readiness/sonarcloud-workflow.test.mjs` — "test code is analysed as tests"            |
-| SQC-05      | `tests/agent-readiness/sonarcloud-workflow.test.mjs` — trigger, scopes, pinning                    |
-| SQC-06      | `tests/agent-readiness/sonarcloud-workflow.test.mjs` — "the token reaches only…"                   |
+| Requirement | Evidence                                                                                                      |
+| ----------- | ------------------------------------------------------------------------------------------------------------- |
+| SQC-01      | `tests/unit/coverage-lcov.test.mjs` — "a scope writes LCOV to coverage/ only when VES_COVERAGE=1 asks for it" |
+| SQC-02      | `scripts/test-scope.mjs` `COVERED_SOURCES`; local run lists only product files                                |
+| SQC-03      | `tests/unit/coverage-lcov.test.mjs` — merge, normalisation, fail-closed cases                                 |
+| SQC-04      | `tests/agent-readiness/sonarcloud-workflow.test.mjs` — "test code is analysed as tests"                       |
+| SQC-05      | `tests/agent-readiness/sonarcloud-workflow.test.mjs` — trigger, scopes, pinning                               |
+| SQC-06      | `tests/agent-readiness/sonarcloud-workflow.test.mjs` — "the token reaches only…"                              |
