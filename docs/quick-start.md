@@ -318,6 +318,21 @@ The canonical contract is
 
 ## 6. Plan
 
+First check every prerequisite at once:
+
+```bash
+npx verchestra task check --request task-request.json
+```
+
+It reports each check as `ready`, `missing`, or `not-checked`, the last when a
+check it depends on is missing. It exits 0 only when every check is ready, and
+4 otherwise. A missing check prints the code and recovery that `task plan` or
+`task start` would give for it. It reads no credential value and starts no
+provider session, so it cannot tell whether the Codex account offers your
+models or whether a token is still valid; `task start` checks those.
+
+Then plan:
+
 ```bash
 npx verchestra task plan --request task-request.json
 ```

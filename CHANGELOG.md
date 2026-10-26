@@ -8,6 +8,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ### Added
 
+- `vestra task check --request <file>` reports every prerequisite of a governed
+  task at once, each with the code and recovery its refusal would give, and
+  reads no credential value (#593).
 - `vestra <command> --help` prints the command's usage and the options it
   takes.
 - A refusal in human mode names its safe details, so `VES_TASK_NOT_CONFIGURED`
