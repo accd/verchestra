@@ -76,10 +76,10 @@ test("an unresolvable Playwright version refuses to cache instead of sharing one
 });
 
 test("the site job budget exceeds the bounds of the steps it contains", () => {
-  // Three 5-minute apt attempts, the bounded lock waits before the two retries,
-  // and an 8-minute browser install come to about 29 minutes before the
-  // qualification run starts. A budget that does not clear that composes back
-  // into a cancelled job reporting a test failure.
+  // Three 5-minute apt attempts, the two 15-minute lock waits before the
+  // retries, and an 8-minute browser install come to about 53 minutes before
+  // the qualification run starts. A budget that does not clear that composes
+  // back into a cancelled job reporting a test failure.
   const site = /\n {2}site:\n([\s\S]*?)\n {2}deploy:/u.exec(workflow);
   assert.ok(site, "the site job must be present");
   const jobBudget = Number(/timeout-minutes: (\d+)/u.exec(site[1])[1]);
@@ -98,20 +98,32 @@ test("the site job budget exceeds the bounds of the steps it contains", () => {
 
 // invariant: a timed-out attempt leaves the apt-get it started through sudo
 // running and holding the dpkg lock, so a retry first waits, for a bounded
-// time, until no apt-get or dpkg is left, and only between attempts.
+// time, until no apt-get or dpkg is left, and only between attempts. That
+// apt-get is still installing the same packages, so the wait gives it at least
+// as long again as the attempt that started it, and says how long it waited.
 test("a browser dependency retry waits for the apt-get the last attempt left behind", () => {
   const step = /- name: Install browser system dependencies\n {8}run: \|\n([\s\S]*?)\n {6}- name:/u.exec(workflow);
   assert.ok(step, "the browser dependency step must be present");
   const body = step[1];
   const attemptFails = body.indexOf('failed on attempt ${attempt} of 3."');
   const lastAttempt = body.indexOf('[ "$attempt" -lt 3 ] || break');
-  const wait = body.indexOf(
-    'while [ "$waited" -lt 180 ] && { pgrep -x apt-get >/dev/null || pgrep -x dpkg >/dev/null; }; do'
-  );
+  const lockWait =
+    /while \[ "\$waited" -lt (\d+) \] && \{ pgrep -x apt-get >\/dev\/null \|\| pgrep -x dpkg >\/dev\/null; \}; do/u.exec(
+      body
+    );
+  assert.ok(lockWait, "the wait checks for apt-get and dpkg");
+  const wait = lockWait.index;
+  const reported = body.indexOf('echo "Waited ${waited}s for the apt-get and dpkg the last attempt left behind."');
   const loopEnd = body.lastIndexOf("done");
   assert.ok(attemptFails > 0, "a failed attempt is named");
   assert.ok(lastAttempt > attemptFails, "no wait follows the last attempt");
   assert.ok(wait > lastAttempt && wait < loopEnd, "the wait runs between attempts, inside the retry loop");
+  assert.ok(reported > wait && reported < loopEnd, "each wait reports how long it ran");
+  const attemptSeconds = Number(/timeout (\d+) pnpm/u.exec(body)[1]);
+  assert.ok(
+    Number(lockWait[1]) >= attemptSeconds,
+    `a ${lockWait[1]}s wait is shorter than the ${attemptSeconds}s attempt whose apt-get it waits for`
+  );
   assert.match(body, /sleep 5\n\s+waited=\$\(\(waited \+ 5\)\)/u, "the wait advances its bound");
   assert.match(
     body,
