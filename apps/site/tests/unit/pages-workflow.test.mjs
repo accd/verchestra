@@ -76,18 +76,45 @@ test("an unresolvable Playwright version refuses to cache instead of sharing one
 });
 
 test("the site job budget exceeds the bounds of the steps it contains", () => {
-  // Three 5-minute apt attempts plus an 8-minute browser install is about 23
-  // minutes before the qualification run starts. A budget that does not clear
-  // that composes back into a cancelled job reporting a test failure.
+  // Three 5-minute apt attempts, the bounded lock waits before the two retries,
+  // and an 8-minute browser install come to about 29 minutes before the
+  // qualification run starts. A budget that does not clear that composes back
+  // into a cancelled job reporting a test failure.
   const site = /\n {2}site:\n([\s\S]*?)\n {2}deploy:/u.exec(workflow);
   assert.ok(site, "the site job must be present");
   const jobBudget = Number(/timeout-minutes: (\d+)/u.exec(site[1])[1]);
   const aptAttempts = Number(/for attempt in ((?:\d+ ?)+)/u.exec(site[1])[1].trim().split(/\s+/u).length);
   const aptSeconds = Number(/timeout (\d+) pnpm/u.exec(site[1])[1]);
+  const lockSeconds = Number(/while \[ "\$waited" -lt (\d+) \]/u.exec(site[1])[1]);
   const stepBudgets = [...site[1].matchAll(/^ {8}timeout-minutes: (\d+)$/gmu)].map((entry) => Number(entry[1]));
-  const bounded = (aptAttempts * aptSeconds) / 60 + stepBudgets.reduce((total, value) => total + value, 0);
+  const bounded =
+    (aptAttempts * aptSeconds + (aptAttempts - 1) * lockSeconds) / 60 +
+    stepBudgets.reduce((total, value) => total + value, 0);
   assert.ok(
     jobBudget > bounded + 10,
     `the job budget of ${jobBudget}m must leave over 10m beyond the ${bounded}m its bounded steps may consume`
+  );
+});
+
+// invariant: a timed-out attempt leaves the apt-get it started through sudo
+// running and holding the dpkg lock, so a retry first waits, for a bounded
+// time, until no apt-get or dpkg is left, and only between attempts.
+test("a browser dependency retry waits for the apt-get the last attempt left behind", () => {
+  const step = /- name: Install browser system dependencies\n {8}run: \|\n([\s\S]*?)\n {6}- name:/u.exec(workflow);
+  assert.ok(step, "the browser dependency step must be present");
+  const body = step[1];
+  const attemptFails = body.indexOf('failed on attempt ${attempt} of 3."');
+  const lastAttempt = body.indexOf('[ "$attempt" -lt 3 ] || break');
+  const wait = body.indexOf(
+    'while [ "$waited" -lt 180 ] && { pgrep -x apt-get >/dev/null || pgrep -x dpkg >/dev/null; }; do'
+  );
+  const loopEnd = body.lastIndexOf("done");
+  assert.ok(attemptFails > 0, "a failed attempt is named");
+  assert.ok(lastAttempt > attemptFails, "no wait follows the last attempt");
+  assert.ok(wait > lastAttempt && wait < loopEnd, "the wait runs between attempts, inside the retry loop");
+  assert.match(body, /sleep 5\n\s+waited=\$\(\(waited \+ 5\)\)/u, "the wait advances its bound");
+  assert.match(
+    body,
+    /This is a runner environment failure, not a site qualification failure: no test has run yet\."\n\s+exit 1/u
   );
 });

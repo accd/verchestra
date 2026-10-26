@@ -106,6 +106,10 @@ jobs:
       # job reports "Site quality fail", which is indistinguishable from a real
       # regression. Each attempt is bounded so the failure lands here, named, and
       # says which of the two things went wrong.
+      # A timed-out attempt ends pnpm, but the apt-get that install-deps started
+      # through sudo outlives it and keeps the dpkg lock, so the next attempt
+      # used to fail at once on that lock. Each retry therefore first waits, for
+      # a bounded time, until no apt-get or dpkg is left running.
       - name: Install browser system dependencies
         run: |
           for attempt in 1 2 3; do
@@ -113,6 +117,12 @@ jobs:
               exit 0
             fi
             echo "::warning::Browser system dependencies failed on attempt ${attempt} of 3."
+            [ "$attempt" -lt 3 ] || break
+            waited=0
+            while [ "$waited" -lt 180 ] && { pgrep -x apt-get >/dev/null || pgrep -x dpkg >/dev/null; }; do
+              sleep 5
+              waited=$((waited + 5))
+            done
           done
           echo "::error::Could not install browser system dependencies. This is a runner environment failure, not a site qualification failure: no test has run yet."
           exit 1
