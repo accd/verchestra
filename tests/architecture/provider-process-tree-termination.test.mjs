@@ -58,13 +58,18 @@ test("a provider leads its own process group everywhere but on Windows, and the 
 // invariant: a provider session of the task composition comes from the
 // command's provider processes, which give the driver the tree terminator and
 // learn the provider's process from `onSpawn`, so that an interrupt can stop it.
+// why: `task check` builds a driver only to ask its version (TCK-05); a probe
+// starts no session, so there is no provider session for it to hand over.
+// That source is held to the probe-only rule below instead.
+const PROBE_ONLY_BUILDERS = Object.freeze(["task-check.ts"]);
+
 test("the task composition hands every provider driver it builds the tree terminator and its spawn observer", () => {
   const builders = taskSources.filter(({ source }) => source.match(PROVIDER_DRIVER) !== null);
   assert.deepEqual(
     builders.map(({ name }) => name),
-    ["task-codex.ts", "task-coordination.ts", "task-implementer.ts"]
+    ["task-check.ts", "task-codex.ts", "task-coordination.ts", "task-implementer.ts"]
   );
-  for (const { name, source } of builders) {
+  for (const { name, source } of builders.filter((builder) => !PROBE_ONLY_BUILDERS.includes(builder.name))) {
     const built = source.match(PROVIDER_DRIVER).length;
     assert.equal(
       source.match(/\bterminateTree: (?:session|provider)\.terminateTree\b/gu)?.length,
@@ -78,6 +83,26 @@ test("the task composition hands every provider driver it builds the tree termin
     );
     assert.match(source, /\b(?:session|provider) = [A-Za-z.]*providers\.session\("(?:Claude Code|Codex)"\)/u);
     assert.match(source, /await (?:session|provider)\.end\(\)/u, `${name} never ends its provider session`);
+  }
+});
+
+// invariant: a task source that builds a driver without a provider session
+// only ever probes it. Every such driver refuses an execution
+// (`resolveExecution: probeOnly`, which throws), is asked `.probe()` and
+// nothing else, and the source starts no session at all.
+test("a task source that builds a driver only to probe it can start no provider session", () => {
+  for (const name of PROBE_ONLY_BUILDERS) {
+    const { source } = taskSources.find((entry) => entry.name === name);
+    const built = source.match(PROVIDER_DRIVER).length;
+    assert.equal(
+      source.match(/\bresolveExecution: probeOnly\b/gu)?.length,
+      built,
+      `${name} builds a driver that can execute`
+    );
+    assert.equal(source.match(/\}\)\.probe\(\)/gu)?.length, built, `${name} builds a driver it does not probe`);
+    assert.match(source, /const probeOnly = async \(\) => \{\s*throw new Error\(/u, `${name}'s probeOnly can resolve`);
+    assert.doesNotMatch(source, /\.start\(/u, `${name} starts a provider session`);
+    assert.doesNotMatch(source, /providers\.session\(/u, `${name} opens a provider session`);
   }
 });
 
