@@ -15,9 +15,10 @@ Verchestra never merges: the result is a branch you inspect and merge yourself.
 
 - **macOS.** The full single-session `task` journey is qualified end to end
   only there. Linux has a qualified credential store (Secret Service) and the
-  mediated profile, but its single-session journey is not yet qualified;
-  without a running Secret Service session a `task` command reports
-  `VES_TASK_NOT_CONFIGURED` (requirement `credential-store`). On Windows one
+  mediated profile. Its single-session journeys run in pull-request CI with
+  deterministic stand-ins, the Secret Service included, but they are not
+  qualified there. Without a running Secret Service session a `task` command
+  reports `VES_TASK_NOT_CONFIGURED` (requirement `credential-store`). On Windows one
   single-session journey, from plan to accepted review, runs on the hosted
   Windows runner with deterministic stand-ins (the bridge uses a named pipe
   there); no run with a real Claude Code or Codex on Windows has been
@@ -755,7 +756,8 @@ for your machine into a folder on your `PATH`. Inside its own worktrees Verchest
 
 - **macOS end to end.** The single-session journeys run end to end with
   stand-ins on macOS, and one of them, from plan to accepted review over the
-  named pipe, on the hosted Windows runner; on Linux the single-session path
+  named pipe, on the hosted Windows runner. On Linux they run in pull-request
+  CI with stand-ins, the Secret Service included, and the single-session path
   is qualified in parts only (credential store and mediated profile). The
   coordinated journeys run with stand-ins on macOS, Linux, and Windows. A
   real-provider run on Windows or Linux is still to be recorded.
