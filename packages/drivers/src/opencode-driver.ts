@@ -1,12 +1,11 @@
-import { execFile, spawn } from "node:child_process";
+import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { promisify } from "node:util";
 
 import { normalizeDeclaredSet, usageCount, usageUpdated, type DriverEventOf } from "@verchestra/domain";
 
 import { sensitiveValueRedactor } from "./driver-redaction.ts";
 import { DriverSessionLedger } from "./driver-session-ledger.ts";
-import { probeDriverVersion } from "./driver-version-probe.ts";
+import { probeDriverVersion, providerVersion } from "./driver-version-probe.ts";
 import {
   DriverProtocolError,
   validateDriverStartRequest,
@@ -16,7 +15,6 @@ import {
   type DriverStartRequest
 } from "./index.ts";
 
-const execFileAsync = promisify(execFile);
 const SAFE_ENV_KEYS = ["PATH", "SystemRoot", "ComSpec", "TEMP", "TMP"] as const;
 
 interface OpenCodeInstance {
@@ -273,14 +271,9 @@ export class OpenCodeDriver implements Driver {
 
   async probe() {
     const requirement = { minimum: this.#minimumVersion, pattern: VERSION_PATTERN };
-    return probeDriverVersion(PROBE_PROFILE, requirement, async () => {
-      const { stdout } = await execFileAsync(this.#command[0] as string, [...this.#command.slice(1), "--version"], {
-        encoding: "utf8",
-        env: this.buildEnvironment(this.#dependencies.probeEnvironment),
-        windowsHide: true
-      });
-      return stdout;
-    });
+    return probeDriverVersion(PROBE_PROFILE, requirement, () =>
+      providerVersion(this.#command, { env: this.buildEnvironment(this.#dependencies.probeEnvironment) })
+    );
   }
 
   async discoverModels(): Promise<Readonly<Record<string, unknown>>> {

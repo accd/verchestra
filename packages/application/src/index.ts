@@ -276,6 +276,7 @@ export {
   type ExecutablePathApi
 } from "./execution/executable-path.ts";
 export { childEnvironment, gitChildEnvironment, type EnvironmentSource } from "./execution/child-environment.ts";
+export { GIT_CHILD_BOUND, INSPECTION_CHILD_BOUND, childTimedOut, type ChildBound } from "./execution/child-bounds.ts";
 export {
   ProbeEvidenceError,
   verifyProbeEvidence,

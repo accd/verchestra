@@ -3,7 +3,7 @@ import { lstat, mkdir, realpath } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { promisify } from "node:util";
 
-import { gitChildEnvironment } from "@verchestra/application";
+import { GIT_CHILD_BOUND, childTimedOut, gitChildEnvironment, type ChildBound } from "@verchestra/application";
 
 import { resolveGitExecutable } from "./git-executable.ts";
 
@@ -130,8 +130,29 @@ export function gitEnvironment(): NodeJS.ProcessEnv {
   return gitChildEnvironment(process.env);
 }
 
-function spawnOptions(cwd: string, maxBuffer: number) {
-  return { cwd, env: gitEnvironment(), maxBuffer, windowsHide: true } as const;
+function spawnOptions(cwd: string, maxBuffer: number, bound: ChildBound) {
+  return { cwd, env: gitEnvironment(), maxBuffer, windowsHide: true, ...bound } as const;
+}
+
+// invariant: ARQ-003 (#597). A git process that outlives its bound is killed,
+// and its start fails with VES_GIT_TIMEOUT. A task command reports that code
+// as its reason; each adapter still answers with its own command-failed code.
+export class GitTimeoutError extends Error {
+  readonly code = "VES_GIT_TIMEOUT";
+
+  constructor(options?: ErrorOptions) {
+    super("Git did not finish within its bound", options);
+    this.name = "GitTimeoutError";
+  }
+}
+
+async function withinBound<T>(started: Promise<T>): Promise<T> {
+  try {
+    return await started;
+  } catch (error) {
+    if (childTimedOut(error)) throw new GitTimeoutError({ cause: error });
+    throw error;
+  }
 }
 
 // why: a worktree sits deeper than the user's own checkout, so a file that
@@ -172,26 +193,36 @@ export function worktreeRootFits(worktreesRoot: string, platform: string = proce
 }
 
 // invariant: every git process the task path starts goes through runGit or
-// runGitBytes: an argument vector (never a shell), a bounded buffer, an
-// explicit working directory, and the scrubbed environment above.
+// runGitBytes: an argument vector (never a shell), a bounded buffer, a time
+// bound, an explicit working directory, and the scrubbed environment above.
 export async function runGit(
   cwd: string,
   args: readonly string[],
-  maximumOutputBytes = MAXIMUM_GIT_OUTPUT_BYTES
+  maximumOutputBytes = MAXIMUM_GIT_OUTPUT_BYTES,
+  bound: ChildBound = GIT_CHILD_BOUND
 ): Promise<GitOutput> {
-  const { stdout, stderr } = await execFileAsync(resolveGitExecutable(), [...gitArguments(args)], {
-    ...spawnOptions(cwd, maximumOutputBytes),
-    encoding: "utf8"
-  });
+  const { stdout, stderr } = await withinBound(
+    execFileAsync(resolveGitExecutable(), [...gitArguments(args)], {
+      ...spawnOptions(cwd, maximumOutputBytes, bound),
+      encoding: "utf8"
+    })
+  );
   return { stdout, stderr };
 }
 
-export async function runGitBytes(cwd: string, args: readonly string[], maximumOutputBytes: number): Promise<Buffer> {
+export async function runGitBytes(
+  cwd: string,
+  args: readonly string[],
+  maximumOutputBytes: number,
+  bound: ChildBound = GIT_CHILD_BOUND
+): Promise<Buffer> {
   return (
-    await execFileAsync(resolveGitExecutable(), [...gitArguments(args)], {
-      ...spawnOptions(cwd, maximumOutputBytes),
-      encoding: "buffer"
-    })
+    await withinBound(
+      execFileAsync(resolveGitExecutable(), [...gitArguments(args)], {
+        ...spawnOptions(cwd, maximumOutputBytes, bound),
+        encoding: "buffer"
+      })
+    )
   ).stdout;
 }
 

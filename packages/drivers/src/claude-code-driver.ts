@@ -1,9 +1,7 @@
-import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { chmod, lstat, mkdir, mkdtemp, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir, userInfo } from "node:os";
 import { isAbsolute, join, posix } from "node:path";
-import { promisify } from "node:util";
 
 import { quotaExhausted, usageUpdated } from "@verchestra/domain";
 
@@ -16,7 +14,7 @@ import {
   type DriverStructuredOutput,
   type StructuredOutputPlan
 } from "./driver-structured-output.ts";
-import { probeDriverVersion } from "./driver-version-probe.ts";
+import { probeDriverVersion, providerVersion } from "./driver-version-probe.ts";
 import {
   DriverProtocolError,
   validateDriverStartRequest,
@@ -32,7 +30,6 @@ import {
   type ProviderProtocol
 } from "./provider-child-run.ts";
 
-const execFileAsync = promisify(execFile);
 const SAFE_ENV_KEYS = ["PATH", "SystemRoot", "ComSpec", "TEMP", "TMP", "HOME", "USERPROFILE"] as const;
 // The mediated profile passes only these ambient-free locale/search values
 // through; identity directories are created per run and the credential comes
@@ -782,17 +779,14 @@ export class ClaudeCodeDriver implements Driver {
 
   async probe() {
     const requirement = { minimum: this.#minimumVersion, pattern: VERSION_PATTERN };
-    return probeDriverVersion(PROBE_PROFILE, requirement, async () => {
-      const { stdout } = await execFileAsync(this.#command[0] as string, [...this.#command.slice(1), "--version"], {
-        encoding: "utf8",
+    return probeDriverVersion(PROBE_PROFILE, requirement, () =>
+      providerVersion(this.#command, {
         env:
           this.#profile === undefined
             ? this.buildEnvironment(this.#dependencies.probeEnvironment)
-            : { ...this.#profile.environment },
-        windowsHide: true
-      });
-      return stdout;
-    });
+            : { ...this.#profile.environment }
+      })
+    );
   }
 
   async start(
