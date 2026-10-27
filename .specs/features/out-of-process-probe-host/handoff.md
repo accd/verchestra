@@ -6,9 +6,9 @@ status: verification
 branch: feat/235-out-of-process-probe-host
 baseRevision: cb563611da8b1ff80aa204536138f9440a0bff91
 lastCompletedTask: T2
-nextTask: "Merged without independent review on 2026-09-30 (#424); post-merge review pending (#553). Proposed for the security reviewer; it covers AD-037 and the threat model. T3 (composition root wiring and grant issuance) follows ratification."
+nextTask: "T3 (composition root wiring, and where grants and approvals are issued and stored) follows the owner's ratification of AD-037 as #569 amended it. The post-merge review of #424 (#553, slice 1) found three limits; #569 fixed them (.specs/features/probe-host-containment)."
 lastGate: pnpm gate:security PASS (2026-09-29)
-updatedAt: 2026-10-13T19:50:00Z
+updatedAt: 2026-10-27T19:30:00Z
 ---
 
 # Handoff: out-of-process probe host
@@ -20,7 +20,9 @@ against a spawned worker: `ProbeWorkerSupervisor` -> `FramedProbeWorker`
 (extension-host) -> `SpawnedProbeWorker` (platform-node) -> child process. A
 workspace worker is admitted only through
 `GovernedSkillRegistry.resolveExecutableExtension` (locked `extensionRef` +
-`approvalRef`) plus a bound controller grant, via `admitWorkspaceProbeWorker`.
+`approvalRef`) plus a bound controller grant, via `WorkspaceProbeAdmission`
+(since #569; `admitWorkspaceProbeWorker` before, which took the extension as a
+value).
 The gate adapter's process-group terminator was extracted unchanged into
 `packages/platform-node/src/process-tree-terminator.ts` and is shared.
 
@@ -54,3 +56,6 @@ with an explicit reason and the refusal case still runs.
 
 Merged without independent review on 2026-09-30 (#424); post-merge review
 pending (#553). Proposed for the security reviewer.
+
+The review found three limits (#569). #569 fixed them in code on 2026-10-27;
+see `.specs/features/probe-host-containment/` and the amended AD-037.

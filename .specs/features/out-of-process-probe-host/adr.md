@@ -21,16 +21,19 @@
 2. **Spawned transport.** `SpawnedProbeWorker` (`packages/platform-node`) is
    the only process-spawning piece: a from-nothing environment, a private temp
    cwd, stdio frames, bounded output, and process-group termination through the
-   terminator extracted unchanged from the T59 gate adapter, extended with a
-   pre-kill descendant snapshot so a `setsid` escapee is also killed.
+   terminator extracted unchanged from the T59 gate adapter. Since #569 the
+   host stops the worker's tree before it looks for descendants, and checks
+   the worker's output reached end of file after the kill.
 3. **Two trust roots, exactly one per supervisor.** The product root keeps the
    hardcoded component pin. The workspace root is a value only
-   `admitWorkspaceProbeWorker` can mint, from (a) the registry's
-   `resolveExecutableExtension` over a signed lock — the first consumer of the
-   long-declared `extensionRef`/`approvalRef` — and (b) a controller grant that
+   `WorkspaceProbeAdmission` can mint (`admitWorkspaceProbeWorker` until #569),
+   from (a) the registry's `resolveExecutableExtension` over a signed lock — the
+   first consumer of the long-declared `extensionRef`/`approvalRef` — which
+   admission calls itself, (b) the approval that `approvalRef` names, looked up
+   through the approval port, and (c) a controller grant that
    `authorizeSkillExecution` (product port of the qualified spike rule, same
-   codes) accepts only when it binds Workspace, lock, extension, approval, and
-   digest. Denial is the default.
+   codes) accepts only when it binds Workspace, lock, extension, approval,
+   digest and launch. Denial is the default.
 4. **Isolation grade.** The host is `process-contained` and says so. A grant
    must classify the worker `approved-workspace-executable` and request
    `process-contained`; `high-untrusted-executable` is refused with the
@@ -56,24 +59,42 @@
   the frame, sequence, digest, Workspace, row, byte, leak, and time controls,
   is torn down with its process group on every exit path, and cannot flood
   the host.
-- Three limits stand, stated after the post-merge review (#569, 2026-10-24)
-  and not claimed away:
-  1. A detached descendant can outlive its worker. The terminator sweeps only
-     descendants still parented to the worker, so a worker that starts a
-     `setsid` child and exits after its result leaves that child running, and
-     a double fork escapes on the timeout path too.
-  2. The approved digest binds the entry file only. The executable, the
-     arguments and the environment extras are not part of the grant, so
-     `NODE_OPTIONS=--require`, `LD_PRELOAD` or extra arguments can run code
-     the approval never named.
-  3. Admission checks consistency, not authenticity. `admitWorkspaceProbeWorker`
-     checks that the grant matches the extension it is given; nothing ties that
-     extension to `resolveExecutableExtension` or to a verified lock, and
-     `approvalRef` is never looked up.
-  Until each has a fix with a test, nothing composes the host:
+- The post-merge review found three limits (#569, 2026-10-24). They are fixed
+  in code (#569, 2026-10-27; `.specs/features/probe-host-containment/`):
+  1. **Descendants.** At termination the host stops the worker's process
+     group, then every process linked to it by parentage, until a process
+     table shows nothing new, and only then kills them all. A stopped parent
+     can neither exit nor reap, so a `setsid` child is still linked when it is
+     killed. A worker that is no longer running when the host ends its session
+     fails the probe with `VES_PROBE_WORKER_EXITED`, even after its final
+     frame. Output that has not reached end of file after the kill fails it
+     with `VES_PROBE_HOST_TERMINATION_INCOMPLETE`, which outranks the probe's
+     own outcome; so does a missing process table.
+  2. **Launch.** The approval and the grant bind a launch digest over the
+     executable's real path and bytes, the arguments, the environment extras
+     and the entry. The host refuses a launch that measures otherwise before
+     it starts anything (`VES_PROBE_HOST_LAUNCH_DIGEST`), and the supervisor
+     refuses a transport whose launch is not the admitted one
+     (`VES_PROBE_WORKSPACE_TRUST_LAUNCH`). Loader variables such as
+     `NODE_OPTIONS`, `LD_PRELOAD`, `DYLD_INSERT_LIBRARIES` and `PYTHONPATH`
+     are refused even when bound. A launch digest names the host's toolchain
+     bytes, so a toolchain upgrade needs a new approval.
+  3. **Admission.** `WorkspaceProbeAdmission` resolves the extension itself,
+     through the registry the composition root wires, and looks `approvalRef`
+     up through its approval port. It takes no extension value.
+- One descendant residual stands, stated rather than claimed away. A worker
+  that exits before the host ends its session fails the probe, but a
+  descendant it left outside its group, with its stdout and stderr given up,
+  is not ended. A descendant orphaned by a double fork while the worker still
+  runs, with its output given up, is neither ended nor detected. No
+  unprivileged POSIX mechanism reaches either: Linux would need a PID
+  namespace or a subreaper, and macOS has neither. Against hostile approved
+  code this is part of the OS-sandbox residual below, since an admitted worker
+  can persist through a crontab or a launch agent anyway.
+- Nothing composes the host until the owner ratifies AD-037 as amended:
   `tests/architecture/extension-host-composition.test.mjs` fails on any import
   of `@verchestra/extension-host` reachable from the CLI or the launcher, and
-  T3 waits for #569.
+  T3 lifts it.
 - OS-level containment is not: an admitted worker runs with the host user's
   filesystem and network authority. That is acceptable only because admission
   requires a human-approved digest in a signed lock and a bound controller
