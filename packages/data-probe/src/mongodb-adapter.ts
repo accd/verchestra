@@ -1,6 +1,6 @@
 import { canonicalizeJsonV2, codeUnitCompare } from "@verchestra/domain";
 
-import { digest } from "./canonical-material.ts";
+import { digest, sortedKeys } from "./canonical-material.ts";
 
 const CLASSIFICATIONS = ["public", "internal", "confidential", "restricted", "secret"] as const;
 const DATABASE = /^[a-z][a-z0-9_-]{0,62}$/u;
@@ -201,7 +201,7 @@ export function parseMongoDbReadOperation(command: unknown, options: ParseOption
     objects: Object.freeze([{ schema: database, name: collection, type: objectType }]),
     functions: Object.freeze([...state.functions].sort(codeUnitCompare)),
     parameterClassifications: Object.freeze(
-      [...options.parameterClassifications].sort(codeUnitCompare)
+      options.parameterClassifications.toSorted(codeUnitCompare)
     ) as readonly Classification[]
   });
 }
@@ -249,10 +249,7 @@ function decode(bytes: Uint8Array) {
     fail("VES_MONGODB_REQUEST_INVALID", "Protected MongoDB request is invalid");
   }
   const input = record(parsed, "VES_MONGODB_REQUEST_INVALID");
-  if (
-    Object.keys(input).sort(codeUnitCompare).join(",") !== "command,parameters,schemaVersion" ||
-    input["schemaVersion"] !== 1
-  )
+  if (sortedKeys(input) !== "command,parameters,schemaVersion" || input["schemaVersion"] !== 1)
     fail("VES_MONGODB_REQUEST_INVALID", "Protected MongoDB request is invalid");
   if (
     !Array.isArray(input["parameters"]) ||

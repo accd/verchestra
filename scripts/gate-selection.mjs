@@ -122,6 +122,6 @@ export function selectGates(changedPaths, options) {
   return {
     gates: [...selected].sort(codeUnitCompare),
     reasons: Object.fromEntries([...reasons].sort(([left], [right]) => left.localeCompare(right))),
-    unmapped: unmapped.sort(codeUnitCompare)
+    unmapped: unmapped.toSorted(codeUnitCompare)
   };
 }

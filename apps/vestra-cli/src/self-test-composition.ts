@@ -306,7 +306,7 @@ async function workingTreeSnapshot(root: string): Promise<readonly string[]> {
     }
   }
   await walk(root);
-  return Object.freeze(entries.sort(codeUnitCompare));
+  return Object.freeze(entries.toSorted(codeUnitCompare));
 }
 
 interface CliInvocation {

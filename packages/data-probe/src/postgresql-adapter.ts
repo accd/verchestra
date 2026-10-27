@@ -1,6 +1,6 @@
 import { canonicalizeJsonV2 } from "@verchestra/domain";
 
-import { codeUnitCompare, digest } from "./canonical-material.ts";
+import { codeUnitCompare, digest, sortedKeys } from "./canonical-material.ts";
 
 const IDENTIFIER = /^[a-z][a-z0-9_]{0,62}$/u;
 const CLASSIFICATIONS = ["public", "internal", "confidential", "restricted", "secret"] as const;
@@ -152,7 +152,7 @@ export function parsePostgreSqlReadOperation(sql: unknown, options: ParseOptions
     ),
     functions: Object.freeze([...functions].sort(codeUnitCompare)),
     parameterClassifications: Object.freeze(
-      [...options.parameterClassifications].sort(codeUnitCompare)
+      options.parameterClassifications.toSorted(codeUnitCompare)
     ) as readonly Classification[]
   });
 }
@@ -195,10 +195,7 @@ function decodeRequest(bytes: Uint8Array): { readonly sql: string; readonly para
     fail("VES_POSTGRES_REQUEST_INVALID", "Protected PostgreSQL request is invalid");
   }
   const input = parsed as UnknownRecord;
-  if (
-    Object.keys(input).sort(codeUnitCompare).join(",") !== "parameters,schemaVersion,sql" ||
-    input["schemaVersion"] !== 1
-  ) {
+  if (sortedKeys(input) !== "parameters,schemaVersion,sql" || input["schemaVersion"] !== 1) {
     fail("VES_POSTGRES_REQUEST_INVALID", "Protected PostgreSQL request is invalid");
   }
   if (!Array.isArray(input["parameters"]) || input["parameters"].length > 64) {

@@ -66,7 +66,7 @@ export function normalizePolicyTestCase(value: unknown): PolicyTestCase {
   const row = value as Record<string, unknown>;
   const allowed = ["name", "principal", "action", "resource", "context", "expect", "expectCode"];
   const extras = Object.keys(row).filter((key) => !allowed.includes(key));
-  if (extras.length > 0) fail(`test case contains unknown fields: ${extras.sort(codeUnitCompare).join(", ")}`);
+  if (extras.length > 0) fail(`test case contains unknown fields: ${extras.toSorted(codeUnitCompare).join(", ")}`);
   if (typeof row["name"] !== "string" || !NAME.test(row["name"])) fail("test case name is invalid");
   // "expect" is a closed literal on purpose: a typo like "alow" must fail the
   // case format, never silently read as deny-and-pass.

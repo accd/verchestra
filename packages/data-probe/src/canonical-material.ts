@@ -15,3 +15,9 @@ export function codeUnitCompare(left: string, right: string): number {
   if (left > right) return 1;
   return 0;
 }
+
+// The exact-shape check every adapter's request decoder makes: the record's
+// own keys in code-unit order, comma-joined, compared to the one allowed list.
+export function sortedKeys(record: object): string {
+  return Object.keys(record).toSorted(codeUnitCompare).join(",");
+}
