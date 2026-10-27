@@ -20,6 +20,15 @@ import {
 
 const retriever = new ExplainableMemoryRetriever();
 
+test("content carrying a NUL anywhere fails closed, even with a matching digest", () => {
+  for (const content of ["\u0000leading", "inner\u0000nul", "trailing\u0000"]) {
+    const value = record(1, { content, contentDigest: digest(content) });
+    assert.throws(() => retriever.search(retrievalInput({ records: [value] })), {
+      code: "VES_MEMORY_RETRIEVAL_INVALID"
+    });
+  }
+});
+
 test("lexical-only retrieval returns stable ranked untrusted results", () => {
   const input = retrievalInput({ vector: { status: "unavailable", candidates: [] } });
   const result = retriever.search(input);

@@ -33,14 +33,19 @@ control character by hex escape where the rule wants a readable form:
 - `packages/memory/src/memory-retriever.ts` and
   `packages/application/src/egress/trust-egress.ts` rejected NUL with a
   one-character regex; they now use `includes("\u0000")`.
-- New `tests/security/probe-statement-encoding.test.mjs` (48 cases) holds every
+- New `tests/unit/probe-statement-encoding.test.mjs` (49 cases) holds every
   dialect to the boundary: TAB/LF/CR still parse, and NUL, U+0008, VT, FF,
   U+001F, DEL and backslash are denied with the dialect's `ENCODING_DENIED`
-  code. It passed against the old source too, so the rewrite kept the set.
-- `tests/security/memory-retriever-security.test.mjs` and
-  `tests/unit/trust-envelope.test.mjs` gain NUL cases (leading, inner,
-  trailing; the memory one with a matching digest so only the NUL check can
-  fail). Both fail with their guard removed (discrimination run: 2 fail).
+  code; PostgreSQL also denies a dollar quote but keeps `$1`. It passed against
+  the old source too, so the rewrite kept the set.
+- `tests/unit/memory-retriever.test.mjs` and `tests/unit/trust-envelope.test.mjs`
+  gain NUL cases (leading, inner, trailing; the memory one with a matching
+  digest so only the NUL check can fail). Both fail with their guard removed
+  (discrimination run: 2 fail).
+- These tests live in the unit scope on purpose: coverage is collected from
+  unit and contract only, and the first PR analysis failed the new-code
+  coverage condition (66.7 %) on the branches of the rewritten lines that only
+  the security-scope parser tests reached.
 - S1534, S7739 and S1764, listed under T6 in `tasks.md`, read 0 open
   on SonarCloud (2026-10-27), so T6 had nothing to change for them.
 

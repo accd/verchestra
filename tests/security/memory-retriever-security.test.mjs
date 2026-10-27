@@ -144,15 +144,6 @@ test("unknown record fields cannot inject controller authority", () => {
   });
 });
 
-test("content carrying a NUL anywhere fails closed, even with a matching digest", () => {
-  for (const content of ["\u0000leading", "inner\u0000nul", "trailing\u0000"]) {
-    const value = record(1, { content, contentDigest: digest(content) });
-    assert.throws(() => retriever.search(retrievalInput({ records: [value] })), {
-      code: "VES_MEMORY_RETRIEVAL_INVALID"
-    });
-  }
-});
-
 test("forged content digest fails before any content is returned", () => {
   const value = record(1, { contentDigest: digest("forged") });
   assert.throws(() => retriever.search(retrievalInput({ records: [value] })), {
