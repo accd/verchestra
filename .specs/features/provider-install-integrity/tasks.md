@@ -1,0 +1,13 @@
+# Provider install integrity (#596, item 2): tasks
+
+| Task | Deliverable                                                                                                  | Verification                                                                                        | Status   |
+| ---- | ------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------- | -------- |
+| T1   | PI-01, PI-03, PI-04: the committed manifest and lockfile; the four workflows install from them with `npm ci` | `tests/agent-readiness/qualified-providers.test.mjs`, `workflow-install-scripts.test.mjs`           | Complete |
+| T2   | PI-02: `scripts/verify-provider-install.mjs` refuses a missing or different package for this OS and CPU      | `tests/unit/verify-provider-install.test.mjs`; the tampered lockfile in `validation.md`             | Complete |
+| T3   | PI-05: the install lives in `$RUNNER_TEMP` and reaches later steps through `GITHUB_PATH`                     | the `ci.yml` step run on Windows, and the pinned qualification stage against it, in `validation.md` | Complete |
+| T4   | PI-06: the manifest, the lockfile and the check select the conservative gates                                | `tests/agent-readiness/gate-selection.test.mjs`                                                     | Complete |
+| T5   | Required checks green on the pull request head, the Linux install included, then maintainer merge            | CI                                                                                                  | Pending  |
+
+## Delivery rule
+
+Merge only after review and every required check green on the exact head.
