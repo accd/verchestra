@@ -61,13 +61,37 @@ const integrationReport = [
   ""
 ].join("\n");
 
-test("a line, branch or function covered by any scope counts as covered", () => {
+test("a line or function covered by any scope counts as covered", () => {
   const merged = mergeLcov([unitReport, integrationReport]);
   const a = merged.split("end_of_record")[1];
   assert.match(a, /SF:packages\/domain\/src\/a\.ts\n/u);
   assert.match(a, /FNDA:3,alpha\nFNF:1\nFNH:1\n/u);
-  assert.match(a, /BRDA:2,0,0,1\nBRDA:2,0,1,2\nBRF:2\nBRH:2\n/u);
   assert.match(a, /DA:1,1\nDA:2,4\nDA:3,0\nLF:3\nLH:2\n/u);
+});
+
+// A branch's block number is only an index into the run that wrote it, so
+// `2,0,1` in two reports is not the same branch: line 2 keeps the larger
+// condition count (2, from unit) and the larger covered count (1 in either).
+test("a line's branches keep the most conditions and the most covered of any one scope", () => {
+  const a = mergeLcov([unitReport, integrationReport]).split("end_of_record")[1];
+  assert.match(a, /BRDA:2,0,0,1\nBRDA:2,0,1,0\nBRF:2\nBRH:1\n/u);
+});
+
+// Shapes from two real Node runs over packages/domain/src/canonical/canonical-json.ts:
+// the same branches come numbered differently (line 26 is block 2, then 3),
+// and the run that executed more split line 38 into two ranges.
+test("the same branches numbered differently by two runs are not counted twice", () => {
+  const record = (entries) => ["SF:packages/domain/src/c.ts", ...entries, "end_of_record", ""].join("\n");
+  const first = record(["BRDA:18,1,0,12", "BRDA:26,2,0,3", "BRDA:38,6,0,0"]);
+  const second = record(["BRDA:18,1,0,70", "BRDA:22,2,0,42", "BRDA:26,3,0,10", "BRDA:38,7,0,3", "BRDA:38,8,0,97"]);
+  const merged = mergeLcov([first, second]);
+  assert.match(merged, /BRF:5\nBRH:5\n/u, "4 lines hold 5 conditions, not the 8 keys the two runs used");
+  assert.match(
+    merged,
+    /BRDA:18,0,0,1\nBRDA:22,0,0,1\nBRDA:26,0,0,1\nBRDA:38,0,0,1\nBRDA:38,0,1,1\n/u,
+    "each line is renumbered from its own count"
+  );
+  assert.equal(mergeLcov([first, first]), mergeLcov([first]), "merging a report with itself changes nothing");
 });
 
 test("Windows separators are normalised and files are ordered deterministically", () => {
