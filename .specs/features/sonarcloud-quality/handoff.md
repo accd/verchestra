@@ -3,12 +3,12 @@ schema: verchestra-feature-handoff/v1
 feature: sonarcloud-quality
 issue: null
 status: in_progress
-branch: fix/coverage-lcov-branch-merge
-baseRevision: e5389cd13ee540ab660a3a48ec4e338f7e1c4fda
+branch: refactor/sonar-s4624-nested-templates
+baseRevision: d8e981727a026759f82a014ffa3594c3b0f7df97
 lastCompletedTask: T8
 nextTask: T8
 lastGate: pnpm gate:quick plus pnpm test:architecture
-updatedAt: 2026-10-27T15:13:19Z
+updatedAt: 2026-10-27T16:30:00Z
 ---
 
 # Scope
@@ -19,6 +19,18 @@ sources. Phases B (bugs, vulnerabilities) and C (code smells) follow in their
 own changes, one rule family each, as listed in `tasks.md`.
 
 # Completed Evidence
+
+T8, S4624 (nested template literals, 25 in 13 files) on
+`refactor/sonar-s4624-nested-templates`: each inner template moves into a
+local, a small helper, or a `join` over its parts, and no rendered text
+changes. `tests/unit/nested-template-output.test.mjs` (4) pins the exact
+policy-explanation summaries for both verdicts with and without determining
+policies, the self-test network refusal message, the context-recipe
+identifiers, and the verifier prompt's done-criteria bullets; all 4 pass
+against `main`'s sources as well (equivalence run). PR #628 (`d8e98172`)
+confirmed on SonarCloud 2026-10-27T15:33Z: gate OK, new-code coverage 91.5 %,
+new conditions to cover 8,965 → 6,297, new uncovered conditions 1,897 → 956,
+branch coverage 82.9 %.
 
 Quality gate green. PR #625 (`2eed052f`, `a4e421d6`, `d4756a65`) added the
 security scope to coverage and PR #626 (`c9c9e629`) landed T8 (S4043); both
@@ -279,11 +291,12 @@ issues; 179 bugs, 32 vulnerabilities, 924 code smells; quality gate ERROR.
 
 # Next Exact Action
 
-After the LCOV branch-merge change merges, confirm on the next `main`
-analysis that the quality gate is still OK and that `new_conditions_to_cover`
-fell back toward the pre-#625 count (4,772):
-`curl "https://sonarcloud.io/api/measures/component?component=accd_verchestra&metricKeys=new_coverage,new_conditions_to_cover,new_uncovered_conditions"`.
-Then continue T8 with the next maintainability rule family, one per change:
+After the S4624 change merges, confirm on the next `main` analysis that
+`typescript:S4624` reads 0 and the quality gate is still OK
+(`api/issues/search?componentKeys=accd_verchestra&rules=typescript:S4624&resolved=false&ps=1`).
+Then continue T8 with the next maintainability rule family, one per change
+(by count: S6551 23, S6582 22, S3735 20, S7780 19; S7503, S9382 and S3776 need
+a per-site decision first):
 list the open code smells by rule
 (`api/issues/search?componentKeys=accd_verchestra&types=CODE_SMELL&resolved=false&facets=rules&ps=1`)
 and take the next family.

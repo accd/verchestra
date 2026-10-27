@@ -252,11 +252,9 @@ export interface NetworkAttempt {
 }
 
 export function assertNoNetworkAttempts(attempts: readonly NetworkAttempt[]): void {
+  const targets = attempts.map((attempt) => `${attempt.api} ${attempt.target}`).join(", ");
   if (attempts.length > 0)
-    fail(
-      "VES_SELFTEST_NETWORK_ATTEMPT",
-      `self-test scenario attempted a network connection: ${attempts.map((attempt) => `${attempt.api} ${attempt.target}`).join(", ")}`
-    );
+    fail("VES_SELFTEST_NETWORK_ATTEMPT", `self-test scenario attempted a network connection: ${targets}`);
 }
 
 // TST-02: production material is rejected with a distinct error, never merely

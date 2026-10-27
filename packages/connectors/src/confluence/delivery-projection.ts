@@ -228,6 +228,8 @@ const uuidFrom = (value: string): string => {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-8${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
 };
 
+const codeList = (entries: readonly string[]): string => entries.map((entry) => `\`${entry}\``).join(", ");
+
 const renderContent = (input: ConfluenceDeliveryInput): string =>
   [
     `## ${input.title}`,
@@ -236,8 +238,8 @@ const renderContent = (input: ConfluenceDeliveryInput): string =>
     `- Handoff: \`${input.handoff.handoffRef}\` (\`${input.handoff.handoffDigest}\`)`,
     `- Owner: \`${input.owner}\``,
     `- Status: \`${input.status}\``,
-    `- Current tasks: ${input.currentTaskIds.map((entry) => `\`${entry}\``).join(", ")}`,
-    `- Pending tasks: ${input.pendingTaskIds.map((entry) => `\`${entry}\``).join(", ") || "none"}`,
+    `- Current tasks: ${codeList(input.currentTaskIds)}`,
+    `- Pending tasks: ${codeList(input.pendingTaskIds) || "none"}`,
     `- Generated: \`${input.generatedAt}\``
   ].join("\n");
 

@@ -263,7 +263,8 @@ function line(row: TaskCheckRow): string {
     .map(([key, value]) => `${key}=${String(value)}`)
     .join(", ");
   const named = details === "" ? "" : ` (${details})`;
-  return `missing ${row.check}: ${row.code}${named}${row.recovery === undefined ? "" : `: ${row.recovery}`}`;
+  const recovery = row.recovery === undefined ? "" : `: ${row.recovery}`;
+  return `missing ${row.check}: ${row.code}${named}${recovery}`;
 }
 
 export async function checkTask(io: TaskCommandIo, requestPath: string): Promise<CommandResult> {

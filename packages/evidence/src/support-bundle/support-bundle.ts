@@ -158,7 +158,8 @@ export class HmacPathPseudonymizer {
     if (!/^(?:[A-Za-z]:[\\/]|\/)/u.test(path) || path.includes("\0"))
       fail("VES_SUPPORT_VALUE_INVALID", "diagnostic path must be absolute");
     const normalized = path.replaceAll("\\", "/").replaceAll(/\/{2,}/gu, "/");
-    return `path:sha256:${createHmac("sha256", this.#key).update(`${workspaceId}\0${normalized}`, "utf8").digest("hex")}`;
+    const material = `${workspaceId}\0${normalized}`;
+    return `path:sha256:${createHmac("sha256", this.#key).update(material, "utf8").digest("hex")}`;
   }
 }
 

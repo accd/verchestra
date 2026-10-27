@@ -106,7 +106,7 @@ function gateResult(
     stderrDigest: digests.stderr,
     stdoutBytes: observation.stdoutBytes,
     stderrBytes: observation.stderrBytes,
-    outputRef: `gate-output:${createHash("sha256").update(`${digests.stdout}:${digests.stderr}`).digest("hex")}`,
+    outputRef: `gate-output:${createHash("sha256").update([digests.stdout, digests.stderr].join(":")).digest("hex")}`,
     ...(command.resultProtocol === "test-summary"
       ? { tests: parseNodeTestSummary(observation.output.toString("utf8")) }
       : {})
