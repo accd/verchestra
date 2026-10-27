@@ -246,8 +246,14 @@ ${sections.join("\n")}
   return output;
 }
 
+// Drops a leading H1 and the newlines after it. The space after `#` and the
+// title text are disjoint, so a long run of spaces is scanned once.
+export function withoutLeadingTitle(markdown: string): string {
+  return markdown.replace(/^#[^\S\n]+\S.*\n+/u, "");
+}
+
 function alternateMarkdown(document: LlmDocument) {
-  const body = document.markdown.replace(/^#\s+.+\n+/u, "");
+  const body = withoutLeadingTitle(document.markdown);
   return `# ${document.title}
 
 > ${document.description}

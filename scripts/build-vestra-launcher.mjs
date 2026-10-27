@@ -220,6 +220,13 @@ async function bundle(stagingRoot) {
     );
 }
 
+// Every static `import … from "x"` / `import "x"` specifier. Whitespace after
+// `import` belongs to the clause scan alone (it was also claimed by a `\s*`
+// before it), so a long run of it is scanned once per import.
+export function importSpecifiers(source) {
+  return [...source.matchAll(/(?:^|[\s;}])import(?:[^"';]*?from)?\s*["']([^"']+)["']/gu)].map((match) => match[1]);
+}
+
 /**
  * A published bundle may import Node built-ins and nothing else. This is the
  * artifact-level statement of NPX-08: whatever the repository graph looked like
@@ -229,10 +236,7 @@ async function assertSelfContained(stagingRoot) {
   const bundled = await readFile(join(stagingRoot, "lib", "bootstrap.js"), "utf8");
   if (!bundled.startsWith(BUNDLE_REQUIRE_GUARD))
     fail("VES_VESTRA_BUILD_FORBIDDEN_CONTENT", "the emitted bundle does not carry the fail-closed require guard");
-  const specifiers = [...bundled.matchAll(/(?:^|[\s;}])import\s*(?:[^"';]*?from\s*)?["']([^"']+)["']/gu)].map(
-    (match) => match[1]
-  );
-  const external = specifiers.filter((specifier) => !specifier.startsWith("node:"));
+  const external = importSpecifiers(bundled).filter((specifier) => !specifier.startsWith("node:"));
   if (external.length > 0)
     fail("VES_VESTRA_BUILD_FORBIDDEN_CONTENT", `the emitted bundle imports ${external.join(", ")} at run time`);
 }

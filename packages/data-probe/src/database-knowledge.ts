@@ -12,8 +12,25 @@ const CRITERION_ID = /^AC-[A-Z0-9-]{3,64}$/u;
 const ENTITY_REF = /^[a-z][a-z0-9_]{0,126}\.[a-z][a-z0-9_]{0,126}$/u;
 const FACT_KEY = /^[a-z][a-z0-9_.]{2,255}$/u;
 const GENERATORS = new Set(["boolean", "decimal", "email", "enum", "integer", "timestamp", "uuid", "words"]);
-const SENSITIVE_CLAIM_VALUE =
-  /(?:-----BEGIN [A-Z ]*PRIVATE KEY-----|\b(?:password|credential|secret|token|api[_-]?key)\b\s*[=:]|\bbearer\s+[a-z0-9._-]+|\b(?:gh[pousr]_[a-z0-9]{20,}|github_pat_[a-z0-9_]{20,}|sk-[a-z0-9_-]{20,}|xox[baprs]-[a-z0-9-]{10,}|akia[a-z0-9]{16}|eyj[a-z0-9_-]{8,}\.[a-z0-9_-]{8,}\.[a-z0-9_-]{8,})\b|\b(?:postgres(?:ql)?|mysql|mongodb|mariadb|sqlserver|oracle):\/\/|:\/\/[^\s/]+@)/iu;
+// One expression per secret shape: a value is sensitive when any of them
+// matches, exactly the union the former single alternation tested.
+const SENSITIVE_CLAIM_VALUES: readonly RegExp[] = Object.freeze([
+  /-----BEGIN [A-Z ]*PRIVATE KEY-----/iu,
+  /\b(?:password|credential|secret|token|api[_-]?key)\b\s*[=:]/iu,
+  /\bbearer\s+[a-z0-9._-]+/iu,
+  /\bgh[pousr]_[a-z0-9]{20,}\b/iu,
+  /\bgithub_pat_[a-z0-9_]{20,}\b/iu,
+  /\bsk-[a-z0-9_-]{20,}\b/iu,
+  /\bxox[baprs]-[a-z0-9-]{10,}\b/iu,
+  /\bakia[a-z0-9]{16}\b/iu,
+  /\beyj[a-z0-9_-]{8,}\.[a-z0-9_-]{8,}\.[a-z0-9_-]{8,}\b/iu,
+  /\b(?:postgres(?:ql)?|mysql|mongodb|mariadb|sqlserver|oracle):\/\//iu,
+  /:\/\/[^\s/]+@/iu
+]);
+
+export function isSensitiveClaimValue(value: string): boolean {
+  return SENSITIVE_CLAIM_VALUES.some((pattern) => pattern.test(value));
+}
 type UnknownRecord = Readonly<Record<string, unknown>>;
 type SourceKind = (typeof SOURCE_KINDS)[number];
 
@@ -519,10 +536,7 @@ export function promoteProbeEvidence(value: unknown): PromotedProbeEvidence {
       (typeof claim["value"] === "string" && claim["value"].length > 512)
     )
       fail(code, "Probe sanitized claim value is invalid");
-    if (
-      typeof claim["value"] === "string" &&
-      (isEmailValue(claim["value"]) || SENSITIVE_CLAIM_VALUE.test(claim["value"]))
-    )
+    if (typeof claim["value"] === "string" && (isEmailValue(claim["value"]) || isSensitiveClaimValue(claim["value"])))
       fail(code, "Probe sanitized claim value is invalid");
     return {
       factKey,

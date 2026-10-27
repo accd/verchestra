@@ -85,12 +85,21 @@ const fail = (code: string, message: string, cause?: unknown): never => {
   throw new TufUpdateError(code, message, cause === undefined ? undefined : { cause });
 };
 
+// Userinfo before a colon (`user@host:`): an `@` with at least one character
+// after it before the next `:`. Scanned per colon-delimited segment, so a run of
+// `@` never rescans the rest of the identity.
+export const hasUserinfoBeforeColon = (sourceId: string): boolean =>
+  sourceId
+    .split(":")
+    .slice(0, -1)
+    .some((segment) => segment.slice(0, -1).includes("@"));
+
 const validateSourceConfiguration = (mode: DistributionSourceMode, sourceId: string): void => {
   if (
     !SOURCE_MODES.has(mode) ||
     !SAFE_SOURCE_ID.test(sourceId) ||
     sourceId.includes("://") ||
-    /@[^:]+:/u.test(sourceId)
+    hasUserinfoBeforeColon(sourceId)
   )
     fail("VES_TUF_SOURCE_INVALID", "distribution source identity or mode is invalid");
 };

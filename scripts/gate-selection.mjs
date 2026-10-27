@@ -50,7 +50,7 @@ const RULES = Object.freeze([
     gate: ALWAYS_GATE,
     reason: "documentation, specification, or repository metadata",
     match:
-      /^(?:docs\/|\.specs\/|spikes\/|scripts\/|tests\/agent-readiness\/|tests\/agent-eval\/|\.github\/(?!workflows\/)|[^/]+\.(?:md|txt|json|yaml|yml)$|\.[^/]+$)/u
+      /^(?:docs\/|\.specs\/|spikes\/|scripts\/|tests\/agent-(?:readiness|eval)\/|\.github\/(?!workflows\/)|[^/]+\.(?:md|txt|json|ya?ml)$|\.[^/]+$)/u
   }
 ]);
 

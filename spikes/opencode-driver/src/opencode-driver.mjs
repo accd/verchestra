@@ -11,8 +11,10 @@ function defaultCommand() {
   return existsSync(executable) ? [executable] : ["opencode"];
 }
 
-function parseVersion(value) {
-  const match = /(\d+)\.(\d+)\.(\d+)/.exec(value.trim());
+// The first x.y.z whose major starts a digit run: a match can only begin where
+// the previous character is not a digit, so a long digit run is scanned once.
+export function parseVersion(value) {
+  const match = /(?<!\d)(\d+)\.(\d+)\.(\d+)/.exec(value.trim());
   return match ? match.slice(1).map(Number) : undefined;
 }
 

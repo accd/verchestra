@@ -37,7 +37,10 @@ const WINDOWS_ROOT = /^[A-Za-z]:\\[A-Za-z0-9 ._()\\-]*$/u;
 
 export function systemRoot(): string {
   const root = process.env["SystemRoot"];
-  return typeof root === "string" && WINDOWS_ROOT.test(root) ? root.replace(/\\+$/u, "") : "C:\\Windows";
+  if (typeof root !== "string" || !WINDOWS_ROOT.test(root)) return "C:\\Windows";
+  let end = root.length;
+  while (end > 0 && root[end - 1] === "\\") end -= 1;
+  return root.slice(0, end);
 }
 
 // why: an absolute path under the system root, never a PATH lookup, so an

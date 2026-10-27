@@ -55,7 +55,9 @@ export const rewriteCanonicalLinks = (
   sources: readonly RepositoryContentSource[],
   base: string
 ) =>
-  markdown.replace(/(?<!!)\]\((?![#a-z]+:|\/\/)([^)\s]+)(#[^)\s]+)?\)/giu, (_match, target, fragment = "") => {
+  // The target stops at `#`, so the fragment group receives the fragment; a
+  // bare `](#anchor)` has no target and stays an in-page link.
+  markdown.replace(/(?<!!)\]\((?![#a-z]+:|\/\/)([^()\s#]+)(#[^()\s]+)?\)/giu, (_match, target, fragment = "") => {
     const sourcePath = posix.normalize(posix.join(posix.dirname(source.sourcePath), target));
     const siteTarget = sources.find((candidate) => candidate.sourcePath === sourcePath);
     if (siteTarget) return `](${base}/${siteTarget.route}/${fragment})`.replaceAll("//", "/");
@@ -189,7 +191,7 @@ export function validateUniqueRoutes(sources: ReadonlyArray<Pick<RepositoryConte
 }
 
 export function extractTitle(markdown: string): string {
-  const title = markdown.match(/^#\s+(.+?)\s*$/m)?.[1]?.trim();
+  const title = markdown.match(/^#[^\S\n]+(\S.*)$/m)?.[1]?.trim();
   if (!title) throw new Error("canonical Markdown is missing an H1 title");
   return title;
 }
@@ -212,7 +214,28 @@ export function extractDescription(markdown: string): string {
     paragraph += `${paragraph ? " " : ""}${line.replace(/^>\s*/, "")}`;
   }
   if (!paragraph) throw new Error("canonical Markdown is missing a description paragraph");
-  return paragraph.replace(/\[([^\]]+)\]\([^)]+\)/g, "$1").replace(/[*_`]/g, "");
+  return withoutMarkdownLinks(paragraph).replace(/[*_`]/g, "");
+}
+
+// `[label](target)` becomes `label`, matched exactly as `\[([^\]]+)\]\([^)]+\)`
+// did, but in one pass: a start that fails fails the same way for every `[`
+// before its `]`, so the scan resumes after that `]` instead of rescanning.
+export function withoutMarkdownLinks(text: string): string {
+  let output = "";
+  let copied = 0;
+  let start = text.indexOf("[");
+  while (start !== -1) {
+    const close = text.indexOf("]", start + 1);
+    if (close === -1) break;
+    const end = close > start + 1 && text[close + 1] === "(" ? text.indexOf(")", close + 2) : -2;
+    if (end === -1) break;
+    if (end > close + 2) {
+      output += text.slice(copied, start) + text.slice(start + 1, close);
+      copied = end + 1;
+      start = text.indexOf("[", copied);
+    } else start = text.indexOf("[", close + 1);
+  }
+  return output + text.slice(copied);
 }
 
 export async function compileQualificationStatus(repositoryRoot: URL | string): Promise<QualificationStatus> {
@@ -256,17 +279,32 @@ export async function compileQualificationStatus(repositoryRoot: URL | string): 
   };
 }
 
+// One `T1 --> T2` edge per line, either id optionally carrying a `[label]`.
+// Splitting the line at its one arrow keeps every part a single bounded scan
+// (scripts/agent-readiness.mjs parses ROADMAP.md the same way).
+const ROADMAP_NODE = /^(T\d+[a-z]?)(?:\[[^\]]*\])?$/u;
+
+export function roadmapEdges(roadmap: string): readonly (readonly [string, string])[] {
+  const edges: (readonly [string, string])[] = [];
+  for (const line of roadmap.split("\n")) {
+    const parts = line.split("-->");
+    if (parts.length !== 2) continue;
+    const from = ROADMAP_NODE.exec(parts[0]!.trim())?.[1];
+    const to = ROADMAP_NODE.exec(parts[1]!.trim())?.[1];
+    if (from !== undefined && to !== undefined) edges.push([from, to]);
+  }
+  return edges;
+}
+
 // An ordering authority that quietly normalizes an ambiguous graph is not an
 // authority. A branch, a merge, a cycle, or a second disconnected component all
 // fail closed with the conflicting task ids named, rather than being resolved by
 // which edge happened to be written first.
 export function validateRoadmapChain(roadmap: string): { chain: readonly string[]; errors: readonly string[] } {
-  const edge = /^[^\S\n]*(T\d+[a-z]?)(?:\[[^\]]*\])?[^\S\n]*-->[^\S\n]*(T\d+[a-z]?)(?:\[[^\]]*\])?[^\S\n]*$/gmu;
   const errors: string[] = [];
   const successor = new Map<string, string>();
   const incoming = new Map<string, number>();
-  for (const match of roadmap.matchAll(edge)) {
-    const [from, to] = [match[1]!, match[2]!];
+  for (const [from, to] of roadmapEdges(roadmap)) {
     if (from === to) errors.push(`${from} declares an edge to itself`);
     if (successor.has(from)) errors.push(`${from} declares more than one successor: ${successor.get(from)} and ${to}`);
     else successor.set(from, to);

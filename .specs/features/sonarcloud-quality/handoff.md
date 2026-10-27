@@ -3,12 +3,12 @@ schema: verchestra-feature-handoff/v1
 feature: sonarcloud-quality
 issue: null
 status: in_progress
-branch: fix/sonar-s6324-control-chars
-baseRevision: b3a2dc62d8c73abab3c95c949860656d71de152a
-lastCompletedTask: T6
-nextTask: T7
-lastGate: pnpm gate:quick plus pnpm gate:security
-updatedAt: 2026-10-27T12:04:37Z
+branch: fix/sonar-t7-regex-complexity
+baseRevision: 5b131e97463dbf581fe1eb6d40ecd15739dd3d31
+lastCompletedTask: T7
+nextTask: T8
+lastGate: pnpm gate:quick plus pnpm gate:security and pnpm test:census
+updatedAt: 2026-10-27T13:00:12Z
 ---
 
 # Scope
@@ -19,6 +19,50 @@ sources. Phases B (bugs, vulnerabilities) and C (code smells) follow in their
 own changes, one rule family each, as listed in `tasks.md`.
 
 # Completed Evidence
+
+T7 complete on `fix/sonar-t7-regex-complexity` — the 22 open S8786
+(super-linear backtracking, 15) and S5843 (complexity over 20, 7) issues in 14
+files. `tests/unit/regex-linearity.test.mjs` keeps every replaced expression as
+text, as the oracle, and holds each rewrite to it over an exhaustive
+small-alphabet corpus or the repository's own files (docs, `.specs`, every
+`.ts`/`.mjs` source, ROADMAP.md, all 137 site sources), and to a linear
+growth ratio (`tests/helpers/linear-growth.mjs`) on the input that made the old
+expression backtrack. Timed on those same inputs, all 12 former super-linear
+expressions grew 13–18× over a 4× larger input (limit 8×).
+
+- Exact by construction, with a one-pass scanner instead of a regex:
+  markdown link targets (`scripts/agent-readiness.mjs`) and description link
+  stripping (`apps/site/src/lib/repository-content.ts`) — a start that fails
+  fails the same way for every `[` before its `]`, so the scan resumes after
+  it; frontmatter `key: value` lines (`frontmatterField`); distribution source
+  userinfo (`hasUserinfoBeforeColon`); trailing `\` in the Windows system root
+  and trailing `/` in a repository path.
+- Exact, regex kept: bundle import specifiers (the `\s*` after `import` was a
+  subset of the clause scan); the census V2-import check (find each named
+  import, then search its braces) and canonicalizer count (`async ` never
+  changed the count); the documentation gate path (`agent-(?:readiness|eval)`,
+  `ya?ml`); PostgreSQL write keywords (a whole-word set lookup; the statement
+  is ASCII by then); sensitive claim values (one expression per secret shape,
+  same union); the two spike version parsers (`(?<!\d)` start; the codex
+  `codex-cli ` prefix never changed the digits), held to the old expression in
+  new `spikes/{codex,opencode}-driver/test/parse-version.test.mjs`.
+- Same on every real input, stricter on malformed ones: the site title
+  (`^#[^\S\n]+(\S.*)$`) and the LLM alternate's leading-title strip no longer
+  let `\s+` cross a newline — identical on every document in `docs/` and
+  README.md. ROADMAP edges are one per line in both readers (scripts and site):
+  the old label class `[^\]]*` could swallow the next line and join two lines
+  into one edge; ROADMAP.md parses identically.
+- One intended fix: `rewriteCanonicalLinks` let the target's `[^)\s]+` eat the
+  `#fragment`, so the fragment group never matched and a link to another site
+  page's section went to GitHub, while a bare `](#anchor)` was rewritten to a
+  GitHub URL. The target now stops at `#` (and `(`); the test pins both cases,
+  and a second test shows all 137 published sources render byte-identically,
+  since none links to a fragment of another source.
+- Local: `pnpm gate:quick`, `pnpm test:census` 13/13, `pnpm agent:check`,
+  `pnpm test:architecture` 144/144, `pnpm test:agent-readiness` 388/388, site
+  unit tests 57/57, site build + `check:built` (135 pages, links and metadata
+  valid). `astro check` did not run locally (`@astrojs/check` is not installed
+  here; CI's Site quality job runs it).
 
 T6 complete on `fix/sonar-s6324-control-chars` — the 22 S6324 issues, which
 after T5 were every open bug, sat on 8 lines. None was a defect; each named a
@@ -171,12 +215,11 @@ issues; 179 bugs, 32 vulnerabilities, 924 code smells; quality gate ERROR.
 
 # Next Exact Action
 
-After this change merges, confirm bugs read 0 open and Reliability is A:
-`curl "https://sonarcloud.io/api/issues/search?componentKeys=accd_verchestra&types=BUG&resolved=false&ps=1"`.
-Then start T7 on a new branch off `main`: S8786 and S5843 (regular-expression
-complexity), each rewrite with a linearity assertion — re-read both rules
-first, since counts move with each analysis. The quality gate's last failing
-condition is new-code coverage (74.3 % against 80 % at 2026-10-27T09:40Z).
+After this change merges, confirm S8786 and S5843 read 0 open:
+`curl "https://sonarcloud.io/api/issues/search?componentKeys=accd_verchestra&rules=typescript:S8786,javascript:S8786,typescript:S5843,javascript:S5843&resolved=false&ps=1"`.
+Bugs read 0 and Reliability A since T6 (2026-10-27T12:39Z). Then T8
+(maintainability, one rule family per change) — or, first, the quality gate's
+last failing condition: new-code coverage on `main` (74.3 % against 80 %).
 
 # Blockers
 
