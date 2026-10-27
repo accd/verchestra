@@ -6,9 +6,9 @@ status: verification
 branch: fix/569-probe-host-containment
 baseRevision: 13fa79356e6e35c583f8a135771ce15e50ace687
 lastCompletedTask: T4
-nextTask: "T5: open the pull request, dispatch platform-matrix.yml with gate=security on its head for the macOS legs, and merge on review with every required check green."
-lastGate: "The 148 probe-host tests pass on Linux (WSL Ubuntu, Node 24.14.0), and 122 on Windows, where the spawned cases assert the platform refusal; all 13 mutation sensors in validation.md are killed; pnpm gate:quick, tests/architecture and pnpm agent:check pass on Windows. macOS not yet run."
-updatedAt: 2026-10-27T19:45:00Z
+nextTask: "T5: merge #632 on the owner's review with every required check green on its exact head, then verify the merge by content."
+lastGate: "PR #632 head b176b82: required checks green; platform-matrix gate=full run 40569914514 green on all five legs; gate=security run 40566619084 green on four legs, with macOS x64 stopped twice in test:unit by an unrelated regex-linearity ratio check; the Linux and Windows runs and 13 mutation sensors in validation.md"
+updatedAt: 2026-10-27T21:15:00Z
 ---
 
 # Evidence
@@ -25,7 +25,7 @@ The owner chose the four decisions in `spec.md` on 2026-10-27. AD-037 stays
 
 # Next exact action
 
-Open the pull request from `fix/569-probe-host-containment`. Dispatch
-`platform-matrix.yml` with `gate=security` on its head, because Linux CI does
-not run macOS, whose zombie and process-table behavior differs. Record the run
-in `validation.md`, then merge on review.
+PR #632 is open with its fleet runs recorded in `validation.md`. Merge it on
+the owner's review with every required check green on its exact head, and
+verify the merge by content. #570's unpushed branch
+`test/570-probe-host-mutants` follows it.
