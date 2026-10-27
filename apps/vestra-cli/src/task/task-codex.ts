@@ -318,7 +318,13 @@ export async function runCodexVerifier(options: CodexSessionOptions): Promise<st
   // suspends the run. A v1 run keeps the T04 conversation, its version floor,
   // and its failure on a usage limit (SSI-83).
   const subscriptionOnly = options.request.schemaVersion === 2;
-  const providers = options.providers ?? new ProviderProcesses({ stderr: (text) => void process.stderr.write(text) });
+  const providers =
+    options.providers ??
+    new ProviderProcesses({
+      stderr: (text) => {
+        process.stderr.write(text);
+      }
+    });
   const provider = providers.session("Codex");
   const { driver, request } = codexSession({
     workspaceId: options.workspaceId,

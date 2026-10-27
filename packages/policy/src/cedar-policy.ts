@@ -295,7 +295,8 @@ export class CedarPolicyAdapter {
     readonly entities?: readonly unknown[];
     readonly untrustedContent?: unknown;
   }): PolicyDecision {
-    void input.untrustedContent;
+    // invariant: input.untrustedContent is accepted and never consulted; only the
+    // view, the request and the entities decide.
     const compiled = this.#compile(input.view);
     const request: CedarRequest = Object.freeze({
       principal: Object.freeze({ type: input.request.principal.type, id: input.request.principal.id }),

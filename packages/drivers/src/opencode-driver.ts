@@ -451,9 +451,7 @@ export class OpenCodeDriver implements Driver {
     return Object.freeze({ sessionId: sessionRef });
   }
 
-  async send(session: DriverSessionRef, input: Readonly<Record<string, unknown>>): Promise<void> {
-    void session;
-    void input;
+  async send(): Promise<void> {
     throw openCodeError("VES_OPENCODE_SEND_UNSUPPORTED", "OpenCode isolated sessions do not accept follow-up input");
   }
 

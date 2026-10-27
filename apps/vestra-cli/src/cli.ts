@@ -280,7 +280,6 @@ function requestedJson(argv: readonly string[]): boolean {
 }
 
 export async function runCli(options: CliRunOptions): Promise<number> {
-  void options.invokedAs;
   let commandName = "cli";
   let output: "human" | "json" = requestedJson(options.argv) ? "json" : "human";
   try {
