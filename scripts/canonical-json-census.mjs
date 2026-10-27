@@ -50,12 +50,25 @@ const V2_REFERENCE_IMPLEMENTATION = "packages/domain/src/canonical/canonical-jso
 const LOCAL_CANONICALIZER_DEFINITION =
   /(?:function\s+|(?:const|let)\s+)canonical(?:ize[A-Za-z0-9]*|Json[A-Za-z0-9]*)?\s*[=(]/u;
 // hazard: a comment that merely names canonicalizeJsonV2 must not count as using it.
-// A line that opens with a named import; its braces are searched for the name
-// separately, so no two quantifiers compete for the same text.
-const NAMED_IMPORT = /^[^\S\n]*import\s*\{([^}]*)\}\s*from\s*["'][^"']+["']/gmu;
+// A named import that opens its line (only whitespace before it since the last
+// line terminator); its braces are searched for the name separately, so no two
+// quantifiers compete for the same text, and the backward look at each import
+// stops at the first character that is not whitespace.
+function opensLine(source, index) {
+  for (let at = index - 1; at >= 0; at -= 1) {
+    if (/[\n\r\u2028\u2029]/u.test(source[at])) return true;
+    if (!/\s/u.test(source[at])) return false;
+  }
+  return true;
+}
 
 export function importsCanonicalizeJsonV2(source) {
-  for (const match of source.matchAll(NAMED_IMPORT)) if (/\bcanonicalizeJsonV2\b/u.test(match[1])) return true;
+  const namedImport = /\bimport\s*\{([^}]*)\}\s*from\s*["'][^"']+["']/gu;
+  for (let match = namedImport.exec(source); match !== null; match = namedImport.exec(source)) {
+    if (opensLine(source, match.index) && /\bcanonicalizeJsonV2\b/u.test(match[1])) return true;
+    // A rejected candidate must not hide an import that starts inside it.
+    namedImport.lastIndex = match.index + 1;
+  }
   return false;
 }
 const PRESENTATION_OR_FIXTURE_REASON =
