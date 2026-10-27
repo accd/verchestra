@@ -112,6 +112,15 @@ repository — the `Protect main` ruleset on the pull request named in
 `reviewedIn`, and the signature over the decision body. See
 `docs/merge-governance.md`.
 
+**That every mutant was killed.** `survivingMutants` is reserved and not
+measured. No gate in this repository runs mutation testing, so the candidate
+evidence records `0` by construction (`scripts/t76-candidate-evidence.mjs`), and
+a `0` here says nothing about how many mutants a test would let through. The
+row that refuses a count other than `0` stays, so that a measurement added later
+fails closed from its first run. Until then, mutation evidence is what a feature
+records itself: the discrimination sensors in its
+`.specs/features/<slug>/validation.md`.
+
 **Independence of the final verifier** is likewise external. The verifier who
 authors the T77 report must not have authored the implementation under
 review. `reviewedIn` records where that can be checked; this file does not

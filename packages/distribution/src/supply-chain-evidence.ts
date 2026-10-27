@@ -24,6 +24,8 @@ export interface SupplyChainEvaluation {
   readonly assertionCount: number;
   readonly skipped: number;
   readonly todo: number;
+  // why: reserved and not measured (TST-006, #598). It is 0 by construction
+  // until a gate runs mutation testing; RELEASE-DECISION-CONTRACT.md says so.
   readonly survivingMutants: number;
 }
 
