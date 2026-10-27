@@ -55,7 +55,7 @@ export class PolicyActivationService {
         activeGeneration
       });
     }
-    if (active !== undefined && candidate.generation === active.generation) {
+    if (candidate.generation === active?.generation) {
       return Object.freeze({
         status: active.policyViewDigest === validation.policyViewDigest ? "unchanged" : "rejected",
         code:

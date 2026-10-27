@@ -221,7 +221,7 @@ export class ProtectedPathBroker {
 
   #record(handle: ProtectedPathHandle): HandleRecord {
     const record = records.get(handle as object);
-    if (record === undefined || record.broker !== this.#identity) {
+    if (record?.broker !== this.#identity) {
       throw new PlatformSecurityError("VES_PATH_HANDLE_INVALID", "Path handle is not authentic for this broker");
     }
     return record;

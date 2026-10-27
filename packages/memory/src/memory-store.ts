@@ -727,7 +727,7 @@ export class MemoryStore {
       .get(batch.workspaceId, batch.projectId) as UnknownRecord | undefined;
     const sourceCount = batch.sources.length;
     const chunkCount = batch.sources.reduce((total, source) => total + source.chunks.length, 0);
-    if (current !== undefined && current.manifest_digest === batch.manifestDigest) {
+    if (current?.manifest_digest === batch.manifestDigest) {
       return {
         generationId: String(current.generation_id),
         manifestDigest: batch.manifestDigest,

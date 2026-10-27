@@ -471,7 +471,7 @@ class TaskRunComposition {
   // task branch anchors. A commit or branch that cannot be read does not hold.
   async #taskCommitHolds(): Promise<boolean> {
     const commit = await this.#runRecord.loadCommit();
-    if (commit === undefined || commit.baseCommit !== this.#plan.request.sourceRevision) return false;
+    if (commit?.baseCommit !== this.#plan.request.sourceRevision) return false;
     const root = this.#workspace.repositoryRoot;
     const ref = taskBranchRef(this.#plan.runId, this.#task.taskId);
     if ((await refTarget(root, ref).catch(() => undefined)) !== commit.commitId) return false;

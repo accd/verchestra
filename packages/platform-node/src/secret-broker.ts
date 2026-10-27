@@ -117,7 +117,7 @@ export class SecretBroker {
 
   async withSecret<T>(handle: SecretHandle, consumer: (value: Uint8Array) => Promise<T> | T): Promise<T> {
     const record = handleBindings.get(handle as object);
-    if (record === undefined || record.broker !== this.#identity || record.binding.workspaceId !== this.#workspaceId) {
+    if (record?.broker !== this.#identity || record.binding.workspaceId !== this.#workspaceId) {
       throw new PlatformSecurityError("VES_SECRET_HANDLE_INVALID", "Secret handle is not authentic for this broker");
     }
     const stored = await this.#adapter.read(record.binding.workspaceId, record.binding.logicalName);

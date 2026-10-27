@@ -396,7 +396,7 @@ export function resolveDatabaseContradiction(
   const humanReviewRef = text(input["humanReviewRef"], REVIEW_REF, code, "Database contradiction review is invalid");
   const resolvedAt = instant(input["resolvedAt"], code, "Database contradiction resolution time is invalid");
   const current = packageValue.contradictions.find((item) => item.contradictionId === contradictionId);
-  if (current === undefined || !current.alternatives.some((item) => item.valueDigest === selectedValueDigest))
+  if (!current?.alternatives.some((item) => item.valueDigest === selectedValueDigest))
     fail(code, "Database contradiction selection is invalid");
   if (current.status === "resolved") {
     if (
@@ -741,9 +741,9 @@ export function planSyntheticSeedScenarios(value: unknown) {
   );
   const databaseId = text(input["databaseId"], STABLE_ID, code, "Synthetic seed database is invalid");
   const packageValue = input["knowledgePackage"] as DatabaseKnowledgePackage;
+  if (typeof packageValue !== "object" || packageValue === null)
+    fail(code, "Database Knowledge Package binding is invalid");
   if (
-    typeof packageValue !== "object" ||
-    packageValue === null ||
     packageValue.workspaceId !== workspaceId ||
     packageValue.databaseId !== databaseId ||
     !DIGEST.test(packageValue.packageDigest)

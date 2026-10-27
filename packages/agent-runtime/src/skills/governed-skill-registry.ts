@@ -228,7 +228,7 @@ export class GovernedSkillRegistry {
     const skill = (await this.#validateLock(lock)).find((candidate) => candidate.id === request.skillId);
     if (skill === undefined) throw new SkillRegistryError("VES_SKILL_UNKNOWN", "Extension references an unknown Skill");
     const reference = skill.extensionRef;
-    if (reference === undefined || reference.id !== request.extensionId || reference.approvalRef.length === 0)
+    if (reference?.id !== request.extensionId || reference.approvalRef.length === 0)
       throw new SkillRegistryError(
         "VES_SKILL_EXECUTION_UNAUTHORIZED",
         "Executable Skill content requires an approved Tool or Plugin"
