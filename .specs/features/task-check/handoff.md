@@ -8,7 +8,7 @@ baseRevision: 4a33c0c8fa22b5f8d2baf831cf614919a96dee26
 lastCompletedTask: T7
 nextTask: "None in this feature. #593 is closed with the owner decision recorded."
 lastGate: "PR #606 merged by rebase at 2026-10-26T12:47:51Z (main 1802236, tree equal to the PR head d3e2e23) with Quality gate (the full release-gate selection on Linux), Site quality and CodeQL passing on that head; independent validation round 4 and T7 as the record, by the owner decision"
-updatedAt: 2026-10-26T13:05:00Z
+updatedAt: 2026-10-27T15:30:00Z
 ---
 
 # Scope
@@ -20,8 +20,15 @@ unchanged (`spec.md`, Status).
 # Completed Evidence
 
 T1 to T7 (`tasks.md`), one commit each. `tests/e2e/task-check-e2e.test.mjs`
-has twenty-three journeys and runs on every platform the task fixture serves (on
+has twenty-four journeys and runs on every platform the task fixture serves (on
 Linux through its Secret Service stand-in).
+
+**Post-merge fix, 2026-10-27 (PR #624).** The fleet's macOS legs, which nothing
+before them had run, found both version probes run without the run's
+temporary directory, so `task check` reported missing a Claude Code and a
+Codex that `task start` runs. The probes now get the run's pass-through
+environment, and a twenty-fourth journey holds them to it. See `validation.md`,
+"Post-merge fix".
 
 `validation.md` holds four rounds by independent validator sub-agents:
 
