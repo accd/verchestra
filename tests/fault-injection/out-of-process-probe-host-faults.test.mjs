@@ -11,9 +11,13 @@ import {
 } from "../helpers/spawned-probe-worker-fixture.mjs";
 
 const BOUNDS = { timeoutMs: 400, rowLimit: 100, byteLimit: 100_000, concurrencyLimit: 1 };
-// why: the bound is the supervisor's time limit plus the terminator's own
-// verified wait; anything slower means the hang was not cut at the bound.
-const CEILING_MS = BOUNDS.timeoutMs + 1_500;
+// why: TST-005 (#598). The cut is timed from when the host starts ending the
+// worker, not from when the tree is dead, and held to the bound by a ratio:
+// the supervisor's own timer starts it, so it begins within one more bound. How
+// long a process tree takes to die varies by runner; the test timeout fails a
+// kill that never completes.
+const CUT_WITHIN_BOUNDS = 2;
+const OPTIONS = { timeout: 30_000 };
 
 function reap(t, pids) {
   t.after(() => {
@@ -31,14 +35,22 @@ for (const [label, mode] of [
   ["during execution", "hang"],
   ["before answering its handshake", "hang-handshake"]
 ]) {
-  test(`a worker that hangs ${label} is killed at the time bound`, async (t) => {
+  test(`a worker that hangs ${label} is killed at the time bound`, OPTIONS, async (t) => {
     if (WIN32_HOST) return probeHostRefusedOnWin32(t);
     const fixture = await spawnedProbe({ mode, request: { bounds: BOUNDS } });
     const started = Date.now();
+    let cutAt;
+    const terminate = fixture.transport.terminate.bind(fixture.transport);
+    fixture.transport.terminate = () => {
+      cutAt ??= Date.now() - started;
+      return terminate();
+    };
     await assert.rejects(fixture.supervisor.execute(), { code: "VES_PROBE_TIMEOUT" });
-    const elapsed = Date.now() - started;
-    assert.ok(elapsed >= BOUNDS.timeoutMs, `returned at ${elapsed}ms, before the bound`);
-    assert.ok(elapsed < CEILING_MS, `returned at ${elapsed}ms, well past the bound`);
+    assert.ok(cutAt >= BOUNDS.timeoutMs, `the cut began at ${cutAt}ms, before the bound`);
+    assert.ok(
+      cutAt < CUT_WITHIN_BOUNDS * BOUNDS.timeoutMs,
+      `the cut began at ${cutAt}ms, past ${CUT_WITHIN_BOUNDS} times the ${BOUNDS.timeoutMs}ms bound`
+    );
     assert.equal(fixture.framed.terminated, true);
     assert.equal(await eventuallyDead(fixture.transport.pid), true);
     assert.equal(fixture.results.commits, 0);

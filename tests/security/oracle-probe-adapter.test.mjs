@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { parseOracleReadOperation } from "../../packages/data-probe/src/oracle-adapter.ts";
 import { request } from "../helpers/database-probe-fixture.mjs";
 import { oracleFixture } from "../helpers/oracle-probe-fixture.mjs";
+import { GROWTH_SCALE, LINEAR_GROWTH_LIMIT, growth } from "../helpers/linear-growth.mjs";
 
 const options = {
   kind: "select",
@@ -51,12 +52,19 @@ test("Oracle allows a division operator that shares its line", () =>
     { schema: "hr", name: "orders", type: "table" }
   ]));
 
-test("Oracle batch separator detection stays linear on adversarial newline input", () => {
-  const adversarial = `${"\n".repeat(60_000)}X`;
-  const started = process.hrtime.bigint();
-  assert.throws(() => parseOracleReadOperation(adversarial, options), { code: "VES_ORACLE_READ_FORM_DENIED" });
-  const elapsedMs = Number(process.hrtime.bigint() - started) / 1e6;
-  assert.ok(elapsedMs < 1000, `parse took ${elapsedMs.toFixed(0)}ms; batch separator detection is no longer linear`);
+// why: TST-005 (#598). Linear by ratio, not by a wall-clock bound: a regex
+// that backtracks over the newlines grows about 16 times over a 4 times larger
+// input, where the line scan grows about 4 times. The test timeout fails one
+// that never returns.
+test("Oracle batch separator detection stays linear on adversarial newline input", { timeout: 60_000 }, () => {
+  const ratio = growth(
+    (sql) => assert.throws(() => parseOracleReadOperation(sql, options), { code: "VES_ORACLE_READ_FORM_DENIED" }),
+    (lines) => `${"\n".repeat(lines)}X`
+  );
+  assert.ok(
+    ratio < LINEAR_GROWTH_LIMIT,
+    `a ${GROWTH_SCALE}x larger input took ${ratio.toFixed(1)}x as long; batch separator detection is no longer linear`
+  );
 });
 
 for (const [label, connection] of [

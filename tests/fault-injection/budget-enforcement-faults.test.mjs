@@ -186,14 +186,20 @@ test("the duration timer runs for the run's remaining time, not a fresh share", 
   // A driver that goes silent. The declared ceiling is 60s (54s at 90%), and
   // 53.95s is already spent, so the stop must land in the remaining ~50ms
   // rather than 54s later.
+  // why: TST-005 (#598). The driver's own ticks measure when the stop landed,
+  // not the wall clock: the remaining ~50ms is about three of its 20ms ticks,
+  // while a fresh 54s share would let it run all hundred. A slow runner
+  // delays the stop and the ticks alike.
+  let cancelledAtTick;
   ports.driver = {
     execute: async () => {
       state.calls.push("driver");
-      // A cooperative driver: it winds down when cancelled, so the elapsed time
-      // reflects when the timer fired rather than how long the driver slept.
       for (let tick = 0; tick < 100; tick += 1) {
         await new Promise((resolve) => setTimeout(resolve, 20));
-        if (state.calls.includes("driver:cancel")) return { status: "cancelled", outputRefs: [] };
+        if (state.calls.includes("driver:cancel")) {
+          cancelledAtTick = tick;
+          return { status: "cancelled", outputRefs: [] };
+        }
       }
       return { status: "completed", outputRefs: [] };
     },
@@ -204,11 +210,12 @@ test("the duration timer runs for the run's remaining time, not a fresh share", 
     priceTable: modelPriceTable,
     resume: { consumedCostUsd: 0, consumedTokens: 0, consumedDurationMs: 53_950, usageEvents: 0, stopReason: null }
   });
-  const startedAt = Date.now();
   await assert.rejects(executor(ports).execute(withBudgets(), { budgetMeter: meter }), {
     code: "VES_EXECUTOR_BUDGET_EXCEEDED"
   });
-  const elapsed = Date.now() - startedAt;
-  assert.ok(elapsed < 3_000, `expected the remaining duration to fire quickly, took ${elapsed}ms`);
   assert.ok(state.calls.includes("driver:cancel"));
+  assert.ok(
+    cancelledAtTick < 25,
+    `the stop landed at the driver's tick ${cancelledAtTick} of 100, not within the remaining duration`
+  );
 });
