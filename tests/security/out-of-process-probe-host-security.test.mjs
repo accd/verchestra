@@ -5,13 +5,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 
-import { SpawnedProbeWorker } from "../../packages/platform-node/src/index.ts";
 import { workspaceId } from "../helpers/database-probe-fixture.mjs";
 import {
   ObservingResultSink,
   WIN32_HOST,
   eventuallyDead,
   fileDigest,
+  launchApproved,
   probeHostRefusedOnWin32,
   spawnedProbe
 } from "../helpers/spawned-probe-worker-fixture.mjs";
@@ -30,6 +30,20 @@ async function assertContained(fixture, code) {
   assert.equal(fixture.results.commits, 0);
   assert.equal(await eventuallyDead(fixture.transport.pid), true, "the worker process is gone");
   assert.equal(fixture.transport.diagnostics().workDirectoryRemoved, true);
+}
+
+// why: a launch that should be refused but starts is ended here, so a wrong
+// pass leaves no worker holding this test process open.
+async function assertLaunchRefused(options, code) {
+  let fixture;
+  try {
+    fixture = await spawnedProbe(options);
+  } catch (error) {
+    assert.equal(error.code, code);
+    return;
+  }
+  await fixture.framed.terminate();
+  assert.fail(`the launch started instead of failing with ${code}`);
 }
 
 for (const [label, mode, code] of [
@@ -156,11 +170,98 @@ for (const name of [
 ]) {
   test(`the host refuses to pass ${name} into a worker environment`, async (t) => {
     if (WIN32_HOST) return probeHostRefusedOnWin32(t);
-    await assert.rejects(spawnedProbe({ environment: { [name]: "value" } }), {
-      code: "VES_PROBE_HOST_ENVIRONMENT_DENIED"
-    });
+    await assertLaunchRefused({ environment: { [name]: "value" } }, "VES_PROBE_HOST_ENVIRONMENT_DENIED");
   });
 }
+
+// invariant: #569, PHC-02. Each name makes a loader, runtime or shell read more
+// code than the approved entry. The approval and the grant name the launch
+// with it, and the host still refuses it.
+for (const name of [
+  "NODE_OPTIONS",
+  "NODE_PATH",
+  "LD_PRELOAD",
+  "LD_LIBRARY_PATH",
+  "DYLD_INSERT_LIBRARIES",
+  "PYTHONPATH",
+  "PYTHONSTARTUP",
+  "PERL5OPT",
+  "PERLLIB",
+  "RUBYOPT",
+  "RUBYLIB",
+  "BASH_ENV",
+  "ENV",
+  "JAVA_TOOL_OPTIONS",
+  "JDK_JAVA_OPTIONS",
+  "GLIBC_TUNABLES",
+  "GCONV_PATH"
+]) {
+  test(`the host refuses the loader variable ${name} even when the approval names it`, async (t) => {
+    if (WIN32_HOST) return probeHostRefusedOnWin32(t);
+    await assertLaunchRefused({ environment: { [name]: "value" } }, "VES_PROBE_HOST_ENVIRONMENT_DENIED");
+  });
+}
+
+async function injectedModule(t) {
+  const directory = await mkdtemp(join(tmpdir(), "verchestra-probe-injected-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const marker = join(directory, "ran");
+  const module = join(directory, "injected.cjs");
+  await writeFile(module, `require("node:fs").writeFileSync(${JSON.stringify(marker)}, "ran");\n`);
+  return { module, marker };
+}
+
+test("NODE_OPTIONS=--require never runs the module it names", async (t) => {
+  if (WIN32_HOST) return probeHostRefusedOnWin32(t);
+  const { module, marker } = await injectedModule(t);
+  await assertLaunchRefused(
+    { environment: { NODE_OPTIONS: `--require ${module}` } },
+    "VES_PROBE_HOST_ENVIRONMENT_DENIED"
+  );
+  assert.equal(existsSync(marker), false, "the injected module did not run");
+});
+
+// invariant: #569, PHC-01. The approval names one launch; the host is asked to
+// start another. Nothing starts, so the extra code never runs.
+const APPROVED_ENVIRONMENT = Object.freeze({
+  PROBE_FIXTURE_MODE: "reference",
+  PROBE_FIXTURE_COMPONENT: "plugin:acme-orders-probe"
+});
+
+test("a launch with an argument the approval does not name is refused before it starts", async (t) => {
+  if (WIN32_HOST) return probeHostRefusedOnWin32(t);
+  const { module, marker } = await injectedModule(t);
+  await assertLaunchRefused(
+    { args: ["--require", module], approvedLaunch: { args: [] } },
+    "VES_PROBE_HOST_LAUNCH_DIGEST"
+  );
+  assert.equal(existsSync(marker), false, "the module the argument names did not run");
+});
+
+test("a launch with an environment extra the approval does not name is refused", async (t) => {
+  if (WIN32_HOST) return probeHostRefusedOnWin32(t);
+  await assertLaunchRefused(
+    {
+      environment: { PROBE_FIXTURE_EXTRA: "unapproved" },
+      approvedLaunch: { environment: APPROVED_ENVIRONMENT }
+    },
+    "VES_PROBE_HOST_LAUNCH_DIGEST"
+  );
+});
+
+test("a launch through an executable the approval does not name is refused", async (t) => {
+  if (WIN32_HOST) return probeHostRefusedOnWin32(t);
+  await assertLaunchRefused({ approvedLaunch: { executable: "/bin/sh" } }, "VES_PROBE_HOST_LAUNCH_DIGEST");
+});
+
+test("the launch digest the host measures is the one the approval and the trust carry", async (t) => {
+  if (WIN32_HOST) return probeHostRefusedOnWin32(t);
+  const fixture = await spawnedProbe();
+  assert.match(fixture.transport.launchDigest, /^sha256:[a-f0-9]{64}$/u);
+  assert.equal(fixture.transport.launchDigest, fixture.trust.launchDigest);
+  assert.equal(fixture.framed.launchDigest, fixture.trust.launchDigest);
+  await fixture.framed.terminate();
+});
 
 test("a bearer credential on stderr is redacted whatever its letter case", async (t) => {
   if (WIN32_HOST) return probeHostRefusedOnWin32(t);
@@ -169,7 +270,7 @@ test("a bearer credential on stderr is redacted whatever its letter case", async
   t.after(() => rm(directory, { recursive: true, force: true }));
   const worker = join(directory, "worker.mjs");
   await writeFile(worker, `process.stderr.write("Authorization: BEARER ${token}\\n");\n`);
-  const transport = await SpawnedProbeWorker.launch({
+  const transport = await launchApproved({
     executable: process.execPath,
     entry: { path: worker, digest: fileDigest(worker) },
     workspaceId

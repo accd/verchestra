@@ -6,7 +6,6 @@ import { join } from "node:path";
 import { test } from "node:test";
 
 import { FramedProbeWorker, encodeProbeFrame } from "../../packages/extension-host/src/index.ts";
-import { SpawnedProbeWorker } from "../../packages/platform-node/src/index.ts";
 import { workspaceId } from "../helpers/database-probe-fixture.mjs";
 import {
   NODE_WORKER,
@@ -14,6 +13,7 @@ import {
   PYTHON_WORKER,
   eventuallyDead,
   fileDigest,
+  launchApproved,
   findPython,
   probeHostRefusedOnWin32,
   spawnedProbe
@@ -76,7 +76,7 @@ function controllerFrame(name, payload) {
 // invariant: a reference worker verifies every inbound payload digest and exits 3
 // on a mismatch; `probe.cancel` makes a worker that agrees exit 0.
 async function exitCodeAfterCancel(worker, executable, args) {
-  const transport = await SpawnedProbeWorker.launch({
+  const transport = await launchApproved({
     executable,
     args,
     entry: { path: worker, digest: fileDigest(worker) },
@@ -116,7 +116,7 @@ test(
 test("the host refuses to spawn an entry whose bytes differ from the approved digest", async (t) => {
   if (WIN32_HOST) return probeHostRefusedOnWin32(t);
   await assert.rejects(
-    SpawnedProbeWorker.launch({
+    launchApproved({
       executable: process.execPath,
       entry: { path: NODE_WORKER, digest: `sha256:${"0".repeat(64)}` },
       workspaceId
@@ -131,7 +131,7 @@ test("the executed file is a private copy, so a later change to the source canno
   t.after(() => rm(directory, { recursive: true, force: true }));
   const source = join(directory, "worker.mjs");
   await copyFile(NODE_WORKER, source);
-  const transport = await SpawnedProbeWorker.launch({
+  const transport = await launchApproved({
     executable: process.execPath,
     entry: { path: source, digest: fileDigest(NODE_WORKER) },
     workspaceId
@@ -147,7 +147,7 @@ test("the executed file is a private copy, so a later change to the source canno
 
 test("the probe host refuses a win32 host rather than claim an unqualified platform", async () => {
   await assert.rejects(
-    SpawnedProbeWorker.launch({
+    launchApproved({
       executable: process.execPath,
       entry: { path: NODE_WORKER, digest: fileDigest(NODE_WORKER) },
       workspaceId,
@@ -166,7 +166,7 @@ for (const [label, options] of [
   test(`the probe host refuses ${label}`, async (t) => {
     if (WIN32_HOST) return probeHostRefusedOnWin32(t);
     await assert.rejects(
-      SpawnedProbeWorker.launch({
+      launchApproved({
         executable: process.execPath,
         entry: { path: NODE_WORKER, digest: fileDigest(NODE_WORKER) },
         workspaceId,
@@ -179,7 +179,7 @@ for (const [label, options] of [
 
 test("termination is idempotent and closes the channel", async (t) => {
   if (WIN32_HOST) return probeHostRefusedOnWin32(t);
-  const transport = await SpawnedProbeWorker.launch({
+  const transport = await launchApproved({
     executable: process.execPath,
     entry: { path: NODE_WORKER, digest: fileDigest(NODE_WORKER) },
     workspaceId

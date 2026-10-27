@@ -4,12 +4,18 @@ import { chmod, mkdtemp, readFile, realpath, rm, stat, writeFile } from "node:fs
 import { tmpdir } from "node:os";
 import { extname, isAbsolute, join } from "node:path";
 
-import { terminateProcessTree } from "./process-tree-terminator.ts";
+import { probeLaunchDigest } from "./probe-launch-digest.ts";
+import { terminateStoppedTree } from "./process-tree-terminator.ts";
 
 const DIGEST = /^sha256:[a-f0-9]{64}$/u;
 const WORKSPACE = /^[A-Za-z0-9][A-Za-z0-9._:@/+-]{0,511}$/u;
 const ENVIRONMENT_NAME = /^[A-Z][A-Z0-9_]{0,63}$/u;
 const SECRET_LIKE_NAME = /SECRET|TOKEN|PASSW|CREDENTIAL|PRIVATE|API_?KEY|ACCESS_?KEY|AUTH|SESSION|COOKIE/u;
+// why: names a loader, runtime or shell reads to load more code than the
+// approved entry. A grant could bind `NODE_OPTIONS=--require x` but never the
+// bytes of `x`, so these are refused whatever the grant says (#569, PHC-02).
+const LOADER_NAME =
+  /^(?:NODE_|LD_|DYLD_|PYTHON|PERL5|(?:PERLLIB|RUBYOPT|RUBYLIB|BASH_ENV|ENV|JAVA_TOOL_OPTIONS|JDK_JAVA_OPTIONS|GLIBC_TUNABLES|GCONV_PATH)$)/u;
 const ENTRY_EXTENSION = /^\.[a-z0-9]{1,8}$/u;
 const MAXIMUM_ENTRY_BYTES = 16 * 1024 * 1024;
 const RESERVED_ENVIRONMENT = new Set(["PATH", "HOME", "TMPDIR", "LANG", "LC_ALL"]);
@@ -47,6 +53,9 @@ export interface SpawnedProbeWorkerOptions {
   readonly executable: string;
   readonly args?: readonly string[];
   readonly entry: { readonly path: string; readonly digest: string };
+  // invariant: the launch digest the approval and the grant name. A launch that
+  // measures otherwise is refused before anything starts, as the entry is.
+  readonly approvedLaunchDigest: string;
   readonly workspaceId: string;
   readonly limits?: Partial<SpawnedProbeWorkerLimits>;
   readonly environment?: Readonly<Record<string, string>>;
@@ -118,7 +127,12 @@ function childEnvironment(
 }
 
 function permittedEnvironmentName(name: string): boolean {
-  return ENVIRONMENT_NAME.test(name) && !RESERVED_ENVIRONMENT.has(name) && !SECRET_LIKE_NAME.test(name);
+  return (
+    ENVIRONMENT_NAME.test(name) &&
+    !RESERVED_ENVIRONMENT.has(name) &&
+    !SECRET_LIKE_NAME.test(name) &&
+    !LOADER_NAME.test(name)
+  );
 }
 
 function validateLaunchInput(options: SpawnedProbeWorkerOptions): void {
@@ -128,6 +142,8 @@ function validateLaunchInput(options: SpawnedProbeWorkerOptions): void {
     fail("VES_PROBE_HOST_INPUT_INVALID", "Probe worker Workspace is invalid");
   if (!isAbsolute(options.executable) || !isAbsolute(options.entry.path) || !DIGEST.test(options.entry.digest))
     fail("VES_PROBE_HOST_INPUT_INVALID", "Probe worker executable, entry, or digest is invalid");
+  if (!DIGEST.test(String(options.approvedLaunchDigest)))
+    fail("VES_PROBE_HOST_INPUT_INVALID", "Probe worker approved launch digest is invalid");
   validateLaunchArguments(options);
 }
 
@@ -171,11 +187,22 @@ type TransportEvent =
   | { readonly kind: "fault"; readonly code: string; readonly message: string }
   | { readonly kind: "exit" };
 
+export interface ProbeWorkerTermination {
+  // invariant: true only if the worker had not exited when the host stopped its
+  // tree. A worker that exits first has orphaned its children, so the sweep
+  // cannot be claimed complete for it.
+  readonly running: boolean;
+}
+
 // invariant: one instance owns exactly one child process, one private work
 // directory, and one process group. Every exit path funnels through terminate(),
-// which kills the group, sweeps setsid() escapees, and removes the directory.
+// which stops the tree, kills it, checks its output reached end of file, and
+// removes the directory.
 export class SpawnedProbeWorker {
   readonly launchedComponentDigest: string;
+  // invariant: measured by the host over what it started (probeLaunchDigest),
+  // never reported by the worker.
+  readonly launchDigest: string;
   readonly #child: ChildProcessWithoutNullStreams;
   readonly #workDirectory: string;
   readonly #limits: SpawnedProbeWorkerLimits;
@@ -189,19 +216,21 @@ export class SpawnedProbeWorker {
   readonly #closed: Promise<void>;
   #listener: ProbeTransportListener | undefined;
   readonly #pending: TransportEvent[] = [];
-  #termination: Promise<void> | undefined;
+  #termination: Promise<ProbeWorkerTermination> | undefined;
   #terminated = false;
+  #spawnFailed = false;
   #workDirectoryRemoved = false;
 
   private constructor(
     child: ChildProcessWithoutNullStreams,
     workDirectory: string,
-    digest: string,
+    digests: { readonly component: string; readonly launch: string },
     limits: SpawnedProbeWorkerLimits
   ) {
     this.#child = child;
     this.#workDirectory = workDirectory;
-    this.launchedComponentDigest = digest;
+    this.launchedComponentDigest = digests.component;
+    this.launchDigest = digests.launch;
     this.#limits = limits;
     this.#closed = new Promise((resolve) => {
       child.once("close", (code, signal) => {
@@ -212,9 +241,10 @@ export class SpawnedProbeWorker {
         resolve();
       });
     });
-    child.once("error", () =>
-      this.#emit({ kind: "fault", code: "VES_PROBE_HOST_SPAWN_FAILED", message: "Probe worker could not be started" })
-    );
+    child.once("error", () => {
+      this.#spawnFailed = true;
+      this.#emit({ kind: "fault", code: "VES_PROBE_HOST_SPAWN_FAILED", message: "Probe worker could not be started" });
+    });
     // why: a worker that exits or closes stdin early turns every write into
     // EPIPE; the exit event already reports that, so the stream error is absorbed.
     child.stdin.on("error", () => undefined);
@@ -230,6 +260,9 @@ export class SpawnedProbeWorker {
     try {
       await chmod(workDirectory, 0o700);
       const environment = childEnvironment(workDirectory, options.workspaceId, options.environment);
+      const launch = await probeLaunchDigest({ ...options, executable });
+      if (launch !== options.approvedLaunchDigest)
+        fail("VES_PROBE_HOST_LAUNCH_DIGEST", "Probe worker launch does not match its approved launch");
       // invariant: the executed file is the private copy written from the exact
       // bytes that were hashed, so a later change to the workspace file cannot
       // swap the code between the digest check and exec.
@@ -243,7 +276,7 @@ export class SpawnedProbeWorker {
         windowsHide: true,
         stdio: ["pipe", "pipe", "pipe"]
       });
-      return new SpawnedProbeWorker(child, workDirectory, options.entry.digest, limits);
+      return new SpawnedProbeWorker(child, workDirectory, { component: options.entry.digest, launch }, limits);
     } catch (error) {
       await rm(workDirectory, { recursive: true, force: true });
       if (error instanceof SpawnedProbeWorkerError) throw error;
@@ -290,7 +323,7 @@ export class SpawnedProbeWorker {
     needle.fill(0);
   }
 
-  terminate(): Promise<void> {
+  terminate(): Promise<ProbeWorkerTermination> {
     this.#termination ??= this.#terminate();
     return this.#termination;
   }
@@ -312,23 +345,37 @@ export class SpawnedProbeWorker {
     });
   }
 
-  async #terminate(): Promise<void> {
+  async #terminate(): Promise<ProbeWorkerTermination> {
     this.#terminated = true;
     const pid = this.#child.pid;
     try {
-      if (pid !== undefined)
-        await terminateProcessTree(pid, () =>
-          fail("VES_PROBE_HOST_TERMINATION_INCOMPLETE", "Probe worker process group remained alive after termination")
-        );
+      if (pid === undefined || this.#spawnFailed) {
+        this.#child.stdin.destroy();
+        return { running: false };
+      }
+      const { running } = await terminateStoppedTree(pid, {
+        exited: () => this.#child.exitCode !== null || this.#child.signalCode !== null,
+        incomplete: () =>
+          fail("VES_PROBE_HOST_TERMINATION_INCOMPLETE", "Probe worker process tree remained alive after termination")
+      });
       this.#child.stdin.destroy();
-      await Promise.race([
-        this.#closed,
-        new Promise((resolve) => setTimeout(resolve, this.#limits.exitWaitMs).unref())
-      ]);
+      // invariant: every process the host found is dead, so output that never
+      // reaches end of file is held by one it could not find: a descendant a
+      // double fork orphaned before the tree was stopped (#569, PHC-07).
+      if (!(await this.#closedWithin(this.#limits.exitWaitMs)))
+        fail("VES_PROBE_HOST_TERMINATION_INCOMPLETE", "A process outside the worker's tree still holds its output");
+      return { running };
     } finally {
       await rm(this.#workDirectory, { recursive: true, force: true });
       this.#workDirectoryRemoved = true;
     }
+  }
+
+  #closedWithin(milliseconds: number): Promise<boolean> {
+    return Promise.race([
+      this.#closed.then(() => true),
+      new Promise<boolean>((resolve) => setTimeout(() => resolve(false), milliseconds).unref())
+    ]);
   }
 
   #stdout(chunk: Buffer): void {

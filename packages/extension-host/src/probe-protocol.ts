@@ -59,6 +59,17 @@ export function terminate(code: string, message: string): never {
   throw new ProbeProtocolError(code, message, true, true);
 }
 
+// why: whatever a transport or worker threw, a failed termination means a
+// process may still be running, which a caller must tell from a worker fault.
+export function terminationIncomplete(): ProbeProtocolError {
+  return new ProbeProtocolError(
+    "VES_PROBE_HOST_TERMINATION_INCOMPLETE",
+    "Probe worker process tree outlived its termination",
+    true,
+    true
+  );
+}
+
 export interface ProbeProtocolEnvelope {
   readonly protocol: "verchestra-probe/1";
   readonly messageId: string;
@@ -304,6 +315,9 @@ export interface ProbeWorkerPort {
   // invariant: for an out-of-process worker this is the digest the host measured
   // over the bytes it executed, not a value the worker reported about itself.
   readonly launchedComponentDigest?: string;
+  // invariant: likewise host-measured, over the executable, arguments, environment
+  // extras and entry the host started (#569, PHC-01).
+  readonly launchDigest?: string;
   handshake(): Promise<ProbeWorkerHandshake>;
   verifyIdentity(plan: ProbePlanView): Promise<ProbeIdentityEvidence | undefined>;
   configureReadOnlySession(plan: ProbePlanView): Promise<ProbeSessionEvidence>;

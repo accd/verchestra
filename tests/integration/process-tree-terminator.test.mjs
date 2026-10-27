@@ -3,7 +3,11 @@ import { execFileSync, spawn } from "node:child_process";
 import { once } from "node:events";
 import { test } from "node:test";
 
-import { taskkillExecutable, terminateProcessGroup } from "../../packages/platform-node/src/process-tree-terminator.ts";
+import {
+  taskkillExecutable,
+  terminateProcessGroup,
+  terminateStoppedTree
+} from "../../packages/platform-node/src/process-tree-terminator.ts";
 
 const INCOMPLETE = () => assert.fail("the terminator reported a live group");
 
@@ -82,4 +86,108 @@ test("taskkill resolves under SystemRoot", () => {
     if (saved === undefined) delete process.env["SystemRoot"];
     else process.env["SystemRoot"] = saved;
   }
+});
+
+// why: the routine the probe host ends its worker with (#569). Each case below
+// asserts the win32 refusal there instead of skipping: the probe host is POSIX
+// only and refuses win32 before it starts a worker.
+const REFUSED = () => {
+  throw new Error("incomplete");
+};
+
+function alive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    if (error.code === "ESRCH") return false;
+    throw error;
+  }
+}
+
+async function eventuallyGone(pid) {
+  for (let attempt = 0; attempt < 40 && alive(pid); attempt += 1)
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  return !alive(pid);
+}
+
+function reap(t, pid) {
+  t.after(() => {
+    if (alive(pid)) process.kill(pid, "SIGKILL");
+  });
+}
+
+async function refusedOnWin32(t) {
+  t.diagnostic("win32: the stopped-tree routine refuses this platform instead");
+  await assert.rejects(terminateStoppedTree(process.pid, { exited: () => false, incomplete: REFUSED }), /incomplete/u);
+}
+
+// why: the escapee leaves the leader's group at once, so only parentage links
+// it to the leader when the tree is stopped.
+const ESCAPING_LEADER = `
+const { spawn } = require("node:child_process");
+const escaped = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore", detached: true });
+process.stdout.write(String(escaped.pid) + "\\n");
+setInterval(() => {}, 1000);
+`;
+
+test("a stopped tree ends a descendant that left the group while its root ran", async (t) => {
+  if (process.platform === "win32") return refusedOnWin32(t);
+  const leader = spawn(process.execPath, ["-e", ESCAPING_LEADER], {
+    detached: true,
+    stdio: ["ignore", "pipe", "ignore"]
+  });
+  const [chunk] = await once(leader.stdout, "data");
+  const escaped = Number(String(chunk).trim());
+  reap(t, escaped);
+  const exited = once(leader, "exit");
+  const outcome = await terminateStoppedTree(leader.pid, {
+    exited: () => leader.exitCode !== null || leader.signalCode !== null,
+    incomplete: INCOMPLETE
+  });
+  await exited;
+  assert.deepEqual(outcome, { running: true });
+  assert.equal(await eventuallyGone(escaped), true, "the escapee is dead");
+});
+
+test("a root that exited before its group was stopped is reported as not running", async (t) => {
+  if (process.platform === "win32") return refusedOnWin32(t);
+  const { leader, grandchild } = await spawnGroup();
+  reap(t, grandchild);
+  const exited = once(leader, "exit");
+  process.kill(leader.pid, "SIGKILL");
+  await exited;
+  const outcome = await terminateStoppedTree(leader.pid, { exited: () => true, incomplete: INCOMPLETE });
+  assert.deepEqual(outcome, { running: false });
+  assert.equal(await eventuallyGone(grandchild), true, "the member left in the group is still killed");
+});
+
+// why: a pid the table still lists can belong to another process once the
+// host has seen the root exit, so the root counts as running only if both agree.
+test("a root the host saw exit is not running even when a table still lists its pid", async (t) => {
+  if (process.platform === "win32") return refusedOnWin32(t);
+  const { leader, grandchild } = await spawnGroup();
+  reap(t, grandchild);
+  const exited = once(leader, "exit");
+  process.kill(leader.pid, "SIGKILL");
+  await exited;
+  const outcome = await terminateStoppedTree(leader.pid, {
+    exited: () => true,
+    incomplete: INCOMPLETE,
+    table: async () => [{ pid: leader.pid, ppid: 1, pgid: leader.pid, zombie: false }]
+  });
+  assert.deepEqual(outcome, { running: false });
+});
+
+test("without a process table the group is still killed and the sweep is reported incomplete", async (t) => {
+  if (process.platform === "win32") return refusedOnWin32(t);
+  const { leader, grandchild } = await spawnGroup();
+  reap(t, grandchild);
+  const exited = once(leader, "exit");
+  await assert.rejects(
+    terminateStoppedTree(leader.pid, { exited: () => false, incomplete: REFUSED, table: async () => undefined }),
+    /incomplete/u
+  );
+  await exited;
+  assert.equal(await eventuallyGone(grandchild), true);
 });

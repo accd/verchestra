@@ -31,6 +31,22 @@ function reap(t, pids) {
   });
 }
 
+// why: registered before anything can fail, so the processes a worker reported
+// are killed even when an assertion stops the case early; a survivor holding
+// the worker's output would otherwise keep this test process alive.
+function reapObserved(t, results) {
+  t.after(() => {
+    const pids = results.observed.flatMap((row) => Object.values(row)).filter((pid) => Number.isSafeInteger(pid));
+    for (const pid of pids) {
+      try {
+        process.kill(pid, "SIGKILL");
+      } catch (error) {
+        if (error.code !== "ESRCH") throw error;
+      }
+    }
+  });
+}
+
 for (const [label, mode] of [
   ["during execution", "hang"],
   ["before answering its handshake", "hang-handshake"]
@@ -72,6 +88,78 @@ test("a worker that forks grandchildren has its whole tree killed, including a s
   assert.equal(await eventuallyDead(descendants.escaped), true, "the setsid grandchild is dead");
   assert.equal(results.rollbacks, 1);
   assert.equal(results.commits, 0);
+});
+
+// invariant: #569, PHC-05. The worker is still running when the host ends it, so
+// a child that left its process group keeps its parent until the kill.
+test("a setsid child of a worker that completes its stream is ended with the tree", OPTIONS, async (t) => {
+  if (WIN32_HOST) return probeHostRefusedOnWin32(t);
+  const results = new ObservingResultSink();
+  reapObserved(t, results);
+  const fixture = await spawnedProbe({ mode: "setsid-child", results });
+  const envelope = await fixture.supervisor.execute();
+  const [{ escaped }] = results.observed;
+  assert.equal(envelope.status, "complete");
+  assert.equal(await eventuallyDead(escaped), true, "the setsid child is dead");
+  assert.equal(await eventuallyDead(fixture.transport.pid), true);
+});
+
+test("a grandchild linked through a child in its own group is ended at the time bound", OPTIONS, async (t) => {
+  if (WIN32_HOST) return probeHostRefusedOnWin32(t);
+  const results = new ObservingResultSink();
+  reapObserved(t, results);
+  const fixture = await spawnedProbe({ mode: "setsid-tree", results, request: { bounds: BOUNDS } });
+  await assert.rejects(fixture.supervisor.execute(), { code: "VES_PROBE_TIMEOUT" });
+  const [{ child, grandchild }] = results.observed;
+  assert.equal(await eventuallyDead(child), true, "the child in its own group is dead");
+  assert.equal(await eventuallyDead(grandchild), true, "its grandchild is dead");
+  assert.equal(results.rollbacks, 1);
+});
+
+// invariant: #569, PHC-06. A worker that exited first orphaned its children, so
+// its stream does not complete even after its final frame. The host is held
+// until the worker has exited, which a worker can always arrange.
+test("a worker that exits after its final frame fails the probe and commits nothing", OPTIONS, async (t) => {
+  if (WIN32_HOST) return probeHostRefusedOnWin32(t);
+  const results = new ObservingResultSink();
+  reapObserved(t, results);
+  const fixture = await spawnedProbe({ mode: "setsid-child-exit", results });
+  const terminate = fixture.transport.terminate.bind(fixture.transport);
+  fixture.transport.terminate = async () => {
+    const exited = () =>
+      fixture.transport.diagnostics().exitCode !== null || fixture.transport.diagnostics().signal !== null;
+    while (!exited()) await new Promise((resolve) => setTimeout(resolve, 10));
+    return terminate();
+  };
+  await assert.rejects(fixture.supervisor.execute(), { code: "VES_PROBE_WORKER_EXITED" });
+  assert.equal(results.rollbacks, 1);
+  assert.equal(results.commits, 0);
+  assert.equal(fixture.transport.diagnostics().workDirectoryRemoved, true);
+});
+
+// invariant: #569, PHC-07. The grandchild was orphaned before the host stopped
+// anything, so no table links it, but it still holds the worker's stderr.
+test("a descendant that outlives the kill while holding the worker's output fails the probe", OPTIONS, async (t) => {
+  if (WIN32_HOST) return probeHostRefusedOnWin32(t);
+  const results = new ObservingResultSink();
+  reapObserved(t, results);
+  const fixture = await spawnedProbe({
+    mode: "double-fork-holder",
+    results,
+    request: { bounds: BOUNDS },
+    limits: { exitWaitMs: 300 }
+  });
+  await assert.rejects(fixture.supervisor.execute(), (error) => {
+    assert.equal(error.code, "VES_PROBE_HOST_TERMINATION_INCOMPLETE", "it outranks the timeout");
+    assert.equal(error.revokeGrant, true);
+    return true;
+  });
+  const [{ escaped }] = results.observed;
+  assert.ok(Number.isSafeInteger(escaped), "the worker reported its orphaned grandchild");
+  assert.equal(results.rollbacks, 1);
+  assert.equal(results.commits, 0);
+  assert.equal(fixture.framed.parameterFrameZeroized, true, "a failed termination still zeroizes");
+  assert.equal(fixture.transport.diagnostics().workDirectoryRemoved, true);
 });
 
 test("a worker that exits mid-stream produces no partial promoted evidence", async (t) => {

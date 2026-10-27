@@ -133,9 +133,154 @@ export function killProcesses(pids: readonly number[]): void {
   }
 }
 
+export interface ProcessRow {
+  readonly pid: number;
+  readonly ppid: number;
+  readonly pgid: number;
+  readonly zombie: boolean;
+}
+
+export async function readProcessTable(): Promise<readonly ProcessRow[] | undefined> {
+  let stdout: string;
+  try {
+    ({ stdout } = await execFileAsync("ps", ["-A", "-o", "pid=,ppid=,pgid=,stat="], {
+      encoding: "utf8",
+      windowsHide: true,
+      ...INSPECTION_CHILD_BOUND
+    }));
+  } catch {
+    return undefined;
+  }
+  const rows: ProcessRow[] = [];
+  for (const line of stdout.split(/\r?\n/u)) {
+    const [pid, ppid, pgid, stat] = /^\s*(\d+)\s+(\d+)\s+(\d+)\s+(\S+)/u.exec(line)?.slice(1) ?? [];
+    if (stat !== undefined)
+      rows.push({ pid: Number(pid), ppid: Number(ppid), pgid: Number(pgid), zombie: stat.startsWith("Z") });
+  }
+  return rows;
+}
+
+// why: the processes reachable by parentage from the group's live members, the
+// root first when it still runs. A member that called setsid() keeps its
+// parent while that parent is stopped, so the link survives until the kill.
+function linkedProcesses(rows: readonly ProcessRow[], pgid: number, rootRunning: boolean): readonly number[] {
+  const children = new Map<number, number[]>();
+  for (const row of rows) {
+    if (row.zombie) continue;
+    const siblings = children.get(row.ppid) ?? [];
+    siblings.push(row.pid);
+    children.set(row.ppid, siblings);
+  }
+  const roots = rows.filter((row) => row.pgid === pgid && !row.zombie && (rootRunning || row.pid !== pgid));
+  const found = new Set<number>();
+  const pending = roots.map((row) => row.pid);
+  while (pending.length > 0) {
+    const next = pending.pop() as number;
+    if (found.has(next)) continue;
+    found.add(next);
+    pending.push(...(children.get(next) ?? []));
+  }
+  return [...found];
+}
+
+// why: false when the target is still there but this user may not signal it,
+// so a stopped tree cannot be claimed for a process the host cannot end.
+function stopped(pid: number): boolean {
+  try {
+    process.kill(pid, "SIGSTOP");
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === "ESRCH";
+  }
+}
+
+const STOP_ROUNDS = 32;
+
+export interface StoppedTreeOptions {
+  readonly exited: () => boolean;
+  readonly incomplete: () => never;
+  readonly table?: () => Promise<readonly ProcessRow[] | undefined>;
+}
+
+// why: a group signal cannot reach a descendant that called setsid(), and a
+// snapshot taken while the tree runs races every fork and exit in it. A stopped
+// process can neither fork nor exit, and a stopped parent cannot reap, so a pid
+// found under a stopped parent is still that descendant when it is killed. The
+// group is stopped first, then every process linked to it by parentage, until a
+// table shows nothing new; only then is anything killed (#569).
+// invariant: `running` is true only if the root had not exited when its group
+// was stopped. A root that exited first has already orphaned its children, so
+// a caller must not treat the sweep as complete.
+// hazard: a descendant orphaned before the group was stopped, by a double fork
+// whose middle process already exited, is linked to nothing and is not found.
+export async function terminateStoppedTree(
+  pid: number,
+  options: StoppedTreeOptions
+): Promise<{ readonly running: boolean }> {
+  // invariant: POSIX only; the probe host refuses win32 before it starts a worker.
+  if (process.platform === "win32") options.incomplete();
+  const found = new Set<number>();
+  let outcome = { running: false, complete: false };
+  try {
+    stopGroup(pid);
+    outcome = await stopLinked(pid, options, found);
+  } finally {
+    try {
+      await terminateProcessGroup(pid, options.incomplete);
+    } finally {
+      killProcesses([...found].filter((member) => member !== pid));
+    }
+  }
+  if (!outcome.complete) options.incomplete();
+  return { running: outcome.running };
+}
+
+function stopGroup(pgid: number): void {
+  try {
+    process.kill(-pgid, "SIGSTOP");
+  } catch (error) {
+    // why: ESRCH is a group with no member left; EPERM is Darwin's answer for
+    // a group of zombies only (see groupGone). Neither leaves anything to stop.
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code !== "ESRCH" && code !== "EPERM") throw error;
+  }
+}
+
+async function stopLinked(
+  pid: number,
+  options: StoppedTreeOptions,
+  found: Set<number>
+): Promise<{ readonly running: boolean; readonly complete: boolean }> {
+  let running = false;
+  for (let round = 0; round <= STOP_ROUNDS; round += 1) {
+    const rows = await (options.table ?? readProcessTable)();
+    // invariant: without a table nothing outside the group can be found, so
+    // the sweep is incomplete rather than reduced to the group kill.
+    if (rows === undefined) return { running, complete: false };
+    // why: the root runs only if the table shows it live and the host has not
+    // seen it exit, read after the table: a root already a zombie when it was
+    // stopped can be reaped, and its pid reused, while the table is read.
+    if (round === 0) running = rows.some((row) => row.pid === pid && !row.zombie) && !options.exited();
+    const fresh = linkedProcesses(rows, pid, running).filter((member) => !found.has(member));
+    if (fresh.length === 0) return { running, complete: true };
+    if (!stopAll(fresh, found)) return { running, complete: false };
+  }
+  return { running, complete: false };
+}
+
+function stopAll(members: readonly number[], found: Set<number>): boolean {
+  let signalled = true;
+  for (const member of members) {
+    found.add(member);
+    signalled = stopped(member) && signalled;
+  }
+  return signalled;
+}
+
 // why: a group signal alone leaves a setsid() escapee alive, so the tree is
 // recorded first and what the signal could not reach is killed afterwards. The
-// probe host and the provider drivers stop a child through this one routine.
+// provider drivers stop a child through this routine; the probe host stops its
+// tree before it looks (terminateStoppedTree).
 // invariant: the escapees are killed even when the group could not be
 // confirmed dead, so a failed termination still stops everything it found.
 export async function terminateProcessTree(pid: number, incomplete: () => never): Promise<void> {

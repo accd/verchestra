@@ -1,6 +1,12 @@
 import { randomUUID } from "node:crypto";
 
-import { ProbeFrameDecoder, ProbeProtocolError, ProbeSequenceGuard, encodeProbeFrame } from "./probe-protocol.ts";
+import {
+  ProbeFrameDecoder,
+  ProbeProtocolError,
+  ProbeSequenceGuard,
+  encodeProbeFrame,
+  terminationIncomplete
+} from "./probe-protocol.ts";
 import type { ProbeProtocolEnvelope } from "./probe-protocol.ts";
 
 type UnknownRecord = Readonly<Record<string, unknown>>;
@@ -10,6 +16,8 @@ type UnknownRecord = Readonly<Record<string, unknown>>;
 // side of it, so the transport adapter stays language- and protocol-agnostic.
 export interface ProbeWorkerTransport {
   readonly launchedComponentDigest: string;
+  // invariant: measured by the host over everything it launched (#569, PHC-01).
+  readonly launchDigest: string;
   attach(listener: {
     data(chunk: Uint8Array): void;
     fault(fault: { readonly code: string; readonly message: string }): void;
@@ -17,7 +25,9 @@ export interface ProbeWorkerTransport {
   }): void;
   send(frame: Uint8Array): Promise<void>;
   withhold(material: Uint8Array): void;
-  terminate(): Promise<void>;
+  // invariant: `running` is true only if the worker had not exited when the host
+  // stopped its tree. A rejection means a process may have outlived it.
+  terminate(): Promise<{ readonly running: boolean }>;
 }
 
 interface Waiter {
@@ -126,7 +136,7 @@ export class FramedProbeWorker {
   #fatal: ProbeProtocolError | undefined;
   #exited = false;
   #sequence = 0;
-  #disposal: Promise<void> | undefined;
+  #disposal: Promise<{ readonly running: boolean }> | undefined;
   #parameterFrame: Buffer | undefined;
   cancelled = false;
   terminated = false;
@@ -156,6 +166,10 @@ export class FramedProbeWorker {
 
   get launchedComponentDigest(): string {
     return this.#transport.launchedComponentDigest;
+  }
+
+  get launchDigest(): string {
+    return this.#transport.launchDigest;
   }
 
   // why: exposed so zeroization of the protected parameter frame is observable
@@ -201,6 +215,10 @@ export class FramedProbeWorker {
         } else if (envelope.payloadSchema.name === "probe.result.end" && exactKeys(payload, "chunkCount")) {
           if (payload["chunkCount"] !== chunks)
             throw this.#fail(protocolViolation("VES_PROBE_RESULT_INVALID", "Probe result stream is incomplete"));
+          // invariant: a stream completes only if the worker was still running
+          // when the host ended it. A worker that exited first orphaned whatever
+          // it started, out of the sweep's reach (#569, PHC-06).
+          if ((await this.#dispose())?.running !== true) throw this.#fail(this.#exitError());
           return;
         } else {
           throw this.#unexpected(envelope);
@@ -209,9 +227,13 @@ export class FramedProbeWorker {
     } finally {
       // invariant: the worker never outlives its stream, and its process tree is
       // gone before stderr is scrubbed, so nothing can be written after the scrub.
-      await this.#dispose();
-      this.#transport.withhold(parameters);
-      frame.fill(0);
+      // A termination that failed still zeroizes and scrubs (#569, PHC-07; #570).
+      try {
+        await this.#dispose();
+      } finally {
+        this.#transport.withhold(parameters);
+        frame.fill(0);
+      }
     }
   }
 
@@ -230,8 +252,10 @@ export class FramedProbeWorker {
     await this.#dispose();
   }
 
-  #dispose(): Promise<void> {
-    this.#disposal ??= this.#transport.terminate();
+  #dispose(): Promise<{ readonly running: boolean }> {
+    this.#disposal ??= this.#transport.terminate().catch(() => {
+      throw terminationIncomplete();
+    });
     return this.#disposal;
   }
 
@@ -271,8 +295,9 @@ export class FramedProbeWorker {
   }
 
   // invariant: a protocol violation outranks anything already queued, while a
-  // plain exit does not: a worker that wrote its final frame and exited has
-  // still delivered a complete stream.
+  // plain exit does not: the frames a worker wrote before it exited are still
+  // read. Its stream still fails at the end if it exited before the host ended
+  // it (#569, PHC-06).
   #next(signal?: AbortSignal): Promise<ProbeProtocolEnvelope> {
     if (this.#fatal !== undefined) return Promise.reject(this.#fatal);
     const queued = this.#inbox.shift();

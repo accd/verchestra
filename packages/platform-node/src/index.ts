@@ -176,10 +176,12 @@ export {
   WindowsPipeTransportError,
   type WindowsNamedPipeTransportOptions
 } from "./windows-pipe-transport.ts";
+export { probeLaunchDigest, type ProbeLaunch } from "./probe-launch-digest.ts";
 export {
   SpawnedProbeWorker,
   SpawnedProbeWorkerError,
   type ProbeTransportListener,
+  type ProbeWorkerTermination,
   type SpawnedProbeWorkerDiagnostics,
   type SpawnedProbeWorkerLimits,
   type SpawnedProbeWorkerOptions
