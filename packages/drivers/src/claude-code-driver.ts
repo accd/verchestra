@@ -957,9 +957,7 @@ export class ClaudeCodeDriver implements Driver {
     });
   }
 
-  async send(session: DriverSessionRef, input: Readonly<Record<string, unknown>>): Promise<void> {
-    void session;
-    void input;
+  async send(): Promise<void> {
     throw claudeError("VES_CLAUDE_SEND_UNSUPPORTED", "Claude Code print sessions do not accept follow-up input");
   }
 

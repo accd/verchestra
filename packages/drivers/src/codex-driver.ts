@@ -662,9 +662,7 @@ export class CodexDriver implements Driver {
     return Object.freeze({ sessionId });
   }
 
-  async send(session: DriverSessionRef, input: Readonly<Record<string, unknown>>): Promise<void> {
-    void session;
-    void input;
+  async send(): Promise<void> {
     throw codexError("VES_CODEX_SEND_UNSUPPORTED", "Codex ephemeral turns do not accept follow-up input");
   }
 

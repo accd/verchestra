@@ -268,8 +268,7 @@ export class SqliteReadConnection implements SqliteConnectionPort {
     this.#db.exec("PRAGMA query_only=ON");
     this.#queryOnly = this.#db.prepare("PRAGMA query_only").get()?.["query_only"] === 1;
   }
-  async inspectPrincipal(plan: SqliteConnectionPlan): Promise<SqliteObservation> {
-    void plan;
+  async inspectPrincipal(): Promise<SqliteObservation> {
     const version = this.#db.prepare("SELECT sqlite_version() AS version").get()?.["version"];
     const attachedDatabaseCount = this.#db.prepare("PRAGMA database_list").all().length;
     return {
@@ -373,8 +372,7 @@ export class SqliteFixtureConnection implements SqliteConnectionPort {
       attachedDatabaseCount: this.#options.attachedDatabaseCount ?? 1
     };
   }
-  async configureAuthorization(_operation: SqliteOperation): Promise<SqliteSessionObservation> {
-    void _operation;
+  async configureAuthorization(): Promise<SqliteSessionObservation> {
     this.authorizationConfigured = true;
     return {
       queryOnly: this.#options.sessionQueryOnly ?? true,
@@ -384,13 +382,7 @@ export class SqliteFixtureConnection implements SqliteConnectionPort {
       attachedDatabaseCount: this.#options.attachedDatabaseCount ?? 1
     };
   }
-  async *stream(
-    _sql: string,
-    params: readonly unknown[],
-    signal: AbortSignal,
-    _maximumRows: number
-  ): AsyncIterable<UnknownRecord> {
-    void _maximumRows;
+  async *stream(_sql: string, params: readonly unknown[], signal: AbortSignal): AsyncIterable<UnknownRecord> {
     this.streamCalls += 1;
     this.lastParameters = structuredClone(params);
     if ((this.#options.delayMs ?? 0) > 0)
