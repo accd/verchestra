@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { mkdir, readFile, readdir, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { codeUnitCompare } from "@verchestra/domain";
 
 function keyDigest(key: string): string {
   if (typeof key !== "string" || key.length === 0 || key.length > 512)
@@ -71,7 +72,7 @@ export class FileRecordStore {
       if ((error as { readonly code?: unknown }).code === "ENOENT") return undefined;
       throw error;
     }
-    for (const name of names.filter((entry) => entry.endsWith(".json")).sort()) {
+    for (const name of names.filter((entry) => entry.endsWith(".json")).sort(codeUnitCompare)) {
       const record = JSON.parse(await readFile(join(this.#root, name), "utf8")) as T;
       if (record[field] === value) return record;
     }

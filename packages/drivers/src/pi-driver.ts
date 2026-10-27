@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 
-import { usageUpdated, type DriverEvent } from "@verchestra/domain";
+import { codeUnitCompare, type DriverEvent, usageUpdated } from "@verchestra/domain";
 
 import { DriverSessionLedger, type DriverSession } from "./driver-session-ledger.ts";
 import { probeDriverVersion } from "./driver-version-probe.ts";
@@ -326,8 +326,8 @@ export class PiDriver implements Driver {
       execution.passport.resolvedModel !== execution.model.id
     )
       throw piError("VES_PI_IDENTITY_MISMATCH", "Pi resolved identity does not match the selected Passport");
-    const declared = request.tools.map((tool) => `${tool.name}:${tool.inputSchemaDigest}`).sort();
-    const concrete = execution.tools.map((tool) => `${tool.name}:${tool.inputSchemaDigest}`).sort();
+    const declared = request.tools.map((tool) => `${tool.name}:${tool.inputSchemaDigest}`).sort(codeUnitCompare);
+    const concrete = execution.tools.map((tool) => `${tool.name}:${tool.inputSchemaDigest}`).sort(codeUnitCompare);
     if (declared.length !== concrete.length || declared.some((entry, index) => entry !== concrete[index]))
       throw piError("VES_PI_TOOLSET_MISMATCH", "Pi concrete tools do not match the authorized manifest");
   }

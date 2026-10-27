@@ -6,6 +6,7 @@ import { dirname, join, posix, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { gitExecutable } from "./git-executable.mjs";
+import { codeUnitCompare } from "../packages/domain/src/canonical/canonical-sets.ts";
 
 export const REPOSITORY = "accd/verchestra";
 export const ROOT = fileURLToPath(new URL("..", import.meta.url));
@@ -85,7 +86,7 @@ export function validateRoadmapChain(roadmap) {
       seen.add(task);
       chain.push(task);
     }
-    const unreachable = [...nodes].filter((task) => !seen.has(task)).sort();
+    const unreachable = [...nodes].filter((task) => !seen.has(task)).sort(codeUnitCompare);
     if (unreachable.length > 0) errors.push(`unreachable from the start: ${unreachable.join(", ")}`);
   }
   return { chain: errors.length === 0 ? chain : [], errors };
@@ -97,7 +98,7 @@ export function resolveQualification(roadmap, validatedTasks) {
   // because of an inserted task, so one that no roadmap node claims is evidence
   // for nothing and must not be silently ignored.
   const declared = new Set(chain);
-  const stray = [...validatedTasks].filter((task) => /[a-z]$/u.test(task) && !declared.has(task)).sort();
+  const stray = [...validatedTasks].filter((task) => /[a-z]$/u.test(task) && !declared.has(task)).sort(codeUnitCompare);
   const allErrors = [...errors, ...stray.map((task) => `${task} has a validation report but no roadmap node`)];
   if (allErrors.length > 0) return { highestVerifiedTask: null, nextTask: null, errors: allErrors };
 
@@ -268,7 +269,7 @@ export async function readQualificationReports(root, { trustedRevision } = {}) {
   const errors = [];
   if (!existsSync(directory)) return { tasks, errors };
   const { isRepositoryCommit, isTrustedRevision } = revisionTrust(root, trustedRevision);
-  for (const entry of (await readdir(directory)).sort()) {
+  for (const entry of (await readdir(directory)).sort(codeUnitCompare)) {
     const task = QUALIFICATION_REPORT_FILE.exec(entry);
     if (!task) {
       if (QUALIFICATION_TASK_FILE.test(entry))
@@ -493,7 +494,7 @@ export function canonicalJson(value) {
   if (typeof value === "number" || typeof value === "string") return JSON.stringify(value);
   if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
   return `{${Object.keys(value)
-    .sort()
+    .sort(codeUnitCompare)
     .map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`)
     .join(",")}}`;
 }
@@ -746,7 +747,7 @@ export async function readReleaseDecisions(root, { trustedRevision, validatedTas
     resolveKeyRef: decisionKeyResolver(root)
   };
   const versions = new Map();
-  for (const entry of (await readdir(directory)).sort()) {
+  for (const entry of (await readdir(directory)).sort(codeUnitCompare)) {
     const read = await readDecisionRound(directory, entry, options, errors);
     if (read !== null) admitDecisionRound(versions, read, errors);
   }
@@ -1168,7 +1169,7 @@ export async function checkRepository(root = ROOT) {
   await checkReleaseDecisions(root, await checkQualificationChain(root, errors), errors);
   await checkFeatureHandoffs(root, errors);
   await checkMarkdownLinks(root, files, errors);
-  return [...new Set(errors)].sort();
+  return [...new Set(errors)].sort(codeUnitCompare);
 }
 
 export async function assertFileSize(path, maximumBytes) {

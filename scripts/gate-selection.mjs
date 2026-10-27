@@ -5,6 +5,7 @@
 // exactly a surface nobody had mapped.
 
 import { readFileSync } from "node:fs";
+import { codeUnitCompare } from "../packages/domain/src/canonical/canonical-sets.ts";
 
 export const ALWAYS_GATE = "gate:quick";
 export const CENSUS_GATE = "gate:security";
@@ -119,8 +120,8 @@ export function selectGates(changedPaths, options) {
     }
   }
   return {
-    gates: [...selected].sort(),
+    gates: [...selected].sort(codeUnitCompare),
     reasons: Object.fromEntries([...reasons].sort(([left], [right]) => left.localeCompare(right))),
-    unmapped: unmapped.sort()
+    unmapped: unmapped.sort(codeUnitCompare)
   };
 }

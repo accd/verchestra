@@ -150,7 +150,7 @@ function normalizePlanMaterial(value: unknown): NormalizedGatePlanMaterial {
       gateId: token(command["gateId"], "gateId", "VES_GATE_PLAN_INVALID"),
       requirementIds: [
         ...list(command["requirementIds"], "gate requirementIds", REQUIREMENT, "VES_GATE_PLAN_INVALID")
-      ].sort(),
+      ].sort(codeUnitCompare),
       declaredCommand: text(command["declaredCommand"], "declaredCommand", "VES_GATE_PLAN_INVALID"),
       commandRef: token(command["commandRef"], "commandRef", "VES_GATE_PLAN_INVALID"),
       args,
@@ -311,7 +311,7 @@ function normalizeInput(value: unknown, sha256: (value: string) => string): Task
     fail("VES_GATE_PLAN_INVALID", "gate plan digest does not match content");
   const requirementIds = [
     ...list(task["requirementIds"], "task requirementIds", REQUIREMENT, "VES_GATE_INPUT_INVALID")
-  ].sort();
+  ].sort(codeUnitCompare);
   const verificationCommands = list(
     task["verificationCommands"],
     "verificationCommands",
@@ -348,7 +348,7 @@ function normalizeInput(value: unknown, sha256: (value: string) => string): Task
       changeDigest: digest(execution["changeDigest"], "execution.changeDigest"),
       changedPaths: [
         ...list(execution["changedPaths"], "changedPaths", TASK_PATH, "VES_GATE_INPUT_INVALID", true)
-      ].sort(),
+      ].sort(codeUnitCompare),
       checkpointRef: token(execution["checkpointRef"], "checkpointRef", "VES_GATE_INPUT_INVALID")
     },
     authority: { approvalBindingDigest: digest(authority["approvalBindingDigest"], "approvalBindingDigest") },
@@ -366,7 +366,7 @@ function normalizeInspection(value: unknown) {
   return {
     changedPaths: [
       ...list(row["changedPaths"], "inspection changedPaths", TASK_PATH, "VES_GATE_DIFF_INVALID", true)
-    ].sort(),
+    ].sort(codeUnitCompare),
     changeDigest: digest(row["changeDigest"], "inspection changeDigest", "VES_GATE_DIFF_INVALID"),
     commitCountSinceBase: integer(
       row["commitCountSinceBase"],

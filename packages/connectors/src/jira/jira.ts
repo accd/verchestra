@@ -8,7 +8,7 @@ import {
   type EffectIntent,
   type PriorEffectState
 } from "@verchestra/application";
-import { canonicalizeJsonV2 } from "@verchestra/domain";
+import { canonicalizeJsonV2, codeUnitCompare } from "@verchestra/domain";
 
 const DIGEST = /^sha256:[a-f0-9]{64}$/u;
 const PROJECT_KEY = /^[A-Z][A-Z0-9_]{1,19}$/u;
@@ -205,8 +205,8 @@ export interface JiraTransport {
 }
 
 const exactKeys = (value: JsonRecord, expected: readonly string[], code: string, label: string): void => {
-  const actual = Object.keys(value).sort();
-  const wanted = [...expected].sort();
+  const actual = Object.keys(value).sort(codeUnitCompare);
+  const wanted = [...expected].sort(codeUnitCompare);
   if (JSON.stringify(actual) !== JSON.stringify(wanted)) {
     throw new JiraConnectorError(code, `${label} has missing or unknown fields`);
   }
@@ -249,7 +249,7 @@ const canonicalTokens = (value: unknown, code: string, label: string, allowEmpty
   }
   const tokens = value.map((entry, index) => requireString(entry, code, `${label}[${index}]`));
   if (new Set(tokens).size !== tokens.length) throw new JiraConnectorError(code, `${label} contains duplicates`);
-  return Object.freeze([...tokens].sort());
+  return Object.freeze([...tokens].sort(codeUnitCompare));
 };
 
 const normalizePackage = (value: unknown, code: string): JiraProjectionInput["package"] => {

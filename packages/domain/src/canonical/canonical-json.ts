@@ -3,8 +3,9 @@
 // Encode-only: hashing stays in packages/workspace (node:crypto is barred from
 // domain). No third-party or node: imports (CJ-02).
 //
-// - Object members are ordered by UTF-16 code unit via the default
-//   `Array.prototype.sort()` comparator (assumption A1).
+// - Object members are ordered by UTF-16 code unit with `codeUnitCompare`,
+//   the order the default `Array.prototype.sort()` comparator gives
+//   (assumption A1), stated explicitly.
 // - Arrays are emitted in their given order — this encoder never sorts an
 //   array; a caller that means a set must normalize it explicitly first.
 // - Primitive emission (numbers, string escaping) is delegated to
@@ -12,6 +13,7 @@
 //   (assumption A2).
 
 import { assertCanonicalJsonValue } from "./canonical-guard.ts";
+import { codeUnitCompare } from "./canonical-sets.ts";
 
 function encodeString(value: string): string {
   return JSON.stringify(value);
@@ -27,7 +29,7 @@ function encodeArray(value: readonly unknown[]): string {
 
 function encodeObject(value: Readonly<Record<string, unknown>>): string {
   const members = Object.keys(value)
-    .sort()
+    .sort(codeUnitCompare)
     .map((key) => `${encodeString(key)}:${encodeValue(value[key])}`);
   return `{${members.join(",")}}`;
 }

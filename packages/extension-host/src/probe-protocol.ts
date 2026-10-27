@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import { canonicalizeJsonV2 } from "@verchestra/domain";
+import { canonicalizeJsonV2, codeUnitCompare } from "@verchestra/domain";
 
 // invariant: ARQ-005 (#597). The probe wire protocol and the worker port: the
 // frame codec, the envelope rule, the sequence guard, the handshake, and the
@@ -91,7 +91,7 @@ function validateEnvelope(value: unknown, workspaceId: string): ProbeProtocolEnv
     terminate("VES_PROBE_ENVELOPE_INVALID", "Probe envelope is invalid");
   }
   const envelope = value as ProbeProtocolEnvelope;
-  const keys = Object.keys(envelope).sort().join(",");
+  const keys = Object.keys(envelope).sort(codeUnitCompare).join(",");
   const sentAt = typeof envelope.sentAt === "string" ? new Date(envelope.sentAt) : undefined;
   if (
     keys !== "correlationId,messageId,payload,payloadDigest,payloadSchema,protocol,sentAt,sequence,workspaceId" ||
@@ -108,7 +108,7 @@ function validateEnvelope(value: unknown, workspaceId: string): ProbeProtocolEnv
     envelope.payloadSchema === null ||
     typeof envelope.payloadSchema !== "object" ||
     Array.isArray(envelope.payloadSchema) ||
-    Object.keys(envelope.payloadSchema).sort().join(",") !== "name,version" ||
+    Object.keys(envelope.payloadSchema).sort(codeUnitCompare).join(",") !== "name,version" ||
     !SAFE.test(envelope.payloadSchema.name) ||
     !Number.isSafeInteger(envelope.payloadSchema.version) ||
     envelope.payloadSchema.version < 1 ||

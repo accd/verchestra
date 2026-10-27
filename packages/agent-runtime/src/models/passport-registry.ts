@@ -2,6 +2,7 @@ import {
   IsoInstant,
   StableId,
   canonicalizeJsonV2,
+  codeUnitCompare,
   dropUndefinedMembers,
   normalizeDeclaredSet
 } from "@verchestra/domain";
@@ -188,8 +189,8 @@ function normalize(input: PassportCandidate, now: string, allowExpired: boolean)
       (entry) => entry.capability
     ),
     contextCapacity: { ...input.contextCapacity },
-    driverContractEvidence: [...new Set(input.driverContractEvidence)].sort(),
-    eligibleRiskTiers: [...new Set(input.eligibleRiskTiers)].sort()
+    driverContractEvidence: [...new Set(input.driverContractEvidence)].sort(codeUnitCompare),
+    eligibleRiskTiers: [...new Set(input.eligibleRiskTiers)].sort(codeUnitCompare)
   });
 }
 
@@ -341,7 +342,7 @@ export class ModelPassportRegistry {
       fail("VES_PASSPORT_INPUT_INVALID", "Machine identity is invalid");
     }
     const passports = [];
-    for (const passportId of [...new Set(passportIds)].sort()) {
+    for (const passportId of [...new Set(passportIds)].sort(codeUnitCompare)) {
       const current = await this.current(passportId);
       if (current !== undefined) passports.push({ passportId, revision: current.revision });
     }

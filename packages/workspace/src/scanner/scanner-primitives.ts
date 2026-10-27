@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import { canonicalizeJsonV2, formatCanonicalDigestV2 } from "@verchestra/domain";
+import { canonicalizeJsonV2, codeUnitCompare, formatCanonicalDigestV2 } from "@verchestra/domain";
 
 export class WorkspaceScanError extends Error {
   readonly code: string;
@@ -97,7 +97,7 @@ export function detectProjectMarker(files: readonly string[]): ProjectMarker | u
     { kind: "terraform-project", match: (file) => file.endsWith(".tf") }
   ];
   for (const rule of ordered) {
-    const file = [...files].sort().find(rule.match);
+    const file = [...files].sort(codeUnitCompare).find(rule.match);
     if (file !== undefined) return Object.freeze({ kind: rule.kind, file });
   }
   return undefined;

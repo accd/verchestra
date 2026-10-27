@@ -2,11 +2,12 @@ import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 
 import {
+  codeUnitCompare,
   normalizeDeclaredSet,
-  usageCount,
-  usageUpdated,
+  type DriverEvent,
   type DriverEventOf,
-  type DriverEvent
+  usageCount,
+  usageUpdated
 } from "@verchestra/domain";
 
 import { sensitiveValueRedactor } from "./driver-redaction.ts";
@@ -475,8 +476,8 @@ export class OpenCodeDriver implements Driver {
       throw openCodeError("VES_OPENCODE_IDENTITY_MISMATCH", "OpenCode identity does not match the selected Passport");
     if (typeof execution.prompt !== "string" || execution.prompt.length === 0)
       throw openCodeError("VES_OPENCODE_CONTEXT_INVALID", "OpenCode serialized context is invalid");
-    const declared = request.tools.map((tool) => `${tool.name}:${tool.inputSchemaDigest}`).sort();
-    const concrete = execution.tools.map((tool) => `${tool.name}:${tool.inputSchemaDigest}`).sort();
+    const declared = request.tools.map((tool) => `${tool.name}:${tool.inputSchemaDigest}`).sort(codeUnitCompare);
+    const concrete = execution.tools.map((tool) => `${tool.name}:${tool.inputSchemaDigest}`).sort(codeUnitCompare);
     if (
       declared.length !== concrete.length ||
       declared.some((entry, index) => entry !== concrete[index]) ||

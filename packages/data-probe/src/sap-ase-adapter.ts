@@ -153,8 +153,10 @@ export function parseSapAseReadOperation(sql: unknown, options: ParseOptions): S
         codeUnitCompare(`${left.schema}.${left.name}`, `${right.schema}.${right.name}`)
       )
     ),
-    functions: Object.freeze([...functions].sort()),
-    parameterClassifications: Object.freeze([...options.parameterClassifications].sort()) as readonly Classification[]
+    functions: Object.freeze([...functions].sort(codeUnitCompare)),
+    parameterClassifications: Object.freeze(
+      [...options.parameterClassifications].sort(codeUnitCompare)
+    ) as readonly Classification[]
   });
 }
 
@@ -203,7 +205,10 @@ function decodeRequest(bytes: Uint8Array): { readonly sql: string; readonly para
     fail("VES_SAP_ASE_REQUEST_INVALID", "Protected SAP ASE request is invalid");
   }
   const input = parsed as UnknownRecord;
-  if (Object.keys(input).sort().join(",") !== "parameters,schemaVersion,sql" || input["schemaVersion"] !== 1) {
+  if (
+    Object.keys(input).sort(codeUnitCompare).join(",") !== "parameters,schemaVersion,sql" ||
+    input["schemaVersion"] !== 1
+  ) {
     fail("VES_SAP_ASE_REQUEST_INVALID", "Protected SAP ASE request is invalid");
   }
   if (!Array.isArray(input["parameters"]) || input["parameters"].length > 64) {

@@ -6,6 +6,7 @@ import { createHash } from "node:crypto";
 import { chmod, lstat, mkdir, mkdtemp, readdir, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join, resolve, sep } from "node:path";
 import { SelfTestError, type RootFacts, type SelfTestProfileId } from "@verchestra/application";
+import { codeUnitCompare } from "@verchestra/domain";
 
 // The rules compare paths as opaque forward-slash strings, so every path this
 // adapter reports goes through one normalizer.
@@ -30,7 +31,7 @@ export async function collectLinkChain(path: string): Promise<readonly string[]>
     if (parent === current) break;
     current = parent;
   }
-  return Object.freeze([...new Set(chain)].sort());
+  return Object.freeze([...new Set(chain)].sort(codeUnitCompare));
 }
 
 export async function probeRootFacts(path: string): Promise<RootFacts> {

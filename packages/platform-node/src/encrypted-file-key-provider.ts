@@ -1,6 +1,7 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID, scrypt } from "node:crypto";
 import { link, lstat, mkdir, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
+import { codeUnitCompare } from "@verchestra/domain";
 export interface PublicKeyRef {
   readonly keyId: string;
   readonly algorithm: "Ed25519";
@@ -109,8 +110,8 @@ function fail(message: string, options?: ErrorOptions): never {
 }
 
 function sameArray(left: readonly string[], right: readonly string[]): boolean {
-  const sortedLeft = [...new Set(left)].sort();
-  const sortedRight = [...new Set(right)].sort();
+  const sortedLeft = [...new Set(left)].sort(codeUnitCompare);
+  const sortedRight = [...new Set(right)].sort(codeUnitCompare);
   return sortedLeft.length === sortedRight.length && sortedLeft.every((value, index) => value === sortedRight[index]);
 }
 

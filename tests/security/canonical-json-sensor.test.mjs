@@ -38,7 +38,7 @@ test("mutation A: replacing code-unit member ordering with localeCompare is kill
   const before = await readFile(sourcePath, "utf8");
   const mutantEncode = await loadMutant((source) => {
     const patched = source.replace(
-      "Object.keys(value)\n    .sort()",
+      "Object.keys(value)\n    .sort(codeUnitCompare)",
       "Object.keys(value)\n    .sort((left, right) => left.localeCompare(right))"
     );
     assert.notEqual(patched, source, "the .sort() call site must exist in the current source");
@@ -128,8 +128,10 @@ test("mutation D: replacing V2 effect material with JSON.stringify is killed", a
 test("mutation C: replacing normalizeDeclaredSet's code-unit compare with localeCompare is killed", async () => {
   const before = await readFile(setsSourcePath, "utf8");
   const mutantNormalize = await loadSetsMutant((source) => {
-    const target = "if (a < b) return -1;\n    if (a > b) return 1;\n    return 0;";
-    const patched = source.replace(target, "return a.localeCompare(b);");
+    // normalizeDeclaredSet orders through codeUnitCompare, so the mutation
+    // replaces that one body; every caller of either inherits it.
+    const target = "if (left < right) return -1;\n  if (left > right) return 1;\n  return 0;";
+    const patched = source.replace(target, "return left.localeCompare(right);");
     assert.notEqual(patched, source, "the code-unit compare body must exist in the current source");
     return patched;
   });

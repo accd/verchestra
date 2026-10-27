@@ -3,7 +3,7 @@ import { mkdirSync } from "node:fs";
 import { link, lstat, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { join, relative, resolve } from "node:path";
 
-import { normalizeDeclaredSet } from "@verchestra/domain";
+import { codeUnitCompare, normalizeDeclaredSet } from "@verchestra/domain";
 
 import {
   ArtifactSealer,
@@ -474,7 +474,7 @@ function normalizePayload(value: unknown): RunCapsulePayload {
   if (!Array.isArray(valueRow["policyDigests"]) || valueRow["policyDigests"].length === 0)
     fail("VES_RUN_CAPSULE_EVIDENCE_INCOMPLETE", "Policy evidence is required");
   const policyDigests = Object.freeze(
-    [...new Set(valueRow["policyDigests"].map((entry) => digest(entry, "policyDigest")))].sort()
+    [...new Set(valueRow["policyDigests"].map((entry) => digest(entry, "policyDigest")))].sort(codeUnitCompare)
   );
   const normalizedEvidence = evidence(valueRow["evidence"], riskTier, version);
   const terminalTransition = normalizeTransition(valueRow["terminalTransition"], status);

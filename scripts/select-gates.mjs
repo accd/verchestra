@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { CONSERVATIVE_GATES, selectGates } from "./gate-selection.mjs";
 import { gitExecutable } from "./git-executable.mjs";
 import { stagesForGates } from "./gate-stages.mjs";
+import { codeUnitCompare } from "../packages/domain/src/canonical/canonical-sets.ts";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const ALL_ZERO_SHA = /^0{40}$/u;
@@ -43,7 +44,9 @@ export function buildEvidence({ base, candidate = "HEAD", repository = root }) {
   const changed = selectChangedPaths({ base, candidate, repository });
   const selection =
     changed.mode === "git-range" ? selectGates(changed.paths) : selectGates(["<conservative-fallback>"]);
-  const gates = [...new Set([...selection.gates, ...(changed.mode === "git-range" ? [] : CONSERVATIVE_GATES)])].sort();
+  const gates = [...new Set([...selection.gates, ...(changed.mode === "git-range" ? [] : CONSERVATIVE_GATES)])].sort(
+    codeUnitCompare
+  );
   return {
     schemaVersion: 2,
     candidate: candidateSha(repository),

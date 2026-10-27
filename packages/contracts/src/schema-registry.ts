@@ -1,6 +1,12 @@
 import { readdir, readFile } from "node:fs/promises";
 import Ajv2020, { type ValidateFunction } from "ajv/dist/2020.js";
 
+// why: contracts sits inward of @verchestra/domain and cannot import its
+// codeUnitCompare; this is the same UTF-16 code-unit order, never localeCompare.
+function codeUnitCompare(left: string, right: string): number {
+  return Number(left > right) - Number(left < right);
+}
+
 function contractError(code: string, schema: string, message: string): Error {
   return Object.assign(new Error(message), { code, schema });
 }
@@ -31,7 +37,7 @@ export class SchemaRegistry {
   }
 
   list(): string[] {
-    return [...this.#validators.keys()].sort();
+    return [...this.#validators.keys()].sort(codeUnitCompare);
   }
 
   validate<T>(name: string, version: string, value: T): T {

@@ -222,7 +222,7 @@ function normalizeRecipe(recipe: ContextRecipe): ContextRecipe {
     if (!Array.isArray(recipe.semanticObligations) || recipe.semanticObligations.length === 0)
       invalid("semanticObligations is invalid");
     for (const obligation of recipe.semanticObligations) safe(obligation, "semanticObligation");
-    const obligations = [...recipe.semanticObligations].sort();
+    const obligations = [...recipe.semanticObligations].sort(codeUnitCompare);
     if (new Set(obligations).size !== obligations.length) invalid("semanticObligations must be unique");
     if (!Array.isArray(recipe.priorityBudgets) || recipe.priorityBudgets.length === 0)
       invalid("priorityBudgets is invalid");
@@ -496,7 +496,9 @@ export class ContextSnapshotResolver {
       .map(([factKey, values]) => {
         const alternatives = [...values.entries()]
           .sort(([left], [right]) => codeUnitCompare(left, right))
-          .map(([valueDigest, fragmentIds]) => deepFreeze({ valueDigest, fragmentIds: [...fragmentIds].sort() }));
+          .map(([valueDigest, fragmentIds]) =>
+            deepFreeze({ valueDigest, fragmentIds: [...fragmentIds].sort(codeUnitCompare) })
+          );
         return deepFreeze({
           contradictionId: this.#digest.sha256(canonicalizeJsonV2({ factKey, alternatives })),
           factKey,

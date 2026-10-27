@@ -1,4 +1,5 @@
 import type { DriverEvent } from "@verchestra/domain";
+import { codeUnitCompare } from "@verchestra/domain";
 
 // invariant: ARQ-005 (#597). The contract every driver implements and the
 // error every driver raises. Each driver module imports it from here, never
@@ -66,7 +67,7 @@ export function validateDriverStartRequest(request: DriverStartRequest): void {
       const valid =
         tool !== null &&
         typeof tool === "object" &&
-        Object.keys(tool).sort().join(",") === "inputSchemaDigest,name" &&
+        Object.keys(tool).sort(codeUnitCompare).join(",") === "inputSchemaDigest,name" &&
         typeof tool.name === "string" &&
         SAFE.test(tool.name) &&
         DIGEST.test(tool.inputSchemaDigest) &&
@@ -75,7 +76,8 @@ export function validateDriverStartRequest(request: DriverStartRequest): void {
       return valid;
     });
   if (
-    Object.keys(request).sort().join(",") !== "passportRef,runId,serializedContextRef,tools,workspaceId" ||
+    Object.keys(request).sort(codeUnitCompare).join(",") !==
+      "passportRef,runId,serializedContextRef,tools,workspaceId" ||
     typeof request.workspaceId !== "string" ||
     !request.workspaceId.startsWith("workspace_") ||
     !SAFE.test(request.workspaceId) ||
@@ -84,7 +86,7 @@ export function validateDriverStartRequest(request: DriverStartRequest): void {
     !SAFE.test(request.runId) ||
     request.passportRef === null ||
     typeof request.passportRef !== "object" ||
-    Object.keys(request.passportRef).sort().join(",") !== "passportId,revision" ||
+    Object.keys(request.passportRef).sort(codeUnitCompare).join(",") !== "passportId,revision" ||
     typeof request.passportRef.passportId !== "string" ||
     !request.passportRef.passportId.startsWith("passport_") ||
     !SAFE.test(request.passportRef.passportId) ||
@@ -92,7 +94,7 @@ export function validateDriverStartRequest(request: DriverStartRequest): void {
     request.passportRef.revision < 1 ||
     request.serializedContextRef === null ||
     typeof request.serializedContextRef !== "object" ||
-    Object.keys(request.serializedContextRef).sort().join(",") !== "manifestId,target" ||
+    Object.keys(request.serializedContextRef).sort(codeUnitCompare).join(",") !== "manifestId,target" ||
     !DIGEST.test(request.serializedContextRef.manifestId) ||
     !SAFE.test(request.serializedContextRef.target) ||
     !validTools

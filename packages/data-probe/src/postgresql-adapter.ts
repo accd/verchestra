@@ -150,8 +150,10 @@ export function parsePostgreSqlReadOperation(sql: unknown, options: ParseOptions
         codeUnitCompare(`${left.schema}.${left.name}`, `${right.schema}.${right.name}`)
       )
     ),
-    functions: Object.freeze([...functions].sort()),
-    parameterClassifications: Object.freeze([...options.parameterClassifications].sort()) as readonly Classification[]
+    functions: Object.freeze([...functions].sort(codeUnitCompare)),
+    parameterClassifications: Object.freeze(
+      [...options.parameterClassifications].sort(codeUnitCompare)
+    ) as readonly Classification[]
   });
 }
 
@@ -193,7 +195,10 @@ function decodeRequest(bytes: Uint8Array): { readonly sql: string; readonly para
     fail("VES_POSTGRES_REQUEST_INVALID", "Protected PostgreSQL request is invalid");
   }
   const input = parsed as UnknownRecord;
-  if (Object.keys(input).sort().join(",") !== "parameters,schemaVersion,sql" || input["schemaVersion"] !== 1) {
+  if (
+    Object.keys(input).sort(codeUnitCompare).join(",") !== "parameters,schemaVersion,sql" ||
+    input["schemaVersion"] !== 1
+  ) {
     fail("VES_POSTGRES_REQUEST_INVALID", "Protected PostgreSQL request is invalid");
   }
   if (!Array.isArray(input["parameters"]) || input["parameters"].length > 64) {

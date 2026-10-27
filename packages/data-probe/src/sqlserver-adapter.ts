@@ -126,8 +126,10 @@ export function parseSqlServerReadOperation(sql: unknown, options: ParseOptions)
     objects: Object.freeze(
       [...objects.values()].sort((a, b) => codeUnitCompare(`${a.schema}.${a.name}`, `${b.schema}.${b.name}`))
     ),
-    functions: Object.freeze([...functions].sort()),
-    parameterClassifications: Object.freeze([...options.parameterClassifications].sort()) as readonly Classification[]
+    functions: Object.freeze([...functions].sort(codeUnitCompare)),
+    parameterClassifications: Object.freeze(
+      [...options.parameterClassifications].sort(codeUnitCompare)
+    ) as readonly Classification[]
   });
 }
 
@@ -166,7 +168,10 @@ function decodeRequest(bytes: Uint8Array): { readonly sql: string; readonly para
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed))
     fail("VES_SQLSERVER_REQUEST_INVALID", "Protected SQL Server execution request is invalid");
   const input = parsed as UnknownRecord;
-  if (Object.keys(input).sort().join(",") !== "parameters,schemaVersion,sql" || input["schemaVersion"] !== 1)
+  if (
+    Object.keys(input).sort(codeUnitCompare).join(",") !== "parameters,schemaVersion,sql" ||
+    input["schemaVersion"] !== 1
+  )
     fail("VES_SQLSERVER_REQUEST_INVALID", "Protected SQL Server execution request is invalid");
   if (!Array.isArray(input["parameters"]) || input["parameters"].length > 64)
     fail("VES_SQLSERVER_PARAMETERS_INVALID", "Protected SQL Server parameters are invalid");

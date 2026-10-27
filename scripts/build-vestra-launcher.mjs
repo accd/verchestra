@@ -38,6 +38,7 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
 import { build as esbuild } from "esbuild";
+import { codeUnitCompare } from "../packages/domain/src/canonical/canonical-sets.ts";
 
 const execute = promisify(execFile);
 const ROOT = resolve(fileURLToPath(new URL("..", import.meta.url)));
@@ -122,7 +123,7 @@ async function walk(root, current = root) {
     if (entry.isDirectory()) files.push(...(await walk(root, path)));
     else files.push(relative(root, path).replaceAll("\\", "/"));
   }
-  return files.sort();
+  return files.sort(codeUnitCompare);
 }
 
 export async function readPinnedInputs(directory) {

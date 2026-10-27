@@ -1,7 +1,26 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { canonicalizeJsonV2 } from "../../packages/domain/src/canonical/canonical-json.ts";
-import { normalizeDeclaredSet } from "../../packages/domain/src/canonical/canonical-sets.ts";
+import { codeUnitCompare, normalizeDeclaredSet } from "../../packages/domain/src/canonical/canonical-sets.ts";
+
+// Strings whose code-unit order differs from locale, numeric or code-point
+// order: case, digits, accents, a high BMP character against an astral one
+// (U+FFFF sorts after the surrogate pair of U+1F600 by code unit), empty, and
+// a prefix of another key.
+const ORDER_CORPUS = Object.freeze(["b", "B", "a", "10", "9", "é", "e", "￿", "😀", "", "ab", "a", "Z"]);
+
+test("codeUnitCompare orders exactly as the default sort, so explicit sorts keep their bytes", () => {
+  assert.deepEqual([...ORDER_CORPUS].sort(codeUnitCompare), [...ORDER_CORPUS].sort());
+  assert.deepEqual([...ORDER_CORPUS].reverse().sort(codeUnitCompare), [...ORDER_CORPUS].sort());
+});
+
+test("codeUnitCompare is code-unit order, not locale or code-point order", () => {
+  assert.equal(codeUnitCompare("B", "a"), -1, "upper case before lower case");
+  assert.equal(codeUnitCompare("10", "9"), -1, "digits compare as text");
+  assert.equal(codeUnitCompare("😀", "￿"), -1, "a surrogate pair sorts before U+FFFF");
+  assert.equal(codeUnitCompare("a", "a"), 0);
+  assert.equal(codeUnitCompare("ab", "a"), 1, "a prefix sorts first");
+});
 
 test("normalizeDeclaredSet orders items by their extracted key", () => {
   const items = [{ id: "b" }, { id: "a" }, { id: "c" }];

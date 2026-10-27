@@ -280,7 +280,7 @@ export class DeterministicContextCompiler {
     )
       fail("VES_CONTEXT_EGRESS_DENIED", "Context egress evidence is incomplete");
 
-    const semanticObligations = [...input.recipe.semanticObligations].sort();
+    const semanticObligations = [...input.recipe.semanticObligations].sort(codeUnitCompare);
     const semanticObligationsDigest = this.#digest.sha256(canonicalizeJsonV2(semanticObligations));
     const serializedMeaningDigest = this.#digest.sha256(
       canonicalizeJsonV2({
@@ -312,7 +312,7 @@ export class DeterministicContextCompiler {
             entry.sourceRevision === undefined ? [] : [`${entry.sourceId}@${entry.sourceRevision}`]
           )
         )
-      ].sort(),
+      ].sort(codeUnitCompare),
       policyDecisionRefs: [egress["policyEvidenceDigest"]],
       estimatedTokens: total,
       mandatoryTokens,

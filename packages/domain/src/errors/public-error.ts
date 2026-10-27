@@ -1,3 +1,4 @@
+import { codeUnitCompare } from "../canonical/canonical-sets.ts";
 import { Digest } from "../primitives/digest.ts";
 import { DomainValueError } from "../primitives/errors.ts";
 
@@ -85,8 +86,8 @@ function validateDetails(
   definition: PublicErrorDefinition,
   input: Readonly<Record<string, unknown>>
 ): Readonly<Record<string, SafeDetailValue>> {
-  const expected = Object.keys(definition.safeDetails).sort();
-  const actual = Object.keys(input).sort();
+  const expected = Object.keys(definition.safeDetails).sort(codeUnitCompare);
+  const actual = Object.keys(input).sort(codeUnitCompare);
   if (expected.length !== actual.length || expected.some((key, index) => key !== actual[index])) {
     throw new DomainValueError("VES_ERROR_DETAILS_INVALID", "Safe detail fields do not match the registry");
   }
@@ -126,7 +127,7 @@ export class PublicErrorRegistry {
   }
 
   get codes(): readonly string[] {
-    return Object.freeze([...this.#definitions.keys()].sort());
+    return Object.freeze([...this.#definitions.keys()].sort(codeUnitCompare));
   }
 
   create(

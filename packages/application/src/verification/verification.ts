@@ -1,4 +1,10 @@
-import { isTaskPath, type RunSnapshot, type WorkflowCommand, type WorkflowDecision } from "@verchestra/domain";
+import {
+  codeUnitCompare,
+  isTaskPath,
+  type RunSnapshot,
+  type WorkflowCommand,
+  type WorkflowDecision
+} from "@verchestra/domain";
 
 type Row = Record<string, unknown>;
 type Digest = `sha256:${string}`;
@@ -47,7 +53,7 @@ export function resolveVerifierDriver(
   const eligible = candidates
     .filter((candidate) => candidate.available && candidate.driverId !== implementerDriverId)
     .map((candidate) => candidate.driverId)
-    .sort();
+    .sort(codeUnitCompare);
   return eligible.length > 0 ? { status: "resolved", driverId: eligible[0] as string } : { status: "not-configured" };
 }
 
@@ -603,7 +609,7 @@ export class IndependentVerificationCoordinator {
       actorBinding: { authorActorId: input.commit.authorActorId, verifierActorId: input.verifier.actorId },
       driverBinding: { implementerDriverId: input.implementerDriverId, verifierDriverId: input.verifierDriverId },
       verifierPassportRef: input.verifier.passportRef,
-      requirementIds: [...new Set(input.criteria.map((entry) => entry.requirementId))].sort(),
+      requirementIds: [...new Set(input.criteria.map((entry) => entry.requirementId))].sort(codeUnitCompare),
       criteria: criterionReports,
       mutations: mutationReports,
       gaps: gaps.map((entry) =>

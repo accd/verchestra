@@ -1,4 +1,4 @@
-import { canonicalizeJsonV2 } from "@verchestra/domain";
+import { canonicalizeJsonV2, codeUnitCompare } from "@verchestra/domain";
 
 import { digest } from "./canonical-material.ts";
 
@@ -29,7 +29,7 @@ function record(value: unknown, code = "VES_MONGODB_COMMAND_INVALID"): UnknownRe
   return value as UnknownRecord;
 }
 function exactKeys(value: UnknownRecord, keys: readonly string[]) {
-  if (Object.keys(value).sort().join(",") !== [...keys].sort().join(","))
+  if (Object.keys(value).sort(codeUnitCompare).join(",") !== [...keys].sort(codeUnitCompare).join(","))
     fail("VES_MONGODB_COMMAND_INVALID", "MongoDB command shape is invalid");
 }
 function preflight(value: unknown, depth = 0, state = { nodes: 0 }): void {
@@ -199,8 +199,10 @@ export function parseMongoDbReadOperation(command: unknown, options: ParseOption
     statementCount: 1,
     protectedRequestRef: options.protectedRequestRef,
     objects: Object.freeze([{ schema: database, name: collection, type: objectType }]),
-    functions: Object.freeze([...state.functions].sort()),
-    parameterClassifications: Object.freeze([...options.parameterClassifications].sort()) as readonly Classification[]
+    functions: Object.freeze([...state.functions].sort(codeUnitCompare)),
+    parameterClassifications: Object.freeze(
+      [...options.parameterClassifications].sort(codeUnitCompare)
+    ) as readonly Classification[]
   });
 }
 
@@ -247,7 +249,10 @@ function decode(bytes: Uint8Array) {
     fail("VES_MONGODB_REQUEST_INVALID", "Protected MongoDB request is invalid");
   }
   const input = record(parsed, "VES_MONGODB_REQUEST_INVALID");
-  if (Object.keys(input).sort().join(",") !== "command,parameters,schemaVersion" || input["schemaVersion"] !== 1)
+  if (
+    Object.keys(input).sort(codeUnitCompare).join(",") !== "command,parameters,schemaVersion" ||
+    input["schemaVersion"] !== 1
+  )
     fail("VES_MONGODB_REQUEST_INVALID", "Protected MongoDB request is invalid");
   if (
     !Array.isArray(input["parameters"]) ||

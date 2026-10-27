@@ -142,7 +142,7 @@ function codeUnitCompare(left: string, right: string): number {
 }
 
 function sortedUnique(values: readonly string[]): readonly string[] {
-  return Object.freeze([...new Set(values)].sort());
+  return Object.freeze([...new Set(values)].sort(codeUnitCompare));
 }
 
 function normalizeConfiguration(configuration: CanonicalSyncConfiguration): Omit<PersistedSyncState, "stateDigest"> {

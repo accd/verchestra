@@ -14,6 +14,7 @@ import {
   IsoInstant,
   StableId,
   canonicalizeJsonV2,
+  codeUnitCompare,
   type DataClassificationValue
 } from "@verchestra/domain";
 
@@ -211,7 +212,7 @@ const list = (value: unknown, code: string, label: string, nonempty: boolean): r
   const normalized = value.map((entry, index) => safe(entry, code, `${label}[${index}]`));
   if (new Set(normalized).size !== normalized.length)
     throw new ConfluenceDeliveryError(code, `${label} contains duplicates`);
-  return Object.freeze([...normalized].sort());
+  return Object.freeze([...normalized].sort(codeUnitCompare));
 };
 
 const pair = (value: unknown, kind: "package" | "handoff", code: string) => {

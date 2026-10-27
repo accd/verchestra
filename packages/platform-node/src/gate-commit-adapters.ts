@@ -19,6 +19,7 @@ import {
   type WorktreeRefusal,
   type WorktreeRoots
 } from "./task-worktree.ts";
+import { codeUnitCompare } from "@verchestra/domain";
 
 const DIGEST = /^sha256:[a-f0-9]{64}$/u;
 
@@ -246,7 +247,7 @@ export class NodeAtomicGitCommitAdapter {
     const before = await this.#worktrees.inspect({ worktreeRef: request.worktreeRef, baseCommit: request.baseCommit });
     if (
       before.changeDigest !== request.expectedChangeDigest ||
-      JSON.stringify(before.changedPaths) !== JSON.stringify([...request.expectedChangedPaths].sort())
+      JSON.stringify(before.changedPaths) !== JSON.stringify([...request.expectedChangedPaths].sort(codeUnitCompare))
     )
       fail("VES_GATE_GIT_DIFF_DRIFT", "Worktree changed before atomic commit");
     await this.#git(target, ["add", "-A", "--", ...request.expectedChangedPaths]);
@@ -254,8 +255,8 @@ export class NodeAtomicGitCommitAdapter {
       .split("\0")
       .filter(Boolean)
       .map((entry) => entry.replaceAll("\\", "/"))
-      .sort();
-    if (JSON.stringify(staged) !== JSON.stringify([...request.expectedChangedPaths].sort()))
+      .sort(codeUnitCompare);
+    if (JSON.stringify(staged) !== JSON.stringify([...request.expectedChangedPaths].sort(codeUnitCompare)))
       fail("VES_GATE_GIT_DIFF_DRIFT", "Staged paths do not match the authorized diff");
     const afterStage = await this.#worktrees.inspect({
       worktreeRef: request.worktreeRef,

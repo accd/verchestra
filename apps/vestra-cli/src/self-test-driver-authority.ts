@@ -5,7 +5,7 @@ import {
   type DriverInvocationFacts,
   type DriverReviewFacts
 } from "@verchestra/application";
-import { canonicalizeJsonV2 } from "@verchestra/domain";
+import { canonicalizeJsonV2, codeUnitCompare } from "@verchestra/domain";
 
 export interface DriverAuthorityFacts {
   readonly approvalGranted: boolean;
@@ -59,7 +59,7 @@ function assertAuthorityShape(authority: DriverAuthorityFacts): void {
     "egressAllowed",
     "maximumCostUsd"
   ];
-  if (Object.keys(authority).sort().join(",") !== fields.join(","))
+  if (Object.keys(authority).sort(codeUnitCompare).join(",") !== fields.join(","))
     throw new SelfTestError("VES_SELFTEST_DRIVER_REVIEW_INVALID", "Driver authority fields are invalid");
   for (const field of ["approvalGranted", "capabilityGranted", "egressAllowed"] as const) {
     if (typeof authority[field] !== "boolean")

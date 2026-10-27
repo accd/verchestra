@@ -144,8 +144,8 @@ function fail(message: string, cause?: unknown): never {
 }
 
 function exactKeys(value: object, keys: readonly string[], label: string): void {
-  const actual = Object.keys(value).sort();
-  const expected = [...keys].sort();
+  const actual = Object.keys(value).sort(codeUnitCompare);
+  const expected = [...keys].sort(codeUnitCompare);
   if (actual.length !== expected.length || actual.some((key, index) => key !== expected[index])) {
     fail(`${label} fields are invalid`);
   }
