@@ -1,6 +1,6 @@
 import { canonicalizeJsonV2 } from "@verchestra/domain";
 
-import { codeUnitCompare, digest } from "./canonical-material.ts";
+import { codeUnitCompare, digest, sortedKeys } from "./canonical-material.ts";
 
 type Engine = "mysql" | "mariadb";
 type UnknownRecord = Readonly<Record<string, unknown>>;
@@ -146,7 +146,7 @@ export function parseMySqlFamilyReadOperation(sql: unknown, options: ParseOption
     ),
     functions: Object.freeze([...functions].sort(codeUnitCompare)),
     parameterClassifications: Object.freeze(
-      [...options.parameterClassifications].sort(codeUnitCompare)
+      options.parameterClassifications.toSorted(codeUnitCompare)
     ) as readonly Classification[]
   });
 }
@@ -198,10 +198,7 @@ function decodeRequest(bytes: Uint8Array) {
     fail("VES_MYSQL_FAMILY_REQUEST_INVALID", "Protected MySQL-family request is invalid");
   }
   const input = parsed as UnknownRecord;
-  if (
-    Object.keys(input).sort(codeUnitCompare).join(",") !== "parameters,schemaVersion,sql" ||
-    input["schemaVersion"] !== 1
-  ) {
+  if (sortedKeys(input) !== "parameters,schemaVersion,sql" || input["schemaVersion"] !== 1) {
     fail("VES_MYSQL_FAMILY_REQUEST_INVALID", "Protected MySQL-family request is invalid");
   }
   if (!Array.isArray(input["parameters"]) || input["parameters"].length > 64) {

@@ -246,7 +246,8 @@ function record(value: unknown, name: string, keys: readonly string[], code = "V
   if (value === null || typeof value !== "object" || Array.isArray(value)) fail(code, `${name} must be an object`);
   const row = value as Row;
   const extras = Object.keys(row).filter((key) => !keys.includes(key));
-  if (extras.length > 0) fail(code, `${name} contains unsupported fields: ${extras.sort(codeUnitCompare).join(", ")}`);
+  if (extras.length > 0)
+    fail(code, `${name} contains unsupported fields: ${extras.toSorted(codeUnitCompare).join(", ")}`);
   return row;
 }
 

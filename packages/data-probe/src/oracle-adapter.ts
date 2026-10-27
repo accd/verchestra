@@ -1,6 +1,6 @@
 import { canonicalizeJsonV2 } from "@verchestra/domain";
 
-import { codeUnitCompare, digest } from "./canonical-material.ts";
+import { codeUnitCompare, digest, sortedKeys } from "./canonical-material.ts";
 
 const CLASSIFICATIONS = ["public", "internal", "confidential", "restricted", "secret"] as const;
 const SAFE_FUNCTIONS = new Set([
@@ -133,7 +133,7 @@ export function parseOracleReadOperation(sql: unknown, options: ParseOptions): O
     ),
     functions: Object.freeze([...functions].sort(codeUnitCompare)),
     parameterClassifications: Object.freeze(
-      [...options.parameterClassifications].sort(codeUnitCompare)
+      options.parameterClassifications.toSorted(codeUnitCompare)
     ) as readonly Classification[]
   });
 }
@@ -183,10 +183,7 @@ function decode(bytes: Uint8Array) {
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed))
     fail("VES_ORACLE_REQUEST_INVALID", "Protected Oracle request is invalid");
   const input = parsed as UnknownRecord;
-  if (
-    Object.keys(input).sort(codeUnitCompare).join(",") !== "parameters,schemaVersion,sql" ||
-    input["schemaVersion"] !== 1
-  )
+  if (sortedKeys(input) !== "parameters,schemaVersion,sql" || input["schemaVersion"] !== 1)
     fail("VES_ORACLE_REQUEST_INVALID", "Protected Oracle request is invalid");
   if (
     !Array.isArray(input["parameters"]) ||

@@ -1,6 +1,6 @@
 import { canonicalizeJsonV2 } from "@verchestra/domain";
 
-import { codeUnitCompare, digest } from "./canonical-material.ts";
+import { codeUnitCompare, digest, sortedKeys } from "./canonical-material.ts";
 import { DatabaseSync, constants } from "node:sqlite";
 import type { SQLInputValue } from "node:sqlite";
 
@@ -124,7 +124,7 @@ export function parseSqliteReadOperation(sql: unknown, options: ParseOptions): S
     ),
     functions: Object.freeze([...functions].sort(codeUnitCompare)),
     parameterClassifications: Object.freeze(
-      [...options.parameterClassifications].sort(codeUnitCompare)
+      options.parameterClassifications.toSorted(codeUnitCompare)
     ) as readonly Classification[]
   });
 }
@@ -174,10 +174,7 @@ function decode(bytes: Uint8Array) {
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed))
     fail("VES_SQLITE_REQUEST_INVALID", "Protected SQLite request is invalid");
   const input = parsed as UnknownRecord;
-  if (
-    Object.keys(input).sort(codeUnitCompare).join(",") !== "parameters,schemaVersion,sql" ||
-    input["schemaVersion"] !== 1
-  )
+  if (sortedKeys(input) !== "parameters,schemaVersion,sql" || input["schemaVersion"] !== 1)
     fail("VES_SQLITE_REQUEST_INVALID", "Protected SQLite request is invalid");
   if (
     !Array.isArray(input["parameters"]) ||
