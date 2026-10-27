@@ -18,7 +18,7 @@ import { createSqliteEffectRepository, type EffectRepositoryHooks } from "./effe
 // it without loading node:sqlite; this module re-exports it so every existing
 // consumer keeps its import path.
 import { DEFAULT_RUNTIME_MIGRATIONS, type RuntimeMigration } from "./runtime-migrations.ts";
-import { errorCode, mapSqliteError, runStatement, runtimeError } from "./runtime-sqlite.ts";
+import { errorCode, mapSqliteError, runStatement, runtimeError, storedText } from "./runtime-sqlite.ts";
 
 export { DEFAULT_RUNTIME_MIGRATIONS, type RuntimeMigration };
 
@@ -86,6 +86,15 @@ interface EventMetadata {
 
 function sha256(value: string | Uint8Array): string {
   return createHash("sha256").update(value).digest("hex");
+}
+
+// A projection's remote version is optional text; anything else is refused
+// rather than stored as "[object Object]".
+function observedRemoteVersion(entry: UnknownRecord): string | null {
+  const version = entry["observedRemoteVersion"];
+  if (version === undefined) return null;
+  if (typeof version === "string") return version;
+  throw runtimeError("VES_RUNTIME_CONSTRAINT", "Workspace sync projection remote version is invalid");
 }
 
 function requireRow(row: unknown): UnknownRecord {
@@ -461,7 +470,7 @@ export class RuntimeStore {
           String(entry["connectorId"]),
           String(entry["canonicalDigest"]),
           String(entry["observedRemoteDigest"]),
-          entry["observedRemoteVersion"] === undefined ? null : String(entry["observedRemoteVersion"])
+          observedRemoteVersion(entry)
         );
       }
       db.prepare(
@@ -576,7 +585,7 @@ export class RuntimeStore {
   getRun(runId: string): RunSnapshot {
     const row = requireRow(this.#database().prepare("SELECT * FROM runs WHERE run_id=?").get(runId));
     const approval =
-      row.approval_binding_digest === null ? undefined : { bindingDigest: String(row.approval_binding_digest) };
+      row.approval_binding_digest === null ? undefined : { bindingDigest: storedText(row.approval_binding_digest) };
     return {
       runId: String(row.run_id),
       runKind: String(row.run_kind) as RunSnapshot["runKind"],
@@ -585,9 +594,11 @@ export class RuntimeStore {
       repairCycles: Number(row.repair_cycles),
       approval,
       terminalCapsuleRequired: Number(row.terminal_capsule_required) === 1,
-      ...(row.implementation_actor_id === null ? {} : { implementationActorId: String(row.implementation_actor_id) }),
-      ...(row.predecessor_run_id === null ? {} : { predecessorRunId: String(row.predecessor_run_id) }),
-      ...(row.successor_run_id === null ? {} : { successorRunId: String(row.successor_run_id) })
+      ...(row.implementation_actor_id === null
+        ? {}
+        : { implementationActorId: storedText(row.implementation_actor_id) }),
+      ...(row.predecessor_run_id === null ? {} : { predecessorRunId: storedText(row.predecessor_run_id) }),
+      ...(row.successor_run_id === null ? {} : { successorRunId: storedText(row.successor_run_id) })
     };
   }
 
@@ -705,8 +716,8 @@ export class RuntimeStore {
         runKind: String(row["runKind"]) as "feature" | "recovery",
         status: String(row["status"]) as TerminalWorkflowState,
         stateVersion: Number(row["stateVersion"]),
-        ...(row["predecessorRunId"] === null ? {} : { predecessorRunId: String(row["predecessorRunId"]) }),
-        ...(row["successorRunId"] === null ? {} : { successorRunId: String(row["successorRunId"]) })
+        ...(row["predecessorRunId"] === null ? {} : { predecessorRunId: storedText(row["predecessorRunId"]) }),
+        ...(row["successorRunId"] === null ? {} : { successorRunId: storedText(row["successorRunId"]) })
       })
     );
   }
@@ -880,8 +891,8 @@ export class RuntimeStore {
     }
     return Object.freeze({
       recordJson,
-      ...(row["revokedAt"] === null ? {} : { revokedAt: String(row["revokedAt"]) }),
-      ...(row["revocationReason"] === null ? {} : { revocationReason: String(row["revocationReason"]) })
+      ...(row["revokedAt"] === null ? {} : { revokedAt: storedText(row["revokedAt"]) }),
+      ...(row["revocationReason"] === null ? {} : { revocationReason: storedText(row["revocationReason"]) })
     });
   }
 

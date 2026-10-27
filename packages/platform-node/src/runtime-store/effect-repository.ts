@@ -2,7 +2,7 @@ import type { DatabaseSync } from "node:sqlite";
 
 import type { IdempotencyInput } from "@verchestra/application";
 
-import { errorCode, mapSqliteError, runStatement, runtimeError } from "./runtime-sqlite.ts";
+import { errorCode, mapSqliteError, runStatement, runtimeError, storedText } from "./runtime-sqlite.ts";
 
 // why: the durable effect intents, outbox, receipts and inbox form one unit
 // with its own transactions and fault hooks. Holding them here leaves
@@ -77,7 +77,7 @@ export function createSqliteEffectRepository({ database, now, hooks }: EffectRep
       idempotencyKey: String(row["idempotency_key"]),
       operationKind: String(row["operation_kind"]),
       workspaceId: String(row["workspace_id"]),
-      ...(row["run_id"] === null ? {} : { runId: String(row["run_id"]) }),
+      ...(row["run_id"] === null ? {} : { runId: storedText(row["run_id"]) }),
       logicalTarget: String(row["logical_target"]),
       canonicalInputDigest: String(row["canonical_input_digest"]),
       semanticIdentity: String(row["semantic_identity"]),
@@ -86,7 +86,7 @@ export function createSqliteEffectRepository({ database, now, hooks }: EffectRep
       grantRef: String(row["grant_ref"]),
       ...(row["expected_remote_version"] === null
         ? {}
-        : { expectedRemoteVersion: String(row["expected_remote_version"]) }),
+        : { expectedRemoteVersion: storedText(row["expected_remote_version"]) }),
       status: String(row["status"]) as StoredEffectIntent["status"],
       attempt: Number(row["attempt"]),
       createdAt: String(row["created_at"])
@@ -124,9 +124,9 @@ export function createSqliteEffectRepository({ database, now, hooks }: EffectRep
       adapterId: String(row["adapter_id"]),
       attempt: Number(row["attempt"]),
       outcome: String(row["outcome"]) as StoredReceipt["outcome"],
-      ...(row["remote_identity"] === null ? {} : { remoteIdentity: String(row["remote_identity"]) }),
-      ...(row["remote_version"] === null ? {} : { remoteVersion: String(row["remote_version"]) }),
-      ...(row["output_digest"] === null ? {} : { outputDigest: String(row["output_digest"]) }),
+      ...(row["remote_identity"] === null ? {} : { remoteIdentity: storedText(row["remote_identity"]) }),
+      ...(row["remote_version"] === null ? {} : { remoteVersion: storedText(row["remote_version"]) }),
+      ...(row["output_digest"] === null ? {} : { outputDigest: storedText(row["output_digest"]) }),
       safeEvidenceRefs: Object.freeze(JSON.parse(String(row["safe_evidence_refs_json"])) as string[]),
       startedAt: String(row["started_at"]),
       completedAt: String(row["completed_at"])

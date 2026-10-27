@@ -586,8 +586,9 @@ function claudeProtocol(channel: ProviderChannel, conversation: ClaudeConversati
   };
   const delta = (event: Row): void => {
     const nested = event["event"] as { delta?: { type?: string; text?: unknown } } | undefined;
+    const text = nested?.delta?.text;
     if (nested?.delta?.type === "text_delta")
-      state.emit({ type: "content.delta", text: redact(String(nested.delta.text ?? "")) });
+      state.emit({ type: "content.delta", text: redact(typeof text === "string" ? text : "") });
   };
   // why: a result counts once the session was announced; a result before
   // that leaves the run without one.

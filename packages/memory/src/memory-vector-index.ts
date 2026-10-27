@@ -6,6 +6,7 @@ import { canonicalizeJsonV2 } from "@verchestra/domain";
 import { getLoadablePath } from "sqlite-vec";
 
 import { MemoryStoreError } from "./memory-store.ts";
+import { nullableText } from "./stored-text.ts";
 
 type VectorMode = "disabled" | "preferred" | "required";
 type VectorSlot = "a" | "b";
@@ -195,6 +196,9 @@ function vectorError(code: string, message: string, recoverable = false, cause?:
   return new MemoryStoreError(code, message, recoverable, cause);
 }
 
+const textColumn = (value: unknown): string | null =>
+  nullableText(value, () => vectorError("VES_VECTOR_CORRUPT", "A text column holds a non-text value", true));
+
 function mapVectorError(error: unknown): Error {
   if (error instanceof MemoryStoreError) return error;
   if (error instanceof Error && /locked|busy/iu.test(error.message)) {
@@ -286,7 +290,7 @@ function authoritySnapshot(db: DatabaseSync, value: { readonly workspaceId: stri
       observationId: String(row["observation_id"]),
       revision: String(row["revision"]),
       retrievedAt: String(row["retrieved_at"]),
-      validUntil: row["valid_until"] === null ? null : String(row["valid_until"]),
+      validUntil: textColumn(row["valid_until"]),
       classification: String(row["classification"]),
       contentDigest: String(row["content_digest"])
     })),

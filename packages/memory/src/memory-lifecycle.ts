@@ -12,6 +12,8 @@ import type {
 } from "@verchestra/application";
 import { canonicalizeJsonV2, codeUnitCompare, normalizeDeclaredSet } from "@verchestra/domain";
 
+import { nullableText } from "./stored-text.ts";
+
 type Row = Record<string, unknown>;
 type Classification = "public" | "internal" | "confidential" | "restricted";
 type ObjectProtection = "none" | "canonical" | "required-evidence";
@@ -453,6 +455,12 @@ function promotionArtifact(value: unknown): {
   };
 }
 
+const textColumn = (value: unknown): string | null =>
+  nullableText(
+    value,
+    () => new MemoryLifecycleError("VES_MEMORY_LIFECYCLE_CORRUPT", "A text column holds a non-text value", true)
+  );
+
 function managedObject(row: Row): MemoryManagedObject {
   return Object.freeze({
     objectId: String(row["object_id"]),
@@ -463,11 +471,11 @@ function managedObject(row: Row): MemoryManagedObject {
     contentDigest: String(row["content_digest"]),
     bytes: Number(row["bytes"]),
     createdAt: String(row["created_at"]),
-    retainUntil: row["retain_until"] === null ? null : String(row["retain_until"]),
+    retainUntil: textColumn(row["retain_until"]),
     protection: String(row["protection"]) as ObjectProtection,
-    encryptionKeyRef: row["encryption_key_ref"] === null ? null : String(row["encryption_key_ref"]),
+    encryptionKeyRef: textColumn(row["encryption_key_ref"]),
     state: String(row["state"]) as ObjectState,
-    lifecycleReason: row["lifecycle_reason"] === null ? null : String(row["lifecycle_reason"])
+    lifecycleReason: textColumn(row["lifecycle_reason"])
   });
 }
 

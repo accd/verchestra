@@ -9,6 +9,14 @@ export function runtimeError(code: string, message: string, cause?: unknown, rec
   return Object.assign(new Error(message, cause === undefined ? undefined : { cause }), { code, recoverable });
 }
 
+// invariant: a TEXT column reads back as a string. Any other value means the
+// row was written outside this store, so the read fails closed instead of
+// rendering an object or a byte list as text.
+export function storedText(value: unknown): string {
+  if (typeof value === "string") return value;
+  throw runtimeError("VES_RUNTIME_CORRUPT", "A text column holds a non-text value");
+}
+
 export function errorCode(error: unknown): string | undefined {
   return typeof error === "object" && error !== null && "code" in error
     ? String((error as { code?: unknown }).code)
