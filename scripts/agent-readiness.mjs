@@ -43,10 +43,49 @@ export const HANDOFF_STATUSES = Object.freeze(["planned", "in_progress", "blocke
 // never count at all. Both are resolved by walking the ROADMAP.md chain, which
 // makes ROADMAP.md the single ordering authority for how far the chain is
 // verified as well as for what follows what.
-const ROADMAP_EDGE = /^[^\S\n]*(T\d+[a-z]?)(?:\[[^\]]*\])?[^\S\n]*-->[^\S\n]*(T\d+[a-z]?)(?:\[[^\]]*\])?[^\S\n]*$/gmu;
+// One `T1 --> T2` edge per line, either id optionally carrying a `[label]`.
+// Splitting the line at its one arrow keeps every part a single bounded scan.
+const ROADMAP_NODE = /^(T\d+[a-z]?)(?:\[[^\]]*\])?$/u;
 
 export function parseRoadmapChain(roadmap) {
-  return [...roadmap.matchAll(ROADMAP_EDGE)].map((match) => [match[1], match[2]]);
+  const edges = [];
+  for (const line of roadmap.split("\n")) {
+    const parts = line.split("-->");
+    if (parts.length !== 2) continue;
+    const from = ROADMAP_NODE.exec(parts[0].trim())?.[1];
+    const to = ROADMAP_NODE.exec(parts[1].trim())?.[1];
+    if (from !== undefined && to !== undefined) edges.push([from, to]);
+  }
+  return edges;
+}
+
+// `key: value` with the value's leading whitespace dropped, matched exactly as
+// `^([A-Za-z][A-Za-z0-9]*):\s*(.*)$` did (the value may not carry a line
+// terminator past that whitespace) without two quantifiers sharing the spaces.
+export function frontmatterField(line) {
+  const key = /^([A-Za-z][A-Za-z0-9]*):/u.exec(line);
+  if (!key) return undefined;
+  const value = line.slice(key[0].length).trimStart();
+  return /[\n\r\u2028\u2029]/u.test(value) ? undefined : [key[1], value];
+}
+
+// The target of every `[label](target)`, matched exactly as
+// `\[[^\]]+\]\(([^)]+)\)` did, but in one pass: a start that fails fails the
+// same way for every `[` before its `]`, so the scan resumes after that `]`.
+export function markdownLinkTargets(source) {
+  const targets = [];
+  let start = source.indexOf("[");
+  while (start !== -1) {
+    const close = source.indexOf("]", start + 1);
+    if (close === -1) break;
+    const end = close > start + 1 && source[close + 1] === "(" ? source.indexOf(")", close + 2) : -2;
+    if (end === -1) break;
+    if (end > close + 2) {
+      targets.push(source.slice(close + 2, end));
+      start = source.indexOf("[", end + 1);
+    } else start = source.indexOf("[", close + 1);
+  }
+  return targets;
 }
 
 // An ordering authority that quietly normalizes an ambiguous graph is not an
@@ -167,9 +206,9 @@ export function validateQualificationReport(source, taskId, { isRepositoryCommit
   if (!match) return [`${taskId}: report is missing the qualification frontmatter`];
   const report = {};
   for (const line of match[1].split(/\r?\n/u)) {
-    const field = /^([A-Za-z][A-Za-z0-9]*):\s*(.*)$/u.exec(line);
+    const field = frontmatterField(line);
     if (!field) return [`${taskId}: malformed frontmatter line`];
-    report[field[1]] = field[2].trim();
+    report[field[0]] = field[1].trim();
   }
 
   if (report.schema !== QUALIFICATION_REPORT_SCHEMA) errors.push(`${taskId}: unsupported report schema`);
@@ -816,9 +855,9 @@ export function parseHandoff(source, path = "handoff.md") {
   if (!match) throw new Error(`${path}: missing YAML frontmatter`);
   const frontmatter = {};
   for (const line of match[1].split(/\r?\n/u)) {
-    const field = /^([A-Za-z][A-Za-z0-9]*):\s*(.*)$/u.exec(line);
+    const field = frontmatterField(line);
     if (!field) throw new Error(`${path}: malformed frontmatter line`);
-    frontmatter[field[1]] = parseScalar(field[2]);
+    frontmatter[field[0]] = parseScalar(field[1]);
   }
   const required = [
     "schema",
@@ -939,8 +978,8 @@ async function checkMarkdownLinks(root, files, errors) {
   for (const path of files) {
     if (!path.endsWith(".md") || !existsSync(join(root, path))) continue;
     const source = await readFile(join(root, path), "utf8");
-    for (const match of source.matchAll(/\[[^\]]+\]\(([^)]+)\)/gu)) {
-      const target = match[1].trim().replace(/^<|>$/gu, "");
+    for (const link of markdownLinkTargets(source)) {
+      const target = link.trim().replace(/^<|>$/gu, "");
       if (/^(?:https?:|mailto:|#)/u.test(target)) continue;
       const clean = decodeURIComponent(target.split(/[?#]/u)[0]);
       if (!clean) continue;

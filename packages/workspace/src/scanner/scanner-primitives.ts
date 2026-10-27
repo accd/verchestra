@@ -12,13 +12,16 @@ export class WorkspaceScanError extends Error {
   }
 }
 
-function normalizedRepositoryPath(pathname: string): string {
+function withoutTrailingSlashes(value: string): string {
+  let end = value.length;
+  while (end > 0 && value[end - 1] === "/") end -= 1;
+  return value.slice(0, end);
+}
+
+export function normalizedRepositoryPath(pathname: string): string {
   let decoded: string;
   try {
-    decoded = decodeURIComponent(pathname)
-      .replaceAll("\\", "/")
-      .replace(/\/+$/u, "")
-      .replace(/\.git$/u, "");
+    decoded = withoutTrailingSlashes(decodeURIComponent(pathname).replaceAll("\\", "/")).replace(/\.git$/u, "");
   } catch (error) {
     throw new WorkspaceScanError("VES_WORKSPACE_REMOTE_INVALID", "Remote repository path is invalid", {
       cause: error

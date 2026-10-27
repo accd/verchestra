@@ -28,8 +28,41 @@ const SAFE_CATALOGS = new Set([
   "information_schema.table_constraints",
   "information_schema.tables"
 ]);
-const WRITE_KEYWORDS =
-  /\b(?:ALTER|ANALYZE|CALL|CLUSTER|COMMENT|COPY|CREATE|DELETE|DO|DROP|GRANT|INSERT|LISTEN|LOAD|LOCK|MERGE|NOTIFY|REFRESH|REINDEX|REVOKE|SECURITY|SET|TRUNCATE|UNLISTEN|UPDATE|VACUUM)\b/iu;
+const WRITE_KEYWORDS = new Set([
+  "ALTER",
+  "ANALYZE",
+  "CALL",
+  "CLUSTER",
+  "COMMENT",
+  "COPY",
+  "CREATE",
+  "DELETE",
+  "DO",
+  "DROP",
+  "GRANT",
+  "INSERT",
+  "LISTEN",
+  "LOAD",
+  "LOCK",
+  "MERGE",
+  "NOTIFY",
+  "REFRESH",
+  "REINDEX",
+  "REVOKE",
+  "SECURITY",
+  "SET",
+  "TRUNCATE",
+  "UNLISTEN",
+  "UPDATE",
+  "VACUUM"
+]);
+
+// A keyword counts only as a whole word: a maximal run of word characters equal
+// to it, which is what `\b(?:ALTER|…)\b` matched. The encoding check has already
+// limited the statement to ASCII, so upper-casing a word is plain ASCII folding.
+export function containsWriteKeyword(sql: string): boolean {
+  return (sql.match(/\w+/gu) ?? []).some((word) => WRITE_KEYWORDS.has(word.toUpperCase()));
+}
 
 type Classification = (typeof CLASSIFICATIONS)[number];
 type UnknownRecord = Readonly<Record<string, unknown>>;
@@ -88,7 +121,7 @@ export function parsePostgreSqlReadOperation(sql: unknown, options: ParseOptions
   if (/\bFOR\s+(?:UPDATE|SHARE|NO\s+KEY\s+UPDATE|KEY\s+SHARE)\b/iu.test(sql)) {
     fail("VES_POSTGRES_LOCK_DENIED", "PostgreSQL row locking is not permitted");
   }
-  if (WRITE_KEYWORDS.test(sql)) fail("VES_POSTGRES_WRITE_DENIED", "PostgreSQL write syntax is not permitted");
+  if (containsWriteKeyword(sql)) fail("VES_POSTGRES_WRITE_DENIED", "PostgreSQL write syntax is not permitted");
   if (!sqlPrefixAllowed(sql)) fail("VES_POSTGRES_READ_FORM_DENIED", "PostgreSQL read form is not permitted");
   if (!/^protected-request:[a-z0-9-]{16,128}$/u.test(options.protectedRequestRef)) {
     fail("VES_POSTGRES_REQUEST_INVALID", "Protected PostgreSQL request reference is invalid");

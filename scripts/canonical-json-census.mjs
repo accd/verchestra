@@ -50,12 +50,20 @@ const V2_REFERENCE_IMPLEMENTATION = "packages/domain/src/canonical/canonical-jso
 const LOCAL_CANONICALIZER_DEFINITION =
   /(?:function\s+|(?:const|let)\s+)canonical(?:ize[A-Za-z0-9]*|Json[A-Za-z0-9]*)?\s*[=(]/u;
 // hazard: a comment that merely names canonicalizeJsonV2 must not count as using it.
-const V2_IMPORT = /^\s*import\s*\{[^}]*\bcanonicalizeJsonV2\b[^}]*\}\s*from\s*["'][^"']+["']/mu;
+// A line that opens with a named import; its braces are searched for the name
+// separately, so no two quantifiers compete for the same text.
+const NAMED_IMPORT = /^[^\S\n]*import\s*\{([^}]*)\}\s*from\s*["'][^"']+["']/gmu;
+
+export function importsCanonicalizeJsonV2(source) {
+  for (const match of source.matchAll(NAMED_IMPORT)) if (/\bcanonicalizeJsonV2\b/u.test(match[1])) return true;
+  return false;
+}
 const PRESENTATION_OR_FIXTURE_REASON =
   "Closed presentation, fixture, or repository-diagnostic ordering only; not a trust or persistent identity.";
 const DETECTORS = Object.freeze({
   canonicalizer:
-    /canonicalizeJson|(?:async\s+)?function\s+canonicalize[A-Za-z0-9]*|(?:const|let)\s+canonicalize[A-Za-z0-9]*\s*=|canonicalJson|canonical\(/gu,
+    // Counted, not captured: an `async ` before `function` never changed the count.
+    /canonical(?:izeJson|Json|\()|function\s+canonicalize[A-Za-z0-9]*|(?:const|let)\s+canonicalize[A-Za-z0-9]*\s*=/gu,
   digest: /createHash|sha256Digest/gu,
   localeCompare: /\.localeCompare\(/gu,
   serialization: /JSON\.stringify\(/gu
@@ -76,7 +84,7 @@ async function sourceFiles(directory) {
   return files;
 }
 
-function signalsFor(source) {
+export function signalsFor(source) {
   return Object.freeze({
     canonicalizer: count(source, DETECTORS.canonicalizer),
     digest: count(source, DETECTORS.digest),
@@ -152,7 +160,7 @@ export function validateCensusInventory(candidates, inventory) {
 export function localCanonicalizerFacts(source) {
   return Object.freeze({
     definesLocal: LOCAL_CANONICALIZER_DEFINITION.test(source),
-    importsV2: V2_IMPORT.test(source)
+    importsV2: importsCanonicalizeJsonV2(source)
   });
 }
 
