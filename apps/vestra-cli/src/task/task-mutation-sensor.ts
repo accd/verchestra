@@ -58,7 +58,7 @@ export class MutationSensor {
       scratchIsolationVerified: true,
       killed,
       expectedFailureObserved: killed,
-      evidenceRef: `mutation:${sha256(`${request.mutation.mutationId}:${String(killed)}`).slice(7, 39)}`,
+      evidenceRef: `mutation:${sha256([request.mutation.mutationId, String(killed)].join(":")).slice(7, 39)}`,
       activeStateBeforeDigest: before,
       activeStateAfterDigest: await activeStateDigest(repositoryRoot)
     };

@@ -123,9 +123,9 @@ export class GitFixtureFactory {
 }
 
 function rootPackage(shape: WorkspaceShape): string {
-  return `${JSON.stringify({ name: `selftest-control-${shape}`, private: true }, null, 2)}\n`;
+  return `${JSON.stringify({ name: ["selftest-control", shape].join("-"), private: true }, null, 2)}\n`;
 }
 
 function projectPackage(shape: WorkspaceShape): string {
-  return `${JSON.stringify({ name: `selftest-project-${shape}`, private: true }, null, 2)}\n`;
+  return `${JSON.stringify({ name: ["selftest-project", shape].join("-"), private: true }, null, 2)}\n`;
 }

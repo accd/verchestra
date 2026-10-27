@@ -68,7 +68,8 @@ function importStatement(head: string, names: readonly string[], from: string): 
   const sorted = [...new Set(names)].sort((left, right) => Number(left > right) - Number(left < right));
   const single = `import ${head}{ ${sorted.join(", ")} } from "${from}";`;
   if (single.length <= 120) return single;
-  return `import ${head}{\n${sorted.map((name) => `  ${name}`).join(",\n")}\n} from "${from}";`;
+  const members = sorted.map((name) => `  ${name}`).join(",\n");
+  return `import ${head}{\n${members}\n} from "${from}";`;
 }
 
 function connectionFile(engine: ProbeScaffoldEngine, template: ProbeEngineTemplate): string {

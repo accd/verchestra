@@ -64,10 +64,13 @@ export function explainDecision(decision: PolicyDecision, view: PolicyView): Pol
     return Object.freeze({ policyId, layer: "unknown", statement: "policy source not present in the view" });
   });
 
-  const summary =
-    decision.decision === "allow"
-      ? `allowed: ${redact(decision.explanation)}${determining.length > 0 ? ` (${determining.map((entry) => entry.policyId).join(", ")})` : ""}`
-      : `denied: ${redact(decision.explanation)}${determining.length > 0 ? ` (${determining.map((entry) => `${entry.layer} policy ${entry.policyId}`).join(", ")})` : ""}`;
+  const allowed = decision.decision === "allow";
+  const named = allowed
+    ? determining.map((entry) => entry.policyId)
+    : determining.map((entry) => `${entry.layer} policy ${entry.policyId}`);
+  const verdict = allowed ? "allowed" : "denied";
+  const policies = named.length > 0 ? ` (${named.join(", ")})` : "";
+  const summary = `${verdict}: ${redact(decision.explanation)}${policies}`;
 
   return Object.freeze({
     decision: decision.decision,

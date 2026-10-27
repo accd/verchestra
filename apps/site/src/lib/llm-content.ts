@@ -158,10 +158,11 @@ export async function collectLlmDocuments(repositoryRoot: URL | string): Promise
     if (!frontmatter?.title || !frontmatter.description) throw new Error(`${sourcePath}: missing guide metadata`);
     const markdown = normalize(frontmatter.body);
     validateLlmHeadings(markdown, sourcePath, true);
+    const routePath = route ? `${route}/` : "";
     documents.push({
       sourcePath,
-      sourceUrl: `${ORIGIN}/docs/${route ? `${route}/` : ""}`,
-      route: `docs${route ? `/${route}` : ""}`,
+      sourceUrl: `${ORIGIN}/docs/${routePath}`,
+      route: route ? `docs/${route}` : "docs",
       title: frontmatter.title,
       description: frontmatter.description,
       section: guideSection(route),

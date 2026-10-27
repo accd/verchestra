@@ -30,13 +30,14 @@ export function stableUuid(seed: string): string {
 }
 
 export function contextRecipe(runId: string, request: PlannedTaskRequest): ContextRecipe {
+  const runUuid = (...parts: string[]): string => stableUuid([runId, ...parts].join(":"));
   return {
     schemaVersion: 1,
-    recipeId: `recipe_${stableUuid(`${runId}:recipe`)}`,
-    taskId: `task_${stableUuid(`${runId}:${request.task.taskId}`)}`,
+    recipeId: `recipe_${runUuid("recipe")}`,
+    taskId: `task_${runUuid(request.task.taskId)}`,
     requiredSources: [
       {
-        selectorId: `selector_${stableUuid(`${runId}:task-request`)}`,
+        selectorId: `selector_${runUuid("task-request")}`,
         sourceKind: "knowledge",
         sourceId: TASK_SOURCE,
         query: { scope: TASK_SOURCE },
@@ -44,7 +45,7 @@ export function contextRecipe(runId: string, request: PlannedTaskRequest): Conte
         priority: "mandatory"
       },
       ...request.task.changeScope.map((scope) => ({
-        selectorId: `selector_${stableUuid(`${runId}:scope:${scope}`)}`,
+        selectorId: `selector_${runUuid("scope", scope)}`,
         sourceKind: "repository" as const,
         sourceId: REPOSITORY_SOURCE,
         query: { scope },
@@ -67,10 +68,11 @@ export function contextRecipe(runId: string, request: PlannedTaskRequest): Conte
 
 function taskStatement(request: PlannedTaskRequest): string {
   const task = request.task;
+  const doneCriteria = task.doneCriteria.map((entry) => `- ${entry}`).join("\n");
   return [
     `Task ${task.taskId} (${task.risk} risk): ${task.expectedCommitBoundary}`,
     `Requirements: ${task.requirementIds.join(", ")}`,
-    `Done criteria:\n${task.doneCriteria.map((entry) => `- ${entry}`).join("\n")}`,
+    `Done criteria:\n${doneCriteria}`,
     `Change scope: ${task.changeScope.join(", ")}`,
     `Protected paths: ${task.protectedPaths.join(", ")}`,
     `Verification commands: ${task.verificationCommands.join("; ")}`,
@@ -87,7 +89,7 @@ function taskSource(request: PlannedTaskRequest, now: string) {
       scope: TASK_SOURCE,
       fragments: [
         {
-          fragmentId: `fragment_${stableUuid(`${revision}:statement`)}`,
+          fragmentId: `fragment_${stableUuid([revision, "statement"].join(":"))}`,
           content: taskStatement(request),
           classification: "internal",
           trust: "untrusted-data"
