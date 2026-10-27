@@ -372,7 +372,7 @@ export class SafeInitService {
       }
       return Object.freeze({ planId: preview.planId, changed: preview.changes.length });
     } catch (error) {
-      for (const item of applied.reverse()) {
+      for (const item of applied.toReversed()) {
         await rm(item.target, { force: true });
         if (item.backup !== undefined) await rename(item.backup, item.target);
       }
@@ -440,7 +440,8 @@ export class SafeInitService {
           action
         });
       }
-      for (const state of states.reverse()) {
+      const undoOrder = states.toReversed();
+      for (const state of undoOrder) {
         if (state.action === "none") continue;
         await rm(state.target, { force: true });
         await this.#hooks.afterRecoveryRemove?.(Object.freeze({ index: state.index, change: state.change }));
@@ -450,7 +451,7 @@ export class SafeInitService {
       await rm(staging, { recursive: true, force: true });
       await removeEmptyParents(
         root,
-        states.map((state) => state.target)
+        undoOrder.map((state) => state.target)
       );
     }
     return Object.freeze({ recoveredTransactions: directories.length, restoredChanges });

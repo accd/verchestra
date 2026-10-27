@@ -299,7 +299,7 @@ function refs(value: unknown, label: string, version: RunCapsuleSchemaVersion): 
   if (new Set(identities).size !== identities.length)
     fail("VES_RUN_CAPSULE_INVALID", `${label} contains duplicate references`);
   return Object.freeze(
-    normalized.sort(
+    normalized.toSorted(
       (left, right) =>
         compareIdentity(version, left.artifactId, right.artifactId) ||
         compareIdentity(version, left.digest, right.digest)

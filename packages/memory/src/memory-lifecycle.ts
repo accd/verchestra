@@ -228,7 +228,7 @@ function closed(value: unknown, name: string, keys: readonly string[]): Row {
   if (value === null || typeof value !== "object" || Array.isArray(value)) invalid(`${name} must be an object`);
   const row = value as Row;
   const extras = Object.keys(row).filter((key) => !keys.includes(key));
-  if (extras.length > 0) invalid(`${name} contains unsupported fields: ${extras.sort(codeUnitCompare).join(", ")}`);
+  if (extras.length > 0) invalid(`${name} contains unsupported fields: ${extras.toSorted(codeUnitCompare).join(", ")}`);
   return row;
 }
 
@@ -322,7 +322,7 @@ async function assertSafeTarget(root: string, target: string): Promise<void> {
     if (parent === current) break;
     current = parent;
   }
-  for (const ancestor of ancestors.reverse()) {
+  for (const ancestor of ancestors.toReversed()) {
     try {
       if ((await lstat(ancestor)).isSymbolicLink())
         throw new MemoryLifecycleError("VES_MEMORY_PROMOTION_TARGET_INVALID", "Target ancestry contains a link");

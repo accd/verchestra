@@ -347,7 +347,7 @@ function artifactRefs(
   });
   if (new Set(refs.map((entry) => entry.artifactId)).size !== refs.length)
     fail("VES_EXECUTION_PACKAGE_INVALID", `${name} contains duplicate artifact IDs`);
-  return Object.freeze(refs.sort((left, right) => compareIdentity(version, left.artifactId, right.artifactId)));
+  return Object.freeze(refs.toSorted((left, right) => compareIdentity(version, left.artifactId, right.artifactId)));
 }
 
 function logicalPath(value: unknown): string {
@@ -393,7 +393,7 @@ function normalizeRequirements(
   )
     fail("VES_EXECUTION_PACKAGE_REQUIREMENT_INVALID", "Requirements must be nonempty and unique");
   return Object.freeze(
-    requirements.sort((left, right) => compareIdentity(version, left.requirementId, right.requirementId))
+    requirements.toSorted((left, right) => compareIdentity(version, left.requirementId, right.requirementId))
   );
 }
 
@@ -461,7 +461,9 @@ function normalizeTasks(
   }
   for (const id of ids) visit(id);
   return Object.freeze(
-    tasks.sort((left, right) => left.sequence - right.sequence || compareIdentity(version, left.taskId, right.taskId))
+    tasks.toSorted(
+      (left, right) => left.sequence - right.sequence || compareIdentity(version, left.taskId, right.taskId)
+    )
   );
 }
 
@@ -502,7 +504,7 @@ function normalizeCompletions(
   for (const taskId of completed)
     if (byId.get(taskId)?.dependsOn.some((dependency) => !completed.has(dependency)) === true)
       fail("VES_EXECUTION_PACKAGE_COMPLETION_INVALID", "Completed task has an incomplete dependency");
-  return Object.freeze(completions.sort((left, right) => compareIdentity(version, left.taskId, right.taskId)));
+  return Object.freeze(completions.toSorted((left, right) => compareIdentity(version, left.taskId, right.taskId)));
 }
 
 export function derivePendingTasks(
@@ -540,7 +542,7 @@ function normalizeBindings(value: unknown, version: ExecutionPackageSchemaVersio
   );
   if (entries.length === 0) fail("VES_EXECUTION_PACKAGE_INVALID", "sourceState is empty");
   const sourceState = Object.freeze(
-    Object.fromEntries(entries.sort(([left], [right]) => compareIdentity(version, left, right)))
+    Object.fromEntries(entries.toSorted(([left], [right]) => compareIdentity(version, left, right)))
   );
   return Object.freeze({
     sourceState,
@@ -736,8 +738,8 @@ function normalizeBuildInput(value: unknown): ExecutionPackageBuildInput {
     dataPolicies: artifactRefs(row["dataPolicies"], "dataPolicies", version),
     seedSpecifications: artifactRefs(row["seedSpecifications"], "seedSpecifications", version),
     requiredCapabilities: uniqueStrings(row["requiredCapabilities"], "requiredCapabilities"),
-    roleRequirements: Object.freeze(roles.sort((left, right) => compareIdentity(version, left.role, right.role))),
-    gates: Object.freeze(gates.sort((left, right) => compareIdentity(version, left.gateId, right.gateId))),
+    roleRequirements: Object.freeze(roles.toSorted((left, right) => compareIdentity(version, left.role, right.role))),
+    gates: Object.freeze(gates.toSorted((left, right) => compareIdentity(version, left.gateId, right.gateId))),
     approvalRequirements: uniqueStrings(row["approvalRequirements"], "approvalRequirements"),
     workClaimRequirement: Object.freeze({
       scopeDigest: digest(workClaim["scopeDigest"], "scopeDigest"),
@@ -752,7 +754,7 @@ function normalizeBuildInput(value: unknown): ExecutionPackageBuildInput {
     ...(policyBundleDigest === undefined ? {} : { policyBundleDigest }),
     ...(probeEvidence === undefined ? {} : { probeEvidence }),
     completionCriteria: Object.freeze(
-      completionCriteria.sort((left, right) => compareIdentity(version, left.criterionId, right.criterionId))
+      completionCriteria.toSorted((left, right) => compareIdentity(version, left.criterionId, right.criterionId))
     ),
     canonicalLocation: Object.freeze({
       gitOwnerId: digest(location["gitOwnerId"], "gitOwnerId"),
@@ -887,7 +889,7 @@ function invalidations(
       });
   return Object.freeze(
     results
-      .sort((left, right) => compareIdentity(payload.schemaVersion, left.field, right.field))
+      .toSorted((left, right) => compareIdentity(payload.schemaVersion, left.field, right.field))
       .map((entry) => Object.freeze(entry))
   );
 }

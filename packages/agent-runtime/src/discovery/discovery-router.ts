@@ -138,7 +138,7 @@ export class DiscoveryRouter {
       projectClass: input.projectClass,
       documentation: Object.freeze({ ...input.documentation }),
       sections: Object.freeze(sections),
-      missingMandatoryInformation: Object.freeze(missing.sort(codeUnitCompare))
+      missingMandatoryInformation: Object.freeze(missing.toSorted(codeUnitCompare))
     };
     return Object.freeze({ ...report, intakeDigest: digest(report) });
   }

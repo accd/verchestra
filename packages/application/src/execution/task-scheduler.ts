@@ -319,7 +319,7 @@ function planRound(input: {
   }
   return {
     start,
-    deferred: deferred.sort((a, b) => byTaskId(a.taskId, b.taskId))
+    deferred: deferred.toSorted((a, b) => byTaskId(a.taskId, b.taskId))
   };
 }
 

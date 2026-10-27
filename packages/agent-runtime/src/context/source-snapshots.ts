@@ -444,7 +444,7 @@ export class ContextSnapshotResolver {
           });
           return deepFreeze({
             ...envelope,
-            claims: claims.sort(
+            claims: claims.toSorted(
               (a, b) => codeUnitCompare(a.factKey, b.factKey) || codeUnitCompare(a.valueDigest, b.valueDigest)
             )
           });

@@ -294,6 +294,6 @@ export class CapabilityModelRouter {
       passport.independenceClass === reference.independenceClass
     )
       reasons.push("independence");
-    return deepFreeze(reasons.sort(codeUnitCompare));
+    return deepFreeze(reasons.toSorted(codeUnitCompare));
   }
 }
