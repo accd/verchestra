@@ -61,7 +61,7 @@ export interface SqliteOperation {
 export function parseSqliteReadOperation(sql: unknown, options: ParseOptions): SqliteOperation {
   if (typeof sql !== "string" || sql.length === 0 || sql.length > 131_072)
     fail("VES_SQLITE_REQUEST_INVALID", "Protected SQLite statement is invalid");
-  if (!/^[\x09\x0a\x0d\x20-\x7e]+$/u.test(sql) || /\\|\x00/u.test(sql))
+  if (!/^[\t\n\r\x20-\x7e]+$/u.test(sql) || /\\/u.test(sql))
     fail("VES_SQLITE_ENCODING_DENIED", "SQLite statement encoding is not permitted");
   if (/--|\/\*|\*\//u.test(sql)) fail("VES_SQLITE_COMMENT_DENIED", "SQLite comments are not permitted");
   if (sql.includes(";")) fail("VES_SQLITE_BATCH_DENIED", "SQLite batches are not permitted");

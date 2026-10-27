@@ -49,6 +49,14 @@ test("source envelope snapshots provenance and content digest", () => {
   assert.equal(Object.isFrozen(envelope), true);
 });
 
+test("content carrying a NUL is outside bounded text limits; other whitespace is not", () => {
+  const service = new TrustEnvelopeService({ digest });
+  for (const content of ["\u0000leading", "inner\u0000nul", "trailing\u0000"]) {
+    assert.throws(() => service.source(source({ content })), { code: "VES_TRUST_ENVELOPE_INVALID" });
+  }
+  assert.equal(service.source(source({ content: "tab\tline\r\nend" })).content, "tab\tline\r\nend");
+});
+
 const evidenceBase = {
   evidenceId: "declassification_018f0000-0000-7000-8000-000000000004",
   workspaceId,

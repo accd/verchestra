@@ -70,7 +70,7 @@ export function parseMySqlFamilyReadOperation(sql: unknown, options: ParseOption
   if (typeof sql !== "string" || sql.length === 0 || sql.length > 131_072) {
     fail("VES_MYSQL_FAMILY_REQUEST_INVALID", "Protected MySQL-family statement is invalid");
   }
-  if (!/^[\x09\x0a\x0d\x20-\x7e]+$/u.test(sql) || /\\/u.test(sql)) {
+  if (!/^[\t\n\r\x20-\x7e]+$/u.test(sql) || /\\/u.test(sql)) {
     fail("VES_MYSQL_FAMILY_ENCODING_DENIED", "MySQL-family statement encoding is not permitted");
   }
   if (/--|#|\/\*|\*\//u.test(sql)) {

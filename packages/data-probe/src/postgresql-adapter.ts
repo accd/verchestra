@@ -77,7 +77,7 @@ export function parsePostgreSqlReadOperation(sql: unknown, options: ParseOptions
   if (typeof sql !== "string" || sql.length === 0 || sql.length > 131_072) {
     fail("VES_POSTGRES_REQUEST_INVALID", "Protected PostgreSQL statement is invalid");
   }
-  if (!/^[\x09\x0a\x0d\x20-\x7e]+$/u.test(sql) || /\\/u.test(sql) || /\$(?!\d+\b)/u.test(sql)) {
+  if (!/^[\t\n\r\x20-\x7e]+$/u.test(sql) || /\\/u.test(sql) || /\$(?!\d+\b)/u.test(sql)) {
     fail("VES_POSTGRES_ENCODING_DENIED", "PostgreSQL statement encoding is not permitted");
   }
   if (/--|\/\*|\*\//u.test(sql)) fail("VES_POSTGRES_COMMENT_DENIED", "PostgreSQL comments are not permitted");
