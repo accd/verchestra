@@ -97,7 +97,7 @@ test("a selectable gate that probes drivers installs them, derived from the prof
   assert.match(workflow, /if: steps\.probes\.outputs\.needed == 'yes'/u);
   assert.match(
     workflow,
-    /npm install --global --ignore-scripts --no-audit --no-fund @anthropic-ai\/claude-code@[\d.]+ @openai\/codex@[\d.]+\s+npm rebuild --global @anthropic-ai\/claude-code @openai\/codex/u
+    /npm ci --ignore-scripts --no-audit --no-fund\s+node "\$checkout\/scripts\/verify-provider-install\.mjs" \.\s+npm rebuild @anthropic-ai\/claude-code\n/u
   );
   assert.match(workflow, /case "\$claude_version" in/u);
   assert.match(workflow, /case "\$codex_version" in/u);

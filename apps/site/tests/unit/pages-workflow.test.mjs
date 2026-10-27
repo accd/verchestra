@@ -12,14 +12,19 @@ test("publishes only the exact site artifact that passed both required gates", (
   // format, lint, typecheck, and test stages serially.
   assert.match(workflow, /node scripts\/select-gates\.mjs/u);
   assert.match(workflow, /if: contains\(steps\.selection\.outputs\.stages, 'test:qualification'\)/u);
-  assert.match(workflow, /@anthropic-ai\/claude-code@2\.1\.282 @openai\/codex@0\.115\.0/u);
-  // A blanket --ignore-scripts would skip the postinstall that places Claude
-  // Code's native binary, so scripts are off only when the two pinned packages
-  // are rebuilt by name right after (the t76-candidate-build.yml pattern).
+  // The providers come from the committed lockfile, whose integrity covers the
+  // platform binaries too (#596). A blanket --ignore-scripts would skip the
+  // postinstall that places Claude Code's native binary, so scripts are off
+  // only when that package is rebuilt by name right after the install check.
   assert.match(
     workflow,
-    /npm install --global --ignore-scripts --no-audit --no-fund @anthropic-ai\/claude-code@2\.1\.282 @openai\/codex@0\.115\.0\s+npm rebuild --global @anthropic-ai\/claude-code @openai\/codex\n/u
+    /cp \.github\/qualified-providers\/package\.json \.github\/qualified-providers\/package-lock\.json "\$providers"/u
   );
+  assert.match(
+    workflow,
+    /npm ci --ignore-scripts --no-audit --no-fund\s+node "\$checkout\/scripts\/verify-provider-install\.mjs" \.\s+npm rebuild @anthropic-ai\/claude-code\n/u
+  );
+  assert.doesNotMatch(workflow, /npm install --global/u);
   assert.match(workflow, /case "\$claude_version" in "2\.1\.282"\|"2\.1\.282 "\*/u);
   assert.match(workflow, /case "\$codex_version" in "codex-cli 0\.115\.0"\|"codex-cli 0\.115\.0 "\*/u);
   assert.match(workflow, /for stage in \$\{\{ steps\.selection\.outputs\.stages \}\}/u);

@@ -171,11 +171,12 @@ test("lifecycle scripts run only for the packages whose native binaries are requ
   assert.match(workflow, /node_modules\/\.bin\/opencode --version/u);
   assert.match(
     workflow,
-    /npm install --global --ignore-scripts --no-audit --no-fund @anthropic-ai\/claude-code@[\d.]+ @openai\/codex@[\d.]+\s+npm rebuild --global @anthropic-ai\/claude-code @openai\/codex/u
+    /npm ci --ignore-scripts --no-audit --no-fund\s+node "\$checkout\/scripts\/verify-provider-install\.mjs" \.\s+npm rebuild @anthropic-ai\/claude-code\n/u
   );
-  // No install may run the whole dependency tree's scripts.
+  // No install may run the whole dependency tree's scripts, and none may
+  // resolve the providers outside the committed lockfile (#596).
   assert.doesNotMatch(workflow, /pnpm install --frozen-lockfile\n/u);
-  assert.doesNotMatch(workflow, /npm install --global --no-audit/u);
+  assert.doesNotMatch(workflow, /npm install --global/u);
   // The probes must still prove the binaries actually run.
   assert.match(workflow, /claude --version/u);
   assert.match(workflow, /codex --version/u);
