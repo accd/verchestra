@@ -26,7 +26,7 @@ import {
 import { SIGNING_PASSPHRASE, VERIFIER_CREDENTIAL, requireCredentialBound } from "./task-credentials.ts";
 import { notConfigured } from "./task-errors.ts";
 import { loadGateAllowlist } from "./task-gates.ts";
-import { findExecutable } from "./task-implementer.ts";
+import { findExecutable, passThroughEnvironment } from "./task-implementer.ts";
 import type { TaskCommandIo } from "./task-io.ts";
 import type { PlannedTaskRequest } from "./task-plan-record.ts";
 import { readRequest, sourceState } from "./task-plan.ts";
@@ -90,11 +90,21 @@ async function openWorkspace(io: TaskCommandIo): Promise<TaskWorkspace> {
 
 // invariant: TCK-06. The driver's own probe judges the version against the
 // minimum the run applies; only `--version` is started.
+// why: the probe gets the variables a run passes its providers, as `task
+// start`'s probe and the Codex status check below do. A driver left to its
+// defaults drops TMPDIR, so on macOS the provider saw the shared /tmp instead
+// of the invoking user's own temporary directory, and a provider that `task
+// start` runs could be reported missing.
+function probeEnvironment(io: TaskCommandIo): Record<string, string> {
+  return passThroughEnvironment(io.env, io.platform);
+}
+
 async function requireClaude(io: TaskCommandIo): Promise<void> {
   const executable = await findExecutable("claude", io.env, io.platform);
   const report = await new ClaudeCodeDriver({
     command: [executable],
     minimumVersion: CLAUDE_MEDIATED_MINIMUM_VERSION,
+    probeEnvironment: probeEnvironment(io),
     resolveExecution: probeOnly
   }).probe();
   if (!report.available)
@@ -111,6 +121,7 @@ async function requireCodex(io: TaskCommandIo, request: PlannedTaskRequest | und
   const report = await new CodexDriver({
     command: [executable],
     ...(request?.schemaVersion === 2 ? { minimumVersion: CODEX_STRUCTURED_MINIMUM_VERSION } : {}),
+    probeEnvironment: probeEnvironment(io),
     resolveExecution: probeOnly
   }).probe();
   if (!report.available)
