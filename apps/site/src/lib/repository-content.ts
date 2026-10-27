@@ -191,7 +191,7 @@ export function validateUniqueRoutes(sources: ReadonlyArray<Pick<RepositoryConte
 }
 
 export function extractTitle(markdown: string): string {
-  const title = markdown.match(/^#[^\S\n]+(\S.*)$/m)?.[1]?.trim();
+  const title = /^#[^\S\n]+(\S.*)$/m.exec(markdown)?.[1]?.trim();
   if (!title) throw new Error("canonical Markdown is missing an H1 title");
   return title;
 }

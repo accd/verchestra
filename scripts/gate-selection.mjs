@@ -49,8 +49,14 @@ const RULES = Object.freeze([
   {
     gate: ALWAYS_GATE,
     reason: "documentation, specification, or repository metadata",
-    match:
-      /^(?:docs\/|\.specs\/|spikes\/|scripts\/|tests\/agent-(?:readiness|eval)\/|\.github\/(?!workflows\/)|[^/]+\.(?:md|txt|json|ya?ml)$|\.[^/]+$)/u
+    // A documentation directory or a root-level documentation or dot file: two
+    // expressions whose union is the rule, each under the complexity limit.
+    match: Object.freeze({
+      test: (path) =>
+        /^(?:(?:docs|\.specs|spikes|scripts|tests\/agent-(?:readiness|eval))\/|\.github\/(?!workflows\/))/u.test(
+          path
+        ) || /^(?:[^/]+\.(?:md|txt|json|ya?ml)|\.[^/]+)$/u.test(path)
+    })
   }
 ]);
 

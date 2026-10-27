@@ -38,10 +38,12 @@ expressions grew 13–18× over a 4× larger input (limit 8×).
   userinfo (`hasUserinfoBeforeColon`); trailing `\` in the Windows system root
   and trailing `/` in a repository path.
 - Exact, regex kept: bundle import specifiers (the `\s*` after `import` was a
-  subset of the clause scan); the census V2-import check (find each named
-  import, then search its braces) and canonicalizer count (`async ` never
-  changed the count); the documentation gate path (`agent-(?:readiness|eval)`,
-  `ya?ml`); PostgreSQL write keywords (a whole-word set lookup; the statement
+  subset of the clause scan); the census V2-import check (each named import
+  whose line holds only whitespace before it, found by a backward look that
+  stops at the first non-whitespace; its braces then searched for the name —
+  a line-anchored `^…*` under `m` still restarted after every `\r`) and canonicalizer count (`async ` never
+  changed the count); the documentation gate path (two expressions, a directory
+  and a root-level file, whose union is the rule); PostgreSQL write keywords (a whole-word set lookup; the statement
   is ASCII by then); sensitive claim values (one expression per secret shape,
   same union); the two spike version parsers (`(?<!\d)` start; the codex
   `codex-cli ` prefix never changed the digits), held to the old expression in

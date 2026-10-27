@@ -262,12 +262,17 @@ test("census signals and the V2 import check answer as before on every source an
     "let canonicalizeA = canonicalJson; canonical(",
     'import {\n  a,\n  canonicalizeJsonV2\n} from "x";',
     '// import { canonicalizeJsonV2 } from "x"',
+    'x import {\nimport { canonicalizeJsonV2 } from "y"',
+    'import {\nimport { canonicalizeJsonV2 } from "y"',
+    '\r\r import { canonicalizeJsonV2 } from "z"',
+    '\uFEFFimport { canonicalizeJsonV2 } from "z"',
     '\n\n  import { canonicalizeJsonV2 as c } from "@verchestra/domain";'
   ]) {
     assert.equal(importsCanonicalizeJsonV2(source), oldImport.test(source), source);
     assert.equal(signalsFor(source).canonicalizer, [...source.matchAll(oldCanonicalizer)].length, source);
   }
   assertLinear("importsCanonicalizeJsonV2", importsCanonicalizeJsonV2, (size) => " \n".repeat(size));
+  assertLinear("importsCanonicalizeJsonV2", importsCanonicalizeJsonV2, (size) => `${"\r".repeat(size)}x`);
   assertLinear("signalsFor", signalsFor, (size) => "async function ".repeat(size));
 });
 
