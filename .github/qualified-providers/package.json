@@ -1,0 +1,9 @@
+{
+  "name": "verchestra-qualified-providers",
+  "private": true,
+  "description": "The provider CLIs the fleet qualifies the drivers against, installed by npm ci from the committed lockfile (#596).",
+  "dependencies": {
+    "@anthropic-ai/claude-code": "2.1.282",
+    "@openai/codex": "0.115.0"
+  }
+}

@@ -42,8 +42,10 @@ test("every workflow install disables lifecycle scripts", () => {
   assert.deepEqual(unrestricted, []);
 });
 
-test("every global provider install rebuilds exactly its pinned packages by name", () => {
-  const installers = workflows.filter(({ text }) => /npm install --global/u.test(text));
+// why: #596. A global install pinned the two provider versions but resolved
+// their platform binary packages unchecked; the lockfile pins every sha512.
+test("every provider install comes from the committed lockfile and rebuilds only Claude Code by name", () => {
+  const installers = workflows.filter(({ text }) => text.includes(".github/qualified-providers/"));
   assert.deepEqual(installers.map(({ name }) => name).sort(), [
     "ci.yml",
     "full-validation.yml",
@@ -53,7 +55,12 @@ test("every global provider install rebuilds exactly its pinned packages by name
   for (const { name, text } of installers)
     assert.match(
       text,
-      /npm install --global --ignore-scripts --no-audit --no-fund @anthropic-ai\/claude-code@[\d.]+ @openai\/codex@[\d.]+\s+npm rebuild --global @anthropic-ai\/claude-code @openai\/codex\n/u,
+      /cd "\$providers"\n\s+npm ci --ignore-scripts --no-audit --no-fund\n\s+node "\$checkout\/scripts\/verify-provider-install\.mjs" \.\n\s+npm rebuild @anthropic-ai\/claude-code\n\s+node -p "require\('node:path'\)\.join\(process\.cwd\(\), 'node_modules', '\.bin'\)" >> "\$GITHUB_PATH"\n/u,
       name
     );
+  const global = workflows.filter(({ text }) => /npm (?:install|i) (?:--global|-g)\b/u.test(text));
+  assert.deepEqual(
+    global.map(({ name }) => name),
+    []
+  );
 });

@@ -126,6 +126,20 @@ for (const path of ["package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", ".n
 }
 
 for (const path of [
+  ".github/qualified-providers/package.json",
+  ".github/qualified-providers/package-lock.json",
+  "scripts/verify-provider-install.mjs"
+]) {
+  test(`${path} (qualified provider install) selects conservative verification`, () => {
+    // These pin and check the provider CLIs every driver qualification runs
+    // against, so a bump may not slip through on the metadata catch-all.
+    const gates = gatesFor(path);
+    assert.ok(gates.includes("gate:full"));
+    assert.ok(gates.includes("gate:release"));
+  });
+}
+
+for (const path of [
   "scripts/gate.mjs",
   "scripts/gate-stages.mjs",
   "scripts/gate-selection.mjs",
@@ -302,7 +316,7 @@ test("a manually selectable gate that probes drivers installs them", () => {
   assert.match(workflow, /if: steps\.probes\.outputs\.needed == 'yes'/u);
   assert.match(
     workflow,
-    /npm install --global --ignore-scripts --no-audit --no-fund @anthropic-ai\/claude-code@[\d.]+ @openai\/codex@[\d.]+\s+npm rebuild --global @anthropic-ai\/claude-code @openai\/codex/u
+    /npm ci --ignore-scripts --no-audit --no-fund\s+node "\$checkout\/scripts\/verify-provider-install\.mjs" \.\s+npm rebuild @anthropic-ai\/claude-code\n/u
   );
   // The same pinned versions CI verifies, verified the same way.
   assert.match(workflow, /case "\$claude_version" in/u);

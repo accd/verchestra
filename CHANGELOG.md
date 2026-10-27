@@ -51,6 +51,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ### Security
 
+- CI installs the Claude Code and Codex CLIs it qualifies the drivers against
+  with `npm ci` from a committed lockfile, `.github/qualified-providers/`, so
+  every package is checked against a pinned sha512, the platform binaries
+  included. A platform package npm skips fails the step by name.
 - `git` starts only from an absolute `PATH` entry, and `taskkill` only from
   `System32`, so a `git.exe` planted in a repository never runs.
 - The task path's `git` commands disable repository hooks and `fsmonitor`, so a

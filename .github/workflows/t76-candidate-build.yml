@@ -152,11 +152,23 @@ jobs:
       - name: Install qualified local driver probes
         run: |
           set -euo pipefail
-          # Same restriction as the dependency tree: install without lifecycle
-          # scripts, then run them only for these two exact-pinned packages,
-          # whose postinstall fetches the native binary the probes execute.
-          npm install --global --ignore-scripts --no-audit --no-fund @anthropic-ai/claude-code@2.1.282 @openai/codex@0.115.0
-          npm rebuild --global @anthropic-ai/claude-code @openai/codex
+          # npm ci installs from the candidate's committed lockfile, which pins
+          # the sha512 of every package, the platform binaries included (#596).
+          # The check refuses a platform package npm skipped: a failed optional
+          # package is only a warning to npm. Scripts stay off except Claude
+          # Code's postinstall, which links its native binary out of that
+          # package. The install lives outside the checkout and reaches later
+          # steps on PATH.
+          checkout="$PWD"
+          providers="$RUNNER_TEMP/qualified-providers"
+          mkdir -p "$providers"
+          cp .github/qualified-providers/package.json .github/qualified-providers/package-lock.json "$providers"
+          cd "$providers"
+          npm ci --ignore-scripts --no-audit --no-fund
+          node "$checkout/scripts/verify-provider-install.mjs" .
+          npm rebuild @anthropic-ai/claude-code
+          node -p "require('node:path').join(process.cwd(), 'node_modules', '.bin')" >> "$GITHUB_PATH"
+          export PATH="$PWD/node_modules/.bin:$PATH"
           case "$(claude --version)" in
             "2.1.282"|"2.1.282 "*) ;;
             *) echo "unexpected Claude Code version" >&2; exit 1 ;;
