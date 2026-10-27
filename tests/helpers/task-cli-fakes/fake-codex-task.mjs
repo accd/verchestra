@@ -15,14 +15,17 @@
 // forces the ChatGPT method, and it refuses to verify without a credential.
 import { spawn } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import readline from "node:readline";
 
 import { credentialMatchesStore, fixtureFlag, fixtureLog, providerArguments } from "./fixture-channel.mjs";
 
 // why: the `codex-0.159.2` flag reports the build just below the floor of the
-// account reads, as an owner who has not updated Codex has.
+// account reads, as an owner who has not updated Codex has. A probe records the
+// temporary directory it was given, so a test can tell which one it saw.
 if (process.argv.includes("--version")) {
+  fixtureLog("fake-codex-version.log")({ tmpdir: tmpdir() });
   process.stdout.write(`codex-cli ${fixtureFlag("codex-0.159.2") ? "0.159.2" : "0.159.3"}\n`);
   process.exit(0);
 }
