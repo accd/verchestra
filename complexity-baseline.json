@@ -457,7 +457,7 @@
       22
     ],
     "packages/platform-node/src/runtime-store/runtime-store.ts :: Method 'saveSyncState'": [
-      12
+      11
     ],
     "packages/policy/src/cedar-policy.ts :: Private method #compile": [
       21

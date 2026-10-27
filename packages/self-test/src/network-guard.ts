@@ -17,7 +17,8 @@ function describeConnect(args: readonly unknown[]): string {
   if (typeof first === "object" && first !== null) {
     const options = first as { host?: unknown; path?: unknown; port?: unknown };
     if (typeof options.path === "string") return options.path;
-    if (typeof options.host === "string") return `${options.host}:${String(options.port ?? "")}`;
+    const port = typeof options.port === "number" || typeof options.port === "string" ? String(options.port) : "";
+    if (typeof options.host === "string") return `${options.host}:${port}`;
   }
   if (typeof first === "number") return `port ${first}`;
   return "unknown target";
@@ -29,8 +30,9 @@ function describeRequestArgs(args: readonly unknown[]): string {
   if (first instanceof URL) return first.href;
   if (typeof first === "object" && first !== null) {
     const options = first as { host?: unknown; hostname?: unknown; path?: unknown };
-    const host = options.hostname ?? options.host ?? "unknown-host";
-    return `${String(host)}${typeof options.path === "string" ? options.path : ""}`;
+    const named = options.hostname ?? options.host;
+    const host = typeof named === "string" ? named : "unknown-host";
+    return `${host}${typeof options.path === "string" ? options.path : ""}`;
   }
   return "unknown target";
 }

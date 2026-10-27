@@ -3,12 +3,12 @@ schema: verchestra-feature-handoff/v1
 feature: sonarcloud-quality
 issue: null
 status: in_progress
-branch: refactor/sonar-s4624-nested-templates
-baseRevision: d8e981727a026759f82a014ffa3594c3b0f7df97
+branch: refactor/sonar-s6551-object-stringification
+baseRevision: 13fa79356e6e35c583f8a135771ce15e50ace687
 lastCompletedTask: T8
 nextTask: T8
 lastGate: pnpm gate:quick plus pnpm test:architecture
-updatedAt: 2026-10-27T16:30:00Z
+updatedAt: 2026-10-27T18:30:00Z
 ---
 
 # Scope
@@ -19,6 +19,29 @@ sources. Phases B (bugs, vulnerabilities) and C (code smells) follow in their
 own changes, one rule family each, as listed in `tasks.md`.
 
 # Completed Evidence
+
+T8, S6551 (a value that may be an object passed to `String()`, 23 in 8 files)
+on `refactor/sonar-s6551-object-stringification`:
+
+- 20 sites read a nullable TEXT column of a STRICT SQLite table. They now go
+  through `storedText` (`platform-node/src/runtime-store/runtime-sqlite.ts`,
+  `VES_RUNTIME_CORRUPT`) or `nullableText` (`memory/src/stored-text.ts`, with
+  each module's own corruption error), which return the string and fail
+  closed on anything else. STRICT already guarantees text, so valid data reads
+  exactly as before.
+- `saveSyncState` refuses a projection whose `observedRemoteVersion` is not a
+  string (`VES_RUNTIME_CONSTRAINT`) instead of storing `[object Object]`.
+- The Claude Code driver emits a non-string `text_delta` as empty text, and the
+  self-test offline guard describes a non-text port as empty and a non-text
+  host as `unknown-host`.
+- `tests/unit/stored-text-columns.test.mjs` (5) covers both helpers, a run's
+  optional text columns read back verbatim, the sync-state refusal (nothing
+  stored), and the guard's descriptions.
+
+PR #629 (`e795b1f3`) merged by content; SonarCloud 2026-10-27T17:37Z on
+`13fa7935`: gate OK, S4624 0, 713 code smells, new-code coverage 91.5 %. The
+first `main` run on `e795b1f3` failed once in "Measure coverage" (security
+scope, truncated V8 profile, all tests passed); the next run was green.
 
 T8, S4624 (nested template literals, 25 in 13 files) on
 `refactor/sonar-s4624-nested-templates`: each inner template moves into a
@@ -291,11 +314,11 @@ issues; 179 bugs, 32 vulnerabilities, 924 code smells; quality gate ERROR.
 
 # Next Exact Action
 
-After the S4624 change merges, confirm on the next `main` analysis that
-`typescript:S4624` reads 0 and the quality gate is still OK
-(`api/issues/search?componentKeys=accd_verchestra&rules=typescript:S4624&resolved=false&ps=1`).
+After the S6551 change merges, confirm on the next `main` analysis that
+`typescript:S6551` reads 0 and the quality gate is still OK
+(`api/issues/search?componentKeys=accd_verchestra&rules=typescript:S6551&resolved=false&ps=1`).
 Then continue T8 with the next maintainability rule family, one per change
-(by count: S6551 23, S6582 22, S3735 20, S7780 19; S7503, S9382 and S3776 need
+(by count: S6582 22, S3735 20, S7780 19, S3358 18; S7503, S9382 and S3776 need
 a per-site decision first):
 list the open code smells by rule
 (`api/issues/search?componentKeys=accd_verchestra&types=CODE_SMELL&resolved=false&facets=rules&ps=1`)

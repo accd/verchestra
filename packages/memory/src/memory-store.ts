@@ -6,6 +6,8 @@ import { DatabaseSync, backup } from "node:sqlite";
 
 import { canonicalizeJsonV2 } from "@verchestra/domain";
 
+import { nullableText } from "./stored-text.ts";
+
 interface UnknownRecord {
   readonly [key: string]: unknown;
   readonly schemaVersion?: unknown;
@@ -266,6 +268,9 @@ const errorCode = (error: unknown): string | undefined =>
 
 const memoryError = (code: string, message: string, recoverable = false, cause?: unknown): MemoryStoreError =>
   new MemoryStoreError(code, message, recoverable, cause);
+
+const textColumn = (value: unknown): string | null =>
+  nullableText(value, () => memoryError("VES_MEMORY_CORRUPT", "A text column holds a non-text value", true));
 
 function mapSqliteError(error: unknown): Error {
   if (error instanceof MemoryStoreError) return error;
@@ -930,7 +935,7 @@ export class MemoryStore {
           kind: String(row.source_kind),
           revision: String(row.revision),
           retrievedAt: String(row.retrieved_at),
-          validUntil: row.valid_until === null ? null : String(row.valid_until),
+          validUntil: textColumn(row.valid_until),
           classification: String(row.classification),
           contentDigest: String(row.content_digest),
           generationId: String(row.generation_id),
@@ -1074,7 +1079,7 @@ export class MemoryStore {
           contentDigest: String(row.content_digest),
           revision: String(row.revision),
           retrievedAt: String(row.retrieved_at),
-          validUntil: row.valid_until === null ? null : String(row.valid_until),
+          validUntil: textColumn(row.valid_until),
           classification: String(row.classification),
           generationId: String(row.generation_id),
           manifestRef: String(row.manifest_ref),
