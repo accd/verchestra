@@ -2,9 +2,10 @@
 // (tests/integration/provider-child-run.test.mjs). It speaks no provider's
 // protocol: it runs the steps in FAKE_PROVIDER_STEPS, a JSON array, in order,
 // so each case states exactly what its provider writes, reads and how it ends.
-// invariant: it starts no process and reads nothing but its own input.
+// invariant: it starts no process and reads nothing but its own input and the
+// files a case names for it to wait on.
 import { once } from "node:events";
-import { closeSync } from "node:fs";
+import { closeSync, existsSync, writeFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 
 const steps = JSON.parse(process.env.FAKE_PROVIDER_STEPS ?? "[]");
@@ -40,6 +41,12 @@ const ACTIONS = {
   facts: () =>
     line(JSON.stringify({ argv: process.argv.slice(2), cwd: process.cwd(), marker: process.env.FAKE_PROVIDER_MARKER })),
   sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+  // why: a step that waits for a file and one that makes it, so a case orders
+  // the provider against its caller by an event instead of a sleep.
+  awaitFile: async (path) => {
+    while (!existsSync(path)) await new Promise((resolve) => setTimeout(resolve, 10));
+  },
+  touch: (path) => writeFileSync(path, ""),
   // hazard: on win32 the runtime does not close the descriptors of the
   // standard streams, so this closes nothing there.
   closeInput: () => closeSync(0),

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { mkdtemp, realpath, rm } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -339,13 +340,21 @@ test(
 );
 
 test("a failure that follows a stop leaves the stop's report", OPTIONS, async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "ves-stop-then-fail-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const stopAsked = join(directory, "stop-asked");
+  const brokenWritten = join(directory, "broken-written");
   let cancelling;
   const run = start(t, {
-    steps: [READY, { sleep: 200 }, { line: "{not-json}" }, HANG],
-    // why: the provider outlives the stop long enough to write its broken line.
+    // why: TST-005 (#598). Ordered by events, not sleeps: the provider writes
+    // its broken line only once the stop has asked for its tree, and the tree
+    // ends only once that line is written, so the failure always follows the
+    // stop, however slow the runner.
+    steps: [READY, { awaitFile: stopAsked }, { line: "{not-json}" }, { touch: brokenWritten }, HANG],
     terminateTree: (handle) => async (pid) => {
       handle.asked.push(pid);
-      await delay(600);
+      await writeFile(stopAsked, "");
+      while (!existsSync(brokenWritten)) await delay(10);
       kill(pid);
     },
     onEvent: (event, handle) => {

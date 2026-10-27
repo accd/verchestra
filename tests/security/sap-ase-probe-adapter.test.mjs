@@ -8,6 +8,7 @@ import {
 } from "../../packages/data-probe/src/sap-ase-adapter.ts";
 import { request } from "../helpers/database-probe-fixture.mjs";
 import { sapAseFixture } from "../helpers/sap-ase-probe-fixture.mjs";
+import { GROWTH_SCALE, LINEAR_GROWTH_LIMIT, growth } from "../helpers/linear-growth.mjs";
 
 const ref = request().operation.protectedRequestRef;
 const options = { kind: "select", protectedRequestRef: ref, parameterClassifications: [] };
@@ -62,12 +63,19 @@ test("SAP ASE allows go inside an identifier that shares its line", () => {
   ]);
 });
 
-test("SAP ASE batch separator detection stays linear on adversarial newline input", () => {
-  const adversarial = `${"\n".repeat(60_000)}X`;
-  const started = process.hrtime.bigint();
-  assert.throws(() => parseSapAseReadOperation(adversarial, options), { code: "VES_SAP_ASE_READ_FORM_DENIED" });
-  const elapsedMs = Number(process.hrtime.bigint() - started) / 1e6;
-  assert.ok(elapsedMs < 1000, `parse took ${elapsedMs.toFixed(0)}ms; batch separator detection is no longer linear`);
+// why: TST-005 (#598). Linear by ratio, not by a wall-clock bound: a regex
+// that backtracks over the newlines grows about 16 times over a 4 times larger
+// input, where the line scan grows about 4 times. The test timeout fails one
+// that never returns.
+test("SAP ASE batch separator detection stays linear on adversarial newline input", { timeout: 60_000 }, () => {
+  const ratio = growth(
+    (sql) => assert.throws(() => parseSapAseReadOperation(sql, options), { code: "VES_SAP_ASE_READ_FORM_DENIED" }),
+    (lines) => `${"\n".repeat(lines)}X`
+  );
+  assert.ok(
+    ratio < LINEAR_GROWTH_LIMIT,
+    `a ${GROWTH_SCALE}x larger input took ${ratio.toFixed(1)}x as long; batch separator detection is no longer linear`
+  );
 });
 
 for (const [label, observation] of [

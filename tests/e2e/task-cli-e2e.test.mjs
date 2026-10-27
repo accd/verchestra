@@ -1122,12 +1122,15 @@ test("SIGTERM while no provider is running still cancels the run", TIMEOUT, asyn
   child.stdout.on("data", (chunk) => (stdout += chunk));
   t.after(() => child.kill("SIGKILL"));
   await waitFor(() => existsSync(join(fixture.home, "gate-paused")));
+  // why: TST-005 (#598). No sleep orders the signal before the gate's end. The
+  // signal is pending on the command before the gate is released, and the
+  // command learns of the gate's end only from the gate's exit, which reaches
+  // it after that pending signal, so the signal is handled while no provider
+  // runs. A signal that ended the command shows in its exit: a signal instead
+  // of code 1.
   child.kill("SIGTERM");
-  await new Promise((resolve) => setTimeout(resolve, 500));
-  assert.equal(child.exitCode, null, "the signal did not end the command");
-  assert.equal(child.signalCode, null, "the signal did not end the command");
   await rm(join(fixture.home, "pause-gate"));
-  assert.deepEqual(await finished, { code: 1, signal: null });
+  assert.deepEqual(await finished, { code: 1, signal: null }, "the signal ended the command");
   assert.equal(JSON.parse(stdout).data.status, "ABORTED");
   assert.equal(status(fixture, plan.runId).state, "ABORTED");
   assert.deepEqual(logLines(fixture, "fake-codex.log"), [], "the verifier never started");
