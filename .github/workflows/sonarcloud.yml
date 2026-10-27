@@ -45,12 +45,14 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Measure coverage
-        # The scopes that never kill a Node child. Integration and fault kill
-        # children by design; a child killed mid-write leaves a truncated V8
-        # profile that fails the runner's coverage report (scripts/test-scope.mjs).
+        # The scopes whose children are never killed mid-write. Integration and
+        # fault kill children by design; a child killed mid-write leaves a
+        # truncated V8 profile that fails the runner's coverage report
+        # (scripts/test-scope.mjs). Security exercises the distribution,
+        # activation and worktree adapters no other covered scope reaches.
         run: |
           set -euo pipefail
-          for stage in test:unit test:contract; do
+          for stage in test:unit test:contract test:security; do
             echo "::group::pnpm run $stage"
             pnpm run "$stage"
             echo "::endgroup::"

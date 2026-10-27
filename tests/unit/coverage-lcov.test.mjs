@@ -121,6 +121,17 @@ test("a scope writes LCOV to coverage/ only when VES_COVERAGE=1 asks for it", as
   assert.match(result.stdout, /passes/u, "the scope still reports its tests on stdout");
 });
 
+test("the security scope is measured into a report of its own, beside unit and contract", async (t) => {
+  const root = await temporaryDirectory(t, "verchestra-coverage-scope-");
+  await mkdir(join(root, "cases"));
+  await writeFile(join(root, "cases", "passing.test.mjs"), PASSING);
+  for (const scope of ["unit", "contract", "security"]) {
+    const result = run(SCOPE, [scope, "cases"], { cwd: root, environment: { VES_COVERAGE: "1" } });
+    assert.equal(result.status, 0, result.stderr);
+  }
+  assert.deepEqual((await readdir(join(root, "coverage"))).sort(), ["contract.lcov", "security.lcov", "unit.lcov"]);
+});
+
 test("a scope with no declared coverage report refuses to measure rather than invent a name", async (t) => {
   const root = await temporaryDirectory(t, "verchestra-coverage-scope-");
   await mkdir(join(root, "cases"));

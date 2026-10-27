@@ -43,9 +43,11 @@ const SHARED_CACHE = "node-compile-cache";
 // straight to the files SonarCloud analyses, with no instrumenting dependency.
 // Only scopes that never kill a Node child are covered: Node hands every child
 // NODE_V8_COVERAGE, a child killed mid-write leaves a truncated profile, and the
-// runner then fails the whole scope reading it (integration and fault do this).
+// runner then fails the whole scope reading it (integration, fault and e2e do
+// this). Security passes measured, and it alone reaches the distribution,
+// activation and worktree adapters, so it is covered beside unit and contract.
 const COVERED_SOURCES = ["packages/**/src/**", "apps/vestra-cli/src/**", "apps/vestra-launcher/src/**"];
-const COVERAGE_REPORTS = Object.freeze({ unit: "unit.lcov", contract: "contract.lcov" });
+const COVERAGE_REPORTS = Object.freeze({ unit: "unit.lcov", contract: "contract.lcov", security: "security.lcov" });
 const coverage = [];
 if (process.env.VES_COVERAGE === "1") {
   if (!Object.hasOwn(COVERAGE_REPORTS, scope)) {
