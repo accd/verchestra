@@ -132,6 +132,26 @@ test("the security scope is measured into a report of its own, beside unit and c
   assert.deepEqual((await readdir(join(root, "coverage"))).sort(), ["contract.lcov", "security.lcov", "unit.lcov"]);
 });
 
+test("a product source named like a test is still measured, and a test file never is", async (t) => {
+  const root = await temporaryDirectory(t, "verchestra-coverage-scope-");
+  const source = join(root, "packages", "demo", "src");
+  await mkdir(source, { recursive: true });
+  await writeFile(join(source, "self-test.mjs"), "export const answer = () => 42;\n");
+  await writeFile(
+    join(source, "self.test.mjs"),
+    'import test from "node:test"; import { answer } from "./self-test.mjs"; test("answers", () => answer());\n'
+  );
+  const result = run(SCOPE, ["unit", join("packages", "demo", "src")], {
+    cwd: root,
+    environment: { VES_COVERAGE: "1" }
+  });
+  assert.equal(result.status, 0, result.stderr);
+  const files = [...(await readFile(join(root, "coverage", "unit.lcov"), "utf8")).matchAll(/^SF:(.*)$/gmu)].map(
+    (match) => match[1].replaceAll("\\", "/")
+  );
+  assert.deepEqual(files, ["packages/demo/src/self-test.mjs"]);
+});
+
 test("a scope with no declared coverage report refuses to measure rather than invent a name", async (t) => {
   const root = await temporaryDirectory(t, "verchestra-coverage-scope-");
   await mkdir(join(root, "cases"));

@@ -47,6 +47,11 @@ const SHARED_CACHE = "node-compile-cache";
 // this). Security passes measured, and it alone reaches the distribution,
 // activation and worktree adapters, so it is covered beside unit and contract.
 const COVERED_SOURCES = ["packages/**/src/**", "apps/vestra-cli/src/**", "apps/vestra-launcher/src/**"];
+// why: without an explicit exclude, Node drops every file named like a test
+// (`*-test.*`, `test-*`), which silently removed product sources such as
+// `self-test.ts` and `policy-test.ts` from the report. The exclusion is set to
+// the test files SonarCloud itself excludes from sources, and nothing else.
+const COVERAGE_EXCLUDED = ["**/*.test.*"];
 const COVERAGE_REPORTS = Object.freeze({ unit: "unit.lcov", contract: "contract.lcov", security: "security.lcov" });
 const coverage = [];
 if (process.env.VES_COVERAGE === "1") {
@@ -59,6 +64,7 @@ if (process.env.VES_COVERAGE === "1") {
   coverage.push(
     "--experimental-test-coverage",
     ...COVERED_SOURCES.map((glob) => "--test-coverage-include=" + glob),
+    ...COVERAGE_EXCLUDED.map((glob) => "--test-coverage-exclude=" + glob),
     "--test-reporter=lcov",
     "--test-reporter-destination=" + join(directory, COVERAGE_REPORTS[scope]),
     "--test-reporter=spec",
