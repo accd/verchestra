@@ -423,6 +423,25 @@ test("no provider session starts", TIMEOUT, async () => {
   assert.deepEqual((await starts("codex.exe")).sort(), ["--version", "login status"]);
 });
 
+// invariant: TCK-02, TCK-06. Each `--version` probe gets the temporary
+// directory a run gives its providers, as `task start`'s probe does.
+// why: a probe left to the driver's defaults lost TMPDIR. Linux fell back to a
+// /tmp that held the fixture by chance; macOS did not, so both providers were
+// reported missing there although `task start` ran them.
+test("each version probe gets the temporary directory a run gives its providers", TIMEOUT, async () => {
+  const fixture = await fixtureFor();
+  assert.equal(check(fixture).status, 0);
+  const expected = await realpath(fixture.scratch);
+  for (const log of ["fake-claude-version.log", "fake-codex-version.log"]) {
+    const entries = (await readFile(join(fixture.scratch, log), "utf8"))
+      .split("\n")
+      .filter((entry) => entry !== "")
+      .map((entry) => JSON.parse(entry));
+    assert.ok(entries.length > 0, `${log} records the probe`);
+    for (const entry of entries) assert.equal(await realpath(entry.tmpdir), expected, log);
+  }
+});
+
 test("task check without --request is an argument error, exit 2", TIMEOUT, async () => {
   const fixture = await fixtureFor();
   const result = fixture.launch(["task", "check", ...fixture.keychainArgs, "--output", "json"]);
