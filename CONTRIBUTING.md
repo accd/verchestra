@@ -43,6 +43,10 @@ pnpm gate:quick
 
 Use Node `24.14.0` and pnpm `10.34.5`.
 
+Coverage is measured on demand, never by default and with no threshold:
+`VES_COVERAGE=1 pnpm test:unit` (or `test:contract`) writes
+`coverage/<scope>.lcov` for the product sources.
+
 ### On Windows
 
 - If `corepack enable` is refused because Node is installed under
