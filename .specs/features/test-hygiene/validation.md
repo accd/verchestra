@@ -1,7 +1,7 @@
 # Test hygiene (#598): validation
 
 **Date:** 2026-10-27
-**Diff:** `test/598-test-hygiene` from `3daf665`
+**Diff:** `test/598-test-hygiene` from `51df504`
 **Host:** Windows 11 Pro x64, Node 24.14.0, pnpm 10.34.5.
 **Verifier:** the implementing agent's local pass. The POSIX-only tests run in
 the pull request's Linux Quality gate.
