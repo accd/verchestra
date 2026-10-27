@@ -507,7 +507,7 @@ export class CapabilityBroker {
       fail("VES_CAPABILITY_APPROVAL_INVALID", "Capability requires a current exact Approval");
     }
     const approvalRecord = await this.#store.loadApproval(request.approvalRef.approvalId);
-    if (approvalRecord === undefined || !approvalRecord.review.capabilities.includes(request.capability)) {
+    if (!approvalRecord?.review.capabilities.includes(request.capability)) {
       fail("VES_CAPABILITY_APPROVAL_INVALID", "Capability is absent from the signed review surface");
     }
     const principal = entity(request.principal, "principal");

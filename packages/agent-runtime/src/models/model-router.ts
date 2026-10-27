@@ -205,11 +205,11 @@ export class CapabilityModelRouter {
         ): entry is {
           readonly reference: { readonly passportId: string; readonly revision: number };
           readonly passport: PassportRecord;
-        } => entry.passport !== undefined && entry.passport.revision === entry.reference.revision
+        } => entry.passport?.revision === entry.reference.revision
       )
       .map((entry) => entry.passport);
     const profileExclusions = resolved
-      .filter((entry) => entry.passport === undefined || entry.passport.revision !== entry.reference.revision)
+      .filter((entry) => entry.passport?.revision !== entry.reference.revision)
       .map((entry) =>
         deepFreeze({
           passportId: entry.reference.passportId,
@@ -229,7 +229,7 @@ export class CapabilityModelRouter {
           exclusions.push(deepFreeze({ passportId: passport.passportId, reasons }));
           continue;
         }
-        const independent = reference === undefined || passport.independenceClass !== reference.independenceClass;
+        const independent = passport.independenceClass !== reference?.independenceClass;
         const rank = deepFreeze([
           role.independence.mode === "preferred" && !independent ? 1 : 0,
           passport.status === "degraded" ? 1 : 0,
@@ -250,7 +250,7 @@ export class CapabilityModelRouter {
           // a refusal; two machines must present it in the same order (#58).
           exclusions: deepFreeze(normalizeDeclaredSet(exclusions, (entry) => entry.passportId))
         });
-      const independent = reference === undefined || winner.passport.independenceClass !== reference.independenceClass;
+      const independent = winner.passport.independenceClass !== reference?.independenceClass;
       const independence = role.independence.mode === "none" ? "not-required" : independent ? "satisfied" : "degraded";
       selections.push(
         deepFreeze({
@@ -288,11 +288,7 @@ export class CapabilityModelRouter {
     if (!role.allowedTransports.includes(passport.endpointIdentity.transport)) reasons.push("transport");
     if (role.allowDegraded === false && passport.status === "degraded") reasons.push("degraded-status");
     if (passport.confidence < (role.minimumConfidence ?? 0)) reasons.push("minimum-confidence");
-    if (
-      role.independence.mode === "required" &&
-      reference !== undefined &&
-      passport.independenceClass === reference.independenceClass
-    )
+    if (role.independence.mode === "required" && passport.independenceClass === reference?.independenceClass)
       reasons.push("independence");
     return deepFreeze(reasons.toSorted(codeUnitCompare));
   }

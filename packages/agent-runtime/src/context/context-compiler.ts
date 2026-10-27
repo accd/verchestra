@@ -354,8 +354,8 @@ export class DeterministicContextCompiler {
     );
     for (const source of input.snapshot.sources) {
       const selector = selectors.get(source.selectorId);
+      if (selector === undefined) fail("VES_CONTEXT_SNAPSHOT_INVALID", "Context source provenance is invalid");
       if (
-        selector === undefined ||
         source.sourceKind !== selector.sourceKind ||
         source.sourceId !== selector.sourceId ||
         source.required !== required.has(source.selectorId) ||

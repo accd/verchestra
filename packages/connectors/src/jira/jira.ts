@@ -773,7 +773,7 @@ export class JiraClaimConnector {
     const current = observed.claim === undefined ? undefined : normalizeClaim(observed.claim);
     if (current !== undefined && current.workspaceId !== workspaceId)
       throw new JiraConnectorError("VES_JIRA_CLAIM_REMOTE_INVALID", "claim crossed workspace boundary");
-    if (current !== undefined && current.status === "active" && Date.parse(current.expiresAt) > Date.parse(now)) {
+    if (current?.status === "active" && Date.parse(current.expiresAt) > Date.parse(now)) {
       return Object.freeze({ status: sameOwner(current.owner, owner) ? "acquired" : "conflict", claim: current });
     }
     const fencingToken = (current?.fencingToken ?? 0) + 1;

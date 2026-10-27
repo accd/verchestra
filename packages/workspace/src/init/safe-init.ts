@@ -318,7 +318,7 @@ export class SafeInitService {
   }
   async apply(preview: InitPreview): Promise<{ readonly planId: string; readonly changed: number }> {
     const context = contexts.get(preview as object);
-    if (context === undefined || context.service !== this.#identity)
+    if (context?.service !== this.#identity)
       throw new WorkspaceScanError("VES_INIT_PREVIEW_INVALID", "Init preview is not authentic");
     if ((await pendingStaging(context.root)).length > 0)
       throw new WorkspaceScanError("VES_INIT_RECOVERY_REQUIRED", "Interrupted init transaction requires recovery");

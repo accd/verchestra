@@ -50,7 +50,8 @@ function parseVersion(text: string, pattern: RegExp): readonly [number, number, 
 export function meetsMinimum(actual: string, minimum: string, pattern: RegExp): boolean {
   const left = parseVersion(actual, pattern);
   const right = parseVersion(minimum, pattern);
-  if (left === undefined || right === undefined || left[0] !== right[0]) return false;
+  if (left === undefined || right === undefined) return false;
+  if (left[0] !== right[0]) return false;
   if (left[1] !== right[1]) return left[1] > right[1];
   return left[2] >= right[2];
 }

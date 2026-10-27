@@ -370,8 +370,7 @@ export class WorkClaimService {
     try {
       const current = await this.#remote.current(ref(claim));
       return (
-        current !== undefined &&
-        current.claimId === claim.claimId &&
+        current?.claimId === claim.claimId &&
         current.fencingToken === claim.fencingToken &&
         canonicalizeJsonV2({ ...current, expiresAt: claim.expiresAt, signature: claim.signature }) ===
           canonicalizeJsonV2(claim) &&

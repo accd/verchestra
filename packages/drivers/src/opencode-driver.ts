@@ -342,11 +342,9 @@ export class OpenCodeDriver implements Driver {
     try {
       const catalog = flattenCatalog((await client.provider.list()).data);
       const candidate = catalog.find((entry) => entry.id === execution.model && entry.connected);
-      if (
-        candidate === undefined ||
-        candidate.provider !== execution.passport.provider ||
-        candidate.model !== execution.passport.resolvedModel
-      )
+      if (candidate === undefined)
+        throw openCodeError("VES_OPENCODE_MODEL_UNAVAILABLE", "OpenCode model is unavailable");
+      if (candidate.provider !== execution.passport.provider || candidate.model !== execution.passport.resolvedModel)
         throw openCodeError("VES_OPENCODE_MODEL_UNAVAILABLE", "OpenCode model is unavailable");
       state.emit({ type: "session.started", sessionId: sessionRef });
       state.emit({

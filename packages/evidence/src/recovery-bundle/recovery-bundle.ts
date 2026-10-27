@@ -385,9 +385,8 @@ function assertClosure(
   for (let index = 0; index < refs.length; index += 1) {
     const ref = refs[index];
     const object = objects[index];
+    if (ref === undefined || object === undefined) fail(code, "Recovery object closure does not match its manifest");
     if (
-      ref === undefined ||
-      object === undefined ||
       ref.objectId !== object.objectId ||
       ref.kind !== object.kind ||
       ref.size !== object.bytes.byteLength ||

@@ -3,12 +3,12 @@ schema: verchestra-feature-handoff/v1
 feature: sonarcloud-quality
 issue: null
 status: in_progress
-branch: refactor/sonar-s6551-object-stringification
-baseRevision: 13fa79356e6e35c583f8a135771ce15e50ace687
+branch: refactor/sonar-s6582-optional-chaining
+baseRevision: 65d59dc64336bb9670a4847bd8e3ca052a6dc46e
 lastCompletedTask: T8
 nextTask: T8
 lastGate: pnpm gate:quick plus pnpm test:architecture
-updatedAt: 2026-10-27T18:30:00Z
+updatedAt: 2026-10-27T19:15:00Z
 ---
 
 # Scope
@@ -20,6 +20,25 @@ own changes, one rule family each, as listed in `tasks.md`.
 
 # Completed Evidence
 
+T8, S6582 (prefer optional chaining, 22 in 17 files) on
+`refactor/sonar-s6582-optional-chaining`:
+
+- 17 sites become `x?.a !== y` (or `===`, `!x?.list.includes`) only where
+  `y` is always defined by type and at run time (a required string or number,
+  or a broker's private `#identity` object), so both forms agree on every
+  input.
+- 5 validation sites over input that could carry an undefined field
+  (`context-compiler.ts`, `recovery-bundle.ts`, `driver-version-probe.ts`,
+  `database-knowledge.ts` package binding, the OpenCode catalog candidate)
+  keep the undefined guard as its own statement with the same failure, because
+  `x?.a !== y` would accept `x` undefined when `y` is undefined too.
+- `tests/unit/optional-chaining-guards.test.mjs` (2) pins `meetsMinimum` on
+  both sides of the split guard; existing model-router, context-compiler,
+  protected-path, secret-broker, skill, OpenCode and safe-init suites pass
+  (182/182).
+
+PR #630 (`65d59dc6`) merged by content; SonarCloud 2026-10-27T18:31Z: gate
+OK, S6551 0, 690 code smells, new-code coverage 91.5 %, coverage 87.6 %.
 T8, S6551 (a value that may be an object passed to `String()`, 23 in 8 files)
 on `refactor/sonar-s6551-object-stringification`:
 
@@ -314,11 +333,11 @@ issues; 179 bugs, 32 vulnerabilities, 924 code smells; quality gate ERROR.
 
 # Next Exact Action
 
-After the S6551 change merges, confirm on the next `main` analysis that
-`typescript:S6551` reads 0 and the quality gate is still OK
-(`api/issues/search?componentKeys=accd_verchestra&rules=typescript:S6551&resolved=false&ps=1`).
+After the S6582 change merges, confirm on the next `main` analysis that
+`typescript:S6582` reads 0 and the quality gate is still OK
+(`api/issues/search?componentKeys=accd_verchestra&rules=typescript:S6582&resolved=false&ps=1`).
 Then continue T8 with the next maintainability rule family, one per change
-(by count: S6582 22, S3735 20, S7780 19, S3358 18; S7503, S9382 and S3776 need
+(by count: S3735 20, S7780 19, S3358 18, S6535 16; S7503, S9382 and S3776 need
 a per-site decision first):
 list the open code smells by rule
 (`api/issues/search?componentKeys=accd_verchestra&types=CODE_SMELL&resolved=false&facets=rules&ps=1`)

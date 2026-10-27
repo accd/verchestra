@@ -643,7 +643,7 @@ export class MemoryVectorIndex {
     }
     const existing = this.#rowForGeneration(build.generationId);
     const active = this.#activeRow(build);
-    if (existing !== undefined && active !== undefined && active["generation_id"] === build.generationId) {
+    if (existing !== undefined && active?.["generation_id"] === build.generationId) {
       this.#verifyGeneration(existing);
       return Object.freeze({ ...generationFromRow(existing), changed: false });
     }
