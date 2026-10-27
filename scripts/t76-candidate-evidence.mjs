@@ -149,8 +149,11 @@ export function gateEvaluationRecord({ profile, status, log }) {
     assertionCount,
     skipped: summed(log, SUMMARY.skipped),
     todo: summed(log, SUMMARY.todo),
-    // why: no gate log carries a mutant counter. The builder refuses a candidate
-    // whose count is not 0, and the sealed bytes have always said 0.
+    // invariant: TST-006 (#598). Reserved and not measured: no gate runs
+    // mutation testing and no gate log carries a mutant counter, so the count
+    // is 0 by construction, never a reading. The builder still refuses a
+    // count other than 0, so a measurement added later fails closed.
+    // RELEASE-DECISION-CONTRACT.md says the same.
     survivingMutants: 0
   };
 }
