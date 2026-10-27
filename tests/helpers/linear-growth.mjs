@@ -15,12 +15,29 @@ function batch(run, input, repetitions) {
   return Number(process.hrtime.bigint() - started) / 1e6;
 }
 
+// why: the two sizes are sampled alternately, so a pause or a noisy neighbour
+// lands on both sides of the ratio rather than on one; and a ratio over the
+// limit is measured again, up to `rounds` times, keeping the least. A linear
+// cost crosses the limit only under interference, which does not repeat; a
+// quadratic one lands near 16 every round, so it still fails every time.
+function ratioOnce(run, small, large, repetitions, samples) {
+  let fastestSmall = Infinity;
+  let fastestLarge = Infinity;
+  for (let index = 0; index < samples; index += 1) {
+    fastestSmall = Math.min(fastestSmall, batch(run, small, repetitions));
+    fastestLarge = Math.min(fastestLarge, batch(run, large, repetitions));
+  }
+  return fastestLarge / fastestSmall;
+}
+
 // `run(input)` does the work once; `make(size)` builds the input of a size.
-export function growth(run, make, { base = 5_000, minimumBatchMs = 20, samples = 5 } = {}) {
+export function growth(run, make, { base = 5_000, minimumBatchMs = 20, samples = 5, rounds = 3 } = {}) {
   const small = make(base);
   const large = make(base * GROWTH_SCALE);
   let repetitions = 1;
   while (batch(run, small, repetitions) < minimumBatchMs && repetitions < 1 << 16) repetitions *= 2;
-  const fastest = (input) => Math.min(...Array.from({ length: samples }, () => batch(run, input, repetitions)));
-  return fastest(large) / fastest(small);
+  let least = Infinity;
+  for (let round = 0; round < rounds && least >= LINEAR_GROWTH_LIMIT; round += 1)
+    least = Math.min(least, ratioOnce(run, small, large, repetitions, samples));
+  return least;
 }
