@@ -38,6 +38,19 @@ const DENIED = [
   ["backslash", "\\"]
 ];
 
+// PostgreSQL alone also denies `$` outside a positional parameter on the same
+// encoding line, which closes dollar quoting.
+test("PostgreSQL denies a dollar quote but keeps positional parameters", () => {
+  assert.throws(() => parsePostgreSqlReadOperation("SELECT $$x$$ FROM public.orders", options), {
+    code: "VES_POSTGRES_ENCODING_DENIED"
+  });
+  const operation = parsePostgreSqlReadOperation("SELECT id FROM public.orders WHERE status = $1", {
+    ...options,
+    parameterClassifications: ["internal"]
+  });
+  assert.equal(operation.objects.length, 1);
+});
+
 for (const [dialect, parse, object, code, extra] of DIALECTS) {
   const parseWith = (sql) => parse(sql, { ...options, ...extra });
 
