@@ -3,12 +3,12 @@ schema: verchestra-feature-handoff/v1
 feature: sonarcloud-quality
 issue: null
 status: in_progress
-branch: fix/sonar-t8-s4043
-baseRevision: 6b0b548ff4d2d4120126d8fe7b934a9d4b75f479
+branch: fix/coverage-lcov-branch-merge
+baseRevision: e5389cd13ee540ab660a3a48ec4e338f7e1c4fda
 lastCompletedTask: T8
 nextTask: T8
-lastGate: pnpm gate:quick plus pnpm test:architecture, pnpm test:census and pnpm gate:security
-updatedAt: 2026-10-27T14:21:46Z
+lastGate: pnpm gate:quick plus pnpm test:architecture
+updatedAt: 2026-10-27T15:13:19Z
 ---
 
 # Scope
@@ -19,6 +19,35 @@ sources. Phases B (bugs, vulnerabilities) and C (code smells) follow in their
 own changes, one rule family each, as listed in `tasks.md`.
 
 # Completed Evidence
+
+Quality gate green. PR #625 (`2eed052f`, `a4e421d6`, `d4756a65`) added the
+security scope to coverage and PR #626 (`c9c9e629`) landed T8 (S4043); both
+merged by content on 2026-10-27. SonarCloud's first `main` analysis with both
+(2026-10-27T15:01Z, `e5389cd1`, after #621): quality gate OK, new-code
+coverage 89.7 % (threshold 80 %), overall coverage 85.4 % (69.4 % before),
+S4043 0, 740 code smells, 0 bugs, 0 vulnerabilities, ratings A/A/A.
+
+- #625: `COVERAGE_REPORTS` gains `security`, and `sonarcloud.yml` measures
+  `test:unit test:contract test:security`. e2e stays out (its runs truncate
+  V8 profiles like integration and fault); architecture added nothing.
+  `out-of-process-probe-host-security.test.mjs` discounts `NODE_V8_COVERAGE`
+  only while the test process is itself measured: Node's `spawn` writes it into
+  any explicit child environment. Every host-supplied key is still pinned.
+  The scope also passes `--test-coverage-exclude=**/*.test.*`, because Node's
+  default exclusion dropped product files named like tests (`self-test.ts`,
+  `policy-test.ts`).
+- LCOV branch merge fixed on `fix/coverage-lcov-branch-merge`. Adding a scope
+  nearly doubled the conditions to cover (4,772 → 8,965) because
+  `scripts/coverage-lcov.mjs` keyed branches on `line,block,branch`, and Node
+  numbers `block` per run (two real runs over `canonical-json.ts`: line 26 was
+  block 2 in one and 3 in the other; the fuller run split line 38 into two
+  ranges). Those two real reports merged to 31 conditions where the fuller run
+  alone measured 20. A line now keeps the most conditions and the most covered
+  of any one report: never more than were measured, at the price of
+  under-counting a line whose branches different scopes covered. New tests in
+  `tests/unit/coverage-lcov.test.mjs` fail on the old merge (2 fail). The
+  former assertion `BRF:2 / BRH:2` for line 2 encoded the bug (it treated
+  `2,0,1` from two runs as one branch); it is now `BRF:2 / BRH:1`.
 
 T8 (S4043) complete on `fix/sonar-t8-s4043` — the first maintainability rule
 family: 29 open S4043 issues (array-mutating `sort`/`reverse` used inside the
@@ -250,15 +279,14 @@ issues; 179 bugs, 32 vulnerabilities, 924 code smells; quality gate ERROR.
 
 # Next Exact Action
 
-After the T8 (S4043) change merges, confirm S4043 reads 0 open:
-`curl "https://sonarcloud.io/api/issues/search?componentKeys=accd_verchestra&rules=typescript:S4043,javascript:S4043&resolved=false&ps=1"`.
+After the LCOV branch-merge change merges, confirm on the next `main`
+analysis that the quality gate is still OK and that `new_conditions_to_cover`
+fell back toward the pre-#625 count (4,772):
+`curl "https://sonarcloud.io/api/measures/component?component=accd_verchestra&metricKeys=new_coverage,new_conditions_to_cover,new_uncovered_conditions"`.
 Then continue T8 with the next maintainability rule family, one per change:
 list the open code smells by rule
 (`api/issues/search?componentKeys=accd_verchestra&types=CODE_SMELL&resolved=false&facets=rules&ps=1`)
-and take the next family. Note for the coverage work: Node's test runner
-excludes files named like tests (`*-test.*`) from coverage by default, so
-`packages/application/src/self-test/self-test.ts` never appears in the LCOV
-even though `tests/unit/self-test-rules.test.mjs` exercises it.
+and take the next family.
 
 # Blockers
 
@@ -271,7 +299,8 @@ None. `SONAR_TOKEN` is set and Automatic Analysis is off (owner, 2026-10-26).
 - `SonarSource/sonarqube-scan-action` added with owner approval, 2026-10-26.
 - The token is scoped to the presence check and the scan step only, never to
   the test steps that execute the change under review.
-- Coverage scopes are unit and contract only. The second CI run passed every
+- Coverage scopes are unit, contract and security (security added by #625,
+  2026-10-27). Integration, fault and e2e stay out. The second CI run passed every
   integration test (1,278) yet failed the scope with "Could not report code
   coverage. SyntaxError: Unexpected end of JSON input": Node hands every child
   NODE_V8_COVERAGE, integration and fault kill Node children by design, and a
