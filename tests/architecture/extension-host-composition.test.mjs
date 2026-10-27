@@ -1,9 +1,10 @@
 // invariant (#569): nothing a user runs reaches the out-of-process probe host
-// while its containment limits stand: a worker can leave a detached
-// descendant running, the grant binds the entry file only, and admission
-// checks consistency, not authenticity. Composing it (T3) waits for #569's
-// code fixes; until then this walk over every module reachable from the CLI
-// and the launcher fails on any edge into packages/extension-host.
+// before the owner ratifies AD-037 as #569 amended it. #569's code fixes have
+// landed (the stopped-tree sweep, the bound launch, admission through the
+// registry and the approval store); one descendant residual stays stated in
+// threat-model.md, and AD-037 is still proposed. Composing the host is its
+// T3, which lifts this walk over every module reachable from the CLI and the
+// launcher; until then it fails on any edge into packages/extension-host.
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -63,7 +64,7 @@ function hostEdges(entries) {
   return { visited, edges };
 }
 
-test("no CLI or launcher module reaches extension-host until #569", () => {
+test("no CLI or launcher module reaches extension-host before AD-037 is ratified", () => {
   // why: the walk itself must see an edge, or a pass would prove nothing.
   const probe = mkdtempSync(join(tmpdir(), "verchestra-extension-host-walk-"));
   try {
@@ -83,6 +84,6 @@ test("no CLI or launcher module reaches extension-host until #569", () => {
   assert.deepEqual(
     edges,
     [],
-    "#569: the probe host stays uncomposed until its containment fixes land (descendant escape, unbound launch, unauthenticated admission)"
+    "#569: the probe host stays uncomposed until the owner ratifies the amended AD-037; composing it is the host's T3"
   );
 });

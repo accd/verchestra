@@ -10,9 +10,9 @@ import {
   MemoryProbeResultSink,
   MemoryProtectedParameterBroker,
   ProbeWorkerSupervisor,
-  admitWorkspaceProbeWorker
+  WorkspaceProbeAdmission
 } from "../../packages/extension-host/src/index.ts";
-import { SpawnedProbeWorker } from "../../packages/platform-node/src/index.ts";
+import { SpawnedProbeWorker, probeLaunchDigest } from "../../packages/platform-node/src/index.ts";
 import { probePlan } from "./probe-worker-fixture.mjs";
 import { grillSkill, lock, skill, verifier } from "./skill-registry-fixture.mjs";
 
@@ -60,26 +60,68 @@ export function extensionSkill({ entryPath, digest, extensionRef }) {
   });
 }
 
-export async function resolvedExtension({
-  worker = NODE_WORKER,
-  entryPath = "probe/worker.mjs",
-  extensionRef = { kind: "plugin", id: "plugin:acme-orders-probe", approvalRef: "approval:probe-worker:001" }
-} = {}) {
-  const registry = new GovernedSkillRegistry({
+export const EXTENSION_REF = Object.freeze({
+  kind: "plugin",
+  id: "plugin:acme-orders-probe",
+  approvalRef: "approval:probe-worker:001"
+});
+// why: a well-formed launch digest for admission cases that never launch.
+export const LAUNCH_DIGEST = `sha256:${"7".repeat(64)}`;
+
+export function extensionRegistry() {
+  return new GovernedSkillRegistry({
     verifier: verifier(),
     harnessVersion: "1.0.0",
     schemaVersion: 1,
     tlcMinimumVersion: "3.2.0",
     allowedLicenses: ["MIT"]
   });
-  const value = lock({
-    skills: [skill(), grillSkill(), extensionSkill({ entryPath, digest: fileDigest(worker), extensionRef })]
-  });
-  return registry.resolveExecutableExtension(value, {
-    skillId: "acme-orders-probe",
-    extensionId: extensionRef.id,
-    entryPath
-  });
+}
+
+// why: the signed lock and the request a composition root would hand admission
+// for one workspace worker.
+export function extensionLock({
+  worker = NODE_WORKER,
+  entryPath = "probe/worker.mjs",
+  extensionRef = EXTENSION_REF
+} = {}) {
+  return {
+    lock: lock({
+      skills: [skill(), grillSkill(), extensionSkill({ entryPath, digest: fileDigest(worker), extensionRef })]
+    }),
+    request: { skillId: "acme-orders-probe", extensionId: extensionRef.id, entryPath }
+  };
+}
+
+export async function resolvedExtension(options = {}) {
+  const { lock: value, request } = extensionLock(options);
+  return extensionRegistry().resolveExecutableExtension(value, request);
+}
+
+// why: an approval store as the composition root's adapter answers it: only an
+// approval on record, already verified, unrevoked and unexpired.
+export class MemoryApprovals {
+  #records;
+  lookups = [];
+
+  constructor(records = []) {
+    this.#records = new Map(records.map((record) => [record.approvalRef, record]));
+  }
+
+  async lookup(approvalRef) {
+    this.lookups.push(approvalRef);
+    return this.#records.get(approvalRef);
+  }
+}
+
+export function approvalFor(extension, launchDigest = LAUNCH_DIGEST, overrides = {}) {
+  return {
+    approvalRef: extension.extensionRef.approvalRef,
+    extensionId: extension.extensionRef.id,
+    componentDigest: extension.entry.digest,
+    launchDigest,
+    ...overrides
+  };
 }
 
 export function controllerGrant(extension, workspaceId, overrides = {}) {
@@ -90,6 +132,7 @@ export function controllerGrant(extension, workspaceId, overrides = {}) {
     extensionId: extension.extensionRef.id,
     approvalRef: extension.extensionRef.approvalRef,
     componentDigest: extension.entry.digest,
+    launchDigest: LAUNCH_DIGEST,
     capabilities: ["database-read"],
     isolationProfile: "process-contained",
     risk: "approved-workspace-executable",
@@ -97,33 +140,64 @@ export function controllerGrant(extension, workspaceId, overrides = {}) {
   };
 }
 
+// why: admission as a composition root wires it, the real registry and an
+// approval on record for the resolved extension. Each option replaces one link.
+export async function admitted(options = {}) {
+  const workspaceId = options.workspaceId;
+  const { lock: value, request } = extensionLock(options);
+  const extension = await extensionRegistry().resolveExecutableExtension(value, request);
+  const launchDigest = options.launchDigest ?? LAUNCH_DIGEST;
+  const approvals = options.approvals ?? new MemoryApprovals([approvalFor(extension, launchDigest)]);
+  const admission = new WorkspaceProbeAdmission({ extensions: options.extensions ?? extensionRegistry(), approvals });
+  const grant =
+    options.grant === null
+      ? undefined
+      : controllerGrant(extension, workspaceId, { launchDigest, ...options.grantOverrides });
+  const trust = await admission.admit({ workspaceId, lock: value, request, grant });
+  return { extension, trust, approvals };
+}
+
+// why: a transport-only launch, approved for exactly what it starts unless the
+// case names another approved launch digest.
+export async function launchApproved(options) {
+  const approvedLaunchDigest = await probeLaunchDigest(options).catch(() => LAUNCH_DIGEST);
+  return SpawnedProbeWorker.launch({ approvedLaunchDigest, ...options });
+}
+
 // why: composes the whole out-of-process path the way a composition root would:
-// locked extension -> controller grant -> admission -> spawned transport ->
-// framed worker -> supervisor. Every option overrides one link of that chain.
+// locked extension -> approval -> controller grant -> admission -> spawned
+// transport -> framed worker -> supervisor. Every option overrides one link of
+// that chain; `approvedLaunch` is what the approval and grant name, when a test
+// launches something else.
 export async function spawnedProbe(options = {}) {
   const worker = options.worker ?? NODE_WORKER;
   const plan = await probePlan(options.request);
-  const extension = await resolvedExtension({
-    worker,
-    entryPath: worker.endsWith(".py") ? "probe/worker.py" : "probe/worker.mjs",
-    ...(options.extensionRef === undefined ? {} : { extensionRef: options.extensionRef })
-  });
-  const trust = admitWorkspaceProbeWorker({
-    workspaceId: plan.workspaceId,
-    extension,
-    grant: controllerGrant(extension, plan.workspaceId)
-  });
-  const transport = await SpawnedProbeWorker.launch({
+  const extensionRef = options.extensionRef ?? EXTENSION_REF;
+  const entryPath = worker.endsWith(".py") ? "probe/worker.py" : "probe/worker.mjs";
+  const launch = {
     executable: options.executable ?? process.execPath,
     args: options.args ?? [],
-    entry: { path: worker, digest: extension.entry.digest },
-    workspaceId: plan.workspaceId,
-    limits: options.limits ?? {},
+    entry: { path: worker, digest: fileDigest(worker) },
     environment: {
       PROBE_FIXTURE_MODE: options.mode ?? "reference",
-      PROBE_FIXTURE_COMPONENT: extension.extensionRef.id,
+      PROBE_FIXTURE_COMPONENT: extensionRef.id,
       ...options.environment
     }
+  };
+  const { extension, trust } = await admitted({
+    worker,
+    entryPath,
+    extensionRef,
+    workspaceId: plan.workspaceId,
+    // why: a launch the host cannot measure (a relative or missing executable) is
+    // refused by launch() itself, which is what those cases assert.
+    launchDigest: await probeLaunchDigest({ ...launch, ...options.approvedLaunch }).catch(() => LAUNCH_DIGEST)
+  });
+  const transport = await SpawnedProbeWorker.launch({
+    ...launch,
+    approvedLaunchDigest: trust.launchDigest,
+    workspaceId: plan.workspaceId,
+    limits: options.limits ?? {}
   });
   const framed = new FramedProbeWorker({ transport, workspaceId: plan.workspaceId, maximumMessageBytes: 65_536 });
   const parameters = new MemoryProtectedParameterBroker();

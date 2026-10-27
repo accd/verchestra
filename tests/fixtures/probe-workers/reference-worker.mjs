@@ -12,6 +12,14 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 
 const mode = process.env.PROBE_FIXTURE_MODE ?? "reference";
+const IDLE = "setInterval(() => {}, 1000)";
+const TREE_ROOT = `const { spawn } = require("node:child_process");
+const grandchild = spawn(process.execPath, ["-e", ${JSON.stringify(IDLE)}], { stdio: "ignore" });
+process.stdout.write(String(grandchild.pid) + "\\n");
+setInterval(() => {}, 1000);`;
+const DOUBLE_FORK_MIDDLE = `const { spawn } = require("node:child_process");
+const grandchild = spawn(process.execPath, ["-e", ${JSON.stringify(IDLE)}], { stdio: ["ignore", "ignore", "inherit"], detached: true });
+process.stdout.write(String(grandchild.pid) + "\\n", () => process.exit(0));`;
 const workspaceId = process.env.VERCHESTRA_PROBE_WORKSPACE_ID;
 const componentId = process.env.PROBE_FIXTURE_COMPONENT ?? "plugin:acme-orders-probe";
 const ownDigest = `sha256:${createHash("sha256").update(readFileSync(process.argv[1])).digest("hex")}`;
@@ -116,6 +124,34 @@ function execute(request) {
     process.stdout.write("", () => process.exit(0));
     return;
   }
+  if (mode === "setsid-child" || mode === "setsid-child-exit") {
+    // why: #569. The child leaves the worker's process group, then the stream
+    // completes; the -exit variant has the worker exit after its final frame.
+    const escaped = spawn(process.execPath, ["-e", IDLE], { stdio: "ignore", detached: true });
+    send("probe.result.chunk", { rows: [{ escaped: escaped.pid }] });
+    send("probe.result.end", { chunkCount: 1 });
+    if (mode === "setsid-child-exit") process.stdout.write("", () => process.exit(0));
+    return;
+  }
+  if (mode === "setsid-tree") {
+    // why: a child in its own group with a grandchild of its own, so only
+    // parentage, not the worker's group, links the grandchild to the worker.
+    const child = spawn(process.execPath, ["-e", TREE_ROOT], { stdio: ["ignore", "pipe", "ignore"], detached: true });
+    child.stdout.once("data", (chunk) =>
+      send("probe.result.chunk", { rows: [{ child: child.pid, grandchild: Number(String(chunk).trim()) }] })
+    );
+    return;
+  }
+  if (mode === "double-fork-holder") {
+    // why: the middle process exits before the chunk is sent, so the grandchild
+    // is orphaned before the host can stop anything, yet it still holds the
+    // worker's stderr.
+    const middle = spawn(process.execPath, ["-e", DOUBLE_FORK_MIDDLE], { stdio: ["ignore", "pipe", "inherit"] });
+    let reported = "";
+    middle.stdout.on("data", (chunk) => (reported += String(chunk)));
+    middle.once("close", () => send("probe.result.chunk", { rows: [{ escaped: Number(reported.trim()) }] }));
+    return;
+  }
   if (mode === "error") {
     send("probe.error", { code: "WORKER_BROKE", message: `password=${parameters}` });
     return;
@@ -179,4 +215,4 @@ process.stdin.on("data", (chunk) => {
   }
 });
 process.stdin.on("end", () => process.exit(0));
-if (mode === "hang" || mode === "hang-handshake" || mode === "fork") setInterval(() => {}, 1000);
+if (["hang", "hang-handshake", "fork", "setsid-tree", "double-fork-holder"].includes(mode)) setInterval(() => {}, 1000);

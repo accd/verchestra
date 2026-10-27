@@ -2,18 +2,28 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { GovernedSkillRegistry } from "../../packages/agent-runtime/src/skills/governed-skill-registry.ts";
+import * as extensionHost from "../../packages/extension-host/src/index.ts";
 import {
   MemoryProbeResultSink,
   MemoryProtectedParameterBroker,
   ProbeWorkerSupervisor,
-  admitWorkspaceProbeWorker,
+  WorkspaceProbeAdmission,
   authorizeSkillExecution
 } from "../../packages/extension-host/src/index.ts";
 import { authorizeSkillExecution as qualifiedAuthorizeSkillExecution } from "../../spikes/isolation/src/isolation-policy.mjs";
 import { workspaceId } from "../helpers/database-probe-fixture.mjs";
 import { probePlan } from "../helpers/probe-worker-fixture.mjs";
 import { grillSkill, lock, skill, verifier } from "../helpers/skill-registry-fixture.mjs";
-import { controllerGrant, extensionSkill, resolvedExtension } from "../helpers/spawned-probe-worker-fixture.mjs";
+import {
+  LAUNCH_DIGEST,
+  MemoryApprovals,
+  admitted,
+  approvalFor,
+  extensionLock,
+  extensionRegistry,
+  extensionSkill,
+  resolvedExtension
+} from "../helpers/spawned-probe-worker-fixture.mjs";
 
 function registry() {
   return new GovernedSkillRegistry({
@@ -111,31 +121,58 @@ test("the registry refuses a tampered lock before any extension resolves", async
   );
 });
 
-test("admission is denied by default when no locked extension is supplied", () => {
-  assert.throws(() => admitWorkspaceProbeWorker({ workspaceId }), { code: "VES_PROBE_WORKSPACE_TRUST_DENIED" });
-});
-
-test("admission without a controller grant is refused even with an approved extension", async () => {
-  const extension = await resolvedExtension();
-  assert.throws(() => admitWorkspaceProbeWorker({ workspaceId, extension }), {
-    code: "VES_EXECUTION_GRANT_REQUIRED"
+// invariant: #569, PHC-03. Admission resolves the extension itself; a caller can
+// no longer hand it one, so an extension that never came from a verified lock
+// has no way in.
+test("admission takes no extension value: without a lock nothing resolves", async () => {
+  assert.equal("admitWorkspaceProbeWorker" in extensionHost, false, "the value-taking admission is gone");
+  const admission = new WorkspaceProbeAdmission({ extensions: extensionRegistry(), approvals: new MemoryApprovals() });
+  await assert.rejects(admission.admit({ workspaceId, extension: await resolvedExtension() }), {
+    code: "VES_SKILL_LOCK_INVALID"
   });
 });
 
-test("admission without an approval reference is refused", async () => {
-  const extension = await resolvedExtension();
-  const unapproved = { ...extension, extensionRef: { ...extension.extensionRef, approvalRef: "" } };
-  assert.throws(
-    () =>
-      admitWorkspaceProbeWorker({ workspaceId, extension: unapproved, grant: controllerGrant(extension, workspaceId) }),
-    { code: "VES_PROBE_WORKSPACE_TRUST_APPROVAL" }
-  );
+test("admission resolves through the registry, which refuses a tampered lock", async () => {
+  const { lock: value, request } = extensionLock();
+  const approvals = new MemoryApprovals();
+  const admission = new WorkspaceProbeAdmission({ extensions: extensionRegistry(), approvals });
+  await assert.rejects(admission.admit({ workspaceId, lock: { ...value, lockDigest: DIGEST }, request }), {
+    code: "VES_SKILL_LOCK_TAMPERED"
+  });
+  assert.deepEqual(approvals.lookups, [], "no approval is looked up for an unverified lock");
+});
+
+// invariant: #569, PHC-04. The approval reference is looked up, and the record
+// must name the resolved extension, its entry bytes and a launch.
+test("admission looks the approval up and refuses one that is not on record", async () => {
+  const approvals = new MemoryApprovals();
+  await assert.rejects(admitted({ workspaceId, approvals }), { code: "VES_PROBE_WORKSPACE_TRUST_APPROVAL" });
+  assert.deepEqual(approvals.lookups, ["approval:probe-worker:001"]);
+});
+
+for (const [label, overrides] of [
+  ["another approval reference", { approvalRef: "approval:someone-else" }],
+  ["another extension", { extensionId: "plugin:other" }],
+  ["other entry bytes", { componentDigest: DIGEST }],
+  ["no launch", { launchDigest: undefined }],
+  ["a malformed launch", { launchDigest: "sha256:launch" }]
+]) {
+  test(`an approval that names ${label} does not admit the worker`, async () => {
+    const extension = await resolvedExtension();
+    const approvals = { lookup: async () => approvalFor(extension, LAUNCH_DIGEST, overrides) };
+    await assert.rejects(admitted({ workspaceId, approvals }), { code: "VES_PROBE_WORKSPACE_TRUST_APPROVAL" });
+  });
+}
+
+test("admission without a controller grant is refused even with an approved extension", async () => {
+  await assert.rejects(admitted({ workspaceId, grant: null }), { code: "VES_EXECUTION_GRANT_REQUIRED" });
 });
 
 for (const [label, overrides, code] of [
   ["another Workspace", { workspaceId: "workspace_foreign" }, "VES_PROBE_WORKSPACE_TRUST_WORKSPACE"],
   ["another approval", { approvalRef: "approval:someone-else" }, "VES_PROBE_WORKSPACE_TRUST_APPROVAL"],
   ["another executable digest", { componentDigest: DIGEST }, "VES_EXECUTION_GRANT_REQUIRED"],
+  ["another launch than the approval", { launchDigest: DIGEST }, "VES_EXECUTION_GRANT_REQUIRED"],
   ["another extension", { extensionId: "plugin:other" }, "VES_EXECUTION_GRANT_REQUIRED"],
   ["another lock", { lockDigest: DIGEST }, "VES_EXECUTION_GRANT_REQUIRED"],
   ["a stronger isolation grade", { isolationProfile: "native-restricted" }, "VES_ISOLATION_PROFILE_UNAVAILABLE"],
@@ -145,48 +182,54 @@ for (const [label, overrides, code] of [
   ["no capability", { capabilities: [] }, "VES_PROBE_WORKSPACE_TRUST_CAPABILITY"]
 ]) {
   test(`a grant bound to ${label} does not admit the worker`, async () => {
-    const extension = await resolvedExtension();
-    assert.throws(
-      () =>
-        admitWorkspaceProbeWorker({
-          workspaceId,
-          extension,
-          grant: controllerGrant(extension, workspaceId, overrides)
-        }),
-      { code }
-    );
+    await assert.rejects(admitted({ workspaceId, grantOverrides: overrides }), { code });
   });
 }
 
-test("an executable that is not reclassified as a Tool or Plugin is refused", async () => {
-  const extension = await resolvedExtension();
-  const skillKind = { ...extension, extensionRef: { ...extension.extensionRef, kind: "skill" } };
-  assert.throws(
-    () =>
-      admitWorkspaceProbeWorker({ workspaceId, extension: skillKind, grant: controllerGrant(extension, workspaceId) }),
-    { code: "VES_SKILL_EXECUTION_RECLASSIFY" }
-  );
-});
+// why: defense in depth. The registry already refuses both; admission still
+// checks what its registry port answers rather than trusting it.
+for (const [label, reference, code] of [
+  ["no approval reference", { approvalRef: "" }, "VES_PROBE_WORKSPACE_TRUST_APPROVAL"],
+  ["a Skill that was not reclassified as a Tool or Plugin", { kind: "skill" }, "VES_SKILL_EXECUTION_RECLASSIFY"]
+]) {
+  test(`a registry answer with ${label} is refused`, async () => {
+    const extension = await resolvedExtension();
+    const extensions = {
+      resolveExecutableExtension: async () => ({
+        ...extension,
+        extensionRef: { ...extension.extensionRef, ...reference }
+      })
+    };
+    await assert.rejects(admitted({ workspaceId, extensions }), { code });
+  });
+}
 
 test("a workspace extension cannot claim the product component namespace", async () => {
-  const extension = await resolvedExtension({
-    extensionRef: { kind: "plugin", id: "probe-worker:postgresql", approvalRef: "approval:probe-worker:001" }
-  });
-  assert.throws(
-    () => admitWorkspaceProbeWorker({ workspaceId, extension, grant: controllerGrant(extension, workspaceId) }),
+  await assert.rejects(
+    admitted({
+      workspaceId,
+      extensionRef: { kind: "plugin", id: "probe-worker:postgresql", approvalRef: "approval:probe-worker:001" }
+    }),
     { code: "VES_PROBE_WORKSPACE_TRUST_NAMESPACE" }
   );
 });
 
-test("an admitted trust is frozen and binds the approval, grant, lock, and digest", async () => {
-  const extension = await resolvedExtension();
-  const trust = admitWorkspaceProbeWorker({ workspaceId, extension, grant: controllerGrant(extension, workspaceId) });
+test("an admitted trust is frozen and binds the approval, grant, lock, digest and launch", async () => {
+  const { extension, trust } = await admitted({ workspaceId });
   assert.equal(Object.isFrozen(trust), true);
   assert.deepEqual(
-    [trust.componentId, trust.componentDigest, trust.approvalRef, trust.lockDigest, trust.capabilities],
+    [
+      trust.componentId,
+      trust.componentDigest,
+      trust.launchDigest,
+      trust.approvalRef,
+      trust.lockDigest,
+      trust.capabilities
+    ],
     [
       extension.extensionRef.id,
       extension.entry.digest,
+      LAUNCH_DIGEST,
       extension.extensionRef.approvalRef,
       extension.lockDigest,
       ["database-read"]
@@ -195,8 +238,7 @@ test("an admitted trust is frozen and binds the approval, grant, lock, and diges
 });
 
 test("the supervisor refuses a forged workspace trust with the admitted shape", async () => {
-  const extension = await resolvedExtension();
-  const genuine = admitWorkspaceProbeWorker({ workspaceId, extension, grant: controllerGrant(extension, workspaceId) });
+  const { trust: genuine } = await admitted({ workspaceId });
   const plan = await probePlan();
   assert.throws(
     () =>
@@ -213,13 +255,7 @@ test("the supervisor refuses a forged workspace trust with the admitted shape", 
 });
 
 test("the supervisor refuses an admission minted for another Workspace's plan", async () => {
-  const extension = await resolvedExtension();
-  const foreign = "workspace_018f0b6d-7b1a-7abc-8def-0000000000ff";
-  const trust = admitWorkspaceProbeWorker({
-    workspaceId: foreign,
-    extension,
-    grant: controllerGrant(extension, foreign)
-  });
+  const { trust } = await admitted({ workspaceId: "workspace_018f0b6d-7b1a-7abc-8def-0000000000ff" });
   const plan = await probePlan();
   assert.throws(
     () =>
@@ -235,12 +271,10 @@ test("the supervisor refuses an admission minted for another Workspace's plan", 
   );
 });
 
-test("a launched worker whose host-measured digest differs from the approval never reaches identity", async () => {
-  const extension = await resolvedExtension();
-  const trust = admitWorkspaceProbeWorker({ workspaceId, extension, grant: controllerGrant(extension, workspaceId) });
+async function measuredWorker(trust, measured) {
   const calls = [];
   const worker = {
-    launchedComponentDigest: DIGEST,
+    ...measured,
     handshake: async () => {
       calls.push("handshake");
       return {
@@ -256,16 +290,35 @@ test("a launched worker whose host-measured digest differs from the approval nev
     terminate: async () => calls.push("terminate")
   };
   const results = new MemoryProbeResultSink();
-  const parameters = new MemoryProtectedParameterBroker();
   const supervisor = new ProbeWorkerSupervisor({
     worker,
-    parameters,
+    parameters: new MemoryProtectedParameterBroker(),
     results,
     plan: await probePlan(),
     workspaceTrust: trust,
     maximumMessageBytes: 65_536
   });
+  return { calls, results, supervisor };
+}
+
+test("a launched worker whose host-measured digest differs from the approval never reaches identity", async () => {
+  const { trust } = await admitted({ workspaceId });
+  const { calls, results, supervisor } = await measuredWorker(trust, {
+    launchedComponentDigest: DIGEST,
+    launchDigest: trust.launchDigest
+  });
   await assert.rejects(supervisor.execute(), { code: "VES_PROBE_WORKSPACE_TRUST_DIGEST", revokeGrant: true });
+  assert.deepEqual(calls, ["handshake", "cancel"]);
+  assert.equal(results.commits, 0);
+});
+
+test("a launched worker whose host-measured launch differs from the approval never reaches identity", async () => {
+  const { trust } = await admitted({ workspaceId });
+  const { calls, results, supervisor } = await measuredWorker(trust, {
+    launchedComponentDigest: trust.componentDigest,
+    launchDigest: DIGEST
+  });
+  await assert.rejects(supervisor.execute(), { code: "VES_PROBE_WORKSPACE_TRUST_LAUNCH", revokeGrant: true });
   assert.deepEqual(calls, ["handshake", "cancel"]);
   assert.equal(results.commits, 0);
 });

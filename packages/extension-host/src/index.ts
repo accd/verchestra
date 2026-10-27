@@ -7,6 +7,7 @@ import {
   fail,
   negotiateProbeHandshake,
   terminate,
+  terminationIncomplete,
   type ProbePlanView,
   type ProbeWorkerHandshake,
   type ProbeWorkerPort,
@@ -25,11 +26,15 @@ export {
 } from "./probe-protocol.ts";
 export { FramedProbeWorker, type ProbeWorkerTransport } from "./framed-probe-worker.ts";
 export {
-  admitWorkspaceProbeWorker,
+  WorkspaceProbeAdmission,
   authorizeSkillExecution,
   isAdmittedWorkspaceTrust,
+  type WorkspaceProbeWorkerApproval,
+  type WorkspaceProbeWorkerApprovals,
   type WorkspaceProbeWorkerExtension,
+  type WorkspaceProbeWorkerExtensions,
   type WorkspaceProbeWorkerGrant,
+  type WorkspaceProbeWorkerRequest,
   type WorkspaceProbeWorkerTrust
 } from "./workspace-trust.ts";
 
@@ -159,7 +164,7 @@ type ProbeWorkerTrust =
 
 // invariant: exactly one trust root per supervisor. The product root pins a
 // product-hardcoded component; the workspace root exists only as a value minted
-// by admitWorkspaceProbeWorker, so it cannot be forged by shape.
+// by WorkspaceProbeAdmission, so it cannot be forged by shape.
 function resolveTrust(options: {
   readonly plan: ProbePlanView;
   readonly expectedComponent?: { readonly id: string; readonly digest: string };
@@ -216,6 +221,8 @@ export class ProbeWorkerSupervisor {
     const trust = this.#trust;
     if (trust.kind === "workspace" && this.#worker.launchedComponentDigest !== trust.componentDigest)
       terminate("VES_PROBE_WORKSPACE_TRUST_DIGEST", "Launched Probe worker does not match its approved digest");
+    if (trust.kind === "workspace" && this.#worker.launchDigest !== trust.launchDigest)
+      terminate("VES_PROBE_WORKSPACE_TRUST_LAUNCH", "Launched Probe worker does not match its approved launch");
     return negotiateProbeHandshake(
       {
         protocol: "verchestra-probe/1",
@@ -308,13 +315,10 @@ export class ProbeWorkerSupervisor {
       });
     } catch (error) {
       controller.abort();
-      try {
-        await this.#worker.cancel();
-      } catch {
-        // Termination below remains mandatory after an unavailable cancellation acknowledgement.
-      }
-      if (timedOut) await this.#worker.terminate();
+      const ended = await this.#end(timedOut);
+      const outlived = outlivedTermination(error) ?? ended;
       if (transactionId !== undefined) await this.#results.rollback(transactionId);
+      if (outlived !== undefined) throw outlived;
       if (timedOut) throw new ProbeProtocolError("VES_PROBE_TIMEOUT", "Probe statement timed out");
       if (externallyAborted) throw new ProbeProtocolError("VES_PROBE_ABORTED", "Probe execution was aborted");
       if (error instanceof Error && error.message === "injected result sink failure") {
@@ -327,4 +331,29 @@ export class ProbeWorkerSupervisor {
       release();
     }
   }
+
+  // invariant: termination stays mandatory after an unavailable cancellation
+  // acknowledgement, and the rows still roll back when termination fails. A
+  // cancellation may fail for want of an acknowledgement; a termination that
+  // fails, for any reason, may have left the worker running.
+  async #end(timedOut: boolean): Promise<ProbeProtocolError | undefined> {
+    let outlived: ProbeProtocolError | undefined;
+    await this.#worker.cancel().catch((error: unknown) => {
+      outlived = outlivedTermination(error);
+    });
+    if (timedOut)
+      await this.#worker.terminate().catch((error: unknown) => {
+        outlived ??= outlivedTermination(error) ?? terminationIncomplete();
+      });
+    return outlived;
+  }
+}
+
+// why: a tree that outlived its termination outranks the probe's own outcome,
+// whether that was a timeout, an abort or a failure: the caller must learn that
+// a process may still be running (#569, PHC-07).
+function outlivedTermination(error: unknown): ProbeProtocolError | undefined {
+  return error instanceof ProbeProtocolError && error.code === "VES_PROBE_HOST_TERMINATION_INCOMPLETE"
+    ? error
+    : undefined;
 }

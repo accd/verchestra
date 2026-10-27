@@ -48,8 +48,36 @@ export interface WorkspaceProbeWorkerExtension {
   readonly entry: { readonly path: string; readonly digest: string };
 }
 
+export interface WorkspaceProbeWorkerRequest {
+  readonly skillId: string;
+  readonly extensionId: string;
+  readonly entryPath: string;
+}
+
+// invariant: the registry the composition root wires. GovernedSkillRegistry
+// satisfies it, and verifies the lock's digest and signatures before it answers.
+export interface WorkspaceProbeWorkerExtensions<Lock> {
+  resolveExecutableExtension(lock: Lock, request: WorkspaceProbeWorkerRequest): Promise<WorkspaceProbeWorkerExtension>;
+}
+
+// invariant: what a human approved for one extension: its entry's bytes and the
+// exact launch that runs them (probeLaunchDigest in platform-node).
+export interface WorkspaceProbeWorkerApproval {
+  readonly approvalRef: string;
+  readonly extensionId: string;
+  readonly componentDigest: string;
+  readonly launchDigest: string;
+}
+
+// invariant: an adapter answers only with an approval it verified, that is not
+// revoked and has not expired; for anything else it answers undefined. Where
+// approvals are issued and stored is the host's T3 decision.
+export interface WorkspaceProbeWorkerApprovals {
+  lookup(approvalRef: string): Promise<WorkspaceProbeWorkerApproval | undefined>;
+}
+
 // invariant: issued by the controller, never by the worker: every field binds the grant to
-// one Workspace, one locked extension, one approval, and one executable digest.
+// one Workspace, one locked extension, one approval, one executable digest and one launch.
 export interface WorkspaceProbeWorkerGrant {
   readonly grantRef: string;
   readonly workspaceId: string;
@@ -57,6 +85,7 @@ export interface WorkspaceProbeWorkerGrant {
   readonly extensionId: string;
   readonly approvalRef: string;
   readonly componentDigest: string;
+  readonly launchDigest: string;
   readonly capabilities: readonly string[];
   readonly isolationProfile: string;
   readonly risk: string;
@@ -67,6 +96,7 @@ export interface WorkspaceProbeWorkerTrust {
   readonly workspaceId: string;
   readonly componentId: string;
   readonly componentDigest: string;
+  readonly launchDigest: string;
   readonly approvalRef: string;
   readonly grantRef: string;
   readonly lockDigest: string;
@@ -101,10 +131,31 @@ function checkExtension(extension: WorkspaceProbeWorkerExtension | undefined): W
   return extension;
 }
 
+function approvalNames(approval: WorkspaceProbeWorkerApproval, extension: WorkspaceProbeWorkerExtension): boolean {
+  return (
+    approval.approvalRef === extension.extensionRef.approvalRef &&
+    approval.extensionId === extension.extensionRef.id &&
+    approval.componentDigest === extension.entry.digest &&
+    DIGEST.test(String(approval.launchDigest))
+  );
+}
+
+function checkApproval(
+  approval: WorkspaceProbeWorkerApproval | undefined,
+  extension: WorkspaceProbeWorkerExtension
+): WorkspaceProbeWorkerApproval {
+  if (approval === undefined || approval === null || typeof approval !== "object")
+    deny("VES_PROBE_WORKSPACE_TRUST_APPROVAL", "Workspace Probe worker approval is not on record");
+  if (!approvalNames(approval, extension))
+    deny("VES_PROBE_WORKSPACE_TRUST_APPROVAL", "Workspace Probe worker approval names another extension or launch");
+  return approval;
+}
+
 function grantBinds(
   grant: WorkspaceProbeWorkerGrant | undefined,
   workspaceId: string,
-  extension: WorkspaceProbeWorkerExtension
+  extension: WorkspaceProbeWorkerExtension,
+  approval: WorkspaceProbeWorkerApproval
 ): boolean {
   if (grant === undefined || grant === null || typeof grant !== "object") return false;
   if (grant.workspaceId !== workspaceId)
@@ -115,7 +166,8 @@ function grantBinds(
     SAFE.test(String(grant.grantRef)) &&
     grant.lockDigest === extension.lockDigest &&
     grant.extensionId === extension.extensionRef.id &&
-    grant.componentDigest === extension.entry.digest
+    grant.componentDigest === extension.entry.digest &&
+    grant.launchDigest === approval.launchDigest
   );
 }
 
@@ -139,33 +191,53 @@ function grantedCapabilities(grant: WorkspaceProbeWorkerGrant): readonly string[
   return Object.freeze([...capabilities]);
 }
 
-// invariant: denied by default: absent extension, absent approval, absent or unbound grant,
-// a foreign Workspace, the product namespace, and any isolation grade other than
-// the one this host implements all fail before a worker can be negotiated.
-export function admitWorkspaceProbeWorker(input: {
-  readonly workspaceId: string;
-  readonly extension?: WorkspaceProbeWorkerExtension;
-  readonly grant?: WorkspaceProbeWorkerGrant;
-}): WorkspaceProbeWorkerTrust {
-  if (!SAFE.test(String(input.workspaceId)))
-    deny("VES_PROBE_WORKSPACE_TRUST_INVALID", "Workspace Probe worker Workspace is invalid");
-  const extension = checkExtension(input.extension);
-  authorizeSkillExecution({
-    kind: extension.extensionRef.kind,
-    requestsExecution: true,
-    explicitGrant: grantBinds(input.grant, input.workspaceId, extension)
-  });
-  const grant = input.grant as WorkspaceProbeWorkerGrant;
-  const trust: WorkspaceProbeWorkerTrust = Object.freeze({
-    kind: "workspace",
-    workspaceId: input.workspaceId,
-    componentId: extension.extensionRef.id,
-    componentDigest: extension.entry.digest,
-    approvalRef: extension.extensionRef.approvalRef,
-    grantRef: grant.grantRef,
-    lockDigest: extension.lockDigest,
-    capabilities: grantedCapabilities(grant)
-  });
-  admitted.add(trust);
-  return trust;
+// invariant: admission resolves the extension and looks its approval up itself,
+// through the ports the composition root wires; it never takes an extension a
+// caller built (#569, PHC-03, PHC-04). Denied by default: an unresolved
+// extension, an approval that is absent or names another extension or launch, an
+// absent or unbound grant, a foreign Workspace, the product namespace, and any
+// isolation grade other than the one this host implements all fail before a
+// worker can be negotiated.
+export class WorkspaceProbeAdmission<Lock> {
+  readonly #extensions: WorkspaceProbeWorkerExtensions<Lock>;
+  readonly #approvals: WorkspaceProbeWorkerApprovals;
+
+  constructor(ports: {
+    readonly extensions: WorkspaceProbeWorkerExtensions<Lock>;
+    readonly approvals: WorkspaceProbeWorkerApprovals;
+  }) {
+    this.#extensions = ports.extensions;
+    this.#approvals = ports.approvals;
+  }
+
+  async admit(input: {
+    readonly workspaceId: string;
+    readonly lock: Lock;
+    readonly request: WorkspaceProbeWorkerRequest;
+    readonly grant?: WorkspaceProbeWorkerGrant;
+  }): Promise<WorkspaceProbeWorkerTrust> {
+    if (!SAFE.test(String(input.workspaceId)))
+      deny("VES_PROBE_WORKSPACE_TRUST_INVALID", "Workspace Probe worker Workspace is invalid");
+    const extension = checkExtension(await this.#extensions.resolveExecutableExtension(input.lock, input.request));
+    const approval = checkApproval(await this.#approvals.lookup(extension.extensionRef.approvalRef), extension);
+    authorizeSkillExecution({
+      kind: extension.extensionRef.kind,
+      requestsExecution: true,
+      explicitGrant: grantBinds(input.grant, input.workspaceId, extension, approval)
+    });
+    const grant = input.grant as WorkspaceProbeWorkerGrant;
+    const trust: WorkspaceProbeWorkerTrust = Object.freeze({
+      kind: "workspace",
+      workspaceId: input.workspaceId,
+      componentId: extension.extensionRef.id,
+      componentDigest: extension.entry.digest,
+      launchDigest: approval.launchDigest,
+      approvalRef: extension.extensionRef.approvalRef,
+      grantRef: grant.grantRef,
+      lockDigest: extension.lockDigest,
+      capabilities: grantedCapabilities(grant)
+    });
+    admitted.add(trust);
+    return trust;
+  }
 }

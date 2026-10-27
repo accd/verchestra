@@ -999,6 +999,17 @@
       "reason": "The active policy view retains its authoritative schemaVersion 1 record pending a compatible migration. Its content digest, which this adapter verifies on load, is the V2 canonical digest the policy validator computed at activation."
     },
     {
+      "path": "packages/platform-node/src/probe-launch-digest.ts",
+      "classification": "migrated-v2",
+      "signals": {
+        "canonicalizer": 2,
+        "digest": 3,
+        "localeCompare": 0,
+        "serialization": 0
+      },
+      "reason": "The probe launch digest is SHA-256 over the RFC 8785 (V2) encoding of the executable, arguments, environment extras and entry a launch runs; the executable's bytes are hashed raw."
+    },
+    {
       "path": "packages/platform-node/src/runtime-store/effect-repository.ts",
       "classification": "migrated-v2",
       "signals": {

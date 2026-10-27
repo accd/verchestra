@@ -34,7 +34,7 @@ const KNOWN_BOUNDED_STARTS = Object.freeze({
   "apps/vestra-cli/src/doctor-composition.ts": 1,
   "apps/vestra-cli/src/task/task-codex-identity.ts": 1,
   "packages/drivers/src/driver-version-probe.ts": 1,
-  "packages/platform-node/src/process-tree-terminator.ts": 3,
+  "packages/platform-node/src/process-tree-terminator.ts": 4,
   "packages/platform-node/src/task-worktree.ts": 2,
   "packages/self-test/src/git-fixtures.ts": 1,
   "packages/workspace/src/init/safe-init.ts": 1,

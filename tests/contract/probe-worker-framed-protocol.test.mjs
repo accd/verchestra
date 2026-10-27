@@ -20,8 +20,13 @@ const COMPONENT = { id: "probe-worker:framed", digest: `sha256:${"1".repeat(64)}
 // under test therefore sees exactly what it would see on a process's stdout.
 class ScriptedTransport {
   launchedComponentDigest = COMPONENT.digest;
+  launchDigest = `sha256:${"3".repeat(64)}`;
   sent = [];
   terminated = 0;
+  withheld = 0;
+  // why: what the host found when it stopped the tree: the worker still running,
+  // unless a case says it exited first or the termination failed.
+  termination = { running: true };
   #listener;
   #sequence = 0;
   #decoder = new ProbeFrameDecoder({ workspaceId, maximumHeaderBytes: 64, maximumMessageBytes: 65_536 });
@@ -57,10 +62,14 @@ class ScriptedTransport {
     return bytes;
   }
 
-  withhold() {}
+  withhold() {
+    this.withheld += 1;
+  }
 
   async terminate() {
     this.terminated += 1;
+    if (this.termination instanceof Error) throw this.termination;
+    return this.termination;
   }
 }
 
@@ -96,8 +105,8 @@ const defaultReplies = {
   ]
 };
 
-async function framedFixture(script) {
-  const plan = await probePlan();
+async function framedFixture(script, request) {
+  const plan = await probePlan(request);
   const transport = new ScriptedTransport(script);
   const worker = new FramedProbeWorker({ transport, workspaceId, maximumMessageBytes: 65_536 });
   const parameters = new MemoryProtectedParameterBroker();
@@ -149,6 +158,46 @@ test("a completed stream still tears the worker down exactly once", async () => 
   assert.equal(transport.terminated, 1);
   assert.equal(worker.cancelled, false);
 });
+
+// invariant: #569, PHC-06. Only a worker still running when the host ended it
+// completes; a transport that cannot say so fails closed.
+for (const [label, termination] of [
+  ["a worker that exited before the host ended it", { running: false }],
+  ["a transport that reports no termination outcome", undefined]
+]) {
+  test(`the stream from ${label} does not complete`, async () => {
+    const { supervisor, transport, results } = await framedFixture();
+    transport.termination = termination;
+    await assert.rejects(supervisor.execute(), { code: "VES_PROBE_WORKER_EXITED", revokeGrant: true });
+    assert.equal(results.commits, 0);
+    assert.equal(results.rollbacks, 1);
+  });
+}
+
+// invariant: #569, PHC-07. A termination that failed may have left a process
+// running, which outranks the probe's own outcome; rows still roll back and the
+// parameter is still zeroized and withheld from stderr.
+for (const [label, script, request] of [
+  ["a completed stream", undefined, undefined],
+  [
+    "a timeout",
+    { "probe.execute": () => [] },
+    { bounds: { timeoutMs: 200, rowLimit: 100, byteLimit: 100_000, concurrencyLimit: 1 } }
+  ]
+]) {
+  test(`a failed termination outranks ${label}, rolls back and still zeroizes`, async () => {
+    const { supervisor, transport, worker, results } = await framedFixture(script, request);
+    transport.termination = new Error("the group outlived its kill");
+    await assert.rejects(supervisor.execute(), {
+      code: "VES_PROBE_HOST_TERMINATION_INCOMPLETE",
+      revokeGrant: true
+    });
+    assert.equal(results.commits, 0);
+    assert.equal(results.rollbacks, 1);
+    assert.equal(worker.parameterFrameZeroized, true);
+    assert.ok(transport.withheld >= 1, "the parameter was withheld from stderr");
+  });
+}
 
 for (const [label, script, code] of [
   [
