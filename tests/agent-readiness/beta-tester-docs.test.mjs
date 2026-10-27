@@ -1,6 +1,6 @@
 // invariant: what an external beta tester reads first agrees with the code
 // and with itself: the security limits of a task run, the probe host's stated
-// containment limits (#569), and the setup, scope and reporting facts.
+// containment and its residual (#569), and the setup, scope and reporting facts.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
@@ -29,7 +29,13 @@ test("quick-start and SECURITY state that a gate is not a sandbox", () => {
   assert.doesNotMatch(lower(read("docs/quick-start.md")), /isolated task worktree/u);
 });
 
-const PROBE_HOST_LIMITS = Object.freeze([
+// why: #569's fixes landed, so the documents state what the code now does
+// (a launch digest, the approval lookup) and the one descendant residual.
+const PROBE_HOST_CONTAINMENT = Object.freeze(["launch digest", "looks `approvalref` up", "with its output given up"]);
+// why: the limits the fixes closed; the ADR and the threat model must no
+// longer state them as standing. AD-037 keeps its 2026-10-24 amendment as
+// history, so it is not held to this.
+const CLOSED_LIMITS = Object.freeze([
   "a detached descendant can outlive its worker",
   "binds the entry file only",
   "consistency, not authenticity"
@@ -43,7 +49,7 @@ function decision(id) {
   return state.slice(start, end < 0 ? undefined : end);
 }
 
-test("the probe-host documents state the three #569 limits", () => {
+test("the probe-host documents state the #569 fixes and the descendant residual", () => {
   const documents = {
     "AD-037": decision("AD-037"),
     "adr.md": read(".specs/features/out-of-process-probe-host/adr.md"),
@@ -51,13 +57,16 @@ test("the probe-host documents state the three #569 limits", () => {
   };
   let checked = 0;
   for (const [name, text] of Object.entries(documents)) {
-    for (const limit of PROBE_HOST_LIMITS) {
-      assert.ok(lower(text).includes(limit), `${name} does not state "${limit}"`);
+    for (const statement of PROBE_HOST_CONTAINMENT) {
+      assert.ok(lower(text).includes(statement), `${name} does not state "${statement}"`);
       checked += 1;
     }
     assert.ok(text.includes("#569"), `${name} does not cite #569`);
   }
   assert.equal(checked, 9);
+  for (const name of ["adr.md", "threat-model.md"])
+    for (const limit of CLOSED_LIMITS)
+      assert.ok(!lower(documents[name]).includes(limit), `${name} still states the closed limit "${limit}"`);
   assert.doesNotMatch(lower(documents["adr.md"]), /cannot outlive its probe/u);
 });
 

@@ -13,8 +13,9 @@ A workspace-supplied database probe worker may run as a separate process that
 speaks `verchestra-probe/1` over stdio. The product supervises it with the same
 bounds as an in-process worker. A worker is admitted only when a signed skill
 lock pins its executable bytes by digest under an approved Tool or Plugin
-`extensionRef`, and a controller grant binds that exact Workspace, lock,
-extension, approval, and digest. Everything else is denied.
+`extensionRef`, the approval it names is on record for that extension and one
+exact launch, and a controller grant binds that Workspace, lock, extension,
+approval, digest, and launch. Everything else is denied.
 
 ## Qualified runtime fixture
 
@@ -36,17 +37,27 @@ extension, approval, and digest. Everything else is denied.
 - **Sequencing:** a strict guard; any replay, gap, or identity conflict
   terminates the worker and revokes the grant.
 - **Launch:** absolute executable, no shell, NUL-free arguments, a
-  from-nothing environment, a private `0700` working directory removed after
-  use, and a private `0500` copy of the digest-verified entry bytes.
-- **Lifetime:** the whole process group, plus any `setsid` descendant seen
-  before the kill, is terminated on timeout, cancel, protocol fault, output
-  overflow, and completion. The time bound covers every worker call.
+  from-nothing environment without loader variables, a private `0700` working
+  directory removed after use, and a private `0500` copy of the
+  digest-verified entry bytes. The launch digest (executable path and bytes,
+  arguments, environment extras, entry) must equal the approved one before
+  anything starts.
+- **Lifetime:** on timeout, cancel, protocol fault, output overflow, and
+  completion, the host stops the worker's process group and every process
+  linked to it by parentage, then kills them all, `setsid` descendants
+  included. A worker that exited before the host ended its session fails the
+  probe; output still held after the kill, or a missing process table, fails
+  the termination and outranks the probe's own outcome. The time bound covers
+  every worker call.
 - **Output:** stdout and stderr byte limits; stderr is kept only as a digest,
   a count, and a bounded excerpt that is sanitized and scrubbed of the
   protected parameter.
-- **Admission:** denied by default; the minted trust cannot be forged by shape;
-  the product component namespace is reserved; the host-measured launch digest
-  and the worker's self-reported digest must both equal the approved digest.
+- **Admission:** denied by default; admission resolves the extension through
+  the registry and looks its approval up itself, taking no extension value; the
+  minted trust cannot be forged by shape; the product component namespace is
+  reserved; the host-measured entry digest and the worker's self-reported
+  digest must both equal the approved digest, and the host-measured launch
+  digest the approved launch.
 - **Supervisor bounds (unchanged):** read-only principal and session proofs
   before execute, row and byte limits, secret-leak detection, zeroization of
   the delivered parameter bytes and the outbound parameter frame, sanitized
@@ -62,6 +73,10 @@ extension, approval, and digest. Everything else is denied.
   (`VES_STRONG_ISOLATION_UNAVAILABLE`); only human-approved code runs here.
   `native-restricted` and `container-isolated` remain unqualified
   (`isolation.md`).
+- **A descendant that leaves the tree and gives up its output** before the
+  host stops the tree: one a worker that exits first leaves outside its group,
+  or one a double fork orphans. The first fails the probe but is not ended;
+  the second is neither ended nor detected (`threat-model.md`).
 - CPU and memory limits beyond wall-clock time.
 - Database credential delivery to a workspace worker; the reference workers
   return synthetic evidence and rows.
@@ -72,4 +87,5 @@ extension, approval, and digest. Everything else is denied.
 72 focused tests across contract, integration, security, fault-injection, and
 E2E scopes; file and line mapping in
 `.specs/features/out-of-process-probe-host/validation.md`, threat-to-test
-mapping in `threat-model.md`.
+mapping in `threat-model.md`. The #569 fixes and their tests:
+`.specs/features/probe-host-containment/validation.md`.

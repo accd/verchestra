@@ -535,6 +535,17 @@ note. -->
   `tests/architecture/extension-host-composition.test.mjs` enforces it. Full
   statement: the `Consequences` of `adr.md` and the residual risks of
   `threat-model.md`.
+- **Amended (2026-10-27, #569):** the three limits are fixed in code
+  (`.specs/features/probe-host-containment/`). The host stops the worker's
+  tree before it kills it, fails a worker that exited before the session
+  ended, and fails a termination whose output is still held; the approval and
+  the grant bind a launch digest over executable, arguments, environment and
+  entry, and loader variables are refused; and `WorkspaceProbeAdmission`
+  resolves the extension and looks `approvalRef` up itself, through ports the
+  composition root wires. One descendant residual stays stated: a descendant
+  that left the worker's tree, with its output given up, before the host
+  stopped the tree. The status stays `proposed`. The composition guard stays until the
+  owner ratifies this amendment, and T3 lifts it.
 
 ### AD-038 — The single binary is a Node 24.14.0 SEA injected by a repository-owned injector (#236)
 

@@ -51,6 +51,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ### Security
 
+- The out-of-process probe host, not yet composed into any command, closes the
+  three limits its post-merge review found (#569). It stops a worker's whole
+  tree, `setsid` descendants included, before killing it, and fails a probe
+  whose worker exited first or whose output outlives the kill. It refuses,
+  before anything starts, a launch whose executable, arguments or environment
+  the approval does not name, and loader variables such as `NODE_OPTIONS`
+  outright. Admission resolves the extension and looks its approval up itself.
 - CI installs the Claude Code and Codex CLIs it qualifies the drivers against
   with `npm ci` from a committed lockfile, `.github/qualified-providers/`, so
   every package is checked against a pinned sha512, the platform binaries
