@@ -320,7 +320,8 @@ function record(value: unknown, name: string, keys: readonly string[]): UnknownR
   if (value === null || typeof value !== "object" || Array.isArray(value)) inputError(`${name} must be an object`);
   const result = value as UnknownRecord;
   const extras = Object.keys(result).filter((key) => !keys.includes(key));
-  if (extras.length > 0) inputError(`${name} contains unsupported fields: ${extras.sort(codeUnitCompare).join(", ")}`);
+  if (extras.length > 0)
+    inputError(`${name} contains unsupported fields: ${extras.toSorted(codeUnitCompare).join(", ")}`);
   return result;
 }
 
@@ -882,7 +883,7 @@ export class MemoryStore {
         DELETE FROM ingestion_generations;`);
       this.#hooks.afterReset?.();
       const results = batches
-        .sort(
+        .toSorted(
           (left, right) =>
             codeUnitCompare(left.workspaceId, right.workspaceId) || codeUnitCompare(left.projectId, right.projectId)
         )

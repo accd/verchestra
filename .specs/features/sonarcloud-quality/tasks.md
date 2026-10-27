@@ -11,7 +11,7 @@
 | T5   | S2871 `sort()` without comparator (156): `codeUnitCompare` from `@verchestra/domain`, never `localeCompare` | T2                | `pnpm gate:security`, `pnpm test:census`                     |
 | T6   | S6324 control characters in regular expressions (22; S1534, S7739, S1764 read 0 open by then)               | T2                | `pnpm gate:quick`, `pnpm gate:security`                      |
 | T7   | S8786, S5843 regular-expression complexity (22 by then), with linearity assertions                          | T2                | `pnpm gate:security`                                         |
-| T8   | Maintainability rules, one rule family per change; accepted issues recorded in `validation.md`              | T3–T7             | `pnpm gate:quick`, `pnpm test:architecture`                  |
+| T8   | Maintainability rules, one rule family per change (first: S4043, 29); accepted issues in `validation.md`    | T3–T7             | `pnpm gate:quick`, `pnpm test:architecture`                  |
 
 ## Gate commands
 

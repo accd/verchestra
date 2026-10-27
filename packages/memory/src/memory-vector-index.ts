@@ -211,7 +211,7 @@ function closedRecord(value: unknown, name: string, keys: readonly string[]): Ro
   if (value === null || typeof value !== "object" || Array.isArray(value)) invalid(`${name} must be an object`);
   const row = value as Row;
   const extras = Object.keys(row).filter((key) => !keys.includes(key));
-  if (extras.length > 0) invalid(`${name} contains unsupported fields: ${extras.sort(codeUnitCompare).join(", ")}`);
+  if (extras.length > 0) invalid(`${name} contains unsupported fields: ${extras.toSorted(codeUnitCompare).join(", ")}`);
   return row;
 }
 

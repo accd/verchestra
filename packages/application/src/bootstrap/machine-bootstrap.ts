@@ -354,7 +354,7 @@ function resolveRoles(
         eligiblePassportIds: Object.freeze(
           eligible.map((candidate) => candidate.passport.passportId).sort(codeUnitCompare)
         ),
-        failedRequirements: Object.freeze(failures.sort(codeUnitCompare))
+        failedRequirements: Object.freeze(failures.toSorted(codeUnitCompare))
       });
     })
   );

@@ -3,12 +3,12 @@ schema: verchestra-feature-handoff/v1
 feature: sonarcloud-quality
 issue: null
 status: in_progress
-branch: fix/sonar-t7-regex-complexity
-baseRevision: 5b131e97463dbf581fe1eb6d40ecd15739dd3d31
-lastCompletedTask: T7
+branch: fix/sonar-t8-s4043
+baseRevision: 6b0b548ff4d2d4120126d8fe7b934a9d4b75f479
+lastCompletedTask: T8
 nextTask: T8
-lastGate: pnpm gate:quick plus pnpm gate:security and pnpm test:census
-updatedAt: 2026-10-27T13:00:12Z
+lastGate: pnpm gate:quick plus pnpm test:architecture, pnpm test:census and pnpm gate:security
+updatedAt: 2026-10-27T14:21:46Z
 ---
 
 # Scope
@@ -19,6 +19,39 @@ sources. Phases B (bugs, vulnerabilities) and C (code smells) follow in their
 own changes, one rule family each, as listed in `tasks.md`.
 
 # Completed Evidence
+
+T8 (S4043) complete on `fix/sonar-t8-s4043` — the first maintainability rule
+family: 29 open S4043 issues (array-mutating `sort`/`reverse` used inside the
+expression that consumes it), 26 `sort` and 3 `reverse` sites in 15 files.
+
+- Every receiver was a fresh local array (a `map`/`filter` result, a spread,
+  or a local `push` target), so `toSorted`/`toReversed` with the same
+  comparator returns the same order and only stops mutating the local:
+  `execution-package.ts` (9), `self-test.ts` (3), `memory-store.ts`,
+  `memory-retriever.ts`, `memory-lifecycle.ts` (2 each), `memory-vector-index.ts`,
+  `machine-bootstrap.ts`, `source-snapshots.ts`, `task-scheduler.ts`,
+  `run-capsule.ts`, `discovery-router.ts`, `model-router.ts`, `work-claims.ts`,
+  `scripts/complexity.mjs` (1 each), and the rollback loop in
+  `SafeInitService.apply` (only `applied.length` is read afterwards). Comparators are unchanged
+  (`codeUnitCompare`, `compareIdentity`, numeric); no `localeCompare`.
+- One receiver was read again after the mutation: `SafeInitService.recover`
+  passed the reversed `states` to `removeEmptyParents`. It now names the
+  reversed copy (`undoOrder`) and uses it for both, so the undo loop and the
+  parent cleanup see exactly the order they did before.
+- `tests/unit/array-copy-ordering.test.mjs` (9 tests) pins the order each
+  previously uncovered site produces, on inputs where push order differs from
+  the sorted order: failed role requirements, a round's deferrals (T3 pushed
+  before T2), `rebuild` batch order (and its input array untouched), the three
+  "unsupported fields" messages, the promotion ancestry walk (a linked
+  `.verchestra/context` over a missing `promoted` is refused only by a
+  root-first walk), and init rollback plus recovery undoing newest first
+  (`afterRecoveryRemove` sees 2, 1, 0; both trees return to the prior bytes).
+  Replacing the copies with the unsorted/unreversed arrays fails 4 of them.
+- Local (Windows, Node 24.14.0): `pnpm gate:quick` PASS, `pnpm test:census`
+  13/13, `pnpm test:architecture` 144/144; `pnpm gate:security` stages build,
+  unit 3,125, contract 975, e2e, architecture and qualification green, security
+  1,360 pass with only the two known Windows-only failures (task-suspension
+  refused extra-usage statement, worktree-tool symbolic-link final component).
 
 T7 complete on `fix/sonar-t7-regex-complexity` — the 22 open S8786
 (super-linear backtracking, 15) and S5843 (complexity over 20, 7) issues in 14
@@ -217,11 +250,15 @@ issues; 179 bugs, 32 vulnerabilities, 924 code smells; quality gate ERROR.
 
 # Next Exact Action
 
-After this change merges, confirm S8786 and S5843 read 0 open:
-`curl "https://sonarcloud.io/api/issues/search?componentKeys=accd_verchestra&rules=typescript:S8786,javascript:S8786,typescript:S5843,javascript:S5843&resolved=false&ps=1"`.
-Bugs read 0 and Reliability A since T6 (2026-10-27T12:39Z). Then T8
-(maintainability, one rule family per change) — or, first, the quality gate's
-last failing condition: new-code coverage on `main` (74.3 % against 80 %).
+After the T8 (S4043) change merges, confirm S4043 reads 0 open:
+`curl "https://sonarcloud.io/api/issues/search?componentKeys=accd_verchestra&rules=typescript:S4043,javascript:S4043&resolved=false&ps=1"`.
+Then continue T8 with the next maintainability rule family, one per change:
+list the open code smells by rule
+(`api/issues/search?componentKeys=accd_verchestra&types=CODE_SMELL&resolved=false&facets=rules&ps=1`)
+and take the next family. Note for the coverage work: Node's test runner
+excludes files named like tests (`*-test.*`) from coverage by default, so
+`packages/application/src/self-test/self-test.ts` never appears in the LCOV
+even though `tests/unit/self-test-rules.test.mjs` exercises it.
 
 # Blockers
 

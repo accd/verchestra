@@ -114,7 +114,7 @@ export function normalizeChangeScope(
     });
   });
   const targets = parsed
-    .sort(compareTargets)
+    .toSorted(compareTargets)
     .filter(
       (target, index, all) =>
         index === 0 || target.projectId !== all[index - 1]?.projectId || target.path !== all[index - 1]?.path

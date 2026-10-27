@@ -770,9 +770,9 @@ export function diffSentinels(before: readonly SentinelFact[], after: readonly S
   const added = [...afterMap.keys()].filter((sentinelId) => !beforeMap.has(sentinelId));
   return Object.freeze({
     identical: mutated.length === 0 && added.length === 0 && removed.length === 0,
-    mutated: Object.freeze(mutated.sort(codeUnitCompare)),
-    added: Object.freeze(added.sort(codeUnitCompare)),
-    removed: Object.freeze(removed.sort(codeUnitCompare))
+    mutated: Object.freeze(mutated.toSorted(codeUnitCompare)),
+    added: Object.freeze(added.toSorted(codeUnitCompare)),
+    removed: Object.freeze(removed.toSorted(codeUnitCompare))
   });
 }
 

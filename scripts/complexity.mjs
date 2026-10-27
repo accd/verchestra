@@ -142,7 +142,7 @@ async function runReport() {
   console.table(distribution(entries));
   const production = entries.filter((entry) => PRODUCTION_SCOPES.has(entry.scope) && entry.value > POLICY.target);
   console.log(`production functions above ${POLICY.target}: ${production.length}`);
-  for (const entry of production.sort((a, b) => b.value - a.value).slice(0, 25)) {
+  for (const entry of production.toSorted((a, b) => b.value - a.value).slice(0, 25)) {
     console.log(`  ${String(entry.value).padStart(3)}  ${entry.file}:${entry.line}  ${entry.symbol}`);
   }
   return 0;
