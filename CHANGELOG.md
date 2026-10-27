@@ -58,6 +58,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   before anything starts, a launch whose executable, arguments or environment
   the approval does not name, and loader variables such as `NODE_OPTIONS`
   outright. Admission resolves the extension and looks its approval up itself.
+- The probe host refuses a worker frame under a payload schema version other
+  than 1 with `VES_PROBE_PAYLOAD_SCHEMA_UNSUPPORTED`, instead of reading it as
+  version 1 (#570).
 - CI installs the Claude Code and Codex CLIs it qualifies the drivers against
   with `npm ci` from a committed lockfile, `.github/qualified-providers/`, so
   every package is checked against a pinned sha512, the platform binaries

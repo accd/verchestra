@@ -32,8 +32,8 @@ approval, digest, and launch. Everything else is denied.
 ## What is qualified
 
 - **Framing:** header and body limits before allocation, unique canonical
-  `Content-Length`, JSON, exact 9-key envelope, Workspace binding, and a
-  payload digest re-derived on every frame.
+  `Content-Length`, JSON, exact 9-key envelope, Workspace binding, a payload
+  digest re-derived on every frame, and payload schema version 1 only.
 - **Sequencing:** a strict guard; any replay, gap, or identity conflict
   terminates the worker and revokes the grant.
 - **Launch:** absolute executable, no shell, NUL-free arguments, a
