@@ -63,7 +63,7 @@ export interface OracleOperation {
 export function parseOracleReadOperation(sql: unknown, options: ParseOptions): OracleOperation {
   if (typeof sql !== "string" || sql.length === 0 || sql.length > 131_072)
     fail("VES_ORACLE_REQUEST_INVALID", "Protected Oracle statement is invalid");
-  if (!/^[\x09\x0a\x0d\x20-\x7e]+$/u.test(sql) || /\\|\x00/u.test(sql))
+  if (!/^[\t\n\r\x20-\x7e]+$/u.test(sql) || /\\/u.test(sql))
     fail("VES_ORACLE_ENCODING_DENIED", "Oracle statement encoding is not permitted");
   if (/--|\/\*|\*\//u.test(sql)) fail("VES_ORACLE_COMMENT_DENIED", "Oracle comments and hints are not permitted");
   if (sql.includes(";") || sql.split("\n").some((line) => line.trim() === "/"))

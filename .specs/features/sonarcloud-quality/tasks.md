@@ -9,7 +9,7 @@
 | T3   | S8707 path injection (14 under the corrected scope, all `spikes/node-runtime/src/build-bundle.mjs`)         | T2                | `pnpm test:qualification`, `pnpm gate:quick`                 |
 | T4   | S6505 ×3, S4036 ×4, S2612 ×1, S5443 ×1 (9 under the corrected scope)                                        | T2                | `pnpm gate:quick`, `pnpm test:architecture`, site unit tests |
 | T5   | S2871 `sort()` without comparator (156): `codeUnitCompare` from `@verchestra/domain`, never `localeCompare` | T2                | `pnpm gate:security`, `pnpm test:census`                     |
-| T6   | S6324, S1534, S7739, S1764 (27)                                                                             | T2                | `pnpm gate:quick`                                            |
+| T6   | S6324 control characters in regular expressions (22; S1534, S7739, S1764 read 0 open by then)               | T2                | `pnpm gate:quick`, `pnpm gate:security`                      |
 | T7   | S8786, S5843 regular-expression complexity (26), with linearity assertions                                  | T2                | `pnpm gate:security`                                         |
 | T8   | Maintainability rules, one rule family per change; accepted issues recorded in `validation.md`              | T3–T7             | `pnpm gate:quick`, `pnpm test:architecture`                  |
 

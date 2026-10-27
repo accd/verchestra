@@ -60,7 +60,7 @@ export interface SqlServerOperation {
 export function parseSqlServerReadOperation(sql: unknown, options: ParseOptions): SqlServerOperation {
   if (typeof sql !== "string" || sql.length === 0 || sql.length > 131_072)
     fail("VES_SQLSERVER_REQUEST_INVALID", "Protected SQL Server statement is invalid");
-  if (!/^[\x09\x0a\x0d\x20-\x7e]+$/u.test(sql) || /\\/u.test(sql))
+  if (!/^[\t\n\r\x20-\x7e]+$/u.test(sql) || /\\/u.test(sql))
     fail("VES_SQLSERVER_ENCODING_DENIED", "SQL Server statement encoding is not permitted");
   if (/--|\/\*|\*\//u.test(sql)) fail("VES_SQLSERVER_COMMENT_DENIED", "SQL Server comments are not permitted");
   if (sql.includes(";") || sql.split("\n").some((line) => line.trim().toUpperCase() === "GO"))

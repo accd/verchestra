@@ -80,7 +80,7 @@ function cloneSource(source: SourceIdentity): SourceIdentity {
 }
 
 function assertContent(content: string): void {
-  if (content.length > 10_000_000 || /[\u0000]/u.test(content))
+  if (content.length > 10_000_000 || content.includes("\u0000"))
     throw new EgressError("VES_TRUST_ENVELOPE_INVALID", "Content is outside bounded text limits");
 }
 

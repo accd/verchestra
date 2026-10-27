@@ -400,7 +400,7 @@ function normalizeRecord(value: unknown): NormalizedRecord {
   const validUntil = row["validUntil"] === null ? null : instant(row["validUntil"], "record.validUntil");
   if (validUntil !== null && validUntil.milliseconds <= retrievedAt.milliseconds)
     fail("record.validUntil must be after retrievedAt");
-  if (typeof row["content"] !== "string" || /\u0000/u.test(row["content"])) fail("record.content is invalid");
+  if (typeof row["content"] !== "string" || row["content"].includes("\u0000")) fail("record.content is invalid");
   const content = row["content"];
   if (Buffer.byteLength(content, "utf8") > MAX_CONTENT_BYTES) fail("record.content exceeds its bound");
   const normalized = {

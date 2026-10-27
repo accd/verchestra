@@ -3,12 +3,12 @@ schema: verchestra-feature-handoff/v1
 feature: sonarcloud-quality
 issue: null
 status: in_progress
-branch: fix/sonar-s2871-code-unit-sort
-baseRevision: 51df50404035ccfc9d1eae9e369a5540adda286c
-lastCompletedTask: T5
-nextTask: T6
-lastGate: pnpm gate:security plus pnpm gate:quick and pnpm test:census
-updatedAt: 2026-10-27T08:39:02Z
+branch: fix/sonar-s6324-control-chars
+baseRevision: b3a2dc62d8c73abab3c95c949860656d71de152a
+lastCompletedTask: T6
+nextTask: T7
+lastGate: pnpm gate:quick plus pnpm gate:security
+updatedAt: 2026-10-27T12:04:37Z
 ---
 
 # Scope
@@ -19,6 +19,30 @@ sources. Phases B (bugs, vulnerabilities) and C (code smells) follow in their
 own changes, one rule family each, as listed in `tasks.md`.
 
 # Completed Evidence
+
+T6 complete on `fix/sonar-s6324-control-chars` — the 22 S6324 issues, which
+after T5 were every open bug, sat on 8 lines. None was a defect; each named a
+control character by hex escape where the rule wants a readable form:
+
+- The six SQL dialect parsers in `packages/data-probe/src/*-adapter.ts`
+  (PostgreSQL, MySQL family, SQL Server, SQLite, Oracle, SAP ASE) allow
+  printable ASCII plus TAB, LF and CR: `[\x09\x0a\x0d\x20-\x7e]` is now
+  `[\t\n\r\x20-\x7e]`, the same set. SQLite and Oracle also tested `\x00`
+  beside the backslash; NUL is already outside the allowed set, so that
+  alternative was dead and is gone.
+- `packages/memory/src/memory-retriever.ts` and
+  `packages/application/src/egress/trust-egress.ts` rejected NUL with a
+  one-character regex; they now use `includes("\u0000")`.
+- New `tests/security/probe-statement-encoding.test.mjs` (48 cases) holds every
+  dialect to the boundary: TAB/LF/CR still parse, and NUL, U+0008, VT, FF,
+  U+001F, DEL and backslash are denied with the dialect's `ENCODING_DENIED`
+  code. It passed against the old source too, so the rewrite kept the set.
+- `tests/security/memory-retriever-security.test.mjs` and
+  `tests/unit/trust-envelope.test.mjs` gain NUL cases (leading, inner,
+  trailing; the memory one with a matching digest so only the NUL check can
+  fail). Both fail with their guard removed (discrimination run: 2 fail).
+- S1534, S7739 and S1764, listed under T6 in `tasks.md`, read 0 open
+  on SonarCloud (2026-10-27), so T6 had nothing to change for them.
 
 T5 complete on `fix/sonar-s2871-code-unit-sort` — all 156 S2871 sites (the
 largest bug family) state their order instead of relying on the default:
@@ -142,12 +166,12 @@ issues; 179 bugs, 32 vulnerabilities, 924 code smells; quality gate ERROR.
 
 # Next Exact Action
 
-After this change merges, confirm S2871 reads 0 open:
-`curl "https://sonarcloud.io/api/issues/search?componentKeys=accd_verchestra&rules=typescript:S2871,javascript:S2871&resolved=false&ps=1"`.
-Then start T6 on a new branch off `main`: the remaining bugs — S6324 (control
-characters in regular expressions, mostly intentional sanitizers: rewrite with
-`\u` escapes and a comment, fix real defects with a test), S1534, S7739 and
-S1764 — and re-read `types=BUG` first, since counts move with each analysis.
+After this change merges, confirm bugs read 0 open and Reliability is A:
+`curl "https://sonarcloud.io/api/issues/search?componentKeys=accd_verchestra&types=BUG&resolved=false&ps=1"`.
+Then start T7 on a new branch off `main`: S8786 and S5843 (regular-expression
+complexity), each rewrite with a linearity assertion — re-read both rules
+first, since counts move with each analysis. The quality gate's last failing
+condition is new-code coverage (74.3 % against 80 % at 2026-10-27T09:40Z).
 
 # Blockers
 

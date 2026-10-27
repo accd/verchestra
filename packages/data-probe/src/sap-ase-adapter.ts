@@ -76,7 +76,7 @@ export function parseSapAseReadOperation(sql: unknown, options: ParseOptions): S
   if (typeof sql !== "string" || sql.length === 0 || sql.length > 131_072) {
     fail("VES_SAP_ASE_REQUEST_INVALID", "Protected SAP ASE statement is invalid");
   }
-  if (!/^[\x09\x0a\x0d\x20-\x7e]+$/u.test(sql) || /\\/u.test(sql)) {
+  if (!/^[\t\n\r\x20-\x7e]+$/u.test(sql) || /\\/u.test(sql)) {
     fail("VES_SAP_ASE_ENCODING_DENIED", "SAP ASE statement encoding is not permitted");
   }
   if (/--|\/\*|\*\//u.test(sql)) fail("VES_SAP_ASE_COMMENT_DENIED", "SAP ASE comments are not permitted");
