@@ -12,6 +12,12 @@ import {
 } from "node:crypto";
 import { canonicalize } from "@tufjs/canonical-json";
 
+// why: spikes are self-contained; this is the repository's UTF-16 code-unit
+// order (packages/domain codeUnitCompare), never localeCompare.
+function codeUnitCompare(left, right) {
+  return Number(left > right) - Number(left < right);
+}
+
 function failure(code, message, fields = {}) {
   return Object.assign(new Error(message), { code, ...fields });
 }
@@ -67,7 +73,7 @@ export class OpaqueKeyStore {
   }
 
   describe() {
-    return { signingKeyIds: [...this.#signing.keys()].sort(), recipientKeyIds: [...this.#recipients.keys()].sort(), privateExport: false };
+    return { signingKeyIds: [...this.#signing.keys()].sort(codeUnitCompare), recipientKeyIds: [...this.#recipients.keys()].sort(codeUnitCompare), privateExport: false };
   }
 
   static verify(publicKey, value, signature) {
@@ -157,8 +163,8 @@ export function verifyAndOpenRecipientEnvelope({ bundle, recipientStore, recipie
 
 export function planSupportBundle(diagnostics, allowlist) {
   const prohibited = new Set(["source", "prompt", "context", "credentials", "environmentValues", "rawRows", "rawProbeOutput", "transcript", "rawStateDatabase", "logs"]);
-  const fields = Object.fromEntries(Object.keys(diagnostics).filter((key) => allowlist.includes(key) && !prohibited.has(key)).sort().map((key) => [key, diagnostics[key]]));
-  const excluded = Object.keys(diagnostics).filter((key) => !allowlist.includes(key) || prohibited.has(key)).sort();
+  const fields = Object.fromEntries(Object.keys(diagnostics).filter((key) => allowlist.includes(key) && !prohibited.has(key)).sort(codeUnitCompare).map((key) => [key, diagnostics[key]]));
+  const excluded = Object.keys(diagnostics).filter((key) => !allowlist.includes(key) || prohibited.has(key)).sort(codeUnitCompare);
   const digest = sha256(canonical({ fields, excluded }));
   return { fields, excluded, digest, autoUpload: false };
 }
@@ -166,8 +172,8 @@ export function planSupportBundle(diagnostics, allowlist) {
 export function inspectSupportBundle(plan) {
   return {
     digest: plan.digest,
-    includedFields: Object.keys(plan.fields).sort(),
-    excludedFields: [...plan.excluded].sort(),
+    includedFields: Object.keys(plan.fields).sort(codeUnitCompare),
+    excludedFields: [...plan.excluded].sort(codeUnitCompare),
     redactionSummary: { prohibitedCollected: 0 },
     autoUpload: false
   };

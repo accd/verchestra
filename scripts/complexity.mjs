@@ -11,6 +11,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { relative, resolve } from "node:path";
 import { ESLint } from "eslint";
+import { codeUnitCompare } from "../packages/domain/src/canonical/canonical-sets.ts";
 
 const ROOT = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const BASELINE_PATH = resolve(ROOT, "complexity-baseline.json");
@@ -67,7 +68,7 @@ export function hotspotBaseline(entries) {
     grouped.get(key).push(entry.value);
   }
   const hotspots = {};
-  for (const key of [...grouped.keys()].sort()) hotspots[key] = grouped.get(key).sort((a, b) => a - b);
+  for (const key of [...grouped.keys()].sort(codeUnitCompare)) hotspots[key] = grouped.get(key).sort((a, b) => a - b);
   return { target: POLICY.target, variant: POLICY.variant, hotspots };
 }
 
@@ -99,7 +100,7 @@ export function compareToBaseline(current, baseline) {
         : `${key}: measured [${measured}] improved on the baselined [${values}] — lock it in with \`corepack pnpm complexity:update\``
     );
   }
-  for (const key of [...currentKeys].sort()) {
+  for (const key of [...currentKeys].sort(codeUnitCompare)) {
     failures.push(
       `${key}: complexity [${current.hotspots[key]}] exceeds the new-code target of ${baseline.target} and has no baseline entry`
     );
@@ -118,7 +119,7 @@ function distribution(entries) {
     byScope.get(entry.scope).push(entry.value);
   }
   const rows = [];
-  for (const scope of [...byScope.keys()].sort()) {
+  for (const scope of [...byScope.keys()].sort(codeUnitCompare)) {
     const values = byScope.get(scope).sort((a, b) => a - b);
     rows.push({
       scope,

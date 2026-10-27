@@ -211,7 +211,7 @@ function closedRecord(value: unknown, name: string, keys: readonly string[]): Ro
   if (value === null || typeof value !== "object" || Array.isArray(value)) invalid(`${name} must be an object`);
   const row = value as Row;
   const extras = Object.keys(row).filter((key) => !keys.includes(key));
-  if (extras.length > 0) invalid(`${name} contains unsupported fields: ${extras.sort().join(", ")}`);
+  if (extras.length > 0) invalid(`${name} contains unsupported fields: ${extras.sort(codeUnitCompare).join(", ")}`);
   return row;
 }
 
@@ -630,10 +630,10 @@ export class MemoryVectorIndex {
     }
     const expected = snapshot.chunks
       .map((chunk) => `${chunk.sourceId}\0${chunk.chunkId}\0${chunk.contentDigest}`)
-      .sort();
+      .sort(codeUnitCompare);
     const actual = build.vectors
       .map((vector) => `${vector.sourceId}\0${vector.chunkId}\0${vector.contentDigest}`)
-      .sort();
+      .sort(codeUnitCompare);
     if (canonicalizeJsonV2(expected) !== canonicalizeJsonV2(actual)) {
       throw vectorError("VES_VECTOR_AUTHORITY_MISMATCH", "Vector set differs from active lexical chunks");
     }

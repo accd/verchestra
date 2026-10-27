@@ -163,8 +163,8 @@ function record(value: unknown, code: string, label: string): UnknownRecord {
 }
 
 function exactKeys(value: UnknownRecord, expected: readonly string[], code: string, label: string): void {
-  const actual = Object.keys(value).sort();
-  const wanted = [...expected].sort();
+  const actual = Object.keys(value).sort(codeUnitCompare);
+  const wanted = [...expected].sort(codeUnitCompare);
   if (actual.length !== wanted.length || actual.some((key, index) => key !== wanted[index])) {
     fail(code, `${label} fields are invalid`);
   }
@@ -192,7 +192,7 @@ function uniqueSorted(values: unknown, pattern: RegExp, code: string, label: str
   if (!Array.isArray(values) || (!allowEmpty && values.length === 0) || values.length > 256) {
     fail(code, `${label} is invalid`);
   }
-  return [...new Set(values.map((value) => textValue(value, pattern, code, label)))].sort();
+  return [...new Set(values.map((value) => textValue(value, pattern, code, label)))].sort(codeUnitCompare);
 }
 
 export interface DatabaseRegistrationInput {

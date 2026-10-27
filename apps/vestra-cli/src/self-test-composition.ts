@@ -49,6 +49,7 @@ import { runCli } from "./cli.ts";
 import { createCommandBus } from "./command-bus.ts";
 import { resolveDurableCrashChild } from "./release-layout.ts";
 import { installedReleaseManifest } from "./release-manifest.ts";
+import { codeUnitCompare } from "@verchestra/domain";
 
 // Every VES_SELFTEST_* code the domain can emit into
 // `self_test.failure_codes`. The support-bundle contract rejects any code the
@@ -305,7 +306,7 @@ async function workingTreeSnapshot(root: string): Promise<readonly string[]> {
     }
   }
   await walk(root);
-  return Object.freeze(entries.sort());
+  return Object.freeze(entries.sort(codeUnitCompare));
 }
 
 interface CliInvocation {

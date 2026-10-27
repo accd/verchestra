@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { isAbsolute, relative, resolve, sep } from "node:path";
 
-import { canonicalizeJsonV2 } from "@verchestra/domain";
+import { canonicalizeJsonV2, codeUnitCompare } from "@verchestra/domain";
 
 import { ActivationLauncherError, type ActivationLauncherErrorCode } from "./activation-launcher-errors.ts";
 import { runBoundedChild, type BoundedChildExit } from "./bounded-child-run.ts";
@@ -121,8 +121,8 @@ const canonical = (value: unknown, label: string): string => {
 };
 
 const hasExactKeys = (value: object, keys: readonly string[]): boolean => {
-  const actual = Object.keys(value).sort();
-  const expected = [...keys].sort();
+  const actual = Object.keys(value).sort(codeUnitCompare);
+  const expected = [...keys].sort(codeUnitCompare);
   return actual.length === expected.length && actual.every((key, index) => key === expected[index]);
 };
 

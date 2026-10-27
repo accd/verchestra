@@ -3,12 +3,12 @@ schema: verchestra-feature-handoff/v1
 feature: sonarcloud-quality
 issue: null
 status: in_progress
-branch: fix/sonar-t4-hotspots
-baseRevision: b8802cee49a03b7f7e9190561a34acc680a2a47b
-lastCompletedTask: T4
-nextTask: T5
-lastGate: pnpm gate:quick plus pnpm test:architecture and pnpm site:test unit
-updatedAt: 2026-10-26T21:29:25Z
+branch: fix/sonar-s2871-code-unit-sort
+baseRevision: 51df50404035ccfc9d1eae9e369a5540adda286c
+lastCompletedTask: T5
+nextTask: T6
+lastGate: pnpm gate:security plus pnpm gate:quick and pnpm test:census
+updatedAt: 2026-10-27T08:39:02Z
 ---
 
 # Scope
@@ -19,6 +19,36 @@ sources. Phases B (bugs, vulnerabilities) and C (code smells) follow in their
 own changes, one rule family each, as listed in `tasks.md`.
 
 # Completed Evidence
+
+T5 complete on `fix/sonar-s2871-code-unit-sort` — all 156 S2871 sites (the
+largest bug family) state their order instead of relying on the default:
+
+- `codeUnitCompare` is now exported by `@verchestra/domain`
+  (`packages/domain/src/canonical/canonical-sets.ts`); `normalizeDeclaredSet`
+  and the RFC 8785 encoder's member order use it. It is UTF-16 code-unit order —
+  exactly the comparator-less `sort()` (assumption A1), never `localeCompare` —
+  so every rewritten sort keeps its bytes. Asserted in
+  `tests/unit/canonical-json-sets.test.mjs` against a corpus where code-unit
+  order differs from locale, numeric and code-point order (case, digits,
+  accents, U+FFFF against a surrogate pair, prefixes).
+- 128 sites in 52 TypeScript files of packages that already depend on
+  `@verchestra/domain` now call `.sort(codeUnitCompare)`, reusing a file's own
+  local comparator where it had one. `tsc --noEmit` passing proves every one
+  sorts strings — the comparator accepts nothing else.
+- `packages/contracts` (inward of domain) and `apps/site` (no workspace
+  dependencies) carry a one-line local comparator with the same rule; the
+  repository scripts import it from `canonical-sets.ts` by path (dependency
+  free, so `agent:context` still runs before install); the two spikes keep a
+  local one, being self-contained. Each of those 28 sites was inspected: all
+  sort keys, file names, gate names, task ids or policy ids.
+- `pnpm test:census` unchanged (13/13): no canonicalizer changed class.
+- Not done here: the ~15 per-file copies of the same comparator across
+  packages are left in place (consolidating them is a maintainability change,
+  not S2871).
+
+T4 merged to `main` at `51df5040` (verified by content). SonarCloud
+2026-10-26T22:03Z: vulnerabilities 0, Security rating A, 976 open issues; the
+quality gate still fails on new reliability and new coverage only.
 
 T4 complete on `fix/sonar-t4-hotspots` — the 9 vulnerabilities left after T3:
 
@@ -112,11 +142,12 @@ issues; 179 bugs, 32 vulnerabilities, 924 code smells; quality gate ERROR.
 
 # Next Exact Action
 
-After this change merges, confirm open vulnerabilities read 0:
-`curl "https://sonarcloud.io/api/issues/search?componentKeys=accd_verchestra&types=VULNERABILITY&resolved=false&ps=1"`.
-Then start T5 on a new branch off `main`: S2871 (`sort()` without a
-comparator) using one shared code-unit comparator — never `localeCompare` —
-with `pnpm test:census` and `pnpm gate:security` green.
+After this change merges, confirm S2871 reads 0 open:
+`curl "https://sonarcloud.io/api/issues/search?componentKeys=accd_verchestra&rules=typescript:S2871,javascript:S2871&resolved=false&ps=1"`.
+Then start T6 on a new branch off `main`: the remaining bugs — S6324 (control
+characters in regular expressions, mostly intentional sanitizers: rewrite with
+`\u` escapes and a comment, fix real defects with a test), S1534, S7739 and
+S1764 — and re-read `types=BUG` first, since counts move with each analysis.
 
 # Blockers
 

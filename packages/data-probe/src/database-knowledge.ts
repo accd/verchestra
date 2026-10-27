@@ -46,7 +46,8 @@ function record(value: unknown, code: string, message: string): UnknownRecord {
   return value as UnknownRecord;
 }
 function exactKeys(value: UnknownRecord, keys: readonly string[], code: string, message: string) {
-  if (Object.keys(value).sort().join(",") !== [...keys].sort().join(",")) fail(code, message);
+  if (Object.keys(value).sort(codeUnitCompare).join(",") !== [...keys].sort(codeUnitCompare).join(","))
+    fail(code, message);
 }
 function text(value: unknown, pattern: RegExp, code: string, message: string): string {
   if (typeof value !== "string" || !pattern.test(value)) fail(code, message);
@@ -335,7 +336,11 @@ export function buildDatabaseKnowledgePackage(value: unknown): DatabaseKnowledge
     .map(([factKey, values]) => {
       const alternatives = [...values.entries()]
         .sort(([a], [b]) => codeUnitCompare(a, b))
-        .map(([valueDigest, item]) => ({ value: item.value, valueDigest, sourceIds: [...item.sourceIds].sort() }));
+        .map(([valueDigest, item]) => ({
+          value: item.value,
+          valueDigest,
+          sourceIds: [...item.sourceIds].sort(codeUnitCompare)
+        }));
       return { factKey, status: alternatives.length === 1 ? "agreed" : "contradictory", alternatives };
     });
   const contradictions: Contradiction[] = facts
@@ -552,7 +557,7 @@ export function promoteProbeEvidence(value: unknown): PromotedProbeEvidence {
         )
       )
         fail(code, "Probe parameter classifications are invalid");
-      return [...result["parameterClassifications"]].sort() as string[];
+      return [...result["parameterClassifications"]].sort(codeUnitCompare) as string[];
     })(),
     producedAt: instant(result["producedAt"], code, "Probe production time is invalid"),
     bounds: {
@@ -576,7 +581,7 @@ export function promoteProbeEvidence(value: unknown): PromotedProbeEvidence {
     redaction: {
       policyRef: redaction["policyRef"],
       method: redaction["method"],
-      removedFields: [...redaction["removedFields"]].sort(),
+      removedFields: [...redaction["removedFields"]].sort(codeUnitCompare),
       humanReviewRef: redaction["humanReviewRef"]
     },
     sanitizedClaims: claims.toSorted((a, b) => codeUnitCompare(a.factKey, b.factKey)),
@@ -840,7 +845,7 @@ export function planSyntheticSeedScenarios(value: unknown) {
       criterion["targets"].some((item) => typeof item !== "string" || !ENTITY_REF.test(item))
     )
       fail(code, "Synthetic seed targets are invalid");
-    for (const entity of [...new Set(criterion["targets"] as string[])].sort()) {
+    for (const entity of [...new Set(criterion["targets"] as string[])].sort(codeUnitCompare)) {
       if (
         packageValue.contradictions.some(
           (item) => item.factKey.startsWith(`${entity}.`) && item.status === "unresolved"
@@ -859,7 +864,7 @@ export function planSyntheticSeedScenarios(value: unknown) {
         )
       ]
         .filter((field) => selectedFact(packageValue, `${entity}.column.${field}.present`) !== false)
-        .sort();
+        .sort(codeUnitCompare);
       if (
         fields.length === 0 ||
         Object.keys(factory.generators).some((field) => !fields.includes(field)) ||
@@ -872,7 +877,7 @@ export function planSyntheticSeedScenarios(value: unknown) {
         entity,
         factoryRef: factory.factoryRef,
         generatorPlan: factory.generators,
-        fixtureRefs: (fixtureRefs.get(entity) ?? []).sort(),
+        fixtureRefs: (fixtureRefs.get(entity) ?? []).sort(codeUnitCompare),
         materialization: "synthetic-only"
       };
       const addScenario = (caseKind: string, expectedValid: boolean, field?: string) => {
@@ -894,8 +899,8 @@ export function planSyntheticSeedScenarios(value: unknown) {
     databaseId,
     knowledgePackageDigest: packageValue.packageDigest,
     productionDataAllowed: false as const,
-    fixtureDigests: [...fixtureDigests].sort(),
-    sanitizedEvidenceDigests: [...new Set(evidenceDigests)].sort(),
+    fixtureDigests: [...fixtureDigests].sort(codeUnitCompare),
+    sanitizedEvidenceDigests: [...new Set(evidenceDigests)].sort(codeUnitCompare),
     scenarios: scenarios.toSorted((a, b) => codeUnitCompare(String(a["scenarioId"]), String(b["scenarioId"])))
   };
   return deepFreeze({ ...material, planDigest: digest(material) });

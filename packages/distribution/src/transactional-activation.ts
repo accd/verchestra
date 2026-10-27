@@ -3,7 +3,7 @@ import { constants, createReadStream } from "node:fs";
 import { copyFile, lstat, mkdir, open, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join, resolve, sep } from "node:path";
 
-import { canonicalizeJsonV2 } from "@verchestra/domain";
+import { canonicalizeJsonV2, codeUnitCompare } from "@verchestra/domain";
 
 import { verifyHermeticDistributionBundle, type HermeticDistributionBundle } from "./hermetic-bundle.ts";
 import type { TufStagedRelease } from "./tuf-update-client.ts";
@@ -171,7 +171,7 @@ const fail = (code: string, message: string, previous: ActiveReleasePointer | nu
 const equal = (left: unknown, right: unknown): boolean => canonicalizeJsonV2(left) === canonicalizeJsonV2(right);
 
 const hasExactKeys = (value: object, keys: readonly string[]): boolean =>
-  equal(Object.keys(value).sort(), [...keys].sort());
+  equal(Object.keys(value).sort(codeUnitCompare), [...keys].sort(codeUnitCompare));
 
 const assertWithin = (root: string, candidate: string): void => {
   const normalizedRoot = resolve(root);

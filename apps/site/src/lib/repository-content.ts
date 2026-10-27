@@ -3,6 +3,12 @@ import { readFile, readdir } from "node:fs/promises";
 import { isAbsolute, posix, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
+// why: the site is a build-time projection with no workspace dependencies; this
+// is the repository's UTF-16 code-unit order, never localeCompare.
+function codeUnitCompare(left: string, right: string): number {
+  return Number(left > right) - Number(left < right);
+}
+
 export interface RepositoryContentSource {
   id: string;
   sourcePath: string;
@@ -288,7 +294,7 @@ export function validateRoadmapChain(roadmap: string): { chain: readonly string[
       seen.add(task);
       chain.push(task);
     }
-    const unreachable = [...nodes].filter((task) => !seen.has(task)).sort();
+    const unreachable = [...nodes].filter((task) => !seen.has(task)).sort(codeUnitCompare);
     if (unreachable.length > 0) errors.push(`unreachable from the start: ${unreachable.join(", ")}`);
   }
   return { chain: errors.length === 0 ? chain : [], errors };
@@ -303,7 +309,7 @@ export function resolveQualification(
   // because of an inserted task, so one that no roadmap node claims is evidence
   // for nothing and must not be silently ignored.
   const declared = new Set(chain);
-  const stray = [...verifiedTasks].filter((task) => /[a-z]$/u.test(task) && !declared.has(task)).sort();
+  const stray = [...verifiedTasks].filter((task) => /[a-z]$/u.test(task) && !declared.has(task)).sort(codeUnitCompare);
   const allErrors = [...errors, ...stray.map((task) => `${task} has a validation report but no roadmap node`)];
   if (allErrors.length > 0) return { highestVerifiedTask: null, nextTask: null, errors: allErrors };
 

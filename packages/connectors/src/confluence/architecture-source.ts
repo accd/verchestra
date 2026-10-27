@@ -12,6 +12,7 @@ import {
   IsoInstant,
   StableId,
   canonicalizeJsonV2,
+  codeUnitCompare,
   normalizeDeclaredSet,
   type DataClassificationValue
 } from "@verchestra/domain";
@@ -146,8 +147,8 @@ const asRecord = (value: unknown, code: string, label: string): JsonRecord => {
 };
 
 const exactKeys = (value: JsonRecord, expected: readonly string[], code: string, label: string): void => {
-  const actual = Object.keys(value).sort();
-  const wanted = [...expected].sort();
+  const actual = Object.keys(value).sort(codeUnitCompare);
+  const wanted = [...expected].sort(codeUnitCompare);
   if (JSON.stringify(actual) !== JSON.stringify(wanted)) {
     throw new ConfluenceConnectorError(code, `${label} has missing or unknown fields`);
   }
@@ -209,7 +210,7 @@ const canonicalStrings = (
       : safeToken(entry, code, `${label}[${index}]`, options.pattern)
   );
   if (new Set(values).size !== values.length) throw new ConfluenceConnectorError(code, `${label} contains duplicates`);
-  return Object.freeze([...values].sort());
+  return Object.freeze([...values].sort(codeUnitCompare));
 };
 
 const normalizeRate = (value: unknown): RateState => {

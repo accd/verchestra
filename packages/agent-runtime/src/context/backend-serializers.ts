@@ -1,7 +1,7 @@
 import type { ContextDigestPort } from "./source-snapshots.ts";
 import type { ContextManifest } from "./context-compiler.ts";
 import { estimateQualifiedTokens } from "./token-estimator.ts";
-import { canonicalizeJsonV2 } from "@verchestra/domain";
+import { canonicalizeJsonV2, codeUnitCompare } from "@verchestra/domain";
 
 const TARGETS = ["pi", "claude-code", "codex", "opencode"] as const;
 const PREFIX = "VERCHESTRA_CONTEXT_V1\n";
@@ -109,7 +109,7 @@ function exactText(serialized: SerializedContext): string {
   switch (serialized.target) {
     case "pi": {
       if (
-        Object.keys(transport).sort().join(",") !== "prompt,systemPrompt" ||
+        Object.keys(transport).sort(codeUnitCompare).join(",") !== "prompt,systemPrompt" ||
         typeof transport["prompt"] !== "string" ||
         transport["systemPrompt"] !== ""
       )
@@ -161,7 +161,7 @@ function validateTree(value: unknown, digest: ContextDigestPort): NeutralSemanti
     fail("VES_CONTEXT_SERIALIZATION_INVALID", "Semantic tree is invalid");
   const tree = value as Partial<NeutralSemanticTree>;
   if (
-    Object.keys(tree).sort().join(",") !== "fragments,semanticObligations" ||
+    Object.keys(tree).sort(codeUnitCompare).join(",") !== "fragments,semanticObligations" ||
     !Array.isArray(tree.semanticObligations) ||
     !Array.isArray(tree.fragments)
   )
@@ -173,12 +173,13 @@ function validateTree(value: unknown, digest: ContextDigestPort): NeutralSemanti
     if (
       fragment === null ||
       typeof fragment !== "object" ||
-      Object.keys(fragment).sort().join(",") !== "classification,content,contentDigest,fragmentId,source,trust" ||
+      Object.keys(fragment).sort(codeUnitCompare).join(",") !==
+        "classification,content,contentDigest,fragmentId,source,trust" ||
       typeof fragment.fragmentId !== "string" ||
       ids.has(fragment.fragmentId) ||
       fragment.source === null ||
       typeof fragment.source !== "object" ||
-      Object.keys(fragment.source).sort().join(",") !== "identity,kind,revision" ||
+      Object.keys(fragment.source).sort(codeUnitCompare).join(",") !== "identity,kind,revision" ||
       typeof fragment.source.kind !== "string" ||
       typeof fragment.source.identity !== "string" ||
       typeof fragment.source.revision !== "string" ||

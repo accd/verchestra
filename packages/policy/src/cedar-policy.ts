@@ -316,7 +316,7 @@ export class CedarPolicyAdapter {
         decision,
         code,
         explanation,
-        determiningPolicies: Object.freeze([...determiningPolicies].sort()),
+        determiningPolicies: Object.freeze([...determiningPolicies].sort(codeUnitCompare)),
         policyViewDigest: compiled.validation.policyViewDigest,
         requestDigest,
         engineVersion,

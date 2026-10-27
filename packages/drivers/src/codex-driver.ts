@@ -1,6 +1,12 @@
 import { randomUUID } from "node:crypto";
 
-import { quotaExhausted, usageUpdated, type DriverEvent, type DriverEventOf } from "@verchestra/domain";
+import {
+  codeUnitCompare,
+  quotaExhausted,
+  type DriverEvent,
+  type DriverEventOf,
+  usageUpdated
+} from "@verchestra/domain";
 
 import {
   codexProcessEnvironment,
@@ -697,8 +703,8 @@ export class CodexDriver implements Driver {
       throw codexError("VES_CODEX_IDENTITY_MISMATCH", "Codex identity does not match the selected Passport");
     if (typeof execution.prompt !== "string" || execution.prompt.length === 0)
       throw codexError("VES_CODEX_CONTEXT_INVALID", "Codex serialized context is invalid");
-    const declared = request.tools.map((tool) => `${tool.name}:${tool.inputSchemaDigest}`).sort();
-    const concrete = execution.tools.map((tool) => `${tool.name}:${tool.inputSchemaDigest}`).sort();
+    const declared = request.tools.map((tool) => `${tool.name}:${tool.inputSchemaDigest}`).sort(codeUnitCompare);
+    const concrete = execution.tools.map((tool) => `${tool.name}:${tool.inputSchemaDigest}`).sort(codeUnitCompare);
     if (declared.length !== concrete.length || declared.some((entry, index) => entry !== concrete[index]))
       throw codexError("VES_CODEX_TOOLSET_MISMATCH", "Codex tools do not match the authorized manifest");
     for (const value of [execution.maxOutputBytes ?? 1, execution.cancelGraceMs ?? 0])

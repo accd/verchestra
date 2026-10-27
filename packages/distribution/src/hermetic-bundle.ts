@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import { canonicalizeJsonV2 } from "@verchestra/domain";
+import { canonicalizeJsonV2, codeUnitCompare } from "@verchestra/domain";
 
 const DIGEST = /^sha256:[a-f0-9]{64}$/u;
 const SEMVER = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?$/u;
@@ -124,7 +124,7 @@ const refs = (value: unknown, label: string): readonly string[] => {
   if (!Array.isArray(value)) fail("VES_DISTRIBUTION_INPUT_INVALID", `${label} must be an array`);
   const normalized = (value as unknown[]).map((entry) => string(entry, label));
   if (new Set(normalized).size !== normalized.length) fail("VES_DISTRIBUTION_INPUT_INVALID", `${label} is duplicated`);
-  return Object.freeze([...normalized].sort());
+  return Object.freeze([...normalized].sort(codeUnitCompare));
 };
 
 const normalizeTarget = (value: unknown) => {

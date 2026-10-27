@@ -3,7 +3,7 @@ import { lstat, readFile, readlink, rm } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 
 import type { ExecutionWorktreePort } from "@verchestra/application";
-import { isTaskPath } from "@verchestra/domain";
+import { codeUnitCompare, isTaskPath } from "@verchestra/domain";
 
 import {
   assertWorktreeDirectory,
@@ -206,7 +206,7 @@ export class NodeGitWorktreeAdapter implements ExecutionWorktreePort {
     const target = (await this.#resolve(handle.worktreeRef, handle.baseCommit)).directory;
     const tracked = nulList((await this.#git(target, ["diff", "--name-only", "-z", handle.baseCommit, "--"])).stdout);
     const untracked = nulList((await this.#git(target, ["ls-files", "--others", "--exclude-standard", "-z"])).stdout);
-    const changedPaths = Object.freeze([...new Set([...tracked, ...untracked])].sort());
+    const changedPaths = Object.freeze([...new Set([...tracked, ...untracked])].sort(codeUnitCompare));
     const manifest: Array<readonly [string, string]> = [];
     for (const path of changedPaths) {
       try {

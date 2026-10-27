@@ -2,7 +2,7 @@ import { createHmac } from "node:crypto";
 
 import { GeneralEncrypt, calculateJwkThumbprint, exportJWK, generalDecrypt, type GeneralJWE } from "jose";
 
-import { normalizeDeclaredSet } from "@verchestra/domain";
+import { codeUnitCompare, normalizeDeclaredSet } from "@verchestra/domain";
 
 import { ArtifactSealer } from "../integrity/artifact-sealer.ts";
 import { canonicalizeJsonForVersion, sha256DigestForVersion } from "../integrity/canonical.ts";
@@ -198,7 +198,7 @@ export class SupportCodeRegistry {
   readonly digest: Digest;
 
   constructor(options: { readonly codes: readonly string[] }) {
-    const codes = [...options.codes].sort();
+    const codes = [...options.codes].sort(codeUnitCompare);
     if (
       codes.length === 0 ||
       codes.length > 10_000 ||
@@ -246,7 +246,7 @@ function normalizeList(value: unknown, pattern: RegExp): readonly string[] {
       fail("VES_SUPPORT_VALUE_INVALID", "diagnostic list value is invalid");
     return entry;
   });
-  normalized.sort();
+  normalized.sort(codeUnitCompare);
   if (new Set(normalized).size !== normalized.length)
     fail("VES_SUPPORT_VALUE_INVALID", "diagnostic list contains duplicates");
   return Object.freeze(normalized);
@@ -818,7 +818,8 @@ export class SupportBundleBuilder {
     }
     if (
       new Set(fieldIds).size !== fieldIds.length ||
-      canonicalizeJsonForVersion(version, fieldIds) !== canonicalizeJsonForVersion(version, [...fieldIds].sort())
+      canonicalizeJsonForVersion(version, fieldIds) !==
+        canonicalizeJsonForVersion(version, [...fieldIds].sort(codeUnitCompare))
     )
       fail("VES_SUPPORT_INVALID", "Support Bundle diagnostic order is not canonical");
     const releaseField = plan.manifest.diagnostics.find((entry) => entry.fieldId === "release.digest");
@@ -846,7 +847,7 @@ export class SupportBundleBuilder {
       new Set(recipientIds).size !== recipientIds.length ||
       new Set(thumbprints).size !== thumbprints.length ||
       canonicalizeJsonForVersion(version, recipientIds) !==
-        canonicalizeJsonForVersion(version, [...recipientIds].sort())
+        canonicalizeJsonForVersion(version, [...recipientIds].sort(codeUnitCompare))
     )
       fail("VES_SUPPORT_INVALID", "Support Bundle recipients are not canonical");
     const material = Object.fromEntries(

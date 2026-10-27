@@ -1,4 +1,4 @@
-import { StableId, normalizeDeclaredSet } from "@verchestra/domain";
+import { StableId, codeUnitCompare, normalizeDeclaredSet } from "@verchestra/domain";
 
 import type { MachinePassportIndex, PassportRecord } from "./passport-registry.ts";
 
@@ -294,6 +294,6 @@ export class CapabilityModelRouter {
       passport.independenceClass === reference.independenceClass
     )
       reasons.push("independence");
-    return deepFreeze(reasons.sort());
+    return deepFreeze(reasons.sort(codeUnitCompare));
   }
 }

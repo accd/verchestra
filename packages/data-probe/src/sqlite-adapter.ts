@@ -122,8 +122,10 @@ export function parseSqliteReadOperation(sql: unknown, options: ParseOptions): S
     objects: Object.freeze(
       [...objects.values()].sort((a, b) => codeUnitCompare(`${a.schema}.${a.name}`, `${b.schema}.${b.name}`))
     ),
-    functions: Object.freeze([...functions].sort()),
-    parameterClassifications: Object.freeze([...options.parameterClassifications].sort()) as readonly Classification[]
+    functions: Object.freeze([...functions].sort(codeUnitCompare)),
+    parameterClassifications: Object.freeze(
+      [...options.parameterClassifications].sort(codeUnitCompare)
+    ) as readonly Classification[]
   });
 }
 
@@ -172,7 +174,10 @@ function decode(bytes: Uint8Array) {
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed))
     fail("VES_SQLITE_REQUEST_INVALID", "Protected SQLite request is invalid");
   const input = parsed as UnknownRecord;
-  if (Object.keys(input).sort().join(",") !== "parameters,schemaVersion,sql" || input["schemaVersion"] !== 1)
+  if (
+    Object.keys(input).sort(codeUnitCompare).join(",") !== "parameters,schemaVersion,sql" ||
+    input["schemaVersion"] !== 1
+  )
     fail("VES_SQLITE_REQUEST_INVALID", "Protected SQLite request is invalid");
   if (
     !Array.isArray(input["parameters"]) ||

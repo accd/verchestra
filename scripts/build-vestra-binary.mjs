@@ -35,6 +35,7 @@ import {
   sha256Of
 } from "./node-runtime-archive.mjs";
 import { SEA_FUSE, SEA_RESOURCE_NAME, injectSeaBlob, locateSeaBlob } from "./sea-inject.mjs";
+import { codeUnitCompare } from "../packages/domain/src/canonical/canonical-sets.ts";
 
 const execute = promisify(execFile);
 const ROOT = resolve(fileURLToPath(new URL("..", import.meta.url)));
@@ -189,7 +190,7 @@ async function bundledPackage(directory) {
   const manifest = JSON.parse(await readFile(join(ROOT, ...directory.split("/"), "package.json"), "utf8"));
   const licenseFile = (await readdir(join(ROOT, ...directory.split("/"))))
     .filter((name) => LICENSE_FILE.test(name))
-    .sort()[0];
+    .sort(codeUnitCompare)[0];
   const license = typeof manifest.license === "string" ? manifest.license : undefined;
   if (typeof manifest.name !== "string" || typeof manifest.version !== "string" || !license || !licenseFile)
     fail("VES_BINARY_LICENSE_INCOMPLETE", `a bundled package under ${directory} declares no license closure`);

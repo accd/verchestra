@@ -320,7 +320,7 @@ function record(value: unknown, name: string, keys: readonly string[]): UnknownR
   if (value === null || typeof value !== "object" || Array.isArray(value)) inputError(`${name} must be an object`);
   const result = value as UnknownRecord;
   const extras = Object.keys(result).filter((key) => !keys.includes(key));
-  if (extras.length > 0) inputError(`${name} contains unsupported fields: ${extras.sort().join(", ")}`);
+  if (extras.length > 0) inputError(`${name} contains unsupported fields: ${extras.sort(codeUnitCompare).join(", ")}`);
   return result;
 }
 
@@ -845,7 +845,7 @@ export class MemoryStore {
       changed: true,
       sourceCount,
       chunkCount,
-      invalidatedSourceIds: Object.freeze([...invalidated].sort())
+      invalidatedSourceIds: Object.freeze([...invalidated].sort(codeUnitCompare))
     };
   }
 

@@ -1,4 +1,4 @@
-import { Digest, LogicalPath, normalizeDeclaredSet, StableId } from "@verchestra/domain";
+import { Digest, LogicalPath, StableId, codeUnitCompare, normalizeDeclaredSet } from "@verchestra/domain";
 import type {
   DesiredArtifact,
   EffectivePlacement,
@@ -267,7 +267,7 @@ export function createWritePlan(desired: readonly DesiredArtifact[], snapshot: P
   const writes = Object.freeze(
     normalizeDeclaredSet([...byTarget.values()], (write) => `${write.gitOwnerId}\0${write.logicalPath}`)
   );
-  const ownerIds = Object.freeze([...new Set(writes.map((write) => write.gitOwnerId))].sort());
+  const ownerIds = Object.freeze([...new Set(writes.map((write) => write.gitOwnerId))].sort(codeUnitCompare));
   const portable = Object.freeze({ schemaVersion: 1 as const, ownerIds, writes });
   return Object.freeze({ ...portable, planId: buildInventoryFingerprintV2(portable) });
 }

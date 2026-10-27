@@ -1,7 +1,13 @@
+// why: spikes are self-contained; this is the repository's UTF-16 code-unit
+// order (packages/domain codeUnitCompare), never localeCompare.
+function codeUnitCompare(left, right) {
+  return Number(left > right) - Number(left < right);
+}
+
 const LAYERS = ["builtIn", "organization", "workspace", "project", "userPreference", "runOverride"];
 
 function result(decision, code, explanation, determiningPolicies = []) {
-  return { decision, code, explanation, determiningPolicies: [...determiningPolicies].sort() };
+  return { decision, code, explanation, determiningPolicies: [...determiningPolicies].sort(codeUnitCompare) };
 }
 
 function deny(code, explanation, determiningPolicies = []) {

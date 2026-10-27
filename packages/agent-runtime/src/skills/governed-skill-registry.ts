@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import { canonicalizeJsonV2, dropUndefinedMembers } from "@verchestra/domain";
+import { canonicalizeJsonV2, codeUnitCompare, dropUndefinedMembers } from "@verchestra/domain";
 
 const DIGEST = /^sha256:[a-f0-9]{64}$/u;
 const COMMIT = /^[a-f0-9]{40,64}$/u;
@@ -191,7 +191,7 @@ export class GovernedSkillRegistry {
       if (
         grill.hooks.length !== 1 ||
         grill.hooks[0] !== "pre-specify" ||
-        [...(grill.durableOutputs ?? [])].sort().join(",") !== "adr,context"
+        [...(grill.durableOutputs ?? [])].sort(codeUnitCompare).join(",") !== "adr,context"
       )
         throw new SkillRegistryError("VES_SKILL_GRILL_OUTPUT_INVALID", "Grill outputs or placement are invalid");
     }
@@ -202,7 +202,7 @@ export class GovernedSkillRegistry {
         version: skill.version,
         executionAuthority: false,
         executableContent: skill.contents.some(actualExecutable),
-        durableOutputs: Object.freeze([...(skill.durableOutputs ?? [])].sort())
+        durableOutputs: Object.freeze([...(skill.durableOutputs ?? [])].sort(codeUnitCompare))
       })
     );
     const route = [

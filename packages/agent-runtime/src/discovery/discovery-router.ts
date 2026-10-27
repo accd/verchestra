@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import { canonicalizeJsonV2, dropUndefinedMembers } from "@verchestra/domain";
+import { canonicalizeJsonV2, codeUnitCompare, dropUndefinedMembers } from "@verchestra/domain";
 
 const DIGEST = /^sha256:[a-f0-9]{64}$/u;
 const SAFE = /^[a-z0-9][a-z0-9._:@/+\-]{0,255}$/u;
@@ -138,7 +138,7 @@ export class DiscoveryRouter {
       projectClass: input.projectClass,
       documentation: Object.freeze({ ...input.documentation }),
       sections: Object.freeze(sections),
-      missingMandatoryInformation: Object.freeze(missing.sort())
+      missingMandatoryInformation: Object.freeze(missing.sort(codeUnitCompare))
     };
     return Object.freeze({ ...report, intakeDigest: digest(report) });
   }
@@ -181,7 +181,7 @@ export class DiscoveryRouter {
     if (
       !Array.isArray(capabilities) ||
       capabilities.length !== 2 ||
-      [...capabilities].sort().join(",") !== "read,search"
+      [...capabilities].sort(codeUnitCompare).join(",") !== "read,search"
     )
       throw new DiscoveryRouterError(
         "VES_DISCOVERY_CAPABILITY_VIOLATION",

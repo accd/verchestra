@@ -3,7 +3,7 @@
 // (packages/self-test) supplies the facts; the CLI composition root wires
 // TEST-ONLY sibling adapters in as the subject.
 
-import { canonicalizeJsonV2, normalizeDeclaredSet } from "@verchestra/domain";
+import { canonicalizeJsonV2, codeUnitCompare, normalizeDeclaredSet } from "@verchestra/domain";
 
 export type SelfTestErrorCode =
   | "VES_SELFTEST_UNKNOWN_PROFILE"
@@ -544,7 +544,7 @@ function assertReadOnlyTool(value: unknown): void {
   if (value === null || typeof value !== "object" || Array.isArray(value))
     fail("VES_SELFTEST_DRIVER_REVIEW_INVALID", "Driver Tool review facts are invalid");
   const tool = value as DriverReviewToolFact;
-  if (Object.keys(tool).sort().join(",") !== "access,name" || !validReviewString(tool.name))
+  if (Object.keys(tool).sort(codeUnitCompare).join(",") !== "access,name" || !validReviewString(tool.name))
     fail("VES_SELFTEST_DRIVER_REVIEW_INVALID", "Driver Tool review facts are invalid");
   if (tool.access !== "read")
     fail("VES_SELFTEST_WRITER_TOOL_REACHABLE", `Driver review exposes writer Tool ${tool.name}`);
@@ -565,7 +565,7 @@ function assertDriverReviewFacts(value: unknown): DriverReviewFacts {
   if (value === null || typeof value !== "object" || Array.isArray(value))
     fail("VES_SELFTEST_DRIVER_REVIEW_INVALID", "Driver review facts are invalid");
   const review = value as DriverReviewFacts;
-  if (Object.keys(review).sort().join(",") !== DRIVER_REVIEW_FIELDS.join(","))
+  if (Object.keys(review).sort(codeUnitCompare).join(",") !== DRIVER_REVIEW_FIELDS.join(","))
     fail("VES_SELFTEST_DRIVER_REVIEW_INVALID", "Driver review fields are invalid");
   if (!["anthropic", "openai", "opencode"].includes(review.providerId))
     fail("VES_SELFTEST_DRIVER_REVIEW_INVALID", "Driver review provider is invalid");
@@ -770,9 +770,9 @@ export function diffSentinels(before: readonly SentinelFact[], after: readonly S
   const added = [...afterMap.keys()].filter((sentinelId) => !beforeMap.has(sentinelId));
   return Object.freeze({
     identical: mutated.length === 0 && added.length === 0 && removed.length === 0,
-    mutated: Object.freeze(mutated.sort()),
-    added: Object.freeze(added.sort()),
-    removed: Object.freeze(removed.sort())
+    mutated: Object.freeze(mutated.sort(codeUnitCompare)),
+    added: Object.freeze(added.sort(codeUnitCompare)),
+    removed: Object.freeze(removed.sort(codeUnitCompare))
   });
 }
 

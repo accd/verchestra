@@ -5,7 +5,7 @@ import { createHash, randomUUID } from "node:crypto";
 
 import { GeneralEncrypt, calculateJwkThumbprint, exportJWK, generalDecrypt, type GeneralJWE } from "jose";
 
-import { normalizeDeclaredSet } from "@verchestra/domain";
+import { codeUnitCompare, normalizeDeclaredSet } from "@verchestra/domain";
 
 import {
   ArtifactSealer,
@@ -185,7 +185,7 @@ function instant(value: unknown, label: string): string {
 function sortedUnique(values: unknown, label: string, allowEmpty = false): readonly string[] {
   if (!Array.isArray(values) || (!allowEmpty && values.length === 0))
     fail("VES_RECOVERY_INVALID", `${label} is invalid`);
-  const normalized = values.map((value, index) => text(value, `${label}[${index}]`)).sort();
+  const normalized = values.map((value, index) => text(value, `${label}[${index}]`)).sort(codeUnitCompare);
   if (new Set(normalized).size !== normalized.length) fail("VES_RECOVERY_INVALID", `${label} contains duplicates`);
   return Object.freeze(normalized);
 }

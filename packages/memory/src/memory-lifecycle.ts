@@ -10,7 +10,7 @@ import type {
   PlacementSnapshot,
   WritePlan
 } from "@verchestra/application";
-import { canonicalizeJsonV2, normalizeDeclaredSet } from "@verchestra/domain";
+import { canonicalizeJsonV2, codeUnitCompare, normalizeDeclaredSet } from "@verchestra/domain";
 
 type Row = Record<string, unknown>;
 type Classification = "public" | "internal" | "confidential" | "restricted";
@@ -228,7 +228,7 @@ function closed(value: unknown, name: string, keys: readonly string[]): Row {
   if (value === null || typeof value !== "object" || Array.isArray(value)) invalid(`${name} must be an object`);
   const row = value as Row;
   const extras = Object.keys(row).filter((key) => !keys.includes(key));
-  if (extras.length > 0) invalid(`${name} contains unsupported fields: ${extras.sort().join(", ")}`);
+  if (extras.length > 0) invalid(`${name} contains unsupported fields: ${extras.sort(codeUnitCompare).join(", ")}`);
   return row;
 }
 
@@ -921,8 +921,8 @@ export class MemoryPromotionLifecycle {
       evaluatedAt: evaluatedAt.value,
       quotaBytes,
       candidates: Object.freeze([...candidates.values()]),
-      protectedObjectIds: Object.freeze([...protectedIds].sort()),
-      legalHoldObjectIds: Object.freeze([...legalHoldIds].sort())
+      protectedObjectIds: Object.freeze([...protectedIds].sort(codeUnitCompare)),
+      legalHoldObjectIds: Object.freeze([...legalHoldIds].sort(codeUnitCompare))
     };
     return Object.freeze({ ...portable, planId: digest(canonicalizeJsonV2(portable)) });
   }

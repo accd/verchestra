@@ -11,6 +11,7 @@ import {
 } from "../integrity/artifact-sealer.ts";
 import { canonicalizeJsonForVersion, sha256DigestForVersion } from "../integrity/canonical.ts";
 import type { JsonValue, SealedArtifact, TrustRoot } from "../integrity/types.ts";
+import { codeUnitCompare } from "@verchestra/domain";
 
 type Row = Record<string, unknown>;
 type Digest = `sha256:${string}`;
@@ -245,7 +246,7 @@ function record(value: unknown, name: string, keys: readonly string[], code = "V
   if (value === null || typeof value !== "object" || Array.isArray(value)) fail(code, `${name} must be an object`);
   const row = value as Row;
   const extras = Object.keys(row).filter((key) => !keys.includes(key));
-  if (extras.length > 0) fail(code, `${name} contains unsupported fields: ${extras.sort().join(", ")}`);
+  if (extras.length > 0) fail(code, `${name} contains unsupported fields: ${extras.sort(codeUnitCompare).join(", ")}`);
   return row;
 }
 
@@ -328,7 +329,7 @@ function uniqueStrings(value: unknown, name: string, allowEmpty = false): readon
   const normalized = array(value, name).map((entry, index) => safe(entry, `${name}[${index}]`));
   if ((!allowEmpty && normalized.length === 0) || new Set(normalized).size !== normalized.length)
     fail("VES_EXECUTION_PACKAGE_INVALID", `${name} must contain unique values`);
-  return Object.freeze([...normalized].sort());
+  return Object.freeze([...normalized].sort(codeUnitCompare));
 }
 
 function artifactRefs(
@@ -432,9 +433,9 @@ function normalizeTasks(
       sequence: positive(row["sequence"], "sequence"),
       requirementIds,
       dependsOn: uniqueStrings(row["dependsOn"], "dependsOn", true),
-      componentRefs: Object.freeze([...componentRefs].sort()),
-      verificationCommands: Object.freeze([...verificationCommands].sort()),
-      doneCriteria: Object.freeze([...doneCriteria].sort()),
+      componentRefs: Object.freeze([...componentRefs].sort(codeUnitCompare)),
+      verificationCommands: Object.freeze([...verificationCommands].sort(codeUnitCompare)),
+      doneCriteria: Object.freeze([...doneCriteria].sort(codeUnitCompare)),
       risk: values(row["risk"], ["low", "medium", "high", "critical"] as const, "risk"),
       expectedCommit: text(row["expectedCommit"], "expectedCommit", 256)
     });
@@ -513,7 +514,9 @@ export function derivePendingTasks(
     tasks
       .filter((task) => !completed.has(task.taskId))
       .map((task) => {
-        const blockedBy = Object.freeze(task.dependsOn.filter((dependency) => !completed.has(dependency)).sort());
+        const blockedBy = Object.freeze(
+          task.dependsOn.filter((dependency) => !completed.has(dependency)).sort(codeUnitCompare)
+        );
         return Object.freeze({
           taskId: task.taskId,
           sequence: task.sequence,

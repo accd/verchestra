@@ -289,7 +289,7 @@ function closed(value: unknown, name: string, keys: readonly string[]): Row {
   if (value === null || typeof value !== "object" || Array.isArray(value)) fail(`${name} must be an object`);
   const row = value as Row;
   const extras = Object.keys(row).filter((key) => !keys.includes(key));
-  if (extras.length > 0) fail(`${name} contains unsupported fields: ${extras.sort().join(", ")}`);
+  if (extras.length > 0) fail(`${name} contains unsupported fields: ${extras.sort(codeUnitCompare).join(", ")}`);
   return row;
 }
 

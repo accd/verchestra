@@ -3,13 +3,14 @@ import { createHash } from "node:crypto";
 import {
   DRIVER_EVENT_FIELDS,
   canonicalizeJsonV2,
+  codeUnitCompare,
   isDriverEventType,
   quotaExhausted,
   resultStructured,
-  usageCount,
   type DriverEvent,
   type DriverEventBody,
-  type DriverEventType
+  type DriverEventType,
+  usageCount
 } from "@verchestra/domain";
 
 import {
@@ -92,7 +93,7 @@ function validateEnvelope(value: unknown, workspaceId: string): DriverProtocolEn
   if (value === null || typeof value !== "object" || Array.isArray(value))
     terminate("VES_DRIVER_ENVELOPE_INVALID", "Driver envelope is invalid");
   const envelope = value as DriverProtocolEnvelope;
-  const envelopeKeys = Object.keys(envelope).sort();
+  const envelopeKeys = Object.keys(envelope).sort(codeUnitCompare);
   const requiredKeys = [
     "correlationId",
     "messageId",
@@ -105,7 +106,7 @@ function validateEnvelope(value: unknown, workspaceId: string): DriverProtocolEn
     "workspaceId"
   ];
   if ("runId" in envelope) requiredKeys.push("runId");
-  requiredKeys.sort();
+  requiredKeys.sort(codeUnitCompare);
   const sentAt = typeof envelope.sentAt === "string" ? new Date(envelope.sentAt) : undefined;
   if (
     envelopeKeys.length !== requiredKeys.length ||
@@ -125,7 +126,7 @@ function validateEnvelope(value: unknown, workspaceId: string): DriverProtocolEn
     envelope.payloadSchema === null ||
     typeof envelope.payloadSchema !== "object" ||
     Array.isArray(envelope.payloadSchema) ||
-    Object.keys(envelope.payloadSchema).sort().join(",") !== "name,version" ||
+    Object.keys(envelope.payloadSchema).sort(codeUnitCompare).join(",") !== "name,version" ||
     !SAFE.test(envelope.payloadSchema.name) ||
     !Number.isSafeInteger(envelope.payloadSchema.version) ||
     envelope.payloadSchema.version < 1 ||
