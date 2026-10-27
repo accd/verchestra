@@ -50,6 +50,30 @@ after the failing assertion. Refused launches now go through
 `assertLaunchRefused`, which ends a launch that wrongly started, and the
 fault cases register their cleanup before they assert.
 
+## Fleet runs
+
+Both runs are `platform-matrix.yml` on the pull request head `b176b82`.
+
+| Leg | `gate=security`, run 40566619084 | `gate=full`, run 40569914514 |
+| --- | --- | --- |
+| Linux glibc x64 | pass: security 1,402, fault 314 | pass |
+| Linux glibc arm64 | pass: security 1,402, fault 314 | pass |
+| Windows x64 | pass: security 1,402 (9 skipped, none of them this change's), fault 314 | pass |
+| macOS arm64 | pass: security 1,402, fault 314 | pass: integration 1,282, fault 314 |
+| macOS x64 | fail in `test:unit`, both attempts, before any probe-host suite | pass: integration 1,282, fault 314 |
+
+The new terminator and descendant cases (eight across `test:integration` and
+`test:fault`) passed on both macOS legs under `gate=full`.
+
+The two macOS x64 failures, and one in the pull request's SonarCloud coverage
+job, are ratio checks in `tests/unit/regex-linearity.test.mjs` going just past
+their limit of 8, on a different function each time: `withoutLeadingTitle`
+(8.8x), `importSpecifiers` (10.6x), and `importsCanonicalizeJsonV2` (9.5x
+under coverage). None of them is code this change touches, and each passed on
+the other legs and on a rerun. The security suite's launch and loader cases
+therefore ran on macOS arm64 but not on macOS x64. A follow-up to make those
+checks robust on noisy runners is proposed separately.
+
 ## A changed assertion
 
 `beta-tester-docs.test.mjs` asserted that the documents state the three
