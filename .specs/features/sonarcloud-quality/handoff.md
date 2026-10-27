@@ -3,12 +3,12 @@ schema: verchestra-feature-handoff/v1
 feature: sonarcloud-quality
 issue: null
 status: in_progress
-branch: refactor/sonar-s3735-void-operator
-baseRevision: 759ab1dafc57541bd7971240a6cfcaf890b57b0f
+branch: test/linear-growth-rounds
+baseRevision: aa7f45010068eaf0a1a3e7262f670ad6023a9733
 lastCompletedTask: T8
 nextTask: T8
 lastGate: pnpm gate:quick plus pnpm test:architecture
-updatedAt: 2026-10-27T19:45:00Z
+updatedAt: 2026-10-27T20:00:00Z
 ---
 
 # Scope
@@ -20,6 +20,18 @@ own changes, one rule family each, as listed in `tasks.md`.
 
 # Completed Evidence
 
+Linearity sensor hardening on `test/linear-growth-rounds`: T7's
+`withoutLeadingTitle` assertion measured 8.1x once on CI (`Quality gate` of
+#633, run 40568010443, green on re-run), the second such near-miss after
+`rewriteCanonicalLinks`. `tests/helpers/linear-growth.mjs` timed every large
+batch after every small one, so a pause landed on one side of the ratio. The
+two sizes are now sampled alternately within a round, and a ratio over the
+limit is measured again, up to three rounds, keeping the least.
+`LINEAR_GROWTH_LIMIT` stays 8. `tests/unit/linear-growth.test.mjs` (2)
+pins that linear work measures under the limit and quadratic work over it.
+
+PR #633 (`aa7f4501`) merged by content on 2026-10-27; the eight accepted
+S3735 issues are in `validation.md`.
 T8, S3735 (the `void` operator, 20 in 11 files) on
 `refactor/sonar-s3735-void-operator`: 12 fixed, 8 accepted.
 
