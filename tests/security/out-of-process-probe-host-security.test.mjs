@@ -123,7 +123,12 @@ test("the worker environment is built from nothing and inherits no ambient secre
     assert.equal(report.environmentKeys.includes(ambient), false);
     // why: macOS libSystem adds its text-encoding hint to every new process; it
     // is set by the OS at exec, carries no secret, and is not host-supplied.
-    const hostSupplied = report.environmentKeys.filter((key) => key !== "__CF_USER_TEXT_ENCODING");
+    // Node's own spawn writes NODE_V8_COVERAGE into any explicit env whenever
+    // the parent carries it, so a coverage run sees it; it is never host-supplied
+    // and is still refused whenever this process is not itself measured.
+    const runtimeAdded = new Set(["__CF_USER_TEXT_ENCODING"]);
+    if (process.env.NODE_V8_COVERAGE !== undefined) runtimeAdded.add("NODE_V8_COVERAGE");
+    const hostSupplied = report.environmentKeys.filter((key) => !runtimeAdded.has(key));
     assert.deepEqual(hostSupplied, [
       "HOME",
       "LANG",
