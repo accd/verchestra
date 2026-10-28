@@ -3,12 +3,12 @@ schema: verchestra-feature-handoff/v1
 feature: sonarcloud-quality
 issue: null
 status: in_progress
-branch: refactor/sonar-s7780-string-raw
-baseRevision: ff557cf2a31e39625b77b9f11db65ec073742ffb
+branch: docs/sonar-t8-handoff-round
+baseRevision: c5700bc8dfd588164544b558fdc9fc1de253b2f5
 lastCompletedTask: T8
 nextTask: T8
 lastGate: pnpm gate:quick plus pnpm test:architecture
-updatedAt: 2026-10-28T09:00:00Z
+updatedAt: 2026-10-28T12:00:00Z
 ---
 
 # Scope
@@ -20,17 +20,52 @@ own changes, one rule family each, as listed in `tasks.md`.
 
 # Completed Evidence
 
-T8, S7780 (`String.raw` for backslash-escaped strings, 19 TypeScript + 2
-JavaScript) on `refactor/sonar-s7780-string-raw`: Windows program paths,
-registry keys, a PowerShell guard line, four regular expressions built from
-templates and the generated probe `versionSupported` source now use
-`String.raw`; the two JavaScript issues were the reverse, `String.raw` with
-no backslash in `agent-readiness.mjs`, now plain templates. The POSIX quote
-escape moved to a `QUOTED_QUOTE` constant so no template nests another.
-`tests/unit/string-raw-literals.test.mjs` (4) spells every expected path and
-key with ordinary escapes; it passes against `main`'s sources as well
-(equivalence run), and the probe-scaffold digest table pins the generated
-bytes unchanged.
+T8 round of 2026-10-28, merged by content (rebase + admin bypass; files the
+PRs share compared hunk by hunk):
+
+- S7780 (#636, `16802cfb` `fe3b2e8f` `0854d193`): see the entry below. CI
+  caught `tests/security/activation-launcher-security.test.mjs` pinning the
+  taskkill path's old spelling; the pin now matches the whole
+  `String.raw` expression once. Local `gate:quick` does not run the
+  security scope, so `pnpm test:security` now runs before every PR that
+  respells source.
+- S3358 (#639, `e2a7b9e9` `ba282e52`, 22 nested conditionals): ascending
+  comparators use `codeUnitCompare` or `Number(a > b) - Number(a < b)`;
+  chosen values become if/else chains, a `scenarioFor` helper, or a typed
+  `RECEIPT_SHAPES` table; the Confluence separator leaves its template.
+  `tests/unit/nested-ternary-branches.test.mjs` (2) and
+  `nested-ternary-outcomes.test.mjs` (6) pin `IsoInstant.compare`, the
+  offline guard's fetch target, the separator on empty, newline-ended and
+  unterminated pages, and schedule status for completed, failed and aborted
+  runs; all pass against the base's sources. The outcome tests were added
+  after the PR's new-code coverage read 75.7 % against the 80 % condition.
+  `choose` in the discovery router fell from 17 to 16 (`complexity:update`).
+- S6535 (#640, `c8e05089`, 16 escapes): `\-` last in a class and `\/` in
+  a class are dropped. `tests/unit/regex-useless-escape.test.mjs` (2)
+  compares the eight pattern shapes, old against new, on every BMP code unit,
+  and checks each of the 15 sources spells the new pattern.
+- S6353 (#641, `c5700bc8`, 21 classes): exact `[0-9]` becomes `\d` and the
+  one exact `[A-Za-z0-9_]` becomes `\w`, only under `u` without `i`.
+  `tests/unit/regex-concise-class.test.mjs` (2) compares the shorthands over
+  every code point and each pattern on boundary inputs. A literal
+  sample shaped like a requirement id (prefix, three letters, three digits) anywhere in the repository is read
+  by `scripts/requirements-trace.mjs` as a referenced requirement, so test
+  samples of that shape are assembled from parts.
+- Site quality was red on `main` and every PR in this round:
+  `ubuntu-latest` moved to Ubuntu 26, where Playwright's WebKit lacks
+  `libicudata.so.74`; #638 (another session) pinned the site job to
+  `ubuntu-24.04`, and the four branches were updated from `main` after it.
+  T8, S7780 (`String.raw` for backslash-escaped strings, 19 TypeScript + 2
+  JavaScript) on `refactor/sonar-s7780-string-raw`: Windows program paths,
+  registry keys, a PowerShell guard line, four regular expressions built from
+  templates and the generated probe `versionSupported` source now use
+  `String.raw`; the two JavaScript issues were the reverse, `String.raw` with
+  no backslash in `agent-readiness.mjs`, now plain templates. The POSIX quote
+  escape moved to a `QUOTED_QUOTE` constant so no template nests another.
+  `tests/unit/string-raw-literals.test.mjs` (4) spells every expected path and
+  key with ordinary escapes; it passes against `main`'s sources as well
+  (equivalence run), and the probe-scaffold digest table pins the generated
+  bytes unchanged.
 
 PR #634 (`e7ec8478`, `a78645d6`) merged by content; the first `main`
 SonarCloud run after it passed first time (19:57Z: gate OK, 656 smells).
@@ -377,14 +412,13 @@ issues; 179 bugs, 32 vulnerabilities, 924 code smells; quality gate ERROR.
 
 # Next Exact Action
 
-After the S7780 change merges, confirm on the next `main` analysis that
-`typescript:S7780` and `javascript:S7780` read 0 and the quality gate is still OK
-(`api/issues/search?componentKeys=accd_verchestra&rules=typescript:S7780,javascript:S7780&resolved=false&ps=1`).
+Confirm on the `main` analysis of `c5700bc8` that S7780, S3358, S6535 and
+S6353 read 0 and the quality gate is still OK
+(`api/issues/search?componentKeys=accd_verchestra&rules=typescript:S7780,javascript:S7780,typescript:S3358,javascript:S3358,typescript:S6535,typescript:S6353,javascript:S6353&resolved=false&ps=1`).
 The eight S3735 issues in `validation.md` still wait for the owner to mark
-them Accepted.
-Then continue T8 with the next maintainability rule family, one per change
-(by count: S3358 16, S6535 16, S6353 15, S7758 7; S7503, S9382 and S3776 need
-a per-site decision first):
+them Accepted. Then continue T8 with the next family, one per change (by
+count: S7758 7, S6557 6, S7737 5, S7776 4, then the long tail; S7503, S9382,
+S3776 and the test-file rules S2187/S2699 need a per-site decision first):
 list the open code smells by rule
 (`api/issues/search?componentKeys=accd_verchestra&types=CODE_SMELL&resolved=false&facets=rules&ps=1`)
 and take the next family.
