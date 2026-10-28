@@ -3,7 +3,7 @@
   "promote_threshold": 2,
   "window_days": 45,
   "quarantine_threshold": 2,
-  "next_id": 19,
+  "next_id": 20,
   "lessons": [
     {
       "id": "L-001",
@@ -114,6 +114,24 @@
       ],
       "created": "2026-10-24T17:02:53Z",
       "last_seen": "2026-10-24T17:02:53Z"
+    },
+    {
+      "id": "L-019",
+      "key": "gate_fail::a command added to the release manifest must also be added to every pinned command list cli surface the cli launchers help snapshot sealed commands and test e2e plus test build must run because gate quick covers neither",
+      "text": "A command added to the release manifest must also be added to every pinned command list (cli-surface, the cli-launchers --help snapshot, SEALED_COMMANDS), and test:e2e plus test:build must run, because gate:quick covers neither.",
+      "signal": "gate_fail",
+      "scope": "apps/vestra-cli",
+      "status": "candidate",
+      "features": [
+        "probe-host-composition"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "tests/e2e/cli-launchers-e2e.test.mjs:45; tests/build/sealed-launcher-closure.test.mjs:79 (apps/vestra-cli)"
+      ],
+      "created": "2026-10-28T21:02:34Z",
+      "last_seen": "2026-10-28T21:02:34Z"
     }
   ]
 }
