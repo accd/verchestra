@@ -2,13 +2,13 @@
 schema: verchestra-feature-handoff/v1
 feature: cedar-4-14-0
 issue: 563
-status: verification
-branch: build/563-cedar-4-14
+status: complete
+branch: main
 baseRevision: b5819c6e24d9d7ac97f09171eaf91ff23bcb7bc2
 lastCompletedTask: T3
-nextTask: "Open the PR, merge it by rebase through the maintainer bypass only after the required checks pass on its exact head, verify the merge by content, then record in #563 that the Cedar successor is done, leaving Pi 1.x and json-schema-to-typescript 16 open there."
-lastGate: "qualify:cedar 52 of 52 at zero skips; policy suites 106 of 106; four injected faults killed; gate:quick and agent:check results in validation.md"
-updatedAt: 2026-10-28T13:30:00Z
+nextTask: "None in this feature."
+lastGate: "PR #649 merged by rebase through the maintainer bypass at 2026-10-28T14:28:39Z (main 935ac83; the diff main gained equal to the PR's over #650's 39791d6 apart from blob hashes and hunk offsets, same file set) with Quality gate, Site quality and CodeQL passing on the head 4aeb80c; fleet run 40701350945 (gate=security) green on all five legs; no independent review, so the four injected faults and the upstream review in validation.md and the report are the record"
+updatedAt: 2026-10-28T15:20:00Z
 ---
 
 # Evidence
@@ -26,5 +26,4 @@ entries that the spike oracle and the product adapter both run.
 
 # Next exact action
 
-Open the PR, merge it by rebase only after the required checks pass on its
-exact head, verify by content, and comment on #563.
+None in this feature.
