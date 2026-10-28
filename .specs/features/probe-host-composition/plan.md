@@ -71,12 +71,13 @@ no types here.
 | Route | In | Out | Status |
 | --- | --- | --- | --- |
 | `vestra extension add` | `--skill`, `--extension`, `--entry`, `--approval-ref`, `--version`, `--license` | `lockDigest` · `generation` · `skillId` · `extensionId` · `approvalRef` | `exit 0`, `exit 2`, `exit 5` |
-| `vestra extension approve` | `--approval-ref`, `--executable`, `--arg` (repeatable), `--env` (repeatable), `--expires` | `approvalRef` · `extensionId` · `componentDigest` · `launchDigest` · `expiresAt` | `exit 0`, `exit 2`, `exit 5` |
+| `vestra extension approve` | `--approval-ref`, `--executable`, `--arg` (repeatable), `--env` (repeatable), `--expires`, `--confirm-stdin`, and the credential flags `task approve` takes | `approvalRef` · `extensionId` · `componentDigest` · `launchDigest` · `expiresAt` | `exit 0`, `exit 2`, `exit 5` |
 | `vestra extension list` | none | `approvals[]` of `approvalRef` · `extensionId` · `componentDigest` · `launchDigest` · `expiresAt` · `state` | `exit 0`, `exit 5` |
 | `vestra extension revoke` | `--approval-ref` | `approvalRef` · `revokedAt` | `exit 0`, `exit 2`, `exit 5` |
 | `vestra extension check` | `--approval-ref` | `checks[]` of `id` · `status` · `code` · `recovery` | `exit 0`, `exit 2`, `exit 4`, `exit 5` |
 
-Every command also takes `--output json`, as every command does.
+Every command also takes `--output json`, as every command does. `add` and `revoke` also take the credential flags, since they sign with the
+Workspace key.
 
 ## Landing
 
@@ -132,11 +133,11 @@ with nothing executed.
 
 | Assumption | Chosen default | Rationale | Confirmed? |
 | --- | --- | --- | --- |
-| The skill record `add` writes | `source.repository` is the Workspace's origin URL, `source.commit` its `HEAD`, `source.treeDigest` the sha256 of the entry, `contents` the single entry as `declaredClass: "executable"`, `lifecycleOwners: []`, `hooks: []`, `after: []`, `schemaCompatibility` `{1, 1}`, `minimumHarnessVersion` the CLI's version | the smallest `LockedSkill` the registry accepts for one executable entry | n |
-| The license `add` requires | `--license` must name one of the registry's `allowedLicenses` | the registry already enforces an allowlist | n |
-| The default approval expiry | 30 days when `--expires` is absent; at most 365 days | an approval is a standing authority over code that can change; a bound keeps it reviewed | n |
-| The confirmation mechanism | the same local human confirmation `task approve` uses (AD-040) | one confirmation pattern for one human | n |
-| Where approvals live | the Workspace state root that already holds the evidence key | one place per Workspace for authority material | n |
+| The skill record `add` writes | `source.repository` is the Workspace's origin URL, `source.commit` its `HEAD`, `source.treeDigest` the sha256 of the entry, `contents` the single entry as `declaredClass: "executable"`, `lifecycleOwners: []`, `hooks: []`, `after: []`, `schemaCompatibility` `{1, 1}`, `minimumHarnessVersion` the CLI's version | the smallest `LockedSkill` the registry accepts for one executable entry | y |
+| The license `add` requires | `--license` must name one of the registry's `allowedLicenses` | the registry already enforces an allowlist | y |
+| The default approval expiry | 30 days when `--expires` is absent; at most 365 days | an approval is a standing authority over code that can change; a bound keeps it reviewed | y |
+| The confirmation mechanism | the same local human confirmation `task approve` uses (AD-040) | one confirmation pattern for one human | y |
+| Where approvals live | the Workspace state root that already holds the evidence key | one place per Workspace for authority material | y |
 
 **Open questions:**
 
