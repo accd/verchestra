@@ -372,10 +372,10 @@ export async function assertProjectStatus(repositoryRoot: URL | string, status: 
   if (!readme.includes(status.currentVersion) || !roadmap.includes(status.currentVersion)) {
     throw new Error(`public documents do not agree on version ${status.currentVersion}`);
   }
-  if (!new RegExp(`\\b${status.highestVerifiedTask}\\b`).test(roadmap)) {
+  if (!new RegExp(String.raw`\b${status.highestVerifiedTask}\b`).test(roadmap)) {
     throw new Error(`roadmap does not identify ${status.highestVerifiedTask} as the completed foundation`);
   }
-  if (status.nextTask !== null && !new RegExp(`\\b${status.nextTask}\\b`).test(roadmap)) {
+  if (status.nextTask !== null && !new RegExp(String.raw`\b${status.nextTask}\b`).test(roadmap)) {
     throw new Error(`roadmap does not identify ${status.nextTask} as the next qualification task`);
   }
 }

@@ -56,7 +56,7 @@ function parseFrontmatter(content: string) {
   const header = match[1] ?? "";
   const body = match[2] ?? "";
   const value = (name: string) => {
-    const field = new RegExp(`^${name}:\\s*(.+)$`, "mu").exec(header)?.[1]?.trim();
+    const field = new RegExp(String.raw`^${name}:\s*(.+)$`, "mu").exec(header)?.[1]?.trim();
     return field?.replace(/^(['"])(.*)\1$/u, "$2") ?? null;
   };
   return { title: value("title"), description: value("description"), body };

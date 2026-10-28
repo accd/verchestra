@@ -77,7 +77,7 @@ export interface NodeGateProcessRunnerOptions {
 function parseNodeTestSummary(output: string) {
   const plain = output.replaceAll(/\u001b\[[0-9;]*m/gu, "");
   const read = (label: string) => {
-    const match = new RegExp(`(?:^|\\n)(?:#|ℹ)\\s*${label}\\s+(\\d+)`, "u").exec(plain);
+    const match = new RegExp(String.raw`(?:^|\n)(?:#|ℹ)\s*${label}\s+(\d+)`, "u").exec(plain);
     return match?.[1] === undefined ? 0 : Number.parseInt(match[1], 10);
   };
   return {

@@ -18,7 +18,7 @@ import { proveOwnerOnlyDirectory, type OwnerOnlyProof } from "./windows-acl.ts";
 // why: a fixed path under Program Files, which only administrators can
 // change, so neither PATH nor a per-user install can substitute the program
 // that holds the pipe.
-export const POWERSHELL_7_EXECUTABLE = "C:\\Program Files\\PowerShell\\7\\pwsh.exe";
+export const POWERSHELL_7_EXECUTABLE = String.raw`C:\Program Files\PowerShell\7\pwsh.exe`;
 // invariant: 128 random bits in a fixed shape, so the name can be neither
 // guessed ahead of the run nor read as anything but a name.
 export const PIPE_NAME = /^verchestra-[0-9a-f]{32}$/u;
@@ -203,7 +203,7 @@ export function helperEnvironment(
   const environment: Record<string, string> = {
     SystemRoot: root,
     windir: root,
-    PATH: `${root}\\System32;${root}`,
+    PATH: String.raw`${root}\System32;${root}`,
     POWERSHELL_TELEMETRY_OPTOUT: "1",
     POWERSHELL_UPDATECHECK: "Off"
   };

@@ -10,7 +10,7 @@ const execFileAsync = promisify(execFile);
 // why: the System32 program by absolute path, never a PATH lookup, so no
 // entry on PATH can substitute the program that ends a process tree.
 export function taskkillExecutable(): string {
-  return `${systemRoot()}\\System32\\taskkill.exe`;
+  return String.raw`${systemRoot()}\System32\taskkill.exe`;
 }
 
 // invariant: `pid` was spawned with `detached: true` on POSIX, so it is also the

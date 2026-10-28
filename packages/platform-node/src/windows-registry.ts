@@ -20,7 +20,7 @@ const KEY_ABSENT = 1;
 export type RegistryQueryRunner = (args: readonly string[]) => Promise<number | null>;
 
 export function regExecutable(): string {
-  return `${systemRoot()}\\System32\\reg.exe`;
+  return String.raw`${systemRoot()}\System32\reg.exe`;
 }
 
 export function registryQueryArguments(key: string): readonly string[] {

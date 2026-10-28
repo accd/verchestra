@@ -37,7 +37,7 @@ const WINDOWS_ROOT = /^[A-Za-z]:\\[A-Za-z0-9 ._()\\-]*$/u;
 
 export function systemRoot(): string {
   const root = process.env["SystemRoot"];
-  if (typeof root !== "string" || !WINDOWS_ROOT.test(root)) return "C:\\Windows";
+  if (typeof root !== "string" || !WINDOWS_ROOT.test(root)) return String.raw`C:\Windows`;
   let end = root.length;
   while (end > 0 && root[end - 1] === "\\") end -= 1;
   return root.slice(0, end);
@@ -46,7 +46,7 @@ export function systemRoot(): string {
 // why: an absolute path under the system root, never a PATH lookup, so an
 // ambient PATH entry cannot substitute the program that receives the value.
 export function powershellExecutable(): string {
-  return `${systemRoot()}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe`;
+  return String.raw`${systemRoot()}\System32\WindowsPowerShell\v1.0\powershell.exe`;
 }
 
 export function powershellChildEnvironment(): NodeJS.ProcessEnv {
@@ -70,13 +70,13 @@ export function powershellChildEnvironment(): NodeJS.ProcessEnv {
     {
       SystemRoot: root,
       windir: root,
-      PATH: `${root}\\System32;${root};${root}\\System32\\WindowsPowerShell\\v1.0`
+      PATH: String.raw`${root}\System32;${root};${root}\System32\WindowsPowerShell\v1.0`
     }
   );
 }
 
 export function cmdkeyExecutable(): string {
-  return `${systemRoot()}\\System32\\cmdkey.exe`;
+  return String.raw`${systemRoot()}\System32\cmdkey.exe`;
 }
 
 // invariant: runs Windows PowerShell unless the invocation names `cmdkey`;
@@ -183,7 +183,7 @@ export const LOGGING_POLICY_GUARD = [
   "$verchestraLogged = $false;",
   "foreach ($verchestraHive in 'HKEY_LOCAL_MACHINE', 'HKEY_CURRENT_USER') {",
   "foreach ($verchestraPolicy in @(@('ScriptBlockLogging', 'EnableScriptBlockLogging'), @('Transcription', 'EnableTranscripting'))) {",
-  '$verchestraSetting = [Microsoft.Win32.Registry]::GetValue("$verchestraHive\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell\\$($verchestraPolicy[0])", $verchestraPolicy[1], $null);',
+  String.raw`$verchestraSetting = [Microsoft.Win32.Registry]::GetValue("$verchestraHive\SOFTWARE\Policies\Microsoft\Windows\PowerShell\$($verchestraPolicy[0])", $verchestraPolicy[1], $null);`,
   "if ($verchestraSetting -eq 1) { $verchestraLogged = $true } } };",
   "if ($verchestraLogged) { [Console]::Out.WriteLine('verchestra-credential:error:logging'); exit 0 };",
   "$verchestraGuardPassed = $true"
