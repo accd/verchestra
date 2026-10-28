@@ -99,15 +99,11 @@ function positiveLimits(requested: Partial<SpawnedProbeWorkerLimits> | undefined
   return Object.freeze(limits);
 }
 
-function childEnvironment(
-  workDirectory: string,
-  workspaceId: string,
-  extra: Readonly<Record<string, string>> | undefined
-): NodeJS.ProcessEnv {
+function baseEnvironment(workDirectory: string, workspaceId: string): NodeJS.ProcessEnv {
   // invariant: the child environment is built from nothing, never copied from
   // process.env, so no ambient credential, token, or provider session reaches the
   // worker. The Workspace id repeats the binding every envelope already carries.
-  const environment: NodeJS.ProcessEnv = {
+  return {
     PATH: BASE_PATH,
     HOME: workDirectory,
     TMPDIR: workDirectory,
@@ -116,14 +112,29 @@ function childEnvironment(
     VERCHESTRA_PROBE_PROTOCOL: "verchestra-probe/1",
     VERCHESTRA_PROBE_WORKSPACE_ID: workspaceId
   };
+}
+
+// invariant: the one rule for the environment extras of a probe worker launch.
+// The host applies it before it starts a worker, and whoever approves a launch
+// applies it before measuring one, so an approval can never name a variable
+// the host would refuse (.specs/features/probe-host-composition/plan.md, AC 7).
+export function assertProbeWorkerEnvironment(extra: Readonly<Record<string, string>> | undefined): void {
+  const base = baseEnvironment("", "");
   for (const [name, value] of Object.entries(extra ?? {})) {
-    if (!permittedEnvironmentName(name) || Object.hasOwn(environment, name))
+    if (!permittedEnvironmentName(name) || Object.hasOwn(base, name))
       fail("VES_PROBE_HOST_ENVIRONMENT_DENIED", "Probe worker environment name is not permitted");
     if (typeof value !== "string" || value.length > 4096 || value.includes("\0"))
       fail("VES_PROBE_HOST_ENVIRONMENT_DENIED", "Probe worker environment value is not permitted");
-    environment[name] = value;
   }
-  return environment;
+}
+
+function childEnvironment(
+  workDirectory: string,
+  workspaceId: string,
+  extra: Readonly<Record<string, string>> | undefined
+): NodeJS.ProcessEnv {
+  assertProbeWorkerEnvironment(extra);
+  return { ...baseEnvironment(workDirectory, workspaceId), ...extra };
 }
 
 function permittedEnvironmentName(name: string): boolean {

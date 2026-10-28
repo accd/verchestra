@@ -2,13 +2,13 @@
 schema: verchestra-feature-handoff/v1
 feature: out-of-process-probe-host
 issue: 235
-status: verification
+status: in_progress
 branch: feat/235-out-of-process-probe-host
 baseRevision: cb563611da8b1ff80aa204536138f9440a0bff91
 lastCompletedTask: T2
-nextTask: "T3 (composition root wiring, and where grants and approvals are issued and stored): the owner ratified AD-037 as #569 amended it on 2026-10-28; T3's plan is .specs/features/probe-host-composition/plan.md, which awaits the owner's review before any check or code."
+nextTask: "T3 slice 2: plan `vestra probe run` and grant issuance as its own feature; slice 1 (the `vestra extension` commands, admission only) is complete in .specs/features/probe-host-composition/ and lands with PR #679."
 lastGate: pnpm gate:security PASS (2026-09-29)
-updatedAt: 2026-10-28T18:00:00Z
+updatedAt: 2026-10-28T21:02:54Z
 ---
 
 # Handoff: out-of-process probe host
@@ -31,12 +31,16 @@ The gate adapter's process-group terminator was extracted unchanged into
 1. ~~Ratify AD-037~~ — ratified by the owner on 2026-10-28, as amended on
    2026-10-27, accepting that an admitted worker keeps the host user's
    filesystem and network authority under `process-contained`.
-2. Where controller grants for workspace workers are issued and recorded (T3).
+2. ~~Where controller grants for workspace workers are issued and recorded~~ —
+   decided by the owner on 2026-10-28: a `CapabilityGrant` in the authority
+   store under a run row, built in T3 slice 2.
 
 ## Next action
 
-Review T3's plan, `.specs/features/probe-host-composition/plan.md`. T3
-composes the host in `apps/vestra-cli`; nothing is reachable from the CLI yet.
+T3 slice 1 is complete and verified (`.specs/features/probe-host-composition/`):
+the CLI composes `WorkspaceProbeAdmission` only, through the `./admission`
+export, and starts nothing. Plan slice 2, `vestra probe run` and grant
+issuance, as its own feature.
 
 ## Verification
 

@@ -8,6 +8,11 @@ export interface CliOptionManifest {
   readonly name: string;
   readonly kind: "boolean" | "string";
   readonly values?: readonly string[];
+  // why: a repeatable option collects every value it is given, in order, and
+  // takes the next token as given, so `--arg --no-warnings` passes a flag.
+  // `--output`, `--help` and `--version` are read before any command option,
+  // so none of them can be such a value.
+  readonly repeatable?: boolean;
 }
 
 export interface CliCommandManifest {
@@ -30,10 +35,18 @@ export interface InstalledCliManifest {
 }
 
 export interface ParsedCliArguments {
-  readonly mode: "help" | "version" | "command" | "command-help";
+  readonly mode: "help" | "version" | "command" | "command-help" | "family-help";
   readonly output: "human" | "json";
   readonly command?: CliCommand;
   readonly help?: CliCommandManifest;
+  readonly family?: CliCommandFamily;
+}
+
+// why: `vestra <family> --help` lists the commands that share a first word
+// (`extension`, `task`), read from the same manifest as every other help.
+export interface CliCommandFamily {
+  readonly name: string;
+  readonly commands: readonly CliCommandManifest[];
 }
 
 interface CliRunOptions {
@@ -80,6 +93,15 @@ function validIdentity(manifest: InstalledCliManifest): boolean {
   );
 }
 
+function optionDeclarationValid(option: CliOptionManifest): boolean {
+  return (
+    OPTION.test(option.name) &&
+    (["boolean", "string"] as const).includes(option.kind) &&
+    (option.values === undefined || (option.kind === "string" && option.values.length > 0)) &&
+    (option.repeatable !== true || option.kind === "string")
+  );
+}
+
 function assertManifest(manifest: InstalledCliManifest): void {
   const names = new Set<string>();
   if (!validIdentity(manifest) || manifest.commands.length === 0) {
@@ -100,12 +122,7 @@ function assertManifest(manifest: InstalledCliManifest): void {
     names.add(command.name);
     const options = new Set<string>();
     for (const option of command.options) {
-      if (
-        options.has(option.name) ||
-        !OPTION.test(option.name) ||
-        !(["boolean", "string"] as const).includes(option.kind) ||
-        (option.values !== undefined && (option.kind !== "string" || option.values.length === 0))
-      ) {
+      if (options.has(option.name) || !optionDeclarationValid(option)) {
         throw cliError(
           "VES_CLI_RELEASE_INCOMPATIBLE",
           { minimumRelease: manifest.minimumCliVersion },
@@ -136,13 +153,59 @@ function extractOutput(argv: readonly string[]): { readonly output: "human" | "j
   return { output, rest };
 }
 
+// why: `--version` is the global flag unless the command declares an option
+// of that name, as `extension add` declares the version of the worker it locks.
+function refuseMixedVersion(rest: readonly string[], command: CliCommandManifest | undefined): void {
+  const declared = command?.options.some((option) => option.name === "version") === true;
+  if (rest.includes("--version") && !declared)
+    throw argumentError("--version", "Global flag cannot be mixed with a command");
+}
+
+// why: only a family of commands answers `--help` without a command of its
+// own; any other unknown first word is still an argument error.
+function familyHelp(rest: readonly string[], manifest: InstalledCliManifest, output: "human" | "json") {
+  const name = rest[0] ?? "command";
+  const commands = manifest.commands.filter((entry) => entry.name.startsWith(`${name} `));
+  if (commands.length === 0 || rest.length !== 2 || rest[1] !== "--help")
+    throw argumentError(name, "Command is not installed");
+  return Object.freeze({ mode: "family-help" as const, output, family: Object.freeze({ name, commands }) });
+}
+
+function optionValue(option: CliOptionManifest, token: string, value: string | undefined): string {
+  if (value === undefined || (option.repeatable !== true && value.startsWith("--")))
+    throw argumentError(token, "Option value is missing");
+  if (option.values !== undefined && !option.values.includes(value))
+    throw argumentError(token, "Option value is invalid");
+  return value;
+}
+
+// why: returns how many tokens after the option it consumed.
+function assignOption(
+  values: Record<string, string | boolean | readonly string[]>,
+  option: CliOptionManifest,
+  token: string,
+  next: string | undefined
+): number {
+  const repeatable = option.repeatable === true;
+  if (Object.hasOwn(values, option.name) && !repeatable) throw argumentError(token, "Option is unknown or duplicated");
+  if (option.kind === "boolean") {
+    values[option.name] = true;
+    return 0;
+  }
+  const value = optionValue(option, token, next);
+  const earlier = values[option.name];
+  values[option.name] = repeatable ? Object.freeze([...(Array.isArray(earlier) ? earlier : []), value]) : value;
+  return 1;
+}
+
 export function parseCliArguments(argv: readonly string[], manifest: InstalledCliManifest): ParsedCliArguments {
   assertManifest(manifest);
   const { output, rest } = extractOutput(argv);
   if (rest.length === 0 || (rest.length === 1 && rest[0] === "--help")) return { mode: "help", output };
   if (rest.length === 1 && rest[0] === "--version") return { mode: "version", output };
-  if (rest.includes("--version")) throw argumentError("--version", "Global flag cannot be mixed with a command");
   const commandManifest = findCommandManifest(manifest, rest);
+  refuseMixedVersion(rest, commandManifest);
+  if (commandManifest === undefined) return familyHelp(rest, manifest, output);
   // why: help names the command's options from the manifest it parses with,
   // so the listed options are exactly the accepted ones.
   if (rest.includes("--help")) return { mode: "command-help", output, help: commandManifest };
@@ -157,45 +220,29 @@ export function parseCliArguments(argv: readonly string[], manifest: InstalledCl
   });
 }
 
-function findCommandManifest(manifest: InstalledCliManifest, rest: readonly string[]): CliCommandManifest {
-  const commandManifest = [...manifest.commands]
+function findCommandManifest(manifest: InstalledCliManifest, rest: readonly string[]): CliCommandManifest | undefined {
+  return [...manifest.commands]
     .sort((left, right) => right.name.split(" ").length - left.name.split(" ").length)
     .find((candidate) => {
       const words = candidate.name.split(" ");
       return words.every((word, index) => rest[index] === word);
     });
-  if (commandManifest === undefined) throw argumentError(rest[0] ?? "command", "Command is not installed");
-  return commandManifest;
 }
 
 function parseCommandOptions(
   commandManifest: CliCommandManifest,
   rest: readonly string[]
-): Record<string, string | boolean> {
-  const values: Record<string, string | boolean> = {};
+): Record<string, string | boolean | readonly string[]> {
+  const values: Record<string, string | boolean | readonly string[]> = {};
   const declared = new Map(commandManifest.options.map((entry) => [entry.name, entry]));
   for (let index = commandManifest.name.split(" ").length; index < rest.length; index += 1) {
     const token = rest[index] as string;
     if (!token.startsWith("--")) throw argumentError(token, "Unexpected positional argument");
-    const name = token.slice(2);
-    const option = declared.get(name);
-    if (option === undefined || Object.hasOwn(values, name))
-      throw argumentError(token, "Option is unknown or duplicated");
-    if (option.kind === "boolean") {
-      values[name] = true;
-      continue;
-    }
-    values[name] = optionValue(token, option, rest[index + 1]);
-    index += 1;
+    const option = declared.get(token.slice(2));
+    if (option === undefined) throw argumentError(token, "Option is unknown or duplicated");
+    index += assignOption(values, option, token, rest[index + 1]);
   }
   return values;
-}
-
-function optionValue(token: string, option: CliOptionManifest, value: string | undefined): string {
-  if (value === undefined || value.startsWith("--")) throw argumentError(token, "Option value is missing");
-  if (option.values !== undefined && !option.values.includes(value))
-    throw argumentError(token, "Option value is invalid");
-  return value;
 }
 
 function renderHelp(manifest: InstalledCliManifest): string {
@@ -311,7 +358,7 @@ export async function runCli(options: CliRunOptions): Promise<number> {
     }
     const parsed = parseCliArguments(options.argv, options.installedManifest);
     output = parsed.output;
-    commandName = parsed.help?.name ?? parsed.mode;
+    commandName = parsedName(parsed);
     const shown = informationalOutput(parsed, options.installedManifest);
     if (shown !== undefined) {
       options.stdout(shown);
@@ -367,7 +414,23 @@ function informationalOutput(parsed: ParsedCliArguments, manifest: InstalledCliM
     };
     return json ? jsonOutput("help", true, data) : renderHelp(manifest);
   }
+  if (parsed.mode === "family-help") return familyOutput(parsed.family as CliCommandFamily, json);
   if (parsed.mode !== "command-help") return undefined;
   const help = parsed.help as CliCommandManifest;
   return json ? jsonOutput(help.name, true, commandHelpData(help)) : renderCommandHelp(help);
+}
+
+function parsedName(parsed: ParsedCliArguments): string {
+  return parsed.help?.name ?? parsed.family?.name ?? parsed.mode;
+}
+
+function familyOutput(family: CliCommandFamily, json: boolean): string {
+  const names = family.commands.map((entry) => entry.name);
+  if (json) return jsonOutput(family.name, true, { family: family.name, commands: names });
+  const width = Math.max(...names.map((name) => name.length));
+  const commands = family.commands.map((entry) => `  ${entry.name.padEnd(width)}  ${entry.summary}`).join("\n");
+  return (
+    `Usage: vestra ${family.name} <command> [options]\n\nCommands:\n${commands}\n\n` +
+    `Add --help after a command for its options.\n`
+  );
 }
