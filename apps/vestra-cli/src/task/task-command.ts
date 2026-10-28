@@ -1,14 +1,17 @@
 // why: the only entry point main.ts loads for `vestra task`, always through a
 // dynamic import, so no other command pays for (or loads node:sqlite from)
 // the governed task composition.
-import { homedir } from "node:os";
-
 import type { CliCommand, CommandResult } from "@verchestra/application";
 
 import { cliError } from "../cli-errors.ts";
 import { approveTask } from "./task-approve.ts";
 import { checkTask } from "./task-check.ts";
-import type { TaskCommandIo, TaskConfirmationInput } from "./task-io.ts";
+import {
+  executeTaskFamilyCommand,
+  type TaskFamily,
+  type TaskFamilyHandler,
+  type TaskFamilyProcess
+} from "./task-dispatch.ts";
 import { planTask } from "./task-plan.ts";
 import { publicError } from "./task-public-error.ts";
 import { reviewTask } from "./task-review.ts";
@@ -22,11 +25,9 @@ function required(command: CliCommand, option: string): string {
   return value;
 }
 
-type Handler = (command: CliCommand, io: TaskCommandIo) => Promise<CommandResult>;
-
 const data = (value: unknown): CommandResult => ({ data: value, diagnostics: [] });
 
-const HANDLERS: Readonly<Record<string, Handler>> = Object.freeze({
+const HANDLERS: Readonly<Record<string, TaskFamilyHandler>> = Object.freeze({
   "task check": async (command, io) => checkTask(io, required(command, "request")),
   "task plan": async (command, io) =>
     data(await planTask(io, required(command, "request"), command.options["dry-run"] === true)),
@@ -63,29 +64,12 @@ const HANDLERS: Readonly<Record<string, Handler>> = Object.freeze({
     )
 });
 
-export async function executeTaskCommand(
-  command: CliCommand,
-  process_: {
-    readonly controlRoot: string;
-    readonly platform: string;
-    readonly env: Readonly<Record<string, string | undefined>>;
-    readonly stdin: TaskConfirmationInput;
-    readonly stderr: (value: string) => void;
-    readonly pid: number;
-  }
-): Promise<CommandResult> {
-  const handler = HANDLERS[command.name];
-  if (handler === undefined)
-    throw cliError("VES_CLI_ARGUMENT_INVALID", { argument: command.name }, "Task command is not installed");
-  const keychain = command.options["keychain"];
-  const io: TaskCommandIo = {
-    ...process_,
-    homeDirectory: homedir(),
-    ...(typeof keychain === "string" ? { keychainPath: keychain } : {})
-  };
-  try {
-    return await handler(command, io);
-  } catch (error) {
-    throw publicError(error);
-  }
+const TASK_FAMILY: TaskFamily = Object.freeze({
+  handlers: HANDLERS,
+  notInstalled: "Task command is not installed",
+  publicError
+});
+
+export async function executeTaskCommand(command: CliCommand, process_: TaskFamilyProcess): Promise<CommandResult> {
+  return executeTaskFamilyCommand(TASK_FAMILY, command, process_);
 }
