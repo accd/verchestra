@@ -60,7 +60,9 @@ export function offlineGuard(): OfflineGuard {
     blocked("https.request", describeRequestArgs(args))) as typeof https.request;
   if (typeof originalFetch === "function") {
     globalThis.fetch = ((input: unknown) => {
-      const target = typeof input === "string" ? input : input instanceof URL ? input.href : "unknown target";
+      let target = "unknown target";
+      if (typeof input === "string") target = input;
+      else if (input instanceof URL) target = input.href;
       return Promise.reject(new Error(`self-test offline guard blocked fetch to ${target}`)).finally(() => {
         attempts.push(Object.freeze({ api: "fetch", target }));
       });

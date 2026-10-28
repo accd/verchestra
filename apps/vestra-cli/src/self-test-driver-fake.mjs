@@ -3,9 +3,10 @@ import readline from "node:readline";
 const kind = process.argv[2];
 
 if (process.argv.includes("--version")) {
-  process.stdout.write(
-    kind === "claude" ? "2.1.168 (Claude Code)\n" : kind === "codex" ? "codex-cli 0.115.0\n" : "1.17.18\n"
-  );
+  let version = "1.17.18\n";
+  if (kind === "claude") version = "2.1.168 (Claude Code)\n";
+  else if (kind === "codex") version = "codex-cli 0.115.0\n";
+  process.stdout.write(version);
   process.exit(0);
 }
 

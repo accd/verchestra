@@ -192,7 +192,9 @@ export function buildDoctorReport(facts: readonly DoctorCheckFact[], durationMs:
     fail("VES_DOCTOR_CHECK_FACT_INVALID", "doctor duration is invalid");
   const failed = facts.filter((fact) => fact.status === "fail");
   const blocked = facts.filter((fact) => fact.status === "blocked");
-  const verdict: DoctorVerdict = failed.length > 0 ? "FAIL" : blocked.length > 0 ? "BLOCKED" : "PASS";
+  let verdict: DoctorVerdict = "PASS";
+  if (failed.length > 0) verdict = "FAIL";
+  else if (blocked.length > 0) verdict = "BLOCKED";
   const payload: DoctorReportPayload = Object.freeze({
     "doctor.verdict": verdict,
     "doctor.check_codes": sortedUnique(facts.map((fact) => `${fact.checkId}:${fact.status}`)),

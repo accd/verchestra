@@ -217,6 +217,13 @@ async function guardedWorkspaceRoots(controlRoot: string): Promise<readonly Root
   }
 }
 
+function scenarioFor(profileId: SelfTestProfileId) {
+  if (profileId === "smoke") return createSmokeScenario();
+  if (profileId === "workspace") return createWorkspaceScenario();
+  if (profileId === "full") return createFullScenario();
+  return createDriverScenario();
+}
+
 // T70: the only entry point the CLI needs to run a packaged profile. This
 // stays here, not in main.ts, because it is the only place that may
 // construct the TEST-ONLY signing identity and read the real guarded root —
@@ -231,14 +238,7 @@ export async function runSelfTestProfile(
     baseDirectory: join(tmpdir(), "verchestra-self-test"),
     guardedRoots: await guardedWorkspaceRoots(options.controlRoot),
     sentinels: [],
-    scenario:
-      profileId === "smoke"
-        ? createSmokeScenario()
-        : profileId === "workspace"
-          ? createWorkspaceScenario()
-          : profileId === "full"
-            ? createFullScenario()
-            : createDriverScenario(),
+    scenario: scenarioFor(profileId),
     sealer: new ArtifactSealer({ signer, now: () => new Date() })
   });
   return composition.run(profileId);

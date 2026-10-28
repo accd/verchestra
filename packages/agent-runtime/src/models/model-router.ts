@@ -251,7 +251,8 @@ export class CapabilityModelRouter {
           exclusions: deepFreeze(normalizeDeclaredSet(exclusions, (entry) => entry.passportId))
         });
       const independent = winner.passport.independenceClass !== reference?.independenceClass;
-      const independence = role.independence.mode === "none" ? "not-required" : independent ? "satisfied" : "degraded";
+      const whenRequired = independent ? "satisfied" : "degraded";
+      const independence = role.independence.mode === "none" ? "not-required" : whenRequired;
       selections.push(
         deepFreeze({
           roleId: role.roleId,

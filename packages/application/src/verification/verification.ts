@@ -437,19 +437,16 @@ function sensorResult(
   };
 }
 
+const RECEIPT_SHAPES: Readonly<
+  Record<"report" | "lesson" | "review", { readonly code: VerificationErrorCode; readonly fields: readonly string[] }>
+> = Object.freeze({
+  report: { code: "VES_VERIFIER_REPORT_INVALID", fields: ["reportRef", "reportDigest"] },
+  lesson: { code: "VES_VERIFIER_LESSON_INVALID", fields: ["lessonRef"] },
+  review: { code: "VES_HUMAN_REVIEW_RECORD_INVALID", fields: ["reviewRef", "reviewDigest"] }
+});
+
 function receipt(value: unknown, kind: "report" | "lesson" | "review"): Readonly<Row> {
-  const code =
-    kind === "report"
-      ? "VES_VERIFIER_REPORT_INVALID"
-      : kind === "lesson"
-        ? "VES_VERIFIER_LESSON_INVALID"
-        : "VES_HUMAN_REVIEW_RECORD_INVALID";
-  const fields =
-    kind === "report"
-      ? ["reportRef", "reportDigest"]
-      : kind === "lesson"
-        ? ["lessonRef"]
-        : ["reviewRef", "reviewDigest"];
+  const { code, fields } = RECEIPT_SHAPES[kind];
   const row = exact(value, `${kind} receipt`, fields, code);
   for (const field of fields) {
     if (field.endsWith("Digest")) digest(row[field], `${kind}.${field}`, code);

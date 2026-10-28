@@ -101,7 +101,7 @@ const trackedPaths = async (repository, revision) => {
     .toString("utf8")
     .split("\0")
     .filter((path) => path.length > 0)
-    .sort((left, right) => (left < right ? -1 : left > right ? 1 : 0));
+    .sort((left, right) => Number(left > right) - Number(left < right));
 };
 
 const trackedBytes = async (repository, revision, path) =>

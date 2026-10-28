@@ -115,11 +115,11 @@ export async function collectCensusCandidates(root) {
     const signals = signalsFor(await readFile(file, "utf8"));
     if (Object.values(signals).some((value) => value > 0)) candidates.push({ path, signals });
   }
-  return candidates.sort((left, right) => (left.path < right.path ? -1 : left.path > right.path ? 1 : 0));
+  return candidates.sort((left, right) => Number(left.path > right.path) - Number(left.path < right.path));
 }
 
 function sorted(values) {
-  return [...values].sort((left, right) => (left < right ? -1 : left > right ? 1 : 0));
+  return [...values].sort((left, right) => Number(left > right) - Number(left < right));
 }
 
 function signalsMatch(left, right) {
@@ -186,7 +186,7 @@ export async function collectLocalCanonicalizerFacts(root, inventory) {
     if (entry.classification !== "migrated-v2" || !(entry.signals?.canonicalizer > 0)) continue;
     facts.push({ path: entry.path, ...localCanonicalizerFacts(await readFile(join(root, entry.path), "utf8")) });
   }
-  return facts.sort((left, right) => (left.path < right.path ? -1 : left.path > right.path ? 1 : 0));
+  return facts.sort((left, right) => Number(left.path > right.path) - Number(left.path < right.path));
 }
 
 export function validateLocalCanonicalizers(facts, inventory, allowlist = PROVEN_LOCAL_CANONICALIZERS) {
