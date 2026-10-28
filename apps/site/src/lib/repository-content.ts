@@ -198,23 +198,26 @@ export function extractTitle(markdown: string): string {
 
 export function extractDescription(markdown: string): string {
   const lines = markdown.replaceAll("\r\n", "\n").split("\n");
+  const titleIndex = lines.findIndex((line) => line.trim().startsWith("# "));
+  const paragraph = titleIndex === -1 ? "" : firstProseParagraph(lines.slice(titleIndex + 1));
+  if (!paragraph) throw new Error("canonical Markdown is missing a description paragraph");
+  return withoutMarkdownLinks(paragraph).replace(/[*_`]/g, "");
+}
+
+const NON_PROSE_PREFIXES = ["#", "```", "|", "<"];
+
+function firstProseParagraph(lines: readonly string[]): string {
   let paragraph = "";
-  let afterTitle = false;
   for (const rawLine of lines) {
     const line = rawLine.trim();
-    if (!afterTitle) {
-      if (line.startsWith("# ")) afterTitle = true;
-      continue;
-    }
     if (!line) {
       if (paragraph) break;
       continue;
     }
-    if (line.startsWith("#") || line.startsWith("```") || line.startsWith("|") || line.startsWith("<")) continue;
+    if (NON_PROSE_PREFIXES.some((prefix) => line.startsWith(prefix))) continue;
     paragraph += `${paragraph ? " " : ""}${line.replace(/^>\s*/, "")}`;
   }
-  if (!paragraph) throw new Error("canonical Markdown is missing a description paragraph");
-  return withoutMarkdownLinks(paragraph).replace(/[*_`]/g, "");
+  return paragraph;
 }
 
 // `[label](target)` becomes `label`, matched exactly as `\[([^\]]+)\]\([^)]+\)`
@@ -302,40 +305,64 @@ export function roadmapEdges(roadmap: string): readonly (readonly [string, strin
 // which edge happened to be written first.
 export function validateRoadmapChain(roadmap: string): { chain: readonly string[]; errors: readonly string[] } {
   const errors: string[] = [];
+  const { successor, incoming } = indexRoadmapEdges(roadmapEdges(roadmap), errors);
+  const nodes = new Set([...successor.keys(), ...incoming.keys()]);
+  const roots = [...nodes].filter((task) => !incoming.has(task));
+  const terminals = [...nodes].filter((task) => !successor.has(task));
+  checkChainEnds(nodes, roots, terminals, errors);
+  const chain = roots.length === 1 ? walkRoadmapChain(roots[0]!, successor, nodes, errors) : [];
+  return { chain: errors.length === 0 ? chain : [], errors };
+}
+
+function indexRoadmapEdges(
+  edges: readonly (readonly [string, string])[],
+  errors: string[]
+): { successor: Map<string, string>; incoming: Map<string, number> } {
   const successor = new Map<string, string>();
   const incoming = new Map<string, number>();
-  for (const [from, to] of roadmapEdges(roadmap)) {
+  for (const [from, to] of edges) {
     if (from === to) errors.push(`${from} declares an edge to itself`);
     if (successor.has(from)) errors.push(`${from} declares more than one successor: ${successor.get(from)} and ${to}`);
     else successor.set(from, to);
     incoming.set(to, (incoming.get(to) ?? 0) + 1);
   }
   for (const [task, count] of incoming) if (count > 1) errors.push(`${task} has ${count} predecessors`);
+  return { successor, incoming };
+}
 
-  const nodes = new Set([...successor.keys(), ...incoming.keys()]);
-  const roots = [...nodes].filter((task) => !incoming.has(task));
-  const terminals = [...nodes].filter((task) => !successor.has(task));
-  if (nodes.size === 0) errors.push("no roadmap chain is declared");
-  else {
-    if (roots.length !== 1) errors.push(`the chain needs exactly one start, found ${roots.length || "none"}`);
-    if (terminals.length !== 1) errors.push(`the chain needs exactly one end, found ${terminals.length || "none"}`);
+function checkChainEnds(
+  nodes: ReadonlySet<string>,
+  roots: readonly string[],
+  terminals: readonly string[],
+  errors: string[]
+): void {
+  if (nodes.size === 0) {
+    errors.push("no roadmap chain is declared");
+    return;
   }
+  if (roots.length !== 1) errors.push(`the chain needs exactly one start, found ${roots.length || "none"}`);
+  if (terminals.length !== 1) errors.push(`the chain needs exactly one end, found ${terminals.length || "none"}`);
+}
 
+function walkRoadmapChain(
+  root: string,
+  successor: ReadonlyMap<string, string>,
+  nodes: ReadonlySet<string>,
+  errors: string[]
+): string[] {
   const chain: string[] = [];
-  if (roots.length === 1) {
-    const seen = new Set<string>();
-    for (let task: string | undefined = roots[0]; task !== undefined; task = successor.get(task)) {
-      if (seen.has(task)) {
-        errors.push(`the chain revisits ${task}`);
-        break;
-      }
-      seen.add(task);
-      chain.push(task);
+  const seen = new Set<string>();
+  for (let task: string | undefined = root; task !== undefined; task = successor.get(task)) {
+    if (seen.has(task)) {
+      errors.push(`the chain revisits ${task}`);
+      break;
     }
-    const unreachable = [...nodes].filter((task) => !seen.has(task)).sort(codeUnitCompare);
-    if (unreachable.length > 0) errors.push(`unreachable from the start: ${unreachable.join(", ")}`);
+    seen.add(task);
+    chain.push(task);
   }
-  return { chain: errors.length === 0 ? chain : [], errors };
+  const unreachable = [...nodes].filter((task) => !seen.has(task)).sort(codeUnitCompare);
+  if (unreachable.length > 0) errors.push(`unreachable from the start: ${unreachable.join(", ")}`);
+  return chain;
 }
 
 export function resolveQualification(

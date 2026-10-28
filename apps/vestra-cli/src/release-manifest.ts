@@ -237,6 +237,63 @@ export const installedReleaseManifest: InstalledCliManifest = Object.freeze({
         Object.freeze({ name: "confirm-stdin", kind: "boolean" as const }),
         Object.freeze({ name: "keychain", kind: "string" as const })
       ])
+    }),
+    // invariant: door 5 of .specs/features/probe-host-composition/plan.md. The
+    // extension family registers, approves, lists, revokes and checks a
+    // workspace probe worker; none of its commands starts one.
+    Object.freeze({
+      name: "extension add",
+      summary: "Register a workspace probe worker in the Workspace's signed skill lock",
+      supportsJson: true,
+      mutating: true,
+      options: Object.freeze([
+        Object.freeze({ name: "skill", kind: "string" as const }),
+        Object.freeze({ name: "extension", kind: "string" as const }),
+        Object.freeze({ name: "entry", kind: "string" as const }),
+        Object.freeze({ name: "approval-ref", kind: "string" as const }),
+        Object.freeze({ name: "version", kind: "string" as const }),
+        Object.freeze({ name: "license", kind: "string" as const }),
+        Object.freeze({ name: "keychain", kind: "string" as const })
+      ])
+    }),
+    Object.freeze({
+      name: "extension approve",
+      summary: "Approve the exact launch of a registered probe worker on this machine",
+      supportsJson: true,
+      mutating: true,
+      options: Object.freeze([
+        Object.freeze({ name: "approval-ref", kind: "string" as const }),
+        Object.freeze({ name: "executable", kind: "string" as const }),
+        Object.freeze({ name: "arg", kind: "string" as const, repeatable: true }),
+        Object.freeze({ name: "env", kind: "string" as const, repeatable: true }),
+        Object.freeze({ name: "expires", kind: "string" as const }),
+        Object.freeze({ name: "confirm-stdin", kind: "boolean" as const }),
+        Object.freeze({ name: "keychain", kind: "string" as const })
+      ])
+    }),
+    Object.freeze({
+      name: "extension list",
+      summary: "List the probe worker approvals of this Workspace and their state",
+      supportsJson: true,
+      mutating: false,
+      options: Object.freeze([])
+    }),
+    Object.freeze({
+      name: "extension revoke",
+      summary: "Revoke a probe worker approval; it is never deleted",
+      supportsJson: true,
+      mutating: true,
+      options: Object.freeze([
+        Object.freeze({ name: "approval-ref", kind: "string" as const }),
+        Object.freeze({ name: "keychain", kind: "string" as const })
+      ])
+    }),
+    Object.freeze({
+      name: "extension check",
+      summary: "Check that admission would accept a probe worker, without starting it",
+      supportsJson: true,
+      mutating: false,
+      options: Object.freeze([Object.freeze({ name: "approval-ref", kind: "string" as const })])
     })
   ])
 });

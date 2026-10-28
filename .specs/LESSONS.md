@@ -48,6 +48,12 @@ Seen once or not yet corroborated. Tracked, not trusted.
 - evidence: verification round 1 C25, tests/security/mcp-tool-bridge-security.test.mjs:144 (packages/agent-runtime/bridge)
 - last seen: 2026-10-24T17:02:53Z
 
+### L-019 - A command added to the release manifest must also be added to every pinned command list (cli-surface, the cli-launchers --help snapshot, SEALED_COMMANDS), and test:e2e plus test:build must run, because gate:quick covers neither.
+- signal: `gate_fail` · recurrence: 1 feature(s) · scope: `apps/vestra-cli` · harmful: 0
+- features: probe-host-composition
+- evidence: tests/e2e/cli-launchers-e2e.test.mjs:45; tests/build/sealed-launcher-closure.test.mjs:79 (apps/vestra-cli)
+- last seen: 2026-10-28T21:02:34Z
+
 ## Quarantined (failed when applied - ignore)
 
 A confirmed lesson that recurred alongside failure. Kept for the maintainer to review.

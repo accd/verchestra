@@ -208,17 +208,11 @@ export class FramedProbeWorker {
         const envelope = await this.#next(signal);
         const payload = envelope.payload;
         if (envelope.payloadSchema.name === "probe.result.chunk" && exactKeys(payload, "rows")) {
-          if (!Array.isArray(payload["rows"]))
-            throw this.#fail(protocolViolation("VES_PROBE_RESULT_INVALID", "Probe result chunk is invalid"));
+          const rows = this.#chunkRows(payload);
           chunks += 1;
-          yield payload["rows"] as readonly UnknownRecord[];
+          yield rows;
         } else if (envelope.payloadSchema.name === "probe.result.end" && exactKeys(payload, "chunkCount")) {
-          if (payload["chunkCount"] !== chunks)
-            throw this.#fail(protocolViolation("VES_PROBE_RESULT_INVALID", "Probe result stream is incomplete"));
-          // invariant: a stream completes only if the worker was still running
-          // when the host ended it. A worker that exited first orphaned whatever
-          // it started, out of the sweep's reach (#569, PHC-06).
-          if ((await this.#dispose())?.running !== true) throw this.#fail(this.#exitError());
+          await this.#endStream(payload, chunks);
           return;
         } else {
           throw this.#unexpected(envelope);
@@ -235,6 +229,21 @@ export class FramedProbeWorker {
         frame.fill(0);
       }
     }
+  }
+
+  #chunkRows(payload: UnknownRecord): readonly UnknownRecord[] {
+    if (!Array.isArray(payload["rows"]))
+      throw this.#fail(protocolViolation("VES_PROBE_RESULT_INVALID", "Probe result chunk is invalid"));
+    return payload["rows"] as readonly UnknownRecord[];
+  }
+
+  async #endStream(payload: UnknownRecord, chunks: number): Promise<void> {
+    if (payload["chunkCount"] !== chunks)
+      throw this.#fail(protocolViolation("VES_PROBE_RESULT_INVALID", "Probe result stream is incomplete"));
+    // invariant: a stream completes only if the worker was still running
+    // when the host ended it. A worker that exited first orphaned whatever
+    // it started, out of the sweep's reach (#569, PHC-06).
+    if ((await this.#dispose())?.running !== true) throw this.#fail(this.#exitError());
   }
 
   async cancel(): Promise<void> {

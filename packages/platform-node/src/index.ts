@@ -180,6 +180,7 @@ export { probeLaunchDigest, type ProbeLaunch } from "./probe-launch-digest.ts";
 export {
   SpawnedProbeWorker,
   SpawnedProbeWorkerError,
+  assertProbeWorkerEnvironment,
   type ProbeTransportListener,
   type ProbeWorkerTermination,
   type SpawnedProbeWorkerDiagnostics,

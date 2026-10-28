@@ -8,6 +8,7 @@ import {
   WORKFLOW_PUBLIC_ERROR_DEFINITIONS
 } from "../../packages/domain/src/index.ts";
 import { TASK_PUBLIC_ERROR_DEFINITIONS } from "../../apps/vestra-cli/src/task/task-errors.ts";
+import { EXTENSION_PUBLIC_ERROR_DEFINITIONS } from "../../apps/vestra-cli/src/extension/extension-errors.ts";
 import { BOOTSTRAP_PUBLIC_ERROR_DEFINITIONS } from "../../packages/application/src/bootstrap/bootstrap-errors.ts";
 import { EFFECT_PUBLIC_ERROR_DEFINITIONS } from "../../packages/effects/src/effect-errors.ts";
 import { ACTIVATION_LAUNCHER_PUBLIC_ERROR_DEFINITIONS } from "../../packages/platform-node/src/activation-launcher-errors.ts";
@@ -100,7 +101,12 @@ test("the source manifest advertises the composed init, self-test, doctor, secre
       "task status",
       "task resume",
       "task cancel",
-      "task review"
+      "task review",
+      "extension add",
+      "extension approve",
+      "extension list",
+      "extension revoke",
+      "extension check"
     ]
   );
   assert.deepEqual(
@@ -211,7 +217,9 @@ test("the task slice takes no positional argument, a run ID, and the keychain wh
   const review = installedReleaseManifest.commands.find((command) => command.name === "task review");
   assert.deepEqual(review.options.find((option) => option.name === "outcome").values, ["accepted", "rejected"]);
   assert.deepEqual(
-    installedReleaseManifest.commands.slice(6).map((command) => [command.name, command.mutating]),
+    installedReleaseManifest.commands
+      .filter((command) => command.name.startsWith("task "))
+      .map((command) => [command.name, command.mutating]),
     [
       ["task check", false],
       ["task plan", true],
@@ -222,6 +230,136 @@ test("the task slice takes no positional argument, a run ID, and the keychain wh
       ["task cancel", true],
       ["task review", true]
     ]
+  );
+});
+
+// invariant: door 5 and the Surface of .specs/features/probe-host-composition/plan.md.
+test("the extension slice takes the options its Surface names", () => {
+  const extension = installedReleaseManifest.commands.filter((command) => command.name.startsWith("extension "));
+  assert.deepEqual(
+    extension.map((command) => [
+      command.name,
+      command.mutating,
+      command.options.map((option) => [option.name, option.kind, option.repeatable === true])
+    ]),
+    [
+      [
+        "extension add",
+        true,
+        [
+          ["skill", "string", false],
+          ["extension", "string", false],
+          ["entry", "string", false],
+          ["approval-ref", "string", false],
+          ["version", "string", false],
+          ["license", "string", false],
+          ["keychain", "string", false]
+        ]
+      ],
+      [
+        "extension approve",
+        true,
+        [
+          ["approval-ref", "string", false],
+          ["executable", "string", false],
+          ["arg", "string", true],
+          ["env", "string", true],
+          ["expires", "string", false],
+          ["confirm-stdin", "boolean", false],
+          ["keychain", "string", false]
+        ]
+      ],
+      ["extension list", false, []],
+      [
+        "extension revoke",
+        true,
+        [
+          ["approval-ref", "string", false],
+          ["keychain", "string", false]
+        ]
+      ],
+      ["extension check", false, [["approval-ref", "string", false]]]
+    ]
+  );
+});
+
+test("a repeatable option collects every value in order, a flag included", () => {
+  const parsed = parseCliArguments(
+    ["extension", "approve", "--arg", "--no-warnings", "--env", "A=1", "--arg", "-u", "--env", "B=2"],
+    installedReleaseManifest
+  );
+  assert.deepEqual(parsed.command.options, { arg: ["--no-warnings", "-u"], env: ["A=1", "B=2"] });
+  assert.throws(
+    () => parseCliArguments(["extension", "approve", "--arg"], installedReleaseManifest),
+    (error) => error.envelope.code === "VES_CLI_ARGUMENT_INVALID"
+  );
+  // why: an option that is not repeatable still refuses a second value.
+  assert.throws(
+    () =>
+      parseCliArguments(
+        ["extension", "approve", "--approval-ref", "a", "--approval-ref", "b"],
+        installedReleaseManifest
+      ),
+    (error) => error.envelope.code === "VES_CLI_ARGUMENT_INVALID"
+  );
+  const declared = manifest({
+    commands: [
+      {
+        name: "flagged",
+        summary: "A boolean declared repeatable",
+        supportsJson: true,
+        mutating: false,
+        options: [{ name: "flag", kind: "boolean", repeatable: true }]
+      }
+    ]
+  });
+  assert.throws(
+    () => parseCliArguments(["flagged"], declared),
+    (error) => error.envelope.code === "VES_CLI_RELEASE_INCOMPATIBLE"
+  );
+});
+
+test("a command family answers --help with its commands", async () => {
+  const human = await execute(["extension", "--help"], {
+    installedManifest: installedReleaseManifest,
+    installedCliVersion: installedReleaseManifest.semanticVersion
+  });
+  assert.equal(human.exitCode, 0);
+  assert.equal(human.bus.calls.length, 0);
+  const lines = human.streams.stdout.join("").split("\n");
+  assert.equal(lines[0], "Usage: vestra extension <command> [options]");
+  const family = installedReleaseManifest.commands.filter((command) => command.name.startsWith("extension "));
+  for (const command of family)
+    assert.ok(lines.some((line) => line.startsWith(`  ${command.name} `) && line.endsWith(command.summary)));
+  const json = await execute(["task", "--help", "--output", "json"], {
+    installedManifest: installedReleaseManifest,
+    installedCliVersion: installedReleaseManifest.semanticVersion
+  });
+  const output = JSON.parse(json.streams.stdout[0]);
+  assert.equal(output.command, "task");
+  assert.deepEqual(output.data, {
+    family: "task",
+    commands: installedReleaseManifest.commands
+      .filter((command) => command.name.startsWith("task "))
+      .map((command) => command.name)
+  });
+  // A family word without --help is still not a command.
+  const bare = await execute(["extension"], {
+    installedManifest: installedReleaseManifest,
+    installedCliVersion: installedReleaseManifest.semanticVersion
+  });
+  assert.equal(bare.exitCode, 2);
+});
+
+test("a command that declares --version takes it as its own option", () => {
+  const parsed = parseCliArguments(
+    ["extension", "add", "--version", "1.2.3", "--skill", "acme"],
+    installedReleaseManifest
+  );
+  assert.deepEqual(parsed.command.options, { version: "1.2.3", skill: "acme" });
+  assert.throws(
+    () => parseCliArguments(["extension", "list", "--version"], installedReleaseManifest),
+    (error) => error.envelope.safeDetails.argument === "--version"
   );
 });
 
@@ -495,6 +633,7 @@ test("an internal failure names the VES code of its cause", async () => {
 const COMPOSED_ERROR_DEFINITIONS = Object.freeze({
   cli: CLI_PUBLIC_ERROR_DEFINITIONS,
   task: TASK_PUBLIC_ERROR_DEFINITIONS,
+  extension: EXTENSION_PUBLIC_ERROR_DEFINITIONS,
   bootstrap: BOOTSTRAP_PUBLIC_ERROR_DEFINITIONS,
   core: CORE_PUBLIC_ERROR_DEFINITIONS,
   workflow: WORKFLOW_PUBLIC_ERROR_DEFINITIONS,
@@ -539,7 +678,7 @@ function optionLine(option) {
 }
 
 test("every command answers --help with its declared options", async () => {
-  assert.equal(installedReleaseManifest.commands.length, 14);
+  assert.equal(installedReleaseManifest.commands.length, 19);
   for (const command of installedReleaseManifest.commands) {
     const result = await commandHelp(command, "human");
     assert.equal(result.exitCode, 0, command.name);

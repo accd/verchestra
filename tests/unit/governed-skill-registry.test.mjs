@@ -134,3 +134,77 @@ test("ownership graph rejects a dependency cycle", async () => {
   const value = lock({ skills: [skill({ after: ["grill-with-docs"] }), grillSkill({ after: ["tlc-spec-driven"] })] });
   await assert.rejects(registry().resolve(profile(), value), (error) => error.code === "VES_SKILL_GRAPH_CYCLE");
 });
+
+// why: a Workspace that registers only a probe worker holds a lock with no
+// TLC entry (door 6 of .specs/features/probe-host-composition/plan.md).
+const EXTENSION_ENTRY = "probe/worker.mjs";
+const EXTENSION_REF = Object.freeze({ kind: "plugin", id: "plugin:acme-orders-probe", approvalRef: "approval-001" });
+
+function extensionOnlyLock(overrides = {}) {
+  const worker = skill({
+    id: "acme-orders-probe",
+    version: "1.0.0",
+    lifecycleOwners: [],
+    contents: [
+      {
+        path: EXTENSION_ENTRY,
+        digest: "sha256:" + "c".repeat(64),
+        declaredClass: "executable",
+        mediaType: "text/javascript"
+      }
+    ],
+    extensionRef: EXTENSION_REF
+  });
+  return lock({ skills: [worker], ...overrides });
+}
+
+// C33 (door 6): the profile still needs TLC. The profile names only TLC, so
+// without the rule in `resolve` the lookup of the enabled Skill would answer
+// VES_SKILL_UNKNOWN instead; the code alone shows which rule refused it.
+test("resolve refuses a lock without TLC", async () => {
+  await assert.rejects(
+    registry().resolve(profile({ grillEnabled: false, enabledSkillIds: ["tlc-spec-driven"] }), extensionOnlyLock()),
+    (error) => error.code === "VES_SKILL_TLC_REQUIRED"
+  );
+});
+
+// C34 (door 6): lock validation no longer requires TLC, so a lock that holds
+// only a probe worker can be updated, activated and resolved.
+test("an extension-only lock passes updates and extension resolution", async () => {
+  const calls = [];
+  const transaction = {
+    stage: async () => calls.push("stage"),
+    commit: async () => calls.push("commit"),
+    rollback: async () => calls.push("rollback")
+  };
+  const subject = new GovernedSkillRegistry({
+    verifier: verifier(),
+    harnessVersion: "1.0.0",
+    schemaVersion: 1,
+    tlcMinimumVersion: "3.2.0",
+    allowedLicenses: ["MIT"],
+    transaction
+  });
+  const current = extensionOnlyLock();
+  const candidate = extensionOnlyLock({ generation: 2 });
+  const plan = await subject.planUpdate({
+    current,
+    candidate,
+    qualification: { passed: true, evidenceDigest: "sha256:" + "f".repeat(64) },
+    diff: [{ path: EXTENSION_ENTRY, change: "added" }]
+  });
+  assert.equal(plan.candidateGeneration, 2);
+  assert.deepEqual(await subject.activate(plan, candidate), {
+    activated: true,
+    lockDigest: candidate.lockDigest,
+    generation: 2
+  });
+  assert.deepEqual(calls, ["stage", "commit"]);
+  const resolved = await subject.resolveExecutableExtension(candidate, {
+    skillId: "acme-orders-probe",
+    extensionId: EXTENSION_REF.id,
+    entryPath: EXTENSION_ENTRY
+  });
+  assert.deepEqual(resolved.extensionRef, EXTENSION_REF);
+  assert.equal(resolved.lockDigest, candidate.lockDigest);
+});

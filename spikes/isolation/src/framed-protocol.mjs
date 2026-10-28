@@ -66,39 +66,49 @@ export class FrameDecoder {
     this.buffer = Buffer.concat([this.buffer, Buffer.from(chunk)]);
     const messages = [];
     while (true) {
-      if (this.pendingLength === null) {
-        const boundary = this.buffer.indexOf("\r\n\r\n");
-        if (boundary < 0) {
-          if (this.buffer.length > this.maxHeaderBytes) throw failure("VES_FRAME_HEADER_LIMIT", "frame header exceeds configured limit", TERMINATE);
-          break;
-        }
-        if (boundary > this.maxHeaderBytes) throw failure("VES_FRAME_HEADER_LIMIT", "frame header exceeds configured limit", TERMINATE);
-        const header = this.buffer.subarray(0, boundary).toString("ascii");
-        const lines = header.split("\r\n");
-        const lengthLines = lines.filter((line) => line.toLowerCase().startsWith("content-length:"));
-        if (lengthLines.length === 0) throw failure("VES_FRAME_LENGTH_REQUIRED", "Content-Length is required", TERMINATE);
-        if (lengthLines.length !== 1 || lines.length !== 1) throw failure("VES_FRAME_HEADER_INVALID", "frame headers are invalid", TERMINATE);
-        const rawLength = lengthLines[0].slice(lengthLines[0].indexOf(":") + 1).trim();
-        if (!/^(0|[1-9]\d*)$/.test(rawLength)) throw failure("VES_FRAME_LENGTH_INVALID", "Content-Length must be a canonical non-negative integer", TERMINATE);
-        this.pendingLength = Number(rawLength);
-        if (!Number.isSafeInteger(this.pendingLength)) throw failure("VES_FRAME_LENGTH_INVALID", "Content-Length is not a safe integer", TERMINATE);
-        if (this.pendingLength > this.maxMessageBytes) throw failure("VES_FRAME_MESSAGE_LIMIT", "frame body exceeds negotiated maximum", TERMINATE);
-        this.buffer = this.buffer.subarray(boundary + 4);
-      }
+      if (this.pendingLength === null && !this.consumeHeader()) break;
       if (this.buffer.length < this.pendingLength) break;
       const body = this.buffer.subarray(0, this.pendingLength);
       this.buffer = this.buffer.subarray(this.pendingLength);
       this.pendingLength = null;
-      let envelope;
-      try {
-        envelope = JSON.parse(body.toString("utf8"));
-      } catch (error) {
-        throw failure("VES_FRAME_JSON_INVALID", "frame body is not valid JSON", { cause: error, ...TERMINATE });
-      }
+      const envelope = parseFrameBody(body);
       validateEnvelope(envelope, this.workspaceId);
       messages.push(envelope);
     }
     return messages;
+  }
+
+  // Returns false while the header is still incomplete.
+  consumeHeader() {
+    const boundary = this.buffer.indexOf("\r\n\r\n");
+    if (boundary < 0) {
+      if (this.buffer.length > this.maxHeaderBytes) throw failure("VES_FRAME_HEADER_LIMIT", "frame header exceeds configured limit", TERMINATE);
+      return false;
+    }
+    if (boundary > this.maxHeaderBytes) throw failure("VES_FRAME_HEADER_LIMIT", "frame header exceeds configured limit", TERMINATE);
+    this.pendingLength = Number(contentLength(this.buffer.subarray(0, boundary).toString("ascii")));
+    if (!Number.isSafeInteger(this.pendingLength)) throw failure("VES_FRAME_LENGTH_INVALID", "Content-Length is not a safe integer", TERMINATE);
+    if (this.pendingLength > this.maxMessageBytes) throw failure("VES_FRAME_MESSAGE_LIMIT", "frame body exceeds negotiated maximum", TERMINATE);
+    this.buffer = this.buffer.subarray(boundary + 4);
+    return true;
+  }
+}
+
+function contentLength(header) {
+  const lines = header.split("\r\n");
+  const lengthLines = lines.filter((line) => line.toLowerCase().startsWith("content-length:"));
+  if (lengthLines.length === 0) throw failure("VES_FRAME_LENGTH_REQUIRED", "Content-Length is required", TERMINATE);
+  if (lengthLines.length !== 1 || lines.length !== 1) throw failure("VES_FRAME_HEADER_INVALID", "frame headers are invalid", TERMINATE);
+  const rawLength = lengthLines[0].slice(lengthLines[0].indexOf(":") + 1).trim();
+  if (!/^(0|[1-9]\d*)$/.test(rawLength)) throw failure("VES_FRAME_LENGTH_INVALID", "Content-Length must be a canonical non-negative integer", TERMINATE);
+  return rawLength;
+}
+
+function parseFrameBody(body) {
+  try {
+    return JSON.parse(body.toString("utf8"));
+  } catch (error) {
+    throw failure("VES_FRAME_JSON_INVALID", "frame body is not valid JSON", { cause: error, ...TERMINATE });
   }
 }
 

@@ -188,30 +188,28 @@ function assertCompatible(input: WorkspaceReconcileInput): void {
   }
 }
 
-function assertValid(configuration: CanonicalSyncConfiguration): void {
+function assertProjectShape(entry: ProjectRegistration): void {
   try {
-    StableId.parse(configuration.workspaceId, "workspace");
+    StableId.parse(entry.projectId, "project");
+    if (entry.logicalPath !== ".") LogicalPath.parse(entry.logicalPath);
+    for (const predecessor of entry.predecessorProjectIds) StableId.parse(predecessor, "project");
   } catch (error) {
-    throw new SyncError("VES_SYNC_INPUT_INVALID", "Workspace identity is invalid", {}, { cause: error });
+    throw new SyncError(
+      "VES_SYNC_INPUT_INVALID",
+      "Project identity, path, or lineage is invalid",
+      {},
+      {
+        cause: error
+      }
+    );
   }
+}
+
+function assertProjects(projects: readonly ProjectRegistration[]): ReadonlySet<string> {
   const projectIds = new Set<string>();
   const paths = new Set<string>();
-  for (const key of GENERATION_KEYS) assertNonEmpty(configuration.generations[key], `${key} generation`);
-  for (const entry of configuration.projects) {
-    try {
-      StableId.parse(entry.projectId, "project");
-      if (entry.logicalPath !== ".") LogicalPath.parse(entry.logicalPath);
-      for (const predecessor of entry.predecessorProjectIds) StableId.parse(predecessor, "project");
-    } catch (error) {
-      throw new SyncError(
-        "VES_SYNC_INPUT_INVALID",
-        "Project identity, path, or lineage is invalid",
-        {},
-        {
-          cause: error
-        }
-      );
-    }
+  for (const entry of projects) {
+    assertProjectShape(entry);
     if (
       projectIds.has(entry.projectId) ||
       paths.has(entry.logicalPath) ||
@@ -222,8 +220,12 @@ function assertValid(configuration: CanonicalSyncConfiguration): void {
     projectIds.add(entry.projectId);
     paths.add(entry.logicalPath);
   }
+  return projectIds;
+}
+
+function assertProjections(projections: readonly ProjectionMapping[], projectIds: ReadonlySet<string>): void {
   const projectionIds = new Set<string>();
-  for (const entry of configuration.projections) {
+  for (const entry of projections) {
     assertNonEmpty(entry.projectionId, "Projection ID");
     assertNonEmpty(entry.connectorId, "Connector ID");
     assertNonEmpty(entry.canonicalDigest, "Projection canonical digest");
@@ -233,6 +235,17 @@ function assertValid(configuration: CanonicalSyncConfiguration): void {
     }
     projectionIds.add(entry.projectionId);
   }
+}
+
+function assertValid(configuration: CanonicalSyncConfiguration): void {
+  try {
+    StableId.parse(configuration.workspaceId, "workspace");
+  } catch (error) {
+    throw new SyncError("VES_SYNC_INPUT_INVALID", "Workspace identity is invalid", {}, { cause: error });
+  }
+  for (const key of GENERATION_KEYS) assertNonEmpty(configuration.generations[key], `${key} generation`);
+  const projectIds = assertProjects(configuration.projects);
+  assertProjections(configuration.projections, projectIds);
   const manifestIds = configuration.ingestionManifests.map((entry) => entry.manifestId);
   for (const entry of configuration.ingestionManifests) {
     assertNonEmpty(entry.manifestId, "Ingestion manifest ID");
@@ -282,16 +295,44 @@ function topologyOperations(
 ): readonly ReconcileOperation[] {
   const prior = new Map((previous?.projects ?? []).map((entry) => [entry.projectId, entry]));
   const next = new Map(current.projects.map((entry) => [entry.projectId, entry]));
-  const operations: ReconcileOperation[] = [];
-  const lineageGroups = new Map<string, ProjectRegistration[]>();
+  const lineageGroups = lineageGroupsOf(current.projects);
+  const consumedPredecessors = new Set<string>();
+  const operations = splitOperations(lineageGroups, prior, consumedPredecessors);
   for (const entry of current.projects) {
+    const known = prior.get(entry.projectId);
+    if (known !== undefined) operations.push(...knownProjectOperations(known, entry));
+    else operations.push(...newProjectOperations(entry, prior, lineageGroups, consumedPredecessors));
+  }
+  for (const entry of prior.values()) {
+    if (!next.has(entry.projectId) && !consumedPredecessors.has(entry.projectId)) {
+      operations.push(
+        operation(`missing:${entry.projectId}`, "missing", [entry.projectId], [entry.logicalPath], [], true)
+      );
+    }
+  }
+  return operations.sort((left, right) => codeUnitCompare(left.operationId, right.operationId));
+}
+
+function lineageGroupsOf(
+  projects: readonly ProjectRegistration[]
+): ReadonlyMap<string, readonly ProjectRegistration[]> {
+  const lineageGroups = new Map<string, ProjectRegistration[]>();
+  for (const entry of projects) {
     for (const predecessor of entry.predecessorProjectIds) {
       const group = lineageGroups.get(predecessor) ?? [];
       group.push(entry);
       lineageGroups.set(predecessor, group);
     }
   }
-  const consumedPredecessors = new Set<string>();
+  return lineageGroups;
+}
+
+function splitOperations(
+  lineageGroups: ReadonlyMap<string, readonly ProjectRegistration[]>,
+  prior: ReadonlyMap<string, ProjectRegistration>,
+  consumedPredecessors: Set<string>
+): ReconcileOperation[] {
+  const operations: ReconcileOperation[] = [];
   for (const [predecessor, successors] of lineageGroups) {
     if (successors.length >= 2 && prior.has(predecessor)) {
       operations.push(
@@ -307,59 +348,54 @@ function topologyOperations(
       consumedPredecessors.add(predecessor);
     }
   }
-  for (const entry of current.projects) {
-    const known = prior.get(entry.projectId);
-    if (known !== undefined) {
-      if (known.logicalPath !== entry.logicalPath) {
-        operations.push(
-          operation(
-            `move:${entry.projectId}`,
-            "moved",
-            [entry.projectId],
-            [known.logicalPath],
-            [entry.logicalPath],
-            true
-          )
-        );
-      }
-      if (known.state !== "retired" && entry.state === "retired") {
-        operations.push(
-          operation(
-            `retire:${entry.projectId}`,
-            "retired",
-            [entry.projectId],
-            [known.logicalPath],
-            [entry.logicalPath],
-            true
-          )
-        );
-      }
-      continue;
-    }
-    if (entry.predecessorProjectIds.length >= 2 && entry.predecessorProjectIds.every((id) => prior.has(id))) {
-      operations.push(
-        operation(
-          `merge:${entry.projectId}`,
-          "merged",
-          [...entry.predecessorProjectIds, entry.projectId],
-          entry.predecessorProjectIds.map((id) => prior.get(id)?.logicalPath ?? ""),
-          [entry.logicalPath],
-          true
-        )
-      );
-      entry.predecessorProjectIds.forEach((id) => consumedPredecessors.add(id));
-    } else if (![...lineageGroups.values()].some((group) => group.length >= 2 && group.includes(entry))) {
-      operations.push(operation(`add:${entry.projectId}`, "added", [entry.projectId], [], [entry.logicalPath], false));
-    }
+  return operations;
+}
+
+function knownProjectOperations(known: ProjectRegistration, entry: ProjectRegistration): ReconcileOperation[] {
+  const operations: ReconcileOperation[] = [];
+  if (known.logicalPath !== entry.logicalPath) {
+    operations.push(
+      operation(`move:${entry.projectId}`, "moved", [entry.projectId], [known.logicalPath], [entry.logicalPath], true)
+    );
   }
-  for (const entry of prior.values()) {
-    if (!next.has(entry.projectId) && !consumedPredecessors.has(entry.projectId)) {
-      operations.push(
-        operation(`missing:${entry.projectId}`, "missing", [entry.projectId], [entry.logicalPath], [], true)
-      );
-    }
+  if (known.state !== "retired" && entry.state === "retired") {
+    operations.push(
+      operation(
+        `retire:${entry.projectId}`,
+        "retired",
+        [entry.projectId],
+        [known.logicalPath],
+        [entry.logicalPath],
+        true
+      )
+    );
   }
-  return operations.sort((left, right) => codeUnitCompare(left.operationId, right.operationId));
+  return operations;
+}
+
+// A Project without a prior registration merges its predecessors when it has
+// two or more and all of them were known; otherwise it is added, unless it is
+// one successor of a split.
+function newProjectOperations(
+  entry: ProjectRegistration,
+  prior: ReadonlyMap<string, ProjectRegistration>,
+  lineageGroups: ReadonlyMap<string, readonly ProjectRegistration[]>,
+  consumedPredecessors: Set<string>
+): ReconcileOperation[] {
+  if (entry.predecessorProjectIds.length >= 2 && entry.predecessorProjectIds.every((id) => prior.has(id))) {
+    const merged = operation(
+      `merge:${entry.projectId}`,
+      "merged",
+      [...entry.predecessorProjectIds, entry.projectId],
+      entry.predecessorProjectIds.map((id) => prior.get(id)?.logicalPath ?? ""),
+      [entry.logicalPath],
+      true
+    );
+    entry.predecessorProjectIds.forEach((id) => consumedPredecessors.add(id));
+    return [merged];
+  }
+  if ([...lineageGroups.values()].some((group) => group.length >= 2 && group.includes(entry))) return [];
+  return [operation(`add:${entry.projectId}`, "added", [entry.projectId], [], [entry.logicalPath], false)];
 }
 
 function projectionOperations(
@@ -407,6 +443,48 @@ function rebuildRequirements(
   ];
 }
 
+function directionResolved(entry: ReconcileOperation, direction: ReconciliationDirection | undefined): boolean {
+  if (entry.kind === "projection-drift")
+    return direction === "canonical-to-remote" || direction === "remote-to-canonical";
+  return direction === "accept";
+}
+
+function unresolvedDirectionsOf(
+  operations: readonly ReconcileOperation[],
+  directions: WorkspaceReconcileInput["directions"]
+): readonly string[] {
+  return Object.freeze(
+    operations
+      .filter((entry) => entry.directionRequired && !directionResolved(entry, directions[entry.operationId]))
+      .map((entry) => entry.operationId)
+  );
+}
+
+function plannedEffects(projections: readonly ProjectionMapping[], input: WorkspaceReconcileInput): PlannedEffect[] {
+  const effects: PlannedEffect[] = [];
+  for (const entry of projections) {
+    const direction = input.directions[`projection-drift:${entry.projectionId}`];
+    if (direction === "canonical-to-remote" || direction === "remote-to-canonical") {
+      effects.push(
+        Object.freeze({
+          kind: direction === "canonical-to-remote" ? "upsert-projection" : "import-remote-projection",
+          projectionId: entry.projectionId,
+          connectorId: entry.connectorId,
+          canonicalDigest: entry.canonicalDigest,
+          observedRemoteDigest: entry.observedRemoteDigest,
+          ...(entry.observedRemoteVersion === undefined ? {} : { expectedRemoteVersion: entry.observedRemoteVersion })
+        })
+      );
+    }
+  }
+  effects.push(
+    ...input.uncertainEffects
+      .map((entry) => Object.freeze({ kind: "reconcile-effect" as const, ...entry, retryProhibited: true as const }))
+      .sort((left, right) => codeUnitCompare(left.effectId, right.effectId))
+  );
+  return effects;
+}
+
 export class WorkspaceReconcileService {
   readonly #store: SyncStateStorePort;
   readonly #digest: ContentDigestPort;
@@ -422,52 +500,14 @@ export class WorkspaceReconcileService {
     assertRecoveryInputs(input.uncertainEffects);
     const current = normalizeConfiguration(input.configuration);
     const previous = await this.#store.load(input.configuration.workspaceId);
-    if (previous !== undefined && previous.workspaceId !== input.configuration.workspaceId) {
-      throw new SyncError("VES_SYNC_STATE_INVALID", "Stored sync state belongs to another Workspace");
-    }
-    if (previous !== undefined) {
-      const { stateDigest: recordedDigest, ...stateMaterial } = previous;
-      if (this.#digest.sha256(canonicalizeJsonV2(stateMaterial)) !== recordedDigest) {
-        throw new SyncError("VES_SYNC_STATE_INVALID", "Stored sync state digest does not match its content");
-      }
-    }
+    this.#assertStoredState(previous, input.configuration.workspaceId);
     const topology = topologyOperations(previous, current);
     const projections = projectionOperations(previous, current);
     const operations = Object.freeze(
       [...topology, ...projections].sort((a, b) => codeUnitCompare(a.operationId, b.operationId))
     );
-    const unresolvedDirections = Object.freeze(
-      operations
-        .filter((entry) => {
-          if (!entry.directionRequired) return false;
-          const direction = input.directions[entry.operationId];
-          return entry.kind === "projection-drift"
-            ? direction !== "canonical-to-remote" && direction !== "remote-to-canonical"
-            : direction !== "accept";
-        })
-        .map((entry) => entry.operationId)
-    );
-    const effects: PlannedEffect[] = [];
-    for (const entry of current.projections) {
-      const direction = input.directions[`projection-drift:${entry.projectionId}`];
-      if (direction === "canonical-to-remote" || direction === "remote-to-canonical") {
-        effects.push(
-          Object.freeze({
-            kind: direction === "canonical-to-remote" ? "upsert-projection" : "import-remote-projection",
-            projectionId: entry.projectionId,
-            connectorId: entry.connectorId,
-            canonicalDigest: entry.canonicalDigest,
-            observedRemoteDigest: entry.observedRemoteDigest,
-            ...(entry.observedRemoteVersion === undefined ? {} : { expectedRemoteVersion: entry.observedRemoteVersion })
-          })
-        );
-      }
-    }
-    effects.push(
-      ...input.uncertainEffects
-        .map((entry) => Object.freeze({ kind: "reconcile-effect" as const, ...entry, retryProhibited: true as const }))
-        .sort((left, right) => codeUnitCompare(left.effectId, right.effectId))
-    );
+    const unresolvedDirections = unresolvedDirectionsOf(operations, input.directions);
+    const effects = plannedEffects(current.projections, input);
     const localRebuildRequirements =
       unresolvedDirections.length === 0 ? rebuildRequirements(previous, current, topology, this.#digest) : [];
     let stateDigest = previous?.stateDigest ?? this.#digest.sha256(canonicalizeJsonV2(current));
@@ -488,5 +528,16 @@ export class WorkspaceReconcileService {
       planDigest: this.#digest.sha256(canonicalizeJsonV2(planMaterial)),
       stateChanged
     });
+  }
+
+  #assertStoredState(previous: PersistedSyncState | undefined, workspaceId: string): void {
+    if (previous === undefined) return;
+    if (previous.workspaceId !== workspaceId) {
+      throw new SyncError("VES_SYNC_STATE_INVALID", "Stored sync state belongs to another Workspace");
+    }
+    const { stateDigest: recordedDigest, ...stateMaterial } = previous;
+    if (this.#digest.sha256(canonicalizeJsonV2(stateMaterial)) !== recordedDigest) {
+      throw new SyncError("VES_SYNC_STATE_INVALID", "Stored sync state digest does not match its content");
+    }
   }
 }

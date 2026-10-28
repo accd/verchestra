@@ -7,6 +7,13 @@ const COMMIT = /^[a-f0-9]{40,64}$/u;
 const SAFE = /^[a-z0-9][a-z0-9._:@/+-]{0,255}$/u;
 const PHASES = ["specify", "design", "tasks", "execute", "verify"] as const;
 type LifecyclePhase = (typeof PHASES)[number];
+// invariant: the workflow profile needs TLC, so `resolve` requires its lock
+// entry and lock validation alone does not: a Workspace lock that holds only a
+// probe worker stays valid for its updates and its admission (door 6 of
+// .specs/features/probe-host-composition/plan.md). The rule keeps its place in
+// the walk, ahead of the digest, so `resolve` refuses exactly as it did.
+const PROFILE_REQUIRED_SKILLS: ReadonlySet<string> = new Set(["tlc-spec-driven"]);
+const NO_REQUIRED_SKILLS: ReadonlySet<string> = new Set();
 
 export class SkillRegistryError extends Error {
   readonly code: string;
@@ -36,7 +43,9 @@ interface LockedSkill {
     readonly repository: string;
     readonly commit: string;
     readonly treeDigest: string;
-    readonly signature: string;
+    // why: what a signature is belongs to the verifier the composition root
+    // wires; the registry only hands it over (the CLI's is a DSSE envelope).
+    readonly signature: unknown;
   };
   readonly contents: readonly SkillContent[];
   readonly lifecycleOwners: readonly string[];
@@ -51,7 +60,7 @@ export interface SkillLock {
   readonly generation: number;
   readonly skills: readonly LockedSkill[];
   readonly lockDigest: string;
-  readonly signature: string;
+  readonly signature: unknown;
 }
 
 interface SkillProfile {
@@ -164,7 +173,7 @@ export class GovernedSkillRegistry {
   }
 
   async resolve(profile: SkillProfile, lock: SkillLock) {
-    const all = await this.#validateLock(lock);
+    const all = await this.#validateLock(lock, PROFILE_REQUIRED_SKILLS);
     const byId = new Map(all.map((skill) => [skill.id, skill]));
     const enabled: LockedSkill[] = [];
     for (const id of profile.enabledSkillIds) {
@@ -225,7 +234,9 @@ export class GovernedSkillRegistry {
     lock: SkillLock,
     request: { readonly skillId: string; readonly extensionId: string; readonly entryPath: string }
   ) {
-    const skill = (await this.#validateLock(lock)).find((candidate) => candidate.id === request.skillId);
+    const skill = (await this.#validateLock(lock, NO_REQUIRED_SKILLS)).find(
+      (candidate) => candidate.id === request.skillId
+    );
     if (skill === undefined) throw new SkillRegistryError("VES_SKILL_UNKNOWN", "Extension references an unknown Skill");
     const reference = skill.extensionRef;
     if (reference?.id !== request.extensionId || reference.approvalRef.length === 0)
@@ -251,8 +262,8 @@ export class GovernedSkillRegistry {
   }
 
   async planUpdate(request: UpdateRequest): Promise<SkillUpdatePlan> {
-    await this.#validateLock(request.current);
-    await this.#validateLock(request.candidate);
+    await this.#validateLock(request.current, NO_REQUIRED_SKILLS);
+    await this.#validateLock(request.candidate, NO_REQUIRED_SKILLS);
     if (request.candidate.generation !== request.current.generation + 1)
       throw new SkillRegistryError("VES_SKILL_UPDATE_GENERATION", "Skill update generation is not contiguous");
     if (!request.qualification.passed || !DIGEST.test(request.qualification.evidenceDigest))
@@ -273,7 +284,7 @@ export class GovernedSkillRegistry {
   async activate(plan: SkillUpdatePlan, candidate: SkillLock) {
     if (candidate.lockDigest !== plan.candidateLockDigest || candidate.generation !== plan.candidateGeneration)
       throw new SkillRegistryError("VES_SKILL_PLAN_STALE", "Skill update candidate changed after review");
-    await this.#validateLock(candidate);
+    await this.#validateLock(candidate, NO_REQUIRED_SKILLS);
     const transaction = this.#options.transaction;
     if (transaction === undefined)
       throw new SkillRegistryError("VES_SKILL_TRANSACTION_REQUIRED", "Skill activation transaction is unavailable");
@@ -287,7 +298,7 @@ export class GovernedSkillRegistry {
     }
   }
 
-  async #validateLock(lock: SkillLock): Promise<readonly LockedSkill[]> {
+  async #validateLock(lock: SkillLock, required: ReadonlySet<string>): Promise<readonly LockedSkill[]> {
     if (
       lock === null ||
       typeof lock !== "object" ||
@@ -300,55 +311,12 @@ export class GovernedSkillRegistry {
       throw new SkillRegistryError("VES_SKILL_SCHEMA_INCOMPATIBLE", "Skill lock schema is incompatible");
     const ids = new Set<string>();
     for (const skill of lock.skills) {
-      if (
-        !SAFE.test(skill.id) ||
-        ids.has(skill.id) ||
-        version(skill.version) === undefined ||
-        version(skill.minimumHarnessVersion) === undefined
-      )
-        throw new SkillRegistryError("VES_SKILL_LOCK_INVALID", "Skill lock entry is invalid");
-      ids.add(skill.id);
-      if (!COMMIT.test(skill.source.commit))
-        throw new SkillRegistryError("VES_SKILL_SOURCE_MUTABLE", "Skill source is not immutable");
-      if (
-        !DIGEST.test(skill.source.treeDigest) ||
-        !Array.isArray(skill.contents) ||
-        !Array.isArray(skill.lifecycleOwners) ||
-        !Array.isArray(skill.hooks) ||
-        !Array.isArray(skill.after)
-      )
-        throw new SkillRegistryError("VES_SKILL_LOCK_INVALID", "Skill lock entry is invalid");
-      if (!this.#options.allowedLicenses.includes(skill.license))
-        throw new SkillRegistryError("VES_SKILL_LICENSE_DENIED", "Skill license is not approved");
-      if (!atLeast(this.#options.harnessVersion, skill.minimumHarnessVersion))
-        throw new SkillRegistryError("VES_SKILL_HARNESS_INCOMPATIBLE", "Skill requires a newer harness");
-      if (
-        skill.schemaCompatibility.minimum > this.#options.schemaVersion ||
-        skill.schemaCompatibility.maximum < this.#options.schemaVersion
-      )
-        throw new SkillRegistryError("VES_SKILL_SCHEMA_INCOMPATIBLE", "Skill schema is incompatible");
-      if (skill.id === "tlc-spec-driven" && !atLeast(skill.version, this.#options.tlcMinimumVersion))
-        throw new SkillRegistryError("VES_SKILL_TLC_VERSION", "TLC version is below the required minimum");
-      for (const content of skill.contents) {
-        if (!DIGEST.test(content.digest) || typeof content.path !== "string" || typeof content.mediaType !== "string")
-          throw new SkillRegistryError("VES_SKILL_LOCK_INVALID", "Skill content manifest is invalid");
-        const executable = actualExecutable(content) || content.declaredClass === "executable";
-        if (actualExecutable(content) && content.declaredClass !== "executable")
-          throw new SkillRegistryError("VES_SKILL_HIDDEN_EXECUTABLE", "Skill hides executable content");
-        if (
-          executable &&
-          (skill.extensionRef === undefined ||
-            !["tool", "plugin"].includes(skill.extensionRef.kind) ||
-            skill.extensionRef.approvalRef.length === 0)
-        )
-          throw new SkillRegistryError(
-            "VES_SKILL_EXECUTION_UNAUTHORIZED",
-            "Executable Skill content requires an approved Tool or Plugin"
-          );
-      }
+      assertLockEntryShape(skill, ids);
+      this.#assertSkillCompatible(skill);
+      for (const content of skill.contents) assertLockedContent(skill, content);
     }
-    if (!ids.has("tlc-spec-driven"))
-      throw new SkillRegistryError("VES_SKILL_TLC_REQUIRED", "TLC lock entry is required");
+    const missingRequired = [...required].some((id) => !ids.has(id));
+    if (missingRequired) throw new SkillRegistryError("VES_SKILL_TLC_REQUIRED", "TLC lock entry is required");
     if (skillLockDigest(lock) !== lock.lockDigest)
       throw new SkillRegistryError("VES_SKILL_LOCK_TAMPERED", "Skill lock digest is invalid");
     if (!(await this.#options.verifier.verifyLock(lock)))
@@ -358,4 +326,64 @@ export class GovernedSkillRegistry {
         throw new SkillRegistryError("VES_SKILL_SIGNATURE_INVALID", "Skill source signature is invalid");
     return Object.freeze([...lock.skills]);
   }
+
+  #assertSkillCompatible(skill: LockedSkill): void {
+    if (!this.#options.allowedLicenses.includes(skill.license))
+      throw new SkillRegistryError("VES_SKILL_LICENSE_DENIED", "Skill license is not approved");
+    if (!atLeast(this.#options.harnessVersion, skill.minimumHarnessVersion))
+      throw new SkillRegistryError("VES_SKILL_HARNESS_INCOMPATIBLE", "Skill requires a newer harness");
+    if (
+      skill.schemaCompatibility.minimum > this.#options.schemaVersion ||
+      skill.schemaCompatibility.maximum < this.#options.schemaVersion
+    )
+      throw new SkillRegistryError("VES_SKILL_SCHEMA_INCOMPATIBLE", "Skill schema is incompatible");
+    if (skill.id === "tlc-spec-driven" && !atLeast(skill.version, this.#options.tlcMinimumVersion))
+      throw new SkillRegistryError("VES_SKILL_TLC_VERSION", "TLC version is below the required minimum");
+  }
+}
+
+function assertLockEntryShape(skill: LockedSkill, ids: Set<string>): void {
+  if (
+    !SAFE.test(skill.id) ||
+    ids.has(skill.id) ||
+    version(skill.version) === undefined ||
+    version(skill.minimumHarnessVersion) === undefined
+  )
+    throw new SkillRegistryError("VES_SKILL_LOCK_INVALID", "Skill lock entry is invalid");
+  ids.add(skill.id);
+  assertLockEntrySource(skill);
+}
+
+function assertLockEntrySource(skill: LockedSkill): void {
+  if (!COMMIT.test(skill.source.commit))
+    throw new SkillRegistryError("VES_SKILL_SOURCE_MUTABLE", "Skill source is not immutable");
+  if (
+    !DIGEST.test(skill.source.treeDigest) ||
+    !Array.isArray(skill.contents) ||
+    !Array.isArray(skill.lifecycleOwners) ||
+    !Array.isArray(skill.hooks) ||
+    !Array.isArray(skill.after)
+  )
+    throw new SkillRegistryError("VES_SKILL_LOCK_INVALID", "Skill lock entry is invalid");
+}
+
+function hasApprovedExtension(skill: LockedSkill): boolean {
+  return (
+    skill.extensionRef !== undefined &&
+    ["tool", "plugin"].includes(skill.extensionRef.kind) &&
+    skill.extensionRef.approvalRef.length > 0
+  );
+}
+
+function assertLockedContent(skill: LockedSkill, content: SkillContent): void {
+  if (!DIGEST.test(content.digest) || typeof content.path !== "string" || typeof content.mediaType !== "string")
+    throw new SkillRegistryError("VES_SKILL_LOCK_INVALID", "Skill content manifest is invalid");
+  const executable = actualExecutable(content) || content.declaredClass === "executable";
+  if (actualExecutable(content) && content.declaredClass !== "executable")
+    throw new SkillRegistryError("VES_SKILL_HIDDEN_EXECUTABLE", "Skill hides executable content");
+  if (executable && !hasApprovedExtension(skill))
+    throw new SkillRegistryError(
+      "VES_SKILL_EXECUTION_UNAUTHORIZED",
+      "Executable Skill content requires an approved Tool or Plugin"
+    );
 }

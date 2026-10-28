@@ -117,6 +117,20 @@ async function executeTask(command: CliCommand): Promise<CommandResult> {
   });
 }
 
+async function executeExtension(command: CliCommand): Promise<CommandResult> {
+  // why: a dynamic import, like task, so only `vestra extension` loads the
+  // skill registry and the probe host's admission.
+  const { executeExtensionCommand } = await import("./extension/extension-command.ts");
+  return executeExtensionCommand(command, {
+    controlRoot: process.cwd(),
+    platform: process.platform,
+    env: process.env,
+    stdin: process.stdin,
+    stderr: (value) => process.stderr.write(value),
+    pid: process.pid
+  });
+}
+
 export async function main(invokedAs: string, argv: readonly string[]): Promise<number> {
   const commandBus = createCommandBus(process.cwd());
   return runCli({
@@ -132,6 +146,7 @@ export async function main(invokedAs: string, argv: readonly string[]): Promise<
         if (command.name === "doctor") return executeDoctor(command);
         if (command.name.startsWith("secret ")) return executeSecret(command);
         if (command.name.startsWith("task ")) return executeTask(command);
+        if (command.name.startsWith("extension ")) return executeExtension(command);
         return commandBus.execute(command, context);
       }
     },

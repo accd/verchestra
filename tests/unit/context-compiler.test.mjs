@@ -132,3 +132,49 @@ test("source findings and contradictions survive into the signed manifest", asyn
   );
   assert.equal(result.contradictions.length, 1);
 });
+
+for (const [name, authorize, message] of [
+  [
+    "a firewall that throws",
+    async () => {
+      throw new Error("firewall offline");
+    },
+    "Context egress authorization failed"
+  ],
+  ["a denial", async () => ({ allowed: false, code: "VES_EGRESS_POLICY_DENIED" }), "Context egress was denied"],
+  [
+    "an allowance without policy evidence",
+    async () => ({ allowed: true, code: "VES_EGRESS_ALLOWED", egressDigest: `sha256:${"a".repeat(64)}` }),
+    "Context egress evidence is incomplete"
+  ],
+  [
+    "an allowance with a malformed egress digest",
+    async () => ({
+      allowed: true,
+      code: "VES_EGRESS_ALLOWED",
+      egressDigest: "sha256:short",
+      policyEvidenceDigest: `sha256:${"b".repeat(64)}`
+    }),
+    "Context egress evidence is incomplete"
+  ]
+]) {
+  test(`context egress refuses ${name} and nothing is signed`, async () => {
+    const base = await snapshotFixture();
+    const fixture = compilerFixture();
+    const compiler = new DeterministicContextCompiler({ ...fixture, egress: { authorize } });
+    await assert.rejects(compiler.compile(compileInput(base.inputRecipe, base.snapshot)), {
+      code: "VES_CONTEXT_EGRESS_DENIED",
+      message
+    });
+    assert.deepEqual(fixture.calls, []);
+  });
+}
+
+test("the signed manifest carries the egress and policy evidence digests the firewall returned", async () => {
+  const base = await snapshotFixture();
+  const fixture = compilerFixture();
+  const result = await new DeterministicContextCompiler(fixture).compile(compileInput(base.inputRecipe, base.snapshot));
+  const evidence = await fixture.egress.authorize({ fragments: result.fragments });
+  assert.equal(result.egressDigest, evidence.egressDigest);
+  assert.deepEqual(result.policyDecisionRefs, [evidence.policyEvidenceDigest]);
+});

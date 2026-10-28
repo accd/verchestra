@@ -5,29 +5,14 @@
     "apps/site/src/lib/llm-content.ts :: Async function 'collectLlmDocuments'": [
       17
     ],
-    "apps/site/src/lib/repository-content.ts :: Function 'extractDescription'": [
-      12
-    ],
-    "apps/site/src/lib/repository-content.ts :: Function 'validateRoadmapChain'": [
-      17
-    ],
-    "apps/vestra-cli/src/cli.ts :: Async function 'runCli'": [
-      12
-    ],
     "apps/vestra-cli/src/cli.ts :: Function 'assertManifest'": [
-      15
-    ],
-    "apps/vestra-cli/src/cli.ts :: Function 'parseCliArguments'": [
-      21
+      11
     ],
     "packages/agent-runtime/src/context/backend-serializers.ts :: Function 'exactText'": [
       35
     ],
     "packages/agent-runtime/src/context/backend-serializers.ts :: Function 'validateTree'": [
       25
-    ],
-    "packages/agent-runtime/src/context/context-compiler.ts :: Async method 'compile'": [
-      33
     ],
     "packages/agent-runtime/src/context/context-compiler.ts :: Private method #validateSnapshot": [
       25
@@ -50,23 +35,14 @@
     "packages/agent-runtime/src/discovery/discovery-router.ts :: Method 'normalize'": [
       16
     ],
-    "packages/agent-runtime/src/models/model-router.ts :: Async method 'route'": [
-      17
-    ],
-    "packages/agent-runtime/src/models/model-router.ts :: Function 'validate'": [
-      37
-    ],
     "packages/agent-runtime/src/models/model-router.ts :: Private method #hardExclusions": [
       17
-    ],
-    "packages/agent-runtime/src/models/passport-registry.ts :: Function 'normalize'": [
-      27
     ],
     "packages/agent-runtime/src/skills/governed-skill-registry.ts :: Async method 'resolve'": [
       17
     ],
     "packages/agent-runtime/src/skills/governed-skill-registry.ts :: Private async method #validateLock": [
-      40
+      14
     ],
     "packages/application/src/authority/authority.ts :: Async method 'grant'": [
       13
@@ -78,7 +54,7 @@
       14
     ],
     "packages/application/src/bootstrap/machine-bootstrap.ts :: Function 'validateConfig'": [
-      24
+      13
     ],
     "packages/application/src/coordination/work-claims.ts :: Async method 'acquire'": [
       11
@@ -87,7 +63,7 @@
       11
     ],
     "packages/application/src/egress/trust-egress.ts :: Async method 'authorize'": [
-      31
+      12
     ],
     "packages/application/src/egress/trust-egress.ts :: Async method 'declassify'": [
       12
@@ -97,9 +73,6 @@
     ],
     "packages/application/src/execution/budget-meter.ts :: Function 'createBudgetMeter'": [
       23
-    ],
-    "packages/application/src/execution/gate-repair.ts :: Async function 'runGateRepairLoop'": [
-      29
     ],
     "packages/application/src/execution/gate-repair.ts :: Function 'normalizePolicy'": [
       12
@@ -111,12 +84,6 @@
       13
     ],
     "packages/application/src/execution/task-executor.ts :: Async method 'execute'": [
-      40
-    ],
-    "packages/application/src/execution/task-scheduler.ts :: Async method 'execute'": [
-      26
-    ],
-    "packages/application/src/execution/task-scheduler.ts :: Function 'assertValidGraph'": [
       13
     ],
     "packages/application/src/execution/task-scheduler.ts :: Function 'normalizeTaskSchedule'": [
@@ -125,29 +92,14 @@
     "packages/application/src/handoff/coordinator.ts :: Async method 'continue'": [
       13
     ],
-    "packages/application/src/handoff/coordinator.ts :: Async method 'publish'": [
-      31
-    ],
     "packages/application/src/handoff/coordinator.ts :: Async method 'verify'": [
       11
-    ],
-    "packages/application/src/sync/workspace-reconcile.ts :: Async method 'execute'": [
-      15
-    ],
-    "packages/application/src/sync/workspace-reconcile.ts :: Function 'assertValid'": [
-      15
-    ],
-    "packages/application/src/sync/workspace-reconcile.ts :: Function 'topologyOperations'": [
-      22
     ],
     "packages/application/src/verification/verification.ts :: Async method 'review'": [
       15
     ],
     "packages/application/src/verification/verification.ts :: Async method 'verify'": [
-      19
-    ],
-    "packages/connectors/src/confluence/architecture-source.ts :: Private async method #attachments": [
-      20
+      11
     ],
     "packages/connectors/src/confluence/architecture-source.ts :: Private method #normalizeRequest": [
       13
@@ -160,9 +112,6 @@
     ],
     "packages/connectors/src/jira/jira.ts :: Async method 'acquire'": [
       16
-    ],
-    "packages/connectors/src/jira/jira.ts :: Async method 'list'": [
-      15
     ],
     "packages/data-probe/src/database-knowledge.ts :: Arrow function": [
       12
@@ -219,9 +168,6 @@
     "packages/distribution/src/transactional-activation.ts :: Arrow function": [
       23
     ],
-    "packages/distribution/src/transactional-activation.ts :: Private async method #acquireLock": [
-      18
-    ],
     "packages/distribution/src/transactional-activation.ts :: Private async method #openStage": [
       17
     ],
@@ -234,20 +180,8 @@
     "packages/distribution/src/tuf-update-client.ts :: Private async method #stageComponent": [
       19
     ],
-    "packages/domain/src/canonical/canonical-guard.ts :: Function 'assertValue'": [
-      23
-    ],
     "packages/domain/src/workflow/workflow-machine.ts :: Function 'createHandoffSuccessor'": [
       13
-    ],
-    "packages/domain/src/workflow/workflow-machine.ts :: Function 'transition'": [
-      19
-    ],
-    "packages/domain/src/workflow/workflow-machine.ts :: Function 'validateWorkflowDefinition'": [
-      12
-    ],
-    "packages/domain/src/workflow/workflow-machine.ts :: Static method 'decide'": [
-      28
     ],
     "packages/drivers/src/claude-code-driver.ts :: Async method 'start'": [
       14
@@ -261,17 +195,11 @@
     "packages/drivers/src/index.ts :: Function 'validateEnvelope'": [
       33
     ],
-    "packages/drivers/src/index.ts :: Method 'push'": [
-      14
-    ],
-    "packages/drivers/src/opencode-driver.ts :: Async arrow function": [
-      27
-    ],
     "packages/drivers/src/opencode-driver.ts :: Async function 'productionServerFactory'": [
       11
     ],
     "packages/drivers/src/opencode-driver.ts :: Async method 'start'": [
-      22
+      13
     ],
     "packages/drivers/src/opencode-driver.ts :: Function 'flattenCatalog'": [
       16
@@ -281,15 +209,6 @@
     ],
     "packages/evidence/src/execution-package/execution-package.ts :: Async method 'verify'": [
       21
-    ],
-    "packages/evidence/src/execution-package/execution-package.ts :: Function 'normalizeBuildInput'": [
-      21
-    ],
-    "packages/evidence/src/integrity/artifact-sealer.ts :: Async method 'verify'": [
-      20
-    ],
-    "packages/evidence/src/integrity/canonical.ts :: Function 'assertJsonValue'": [
-      22
     ],
     "packages/evidence/src/recovery-bundle/recovery-bundle.ts :: Async method 'open'": [
       20
@@ -309,12 +228,6 @@
     "packages/evidence/src/run-capsule/run-capsule.ts :: Function 'inspectPrivateMaterial'": [
       11
     ],
-    "packages/evidence/src/run-capsule/run-capsule.ts :: Function 'normalizePayload'": [
-      44
-    ],
-    "packages/evidence/src/support-bundle/support-bundle.ts :: Async method 'open'": [
-      34
-    ],
     "packages/evidence/src/support-bundle/support-bundle.ts :: Function 'assertNormalizedValue'": [
       22
     ],
@@ -322,34 +235,22 @@
       21
     ],
     "packages/evidence/src/support-bundle/support-bundle.ts :: Private method #assertPlan": [
-      36
+      15
     ],
     "packages/evidence/src/support-bundle/support-bundle.ts :: Private method #scan": [
       18
     ],
     "packages/extension-host/src/index.ts :: Async method 'execute'": [
-      23
+      12
     ],
     "packages/extension-host/src/probe-protocol.ts :: Function 'validateEnvelope'": [
       26
     ],
-    "packages/extension-host/src/probe-protocol.ts :: Method 'push'": [
-      14
-    ],
     "packages/extension-host/src/testing.ts :: Async generator method 'execute'": [
       11
     ],
-    "packages/memory/src/memory-lifecycle.ts :: Async function 'assertSafeTarget'": [
-      14
-    ],
-    "packages/memory/src/memory-lifecycle.ts :: Async method 'applyGarbageCollection'": [
-      19
-    ],
     "packages/memory/src/memory-lifecycle.ts :: Async method 'applyPromotion'": [
       22
-    ],
-    "packages/memory/src/memory-lifecycle.ts :: Async method 'forget'": [
-      25
     ],
     "packages/memory/src/memory-lifecycle.ts :: Async method 'invalidateObject'": [
       14
@@ -359,12 +260,6 @@
     ],
     "packages/memory/src/memory-lifecycle.ts :: Method 'planGarbageCollection'": [
       13
-    ],
-    "packages/memory/src/memory-retriever.ts :: Arrow function": [
-      11
-    ],
-    "packages/memory/src/memory-retriever.ts :: Async method 'search'": [
-      16
     ],
     "packages/memory/src/memory-retriever.ts :: Function 'normalizeRank'": [
       11
@@ -376,7 +271,7 @@
       13
     ],
     "packages/memory/src/memory-retriever.ts :: Method 'search'": [
-      36
+      11
     ],
     "packages/memory/src/memory-store.ts :: Arrow function": [
       11
@@ -386,9 +281,6 @@
     ],
     "packages/memory/src/memory-vector-index.ts :: Constructor": [
       17
-    ],
-    "packages/memory/src/memory-vector-index.ts :: Method 'buildGeneration'": [
-      26
     ],
     "packages/memory/src/memory-vector-index.ts :: Method 'open'": [
       15
@@ -423,9 +315,6 @@
     "packages/platform-node/src/runtime-store/runtime-store.ts :: Method 'saveSyncState'": [
       11
     ],
-    "packages/policy/src/cedar-policy.ts :: Private method #compile": [
-      21
-    ],
     "packages/policy/src/policy-activation.ts :: Async method 'activate'": [
       15
     ],
@@ -438,15 +327,6 @@
     "packages/workspace/src/init/safe-init.ts :: Arrow function": [
       13
     ],
-    "packages/workspace/src/init/safe-init.ts :: Async method 'apply'": [
-      25
-    ],
-    "packages/workspace/src/init/safe-init.ts :: Async method 'preview'": [
-      16
-    ],
-    "packages/workspace/src/init/safe-init.ts :: Async method 'recover'": [
-      25
-    ],
     "packages/workspace/src/placement/artifact-placement.ts :: Function 'effectivePlacement'": [
       15
     ],
@@ -454,27 +334,18 @@
       12
     ],
     "packages/workspace/src/scanner/workspace-scanner.ts :: Async function 'walk'": [
-      22
+      11
     ],
     "scripts/agent-eval.mjs :: Function 'assertResults'": [
       11
-    ],
-    "scripts/agent-readiness.mjs :: Async function 'checkMarkdownLinks'": [
-      24
     ],
     "scripts/agent-readiness.mjs :: Async function 'compileAgentContext'": [
       11
     ],
     "scripts/agent-readiness.mjs :: Function 'parseHandoff'": [
-      25
+      11
     ],
     "scripts/agent-readiness.mjs :: Function 'validateQualificationReport'": [
-      38
-    ],
-    "scripts/agent-readiness.mjs :: Function 'validateRoadmapChain'": [
-      17
-    ],
-    "scripts/architecture.mjs :: Function 'inspectSource'": [
       12
     ]
   }
