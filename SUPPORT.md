@@ -5,6 +5,7 @@ Use the right GitHub channel so the delivery backlog stays actionable.
 | Need | Channel |
 | --- | --- |
 | Question, idea, setup help, or architecture conversation | [GitHub Discussions](https://github.com/accd/verchestra/discussions) |
+| Beta feedback that is not a reproducible bug: what you tried, what confused you, what you would change | [Beta feedback thread](https://github.com/accd/verchestra/discussions/670) |
 | Something in the published package did not work for you (beta testers) | [Beta tester bug report](https://github.com/accd/verchestra/issues/new?template=tester_bug_report.yml) |
 | Reproducible defect found while contributing | [Bug report](https://github.com/accd/verchestra/issues/new?template=bug_report.yml) |
 | Scoped capability proposal | [Feature request](https://github.com/accd/verchestra/issues/new?template=feature_request.yml) |
