@@ -108,7 +108,7 @@ export const MANUAL_UPLOAD_STEPS = Object.freeze([
   "Verify each uploaded object's sha256 against targets[].assets[].contentDigest before serving anything.",
   "Confirm the endpoint serves timestamp.json uncached, hash-named files with long-lived caching, no redirects, no content-encoding on metadata, and exact 206 byte ranges on targets.",
   "Run the verification launcher package (node bin/vestra.mjs --version) against the live endpoint before publishing anything.",
-  "Build the npm package with build:vestra-launcher --release-inputs release-inputs and run npm publish by hand; no workflow publishes.",
+  "Publish the npm package by dispatching npm-publish.yml with this run's id: it rebuilds the package from release-inputs, requires it to equal this run's, activates it from the live endpoint, and publishes it with provenance. Publish by hand only while its trusted publisher is not configured.",
   "Once the release is live, append ledger-entry.json verbatim to docs/qualification/tuf-publication-ledger.json in a reviewed pull request before the next publication or refresh, which is checked against it; if another entry landed first, rerun the publication against main's ledger instead of editing the entry."
 ]);
 

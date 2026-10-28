@@ -162,7 +162,11 @@ Publish the role-separated lineage as its own trust anchor and demonstrate the
 5. **Upload to R2 and verify live BEFORE `npm publish`** (owner). Verify every
    object by sha256, then confirm the endpoint serves, for each target: the
    metadata chain `200`, and each target under a `Range` request `206`. Only then
-   `npm publish` `.3` (2FA).
+   publish `.3` to npm: dispatch `.github/workflows/npm-publish.yml` with the
+   publication run's id, which activates the package live before it publishes
+   with provenance (`docs/release-custody.md` 3.3). An interactive
+   `npm publish` under 2FA remains only while the trusted publisher is not
+   configured (O6).
 6. **Demonstrate the forward update leg.** To exercise a _successful_ update, a
    second role-separated release sharing `.3`'s root and a higher
    `metadata_version` is needed (e.g. `.4`). Run the live-matrix with

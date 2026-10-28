@@ -5,10 +5,10 @@ issue: 408
 status: blocked
 branch: feat/408-protected-signing-environments
 baseRevision: 4e95805586c321a56bcd7b6587a3408e0c175ec3
-lastCompletedTask: T11
-nextTask: "None while no custodian #2 exists. The owner decided on 2026-10-02 to name none (O1); #408 is closed as not planned. If the owner later names a second accountable human, resume from O1 in docs/release-custody.md section 9."
+lastCompletedTask: T7
+nextTask: "The owner configures the npm-publication environment and the npm trusted publisher for npm-publish.yml (O6, T7 landed on 2026-10-28), then publishes the next version through it. Otherwise none while no custodian #2 exists. The owner decided on 2026-10-02 to name none (O1); #408 is closed as not planned. If the owner later names a second accountable human, resume from O1 in docs/release-custody.md section 9."
 lastGate: "gate:quick, gate:build, gate:security, gate:release, agent:check PASS (feat/408-protected-signing-environments)"
-updatedAt: 2026-10-02T11:00:00Z
+updatedAt: 2026-10-28T14:30:00Z
 ---
 
 # Scope
