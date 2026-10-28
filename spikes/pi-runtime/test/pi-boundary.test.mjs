@@ -28,8 +28,8 @@ function textTool(execute) {
 
 test("pins the current Earendil Pi packages", () => {
   const pkg = JSON.parse(fs.readFileSync(new URL("../../../package.json", import.meta.url), "utf8"));
-  assert.equal(pkg.devDependencies["@earendil-works/pi-agent-core"], "0.99.1");
-  assert.equal(pkg.devDependencies["@earendil-works/pi-ai"], "0.99.1");
+  assert.equal(pkg.devDependencies["@earendil-works/pi-agent-core"], "1.4.0");
+  assert.equal(pkg.devDependencies["@earendil-works/pi-ai"], "1.4.0");
 });
 
 test("does not retain deprecated Mario Zechner package names", () => {
@@ -126,6 +126,40 @@ test("completes a tool that reports its own failure as an error", async () => {
     result.events.filter((event) => event.type === "tool.completed").map((event) => event.isError),
     [true]
   );
+  assert.equal(result.outputText, "tool result isError:true");
+});
+
+// why: since pi-ai 1.3 a tool call whose arguments text was malformed carries
+// argumentsError and fails validation; before, it ran with the fields parsed
+// before the error. The fields here satisfy the schema, so only that rule
+// keeps the call from reaching authorization and the tool.
+test("refuses a tool call with malformed arguments before authorization or execution", async () => {
+  let executions = 0;
+  let authorizations = 0;
+  const malformed = {
+    ...fauxToolCall("echo", { value: "partial" }),
+    argumentsError: 'Unexpected end of JSON input\n\nReceived arguments:\n{"value": "partial", "extra'
+  };
+  const faux = fauxWith([
+    fauxAssistantMessage(malformed, { stopReason: "toolUse" }),
+    (context) => fauxAssistantMessage(`tool result isError:${context.messages.at(-1).isError}`)
+  ]);
+  const tool = textTool(async () => {
+    executions += 1;
+    return { content: [{ type: "text", text: "ran" }], details: {} };
+  });
+  const result = await new PiRuntimeBoundary().run({
+    prompt: "use tool",
+    model: faux.getModel(),
+    streamFn: faux.streamSimple,
+    tools: [tool],
+    authorizeTool: async () => {
+      authorizations += 1;
+      return { allowed: true };
+    }
+  });
+  assert.equal(authorizations, 0);
+  assert.equal(executions, 0);
   assert.equal(result.outputText, "tool result isError:true");
 });
 
