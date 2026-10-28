@@ -2,13 +2,13 @@
 schema: verchestra-feature-handoff/v1
 feature: probe-host-composition
 issue: 235
-status: planned
-branch: docs/ad-037-ratified
+status: in_progress
+branch: feat/235-extension-commands
 baseRevision: f03189724bb907dad4c256ae10db934630235427
 lastCompletedTask: null
-nextTask: "The owner reviews plan.md (slice 1: register, approve, list, revoke and check a workspace probe worker). Only after that review: derive checks.md from it, then build."
-lastGate: "validate_plan.py: 0 errors, 1 warning (one open question recorded on purpose); agent:check PASS"
-updatedAt: 2026-10-28T18:30:00Z
+nextTask: "Build slice 1 against checks.md (32 checks), then dispatch an independent Verifier over the feature range."
+lastGate: "validate_plan.py 0 errors; validate_checks.py 0 errors, 0 warnings (profile light); the owner approved plan.md as written on 2026-10-28"
+updatedAt: 2026-10-28T19:00:00Z
 ---
 
 # Evidence
@@ -20,7 +20,5 @@ authority store. `plan.md` is the T3 plan for slice 1. No check or code exists.
 
 # Next exact action
 
-The owner reviews `plan.md`, in particular `Flow`, `Impact` (the lock
-placeholder `task plan` hashes), and `Landing` doors 2 and 3 (signing under the
-existing `approval` purpose and the approval record's location). After that,
-derive `checks.md`.
+Build slice 1 against `checks.md`: write the tests each check names, implement,
+run every proof, and commit. Then dispatch a fresh Verifier.
