@@ -10,7 +10,7 @@ import { qualificationSidebarItems } from "./src/lib/repository-content.ts";
 const qualificationEvidenceItems = qualificationSidebarItems(new URL("../../", import.meta.url));
 
 if (qualificationEvidenceItems.length === 0) throw new Error("no qualification reports found for the sidebar");
-const qualificationEvidenceLabel = `${qualificationEvidenceItems[0]!.label.split(" ")[0]}–${qualificationEvidenceItems[qualificationEvidenceItems.length - 1]!.label.split(" ")[0]} evidence`;
+const qualificationEvidenceLabel = `${qualificationEvidenceItems[0]!.label.split(" ")[0]}–${qualificationEvidenceItems.at(-1)!.label.split(" ")[0]} evidence`;
 
 export default defineConfig({
   site: "https://accd.github.io",

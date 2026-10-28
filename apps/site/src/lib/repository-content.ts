@@ -197,7 +197,7 @@ export function extractTitle(markdown: string): string {
 }
 
 export function extractDescription(markdown: string): string {
-  const lines = markdown.replace(/\r\n/g, "\n").split("\n");
+  const lines = markdown.replaceAll("\r\n", "\n").split("\n");
   let paragraph = "";
   let afterTitle = false;
   for (const rawLine of lines) {

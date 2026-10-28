@@ -109,7 +109,7 @@ body.product-shell {
   color: inherit;
 }
 
-.skip-link {
+a.skip-link {
   position: fixed;
   z-index: 100;
   top: 0.75rem;
@@ -120,7 +120,7 @@ body.product-shell {
   padding: 0.75rem 1rem;
   border-radius: 0.65rem;
   background: var(--text);
-  color: var(--ink) !important;
+  color: var(--ink);
   transform: translateY(-150%);
 }
 
@@ -388,9 +388,9 @@ body.product-shell {
   box-shadow: var(--shadow-interactive);
 }
 
-.button--primary {
+a.button--primary {
   background: var(--text);
-  color: var(--ink) !important;
+  color: var(--ink);
 }
 
 .button--secondary {
@@ -837,10 +837,10 @@ body.product-shell {
   border-radius: 0.75rem;
 }
 
-.qualification-progress__complete {
+.qualification-progress > .qualification-progress__complete {
   display: flex;
   justify-content: space-between;
-  border-color: color-mix(in srgb, var(--cyan) 45%, var(--line)) !important;
+  border-color: color-mix(in srgb, var(--cyan) 45%, var(--line));
   background: color-mix(in srgb, var(--cyan) 8%, transparent);
   color: var(--cyan);
 }
@@ -1096,6 +1096,8 @@ body.product-shell {
 
   .hero h1 {
     order: 2;
+    margin-top: 1.75rem;
+    font-size: clamp(2.75rem, 12.5vw, 4rem);
   }
 
   .hero__definition {
@@ -1113,15 +1115,11 @@ body.product-shell {
   .qualification-pill {
     order: 1;
     margin-top: 1rem;
+    border-radius: 0.8rem;
   }
 
   .status-note {
     order: 6;
-  }
-
-  .hero h1 {
-    margin-top: 1.75rem;
-    font-size: clamp(2.75rem, 12.5vw, 4rem);
   }
 
   .guarantee-grid,
@@ -1132,10 +1130,6 @@ body.product-shell {
 
   .community-grid p {
     min-height: auto;
-  }
-
-  .qualification-pill {
-    border-radius: 0.8rem;
   }
 
   .database-panel li {
