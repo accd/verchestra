@@ -142,6 +142,22 @@ export function parseCliArguments(argv: readonly string[], manifest: InstalledCl
   if (rest.length === 0 || (rest.length === 1 && rest[0] === "--help")) return { mode: "help", output };
   if (rest.length === 1 && rest[0] === "--version") return { mode: "version", output };
   if (rest.includes("--version")) throw argumentError("--version", "Global flag cannot be mixed with a command");
+  const commandManifest = findCommandManifest(manifest, rest);
+  // why: help names the command's options from the manifest it parses with,
+  // so the listed options are exactly the accepted ones.
+  if (rest.includes("--help")) return { mode: "command-help", output, help: commandManifest };
+  if (output === "json" && !commandManifest.supportsJson) {
+    throw argumentError("--output", "Command does not support JSON output");
+  }
+  const values = parseCommandOptions(commandManifest, rest);
+  return Object.freeze({
+    mode: "command",
+    output,
+    command: Object.freeze({ name: commandManifest.name, options: Object.freeze(values) })
+  });
+}
+
+function findCommandManifest(manifest: InstalledCliManifest, rest: readonly string[]): CliCommandManifest {
   const commandManifest = [...manifest.commands]
     .sort((left, right) => right.name.split(" ").length - left.name.split(" ").length)
     .find((candidate) => {
@@ -149,16 +165,16 @@ export function parseCliArguments(argv: readonly string[], manifest: InstalledCl
       return words.every((word, index) => rest[index] === word);
     });
   if (commandManifest === undefined) throw argumentError(rest[0] ?? "command", "Command is not installed");
-  // why: help names the command's options from the manifest it parses with,
-  // so the listed options are exactly the accepted ones.
-  if (rest.includes("--help")) return { mode: "command-help", output, help: commandManifest };
-  if (output === "json" && !commandManifest.supportsJson) {
-    throw argumentError("--output", "Command does not support JSON output");
-  }
-  const commandWords = commandManifest.name.split(" ").length;
+  return commandManifest;
+}
+
+function parseCommandOptions(
+  commandManifest: CliCommandManifest,
+  rest: readonly string[]
+): Record<string, string | boolean> {
   const values: Record<string, string | boolean> = {};
   const declared = new Map(commandManifest.options.map((entry) => [entry.name, entry]));
-  for (let index = commandWords; index < rest.length; index += 1) {
+  for (let index = commandManifest.name.split(" ").length; index < rest.length; index += 1) {
     const token = rest[index] as string;
     if (!token.startsWith("--")) throw argumentError(token, "Unexpected positional argument");
     const name = token.slice(2);
@@ -169,18 +185,17 @@ export function parseCliArguments(argv: readonly string[], manifest: InstalledCl
       values[name] = true;
       continue;
     }
-    const value = rest[index + 1];
-    if (value === undefined || value.startsWith("--")) throw argumentError(token, "Option value is missing");
-    if (option.values !== undefined && !option.values.includes(value))
-      throw argumentError(token, "Option value is invalid");
-    values[name] = value;
+    values[name] = optionValue(token, option, rest[index + 1]);
     index += 1;
   }
-  return Object.freeze({
-    mode: "command",
-    output,
-    command: Object.freeze({ name: commandManifest.name, options: Object.freeze(values) })
-  });
+  return values;
+}
+
+function optionValue(token: string, option: CliOptionManifest, value: string | undefined): string {
+  if (value === undefined || value.startsWith("--")) throw argumentError(token, "Option value is missing");
+  if (option.values !== undefined && !option.values.includes(value))
+    throw argumentError(token, "Option value is invalid");
+  return value;
 }
 
 function renderHelp(manifest: InstalledCliManifest): string {

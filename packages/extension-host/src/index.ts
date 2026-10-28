@@ -8,7 +8,9 @@ import {
   negotiateProbeHandshake,
   terminate,
   terminationIncomplete,
+  type ProbeIdentityEvidence,
   type ProbePlanView,
+  type ProbeSessionEvidence,
   type ProbeWorkerHandshake,
   type ProbeWorkerPort,
   type UnknownRecord
@@ -191,6 +193,36 @@ function untilAborted<T>(pending: Promise<T>, signal: AbortSignal): Promise<T> {
   });
 }
 
+function assertReadOnlyIdentity(
+  identity: ProbeIdentityEvidence | undefined,
+  plan: ProbePlanView
+): asserts identity is ProbeIdentityEvidence {
+  if (identity === undefined) fail("VES_PROBE_IDENTITY_INVALID", "Probe principal evidence is missing");
+  if (identity.databaseId !== plan.databaseId || !DIGEST.test(identity.principalFingerprint)) {
+    fail("VES_PROBE_IDENTITY_INVALID", "Probe principal evidence is invalid");
+  }
+  if (!identity.principalReadOnly) {
+    fail("VES_PROBE_IDENTITY_NOT_READ_ONLY", "Database principal is not read-only");
+  }
+}
+
+function assertReadOnlySession(session: ProbeSessionEvidence, plan: ProbePlanView): void {
+  if (session.planDigest !== plan.planDigest) fail("VES_PROBE_SESSION_INVALID", "Probe session evidence is invalid");
+  if (!session.sessionReadOnly || !session.transactionReadOnly) {
+    fail("VES_PROBE_SESSION_NOT_READ_ONLY", "Database session and transaction must be read-only");
+  }
+}
+
+// The stable refusal for a failed execution whose worker did not outlive it.
+function executionFailure(error: unknown, timedOut: boolean, externallyAborted: boolean): ProbeProtocolError {
+  if (timedOut) return new ProbeProtocolError("VES_PROBE_TIMEOUT", "Probe statement timed out");
+  if (externallyAborted) return new ProbeProtocolError("VES_PROBE_ABORTED", "Probe execution was aborted");
+  if (error instanceof Error && error.message === "injected result sink failure") {
+    return new ProbeProtocolError("VES_PROBE_RESULT_FAILURE", "Protected Probe result storage failed");
+  }
+  return probeFailure(error);
+}
+
 export class ProbeWorkerSupervisor {
   readonly #worker: ProbeWorkerPort;
   readonly #parameters: MemoryProtectedParameterBroker;
@@ -256,38 +288,11 @@ export class ProbeWorkerSupervisor {
     try {
       this.#negotiate(await untilAborted(this.#worker.handshake(), controller.signal));
       const identity = await untilAborted(this.#worker.verifyIdentity(plan), controller.signal);
-      if (identity === undefined) fail("VES_PROBE_IDENTITY_INVALID", "Probe principal evidence is missing");
-      if (identity.databaseId !== plan.databaseId || !DIGEST.test(identity.principalFingerprint)) {
-        fail("VES_PROBE_IDENTITY_INVALID", "Probe principal evidence is invalid");
-      }
-      if (!identity.principalReadOnly) {
-        fail("VES_PROBE_IDENTITY_NOT_READ_ONLY", "Database principal is not read-only");
-      }
+      assertReadOnlyIdentity(identity, plan);
       const session = await untilAborted(this.#worker.configureReadOnlySession(plan), controller.signal);
-      if (session.planDigest !== plan.planDigest)
-        fail("VES_PROBE_SESSION_INVALID", "Probe session evidence is invalid");
-      if (!session.sessionReadOnly || !session.transactionReadOnly) {
-        fail("VES_PROBE_SESSION_NOT_READ_ONLY", "Database session and transaction must be read-only");
-      }
+      assertReadOnlySession(session, plan);
       transactionId = await this.#results.begin();
-      let rowCount = 0;
-      let byteCount = 0;
-      await this.#parameters.withParameters(plan.operation.protectedRequestRef, async (parameters) => {
-        const secret = new TextDecoder().decode(parameters);
-        for await (const rows of this.#worker.execute(plan, parameters, controller.signal)) {
-          if (controller.signal.aborted) break;
-          if (!Array.isArray(rows)) fail("VES_PROBE_RESULT_INVALID", "Probe result chunk is invalid");
-          const serialized = JSON.stringify(rows);
-          if (secret.length > 0 && serialized.includes(secret)) {
-            fail("VES_PROBE_SECRET_LEAK", "Probe result contains protected parameter material");
-          }
-          rowCount += rows.length;
-          byteCount += Buffer.byteLength(serialized, "utf8");
-          if (rowCount > plan.bounds.rowLimit) fail("VES_PROBE_ROW_LIMIT", "Probe row limit was exceeded");
-          if (byteCount > plan.bounds.byteLimit) fail("VES_PROBE_BYTE_LIMIT", "Probe byte limit was exceeded");
-          await this.#results.append(transactionId as string, rows);
-        }
-      });
+      const { rowCount, byteCount } = await this.#streamRows(plan, transactionId, controller.signal);
       if (timedOut) fail("VES_PROBE_TIMEOUT", "Probe statement timed out");
       if (externallyAborted) fail("VES_PROBE_ABORTED", "Probe execution was aborted");
       const committed = await this.#results.commit(transactionId);
@@ -318,18 +323,38 @@ export class ProbeWorkerSupervisor {
       const ended = await this.#end(timedOut);
       const outlived = outlivedTermination(error) ?? ended;
       if (transactionId !== undefined) await this.#results.rollback(transactionId);
-      if (outlived !== undefined) throw outlived;
-      if (timedOut) throw new ProbeProtocolError("VES_PROBE_TIMEOUT", "Probe statement timed out");
-      if (externallyAborted) throw new ProbeProtocolError("VES_PROBE_ABORTED", "Probe execution was aborted");
-      if (error instanceof Error && error.message === "injected result sink failure") {
-        throw new ProbeProtocolError("VES_PROBE_RESULT_FAILURE", "Protected Probe result storage failed");
-      }
-      throw probeFailure(error);
+      throw outlived ?? executionFailure(error, timedOut, externallyAborted);
     } finally {
       clearTimeout(timer);
       signal?.removeEventListener("abort", abort);
       release();
     }
+  }
+
+  async #streamRows(
+    plan: ProbePlanView,
+    transactionId: string,
+    signal: AbortSignal
+  ): Promise<{ readonly rowCount: number; readonly byteCount: number }> {
+    let rowCount = 0;
+    let byteCount = 0;
+    await this.#parameters.withParameters(plan.operation.protectedRequestRef, async (parameters) => {
+      const secret = new TextDecoder().decode(parameters);
+      for await (const rows of this.#worker.execute(plan, parameters, signal)) {
+        if (signal.aborted) break;
+        if (!Array.isArray(rows)) fail("VES_PROBE_RESULT_INVALID", "Probe result chunk is invalid");
+        const serialized = JSON.stringify(rows);
+        if (secret.length > 0 && serialized.includes(secret)) {
+          fail("VES_PROBE_SECRET_LEAK", "Probe result contains protected parameter material");
+        }
+        rowCount += rows.length;
+        byteCount += Buffer.byteLength(serialized, "utf8");
+        if (rowCount > plan.bounds.rowLimit) fail("VES_PROBE_ROW_LIMIT", "Probe row limit was exceeded");
+        if (byteCount > plan.bounds.byteLimit) fail("VES_PROBE_BYTE_LIMIT", "Probe byte limit was exceeded");
+        await this.#results.append(transactionId, rows);
+      }
+    });
+    return { rowCount, byteCount };
   }
 
   // invariant: termination stays mandatory after an unavailable cancellation

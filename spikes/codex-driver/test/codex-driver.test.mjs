@@ -126,6 +126,22 @@ test("normalizes an app-server turn failure", async () => {
   assert.equal(result.error.message, "provider failed");
 });
 
+test("a provider that exits with a failure before its turn completes is a process failure", async () => {
+  const result = await fakeDriver().run({ prompt: "x", environment: { FAKE_CODEX_MODE: "crash" } });
+  assert.equal(result.stopReason, "error");
+  assert.deepEqual(result.error, { code: "VES_CODEX_PROCESS_FAILED", message: "Codex app-server exited with 3" });
+});
+
+test("a provider that exits cleanly without completing its turn leaves the stream incomplete", async () => {
+  const result = await fakeDriver().run({ prompt: "x", environment: { FAKE_CODEX_MODE: "end-without-turn" } });
+  assert.equal(result.stopReason, "error");
+  assert.deepEqual(result.error, {
+    code: "VES_CODEX_STREAM_INCOMPLETE",
+    message: "Codex stream ended without turn/completed"
+  });
+  assert.ok(!result.events.some((event) => event.type === "session.closed"));
+});
+
 test("cancels with turn/interrupt before process-tree termination", async () => {
   let terminatedPid;
   let markSpawned;

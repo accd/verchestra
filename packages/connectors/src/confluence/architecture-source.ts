@@ -336,6 +336,23 @@ const attachmentFragment = (
     ])
   });
 
+function assertAttachmentAdmissible(item: RemoteAttachmentMetadata, page: RemotePage, query: NormalizedQuery): void {
+  if (item.pageId !== page.pageId)
+    throw new ConfluenceConnectorError("VES_CONFLUENCE_REMOTE_INVALID", "attachment crossed page boundary");
+  if (!query.allowedAttachmentMediaTypes.includes(item.mediaType)) {
+    throw new ConfluenceConnectorError(
+      "VES_CONFLUENCE_ATTACHMENT_UNSUPPORTED",
+      "Confluence attachment media type is not allowed"
+    );
+  }
+  if (item.byteLength > query.maximumAttachmentBytes) {
+    throw new ConfluenceConnectorError(
+      "VES_CONFLUENCE_ATTACHMENT_TOO_LARGE",
+      "Confluence attachment exceeds the configured byte bound"
+    );
+  }
+}
+
 export class ArchitectureConfluenceSource implements ContextSourcePort {
   readonly #transport: ConfluenceReadTransport;
   readonly #workspaceId: string;
@@ -553,6 +570,15 @@ export class ArchitectureConfluenceSource implements ContextSourcePort {
   }
 
   async #attachments(page: RemotePage, query: NormalizedQuery): Promise<readonly RemoteAttachment[]> {
+    const result: RemoteAttachment[] = [];
+    for (const item of await this.#attachmentMetadata(page, query)) {
+      assertAttachmentAdmissible(item, page, query);
+      result.push(await this.#readAttachment(item, page, query));
+    }
+    return Object.freeze(result);
+  }
+
+  async #attachmentMetadata(page: RemotePage, query: NormalizedQuery): Promise<readonly RemoteAttachmentMetadata[]> {
     const metadata: RemoteAttachmentMetadata[] = [];
     const seenCursors = new Set<string>();
     let cursor: string | undefined;
@@ -600,64 +626,54 @@ export class ArchitectureConfluenceSource implements ContextSourcePort {
         "Confluence returned duplicate attachment identity"
       );
     }
-    const result: RemoteAttachment[] = [];
-    for (const item of ordered) {
-      if (item.pageId !== page.pageId)
-        throw new ConfluenceConnectorError("VES_CONFLUENCE_REMOTE_INVALID", "attachment crossed page boundary");
-      if (!query.allowedAttachmentMediaTypes.includes(item.mediaType)) {
-        throw new ConfluenceConnectorError(
-          "VES_CONFLUENCE_ATTACHMENT_UNSUPPORTED",
-          "Confluence attachment media type is not allowed"
-        );
-      }
-      if (item.byteLength > query.maximumAttachmentBytes) {
-        throw new ConfluenceConnectorError(
-          "VES_CONFLUENCE_ATTACHMENT_TOO_LARGE",
-          "Confluence attachment exceeds the configured byte bound"
-        );
-      }
-      const response = await this.#call(() =>
-        this.#transport.readAttachment({
-          spaceKey: this.#spaceKey,
-          pageId: page.pageId,
-          attachmentId: item.attachmentId,
-          maximumBytes: query.maximumAttachmentBytes
-        })
+    return ordered;
+  }
+
+  async #readAttachment(
+    item: RemoteAttachmentMetadata,
+    page: RemotePage,
+    query: NormalizedQuery
+  ): Promise<RemoteAttachment> {
+    const response = await this.#call(() =>
+      this.#transport.readAttachment({
+        spaceKey: this.#spaceKey,
+        pageId: page.pageId,
+        attachmentId: item.attachmentId,
+        maximumBytes: query.maximumAttachmentBytes
+      })
+    );
+    exactKeys(response, ["attachment", "rate"], "VES_CONFLUENCE_REMOTE_INVALID", "Confluence attachment response");
+    normalizeRate(response.rate);
+    if (response.attachment === undefined) {
+      throw new ConfluenceConnectorError(
+        "VES_CONFLUENCE_ATTACHMENT_MISSING",
+        "Confluence attachment content is missing"
       );
-      exactKeys(response, ["attachment", "rate"], "VES_CONFLUENCE_REMOTE_INVALID", "Confluence attachment response");
-      normalizeRate(response.rate);
-      if (response.attachment === undefined) {
-        throw new ConfluenceConnectorError(
-          "VES_CONFLUENCE_ATTACHMENT_MISSING",
-          "Confluence attachment content is missing"
-        );
-      }
-      const attachment = normalizeAttachment(response.attachment);
-      if (
-        attachment.attachmentId !== item.attachmentId ||
-        attachment.pageId !== page.pageId ||
-        attachment.title !== item.title ||
-        attachment.mediaType !== item.mediaType ||
-        attachment.revision !== item.revision
-      ) {
-        throw new ConfluenceConnectorError(
-          "VES_CONFLUENCE_REMOTE_INVALID",
-          "Confluence attachment identity was substituted"
-        );
-      }
-      if (
-        attachment.byteLength !== item.byteLength ||
-        Buffer.byteLength(attachment.content, "utf8") !== attachment.byteLength ||
-        attachment.byteLength > query.maximumAttachmentBytes
-      ) {
-        throw new ConfluenceConnectorError(
-          "VES_CONFLUENCE_ATTACHMENT_TOO_LARGE",
-          "Confluence attachment bytes do not match the bounded metadata"
-        );
-      }
-      result.push(attachment);
     }
-    return Object.freeze(result);
+    const attachment = normalizeAttachment(response.attachment);
+    if (
+      attachment.attachmentId !== item.attachmentId ||
+      attachment.pageId !== page.pageId ||
+      attachment.title !== item.title ||
+      attachment.mediaType !== item.mediaType ||
+      attachment.revision !== item.revision
+    ) {
+      throw new ConfluenceConnectorError(
+        "VES_CONFLUENCE_REMOTE_INVALID",
+        "Confluence attachment identity was substituted"
+      );
+    }
+    if (
+      attachment.byteLength !== item.byteLength ||
+      Buffer.byteLength(attachment.content, "utf8") !== attachment.byteLength ||
+      attachment.byteLength > query.maximumAttachmentBytes
+    ) {
+      throw new ConfluenceConnectorError(
+        "VES_CONFLUENCE_ATTACHMENT_TOO_LARGE",
+        "Confluence attachment bytes do not match the bounded metadata"
+      );
+    }
+    return attachment;
   }
 
   async #call(operation: () => Promise<unknown>): Promise<JsonRecord> {

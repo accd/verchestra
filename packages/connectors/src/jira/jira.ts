@@ -626,6 +626,24 @@ export class JiraProjectionEffectAdapter implements EffectAdapter {
   }
 }
 
+type ManagedIssue = JiraRemoteIssue & { readonly provenance: "jira-managed-projection" };
+
+function isPageBound(value: unknown): boolean {
+  return Number.isSafeInteger(value) && (value as number) >= 1 && (value as number) <= 100;
+}
+
+function managedPageIssues(issues: unknown, projectKey: string): ManagedIssue[] {
+  if (!Array.isArray(issues)) throw new JiraConnectorError("VES_JIRA_REMOTE_INVALID", "Jira page issues are invalid");
+  const page: ManagedIssue[] = [];
+  for (const candidate of issues) {
+    const issue = normalizeIssue(candidate);
+    if (issue.projectKey !== projectKey)
+      throw new JiraConnectorError("VES_JIRA_REMOTE_INVALID", "Jira page crossed project boundary");
+    page.push(Object.freeze({ ...issue, provenance: "jira-managed-projection" }));
+  }
+  return page;
+}
+
 export class JiraManagedReadConnector {
   readonly #transport: JiraTransport;
 
@@ -649,17 +667,11 @@ export class JiraManagedReadConnector {
     if (input.schemaVersion !== 1) throw new JiraConnectorError(code, "schemaVersion must be 1");
     const workspaceId = requireString(input.workspaceId, code, "workspaceId");
     const projectKey = requireString(input.projectKey, code, "projectKey", PROJECT_KEY);
-    if (!Number.isSafeInteger(input.pageSize) || (input.pageSize as number) < 1 || (input.pageSize as number) > 100) {
-      throw new JiraConnectorError(code, "pageSize must be from 1 through 100");
-    }
-    if (
-      !Number.isSafeInteger(input.maximumPages) ||
-      (input.maximumPages as number) < 1 ||
-      (input.maximumPages as number) > 100
-    ) {
+    if (!isPageBound(input.pageSize)) throw new JiraConnectorError(code, "pageSize must be from 1 through 100");
+    if (!isPageBound(input.maximumPages)) {
       throw new JiraConnectorError(code, "maximumPages must be from 1 through 100");
     }
-    const items: (JiraRemoteIssue & { readonly provenance: "jira-managed-projection" })[] = [];
+    const items: ManagedIssue[] = [];
     const seen = new Set<string>();
     let cursor: string | undefined;
     for (let page = 0; page < (input.maximumPages as number); page += 1) {
@@ -669,14 +681,7 @@ export class JiraManagedReadConnector {
         pageSize: input.pageSize as number
       });
       normalizeRate(response.rate);
-      if (!Array.isArray(response.issues))
-        throw new JiraConnectorError("VES_JIRA_REMOTE_INVALID", "Jira page issues are invalid");
-      for (const candidate of response.issues) {
-        const issue = normalizeIssue(candidate);
-        if (issue.projectKey !== projectKey)
-          throw new JiraConnectorError("VES_JIRA_REMOTE_INVALID", "Jira page crossed project boundary");
-        items.push(Object.freeze({ ...issue, provenance: "jira-managed-projection" }));
-      }
+      items.push(...managedPageIssues(response.issues, projectKey));
       if (response.nextCursor === undefined) {
         return Object.freeze({ schemaVersion: 1, workspaceId, items: Object.freeze(items) });
       }

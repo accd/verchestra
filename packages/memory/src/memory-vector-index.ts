@@ -420,6 +420,37 @@ function generationFromRow(row: Row): MemoryVectorGeneration {
   });
 }
 
+interface StagedGenerationTarget {
+  readonly slot: VectorSlot;
+  readonly derivedTable: string;
+  readonly createdAt: string;
+  readonly extensionVersion: string;
+  readonly assetSha256: string;
+}
+
+function assertBuildMatchesAuthority(db: DatabaseSync, build: NormalizedBuild): void {
+  const snapshot = authoritySnapshot(db, build);
+  if (snapshot.authorityDigest !== build.authorityDigest) {
+    throw vectorError("VES_VECTOR_AUTHORITY_MISMATCH", "Vector build authority digest is stale");
+  }
+  const expected = snapshot.chunks
+    .map((chunk) => `${chunk.sourceId}\0${chunk.chunkId}\0${chunk.contentDigest}`)
+    .sort(codeUnitCompare);
+  const actual = build.vectors
+    .map((vector) => `${vector.sourceId}\0${vector.chunkId}\0${vector.contentDigest}`)
+    .sort(codeUnitCompare);
+  if (canonicalizeJsonV2(expected) !== canonicalizeJsonV2(actual)) {
+    throw vectorError("VES_VECTOR_AUTHORITY_MISMATCH", "Vector set differs from active lexical chunks");
+  }
+}
+
+function failBuild(db: DatabaseSync, error: unknown): never {
+  if (db.isTransaction) db.exec("ROLLBACK");
+  const mapped = mapVectorError(error);
+  if (mapped instanceof MemoryStoreError || codeOf(mapped) === "VES_VECTOR_BUSY") throw mapped;
+  throw vectorError("VES_VECTOR_BUILD_FAILED", "Vector generation build failed", true, mapped);
+}
+
 export class MemoryVectorIndex {
   readonly dbPath: string;
   readonly #mode: VectorMode;
@@ -628,19 +659,7 @@ export class MemoryVectorIndex {
   buildGeneration(value: unknown): MemoryVectorBuildResult {
     const build = normalizeBuild(value);
     const db = this.#database();
-    const snapshot = authoritySnapshot(db, build);
-    if (snapshot.authorityDigest !== build.authorityDigest) {
-      throw vectorError("VES_VECTOR_AUTHORITY_MISMATCH", "Vector build authority digest is stale");
-    }
-    const expected = snapshot.chunks
-      .map((chunk) => `${chunk.sourceId}\0${chunk.chunkId}\0${chunk.contentDigest}`)
-      .sort(codeUnitCompare);
-    const actual = build.vectors
-      .map((vector) => `${vector.sourceId}\0${vector.chunkId}\0${vector.contentDigest}`)
-      .sort(codeUnitCompare);
-    if (canonicalizeJsonV2(expected) !== canonicalizeJsonV2(actual)) {
-      throw vectorError("VES_VECTOR_AUTHORITY_MISMATCH", "Vector set differs from active lexical chunks");
-    }
+    assertBuildMatchesAuthority(db, build);
     const existing = this.#rowForGeneration(build.generationId);
     const active = this.#activeRow(build);
     if (existing !== undefined && active?.["generation_id"] === build.generationId) {
@@ -651,89 +670,103 @@ export class MemoryVectorIndex {
     const derivedTable = tableName(build.workspaceId, build.projectId, slot);
     const createdAt = this.#now();
     const assetSha256 = this.#status.assetSha256;
-    if (assetSha256 === undefined || this.#status.version === null) {
+    const extensionVersion = this.#status.version;
+    if (assetSha256 === undefined || extensionVersion === null) {
       throw vectorError("VES_VECTOR_CORRUPT", "Qualified vector runtime identity is missing", true);
     }
     let committed = false;
     try {
-      this.#hooks.beforeBuildLock?.();
-      db.exec("BEGIN IMMEDIATE");
-      if (authoritySnapshot(db, build).authorityDigest !== build.authorityDigest) {
-        throw vectorError("VES_VECTOR_AUTHORITY_MISMATCH", "Lexical authority changed before vector build lock");
-      }
-      db.prepare(
-        `DELETE FROM memory_vector_members WHERE generation_id IN (
+      this.#stageAndSwap(db, build, { slot, derivedTable, createdAt, extensionVersion, assetSha256 });
+      committed = true;
+    } catch (error) {
+      failBuild(db, error);
+    }
+    this.#acknowledgeSwap(committed);
+    const row = this.#rowForGeneration(build.generationId);
+    if (row === undefined) throw vectorError("VES_VECTOR_CORRUPT", "Committed vector generation is missing", true);
+    return Object.freeze({ ...generationFromRow(row), changed: true });
+  }
+
+  #stageAndSwap(db: DatabaseSync, build: NormalizedBuild, target: StagedGenerationTarget): void {
+    const { slot, derivedTable, createdAt } = target;
+    this.#hooks.beforeBuildLock?.();
+    db.exec("BEGIN IMMEDIATE");
+    if (authoritySnapshot(db, build).authorityDigest !== build.authorityDigest) {
+      throw vectorError("VES_VECTOR_AUTHORITY_MISMATCH", "Lexical authority changed before vector build lock");
+    }
+    db.prepare(
+      `DELETE FROM memory_vector_members WHERE generation_id IN (
         SELECT generation_id FROM memory_vector_generations WHERE workspace_id=? AND project_id=? AND slot=?
       )`
-      ).run(build.workspaceId, build.projectId, slot);
-      db.exec(`DROP TABLE IF EXISTS ${derivedTable}`);
-      db.exec(`CREATE VIRTUAL TABLE ${derivedTable} USING vec0(embedding float[${build.model.dimensions}])`);
-      db.prepare(
-        `DELETE FROM memory_vector_generations WHERE workspace_id=? AND project_id=? AND slot=? AND status='superseded'`
-      ).run(build.workspaceId, build.projectId, slot);
-      db.prepare(
-        `INSERT INTO memory_vector_generations(
+    ).run(build.workspaceId, build.projectId, slot);
+    db.exec(`DROP TABLE IF EXISTS ${derivedTable}`);
+    db.exec(`CREATE VIRTUAL TABLE ${derivedTable} USING vec0(embedding float[${build.model.dimensions}])`);
+    db.prepare(
+      `DELETE FROM memory_vector_generations WHERE workspace_id=? AND project_id=? AND slot=? AND status='superseded'`
+    ).run(build.workspaceId, build.projectId, slot);
+    db.prepare(
+      `INSERT INTO memory_vector_generations(
         generation_id, workspace_id, project_id, authority_digest, model_json, model_digest, dimensions, distance,
         vector_count, vector_digest, slot, table_name, extension_version, asset_sha256, status, created_at, verified_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, 'l2', ?, ?, ?, ?, ?, ?, 'superseded', ?, ?)`
-      ).run(
-        build.generationId,
-        build.workspaceId,
-        build.projectId,
-        build.authorityDigest,
-        canonicalizeJsonV2(build.model),
-        build.modelDigest,
-        build.model.dimensions,
-        build.vectors.length,
-        build.vectorDigest,
-        slot,
-        derivedTable,
-        this.#status.version,
-        assetSha256,
-        createdAt,
-        createdAt
-      );
-      for (let index = 0; index < build.vectors.length; index += 1) {
-        const vector = build.vectors[index];
-        if (vector === undefined) throw vectorError("VES_VECTOR_BUILD_FAILED", "Vector disappeared during build");
-        const rowId = index + 1;
-        db.prepare(`INSERT INTO ${derivedTable}(rowid, embedding) VALUES (?, ?)`).run(
-          BigInt(rowId),
-          JSON.stringify(vector.embedding)
-        );
-        db.prepare(
-          `INSERT INTO memory_vector_members(
-          generation_id, row_id, source_id, chunk_id, content_digest, embedding_digest
-        ) VALUES (?, ?, ?, ?, ?, ?)`
-        ).run(build.generationId, rowId, vector.sourceId, vector.chunkId, vector.contentDigest, vector.embeddingDigest);
-        this.#hooks.afterVectorInsert?.();
-      }
-      const staged = this.#rowForGeneration(build.generationId);
-      if (staged === undefined) throw vectorError("VES_VECTOR_BUILD_FAILED", "Staged generation metadata is missing");
-      this.#verifyGeneration(staged);
-      this.#hooks.verifyGeneration?.();
-      this.#hooks.beforeSwap?.();
-      db.prepare(
-        "UPDATE memory_vector_generations SET status='superseded' WHERE workspace_id=? AND project_id=? AND status='active'"
-      ).run(build.workspaceId, build.projectId);
-      db.prepare("UPDATE memory_vector_generations SET status='active', verified_at=? WHERE generation_id=?").run(
-        this.#now(),
-        build.generationId
-      );
-      db.prepare(
-        `INSERT INTO memory_vector_control(workspace_id, project_id, active_generation_id, active_slot, updated_at)
+    ).run(
+      build.generationId,
+      build.workspaceId,
+      build.projectId,
+      build.authorityDigest,
+      canonicalizeJsonV2(build.model),
+      build.modelDigest,
+      build.model.dimensions,
+      build.vectors.length,
+      build.vectorDigest,
+      slot,
+      derivedTable,
+      target.extensionVersion,
+      target.assetSha256,
+      createdAt,
+      createdAt
+    );
+    this.#insertVectors(db, build, derivedTable);
+    const staged = this.#rowForGeneration(build.generationId);
+    if (staged === undefined) throw vectorError("VES_VECTOR_BUILD_FAILED", "Staged generation metadata is missing");
+    this.#verifyGeneration(staged);
+    this.#hooks.verifyGeneration?.();
+    this.#hooks.beforeSwap?.();
+    db.prepare(
+      "UPDATE memory_vector_generations SET status='superseded' WHERE workspace_id=? AND project_id=? AND status='active'"
+    ).run(build.workspaceId, build.projectId);
+    db.prepare("UPDATE memory_vector_generations SET status='active', verified_at=? WHERE generation_id=?").run(
+      this.#now(),
+      build.generationId
+    );
+    db.prepare(
+      `INSERT INTO memory_vector_control(workspace_id, project_id, active_generation_id, active_slot, updated_at)
         VALUES (?, ?, ?, ?, ?)
         ON CONFLICT(workspace_id, project_id) DO UPDATE SET active_generation_id=excluded.active_generation_id,
           active_slot=excluded.active_slot, updated_at=excluded.updated_at`
-      ).run(build.workspaceId, build.projectId, build.generationId, slot, this.#now());
-      db.exec("COMMIT");
-      committed = true;
-    } catch (error) {
-      if (db.isTransaction) db.exec("ROLLBACK");
-      const mapped = mapVectorError(error);
-      if (mapped instanceof MemoryStoreError || codeOf(mapped) === "VES_VECTOR_BUSY") throw mapped;
-      throw vectorError("VES_VECTOR_BUILD_FAILED", "Vector generation build failed", true, mapped);
+    ).run(build.workspaceId, build.projectId, build.generationId, slot, this.#now());
+    db.exec("COMMIT");
+  }
+
+  #insertVectors(db: DatabaseSync, build: NormalizedBuild, derivedTable: string): void {
+    for (let index = 0; index < build.vectors.length; index += 1) {
+      const vector = build.vectors[index];
+      if (vector === undefined) throw vectorError("VES_VECTOR_BUILD_FAILED", "Vector disappeared during build");
+      const rowId = index + 1;
+      db.prepare(`INSERT INTO ${derivedTable}(rowid, embedding) VALUES (?, ?)`).run(
+        BigInt(rowId),
+        JSON.stringify(vector.embedding)
+      );
+      db.prepare(
+        `INSERT INTO memory_vector_members(
+          generation_id, row_id, source_id, chunk_id, content_digest, embedding_digest
+        ) VALUES (?, ?, ?, ?, ?, ?)`
+      ).run(build.generationId, rowId, vector.sourceId, vector.chunkId, vector.contentDigest, vector.embeddingDigest);
+      this.#hooks.afterVectorInsert?.();
     }
+  }
+
+  #acknowledgeSwap(committed: boolean): void {
     try {
       this.#hooks.afterSwap?.();
     } catch (error) {
@@ -746,9 +779,6 @@ export class MemoryVectorIndex {
         );
       throw error;
     }
-    const row = this.#rowForGeneration(build.generationId);
-    if (row === undefined) throw vectorError("VES_VECTOR_CORRUPT", "Committed vector generation is missing", true);
-    return Object.freeze({ ...generationFromRow(row), changed: true });
   }
 
   listGenerations(value: unknown): readonly MemoryVectorGeneration[] {

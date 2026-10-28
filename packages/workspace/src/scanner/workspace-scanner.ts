@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import type { Dirent } from "node:fs";
 import { readFile, readdir, realpath, stat } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { promisify } from "node:util";
@@ -189,6 +190,64 @@ async function resolveGitDir(
   return Object.freeze({ status: "active", gitDir });
 }
 
+async function gitBoundaryOwner(
+  controlRoot: string,
+  directory: string,
+  gitEntry: Dirent,
+  owner: RepositoryInventory | null
+): Promise<RepositoryInventory> {
+  let effectiveOwner = owner;
+  if (gitEntry.isDirectory()) {
+    effectiveOwner = await activeRepository(controlRoot, directory, "nested", "directory");
+  } else if (gitEntry.isFile()) {
+    const parsed = parseGitFile(await readFile(join(directory, ".git"), "utf8"));
+    const resolvedGitDir = await resolveGitDir(directory, parsed.gitDir);
+    effectiveOwner =
+      resolvedGitDir.status === "active"
+        ? await activeRepository(controlRoot, directory, relationFromGitFile(resolvedGitDir.gitDir), "file")
+        : await brokenRepository(controlRoot, directory, resolvedGitDir.reason);
+  }
+  if (effectiveOwner === null) {
+    throw new WorkspaceScanError("VES_WORKSPACE_OWNER_AMBIGUOUS", "Git boundary has no resolved owner");
+  }
+  return effectiveOwner;
+}
+
+async function projectInventory(
+  controlRoot: string,
+  directory: string,
+  marker: ProjectMarker,
+  owner: RepositoryInventory | null
+): Promise<ProjectInventory> {
+  const logicalPath = logical(controlRoot, directory);
+  return Object.freeze({
+    discoveryKey: buildInventoryFingerprintV2({
+      schemaVersion: 1,
+      logicalPath,
+      marker,
+      gitOwnerId: owner?.status === "active" ? owner.repositoryId : null
+    }),
+    logicalPath,
+    marker,
+    gitOwnerId: owner?.status === "active" ? owner.repositoryId : null,
+    ignoredByControl: await ignoredByControl(controlRoot, logicalPath)
+  });
+}
+
+async function linkInventory(controlRoot: string, path: string): Promise<LinkInventory> {
+  let boundary: LinkInventory["boundary"] = "broken";
+  try {
+    boundary = within(controlRoot, await realpath(path)) ? "inside" : "outside";
+  } catch {
+    // A broken link is inventory, not a traversal target.
+  }
+  return Object.freeze({
+    logicalPath: logical(controlRoot, path),
+    kind: process.platform === "win32" ? "junction" : "symlink",
+    boundary
+  });
+}
+
 interface ScanLimits {
   readonly maxDirectories: number;
   readonly maxEntries: number;
@@ -235,40 +294,12 @@ export async function scanWorkspace(options: {
     let effectiveOwner = owner;
     const gitEntry = entries.find((entry) => entry.name === ".git");
     if (directory !== requestedRoot && gitEntry !== undefined) {
-      if (gitEntry.isDirectory()) {
-        effectiveOwner = await activeRepository(requestedRoot, directory, "nested", "directory");
-      } else if (gitEntry.isFile()) {
-        const parsed = parseGitFile(await readFile(join(directory, ".git"), "utf8"));
-        const resolvedGitDir = await resolveGitDir(directory, parsed.gitDir);
-        effectiveOwner =
-          resolvedGitDir.status === "active"
-            ? await activeRepository(requestedRoot, directory, relationFromGitFile(resolvedGitDir.gitDir), "file")
-            : await brokenRepository(requestedRoot, directory, resolvedGitDir.reason);
-      }
-      if (effectiveOwner === null) {
-        throw new WorkspaceScanError("VES_WORKSPACE_OWNER_AMBIGUOUS", "Git boundary has no resolved owner");
-      }
+      effectiveOwner = await gitBoundaryOwner(requestedRoot, directory, gitEntry, owner);
       repositories.push(effectiveOwner);
     }
 
     const marker = detectProjectMarker(names);
-    if (marker !== undefined) {
-      const logicalPath = logical(requestedRoot, directory);
-      projects.push(
-        Object.freeze({
-          discoveryKey: buildInventoryFingerprintV2({
-            schemaVersion: 1,
-            logicalPath,
-            marker,
-            gitOwnerId: effectiveOwner?.status === "active" ? effectiveOwner.repositoryId : null
-          }),
-          logicalPath,
-          marker,
-          gitOwnerId: effectiveOwner?.status === "active" ? effectiveOwner.repositoryId : null,
-          ignoredByControl: await ignoredByControl(requestedRoot, logicalPath)
-        })
-      );
-    }
+    if (marker !== undefined) projects.push(await projectInventory(requestedRoot, directory, marker, effectiveOwner));
 
     // Directory entries are a declared set for traversal purposes: walk order
     // must be deterministic and locale-independent, not semantically ordered.
@@ -276,19 +307,7 @@ export async function scanWorkspace(options: {
       if (PRUNED_DIRECTORIES.has(entry.name)) continue;
       const path = join(directory, entry.name);
       if (entry.isSymbolicLink()) {
-        let boundary: LinkInventory["boundary"] = "broken";
-        try {
-          boundary = within(requestedRoot, await realpath(path)) ? "inside" : "outside";
-        } catch {
-          // A broken link is inventory, not a traversal target.
-        }
-        links.push(
-          Object.freeze({
-            logicalPath: logical(requestedRoot, path),
-            kind: process.platform === "win32" ? "junction" : "symlink",
-            boundary
-          })
-        );
+        links.push(await linkInventory(requestedRoot, path));
       } else if (entry.isDirectory()) {
         await walk(path, effectiveOwner, depth + 1);
       }

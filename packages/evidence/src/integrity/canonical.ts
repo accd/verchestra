@@ -60,25 +60,46 @@ function assertJsonValue(
   if (depth > MAX_DEPTH || budget.nodes > MAX_NODES) {
     throw new IntegrityError("VES_INTEGRITY_RESOURCE_LIMIT", "JSON value exceeds safety limits");
   }
+  if (isJsonLeaf(value)) return;
+  assertPlainJsonContainer(value, seen);
 
-  if (value === null || typeof value === "boolean") return;
+  seen.add(value);
+  try {
+    if (Array.isArray(value)) {
+      assertJsonArray(value, seen, budget, depth);
+      return;
+    }
+    assertJsonObject(value, seen, budget, depth);
+  } finally {
+    seen.delete(value);
+  }
+}
+
+// invariant: true for a valid JSON leaf; false leaves an object for the caller,
+// and every other value is refused here.
+function isJsonLeaf(value: unknown): boolean {
+  if (value === null || typeof value === "boolean") return true;
   if (typeof value === "string") {
     assertUnicode(value);
-    return;
+    return true;
   }
   if (typeof value === "number") {
     if (!Number.isFinite(value)) {
       throw new IntegrityError("VES_INTEGRITY_NON_JSON_VALUE", "Number must be finite");
     }
-    return;
+    return true;
   }
-  if (typeof value !== "object") {
+  return false;
+}
+
+function assertPlainJsonContainer(candidate: unknown, seen: Set<object>): asserts candidate is object {
+  if (typeof candidate !== "object") {
     throw new IntegrityError("VES_INTEGRITY_NON_JSON_VALUE", "Value is not JSON data");
   }
+  const value = candidate as object;
   if (seen.has(value)) {
     throw new IntegrityError("VES_INTEGRITY_CYCLIC_VALUE", "Cyclic JSON value");
   }
-
   const prototype = Object.getPrototypeOf(value) as object | null;
   if (!Array.isArray(value) && prototype !== Object.prototype && prototype !== null) {
     throw new IntegrityError("VES_INTEGRITY_NON_JSON_VALUE", "Only plain JSON objects are accepted");
@@ -86,28 +107,24 @@ function assertJsonValue(
   if (Reflect.ownKeys(value).some((key) => typeof key === "symbol")) {
     throw new IntegrityError("VES_INTEGRITY_NON_JSON_VALUE", "Symbol properties are not JSON data");
   }
+}
 
-  seen.add(value);
-  try {
-    if (Array.isArray(value)) {
-      for (let index = 0; index < value.length; index += 1) {
-        if (!Object.hasOwn(value, index)) {
-          throw new IntegrityError("VES_INTEGRITY_NON_JSON_VALUE", "Sparse arrays are not JSON data");
-        }
-        assertJsonValue(value[index], seen, budget, depth + 1);
-      }
-      return;
+function assertJsonArray(value: readonly unknown[], seen: Set<object>, budget: { nodes: number }, depth: number): void {
+  for (let index = 0; index < value.length; index += 1) {
+    if (!Object.hasOwn(value, index)) {
+      throw new IntegrityError("VES_INTEGRITY_NON_JSON_VALUE", "Sparse arrays are not JSON data");
     }
+    assertJsonValue(value[index], seen, budget, depth + 1);
+  }
+}
 
-    for (const [key, descriptor] of Object.entries(Object.getOwnPropertyDescriptors(value))) {
-      assertUnicode(key);
-      if (!descriptor.enumerable || descriptor.get !== undefined || descriptor.set !== undefined) {
-        throw new IntegrityError("VES_INTEGRITY_NON_JSON_VALUE", "JSON properties must be enumerable data properties");
-      }
-      assertJsonValue(descriptor.value, seen, budget, depth + 1);
+function assertJsonObject(value: object, seen: Set<object>, budget: { nodes: number }, depth: number): void {
+  for (const [key, descriptor] of Object.entries(Object.getOwnPropertyDescriptors(value))) {
+    assertUnicode(key);
+    if (!descriptor.enumerable || descriptor.get !== undefined || descriptor.set !== undefined) {
+      throw new IntegrityError("VES_INTEGRITY_NON_JSON_VALUE", "JSON properties must be enumerable data properties");
     }
-  } finally {
-    seen.delete(value);
+    assertJsonValue(descriptor.value, seen, budget, depth + 1);
   }
 }
 
