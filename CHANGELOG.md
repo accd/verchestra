@@ -14,9 +14,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   `.verchestra/skills.lock.json`, keeping the previous generation beside it.
   `approve` records a signed approval of the worker's exact launch on this
   machine once its launch digest is typed back, and it expires after 30 days
-  unless `--expires` names an earlier time, at most 365 days ahead. `list`
-  shows each approval as active, expired, revoked, or invalid, and `revoke`
-  ends one. `check` reports whether admission would accept the worker, each
+  unless `--expires` names another time after now, at most 365 days ahead.
+  `list` shows each approval as active, expired, revoked, or invalid, and
+  `revoke` ends one. `check` reports whether admission would accept the worker, each
   prerequisite with its code and recovery, and exits 4 when one is missing.
   `approve` and `check` run on Linux and macOS only.
 - `vestra extension --help` and `vestra task --help` list the commands of their
