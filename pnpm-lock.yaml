@@ -137,6 +137,9 @@ importers:
       '@verchestra/evidence':
         specifier: workspace:0.0.0
         version: link:../../packages/evidence
+      '@verchestra/extension-host':
+        specifier: workspace:0.0.0
+        version: link:../../packages/extension-host
       '@verchestra/platform-node':
         specifier: workspace:0.0.0
         version: link:../../packages/platform-node

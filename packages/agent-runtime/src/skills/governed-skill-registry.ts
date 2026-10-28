@@ -43,7 +43,9 @@ interface LockedSkill {
     readonly repository: string;
     readonly commit: string;
     readonly treeDigest: string;
-    readonly signature: string;
+    // why: what a signature is belongs to the verifier the composition root
+    // wires; the registry only hands it over (the CLI's is a DSSE envelope).
+    readonly signature: unknown;
   };
   readonly contents: readonly SkillContent[];
   readonly lifecycleOwners: readonly string[];
@@ -58,7 +60,7 @@ export interface SkillLock {
   readonly generation: number;
   readonly skills: readonly LockedSkill[];
   readonly lockDigest: string;
-  readonly signature: string;
+  readonly signature: unknown;
 }
 
 interface SkillProfile {

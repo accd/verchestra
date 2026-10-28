@@ -33,9 +33,9 @@ admission, the launch-digest measurement, the Workspace evidence key with its
 pinned trust anchor, and DSSE sealing, instead of a second implementation of
 any of them.
 
-1. `vestra extension <add|approve|list|revoke|check>` -> `apps/vestra-cli` `main.ts` dispatch (exists) -> an extension command module (new, placement per conventions)
-2. `add`: entry file and declared metadata -> `GovernedSkillRegistry.planUpdate` and `activate` (exists) through a file lock store (door 1) and a Workspace-key lock verifier (door 2) -> writes the next lock generation to `.verchestra/skills.lock.json`
-3. `approve`: `GovernedSkillRegistry.resolveExecutableExtension` (exists) resolves the entry; `probeLaunchDigest` (exists) measures the launch on this host; local human confirmation, as `task approve` asks (exists) -> a signed approval record (door 3) in the Workspace state
+1. `vestra extension <add|approve|list|revoke|check>` -> `apps/vestra-cli` `main.ts` dispatch (exists) -> `apps/vestra-cli/src/extension/` (new): `extension-command.ts` dispatches and validates arguments (exit 2); `extension-check.ts` is the one module that imports `@verchestra/extension-host/admission`
+2. `add`: entry file and declared metadata -> `GovernedSkillRegistry.planUpdate` and `activate` (exists) through a file lock store (door 1) and a Workspace-key lock verifier (door 2) -> writes the next lock generation to `.verchestra/skills.lock.json`. From `init`'s placeholder, which is no lock and so cannot be `planUpdate`'s current lock, generation 1 is activated through a bootstrap plan naming the placeholder's raw-bytes digest, with the same generation rule. The update's `qualification.evidenceDigest` is the V2 canonical sha256 of a registration record `{skillId, extensionId, entryDigest, registeredAt}`: it records a registration, not a qualification; the human approval of the launch stays the gate (owner decision, 2026-10-28)
+3. `approve`: `GovernedSkillRegistry.resolveExecutableExtension` (exists) resolves the entry; `assertProbeWorkerEnvironment` (the host's own rule, exported from `SpawnedProbeWorker`'s module) refuses an environment before anything is measured; `probeLaunchDigest` (exists) measures the launch on this host; local human confirmation, as `task approve` asks (exists) -> a signed approval record (door 3) in the Workspace state
 4. `list`, `revoke`: the approval store (door 3) reads records, or writes a signed revocation
 5. `check`: `WorkspaceProbeAdmission.admit` (exists) with the production lock and approval ports and no grant; reaching `VES_EXECUTION_GRANT_REQUIRED` means every earlier prerequisite passed; the measured launch digest is compared with the approval's
 6. out: one JSON envelope per command; nothing is spawned; the composition guard admits only this path (door 4)
@@ -47,7 +47,9 @@ any of them.
 | domain | new term: `extension approval` - a signed, expiring, revocable human approval of one workspace probe worker launch on one machine, stored under the lock's `approvalRef`. It is not an `ApprovalRecord` (a run-scoped action approval in the authority store) |
 | domain | existing term: `.verchestra/skills.lock.json` was a placeholder only `task plan` read, hashing its raw bytes (`task-plan.ts:241-244`); after `extension add` it is a signed lock, so a task bound before an `add` no longer matches its plan - `task plan` and `task approve` branch on that digest |
 | stored data | nothing migrates: the placeholder is replaced by generation 1 on the first `add`; approvals are new files |
-| package boundary | `@verchestra/extension-host` gains an `exports` map (it has none, and the guard's resolver requires one) and becomes a CLI dependency; `docs/repository-map.md` is corrected where it lists dependencies the package does not declare |
+| package boundary | `@verchestra/extension-host` gains an `exports` map (it has none, and the guard's resolver requires one) with an `./admission` subpath that loads admission without the worker or the supervisor and becomes a CLI dependency; `docs/repository-map.md` is corrected where it lists dependencies the package does not declare |
+| CLI parser | `apps/vestra-cli/src/cli.ts` gains three additive rules: a repeatable string option (`--arg`, `--env`) collects its values in order and takes the next token as given; `vestra <family> --help` lists a command family; a command that declares a `version` option (`extension add`) takes `--version` as that option, which stays the global flag everywhere else. `CliCommand.options` may hold a string array |
+| evidence | `packages/evidence` declares three predicate types: `skill-lock/v1`, `extension-approval/v1`, `extension-approval-revocation/v1` |
 | architecture guard | `tests/architecture/extension-host-composition.test.mjs` moves from zero edges to an allowlist (door 4) |
 
 ## Relations
@@ -128,6 +130,8 @@ with nothing executed.
 | Database registration persistence | slice 2 needs it to plan a probe; slice 1 executes nothing |
 | Importing a skill from a remote repository | slice 1 registers a worker from the Workspace's own repository only |
 | Windows support | the host is POSIX-only (AD-037) |
+| Approving a revoked approval reference again | an approval is never deleted and door 3 keeps one file per reference, so a revoked reference stays revoked; a new approval needs a new reference (follow-up, owner decision 2026-10-28) |
+| Registering a skill id, extension id, or approval reference already in the lock | `add` refuses it (`VES_EXTENSION_ALREADY_REGISTERED`); replacing a registered worker is an update with its own review (follow-up, owner decision 2026-10-28) |
 | A second human approving | no second custodian exists (release custody O1) |
 
 ## Assumptions
