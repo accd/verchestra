@@ -32,17 +32,18 @@ const MAX_DEPTH = 128;
 const MAX_NODES = 100_000;
 
 function assertUnicode(value: string): void {
-  for (let index = 0; index < value.length; index += 1) {
-    const code = value.charCodeAt(index);
+  // why: `codePointAt` joins a well-formed pair into one code point above
+  // U+FFFF, so a surrogate it returns is one with no partner.
+  let index = 0;
+  while (index < value.length) {
+    const code = value.codePointAt(index) ?? 0;
     if (code >= 0xd800 && code <= 0xdbff) {
-      const next = value.charCodeAt(index + 1);
-      if (!Number.isFinite(next) || next < 0xdc00 || next > 0xdfff) {
-        throw new CanonicalJsonError("VES_CANONICAL_INVALID_UNICODE", "Unpaired high surrogate");
-      }
-      index += 1;
-    } else if (code >= 0xdc00 && code <= 0xdfff) {
+      throw new CanonicalJsonError("VES_CANONICAL_INVALID_UNICODE", "Unpaired high surrogate");
+    }
+    if (code >= 0xdc00 && code <= 0xdfff) {
       throw new CanonicalJsonError("VES_CANONICAL_INVALID_UNICODE", "Unpaired low surrogate");
     }
+    index += code > 0xffff ? 2 : 1;
   }
 }
 

@@ -208,15 +208,14 @@ export class McpToolBridgeController {
     let stall: NodeJS.Timeout | undefined;
     socket.on("data", (chunk: Buffer | string) => {
       clearTimeout(stall);
-      const lastByte = typeof chunk === "string" ? chunk.charCodeAt(chunk.length - 1) : chunk[chunk.length - 1];
-      stall =
-        lastByte === 0x0a
-          ? undefined
-          : setTimeout(() => {
-              if (socket.destroyed) return;
-              this.#statistics.stalledFrames += 1;
-              this.#reject(socket);
-            }, limit);
+      const lineEnded = typeof chunk === "string" ? chunk.endsWith("\n") : chunk.at(-1) === 0x0a;
+      stall = lineEnded
+        ? undefined
+        : setTimeout(() => {
+            if (socket.destroyed) return;
+            this.#statistics.stalledFrames += 1;
+            this.#reject(socket);
+          }, limit);
     });
     socket.on("close", () => clearTimeout(stall));
   }
