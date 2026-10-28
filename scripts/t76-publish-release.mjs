@@ -54,7 +54,6 @@ import {
 import {
   DEFAULT_RELEASE_ANCHOR,
   DEFAULT_TIMESTAMP_ANCHOR,
-  KEY_ENVIRONMENT_NAME,
   RELEASE_ANCHOR_PURPOSE,
   SUPPORTED_TARGET_KEYS,
   T76PublishError,
@@ -78,10 +77,10 @@ import {
 // shared with the online refresh (#382) and live in t76-signing-custody.mjs.
 // They stay importable from this path, which the publication tests and the
 // custody rehearsal already use.
+export { KEY_ENVIRONMENT_NAME } from "./t76-signing-custody.mjs";
 export {
   DEFAULT_RELEASE_ANCHOR,
   DEFAULT_TIMESTAMP_ANCHOR,
-  KEY_ENVIRONMENT_NAME,
   RELEASE_ANCHOR_PURPOSE,
   SUPPORTED_TARGET_KEYS,
   T76PublishError,

@@ -52,6 +52,61 @@ test("workflow changes select the release gate so CI cannot relax itself uncheck
   assert.ok(gatesFor(".github/workflows/ci.yml").includes("gate:release"));
 });
 
+// SonarCloud S5843 (T8): the control-surface pattern was split into three
+// simpler ones. These boundary paths pin exactly which paths it accepts.
+const CONTROL_SURFACE = "CI or qualification control surface";
+const isControlSurface = (path) => selectGates([path]).reasons["gate:release"] === CONTROL_SURFACE;
+
+test("the control-surface paths are matched exactly at their boundaries", () => {
+  for (const path of [
+    "docs/qualification/t1-validation.md",
+    "docs/qualification/t75a-validation.md",
+    "docs/qualification/t123-validation.md.bak",
+    ".github/workflows/ci.yml",
+    ".github/workflows/",
+    ".github/qualified-providers/claude.json",
+    ".github/dependabot.yml",
+    "package.json",
+    "pnpm-lock.yaml",
+    "pnpm-workspace.yaml",
+    ".npmrc",
+    "scripts/gate.mjs",
+    "scripts/gate-stages.mjs",
+    "scripts/gate-selection.mjs",
+    "scripts/gate-output.mjs",
+    "scripts/select-gates.mjs",
+    "scripts/test-scope.mjs",
+    "scripts/verify-provider-install.mjs"
+  ]) {
+    assert.ok(isControlSurface(path), `${path} is a control surface`);
+  }
+  for (const path of [
+    "docs/qualification/t-validation.md",
+    "docs/qualification/tab-validation.md",
+    "docs/qualification/T1-validation.md",
+    "docs/qualification/t1-validation.txt",
+    "x/docs/qualification/t1-validation.md",
+    ".github/dependabot.yml.bak",
+    ".github/dependabot.yaml",
+    ".github/workflow/ci.yml",
+    ".github/CODEOWNERS",
+    "packages/domain/package.json",
+    "package.json.bak",
+    "apackage.json",
+    "pnpm-lock.yaml~",
+    ".npmrc.local",
+    "apps/site/.npmrc",
+    "scripts/gate.mjs.bak",
+    "scripts/gates.mjs",
+    "scripts/gate-stage.mjs",
+    "scripts/sub/gate.mjs",
+    "scripts/gate.ts",
+    "xscripts/gate.mjs"
+  ]) {
+    assert.ok(!isControlSurface(path), `${path} is not a control surface`);
+  }
+});
+
 test("application and behavior suites select the full gate", () => {
   assert.ok(gatesFor("packages/application/src/execution/task-executor.ts").includes("gate:full"));
   assert.ok(gatesFor("tests/e2e/handoff-journey.test.mjs").includes("gate:full"));

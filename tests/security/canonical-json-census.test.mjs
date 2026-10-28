@@ -289,3 +289,29 @@ test("an allowlisted local canonicalizer must name its proof and the allowlist c
     [path]
   );
 });
+
+// SonarCloud S1940 (T8): only a positive canonicalizer count is read. A missing,
+// zero, negative, null or NaN count is skipped, and every skipped path below is
+// absent, so reading one would reject.
+test("local canonicalizer facts read only entries with a positive canonicalizer count", async () => {
+  const scratch = await mkdtemp(join(tmpdir(), "census-positive-count-"));
+  try {
+    await writeFile(join(scratch, "present.mjs"), "export const value = 1;\n");
+    const migrated = (path, signals) => ({ path, classification: "migrated-v2", signals });
+    const facts = await collectLocalCanonicalizerFacts(scratch, {
+      entries: [
+        migrated("absent-no-signals.mjs", undefined),
+        migrated("absent-no-count.mjs", {}),
+        migrated("absent-zero.mjs", { canonicalizer: 0 }),
+        migrated("absent-negative.mjs", { canonicalizer: -1 }),
+        migrated("absent-nan.mjs", { canonicalizer: Number.NaN }),
+        migrated("absent-null.mjs", { canonicalizer: null }),
+        { path: "absent-other-class.mjs", classification: "v1-only", signals: { canonicalizer: 1 } },
+        migrated("present.mjs", { canonicalizer: 1 })
+      ]
+    });
+    assert.deepEqual(facts, [{ path: "present.mjs", definesLocal: false, importsV2: false }]);
+  } finally {
+    await rm(scratch, { recursive: true, force: true });
+  }
+});

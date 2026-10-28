@@ -1083,10 +1083,10 @@ async function checkLicenseAgreement(root, manifest, errors) {
   const licenseStatement = "Verchestra is licensed under the [Apache License 2.0](LICENSE).";
   const licenseDecision = "### AD-007 — Project license is Apache-2.0";
   if (manifest.license !== "Apache-2.0") errors.push("package.json: license must be Apache-2.0");
-  for (const [path, requiredStatement] of [
-    ["README.md", licenseStatement],
-    [".specs/STATE.md", licenseDecision],
-    ["LICENSE", "Apache License"]
+  for (const { path, requiredStatement } of [
+    { path: "README.md", requiredStatement: licenseStatement },
+    { path: ".specs/STATE.md", requiredStatement: licenseDecision },
+    { path: "LICENSE", requiredStatement: "Apache License" }
   ]) {
     if (!existsSync(join(root, path)) || !(await readFile(join(root, path), "utf8")).includes(requiredStatement))
       errors.push(`${path}: license statement disagrees with Apache-2.0`);

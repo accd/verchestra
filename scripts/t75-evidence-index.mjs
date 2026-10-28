@@ -244,8 +244,10 @@ function fleetObservations(profiles) {
   return observed;
 }
 
-const citation = (entry) =>
-  `${entry.status}${entry.detail === undefined ? "" : ` (${entry.detail})`} in ${entry.gate} (run ${entry.runId})`;
+const citation = (entry) => {
+  const detail = entry.detail === undefined ? "" : ` (${entry.detail})`;
+  return `${entry.status}${detail} in ${entry.gate} (run ${entry.runId})`;
+};
 
 // Fails closed in every direction the evidence can disagree. A case declared
 // qualified is downgraded when the fleet does not agree. A case declared

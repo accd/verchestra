@@ -201,6 +201,27 @@ const withRefresh = (ledger, roles = { snapshot: 2, timestamp: 2 }) => {
   return { ...ledger, entries: [...ledger.entries, entry] };
 };
 
+// SonarCloud S6661 (T8): the next entry is a fresh plain object whose chain
+// fields are derived, lead the key order, and override the caller's values.
+test("a next ledger entry derives its leading chain fields over the caller's", () => {
+  const ledger = committed();
+  const [first] = ledger.entries;
+  const fields = {
+    ...first,
+    kind: "role-refresh",
+    roles: { snapshot: 2, timestamp: 2 },
+    sequence: 99,
+    previousEntryDigest: "forged"
+  };
+  const entry = nextLedgerEntry(ledger, fields);
+  assert.equal(entry.sequence, ledger.entries.length + 1);
+  assert.equal(entry.previousEntryDigest, ledgerEntryDigest(ledger.entries.at(-1)));
+  assert.deepEqual(Object.keys(entry).slice(0, 2), ["sequence", "previousEntryDigest"]);
+  assert.equal(Object.getPrototypeOf(entry), Object.prototype);
+  assert.notEqual(entry, fields);
+  assert.equal(fields.sequence, 99, "the caller's fields are not mutated");
+});
+
 test("a checked-out ledger must be an unedited prefix of main's", () => {
   const main = withRefresh(committed());
   assert.doesNotThrow(() => assertLedgerPrefix(committed(), main));

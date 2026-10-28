@@ -257,7 +257,7 @@ export function nextLedgerEntry(ledger, fields) {
     sequence: ledger.entries.length + 1,
     previousEntryDigest: previous === undefined ? null : ledgerEntryDigest(previous)
   };
-  const entry = Object.assign({ ...chain }, fields, chain);
+  const entry = { ...chain, ...fields, ...chain };
   validatePublicationLedger({ ...ledger, entries: [...ledger.entries, entry] });
   return entry;
 }
