@@ -7,8 +7,8 @@ branch: feat/235-extension-commands
 baseRevision: d069bf9291efaeeafbdc9dcea189fb56b8eafb0f
 lastCompletedTask: T1
 nextTask: "Plan slice 2 of T3 in its own feature: `vestra probe run` and grant issuance, the grant a CapabilityGrant in the authority store under a run row (owner decision, 2026-10-28), with database registration persistence; see plan.md Out of scope."
-lastGate: "Independent Verifier round 2 PASS at ec219824 (profile light, validate_verification exit 0); gate:quick and agent:check PASS on Windows; full test:e2e and test:build PASS on Linux"
-updatedAt: 2026-10-28T21:02:54Z
+lastGate: "Independent Verifier round 2 PASS at ec219824 (profile light, validate_verification exit 0); SonarCloud follow-up on sonar/679-extension-follow-up: gate:quick, test:contract and agent:check PASS on Windows; test:unit and test:contract with coverage, and the extension, launcher, sealed closure, architecture and task suites PASS on Linux"
+updatedAt: 2026-10-28T21:52:49Z
 ---
 
 # Evidence
@@ -36,9 +36,18 @@ of the Verifier's round 1 findings. The independent report is
 checks (fixed in `ec219824`), and round 2 passed every check on Linux and
 Windows. macOS was not run locally; CI covers it.
 
+A SonarCloud follow-up on branch `sonar/679-extension-follow-up`, based on
+#679's head `985f3b8f`, addresses the two quality gate conditions #679
+failed (new-code coverage and duplication). It changes no behaviour: it adds
+in-process tests and removes the duplicated blocks SonarCloud named. Its
+evidence is the "SonarCloud follow-up" section of `validation.md`; only the
+next SonarCloud analysis can confirm the gate.
+
 # Next exact action
 
-Plan slice 2 as its own feature under `.specs/features/`: `vestra probe run`
+Send the SonarCloud follow-up branch for human review as its own PR, after
+#679 merges, and confirm the next SonarCloud analysis passes the gate. Then
+plan slice 2 as its own feature under `.specs/features/`: `vestra probe run`
 and grant issuance, using the authority-store grant the owner chose on
 2026-10-28, plus database registration persistence. Start from `plan.md`'s
 Out of scope rows and door 4, which keeps the supervisor and spawned worker
