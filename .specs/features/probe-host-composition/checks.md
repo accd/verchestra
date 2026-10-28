@@ -3,7 +3,7 @@
 Profile: light
 Plan: `.specs/features/probe-host-composition/plan.md`
 
-32 checks in 1 slice · 5 one-way doors · 1 open, of which 0 block
+34 checks in 1 slice · 6 one-way doors · 1 open, of which 0 block
 
 The proofs name tests this slice writes. `E` is
 `tests/e2e/extension-cli-e2e.test.mjs`, `L` is
@@ -117,6 +117,12 @@ Proof: `node --test --test-name-pattern "extension-host is an exported CLI depen
 **C32** - An approval that expired is reported `fail` by `check` with `VES_PROBE_WORKSPACE_TRUST_APPROVAL` and exit 4 (state transition active -> expired)
 Proof: `node --test --test-name-pattern "check fails an expired approval" tests/e2e/extension-cli-e2e.test.mjs`
 
+**C33** - `GovernedSkillRegistry.resolve` refuses a lock that holds no `tlc-spec-driven` entry with `VES_SKILL_TLC_REQUIRED`, for a profile that enables only TLC, so the code names the TLC rule and not an unknown Skill (door 6, lesson L-001)
+Proof: `node --test --test-name-pattern "resolve refuses a lock without TLC" tests/unit/governed-skill-registry.test.mjs`
+
+**C34** - A lock that holds only a probe worker passes `planUpdate` and `activate` (generation 1 -> 2, staged and committed) and `resolveExecutableExtension` (door 6)
+Proof: `node --test --test-name-pattern "an extension-only lock passes updates and extension resolution" tests/unit/governed-skill-registry.test.mjs`
+
 ## Coverage
 
 | Set (size) | Member -> proof | Unproven |
@@ -131,13 +137,13 @@ Proof: `node --test --test-name-pattern "check fails an expired approval" tests/
 | `check` prerequisites (5) | invalid lock C21 · unresolved extension C21 · absent approval C21 · edited entry C21 · changed executable C21, table-driven over all 5 | - |
 | admission outcomes in `check` (5) | `VES_EXECUTION_GRANT_REQUIRED` C22 · `VES_PROBE_WORKSPACE_TRUST_APPROVAL` C22 · `VES_PROBE_WORKSPACE_TRUST_INVALID` C22 · `VES_SKILL_SIGNATURE_INVALID` C22 · admitted without a grant C22 | - |
 | refused `--env` kinds (3) | loader C13 · secret-like C13 · reserved C13 | - |
-| one-way doors (5) | door 1 C3, C4 · door 2 C2, C6, C7, C8 · door 3 C17, C18, C19 · door 4 C25 · door 5 C26 | - |
+| one-way doors (6) | door 1 C3, C4 · door 2 C2, C6, C7, C8 · door 3 C17, C18, C19 · door 4 C25 · door 5 C26 · door 6 C33, C34 | - |
 | entities (4) | `SkillLock` C1, C3 · `LockedSkill`/`ExtensionRef` C1 · `ExtensionApproval` C9, C17 · `ApprovalRevocation` C15, C17 | - |
 | platforms for `approve` and `check` (2) | POSIX C9, C20 · win32 C23 | - |
 | startup config: the CLI command dispatch (2 assemblies) | `main.ts` routing C1 · release command manifest C26 | - |
 
 - Claims naming an exit code or envelope field: C5, C9-C16, C20, C21, C23, C27-C30, C32 - each proof runs the CLI as a child process and reads its exit code and envelope
-- C2, C3, C4, C6, C7, C17-C19 and C22 are proven at their own layer; the end-to-end journeys exercise them again but are not their proof
+- C2, C3, C4, C6, C7, C17-C19, C22, C33 and C34 are proven at their own layer; the end-to-end journeys exercise them again but are not their proof
 
 ## Swept
 
@@ -148,7 +154,7 @@ Proof: `node --test --test-name-pattern "check fails an expired approval" tests/
 - concurrency: C19
 - data lifecycle: C10 (expiry bound), C4 (previous generation kept), C32; deletion: n/a - an approval is never deleted, a revocation ends it
 - dependency failure: C29 (secret store without the passphrase); C23 (platform)
-- state transitions: lock generation N -> N+1 C1, C3; approval active -> revoked C15, active -> expired C32
+- state transitions: lock generation N -> N+1 C1, C3, C34; approval active -> revoked C15, active -> expired C32
 - observability: n/a - the command envelope is the record; this slice adds no logging requirement
 
 ## Handoff
