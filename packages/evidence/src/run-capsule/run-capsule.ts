@@ -457,78 +457,143 @@ function normalizeBudgetEvidence(value: unknown): RunCapsuleBudgetEvidence {
   });
 }
 
-function normalizePayload(value: unknown): RunCapsulePayload {
-  inspectPrivateMaterial(value);
-  const valueRow = row(value, "Run Capsule", PAYLOAD_FIELDS);
-  const version = schemaVersionOf(valueRow["schemaVersion"]);
+const ERROR_STATUSES: readonly RunTerminalStatus[] = ["FAILED", "ABORTED", "INTERRUPTED"];
+
+interface TerminalEvidenceRefs {
+  readonly verificationRef: RunCapsuleRef | undefined;
+  readonly humanReviewRef: RunCapsuleRef | undefined;
+  readonly terminalErrorRef: RunCapsuleRef | undefined;
+  readonly recoveryRef: RunCapsuleRef | undefined;
+  readonly handoff: RunCapsuleHandoff | undefined;
+}
+
+function runClassification(valueRow: Row): {
+  readonly status: RunTerminalStatus;
+  readonly riskTier: RunRiskTier;
+  readonly runKind: RunCapsulePayload["runKind"];
+} {
   if (!RUN_TERMINAL_STATUSES.includes(valueRow["status"] as RunTerminalStatus))
     fail("VES_RUN_CAPSULE_INVALID", "Terminal status is invalid");
-  const status = valueRow["status"] as RunTerminalStatus;
   if (!["low", "medium", "high", "critical"].includes(String(valueRow["riskTier"])))
     fail("VES_RUN_CAPSULE_INVALID", "Risk tier is invalid");
-  const riskTier = valueRow["riskTier"] as RunRiskTier;
-  if (valueRow["runKind"] !== "feature" && valueRow["runKind"] !== "recovery")
-    fail("VES_RUN_CAPSULE_INVALID", "Run kind is invalid");
-  const sourceStateRefs = refs(valueRow["sourceStateRefs"], "sourceStateRefs", version);
-  if (sourceStateRefs.length === 0) fail("VES_RUN_CAPSULE_EVIDENCE_INCOMPLETE", "Source state is required");
-  if (!Array.isArray(valueRow["policyDigests"]) || valueRow["policyDigests"].length === 0)
-    fail("VES_RUN_CAPSULE_EVIDENCE_INCOMPLETE", "Policy evidence is required");
-  const policyDigests = Object.freeze(
-    [...new Set(valueRow["policyDigests"].map((entry) => digest(entry, "policyDigest")))].sort(codeUnitCompare)
-  );
-  const normalizedEvidence = evidence(valueRow["evidence"], riskTier, version);
-  const terminalTransition = normalizeTransition(valueRow["terminalTransition"], status);
-  const sealedAt = instant(valueRow["sealedAt"], "sealedAt");
-  if (Date.parse(sealedAt) < Date.parse(terminalTransition.occurredAt))
-    fail("VES_RUN_CAPSULE_INVALID", "Capsule cannot predate its terminal transition");
-  const verificationRef = optionalRef(valueRow["verificationRef"], "verificationRef");
-  const humanReviewRef = optionalRef(valueRow["humanReviewRef"], "humanReviewRef");
-  const terminalErrorRef = optionalRef(valueRow["terminalErrorRef"], "terminalErrorRef");
-  const recoveryRef = optionalRef(valueRow["recoveryRef"], "recoveryRef");
-  const handoff = valueRow["handoff"] === undefined ? undefined : normalizeHandoff(valueRow["handoff"], version);
-  const budgetEvidence =
-    valueRow["budgetEvidence"] === undefined ? undefined : normalizeBudgetEvidence(valueRow["budgetEvidence"]);
+  const runKind = valueRow["runKind"];
+  if (runKind !== "feature" && runKind !== "recovery") fail("VES_RUN_CAPSULE_INVALID", "Run kind is invalid");
+  return { status: valueRow["status"] as RunTerminalStatus, riskTier: valueRow["riskTier"] as RunRiskTier, runKind };
+}
 
-  if (status === "COMPLETED" && (verificationRef === undefined || humanReviewRef === undefined))
+function policyDigestsOf(value: unknown): readonly Digest[] {
+  if (!Array.isArray(value) || value.length === 0)
+    fail("VES_RUN_CAPSULE_EVIDENCE_INCOMPLETE", "Policy evidence is required");
+  return Object.freeze([...new Set(value.map((entry) => digest(entry, "policyDigest")))].sort(codeUnitCompare));
+}
+
+function assertCompletionAndErrorEvidence(
+  status: RunTerminalStatus,
+  terminalRefs: TerminalEvidenceRefs,
+  terminalTransition: RunCapsuleTerminalTransition
+): void {
+  if (
+    status === "COMPLETED" &&
+    (terminalRefs.verificationRef === undefined || terminalRefs.humanReviewRef === undefined)
+  )
     fail("VES_RUN_CAPSULE_EVIDENCE_INCOMPLETE", "Completed runs require verification and Human Review");
   if (status === "COMPLETED" && terminalTransition.fromState !== "HUMAN_REVIEW")
     fail("VES_RUN_CAPSULE_INVALID", "Completed runs must close from HUMAN_REVIEW");
-  if (["FAILED", "ABORTED", "INTERRUPTED"].includes(status) && terminalErrorRef === undefined)
+  if (ERROR_STATUSES.includes(status) && terminalRefs.terminalErrorRef === undefined)
     fail("VES_RUN_CAPSULE_EVIDENCE_INCOMPLETE", `${status} requires terminal error evidence`);
-  if (status === "HANDED_OFF" && handoff === undefined)
+}
+
+function assertHandoffAndRecoveryEvidence(
+  status: RunTerminalStatus,
+  terminalRefs: TerminalEvidenceRefs,
+  normalizedEvidence: RunCapsuleEvidence
+): void {
+  if (status === "HANDED_OFF" && terminalRefs.handoff === undefined)
     fail("VES_RUN_CAPSULE_EVIDENCE_INCOMPLETE", "Handed-off runs require publication and claim evidence");
-  if (status === "RECOVERED" && recoveryRef === undefined)
+  if (status === "RECOVERED" && terminalRefs.recoveryRef === undefined)
     fail("VES_RUN_CAPSULE_EVIDENCE_INCOMPLETE", "Recovered runs require recovery evidence");
   if (
     status === "HANDED_OFF" &&
     (normalizedEvidence.claims.length === 0 || normalizedEvidence.operationReceipts.length === 0)
   )
     fail("VES_RUN_CAPSULE_EVIDENCE_INCOMPLETE", "Handoff requires claim and operation evidence");
-  if (status !== "COMPLETED" && (verificationRef !== undefined || humanReviewRef !== undefined))
+}
+
+function assertReviewAndErrorEvidenceAllowed(status: RunTerminalStatus, terminalRefs: TerminalEvidenceRefs): void {
+  if (
+    status !== "COMPLETED" &&
+    (terminalRefs.verificationRef !== undefined || terminalRefs.humanReviewRef !== undefined)
+  )
     fail("VES_RUN_CAPSULE_INVALID", "Only completed runs may carry final verification and Human Review");
-  if (!["FAILED", "ABORTED", "INTERRUPTED"].includes(status) && terminalErrorRef !== undefined)
+  if (!ERROR_STATUSES.includes(status) && terminalRefs.terminalErrorRef !== undefined)
     fail("VES_RUN_CAPSULE_INVALID", "Terminal error evidence is not valid for this status");
-  if (status !== "RECOVERED" && recoveryRef !== undefined)
+}
+
+function assertRecoveryAndHandoffEvidenceAllowed(
+  status: RunTerminalStatus,
+  terminalRefs: TerminalEvidenceRefs,
+  runKind: RunCapsulePayload["runKind"]
+): void {
+  if (status !== "RECOVERED" && terminalRefs.recoveryRef !== undefined)
     fail("VES_RUN_CAPSULE_INVALID", "Recovery evidence is not valid for this status");
-  if (status !== "HANDED_OFF" && handoff !== undefined)
+  if (status !== "HANDED_OFF" && terminalRefs.handoff !== undefined)
     fail("VES_RUN_CAPSULE_INVALID", "Handoff evidence is not valid for this status");
-  if (status === "RECOVERED" && valueRow["runKind"] !== "recovery")
+  if (status === "RECOVERED" && runKind !== "recovery")
     fail("VES_RUN_CAPSULE_INVALID", "Recovered status requires a recovery run");
+}
+
+function optionalSafe(value: unknown, label: string): string | undefined {
+  return value === undefined ? undefined : safe(value, label);
+}
+
+// invariant: a member whose value is undefined is omitted, and the others keep
+// their declared order, so the sealed payload's key order is unchanged.
+function definedMembers<T extends Row>(members: T): { [K in keyof T]?: Exclude<T[K], undefined> } {
+  return Object.fromEntries(Object.entries(members).filter(([, member]) => member !== undefined)) as {
+    [K in keyof T]?: Exclude<T[K], undefined>;
+  };
+}
+
+function normalizePayload(value: unknown): RunCapsulePayload {
+  inspectPrivateMaterial(value);
+  const valueRow = row(value, "Run Capsule", PAYLOAD_FIELDS);
+  const version = schemaVersionOf(valueRow["schemaVersion"]);
+  const { status, riskTier, runKind } = runClassification(valueRow);
+  const sourceStateRefs = refs(valueRow["sourceStateRefs"], "sourceStateRefs", version);
+  if (sourceStateRefs.length === 0) fail("VES_RUN_CAPSULE_EVIDENCE_INCOMPLETE", "Source state is required");
+  const policyDigests = policyDigestsOf(valueRow["policyDigests"]);
+  const normalizedEvidence = evidence(valueRow["evidence"], riskTier, version);
+  const terminalTransition = normalizeTransition(valueRow["terminalTransition"], status);
+  const sealedAt = instant(valueRow["sealedAt"], "sealedAt");
+  if (Date.parse(sealedAt) < Date.parse(terminalTransition.occurredAt))
+    fail("VES_RUN_CAPSULE_INVALID", "Capsule cannot predate its terminal transition");
+  const terminalRefs: TerminalEvidenceRefs = {
+    verificationRef: optionalRef(valueRow["verificationRef"], "verificationRef"),
+    humanReviewRef: optionalRef(valueRow["humanReviewRef"], "humanReviewRef"),
+    terminalErrorRef: optionalRef(valueRow["terminalErrorRef"], "terminalErrorRef"),
+    recoveryRef: optionalRef(valueRow["recoveryRef"], "recoveryRef"),
+    handoff: valueRow["handoff"] === undefined ? undefined : normalizeHandoff(valueRow["handoff"], version)
+  };
+  const budgetEvidence =
+    valueRow["budgetEvidence"] === undefined ? undefined : normalizeBudgetEvidence(valueRow["budgetEvidence"]);
+
+  assertCompletionAndErrorEvidence(status, terminalRefs, terminalTransition);
+  assertHandoffAndRecoveryEvidence(status, terminalRefs, normalizedEvidence);
+  assertReviewAndErrorEvidenceAllowed(status, terminalRefs);
+  assertRecoveryAndHandoffEvidenceAllowed(status, terminalRefs, runKind);
 
   return Object.freeze({
     schemaVersion: version,
     workspaceId: safe(valueRow["workspaceId"], "workspaceId"),
     runId: safe(valueRow["runId"], "runId"),
-    runKind: valueRow["runKind"],
+    runKind,
     runVersion: positiveInteger(valueRow["runVersion"], "runVersion"),
     status,
     riskTier,
-    ...(valueRow["predecessorRunId"] === undefined
-      ? {}
-      : { predecessorRunId: safe(valueRow["predecessorRunId"], "predecessorRunId") }),
-    ...(valueRow["successorRunId"] === undefined
-      ? {}
-      : { successorRunId: safe(valueRow["successorRunId"], "successorRunId") }),
+    ...definedMembers({
+      predecessorRunId: optionalSafe(valueRow["predecessorRunId"], "predecessorRunId"),
+      successorRunId: optionalSafe(valueRow["successorRunId"], "successorRunId")
+    }),
     requestDigest: digest(valueRow["requestDigest"], "requestDigest"),
     workspaceFingerprint: digest(valueRow["workspaceFingerprint"], "workspaceFingerprint"),
     executionPackageRef: ref(valueRow["executionPackageRef"], "executionPackageRef"),
@@ -537,12 +602,7 @@ function normalizePayload(value: unknown): RunCapsulePayload {
     policyDigests,
     skillLockDigest: digest(valueRow["skillLockDigest"], "skillLockDigest"),
     evidence: normalizedEvidence,
-    ...(verificationRef === undefined ? {} : { verificationRef }),
-    ...(humanReviewRef === undefined ? {} : { humanReviewRef }),
-    ...(terminalErrorRef === undefined ? {} : { terminalErrorRef }),
-    ...(recoveryRef === undefined ? {} : { recoveryRef }),
-    ...(handoff === undefined ? {} : { handoff }),
-    ...(budgetEvidence === undefined ? {} : { budgetEvidence }),
+    ...definedMembers({ ...terminalRefs, budgetEvidence }),
     terminalTransition,
     sealedAt
   });

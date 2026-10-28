@@ -494,6 +494,143 @@ function bindingFor(summary: SupportBundleSummary) {
   });
 }
 
+function assertSignedBinding(bundle: SignedSupportBundle, summary: SupportBundleSummary): void {
+  const binding = bindingFor(summary);
+  if (
+    bundle.schema.name !== binding.schema.name ||
+    bundle.schema.version !== binding.schema.version ||
+    bundle.purpose !== binding.purpose ||
+    bundle.bindingId !== binding.bindingId ||
+    bundle.sourceStateDigest !== binding.sourceStateDigest ||
+    bundle.issuedAt !== summary.createdAt
+  )
+    fail("VES_SUPPORT_SIGNATURE_INVALID", "Support Bundle binding is invalid");
+}
+
+function assertSummaryApplies(
+  summary: SupportBundleSummary,
+  expected: { readonly workspaceId: string; readonly runId: string },
+  now: string
+): void {
+  if (summary.workspaceId !== expected.workspaceId)
+    fail("VES_SUPPORT_WORKSPACE_MISMATCH", "Support Bundle belongs to another Workspace");
+  if (summary.runId !== expected.runId) fail("VES_SUPPORT_RUN_MISMATCH", "Support Bundle belongs to another run");
+  if (Date.parse(now) < Date.parse(summary.createdAt))
+    fail("VES_SUPPORT_NOT_YET_VALID", "Support Bundle is not yet valid");
+  if (Date.parse(now) >= Date.parse(summary.expiresAt)) fail("VES_SUPPORT_EXPIRED", "Support Bundle expired");
+}
+
+function encryptedRecipientFor(
+  bundle: SignedSupportBundle,
+  summary: SupportBundleSummary,
+  receiver: { readonly recipientId: string; readonly privateKey: CryptoKey }
+): GeneralJWE["recipients"][number] {
+  const recipientIndex = summary.recipients.findIndex((entry) => entry.recipientId === receiver.recipientId);
+  if (recipientIndex < 0 || !(receiver.privateKey instanceof CryptoKey) || receiver.privateKey.type !== "private")
+    fail("VES_SUPPORT_RECIPIENT_DENIED", "Support Bundle recipient is not authorized");
+  const encryptedRecipient = bundle.payload.jwe.recipients[recipientIndex];
+  if (encryptedRecipient?.header?.kid !== receiver.recipientId)
+    fail("VES_SUPPORT_SIGNATURE_INVALID", "Support Bundle recipient closure is invalid");
+  return encryptedRecipient;
+}
+
+async function decryptArchive(
+  bundle: SignedSupportBundle,
+  summary: SupportBundleSummary,
+  encryptedRecipient: GeneralJWE["recipients"][number],
+  privateKey: CryptoKey
+): Promise<Uint8Array> {
+  try {
+    const selected: GeneralJWE = {
+      ciphertext: bundle.payload.jwe.ciphertext,
+      recipients: [encryptedRecipient],
+      ...(bundle.payload.jwe.protected === undefined ? {} : { protected: bundle.payload.jwe.protected }),
+      ...(bundle.payload.jwe.iv === undefined ? {} : { iv: bundle.payload.jwe.iv }),
+      ...(bundle.payload.jwe.tag === undefined ? {} : { tag: bundle.payload.jwe.tag })
+    };
+    const decrypted = await generalDecrypt(selected, privateKey, {
+      keyManagementAlgorithms: ["ECDH-ES+A256KW"],
+      contentEncryptionAlgorithms: ["A256GCM"]
+    });
+    if (
+      decrypted.protectedHeader?.typ !== "application/verchestra-support+json" ||
+      decrypted.protectedHeader["v"] !== summary.schemaVersion ||
+      decrypted.protectedHeader["plan"] !== summary.planId
+    )
+      fail("VES_SUPPORT_DECRYPT_FAILED", "Support Bundle encryption binding is invalid");
+    return decrypted.plaintext;
+  } catch (error) {
+    if (error instanceof SupportBundleError) throw error;
+    fail("VES_SUPPORT_DECRYPT_FAILED", "Support Bundle decryption failed", { cause: error });
+  }
+}
+
+function assertManifestIdentity(
+  manifest: Row,
+  version: SupportBundleSchemaVersion,
+  codeRegistry: SupportCodeRegistry
+): void {
+  if (
+    manifest["registryVersion"] !== "1.0.0" ||
+    manifest["registryDigest"] !== registryDigest(version) ||
+    manifest["codeRegistryDigest"] !== codeRegistry.digest ||
+    typeof manifest["planId"] !== "string" ||
+    !/^[a-f0-9]{64}$/u.test(manifest["planId"])
+  )
+    fail("VES_SUPPORT_INVALID", "Support Bundle manifest identity is invalid");
+}
+
+// invariant: returns the number of path fields, which the redaction summary
+// must account for exactly.
+function assertManifestDiagnostics(
+  value: unknown,
+  version: SupportBundleSchemaVersion,
+  codeRegistry: SupportCodeRegistry
+): number {
+  if (!Array.isArray(value) || value.length === 0 || value.length > 100)
+    fail("VES_SUPPORT_INVALID", "Support Bundle diagnostics are invalid");
+  const fieldIds: string[] = [];
+  let pathFields = 0;
+  for (const [index, entry] of value.entries()) {
+    const diagnostic = row(entry, `manifest.diagnostics[${index}]`, ["fieldId", "value"]);
+    const fieldId = safe(diagnostic["fieldId"], `manifest.diagnostics[${index}].fieldId`);
+    const definition = DEFINITIONS.find((candidate) => candidate.fieldId === fieldId);
+    if (definition === undefined) fail("VES_SUPPORT_FIELD_DENIED", `diagnostic field ${fieldId} is not allowlisted`);
+    assertNormalizedValue(definition, diagnostic["value"], codeRegistry);
+    if (definition.kind === "path") pathFields += 1;
+    fieldIds.push(fieldId);
+  }
+  if (
+    new Set(fieldIds).size !== fieldIds.length ||
+    canonicalizeJsonForVersion(version, fieldIds) !==
+      canonicalizeJsonForVersion(version, [...fieldIds].sort(codeUnitCompare))
+  )
+    fail("VES_SUPPORT_INVALID", "Support Bundle diagnostic order is not canonical");
+  return pathFields;
+}
+
+function assertManifestRecipients(value: unknown, version: SupportBundleSchemaVersion): void {
+  if (!Array.isArray(value) || value.length === 0)
+    fail("VES_SUPPORT_INVALID", "Support Bundle recipient manifest is invalid");
+  const recipientIds: string[] = [];
+  const thumbprints: string[] = [];
+  for (const [index, entry] of value.entries()) {
+    const recipient = row(entry, `manifest.recipients[${index}]`, ["recipientId", "keyThumbprint"]);
+    const recipientId = safe(recipient["recipientId"], `manifest.recipients[${index}].recipientId`);
+    if (typeof recipient["keyThumbprint"] !== "string" || !/^[A-Za-z0-9_-]{43}$/u.test(recipient["keyThumbprint"]))
+      fail("VES_SUPPORT_INVALID", "Support Bundle recipient thumbprint is invalid");
+    recipientIds.push(recipientId);
+    thumbprints.push(recipient["keyThumbprint"]);
+  }
+  if (
+    new Set(recipientIds).size !== recipientIds.length ||
+    new Set(thumbprints).size !== thumbprints.length ||
+    canonicalizeJsonForVersion(version, recipientIds) !==
+      canonicalizeJsonForVersion(version, [...recipientIds].sort(codeUnitCompare))
+  )
+    fail("VES_SUPPORT_INVALID", "Support Bundle recipients are not canonical");
+}
+
 const authorizedTokens = new WeakSet<object>();
 
 interface ExportAuthorization {
@@ -704,64 +841,26 @@ export class SupportBundleBuilder {
     if (!verification.ok)
       fail("VES_SUPPORT_SIGNATURE_INVALID", `Support Bundle signature failed: ${verification.code}`);
     const summary = bundle.payload.summary;
-    const binding = bindingFor(summary);
-    if (
-      bundle.schema.name !== binding.schema.name ||
-      bundle.schema.version !== binding.schema.version ||
-      bundle.purpose !== binding.purpose ||
-      bundle.bindingId !== binding.bindingId ||
-      bundle.sourceStateDigest !== binding.sourceStateDigest ||
-      bundle.issuedAt !== summary.createdAt
-    )
-      fail("VES_SUPPORT_SIGNATURE_INVALID", "Support Bundle binding is invalid");
-    if (summary.workspaceId !== expected.workspaceId)
-      fail("VES_SUPPORT_WORKSPACE_MISMATCH", "Support Bundle belongs to another Workspace");
-    if (summary.runId !== expected.runId) fail("VES_SUPPORT_RUN_MISMATCH", "Support Bundle belongs to another run");
-    if (Date.parse(now) < Date.parse(summary.createdAt))
-      fail("VES_SUPPORT_NOT_YET_VALID", "Support Bundle is not yet valid");
-    if (Date.parse(now) >= Date.parse(summary.expiresAt)) fail("VES_SUPPORT_EXPIRED", "Support Bundle expired");
-    const recipientIndex = summary.recipients.findIndex((entry) => entry.recipientId === receiver.recipientId);
-    if (recipientIndex < 0 || !(receiver.privateKey instanceof CryptoKey) || receiver.privateKey.type !== "private")
-      fail("VES_SUPPORT_RECIPIENT_DENIED", "Support Bundle recipient is not authorized");
-    const encryptedRecipient = bundle.payload.jwe.recipients[recipientIndex];
-    if (encryptedRecipient?.header?.kid !== receiver.recipientId)
-      fail("VES_SUPPORT_SIGNATURE_INVALID", "Support Bundle recipient closure is invalid");
-    let plaintext: Uint8Array;
-    try {
-      const selected: GeneralJWE = {
-        ciphertext: bundle.payload.jwe.ciphertext,
-        recipients: [encryptedRecipient],
-        ...(bundle.payload.jwe.protected === undefined ? {} : { protected: bundle.payload.jwe.protected }),
-        ...(bundle.payload.jwe.iv === undefined ? {} : { iv: bundle.payload.jwe.iv }),
-        ...(bundle.payload.jwe.tag === undefined ? {} : { tag: bundle.payload.jwe.tag })
-      };
-      const decrypted = await generalDecrypt(selected, receiver.privateKey, {
-        keyManagementAlgorithms: ["ECDH-ES+A256KW"],
-        contentEncryptionAlgorithms: ["A256GCM"]
-      });
-      if (
-        decrypted.protectedHeader?.typ !== "application/verchestra-support+json" ||
-        decrypted.protectedHeader["v"] !== summary.schemaVersion ||
-        decrypted.protectedHeader["plan"] !== summary.planId
-      )
-        fail("VES_SUPPORT_DECRYPT_FAILED", "Support Bundle encryption binding is invalid");
-      plaintext = decrypted.plaintext;
-    } catch (error) {
-      if (error instanceof SupportBundleError) throw error;
-      fail("VES_SUPPORT_DECRYPT_FAILED", "Support Bundle decryption failed", { cause: error });
-    }
-    let manifest: SupportBundleManifest;
-    try {
-      manifest = JSON.parse(Buffer.from(plaintext).toString("utf8")) as SupportBundleManifest;
-      this.#assertPlan({ planId: manifest.planId, manifest });
-    } catch (error) {
-      if (error instanceof SupportBundleError) throw error;
-      fail("VES_SUPPORT_DECRYPT_FAILED", "Support Bundle archive is malformed", { cause: error });
-    }
+    assertSignedBinding(bundle, summary);
+    assertSummaryApplies(summary, expected, now);
+    const encryptedRecipient = encryptedRecipientFor(bundle, summary, receiver);
+    const plaintext = await decryptArchive(bundle, summary, encryptedRecipient, receiver.privateKey);
+    const manifest = this.#archiveManifest(plaintext);
     if (!archiveMatchesSummary(manifest, summary))
       fail("VES_SUPPORT_DECRYPT_FAILED", "Support Bundle archive does not match its signed summary");
     this.#scanner.assertSafe(manifest);
     return deepFreeze(cloneJson(manifest, summary.schemaVersion));
+  }
+
+  #archiveManifest(plaintext: Uint8Array): SupportBundleManifest {
+    try {
+      const manifest = JSON.parse(Buffer.from(plaintext).toString("utf8")) as SupportBundleManifest;
+      this.#assertPlan({ planId: manifest.planId, manifest });
+      return manifest;
+    } catch (error) {
+      if (error instanceof SupportBundleError) throw error;
+      fail("VES_SUPPORT_DECRYPT_FAILED", "Support Bundle archive is malformed", { cause: error });
+    }
   }
 
   #assertPlan(plan: SupportBundlePlan): void {
@@ -790,43 +889,14 @@ export class SupportBundleBuilder {
     ]);
     // The verifier is selected from the recorded version, never guessed.
     const version = schemaVersionOf(manifest["schemaVersion"], "Support Bundle manifest identity is invalid");
-    if (
-      manifest["registryVersion"] !== "1.0.0" ||
-      manifest["registryDigest"] !== registryDigest(version) ||
-      manifest["codeRegistryDigest"] !== this.#codeRegistry.digest ||
-      typeof manifest["planId"] !== "string" ||
-      !/^[a-f0-9]{64}$/u.test(manifest["planId"])
-    )
-      fail("VES_SUPPORT_INVALID", "Support Bundle manifest identity is invalid");
+    assertManifestIdentity(manifest, version, this.#codeRegistry);
     safe(manifest["workspaceId"], "workspaceId");
     safe(manifest["runId"], "runId");
     const releaseDigest = digest(manifest["releaseDigest"], "releaseDigest");
     const createdAt = instant(manifest["createdAt"], "createdAt");
     const expiresAt = instant(manifest["expiresAt"], "expiresAt");
     if (Date.parse(expiresAt) <= Date.parse(createdAt)) fail("VES_SUPPORT_INVALID", "Support Bundle expiry is invalid");
-    if (
-      !Array.isArray(manifest["diagnostics"]) ||
-      manifest["diagnostics"].length === 0 ||
-      manifest["diagnostics"].length > 100
-    )
-      fail("VES_SUPPORT_INVALID", "Support Bundle diagnostics are invalid");
-    const fieldIds: string[] = [];
-    let pathFields = 0;
-    for (const [index, entry] of manifest["diagnostics"].entries()) {
-      const diagnostic = row(entry, `manifest.diagnostics[${index}]`, ["fieldId", "value"]);
-      const fieldId = safe(diagnostic["fieldId"], `manifest.diagnostics[${index}].fieldId`);
-      const definition = DEFINITIONS.find((candidate) => candidate.fieldId === fieldId);
-      if (definition === undefined) fail("VES_SUPPORT_FIELD_DENIED", `diagnostic field ${fieldId} is not allowlisted`);
-      assertNormalizedValue(definition, diagnostic["value"], this.#codeRegistry);
-      if (definition.kind === "path") pathFields += 1;
-      fieldIds.push(fieldId);
-    }
-    if (
-      new Set(fieldIds).size !== fieldIds.length ||
-      canonicalizeJsonForVersion(version, fieldIds) !==
-        canonicalizeJsonForVersion(version, [...fieldIds].sort(codeUnitCompare))
-    )
-      fail("VES_SUPPORT_INVALID", "Support Bundle diagnostic order is not canonical");
+    const pathFields = assertManifestDiagnostics(manifest["diagnostics"], version, this.#codeRegistry);
     const releaseField = plan.manifest.diagnostics.find((entry) => entry.fieldId === "release.digest");
     if (releaseField !== undefined && releaseField.value !== releaseDigest)
       fail("VES_SUPPORT_VALUE_INVALID", "release diagnostic does not match the bundle release");
@@ -836,25 +906,7 @@ export class SupportBundleBuilder {
     ]);
     if (redaction["pathsPseudonymized"] !== pathFields || redaction["prohibitedFieldsExcluded"] !== 10)
       fail("VES_SUPPORT_INVALID", "Support Bundle redaction summary is invalid");
-    if (!Array.isArray(manifest["recipients"]) || manifest["recipients"].length === 0)
-      fail("VES_SUPPORT_INVALID", "Support Bundle recipient manifest is invalid");
-    const recipientIds: string[] = [];
-    const thumbprints: string[] = [];
-    for (const [index, entry] of manifest["recipients"].entries()) {
-      const recipient = row(entry, `manifest.recipients[${index}]`, ["recipientId", "keyThumbprint"]);
-      const recipientId = safe(recipient["recipientId"], `manifest.recipients[${index}].recipientId`);
-      if (typeof recipient["keyThumbprint"] !== "string" || !/^[A-Za-z0-9_-]{43}$/u.test(recipient["keyThumbprint"]))
-        fail("VES_SUPPORT_INVALID", "Support Bundle recipient thumbprint is invalid");
-      recipientIds.push(recipientId);
-      thumbprints.push(recipient["keyThumbprint"]);
-    }
-    if (
-      new Set(recipientIds).size !== recipientIds.length ||
-      new Set(thumbprints).size !== thumbprints.length ||
-      canonicalizeJsonForVersion(version, recipientIds) !==
-        canonicalizeJsonForVersion(version, [...recipientIds].sort(codeUnitCompare))
-    )
-      fail("VES_SUPPORT_INVALID", "Support Bundle recipients are not canonical");
+    assertManifestRecipients(manifest["recipients"], version);
     const material = Object.fromEntries(
       Object.entries(plan.manifest).filter(([key]) => key !== "planId")
     ) as unknown as Omit<SupportBundleManifest, "planId">;

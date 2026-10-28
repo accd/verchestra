@@ -294,6 +294,24 @@ async function optionalBytes(path: string): Promise<Buffer | undefined> {
   }
 }
 
+interface GarbageCollectionReceipt {
+  readonly planId: string;
+  readonly quarantinedObjectIds: readonly string[];
+}
+
+interface QuarantineMove {
+  readonly source: string;
+  readonly target: string;
+  readonly object: MemoryManagedObject;
+}
+
+async function restoreQuarantined(move: { readonly source: string; readonly target: string }): Promise<void> {
+  if (existsSync(move.target) && !existsSync(move.source)) {
+    await mkdir(dirname(move.source), { recursive: true, mode: 0o700 });
+    await rename(move.target, move.source);
+  }
+}
+
 async function assertSafeTarget(root: string, target: string): Promise<void> {
   const canonicalRoot = await realpath(root);
   // Rebase the target into canonical space before any ancestry comparison. The
@@ -304,15 +322,40 @@ async function assertSafeTarget(root: string, target: string): Promise<void> {
   // exactly those platforms. A target that lexically leaves the root still
   // rebases outside canonicalRoot and fails the walk below unchanged.
   const canonicalTargetPath = resolve(canonicalRoot, relative(root, target));
-  try {
-    if ((await lstat(canonicalTargetPath)).isSymbolicLink())
-      throw new MemoryLifecycleError("VES_MEMORY_PROMOTION_TARGET_INVALID", "Target is a link");
-    const canonicalTarget = await realpath(canonicalTargetPath);
-    if (relative(canonicalRoot, canonicalTarget).startsWith(".."))
-      throw new MemoryLifecycleError("VES_MEMORY_PROMOTION_TARGET_INVALID", "Target leaves its owner");
-  } catch (error) {
-    if ((error as { readonly code?: unknown }).code !== "ENOENT") throw error;
+  await existsUnlinkedWithin(canonicalRoot, canonicalTargetPath, "Target is a link", "Target leaves its owner");
+  for (const ancestor of ancestorsBelow(canonicalRoot, canonicalTargetPath).toReversed()) {
+    const exists = await existsUnlinkedWithin(
+      canonicalRoot,
+      ancestor,
+      "Target ancestry contains a link",
+      "Target ancestry leaves its owner"
+    );
+    if (!exists) break;
   }
+}
+
+// invariant: false only for a path that does not exist; a link, or a path whose
+// real location leaves the canonical root, is refused with the given message.
+async function existsUnlinkedWithin(
+  canonicalRoot: string,
+  path: string,
+  linkMessage: string,
+  escapeMessage: string
+): Promise<boolean> {
+  try {
+    if ((await lstat(path)).isSymbolicLink())
+      throw new MemoryLifecycleError("VES_MEMORY_PROMOTION_TARGET_INVALID", linkMessage);
+    const canonicalPath = await realpath(path);
+    if (relative(canonicalRoot, canonicalPath).startsWith(".."))
+      throw new MemoryLifecycleError("VES_MEMORY_PROMOTION_TARGET_INVALID", escapeMessage);
+    return true;
+  } catch (error) {
+    if ((error as { readonly code?: unknown }).code === "ENOENT") return false;
+    throw error;
+  }
+}
+
+function ancestorsBelow(canonicalRoot: string, canonicalTargetPath: string): string[] {
   let current = dirname(canonicalTargetPath);
   const ancestors: string[] = [];
   while (current !== canonicalRoot) {
@@ -324,18 +367,7 @@ async function assertSafeTarget(root: string, target: string): Promise<void> {
     if (parent === current) break;
     current = parent;
   }
-  for (const ancestor of ancestors.toReversed()) {
-    try {
-      if ((await lstat(ancestor)).isSymbolicLink())
-        throw new MemoryLifecycleError("VES_MEMORY_PROMOTION_TARGET_INVALID", "Target ancestry contains a link");
-      const canonicalAncestor = await realpath(ancestor);
-      if (relative(canonicalRoot, canonicalAncestor).startsWith(".."))
-        throw new MemoryLifecycleError("VES_MEMORY_PROMOTION_TARGET_INVALID", "Target ancestry leaves its owner");
-    } catch (error) {
-      if ((error as { readonly code?: unknown }).code === "ENOENT") break;
-      throw error;
-    }
-  }
+  return ancestors;
 }
 
 function promotionArtifact(value: unknown): {
@@ -965,18 +997,7 @@ export class MemoryPromotionLifecycle {
       planId: plan.planId,
       quarantinedObjectIds: Object.freeze(plan.candidates.map((candidate) => candidate.objectId))
     });
-    const recorded = this.#database()
-      .prepare("SELECT receipt_json FROM memory_gc_runs WHERE plan_id=? AND workspace_id=?")
-      .get(plan.planId, plan.workspaceId) as Row | undefined;
-    if (recorded !== undefined) {
-      if (String(recorded["receipt_json"]) !== canonicalizeJsonV2(receipt))
-        throw new MemoryLifecycleError(
-          "VES_MEMORY_LIFECYCLE_CORRUPT",
-          "Stored garbage collection receipt conflicts with its plan",
-          true
-        );
-      return receipt;
-    }
+    if (this.#recordedGarbageCollection(plan, receipt)) return receipt;
     const current = this.planGarbageCollection({
       schemaVersion: 1,
       workspaceId: plan.workspaceId,
@@ -985,17 +1006,39 @@ export class MemoryPromotionLifecycle {
     });
     if (current.planId !== plan.planId)
       throw new MemoryLifecycleError("VES_MEMORY_GC_PLAN_STALE", "Garbage collection plan is stale");
-    const moved: { source: string; target: string; object: MemoryManagedObject }[] = [];
+    await this.#quarantineAndRecord(plan, receipt);
+    try {
+      await this.#options.hooks?.afterGarbageCollectionCommit?.();
+    } catch (error) {
+      throw new MemoryLifecycleError(
+        "VES_MEMORY_GC_OUTCOME_UNKNOWN",
+        "Garbage collection committed but acknowledgement was lost",
+        true,
+        { cause: error }
+      );
+    }
+    return receipt;
+  }
+
+  #recordedGarbageCollection(plan: MemoryGarbageCollectionPlan, receipt: GarbageCollectionReceipt): boolean {
+    const recorded = this.#database()
+      .prepare("SELECT receipt_json FROM memory_gc_runs WHERE plan_id=? AND workspace_id=?")
+      .get(plan.planId, plan.workspaceId) as Row | undefined;
+    if (recorded === undefined) return false;
+    if (String(recorded["receipt_json"]) !== canonicalizeJsonV2(receipt))
+      throw new MemoryLifecycleError(
+        "VES_MEMORY_LIFECYCLE_CORRUPT",
+        "Stored garbage collection receipt conflicts with its plan",
+        true
+      );
+    return true;
+  }
+
+  async #quarantineAndRecord(plan: MemoryGarbageCollectionPlan, receipt: GarbageCollectionReceipt): Promise<void> {
+    const moved: QuarantineMove[] = [];
     const db = this.#database();
     try {
-      for (const candidate of plan.candidates) {
-        const row = db
-          .prepare("SELECT * FROM memory_managed_objects WHERE object_id=? AND workspace_id=?")
-          .get(candidate.objectId, plan.workspaceId) as Row;
-        const object = managedObject(row);
-        moved.push({ ...(await this.#quarantineObject(object)), object });
-        await this.#options.hooks?.afterQuarantineMove?.(object.objectId);
-      }
+      await this.#quarantineCandidates(db, plan, moved);
       db.exec("BEGIN IMMEDIATE");
       for (const item of moved)
         db.prepare(
@@ -1014,25 +1057,26 @@ export class MemoryPromotionLifecycle {
       db.exec("COMMIT");
     } catch (error) {
       if (db.isTransaction) db.exec("ROLLBACK");
-      for (const item of [...moved].reverse()) {
-        if (existsSync(item.target) && !existsSync(item.source)) {
-          await mkdir(dirname(item.source), { recursive: true, mode: 0o700 });
-          await rename(item.target, item.source);
-        }
-      }
+      for (const item of [...moved].reverse()) await restoreQuarantined(item);
       throw mapSqlite(error);
     }
-    try {
-      await this.#options.hooks?.afterGarbageCollectionCommit?.();
-    } catch (error) {
-      throw new MemoryLifecycleError(
-        "VES_MEMORY_GC_OUTCOME_UNKNOWN",
-        "Garbage collection committed but acknowledgement was lost",
-        true,
-        { cause: error }
-      );
+  }
+
+  // invariant: each move is recorded as soon as it happens, so a failure part
+  // way through still restores every object already moved.
+  async #quarantineCandidates(
+    db: DatabaseSync,
+    plan: MemoryGarbageCollectionPlan,
+    moved: QuarantineMove[]
+  ): Promise<void> {
+    for (const candidate of plan.candidates) {
+      const row = db
+        .prepare("SELECT * FROM memory_managed_objects WHERE object_id=? AND workspace_id=?")
+        .get(candidate.objectId, plan.workspaceId) as Row;
+      const object = managedObject(row);
+      moved.push({ ...(await this.#quarantineObject(object)), object });
+      await this.#options.hooks?.afterQuarantineMove?.(object.objectId);
     }
-    return receipt;
   }
 
   async invalidateObject(value: unknown): Promise<{ readonly objectId: string; readonly state: "quarantined" }> {
@@ -1089,36 +1133,53 @@ export class MemoryPromotionLifecycle {
     if (stored === undefined) invalid("forget object does not belong to the exact Workspace");
     const object = managedObject(stored);
     const sensitive = new Set<Classification>(["confidential", "restricted"]).has(object.classification);
-    if (object.state === "quarantined" && object.lifecycleReason === "forget") {
-      if (object.encryptionKeyRef === null) return Object.freeze({ objectId, cryptoShredded: sensitive });
-      if (this.#options.cryptoShred === undefined)
-        throw new MemoryLifecycleError("VES_MEMORY_CRYPTO_SHRED_UNAVAILABLE", "Crypto-shred adapter is unavailable");
-      try {
-        await this.#options.cryptoShred.destroy(object.encryptionKeyRef);
-        this.#database()
-          .prepare(
-            "UPDATE memory_managed_objects SET encryption_key_ref=NULL WHERE object_id=? AND state='quarantined'"
-          )
-          .run(objectId);
-        await this.#options.hooks?.afterCryptoShred?.(objectId);
-      } catch (error) {
-        const converged = this.#database()
-          .prepare("SELECT encryption_key_ref FROM memory_managed_objects WHERE object_id=?")
-          .get(objectId) as Row;
-        if (converged["encryption_key_ref"] === null)
-          throw new MemoryLifecycleError(
-            "VES_MEMORY_FORGET_OUTCOME_UNKNOWN",
-            "Crypto-shred committed but acknowledgement was lost",
-            true,
-            { cause: error }
-          );
-        throw mapSqlite(error);
-      }
-      return Object.freeze({ objectId, cryptoShredded: true });
-    }
+    if (object.state === "quarantined" && object.lifecycleReason === "forget")
+      return await this.#resumeForget(object, objectId, sensitive);
     if (object.state !== "active") invalid("forget object is not active");
     if (this.#protection(workspaceId).protectedIds.has(objectId))
       throw new MemoryLifecycleError("VES_MEMORY_OBJECT_PROTECTED", "Protected memory cannot be forgotten");
+    const moved = await this.#quarantineForForget(object, objectId);
+    if (object.encryptionKeyRef === null) return Object.freeze({ objectId, cryptoShredded: false });
+    await this.#shredForgotten(object.encryptionKeyRef, objectId, moved);
+    return Object.freeze({ objectId, cryptoShredded: true });
+  }
+
+  // why: a forget already quarantined is replayed only to finish its crypto-shred;
+  // an object without a key reports whether its class would have needed one.
+  async #resumeForget(
+    object: MemoryManagedObject,
+    objectId: string,
+    sensitive: boolean
+  ): Promise<{ readonly objectId: string; readonly cryptoShredded: boolean }> {
+    if (object.encryptionKeyRef === null) return Object.freeze({ objectId, cryptoShredded: sensitive });
+    if (this.#options.cryptoShred === undefined)
+      throw new MemoryLifecycleError("VES_MEMORY_CRYPTO_SHRED_UNAVAILABLE", "Crypto-shred adapter is unavailable");
+    try {
+      await this.#options.cryptoShred.destroy(object.encryptionKeyRef);
+      this.#database()
+        .prepare("UPDATE memory_managed_objects SET encryption_key_ref=NULL WHERE object_id=? AND state='quarantined'")
+        .run(objectId);
+      await this.#options.hooks?.afterCryptoShred?.(objectId);
+    } catch (error) {
+      const converged = this.#database()
+        .prepare("SELECT encryption_key_ref FROM memory_managed_objects WHERE object_id=?")
+        .get(objectId) as Row;
+      if (converged["encryption_key_ref"] === null)
+        throw new MemoryLifecycleError(
+          "VES_MEMORY_FORGET_OUTCOME_UNKNOWN",
+          "Crypto-shred committed but acknowledgement was lost",
+          true,
+          { cause: error }
+        );
+      throw mapSqlite(error);
+    }
+    return Object.freeze({ objectId, cryptoShredded: true });
+  }
+
+  async #quarantineForForget(
+    object: MemoryManagedObject,
+    objectId: string
+  ): Promise<{ readonly source: string; readonly target: string }> {
     const moved = await this.#quarantineObject(object);
     try {
       await this.#options.hooks?.afterQuarantineMove?.(object.objectId);
@@ -1128,31 +1189,28 @@ export class MemoryPromotionLifecycle {
         )
         .run(this.#now(), objectId);
     } catch (error) {
-      if (existsSync(moved.target) && !existsSync(moved.source)) {
-        await mkdir(dirname(moved.source), { recursive: true, mode: 0o700 });
-        await rename(moved.target, moved.source);
-      }
+      await restoreQuarantined(moved);
       throw mapSqlite(error);
     }
-    if (object.encryptionKeyRef === null) return Object.freeze({ objectId, cryptoShredded: false });
-    if (this.#options.cryptoShred === undefined) {
-      this.#database()
-        .prepare(
-          "UPDATE memory_managed_objects SET state='active',quarantined_at=NULL,lifecycle_reason=NULL WHERE object_id=?"
-        )
-        .run(objectId);
+    return moved;
+  }
+
+  async #shredForgotten(
+    encryptionKeyRef: string,
+    objectId: string,
+    moved: { readonly source: string; readonly target: string }
+  ): Promise<void> {
+    const cryptoShred = this.#options.cryptoShred;
+    if (cryptoShred === undefined) {
+      this.#reactivateForgotten(objectId);
       await rename(moved.target, moved.source);
       throw new MemoryLifecycleError("VES_MEMORY_CRYPTO_SHRED_UNAVAILABLE", "Crypto-shred adapter is unavailable");
     }
     try {
-      await this.#options.cryptoShred.destroy(object.encryptionKeyRef);
+      await cryptoShred.destroy(encryptionKeyRef);
     } catch (error) {
       try {
-        this.#database()
-          .prepare(
-            "UPDATE memory_managed_objects SET state='active',quarantined_at=NULL,lifecycle_reason=NULL WHERE object_id=?"
-          )
-          .run(objectId);
+        this.#reactivateForgotten(objectId);
         await rename(moved.target, moved.source);
       } catch (restoreError) {
         throw new MemoryLifecycleError(
@@ -1177,7 +1235,14 @@ export class MemoryPromotionLifecycle {
         { cause: error }
       );
     }
-    return Object.freeze({ objectId, cryptoShredded: true });
+  }
+
+  #reactivateForgotten(objectId: string): void {
+    this.#database()
+      .prepare(
+        "UPDATE memory_managed_objects SET state='active',quarantined_at=NULL,lifecycle_reason=NULL WHERE object_id=?"
+      )
+      .run(objectId);
   }
 
   stateDigest(): string {
