@@ -1,14 +1,19 @@
 // why: the only entry point main.ts loads for `vestra extension`, always
 // through a dynamic import, so no other command loads the skill registry or
 // the probe host's admission.
-import { homedir } from "node:os";
 import { isAbsolute } from "node:path";
 
 import type { CliCommand, CommandResult } from "@verchestra/application";
 
 import { cliError } from "../cli-errors.ts";
 import { SIGNING_PASSPHRASE, readCredentials } from "../task/task-credentials.ts";
-import type { TaskCommandIo, TaskConfirmationInput } from "../task/task-io.ts";
+import {
+  executeTaskFamilyCommand,
+  type TaskFamily,
+  type TaskFamilyHandler,
+  type TaskFamilyProcess
+} from "../task/task-dispatch.ts";
+import type { TaskCommandIo } from "../task/task-io.ts";
 import { workspaceSigner } from "../task/task-signing.ts";
 import { openTaskWorkspace, requireWorkspaceStateContained } from "../task/task-workspace.ts";
 import { addExtension } from "./extension-add.ts";
@@ -27,8 +32,6 @@ const SKILL_ID = /^[a-z0-9][a-z0-9._:@/+-]{0,255}$/u;
 const EXTENSION_ID = /^[A-Za-z0-9][A-Za-z0-9._:@/+-]{0,511}$/u;
 const VERSION = /^\d+\.\d+\.\d+$/u;
 const ENVIRONMENT = /^([^=]+)=(.*)$/su;
-
-type Handler = (command: CliCommand, io: TaskCommandIo) => Promise<CommandResult>;
 
 function invalid(option: string, message: string): never {
   throw cliError("VES_CLI_ARGUMENT_INVALID", { argument: `--${option}` }, message);
@@ -114,7 +117,7 @@ async function revokeExtension(io: TaskCommandIo, approvalRef: string) {
 
 const data = (value: unknown): CommandResult => ({ data: value, diagnostics: [] });
 
-const HANDLERS: Readonly<Record<string, Handler>> = Object.freeze({
+const HANDLERS: Readonly<Record<string, TaskFamilyHandler>> = Object.freeze({
   "extension add": async (command, io) =>
     data(
       await addExtension(io, {
@@ -143,29 +146,15 @@ const HANDLERS: Readonly<Record<string, Handler>> = Object.freeze({
   "extension check": async (command, io) => checkExtension(io, required(command, "approval-ref", APPROVAL_REF))
 });
 
+const EXTENSION_FAMILY: TaskFamily = Object.freeze({
+  handlers: HANDLERS,
+  notInstalled: "Extension command is not installed",
+  publicError: extensionPublicError
+});
+
 export async function executeExtensionCommand(
   command: CliCommand,
-  process_: {
-    readonly controlRoot: string;
-    readonly platform: string;
-    readonly env: Readonly<Record<string, string | undefined>>;
-    readonly stdin: TaskConfirmationInput;
-    readonly stderr: (value: string) => void;
-    readonly pid: number;
-  }
+  process_: TaskFamilyProcess
 ): Promise<CommandResult> {
-  const handler = HANDLERS[command.name];
-  if (handler === undefined)
-    throw cliError("VES_CLI_ARGUMENT_INVALID", { argument: command.name }, "Extension command is not installed");
-  const keychain = command.options["keychain"];
-  const io: TaskCommandIo = {
-    ...process_,
-    homeDirectory: homedir(),
-    ...(typeof keychain === "string" ? { keychainPath: keychain } : {})
-  };
-  try {
-    return await handler(command, io);
-  } catch (error) {
-    throw extensionPublicError(error);
-  }
+  return executeTaskFamilyCommand(EXTENSION_FAMILY, command, process_);
 }
