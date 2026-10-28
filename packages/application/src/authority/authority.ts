@@ -516,7 +516,10 @@ export class CapabilityBroker {
     StableId.parse(request.workspaceId, "workspace");
     StableId.parse(request.runId, "run");
     const constraints = Object.freeze(
-      request.constraints.map((value) => (assertValue(value, "constraint", true), value))
+      request.constraints.map((value) => {
+        assertValue(value, "constraint", true);
+        return value;
+      })
     );
     assertValue(request.capability, "capability", true);
     if (constraints.length === 0) fail("VES_CAPABILITY_SCOPE_INVALID", "Capability constraints must be explicit");

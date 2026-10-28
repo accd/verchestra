@@ -262,7 +262,7 @@ export class SafeInitService {
   readonly #identity = Object.freeze({});
   readonly #hooks: InitTransactionHooks;
   constructor(options: { readonly hooks?: InitTransactionHooks } = {}) {
-    this.#hooks = Object.freeze({ ...(options.hooks ?? {}) });
+    this.#hooks = Object.freeze({ ...options.hooks });
   }
   async preview(input: { controlRoot: string; files: Readonly<Record<string, string>> }): Promise<InitPreview> {
     const root = await realpath(input.controlRoot);

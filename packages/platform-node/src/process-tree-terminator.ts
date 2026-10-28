@@ -220,7 +220,7 @@ export async function terminateStoppedTree(
   // invariant: POSIX only; the probe host refuses win32 before it starts a worker.
   if (process.platform === "win32") options.incomplete();
   const found = new Set<number>();
-  let outcome = { running: false, complete: false };
+  let outcome: { readonly running: boolean; readonly complete: boolean };
   try {
     stopGroup(pid);
     outcome = await stopLinked(pid, options, found);

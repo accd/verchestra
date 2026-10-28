@@ -416,7 +416,8 @@ class PipeHelperRun {
   }
 
   close(): Promise<void> {
-    return (this.#closing ??= this.#shutdown());
+    this.#closing ??= this.#shutdown();
+    return this.#closing;
   }
 
   // why: a diagnosis never changes the channel, so an observer that throws is

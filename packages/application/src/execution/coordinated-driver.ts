@@ -386,7 +386,7 @@ class CoordinationRound implements CoordinationNodeRunner {
   // has ended and been recorded failed or partial, so no session runs on and
   // the ledger is durable; the round stays `running`, so a resume continues it.
   async drain(): Promise<void> {
-    await Promise.allSettled([...this.#calls]);
+    await Promise.allSettled(this.#calls);
     await this.#saving;
   }
 

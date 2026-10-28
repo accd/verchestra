@@ -125,8 +125,8 @@ class ObservedSession<TStartRequest> {
     if (this.#observer !== undefined) return;
     try {
       this.#run.observe?.(event);
-    } catch (failure) {
-      this.#observer = { failure };
+    } catch (error_) {
+      this.#observer = { failure: error_ };
       this.stop();
     }
   }

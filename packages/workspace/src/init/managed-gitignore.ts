@@ -30,8 +30,7 @@ function newlineOf(content: string): { readonly value: "\n" | "\r\n"; readonly n
   return hasCrLf ? { value: "\r\n", name: "crlf" } : { value: "\n", name: "lf" };
 }
 
-export function editManagedGitignore(existing: string | undefined): ManagedGitignoreEdit {
-  const original = existing ?? "";
+export function editManagedGitignore(original = ""): ManagedGitignoreEdit {
   if (original.includes("\0")) {
     throw new WorkspaceScanError("VES_INIT_GITIGNORE_AMBIGUOUS", "Gitignore contains invalid control data");
   }

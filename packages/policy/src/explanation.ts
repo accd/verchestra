@@ -25,7 +25,7 @@ export interface PolicyExplanation {
 const SECRET_SHAPES = [
   /\bsk-[A-Za-z0-9]{16,}\b/gu,
   /\bghp_[A-Za-z0-9]{20,}\b/gu,
-  /\bBEGIN (?:RSA |OPENSSH )?PRIVATE KEY\b[\s\S]*?$/gu,
+  /\bBEGIN (?:RSA |OPENSSH )?PRIVATE KEY\b[\s\S]*$/gu,
   /\b[a-f0-9]{40,64}\b/gu
 ];
 

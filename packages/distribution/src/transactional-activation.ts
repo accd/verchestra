@@ -189,7 +189,7 @@ const optionalStat = async (path: string) => {
   }
 };
 
-const optionalJson = async (path: string): Promise<unknown | undefined> => {
+const optionalJson = async (path: string): Promise<unknown> => {
   try {
     return JSON.parse(await readFile(path, "utf8"));
   } catch (error) {
