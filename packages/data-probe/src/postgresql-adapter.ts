@@ -106,23 +106,41 @@ function sqlPrefixAllowed(sql: string): boolean {
   );
 }
 
-export function parsePostgreSqlReadOperation(sql: unknown, options: ParseOptions): PostgreSqlReadOperation {
+type PostgreSqlObject = { schema: string; name: string; type: "table" | "catalog" };
+type StatementRule = readonly [denied: (sql: string) => boolean, code: string, message: string];
+
+// invariant: the rules run in this order, so a statement breaking several of
+// them is refused with the first one listed.
+const STATEMENT_RULES: readonly StatementRule[] = [
+  [
+    (sql) => !/^[\t\n\r\x20-\x7e]+$/u.test(sql) || /\\/u.test(sql) || /\$(?!\d+\b)/u.test(sql),
+    "VES_POSTGRES_ENCODING_DENIED",
+    "PostgreSQL statement encoding is not permitted"
+  ],
+  [(sql) => /--|\/\*|\*\//u.test(sql), "VES_POSTGRES_COMMENT_DENIED", "PostgreSQL comments are not permitted"],
+  [(sql) => sql.includes(";"), "VES_POSTGRES_MULTI_STATEMENT", "PostgreSQL request must contain one statement"],
+  [
+    (sql) => sql.includes("'") || sql.includes('"'),
+    "VES_POSTGRES_LITERAL_DENIED",
+    "Inline SQL literals and quoted identifiers are not permitted"
+  ],
+  [
+    (sql) => /\bFOR\s+(?:UPDATE|SHARE|NO\s+KEY\s+UPDATE|KEY\s+SHARE)\b/iu.test(sql),
+    "VES_POSTGRES_LOCK_DENIED",
+    "PostgreSQL row locking is not permitted"
+  ],
+  [containsWriteKeyword, "VES_POSTGRES_WRITE_DENIED", "PostgreSQL write syntax is not permitted"],
+  [(sql) => !sqlPrefixAllowed(sql), "VES_POSTGRES_READ_FORM_DENIED", "PostgreSQL read form is not permitted"]
+];
+
+function assertPostgreSqlStatement(sql: unknown): asserts sql is string {
   if (typeof sql !== "string" || sql.length === 0 || sql.length > 131_072) {
     fail("VES_POSTGRES_REQUEST_INVALID", "Protected PostgreSQL statement is invalid");
   }
-  if (!/^[\t\n\r\x20-\x7e]+$/u.test(sql) || /\\/u.test(sql) || /\$(?!\d+\b)/u.test(sql)) {
-    fail("VES_POSTGRES_ENCODING_DENIED", "PostgreSQL statement encoding is not permitted");
-  }
-  if (/--|\/\*|\*\//u.test(sql)) fail("VES_POSTGRES_COMMENT_DENIED", "PostgreSQL comments are not permitted");
-  if (sql.includes(";")) fail("VES_POSTGRES_MULTI_STATEMENT", "PostgreSQL request must contain one statement");
-  if (sql.includes("'") || sql.includes('"')) {
-    fail("VES_POSTGRES_LITERAL_DENIED", "Inline SQL literals and quoted identifiers are not permitted");
-  }
-  if (/\bFOR\s+(?:UPDATE|SHARE|NO\s+KEY\s+UPDATE|KEY\s+SHARE)\b/iu.test(sql)) {
-    fail("VES_POSTGRES_LOCK_DENIED", "PostgreSQL row locking is not permitted");
-  }
-  if (containsWriteKeyword(sql)) fail("VES_POSTGRES_WRITE_DENIED", "PostgreSQL write syntax is not permitted");
-  if (!sqlPrefixAllowed(sql)) fail("VES_POSTGRES_READ_FORM_DENIED", "PostgreSQL read form is not permitted");
+  for (const [denied, code, message] of STATEMENT_RULES) if (denied(sql)) fail(code, message);
+}
+
+function assertPostgreSqlOptions(options: ParseOptions): void {
   if (!/^protected-request:[a-z0-9-]{16,128}$/u.test(options.protectedRequestRef)) {
     fail("VES_POSTGRES_REQUEST_INVALID", "Protected PostgreSQL request reference is invalid");
   }
@@ -133,31 +151,52 @@ export function parsePostgreSqlReadOperation(sql: unknown, options: ParseOptions
   ) {
     fail("VES_POSTGRES_PARAMETERS_INVALID", "PostgreSQL parameter classifications are invalid");
   }
+}
 
+function commonTableExpressions(sql: string): Set<string> {
   const cteNames = new Set<string>();
   for (const match of sql.matchAll(/(?:\bWITH\b|,)\s*([a-z][a-z0-9_]*)\s+AS\s*\(/giu)) {
     cteNames.add((match[1] as string).toLowerCase());
   }
-  const objects = new Map<string, { schema: string; name: string; type: "table" | "catalog" }>();
+  return cteNames;
+}
+
+// Returns undefined for a reference to a common table expression.
+function postgreSqlObject(
+  first: string,
+  second: string | undefined,
+  cteNames: ReadonlySet<string>,
+  kind: ParseOptions["kind"]
+): PostgreSqlObject | undefined {
+  if (second === undefined) {
+    if (cteNames.has(first)) return undefined;
+    fail("VES_POSTGRES_OBJECT_INVALID", "PostgreSQL objects must be schema-qualified");
+  }
+  if (!IDENTIFIER.test(first) || !IDENTIFIER.test(second)) {
+    fail("VES_POSTGRES_OBJECT_INVALID", "PostgreSQL object identity is invalid");
+  }
+  const catalog = first === "pg_catalog" || first === "information_schema";
+  if (catalog && (kind !== "introspect" || !SAFE_CATALOGS.has(`${first}.${second}`))) {
+    fail("VES_POSTGRES_CATALOG_DENIED", "PostgreSQL catalog relation is not approved");
+  }
+  return { schema: first, name: second, type: catalog ? "catalog" : "table" };
+}
+
+function postgreSqlObjects(
+  sql: string,
+  cteNames: ReadonlySet<string>,
+  kind: ParseOptions["kind"]
+): Map<string, PostgreSqlObject> {
+  const objects = new Map<string, PostgreSqlObject>();
   for (const match of sql.matchAll(/\b(?:FROM|JOIN)\s+([a-z][a-z0-9_]*)(?:\.([a-z][a-z0-9_]*))?/giu)) {
-    const first = (match[1] as string).toLowerCase();
-    const second = match[2]?.toLowerCase();
-    if (second === undefined) {
-      if (cteNames.has(first)) continue;
-      fail("VES_POSTGRES_OBJECT_INVALID", "PostgreSQL objects must be schema-qualified");
-    }
-    if (!IDENTIFIER.test(first) || !IDENTIFIER.test(second)) {
-      fail("VES_POSTGRES_OBJECT_INVALID", "PostgreSQL object identity is invalid");
-    }
-    const identity = `${first}.${second}`;
-    const catalog = first === "pg_catalog" || first === "information_schema";
-    if (catalog && (options.kind !== "introspect" || !SAFE_CATALOGS.has(identity))) {
-      fail("VES_POSTGRES_CATALOG_DENIED", "PostgreSQL catalog relation is not approved");
-    }
-    objects.set(identity, { schema: first, name: second, type: catalog ? "catalog" : "table" });
+    const object = postgreSqlObject((match[1] as string).toLowerCase(), match[2]?.toLowerCase(), cteNames, kind);
+    if (object !== undefined) objects.set(`${object.schema}.${object.name}`, object);
   }
   if (objects.size === 0) fail("VES_POSTGRES_OBJECT_INVALID", "PostgreSQL read requires an approved object");
+  return objects;
+}
 
+function postgreSqlFunctions(sql: string, cteNames: ReadonlySet<string>): Set<string> {
   const functions = new Set<string>();
   for (const match of sql.matchAll(/\b([a-z][a-z0-9_]*)\s*\(/giu)) {
     const name = (match[1] as string).toLowerCase();
@@ -165,15 +204,28 @@ export function parsePostgreSqlReadOperation(sql: unknown, options: ParseOptions
     if (!SAFE_FUNCTIONS.has(name)) fail("VES_POSTGRES_FUNCTION_DENIED", "PostgreSQL function is not approved");
     functions.add(name);
   }
+  return functions;
+}
+
+function assertPostgreSqlPlaceholders(sql: string, classificationCount: number): void {
   const placeholders = [...sql.matchAll(/\$(\d+)\b/gu)].map((match) => Number(match[1]));
   const maximum = placeholders.length === 0 ? 0 : Math.max(...placeholders);
   if (
-    maximum !== options.parameterClassifications.length ||
+    maximum !== classificationCount ||
     new Set(placeholders).size !== maximum ||
     placeholders.some((value) => !Number.isSafeInteger(value) || value < 1 || value > 64)
   ) {
     fail("VES_POSTGRES_PARAMETERS_INVALID", "PostgreSQL parameter classifications do not match placeholders");
   }
+}
+
+export function parsePostgreSqlReadOperation(sql: unknown, options: ParseOptions): PostgreSqlReadOperation {
+  assertPostgreSqlStatement(sql);
+  assertPostgreSqlOptions(options);
+  const cteNames = commonTableExpressions(sql);
+  const objects = postgreSqlObjects(sql, cteNames, options.kind);
+  const functions = postgreSqlFunctions(sql, cteNames);
+  assertPostgreSqlPlaceholders(sql, options.parameterClassifications.length);
   return Object.freeze({
     kind: options.kind,
     statementCount: 1,

@@ -537,6 +537,29 @@ function normalizeBounds(value: unknown, policy: DatabaseAccessPolicy): ProbeBou
   return deepFreeze(bounds) as ProbeBounds;
 }
 
+function assertOperationApproved(
+  operation: NormalizedReadOperation,
+  registration: DatabaseRegistration,
+  policy: DatabaseAccessPolicy
+): void {
+  for (const object of operation.objects) {
+    if (!registration.approvedSchemas.includes(object.schema)) {
+      fail("VES_PROBE_SCHEMA_DENIED", "Database schema is not registered");
+    }
+    if (object.type === "catalog" && !policy.allowCatalogAccess) {
+      fail("VES_PROBE_CATALOG_DENIED", "Database catalog access is denied");
+    }
+    if (!policy.allowedObjects.includes(`${object.schema}.${object.name}`)) {
+      fail("VES_PROBE_OBJECT_DENIED", "Database object is not approved");
+    }
+  }
+  for (const fn of operation.functions) {
+    if (policy.deniedFunctions.includes(fn) || !policy.allowedFunctions.includes(fn)) {
+      fail("VES_PROBE_FUNCTION_DENIED", "Database function is not approved");
+    }
+  }
+}
+
 export interface ProbePlan {
   readonly schemaVersion: 1;
   readonly workspaceId: string;
@@ -605,22 +628,7 @@ export class ProbePlanner {
       fail("VES_PROBE_PURPOSE_DENIED", "Probe purpose is not approved");
     const operation = normalizeOperation(request.operation);
     const bounds = normalizeBounds(request.bounds, policy);
-    for (const object of operation.objects) {
-      if (!registration.approvedSchemas.includes(object.schema)) {
-        fail("VES_PROBE_SCHEMA_DENIED", "Database schema is not registered");
-      }
-      if (object.type === "catalog" && !policy.allowCatalogAccess) {
-        fail("VES_PROBE_CATALOG_DENIED", "Database catalog access is denied");
-      }
-      if (!policy.allowedObjects.includes(`${object.schema}.${object.name}`)) {
-        fail("VES_PROBE_OBJECT_DENIED", "Database object is not approved");
-      }
-    }
-    for (const fn of operation.functions) {
-      if (policy.deniedFunctions.includes(fn) || !policy.allowedFunctions.includes(fn)) {
-        fail("VES_PROBE_FUNCTION_DENIED", "Database function is not approved");
-      }
-    }
+    assertOperationApproved(operation, registration, policy);
     const violations = adapter.validateNormalizedOperation(operation, registration);
     if (!Array.isArray(violations) || violations.length > 0) {
       fail("VES_PROBE_ENGINE_POLICY_DENIED", "Engine-specific validation denied the read operation");

@@ -60,25 +60,54 @@ export interface OracleOperation {
   readonly parameterClassifications: readonly Classification[];
 }
 
-export function parseOracleReadOperation(sql: unknown, options: ParseOptions): OracleOperation {
+type OracleObject = { schema: string; name: string; type: "table" | "catalog" };
+type StatementRule = readonly [denied: (sql: string) => boolean, code: string, message: string];
+
+// invariant: the rules run in this order, so a statement breaking several of
+// them is refused with the first one listed.
+const STATEMENT_RULES: readonly StatementRule[] = [
+  [
+    (sql) => !/^[\t\n\r\x20-\x7e]+$/u.test(sql) || /\\/u.test(sql),
+    "VES_ORACLE_ENCODING_DENIED",
+    "Oracle statement encoding is not permitted"
+  ],
+  [(sql) => /--|\/\*|\*\//u.test(sql), "VES_ORACLE_COMMENT_DENIED", "Oracle comments and hints are not permitted"],
+  [
+    (sql) => sql.includes(";") || sql.split("\n").some((line) => line.trim() === "/"),
+    "VES_ORACLE_BATCH_DENIED",
+    "Oracle batches are not permitted"
+  ],
+  [
+    (sql) => EXECUTION.test(sql) || /\bINTO\b/iu.test(sql),
+    "VES_ORACLE_EXECUTION_DENIED",
+    "Oracle PL SQL and execution syntax is not permitted"
+  ],
+  [(sql) => /@/u.test(sql), "VES_ORACLE_DATABASE_LINK_DENIED", "Oracle database links are not permitted"],
+  [(sql) => /\bFOR\s+UPDATE\b/iu.test(sql), "VES_ORACLE_LOCK_DENIED", "Oracle row locking is not permitted"],
+  [(sql) => /\b(?:NEXTVAL|CURRVAL)\b/iu.test(sql), "VES_ORACLE_SEQUENCE_DENIED", "Oracle sequences are not permitted"],
+  [
+    (sql) => sql.includes("'") || sql.includes('"') || /\bq\s*'/iu.test(sql) || /\b\d+(?:\.\d+)?\b/u.test(sql),
+    "VES_ORACLE_LITERAL_DENIED",
+    "Inline literals and quoted identifiers are not permitted"
+  ],
+  [(sql) => WRITE.test(sql), "VES_ORACLE_WRITE_DENIED", "Oracle write or transaction syntax is not permitted"],
+  [
+    (sql) => {
+      const normalized = sql.replace(/\s+/gu, " ").trim().toUpperCase();
+      return !normalized.startsWith("SELECT ") && !normalized.startsWith("WITH ");
+    },
+    "VES_ORACLE_READ_FORM_DENIED",
+    "Oracle read form is not permitted"
+  ]
+];
+
+function assertOracleStatement(sql: unknown): asserts sql is string {
   if (typeof sql !== "string" || sql.length === 0 || sql.length > 131_072)
     fail("VES_ORACLE_REQUEST_INVALID", "Protected Oracle statement is invalid");
-  if (!/^[\t\n\r\x20-\x7e]+$/u.test(sql) || /\\/u.test(sql))
-    fail("VES_ORACLE_ENCODING_DENIED", "Oracle statement encoding is not permitted");
-  if (/--|\/\*|\*\//u.test(sql)) fail("VES_ORACLE_COMMENT_DENIED", "Oracle comments and hints are not permitted");
-  if (sql.includes(";") || sql.split("\n").some((line) => line.trim() === "/"))
-    fail("VES_ORACLE_BATCH_DENIED", "Oracle batches are not permitted");
-  if (EXECUTION.test(sql) || /\bINTO\b/iu.test(sql))
-    fail("VES_ORACLE_EXECUTION_DENIED", "Oracle PL SQL and execution syntax is not permitted");
-  if (/@/u.test(sql)) fail("VES_ORACLE_DATABASE_LINK_DENIED", "Oracle database links are not permitted");
-  if (/\bFOR\s+UPDATE\b/iu.test(sql)) fail("VES_ORACLE_LOCK_DENIED", "Oracle row locking is not permitted");
-  if (/\b(?:NEXTVAL|CURRVAL)\b/iu.test(sql)) fail("VES_ORACLE_SEQUENCE_DENIED", "Oracle sequences are not permitted");
-  if (sql.includes("'") || sql.includes('"') || /\bq\s*'/iu.test(sql) || /\b\d+(?:\.\d+)?\b/u.test(sql))
-    fail("VES_ORACLE_LITERAL_DENIED", "Inline literals and quoted identifiers are not permitted");
-  if (WRITE.test(sql)) fail("VES_ORACLE_WRITE_DENIED", "Oracle write or transaction syntax is not permitted");
-  const normalized = sql.replace(/\s+/gu, " ").trim().toUpperCase();
-  if (!normalized.startsWith("SELECT ") && !normalized.startsWith("WITH "))
-    fail("VES_ORACLE_READ_FORM_DENIED", "Oracle read form is not permitted");
+  for (const [denied, code, message] of STATEMENT_RULES) if (denied(sql)) fail(code, message);
+}
+
+function assertOracleOptions(options: ParseOptions): void {
   if (!/^protected-request:[a-z0-9-]{16,128}$/u.test(options.protectedRequestRef))
     fail("VES_ORACLE_REQUEST_INVALID", "Protected Oracle request reference is invalid");
   if (
@@ -87,27 +116,46 @@ export function parseOracleReadOperation(sql: unknown, options: ParseOptions): O
     options.parameterClassifications.some((v) => !CLASSIFICATIONS.includes(v as Classification))
   )
     fail("VES_ORACLE_PARAMETERS_INVALID", "Oracle parameter classifications are invalid");
+}
+
+function commonTableExpressions(sql: string): Set<string> {
   const ctes = new Set<string>();
   for (const m of sql.matchAll(/(?:\bWITH\b|,)\s*([a-z][a-z0-9_]*)\s+AS\s*\(/giu))
     ctes.add((m[1] as string).toLowerCase());
-  const objects = new Map<string, { schema: string; name: string; type: "table" | "catalog" }>();
+  return ctes;
+}
+
+function oracleCatalogObject(name: string, kind: ParseOptions["kind"]): OracleObject {
+  const looksCatalog = /^(?:all_|dba_|user_|v\$|gv\$)/u.test(name);
+  if (!looksCatalog) fail("VES_ORACLE_OBJECT_INVALID", "Oracle objects must be schema qualified");
+  if (kind !== "introspect" || !SAFE_CATALOGS.has(name))
+    fail("VES_ORACLE_CATALOG_DENIED", "Oracle catalog object is not approved");
+  return { schema: "oracle_catalog", name, type: "catalog" };
+}
+
+// Returns undefined for a reference to a common table expression.
+function oracleObject(
+  first: string,
+  second: string | undefined,
+  ctes: ReadonlySet<string>,
+  kind: ParseOptions["kind"]
+): OracleObject | undefined {
+  if (second === undefined) return ctes.has(first) ? undefined : oracleCatalogObject(first, kind);
+  if (first === "sys" || first === "system") fail("VES_ORACLE_CATALOG_DENIED", "Oracle system schema is not approved");
+  return { schema: first, name: second, type: "table" };
+}
+
+function oracleObjects(sql: string, ctes: ReadonlySet<string>, kind: ParseOptions["kind"]): Map<string, OracleObject> {
+  const objects = new Map<string, OracleObject>();
   for (const m of sql.matchAll(/\b(?:FROM|JOIN)\s+([a-z][a-z0-9_$#]*)(?:\.([a-z][a-z0-9_$#]*))?/giu)) {
-    const first = (m[1] as string).toLowerCase();
-    const second = m[2]?.toLowerCase();
-    if (second === undefined) {
-      if (ctes.has(first)) continue;
-      const looksCatalog = /^(?:all_|dba_|user_|v\$|gv\$)/u.test(first);
-      if (!looksCatalog) fail("VES_ORACLE_OBJECT_INVALID", "Oracle objects must be schema qualified");
-      if (options.kind !== "introspect" || !SAFE_CATALOGS.has(first))
-        fail("VES_ORACLE_CATALOG_DENIED", "Oracle catalog object is not approved");
-      objects.set(`oracle_catalog.${first}`, { schema: "oracle_catalog", name: first, type: "catalog" });
-      continue;
-    }
-    if (first === "sys" || first === "system")
-      fail("VES_ORACLE_CATALOG_DENIED", "Oracle system schema is not approved");
-    objects.set(`${first}.${second}`, { schema: first, name: second, type: "table" });
+    const object = oracleObject((m[1] as string).toLowerCase(), m[2]?.toLowerCase(), ctes, kind);
+    if (object !== undefined) objects.set(`${object.schema}.${object.name}`, object);
   }
   if (objects.size === 0) fail("VES_ORACLE_OBJECT_INVALID", "Oracle read requires an approved object");
+  return objects;
+}
+
+function oracleFunctions(sql: string, ctes: ReadonlySet<string>): Set<string> {
   const functions = new Set<string>();
   for (const m of sql.matchAll(/\b([a-z][a-z0-9_$#]*)\s*\(/giu)) {
     const name = (m[1] as string).toLowerCase();
@@ -116,14 +164,27 @@ export function parseOracleReadOperation(sql: unknown, options: ParseOptions): O
       fail("VES_ORACLE_FUNCTION_DENIED", "Oracle function is not approved");
     functions.add(name);
   }
+  return functions;
+}
+
+function assertOracleBinds(sql: string, classificationCount: number): void {
   const params = [...sql.matchAll(/:p(\d+)\b/giu)].map((m) => Number(m[1]));
   const maximum = params.length ? Math.max(...params) : 0;
   if (
-    maximum !== options.parameterClassifications.length ||
+    maximum !== classificationCount ||
     new Set(params).size !== maximum ||
     params.some((v) => !Number.isSafeInteger(v) || v < 1 || v > 64)
   )
     fail("VES_ORACLE_PARAMETERS_INVALID", "Oracle binds are invalid");
+}
+
+export function parseOracleReadOperation(sql: unknown, options: ParseOptions): OracleOperation {
+  assertOracleStatement(sql);
+  assertOracleOptions(options);
+  const ctes = commonTableExpressions(sql);
+  const objects = oracleObjects(sql, ctes, options.kind);
+  const functions = oracleFunctions(sql, ctes);
+  assertOracleBinds(sql, options.parameterClassifications.length);
   return Object.freeze({
     kind: options.kind,
     statementCount: 1,
