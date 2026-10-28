@@ -89,7 +89,7 @@ section 9. The signing-secret and environment rows reflect the O2/O3 change of
 | Release signing secrets | Rotated on 2026-09-30 (O3). The new keys exist only as **environment** secrets: `VESTRA_TUF_OFFLINE_KEY_PKCS8_BASE64` (offline root/targets) and `VESTRA_TUF_ONLINE_KEY_PKCS8_BASE64` (online timestamp/snapshot) in `tuf-release-signing`, and `VESTRA_T75_EVIDENCE_KEY_PKCS8_BASE64` in `t75-evidence-signing`. The three retired keys were **repository-level** secrets under their old names (`VESTRA_RELEASE_SIGNING_KEY_PKCS8_BASE64`, `VESTRA_RELEASE_TIMESTAMP_SIGNING_KEY_PKCS8_BASE64`, `VESTRA_T75_EVIDENCE_SIGNING_KEY_PKCS8_BASE64`) until the owner deleted them on 2026-10-01 (O2 step 4); the repository-level secret list is empty. No workflow names them (`tests/agent-readiness/signing-environments.test.mjs`). |
 | GitHub environments | `tuf-release-signing` (id `23152805342`) and `t75-evidence-signing` (id `23152805929`): required reviewer `accd`, `prevent_self_review: false`, `can_admins_bypass: false`, deployment branch policy `main` only. `github-pages` (branch policy only) and `copilot` (no rules) are unchanged and report `can_admins_bypass: true`. |
 | Release-decision key | Owner-provisioned and owner-held outside GitHub. Its public half is `docs/qualification/trust/release-decision-public-key.json`. |
-| npm package `verchestra` | One maintainer (`accd`). The published versions carry no provenance attestation. Publication is a manual `npm publish` under the owner's 2FA (`t76-validation.md`, "Registry publication"). |
+| npm package `verchestra` | One maintainer (`accd`). The published versions carry no provenance attestation. Publication has been a manual `npm publish` under the owner's 2FA (`t76-validation.md`, "Registry publication"). The trusted-publishing workflow `.github/workflows/npm-publish.yml` exists (tasks T7); it publishes nothing until the owner creates its environment and configures the trusted publisher (section 9, O6). |
 | Object store | One Cloudflare R2 bucket behind a managed public base URL. Upload is a manual step by the owner (`t76-validation.md`, "Publication"). |
 
 **Correction to the single-operator description.** GitHub documents that "any
@@ -182,17 +182,25 @@ choose them.
 ### 3.3 npm publication
 
 - **Current holder.** The owner alone, as the sole npm maintainer, using manual
-  `npm publish` under 2FA.
+  `npm publish` under 2FA until the workflow below is configured.
 - **Why it matters most.** The launcher package pins the bootstrap TUF root
   (`release-inputs`). Whoever publishes to npm therefore chooses the trust root
   that every new install and every `npx verchestra@<version>` run starts from.
   Every other control in this document sits beneath this one.
 - **Target model.** Publication happens from a reviewed workflow job in a
-  protected environment (proposed `npm-publication`): required reviewer
-  custodian #2, self-review prevented, admin bypass off. It uses npm trusted
-  publishing (OIDC) bound to that workflow file and environment. The package
-  setting "Require two-factor authentication and disallow tokens" is on. That
-  workflow does not exist yet (tasks T7).
+  protected environment (`npm-publication`): required reviewer custodian #2,
+  self-review prevented, admin bypass off. It uses npm trusted publishing (OIDC)
+  bound to that workflow file and environment. The package setting "Require
+  two-factor authentication and disallow tokens" is on.
+- **The workflow (tasks T7).** `.github/workflows/npm-publish.yml`, dispatched
+  with the T76 publication run's id. Its `verify` job, which can mint no OIDC
+  token, rebuilds the package from that run's pinned inputs, requires it to equal
+  the run's own package byte for byte, and activates the release it pins from the
+  live endpoint. Only then does the `publish` job, bound to `npm-publication`
+  and running no repository code, publish that exact tarball with
+  `--provenance`. No npm token exists in the repository. The provenance names
+  the run of `main` that published, not the candidate revision; the package
+  itself names that revision (`vestra --version`).
 - **Independent control.** Approval by custodian #2 gates the only token-less
   publication path. As a detective control, every legitimate version carries a
   provenance attestation naming that workflow and environment. Custodian #2
@@ -279,7 +287,7 @@ choose them.
 
 | Release effect | Who can cause it alone today | Target control | Remaining single-person path |
 | --- | --- | --- | --- |
-| A new trust root reaches new installs | Owner (npm publish) | Trusted-publishing environment approved by custodian #2; provenance checked by custodian #2 | Interactive `npm publish` by any npm maintainer |
+| A new trust root reaches new installs | Owner (npm publish) | `npm-publish.yml` in the `npm-publication` environment approved by custodian #2; provenance checked by custodian #2 | Interactive `npm publish` by any npm maintainer |
 | Existing installs accept new release content | Owner (self-approved environment run). For v1/`.2` installs only, also anyone holding the retired offline key who can serve their base URL (RR11) | Environment approval by custodian #2; later a detached 2-of-2 targets/root threshold | Admin re-enables bypass or edits reviewers (until the threshold exists) |
 | Clients see fresh or frozen metadata | Owner (online key, self-approved environment run) | Role-separated online key; short expiry; detective review of refresh runs (not operating: no refresh has run, section 3.2) | Online-key holder can freeze clients until expiry, today `2027-09-30` |
 | Served bytes change or disappear | Owner (R2 account) | Scoped short-lived token; bucket locks; TUF rejects unsigned bytes | Account owner removes locks or deletes the bucket (availability only) |
@@ -784,9 +792,19 @@ O2/O3: the key is in `tuf-release-signing`, not a repository secret, for the
 reason in 3.2. Custodian #2 approves any later anchor pull request.
 
 **O6. npm.** Decide whether custodian #2 becomes a second maintainer. That
-improves availability and creates a second unilateral publisher (3.3). Configure
-trusted publishing once the publication workflow exists (tasks T7). Then enable
-"Require two-factor authentication and disallow tokens".
+improves availability and creates a second unilateral publisher (3.3). The
+publication workflow exists (tasks T7). To use it:
+
+1. Create the GitHub environment `npm-publication`: required reviewer (custodian
+   #2 once named; the owner as interim reviewer, as for the signing
+   environments), deployment branch policy `main` only, administrators unable to
+   bypass. It holds no secret.
+2. On npmjs.com, add a trusted publisher to `verchestra`: GitHub Actions,
+   repository `accd/verchestra`, workflow `npm-publish.yml`, environment
+   `npm-publication`.
+3. Publish the next version through the workflow, and check its attestation
+   with the commands below.
+4. Then enable "Require two-factor authentication and disallow tokens".
 
 ```bash
 npm owner ls verchestra | cut -d' ' -f1

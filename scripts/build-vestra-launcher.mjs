@@ -28,7 +28,8 @@
 // authority, so a build without reviewed inputs fails closed rather than
 // emitting something that looks publishable.
 //
-// This script never publishes. `npm publish` stays a human step.
+// This script never publishes. `.github/workflows/npm-publish.yml` does, after
+// rebuilding this output and comparing it byte for byte (release-custody T7).
 
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";

@@ -115,7 +115,39 @@ first post-merge `.3` signing run.
 `D5 INPUT_MISSING`, `D6 ANCHOR_RETIRED`, and no publication directory was
 created.
 
+## npm publication workflow (T7; 2026-10-28)
+
+`.github/workflows/npm-publish.yml` is the token-less publication path of 3.3,
+for #596 item 3. Its guard is `tests/agent-readiness/npm-publish-workflow.test.mjs`:
+
+| Claim | Assertion |
+| --- | --- |
+| Manual dispatch with exactly `revision`, `publication_run_id`, `version`, `dist_tag`; one run at a time | "the npm publication workflow is manual and takes exactly its four inputs" |
+| Top-level `actions: read`, `contents: read`; only the `publish` job, bound to `npm-publication` and needing `verify`, holds `id-token: write`; no other write scope | "only the publish job can mint an OIDC token, and only inside the npm-publication environment" |
+| No other workflow binds `npm-publication` or runs `npm publish` | "no workflow other than this one binds npm-publication or runs npm publish" |
+| No secret, registry configuration or npm auth variable | "no npm token exists: no secret, no registry-url, no auth variable" |
+| `publish` checks out nothing, runs no pnpm, checks the tarball's sha512 against `verify`'s, and runs exactly `npm publish "dist/$TARBALL" --provenance --access public --tag "$DIST_TAG"` | "the publish job runs no repository code and publishes only the verified tarball" |
+| `verify` downloads the publication run's pinned inputs and package, rebuilds, `diff -r`s, activates the package from the live endpoint, then packs; no credential persists and no cache is restored | "the verify job rebuilds from the publication run, compares byte for byte, and activates live first" |
+| Dispatch inputs reach the shell only through `env` | "dispatch inputs reach the shell only through env" |
+
+Nine faults injected into the workflow, one at a time with the file restored,
+each failed the guard: no environment, no `id-token`, no `diff -r`, no
+integrity check, no `--provenance`, no live activation, Git credentials
+persisted, an input interpolated into a script, and packing the unverified copy.
+The integrity-check fault first survived: the ordering assertion compared
+positions, and a missing line's position (-1) still counted as "before". The
+assertion now also requires the line to exist. The first run of the guard also
+caught an earlier draft's own comment naming `registry-url`; the comment was
+reworded and the assertion kept.
+
+The workflow has not run: the environment and the npm trusted publisher do not
+exist yet (O6).
+
 ## Not yet evidenced (owner or human action required)
+
+- The `npm-publication` environment, the npm trusted publisher, and a first
+  version published through `npm-publish.yml` with a provenance attestation
+  (O6, #596 item 3).
 
 - Ratification of the model by the owner and an independent reviewer (O10).
 - Deletion of the retired repository-level secrets (O2 step 4) and the switch

@@ -51,6 +51,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ### Security
 
+- A manual workflow, `npm-publish.yml`, can publish `verchestra` with npm
+  provenance through trusted publishing, with no npm token anywhere. It
+  rebuilds the package from the publication run's pinned inputs, requires it to
+  equal that run's package byte for byte, and activates it from the live
+  endpoint before a separate job in the protected `npm-publication`
+  environment publishes it. It publishes nothing until the owner creates that
+  environment and configures the trusted publisher (#596).
 - The transitive `qs` moves from 6.16.0 to 6.16.1 in the lockfile, fixing a
   denial of service in `qs.stringify` with comma-joined arrays (Dependabot
   alert 71). It reaches the product through the MCP SDK's `express` and

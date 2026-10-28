@@ -1,0 +1,211 @@
+name: Publish the verchestra npm package
+
+on:
+  workflow_dispatch:
+    inputs:
+      revision:
+        description: "Exact 40-character revision the publication run built from"
+        required: true
+        type: string
+      publication_run_id:
+        description: "Run id of the T76 publication run whose pinned inputs the package carries"
+        required: true
+        type: string
+      version:
+        description: "The package version this run must publish"
+        required: true
+        type: string
+      dist_tag:
+        description: "npm dist-tag to publish under"
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+# why: two runs racing to publish would leave the dist-tag on whichever ended
+# last; a second dispatch waits instead.
+concurrency:
+  group: npm-publish
+  cancel-in-progress: false
+
+# invariant: this is the only path that publishes `verchestra` without an
+# interactive login (docs/release-custody.md 3.3, release-custody T7). npm
+# trusted publishing accepts an OIDC token from this file, in the
+# `npm-publication` environment, and nothing else, so no npm token exists
+# anywhere. Only the `publish` job may mint that token, it runs no repository
+# code, and it publishes exactly the tarball the `verify` job proved.
+
+jobs:
+  verify:
+    name: Rebuild, compare, and activate the package
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      tarball: ${{ steps.pack.outputs.tarball }}
+      integrity: ${{ steps.pack.outputs.integrity }}
+    steps:
+      - name: Validate the dispatch inputs
+        env:
+          PUBLICATION_RUN_ID: ${{ inputs.publication_run_id }}
+          PACKAGE_VERSION: ${{ inputs.version }}
+          DIST_TAG: ${{ inputs.dist_tag }}
+        run: |
+          set -euo pipefail
+          case "$PUBLICATION_RUN_ID" in
+            "" | *[!0-9]*) echo "publication run id must be digits" >&2; exit 1 ;;
+          esac
+          printf '%s' "$PACKAGE_VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$' || {
+            echo "version must be a semantic version" >&2; exit 1; }
+          # why: npm refuses a dist-tag that is itself a valid version range.
+          printf '%s' "$DIST_TAG" | grep -Eq '^[a-z][a-z0-9-]{0,31}$' || {
+            echo "dist-tag must be lowercase letters, digits or hyphens, starting with a letter" >&2; exit 1; }
+
+      - name: Check out the requested revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.0
+        with:
+          ref: ${{ inputs.revision }}
+          persist-credentials: false
+
+      - name: Verify the exact revision
+        env:
+          REQUESTED_REVISION: ${{ inputs.revision }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$REQUESTED_REVISION" | grep -Eq '^[0-9a-f]{40}$' || {
+            echo "revision must be a 40-character lowercase SHA" >&2; exit 1; }
+          test "$(git rev-parse HEAD)" = "$REQUESTED_REVISION" || {
+            echo "checked-out revision does not resolve to the requested exact revision" >&2; exit 1; }
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          version: 10.34.5
+          run_install: false
+
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        # why: no cache. A pnpm cache can be written by a less-privileged job,
+        # and this job builds what the publish job ships (#596).
+        with:
+          node-version: 24.14.0
+
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+          # Lifecycle scripts stay off; esbuild, which builds the launcher
+          # bundle, is the one package rebuilt by name.
+          pnpm install --frozen-lockfile --ignore-scripts
+          pnpm rebuild esbuild
+          node -e "require('esbuild').buildSync({stdin:{contents:''},write:false})"
+
+      - name: Download the publication run's pinned inputs
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.publication_run_id }}
+          name: t76-release-metadata-${{ inputs.revision }}-${{ inputs.publication_run_id }}
+          path: publication
+
+      - name: Download the package the publication run built
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.publication_run_id }}
+          name: t76-launcher-package-verification-${{ inputs.revision }}-${{ inputs.publication_run_id }}
+          path: publication-package
+
+      - name: Rebuild the package and compare it with the publication run's
+        env:
+          PACKAGE_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          pnpm build:vestra-launcher -- --release-inputs publication/release-inputs --out vestra-launcher-package
+          # The build is deterministic, so any difference means the inputs or
+          # the builder are not the ones the publication run used.
+          diff -r vestra-launcher-package publication-package
+          node -e '
+            const manifest = require("./vestra-launcher-package/package.json");
+            if (manifest.name !== "verchestra") throw new Error(`package name is ${manifest.name}`);
+            if (manifest.version !== process.env.PACKAGE_VERSION)
+              throw new Error(`package version ${manifest.version} is not the requested ${process.env.PACKAGE_VERSION}`);
+          '
+
+      - name: Activate the release the package pins from its live endpoint
+        run: |
+          set -euo pipefail
+          # why: the endpoint must serve the release before npm offers a package
+          # that pins it. A fresh state root makes this a cold activation.
+          export XDG_STATE_HOME="$RUNNER_TEMP/verchestra-state"
+          node vestra-launcher-package/bin/verchestra.mjs --version
+          test -f "$XDG_STATE_HOME/verchestra/launcher/install/active.json"
+
+      - name: Pack the verified package
+        id: pack
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          npm pack ./vestra-launcher-package --pack-destination dist --json > dist/pack.json
+          tarball="$(node -p 'require("./dist/pack.json")[0].filename')"
+          integrity="$(node -p 'require("./dist/pack.json")[0].integrity')"
+          echo "tarball=$tarball" >> "$GITHUB_OUTPUT"
+          echo "integrity=$integrity" >> "$GITHUB_OUTPUT"
+
+      - name: Upload the verified tarball
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: npm-package-${{ github.run_id }}
+          path: dist/${{ steps.pack.outputs.tarball }}
+          if-no-files-found: error
+          retention-days: 30
+
+  publish:
+    name: Publish with provenance
+    needs: verify
+    runs-on: ubuntu-latest
+    environment: npm-publication
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        # why: no registry is configured here, so no token placeholder is
+        # written; npm authenticates with the OIDC token trusted publishing
+        # exchanges.
+        with:
+          node-version: 24.14.0
+
+      - name: Download the verified tarball
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: npm-package-${{ github.run_id }}
+          path: dist
+
+      - name: Publish the tarball the verify job proved
+        env:
+          TARBALL: ${{ needs.verify.outputs.tarball }}
+          INTEGRITY: ${{ needs.verify.outputs.integrity }}
+          DIST_TAG: ${{ inputs.dist_tag }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$DIST_TAG" | grep -Eq '^[a-z][a-z0-9-]{0,31}$' || {
+            echo "dist-tag must be lowercase letters, digits or hyphens, starting with a letter" >&2; exit 1; }
+          actual="sha512-$(openssl dgst -sha512 -binary "dist/$TARBALL" | base64 -w0)"
+          test "$actual" = "$INTEGRITY" || { echo "tarball integrity differs from the verified one" >&2; exit 1; }
+          # why: trusted publishing needs npm 11.5.1 or later.
+          node -e '
+            const [major, minor, patch] = process.argv[1].split(".").map(Number);
+            if (major < 11 || (major === 11 && (minor < 5 || (minor === 5 && patch < 1))))
+              throw new Error(`npm ${process.argv[1]} cannot use trusted publishing`);
+          ' "$(npm --version)"
+          npm publish "dist/$TARBALL" --provenance --access public --tag "$DIST_TAG"
+          {
+            echo "## Published"
+            echo ""
+            echo "tarball: \`$TARBALL\`"
+            echo "integrity: \`$INTEGRITY\`"
+            echo "dist-tag: \`$DIST_TAG\`"
+          } >> "$GITHUB_STEP_SUMMARY"
