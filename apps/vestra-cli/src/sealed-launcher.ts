@@ -99,7 +99,7 @@ function observeNativeComponents(): HealthCheck {
 function observeDrivers(): HealthCheck {
   const drivers = [ClaudeCodeDriver, CodexDriver, DeterministicMockDriver, OpenCodeDriver, PiDriver]
     .map((driver) => driver.name)
-    .sort((left, right) => (left < right ? -1 : left > right ? 1 : 0));
+    .sort((left, right) => Number(left > right) - Number(left < right));
   const profile = resolveSelfTestProfile("drivers");
   return {
     name: "driver",

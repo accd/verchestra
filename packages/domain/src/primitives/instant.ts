@@ -32,11 +32,8 @@ export class IsoInstant {
   }
 
   compare(other: IsoInstant): -1 | 0 | 1 {
-    return this.epochMilliseconds < other.epochMilliseconds
-      ? -1
-      : this.epochMilliseconds > other.epochMilliseconds
-        ? 1
-        : 0;
+    return (Number(this.epochMilliseconds > other.epochMilliseconds) -
+      Number(this.epochMilliseconds < other.epochMilliseconds)) as -1 | 0 | 1;
   }
 
   addMilliseconds(duration: number): IsoInstant {

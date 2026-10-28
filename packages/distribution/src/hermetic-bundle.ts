@@ -256,7 +256,7 @@ const normalizeInput = (value: unknown) => {
   const components = Object.freeze(
     (input["components"] as unknown[])
       .map((entry) => normalizeComponent(entry, releaseId, target))
-      .sort((left, right) => (left.componentId < right.componentId ? -1 : left.componentId > right.componentId ? 1 : 0))
+      .sort((left, right) => codeUnitCompare(left.componentId, right.componentId))
   );
   validateClosure(components);
   return Object.freeze({

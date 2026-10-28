@@ -240,7 +240,9 @@ async function checkProviders(
   if (runsClaude) await rows.run("executable:claude", () => requireClaude(io));
   const codex = await rows.run("executable:codex", () => requireCodex(io, request));
   if (auth?.verifier === "api-key") return;
-  const waitsFor = workspace === undefined ? "workspace" : auth === undefined ? "provider-modes" : undefined;
+  let waitsFor: "workspace" | "provider-modes" | undefined;
+  if (workspace === undefined) waitsFor = "workspace";
+  else if (auth === undefined) waitsFor = "provider-modes";
   if (waitsFor !== undefined) rows.skip("codex-login", waitsFor);
   else if (codex === undefined) rows.skip("codex-login", "executable:codex");
   else await rows.run("codex-login", () => requireCodexLogin(io, workspace as TaskWorkspace, codex));

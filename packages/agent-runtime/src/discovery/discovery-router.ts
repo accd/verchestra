@@ -149,12 +149,8 @@ export class DiscoveryRouter {
     const needsRecon = !request.documentation.present || !request.documentation.reliable || request.documentation.stale;
     const reversa = qualified("reversa", request, qualifications);
     const codeNavi = qualified("codenavi", request, qualifications);
-    const primary =
-      needsRecon && request.policy.reversaAllowed && reversa !== undefined
-        ? "reversa"
-        : needsRecon
-          ? "builtin-recon"
-          : "builtin-intake";
+    const recon = request.policy.reversaAllowed && reversa !== undefined ? "reversa" : "builtin-recon";
+    const primary = needsRecon ? recon : "builtin-intake";
     const supplemental = request.policy.codeNaviAllowed && codeNavi !== undefined ? ["codenavi"] : [];
     const decision = {
       projectId: request.projectId,

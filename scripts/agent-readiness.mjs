@@ -561,12 +561,10 @@ function decisionPublicKey(reference) {
     return null;
   }
   try {
-    const key =
-      parsed?.encoding === "spki-der-base64url" && typeof parsed.publicKey === "string"
-        ? createPublicKey({ key: Buffer.from(parsed.publicKey, "base64url"), format: "der", type: "spki" })
-        : typeof parsed?.publicKey === "string"
-          ? createPublicKey(parsed.publicKey)
-          : null;
+    let key = null;
+    if (parsed?.encoding === "spki-der-base64url" && typeof parsed.publicKey === "string")
+      key = createPublicKey({ key: Buffer.from(parsed.publicKey, "base64url"), format: "der", type: "spki" });
+    else if (typeof parsed?.publicKey === "string") key = createPublicKey(parsed.publicKey);
     return key !== null && key.asymmetricKeyType === "ed25519" ? key : null;
   } catch {
     return null;

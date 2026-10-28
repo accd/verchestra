@@ -1,4 +1,4 @@
-import { taskPathsOverlap } from "@verchestra/domain";
+import { codeUnitCompare, taskPathsOverlap } from "@verchestra/domain";
 
 import { createBudgetMeter, type BudgetMeter, type BudgetSnapshot, type DeclaredBudgets } from "./budget-meter.ts";
 import { modelPriceTable } from "./model-price-table.ts";
@@ -271,7 +271,7 @@ function scopesOverlap(left: readonly string[], right: readonly string[]): boole
 }
 
 function byTaskId(left: string, right: string): number {
-  return left < right ? -1 : left > right ? 1 : 0;
+  return codeUnitCompare(left, right);
 }
 
 interface PlannedRound {
@@ -455,11 +455,9 @@ export class TaskScheduleCoordinator {
     }
 
     const ordered = [...outcomes.values()].sort((a, b) => byTaskId(a.taskId, b.taskId));
-    const status = cancelled
-      ? ("cancelled" as const)
-      : ordered.some((outcome) => outcome.status !== "completed")
-        ? ("failed" as const)
-        : ("completed" as const);
+    let status: "cancelled" | "failed" | "completed" = "completed";
+    if (cancelled) status = "cancelled";
+    else if (ordered.some((outcome) => outcome.status !== "completed")) status = "failed";
     return deepFreeze({
       status,
       workspaceId: input.workspaceId,

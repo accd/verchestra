@@ -546,9 +546,10 @@ export class ConfluenceDeliveryEffectAdapter implements EffectAdapter {
     }
     if (page.version !== plan.lastReconciledVersion)
       throw new ConfluenceDeliveryError("VES_CONFLUENCE_DELIVERY_VERSION_CONFLICT", "page version is stale");
+    const separator = page.body.length === 0 || page.body.endsWith("\n") ? "" : "\n";
     const body =
       inspected.state === "absent"
-        ? `${page.body}${page.body.length === 0 || page.body.endsWith("\n") ? "" : "\n"}${plan.ownedSection}`
+        ? `${page.body}${separator}${plan.ownedSection}`
         : `${inspected.prefix}${plan.ownedSection}${inspected.suffix}`;
     return this.#update(plan, page.version, body);
   }

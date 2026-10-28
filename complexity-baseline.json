@@ -45,7 +45,7 @@
       13
     ],
     "packages/agent-runtime/src/discovery/discovery-router.ts :: Method 'choose'": [
-      17
+      16
     ],
     "packages/agent-runtime/src/discovery/discovery-router.ts :: Method 'normalize'": [
       16

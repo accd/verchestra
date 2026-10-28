@@ -500,9 +500,10 @@ export class MachineBootstrapService {
     }
     const blocked = roles.some((role) => role.status === "blocked") || missing.some((binding) => binding.required);
     const degraded = roles.some((role) => role.status === "degraded-independence");
+    const unblocked = degraded ? "degraded" : "ready";
     return Object.freeze({
       schemaVersion: 1,
-      status: blocked ? "blocked" : degraded ? "degraded" : "ready",
+      status: blocked ? "blocked" : unblocked,
       detectedDriverIds: candidates.detectedDriverIds,
       roles,
       missingBindings: Object.freeze(missing),
