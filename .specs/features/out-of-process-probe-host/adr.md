@@ -95,6 +95,9 @@
   `tests/architecture/extension-host-composition.test.mjs` fails on any import
   of `@verchestra/extension-host` reachable from the CLI or the launcher, and
   T3 lifts it. The owner ratified AD-037 as amended on 2026-10-28.
+  T3 slice 1 lifts it to an allowlist: admission alone, from
+  `apps/vestra-cli/src/extension/extension-check.ts`
+  (`.specs/features/probe-host-composition/plan.md`, door 4).
 - OS-level containment is not: an admitted worker runs with the host user's
   filesystem and network authority. That is acceptable only because admission
   requires a human-approved digest in a signed lock and a bound controller

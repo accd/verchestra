@@ -552,6 +552,15 @@ note. -->
   residual. T3 composes the host under its reviewed plan
   (`.specs/features/probe-host-composition/plan.md`); the composition guard
   stays until T3's change lifts it.
+- **T3 slice 1 (2026-10-28, `feat/235-extension-commands`, pending review):**
+  `vestra extension add|approve|list|revoke|check` compose admission only,
+  from `apps/vestra-cli/src/extension/extension-check.ts` through the
+  `@verchestra/extension-host/admission` export, with the production lock
+  verifier and the signed approval store (doors 1-3 of the plan) and no grant;
+  nothing starts a worker. The composition guard is now an allowlist: the
+  worker, the supervisor and the spawned transport stay unreachable until
+  slice 2. Door 6 moves the TLC lock entry requirement from lock validation
+  to profile resolution (owner decision, 2026-10-28).
 
 ### AD-038 — The single binary is a Node 24.14.0 SEA injected by a repository-owned injector (#236)
 

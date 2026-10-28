@@ -2,23 +2,39 @@
 schema: verchestra-feature-handoff/v1
 feature: probe-host-composition
 issue: 235
-status: in_progress
+status: verification
 branch: feat/235-extension-commands
-baseRevision: f03189724bb907dad4c256ae10db934630235427
-lastCompletedTask: null
-nextTask: "Build slice 1 against checks.md (32 checks), then dispatch an independent Verifier over the feature range."
-lastGate: "validate_plan.py 0 errors; validate_checks.py 0 errors, 0 warnings (profile light); the owner approved plan.md as written on 2026-10-28"
-updatedAt: 2026-10-28T19:00:00Z
+baseRevision: d069bf9291efaeeafbdc9dcea189fb56b8eafb0f
+lastCompletedTask: T1
+nextTask: "Dispatch an independent Verifier over d069bf92..HEAD against plan.md and checks.md (C1-C34)."
+lastGate: "gate:quick PASS and agent:check PASS on Windows; every proof in checks.md passes on Linux (WSL Ubuntu 24.04) and on Windows (validation.md)"
+updatedAt: 2026-10-28T23:30:00Z
 ---
 
 # Evidence
 
-AD-037 was ratified by the owner on 2026-10-28, as amended on 2026-10-27. The
-owner then chose slice 1 (register, approve and check, with nothing spawned)
-and that slice 2's grant is a `CapabilityGrant` recorded under a run in the
-authority store. `plan.md` is the T3 plan for slice 1. No check or code exists.
+Slice 1 (T1) is built on `feat/235-extension-commands`. These commands now
+take a workspace probe worker to "would be admitted" with nothing started:
+
+- `vestra extension add`
+- `vestra extension approve`
+- `vestra extension list`
+- `vestra extension revoke`
+- `vestra extension check`
+
+Owner decisions taken mid-build are recorded in `plan.md`:
+
+- Landing door 6: TLC is required by `resolve`, not by lock validation.
+- The registration record is the update's evidence.
+- Two Out of scope follow-ups: re-approving a revoked reference, and
+  re-registering a worker.
+
+The proof results per platform are in `validation.md`. The `## Handoff`
+lines of `checks.md` name the boundary commit. Nothing is pushed.
 
 # Next exact action
 
-Build slice 1 against `checks.md`: write the tests each check names, implement,
-run every proof, and commit. Then dispatch a fresh Verifier.
+Dispatch an independent Verifier over `d069bf92..HEAD` with `plan.md`,
+`checks.md` (C1-C34) and `validation.md`. The Verifier has to run the proofs
+that need `approve` and `check` on Linux or macOS. On Windows, those proofs
+assert the refusal.
