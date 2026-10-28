@@ -45,7 +45,8 @@ export default defineConfig({
       disable404Route: true,
       customCss: ["./src/styles/global.css"],
       components: {
-        Head: "./src/components/StarlightHead.astro"
+        Head: "./src/components/StarlightHead.astro",
+        Search: "./src/components/StarlightSearch.astro"
       },
       head: [
         {
