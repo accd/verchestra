@@ -21,7 +21,7 @@ const PATH_PSEUDONYM = /^path:sha256:[a-f0-9]{64}$/u;
 const AUTHORITY_INJECTION =
   /(?:ignore.{0,16}policy|grant.{0,16}capabilit|access.{0,16}secret|execute.{0,16}tool|promote.{0,16}authority)/iu;
 const SECRET_CONTENT =
-  /(?:bearer\s+[A-Za-z0-9._~+/-]{8,}|password\s*[=:]|(?:postgres|mysql|mariadb|sqlserver):\/\/|-----BEGIN [A-Z ]*PRIVATE KEY-----|SQLite format 3)/iu;
+  /(?:bearer\s+[A-Z0-9._~+/-]{8,}|password\s*[=:]|(?:postgres|mysql|mariadb|sqlserver):\/\/|-----BEGIN [A-Z ]*PRIVATE KEY-----|SQLite format 3)/iu;
 const RAW_PATH = /(?:[A-Za-z]:[\\/]|(?:^|\s)\/(?:home|Users|var|opt|srv|tmp)\/)/u;
 
 type FieldKind = "digest" | "semver" | "enum" | "integer" | "boolean" | "code-list" | "reference-list" | "path";

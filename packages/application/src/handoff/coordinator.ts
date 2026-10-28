@@ -376,7 +376,7 @@ export class PortableHandoffCoordinator {
         capsuleRef: token(capsule.capsuleRef, "capsuleRef", "VES_HANDOFF_CAPSULE_INVALID"),
         capsuleDigest: digest(capsule.capsuleDigest, "capsuleDigest", "VES_HANDOFF_CAPSULE_INVALID")
       });
-      progress = (await this.ports.records.saveProgress(
+      await this.ports.records.saveProgress(
         freeze({
           schemaVersion: 1,
           stage: "CAPSULE_SEALED",
@@ -389,7 +389,7 @@ export class PortableHandoffCoordinator {
           terminalSource,
           capsule: normalizedCapsule
         })
-      )) as Row;
+      );
     }
     const record = freeze({
       status: "HANDED_OFF",

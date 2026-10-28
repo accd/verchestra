@@ -358,7 +358,7 @@ function normalizeBuild(value: unknown): NormalizedBuild {
       if (!Array.isArray(vector["embedding"]) || vector["embedding"].length !== model.dimensions)
         invalid("embedding dimensions differ from model");
       const embedding = vector["embedding"].map((number) => {
-        if (typeof number !== "number" || !Number.isFinite(number) || Math.abs(number) > 3.402_823_466e38)
+        if (typeof number !== "number" || !Number.isFinite(number) || Math.abs(number) > 3.402823466e38)
           invalid("embedding value is invalid");
         const normalized = Math.fround(Object.is(number, -0) ? 0 : number);
         if (!Number.isFinite(normalized)) invalid("embedding value cannot be represented as Float32");

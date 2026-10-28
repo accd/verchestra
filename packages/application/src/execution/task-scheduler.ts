@@ -448,7 +448,7 @@ export class TaskScheduleCoordinator {
             cancelled = true;
         }
       }
-      if (Boolean(options.signal?.aborted)) {
+      if (options.signal?.aborted) {
         halt = true;
         cancelled = true;
       }

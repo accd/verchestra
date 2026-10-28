@@ -260,7 +260,7 @@ export class SqliteReadConnection implements SqliteConnectionPort {
   readonly #db: DatabaseSync;
   #closed = false;
   #cancelled = false;
-  #queryOnly = false;
+  readonly #queryOnly: boolean;
   #authorizer = false;
   constructor(options: { readonly databaseId: string; readonly path: string }) {
     this.#databaseId = options.databaseId;

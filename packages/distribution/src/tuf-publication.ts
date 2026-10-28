@@ -292,7 +292,8 @@ const validateRole = (value: unknown, name: string): void => {
 
 const futureInstant = (value: unknown, label: string): number => {
   const parsed = Date.parse(text(value, label, INSTANT));
-  if (!(parsed > Date.now())) fail("VES_TUF_PUBLICATION_INPUT_INVALID", `${label} must be a future UTC instant`);
+  if (Number.isNaN(parsed) || parsed <= Date.now())
+    fail("VES_TUF_PUBLICATION_INPUT_INVALID", `${label} must be a future UTC instant`);
   return parsed;
 };
 
@@ -702,7 +703,8 @@ const verifyEnvelope = (
 const unexpiredInstant = (value: unknown, label: string): string => {
   if (typeof value !== "string" || !INSTANT.test(value)) return unverified(`${label} expiry is invalid`);
   // why: expired offline metadata cannot be rescued online; only the offline key can renew it.
-  if (!(Date.parse(value) > Date.now())) unverified(`${label} has expired and needs an offline re-signing`);
+  const parsed = Date.parse(value);
+  if (Number.isNaN(parsed) || parsed <= Date.now()) unverified(`${label} has expired and needs an offline re-signing`);
   return value;
 };
 
