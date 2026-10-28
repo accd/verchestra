@@ -227,6 +227,39 @@ for (const [label, script, code] of [
     "VES_PROBE_HANDSHAKE_INVALID"
   ],
   [
+    "a handshake under an unknown payload schema version",
+    {
+      "probe.hello": (t) => [
+        t.frame(
+          "probe.handshake",
+          {
+            protocol: "verchestra-probe/1",
+            supportedSchemas: ["probe.plan/1", "probe.result/1"],
+            component: COMPONENT,
+            capabilities: ["database-read"],
+            maximumMessageBytes: 65_536
+          },
+          { payloadSchema: { name: "probe.handshake", version: 99 } }
+        )
+      ]
+    },
+    "VES_PROBE_PAYLOAD_SCHEMA_UNSUPPORTED"
+  ],
+  [
+    "a result chunk under another payload schema version",
+    {
+      "probe.execute": (t) => [
+        t.frame(
+          "probe.result.chunk",
+          { rows: [{ id: 1 }] },
+          { payloadSchema: { name: "probe.result.chunk", version: 2 } }
+        ),
+        t.frame("probe.result.end", { chunkCount: 1 })
+      ]
+    },
+    "VES_PROBE_PAYLOAD_SCHEMA_UNSUPPORTED"
+  ],
+  [
     "a result chunk whose rows are not an array",
     { "probe.execute": (t) => [t.frame("probe.result.chunk", { rows: { id: 1 } })] },
     "VES_PROBE_RESULT_INVALID"

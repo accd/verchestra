@@ -9,7 +9,7 @@
 // integration suites; the default is a conforming worker.
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 
 const mode = process.env.PROBE_FIXTURE_MODE ?? "reference";
 const IDLE = "setInterval(() => {}, 1000)";
@@ -94,6 +94,8 @@ const hostile = {
     send("probe.handshake", handshakePayload(), { messageId: "worker:replayed", sequence: 0 });
   },
   "hang-handshake": () => undefined,
+  "future-schema": () =>
+    send("probe.handshake", handshakePayload(), { payloadSchema: { name: "probe.handshake", version: 99 } }),
   "stderr-flood": () => {
     const line = Buffer.alloc(16 * 1024, "e");
     const flood = () => {
@@ -106,7 +108,7 @@ const hostile = {
 
 function execute(request) {
   const parameters = Buffer.from(request.parameters, "base64").toString("utf8");
-  if (mode === "hang") return;
+  if (mode === "hang" || mode === "hang-ignore-eof") return;
   if (mode === "leak") {
     process.stderr.write(`worker saw parameter ${parameters}\n`);
     send("probe.result.chunk", { rows: [{ echo: parameters }] });
@@ -158,7 +160,14 @@ function execute(request) {
   }
   if (mode === "report-environment") {
     send("probe.result.chunk", {
-      rows: [{ environmentKeys: Object.keys(process.env).sort(compareCodeUnit), cwd: process.cwd() }]
+      rows: [
+        {
+          environmentKeys: Object.keys(process.env).sort(compareCodeUnit),
+          cwd: process.cwd(),
+          cwdMode: statSync(process.cwd()).mode & 0o777,
+          entryMode: statSync(process.argv[1]).mode & 0o777
+        }
+      ]
     });
     send("probe.result.end", { chunkCount: 1 });
     return;
@@ -214,5 +223,8 @@ process.stdin.on("data", (chunk) => {
     handle(JSON.parse(body));
   }
 });
-process.stdin.on("end", () => process.exit(0));
-if (["hang", "hang-handshake", "fork", "setsid-tree", "double-fork-holder"].includes(mode)) setInterval(() => {}, 1000);
+// why: "hang-ignore-eof" outlives the end of its input, so only the host's
+// process-group kill can end it (#570).
+if (mode !== "hang-ignore-eof") process.stdin.on("end", () => process.exit(0));
+if (["hang", "hang-ignore-eof", "hang-handshake", "fork", "setsid-tree", "double-fork-holder"].includes(mode))
+  setInterval(() => {}, 1000);
