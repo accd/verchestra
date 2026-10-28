@@ -2,13 +2,13 @@
 schema: verchestra-feature-handoff/v1
 feature: probe-host-containment
 issue: 569
-status: verification
-branch: fix/569-probe-host-containment
+status: complete
+branch: main
 baseRevision: 13fa79356e6e35c583f8a135771ce15e50ace687
-lastCompletedTask: T4
-nextTask: "T5: merge #632 on the owner's review with every required check green on its exact head, then verify the merge by content."
-lastGate: "PR #632 head b176b82: required checks green; platform-matrix gate=full run 40569914514 green on all five legs; gate=security run 40566619084 green on four legs, with macOS x64 stopped twice in test:unit by an unrelated regex-linearity ratio check; the Linux and Windows runs and 13 mutation sensors in validation.md"
-updatedAt: 2026-10-27T21:15:00Z
+lastCompletedTask: T5
+nextTask: "None in this feature. AD-037 as amended awaits the owner's ratification; the host's T3 (composition) follows it and lifts the guard in tests/architecture/extension-host-composition.test.mjs."
+lastGate: "PR #632 merged by rebase through the maintainer bypass at 2026-10-28T09:38:46Z (main e60dd65, b771cec, ff557cf; the diff main gained equal to the PR's over five main commits that share no file with it), with Quality gate, Site quality and CodeQL passing on the head dae190c; fleet runs 40569914514 (gate=full, five legs green) and 40566619084 (gate=security, four legs green, macOS x64 stopped by the regex-linearity flake #637 fixed); no independent review, so the Linux runs and 13 mutation sensors in validation.md are the record"
+updatedAt: 2026-10-28T12:30:00Z
 ---
 
 # Evidence
@@ -25,7 +25,5 @@ The owner chose the four decisions in `spec.md` on 2026-10-27. AD-037 stays
 
 # Next exact action
 
-PR #632 is open with its fleet runs recorded in `validation.md`. Merge it on
-the owner's review with every required check green on its exact head, and
-verify the merge by content. #570's unpushed branch
-`test/570-probe-host-mutants` follows it.
+None in this feature. AD-037 as amended awaits the owner's ratification, and
+the host's T3 (composition) follows it.

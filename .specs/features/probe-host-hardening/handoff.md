@@ -2,13 +2,13 @@
 schema: verchestra-feature-handoff/v1
 feature: probe-host-hardening
 issue: 570
-status: verification
-branch: test/570-probe-host-mutants
+status: complete
+branch: main
 baseRevision: ff557cf2a31e39625b77b9f11db65ec073742ffb
-lastCompletedTask: T2
-nextTask: "T3: open the pull request from test/570-probe-host-mutants and merge on review with every required check green on its exact head."
-lastGate: "The 153 probe-host tests pass on Linux (WSL Ubuntu, Node 24.14.0); all four mutation sensors in validation.md are killed; pnpm gate:quick passes on Windows."
-updatedAt: 2026-10-28T09:45:00Z
+lastCompletedTask: T3
+nextTask: "None in this feature; #570 is closed."
+lastGate: "PR #635 merged by rebase through the maintainer bypass at 2026-10-28 (main 54fd6b8, e97cb74, 61434b4; tree equal to the head df8b1e4, which merged main at 0967a87 for the pinned site job) with Quality gate, Site quality and CodeQL passing on that head; no independent review, so the Linux runs and four mutation sensors in validation.md are the record"
+updatedAt: 2026-10-28T12:30:00Z
 ---
 
 # Evidence
@@ -21,6 +21,4 @@ with #632.
 
 # Next exact action
 
-When #632 is on `main`, rebase this branch onto it (it is unpushed, so no
-force-push is needed), set `baseRevision`, rerun the probe-host suites, and
-open the pull request.
+None in this feature; #570 is closed.
