@@ -57,10 +57,12 @@ export class SchemaRegistry {
   }
 
   negotiate(name: string, offered: string[]): string {
-    const supported = this.list()
-      .filter((entry) => entry.startsWith(`${name}@`))
-      .map((entry) => entry.split("@")[1]);
-    const selected = offered.filter((version) => supported.includes(version)).sort((a, b) => Number(b) - Number(a))[0];
+    const supported = new Set(
+      this.list()
+        .filter((entry) => entry.startsWith(`${name}@`))
+        .map((entry) => entry.split("@")[1])
+    );
+    const selected = offered.filter((version) => supported.has(version)).sort((a, b) => Number(b) - Number(a))[0];
     if (!selected) throw contractError("VES_SCHEMA_NEGOTIATION_FAILED", name, "no mutually supported schema version");
     return selected;
   }

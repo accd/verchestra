@@ -61,11 +61,20 @@ function entity(value: unknown, label: string): { readonly type: string; readonl
   return Object.freeze({ type: row["type"], id: row["id"] });
 }
 
+const CASE_FIELDS: ReadonlySet<string> = new Set([
+  "name",
+  "principal",
+  "action",
+  "resource",
+  "context",
+  "expect",
+  "expectCode"
+]);
+
 export function normalizePolicyTestCase(value: unknown): PolicyTestCase {
   if (value === null || typeof value !== "object" || Array.isArray(value)) fail("test case must be an object");
   const row = value as Record<string, unknown>;
-  const allowed = ["name", "principal", "action", "resource", "context", "expect", "expectCode"];
-  const extras = Object.keys(row).filter((key) => !allowed.includes(key));
+  const extras = Object.keys(row).filter((key) => !CASE_FIELDS.has(key));
   if (extras.length > 0) fail(`test case contains unknown fields: ${extras.toSorted(codeUnitCompare).join(", ")}`);
   if (typeof row["name"] !== "string" || !NAME.test(row["name"])) fail("test case name is invalid");
   // "expect" is a closed literal on purpose: a typo like "alow" must fail the

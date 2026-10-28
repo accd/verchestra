@@ -62,7 +62,7 @@ export type ProbeEvidenceVerdict =
 
 const DIGEST = /^sha256:[a-f0-9]{64}$/u;
 const SAFE = /^[A-Za-z0-9][A-Za-z0-9._:@/+-]{0,511}$/u;
-const CLASSES: readonly ProbeClassification[] = ["public", "internal", "confidential", "restricted"];
+const CLASSES: ReadonlySet<ProbeClassification> = new Set(["public", "internal", "confidential", "restricted"]);
 
 function fail(code: ProbeEvidenceErrorCode, message: string): never {
   throw new ProbeEvidenceError(code, message);
@@ -78,7 +78,7 @@ function normalizeReference(value: unknown, index: number): ProbeEvidenceReferen
   for (const field of ["producingRunId", "protectedResultRef"])
     if (typeof row[field] !== "string" || !SAFE.test(row[field] as string))
       fail("VES_PROBE_EVIDENCE_INVALID", `probe evidence ${field} is invalid`);
-  if (!CLASSES.includes(row["classification"] as ProbeClassification))
+  if (!CLASSES.has(row["classification"] as ProbeClassification))
     fail("VES_PROBE_EVIDENCE_INVALID", "probe evidence classification is not a declared class");
   if (typeof row["redactionApplied"] !== "boolean")
     fail("VES_PROBE_EVIDENCE_INVALID", "probe evidence redactionApplied must be a boolean");
