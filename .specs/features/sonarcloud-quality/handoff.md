@@ -3,12 +3,12 @@ schema: verchestra-feature-handoff/v1
 feature: sonarcloud-quality
 issue: null
 status: in_progress
-branch: docs/sonar-t8-handoff-round
-baseRevision: c5700bc8dfd588164544b558fdc9fc1de253b2f5
+branch: docs/sonar-t8-longtail-round
+baseRevision: 65c476f9ee6041588aad336f9c6f5a86d741289d
 lastCompletedTask: T8
 nextTask: T8
 lastGate: pnpm gate:quick plus pnpm test:architecture
-updatedAt: 2026-10-28T12:00:00Z
+updatedAt: 2026-10-28T18:00:00Z
 ---
 
 # Scope
@@ -19,6 +19,53 @@ sources. Phases B (bugs, vulnerabilities) and C (code smells) follow in their
 own changes, one rule family each, as listed in `tasks.md`.
 
 # Completed Evidence
+
+T8 second round of 2026-10-28, merged by content (rebase + admin bypass).
+The `main` analysis of `65c476f9` reads gate OK, 0 bugs, 0 vulnerabilities,
+511 code smells (578 before the round) and 88.2 % coverage:
+
+- S7758 (#645, `416eb445`, 7): the canonical and integrity surrogate guards
+  walk by `codePointAt`, which joins a well-formed pair, so any surrogate it
+  returns is unpaired; the TUF publication sorts with the domain's
+  `codeUnitCompare` (not `codePointAt`, which would reorder U+1F600 against
+  U+FFFF); the MCP bridge checks a line end with `endsWith`.
+  `tests/unit/code-point-scan.test.mjs` (3) compares both guards with the old
+  code-unit scan on all 2,801 strings of up to four pieces.
+- S7737 (#647, `ba184bd1`, 5): budgets start at the public entry, not in a
+  default (`ProhibitedContentScanner.assertSafe` over a private `#scan`, the
+  MongoDB `preflight`); the discovery router defaults to a frozen constant;
+  `openTaskWorkspace` destructures `ensure`; `runTask` builds its machine only
+  when none is passed. The scanner hotspot moved key from `assertSafe` [20] to
+  `#scan` [18]; `preflight` fell from 16 to 14 (`complexity:update`).
+  `tests/unit/default-parameter-objects.test.mjs` (3).
+- S7776 (#648, `636f0f37`, 4): closed lists checked by membership are Sets.
+  `tests/unit/membership-sets.test.mjs` (4).
+- S6557 (#646, `fe8658c7` `7a860a8d` `2f6bce7a`, 7): plain prefixes use
+  `startsWith` in `scopeOf` and the sealed SQLite shim. The first PR analysis
+  read 0 % new-code coverage: the shim lies in `apps/vestra-cli/closure/`,
+  outside `COVERED_SOURCES` (SQC-02), so no test could count it. Each app's
+  `closure/` and `bin/` (11 build inputs and launch stubs, none measured)
+  joined `sonar.coverage.exclusions`, and
+  `tests/agent-readiness/sonarcloud-workflow.test.mjs` now holds that every
+  code file under `apps/` and `packages/` is measured or excluded; it fails on
+  the previous properties, listing those 11 files.
+- Long-tail sweep, about 40 rules with one to three issues each, in four PRs by
+  area with disjoint files: CLI and launcher (#662, `c66c63ec`, 9 of 11),
+  packages (#664, `317224b2`, 17 of 18), scripts, spikes and test helpers
+  (#665, `fac538eb`, 12 of 12), documentation site (#666, `527277a6`, 7 of
+  7). Each PR's new tests also pass on its merge-base sources. Traps met and
+  avoided: `!(a > b)` is not `a <= b` under NaN, so the TUF expiry checks
+  test `Number.isNaN` explicitly (a month-13 instant parses to NaN) and the
+  census moved its `> 0` into a named predicate; the ESLint config moved to
+  ESLint 10's `defineConfig` with a byte-identical `--print-config`; the
+  site's three `!important` became selectors that win on specificity, checked
+  by hashing every element's computed style before and after at four widths
+  in both themes. #666's first quality gate failed in three contract tests
+  whose child processes exited `null` (killed); the re-run passed. Three
+  issues are kept, each because its fix would change behaviour, and are
+  listed in `validation.md`.
+- S7746's fix (`sign: async () => { throw … }`) is reported as one more
+  S7503 (async without await), which belongs to the S7503 decision.
 
 T8 round of 2026-10-28, merged by content (rebase + admin bypass; files the
 PRs share compared hunk by hunk):
@@ -412,16 +459,24 @@ issues; 179 bugs, 32 vulnerabilities, 924 code smells; quality gate ERROR.
 
 # Next Exact Action
 
-Confirm on the `main` analysis of `c5700bc8` that S7780, S3358, S6535 and
-S6353 read 0 and the quality gate is still OK
-(`api/issues/search?componentKeys=accd_verchestra&rules=typescript:S7780,javascript:S7780,typescript:S3358,javascript:S3358,typescript:S6535,typescript:S6353,javascript:S6353&resolved=false&ps=1`).
-The eight S3735 issues in `validation.md` still wait for the owner to mark
-them Accepted. Then continue T8 with the next family, one per change (by
-count: S7758 7, S6557 6, S7737 5, S7776 4, then the long tail; S7503, S9382,
-S3776 and the test-file rules S2187/S2699 need a per-site decision first):
-list the open code smells by rule
-(`api/issues/search?componentKeys=accd_verchestra&types=CODE_SMELL&resolved=false&facets=rules&ps=1`)
-and take the next family.
+What remains is the families that need a per-site or owner decision, not a
+mechanical rewrite (counts from the `main` analysis of `65c476f9`):
+
+- S2187 (11) and S2699 (8): test files without tests or assertions. Read each
+  one; give real tests assertions, or move helpers that are not tests out of
+  the test inclusions.
+- S3776 (62 TypeScript, 13 JavaScript): cognitive complexity. Align with the
+  repository's own `complexity:check` baseline and refactor top offenders one
+  family of files per change.
+- S9382 (135 + 60, sequential await in a loop) and S7503 (211, async
+  without await): mostly ordered by design or interface-conforming. The owner
+  decides between per-issue acceptance and disabling the rule in a custom
+  quality profile (plan, Phase C).
+- The owner marks the 8 S3735 and 3 long-tail issues in `validation.md` as
+  Accepted.
+
+Start with S2187/S2699: list them with
+`api/issues/search?componentKeys=accd_verchestra&rules=javascript:S2187,javascript:S2699&resolved=false&ps=50`.
 
 # Blockers
 

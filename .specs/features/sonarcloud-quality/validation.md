@@ -28,3 +28,11 @@ no-op statements, an arrow body) were fixed in the S3735 change.
 
 Alternative for the owner: enable `ignoreRestSiblings: true` on
 `no-unused-vars` in a reviewed change, then drop these eight `void` lines.
+
+### Long-tail sweep: three issues whose fix would change behaviour (3)
+
+| Key                    | Rule  | Location                                               | Reason                                                                                                                                                                                                                          |
+| ---------------------- | ----- | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `AaD86U9L0viU7A400bZH` | S7784 | `apps/vestra-cli/src/task/task-run-record.ts:683`      | The JSON round trip is the point: it drops `undefined` members so the record and its digest match its JSON form (the `invariant:` above it). `structuredClone` keeps them and would change the digest.                          |
+| `AaDw358CW0OXA57WdXPF` | S7785 | `apps/vestra-launcher/closure/single-binary-main.ts:6` | `scripts/build-vestra-binary.mjs` bundles this entry as CommonJS (`format: "cjs"`) for the single executable, and CommonJS has no top-level await.                                                                              |
+| `AaEBb9RM_FksIXlR8Rgp` | S4144 | `packages/application/src/authority/authority.ts:331`  | `ApprovalVerifier` and `ApprovalRecorder` take distinct capability-narrowed ports (verify and load against seal and save). One cannot delegate to the other without a shared base that would merge the two capability surfaces. |
