@@ -149,8 +149,37 @@ with the marker variable, writes it.
     The parser therefore takes `--version` as the option of a command that
     declares it, and keeps it as the global flag everywhere else.
   - **`--arg` values.** A repeatable option takes the next token as given, so
-    `--arg --no-warnings` passes a flag to the worker's executable.
+    `--arg --no-warnings` passes a flag to the worker's executable. The parser
+    reads `--output`, `--help` and `--version` before any command option, so
+    none of them can be a worker argument: `--arg --help` prints the command's
+    help and approves nothing, and `--arg --version` is refused as the global
+    flag (Verifier round 1, F2).
   - **`check` rows.** `check` reports six rows: `lock`, `extension`,
     `approval`, `admission`, `entry`, `launch`. The `launch` row measures the
     approved launch over the locked entry digest, so an edited entry fails only
     `entry`, and a changed executable fails only `launch`.
+
+## Verifier round 1
+
+The independent Verifier proved C1-C34 on Linux and Windows at `12f01d01` and
+returned FAIL on one finding outside the checks. Dispositions:
+
+- **F1 (high).** Two existing pinned command lists still named 14 commands:
+  the `--help` snapshot in `tests/e2e/cli-launchers-e2e.test.mjs` and
+  `SEALED_COMMANDS` in `tests/build/sealed-launcher-closure.test.mjs`. Both now
+  name the five `extension` commands; the help snapshot is the CLI's own
+  output, whose command column widened to fit `extension approve`. Neither
+  suite is part of `gate:quick`, which is why the builder's run missed them.
+- **F2 (low).** The parser reads `--output`, `--help` and `--version` before
+  any command option, so a repeatable option does not take those three as
+  values. The plan's Impact row, the parser comment and the decision above now
+  say so. Every outcome fails safe.
+- **F3 (low).** `CHANGELOG.md` now says `--expires` may name any time after now,
+  at most 365 days ahead, which is what C10 and the code enforce.
+- **F4 (process).** `e33b3516` rewrote the approved `approve` Surface row in
+  place, adding `--confirm-stdin` and the credential flags, instead of adding
+  a row. The confirmation was already required by AC 4-5, Flow hop 3 and the
+  AD-040 confirmation assumption, and signing by door 3; the row is not
+  rewritten again, and the history stays as it is.
+- **F5, F6 (info).** No change: door 4 replaces the #569 guard and its file
+  header still names #569; the plan does not require a README entry.
