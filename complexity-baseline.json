@@ -204,7 +204,7 @@
       13
     ],
     "packages/data-probe/src/mongodb-adapter.ts :: Function 'preflight'": [
-      16
+      14
     ],
     "packages/data-probe/src/mysql-family-adapter.ts :: Function 'decodeRequest'": [
       12
@@ -357,11 +357,11 @@
     "packages/evidence/src/support-bundle/support-bundle.ts :: Function 'normalizeDiagnosticValue'": [
       21
     ],
-    "packages/evidence/src/support-bundle/support-bundle.ts :: Method 'assertSafe'": [
-      20
-    ],
     "packages/evidence/src/support-bundle/support-bundle.ts :: Private method #assertPlan": [
       36
+    ],
+    "packages/evidence/src/support-bundle/support-bundle.ts :: Private method #scan": [
+      18
     ],
     "packages/extension-host/src/index.ts :: Async method 'execute'": [
       23

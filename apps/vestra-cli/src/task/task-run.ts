@@ -872,7 +872,7 @@ function assertStartable(state: string, resume: boolean): void {
 export async function runTask(
   io: TaskCommandIo,
   options: { readonly runId: unknown; readonly resume: boolean; readonly reconcile?: unknown },
-  machine: WindowsMachine = { platform: io.platform }
+  machine?: WindowsMachine
 ) {
   const runId = parseRunId(options.runId);
   const reconcile = parseReconcile(options.reconcile);
@@ -888,7 +888,7 @@ export async function runTask(
   try {
     assertStartable(currentRun(runtime, runId).state, options.resume);
     await requireApprovedRequest(plan, runRecord);
-    const prepared = await prepare(io, workspace, plan, runtime, runRecord, machine);
+    const prepared = await prepare(io, workspace, plan, runtime, runRecord, machine ?? { platform: io.platform });
     await runRecord.claimActive(io.pid);
     const composition = new TaskRunComposition(io, workspace, plan, runtime, prepared, runRecord, reconcile);
     const controller = new AbortController();

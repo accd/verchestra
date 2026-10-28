@@ -98,13 +98,15 @@ function assertLogicalPath(value: unknown): asserts value is string {
     throw new DiscoveryRouterError("VES_DISCOVERY_ANCHOR_INVALID", "Discovery anchor path is invalid");
 }
 
+const DEFAULT_LIMITS = Object.freeze({ maximumEvidence: 500, maximumFindings: 500, maximumContentBytes: 1_000_000 });
+
 export class DiscoveryRouter {
   readonly #limits: {
     readonly maximumEvidence: number;
     readonly maximumFindings: number;
     readonly maximumContentBytes: number;
   };
-  constructor(limits = { maximumEvidence: 500, maximumFindings: 500, maximumContentBytes: 1_000_000 }) {
+  constructor(limits = DEFAULT_LIMITS) {
     this.#limits = limits;
   }
 

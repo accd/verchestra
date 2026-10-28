@@ -164,7 +164,11 @@ export class HmacPathPseudonymizer {
 }
 
 export class ProhibitedContentScanner {
-  assertSafe(value: unknown, seen = new Set<object>(), budget = { nodes: 0 }): void {
+  assertSafe(value: unknown): void {
+    this.#scan(value, new Set<object>(), { nodes: 0 });
+  }
+
+  #scan(value: unknown, seen: Set<object>, budget: { nodes: number }): void {
     budget.nodes += 1;
     if (budget.nodes > 10_000) fail("VES_SUPPORT_CONTENT_PROHIBITED", "diagnostic content exceeds scanner bounds");
     if (typeof value === "string") {
@@ -183,13 +187,13 @@ export class ProhibitedContentScanner {
     seen.add(value);
     if (Array.isArray(value)) {
       if (value.length > 100) fail("VES_SUPPORT_CONTENT_PROHIBITED", "diagnostic array exceeds scanner bounds");
-      for (const entry of value) this.assertSafe(entry, seen, budget);
+      for (const entry of value) this.#scan(entry, seen, budget);
       return;
     }
     for (const [key, entry] of Object.entries(value)) {
       if (/(?:source|prompt|context|credential|secret|environment|row|raw|transcript|log|database)/iu.test(key))
         fail("VES_SUPPORT_CONTENT_PROHIBITED", "diagnostic object contains a prohibited field class");
-      this.assertSafe(entry, seen, budget);
+      this.#scan(entry, seen, budget);
     }
   }
 }
