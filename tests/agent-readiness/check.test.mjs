@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -102,4 +103,60 @@ test("readiness rejects project-license drift while preserving fixture data", as
   const errors = await checkRepository(root);
   assert.ok(errors.includes("README.md: license statement disagrees with Apache-2.0"));
   assert.ok(!errors.some((error) => error.includes("tests/unit/governed-skill-registry.test.mjs")));
+});
+
+test("readiness reports exactly the broken or escaping Markdown links among tracked files", async (t) => {
+  const root = await fixture(t);
+  const site = join(root, "apps", "site", "src");
+  await mkdir(join(site, "content", "docs", "docs", "guide"), { recursive: true });
+  await mkdir(join(site, "pages"), { recursive: true });
+  await writeFile(join(site, "pages", "about.astro"), "---\n---\n");
+  await writeFile(
+    join(site, "content", "docs", "docs", "guide", "setup.md"),
+    "# Setup\n\n[up](/verchestra/docs/guide/)\n"
+  );
+  await writeFile(
+    join(site, "content", "docs", "docs", "guide", "index.md"),
+    [
+      "# Guide",
+      "",
+      "[docs route](/verchestra/docs/guide/setup/)",
+      "[missing docs route](/verchestra/docs/missing/)",
+      "[home](/verchestra/)",
+      "[roadmap page](/verchestra/roadmap/)",
+      "[missing page](/verchestra/pricing/)",
+      "[astro page](/verchestra/about/)",
+      "[sibling](setup)",
+      "[report](../qualification/t68-validation)",
+      "[nowhere](nowhere)",
+      "[external](https://example.com/x)",
+      "[anchor](#top)",
+      ""
+    ].join("\n")
+  );
+  await writeFile(
+    join(root, "docs", "notes.md"),
+    [
+      "# Notes",
+      "",
+      "[readme](../README.md)",
+      "[missing](missing.md)",
+      "[escape](../../outside.md)",
+      "[angled](<architecture.md>)",
+      "[fragment](architecture.md#top)",
+      "[mail](mailto:someone@example.com)",
+      ""
+    ].join("\n")
+  );
+  execFileSync("git", ["-C", root, "init", "--quiet"]);
+  execFileSync("git", ["-C", root, "add", "--all"]);
+
+  const links = (await checkRepository(root)).filter((error) => error.includes("Markdown link"));
+  assert.deepEqual(links, [
+    "apps/site/src/content/docs/docs/guide/index.md: broken or unsafe Markdown link /verchestra/docs/missing/",
+    "apps/site/src/content/docs/docs/guide/index.md: broken or unsafe Markdown link /verchestra/pricing/",
+    "apps/site/src/content/docs/docs/guide/index.md: broken or unsafe Markdown link nowhere",
+    "docs/notes.md: broken or unsafe Markdown link ../../outside.md",
+    "docs/notes.md: broken or unsafe Markdown link missing.md"
+  ]);
 });

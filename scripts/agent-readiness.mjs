@@ -93,8 +93,17 @@ export function markdownLinkTargets(source) {
 // fail closed with the conflicting task ids named, rather than being resolved by
 // which edge happened to be written first.
 export function validateRoadmapChain(roadmap) {
-  const edges = parseRoadmapChain(roadmap);
   const errors = [];
+  const { successor, incoming } = indexRoadmapEdges(parseRoadmapChain(roadmap), errors);
+  const nodes = new Set([...successor.keys(), ...incoming.keys()]);
+  const roots = [...nodes].filter((task) => !incoming.has(task));
+  const terminals = [...nodes].filter((task) => !successor.has(task));
+  checkChainEnds(nodes, roots, terminals, errors);
+  const chain = roots.length === 1 ? walkRoadmapChain(roots[0], successor, nodes, errors) : [];
+  return { chain: errors.length === 0 ? chain : [], errors };
+}
+
+function indexRoadmapEdges(edges, errors) {
   const successor = new Map();
   const incoming = new Map();
   for (const [from, to] of edges) {
@@ -104,31 +113,32 @@ export function validateRoadmapChain(roadmap) {
     incoming.set(to, (incoming.get(to) ?? 0) + 1);
   }
   for (const [task, count] of incoming) if (count > 1) errors.push(`${task} has ${count} predecessors`);
+  return { successor, incoming };
+}
 
-  const nodes = new Set([...successor.keys(), ...incoming.keys()]);
-  const roots = [...nodes].filter((task) => !incoming.has(task));
-  const terminals = [...nodes].filter((task) => !successor.has(task));
-  if (nodes.size === 0) errors.push("no roadmap chain is declared");
-  else {
-    if (roots.length !== 1) errors.push(`the chain needs exactly one start, found ${roots.length || "none"}`);
-    if (terminals.length !== 1) errors.push(`the chain needs exactly one end, found ${terminals.length || "none"}`);
+function checkChainEnds(nodes, roots, terminals, errors) {
+  if (nodes.size === 0) {
+    errors.push("no roadmap chain is declared");
+    return;
   }
+  if (roots.length !== 1) errors.push(`the chain needs exactly one start, found ${roots.length || "none"}`);
+  if (terminals.length !== 1) errors.push(`the chain needs exactly one end, found ${terminals.length || "none"}`);
+}
 
+function walkRoadmapChain(root, successor, nodes, errors) {
   const chain = [];
-  if (roots.length === 1) {
-    const seen = new Set();
-    for (let task = roots[0]; task !== undefined; task = successor.get(task)) {
-      if (seen.has(task)) {
-        errors.push(`the chain revisits ${task}`);
-        break;
-      }
-      seen.add(task);
-      chain.push(task);
+  const seen = new Set();
+  for (let task = root; task !== undefined; task = successor.get(task)) {
+    if (seen.has(task)) {
+      errors.push(`the chain revisits ${task}`);
+      break;
     }
-    const unreachable = [...nodes].filter((task) => !seen.has(task)).sort(codeUnitCompare);
-    if (unreachable.length > 0) errors.push(`unreachable from the start: ${unreachable.join(", ")}`);
+    seen.add(task);
+    chain.push(task);
   }
-  return { chain: errors.length === 0 ? chain : [], errors };
+  const unreachable = [...nodes].filter((task) => !seen.has(task)).sort(codeUnitCompare);
+  if (unreachable.length > 0) errors.push(`unreachable from the start: ${unreachable.join(", ")}`);
+  return chain;
 }
 
 export function resolveQualification(roadmap, validatedTasks) {
@@ -201,62 +211,15 @@ const SENSOR = /^(\d+) killed, (\d+) survived$/u;
 // reversed by relabelling.
 export function validateQualificationReport(source, taskId, { isRepositoryCommit, isTrustedRevision } = {}) {
   if (isHistoricalReport(taskId)) return [];
+  const { report, error } = readReportFrontmatter(source, taskId);
+  if (error !== undefined) return [error];
   const errors = [];
-  const match = /^---\r?\n([\s\S]*?)\r?\n---\r?\n/u.exec(source);
-  if (!match) return [`${taskId}: report is missing the qualification frontmatter`];
-  const report = {};
-  for (const line of match[1].split(/\r?\n/u)) {
-    const field = frontmatterField(line);
-    if (!field) return [`${taskId}: malformed frontmatter line`];
-    report[field[0]] = field[1].trim();
-  }
 
   if (report.schema !== QUALIFICATION_REPORT_SCHEMA) errors.push(`${taskId}: unsupported report schema`);
   if (report.task !== taskId) errors.push(`${taskId}: report claims task ${report.task ?? "nothing"}`);
-
-  const revision = report.revision ?? "";
-  if (!/^[0-9a-f]{40}$/u.test(revision)) errors.push(`${taskId}: revision is not a full commit id`);
-  // A well-formed but invented SHA is the whole point of the check. The revision
-  // has to be a commit this repository contains, which the report author cannot
-  // fabricate.
-  else if (isRepositoryCommit !== undefined && !isRepositoryCommit(revision))
-    errors.push(`${taskId}: revision ${revision.slice(0, 12)} is not a commit in this repository`);
-  // A commit in an unmerged side branch may be readable locally, but a clean
-  // clone of the trusted qualification target is not entitled to rely on it.
-  // The report must bind to an implementation revision already reachable from
-  // that target; the later report commit itself need not exist yet.
-  else if (isTrustedRevision !== undefined && !isTrustedRevision(revision))
-    errors.push(`${taskId}: revision ${revision.slice(0, 12)} is not reachable from the trusted qualification head`);
-  if (report.gateRevision !== revision) errors.push(`${taskId}: gate evidence is not bound to the report revision`);
-
-  const gates = (report.gates ?? "")
-    .split(",")
-    .map((gate) => gate.trim().replace(/^pnpm\s+/u, ""))
-    .filter(Boolean);
-  const results = (report.gateResults ?? "")
-    .split(",")
-    .map((result) => result.trim().toLowerCase())
-    .filter(Boolean);
-  for (const gate of gates)
-    if (!DECLARED_GATES.includes(gate)) errors.push(`${taskId}: ${gate} is not a declared gate`);
-  if (!gates.includes("gate:quick")) errors.push(`${taskId}: gate:quick was not recorded`);
-  if (!gates.some((gate) => SUBSTANTIVE_GATES.includes(gate)))
-    errors.push(`${taskId}: no gate covering a substantive surface was recorded`);
-  if (gates.length !== results.length) errors.push(`${taskId}: every gate needs a recorded result`);
-  else
-    for (const [index, result] of results.entries()) {
-      if (result !== "pass") errors.push(`${taskId}: gate ${gates[index]} did not pass`);
-    }
-
-  const criteria = CRITERIA.exec(report.criteriaEvidence ?? "");
-  if (criteria === null) errors.push(`${taskId}: criteriaEvidence must read "<n> of <n> acceptance criteria proven"`);
-  else if (Number(criteria[1]) < 1 || criteria[1] !== criteria[2])
-    errors.push(`${taskId}: only ${criteria[1]} of ${criteria[2]} acceptance criteria are proven`);
-
-  const sensor = SENSOR.exec(report.discriminationSensor ?? "");
-  if (sensor === null) errors.push(`${taskId}: discriminationSensor must read "<n> killed, <n> survived"`);
-  else if (Number(sensor[1]) < 1) errors.push(`${taskId}: the discrimination sensor killed nothing`);
-  else if (Number(sensor[2]) !== 0) errors.push(`${taskId}: ${sensor[2]} mutants survived the discrimination sensor`);
+  checkReportRevision(report, taskId, { isRepositoryCommit, isTrustedRevision }, errors);
+  checkReportGates(report, taskId, errors);
+  checkReportCounts(report, taskId, errors);
 
   for (const field of ["skipped", "todo"]) {
     if (report[field] !== "0") errors.push(`${taskId}: ${field} must be 0, found ${report[field] ?? "nothing"}`);
@@ -271,6 +234,74 @@ export function validateQualificationReport(source, taskId, { isRepositoryCommit
   if (!/^https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/pull\/\d+$/u.test(report.reviewedIn ?? ""))
     errors.push(`${taskId}: reviewedIn must name the pull request URL the evidence was reviewed in`);
   return errors;
+}
+
+function readReportFrontmatter(source, taskId) {
+  const match = /^---\r?\n([\s\S]*?)\r?\n---\r?\n/u.exec(source);
+  if (!match) return { error: `${taskId}: report is missing the qualification frontmatter` };
+  const report = {};
+  for (const line of match[1].split(/\r?\n/u)) {
+    const field = frontmatterField(line);
+    if (!field) return { error: `${taskId}: malformed frontmatter line` };
+    report[field[0]] = field[1].trim();
+  }
+  return { report };
+}
+
+function checkReportRevision(report, taskId, { isRepositoryCommit, isTrustedRevision }, errors) {
+  const revision = report.revision ?? "";
+  if (!/^[0-9a-f]{40}$/u.test(revision)) errors.push(`${taskId}: revision is not a full commit id`);
+  // A well-formed but invented SHA is the whole point of the check. The revision
+  // has to be a commit this repository contains, which the report author cannot
+  // fabricate.
+  else if (isRepositoryCommit !== undefined && !isRepositoryCommit(revision))
+    errors.push(`${taskId}: revision ${revision.slice(0, 12)} is not a commit in this repository`);
+  // A commit in an unmerged side branch may be readable locally, but a clean
+  // clone of the trusted qualification target is not entitled to rely on it.
+  // The report must bind to an implementation revision already reachable from
+  // that target; the later report commit itself need not exist yet.
+  else if (isTrustedRevision !== undefined && !isTrustedRevision(revision))
+    errors.push(`${taskId}: revision ${revision.slice(0, 12)} is not reachable from the trusted qualification head`);
+  if (report.gateRevision !== revision) errors.push(`${taskId}: gate evidence is not bound to the report revision`);
+}
+
+function checkReportGates(report, taskId, errors) {
+  const gates = (report.gates ?? "")
+    .split(",")
+    .map((gate) => gate.trim().replace(/^pnpm\s+/u, ""))
+    .filter(Boolean);
+  const results = (report.gateResults ?? "")
+    .split(",")
+    .map((result) => result.trim().toLowerCase())
+    .filter(Boolean);
+  for (const gate of gates)
+    if (!DECLARED_GATES.includes(gate)) errors.push(`${taskId}: ${gate} is not a declared gate`);
+  if (!gates.includes("gate:quick")) errors.push(`${taskId}: gate:quick was not recorded`);
+  if (!gates.some((gate) => SUBSTANTIVE_GATES.includes(gate)))
+    errors.push(`${taskId}: no gate covering a substantive surface was recorded`);
+  checkGateResults(gates, results, taskId, errors);
+}
+
+function checkGateResults(gates, results, taskId, errors) {
+  if (gates.length !== results.length) {
+    errors.push(`${taskId}: every gate needs a recorded result`);
+    return;
+  }
+  for (const [index, result] of results.entries()) {
+    if (result !== "pass") errors.push(`${taskId}: gate ${gates[index]} did not pass`);
+  }
+}
+
+function checkReportCounts(report, taskId, errors) {
+  const criteria = CRITERIA.exec(report.criteriaEvidence ?? "");
+  if (criteria === null) errors.push(`${taskId}: criteriaEvidence must read "<n> of <n> acceptance criteria proven"`);
+  else if (Number(criteria[1]) < 1 || criteria[1] !== criteria[2])
+    errors.push(`${taskId}: only ${criteria[1]} of ${criteria[2]} acceptance criteria are proven`);
+
+  const sensor = SENSOR.exec(report.discriminationSensor ?? "");
+  if (sensor === null) errors.push(`${taskId}: discriminationSensor must read "<n> killed, <n> survived"`);
+  else if (Number(sensor[1]) < 1) errors.push(`${taskId}: the discrimination sensor killed nothing`);
+  else if (Number(sensor[2]) !== 0) errors.push(`${taskId}: ${sensor[2]} mutants survived the discrimination sensor`);
 }
 
 // Whether a revision exists, and whether it is reachable from the checkout being
@@ -848,6 +879,23 @@ function parseScalar(value) {
   return trimmed.replace(/^(['"])(.*)\1$/u, "$2");
 }
 
+// Checked in this order; the first invalid field names the error.
+const HANDOFF_FIELD_RULES = [
+  [(handoff) => handoff.schema !== "verchestra-feature-handoff/v1", "unsupported schema"],
+  [(handoff) => !/^[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(handoff.feature), "invalid feature"],
+  [(handoff) => handoff.issue !== null && (!Number.isInteger(handoff.issue) || handoff.issue < 1), "invalid issue"],
+  [(handoff) => !HANDOFF_STATUSES.includes(handoff.status), "invalid status"],
+  [(handoff) => typeof handoff.branch !== "string" || handoff.branch.length === 0, "invalid branch"],
+  [(handoff) => !/^[0-9a-f]{40}$/u.test(handoff.baseRevision), "invalid baseRevision"],
+  [
+    (handoff) => handoff.lastCompletedTask !== null && !/^T\d+$/u.test(handoff.lastCompletedTask),
+    "invalid lastCompletedTask"
+  ],
+  [(handoff) => typeof handoff.nextTask !== "string" || handoff.nextTask.length === 0, "invalid nextTask"],
+  [(handoff) => handoff.lastGate !== null && typeof handoff.lastGate !== "string", "invalid lastGate"],
+  [(handoff) => !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/u.test(handoff.updatedAt), "updatedAt must be ISO-8601 UTC"]
+];
+
 export function parseHandoff(source, path = "handoff.md") {
   const match = /^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/u.exec(source);
   if (!match) throw new Error(`${path}: missing YAML frontmatter`);
@@ -872,22 +920,9 @@ export function parseHandoff(source, path = "handoff.md") {
   for (const field of required) {
     if (!Object.hasOwn(frontmatter, field)) throw new Error(`${path}: missing ${field}`);
   }
-  if (frontmatter.schema !== "verchestra-feature-handoff/v1") throw new Error(`${path}: unsupported schema`);
-  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(frontmatter.feature)) throw new Error(`${path}: invalid feature`);
-  if (frontmatter.issue !== null && (!Number.isInteger(frontmatter.issue) || frontmatter.issue < 1))
-    throw new Error(`${path}: invalid issue`);
-  if (!HANDOFF_STATUSES.includes(frontmatter.status)) throw new Error(`${path}: invalid status`);
-  if (typeof frontmatter.branch !== "string" || frontmatter.branch.length === 0)
-    throw new Error(`${path}: invalid branch`);
-  if (!/^[0-9a-f]{40}$/u.test(frontmatter.baseRevision)) throw new Error(`${path}: invalid baseRevision`);
-  if (frontmatter.lastCompletedTask !== null && !/^T\d+$/u.test(frontmatter.lastCompletedTask))
-    throw new Error(`${path}: invalid lastCompletedTask`);
-  if (typeof frontmatter.nextTask !== "string" || frontmatter.nextTask.length === 0)
-    throw new Error(`${path}: invalid nextTask`);
-  if (frontmatter.lastGate !== null && typeof frontmatter.lastGate !== "string")
-    throw new Error(`${path}: invalid lastGate`);
-  if (!/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/u.test(frontmatter.updatedAt))
-    throw new Error(`${path}: updatedAt must be ISO-8601 UTC`);
+  for (const [isInvalid, problem] of HANDOFF_FIELD_RULES) {
+    if (isInvalid(frontmatter)) throw new Error(`${path}: ${problem}`);
+  }
   if (frontmatter.status === "blocked" && !/^# Blockers\r?$/mu.test(match[2]))
     throw new Error(`${path}: blocked handoff needs a Blockers section`);
   return { ...frontmatter, body: match[2] };
@@ -977,49 +1012,62 @@ async function checkMarkdownLinks(root, files, errors) {
     if (!path.endsWith(".md") || !existsSync(join(root, path))) continue;
     const source = await readFile(join(root, path), "utf8");
     for (const link of markdownLinkTargets(source)) {
-      const target = link.trim().replace(/^<|>$/gu, "");
-      if (/^(?:https?:|mailto:|#)/u.test(target)) continue;
-      const clean = decodeURIComponent(target.split(/[?#]/u)[0]);
-      if (!clean) continue;
-      if (path.startsWith("apps/site/src/content/docs/docs/")) {
-        const contentPrefix = "apps/site/src/content/docs/docs/";
-        const sourceRelative = path.slice(contentPrefix.length);
-        const sourceWithoutExtension = sourceRelative.replace(/\.(?:md|mdx)$/u, "");
-        const routeBase =
-          posix.basename(sourceWithoutExtension) === "index"
-            ? posix.dirname(sourceWithoutExtension)
-            : sourceWithoutExtension;
-        let route;
-        if (clean.startsWith("/verchestra/docs/")) route = clean.slice("/verchestra/docs/".length);
-        else if (clean.startsWith("/verchestra/")) {
-          const page = clean.slice("/verchestra/".length).replace(/\/$/u, "");
-          if (
-            page.length === 0 ||
-            existsSync(join(root, "apps", "site", "src", "pages", `${page}.astro`)) ||
-            existsSync(join(root, "apps", "site", "src", "pages", page, "index.astro")) ||
-            (page === "roadmap" && existsSync(join(root, "ROADMAP.md")))
-          )
-            continue;
-          errors.push(`${path}: broken or unsafe Markdown link ${target}`);
-          continue;
-        } else route = posix.normalize(posix.join(routeBase, clean));
-        route = route.replace(/^\/|\/$/gu, "");
-        if (
-          existsSync(join(root, "apps", "site", "src", "content", "docs", "docs", `${route}.md`)) ||
-          existsSync(join(root, "apps", "site", "src", "content", "docs", "docs", `${route}.mdx`)) ||
-          existsSync(join(root, "apps", "site", "src", "content", "docs", "docs", route, "index.md")) ||
-          existsSync(join(root, "apps", "site", "src", "content", "docs", "docs", route, "index.mdx")) ||
-          (QUALIFICATION_REPORT_ROUTE.test(route) && existsSync(join(root, "docs", `${route}.md`)))
-        )
-          continue;
-        errors.push(`${path}: broken or unsafe Markdown link ${target}`);
-        continue;
-      }
-      const absolute = resolve(dirname(join(root, path)), clean);
-      if (!absolute.startsWith(`${resolve(root)}${sep}`) || !existsSync(absolute))
-        errors.push(`${path}: broken or unsafe Markdown link ${target}`);
+      const target = brokenMarkdownLink(root, path, link);
+      if (target !== null) errors.push(`${path}: broken or unsafe Markdown link ${target}`);
     }
   }
+}
+
+// Returns the link's target when it is broken or unsafe, or null when it is
+// external, empty, or resolves.
+function brokenMarkdownLink(root, path, link) {
+  const target = link.trim().replace(/^<|>$/gu, "");
+  if (/^(?:https?:|mailto:|#)/u.test(target)) return null;
+  const clean = decodeURIComponent(target.split(/[?#]/u)[0]);
+  if (!clean) return null;
+  return markdownLinkResolves(root, path, clean) ? null : target;
+}
+
+const SITE_DOCS_CONTENT = "apps/site/src/content/docs/docs/";
+
+function markdownLinkResolves(root, path, clean) {
+  if (path.startsWith(SITE_DOCS_CONTENT)) return siteLinkResolves(root, path, clean);
+  const absolute = resolve(dirname(join(root, path)), clean);
+  return absolute.startsWith(`${resolve(root)}${sep}`) && existsSync(absolute);
+}
+
+function siteLinkResolves(root, path, clean) {
+  if (clean.startsWith("/verchestra/docs/")) return siteDocRouteExists(root, clean.slice("/verchestra/docs/".length));
+  if (clean.startsWith("/verchestra/"))
+    return sitePageExists(root, clean.slice("/verchestra/".length).replace(/\/$/u, ""));
+  return siteDocRouteExists(root, posix.normalize(posix.join(siteRouteBase(path), clean)));
+}
+
+function siteRouteBase(path) {
+  const sourceWithoutExtension = path.slice(SITE_DOCS_CONTENT.length).replace(/\.(?:md|mdx)$/u, "");
+  return posix.basename(sourceWithoutExtension) === "index"
+    ? posix.dirname(sourceWithoutExtension)
+    : sourceWithoutExtension;
+}
+
+function sitePageExists(root, page) {
+  return (
+    page.length === 0 ||
+    existsSync(join(root, "apps", "site", "src", "pages", `${page}.astro`)) ||
+    existsSync(join(root, "apps", "site", "src", "pages", page, "index.astro")) ||
+    (page === "roadmap" && existsSync(join(root, "ROADMAP.md")))
+  );
+}
+
+function siteDocRouteExists(root, rawRoute) {
+  const route = rawRoute.replace(/^\/|\/$/gu, "");
+  return (
+    existsSync(join(root, "apps", "site", "src", "content", "docs", "docs", `${route}.md`)) ||
+    existsSync(join(root, "apps", "site", "src", "content", "docs", "docs", `${route}.mdx`)) ||
+    existsSync(join(root, "apps", "site", "src", "content", "docs", "docs", route, "index.md")) ||
+    existsSync(join(root, "apps", "site", "src", "content", "docs", "docs", route, "index.mdx")) ||
+    (QUALIFICATION_REPORT_ROUTE.test(route) && existsSync(join(root, "docs", `${route}.md`)))
+  );
 }
 
 function unsafeValue(source) {
