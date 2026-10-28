@@ -222,7 +222,7 @@ export async function scratchCheckouts(
 // without creating it.
 export async function openTaskWorkspace(
   io: TaskWorkspaceIo,
-  options: { readonly ensure: boolean } = { ensure: true }
+  { ensure = true }: { readonly ensure?: boolean } = {}
 ): Promise<TaskWorkspace> {
   const identity = await readWorkspaceIdentity(io.controlRoot);
   if (identity === undefined)
@@ -236,7 +236,7 @@ export async function openTaskWorkspace(
     workspaceId: identity.workspaceId,
     platform: io.platform
   });
-  if (options.ensure) await ensureWorkspaceState(layout);
+  if (ensure) await ensureWorkspaceState(layout);
   const tasksRoot = join(layout.workspaceRoot, TASK_STATE_ROOTS.tasksRoot);
   const keysRoot = join(layout.workspaceRoot, TASK_STATE_ROOTS.keysRoot);
   const verificationRoot = join(layout.workspaceRoot, TASK_STATE_ROOTS.verificationRoot);

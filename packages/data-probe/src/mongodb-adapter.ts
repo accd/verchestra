@@ -32,7 +32,7 @@ function exactKeys(value: UnknownRecord, keys: readonly string[]) {
   if (Object.keys(value).sort(codeUnitCompare).join(",") !== [...keys].sort(codeUnitCompare).join(","))
     fail("VES_MONGODB_COMMAND_INVALID", "MongoDB command shape is invalid");
 }
-function preflight(value: unknown, depth = 0, state = { nodes: 0 }): void {
+function preflight(value: unknown, depth: number, state: { nodes: number }): void {
   state.nodes += 1;
   if (depth > 16 || state.nodes > 512) fail("VES_MONGODB_COMMAND_INVALID", "MongoDB command exceeds structural bounds");
   if (Array.isArray(value)) {
@@ -142,7 +142,7 @@ function pipeline(value: unknown, state: ValidationState) {
 }
 
 export function parseMongoDbReadOperation(command: unknown, options: ParseOptions): MongoDbOperation {
-  preflight(command);
+  preflight(command, 0, { nodes: 0 });
   const input = record(command);
   const kind = input["kind"];
   if (kind === "mapReduce") fail("VES_MONGODB_SERVER_EXECUTION_DENIED", "MongoDB server execution is not permitted");
