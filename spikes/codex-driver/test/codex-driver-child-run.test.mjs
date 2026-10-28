@@ -8,6 +8,7 @@ import { test } from "node:test";
 import { CodexDriver } from "../../../packages/drivers/src/index.ts";
 import { codexFixture } from "../../../tests/helpers/codex-driver-fixture.mjs";
 import { childRunSuite } from "../../../tests/helpers/driver-child-run-fixture.mjs";
+import { suiteCases } from "../../../tests/helpers/suite-cases.mjs";
 
 const STARTED = ["session.started", "model.resolved"];
 
@@ -26,7 +27,7 @@ function build(mode) {
   };
 }
 
-childRunSuite(test, "codex", [
+const cases = suiteCases(childRunSuite, "codex", [
   {
     name: "writes lines that parse as JSON and are not objects",
     build: build("not-an-object"),
@@ -42,3 +43,4 @@ childRunSuite(test, "codex", [
     terminations: 1
   }
 ]);
+for (const entry of cases) test(...entry);

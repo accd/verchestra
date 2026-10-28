@@ -12,8 +12,9 @@ import { ClaudeCodeDriver } from "../../../packages/drivers/src/index.ts";
 import { claudeFixture } from "../../../tests/helpers/claude-driver-fixture.mjs";
 import { childRunSuite } from "../../../tests/helpers/driver-child-run-fixture.mjs";
 import { blockUntilExited } from "../../../tests/helpers/process-liveness.mjs";
+import { suiteCases } from "../../../tests/helpers/suite-cases.mjs";
 
-childRunSuite(test, "claude-code", [
+const cases = suiteCases(childRunSuite, "claude-code", [
   {
     name: "reports its result and exits before the driver writes its prompt",
     build: (onSpawn) => {
@@ -34,3 +35,4 @@ childRunSuite(test, "claude-code", [
     terminations: 0
   }
 ]);
+for (const entry of cases) test(...entry);

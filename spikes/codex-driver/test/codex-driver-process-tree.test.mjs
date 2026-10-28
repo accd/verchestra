@@ -11,13 +11,14 @@ import { ProviderProcesses } from "../../../apps/vestra-cli/src/task/task-proces
 import { CodexDriver } from "../../../packages/drivers/src/index.ts";
 import { codexFixture } from "../../../tests/helpers/codex-driver-fixture.mjs";
 import { processTreeSuite } from "../../../tests/helpers/process-tree-fixture.mjs";
+import { suiteCases } from "../../../tests/helpers/suite-cases.mjs";
 
 // invariant: the terminator is the one `vestra task` hands this driver, and a
 // tree it could not confirm stopped would be named in `reported`.
 const reported = [];
 const providers = new ProviderProcesses({ stderr: (text) => reported.push(text) });
 
-processTreeSuite(test, {
+const cases = suiteCases(processTreeSuite, {
   label: "codex",
   terminator: providers.session("Codex").terminateTree,
   reported,
@@ -26,3 +27,4 @@ processTreeSuite(test, {
     return { driver: new CodexDriver(fixture.dependencies(dependencies)), request: fixture.request() };
   }
 });
+for (const entry of cases) test(...entry);

@@ -7,5 +7,7 @@
 import { test } from "node:test";
 
 import { CANCEL_ORDER_ROWS, cancelOrderSuite } from "../../../tests/helpers/driver-cancel-order-fixture.mjs";
+import { suiteCases } from "../../../tests/helpers/suite-cases.mjs";
 
-cancelOrderSuite(test, "codex", CANCEL_ORDER_ROWS["codex"]);
+const cases = suiteCases(cancelOrderSuite, "codex", CANCEL_ORDER_ROWS["codex"]);
+for (const entry of cases) test(...entry);

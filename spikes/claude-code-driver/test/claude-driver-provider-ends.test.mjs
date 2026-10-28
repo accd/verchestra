@@ -12,13 +12,14 @@ import { ProviderProcesses } from "../../../apps/vestra-cli/src/task/task-proces
 import { ClaudeCodeDriver } from "../../../packages/drivers/src/index.ts";
 import { claudeFixture } from "../../../tests/helpers/claude-driver-fixture.mjs";
 import { providerEndSuite } from "../../../tests/helpers/process-tree-fixture.mjs";
+import { suiteCases } from "../../../tests/helpers/suite-cases.mjs";
 
 // invariant: the terminator is the one `vestra task` hands this driver, and a
 // tree it could not confirm stopped would be named in `reported`.
 const reported = [];
 const providers = new ProviderProcesses({ stderr: (text) => reported.push(text) });
 
-providerEndSuite(test, {
+const cases = suiteCases(providerEndSuite, {
   label: "claude-code",
   terminator: providers.session("Claude Code").terminateTree,
   reported,
@@ -52,3 +53,4 @@ providerEndSuite(test, {
     }
   ]
 });
+for (const entry of cases) test(...entry);

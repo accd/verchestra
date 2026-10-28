@@ -75,5 +75,5 @@ test("terminating a tree that is already gone reports nothing left to kill", asy
   const exited = once(leader, "exit");
   await terminateProcessTree(tree.leader, INCOMPLETE);
   await exited;
-  await terminateProcessTree(tree.leader, INCOMPLETE);
+  await assert.doesNotReject(terminateProcessTree(tree.leader, INCOMPLETE));
 });
